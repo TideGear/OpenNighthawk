@@ -1,0 +1,64 @@
+# ---------------------------------------------------------------------------
+# COPYRIGHTED GAME MATERIAL - NEVER COMMIT
+#
+# This repository is source code only. The recompiler runs at build time
+# against a copy of the game the user owns and writes its output - C
+# translated from the original machine code - into local/ or the build
+# directory. That output is derived from the original executables and must
+# never be committed, published or attached to an issue.
+# ---------------------------------------------------------------------------
+
+# Local working area: captured images, generated C, traces, recordings.
+/local/
+/private/
+
+# The generated translation, wherever a build put it.
+/gen/
+**/recomp_gen/
+
+# The user's own copies of the game, however they were dropped in the tree.
+*.sit
+*.sea
+*.hqx
+*.img
+*.iso
+*.zip
+setup_*.exe
+
+# Original DOS game files, by extension.
+*.WLD
+*.3DG
+*.3DT
+*.3DX
+*.PIC
+*.PAN
+*.PAL
+*.SS
+*.117
+*.LOG
+*.COM
+*.EXE
+*.FIL
+*.Fil
+
+# Derived-from-original artefacts.
+*.lst
+*.disasm
+*.trace
+*.img.bin
+*.snap
+
+# ---------------------------------------------------------------------------
+# Build output (build.cmd puts it on local disk; see README)
+# ---------------------------------------------------------------------------
+/build/
+/build-*/
+*.obj
+*.pdb
+*.ilk
+*.exe
+*.dll
+*.exp
+*.lib
+__pycache__/
+*.pyc
