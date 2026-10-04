@@ -70,6 +70,12 @@ result block. `recon_career` continues into END, earns the tenth-mission tour
 ribbon and saves the changed score, sortie count and award. Those saved bytes
 are asserted independently of engine hash equality.
 
+`strike` destroys Libya training primary target 3 with the loaded Maverick.
+It stops airborne after credit and does not establish a return. The stronger
+`strike_pilot.py --replay strike.input` observer requires ground-strike type,
+target damage, primary credit, one matching hit event, weapon release events,
+consumed stores and an airborne aircraft with fuel and no ejection/crash.
+
 Keep run outputs and saves outside the repository. Use a fresh output
 directory for a baseline run, since an existing save can change the pilot
 and mission:

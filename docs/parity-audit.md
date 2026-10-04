@@ -57,6 +57,18 @@ return with the established `c403d0542430b898` hash and no acceptance errors.
 
 ## Independent comparisons with differences
 
+The added `strike` route destroys Libya training primary target 3 using
+Mavericks through normal controls. Two release events, one matching primary
+hit event, target damage, credit flag and stores 2 -> 0 pass independent
+observation; fuel 4566, altitude 2355, speed 610 and no ejection/crash at the
+end. Both observers' recorded input and flight CSVs are byte-identical.
+All 175 checkpoints plus final state agree, ending at 8,797,594,941 clocks
+with hash `197c6b398d6fbb9f`; the credit screenshot was reviewed. This is
+an airborne primary completion, not a verified return. No interpreted
+instruction starts inside known game modules were recorded on its recompiled
+replay. Adding its interpreter coverage raises the measured union to
+133,926 / 230,052 bytes (58.2%); return/career coverage is still pending.
+
 **Video:** current-build replay against the saved GOG video still matches
 1,319 exact RGB pictures in order. Seven reference pictures and 28 of ours
 remain unmatched, all for a single sample. The end transition is about

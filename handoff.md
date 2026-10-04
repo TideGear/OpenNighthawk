@@ -84,6 +84,24 @@ routes are verified; an independent DOSBox recon flight is running (below).
 
 ## In flight at handoff
 
+- NEW strike objective: `tools/strike_pilot.py`, `strike.args/strike.input`,
+  normal Libya training primary3 destroyed with weapon5=Maverick. Initial
+  station0 stores2->0, releaseevents2, matchinghit1, flag5005, damaged1,
+  fuel4566, altitude2355, speed610, ejection0. Stops airborne after credit.
+  Strong replay observers `strike-verified-{interp,recomp}` pass and input/
+  CSV bytes match. CLI175 hashes+final match197c6b398d6fbb9f at8797594941.
+  Credit PNG reviewed. Recompiled miss profile contains only outside-module
+  BIOS starts; no known-game-module miss coverage file. Interpreter coverage
+  auditroot/strike.cov copied toexec-theatres-20261004/strike.cov; unionnow
+  133926/230052=58.2%, excludes freshreturn/careercoverage.19routes/48Python.
+- Independent attempt04 credited primary but circled moving secondary2 with
+  neighboringobject16 designated. Stopped with75428 observations; failed
+  result retained. Recon controller now points the sensor at nearby targets
+  before designation too; a regression covers that gate. Live attempt05:
+  `dosbox-recon-05`, `parity-audit-dosbox-recon-05.log`, execsession45666.
+  It generated two photos, target1=(26304,24884), home36.1900secflightlimit.
+  Previous session8133/attempt04 is terminated. Check05, not stalehandovers.
+
 - Latest audio probe: new`tools/opl_probe.py` builds original ROM-free16-bit
   COM via fidelity.Asm, capturesWAV with normalCtrlF6 andSpace. It revealed
   DOSBox mixer equal-rate fractional interpolation (14bit remainder16383).

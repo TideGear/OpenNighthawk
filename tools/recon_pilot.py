@@ -56,7 +56,10 @@ def control(machine, state, tick):
     roll_error = bank - state["roll"]
     want_pitch = clamp((2500 - state["altitude"]) * 2, -1000, 1800) + state["trim"]
     designated = state["lock"] != 0xFFFF and state["lock"] & 0x7F == state["target"]
-    if designated and state["target_range"] < 1500:
+    # Point the sensor at the target before designation as well. Keeping
+    # level flight while a neighboring object is locked can leave the
+    # designation request pending forever on a moving secondary target.
+    if state["target_range"] < 1500:
         want_pitch = -math.atan2(state["altitude"], state["target_range"] * 32) * 32768 / math.pi + 0x6EF
     pitch_error = want_pitch - state["pitch"]
     if abs(pitch_error) > 200:

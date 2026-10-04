@@ -27,11 +27,12 @@ never instead of parity.
 - Every translated instruction held to the interpreter from random states
   (`tests/insn_lockstep.c`, 5.7 million comparisons, 0 differences); the
   translator held to 8088 and 80286 silicon vectors.
-- Eighteen scripted routes identical between the interpreter and the recompiled
+- Nineteen scripted routes identical between the interpreter and the recompiled
   code: boot to flight; a full sortie through the debriefing; the speaker
   and Roland drivers; eight transfer-and-flight routes covering all nine
   theatres, three tensions and four mission categories. The routes execute
-  56.2% of the code area (`tools/exercised.py`). Theatre routes also require
+  at least 58.2% of the code area (`tools/exercised.py`; return/career coverage
+  has not yet been added to that measurement). Theatre routes also require
   the expected world files, a clean VGAME exit and at least a billion clocks
   in flight; airborne screenshots were reviewed for the six added routes.
 - Pilot creation, Backspace editing, Escape cancellation and erasure through
@@ -71,6 +72,12 @@ never instead of parity.
   engines agree at 316 checkpoints/final and all 802 saved bytes. Independent
   milestones require score 275, total 2669 -> 2944, sorties 9 -> 10 and the
   tour ribbon 0 -> 1. Award screenshot reviewed.
+- Ground-strike training primary destroyed by normally released Mavericks:
+  target 3 damaged, primary flag, one matching hit event, two releases and
+  station stores 2 -> 0; aircraft airborne with fuel and no ejection/crash.
+  Independent observers' input logs and CSVs match under both engines;
+  176 checkpoints/final agree, hash `197c6b398d6fbb9f`. Screenshot reviewed.
+  The route stops airborne after credit and does not establish a return.
 - Seeded random flights (`tools/random_flights.py`): every session
   identical at every hash; 30.5 minutes of flight in the 16-session batch.
 - Planted defects caught by the lockstep (`tools/mutation_check.py

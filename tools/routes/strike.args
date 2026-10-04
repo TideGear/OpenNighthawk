@@ -1,0 +1,11 @@
+# Normal controls: Libya training, destroy primary target 3 with weapon 5.
+# Stops airborne after target damage and objective credit; no return claim.
+# strike_pilot.py --replay strike.input verifies hit/release events and stores.
+# expect-world LB
+# expect-open ordnance.pic VGAME.EXE 1
+--replay
+strike.input
+--steps
+8797594941
+--time-us
+700000000000000

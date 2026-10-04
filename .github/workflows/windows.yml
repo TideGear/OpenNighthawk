@@ -48,5 +48,7 @@ jobs:
         run: python tests/test_landing_checks.py
       - name: Reconnaissance acceptance regressions
         run: python tests/test_recon_checks.py
+      - name: Ground-strike acceptance regressions
+        run: python tests/test_strike_checks.py
       - name: Reference observer and audio verdict regressions
         run: python tests/test_parity_diagnostics.py

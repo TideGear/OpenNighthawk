@@ -1,0 +1,138 @@
+#!/usr/bin/env python3
+"""Diagnostic ground strike through normal controls; stop after primary hit.
+
+Read-only mission/weapon observations select an effective loaded station.
+This initial diagnostic does not establish a return or completed sortie.
+"""
+import argparse
+import csv
+import json
+from pathlib import Path
+import tempfile
+
+from machine_api import Machine, RouteInputs
+from random_flights import base_route
+from recon_pilot import recon_state, control as navigate
+from run_route import route_args
+
+
+def strike_state(machine):
+    state = recon_state(machine)
+    ds = (machine.psp + 0x10 + 0x1e42) << 4
+    target = ds + 0xb2ce + state["target"] * 16
+    target_class = machine.read8(ds + 0xc630 + (machine.read8(target) & 0x7f)) & 15
+    stations = []
+    for i in range(4):
+        weapon = machine.read16(ds + 0x3670 + i * 4)
+        stations.append(dict(weapon=weapon, stores=machine.read16(ds + 0x3672 + i * 4),
+            effect=machine.read8(ds + 0x3898 + weapon * 16 + target_class),
+            weapon_class=machine.read16(ds + 0x36a6 + weapon * 26)))
+    state["stations"] = stations
+    state["launch_lock"] = machine.read16(ds + 0xe588)
+    events = [(machine.read8(ds + 0xba5a + i * 6), machine.read8(ds + 0xba5b + i * 6))
+              for i in range(min(state["event_count"], 255))]
+    state["launch_events"] = sum(kind == 4 for kind, arg in events)
+    state["hit_events"] = sum(kind in (0x81, 0x8c) and arg == state["target"] for kind, arg in events)
+    return state
+
+
+def control(machine, state, tick):
+    # Reuse only its flight/configuration controls; suppress camera selection
+    # and photo release. The actual station and strike interlock follow here.
+    navigate(machine, dict(state, weapon=16, photos=1), tick)
+    at = machine.clock + machine.ips * 18 // 100
+    candidates = [i for i, s in enumerate(state["stations"])
+                  if s["stores"] and 0 < s["effect"] < 128 and s["weapon_class"] not in (0, 0xffff, 0xfffe)]
+    if not candidates: return
+    selected = max(candidates, key=lambda i: state["stations"][i]["effect"])
+    if state["station"] != selected:
+        if tick % 10 == 5: machine.type(at, r"\s", hold_ms=20)
+    elif state["launch_lock"] and state["lock"] & 0x7f == state["target"] and tick % 10 == 5:
+        machine.type(at, r"\r", hold_ms=20)
+
+
+def errors(rows):
+    if not rows: return ["no observed flight"]
+    last = rows[-1]; failures = []
+    if last["objective_type"] != 2: failures.append("primary objective is not ground strike")
+    if not last["target_damaged"] or not last["flags"] & 0x4000:
+        failures.append("primary target damage or objective credit missing")
+    if last["hit_events"] != 1 or not last["launch_events"]:
+        failures.append("expected primary hit and weapon release events missing")
+    if last["ejection"] or last["fuel"] <= 0 or last["agl"] <= last["ground"]:
+        failures.append("not safely airborne at credit")
+    if sum(s["stores"] for s in rows[0]["stations"]) <= sum(s["stores"] for s in last["stations"]):
+        failures.append("no loaded store was consumed")
+    return failures
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--data", required=True); parser.add_argument("--out", required=True)
+    parser.add_argument("--front-route"); parser.add_argument("--seconds", type=int, default=1500)
+    parser.add_argument("--replay", help="observe recorded normal keys/mouse without adaptive controls")
+    parser.add_argument("--engine", choices=("recomp", "interp"), default="recomp")
+    args = parser.parse_args(); out = Path(args.out); out.mkdir(parents=True, exist_ok=False)
+    inputs = RouteInputs(route_args(args.front_route) if args.front_route else base_route()) if not args.replay else None
+    replay, replay_pos = [], 0
+    if args.replay:
+        lines = Path(args.replay).read_text().splitlines()
+        if not lines or lines[0] != "# f117r-input ips=9000000 time_us=700000000000000":
+            raise ValueError("replay requires the route's fixed speed and boot time")
+        for line in lines[1:]:
+            parts = line.split()
+            if not parts or parts[0].startswith("#"): continue
+            if parts[0] != "K" and not (parts[0] == "M" and parts[5:] == ["0", "0"]):
+                raise ValueError("only recorded keys and absolute mouse supported")
+            replay.append(parts)
+    rows = []; tick = 0; initialized = False; flight_start = None; last = ""
+    with Machine(args.data, tempfile.mkdtemp(dir=out), log=out / "run.log", engine=args.engine) as machine:
+        machine.record(out / "input.log")
+        while machine.clock < 5_000_000_000 + args.seconds * machine.ips:
+            if inputs: inputs.poll(machine)
+            else:
+                while replay_pos < len(replay) and int(replay[replay_pos][1]) < machine.clock + machine.ips:
+                    parts = replay[replay_pos]
+                    if parts[0] == "K": machine.key(int(parts[1]), int(parts[2], 16))
+                    else: machine.mouse(int(parts[1]), *map(int, parts[2:5]))
+                    replay_pos += 1
+            if machine.program != last:
+                last = machine.program; print(machine.clock, last, flush=True)
+            step = 90000
+            if last == "VGAME.EXE":
+                flight_start = machine.start; elapsed = machine.clock - flight_start
+                if not initialized and elapsed > 40000000:
+                    state = strike_state(machine)
+                    print("mission", state, flush=True)
+                    if not args.replay:
+                        if state["flags"] & 8: machine.type(flight_start + 80000000, "0")
+                        machine.type(flight_start + 100000000, "+")
+                        machine.type(flight_start + 170000000, r"\D", hold_ms=1000)
+                    initialized = True
+                if elapsed > 190000000:
+                    state = strike_state(machine); rows.append(dict(clock=machine.clock, seconds=elapsed / machine.ips, **state))
+                    if tick % 50 == 0:
+                        print({k: state[k] for k in ("target_range", "altitude", "speed", "fuel", "weapon", "store_count", "lock", "launch_lock", "launch_events", "hit_events")}, flush=True)
+                    if state["flags"] & 0x4000:
+                        machine.screen(out / "credit.ppm"); machine.run_until(machine.clock + machine.ips)
+                        if machine.program == "VGAME.EXE":
+                            rows.append(dict(clock=machine.clock, seconds=(machine.clock - flight_start) / machine.ips,
+                                             **strike_state(machine)))
+                        break
+                    if elapsed > args.seconds * machine.ips: break
+                    if not args.replay: control(machine, state, tick)
+                    tick += 1; step = machine.ips // 5
+            elif flight_start is not None: break
+            if machine.run_until(machine.clock + step) != Machine.SLICE: break
+        machine.screen(out / "final.ppm")
+        report = dict(clock=machine.clock, hash=f"{machine.hash:016x}", program=machine.program,
+                      errors=errors(rows), observation=rows[-1] if rows else None)
+        (out / "result.json").write_text(json.dumps(report, indent=2) + "\n")
+        with (out / "flight.csv").open("w", newline="") as stream:
+            if rows:
+                writer = csv.DictWriter(stream, fieldnames=rows[0]); writer.writeheader(); writer.writerows(rows)
+        print(json.dumps(report), flush=True)
+    return int(bool(report["errors"]))
+
+
+if __name__ == "__main__": raise SystemExit(main())

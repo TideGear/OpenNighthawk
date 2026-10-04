@@ -25,11 +25,12 @@ options. Enhancements come after parity, never instead of it.
   untranslated stretch left that decodes as code (`tools/census.py`; the
   rest is strings, tables and variables). On the scripted sessions no game
   instruction is interpreted; only the emulated BIOS's own stubs are.
-- **Parity, measured:** eighteen scripted sessions (boot to flight; a full
+- **Parity, measured:** nineteen scripted sessions (boot to flight; a full
   sortie through the debriefing and back; boots under the speaker and Roland
   drivers, where the programs load at other addresses; transfer and flight
   routes across all nine theatres and all four mission categories; pilot
   creation, editing, erasure and saving; roster dialogs and direct maintenance;
+  a destroyed ground-strike primary with consumed Mavericks and hit credit;
   a takeoff, return and landing at the home base; a credited reconnaissance
   photograph)
   end in

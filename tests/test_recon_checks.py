@@ -61,6 +61,20 @@ class ReconChecks(unittest.TestCase):
             self.assertIn("=", inputs.keys)
             self.assertNotIn("-", inputs.keys)
 
+    def test_aim_at_close_target_before_designating(self):
+        class Input:
+            clock = 100
+            ips = 9000000
+            def __init__(self): self.keys = []
+            def type(self, at, text, **kwargs): self.keys.append(text)
+        inputs = Input()
+        state = dict(target_x=0, target_y=0, x=0, y=300, heading=0,
+            roll=0, altitude=2500, trim=0, pitch=0, lock=16, target=2,
+            target_range=300, flags=1, display=19, mode=2, weapon=16,
+            bay_switch=1, cue=0, photos=0, throttle=60, speed=300)
+        control(inputs, state, 1)
+        self.assertIn(r"\U", inputs.keys)
+
 
 if __name__ == "__main__":
     unittest.main()
