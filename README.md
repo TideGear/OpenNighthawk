@@ -33,12 +33,24 @@ options. Enhancements come after parity, never instead of it.
   the disk - checked at intervals along the way. Planted defects in the
   generated code are caught (see `tools/mutation_check.py`). A recorded input log replays on either
   engine, and in the windowed game, to the same final state.
+- **Random flying, held to the interpreter:** `tools/random_flights.py`
+  takes off and hands the aircraft to a seeded random pilot (stick,
+  throttle, weapons, views, systems keys) under both engines, hashing the
+  whole machine every 50 million instructions. Every session so far is
+  identical at every hash.
 - **The emulated PC is held to GOG's DOSBox,** the machine the game is sold
   on: `tools/fidelity.py` runs one probe program under both and compares
-  877 answers - the DOS memory layout, PSP and environment the game gets,
-  every register after every DOS and BIOS call it makes, the BIOS data
-  area, the VGA registers, the devices, the clocks. 858 comparable answers
-  agree, 0 differ.
+  1,185 answers - the DOS memory layout, PSP and environment the game gets,
+  every register after every DOS and BIOS call it makes, what each call
+  costs in time, the BIOS data area, the VGA registers, the devices, the
+  clocks, an EXEC'd child and the return from it. All agree (a 4 KB file
+  read's cost within 5%, the clock rates within 2%). DOSBox-X is a second
+  reference (`--reference dosbox-x`) for where DOSBox 0.74 itself is
+  questionable.
+- **The game's music against GOG's DOSBox:** `tools/dosbox_compare.py`
+  captures the AdLib's register writes in DOSBox and here over the logo
+  and intro: 22,687 writes, 100.7 s of music, identical in order and
+  value, timing within 36 ms.
 - **Every translated instruction, not only the ones the sessions reach:**
   the sessions run about half the game's code (`tools/exercised.py`).
   `tests/insn_lockstep.c` runs each of the 89,216 translated instructions
@@ -48,9 +60,11 @@ options. Enhancements come after parity, never instead of it.
 - **The translator is checked against silicon:** 90,900 8088 and 94,200
   80286 hardware test vectors run through generated code with 0 unexplained
   differences.
-- **Not yet done:** live play in the window has been exercised by replayed
-  sessions, not yet by a person at the keyboard; timing and audio have not
-  been compared side by side with GOG DOSBox.
+- **Steam's release works too:** its game files are byte-identical to GOG's
+  (`tools/verify_install.py`), and the app finds its install.
+- **Not yet done:** play by a person at the keyboard; the picture compared
+  frame by frame with DOSBox; the Roland (MT-32) output listened to (Munt is
+  planned).
 
 How the parity claim is built and checked: [docs/architecture.md](docs/architecture.md).
 

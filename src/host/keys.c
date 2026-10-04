@@ -53,6 +53,7 @@ int keys_next(const char **sp, uint8_t make[4], int *nmake, uint8_t brk[4], int 
             s++;
             switch (*s) {
             case 'r': code = 0x1C; break;
+            case 's': code = 0x39; break;      /* Space, which a route file's line would lose */
             case 'e': code = 0x01; break;
             case 't': code = 0x0F; break;
             case 'b': code = 0x0E; break;

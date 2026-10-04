@@ -1,0 +1,89 @@
+# Another theatre: boot, the pilot form, then a Transfer Request to Vietnam
+# (Conventional War, Air-Air Missions), the briefing, arming, the hangar, a takeoff
+# and a minute of flying with the weapon and target keys, then Alt+Q, Y.
+# Inputs only - no game data. Click positions in mode-13h pixels; the
+# Transfer Request's items are START's own rectangles (DS:6F6E).
+--type
+SETUP.EXE+200000:N
+--type
+SETUP.EXE+2000000:2
+--type
+START.EXE+30000000:\r
+--click
+START.EXE+120000000:258,182
+--click
+START.EXE+200000000:283,172
+# Transfer Request: the door, Vietnam, Conventional War, Air-Air Mission, approve.
+--click
+START.EXE+400000000:28,84
+--click
+START.EXE+450000000:270,83
+--click
+START.EXE+480000000:279,149
+--click
+START.EXE+510000000:211,170
+--click
+START.EXE+540000000:215,193
+# Back at the office: the briefing door; Select Weapons; Go to Hangar; Yes.
+--click
+START.EXE+1100000000:280,60
+--click
+START.EXE+1400000000:272,134
+--click
+START.EXE+1600000000:271,148
+--click
+START.EXE+1800000000:225,191
+# Take off (keys from the game's Key Control Card): full throttle
+# (Shift +), rotate at 19 s before the runway ends, climb, gear up (6).
+--type
+VGAME.EXE+100000000:+
+--type
+VGAME.EXE+170000000:~1500:\D
+--type
+VGAME.EXE+260000000:~500:\U
+--type
+VGAME.EXE+350000000:~300:\U
+--type
+VGAME.EXE+400000000:6
+# Weapons: select a target (B), select a weapon (Space), open the bay (8),
+# fire (Enter), the cannon (Backspace); a turn; the HUD modes (F2) and the
+# map (F3); flare and chaff (1, 2); back to the cockpit view (F1).
+--type
+VGAME.EXE+450000000:b
+--type
+VGAME.EXE+480000000:\s
+--type
+VGAME.EXE+510000000:8
+--type
+VGAME.EXE+540000000:~400:\L
+--type
+VGAME.EXE+600000000:\r
+--type
+VGAME.EXE+630000000:\b
+--type
+VGAME.EXE+660000000:\2
+--type
+VGAME.EXE+700000000:~800:\D
+--type
+VGAME.EXE+740000000:\3
+--type
+VGAME.EXE+760000000:~400:\R
+--type
+VGAME.EXE+800000000:1
+--type
+VGAME.EXE+820000000:2
+--type
+VGAME.EXE+840000000:n
+--type
+VGAME.EXE+860000000:\r
+--type
+VGAME.EXE+900000000:\1
+# Quit the mission.
+--type
+VGAME.EXE+950000000:\aq
+--type
+VGAME.EXE+1050000000:y
+--steps
+5600000000
+--time-us
+700000000000000
