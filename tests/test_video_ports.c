@@ -54,6 +54,32 @@ int main(void)
     m.cpu.r[R_BX] = 77; m.cpu.r[R_CX] = 0; m.cpu.r[R_DX] = 0;
     bios(0x1012);
     CHECK(m.dac_widx == 77 && m.dac_state == 0 && m.dac_comp == 0);
+    /* DOSBox omits I/O delay when fewer than three bus cycles remain in
+     * the CPU slice. Check either side of the boundary, not just averages. */
+    m.cpu.icount = 8976;
+    pc_io_read(&m.cpu, 0x3C7, 1);
+    CHECK(m.cpu.icount == 8984);
+    m.cpu.icount = 8977;
+    pc_io_read(&m.cpu, 0x3C7, 1);
+    CHECK(m.cpu.icount == 8977);
+    m.cpu.icount = 8982;
+    pc_io_write(&m.cpu, 0x3C8, 0, 1);
+    CHECK(m.cpu.icount == 8988);
+    m.cpu.icount = 8983;
+    pc_io_write(&m.cpu, 0x3C8, 0, 1);
+    CHECK(m.cpu.icount == 8983);
+    /* PIT and VGA events also split DOSBox's millisecond budget. */
+    m.cpu.icount = 100; m.irq0_next = 124;
+    pc_io_read(&m.cpu, 0x3C7, 1);
+    CHECK(m.cpu.icount == 108);
+    m.cpu.icount = 101;
+    pc_io_read(&m.cpu, 0x3C7, 1);
+    CHECK(m.cpu.icount == 101);
+    m.irq0_next = 0; m.frame_len = 128413;
+    m.cpu.icount = m.frame_len * 100 / 449 - 1;
+    const uint64_t edge = m.cpu.icount;
+    pc_io_write(&m.cpu, 0x3C8, 0, 1);
+    CHECK(m.cpu.icount == edge);
     free(m.mem);
     printf("VGA DAC: %d failures\n", failures);
     return failures != 0;

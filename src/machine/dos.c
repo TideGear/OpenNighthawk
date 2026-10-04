@@ -395,18 +395,7 @@ static void close_handle(machine_t *m, unsigned h)
 static void transfer_cost(machine_t *m, uint32_t bytes)
 {
     cpu_t *c = &m->cpu;
-    const uint64_t per_ms = m->ips / 1000u;
-    uint64_t left = per_ms - (c->icount % per_ms);
-    if (m->irq0_next > c->icount && m->irq0_next - c->icount < left) left = m->irq0_next - c->icount;
-    if (m->frame_len) {
-        /* in lines, and the vertical interrupt 0.005 ms after display end */
-        const uint64_t f = m->frame_len, vint = f * 400u / 449u + per_ms * 5u / 1000u;
-        const uint64_t ev[] = { f * 100u / 449u, f * 200u / 449u, f * 300u / 449u, f * 400u / 449u,
-                                vint, f * 412u / 449u, f * 414u / 449u, f };
-        const uint64_t pos = c->icount % f;
-        for (size_t i = 0; i < sizeof ev / sizeof ev[0]; i++)
-            if (ev[i] > pos && ev[i] - pos < left) left = ev[i] - pos;
-    }
+    const uint64_t left = pc_slice_left(m);
     const uint64_t want = 4ull * bytes;
     if (want + 5 < left) c->icount += want;
     else if (left > 5) c->icount += left - 5;

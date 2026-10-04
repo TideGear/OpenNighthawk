@@ -81,6 +81,23 @@ nothing running.
 
 ## In flight at handoff
 
+- Near-slice-end I/O suppression now follows DOSBox's source: omit the
+  delay if fewer than three delays remain before the millisecond/PIT/VGA
+  boundary. `pc_slice_left` shares the old DOS transfer cost's event model.
+  Three fresh calibration trials (`fadecal/calibration-8hvqvowk`) give
+  PLAYER `[5841,5841,5837,5839,5836]`, improved from five 5811s; DOSBox is
+  `[5841,5839,5841,5839,5844]`. START/END unchanged. All 1,210 fidelity
+  answers agree (`fidelity-io-slices.log`); all three ROM-free CTests pass,
+  including exact suppression-boundary tests. Music `music-46h177jn`
+  matches 365 writes/15.5 s, drift 0..26 ms (`music-io-slices.log`).
+  Saved video `intro-nq0jeekk`: 1,219 matches, 107/74 unmatched pictures,
+  all one sample, none on roster after 110 s; transition still ~0.59 s.
+  Logs: `fadecal-io-slices.log`, `video-io-slices.log`, build logs with
+  `io-slice` in their names. Do not claim exact scheduler timing parity.
+  `io-slice-parity.log` verifies all six routes at 329 checkpoints and
+  final states, plus the 64-state/5.7-million-state instruction lockstep
+  (zero mismatching starts). All checks have finished; nothing running.
+
 - **Roster sampling diagnosis supersedes the colour hypothesis below.**
   The arrow is temporarily erased, revealing background pixels; 70 Hz
   shots beat against 70.086 Hz retrace with an 11.6 s period. Default shots

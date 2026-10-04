@@ -458,20 +458,41 @@ static void mpu_queue(machine_t *m, uint8_t value)
 /* Port I/O                                                              */
 /* ===================================================================== */
 
-/* ISA bus timing. A port access is far slower than an instruction: about a
- * microsecond for a read and three quarters of one for a write. DOSBox
- * charges exactly that against its cycle budget (iohandler.cpp:
- * CPU_CycleMax/1000 per read, CPU_CycleMax/1333 per write, with cycles in
- * thousands a second), and the drivers depend on it: the AdLib detection
- * polls the status port 200 times and expects the 80-microsecond timer to
- * have expired. The cost is added to the clock before the device answers,
- * as DOSBox does, so the device sees the time after the bus cycle. */
+/* DOSBox's CPU budget is split by millisecond, PIT and VGA events. This
+ * is also the slice model used to limit DOS file-transfer costs. */
+uint64_t pc_slice_left(const machine_t *m)
+{
+    const uint64_t now = m->cpu.icount;
+    const uint64_t per_ms = m->ips / 1000u;
+    if (!per_ms) return 1;
+    uint64_t left = per_ms - now % per_ms;
+    if (m->irq0_next > now && m->irq0_next - now < left)
+        left = m->irq0_next - now;
+    if (m->frame_len) {
+        const uint64_t f = m->frame_len;
+        const uint64_t vint = f * 400u / 449u + per_ms * 5u / 1000u;
+        const uint64_t ev[] = { f * 100u / 449u, f * 200u / 449u,
+            f * 300u / 449u, f * 400u / 449u, vint,
+            f * 412u / 449u, f * 414u / 449u, f };
+        const uint64_t pos = now % f;
+        for (size_t i = 0; i < sizeof ev / sizeof ev[0]; i++)
+            if (ev[i] > pos && ev[i] - pos < left)
+                left = ev[i] - pos;
+    }
+    return left;
+}
+
 static void io_delay(machine_t *m, int write)
 {
+    /* Charge before the device answers. The AdLib detection depends on
+     * real bus time passing while it polls the timer status. */
     /* DOSBox 0.74's IO_USEC_read_delay / write_delay: CPU_CycleMax / 1024
      * cycles per read, / 1365 per write (9000 cycles a millisecond: 8 and 6). */
     const uint64_t per_ms = m->ips / 1000u;
-    m->cpu.icount += write ? per_ms / 1365u : per_ms / 1024u;
+    const uint64_t delay = write ? per_ms / 1365u : per_ms / 1024u;
+    /* DOSBox suppresses the bus delay when less than three delays remain
+     * in the current CPU slice (IO_USEC_read/write_delay). */
+    if (pc_slice_left(m) >= 3u * delay) m->cpu.icount += delay;
 }
 
 static uint8_t io_read8(machine_t *m, uint16_t port);

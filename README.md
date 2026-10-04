@@ -25,9 +25,10 @@ options. Enhancements come after parity, never instead of it.
   untranslated stretch left that decodes as code (`tools/census.py`; the
   rest is strings, tables and variables). On the scripted sessions no game
   instruction is interpreted; only the emulated BIOS's own stubs are.
-- **Parity, measured:** four scripted sessions (boot to flight; a full
+- **Parity, measured:** six scripted sessions (boot to flight; a full
   sortie through the debriefing and back; boots under the speaker and Roland
-  drivers, where the programs load at other addresses) end in identical
+  drivers, where the programs load at other addresses; Korea strike and
+  Vietnam air-to-air missions) end in identical
   state under the interpreter and the recompiled code - all of memory, the
   registers, and every byte sent to the sound card, the palette, MIDI and
   the disk - checked at intervals along the way. Planted defects in the
@@ -53,8 +54,10 @@ options. Enhancements come after parity, never instead of it.
   value, timing within 36 ms.
 - **The picture comparison now runs:** `tools/video_compare.py` captures
   DOSBox's lossless video and compares exact RGB pictures against our
-  screenshots. Two 130.8 s runs match 1,217 pictures in order; scanout,
-  roster cursor and transition timing differences remain under investigation.
+  screenshots at the native VGA period. A 130.8 s reference matches 1,219
+  pictures in order; 107 reference pictures and 74 shots remain unmatched,
+  each lasting one sample. Scanout and transition timing remain under
+  investigation; the apparent roster cursor changes were screenshot aliasing.
 - **Every translated instruction, not only the ones the sessions reach:**
   the sessions run about half the game's code (`tools/exercised.py`).
   `tests/insn_lockstep.c` runs each of the 89,216 translated instructions

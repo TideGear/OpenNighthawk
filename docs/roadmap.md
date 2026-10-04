@@ -104,6 +104,11 @@ never instead of parity.
       START/END's range agrees (seven/eight steps), with different phases;
       PLAYER measures 5,839-5,844 DAC bytes per display period on DOSBox
       versus 5,811 here (three repeat trials). Throughput remains unresolved.
+      Matching DOSBox's near-slice-end I/O delay suppression brings the
+      runtime to 5,836-5,841 bytes per period; all 1,210 machine probes agree.
+      All six routes agree at 329 checkpoints and final states; the
+      5.7-million-state instruction lockstep reports zero differences.
+      Exact phases and the remaining few-byte difference are still open.
 - [ ] **A sound mismatch to explain or accept:** the OPL emulator is Nuked
       OPL3, DOSBox's is its own; the register stream is identical, the
       synthesis is not compared.

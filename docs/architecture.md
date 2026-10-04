@@ -76,9 +76,12 @@ and the inputs with the clock counts at which they arrived.
 - **The default speed is 9,000,000 a second**, GOG DOSBox's `cycles=9000`
   for this game. The game's behaviour depends on machine speed (bug D1);
   this is the speed GOG players have, and `--ips` changes it.
-- **ISA I/O delay.** A port read costs `ips/1,000,000` extra clocks and a
-  write `ips/1,333,000`: DOSBox's `IODELAY_READ_MICROS` 1.0 and
-  `IODELAY_WRITE_MICROS` 0.75. Without it the logo's AdLib driver fails its
+- **ISA I/O delay.** With `cycles = floor(ips/1000)`, a port read costs
+  `floor(cycles/1024)` extra clocks and a write `floor(cycles/1365)`:
+  eight and six at the default speed. DOSBox suppresses that delay when
+  fewer than three delays remain in the CPU slice. The slice model shared
+  with DOS file-transfer costs considers millisecond, PIT and VGA events.
+  Without bus delay the logo's AdLib driver fails its
   card detection, which polls the status port 200 times expecting an
   80-microsecond timer to expire.
 - **Events.** Before every instruction both engines compare `icount` with
@@ -429,6 +432,24 @@ original run's period. Against the same `intro-caauys37` reference, run
 pictures and 74 shots, all one sample. No roster shots after 110 s are
 unmatched. The transition still differs by about 0.57 s; the remaining
 instantaneous-snapshot/scanout differences still prevent a parity pass.
+
+Matching DOSBox's `IO_USEC_read/write_delay` suppression near a CPU slice
+boundary changes PLAYER's calibration from five 5,811s to
+`[5841,5841,5837,5839,5836]` (three fresh trials), much closer to DOSBox's
+`[5841,5839,5841,5839,5844]`. START/END's seven/eight-step results are
+unchanged. This isolates a cause of the throughput discrepancy but does
+not prove exact phase or scheduler parity. All 1,210 fidelity answers
+agree, and ROM-free tests check both sides of the suppression threshold
+at millisecond, PIT and VGA boundaries. A fresh early-music capture matches
+365 writes over 15.5 s, drift 0..26 ms. Saved-video run `intro-nq0jeekk`
+still has 1,219 matches, 107 unmatched reference pictures and 74 shots,
+all one sample; no unmatched roster shots after 110 s. The transition
+delay remains (~0.59 s). The shared slice calculation retains the earlier
+file-transfer event model; mode-dependent event phases and guest stub
+instruction timing remain limitations.
+All six routes after this change agree at 329 checkpoints and final states;
+the 64-state instruction lockstep compares 5,709,312 states with zero
+mismatching instruction starts.
 
 ## Where this goes next
 

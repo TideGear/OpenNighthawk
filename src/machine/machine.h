@@ -293,6 +293,8 @@ void     pc_io_write(cpu_t *c, uint16_t port, uint32_t val, int width);
 void     pc_reset(machine_t *m);
 void     pc_events(machine_t *m);          /* raise and deliver at this boundary */
 uint64_t pc_next_event(machine_t *m);      /* earliest icount needing a look */
+/* DOSBox's CPU slice boundary for I/O and DOS transfer costs. */
+uint64_t pc_slice_left(const machine_t *m);
 /* The PIT's own clock (1,193,182 Hz) at icount. */
 uint64_t pc_pit_clock(const machine_t *m);
 /* Counter 2's output and gate as the speaker sees them, for the host. */
