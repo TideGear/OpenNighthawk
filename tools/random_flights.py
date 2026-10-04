@@ -53,17 +53,36 @@ def base_route():
     return out
 
 
+TAKEOFF_END = 450_000_000        # VGAME-relative: airborne and climbing by here
+
+
 def random_route(seed, span):
+    """A scripted takeoff, then a random pilot. The takeoff is the routes'
+    (full throttle, then back on the stick to rotate) followed by a climb, so
+    the random part starts in the air; the random stick inputs are short and
+    lean towards pulling up (Down arrow), with a climb every so often, so a
+    session spends minutes flying rather than seconds before a crash."""
     rng = random.Random(seed)
     args = base_route()
-    args += ["--type", "VGAME.EXE+100000000:+"]          # throttle up, as the routes do
-    t = 150_000_000
-    while t < 150_000_000 + span:
+    # Full throttle 11 s into VGAME; 270 knots by 22 s, and the runway ends at
+    # about 25 s (measured from screenshots), so rotate at 19 s and climb.
+    args += ["--type", "VGAME.EXE+100000000:+",          # full throttle
+             "--type", "VGAME.EXE+170000000:~2500:\\D",   # rotate
+             "--type", "VGAME.EXE+260000000:~1500:\\D",   # climb
+             "--type", "VGAME.EXE+350000000:~1000:\\D"]
+    t = TAKEOFF_END
+    while t < TAKEOFF_END + span:
         r = rng.random()
-        key = rng.choice(STICK if r < 0.45 else THROTTLE if r < 0.6 else OTHER)
-        hold = rng.choice([60, 120, 250, 500, 1000, 2000])
+        if r < 0.20:
+            key, hold = "\\D", rng.choice([500, 1000, 1500])                 # pull up
+        elif r < 0.40:
+            key, hold = rng.choice(["\\L", "\\R", "\\L", "\\R", "\\U"]), rng.choice([60, 120, 250])
+        elif r < 0.50:
+            key, hold = rng.choice(["+", "+", "=", "-"]), rng.choice([60, 120, 250])
+        else:
+            key, hold = rng.choice(OTHER), rng.choice([60, 120, 250])
         args += ["--type", "VGAME.EXE+%d:~%d:%s" % (t, hold, key)]
-        t += rng.randint(2_000_000, 40_000_000)
+        t += rng.randint(5_000_000, 40_000_000)
     return args
 
 
@@ -76,8 +95,12 @@ def run(engine, data, name, args, steps, every):
     r = subprocess.run(cmd, capture_output=True, text=True)
     hashes = re.findall(r"^\[hash\] (\d+) ([0-9a-f]+) (\S+)", r.stdout, re.M)
     final = re.search(r"stopped at icount (\d+) .*final hash ([0-9a-f]+)", r.stdout)
-    progs = re.findall(r"^\[exec\] (\S+)", open(os.path.join(rundir, "run.log")).read(), re.M)
-    return hashes, final.groups() if final else None, progs
+    log = open(os.path.join(rundir, "run.log")).read()
+    progs = re.findall(r"^\[exec\] (\S+)", log, re.M)
+    v = re.search(r"^\[exec\] VGAME\.EXE.*@(\d+)", log, re.M)
+    e = re.search(r"^\[exit\] VGAME\.EXE.*@(\d+)", log, re.M)
+    flown = ((int(e.group(1)) if e else int(final.group(1)) if final else 0) - int(v.group(1))) / 9e6 if v else 0
+    return hashes, final.groups() if final else None, progs, flown
 
 
 def main():
@@ -89,8 +112,9 @@ def main():
     ap.add_argument("--jobs", type=int, default=2)
     a = ap.parse_args()
     os.makedirs(WORK, exist_ok=True)
-    steps = 2_400_000_000 + 150_000_000 + a.span
+    steps = 2_400_000_000 + TAKEOFF_END + a.span
     bad = 0
+    total_flown = [0.0]
     for seed in [int(s) for s in a.seeds.split(",")]:
         name = "seed%d" % seed
         args = random_route(seed, a.span)
@@ -99,8 +123,9 @@ def main():
         with cf.ThreadPoolExecutor(a.jobs) as ex:
             fi = ex.submit(run, "interp", a.data, name, args, steps, a.every)
             fr = ex.submit(run, "recomp", a.data, name, args, steps, a.every)
-            hi, endi, progs = fi.result()
-            hr, endr, _ = fr.result()
+            hi, endi, progs, flown = fi.result()
+            hr, endr, _, _ = fr.result()
+        total_flown[0] += flown
         first = next(((x, y) for x, y in zip(hi, hr) if x[:2] != y[:2]), None)
         n_keys = sum(1 for x in args if x.startswith("VGAME.EXE+"))
         flew = "VGAME.EXE" in progs
@@ -111,10 +136,11 @@ def main():
                 name, " first at icount %s in %s" % (at[0], at[2]) if at else " at the end",
                 n_keys, " ".join(progs)))
         else:
-            print("%s: IDENTICAL over %d hashes, final %s/%s (%d flight inputs%s; programs %s)" % (
-                name, len(hi), endi[0] if endi else "?", endi[1] if endi else "?", n_keys,
-                "" if flew else ", NEVER REACHED FLIGHT", " ".join(progs)))
+            print("%s: IDENTICAL over %d hashes, final %s/%s; %.0f s in flight (VGAME), %d random inputs%s" % (
+                name, len(hi), endi[0] if endi else "?", endi[1] if endi else "?", flown, n_keys,
+                "" if flew else ", NEVER REACHED FLIGHT"))
         sys.stdout.flush()
+    print("total time in flight: %.1f minutes" % (total_flown[0] / 60.0))
     sys.exit(1 if bad else 0)
 
 
