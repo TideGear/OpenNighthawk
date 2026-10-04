@@ -25,7 +25,7 @@ options. Enhancements come after parity, never instead of it.
   untranslated stretch left that decodes as code (`tools/census.py`; the
   rest is strings, tables and variables). On the scripted sessions no game
   instruction is interpreted; only the emulated BIOS's own stubs are.
-- **Parity, measured:** sixteen scripted sessions (boot to flight; a full
+- **Parity, measured:** eighteen scripted sessions (boot to flight; a full
   sortie through the debriefing and back; boots under the speaker and Roland
   drivers, where the programs load at other addresses; transfer and flight
   routes across all nine theatres and all four mission categories; pilot
@@ -206,6 +206,20 @@ and retained camera:
 ```bat
 py tools\recon_pilot.py --data "D:\GOG\F-117A" --engine interp --replay tools/routes/recon.input --out C:/recon-check
 ```
+
+`recon_return` completes both photos and stops on the raised home runway;
+`recon_career` continues through debriefing, earns the ten-mission tour
+ribbon and saves the updated career. Both engines match. The stronger return
+observer checks both original credit events, intact targets and the parent
+result block:
+
+```powershell
+py tools/recon_pilot.py --data "D:\GOG\F-117A" --engine interp --complete --replay tools/routes/recon_return.input --out C:/recon-return-check
+```
+
+The [parity audit](docs/parity-audit.md) documents independent DOSBox saves,
+flight observations, input stress, host pacing and rendered audio, including
+the remaining differences and checks requiring hardware or ROMs.
 
 ## Repository layout
 

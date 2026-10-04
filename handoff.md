@@ -4,8 +4,8 @@ For the next conversation working on this repository. Read this, then
 [docs/roadmap.md](docs/roadmap.md) (what is done and left - keep it
 updated), [docs/architecture.md](docs/architecture.md) (how parity is
 built and checked) and [docs/bugs.md](docs/bugs.md) (the original game's
-bugs). State as of 4 October 2026: everything committed and pushed,
-nothing running.
+bugs). State as of 4 October 2026: the parity audit and expanded recon/career
+routes are verified; an independent DOSBox recon flight is running (below).
 
 ## The goal and the decisions already made
 
@@ -83,6 +83,52 @@ nothing running.
   mutant; keep runs under two hours - background jobs are stopped there).
 
 ## In flight at handoff
+
+- User requested all doubtful parity tests, then resumption of the existing
+  autonomous roadmap goal. Goal is active, no budget. New audit evidence is
+  documented in `docs/parity-audit.md`; private root is
+  `~/f117-recomp-local/parity-audit-20261004/` and `parity-audit-*.log` outputs.
+  Sixteen original routes and 5,713,152 lockstep states pass again. Four
+  random seeds 71-74 add 19.5 simulated minutes, all 548 hashes/finals equal.
+  Input stress: 543 applied events including 143 stress events, 144 hashes,
+  final `e88736099423c983`; keys/repeats/mouse and emulated joystick corners.
+  GOG DOSBox's roster edit produces exactly the same 802 bytes as both engines.
+  Seven CTests and 42 Python tests pass. Real WinMM joystick enumeration is
+  empty; MT-32 ROMs are not supplied.
+- Host stall pacing fixed (discard excess clock debt, instead of adding it);
+  ROM-free deterministic C test and real SDL process-suspension test pass.
+  An 800 ms suspension adds ~718 ms. OPL gain corrected to DOSBox's
+  `adlib.cpp` `SetScale(2.0)`; RMS 0.100761 vs reference 0.100150 after the fix,
+  previously half reference level. Waveform/synthesizer differences remain.
+  `audio_render` uses app audio.c; Python comparator is strictly diagnostic
+  with failure on unequal PCM. Video unchanged: 1319 matches, 7/28 one-frame
+  unmatched images, ~571 ms transition delay (`video/intro-fpfq6g83`).
+- `recon_return` and `recon_career` bring the route count to eighteen.
+  Raised landing controller now anticipates the deck and keeps adequate
+  speed. `recon-return-verified-{interp,recomp}` observers produce identical
+  input/CSV bytes and pass: primary event 8A at 345.5 s, secondary event 4A
+  at 559.5 s, exactly two frames, both targets intact; touchdown/stop home36
+  (19196,9454), height128, gear down, brakes on, idle, fuel5009, countdown2,
+  S9, result0/status3. Final END clock13639324268/hashc403d0542430b898.
+  Normal record has 4357 lines; rolling replay handles the 4096-slot queue.
+  Return hashes match272 checkpoints; career hashes match316 and final
+  f8e2e8955bb74467 at15800000000. Its 802-byte saves are identical; score275,
+  total2669->2944, sorties9->10, tour ribbon0->1. Award image reviewed.
+  Private career outputs: `recon-career-interp`, `recon-debrief-recomp-02`.
+  `recon-career-comparison.json` records the equality. Failed landing attempts
+  04/05/06 remain private and are not counted as passes.
+- Independent observer `tools/dosbox_flight.py` uses only query/read process
+  permissions and normal posted input. Static mission fields match16/16;
+  trajectory/RNG differences are not exact-clock aligned (`flight-compare-skip`).
+  A full adaptive reference photo/return attempt is running via
+  `py -u tools/dosbox_flight.py --data D:/GOG/F-117A --out
+  C:/Users/Tideg/f117-recomp-local/parity-audit-20261004/dosbox-recon-02
+  --route tools/routes/recon.front --pilot recon --seconds 1700 --skip-intro`.
+  Output `parity-audit-dosbox-recon-02.log`; exec session93653. Check process
+  status and the log before doing anything; tool is still being verified.
+  Windows messages are wall-time scheduled, not original instruction counts.
+  Next: finish independent reference run, investigate synthesized audio and
+  remaining video drift, strike/drop objectives and promotion/retirement.
 
 - Reconnaissance primary credit now succeeds: `tools/recon_pilot.py`,
   `tools/routes/recon.{args,front,input}`. Normal UI chooses Libya, Cold War,

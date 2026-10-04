@@ -63,6 +63,13 @@ Enter with the pointer outside their button does not dismiss them.
 `# expect-open FILE PROGRAM MIN_COUNT` checks two arming-page loads and
 four office-page loads; screenshots verify the dialogs and station changes.
 
+`recon_return` extends the photo route through secondary credit and a raised
+home-runway stop. `recon_pilot.py --complete --replay recon_return.input`
+checks both original event types, intact targets and the successful parent
+result block. `recon_career` continues into END, earns the tenth-mission tour
+ribbon and saves the changed score, sortie count and award. Those saved bytes
+are asserted independently of engine hash equality.
+
 Keep run outputs and saves outside the repository. Use a fresh output
 directory for a baseline run, since an existing save can change the pilot
 and mission:

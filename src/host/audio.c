@@ -68,7 +68,9 @@ static void render_to(audio_t *a, uint64_t target)
         float v = speaker_level(&a->spk, a->done) && (a->spk.port61 & 2) ? 6000.0f : 0.0f;
         a->spk_dc += (v - a->spk_dc) * 0.0005f;
         float sp = (a->spk.port61 & 2) ? v - a->spk_dc : 0.0f;
-        int l = s[0] + (int)sp, r = s[1] + (int)sp;
+        /* GOG DOSBox's AdLib mixer channel uses SetScale(2.0). Apply its
+         * gain before mixing the separately driven speaker and clipping. */
+        int l = 2 * s[0] + (int)sp, r = 2 * s[1] + (int)sp;
         if (l > 32767) l = 32767;
         if (l < -32768) l = -32768;
         if (r > 32767) r = 32767;

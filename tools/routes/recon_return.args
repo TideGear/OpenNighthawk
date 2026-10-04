@@ -1,0 +1,11 @@
+# Primary and secondary photos, then a stop on the raised home runway.
+# Read-only recon_pilot --complete verified both photo events, intact targets,
+# gear/brakes/idle, deck height 128 and parent return result 0/status 3.
+# expect-world LB
+# expect-exit VGAME.EXE 129 10000000000
+--replay
+recon_return.input
+--steps
+13639324268
+--time-us
+700000000000000

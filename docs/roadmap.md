@@ -12,6 +12,11 @@ never instead of parity.
 
 ### Done
 
+- [Parity audit](parity-audit.md): sixteen routes and the full instruction
+  lockstep pass again; independent DOSBox roster saves match all 802 bytes.
+  Overlapping input, extended keys and emulated joystick extremes pass.
+  Host stall pacing and the missing 2x AdLib mixer gain were found and fixed.
+
 - All 17 code files and the LZEXE decompressor translated: 89,276
   instructions, 96.2% of the code-area bytes; the rest is strings, tables
   and variables (`tools/census.py`). On every route and the longest random
@@ -19,7 +24,7 @@ never instead of parity.
 - Every translated instruction held to the interpreter from random states
   (`tests/insn_lockstep.c`, 5.7 million comparisons, 0 differences); the
   translator held to 8088 and 80286 silicon vectors.
-- Sixteen scripted routes identical between the interpreter and the recompiled
+- Eighteen scripted routes identical between the interpreter and the recompiled
   code: boot to flight; a full sortie through the debriefing; the speaker
   and Roland drivers; eight transfer-and-flight routes covering all nine
   theatres, three tensions and four mission categories. The routes execute
@@ -52,6 +57,17 @@ never instead of parity.
   photo-credit event for target 1, primary credit, no target damage or
   ejection, and the retained camera/store. Credit screenshot reviewed.
   The route stops airborne after credit; its return is not established.
+- Extended reconnaissance completes both photos and returns to raised home
+  base 36. Independent observers' input/flight logs and final states match.
+  Two exposures, primary 8Ah and secondary 4Ah events, intact targets, deck
+  height 128, gear/brakes/idle, fuel remaining, countdown and parent result
+  0/status 3 all pass. The route agrees at 272 checkpoints/final hash
+  `c403d0542430b898`. Contact/stop and FRAME 2 screenshots reviewed.
+- Earned Overseas Long Tour Ribbon for the tenth mission: `recon_career`
+  continues into END, displays the award and returns to the office. Both
+  engines agree at 316 checkpoints/final and all 802 saved bytes. Independent
+  milestones require score 275, total 2669 -> 2944, sorties 9 -> 10 and the
+  tour ribbon 0 -> 1. Award screenshot reviewed.
 - Seeded random flights (`tools/random_flights.py`): every session
   identical at every hash; 30.5 minutes of flight in the 16-session batch.
 - Planted defects caught by the lockstep (`tools/mutation_check.py
@@ -129,10 +145,11 @@ never instead of parity.
       mission categories now have flight routes (air combat, ground strike,
       and both training categories). Complete dedicated objective types,
       including supply drops and secret-airstrip missions. Reconnaissance
-      primary credit is now verified; its return and secondary remain open.
+      primary/secondary credits and raised-runway return are now verified.
       The existing transfer routes exercise generation and controls, then
       quit; they do not establish objective completion.
-- [ ] **The remaining career flow:** earned retirement and awards. CO transfer
+- [ ] **The remaining career flow:** earned promotion/retirement and other
+      awards. The ten-mission tour ribbon is now earned and saved. CO transfer
       requests, briefing/arming, pilot creation/editing/erasure and roster
       save/reload, direct maintenance and retired/KIA dialogs are covered.
 - [ ] **A person playing it:** controls, joystick and mouse, saves, the feel.
@@ -151,7 +168,8 @@ never instead of parity.
       Exact phases and the remaining few-byte difference are still open.
 - [ ] **A sound mismatch to explain or accept:** the OPL emulator is Nuked
       OPL3, DOSBox's is its own; the register stream is identical, the
-      synthesis is not compared.
+      rendered synthesis is now compared and differs. Matching DOSBox's
+      2x mixer gain brings RMS within about 0.6%; waveform parity remains open.
 
 ## Phase 2 - understood code
 

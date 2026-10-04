@@ -35,6 +35,14 @@ class ReconChecks(unittest.TestCase):
         self.assertTrue(self.errors(weapon=5))
         self.assertTrue(self.errors(store_count=0))
 
+    def test_both_photo_events_required(self):
+        row = dict(self.state, flags=0x6204, photos=2, secondary_type=1,
+                   secondary_credit_events=1, secondary_damaged=0)
+        self.assertEqual(recon_errors([row], complete=True), [])
+        for changes in (dict(secondary_credit_events=0), dict(secondary_damaged=1),
+                        dict(flags=0x4204), dict(secondary_type=2), dict(photos=1)):
+            self.assertTrue(recon_errors([dict(row, **changes)], complete=True))
+
 
 if __name__ == "__main__":
     unittest.main()

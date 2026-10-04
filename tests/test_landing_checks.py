@@ -46,6 +46,12 @@ class LandingChecks(unittest.TestCase):
         self.report["pilot_status"] = 0
         self.assertTrue(self.errors())
 
+    def test_raised_deck_requires_deck_height(self):
+        row = dict(self.last, surface=128, agl=128, ground=128)
+        self.assertEqual(landing_errors([self.airborne, row], self.report, self.log), [])
+        sea = dict(row, agl=0, ground=0)
+        self.assertTrue(landing_errors([self.airborne, sea], self.report, self.log))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -21,13 +21,15 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install picture comparator dependency
-        run: python -m pip install Pillow
+        run: python -m pip install Pillow numpy
       - name: Configure full interpreter build
         run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DF117R_GEN_DIR= -DF117R_BUILD_APP=ON -DF117R_BUILD_TESTS=ON
       - name: Build application, headless runner and tests
         run: cmake --build build --config Release --parallel
       - name: CPU and machine tests
         run: ctest --test-dir build --build-config Release --output-on-failure
+      - name: Application stall and resume pacing
+        run: python tools/host_timing.py --out "$env:RUNNER_TEMP/host-timing"
       - name: Music comparator regressions
         run: python tests/test_music_compare.py
       - name: Picture comparator regressions
@@ -40,3 +42,5 @@ jobs:
         run: python tests/test_landing_checks.py
       - name: Reconnaissance acceptance regressions
         run: python tests/test_recon_checks.py
+      - name: Reference observer and audio verdict regressions
+        run: python tests/test_parity_diagnostics.py

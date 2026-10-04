@@ -47,6 +47,7 @@ re-expressed in this code base, not copied files:
 | `src/machine/pc.c` port delays | `src/hardware/iohandler.cpp` | Cycles per port read and write |
 | `src/machine/pc.c` scanout | `src/hardware/vga_draw.cpp` | Four-part mode-13h draw timing, retrace display-address latch and chain-4 wrapping |
 | `src/machine/pc.c` display palette | `src/hardware/vga_dac.cpp` | Triplet publication, changed-mask updates and alias colours |
+| `src/host/audio.c` OPL gain | `src/hardware/adlib.cpp` | AdLib mixer `SetScale(2.0)` before clipping |
 
 Values measured from a running DOSBox rather than read from its source -
 the BIOS data area, the memory layout the shell leaves, the VGA register

@@ -1,0 +1,28 @@
+# Complete reconnaissance, debrief, earn the ten-mission Overseas Long Tour
+# Ribbon, and return to START's office with the changed roster saved.
+# expect-world LB
+# expect-exit VGAME.EXE 129 10000000000
+# expect-exit END.EXE 35 500000000
+# expect-open awards.pic END.EXE 1
+# expect-open medals.pic END.EXE 1
+# Mission score 275 and total 2944 (previously 2669).
+# expect-save Roster.Fil 290 1301800b
+# Sorties nine -> ten, and the earned tour ribbon zero -> one.
+# expect-save Roster.Fil 296 0a00
+# expect-save Roster.Fil 314 01
+--replay
+recon_return.input
+--type
+END.EXE+150000000:\r
+--type
+END.EXE+300000000:\r
+--click
+END.EXE+400000000:271,64
+--type
+END.EXE+520000000:\r
+--type
+END.EXE+640000000:\r
+--steps
+15800000000
+--time-us
+700000000000000

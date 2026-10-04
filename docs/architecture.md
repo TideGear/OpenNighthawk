@@ -569,6 +569,26 @@ py tools/recon_pilot.py --data "D:\GOG\F-117A" --engine interp --replay tools/ro
 Four ROM-free regressions reject missing exposures/events, wrong objective
 types, absent credit, destroyed targets, crashes and empty cameras.
 
+## Extended photo return and earned career award
+
+The extended `recon_return` route verifies secondary target 2 at 559.5 seconds
+with FRAME 2 and one event 4Ah. It returns to raised base 36, lands at height
+128 and stops within the home approach box, retaining 5009 fuel. Both engines'
+independent observers produce identical input/flight logs and final hash
+`c403d0542430b898`; the route also matches at 272 checkpoints. The complete
+gate requires both intact photo targets and credit events, plus the successful
+parent return result. Use `recon_pilot.py --complete --replay
+tools/routes/recon_return.input` under either engine.
+
+`recon_career` continues through debriefing and the earned tenth-mission tour
+ribbon. Both engines agree at 316 checkpoints/final hash `f8e2e8955bb74467`;
+all 802 saved bytes match. Save milestones independently require the earned
+score, sortie count and ribbon. Other award types, promotion and retirement
+remain open.
+
+The [independent parity audit](parity-audit.md) distinguishes engine equality
+from DOSBox flight/save/sound evidence and documents the remaining differences.
+
 ## Where this goes next
 
 The open work, in order, is tracked in [roadmap.md](roadmap.md).

@@ -52,7 +52,7 @@ def observe(machine):
     return state
 
 
-def landing_errors(rows, report, log):
+def landing_errors(rows, report, log, require_dos_exit=True):
     """Reject ground taxis, off-base stops, ejections and early endings."""
     errors = []
     if not rows or not any(r["agl"] > r["ground"] + 100 for r in rows):
@@ -62,9 +62,11 @@ def landing_errors(rows, report, log):
         return (row["box"] == 1 and row["nearest"] == row["home"]
                 and abs(signed(row["x"] - row["home_x"])) <= row["box_width"] >> 5
                 and abs(signed(row["y"] - row["home_y"])) <= row["box_length"] >> 5)
-    if not any(r["agl"] == r["ground"] and in_box(r) for r in rows):
+    def contact(row):
+        return row["agl"] == max(row["ground"], row.get("surface", 0))
+    if not any(contact(r) and in_box(r) for r in rows):
         errors.append("no ground contact inside the home approach box")
-    if not in_box(last) or last["agl"] != last["ground"]:
+    if not in_box(last) or not contact(last):
         errors.append("final position is outside the home approach box or above ground")
     if last["speed"] > 1 or last["throttle"]:
         errors.append("aircraft did not stop at idle")
@@ -76,7 +78,7 @@ def landing_errors(rows, report, log):
         errors.append("home completion countdown did not finish")
     if report.get("mission_result") != 0 or report.get("pilot_status") != 3:
         errors.append("parent flight block does not report a successful return")
-    if not re.search(r"^\[exit\] VGAME\.EXE terminated with code 129 .* @\d+$", log, re.M):
+    if require_dos_exit and not re.search(r"^\[exit\] VGAME\.EXE terminated with code 129 .* @\d+$", log, re.M):
         errors.append("VGAME did not complete its normal debriefing handoff")
     return errors
 
@@ -84,7 +86,7 @@ def landing_errors(rows, report, log):
 def control(machine, state, tick, approach):
     """Short, separated stick pulses; every key is released normally."""
     at = machine.clock + 1
-    if state["range"] < 100 and state["agl"] == state["ground"]:
+    if state["range"] < 100 and state["agl"] == max(state["ground"], state["surface"]):
         if not state["flags"] & 8:
             machine.type(at, "0")
         elif state["throttle"]:
@@ -100,6 +102,13 @@ def control(machine, state, tick, approach):
     altitude = clamp(state["surface"] + (-dy - 20) * 1.6,
                      state["surface"] - 100, 2500) if approach else 2500
     descent = -450 if approach and state["range"] < 1500 else 0
+    if state["surface"] and approach:
+        # A raised deck has no safe ground before its short approach box.
+        # Hold above it until close, then use a gentler descent than the
+        # long flat-runway approach.
+        altitude = clamp(state["surface"] + (-dy - 220) * 1.6,
+                         max(64, state["surface"] - 64), 2500)
+        descent = -200 if state["range"] < 1500 else 0
     want_pitch = clamp(descent + (altitude - state["altitude"]) * 2,
                        -1000, 1800) + state["trim"]
     pitch_error = want_pitch - state["pitch"]
@@ -111,6 +120,8 @@ def control(machine, state, tick, approach):
         command_at = at + machine.ips * 17 // 100
         if state["range"] < 2500:
             want_throttle = clamp(42 + (200 - state["speed"]) * .1, 0, 85)
+            if state["surface"]:
+                want_throttle = 85 if state["speed"] < 210 else 50 if state["speed"] > 240 else state["throttle"]
             if state["flags"] & 1:
                 machine.type(command_at, "6", hold_ms=20)
             elif abs(state["throttle"] - want_throttle) > 5:
