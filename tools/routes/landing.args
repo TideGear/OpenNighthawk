@@ -1,0 +1,14 @@
+# Normal keyboard/mouse flight recorded by tools/landing_pilot.py.
+# Takes off in Libya, flies to return base 33, aligns, lands and stops.
+# Replay paths are relative to this route file. No game data or state pokes.
+# DOS exit 129 hands off to END; the mission result is a separate field.
+# Re-run landing_pilot.py --replay landing.input for the stronger state checks.
+# expect-world LB
+# expect-exit VGAME.EXE 129 7000000000
+# expect-open requestr.pic END.EXE 1
+--replay
+landing.input
+--steps
+9787594940
+--time-us
+700000000000000

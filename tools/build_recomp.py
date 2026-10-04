@@ -29,7 +29,7 @@ import subprocess
 import sys
 import tempfile
 
-from run_route import check_route
+from run_route import check_route, route_args
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -38,15 +38,6 @@ ROOT = os.path.dirname(HERE)
 def run(cmd, **kw):
     print("  $ " + " ".join(('"%s"' % c) if " " in c else c for c in cmd))
     return subprocess.run(cmd, **kw)
-
-
-def route_args(path):
-    out = []
-    for line in open(path):
-        line = line.strip()
-        if line and not line.startswith("#"):
-            out.append(line)
-    return out
 
 
 def recompile(data, gen, coverage_files):

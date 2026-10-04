@@ -111,6 +111,22 @@ if(F117R_BUILD_TESTS)
   add_library(f117cpu_api SHARED tests/cpu_api.c src/cpu/cpu.c)
   target_include_directories(f117cpu_api PRIVATE src/cpu)
 
+  # Read-only observation plus normal input for diagnostic pilots.
+  add_library(f117machine_api SHARED src/host/machine_api.c)
+  target_link_libraries(f117machine_api PRIVATE f117present)
+  if(F117R_GEN_DIR)
+    target_link_libraries(f117machine_api PRIVATE f117recomp)
+  else()
+    target_link_libraries(f117machine_api PRIVATE f117recomp_none)
+  endif()
+  if(NOT WIN32)
+    set_target_properties(f117cpu f117machine f117present f117recomp_none
+      PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    if(F117R_GEN_DIR)
+      set_target_properties(f117recomp PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    endif()
+  endif()
+
   # Hand tests of the 80186/80286 instructions the flight engine uses, and
   # of the corners where those parts differ from the 8086 (the Reimp's).
   enable_testing()

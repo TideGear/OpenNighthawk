@@ -19,11 +19,11 @@ never instead of parity.
 - Every translated instruction held to the interpreter from random states
   (`tests/insn_lockstep.c`, 5.7 million comparisons, 0 differences); the
   translator held to 8088 and 80286 silicon vectors.
-- Fourteen scripted routes identical between the interpreter and the recompiled
+- Fifteen scripted routes identical between the interpreter and the recompiled
   code: boot to flight; a full sortie through the debriefing; the speaker
   and Roland drivers; eight transfer-and-flight routes covering all nine
   theatres, three tensions and four mission categories. The routes execute
-  53.8% of the code area (`tools/exercised.py`). Theatre routes also require
+  54.5% of the code area (`tools/exercised.py`). Theatre routes also require
   the expected world files, a clean VGAME exit and at least a billion clocks
   in flight; airborne screenshots were reviewed for the six added routes.
 - Pilot creation, Backspace editing, Escape cancellation and erasure through
@@ -36,6 +36,15 @@ never instead of parity.
   after briefing: screens reviewed, AIM-9/AMRAAM station changes visible,
   both engines identical at 64 checkpoints/final. Required screen-open
   counts reject routes stuck in dialogs or missing a maintenance visit.
+- A normal-input Libya landing route: takeoff, return to base 33, runway
+  alignment, contact and a stop inside its approach box. Both engines
+  agree at 195 checkpoints/final; adaptive runs also produce identical
+  input logs and flight observations. The stronger observer checks zero
+  speed/throttle, gear down, brakes on, fuel remaining, no ejection/crash,
+  the completed countdown and the parent's mission result 0/status 3.
+  DOS exit 129 is a separate debriefing handoff, not a landing result.
+  Contact/stop screenshots reviewed. This covers the shipped training
+  mission and its landing setting; other runways and objectives remain.
 - Seeded random flights (`tools/random_flights.py`): every session
   identical at every hash; 30.5 minutes of flight in the 16-session batch.
 - Planted defects caught by the lockstep (`tools/mutation_check.py
@@ -109,8 +118,6 @@ never instead of parity.
 - [ ] **Roland through Munt** (libmt32emu, LGPL-2.1+): the MT-32 music in
       the game itself, and its output rendered and checked automatically.
       Users supply their own MT-32 ROMs.
-- [ ] **A landing route:** fly back and land. No route or random flight has
-      landed yet.
 - [ ] **Individual mission objectives:** all nine theatres and all four
       mission categories now have flight routes (air combat, ground strike,
       and both training categories). Complete dedicated objective types,

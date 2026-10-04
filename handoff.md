@@ -48,11 +48,12 @@ nothing running.
 - Build: `.\build.cmd -DF117R_GEN_DIR=C:/Users/Tideg/f117-recomp-local/theatre-pipeline/gen`
   from PowerShell ("BUILD OK" at the end). It cannot relink while any
   `f117run.exe` is running.
-- Whole pipeline (translate, build, coverage, both engines on all fourteen
+- Whole pipeline (translate, build, coverage, both engines on all fifteen
   routes, instruction lockstep): `py tools\build_recomp.py --data
   "D:\GOG\F-117A"`. Last full batch: twelve routes IDENTICAL; the new roster
   route separately matches at 38 checkpoints/final and frontend dialogs at
-  64 checkpoints/final. Lockstep 89,276 starts,
+  64 checkpoints/final; the landing matches at 195 checkpoints/final.
+  Lockstep 89,276 starts,
   0 mismatching; no generated code changed for the roster work.
   `--parity-only` skips translation/build and checks the existing executable;
   the pipeline compares every 50-million-clock checkpoint, not just finals.
@@ -75,7 +76,7 @@ nothing running.
 - Random flights: `py tools/random_flights.py --data "D:/GOG/F-117A"
   --seeds 31,32 --span 4000000000`.
 - Coverage of the routes: `py tools/exercised.py --data "D:/GOG/F-117A"
-  --run` (53.8%). Translated share: `py tools/census.py --data
+  --run` (54.5%). Translated share: `py tools/census.py --data
   "D:/GOG/F-117A"` (96.2%).
 - Planted defects: `py -u tools/mutation_check.py --data "D:/GOG/F-117A"
   --lockstep --random 60 --kinds skip,cf,zf,ax --seed N` (about a minute a
@@ -83,6 +84,34 @@ nothing running.
 
 ## In flight at handoff
 
+- A landing now succeeds through normal keyboard/mouse input, no state
+  writes: `tools/landing_pilot.py`, backed by `f117machine_api` and its
+  Python wrapper. `tools/routes/landing.args` replays the committed input
+  stream; replay filenames resolve relative to the route. Interpreter and
+  recomp match all 195 checkpoints/final hash `9a20d983de7b7f4f` at
+  9,787,594,940 clocks. Independent adaptive runs' inputs/CSVs also match.
+  Private evidence: `landing-04{,-interp,-observed}/`; screenshots in the
+  observed folder show contact and the stop. Final position (9793,1539),
+  home 33 at (9792,1600), box half-width 9/length 72; speed/throttle 0,
+  gear down, brakes on, fuel 4651, C09A=0, counter 2 with S=11. Parent
+  flight block result 0/status 3 confirms the return. DOS exit **129**
+  means handoff to END and is separate from this result; failed approaches
+  also exit 129. Use `landing_pilot.py --replay tools/routes/landing.input`
+  under either engine for the stronger acceptance checks, not exit alone.
+  Prior approaches 01/02 landed off-base; 03 overflew while too high.
+  The final pilot intercepts via (home_x,home_y+4000), uses 4x lateral
+  heading correction, and descends with feed-forward -450. This covers
+  shipped Libya training/easy landing, not other runways or objectives.
+  API supports read-only observations, normal input, clocks/hashes, record
+  and screenshots; one live handle per process. No relinking while a
+  Python process holds its DLL. ROM-free API/landing gate tests are in CI.
+  Final replay of the stronger checker under the interpreter passes:
+  `landing-verified-interp/result.json`, same clock/hash/result. All five
+  CTests and 31 Python regressions pass; the full lockstep compares
+  5,713,152 states, 512 declined, zero mismatches. Executed coverage now
+  125,476 / 230,052 bytes (54.5%), `exercised-landing.log` and existing
+  `exec-theatres-20261004/`. Landing introduced no new untranslated starts;
+  regeneration still has 89,276. No game/runtime semantics changed.
 - `frontend_dialogs.args` covers KIA/retired notices and the direct MAINT
   door before and after briefing; the second page changes station 1 to
   AIM-9 and station 3 to AMRAAM. Both engines match at 64 checkpoints/final
@@ -94,7 +123,7 @@ nothing running.
   successful named-file/program opens and minimum counts; the earlier
   stuck-modal run correctly fails. Twelve route regressions pass.
   Executed coverage: `exercised-dialogs.log`, 123,825 / 230,052 bytes (53.8%).
-  CI for the preceding roster/move/save-isolation commit `140d087` is green.
+  CI for this commit `be539e2` and preceding `140d087` is green.
   Earned retirement and award transitions remain open, rather than merely
   displaying a shipped retired pilot's notice.
 - `roster_edit.args` creates CHECK, edits a character, cancels a second
@@ -285,10 +314,9 @@ nothing running.
    `tools/video_compare.py` captures, aligns and reports already; start
    from the saved reports/diagnostics above.
 2. Munt (libmt32emu) for the Roland output; the user supplies MT-32 ROMs.
-3. A landing route; individual mission objectives; the rest of the front end.
-   Pilot editing is START 0x06AB3: Backspace over a roster row enters a
-   new name, Return commits, Escape cancels. Read-only Reimp notes:
-   `docs/re/36-start-front-end.md`, "The Bulletin Board's keyboard".
+3. Individual mission objectives and earned career transitions. The normal
+   landing pilot is now available as a starting point for return legs.
+   Pilot editing, roster notices and direct maintenance are covered.
    Creating a pilot removes its transfer clearance; use a separate route.
 4. Housekeeping: split `src/machine/dos.c`. Fresh-clone build steps,
    `.gitattributes` and the GitHub Windows build are done.

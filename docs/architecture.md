@@ -264,7 +264,7 @@ Seven layers, each checkable by anyone with their own copy:
    The maintenance route requires two arming pages and four office pages;
    a run stuck in a roster dialog fails instead of passing on equal hashes.
 4. **Every translated instruction, routes or not.** The routes run about
-   half of the code area (`tools/exercised.py`: 53.8%; error paths,
+   half of the code area (`tools/exercised.py`: 54.5%; error paths,
    individual mission objectives and most setup screens remain).
    `tests/insn_lockstep.c` covers the rest: for each of the 89,276 instruction starts the
    translation has, in every module, it places the module's image in
@@ -498,6 +498,45 @@ instruction lockstep reports zero mismatching starts. Fresh early music
 matches 365 writes over 15.5 s (drift 0..36 ms). Screenshot deadlines now
 advance from their original schedule, avoiding accumulated instruction
 overshoot in later samples.
+
+## Observing flights through normal controls
+
+With `F117R_BUILD_TESTS=ON`, `f117machine_api` exposes a scalar host API.
+`tools/machine_api.py` wraps it: boot, advance to an absolute clock, read
+guest memory, queue normal keys/mouse input, record input and capture a
+picture. It exposes no memory or register setters. Only one machine may
+be live per process because the core's code bitmap is process-global.
+ROM-free tests check failed boots, lifetimes, queue limits, readback and
+recorded-input replay against the existing headless runner.
+
+`tools/landing_pilot.py` uses the original VGAME flight fields and the
+Reimp's diagnostic pilot as a starting point. It flies with released key
+pulses, intercepts the runway centreline, then descends, brakes and idles.
+The committed `tools/routes/landing.input` contains only keyboard/mouse
+events and their clocks. `landing.args` replays them without the controller.
+Replay paths in route files resolve relative to the route file.
+
+The Libya return takes about 829 emulated seconds. Interpreter and recomp
+agree at all 195 checkpoints and final hash `9a20d983de7b7f4f`; independent
+adaptive runs produce byte-identical input logs and observation CSVs.
+The aircraft stops at (9793,1539), inside home target 33's box centred on
+(9792,1600), with half-width 9 and half-length 72 map units. Speed/throttle
+are zero, gear down, brakes on, fuel 4651, no ejection/crash state, and
+the original completion counter is 2 with S=11 (greater than 16/S).
+Screenshots of contact and the stop were reviewed.
+
+The observer additionally checks the parent flight block: mission result
+0 and pilot status 3. **DOS exit 129 is the debriefing handoff**, distinct
+from that mission result; it also occurs after failed approaches. Route
+milestones alone therefore do not establish a landing. Re-run the stronger
+checks with either engine:
+
+```powershell
+py tools/landing_pilot.py --data "D:\GOG\F-117A" --engine interp --replay tools/routes/landing.input --out C:/landing-check
+```
+
+This proves the shipped training mission's return with its landing setting,
+not objective completion, other runway types or physical-controller use.
 
 ## Where this goes next
 

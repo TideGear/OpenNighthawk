@@ -34,3 +34,7 @@ jobs:
         run: python tests/test_video_compare.py
       - name: Route milestone regressions
         run: python tests/test_route_checks.py
+      - name: Machine control API regressions
+        run: python tests/test_machine_api.py
+      - name: Landing acceptance regressions
+        run: python tests/test_landing_checks.py

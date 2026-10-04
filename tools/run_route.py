@@ -29,7 +29,12 @@ ROOT = os.path.dirname(HERE)
 
 
 def route_args(path):
-    return [l.strip() for l in open(path) if l.strip() and not l.strip().startswith("#")]
+    with open(path) as source:
+        args = [l.strip() for l in source if l.strip() and not l.strip().startswith("#")]
+    for i, option in enumerate(args[:-1]):
+        if option == "--replay" and not os.path.isabs(args[i + 1]):
+            args[i + 1] = os.path.abspath(os.path.join(os.path.dirname(path), args[i + 1]))
+    return args
 
 
 def check_route(path, log, save_dir=None):

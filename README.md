@@ -25,11 +25,12 @@ options. Enhancements come after parity, never instead of it.
   untranslated stretch left that decodes as code (`tools/census.py`; the
   rest is strings, tables and variables). On the scripted sessions no game
   instruction is interpreted; only the emulated BIOS's own stubs are.
-- **Parity, measured:** fourteen scripted sessions (boot to flight; a full
+- **Parity, measured:** fifteen scripted sessions (boot to flight; a full
   sortie through the debriefing and back; boots under the speaker and Roland
   drivers, where the programs load at other addresses; transfer and flight
   routes across all nine theatres and all four mission categories; pilot
-  creation, editing, erasure and saving; roster dialogs and direct maintenance)
+  creation, editing, erasure and saving; roster dialogs and direct maintenance;
+  a takeoff, return and landing at the home base)
   end in
   identical state under the interpreter and the recompiled code - all of memory, the
   registers, and every byte sent to the sound card, the palette, MIDI and
@@ -188,6 +189,14 @@ Your own play sessions are recorded too: each run of `f117a.exe` writes
 next to its save folder. `build\f117run.exe --replay input.log` replays one
 under either engine (`--engine interp` or `recomp`), and the two must end in
 the same state.
+
+The landing route also has a stronger observer that checks ground contact
+inside the home approach box, a stop at idle, gear/brakes, the original
+countdown and the parent flight record's successful-return result:
+
+```bat
+py tools\landing_pilot.py --data "D:\GOG\F-117A" --engine interp --replay tools/routes/landing.input --out C:/landing-check
+```
 
 ## Repository layout
 

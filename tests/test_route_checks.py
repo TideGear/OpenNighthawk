@@ -7,11 +7,18 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
-from run_route import check_route
+from run_route import check_route, route_args
 from build_recomp import headless
 
 
 class RouteChecks(unittest.TestCase):
+    def test_replay_path_is_relative_to_route(self):
+        with tempfile.TemporaryDirectory() as folder:
+            route = Path(folder) / "landing.args"
+            route.write_text("--replay\nlanding.input\n--steps\n1000\n")
+            self.assertEqual(route_args(route), ["--replay", str(Path(folder) / "landing.input"),
+                                                "--steps", "1000"])
+
     def check(self, log):
         with tempfile.TemporaryDirectory() as folder:
             route = Path(folder) / "flight.args"
