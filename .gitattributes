@@ -1,0 +1,19 @@
+# Keep repository text portable and independent of core.autocrlf.
+* text=auto eol=lf
+
+# Windows command processor scripts use native line endings on checkout.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Assets must not undergo newline conversion.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.wav binary
+*.ogg binary
+*.mid binary
+*.pdf binary
+*.woff binary
+*.woff2 binary

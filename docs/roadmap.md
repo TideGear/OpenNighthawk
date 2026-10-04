@@ -132,5 +132,6 @@ never instead of parity.
 - [ ] Split `src/machine/dos.c` (about 2,300 lines) into memory, programs,
       files, keyboard and video. The mouse driver is now in `mouse.c`.
 - [ ] Build-from-scratch steps in the README, tested on a fresh clone.
-- [ ] `.gitattributes` for line endings.
+- [x] `.gitattributes` for line endings: LF text, CRLF Windows batch scripts,
+      binary assets excluded from conversion. Existing index text is LF.
 - [ ] An automated build on GitHub (the CPU tests need no game files).
