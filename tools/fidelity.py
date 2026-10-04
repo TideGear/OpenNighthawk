@@ -781,19 +781,20 @@ Asm.pop = _pop_ds
 # ---------------------------------------------------------------------------
 # Running it.
 # ---------------------------------------------------------------------------
-def run_dosbox(dosbox, data, probe, work, child):
-    d = os.path.join(work, "dosbox")
+def run_dosbox(dosbox, data, probe, work, child, tag="dosbox"):
+    d = os.path.join(work, tag)
     os.makedirs(d, exist_ok=True)
     open(os.path.join(d, "F117.COM"), "wb").write(probe)
     open(os.path.join(d, "CHILD.EXE"), "wb").write(child)
-    conf = os.path.join(work, "probe.conf")
+    conf = os.path.join(work, tag + "-probe.conf")
     with open(conf, "w") as f:
         f.write("[sdl]\nfullscreen=false\noutput=surface\n[autoexec]\n@echo off\n")
         f.write('mount C "%s"\nc:\nkeyb us\ncls\nf117\nexit\n' % d)
     env = dict(os.environ, SDL_VIDEODRIVER="dummy", SDL_AUDIODRIVER="dummy")
     base = os.path.join(data, "dosboxF117A.conf")
-    subprocess.run([dosbox, "-conf", base, "-conf", conf, "-noconsole"], cwd=os.path.dirname(dosbox),
-                   env=env, timeout=120)
+    extra = ["-nopromptfolder", "-fastlaunch"] if "dosbox-x" in os.path.basename(dosbox).lower() else []
+    subprocess.run([dosbox, "-conf", base, "-conf", conf, "-noconsole"] + extra, cwd=os.path.dirname(dosbox),
+                   env=env, timeout=180)
     return open(os.path.join(d, "OUT.BIN"), "rb").read(), open(os.path.join(d, "CHILD.BIN"), "rb").read()
 
 
@@ -836,18 +837,22 @@ def env_strings(block):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", required=True, help="the game's install (holds DOSBOX and dosboxF117A.conf)")
-    ap.add_argument("--dosbox", default=None)
+    ap.add_argument("--dosbox", default=None, help="the reference DOSBox (default: GOG's, in the install)")
+    ap.add_argument("--reference", choices=("gog", "dosbox-x"), default="gog",
+                    help="dosbox-x: DOSBox-X (the second reference) with GOG's settings")
     ap.add_argument("--diffs-only", action="store_true")
     ap.add_argument("--work", default=os.path.join(os.path.expanduser("~"), "f117-recomp-local", "fidelity"))
     a = ap.parse_args()
-    dosbox = a.dosbox or os.path.join(a.data, "DOSBOX", "DOSBox.exe")
+    tag = "dosbox" if a.reference == "gog" else "dosbox-x"
+    dosbox = a.dosbox or (os.path.join(a.data, "DOSBOX", "DOSBox.exe") if a.reference == "gog" else
+                          os.path.join(os.path.expanduser("~"), "f117-recomp-local", "dosbox-x", "dosbox-x.exe"))
     probe, n = build_probe()
     child, nc = build_child()
     os.makedirs(a.work, exist_ok=True)
     print("probe: %d bytes, %d answers; child: %d bytes, %d answers" % (len(probe), n, len(child), nc))
-    ref, ref_child = run_dosbox(dosbox, a.data, probe, a.work, child)
+    ref, ref_child = run_dosbox(dosbox, a.data, probe, a.work, child, tag)
     ours, ours_child = run_ours(probe, a.work, child)
-    open(os.path.join(a.work, "dosbox.bin"), "wb").write(ref)
+    open(os.path.join(a.work, tag + ".bin"), "wb").write(ref)
     open(os.path.join(a.work, "ours.bin"), "wb").write(ours)
     print("answer sheets: %s" % os.path.join(a.work, "{dosbox,ours}.bin"))
     same = differ = 0

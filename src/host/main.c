@@ -208,7 +208,9 @@ static const char *default_data_dir(void)
 {
     static const char *candidates[] = {
         "D:\\GOG\\F-117A", "C:\\GOG Games\\F-117A", "C:\\Program Files (x86)\\GOG Galaxy\\Games\\F-117A",
-        "C:\\Program Files (x86)\\Steam\\steamapps\\common\\F-117A Nighthawk Stealth Fighter 2.0",
+        /* Steam keeps the game in a subfolder; its files are identical to GOG's. */
+        "C:\\Program Files (x86)\\Steam\\steamapps\\common\\F-117A Nighthawk Stealth Fighter\\F-117A",
+        "C:\\Program Files\\Steam\\steamapps\\common\\F-117A Nighthawk Stealth Fighter\\F-117A",
         ".", NULL };
     for (int i = 0; candidates[i]; i++) {
         char p[600];

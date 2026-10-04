@@ -11,9 +11,11 @@ in "f11704 (473.04 Update).zip"). Verified 3 October 2026 by extracting the
 installer (innoextract 1.9) and the patch and comparing byte for byte.
 
 This checks a copy against the SHA-256 of every file the project reads:
-the 17 code files the recompiler translates, the pilot roster the game
-starts with, and the DOSBox the fidelity probe compares against. Hashes
-only; nothing of the game is in this file.
+the 17 code files the recompiler translates and the pilot roster the game
+starts with; and, separately, the DOSBox the fidelity probe compares
+against. Steam's release (build 425321, the game in its F-117A subfolder)
+has the same game files, byte for byte; its DOSBox is a different build.
+Hashes only; nothing of the game is in this file.
 """
 from __future__ import annotations
 
@@ -42,6 +44,11 @@ EXPECTED = [
     ("ISOUND.LOG", 2458, "ee6d184af60c4927046052d9a687cb9a0dacbcc99e2b14216103cb0d288d9c6e"),
     ("RSOUND.LOG", 5481, "ef76f7c20a603a2ea7c194c8c5aa091cdb47f468020040859293f39186a39352"),
     ("ROSTER.FIL", 802, "1977ab817899c3bc33f28a9ca5ee2f894e33ea7ae5f8d033e4c89b0be743bdb3"),
+]
+
+# GOG's DOSBox: the reference tools/fidelity.py runs. Not part of the game;
+# Steam ships a different build (0.74) with different settings.
+GOG_DOSBOX = [
     ("dosboxF117A.conf", 11445, "c6058802cac0249118bf885506dc55e38722853afbda354960c49cf9eeb0f899"),
     ("DOSBOX/DOSBox.exe", 3802624, "8a7a7fedd222bf985b51191000557f9ee2ffb033be02c6c59594dbbec013cd41"),
     ("DOSBOX/dosbox-0.74-2.1.tar.gz", 1334686, "1b6c865340e9d6119529c4ae61e2f12661424a38f07f8818202c5357a6b97ba2"),
@@ -64,18 +71,25 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", required=True, help="the game's install folder")
     a = ap.parse_args()
-    bad = 0
-    for rel, size, digest in EXPECTED:
-        p = find_ci(a.data, rel)
-        if not p:
-            print("  MISSING    %s" % rel)
-            bad += 1
-            continue
-        h = hashlib.sha256(open(p, "rb").read()).hexdigest()
-        ok = h == digest and os.path.getsize(p) == size
-        bad += not ok
-        print("  %-10s %s" % ("ok" if ok else "DIFFERENT", rel))
-    print("%d of %d files match the verified version" % (len(EXPECTED) - bad, len(EXPECTED)))
+    def check(items):
+        bad = 0
+        for rel, size, digest in items:
+            p = find_ci(a.data, rel)
+            if not p:
+                print("  MISSING    %s" % rel)
+                bad += 1
+                continue
+            h = hashlib.sha256(open(p, "rb").read()).hexdigest()
+            ok = h == digest and os.path.getsize(p) == size
+            bad += not ok
+            print("  %-10s %s" % ("ok" if ok else "DIFFERENT", rel))
+        return bad
+    print("The game:")
+    bad = check(EXPECTED)
+    print("%d of %d game files match the verified version" % (len(EXPECTED) - bad, len(EXPECTED)))
+    print("GOG's DOSBox (the fidelity reference; optional):")
+    dbad = check(GOG_DOSBOX)
+    print("%d of %d match GOG's" % (len(GOG_DOSBOX) - dbad, len(GOG_DOSBOX)))
     sys.exit(1 if bad else 0)
 
 

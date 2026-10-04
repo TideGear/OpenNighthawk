@@ -62,3 +62,6 @@ setup_*.exe
 *.lib
 __pycache__/
 *.pyc
+
+# Third-party installers and reference material the user drops in (DOSBox-X, ...).
+/references/

@@ -41,7 +41,8 @@ typedef struct {
     int done;
 } script_cmd;
 
-static script_cmd g_cmd[128];
+#define MAX_CMDS 4096
+static script_cmd g_cmd[MAX_CMDS];
 static int g_ncmd;
 static uint64_t g_hold;
 static FILE *g_record;
@@ -109,6 +110,15 @@ static void on_load(void *user, machine_t *m, const char *name, const uint8_t *f
     }
 }
 
+/* --opl-log: every OPL register write with its clock, for comparing the
+ * music against a DOSBox raw OPL capture (tools/dosbox_compare.py). */
+static FILE *g_opl_log;
+static void on_opl(void *user, uint64_t icount, uint8_t reg, uint8_t val)
+{
+    (void)user;
+    if (g_opl_log) fprintf(g_opl_log, "%llu %02X %02X\n", (unsigned long long)icount, reg, val);
+}
+
 static void on_input(void *user, const machine_input *in)
 {
     (void)user;
@@ -123,7 +133,7 @@ static uint64_t state_hash(const machine_t *m)
 int main(int argc, char **argv)
 {
     const char *data = NULL, *save = NULL, *log_path = NULL, *screen = NULL;
-    const char *record = NULL, *replay = NULL, *coverage = NULL;
+    const char *record = NULL, *replay = NULL, *coverage = NULL, *opl_log = NULL;
     uint64_t steps = 100000000ull, ips = MACHINE_DEFAULT_IPS, hold_ms = 60;
     uint64_t time_us = 0, hash_every = 0, hash_from = 0;
     uint64_t trace_from = 0, trace_to = 0;
@@ -146,6 +156,7 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--hash-every") && v) { hash_every = strtoull(v, NULL, 0); i++; }
         else if (!strcmp(a, "--hash-from") && v) { hash_from = strtoull(v, NULL, 0); i++; }
         else if (!strcmp(a, "--coverage") && v) { coverage = v; i++; }
+        else if (!strcmp(a, "--opl-log") && v) { opl_log = v; i++; }
         else if (!strcmp(a, "--record") && v) { record = v; i++; }
         else if (!strcmp(a, "--replay") && v) { replay = v; i++; }
         else if (!strcmp(a, "--trace") && v) {
@@ -163,7 +174,7 @@ int main(int argc, char **argv)
             i++;
         }
         else if (!strcmp(a, "--engine") && v) { engine = !strcmp(v, "recomp") ? ENGINE_RECOMP : ENGINE_INTERP; i++; }
-        else if ((!strcmp(a, "--type") || !strcmp(a, "--click")) && v && g_ncmd < 128) {
+        else if ((!strcmp(a, "--type") || !strcmp(a, "--click")) && v && g_ncmd < MAX_CMDS) {
             script_cmd *t = &g_cmd[g_ncmd++];
             const char *colon = strchr(v, ':');
             if (!colon) { fprintf(stderr, "%s wants WHEN:WHAT\n", a); return 2; }
@@ -189,6 +200,11 @@ int main(int argc, char **argv)
     machine_hooks hooks;
     memset(&hooks, 0, sizeof hooks);
     hooks.module_load = on_load;
+    if (opl_log) {
+        g_opl_log = fopen(opl_log, "w");
+        if (!g_opl_log) { fprintf(stderr, "cannot write %s\n", opl_log); return 1; }
+        hooks.opl_write = on_opl;
+    }
     g_hold = ips * hold_ms / 1000ull;
     if (record) {
         g_record = fopen(record, "w");
@@ -259,6 +275,7 @@ int main(int argc, char **argv)
     }
     if (trace) fclose(trace);
     if (g_record) fclose(g_record);
+    if (g_opl_log) fclose(g_opl_log);
     double secs = (double)(clock() - t0) / CLOCKS_PER_SEC;
     printf("stopped at icount %llu (%s) after %.1f s host time, %.1f M instr/s; "
            "interpreted %llu; program %s; exit %s; final hash %016llx\n",
