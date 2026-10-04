@@ -120,11 +120,15 @@ routes are verified; an independent DOSBox recon flight is running (below).
 - Independent observer `tools/dosbox_flight.py` uses only query/read process
   permissions and normal posted input. Static mission fields match16/16;
   trajectory/RNG differences are not exact-clock aligned (`flight-compare-skip`).
-  A full adaptive reference photo/return attempt is running via
+  Attempt02 took the primary photo but lost speed at 44% throttle and crashed
+  at 710.8 s; actual result1/status1, no successful return. Pilot now restores
+  power below240 knots; observer waits through DSWAP for END. Adaptive
+  recompiled rerun `recon-power-floor` passes with the existing final hash.
+  A fresh full adaptive reference photo/return attempt is running via
   `py -u tools/dosbox_flight.py --data D:/GOG/F-117A --out
-  C:/Users/Tideg/f117-recomp-local/parity-audit-20261004/dosbox-recon-02
-  --route tools/routes/recon.front --pilot recon --seconds 1700 --skip-intro`.
-  Output `parity-audit-dosbox-recon-02.log`; exec session93653. Check process
+  C:/Users/Tideg/f117-recomp-local/parity-audit-20261004/dosbox-recon-03
+  --route tools/routes/recon.front --pilot recon --seconds 1900 --skip-intro`.
+  Output `parity-audit-dosbox-recon-03.log`; exec session71994. Check process
   status and the log before doing anything; tool is still being verified.
   Windows messages are wall-time scheduled, not original instruction counts.
   Next: finish independent reference run, investigate synthesized audio and

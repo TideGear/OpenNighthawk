@@ -47,6 +47,13 @@ mission score is 275, total rises from 2669 to 2944, sorties from nine to ten
 and tour ribbon from zero to one. Both saves have SHA-256
 `349e4cd5a0560ea903bdf54d4dc02bd09279624b3a53f4d4ba6bf6abf4a5a443`.
 This does not yet independently compare the completed sortie with DOSBox.
+The first adaptive reference attempt credited the primary photo but crashed
+on the next leg at 44% throttle, speed 164, after about 711 seconds. This is
+retained as a failed check (`dosbox-recon-02`), not a successful return. The
+diagnostic pilot now restores power below 240 knots, and the observer waits
+through DSWAP for END. A fresh reference attempt is running. An adaptive
+recompiled rerun with the correction still completes both photos and the
+return with the established `c403d0542430b898` hash and no acceptance errors.
 
 ## Independent comparisons with differences
 

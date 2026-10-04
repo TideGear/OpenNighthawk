@@ -189,6 +189,7 @@ def main():
         began = time.monotonic(); starts = {}; previous = None; rows = []; sent = set(); writer = None
         skipped_player = False
         frontend_end = None
+        flight_end = None
         queued_keys = []
         pilot_tick = 0
         pilot_initialized = False
@@ -294,7 +295,11 @@ def main():
                         if len(rows) % 50 == 1: print(row, flush=True)
                     if elapsed >= args.seconds: break
                 elif args.pilot and rows:
-                    break
+                    # VGAME exits through DSWAP before END is loaded. Keep the
+                    # final flight observation and wait for the actual debrief,
+                    # instead of treating the transient swapper as a failure.
+                    if flight_end is None: flight_end = now
+                    if program == "END" or now - flight_end > 30: break
                 time.sleep(.01 if args.pilot else .1)
         errors = []
         if args.frontend:

@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
-from recon_pilot import recon_errors
+from recon_pilot import recon_errors, control
 
 
 class ReconChecks(unittest.TestCase):
@@ -42,6 +42,24 @@ class ReconChecks(unittest.TestCase):
         for changes in (dict(secondary_credit_events=0), dict(secondary_damaged=1),
                         dict(flags=0x4204), dict(secondary_type=2), dict(photos=1)):
             self.assertTrue(recon_errors([dict(row, **changes)], complete=True))
+
+    def test_slow_photo_approach_and_cruise_recover_power(self):
+        class Input:
+            clock = 100
+            ips = 9000000
+            def __init__(self): self.keys = []
+            def type(self, at, text, **kwargs): self.keys.append(text)
+        # The independent flight lost altitude at 44% power after its first
+        # photo. Recover speed even when the next target is still far away.
+        state = dict(target_x=0, target_y=0, x=0, y=1000, heading=0,
+            roll=0, altitude=2500, trim=0, pitch=0, lock=1, target=1,
+            flags=1, display=19, mode=2, weapon=16, bay_switch=1,
+            cue=0, photos=0, throttle=44, speed=220)
+        for distance in (1000, 4000):
+            inputs = Input()
+            control(inputs, dict(state, target_range=distance), 0)
+            self.assertIn("=", inputs.keys)
+            self.assertNotIn("-", inputs.keys)
 
 
 if __name__ == "__main__":

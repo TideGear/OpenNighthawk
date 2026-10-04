@@ -79,7 +79,9 @@ def control(machine, state, tick):
             command = "n"
         elif designated and state["cue"] & 1 and not state["photos"]:
             command = r"\r"
-        elif state["target_range"] < 1500 and state["throttle"] > 60:
+        elif state["speed"] < 240 and state["throttle"] < 75:
+            command = "="
+        elif state["target_range"] < 1500 and state["speed"] > 320 and state["throttle"] > 60:
             command = "-"
         if command:
             machine.type(at + machine.ips * 17 // 100, command, hold_ms=20)
