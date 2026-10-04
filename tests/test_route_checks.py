@@ -82,6 +82,23 @@ class RouteChecks(unittest.TestCase):
             self.assertNotEqual(saves[0], saves[1])
             self.assertEqual(b"an earlier edited pilot", (old / "Roster.Fil").read_bytes())
 
+    def opens(self, log):
+        with tempfile.TemporaryDirectory() as folder:
+            route = Path(folder) / "maintenance.args"
+            route.write_text("# expect-open armsscrn.pic START.EXE 2\n")
+            return check_route(route, log)
+
+    def test_both_maintenance_visits(self):
+        self.assertEqual([], self.opens("[file] open 'ARMSscrn.pic' -> 5 @100 START.EXE\n"
+                                        "[file] open 'armsscrn.pic' -> 5 @200 START.EXE\n"))
+
+    def test_only_one_visit_cannot_pass(self):
+        self.assertTrue(self.opens("[file] open 'armsscrn.pic' -> 5 @100 START.EXE\n"))
+
+    def test_wrong_program_and_failed_open_cannot_pass(self):
+        self.assertTrue(self.opens("[file] open 'armsscrn.pic' -> 5 @100 VGAME.EXE\n"
+                                   "[file] open 'armsscrn.pic' -> -1 @200 START.EXE\n"))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -12,8 +12,9 @@ Optional comments declare milestones checked after the run:
     # expect-world CU
     # expect-exit VGAME.EXE 0 1000000000
     # expect-save Roster.Fil 244 434845434b00
-These require world files, the program's exit code after a minimum elapsed
-clock count, or hexadecimal bytes at a saved file offset. They do not prove a landing.
+    # expect-open armsscrn.pic START.EXE 2
+These require world files, screen-open counts, the program's exit code after
+a minimum elapsed clock count, or bytes at a saved file offset. They do not prove a landing.
 """
 from __future__ import annotations
 
@@ -36,7 +37,13 @@ def check_route(path, log, save_dir=None):
     errors = []
     with open(path) as source:
         for line in source:
-            if line.startswith("# expect-save "):
+            if line.startswith("# expect-open "):
+                _, _, name, program, minimum = line.split()
+                pattern = rf"^\[file\] open '{re.escape(name)}' -> \d+ @\d+ {re.escape(program)}$"
+                count = len(re.findall(pattern, log, re.M | re.I))
+                if count < int(minimum):
+                    errors.append(f"{program} opened {name} {count} times; expected at least {minimum}")
+            elif line.startswith("# expect-save "):
                 _, _, name, offset, expected = line.split()
                 offset, expected = int(offset, 0), bytes.fromhex(expected)
                 try:

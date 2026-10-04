@@ -1,0 +1,47 @@
+# KIA and retired roster dialogs, then direct MAINT before/after briefing.
+# Assign AIM-9 to station 1 and AMRAAM to station 3; return to the office.
+# Coordinates come from START's menus at DS:6F42 and DS:6C5A.
+# expect-open armsscrn.pic START.EXE 2
+# expect-open homescrn.pic START.EXE 4
+--type
+SETUP.EXE+200000:N
+--type
+SETUP.EXE+2000000:2
+--type
+START.EXE+30000000:\r
+--click
+START.EXE+120000000:258,182
+--click
+START.EXE+160000000:100,47
+--click
+START.EXE+220000000:166,124
+--click
+START.EXE+260000000:100,58
+--click
+START.EXE+320000000:143,109
+--click
+START.EXE+400000000:283,172
+--click
+START.EXE+600000000:214,70
+--type
+START.EXE+800000000:\e
+--click
+START.EXE+1000000000:280,60
+--type
+START.EXE+1400000000:\e
+--click
+START.EXE+1600000000:214,70
+--click
+START.EXE+1660000000:153,25
+--click
+START.EXE+1680000000:50,17
+--click
+START.EXE+1700000000:281,106
+--click
+START.EXE+1720000000:50,22
+--type
+START.EXE+1800000000:\e
+--steps
+3200000000
+--time-us
+700000000000000

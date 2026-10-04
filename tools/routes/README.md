@@ -54,6 +54,15 @@ bytes independently of engine equality: the name, erased row and cleared
 career counters. The 802-byte roster and a fresh-process reload were checked;
 the recorded mouse/key session also replays identically under the interpreter.
 
+`frontend_dialogs` opens and dismisses the shipped KIA and retired pilot
+dialogs, then uses the MAINT door before and after taking the briefing.
+The first arming page has empty stations; the generated assignment fills
+the second. The route assigns AIM-9 to station 1 and AMRAAM to station 3
+and returns to the office. The dialogs have different OK positions, and
+Enter with the pointer outside their button does not dismiss them.
+`# expect-open FILE PROGRAM MIN_COUNT` checks two arming-page loads and
+four office-page loads; screenshots verify the dialogs and station changes.
+
 Keep run outputs and saves outside the repository. Use a fresh output
 directory for a baseline run, since an existing save can change the pilot
 and mission:

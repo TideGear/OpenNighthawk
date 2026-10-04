@@ -48,10 +48,11 @@ nothing running.
 - Build: `.\build.cmd -DF117R_GEN_DIR=C:/Users/Tideg/f117-recomp-local/theatre-pipeline/gen`
   from PowerShell ("BUILD OK" at the end). It cannot relink while any
   `f117run.exe` is running.
-- Whole pipeline (translate, build, coverage, both engines on all thirteen
+- Whole pipeline (translate, build, coverage, both engines on all fourteen
   routes, instruction lockstep): `py tools\build_recomp.py --data
   "D:\GOG\F-117A"`. Last full batch: twelve routes IDENTICAL; the new roster
-  route separately matches at 38 checkpoints/final. Lockstep 89,276 starts,
+  route separately matches at 38 checkpoints/final and frontend dialogs at
+  64 checkpoints/final. Lockstep 89,276 starts,
   0 mismatching; no generated code changed for the roster work.
   `--parity-only` skips translation/build and checks the existing executable;
   the pipeline compares every 50-million-clock checkpoint, not just finals.
@@ -74,7 +75,7 @@ nothing running.
 - Random flights: `py tools/random_flights.py --data "D:/GOG/F-117A"
   --seeds 31,32 --span 4000000000`.
 - Coverage of the routes: `py tools/exercised.py --data "D:/GOG/F-117A"
-  --run` (53.5%). Translated share: `py tools/census.py --data
+  --run` (53.8%). Translated share: `py tools/census.py --data
   "D:/GOG/F-117A"` (96.2%).
 - Planted defects: `py -u tools/mutation_check.py --data "D:/GOG/F-117A"
   --lockstep --random 60 --kinds skip,cf,zf,ax --seed N` (about a minute a
@@ -82,6 +83,20 @@ nothing running.
 
 ## In flight at handoff
 
+- `frontend_dialogs.args` covers KIA/retired notices and the direct MAINT
+  door before and after briefing; the second page changes station 1 to
+  AIM-9 and station 3 to AMRAAM. Both engines match at 64 checkpoints/final
+  hash `d9dc8123c860902e`, no interpreted game-module starts. Captures and
+  logs: private `frontend-dialogs-final-{recomp,interp}/` and matching
+  `.txt` files. KIA OK is (166,124), retired OK is (143,109); Enter outside
+  the button leaves the modal up. MAINT's rectangle DS:6F42 item 3 is
+  (203,38)..(225,105), clicked at (214,70). `# expect-open` now checks
+  successful named-file/program opens and minimum counts; the earlier
+  stuck-modal run correctly fails. Twelve route regressions pass.
+  Executed coverage: `exercised-dialogs.log`, 123,825 / 230,052 bytes (53.8%).
+  CI for the preceding roster/move/save-isolation commit `140d087` is green.
+  Earned retirement and award transitions remain open, rather than merely
+  displaying a shipped retired pilot's notice.
 - `roster_edit.args` creates CHECK, edits a character, cancels a second
   edit, erases the KIA row and saves. Both engines match at 38 checkpoints
   and final hash `57ca3dadb75a4273`; saved rosters are byte-identical.
@@ -97,8 +112,7 @@ nothing running.
   Pipeline saves are now fresh `save-*` directories inside each run folder;
   previous saves are preserved. `exercised.py --run` likewise creates fresh
   run directories. `run_route.py --out` still reuses its chosen save for
-  intentional load/reload tests. Career retirement/awards and direct MAINT
-  navigation/dialog routes remain open.
+  intentional load/reload tests. Career retirement and awards remain open.
 - All nine theatres now have flight coverage: six added routes for CU, NC,
   CE, ME, PG and KU, alongside KO, VN and default LB. All three tension
   levels and four mission categories are selected; individual objective

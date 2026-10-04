@@ -259,8 +259,12 @@ Seven layers, each checkable by anyone with their own copy:
    are preserved and cannot contaminate the next baseline. Mouse-only
    moves (`--move WHEN:X,Y`) are scheduled and recorded as machine input,
    like clicks, so hovering over a roster row can enter its name editor.
+   `# expect-open FILE PROGRAM MIN_COUNT` requires successful file opens
+   from that program, for routes that must reach and return from screens.
+   The maintenance route requires two arming pages and four office pages;
+   a run stuck in a roster dialog fails instead of passing on equal hashes.
 4. **Every translated instruction, routes or not.** The routes run about
-   half of the code area (`tools/exercised.py`: 53.5%; error paths,
+   half of the code area (`tools/exercised.py`: 53.8%; error paths,
    individual mission objectives and most setup screens remain).
    `tests/insn_lockstep.c` covers the rest: for each of the 89,276 instruction starts the
    translation has, in every module, it places the module's image in
