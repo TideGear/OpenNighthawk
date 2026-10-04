@@ -245,6 +245,14 @@ Seven layers, each checkable by anyone with their own copy:
    front end; boots under the speaker and Roland drivers, which load every
    program at other addresses - are identical at every checkpoint.
    `tools/build_recomp.py` repeats this on every build.
+   Theatre routes also declare `# expect-world STEM` and
+   `# expect-exit PROGRAM CODE MIN_CLOCKS`. Both the pipeline and
+   `tools/run_route.py` check the runtime log for the selected world's
+   briefing/flight files, the expected exit code and minimum program
+   duration. Equal early crashes or a route stuck at the briefing fail
+   these checks even if their hashes agree. Airborne screenshots are
+   reviewed when a route is added; these milestones alone do not prove
+   takeoff or landing.
 4. **Every translated instruction, routes or not.** The routes run about
    half of the code area (`tools/exercised.py`: 47%; error paths, other
    theatres, most setup screens are not on them). `tests/insn_lockstep.c`

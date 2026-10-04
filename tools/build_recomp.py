@@ -28,6 +28,8 @@ import re
 import subprocess
 import sys
 
+from run_route import check_route
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 
@@ -64,7 +66,7 @@ def build(gen):
     print("  build OK")
 
 
-def headless(engine, data, work, name, args, extra):
+def headless(engine, data, work, name, args, extra, route):
     exe = os.path.join(ROOT, "build", "f117run.exe")
     rundir = os.path.join(work, "runs", "%s_%s" % (name, engine))
     os.makedirs(rundir, exist_ok=True)
@@ -77,6 +79,10 @@ def headless(engine, data, work, name, args, extra):
     if not m or r.returncode:
         print(r.stdout[-2000:], r.stderr[-2000:])
         sys.exit("run failed")
+    with open(os.path.join(rundir, "run.log")) as log:
+        errors = check_route(route, log.read())
+    if errors:
+        sys.exit("route failed: " + "; ".join(errors))
     interp = re.search(r"interpreted (\d+)", r.stdout)
     checkpoints = tuple(re.findall(r"^\[hash\] (\d+) ([0-9a-f]+) (.*)$", r.stdout, re.M))
     return int(m.group(1)), m.group(2), int(interp.group(1)) if interp else -1, checkpoints
@@ -111,7 +117,7 @@ def main():
             # to INTERPRET, so code an earlier capture got translated is
             # absent from this one - dropping the old file would lose it.
             cov = os.path.join(covdir, name + ".cov")
-            icount, h, interp, _ = headless("recomp", a.data, a.work, name, route_args(r), ["--coverage", cov])
+            icount, h, interp, _ = headless("recomp", a.data, a.work, name, route_args(r), ["--coverage", cov], r)
             print("  %-20s %d clocks, %d interpreted" % (name, icount, interp))
         print("4. translate again, build again")
         recompile(a.data, gen, sorted(glob.glob(os.path.join(covdir, "*.cov"))))
@@ -121,8 +127,8 @@ def main():
         bad = 0
         for r in routes:
             name = os.path.splitext(os.path.basename(r))[0]
-            ri = headless("interp", a.data, a.work, name, route_args(r), ["--hash-every", "50000000"])
-            rr = headless("recomp", a.data, a.work, name, route_args(r), ["--hash-every", "50000000"])
+            ri = headless("interp", a.data, a.work, name, route_args(r), ["--hash-every", "50000000"], r)
+            rr = headless("recomp", a.data, a.work, name, route_args(r), ["--hash-every", "50000000"], r)
             same = ri[:2] == rr[:2] and ri[3] == rr[3]
             bad += not same
             print("  %-20s interp %d/%s  recomp %d/%s (%d interpreted)  %s" % (

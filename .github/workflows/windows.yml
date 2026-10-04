@@ -32,3 +32,5 @@ jobs:
         run: python tests/test_music_compare.py
       - name: Picture comparator regressions
         run: python tests/test_video_compare.py
+      - name: Route milestone regressions
+        run: python tests/test_route_checks.py

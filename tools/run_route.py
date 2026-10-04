@@ -7,11 +7,18 @@
 Route files hold one f117run option per line (see tools/routes/). Passing
 them through a shell mangles the backslash escapes in key scripts (\\r, \\D),
 which silently changes the inputs; this passes them as they are written.
+
+Optional comments declare milestones checked after the run:
+    # expect-world CU
+    # expect-exit VGAME.EXE 0 1000000000
+These require the selected world's briefing/flight files and the program's
+exit code after a minimum elapsed clock count. They do not prove a landing.
 """
 from __future__ import annotations
 
 import argparse
 import os
+import re
 import subprocess
 import sys
 
@@ -21,6 +28,29 @@ ROOT = os.path.dirname(HERE)
 
 def route_args(path):
     return [l.strip() for l in open(path) if l.strip() and not l.strip().startswith("#")]
+
+
+def check_route(path, log):
+    """Check declared milestones, so equal early crashes cannot pass parity."""
+    errors = []
+    with open(path) as source:
+        for line in source:
+            if line.startswith("# expect-world "):
+                world = line.split()[2].lower()
+                for suffix, program in (("wld", "START.EXE"), ("3dg", "VGAME.EXE")):
+                    pattern = rf"^\[file\] open '{re.escape(world)}\.{suffix}' -> \d+ @\d+ {re.escape(program)}$"
+                    if not re.search(pattern, log, re.M | re.I):
+                        errors.append(f"{world}.{suffix} was not opened by {program}")
+            elif line.startswith("# expect-exit "):
+                _, _, program, code, minimum = line.split()
+                start = re.search(rf"^\[exec\] {re.escape(program)}\s+.* @(\d+)$", log, re.M)
+                end = re.search(rf"^\[exit\] {re.escape(program)} terminated with code (\d+) .* @(\d+)$", log, re.M)
+                if not start or not end:
+                    errors.append(f"{program} did not run and exit")
+                elif end[1] != code or int(end[2]) - int(start[1]) < int(minimum):
+                    errors.append(f"{program} exited with code {end[1]} after {int(end[2]) - int(start[1])} clocks; "
+                                  f"expected code {code} after at least {minimum}")
+    return errors
 
 
 def main():
@@ -41,7 +71,14 @@ def main():
     cmd = [os.path.join(ROOT, "build", "f117run.exe"), "--engine", a.engine, "--data", a.data,
            "--save", os.path.join(out, "save"), "--log", os.path.join(out, "run.log")]
     cmd += route_args(a.route) + extra
-    return subprocess.call(cmd)
+    result = subprocess.call(cmd)
+    if result:
+        return result
+    with open(os.path.join(out, "run.log")) as log:
+        errors = check_route(a.route, log.read())
+    for error in errors:
+        print("route failed: " + error, file=sys.stderr)
+    return 1 if errors else 0
 
 
 if __name__ == "__main__":
