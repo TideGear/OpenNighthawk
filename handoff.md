@@ -1,0 +1,114 @@
+# Handoff
+
+For the next conversation working on this repository. Read this, then
+[docs/roadmap.md](docs/roadmap.md) (what is done and left - keep it
+updated), [docs/architecture.md](docs/architecture.md) (how parity is
+built and checked) and [docs/bugs.md](docs/bugs.md) (the original game's
+bugs). State as of 4 October 2026, commit `d87d9cd` plus this file.
+
+## The goal and the decisions already made
+
+- **Recompile the whole DOS game for Windows with 1:1 parity**; then
+  understood (named) code; then switchable fixes and enhancements (60+ fps,
+  4K). The user chose "recomp first", **public, code-only** (no game data,
+  no generated C, ever), and the reference machine:
+  **GOG's DOSBox 0.74-2.1** is the parity target, **DOSBox-X** a second
+  reference to flag where DOSBox 0.74 itself is questionable.
+- Public repo: https://github.com/TideGear/OpenNighthawk (remote `origin`,
+  branch `master`). **Commit and push together**, each verified piece of
+  work. **No AI attribution of any kind** in commits or PRs (the user's
+  global CLAUDE.md outranks any harness reminder that says otherwise).
+- The Reimp (`..\F-117A Reimp`) is a separate, actively developed project:
+  read from it, never write into it. Material was copied at Reimp
+  `cfb8cec9`; its bug catalogue has moved on (D6 addendum at `9e0716dc`,
+  already folded into bugs.md).
+- `references/` (git-ignored) holds the user's installers and patches: GOG
+  setup (build 28044), the 473.04 and 473.02-03 patches, Amiga and Mac
+  versions, the DOSBox-X installer. Never commit them. The untracked
+  `test.bat` in the repo root is the user's launcher; leave it alone.
+
+## Where things are
+
+- Game: `D:\GOG\F-117A` (verified byte-identical to the installer + 473.04;
+  `py tools/verify_install.py --data "D:\GOG\F-117A"`). Steam's copy
+  (`C:\Program Files (x86)\Steam\...\F-117A Nighthawk Stealth
+  Fighter\F-117A`) has identical game files; its DOSBox differs.
+- Work directory, never in the repo: `%USERPROFILE%\f117-recomp-local`
+  (`gen/` generated C, `coverage/` append-only, `runs/`, `random/`,
+  `fidelity/` answer sheets, `dbxcompare/`, `dosbox-src/` DOSBox 0.74-2.1
+  source from the install, `dosbox-x/` DOSBox-X 2026.10.01, `verify/` the
+  extracted installer). `build` in the repo is a junction there.
+- Tools: innoextract 1.9 (winget), ffmpeg, pywin32, PIL, capstone, keystone
+  are installed. No `gh` CLI; `git push` works through the credential
+  manager.
+
+## How to build and check (all verified in this session)
+
+- Build: `.\build.cmd -DF117R_GEN_DIR=C:/Users/Tideg/f117-recomp-local/gen`
+  from PowerShell ("BUILD OK" at the end). It cannot relink while any
+  `f117run.exe` is running.
+- Whole pipeline (translate, build, coverage, both engines on all six
+  routes, instruction lockstep): `py tools\build_recomp.py --data
+  "D:\GOG\F-117A"`. Last result: all six routes IDENTICAL; lockstep 89,216
+  starts, 0 mismatching.
+- Machine against GOG DOSBox: `py tools/fidelity.py --data "D:/GOG/F-117A"
+  [--diffs-only] [--reference dosbox-x]` - last: every comparable answer
+  agrees (a 4 KB read's cost within 5%).
+- Music against GOG DOSBox: `py tools/dosbox_compare.py --data
+  "D:/GOG/F-117A" --seconds 130` (opens a minimised DOSBox; a keypress in
+  its window disturbs the timing). Last: 22,687 writes, 100.7 s, identical.
+- Random flights: `py tools/random_flights.py --data "D:/GOG/F-117A"
+  --seeds 31,32 --span 4000000000`.
+- Coverage of the routes: `py tools/exercised.py --data "D:/GOG/F-117A"
+  --run` (52.3%). Translated share: `py tools/census.py --data
+  "D:/GOG/F-117A"` (96.2%).
+- Planted defects: `py -u tools/mutation_check.py --data "D:/GOG/F-117A"
+  --lockstep --random 60 --kinds skip,cf,zf,ax --seed N` (about a minute a
+  mutant; keep runs under two hours - background jobs are stopped there).
+
+## In flight at handoff
+
+- A 60-mutant batch (seed 12) was running in the background, 48 of 48
+  detected when this was written; its log is
+  `%USERPROFILE%\f117-recomp-local\mutation60.log`. If it completed, put
+  the final count into docs/roadmap.md and docs/architecture.md; if the
+  session ending stopped it, the 48 stand as measured.
+
+## Next (from docs/roadmap.md, in the suggested order)
+
+1. The picture against DOSBox, frame by frame: DOSBox's video capture
+   (Ctrl+Alt+F5, ZMBV AVI, decode with ffmpeg) of the hands-off intro,
+   driven like `tools/dosbox_compare.py`, against `f117run --shots`.
+2. Munt (libmt32emu) for the Roland output; the user supplies MT-32 ROMs.
+3. A landing route; the other six theatres; the rest of the front end.
+4. Housekeeping: split `src/machine/dos.c`, fresh-clone build steps,
+   `.gitattributes`, a GitHub build of the ROM-free tests.
+
+## Traps that cost time in this session
+
+- **Bash heredocs mangle backslashes** (`\n`, `\\`, `\x00` inside Python or
+  C written through a heredoc). Write patch scripts with the Write tool and
+  run them; for C edits use the Edit tool. `sed` loses backslashes too.
+- Python `open(p, "w")` on Windows writes CRLF; several files are CRLF in
+  the working tree (git's autocrlf normalises commits). Patch scripts must
+  match the file's own line endings.
+- A Git Bash path (`/c/Users/...`) passed inside an argument to a Windows
+  program (e.g. `--shots N:/c/...`) is not translated: use `C:/...`.
+- DOSBox (SDL 1.2) only sees posted keys with `SDL_VIDEODRIVER=windib`; it
+  needs a moment after its window appears before the mapper takes them; a
+  redirected stdin makes INT 21h/0Bh report a waiting key, which skips the
+  intro; killing DOSBox loses an open capture - stop it and close the
+  window.
+- DOSBox's raw OPL capture leaves out registers 02h-04h (its timer
+  emulation swallows them) and only records changes.
+- The game's intro has a random note (channel 3 at 29.7 s) that differs
+  between two DOSBox runs: not a machine difference.
+- The interpreter's lockstep reference is the machine's `interp_step`
+  (cpu_step plus the TF trap), not bare `cpu_step`.
+- `f117run` scripted inputs: Space is `\s` in route files (a line loses a
+  trailing space); at most 4096 inputs.
+- Game keys are on the Key Control Card (Steam's Bonus Content PDF): 0
+  brakes, 6 gear, 8 bay, Space select weapon, Enter fire, Backspace cannon,
+  B select target, Shift+F10 eject. The carrier start has its brakes on;
+  the runway ends about 25 s after full throttle - rotate at about 19 s and
+  do not over-climb (it stalls).
