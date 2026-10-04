@@ -1,12 +1,43 @@
-/* dos.c - DOS and BIOS services for running the original binaries. See dos.h. */
-#include "dos.h"
+/* dos.c - DOS and the PC BIOS, as much of them as the game uses.
+ *
+ * Begun as the Reimp oracle's DOS (tools/x86oracle/dos.c at cfb8cec9): the
+ * loader, the EXEC/overlay/terminate machinery that F117.COM's phase chain
+ * needs, the bump allocator, the INT 21h file calls. The oracle served
+ * scripted captures, so it returned "no key" from a blocking read rather
+ * than wait, drew no BIOS text, started the clock at midnight and wrote
+ * saves into the install. Here the game is played, so:
+ *
+ *   - Blocking reads (INT 16h AH=00, INT 21h AH=01/07/08) wait, the way the
+ *     BIOS does: the CPU idles in the call and interrupts keep arriving.
+ *   - INT 10h's text services work (SETUP draws its screens with AH=09).
+ *   - The BIOS keyboard handler translates set-1 scancodes for a US layout
+ *     with the shift states, as the ROM does, instead of being handed the
+ *     ASCII by a script.
+ *   - The tick count starts at the time of day and DOS reports the date.
+ *   - Files the game writes go to a save directory, and reads look there
+ *     first - the same overlay GOG's DOSBox mounts over the install.
+ *   - Every program and overlay placed in memory is announced to the host,
+ *     which is how the recompiled code learns where each module now lives.
+ */
+#include "machine.h"
+#include "x86_sem.h"
 
 #include <ctype.h>
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
-/* DOS error codes we actually return. */
+#ifdef _WIN32
+#include <io.h>
+#include <direct.h>
+#define mkdir_(p) _mkdir(p)
+#else
+#include <dirent.h>
+#include <sys/stat.h>
+#define mkdir_(p) mkdir(p, 0755)
+#endif
+
 #define ERR_BAD_FUNCTION   0x01
 #define ERR_FILE_NOT_FOUND 0x02
 #define ERR_PATH_NOT_FOUND 0x03
@@ -17,9 +48,11 @@
 #define ERR_BAD_FORMAT     0x0B
 #define ERR_NO_MORE_FILES  0x12
 
-/* BIOS data area, segment 0x40. Given as linear addresses. */
+/* BIOS data area, as linear addresses. */
 #define BDA_EQUIPMENT   0x410
 #define BDA_MEM_KB      0x413
+#define BDA_SHIFT       0x417
+#define BDA_SHIFT2      0x418
 #define BDA_KBD_HEAD    0x41A
 #define BDA_KBD_TAIL    0x41C
 #define BDA_KBD_BUF     0x41E   /* 16 words */
@@ -28,64 +61,42 @@
 #define BDA_VIDEO_COLS  0x44A
 #define BDA_PAGE_SIZE   0x44C
 #define BDA_CURSOR_POS  0x450
+#define BDA_CURSOR_TYPE 0x460
 #define BDA_CRTC_BASE   0x463
 #define BDA_TICKS       0x46C
+#define BDA_MIDNIGHT    0x470
 #define BDA_KBD_START   0x480
 #define BDA_KBD_END     0x482
 #define BDA_ROWS_M1     0x484
 #define BDA_CHAR_HEIGHT 0x485
+#define BDA_KBD_FLAGS3  0x496
 
-static int g_text_dirty;
+/* ===================================================================== */
+/* Helpers                                                               */
+/* ===================================================================== */
 
-/* The DOSBox MPU-401 UART surface used by RSOUND.LOG. This is intentionally
- * outside dos_t: that structure is written raw into every machine snapshot.
- * It is reset on each fresh DOS boot; snapshot files keep their existing
- * dos_t layout and do not serialize this peripheral state. */
-static struct {
-    uint8_t queue[16];
-    unsigned head, used;
-    int uart;
-} g_mpu;
-
-static void mpu_queue(uint8_t value)
+void dos_log(machine_t *m, const char *fmt, ...)
 {
-    if (g_mpu.used < sizeof g_mpu.queue) {
-        g_mpu.queue[(g_mpu.head + g_mpu.used) % sizeof g_mpu.queue] = value;
-        g_mpu.used++;
-    }
-}
-
-static dos_t *self(cpu_t *c) { return (dos_t *)c->user; }
-
-static void logf_(dos_t *d, const char *fmt, ...)
-{
-    if (!d->log) return;
+    if (!m->log) return;
     va_list ap;
     va_start(ap, fmt);
-    vfprintf(d->log, fmt, ap);
+    vfprintf(m->log, fmt, ap);
     va_end(ap);
+    fflush(m->log);
 }
 
-/* ---- flags helpers: DOS reports failure via CF ------------------------- */
+static void ok(cpu_t *c) { c->flags = (uint16_t)(c->flags & (uint16_t)(0xFFFFu ^ F_CF)); }
+static void fail(cpu_t *c, uint16_t err) { c->flags |= F_CF; c->r[R_AX] = err; }
 
-static void ok(cpu_t *c) { c->flags = (uint16_t)(c->flags & (uint16_t)(F_CF ^ 0xFFFFu)); }
-static void fail(cpu_t *c, uint16_t err)
+static uint16_t current_psp(const machine_t *m)
 {
-    c->flags |= F_CF;
-    c->r[R_AX] = err;
+    return m->nproc ? m->procs[m->nproc - 1].psp_seg : 0;
 }
 
-static uint16_t current_psp(const dos_t *d)
+const char *dos_current_program(const machine_t *m)
 {
-    return d->nproc ? d->procs[d->nproc - 1].psp_seg : 0;
+    return m->nproc ? m->procs[m->nproc - 1].name : "(none)";
 }
-
-const char *dos_current_program(const dos_t *d)
-{
-    return d->nproc ? d->procs[d->nproc - 1].name : "(none)";
-}
-
-/* ---- guest memory helpers ---------------------------------------------- */
 
 static void guest_str(cpu_t *c, uint16_t seg, uint16_t off, char *out, size_t n)
 {
@@ -103,18 +114,30 @@ static void guest_write(cpu_t *c, uint32_t lin, const uint8_t *p, size_t n)
     for (size_t i = 0; i < n; i++) mem_write8(c, lin + (uint32_t)i, p[i]);
 }
 
-/* Standard DOS output goes through the console device. Keep the text page in
- * video memory as well as logging the bytes: SETUP writes its visible layout
- * with INT 21h, and a final screen dump that only looks at B800 would
- * otherwise report a blank page. */
-static int text_mode(const dos_t *d)
+/* Wait inside a BIOS call: point IP back at the INT instruction and idle.
+ * Interrupts are taken while waiting whatever the caller's IF, as they are
+ * in the ROM routine (which enables them on its own stack frame); the
+ * caller's flags come back unchanged when the call finally completes. */
+static int bios_wait(cpu_t *c)
 {
-    return d->vga_mode <= 3 || d->vga_mode == 7;
+    c->ip = c->op_ip;
+    c->seg[S_CS] = c->op_cs;
+    c->halted = 2;
+    return 1;
 }
 
-static uint32_t text_vram(const dos_t *d)
+/* ===================================================================== */
+/* Text console                                                          */
+/* ===================================================================== */
+
+static int text_mode(const machine_t *m)
 {
-    return d->vga_mode == 7 ? 0xB0000u : 0xB8000u;
+    return m->video_mode <= 3 || m->video_mode == 7;
+}
+
+static uint32_t text_vram(const machine_t *m)
+{
+    return m->video_mode == 7 ? 0xB0000u : 0xB8000u;
 }
 
 static unsigned text_columns(cpu_t *c)
@@ -123,641 +146,602 @@ static unsigned text_columns(cpu_t *c)
     return cols == 40 ? 40u : 80u;
 }
 
-static void text_clear(cpu_t *c, dos_t *d)
+static void text_scroll_up(machine_t *m, unsigned top, unsigned left, unsigned bottom,
+                           unsigned right, unsigned lines, uint8_t attr)
 {
-    if (!text_mode(d)) return;
+    cpu_t *c = &m->cpu;
     const unsigned cols = text_columns(c);
-    const uint32_t base = text_vram(d);
-    for (unsigned i = 0; i < cols * 25u; i++) {
-        mem_write8(c, base + i * 2u, ' ');
-        mem_write8(c, base + i * 2u + 1u, 0x07);
-    }
-    mem_write16(c, BDA_CURSOR_POS, 0);
-    g_text_dirty = 1;
+    const uint32_t base = text_vram(m);
+    if (right >= cols) right = cols - 1;
+    if (bottom > 24) bottom = 24;
+    if (top > bottom || left > right) return;
+    const unsigned height = bottom - top + 1;
+    if (lines == 0 || lines > height) lines = height;
+    for (unsigned r = top; r <= bottom; r++)
+        for (unsigned x = left; x <= right; x++) {
+            uint32_t dst = base + (r * cols + x) * 2u;
+            if (r + lines <= bottom) {
+                uint32_t src = base + ((r + lines) * cols + x) * 2u;
+                mem_write8(c, dst, mem_read8(c, src));
+                mem_write8(c, dst + 1, mem_read8(c, src + 1));
+            } else {
+                mem_write8(c, dst, ' ');
+                mem_write8(c, dst + 1, attr);
+            }
+        }
 }
 
-static void text_scroll(cpu_t *c, dos_t *d, unsigned cols)
+static void text_scroll_down(machine_t *m, unsigned top, unsigned left, unsigned bottom,
+                             unsigned right, unsigned lines, uint8_t attr)
 {
-    const uint32_t base = text_vram(d);
-    for (unsigned i = 0; i < (25u - 1u) * cols * 2u; i++)
-        mem_write8(c, base + i,
-                   mem_read8(c, base + i + cols * 2u));
-    for (unsigned i = (25u - 1u) * cols; i < 25u * cols; i++) {
-        mem_write8(c, base + i * 2u, ' ');
-        mem_write8(c, base + i * 2u + 1u, 0x07);
-    }
-}
-
-static void text_cursor_store(cpu_t *c, unsigned row, unsigned col)
-{
-    mem_write16(c, BDA_CURSOR_POS,
-                (uint16_t)(((row & 0xFFu) << 8) | (col & 0xFFu)));
-}
-
-static void text_output_char(cpu_t *c, dos_t *d, uint8_t ch)
-{
-    if (!text_mode(d)) return;
+    cpu_t *c = &m->cpu;
     const unsigned cols = text_columns(c);
-    const uint32_t base = text_vram(d);
+    const uint32_t base = text_vram(m);
+    if (right >= cols) right = cols - 1;
+    if (bottom > 24) bottom = 24;
+    if (top > bottom || left > right) return;
+    const unsigned height = bottom - top + 1;
+    if (lines == 0 || lines > height) lines = height;
+    for (int r = (int)bottom; r >= (int)top; r--)
+        for (unsigned x = left; x <= right; x++) {
+            uint32_t dst = base + ((unsigned)r * cols + x) * 2u;
+            if (r - (int)lines >= (int)top) {
+                uint32_t src = base + (((unsigned)r - lines) * cols + x) * 2u;
+                mem_write8(c, dst, mem_read8(c, src));
+                mem_write8(c, dst + 1, mem_read8(c, src + 1));
+            } else {
+                mem_write8(c, dst, ' ');
+                mem_write8(c, dst + 1, attr);
+            }
+        }
+}
+
+static void text_output_char(machine_t *m, uint8_t ch)
+{
+    cpu_t *c = &m->cpu;
+    if (!text_mode(m)) return;
+    const unsigned cols = text_columns(c);
+    const uint32_t base = text_vram(m);
     const uint16_t pos = mem_read16(c, BDA_CURSOR_POS);
-    unsigned row = pos >> 8;
-    unsigned col = pos & 0xFFu;
+    unsigned row = pos >> 8, col = pos & 0xFFu;
     if (row >= 25u) row = 24u;
     if (col >= cols) col = cols - 1u;
 
-    if (ch == '\r') {
-        col = 0;
-        g_text_dirty = 1;
-    } else if (ch == '\n') {
-        row++;
-        g_text_dirty = 1;
-    } else if (ch == '\b') {
-        if (col) col--;
-        g_text_dirty = 1;
-    } else if (ch == '\t') {
-        const unsigned stop = (col + 8u) & ~7u;
-        for (unsigned i = col; i < stop; i++) text_output_char(c, d, ' ');
-        return;
-    } else if (ch >= 0x20u) {
+    switch (ch) {
+    case '\r': col = 0; break;
+    case '\n': row++; break;
+    case '\b': if (col) col--; break;
+    case 7:    break;                        /* bell */
+    default: {
         const uint32_t cell = base + (row * cols + col) * 2u;
         mem_write8(c, cell, ch);
-        mem_write8(c, cell + 1u, 0x07);
-        g_text_dirty = 1;
         col++;
-        if (col >= cols) {
-            col = 0;
-            row++;
-        }
+        if (col >= cols) { col = 0; row++; }
+        break;
     }
-
+    }
     if (row >= 25u) {
-        text_scroll(c, d, cols);
+        uint8_t attr = mem_read8(c, base + (24u * cols) * 2u + 1u);
+        text_scroll_up(m, 0, 0, 24, cols - 1, 1, attr ? attr : 0x07);
         row = 24u;
     }
-    text_cursor_store(c, row, col);
+    mem_write16(c, BDA_CURSOR_POS, (uint16_t)(((row & 0xFFu) << 8) | (col & 0xFFu)));
 }
 
-static void trace_text_screen(cpu_t *c, dos_t *d, unsigned ah)
+static void console_text(machine_t *m, const char *s, size_t n)
 {
-    if (!(d->trace_dos & DOS_TRACE_TEXT) || !text_mode(d) || !g_text_dirty)
-        return;
-    const unsigned cols = text_columns(c);
-    const uint32_t base = text_vram(d);
-    if (ah == 0x201u)
-        logf_(d, "[text] before IN 0201h from %s at %04X:%04X\n",
-              dos_current_program(d), c->op_cs, c->op_ip);
-    else if (ah == 0x100u)
-        logf_(d, "[text] at DOS exit from %s at %04X:%04X\n",
-              dos_current_program(d), c->op_cs, c->op_ip);
-    else
-        logf_(d, "[text] before INT 21h/AH=%02X from %s at %04X:%04X\n",
-              ah, dos_current_program(d), c->op_cs, c->op_ip);
-    for (unsigned row = 0; row < 25u; row++) {
-        logf_(d, "[text] %02u:", row);
-        for (unsigned col = 0; col < cols; col++) {
-            const uint32_t cell = base + (row * cols + col) * 2u;
-            logf_(d, " %02X/%02X", mem_read8(c, cell),
-                  mem_read8(c, cell + 1u));
-        }
-        logf_(d, "\n");
+    for (size_t i = 0; i < n; i++) text_output_char(m, (uint8_t)s[i]);
+    if (m->hooks.console) {
+        char buf[600];
+        size_t k = n < sizeof buf - 1 ? n : sizeof buf - 1;
+        memcpy(buf, s, k);
+        buf[k] = 0;
+        m->hooks.console(m->hooks.user, buf);
     }
-    g_text_dirty = 0;
 }
 
-/* ---- path translation -------------------------------------------------- */
+/* ===================================================================== */
+/* Files: the install, overlaid by the save directory                    */
+/* ===================================================================== */
 
-/* Map a DOS path onto a host path inside the data directory. Everything is
- * flattened to the basename and resolved inside data_dir, which is both what
- * the original saw and what keeps the guest from reaching outside the
- * directory the user pointed us at. */
-static void host_path(dos_t *d, const char *dos_path, char *out, size_t n)
+/* The guest's names are flattened to their basename and resolved inside the
+ * directories the user chose, which is both what the game expects (it
+ * lives in one directory) and what keeps it from reaching anywhere else. */
+static const char *dos_basename(const char *p)
 {
-    const char *base = dos_path;
-    for (const char *p = dos_path; *p; p++)
-        if (*p == '\\' || *p == '/' || *p == ':')
-            base = p + 1;
-    snprintf(out, n, "%s/%s", d->data_dir, base);
+    const char *base = p;
+    for (const char *q = p; *q; q++)
+        if (*q == '\\' || *q == '/' || *q == ':') base = q + 1;
+    return base;
 }
 
 /* Case-insensitive open: the original names are upper case and the host
  * filesystem may not be. Tries as given, then upper, then lower. */
-static FILE *open_ci(const char *path, const char *mode)
+static FILE *open_ci(const char *dir, const char *name, const char *mode, char *found, size_t fn)
 {
-    FILE *f = fopen(path, mode);
-    if (f) return f;
-
-    char buf[600];
-    const char *slash = strrchr(path, '/');
-    size_t dirlen = slash ? (size_t)(slash - path + 1) : 0;
-    const char *name = slash ? slash + 1 : path;
-    for (int pass = 0; pass < 2; pass++) {
-        if (dirlen >= sizeof(buf)) return NULL;
-        memcpy(buf, path, dirlen);
+    char path[1100];
+    for (int pass = 0; pass < 3; pass++) {
+        char nm[260];
         size_t i = 0;
-        for (; name[i] && dirlen + i + 1 < sizeof(buf); i++)
-            buf[dirlen + i] = (char)(pass ? tolower((unsigned char)name[i])
-                                          : toupper((unsigned char)name[i]));
-        buf[dirlen + i] = 0;
-        f = fopen(buf, mode);
-        if (f) return f;
+        for (; name[i] && i + 1 < sizeof nm; i++)
+            nm[i] = pass == 0 ? name[i]
+                  : (char)(pass == 1 ? toupper((unsigned char)name[i]) : tolower((unsigned char)name[i]));
+        nm[i] = 0;
+        snprintf(path, sizeof path, "%s/%s", dir, nm);
+        FILE *f = fopen(path, mode);
+        if (f) { if (found) snprintf(found, fn, "%s", path); return f; }
     }
     return NULL;
 }
 
-/* See dos.h. Read-write first, because a file the guest created is one it
- * may still write to; read-only media falls back to read-only, which is
- * what the guest would have had anyway. The same case-insensitive open as
- * the original, so a path recorded on one filesystem reopens on another. */
-/* A restored dos_t carries the data directory of the run that SAVED it.
- * Until 27 September 2026 that silently won over the restoring run's
- * --data: a route given a private copy of the install, so START and END
- * could write Roster.Fil without touching the shared extract, wrote the
- * shared extract anyway. The restoring run's directory is the one it
- * asked for; open handles under the old directory follow it. */
-void dos_rebase_data_dir(dos_t *d, const char *data_dir)
+static int file_exists_ci(const char *dir, const char *name, char *found, size_t fn)
 {
-    char old[sizeof d->data_dir];
-    snprintf(old, sizeof old, "%s", d->data_dir);
-    snprintf(d->data_dir, sizeof d->data_dir, "%s", data_dir);
-    const size_t n = strlen(old);
-    for (int i = 0; i < DOS_MAX_FILES; i++) {
-        dos_file *f = &d->files[i];
-        if (!f->in_use || f->is_device || !n || strncmp(f->path, old, n) != 0)
-            continue;
-        char rest[sizeof f->path];
-        snprintf(rest, sizeof rest, "%s", f->path + n);
-        snprintf(f->path, sizeof f->path, "%s%s", d->data_dir, rest);
+    FILE *f = open_ci(dir, name, "rb", found, fn);
+    if (f) { fclose(f); return 1; }
+    return 0;
+}
+
+static const char *write_dir(const machine_t *m)
+{
+    return m->save_dir[0] ? m->save_dir : m->data_dir;
+}
+
+/* Open for reading: the save directory first, then the install. */
+static FILE *open_read(machine_t *m, const char *name, char *found, size_t fn)
+{
+    FILE *f = NULL;
+    if (m->save_dir[0]) f = open_ci(m->save_dir, name, "rb", found, fn);
+    if (!f) f = open_ci(m->data_dir, name, "rb", found, fn);
+    return f;
+}
+
+/* Open read-write: copy an install file into the save directory first, so
+ * the install itself is never written. */
+static FILE *open_rw(machine_t *m, const char *name, char *found, size_t fn)
+{
+    if (m->save_dir[0]) {
+        FILE *f = open_ci(m->save_dir, name, "rb+", found, fn);
+        if (f) return f;
+        char src[1100];
+        FILE *in = open_ci(m->data_dir, name, "rb", src, sizeof src);
+        if (!in) return NULL;
+        char dst[1100];
+        snprintf(dst, sizeof dst, "%s/%s", m->save_dir, name);
+        FILE *out = fopen(dst, "wb+");
+        if (!out) { fclose(in); return NULL; }
+        char buf[8192];
+        size_t n;
+        while ((n = fread(buf, 1, sizeof buf, in)) > 0) fwrite(buf, 1, n, out);
+        fclose(in);
+        fflush(out);
+        fseek(out, 0, SEEK_SET);
+        if (found) snprintf(found, fn, "%s", dst);
+        return out;
     }
+    return open_ci(m->data_dir, name, "rb+", found, fn);
 }
 
-int dos_reopen_file(dos_t *d, int h, long pos)
+static FILE *open_create(machine_t *m, const char *name, char *found, size_t fn)
 {
-    if (h < 0 || h >= DOS_MAX_FILES) return 0;
-    dos_file *f = &d->files[h];
-    if (!f->in_use || f->is_device) { f->fp = NULL; return 1; }
-    FILE *nf = open_ci(f->path, "rb+");
-    if (!nf) nf = open_ci(f->path, "rb");
-    if (!nf) return 0;
-    if (pos >= 0 && fseek(nf, pos, SEEK_SET) != 0) { fclose(nf); return 0; }
-    f->fp = nf;
-    return 1;
+    char existing[1100];
+    char path[1100];
+    /* Keep the case of a file that already exists there. */
+    if (file_exists_ci(write_dir(m), name, existing, sizeof existing))
+        snprintf(path, sizeof path, "%s", existing);
+    else
+        snprintf(path, sizeof path, "%s/%s", write_dir(m), name);
+    FILE *f = fopen(path, "wb+");
+    if (f && found) snprintf(found, fn, "%s", path);
+    return f;
 }
 
-static uint8_t *read_whole(const char *host, long *out_size)
+static uint8_t *read_whole(machine_t *m, const char *name, long *out_size)
 {
-    FILE *f = open_ci(host, "rb");
+    FILE *f = open_read(m, name, NULL, 0);
     if (!f) return NULL;
     fseek(f, 0, SEEK_END);
     long sz = ftell(f);
     fseek(f, 0, SEEK_SET);
     if (sz <= 0) { fclose(f); return NULL; }
     uint8_t *raw = (uint8_t *)malloc((size_t)sz);
-    if (!raw || fread(raw, 1, (size_t)sz, f) != (size_t)sz) {
-        fclose(f); free(raw); return NULL;
-    }
+    if (!raw || fread(raw, 1, (size_t)sz, f) != (size_t)sz) { fclose(f); free(raw); return NULL; }
     fclose(f);
     *out_size = sz;
     return raw;
 }
 
-/* ---- file handles ------------------------------------------------------ */
-
-static int alloc_handle(dos_t *d)
+static int alloc_handle(machine_t *m)
 {
     for (int i = 5; i < DOS_MAX_FILES; i++)
-        if (!d->files[i].in_use) return i;
+        if (!m->files[i].in_use) return i;
     return -1;
 }
 
-static void close_files_of(dos_t *d, uint16_t owner)
+static void close_files_of(machine_t *m, uint16_t owner)
 {
     for (int i = 5; i < DOS_MAX_FILES; i++)
-        if (d->files[i].in_use && d->files[i].owner == owner) {
-            if (d->files[i].fp) fclose(d->files[i].fp);
-            d->files[i].in_use = 0;
-            d->files[i].fp = NULL;
+        if (m->files[i].in_use && m->files[i].owner == owner) {
+            if (m->files[i].fp) fclose(m->files[i].fp);
+            m->files[i].in_use = 0;
+            m->files[i].fp = NULL;
         }
 }
 
-/* ---- memory allocation -------------------------------------------------
- * A bump allocator over the arena, with ownership. That is sufficient
- * because of how the shell uses memory: it stays resident at the bottom,
- * loads overlays above itself and shrinks them to fit, then EXECs one phase
- * program at a time into everything that is left. Each child is therefore
- * always the topmost allocation, and freeing it on exit reclaims the space
- * exactly as DOS would. */
+/* ---- find first / next ------------------------------------------------
+ * The DTA layout DOS uses: 21 reserved bytes (ours hold the search state),
+ * attribute, time, date, size, 13-byte name. */
 
-static uint16_t arena_top(const dos_t *d)
+static int wild_match(const char *pat, const char *name)
 {
-    uint16_t top = d->arena_base_seg;
+    /* DOS 8.3 matching: '?' any one character, '*' the rest of the part. */
+    char pb[13], pe[4], nb[13], ne[4];
+    const char *dot;
+    size_t n;
+    dot = strchr(pat, '.');
+    n = dot ? (size_t)(dot - pat) : strlen(pat);
+    if (n > 8) n = 8;
+    memcpy(pb, pat, n); pb[n] = 0;
+    snprintf(pe, sizeof pe, "%.3s", dot ? dot + 1 : "");
+    dot = strrchr(name, '.');
+    n = dot ? (size_t)(dot - name) : strlen(name);
+    if (n > 8) return 0;
+    memcpy(nb, name, n); nb[n] = 0;
+    if (dot && strlen(dot + 1) > 3) return 0;
+    snprintf(ne, sizeof ne, "%.3s", dot ? dot + 1 : "");
+    const char *ps[2] = { pb, pe }, *ns[2] = { nb, ne };
+    for (int part = 0; part < 2; part++) {
+        const char *p = ps[part], *q = ns[part];
+        size_t i = 0;
+        for (; p[i]; i++) {
+            if (p[i] == '*') goto next_part;
+            char a = (char)toupper((unsigned char)p[i]);
+            char b = (char)toupper((unsigned char)q[i]);
+            if (a == '?') { if (!q[i]) continue; continue; }
+            if (a != b) return 0;
+        }
+        if (q[i]) return 0;
+    next_part:;
+    }
+    return 1;
+}
+
+typedef struct { char name[13]; long size; } found_file;
+
+static int list_dir(const char *dir, const char *pat, found_file *out, int max)
+{
+    int n = 0;
+#ifdef _WIN32
+    char spec[1100];
+    snprintf(spec, sizeof spec, "%s/*", dir);
+    struct _finddata_t fd;
+    intptr_t h = _findfirst(spec, &fd);
+    if (h == -1) return 0;
+    do {
+        if (fd.attrib & _A_SUBDIR) continue;
+        if (strlen(fd.name) > 12 || !wild_match(pat, fd.name)) continue;
+        if (n < max) {
+            for (size_t i = 0; i <= strlen(fd.name); i++)
+                out[n].name[i] = (char)toupper((unsigned char)fd.name[i]);
+            out[n].size = (long)fd.size;
+            n++;
+        }
+    } while (_findnext(h, &fd) == 0);
+    _findclose(h);
+#else
+    DIR *d = opendir(dir);
+    if (!d) return 0;
+    struct dirent *e;
+    while ((e = readdir(d))) {
+        if (e->d_name[0] == '.' || strlen(e->d_name) > 12 || !wild_match(pat, e->d_name)) continue;
+        if (n < max) {
+            for (size_t i = 0; i <= strlen(e->d_name); i++)
+                out[n].name[i] = (char)toupper((unsigned char)e->d_name[i]);
+            char p[1100]; snprintf(p, sizeof p, "%s/%s", dir, e->d_name);
+            struct stat st; out[n].size = stat(p, &st) == 0 ? (long)st.st_size : 0;
+            n++;
+        }
+    }
+    closedir(d);
+#endif
+    return n;
+}
+
+static found_file g_find[256];
+static int g_find_n, g_find_pos;
+
+static int find_step(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (g_find_pos >= g_find_n) return 0;
+    found_file *f = &g_find[g_find_pos++];
+    uint32_t dta = m->dta;
+    mem_write8(c, dta + 0x15, 0x20);
+    mem_write16(c, dta + 0x16, 0x6000);       /* 12:00:00 */
+    mem_write16(c, dta + 0x18, (uint16_t)(((1992 - 1980) << 9) | (6 << 5) | 5));
+    mem_write16(c, dta + 0x1A, (uint16_t)(f->size & 0xFFFF));
+    mem_write16(c, dta + 0x1C, (uint16_t)((f->size >> 16) & 0xFFFF));
+    for (int i = 0; i < 13; i++) mem_write8(c, dta + 0x1E + (uint32_t)i, 0);
+    for (int i = 0; f->name[i] && i < 12; i++) mem_write8(c, dta + 0x1E + (uint32_t)i, (uint8_t)f->name[i]);
+    return 1;
+}
+
+static void find_first(machine_t *m, const char *pat)
+{
+    g_find_n = g_find_pos = 0;
+    found_file tmp[256];
+    int n1 = m->save_dir[0] ? list_dir(m->save_dir, pat, g_find, 256) : 0;
+    int n2 = list_dir(m->data_dir, pat, tmp, 256);
+    g_find_n = n1;
+    for (int i = 0; i < n2 && g_find_n < 256; i++) {
+        int dup = 0;
+        for (int j = 0; j < n1; j++) if (!strcmp(g_find[j].name, tmp[i].name)) { dup = 1; break; }
+        if (!dup) g_find[g_find_n++] = tmp[i];
+    }
+}
+
+/* ===================================================================== */
+/* Memory allocation                                                     */
+/* ===================================================================== */
+/* A bump allocator over the arena, with ownership - sufficient because of
+ * how the shell uses memory: it stays resident at the bottom, loads overlays
+ * above itself and shrinks them to fit, then EXECs one phase program at a
+ * time into everything that is left. Each child is therefore the topmost
+ * allocation, and freeing it on exit reclaims the space exactly as DOS
+ * would. (The oracle's reasoning, kept with its allocator.) */
+
+static uint16_t arena_top(const machine_t *m)
+{
+    uint16_t top = m->arena_base_seg;
     for (int i = 0; i < DOS_MAX_BLOCKS; i++)
-        if (d->blocks[i].in_use) {
-            uint16_t end = (uint16_t)(d->blocks[i].seg + d->blocks[i].paras);
+        if (m->blocks[i].in_use) {
+            uint16_t end = (uint16_t)(m->blocks[i].seg + m->blocks[i].paras);
             if (end > top) top = end;
         }
     return top;
 }
 
-/* Largest allocation currently possible, in paragraphs. */
-static uint16_t arena_avail(const dos_t *d)
+static uint16_t arena_avail(const machine_t *m)
 {
-    uint16_t top = arena_top(d);
-    /* One paragraph is reserved where the MCB would sit. */
-    return (uint16_t)((d->arena_end_seg > top + 1) ? d->arena_end_seg - top - 1 : 0);
+    uint16_t top = arena_top(m);
+    return (uint16_t)((m->arena_end_seg > top + 1) ? m->arena_end_seg - top - 1 : 0);
 }
 
-static int dos_alloc(dos_t *d, uint16_t paras, uint16_t owner, uint16_t *out_seg)
+static int dos_alloc(machine_t *m, uint16_t paras, uint16_t owner, uint16_t *out_seg)
 {
-    if (paras > arena_avail(d)) return 0;
-    /* Compute the top BEFORE claiming a slot: a recycled slot still carries
-     * the extent of its previous occupant, and marking it in use first made
-     * arena_top() count that stale extent. That phantom cost START.EXE a
-     * third of its memory and produced "Insufficient memory for MCGA
-     * graphics" where real DOS had room to spare. */
-    uint16_t top = arena_top(d);
+    if (paras > arena_avail(m)) return 0;
+    /* The top is computed BEFORE claiming a slot: a recycled slot still
+     * carries its previous occupant's extent. */
+    uint16_t top = arena_top(m);
     for (int i = 0; i < DOS_MAX_BLOCKS; i++) {
-        if (!d->blocks[i].in_use) {
-            d->blocks[i].seg = (uint16_t)(top + 1);
-            d->blocks[i].paras = paras;
-            d->blocks[i].owner = owner;
-            d->blocks[i].in_use = 1;
-            *out_seg = d->blocks[i].seg;
+        if (!m->blocks[i].in_use) {
+            m->blocks[i].seg = (uint16_t)(top + 1);
+            m->blocks[i].paras = paras;
+            m->blocks[i].owner = owner;
+            m->blocks[i].in_use = 1;
+            *out_seg = m->blocks[i].seg;
             return 1;
         }
     }
     return 0;
 }
 
-static dos_block *find_block(dos_t *d, uint16_t seg)
+static dos_block *find_block(machine_t *m, uint16_t seg)
 {
     for (int i = 0; i < DOS_MAX_BLOCKS; i++)
-        if (d->blocks[i].in_use && d->blocks[i].seg == seg) return &d->blocks[i];
+        if (m->blocks[i].in_use && m->blocks[i].seg == seg) return &m->blocks[i];
     return NULL;
 }
 
-static void free_blocks_of(dos_t *d, uint16_t owner)
+static void free_blocks_of(machine_t *m, uint16_t owner)
 {
     for (int i = 0; i < DOS_MAX_BLOCKS; i++)
-        if (d->blocks[i].in_use && d->blocks[i].owner == owner)
-            d->blocks[i].in_use = 0;
+        if (m->blocks[i].in_use && m->blocks[i].owner == owner)
+            m->blocks[i].in_use = 0;
 }
 
-/* The most a given block could grow to without colliding with the block
- * above it or the end of the arena. */
-static uint16_t block_max_paras(const dos_t *d, const dos_block *b)
+static uint16_t block_max_paras(const machine_t *m, const dos_block *b)
 {
-    uint16_t limit = d->arena_end_seg;
+    uint16_t limit = m->arena_end_seg;
     for (int i = 0; i < DOS_MAX_BLOCKS; i++) {
-        const dos_block *o = &d->blocks[i];
+        const dos_block *o = &m->blocks[i];
         if (o->in_use && o != b && o->seg > b->seg && (uint16_t)(o->seg - 1) < limit)
-            limit = (uint16_t)(o->seg - 1);     /* leave its MCB paragraph */
+            limit = (uint16_t)(o->seg - 1);
     }
     return (uint16_t)(limit - b->seg);
 }
 
-/* ---- BIOS keyboard ring buffer ----------------------------------------- */
+/* ===================================================================== */
+/* BIOS keyboard                                                         */
+/* ===================================================================== */
 
-static uint16_t kbd_rd16(cpu_t *c, uint32_t a) { return mem_read16(c, a); }
-
-int dos_push_key(dos_t *d, uint8_t ascii, uint8_t scancode)
+static int kbd_push(machine_t *m, uint16_t word)
 {
-    cpu_t *c = d->cpu;
-    uint16_t head = kbd_rd16(c, BDA_KBD_HEAD);
-    uint16_t tail = kbd_rd16(c, BDA_KBD_TAIL);
+    cpu_t *c = &m->cpu;
+    uint16_t start = mem_read16(c, BDA_KBD_START), end = mem_read16(c, BDA_KBD_END);
+    uint16_t head = mem_read16(c, BDA_KBD_HEAD), tail = mem_read16(c, BDA_KBD_TAIL);
     uint16_t next = (uint16_t)(tail + 2);
-    if (next >= (BDA_KBD_BUF_END - 0x400)) next = BDA_KBD_BUF - 0x400;
+    if (next >= end) next = start;
     if (next == head) return 0;                     /* buffer full */
-    mem_write16(c, 0x400u + tail, (uint16_t)(((uint16_t)scancode << 8) | ascii));
+    mem_write16(c, 0x400u + tail, word);
     mem_write16(c, BDA_KBD_TAIL, next);
     return 1;
 }
 
-static int kbd_pop(dos_t *d, uint16_t *key, int remove)
+static int kbd_pop(machine_t *m, uint16_t *key, int remove)
 {
-    cpu_t *c = d->cpu;
-    uint16_t head = kbd_rd16(c, BDA_KBD_HEAD);
-    uint16_t tail = kbd_rd16(c, BDA_KBD_TAIL);
+    cpu_t *c = &m->cpu;
+    uint16_t start = mem_read16(c, BDA_KBD_START), end = mem_read16(c, BDA_KBD_END);
+    uint16_t head = mem_read16(c, BDA_KBD_HEAD), tail = mem_read16(c, BDA_KBD_TAIL);
     if (head == tail) return 0;
     *key = mem_read16(c, 0x400u + head);
     if (remove) {
         uint16_t next = (uint16_t)(head + 2);
-        if (next >= (BDA_KBD_BUF_END - 0x400)) next = BDA_KBD_BUF - 0x400;
+        if (next >= end) next = start;
         mem_write16(c, BDA_KBD_HEAD, next);
     }
     return 1;
 }
 
-/* Set-1 scancodes for the characters a scripted run is likely to type. */
-static uint8_t scancode_for(uint8_t ch)
+/* US layout, set 1, scancodes 01..58: normal, shifted, ctrl, alt words.
+ * The high byte of each word is the scancode the BIOS reports. 0 = none. */
+typedef struct { uint16_t n, s, c, a; } keymap;
+static const keymap KEYS[0x59] = {
+    [0x01] = {0x011B,0x011B,0x011B,0x0100},
+    [0x02] = {0x0231,0x0221,0x0000,0x7800}, [0x03] = {0x0332,0x0340,0x0300,0x7900},
+    [0x04] = {0x0433,0x0423,0x0000,0x7A00}, [0x05] = {0x0534,0x0524,0x0000,0x7B00},
+    [0x06] = {0x0635,0x0625,0x0000,0x7C00}, [0x07] = {0x0736,0x075E,0x071E,0x7D00},
+    [0x08] = {0x0837,0x0826,0x0000,0x7E00}, [0x09] = {0x0938,0x092A,0x0000,0x7F00},
+    [0x0A] = {0x0A39,0x0A28,0x0000,0x8000}, [0x0B] = {0x0B30,0x0B29,0x0000,0x8100},
+    [0x0C] = {0x0C2D,0x0C5F,0x0C1F,0x8200}, [0x0D] = {0x0D3D,0x0D2B,0x0000,0x8300},
+    [0x0E] = {0x0E08,0x0E08,0x0E7F,0x0E00}, [0x0F] = {0x0F09,0x0F00,0x9400,0xA500},
+    [0x10] = {0x1071,0x1051,0x1011,0x1000}, [0x11] = {0x1177,0x1157,0x1117,0x1100},
+    [0x12] = {0x1265,0x1245,0x1205,0x1200}, [0x13] = {0x1372,0x1352,0x1312,0x1300},
+    [0x14] = {0x1474,0x1454,0x1414,0x1400}, [0x15] = {0x1579,0x1559,0x1519,0x1500},
+    [0x16] = {0x1675,0x1655,0x1615,0x1600}, [0x17] = {0x1769,0x1749,0x1709,0x1700},
+    [0x18] = {0x186F,0x184F,0x180F,0x1800}, [0x19] = {0x1970,0x1950,0x1910,0x1900},
+    [0x1A] = {0x1A5B,0x1A7B,0x1A1B,0x1A00}, [0x1B] = {0x1B5D,0x1B7D,0x1B1D,0x1B00},
+    [0x1C] = {0x1C0D,0x1C0D,0x1C0A,0x1C00},
+    [0x1E] = {0x1E61,0x1E41,0x1E01,0x1E00}, [0x1F] = {0x1F73,0x1F53,0x1F13,0x1F00},
+    [0x20] = {0x2064,0x2044,0x2004,0x2000}, [0x21] = {0x2166,0x2146,0x2106,0x2100},
+    [0x22] = {0x2267,0x2247,0x2207,0x2200}, [0x23] = {0x2368,0x2348,0x2308,0x2300},
+    [0x24] = {0x246A,0x244A,0x240A,0x2400}, [0x25] = {0x256B,0x254B,0x250B,0x2500},
+    [0x26] = {0x266C,0x264C,0x260C,0x2600}, [0x27] = {0x273B,0x273A,0x0000,0x2700},
+    [0x28] = {0x2827,0x2822,0x0000,0x2800}, [0x29] = {0x2960,0x297E,0x0000,0x2900},
+    [0x2B] = {0x2B5C,0x2B7C,0x2B1C,0x2B00},
+    [0x2C] = {0x2C7A,0x2C5A,0x2C1A,0x2C00}, [0x2D] = {0x2D78,0x2D58,0x2D18,0x2D00},
+    [0x2E] = {0x2E63,0x2E43,0x2E03,0x2E00}, [0x2F] = {0x2F76,0x2F56,0x2F16,0x2F00},
+    [0x30] = {0x3062,0x3042,0x3002,0x3000}, [0x31] = {0x316E,0x314E,0x310E,0x3100},
+    [0x32] = {0x326D,0x324D,0x320D,0x3200}, [0x33] = {0x332C,0x333C,0x0000,0x3300},
+    [0x34] = {0x342E,0x343E,0x0000,0x3400}, [0x35] = {0x352F,0x353F,0x0000,0x3500},
+    [0x37] = {0x372A,0x372A,0x9600,0x3700},
+    [0x39] = {0x3920,0x3920,0x3920,0x3920},
+    [0x3B] = {0x3B00,0x5400,0x5E00,0x6800}, [0x3C] = {0x3C00,0x5500,0x5F00,0x6900},
+    [0x3D] = {0x3D00,0x5600,0x6000,0x6A00}, [0x3E] = {0x3E00,0x5700,0x6100,0x6B00},
+    [0x3F] = {0x3F00,0x5800,0x6200,0x6C00}, [0x40] = {0x4000,0x5900,0x6300,0x6D00},
+    [0x41] = {0x4100,0x5A00,0x6400,0x6E00}, [0x42] = {0x4200,0x5B00,0x6500,0x6F00},
+    [0x43] = {0x4300,0x5C00,0x6600,0x7000}, [0x44] = {0x4400,0x5D00,0x6700,0x7100},
+    /* keypad: the cursor words here; with NumLock xor Shift, the digits */
+    [0x47] = {0x4700,0x4737,0x7700,0x0000}, [0x48] = {0x4800,0x4838,0x8D00,0x0000},
+    [0x49] = {0x4900,0x4939,0x8400,0x0000}, [0x4A] = {0x4A2D,0x4A2D,0x8E00,0x4A00},
+    [0x4B] = {0x4B00,0x4B34,0x7300,0x0000}, [0x4C] = {0x4C00,0x4C35,0x8F00,0x0000},
+    [0x4D] = {0x4D00,0x4D36,0x7400,0x0000}, [0x4E] = {0x4E2B,0x4E2B,0x9000,0x4E00},
+    [0x4F] = {0x4F00,0x4F31,0x7500,0x0000}, [0x50] = {0x5000,0x5032,0x9100,0x0000},
+    [0x51] = {0x5100,0x5133,0x7600,0x0000}, [0x52] = {0x5200,0x5230,0x9200,0x0000},
+    [0x53] = {0x5300,0x532E,0x9300,0x0000},
+    [0x57] = {0x8500,0x8700,0x8900,0x8B00}, [0x58] = {0x8600,0x8800,0x8A00,0x8C00},
+};
+
+/* The ROM's INT 9 translation step, reached from the BIOS stub through
+ * INT F9h with the scancode in AL (the stub read port 60 for it). */
+static void bios_key_irq(machine_t *m)
 {
-    static const char row1[] = "1234567890-=";
-    static const char row2[] = "qwertyuiop[]";
-    static const char row3[] = "asdfghjkl;'`";
-    static const char row4[] = "\\zxcvbnm,./";
-    const char *p;
-    ch = (uint8_t)tolower(ch);
-    if ((p = strchr(row1, ch)) && ch) return (uint8_t)(0x02 + (p - row1));
-    if ((p = strchr(row2, ch)) && ch) return (uint8_t)(0x10 + (p - row2));
-    if ((p = strchr(row3, ch)) && ch) return (uint8_t)(0x1E + (p - row3));
-    if ((p = strchr(row4, ch)) && ch) return (uint8_t)(0x2B + (p - row4));
-    /* Shifted symbols map to the key that carries them. */
-    {
-        static const char shift1[] = "!@#$%^&*()_+";
-        static const char shift2[] = "{}";
-        static const char shift3[] = ":\"~";
-        static const char shift4[] = "|<>?";
-        if ((p = strchr(shift1, ch)) && ch) return (uint8_t)(0x02 + (p - shift1));
-        if ((p = strchr(shift2, ch)) && ch) return (uint8_t)(0x1A + (p - shift2));
-        if ((p = strchr(shift3, ch)) && ch) return (uint8_t)(0x27 + (p - shift3));
-        if (ch == '|') return 0x2B;
-        if ((p = strchr(shift4 + 1, ch)) && ch) return (uint8_t)(0x33 + (p - (shift4 + 1)));
+    cpu_t *c = &m->cpu;
+    uint8_t sc = get_r8(c, R_AL);
+    uint8_t st = mem_read8(c, BDA_SHIFT);
+    uint8_t st2 = mem_read8(c, BDA_SHIFT2);
+    uint8_t f3 = mem_read8(c, BDA_KBD_FLAGS3);
+    const int e0 = (f3 & 0x02) != 0;
+
+    if (sc == 0xE0) { mem_write8(c, BDA_KBD_FLAGS3, (uint8_t)(f3 | 0x02)); return; }
+    if (sc == 0xE1) return;
+    mem_write8(c, BDA_KBD_FLAGS3, (uint8_t)(f3 & ~0x02));
+
+    const int brk = (sc & 0x80) != 0;
+    const uint8_t code = (uint8_t)(sc & 0x7F);
+
+    switch (code) {
+    case 0x2A: case 0x36:                   /* shifts (E0 2A is a fake shift) */
+        if (e0) return;
+        if (brk) st &= (uint8_t)~(code == 0x2A ? 0x02 : 0x01);
+        else     st |= (uint8_t)(code == 0x2A ? 0x02 : 0x01);
+        mem_write8(c, BDA_SHIFT, st);
+        return;
+    case 0x1D:
+        if (brk) st &= (uint8_t)~0x04; else st |= 0x04;
+        if (!e0) { if (brk) st2 &= (uint8_t)~0x01; else st2 |= 0x01; }
+        mem_write8(c, BDA_SHIFT, st); mem_write8(c, BDA_SHIFT2, st2);
+        return;
+    case 0x38:
+        if (brk) st &= (uint8_t)~0x08; else st |= 0x08;
+        if (!e0) { if (brk) st2 &= (uint8_t)~0x02; else st2 |= 0x02; }
+        mem_write8(c, BDA_SHIFT, st); mem_write8(c, BDA_SHIFT2, st2);
+        return;
+    case 0x3A: case 0x45: case 0x46: {      /* lock keys toggle on make */
+        uint8_t bit = code == 0x3A ? 0x40 : code == 0x45 ? 0x20 : 0x10;
+        uint8_t held = code == 0x3A ? 0x40 : code == 0x45 ? 0x20 : 0x10;
+        if (brk) { st2 &= (uint8_t)~held; }
+        else if (!(st2 & held)) { st ^= bit; st2 |= held; }
+        mem_write8(c, BDA_SHIFT, st); mem_write8(c, BDA_SHIFT2, st2);
+        return;
     }
-    switch (ch) {
-    case '\r': return 0x1C;
-    case 0x1B: return 0x01;
-    case '\t': return 0x0F;
-    case ' ':  return 0x39;
-    case '\b': return 0x0E;
-    default:   return 0;
-    }
-}
-
-/* Does typing `ch` need the shift key held? */
-static int shifted_char(uint8_t ch)
-{
-    return (ch >= 'A' && ch <= 'Z') || (ch && strchr("!@#$%^&*()_+{}:\"~|<>?", ch) != NULL);
-}
-
-static void kbd_enqueue_m(dos_t *d, uint8_t code, uint8_t ascii, uint64_t due,
-                          uint8_t shift_set, uint8_t shift_clear)
-{
-    if (d->kbd_qn >= (int)(sizeof(d->kbd_q) / sizeof(d->kbd_q[0]))) return;
-    int slot = (d->kbd_qh + d->kbd_qn) % (int)(sizeof(d->kbd_q) / sizeof(d->kbd_q[0]));
-    d->kbd_q[slot].code = code;
-    d->kbd_q[slot].ascii = ascii;
-    d->kbd_q[slot].due_tick = due;
-    d->kbd_q[slot].shift_set = shift_set;
-    d->kbd_q[slot].shift_clear = shift_clear;
-    d->kbd_qn++;
-}
-
-static void kbd_enqueue(dos_t *d, uint8_t code, uint8_t ascii, uint64_t due)
-{
-    kbd_enqueue_m(d, code, ascii, due, 0, 0);
-}
-
-void dos_kbd_type(dos_t *d, const char *keys, int hold_ticks)
-{
-    if (hold_ticks < 1) hold_ticks = 1;
-    uint64_t t = d->kbd_cursor > d->tick_irq_count ? d->kbd_cursor : d->tick_irq_count;
-    for (const char *s = keys; *s; s++) {
-        uint8_t ch = (uint8_t)*s, ascii, scan;
-        int extended = 0, alt = 0, fshift = 0, numpad = 0;
-        if (ch == '\\' && s[1]) {
-            s++;
-            switch (*s) {
-            case 'r': ch = '\r'; break;
-            case 'b': ch = 0x08; break; /* BIOS Backspace: ASCII 8 */
-            case 'e': ch = 0x1B; break;
-            case 't': ch = '\t'; break;
-            case '\\': ch = '\\'; break;
-            case 'U': ch = 0x48; extended = 1; break;
-            case 'D': ch = 0x50; extended = 1; break;
-            case 'L': ch = 0x4B; extended = 1; break;
-            case 'R': ch = 0x4D; extended = 1; break;
-            case 'X': ch = 0x53; extended = 1; break;
-            case 'H': ch = 0x47; extended = 1; break;
-            case 'I': ch = 0x52; extended = 1; break;   /* Ins  */
-            case 'E': ch = 0x4F; extended = 1; break;   /* End  */
-            case 'P': ch = 0x49; extended = 1; break;   /* PgUp */
-            case 'N': ch = 0x51; extended = 1; break;   /* PgDn */
-            /* Function keys, \1 to \9 and \0 for F10. Scancodes 3B..44,
-             * with no ASCII - the same shape as the cursor keys above, and
-             * the flight engine's own INT 9 reads the scancode anyway. F2
-             * cycles the right-hand display at VGAME 0x0CD7E, which is the
-             * only way into display mode 2 and therefore the only way to
-             * reach the flag at [0xE588]. */
-            case '1': case '2': case '3': case '4': case '5':
-            case '6': case '7': case '8': case '9':
-                ch = (uint8_t)(0x3B + (*s - '1')); extended = 1; break;
-            case '0': ch = 0x44; extended = 1; break;
-            /* \sN - Shift held over function key N (\s1..\s9, \s0 for
-             * F10), the view keys Shift-F1..F4 among them. Like \a, the
-             * modifier is the BIOS shift byte's bit 1, not an injected 0x2A
-             * (inside VGAME's keypad range); bios_key_irq turns the F-key
-             * into 0x54.. the way a real BIOS does, which is what VGAME
-             * reads through INT 16h. */
-            case 's':
-                if (s[1] >= '0' && s[1] <= '9') {
-                    s++;
-                    ch = (uint8_t)(*s == '0' ? 0x44 : 0x3B + (*s - '1'));
-                    extended = 1;
-                    fshift = 1;
-                }
-                break;
-            /* \aX - Alt held over the key X, which BIOS reports as that
-             * key's scancode with an ASCII of ZERO. Without this there is
-             * no way to type the Alt bindings at all, and VGAME has a
-             * whole chain of them (0x0C907: Alt-R/I/J/K/L/N, the moving
-             * map's pan and zoom). The shift state at 0040:0017 is already
-             * maintained for scancode 0x38 by bios_key_irq below, so the
-             * only thing missing was a spelling. */
-            case 'a':
-                if (s[1]) {
-                    alt = 1;
-                    s++;
-                    ch = (uint8_t)*s;
-                }
-                break;
-            /* \kN - keypad key N (0-9 or .) with NumLock on: its own
-             * scancode, the digit as the ASCII, and the shift byte's
-             * NumLock bit set over the key. VGAME's INT 9 then leaves the
-             * stick alone (NumLock and Shift disagree) and the BIOS queues
-             * the digit word, 0x4838 for keypad 8. */
-            case 'k':
-                if (s[1] && strchr("0123456789.", s[1])) {
-                    static const char pad[] = "0123456789.";
-                    static const uint8_t code[11] = { 0x52, 0x4F, 0x50, 0x51,
-                        0x4B, 0x4C, 0x4D, 0x47, 0x48, 0x49, 0x53 };
-                    s++;
-                    ch = (uint8_t)*s;
-                    numpad = code[strchr(pad, *s) - pad];
-                }
-                break;
-            default:  ch = (uint8_t)*s; break;
-            }
-        }
-        if (numpad) { scan = (uint8_t)numpad; ascii = ch; }
-        else if (alt) { scan = scancode_for(ch); ascii = 0; }
-        else if (extended) { scan = ch; ascii = 0; }
-        else { scan = scancode_for(ch); ascii = ch; }
-        if (!scan) continue;
-        int shift = !extended && !alt && !numpad && shifted_char(ch);
-        if (shift) kbd_enqueue(d, 0x2A, 0, t);
-        /* Alt is NOT injected as scancode 0x38. A guest that installs its
-         * own INT 9 - the flight engine does - reads port 60h itself and
-         * takes its modifiers from the BIOS shift byte at 0040:0017, so an
-         * injected 0x38 is not seen as a modifier at all. Worse, 0x38 sits
-         * inside the 0x29..0x51 range VGAME's keypad table translates
-         * (0x113E8), so injecting it deflects the virtual joystick and the
-         * Alt key never reaches its own handler. Setting the byte's bit 3
-         * as the make code is delivered, and clearing it after the break,
-         * is what the real keyboard does from the guest's point of view.
-         *
-         * This replaces the first attempt, which did inject 0x38 and which
-         * put 0x26 into [0x2CD6] instead of running any handler. */
-        const uint8_t mods = (uint8_t)((alt ? 0x08 : 0) | (fshift ? 0x02 : 0)
-                                       | (numpad ? 0x20 : 0));
-        kbd_enqueue_m(d, scan, ascii, t, mods, 0);
-        kbd_enqueue_m(d, (uint8_t)(scan | 0x80), 0, t + (uint64_t)hold_ticks,
-                      0, mods);
-        if (shift) kbd_enqueue(d, 0xAA, 0, t + (uint64_t)hold_ticks);
-        t += (uint64_t)hold_ticks + 1;
-    }
-    d->kbd_cursor = t;
-}
-
-/* The BIOS INT 9 handler's job, reached through the INT F9h stub: keep the
- * shift state at 0040:0017 and put translated make codes into the ring
- * buffer. Break codes and the shift keys themselves produce no key. */
-static void bios_key_irq(cpu_t *c, dos_t *d)
-{
-    uint8_t sc = d->port60;
-    uint8_t st = mem_read8(c, 0x417);
-    switch (sc) {
-    case 0x2A: st |= 0x02; break;          /* left shift down */
-    case 0x36: st |= 0x01; break;          /* right shift down */
-    case 0xAA: st &= (uint8_t)~0x02; break;
-    case 0xB6: st &= (uint8_t)~0x01; break;
-    case 0x1D: st |= 0x04; break;          /* ctrl */
-    case 0x9D: st &= (uint8_t)~0x04; break;
-    case 0x38: st |= 0x08; break;          /* alt */
-    case 0xB8: st &= (uint8_t)~0x08; break;
-    default:
-        if (!(sc & 0x80) && sc != 0xE0 && sc != 0xE1) {
-            uint8_t code = sc;
-            /* A real BIOS reports F1..F10 under a modifier as their own
-             * codes: Alt 0x68.., Ctrl 0x5E.., Shift 0x54... VGAME reads
-             * keys through INT 16h, so Shift-F1 (its view key 0x5400)
-             * does not exist without this. */
-            if (sc >= 0x3B && sc <= 0x44) {
-                if (st & 0x08) code = (uint8_t)(sc + 0x2D);
-                else if (st & 0x04) code = (uint8_t)(sc + 0x23);
-                else if (st & 0x03) code = (uint8_t)(sc + 0x19);
-            }
-            dos_push_key(d, d->port60_ascii, code);
-        }
+    case 0x52:                              /* Insert toggles too, and is a key */
+        if (!brk && !(st & 0x0C)) st ^= 0x80;
+        mem_write8(c, BDA_SHIFT, st);
         break;
+    default: break;
     }
-    mem_write8(c, 0x417, st);
-}
+    if (brk) return;
+    if (code >= sizeof KEYS / sizeof KEYS[0]) return;
 
-int dos_poll_pending(const dos_t *d)
-{
-    const cpu_t *c = d->cpu;
-    if (!(c->flags & F_IF)) return 0;
-    if (d->irq0_pending && !d->irq0_in_service) return 1;         /* dos_timer_poll */
-    return d->kbd_qn && !d->irq1_in_service && !d->irq0_in_service
-        && d->kbd_q[d->kbd_qh].due_tick <= d->tick_irq_count;   /* dos_kbd_poll */
-}
-
-void dos_kbd_poll(dos_t *d)
-{
-    cpu_t *c = d->cpu;
-    if (!d->kbd_qn || d->irq1_in_service || d->irq0_in_service || !(c->flags & F_IF)) return;
-    if (d->kbd_q[d->kbd_qh].due_tick > d->tick_irq_count) return;
-    uint8_t code = d->kbd_q[d->kbd_qh].code, ascii = d->kbd_q[d->kbd_qh].ascii;
-    /* The BIOS shift byte moves with the key, before the guest's INT 9 sees
-     * the scancode - see dos_kbd_type on why Alt cannot be injected as a
-     * scancode. Set on the make, cleared on the break. */
-    uint8_t sh_set = d->kbd_q[d->kbd_qh].shift_set;
-    uint8_t sh_clr = d->kbd_q[d->kbd_qh].shift_clear;
-    if (sh_set || sh_clr) {
-        uint8_t st = mem_read8(c, 0x417);
-        st = (uint8_t)((st | sh_set) & (uint8_t)~sh_clr);
-        mem_write8(c, 0x417, st);
+    const keymap *k = &KEYS[code];
+    uint16_t w;
+    const int shift = (st & 0x03) != 0, ctrl = (st & 0x04) != 0, alt = (st & 0x08) != 0;
+    if (e0) {
+        /* The grey keys: the cursor block reports E0 in the low byte. */
+        if (code == 0x1C) w = ctrl ? 0xE00A : 0xE00D;
+        else if (code == 0x35) w = 0xE02F;
+        else if (code >= 0x47 && code <= 0x53) {
+            if (alt) w = (uint16_t)((code + 0x50) << 8);
+            else if (ctrl) w = (uint16_t)(k->c & 0xFF00);
+            else w = (uint16_t)((code << 8) | 0xE0);
+        } else return;
+    } else if (alt) w = k->a;
+    else if (ctrl) w = k->c;
+    else if (code >= 0x47 && code <= 0x53 && code != 0x4A && code != 0x4E) {
+        const int num = (st & 0x20) != 0;
+        w = (num != shift) ? k->s : k->n;
+    } else {
+        int sh = shift;
+        uint8_t lo = (uint8_t)k->n;
+        if ((st & 0x40) && lo >= 'a' && lo <= 'z') sh = !sh;   /* Caps Lock */
+        w = sh ? k->s : k->n;
     }
-    d->kbd_qh = (d->kbd_qh + 1) % (int)(sizeof(d->kbd_q) / sizeof(d->kbd_q[0]));
-    d->kbd_qn--;
-    uint16_t off = mem_read16(c, 9 * 4), seg = mem_read16(c, 9 * 4 + 2);
-    d->port60 = code;
-    d->port60_ascii = ascii;
-    d->irq1_in_service = 1;
-    d->kbd_delivered++;
-    cpu_push16(c, c->flags);
-    cpu_push16(c, c->seg[S_CS]);
-    cpu_push16(c, c->ip);
-    c->flags = (uint16_t)(c->flags & (uint16_t)((F_IF | F_TF) ^ 0xFFFFu));
-    c->seg[S_CS] = seg;
-    c->ip = off;
+    if (w) kbd_push(m, w);
 }
 
-void dos_push_keys(dos_t *d, const char *s)
-{
-    for (; *s; s++) {
-        uint8_t ch = (uint8_t)*s;
-        if (ch == '\\' && s[1]) {
-            s++;
-            switch (*s) {
-            case 'r': ch = '\r'; break;
-            case 'n': ch = '\r'; break;
-            case 'e': ch = 0x1B; break;
-            case 't': ch = '\t'; break;
-            case '\\': ch = '\\'; break;
-            /* Extended keys: ASCII 0 with the set-1 scancode, as the BIOS
-             * stores them. The front end moves its pointer with the arrows. */
-            case 'U': dos_push_key(d, 0, 0x48); continue;   /* up    */
-            case 'D': dos_push_key(d, 0, 0x50); continue;   /* down  */
-            case 'L': dos_push_key(d, 0, 0x4B); continue;   /* left  */
-            case 'R': dos_push_key(d, 0, 0x4D); continue;   /* right */
-            case 'X': dos_push_key(d, 0, 0x53); continue;   /* delete */
-            case 'H': dos_push_key(d, 0, 0x47); continue;   /* home  */
-            case 'I': dos_push_key(d, 0, 0x52); continue;   /* insert */
-            case 'E': dos_push_key(d, 0, 0x4F); continue;   /* end   */
-            case 'P': dos_push_key(d, 0, 0x49); continue;   /* pgup  */
-            case 'N': dos_push_key(d, 0, 0x51); continue;   /* pgdn  */
-            /* Function keys, the same spelling dos_kbd_type uses, so the
-             * two paths cannot mean different things by \2. */
-            case '1': case '2': case '3': case '4': case '5':
-            case '6': case '7': case '8': case '9':
-                dos_push_key(d, 0, (uint8_t)(0x3B + (*s - '1'))); continue;
-            case '0': dos_push_key(d, 0, 0x44); continue;   /* F10 */
-            default:  ch = (uint8_t)*s; break;
-            }
-        }
-        dos_push_key(d, ch, scancode_for(ch));
-    }
-}
+/* ===================================================================== */
+/* Program loading                                                       */
+/* ===================================================================== */
 
-/* ---- program loading --------------------------------------------------- */
-
-/* Everything the loader needs to know about how to start a program. */
 typedef struct {
     uint16_t env_seg;
-    uint16_t cmd_seg, cmd_off;      /* far pointer to a DOS command tail, or 0:0 */
+    uint16_t cmd_seg, cmd_off;
     uint16_t fcb1_seg, fcb1_off;
     uint16_t fcb2_seg, fcb2_off;
     uint16_t parent_psp;
 } exec_params;
 
-static void build_psp(dos_t *d, uint16_t psp, uint16_t top_seg,
+static void build_psp(machine_t *m, uint16_t psp, uint16_t top_seg,
                       const exec_params *ep, uint16_t ret_cs, uint16_t ret_ip)
 {
-    cpu_t *c = d->cpu;
+    cpu_t *c = &m->cpu;
     for (int i = 0; i < 0x100; i++) mem_write8(c, phys(psp, (uint16_t)i), 0);
     mem_write8(c, phys(psp, 0x00), 0xCD);          /* INT 20h */
     mem_write8(c, phys(psp, 0x01), 0x20);
-    mem_write16(c, phys(psp, 0x02), top_seg);       /* first segment past the block */
-    /* Terminate address: where control goes when the program ends. */
-    mem_write16(c, phys(psp, 0x0A), ret_ip);
+    mem_write16(c, phys(psp, 0x02), top_seg);
+    mem_write16(c, phys(psp, 0x0A), ret_ip);        /* terminate address */
     mem_write16(c, phys(psp, 0x0C), ret_cs);
     mem_write16(c, phys(psp, 0x16), ep->parent_psp);
+    for (int i = 0; i < 20; i++)                    /* job file table */
+        mem_write8(c, phys(psp, (uint16_t)(0x18 + i)), (uint8_t)(i < 5 ? i : 0xFF));
     mem_write16(c, phys(psp, 0x2C), ep->env_seg);
+    mem_write16(c, phys(psp, 0x32), 20);
+    mem_write16(c, phys(psp, 0x34), 0x18);
+    mem_write16(c, phys(psp, 0x36), psp);
     mem_write8(c, phys(psp, 0x50), 0xCD);          /* INT 21h ; RETF */
     mem_write8(c, phys(psp, 0x51), 0x21);
     mem_write8(c, phys(psp, 0x52), 0xCB);
 
-    /* Default FCBs, then whatever the caller supplied. */
     if (ep->fcb1_seg || ep->fcb1_off)
         for (int i = 0; i < 16; i++)
             mem_write8(c, phys(psp, (uint16_t)(0x5C + i)),
@@ -767,7 +751,6 @@ static void build_psp(dos_t *d, uint16_t psp, uint16_t top_seg,
             mem_write8(c, phys(psp, (uint16_t)(0x6C + i)),
                        mem_read8(c, phys(ep->fcb2_seg, (uint16_t)(ep->fcb2_off + i))));
 
-    /* Command tail: length byte, text, CR. */
     if (ep->cmd_seg || ep->cmd_off) {
         uint8_t len = mem_read8(c, phys(ep->cmd_seg, ep->cmd_off));
         if (len > 126) len = 126;
@@ -782,16 +765,12 @@ static void build_psp(dos_t *d, uint16_t psp, uint16_t top_seg,
     }
 }
 
-/* Load a program from `host` into a fresh block and set the CPU up to run
- * it. Returns a DOS error code, or 0 on success with *psp_out filled in.
- * The CPU is not touched until success is certain. */
-static uint16_t load_program(dos_t *d, const char *host, const exec_params *ep,
-                             uint16_t ret_cs, uint16_t ret_ip, uint16_t *psp_out,
-                             const char *name_for_log)
+static uint16_t load_program(machine_t *m, const char *name, const exec_params *ep,
+                             uint16_t ret_cs, uint16_t ret_ip, uint16_t *psp_out)
 {
-    cpu_t *c = d->cpu;
+    cpu_t *c = &m->cpu;
     long fsz = 0;
-    uint8_t *raw = read_whole(host, &fsz);
+    uint8_t *raw = read_whole(m, dos_basename(name), &fsz);
     if (!raw) return ERR_FILE_NOT_FOUND;
 
     int is_mz = (fsz >= 28 && raw[0] == 'M' && raw[1] == 'Z');
@@ -810,11 +789,11 @@ static uint16_t load_program(dos_t *d, const char *host, const exec_params *ep,
         body = img_size - hdr_size;
     }
 
-    /* Memory: DOS gives a program the largest free block unless maxalloc
-     * asks for less. Every phase program here asks for everything. */
+    /* DOS gives a program the largest free block unless maxalloc asks for
+     * less. Every phase program here asks for everything. */
     uint16_t body_paras = (uint16_t)((body + 15) / 16);
     uint16_t need = (uint16_t)(0x10 + body_paras + (is_mz ? minalloc : 0x10));
-    uint16_t avail = arena_avail(d);
+    uint16_t avail = arena_avail(m);
     if (need > avail) { free(raw); return ERR_NO_MEMORY; }
     uint16_t want = avail;
     if (is_mz && maxalloc != 0xFFFF) {
@@ -824,14 +803,12 @@ static uint16_t load_program(dos_t *d, const char *host, const exec_params *ep,
     }
 
     uint16_t psp = 0;
-    uint16_t owner_before = current_psp(d);   /* the block's owner is itself */
-    (void)owner_before;
-    if (!dos_alloc(d, want, 0 /* patched below */, &psp)) { free(raw); return ERR_NO_MEMORY; }
-    find_block(d, psp)->owner = psp;
+    if (!dos_alloc(m, want, 0, &psp)) { free(raw); return ERR_NO_MEMORY; }
+    find_block(m, psp)->owner = psp;
     uint16_t top_seg = (uint16_t)(psp + want);
     uint16_t load_seg = (uint16_t)(psp + 0x10);
 
-    build_psp(d, psp, top_seg, ep, ret_cs, ret_ip);
+    build_psp(m, psp, top_seg, ep, ret_cs, ret_ip);
 
     if (is_mz) {
         guest_write(c, phys(load_seg, 0), raw + hdr_size, body);
@@ -848,8 +825,8 @@ static uint16_t load_program(dos_t *d, const char *host, const exec_params *ep,
         c->seg[S_CS] = (uint16_t)(load_seg + hdr[11]);
         c->ip        = hdr[10];
     } else {
-        /* COM: image at PSP:0100, all segments equal, stack at the top of
-         * the block with a zero word pushed for the RET-to-PSP convention. */
+        /* COM: image at PSP:0100, all segments equal, a zero word pushed
+         * for the RET-to-PSP convention. */
         guest_write(c, phys(psp, 0x100), raw, body);
         c->seg[S_SS] = psp;
         c->r[R_SP]   = 0xFFFE;
@@ -857,30 +834,35 @@ static uint16_t load_program(dos_t *d, const char *host, const exec_params *ep,
         c->seg[S_CS] = psp;
         c->ip        = 0x100;
     }
-    free(raw);
 
     c->seg[S_DS] = c->seg[S_ES] = psp;
-    c->r[R_AX] = 0;                 /* FCB drive-validity flags */
+    c->r[R_AX] = 0;
     c->r[R_BX] = c->r[R_CX] = c->r[R_DX] = 0;
     c->r[R_SI] = c->r[R_DI] = c->r[R_BP] = 0;
-    c->flags = cpu_flags_fixed(c) | F_IF;
+    c->flags = (uint16_t)(cpu_flags_fixed(c) | F_IF);
+    cpu_irq_state_changed(c);
 
-    logf_(d, "[exec] %-14s %s  psp=%04X load=%04X..%04X (%u paras)  entry %04X:%04X\n",
-          name_for_log, is_mz ? "MZ " : "COM", psp, load_seg, top_seg, want,
-          c->seg[S_CS], c->ip);
+    dos_log(m, "[exec] %-14s %s  psp=%04X load=%04X..%04X (%u paras)  entry %04X:%04X @%llu\n",
+            name, is_mz ? "MZ " : "COM", psp, load_seg, top_seg, want,
+            c->seg[S_CS], c->ip, (unsigned long long)c->icount);
+    if (m->hooks.module_load)
+        m->hooks.module_load(m->hooks.user, m, dos_basename(name), raw, (size_t)fsz,
+                             is_mz ? MODLOAD_EXEC : MODLOAD_COM,
+                             is_mz ? load_seg : psp, is_mz ? load_seg : psp);
+    free(raw);
     *psp_out = psp;
     return 0;
 }
 
-/* Load an MZ image as an overlay at a caller-chosen segment: no PSP, no
- * memory allocation, no transfer of control. This is INT 21h/4B03, and it
- * is how the shell brings in MISC.EXE and the graphics driver. */
-static uint16_t load_overlay(dos_t *d, const char *host, uint16_t load_seg,
-                             uint16_t reloc_factor, const char *name_for_log)
+/* INT 21h/4B03: an MZ image at a caller-chosen segment, no PSP, no
+ * allocation, no transfer of control. How the shell brings in MISC.EXE,
+ * the graphics driver and the sound driver. */
+static uint16_t load_overlay(machine_t *m, const char *name, uint16_t load_seg,
+                             uint16_t reloc_factor)
 {
-    cpu_t *c = d->cpu;
+    cpu_t *c = &m->cpu;
     long fsz = 0;
-    uint8_t *raw = read_whole(host, &fsz);
+    uint8_t *raw = read_whole(m, dos_basename(name), &fsz);
     if (!raw) return ERR_FILE_NOT_FOUND;
 
     uint32_t body;
@@ -906,69 +888,113 @@ static uint16_t load_overlay(dos_t *d, const char *host, uint16_t load_seg,
         body = (uint32_t)fsz;
         guest_write(c, phys(load_seg, 0), raw, body);
     }
+    dos_log(m, "[overlay] %-12s -> %04X (%u bytes, %u relocations, factor %04X) @%llu\n",
+            name, load_seg, body, nreloc, reloc_factor, (unsigned long long)c->icount);
+    if (m->hooks.module_load)
+        m->hooks.module_load(m->hooks.user, m, dos_basename(name), raw, (size_t)fsz,
+                             MODLOAD_OVERLAY, load_seg, reloc_factor);
     free(raw);
-    logf_(d, "[overlay] %-12s -> %04X (%u bytes, %u relocations, factor %04X)\n",
-          name_for_log, load_seg, body, nreloc, reloc_factor);
     return 0;
 }
 
-/* ---- process termination ----------------------------------------------- */
-
-static int terminate(cpu_t *c, dos_t *d, uint8_t code)
+static int terminate(machine_t *m, uint8_t code)
 {
-    uint16_t psp = current_psp(d);
-    close_files_of(d, psp);
-    free_blocks_of(d, psp);
+    cpu_t *c = &m->cpu;
+    uint16_t psp = current_psp(m);
+    close_files_of(m, psp);
+    free_blocks_of(m, psp);
 
-    if (d->nproc <= 1) {
-        logf_(d, "[exit] %s terminated with code %d (root)\n",
-              dos_current_program(d), code);
-        d->exited = 1;
-        d->exit_code = code;
-        c->stop_reason = STOP_EXIT;
+    if (m->nproc <= 1) {
+        dos_log(m, "[exit] %s terminated with code %d (root)\n", dos_current_program(m), code);
+        m->exited = 1;
+        m->exit_code = code;
+        c->stop_at = 0;
         return 1;
     }
 
-    dos_proc *p = &d->procs[d->nproc - 1];
-    logf_(d, "[exit] %s terminated with code %d -> back to %s\n",
-          p->name, code, d->procs[d->nproc - 2].name);
-    d->last_child_exit = code;
+    dos_proc *p = &m->procs[m->nproc - 1];
+    dos_log(m, "[exit] %s terminated with code %d -> back to %s @%llu\n",
+            p->name, code, m->procs[m->nproc - 2].name, (unsigned long long)c->icount);
+    m->last_child_exit = code;
 
-    /* Resume the parent exactly where its INT 21h left off. DOS itself
-     * guarantees only CS:IP; restoring everything is harmless and kinder. */
+    /* Resume the parent where its INT 21h left off. DOS guarantees only
+     * CS:IP; restoring the rest is harmless, as the oracle found. */
     memcpy(c->r, p->r, sizeof(c->r));
     memcpy(c->seg, p->seg, sizeof(c->seg));
     c->seg[S_CS] = p->ret_cs;
     c->ip = p->ret_ip;
-    c->flags = (uint16_t)((p->flags | F_IF) & (uint16_t)(F_CF ^ 0xFFFFu));
+    c->flags = (uint16_t)((p->flags | F_IF) & (uint16_t)(0xFFFFu ^ F_CF));
     c->r[R_AX] = 0;
-    d->nproc--;
+    m->nproc--;
+    cpu_irq_state_changed(c);
     return 1;
 }
 
-/* ---- INT 21h ----------------------------------------------------------- */
+/* ===================================================================== */
+/* Clock                                                                 */
+/* ===================================================================== */
 
-static int int21(cpu_t *c, dos_t *d)
+/* Local wall-clock time at boot plus the emulated time since, broken down. */
+static void wall_clock(machine_t *m, struct tm *out, unsigned *centis)
 {
+    uint64_t us = m->boot_time_us + machine_now_us(m);
+    time_t secs = (time_t)(us / 1000000ull);
+    struct tm *t = localtime(&secs);
+    if (t) *out = *t; else memset(out, 0, sizeof *out);
+    if (centis) *centis = (unsigned)((us / 10000ull) % 100ull);
+}
+
+static uint8_t bcd(unsigned v) { return (uint8_t)(((v / 10) << 4) | (v % 10)); }
+
+/* ===================================================================== */
+/* INT 21h                                                               */
+/* ===================================================================== */
+
+static int int21(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
     uint8_t ah = (uint8_t)(c->r[R_AX] >> 8);
     uint8_t al = (uint8_t)(c->r[R_AX] & 0xFF);
-    uint16_t me = current_psp(d);
-
-    if (ah == 0x01 || ah == 0x07 || ah == 0x08 || ah == 0x0A
-        || (ah == 0x06 && al == 0xFF))
-        trace_text_screen(c, d, ah);
-    else if (ah == 0x00 || ah == 0x4C)
-        trace_text_screen(c, d, 0x100);
-
-    if (d->trace_dos & DOS_TRACE_ALL)
-        logf_(d, "INT21 AH=%02X AL=%02X BX=%04X CX=%04X DX=%04X DS=%04X ES=%04X [%s]\n",
-              ah, al, c->r[R_BX], c->r[R_CX], c->r[R_DX], c->seg[S_DS], c->seg[S_ES],
-              dos_current_program(d));
+    uint16_t me = current_psp(m);
 
     switch (ah) {
 
     case 0x00:     /* terminate, old style */
-        return terminate(c, d, 0);
+        return terminate(m, 0);
+
+    case 0x01:     /* read char with echo */
+    case 0x07:     /* direct read, no echo, no Ctrl-C */
+    case 0x08: {   /* read, no echo */
+        uint16_t key;
+        if (!kbd_pop(m, &key, 1)) return bios_wait(c);
+        c->r[R_AX] = (uint16_t)((c->r[R_AX] & 0xFF00) | (key & 0xFF));
+        if (ah == 0x01) { char ch = (char)key; console_text(m, &ch, 1); }
+        return 1;
+    }
+
+    case 0x02: {   /* write char */
+        char ch = (char)(c->r[R_DX] & 0xFF);
+        console_text(m, &ch, 1);
+        c->r[R_AX] = (uint16_t)((c->r[R_AX] & 0xFF00) | (uint8_t)ch);
+        return 1;
+    }
+
+    case 0x06: {   /* direct console I/O: DL=FF reads, else writes DL */
+        uint16_t key;
+        if ((c->r[R_DX] & 0xFF) == 0xFF) {
+            if (kbd_pop(m, &key, 1)) {
+                c->r[R_AX] = (uint16_t)((c->r[R_AX] & 0xFF00) | (key & 0xFF));
+                c->flags = (uint16_t)(c->flags & (uint16_t)(0xFFFFu ^ F_ZF));
+            } else {
+                c->r[R_AX] = (uint16_t)(c->r[R_AX] & 0xFF00);
+                c->flags |= F_ZF;
+            }
+        } else {
+            char ch = (char)(c->r[R_DX] & 0xFF);
+            console_text(m, &ch, 1);
+        }
+        return 1;
+    }
 
     case 0x09: {   /* print a '$'-terminated string */
         uint16_t off = c->r[R_DX];
@@ -978,144 +1004,105 @@ static int int21(cpu_t *c, dos_t *d)
             if (ch == '$') break;
             buf[n++] = (char)ch;
         }
-        buf[n] = 0;
-        logf_(d, "[print] %s\n", buf);
-        for (int i = 0; i < n; i++)
-            text_output_char(c, d, (uint8_t)buf[i]);
+        console_text(m, buf, (size_t)n);
         c->r[R_AX] = (uint16_t)((c->r[R_AX] & 0xFF00) | '$');
-        ok(c);
-        return 1;
-    }
-
-    /* DOS console input. SETUP reads its menu through these (via the MISC
-     * overlay) rather than through INT 16h, so they draw on the same BIOS
-     * key buffer the scripted keystrokes are queued into. With nothing
-     * queued they return 0 and count the starvation instead of blocking. */
-    case 0x01:     /* read char with echo */
-    case 0x07:     /* direct read, no echo, no Ctrl-C */
-    case 0x08: {   /* read, no echo */
-        uint16_t key;
-        if (kbd_pop(d, &key, 1)) {
-            c->r[R_AX] = (uint16_t)((c->r[R_AX] & 0xFF00) | (key & 0xFF));
-            if (ah == 0x01) {
-                logf_(d, "[stdin] '%c'\n", (key & 0xFF) >= 0x20 ? (char)(key & 0xFF) : '.');
-                text_output_char(c, d, (uint8_t)key);
-            }
-        } else {
-            d->key_starved++;
-            c->r[R_AX] = (uint16_t)(c->r[R_AX] & 0xFF00);
-        }
-        ok(c);
-        return 1;
-    }
-
-    case 0x02:     /* write char to stdout */
-        logf_(d, "%c", (char)(c->r[R_DX] & 0xFF));
-        text_output_char(c, d, (uint8_t)c->r[R_DX]);
-        ok(c);
-        return 1;
-
-    case 0x06: {   /* direct console I/O: DL=FF reads, else writes DL */
-        uint16_t key;
-        if ((c->r[R_DX] & 0xFF) == 0xFF) {
-            if (kbd_pop(d, &key, 1)) {
-                c->r[R_AX] = (uint16_t)((c->r[R_AX] & 0xFF00) | (key & 0xFF));
-                c->flags = (uint16_t)(c->flags & (uint16_t)(F_ZF ^ 0xFFFFu));
-            } else {
-                c->r[R_AX] = (uint16_t)(c->r[R_AX] & 0xFF00);
-                c->flags |= F_ZF;
-            }
-        } else {
-            logf_(d, "%c", (char)(c->r[R_DX] & 0xFF));
-            text_output_char(c, d, (uint8_t)c->r[R_DX]);
-        }
-        ok(c);
         return 1;
     }
 
     case 0x0B: {   /* stdin status: FF if a key is waiting */
         uint16_t key;
-        c->r[R_AX] = (uint16_t)((c->r[R_AX] & 0xFF00) | (kbd_pop(d, &key, 0) ? 0xFF : 0x00));
-        ok(c);
+        c->r[R_AX] = (uint16_t)((c->r[R_AX] & 0xFF00) | (kbd_pop(m, &key, 0) ? 0xFF : 0x00));
         return 1;
     }
 
     case 0x0C: {   /* flush input, then perform AL's function */
         uint16_t key;
-        if (al == 0x01 || al == 0x06 || al == 0x07 || al == 0x08) {
-            if (kbd_pop(d, &key, 1)) c->r[R_AX] = (uint16_t)(key & 0xFF);
-            else { d->key_starved++; c->r[R_AX] = 0; }
-        } else {
-            c->r[R_AX] = 0;
+        if (al == 0x01 || al == 0x06 || al == 0x07 || al == 0x08 || al == 0x0A) {
+            /* Flush only on the first entry: a wait re-enters this call. */
+            if (c->halted != 2) while (kbd_pop(m, &key, 1)) {}
+            c->r[R_AX] = (uint16_t)((uint16_t)(al << 8) | al);
+            return int21(m);
         }
-        ok(c);
+        while (kbd_pop(m, &key, 1)) {}
         return 1;
     }
 
-    case 0x0E:     /* select disk */
-        c->r[R_AX] = (uint16_t)((c->r[R_AX] & 0xFF00) | 3);
-        ok(c);
+    case 0x0D:     /* disk reset */
         return 1;
 
-    case 0x11:     /* FCB find first: nothing matches */
+    case 0x0E:     /* select disk: report drives A..C */
+        c->r[R_AX] = (uint16_t)((c->r[R_AX] & 0xFF00) | 3);
+        return 1;
+
+    case 0x11: case 0x12:   /* FCB find: nothing */
         c->r[R_AX] = (uint16_t)((c->r[R_AX] & 0xFF00) | 0xFF);
-        ok(c);
         return 1;
 
     case 0x19:     /* current drive: C */
         c->r[R_AX] = (uint16_t)((c->r[R_AX] & 0xFF00) | 2);
-        ok(c);
         return 1;
 
     case 0x1A:     /* set DTA */
-        d->dta = phys(c->seg[S_DS], c->r[R_DX]);
-        ok(c);
+        m->dta = phys(c->seg[S_DS], c->r[R_DX]);
         return 1;
 
     case 0x25: {   /* set interrupt vector */
         uint32_t v = (uint32_t)al * 4u;
         mem_write16(c, v, c->r[R_DX]);
         mem_write16(c, v + 2, c->seg[S_DS]);
-        if (d->trace_dos & DOS_TRACE_ALL)
-            logf_(d, "  set vector %02X -> %04X:%04X\n", al, c->seg[S_DS], c->r[R_DX]);
-        ok(c);
         return 1;
     }
 
-    case 0x2A:     /* get date: 1991-03-20, a Wednesday */
-        c->r[R_CX] = 1991; c->r[R_DX] = (3 << 8) | 20;
-        c->r[R_AX] = (uint16_t)((c->r[R_AX] & 0xFF00) | 3);
-        ok(c);
-        return 1;
-
-    case 0x2C: {   /* get time, derived from the tick count so it advances */
-        uint32_t t = mem_read16(c, BDA_TICKS) | ((uint32_t)mem_read16(c, BDA_TICKS + 2) << 16);
-        uint32_t secs = (uint32_t)(t * 10 / 182);
-        c->r[R_CX] = (uint16_t)((((secs / 3600) % 24) << 8) | ((secs / 60) % 60));
-        c->r[R_DX] = (uint16_t)(((secs % 60) << 8) | ((t * 55 / 10) % 100));
-        ok(c);
+    case 0x2A: {   /* get date */
+        struct tm t;
+        wall_clock(m, &t, NULL);
+        c->r[R_CX] = (uint16_t)(t.tm_year + 1900);
+        c->r[R_DX] = (uint16_t)(((t.tm_mon + 1) << 8) | t.tm_mday);
+        c->r[R_AX] = (uint16_t)((c->r[R_AX] & 0xFF00) | (uint8_t)t.tm_wday);
         return 1;
     }
 
-    case 0x30:     /* get DOS version: report 5.00 */
+    case 0x2C: {   /* get time */
+        struct tm t;
+        unsigned cs;
+        wall_clock(m, &t, &cs);
+        c->r[R_CX] = (uint16_t)((t.tm_hour << 8) | t.tm_min);
+        c->r[R_DX] = (uint16_t)((t.tm_sec << 8) | cs);
+        return 1;
+    }
+
+    case 0x2B: case 0x2D:   /* set date / time: accepted, ignored */
+        c->r[R_AX] = (uint16_t)(c->r[R_AX] & 0xFF00);
+        return 1;
+
+    case 0x2F:     /* get DTA */
+        c->seg[S_ES] = (uint16_t)(m->dta >> 4);
+        c->r[R_BX] = (uint16_t)(m->dta & 0xF);
+        return 1;
+
+    case 0x30:     /* DOS version: 5.00 */
         c->r[R_AX] = 0x0005;
         c->r[R_BX] = 0;
         c->r[R_CX] = 0;
-        ok(c);
         return 1;
 
-    case 0x33:     /* get/set the Ctrl-Break flag */
-        c->r[R_DX] = 0;
-        ok(c);
+    case 0x33:     /* Ctrl-Break flag */
+        c->r[R_DX] = (uint16_t)(c->r[R_DX] & 0xFF00);
         return 1;
 
     case 0x35: {   /* get interrupt vector */
         uint32_t v = (uint32_t)al * 4u;
         c->r[R_BX] = mem_read16(c, v);
         c->seg[S_ES] = mem_read16(c, v + 2);
-        ok(c);
         return 1;
     }
+
+    case 0x36:     /* free disk space: plenty */
+        c->r[R_AX] = 64;      /* sectors per cluster */
+        c->r[R_BX] = 0x7FFF;  /* free clusters */
+        c->r[R_CX] = 512;
+        c->r[R_DX] = 0xFFFF;
+        return 1;
 
     case 0x3B:     /* chdir */
         ok(c);
@@ -1123,43 +1110,28 @@ static int int21(cpu_t *c, dos_t *d)
 
     case 0x3C:     /* create/truncate */
     case 0x3D: {   /* open */
-        char dp[520], hp[600];
+        char dp[520], hp[1100];
         guest_str(c, c->seg[S_DS], c->r[R_DX], dp, sizeof(dp));
-        host_path(d, dp, hp, sizeof(hp));
-        int h = alloc_handle(d);
+        const char *base = dos_basename(dp);
+        int h = alloc_handle(m);
         if (h < 0) { fail(c, ERR_TOO_MANY_OPEN); return 1; }
-
         FILE *f;
-        if (ah == 0x3C) {
-            f = fopen(hp, "wb+");
-            if (!f) f = open_ci(hp, "wb+");
-        } else {
-            const char *mode = ((al & 7) == 0) ? "rb" : "rb+";
-            f = open_ci(hp, mode);
-            if (!f && (al & 7) != 0) f = open_ci(hp, "rb");
-        }
+        if (ah == 0x3C) f = open_create(m, base, hp, sizeof hp);
+        else if ((al & 7) == 0) f = open_read(m, base, hp, sizeof hp);
+        else f = open_rw(m, base, hp, sizeof hp);
         if (!f) {
-            logf_(d, "[file] %s '%s' FAILED (not found)\n",
-                  ah == 0x3C ? "create" : "open", dp);
+            dos_log(m, "[file] %s '%s' failed (not found) in %s\n",
+                    ah == 0x3C ? "create" : "open", dp, dos_current_program(m));
             fail(c, ERR_FILE_NOT_FOUND);
             return 1;
         }
-        d->files[h].fp = f;
-        d->files[h].in_use = 1;
-        d->files[h].owner = me;
-        snprintf(d->files[h].path, sizeof(d->files[h].path), "%s", hp);
-        /* With the instruction count, because WHEN a file is opened is
-         * often the measurement: the gap between two consecutive .PAN
-         * opens over that file's cel count is the intro's cel rate,
-         * and there was no way to read it off this trace before. */
-        if (d->trace_dos & DOS_TRACE_FILES)
-            logf_(d, "[file] %s '%s' -> handle %d @%llu %s\n",
-                  ah == 0x3C ? "create" : "open", dp, h,
-                  (unsigned long long)c->icount, dos_current_program(d));
-        if (d->trace_dos & DOS_TRACE_ALL)
-            logf_(d, "  %s '%s' -> handle %d  @%llu %s\n",
-                  ah == 0x3C ? "create" : "open", dp, h,
-                  (unsigned long long)c->icount, dos_current_program(d));
+        m->files[h].fp = f;
+        m->files[h].in_use = 1;
+        m->files[h].is_device = 0;
+        m->files[h].owner = me;
+        snprintf(m->files[h].path, sizeof(m->files[h].path), "%s", hp);
+        dos_log(m, "[file] %s '%s' -> %d @%llu %s\n", ah == 0x3C ? "create" : "open",
+                dp, h, (unsigned long long)c->icount, dos_current_program(m));
         c->r[R_AX] = (uint16_t)h;
         ok(c);
         return 1;
@@ -1168,13 +1140,10 @@ static int int21(cpu_t *c, dos_t *d)
     case 0x3E: {   /* close */
         uint16_t h = c->r[R_BX];
         if (h < 5) { ok(c); return 1; }
-        if (h >= DOS_MAX_FILES || !d->files[h].in_use) { fail(c, ERR_BAD_HANDLE); return 1; }
-        if (d->trace_dos & DOS_TRACE_FILES)
-            logf_(d, "[file] close '%s' @%llu %s\n", d->files[h].path,
-                  (unsigned long long)c->icount, dos_current_program(d));
-        fclose(d->files[h].fp);
-        d->files[h].in_use = 0;
-        d->files[h].fp = NULL;
+        if (h >= DOS_MAX_FILES || !m->files[h].in_use) { fail(c, ERR_BAD_HANDLE); return 1; }
+        fclose(m->files[h].fp);
+        m->files[h].in_use = 0;
+        m->files[h].fp = NULL;
         ok(c);
         return 1;
     }
@@ -1182,13 +1151,9 @@ static int int21(cpu_t *c, dos_t *d)
     case 0x3F: {   /* read */
         uint16_t h = c->r[R_BX], n = c->r[R_CX];
         if (h < 5) { c->r[R_AX] = 0; ok(c); return 1; }   /* stdin: EOF */
-        if (h >= DOS_MAX_FILES || !d->files[h].in_use) { fail(c, ERR_BAD_HANDLE); return 1; }
+        if (h >= DOS_MAX_FILES || !m->files[h].in_use) { fail(c, ERR_BAD_HANDLE); return 1; }
         uint8_t *tmp = (uint8_t *)malloc(n ? n : 1);
-        size_t got = n ? fread(tmp, 1, n, d->files[h].fp) : 0;
-        if (d->trace_dos & DOS_TRACE_FILES)
-            logf_(d, "[file] read '%s' requested=%u got=%u @%llu %s\n",
-                  d->files[h].path, n, (unsigned)got,
-                  (unsigned long long)c->icount, dos_current_program(d));
+        size_t got = n ? fread(tmp, 1, n, m->files[h].fp) : 0;
         for (size_t i = 0; i < got; i++)
             mem_write8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_DX] + i)), tmp[i]);
         free(tmp);
@@ -1203,65 +1168,75 @@ static int int21(cpu_t *c, dos_t *d)
             char buf[512]; int k = 0;
             for (uint16_t i = 0; i < n && k < 511; i++)
                 buf[k++] = (char)mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_DX] + i)));
-            buf[k] = 0;
-            logf_(d, "[stdout] %s", buf);
+            if (h == 1 || h == 2) console_text(m, buf, (size_t)k);
             c->r[R_AX] = n;
             ok(c);
             return 1;
         }
-        if (h >= DOS_MAX_FILES || !d->files[h].in_use) { fail(c, ERR_BAD_HANDLE); return 1; }
+        if (h >= DOS_MAX_FILES || !m->files[h].in_use) { fail(c, ERR_BAD_HANDLE); return 1; }
         uint8_t *tmp = (uint8_t *)malloc(n ? n : 1);
         for (uint16_t i = 0; i < n; i++)
             tmp[i] = mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_DX] + i)));
-        size_t put = n ? fwrite(tmp, 1, n, d->files[h].fp) : 0;
-        if (d->trace_dos & DOS_TRACE_FILES)
-            logf_(d, "[file] write '%s' requested=%u wrote=%u @%llu %s\n",
-                  d->files[h].path, n, (unsigned)put,
-                  (unsigned long long)c->icount, dos_current_program(d));
+        size_t put;
+        if (n) put = fwrite(tmp, 1, n, m->files[h].fp);
+        else {
+            /* A zero-length write truncates the file at the position. */
+            long pos = ftell(m->files[h].fp);
+#ifdef _WIN32
+            fflush(m->files[h].fp);
+            _chsize(_fileno(m->files[h].fp), pos);
+#endif
+            (void)pos;
+            put = 0;
+        }
+        fflush(m->files[h].fp);
         free(tmp);
         c->r[R_AX] = (uint16_t)put;
         ok(c);
         return 1;
     }
 
-    case 0x41: {   /* unlink */
-        char dp[520], hp[600];
+    case 0x41: {   /* unlink: only ever in the save directory */
+        char dp[520], hp[1100];
         guest_str(c, c->seg[S_DS], c->r[R_DX], dp, sizeof(dp));
-        host_path(d, dp, hp, sizeof(hp));
-        if (remove(hp) != 0) { fail(c, ERR_FILE_NOT_FOUND); return 1; }
-        if (d->trace_dos & DOS_TRACE_FILES)
-            logf_(d, "[file] unlink '%s' @%llu %s\n", dp,
-                  (unsigned long long)c->icount, dos_current_program(d));
+        if (!file_exists_ci(write_dir(m), dos_basename(dp), hp, sizeof hp) || remove(hp) != 0) {
+            fail(c, ERR_FILE_NOT_FOUND);
+            return 1;
+        }
         ok(c);
         return 1;
     }
 
     case 0x42: {   /* lseek */
         uint16_t h = c->r[R_BX];
-        if (h >= DOS_MAX_FILES || !d->files[h].in_use || h < 5) { fail(c, ERR_BAD_HANDLE); return 1; }
+        if (h >= DOS_MAX_FILES || !m->files[h].in_use || h < 5) { fail(c, ERR_BAD_HANDLE); return 1; }
         long off = (long)(int32_t)(((uint32_t)c->r[R_CX] << 16) | c->r[R_DX]);
         int whence = (al == 1) ? SEEK_CUR : (al == 2) ? SEEK_END : SEEK_SET;
-        if (fseek(d->files[h].fp, off, whence) != 0) { fail(c, ERR_BAD_FUNCTION); return 1; }
-        if (d->trace_dos & DOS_TRACE_FILES)
-            logf_(d, "[file] seek '%s' offset=%ld from=%d @%llu %s\n",
-                  d->files[h].path, off, whence,
-                  (unsigned long long)c->icount, dos_current_program(d));
-        long pos = ftell(d->files[h].fp);
+        if (fseek(m->files[h].fp, off, whence) != 0) { fail(c, ERR_BAD_FUNCTION); return 1; }
+        long pos = ftell(m->files[h].fp);
         c->r[R_AX] = (uint16_t)(pos & 0xFFFF);
         c->r[R_DX] = (uint16_t)((pos >> 16) & 0xFFFF);
         ok(c);
         return 1;
     }
 
-    case 0x43:     /* get/set file attributes */
+    case 0x43: {   /* get/set file attributes */
+        char dp[520];
+        guest_str(c, c->seg[S_DS], c->r[R_DX], dp, sizeof(dp));
+        FILE *f = open_read(m, dos_basename(dp), NULL, 0);
+        if (!f) { fail(c, ERR_FILE_NOT_FOUND); return 1; }
+        fclose(f);
         if (al == 0) c->r[R_CX] = 0x20;   /* archive */
         ok(c);
         return 1;
+    }
 
     case 0x44:     /* ioctl */
         if (al == 0) {
             uint16_t h = c->r[R_BX];
-            c->r[R_DX] = (h < 5) ? 0x0080 : 0x0000;   /* bit 7: character device */
+            c->r[R_DX] = (h < 5) ? 0x0080 : 0x0002;   /* bit 7: character device */
+        } else if (al == 8) {
+            c->r[R_AX] = 1;                         /* fixed disk */
         }
         ok(c);
         return 1;
@@ -1273,62 +1248,58 @@ static int int21(cpu_t *c, dos_t *d)
 
     case 0x48: {   /* allocate memory */
         uint16_t seg = 0;
-        if (!dos_alloc(d, c->r[R_BX], me, &seg)) {
-            c->r[R_BX] = arena_avail(d);
+        if (!dos_alloc(m, c->r[R_BX], me, &seg)) {
+            c->r[R_BX] = arena_avail(m);
             fail(c, ERR_NO_MEMORY);
             return 1;
         }
-        if (d->trace_dos & DOS_TRACE_ALL) logf_(d, "  alloc %u paras -> %04X\n", c->r[R_BX], seg);
         c->r[R_AX] = seg;
         ok(c);
         return 1;
     }
 
     case 0x49: {   /* free memory */
-        dos_block *b = find_block(d, c->seg[S_ES]);
+        dos_block *b = find_block(m, c->seg[S_ES]);
         if (b) b->in_use = 0;
         ok(c);
         return 1;
     }
 
     case 0x4A: {   /* resize a memory block */
-        dos_block *b = find_block(d, c->seg[S_ES]);
+        dos_block *b = find_block(m, c->seg[S_ES]);
         if (!b) { fail(c, ERR_BAD_FUNCTION); return 1; }
-        uint16_t want = c->r[R_BX], mx = block_max_paras(d, b);
+        uint16_t want = c->r[R_BX], mx = block_max_paras(m, b);
         if (want > mx) {
             c->r[R_BX] = mx;
             fail(c, ERR_NO_MEMORY);
             return 1;
         }
-        if (d->trace_dos & DOS_TRACE_ALL) logf_(d, "  resize %04X: %u -> %u paras\n", b->seg, b->paras, want);
         b->paras = want;
         ok(c);
         return 1;
     }
 
     case 0x4B: {   /* EXEC */
-        char dp[520], hp[600];
+        char dp[520];
         guest_str(c, c->seg[S_DS], c->r[R_DX], dp, sizeof(dp));
-        host_path(d, dp, hp, sizeof(hp));
         uint16_t pb_seg = c->seg[S_ES], pb = c->r[R_BX];
 
         if (al == 0x03) {           /* load overlay */
             uint16_t lseg = seg_read16(c, pb_seg, pb);
             uint16_t fac  = seg_read16(c, pb_seg, (uint16_t)(pb + 2));
-            uint16_t err = load_overlay(d, hp, lseg, fac, dp);
-            if (err) { logf_(d, "[overlay] %s FAILED (%u)\n", dp, err); fail(c, err); return 1; }
+            uint16_t err = load_overlay(m, dp, lseg, fac);
+            if (err) { dos_log(m, "[overlay] %s FAILED (%u)\n", dp, err); fail(c, err); return 1; }
             c->r[R_AX] = 0;
             ok(c);
             return 1;
         }
         if (al != 0x00) { fail(c, ERR_BAD_FUNCTION); return 1; }
-
-        if (d->nproc >= DOS_MAX_PROCS) { fail(c, ERR_NO_MEMORY); return 1; }
+        if (m->nproc >= DOS_MAX_PROCS) { fail(c, ERR_NO_MEMORY); return 1; }
 
         exec_params ep;
         memset(&ep, 0, sizeof(ep));
         ep.env_seg  = seg_read16(c, pb_seg, pb);
-        if (!ep.env_seg) ep.env_seg = d->env_seg;        /* 0 = inherit */
+        if (!ep.env_seg) ep.env_seg = m->env_seg;
         ep.cmd_off  = seg_read16(c, pb_seg, (uint16_t)(pb + 2));
         ep.cmd_seg  = seg_read16(c, pb_seg, (uint16_t)(pb + 4));
         ep.fcb1_off = seg_read16(c, pb_seg, (uint16_t)(pb + 6));
@@ -1339,950 +1310,615 @@ static int int21(cpu_t *c, dos_t *d)
 
         /* Snapshot the parent. Nothing below touches the CPU until the load
          * has definitely succeeded, so a failure leaves the caller intact. */
-        dos_proc *np = &d->procs[d->nproc];
+        dos_proc *np = &m->procs[m->nproc];
         memset(np, 0, sizeof(*np));
         memcpy(np->r, c->r, sizeof(np->r));
         memcpy(np->seg, c->seg, sizeof(np->seg));
         np->ret_cs = c->seg[S_CS];
         np->ret_ip = c->ip;               /* already past the INT 21h */
         np->flags = c->flags;
-        snprintf(np->name, sizeof(np->name), "%s", dp);
+        snprintf(np->name, sizeof(np->name), "%s", dos_basename(dp));
+        for (char *p = np->name; *p; p++) *p = (char)toupper((unsigned char)*p);
 
         uint16_t psp = 0;
-        uint16_t err = load_program(d, hp, &ep, np->ret_cs, np->ret_ip, &psp, dp);
+        m->nproc++;                       /* so the load is attributed to the child */
+        uint16_t err = load_program(m, dp, &ep, np->ret_cs, np->ret_ip, &psp);
         if (err) {
-            logf_(d, "[exec] %s FAILED (%u)\n", dp, err);
+            m->nproc--;
+            dos_log(m, "[exec] %s FAILED (%u)\n", dp, err);
             fail(c, err);
             return 1;
         }
         np->psp_seg = psp;
         np->start_icount = c->icount;
-        d->nproc++;
         return 1;                         /* control is now in the child */
     }
 
     case 0x4C:     /* terminate with code */
-        return terminate(c, d, al);
+        return terminate(m, al);
 
-    case 0x4D:     /* get child's exit code */
-        c->r[R_AX] = d->last_child_exit;  /* AH = 0: normal termination */
+    case 0x4D:     /* child's exit code */
+        c->r[R_AX] = m->last_child_exit;
         ok(c);
         return 1;
 
-    case 0x4E: case 0x4F:   /* find first/next: nothing */
-        fail(c, ERR_NO_MORE_FILES);
+    case 0x4E: {   /* find first */
+        char dp[520];
+        guest_str(c, c->seg[S_DS], c->r[R_DX], dp, sizeof(dp));
+        find_first(m, dos_basename(dp));
+        if (!find_step(m)) { fail(c, ERR_FILE_NOT_FOUND); return 1; }
+        ok(c);
+        return 1;
+    }
+    case 0x4F:     /* find next */
+        if (!find_step(m)) { fail(c, ERR_NO_MORE_FILES); return 1; }
+        ok(c);
+        return 1;
+
+    case 0x50:     /* set PSP */
+        if (m->nproc) m->procs[m->nproc - 1].psp_seg = c->r[R_BX];
+        return 1;
+    case 0x51: case 0x62:   /* get PSP */
+        c->r[R_BX] = me;
+        return 1;
+
+    case 0x56: {   /* rename, inside the save directory */
+        char a[520], b[520], ha[1100], hb[1100];
+        guest_str(c, c->seg[S_DS], c->r[R_DX], a, sizeof a);
+        guest_str(c, c->seg[S_ES], c->r[R_DI], b, sizeof b);
+        if (!file_exists_ci(write_dir(m), dos_basename(a), ha, sizeof ha)) { fail(c, ERR_FILE_NOT_FOUND); return 1; }
+        snprintf(hb, sizeof hb, "%s/%s", write_dir(m), dos_basename(b));
+        if (rename(ha, hb) != 0) { fail(c, ERR_ACCESS_DENIED); return 1; }
+        ok(c);
+        return 1;
+    }
+
+    case 0x57:     /* file date and time */
+        if (al == 0) { c->r[R_CX] = 0x6000; c->r[R_DX] = (uint16_t)(((1992 - 1980) << 9) | (6 << 5) | 5); }
+        ok(c);
+        return 1;
+
+    case 0x58:     /* allocation strategy */
+        if (al == 0) c->r[R_AX] = 0;
+        ok(c);
         return 1;
 
     default: {
         static unsigned seen[256];
         if (seen[ah]++ < 3)
-            logf_(d, "[int21] UNHANDLED AH=%02X AL=%02X from %s at %04X:%04X%s\n",
-                  ah, al, dos_current_program(d), c->op_cs, c->op_ip,
-                  seen[ah] == 3 ? "  [further occurrences suppressed]" : "");
+            dos_log(m, "[int21] UNHANDLED AH=%02X AL=%02X from %s at %04X:%04X\n",
+                    ah, al, dos_current_program(m), c->op_cs, c->op_ip);
         fail(c, ERR_BAD_FUNCTION);
         return 1;
     }
     }
 }
 
-/* ---- BIOS -------------------------------------------------------------- */
+/* ===================================================================== */
+/* INT 10h                                                               */
+/* ===================================================================== */
 
-static int int10(cpu_t *c, dos_t *d)
+static int int10(machine_t *m)
 {
+    cpu_t *c = &m->cpu;
     uint8_t ah = (uint8_t)(c->r[R_AX] >> 8);
     uint8_t al = (uint8_t)(c->r[R_AX] & 0xFF);
     switch (ah) {
     case 0x00: {                             /* set video mode */
-        d->vga_mode = (uint16_t)(al & 0x7F);
-        mem_write8(c, BDA_VIDEO_MODE, (uint8_t)d->vga_mode);
-        uint16_t cols = (d->vga_mode == 0 || d->vga_mode == 1 || d->vga_mode == 0x13) ? 40 : 80;
+        uint8_t mode = (uint8_t)(al & 0x7F);
+        vga_set_mode(m, mode, !(al & 0x80));
+        mem_write8(c, BDA_VIDEO_MODE, mode);
+        uint16_t cols = (mode == 0 || mode == 1 || mode == 0x13) ? 40 : 80;
         mem_write16(c, BDA_VIDEO_COLS, cols);
-        text_clear(c, d);
-        logf_(d, "[video] mode %02Xh set by %s\n", d->vga_mode, dos_current_program(d));
+        mem_write16(c, BDA_CURSOR_POS, 0);
         break;
     }
-    case 0x02:                               /* set cursor position */
-        mem_write16(c, BDA_CURSOR_POS, c->r[R_DX]);
-        break;
-    case 0x03:                               /* get cursor position */
+    case 0x01: mem_write16(c, BDA_CURSOR_TYPE, c->r[R_CX]); break;
+    case 0x02: mem_write16(c, BDA_CURSOR_POS, c->r[R_DX]); break;
+    case 0x03:
         c->r[R_DX] = mem_read16(c, BDA_CURSOR_POS);
-        c->r[R_CX] = 0x0607;
+        c->r[R_CX] = mem_read16(c, BDA_CURSOR_TYPE);
         break;
-    case 0x08:                               /* read character/attribute */
-        c->r[R_AX] = 0x0720;
-        break;
-    case 0x0E:                               /* teletype output */
-        if (d->trace_dos & DOS_TRACE_ALL) logf_(d, "%c", al);
-        text_output_char(c, d, al);
-        break;
-    case 0x0F:                               /* get video mode */
-        c->r[R_AX] = (uint16_t)((mem_read16(c, BDA_VIDEO_COLS) << 8) | (d->vga_mode & 0xFF));
-        c->r[R_BX] = (uint16_t)(c->r[R_BX] & 0x00FF);   /* page 0 */
-        break;
-    case 0x12:                               /* alternate select */
-        if ((c->r[R_BX] & 0xFF) == 0x10) {   /* EGA info: colour, 256K */
-            c->r[R_BX] = 0x0003;
-            c->r[R_CX] = 0x0000;
+    case 0x05: break;                        /* page: only page 0 is used */
+    case 0x06: case 0x07: {                  /* scroll window */
+        unsigned top = (c->r[R_CX] >> 8) & 0xFF, left = c->r[R_CX] & 0xFF;
+        unsigned bottom = (c->r[R_DX] >> 8) & 0xFF, right = c->r[R_DX] & 0xFF;
+        uint8_t attr = (uint8_t)(c->r[R_BX] >> 8);
+        if (text_mode(m)) {
+            if (ah == 6) text_scroll_up(m, top, left, bottom, right, al, attr);
+            else         text_scroll_down(m, top, left, bottom, right, al, attr);
         }
         break;
-    case 0x1A:                               /* display combination: VGA colour */
-        c->r[R_AX] = (uint16_t)((c->r[R_AX] & 0xFF00) | 0x1A);
-        c->r[R_BX] = 0x0008;
+    }
+    case 0x08: {                             /* read character/attribute */
+        if (!text_mode(m)) { c->r[R_AX] = 0; break; }
+        uint16_t pos = mem_read16(c, BDA_CURSOR_POS);
+        uint32_t cell = text_vram(m) + (((pos >> 8) * text_columns(c)) + (pos & 0xFF)) * 2u;
+        c->r[R_AX] = mem_read16(c, cell);
         break;
-    case 0x10:                               /* palette / DAC registers */
-        /* **APPLIED, as of 20 September.** For a while this was traced but
-         * still discarded, under a comment arguing that "nothing here
-         * changes what the guest computes". True, and the wrong test: it
-         * changes what a CAPTURE SHOWS, and captures are the ground truth
-         * this project rests on.
-         *
-         * What it cost: START's Bulletin Board lights a hovered row by
-         * queueing {register, DS:0x11C1, 1} through 0x03517 and flushing
-         * it at retrace with exactly this call. With the call discarded,
-         * every capture of the board showed the hovered row in its NORMAL
-         * colour, so a check comparing the DAC would call a CORRECT port
-         * wrong - and a check comparing only pixels would see nothing at
-         * all, because the row's pixels never change. Two ways to be
-         * misled by one unmodelled BIOS function.
-         *
-         * AL=10h sets one register from DH/CH/CL; AL=12h sets a block of
-         * CX registers from ES:DX upward, three 6-bit bytes each.
-         *
-         * A fade from black is a run of AX=1012h calls writing the whole
-         * DAC a few times a frame. Every other instrument here watches
-         * ports 0x3C8/0x3C9, and the intro never touches them: PLAYER
-         * writes 3D8/3C4/3C5 and nothing else, so a port trace shows a
-         * fade as literally nothing happening. The BIOS path was landing
-         * in this `default` arm and being discarded without a word.
-         *
-         * `--trace-ports` now reports it in the same stream as the OUTs,
-         * with the instruction count, so a fade can be seen and timed. */
-        if (d->trace_ports) {
-            if (al == 0x12)
-                logf_(d, "DAC block @%llu first=%u count=%u from %04X:%04X %s\n",
-                      (unsigned long long)c->icount, c->r[R_BX],
-                      c->r[R_CX], c->seg[S_ES], c->r[R_DX],
-                      dos_current_program(d));
-            else if (al == 0x10)
-                logf_(d, "DAC one @%llu reg=%u rgb=%u,%u,%u %s\n",
-                      (unsigned long long)c->icount, c->r[R_BX],
-                      (unsigned)(c->r[R_DX] >> 8), (unsigned)(c->r[R_CX] >> 8),
-                      (unsigned)(c->r[R_CX] & 0xFF), dos_current_program(d));
-            else
-                logf_(d, "INT10 AH=10 AL=%02X @%llu %s\n", al,
-                      (unsigned long long)c->icount, dos_current_program(d));
+    }
+    case 0x09: case 0x0A: {                  /* write char (and attribute) CX times */
+        if (!text_mode(m)) break;
+        uint16_t pos = mem_read16(c, BDA_CURSOR_POS);
+        unsigned cols = text_columns(c);
+        uint32_t cell = text_vram(m) + (((pos >> 8) * cols) + (pos & 0xFF)) * 2u;
+        for (unsigned i = 0; i < c->r[R_CX] && cell < text_vram(m) + cols * 25u * 2u; i++, cell += 2) {
+            mem_write8(c, cell, al);
+            if (ah == 0x09) mem_write8(c, cell + 1, (uint8_t)c->r[R_BX]);
         }
-        if (al == 0x10) {
+        break;
+    }
+    case 0x0E: text_output_char(m, al); break;
+    case 0x0F:
+        c->r[R_AX] = (uint16_t)((mem_read16(c, BDA_VIDEO_COLS) << 8) | m->video_mode);
+        c->r[R_BX] = (uint16_t)(c->r[R_BX] & 0x00FF);
+        break;
+    case 0x10:                               /* palette / DAC */
+        switch (al) {
+        case 0x00: if ((c->r[R_BX] & 0xFF) < 16) m->attr[c->r[R_BX] & 0xFF] = (uint8_t)(c->r[R_BX] >> 8); break;
+        case 0x10: {
             const unsigned reg = c->r[R_BX] & 0xFF;
-            d->dac[reg * 3 + 0] = (uint8_t)((c->r[R_DX] >> 8) & 0x3F);
-            d->dac[reg * 3 + 1] = (uint8_t)((c->r[R_CX] >> 8) & 0x3F);
-            d->dac[reg * 3 + 2] = (uint8_t)(c->r[R_CX] & 0x3F);
-        } else if (al == 0x12) {
+            m->dac[reg * 3 + 0] = (uint8_t)((c->r[R_DX] >> 8) & 0x3F);
+            m->dac[reg * 3 + 1] = (uint8_t)((c->r[R_CX] >> 8) & 0x3F);
+            m->dac[reg * 3 + 2] = (uint8_t)(c->r[R_CX] & 0x3F);
+            break;
+        }
+        case 0x12: {
             unsigned reg = c->r[R_BX] & 0xFF;
-            const unsigned n = c->r[R_CX];
             uint16_t off = c->r[R_DX];
-            for (unsigned i = 0; i < n && reg < 256; i++, reg++) {
-                for (int comp = 0; comp < 3; comp++)
-                    d->dac[reg * 3 + comp] = (uint8_t)(
-                        mem_read8(c, phys(c->seg[S_ES],
-                                          (uint16_t)(off + comp))) & 0x3F);
+            for (unsigned i = 0; i < c->r[R_CX] && reg < 256; i++, reg++) {
+                for (int k = 0; k < 3; k++)
+                    m->dac[reg * 3 + k] = (uint8_t)(mem_read8(c, phys(c->seg[S_ES], (uint16_t)(off + k))) & 0x3F);
                 off = (uint16_t)(off + 3);
             }
+            break;
+        }
+        case 0x15: {
+            const unsigned reg = c->r[R_BX] & 0xFF;
+            c->r[R_DX] = (uint16_t)((c->r[R_DX] & 0x00FF) | (m->dac[reg * 3] << 8));
+            c->r[R_CX] = (uint16_t)((m->dac[reg * 3 + 1] << 8) | m->dac[reg * 3 + 2]);
+            break;
+        }
+        case 0x17: {
+            unsigned reg = c->r[R_BX] & 0xFF;
+            uint16_t off = c->r[R_DX];
+            for (unsigned i = 0; i < c->r[R_CX] && reg < 256; i++, reg++) {
+                for (int k = 0; k < 3; k++)
+                    mem_write8(c, phys(c->seg[S_ES], (uint16_t)(off + k)), m->dac[reg * 3 + k]);
+                off = (uint16_t)(off + 3);
+            }
+            break;
+        }
+        default: break;
         }
         break;
-    default:                                 /* scroll, write char, font: no-ops */
+    case 0x11: break;                        /* fonts */
+    case 0x12:                               /* alternate select */
+        if ((c->r[R_BX] & 0xFF) == 0x10) { c->r[R_BX] = 0x0003; c->r[R_CX] = 0x0009; }
         break;
+    case 0x1A:                               /* display combination: VGA colour */
+        if (al == 0) {
+            c->r[R_AX] = (uint16_t)((c->r[R_AX] & 0xFF00) | 0x1A);
+            c->r[R_BX] = 0x0008;
+        }
+        break;
+    default: break;
     }
     return 1;
 }
 
-static int int16(cpu_t *c, dos_t *d)
+/* ===================================================================== */
+/* INT 16h                                                               */
+/* ===================================================================== */
+
+/* Words from the grey keys carry E0 in the low byte; the original 84-key
+ * functions (AH=00/01) report them as 00, and drop the F11/F12 words. */
+static int legacy_ok(uint16_t key) { return (key >> 8) <= 0x84; }
+static uint16_t legacy(uint16_t key)
 {
+    return (uint8_t)key == 0xE0 && (key >> 8) ? (uint16_t)(key & 0xFF00) : key;
+}
+
+static int int16(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
     uint8_t ah = (uint8_t)(c->r[R_AX] >> 8);
     uint16_t key;
-    if (d->trace_dos & DOS_TRACE_ALL) {
-        static unsigned n;
-        if (n++ < 40)
-            logf_(d, "INT16 AH=%02X from %s at %04X:%04X%s\n", ah,
-                  dos_current_program(d), c->op_cs, c->op_ip,
-                  n == 40 ? "  [further calls suppressed]" : "");
-    }
     switch (ah) {
-    case 0x00: case 0x10:                    /* read key, blocking */
-        if (kbd_pop(d, &key, 1)) {
-            c->r[R_AX] = key;
-        } else {
-            /* Nothing scripted. Blocking forever would hang the run, so
-             * return "no key" and count it; the report shows starvation. */
-            d->key_starved++;
-            c->r[R_AX] = 0;
+    case 0x00:                               /* read key, waiting */
+        for (;;) {
+            if (!kbd_pop(m, &key, 1)) return bios_wait(c);
+            if (legacy_ok(key)) { c->r[R_AX] = legacy(key); return 1; }
         }
-        break;
-    case 0x01: case 0x11:                    /* key available? */
-        if (kbd_pop(d, &key, 0)) {
-            c->r[R_AX] = key;
-            c->flags = (uint16_t)(c->flags & (uint16_t)(F_ZF ^ 0xFFFFu));
+    case 0x10:
+        if (!kbd_pop(m, &key, 1)) return bios_wait(c);
+        c->r[R_AX] = key;
+        return 1;
+    case 0x01:                               /* key available? */
+        while (kbd_pop(m, &key, 0) && !legacy_ok(key)) kbd_pop(m, &key, 1);
+        if (kbd_pop(m, &key, 0)) {
+            c->r[R_AX] = legacy(key);
+            c->flags = (uint16_t)(c->flags & (uint16_t)(0xFFFFu ^ F_ZF));
         } else {
-            c->r[R_AX] = 0;
             c->flags |= F_ZF;
         }
-        break;
-    case 0x02: case 0x12:                    /* shift flags */
-        c->r[R_AX] = (uint16_t)(c->r[R_AX] & 0xFF00);
-        break;
+        return 1;
+    case 0x11:
+        if (kbd_pop(m, &key, 0)) {
+            c->r[R_AX] = key;
+            c->flags = (uint16_t)(c->flags & (uint16_t)(0xFFFFu ^ F_ZF));
+        } else {
+            c->flags |= F_ZF;
+        }
+        return 1;
+    case 0x02:                               /* shift flags */
+        c->r[R_AX] = (uint16_t)((c->r[R_AX] & 0xFF00) | mem_read8(c, BDA_SHIFT));
+        return 1;
+    case 0x12:
+        c->r[R_AX] = (uint16_t)((mem_read8(c, BDA_SHIFT2) << 8) | mem_read8(c, BDA_SHIFT));
+        return 1;
+    case 0x05:                               /* store a key */
+        c->r[R_AX] = (uint16_t)((c->r[R_AX] & 0xFF00) | (kbd_push(m, c->r[R_CX]) ? 0 : 1));
+        return 1;
     default:
-        break;
+        return 1;
     }
-    return 1;
 }
 
-static int int1a(cpu_t *c, dos_t *d)
+/* ===================================================================== */
+/* INT 1Ah                                                               */
+/* ===================================================================== */
+
+static int int1a(machine_t *m)
 {
+    cpu_t *c = &m->cpu;
     uint8_t ah = (uint8_t)(c->r[R_AX] >> 8);
-    if (ah == 0x00) {                        /* read the tick count */
+    switch (ah) {
+    case 0x00:                               /* read the tick count */
         c->r[R_DX] = mem_read16(c, BDA_TICKS);
         c->r[R_CX] = mem_read16(c, BDA_TICKS + 2);
-        const uint8_t midnight = d->bios_clock ? mem_read8(c, 0x470) : 0;
-        c->r[R_AX] = (uint16_t)((c->r[R_AX] & 0xFF00) | midnight);
-        if (d->bios_clock) mem_write8(c, 0x470, 0);
-    } else if (ah == 0x02 || ah == 0x04) {   /* RTC time / date: zeros, CF clear */
-        c->r[R_CX] = c->r[R_DX] = 0;
-        c->flags = (uint16_t)(c->flags & (uint16_t)(F_CF ^ 0xFFFFu));
+        c->r[R_AX] = (uint16_t)((c->r[R_AX] & 0xFF00) | mem_read8(c, BDA_MIDNIGHT));
+        mem_write8(c, BDA_MIDNIGHT, 0);
+        break;
+    case 0x02: {                             /* RTC time */
+        struct tm t;
+        wall_clock(m, &t, NULL);
+        c->r[R_CX] = (uint16_t)((bcd((unsigned)t.tm_hour) << 8) | bcd((unsigned)t.tm_min));
+        c->r[R_DX] = (uint16_t)(bcd((unsigned)t.tm_sec) << 8);
+        ok(c);
+        break;
+    }
+    case 0x04: {                             /* RTC date */
+        struct tm t;
+        wall_clock(m, &t, NULL);
+        unsigned y = (unsigned)t.tm_year + 1900u;
+        c->r[R_CX] = (uint16_t)((bcd(y / 100) << 8) | bcd(y % 100));
+        c->r[R_DX] = (uint16_t)((bcd((unsigned)t.tm_mon + 1) << 8) | bcd((unsigned)t.tm_mday));
+        ok(c);
+        break;
+    }
+    default: break;
     }
     return 1;
 }
 
-void dos_mouse_set(dos_t *d, int x, int y, int buttons)
+/* ===================================================================== */
+/* INT 33h - the mouse driver                                            */
+/* ===================================================================== */
+
+static const uint16_t DEFAULT_MOUSE_MASKS[32] = {
+    0x3FFF, 0x1FFF, 0x0FFF, 0x07FF, 0x03FF, 0x01FF, 0x00FF, 0x007F,
+    0x003F, 0x001F, 0x01FF, 0x10FF, 0x30FF, 0xF87F, 0xF87F, 0xFC3F,
+    0x0000, 0x4000, 0x6000, 0x7000, 0x7800, 0x7C00, 0x7E00, 0x7F00,
+    0x7F80, 0x7C00, 0x6C00, 0x4600, 0x0600, 0x0300, 0x0300, 0x0000 };
+
+static void mouse_reset(machine_t *m)
 {
-    d->mouse_x = x;
-    d->mouse_y = y;
-    d->mouse_buttons = buttons;
+    m->mouse_hidden = 1;
+    m->mouse_hnd_mask = 0;
+    m->mouse_xmin = 0; m->mouse_xmax = 639;
+    m->mouse_ymin = 0; m->mouse_ymax = 199;
+    m->mouse_x = 320; m->mouse_y = 100;
+    memset(m->mouse_press, 0, sizeof m->mouse_press);
+    memset(m->mouse_release, 0, sizeof m->mouse_release);
+    m->mouse_mickey_x = m->mouse_mickey_y = 0;
+    memcpy(m->mouse_masks, DEFAULT_MOUSE_MASKS, sizeof m->mouse_masks);
+    m->mouse_hot_x = m->mouse_hot_y = 0;
+    m->mouse_driver_installed = 1;
 }
 
-/* Microsoft mouse driver, polling subset. The front end is point-and-click;
- * with a mouse reported present it can be driven by exact clicks. The event
- * handler installed through function 0Ch is recorded but not invoked; if a
- * program turns out to depend on it rather than on polling, that shows up as
- * clicks having no effect and the handler will need calling. */
-static int int33(cpu_t *c, dos_t *d)
+static int int33(machine_t *m)
 {
+    cpu_t *c = &m->cpu;
     uint16_t fn = c->r[R_AX];
-    d->mouse_calls++;
-    if (d->trace_dos & DOS_TRACE_ALL) {
-        /* The cap is PER PROGRAM. A single static counter spent all
-         * forty on SETUP and PLAYER before START had started, so the
-         * trace could not answer "which mouse functions does START
-         * call" at all - which is the question it exists for. */
-        static unsigned n;
-        static const char *of;
-        const char *who = dos_current_program(d);
-        if (who != of) { of = who; n = 0; }
-        if (n++ < 40)
-            logf_(d, "INT33 AX=%04X from %s%s\n", fn, who,
-                  n == 40 ? "  [further calls suppressed]" : "");
-    }
-    if (!d->mouse_present) {
+    if (!m->mouse_present) {
         if (fn == 0x0000 || fn == 0x0021) { c->r[R_AX] = 0; c->r[R_BX] = 0; }
         return 1;
     }
-    uint16_t vx = (uint16_t)(d->mouse_x * 2), vy = (uint16_t)d->mouse_y;
     switch (fn) {
-    case 0x0000:                 /* reset and status: present, two buttons */
-    case 0x0021:                 /* software reset */
+    case 0x0000: case 0x0021:                 /* reset: present, two buttons */
+        mouse_reset(m);
         c->r[R_AX] = 0xFFFF;
         c->r[R_BX] = 2;
-        d->mouse_shown = 0;
-        d->mouse_hnd_mask = 0;
-        d->mouse_xmin = 0; d->mouse_xmax = 639;
-        d->mouse_ymin = 0; d->mouse_ymax = 199;
         break;
-    case 0x0001: d->mouse_shown = 1; break;
-    case 0x0002: d->mouse_shown = 0; break;
-    case 0x0003:                 /* position and button status */
-        c->r[R_BX] = (uint16_t)d->mouse_buttons;
-        c->r[R_CX] = vx;
-        c->r[R_DX] = vy;
+    case 0x0001: if (m->mouse_hidden > 0) m->mouse_hidden--; break;
+    case 0x0002: m->mouse_hidden++; break;
+    case 0x0003:
+        c->r[R_BX] = (uint16_t)m->mouse_buttons;
+        c->r[R_CX] = (uint16_t)m->mouse_x;
+        c->r[R_DX] = (uint16_t)m->mouse_y;
         break;
-    case 0x0004:                 /* set position */
-        d->mouse_x = c->r[R_CX] / 2;
-        d->mouse_y = c->r[R_DX];
-        break;
-    case 0x0005:                 /* button press data */
-        c->r[R_AX] = (uint16_t)d->mouse_buttons;
-        c->r[R_BX] = (uint16_t)((d->mouse_buttons >> (c->r[R_BX] & 1)) & 1);
-        c->r[R_CX] = vx; c->r[R_DX] = vy;
-        break;
-    case 0x0006:                 /* button release data */
-        c->r[R_AX] = (uint16_t)d->mouse_buttons;
-        c->r[R_BX] = 0;
-        c->r[R_CX] = vx; c->r[R_DX] = vy;
-        break;
-    case 0x0007: d->mouse_xmin = c->r[R_CX]; d->mouse_xmax = c->r[R_DX]; break;
-    case 0x0008: d->mouse_ymin = c->r[R_CX]; d->mouse_ymax = c->r[R_DX]; break;
-    case 0x000B: c->r[R_CX] = 0; c->r[R_DX] = 0; break;   /* motion counters */
-    case 0x000C:                 /* set event handler */
-        d->mouse_hnd_mask = c->r[R_CX];
-        d->mouse_hnd_off = c->r[R_DX];
-        d->mouse_hnd_seg = c->seg[S_ES];
-        logf_(d, "[mouse] %s installed an event handler at %04X:%04X mask %04X "
-                 "(not invoked by the shim)\n",
-              dos_current_program(d), d->mouse_hnd_seg, d->mouse_hnd_off, d->mouse_hnd_mask);
-        break;
-    case 0x0015: c->r[R_BX] = 0x40; break;                /* state buffer size */
-    case 0x0024:                 /* version and type: 8.00, bus mouse */
-        c->r[R_BX] = 0x0800; c->r[R_CX] = 0x0400;
-        break;
-    default:                     /* ratios, page, cursor shapes: accepted */
+    case 0x0004: {
+        int x = (int16_t)c->r[R_CX], y = (int16_t)c->r[R_DX];
+        if (x < m->mouse_xmin) x = m->mouse_xmin;
+        if (x > m->mouse_xmax) x = m->mouse_xmax;
+        if (y < m->mouse_ymin) y = m->mouse_ymin;
+        if (y > m->mouse_ymax) y = m->mouse_ymax;
+        m->mouse_x = x; m->mouse_y = y;
         break;
     }
+    case 0x0005: case 0x0006: {               /* press / release data */
+        int b = c->r[R_BX] & 1;
+        c->r[R_AX] = (uint16_t)m->mouse_buttons;
+        if (fn == 5) {
+            c->r[R_BX] = (uint16_t)m->mouse_press[b];
+            c->r[R_CX] = (uint16_t)m->mouse_press_x[b];
+            c->r[R_DX] = (uint16_t)m->mouse_press_y[b];
+            m->mouse_press[b] = 0;
+        } else {
+            c->r[R_BX] = (uint16_t)m->mouse_release[b];
+            c->r[R_CX] = (uint16_t)m->mouse_rel_x[b];
+            c->r[R_DX] = (uint16_t)m->mouse_rel_y[b];
+            m->mouse_release[b] = 0;
+        }
+        break;
+    }
+    case 0x0007: {
+        int a = (int16_t)c->r[R_CX], b = (int16_t)c->r[R_DX];
+        m->mouse_xmin = a < b ? a : b; m->mouse_xmax = a < b ? b : a;
+        if (m->mouse_x < m->mouse_xmin) m->mouse_x = m->mouse_xmin;
+        if (m->mouse_x > m->mouse_xmax) m->mouse_x = m->mouse_xmax;
+        break;
+    }
+    case 0x0008: {
+        int a = (int16_t)c->r[R_CX], b = (int16_t)c->r[R_DX];
+        m->mouse_ymin = a < b ? a : b; m->mouse_ymax = a < b ? b : a;
+        if (m->mouse_y < m->mouse_ymin) m->mouse_y = m->mouse_ymin;
+        if (m->mouse_y > m->mouse_ymax) m->mouse_y = m->mouse_ymax;
+        break;
+    }
+    case 0x0009:                              /* graphics cursor shape */
+        m->mouse_hot_x = (int16_t)c->r[R_BX];
+        m->mouse_hot_y = (int16_t)c->r[R_CX];
+        for (int i = 0; i < 32; i++)
+            m->mouse_masks[i] = seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_DX] + i * 2));
+        break;
+    case 0x000B:                              /* motion counters */
+        c->r[R_CX] = (uint16_t)m->mouse_mickey_x;
+        c->r[R_DX] = (uint16_t)m->mouse_mickey_y;
+        m->mouse_mickey_x = m->mouse_mickey_y = 0;
+        break;
+    case 0x000C:
+        m->mouse_hnd_mask = c->r[R_CX];
+        m->mouse_hnd_off = c->r[R_DX];
+        m->mouse_hnd_seg = c->seg[S_ES];
+        dos_log(m, "[mouse] %s installed an event handler at %04X:%04X mask %04X (not called)\n",
+                dos_current_program(m), m->mouse_hnd_seg, m->mouse_hnd_off, m->mouse_hnd_mask);
+        break;
+    case 0x0015: c->r[R_BX] = 0x40; break;
+    case 0x0024: c->r[R_BX] = 0x0800; c->r[R_CX] = 0x0400; break;   /* 8.00, PS/2 */
+    default: break;                           /* ratios, pages, exclusion: accepted */
+    }
     return 1;
+}
+
+/* ===================================================================== */
+/* The interrupt hook                                                    */
+/* ===================================================================== */
+
+/* The services reached through the vector table. Each vector starts out
+ * pointing at a stub `int (0xE0+k) ; retf 2` at 0060:0040+8k. A direct
+ * INT n while the vector is still that stub is serviced in place; once a
+ * program has hooked the vector its handler runs, and if it chains to the
+ * old vector the stub's alias interrupt is serviced instead. */
+static const uint8_t SERVICES[] = { 0x10, 0x16, 0x1A, 0x21, 0x33 };
+#define SERVICE_STUB(k) ((uint16_t)(0x40 + 8 * (k)))
+
+static int service(machine_t *m, uint8_t vec)
+{
+    switch (vec) {
+    case 0x21: return int21(m);
+    case 0x10: return int10(m);
+    case 0x16: return int16(m);
+    case 0x1A: return int1a(m);
+    case 0x33: return int33(m);
+    default:   return 0;
+    }
 }
 
 int dos_int_hook(cpu_t *c, uint8_t vec)
 {
-    dos_t *d = self(c);
-    if (!d) return 0;
+    machine_t *m = machine_of(c);
+    if (!m) return 0;
+    for (unsigned k = 0; k < sizeof SERVICES; k++) {
+        if (vec == SERVICES[k]) {
+            if (mem_read16(c, (uint32_t)vec * 4) != SERVICE_STUB(k) ||
+                mem_read16(c, (uint32_t)vec * 4 + 2) != m->iret_seg)
+                return 0;                      /* the program's own handler */
+            return service(m, vec);
+        }
+        if (vec == 0xE0 + k) {
+            /* Chained to from a program's handler: the caller's frame is at
+             * SS:SP, and the stub returns with RETF 2, so the interrupt
+             * enable, trap and direction flags come back from that frame
+             * as an IRET would have brought them. */
+            int r = service(m, SERVICES[k]);
+            if (c->halted != 2) {
+                uint16_t fl = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_SP] + 4));
+                const uint16_t keep = F_IF | F_TF | F_DF;
+                c->flags = (uint16_t)((c->flags & (uint16_t)~keep) | (fl & keep));
+                cpu_irq_state_changed(c);
+            }
+            return r;
+        }
+    }
     switch (vec) {
-    case 0x21: return int21(c, d);
-    case 0x10: return int10(c, d);
-    case 0x16: return int16(c, d);
-    case 0x1A: return int1a(c, d);
-    case 0x33: return int33(c, d);
-    case 0xF8: {
-        if (!d->bios_clock) return 0;
-        uint32_t t = mem_read16(c, BDA_TICKS)
-                   | ((uint32_t)mem_read16(c, BDA_TICKS + 2) << 16);
+    case 0xF8: {                              /* the BIOS INT 8 stub's tick step */
+        uint32_t t = mem_read16(c, BDA_TICKS) | ((uint32_t)mem_read16(c, BDA_TICKS + 2) << 16);
         t++;
         if (t >= 0x1800B0u) {
             t = 0;
-            mem_write8(c, 0x470, (uint8_t)(mem_read8(c, 0x470) + 1));
+            mem_write8(c, BDA_MIDNIGHT, (uint8_t)(mem_read8(c, BDA_MIDNIGHT) + 1));
         }
         mem_write16(c, BDA_TICKS, (uint16_t)t);
         mem_write16(c, BDA_TICKS + 2, (uint16_t)(t >> 16));
-        /* The BIOS invokes the guest's user-timer callback once per tick. */
-        cpu_interrupt(c, 0x1C);
+        cpu_interrupt(c, 0x1C);                /* the user timer hook */
         return 1;
     }
-    case 0xF9: bios_key_irq(c, d); return 1;   /* the INT 9 stub's translation step */
-    case 0x20: return terminate(c, d, 0);
+    case 0xF9: bios_key_irq(m); return 1;      /* the INT 9 stub's translation step */
+    case 0x20: return terminate(m, 0);
     case 0x11: c->r[R_AX] = mem_read16(c, BDA_EQUIPMENT); return 1;
     case 0x12: c->r[R_AX] = mem_read16(c, BDA_MEM_KB); return 1;
-    default: {
-        /* Anything else runs the guest's own handler, if it installed one.
-         * Report the first few of each so an unexpected interrupt shows up
-         * as a diagnosis rather than as a mysterious spin. */
-        static unsigned seen[256];
-        if (seen[vec]++ < 3)
-            logf_(d, "[int] INT %02Xh taken at %04X:%04X (vector -> %04X:%04X)%s\n",
-                  vec, c->op_cs, c->op_ip,
-                  mem_read16(c, (uint32_t)vec * 4 + 2),
-                  mem_read16(c, (uint32_t)vec * 4),
-                  seen[vec] == 3 ? "  [further occurrences suppressed]" : "");
-        return 0;
-    }
+    case 0x15:                                 /* system services: none */
+        c->r[R_AX] = (uint16_t)((c->r[R_AX] & 0x00FF) | 0x8600);
+        c->flags |= F_CF;
+        return 1;
+    default: return 0;                         /* the guest's vector, or the IRET stub */
     }
 }
 
-/* ---- port I/O ---------------------------------------------------------- */
+/* ===================================================================== */
+/* Boot                                                                  */
+/* ===================================================================== */
 
-/* The OPL2's status register, defined below with the rest of its model. */
-static uint8_t opl_status(dos_t *d, cpu_t *c);
-/* The game port's, likewise. Both are read here and modelled further down;
- * without these the compiler takes the implicit-int declaration and the
- * definition is then a redefinition, which is how this file learned the
- * lesson the first time. */
-static uint8_t joy_read(dos_t *d, cpu_t *c);
-static void joy_trigger(dos_t *d, cpu_t *c);
-
-uint32_t dos_io_read(cpu_t *c, uint16_t port, int width)
+static void init_bios_data_area(machine_t *m)
 {
-    dos_t *d = self(c);
-    (void)width;
-    switch (port) {
-    case 0x40: case 0x41: case 0x42: {
-        /* A counter that actually COUNTS DOWN.
-         *
-         * This used to return 0x34 then 0x12 - the two bytes of a fixed
-         * 0x1234 - with a comment claiming it advanced. It did not: every
-         * latch read the same value, so any driver measuring elapsed time
-         * by subtracting two latches got ZERO.
-         *
-         * MPS_LOGO's AdLib and Roland drivers do exactly that. `asound.log`
-         * at 0x00FE latches counter 0 sixteen times across a delay loop,
-         * sums the deltas, divides by 16 and then divides 0x5140 by the
-         * result - and with every delta zero that is an integer divide by
-         * zero. The C runtime printed "R6003 - integer divide by 0", the
-         * logo exited 255, and F117.COM then SKIPPED PLAYER.EXE entirely.
-         * So choosing a sound card changed the whole boot, and the cause
-         * was here rather than in the game.
-         *
-         * The model: one full counter period is one IRQ0 interval, which
-         * is what --irq-every already defines, so the counter runs from
-         * its reload value down to 0 across each tick. A latch samples
-         * once and the second read returns that sample's high byte, as
-         * real hardware does. */
-        int ch = port - 0x40;
-        if (!d->pit_latch_state[ch]) {
-            const uint32_t full = d->pit_divisor[ch] ? d->pit_divisor[ch]
-                                                     : 65536u;
-            const uint64_t per = d->irq_every ? d->irq_every : 20000u;
-            const uint64_t pos = (uint64_t)c->icount % per;
-            uint32_t cur = (uint32_t)(full - (uint64_t)full * pos / per);
-            if (dos_vga_time && d->ins_per_sec) {
-                /* On the ins_per_sec clock, and in mode 3 - the BIOS's
-                 * mode and the one the games program - the counter steps
-                 * by two and so runs its range twice a period. START's
-                 * retrace calibration (0x08DD8) halves its sum for this. */
-                const uint64_t clocks = (c->icount - dos_pit_epoch) * 1193182ull
-                                      / d->ins_per_sec;
-                const unsigned mode = dos_pit_mode[ch] ? (dos_pit_mode[ch] & 7u) : 3u;
-                const uint64_t step = (mode & 3u) == 3u ? 2u : 1u;
-                cur = (uint32_t)(full - (clocks * step) % full);
-            }
-            if (cur == 0) cur = 1;     /* a latched 0 reads as "expired" */
-            d->pit_latched[ch] = (uint16_t)cur;
-        }
-        const uint8_t v = d->pit_latch_state[ch]
-                        ? (uint8_t)(d->pit_latched[ch] >> 8)
-                        : (uint8_t)(d->pit_latched[ch] & 0xFF);
-        d->pit_latch_state[ch] ^= 1;
-        return v;
-    }
-    case 0x3DA: {
-        /* Input Status Register 1. The game polls this both to wait for
-         * retrace and to measure machine speed, so it has to keep changing;
-         * a stuck value would hang the guest. */
-        unsigned t = ++d->vga_status_reads;
-        uint8_t v = 0;
-        if (dos_vga_time && d->ins_per_sec) {
-            /* Mode 13h on a VGA: 449 lines a frame at 31.469 kHz, 400 of
-             * them shown (200 rows, each scanned twice), vertical retrace
-             * on lines 412 and 413. Bit 0 is set whenever the beam is not
-             * drawing - the horizontal blank, about a fifth of each line,
-             * and the whole vertical blank. */
-            const uint64_t frame = d->ins_per_sec * 1000ull / 70086ull;
-            const uint64_t at = (c->icount % frame) * 449ull;
-            const unsigned line = (unsigned)(at / frame);
-            const unsigned across = (unsigned)((at % frame) * 100ull / frame);
-            if (line >= 400 || across >= 80) v |= 0x01;
-            if (line >= 412 && line < 414) v |= 0x08;
-            return v;
-        }
-        if ((t & 0x1F) < 4)  v |= 0x01;   /* display enable */
-        if ((t & 0xFF) < 16) v |= 0x08;   /* vertical retrace */
-        return v;
-    }
-    case 0x3C9: {                         /* DAC data readback, auto-advancing */
-        uint8_t v = d->dac[d->dac_index * 3 + d->dac_component];
-        if (++d->dac_component == 3) {
-            d->dac_component = 0;
-            d->dac_index = (d->dac_index + 1) & 0xFF;
-        }
-        return v;
-    }
-    case 0x60:  return d->port60;         /* keyboard data: last scancode delivered */
-    case 0x61:  return d->port61;
-    case 0x64:  return 0x14;              /* controller status: nothing ready */
-    case 0x330: {
-        uint8_t value = 0xFE;             /* DOSBox MPU401_ReadData: empty */
-        if (g_mpu.used) {
-            value = g_mpu.queue[g_mpu.head];
-            g_mpu.head = (g_mpu.head + 1u) % sizeof g_mpu.queue;
-            g_mpu.used--;
-        }
-        return value;
-    }
-    case 0x331:                         /* UART status: ready-to-write, plus RX */
-        return (uint8_t)(0x3Fu | (g_mpu.used ? 0u : 0x80u));
-    case 0x201:                            /* the analog game port */
-        trace_text_screen(c, d, 0x201);
-        return joy_read(d, c);
-    case 0x388: case 0x389:
-        /* The AdLib status register. This returned a flat 0x00 under a
-         * comment that ended in a question mark, and the answer is that
-         * it matters: detection is "reset the timers, start timer 1,
-         * wait, expect 0xC0" - ASOUND.LOG 0x0140 - and a constant zero
-         * fails it forever. sndrun.c has modelled this correctly since
-         * it was written; this is the same model. */
-        return opl_status(d, c);
-    case 0x22A: case 0x22E: return 0xFF;  /* Sound Blaster: absent */
-    default:    return 0xFF;
-    }
-}
-
-int      dos_vga_time;
-uint8_t  dos_pit_mode[3];
-uint64_t dos_pit_epoch;
-
-/* ---- the OPL2's observable half --------------------------------------- */
-
-/* Microseconds, from where the CPU is and how this run is timed. One IRQ0
- * period is `irq_every` instructions AND one PIT period, so the divisor
- * fixes how much real time that is. Approximate, but it is the only
- * consistent clock a run with an artificial IRQ rate has. */
-/* Where this run is in microseconds, derived from the one rate the run
- * actually fixes: --irq-every instructions is one PIT period, and one PIT
- * period is counter 0's divisor over 1,193,182 Hz. Both the OPL timers and
- * the game port's one-shots read it, so they cannot disagree about time.
- *
- * Worth knowing what it implies: at the default --irq-every 20000 with the
- * power-on divisor, one instruction is about 2.7us, so the modelled CPU
- * runs near 0.36 MIPS - several times slower than the 286 this game
- * shipped for. Anything the guest measures AGAINST ITSELF (a delay-loop
- * calibration, a paddle count) comes out scaled by that, which is why
- * docs/re/102-logo-sound-driver.md says the jingle's tempo is not
- * measurable by this route. Raising --irq-every raises the modelled clock. */
-static uint64_t dos_now_us(dos_t *d, cpu_t *c)
-{
-    if (d->ins_per_sec)
-        return (uint64_t)c->icount * 1000000ull / d->ins_per_sec;
-    const uint64_t div = d->pit_divisor[0] ? d->pit_divisor[0] : 65536u;
-    const uint64_t per = d->irq_every ? d->irq_every : 20000u;
-    const uint64_t us_per_period = div * 1000000ull / 1193182ull;
-    return (uint64_t)c->icount * us_per_period / per;
-}
-
-static uint64_t opl_now_us(dos_t *d, cpu_t *c)
-{
-    return dos_now_us(d, c);
-}
-
-/* One axis's one-shot length: 24.2us at rest, 0.011us per ohm across a
- * 100k pot, which is the standard game-card timing. */
-static uint64_t joy_us(unsigned axis)
-{
-    if (axis > 255) axis = 255;
-    return 24ull + (unsigned long long)axis * 1100ull / 255ull;
-}
-
-/* The `out` that fires them. Any width, any value: the card decodes the
- * write itself, not what is written. */
-static void joy_trigger(dos_t *d, cpu_t *c)
-{
-    const uint64_t now = dos_now_us(d, c);
-    /* An axis of 0x100 or more has no pot on it: its one-shot never
-     * ends, so a reader counting it runs out of count (VGAME 0x1126E). */
-    for (int i = 0; i < 4; i++)
-        d->joy_due[i] = d->joy_axis[i] >= 0x100 ? UINT64_MAX
-                                                : now + joy_us(d->joy_axis[i]);
-}
-
-static uint8_t joy_read(dos_t *d, cpu_t *c)
-{
-    /* No stick: axis bits low, buttons released. This is what the recipes
-     * that answer SETUP's joystick prompt with N have always seen. */
-    if (!d->joy_present) return 0xF0;
-    const uint64_t now = dos_now_us(d, c);
-    uint8_t v = 0;
-    for (int i = 0; i < 4; i++)
-        if (d->joy_due[i] > now) v |= (uint8_t)(1u << i);
-    /* Buttons are active low. */
-    v |= (uint8_t)((~d->joy_buttons & 0x0Fu) << 4);
-    return v;
-}
-
-static void opl_tick(dos_t *d, uint64_t us)
-{
-    if (d->opl_t1_run && us >= d->opl_t1_due) {
-        d->opl_t1_flag = 1;
-        d->opl_t1_due += (256u - d->opl_t1_preset) * 80ull;   /* free-running */
-    }
-    if (d->opl_t2_run && us >= d->opl_t2_due) {
-        d->opl_t2_flag = 1;
-        d->opl_t2_due += (256u - d->opl_t2_preset) * 320ull;
-    }
-}
-
-static uint8_t opl_status(dos_t *d, cpu_t *c)
-{
-    opl_tick(d, opl_now_us(d, c));
-    uint8_t s = 0;
-    if (d->opl_t1_flag && !d->opl_t1_mask) s |= 0x40;
-    if (d->opl_t2_flag && !d->opl_t2_mask) s |= 0x20;
-    if (s) s |= 0x80;
-    return s;
-}
-
-static void opl_write_reg(dos_t *d, cpu_t *c, uint8_t reg, uint8_t val)
-{
-    const uint64_t us = opl_now_us(d, c);
-    switch (reg) {
-    case 0x02: d->opl_t1_preset = val; break;
-    case 0x03: d->opl_t2_preset = val; break;
-    case 0x04:
-        if (val & 0x80) {                 /* IRQ reset clears both flags */
-            d->opl_t1_flag = d->opl_t2_flag = 0;
-            break;                        /* and does nothing else */
-        }
-        d->opl_t1_mask = (val & 0x40) != 0;
-        d->opl_t2_mask = (val & 0x20) != 0;
-        if ((val & 1) && !d->opl_t1_run)
-            d->opl_t1_due = us + (256u - d->opl_t1_preset) * 80ull;
-        if ((val & 2) && !d->opl_t2_run)
-            d->opl_t2_due = us + (256u - d->opl_t2_preset) * 320ull;
-        d->opl_t1_run = (val & 1) != 0;
-        d->opl_t2_run = (val & 2) != 0;
-        break;
-    default: break;
-    }
-}
-
-void dos_io_write(cpu_t *c, uint16_t port, uint32_t val, int width)
-{
-    dos_t *d = self(c);
-    (void)width;
-    if (port == 0x20) {                   /* 8259 master: OCW2 */
-        /* Any EOI form (non-specific 20h, specific 60h-67h) has bit 5 set and
-         * ends the in-service state, letting the next IRQ0 through. */
-        if (val == 0x61) d->irq1_in_service = 0;               /* specific EOI, IRQ1 */
-        else if (val == 0x60) d->irq0_in_service = 0;          /* specific EOI, IRQ0 */
-        else if (val & 0x20) {                                 /* non-specific: highest in service */
-            if (d->irq0_in_service) d->irq0_in_service = 0;
-            else d->irq1_in_service = 0;
-        }
-        return;
-    }
-    if (port == 0x201) { joy_trigger(d, c); return; }   /* fire the one-shots */
-    if (port == 0x21) return;             /* IMR: masking not modelled */
-    if (port == 0x61) {
-        d->port61 = (uint8_t)val;
-        if (d->trace_ports)
-            logf_(d, "SPEAKER %8llu %02X  %04X:%04X %s\n",
-                  (unsigned long long)c->icount, d->port61,
-                  c->op_cs, c->op_ip, dos_current_program(d));
-        return;
-    }
-    if (port == 0x331) {
-        const uint8_t v = (uint8_t)val;
-        if (g_mpu.uart && v != 0xFFu) return;
-        if (v == 0xFFu) { g_mpu.uart = 0; g_mpu.used = 0; g_mpu.head = 0; }
-        else if (v == 0x3Fu) g_mpu.uart = 1;
-        mpu_queue(0xFEu);
-        if (d->trace_ports)
-            logf_(d, "MPU CMD %02X @%llu %04X:%04X %s\n", v,
-                  (unsigned long long)c->icount, c->op_cs, c->op_ip,
-                  dos_current_program(d));
-        return;
-    }
-    if (port == 0x330) {
-        if (d->trace_ports)
-            logf_(d, "MIDI %8llu %02X  %04X:%04X %s\n",
-                  (unsigned long long)c->icount, (unsigned)(val & 0xFF),
-                  c->op_cs, c->op_ip, dos_current_program(d));
-        return;
-    }
-    if (port == 0x388) d->opl_index = (uint8_t)val;   /* OPL2 index */
-    else if (port == 0x389)                          /* OPL2 data */
-        opl_write_reg(d, c, d->opl_index, (uint8_t)(val & 0xFF));
-
-    if (port == 0x3C8) {                  /* DAC write index */
-        d->dac_index = (int)(val & 0xFF);
-        d->dac_component = 0;
-        return;
-    }
-    if (port == 0x3C9) {                  /* DAC data: R, G, B then auto-advance */
-        d->dac[d->dac_index * 3 + d->dac_component] = (uint8_t)(val & 0x3F);
-        if (++d->dac_component == 3) {
-            d->dac_component = 0;
-            d->dac_index = (d->dac_index + 1) & 0xFF;
-            /* Once per completed entry, not once per component: a fade is
-             * hundreds of these a second and the interesting number is how
-             * the whole palette moves over time.
-             *
-             * These two branches used to `return` BEFORE the generic
-             * trace at the bottom of this function, so `--trace-ports`
-             * reported NO DAC activity at all - and a palette fade looked
-             * exactly like a fade that was never written. The port was
-             * modelled and untraced, which is the worst of both: the
-             * guest behaved correctly and no instrument could see it. */
-            if (d->trace_ports) {
-                const int e = (d->dac_index - 1) & 0xFF;
-                logf_(d, "DAC %3d = %2u,%2u,%2u @%llu %s\n",
-                      e, d->dac[e * 3], d->dac[e * 3 + 1], d->dac[e * 3 + 2],
-                      (unsigned long long)c->icount, dos_current_program(d));
-            }
-        }
-        return;
-    }
-    if (port == 0x3C7) {                  /* DAC read index */
-        d->dac_index = (int)(val & 0xFF);
-        d->dac_component = 0;
-        return;
-    }
-    if (port == 0x43) {
-        int ch = (val >> 6) & 3;
-        if (ch < 3) d->pit_latch_state[ch] = 0;
-        if (ch < 3 && (val & 0x30)) dos_pit_mode[ch] = (uint8_t)(((val >> 1) & 7) | 0x80);
-        if (d->trace_ports) logf_(d, "PIT cmd %02X (counter %d)\n", val, ch);
-        return;
-    }
-    if (port >= 0x40 && port <= 0x42) {
-        int ch = port - 0x40;
-        if (d->pit_latch_state[ch] == 0) {
-            d->pit_divisor[ch] = (uint16_t)(val & 0xFF);
-            d->pit_latch_state[ch] = 1;
-        } else {
-            d->pit_divisor[ch] = (uint16_t)((d->pit_divisor[ch] & 0xFF) | ((val & 0xFF) << 8));
-            d->pit_latch_state[ch] = 0;
-            /* Counter 0 only. This counted every counter, and dosrun's
-             * loop answers a change by rescheduling IRQ0 from the epoch -
-             * which a counter-2 write leaves where it was, so the next
-             * IRQ0 was already due and fired at once. The IBM driver's
-             * speaker reloads counter 2 a few times a frame: under
-             * --vga-time PLAYER took ~20 interrupts a frame, not 4, and
-             * played the whole intro at twice its speed. GOG DOSBox holds
-             * 4 (dosbox_isr_probe --program PLAYER). */
-            if (ch == 0) {
-                d->pit_writes++;
-                dos_pit_epoch = c->icount;
-            }
-            /* With the WRITER's address. The PIT case returns before the
-             * generic OUT trace at the end of this function - the same
-             * shape as the DAC defect above - so a port trace shows the
-             * reload and not who asked for it, and "which routine
-             * changes the intro's timer rate" could not be answered. */
-            logf_(d, "[pit] counter %d reload = %u (%.4f Hz) by %s at %04X:%04X @%llu\n",
-                  ch, d->pit_divisor[ch],
-                  d->pit_divisor[ch] ? 1193182.0 / d->pit_divisor[ch] : 1193182.0 / 65536.0,
-                  dos_current_program(d), c->op_cs, c->op_ip,
-                  (unsigned long long)c->icount);
-        }
-        return;
-    }
-    /* The instruction count and the writing instruction's address, not just
-     * the value: a sound driver's register writes only mean something in
-     * order and in time, and the CS:IP says which player routine emitted
-     * one. `op_cs:op_ip` is the OUT itself rather than what follows it. */
-    if (d->trace_ports || (d->trace_opl &&
-                           (port == 0x388 || port == 0x389)))
-        logf_(d, "OUT %03X, %02X  @%llu  %04X:%04X %s\n", port, val,
-              (unsigned long long)c->icount, c->op_cs, c->op_ip,
-              dos_current_program(d));
-}
-
-/* ---- timer delivery ---------------------------------------------------- */
-
-static int deliver_irq0(dos_t *d)
-{
-    cpu_t *c = d->cpu;
-    uint16_t off = mem_read16(c, 8 * 4);
-    uint16_t seg = mem_read16(c, 8 * 4 + 2);
-    if (!seg && !off) return 0;
-    d->tick_irq_count++;
-    d->irq0_in_service = 1;               /* held until the handler's EOI */
-    cpu_push16(c, c->flags);
-    cpu_push16(c, c->seg[S_CS]);
-    cpu_push16(c, c->ip);
-    c->flags = (uint16_t)(c->flags & (uint16_t)((F_IF | F_TF) ^ 0xFFFFu));
-    c->seg[S_CS] = seg;
-    c->ip = off;
-    return 1;
-}
-
-int dos_raise_timer_irq(dos_t *d)
-{
-    cpu_t *c = d->cpu;
-    /* Legacy bounded fixtures use an edge clock. Hardware-time captures
-     * instead advance BDA time only when the guest chains the BIOS stub. */
-    if (!d->bios_clock) {
-        uint32_t t = mem_read16(c, BDA_TICKS) | ((uint32_t)mem_read16(c, BDA_TICKS + 2) << 16);
-        t++;
-        mem_write16(c, BDA_TICKS, (uint16_t)t);
-        mem_write16(c, BDA_TICKS + 2, (uint16_t)(t >> 16));
-    }
-
-    if (d->irq0_in_service || !(c->flags & F_IF)) {
-        /* The 8259 retains one request while IRQ0 is in service or the CPU
-         * masks interrupts with CLI. Deliver it after EOI/STI from poll. */
-        d->irq0_pending = 1;
-        d->irq0_deferred++;
-        return 0;
-    }
-    return deliver_irq0(d);
-}
-
-void dos_timer_poll(dos_t *d)
-{
-    if (d->irq0_pending && !d->irq0_in_service && (d->cpu->flags & F_IF)) {
-        d->irq0_pending = 0;
-        deliver_irq0(d);
-    }
-}
-
-void dos_set_bios_clock(dos_t *d)
-{
-    /* Separate INT 8 from the generic acknowledge/IRET vectors. Keeping
-     * this at 0060:0020 leaves the existing INT 9 stub at 0010 intact. */
-    static const uint8_t stub[] = {
-        0x50, 0xCD, 0xF8, 0xB0, 0x20, 0xE6, 0x20, 0x58, 0xCF
-    };
-    for (size_t i = 0; i < sizeof stub; i++)
-        mem_write8(d->cpu, phys(0x0060, (uint16_t)(0x20 + i)), stub[i]);
-    mem_write16(d->cpu, 8 * 4, 0x20);
-    mem_write16(d->cpu, 8 * 4 + 2, 0x0060);
-    mem_write8(d->cpu, phys(0x0060, 0x30), 0xCF);
-    mem_write16(d->cpu, 0x1C * 4, 0x30);
-    mem_write16(d->cpu, 0x1C * 4 + 2, 0x0060);
-    d->bios_clock = 1;
-}
-
-/* ---- boot -------------------------------------------------------------- */
-
-static void init_bios_data_area(cpu_t *c)
-{
-    mem_write16(c, BDA_EQUIPMENT, 0x0021);       /* floppy present, 80x25 colour */
+    cpu_t *c = &m->cpu;
+    mem_write16(c, BDA_EQUIPMENT, 0x0026);       /* mouse port, 80x25 colour, no floppy maths */
     mem_write16(c, BDA_MEM_KB, 640);
     mem_write16(c, BDA_KBD_HEAD, BDA_KBD_BUF - 0x400);
     mem_write16(c, BDA_KBD_TAIL, BDA_KBD_BUF - 0x400);
     mem_write16(c, BDA_KBD_START, BDA_KBD_BUF - 0x400);
     mem_write16(c, BDA_KBD_END, BDA_KBD_BUF_END - 0x400);
+    mem_write8 (c, BDA_SHIFT, 0x20);             /* NumLock on, as a BIOS boots */
     mem_write8 (c, BDA_VIDEO_MODE, 0x03);
     mem_write16(c, BDA_VIDEO_COLS, 80);
     mem_write16(c, BDA_PAGE_SIZE, 4000);
-    mem_write16(c, BDA_CRTC_BASE, 0x03D4);       /* colour CRTC; VGAME reads this */
-    mem_write16(c, BDA_TICKS, 0);
-    mem_write16(c, BDA_TICKS + 2, 0);
+    mem_write16(c, BDA_CURSOR_TYPE, 0x0607);
+    mem_write16(c, BDA_CRTC_BASE, 0x03D4);
     mem_write8 (c, BDA_ROWS_M1, 24);
     mem_write16(c, BDA_CHAR_HEIGHT, 16);
-    mem_write8 (c, 0x487, 0x60);                 /* EGA/VGA info bytes */
+    mem_write8 (c, 0x487, 0x60);
     mem_write8 (c, 0x488, 0x09);
-    mem_write8 (c, 0x489, 0x51);                 /* VGA: 400-line, colour */
-    mem_write8 (c, 0x48A, 0x08);                 /* display combination: VGA colour */
+    mem_write8 (c, 0x489, 0x51);
+    mem_write8 (c, 0x48A, 0x08);
+    mem_write8 (c, BDA_KBD_FLAGS3, 0x10);        /* 101-key keyboard */
+
+    /* The ROM starts the tick count at the time of day it reads from the
+     * real-time clock. */
+    struct tm t;
+    unsigned cs;
+    wall_clock(m, &t, &cs);
+    uint64_t secs = (uint64_t)t.tm_hour * 3600u + (uint64_t)t.tm_min * 60u + (uint64_t)t.tm_sec;
+    uint32_t ticks = (uint32_t)((secs * 1000u + cs * 10u) * 1193182ull / 65536ull / 1000u);
+    mem_write16(c, BDA_TICKS, (uint16_t)ticks);
+    mem_write16(c, BDA_TICKS + 2, (uint16_t)(ticks >> 16));
 }
 
-FILE *dos_boot_log;
-
-int dos_boot(dos_t *d, cpu_t *c, const char *exe_path, const char *data_dir)
+int dos_boot(machine_t *m, const char *program)
 {
-    memset(d, 0, sizeof(*d));
-    memset(&g_mpu, 0, sizeof g_mpu);
-    d->cpu = c;
-    d->log = dos_boot_log ? dos_boot_log : stdout;
-    snprintf(d->data_dir, sizeof(d->data_dir), "%s", data_dir ? data_dir : ".");
+    cpu_t *c = &m->cpu;
+    const uint16_t iret_seg = 0x0060;
+    m->iret_seg = iret_seg;
 
-    /* Every vector points at an IRET so an interrupt nobody handles is a
-     * no-op rather than a jump into zeros. The game chains its timer handler
-     * onto whatever was there, which makes this the "BIOS" handler too. */
-    /* The stand-in handler does what the BIOS INT 8 would: acknowledge the
-     * interrupt at the PIC, then return. The game chains its timer handler
-     * onto this and relies on it for the EOI on the ticks it does not
-     * acknowledge itself. Issuing an EOI for any stray vector is harmless. */
-    uint16_t iret_seg = 0x0060;
-    static const uint8_t stub[] = { 0x50,            /* push ax      */
-                                    0xB0, 0x20,      /* mov al, 20h  */
-                                    0xE6, 0x20,      /* out 20h, al  */
-                                    0x58,            /* pop ax       */
-                                    0xCF };          /* iret         */
-    for (size_t i = 0; i < sizeof(stub); i++)
-        mem_write8(c, phys(iret_seg, (uint16_t)i), stub[i]);
+    /* Every vector points at a stand-in handler that acknowledges the
+     * interrupt at the PIC and returns, so an interrupt nobody handles is a
+     * no-op rather than a jump into zeros. The game chains its timer
+     * handler onto whatever was there. */
+    static const uint8_t stub[] = { 0x50, 0xB0, 0x20, 0xE6, 0x20, 0x58, 0xCF };
+    for (size_t i = 0; i < sizeof stub; i++) mem_write8(c, phys(iret_seg, (uint16_t)i), stub[i]);
+    /* A plain IRET for the software interrupts (no EOI). */
+    mem_write8(c, phys(iret_seg, 0x08), 0xCF);
     for (int v = 0; v < 256; v++) {
-        mem_write16(c, (uint32_t)v * 4, 0);
+        int hw = (v >= 8 && v <= 0x0F);
+        mem_write16(c, (uint32_t)v * 4, hw ? 0x0000 : 0x0008);
         mem_write16(c, (uint32_t)v * 4 + 2, iret_seg);
     }
-    /* INT 9 gets its own stub: the BIOS keyboard handler reads the scancode,
-     * translates it into the ring buffer and acknowledges the interrupt. The
-     * translation is done by the shim through INT F9h so that a game handler
-     * which chains to the BIOS vector (the flight engine does) still gets
-     * its keys into the buffer. */
-    static const uint8_t stub9[] = { 0x50,            /* push ax      */
-                                     0xCD, 0xF9,      /* int F9h      */
-                                     0xB0, 0x20,      /* mov al, 20h  */
-                                     0xE6, 0x20,      /* out 20h, al  */
-                                     0x58,            /* pop ax       */
-                                     0xCF };          /* iret         */
-    for (size_t i = 0; i < sizeof(stub9); i++)
-        mem_write8(c, phys(iret_seg, (uint16_t)(0x10 + i)), stub9[i]);
+    /* INT 9: read the scancode, let the ROM translation (INT F9h) see it,
+     * acknowledge. A game handler that chains here still gets its keys
+     * into the BIOS buffer. */
+    static const uint8_t stub9[] = { 0x50, 0xE4, 0x60, 0xCD, 0xF9, 0xB0, 0x20, 0xE6, 0x20, 0x58, 0xCF };
+    for (size_t i = 0; i < sizeof stub9; i++) mem_write8(c, phys(iret_seg, (uint16_t)(0x10 + i)), stub9[i]);
     mem_write16(c, 9 * 4, 0x10);
-    mem_write16(c, 9 * 4 + 2, iret_seg);
-    init_bios_data_area(c);
+    /* INT 8: count the tick (INT F8h, which also calls INT 1Ch), then EOI. */
+    static const uint8_t stub8[] = { 0x50, 0xCD, 0xF8, 0xB0, 0x20, 0xE6, 0x20, 0x58, 0xCF };
+    for (size_t i = 0; i < sizeof stub8; i++) mem_write8(c, phys(iret_seg, (uint16_t)(0x20 + i)), stub8[i]);
+    mem_write16(c, 8 * 4, 0x20);
+    /* The service vectors: see dos_int_hook. */
+    for (unsigned k = 0; k < sizeof SERVICES; k++) {
+        const uint16_t at = SERVICE_STUB(k);
+        const uint8_t s[5] = { 0xCD, (uint8_t)(0xE0 + k), 0xCA, 0x02, 0x00 };
+        for (int i = 0; i < 5; i++) mem_write8(c, phys(iret_seg, (uint16_t)(at + i)), s[i]);
+        mem_write16(c, (uint32_t)SERVICES[k] * 4, at);
+    }
+    init_bios_data_area(m);
 
-    /* Master environment. Not decoration: the Microsoft C startup reads the
-     * environment segment from PSP:2Ch and walks it to build environ and
-     * argv[0]; left zero, it parses the interrupt vector table instead and
-     * runs off into unmapped memory before reaching main. */
-    d->env_seg = 0x0080;
+    /* The master environment. The Microsoft C startup reads it from
+     * PSP:2Ch to build environ and argv[0]; left zero, it parses the vector
+     * table instead and runs off into unmapped memory. */
+    m->env_seg = 0x0080;
     {
-        static const char *vars[] = { "PATH=C:\\F117A", "COMSPEC=C:\\COMMAND.COM" };
+        static const char *vars[] = { "PATH=C:\\", "COMSPEC=C:\\COMMAND.COM" };
         uint16_t o = 0;
         for (size_t v = 0; v < sizeof(vars) / sizeof(vars[0]); v++)
             for (const char *p = vars[v]; ; p++) {
-                mem_write8(c, phys(d->env_seg, o++), (uint8_t)*p);
+                mem_write8(c, phys(m->env_seg, o++), (uint8_t)*p);
                 if (!*p) break;
             }
-        mem_write8(c, phys(d->env_seg, o++), 0);
-        mem_write16(c, phys(d->env_seg, o), 1);
+        mem_write8(c, phys(m->env_seg, o++), 0);
+        mem_write16(c, phys(m->env_seg, o), 1);
         o += 2;
-        const char *self_path = "C:\\F117A\\F117.COM";
+        const char *self_path = "C:\\F117.COM";
         for (const char *p = self_path; ; p++) {
-            mem_write8(c, phys(d->env_seg, o++), (uint8_t)*p);
+            mem_write8(c, phys(m->env_seg, o++), (uint8_t)*p);
             if (!*p) break;
         }
     }
 
-    d->arena_base_seg = 0x0100;
-    d->arena_end_seg  = 0x9FFF;
+    m->arena_base_seg = 0x0100;
+    m->arena_end_seg  = 0x9FFF;
+    m->files[0].in_use = m->files[1].in_use = m->files[2].in_use = 1;
+    m->files[0].is_device = m->files[1].is_device = m->files[2].is_device = 1;
+    m->mouse_present = 1;
+    memcpy(m->mouse_masks, DEFAULT_MOUSE_MASKS, sizeof m->mouse_masks);
 
-    d->files[0].in_use = d->files[1].in_use = d->files[2].in_use = 1;
-    d->files[0].is_device = d->files[1].is_device = d->files[2].is_device = 1;
+    if (m->save_dir[0]) mkdir_(m->save_dir);
 
-    c->user = d;
-    c->int_hook = dos_int_hook;
-    c->io_read = dos_io_read;
-    c->io_write = dos_io_write;
-
-    /* The root program has no parent to return to; a terminate address of
-     * 0060:0000 (the IRET) is as good a sentinel as any. */
     exec_params ep;
     memset(&ep, 0, sizeof(ep));
-    ep.env_seg = d->env_seg;
-    const char *base = exe_path;
-    for (const char *p = exe_path; *p; p++)
-        if (*p == '\\' || *p == '/') base = p + 1;
-
-    dos_proc *root = &d->procs[0];
+    ep.env_seg = m->env_seg;
+    dos_proc *root = &m->procs[0];
     memset(root, 0, sizeof(*root));
-    snprintf(root->name, sizeof(root->name), "%s", base);
+    snprintf(root->name, sizeof(root->name), "%s", dos_basename(program));
+    m->nproc = 1;
     uint16_t psp = 0;
-    uint16_t err = load_program(d, exe_path, &ep, iret_seg, 0, &psp, base);
+    uint16_t err = load_program(m, program, &ep, iret_seg, 0x08, &psp);
     if (err) {
-        fprintf(stderr, "cannot load %s (DOS error %u)\n", exe_path, err);
+        m->nproc = 0;
+        snprintf(m->fault, sizeof m->fault, "cannot load %s from %s (DOS error %u)",
+                 program, m->data_dir, err);
         return 0;
     }
     root->psp_seg = psp;
-    d->nproc = 1;
-
     return 1;
 }
 
-/* Write the root program's command tail into its PSP.
- *
- * This has to run **after** dos_boot, not before: dos_boot memsets the
- * whole dos_t, so anything stored in advance is wiped. Writing straight
- * into the PSP here is also simpler than threading it through
- * exec_params, and the guest has not executed an instruction yet.
- *
- * DOS's layout at PSP:0080 is a length byte, the text, then a CR, with the
- * length not counting the CR. The leading space DOS always leaves is added
- * here so callers pass the arguments alone. */
-void dos_set_args(dos_t *d, const char *args)
-{
-    if (!d || !d->cpu || !d->nproc || !args || !*args) return;
-    snprintf(d->args, sizeof d->args, "%s", args);
-
-    char tail[130];
-    const int n = snprintf(tail, sizeof tail, " %s", d->args);
-    const uint8_t len = (uint8_t)(n > 126 ? 126 : n);
-    const uint16_t psp = d->procs[0].psp_seg;
-    cpu_t *c = d->cpu;
-    mem_write8(c, phys(psp, 0x80), len);
-    for (uint8_t i = 0; i < len; i++)
-        mem_write8(c, phys(psp, (uint16_t)(0x81 + i)), (uint8_t)tail[i]);
-    mem_write8(c, phys(psp, (uint16_t)(0x81 + len)), 0x0D);
-}
-
-void dos_shutdown(dos_t *d)
+void dos_shutdown(machine_t *m)
 {
     for (int i = 5; i < DOS_MAX_FILES; i++)
-        if (d->files[i].in_use && d->files[i].fp)
-            fclose(d->files[i].fp);
+        if (m->files[i].in_use && m->files[i].fp) {
+            fclose(m->files[i].fp);
+            m->files[i].fp = NULL;
+            m->files[i].in_use = 0;
+        }
 }

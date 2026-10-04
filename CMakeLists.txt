@@ -35,6 +35,62 @@ endif()
 add_library(f117cpu STATIC src/cpu/cpu.c)
 target_include_directories(f117cpu PUBLIC src/cpu)
 
+# ---- The emulated PC: DOS, BIOS and devices ------------------------------
+add_library(f117machine STATIC
+  src/machine/machine.c src/machine/pc.c src/machine/dos.c)
+target_include_directories(f117machine PUBLIC src/machine src/recomp)
+target_link_libraries(f117machine PUBLIC f117cpu)
+
+# ---- Presentation shared by the window and the headless runner -----------
+add_library(f117present STATIC src/host/present.c src/host/keys.c)
+target_include_directories(f117present PUBLIC src/host)
+target_link_libraries(f117present PUBLIC f117machine)
+
+# ---- The recomp runtime: generated code if there is any ------------------
+add_library(f117recomp_none STATIC src/recomp/recomp_none.c)
+target_link_libraries(f117recomp_none PUBLIC f117machine)
+
+# Headless runner, interpreter only: tests, captures, coverage.
+add_executable(f117run src/host/headless.c)
+target_link_libraries(f117run PRIVATE f117present f117recomp_none)
+
+# ---- The game in a window ------------------------------------------------
+if(F117R_BUILD_APP)
+  find_package(SDL3 CONFIG QUIET)
+  if(NOT SDL3_FOUND)
+    include(FetchContent)
+    set(SDL_SHARED ON CACHE BOOL "" FORCE)
+    set(SDL_STATIC OFF CACHE BOOL "" FORCE)
+    set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(SDL3
+      GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
+      GIT_TAG        release-3.2.10
+      GIT_SHALLOW    TRUE)
+    FetchContent_MakeAvailable(SDL3)
+  endif()
+
+  # Nuked OPL3 1.8 (LGPL-2.1), the AdLib's chip.
+  add_library(nukedopl3 STATIC third_party/nuked-opl3/opl3.c)
+  target_include_directories(nukedopl3 PUBLIC third_party/nuked-opl3)
+  if(MSVC)
+    target_compile_options(nukedopl3 PRIVATE /W0)
+  endif()
+
+  set(F117R_APP_SOURCES src/host/main.c src/host/audio.c src/host/midistream.c)
+  add_executable(f117a WIN32 ${F117R_APP_SOURCES})
+  target_link_libraries(f117a PRIVATE f117present nukedopl3 SDL3::SDL3)
+  if(F117R_GEN_DIR)
+    target_link_libraries(f117a PRIVATE f117recomp)
+  else()
+    target_link_libraries(f117a PRIVATE f117recomp_none)
+  endif()
+  if(WIN32)
+    target_link_libraries(f117a PRIVATE winmm)
+    add_custom_command(TARGET f117a POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:SDL3::SDL3> $<TARGET_FILE_DIR:f117a>)
+  endif()
+endif()
+
 if(F117R_BUILD_TESTS)
   # Flat API over the core for the Python vector harnesses and the
   # unpacker. Self-contained: it supplies the two machine hooks itself.
