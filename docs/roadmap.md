@@ -12,17 +12,20 @@ never instead of parity.
 
 ### Done
 
-- All 17 code files and the LZEXE decompressor translated: 89,216
+- All 17 code files and the LZEXE decompressor translated: 89,276
   instructions, 96.2% of the code-area bytes; the rest is strings, tables
   and variables (`tools/census.py`). On every route and the longest random
   flight the recompiled build interprets no game instruction.
 - Every translated instruction held to the interpreter from random states
   (`tests/insn_lockstep.c`, 5.7 million comparisons, 0 differences); the
   translator held to 8088 and 80286 silicon vectors.
-- Six scripted routes identical between the interpreter and the recompiled
+- Twelve scripted routes identical between the interpreter and the recompiled
   code: boot to flight; a full sortie through the debriefing; the speaker
-  and Roland drivers; Korea (strike, carrier start); Vietnam (air-to-air,
-  runway). The routes execute 52.3% of the code area (`tools/exercised.py`).
+  and Roland drivers; eight transfer-and-flight routes covering all nine
+  theatres, three tensions and four mission categories. The routes execute
+  53.1% of the code area (`tools/exercised.py`). Theatre routes also require
+  the expected world files, a clean VGAME exit and at least a billion clocks
+  in flight; airborne screenshots were reviewed for the six added routes.
 - Seeded random flights (`tools/random_flights.py`): every session
   identical at every hash; 30.5 minutes of flight in the 16-session batch.
 - Planted defects caught by the lockstep (`tools/mutation_check.py
@@ -98,11 +101,12 @@ never instead of parity.
       Users supply their own MT-32 ROMs.
 - [ ] **A landing route:** fly back and land. No route or random flight has
       landed yet.
-- [ ] **The other theatres and mission types:** Central America, North Cape,
-      Central Europe, the Middle East, the Persian Gulf and Kuwait (Korea,
-      Vietnam and Libya are flown). The default route opens `LB.WLD` and
-      `LB.3DG`; Libya was previously duplicated in the unfinished list,
-      while Kuwait was missing. Further mission types still need coverage.
+- [ ] **Individual mission objectives:** all nine theatres and all four
+      mission categories now have flight routes (air combat, ground strike,
+      and both training categories). Complete dedicated objective types,
+      including reconnaissance, supply drops and secret-airstrip missions.
+      The existing transfer routes exercise generation and controls, then
+      quit; they do not establish objective completion.
 - [ ] **The rest of the front end:** creating and retiring pilots, the CO's
       office, maintenance, awards, saving and loading a roster.
 - [ ] **A person playing it:** controls, joystick and mouse, saves, the feel.
@@ -147,5 +151,6 @@ never instead of parity.
 - [x] `.gitattributes` for line endings: LF text, CRLF Windows batch scripts,
       binary assets excluded from conversion. Existing index text is LF.
 - [x] An automated full Windows interpreter build on GitHub, with four
-      ROM-free CPU/machine CTests and nine comparator tests. First run
+      ROM-free CPU/machine CTests, nine comparator tests and five route
+      milestone tests. First run
       [passed](https://github.com/TideGear/OpenNighthawk/actions/runs/37192954631).

@@ -20,16 +20,16 @@ options. Enhancements come after parity, never instead of it.
   work: AdLib (music and digitised speech through an OPL emulator), the PC
   speaker, and Roland (MIDI sent to a Windows MIDI device; not yet listened
   to on an MT-32).
-- **Translated:** 89,216 instructions across all 17 code files and the
+- **Translated:** 89,276 instructions across all 17 code files and the
   LZEXE decompressor: 96% of the bytes of the code areas, and no
   untranslated stretch left that decodes as code (`tools/census.py`; the
   rest is strings, tables and variables). On the scripted sessions no game
   instruction is interpreted; only the emulated BIOS's own stubs are.
-- **Parity, measured:** six scripted sessions (boot to flight; a full
+- **Parity, measured:** twelve scripted sessions (boot to flight; a full
   sortie through the debriefing and back; boots under the speaker and Roland
-  drivers, where the programs load at other addresses; Korea strike and
-  Vietnam air-to-air missions) end in identical
-  state under the interpreter and the recompiled code - all of memory, the
+  drivers, where the programs load at other addresses; transfer and flight
+  routes across all nine theatres and all four mission categories) end in
+  identical state under the interpreter and the recompiled code - all of memory, the
   registers, and every byte sent to the sound card, the palette, MIDI and
   the disk - checked at intervals along the way. Planted defects in the
   generated code are caught (see `tools/mutation_check.py`). A recorded input log replays on either
@@ -119,7 +119,7 @@ coverage and saves go in the supplied work directory. On first build,
 `$env:USERPROFILE/f117-recomp-local`, with a separate CMake cache for each
 checkout. No generated files or game assets belong in the source tree.
 This sequence was verified from a fresh public clone, including coverage,
-both builds, all six parity routes and the instruction lockstep. Translation
+both builds, the six routes present in that clone and the instruction lockstep. Translation
 counts depend on accumulated coverage: that run produced 89,276 starts,
 compared with 89,216 in the earlier local build.
 

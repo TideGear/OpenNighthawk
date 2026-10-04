@@ -254,9 +254,9 @@ Seven layers, each checkable by anyone with their own copy:
    reviewed when a route is added; these milestones alone do not prove
    takeoff or landing.
 4. **Every translated instruction, routes or not.** The routes run about
-   half of the code area (`tools/exercised.py`: 47%; error paths, other
-   theatres, most setup screens are not on them). `tests/insn_lockstep.c`
-   covers the rest: for each of the 89,216 instruction starts the
+   half of the code area (`tools/exercised.py`: 53.1%; error paths,
+   individual mission objectives and most setup screens remain).
+   `tests/insn_lockstep.c` covers the rest: for each of the 89,276 instruction starts the
    translation has, in every module, it places the module's image in
    memory, puts the machine in random states (registers, flags, segments on
    and off the module, every byte of memory outside the image) and runs one
@@ -264,7 +264,7 @@ Seven layers, each checkable by anyone with their own copy:
    generated region entered at that instruction. Registers, segments, IP,
    flags, the clock, the interrupt shadow, every byte written, every port
    read and written and every interrupt raised (with the registers at that
-   moment) are compared. At 64 states each, 5,709,312 comparisons: 0
+   moment) are compared. At 64 states each, 5,713,152 comparisons: 0
    mismatches. Eight starts are always declined to the interpreter: bytes
    the gap sweep took for code that are invalid opcodes on the 286 (`0F`,
    `63`, `64`, `66`), which fault the same way either way. This is a CTest

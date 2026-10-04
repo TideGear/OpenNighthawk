@@ -1,6 +1,6 @@
-# expect-world KO
+# expect-world ME
 # expect-exit VGAME.EXE 0 1000000000
-# Another theatre: boot, the pilot form, then a Transfer Request to Korea
+# Another theatre: boot, the pilot form, then a Transfer Request to Middle East
 # (Limited War, Strike Missions), the briefing, arming, the hangar, a takeoff
 # and a minute of flying with the weapon and target keys, then Alt+Q, Y.
 # Inputs only - no game data. Click positions in mode-13h pixels; the
@@ -15,11 +15,11 @@ START.EXE+30000000:\r
 START.EXE+120000000:258,182
 --click
 START.EXE+200000000:283,172
-# Transfer Request: the door, Korea, Limited War, Strike Mission, approve.
+# Transfer Request: the door, Middle East, Limited War, Strike Missions, approve.
 --click
 START.EXE+400000000:28,84
 --click
-START.EXE+450000000:291,58
+START.EXE+450000000:184,64
 --click
 START.EXE+480000000:279,138
 --click
@@ -27,18 +27,17 @@ START.EXE+510000000:284,170
 --click
 START.EXE+540000000:215,193
 # Back at the office: the briefing door; Select Weapons; Go to Hangar; Yes.
+# This mission's orders take longer to decode; wait for the briefing map.
 --click
 START.EXE+1100000000:280,60
 --click
-START.EXE+1400000000:272,134
+START.EXE+3400000000:272,134
 --click
-START.EXE+1600000000:271,148
+START.EXE+3600000000:271,148
 --click
-START.EXE+1800000000:225,191
-# Take off (keys from the game's Key Control Card): release the carrier's brakes (0), full throttle
+START.EXE+3800000000:225,191
+# Take off (keys from the game's Key Control Card): full throttle
 # (Shift +), rotate at 19 s before the runway ends, climb, gear up (6).
---type
-VGAME.EXE+90000000:0
 --type
 VGAME.EXE+100000000:+
 --type
@@ -88,6 +87,6 @@ VGAME.EXE+950000000:\aq
 --type
 VGAME.EXE+1050000000:y
 --steps
-5600000000
+8200000000
 --time-us
 700000000000000

@@ -45,12 +45,12 @@ nothing running.
 
 ## How to build and check (all verified in this session)
 
-- Build: `.\build.cmd -DF117R_GEN_DIR=C:/Users/Tideg/f117-recomp-local/gen`
+- Build: `.\build.cmd -DF117R_GEN_DIR=C:/Users/Tideg/f117-recomp-local/theatre-pipeline/gen`
   from PowerShell ("BUILD OK" at the end). It cannot relink while any
   `f117run.exe` is running.
-- Whole pipeline (translate, build, coverage, both engines on all six
+- Whole pipeline (translate, build, coverage, both engines on all twelve
   routes, instruction lockstep): `py tools\build_recomp.py --data
-  "D:\GOG\F-117A"`. Last result: all six routes IDENTICAL; lockstep 89,216
+  "D:\GOG\F-117A"`. Last result: all twelve routes IDENTICAL; lockstep 89,276
   starts, 0 mismatching.
   `--parity-only` skips translation/build and checks the existing executable;
   the pipeline compares every 50-million-clock checkpoint, not just finals.
@@ -73,7 +73,7 @@ nothing running.
 - Random flights: `py tools/random_flights.py --data "D:/GOG/F-117A"
   --seeds 31,32 --span 4000000000`.
 - Coverage of the routes: `py tools/exercised.py --data "D:/GOG/F-117A"
-  --run` (52.3%). Translated share: `py tools/census.py --data
+  --run` (53.1%). Translated share: `py tools/census.py --data
   "D:/GOG/F-117A"` (96.2%).
 - Planted defects: `py -u tools/mutation_check.py --data "D:/GOG/F-117A"
   --lockstep --random 60 --kinds skip,cf,zf,ax --seed N` (about a minute a
@@ -81,6 +81,25 @@ nothing running.
 
 ## In flight at handoff
 
+- All nine theatres now have flight coverage: six added routes for CU, NC,
+  CE, ME, PG and KU, alongside KO, VN and default LB. All three tension
+  levels and four mission categories are selected; individual objective
+  completion remains open. See `tools/routes/README.md`. Six new routes
+  have airborne screenshots in private `theatres-v2/` (ME in `theatres-v3/`).
+  CU/NC start with brakes released, unlike KO's carrier; toggling them
+  caused early crashes, corrected before accepting the routes. ME waits
+  longer for orders to decode. Milestones now require the correct world
+  files, clean VGAME exit and at least a billion flight clocks; both route
+  tools enforce them. Five ROM-free regressions pass and the Windows CI
+  run for commit `8398f12` is green.
+  Full fresh pipeline: `theatre-pipeline.log`, twelve routes at 855
+  checkpoints plus final states, 89,276 starts, 5,713,152 lockstep states,
+  512 declined and zero mismatches.
+  Current build uses `theatre-pipeline/gen`; old `gen/` remains untouched.
+  Executed coverage: `exercised-theatres.log`, private
+  `exec-theatres-20261004/`, 122,059 of 230,052 bytes (53.1%).
+  Final-build fallback checks are in `theatre-final-coverage.log`: all six
+  new flights record zero interpreted game-module starts.
 - Four-part scanout implemented and verified. Mode 13h stores four groups
   of 50 rows at lines 100/200/300/400 of the 449-line frame; display address
   latches at retrace. Presentation uses completed frames. DAC readback and
@@ -123,9 +142,9 @@ nothing running.
   (186,7), Central Europe/CE (155,40), Middle East/ME (184,64),
   Kuwait/KU (196,62), Persian Gulf/PG (212,69). Existing Korea/KO is
   (291,58); Vietnam/VN is (270,83). Read from the game's own menu and
-  DS:0DE2 mapping; no routes for the remaining six yet. Pilot transfer
+  DS:0DE2 mapping; the six routes above now use these boxes. Pilot transfer
   clearance is required for all boxes except default Libya, as in the
-  working Korea/Vietnam routes. Further mission-type coverage is still open.
+  working Korea/Vietnam routes. Individual mission objectives remain open.
 
 - Near-slice-end I/O suppression now follows DOSBox's source: omit the
   delay if fewer than three delays remain before the millisecond/PIT/VGA
@@ -234,9 +253,13 @@ nothing running.
    `tools/video_compare.py` captures, aligns and reports already; start
    from the saved reports/diagnostics above.
 2. Munt (libmt32emu) for the Roland output; the user supplies MT-32 ROMs.
-3. A landing route; the other six theatres; the rest of the front end.
-4. Housekeeping: split `src/machine/dos.c`, fresh-clone build steps,
-   `.gitattributes`, a GitHub build of the ROM-free tests.
+3. A landing route; individual mission objectives; the rest of the front end.
+   Pilot editing is START 0x06AB3: Backspace over a roster row enters a
+   new name, Return commits, Escape cancels. Read-only Reimp notes:
+   `docs/re/36-start-front-end.md`, "The Bulletin Board's keyboard".
+   Creating a pilot removes its transfer clearance; use a separate route.
+4. Housekeeping: split `src/machine/dos.c`. Fresh-clone build steps,
+   `.gitattributes` and the GitHub Windows build are done.
 
 ## Traps that cost time in this session
 

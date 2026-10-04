@@ -1,3 +1,5 @@
+# expect-world VN
+# expect-exit VGAME.EXE 0 1000000000
 # Another theatre: boot, the pilot form, then a Transfer Request to Vietnam
 # (Conventional War, Air-Air Missions), the briefing, arming, the hangar, a takeoff
 # and a minute of flying with the weapon and target keys, then Alt+Q, Y.
