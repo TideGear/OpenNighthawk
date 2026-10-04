@@ -51,6 +51,10 @@ options. Enhancements come after parity, never instead of it.
   captures the AdLib's register writes in DOSBox and here over the logo
   and intro: 22,687 writes, 100.7 s of music, identical in order and
   value, timing within 36 ms.
+- **The picture comparison now runs:** `tools/video_compare.py` captures
+  DOSBox's lossless video and compares exact RGB pictures against our
+  screenshots. Two 130.8 s runs match 1,217 pictures in order; scanout,
+  roster cursor and transition timing differences remain under investigation.
 - **Every translated instruction, not only the ones the sessions reach:**
   the sessions run about half the game's code (`tools/exercised.py`).
   `tests/insn_lockstep.c` runs each of the 89,216 translated instructions
@@ -62,8 +66,8 @@ options. Enhancements come after parity, never instead of it.
   differences.
 - **Steam's release works too:** its game files are byte-identical to GOG's
   (`tools/verify_install.py`), and the app finds its install.
-- **Not yet done:** play by a person at the keyboard; the picture compared
-  frame by frame with DOSBox; the Roland (MT-32) output listened to (Munt is
+- **Not yet done:** play by a person at the keyboard; full frame parity
+  with DOSBox; the Roland (MT-32) output listened to (Munt is
   planned).
 
 How the parity claim is built and checked: [docs/architecture.md](docs/architecture.md).

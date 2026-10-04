@@ -58,6 +58,11 @@ nothing running.
 - Music against GOG DOSBox: `py tools/dosbox_compare.py --data
   "D:/GOG/F-117A" --seconds 130` (opens a minimised DOSBox; a keypress in
   its window disturbs the timing). Last: 22,687 writes, 100.7 s, identical.
+- Pictures against GOG DOSBox: `py tools/video_compare.py --data
+  "D:/GOG/F-117A" --seconds 130 --diagnostics`. Exit 1 currently means
+  pictures differ, not a tool failure. Replay the comparison without a new
+  capture: `py tools/video_compare.py --reuse RUN_DIR --diagnostics`.
+  Requires ffmpeg, ffprobe, Pillow and pywin32. About 2 GB of shots per run.
 - Random flights: `py tools/random_flights.py --data "D:/GOG/F-117A"
   --seeds 31,32 --span 4000000000`.
 - Coverage of the routes: `py tools/exercised.py --data "D:/GOG/F-117A"
@@ -69,7 +74,28 @@ nothing running.
 
 ## In flight at handoff
 
-- Nothing. The last mutation batch (seed 12) finished: 60 of 60 detected,
+- Nothing running. The video comparison tool is committed, but picture
+  parity remains in progress. Two runs live outside the repo at
+  `C:/Users/Tideg/f117-recomp-local/video/intro-qlh_wi26` and
+  `.../intro-caauys37`. Both captured 9,165 frames (130.767 s) and matched
+  1,217 exact RGB pictures in order. First run: 115 unmatched reference
+  pictures; second: 109. Both: 89 unmatched shots inside capture time.
+  Each report is `comparison.json`; the second has paired diagnostic PNGs
+  in `differences/`. Most unmatched pictures last one sample. DOSBox's
+  GOG `svga_s3` scanout reads four parts over a frame, unlike instantaneous
+  shots: partial borders and sprite draws are visible in diagnostics.
+  **Still unresolved:** the roster-entry delay and our mouse cursor's
+  colour changes around 117.5 and 129.1 s, absent in both DOSBox captures.
+  Paired longer differences are up to 78 pixels inside its 10x15 area at
+  (160,77); the pilot names match. Investigate our host cursor overlay
+  versus DOSBox's software cursor in VRAM, the known difference in
+  architecture.md. Avoid misreading the colour difference as pilot text.
+  The tool reports these and exits 1; don't call this frame parity.
+- The five ROM-free comparator tests pass (`py tests/test_video_compare.py`).
+  The shared capture driver's OPL regression also passed: 1,120 writes
+  across 30.6 s, identical, timing within 1 ms (`--seconds 30`). No runtime
+  or generated code was changed; both video runs ended at the same hash.
+- The last mutation batch (seed 12) finished: 60 of 60 detected,
   recorded in docs/roadmap.md and docs/architecture.md (144 of 144 planted
   defects caught across all runs). Background jobs started in a
   conversation stop when it closes, so finish or record them before a
@@ -77,9 +103,10 @@ nothing running.
 
 ## Next (from docs/roadmap.md, in the suggested order)
 
-1. The picture against DOSBox, frame by frame: DOSBox's video capture
-   (Ctrl+Alt+F5, ZMBV AVI, decode with ffmpeg) of the hands-off intro,
-   driven like `tools/dosbox_compare.py`, against `f117run --shots`.
+1. Finish the picture comparison: match DOSBox's four-part scanout
+   sampling, investigate the roster cursor changes and transition delay.
+   `tools/video_compare.py` captures, aligns and reports already; start
+   from the saved reports/diagnostics above.
 2. Munt (libmt32emu) for the Roland output; the user supplies MT-32 ROMs.
 3. A landing route; the other six theatres; the rest of the front end.
 4. Housekeeping: split `src/machine/dos.c`, fresh-clone build steps,

@@ -11,8 +11,8 @@ capture switched on, and under f117run with --opl-log. Every write to the
 AdLib's registers is then compared, in order, with its time.
 
 DOSBox is driven without taking the screen: a minimised window (SDL's windib
-driver, so posted keys reach DOSBox's mapper), SETUP's answers redirected
-from a file (it reads them through DOS), Ctrl+Alt+F7 posted to start and
+driver, so posted keys reach DOSBox's mapper), SETUP's answers posted
+at the keyboard, Ctrl+Alt+F7 posted to start and
 stop the capture. It works on a scratch copy of the install and writes its
 capture there.
 
@@ -83,12 +83,18 @@ def filter_log(path):
     return out
 
 
-def run_dosbox(data, game, seconds):
+def run_dosbox(data, game, seconds, *, capture="opl", work=WORK):
+    """Capture on a scratch install; Ctrl+Alt+F7 for OPL, F5 for video.
+
+    The caller owns work/capture, which is replaced on each run.
+    """
     import win32api, win32con, win32gui, win32process
-    cap = os.path.join(WORK, "capture")
+    if capture not in ("opl", "video"):
+        raise ValueError("capture must be opl or video")
+    cap = os.path.join(work, "capture")
     shutil.rmtree(cap, ignore_errors=True)
     os.makedirs(cap)
-    conf = os.path.join(WORK, "compare.conf")
+    conf = os.path.join(work, "compare.conf")
     with open(conf, "w") as f:
         f.write("[sdl]\nfullscreen=false\noutput=surface\n[dosbox]\ncaptures=%s\n[autoexec]\n@echo off\n" % cap)
         f.write('mount C "%s"\nc:\nkeyb us\ncls\nf117\nexit\n' % game)
@@ -123,10 +129,11 @@ def run_dosbox(data, game, seconds):
               (win32con.WM_KEYDOWN if down else win32con.WM_KEYUP)
         win32api.PostMessage(hwnd, msg, vk, lp)
 
-    def ctrl_alt_f7():
-        key(win32con.VK_CONTROL, True, False); key(win32con.VK_MENU, True, True); key(win32con.VK_F7, True, True)
+    def toggle_capture():
+        vk = win32con.VK_F7 if capture == "opl" else win32con.VK_F5
+        key(win32con.VK_CONTROL, True, False); key(win32con.VK_MENU, True, True); key(vk, True, True)
         time.sleep(0.1)
-        key(win32con.VK_F7, False, True); key(win32con.VK_MENU, False, True); key(win32con.VK_CONTROL, False, False)
+        key(vk, False, True); key(win32con.VK_MENU, False, True); key(win32con.VK_CONTROL, False, False)
 
     def press(vk):
         key(vk, True, False); time.sleep(0.08); key(vk, False, False)
@@ -143,7 +150,7 @@ def run_dosbox(data, game, seconds):
     # The mapper takes keys only once DOSBox is running: press until the
     # capture file appears.
     for _ in range(40):
-        ctrl_alt_f7()
+        toggle_capture()
         time.sleep(0.5)
         if os.listdir(cap):
             break
@@ -161,13 +168,14 @@ def run_dosbox(data, game, seconds):
         time.sleep(0.25)
     if not win32gui.IsWindow(hwnd):
         sys.exit("DOSBox closed before the end of the capture")
-    ctrl_alt_f7()                                       # stop: the file is completed
+    toggle_capture()                                   # stop: the file is completed
     time.sleep(1.0)
     win32api.PostMessage(hwnd, win32con.WM_CLOSE, 0, 0)  # and DOSBox closes cleanly
     try:
         proc.wait(timeout=15)
     except subprocess.TimeoutExpired:
         proc.kill()
+        proc.wait()
     files = sorted(os.listdir(cap))
     if not files:
         sys.exit("DOSBox wrote no capture")

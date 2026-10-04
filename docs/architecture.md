@@ -338,6 +338,39 @@ Seven layers, each checkable by anyone with their own copy:
    bits 12-14 after PUSHF); and DOSBox's per-millisecond slicing of I/O and
    transfer costs.
 
+   **Pictures from the game against DOSBox.** `tools/video_compare.py`
+   uses the same window driver as the music comparison, with Ctrl+Alt+F5
+   for DOSBox's lossless ZMBV AVI. ffmpeg decodes all raw 320x200 RGB frames
+   without resizing; `f117run --shots` samples at 70 Hz. Each sequence
+   collapses consecutive identical RGB hashes, keeping their sample counts
+   and times, and aligns exact pictures in order. Every unmatched reference
+   picture is reported, including at the ends; our pictures are counted
+   within the reference's estimated time range. A median offset from the
+   matching changes removes the unknown capture start. It does not assert
+   instruction-accurate or frame-accurate synchronisation. Non-320x200
+   captures, including text mode, are excluded explicitly.
+
+   Two 130.767-second runs, each 9,165 VGA frames at 70.086303 Hz, found
+   1,217 exact consecutive pictures in order. Unmatched reference pictures:
+   115 and 109; unmatched shots within the capture's time range: 89 in both.
+   All but two reference differences and six shot differences last one
+   sample. These counts are not a parity pass: the tool exits 1 if any
+   pictures are unmatched. `--reuse RUN_DIR --diagnostics` writes paired
+   DOSBox/shot/difference PNGs, showing the longest differences first.
+
+   DOSBox's source (`vga_draw.cpp`, `VGA_DrawPart`, GOG's `svga_s3` default)
+   reads four groups of lines over a frame; the shots read VRAM at once.
+   The diagnostic pictures show partially drawn logo borders and moving
+   intro sprites, consistent with that difference. The roster transition
+   also differs in timing, and our mouse cursor changes colour
+   around 117.5 and 129.1 s where both reference captures stay unchanged.
+   The paired longer shot differences are confined to up to 78 pixels in
+   the cursor's 10x15 area at (160,77); pilot names match. Investigate the
+   host overlay against DOSBox's software cursor in VRAM (see the known
+   mouse difference above). These differences remain to explain.
+   Captures, screenshots, reports and diagnostic
+   images are kept under `~/f117-recomp-local/video/`, outside the repo.
+
 ## Where this goes next
 
 The open work, in order, is tracked in [roadmap.md](roadmap.md).

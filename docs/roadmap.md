@@ -41,14 +41,24 @@ never instead of parity.
 
 ### In progress
 
-- (none)
+- **The picture against DOSBox:** `tools/video_compare.py` now captures
+  the hands-off logo, intro and roster as ZMBV, decodes every 320x200 frame
+  with ffmpeg and compares exact RGB pictures in order against `--shots`.
+  Two 130.8-second captures (9,165 frames each) match 1,217 distinct
+  consecutive pictures. Differences remain: 115 / 109 unmatched DOSBox
+  pictures, 89 here within the capture's time range. Most last one sample;
+  DOSBox reads four parts of a frame at different times, while shots read
+  all VRAM at once. The roster's mouse cursor also changes colour here
+  around 117.5 and 129.1 s, absent in both reference captures. Diagnostic
+  pairs differ in up to 78 pixels inside the cursor's 10x15 area; the pilot
+  names match. Investigate the host cursor overlay versus DOSBox's cursor
+  and the roster-entry delay before claiming frame parity.
 
 ### Left
 
 - [ ] **The picture against DOSBox, frame by frame.** DOSBox's video capture
-      (ZMBV) of the hands-off intro, decoded with ffmpeg, against `f117run
-      --shots`; the music comparison's driver already starts DOSBox and its
-      captures.
+      (ZMBV) comparison now runs; match scanout sampling and resolve the
+      roster cursor/timing differences (see In progress).
 - [ ] **Roland through Munt** (libmt32emu, LGPL-2.1+): the MT-32 music in
       the game itself, and its output rendered and checked automatically.
       Users supply their own MT-32 ROMs.
