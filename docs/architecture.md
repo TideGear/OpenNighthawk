@@ -385,8 +385,6 @@ Seven layers, each checkable by anyone with their own copy:
    checkpoints (every 50 million clocks) and at their final states; the
    64-state instruction lockstep still reports zero mismatching starts.
 
-## Where this goes next
-
 The DAC probe also checks read/write address state after BIOS palette calls,
 blocks crossing palette index 255, and their I/O timing. BIOS calls now use
 the port handlers, including their bus cost and output hash, instead of
@@ -404,5 +402,17 @@ leaves the 1,217 matches, 109 unmatched reference pictures and 89 unmatched
 shots unchanged. A fresh full music capture matches only its first 596
 writes before the known random channel-3 note at 29.7 s; it does not verify
 the whole music stream. Logs live outside the repository.
+
+`tools/fade_calibration.py` copies just the original START, PLAYER and END
+fade calibrators into private COM probes and runs them on both machines.
+It reports the five successive calibration values per trial, without
+calling phase-dependent values an exact parity pass. Three fresh trials
+per program repeat the same results: START/END return `[8,8,7,8,8]` on
+DOSBox and `[8,8,8,7,8]` here; PLAYER returns 5,839-5,844 DAC bytes per
+display period on DOSBox and 5,811 here. The seven/eight-step fade range
+agrees, but phase and PLAYER throughput still differ. This is evidence
+for investigating timing, not proof of the roster delay's cause.
+
+## Where this goes next
 
 The open work, in order, is tracked in [roadmap.md](roadmap.md).

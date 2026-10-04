@@ -78,6 +78,16 @@ nothing running.
 
 ## In flight at handoff
 
+- Original fade calibration diagnostics are now repeatable without the
+  Reimp tree: `py tools/fade_calibration.py --data D:/GOG/F-117A --trials 3`.
+  Private run `fadecal/calibration-55fc80mv`: all three trials repeat
+  START/END `[8,8,7,8,8]` on DOSBox, `[8,8,8,7,8]` here; PLAYER
+  `[5841,5839,5841,5839,5844]` on DOSBox, five 5811s here. Seven/eight-step
+  range agrees; phase and PLAYER throughput do not. Original PLAYER
+  DE4..E0B loops on IN 3DAh / OUT 3C9h until retrace with interrupts off.
+  DOSBox's near-slice-end I/O delay suppression is a candidate to measure,
+  not yet proven causal. Do not adjust timings just to fit this one probe.
+
 - DAC correction verified: all 1,210 fidelity answers agree, the new
   `vga_dac_ports` ROM-free test passes, all six routes agree at 329 checkpoints
   plus finals, and the 5.7-million-state lockstep has zero mismatching starts.

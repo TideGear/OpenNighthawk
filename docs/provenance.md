@@ -25,6 +25,12 @@ development; nothing here builds against its tree.
 The bug tracker ([bugs.md](bugs.md)) restates the Reimp's
 `docs/bugs/catalogue.md` with citations to it.
 
+`tools/fade_calibration.py` uses the calibration routine locations and
+probe design from `tools/f117/dosbox_isr_probe.py` at Reimp `9e0716dc`.
+It assembles its own wrapper using this repository's assembler and extracts
+the routines from the user's installation; it has no dependency on Reimp
+files and commits no original game bytes.
+
 ## From DOSBox 0.74-2.1
 
 GOG's install ships DOSBox's source (`DOSBOX/dosbox-0.74-2.1.tar.gz`, GPL-2

@@ -89,6 +89,10 @@ never instead of parity.
 - [ ] **Timing details still DOSBox's own:** its stub code at its own
       addresses (vectors F000:xxxx), its per-millisecond slicing, its 386
       against this machine's 286 (flag bits 12-14).
+      `tools/fade_calibration.py` now measures the original calibrators:
+      START/END's range agrees (seven/eight steps), with different phases;
+      PLAYER measures 5,839-5,844 DAC bytes per display period on DOSBox
+      versus 5,811 here (three repeat trials). Throughput remains unresolved.
 - [ ] **A sound mismatch to explain or accept:** the OPL emulator is Nuked
       OPL3, DOSBox's is its own; the register stream is identical, the
       synthesis is not compared.
