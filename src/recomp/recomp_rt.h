@@ -24,6 +24,12 @@ void recomp_module_load(void *user, machine_t *m, const char *name,
                         uint16_t load_seg, uint16_t reloc);
 /* Translated code from CS:IP until cpu.stop_at; 0 if none applies here. */
 int  recomp_run(machine_t *m);
+/* Record the instruction about to be interpreted (coverage / misses). */
+void recomp_note_interp(machine_t *m);
+/* Write coverage to `path` (appending) as instances are replaced and at
+ * shutdown; NULL or "" turns it off. F117R_COVERAGE sets it at init. */
+void recomp_set_coverage(machine_t *m, const char *path);
+void recomp_shutdown(machine_t *m);
 /* Counters: translated vs interpreted instructions, invalidations, misses. */
 void recomp_report(machine_t *m, FILE *f);
 /* Write every interpreted address inside a registered module (the misses

@@ -47,12 +47,26 @@ target_include_directories(f117present PUBLIC src/host)
 target_link_libraries(f117present PUBLIC f117machine)
 
 # ---- The recomp runtime: generated code if there is any ------------------
-add_library(f117recomp_none STATIC src/recomp/recomp_none.c)
+add_library(f117recomp_none STATIC src/recomp/recomp.c src/recomp/recomp_empty.c)
 target_link_libraries(f117recomp_none PUBLIC f117machine)
 
-# Headless runner, interpreter only: tests, captures, coverage.
+if(F117R_GEN_DIR)
+  file(GLOB F117R_GEN_SOURCES CONFIGURE_DEPENDS "${F117R_GEN_DIR}/gen_*.c")
+  add_library(f117recomp STATIC src/recomp/recomp.c ${F117R_GEN_SOURCES})
+  target_link_libraries(f117recomp PUBLIC f117machine)
+  if(MSVC)
+    # Generated code: no warnings, and optimise each region on its own.
+    set_source_files_properties(${F117R_GEN_SOURCES} PROPERTIES COMPILE_OPTIONS "/W0;/bigobj")
+  endif()
+endif()
+
+# Headless runner: tests, captures, coverage, lockstep.
 add_executable(f117run src/host/headless.c)
-target_link_libraries(f117run PRIVATE f117present f117recomp_none)
+if(F117R_GEN_DIR)
+  target_link_libraries(f117run PRIVATE f117present f117recomp)
+else()
+  target_link_libraries(f117run PRIVATE f117present f117recomp_none)
+endif()
 
 # ---- The game in a window ------------------------------------------------
 if(F117R_BUILD_APP)

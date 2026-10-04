@@ -3,6 +3,7 @@
  *   f117run --data DIR [--save DIR] [--steps N] [--ips N] [--log FILE]
  *           [--type ICOUNT:KEYS]... [--hold MS] [--screen FILE.ppm]
  *           [--engine interp|recomp] [--time-us N] [--hash-every N]
+ *           [--coverage FILE]
  *
  * --type types KEYS (see keys.h) starting at ICOUNT, each key held --hold
  * milliseconds of emulated time. ICOUNT may be written "PROG+N": N
@@ -75,6 +76,7 @@ int main(int argc, char **argv)
     uint64_t steps = 100000000ull, ips = MACHINE_DEFAULT_IPS, hold_ms = 60;
     uint64_t time_us = 0, hash_every = 0;
     int engine = ENGINE_INTERP;
+    const char *coverage = NULL;
     static type_cmd cmds[64];
     int ncmd = 0;
 
@@ -90,6 +92,7 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--hold") && v) { hold_ms = strtoull(v, NULL, 0); i++; }
         else if (!strcmp(a, "--time-us") && v) { time_us = strtoull(v, NULL, 0); i++; }
         else if (!strcmp(a, "--hash-every") && v) { hash_every = strtoull(v, NULL, 0); i++; }
+        else if (!strcmp(a, "--coverage") && v) { coverage = v; i++; }
         else if (!strcmp(a, "--engine") && v) { engine = !strcmp(v, "recomp") ? ENGINE_RECOMP : ENGINE_INTERP; i++; }
         else if (!strcmp(a, "--type") && v && ncmd < 64) {
             type_cmd *t = &cmds[ncmd++];
@@ -112,6 +115,7 @@ int main(int argc, char **argv)
     m.log = log_path ? fopen(log_path, "w") : stdout;
     m.engine = engine;
     recomp_init(&m);
+    if (coverage) recomp_set_coverage(&m, coverage);
     machine_hooks hooks;
     memset(&hooks, 0, sizeof hooks);
     hooks.module_load = recomp_module_load;
@@ -187,6 +191,7 @@ int main(int argc, char **argv)
         g_samp[best].n = 0;
     }
     if (screen) present_write_ppm(&m, screen);
+    recomp_shutdown(&m);
     machine_shutdown(&m);
     return rc == RUN_FAULT ? 1 : 0;
 }

@@ -214,6 +214,7 @@ int main(int argc, char **argv)
     uint64_t ips = MACHINE_DEFAULT_IPS;
     int scale = 3, fullscreen = 0, aspect = 1, midi_dev = -2;
     int engine = ENGINE_RECOMP;
+    const char *coverage = NULL;
 
     for (int i = 1; i < argc; i++) {
         const char *a = argv[i], *v = i + 1 < argc ? argv[i + 1] : NULL;
@@ -224,6 +225,7 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--scale") && v) { scale = atoi(v); i++; }
         else if (!strcmp(a, "--midi") && v) { midi_dev = atoi(v); i++; }
         else if (!strcmp(a, "--engine") && v) { engine = !strcmp(v, "interp") ? ENGINE_INTERP : ENGINE_RECOMP; i++; }
+        else if (!strcmp(a, "--coverage") && v) { coverage = v; i++; }
         else if (!strcmp(a, "--fullscreen")) fullscreen = 1;
         else if (!strcmp(a, "--no-aspect")) aspect = 0;
         else {
@@ -295,6 +297,7 @@ int main(int argc, char **argv)
     H.m.log = log_path ? fopen(log_path, "w") : NULL;
     H.m.engine = engine;
     recomp_init(&H.m);
+    if (coverage) recomp_set_coverage(&H.m, coverage);
     machine_hooks hooks;
     memset(&hooks, 0, sizeof hooks);
     hooks.opl_write = on_opl;
@@ -422,6 +425,7 @@ int main(int argc, char **argv)
         SDL_RenderPresent(ren);
     }
 
+    recomp_shutdown(&H.m);
     machine_shutdown(&H.m);
 #ifdef _WIN32
     if (H.midi_out) { midiOutReset(H.midi_out); midiOutClose(H.midi_out); }

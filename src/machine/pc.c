@@ -701,7 +701,7 @@ void cpu_irq_state_changed(cpu_t *c)
  * current CS:IP until cpu.stop_at; returns 0 if there is no valid
  * translation here, in which case the interpreter takes one step. */
 int recomp_run(machine_t *m);
-int recomp_has(machine_t *m, uint16_t cs, uint16_t ip);
+void recomp_note_interp(machine_t *m);
 
 static int interp_step(machine_t *m)
 {
@@ -751,12 +751,14 @@ int machine_run(machine_t *m, uint64_t until)
         if (m->engine == ENGINE_RECOMP && !(c->flags & F_TF)) {
             while (c->icount < c->stop_at && !c->halted) {
                 if (recomp_run(m)) continue;
+                recomp_note_interp(m);
                 int rc = interp_step(m);
                 if (rc != RUN_SLICE) return rc;
                 if (m->exited) return RUN_EXITED;
             }
         } else {
             while (c->icount < c->stop_at && !c->halted) {
+                recomp_note_interp(m);
                 int rc = interp_step(m);
                 if (rc != RUN_SLICE) return rc;
                 if (m->exited) return RUN_EXITED;
