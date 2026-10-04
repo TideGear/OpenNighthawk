@@ -418,6 +418,18 @@ display period on DOSBox and 5,811 here. The seven/eight-step fade range
 agrees, but phase and PLAYER throughput still differ. This is evidence
 for investigating timing, not proof of the roster delay's cause.
 
+The initial roster "colour changes" were subsequently identified as
+pointer erase/redraw sampling: the differing pixels become the underlying
+grey background. Their 11.6-second spacing matches the beat between 70 Hz
+shots and 70.086 Hz retrace. The comparator now samples every 128,413
+clocks, the runtime's VGA period, and `--against` uses the current sampling
+period while retaining the reference duration. `--reuse` preserves the
+original run's period. Against the same `intro-caauys37` reference, run
+`intro-ek_ltnum` matches 1,219 pictures, with 107 unmatched reference
+pictures and 74 shots, all one sample. No roster shots after 110 s are
+unmatched. The transition still differs by about 0.57 s; the remaining
+instantaneous-snapshot/scanout differences still prevent a parity pass.
+
 ## Where this goes next
 
 The open work, in order, is tracked in [roadmap.md](roadmap.md).

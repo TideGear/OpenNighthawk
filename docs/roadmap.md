@@ -70,12 +70,21 @@ never instead of parity.
   pass (the prefix matches 596 writes, with up to 55 ms timing drift).
   Music differences now exit 1. Four ROM-free comparator regressions pass;
   short fresh captures match 365 writes over 15.5 s and 300 over 10.4 s.
+  **Sampling diagnosis:** the apparent roster cursor colour changes were
+  background pixels exposed during START's pointer erase/redraw, sampled
+  by the 70 Hz screenshot clock beating against 70.086 Hz retrace (about
+  11.6 s). Sampling every 128,413 clocks, matching the runtime VGA period,
+  removes all unmatched roster pictures after 110 s and all multi-sample
+  differences. Saved-reference run `intro-ek_ltnum`: 1,219 exact pictures,
+  107 unmatched reference pictures and 74 shots, each one sample. The
+  transition delay (~0.57 s) and scanout differences remain unresolved.
 
 ### Left
 
 - [ ] **The picture against DOSBox, frame by frame.** DOSBox's video capture
       (ZMBV) comparison now runs; match scanout sampling and resolve the
-      roster cursor/timing differences (see In progress).
+      transition timing differences (see In progress). The apparent roster
+      cursor changes were diagnosed as screenshot sampling aliasing.
 - [ ] **Roland through Munt** (libmt32emu, LGPL-2.1+): the MT-32 music in
       the game itself, and its output rendered and checked automatically.
       Users supply their own MT-32 ROMs.

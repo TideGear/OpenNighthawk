@@ -28,6 +28,9 @@ from PIL import Image, ImageChops, ImageDraw
 from dosbox_compare import IPS, ROOT, run_dosbox
 
 WORK = Path.home() / "f117-recomp-local" / "video"
+# Match pc_init's mode-13h period. Exactly 70 Hz beats against the game's
+# retrace-paced pointer erase/redraw every ~11.6 seconds.
+VGA_PERIOD = IPS * 1000 // 70086
 
 
 def append_frame(out, rgb, when, source, duration):
@@ -184,7 +187,7 @@ def main():
     a = ap.parse_args()
     if a.seconds <= 0:
         ap.error("--seconds must be positive")
-    every = IPS // 70
+    every = VGA_PERIOD
     if a.reuse:
         run = a.reuse.resolve()
         every = json.loads((run / "settings.json").read_text())["every"]
@@ -197,9 +200,10 @@ def main():
         settings = dict(seconds=a.seconds, every=every)
         if a.against:
             reference = a.against.resolve()
-            settings = json.loads((reference / "settings.json").read_text())
+            old_settings = json.loads((reference / "settings.json").read_text())
+            settings["seconds"] = old_settings["seconds"]
             settings["reference_origin"] = str(reference)
-            a.seconds, every = settings["seconds"], settings["every"]
+            a.seconds = settings["seconds"]
             (run / "capture").mkdir()
             captures = list((reference / "capture").glob("*.avi"))
             if not captures:
@@ -217,7 +221,7 @@ def main():
             print(f"DOSBox: {a.seconds} s with video capture", flush=True)
             run_dosbox(a.data, str(game), a.seconds, capture="video", work=str(run))
         (run / "shots").mkdir()
-        print("f117run: graphics shots at 70 Hz", flush=True)
+        print(f"f117run: graphics shots every {every} clocks ({IPS / every:.6f} Hz)", flush=True)
         proc = subprocess.run([
             str(Path(ROOT) / "build" / "f117run.exe"), "--engine", "recomp",
             "--data", str(game), "--save", str(run / "save"),

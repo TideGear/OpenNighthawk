@@ -81,6 +81,16 @@ nothing running.
 
 ## In flight at handoff
 
+- **Roster sampling diagnosis supersedes the colour hypothesis below.**
+  The arrow is temporarily erased, revealing background pixels; 70 Hz
+  shots beat against 70.086 Hz retrace with an 11.6 s period. Default shots
+  now use the runtime's 128,413-clock VGA period. Saved-reference replay
+  `video/intro-ek_ltnum`: 1,219 matches, 107 unmatched reference pictures,
+  74 unmatched shots, all one sample; no unmatched roster shots after
+  110 s. Transition drift still ~0.57 s. Log: `video-native-period.log`.
+  `--against` uses current sampling, not the saved old 70 Hz period;
+  `--reuse` still reads the original period. No runtime changes for this.
+
 - Music comparator failure/replay checks complete: mismatching and reordered
   synthetic streams exit 1; exactly-one-window matching streams pass.
   Four ROM-free tests: `py tests/test_music_compare.py`. Two fresh short
