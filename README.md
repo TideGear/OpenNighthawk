@@ -62,6 +62,13 @@ own installation (GOG, Steam or original media) at build time and writes its
 output to a work directory on your machine, outside the repository. The game
 is still sold; please buy it.
 
+Every result here was measured on GOG's installer
+`setup_f-117a_nighthawk_stealth_fighter_2.0_1.0_(28044).exe`, which ships
+MicroProse's final 473.04 update already applied (its VGAME.EXE is
+byte-identical to the one in `f11704 (473.04 Update).zip`).
+`py tools/verify_install.py --data "D:\GOG\F-117A"` checks your copy
+against the SHA-256 of every file the project reads.
+
 ## Building
 
 Requirements: Windows, Visual Studio 2026 Build Tools (MSVC), CMake 3.24+,
