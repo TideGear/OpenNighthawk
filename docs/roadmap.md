@@ -16,6 +16,9 @@ never instead of parity.
   lockstep pass again; independent DOSBox roster saves match all 802 bytes.
   Overlapping input, extended keys and emulated joystick extremes pass.
   Host stall pacing and the missing 2x AdLib mixer gain were found and fixed.
+  GOG's DBOPL synthesizer is now the default, with Nuked selectable; both
+  use the reference's 44,100 Hz rate. Chip and host audio tests pass, while
+  exact reference PCM agreement remains open.
 
 - All 17 code files and the LZEXE decompressor translated: 89,276
   instructions, 96.2% of the code-area bytes; the rest is strings, tables
@@ -166,10 +169,12 @@ never instead of parity.
       All six routes agree at 329 checkpoints and final states; the
       5.7-million-state instruction lockstep reports zero differences.
       Exact phases and the remaining few-byte difference are still open.
-- [ ] **A sound mismatch to explain or accept:** the OPL emulator is Nuked
-      OPL3, DOSBox's is its own; the register stream is identical, the
-      rendered synthesis is now compared and differs. Matching DOSBox's
-      2x mixer gain brings RMS within about 0.6%; waveform parity remains open.
+- [ ] **Rendered sound parity:** the default now uses GOG DOSBox's own
+      DBOPL synthesis core, rate and 2x gain; Nuked remains selectable.
+      Timestamped host output passes chunk-boundary and speaker-gate tests.
+      The captured intro waveform still differs, with RMS within about
+      0.5%. Resolve register timing, mixer block scheduling and capture
+      alignment; digitized speech and speaker output need reference PCM.
 
 ## Phase 2 - understood code
 

@@ -192,6 +192,7 @@ int main(int argc, char **argv)
     int engine = ENGINE_RECOMP;
     const char *coverage = NULL, *record = NULL, *replay = NULL;
     uint64_t time_us = 0, exit_after = 0;
+    audio_opl_backend opl_backend = AUDIO_OPL_DBOPL;
     int no_record = 0;
 
     for (int i = 1; i < argc; i++) {
@@ -202,6 +203,12 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--replay") && v) { replay = v; i++; }
         else if (!strcmp(a, "--time-us") && v) { time_us = strtoull(v, NULL, 0); i++; }
         else if (!strcmp(a, "--exit-after") && v) { exit_after = strtoull(v, NULL, 0); i++; }
+        else if (!strcmp(a, "--opl") && v) {
+            if (!strcmp(v, "dbopl")) opl_backend = AUDIO_OPL_DBOPL;
+            else if (!strcmp(v, "nuked")) opl_backend = AUDIO_OPL_NUKED;
+            else { fprintf(stderr, "--opl requires dbopl or nuked\n"); return 2; }
+            i++;
+        }
         else if (!strcmp(a, "--save") && v) { save = v; i++; }
         else if (!strcmp(a, "--log") && v) { log_path = v; i++; }
         else if (!strcmp(a, "--ips") && v) { ips = strtoull(v, NULL, 0); i++; }
@@ -216,7 +223,7 @@ int main(int argc, char **argv)
                 "usage: f117a [--data DIR] [--save DIR] [--engine recomp|interp] [--ips N]\n"
                 "             [--scale N] [--fullscreen] [--no-aspect] [--midi N] [--log FILE]\n"
                 "             [--record FILE | --no-record] [--replay FILE] [--time-us N]\n"
-                "             [--exit-after CLOCKS]\n");
+                "             [--exit-after CLOCKS] [--opl dbopl|nuked]\n");
             return 2;
         }
     }
@@ -256,7 +263,7 @@ int main(int argc, char **argv)
     SDL_AudioSpec spec = { SDL_AUDIO_S16, 2, AUDIO_RATE };
     SDL_AudioStream *stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, NULL, NULL);
     if (stream) SDL_ResumeAudioStreamDevice(stream);
-    H.audio = audio_create(ips);
+    H.audio = audio_create_backend(ips, opl_backend);
 
 #ifdef _WIN32
     if (midi_dev != -2) {
@@ -293,7 +300,7 @@ int main(int argc, char **argv)
     /* A replay brings its own speed and boot time; a recording writes ours. */
     if (replay) inputlog_read_header(replay, &ips, &time_us);
     if (!time_us) time_us = machine_local_time_us();
-    if (H.audio) { audio_destroy(H.audio); H.audio = audio_create(ips); }
+    if (H.audio) { audio_destroy(H.audio); H.audio = audio_create_backend(ips, opl_backend); }
     if (!machine_boot(&H.m, H.mem, data, save, "F117.COM", ips, time_us, &hooks)) {
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "F-117A", H.m.fault, win);
         return 1;

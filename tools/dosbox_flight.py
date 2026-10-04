@@ -196,6 +196,7 @@ def main():
         approach = False
         last_pilot = 0
         flight_block = None
+        candidate_error = None
         class ReferenceInput:
             ips = 9000000
             @property
@@ -267,6 +268,11 @@ def main():
                         state["bios_ticks"] = memory.read32(0x46C)
                         flight_block = state["flight_block"]
                         if not pilot_initialized:
+                            if state["objective_type"] != 1 or state["secondary_type"] != 1:
+                                candidate_error = "generated mission does not have two reconnaissance objectives"
+                                rows.append({"seconds": elapsed, **state})
+                                print(candidate_error, rows[-1], flush=True)
+                                break
                             flight_clock = int((starts[program] - began) * reference_input.ips)
                             if state["flags"] & 8: reference_input.type(flight_clock + 80000000, "0")
                             reference_input.type(flight_clock + 100000000, "+")
@@ -301,7 +307,7 @@ def main():
                     if flight_end is None: flight_end = now
                     if program == "END" or now - flight_end > 30: break
                 time.sleep(.01 if args.pilot else .1)
-        errors = []
+        errors = [candidate_error] if candidate_error else []
         if args.frontend:
             if pending: errors.append("not all front-end inputs were sent")
             errors.extend(check_route(args.route, "", game))

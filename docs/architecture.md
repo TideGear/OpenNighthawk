@@ -29,7 +29,7 @@ src/host/       the window, audio and input (main.c), the headless runner (headl
 recompiler/     the translator: decoder, code discovery, C emitter (Python)
 tools/          the pipeline (build_recomp.py), the unpacker, routes, font generation
 tests/          the silicon-vector harnesses, for the interpreter and for generated code
-third_party/    Nuked OPL3 (LGPL-2.1)
+third_party/    DOSBox DBOPL (GPL-2+) and Nuked OPL3 (LGPL-2.1)
 ```
 
 ## The CPU and its two engines
@@ -144,9 +144,16 @@ file calls. `src/machine/pc.c` holds the devices. Both were extended from
   executes dozens, a small timing difference.
 - **DOS memory layout** follows the Reimp's oracle (programs at 1566 or 18E1
   depending on the sound driver), not any particular DOS version's.
-- **The OPL** is Nuked OPL3 in OPL2 mode, the most accurate emulator
-  available. DOSBox 0.74 uses DBOPL; small timbre differences against a GOG
-  DOSBox recording are expected.
+- **The OPL** defaults to GOG DOSBox 0.74-2.1's DBOPL core at its configured
+  44,100 Hz, with the reference's 2x mixer gain. `--opl nuked` selects Nuked
+  OPL3 in OPL2 mode, resampled to the same output rate. Timestamped writes
+  render preceding samples before changing the chip. Shared synthesis code
+  removes one source of differences; register timing, mixer scheduling and
+  exact PCM agreement with DOSBox still need verification. DBOPL can differ
+  briefly when a released channel becomes silent inside different render
+  blocks. The host uses sample-sized calls to keep its output independent
+  of how often the caller advances it. The standalone `dbopl_render` probe
+  also permits comparisons against block rendering.
 
 ## The recompiler
 

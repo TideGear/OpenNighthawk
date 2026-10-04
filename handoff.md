@@ -84,6 +84,28 @@ routes are verified; an independent DOSBox recon flight is running (below).
 
 ## In flight at handoff
 
+- Newest work after the initial audit: CI pacing now excludes SDL startup
+  and uses1MHz/four seconds to avoid interpreter throughput on shared runners.
+  Commit6668230 CI passes; failed CI outputs are uploaded. Corrected recon
+  pilot restores power below240 knots; adaptive rerun still reaches the
+  established return hash. Independent attempt02 credited one photo then
+  crashed at44% throttle. Attempt03 generated a strike secondary and was
+  stopped as unsupported, with14768 observations retained. The observer now
+  rejects non-photo/photo candidates before takeoff and waits through DSWAP.
+  Live attempt04: private`dosbox-recon-04`, log`parity-audit-dosbox-recon-04.log`,
+  exec session8133, same normal recon.front route,1900-second flight limit.
+- App now defaults to DOSBox DBOPL at44100Hz with2x gain; `--opl nuked`
+  retains Nuked, using its resampler at44100Hz. Vendored GPL2+ source is from
+  GOG's supplied DOSBox tar; README records hashes and wrapper-only changes.
+  C++11 required only when building the app. Nine CTests and43 Python tests
+  pass. `audio_render` defaults to app DBOPL; optional fifth arg`nuked`.
+  New`dbopl_render` is an independent512-sample renderer. Its full intro
+  differs from app sample-sized calls in270 stereo frames of6,394,500 near
+  channel silencing, an original chip block behavior. Exact reference PCM
+  still differs: RMS0.100662/0.100150, spectral.9826/envelope.9165.
+  Current evidence: `dbopl-app.wav`, `dbopl-app-comparison.json`,
+  `host-timing-dbopl` under audit root. No new game-machine semantics changed.
+
 - User requested all doubtful parity tests, then resumption of the existing
   autonomous roadmap goal. Goal is active, no budget. New audit evidence is
   documented in `docs/parity-audit.md`; private root is

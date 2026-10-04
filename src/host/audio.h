@@ -16,10 +16,12 @@
 
 typedef struct audio audio_t;
 
-/* Output is stereo int16 at AUDIO_RATE: the OPL's own sample rate. */
-#define AUDIO_RATE 49716
+/* GOG DOSBox's configured OPL/mixer rate. Output is stereo int16. */
+#define AUDIO_RATE 44100
+typedef enum { AUDIO_OPL_DBOPL, AUDIO_OPL_NUKED } audio_opl_backend;
 
 audio_t *audio_create(uint64_t ips);
+audio_t *audio_create_backend(uint64_t ips, audio_opl_backend backend);
 void     audio_destroy(audio_t *a);
 void     audio_opl_write(audio_t *a, uint64_t icount, uint8_t reg, uint8_t val);
 void     audio_speaker(audio_t *a, const machine_t *m, uint64_t icount);

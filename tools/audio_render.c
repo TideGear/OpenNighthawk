@@ -2,6 +2,7 @@
 #include "audio.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 static void le32(FILE *f, unsigned long v)
 {
@@ -34,15 +35,20 @@ static int advance(audio_t *audio, FILE *out, uint64_t *at, uint64_t until,
 
 int main(int argc, char **argv)
 {
-    if (argc != 5) {
-        fprintf(stderr, "usage: audio_render OPL.LOG OUT.WAV IPS END_CLOCK\n");
+    if (argc != 5 && argc != 6) {
+        fprintf(stderr, "usage: audio_render OPL.LOG OUT.WAV IPS END_CLOCK [dbopl|nuked]\n");
         return 2;
     }
     uint64_t ips = strtoull(argv[3], NULL, 10), end = strtoull(argv[4], NULL, 10);
     if (ips < 100 || !end) return 2;
     FILE *input = fopen(argv[1], "r"), *out = fopen(argv[2], "wb");
     if (!input || !out) { perror("audio files"); return 1; }
-    audio_t *audio = audio_create(ips);
+    audio_opl_backend backend = AUDIO_OPL_DBOPL;
+    if (argc == 6) {
+        if (!strcmp(argv[5], "nuked")) backend = AUDIO_OPL_NUKED;
+        else if (strcmp(argv[5], "dbopl")) { fclose(input); fclose(out); return 2; }
+    }
+    audio_t *audio = audio_create_backend(ips, backend);
     if (!audio) return 1;
     fwrite("RIFF", 1, 4, out); le32(out, 0); fwrite("WAVEfmt ", 1, 8, out);
     le32(out, 16); fwrite("\1\0\2\0", 1, 4, out); le32(out, AUDIO_RATE);

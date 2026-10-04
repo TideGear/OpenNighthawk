@@ -156,6 +156,7 @@ build\f117a.exe --data "D:\GOG\F-117A"
 | `--engine recomp\|interp` | recompiled code (default) or the reference interpreter only |
 | `--ips N` | emulated CPU speed, instructions per second (default 9,000,000: GOG DOSBox's `cycles=9000`) |
 | `--midi N` | send the Roland driver's MIDI to Windows MIDI device N (-1: the mapper) |
+| `--opl dbopl\|nuked` | GOG DOSBox's OPL2 synthesizer (default), or Nuked OPL3 in OPL2 mode; both output at 44,100 Hz |
 | `--scale N`, `--fullscreen`, `--no-aspect` | window size; fullscreen; square pixels instead of 4:3 |
 
 The game asks its original SETUP questions at each start (joystick, sound
@@ -238,7 +239,8 @@ the remaining differences and checks requiring hardware or ROMs.
 
 GPL-3.0 (see [LICENSE](LICENSE)). It covers this repository's code only and
 grants nothing over the game, its data, or anything derived from them.
-Nuked OPL3 is LGPL-2.1; see [docs/provenance.md](docs/provenance.md).
+DOSBox DBOPL is GPL-2-or-later and Nuked OPL3 is LGPL-2.1; see
+[docs/provenance.md](docs/provenance.md).
 
 *F-117A Nighthawk Stealth Fighter 2.0* and its assets belong to their rights
 holder. This project is not affiliated with or endorsed by Atari, MicroProse
@@ -252,5 +254,6 @@ with.
   reverse engineering this project is built on.
 - **SingleStepTests**, for the 8088 and 80286 hardware vectors.
 - **Nuked OPL3** (nukeykt), for the AdLib's chip.
+- **DOSBox DBOPL** (The DOSBox Team), for the reference OPL2 synthesizer.
 - **debugcom**, for the mission-generator and secret-airstrip analysis the
   bug tracker cites.

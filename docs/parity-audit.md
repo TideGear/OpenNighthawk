@@ -71,6 +71,17 @@ correlation 0.9137. The waveform is unequal. These mono, resampled measurements
 are diagnostics, not exact stereo parity or a listening verdict. Nuked OPL3
 and DOSBox's synthesizer remain different.
 
+**Subsequent synthesis change:** the app now defaults to GOG's supplied
+DOSBox 0.74-2.1 DBOPL chip core, with its 44,100 Hz rate and 2x gain.
+Nuked remains available through `--opl nuked`. Both backend paths pass
+timestamped-write/chunk-boundary tests; speaker gate and DBOPL tone release
+tests pass. The new app-rendered intro RMS is 0.100662 versus 0.100150,
+median spectral similarity 0.9826 and envelope correlation 0.9165. Exact
+PCM still differs. Source identity is not a full audio-parity verdict.
+An independent 512-sample renderer and the app's sample-sized renderer
+differ in 270 stereo frames of the 6,394,500-frame log, around channel
+silencing; that DBOPL block behavior is retained and documented.
+
 **Flight state:** `tools/dosbox_flight.py` locates DOSBox's guest RAM using
 its ROM signature and validates the owning MCB/PSP. Its process handle has
 read/query permissions only. The original game is unmodified, and inputs

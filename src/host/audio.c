@@ -1,6 +1,7 @@
 /* audio.c - the AdLib and the PC speaker, rendered on the machine's clock. */
 #include "audio.h"
 #include "opl3.h"
+#include "dbopl_bridge.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -16,6 +17,7 @@ typedef struct {
 
 struct audio {
     opl3_chip opl;
+    dbopl_t *dbopl;
     uint64_t ips;
     uint64_t done;                        /* samples rendered so far */
     int16_t  buf[BUF_FRAMES * 2];
@@ -31,14 +33,27 @@ static uint64_t muldiv(uint64_t a, uint64_t b, uint64_t d)
 
 audio_t *audio_create(uint64_t ips)
 {
+    return audio_create_backend(ips, AUDIO_OPL_DBOPL);
+}
+
+audio_t *audio_create_backend(uint64_t ips, audio_opl_backend backend)
+{
+    if (!ips || (backend != AUDIO_OPL_DBOPL && backend != AUDIO_OPL_NUKED)) return NULL;
     audio_t *a = (audio_t *)calloc(1, sizeof *a);
     if (!a) return NULL;
     a->ips = ips;
-    OPL3_Reset(&a->opl, AUDIO_RATE);
+    if (backend == AUDIO_OPL_DBOPL) {
+        a->dbopl = dbopl_create(AUDIO_RATE);
+        if (!a->dbopl) { free(a); return NULL; }
+    } else OPL3_Reset(&a->opl, AUDIO_RATE);
     return a;
 }
 
-void audio_destroy(audio_t *a) { free(a); }
+void audio_destroy(audio_t *a)
+{
+    if (a) dbopl_destroy(a->dbopl);
+    free(a);
+}
 
 /* The speaker cone: driven by counter 2's output through the AND gate of
  * port 61 bit 1, with bit 0 gating the counter itself. */
@@ -61,8 +76,15 @@ static int speaker_level(const spk_state *s, uint64_t sample)
 static void render_to(audio_t *a, uint64_t target)
 {
     while (a->done < target) {
-        int16_t s[2];
-        OPL3_Generate(&a->opl, s);
+        int32_t s[2];
+        if (a->dbopl) {
+            dbopl_generate(a->dbopl, s, 1);
+            s[1] = s[0];
+        } else {
+            int16_t pair[2];
+            OPL3_GenerateResampled(&a->opl, pair);
+            s[0] = pair[0]; s[1] = pair[1];
+        }
         /* The speaker, through a gentle DC blocker so a held level decays
          * to silence as the real cone does. */
         float v = speaker_level(&a->spk, a->done) && (a->spk.port61 & 2) ? 6000.0f : 0.0f;
@@ -92,7 +114,8 @@ void audio_advance(audio_t *a, uint64_t icount)
 void audio_opl_write(audio_t *a, uint64_t icount, uint8_t reg, uint8_t val)
 {
     audio_advance(a, icount);
-    OPL3_WriteReg(&a->opl, reg, val);
+    if (a->dbopl) dbopl_write(a->dbopl, reg, val);
+    else OPL3_WriteReg(&a->opl, reg, val);
 }
 
 void audio_speaker(audio_t *a, const machine_t *m, uint64_t icount)

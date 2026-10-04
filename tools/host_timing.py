@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", required=True)
+    parser.add_argument("--opl", choices=("dbopl", "nuked"), default="dbopl")
     args = parser.parse_args()
     if os.name != "nt":
         parser.error("controlled process suspension currently requires Windows")
@@ -35,6 +36,7 @@ def main():
         if log.exists(): log.unlink()
         process = subprocess.Popen([str(executable), "--data", str(data),
             "--save", tempfile.mkdtemp(dir=out), "--engine", "interp", "--no-record",
+            "--opl", args.opl,
             "--log", str(log), "--ips", "1000000", "--exit-after", "4000000"],
             env=dict(os.environ, SDL_VIDEODRIVER="dummy", SDL_AUDIODRIVER="dummy"), cwd=out)
         try:
@@ -66,7 +68,7 @@ def main():
     errors = []
     if any(r["exit_code"] for r in results): errors.append("application failed")
     if not .45 < added < 1.2: errors.append("stall changed pacing outside the 100 ms catch-up allowance")
-    result = {"runs": results, "added_wall_seconds": added, "errors": errors}
+    result = {"opl": args.opl, "runs": results, "added_wall_seconds": added, "errors": errors}
     (out / "result.json").write_text(json.dumps(result, indent=2) + "\n")
     print(json.dumps(result, indent=2))
     return int(bool(errors))
