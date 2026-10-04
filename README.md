@@ -67,6 +67,7 @@ options. Enhancements come after parity, never instead of it.
   planned).
 
 How the parity claim is built and checked: [docs/architecture.md](docs/architecture.md).
+What is done and what is left: [docs/roadmap.md](docs/roadmap.md).
 
 ## You need your own copy of the game
 

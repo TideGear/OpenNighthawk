@@ -283,7 +283,10 @@ Seven layers, each checkable by anyone with their own copy:
    lockstep (layer 4) and the sites are drawn from all translated
    instructions: 12 of 12 detected (seed 7; removals, flipped CF, flipped
    AX bit 0) in START, VGAME, END, DSWAP and ISOUND.LOG, most of them at
-   instructions no route runs. A flipped flag that a route would mask is
+   instructions no route runs. A larger run (seed 11, stopped at the
+   two-hour limit after 72 of 150): 72 of 72 detected - 21 removals, 21
+   flipped CF, 15 flipped ZF, 15 flipped AX bits - across 14 of the 18
+   modules, 33 of them in VGAME. A flipped flag that a route would mask is
    seen here, because the state is compared after the one instruction.
 
    The mutation check found two weaknesses in this project's own tooling,
@@ -334,10 +337,4 @@ Seven layers, each checkable by anyone with their own copy:
 
 ## Where this goes next
 
-- Coverage from more routes and from recorded human play, until the
-  interpreter runs only the decompressor stubs.
-- Code overrides: hand-written C registered for a module address, replacing
-  that address's translation. This is how switchable bug fixes (see
-  [bugs.md](bugs.md)) and the later "matched and named functions" layer
-  will attach.
-- Enhancements on top of parity, never instead of it.
+The open work, in order, is tracked in [roadmap.md](roadmap.md).

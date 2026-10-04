@@ -134,8 +134,22 @@ Status values:
   CE.WLD, 7 in NC.WLD, 1 in CU.WLD), so no sensor can ever detect the player
   there. Whether these are what players called "stealth mountains", and what
   473.04 changed about them, is not established.
-- **Where.** VGAME `0x5582` (detection), `0x55B8`, `0x55EB`, `0x5654`.
-- **Detail.** Reimp catalogue:679-720.
+- **Measured since (Reimp, 3 October 2026), leaning towards a defect:** the
+  cover lookup reads the *player's* position (the same `[0xC0D0]`/`[0xC0DE]`
+  the function uses for range), so the effect is the same against every
+  sensor from every bearing, unlike terrain masking, which is directional;
+  every object placed in the 20 cells has `z = 0` and 5 cells have none, so
+  they are flat, not mountains; none overlaps a friendly base or carrier;
+  15 of the 20 share their ground pattern with unmasked cells; the manual
+  and the three theatres' briefings name no radar gap. Status unchanged:
+  the mechanism is measured, the cause is not proven.
+- **In this recompilation.** Reproduced exactly: it is the game's own
+  arithmetic on the shipped world data, translated instruction for
+  instruction. A fix would be a switchable override at `0x55EB`.
+- **Where.** VGAME `0x5582` (detection), `0x55B8`, `0x55CB`/`0x55E8` (the
+  player's sector), `0x55EB`, `0x5654`.
+- **Detail.** Reimp catalogue:679-752, at Reimp commit `9e0716dc` (the
+  addendum post-dates the `cfb8cec9` copy in provenance.md).
 
 ### D7. Strike training does not complete (reported)
 
