@@ -68,11 +68,11 @@ bugs). State as of 4 October 2026, commit `d87d9cd` plus this file.
 
 ## In flight at handoff
 
-- A 60-mutant batch (seed 12) was running in the background, 48 of 48
-  detected when this was written; its log is
-  `%USERPROFILE%\f117-recomp-local\mutation60.log`. If it completed, put
-  the final count into docs/roadmap.md and docs/architecture.md; if the
-  session ending stopped it, the 48 stand as measured.
+- Nothing. The last mutation batch (seed 12) finished: 60 of 60 detected,
+  recorded in docs/roadmap.md and docs/architecture.md (144 of 144 planted
+  defects caught across all runs). Background jobs started in a
+  conversation stop when it closes, so finish or record them before a
+  handoff.
 
 ## Next (from docs/roadmap.md, in the suggested order)
 

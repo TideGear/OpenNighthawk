@@ -286,7 +286,10 @@ Seven layers, each checkable by anyone with their own copy:
    instructions no route runs. A larger run (seed 11, stopped at the
    two-hour limit after 72 of 150): 72 of 72 detected - 21 removals, 21
    flipped CF, 15 flipped ZF, 15 flipped AX bits - across 14 of the 18
-   modules, 33 of them in VGAME. A flipped flag that a route would mask is
+   modules, 33 of them in VGAME. A further batch (seed 12): 60 of 60
+   detected - 13 removals, 15 flipped CF, 17 flipped ZF, 15 flipped AX
+   bits - across 10 modules, 25 in VGAME and 12 in START. Together with
+   the first 12: 144 planted defects, 144 detected. A flipped flag that a route would mask is
    seen here, because the state is compared after the one instruction.
 
    The mutation check found two weaknesses in this project's own tooling,

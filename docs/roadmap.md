@@ -26,7 +26,9 @@ never instead of parity.
 - Seeded random flights (`tools/random_flights.py`): every session
   identical at every hash; 30.5 minutes of flight in the 16-session batch.
 - Planted defects caught by the lockstep (`tools/mutation_check.py
-  --lockstep`): 12 of 12, 72 of 72, and a 60-mutant batch.
+  --lockstep`): 12 of 12, 72 of 72, 60 of 60 - 144 of 144, of all four
+  kinds (removed instruction, flipped CF, ZF, AX bit), most at
+  instructions no route runs.
 - The emulated PC held to GOG's DOSBox 0.74-2.1 (`tools/fidelity.py`): DOS
   memory, PSP, environment, EXEC and terminate, every DOS/BIOS service the
   game uses and its cost in time, BIOS data, VGA registers, devices,
