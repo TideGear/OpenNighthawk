@@ -810,6 +810,13 @@ static uint16_t load_program(machine_t *m, const char *name, const exec_params *
 
     build_psp(m, psp, top_seg, ep, ret_cs, ret_ip);
 
+    /* Announced before the image is written, so whatever this load
+     * replaces is forgotten before its bytes change. */
+    if (m->hooks.module_load)
+        m->hooks.module_load(m->hooks.user, m, dos_basename(name), raw, (size_t)fsz,
+                             is_mz ? MODLOAD_EXEC : MODLOAD_COM,
+                             is_mz ? load_seg : psp, is_mz ? load_seg : psp);
+
     if (is_mz) {
         guest_write(c, phys(load_seg, 0), raw + hdr_size, body);
         uint16_t nreloc = hdr[3], reloc_off = hdr[12];
@@ -845,10 +852,6 @@ static uint16_t load_program(machine_t *m, const char *name, const exec_params *
     dos_log(m, "[exec] %-14s %s  psp=%04X load=%04X..%04X (%u paras)  entry %04X:%04X @%llu\n",
             name, is_mz ? "MZ " : "COM", psp, load_seg, top_seg, want,
             c->seg[S_CS], c->ip, (unsigned long long)c->icount);
-    if (m->hooks.module_load)
-        m->hooks.module_load(m->hooks.user, m, dos_basename(name), raw, (size_t)fsz,
-                             is_mz ? MODLOAD_EXEC : MODLOAD_COM,
-                             is_mz ? load_seg : psp, is_mz ? load_seg : psp);
     free(raw);
     *psp_out = psp;
     return 0;
@@ -867,6 +870,9 @@ static uint16_t load_overlay(machine_t *m, const char *name, uint16_t load_seg,
 
     uint32_t body;
     unsigned nreloc = 0;
+    if (m->hooks.module_load)
+        m->hooks.module_load(m->hooks.user, m, dos_basename(name), raw, (size_t)fsz,
+                             MODLOAD_OVERLAY, load_seg, reloc_factor);
     if (fsz >= 28 && raw[0] == 'M' && raw[1] == 'Z') {
         uint16_t hdr[14];
         memcpy(hdr, raw, sizeof(hdr));
@@ -890,9 +896,6 @@ static uint16_t load_overlay(machine_t *m, const char *name, uint16_t load_seg,
     }
     dos_log(m, "[overlay] %-12s -> %04X (%u bytes, %u relocations, factor %04X) @%llu\n",
             name, load_seg, body, nreloc, reloc_factor, (unsigned long long)c->icount);
-    if (m->hooks.module_load)
-        m->hooks.module_load(m->hooks.user, m, dos_basename(name), raw, (size_t)fsz,
-                             MODLOAD_OVERLAY, load_seg, reloc_factor);
     free(raw);
     return 0;
 }
@@ -1524,6 +1527,12 @@ static int int16(machine_t *m)
     cpu_t *c = &m->cpu;
     uint8_t ah = (uint8_t)(c->r[R_AX] >> 8);
     uint16_t key;
+    if (m->log && getenv("F117R_TRACE_KEYS") && ah != 0x01 && ah != 0x11) {
+        uint16_t peek = 0;
+        int have = kbd_pop(m, &peek, 0);
+        dos_log(m, "[int16] AH=%02X next=%04X%s @%llu (%s)\n", ah, peek, have ? "" : " (empty)",
+                (unsigned long long)c->icount, dos_current_program(m));
+    }
     switch (ah) {
     case 0x00:                               /* read key, waiting */
         for (;;) {

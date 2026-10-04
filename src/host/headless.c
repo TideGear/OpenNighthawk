@@ -1,16 +1,27 @@
-/* headless.c - run the game without a window, for tests and captures.
+/* headless.c - run the game without a window: tests, captures, parity.
  *
  *   f117run --data DIR [--save DIR] [--steps N] [--ips N] [--log FILE]
- *           [--type ICOUNT:KEYS]... [--hold MS] [--screen FILE.ppm]
- *           [--engine interp|recomp] [--time-us N] [--hash-every N]
- *           [--coverage FILE]
+ *           [--engine interp|recomp] [--time-us N]
+ *           [--type WHEN:KEYS]... [--click WHEN:X,Y]... [--hold MS]
+ *           [--record FILE] [--replay FILE]
+ *           [--hash-every N] [--hash-from N] [--trace FROM:TO:FILE]
+ *           [--coverage FILE] [--screen FILE.ppm] [--shots EVERY:PREFIX]
  *
- * --type types KEYS (see keys.h) starting at ICOUNT, each key held --hold
- * milliseconds of emulated time. ICOUNT may be written "PROG+N": N
- * instructions after the program PROG was last started. The screen is
- * written at the end, as a PPM of the mode-13h frame or the text page.
- * --time-us fixes the wall-clock time the machine boots at, so a run is
- * reproducible to the instruction.
+ * WHEN is an absolute clock count, or PROG+N: N after the program PROG
+ * (e.g. START.EXE) first starts. --type types KEYS (escapes in keys.h),
+ * each key held --hold ms of emulated time; --click moves the mouse to
+ * mode-13h pixel (X,Y) and clicks the left button.
+ *
+ * Every input is scheduled at an exact clock count from inside the machine
+ * (a program's start is a machine event), so a run does not depend on how
+ * this loop slices it, and --record writes a log that --replay - here or in
+ * the windowed game - reproduces to the instruction.
+ *
+ * Parity: run the same inputs with --engine interp and --engine recomp and
+ * compare the [hash] lines (all of memory and the registers); --hash-from
+ * and a smaller --hash-every narrow a difference down, and --trace writes
+ * every instruction boundary in a window (CS:IP, registers, flags) for a
+ * line-by-line diff.
  */
 #include "machine.h"
 #include "keys.h"
@@ -22,63 +33,161 @@
 #include <string.h>
 #include <time.h>
 
-typedef struct { uint64_t at; uint8_t b; } timed_byte;
-
 typedef struct {
-    char prog[16];          /* empty: absolute icount */
+    char prog[16];          /* empty: absolute */
     uint64_t after;
-    char keys[256];
+    char keys[256];         /* keys, or "@x,y" for a left click at (x,y) */
     int done;
-} type_cmd;
+} script_cmd;
+
+static script_cmd g_cmd[128];
+static int g_ncmd;
+static uint64_t g_hold;
+static FILE *g_record;
 
 static struct { uint32_t lin; uint16_t cs, ip; uint64_t n; } g_samp[256];
 static int g_nsamp;
 
-static timed_byte g_q[8192];
-static int g_qn;
-
-static void schedule(uint64_t at, uint8_t b)
+static void at_key(machine_t *m, uint64_t at, uint8_t b)
 {
-    if (g_qn < (int)(sizeof g_q / sizeof g_q[0])) { g_q[g_qn].at = at; g_q[g_qn].b = b; g_qn++; }
+    machine_input in = { 0 };
+    in.at = at; in.type = INPUT_KEY; in.byte = b;
+    machine_input_at(m, &in);
 }
 
-/* Lay a key script out in time: each key pressed for `hold`, the next key
- * `hold` after its release. */
-static void schedule_keys(const char *keys, uint64_t start, uint64_t hold)
+static void at_mouse(machine_t *m, uint64_t at, int x, int y, int buttons)
 {
-    uint8_t mk[4], br[4];
-    int nm, nb;
-    uint64_t t = start;
-    while (keys_next(&keys, mk, &nm, br, &nb)) {
-        for (int i = 0; i < nm; i++) schedule(t, mk[i]);
-        for (int i = 0; i < nb; i++) schedule(t + hold, br[i]);
-        t += 2 * hold;
+    machine_input in = { 0 };
+    in.at = at; in.type = INPUT_MOUSE; in.x = (int16_t)x; in.y = (int16_t)y;
+    in.buttons = (uint16_t)buttons;
+    machine_input_at(m, &in);
+}
+
+/* Lay a command out in time from `t`: each key held for g_hold, the next
+ * key g_hold after its release; a click presses g_hold after the pointer
+ * arrives and releases 2*g_hold later. */
+static void schedule(machine_t *m, script_cmd *cmd, uint64_t t)
+{
+    if (cmd->keys[0] == '@') {
+        int x = 0, y = 0;
+        sscanf(cmd->keys + 1, "%d,%d", &x, &y);
+        at_mouse(m, t, x, y, 0);
+        at_mouse(m, t + g_hold, x, y, 1);
+        at_mouse(m, t + 3 * g_hold, x, y, 0);
+    } else {
+        const char *k = cmd->keys;
+        uint8_t mk[4], br[4];
+        int nm, nb;
+        while (keys_next(&k, mk, &nm, br, &nb)) {
+            for (int i = 0; i < nm; i++) at_key(m, t, mk[i]);
+            for (int i = 0; i < nb; i++) at_key(m, t + g_hold, br[i]);
+            t += 2 * g_hold;
+        }
+    }
+    cmd->done = 1;
+}
+
+/* The program-start event: schedule this program's commands now, at their
+ * exact counts. Then hand on to the recomp run-time. */
+static void on_load(void *user, machine_t *m, const char *name, const uint8_t *file,
+                    size_t len, int kind, uint16_t load_seg, uint16_t reloc)
+{
+    recomp_module_load(user, m, name, file, len, kind, load_seg, reloc);
+    if (kind == MODLOAD_OVERLAY) return;
+    for (int k = 0; k < g_ncmd; k++) {
+        script_cmd *c = &g_cmd[k];
+        if (!c->done && c->prog[0] && !_stricmp(c->prog, name))
+            schedule(m, c, m->cpu.icount + c->after);
     }
 }
 
-static int cmp_tb(const void *a, const void *b)
+static void on_input(void *user, const machine_input *in)
 {
-    const timed_byte *x = a, *y = b;
-    return x->at < y->at ? -1 : x->at > y->at;
+    (void)user;
+    if (!g_record) return;
+    switch (in->type) {
+    case INPUT_KEY:
+        fprintf(g_record, "K %llu %02X\n", (unsigned long long)in->at, in->byte);
+        break;
+    case INPUT_MOUSE:
+        fprintf(g_record, "M %llu %d %d %u %d %d\n", (unsigned long long)in->at,
+                in->x, in->y, in->buttons, in->dx, in->dy);
+        break;
+    case INPUT_JOY:
+        fprintf(g_record, "J %llu %u %u %u %u %u %u\n", (unsigned long long)in->at, in->present,
+                in->axis[0], in->axis[1], in->axis[2], in->axis[3], in->buttons);
+        break;
+    default: break;
+    }
 }
 
-static uint64_t prog_start(machine_t *m, const char *prog, int *found)
+/* An input log: a header naming the machine's speed and boot time, then
+ * one input per line. Returns 0 if the file cannot be read. */
+static int replay_load(machine_t *m, const char *path)
 {
-    for (int i = m->nproc - 1; i >= 0; i--)
-        if (!_stricmp(m->procs[i].name, prog)) { *found = 1; return m->procs[i].start_icount; }
-    *found = 0;
-    return 0;
+    FILE *f = fopen(path, "r");
+    if (!f) return 0;
+    char line[256];
+    while (fgets(line, sizeof line, f)) {
+        machine_input in = { 0 };
+        unsigned long long at;
+        int a, b, c2, d, e;
+        unsigned u0, u1, u2, u3, u4, u5;
+        if (line[0] == 'K' && sscanf(line + 1, "%llu %x", &at, &u0) == 2) {
+            in.at = at; in.type = INPUT_KEY; in.byte = (uint8_t)u0;
+        } else if (line[0] == 'M' && sscanf(line + 1, "%llu %d %d %d %d %d", &at, &a, &b, &c2, &d, &e) == 6) {
+            in.at = at; in.type = INPUT_MOUSE; in.x = (int16_t)a; in.y = (int16_t)b;
+            in.buttons = (uint16_t)c2; in.dx = (int16_t)d; in.dy = (int16_t)e;
+        } else if (line[0] == 'J' && sscanf(line + 1, "%llu %u %u %u %u %u %u", &at, &u0, &u1, &u2, &u3, &u4, &u5) == 7) {
+            in.at = at; in.type = INPUT_JOY; in.present = (uint8_t)u0;
+            in.axis[0] = (uint16_t)u1; in.axis[1] = (uint16_t)u2; in.axis[2] = (uint16_t)u3; in.axis[3] = (uint16_t)u4;
+            in.buttons = (uint16_t)u5;
+        } else {
+            continue;
+        }
+        machine_input_at(m, &in);
+    }
+    fclose(f);
+    return 1;
+}
+
+/* Read "# f117r-input ips=N time_us=N" from a log, if present. */
+static void replay_header(const char *path, uint64_t *ips, uint64_t *time_us)
+{
+    FILE *f = fopen(path, "r");
+    if (!f) return;
+    char line[256];
+    if (fgets(line, sizeof line, f) && !strncmp(line, "# f117r-input", 13)) {
+        const char *p = strstr(line, "ips=");
+        if (p) *ips = strtoull(p + 4, NULL, 10);
+        p = strstr(line, "time_us=");
+        if (p) *time_us = strtoull(p + 8, NULL, 10);
+    }
+    fclose(f);
+}
+
+static uint64_t state_hash(const machine_t *m)
+{
+    uint64_t h = 1469598103934665603ull;
+    for (uint32_t a = 0; a < MEM_SIZE; a++) h = (h ^ m->mem[a]) * 1099511628211ull;
+    for (int r = 0; r < 8; r++) h = (h ^ m->cpu.r[r]) * 1099511628211ull;
+    for (int s = 0; s < 4; s++) h = (h ^ m->cpu.seg[s]) * 1099511628211ull;
+    h = (h ^ m->cpu.ip) * 1099511628211ull;
+    h = (h ^ m->cpu.flags) * 1099511628211ull;
+    return h;
 }
 
 int main(int argc, char **argv)
 {
     const char *data = NULL, *save = NULL, *log_path = NULL, *screen = NULL;
+    const char *record = NULL, *replay = NULL, *coverage = NULL;
     uint64_t steps = 100000000ull, ips = MACHINE_DEFAULT_IPS, hold_ms = 60;
-    uint64_t time_us = 0, hash_every = 0;
+    uint64_t time_us = 0, hash_every = 0, hash_from = 0;
+    uint64_t trace_from = 0, trace_to = 0;
+    static char trace_path[600];
     int engine = ENGINE_INTERP;
-    const char *coverage = NULL;
-    static type_cmd cmds[64];
-    int ncmd = 0;
+    uint64_t shot_every = 0, next_shot = 0;
+    static char shot_prefix[512] = "shot";
 
     for (int i = 1; i < argc; i++) {
         const char *a = argv[i];
@@ -92,22 +201,40 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--hold") && v) { hold_ms = strtoull(v, NULL, 0); i++; }
         else if (!strcmp(a, "--time-us") && v) { time_us = strtoull(v, NULL, 0); i++; }
         else if (!strcmp(a, "--hash-every") && v) { hash_every = strtoull(v, NULL, 0); i++; }
+        else if (!strcmp(a, "--hash-from") && v) { hash_from = strtoull(v, NULL, 0); i++; }
         else if (!strcmp(a, "--coverage") && v) { coverage = v; i++; }
-        else if (!strcmp(a, "--engine") && v) { engine = !strcmp(v, "recomp") ? ENGINE_RECOMP : ENGINE_INTERP; i++; }
-        else if (!strcmp(a, "--type") && v && ncmd < 64) {
-            type_cmd *t = &cmds[ncmd++];
+        else if (!strcmp(a, "--record") && v) { record = v; i++; }
+        else if (!strcmp(a, "--replay") && v) { replay = v; i++; }
+        else if (!strcmp(a, "--trace") && v) {
+            char rest[600];
+            unsigned long long f = 0, t = 0;
+            if (sscanf(v, "%llu:%llu:%599s", &f, &t, rest) != 3) { fprintf(stderr, "--trace FROM:TO:FILE\n"); return 2; }
+            trace_from = f; trace_to = t;
+            snprintf(trace_path, sizeof trace_path, "%s", strchr(strchr(v, ':') + 1, ':') + 1);
+            i++;
+        }
+        else if (!strcmp(a, "--shots") && v) {
+            shot_every = strtoull(v, NULL, 0);
             const char *colon = strchr(v, ':');
-            if (!colon) { fprintf(stderr, "--type wants ICOUNT:KEYS\n"); return 2; }
+            if (colon) snprintf(shot_prefix, sizeof shot_prefix, "%s", colon + 1);
+            i++;
+        }
+        else if (!strcmp(a, "--engine") && v) { engine = !strcmp(v, "recomp") ? ENGINE_RECOMP : ENGINE_INTERP; i++; }
+        else if ((!strcmp(a, "--type") || !strcmp(a, "--click")) && v && g_ncmd < 128) {
+            script_cmd *t = &g_cmd[g_ncmd++];
+            const char *colon = strchr(v, ':');
+            if (!colon) { fprintf(stderr, "%s wants WHEN:WHAT\n", a); return 2; }
             char when[64];
             snprintf(when, sizeof when, "%.*s", (int)(colon - v), v);
             char *plus = strchr(when, '+');
             if (plus) { *plus = 0; snprintf(t->prog, sizeof t->prog, "%s", when); t->after = strtoull(plus + 1, NULL, 0); }
             else t->after = strtoull(when, NULL, 0);
-            snprintf(t->keys, sizeof t->keys, "%s", colon + 1);
+            snprintf(t->keys, sizeof t->keys, "%s%s", !strcmp(a, "--click") ? "@" : "", colon + 1);
             i++;
         } else { fprintf(stderr, "unknown or incomplete option %s\n", a); return 2; }
     }
     if (!data) { fprintf(stderr, "usage: f117run --data DIR [options]\n"); return 2; }
+    if (replay) replay_header(replay, &ips, &time_us);
     if (!time_us) time_us = (uint64_t)time(NULL) * 1000000ull;
 
     static machine_t m;
@@ -118,45 +245,52 @@ int main(int argc, char **argv)
     if (coverage) recomp_set_coverage(&m, coverage);
     machine_hooks hooks;
     memset(&hooks, 0, sizeof hooks);
-    hooks.module_load = recomp_module_load;
+    hooks.module_load = on_load;
+    g_hold = ips * hold_ms / 1000ull;
+    if (record) {
+        g_record = fopen(record, "w");
+        if (!g_record) { fprintf(stderr, "cannot write %s\n", record); return 1; }
+        fprintf(g_record, "# f117r-input ips=%llu time_us=%llu\n",
+                (unsigned long long)ips, (unsigned long long)time_us);
+    }
     if (!machine_boot(&m, mem, data, save, "F117.COM", ips, time_us, &hooks)) {
         fprintf(stderr, "%s\n", m.fault);
         return 1;
     }
+    m.on_input = on_input;
+    for (int k = 0; k < g_ncmd; k++)
+        if (!g_cmd[k].prog[0]) schedule(&m, &g_cmd[k], g_cmd[k].after);
+    if (replay && !replay_load(&m, replay)) { fprintf(stderr, "cannot read %s\n", replay); return 1; }
 
-    const uint64_t hold = ips * hold_ms / 1000ull;
-    int qpos = 0;
-    uint64_t next_hash = hash_every ? hash_every : ~0ull;
+    FILE *trace = NULL;
+    uint64_t next_hash = hash_every ? (hash_from ? hash_from : hash_every) : ~0ull;
     clock_t t0 = clock();
     int rc = RUN_SLICE;
     while (m.cpu.icount < steps) {
-        /* Commands whose program has started become timed bytes. */
-        for (int k = 0; k < ncmd; k++) {
-            type_cmd *t = &cmds[k];
-            if (t->done) continue;
-            uint64_t base = 0;
-            if (t->prog[0]) {
-                int found;
-                base = prog_start(&m, t->prog, &found);
-                if (!found) continue;
-            }
-            if (m.cpu.icount >= base + t->after) {
-                schedule_keys(t->keys, m.cpu.icount, hold);
-                qsort(g_q + qpos, (size_t)(g_qn - qpos), sizeof g_q[0], cmp_tb);
-                t->done = 1;
-            }
-        }
-        while (qpos < g_qn && g_q[qpos].at <= m.cpu.icount) machine_key_byte(&m, g_q[qpos++].b);
-
         uint64_t until = m.cpu.icount + ips / 100;       /* 10 ms slices */
-        if (qpos < g_qn && g_q[qpos].at < until) until = g_q[qpos].at;
         if (until > steps) until = steps;
         if (next_hash < until) until = next_hash;
+        if (shot_every && next_shot > m.cpu.icount && next_shot < until) until = next_shot;
+        if (trace_path[0] && m.cpu.icount < trace_to) {
+            /* Inside the trace window: one instruction boundary at a time. */
+            if (m.cpu.icount >= trace_from) {
+                until = m.cpu.icount + 1;
+                if (!trace) trace = fopen(trace_path, "w");
+            } else if (trace_from < until) {
+                until = trace_from;
+            }
+        }
         if (until <= m.cpu.icount) until = m.cpu.icount + 1;
         rc = machine_run(&m, until);
+        if (trace && m.cpu.icount <= trace_to) {
+            const cpu_t *c = &m.cpu;
+            fprintf(trace, "%llu %04X:%04X AX=%04X BX=%04X CX=%04X DX=%04X SI=%04X DI=%04X BP=%04X SP=%04X "
+                    "DS=%04X ES=%04X SS=%04X FL=%04X\n", (unsigned long long)c->icount,
+                    c->seg[S_CS], c->ip, c->r[R_AX], c->r[R_BX], c->r[R_CX], c->r[R_DX],
+                    c->r[R_SI], c->r[R_DI], c->r[R_BP], c->r[R_SP], c->seg[S_DS], c->seg[S_ES],
+                    c->seg[S_SS], c->flags);
+        }
         {
-            /* A cheap PC sampler: where each slice ended. Enough to locate a
-             * spin without tracing. */
             uint32_t lin = phys(m.cpu.seg[S_CS], m.cpu.ip);
             int slot = -1;
             for (int s = 0; s < g_nsamp; s++) if (g_samp[s].lin == lin) { slot = s; break; }
@@ -164,25 +298,30 @@ int main(int argc, char **argv)
                 g_samp[slot].cs = m.cpu.seg[S_CS]; g_samp[slot].ip = m.cpu.ip; g_samp[slot].n = 0; }
             if (slot >= 0) g_samp[slot].n++;
         }
+        if (shot_every && m.cpu.icount >= next_shot) {
+            char path[600];
+            snprintf(path, sizeof path, "%s_%011llu.ppm", shot_prefix, (unsigned long long)m.cpu.icount);
+            present_write_ppm(&m, path);
+            next_shot = m.cpu.icount + shot_every;
+        }
         if (m.cpu.icount >= next_hash) {
-            uint64_t h = 1469598103934665603ull;
-            for (uint32_t a = 0; a < MEM_SIZE; a++) h = (h ^ mem[a]) * 1099511628211ull;
-            for (int r = 0; r < 8; r++) h = (h ^ m.cpu.r[r]) * 1099511628211ull;
             printf("[hash] %llu %016llx %s\n", (unsigned long long)m.cpu.icount,
-                   (unsigned long long)h, dos_current_program(&m));
+                   (unsigned long long)state_hash(&m), dos_current_program(&m));
             next_hash += hash_every;
         }
         if (rc != RUN_SLICE) break;
     }
+    if (trace) fclose(trace);
+    if (g_record) fclose(g_record);
     double secs = (double)(clock() - t0) / CLOCKS_PER_SEC;
     printf("stopped at icount %llu (%s) after %.1f s host time, %.1f M instr/s; "
-           "interpreted %llu; program %s; exit %s\n",
+           "interpreted %llu; program %s; exit %s; final hash %016llx\n",
            (unsigned long long)m.cpu.icount, rc == RUN_FAULT ? m.fault : rc == RUN_EXITED ? "exited" : "budget",
            secs, secs > 0 ? (double)m.cpu.icount / secs / 1e6 : 0.0,
            (unsigned long long)m.interp_steps, dos_current_program(&m),
-           m.exited ? "yes" : "no");
+           m.exited ? "yes" : "no", (unsigned long long)state_hash(&m));
     recomp_report(&m, stdout);
-    for (int pass = 0; pass < 8 && g_nsamp; pass++) {
+    for (int pass = 0; pass < 4 && g_nsamp; pass++) {
         int best = 0;
         for (int k = 1; k < g_nsamp; k++) if (g_samp[k].n > g_samp[best].n) best = k;
         if (!g_samp[best].n) break;

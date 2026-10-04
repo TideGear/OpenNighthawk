@@ -6,7 +6,7 @@
 
 /* The set-1 make code for an ASCII character, and whether Shift is needed.
  * Returns 0 for characters the US keyboard cannot type. Escapes understood
- * by keys_next: \r Enter, \e Esc, \t Tab, \b Backspace, \U \D \L \R
+ * by keys_next: \aX Alt+X, \cX Ctrl+X, \r Enter, \e Esc, \t Tab, \b Backspace, \U \D \L \R
  * arrows, \1..\9 \0 F1..F10. */
 int keys_scancode(char ch, int *shift);
 

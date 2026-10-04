@@ -17,6 +17,7 @@
 #include "machine.h"
 #include "x86_sem.h"
 
+#include <stdlib.h>
 #include <string.h>
 
 #define PIT_HZ 1193182ull
@@ -313,7 +314,7 @@ static uint8_t joy_read(machine_t *m)
     return v;
 }
 
-void machine_joystick(machine_t *m, int present, const unsigned axis[4], unsigned buttons)
+static void joy_apply(machine_t *m, int present, const unsigned axis[4], unsigned buttons)
 {
     m->joy_present = present;
     for (int i = 0; i < 4; i++) m->joy_axis[i] = axis ? axis[i] : 0x100;
@@ -573,7 +574,7 @@ static void io_write8(machine_t *m, uint16_t port, uint8_t v)
 /* Keyboard                                                              */
 /* ===================================================================== */
 
-void machine_key_byte(machine_t *m, uint8_t b)
+static void key_apply(machine_t *m, uint8_t b)
 {
     if (m->kbd_qn >= (int)sizeof m->kbd_q) return;
     m->kbd_q[(m->kbd_qh + m->kbd_qn) % (int)sizeof m->kbd_q] = b;
@@ -592,13 +593,16 @@ static void kbd_poll(machine_t *m)
     m->kbd_obf = 1;
     m->kbd_next = m->cpu.icount + m->ips / 1000;
     pic_raise(m, 1);
+    if (m->log && getenv("F117R_TRACE_KEYS"))
+        dos_log(m, "[key] byte %02X to port 60 @%llu (%s)\n", m->port60,
+                (unsigned long long)m->cpu.icount, dos_current_program(m));
 }
 
 /* ===================================================================== */
 /* Mouse                                                                 */
 /* ===================================================================== */
 
-void machine_mouse(machine_t *m, int x, int y, int buttons, int dx, int dy)
+static void mouse_apply(machine_t *m, int x, int y, int buttons, int dx, int dy)
 {
     /* Driver coordinates in mode 13h are 0..639 across. */
     int vx = x * 2, vy = y;
@@ -641,6 +645,74 @@ void pc_reset(machine_t *m)
     for (int i = 0; i < 4; i++) m->joy_axis[i] = 0x100;
 }
 
+/* ---- input -------------------------------------------------------------- */
+
+void machine_input_at(machine_t *m, const machine_input *in)
+{
+    const int cap = (int)(sizeof m->in_q / sizeof m->in_q[0]);
+    if (m->in_qn >= cap) return;
+    /* Keep the queue in time order; equal times keep their arrival order. */
+    int pos = m->in_qn;
+    while (pos > 0 && m->in_q[(m->in_qh + pos - 1) % cap].at > in->at) {
+        m->in_q[(m->in_qh + pos) % cap] = m->in_q[(m->in_qh + pos - 1) % cap];
+        pos--;
+    }
+    m->in_q[(m->in_qh + pos) % cap] = *in;
+    m->in_qn++;
+    m->cpu.stop_at = 0;
+}
+
+void machine_key_byte(machine_t *m, uint8_t b)
+{
+    machine_input in = { 0 };
+    in.at = m->cpu.icount;
+    in.type = INPUT_KEY;
+    in.byte = b;
+    machine_input_at(m, &in);
+}
+
+void machine_mouse(machine_t *m, int x, int y, int buttons, int dx, int dy)
+{
+    machine_input in = { 0 };
+    in.at = m->cpu.icount;
+    in.type = INPUT_MOUSE;
+    in.x = (int16_t)x; in.y = (int16_t)y; in.dx = (int16_t)dx; in.dy = (int16_t)dy;
+    in.buttons = (uint16_t)buttons;
+    machine_input_at(m, &in);
+}
+
+void machine_joystick(machine_t *m, int present, const unsigned axis[4], unsigned buttons)
+{
+    machine_input in = { 0 };
+    in.at = m->cpu.icount;
+    in.type = INPUT_JOY;
+    in.present = (uint8_t)present;
+    for (int i = 0; i < 4; i++) in.axis[i] = (uint16_t)(axis ? axis[i] : 0x100);
+    in.buttons = (uint16_t)buttons;
+    machine_input_at(m, &in);
+}
+
+static void input_poll(machine_t *m)
+{
+    const int cap = (int)(sizeof m->in_q / sizeof m->in_q[0]);
+    while (m->in_qn && m->in_q[m->in_qh].at <= m->cpu.icount) {
+        const machine_input in = m->in_q[m->in_qh];
+        m->in_qh = (m->in_qh + 1) % cap;
+        m->in_qn--;
+        if (m->on_input) m->on_input(m->on_input_user, &in);
+        switch (in.type) {
+        case INPUT_KEY: key_apply(m, in.byte); break;
+        case INPUT_MOUSE: mouse_apply(m, in.x, in.y, in.buttons, in.dx, in.dy); break;
+        case INPUT_JOY: {
+            unsigned ax[4] = { in.axis[0], in.axis[1], in.axis[2], in.axis[3] };
+            joy_apply(m, in.present, ax, in.buttons);
+            break;
+        }
+        default: break;
+        }
+    }
+}
+
 uint64_t pc_next_event(machine_t *m)
 {
     uint64_t t = m->irq0_next;
@@ -649,6 +721,7 @@ uint64_t pc_next_event(machine_t *m)
         uint64_t k = m->kbd_next > m->cpu.icount ? m->kbd_next : m->cpu.icount;
         if (k < t) t = k;
     }
+    if (m->in_qn && m->in_q[m->in_qh].at < t) t = m->in_q[m->in_qh].at;
     return t;
 }
 
@@ -656,6 +729,7 @@ void pc_events(machine_t *m)
 {
     cpu_t *c = &m->cpu;
     const uint64_t now = c->icount;
+    input_poll(m);
     while (now >= m->irq0_next) {
         pic_raise(m, 0);
         pit0_schedule(m);

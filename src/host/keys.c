@@ -41,8 +41,15 @@ int keys_next(const char **sp, uint8_t make[4], int *nmake, uint8_t brk[4], int 
 {
     const char *s = *sp;
     for (; *s; s++) {
-        int code = 0, shift = 0, grey = 0;
-        if (*s == '\\' && s[1]) {
+        int code = 0, shift = 0, grey = 0, alt = 0, ctrl = 0;
+        if (*s == '\\' && s[1] && (s[1] == 'a' || s[1] == 'c') && s[2]) {
+            /* \aX: X with Alt held; \cX: X with Ctrl held. */
+            alt = s[1] == 'a';
+            ctrl = s[1] == 'c';
+            s += 2;
+            code = keys_scancode(*s, &shift);
+            shift = 0;
+        } else if (*s == '\\' && s[1]) {
             s++;
             switch (*s) {
             case 'r': code = 0x1C; break;
@@ -65,10 +72,14 @@ int keys_next(const char **sp, uint8_t make[4], int *nmake, uint8_t brk[4], int 
         if (!code) continue;
         int nm = 0, nb = 0;
         if (shift) make[nm++] = 0x2A;
+        if (alt) make[nm++] = 0x38;
+        if (ctrl) make[nm++] = 0x1D;
         if (grey) make[nm++] = 0xE0;
         make[nm++] = (uint8_t)code;
         if (grey) brk[nb++] = 0xE0;
         brk[nb++] = (uint8_t)(code | 0x80);
+        if (ctrl) brk[nb++] = 0x9D;
+        if (alt) brk[nb++] = 0xB8;
         if (shift) brk[nb++] = 0xAA;
         *nmake = nm;
         *nbrk = nb;

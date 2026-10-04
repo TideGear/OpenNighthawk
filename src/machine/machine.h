@@ -96,6 +96,21 @@ typedef struct {
     void (*console)(void *user, const char *text);
 } machine_hooks;
 
+/* One input reaching the machine at a clock count (see machine_input_at). */
+enum { INPUT_KEY = 1, INPUT_MOUSE, INPUT_JOY };
+typedef struct {
+    uint64_t at;
+    uint8_t  type;
+    uint8_t  byte;                 /* INPUT_KEY: set-1 byte (E0/E1 prefixes as bytes) */
+    int16_t  x, y, dx, dy;         /* INPUT_MOUSE: mode-13h pixels, motion */
+    uint16_t buttons;              /* mouse or stick buttons */
+    uint16_t axis[4];              /* INPUT_JOY: 0..255, 0x100 = no pot */
+    uint8_t  present;
+} machine_input;
+
+/* Called for every input as it is applied: what a recorder writes down. */
+typedef void (*machine_input_fn)(void *user, const machine_input *in);
+
 typedef struct {
     uint16_t reload;         /* 0 means 65536 */
     uint8_t  mode;           /* 0..5 */
@@ -198,6 +213,12 @@ struct machine {
     int16_t  mouse_hot_x, mouse_hot_y;
     int      mouse_driver_installed;    /* a program reset the driver (AX=0) */
 
+    /* ---- pending input, by time ------------------------------------- */
+    machine_input in_q[1024];
+    int      in_qh, in_qn;
+    machine_input_fn on_input;           /* recorder; NULL for none */
+    void    *on_input_user;
+
     /* ---- engine ---------------------------------------------------- */
     int      engine;                     /* ENGINE_* */
     uint64_t interp_steps;               /* instructions the interpreter ran */
@@ -225,8 +246,13 @@ int  machine_run(machine_t *m, uint64_t until);
 /* Microseconds of emulated time at icount. */
 uint64_t machine_now_us(const machine_t *m);
 
-/* ---- input, from the host -------------------------------------------- */
-/* One byte as the keyboard sends it (set 1, with E0/E1 prefixes as bytes). */
+/* ---- input, from the host --------------------------------------------
+ * Every input carries the icount at which it reaches the machine, and is
+ * applied at that instruction boundary like any other event - never
+ * "between slices" - so a run is the same however the host slices it, and a
+ * recorded session replays exactly. The plain forms stamp the input with
+ * the current icount (live play). machine_input is declared above. */
+void machine_input_at(machine_t *m, const machine_input *in);
 void machine_key_byte(machine_t *m, uint8_t b);
 /* Absolute pointer in mode-13h pixels (0..319, 0..199), and buttons. */
 void machine_mouse(machine_t *m, int x, int y, int buttons, int dx, int dy);

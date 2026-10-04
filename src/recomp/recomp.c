@@ -37,6 +37,7 @@ typedef struct instance {
     uint16_t *seen_seg;            /* the segment (CS - base) it ran under */
     uint8_t  *seen_bytes;          /* 4 bytes per offset, as executed */
     int       live;
+    int       ran;                 /* some region has verified: its code is running */
 } instance;
 
 #define MAX_INST 32
@@ -191,7 +192,24 @@ void cpu_code_written(cpu_t *c, uint32_t lin)
 {
     instance *in = g_rt.by_para[lin >> 4];
     g_rt.code_writes++;
-    if (in && lin >= in->lo && lin < in->hi) in->gen++;
+    if (in && lin >= in->lo && lin < in->hi) {
+        in->gen++;
+        /* Which translated bytes get rewritten, once each: a byte the
+         * program writes as it runs is data the discovery took for code,
+         * or code that really is modified - either way worth knowing. */
+        static uint32_t logged[64];
+        static int nlogged;
+        machine_t *m = machine_of(c);
+        if (m && m->log && nlogged < 64 && in->ran) {
+            int seen = 0;
+            for (int i = 0; i < nlogged; i++) if (logged[i] == lin) { seen = 1; break; }
+            if (!seen) {
+                logged[nlogged++] = lin;
+                dos_log(m, "[recomp] write to translated byte %s+%05X by %04X:%04X @%llu\n",
+                        in->name, lin - in->lo, c->op_cs, c->op_ip, (unsigned long long)c->icount);
+            }
+        }
+    }
     c->stop_at = 0;      /* the running region may just have changed */
 }
 
@@ -224,7 +242,7 @@ static const rc_region *lookup(machine_t *m, instance **out)
     if ((uint16_t)(in->base + r->seg) != c->seg[S_CS]) return NULL;   /* reached under another CS */
     if (in->ok_gen[ri] != in->gen) {
         if (in->bad_gen[ri] == in->gen) return NULL;
-        if (verify(m->mem, in, r)) { in->ok_gen[ri] = in->gen; g_rt.verify_ok++; }
+        if (verify(m->mem, in, r)) { in->ok_gen[ri] = in->gen; g_rt.verify_ok++; in->ran = 1; }
         else { in->bad_gen[ri] = in->gen; g_rt.verify_fail++; return NULL; }
     }
     *out = in;
@@ -248,8 +266,52 @@ int recomp_run(machine_t *m)
 
 /* ---- coverage: what the interpreter ran inside known modules ---------- */
 
+/* ---- the miss profile (F117R_MISS_PROFILE): where interpreted time goes - */
+
+typedef struct { uint32_t lin; uint16_t cs; uint64_t n; int why; char name[16]; uint32_t off; } miss_t;
+static miss_t g_miss[4096];
+static int g_nmiss, g_profile = -1;
+
+enum { WHY_OUTSIDE, WHY_NOMOD, WHY_NOENTRY, WHY_CS, WHY_VERIFY };
+static const char *WHY[] = { "outside any module", "module has no translation",
+                             "no translation at this address", "translated under another CS",
+                             "bytes differ from the translation" };
+
+static void profile_miss(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint32_t lin = phys(c->seg[S_CS], c->ip);
+    int k;
+    for (k = 0; k < g_nmiss; k++) if (g_miss[k].lin == lin && g_miss[k].cs == c->seg[S_CS]) break;
+    if (k == g_nmiss) {
+        if (g_nmiss >= 4096) return;
+        g_nmiss++;
+        miss_t *e = &g_miss[k];
+        memset(e, 0, sizeof *e);
+        e->lin = lin; e->cs = c->seg[S_CS];
+        instance *in = g_rt.by_para[lin >> 4];
+        if (!in || lin < in->lo || lin >= in->hi) { e->why = WHY_OUTSIDE; snprintf(e->name, sizeof e->name, "-"); }
+        else {
+            snprintf(e->name, sizeof e->name, "%s", in->name);
+            e->off = lin - in->lo;
+            if (!in->mod) e->why = WHY_NOMOD;
+            else {
+                const uint32_t *idx = g_rt.entry_of[module_index(in->mod)];
+                if (!idx || !idx[e->off]) e->why = WHY_NOENTRY;
+                else {
+                    const rc_region *r = &in->mod->regions[in->mod->entries[idx[e->off] - 1].region];
+                    e->why = (uint16_t)(in->base + r->seg) != c->seg[S_CS] ? WHY_CS : WHY_VERIFY;
+                }
+            }
+        }
+    }
+    g_miss[k].n++;
+}
+
 void recomp_note_interp(machine_t *m)
 {
+    if (g_profile < 0) { const char *e = getenv("F117R_MISS_PROFILE"); g_profile = e && *e && *e != '0'; }
+    if (g_profile) profile_miss(m);
     if (!g_rt.coverage) return;
     cpu_t *c = &m->cpu;
     const uint32_t lin = phys(c->seg[S_CS], c->ip);
@@ -314,5 +376,14 @@ void recomp_report(machine_t *m, FILE *f)
             (unsigned long long)g_rt.verify_ok, (unsigned long long)g_rt.verify_fail,
             (unsigned long long)g_rt.code_writes, (unsigned long long)m->interp_steps,
             (unsigned long long)total);
+    for (int pass = 0; pass < 25 && g_nmiss; pass++) {
+        int best = 0;
+        for (int k = 1; k < g_nmiss; k++) if (g_miss[k].n > g_miss[best].n) best = k;
+        if (!g_miss[best].n) break;
+        miss_t *e = &g_miss[best];
+        fprintf(f, "[miss] %10llu x %04X:%04X %-12s +%05X  %s\n", (unsigned long long)e->n,
+                e->cs, (unsigned)((e->lin - (uint32_t)e->cs * 16u) & 0xFFFF), e->name, e->off, WHY[e->why]);
+        e->n = 0;
+    }
 }
 
