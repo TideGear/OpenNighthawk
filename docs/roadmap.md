@@ -43,6 +43,10 @@ never instead of parity.
   being a host overlay. Eight readback probes agree; ROM-free clipping,
   mode-change and text cursor tests pass. All six routes still agree at
   329 checkpoints and final states, plus the 64-state instruction lockstep.
+- VGA DAC ports and BIOS palette calls share the same device state and I/O
+  costs. Read-address writes update the write index; BIOS blocks wrap the
+  palette index and use linear buffers across segment boundaries. All
+  1,210 fidelity answers agree; ROM-free DAC tests and six-route parity pass.
 
 ### In progress
 
@@ -60,6 +64,10 @@ never instead of parity.
   driver did not change it. A third run matches the same 1,217 pictures,
   with 113 unmatched DOSBox pictures and 89 shots. Investigate the game's
   palette handling and roster-entry delay before claiming frame parity.
+  Replaying the saved reference against the BIOS DAC correction leaves
+  these counts and picture timings unchanged. The full music rerun diverges
+  at the known random channel-3 note at 29.7 s; it is not a new full-stream
+  pass (the prefix matches 596 writes, with up to 55 ms timing drift).
 
 ### Left
 

@@ -122,6 +122,10 @@ if(F117R_BUILD_TESTS)
   target_link_libraries(test_mouse PRIVATE f117present f117recomp_none)
   add_test(NAME software_mouse_cursor COMMAND test_mouse)
 
+  add_executable(test_video_ports tests/test_video_ports.c)
+  target_link_libraries(test_video_ports PRIVATE f117recomp_none)
+  add_test(NAME vga_dac_ports COMMAND test_video_ports)
+
   # Every translated instruction of the game against the interpreter, one
   # instruction at a time from random states (needs the generated code).
   if(F117R_GEN_DIR)

@@ -52,6 +52,8 @@ nothing running.
   routes, instruction lockstep): `py tools\build_recomp.py --data
   "D:\GOG\F-117A"`. Last result: all six routes IDENTICAL; lockstep 89,216
   starts, 0 mismatching.
+  `--parity-only` skips translation/build and checks the existing executable;
+  the pipeline compares every 50-million-clock checkpoint, not just finals.
 - Machine against GOG DOSBox: `py tools/fidelity.py --data "D:/GOG/F-117A"
   [--diffs-only] [--reference dosbox-x]` - last: every comparable answer
   agrees (a 4 KB read's cost within 5%).
@@ -62,6 +64,8 @@ nothing running.
   "D:/GOG/F-117A" --seconds 130 --diagnostics`. Exit 1 currently means
   pictures differ, not a tool failure. Replay the comparison without a new
   capture: `py tools/video_compare.py --reuse RUN_DIR --diagnostics`.
+  `--against RUN_DIR --data INSTALL_DIR` retains its reference video and
+  makes fresh current-build shots in a new private directory.
   Requires ffmpeg, ffprobe, Pillow and pywin32. About 2 GB of shots per run.
 - Random flights: `py tools/random_flights.py --data "D:/GOG/F-117A"
   --seeds 31,32 --span 4000000000`.
@@ -73,6 +77,19 @@ nothing running.
   mutant; keep runs under two hours - background jobs are stopped there).
 
 ## In flight at handoff
+
+- DAC correction verified: all 1,210 fidelity answers agree, the new
+  `vga_dac_ports` ROM-free test passes, all six routes agree at 329 checkpoints
+  plus finals, and the 5.7-million-state lockstep has zero mismatching starts.
+  BIOS palette calls now use the port device with its state and I/O cost;
+  palette blocks wrap index 255 and read linear physical buffers. `3C7h`
+  also sets the write address to read address + 1, as DOSBox does.
+  Logs: `~/f117-recomp-local/dac-parity.log`, `build-dac-tests.log`.
+  Saved-video replay `video/intro-0wp6pl8e` is unchanged (1,217 matches,
+  109 unmatched reference pictures, 89 shots). The 130-second music rerun
+  (`music-dac.log`) differs at the previously known random channel-3 note
+  at 29.7 s; only 596 prefix writes match, timing drift up to 55 ms. Do not
+  call that a full music pass. Nothing from this check remains running.
 
 - Nothing running. The video comparison tool is committed, but picture
   parity remains in progress. Two runs live outside the repo at

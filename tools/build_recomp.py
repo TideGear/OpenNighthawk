@@ -10,8 +10,8 @@
    instruction the build still had to interpret inside a known module.
 4. Translate again with that coverage, and rebuild.
 5. Parity: replay each route under the interpreter and the recompiled code
-   and require the same final state - every byte of memory and every
-   register - on the same clock count.
+   and require the same checkpoints every 50 million clocks and final
+   state - memory, registers and output - on the same clock counts.
 6. Run every translated instruction, routes or not, from random states
    through the generated code and the interpreter (tests/insn_lockstep.c).
 
@@ -71,12 +71,15 @@ def headless(engine, data, work, name, args, extra):
     cmd = [exe, "--engine", engine, "--data", data, "--save", os.path.join(rundir, "save"),
            "--log", os.path.join(rundir, "run.log")] + args + extra
     r = run(cmd, capture_output=True, text=True)
+    with open(os.path.join(rundir, "runner.txt"), "w") as f:
+        f.write((r.stdout or "") + (r.stderr or ""))
     m = re.search(r"stopped at icount (\d+) .*final hash ([0-9a-f]+)", r.stdout or "")
-    if not m:
+    if not m or r.returncode:
         print(r.stdout[-2000:], r.stderr[-2000:])
         sys.exit("run failed")
     interp = re.search(r"interpreted (\d+)", r.stdout)
-    return int(m.group(1)), m.group(2), int(interp.group(1)) if interp else -1
+    checkpoints = tuple(re.findall(r"^\[hash\] (\d+) ([0-9a-f]+) (.*)$", r.stdout, re.M))
+    return int(m.group(1)), m.group(2), int(interp.group(1)) if interp else -1, checkpoints
 
 
 def main():
@@ -85,18 +88,22 @@ def main():
     ap.add_argument("--work", default=os.path.join(os.path.expanduser("~"), "f117-recomp-local"))
     ap.add_argument("--no-parity", action="store_true")
     ap.add_argument("--no-coverage", action="store_true")
+    ap.add_argument("--parity-only", action="store_true", help="check the current build without translating or rebuilding")
     a = ap.parse_args()
+    if a.parity_only and a.no_parity:
+        ap.error("--parity-only and --no-parity cannot be combined")
 
     gen = os.path.join(a.work, "gen")
     covdir = os.path.join(a.work, "coverage")
     os.makedirs(covdir, exist_ok=True)
     routes = sorted(glob.glob(os.path.join(HERE, "routes", "*.args")))
 
-    print("1. translate")
-    recompile(a.data, gen, sorted(glob.glob(os.path.join(covdir, "*.cov"))))
-    print("2. build")
-    build(gen)
-    if not a.no_coverage:
+    if not a.parity_only:
+        print("1. translate")
+        recompile(a.data, gen, sorted(glob.glob(os.path.join(covdir, "*.cov"))))
+        print("2. build")
+        build(gen)
+    if not a.no_coverage and not a.parity_only:
         print("3. coverage")
         for r in routes:
             name = os.path.splitext(os.path.basename(r))[0]
@@ -104,7 +111,7 @@ def main():
             # to INTERPRET, so code an earlier capture got translated is
             # absent from this one - dropping the old file would lose it.
             cov = os.path.join(covdir, name + ".cov")
-            icount, h, interp = headless("recomp", a.data, a.work, name, route_args(r), ["--coverage", cov])
+            icount, h, interp, _ = headless("recomp", a.data, a.work, name, route_args(r), ["--coverage", cov])
             print("  %-20s %d clocks, %d interpreted" % (name, icount, interp))
         print("4. translate again, build again")
         recompile(a.data, gen, sorted(glob.glob(os.path.join(covdir, "*.cov"))))
@@ -114,12 +121,13 @@ def main():
         bad = 0
         for r in routes:
             name = os.path.splitext(os.path.basename(r))[0]
-            ri = headless("interp", a.data, a.work, name, route_args(r), [])
-            rr = headless("recomp", a.data, a.work, name, route_args(r), [])
-            same = ri[:2] == rr[:2]
+            ri = headless("interp", a.data, a.work, name, route_args(r), ["--hash-every", "50000000"])
+            rr = headless("recomp", a.data, a.work, name, route_args(r), ["--hash-every", "50000000"])
+            same = ri[:2] == rr[:2] and ri[3] == rr[3]
             bad += not same
             print("  %-20s interp %d/%s  recomp %d/%s (%d interpreted)  %s" % (
                 name, ri[0], ri[1], rr[0], rr[1], rr[2], "IDENTICAL" if same else "DIFFERENT"))
+            print("    %d checkpoints compared" % len(ri[3]))
         if bad:
             sys.exit("%d route(s) differ between the engines" % bad)
         print("6. every translated instruction against the interpreter")

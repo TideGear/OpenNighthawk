@@ -602,7 +602,10 @@ static void io_write8(machine_t *m, uint16_t port, uint8_t v)
     case 0x3C4: m->seq_idx = v; break;
     case 0x3C5: m->seq[m->seq_idx & 7] = v; break;
     case 0x3C6: m->pel_mask = v; break;
-    case 0x3C7: m->dac_ridx = v; m->dac_comp = 0; m->dac_state = 0x03; break;   /* read mode reads 3 */
+    case 0x3C7:
+        m->dac_ridx = v; m->dac_widx = (uint8_t)(v + 1);
+        m->dac_comp = 0; m->dac_state = 0x03;
+        break;                              /* read mode reads 3 */
     case 0x3C8: m->dac_widx = v; m->dac_comp = 0; m->dac_state = 0x00; break;
     case 0x3C9:
         m->dac[m->dac_widx * 3 + m->dac_comp] = (uint8_t)(v & 0x3F);

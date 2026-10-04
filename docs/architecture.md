@@ -387,4 +387,22 @@ Seven layers, each checkable by anyone with their own copy:
 
 ## Where this goes next
 
+The DAC probe also checks read/write address state after BIOS palette calls,
+blocks crossing palette index 255, and their I/O timing. BIOS calls now use
+the port handlers, including their bus cost and output hash, instead of
+editing the palette array directly. All 1,210 machine answers agree.
+`tests/test_video_ports.c` checks linear BIOS buffers across ES:FFFF and
+zero-length blocks too. All six routes still agree at 329 checkpoints and
+final states; instruction lockstep reports zero differences. The pipeline's
+`--parity-only` mode checks an existing build and now compares checkpoint
+streams explicitly, rejecting runner failures as well as different states.
+
+`video_compare.py --against RUN_DIR` copies a saved DOSBox capture into a
+new run and generates fresh shots, retaining the old artifacts. Replaying
+`intro-caauys37` this way after the BIOS DAC correction (`intro-0wp6pl8e`)
+leaves the 1,217 matches, 109 unmatched reference pictures and 89 unmatched
+shots unchanged. A fresh full music capture matches only its first 596
+writes before the known random channel-3 note at 29.7 s; it does not verify
+the whole music stream. Logs live outside the repository.
+
 The open work, in order, is tracked in [roadmap.md](roadmap.md).

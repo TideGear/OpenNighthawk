@@ -177,7 +177,9 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--data", help="GOG install with DOSBOX and dosboxF117A.conf")
     ap.add_argument("--seconds", type=int, default=130)
-    ap.add_argument("--reuse", type=Path, help="recompare an existing run")
+    source = ap.add_mutually_exclusive_group()
+    source.add_argument("--reuse", type=Path, help="recompare an existing run")
+    source.add_argument("--against", type=Path, help="run current build against a saved DOSBox capture")
     ap.add_argument("--diagnostics", action="store_true", help="write up to 12 paired difference PNGs")
     a = ap.parse_args()
     if a.seconds <= 0:
@@ -192,15 +194,28 @@ def main():
         WORK.mkdir(parents=True, exist_ok=True)
         run = Path(tempfile.mkdtemp(prefix="intro-", dir=WORK))
         print("Artifacts:", run, flush=True)
-        (run / "settings.json").write_text(json.dumps(dict(seconds=a.seconds, every=every)))
+        settings = dict(seconds=a.seconds, every=every)
+        if a.against:
+            reference = a.against.resolve()
+            settings = json.loads((reference / "settings.json").read_text())
+            settings["reference_origin"] = str(reference)
+            a.seconds, every = settings["seconds"], settings["every"]
+            (run / "capture").mkdir()
+            captures = list((reference / "capture").glob("*.avi"))
+            if not captures:
+                ap.error("--against directory has no AVI captures")
+            for path in captures:
+                shutil.copy2(path, run / "capture" / path.name)
+        (run / "settings.json").write_text(json.dumps(settings))
         game = run / "game"
         game.mkdir()
         for path in Path(a.data).iterdir():
             if path.is_file() and not path.name.lower().startswith(
                     ("unins", "goggame", "gog", "launch", "support")):
                 shutil.copy2(path, game)
-        print(f"DOSBox: {a.seconds} s with video capture", flush=True)
-        run_dosbox(a.data, str(game), a.seconds, capture="video", work=str(run))
+        if not a.against:
+            print(f"DOSBox: {a.seconds} s with video capture", flush=True)
+            run_dosbox(a.data, str(game), a.seconds, capture="video", work=str(run))
         (run / "shots").mkdir()
         print("f117run: graphics shots at 70 Hz", flush=True)
         proc = subprocess.run([

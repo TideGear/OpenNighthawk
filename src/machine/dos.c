@@ -1832,36 +1832,35 @@ static int int10(machine_t *m)
         switch (al) {
         case 0x00: if ((c->r[R_BX] & 0xFF) < 16) m->attr[c->r[R_BX] & 0xFF] = (uint8_t)(c->r[R_BX] >> 8); break;
         case 0x10: {
-            const unsigned reg = c->r[R_BX] & 0xFF;
-            m->dac[reg * 3 + 0] = (uint8_t)((c->r[R_DX] >> 8) & 0x3F);
-            m->dac[reg * 3 + 1] = (uint8_t)((c->r[R_CX] >> 8) & 0x3F);
-            m->dac[reg * 3 + 2] = (uint8_t)(c->r[R_CX] & 0x3F);
+            pc_io_write(c, 0x3C8, c->r[R_BX] & 0xFF, 1);
+            pc_io_write(c, 0x3C9, c->r[R_DX] >> 8, 1);
+            pc_io_write(c, 0x3C9, c->r[R_CX] >> 8, 1);
+            pc_io_write(c, 0x3C9, c->r[R_CX] & 0xFF, 1);
             break;
         }
         case 0x12: {
-            unsigned reg = c->r[R_BX] & 0xFF;
-            uint16_t off = c->r[R_DX];
-            for (unsigned i = 0; i < c->r[R_CX] && reg < 256; i++, reg++) {
-                for (int k = 0; k < 3; k++)
-                    m->dac[reg * 3 + k] = (uint8_t)(mem_read8(c, phys(c->seg[S_ES], (uint16_t)(off + k))) & 0x3F);
-                off = (uint16_t)(off + 3);
-            }
+            uint32_t address = phys(c->seg[S_ES], c->r[R_DX]);
+            pc_io_write(c, 0x3C8, c->r[R_BX] & 0xFF, 1);
+            /* BIOS accesses a linear buffer; the DAC's eight-bit index
+             * wraps at 256 even when the block crosses that boundary. */
+            for (uint32_t i = 0; i < (uint32_t)c->r[R_CX] * 3u; i++)
+                pc_io_write(c, 0x3C9, mem_read8(c, address + i), 1);
             break;
         }
         case 0x15: {
-            const unsigned reg = c->r[R_BX] & 0xFF;
-            c->r[R_DX] = (uint16_t)((c->r[R_DX] & 0x00FF) | (m->dac[reg * 3] << 8));
-            c->r[R_CX] = (uint16_t)((m->dac[reg * 3 + 1] << 8) | m->dac[reg * 3 + 2]);
+            pc_io_write(c, 0x3C7, c->r[R_BX] & 0xFF, 1);
+            const uint8_t red = (uint8_t)pc_io_read(c, 0x3C9, 1);
+            const uint8_t green = (uint8_t)pc_io_read(c, 0x3C9, 1);
+            const uint8_t blue = (uint8_t)pc_io_read(c, 0x3C9, 1);
+            c->r[R_DX] = (uint16_t)((c->r[R_DX] & 0xFF) | ((uint16_t)red << 8));
+            c->r[R_CX] = (uint16_t)(((uint16_t)green << 8) | blue);
             break;
         }
         case 0x17: {
-            unsigned reg = c->r[R_BX] & 0xFF;
-            uint16_t off = c->r[R_DX];
-            for (unsigned i = 0; i < c->r[R_CX] && reg < 256; i++, reg++) {
-                for (int k = 0; k < 3; k++)
-                    mem_write8(c, phys(c->seg[S_ES], (uint16_t)(off + k)), m->dac[reg * 3 + k]);
-                off = (uint16_t)(off + 3);
-            }
+            uint32_t address = phys(c->seg[S_ES], c->r[R_DX]);
+            pc_io_write(c, 0x3C7, c->r[R_BX] & 0xFF, 1);
+            for (uint32_t i = 0; i < (uint32_t)c->r[R_CX] * 3u; i++)
+                mem_write8(c, address + i, (uint8_t)pc_io_read(c, 0x3C9, 1));
             break;
         }
         default: break;

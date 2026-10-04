@@ -40,7 +40,7 @@ options. Enhancements come after parity, never instead of it.
   identical at every hash.
 - **The emulated PC is held to GOG's DOSBox,** the machine the game is sold
   on: `tools/fidelity.py` runs one probe program under both and compares
-  1,185 answers - the DOS memory layout, PSP and environment the game gets,
+  1,210 answers - the DOS memory layout, PSP and environment the game gets,
   every register after every DOS and BIOS call it makes, what each call
   costs in time, the BIOS data area, the VGA registers, the devices, the
   clocks, an EXEC'd child and the return from it. All agree (a 4 KB file
@@ -101,6 +101,11 @@ That one command translates the game, builds it, plays the scripted routes
 in `tools/routes/` to gather coverage, translates and builds again, and
 verifies parity between the engines. The result is `build\f117a.exe`.
 `build.cmd` alone builds an interpreter-only executable.
+
+After a runtime change, `py tools\build_recomp.py --data "D:\GOG\F-117A"
+--parity-only` checks the existing build without translating or rebuilding.
+It compares checkpoints every 50 million clocks as well as final states,
+then runs the instruction lockstep.
 
 ## Running
 

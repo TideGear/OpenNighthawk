@@ -357,6 +357,27 @@ def build_probe():
     a.in_al(0x3C7); a.mov_r8_imm("ah", 0); rec("DAC state 3C7")
     # palette block read (int 10/1017) of entry 1
     a.mov_r16_imm("ax", 0x1015); a.mov_r16_imm("bx", 1); a.int_(0x10); rec("int 10/1015 DH", "dx"); rec("int 10/1015 CX", "cx")
+    def dac_status(tag):
+        for port, name in ((0x3C8, "write index"), (0x3C7, "state")):
+            a.in_al(port); a.mov_r8_imm("ah", 0); rec("DAC %s after %s" % (name, tag))
+
+    dac_status("1015")
+    a.out_imm(0x3C7, 27); dac_status("port 3C7=27")
+    a.mov_r16_imm("ax", 0x1010); a.mov_r16_imm("bx", 37)
+    a.mov_r16_imm("cx", 0x2233); a.mov_r16_imm("dx", 0x1100); a.int_(0x10)
+    dac_status("1010")
+    a.mov_r16_sreg("ax", "ds"); a.mov_sreg_r16("es", "ax")
+    a.mov_r16_imm("ax", 0x1012); a.mov_r16_imm("bx", 255); a.mov_r16_imm("cx", 2)
+    a.mov_r16_label("dx", "dac_wrap"); a.int_(0x10)
+    dac_status("1012 wrap 255+2")
+    a.mov_r16_imm("ax", 0x1015); a.mov_r16_imm("bx", 0); a.int_(0x10)
+    rec("DAC wrapped block entry 0 red", "dx"); rec("DAC wrapped block entry 0 green/blue", "cx")
+    a.mov_r16_imm("ax", 0x1017); a.mov_r16_imm("bx", 255); a.mov_r16_imm("cx", 2)
+    a.mov_r16_label("dx", "dac_readback"); a.int_(0x10)
+    dac_status("1017 wrap 255+2")
+    for k in range(0, 6, 2):
+        a.load("ax", "dac_readback" + ("_%d" % k if k else ""))
+        rec("DAC wrapped readback word %d" % (k // 2))
     a.mov_r16_imm("ax", 0x0003); a.int_(0x10)
     # --- mouse --------------------------------------------------------------
     a.xor_rr16("ax", "ax"); a.int_(0x33); rec("int 33/00 AX"); rec("int 33/00 BX", "bx")
@@ -555,6 +576,10 @@ def build_probe():
     timed("PIT counts: 200 x CALL FAR 0060:0008-style IRET (baseline)", 200, lambda: (a.db(0x9C), a.db(0x0E), a.db(0xE8, 0x00, 0x00), a.db(0x58), a.db(0x58), a.db(0x9D)), "baseline")
     timed("PIT counts: 200 x INT 16h/01h (key status)", 200, svc(0x16, 0x0100), "16_01")
     timed("PIT counts: 200 x INT 10h/0Fh (video mode)", 200, svc(0x10, 0x0F00), "10_0f")
+    timed("PIT counts: 200 x INT 10h/1010h (DAC entry)", 200,
+          svc(0x10, 0x1010, lambda: (a.mov_r16_imm("bx", 17), a.mov_r16_imm("cx", 0x2233), a.mov_r16_imm("dx", 0x1100))), "10_1010")
+    timed("PIT counts: 200 x INT 10h/1012h (DAC block)", 200,
+          svc(0x10, 0x1012, lambda: (a.mov_r16_imm("bx", 17), a.mov_r16_imm("cx", 2), a.mov_r16_label("dx", "dac_wrap"))), "10_1012")
     timed("PIT counts: 200 x INT 1Ah/00h (ticks)", 200, svc(0x1A, 0x0000), "1a_00")
     timed("PIT counts: 200 x INT 33h/03h (mouse)", 200, svc(0x33, 0x0003), "33_03")
     timed("PIT counts: 200 x INT 11h (equipment)", 200, svc(0x11, 0x0000), "11")
@@ -696,6 +721,11 @@ def build_probe():
     a.ref16("fcba"); a.labels["pblock_8"] = a.here; a.dw(0)
     a.ref16("fcbb"); a.labels["pblock_12"] = a.here; a.dw(0)
     a.label("dacblk"); a.db(0x11, 0x22, 0x33)
+    a.label("dac_wrap"); a.db(1, 2, 3, 4, 5, 6)
+    a.label("dac_readback")
+    for k in range(0, 6, 2):
+        if k: a.labels["dac_readback_%d" % k] = a.here
+        a.dw(0)
     a.label("cursor_masks")
     for _ in range(16): a.dw(0xFFFF)
     a.dw(0x8000)
