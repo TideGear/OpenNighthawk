@@ -22,6 +22,7 @@
 #include <string.h>
 
 uint8_t cpu_codebits[MEM_SIZE / 8];
+unsigned long long rc_mutant_hits;
 
 typedef struct instance {
     const rc_module *mod;          /* NULL: a module with no translation */
@@ -376,6 +377,8 @@ void recomp_report(machine_t *m, FILE *f)
             (unsigned long long)g_rt.verify_ok, (unsigned long long)g_rt.verify_fail,
             (unsigned long long)g_rt.code_writes, (unsigned long long)m->interp_steps,
             (unsigned long long)total);
+    if (rc_mutant_hits)
+        fprintf(f, "[recomp] the planted mutation ran %llu times\n", rc_mutant_hits);
     for (int pass = 0; pass < 25 && g_nmiss; pass++) {
         int best = 0;
         for (int k = 1; k < g_nmiss; k++) if (g_miss[k].n > g_miss[best].n) best = k;

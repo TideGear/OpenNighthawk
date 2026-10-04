@@ -268,11 +268,14 @@ START.EXE the user owns, so a retail copy asks the quiz and GOG's does not.
 
 ## R1. Open questions from this project
 
-- **Alt+Q in flight, answered Y, returns to DOS.** In the scripted route the
-  original's own VGAME exits with code 0 after the quit prompt, and F117.COM
-  treats 0 as "quit the game". Whether that is the original's intended
-  behaviour or a defect is being checked against the interpreter (which
-  agrees instruction for instruction) and against GOG DOSBox.
+- **Alt+Q in flight, answered Y, returns to DOS.** VGAME's quit prompt
+  (`0x01F5F` -> `0x02071`, `flight_end(7)` at `0x020CD`) records outcome 7
+  in the pilot record, but the program then exits with code 0, and F117.COM
+  treats 0 as "leave the game": no debriefing. The reference interpreter
+  does the same on the same inputs, so this is the original's behaviour; it
+  is very likely intended ("quit") rather than a defect. Flying into the
+  ground instead exits with 129 and runs END. Still to confirm against GOG
+  DOSBox.
 - **Data inside code regions.** F117.COM keeps variables after code that
   discovery walks into; VGAME's thunk table in DGROUP is patched at start;
   MGRAPHIC uses part of MISC.EXE's image as a buffer. Not defects in the

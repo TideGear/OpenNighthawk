@@ -98,9 +98,10 @@ def main():
         print("3. coverage")
         for r in routes:
             name = os.path.splitext(os.path.basename(r))[0]
+            # Appended to, never replaced: a build records only what it had
+            # to INTERPRET, so code an earlier capture got translated is
+            # absent from this one - dropping the old file would lose it.
             cov = os.path.join(covdir, name + ".cov")
-            if os.path.exists(cov):
-                os.remove(cov)
             icount, h, interp = headless("recomp", a.data, a.work, name, route_args(r), ["--coverage", cov])
             print("  %-20s %d clocks, %d interpreted" % (name, icount, interp))
         print("4. translate again, build again")

@@ -51,6 +51,9 @@ typedef struct {
     uint32_t        ninsns;
 } rc_module;
 
+/* How often a planted mutation ran (recompiler --mutate; 0 otherwise). */
+extern unsigned long long rc_mutant_hits;
+
 /* The generated list (recomp_modules.c in the generated directory). */
 extern const rc_module *const RC_MODULES[];
 extern const unsigned RC_NMODULES;

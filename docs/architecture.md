@@ -213,11 +213,17 @@ Four layers, each checkable by anyone with their own copy:
    0 unexplained.
 3. **The two engines on whole sessions.** `f117run` runs the same inputs
    under `--engine interp` and `--engine recomp` and hashes all of memory and
-   the registers at intervals. The scripted route (boot, SETUP, logo,
-   intro, front end, briefing, arming, takeoff, flight, quit) is identical
-   at every checkpoint. `tools/build_recomp.py` repeats this on every build.
-4. **Replay.** Input logs recorded on one engine replay on the other to the
-   same clock count and the same final state.
+   the registers at intervals. The routes in `tools/routes/` - boot to
+   flight; a sortie flown into the ground, the debriefing and back to the
+   front end; boots under the speaker and Roland drivers, which load every
+   program at other addresses - are identical at every checkpoint.
+   `tools/build_recomp.py` repeats this on every build.
+4. **Replay.** Input logs recorded on one engine replay on the other, and in
+   the windowed game, to the same clock count and the same final state.
+5. **The check can see a defect.** `tools/mutation_check.py` plants one
+   wrong instruction at a time in the generated code and requires the
+   comparison to notice; a mutant it misses is reported with whether the
+   defect ran at all, so an untested path is not mistaken for a pass.
 
 What this does not cover: the machine model's fidelity to a 1991 PC (the
 device timings, the BIOS). Both engines run on the same model, so a

@@ -14,20 +14,28 @@ options. Enhancements come after parity, never instead of it.
 
 ## Status
 
-- **The whole game boots and plays**: SETUP, the MicroProse logo, the intro,
-  the front end (roster, pilot form, briefing, arming, hangar), takeoff and
-  flight, with AdLib music and speech, Roland MT-32 output over MIDI, mouse,
-  keyboard and joystick.
-- **Translated:** 82,025 instructions across all 17 code files. On a full
-  scripted session, 99.9% of executed instructions run as recompiled code;
-  the rest is the LZEXE decompressors, which run once per program start.
-- **Parity, measured:** that session (2.7 billion clocks, boot to quit) gives
-  identical memory and register state at every checkpoint under the
-  interpreter and the recompiled code, and a recorded input log replays on
-  either to the same final state.
+- **The whole game loop runs**: SETUP, the MicroProse logo, the intro, the
+  front end (roster, pilot form, briefing, arming, hangar), takeoff, flight,
+  the debriefing (END) and back to the front end. All three sound drivers
+  work: AdLib (music and digitised speech through an OPL emulator), the PC
+  speaker, and Roland (MIDI sent to a Windows MIDI device; not yet listened
+  to on an MT-32).
+- **Translated:** 84,001 instructions across all 17 code files. On the
+  scripted sessions about 99.8% of executed instructions run as recompiled
+  code; most of the rest is the LZEXE decompressors, which run once per
+  program start.
+- **Parity, measured:** four scripted sessions (boot to flight; a full
+  sortie through the debriefing and back; boots under the speaker and Roland
+  drivers, where the programs load at other addresses) end in identical
+  memory and register state under the interpreter and the recompiled code,
+  checked at intervals along the way. A recorded input log replays on either
+  engine, and in the windowed game, to the same final state.
 - **The translator is checked against silicon:** 90,900 8088 and 94,200
   80286 hardware test vectors run through generated code with 0 unexplained
   differences.
+- **Not yet done:** live play in the window has been exercised by replayed
+  sessions, not yet by a person at the keyboard; timing and audio have not
+  been compared side by side with GOG DOSBox.
 
 How the parity claim is built and checked: [docs/architecture.md](docs/architecture.md).
 

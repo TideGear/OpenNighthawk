@@ -86,8 +86,33 @@ def read_coverage(paths, mods):
     return seeds, rejected
 
 
-def write_module(mod, regions, out_dir, comments):
+MUTATIONS = {
+    # A deliberate defect after one instruction's semantics, for proving the
+    # parity check can see one (tools/mutation_check.py).
+    "cf": "c->flags ^= F_CF;",
+    "zf": "c->flags ^= F_ZF;",
+    "ax": "c->r[R_AX] ^= 1;",
+    "skip": None,   # the instruction does nothing (see mutate_lines)
+}
+
+
+def mutate_lines(lines, kind):
+    """Insert the mutation before the instruction retires (its last IC).
+    "skip" instead drops the instruction's semantics, keeping its label,
+    its event check and its retirement and transfer."""
+    if kind == "skip":
+        last = max(i for i, l in enumerate(lines) if l.startswith("IC();"))
+        return [lines[0], "rc_mutant_hits++;", lines[last]]
+    stmt = MUTATIONS[kind] + " rc_mutant_hits++;"
+    for i in range(len(lines) - 1, -1, -1):
+        if lines[i].startswith("IC();"):
+            return lines[:i] + [stmt] + lines[i:]
+    return lines + [stmt]
+
+
+def write_module(mod, regions, out_dir, comments, mutate=None):
     t = tag(mod.name)
+    mutated = 0
     files = []
     # Region code, in chunks so the build compiles in parallel.
     entries = []
@@ -119,7 +144,12 @@ def write_module(mod, regions, out_dir, comments):
                     if comments:
                         f.write("    /* %04X:%04X  %-14s %s */\n" % (
                             r.seg, ip, ins.raw.hex(), disasm_text(ins)))
-                    for line in emit(ins, Ctx(in_region, frozenset(r.live[ip]))):
+                    lines = emit(ins, Ctx(in_region, frozenset(r.live[ip])))
+                    if mutate and mutate[0] == mod.name and mutate[1] == mod.off(r.seg, ip):
+                        lines = mutate_lines(lines, mutate[2])
+                        mutated += 1
+                        f.write("    /* MUTANT: %s */\n" % mutate[2])
+                    for line in lines:
                         f.write("    " + line + "\n")
                 f.write("    return 1;\n}\n\n")
     # Tables.
@@ -171,6 +201,8 @@ def write_module(mod, regions, out_dir, comments):
         f.write('  "%s", 0x%016XULL, %d, %d, IMAGE,\n' % (mod.name, mod.file_hash, len(mod.image), mod.origin))
         f.write("  REGIONS, %d, ENTRIES, %d, RUNS, %d, %d\n};\n" % (
             len(region_rows), len(entries), len(runs), len(entries)))
+    if mutate and mutate[0] == mod.name and not mutated:
+        sys.exit("--mutate: no translated instruction starts at %s+%05X" % (mod.name, mutate[1]))
     return files
 
 
@@ -182,7 +214,14 @@ def main():
     ap.add_argument("--only", action="append", default=[], help="translate only these files")
     ap.add_argument("--no-heuristics", action="store_true")
     ap.add_argument("--no-comments", action="store_true")
+    ap.add_argument("--mutate", help="NAME:IMAGE_OFFSET:KIND (cf, zf, ax) - plant a defect for mutation testing")
     a = ap.parse_args()
+    mutate = None
+    if a.mutate:
+        name, off, kind = a.mutate.split(":")
+        if kind not in MUTATIONS:
+            sys.exit("--mutate kinds: %s" % ", ".join(MUTATIONS))
+        mutate = (name.upper(), int(off, 16), kind)
 
     t0 = time.time()
     os.makedirs(a.out, exist_ok=True)
@@ -205,7 +244,7 @@ def main():
         d = Discovery(m)
         regions = d.run(coverage=cov.get(m.name, []), heuristics=not a.no_heuristics)
         total_insns += sum(len(r.insns) for r in regions)
-        write_module(m, regions, a.out, not a.no_comments)
+        write_module(m, regions, a.out, not a.no_comments, mutate)
         tags.append(tag(m.name))
     with open(os.path.join(a.out, "gen_modules.c"), "w", newline="\n") as f:
         f.write("/* GENERATED - the module list. */\n#include \"recomp_gen.h\"\n\n")
