@@ -117,13 +117,7 @@ static void on_input(void *user, const machine_input *in)
 
 static uint64_t state_hash(const machine_t *m)
 {
-    uint64_t h = 1469598103934665603ull;
-    for (uint32_t a = 0; a < MEM_SIZE; a++) h = (h ^ m->mem[a]) * 1099511628211ull;
-    for (int r = 0; r < 8; r++) h = (h ^ m->cpu.r[r]) * 1099511628211ull;
-    for (int s = 0; s < 4; s++) h = (h ^ m->cpu.seg[s]) * 1099511628211ull;
-    h = (h ^ m->cpu.ip) * 1099511628211ull;
-    h = (h ^ m->cpu.flags) * 1099511628211ull;
-    return h;
+    return machine_state_hash(m);
 }
 
 int main(int argc, char **argv)
@@ -184,7 +178,7 @@ int main(int argc, char **argv)
     }
     if (!data) { fprintf(stderr, "usage: f117run --data DIR [options]\n"); return 2; }
     if (replay) inputlog_read_header(replay, &ips, &time_us);
-    if (!time_us) time_us = (uint64_t)time(NULL) * 1000000ull;
+    if (!time_us) time_us = machine_local_time_us();
 
     static machine_t m;
     uint8_t *mem = (uint8_t *)malloc(MEM_SIZE);

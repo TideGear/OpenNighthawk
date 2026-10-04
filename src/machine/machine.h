@@ -144,7 +144,7 @@ struct machine {
     int       exited;        /* the root process terminated */
     int       exit_code;
     uint8_t   last_child_exit;
-    uint64_t  boot_time_us;  /* host wall clock at boot, for the date and time */
+    uint64_t  boot_time_us;  /* local wall-clock time at boot, counted as if UTC (an RTC) */
     uint16_t  iret_seg;      /* where the BIOS stubs live */
 
     /* ---- 8259 ----------------------------------------------------- */
@@ -221,6 +221,11 @@ struct machine {
 
     /* ---- counters, for reports -------------------------------------- */
     uint64_t opl_writes, midi_bytes, speaker_changes;
+    /* Everything the machine sends OUT, folded into one value: each port
+     * write (port, value, clock) and each byte DOS writes to a file. Memory
+     * and registers do not show what went to the sound card, the palette or
+     * the disk; a parity check compares this too. */
+    uint64_t io_hash;
 
     /* ---- engine ---------------------------------------------------- */
     int      engine;                     /* ENGINE_* */
@@ -242,12 +247,28 @@ int  machine_boot(machine_t *m, uint8_t *mem, const char *data_dir,
                   uint64_t boot_time_us, const machine_hooks *hooks);
 void machine_shutdown(machine_t *m);
 
+/* The host's local time now, as microseconds counted as if it were UTC:
+ * what to pass as boot_time_us for a live session. */
+uint64_t machine_local_time_us(void);
+
 /* Run until icount reaches `until` (RUN_SLICE), the program exits
  * (RUN_EXITED) or something unrecoverable happens (RUN_FAULT). */
 int  machine_run(machine_t *m, uint64_t until);
 
 /* Microseconds of emulated time at icount. */
 uint64_t machine_now_us(const machine_t *m);
+
+/* Fold output into m->io_hash. */
+static inline void machine_io_note(machine_t *m, uint64_t a, uint64_t b)
+{
+    uint64_t h = m->io_hash ^ (a * 0x9E3779B97F4A7C15ull);
+    h = (h ^ b) * 0x100000001B3ull;
+    m->io_hash = h ^ (h >> 29);
+}
+
+/* The state a parity check compares: all of memory, the registers, and
+ * everything sent out (io_hash). */
+uint64_t machine_state_hash(const machine_t *m);
 
 /* ---- input, from the host --------------------------------------------
  * Every input carries the icount at which it reaches the machine, and is

@@ -110,4 +110,11 @@ if(F117R_BUILD_TESTS)
   # unpacker. Self-contained: it supplies the two machine hooks itself.
   add_library(f117cpu_api SHARED tests/cpu_api.c src/cpu/cpu.c)
   target_include_directories(f117cpu_api PRIVATE src/cpu)
+
+  # Hand tests of the 80186/80286 instructions the flight engine uses, and
+  # of the corners where those parts differ from the 8086 (the Reimp's).
+  enable_testing()
+  add_executable(test186 tests/test186.c tests/cpu_stubs.c)
+  target_link_libraries(test186 PRIVATE f117cpu)
+  add_test(NAME cpu_186_286 COMMAND test186)
 endif()

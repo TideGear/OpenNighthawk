@@ -68,7 +68,10 @@ static void on_speaker(void *u, uint64_t icount)
 static void on_input(void *u, const machine_input *in)
 {
     (void)u;
-    if (H.record) inputlog_write(H.record, in);
+    if (H.record) {
+        inputlog_write(H.record, in);
+        fflush(H.record);          /* a session killed mid-flight keeps its log */
+    }
 }
 
 static void on_vsync(void *u, uint64_t icount)
@@ -224,11 +227,13 @@ int main(int argc, char **argv)
     int engine = ENGINE_RECOMP;
     const char *coverage = NULL, *record = NULL, *replay = NULL;
     uint64_t time_us = 0, exit_after = 0;
+    int no_record = 0;
 
     for (int i = 1; i < argc; i++) {
         const char *a = argv[i], *v = i + 1 < argc ? argv[i + 1] : NULL;
         if (!strcmp(a, "--data") && v) { data = v; i++; }
         else if (!strcmp(a, "--record") && v) { record = v; i++; }
+        else if (!strcmp(a, "--no-record")) no_record = 1;
         else if (!strcmp(a, "--replay") && v) { replay = v; i++; }
         else if (!strcmp(a, "--time-us") && v) { time_us = strtoull(v, NULL, 0); i++; }
         else if (!strcmp(a, "--exit-after") && v) { exit_after = strtoull(v, NULL, 0); i++; }
@@ -245,7 +250,8 @@ int main(int argc, char **argv)
             fprintf(stderr,
                 "usage: f117a [--data DIR] [--save DIR] [--engine recomp|interp] [--ips N]\n"
                 "             [--scale N] [--fullscreen] [--no-aspect] [--midi N] [--log FILE]\n"
-                "             [--record FILE] [--replay FILE] [--time-us N] [--exit-after CLOCKS]\n");
+                "             [--record FILE | --no-record] [--replay FILE] [--time-us N]\n"
+                "             [--exit-after CLOCKS]\n");
             return 2;
         }
     }
@@ -321,11 +327,49 @@ int main(int argc, char **argv)
     hooks.module_load = recomp_module_load;
     /* A replay brings its own speed and boot time; a recording writes ours. */
     if (replay) inputlog_read_header(replay, &ips, &time_us);
-    if (!time_us) time_us = (uint64_t)time(NULL) * 1000000ull;
+    if (!time_us) time_us = machine_local_time_us();
     if (H.audio) { audio_destroy(H.audio); H.audio = audio_create(ips); }
     if (!machine_boot(&H.m, H.mem, data, save, "F117.COM", ips, time_us, &hooks)) {
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "F-117A", H.m.fault, win);
         return 1;
+    }
+    /* Every live session is recorded unless told otherwise: a log costs a
+     * few kilobytes, and it is what lets any session be replayed under both
+     * engines later (tools/run_route.py style, f117run --replay). */
+    char auto_record[900];
+    if (!record && !replay && !no_record) {
+        /* sessions/session-<time>/: input.log, and save-start/ - the save
+         * folder as the session found it, which a replay must start from. */
+        time_t now = time(NULL);
+        struct tm *lt = localtime(&now);
+        char dir[800], start_dir[850];
+        snprintf(dir, sizeof dir, "%s/../sessions/session-%04d%02d%02d-%02d%02d%02d", save,
+                 lt ? lt->tm_year + 1900 : 0, lt ? lt->tm_mon + 1 : 0, lt ? lt->tm_mday : 0,
+                 lt ? lt->tm_hour : 0, lt ? lt->tm_min : 0, lt ? lt->tm_sec : 0);
+        snprintf(start_dir, sizeof start_dir, "%s/save-start", dir);
+        SDL_CreateDirectory(start_dir);
+        int n = 0;
+        char **names = SDL_GlobDirectory(save, NULL, 0, &n);
+        for (int k = 0; names && k < n; k++) {
+            char from[900], to[900];
+            snprintf(from, sizeof from, "%s/%s", save, names[k]);
+            snprintf(to, sizeof to, "%s/%s", start_dir, names[k]);
+            SDL_CopyFile(from, to);
+        }
+        SDL_free(names);
+        snprintf(auto_record, sizeof auto_record, "%s/input.log", dir);
+        record = auto_record;
+        char note[900];
+        snprintf(note, sizeof note, "%s/replay.txt", dir);
+        FILE *nf = fopen(note, "w");
+        if (nf) {
+            fprintf(nf, "Replay this session headless under either engine:\n\n"
+                        "  f117run --engine recomp --data \"%s\" --save <a copy of save-start> "
+                        "--replay input.log --steps <clocks>\n\nor in the window:\n\n"
+                        "  f117a --data \"%s\" --save <a copy of save-start> --replay input.log\n",
+                    data, data);
+            fclose(nf);
+        }
     }
     if (record) {
         H.record = fopen(record, "w");
@@ -481,12 +525,7 @@ int main(int argc, char **argv)
     if (H.m.log) {
         /* The same summary line f117run prints, so a session can be
          * checked against a headless replay of its log. */
-        uint64_t hsh = 1469598103934665603ull;
-        for (uint32_t a = 0; a < MEM_SIZE; a++) hsh = (hsh ^ H.mem[a]) * 1099511628211ull;
-        for (int r = 0; r < 8; r++) hsh = (hsh ^ H.m.cpu.r[r]) * 1099511628211ull;
-        for (int s = 0; s < 4; s++) hsh = (hsh ^ H.m.cpu.seg[s]) * 1099511628211ull;
-        hsh = (hsh ^ H.m.cpu.ip) * 1099511628211ull;
-        hsh = (hsh ^ H.m.cpu.flags) * 1099511628211ull;
+        const uint64_t hsh = machine_state_hash(&H.m);
         fprintf(H.m.log, "stopped at icount %llu; program %s; final hash %016llx\n",
                 (unsigned long long)H.m.cpu.icount, dos_current_program(&H.m), (unsigned long long)hsh);
         recomp_report(&H.m, H.m.log);

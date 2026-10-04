@@ -937,12 +937,15 @@ static int terminate(machine_t *m, uint8_t code)
 /* Clock                                                                 */
 /* ===================================================================== */
 
-/* Local wall-clock time at boot plus the emulated time since, broken down. */
+/* The wall-clock time at boot plus the emulated time since, broken down.
+ * boot_time_us is LOCAL time counted as if it were UTC (what a PC's
+ * real-time clock holds), so it is broken down with gmtime: the same
+ * recorded boot time means the same DOS clock in every time zone. */
 static void wall_clock(machine_t *m, struct tm *out, unsigned *centis)
 {
     uint64_t us = m->boot_time_us + machine_now_us(m);
     time_t secs = (time_t)(us / 1000000ull);
-    struct tm *t = localtime(&secs);
+    struct tm *t = gmtime(&secs);
     if (t) *out = *t; else memset(out, 0, sizeof *out);
     if (centis) *centis = (unsigned)((us / 10000ull) % 100ull);
 }
@@ -1181,6 +1184,7 @@ static int int21(machine_t *m)
         for (uint16_t i = 0; i < n; i++)
             tmp[i] = mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_DX] + i)));
         size_t put;
+        for (uint16_t i = 0; i < n; i++) machine_io_note(m, 0x400000000ull | tmp[i], (uint64_t)h << 16 | i);
         if (n) put = fwrite(tmp, 1, n, m->files[h].fp);
         else {
             /* A zero-length write truncates the file at the position. */

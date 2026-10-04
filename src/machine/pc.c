@@ -506,6 +506,7 @@ void pc_io_write(cpu_t *c, uint16_t port, uint32_t val, int width)
 {
     machine_t *m = machine_of(c);
     io_delay(m, 1);
+    machine_io_note(m, ((uint64_t)port << 24) | ((uint64_t)width << 16) | (val & 0xFFFFu), m->cpu.icount);
     io_write8(m, port, (uint8_t)val);
     if (width == 2) io_write8(m, (uint16_t)(port + 1), (uint8_t)(val >> 8));
 }

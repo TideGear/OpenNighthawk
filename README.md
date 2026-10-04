@@ -27,8 +27,10 @@ options. Enhancements come after parity, never instead of it.
 - **Parity, measured:** four scripted sessions (boot to flight; a full
   sortie through the debriefing and back; boots under the speaker and Roland
   drivers, where the programs load at other addresses) end in identical
-  memory and register state under the interpreter and the recompiled code,
-  checked at intervals along the way. A recorded input log replays on either
+  state under the interpreter and the recompiled code - all of memory, the
+  registers, and every byte sent to the sound card, the palette, MIDI and
+  the disk - checked at intervals along the way. Planted defects in the
+  generated code are caught (see `tools/mutation_check.py`). A recorded input log replays on either
   engine, and in the windowed game, to the same final state.
 - **The translator is checked against silicon:** 90,900 8088 and 94,200
   80286 hardware test vectors run through generated code with 0 unexplained
@@ -86,6 +88,28 @@ Host keys (chosen so as not to collide with the game's):
 | Alt+Enter | toggle fullscreen |
 | Ctrl+Alt+P | pause / resume |
 | Ctrl+Alt+F12 | quit |
+
+## Verifying parity yourself
+
+Every claim above can be re-run on your own copy:
+
+```bat
+rem The CPU core against the 8088 and 80286 silicon vectors (cached locally):
+py tests\sstest.py
+py tests\sst286.py
+rem The recompiler's generated code against the same vectors:
+py tests\sst_recomp.py --per-file=300
+rem Both engines on every scripted route (part of build_recomp.py):
+py tools\build_recomp.py --data "D:\GOG\F-117A"
+rem Plant defects in the generated code and check the comparison sees them:
+py tools\mutation_check.py --data "D:\GOG\F-117A" --random 8
+```
+
+Your own play sessions are recorded too: each run of `f117a.exe` writes
+`sessions\<date-time>\` (the input log and the save folder as it began)
+next to its save folder. `build\f117run.exe --replay input.log` replays one
+under either engine (`--engine interp` or `recomp`), and the two must end in
+the same state.
 
 ## Repository layout
 

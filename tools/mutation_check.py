@@ -98,9 +98,6 @@ def main():
         rng = random.Random(a.seed)
         targets += rng.sample(sorted(pool), min(a.random, len(pool)))
 
-    ref, _ = run_route(os.path.join(ROOT, "build", "f117run.exe"), "interp", a.data,
-                       os.path.join(a.work, "runs", "mutation_ref"), args)
-    print("reference (interpreter): clock %s, hash %s" % ref)
     gen = os.path.join(a.work, "gen_mutant")
     bdir = os.path.join(a.work, "build-mutant")
     detected = 0
@@ -113,6 +110,10 @@ def main():
             print("%-22s could not plant (no translated instruction there)" % t)
             continue
         exe = build_mutant(gen, bdir)
+        # The reference comes from the SAME binary's interpreter, which the
+        # planted defect cannot touch: a reference from another build would
+        # also measure any source change made in between.
+        ref, _ = run_route(exe, "interp", a.data, os.path.join(a.work, "runs", "mutation_ref"), args)
         got, hits = run_route(exe, "recomp", a.data, os.path.join(a.work, "runs", "mutation_" + t.replace(":", "_")), args)
         if got != ref:
             detected += 1

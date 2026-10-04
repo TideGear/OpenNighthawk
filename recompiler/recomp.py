@@ -96,13 +96,12 @@ MUTATIONS = {
 }
 
 
-def mutate_lines(lines, kind):
+def mutate_lines(lines, kind, ins):
     """Insert the mutation before the instruction retires (its last IC).
-    "skip" instead drops the instruction's semantics, keeping its label,
-    its event check and its retirement and transfer."""
+    "skip" instead makes the instruction do nothing at all - no effect, no
+    branch - and continue at the next one."""
     if kind == "skip":
-        last = max(i for i, l in enumerate(lines) if l.startswith("IC();"))
-        return [lines[0], "rc_mutant_hits++;", lines[last]]
+        return [lines[0], "rc_mutant_hits++;", "IC(); EXIT(0x%04X);" % ins.next_ip]
     stmt = MUTATIONS[kind] + " rc_mutant_hits++;"
     for i in range(len(lines) - 1, -1, -1):
         if lines[i].startswith("IC();"):
@@ -146,7 +145,7 @@ def write_module(mod, regions, out_dir, comments, mutate=None):
                             r.seg, ip, ins.raw.hex(), disasm_text(ins)))
                     lines = emit(ins, Ctx(in_region, frozenset(r.live[ip])))
                     if mutate and mutate[0] == mod.name and mutate[1] == mod.off(r.seg, ip):
-                        lines = mutate_lines(lines, mutate[2])
+                        lines = mutate_lines(lines, mutate[2], ins)
                         mutated += 1
                         f.write("    /* MUTANT: %s */\n" % mutate[2])
                     for line in lines:

@@ -98,6 +98,11 @@ and the inputs with the clock counts at which they arrived.
 - **Waiting.** HLT, and a BIOS keyboard read with nothing typed, let time
   pass to the next event; the BIOS wait takes interrupts whatever the
   caller's IF, as the ROM routine does on its own stack frame.
+- **The wall clock.** DOS and the BIOS report the local time at boot plus
+  emulated time, and the BIOS tick count starts at the time of day, as a PC
+  reads it from its real-time clock. The boot time is stored as local time
+  counted as if it were UTC (what an RTC holds), so a recorded session
+  replays with the same DOS clock in any time zone.
 
 ## The PC
 
@@ -212,8 +217,10 @@ Four layers, each checkable by anyone with their own copy:
    same comparisons. At 300 per file: 8088 90,900 of 90,900; 286 94,200 with
    0 unexplained.
 3. **The two engines on whole sessions.** `f117run` runs the same inputs
-   under `--engine interp` and `--engine recomp` and hashes all of memory and
-   the registers at intervals. The routes in `tools/routes/` - boot to
+   under `--engine interp` and `--engine recomp` and hashes all of memory,
+   the registers, and everything the machine sent out - every port write
+   with its value and clock count (the sound card, the palette, the timer,
+   MIDI) and every byte written to a file - at intervals. The routes in `tools/routes/` - boot to
    flight; a sortie flown into the ground, the debriefing and back to the
    front end; boots under the speaker and Roland drivers, which load every
    program at other addresses - are identical at every checkpoint.
@@ -224,6 +231,22 @@ Four layers, each checkable by anyone with their own copy:
    wrong instruction at a time in the generated code and requires the
    comparison to notice; a mutant it misses is reported with whether the
    defect ran at all, so an untested path is not mistaken for a pass.
+
+   Results (3 October 2026), each mutant compared against its own binary's
+   interpreter: removing an instruction was detected at 7 of the 8 sites
+   where the removal ran - VGAME's frame-rate controller and its keyboard
+   interrupt handler, START's mission generator, END's timer code, and
+   three sites in ASOUND's sequencer and speech code. The eighth, a
+   flags-only `test` in START, ran 89 times with the same branch outcomes
+   (masked). Two sampled sites never ran on the route and are reported as
+   such. Flipping one bit or flag after an instruction was masked at all
+   four sites tried: the values were dead there, which the run counts show.
+
+   The mutation check found two weaknesses in this project's own tooling,
+   both fixed: removing a branch had been a no-op (so its "masked" verdict
+   meant nothing), and the state hash covered memory and registers only, so
+   a wrong value sent to the sound card was invisible - which is why it now
+   includes everything sent out.
 
 What this does not cover: the machine model's fidelity to a 1991 PC (the
 device timings, the BIOS). Both engines run on the same model, so a
