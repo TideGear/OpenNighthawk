@@ -33,6 +33,12 @@ options. Enhancements come after parity, never instead of it.
   the disk - checked at intervals along the way. Planted defects in the
   generated code are caught (see `tools/mutation_check.py`). A recorded input log replays on either
   engine, and in the windowed game, to the same final state.
+- **The emulated PC is held to GOG's DOSBox,** the machine the game is sold
+  on: `tools/fidelity.py` runs one probe program under both and compares
+  877 answers - the DOS memory layout, PSP and environment the game gets,
+  every register after every DOS and BIOS call it makes, the BIOS data
+  area, the VGA registers, the devices, the clocks. 858 comparable answers
+  agree, 0 differ.
 - **Every translated instruction, not only the ones the sessions reach:**
   the sessions run about half the game's code (`tools/exercised.py`).
   `tests/insn_lockstep.c` runs each of the 89,216 translated instructions

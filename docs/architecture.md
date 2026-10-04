@@ -221,7 +221,7 @@ to the interpreter.
 
 ## Verification: why "1:1" is a claim with evidence
 
-Six layers, each checkable by anyone with their own copy:
+Seven layers, each checkable by anyone with their own copy:
 
 1. **The interpreter against silicon.** `tests/sstest.py` (8088,
    3,007,000 vectors, 0 failures) and `tests/sst286.py` (80286 real mode,
@@ -292,11 +292,45 @@ Six layers, each checkable by anyone with their own copy:
    a wrong value sent to the sound card was invisible - which is why it now
    includes everything sent out.
 
-What this does not cover: the machine model's fidelity to a 1991 PC (the
-device timings, the BIOS). Both engines run on the same model, so a
-modelling difference from real hardware would not show up as a disagreement
-between them. GOG DOSBox, an independent implementation, is the reference
-for those.
+7. **The machine against the reference.** Layers 3-6 compare two engines
+   running on one model of a PC, so a difference between that model and the
+   machine the game is sold on would pass them all. `tools/fidelity.py`
+   measures the model against that machine directly: GOG's DOSBox 0.74-2
+   with the install's own `dosboxF117A.conf`. A probe program, assembled by
+   the tool (nothing from the game in it), runs as F117.COM from the same
+   autoexec GOG uses under DOSBox headless and under `f117run`, and asks
+   what the game asks: the memory control block chain, the PSP and
+   environment it was given, the registers it starts with, every DOS and
+   BIOS service in the inventory (`F117R_INVENTORY=FILE` counts which ones
+   the programs call) with every register and flag after the call, the BIOS
+   data area, every VGA register after a mode set, the PIC mask, the
+   keyboard, mouse and joystick, the AdLib timer detection, the MPU-401
+   reset, and the clocks measured against the PIT: the VGA frame period,
+   the retrace length, instructions per PIT count, what a port access
+   costs, BIOS ticks per frame. The two answer sheets are compared field
+   by field.
+
+   The first run found 31 differences, then 211 once every register after
+   every call was compared. Each was traced to DOSBox's source (shipped in
+   the install as dosbox-0.74-2.1.tar.gz, GPL-2 or later) and the model
+   changed to match: the program now loads at the PSP DOSBox gives it
+   (0191h, not 0101h, so 2.3 KB less memory is free), out of a real chain
+   of memory control blocks run by DOSBox's allocator, with DOSBox's
+   environment, PSP fields, entry registers and EXEC/terminate semantics;
+   NumLock starts off (it changes what the keypad sends); the equipment
+   word reports a game port; an unconnected joystick port reads FFh, not
+   F0h; the volume label is C_DRIVE, which START's and SETUP's disk-label
+   checks compare against "F117A-SF" and "F117B-SF"; a port read costs 8
+   cycles, not 9; and a dozen register-level details of individual
+   services. Now: 858 answers agree, 0 differ.
+
+   What remains outside it: the instruction-level timing of DOSBox's own
+   BIOS and DOS code (its services are guest-code stubs with a callback
+   instruction; here they are serviced in place) and of its event
+   scheduler; the 386 that DOSBox emulates where this machine is a 286
+   (the game contains no CPU detection; the observable difference is flag
+   bits 12-14 after PUSHF); and DOSBox's per-millisecond slicing of I/O and
+   transfer costs.
 
 ## Where this goes next
 

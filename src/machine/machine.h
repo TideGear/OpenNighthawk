@@ -34,7 +34,6 @@
 #include <stdio.h>
 
 #define DOS_MAX_FILES  40
-#define DOS_MAX_BLOCKS 64
 #define DOS_MAX_PROCS  8
 
 #define MACHINE_DEFAULT_IPS 9000000ull
@@ -47,14 +46,8 @@ typedef struct {
     int      in_use;
     int      is_device;      /* handles 0-4 are the standard devices */
     uint16_t owner;          /* PSP of the process that opened it */
+    uint8_t  sft;            /* its system file table entry: what the PSP's handle table holds */
 } dos_file;
-
-typedef struct {
-    uint16_t seg;            /* first paragraph of the block */
-    uint16_t paras;
-    uint16_t owner;          /* PSP that owns it; freed when that process exits */
-    int      in_use;
-} dos_block;
 
 /* One running program. EXEC pushes one of these; terminate pops it and
  * resumes the parent where its INT 21h left off. */
@@ -135,11 +128,14 @@ struct machine {
     char     data_dir[512];  /* the user's install: read here */
     char     save_dir[512];  /* written here; read here first. Empty: data_dir */
     dos_file  files[DOS_MAX_FILES];
-    dos_block blocks[DOS_MAX_BLOCKS];
     dos_proc  procs[DOS_MAX_PROCS];
     int       nproc;
     uint16_t  env_seg;
-    uint16_t  arena_base_seg, arena_end_seg;
+    uint16_t  first_mcb;     /* the memory control block chain, in guest memory */
+    uint8_t   sft_ref[64];   /* references to each system file table entry */
+    uint16_t  alloc_strategy;
+    uint8_t   return_mode;   /* INT 21h/4Dh AH: 0 normal, 3 resident */
+    uint8_t   break_check;   /* INT 21h/33h */
     uint32_t  dta;
     int       exited;        /* the root process terminated */
     int       exit_code;
@@ -270,6 +266,10 @@ static inline void machine_io_note(machine_t *m, uint64_t a, uint64_t b)
  * everything sent out (io_hash). */
 uint64_t machine_state_hash(const machine_t *m);
 
+/* F117R_INVENTORY=FILE: count the services and ports used (tooling only). */
+void machine_inventory_port(uint16_t port, int write);
+void machine_inventory_service(uint8_t vec, uint16_t ax);
+
 /* ---- input, from the host --------------------------------------------
  * Every input carries the icount at which it reaches the machine, and is
  * applied at that instruction boundary like any other event - never
@@ -295,12 +295,15 @@ int      pc_speaker_state(const machine_t *m, uint16_t *reload, int *mode);
 /* What the VGA is showing: mode 13h/text, the display start address. */
 uint16_t vga_start_address(const machine_t *m);
 void     vga_set_mode(machine_t *m, uint8_t mode, int clear);
+int      mouse_gran_x(const machine_t *m, int x);
 
 /* ---- DOS / BIOS (dos.c) ---------------------------------------------- */
 int  dos_int_hook(cpu_t *c, uint8_t vec);
 int  dos_boot(machine_t *m, const char *program);
 void dos_shutdown(machine_t *m);
 const char *dos_current_program(const machine_t *m);
+/* The paragraph after the end of the memory block holding seg (0: none). */
+uint16_t dos_block_end(machine_t *m, uint16_t seg);
 void dos_log(machine_t *m, const char *fmt, ...);
 
 static inline machine_t *machine_of(cpu_t *c) { return (machine_t *)c->user; }

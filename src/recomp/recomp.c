@@ -139,12 +139,8 @@ void recomp_set_coverage(machine_t *m, const char *path)
 /* The size of an untranslated EXEC'd program: to the end of its block. */
 static uint32_t block_bytes(machine_t *m, uint16_t seg)
 {
-    for (int i = 0; i < DOS_MAX_BLOCKS; i++) {
-        const dos_block *b = &m->blocks[i];
-        if (b->in_use && seg >= b->seg && seg < (uint16_t)(b->seg + b->paras))
-            return (uint32_t)(b->seg + b->paras - seg) * 16u;
-    }
-    return 0x10000;
+    const uint16_t end = dos_block_end(m, seg);
+    return end ? (uint32_t)(end - seg) * 16u : 0x10000u;
 }
 
 void recomp_module_load(void *user, machine_t *m, const char *name,

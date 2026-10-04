@@ -314,7 +314,7 @@ static void joy_trigger(machine_t *m)
 
 static uint8_t joy_read(machine_t *m)
 {
-    if (!m->joy_present) return 0xF0;     /* no card: axis bits low, buttons up */
+    if (!m->joy_present) return 0xFF;     /* no stick: nothing answers the port (DOSBox, a PC) */
     const uint64_t now = machine_now_us(m);
     uint8_t v = 0;
     for (int i = 0; i < 4; i++)
@@ -360,27 +360,55 @@ static void vga_default_palette(machine_t *m)
                 m->dac[(32 + b * 24 + i) * 3 + k] = lv[b][ring[i][k]];
 }
 
-void vga_set_mode(machine_t *m, uint8_t mode, int clear)
+/* The registers a mode set leaves, as GOG's DOSBox (machine=svga_s3) leaves
+ * them (measured: tools/fidelity.py): sequencer 0-4, CRTC 0-18h, graphics
+ * 0-8, attribute 0-14h, miscellaneous output. */
+typedef struct {
+    uint8_t seq[5], crtc[0x19], gc[9], attr[0x15], misc;
+} vga_regs;
+
+static const vga_regs VGA_MODE3 = {
+    { 0x00, 0x00, 0x03, 0x00, 0x07 },
+    { 0x5F, 0x4F, 0x50, 0x82, 0x55, 0x81, 0xBF, 0x1F, 0x00, 0x4F, 0x0D, 0x0E, 0x00, 0x00, 0x00, 0x00,
+      0x9C, 0x8E, 0x8F, 0x28, 0x1F, 0x96, 0xB9, 0xA3, 0xFF },
+    { 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x0E, 0x0F, 0xFF },
+    { 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x14, 0x07, 0x38, 0x39, 0x3A, 0x3B, 0x3C, 0x3D, 0x3E, 0x3F,
+      0x0C, 0x00, 0x0F, 0x08, 0x00 },
+    0x67
+};
+static const vga_regs VGA_MODE13 = {
+    { 0x00, 0x01, 0x0F, 0x00, 0x0E },
+    { 0x5F, 0x4F, 0x50, 0x82, 0x54, 0x80, 0xBF, 0x1F, 0x00, 0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x9C, 0x8E, 0x8F, 0x28, 0x40, 0x96, 0xB9, 0xA3, 0xFF },
+    { 0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x05, 0x0F, 0xFF },
+    { 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
+      0x41, 0x00, 0x0F, 0x00, 0x00 },
+    0x63
+};
+
+static void vga_load_regs(machine_t *m, const vga_regs *r)
 {
-    m->video_mode = mode;
     memset(m->seq, 0, sizeof m->seq);
     memset(m->gc, 0, sizeof m->gc);
     memset(m->crtc, 0, sizeof m->crtc);
-    m->seq[2] = 0x0F;                       /* all planes */
-    m->gc[8] = 0xFF;                        /* bit mask */
+    memset(m->attr, 0, sizeof m->attr);
+    memcpy(m->seq, r->seq, sizeof r->seq);
+    memcpy(m->crtc, r->crtc, sizeof r->crtc);
+    memcpy(m->gc, r->gc, sizeof r->gc);
+    memcpy(m->attr, r->attr, sizeof r->attr);
+    m->misc_out = r->misc;
+}
+
+void vga_set_mode(machine_t *m, uint8_t mode, int clear)
+{
+    m->video_mode = mode;
     m->pel_mask = 0xFF;
     if (mode == 0x13) {
-        m->seq[4] = 0x0E;                   /* chain-4, odd/even off, extended */
-        m->gc[5] = 0x40;                    /* 256-colour shift */
-        m->gc[6] = 0x05;                    /* graphics, A000 64K */
-        m->crtc[0x13] = 0x28;
-        m->crtc[0x14] = 0x40;               /* doubleword mode */
-        m->crtc[0x17] = 0xA3;
+        vga_load_regs(m, &VGA_MODE13);
         vga_default_palette(m);
         if (clear) memset(m->mem + 0xA0000, 0, 0x10000);
     } else {
-        m->seq[4] = 0x02;
-        m->gc[6] = 0x0E;                    /* text, B800 */
+        vga_load_regs(m, &VGA_MODE3);
         vga_default_palette(m);
         if (clear) {
             for (uint32_t i = 0; i < 80 * 25; i++) {
@@ -439,8 +467,10 @@ static void mpu_queue(machine_t *m, uint8_t value)
  * as DOSBox does, so the device sees the time after the bus cycle. */
 static void io_delay(machine_t *m, int write)
 {
+    /* DOSBox 0.74's IO_USEC_read_delay / write_delay: CPU_CycleMax / 1024
+     * cycles per read, / 1365 per write (9000 cycles a millisecond: 8 and 6). */
     const uint64_t per_ms = m->ips / 1000u;
-    m->cpu.icount += write ? per_ms / 1333u : per_ms / 1000u;
+    m->cpu.icount += write ? per_ms / 1365u : per_ms / 1024u;
 }
 
 static uint8_t io_read8(machine_t *m, uint16_t port);
@@ -448,6 +478,7 @@ static uint8_t io_read8(machine_t *m, uint16_t port);
 uint32_t pc_io_read(cpu_t *c, uint16_t port, int width)
 {
     machine_t *m = machine_of(c);
+    machine_inventory_port(port, 0);
     io_delay(m, 0);
     if (width == 2)
         return io_read8(m, port) | ((uint32_t)io_read8(m, (uint16_t)(port + 1)) << 8);
@@ -488,7 +519,7 @@ static uint8_t io_read8(machine_t *m, uint16_t port)
     }
     case 0x331: return (uint8_t)(0x3Fu | (m->mpu_used ? 0u : 0x80u));
     case 0x3C1: return m->attr[m->attr_idx & 0x1F];
-    case 0x3C2: return 0x10;                 /* input status 0: switch sense */
+    case 0x3C2: return 0x70;                 /* input status 0, as DOSBox reads it */
     case 0x3C4: return m->seq_idx;
     case 0x3C5: return m->seq[m->seq_idx & 7];
     case 0x3C6: return m->pel_mask;
@@ -514,6 +545,7 @@ static void io_write8(machine_t *m, uint16_t port, uint8_t v);
 void pc_io_write(cpu_t *c, uint16_t port, uint32_t val, int width)
 {
     machine_t *m = machine_of(c);
+    machine_inventory_port(port, 1);
     io_delay(m, 1);
     machine_io_note(m, ((uint64_t)port << 24) | ((uint64_t)width << 16) | (val & 0xFFFFu), m->cpu.icount);
     io_write8(m, port, (uint8_t)val);
@@ -569,8 +601,8 @@ static void io_write8(machine_t *m, uint16_t port, uint8_t v)
     case 0x3C4: m->seq_idx = v; break;
     case 0x3C5: m->seq[m->seq_idx & 7] = v; break;
     case 0x3C6: m->pel_mask = v; break;
-    case 0x3C7: m->dac_ridx = v; m->dac_comp = 0; m->dac_state = 0x00; break;
-    case 0x3C8: m->dac_widx = v; m->dac_comp = 0; m->dac_state = 0x03; break;
+    case 0x3C7: m->dac_ridx = v; m->dac_comp = 0; m->dac_state = 0x03; break;   /* read mode reads 3 */
+    case 0x3C8: m->dac_widx = v; m->dac_comp = 0; m->dac_state = 0x00; break;
     case 0x3C9:
         m->dac[m->dac_widx * 3 + m->dac_comp] = (uint8_t)(v & 0x3F);
         if (++m->dac_comp == 3) { m->dac_comp = 0; m->dac_widx++; }
@@ -615,6 +647,12 @@ static void kbd_poll(machine_t *m)
 /* Mouse                                                                 */
 /* ===================================================================== */
 
+/* DOSBox reports X with its low bit masked in modes 0Dh and 13h. */
+int mouse_gran_x(const machine_t *m, int x)
+{
+    return (m->video_mode == 0x0D || m->video_mode == 0x13) ? (x & ~1) : x;
+}
+
 static void mouse_apply(machine_t *m, int x, int y, int buttons, int dx, int dy)
 {
     /* Driver coordinates in mode 13h are 0..639 across. */
@@ -629,8 +667,8 @@ static void mouse_apply(machine_t *m, int x, int y, int buttons, int dx, int dy)
     m->mouse_mickey_y += dy * 2;
     for (int b = 0; b < 2; b++) {
         int was = (m->mouse_buttons >> b) & 1, now = (buttons >> b) & 1;
-        if (!was && now) { m->mouse_press[b]++; m->mouse_press_x[b] = vx; m->mouse_press_y[b] = vy; }
-        if (was && !now) { m->mouse_release[b]++; m->mouse_rel_x[b] = vx; m->mouse_rel_y[b] = vy; }
+        if (!was && now) { m->mouse_press[b]++; m->mouse_press_x[b] = mouse_gran_x(m, vx); m->mouse_press_y[b] = vy; }
+        if (was && !now) { m->mouse_release[b]++; m->mouse_rel_x[b] = mouse_gran_x(m, vx); m->mouse_rel_y[b] = vy; }
     }
     m->mouse_buttons = buttons;
 }
@@ -642,7 +680,7 @@ static void mouse_apply(machine_t *m, int x, int y, int buttons, int dx, int dy)
 void pc_reset(machine_t *m)
 {
     m->pic_irr = m->pic_isr = 0;
-    m->pic_imr = 0xB8;                       /* timer, keyboard, cascade, COM2 open, as a BIOS leaves it */
+    m->pic_imr = 0xF8;                       /* timer, keyboard, cascade: as GOG's DOSBox leaves it */
     memset(m->pit, 0, sizeof m->pit);
     for (int i = 0; i < 3; i++) { m->pit[i].mode = 3; m->pit[i].access = 3; }
     m->pit[1].reload = 18;                   /* DRAM refresh */

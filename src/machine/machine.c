@@ -35,8 +35,52 @@ int machine_boot(machine_t *m, uint8_t *mem, const char *data_dir,
     return dos_boot(m, program);
 }
 
+/* ---- the inventory (F117R_INVENTORY=FILE): which services and ports the
+ * programs use, counted, for the machine-fidelity probes. Counting only. */
+
+static uint32_t g_inv_port[0x10000][2];
+static struct { uint32_t key, n; } g_inv_svc[4096];
+static int g_inv_on = -1;
+
+static int inv_on(void)
+{
+    if (g_inv_on < 0) { const char *e = getenv("F117R_INVENTORY"); g_inv_on = e && *e; }
+    return g_inv_on;
+}
+
+void machine_inventory_port(uint16_t port, int write)
+{
+    if (inv_on()) g_inv_port[port][write ? 1 : 0]++;
+}
+
+void machine_inventory_service(uint8_t vec, uint16_t ax)
+{
+    if (!inv_on()) return;
+    const uint32_t key = ((uint32_t)vec << 16) | ax | 0x80000000u;
+    uint32_t h = (key * 2654435761u) & 4095u;
+    while (g_inv_svc[h].key && g_inv_svc[h].key != key) h = (h + 1) & 4095u;
+    g_inv_svc[h].key = key;
+    g_inv_svc[h].n++;
+}
+
+static void inventory_write(void)
+{
+    if (!inv_on()) return;
+    FILE *f = fopen(getenv("F117R_INVENTORY"), "a");
+    if (!f) return;
+    for (int i = 0; i < 4096; i++)
+        if (g_inv_svc[i].key)
+            fprintf(f, "int %02X ax %04X %u\n", (g_inv_svc[i].key >> 16) & 0xFF,
+                    g_inv_svc[i].key & 0xFFFF, g_inv_svc[i].n);
+    for (int p = 0; p < 0x10000; p++)
+        for (int w = 0; w < 2; w++)
+            if (g_inv_port[p][w]) fprintf(f, "port %04X %s %u\n", p, w ? "out" : "in", g_inv_port[p][w]);
+    fclose(f);
+}
+
 void machine_shutdown(machine_t *m)
 {
+    inventory_write();
     dos_shutdown(m);
 }
 

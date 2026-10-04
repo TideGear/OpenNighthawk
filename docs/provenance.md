@@ -25,6 +25,25 @@ development; nothing here builds against its tree.
 The bug tracker ([bugs.md](bugs.md)) restates the Reimp's
 `docs/bugs/catalogue.md` with citations to it.
 
+## From DOSBox 0.74-2.1
+
+GOG's install ships DOSBox's source (`DOSBOX/dosbox-0.74-2.1.tar.gz`, GPL-2
+or later, compatible with this repository's GPL-3.0). The DOS this machine
+provides follows it where the game can see the difference; the ports are
+re-expressed in this code base, not copied files:
+
+| Here | DOSBox source | What |
+|---|---|---|
+| `src/machine/dos.c` memory allocation | `src/dos/dos_memory.cpp` | MCB chain: allocate (first/best/last fit), resize, free, free a process's blocks, compaction |
+| `src/machine/dos.c` `load_program`, `make_env`, `psp_make`, `terminate` | `src/dos/dos_execute.cpp`, `dos_classes.cpp` | EXEC sizing and placement, environment, PSP fields, entry registers, terminate |
+| `src/machine/dos.c` INT 21h services | `src/dos/dos.cpp`, `dos_ioctl.cpp`, `dos_files.cpp` | Register results of 30h, 33h, 09h, 11h/12h (FCB find, volume label), 2Dh, 43h, 44h, 48h-4Dh, 52h |
+| `src/machine/dos.c` INT 33h | `src/ints/mouse.cpp` | Three buttons, X granularity, position set |
+| `src/machine/pc.c` port delays | `src/hardware/iohandler.cpp` | Cycles per port read and write |
+
+Values measured from a running DOSBox rather than read from its source -
+the BIOS data area, the memory layout the shell leaves, the VGA register
+sets after a mode set - come from `tools/fidelity.py`.
+
 ## Third-party
 
 | Component | Licence | Where |

@@ -357,14 +357,39 @@ static int alloc_handle(machine_t *m)
     return -1;
 }
 
+/* The handle table in a PSP (at +18h, 20 entries) holds system file table
+ * numbers, as DOS keeps it: what a program sees if it looks, and what a
+ * child inherits. Entries 0-2 are AUX, CON and PRN, as in DOSBox. */
+static void jft_set(machine_t *m, uint16_t psp, unsigned h, uint8_t sft)
+{
+    if (psp && h < 20) mem_write8(&m->cpu, phys(psp, (uint16_t)(0x18 + h)), sft);
+}
+
+static uint8_t sft_alloc(machine_t *m)
+{
+    for (unsigned i = 0; i < sizeof m->sft_ref; i++)
+        if (!m->sft_ref[i]) { m->sft_ref[i] = 1; return (uint8_t)i; }
+    return 0xFF;
+}
+
+static void sft_release(machine_t *m, uint8_t sft)
+{
+    if (sft < sizeof m->sft_ref && m->sft_ref[sft]) m->sft_ref[sft]--;
+}
+
+static void close_handle(machine_t *m, unsigned h)
+{
+    if (m->files[h].fp) fclose(m->files[h].fp);
+    jft_set(m, m->files[h].owner, h, 0xFF);
+    sft_release(m, m->files[h].sft);
+    m->files[h].in_use = 0;
+    m->files[h].fp = NULL;
+}
+
 static void close_files_of(machine_t *m, uint16_t owner)
 {
     for (int i = 5; i < DOS_MAX_FILES; i++)
-        if (m->files[i].in_use && m->files[i].owner == owner) {
-            if (m->files[i].fp) fclose(m->files[i].fp);
-            m->files[i].in_use = 0;
-            m->files[i].fp = NULL;
-        }
+        if (m->files[i].in_use && m->files[i].owner == owner) close_handle(m, (unsigned)i);
 }
 
 /* ---- find first / next ------------------------------------------------
@@ -482,72 +507,196 @@ static void find_first(machine_t *m, const char *pat)
 /* ===================================================================== */
 /* Memory allocation                                                     */
 /* ===================================================================== */
-/* A bump allocator over the arena, with ownership - sufficient because of
- * how the shell uses memory: it stays resident at the bottom, loads overlays
- * above itself and shrinks them to fit, then EXECs one phase program at a
- * time into everything that is left. Each child is therefore the topmost
- * allocation, and freeing it on exit reclaims the space exactly as DOS
- * would. (The oracle's reasoning, kept with its allocator.) */
+/* Memory control blocks in guest memory, as DOS keeps them: a chain of
+ * 16-byte headers ('M', or 'Z' for the last; the owner's PSP, 0 when free;
+ * the size in paragraphs; at +8 the owner's name), each followed by its
+ * block. The algorithms are DOSBox 0.74's (src/dos/dos_memory.cpp, GPL-2
+ * or later), the DOS the game is played on: first fit by default, free
+ * neighbours merged before each search, a shrink that leaves the freed tail
+ * as its own block until the next search. The answers a program gets - the
+ * segment, the largest free block, the error - follow from the same chain
+ * and the same steps. */
 
-static uint16_t arena_top(const machine_t *m)
+#define MCB_FREE 0
+
+static uint8_t  mcb_type(machine_t *m, uint16_t s)  { return mem_read8(&m->cpu, (uint32_t)s * 16u); }
+static uint16_t mcb_owner(machine_t *m, uint16_t s) { return mem_read16(&m->cpu, (uint32_t)s * 16u + 1); }
+static uint16_t mcb_size(machine_t *m, uint16_t s)  { return mem_read16(&m->cpu, (uint32_t)s * 16u + 3); }
+static void mcb_set_type(machine_t *m, uint16_t s, uint8_t t)   { mem_write8(&m->cpu, (uint32_t)s * 16u, t); }
+static void mcb_set_owner(machine_t *m, uint16_t s, uint16_t o) { mem_write16(&m->cpu, (uint32_t)s * 16u + 1, o); }
+static void mcb_set_size(machine_t *m, uint16_t s, uint16_t n)  { mem_write16(&m->cpu, (uint32_t)s * 16u + 3, n); }
+
+static void mcb_get_name(machine_t *m, uint16_t s, uint8_t name[8])
 {
-    uint16_t top = m->arena_base_seg;
-    for (int i = 0; i < DOS_MAX_BLOCKS; i++)
-        if (m->blocks[i].in_use) {
-            uint16_t end = (uint16_t)(m->blocks[i].seg + m->blocks[i].paras);
-            if (end > top) top = end;
-        }
-    return top;
+    for (int i = 0; i < 8; i++) name[i] = mem_read8(&m->cpu, (uint32_t)s * 16u + 8 + (uint32_t)i);
 }
 
-static uint16_t arena_avail(const machine_t *m)
+static void mcb_set_name(machine_t *m, uint16_t s, const uint8_t name[8])
 {
-    uint16_t top = arena_top(m);
-    return (uint16_t)((m->arena_end_seg > top + 1) ? m->arena_end_seg - top - 1 : 0);
+    for (int i = 0; i < 8; i++) mem_write8(&m->cpu, (uint32_t)s * 16u + 8 + (uint32_t)i, name[i]);
 }
 
-static int dos_alloc(machine_t *m, uint16_t paras, uint16_t owner, uint16_t *out_seg)
+static uint16_t current_psp(const machine_t *m);
+
+static void mem_compress(machine_t *m)
 {
-    if (paras > arena_avail(m)) return 0;
-    /* The top is computed BEFORE claiming a slot: a recycled slot still
-     * carries its previous occupant's extent. */
-    uint16_t top = arena_top(m);
-    for (int i = 0; i < DOS_MAX_BLOCKS; i++) {
-        if (!m->blocks[i].in_use) {
-            m->blocks[i].seg = (uint16_t)(top + 1);
-            m->blocks[i].paras = paras;
-            m->blocks[i].owner = owner;
-            m->blocks[i].in_use = 1;
-            *out_seg = m->blocks[i].seg;
-            return 1;
+    uint16_t s = m->first_mcb;
+    for (int guard = 0; guard < 0x10000 && mcb_type(m, s) != 'Z'; guard++) {
+        uint16_t next = (uint16_t)(s + mcb_size(m, s) + 1);
+        if (mcb_owner(m, s) == MCB_FREE && mcb_owner(m, next) == MCB_FREE) {
+            mcb_set_size(m, s, (uint16_t)(mcb_size(m, s) + mcb_size(m, next) + 1));
+            mcb_set_type(m, s, mcb_type(m, next));
+        } else {
+            s = next;
         }
     }
+}
+
+/* DOS_AllocateMemory. On failure *paras is the largest free block. */
+static int mem_alloc(machine_t *m, uint16_t *seg_out, uint16_t *paras)
+{
+    mem_compress(m);
+    const uint16_t want = *paras, strat = (uint16_t)(m->alloc_strategy & 0x3F);
+    const uint16_t me = current_psp(m);
+    uint8_t name[8];
+    mcb_get_name(m, (uint16_t)(me - 1), name);
+    uint16_t big = 0, found = 0, found_size = 0;
+    uint16_t s = m->first_mcb;
+    for (int guard = 0; guard < 0x10000; guard++) {
+        if (mcb_owner(m, s) == MCB_FREE) {
+            const uint16_t size = mcb_size(m, s);
+            if (size < want) {
+                if (big < size) big = size;
+            } else if (size == want && strat < 2) {
+                mcb_set_owner(m, s, me);
+                *seg_out = (uint16_t)(s + 1);
+                return 1;
+            } else if (strat == 0) {                    /* first fit */
+                const uint16_t next = (uint16_t)(s + want + 1);
+                mcb_set_owner(m, next, MCB_FREE);
+                mcb_set_type(m, next, mcb_type(m, s));
+                mcb_set_size(m, next, (uint16_t)(size - want - 1));
+                mcb_set_size(m, s, want);
+                mcb_set_type(m, s, 'M');
+                mcb_set_owner(m, s, me);
+                mcb_set_name(m, s, name);
+                *seg_out = (uint16_t)(s + 1);
+                return 1;
+            } else if (strat == 1) {                    /* best fit: note the smallest */
+                if (!found_size || size < found_size) { found = s; found_size = size; }
+            } else {                                    /* last fit: note the last */
+                found = s; found_size = size;
+            }
+        }
+        if (mcb_type(m, s) == 'Z') break;
+        s = (uint16_t)(s + mcb_size(m, s) + 1);
+    }
+    if (found) {
+        if (strat == 1) {
+            const uint16_t next = (uint16_t)(found + want + 1);
+            mcb_set_owner(m, next, MCB_FREE);
+            mcb_set_type(m, next, mcb_type(m, found));
+            mcb_set_size(m, next, (uint16_t)(found_size - want - 1));
+            mcb_set_size(m, found, want);
+            mcb_set_type(m, found, 'M');
+            mcb_set_owner(m, found, me);
+            mcb_set_name(m, found, name);
+            *seg_out = (uint16_t)(found + 1);
+        } else if (found_size == want) {
+            mcb_set_owner(m, found, me);
+            mcb_set_name(m, found, name);
+            *seg_out = (uint16_t)(found + 1);
+        } else {
+            *seg_out = (uint16_t)(found + 1 + found_size - want);
+            const uint16_t blk = (uint16_t)(*seg_out - 1);
+            mcb_set_size(m, blk, want);
+            mcb_set_type(m, blk, mcb_type(m, found));
+            mcb_set_owner(m, blk, me);
+            mcb_set_name(m, blk, name);
+            mcb_set_size(m, found, (uint16_t)(found_size - want - 1));
+            mcb_set_owner(m, found, MCB_FREE);
+            mcb_set_type(m, found, 'M');
+        }
+        return 1;
+    }
+    *paras = big;
     return 0;
 }
 
-static dos_block *find_block(machine_t *m, uint16_t seg)
+/* DOS_ResizeMemory. Returns 0, or the error with *paras the most possible. */
+static uint16_t mem_resize(machine_t *m, uint16_t seg, uint16_t *paras)
 {
-    for (int i = 0; i < DOS_MAX_BLOCKS; i++)
-        if (m->blocks[i].in_use && m->blocks[i].seg == seg) return &m->blocks[i];
-    return NULL;
-}
-
-static void free_blocks_of(machine_t *m, uint16_t owner)
-{
-    for (int i = 0; i < DOS_MAX_BLOCKS; i++)
-        if (m->blocks[i].in_use && m->blocks[i].owner == owner)
-            m->blocks[i].in_use = 0;
-}
-
-static uint16_t block_max_paras(const machine_t *m, const dos_block *b)
-{
-    uint16_t limit = m->arena_end_seg;
-    for (int i = 0; i < DOS_MAX_BLOCKS; i++) {
-        const dos_block *o = &m->blocks[i];
-        if (o->in_use && o != b && o->seg > b->seg && (uint16_t)(o->seg - 1) < limit)
-            limit = (uint16_t)(o->seg - 1);
+    const uint16_t s = (uint16_t)(seg - 1);
+    if (mcb_type(m, s) != 'M' && mcb_type(m, s) != 'Z') return 7;     /* MCB destroyed */
+    mem_compress(m);
+    const uint16_t me = current_psp(m);
+    uint16_t total = mcb_size(m, s);
+    const uint16_t next = (uint16_t)(seg + total);
+    if (*paras <= total) {
+        if (*paras == total) return 0;
+        const uint16_t nn = (uint16_t)(seg + *paras);
+        mcb_set_size(m, s, *paras);
+        mcb_set_type(m, nn, mcb_type(m, s));
+        if (mcb_type(m, s) == 'Z') mcb_set_type(m, s, 'M');
+        mcb_set_size(m, nn, (uint16_t)(total - *paras - 1));
+        mcb_set_owner(m, nn, MCB_FREE);
+        mcb_set_owner(m, s, me);
+        return 0;
     }
-    return (uint16_t)(limit - b->seg);
+    if (mcb_type(m, s) != 'Z' && mcb_owner(m, next) == MCB_FREE)
+        total = (uint16_t)(total + mcb_size(m, next) + 1);
+    if (*paras < total) {
+        if (mcb_type(m, s) != 'Z') mcb_set_type(m, s, mcb_type(m, next));
+        mcb_set_size(m, s, *paras);
+        const uint16_t nn = (uint16_t)(seg + *paras);
+        mcb_set_size(m, nn, (uint16_t)(total - *paras - 1));
+        mcb_set_type(m, nn, mcb_type(m, s));
+        mcb_set_owner(m, nn, MCB_FREE);
+        mcb_set_type(m, s, 'M');
+        mcb_set_owner(m, s, me);
+        return 0;
+    }
+    if (mcb_owner(m, next) == MCB_FREE && mcb_type(m, s) != 'Z')
+        mcb_set_type(m, s, mcb_type(m, next));
+    mcb_set_size(m, s, total);
+    mcb_set_owner(m, s, me);
+    if (*paras == total) return 0;
+    *paras = total;
+    return ERR_NO_MEMORY;
+}
+
+/* DOS_FreeMemory: 0 or the error. */
+static uint16_t mem_free(machine_t *m, uint16_t seg)
+{
+    if (seg < m->first_mcb + 1) return 9;                      /* invalid block */
+    const uint16_t s = (uint16_t)(seg - 1);
+    if (mcb_type(m, s) != 'M' && mcb_type(m, s) != 'Z') return 9;
+    mcb_set_owner(m, s, MCB_FREE);
+    return 0;
+}
+
+/* DOS_FreeProcessMemory. */
+static void mem_free_process(machine_t *m, uint16_t psp)
+{
+    uint16_t s = m->first_mcb;
+    for (int guard = 0; guard < 0x10000; guard++) {
+        if (mcb_owner(m, s) == psp) mcb_set_owner(m, s, MCB_FREE);
+        if (mcb_type(m, s) == 'Z') break;
+        s = (uint16_t)(s + mcb_size(m, s) + 1);
+    }
+    mem_compress(m);
+}
+
+uint16_t dos_block_end(machine_t *m, uint16_t seg)
+{
+    uint16_t s = m->first_mcb;
+    for (int guard = 0; guard < 0x10000; guard++) {
+        const uint16_t end = (uint16_t)(s + 1 + mcb_size(m, s));
+        if (seg > s && seg < end) return end;
+        if (mcb_type(m, s) == 'Z') break;
+        s = end;
+    }
+    return 0;
 }
 
 /* ===================================================================== */
@@ -719,52 +868,95 @@ typedef struct {
     uint16_t fcb1_seg, fcb1_off;
     uint16_t fcb2_seg, fcb2_off;
     uint16_t parent_psp;
+    uint16_t parent_env;     /* used when env_seg is 0 */
+    uint16_t flags;          /* the caller's flags at the INT 21h */
 } exec_params;
 
-static void build_psp(machine_t *m, uint16_t psp, uint16_t top_seg,
-                      const exec_params *ep, uint16_t ret_cs, uint16_t ret_ip)
+/* A new PSP, as DOSBox's DOS_PSP::MakeNew and SetupPSP build one: the
+ * INT 20h and the far call to DOS, the top of the block, the parent, the
+ * INT 22h/23h/24h vectors as they are now, the handle table copied from
+ * the parent (each inherited entry referenced once more), the DOS version
+ * DOS will report, the environment. */
+static void psp_make(machine_t *m, uint16_t psp, uint16_t memsize, uint16_t parent, uint16_t env)
 {
     cpu_t *c = &m->cpu;
     for (int i = 0; i < 0x100; i++) mem_write8(c, phys(psp, (uint16_t)i), 0);
-    mem_write8(c, phys(psp, 0x00), 0xCD);          /* INT 20h */
+    mem_write8(c, phys(psp, 0x00), 0xCD);           /* INT 20h */
     mem_write8(c, phys(psp, 0x01), 0x20);
-    mem_write16(c, phys(psp, 0x02), top_seg);
-    mem_write16(c, phys(psp, 0x0A), ret_ip);        /* terminate address */
-    mem_write16(c, phys(psp, 0x0C), ret_cs);
-    mem_write16(c, phys(psp, 0x16), ep->parent_psp);
-    for (int i = 0; i < 20; i++)                    /* job file table */
-        mem_write8(c, phys(psp, (uint16_t)(0x18 + i)), (uint8_t)(i < 5 ? i : 0xFF));
-    mem_write16(c, phys(psp, 0x2C), ep->env_seg);
+    mem_write16(c, phys(psp, 0x02), (uint16_t)(psp + memsize));
+    mem_write8(c, phys(psp, 0x05), 0xEA);           /* far call to DOS (CP/M) */
+    mem_write16(c, phys(psp, 0x06), 0xFFFF);
+    mem_write16(c, phys(psp, 0x08), 0xDEAD);
+    for (int v = 0; v < 3; v++) {                   /* INT 22h, 23h, 24h */
+        mem_write16(c, phys(psp, (uint16_t)(0x0A + 4 * v)), mem_read16(c, (uint32_t)(0x22 + v) * 4));
+        mem_write16(c, phys(psp, (uint16_t)(0x0C + 4 * v)), mem_read16(c, (uint32_t)(0x22 + v) * 4 + 2));
+    }
+    mem_write16(c, phys(psp, 0x16), parent);
+    mem_write16(c, phys(psp, 0x2C), env);
     mem_write16(c, phys(psp, 0x32), 20);
     mem_write16(c, phys(psp, 0x34), 0x18);
     mem_write16(c, phys(psp, 0x36), psp);
-    mem_write8(c, phys(psp, 0x50), 0xCD);          /* INT 21h ; RETF */
+    mem_write16(c, phys(psp, 0x38), 0xFFFF);
+    mem_write16(c, phys(psp, 0x3A), 0xFFFF);
+    mem_write16(c, phys(psp, 0x40), 0x0005);
+    mem_write8(c, phys(psp, 0x50), 0xCD);           /* INT 21h ; RETF */
     mem_write8(c, phys(psp, 0x51), 0x21);
     mem_write8(c, phys(psp, 0x52), 0xCB);
-
-    if (ep->fcb1_seg || ep->fcb1_off)
-        for (int i = 0; i < 16; i++)
-            mem_write8(c, phys(psp, (uint16_t)(0x5C + i)),
-                       mem_read8(c, phys(ep->fcb1_seg, (uint16_t)(ep->fcb1_off + i))));
-    if (ep->fcb2_seg || ep->fcb2_off)
-        for (int i = 0; i < 16; i++)
-            mem_write8(c, phys(psp, (uint16_t)(0x6C + i)),
-                       mem_read8(c, phys(ep->fcb2_seg, (uint16_t)(ep->fcb2_off + i))));
-
-    if (ep->cmd_seg || ep->cmd_off) {
-        uint8_t len = mem_read8(c, phys(ep->cmd_seg, ep->cmd_off));
-        if (len > 126) len = 126;
-        mem_write8(c, phys(psp, 0x80), len);
-        for (int i = 0; i <= len; i++)
-            mem_write8(c, phys(psp, (uint16_t)(0x81 + i)),
-                       mem_read8(c, phys(ep->cmd_seg, (uint16_t)(ep->cmd_off + 1 + i))));
-        mem_write8(c, phys(psp, (uint16_t)(0x81 + len)), 0x0D);
-    } else {
-        mem_write8(c, phys(psp, 0x80), 0);
-        mem_write8(c, phys(psp, 0x81), 0x0D);
+    for (int i = 0; i < 20; i++) {
+        uint8_t h = parent ? mem_read8(c, phys(parent, (uint16_t)(0x18 + i))) : 0xFF;
+        if (h != 0xFF && h < sizeof m->sft_ref) m->sft_ref[h]++;
+        mem_write8(c, phys(psp, (uint16_t)(0x18 + i)), h);
     }
 }
 
+/* The environment a child gets (DOSBox MakeEnv): the given one, or the
+ * parent's, copied up to its double zero, then the word 1 and the
+ * program's full name; the block is that plus 83 bytes, in paragraphs. */
+static uint16_t make_env(machine_t *m, uint16_t from, const char *fullname, uint16_t *env_out)
+{
+    cpu_t *c = &m->cpu;
+    uint16_t size = 0;
+    if (from) {
+        while (mem_read16(c, phys(from, size)) != 0) {
+            if (++size >= 0x8000u - 83u) return 10;        /* environment invalid */
+        }
+        size = (uint16_t)(size + 2);
+    } else {
+        size = 1;
+    }
+    const uint32_t bytes = (uint32_t)size + 83u;
+    uint16_t paras = (uint16_t)((bytes >> 4) + ((bytes & 15) ? 1 : 0));
+    uint16_t seg = 0;
+    if (!mem_alloc(m, &seg, &paras)) return ERR_NO_MEMORY;
+    uint16_t o = 0;
+    if (from) for (; o < size; o++) mem_write8(c, phys(seg, o), mem_read8(c, phys(from, o)));
+    else mem_write8(c, phys(seg, o++), 0);
+    mem_write16(c, phys(seg, o), 1);
+    o = (uint16_t)(o + 2);
+    for (const char *p = fullname; ; p++) {
+        mem_write8(c, phys(seg, o++), (uint8_t)*p);
+        if (!*p) break;
+    }
+    *env_out = seg;
+    return 0;
+}
+
+/* The name DOS records in the program's MCB: the file name without its
+ * extension, upper case, zero-padded. */
+static void mcb_program_name(const char *path, uint8_t out[8])
+{
+    const char *b = path;
+    for (const char *p = path; *p; p++) if (*p == ':' || *p == '\\' || *p == '/') b = p + 1;
+    memset(out, 0, 8);
+    for (int i = 0; i < 8 && b[i] && b[i] != '.'; i++) out[i] = (uint8_t)toupper((unsigned char)b[i]);
+}
+
+/* EXEC (load and go), as DOSBox's DOS_Execute does it: the environment,
+ * then the largest block or what the header asks for, the image at PSP+10h
+ * (or at the top of the block when the header asks for no memory), the
+ * PSP, the command tail and FCBs from the parameter block, INT 22h set to
+ * the caller's return address, and the program entered with the registers
+ * DOSBox gives it. ret_cs:ret_ip is where the caller continues. */
 static uint16_t load_program(machine_t *m, const char *name, const exec_params *ep,
                              uint16_t ret_cs, uint16_t ret_ip, uint16_t *psp_out)
 {
@@ -772,43 +964,58 @@ static uint16_t load_program(machine_t *m, const char *name, const exec_params *
     long fsz = 0;
     uint8_t *raw = read_whole(m, dos_basename(name), &fsz);
     if (!raw) return ERR_FILE_NOT_FOUND;
+    if (fsz == 0) { free(raw); return ERR_ACCESS_DENIED; }
 
-    int is_mz = (fsz >= 28 && raw[0] == 'M' && raw[1] == 'Z');
+    int is_mz = (fsz >= 28 && ((raw[0] == 'M' && raw[1] == 'Z') || (raw[0] == 'Z' && raw[1] == 'M')));
     uint16_t hdr[14] = {0};
-    uint32_t hdr_size = 0, img_size = (uint32_t)fsz, body = (uint32_t)fsz;
-    uint16_t minalloc = 0, maxalloc = 0xFFFF;
+    uint32_t hdr_size = 0, image = 0;
     if (is_mz) {
         memcpy(hdr, raw, sizeof(hdr));
-        uint16_t last_page = hdr[1], pages = hdr[2];
-        hdr_size = (uint32_t)hdr[4] * 16;
-        minalloc = hdr[5];
-        maxalloc = hdr[6];
-        img_size = pages ? (uint32_t)(pages - 1) * 512 + (last_page ? last_page : 512) : 0;
-        if (img_size > (uint32_t)fsz) img_size = (uint32_t)fsz;
-        if (img_size < hdr_size) { free(raw); return ERR_BAD_FORMAT; }
-        body = img_size - hdr_size;
+        const uint32_t pages = hdr[2] & 0x07FFu;
+        hdr_size = (uint32_t)hdr[4] * 16u;
+        image = pages * 512u - hdr_size;
+        if (image + hdr_size < 512u) image = 512u - hdr_size;
     }
 
-    /* DOS gives a program the largest free block unless maxalloc asks for
-     * less. Every phase program here asks for everything. */
-    uint16_t body_paras = (uint16_t)((body + 15) / 16);
-    uint16_t need = (uint16_t)(0x10 + body_paras + (is_mz ? minalloc : 0x10));
-    uint16_t avail = arena_avail(m);
-    if (need > avail) { free(raw); return ERR_NO_MEMORY; }
-    uint16_t want = avail;
-    if (is_mz && maxalloc != 0xFFFF) {
-        uint32_t cap = 0x10u + body_paras + maxalloc;
-        if (cap < want) want = (uint16_t)cap;
-        if (want < need) want = need;
+    /* The full name, as DOS canonicalises it, for the environment. */
+    char fullname[600];
+    {
+        const char *b = name;
+        if (b[0] && b[1] == ':') b += 2;
+        while (*b == '\\' || *b == '/') b++;
+        snprintf(fullname, sizeof fullname, "C:\\%s", b);
+        for (char *p = fullname; *p; p++) { *p = (char)toupper((unsigned char)*p); if (*p == '/') *p = '\\'; }
     }
 
+    uint16_t env = 0;
+    uint16_t err = make_env(m, ep->env_seg ? ep->env_seg : ep->parent_env, fullname, &env);
+    if (err) { free(raw); return err; }
+
+    uint16_t maxfree = 0xFFFF, dummy = 0;
+    mem_alloc(m, &dummy, &maxfree);
+    uint16_t minsize, maxsize;
+    if (!is_mz) {
+        minsize = 0x1000; maxsize = 0xFFFF;
+    } else {
+        uint32_t lo = image + (uint32_t)hdr[5] * 16u + 256u;
+        minsize = lo > 0xFFFF0u ? 0xFFFF : (uint16_t)((lo >> 4) + ((lo & 15) ? 1 : 0));
+        if (hdr[6]) {
+            uint32_t hi = image + (uint32_t)hdr[6] * 16u + 256u;
+            maxsize = hi > 0xFFFF0u ? 0xFFFF : (uint16_t)((hi >> 4) + ((hi & 15) ? 1 : 0));
+        } else {
+            maxsize = 0xFFFF;
+        }
+    }
+    if (maxfree < minsize) {
+        if (!is_mz && fsz < 0xF800) minsize = (uint16_t)(((fsz + 0x10) >> 4) + 0x20);
+        if (maxfree < minsize) { mem_free(m, env); free(raw); return ERR_NO_MEMORY; }
+    }
+    uint16_t memsize = maxfree < maxsize ? maxfree : maxsize;
     uint16_t psp = 0;
-    if (!dos_alloc(m, want, 0, &psp)) { free(raw); return ERR_NO_MEMORY; }
-    find_block(m, psp)->owner = psp;
-    uint16_t top_seg = (uint16_t)(psp + want);
+    if (!mem_alloc(m, &psp, &memsize)) { mem_free(m, env); free(raw); return ERR_NO_MEMORY; }
     uint16_t load_seg = (uint16_t)(psp + 0x10);
-
-    build_psp(m, psp, top_seg, ep, ret_cs, ret_ip);
+    if (is_mz && hdr[5] == 0 && hdr[6] == 0)
+        load_seg = (uint16_t)((((uint32_t)psp + memsize) * 16u - image) / 16u);
 
     /* Announced before the image is written, so whatever this load
      * replaces is forgotten before its bytes change. */
@@ -818,7 +1025,8 @@ static uint16_t load_program(machine_t *m, const char *name, const exec_params *
                              is_mz ? load_seg : psp, is_mz ? load_seg : psp);
 
     if (is_mz) {
-        guest_write(c, phys(load_seg, 0), raw + hdr_size, body);
+        uint32_t avail = (uint32_t)fsz > hdr_size ? (uint32_t)fsz - hdr_size : 0;
+        guest_write(c, phys(load_seg, 0), raw + hdr_size, avail < image ? avail : image);
         uint16_t nreloc = hdr[3], reloc_off = hdr[12];
         for (unsigned i = 0; i < nreloc; i++) {
             uint16_t ro, rs;
@@ -827,30 +1035,64 @@ static uint16_t load_program(machine_t *m, const char *name, const exec_params *
             uint16_t s = (uint16_t)(load_seg + rs);
             seg_write16(c, s, ro, (uint16_t)(seg_read16(c, s, ro) + load_seg));
         }
+    } else {
+        guest_write(c, phys(psp, 0x100), raw, (size_t)(fsz < 0xFEFF ? fsz : 0xFEFF));
+    }
+
+    /* The PSP and both blocks' owner; INT 22h at the caller's return. */
+    mcb_set_owner(m, (uint16_t)(psp - 1), psp);
+    mcb_set_owner(m, (uint16_t)(env - 1), psp);
+    psp_make(m, psp, memsize, ep->parent_psp, env);
+    if (ep->cmd_seg || ep->cmd_off) {
+        for (int i = 0; i < 128; i++)
+            mem_write8(c, phys(psp, (uint16_t)(0x80 + i)), mem_read8(c, phys(ep->cmd_seg, (uint16_t)(ep->cmd_off + i))));
+    } else {
+        mem_write8(c, phys(psp, 0x80), 0);
+        mem_write8(c, phys(psp, 0x81), 0x0D);
+    }
+    mem_write16(c, 0x22 * 4, ret_ip);
+    mem_write16(c, 0x22 * 4 + 2, ret_cs);
+    for (int v = 0; v < 3; v++) {
+        mem_write16(c, phys(psp, (uint16_t)(0x0A + 4 * v)), mem_read16(c, (uint32_t)(0x22 + v) * 4));
+        mem_write16(c, phys(psp, (uint16_t)(0x0C + 4 * v)), mem_read16(c, (uint32_t)(0x22 + v) * 4 + 2));
+    }
+    if (ep->fcb1_seg || ep->fcb1_off)
+        for (int i = 0; i < 16; i++)
+            mem_write8(c, phys(psp, (uint16_t)(0x5C + i)), mem_read8(c, phys(ep->fcb1_seg, (uint16_t)(ep->fcb1_off + i))));
+    if (ep->fcb2_seg || ep->fcb2_off)
+        for (int i = 0; i < 16; i++)
+            mem_write8(c, phys(psp, (uint16_t)(0x6C + i)), mem_read8(c, phys(ep->fcb2_seg, (uint16_t)(ep->fcb2_off + i))));
+    m->dta = phys(psp, 0x80);
+    uint8_t nm[8];
+    mcb_program_name(name, nm);
+    mcb_set_name(m, (uint16_t)(psp - 1), nm);
+
+    if (is_mz) {
         c->seg[S_SS] = (uint16_t)(load_seg + hdr[7]);
         c->r[R_SP]   = hdr[8];
         c->seg[S_CS] = (uint16_t)(load_seg + hdr[11]);
         c->ip        = hdr[10];
     } else {
-        /* COM: image at PSP:0100, all segments equal, a zero word pushed
-         * for the RET-to-PSP convention. */
-        guest_write(c, phys(psp, 0x100), raw, body);
         c->seg[S_SS] = psp;
         c->r[R_SP]   = 0xFFFE;
         seg_write16(c, psp, 0xFFFE, 0);
         c->seg[S_CS] = psp;
         c->ip        = 0x100;
     }
-
+    /* DOSBox's registers at entry; the caller's flags keep only what is
+     * not an arithmetic flag, with interrupts on and no trap. */
     c->seg[S_DS] = c->seg[S_ES] = psp;
-    c->r[R_AX] = 0;
-    c->r[R_BX] = c->r[R_CX] = c->r[R_DX] = 0;
-    c->r[R_SI] = c->r[R_DI] = c->r[R_BP] = 0;
-    c->flags = (uint16_t)(cpu_flags_fixed(c) | F_IF);
+    c->r[R_AX] = c->r[R_BX] = 0;
+    c->r[R_CX] = 0x00FF;
+    c->r[R_DX] = psp;
+    c->r[R_SI] = c->ip;
+    c->r[R_DI] = c->r[R_SP];
+    c->r[R_BP] = 0x091C;
+    c->flags = (uint16_t)((ep->flags & (uint16_t)(F_DF)) | cpu_flags_fixed(c) | F_IF);
     cpu_irq_state_changed(c);
 
-    dos_log(m, "[exec] %-14s %s  psp=%04X load=%04X..%04X (%u paras)  entry %04X:%04X @%llu\n",
-            name, is_mz ? "MZ " : "COM", psp, load_seg, top_seg, want,
+    dos_log(m, "[exec] %-14s %s  psp=%04X env=%04X load=%04X..%04X (%u paras)  entry %04X:%04X @%llu\n",
+            name, is_mz ? "MZ " : "COM", psp, env, load_seg, (unsigned)(psp + memsize), memsize,
             c->seg[S_CS], c->ip, (unsigned long long)c->icount);
     free(raw);
     *psp_out = psp;
@@ -904,11 +1146,19 @@ static int terminate(machine_t *m, uint8_t code)
 {
     cpu_t *c = &m->cpu;
     uint16_t psp = current_psp(m);
+    /* The process's handles: its own files close; inherited entries drop
+     * their reference (DOSBox DOS_PSP::CloseFiles). */
     close_files_of(m, psp);
-    free_blocks_of(m, psp);
+    for (int i = 0; i < 20 && psp; i++) {
+        uint8_t h = mem_read8(c, phys(psp, (uint16_t)(0x18 + i)));
+        if (h != 0xFF) { sft_release(m, h); mem_write8(c, phys(psp, (uint16_t)(0x18 + i)), 0xFF); }
+    }
+    m->last_child_exit = code;
+    m->return_mode = 0;
 
     if (m->nproc <= 1) {
         dos_log(m, "[exit] %s terminated with code %d (root)\n", dos_current_program(m), code);
+        mem_free_process(m, psp);
         m->exited = 1;
         m->exit_code = code;
         c->stop_at = 0;
@@ -918,17 +1168,24 @@ static int terminate(machine_t *m, uint8_t code)
     dos_proc *p = &m->procs[m->nproc - 1];
     dos_log(m, "[exit] %s terminated with code %d -> back to %s @%llu\n",
             p->name, code, m->procs[m->nproc - 2].name, (unsigned long long)c->icount);
-    m->last_child_exit = code;
 
-    /* Resume the parent where its INT 21h left off. DOS guarantees only
-     * CS:IP; restoring the rest is harmless, as the oracle found. */
+    /* DOSBox's DOS_Terminate: the return address from the PSP's INT 22h
+     * entry, the vectors 22h-24h put back as the PSP saved them, the
+     * parent's registers exactly as they were at its EXEC call, and the
+     * flags DOSBox writes (7202h: on this 286, 0202h), then the process's
+     * memory freed. */
+    const uint16_t ret_ip = mem_read16(c, phys(psp, 0x0A)), ret_cs = mem_read16(c, phys(psp, 0x0C));
+    for (int v = 0; v < 3; v++) {
+        mem_write16(c, (uint32_t)(0x22 + v) * 4, mem_read16(c, phys(psp, (uint16_t)(0x0A + 4 * v))));
+        mem_write16(c, (uint32_t)(0x22 + v) * 4 + 2, mem_read16(c, phys(psp, (uint16_t)(0x0C + 4 * v))));
+    }
     memcpy(c->r, p->r, sizeof(c->r));
     memcpy(c->seg, p->seg, sizeof(c->seg));
-    c->seg[S_CS] = p->ret_cs;
-    c->ip = p->ret_ip;
-    c->flags = (uint16_t)((p->flags | F_IF) & (uint16_t)(0xFFFFu ^ F_CF));
-    c->r[R_AX] = 0;
+    c->seg[S_CS] = ret_cs;
+    c->ip = ret_ip;
+    c->flags = (uint16_t)(cpu_flags_fixed(c) | F_IF);
     m->nproc--;
+    mem_free_process(m, psp);
     cpu_irq_state_changed(c);
     return 1;
 }
@@ -962,6 +1219,14 @@ static int int21(machine_t *m)
     uint8_t ah = (uint8_t)(c->r[R_AX] >> 8);
     uint8_t al = (uint8_t)(c->r[R_AX] & 0xFF);
     uint16_t me = current_psp(m);
+
+    /* DOSBox records the caller's stack in the current PSP on every call
+     * but the PSP ones: SS:SP inside its handler (past the 6-byte
+     * interrupt frame) less the 18 bytes its EXEC would save. */
+    if (me && ah != 0x50 && ah != 0x51 && ah != 0x62 && ah != 0x64 && ah < 0x6C) {
+        mem_write16(c, phys(me, 0x2E), (uint16_t)(c->r[R_SP] - 24));
+        mem_write16(c, phys(me, 0x30), c->seg[S_SS]);
+    }
 
     switch (ah) {
 
@@ -1011,8 +1276,7 @@ static int int21(machine_t *m)
             buf[n++] = (char)ch;
         }
         console_text(m, buf, (size_t)n);
-        c->r[R_AX] = (uint16_t)((c->r[R_AX] & 0xFF00) | '$');
-        return 1;
+        return 1;                           /* AL unchanged, as in DOSBox */
     }
 
     case 0x0B: {   /* stdin status: FF if a key is waiting */
@@ -1040,9 +1304,57 @@ static int int21(machine_t *m)
         c->r[R_AX] = (uint16_t)((c->r[R_AX] & 0xFF00) | 3);
         return 1;
 
-    case 0x11: case 0x12:   /* FCB find: nothing */
-        c->r[R_AX] = (uint16_t)((c->r[R_AX] & 0xFF00) | 0xFF);
+    case 0x11: case 0x12: { /* FCB find first / next (DOSBox DOS_FCBFindFirst, SaveFindResult) */
+        const uint16_t fs = c->seg[S_DS], fx = c->r[R_DX];
+        const int ext = mem_read8(c, phys(fs, fx)) == 0xFF;
+        const uint16_t fo = (uint16_t)(fx + (ext ? 7 : 0));
+        const uint8_t attr = ext ? mem_read8(c, phys(fs, (uint16_t)(fx + 6))) : 0x20;
+        char nm[12];
+        for (int i = 0; i < 11; i++) nm[i] = (char)mem_read8(c, phys(fs, (uint16_t)(fo + 1 + i)));
+        nm[11] = 0;
+        const char *rname = NULL;
+        long rsize = 0;
+        uint8_t rattr = 0x20;
+        if (ah == 0x11 && attr == 0x08) {
+            /* The volume label: a mounted directory is "C_DRIVE" in DOSBox. */
+            rname = "C_DRIVE"; rattr = 0x08;
+            g_find_n = g_find_pos = 0;
+        } else {
+            if (ah == 0x11) {
+                char pat[13]; int k = 0;
+                for (int i = 0; i < 8 && nm[i] != ' '; i++) pat[k++] = nm[i];
+                if (nm[8] != ' ') { pat[k++] = '.'; for (int i = 8; i < 11 && nm[i] != ' '; i++) pat[k++] = nm[i]; }
+                pat[k] = 0;
+                find_first(m, pat);
+            }
+            if (g_find_pos < g_find_n) { rname = g_find[g_find_pos].name; rsize = g_find[g_find_pos].size; g_find_pos++; }
+        }
+        dos_log(m, "[fcb] find %s '%s' attr %02X -> %s, from %s at %04X:%04X\n", ah == 0x11 ? "first" : "next",
+                nm, attr, rname ? rname : "nothing", dos_current_program(m), c->op_cs, c->op_ip);
+        if (!rname) { c->r[R_AX] = (uint16_t)((c->r[R_AX] & 0xFF00) | 0xFF); return 1; }
+        /* The result, as an FCB at the DTA: drive (C: is 3), name and
+         * extension space-padded, size, date, time; the extended header and
+         * attribute when the search FCB was extended. */
+        const uint32_t d = m->dta;
+        for (uint32_t i = 0; i < (ext ? 40u : 33u); i++) mem_write8(c, d + i, 0);
+        const uint32_t p = ext ? d + 7 : d;
+        if (ext) { mem_write8(c, d, 0xFF); mem_write8(c, d + 6, rattr); }
+        uint8_t drv = mem_read8(c, phys(fs, fo));
+        mem_write8(c, p, (uint8_t)(drv ? drv : 3));
+        const char *dot = strchr(rname, '.');
+        const size_t bl = dot ? (size_t)(dot - rname) : strlen(rname);
+        for (size_t i = 0; i < 8; i++) mem_write8(c, p + 1 + (uint32_t)i, (uint8_t)(i < bl ? rname[i] : ' '));
+        for (size_t i = 0; i < 3; i++)
+            mem_write8(c, p + 9 + (uint32_t)i, (uint8_t)(dot && i < strlen(dot + 1) ? dot[1 + i] : ' '));
+        mem_write16(c, p + 16, (uint16_t)(rsize & 0xFFFF));
+        mem_write16(c, p + 18, (uint16_t)((rsize >> 16) & 0xFFFF));
+        if (rattr != 0x08) {
+            mem_write16(c, p + 20, (uint16_t)(((1992 - 1980) << 9) | (6 << 5) | 5));
+            mem_write16(c, p + 22, 0x6000);
+        }
+        c->r[R_AX] = (uint16_t)(c->r[R_AX] & 0xFF00);
         return 1;
+    }
 
     case 0x19:     /* current drive: C */
         c->r[R_AX] = (uint16_t)((c->r[R_AX] & 0xFF00) | 2);
@@ -1077,8 +1389,13 @@ static int int21(machine_t *m)
         return 1;
     }
 
-    case 0x2B: case 0x2D:   /* set date / time: accepted, ignored */
+    case 0x2B:     /* set date: accepted, ignored */
         c->r[R_AX] = (uint16_t)(c->r[R_AX] & 0xFF00);
+        return 1;
+    case 0x2D:     /* set time: checked, then ignored (DOSBox) */
+        c->r[R_AX] = (uint16_t)((c->r[R_AX] & 0xFF00) |
+            ((c->r[R_CX] >> 8) > 23 || (c->r[R_CX] & 0xFF) > 59 ||
+             (c->r[R_DX] >> 8) > 59 || (c->r[R_DX] & 0xFF) > 99 ? 0xFF : 0x00));
         return 1;
 
     case 0x2F:     /* get DTA */
@@ -1086,14 +1403,24 @@ static int int21(machine_t *m)
         c->r[R_BX] = (uint16_t)(m->dta & 0xF);
         return 1;
 
-    case 0x30:     /* DOS version: 5.00 */
+    case 0x30:     /* DOS 5.00: BH the OEM for AL=0, DOS-in-HMA for AL=1, else kept; BL 0 (DOSBox) */
+        if (al == 0) c->r[R_BX] = 0xFF00;
+        else if (al == 1) c->r[R_BX] = 0x1000;
+        else c->r[R_BX] &= 0xFF00;
         c->r[R_AX] = 0x0005;
-        c->r[R_BX] = 0;
         c->r[R_CX] = 0;
         return 1;
 
-    case 0x33:     /* Ctrl-Break flag */
-        c->r[R_DX] = (uint16_t)(c->r[R_DX] & 0xFF00);
+    case 0x33:     /* break checking, boot drive, true version (DOSBox) */
+        switch (al) {
+        case 0: c->r[R_DX] = (uint16_t)((c->r[R_DX] & 0xFF00) | m->break_check); break;
+        case 1: m->break_check = (c->r[R_DX] & 0xFF) != 0; break;
+        case 2: { uint8_t old = m->break_check; m->break_check = (c->r[R_DX] & 0xFF) != 0;
+                  c->r[R_DX] = (uint16_t)((c->r[R_DX] & 0xFF00) | old); break; }
+        case 5: c->r[R_DX] = (uint16_t)((c->r[R_DX] & 0xFF00) | 3); break;
+        case 6: c->r[R_BX] = 0x0005; c->r[R_DX] = 0x1000; break;
+        default: break;
+        }
         return 1;
 
     case 0x35: {   /* get interrupt vector */
@@ -1135,6 +1462,8 @@ static int int21(machine_t *m)
         m->files[h].in_use = 1;
         m->files[h].is_device = 0;
         m->files[h].owner = me;
+        m->files[h].sft = sft_alloc(m);
+        jft_set(m, me, (unsigned)h, m->files[h].sft);
         snprintf(m->files[h].path, sizeof(m->files[h].path), "%s", hp);
         dos_log(m, "[file] %s '%s' -> %d @%llu %s\n", ah == 0x3C ? "create" : "open",
                 dp, h, (unsigned long long)c->icount, dos_current_program(m));
@@ -1147,9 +1476,7 @@ static int int21(machine_t *m)
         uint16_t h = c->r[R_BX];
         if (h < 5) { ok(c); return 1; }
         if (h >= DOS_MAX_FILES || !m->files[h].in_use) { fail(c, ERR_BAD_HANDLE); return 1; }
-        fclose(m->files[h].fp);
-        m->files[h].in_use = 0;
-        m->files[h].fp = NULL;
+        close_handle(m, h);
         ok(c);
         return 1;
     }
@@ -1233,15 +1560,20 @@ static int int21(machine_t *m)
         FILE *f = open_read(m, dos_basename(dp), NULL, 0);
         if (!f) { fail(c, ERR_FILE_NOT_FOUND); return 1; }
         fclose(f);
-        if (al == 0) c->r[R_CX] = 0x20;   /* archive */
+        if (al == 0) c->r[R_CX] = c->r[R_AX] = 0x20;   /* archive; AX too (DOSBox) */
+        else c->r[R_AX] = 0x0202;                      /* set: AX destroyed (DOSBox) */
         ok(c);
         return 1;
     }
 
     case 0x44:     /* ioctl */
         if (al == 0) {
+            /* DOSBox: the console's device word for the standard handles, a
+             * disk file's drive (C:) for the rest; AX gets the same. */
             uint16_t h = c->r[R_BX];
-            c->r[R_DX] = (h < 5) ? 0x0080 : 0x0002;   /* bit 7: character device */
+            if (h >= DOS_MAX_FILES || !m->files[h].in_use) { fail(c, ERR_BAD_HANDLE); return 1; }
+            c->r[R_DX] = m->files[h].is_device ? 0x80D3 : 0x0002;
+            c->r[R_AX] = c->r[R_DX];
         } else if (al == 8) {
             c->r[R_AX] = 1;                         /* fixed disk */
         }
@@ -1254,9 +1586,9 @@ static int int21(machine_t *m)
         return 1;
 
     case 0x48: {   /* allocate memory */
-        uint16_t seg = 0;
-        if (!dos_alloc(m, c->r[R_BX], me, &seg)) {
-            c->r[R_BX] = arena_avail(m);
+        uint16_t seg = 0, paras = c->r[R_BX];
+        if (!mem_alloc(m, &seg, &paras)) {
+            c->r[R_BX] = paras;
             fail(c, ERR_NO_MEMORY);
             return 1;
         }
@@ -1266,22 +1598,21 @@ static int int21(machine_t *m)
     }
 
     case 0x49: {   /* free memory */
-        dos_block *b = find_block(m, c->seg[S_ES]);
-        if (b) b->in_use = 0;
+        uint16_t e = mem_free(m, c->seg[S_ES]);
+        if (e) { fail(c, e); return 1; }
         ok(c);
         return 1;
     }
 
-    case 0x4A: {   /* resize a memory block */
-        dos_block *b = find_block(m, c->seg[S_ES]);
-        if (!b) { fail(c, ERR_BAD_FUNCTION); return 1; }
-        uint16_t want = c->r[R_BX], mx = block_max_paras(m, b);
-        if (want > mx) {
-            c->r[R_BX] = mx;
-            fail(c, ERR_NO_MEMORY);
+    case 0x4A: {   /* resize a memory block: AX = ES on success (DOSBox) */
+        uint16_t paras = c->r[R_BX];
+        uint16_t e = mem_resize(m, c->seg[S_ES], &paras);
+        if (e) {
+            if (e == ERR_NO_MEMORY) c->r[R_BX] = paras;
+            fail(c, e);
             return 1;
         }
-        b->paras = want;
+        c->r[R_AX] = c->seg[S_ES];
         ok(c);
         return 1;
     }
@@ -1296,8 +1627,7 @@ static int int21(machine_t *m)
             uint16_t fac  = seg_read16(c, pb_seg, (uint16_t)(pb + 2));
             uint16_t err = load_overlay(m, dp, lseg, fac);
             if (err) { dos_log(m, "[overlay] %s FAILED (%u)\n", dp, err); fail(c, err); return 1; }
-            c->r[R_AX] = 0;
-            ok(c);
+            ok(c);                                  /* AX unchanged, as in DOSBox */
             return 1;
         }
         if (al != 0x00) { fail(c, ERR_BAD_FUNCTION); return 1; }
@@ -1306,7 +1636,8 @@ static int int21(machine_t *m)
         exec_params ep;
         memset(&ep, 0, sizeof(ep));
         ep.env_seg  = seg_read16(c, pb_seg, pb);
-        if (!ep.env_seg) ep.env_seg = m->env_seg;
+        ep.parent_env = me ? mem_read16(c, phys(me, 0x2C)) : 0;
+        ep.flags = c->flags;
         ep.cmd_off  = seg_read16(c, pb_seg, (uint16_t)(pb + 2));
         ep.cmd_seg  = seg_read16(c, pb_seg, (uint16_t)(pb + 4));
         ep.fcb1_off = seg_read16(c, pb_seg, (uint16_t)(pb + 6));
@@ -1328,7 +1659,11 @@ static int int21(machine_t *m)
         for (char *p = np->name; *p; p++) *p = (char)toupper((unsigned char)*p);
 
         uint16_t psp = 0;
-        m->nproc++;                       /* so the load is attributed to the child */
+        /* The parent stays the current PSP while the child loads, as in
+         * DOSBox: the environment and program blocks are allocated by it,
+         * then given to the child. */
+        np->psp_seg = me;
+        m->nproc++;
         uint16_t err = load_program(m, dp, &ep, np->ret_cs, np->ret_ip, &psp);
         if (err) {
             m->nproc--;
@@ -1344,9 +1679,8 @@ static int int21(machine_t *m)
     case 0x4C:     /* terminate with code */
         return terminate(m, al);
 
-    case 0x4D:     /* child's exit code */
-        c->r[R_AX] = m->last_child_exit;
-        ok(c);
+    case 0x4D:     /* child's exit code and how it ended (flags untouched, as in DOSBox) */
+        c->r[R_AX] = (uint16_t)(((uint16_t)m->return_mode << 8) | m->last_child_exit);
         return 1;
 
     case 0x4E: {   /* find first */
@@ -1365,6 +1699,11 @@ static int int21(machine_t *m)
     case 0x50:     /* set PSP */
         if (m->nproc) m->procs[m->nproc - 1].psp_seg = c->r[R_BX];
         return 1;
+    case 0x52:     /* list of lists: DOSBox's, at 0080:0026; the first MCB before it */
+        c->seg[S_ES] = 0x0080;
+        c->r[R_BX] = 0x0026;
+        return 1;
+
     case 0x51: case 0x62:   /* get PSP */
         c->r[R_BX] = me;
         return 1;
@@ -1505,7 +1844,7 @@ static int int10(machine_t *m)
         break;
     case 0x1A:                               /* display combination: VGA colour */
         if (al == 0) {
-            c->r[R_AX] = (uint16_t)((c->r[R_AX] & 0xFF00) | 0x1A);
+            c->r[R_AX] = 0x001A;                 /* AH cleared, as DOSBox returns it */
             c->r[R_BX] = 0x0008;
         }
         break;
@@ -1649,25 +1988,26 @@ static int int33(machine_t *m)
         return 1;
     }
     switch (fn) {
-    case 0x0000: case 0x0021:                 /* reset: present, two buttons */
+    case 0x0000: case 0x0021:                 /* reset: present, three buttons (DOSBox) */
         mouse_reset(m);
         c->r[R_AX] = 0xFFFF;
-        c->r[R_BX] = 2;
+        c->r[R_BX] = 3;
         break;
     case 0x0001: if (m->mouse_hidden > 0) m->mouse_hidden--; break;
     case 0x0002: m->mouse_hidden++; break;
     case 0x0003:
         c->r[R_BX] = (uint16_t)m->mouse_buttons;
-        c->r[R_CX] = (uint16_t)m->mouse_x;
+        c->r[R_CX] = (uint16_t)mouse_gran_x(m, m->mouse_x);
         c->r[R_DX] = (uint16_t)m->mouse_y;
         break;
-    case 0x0004: {
+    case 0x0004: {                            /* DOSBox: clamp; keep a position equal to the rounded one */
         int x = (int16_t)c->r[R_CX], y = (int16_t)c->r[R_DX];
-        if (x < m->mouse_xmin) x = m->mouse_xmin;
-        if (x > m->mouse_xmax) x = m->mouse_xmax;
-        if (y < m->mouse_ymin) y = m->mouse_ymin;
-        if (y > m->mouse_ymax) y = m->mouse_ymax;
-        m->mouse_x = x; m->mouse_y = y;
+        if (x >= m->mouse_xmax) m->mouse_x = m->mouse_xmax;
+        else if (m->mouse_xmin >= x) m->mouse_x = m->mouse_xmin;
+        else if (x != mouse_gran_x(m, m->mouse_x)) m->mouse_x = x;
+        if (y >= m->mouse_ymax) m->mouse_y = m->mouse_ymax;
+        else if (m->mouse_ymin >= y) m->mouse_y = m->mouse_ymin;
+        else if (y != m->mouse_y) m->mouse_y = y;
         break;
     }
     case 0x0005: case 0x0006: {               /* press / release data */
@@ -1739,6 +2079,7 @@ static const uint8_t SERVICES[] = { 0x10, 0x16, 0x1A, 0x21, 0x33 };
 
 static int service(machine_t *m, uint8_t vec)
 {
+    machine_inventory_service(vec, m->cpu.r[R_AX]);
     switch (vec) {
     case 0x21: return int21(m);
     case 0x10: return int10(m);
@@ -1775,6 +2116,8 @@ int dos_int_hook(cpu_t *c, uint8_t vec)
             return r;
         }
     }
+    if (vec == 0x11 || vec == 0x12 || vec == 0x15 || vec == 0x20)
+        machine_inventory_service(vec, c->r[R_AX]);
     switch (vec) {
     case 0xF8: {                              /* the BIOS INT 8 stub's tick step */
         uint32_t t = mem_read16(c, BDA_TICKS) | ((uint32_t)mem_read16(c, BDA_TICKS + 2) << 16);
@@ -1807,25 +2150,42 @@ int dos_int_hook(cpu_t *c, uint8_t vec)
 static void init_bios_data_area(machine_t *m)
 {
     cpu_t *c = &m->cpu;
-    mem_write16(c, BDA_EQUIPMENT, 0x0026);       /* mouse port, 80x25 colour, no floppy maths */
+    /* As GOG's DOSBox has it when the game starts (measured: tools/
+     * fidelity.py): two serial ports and a printer port, the equipment word
+     * that says so (with a game port, 80x25 colour, a coprocessor and a
+     * mouse), NumLock off, a 4 KB text page, the CGA mode bytes, two hard
+     * disks, the printer and serial timeouts, the VGA's display combination
+     * index and the video save pointer. */
+    mem_write16(c, 0x400, 0x03F8);               /* COM1, COM2 */
+    mem_write16(c, 0x402, 0x02F8);
+    mem_write16(c, 0x408, 0x0378);               /* LPT1 */
+    mem_write16(c, BDA_EQUIPMENT, 0xD426);
     mem_write16(c, BDA_MEM_KB, 640);
     mem_write16(c, BDA_KBD_HEAD, BDA_KBD_BUF - 0x400);
     mem_write16(c, BDA_KBD_TAIL, BDA_KBD_BUF - 0x400);
     mem_write16(c, BDA_KBD_START, BDA_KBD_BUF - 0x400);
     mem_write16(c, BDA_KBD_END, BDA_KBD_BUF_END - 0x400);
-    mem_write8 (c, BDA_SHIFT, 0x20);             /* NumLock on, as a BIOS boots */
+    mem_write8 (c, BDA_SHIFT, 0x00);             /* NumLock off, as DOSBox starts */
     mem_write8 (c, BDA_VIDEO_MODE, 0x03);
     mem_write16(c, BDA_VIDEO_COLS, 80);
-    mem_write16(c, BDA_PAGE_SIZE, 4000);
+    mem_write16(c, BDA_PAGE_SIZE, 0x1000);
     mem_write16(c, BDA_CURSOR_TYPE, 0x0607);
     mem_write16(c, BDA_CRTC_BASE, 0x03D4);
+    mem_write8 (c, 0x465, 0x29);                 /* CGA mode select */
+    mem_write8 (c, 0x466, 0x30);                 /* CGA palette */
+    mem_write8 (c, 0x475, 0x02);                 /* hard disks */
+    mem_write8 (c, 0x478, 0x01); mem_write8(c, 0x479, 0x01); mem_write8(c, 0x47A, 0x01);   /* LPT timeouts */
+    for (uint32_t a = 0x47C; a < 0x480; a++) mem_write8(c, a, 0x01);                       /* COM timeouts */
     mem_write8 (c, BDA_ROWS_M1, 24);
     mem_write16(c, BDA_CHAR_HEIGHT, 16);
     mem_write8 (c, 0x487, 0x60);
     mem_write8 (c, 0x488, 0x09);
     mem_write8 (c, 0x489, 0x51);
-    mem_write8 (c, 0x48A, 0x08);
+    mem_write8 (c, 0x48A, 0x0B);
     mem_write8 (c, BDA_KBD_FLAGS3, 0x10);        /* 101-key keyboard */
+    mem_write8 (c, 0x497, 0x10);
+    mem_write16(c, 0x4A8, 0x2E8F);               /* video save pointer table C000:2E8F */
+    mem_write16(c, 0x4AA, 0xC000);
 
     /* The ROM starts the tick count at the time of day it reads from the
      * real-time clock. */
@@ -1876,32 +2236,72 @@ int dos_boot(machine_t *m, const char *program)
     }
     init_bios_data_area(m);
 
-    /* The master environment. The Microsoft C startup reads it from
-     * PSP:2Ch to build environ and argv[0]; left zero, it parses the vector
-     * table instead and runs off into unmapped memory. */
-    m->env_seg = 0x0080;
+    /* DOS as GOG's DOSBox leaves it when its shell starts the game
+     * (measured: tools/fidelity.py). The shell's PSP is at 0118h, its
+     * environment at 012Bh; INT 23h runs the shell PSP's INT 20h, INT 24h
+     * jumps to the BIOS's default handler (an IRET at F000:1060). The
+     * memory chain starts at 016Fh: a DOS block, a free hole of four
+     * paragraphs, a block DOSBox keeps for itself, then everything else up
+     * to 9FFFh, where a system block covers the way to the upper memory
+     * block at D000h. The game is then EXEC'd from the shell, so its
+     * environment, PSP and memory come out where DOSBox puts them. */
+    static const uint16_t SHELL_PSP = 0x0118, SHELL_ENV = 0x012B;
+    mem_write8(c, 0xF1060, 0xCF);
     {
-        static const char *vars[] = { "PATH=C:\\", "COMSPEC=C:\\COMMAND.COM" };
-        uint16_t o = 0;
-        for (size_t v = 0; v < sizeof(vars) / sizeof(vars[0]); v++)
-            for (const char *p = vars[v]; ; p++) {
-                mem_write8(c, phys(m->env_seg, o++), (uint8_t)*p);
-                if (!*p) break;
-            }
-        mem_write8(c, phys(m->env_seg, o++), 0);
-        mem_write16(c, phys(m->env_seg, o), 1);
-        o += 2;
-        const char *self_path = "C:\\F117.COM";
-        for (const char *p = self_path; ; p++) {
-            mem_write8(c, phys(m->env_seg, o++), (uint8_t)*p);
-            if (!*p) break;
+        uint8_t *p = &m->mem[(uint32_t)SHELL_PSP * 16u];
+        static const uint8_t head[0x18] = {
+            0xCD, 0x20, 0x18, 0x01, 0x00, 0xEA, 0xFF, 0xFF, 0xAD, 0xDE, 0x60, 0x10,
+            0x00, 0xF0, 0x00, 0x00, 0x18, 0x01, 0x10, 0x01, 0x18, 0x01, 0x18, 0x01 };
+        for (int i = 0; i < 0x18; i++) mem_write8(c, (uint32_t)SHELL_PSP * 16u + (uint32_t)i, head[i]);
+        static const uint8_t jft[5] = { 1, 1, 1, 0, 2 };
+        for (int i = 0; i < 20; i++) mem_write8(c, phys(SHELL_PSP, (uint16_t)(0x18 + i)), (uint8_t)(i < 5 ? jft[i] : 0xFF));
+        mem_write16(c, phys(SHELL_PSP, 0x2C), SHELL_ENV);
+        mem_write16(c, phys(SHELL_PSP, 0x32), 20);
+        mem_write16(c, phys(SHELL_PSP, 0x34), 0x18);
+        mem_write16(c, phys(SHELL_PSP, 0x36), SHELL_PSP);
+        mem_write16(c, phys(SHELL_PSP, 0x38), 0xFFFF);
+        mem_write16(c, phys(SHELL_PSP, 0x3A), 0xFFFF);
+        mem_write16(c, phys(SHELL_PSP, 0x40), 0x0005);
+        mem_write8(c, phys(SHELL_PSP, 0x50), 0xCD); mem_write8(c, phys(SHELL_PSP, 0x51), 0x21); mem_write8(c, phys(SHELL_PSP, 0x52), 0xCB);
+        for (int f = 0; f < 2; f++)
+            for (int i = 1; i <= 11; i++) mem_write8(c, phys(SHELL_PSP, (uint16_t)(0x5C + 16 * f + i)), ' ');
+        static const char tail[] = "\x12/INIT AUTOEXEC.BAT";
+        for (int i = 0; tail[i]; i++) mem_write8(c, phys(SHELL_PSP, (uint16_t)(0x80 + i)), (uint8_t)tail[i]);
+        static const uint8_t int24[5] = { 0xEA, 0x60, 0x10, 0x00, 0xF0 };      /* jmp far F000:1060 */
+        for (int i = 0; i < 5; i++) mem_write8(c, phys(SHELL_PSP, (uint16_t)(0x110 + i)), int24[i]);
+        (void)p;
+        /* The shell's environment and the block it lives in. */
+        mem_write8(c, phys(0x012A, 0), 'M'); mem_write16(c, phys(0x012A, 1), SHELL_PSP); mem_write16(c, phys(0x012A, 3), 0x44);
+        static const char env[] = "PATH=Z:\\\0COMSPEC=Z:\\COMMAND.COM\0\0\x01\0Z:\\COMMAND.COM";
+        for (size_t i = 0; i < sizeof env; i++) mem_write8(c, phys(SHELL_ENV, (uint16_t)i), (uint8_t)env[i]);
+        m->env_seg = SHELL_ENV;
+        mem_write16(c, 0x23 * 4, 0x0000); mem_write16(c, 0x23 * 4 + 2, SHELL_PSP);
+        mem_write16(c, 0x24 * 4, 0x0110); mem_write16(c, 0x24 * 4 + 2, SHELL_PSP);
+    }
+    m->first_mcb = 0x016F;
+    mem_write16(c, phys(0x0080, 0x0024), m->first_mcb);       /* the list of lists' first MCB */
+    {
+        struct { uint16_t seg; uint8_t type; uint16_t owner, size; const char *name; } chain[] = {
+            { 0x016F, 'M', 0x0008, 0x0001, NULL },
+            { 0x0171, 'M', 0x0000, 0x0004, NULL },
+            { 0x0176, 'M', 0x0040, 0x0010, NULL },
+            { 0x0187, 'Z', 0x0000, 0x9E77, NULL },
+            { 0x9FFF, 'M', 0x0008, 0x3000, "SC      " },
+            { 0xD000, 'Z', 0x0000, 0x0FFF, NULL },
+        };
+        for (size_t k = 0; k < sizeof chain / sizeof chain[0]; k++) {
+            mcb_set_type(m, chain[k].seg, chain[k].type);
+            mcb_set_owner(m, chain[k].seg, chain[k].owner);
+            mcb_set_size(m, chain[k].seg, chain[k].size);
+            if (chain[k].name) mcb_set_name(m, chain[k].seg, (const uint8_t *)chain[k].name);
         }
     }
+    m->sft_ref[0] = 1; m->sft_ref[1] = 3; m->sft_ref[2] = 1;      /* AUX, CON, PRN in the shell */
 
-    m->arena_base_seg = 0x0100;
-    m->arena_end_seg  = 0x9FFF;
     m->files[0].in_use = m->files[1].in_use = m->files[2].in_use = 1;
     m->files[0].is_device = m->files[1].is_device = m->files[2].is_device = 1;
+    m->files[3].in_use = m->files[4].in_use = 1;
+    m->files[3].is_device = m->files[4].is_device = 1;
     m->mouse_present = 1;
     memcpy(m->mouse_masks, DEFAULT_MOUSE_MASKS, sizeof m->mouse_masks);
 
@@ -1909,13 +2309,19 @@ int dos_boot(machine_t *m, const char *program)
 
     exec_params ep;
     memset(&ep, 0, sizeof(ep));
-    ep.env_seg = m->env_seg;
+    ep.parent_psp = SHELL_PSP;
+    ep.parent_env = SHELL_ENV;
+    ep.flags = 0x0202;
+    ep.fcb1_seg = ep.fcb2_seg = SHELL_PSP;        /* the shell's parsed (blank) FCBs */
+    ep.fcb1_off = 0x5C;
+    ep.fcb2_off = 0x6C;
     dos_proc *root = &m->procs[0];
     memset(root, 0, sizeof(*root));
     snprintf(root->name, sizeof(root->name), "%s", dos_basename(program));
+    root->psp_seg = SHELL_PSP;                     /* the shell is current while it EXECs */
     m->nproc = 1;
     uint16_t psp = 0;
-    uint16_t err = load_program(m, program, &ep, iret_seg, 0x08, &psp);
+    uint16_t err = load_program(m, program, &ep, 0xF000, 0x20C8, &psp);
     if (err) {
         m->nproc = 0;
         snprintf(m->fault, sizeof m->fault, "cannot load %s from %s (DOS error %u)",
