@@ -1,0 +1,35 @@
+# A scripted session for f117run: one option per line, '#' starts a comment.
+# Boots the game, answers SETUP (no joystick, AdLib), lets the logo and intro
+# play, completes the pilot form, takes the briefing, arms, launches, flies
+# a few seconds and quits with Alt+Q, Y. Inputs only - no game data.
+# The defaults assume the GOG roster (a pilot on the second line).
+--type
+SETUP.EXE+200000:N
+--type
+SETUP.EXE+2000000:2
+# Squadron Bulletin Board: Enter on the highlighted pilot opens the form,
+# then Form Complete, then Exit.
+--type
+START.EXE+30000000:\r
+--click
+START.EXE+120000000:258,182
+--click
+START.EXE+200000000:283,172
+# Home: the briefing door; Select Weapons; Go to Hangar; Yes.
+--click
+START.EXE+400000000:280,60
+--click
+START.EXE+700000000:272,134
+--click
+START.EXE+900000000:271,148
+--click
+START.EXE+1100000000:225,191
+# In flight: quit the mission.
+--type
+VGAME.EXE+300000000:\aq
+--type
+VGAME.EXE+400000000:y
+--steps
+5000000000
+--time-us
+700000000000000

@@ -1,0 +1,236 @@
+# Architecture
+
+How the recompilation is built, and why it can claim 1:1 parity with the
+original DOS game. Written for contributors: people extending the recompiler
+or the runtime, or checking a parity claim.
+
+## The idea in one paragraph
+
+The original game is several small real-mode DOS programs (F117.COM, SETUP,
+MPS_LOGO, PLAYER, DSWAP, START, VGAME, END) plus overlays and drivers
+(MGRAPHIC, MISC, the `.117` and `.LOG` sound drivers). The recompiler
+translates their machine code, instruction by instruction, into C. The
+result runs on an emulated PC: memory, DOS, the BIOS and the devices the
+game touches. Every translated instruction calls the same semantic helpers
+as a reference interpreter that is validated against real silicon, stops for
+interrupts at the same instruction boundaries, and is checked against that
+interpreter on whole play sessions. Anything not translated, or whose bytes
+no longer match what was translated, is interpreted. Correctness never
+depends on how much was translated; only speed does.
+
+## Components
+
+```
+src/cpu/        the CPU: state, the interpreter (cpu.c), the shared semantics (x86_sem.h)
+src/machine/    the PC: DOS and BIOS (dos.c), devices and the run loop (pc.c)
+src/recomp/     the recompiled code's run-time (recomp.c) and the generated-code contract
+src/host/       the window, audio and input (main.c), the headless runner (headless.c),
+                presentation (present.c)
+recompiler/     the translator: decoder, code discovery, C emitter (Python)
+tools/          the pipeline (build_recomp.py), the unpacker, routes, font generation
+tests/          the silicon-vector harnesses, for the interpreter and for generated code
+third_party/    Nuked OPL3 (LGPL-2.1)
+```
+
+## The CPU and its two engines
+
+`src/cpu/cpu.c` is the Reimp project's oracle interpreter (see
+[provenance.md](provenance.md)), an 8086/80186/80286 real-mode core
+validated against the SingleStepTests vectors. Its instruction semantics -
+the ALU and its flags, shifts, multiply and divide, BCD, string steps,
+stack-frame instructions, flag transfers - live in `src/cpu/x86_sem.h`, and
+`cpu_step` is now only the decoder that calls them.
+
+The recompiled code calls the same functions. A translated `adc
+[bx+si+12h], ax` is `alu_op(c, 2, seg_read16(c, ds, bx+si+0x12), ax, 1)` -
+the call `cpu_step` makes for those bytes - so the two engines cannot differ
+in an instruction's arithmetic or its flags.
+
+The machine is a 286, as in the Reimp's oracle (VGAME and MPS_LOGO are
+compiled with 80186 instructions).
+
+### What a translated instruction looks like
+
+```c
+L_1234: CHECK(0x1234);          /* event due? stop here; else note op_ip */
+        { const uint16_t s_ = c->seg[S_DS]; const uint16_t o_ = (uint16_t)(c->r[R_BX] + 0x12);
+          const uint16_t r_ = (uint16_t)alu_op(c, 0, seg_read16(c, s_, o_), c->r[R_AX], 1);
+          seg_write16(c, s_, o_, (uint16_t)(r_)); }
+        IC(); goto L_1238;      /* retire, continue */
+```
+
+It is the interpreter's loop unrolled: look at events before the
+instruction, execute it, count it. Every instruction has a label, so
+execution can resume anywhere - after an interrupt, after a far return,
+after the interpreter ran something.
+
+## Time
+
+The machine's only clock is `cpu.icount`. Each instruction costs one, each
+port access costs extra (below), and `ips` of them make an emulated second.
+Every device reads time from it: the PIT's counters and interrupts, the VGA
+retrace bit, the OPL's timers, the joystick one-shots, and the audio the
+host renders. A run is therefore a pure function of the program, its files,
+and the inputs with the clock counts at which they arrived.
+
+- **The default speed is 9,000,000 a second**, GOG DOSBox's `cycles=9000`
+  for this game. The game's behaviour depends on machine speed (bug D1);
+  this is the speed GOG players have, and `--ips` changes it.
+- **ISA I/O delay.** A port read costs `ips/1,000,000` extra clocks and a
+  write `ips/1,333,000`: DOSBox's `IODELAY_READ_MICROS` 1.0 and
+  `IODELAY_WRITE_MICROS` 0.75. Without it the logo's AdLib driver fails its
+  card detection, which polls the status port 200 times expecting an
+  80-microsecond timer to expire.
+- **Events.** Before every instruction both engines compare `icount` with
+  `cpu.stop_at`. At or past it they return to `machine_run`, which raises
+  due interrupts (PIT edges, keyboard bytes, input), delivers the
+  highest-priority deliverable one through the 8259 model, and computes the
+  next stop. Anything that could make an interrupt deliverable sooner - STI,
+  POPF, IRET, EOI, an IMR write, a timer reload, reading port 60, a write to
+  translated code - sets `stop_at` to 0 so the next boundary looks. So both
+  engines take every interrupt at the same boundary.
+- **The interrupt shadow.** STI, MOV SS and POP SS hold off interrupts for
+  one instruction, as the CPU does.
+- **Inputs are machine events.** Keys, mouse and stick arrive with a clock
+  count and are applied at that boundary, never "between slices", so a run
+  does not depend on how the host slices it. This is what makes record and
+  replay exact.
+- **Waiting.** HLT, and a BIOS keyboard read with nothing typed, let time
+  pass to the next event; the BIOS wait takes interrupts whatever the
+  caller's IF, as the ROM routine does on its own stack frame.
+
+## The PC
+
+`src/machine/dos.c` began as the Reimp oracle's DOS: the loader, the
+EXEC/overlay/terminate chain that F117.COM drives, the bump allocator and the
+file calls. `src/machine/pc.c` holds the devices. Both were extended from
+"run a scripted capture" to "play":
+
+- A real 8259 (IRR, ISR, IMR, priorities, EOI forms) and all three 8253
+  counters, with counter 2 gated by port 61 (the AdLib driver paces speech on
+  it).
+- A keyboard controller delivering set-1 bytes one at a time, and a BIOS
+  INT 9 translation for a US layout with the shift, lock and E0 states.
+- Blocking INT 16h and DOS console reads; INT 10h text services (SETUP draws
+  with them); INT 1Ah and DOS date and time from the host clock at boot plus
+  emulated time.
+- The VGA: mode 13h (the boot-to-flight port trace showed no planar, CRTC or
+  graphics-controller programming, only the sequencer's screen-off bit), the
+  DAC and the default BIOS palette, the retrace timing, text mode.
+- AdLib timers and status (the synthesis is the host's), the MPU-401 in UART
+  mode, the game port, the speaker.
+- A save directory overlaid on the install: reads look there first, writes
+  go there, and the install is never written.
+- The service vectors (10h, 16h, 1Ah, 21h, 33h) point at stubs, so a program
+  that hooks one and chains to the old vector reaches the service.
+
+### Known differences from a real PC
+
+- **The mouse cursor** is drawn by the host over the presented frame, from
+  the driver's own masks and hot spot, rather than into video memory as a
+  real driver does. A program that read back video memory under the cursor
+  would see a difference; the game hides the cursor while it draws.
+- **The BIOS** is a set of stubs and host routines, not a ROM image. Its
+  interrupt handlers execute a handful of instructions where a real BIOS
+  executes dozens, a small timing difference.
+- **DOS memory layout** follows the Reimp's oracle (programs at 1566 or 18E1
+  depending on the sound driver), not any particular DOS version's.
+- **The OPL** is Nuked OPL3 in OPL2 mode, the most accurate emulator
+  available. DOSBox 0.74 uses DBOPL; small timbre differences against a GOG
+  DOSBox recording are expected.
+
+## The recompiler
+
+`recompiler/recomp.py` turns the user's install into C.
+
+1. **Modules** (`modules.py`). Each code file becomes the image the CPU will
+   execute, before relocation: the unpacked load module of an LZEXE program
+   (recovered by running the program's own decompressor on the validated
+   core and loading it at two segments to find the relocations,
+   `tools/unpack.py`), the load module of a plain MZ overlay, or a .COM. The
+   file's hash identifies it at run time.
+2. **Discovery** (`discover.py`). Regions are closures under near control
+   flow from seeds: declared entries (program entry, the MicroProse overlay
+   descriptor's entry table), call and far-branch targets, Microsoft C
+   switch tables (`jmp cs:[bx+table]`, bounded by the guarding compare), far
+   code pointers in relocated data, MSC prologues inside the code segments,
+   and coverage - instructions the interpreter executed in recorded runs.
+   Every instruction belongs to exactly one region; flow into another
+   region's instruction leaves through the dispatcher.
+3. **Emission** (`emit.py`). One C function per region, mirroring
+   `cpu_step` case for case: operand evaluation order, divide faults
+   (the 286 pushes the faulting IP), REP iterations as separate instruction
+   boundaries, INT hooks that may wait or switch programs, the TF trap after
+   POPF and IRET.
+
+**Operands the loader patches are read at run time.** Relocated words (the
+segment of a far pointer, `mov ax, seg DGROUP`) and the operands of far
+jumps and calls are read from memory when the instruction runs, exactly as
+the CPU fetches them. One translation therefore serves every load address
+(the programs load at different segments depending on the sound driver), and
+the interrupt chains the game patches into its own code (`jmp far 0:0`
+operands written at install) just work.
+
+The output - C derived from the original machine code, plus the original
+image bytes the run-time verifies against - goes to a work directory outside
+the repository.
+
+## The run-time
+
+`src/recomp/recomp.c`.
+
+- **Instances.** Every program and overlay DOS loads is announced before its
+  image is written; the run-time matches it to a module by file hash and
+  registers it at its load segment. A module it has no translation for is
+  registered anyway, so coverage can name it.
+- **Dispatch.** CS:IP inside an instance, an entry for that image offset, a
+  region that expects this CS, and a region whose bytes are verified: then
+  the region runs. Otherwise the interpreter runs one instruction.
+- **Verification.** A region's bytes (minus the run-time-read operands) are
+  compared with memory before it first runs; the verdict holds until a
+  write changes one of them. A bitmap of translated bytes makes every write
+  check one bit; a write that changes a translated byte bumps the instance's
+  generation and makes running code stop at the next boundary.
+
+Data inside code regions costs speed, not correctness: F117.COM keeps
+variables after code that the walk reaches, VGAME patches its far-call thunk
+table in DGROUP at start, and MGRAPHIC uses part of MISC's image as a
+buffer. Those regions verify, get invalidated by the writes, and fall back
+to the interpreter.
+
+## Verification: why "1:1" is a claim with evidence
+
+Four layers, each checkable by anyone with their own copy:
+
+1. **The interpreter against silicon.** `tests/sstest.py` (8088,
+   3,007,000 vectors, 0 failures) and `tests/sst286.py` (80286 real mode,
+   1,429,998 vectors, 0 unexplained; the explained buckets are behaviours the
+   game never exercises, each named).
+2. **The translator against silicon.** `tests/sst_recomp.py` decodes and
+   emits each vector's instruction exactly as game code is translated,
+   compiles it, and runs the vector through the generated function with the
+   same comparisons. At 300 per file: 8088 90,900 of 90,900; 286 94,200 with
+   0 unexplained.
+3. **The two engines on whole sessions.** `f117run` runs the same inputs
+   under `--engine interp` and `--engine recomp` and hashes all of memory and
+   the registers at intervals. The scripted route (boot, SETUP, logo,
+   intro, front end, briefing, arming, takeoff, flight, quit) is identical
+   at every checkpoint. `tools/build_recomp.py` repeats this on every build.
+4. **Replay.** Input logs recorded on one engine replay on the other to the
+   same clock count and the same final state.
+
+What this does not cover: the machine model's fidelity to a 1991 PC (the
+device timings, the BIOS). Both engines run on the same model, so a
+modelling difference from real hardware would not show up as a disagreement
+between them. GOG DOSBox, an independent implementation, is the reference
+for those.
+
+## Where this goes next
+
+- Coverage from more routes and from recorded human play, until the
+  interpreter runs only the decompressor stubs.
+- Code overrides: hand-written C registered for a module address, replacing
+  that address's translation. This is how switchable bug fixes (see
+  [bugs.md](bugs.md)) and the later "matched and named functions" layer
+  will attach.
+- Enhancements on top of parity, never instead of it.
