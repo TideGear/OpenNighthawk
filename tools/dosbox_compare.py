@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """dosbox_compare.py - the game's music, here and in GOG's DOSBox.
 
-    py tools/dosbox_compare.py --data DIR [--seconds 120] [--keep]
+    py tools/dosbox_compare.py --data DIR [--seconds 120]
+    py tools/dosbox_compare.py --reuse WORK_DIR
 
 The fidelity probe (tools/fidelity.py) compares the machines; this compares
 the game running on them. The stretch of the game that needs no input -
@@ -20,6 +21,10 @@ DOSBox's capture (src/hardware/adlib.cpp) records only the registers in its
 table (not the timer counts 02h/03h), only writes that change a register,
 to the millisecond, and starts with a dump of the registers set so far; the
 log from here is filtered the same way before the two are aligned.
+Different writes return exit status 1. A successful overlapping stream does
+not assert that its uncaptured ends or its synthesis match. The intro's
+random note can differ between DOSBox runs; it is still reported as a
+difference, never filtered out.
 """
 from __future__ import annotations
 
@@ -29,6 +34,7 @@ import shutil
 import struct
 import subprocess
 import sys
+import tempfile
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -184,34 +190,54 @@ def run_dosbox(data, game, seconds, *, capture="opl", work=WORK):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--data", required=True, help="GOG install (holds DOSBOX and dosboxF117A.conf)")
+    ap.add_argument("--data", help="GOG install (holds DOSBOX and dosboxF117A.conf)")
     ap.add_argument("--seconds", type=int, default=120)
     ap.add_argument("--window", type=int, default=40, help="writes that must match to align")
+    ap.add_argument("--reuse", help="compare saved capture/*.dro and opl.log without running either machine")
     a = ap.parse_args()
-    os.makedirs(WORK, exist_ok=True)
-    game = os.path.join(WORK, "game")
-    shutil.rmtree(game, ignore_errors=True)
-    os.makedirs(game)
-    for f in os.listdir(a.data):
-        p = os.path.join(a.data, f)
-        if os.path.isfile(p) and not f.lower().startswith(("unins", "goggame", "gog", "launch", "support")):
-            shutil.copy2(p, game)
-
-    print("DOSBox: %d s with the raw OPL capture on" % a.seconds, flush=True)
-    dros = run_dosbox(a.data, game, a.seconds)
+    if a.window < 1 or a.seconds < 1:
+        ap.error("--window and --seconds must be positive")
+    if not a.reuse and not a.data:
+        ap.error("--data is required unless --reuse is supplied")
+    if a.reuse:
+        work = a.reuse
+    else:
+        os.makedirs(WORK, exist_ok=True)
+        work = tempfile.mkdtemp(prefix="music-", dir=WORK)
+    print("Artifacts: %s" % work, flush=True)
+    log = os.path.join(work, "opl.log")
+    if a.reuse:
+        cap = os.path.join(work, "capture")
+        dros = [os.path.join(cap, f) for f in sorted(os.listdir(cap)) if f.lower().endswith(".dro")]
+        if not dros:
+            sys.exit("saved run has no DRO capture")
+    else:
+        os.makedirs(work, exist_ok=True)
+        game = os.path.join(work, "game")
+        shutil.rmtree(game, ignore_errors=True)
+        os.makedirs(game)
+        for f in os.listdir(a.data):
+            p = os.path.join(a.data, f)
+            if os.path.isfile(p) and not f.lower().startswith(("unins", "goggame", "gog", "launch", "support")):
+                shutil.copy2(p, game)
+        print("DOSBox: %d s with the raw OPL capture on" % a.seconds, flush=True)
+        dros = run_dosbox(a.data, game, a.seconds, work=work)
+        steps = (a.seconds + 15) * IPS
+        print("f117run: %d instructions with --opl-log" % steps, flush=True)
+        r = subprocess.run([os.path.join(ROOT, "build", "f117run.exe"), "--engine", "recomp", "--data", game,
+                            "--save", os.path.join(work, "save"), "--log", os.path.join(work, "run.log"),
+                            "--type", "SETUP.EXE+200000:N", "--type", "SETUP.EXE+2000000:2",
+                            "--steps", str(steps), "--time-us", "700000000000000", "--opl-log", log],
+                           capture_output=True, text=True)
+        with open(os.path.join(work, "runner.txt"), "w") as f:
+            f.write((r.stdout or "") + (r.stderr or ""))
+        if r.returncode:
+            sys.exit("f117run failed; see runner.txt")
     ref = []
     for d in dros:
         ref += read_dro(d)
     print("  %d writes captured in %s" % (len(ref), ", ".join(os.path.basename(d) for d in dros)))
 
-    log = os.path.join(WORK, "opl.log")
-    steps = (a.seconds + 15) * IPS
-    print("f117run: %d instructions with --opl-log" % steps, flush=True)
-    subprocess.run([os.path.join(ROOT, "build", "f117run.exe"), "--engine", "recomp", "--data", game,
-                    "--save", os.path.join(WORK, "save"), "--log", os.path.join(WORK, "run.log"),
-                    "--type", "SETUP.EXE+200000:N", "--type", "SETUP.EXE+2000000:2",
-                    "--steps", str(steps), "--time-us", "700000000000000", "--opl-log", log],
-                   capture_output=True, text=True)
     ours = filter_log(log)
     print("  %d writes (as DOSBox records them)" % len(ours))
 
@@ -220,9 +246,9 @@ def main():
     W = a.window
     pairs_ours = [(r, v) for _, r, v, _ in ours]
     start_ref = start_ours = None
-    for i in range(0, min(len(ref) - W, 2000)):
+    for i in range(0, min(len(ref) - W + 1, 2000)):
         win = [(r, v) for _, r, v in ref[i:i + W]]
-        for j in range(len(pairs_ours) - W):
+        for j in range(len(pairs_ours) - W + 1):
             if pairs_ours[j:j + W] == win:
                 start_ref, start_ours = i, j
                 break
@@ -252,7 +278,8 @@ def main():
     else:
         print("no difference until one sequence ended (DOSBox %d more, here %d more)" % (
             len(ref) - start_ref - n, len(ours) - start_ours - n))
+    return int(mismatch is not None)
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

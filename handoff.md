@@ -60,6 +60,9 @@ nothing running.
 - Music against GOG DOSBox: `py tools/dosbox_compare.py --data
   "D:/GOG/F-117A" --seconds 130` (opens a minimised DOSBox; a keypress in
   its window disturbs the timing). Last: 22,687 writes, 100.7 s, identical.
+  New runs use unique `dbxcompare/music-*` directories. `--reuse RUN_DIR`
+  rechecks saved OPL data. Different writes now exit 1; older tool versions
+  printed differences but exited 0. The known random note is not filtered.
 - Pictures against GOG DOSBox: `py tools/video_compare.py --data
   "D:/GOG/F-117A" --seconds 130 --diagnostics`. Exit 1 currently means
   pictures differ, not a tool failure. Replay the comparison without a new
@@ -77,6 +80,17 @@ nothing running.
   mutant; keep runs under two hours - background jobs are stopped there).
 
 ## In flight at handoff
+
+- Music comparator failure/replay checks complete: mismatching and reordered
+  synthetic streams exit 1; exactly-one-window matching streams pass.
+  Four ROM-free tests: `py tests/test_music_compare.py`. Two fresh short
+  captures agree on 365 writes/15.5 s (drift 0..35 ms) and 300/10.4 s
+  (drift 0..13 ms). The latter is `dbxcompare/music-y7j935vh`, available
+  for `--reuse`; logs are `music-guard-short.log` and `music-guard-unique.log`.
+  These validate the comparator and early music, not the full intro.
+  Fresh capture-directory check: `dbxcompare/music-b6tnl_qu` also matches
+  300 writes/10.4 s, drift 0..9 ms (`music-guard-unique-verified.log`). Both
+  the capture and runtime log are inside that run, and `--reuse` passes.
 
 - Original fade calibration diagnostics are now repeatable without the
   Reimp tree: `py tools/fade_calibration.py --data D:/GOG/F-117A --trials 3`.

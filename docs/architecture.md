@@ -402,6 +402,11 @@ leaves the 1,217 matches, 109 unmatched reference pictures and 89 unmatched
 shots unchanged. A fresh full music capture matches only its first 596
 writes before the known random channel-3 note at 29.7 s; it does not verify
 the whole music stream. Logs live outside the repository.
+The music comparator now exits 1 on differing writes and rejects runner
+failures. `--reuse RUN_DIR` checks a saved stream; fresh runs retain their
+artifacts in separate `dbxcompare/music-*` folders. Four ROM-free stream
+tests verify changed values, reordered writes, missing alignment and an
+exactly-one-window capture (the last possible alignment is included).
 
 `tools/fade_calibration.py` copies just the original START, PLAYER and END
 fade calibrators into private COM probes and runs them on both machines.

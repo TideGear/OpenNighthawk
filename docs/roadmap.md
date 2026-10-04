@@ -68,6 +68,8 @@ never instead of parity.
   these counts and picture timings unchanged. The full music rerun diverges
   at the known random channel-3 note at 29.7 s; it is not a new full-stream
   pass (the prefix matches 596 writes, with up to 55 ms timing drift).
+  Music differences now exit 1. Four ROM-free comparator regressions pass;
+  short fresh captures match 365 writes over 15.5 s and 300 over 10.4 s.
 
 ### Left
 
