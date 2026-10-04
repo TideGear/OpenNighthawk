@@ -157,11 +157,27 @@ file calls. `src/machine/pc.c` holds the devices. Both were extended from
 2. **Discovery** (`discover.py`). Regions are closures under near control
    flow from seeds: declared entries (program entry, the MicroProse overlay
    descriptor's entry table), call and far-branch targets, Microsoft C
-   switch tables (`jmp cs:[bx+table]`, bounded by the guarding compare), far
-   code pointers in relocated data, MSC prologues inside the code segments,
-   and coverage - instructions the interpreter executed in recorded runs.
+   switch tables (`jmp cs:[bx+table]`, bounded by the guarding compare),
+   near pointer tables (`call/jmp [reg+table]` in the code segment or the
+   data group: the sound drivers' command handlers, the C library's
+   dispatch), far code pointers in relocated data, MSC prologues inside the
+   code segments, and coverage - instructions the interpreter executed in
+   recorded runs. The data group is found from the C startup's relocated
+   `mov di, DGROUP`. Last, every gap left in the code area that decodes
+   cleanly to a return or jump is seeded, until none is left: that finds
+   interrupt handlers a driver installs by computed address. Data that
+   happens to decode costs size, never behaviour, since a region only runs
+   from an instruction start whose bytes are verified.
    Every instruction belongs to exactly one region; flow into another
    region's instruction leaves through the dispatcher.
+
+   `tools/census.py` measures the result: the bytes of each module's code
+   area that lie inside a translated instruction. The code area is an
+   EXE's segments below the data group that hold code (Microsoft C puts far
+   data segments, such as VGAME's lookup tables, among them), an overlay's
+   image from its base segment, a .COM's image. With the sweep, 96% of
+   code-area bytes are translated and no remaining gap decodes like code;
+   the rest is strings, tables and variables between routines.
 3. **Emission** (`emit.py`). One C function per region, mirroring
    `cpu_step` case for case: operand evaluation order, divide faults
    (the 286 pushes the faulting IP), REP iterations as separate instruction

@@ -20,10 +20,11 @@ options. Enhancements come after parity, never instead of it.
   work: AdLib (music and digitised speech through an OPL emulator), the PC
   speaker, and Roland (MIDI sent to a Windows MIDI device; not yet listened
   to on an MT-32).
-- **Translated:** 84,001 instructions across all 17 code files. On the
-  scripted sessions about 99.8% of executed instructions run as recompiled
-  code; most of the rest is the LZEXE decompressors, which run once per
-  program start.
+- **Translated:** 89,216 instructions across all 17 code files and the
+  LZEXE decompressor: 96% of the bytes of the code areas, and no
+  untranslated stretch left that decodes as code (`tools/census.py`; the
+  rest is strings, tables and variables). On the scripted sessions no game
+  instruction is interpreted; only the emulated BIOS's own stubs are.
 - **Parity, measured:** four scripted sessions (boot to flight; a full
   sortie through the debriefing and back; boots under the speaker and Roland
   drivers, where the programs load at other addresses) end in identical

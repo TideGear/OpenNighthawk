@@ -25,7 +25,8 @@ import struct
 from collections import deque
 from dataclasses import dataclass, field
 
-from x86dec import (DecodeError, K_CALL, K_CALLFAR, K_JMPFAR, K_JMPIND, S_CS,
+from x86dec import (DecodeError, K_CALL, K_CALLFAR, K_CALLIND, K_INVALID, K_JMP, K_JMPFAR, K_JMPIND,
+                    K_RET, S_CS,
                     decode, successors)
 
 
@@ -49,6 +50,10 @@ class Discovery:
         self.seen_seed = set()
         self.bad = set()           # (seg, ip) that did not decode
         self.stats = {"tables": 0, "table_targets": 0}
+        self.table_seeds = []      # targets of near pointer tables
+        self.tables_done = 0
+        self.dgroup = self.find_dgroup()
+        mod.dgroup = self.dgroup
 
     # ---- helpers -----------------------------------------------------------
     def in_image(self, seg, ip, n=1):
@@ -140,6 +145,66 @@ class Discovery:
             self.stats["table_targets"] += len(targets)
         return targets
 
+    def find_dgroup(self):
+        """Microsoft C's startup loads its data group's segment from a
+        relocated immediate (`mov di, DGROUP`) within its first few
+        instructions; that segment is where near data pointers point."""
+        if self.m.kind != "exe" or not self.m.entries:
+            return None
+        seg, ip = self.m.entries[0]
+        for _ in range(48):
+            ins = self.decode_at(seg, ip)
+            if ins is None:
+                return None
+            if 0xB8 <= ins.op <= 0xBF and (self.m.off(seg, ip) + ins.imm_off) in self.m.relocs:
+                return ins.imm
+            # straight on: the DOS version check before it ends in a retf
+            ip = ins.next_ip
+        return None
+
+    def pointer_table(self, seg, ins):
+        """Near code pointers in a table: `call/jmp word ptr [reg+table]`
+        (the sound drivers' handler tables, the C library's dispatch). The
+        table is in the code segment with a CS override, else in the data
+        group. Entries are taken while each is a plausible instruction start
+        in this code segment; they become seeds of their own."""
+        m = ins.modrm
+        if m is None or m.is_reg or m.mod == 0 or m.rm not in (4, 5, 7):
+            return []
+        if ins.seg_ovr == S_CS:
+            tseg = seg
+        elif ins.seg_ovr < 0 and self.dgroup is not None:
+            tseg = self.dgroup
+        else:
+            return []
+        table, out = m.disp, []
+        limit = self.code_end()
+        for k in range(256):
+            a = table + 2 * k
+            if not self.in_image(tseg, a, 2):
+                break
+            o = self.m.off(tseg, a)
+            if o in self.reloc_bytes:
+                break
+            t = struct.unpack("<H", self.m.image[o:o + 2])[0]
+            to = self.m.off(seg, t)
+            # a target inside the words read so far is the table's end
+            if t < 2 or not (0 <= to < limit) or (tseg == seg and table <= t < a + 2):
+                break
+            if self.decode_at(seg, t) is None:
+                break
+            out.append(t)
+        if len(out) >= 2:
+            self.stats["ptr_tables"] = self.stats.get("ptr_tables", 0) + 1
+            return out
+        return []
+
+    def code_end(self):
+        """Where the code area ends: the data group, for a C program."""
+        if self.dgroup:
+            return min(len(self.m.image), self.dgroup * 16)
+        return len(self.m.image)
+
     def terminates(self, r, seg, ins):
         """A DOS terminate does not return: INT 20h, or INT 21h straight
         after `mov ah, 4Ch` / `mov ax, 4Cxxh` in the same walk. Whatever
@@ -194,6 +259,10 @@ class Discovery:
             elif ins.kind == K_JMPIND:
                 for t in self.switch_table(r, seg, ins):
                     stack.append(t)
+            if ins.kind in (K_JMPIND, K_CALLIND) and ins.modrm.reg in (2, 4):
+                # near indirect: remembered, seeded after coverage
+                for t in self.pointer_table(seg, ins):
+                    self.table_seeds.append((seg, t))
 
     def drain(self):
         while self.pending:
@@ -212,10 +281,15 @@ class Discovery:
         n_heur = 0
         if heuristics:
             before = sum(len(r.insns) for r in self.regions)
+            self.settle()
             self.far_pointer_seeds()
-            self.drain()
+            self.settle()
             self.prologue_seeds()
-            self.drain()
+            self.settle()
+            for _ in range(32):
+                if not self.gap_seeds():
+                    break
+                self.settle()
             n_heur = sum(len(r.insns) for r in self.regions) - before
         self.log("  %-12s %6d bytes  %4d regions  %6d instructions (%d static, %d coverage, %d heuristic)"
                  "  %d switch tables" % (
@@ -228,6 +302,94 @@ class Discovery:
     @staticmethod
     def looks_like_prologue(b):
         return b[:3] == b"\x55\x8B\xEC" or (b[:1] == b"\xC8" and len(b) >= 4 and b[3] == 0)
+
+    def settle(self):
+        """Drain, then seed the pointer tables found while walking, until no
+        new ones appear."""
+        self.drain()
+        while self.tables_done < len(self.table_seeds):
+            for seg, ip in self.table_seeds[self.tables_done:]:
+                self.add_seed(seg, ip, "table")
+            self.tables_done = len(self.table_seeds)
+            self.drain()
+
+    def covered_bytes(self):
+        cov = bytearray(len(self.m.image))
+        for (s, ip), r in self.owner.items():
+            o = self.m.off(s, ip)
+            n = r.insns[ip].length
+            if 0 <= o and o + n <= len(cov):
+                cov[o:o + n] = b"" * n
+        return cov
+
+    def code_spans(self, cov):
+        """Where code can be: an EXE's segments below the data group, split
+        at every relocated segment value and kept when they already hold
+        code (Microsoft C puts far data segments among them); an overlay's
+        image from its base segment on; a .COM's whole image."""
+        img = self.m.image
+        if self.m.kind == "exe" and self.dgroup:
+            hi = self.code_end()
+            bounds = {0, hi}
+            for r in self.m.relocs:
+                if r + 2 <= len(img):
+                    v = (img[r] | (img[r + 1] << 8)) * 16
+                    if 0 < v < hi:
+                        bounds.add(v)
+            b = sorted(bounds)
+            return [(x, y) for x, y in zip(b, b[1:]) if any(cov[x:y])]
+        if self.m.kind == "overlay" and self.m.entries:
+            return [(min(len(img), self.m.entries[0][0] * 16), len(img))]
+        if self.m.kind == "com":
+            return [(0, len(img))]
+        return []
+
+    def looks_like_code(self, seg, ip, end_off):
+        """From ip, clean decoding to a return or jump within 64
+        instructions, without running into a gap of zeros."""
+        o = self.m.off(seg, ip)
+        span = self.m.image[o:end_off]
+        if span.count(0) * 3 > len(span):
+            return False
+        for _ in range(64):
+            ins = self.decode_at(seg, ip)
+            if ins is None or ins.kind == K_INVALID or self.m.off(seg, ip) + ins.length > end_off:
+                return False
+            if ins.kind in (K_RET, K_JMP, K_JMPFAR, K_JMPIND):
+                return True
+            ip = ins.next_ip
+        return False
+
+    def gap_seeds(self):
+        """Every gap left in the code area that decodes like code is seeded.
+        Code reached only through computed addresses (interrupt handlers a
+        driver installs, routines named by tables the walk cannot see) is
+        found this way; data that happens to decode is translated for
+        nothing, which costs size and never behaviour, since a region runs
+        only from an instruction start whose bytes are verified."""
+        cov = self.covered_bytes()
+        segs = sorted(self.code_segs)
+        n = 0
+        for lo, hi in self.code_spans(cov):
+            i = lo
+            while i < hi:
+                if cov[i]:
+                    i += 1
+                    continue
+                j = i
+                while j < hi and not cov[j]:
+                    j += 1
+                if j - i >= 4:
+                    o = i + self.m.origin
+                    seg = max((s for s in segs if s * 16 <= o), default=None)
+                    if seg is not None and o - seg * 16 <= 0xFFFF:
+                        ip = o - seg * 16
+                        if (seg, ip) not in self.seen_seed and self.looks_like_code(seg, ip, j):
+                            self.add_seed(seg, ip, "gap")
+                            n += 1
+                i = j
+        self.stats["gap_seeds"] = self.stats.get("gap_seeds", 0) + n
+        return n
 
     def far_pointer_seeds(self):
         """Far code pointers in data carry a relocation on their segment
@@ -247,10 +409,10 @@ class Discovery:
     def prologue_seeds(self):
         """`push bp; mov bp, sp` or `enter n, 0` in the code segments that the
         walk did not reach: functions reached only through near pointers."""
-        if self.m.kind != "exe" or self.m.stack_seg <= 0:
+        if self.m.kind != "exe" or not self.dgroup:
             return
         img = self.m.image
-        end = min(len(img), self.m.stack_seg * 16)
+        end = self.code_end()
         segs = sorted(self.code_segs)
         covered = set()
         for (s, ip), r in self.owner.items():

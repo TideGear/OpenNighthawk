@@ -49,6 +49,7 @@ class Module:
     stack_seg: int = -1        # SS from the header: DGROUP for Microsoft C
     packed: bool = False
     probe: tuple | None = None # floating modules: (offset, length) recognised at CS:offset
+    dgroup: int | None = None  # the data group segment (Microsoft C programs), found by discovery
 
     def off(self, seg, ip):
         return seg * 16 + ip - self.origin
