@@ -42,7 +42,7 @@ target_include_directories(f117machine PUBLIC src/machine src/recomp)
 target_link_libraries(f117machine PUBLIC f117cpu)
 
 # ---- Presentation shared by the window and the headless runner -----------
-add_library(f117present STATIC src/host/present.c src/host/keys.c)
+add_library(f117present STATIC src/host/present.c src/host/keys.c src/host/inputlog.c)
 target_include_directories(f117present PUBLIC src/host)
 target_link_libraries(f117present PUBLIC f117machine)
 

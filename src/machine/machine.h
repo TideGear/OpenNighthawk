@@ -214,7 +214,7 @@ struct machine {
     int      mouse_driver_installed;    /* a program reset the driver (AX=0) */
 
     /* ---- pending input, by time ------------------------------------- */
-    machine_input in_q[1024];
+    machine_input in_q[4096];
     int      in_qh, in_qn;
     machine_input_fn on_input;           /* recorder; NULL for none */
     void    *on_input_user;

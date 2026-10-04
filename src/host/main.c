@@ -20,6 +20,7 @@
 #include "audio.h"
 #include "midistream.h"
 #include "recomp_rt.h"
+#include "inputlog.h"
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
@@ -42,6 +43,7 @@ typedef struct {
     present_frame   frame;            /* the last frame the VGA scanned out */
     int             have_frame;
     midistream      midi;
+    FILE           *record;           /* --record: every input as it is applied */
 #ifdef _WIN32
     HMIDIOUT        midi_out;
 #endif
@@ -61,6 +63,12 @@ static void on_speaker(void *u, uint64_t icount)
 {
     (void)u;
     if (H.audio) audio_speaker(H.audio, &H.m, icount);
+}
+
+static void on_input(void *u, const machine_input *in)
+{
+    (void)u;
+    if (H.record) inputlog_write(H.record, in);
 }
 
 static void on_vsync(void *u, uint64_t icount)
@@ -214,11 +222,16 @@ int main(int argc, char **argv)
     uint64_t ips = MACHINE_DEFAULT_IPS;
     int scale = 3, fullscreen = 0, aspect = 1, midi_dev = -2;
     int engine = ENGINE_RECOMP;
-    const char *coverage = NULL;
+    const char *coverage = NULL, *record = NULL, *replay = NULL;
+    uint64_t time_us = 0, exit_after = 0;
 
     for (int i = 1; i < argc; i++) {
         const char *a = argv[i], *v = i + 1 < argc ? argv[i + 1] : NULL;
         if (!strcmp(a, "--data") && v) { data = v; i++; }
+        else if (!strcmp(a, "--record") && v) { record = v; i++; }
+        else if (!strcmp(a, "--replay") && v) { replay = v; i++; }
+        else if (!strcmp(a, "--time-us") && v) { time_us = strtoull(v, NULL, 0); i++; }
+        else if (!strcmp(a, "--exit-after") && v) { exit_after = strtoull(v, NULL, 0); i++; }
         else if (!strcmp(a, "--save") && v) { save = v; i++; }
         else if (!strcmp(a, "--log") && v) { log_path = v; i++; }
         else if (!strcmp(a, "--ips") && v) { ips = strtoull(v, NULL, 0); i++; }
@@ -231,7 +244,8 @@ int main(int argc, char **argv)
         else {
             fprintf(stderr,
                 "usage: f117a [--data DIR] [--save DIR] [--engine recomp|interp] [--ips N]\n"
-                "             [--scale N] [--fullscreen] [--no-aspect] [--midi N] [--log FILE]\n");
+                "             [--scale N] [--fullscreen] [--no-aspect] [--midi N] [--log FILE]\n"
+                "             [--record FILE] [--replay FILE] [--time-us N] [--exit-after CLOCKS]\n");
             return 2;
         }
     }
@@ -305,10 +319,34 @@ int main(int argc, char **argv)
     hooks.vsync = on_vsync;
     hooks.midi_byte = on_midi;
     hooks.module_load = recomp_module_load;
-    if (!machine_boot(&H.m, H.mem, data, save, "F117.COM", ips,
-                      (uint64_t)time(NULL) * 1000000ull, &hooks)) {
+    /* A replay brings its own speed and boot time; a recording writes ours. */
+    if (replay) inputlog_read_header(replay, &ips, &time_us);
+    if (!time_us) time_us = (uint64_t)time(NULL) * 1000000ull;
+    if (H.audio) { audio_destroy(H.audio); H.audio = audio_create(ips); }
+    if (!machine_boot(&H.m, H.mem, data, save, "F117.COM", ips, time_us, &hooks)) {
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "F-117A", H.m.fault, win);
         return 1;
+    }
+    if (record) {
+        H.record = fopen(record, "w");
+        if (H.record) {
+            inputlog_header(H.record, ips, time_us);
+            H.m.on_input = on_input;
+        }
+    }
+    inputlog_reader *player = NULL;
+    if (replay && !(player = inputlog_open(replay))) {
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "F-117A", "Cannot read the replay file.", win);
+        return 1;
+    }
+    /* Live input during a replay would make it a different session. */
+    const int live = player == NULL;
+    unsigned last_axis[2] = { 0x200, 0x200 }, last_buttons = 0x100;
+    if (stream) {
+        /* 60 ms of silence first, so the device never waits on the first
+         * frames the machine produces. */
+        static int16_t silence[AUDIO_RATE / 1000 * 60 * 2];
+        SDL_PutAudioStreamData(stream, silence, (int)sizeof silence);
     }
 
     static uint32_t pixels[640 * 400];
@@ -341,16 +379,18 @@ int main(int argc, char **argv)
                         break;
                     }
                 }
-                if (!paused) key_event(ev.key.scancode, down);   /* repeats re-send the make code */
+                if (!paused && live) key_event(ev.key.scancode, down);   /* repeats re-send the make code */
                 break;
             }
             case SDL_EVENT_MOUSE_MOTION: {
+                if (!live) break;
                 int gx, gy;
                 window_to_guest(ren, aspect, ev.motion.x, ev.motion.y, &gx, &gy);
                 machine_mouse(&H.m, gx, gy, mouse_buttons, (int)ev.motion.xrel, (int)ev.motion.yrel);
                 break;
             }
             case SDL_EVENT_MOUSE_BUTTON_DOWN: case SDL_EVENT_MOUSE_BUTTON_UP: {
+                if (!live) break;
                 int bit = ev.button.button == SDL_BUTTON_LEFT ? 1 : ev.button.button == SDL_BUTTON_RIGHT ? 2 : 0;
                 if (ev.type == SDL_EVENT_MOUSE_BUTTON_DOWN) mouse_buttons |= bit; else mouse_buttons &= ~bit;
                 int gx, gy;
@@ -364,7 +404,7 @@ int main(int argc, char **argv)
         if (!running) break;
 
         /* The analog stick on the game port: axes 0..255, buttons. */
-        if (pad || joy) {
+        if ((pad || joy) && live) {
             float ax = 0, ay = 0;
             unsigned b = 0;
             if (pad) {
@@ -379,7 +419,10 @@ int main(int argc, char **argv)
                 if (SDL_GetJoystickButton(joy, 1)) b |= 2;
             }
             unsigned axis[4] = { (unsigned)((ax + 1.0f) * 127.5f), (unsigned)((ay + 1.0f) * 127.5f), 0x100, 0x100 };
-            machine_joystick(&H.m, 1, axis, b);
+            if (axis[0] != last_axis[0] || axis[1] != last_axis[1] || b != last_buttons) {
+                machine_joystick(&H.m, 1, axis, b);
+                last_axis[0] = axis[0]; last_axis[1] = axis[1]; last_buttons = b;
+            }
         }
 
         /* Keep the machine's clock level with the wall clock. */
@@ -392,9 +435,11 @@ int main(int argc, char **argv)
                 base_icount += target - (H.m.cpu.icount + ips / 10);
                 target = H.m.cpu.icount + ips / 10;
             }
+            if (exit_after && target > exit_after) target = exit_after;
             while (H.m.cpu.icount < target) {
                 uint64_t until = H.m.cpu.icount + ips / 1000;  /* 1 ms slices */
                 if (until > target) until = target;
+                inputlog_feed(player, &H.m, until + ips);
                 int rc = machine_run(&H.m, until);
                 if (rc == RUN_EXITED) { running = 0; break; }
                 if (rc == RUN_FAULT) {
@@ -408,7 +453,13 @@ int main(int argc, char **argv)
                 size_t n;
                 while ((n = audio_take(H.audio, abuf, AUDIO_RATE)) > 0)
                     if (stream) SDL_PutAudioStreamData(stream, abuf, (int)(n * 4));
+                /* The machine runs on the wall clock and the device on its
+                 * own crystal; if the two drift apart by more than a
+                 * quarter second, drop the backlog rather than lag. */
+                if (stream && SDL_GetAudioStreamQueued(stream) > AUDIO_RATE * 4 / 4)
+                    SDL_ClearAudioStream(stream);
             }
+            if (exit_after && H.m.cpu.icount >= exit_after) running = 0;
         }
 
         /* Show the last frame the VGA scanned out. */
@@ -425,15 +476,27 @@ int main(int argc, char **argv)
         SDL_RenderPresent(ren);
     }
 
+    if (H.record) fclose(H.record);
+    inputlog_close(player);
+    if (H.m.log) {
+        /* The same summary line f117run prints, so a session can be
+         * checked against a headless replay of its log. */
+        uint64_t hsh = 1469598103934665603ull;
+        for (uint32_t a = 0; a < MEM_SIZE; a++) hsh = (hsh ^ H.mem[a]) * 1099511628211ull;
+        for (int r = 0; r < 8; r++) hsh = (hsh ^ H.m.cpu.r[r]) * 1099511628211ull;
+        for (int s = 0; s < 4; s++) hsh = (hsh ^ H.m.cpu.seg[s]) * 1099511628211ull;
+        hsh = (hsh ^ H.m.cpu.ip) * 1099511628211ull;
+        hsh = (hsh ^ H.m.cpu.flags) * 1099511628211ull;
+        fprintf(H.m.log, "stopped at icount %llu; program %s; final hash %016llx\n",
+                (unsigned long long)H.m.cpu.icount, dos_current_program(&H.m), (unsigned long long)hsh);
+        recomp_report(&H.m, H.m.log);
+    }
     recomp_shutdown(&H.m);
     machine_shutdown(&H.m);
 #ifdef _WIN32
     if (H.midi_out) { midiOutReset(H.midi_out); midiOutClose(H.midi_out); }
 #endif
-    if (H.m.log) {
-        recomp_report(&H.m, H.m.log);
-        fclose(H.m.log);
-    }
+    if (H.m.log) fclose(H.m.log);
     SDL_Quit();
     return 0;
 }

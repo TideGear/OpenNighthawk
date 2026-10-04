@@ -27,6 +27,7 @@
 #include "keys.h"
 #include "present.h"
 #include "recomp_rt.h"
+#include "inputlog.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -104,66 +105,7 @@ static void on_load(void *user, machine_t *m, const char *name, const uint8_t *f
 static void on_input(void *user, const machine_input *in)
 {
     (void)user;
-    if (!g_record) return;
-    switch (in->type) {
-    case INPUT_KEY:
-        fprintf(g_record, "K %llu %02X\n", (unsigned long long)in->at, in->byte);
-        break;
-    case INPUT_MOUSE:
-        fprintf(g_record, "M %llu %d %d %u %d %d\n", (unsigned long long)in->at,
-                in->x, in->y, in->buttons, in->dx, in->dy);
-        break;
-    case INPUT_JOY:
-        fprintf(g_record, "J %llu %u %u %u %u %u %u\n", (unsigned long long)in->at, in->present,
-                in->axis[0], in->axis[1], in->axis[2], in->axis[3], in->buttons);
-        break;
-    default: break;
-    }
-}
-
-/* An input log: a header naming the machine's speed and boot time, then
- * one input per line. Returns 0 if the file cannot be read. */
-static int replay_load(machine_t *m, const char *path)
-{
-    FILE *f = fopen(path, "r");
-    if (!f) return 0;
-    char line[256];
-    while (fgets(line, sizeof line, f)) {
-        machine_input in = { 0 };
-        unsigned long long at;
-        int a, b, c2, d, e;
-        unsigned u0, u1, u2, u3, u4, u5;
-        if (line[0] == 'K' && sscanf(line + 1, "%llu %x", &at, &u0) == 2) {
-            in.at = at; in.type = INPUT_KEY; in.byte = (uint8_t)u0;
-        } else if (line[0] == 'M' && sscanf(line + 1, "%llu %d %d %d %d %d", &at, &a, &b, &c2, &d, &e) == 6) {
-            in.at = at; in.type = INPUT_MOUSE; in.x = (int16_t)a; in.y = (int16_t)b;
-            in.buttons = (uint16_t)c2; in.dx = (int16_t)d; in.dy = (int16_t)e;
-        } else if (line[0] == 'J' && sscanf(line + 1, "%llu %u %u %u %u %u %u", &at, &u0, &u1, &u2, &u3, &u4, &u5) == 7) {
-            in.at = at; in.type = INPUT_JOY; in.present = (uint8_t)u0;
-            in.axis[0] = (uint16_t)u1; in.axis[1] = (uint16_t)u2; in.axis[2] = (uint16_t)u3; in.axis[3] = (uint16_t)u4;
-            in.buttons = (uint16_t)u5;
-        } else {
-            continue;
-        }
-        machine_input_at(m, &in);
-    }
-    fclose(f);
-    return 1;
-}
-
-/* Read "# f117r-input ips=N time_us=N" from a log, if present. */
-static void replay_header(const char *path, uint64_t *ips, uint64_t *time_us)
-{
-    FILE *f = fopen(path, "r");
-    if (!f) return;
-    char line[256];
-    if (fgets(line, sizeof line, f) && !strncmp(line, "# f117r-input", 13)) {
-        const char *p = strstr(line, "ips=");
-        if (p) *ips = strtoull(p + 4, NULL, 10);
-        p = strstr(line, "time_us=");
-        if (p) *time_us = strtoull(p + 8, NULL, 10);
-    }
-    fclose(f);
+    if (g_record) inputlog_write(g_record, in);
 }
 
 static uint64_t state_hash(const machine_t *m)
@@ -234,7 +176,7 @@ int main(int argc, char **argv)
         } else { fprintf(stderr, "unknown or incomplete option %s\n", a); return 2; }
     }
     if (!data) { fprintf(stderr, "usage: f117run --data DIR [options]\n"); return 2; }
-    if (replay) replay_header(replay, &ips, &time_us);
+    if (replay) inputlog_read_header(replay, &ips, &time_us);
     if (!time_us) time_us = (uint64_t)time(NULL) * 1000000ull;
 
     static machine_t m;
@@ -250,8 +192,7 @@ int main(int argc, char **argv)
     if (record) {
         g_record = fopen(record, "w");
         if (!g_record) { fprintf(stderr, "cannot write %s\n", record); return 1; }
-        fprintf(g_record, "# f117r-input ips=%llu time_us=%llu\n",
-                (unsigned long long)ips, (unsigned long long)time_us);
+        inputlog_header(g_record, ips, time_us);
     }
     if (!machine_boot(&m, mem, data, save, "F117.COM", ips, time_us, &hooks)) {
         fprintf(stderr, "%s\n", m.fault);
@@ -260,7 +201,8 @@ int main(int argc, char **argv)
     m.on_input = on_input;
     for (int k = 0; k < g_ncmd; k++)
         if (!g_cmd[k].prog[0]) schedule(&m, &g_cmd[k], g_cmd[k].after);
-    if (replay && !replay_load(&m, replay)) { fprintf(stderr, "cannot read %s\n", replay); return 1; }
+    inputlog_reader *player = NULL;
+    if (replay && !(player = inputlog_open(replay))) { fprintf(stderr, "cannot read %s\n", replay); return 1; }
 
     FILE *trace = NULL;
     uint64_t next_hash = hash_every ? (hash_from ? hash_from : hash_every) : ~0ull;
@@ -281,6 +223,9 @@ int main(int argc, char **argv)
             }
         }
         if (until <= m.cpu.icount) until = m.cpu.icount + 1;
+        /* Queue replayed inputs well before their time: one emulated
+         * second past the slice's end. */
+        inputlog_feed(player, &m, until + ips);
         rc = machine_run(&m, until);
         if (trace && m.cpu.icount <= trace_to) {
             const cpu_t *c = &m.cpu;
