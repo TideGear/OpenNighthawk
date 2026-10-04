@@ -219,6 +219,9 @@ struct machine {
     machine_input_fn on_input;           /* recorder; NULL for none */
     void    *on_input_user;
 
+    /* ---- counters, for reports -------------------------------------- */
+    uint64_t opl_writes, midi_bytes, speaker_changes;
+
     /* ---- engine ---------------------------------------------------- */
     int      engine;                     /* ENGINE_* */
     uint64_t interp_steps;               /* instructions the interpreter ran */

@@ -1,0 +1,17 @@
+# Boot with the IBM PC speaker sound driver into the front end. Its drivers and the
+# phase programs load at different segments than under AdLib, so this checks
+# the translation is independent of where DOS put each module.
+--type
+SETUP.EXE+200000:N
+--type
+SETUP.EXE+2000000:1
+--type
+START.EXE+30000000:\r
+--click
+START.EXE+120000000:258,182
+--click
+START.EXE+200000000:283,172
+--steps
+1300000000
+--time-us
+700000000000000

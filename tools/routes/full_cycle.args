@@ -1,0 +1,42 @@
+# The whole loop: boot, the front end, a training sortie flown into the
+# ground, the debriefing (END) and back to the front end. Inputs only.
+--type
+SETUP.EXE+200000:N
+--type
+SETUP.EXE+2000000:2
+--type
+START.EXE+30000000:\r
+--click
+START.EXE+120000000:258,182
+--click
+START.EXE+200000000:283,172
+--click
+START.EXE+400000000:280,60
+--click
+START.EXE+700000000:272,134
+--click
+START.EXE+900000000:271,148
+--click
+START.EXE+1100000000:225,191
+# Full throttle, rotate, then push over into the ground.
+--type
+VGAME.EXE+100000000:+
+--type
+VGAME.EXE+400000000:~2500:\D
+--type
+VGAME.EXE+500000000:~8000:\U
+# END: the crash page, the training note, then exit the replay map.
+--type
+END.EXE+150000000:\r
+--type
+END.EXE+300000000:\r
+--click
+END.EXE+400000000:271,64
+--type
+END.EXE+520000000:\r
+--type
+END.EXE+640000000:\r
+--steps
+3300000000
+--time-us
+700000000000000

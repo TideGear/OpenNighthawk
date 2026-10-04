@@ -76,13 +76,20 @@ static void schedule(machine_t *m, script_cmd *cmd, uint64_t t)
         at_mouse(m, t + g_hold, x, y, 1);
         at_mouse(m, t + 3 * g_hold, x, y, 0);
     } else {
+        /* "~MS:KEYS" holds each of these keys MS milliseconds. */
         const char *k = cmd->keys;
+        uint64_t hold = g_hold;
+        if (k[0] == '~') {
+            hold = strtoull(k + 1, NULL, 10) * (m->ips / 1000u);
+            const char *colon = strchr(k, ':');
+            k = colon ? colon + 1 : k + strlen(k);
+        }
         uint8_t mk[4], br[4];
         int nm, nb;
         while (keys_next(&k, mk, &nm, br, &nb)) {
             for (int i = 0; i < nm; i++) at_key(m, t, mk[i]);
-            for (int i = 0; i < nb; i++) at_key(m, t + g_hold, br[i]);
-            t += 2 * g_hold;
+            for (int i = 0; i < nb; i++) at_key(m, t + hold, br[i]);
+            t += hold + g_hold;
         }
     }
     cmd->done = 1;
@@ -265,6 +272,9 @@ int main(int argc, char **argv)
            secs, secs > 0 ? (double)m.cpu.icount / secs / 1e6 : 0.0,
            (unsigned long long)m.interp_steps, dos_current_program(&m),
            m.exited ? "yes" : "no", (unsigned long long)state_hash(&m));
+    printf("[devices] %llu OPL writes, %llu MIDI bytes, %llu speaker changes\n",
+           (unsigned long long)m.opl_writes, (unsigned long long)m.midi_bytes,
+           (unsigned long long)m.speaker_changes);
     recomp_report(&m, stdout);
     for (int pass = 0; pass < 4 && g_nsamp; pass++) {
         int best = 0;

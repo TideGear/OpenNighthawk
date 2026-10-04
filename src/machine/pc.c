@@ -534,11 +534,14 @@ static void io_write8(machine_t *m, uint16_t port, uint8_t v)
         m->port61 = v;
         /* A rising gate on counter 2 restarts modes 1, 2, 3 and 5. */
         if (!(old & 1) && (v & 1)) m->pit[2].epoch_clk = pc_pit_clock(m);
-        if (((old ^ v) & 3) && m->hooks.speaker) m->hooks.speaker(m->hooks.user, m->cpu.icount);
+        if ((old ^ v) & 3) { m->speaker_changes++; if (m->hooks.speaker) m->hooks.speaker(m->hooks.user, m->cpu.icount); }
         break;
     }
     case 0x201: joy_trigger(m); break;
-    case 0x330: if (m->hooks.midi_byte) m->hooks.midi_byte(m->hooks.user, m->cpu.icount, v); break;
+    case 0x330:
+        m->midi_bytes++;
+        if (m->hooks.midi_byte) m->hooks.midi_byte(m->hooks.user, m->cpu.icount, v);
+        break;
     case 0x331:
         if (m->mpu_uart && v != 0xFFu) break;
         if (v == 0xFFu) { m->mpu_uart = 0; m->mpu_used = 0; m->mpu_head = 0; }
@@ -546,7 +549,7 @@ static void io_write8(machine_t *m, uint16_t port, uint8_t v)
         mpu_queue(m, 0xFEu);
         break;
     case 0x388: m->opl_index = v; break;
-    case 0x389: opl_write_reg(m, m->opl_index, v); break;
+    case 0x389: m->opl_writes++; opl_write_reg(m, m->opl_index, v); break;
     case 0x3C0:
         if (!m->attr_flip) m->attr_idx = v;
         else m->attr[m->attr_idx & 0x1F] = v;
