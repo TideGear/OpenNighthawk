@@ -203,11 +203,16 @@ struct machine {
     int      mouse_mickey_x, mouse_mickey_y;
     uint16_t mouse_hnd_seg, mouse_hnd_off, mouse_hnd_mask;
     /* The graphics cursor the driver draws (INT 33h/09): screen mask then
-     * cursor mask, 16 words each, and the hot spot. The host draws it over
-     * the presented frame while the driver's show counter says shown. */
+     * cursor mask, 16 words each, and the hot spot. The driver draws into
+     * video memory and saves the background for a move or hide. */
     uint16_t mouse_masks[32];
     int16_t  mouse_hot_x, mouse_hot_y;
     int      mouse_driver_installed;    /* a program reset the driver (AX=0) */
+    int      mouse_background, mouse_background_text;
+    int      mouse_back_x, mouse_back_y;
+    uint8_t  mouse_back_pixels[256];
+    uint32_t mouse_back_address;
+    uint16_t mouse_back_text, mouse_text_and, mouse_text_xor;
 
     /* ---- pending input, by time ------------------------------------- */
     machine_input in_q[4096];
@@ -296,6 +301,10 @@ int      pc_speaker_state(const machine_t *m, uint16_t *reload, int *mode);
 uint16_t vga_start_address(const machine_t *m);
 void     vga_set_mode(machine_t *m, uint8_t mode, int clear);
 int      mouse_gran_x(const machine_t *m, int x);
+void     mouse_new_video_mode(machine_t *m);
+void     mouse_restore_cursor(machine_t *m);
+void     mouse_draw_cursor(machine_t *m);
+int      mouse_int33(machine_t *m);
 
 /* ---- DOS / BIOS (dos.c) ---------------------------------------------- */
 int  dos_int_hook(cpu_t *c, uint8_t vec);

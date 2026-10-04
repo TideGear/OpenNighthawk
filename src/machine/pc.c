@@ -417,6 +417,7 @@ void vga_set_mode(machine_t *m, uint8_t mode, int clear)
             }
         }
     }
+    mouse_new_video_mode(m);
     if (m->log) dos_log(m, "[video] mode %02Xh set by %s\n", mode, dos_current_program(m));
 }
 
@@ -671,6 +672,7 @@ static void mouse_apply(machine_t *m, int x, int y, int buttons, int dx, int dy)
         if (was && !now) { m->mouse_release[b]++; m->mouse_rel_x[b] = mouse_gran_x(m, vx); m->mouse_rel_y[b] = vy; }
     }
     m->mouse_buttons = buttons;
+    mouse_draw_cursor(m);
 }
 
 /* ===================================================================== */

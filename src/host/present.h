@@ -17,10 +17,6 @@ typedef struct {
     uint8_t  dac[768];
     uint8_t  pel_mask;
     uint16_t cursor_pos, cursor_type;
-    int      mouse_shown;
-    int      mouse_x, mouse_y;      /* screen pixels of the hot spot */
-    uint16_t mouse_masks[32];
-    int16_t  mouse_hot_x, mouse_hot_y;
     uint64_t icount;
 } present_frame;
 

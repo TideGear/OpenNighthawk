@@ -15,12 +15,6 @@ void present_capture(const machine_t *m, present_frame *f)
     f->pel_mask = m->pel_mask;
     f->cursor_pos = (uint16_t)(m->mem[0x450] | (m->mem[0x451] << 8));
     f->cursor_type = (uint16_t)(m->mem[0x460] | (m->mem[0x461] << 8));
-    f->mouse_shown = m->mouse_driver_installed && m->mouse_hidden == 0;
-    f->mouse_x = m->mouse_x / 2;      /* mode 13h: driver x is doubled */
-    f->mouse_y = m->mouse_y;
-    memcpy(f->mouse_masks, m->mouse_masks, sizeof f->mouse_masks);
-    f->mouse_hot_x = m->mouse_hot_x;
-    f->mouse_hot_y = m->mouse_hot_y;
     f->icount = m->cpu.icount;
 }
 
@@ -96,29 +90,7 @@ void present_render(const present_frame *f, uint32_t *out, int *w, int *h, int b
         for (int i = 0; i < 64000; i++) out[i] = 0xFF000000u;
         return;
     }
-    if (!f->mouse_shown) {
-        for (int i = 0; i < 64000; i++) out[i] = pal[f->vram[i]];
-        return;
-    }
-    /* The driver's cursor, as it would have drawn it into the page: the
-     * screen mask ANDs the pixel to colour 0, the cursor mask XORs 15. */
-    static uint8_t px[64000];
-    memcpy(px, f->vram, sizeof px);
-    const int x0 = f->mouse_x - f->mouse_hot_x, y0 = f->mouse_y - f->mouse_hot_y;
-    for (int y = 0; y < 16; y++) {
-        const int sy = y0 + y;
-        if (sy < 0 || sy >= 200) continue;
-        for (int x = 0; x < 16; x++) {
-            const int sx = x0 + x;
-            if (sx < 0 || sx >= 320) continue;
-            const uint16_t bit = (uint16_t)(0x8000u >> x);
-            uint8_t v = px[sy * 320 + sx];
-            if (!(f->mouse_masks[y] & bit)) v = 0;
-            if (f->mouse_masks[16 + y] & bit) v ^= 0x0F;
-            px[sy * 320 + sx] = v;
-        }
-    }
-    for (int i = 0; i < 64000; i++) out[i] = pal[px[i]];
+    for (int i = 0; i < 64000; i++) out[i] = pal[f->vram[i]];
 }
 
 int present_write_ppm(const machine_t *m, const char *path)

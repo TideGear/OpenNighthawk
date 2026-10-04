@@ -22,7 +22,7 @@ depends on how much was translated; only speed does.
 
 ```
 src/cpu/        the CPU: state, the interpreter (cpu.c), the shared semantics (x86_sem.h)
-src/machine/    the PC: DOS and BIOS (dos.c), devices and the run loop (pc.c)
+src/machine/    the PC: DOS and BIOS (dos.c), devices (pc.c), mouse driver (mouse.c)
 src/recomp/     the recompiled code's run-time (recomp.c) and the generated-code contract
 src/host/       the window, audio and input (main.c), the headless runner (headless.c),
                 presentation (present.c)
@@ -126,15 +126,16 @@ file calls. `src/machine/pc.c` holds the devices. Both were extended from
   mode, the game port, the speaker.
 - A save directory overlaid on the install: reads look there first, writes
   go there, and the install is never written.
+- A software mouse cursor drawn into guest video memory, with clipped
+  background save/restore on show, hide, reset, movement and shape changes.
+  Frame presentation reads those pixels; it adds no second cursor. A
+  mode change discards the saved background and hides the cursor. The
+  driver lives in `src/machine/mouse.c`.
 - The service vectors (10h, 16h, 1Ah, 21h, 33h) point at stubs, so a program
   that hooks one and chains to the old vector reaches the service.
 
 ### Known differences from a real PC
 
-- **The mouse cursor** is drawn by the host over the presented frame, from
-  the driver's own masks and hot spot, rather than into video memory as a
-  real driver does. A program that read back video memory under the cursor
-  would see a difference; the game hides the cursor while it draws.
 - **The BIOS** is a set of stubs and host routines, not a ROM image. Its
   interrupt handlers execute a handful of instructions where a real BIOS
   executes dozens, a small timing difference.
@@ -365,11 +366,24 @@ Seven layers, each checkable by anyone with their own copy:
    also differs in timing, and our mouse cursor changes colour
    around 117.5 and 129.1 s where both reference captures stay unchanged.
    The paired longer shot differences are confined to up to 78 pixels in
-   the cursor's 10x15 area at (160,77); pilot names match. Investigate the
-   host overlay against DOSBox's software cursor in VRAM (see the known
-   mouse difference above). These differences remain to explain.
+   the cursor's 10x15 area at (160,77); pilot names match. START keeps the
+   INT 33h cursor hidden and draws this pointer from its own sprite. Fixing
+   the driver's guest-visible cursor did not change this sequence: a third
+   run (`intro-_hurx9dz`) matched the same 1,217 pictures, with 113 unmatched
+   reference pictures and 89 shots. Investigate the game's palette/cursor
+   handling and transition timing; these differences remain to explain.
    Captures, screenshots, reports and diagnostic
    images are kept under `~/f117-recomp-local/video/`, outside the repo.
+
+   **Cursor readback against DOSBox.** The fidelity probe now reads VGA
+   memory directly beneath an INT 33h cursor: XOR drawing, a guest write,
+   saved background restoration, nested hide/show, movement and reset.
+   All eight new answers agree (1,193 total answers, zero differences).
+   `tests/test_mouse.c` also checks clipping, mode changes, text cursor
+   restoration and that frame capture reads guest pixels without drawing
+   an overlay. After the driver change all six routes agree at 329
+   checkpoints (every 50 million clocks) and at their final states; the
+   64-state instruction lockstep still reports zero mismatching starts.
 
 ## Where this goes next
 

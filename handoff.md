@@ -87,14 +87,26 @@ nothing running.
   **Still unresolved:** the roster-entry delay and our mouse cursor's
   colour changes around 117.5 and 129.1 s, absent in both DOSBox captures.
   Paired longer differences are up to 78 pixels inside its 10x15 area at
-  (160,77); the pilot names match. Investigate our host cursor overlay
-  versus DOSBox's software cursor in VRAM, the known difference in
-  architecture.md. Avoid misreading the colour difference as pilot text.
+  (160,77); the pilot names match. START keeps the INT 33h cursor hidden
+  and draws its own pointer sprite. Fixing the driver cursor did not change
+  these pictures: third capture `.../intro-_hurx9dz` has the same 1,217
+  matches, 113 unmatched reference pictures and 89 shots. Investigate
+  START's palette handling and timer/transition timing next. Avoid
+  misreading the colour difference as pilot text.
   The tool reports these and exits 1; don't call this frame parity.
 - The five ROM-free comparator tests pass (`py tests/test_video_compare.py`).
   The shared capture driver's OPL regression also passed: 1,120 writes
   across 30.6 s, identical, timing within 1 ms (`--seconds 30`). No runtime
-  or generated code was changed; both video runs ended at the same hash.
+  or generated code was changed for the initial comparator work; all three
+  video runs ended at the same hash.
+- The INT 33h cursor now draws into guest VRAM with saved background
+  restoration, in `src/machine/mouse.c`; presentation no longer overlays
+  it. Fidelity: eight new cursor readback answers agree, 1,193 total,
+  zero differences. `test_mouse` checks clipping, guest overwrite, nested
+  hide/show, mode changes and text cursor restore. Six routes under both
+  engines agree at 329 checkpoints and final states, and the 64-state
+  lockstep reports 0 mismatching starts. Detailed outputs:
+  `C:/Users/Tideg/f117-recomp-local/cursor-parity/`.
 - The last mutation batch (seed 12) finished: 60 of 60 detected,
   recorded in docs/roadmap.md and docs/architecture.md (144 of 144 planted
   defects caught across all runs). Background jobs started in a

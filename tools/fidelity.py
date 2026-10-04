@@ -370,6 +370,42 @@ def build_probe():
     a.mov_r16_imm("ax", 0x0003); a.int_(0x33); rec("int 33/03 X after set 700 (clamped)", "cx"); rec("int 33/03 Y after set 300 (clamped)", "dx")
     a.mov_r16_imm("ax", 0x000F); a.mov_r16_imm("cx", 8); a.mov_r16_imm("dx", 16); a.int_(0x33); rec("int 33/0F AX")
     a.mov_r16_imm("ax", 0x000B); a.int_(0x33); rec("int 33/0B mickeys X", "cx", "zeroish"); rec("int 33/0B mickeys Y", "dx", "zeroish")
+    # The software cursor must be visible to reads from VGA memory, and
+    # hiding must restore what was under it, including after guest writes.
+    def mouse(fn, x=None, y=None):
+        a.mov_r16_imm("ax", fn)
+        if x is not None: a.mov_r16_imm("cx", x)
+        if y is not None: a.mov_r16_imm("dx", y)
+        a.int_(0x33)
+
+    def pixel_read(name, x=20, y=20):
+        a.db(0x06)  # push es
+        a.mov_r16_imm("ax", 0xA000); a.mov_sreg_r16("es", "ax")
+        a.db(0x26, 0xA0); a.dw(y * 320 + x)  # mov al, es:[pixel]
+        a.db(0x07)  # pop es
+        a.mov_r8_imm("ah", 0); rec(name)
+
+    def pixel_write(colour, x=20, y=20):
+        a.db(0x06)
+        a.mov_r16_imm("ax", 0xA000); a.mov_sreg_r16("es", "ax")
+        a.db(0x26, 0xC6, 0x06); a.dw(y * 320 + x); a.db(colour)
+        a.db(0x07)
+
+    mouse(0)
+    mouse(4, 40, 20)
+    pixel_write(0x7A)
+    a.mov_r16_sreg("ax", "ds"); a.mov_sreg_r16("es", "ax")
+    a.mov_r16_label("dx", "cursor_masks")
+    a.xor_rr16("bx", "bx"); a.xor_rr16("cx", "cx")
+    a.mov_r16_imm("ax", 9); a.int_(0x33)
+    mouse(1); pixel_read("mouse cursor: XOR pixel visible in VRAM")
+    pixel_write(0x33); pixel_read("mouse cursor: guest overwrite visible")
+    mouse(2); pixel_read("mouse cursor: hide restores saved background")
+    mouse(2); mouse(1); pixel_read("mouse cursor: nested hide still hidden")
+    mouse(1); pixel_read("mouse cursor: balanced show draws again")
+    mouse(4, 44, 20); pixel_read("mouse cursor: move restores old position")
+    pixel_read("mouse cursor: move draws new position", 22, 20)
+    mouse(0); pixel_read("mouse cursor: reset restores background", 22, 20)
     a.mov_r16_imm("ax", 0x0003); a.int_(0x10)
     # --- keyboard -----------------------------------------------------------
     a.mov_r16_imm("ax", 0x0100); a.int_(0x16); a.pushf_pop("ax"); a.db(0x25); a.dw(0x0040); rec("int 16/01 ZF (empty)")
@@ -660,6 +696,10 @@ def build_probe():
     a.ref16("fcba"); a.labels["pblock_8"] = a.here; a.dw(0)
     a.ref16("fcbb"); a.labels["pblock_12"] = a.here; a.dw(0)
     a.label("dacblk"); a.db(0x11, 0x22, 0x33)
+    a.label("cursor_masks")
+    for _ in range(16): a.dw(0xFFFF)
+    a.dw(0x8000)
+    for _ in range(15): a.dw(0)
     if len(a.b) & 1:
         a.db(0)
     a.label("fcb"); a.db(0); a.db(b"F117    COM"); a.db(bytes(25))
@@ -934,7 +974,8 @@ def main():
     print("  child environment, DOSBox:", env_strings(ref_child[co + 0x100:]))
     print("  child environment, ours:  ", env_strings(ours_child[co + 0x100:]))
     print("%d answers agree, %d differ" % (same, differ))
+    return int(differ != 0)
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

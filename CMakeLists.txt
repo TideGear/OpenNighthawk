@@ -37,7 +37,7 @@ target_include_directories(f117cpu PUBLIC src/cpu)
 
 # ---- The emulated PC: DOS, BIOS and devices ------------------------------
 add_library(f117machine STATIC
-  src/machine/machine.c src/machine/pc.c src/machine/dos.c)
+  src/machine/machine.c src/machine/pc.c src/machine/dos.c src/machine/mouse.c)
 target_include_directories(f117machine PUBLIC src/machine src/recomp)
 target_link_libraries(f117machine PUBLIC f117cpu)
 
@@ -117,6 +117,10 @@ if(F117R_BUILD_TESTS)
   add_executable(test186 tests/test186.c tests/cpu_stubs.c)
   target_link_libraries(test186 PRIVATE f117cpu)
   add_test(NAME cpu_186_286 COMMAND test186)
+
+  add_executable(test_mouse tests/test_mouse.c)
+  target_link_libraries(test_mouse PRIVATE f117present f117recomp_none)
+  add_test(NAME software_mouse_cursor COMMAND test_mouse)
 
   # Every translated instruction of the game against the interpreter, one
   # instruction at a time from random states (needs the generated code).

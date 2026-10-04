@@ -38,6 +38,11 @@ never instead of parity.
   within 36 ms.
 - The game version verified: GOG's installer (build 28044) with the 473.04
   update; Steam's release byte-identical (`tools/verify_install.py`).
+- Mouse driver cursor readback agrees with DOSBox: the cursor is now drawn
+  into guest video memory and saves/restores its background, rather than
+  being a host overlay. Eight readback probes agree; ROM-free clipping,
+  mode-change and text cursor tests pass. All six routes still agree at
+  329 checkpoints and final states, plus the 64-state instruction lockstep.
 
 ### In progress
 
@@ -51,8 +56,10 @@ never instead of parity.
   all VRAM at once. The roster's mouse cursor also changes colour here
   around 117.5 and 129.1 s, absent in both reference captures. Diagnostic
   pairs differ in up to 78 pixels inside the cursor's 10x15 area; the pilot
-  names match. Investigate the host cursor overlay versus DOSBox's cursor
-  and the roster-entry delay before claiming frame parity.
+  names match. START draws this pointer itself; correcting the INT 33h
+  driver did not change it. A third run matches the same 1,217 pictures,
+  with 113 unmatched DOSBox pictures and 89 shots. Investigate the game's
+  palette handling and roster-entry delay before claiming frame parity.
 
 ### Left
 
@@ -95,7 +102,7 @@ never instead of parity.
 ## Housekeeping
 
 - [ ] Split `src/machine/dos.c` (about 2,300 lines) into memory, programs,
-      files, keyboard, video and mouse.
+      files, keyboard and video. The mouse driver is now in `mouse.c`.
 - [ ] Build-from-scratch steps in the README, tested on a fresh clone.
 - [ ] `.gitattributes` for line endings.
 - [ ] An automated build on GitHub (the CPU tests need no game files).
