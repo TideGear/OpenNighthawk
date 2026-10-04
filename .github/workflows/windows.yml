@@ -1,0 +1,34 @@
+name: Windows build and ROM-free tests
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.12'
+      - name: Install picture comparator dependency
+        run: python -m pip install Pillow
+      - name: Configure full interpreter build
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DF117R_GEN_DIR= -DF117R_BUILD_APP=ON -DF117R_BUILD_TESTS=ON
+      - name: Build application, headless runner and tests
+        run: cmake --build build --config Release --parallel
+      - name: CPU and machine tests
+        run: ctest --test-dir build --build-config Release --output-on-failure
+      - name: Music comparator regressions
+        run: python tests/test_music_compare.py
+      - name: Picture comparator regressions
+        run: python tests/test_video_compare.py
