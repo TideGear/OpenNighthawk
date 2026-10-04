@@ -172,6 +172,8 @@ never instead of parity.
 - [ ] **Rendered sound parity:** the default now uses GOG DOSBox's own
       DBOPL synthesis core, rate and 2x gain; Nuked remains selectable.
       Timestamped host output passes chunk-boundary and speaker-gate tests.
+      A ROM-free tone probe found and fixed equal-rate mixer rounding;
+      86,524 stereo frames now match exactly up to the frequency change.
       The captured intro waveform still differs, with RMS within about
       0.5%. Resolve register timing, mixer block scheduling and capture
       alignment; digitized speech and speaker output need reference PCM.

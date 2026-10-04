@@ -2,6 +2,7 @@
 #include "audio.h"
 #include "opl3.h"
 #include "dbopl_bridge.h"
+#include "audio_mix.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -18,6 +19,7 @@ typedef struct {
 struct audio {
     opl3_chip opl;
     dbopl_t *dbopl;
+    int32_t opl_last[2];
     uint64_t ips;
     uint64_t done;                        /* samples rendered so far */
     int16_t  buf[BUF_FRAMES * 2];
@@ -92,7 +94,8 @@ static void render_to(audio_t *a, uint64_t target)
         float sp = (a->spk.port61 & 2) ? v - a->spk_dc : 0.0f;
         /* GOG DOSBox's AdLib mixer channel uses SetScale(2.0). Apply its
          * gain before mixing the separately driven speaker and clipping. */
-        int l = 2 * s[0] + (int)sp, r = 2 * s[1] + (int)sp;
+        int l = 2 * opl_mixer_sample(s[0], &a->opl_last[0]) + (int)sp;
+        int r = 2 * opl_mixer_sample(s[1], &a->opl_last[1]) + (int)sp;
         if (l > 32767) l = 32767;
         if (l < -32768) l = -32768;
         if (r > 32767) r = 32767;

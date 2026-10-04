@@ -1,5 +1,7 @@
 """Guard reference observation and sound verdicts against false passes."""
 import struct
+import tempfile
+import wave
 import sys
 import unittest
 from pathlib import Path
@@ -34,6 +36,7 @@ class ReferenceMemoryTests(unittest.TestCase):
 try:
     import numpy as np
     from audio_compare import align, compare
+    from opl_probe import compare as compare_probe
 except ImportError:
     np = None
 
@@ -57,6 +60,20 @@ class SoundVerdictTests(unittest.TestCase):
 
     def test_silence_cannot_pass(self):
         with self.assertRaises(ValueError): compare(np.zeros(22050), np.zeros(22050))
+
+    def test_tone_prefix_does_not_pass_changed_transition(self):
+        with tempfile.TemporaryDirectory() as directory:
+            paths = [Path(directory) / name for name in ("reference.wav", "ours.wav")]
+            signal = np.tile(np.array([500, -500], dtype="<i2"), 44100 * 3)
+            changed = signal.copy(); changed[44100:] *= -1
+            for path, samples in zip(paths, (signal, changed)):
+                with wave.open(str(path), "wb") as output:
+                    output.setparams((2, 2, 44100, 0, "NONE", "not compressed"))
+                    output.writeframes(np.repeat(samples, 2).astype("<i2").tobytes())
+            result = compare_probe(*paths)
+            self.assertEqual(result["first_second_equal_frames"], 44100)
+            self.assertEqual(result["equal_prefix_frames"], 44100)
+            self.assertFalse(result["exact_pcm_equal"])
 
 
 if __name__ == "__main__":

@@ -82,6 +82,17 @@ An independent 512-sample renderer and the app's sample-sized renderer
 differ in 270 stereo frames of the 6,394,500-frame log, around channel
 silencing; that DBOPL block behavior is retained and documented.
 
+**ROM-free tone probe:** `tools/opl_probe.py` creates its own 16-bit COM
+program with two sustained OPL notes and key-off, captures GOG DOSBox PCM,
+and renders the runtime's writes through both app backends. It exposed the
+reference mixer's 14-bit interpolation remainder even at equal rates.
+Matching that rounding makes the first 86,524 stereo frames identical
+(1.962 seconds, until the reference changes frequency). Before this fix,
+only 22,979 frames of the first second matched; after it, all 44,100 do.
+The full probe remains unequal because BIOS-tick phase gives different
+note transition times. Its comparator preserves that failure and reports
+the exact prefix separately. No game bytes are needed for this check.
+
 **Flight state:** `tools/dosbox_flight.py` locates DOSBox's guest RAM using
 its ROM signature and validates the owning MCB/PSP. Its process handle has
 read/query permissions only. The original game is unmodified, and inputs

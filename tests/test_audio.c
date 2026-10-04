@@ -1,5 +1,6 @@
 /* Actual host audio: timestamped writes must ignore caller chunk boundaries. */
 #include "audio.h"
+#include "audio_mix.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -7,7 +8,7 @@
 static void tone(audio_t *a, uint64_t at)
 {
     static const uint8_t pairs[][2] = {
-        {0x20,1},{0x23,1},{0x40,0x10},{0x43,0},
+        {0x20,0x21},{0x23,0x21},{0x40,0x10},{0x43,0},
         {0x60,0xf0},{0x63,0xf0},{0x80,0x0f},{0x83,0x0f},
         {0xc0,0},{0xa0,0x98},{0xb0,0x31}
     };
@@ -16,6 +17,12 @@ static void tone(audio_t *a, uint64_t at)
 }
 int main(void)
 {
+    int32_t last = 0;
+    CHECK(opl_mixer_sample(186, &last) == 185);
+    CHECK(opl_mixer_sample(1477, &last) == 1476);
+    CHECK(opl_mixer_sample(100, &last) == 100);
+    last = 0; CHECK(opl_mixer_sample(32768, &last) == 32766);
+    CHECK(opl_mixer_sample(0, &last) == 2);
     CHECK(!audio_create(0));
     CHECK(!audio_create_backend(AUDIO_RATE, (audio_opl_backend)99));
     static int16_t x[16384], y[16384];

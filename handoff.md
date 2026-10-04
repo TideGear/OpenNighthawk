@@ -84,6 +84,18 @@ routes are verified; an independent DOSBox recon flight is running (below).
 
 ## In flight at handoff
 
+- Latest audio probe: new`tools/opl_probe.py` builds original ROM-free16-bit
+  COM via fidelity.Asm, capturesWAV with normalCtrlF6 andSpace. It revealed
+  DOSBox mixer equal-rate fractional interpolation (14bit remainder16383).
+  Fixed `audio_mix.h` applies the reference rounding before2xgain, both
+  app and independentrenderer. Probe`opl-tone-05` matches86,524 consecutive
+  stereo frames / first44,100 entirely, until firstfrequencychange1.962s.
+  BIOS tick phase changes note lengths; fullPCM still fails, preserved.
+  Sustained-tone C tests pass;9CTests/44Python. EarlierNuked transient during
+  setup produces firstnonzero94 ratherthanactualkey-on44100; do not claim
+  Nuked parity. Earlier`opl-tone-03` usednon-sustainedoperators and was only
+  a shortattack/release; latest05 usesEG_TYPE21sustained tone.
+
 - Newest work after the initial audit: CI pacing now excludes SDL startup
   and uses1MHz/four seconds to avoid interpreter throughput on shared runners.
   Commit6668230 CI passes; failed CI outputs are uploaded. Corrected recon
