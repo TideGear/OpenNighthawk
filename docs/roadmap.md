@@ -99,8 +99,10 @@ never instead of parity.
 - [ ] **A landing route:** fly back and land. No route or random flight has
       landed yet.
 - [ ] **The other theatres and mission types:** Central America, North Cape,
-      Central Europe, Libya, the Middle East, the Persian Gulf (Korea,
-      Vietnam and the default theatre are flown).
+      Central Europe, the Middle East, the Persian Gulf and Kuwait (Korea,
+      Vietnam and Libya are flown). The default route opens `LB.WLD` and
+      `LB.3DG`; Libya was previously duplicated in the unfinished list,
+      while Kuwait was missing. Further mission types still need coverage.
 - [ ] **The rest of the front end:** creating and retiring pilots, the CO's
       office, maintenance, awards, saving and loading a roster.
 - [ ] **A person playing it:** controls, joystick and mouse, saves, the feel.
@@ -139,7 +141,9 @@ never instead of parity.
 
 - [ ] Split `src/machine/dos.c` (about 2,300 lines) into memory, programs,
       files, keyboard and video. The mouse driver is now in `mouse.c`.
-- [ ] Build-from-scratch steps in the README, tested on a fresh clone.
+- [x] Build-from-scratch steps in the README, tested on a fresh public clone:
+      full interpreter build, coverage/recompilation, six-route parity at
+      329 checkpoints/finals and 5,713,152 lockstep states (zero mismatches).
 - [x] `.gitattributes` for line endings: LF text, CRLF Windows batch scripts,
       binary assets excluded from conversion. Existing index text is LF.
 - [x] An automated full Windows interpreter build on GitHub, with four

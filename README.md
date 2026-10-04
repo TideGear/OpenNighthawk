@@ -98,8 +98,32 @@ against the SHA-256 of every file the project reads.
 
 ## Building
 
-Requirements: Windows, Visual Studio 2026 Build Tools (MSVC), CMake 3.24+,
-Ninja, and Python 3.12 with `capstone` (`py -m pip install capstone`).
+Requirements: Windows, Visual Studio 2026 Build Tools with the C++ tools and
+Windows SDK, CMake 3.24+, Ninja, Git, and Python 3.12. CMake, Ninja, Git and
+Python must be available in the terminal. The build fetches SDL 3.2.10 on
+its first configure; it needs an internet connection then.
+
+From a new PowerShell terminal, in the directory where you keep source:
+
+```powershell
+git clone https://github.com/TideGear/OpenNighthawk.git OpenNighthawk
+Set-Location OpenNighthawk
+py -m pip install capstone Pillow
+py tools/build_recomp.py --data "D:/GOG/F-117A" --work "$env:USERPROFILE/f117-recomp-local/OpenNighthawk"
+```
+
+Replace the data path with your installed game. `capstone` is needed by the
+translator; Pillow enables the picture comparator tests. Generated C,
+coverage and saves go in the supplied work directory. On first build,
+`build.cmd` creates a `build` junction to a local directory under
+`$env:USERPROFILE/f117-recomp-local`, with a separate CMake cache for each
+checkout. No generated files or game assets belong in the source tree.
+This sequence was verified from a fresh public clone, including coverage,
+both builds, all six parity routes and the instruction lockstep. Translation
+counts depend on accumulated coverage: that run produced 89,276 starts,
+compared with 89,216 in the earlier local build.
+
+For a checkout that is already set up, the default work directory works too:
 
 ```bat
 py tools\build_recomp.py --data "D:\GOG\F-117A"

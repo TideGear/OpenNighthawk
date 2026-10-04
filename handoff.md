@@ -109,7 +109,23 @@ nothing running.
   source path; existing junctions are retained. Fresh public clone
   `~/f117-recomp-local/ci-clone-20261004` builds the interpreter app and
   passes all ROM-free tests. Full recompilation/coverage/parity from it
-  is being verified separately before marking fresh-clone instructions done.
+  also passed: first pass 87,574 starts, after six-route coverage 89,276;
+  all six routes identical at 329 checkpoints/finals, lockstep 5,713,152
+  states, 512 declined, zero mismatching starts. Log:
+  `fresh-clone-pipeline.log`; private generated code/coverage/runs:
+  `fresh-clone-pipeline/`. README fresh-clone instructions are verified.
+  All local processes finished. The original checkout's existing build
+  junction and standard gen directory were retained.
+- Theatre list corrected from actual data: the default route opens
+  `LB.WLD` / `LB.3DG` (Libya); Kuwait (`KU`) was missing from Left.
+  Remaining theatre boxes in START's Transfer Request (DS:6F6E), useful
+  for the next route batch: Central America/CU (54,73), North Cape/NC
+  (186,7), Central Europe/CE (155,40), Middle East/ME (184,64),
+  Kuwait/KU (196,62), Persian Gulf/PG (212,69). Existing Korea/KO is
+  (291,58); Vietnam/VN is (270,83). Read from the game's own menu and
+  DS:0DE2 mapping; no routes for the remaining six yet. Pilot transfer
+  clearance is required for all boxes except default Libya, as in the
+  working Korea/Vietnam routes. Further mission-type coverage is still open.
 
 - Near-slice-end I/O suppression now follows DOSBox's source: omit the
   delay if fewer than three delays remain before the millisecond/PIT/VGA
