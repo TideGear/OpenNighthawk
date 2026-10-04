@@ -93,6 +93,21 @@ uint64_t machine_state_hash(const machine_t *m)
     h = (h ^ m->cpu.ip) * 1099511628211ull;
     h = (h ^ m->cpu.flags) * 1099511628211ull;
     h = (h ^ m->io_hash) * 1099511628211ull;
+    for (size_t i = 0; i < sizeof m->dac_display; i++) h = (h ^ m->dac_display[i]) * 1099511628211ull;
+    /* Scanout can differ even when current VRAM is identical: include the
+     * in-progress and completed display state in engine parity checks. */
+    for (size_t i = 0; i < sizeof m->scan_work; i++) h = (h ^ m->scan_work[i]) * 1099511628211ull;
+    for (size_t i = 0; i < sizeof m->scan_pixels; i++) h = (h ^ m->scan_pixels[i]) * 1099511628211ull;
+    for (size_t i = 0; i < sizeof m->scan_dac; i++) h = (h ^ m->scan_dac[i]) * 1099511628211ull;
+    h = (h ^ m->scan_next) * 1099511628211ull;
+    h = (h ^ m->scan_frame) * 1099511628211ull;
+    h = (h ^ m->scan_time) * 1099511628211ull;
+    h = (h ^ m->scan_start) * 1099511628211ull;
+    h = (h ^ m->scan_latch) * 1099511628211ull;
+    h = (h ^ m->scan_part) * 1099511628211ull;
+    h = (h ^ m->scan_valid) * 1099511628211ull;
+    h = (h ^ m->scan_mask) * 1099511628211ull;
+    h = (h ^ m->scan_blank) * 1099511628211ull;
     return h;
 }
 

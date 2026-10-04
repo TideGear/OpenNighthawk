@@ -54,8 +54,9 @@ options. Enhancements come after parity, never instead of it.
   value, timing within 36 ms.
 - **The picture comparison now runs:** `tools/video_compare.py` captures
   DOSBox's lossless video and compares exact RGB pictures against our
-  screenshots at the native VGA period. A 130.8 s reference matches 1,219
-  pictures in order; 107 reference pictures and 74 shots remain unmatched,
+  completed four-part scanout frames at the native VGA period. A 130.8 s
+  reference matches 1,319 pictures in order; seven reference pictures and
+  28 shots remain unmatched,
   each lasting one sample. Scanout and transition timing remain under
   investigation; the apparent roster cursor changes were screenshot aliasing.
 - **Every translated instruction, not only the ones the sessions reach:**

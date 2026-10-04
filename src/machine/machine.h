@@ -164,6 +164,7 @@ struct machine {
     /* ---- VGA ------------------------------------------------------ */
     uint8_t  video_mode;
     uint8_t  dac[256 * 3];
+    uint8_t  dac_display[256 * 3]; /* masked render palette: publish on blue */
     uint8_t  dac_widx, dac_ridx, dac_comp, dac_state;
     uint8_t  pel_mask;
     uint8_t  seq_idx, seq[8];
@@ -173,6 +174,11 @@ struct machine {
     uint8_t  misc_out;
     uint64_t frame_len;      /* instructions per VGA frame */
     uint64_t vsync_next;
+    /* GOG's svga_s3 renderer reads four groups of 50 mode-13h rows. */
+    uint8_t  scan_work[64000], scan_pixels[64000], scan_dac[768];
+    uint64_t scan_next, scan_frame, scan_time;
+    uint16_t scan_start, scan_latch;
+    uint8_t  scan_part, scan_valid, scan_mask, scan_blank;
 
     /* ---- AdLib (the half a driver can observe) --------------------- */
     uint8_t  opl_index;

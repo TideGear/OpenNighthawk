@@ -417,7 +417,17 @@ void vga_set_mode(machine_t *m, uint8_t mode, int clear)
             }
         }
     }
+    memcpy(m->dac_display, m->dac, sizeof m->dac_display);
     mouse_new_video_mode(m);
+    m->scan_valid = 0;
+    m->scan_latch = 0;
+    m->scan_part = 0;
+    m->scan_next = ~0ull;
+    if (mode == 0x13 && m->frame_len) {
+        /* Start with the next complete frame, not a partial old mode. */
+        m->scan_frame = (m->cpu.icount / m->frame_len + 1) * m->frame_len;
+        m->scan_next = m->scan_frame;
+    }
     if (m->log) dos_log(m, "[video] mode %02Xh set by %s\n", mode, dos_current_program(m));
 }
 
@@ -622,7 +632,15 @@ static void io_write8(machine_t *m, uint16_t port, uint8_t v)
     case 0x3C2: m->misc_out = v; break;
     case 0x3C4: m->seq_idx = v; break;
     case 0x3C5: m->seq[m->seq_idx & 7] = v; break;
-    case 0x3C6: m->pel_mask = v; break;
+    case 0x3C6:
+        /* VGA_DAC_UpdateColor rebuilds the render palette on a mask write,
+         * including any RGB components not yet completed by a blue write. */
+        if (m->pel_mask != v) {
+            m->pel_mask = v;
+            for (unsigned i = 0; i < 256; i++)
+                memcpy(m->dac_display + i * 3, m->dac + (i & v) * 3, 3);
+        }
+        break;
     case 0x3C7:
         m->dac_ridx = v; m->dac_widx = (uint8_t)(v + 1);
         m->dac_comp = 0; m->dac_state = 0x03;
@@ -630,7 +648,18 @@ static void io_write8(machine_t *m, uint16_t port, uint8_t v)
     case 0x3C8: m->dac_widx = v; m->dac_comp = 0; m->dac_state = 0x00; break;
     case 0x3C9:
         m->dac[m->dac_widx * 3 + m->dac_comp] = (uint8_t)(v & 0x3F);
-        if (++m->dac_comp == 3) { m->dac_comp = 0; m->dac_widx++; }
+        if (++m->dac_comp == 3) {
+            /* DOSBox's VGA_DAC_SendColor runs after the complete triplet;
+             * port readback can already see the earlier red/green writes. */
+            unsigned index = m->dac_widx;
+            memcpy(m->dac_display + index * 3,
+                   m->dac + (index & m->pel_mask) * 3, 3);
+            if ((index & m->pel_mask) == index)
+                for (unsigned i = index + 1; i < 256; i++)
+                    if ((i & m->pel_mask) == index)
+                        memcpy(m->dac_display + i * 3, m->dac + index * 3, 3);
+            m->dac_comp = 0; m->dac_widx++;
+        }
         break;
     case 0x3CE: m->gc_idx = v; break;
     case 0x3CF: m->gc[m->gc_idx & 15] = v; break;
@@ -794,12 +823,41 @@ uint64_t pc_next_event(machine_t *m)
 {
     uint64_t t = m->irq0_next;
     if (m->vsync_next < t) t = m->vsync_next;
+    if (m->video_mode == 0x13 && m->frame_len && m->scan_next < t) t = m->scan_next;
     if (m->kbd_qn && !m->kbd_obf) {
         uint64_t k = m->kbd_next > m->cpu.icount ? m->kbd_next : m->cpu.icount;
         if (k < t) t = k;
     }
     if (m->in_qn && m->in_q[m->in_qh].at < t) t = m->in_q[m->in_qh].at;
     return t;
+}
+
+static void vga_scanout(machine_t *m)
+{
+    if (m->video_mode == 0x13 && m->frame_len) {
+        if (m->scan_part == 0) {
+            /* VGA_VerticalTimer uses the address latched at retrace. */
+            m->scan_start = m->scan_latch;
+        } else {
+            unsigned first = (m->scan_part - 1u) * 16000u;
+            for (unsigned i = first; i < first + 16000u; i++)
+                m->scan_work[i] = m->mem[0xA0000u + (uint16_t)(m->scan_start + i)];
+            if (m->scan_part == 4) {
+                memcpy(m->scan_pixels, m->scan_work, sizeof m->scan_pixels);
+                memcpy(m->scan_dac, m->dac_display, sizeof m->scan_dac);
+                m->scan_mask = m->pel_mask;
+                m->scan_blank = (m->seq[1] & 0x20) != 0;
+                m->scan_time = m->scan_next;
+                m->scan_valid = 1;
+                m->scan_part = 0;
+                m->scan_frame += m->frame_len;
+                m->scan_next = m->scan_frame;
+                return;
+            }
+        }
+        m->scan_part++;
+        m->scan_next = m->scan_frame + m->frame_len * (100u * m->scan_part) / 449u;
+    }
 }
 
 void pc_events(machine_t *m)
@@ -812,9 +870,17 @@ void pc_events(machine_t *m)
         pit0_schedule(m);
         if (m->irq0_next <= now) break;
     }
-    while (now >= m->vsync_next) {
-        if (m->hooks.vsync) m->hooks.vsync(m->hooks.user, m->vsync_next);
-        m->vsync_next += m->frame_len;
+    /* Preserve display-event order even after HLT or a long BIOS callback. */
+    for (;;) {
+        if (m->video_mode == 0x13 && m->frame_len &&
+            m->scan_next <= now && m->scan_next <= m->vsync_next) {
+            vga_scanout(m);
+        } else if (m->vsync_next <= now) {
+            if (m->video_mode == 0x13)
+                m->scan_latch = (uint16_t)(vga_start_address(m) * 4u);
+            if (m->hooks.vsync) m->hooks.vsync(m->hooks.user, m->vsync_next);
+            m->vsync_next += m->frame_len;
+        } else break;
     }
     kbd_poll(m);
 

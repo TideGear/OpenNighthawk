@@ -78,6 +78,14 @@ never instead of parity.
   differences. Saved-reference run `intro-ek_ltnum`: 1,219 exact pictures,
   107 unmatched reference pictures and 74 shots, each one sample. The
   transition delay (~0.57 s) and scanout differences remain unresolved.
+  **Four-part scanout implemented:** completed frames now retain the four
+  groups read during a frame and the displayed palette. Saved-reference
+  run `intro-p6mrjdbw` matches 1,319 pictures; seven reference pictures and
+  28 shots remain unmatched, each one sample. The roster matches after
+  110 s; transition delay remains ~0.57 s. ROM-free temporal scanout,
+  address-latch and DAC publication/alias tests pass.
+  All 1,210 machine probes and six routes at 329 checkpoints plus final
+  states agree; the 5.7-million-state instruction lockstep has no mismatches.
 
 ### Left
 

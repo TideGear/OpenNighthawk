@@ -451,6 +451,36 @@ All six routes after this change agree at 329 checkpoints and final states;
 the 64-state instruction lockstep compares 5,709,312 states with zero
 mismatching instruction starts.
 
+**Mode-13h scanout.** The machine now schedules GOG's four-part VGA draw:
+50 logical rows at each of lines 100, 200, 300 and 400 in the 449-line
+frame. The display address is latched at retrace for the following frame;
+the 64K chain-4 address wraps. Presentation and screenshots use the last
+completed indexed frame and its palette, rather than a fresh VRAM copy.
+Events are processed in display-time order even after a long callback.
+Text mode and graphics before the first completed frame retain snapshots.
+
+The DAC has separate port-readback and displayed colour tables. Red/green
+writes affect readback immediately, while blue publishes the triplet to
+DOSBox's render palette. Changed PEL masks rebuild its aliases; unchanged
+masks do not publish a partial triplet. The display table already includes
+the mask, so presentation does not apply it again. Scanout buffers,
+palette, address latch and event state are included in engine parity hashes.
+`tests/test_scanout.c` verifies temporal writes between groups, retaining
+the previous completed frame, address wrapping and retrace latching, mode
+changes and hash detection; DAC tests cover partial writes and aliases.
+
+Saved-reference replay `intro-p6mrjdbw` now matches 1,319 of 1,326 reference
+pictures, compared with 1,219 before scanout. Seven reference pictures and
+28 shots remain unmatched, all one sample; the roster after 110 s matches.
+The transition still differs by about 0.57 s. These results improve the
+model without claiming full video parity or exact mode/event phase.
+All 1,210 fidelity answers agree. All six routes match at 329 checkpoints
+and final states with scanout included in the hash, and the 64-state
+instruction lockstep reports zero mismatching starts. Fresh early music
+matches 365 writes over 15.5 s (drift 0..36 ms). Screenshot deadlines now
+advance from their original schedule, avoiding accumulated instruction
+overshoot in later samples.
+
 ## Where this goes next
 
 The open work, in order, is tracked in [roadmap.md](roadmap.md).

@@ -45,6 +45,8 @@ re-expressed in this code base, not copied files:
 | `src/machine/dos.c` INT 21h services | `src/dos/dos.cpp`, `dos_ioctl.cpp`, `dos_files.cpp` | Register results of 30h, 33h, 09h, 11h/12h (FCB find, volume label), 2Dh, 43h, 44h, 48h-4Dh, 52h |
 | `src/machine/dos.c` INT 33h | `src/ints/mouse.cpp` | Three buttons, X granularity, position set |
 | `src/machine/pc.c` port delays | `src/hardware/iohandler.cpp` | Cycles per port read and write |
+| `src/machine/pc.c` scanout | `src/hardware/vga_draw.cpp` | Four-part mode-13h draw timing, retrace display-address latch and chain-4 wrapping |
+| `src/machine/pc.c` display palette | `src/hardware/vga_dac.cpp` | Triplet publication, changed-mask updates and alias colours |
 
 Values measured from a running DOSBox rather than read from its source -
 the BIOS data area, the memory layout the shell leaves, the VGA register

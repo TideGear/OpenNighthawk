@@ -23,6 +23,7 @@ int main(void)
     cpu_init(&m.cpu, m.mem);
     m.cpu.user = &m;
     m.ips = MACHINE_DEFAULT_IPS;
+    m.pel_mask = 0xFF;
     m.cpu.seg[S_ES] = 0x2000;
     m.cpu.r[R_SP] = 0x8000;
     const uint8_t bytes[6] = { 1, 2, 3, 4, 5, 6 };
@@ -54,6 +55,32 @@ int main(void)
     m.cpu.r[R_BX] = 77; m.cpu.r[R_CX] = 0; m.cpu.r[R_DX] = 0;
     bios(0x1012);
     CHECK(m.dac_widx == 77 && m.dac_state == 0 && m.dac_comp == 0);
+    /* Render palette changes only after blue; reads see red immediately. */
+    pc_io_write(&m.cpu, 0x3C8, 4, 1);
+    pc_io_write(&m.cpu, 0x3C9, 22, 1);
+    CHECK(m.dac[12] == 22 && m.dac_display[12] == 0);
+    pc_io_write(&m.cpu, 0x3C9, 23, 1);
+    CHECK(m.dac[13] == 23 && m.dac_display[13] == 63);
+    pc_io_write(&m.cpu, 0x3C9, 24, 1);
+    CHECK(m.dac_display[12] == 22 && m.dac_display[13] == 23 && m.dac_display[14] == 24);
+    pc_io_write(&m.cpu, 0x3C8, 4, 1);
+    pc_io_write(&m.cpu, 0x3C9, 25, 1);
+    pc_io_write(&m.cpu, 0x3C6, 0x7F, 1);
+    CHECK(m.dac_display[12] == 25);
+    pc_io_write(&m.cpu, 0x3C9, 26, 1);
+    pc_io_write(&m.cpu, 0x3C6, 0x7F, 1);
+    CHECK(m.dac[13] == 26 && m.dac_display[13] == 23);
+    /* With a mask, an unrelated completed triplet can publish a partial
+     * source colour for one alias while the source's own display stays old. */
+    pc_io_write(&m.cpu, 0x3C6, 3, 1);
+    CHECK(m.dac_display[0] == 4 && m.dac_display[12] == 4);
+    pc_io_write(&m.cpu, 0x3C8, 0, 1);
+    pc_io_write(&m.cpu, 0x3C9, 17, 1);
+    pc_io_write(&m.cpu, 0x3C8, 4, 1);
+    pc_io_write(&m.cpu, 0x3C9, 1, 1);
+    pc_io_write(&m.cpu, 0x3C9, 2, 1);
+    pc_io_write(&m.cpu, 0x3C9, 3, 1);
+    CHECK(m.dac_display[0] == 4 && m.dac_display[12] == 17);
     /* DOSBox omits I/O delay when fewer than three bus cycles remain in
      * the CPU slice. Check either side of the boundary, not just averages. */
     m.cpu.icount = 8976;

@@ -264,7 +264,9 @@ int main(int argc, char **argv)
             char path[600];
             snprintf(path, sizeof path, "%s_%011llu.ppm", shot_prefix, (unsigned long long)m.cpu.icount);
             present_write_ppm(&m, path);
-            next_shot = m.cpu.icount + shot_every;
+            /* Keep the capture clock periodic: an instruction finishing
+             * just past the deadline must not shift every later sample. */
+            next_shot += shot_every;
         }
         if (m.cpu.icount >= next_hash) {
             printf("[hash] %llu %016llx %s\n", (unsigned long long)m.cpu.icount,

@@ -9,10 +9,19 @@ void present_capture(const machine_t *m, present_frame *f)
 {
     f->text = m->video_mode != 0x13;
     f->blank = (m->seq[1] & 0x20) != 0;
+    if (!f->text && m->scan_valid) {
+        memcpy(f->vram, m->scan_pixels, sizeof f->vram);
+        memcpy(f->dac, m->scan_dac, sizeof f->dac);
+        f->pel_mask = 0xFF;  /* DAC render table already includes the mask */
+        f->blank = m->scan_blank;
+        f->cursor_pos = f->cursor_type = 0;
+        f->icount = m->scan_time;
+        return;
+    }
     if (f->text) memcpy(f->vram, m->mem + 0xB8000, 4000);
     else memcpy(f->vram, m->mem + 0xA0000, 64000);
-    memcpy(f->dac, m->dac, 768);
-    f->pel_mask = m->pel_mask;
+    memcpy(f->dac, m->dac_display, 768);
+    f->pel_mask = f->text ? m->pel_mask : 0xFF;
     f->cursor_pos = (uint16_t)(m->mem[0x450] | (m->mem[0x451] << 8));
     f->cursor_type = (uint16_t)(m->mem[0x460] | (m->mem[0x461] << 8));
     f->icount = m->cpu.icount;

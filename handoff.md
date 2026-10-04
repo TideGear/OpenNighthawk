@@ -81,6 +81,25 @@ nothing running.
 
 ## In flight at handoff
 
+- Four-part scanout implemented and verified. Mode 13h stores four groups
+  of 50 rows at lines 100/200/300/400 of the 449-line frame; display address
+  latches at retrace. Presentation uses completed frames. DAC readback and
+  masked render palettes are separate; blue publishes a triplet, changed
+  masks update aliases. Scanout and palette state are part of parity hashes.
+  Tests: all four ROM-free CTests pass (`vga_scanout` is new); all 1,210
+  fidelity answers agree; all six routes agree at 329 checkpoints/finals,
+  5.7-million-state lockstep zero mismatching starts. Logs:
+  `build-scanout-refined.log`, `fidelity-scanout-refined.log`,
+  `scanout-refined-parity.log`. Early music matches 365 writes/15.5 s,
+  drift 0..36 ms (`music-scanout-refined.log`).
+  Video `intro-p6mrjdbw`: 1,319 matches, seven unmatched reference pictures
+  and 28 shots, all one sample; no unmatched roster shots after 110 s.
+  Transition still ~0.57 s (`video-scanout-refined.log`). The earlier
+  `intro-wv_f0b3k` and `intro-hc7g_vg8` runs have the same counts.
+  Screenshot deadlines retain their original periodic schedule.
+- `.gitattributes` committed/pushed: LF text, CRLF batch files; existing
+  index text was already LF. User's `test.bat` remains untouched.
+
 - Near-slice-end I/O suppression now follows DOSBox's source: omit the
   delay if fewer than three delays remain before the millisecond/PIT/VGA
   boundary. `pc_slice_left` shares the old DOS transfer cost's event model.

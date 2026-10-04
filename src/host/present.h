@@ -1,9 +1,8 @@
 /* present.h - turning the emulated VGA's state into pixels.
  *
- * A frame is captured at the start of each vertical retrace (the moment a
- * real VGA finishes scanning one out) and rendered from that copy, so the
- * picture shown is a picture the original would have shown on a monitor:
- * never half of one page and half of the next.
+ * Mode-13h frames come from the machine's four-part scanout, matching the
+ * GOG DOSBox renderer. Text mode and the interval before the first completed
+ * graphics frame use a snapshot. Drawing during scanout can cause tearing.
  */
 #ifndef F117R_PRESENT_H
 #define F117R_PRESENT_H
@@ -20,7 +19,7 @@ typedef struct {
     uint64_t icount;
 } present_frame;
 
-/* Copy what the VGA is showing now. */
+/* Copy the last completed graphics frame, or the current text page. */
 void present_capture(const machine_t *m, present_frame *f);
 
 /* Render a frame to 32-bit 0xAARRGGBB pixels. Text pages are 640x400,

@@ -126,6 +126,10 @@ if(F117R_BUILD_TESTS)
   target_link_libraries(test_video_ports PRIVATE f117recomp_none)
   add_test(NAME vga_dac_ports COMMAND test_video_ports)
 
+  add_executable(test_scanout tests/test_scanout.c)
+  target_link_libraries(test_scanout PRIVATE f117present f117recomp_none)
+  add_test(NAME vga_scanout COMMAND test_scanout)
+
   # Every translated instruction of the game against the interpreter, one
   # instruction at a time from random states (needs the generated code).
   if(F117R_GEN_DIR)
