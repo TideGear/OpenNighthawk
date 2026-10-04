@@ -9,8 +9,15 @@ rem The working copy lives in a synced folder and build output does not
 rem belong there: the sync client locks objects mid-build and uploads every
 rem one. `build` is a junction to local disk, made here on first use.
 if not exist build\ (
-    if not exist "%USERPROFILE%\f117-recomp-local\build" mkdir "%USERPROFILE%\f117-recomp-local\build"
-    mklink /J build "%USERPROFILE%\f117-recomp-local\build" >nul
+    rem Separate checkouts need separate CMake caches. Pass the source path
+    rem through the environment so spaces and quotes are never executable.
+    set "F117R_SOURCE_ROOT=%~dp0"
+    for /f %%H in ('powershell -NoProfile -Command "$h=[System.Security.Cryptography.SHA256]::Create(); [BitConverter]::ToString($h.ComputeHash([Text.Encoding]::UTF8.GetBytes($env:F117R_SOURCE_ROOT.ToLowerInvariant()))).Replace('-','').Substring(0,12)"') do set "F117R_BUILD_KEY=%%H"
+    if not defined F117R_BUILD_KEY ( echo ERROR: cannot identify checkout & exit /b 1 )
+    set "F117R_BUILD_LOCAL=%USERPROFILE%\f117-recomp-local\build-!F117R_BUILD_KEY!"
+    if not exist "!F117R_BUILD_LOCAL!" mkdir "!F117R_BUILD_LOCAL!"
+    mklink /J build "!F117R_BUILD_LOCAL!" >nul
+    if errorlevel 1 exit /b 1
 )
 set "LOG=%TEMP%\f117r-build.log"
 del /q build\*.old.* 2>nul
