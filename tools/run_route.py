@@ -11,8 +11,9 @@ which silently changes the inputs; this passes them as they are written.
 Optional comments declare milestones checked after the run:
     # expect-world CU
     # expect-exit VGAME.EXE 0 1000000000
-These require the selected world's briefing/flight files and the program's
-exit code after a minimum elapsed clock count. They do not prove a landing.
+    # expect-save Roster.Fil 244 434845434b00
+These require world files, the program's exit code after a minimum elapsed
+clock count, or hexadecimal bytes at a saved file offset. They do not prove a landing.
 """
 from __future__ import annotations
 
@@ -30,12 +31,24 @@ def route_args(path):
     return [l.strip() for l in open(path) if l.strip() and not l.strip().startswith("#")]
 
 
-def check_route(path, log):
+def check_route(path, log, save_dir=None):
     """Check declared milestones, so equal early crashes cannot pass parity."""
     errors = []
     with open(path) as source:
         for line in source:
-            if line.startswith("# expect-world "):
+            if line.startswith("# expect-save "):
+                _, _, name, offset, expected = line.split()
+                offset, expected = int(offset, 0), bytes.fromhex(expected)
+                try:
+                    with open(os.path.join(save_dir, name), "rb") as saved:
+                        saved.seek(offset)
+                        actual = saved.read(len(expected))
+                except (OSError, TypeError):
+                    errors.append(f"saved {name} is missing")
+                    continue
+                if actual != expected:
+                    errors.append(f"saved {name} at {offset}: {actual.hex()}, expected {expected.hex()}")
+            elif line.startswith("# expect-world "):
                 world = line.split()[2].lower()
                 for suffix, program in (("wld", "START.EXE"), ("3dg", "VGAME.EXE")):
                     pattern = rf"^\[file\] open '{re.escape(world)}\.{suffix}' -> \d+ @\d+ {re.escape(program)}$"
@@ -74,8 +87,14 @@ def main():
     result = subprocess.call(cmd)
     if result:
         return result
-    with open(os.path.join(out, "run.log")) as log:
-        errors = check_route(a.route, log.read())
+    log_path, save_path = os.path.join(out, "run.log"), os.path.join(out, "save")
+    for i, option in enumerate(cmd[:-1]):
+        if option == "--log":
+            log_path = cmd[i + 1]
+        elif option == "--save":
+            save_path = cmd[i + 1]
+    with open(log_path) as log:
+        errors = check_route(a.route, log.read(), save_path)
     for error in errors:
         print("route failed: " + error, file=sys.stderr)
     return 1 if errors else 0

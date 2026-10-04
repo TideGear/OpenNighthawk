@@ -5,6 +5,9 @@ first EXEC. Run them through `tools/run_route.py` so the shell does not
 change keyboard escapes. `tools/build_recomp.py` discovers every `.args`
 file here and compares the interpreter and generated code at 50-million-
 clock checkpoints and the final state.
+Each pipeline replay gets a new `save-*` directory, so coverage or a prior
+pipeline's edited pilot cannot change its starting state. Coverage reports
+also use fresh run directories. Earlier saved rosters are preserved.
 
 The transfer routes select the existing cleared pilot, request a theatre,
 tension and mission category, then enter the briefing, arming and hangar.
@@ -42,6 +45,14 @@ takeoff and causes an early crash.
 to exit with the declared code after the minimum elapsed time. Both route
 tools enforce these milestones: equal early crashes cannot pass parity.
 Airborne screenshots are reviewed separately when adding a flight route.
+
+`roster_edit` creates CHECK using Backspace and Return, edits one character,
+cancels another edit with Escape, deletes a KIA pilot with an empty name,
+and returns to the office to save. `--move WHEN:X,Y` hovers over a row
+without selecting it. `# expect-save FILE OFFSET HEX` checks the committed
+bytes independently of engine equality: the name, erased row and cleared
+career counters. The 802-byte roster and a fresh-process reload were checked;
+the recorded mouse/key session also replays identically under the interpreter.
 
 Keep run outputs and saves outside the repository. Use a fresh output
 directory for a baseline run, since an existing save can change the pilot

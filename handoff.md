@@ -48,10 +48,11 @@ nothing running.
 - Build: `.\build.cmd -DF117R_GEN_DIR=C:/Users/Tideg/f117-recomp-local/theatre-pipeline/gen`
   from PowerShell ("BUILD OK" at the end). It cannot relink while any
   `f117run.exe` is running.
-- Whole pipeline (translate, build, coverage, both engines on all twelve
+- Whole pipeline (translate, build, coverage, both engines on all thirteen
   routes, instruction lockstep): `py tools\build_recomp.py --data
-  "D:\GOG\F-117A"`. Last result: all twelve routes IDENTICAL; lockstep 89,276
-  starts, 0 mismatching.
+  "D:\GOG\F-117A"`. Last full batch: twelve routes IDENTICAL; the new roster
+  route separately matches at 38 checkpoints/final. Lockstep 89,276 starts,
+  0 mismatching; no generated code changed for the roster work.
   `--parity-only` skips translation/build and checks the existing executable;
   the pipeline compares every 50-million-clock checkpoint, not just finals.
 - Machine against GOG DOSBox: `py tools/fidelity.py --data "D:/GOG/F-117A"
@@ -73,7 +74,7 @@ nothing running.
 - Random flights: `py tools/random_flights.py --data "D:/GOG/F-117A"
   --seeds 31,32 --span 4000000000`.
 - Coverage of the routes: `py tools/exercised.py --data "D:/GOG/F-117A"
-  --run` (53.1%). Translated share: `py tools/census.py --data
+  --run` (53.5%). Translated share: `py tools/census.py --data
   "D:/GOG/F-117A"` (96.2%).
 - Planted defects: `py -u tools/mutation_check.py --data "D:/GOG/F-117A"
   --lockstep --random 60 --kinds skip,cf,zf,ax --seed N` (about a minute a
@@ -81,6 +82,23 @@ nothing running.
 
 ## In flight at handoff
 
+- `roster_edit.args` creates CHECK, edits a character, cancels a second
+  edit, erases the KIA row and saves. Both engines match at 38 checkpoints
+  and final hash `57ca3dadb75a4273`; saved rosters are byte-identical.
+  Save-byte milestones check names and cleared career counters. Reload
+  screenshot confirms CHECK; the 802 bytes remain identical after reload.
+  `--move` now sends mouse movement without a click, needed for hovering
+  over an editable row. Movement/key recording replays under the interpreter
+  at all 38 checkpoints. Nine route regressions and five local CTests pass.
+  Private evidence: `roster-edit-{recomp,interp}-1/`, `roster-reload-1/`,
+  `roster-pipeline.log` (two clean baselines and replay),
+  `build-mouse-move.log`, `boot-after-move.txt` (old boot hash unchanged),
+  `exercised-roster.log` (123,025 / 230,052 bytes, 53.5%).
+  Pipeline saves are now fresh `save-*` directories inside each run folder;
+  previous saves are preserved. `exercised.py --run` likewise creates fresh
+  run directories. `run_route.py --out` still reuses its chosen save for
+  intentional load/reload tests. Career retirement/awards and direct MAINT
+  navigation/dialog routes remain open.
 - All nine theatres now have flight coverage: six added routes for CU, NC,
   CE, ME, PG and KU, alongside KO, VN and default LB. All three tension
   levels and four mission categories are selected; individual objective

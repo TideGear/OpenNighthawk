@@ -25,10 +25,11 @@ options. Enhancements come after parity, never instead of it.
   untranslated stretch left that decodes as code (`tools/census.py`; the
   rest is strings, tables and variables). On the scripted sessions no game
   instruction is interpreted; only the emulated BIOS's own stubs are.
-- **Parity, measured:** twelve scripted sessions (boot to flight; a full
+- **Parity, measured:** thirteen scripted sessions (boot to flight; a full
   sortie through the debriefing and back; boots under the speaker and Roland
   drivers, where the programs load at other addresses; transfer and flight
-  routes across all nine theatres and all four mission categories) end in
+  routes across all nine theatres and all four mission categories; pilot
+  creation, editing, erasure and saving) end in
   identical state under the interpreter and the recompiled code - all of memory, the
   registers, and every byte sent to the sound card, the palette, MIDI and
   the disk - checked at intervals along the way. Planted defects in the

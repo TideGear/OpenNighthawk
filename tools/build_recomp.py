@@ -27,6 +27,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 
 from run_route import check_route
 
@@ -70,7 +71,10 @@ def headless(engine, data, work, name, args, extra, route):
     exe = os.path.join(ROOT, "build", "f117run.exe")
     rundir = os.path.join(work, "runs", "%s_%s" % (name, engine))
     os.makedirs(rundir, exist_ok=True)
-    cmd = [exe, "--engine", engine, "--data", data, "--save", os.path.join(rundir, "save"),
+    # Each replay starts from the install's roster, including after a
+    # coverage run or an earlier pipeline that edited/saved a pilot.
+    save = tempfile.mkdtemp(prefix="save-", dir=rundir)
+    cmd = [exe, "--engine", engine, "--data", data, "--save", save,
            "--log", os.path.join(rundir, "run.log")] + args + extra
     r = run(cmd, capture_output=True, text=True)
     with open(os.path.join(rundir, "runner.txt"), "w") as f:
@@ -80,7 +84,7 @@ def headless(engine, data, work, name, args, extra, route):
         print(r.stdout[-2000:], r.stderr[-2000:])
         sys.exit("run failed")
     with open(os.path.join(rundir, "run.log")) as log:
-        errors = check_route(route, log.read())
+        errors = check_route(route, log.read(), save)
     if errors:
         sys.exit("route failed: " + "; ".join(errors))
     interp = re.search(r"interpreted (\d+)", r.stdout)

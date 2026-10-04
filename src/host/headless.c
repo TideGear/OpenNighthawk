@@ -2,7 +2,7 @@
  *
  *   f117run --data DIR [--save DIR] [--steps N] [--ips N] [--log FILE]
  *           [--engine interp|recomp] [--time-us N]
- *           [--type WHEN:KEYS]... [--click WHEN:X,Y]... [--hold MS]
+ *           [--type WHEN:KEYS]... [--click WHEN:X,Y]... [--move WHEN:X,Y]... [--hold MS]
  *           [--record FILE] [--replay FILE]
  *           [--hash-every N] [--hash-from N] [--trace FROM:TO:FILE]
  *           [--coverage FILE] [--screen FILE.ppm] [--shots EVERY:PREFIX]
@@ -10,7 +10,7 @@
  * WHEN is an absolute clock count, or PROG+N: N after the program PROG
  * (e.g. START.EXE) first starts. --type types KEYS (escapes in keys.h),
  * each key held --hold ms of emulated time; --click moves the mouse to
- * mode-13h pixel (X,Y) and clicks the left button.
+ * mode-13h pixel (X,Y) and clicks the left button; --move hovers with buttons released.
  *
  * Every input is scheduled at an exact clock count from inside the machine
  * (a program's start is a machine event), so a run does not depend on how
@@ -37,8 +37,9 @@
 typedef struct {
     char prog[16];          /* empty: absolute */
     uint64_t after;
-    char keys[256];         /* keys, or "@x,y" for a left click at (x,y) */
+    char keys[256];         /* keys, or "@x,y" for mouse position (move_only omits the click) */
     int done;
+    int move_only;
 } script_cmd;
 
 #define MAX_CMDS 4096
@@ -74,8 +75,10 @@ static void schedule(machine_t *m, script_cmd *cmd, uint64_t t)
         int x = 0, y = 0;
         sscanf(cmd->keys + 1, "%d,%d", &x, &y);
         at_mouse(m, t, x, y, 0);
-        at_mouse(m, t + g_hold, x, y, 1);
-        at_mouse(m, t + 3 * g_hold, x, y, 0);
+        if (!cmd->move_only) {
+            at_mouse(m, t + g_hold, x, y, 1);
+            at_mouse(m, t + 3 * g_hold, x, y, 0);
+        }
     } else {
         /* "~MS:KEYS" holds each of these keys MS milliseconds. */
         const char *k = cmd->keys;
@@ -174,7 +177,7 @@ int main(int argc, char **argv)
             i++;
         }
         else if (!strcmp(a, "--engine") && v) { engine = !strcmp(v, "recomp") ? ENGINE_RECOMP : ENGINE_INTERP; i++; }
-        else if ((!strcmp(a, "--type") || !strcmp(a, "--click")) && v && g_ncmd < MAX_CMDS) {
+        else if ((!strcmp(a, "--type") || !strcmp(a, "--click") || !strcmp(a, "--move")) && v && g_ncmd < MAX_CMDS) {
             script_cmd *t = &g_cmd[g_ncmd++];
             const char *colon = strchr(v, ':');
             if (!colon) { fprintf(stderr, "%s wants WHEN:WHAT\n", a); return 2; }
@@ -183,7 +186,8 @@ int main(int argc, char **argv)
             char *plus = strchr(when, '+');
             if (plus) { *plus = 0; snprintf(t->prog, sizeof t->prog, "%s", when); t->after = strtoull(plus + 1, NULL, 0); }
             else t->after = strtoull(when, NULL, 0);
-            snprintf(t->keys, sizeof t->keys, "%s%s", !strcmp(a, "--click") ? "@" : "", colon + 1);
+            t->move_only = !strcmp(a, "--move");
+            snprintf(t->keys, sizeof t->keys, "%s%s", (!strcmp(a, "--click") || t->move_only) ? "@" : "", colon + 1);
             i++;
         } else { fprintf(stderr, "unknown or incomplete option %s\n", a); return 2; }
     }

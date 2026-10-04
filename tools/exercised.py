@@ -18,6 +18,7 @@ import glob
 import os
 import subprocess
 import sys
+import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -40,7 +41,7 @@ def run_routes(routes, data):
             os.remove(cov)
         print("running %s" % name, flush=True)
         subprocess.run([sys.executable, os.path.join(HERE, "run_route.py"), r, "--data", data,
-                        "--engine", "interp", "--out", os.path.join(WORK, name),
+                        "--engine", "interp", "--out", tempfile.mkdtemp(prefix=name + "_", dir=WORK),
                         "--", "--coverage", cov], check=True, stdout=subprocess.DEVNULL)
 
 

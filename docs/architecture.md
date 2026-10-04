@@ -253,8 +253,14 @@ Seven layers, each checkable by anyone with their own copy:
    these checks even if their hashes agree. Airborne screenshots are
    reviewed when a route is added; these milestones alone do not prove
    takeoff or landing.
+   Roster routes use `# expect-save FILE OFFSET HEX` to require committed
+   saved bytes, independently of matching hashes. Every pipeline and
+   executed-coverage replay uses a new save directory; prior edited careers
+   are preserved and cannot contaminate the next baseline. Mouse-only
+   moves (`--move WHEN:X,Y`) are scheduled and recorded as machine input,
+   like clicks, so hovering over a roster row can enter its name editor.
 4. **Every translated instruction, routes or not.** The routes run about
-   half of the code area (`tools/exercised.py`: 53.1%; error paths,
+   half of the code area (`tools/exercised.py`: 53.5%; error paths,
    individual mission objectives and most setup screens remain).
    `tests/insn_lockstep.c` covers the rest: for each of the 89,276 instruction starts the
    translation has, in every module, it places the module's image in

@@ -1,0 +1,41 @@
+# Create CHECK, edit with Backspace, cancel another edit, erase a dead pilot,
+# select the new pilot and save the roster by returning to the office.
+# SAVE assertions check the committed name and erased name, independently
+# of equality between the engines. Input only; no state is injected.
+# expect-save Roster.Fil 244 434845434b00
+# expect-save Roster.Fil 84 00
+# Rank, awards, score and sortie counters (+20h..+37h) are cleared.
+# expect-save Roster.Fil 274 000000000000000000000000000000000000000000000000
+# expect-save Roster.Fil 114 000000000000000000000000000000000000000000000000
+--type
+SETUP.EXE+200000:N
+--type
+SETUP.EXE+2000000:2
+--type
+START.EXE+30000000:\r
+--click
+START.EXE+120000000:258,182
+--move
+START.EXE+140000000:100,78
+--type
+START.EXE+150000000:\bCHECX\bK\r
+--move
+START.EXE+250000000:100,78
+--type
+START.EXE+260000000:\bCANCEL\e
+# Delete the second (KIA) pilot with an empty name and Return.
+--move
+START.EXE+360000000:100,58
+--type
+START.EXE+370000000:\b\r
+# Select CHECK, complete its skill form, Exit to the office (saves).
+--click
+START.EXE+470000000:100,78
+--click
+START.EXE+550000000:258,182
+--click
+START.EXE+630000000:283,172
+--steps
+1900000000
+--time-us
+700000000000000

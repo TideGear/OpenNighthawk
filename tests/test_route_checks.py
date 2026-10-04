@@ -3,9 +3,12 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 from run_route import check_route
+from build_recomp import headless
 
 
 class RouteChecks(unittest.TestCase):
@@ -37,6 +40,47 @@ class RouteChecks(unittest.TestCase):
 
     def test_briefing_without_flight_cannot_pass(self):
         self.assertEqual(2, len(self.check("[file] open 'cu.wld' -> 5 @100 START.EXE\n")))
+
+    def saved(self, data):
+        with tempfile.TemporaryDirectory() as folder:
+            route = Path(folder) / "edit.args"
+            route.write_text("# expect-save Roster.Fil 2 434845434b00\n")
+            if data is not None:
+                (Path(folder) / "Roster.Fil").write_bytes(data)
+            return check_route(route, "", folder)
+
+    def test_committed_save(self):
+        self.assertEqual([], self.saved(b"\0\0CHECK\0"))
+
+    def test_ignored_edit_cannot_pass(self):
+        self.assertTrue(self.saved(b"\0\0OLD\0"))
+
+    def test_missing_save_cannot_pass(self):
+        self.assertTrue(self.saved(None))
+
+    def test_pipeline_replays_start_with_empty_saves(self):
+        with tempfile.TemporaryDirectory() as folder:
+            route = Path(folder) / "edit.args"
+            route.write_text("--steps\n10\n")
+            old = Path(folder) / "runs/edit_recomp/save"
+            old.mkdir(parents=True)
+            (old / "Roster.Fil").write_bytes(b"an earlier edited pilot")
+            saves = []
+
+            def runner(cmd, **kwargs):
+                save = Path(cmd[cmd.index("--save") + 1])
+                self.assertEqual([], list(save.iterdir()))
+                saves.append(save)
+                (save / "Roster.Fil").write_bytes(b"this run edited a pilot")
+                Path(cmd[cmd.index("--log") + 1]).write_text("")
+                return SimpleNamespace(returncode=0, stderr="", stdout=
+                                       "stopped at icount 10 (budget); interpreted 0; final hash abcd\n")
+
+            with patch("build_recomp.run", side_effect=runner):
+                for _ in range(2):
+                    headless("recomp", "unused", folder, "edit", [], [], route)
+            self.assertNotEqual(saves[0], saves[1])
+            self.assertEqual(b"an earlier edited pilot", (old / "Roster.Fil").read_bytes())
 
 
 if __name__ == "__main__":

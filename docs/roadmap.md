@@ -19,13 +19,19 @@ never instead of parity.
 - Every translated instruction held to the interpreter from random states
   (`tests/insn_lockstep.c`, 5.7 million comparisons, 0 differences); the
   translator held to 8088 and 80286 silicon vectors.
-- Twelve scripted routes identical between the interpreter and the recompiled
+- Thirteen scripted routes identical between the interpreter and the recompiled
   code: boot to flight; a full sortie through the debriefing; the speaker
   and Roland drivers; eight transfer-and-flight routes covering all nine
   theatres, three tensions and four mission categories. The routes execute
-  53.1% of the code area (`tools/exercised.py`). Theatre routes also require
+  53.5% of the code area (`tools/exercised.py`). Theatre routes also require
   the expected world files, a clean VGAME exit and at least a billion clocks
   in flight; airborne screenshots were reviewed for the six added routes.
+- Pilot creation, Backspace editing, Escape cancellation and erasure through
+  the original roster UI: the new route matches at 38 checkpoints/final.
+  Saved names and cleared career counters are checked independently; both
+  802-byte rosters match. CHECK survives a fresh-process reload. Recorded
+  mouse/key input replays identically under the interpreter. Pipeline and
+  coverage replays now start with fresh saves, preserving previous outputs.
 - Seeded random flights (`tools/random_flights.py`): every session
   identical at every hash; 30.5 minutes of flight in the 16-session batch.
 - Planted defects caught by the lockstep (`tools/mutation_check.py
@@ -107,8 +113,10 @@ never instead of parity.
       including reconnaissance, supply drops and secret-airstrip missions.
       The existing transfer routes exercise generation and controls, then
       quit; they do not establish objective completion.
-- [ ] **The rest of the front end:** creating and retiring pilots, the CO's
-      office, maintenance, awards, saving and loading a roster.
+- [ ] **The remaining front end and career flow:** direct maintenance
+      navigation, retired/KIA dialogs, retirement and awards. CO transfer
+      requests, briefing/arming, pilot creation/editing/erasure and roster
+      save/reload are covered.
 - [ ] **A person playing it:** controls, joystick and mouse, saves, the feel.
       Sessions record themselves for replay.
 - [ ] **Timing details still DOSBox's own:** its stub code at its own
@@ -151,6 +159,6 @@ never instead of parity.
 - [x] `.gitattributes` for line endings: LF text, CRLF Windows batch scripts,
       binary assets excluded from conversion. Existing index text is LF.
 - [x] An automated full Windows interpreter build on GitHub, with four
-      ROM-free CPU/machine CTests, nine comparator tests and five route
+      ROM-free CPU/machine CTests, nine comparator tests and nine route
       milestone tests. First run
       [passed](https://github.com/TideGear/OpenNighthawk/actions/runs/37192954631).
