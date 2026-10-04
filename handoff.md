@@ -4,7 +4,8 @@ For the next conversation working on this repository. Read this, then
 [docs/roadmap.md](docs/roadmap.md) (what is done and left - keep it
 updated), [docs/architecture.md](docs/architecture.md) (how parity is
 built and checked) and [docs/bugs.md](docs/bugs.md) (the original game's
-bugs). State as of 4 October 2026, commit `d87d9cd` plus this file.
+bugs). State as of 4 October 2026: everything committed and pushed,
+nothing running.
 
 ## The goal and the decisions already made
 
