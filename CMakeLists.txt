@@ -117,4 +117,14 @@ if(F117R_BUILD_TESTS)
   add_executable(test186 tests/test186.c tests/cpu_stubs.c)
   target_link_libraries(test186 PRIVATE f117cpu)
   add_test(NAME cpu_186_286 COMMAND test186)
+
+  # Every translated instruction of the game against the interpreter, one
+  # instruction at a time from random states (needs the generated code).
+  if(F117R_GEN_DIR)
+    # Only the generated objects and the core are pulled from the static
+    # libraries: the test supplies the machine hooks itself.
+    add_executable(insn_lockstep tests/insn_lockstep.c)
+    target_link_libraries(insn_lockstep PRIVATE f117recomp)
+    add_test(NAME insn_lockstep COMMAND insn_lockstep --states 4)
+  endif()
 endif()

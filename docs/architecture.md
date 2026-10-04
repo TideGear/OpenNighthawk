@@ -221,7 +221,7 @@ to the interpreter.
 
 ## Verification: why "1:1" is a claim with evidence
 
-Four layers, each checkable by anyone with their own copy:
+Six layers, each checkable by anyone with their own copy:
 
 1. **The interpreter against silicon.** `tests/sstest.py` (8088,
    3,007,000 vectors, 0 failures) and `tests/sst286.py` (80286 real mode,
@@ -241,9 +241,30 @@ Four layers, each checkable by anyone with their own copy:
    front end; boots under the speaker and Roland drivers, which load every
    program at other addresses - are identical at every checkpoint.
    `tools/build_recomp.py` repeats this on every build.
-4. **Replay.** Input logs recorded on one engine replay on the other, and in
+4. **Every translated instruction, routes or not.** The routes run about
+   half of the code area (`tools/exercised.py`: 47%; error paths, other
+   theatres, most setup screens are not on them). `tests/insn_lockstep.c`
+   covers the rest: for each of the 89,216 instruction starts the
+   translation has, in every module, it places the module's image in
+   memory, puts the machine in random states (registers, flags, segments on
+   and off the module, every byte of memory outside the image) and runs one
+   instruction through the machine's interpreter step and through the
+   generated region entered at that instruction. Registers, segments, IP,
+   flags, the clock, the interrupt shadow, every byte written, every port
+   read and written and every interrupt raised (with the registers at that
+   moment) are compared. At 64 states each, 5,709,312 comparisons: 0
+   mismatches. Eight starts are always declined to the interpreter: bytes
+   the gap sweep took for code that are invalid opcodes on the 286 (`0F`,
+   `63`, `64`, `66`), which fault the same way either way. This is a CTest
+   (`insn_lockstep`) and runs in under a second.
+
+   The first run reported 47 mismatches, every one an IRET or POPF loading
+   TF: the reference was bare `cpu_step`, while the machine (and the
+   generated code, which mirrors it) takes the single-step trap after the
+   instruction. The reference was corrected to the machine's own step.
+5. **Replay.** Input logs recorded on one engine replay on the other, and in
    the windowed game, to the same clock count and the same final state.
-5. **The check can see a defect.** `tools/mutation_check.py` plants one
+6. **The check can see a defect.** `tools/mutation_check.py` plants one
    wrong instruction at a time in the generated code and requires the
    comparison to notice; a mutant it misses is reported with whether the
    defect ran at all, so an untested path is not mistaken for a pass.
@@ -257,6 +278,13 @@ Four layers, each checkable by anyone with their own copy:
    (masked). Two sampled sites never ran on the route and are reported as
    such. Flipping one bit or flag after an instruction was masked at all
    four sites tried: the values were dead there, which the run counts show.
+
+   With `--lockstep` the mutant is judged by the single-instruction
+   lockstep (layer 4) and the sites are drawn from all translated
+   instructions: 12 of 12 detected (seed 7; removals, flipped CF, flipped
+   AX bit 0) in START, VGAME, END, DSWAP and ISOUND.LOG, most of them at
+   instructions no route runs. A flipped flag that a route would mask is
+   seen here, because the state is compared after the one instruction.
 
    The mutation check found two weaknesses in this project's own tooling,
    both fixed: removing a branch had been a no-op (so its "masked" verdict

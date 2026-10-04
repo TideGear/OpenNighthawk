@@ -33,6 +33,12 @@ options. Enhancements come after parity, never instead of it.
   the disk - checked at intervals along the way. Planted defects in the
   generated code are caught (see `tools/mutation_check.py`). A recorded input log replays on either
   engine, and in the windowed game, to the same final state.
+- **Every translated instruction, not only the ones the sessions reach:**
+  the sessions run about half the game's code (`tools/exercised.py`).
+  `tests/insn_lockstep.c` runs each of the 89,216 translated instructions
+  from 64 random machine states through the generated code and the
+  interpreter and compares everything it can change: 5.7 million
+  comparisons, 0 differences.
 - **The translator is checked against silicon:** 90,900 8088 and 94,200
   80286 hardware test vectors run through generated code with 0 unexplained
   differences.

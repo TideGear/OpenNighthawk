@@ -12,6 +12,8 @@
 5. Parity: replay each route under the interpreter and the recompiled code
    and require the same final state - every byte of memory and every
    register - on the same clock count.
+6. Run every translated instruction, routes or not, from random states
+   through the generated code and the interpreter (tests/insn_lockstep.c).
 
 Everything this writes is derived from your copy of the game and goes to the
 work directory (default %USERPROFILE%\\f117-recomp-local), never into the
@@ -120,6 +122,14 @@ def main():
                 name, ri[0], ri[1], rr[0], rr[1], rr[2], "IDENTICAL" if same else "DIFFERENT"))
         if bad:
             sys.exit("%d route(s) differ between the engines" % bad)
+        print("6. every translated instruction against the interpreter")
+        exe = os.path.join(ROOT, "build", "insn_lockstep.exe")
+        r = run([exe, "--states", "64"], capture_output=True, text=True)
+        last = (r.stdout or "").strip().splitlines()[-1:] or ["(no output)"]
+        print("  " + last[0])
+        if r.returncode != 0:
+            print("\n".join(l for l in r.stdout.splitlines() if "MISMATCH" in l))
+            sys.exit("translated instructions differ from the interpreter")
     print("done: %s" % os.path.join(ROOT, "build", "f117a.exe"))
 
 

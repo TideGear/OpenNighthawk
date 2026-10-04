@@ -12,6 +12,11 @@ e.g. a flag the next instruction overwrites).
 
     py tools/mutation_check.py --data DIR [--route ROUTE.args]
                                [--target NAME:OFFSET:KIND ...]
+
+With --lockstep the mutant is judged by tests/insn_lockstep.c instead of a
+route: every translated instruction of the module, one at a time from
+random states, against the interpreter. --random then draws from ALL
+translated instructions, most of which no route runs.
 """
 from __future__ import annotations
 
@@ -53,16 +58,17 @@ def run_route(exe, engine, data, workdir, args):
     return (m.group(1), m.group(2)) if m else None, int(hits.group(1)) if hits else 0
 
 
-def build_mutant(gen, build_dir):
+def build_mutant(gen, build_dir, target="f117run"):
     bat = os.path.join(build_dir + "-build.bat")
     os.makedirs(build_dir, exist_ok=True)
     with open(bat, "w") as f:
         f.write('@echo off\r\ncall "%s" >nul\r\n' % VCVARS)
         f.write('cmake -S "%s" -B "%s" -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DF117R_BUILD_APP=OFF '
-                '-DF117R_BUILD_TESTS=OFF -DF117R_GEN_DIR="%s" >nul\r\n' % (ROOT, build_dir, gen.replace("\\", "/")))
-        f.write('cmake --build "%s" --target f117run\r\n' % build_dir)
+                '-DF117R_BUILD_TESTS=%s -DF117R_GEN_DIR="%s" >nul\r\n' % (
+                    ROOT, build_dir, "OFF" if target == "f117run" else "ON", gen.replace("\\", "/")))
+        f.write('cmake --build "%s" --target %s\r\n' % (build_dir, target))
     r = subprocess.run([bat], capture_output=True, text=True, shell=True)
-    exe = os.path.join(build_dir, "f117run.exe")
+    exe = os.path.join(build_dir, target + ".exe")
     if r.returncode != 0 or not os.path.exists(exe):
         print(r.stdout[-2000:])
         sys.exit("mutant build failed")
@@ -78,13 +84,34 @@ def main():
                     help="also N random 'skip' mutants among instructions the routes are known to run "
                          "(those in the coverage files)")
     ap.add_argument("--seed", type=int, default=1)
+    ap.add_argument("--lockstep", action="store_true",
+                    help="judge each mutant by the single-instruction lockstep, not a route")
+    ap.add_argument("--kinds", default="skip", help="mutation kinds for --random, comma-separated")
     ap.add_argument("--work", default=os.path.join(os.path.expanduser("~"), "f117-recomp-local"))
     a = ap.parse_args()
     targets = list(a.target) or (DEFAULT_TARGETS if not a.random else [])
     args = route_args(a.route)
     covs = [os.path.join(a.work, "coverage", f) for f in sorted(os.listdir(os.path.join(a.work, "coverage")))
             if f.endswith(".cov")]
-    if a.random:
+    if a.random and a.lockstep:
+        # Every translated instruction, by image offset.
+        import random
+        sys.path.insert(0, os.path.join(ROOT, "recompiler"))
+        from discover import Discovery
+        from modules import load_all
+        from recomp import read_coverage
+        mods = load_all(a.data)
+        seeds, _ = read_coverage(covs, mods)
+        pool = set()
+        for m in mods:
+            for r in Discovery(m, log=lambda *x: None).run(coverage=seeds.get(m.name, [])):
+                for ip in r.insns:
+                    pool.add((m.name, m.off(r.seg, ip)))
+        rng = random.Random(a.seed)
+        kinds = a.kinds.split(",")
+        for name, off in rng.sample(sorted(pool), min(a.random, len(pool))):
+            targets.append("%s:%X:%s" % (name, off, rng.choice(kinds)))
+    elif a.random:
         # Coverage lines name instructions the routes ran: NAME HASH SEG IP.
         # Image offset = SEG*16 + IP (the .COM's origin aside, which these
         # programs do not have).
@@ -104,10 +131,22 @@ def main():
     for t in targets:
         cmd = [sys.executable, os.path.join(ROOT, "recompiler", "recomp.py"), "--data", a.data,
                "--out", gen, "--no-comments", "--mutate", t]
+        if a.lockstep:
+            cmd += ["--only", t.split(":")[0]]      # the lockstep tests one module
         for c in covs:
             cmd += ["--coverage", c]
         if subprocess.run(cmd, capture_output=True, text=True).returncode != 0:
             print("%-22s could not plant (no translated instruction there)" % t)
+            continue
+        if a.lockstep:
+            exe = build_mutant(gen, bdir + "-lockstep", "insn_lockstep")
+            r = subprocess.run([exe, "--only", t.split(":")[0], "--states", "16"], capture_output=True, text=True)
+            hit = [l.strip() for l in r.stdout.splitlines() if "MISMATCH" in l]
+            if r.returncode == 1 and hit:
+                detected += 1
+                print("%-24s DETECTED   %s" % (t, hit[0][:110]))
+            else:
+                print("%-24s not seen   (exit %d)" % (t, r.returncode))
             continue
         exe = build_mutant(gen, bdir)
         # The reference comes from the SAME binary's interpreter, which the
