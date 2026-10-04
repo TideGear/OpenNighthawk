@@ -198,8 +198,10 @@ def write_module(mod, regions, out_dir, comments, mutate=None):
         f.write("};\n\n")
         f.write("const rc_module RCM_%s = {\n" % t)
         f.write('  "%s", 0x%016XULL, %d, %d, IMAGE,\n' % (mod.name, mod.file_hash, len(mod.image), mod.origin))
-        f.write("  REGIONS, %d, ENTRIES, %d, RUNS, %d, %d\n};\n" % (
+        f.write("  REGIONS, %d, ENTRIES, %d, RUNS, %d, %d,\n" % (
             len(region_rows), len(entries), len(runs), len(entries)))
+        f.write("  %d, %d, %d\n};\n" % (1 if mod.kind == "floating" else 0,
+                                       mod.probe[0] if mod.probe else 0, mod.probe[1] if mod.probe else 0))
     if mutate and mutate[0] == mod.name and not mutated:
         sys.exit("--mutate: no translated instruction starts at %s+%05X" % (mod.name, mutate[1]))
     return files

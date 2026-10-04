@@ -140,6 +140,24 @@ class Discovery:
             self.stats["table_targets"] += len(targets)
         return targets
 
+    def terminates(self, r, seg, ins):
+        """A DOS terminate does not return: INT 20h, or INT 21h straight
+        after `mov ah, 4Ch` / `mov ax, 4Cxxh` in the same walk. Whatever
+        follows is data (F117.COM keeps its variables right after its exit
+        call), and decoding it as code would make every write to those
+        variables invalidate the region."""
+        if ins.op != 0xCD:
+            return False
+        if ins.imm == 0x20:
+            return True
+        if ins.imm != 0x21:
+            return False
+        p2 = r.insns.get((ins.ip - 2) & 0xFFFF)
+        if p2 is not None and p2.raw == b"\xB4\x4C":
+            return True
+        p3 = r.insns.get((ins.ip - 3) & 0xFFFF)
+        return p3 is not None and p3.raw[:1] == b"\xB8" and p3.raw[2:3] == b"\x4C"
+
     # ---- the walk -------------------------------------------------------------
     def grow(self, seg, ip, why):
         if (seg, ip) in self.owner or (seg, ip) in self.bad:
@@ -163,8 +181,9 @@ class Discovery:
             self.owner[key] = r
             r.insns[x] = ins
             r.live[x] = self.live_bytes(seg, ins)
-            for s in successors(ins):
-                stack.append(s)
+            if not self.terminates(r, seg, ins):
+                for s in successors(ins):
+                    stack.append(s)
             if ins.kind == K_CALL:
                 self.add_seed(seg, ins.target, "call")
             elif ins.kind in (K_CALLFAR, K_JMPFAR):

@@ -39,6 +39,7 @@ typedef struct instance {
     uint8_t  *seen_bytes;          /* 4 bytes per offset, as executed */
     int       live;
     int       ran;                 /* some region has verified: its code is running */
+    int       floating;            /* recognised by content, not loaded by DOS */
 } instance;
 
 #define MAX_INST 32
@@ -51,6 +52,11 @@ typedef struct {
     char      coverage_path[600];
     uint64_t  dispatches, region_runs, verify_ok, verify_fail, code_writes;
     uint64_t  translated_start;    /* icount bookkeeping for the report */
+    /* Code segments already checked for a floating module and found none,
+     * since the last program load (one bit per CS value). */
+    uint8_t   floating_no[0x10000 / 8];
+    int       nfloating;           /* live floating instances */
+    instance *last_exec;           /* the program DOS loaded last */
 } rt_t;
 
 static rt_t g_rt;
@@ -100,6 +106,8 @@ static void flush_coverage(instance *in);
 static void unregister(instance *in)
 {
     if (!in->live) return;
+    if (in->floating && g_rt.nfloating) g_rt.nfloating--;
+    if (g_rt.last_exec == in) g_rt.last_exec = NULL;
     flush_coverage(in);
     set_codebits(in, 0);
     for (uint32_t p = in->lo >> 4; p <= ((in->hi - 1) >> 4) && p < 0x10000; p++)
@@ -147,7 +155,10 @@ void recomp_module_load(void *user, machine_t *m, const char *name,
     const uint64_t h = fnv1a64(file, len);
     const rc_module *mod = NULL;
     for (unsigned i = 0; i < RC_NMODULES; i++)
-        if (RC_MODULES[i]->file_hash == h) { mod = RC_MODULES[i]; break; }
+        if (!RC_MODULES[i]->floating && RC_MODULES[i]->file_hash == h) { mod = RC_MODULES[i]; break; }
+    /* A new program may place a decompressor anywhere: forget which code
+     * segments held none. */
+    memset(g_rt.floating_no, 0, sizeof g_rt.floating_no);
 
     uint32_t origin = kind == MODLOAD_COM ? 0x100u : 0u;
     uint32_t lo = (uint32_t)load_seg * 16u + origin;
@@ -185,6 +196,7 @@ void recomp_module_load(void *user, machine_t *m, const char *name,
         set_codebits(in, 1);
     }
     for (uint32_t p = lo >> 4; p <= ((hi - 1) >> 4) && p < 0x10000; p++) g_rt.by_para[p] = in;
+    if (kind != MODLOAD_OVERLAY) g_rt.last_exec = in;
     dos_log(m, "[recomp] %s at %04X: %s\n", in->name, load_seg,
             mod ? "translated" : "no translation (interpreted)");
 }
@@ -227,27 +239,108 @@ static int verify(const uint8_t *mem, const instance *in, const rc_region *r)
     return 1;
 }
 
-/* The region to run at CS:IP, verified, or NULL. */
-static const rc_region *lookup(machine_t *m, instance **out)
+/* Code running outside every loaded module: is it a floating module (the
+ * LZEXE decompressor, which copies itself above the program it unpacks)?
+ * Recognised by its code at CS:probe_off, and registered there - over
+ * paragraphs no loaded module owns, so the program being unpacked keeps
+ * its own. */
+static instance *try_floating(machine_t *m, uint16_t cs)
 {
-    cpu_t *c = &m->cpu;
-    const uint32_t lin = phys(c->seg[S_CS], c->ip);
-    instance *in = g_rt.by_para[lin >> 4];
-    if (!in || !in->mod || lin < in->lo || lin >= in->hi) return NULL;
+    if ((g_rt.floating_no[cs >> 3] >> (cs & 7)) & 1) return NULL;
+    for (unsigned i = 0; i < RC_NMODULES; i++) {
+        const rc_module *mod = RC_MODULES[i];
+        if (!mod->floating) continue;
+        const uint32_t at = (uint32_t)cs * 16u + mod->probe_off;
+        if (at + mod->probe_len > MEM_SIZE ||
+            memcmp(m->mem + at, mod->image + mod->probe_off, mod->probe_len) != 0)
+            continue;
+        instance *in = NULL;
+        for (int k = 0; k < MAX_INST && !in; k++) if (!g_rt.inst[k].live) in = &g_rt.inst[k];
+        if (!in) break;
+        memset(in, 0, sizeof *in);
+        in->live = 1;
+        in->floating = 1;
+        in->mod = mod;
+        snprintf(in->name, sizeof in->name, "%s", mod->name);
+        in->base = cs;
+        in->lo = (uint32_t)cs * 16u;
+        in->hi = in->lo + mod->size;
+        if (in->hi > MEM_SIZE) in->hi = MEM_SIZE;
+        in->gen = 1;
+        in->ok_gen = (uint32_t *)calloc(mod->nregions ? mod->nregions : 1, sizeof(uint32_t));
+        in->bad_gen = (uint32_t *)calloc(mod->nregions ? mod->nregions : 1, sizeof(uint32_t));
+        entry_index(mod);
+        set_codebits(in, 1);
+        for (uint32_t p = in->lo >> 4; p <= ((in->hi - 1) >> 4) && p < 0x10000; p++) {
+            instance *o = g_rt.by_para[p];
+            if (!o || !o->live || o->floating) g_rt.by_para[p] = in;
+        }
+        g_rt.nfloating++;
+        return in;
+    }
+    g_rt.floating_no[cs >> 3] |= (uint8_t)(1u << (cs & 7));
+    return NULL;
+}
+
+/* Once a loaded module's code runs, the decompressor that unpacked it is
+ * finished and its copy is just memory the program will reuse. */
+static void drop_floating(void)
+{
+    for (int k = 0; k < MAX_INST; k++)
+        if (g_rt.inst[k].live && g_rt.inst[k].floating) unregister(&g_rt.inst[k]);
+}
+
+/* The verified region of instance `in` at linear `lin` under CS, or NULL. */
+static const rc_region *region_at(machine_t *m, instance *in, uint32_t lin, uint16_t cs)
+{
+    if (!in || !in->live || !in->mod || lin < in->lo || lin >= in->hi) return NULL;
     const rc_module *mod = in->mod;
     const uint32_t off = lin - in->lo;
     const uint32_t *idx = g_rt.entry_of[module_index(mod)];
     if (!idx || !idx[off]) return NULL;
-    const uint32_t ri = mod->entries[idx[off] - 1].region;
+    /* The same bytes may be translated under more than one code segment
+     * (seg:ip and seg+n:ip-16n alias); entries for one offset are adjacent. */
+    uint32_t k = idx[off] - 1, ri = UINT32_MAX;
+    for (; k < mod->nentries && mod->entries[k].off == off; k++)
+        if ((uint16_t)(in->base + mod->regions[mod->entries[k].region].seg) == cs) {
+            ri = mod->entries[k].region;
+            break;
+        }
+    if (ri == UINT32_MAX) return NULL;                     /* reached under another CS */
     const rc_region *r = &mod->regions[ri];
-    if ((uint16_t)(in->base + r->seg) != c->seg[S_CS]) return NULL;   /* reached under another CS */
     if (in->ok_gen[ri] != in->gen) {
         if (in->bad_gen[ri] == in->gen) return NULL;
         if (verify(m->mem, in, r)) { in->ok_gen[ri] = in->gen; g_rt.verify_ok++; in->ran = 1; }
         else { in->bad_gen[ri] = in->gen; g_rt.verify_fail++; return NULL; }
     }
-    *out = in;
     return r;
+}
+
+/* The region to run at CS:IP, verified, or NULL. */
+static const rc_region *lookup(machine_t *m, instance **out)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t cs = c->seg[S_CS];
+    const uint32_t lin = phys(cs, c->ip);
+    instance *in = g_rt.by_para[lin >> 4];
+    const rc_region *r = region_at(m, in, lin, cs);
+    if (r) {
+        if (g_rt.nfloating && in == g_rt.last_exec)
+            drop_floating();     /* the unpacked program's own code is running */
+        *out = in;
+        return r;
+    }
+    /* Not a loaded module's code: a floating module already found, or one
+     * found now. The decompressor's first steps run inside the area the
+     * program will be unpacked into, so these are searched by range rather
+     * than through the paragraph map. */
+    for (int k = 0; k < MAX_INST; k++) {
+        instance *f = &g_rt.inst[k];
+        if (f->live && f->floating && (r = region_at(m, f, lin, cs)) != NULL) { *out = f; return r; }
+    }
+    instance *f = try_floating(m, cs);
+    if (f && (r = region_at(m, f, lin, cs)) != NULL) { *out = f; return r; }
+    return NULL;
 }
 
 int recomp_run(machine_t *m)

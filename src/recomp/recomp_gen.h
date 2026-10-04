@@ -49,6 +49,12 @@ typedef struct {
     const rc_run   *runs;
     uint32_t        nruns;
     uint32_t        ninsns;
+    /* A FLOATING module is not loaded by DOS but placed by the program
+     * itself - the LZEXE decompressor copies itself to high memory before
+     * it runs. It is recognised where it runs by its code: the image bytes
+     * [probe_off, probe_off+probe_len) at CS:probe_off. file_hash is 0. */
+    uint32_t        floating;
+    uint32_t        probe_off, probe_len;
 } rc_module;
 
 /* How often a planted mutation ran (recompiler --mutate; 0 otherwise). */

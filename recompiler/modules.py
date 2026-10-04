@@ -48,6 +48,7 @@ class Module:
     entries: list = field(default_factory=list)   # (seg, ip) declared entry points
     stack_seg: int = -1        # SS from the header: DGROUP for Microsoft C
     packed: bool = False
+    probe: tuple | None = None # floating modules: (offset, length) recognised at CS:offset
 
     def off(self, seg, ip):
         return seg * 16 + ip - self.origin
@@ -133,10 +134,41 @@ def load_module(directory, name):
     return m
 
 
+LZEXE_STUB = "LZEXE091.STUB"
+
+
+def lzexe_stub(directory, names):
+    """The LZEXE 0.91 decompressor as a floating module. Every packed
+    program carries the same code; it copies itself above the program and
+    jumps to the copy, keeping its offsets, so it is recognised wherever it
+    runs by its code from the entry point on. The first 14 bytes (the
+    program's own entry point and sizes) and the relocation data after the
+    code differ per program and are never executed."""
+    for n in names:
+        path = _find_ci(directory, n)
+        if not path:
+            continue
+        raw = open(path, "rb").read()
+        if raw[:2] != b"MZ" or raw[0x1C:0x20] != b"LZ91":
+            continue
+        hdr = _mz(raw)
+        stub = raw[hdr["hdr"]:hdr["size"]][hdr["cs"] * 16:]
+        entries = [(0, hdr["ip"])]
+        # Its first phase ends `push seg ; push 002Bh ; retf` into the copy.
+        if stub[0x26:0x2B] == b"\xB8\x2B\x00\x50\xCB":
+            entries.append((0, 0x2B))
+        return Module(LZEXE_STUB, 0, "floating", stub, set(), entries=entries,
+                      probe=(hdr["ip"], 0x40))
+    return None
+
+
 def load_all(directory):
     mods = []
     for n in CODE_FILES:
         m = load_module(directory, n)
         if m:
             mods.append(m)
+    stub = lzexe_stub(directory, CODE_FILES)
+    if stub:
+        mods.append(stub)
     return mods

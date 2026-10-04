@@ -158,7 +158,16 @@ static void pit_loaded(machine_t *m, int ch)
     pit_counter *p = &m->pit[ch];
     p->null_count = 0;
     p->epoch_clk = pc_pit_clock(m);
-    if (ch == 0) { pit0_schedule(m); wake(m); }
+    if (ch == 0) {
+        pit0_schedule(m);
+        wake(m);
+        /* The rate the program chose, and when: the timing fact most
+         * comparable with a real machine or DOSBox (F117R_TRACE_PIT). */
+        if (m->log && getenv("F117R_TRACE_PIT"))
+            dos_log(m, "[pit] counter 0 mode %u reload %u @%llu by %04X:%04X (%s)\n",
+                    p->mode, p->reload, (unsigned long long)m->cpu.icount,
+                    m->cpu.op_cs, m->cpu.op_ip, dos_current_program(m));
+    }
     if (ch == 2 && m->hooks.speaker) m->hooks.speaker(m->hooks.user, m->cpu.icount);
 }
 
