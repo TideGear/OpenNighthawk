@@ -76,6 +76,10 @@ options. Enhancements come after parity, never instead of it.
 
 How the parity claim is built and checked: [docs/architecture.md](docs/architecture.md).
 What is done and what is left: [docs/roadmap.md](docs/roadmap.md).
+The [Windows build check](https://github.com/TideGear/OpenNighthawk/actions/workflows/windows.yml)
+builds the full interpreter application and runs ROM-free CPU, machine and
+comparator tests on pushes and pull requests. Game-dependent parity checks
+run locally against the user's installation.
 
 ## You need your own copy of the game
 

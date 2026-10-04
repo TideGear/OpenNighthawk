@@ -99,6 +99,17 @@ nothing running.
   Screenshot deadlines retain their original periodic schedule.
 - `.gitattributes` committed/pushed: LF text, CRLF batch files; existing
   index text was already LF. User's `test.bat` remains untouched.
+- GitHub workflow `.github/workflows/windows.yml` builds the full
+  interpreter app, headless runner and CPU library on windows-2022, then
+  runs four CTests and both comparator suites (nine tests), without game
+  files or generated translations. Initial run succeeded:
+  https://github.com/TideGear/OpenNighthawk/actions/runs/37192954631
+  (`0cbe050`, job 111408818814). Actions are pinned to verified v7 SHAs.
+  New checkouts now get separate local build junction targets keyed by
+  source path; existing junctions are retained. Fresh public clone
+  `~/f117-recomp-local/ci-clone-20261004` builds the interpreter app and
+  passes all ROM-free tests. Full recompilation/coverage/parity from it
+  is being verified separately before marking fresh-clone instructions done.
 
 - Near-slice-end I/O suppression now follows DOSBox's source: omit the
   delay if fewer than three delays remain before the millisecond/PIT/VGA

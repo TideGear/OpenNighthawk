@@ -142,4 +142,6 @@ never instead of parity.
 - [ ] Build-from-scratch steps in the README, tested on a fresh clone.
 - [x] `.gitattributes` for line endings: LF text, CRLF Windows batch scripts,
       binary assets excluded from conversion. Existing index text is LF.
-- [ ] An automated build on GitHub (the CPU tests need no game files).
+- [x] An automated full Windows interpreter build on GitHub, with four
+      ROM-free CPU/machine CTests and nine comparator tests. First run
+      [passed](https://github.com/TideGear/OpenNighthawk/actions/runs/37192954631).
