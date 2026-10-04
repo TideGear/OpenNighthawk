@@ -386,6 +386,32 @@ static void close_handle(machine_t *m, unsigned h)
     m->files[h].fp = NULL;
 }
 
+/* DOSBox's modify_cycles (DATA_TRANSFERS_TAKE_CYCLES): a DOS read or write
+ * costs 4 cycles a byte, or, when that does not fit in what is left of the
+ * CPU's current slice, the rest of the slice less 5. DOSBox's slice ends at
+ * its next event: the end of the millisecond, the next timer interrupt, or
+ * the next of its VGA events - the frame start, the screen drawn in four
+ * parts (lines 100-400), retrace start and end (vga_draw.cpp). */
+static void transfer_cost(machine_t *m, uint32_t bytes)
+{
+    cpu_t *c = &m->cpu;
+    const uint64_t per_ms = m->ips / 1000u;
+    uint64_t left = per_ms - (c->icount % per_ms);
+    if (m->irq0_next > c->icount && m->irq0_next - c->icount < left) left = m->irq0_next - c->icount;
+    if (m->frame_len) {
+        /* in lines, and the vertical interrupt 0.005 ms after display end */
+        const uint64_t f = m->frame_len, vint = f * 400u / 449u + per_ms * 5u / 1000u;
+        const uint64_t ev[] = { f * 100u / 449u, f * 200u / 449u, f * 300u / 449u, f * 400u / 449u,
+                                vint, f * 412u / 449u, f * 414u / 449u, f };
+        const uint64_t pos = c->icount % f;
+        for (size_t i = 0; i < sizeof ev / sizeof ev[0]; i++)
+            if (ev[i] > pos && ev[i] - pos < left) left = ev[i] - pos;
+    }
+    const uint64_t want = 4ull * bytes;
+    if (want + 5 < left) c->icount += want;
+    else if (left > 5) c->icount += left - 5;
+}
+
 static void close_files_of(machine_t *m, uint16_t owner)
 {
     for (int i = 5; i < DOS_MAX_FILES; i++)
@@ -1491,6 +1517,7 @@ static int int21(machine_t *m)
             mem_write8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_DX] + i)), tmp[i]);
         free(tmp);
         c->r[R_AX] = (uint16_t)got;
+        transfer_cost(m, (uint32_t)got);
         ok(c);
         return 1;
     }
@@ -1503,6 +1530,7 @@ static int int21(machine_t *m)
                 buf[k++] = (char)mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_DX] + i)));
             if (h == 1 || h == 2) console_text(m, buf, (size_t)k);
             c->r[R_AX] = n;
+            transfer_cost(m, n);
             ok(c);
             return 1;
         }
@@ -1526,6 +1554,7 @@ static int int21(machine_t *m)
         fflush(m->files[h].fp);
         free(tmp);
         c->r[R_AX] = (uint16_t)put;
+        transfer_cost(m, (uint32_t)put);
         ok(c);
         return 1;
     }
@@ -2077,6 +2106,46 @@ static int int33(machine_t *m)
 static const uint8_t SERVICES[] = { 0x10, 0x16, 0x1A, 0x21, 0x33 };
 #define SERVICE_STUB(k) ((uint16_t)(0x40 + 8 * (k)))
 
+/* What DOSBox runs around each service's callback (src/cpu/callback.cpp):
+ * CB_IRET (callback, IRET), the STI kinds CB_IRET_STI/CB_INT16/CB_INT21
+ * (STI, callback, IRET: interrupts are taken between the callback and the
+ * IRET), CB_MOUSE (a jump, callback, IRET). Measured against it with
+ * tools/fidelity.py: 2, 3 and 3 instructions after the INT. */
+enum { KIND_IRET, KIND_STI, KIND_JMP };
+static const uint8_t SERVICE_KIND[] = { KIND_IRET, KIND_STI, KIND_STI, KIND_STI, KIND_JMP };
+#define STUB_IRET     0x09
+#define STUB_INT9     0x80
+#define STUB_INT8     0xA0
+#define STUB_OVERHEAD 0xC0
+
+/* INT 21h calls DOSBox follows with its overhead loop. */
+static int dos_overhead(const cpu_t *c, uint8_t vec)
+{
+    const uint8_t ah = (uint8_t)(c->r[R_AX] >> 8);
+    return vec == 0x21 && (ah == 0x0B || ah == 0x2C || (ah == 0x06 && (c->r[R_DX] & 0xFF) == 0xFF));
+}
+
+/* A service called directly (the vector still DOSBox's stub) has run in
+ * place at the INT; finish it the way DOSBox's stub would. The IRET kinds
+ * cost their instructions with interrupts still off. The STI kinds set
+ * up the interrupt frame, enable interrupts and continue at an IRET (or
+ * the overhead loop), so an interrupt that is due is taken there, inside
+ * the call, as in DOSBox. */
+static void finish_direct(machine_t *m, unsigned kind, int overhead)
+{
+    cpu_t *c = &m->cpu;
+    if (kind == KIND_IRET) { c->icount += 2; return; }
+    if (kind == KIND_JMP) { c->icount += 3; return; }
+    cpu_push16(c, c->flags);
+    cpu_push16(c, c->seg[S_CS]);
+    cpu_push16(c, c->ip);
+    c->flags = (uint16_t)((c->flags | F_IF) & (uint16_t)(0xFFFFu ^ F_TF));
+    c->seg[S_CS] = m->iret_seg;
+    c->ip = overhead ? STUB_OVERHEAD : STUB_IRET;
+    c->icount += 2;                                    /* STI, the callback */
+    cpu_irq_state_changed(c);
+}
+
 static int service(machine_t *m, uint8_t vec)
 {
     machine_inventory_service(vec, m->cpu.r[R_AX]);
@@ -2099,19 +2168,29 @@ int dos_int_hook(cpu_t *c, uint8_t vec)
             if (mem_read16(c, (uint32_t)vec * 4) != SERVICE_STUB(k) ||
                 mem_read16(c, (uint32_t)vec * 4 + 2) != m->iret_seg)
                 return 0;                      /* the program's own handler */
-            return service(m, vec);
+            const uint16_t cs0 = c->seg[S_CS], ip0 = c->ip;
+            const int over = dos_overhead(c, vec);
+            int r = service(m, vec);
+            /* Not when the call waits, ends the program or starts another. */
+            if (r && !c->halted && !m->exited && c->seg[S_CS] == cs0 && c->ip == ip0)
+                finish_direct(m, SERVICE_KIND[k], over);
+            return r;
         }
         if (vec == 0xE0 + k) {
-            /* Chained to from a program's handler: the caller's frame is at
-             * SS:SP, and the stub returns with RETF 2, so the interrupt
-             * enable, trap and direction flags come back from that frame
-             * as an IRET would have brought them. */
+            /* The callback in a service's stub, reached through a program's
+             * handler that chained to the old vector: the caller's frame is
+             * at SS:SP, and the stub ends with that frame's IRET. As DOSBox
+             * does (CALLBACK_SCF/SZF), the carry and zero results go into the
+             * frame's flags, so the IRET restores everything else as the
+             * caller had it. */
+            const int over = dos_overhead(c, SERVICES[k]);
             int r = service(m, SERVICES[k]);
-            if (c->halted != 2) {
-                uint16_t fl = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_SP] + 4));
-                const uint16_t keep = F_IF | F_TF | F_DF;
-                c->flags = (uint16_t)((c->flags & (uint16_t)~keep) | (fl & keep));
-                cpu_irq_state_changed(c);
+            if (c->halted != 2 && !m->exited) {
+                const uint16_t at = (uint16_t)(c->r[R_SP] + 4);
+                uint16_t fl = seg_read16(c, c->seg[S_SS], at);
+                const uint16_t res = F_CF | F_ZF;
+                seg_write16(c, c->seg[S_SS], at, (uint16_t)((fl & (uint16_t)~res) | (c->flags & res)));
+                if (over && c->seg[S_CS] == m->iret_seg) c->ip = STUB_OVERHEAD;
             }
             return r;
         }
@@ -2128,16 +2207,17 @@ int dos_int_hook(cpu_t *c, uint8_t vec)
         }
         mem_write16(c, BDA_TICKS, (uint16_t)t);
         mem_write16(c, BDA_TICKS + 2, (uint16_t)(t >> 16));
-        cpu_interrupt(c, 0x1C);                /* the user timer hook */
-        return 1;
+        return 1;                              /* the stub calls INT 1Ch */
     }
     case 0xF9: bios_key_irq(m); return 1;      /* the INT 9 stub's translation step */
     case 0x20: return terminate(m, 0);
-    case 0x11: c->r[R_AX] = mem_read16(c, BDA_EQUIPMENT); return 1;
-    case 0x12: c->r[R_AX] = mem_read16(c, BDA_MEM_KB); return 1;
+    case 0x11: c->r[R_AX] = mem_read16(c, BDA_EQUIPMENT); c->icount += 2; return 1;
+    case 0x12: c->r[R_AX] = mem_read16(c, BDA_MEM_KB); c->icount += 2; return 1;
     case 0x15:                                 /* system services: none */
-        c->r[R_AX] = (uint16_t)((c->r[R_AX] & 0x00FF) | 0x8600);
+        if ((c->r[R_AX] >> 8) != 0x4F)         /* 4Fh, the keyboard intercept: CF set, key kept */
+            c->r[R_AX] = (uint16_t)((c->r[R_AX] & 0x00FF) | 0x8600);
         c->flags |= F_CF;
+        c->icount += 2;
         return 1;
     default: return 0;                         /* the guest's vector, or the IRET stub */
     }
@@ -2210,28 +2290,44 @@ int dos_boot(machine_t *m, const char *program)
      * handler onto whatever was there. */
     static const uint8_t stub[] = { 0x50, 0xB0, 0x20, 0xE6, 0x20, 0x58, 0xCF };
     for (size_t i = 0; i < sizeof stub; i++) mem_write8(c, phys(iret_seg, (uint16_t)i), stub[i]);
-    /* A plain IRET for the software interrupts (no EOI). */
-    mem_write8(c, phys(iret_seg, 0x08), 0xCF);
+    /* The software interrupts nobody handles, INT 1Ch among them: DOSBox's
+     * CB_IRET, a callback that does nothing and an IRET - two instructions
+     * (NOP; IRET). The IRET alone, at +09h, ends the services' stubs. */
+    mem_write8(c, phys(iret_seg, 0x08), 0x90);
+    mem_write8(c, phys(iret_seg, STUB_IRET), 0xCF);
     for (int v = 0; v < 256; v++) {
         int hw = (v >= 8 && v <= 0x0F);
         mem_write16(c, (uint32_t)v * 4, hw ? 0x0000 : 0x0008);
         mem_write16(c, (uint32_t)v * 4 + 2, iret_seg);
     }
-    /* INT 9: read the scancode, let the ROM translation (INT F9h) see it,
-     * acknowledge. A game handler that chains here still gets its keys
-     * into the BIOS buffer. */
-    static const uint8_t stub9[] = { 0x50, 0xE4, 0x60, 0xCD, 0xF9, 0xB0, 0x20, 0xE6, 0x20, 0x58, 0xCF };
-    for (size_t i = 0; i < sizeof stub9; i++) mem_write8(c, phys(iret_seg, (uint16_t)(0x10 + i)), stub9[i]);
-    mem_write16(c, 9 * 4, 0x10);
-    /* INT 8: count the tick (INT F8h, which also calls INT 1Ch), then EOI. */
-    static const uint8_t stub8[] = { 0x50, 0xCD, 0xF8, 0xB0, 0x20, 0xE6, 0x20, 0x58, 0xCF };
-    for (size_t i = 0; i < sizeof stub8; i++) mem_write8(c, phys(iret_seg, (uint16_t)(0x20 + i)), stub8[i]);
-    mem_write16(c, 8 * 4, 0x20);
-    /* The service vectors: see dos_int_hook. */
+    /* INT 9, as DOSBox's CB_IRQ1: the scancode offered to INT 15h/4Fh, then
+     * translated (INT F9h, the callback) unless the intercept cleared CF,
+     * then the EOI. */
+    static const uint8_t stub9[] = { 0x50, 0xE4, 0x60, 0xB4, 0x4F, 0xF9, 0xCD, 0x15, 0x73, 0x02, 0xCD, 0xF9,
+                                     0xFA, 0xB0, 0x20, 0xE6, 0x20, 0x58, 0xCF };
+    for (size_t i = 0; i < sizeof stub9; i++) mem_write8(c, phys(iret_seg, (uint16_t)(STUB_INT9 + i)), stub9[i]);
+    mem_write16(c, 9 * 4, STUB_INT9);
+    /* INT 8, as DOSBox's CB_IRQ0: the tick (INT F8h, the callback), then
+     * INT 1Ch from guest code, then the EOI. */
+    static const uint8_t stub8[] = { 0xCD, 0xF8, 0x50, 0x52, 0x1E, 0xCD, 0x1C, 0xFA, 0x1F, 0x5A,
+                                     0xB0, 0x20, 0xE6, 0x20, 0x58, 0xCF };
+    for (size_t i = 0; i < sizeof stub8; i++) mem_write8(c, phys(iret_seg, (uint16_t)(STUB_INT8 + i)), stub8[i]);
+    mem_write16(c, 8 * 4, STUB_INT8);
+    /* DOSBox's DOS overhead for the timing-sensitive calls (INT 21h 06h/FFh,
+     * 0Bh, 2Ch): PUSH CX; MOV CX,140h; LOOP $; POP CX; IRET. */
+    static const uint8_t over[] = { 0x51, 0xB9, 0x40, 0x01, 0xE2, 0xFE, 0x59, 0xCF };
+    for (size_t i = 0; i < sizeof over; i++) mem_write8(c, phys(iret_seg, (uint16_t)(STUB_OVERHEAD + i)), over[i]);
+    /* The service vectors, each with DOSBox's instructions around its
+     * callback (see dos_int_hook): an STI first for INT 16h, 1Ah and 21h, a
+     * jump first for INT 33h; then the callback (INT E0h+k) and an IRET. */
     for (unsigned k = 0; k < sizeof SERVICES; k++) {
         const uint16_t at = SERVICE_STUB(k);
-        const uint8_t s[5] = { 0xCD, (uint8_t)(0xE0 + k), 0xCA, 0x02, 0x00 };
-        for (int i = 0; i < 5; i++) mem_write8(c, phys(iret_seg, (uint16_t)(at + i)), s[i]);
+        uint8_t s[5];
+        int n = 0;
+        if (SERVICE_KIND[k] == KIND_STI) s[n++] = 0xFB;
+        if (SERVICE_KIND[k] == KIND_JMP) s[n++] = 0x90;
+        s[n++] = 0xCD; s[n++] = (uint8_t)(0xE0 + k); s[n++] = 0xCF;
+        for (int i = 0; i < n; i++) mem_write8(c, phys(iret_seg, (uint16_t)(at + i)), s[i]);
         mem_write16(c, (uint32_t)SERVICES[k] * 4, at);
     }
     init_bios_data_area(m);

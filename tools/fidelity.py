@@ -472,6 +472,81 @@ def build_probe():
     a.load_es_abs("cx", 0x46C); a.sub_rr16("cx", "bx"); rec("BIOS ticks over 140 VGA frames", "cx", "rate")
     a.mov_r16_sreg("ax", "cs"); a.mov_sreg_r16("es", "ax")
 
+    # --- what the services cost in time ---------------------------------------------
+    # PIT channel 2, gated on with the speaker off, counts down from 65536 in
+    # mode 2 and is read by latching: an independent clock that the timer
+    # interrupt does not touch. Each measurement repeats a call and reads the
+    # counts it took. The counts include the loop around the call (a DEC and
+    # a JNZ), the same on both machines.
+    a.in_al(0x61); a.and_al(0xFC); a.db(0x0C, 0x01); a.db(0xE6, 0x61)   # gate on, speaker off
+    a.out_imm(0x43, 0xB4); a.out_imm(0x42, 0); a.out_imm(0x42, 0)
+
+    def latch2(lo, hi):
+        a.out_imm(0x43, 0x80); a.in_al(0x42); a.mov_rr8(lo, "al"); a.in_al(0x42); a.mov_rr8(hi, "al")
+
+    def timed(name, n, body, tag, kind="rate"):
+        """PIT counts for n repetitions of body (which may use AX, CX, DX)."""
+        a.push("bx"); a.push("si")
+        latch2("bl", "bh")
+        a.store("t0", "bx")                  # the start, where no service can touch it
+        a.mov_r16_imm("si", n)
+        a.label("cost_" + tag)
+        a.push("si"); body(); a.pop("si")
+        a.dec16("si"); a.jcc("jnz", "cost_" + tag)
+        latch2("cl", "ch")
+        a.load("bx", "t0")
+        a.sub_rr16("bx", "cx")
+        rec(name, "bx", kind)
+        a.pop("si"); a.pop("bx")
+        a.mov_r16_sreg("ax", "cs"); a.mov_sreg_r16("es", "ax")   # a service may have changed ES
+
+    def svc(vec, ax, extra=None):
+        def body():
+            a.mov_r16_imm("ax", ax)
+            if extra:
+                extra()
+            a.int_(vec)
+        return body
+
+    timed("PIT counts: 200 x INT 21h/0Bh (stdin status)", 200, svc(0x21, 0x0B00), "21_0b")
+    timed("PIT counts: 200 x INT 21h/30h (version)", 200, svc(0x21, 0x3000), "21_30")
+    timed("PIT counts: 200 x INT 21h/2Ch (time)", 200, svc(0x21, 0x2C00), "21_2c")
+    timed("PIT counts: 200 x INT 21h/35h (get vector)", 200, svc(0x21, 0x3508), "21_35")
+    timed("PIT counts: 200 x INT 21h/19h (current drive)", 200, svc(0x21, 0x1900), "21_19")
+    timed("PIT counts: 200 x INT 21h/62h (get PSP)", 200, svc(0x21, 0x6200), "21_62")
+    timed("PIT counts: 200 x INT 21h/51h (get PSP)", 200, svc(0x21, 0x5100), "21_51")
+    timed("PIT counts: 200 x INT 21h/0Bh with IF off", 200, lambda: (a.cli(), svc(0x21, 0x0B00)(), a.sti()), "21_0b_cli")
+    timed("PIT counts: 200 x CALL FAR 0060:0008-style IRET (baseline)", 200, lambda: (a.db(0x9C), a.db(0x0E), a.db(0xE8, 0x00, 0x00), a.db(0x58), a.db(0x58), a.db(0x9D)), "baseline")
+    timed("PIT counts: 200 x INT 16h/01h (key status)", 200, svc(0x16, 0x0100), "16_01")
+    timed("PIT counts: 200 x INT 10h/0Fh (video mode)", 200, svc(0x10, 0x0F00), "10_0f")
+    timed("PIT counts: 200 x INT 1Ah/00h (ticks)", 200, svc(0x1A, 0x0000), "1a_00")
+    timed("PIT counts: 200 x INT 33h/03h (mouse)", 200, svc(0x33, 0x0003), "33_03")
+    timed("PIT counts: 200 x INT 11h (equipment)", 200, svc(0x11, 0x0000), "11")
+    # a file read: open this program, read 4 KB twenty times from the start
+    a.mov_r16_imm("ax", 0x3D00); a.mov_r16_label("dx", "s_self"); a.int_(0x21); a.store("handle", "ax")
+
+    def read4k():
+        a.load("bx", "handle"); a.mov_r16_imm("ax", 0x4200); a.xor_rr16("cx", "cx"); a.xor_rr16("dx", "dx"); a.int_(0x21)
+        a.load("bx", "handle"); a.mov_r16_imm("ax", 0x3F00); a.mov_r16_imm("cx", 4096); a.mov_r16_label("dx", "lowcopy"); a.int_(0x21)
+    # A read costs the rest of DOSBox's current CPU slice, so the total
+    # depends on where in its event schedule each read lands: within 5%.
+    timed("PIT counts: 20 x (seek + read 4 KB)", 20, read4k, "rd4k", "rate5")
+
+    def seek_only():
+        a.load("bx", "handle"); a.mov_r16_imm("ax", 0x4200); a.xor_rr16("cx", "cx"); a.xor_rr16("dx", "dx"); a.int_(0x21)
+    timed("PIT counts: 20 x seek", 20, seek_only, "seek")
+    a.load("bx", "handle"); a.mov_r16_imm("ax", 0x3E00); a.int_(0x21)
+    # the timer interrupt's own cost: 20000 LOOPs with IRQ 0 at about 10 kHz,
+    # then with interrupts off; the difference is the handlers' time
+    def loops():
+        a.mov_r16_imm("cx", 20000); a.label("lp_%d" % slot[0]); a.loop("lp_%d" % slot[0])
+    a.cli(); a.out_imm(0x43, 0x34); a.out_imm(0x40, 119); a.out_imm(0x40, 0); a.sti()
+    timed("PIT counts: 20000 LOOPs, IRQ 0 at 10 kHz", 1, loops, "irq_on")
+    a.cli()
+    timed("PIT counts: 20000 LOOPs, interrupts off", 1, loops, "irq_off")
+    a.out_imm(0x43, 0x36); a.out_imm(0x40, 0); a.out_imm(0x40, 0); a.sti()
+    a.in_al(0x61); a.and_al(0xFC); a.db(0xE6, 0x61)
+
     # --- every service the inventory lists, every register after it ---------------
     call("21/30 AL=0", 0x21, {"ax": 0x3000})
     call("21/30 AL=AE", 0x21, {"ax": 0x30AE})
@@ -596,6 +671,7 @@ def build_probe():
     a.label("rbuf"); a.db(bytes(16))
     a.label("handle"); a.dw(0)
     a.label("blk"); a.dw(0)
+    a.label("t0"); a.dw(0)
     a.label("lowcopy"); a.db(bytes(LOW_BYTES))
     if len(a.b) & 1:
         a.db(0)
@@ -780,6 +856,8 @@ def main():
         o = struct.unpack_from("<H", ours, 2 * k)[0]
         if kind == "rate":
             ok = abs(r - o) <= max(2, r // 50)          # within 2%
+        elif kind == "rate5":
+            ok = abs(r - o) <= max(2, r // 20)          # within 5%
         elif kind == "nonzero":
             ok = (r != 0) == (o != 0)
         elif kind == "zeroish":
