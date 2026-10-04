@@ -25,12 +25,13 @@ options. Enhancements come after parity, never instead of it.
   untranslated stretch left that decodes as code (`tools/census.py`; the
   rest is strings, tables and variables). On the scripted sessions no game
   instruction is interpreted; only the emulated BIOS's own stubs are.
-- **Parity, measured:** fifteen scripted sessions (boot to flight; a full
+- **Parity, measured:** sixteen scripted sessions (boot to flight; a full
   sortie through the debriefing and back; boots under the speaker and Roland
   drivers, where the programs load at other addresses; transfer and flight
   routes across all nine theatres and all four mission categories; pilot
   creation, editing, erasure and saving; roster dialogs and direct maintenance;
-  a takeoff, return and landing at the home base)
+  a takeoff, return and landing at the home base; a credited reconnaissance
+  photograph)
   end in
   identical state under the interpreter and the recompiled code - all of memory, the
   registers, and every byte sent to the sound card, the palette, MIDI and
@@ -196,6 +197,14 @@ countdown and the parent flight record's successful-return result:
 
 ```bat
 py tools\landing_pilot.py --data "D:\GOG\F-117A" --engine interp --replay tools/routes/landing.input --out C:/landing-check
+```
+
+The reconnaissance route earns primary photo credit and stops airborne.
+Its observer checks the exposure count, photo-credit event, intact target
+and retained camera:
+
+```bat
+py tools\recon_pilot.py --data "D:\GOG\F-117A" --engine interp --replay tools/routes/recon.input --out C:/recon-check
 ```
 
 ## Repository layout

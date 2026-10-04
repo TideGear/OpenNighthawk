@@ -38,3 +38,5 @@ jobs:
         run: python tests/test_machine_api.py
       - name: Landing acceptance regressions
         run: python tests/test_landing_checks.py
+      - name: Reconnaissance acceptance regressions
+        run: python tests/test_recon_checks.py

@@ -48,11 +48,11 @@ nothing running.
 - Build: `.\build.cmd -DF117R_GEN_DIR=C:/Users/Tideg/f117-recomp-local/theatre-pipeline/gen`
   from PowerShell ("BUILD OK" at the end). It cannot relink while any
   `f117run.exe` is running.
-- Whole pipeline (translate, build, coverage, both engines on all fifteen
+- Whole pipeline (translate, build, coverage, both engines on all sixteen
   routes, instruction lockstep): `py tools\build_recomp.py --data
   "D:\GOG\F-117A"`. Last full batch: twelve routes IDENTICAL; the new roster
   route separately matches at 38 checkpoints/final and frontend dialogs at
-  64 checkpoints/final; the landing matches at 195 checkpoints/final.
+  64 checkpoints/final; landing matches at 195, reconnaissance at 123.
   Lockstep 89,276 starts,
   0 mismatching; no generated code changed for the roster work.
   `--parity-only` skips translation/build and checks the existing executable;
@@ -76,7 +76,7 @@ nothing running.
 - Random flights: `py tools/random_flights.py --data "D:/GOG/F-117A"
   --seeds 31,32 --span 4000000000`.
 - Coverage of the routes: `py tools/exercised.py --data "D:/GOG/F-117A"
-  --run` (54.5%). Translated share: `py tools/census.py --data
+  --run` (56.2%). Translated share: `py tools/census.py --data
   "D:/GOG/F-117A"` (96.2%).
 - Planted defects: `py -u tools/mutation_check.py --data "D:/GOG/F-117A"
   --lockstep --random 60 --kinds skip,cf,zf,ax --seed N` (about a minute a
@@ -84,6 +84,33 @@ nothing running.
 
 ## In flight at handoff
 
+- Reconnaissance primary credit now succeeds: `tools/recon_pilot.py`,
+  `tools/routes/recon.{args,front,input}`. Normal UI chooses Libya, Cold War,
+  Strike Missions; both generated objectives are photos, targets 1 and 2,
+  departure/return base 36 at (19200,9472), elevated surface 128. The route
+  completes only primary and stops airborne, not a completed return.
+  Cold War is transfer **item 10 at (206,149)**; (279,127) is a miss.
+  Normal flight uses slash for display 13, F2 to mode 2, camera station 0,
+  bay 8, N designation and Enter at the cue. `]`/`[` only step the selected
+  display item's bits and cannot open the forward display; the first trial
+  `recon-01` circled without credit because it used `]`.
+  Successful trial `recon-02`: primary credited at 345.516 s, range 268,
+  photo count 1, shutter 3, primary flag 4000h, one event 8A for target 1,
+  intact target and C09A=0. Camera 16 retains one store. Credit image
+  reviewed (FRAME 1 / PRIMARY PHOTO). Final after another second:
+  6,180,124,257 clocks, hash `eb19d05b7369a32b`, still VGAME, photo count 1,
+  shutter 0, fuel 7587. `recon-replay-{interp,recomp}.stdout` match all 123
+  checkpoints/final; `recon-verified-{interp,recomp}/result.json` pass the
+  stronger read-only acceptance gate. Underlying runtime unchanged, no
+  interpreted game-module starts/new fallback coverage; 89,276 translated.
+  All five CTests and 35 Python regressions pass. Executed coverage is
+  129,317 / 230,052 bytes (56.2%), `exercised-recon.log` with the new
+  `exec-theatres-20261004/recon.cov`.
+  **Next:** secondary photo and return (base 36's elevated/horizontal
+  runway needs a different approach from flat home 33), then strike/drop
+  objectives. The existing record can be replayed before supplying more
+  normal controls; don't synthesize a mission or poke state to resume.
+  The prior landing commit `dc16de4` passed Windows CI.
 - A landing now succeeds through normal keyboard/mouse input, no state
   writes: `tools/landing_pilot.py`, backed by `f117machine_api` and its
   Python wrapper. `tools/routes/landing.args` replays the committed input

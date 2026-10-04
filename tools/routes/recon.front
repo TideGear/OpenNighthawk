@@ -1,0 +1,28 @@
+# Original UI: Libya, Cold War (item 10 at 206,149), Strike Missions.
+# Briefing, generated weapons and hangar. Flight controls follow in the pilot.
+--type
+SETUP.EXE+200000:N
+--type
+SETUP.EXE+2000000:2
+--type
+START.EXE+30000000:\r
+--click
+START.EXE+120000000:258,182
+--click
+START.EXE+200000000:283,172
+--click
+START.EXE+400000000:28,84
+--click
+START.EXE+480000000:206,149
+--click
+START.EXE+510000000:284,170
+--click
+START.EXE+540000000:215,193
+--click
+START.EXE+1100000000:280,60
+--click
+START.EXE+1700000000:272,134
+--click
+START.EXE+1900000000:271,148
+--click
+START.EXE+2100000000:225,191

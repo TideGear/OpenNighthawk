@@ -1,0 +1,11 @@
+# Normal controls: Libya, Cold War, Strike Missions; photograph target 1.
+# Stops airborne after primary credit. This is not a completed return.
+# Use recon_pilot.py --replay recon.input for the stronger state checks.
+# expect-world LB
+# expect-open ordnance.pic VGAME.EXE 1
+--replay
+recon.input
+--steps
+6180124257
+--time-us
+700000000000000

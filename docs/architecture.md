@@ -264,7 +264,7 @@ Seven layers, each checkable by anyone with their own copy:
    The maintenance route requires two arming pages and four office pages;
    a run stuck in a roster dialog fails instead of passing on equal hashes.
 4. **Every translated instruction, routes or not.** The routes run about
-   half of the code area (`tools/exercised.py`: 54.5%; error paths,
+   half of the code area (`tools/exercised.py`: 56.2%; error paths,
    individual mission objectives and most setup screens remain).
    `tests/insn_lockstep.c` covers the rest: for each of the 89,276 instruction starts the
    translation has, in every module, it places the module's image in
@@ -537,6 +537,37 @@ py tools/landing_pilot.py --data "D:\GOG\F-117A" --engine interp --replay tools/
 
 This proves the shipped training mission's return with its landing setting,
 not objective completion, other runway types or physical-controller use.
+
+## Reconnaissance objective acceptance
+
+`tools/recon_pilot.py` drives the original transfer form to Libya, Cold War
+and Strike Missions, then accepts the generated loadout and launches.
+Cold War is transfer item 10 at (206,149). The flight uses normal released
+stick pulses, slash for the forward display, F2 for ground mode, the bay
+switch, N for forward-ray designation and Enter for the exposure.
+`tools/routes/recon.front` retains the frontend inputs; `recon.input` is the
+recorded whole flight and `recon.args` replays it without the controller.
+The navigation/camera approach draws on the Reimp's diagnostic photo pilot.
+
+Primary target 1 is photographed at about 345.5 emulated flight seconds,
+268 map units away. The sampled credit state has one exposure, shutter 3,
+the primary bit set and one event 8A naming target 1. Its damage bit is
+clear, the aircraft has no ejection/crash state, and camera 16 retains
+one store. The observer also checks these conditions after another second
+of flight; the shutter has returned to zero without another exposure.
+The credit screenshot shows FRAME 1 and PRIMARY PHOTO. The secondary
+photo objective and the return remain unfinished; the route stops airborne.
+
+Both engines agree at 123 checkpoints and final hash `eb19d05b7369a32b`
+at 6,180,124,257 clocks. Independent observers pass under both engines.
+As with landing, world/file milestones alone do not prove objective credit:
+
+```powershell
+py tools/recon_pilot.py --data "D:\GOG\F-117A" --engine interp --replay tools/routes/recon.input --out C:/recon-check
+```
+
+Four ROM-free regressions reject missing exposures/events, wrong objective
+types, absent credit, destroyed targets, crashes and empty cameras.
 
 ## Where this goes next
 

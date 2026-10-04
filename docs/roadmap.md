@@ -19,11 +19,11 @@ never instead of parity.
 - Every translated instruction held to the interpreter from random states
   (`tests/insn_lockstep.c`, 5.7 million comparisons, 0 differences); the
   translator held to 8088 and 80286 silicon vectors.
-- Fifteen scripted routes identical between the interpreter and the recompiled
+- Sixteen scripted routes identical between the interpreter and the recompiled
   code: boot to flight; a full sortie through the debriefing; the speaker
   and Roland drivers; eight transfer-and-flight routes covering all nine
   theatres, three tensions and four mission categories. The routes execute
-  54.5% of the code area (`tools/exercised.py`). Theatre routes also require
+  56.2% of the code area (`tools/exercised.py`). Theatre routes also require
   the expected world files, a clean VGAME exit and at least a billion clocks
   in flight; airborne screenshots were reviewed for the six added routes.
 - Pilot creation, Backspace editing, Escape cancellation and erasure through
@@ -45,6 +45,13 @@ never instead of parity.
   DOS exit 129 is a separate debriefing handoff, not a landing result.
   Contact/stop screenshots reviewed. This covers the shipped training
   mission and its landing setting; other runways and objectives remain.
+- Generated reconnaissance primary completed through normal controls:
+  Libya/Cold War/Strike Missions, forward display, ground mode, camera,
+  bay, target designation and exposure. Both engines match at 123
+  checkpoints/final. Independent observers require one exposure and one
+  photo-credit event for target 1, primary credit, no target damage or
+  ejection, and the retained camera/store. Credit screenshot reviewed.
+  The route stops airborne after credit; its return is not established.
 - Seeded random flights (`tools/random_flights.py`): every session
   identical at every hash; 30.5 minutes of flight in the 16-session batch.
 - Planted defects caught by the lockstep (`tools/mutation_check.py
@@ -121,7 +128,8 @@ never instead of parity.
 - [ ] **Individual mission objectives:** all nine theatres and all four
       mission categories now have flight routes (air combat, ground strike,
       and both training categories). Complete dedicated objective types,
-      including reconnaissance, supply drops and secret-airstrip missions.
+      including supply drops and secret-airstrip missions. Reconnaissance
+      primary credit is now verified; its return and secondary remain open.
       The existing transfer routes exercise generation and controls, then
       quit; they do not establish objective completion.
 - [ ] **The remaining career flow:** earned retirement and awards. CO transfer
