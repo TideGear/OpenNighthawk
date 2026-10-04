@@ -28,6 +28,12 @@ The input stress final machine hash is `e88736099423c983` at
 centre, corners, both buttons and disconnection, plus mouse relative motion
 and simultaneous buttons. It does not establish physical calibration.
 
+The CI pacing integration check now excludes SDL startup and uses a
+1 MHz, four-second ROM-free loop, to avoid confusing interpreter throughput
+on a shared runner with clock pacing. Two local repeats add 734 ms for an
+800 ms suspension; the deterministic clock tests retain the exact 100 ms
+catch-up limit. Failed CI runs preserve the application logs and result.
+
 `recon_return` matches at 272 checkpoints and final hash `c403d0542430b898`
 at 13,639,324,268 clocks. It lands at (19196,9454), inside home base 36's
 approach box, altitude/ground 128, speed/throttle zero, gear down, brakes on,

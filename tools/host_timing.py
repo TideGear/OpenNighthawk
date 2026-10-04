@@ -29,14 +29,24 @@ def main():
     nt.NtSuspendProcess.argtypes = nt.NtResumeProcess.argtypes = [C.c_void_p]
     results = []
     for stall in (0, .8):
-        began = time.monotonic()
         executable = ROOT / "build" / "f117a.exe"
         if not executable.exists(): executable = ROOT / "build" / "Release" / "f117a.exe"
+        log = out / f"stall-{stall}.log"
+        if log.exists(): log.unlink()
         process = subprocess.Popen([str(executable), "--data", str(data),
             "--save", tempfile.mkdtemp(dir=out), "--engine", "interp", "--no-record",
-            "--log", str(out / f"stall-{stall}.log"), "--exit-after", "36000000"],
+            "--log", str(log), "--ips", "1000000", "--exit-after", "4000000"],
             env=dict(os.environ, SDL_VIDEODRIVER="dummy", SDL_AUDIODRIVER="dummy"), cwd=out)
         try:
+            # Exclude SDL/device startup from the paired measurement. A modest
+            # clock speed keeps the interpreter below a shared CI runner's CPU
+            # budget; this test measures pacing, not execution throughput.
+            deadline = time.monotonic() + 15
+            while not (log.exists() and "[exec] F117.COM" in log.read_text()):
+                if process.poll() is not None: raise RuntimeError("application failed before boot")
+                if time.monotonic() > deadline: raise RuntimeError("application boot timed out")
+                time.sleep(.01)
+            began = time.monotonic()
             if stall:
                 time.sleep(1)
                 handle = kernel.OpenProcess(0x800, False, process.pid)
