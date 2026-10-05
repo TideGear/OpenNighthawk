@@ -1687,6 +1687,157 @@ static int end_distance(machine_t *m)
     return 1;
 }
 
+/* VGAME 130D:0217, mclip_publish: write a clipped edge's two y values to
+ * the polygon at SI - CX and BP, replaced by the window's top [85FC] or
+ * bottom [8600] where the outcodes in AL and AH say the end was clipped -
+ * and the pair of side flags (AL bits 3/2, AH bits 3/2) to [SI+2]. */
+static int vgame_mclip_publish(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 34)) return 0;
+    const uint8_t al = (uint8_t)c->r[R_AX], ah = (uint8_t)(c->r[R_AX] >> 8);
+    const uint16_t si = c->r[R_SI];
+    unsigned n = 26;
+    cpu_push16(c, c->r[R_BX]);
+    uint16_t bx = c->r[R_CX];
+    alu_logic(c, al & 1, 0); if (al & 1) { bx = ds_get(c, 0x85FC); n++; }
+    alu_logic(c, al & 2, 0); if (al & 2) { bx = ds_get(c, 0x8600); n++; }
+    ds_put(c, (uint16_t)(si + 6), bx);
+    bx = c->r[R_BP];
+    alu_logic(c, ah & 1, 0); if (ah & 1) { bx = ds_get(c, 0x85FC); n++; }
+    alu_logic(c, ah & 2, 0); if (ah & 2) { bx = ds_get(c, 0x8600); n++; }
+    ds_put(c, (uint16_t)(si + 0x0E), bx);
+    uint8_t bl = (uint8_t)alu_sub(c, bx & 0xFF, bx & 0xFF, 0, 0);
+    alu_logic(c, al & 8, 0); if (al & 8) { bl = (uint8_t)alu_logic(c, bl | 1, 0); n++; }
+    alu_logic(c, al & 4, 0); if (al & 4) { bl = (uint8_t)alu_logic(c, bl | 2, 0); n++; }
+    alu_logic(c, ah & 8, 0); if (ah & 8) { bl = (uint8_t)alu_logic(c, bl | 4, 0); n++; }
+    alu_logic(c, ah & 4, 0); if (ah & 4) { bl = (uint8_t)alu_logic(c, bl | 8, 0); n++; }
+    ds_put(c, (uint16_t)(si + 2), (uint16_t)(bl << 8 | bl));
+    c->r[R_BX] = cpu_pop16(c);
+    c->icount += n;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x0EE9C, the C runtime's signed 32-bit divide: DX:AX = a / b for
+ * a = [bp+6]:[bp+4], b = [bp+A]:[bp+8], truncating, the argument slots
+ * made positive in place. A 16-bit divisor takes two DIVs; a wider one is
+ * shifted down with the dividend until it fits, the quotient estimated with
+ * one DIV and corrected by at most one. RET 8. Declines a zero divisor,
+ * where the original takes the divide-error interrupt. */
+static int vgame_ldiv(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t ss = c->seg[S_SS];
+    const uint16_t sp = c->r[R_SP];
+    if (!seg_read16(c, ss, (uint16_t)(sp + 6)) && !seg_read16(c, ss, (uint16_t)(sp + 8))) return 0;
+    if (!room(c, 64 + 6 * 16)) return 0;
+    unsigned n = 0;
+    cpu_push16(c, c->r[R_BP]); c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->r[R_DI]); cpu_push16(c, c->r[R_SI]); cpu_push16(c, c->r[R_BX]);
+    n += 5;
+    const uint16_t bp = c->r[R_BP];
+#define ARG(o) seg_read16(c, ss, (uint16_t)(bp + (o)))
+#define SETARG(o, v) seg_write16(c, ss, (uint16_t)(bp + (o)), (v))
+    uint16_t di = (uint16_t)alu_logic(c, 0, 1); n++;              /* xor di, di */
+    for (int k = 0; k < 2; k++) {                                 /* make a, then b, positive */
+        const int hi = k ? 0x0A : 6, lo = k ? 8 : 4;
+        uint16_t ax = ARG(hi);
+        alu_logic(c, ax, 1); n += 3;                              /* mov ax / or ax, ax / jge */
+        if (c->flags & F_SF) {
+            di = (uint16_t)alu_inc(c, di, 1);
+            uint16_t dx = ARG(lo);
+            ax = (uint16_t)alu_sub(c, 0, ax, 1, 0);               /* neg ax */
+            dx = (uint16_t)alu_sub(c, 0, dx, 1, 0);               /* neg dx */
+            ax = (uint16_t)alu_sub(c, ax, 0, 1, (c->flags & F_CF) ? 1u : 0u);   /* sbb ax, 0 */
+            SETARG(hi, ax);
+            SETARG(lo, dx);
+            c->r[R_DX] = dx;
+            n += 7;
+        }
+        c->r[R_AX] = ax;
+    }
+    uint16_t ax = c->r[R_AX];
+    alu_logic(c, ax, 1); n += 2;                                  /* or ax, ax / jne */
+    uint16_t dx, si;
+    if (c->flags & F_ZF) {                                        /* 16-bit divisor */
+        const uint16_t cx = ARG(8);
+        c->r[R_CX] = cx;
+        c->r[R_AX] = ARG(6);
+        c->r[R_DX] = (uint16_t)alu_logic(c, 0, 1);
+        if (!x86_div16(c, cx)) return 0;                          /* cannot happen: checked above */
+        const uint16_t q_hi = c->r[R_AX];
+        c->r[R_BX] = q_hi;
+        c->r[R_AX] = ARG(4);
+        x86_div16(c, cx);
+        c->r[R_DX] = q_hi;
+        n += 9;                                                   /* mov cx..jmp */
+    } else {
+        uint16_t bx = ax, cx = ARG(8);
+        dx = ARG(6);
+        ax = ARG(4);
+        n += 4;
+        do {
+            bx = x86_shift(c, 5, bx, 1, 1);                       /* shr bx, 1 */
+            cx = x86_shift(c, 3, cx, 1, 1);                       /* rcr cx, 1 */
+            dx = x86_shift(c, 5, dx, 1, 1);
+            ax = x86_shift(c, 3, ax, 1, 1);
+            alu_logic(c, bx, 1);                                  /* or bx, bx */
+            n += 6;
+        } while (!(c->flags & F_ZF));
+        c->r[R_BX] = bx; c->r[R_CX] = cx; c->r[R_DX] = dx; c->r[R_AX] = ax;
+        if (!x86_div16(c, cx)) return 0;                          /* cannot happen after the shifts */
+        si = c->r[R_AX];
+        x86_mul16(c, ARG(0x0A));                                  /* mul [bp+A] */
+        cx = c->r[R_AX];                                          /* xchg cx, ax */
+        c->r[R_AX] = ARG(8);
+        x86_mul16(c, si);                                         /* mul si */
+        c->r[R_DX] = (uint16_t)alu_add(c, c->r[R_DX], cx, 1, 0);
+        c->r[R_CX] = cx;
+        n += 7 + 1;                                               /* div .. add; jb */
+        int dec;
+        if (c->flags & F_CF) dec = 1;                             /* jb 0xEF21 */
+        else {
+            alu_sub(c, c->r[R_DX], ARG(6), 1, 0); n += 2;         /* cmp dx, [bp+6] / ja */
+            if (x86_cond(c, 0x7)) dec = 1;
+            else {
+                n += 1;                                           /* jb 0xEF22 */
+                if (c->flags & F_CF) dec = 0;
+                else {
+                    alu_sub(c, c->r[R_AX], ARG(4), 1, 0); n += 2; /* cmp ax, [bp+4] / jbe */
+                    dec = !x86_cond(c, 0x6);
+                }
+            }
+        }
+        if (dec) { si = (uint16_t)alu_dec(c, si, 1); n++; }
+        c->r[R_DX] = (uint16_t)alu_logic(c, 0, 1);                /* xor dx, dx */
+        c->r[R_SI] = c->r[R_AX];                                  /* xchg si, ax */
+        c->r[R_AX] = si;
+        n += 2;
+    }
+    di = (uint16_t)alu_dec(c, di, 1); n += 2;                     /* dec di / jne */
+    if (c->flags & F_ZF) {                                        /* exactly one negative */
+        uint16_t qd = (uint16_t)alu_sub(c, 0, c->r[R_DX], 1, 0);
+        const uint16_t qa = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0);
+        qd = (uint16_t)alu_sub(c, qd, 0, 1, (c->flags & F_CF) ? 1u : 0u);
+        c->r[R_DX] = qd;
+        c->r[R_AX] = qa;
+        n += 3;
+    }
+    c->r[R_DI] = di;
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    n += 5;
+#undef ARG
+#undef SETARG
+    c->icount += n;
+    near_ret(c);
+    c->r[R_SP] = (uint16_t)(c->r[R_SP] + 8);
+    return 1;
+}
+
 static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x4958, vgame_free_fall, "free fall", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD50A, vgame_waypoint_from_target, "waypoint from target", 1 },
@@ -1747,6 +1898,8 @@ static const recomp_override MATCHED[] = {
     { "matched", "END.EXE", END_47304, 0x0000, 0x185C, end_queue_dac, "queue a DAC request", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x452C, end_distance, "octagonal distance", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x539C, vgame_lmul, "32-bit multiply", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x130D, 0x0217, vgame_mclip_publish, "publish a clipped edge", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xEE9C, vgame_ldiv, "32-bit signed divide", 1 },
 };
 
 void matched_register(void)

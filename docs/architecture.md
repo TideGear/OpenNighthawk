@@ -921,8 +921,11 @@ the shared rectangle hit test (START 0x0393D, END 0x01C3B, one routine at
 two addresses), START's clamp 0x059D8, LZW table reset 0x088D4 and cel
 start 0x028CE, END's DAC request queue 0x0185C and octagonal distance
 0x0452C, and END's copy of the C runtime's 32-bit multiply 0x0539C, which
-reuses VGAME's matched version: 59 routines, each equal over 4,000 random
-states. On the strike route 38 of them run 13.9 million times in all and
+reuses VGAME's matched version; then VGAME's clipped-edge publisher
+130D:0217 and the C runtime's signed 32-bit divide 0x0EE9C (both paths:
+two DIVs for a 16-bit divisor, the shift-down estimate and its one-step
+correction for a wider one; a zero divisor is declined): 61 routines, each
+equal over 4,000 random states. On the strike route 38 of them run 13.9 million times in all and
 the recompiled engine still reaches the interpreter's final hash.
 REP string instructions are stepped as the interpreter steps them (one
 clock an iteration, one for a REP that finds CX at 0), and a routine whose
