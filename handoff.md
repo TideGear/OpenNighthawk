@@ -37,6 +37,16 @@ further down are historical; this first section is the current state.
   Leave the pre-existing untracked `test.bat` out of the commit. The working
   tree passed `git diff --check`; no tests were run in this wrap-up turn.
 
+## Pending: fix D12 needs a negative rating to verify (5 Oct)
+
+- D12 (END's best-rating/total tally, END 0x00443 cmp/jae and 0x00450 sub
+  dx,dx) was written as two overrides (signed compare to 0x044D/0x0449;
+  CWD) but NOT committed: no route reaches the tally with a negative rating.
+  The tally runs only when the flight record's +30h is 0 (a survived
+  mission), and every route scores positive; a crashed cargo return skipped
+  it. Verify with a staged negative rating - e.g. a synthetic scorer event
+  log as the Reimp's oracle_debrief.py/scorer_check does - before adding it.
+
 ## Roster timing ROOT CAUSE found (5 Oct, ~09:40 local)
 
 - START's teardown (`0x8CE6`-`0x8CFE`) writes PIT control word 0x36, reload 0,
