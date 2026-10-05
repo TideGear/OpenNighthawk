@@ -10,8 +10,9 @@ further down are historical; this first section is the current state.
 ## Current wrap-up status (5 Oct, 08:52 local)
 
 - The user's immediate objective changed to wrapping up for a new conversation,
-  committing and pushing the outstanding project work, then stopping. The
-  roadmap remains open; this is a handoff, not a claim that the full roadmap is
+  committing and pushing the outstanding project work, then stopping. That
+  wrap-up is complete; the project changes are on `origin/master`. The roadmap
+  remains open; this is a handoff, not a claim that the full roadmap is
   complete.
 - The desktop automation surface currently reports no apps or browsers. The
   saved DOSBox-X run4 trace and local START trace remain the usable evidence;
