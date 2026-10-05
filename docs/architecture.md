@@ -895,6 +895,10 @@ both caught on the first state that reached them.
 Half the states put small words (-1, 0, 1, or 0-31) where the arguments
 sit, because random words almost never reach a routine's edge cases; an
 error planted only on `sign16`'s zero path was caught on the 16th state.
+The second half of each routine's states runs on memory of mostly 00, FF
+and 01 bytes, so exact tests on memory (a -1 sentinel, a zero count) are
+reached too; an error planted on the smoke trail's "no trail" path was
+caught there and nowhere in the random half.
 
 Matched so far, from the Reimp's names (`tools/reimp_names.py`), all VGAME:
 0x04958 free fall, 0x0D50A waypoint from target, 0x0E289 orientation matrix
@@ -924,8 +928,8 @@ start 0x028CE, END's DAC request queue 0x0185C and octagonal distance
 reuses VGAME's matched version; then VGAME's clipped-edge publisher
 130D:0217 and the C runtime's signed 32-bit divide 0x0EE9C (both paths:
 two DIVs for a 16-bit divisor, the shift-down estimate and its one-step
-correction for a wider one; a zero divisor is declined): 61 routines, each
-equal over 4,000 random states. On the strike route 38 of them run 13.9 million times in all and
+correction for a wider one; a zero divisor is declined) and the smoke trail
+0x048B8: 62 routines, each equal over 4,000 random states. On the strike route 38 of them run 13.9 million times in all and
 the recompiled engine still reaches the interpreter's final hash.
 REP string instructions are stepped as the interpreter steps them (one
 clock an iteration, one for a REP that finds CX at 0), and a routine whose

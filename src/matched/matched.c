@@ -1838,6 +1838,102 @@ static int vgame_ldiv(machine_t *m)
     return 1;
 }
 
+/* VGAME 0x048B8, frame_trail: the smoke trail behind the object [3D96]
+ * (none when it is -1). Every frame each of the 16 puffs (8 bytes at 3A08:
+ * x, y, rise, age) rises: rise += 4, y += rise >> 9. Every eighth frame
+ * ([3D8E] & 7 == 0) slot ([3D8E] >> 3) & 15 takes a new puff at the
+ * object's position, rise 40h, age 0, [3A88] = that slot, and every other
+ * live puff ages by one. Transcribed in the original's order - the loop
+ * counters are stack words - and declined when the frame could alias the
+ * table (random states only). */
+static int vgame_frame_trail(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t ds = c->seg[S_DS], ss = c->seg[S_SS];
+    const uint32_t frame_lo = phys(ss, (uint16_t)(c->r[R_SP] - 8)), frame_hi = phys(ss, c->r[R_SP]);
+    const uint32_t t_lo = phys(ds, 0x3A08), t_hi = phys(ds, 0x3A8A);
+    if (t_lo <= frame_hi + 1 && frame_lo <= t_hi + 1) return 0;
+    const uint32_t ctl[] = { phys(ds, 0x3D96), phys(ds, 0x3D8E) };
+    for (int i = 0; i < 2; i++) if (ctl[i] + 1 >= frame_lo && ctl[i] <= frame_hi + 1) return 0;
+    /* Clocks, counted from the data before anything changes. */
+    const uint16_t obj = ds_get(c, 0x3D96);
+    const uint8_t tick = mem_read8(c, phys(ds, 0x3D8E));
+    unsigned n;
+    if (obj == 0xFFFF) n = 8;
+    else if (tick & 7) n = 154;
+    else {
+        const uint16_t slot = (uint16_t)((tick & 0x78) >> 3);
+        n = 4 + 1 + 144 + 2 + 20 + 2 + 3;
+        for (uint16_t i = 0; i < 16; i++) {
+            if (i == slot) n += 6;
+            else if (ds_get(c, (uint16_t)(0x3A08 + 8 * i)) == 0) n += 10;   /* x 0: an empty slot */
+            else n += 11;
+        }
+    }
+    if (!room(c, n)) return 0;
+    x86_enter(c, 4, 0);
+    cpu_push16(c, c->r[R_SI]);
+    const uint16_t bp = c->r[R_BP];
+#define LOCAL(o) seg_read16(c, ss, (uint16_t)(bp - (o)))
+#define SETLOCAL(o, v) seg_write16(c, ss, (uint16_t)(bp - (o)), (v))
+    alu_sub(c, ds_get(c, 0x3D96), 0xFFFF, 1, 0);                  /* cmp [3D96], -1 */
+    if (!(c->flags & F_ZF)) {
+        SETLOCAL(2, 0);
+        do {                                                      /* every puff rises */
+            uint16_t bx = x86_shift(c, 4, LOCAL(2), 3, 1);
+            ds_put(c, (uint16_t)(bx + 0x3A0C), (uint16_t)alu_add(c, ds_get(c, (uint16_t)(bx + 0x3A0C)), 4, 1, 0));
+            uint16_t ax = x86_shift(c, 7, ds_get(c, (uint16_t)(bx + 0x3A0C)), 9, 1);
+            ds_put(c, (uint16_t)(bx + 0x3A0A), (uint16_t)alu_add(c, ds_get(c, (uint16_t)(bx + 0x3A0A)), ax, 1, 0));
+            c->r[R_BX] = bx; c->r[R_AX] = ax;
+            SETLOCAL(2, (uint16_t)alu_inc(c, LOCAL(2), 1));
+            alu_sub(c, LOCAL(2), 0x10, 1, 0);
+        } while (x86_cond(c, 0xC));
+        alu_logic(c, mem_read8(c, phys(ds, 0x3D8E)) & 7, 0);      /* test byte [3D8E], 7 */
+        if (c->flags & F_ZF) {                                    /* a new puff */
+            uint16_t bx = x86_shift(c, 4, ds_get(c, 0x3D96), 4, 1);
+            uint16_t ax = ds_get(c, (uint16_t)(bx - 0x4D30));
+            const uint16_t cx = bx;
+            c->r[R_CX] = cx;
+            bx = (uint16_t)((bx & 0xFF00) | mem_read8(c, phys(ds, 0x3D8E)));
+            bx = (uint16_t)alu_logic(c, bx & 0x78, 1);
+            bx = x86_shift(c, 7, bx, 3, 1);
+            SETLOCAL(4, bx);
+            bx = x86_shift(c, 4, bx, 3, 1);
+            ds_put(c, (uint16_t)(bx + 0x3A08), ax);
+            c->r[R_SI] = cx;
+            ax = ds_get(c, (uint16_t)(cx - 0x4D2E));
+            ds_put(c, (uint16_t)(bx + 0x3A0A), ax);
+            ds_put(c, (uint16_t)(bx + 0x3A0C), 0x40);
+            ax = LOCAL(4);
+            ds_put(c, 0x3A88, ax);
+            ax = (uint16_t)alu_sub(c, ax, ax, 1, 0);
+            ds_put(c, (uint16_t)(bx + 0x3A0E), ax);
+            SETLOCAL(2, ax);
+            for (;;) {                                            /* the other live puffs age */
+                alu_sub(c, LOCAL(2), 0x10, 1, 0);
+                if (!x86_cond(c, 0xC)) break;
+                ax = LOCAL(2);
+                alu_sub(c, LOCAL(4), ax, 1, 0);
+                if (!(c->flags & F_ZF)) {
+                    bx = x86_shift(c, 4, ax, 3, 1);
+                    alu_sub(c, ds_get(c, (uint16_t)(bx + 0x3A08)), 0, 1, 0);
+                    if (!(c->flags & F_ZF))
+                        ds_put(c, (uint16_t)(bx + 0x3A0E), (uint16_t)alu_inc(c, ds_get(c, (uint16_t)(bx + 0x3A0E)), 1));
+                }
+                SETLOCAL(2, (uint16_t)alu_inc(c, LOCAL(2), 1));
+            }
+            c->r[R_AX] = ax; c->r[R_BX] = bx;
+        }
+    }
+#undef LOCAL
+#undef SETLOCAL
+    c->r[R_SI] = cpu_pop16(c);
+    x86_leave(c);
+    c->icount += n;
+    near_ret(c);
+    return 1;
+}
+
 static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x4958, vgame_free_fall, "free fall", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD50A, vgame_waypoint_from_target, "waypoint from target", 1 },
@@ -1900,6 +1996,7 @@ static const recomp_override MATCHED[] = {
     { "matched", "END.EXE", END_47304, 0x0000, 0x539C, vgame_lmul, "32-bit multiply", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x130D, 0x0217, vgame_mclip_publish, "publish a clipped edge", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xEE9C, vgame_ldiv, "32-bit signed divide", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x48B8, vgame_frame_trail, "smoke trail", 1 },
 };
 
 void matched_register(void)

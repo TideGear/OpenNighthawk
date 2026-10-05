@@ -205,6 +205,16 @@ int main(int argc, char **argv)
         const uint16_t cs = (uint16_t)(base + o->seg), ip = o->ip;
         unsigned long long mc = 0, ms = 0, mb = 0;
         for (int s = 0; s < states; s++) {
+            if (s == states / 2) {
+                /* The second half runs on memory of mostly 00, FF and 01
+                 * bytes: random words almost never hit a routine's exact
+                 * tests (a -1 sentinel, a zero count), these hit them often. */
+                static const uint8_t pick[4] = { 0x00, 0xFF, 0x01, 0x00 };
+                for (uint32_t a = 0; a < MEM_SIZE; a++) g_pristine[a] = pick[rnd() & 3];
+                memcpy(g_pristine + at, m->image, m->size);
+                memcpy(g_mem[0], g_pristine, MEM_SIZE);
+                memcpy(g_mem[1], g_pristine, MEM_SIZE);
+            }
             uint16_t r[8], seg[4];
             for (int k = 0; k < 8; k++) r[k] = (uint16_t)rnd();
             for (int k = 0; k < 4; k++) seg[k] = (uint16_t)rnd();
