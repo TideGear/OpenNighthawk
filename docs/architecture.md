@@ -916,8 +916,13 @@ tables 1377:0132/0155, the model fill's colour setup 1377:01E0, the camera
 matrix row 1452:02AC - whose second carry goes into DX, as shipped - and
 the plane-table clear 120A:0654), plus the terrain-under-unit test
 0x0BA56, the key translation 0x0F0F4 (XLAT through 92A4), plane shading
-120A:0674 and the clip polygon collector 130D:00EC: 51 routines, each equal
-over 4,000 random states. On the strike route 38 of them run 13.9 million times in all and
+120A:0674 and the clip polygon collector 130D:00EC; and from START and END:
+the shared rectangle hit test (START 0x0393D, END 0x01C3B, one routine at
+two addresses), START's clamp 0x059D8, LZW table reset 0x088D4 and cel
+start 0x028CE, END's DAC request queue 0x0185C and octagonal distance
+0x0452C, and END's copy of the C runtime's 32-bit multiply 0x0539C, which
+reuses VGAME's matched version: 59 routines, each equal over 4,000 random
+states. On the strike route 38 of them run 13.9 million times in all and
 the recompiled engine still reaches the interpreter's final hash.
 REP string instructions are stepped as the interpreter steps them (one
 clock an iteration, one for a REP that finds CX at 0), and a routine whose

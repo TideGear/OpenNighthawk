@@ -27,6 +27,8 @@
 #include "x86_sem.h"
 
 #define VGAME_47304 0x8287450CCA85106FULL
+#define START_47304 0xC65ECC83823E4907ULL
+#define END_47304   0xFA7167EE4E377EC1ULL
 
 /* Room for n instructions before the run loop must look at events. */
 static int room(const cpu_t *c, unsigned n)
@@ -1450,6 +1452,241 @@ static int vgame_poly_collect(machine_t *m)
     return 1;
 }
 
+/* START 0x0393D (game_menu_read) and END 0x01C3B (widget_hit): the 1-based
+ * index of the first of n 8-byte rectangles (x0, y0, x1, y1, unsigned) at
+ * list that holds the pointer ([px], [py]), or 0. The list pointer is the
+ * argument slot itself, advanced in place, and the count a stack local. */
+static int hit_test(machine_t *m, uint16_t px_at, uint16_t py_at)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t ds = c->seg[S_DS], ss = c->seg[S_SS];
+    /* Count first: the loop reads its rectangles, the pointer and two
+     * stack words, and writes only the stack (argument slot and counter),
+     * so it can be stepped without effects when those cannot alias. */
+    const uint16_t sp = c->r[R_SP];
+    const uint32_t frame_lo = phys(ss, (uint16_t)(sp - 4)), frame_hi = phys(ss, (uint16_t)(sp + 4));
+    const uint16_t n = seg_read16(c, ss, (uint16_t)(sp + 4));
+    uint16_t list = seg_read16(c, ss, (uint16_t)(sp + 2));
+    const uint16_t px = ds_get(c, px_at), py = ds_get(c, py_at);
+    const uint32_t pxl = phys(ds, px_at), pyl = phys(ds, py_at);
+    if (words_overlap(pxl, frame_lo) || words_overlap(pyl, frame_lo) ||
+        (pxl >= frame_lo && pxl <= frame_hi + 1) || (pyl >= frame_lo && pyl <= frame_hi + 1)) return 0;
+    /* Clocks: 5 to set up; a rectangle missed at its first, second, third
+     * or fourth edge costs 9, 11, 14 or 16 (the step to the next included),
+     * a hit 14, running out of rectangles 3; then 3 to test the count, 3
+     * (found) or 1 to form the answer, and 3 to return. */
+    unsigned clocks = 5;
+    int found = 0;
+    for (uint32_t i = 0; (int32_t)i < (int16_t)n; i++) {
+        const uint32_t r = phys(ds, list);
+        if (r + 7 >= frame_lo && r <= frame_hi + 1) return 0;     /* a rectangle in the frame */
+        const uint16_t x0 = seg_read16(c, ds, list), x1 = seg_read16(c, ds, (uint16_t)(list + 4));
+        const uint16_t y0 = seg_read16(c, ds, (uint16_t)(list + 2)), y1 = seg_read16(c, ds, (uint16_t)(list + 6));
+        if (x0 > px) clocks += 9;
+        else if (x1 < px) clocks += 11;
+        else if (y0 > py) clocks += 14;
+        else if (y1 < py) clocks += 16;
+        else { clocks += 14; found = 1; break; }
+        list = (uint16_t)(list + 8);
+    }
+    if (!found) clocks += 3;
+    clocks += 3 + (found ? 3 : 1) + 3;
+    if (!room(c, clocks)) return 0;
+    /* Now run it, as written. */
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_SP] = (uint16_t)(c->r[R_SP] - 2);
+    const uint16_t bp = c->r[R_BP];
+    seg_write16(c, ss, (uint16_t)(bp - 2), 0);
+    for (;;) {
+        c->r[R_AX] = seg_read16(c, ss, (uint16_t)(bp + 6));
+        alu_sub(c, seg_read16(c, ss, (uint16_t)(bp - 2)), c->r[R_AX], 1, 0);
+        if (x86_cond(c, 0xD)) break;                              /* jge */
+        c->r[R_AX] = px;
+        const uint16_t bx = seg_read16(c, ss, (uint16_t)(bp + 4));
+        c->r[R_BX] = bx;
+        int miss;
+        alu_sub(c, seg_read16(c, ds, bx), px, 1, 0);
+        miss = x86_cond(c, 0x7);                                  /* ja */
+        if (!miss) { alu_sub(c, seg_read16(c, ds, (uint16_t)(bx + 4)), px, 1, 0); miss = (c->flags & F_CF) != 0; }
+        if (!miss) {
+            c->r[R_AX] = py;
+            alu_sub(c, seg_read16(c, ds, (uint16_t)(bx + 2)), py, 1, 0); miss = x86_cond(c, 0x7);
+            if (!miss) { alu_sub(c, seg_read16(c, ds, (uint16_t)(bx + 6)), py, 1, 0); miss = (c->flags & F_CF) != 0; }
+        }
+        if (!miss) break;
+        seg_write16(c, ss, (uint16_t)(bp - 2), (uint16_t)alu_inc(c, seg_read16(c, ss, (uint16_t)(bp - 2)), 1));
+        seg_write16(c, ss, (uint16_t)(bp + 4), (uint16_t)alu_add(c, seg_read16(c, ss, (uint16_t)(bp + 4)), 8, 1, 0));
+    }
+    c->r[R_AX] = seg_read16(c, ss, (uint16_t)(bp + 6));
+    alu_sub(c, seg_read16(c, ss, (uint16_t)(bp - 2)), c->r[R_AX], 1, 0);
+    if (!x86_cond(c, 0xD)) c->r[R_AX] = (uint16_t)alu_inc(c, seg_read16(c, ss, (uint16_t)(bp - 2)), 1);
+    else c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+    c->r[R_SP] = bp;
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += clocks;
+    near_ret(c);
+    return 1;
+}
+static int start_menu_hit(machine_t *m) { return hit_test(m, 0xE08A, 0xE08C); }
+static int end_widget_hit(machine_t *m) { return hit_test(m, 0x7214, 0x7216); }
+
+/* START 0x059D8, clamp(v, lo, hi): hi when v > hi; v when v >= lo; lo when
+ * v is above -16384, else hi. */
+static int start_clamp(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 14)) return 0;
+    const uint16_t v = arg(c, 0), lo = arg(c, 1), hi = arg(c, 2);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    uint16_t ax = hi;
+    alu_sub(c, v, hi, 1, 0);
+    unsigned n;
+    if (x86_cond(c, 0xF)) n = 8;                                  /* jg: hi */
+    else {
+        ax = lo;
+        alu_sub(c, v, lo, 1, 0);
+        if (!x86_cond(c, 0xC)) { ax = v; n = 13; }                /* jl not taken */
+        else {
+            alu_sub(c, v, 0xC000, 1, 0);
+            if (x86_cond(c, 0xF)) n = 13;
+            else { ax = hi; n = 14; }
+        }
+    }
+    c->r[R_AX] = ax;
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += n;
+    near_ret(c);
+    return 1;
+}
+
+/* START 0x088D4, reset the LZW decoder's table: 9-bit codes, next code
+ * 1FFh... [8D74]=9, [8D76]=1FFh, [8D78]=100h; all 2048 three-byte entries'
+ * prefix words at 7420 to FFFF, then the 256 literal entries' bytes at
+ * 7422 to 0..255. */
+static int start_lzw_reset(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 7179)) return 0;
+    const uint16_t ds = c->seg[S_DS];
+    mem_write8(c, phys(ds, 0x8D74), 9);
+    ds_put(c, 0x8D76, 0x1FF);
+    ds_put(c, 0x8D78, 0x100);
+    uint16_t bx = (uint16_t)alu_logic(c, 0, 1);
+    for (int i = 0; i < 0x800; i++) {
+        ds_put(c, (uint16_t)(bx + 0x7420), 0xFFFF);
+        bx = (uint16_t)alu_add(c, bx, 3, 1, 0);
+    }
+    uint8_t al = 0;
+    bx = (uint16_t)alu_logic(c, 0, 1);
+    for (int i = 0; i < 0x100; i++) {
+        mem_write8(c, phys(ds, (uint16_t)(bx + 0x7422)), al);
+        al = (uint8_t)alu_inc(c, al, 0);
+        bx = (uint16_t)alu_add(c, bx, 3, 1, 0);
+    }
+    c->r[R_AX] = (uint16_t)(0xFF00 | al);
+    c->r[R_BX] = bx;
+    c->r[R_CX] = 0;
+    c->r[R_DX] = 0x100;
+    c->icount += 7179;
+    near_ret(c);
+    return 1;
+}
+
+/* START 0x028CE, startui_cel_start(frame, x, y, count): unless a cel is
+ * playing ([B2F4] non-zero, which answers 0), record the position, frame
+ * and count and rewind it. */
+static int start_cel_start(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 16)) return 0;
+    const uint16_t ds = c->seg[S_DS];
+    const uint16_t frame = arg(c, 0), x = arg(c, 1), y = arg(c, 2), count = arg(c, 3);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    alu_sub(c, mem_read8(c, phys(ds, 0xB2F4)), 0, 0, 0);
+    unsigned n;
+    if (!(c->flags & F_ZF)) { c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0); n = 7; }
+    else {
+        ds_put(c, 0xB300, x);
+        ds_put(c, 0xB2FE, y);
+        mem_write8(c, phys(ds, 0xB2FA), (uint8_t)frame);
+        mem_write8(c, phys(ds, 0xB2F4), (uint8_t)count);
+        mem_write8(c, phys(ds, 0xB2EA), 0);
+        ds_put(c, 0xB2F0, 0);
+        c->r[R_AX] = (uint16_t)((y & 0xFF00) | (count & 0xFF));
+        n = 16;
+    }
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += n;
+    near_ret(c);
+    return 1;
+}
+
+/* END 0x0185C, widget_queue_dac(a, b, c): append a 6-byte DAC request at
+ * 1EE8 + 6 * [1F24] and count it. Kept as written: the slot address goes
+ * through a stack local, and AX is the 8-bit MUL's product. */
+static int end_queue_dac(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 19)) return 0;
+    const uint16_t ds = c->seg[S_DS], ss = c->seg[S_SS];
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_SP] = (uint16_t)(c->r[R_SP] - 2);
+    const uint16_t bp = c->r[R_BP];
+    set_r8(c, R_AL, 6);
+    x86_mul8(c, mem_read8(c, phys(ds, 0x1F24)));
+    uint16_t bx = (uint16_t)alu_add(c, c->r[R_AX], 0x1EE8, 1, 0);
+    seg_write16(c, ss, (uint16_t)(bp - 2), bx);
+    c->r[R_AX] = seg_read16(c, ss, (uint16_t)(bp + 4));
+    seg_write16(c, ds, bx, c->r[R_AX]);
+    c->r[R_AX] = seg_read16(c, ss, (uint16_t)(bp + 6));
+    bx = seg_read16(c, ss, (uint16_t)(bp - 2));
+    seg_write16(c, ds, (uint16_t)(bx + 2), c->r[R_AX]);
+    c->r[R_AX] = seg_read16(c, ss, (uint16_t)(bp + 8));
+    seg_write16(c, ds, (uint16_t)(bx + 4), c->r[R_AX]);
+    c->r[R_BX] = bx;
+    mem_write8(c, phys(ds, 0x1F24), (uint8_t)alu_inc(c, mem_read8(c, phys(ds, 0x1F24)), 0));
+    c->r[R_SP] = bp;
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 19;
+    near_ret(c);
+    return 1;
+}
+
+/* END 0x0452C, widget_distance(x0, y0, x1, y1): the octagonal distance
+ * max + min/4 of |dx| and |dy| (NEG on a negative difference). */
+static int end_distance(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 17)) return 0;
+    const uint16_t x0 = arg(c, 0), y0 = arg(c, 1), x1 = arg(c, 2), y1 = arg(c, 3);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    unsigned n = 15;
+    uint16_t ax = (uint16_t)alu_sub(c, x0, x1, 1, 0);
+    if (c->flags & F_SF) { ax = (uint16_t)alu_sub(c, 0, ax, 1, 0); n++; }
+    uint16_t dx = (uint16_t)alu_sub(c, y0, y1, 1, 0);
+    if (c->flags & F_SF) { dx = (uint16_t)alu_sub(c, 0, dx, 1, 0); n++; }
+    alu_sub(c, ax, dx, 1, 0);
+    if (!x86_cond(c, 0xC)) {                                      /* jl not taken */
+        dx = x86_shift(c, 5, dx, 1, 1);
+        dx = x86_shift(c, 5, dx, 1, 1);
+    } else {
+        ax = x86_shift(c, 5, ax, 1, 1);
+        ax = x86_shift(c, 5, ax, 1, 1);
+    }
+    c->r[R_AX] = (uint16_t)alu_add(c, ax, dx, 1, 0);
+    c->r[R_DX] = dx;
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += n;
+    near_ret(c);
+    return 1;
+}
+
 static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x4958, vgame_free_fall, "free fall", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD50A, vgame_waypoint_from_target, "waypoint from target", 1 },
@@ -1502,6 +1739,14 @@ static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xF0F4, vgame_key_translate, "translate a key", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x120A, 0x0674, vgame_plane_shade, "shade a plane", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x130D, 0x00EC, vgame_poly_collect, "keep a polygon for clipping", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x393D, start_menu_hit, "menu hit test", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x59D8, start_clamp, "clamp", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x88D4, start_lzw_reset, "reset the LZW table", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x28CE, start_cel_start, "start a cel animation", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x1C3B, end_widget_hit, "widget hit test", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x185C, end_queue_dac, "queue a DAC request", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x452C, end_distance, "octagonal distance", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x539C, vgame_lmul, "32-bit multiply", 1 },
 };
 
 void matched_register(void)
