@@ -260,6 +260,15 @@ never instead of parity.
       (ZMBV) comparison now runs; match scanout sampling and resolve the
       transition timing differences (see In progress). The apparent roster
       cursor changes were diagnosed as screenshot sampling aliasing.
+      Root cause of the roster-entry delay found: DOSBox 0.74 raises IRQ0 on
+      a PIT control word and takes it at the INT 21h stub's STI, so START's
+      own timer handler restores a ~70 Hz tick before the INT 8 vector is
+      swapped; its 4-tick palette loops then run about 4x shorter. Implemented
+      as opt-in `F117R_PIT_CONTROL_IRQ=1`: video drift against the saved
+      0.74 capture falls from -570 ms to +14 ms (1,321 exact pictures).
+      Off by default because it changes START's screen timing: route inputs,
+      committed finals and the private career/objective evidence need
+      re-timing before it can become the default.
 - [ ] **Roland through Munt** (libmt32emu, LGPL-2.1+): the MT-32 music in
       the game itself, and its output rendered and checked automatically.
       Optional integration now builds against an installed library or a
