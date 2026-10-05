@@ -896,10 +896,19 @@ Half the states put small words (-1, 0, 1, or 0-31) where the arguments
 sit, because random words almost never reach a routine's edge cases; an
 error planted only on `sign16`'s zero path was caught on the 16th state.
 
-Matched so far, from the Reimp's names (`tools/reimp_names.py`): VGAME
+Matched so far, from the Reimp's names (`tools/reimp_names.py`), all VGAME:
 0x04958 free fall, 0x0D50A waypoint from target, 0x0E289 orientation matrix
-transpose, 0x0C863 sign of a word, 0x0C699 clamp, 0x0BA2B "class takes a
-lock". Each is equal over 4,000 random states (one transpose state is
+transpose, 0x0C863 sign, 0x0C699 clamp, 0x0BA2B "class takes a lock",
+0x0EE0C absolute value, the 32-bit shifts 0x0EF68/0x0EF74/0x0F018, 0x0C67A
+bar clamp, 104E:008A table sine and 0x0FFDC clipping outcode. Each is equal
+over 4,000 random states. The harness also caught a matched routine that
+skipped a PUSH/POP pair: the original leaves BP's value in the stack word
+below SP, and that word is part of the comparison. On the strike route the
+recompiled engine runs them about 4.7 million times and reaches the
+interpreter's final hash. Placing an override refuses the translated region
+around its address, so nearby code is interpreted (755M to 815M
+instructions on that route); the recompiler should isolate matched sites as
+it does fix sites. Earlier figures: each is equal over 4,000 random states (one transpose state is
 skipped, where the random stack overlaps the matrix and the original returns
 elsewhere). On the strike route the recompiled engine ran free fall 9,587
 times and the transpose 35,019 times and reached the interpreter's final

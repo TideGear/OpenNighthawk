@@ -207,6 +207,135 @@ static int vgame_class5_takes_lock(machine_t *m)
     return 1;
 }
 
+/* VGAME 0x0EE0C, abs16(v): AX = |v| by CWD, XOR, SUB; DX the sign. */
+static int vgame_abs16(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 8)) return 0;
+    const uint16_t v = arg(c, 0);
+    cpu_push16(c, c->r[R_BP]);                                    /* push bp (its word stays below SP) */
+    c->r[R_BP] = cpu_pop16(c);                                    /* ... pop bp */
+    const uint16_t sign = (v & 0x8000) ? 0xFFFF : 0;              /* cwd */
+    c->r[R_DX] = sign;
+    c->r[R_AX] = (uint16_t)alu_sub(c, (uint16_t)alu_logic(c, v ^ sign, 1), sign, 1, 0);
+    c->icount += 8;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x0EF68 / 0x0EF74 / 0x0F018: the 32-bit shifts of DX:AX by CL -
+ * left, arithmetic right and logical right - one bit a pass through a LOOP,
+ * exactly as the original steps (flags from the last pass; CX ends 0). */
+static int shift32(machine_t *m, int hi_op, int lo_op, int left)
+{
+    cpu_t *c = &m->cpu;
+    const unsigned n = c->r[R_CX] & 0xFF;
+    if (!room(c, 3 + 3 * n)) return 0;
+    set_r8(c, 5, (uint8_t)alu_logic(c, 0, 0));                   /* xor ch, ch (CH is r8 index 5) */
+    c->r[R_CX] = (uint16_t)n;
+    for (unsigned i = 0; i < n; i++) {
+        if (left) {
+            c->r[R_AX] = x86_shift(c, lo_op, c->r[R_AX], 1, 1);
+            c->r[R_DX] = x86_shift(c, hi_op, c->r[R_DX], 1, 1);
+        } else {
+            c->r[R_DX] = x86_shift(c, hi_op, c->r[R_DX], 1, 1);
+            c->r[R_AX] = x86_shift(c, lo_op, c->r[R_AX], 1, 1);
+        }
+    }
+    c->r[R_CX] = 0;
+    c->icount += 3 + 3 * n;
+    near_ret(c);
+    return 1;
+}
+static int vgame_shl32(machine_t *m) { return shift32(m, 2, 4, 1); }   /* shl ax / rcl dx */
+static int vgame_sar32(machine_t *m) { return shift32(m, 7, 3, 0); }   /* sar dx / rcr ax */
+static int vgame_shr32(machine_t *m) { return shift32(m, 5, 3, 0); }   /* shr dx / rcr ax */
+
+/* VGAME 0x0C67A, clamp3(v, hi, lo): lo when lo < v; else hi when hi > v and
+ * v is above -16384 (C000h); a v at or below that takes lo instead. */
+static int vgame_clamp3(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 12)) return 0;
+    const uint16_t v = arg(c, 0), hi = arg(c, 1), lo = arg(c, 2);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_AX] = v;
+    alu_sub(c, lo, v, 1, 0);                                      /* cmp [bp+8], ax */
+    unsigned n;
+    if (!x86_cond(c, 0xD)) { c->r[R_AX] = lo; n = 8; }            /* jge not taken */
+    else {
+        alu_sub(c, hi, v, 1, 0);                                  /* cmp [bp+6], ax */
+        if (x86_cond(c, 0xE)) n = 9;                              /* jle: keep v */
+        else {
+            alu_sub(c, v, 0xC000, 1, 0);                          /* cmp ax, C000h */
+            c->r[R_AX] = x86_cond(c, 0xE) ? lo : hi;
+            n = 12;
+        }
+    }
+    x86_leave(c);
+    c->icount += n;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x1056A, sine(BX = angle): the word table at DS:2084 is indexed by
+ * the angle's high byte, and the low byte interpolates toward the next
+ * entry: BX = t[i] + (t[i+1] - t[i]) * frac / 256, rounded by the bit
+ * shifted out of AL. Result in BX; AX and DX as the original leaves them. */
+static int vgame_sine(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 14)) return 0;
+    const uint16_t angle = c->r[R_BX];
+    uint16_t dx = (uint16_t)((c->r[R_DX] & 0xFF00) | (angle & 0xFF));      /* mov dl, bl */
+    dx = (uint16_t)((alu_sub(c, dx >> 8, dx >> 8, 0, 0) << 8) | (dx & 0xFF));   /* sub dh, dh */
+    uint16_t bx = (uint16_t)(angle >> 8);                         /* mov bl, bh / mov bh, dh */
+    bx = x86_shift(c, 4, bx, 1, 1);                               /* shl bx, 1 */
+    const uint16_t ds = c->seg[S_DS];
+    uint16_t ax = seg_read16(c, ds, (uint16_t)(bx + 0x2086));
+    bx = seg_read16(c, ds, (uint16_t)(bx + 0x2084));
+    ax = (uint16_t)alu_sub(c, ax, bx, 1, 0);
+    c->r[R_AX] = ax;
+    c->r[R_DX] = dx;
+    x86_imul16(c, dx);                                            /* imul dx: DX:AX */
+    ax = c->r[R_AX];
+    dx = c->r[R_DX];
+    dx = (uint16_t)(((dx & 0xFF) << 8) | (ax >> 8));              /* mov dh, dl / mov dl, ah */
+    const uint8_t al = (uint8_t)x86_shift(c, 4, ax & 0xFF, 1, 0); /* shl al, 1 */
+    c->r[R_AX] = (uint16_t)((ax & 0xFF00) | al);
+    c->r[R_DX] = dx;
+    c->r[R_BX] = (uint16_t)alu_add(c, bx, dx, 1, (c->flags & F_CF) ? 1u : 0u);   /* adc bx, dx */
+    c->icount += 14;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x0FFDC, outcode(BX = x, BP = y): the clipping outcode in AL, bit
+ * 3 left (x < 0), 0 right (x > [2293]), 2 above (y < 0), 1 below
+ * (y > [2295]), signed; flags from the final OR AL, AL. */
+static int vgame_outcode(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 15)) return 0;
+    const uint16_t x = c->r[R_BX], y = c->r[R_BP], ds = c->seg[S_DS];
+    uint8_t al = 0x0F;
+    unsigned n = 11;
+    alu_logic(c, x, 1);                                           /* or bx, bx */
+    if (!(c->flags & F_SF)) { al &= 0xF7; n++; }
+    alu_sub(c, x, seg_read16(c, ds, 0x2293), 1, 0);
+    if (!x86_cond(c, 0xF)) { al &= 0xFE; n++; }                   /* jg */
+    alu_logic(c, y, 1);                                           /* or bp, bp */
+    if (!(c->flags & F_SF)) { al &= 0xFB; n++; }
+    alu_sub(c, y, seg_read16(c, ds, 0x2295), 1, 0);
+    if (!x86_cond(c, 0xF)) { al &= 0xFD; n++; }
+    alu_logic(c, al, 0);                                          /* or al, al */
+    c->r[R_AX] = (uint16_t)((c->r[R_AX] & 0xFF00) | al);
+    c->icount += n;
+    near_ret(c);
+    return 1;
+}
+
 static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x4958, vgame_free_fall, "free fall", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD50A, vgame_waypoint_from_target, "waypoint from target", 1 },
@@ -214,6 +343,13 @@ static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xC863, vgame_sign16, "sign of a word", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xC699, vgame_clamp, "clamp a word", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xBA2B, vgame_class5_takes_lock, "object class takes a lock", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xEE0C, vgame_abs16, "absolute value of a word", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xEF68, vgame_shl32, "32-bit shift left", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xEF74, vgame_sar32, "32-bit arithmetic shift right", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xF018, vgame_shr32, "32-bit logical shift right", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xC67A, vgame_clamp3, "clamp a bar value", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x104E, 0x008A, vgame_sine, "sine by table", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xFFDC, vgame_outcode, "clipping outcode", 1 },
 };
 
 void matched_register(void)
