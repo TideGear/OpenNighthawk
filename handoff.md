@@ -66,6 +66,11 @@ further down are historical; this first section is the current state.
   the private career/objective evidence chains. That is a policy call (it is
   the correct 0.74 behaviour); decide it, then retime routes and flip the
   default.
+- Music check (10:20): `tools/dosbox_compare.py --seconds 130` agrees for 596
+  writes / 29.7 s, then differs at write 596 (`0A3` 49 vs 92) both with the
+  flag on and off, so it is the known unfiltered random note, not the PIT
+  change. Timing offset at the end: +39 ms flag on, +11 ms flag off; a
+  random-note-aware comparison of the remainder is still open.
 - Next: with the flag on, retime the front-end routes (and
   `tools/start_settle`-style scripts), rebuild finals, run
   `tools/dosbox_compare.py` (music) and the frame comparison, then make it the
