@@ -40,7 +40,13 @@ class LandingChecks(unittest.TestCase):
 
     def test_success_and_countdown(self):
         self.assertEqual(self.errors(), [])
-        self.assertTrue(self.errors(stopped=1))
+        # At the exact countdown boundary a normal VGAME handoff with a
+        # successful result is accepted; without that handoff it is not.
+        self.assertEqual(self.errors(stopped=1), [])
+        self.assertTrue(landing_errors([self.airborne, dict(self.last, stopped=1)],
+                                       self.report, ""))
+        self.assertTrue(landing_errors([self.airborne, dict(self.last, stopped=1)],
+                                       dict(mission_result=1, pilot_status=3), self.log))
         self.assertTrue(self.errors(speed=2))
         self.assertTrue(self.errors(throttle=10))
 
