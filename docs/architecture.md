@@ -606,6 +606,15 @@ sorties 3, medal counter 1 -> 2. Its 354 checkpoints/final and all saved
 bytes match between engines, ending at hash `2cbd245e873655d5` at 17.7 billion
 clocks. The promotion and medal pages were reviewed. Retirement remains open.
 
+`secret_airstrip` exercises the original type-4 objective at Persian Gulf
+target 24. Its observer requires airborne history, ground contact and a
+stop inside that strip's approach box, original 8Bh event, primary credit,
+store consumption, fuel and no loss/damage. Both engines' observations and
+167 checkpoints/final match. `airstrip_check.py` reads the startup clock
+from the ordinary input record; it changes no guest state. This route ends
+at primary completion with the aircraft still at the strip, rather than
+claiming a return to the mission's home.
+
 The [independent parity audit](parity-audit.md) distinguishes engine equality
 from DOSBox flight/save/sound evidence and documents the remaining differences.
 

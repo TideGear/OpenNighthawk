@@ -84,6 +84,27 @@ routes are verified; an independent DOSBox recon flight is running (below).
 
 ## In flight at handoff
 
+- Secret-airstrip verified: strip-trial-02 normal adjusted descent aim
+  completed primary4 atPGtarget24, (10497,3809), box1/nearest24, ground0,
+  idle/gear/brakes, fuel7261, event8B1, primary4000, missionstore1->0,
+  strip intact/no ejection. VGAME remains active; no home return claimed.
+  New airstrip_check.py strong gate +four regressions;58Python/9CTests pass.
+  Strong strip-verified-{recomp,interp}: input.log/flight.csv/result.json
+  byte-identical, errors empty. CLI strip-cli-{recomp,interp}167 checkpoints
+  and final match8373782617/5762b7e88b22cda9. Credit PNG reviewed.
+  Public secret_airstrip.args/input uses ordinaryK/M atstartup700000005000000.
+  Coverage secret_airstrip.cov copied toexec-theatres-20261004; union
+  138771/230052=60.3%,23routes. First prototype touchedground outside short
+  strip box atspeed175 and gotno credit; retain failedstrip-trial-01.
+  CI2cdf614 passes after shortpath-test fix (16 route tests, not17).
+  GOG dosbox-recon-06 has finished:104607 observations, no credited photos,
+  fuel0at1141.688secflight, parentresult1/status1,9acceptanceerrors.
+  No live reference run; next controller acquisition should consider the
+  original ray's rounded vg_vsin(angle,32)+1 divisor (vgmath.h168, sine
+  table2084 and rounded1.15 multiplication). Continuousatan approximation
+  drove it low and into circles. A level nose casts a constant640-map-unit
+  ray, an alternative ordinary acquisition approach to test, not a model fix.
+
 - CI follow-up:46151f1,8c997de,316eac4 failed Route milestone regressions;
   build/CTests/pacing passed. Reproduced locally by setting tempfile.tempdir
   to Windows8.3 workspace alias: seed-path assertion compared spelling,

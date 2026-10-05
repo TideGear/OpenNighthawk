@@ -114,6 +114,25 @@ countdown increment before DOS exit; the acceptance threshold is unchanged.
 Adding this interpreter coverage raises the union to 134,132 / 230,052
 bytes (58.3%); recon return/career coverage remains pending.
 
+`secret_airstrip` completes a type-4 primary by normally landing at Persian
+Gulf target 24. The aircraft stops at (10497,3809), within the 9-by-40
+half-widths of its approach box, ground altitude zero, idle, gear/brakes,
+fuel 7261 and no loss or damage. Event 8Bh, primary flag and mission store
+1 -> 0 are independently required. Both observers' input logs, CSVs and
+reports are byte-identical. All 167 checkpoints and final state agree at
+8,373,782,617 clocks, hash `5762b7e88b22cda9`. The cargo-delivered cockpit
+was reviewed. The aircraft remains at the strip; no home return is claimed.
+The first approach touched down outside the shorter box and earned no
+credit; that failure is retained. Only the normal control aim was adjusted.
+Adding the strip's interpreter coverage raises the route union to 138,771 /
+230,052 bytes (60.3%).
+
+Independent GOG recon attempt 06 ended after fuel exhaustion: no photos,
+parent result 1/status 1, nine failed acceptance checks, 104,607 observations.
+Its completed failed result is retained, and independent full-sortie parity
+remains open. No shared game-model defect has been isolated from these
+controller attempts.
+
 **Video:** current-build replay against the saved GOG video still matches
 1,319 exact RGB pictures in order. Seven reference pictures and 28 of ours
 remain unmatched, all for a single sample. The end transition is about

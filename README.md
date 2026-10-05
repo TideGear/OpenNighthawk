@@ -228,6 +228,12 @@ then flies another normal sortie to earn First Lieutenant and an Airman's
 Medal. Its `# seed-roster` prerequisite is replayed in a fresh process;
 only the resulting roster is carried forward. No saved game is distributed.
 
+`secret_airstrip` lands normally at a Persian Gulf secret strip and earns
+the primary's original event and store consumption. It stops at the strip.
+Use `tools/airstrip_check.py --replay tools/routes/secret_airstrip.input
+--steps 8373782617 --data INSTALL_DIR --out PRIVATE_DIR` for the stronger
+read-only acceptance check.
+
 ## Repository layout
 
 | Path | What |

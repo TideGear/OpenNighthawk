@@ -27,11 +27,11 @@ never instead of parity.
 - Every translated instruction held to the interpreter from random states
   (`tests/insn_lockstep.c`, 5.7 million comparisons, 0 differences); the
   translator held to 8088 and 80286 silicon vectors.
-- Twenty-two scripted routes identical between the interpreter and the recompiled
+- Twenty-three scripted routes identical between the interpreter and the recompiled
   code: boot to flight; a full sortie through the debriefing; the speaker
   and Roland drivers; eight transfer-and-flight routes covering all nine
   theatres, three tensions and four mission categories. The routes execute
-  at least 60.2% of the code area (`tools/exercised.py`, including the new
+  at least 60.3% of the code area (`tools/exercised.py`, including the new
   promotion routes). Theatre routes also require
   the expected world files, a clean VGAME exit and at least a billion clocks
   in flight; airborne screenshots were reviewed for the six added routes.
@@ -89,6 +89,12 @@ never instead of parity.
   completed countdown. Parent result 0/status 3; both independent observers'
   input/CSV/result files match exactly. All 297 checkpoints and final hash
   `a4f05231eacf9d75` agree. Stopped cockpit screenshot reviewed.
+- Secret-airstrip primary completed in Persian Gulf Limited War: normal
+  landing at target 24, (10497,3809), inside its short approach box.
+  Original event 8Bh, primary flag, mission store 1 -> 0, idle/gear/brakes,
+  fuel 7261 and intact strip pass. Both observers' input/CSV/result files
+  match; 167 checkpoints/final agree, hash `5762b7e88b22cda9`. Cargo-delivered
+  cockpit reviewed. Aircraft remains at the strip; home return is not claimed.
 - Seeded random flights (`tools/random_flights.py`): every session
   identical at every hash; 30.5 minutes of flight in the 16-session batch.
 - Planted defects caught by the lockstep (`tools/mutation_check.py
@@ -165,7 +171,8 @@ never instead of parity.
 - [ ] **Individual mission objectives:** all nine theatres and all four
       mission categories now have flight routes (air combat, ground strike,
       and both training categories). Complete dedicated objective types,
-      including supply drops and secret-airstrip missions. Reconnaissance
+      including supply drops and secret-airstrip return legs. A secret-strip
+      primary landing is now verified. Reconnaissance
       primary/secondary credits and raised-runway return are now verified.
       The existing transfer routes exercise generation and controls, then
       quit; they do not establish objective completion.
