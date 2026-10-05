@@ -141,6 +141,9 @@ API int f117_machine_record(run_api *r, const char *path)
     r->record = fopen(path, "w");
     if (!r->record) return 0;
     inputlog_header(r->record, r->m.ips, r->m.boot_time_us);
+    char ids[256];
+    fixes_enabled(ids, sizeof ids);
+    inputlog_fixes(r->record, ids);
     return 1;
 }
 API int f117_machine_screen(run_api *r, const char *path)

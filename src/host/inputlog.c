@@ -10,6 +10,26 @@ void inputlog_header(FILE *f, uint64_t ips, uint64_t time_us)
             (unsigned long long)ips, (unsigned long long)time_us);
 }
 
+void inputlog_fixes(FILE *f, const char *ids)
+{
+    if (ids && *ids) fprintf(f, "# f117r-fixes %s\n", ids);
+}
+
+void inputlog_read_fixes(const char *path, char *ids, size_t n)
+{
+    if (n) ids[0] = 0;
+    FILE *f = fopen(path, "r");
+    if (!f) return;
+    char line[512];
+    while (fgets(line, sizeof line, f) && line[0] == '#') {
+        if (strncmp(line, "# f117r-fixes ", 14)) continue;
+        line[strcspn(line, "\r\n")] = 0;
+        snprintf(ids, n, "%s", line + 14);
+        break;
+    }
+    fclose(f);
+}
+
 void inputlog_write(FILE *f, const machine_input *in)
 {
     switch (in->type) {

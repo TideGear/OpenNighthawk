@@ -137,8 +137,13 @@ def main():
     parser.add_argument("--fix", action="append", default=[],
                         help="switch a fix on (docs/bugs.md); D5 makes the delivery earn credit")
     args = parser.parse_args()
-    credited = "D5" in args.fix or "all" in args.fix
     lines = args.replay.read_text().splitlines()
+    # A record made with fixes on names them; replaying it without them
+    # would be another game.
+    for line in lines[1:3]:
+        if line.startswith("# f117r-fixes "):
+            args.fix = sorted(set(args.fix) | set(line.split()[2:]))
+    credited = "D5" in args.fix or "all" in args.fix
     header = re.fullmatch(r"# f117r-input ips=9000000 time_us=(\d+)", lines[0] if lines else "")
     if not header:
         raise ValueError("requires a recorded 9 MHz startup clock")

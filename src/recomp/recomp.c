@@ -180,6 +180,20 @@ int recomp_override_enable(const char *id, int on)
     return n;
 }
 
+void recomp_override_ids(char *out, size_t n)
+{
+    size_t used = 0;
+    if (n) out[0] = 0;
+    for (int i = 0; i < g_nov; i++) {
+        if (!g_ov_on[i]) continue;
+        int seen = 0;
+        for (int k = 0; k < i; k++) if (g_ov_on[k] && !strcmp(g_ov[k].id, g_ov[i].id)) seen = 1;
+        if (seen) continue;
+        int w = snprintf(out + used, n > used ? n - used : 0, "%s%s", used ? " " : "", g_ov[i].id);
+        if (w > 0) used += (size_t)w;
+    }
+}
+
 void recomp_override_list(FILE *f)
 {
     for (int i = 0; i < g_nov; i++)

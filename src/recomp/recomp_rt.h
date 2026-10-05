@@ -59,6 +59,8 @@ int  recomp_override_add(const recomp_override *o);
 /* Switch every override with this id ("all" for every one); how many. */
 int  recomp_override_enable(const char *id, int on);
 void recomp_override_list(FILE *f);
+/* The enabled overrides' ids, space-separated, each once ("" for none). */
+void recomp_override_ids(char *out, size_t n);
 /* Enabled overrides now placed in loaded modules. */
 extern int recomp_overrides_live;
 /* At CS:IP: 1 an override ran, -1 one asked for the original instruction,

@@ -215,7 +215,7 @@ if(F117R_BUILD_TESTS)
   add_test(NAME vga_scanout COMMAND test_scanout)
 
   add_executable(test_overrides tests/test_overrides.c)
-  target_link_libraries(test_overrides PRIVATE f117recomp_none)
+  target_link_libraries(test_overrides PRIVATE f117present f117recomp_none)
   add_test(NAME code_overrides COMMAND test_overrides)
 
   # Every translated instruction of the game against the interpreter, one

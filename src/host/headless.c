@@ -208,7 +208,12 @@ int main(int argc, char **argv)
         } else { fprintf(stderr, "unknown or incomplete option %s\n", a); return 2; }
     }
     if (!data) { fprintf(stderr, "usage: f117run --data DIR [options]\n"); return 2; }
-    if (replay) inputlog_read_header(replay, &ips, &time_us);
+    if (replay) {
+        inputlog_read_header(replay, &ips, &time_us);
+        char ids[256];
+        inputlog_read_fixes(replay, ids, sizeof ids);
+        if (!fixes_enable_list(ids)) { fprintf(stderr, "%s names an unknown fix: %s\n", replay, ids); return 2; }
+    }
     if (!time_us) time_us = machine_local_time_us();
 
     static machine_t m;
@@ -235,6 +240,9 @@ int main(int argc, char **argv)
         g_record = fopen(record, "w");
         if (!g_record) { fprintf(stderr, "cannot write %s\n", record); return 1; }
         inputlog_header(g_record, ips, time_us);
+        char ids[256];
+        fixes_enabled(ids, sizeof ids);
+        inputlog_fixes(g_record, ids);
     }
     if (!machine_boot(&m, mem, data, save, "F117.COM", ips, time_us, &hooks)) {
         fprintf(stderr, "%s\n", m.fault);

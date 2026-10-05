@@ -255,8 +255,8 @@ never instead of parity.
 - [ ] Fixes for the original's bugs in [bugs.md](bugs.md) (D1 frame-rate
       AI, D6 undetectable cells, ...), each on a switch. D5 (supply drops
       earn credit) is done and checked through normal input under both
-      engines (`cargo_d5_fixed`). Recorded sessions do not yet note which
-      fixes were on.
+      engines (`cargo_d5_fixed`). A session recorded with fixes on names
+      them (`# f117r-fixes D5`) and its replay switches them on again.
 - [ ] 60+ fps and 4K presentation.
 
 ## Housekeeping

@@ -246,7 +246,8 @@ Your own play sessions are recorded too: each run of `f117a.exe` writes
 `sessions\<date-time>\` (the input log and the save folder as it began)
 next to its save folder. `build\f117run.exe --replay input.log` replays one
 under either engine (`--engine interp` or `recomp`), and the two must end in
-the same state.
+the same state. A session played with fixes on names them in its log
+(`# f117r-fixes D5`), and replaying it switches the same fixes on.
 
 The landing route also has a stronger observer that checks ground contact
 inside the home approach box, a stop at idle, gear/brakes, the original

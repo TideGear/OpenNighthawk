@@ -1,7 +1,9 @@
 /* ROM-free regressions for code overrides (recomp_rt.h): where they are
- * placed, when they run, and that a disabled one changes nothing. */
+ * placed, when they run, that a disabled one changes nothing, and how a
+ * recorded session names the ones that were on. */
 #include "machine.h"
 #include "recomp_rt.h"
+#include "inputlog.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -92,6 +94,46 @@ int main(void)
     CHECK(recomp_overrides_live == 1);
     CHECK(step_at(0x3001, 0x0020) == 0 && calls == 3);
     CHECK(step_at(0x2001, 0x0020) == 1 && calls == 4);
+
+    /* The enabled ids, each once, are what a recorded session names. */
+    char ids[64];
+    recomp_override_enable("all", 0);
+    recomp_override_ids(ids, sizeof ids);
+    CHECK(!strcmp(ids, ""));
+    recomp_override_enable("T3", 1);
+    recomp_override_enable("T1", 1);
+    recomp_override_ids(ids, sizeof ids);
+    CHECK(!strcmp(ids, "T1 T3"));
+
+    /* The log line: written only when fixes are on, read back exactly. */
+    const char *path = "test_overrides.log";
+    FILE *f = fopen(path, "w");
+    CHECK(f != NULL);
+    if (f) {
+        inputlog_header(f, 9000000, 1);
+        inputlog_fixes(f, "");
+        fclose(f);
+        char back[64] = "x";
+        inputlog_read_fixes(path, back, sizeof back);
+        CHECK(!strcmp(back, ""));
+    }
+    f = fopen(path, "w");
+    if (f) {
+        inputlog_header(f, 9000000, 1);
+        inputlog_fixes(f, ids);
+        fprintf(f, "K 100 1E\n");
+        fclose(f);
+        char back[64] = "";
+        inputlog_read_fixes(path, back, sizeof back);
+        CHECK(!strcmp(back, "T1 T3"));
+        uint64_t ips = 0, t = 0;
+        inputlog_read_header(path, &ips, &t);
+        CHECK(ips == 9000000 && t == 1);
+        inputlog_reader *r = inputlog_open(path);
+        CHECK(r && !inputlog_done(r));     /* the comment line is not an input */
+        inputlog_close(r);
+    }
+    remove(path);
 
     recomp_shutdown(&m);
     if (failures) { fprintf(stderr, "%d failures\n", failures); return 1; }

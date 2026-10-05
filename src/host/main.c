@@ -280,7 +280,15 @@ int main(int argc, char **argv)
     SDL_AudioStream *stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, NULL, NULL);
     if (stream) SDL_ResumeAudioStreamDevice(stream);
     /* A replay's clock must be known before creating either audio backend. */
-    if (replay) inputlog_read_header(replay, &ips, &time_us);
+    if (replay) {
+        inputlog_read_header(replay, &ips, &time_us);
+        char ids[256];
+        inputlog_read_fixes(replay, ids, sizeof ids);
+        if (!fixes_enable_list(ids)) {
+            fprintf(stderr, "%s names an unknown fix: %s\n", replay, ids);
+            SDL_Quit(); return 2;
+        }
+    }
     H.audio = audio_create_backend(ips, opl_backend);
     if (mt32_control) {
         char error[256];
@@ -370,6 +378,9 @@ int main(int argc, char **argv)
         H.record = fopen(record, "w");
         if (H.record) {
             inputlog_header(H.record, ips, time_us);
+            char ids[256];
+            fixes_enabled(ids, sizeof ids);
+            inputlog_fixes(H.record, ids);
             H.m.on_input = on_input;
         }
     }

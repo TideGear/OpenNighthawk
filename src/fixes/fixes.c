@@ -2,6 +2,8 @@
 #include "fixes.h"
 #include "recomp_rt.h"
 
+#include <string.h>
+
 /* GOG's VGAME.EXE: MicroProse's final 473.04 update. */
 #define VGAME_47304 0x8287450CCA85106FULL
 
@@ -44,4 +46,25 @@ void fixes_list(FILE *f)
 {
     fixes_register();
     recomp_override_list(f);
+}
+
+void fixes_enabled(char *out, size_t n)
+{
+    fixes_register();
+    recomp_override_ids(out, n);
+}
+
+int fixes_enable_list(const char *ids)
+{
+    char id[32];
+    int ok = 1;
+    for (const char *p = ids; *p; ) {
+        while (*p == ' ') p++;
+        size_t len = strcspn(p, " ");
+        if (!len) break;
+        snprintf(id, sizeof id, "%.*s", (int)len, p);
+        if (!fixes_enable(id, 1)) ok = 0;
+        p += len;
+    }
+    return ok;
 }
