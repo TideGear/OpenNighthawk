@@ -237,6 +237,13 @@ Status values:
   still the original's truncate-and-write.
 - **Fix options.** Make the host's file layer write atomically (temporary
   file, then rename) - invisible to the program.
+- **Fix available: `--fix D11`.** A file the program creates (INT 21h
+  AH=3Ch) in the save directory is written to `<name>.f117r-tmp` and moved
+  over the real file when the handle closes (`MoveFileEx` with replace on
+  Windows, `rename` elsewhere). An interruption before the close leaves the
+  previous roster as it was. The program sees the same reads and writes:
+  the roster_edit route reaches the same final hash `2bb553498fc8b735` and
+  saves a byte-identical roster with the fix on, leaving no temporary file.
 - **Detail.** Reimp catalogue:845-889.
 
 ### D12. END's hidden rating tally mixes signed and unsigned
@@ -293,6 +300,11 @@ Status values:
   (`0x0140`: start OPL timer 1, poll the status port 200 times, expect
   `0xC0`) is why this project models ISA I/O timing at all (see
   [architecture.md](architecture.md#time)).
+- **Checked here (5 October 2026):** not reproduced. At 200 million
+  instructions a second the game runs through the intro into START, and at
+  1,000 million MPS_LOGO and its AdLib calibration finish normally; the
+  modelled ISA I/O delays keep the calibration's measured PIT delta above
+  zero. No fix is offered for a failure this machine does not show.
 - **Detail.** Reimp catalogue:1408-1426.
 
 ### D36. Later MT-32s play no engine sound (reported)

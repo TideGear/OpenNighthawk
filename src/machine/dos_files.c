@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include <string.h>
 #ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
 #include <io.h>
 #include <direct.h>
 #define mkdir_(p) _mkdir(p)
@@ -94,7 +96,9 @@ static FILE *open_rw(machine_t *m, const char *name, char *found, size_t fn)
     return open_ci(m->data_dir, name, "rb+", found, fn);
 }
 
-static FILE *open_create(machine_t *m, const char *name, char *found, size_t fn)
+int dos_atomic_saves;
+
+static FILE *open_create(machine_t *m, const char *name, char *found, size_t fn, char *temp, size_t tn)
 {
     char existing[1100];
     char path[1100];
@@ -103,9 +107,27 @@ static FILE *open_create(machine_t *m, const char *name, char *found, size_t fn)
         snprintf(path, sizeof path, "%s", existing);
     else
         snprintf(path, sizeof path, "%s/%s", write_dir(m), name);
+    if (temp) temp[0] = 0;
+    if (dos_atomic_saves && m->save_dir[0] && temp) {
+        snprintf(temp, tn, "%s.f117r-tmp", path);
+        FILE *f = fopen(temp, "wb+");
+        if (f && found) snprintf(found, fn, "%s", path);
+        if (!f) temp[0] = 0;
+        return f;
+    }
     FILE *f = fopen(path, "wb+");
     if (f && found) snprintf(found, fn, "%s", path);
     return f;
+}
+
+/* Fix D11's commit: the finished temporary file replaces the real one. */
+static void commit_temp(const char *temp, const char *path)
+{
+#ifdef _WIN32
+    MoveFileExA(temp, path, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH);
+#else
+    rename(temp, path);
+#endif
 }
 
 uint8_t *dos_read_whole(machine_t *m, const char *name, long *out_size)
@@ -153,6 +175,8 @@ void dos_sft_release(machine_t *m, uint8_t sft)
 static void close_handle(machine_t *m, unsigned h)
 {
     if (m->files[h].fp) fclose(m->files[h].fp);
+    if (m->files[h].temp[0]) commit_temp(m->files[h].temp, m->files[h].path);
+    m->files[h].temp[0] = 0;
     jft_set(m, m->files[h].owner, h, 0xFF);
     dos_sft_release(m, m->files[h].sft);
     m->files[h].in_use = 0;
@@ -545,13 +569,14 @@ int dos_int21(machine_t *m)
 
     case 0x3C:     /* create/truncate */
     case 0x3D: {   /* open */
-        char dp[520], hp[1100];
+        char dp[520], hp[1100], tp[1120];
         dos_guest_str(c, c->seg[S_DS], c->r[R_DX], dp, sizeof(dp));
         const char *base = dos_basename(dp);
         int h = alloc_handle(m);
         if (h < 0) { dos_fail(c, ERR_TOO_MANY_OPEN); return 1; }
         FILE *f;
-        if (ah == 0x3C) f = open_create(m, base, hp, sizeof hp);
+        tp[0] = 0;
+        if (ah == 0x3C) f = open_create(m, base, hp, sizeof hp, tp, sizeof tp);
         else if ((al & 7) == 0) f = dos_open_read(m, base, hp, sizeof hp);
         else f = open_rw(m, base, hp, sizeof hp);
         if (!f) {
@@ -567,6 +592,7 @@ int dos_int21(machine_t *m)
         m->files[h].sft = sft_alloc(m);
         jft_set(m, me, (unsigned)h, m->files[h].sft);
         snprintf(m->files[h].path, sizeof(m->files[h].path), "%s", hp);
+        snprintf(m->files[h].temp, sizeof(m->files[h].temp), "%s", tp);
         dos_log(m, "[file] %s '%s' -> %d @%llu %s\n", ah == 0x3C ? "create" : "open",
                 dp, h, (unsigned long long)c->icount, dos_current_program(m));
         c->r[R_AX] = (uint16_t)h;

@@ -273,6 +273,7 @@ static const data_fix DATA[] = {
 
 static const struct { const char *id, *what; } FIXES[] = {
     { "D2", "AdLib speech plays without stopping the game or risking its busy-wait hang" },
+    { "D11", "saves are written to a temporary file and renamed into place, so an interrupted save keeps the old roster" },
     { "D4", "secret-airstrip missions in Libya, North Cape and the Middle East" },
     { "D5", "supply drops earn their delivery credit" },
     { "D34", "the destroyed-object table keeps records past 30 without overwriting" },
@@ -305,6 +306,7 @@ int fixes_enable(const char *id, int on)
         recomp_override_enable(FIXES[i].id, on);
         n++;
     }
+    dos_atomic_saves = fix_on("D11");
     return n;
 }
 

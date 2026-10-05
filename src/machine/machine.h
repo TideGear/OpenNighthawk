@@ -47,7 +47,14 @@ typedef struct {
     int      is_device;      /* handles 0-4 are the standard devices */
     uint16_t owner;          /* PSP of the process that opened it */
     uint8_t  sft;            /* its system file table entry: what the PSP's handle table holds */
+    char     temp[540];      /* fix D11: written here, renamed over path on close ("" = direct) */
 } dos_file;
+
+/* Fix D11: a file the program creates in the save directory is written to
+ * a temporary name and renamed over the real one when closed, so an
+ * interrupted save leaves the previous file intact. Invisible to the
+ * program. Set by fixes_enable. */
+extern int dos_atomic_saves;
 
 /* One running program. EXEC pushes one of these; terminate pops it and
  * resumes the parent where its INT 21h left off. */
