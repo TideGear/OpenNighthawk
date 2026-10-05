@@ -1,16 +1,45 @@
 # F-117A Recomp
 
-A static recompilation of the PC DOS game *F-117A Nighthawk Stealth Fighter
-2.0* (MicroProse, 1991) for Windows. The original's machine code is
-translated, instruction by instruction, into C and compiled natively. It
-runs on an emulated PC timed like the GOG release's DOSBox, and every
-instruction is checked against a reference interpreter validated on real
-silicon.
+This is a fully **human-driven**, AI-coded recompilation (**not a
+reimplementation or a decompilation**) of the PC DOS classic *F-117A
+Nighthawk Stealth Fighter 2.0* (MicroProse, 1991) for Windows. The
+original's machine code is translated, instruction by instruction, into C
+and compiled natively. It runs on an emulated PC timed like the GOG
+release's DOSBox, and every instruction is checked against a reference
+interpreter validated on real silicon.
+
+**This is not a lazy, fire-and-forget project.** A person directs every
+step: what gets built, what counts as proof, which results to distrust and
+measure again, and what is accepted. Nothing is called done because it
+compiles or looks right; it is done when it matches the original under
+checks that are written down here and that you can re-run on your own copy.
+F-117A is near and dear to my heart, and I will keep supporting this game,
+well past the first playable build.
+
+**Why it matters.** The original DOS release is buggy and has not aged well.
+It needs an emulator to run at all today. Its frame-rate controller
+misbehaves on fast machines, degrading enemy AI and weapon guidance; its
+digitised speech can hang the game; supply drops never earn credit;
+secret-airstrip missions are disabled outside the Persian Gulf; and long
+missions can overrun an unbounded table and corrupt the game's state. The
+catalogue in
+[docs/bugs.md](docs/bugs.md) has the evidence for each. Keeping the game
+playable, faithfully, on today's machines is a game-preservation job, and
+this project treats it as one.
 
 **1:1 parity with the original is the first priority.** The game does
 exactly what the DOS original does, including its bugs, which are tracked in
 [docs/bugs.md](docs/bugs.md) so they can be fixed later as switchable
 options. Enhancements come after parity, never instead of it.
+
+> **Not affiliated with anyone.** This is an unofficial, fan-made project. It
+> is not affiliated with, authorized by, endorsed by, or associated with
+> Atari Interactive, Inc., MicroProse, or any other rights holder.
+> *F-117A Nighthawk Stealth Fighter* and all related marks are the property
+> of their respective owners. **You must own a legal copy of the original
+> game to use this software.** It is [sold on
+> Steam](https://store.steampowered.com/app/328920/) and on
+> [GOG](https://www.gog.com/). Please buy it.
 
 ## Status
 
@@ -99,6 +128,12 @@ MicroProse's final 473.04 update already applied (its VGAME.EXE is
 byte-identical to the one in `f11704 (473.04 Update).zip`).
 `py tools/verify_install.py --data "D:\GOG\F-117A"` checks your copy
 against the SHA-256 of every file the project reads.
+
+**Test evidence follows the same rule.** Routes commit only the inputs a
+player would type or click; every capture, screenshot, recording, save and
+memory dump they produce is written to a private work directory, never into
+the repository. If you find anything in this repository that breaches this,
+please open an issue: that is a bug, and a serious one.
 
 ## Building
 
@@ -273,10 +308,31 @@ grants nothing over the game, its data, or anything derived from them.
 DOSBox DBOPL is GPL-2-or-later and Nuked OPL3 is LGPL-2.1; see
 [docs/provenance.md](docs/provenance.md).
 
-*F-117A Nighthawk Stealth Fighter 2.0* and its assets belong to their rights
-holder. This project is not affiliated with or endorsed by Atari, MicroProse
-or anyone else. The name is used only to say what the software is compatible
-with.
+**This project takes no money.** There is no donation link, no sponsorship,
+no paid build and no monetisation of any kind, and there will not be. If you
+want to spend money on F-117A, spend it on
+[the game](https://store.steampowered.com/app/328920/).
+
+## Legal
+
+*F-117A Nighthawk Stealth Fighter 2.0* and its assets are the property of
+their rights holder. Atari Interactive re-acquired the MicroProse air-combat
+catalogue in April 2023 and **the game is still sold**: this is not an
+abandonware project, and it is not treated as one.
+
+This project distributes no copyrighted material and requires you to supply
+your own legally obtained copy. It exists for interoperability and
+preservation: so that people who own the game can still run it, faithfully,
+on hardware it was never written for, and later without its original
+defects.
+
+The game's name is used only to say truthfully what this software is
+compatible with. No MicroProse or Atari logo, box art or trade dress is
+used, and no claim of association is made or implied.
+
+**Please do not use this project to help anyone pirate the game.** Issues,
+pull requests and discussions asking where to download game data will be
+closed. Buy it; it is inexpensive and still available.
 
 ## Acknowledgements
 
@@ -288,3 +344,5 @@ with.
 - **DOSBox DBOPL** (The DOSBox Team), for the reference OPL2 synthesizer.
 - **debugcom**, for the mission-generator and secret-airstrip analysis the
   bug tracker cites.
+- **MicroProse / MPS Labs**, for the game, and for release notes that are
+  still telling us how it works.
