@@ -2813,6 +2813,139 @@ static int start_home_risk(machine_t *m)
     return 1;
 }
 
+/* VGAME 1058:0D09, normalise joystick axis SI (0-3): the raw reading
+ * [2CCA+2i] against the centre [2CB2+2i] becomes a byte at [2CD2+i]: 7Fh at
+ * the centre, below it 0..7Fh scaled by the low range [2CBA+2i], above it
+ * 80h..FFh by the high range [2CC2+2i]. A reading past the recorded minimum
+ * [2CA2+2i] or maximum [2CAA+2i] widens it (and that range) instead. AX,
+ * DX, DS preserved; SI's top bit is lost to SHL/SHR, as shipped. Declined
+ * where the original's DIV would fault (random states only). */
+static int vgame_axis_normalise(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t ds = c->seg[S_DS];
+    const uint16_t i2 = (uint16_t)(c->r[R_SI] << 1);
+    const uint16_t raw = ds_get(c, (uint16_t)(i2 + 0x2CCA)), centre = ds_get(c, (uint16_t)(i2 + 0x2CB2));
+    const uint16_t diff = (uint16_t)(raw - centre);
+    if (raw > centre) {
+        if (raw < ds_get(c, (uint16_t)(i2 + 0x2CAA))) {
+            const uint16_t d = ds_get(c, (uint16_t)(i2 + 0x2CC2));
+            if (!d || diff >= d) return 0;
+        }
+    } else if (raw < centre && raw > ds_get(c, (uint16_t)(i2 + 0x2CA2))) {
+        const uint16_t d = ds_get(c, (uint16_t)(i2 + 0x2CBA));
+        const uint16_t neg = (uint16_t)(0 - diff);
+        if (!d || neg >= d) return 0;
+    }
+    if (!room(c, 23)) return 0;
+    unsigned n = 0;
+    const uint16_t ax0 = c->r[R_AX], dx0 = c->r[R_DX];
+    cpu_push16(c, ax0); cpu_push16(c, dx0); cpu_push16(c, ds); n += 3;
+    uint16_t si = x86_shift(c, 4, c->r[R_SI], 1, 1); n++;         /* shl si, 1 */
+    uint16_t ax = ds_get(c, (uint16_t)(si + 0x2CCA)); n++;
+    uint16_t dx = ax; n++;
+    ax = (uint16_t)alu_sub(c, ax, ds_get(c, (uint16_t)(si + 0x2CB2)), 1, 0); n++;
+    n++;                                                          /* jne */
+    if (c->flags & F_ZF) {
+        ax = (uint16_t)(0x7F00 | (ax & 0xFF)); n += 2;            /* mov ah, 7Fh / jmp */
+    } else if (n++, x86_cond(c, 0x7)) {                           /* ja: above the centre */
+        alu_sub(c, dx, ds_get(c, (uint16_t)(si + 0x2CAA)), 1, 0); n += 2;
+        if (c->flags & F_CF) {                                    /* jb: within the maximum */
+            c->r[R_DX] = ax; c->r[R_AX] = 0;
+            alu_sub(c, ax, ax, 1, 0); n += 2;                     /* mov dx, ax / sub ax, ax */
+            x86_div16(c, ds_get(c, (uint16_t)(si + 0x2CC2))); n++;
+            ax = x86_shift(c, 5, c->r[R_AX], 1, 1); n++;
+            ax = (uint16_t)((alu_add(c, ax >> 8, 0x80, 0, 0) << 8) | (ax & 0xFF)); n++;
+        } else {
+            ds_put(c, (uint16_t)(si + 0x2CAA), dx);
+            ds_put(c, (uint16_t)(si + 0x2CC2), ax);
+            ax = (uint16_t)~alu_sub(c, ax, ax, 1, 0);
+            n += 5;                                               /* mov, mov, sub, not, jmp */
+        }
+    } else {
+        alu_sub(c, dx, ds_get(c, (uint16_t)(si + 0x2CA2)), 1, 0); n += 2;
+        if (x86_cond(c, 0x7)) {                                   /* ja: inside the minimum */
+            ax = (uint16_t)alu_sub(c, 0, ax, 1, 0);              /* neg ax */
+            c->r[R_DX] = ax;
+            alu_sub(c, ax, ax, 1, 0);
+            c->r[R_AX] = 0;
+            n += 3;
+            x86_div16(c, ds_get(c, (uint16_t)(si + 0x2CBA))); n++;
+            ax = (uint16_t)~c->r[R_AX]; n++;
+            ax = x86_shift(c, 5, ax, 1, 1); n++;
+        } else {
+            ds_put(c, (uint16_t)(si + 0x2CA2), dx);
+            ax = (uint16_t)alu_sub(c, 0, ax, 1, 0);
+            ds_put(c, (uint16_t)(si + 0x2CBA), ax);
+            ax = (uint16_t)alu_sub(c, ax, ax, 1, 0);
+            n += 5;                                               /* mov, neg, mov, sub, jmp */
+        }
+    }
+    si = x86_shift(c, 5, si, 1, 1); n++;                          /* shr si, 1 */
+    mem_write8(c, phys(ds, (uint16_t)(si + 0x2CD2)), (uint8_t)(ax >> 8)); n++;
+    c->r[R_SI] = si;
+    c->seg[S_DS] = cpu_pop16(c);
+    c->r[R_DX] = cpu_pop16(c);
+    c->r[R_AX] = cpu_pop16(c);
+    n += 4;                                                       /* pops, ret */
+    c->icount += n;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 120A:02B2, model_setup_matrix's range test (AX = a distance):
+ * AX = 0 when the model at [7CD2]:[7CD4] / [7CD6]:[7CD8] (32-bit, |x| and
+ * |y| taken) lies within reach - its high words not beyond BP = the high
+ * word of [7CDA]:[7CDC] + AX + [7CDC] - and the size test at [7D5E] passes;
+ * else AX = FFFFh with ZF clear. */
+static int vgame_model_in_range(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 37)) return 0;
+    unsigned n = 0;
+    uint16_t bx = c->r[R_AX]; n++;
+    const uint16_t cx = ds_get(c, 0x7D5E); n++;
+    uint16_t ax = ds_get(c, 0x7CDC); n++;
+    uint16_t dx = (ax & 0x8000) ? 0xFFFF : 0; n++;                /* cwd */
+    ax = (uint16_t)alu_logic(c, ax ^ dx, 1); n++;
+    ax = (uint16_t)alu_sub(c, ax, dx, 1, 0); n++;
+    ax = (uint16_t)alu_inc(c, ax, 1); n++;
+    ax = x86_shift(c, 4, ax, 1, 1); n++;
+    alu_sub(c, ax, cx, 1, 0); n += 2;                             /* cmp / jae */
+    int fail = !(c->flags & F_CF);
+    uint16_t bp = c->r[R_BP];
+    if (!fail) {
+        ax = (uint16_t)alu_add(c, ds_get(c, 0x7CDC), bx, 1, 0); n += 2;
+        dx = ax; n++;
+        bx = (uint16_t)alu_sub(c, bx, bx, 1, 0); n++;
+        bp = dx; n++;
+        bx = (uint16_t)alu_add(c, bx, ds_get(c, 0x7CDA), 1, 0); n++;
+        bp = (uint16_t)alu_add(c, bp, ds_get(c, 0x7CDC), 1, (c->flags & F_CF) ? 1u : 0u); n++;
+        n++;                                                      /* js */
+        fail = (c->flags & F_SF) != 0;
+        static const uint16_t at[2] = { 0x7CD2, 0x7CD6 };
+        for (int k = 0; k < 2 && !fail; k++) {
+            ax = ds_get(c, at[k]); dx = ds_get(c, (uint16_t)(at[k] + 2)); n += 2;
+            alu_logic(c, dx, 1); n += 2;                          /* or dx, dx / jns */
+            if (c->flags & F_SF) {
+                ax = (uint16_t)~ax; dx = (uint16_t)~dx;
+                ax = (uint16_t)alu_add(c, ax, 1, 1, 0);
+                dx = (uint16_t)alu_add(c, dx, 0, 1, (c->flags & F_CF) ? 1u : 0u);
+                n += 4;
+            }
+            alu_sub(c, dx, bp, 1, 0); n += 2;                     /* cmp dx, bp / ja */
+            fail = x86_cond(c, 0x7);
+        }
+    }
+    c->r[R_BX] = bx; c->r[R_CX] = cx; c->r[R_DX] = dx; c->r[R_BP] = bp;
+    if (fail) { ax = 0xFFFF; alu_logic(c, ax, 1); n += 3; }       /* mov ax, -1 / or / ret */
+    else { ax = (uint16_t)alu_sub(c, ax, ax, 1, 0); n += 2; }     /* sub ax, ax / ret */
+    c->r[R_AX] = ax;
+    c->icount += n;
+    near_ret(c);
+    return 1;
+}
+
 static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x4958, vgame_free_fall, "free fall", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD50A, vgame_waypoint_from_target, "waypoint from target", 1 },
@@ -2948,6 +3081,8 @@ static const recomp_override MATCHED[] = {
     { "matched", "START.EXE", START_47304, 0x0000, 0x7387, start_shared_pointers, "point at the shared state", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x3CA1, end_shared_pointers, "point at the shared state", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x02BA, start_home_risk, "home base risk", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1058, 0x0D09, vgame_axis_normalise, "normalise a joystick axis", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x120A, 0x02B2, vgame_model_in_range, "model range test", 1 },
 };
 
 void matched_register(void)
