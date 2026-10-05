@@ -25,6 +25,8 @@ audio_t *audio_create_backend(uint64_t ips, audio_opl_backend backend);
 void     audio_destroy(audio_t *a);
 void     audio_opl_write(audio_t *a, uint64_t icount, uint8_t reg, uint8_t val);
 void     audio_speaker(audio_t *a, const machine_t *m, uint64_t icount);
+void     audio_speaker_event(audio_t *a, uint64_t icount, uint8_t port61,
+                             uint16_t reload, uint8_t mode, uint64_t epoch_clk);
 /* Enable before rendering starts. Returns zero with a diagnostic on failure. */
 int      audio_enable_mt32(audio_t *a, const char *control, const char *pcm,
                            char *error, size_t error_size);

@@ -29,7 +29,7 @@ objectives or establish successful landing.
 Libya / LB is the default theatre in `boot_to_flight` and `full_cycle`.
 The speaker and Roland routes cover the other sound drivers and program
 load addresses. Together the routes select all nine worlds, three tension
-levels and four mission categories. Individual objective types within a
+levels and four mission categories. Many individual objective types within a
 category still need dedicated routes.
 
 Transfer coordinates come from START's own menu rectangles at DS:6F6E and
@@ -75,6 +75,36 @@ It stops airborne after credit and does not establish a return. The stronger
 `strike_pilot.py --replay strike.input` observer requires ground-strike type,
 target damage, primary credit, one matching hit event, weapon release events,
 consumed stores and an airborne aircraft with fuel and no ejection/crash.
+`strike_return` replays a separate normal-input flight through a home-33
+landing. Run `py tools/strike_pilot.py --complete --replay
+tools/routes/strike_return.input --data D:/GOG/F-117A --out PRIVATE_DIR` (add
+`--engine interp` for the second observer). It checks that primary hit and
+credit persist through stop/debrief, with fuel, gear, brakes and idle gates
+and parent result 0/status 3. Interpreter and recompiler observers agree at
+297 checkpoints/final hash `a4f05231eacf9d75`.
+
+`vietnam_airair.front` enters Vietnam / Conventional War / Air-to-Air through
+normal menu inputs. `airair_pilot.py` steers to the generated special aircraft,
+uses the loaded station-0 AMRAAM, observes its seeker cone and release, then
+returns to home 33 after objective credit. It checks the slot-0 kill and
+primary event at the credit sample, consumed AMRAAM store, and full landing
+result. The adaptive input log replays with `--engine recomp` and
+`--engine interp` for a direct flight-state parity check.
+
+Dedicated air-to-air objective routes currently cover types 5–8. Type 5 uses
+the Vietnam route and default `--time-us 700000000000000`; type 7 uses
+`vietnam_airair_type7.front` with `--time-us 700000003000000`; type 8 uses
+`vietnam_airair_type8.front` with `--time-us 700000002000000`. Type 6 uses
+`central_europe_airair.front` and the default startup clock. Types 6–8 each
+release three station-0 AMRAAMs, kill special unit 0 and earn primary credit.
+Type 6 returns to home 72 with `--landing-aim 30`; types 7 and 8 return to
+home 33, with type 7 using `--landing-aim 50` for the short runway. Their
+recorded inputs replay identically under both engines: type 6 has 619
+observations and hash `d06a5ccf075b2e80`; type 7 has 780 and hash
+`11c82f0235e24265`; type 8 has 741 and hash `6c3336ef1c24da17`. For a close
+objective return, `airair_pilot.py` holds cruise altitude while turning onto
+the runway heading, then begins the final descent. The other generated
+objective types remain open.
 
 `cargo` reproduces original D5 through a normally released supply crate.
 `cargo_check.py --replay cargo.input --steps 7498892689` requires one cargo

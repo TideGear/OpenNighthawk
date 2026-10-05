@@ -212,7 +212,18 @@ missing ROMs fail explicitly. Original game MIDI renders offline and live;
 exact reference PCM comparison, flight sound and listening checks remain open.
 
 For offline validation, `f117run --midi-log FILE` records each MPU byte with
-its instruction clock. Render that log through the same audio path:
+its instruction clock. `f117run --speaker-log FILE` records each speaker hook
+event with the guest clock, port 61h low bits, PIT2 reload and mode, and PIT2
+epoch in PIT clocks. `audio_render` merges OPL, speaker, and optional
+MIDI events by guest clock; for example, render a complete OPL/speaker replay
+through a known end clock with:
+
+```bat
+build\audio_render.exe opl.log flight.wav 9000000 9799924671 --speaker-log speaker.log
+```
+
+To include Roland, add `--mt32` and the control and PCM ROM paths as in this
+example:
 
 ```bat
 build\audio_render.exe midi.log roland.wav 9000000 1300000000 --mt32 "C:\ROMs\CONTROL.ROM" "C:\ROMs\PCM.ROM"

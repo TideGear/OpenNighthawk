@@ -3,6 +3,8 @@
  *
  *   f117a [--data DIR] [--save DIR] [--engine recomp|interp] [--ips N]
  *         [--scale N] [--fullscreen] [--no-aspect] [--midi N] [--log FILE]
+ *         [--audio-queue-log FILE]
+ *         [--audio-dump FILE]
  *
  * The machine runs on its own clock (instructions); this loop keeps that
  * clock level with the wall clock, hands it the keyboard, mouse and stick
@@ -190,6 +192,8 @@ static const char *default_data_dir(void)
 int main(int argc, char **argv)
 {
     const char *data = NULL, *save = NULL, *log_path = NULL;
+    const char *audio_queue_log_path = NULL;
+    const char *audio_dump_path = NULL;
     uint64_t ips = MACHINE_DEFAULT_IPS;
     int scale = 3, fullscreen = 0, aspect = 1, midi_dev = -2;
     int engine = ENGINE_RECOMP;
@@ -198,6 +202,8 @@ int main(int argc, char **argv)
     audio_opl_backend opl_backend = AUDIO_OPL_DBOPL;
     int no_record = 0;
     const char *mt32_control = NULL, *mt32_pcm = NULL;
+    unsigned int mt32_seed = 0;
+    int mt32_seed_set = 0;
 
     for (int i = 1; i < argc; i++) {
         const char *a = argv[i], *v = i + 1 < argc ? argv[i + 1] : NULL;
@@ -215,11 +221,16 @@ int main(int argc, char **argv)
         }
         else if (!strcmp(a, "--save") && v) { save = v; i++; }
         else if (!strcmp(a, "--log") && v) { log_path = v; i++; }
+        else if (!strcmp(a, "--audio-queue-log") && v) { audio_queue_log_path = v; i++; }
+        else if (!strcmp(a, "--audio-dump") && v) { audio_dump_path = v; i++; }
         else if (!strcmp(a, "--ips") && v) { ips = strtoull(v, NULL, 0); i++; }
         else if (!strcmp(a, "--scale") && v) { scale = atoi(v); i++; }
         else if (!strcmp(a, "--midi") && v) { midi_dev = atoi(v); i++; }
         else if (!strcmp(a, "--mt32-control") && v) { mt32_control = v; i++; }
         else if (!strcmp(a, "--mt32-pcm") && v) { mt32_pcm = v; i++; }
+        else if (!strcmp(a, "--mt32-seed") && v) {
+            mt32_seed = (unsigned int)strtoul(v, NULL, 0); mt32_seed_set = 1; i++;
+        }
         else if (!strcmp(a, "--engine") && v) { engine = !strcmp(v, "interp") ? ENGINE_INTERP : ENGINE_RECOMP; i++; }
         else if (!strcmp(a, "--coverage") && v) { coverage = v; i++; }
         else if (!strcmp(a, "--fix") && v) {
@@ -235,12 +246,18 @@ int main(int argc, char **argv)
                 "             [--scale N] [--fullscreen] [--no-aspect] [--midi N] [--log FILE]\n"
                 "             [--record FILE | --no-record] [--replay FILE] [--time-us N]\n"
                 "             [--exit-after CLOCKS] [--opl dbopl|nuked]\n"
+                "             [--audio-queue-log FILE]\n"
+                "             [--audio-dump FILE]\n"
                 "             [--mt32-control FILE --mt32-pcm FILE] [--fix ID|all]... [--list-fixes]\n");
             return 2;
         }
     }
     if ((mt32_control != NULL) != (mt32_pcm != NULL) || (mt32_control && midi_dev != -2)) {
         fprintf(stderr, "Supply both --mt32-control and --mt32-pcm; choose one Roland output\n");
+        return 2;
+    }
+    if (mt32_seed_set && !mt32_control) {
+        fprintf(stderr, "--mt32-seed requires --mt32-control and --mt32-pcm\n");
         return 2;
     }
     if (!data) data = default_data_dir();
@@ -292,6 +309,7 @@ int main(int argc, char **argv)
     H.audio = audio_create_backend(ips, opl_backend);
     if (mt32_control) {
         char error[256];
+        if (mt32_seed_set) srand(mt32_seed);
         if (!audio_enable_mt32(H.audio, mt32_control, mt32_pcm, error, sizeof error)) {
             fprintf(stderr, "%s\n", error);
             audio_destroy(H.audio); SDL_Quit(); return 1;
@@ -402,6 +420,17 @@ int main(int argc, char **argv)
 
     static uint32_t pixels[640 * 400];
     static int16_t abuf[AUDIO_RATE * 2];
+    FILE *audio_queue_log = audio_queue_log_path ? fopen(audio_queue_log_path, "w") : NULL;
+    FILE *audio_dump = audio_dump_path ? fopen(audio_dump_path, "wb") : NULL;
+    if (audio_queue_log_path && !audio_queue_log)
+        fprintf(stderr, "cannot write audio queue log %s\n", audio_queue_log_path);
+    if (audio_dump_path && !audio_dump)
+        fprintf(stderr, "cannot write audio dump %s\n", audio_dump_path);
+    if (audio_queue_log)
+        fputs("host_ns icount target_clock discarded_clocks queued_before_bytes produced_frames queued_after_bytes cleared\n",
+              audio_queue_log);
+    if (audio_queue_log && mt32_seed_set)
+        fprintf(audio_queue_log, "# mt32_seed=%u\n", mt32_seed);
     const uint64_t start_ns = SDL_GetTicksNS();
     uint64_t paused_ns = 0, pause_began = 0;
     uint64_t discarded_clocks = 0;
@@ -497,14 +526,35 @@ int main(int argc, char **argv)
             }
             if (H.audio) {
                 audio_advance(H.audio, H.m.cpu.icount);
+                const int queued_before = stream ? SDL_GetAudioStreamQueued(stream) : 0;
+                size_t produced_frames = 0;
                 size_t n;
-                while ((n = audio_take(H.audio, abuf, AUDIO_RATE)) > 0)
-                    if (stream) SDL_PutAudioStreamData(stream, abuf, (int)(n * 4));
+                while ((n = audio_take(H.audio, abuf, AUDIO_RATE)) > 0) {
+                    if (audio_dump && fwrite(abuf, 4, n, audio_dump) != n)
+                        H.audio_failed = 1;
+                    if (stream) {
+                        SDL_PutAudioStreamData(stream, abuf, (int)(n * 4));
+                        produced_frames += n;
+                    }
+                }
                 /* The machine runs on the wall clock and the device on its
                  * own crystal; if the two drift apart by more than a
                  * quarter second, drop the backlog rather than lag. */
-                if (stream && SDL_GetAudioStreamQueued(stream) > AUDIO_RATE * 4 / 4)
+                const int queued_after = stream ? SDL_GetAudioStreamQueued(stream) : 0;
+                const int cleared = stream && queued_after > AUDIO_RATE * 4 / 4;
+                if (cleared)
                     SDL_ClearAudioStream(stream);
+                if (audio_queue_log) {
+                    fprintf(audio_queue_log, "%llu %llu %llu %llu %d %llu %d %d\n",
+                            (unsigned long long)(SDL_GetTicksNS() - start_ns),
+                            (unsigned long long)H.m.cpu.icount,
+                            (unsigned long long)target,
+                            (unsigned long long)discarded_clocks,
+                            queued_before,
+                            (unsigned long long)produced_frames,
+                            queued_after, cleared);
+                    if (cleared) fflush(audio_queue_log);
+                }
             }
             if (H.audio_failed || (exit_after && H.m.cpu.icount >= exit_after)) running = 0;
         }
@@ -539,6 +589,8 @@ int main(int argc, char **argv)
     if (H.midi_out) { midiOutReset(H.midi_out); midiOutClose(H.midi_out); }
 #endif
     if (H.m.log) fclose(H.m.log);
+    if (audio_queue_log) fclose(audio_queue_log);
+    if (audio_dump) fclose(audio_dump);
     audio_destroy(H.audio);
     SDL_Quit();
     return H.audio_failed ? 1 : 0;

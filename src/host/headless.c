@@ -7,7 +7,7 @@
  *           [--hash-every N] [--hash-from N] [--trace FROM:TO:FILE]
  *           [--coverage FILE] [--screen FILE.ppm] [--shots EVERY:PREFIX]
  *           [--fix ID|all]... [--list-fixes]
- *           [--opl-log FILE] [--midi-log FILE]
+ *           [--opl-log FILE] [--midi-log FILE] [--speaker-log FILE]
  *
  * WHEN is an absolute clock count, or PROG+N: N after the program PROG
  * (e.g. START.EXE) first starts. --type types KEYS (escapes in keys.h),
@@ -120,6 +120,8 @@ static void on_load(void *user, machine_t *m, const char *name, const uint8_t *f
  * music against a DOSBox raw OPL capture (tools/dosbox_compare.py). */
 static FILE *g_opl_log;
 static FILE *g_midi_log;
+static FILE *g_speaker_log;
+static machine_t *g_speaker_machine;
 static void on_midi(void *user, uint64_t icount, uint8_t byte)
 {
     (void)user;
@@ -129,6 +131,18 @@ static void on_opl(void *user, uint64_t icount, uint8_t reg, uint8_t val)
 {
     (void)user;
     if (g_opl_log) fprintf(g_opl_log, "%llu %02X %02X\n", (unsigned long long)icount, reg, val);
+}
+static void on_speaker(void *user, uint64_t icount)
+{
+    (void)user;
+    if (g_speaker_log) {
+        uint16_t reload;
+        int mode;
+        unsigned port61 = (unsigned)pc_speaker_state(g_speaker_machine, &reload, &mode);
+        fprintf(g_speaker_log, "%llu %02X %u %d %llu\n",
+                (unsigned long long)icount, port61, (unsigned)reload, mode,
+                (unsigned long long)g_speaker_machine->pit[2].epoch_clk);
+    }
 }
 
 static void on_input(void *user, const machine_input *in)
@@ -146,7 +160,7 @@ int main(int argc, char **argv)
 {
     const char *data = NULL, *save = NULL, *log_path = NULL, *screen = NULL;
     const char *record = NULL, *replay = NULL, *coverage = NULL, *opl_log = NULL;
-    const char *midi_log = NULL;
+    const char *midi_log = NULL, *speaker_log = NULL;
     uint64_t steps = 100000000ull, ips = MACHINE_DEFAULT_IPS, hold_ms = 60;
     uint64_t time_us = 0, hash_every = 0, hash_from = 0;
     uint64_t trace_from = 0, trace_to = 0;
@@ -171,6 +185,7 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--coverage") && v) { coverage = v; i++; }
         else if (!strcmp(a, "--opl-log") && v) { opl_log = v; i++; }
         else if (!strcmp(a, "--midi-log") && v) { midi_log = v; i++; }
+        else if (!strcmp(a, "--speaker-log") && v) { speaker_log = v; i++; }
         else if (!strcmp(a, "--record") && v) { record = v; i++; }
         else if (!strcmp(a, "--replay") && v) { replay = v; i++; }
         else if (!strcmp(a, "--trace") && v) {
@@ -217,6 +232,7 @@ int main(int argc, char **argv)
     if (!time_us) time_us = machine_local_time_us();
 
     static machine_t m;
+    g_speaker_machine = &m;
     uint8_t *mem = (uint8_t *)malloc(MEM_SIZE);
     m.log = log_path ? fopen(log_path, "w") : stdout;
     m.engine = engine;
@@ -235,6 +251,11 @@ int main(int argc, char **argv)
         g_midi_log = fopen(midi_log, "w");
         if (!g_midi_log) { fprintf(stderr, "cannot write %s\n", midi_log); return 1; }
         hooks.midi_byte = on_midi;
+    }
+    if (speaker_log) {
+        g_speaker_log = fopen(speaker_log, "w");
+        if (!g_speaker_log) { fprintf(stderr, "cannot write %s\n", speaker_log); return 1; }
+        hooks.speaker = on_speaker;
     }
     g_hold = ips * hold_ms / 1000ull;
     if (record) {
@@ -313,6 +334,7 @@ int main(int argc, char **argv)
     if (g_record) fclose(g_record);
     if (g_opl_log) fclose(g_opl_log);
     if (g_midi_log) fclose(g_midi_log);
+    if (g_speaker_log) fclose(g_speaker_log);
     double secs = (double)(clock() - t0) / CLOCKS_PER_SEC;
     printf("stopped at icount %llu (%s) after %.1f s host time, %.1f M instr/s; "
            "interpreted %llu; program %s; exit %s; final hash %016llx\n",

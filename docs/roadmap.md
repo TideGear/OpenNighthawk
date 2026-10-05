@@ -110,8 +110,9 @@ never instead of parity.
   deadline through normal release controls. The tracked player cargo crosses
   ground altitude with matching impact coordinates; one store/release and
   no primary credit reproduce original bug D5. The strong observer rejects
-  mere expiry or store consumption. Independent DOSBox cargo reproduction
-  and the aircraft's return remain open.
+  mere expiry or store consumption. The return to home 51 is now verified in
+  `cargo_return` under both engines; an independent GOG DOSBox cargo
+  reproduction remains open.
 - Seeded random flights (`tools/random_flights.py`): every session
   identical at every hash; 30.5 minutes of flight in the 16-session batch.
 - Planted defects caught by the lockstep (`tools/mutation_check.py
@@ -183,7 +184,10 @@ never instead of parity.
   engines rather than caused by generated regions. Against three independent
   DOSBox captures, the stable roster picture appears at 107.510-107.567 s;
   here it appears at 108.411-108.435 s. After the comparator's global offset,
-  the transition remains 0.571-0.585 s late. Frame inspection separates the
+  the transition remains 0.571-0.585 s late. A fresh local run against the
+  same saved video reproduces 1,319 exact RGB pictures over 130.767 s (1,326
+  reference frames, 1,347 local shots; seven and 28 unmatched, all one
+  sample), offset -285.325 ms and end drift -570.671 ms. Frame inspection separates the
   roster list-only image (`a0fc2584`, DOSBox 107.311-107.567 s) from selected
   pilot details (`eb49f15a`, first at 107.567 s). At 9 MIPS the local frames
   begin at 108.124 and 108.423 s; after capture alignment they are 0.528 and
@@ -191,9 +195,64 @@ never instead of parity.
   list-to-details transition itself adds about 43 ms. Clock probes put these
   residuals at 1.483/1.498 s at 4 MIPS and 0.385/0.428 s at 12 MIPS, while
   changing many other frames too. The default stays 9 MIPS. Screenshot
-  cadence is not the main cause; the roster-entry timing source remains
-  open. Reimp D96 adds time to its separately implemented native UI and is
-  not evidence for adding a wait to translated START.
+  cadence is not the main cause. The last shared transition image aligns at
+  106.526 s; the next partial is 442 ms late and the list is 528 ms late.
+  Local START opens `Roster.Fil` at 106.782 s, `rostscrn.pic` at 107.481 s
+  and `rostsprt.pic` at 107.696 s. A 9 MIPS trace from sprite open through
+  the first stable list frame spans 3,854,049 guest clocks (428.2 ms): 64,000
+  RLE90 pixel-decode iterations, MGRAPHIC page-copy and transparent-blit
+  work, then nine START palette writes at `0x08378`, from 163.4 to 388.5 ms
+  after the file open. An expanded DOSBox-X 2026.10.01 log at 9,000 cycles/ms
+  starts at `palettes.pal` open (106.401489 s) and covers 8,000,000
+  instructions through 108.008496 s. It records `Roster.Fil` read/write at
+  106.760483/106.761036, `rostscrn.pic` at 107.177204 and `rostsprt.pic` at
+  107.393696. Seven `0x08378` entries occur: four at 106.778615, 106.817953,
+  106.850761 and 106.893558, before `rostscrn.pic`; then three at 107.571473,
+  107.598189 and 107.626927, after `rostsprt.pic`. The earlier 4M-instruction
+  trace began at the sprite open and saw only the latter three. The expanded
+  trace was repeated with the stock install-root `ROSTER.FIL` used by the
+  packaged video capture. Although the earlier trace used a cloud-save copy
+  that differs at nine bytes, the corrected run 4 has the same seven palette
+  calls and file-open times. Its log is
+  `C:/Users/Tideg/f117-recomp-local/dosbox-ref-roster-mcp-20261005/run4/LOGCPU.TXT`.
+  A separate local pre-screen trace starts at `Roster.Fil` open (icount
+  961,032,646; 106.781405 s) and ends at `rostscrn.pic` open (icount
+  967,325,273; 107.480586 s), a 699.181 ms guest interval. It records 16
+  `0x08378` palette calls spanning about 427 ms, retrace polling over about
+  452 ms, followed by 17 retrace/PIT samples over about 242 ms; setup and
+  short gaps account for the remaining roughly 5 ms. The trace reaches the
+  same final machine hash as the video run and is at
+  `C:/Users/Tideg/f117-recomp-local/video/roster-pre-screen-trace/trace.txt`.
+  In the pre-screen phase, the local trace has 16 palette calls versus four
+  in DOSBox-X; after `rostsprt.pic`, the existing local list-painter trace
+  has nine calls versus three in the expanded DOSBox-X trace. The stock-file
+  rerun confirms the DOSBox-X count was not caused by using the cloud roster.
+  Measuring relative to `Roster.Fil` read within each trace, DOSBox-X opens
+  `rostscrn.pic` 416.721 ms later and the local run takes 699.181 ms, an
+  excess of 282.460 ms. The corresponding 17-call `0x08EAD` retrace/PIT
+  sampler starts 172.413 ms after the read in DOSBox-X and 457.056 ms after
+  it locally; from its first call to the screen-picture open, the interval is
+  244.308 versus 242.125 ms. The extra local time accumulates before this
+  sampler, alongside the 16-versus-four palette-call difference. These
+  event-relative guest timings do not depend on aligning the two log clock
+  origins, but they do not synchronize either event to a frame in the GOG
+  DOSBox 0.74 video. The expanded trace also records three 64,000-pixel RLE90
+  passes. The sprite-sheet decode takes about 121.4 ms versus 112.7 ms locally.
+  The saved DOSBox list-only
+  interval is 107.311-107.567 s; local is 108.124-108.423 s, with details
+  beginning at each interval's end. A provisional comparison suggests that
+  DOSBox-X opens the screen/sprite files about 302 ms earlier than local and
+  reaches the reference-list phase roughly 202 ms after its sprite open,
+  compared with 428 ms locally. These values combine separate runs and clock
+  origins. Anchoring the two instruction-log clocks at their `Roster.Fil`
+  opens (21 ms apart) estimates the screen/sprite opens about 282/281 ms
+  earlier in DOSBox-X; it puts the reference-list phase about 181 ms after
+  the DOSBox-X sprite open versus 428 ms locally, or about 247 ms of
+  after-open difference. This phase estimate is not a proven cause. The fresh
+  video comparison confirms the prior timing,
+  but a frame capture synchronized to a guest event is still needed. Keep the
+  frame-parity item open, retain 9 MIPS, and do not add Reimp D96 to translated
+  START.
 
 ### Left
 
@@ -206,29 +265,69 @@ never instead of parity.
       Optional integration now builds against an installed library or a
       separate Munt source checkout. MIDI bytes advance the existing audio
       clock; Munt is mixed at 44,100 Hz before clipping. Headless MIDI capture
-      and offline rendering are available. Default/Munt builds and MIDI
+      and offline rendering are available. `--speaker-log` captures PC speaker
+      state and `audio_render --speaker-log` merges it by guest clock with OPL
+      and optional MIDI events. Default/Munt builds and MIDI
       reassembly tests pass; existing DBOPL/Nuked PCM is unchanged. Supplied
       MT-32 1.07 ROMs now render original game MIDI offline and live; a host
       startup bug that discarded the synth was fixed. The
       interpreter and recompiler MIDI logs match byte-for-byte (188,505
       bytes); a matched 4,865-byte MIDI prefix renders to identical PCM in
-      two offline runs. Independent live SDL captures still differ despite
-      identical MIDI logs. Munt models hardware pitch variation with
-      `rand() & 3`, and the host queues 60 ms of startup silence and may clear
-      backlogs above 250 ms. Live PCM therefore needs controlled randomness
-      or timing/spectral criteria, plus queue-capture diagnosis, before it
-      can serve as an exact oracle. Exact reference PCM, flight sound and
-      listening validation remain open.
+      two offline runs. Optional live diagnostics record internal PCM,
+      queue depth and a fixed Munt seed; `audio_render --seed` repeats offline
+      PCM exactly. Two 12-million-clock live runs with seed 1 differ inside
+      the internal PCM at 0.373 s (RMS 3.31, peak 48, correlation 0.999993),
+      before SDL. In each short capture, SDL output matches all 57,776
+      overlapping internal frames byte-for-byte after an 83 ms lead. A
+      30-second capture has 60 empty-before queue checks among 1,802 updates,
+      reaches 70.29 ms maximum queued audio, and has no backlog clear or
+      discarded guest clocks. Its output contains a 167-frame zero run near
+      the first empty-queue check and then realigns 167 frames later, consistent
+      with brief playback starvation and timing drift. The live same-seed
+      variation is explained by Munt 2.8.3: `TVP::nextPitch()` draws from
+      global `rand()` while `Synth::produceStreams()` renders partials
+      serially, so changing audio block boundaries reassigns random draws.
+      Same-seed queue logs start with 126 and 124 produced frames. A new
+      `audio_render --step-clocks` diagnostic reproduces the effect: fixed
+      1 ms renders repeat byte-for-byte, while 1 ms and 10 ms PCM first differ
+      at 0.381 s. The 10 ms, seed-1 offline stereo render matches the saved
+      `interp-first30.wav` byte-for-byte. That is a saved interpreter baseline,
+      not an independent DOSBox or hardware reference. Live output remains
+      unsuitable for exact PCM checks until SDL gaps are removed or accounted
+      for. A completed type-8 sortie replay reached hash `6c3336ef1c24da17`
+      and recorded 70,849 OPL writes, no MIDI bytes and six port 61h bit-0
+      toggles. Its 18 speaker-hook entries all have audible-enable bit 1 clear.
+      The speaker-aware offline host mix now renders the full sortie through
+      clock 9,799,924,671 at
+      `C:/Users/Tideg/f117-recomp-local/munt-flight-audio-20261005/airair-type8-full-host-mix.wav`;
+      its prefix through 3.8 billion clocks is byte-identical to the prior
+      OPL-only render because the speaker is gated off. A 12-second excerpt
+      from about flight seconds 29–41 remains saved at
+      `C:/Users/Tideg/f117-recomp-local/munt-flight-audio-20261005/airair-type8-flight-29-41s.wav`;
+      independent DOSBox flight reference PCM and subjective listening
+      validation remain open.
 - [ ] **Individual mission objectives:** all nine theatres and all four
-      mission categories now have flight routes (air combat, ground strike,
-      and both training categories). Complete dedicated objective types.
-      Timely cargo impact reproduces the original no-credit bug, and the
-      supply-drop return leg is verified (`cargo_return`: home 51 after hits
-      on the way, 380 checkpoints under both engines); secret-strip
-      delivery and home return are verified. Reconnaissance
-      primary/secondary credits and raised-runway return are now verified.
-      The existing transfer routes exercise generation and controls, then
-      quit; they do not establish objective completion.
+      mission categories now have flight routes. All eight primary objective
+      type codes have dedicated normal-input routes with independent event
+      and state gates: reconnaissance type 1, ground strike type 2, supply
+      drop type 3, secret airstrip type 4, and air-to-air types 5–8. Types
+      1–4 also have verified return legs; type 1 earns both photo credits.
+      Type 3's normal route confirms the original D5 no-credit behavior, while
+      `cargo_d5_fixed` earns credit when that switchable fix is enabled.
+      Types 5, 7 and 8 use Vietnam / Conventional War; type 6 uses Central
+      Europe / Cold War. Type 5 uses one AMRAAM (station 0 stores 3 -> 2); the
+      special slot-0 aircraft kill, primary event and credit are verified,
+      followed by a home-33 landing. Both engines produced 813 identical
+      flight observations and final hash `40a40062ec774095`, with parent
+      result 0/status 3. Types 6–8 each use three station-0 AMRAAMs, kill the
+      special slot-0 aircraft, earn primary credit and return to their home
+      base with fuel remaining. Replays match byte-for-byte across both
+      engines: type 6 has 619 flight observations and hash `d06a5ccf075b2e80`;
+      type 7 has 780 and hash `11c82f0235e24265`; type 8 has 741 and hash
+      `6c3336ef1c24da17`. Independent GOG DOSBox reproduction of the cargo
+      behavior and wider generated-assignment coverage remain open. The
+      transfer routes exercise generation and controls, then quit; they do
+      not establish objective completion.
 - [ ] **The remaining career flow:** higher-rank awards and transfer
       transitions. Promotion, Airman's Medal, the ten-mission tour ribbon,
       and retirement are now earned and saved. A rank-3 (Captain) photo

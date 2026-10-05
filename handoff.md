@@ -4,10 +4,263 @@ For the next conversation working on this repository. Read this, then
 [docs/roadmap.md](docs/roadmap.md) (what is done and left - keep it
 updated), [docs/architecture.md](docs/architecture.md) (how parity is
 built and checked) and [docs/bugs.md](docs/bugs.md) (the original game's
-bugs). State as of 5 October 2026, 01:41 local. Earlier "running" entries
+bugs). State as of 5 October 2026, after 08:52 local. Earlier "running" entries
 further down are historical; this first section is the current state.
 
-## Latest continuation (5 Oct, 01:41 local)
+## Current wrap-up status (5 Oct, 08:52 local)
+
+- The user's immediate objective changed to wrapping up for a new conversation,
+  committing and pushing the outstanding project work, then stopping. The
+  roadmap remains open; this is a handoff, not a claim that the full roadmap is
+  complete.
+- The desktop automation surface currently reports no apps or browsers. The
+  saved DOSBox-X run4 trace and local START trace remain the usable evidence;
+  no GUI capture was started.
+- A closer trace count narrows the pre-screen palette difference. Local START
+  reaches the palette writer through caller `0x31EC` eight times, while the
+  DOSBox-X run4 trace reaches that caller twice. The full pre-screen totals
+  remain 16 local versus four DOSBox-X calls. The caller reads the BIOS timer
+  words at `0040:006C`/`006E` and compares them with a stack target before
+  repeating. This points to loop/timer state as the next measurement, but the
+  traces are separate runs and still do not establish a frame-synchronized
+  cause. Next, sample the caller's stack target and BIOS timer values in both
+  traces or obtain a guest-event-synchronized reference AVI.
+- A read-only attempt to sample those stack locals through `Machine` did not
+  run: the temporary probe was launched outside the repository, so Python
+  could not import `machine_api`. It created no guest output. To retry, run it
+  from the repository or add `tools` to `PYTHONPATH`. The temporary failed
+  probe directory is outside the repository.
+- The tracked changes are the air-to-air objective routes/controller,
+  speaker-event logging and merged offline rendering, live Munt/audio
+  diagnostics, related documentation, and a landing observer boundary fix.
+  Leave the pre-existing untracked `test.bat` out of the commit. The working
+  tree passed `git diff --check`; no tests were run in this wrap-up turn.
+
+## Latest continuation (5 Oct, after 08:36 local)
+
+- Completed a generated Vietnam / Conventional War air-to-air objective
+  (objective type 5) through normal inputs. The special aircraft is unit
+  slot 0; the loaded station-0 AMRAAM released normally, destroyed it and
+  earned the primary event and credit at 410.12 flight seconds. The aircraft
+  then landed at home 33 with fuel remaining; parent mission result is 0 and
+  pilot status is 3. The last landing sample no longer has the killed bit
+  because VGAME clears the unit flags after the kill, so
+  `airair_pilot.py` checks the slot-0 flag and primary event on a credit-time
+  sample.
+- The adaptive run's input log replays under both engines. Recompiler and
+  interpreter each have 813 identical flight observations, final hash
+  `40a40062ec774095`, no observer errors, and the same successful home
+  result. Credit-time state has unit-0 flags `0x27`, one primary air-kill
+  event and one launch; station 0 falls from three AMRAAMs to two. Home stop
+  is at (14656, 14461), fuel 3050. Runs are outside the repository at
+  `C:/Users/Tideg/f117-recomp-local/objective-airair-vietnam-20261005/`.
+- New route/controller: `tools/routes/vietnam_airair.front` and
+  `tools/airair_pilot.py`. The controller predicts the class-7 seeker choice
+  from active air units in the missile's `0x1000` forward cone; it does not
+  wait for the unrelated cockpit lock word. Keep its safe 8,000-ft AGL floor:
+  the 2,500-ft trial ended before the target. The strict observer and route
+  usage are documented in `tools/routes/README.md`; `docs/roadmap.md` now
+  records type 5 as covered, not all air-to-air objective variants.
+- Rechecked the roster timing with saved image sequences and a full instruction
+  trace. The last shared
+  transition frame aligns at 106.526 s; the next partial image is 442 ms late,
+  and the first list frame is 528 ms late. In the 9 MIPS local log,
+  `Roster.Fil`, `rostscrn.pic` and `rostsprt.pic` open at 106.782, 107.481
+  and 107.696 s. The stable list appears at 108.124 s; after capture alignment,
+  that is 428 ms after the sprite sheet opened. From its open at icount
+  969,259,665 through the first stable list at 973,113,714, the trace records
+  64,000 RLE90 output-pixel iterations in START `0x08922`-`0x08973`, MGRAPHIC
+  page-copy/transparent-blit work, then nine START palette writes at
+  `0x08378`. Each writes 256 RGB entries; successive writes are about two VGA
+  periods apart and together span 225 ms. The full interval is 428.2 ms.
+  Trace: `C:/Users/Tideg/f117-recomp-local/video/roster-trace-full/`.
+- A separate 9 MIPS trace from `Roster.Fil` open (icount 961,032,646;
+  106.781405 s) to `rostscrn.pic` open (icount 967,325,273; 107.480586 s)
+  measures 699.181 ms. It records 16 `0x08378` calls writing 256 entries
+  each, with retrace polling over about 452 ms, followed by 17 retrace/PIT
+  samples over about 242 ms; setup and short gaps account for about 5 ms.
+  The run ends at the same machine hash as the video capture,
+  `e4114c0415d4920d`. Private trace:
+  `C:/Users/Tideg/f117-recomp-local/video/roster-pre-screen-trace/`.
+- Repeated the video comparison in a fresh local run against the saved GOG
+  DOSBox capture: 1,319 exact RGB pictures over 130.767 s (1,326 reference,
+  1,347 local; seven and 28 unmatched, all one sample), offset
+  -285.325 ms, end drift -570.671 ms. Report:
+  `C:/Users/Tideg/f117-recomp-local/video/intro-3rytbead/comparison.json`.
+- Instrumented a separate, private DOSBox-X 2026.10.01 run using its debugger
+  control channel (documented in the
+  [DOSBox-X debugger README](https://github.com/joncampbell123/dosbox-x/blob/master/README.debugger)).
+  The private run uses the original GOG installation read-only, a private save
+  overlay and 9,000 cycles/ms; it is not the packaged GOG DOSBox 0.74 used for
+  the saved video captures. The expanded 8,000,000-instruction trace starts
+  at `palettes.pal` open, 106.401489 s, and ends at 108.008496 s. It captures
+  `requestr.pic` 106.402582, `Roster.Fil` read/write 106.760483/106.761036,
+  `rostscrn.pic` 107.177204 and `rostsprt.pic` 107.393696. There are seven
+  START `0x08378` entries: four before `rostscrn.pic` at 106.778615,
+  106.817953, 106.850761 and 106.893558, then three after `rostsprt.pic` at
+  107.571473, 107.598189 and 107.626927. The earlier 4M trace started at the
+  sprite open and contained only the final three. Three RLE90 passes of
+  64,000 output pixels are recorded; the sprite-sheet pass takes about
+  121.4 ms versus 112.7 ms locally. Thus decode execution alone does not
+  explain the roster delay, and the seven calls do not form one fade sequence.
+- The first DOSBox-X trace used the cloud-save `ROSTER.FIL`, while the saved
+  GOG video capture mounts a scratch install and therefore reads the stock
+  install-root file. A corrected run 4 used that stock roster file and
+  produced the same seven palette entries and matching file-open times. The
+  cloud-save difference at nine bytes did not cause the count result. Corrected
+  log: `C:/Users/Tideg/f117-recomp-local/dosbox-ref-roster-mcp-20261005/run4/LOGCPU.TXT`.
+- The phase counts remain different: 16 local versus four DOSBox-X palette
+  calls before `rostscrn.pic`; after `rostsprt.pic`, nine local calls versus
+  three DOSBox-X calls. These traces show where local guest time is spent but
+  do not synchronize a guest event to a frame in the packaged DOSBox video.
+- Within each log, the interval from `Roster.Fil` read to `rostscrn.pic` open
+  is 416.721 ms in DOSBox-X and 699.181 ms locally, an excess of 282.460 ms.
+  The matching 17-call `0x08EAD` retrace/PIT sampler begins 172.413 ms after
+  the read in DOSBox-X and 457.056 ms after locally; its first-call-to-screen
+  intervals are 244.308 and 242.125 ms. This places the extra local time
+  before the sampling block, alongside the 16-versus-four palette-call phase.
+  It narrows the pre-screen execution difference but does not tag a guest
+  event to a frame in the GOG DOSBox 0.74 capture.
+- A fresh run5 debugger probe at `-break-start` confirmed the live DOSBox-X
+  debugger command list has no video-capture start/stop command. The probe
+  was stopped before the guest ran; its stock-roster overlay is under
+  `C:/Users/Tideg/f117-recomp-local/dosbox-ref-roster-mcp-20261005/run5/`.
+  A trace-aligned DOSBox-X AVI still needs its host capture key or menu.
+- Across the separate DOSBox-X/local logs, `Roster.Fil` opens differ by about
+  21 ms. Anchoring the clocks there estimates that the screen/sprite opens are
+  about 282/281 ms earlier in DOSBox-X, and that the reference list phase is
+  about 181 ms after its sprite open versus 428 ms locally (~247 ms
+  after-open difference). The package video and DOSBox-X trace do not share a
+  synchronized event/frame, and the clock offset is anchored at one file
+  event, so this is a phase estimate rather than a measured causal split.
+  Full frame parity remains open. Keep the default at 9 MIPS; do not apply
+  Reimp D96 to translated START. Private debugger/config/log files are under
+  `C:/Users/Tideg/f117-recomp-local/dosbox-ref-roster-mcp-20261005/`.
+- Continued MT-32 isolation with `--mt32-seed`, `--audio-dump` and
+  `--audio-queue-log` in the Munt-enabled executable. Two 12-million-clock
+  replays with seed 1 each render 58,800 internal PCM frames, but differ
+  starting at frame 16,439 (0.373 s; RMS 3.31, peak 48, correlation
+  0.999993). Repeated offline rendering with `audio_render --seed 1` remains
+  byte-identical. In both short live runs, SDL disk output matches all 57,776
+  overlapping internal frames exactly after a 3,664-frame (83 ms) leading
+  offset; neither queue log has an empty-before check, clear or dropped guest
+  clocks.
+- A 30-second seeded run rendered 1,323,000 internal frames and captured
+  1,330,176 SDL frames. Across 1,802 queue updates, 60 began with an empty
+  queue, the largest post-update queue was 70.29 ms, and there were no
+  backlog clears or discarded guest clocks. The disk capture has a 167-frame
+  zero run (3.79 ms) near the first empty-queue check, then local PCM windows
+  realign with a 167-frame later offset. The fixed 83 ms alignment first
+  breaks at internal frame 270,601; later local windows match exactly with
+  changing offsets. This points to brief playback starvation/timing drift in
+  addition to same-seed variation that already exists before SDL. The new
+  instrumentation and captures are in `src/host/main.c`,
+  `tools/audio_render.c`, and
+  `C:/Users/Tideg/f117-recomp-local/munt-audit-results/live/queue-diag/`.
+  Details are recorded in the Roland sections of `docs/architecture.md` and
+  `docs/roadmap.md`.
+- Explained the live seeded PCM change from Munt's block-sensitive use of
+  global `rand()`: `TVP::nextPitch()` draws once per simulated timer firing,
+  while `Synth::produceStreams()` renders partials serially. Different audio
+  advance boundaries therefore distribute the seeded draws to partials
+  differently. Same-seed live queue logs start with 126 versus 124 produced
+  frames. `audio_render` now accepts `--step-clocks` (default remains 10 ms at
+  9 MIPS) to isolate that effect. With seed 1 and a 270M-clock render, two
+  1 ms runs are byte-identical (PCM SHA-256
+  `05cc06e4ae5c803d54bad8536845c79c549ef5004e03298df57ad2f38766f510`);
+  the 10 ms run first differs from them at frame 16,791 / 0.381 s and has RMS
+  difference 756.52, peak 19,471, and correlation 0.5493. The 10 ms output
+  matches the saved `interp-first30.wav` stereo PCM exactly (SHA-256
+  `a51690955f052c1edf142eeb93545b3d39160488bb8cf4ff9883e647552cd9b8`). This
+  proves the fixed-step offline path is reproducible and explains live
+  same-seed variation; it is not independent DOSBox or MT-32 hardware PCM.
+  The live `munt-final.wav` versus saved interpreter baseline has 0.707
+  envelope correlation, -0.013 waveform correlation and 0.868 median spectral
+  cosine after approximate alignment; these values include the measured SDL
+  gap. The independent reference capture and a flight-sound listening check
+  remain open.
+- Captured the completed type-8 air-to-air replay's sound events in
+  `C:/Users/Tideg/f117-recomp-local/munt-flight-audio-20261005/`. It ends at
+  clock 9,799,924,671 with the existing hash `6c3336ef1c24da17`; the run
+  recorded 70,849 OPL writes, no MIDI bytes, and 18 speaker-hook entries.
+  Six entries toggle port 61h bit 0, but its audible output gate (bit 1) stays
+  clear throughout. The aircraft is airborne by clock 3,131,464,612. Added
+  `f117run --speaker-log` and `audio_render --speaker-log` so speaker events
+  merge into offline renders by guest clock. The complete speaker-aware host
+  mix runs through the final clock and is saved as
+  `airair-type8-full-host-mix.wav`; the 0–3.8B prefix is byte-identical to the
+  prior OPL-only render. Cropping about flight seconds 29 to 41 produced
+  `airair-type8-flight-29-41s.wav`; the 3-second MP3 excerpt is
+  `airair-type8-flight-32-35s.mp3`. This sortie has no audible speaker
+  contribution; independent DOSBox reference PCM and subjective listening
+  validation remain open. The WAVs and logs are outside the repository under
+  the directory above.
+- Completed generated air-to-air objective types 6–8 in addition to the
+  earlier type 5. Types 7 and 8 use Vietnam / Conventional War; type 6 uses
+  Central Europe / Cold War. Each sortie releases three station-0 AMRAAMs,
+  kills special unit 0, records the primary event and earns credit. They
+  return with fuel remaining: types 6 and 7 to home 72 and 33 respectively,
+  and type 8 to home 33. Each reports result 0/status 3.
+  Type 6 uses `central_europe_airair.front`, the default startup clock and
+  `--landing-aim 30`; type 7 uses the +270M briefing-delay route at startup
+  clock `700000003000000` and `--landing-aim 50`; type 8 uses the +180M route
+  at `700000002000000`. Replays are byte-identical under recomp and interp:
+  type 6 has 619 observations/hash `d06a5ccf075b2e80`; type 7 has 780/hash
+  `11c82f0235e24265`; type 8 has 741/hash `6c3336ef1c24da17`. Route
+  definitions and usage are in `tools/routes/README.md`. `airair_pilot.py`
+  now waits for initialized runway state before queueing takeoff controls and
+  handles close-to-home objectives by holding cruise altitude until aligned
+  with the return runway. It exposes `--landing-aim`. Landing validation
+  accepts the exact countdown boundary only when VGAME reports result 0/status
+  3 and hands off normally with exit code 129. Private runs and input logs are
+  under `C:/Users/Tideg/f117-recomp-local/objective-airair-ce-type6-*/` and
+  `C:/Users/Tideg/f117-recomp-local/objective-airair-vn-type{7,8}-*/`.
+- Reconciled the remaining generated-objective coverage: type codes 1–4 have
+  normal-input routes and returns, and types 5–8 are covered by the air-to-air
+  routes above. Type 3 retains original D5's no-credit result;
+  `cargo_d5_fixed` earns credit with the switchable fix. `strike_return`
+  evidence is in the older paired output at
+  `C:/Users/Tideg/f117-recomp-local/parity-audit-20261004/`;
+  `cargo_return` also has paired return evidence. Updated the roadmap and
+  route README to record the completed strike return and keep the independent
+  GOG DOSBox cargo reproduction and wider generated-assignment coverage open.
+- Checked the current desktop-control state for the roster AVI step. No
+  DOSBox-X window was open; `sky.launch_app` for the private DOSBox-X binary
+  failed with `GetCursorPos failed: Access is denied (0x80070005)`, and the
+  subsequent window inventory contained only VS Code and GitHub Desktop.
+  The event-synchronized capture is still open; do not infer a video match.
+- The pre-existing untracked `test.bat` was left untouched. No test suite was
+  run; the full flight routes and paired replay checks were run. The new
+  objective routes, pilot changes, and speaker-aware audio changes are not
+  committed; README, roadmap, architecture, route README, landing validation,
+  audio diagnostics and this handoff are modified.
+
+### Next
+
+1. Continue roster frame parity when DOSBox-X can be controlled: synchronize
+   a known guest event with a captured reference frame, then resolve the
+   estimated ~282 ms before the DOSBox-X screen/sprite opens and ~247 ms
+   after-open phase difference. The
+   corrected DOSBox-X run uses stock `ROSTER.FIL` and retains seven
+   `0x08378` calls (four before the screen picture, three after the sprite
+   sheet); local traces show 16 before the screen picture and nine after the
+   sprite sheet. The added 17-call retrace/PIT block takes essentially the
+   same 242-244 ms in both traces, so investigate the preceding palette/setup
+   phase. A new run5 check confirmed there is no video-capture command on the
+   debugger channel; if native UI control is available, start an AVI while
+   the trace run is paused and match its images to the GOG capture. Keep 9 MIPS
+   and leave D96 out of translated START until the timing cause is demonstrated.
+2. Continue MT-32/audio validation: compare the in-flight host render with an
+   independent DOSBox capture and listen to the flight sound. The Type-8
+   speaker-aware render covers the complete sortie; port 61h bit 1 stayed
+   clear, so the speaker contributes silence. The live same-seed variation is
+   explained by block partitioning, and the SDL capture gap is accounted for
+   by empty queue checks and a 167-frame zero run.
+3. Complete the remaining objective evidence: independent GOG DOSBox cargo
+   reproduction and wider generated-assignment coverage; separately pursue a
+   rank-6 career for the "General, At Last!" retirement branch.
+
+## Previous continuation (5 Oct, 01:41 local)
 
 - The rank-3 career chain is now paired through retirement. Sorties 53-98
   completed from the saved sortie-52 roster using

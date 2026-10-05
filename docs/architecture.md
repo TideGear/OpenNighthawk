@@ -549,6 +549,110 @@ delay is already present when the roster list first appears; the local
 list-to-details transition adds about 43 ms beyond DOSBox's 257 ms. Local
 logs open `rostscrn.pic` at 107.481 s and `rostsprt.pic` at 107.696 s.
 
+The default run's last shared transition image (`ea0787f6`) begins at 106.526 s
+in DOSBox and 106.811 s locally; applying the measured capture offset of
+-0.285325 s puts both at 106.526 s. The next one-sample image is at 107.282 s
+in DOSBox and 108.010 s locally (442 ms late after alignment). The stable
+roster list is at 107.311 s versus 108.124 s (528 ms late). The delay therefore
+accumulates while the roster page is being built, after its visible transition
+begins. In the local log, `Roster.Fil` opens at 106.782 s, `rostscrn.pic` at
+107.481 s and `rostsprt.pic` at 107.696 s. After alignment the sprite sheet
+opens at 107.411 s; the first stable list frame follows 428 ms (about 30 VGA
+periods) later. Across the 4, 9 and 12 MIPS runs, sprite-open-to-list times are
+673, 428 and 393 ms, while the aligned list residuals are 1,483, 528 and 385
+ms. This narrows the remaining trace to `0x03641(7, 0x0615C)`: screen 7's
+loader and the Bulletin Board painter, which opens `rostsprt.pic` and draws the
+ten pilot rows.
+
+An instruction trace now covers the 9 MIPS interval from the `rostsprt.pic`
+open at 969,259,665 through the first stable list picture at 973,113,714
+(3,854,049 emulated clocks, 428.2 ms). The 64,000 visits through START's
+`0x08922`–`0x08973` are the RLE90 pixel decoder for the 320x200 picture. The
+trace also follows MGRAPHIC's page-copy loop (`0x02B35`, `REP MOVSB`) and its
+transparent-pixel blitter (`0x0208A`). After the paint, START calls its
+`0x08378` palette writer nine times. Each writes 256 RGB entries; calls are
+spaced by about 256,800 guest clocks (two VGA periods at this run's clock) and
+span 2,026,300 clocks, about 225 ms. The last call is followed by about 39.7
+ms to the stable capture. The trace is at
+`C:/Users/Tideg/f117-recomp-local/video/roster-trace-full/painter-full.txt`.
+
+The local trace identifies full-picture RLE decoding, page copying and nine
+palette-writer calls before the stable list capture. A separate DOSBox-X
+2026.10.01 instruction trace at 9,000 cycles/ms now starts at the earlier
+`palettes.pal` open (106.401489 s) and covers 8,000,000 instructions through
+108.008496 s. Its file-open sequence is `requestr.pic` at 106.402582,
+`Roster.Fil` read/write at 106.760483/106.761036, `rostscrn.pic` at
+107.177204, and `rostsprt.pic` at 107.393696. The START `0x08378` palette
+routine appears seven times: four at 106.778615, 106.817953, 106.850761 and
+106.893558 (before `rostscrn.pic` opens), then three at 107.571473,
+107.598189 and 107.626927 (after `rostsprt.pic` opens). The earlier
+4,000,000-instruction trace began at the sprite-sheet open and therefore saw
+only those final three calls, not the complete interval.
+
+A separate 9 MIPS local instruction trace starts at `Roster.Fil` open
+(icount 961,032,646; 106.781405 s) and ends when `rostscrn.pic` opens
+(icount 967,325,273; 107.480586 s), 699.181 ms later. In that interval,
+START calls `0x08378` 16 times. Each call writes 256 palette entries; the
+calls span about 427 ms, with retrace polling across about 452 ms. START then
+calls its retrace/PIT sampler at `0x08EAD` 17 times over about 242 ms. The
+remaining roughly 5 ms is setup and short gaps. This trace accounts for the
+local pre-screen delay in guest execution. It ends at the same machine hash as
+the saved local video run (`e4114c0415d4920d`). Its trace is at
+`C:/Users/Tideg/f117-recomp-local/video/roster-pre-screen-trace/trace.txt`.
+
+The expanded DOSBox-X trace was repeated with the stock install-root
+`ROSTER.FIL`, matching the file mounted for the packaged DOSBox video capture.
+The prior DOSBox-X run used a cloud-save copy that differs at nine bytes.
+With the stock file, run 4 produced the same seven `0x08378` entries and the
+same file-open times as the earlier run. The roster-save difference therefore
+does not account for the palette-call count or the observed phase comparison.
+The corrected trace is at
+`C:/Users/Tideg/f117-recomp-local/dosbox-ref-roster-mcp-20261005/run4/LOGCPU.TXT`.
+
+Measuring from `Roster.Fil` read within each trace removes the unrelated
+clock origins: DOSBox-X opens `rostscrn.pic` 416.721 ms later, while the local
+run takes 699.181 ms, an excess of 282.460 ms. The corresponding 17-call
+`0x08EAD` retrace/PIT sampler starts 172.413 ms after the read in DOSBox-X and
+457.056 ms after it locally. From the first sampler call to the screen-picture
+open, the intervals are 244.308 and 242.125 ms. The extra local time therefore
+accumulates before this sampler block, during the preceding palette and setup
+phase: that interval contains 16 local `0x08378` calls versus four in
+DOSBox-X. This is a comparison of guest paths across two emulator builds, not
+proof that the call-count difference alone causes the timing gap. After the
+sprite-sheet open, the separate local list-painter trace records nine palette
+calls, while the expanded DOSBox-X trace records three. The GOG DOSBox 0.74
+video still lacks a guest-event marker, so the frame phase remains open.
+
+The expanded trace records three 64,000-pixel RLE90 passes between 106.408
+and 107.521 s. The sprite-sheet decode pass takes about 121.4 ms, versus
+112.7 ms in the local trace. Decode execution alone does not explain the
+528 ms aligned video residual. The seven DOSBox-X calls are not one
+continuous nine-step fade: four precede the screen-picture open, a roughly
+678 ms gap separates the fourth and fifth, and three follow the sprite-sheet
+open. The local nine calls were measured only from its sprite-sheet open to
+the first stable list frame. These are different trace windows.
+
+A fresh local comparison against the saved GOG DOSBox 0.74 video reproduces
+1,319 exact RGB pictures over 130.767 s (1,326 reference pictures and 1,347
+local shots; seven and 28 unmatched, all one sample). Its measured offset is
+-285.325 ms and end drift is -570.671 ms. The list-only image is still
+107.311-107.567 s in the reference and 108.124-108.423 s locally; details
+start at the end of each interval. A provisional phase estimate combines
+that video offset with the DOSBox-X and local file events: `Roster.Fil` opens
+within about 21 ms in the two instruction logs. Anchoring the clock origins at
+that event puts DOSBox-X's screen and sprite opens about 282 and 281 ms ahead
+of the local opens. The reference list would occur roughly 181 ms after the
+DOSBox-X sprite open on this adjusted clock comparison, versus 428 ms after
+the local sprite open, leaving about 247 ms in the after-open portion. This
+split is an inference across separate runs: packaged DOSBox 0.74 video,
+DOSBox-X debugger trace, and local trace do not share a synchronized
+clock/frame, and the origin offset is anchored at one file event. It is not a
+measured causal decomposition. Keep the video-parity item open and capture a
+reference frame at a known guest event before assigning the delay to palette
+or painter work.
+Do not change the default clock or add Reimp D96, which belongs to its
+separately implemented UI.
+
 Clock-sensitivity captures against the same DOSBox video put the list/details
 residuals at 1.483/1.498 s with `--ips 4000000` (1,052 exact pictures; 274
 reference and 262 local pictures unmatched), and 0.385/0.428 s with
@@ -715,8 +819,11 @@ advances audio to its machine clock; complete messages enter Munt's MIDI
 queue. Rendering uses bounded blocks at the existing 44,100 Hz output rate,
 mixed with OPL/speaker before clipping. Queue rejection or oversized SysEx
 fails the session/render rather than silently dropping traffic.
-`f117run --midi-log` and `audio_render --mt32` provide capture and offline
-rendering without changing the DOS program. ROM-free tests cover message
+`f117run --midi-log` and `audio_render --mt32` provide MIDI capture and offline
+rendering without changing the DOS program. Headless `--speaker-log` records
+port 61h and PIT2 state at each speaker hook; `audio_render --speaker-log`
+merges those events with OPL and MIDI events by guest clock for the same
+OPL/speaker/Munt mix used by the host. ROM-free tests cover message
 reassembly, real-time interleaving, running status, SysEx limits/recovery,
 invalid ROMs and audio chunk invariance. Full ROM-based rendered Roland
 parity remains open.
@@ -724,14 +831,74 @@ parity remains open.
 The supplied 1.07 ROM pair is now usable in both live and offline runs. The
 interpreter and recompiler MIDI logs are byte-identical (188,505 bytes); a
 matched replay emits the same 4,865-byte prefix, and two offline renders of
-that stream produce byte-identical PCM. Independent live SDL captures differ
-in PCM despite identical machine MIDI logs. Munt's pinned TVP implementation
-(commit `6e7c01fba7e1d50c8fa705834889fd0eac136075`) uses `rand() & 3` for
-hardware-like pitch variation, and the host app queues
-60 ms of startup silence and clears audio backlog above 250 ms. Thus live
-PCM is not yet a stable exact-equality oracle: isolate host queue effects and
-use a controlled random sequence or timing/spectral criteria when comparing
-renderers. Exact reference PCM, flight sound and listening validation remain
-open.
+that stream produce byte-identical PCM. Live diagnostics accept
+`--mt32-seed`, `--audio-dump` (internal stereo S16 PCM before SDL), and
+`--audio-queue-log`; `audio_render` accepts `--seed` and `--step-clocks` for
+offline runs. The latter controls the maximum guest-clock step between audio
+advances; it defaults to `ips / 100` (10 ms at 9 MIPS).
+
+Two 12-million-clock live replays with the same seed each rendered 58,800
+internal frames, but those dumps first differ at frame 16,439 (0.373 s):
+diff RMS 3.31, peak 48, correlation 0.999993. Thus seeding `rand()` does not
+make the live synth path repeatable. Repeated offline renders with the same
+seed remain byte-identical. In each short live run, the SDL disk capture has
+3,664 leading frames (83.0 ms); after that offset, all 57,776 overlapping
+frames match the internal dump byte for byte. Both queue logs have 82 updates,
+no empty-before checks, no backlog clears and no discarded guest clocks.
+
+A 30-second live replay rendered 1,323,000 internal frames and recorded
+1,330,176 SDL frames. Its 1,802 queue updates include 60 checks with an empty
+queue before new data was added; queued audio peaked at 70.29 ms. No update
+cleared the queue above 250 ms, and no guest clocks were discarded. The fixed
+83 ms capture offset stops matching at internal frame 270,601. Local PCM
+windows then match exactly with a changing offset, and the raw capture has a
+167-frame (3.79 ms) zero run near the first empty-queue check; later samples
+resume 167 frames later. This accounts for the capture gap as brief SDL
+playback starvation and timing drift. The same-seed internal variation occurs
+before SDL receives PCM.
+
+The variation is caused by block partitioning in the Munt renderer. In the
+local Munt 2.8.3 source, `TVP::nextPitch()` draws from global `rand()` at each
+simulated timer firing. `Synth::produceStreams()` renders partials serially,
+and each partial calls `nextPitch()` as it renders samples. A different audio
+advance boundary therefore assigns the seeded random sequence to different
+partials. Two same-seed live queue logs begin with 126 and 124 produced frames
+respectively, showing that host scheduling changes those boundaries. A fixed
+offline quantum isolates the effect: at 9 MIPS over 270 million clocks,
+two 9,000-clock (1 ms) seed-1 renders are byte-identical (SHA-256
+`05cc06e4ae5c803d54bad8536845c79c549ef5004e03298df57ad2f38766f510`). A
+90,000-clock (10 ms) render has SHA-256
+`a51690955f052c1edf142eeb93545b3d39160488bb8cf4ff9883e647552cd9b8` and
+matches the saved `interp-first30.wav` stereo PCM byte for byte. The 1 ms and
+10 ms outputs first differ at frame 16,791 (0.381 s); their difference RMS is
+756.52, peak is 19,471, and correlation is 0.5493. The same-seed live pair
+first differs at frame 16,439 (0.373 s), with RMS 3.31, peak 48, and
+correlation 0.999993. Seeding makes a fixed call sequence repeatable, but
+does not make this Munt path independent of call boundaries.
+
+The live `munt-final.wav` capture compared with the saved interpreter PCM has
+about 0.707 envelope correlation, -0.013 waveform correlation, and 0.868
+median spectral cosine after approximate alignment. These measurements mix
+synth variation and the measured SDL gaps, so they are not an exact sound
+parity verdict. The saved offline match establishes reproducibility for that
+captured MIDI prefix; it is not an independent DOSBox or hardware reference.
+Independent reference PCM and listening to the flight sound remain open.
+
+For a completed generated type-8 sortie, a headless replay reached the same
+final hash `6c3336ef1c24da17` while recording 70,849 OPL writes, no MIDI bytes
+and six port 61h bit-0 toggles. Its speaker log contains 18 hook entries,
+including PIT2 reprogramming; port 61h bit 1, the audible output gate, remains
+clear in every entry. The replay first observed the aircraft airborne at
+3,131,464,612 clocks. A speaker-aware offline render now covers the complete
+sortie through clock 9,799,924,671 at
+`C:/Users/Tideg/f117-recomp-local/munt-flight-audio-20261005/airair-type8-full-host-mix.wav`.
+The 0–3.8-billion-clock prefix is byte-identical to the prior OPL-only render,
+as expected because the speaker gate is off. The 12-second excerpt from about
+flight seconds 29–41 remains at
+`C:/Users/Tideg/f117-recomp-local/munt-flight-audio-20261005/airair-type8-flight-29-41s.wav`;
+the smaller `airair-type8-flight-32-35s.mp3` is an excerpt for listening.
+This is the complete host audio path for this sortie (OPL plus the silent
+speaker channel), but no independent DOSBox flight reference or subjective
+listening verdict has been recorded.
 
 The open work, in order, is tracked in [roadmap.md](roadmap.md).

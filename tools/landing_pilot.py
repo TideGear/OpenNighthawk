@@ -74,11 +74,19 @@ def landing_errors(rows, report, log, require_dos_exit=True):
         errors.append("gear is not down or brakes are not on")
     if last["ejection"] or last["fuel"] <= 0:
         errors.append("ejection/crash state or no remaining fuel")
-    if not last["S"] or last["stopped"] <= 16 // last["S"]:
+    normal_exit = bool(re.search(
+        r"^\[exit\] VGAME\.EXE terminated with code 129 .* @\d+$", log, re.M))
+    successful_handoff = (report.get("mission_result") == 0
+                          and report.get("pilot_status") == 3
+                          and normal_exit)
+    # At the threshold boundary, VGAME can complete the return and hand off
+    # before the observer samples the next stopped-counter increment.
+    if ((not last["S"] or last["stopped"] <= 16 // last["S"])
+            and not successful_handoff):
         errors.append("home completion countdown did not finish")
     if report.get("mission_result") != 0 or report.get("pilot_status") != 3:
         errors.append("parent flight block does not report a successful return")
-    if require_dos_exit and not re.search(r"^\[exit\] VGAME\.EXE terminated with code 129 .* @\d+$", log, re.M):
+    if require_dos_exit and not normal_exit:
         errors.append("VGAME did not complete its normal debriefing handoff")
     return errors
 

@@ -158,10 +158,19 @@ int audio_midi_byte(audio_t *a, uint64_t icount, uint8_t byte)
 
 void audio_speaker(audio_t *a, const machine_t *m, uint64_t icount)
 {
+    audio_speaker_event(a, icount, m->port61, m->pit[2].reload,
+                        m->pit[2].mode, m->pit[2].epoch_clk);
+}
+
+void audio_speaker_event(audio_t *a, uint64_t icount, uint8_t port61,
+                         uint16_t reload, uint8_t mode, uint64_t epoch_clk)
+{
     audio_advance(a, icount);
     a->spk.icount = icount;
-    a->spk.port61 = m->port61;
-    a->spk.pit2 = m->pit[2];
+    a->spk.port61 = port61;
+    a->spk.pit2.reload = reload;
+    a->spk.pit2.mode = mode;
+    a->spk.pit2.epoch_clk = epoch_clk;
     /* The counter's epoch is in PIT clocks; the renderer works in samples
      * converted to PIT clocks, so the two agree. */
 }
