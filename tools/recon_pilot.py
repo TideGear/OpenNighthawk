@@ -49,7 +49,7 @@ def recon_state(machine):
     return state
 
 
-def control(machine, state, tick):
+def control(machine, state, tick, *, acquisition="nose"):
     at = machine.clock + 1
     dx, dy = signed(state["target_x"] - state["x"]), signed(state["target_y"] - state["y"])
     heading = math.atan2(dx, -dy) * 32768 / math.pi
@@ -60,7 +60,12 @@ def control(machine, state, tick):
     # N casts a ray along the physical nose (recon_prepare). The photo
     # cue separately includes the camera's 0x6EF mounting offset. Applying
     # that offset before acquisition can aim N beyond a nearby target.
-    if state["target_range"] < 1500:
+    if state["target_range"] < 1500 and acquisition == "level" and not designated:
+        # The original uses a constant 640-map-unit ray for nonnegative
+        # nose pitch. This avoids the coarse sin(angle,32)+1 divisor while
+        # acquiring a target; the normal camera angle follows acquisition.
+        want_pitch = clamp(want_pitch, 300, 1200)
+    elif state["target_range"] < 1500:
         want_pitch = -math.atan2(state["altitude"], state["target_range"] * 32) * 32768 / math.pi
         if designated:
             want_pitch += 0x6EF
@@ -81,7 +86,9 @@ def control(machine, state, tick):
             command = r"\s"
         elif not state["bay_switch"]:
             command = "8"
-        elif state["target_range"] < 1500 and not designated and not state["flags"] & 0x100:
+        elif (state["target_range"] < 1500 and not designated and not state["flags"] & 0x100
+              and (acquisition != "level" or (550 <= state["target_range"] <= 750
+                   and state["pitch"] >= 0 and abs(signed(int(heading) - state["heading"])) < 1200))):
             command = "n"
         elif designated and state["cue"] & 1 and not state["photos"]:
             command = r"\r"
@@ -124,6 +131,8 @@ def main():
     parser.add_argument("--seconds", type=int, default=1800)
     parser.add_argument("--complete", action="store_true", help="also attempt secondary photo and home return")
     parser.add_argument("--initial-roster", type=Path, help="continue from an earned roster file in a fresh private save directory")
+    parser.add_argument("--acquisition", choices=("nose", "level"), default="nose",
+                        help="normal target designation approach for adaptive controls")
     args = parser.parse_args()
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -216,11 +225,11 @@ def main():
                                 "cue": state["cue"] >> 1}
                             working["target_range"] = math.hypot(signed(working["target_x"] - state["x"]),
                                 signed(working["target_y"] - state["y"]))
-                            control(machine, working, tick)
+                            control(machine, working, tick, acquisition=args.acquisition)
                             if tick % 10 == 5 and working["target_range"] < 1500 and state["lock"] != 0xFFFF and state["lock"] & 0x7F != secondary:
                                 machine.type(machine.clock + 1, "b", hold_ms=20)
                         else:
-                            control(machine, state, tick)
+                            control(machine, state, tick, acquisition=args.acquisition)
                     flight_block = state["flight_block"]
                     tick += 1
                     step = machine.ips // 5

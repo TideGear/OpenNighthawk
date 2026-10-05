@@ -134,6 +134,8 @@ def main():
     parser.add_argument("--route", help="front-end route instead of the default")
     parser.add_argument("--frontend", action="store_true", help="stop after route inputs; validate save milestones")
     parser.add_argument("--pilot", choices=("recon",), help="adaptively fly both photos and return on the reference")
+    parser.add_argument("--acquisition", choices=("nose", "level"), default="nose",
+                        help="normal designation approach used by the recon pilot")
     args = parser.parse_args()
     out = Path(args.out); out.mkdir(parents=True, exist_ok=True)
     game = out / "game"; game.mkdir(exist_ok=True)
@@ -288,10 +290,10 @@ def main():
                                 working = {**state, "target": state["secondary_target"], "photos": 0,
                                     "target_x": memory.read16(target + 2), "target_y": memory.read16(target + 4), "cue": state["cue"] >> 1}
                                 working["target_range"] = math.hypot(signed(working["target_x"] - state["x"]), signed(working["target_y"] - state["y"]))
-                                recon_control(reference_input, working, pilot_tick)
+                                recon_control(reference_input, working, pilot_tick, acquisition=args.acquisition)
                                 if pilot_tick % 10 == 5 and working["target_range"] < 1500 and state["lock"] != 0xFFFF and state["lock"] & 0x7F != state["secondary_target"]:
                                     reference_input.type(reference_input.clock + 1, "b", hold_ms=20)
-                            else: recon_control(reference_input, state, pilot_tick)
+                            else: recon_control(reference_input, state, pilot_tick, acquisition=args.acquisition)
                             last_pilot = now; pilot_tick += 1
                     if state and 1 <= state["S"] <= 15 and state["home"] < 256 and (not args.pilot or pilot_initialized):
                         row = {"seconds": elapsed, **state}; rows.append(row)

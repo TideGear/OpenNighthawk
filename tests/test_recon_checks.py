@@ -93,6 +93,26 @@ class ReconChecks(unittest.TestCase):
         self.assertIn(r"\U", acquisition.keys)
         self.assertIn(r"\D", photo.keys)
 
+    def test_level_acquisition_requires_range_heading_and_actual_nose(self):
+        class Input:
+            clock = 100
+            ips = 9000000
+            def __init__(self): self.keys = []
+            def type(self, at, text, **kwargs): self.keys.append(text)
+        state = dict(target_x=0, target_y=0, x=0, y=650, heading=0,
+            roll=0, altitude=2500, trim=0, pitch=0, target=2, lock=16,
+            target_range=650, flags=1, display=19, mode=2, weapon=16,
+            bay_switch=1, cue=0, photos=0, throttle=60, speed=300)
+        inputs = Input()
+        control(inputs, state, 0, acquisition="level")
+        self.assertIn("n", inputs.keys)
+        self.assertIn(r"\D", inputs.keys)
+        self.assertNotIn(r"\U", inputs.keys)
+        for change in (dict(target_range=1000), dict(heading=2000), dict(pitch=-300)):
+            inputs = Input()
+            control(inputs, dict(state, **change), 0, acquisition="level")
+            self.assertNotIn("n", inputs.keys)
+
 
 if __name__ == "__main__":
     unittest.main()

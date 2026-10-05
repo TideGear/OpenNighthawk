@@ -84,6 +84,37 @@ routes are verified; an independent DOSBox recon flight is running (below).
 
 ## In flight at handoff
 
+- Latest controller continuation: optional --acquisition level added to
+  recon_pilot and dosbox_flight (defaultnose remains unchanged). Before
+  designation it holds positive pitch and requestsN only at550..750range,
+  actualpitch>=0, headingerror<1200, usingoriginalconstant640ray. After
+  acquisition normalcameraoffsetapplies. Regression coversrange/heading/nose
+  gates;59Python pass. Recomp adaptive recon-level-07 completesbothphotos
+  and raisedhome36return; replay observers recon-level-07-verified-{interp,
+  recomp} input/CSV/result bytes identical, errors empty; finalDSWAP
+  13672636250/91b4bdf6f00ff61d. Controller change ready tocommit/push.
+  Independent GOG dosbox-recon-07 exec9548 nowearnedbothphotos, primary1
+  (28736,13840), secondary2, bothintact; at438secfuel7475/alt2460/speed301,
+  flags6205, returninghome36. Do not claimfullreturn beforeitsstrictresult.
+  Liveoutput dosbox-recon-07, parity-audit-dosbox-recon-07.log,1900seclimit.
+- Cargo found in pg-candidates-04 atcase45000000/startup700000019000000:
+  primarytype3,target24=(10496,3840),departure58,home51, station0cargo18
+  /model38/store1; secondaryphoto. Search03 finished8caseswithnocargo.
+  New private cargo_trial.py normalsamefrontend/startup andshortstrip
+  approach, releasescargo at<400range withnose<-400/alt>128/bayopen;
+  tracksactualownedslot8..11 class38 andTTLtoimpact, readsimpactcoordinates
+  anddeliverydeadline. Liveexec92416, cargo-trial-01, logparity-audit-cargo-trial-01.log.
+  Verifygroundimpactwithinoriginaloctagonalrange256 andbeforedeadline,
+  one release/storeconsumption, andno originalprimary8B/4000credit (D5)
+  before claimingbug-compatiblearrival. No statewrites, no save fabrication.
+- Retirement preparation: oneadditionalnormalSerge sortie replayedfrom
+  earned03savedroster (no edits), privatecareer-four-recomp, exec93371done.
+  Savedscore217,total500->717,sorties3->4,rank1/status0. No retirement claim.
+  Possible next task: a guarded earned-career replay loop starting with the
+  public seed route and carrying only eachprior actualsave unchanged; verify
+  normalphoto/landingresultseachleg andpairedcheckpoint/saveequality.99
+  sorties retire; do not synthesize near-retirement roster to claimearned.
+
 - Secret-airstrip verified: strip-trial-02 normal adjusted descent aim
   completed primary4 atPGtarget24, (10497,3809), box1/nearest24, ground0,
   idle/gear/brakes, fuel7261, event8B1, primary4000, missionstore1->0,

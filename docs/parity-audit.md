@@ -133,6 +133,15 @@ Its completed failed result is retained, and independent full-sortie parity
 remains open. No shared game-model defect has been isolated from these
 controller attempts.
 
+The optional `--acquisition level` diagnostic holds a nonnegative nose and
+requests designation near the original's constant 640-unit ray, with range
+and heading gates. Camera pointing still uses its separate mounting angle
+after acquisition. Its normal recompiled recon sortie completes both photos
+and the home return; both engines' replay observers have identical input,
+CSV and result files, final hash `91b4bdf6f00ff61d` at 13,672,636,250 clocks.
+GOG attempt 07 using that approach has independently earned both photo
+credits and is returning home. Its landing remains unverified.
+
 **Video:** current-build replay against the saved GOG video still matches
 1,319 exact RGB pictures in order. Seven reference pictures and 28 of ours
 remain unmatched, all for a single sample. The end transition is about
