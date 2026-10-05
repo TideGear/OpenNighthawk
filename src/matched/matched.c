@@ -832,6 +832,153 @@ static int vgame_axis_spread(machine_t *m)
     return 1;
 }
 
+/* VGAME 0x04ABA, eventlog_add(kind, target): while the log at B9F0 (6-byte
+ * records, count [951A]) has fewer than 255, append (mission time [9912],
+ * x >> 7, y >> 7, kind, target) and zero the next record's kind byte. */
+static int vgame_eventlog_add(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 22)) return 0;
+    const uint16_t kind = arg(c, 0), target = arg(c, 1);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    alu_sub(c, ds_get(c, 0x951A), 0xFF, 1, 0);                    /* cmp [951A], 255 */
+    unsigned n = 6;
+    if (!x86_cond(c, 0xD)) {                                      /* jge not taken */
+        const uint16_t ds = c->seg[S_DS];
+        c->r[R_AX] = ds_get(c, 0x9912);
+        uint16_t bx = x86_imul3(c, ds_get(c, 0x951A), 6);
+        ds_put(c, (uint16_t)(bx - 0x45AA), c->r[R_AX]);
+        uint16_t ax = x86_shift(c, 5, ds_get(c, 0xC0D0), 7, 1);
+        mem_write8(c, phys(ds, (uint16_t)(bx - 0x45A8)), (uint8_t)ax);
+        ax = x86_shift(c, 5, ds_get(c, 0xC0DE), 7, 1);
+        mem_write8(c, phys(ds, (uint16_t)(bx - 0x45A7)), (uint8_t)ax);
+        mem_write8(c, phys(ds, (uint16_t)(bx - 0x45A6)), (uint8_t)kind);
+        mem_write8(c, phys(ds, (uint16_t)(bx - 0x45A5)), (uint8_t)target);
+        c->r[R_AX] = (uint16_t)((ax & 0xFF00) | (target & 0xFF));
+        ds_put(c, 0x951A, (uint16_t)alu_inc(c, ds_get(c, 0x951A), 1));
+        bx = x86_imul3(c, ds_get(c, 0x951A), 6);
+        mem_write8(c, phys(ds, (uint16_t)(bx - 0x45A6)), 0);
+        c->r[R_BX] = bx;
+        n = 22;
+    }
+    x86_leave(c);
+    c->icount += n;
+    near_ret(c);
+    return 1;
+}
+
+static int words_overlap(uint32_t a, uint32_t b) { return a + 1 >= b && b + 1 >= a; }
+
+/* VGAME 0x049F9, the altitude-alert chain's reset: [3664], [C5F4] = 0;
+ * each of the four entries at 3670 (4 bytes) gets state 9 when its level
+ * is below 16, else 1; [3682] = 1000, [3666] = 5000. Run as the original
+ * runs it - the loop counter is a stack word - and declined when that word
+ * or the saved BP could alias the data it touches (random states only). */
+static int vgame_alt_chain_reset(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t ds = c->seg[S_DS];
+    const uint32_t bp_word = phys(c->seg[S_SS], (uint16_t)(c->r[R_SP] - 2));
+    const uint32_t counter = phys(c->seg[S_SS], (uint16_t)(c->r[R_SP] - 4));
+    static const uint16_t touched[] = { 0x3664, 0xC5F4, 0x3682, 0x3666, 0x3670, 0x3672, 0x3674, 0x3676,
+                                        0x3678, 0x367A, 0x367C, 0x367E, 0x3680 };
+    for (unsigned i = 0; i < sizeof touched / sizeof touched[0]; i++) {
+        const uint32_t a = phys(ds, touched[i]);
+        if (words_overlap(a, bp_word) || words_overlap(a, counter)) return 0;
+    }
+    unsigned n = 6 + 2 + 4;
+    for (int i = 0; i < 4; i++)
+        /* 9 a pass; a level of 16 or more jumps back through the BX
+         * reload at 0x4A0A, two instructions more than the jmp it skips */
+        n += 9 + ((int16_t)seg_read16(c, ds, (uint16_t)(0x3670 + 4 * i)) >= 0x10 ? 1 : 0);
+    if (!room(c, n)) return 0;
+    x86_enter(c, 2, 0);
+    const uint16_t ss = c->seg[S_SS], local = (uint16_t)(c->r[R_BP] - 2);
+    const uint16_t zero = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+    c->r[R_AX] = zero;
+    ds_put(c, 0x3664, zero);
+    ds_put(c, 0xC5F4, zero);
+    seg_write16(c, ss, local, zero);
+    for (;;) {
+        alu_sub(c, seg_read16(c, ss, local), 4, 1, 0);            /* cmp [bp-2], 4 */
+        if (x86_cond(c, 0xD)) break;                              /* jge */
+        uint16_t bx = x86_shift(c, 4, seg_read16(c, ss, local), 2, 1);
+        alu_sub(c, ds_get(c, (uint16_t)(bx + 0x3670)), 0x10, 1, 0);
+        if (x86_cond(c, 0xD)) {                                   /* jge 0x4A0A: reload, shift again */
+            bx = x86_shift(c, 4, seg_read16(c, ss, local), 2, 1);
+            ds_put(c, (uint16_t)(bx + 0x3672), 1);
+        } else {
+            ds_put(c, (uint16_t)(bx + 0x3672), 9);
+        }
+        c->r[R_BX] = bx;
+        seg_write16(c, ss, local, (uint16_t)alu_inc(c, seg_read16(c, ss, local), 1));
+    }
+    ds_put(c, 0x3682, 1000);
+    ds_put(c, 0x3666, 5000);
+    x86_leave(c);
+    c->icount += n;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x0C436, decode a scene word: with bit 8 set, the low seven bits
+ * index the word table at 0510 and bit 15 is carried over; otherwise the
+ * word itself. */
+static int vgame_scene_word(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 12)) return 0;
+    const uint16_t w = arg(c, 0);
+    x86_enter(c, 4, 0);
+    alu_logic(c, (w >> 8) & 1, 0);                                /* test byte [bp+5], 1 */
+    unsigned n;
+    if (c->flags & F_ZF) { c->r[R_AX] = w; n = 6; }
+    else {
+        uint16_t bx = (uint16_t)((c->r[R_BX] & 0xFF00) | (w & 0xFF));
+        bx = (uint16_t)alu_logic(c, bx & 0x7F, 1);
+        bx = x86_shift(c, 4, bx, 1, 1);
+        c->r[R_BX] = bx;
+        const uint16_t ax = ds_get(c, (uint16_t)(bx + 0x0510));
+        uint16_t cx = (uint16_t)((c->r[R_CX] & 0x00FF) | (w & 0xFF00));
+        cx = (uint16_t)alu_logic(c, cx & 0x8000, 1);
+        c->r[R_CX] = cx;
+        c->r[R_AX] = (uint16_t)alu_logic(c, ax | cx, 1);
+        n = 12;
+    }
+    x86_leave(c);
+    c->icount += n;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x0C845, sign-extend a key byte in place: the argument word
+ * becomes its low byte as a signed value, and is returned. */
+static int vgame_key_sign_extend(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 12)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    const uint16_t ss = c->seg[S_SS], slot = (uint16_t)(c->r[R_BP] + 4);
+    uint16_t ax = mem_read8(c, phys(ss, slot));                   /* mov al, [bp+4] */
+    alu_sub(c, (c->r[R_AX] >> 8), (c->r[R_AX] >> 8), 0, 0);       /* sub ah, ah */
+    alu_sub(c, ax, 0x80, 1, 0);                                   /* cmp ax, 80h */
+    unsigned n;
+    if (x86_cond(c, 0xC)) {                                       /* jl */
+        mem_write8(c, phys(ss, (uint16_t)(slot + 1)), 0);
+        n = 10;
+    } else {
+        seg_write16(c, ss, slot, (uint16_t)alu_sub(c, ax, 0x100, 1, 0));
+        n = 12;
+    }
+    c->r[R_AX] = seg_read16(c, ss, slot);
+    x86_leave(c);
+    c->icount += n;
+    near_ret(c);
+    return 1;
+}
+
 static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x4958, vgame_free_fall, "free fall", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD50A, vgame_waypoint_from_target, "waypoint from target", 1 },
@@ -864,6 +1011,10 @@ static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x120A, 0x029E, vgame_unhook_int0, "restore the divide-error vector", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xF79D, vgame_mask_test, "masked sign test", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x1058, 0x0C9F, vgame_axis_spread, "spread an axis value", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x4ABA, vgame_eventlog_add, "append to the event log", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x49F9, vgame_alt_chain_reset, "reset the altitude-alert chain", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xC436, vgame_scene_word, "decode a scene word", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xC845, vgame_key_sign_extend, "sign-extend a key byte", 1 },
 };
 
 void matched_register(void)
