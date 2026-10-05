@@ -33,6 +33,7 @@
 #define PLAYER_47304 0xF61A7BE2C4607B24ULL
 #define DSWAP_47304 0xF947E1BD62AA2812ULL
 #define SETUP_47304 0xEDD5021CF28E7FC4ULL
+#define MPS_LOGO_47304 0x02B05A7CAB0B4197ULL
 
 static int default_runner(machine_t *m) { return machine_run(m, m->run_until); }
 matched_runner_fn matched_runner = default_runner;
@@ -3504,6 +3505,175 @@ static int vgame_camera_vec3_by_matrix32(machine_t *m)
     return 1;
 }
 
+/* Speculation, for a routine whose length depends on memory it also
+ * writes: run it once with every byte it writes logged, and if it would not
+ * fit before the next event, put the bytes and the CPU back and decline.
+ * A write to a code byte is never made (it would invalidate translations);
+ * the routine declines instead. */
+#define UNDO_MAX 64
+typedef struct {
+    cpu_t cpu;
+    uint32_t at[UNDO_MAX];
+    uint8_t old[UNDO_MAX];
+    unsigned n;
+    int full;
+} undo_t;
+
+static void undo_begin(const cpu_t *c, undo_t *u) { u->cpu = *c; u->n = 0; u->full = 0; }
+
+static void undo_put16(cpu_t *c, undo_t *u, uint16_t seg, uint16_t off, uint16_t v)
+{
+    for (int k = 0; k < 2; k++) {
+        const uint32_t a = phys(seg, (uint16_t)(off + k));
+        if (u->n == UNDO_MAX || ((cpu_codebits[a >> 3] >> (a & 7)) & 1u)) { u->full = 1; return; }
+        u->at[u->n] = a;
+        u->old[u->n] = mem_read8(c, a);
+        u->n++;
+        mem_write8(c, a, (uint8_t)(v >> (8 * k)));
+    }
+}
+
+static void undo_push16(cpu_t *c, undo_t *u, uint16_t v)
+{
+    c->r[R_SP] = (uint16_t)(c->r[R_SP] - 2);
+    undo_put16(c, u, c->seg[S_SS], c->r[R_SP], v);
+}
+
+static int undo_abort(cpu_t *c, undo_t *u)
+{
+    while (u->n) { u->n--; c->mem[u->at[u->n]] = u->old[u->n]; }
+    *c = u->cpu;
+    return 0;
+}
+
+/* The C runtime's near-heap search (VGAME 0x0F968 and its copies in five
+ * other programs): find a free block of at least CX bytes (rounded up to
+ * even) in the heap whose descriptor is at DS:BX - block headers are a size
+ * word, odd when the block is free; [BX+6] the first block, [BX+8] the
+ * rover where the search starts, [BX+0Ah] the end. Adjacent free blocks are
+ * merged as they are met. The search runs from the rover to the end, then
+ * once from the start to the rover. Found: the block is marked in use,
+ * split when larger, the rover set after it, AX = the block, DX = DS, CF
+ * clear. Not found: the rover reset to the start, CF set. Its length
+ * depends on the heap, so it runs speculatively. */
+static int heap_search(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (c->icount >= c->stop_at) return 0;
+    const uint64_t budget = c->stop_at - c->icount;
+    const uint16_t ds = c->seg[S_DS];
+    undo_t u;
+    undo_begin(c, &u);
+    unsigned long n = 0;
+#define R(x) c->r[R_##x]
+#define CF_ ((c->flags & F_CF) != 0)
+#define ZF_ ((c->flags & F_ZF) != 0)
+#define CHECK_ do { if (n > budget || u.full) return undo_abort(c, &u); } while (0)
+    R(CX) = (uint16_t)alu_inc(c, R(CX), 1);
+    set_r8(c, R_CL, (uint8_t)alu_logic(c, get_r8(c, R_CL) & 0xFE, 0));
+    undo_push16(c, &u, R(BX));
+    c->flags = (uint16_t)(c->flags & ~F_DF);
+    R(SI) = seg_read16(c, ds, (uint16_t)(R(BX) + 8));
+    R(BX) = seg_read16(c, ds, (uint16_t)(R(BX) + 0x0A));
+    R(DI) = (uint16_t)alu_logic(c, 0, 1);
+    n += 8;
+    for (;;) {
+next:                                                             /* 0x0F99B */
+        CHECK_;
+        R(AX) = seg_read16(c, ds, R(SI)); R(SI) = (uint16_t)(R(SI) + 2);
+        alu_logic(c, R(AX) & 1, 0);
+        n += 3;
+        if (ZF_) goto used;
+        R(DI) = R(SI);
+        n++;
+        for (;;) {                                                /* 0x0F9A2: a free block at DI */
+            CHECK_;
+            R(AX) = (uint16_t)alu_dec(c, R(AX), 1);
+            alu_sub(c, R(AX), R(CX), 1, 0);
+            n += 3;
+            if (!CF_) goto found;
+            R(SI) = (uint16_t)alu_add(c, R(SI), R(AX), 1, 0);
+            n += 2;
+            if (CF_) goto none;
+            R(DX) = R(AX);
+            R(AX) = seg_read16(c, ds, R(SI)); R(SI) = (uint16_t)(R(SI) + 2);
+            alu_logic(c, R(AX) & 1, 0);
+            n += 4;
+            if (ZF_) goto used;
+            R(AX) = (uint16_t)alu_add(c, R(AX), R(DX), 1, 0);       /* merge the next free block */
+            R(AX) = (uint16_t)alu_add(c, R(AX), 2, 1, 0);
+            R(SI) = R(DI);
+            undo_put16(c, &u, ds, (uint16_t)(R(SI) - 2), R(AX));
+            n += 5;
+        }
+used:                                                             /* 0x0F990: skip a block in use */
+        CHECK_;
+        R(DX) = (uint16_t)(R(SI) - 2);
+        alu_sub(c, R(DX), R(BX), 1, 0);
+        n += 3;
+        if (!CF_) {                                               /* 0x0F978: reached the end */
+            R(AX) = R(BX);
+            R(BX) = cpu_pop16(c);
+            alu_logic(c, R(AX) & 1, 0);
+            n += 4;
+            if (!ZF_) goto give_up;                               /* the second pass is over */
+            undo_push16(c, &u, R(BX));
+            R(SI) = seg_read16(c, ds, (uint16_t)(R(BX) + 6));
+            R(BX) = seg_read16(c, ds, (uint16_t)(R(BX) + 8));
+            alu_sub(c, R(BX), R(SI), 1, 0);
+            n += 5;
+            if (ZF_) goto none_popped;
+            R(BX) = (uint16_t)alu_dec(c, R(BX), 1);               /* odd: marks the second pass */
+            R(DI) = (uint16_t)alu_logic(c, 0, 1);
+            n += 3;
+            goto next;
+        }
+        R(SI) = (uint16_t)alu_add(c, R(SI), R(AX), 1, 0);
+        n += 2;
+        if (CF_) goto none;
+    }
+none:                                                             /* 0x0F9BE */
+    n++;
+none_popped:                                                      /* 0x0F9C0 */
+    R(BX) = cpu_pop16(c);
+    n++;
+give_up:                                                          /* 0x0F9C1 */
+    R(AX) = seg_read16(c, ds, (uint16_t)(R(BX) + 6));
+    undo_put16(c, &u, ds, (uint16_t)(R(BX) + 8), R(AX));
+    c->flags |= F_CF;
+    n += 5;
+    CHECK_;
+    c->icount += n;
+    near_ret(c);
+    return 1;
+found:                                                            /* 0x0F9CA */
+    R(BX) = cpu_pop16(c);
+    undo_put16(c, &u, ds, (uint16_t)(R(SI) - 2), R(CX));
+    n += 3;
+    if (!ZF_) {                                                   /* split off the rest */
+        R(DI) = (uint16_t)alu_add(c, R(DI), R(CX), 1, 0);
+        R(AX) = (uint16_t)alu_sub(c, R(AX), R(CX), 1, 0);
+        R(AX) = (uint16_t)alu_dec(c, R(AX), 1);
+        undo_put16(c, &u, ds, R(DI), R(AX));
+        R(DI) = (uint16_t)alu_sub(c, R(DI), R(CX), 1, 0);
+        n += 5;
+    }
+    R(DI) = (uint16_t)alu_add(c, R(DI), R(CX), 1, 0);
+    undo_put16(c, &u, ds, (uint16_t)(R(BX) + 8), R(DI));
+    R(AX) = R(SI);
+    R(DX) = ds;
+    c->flags = (uint16_t)(c->flags & ~F_CF);
+    n += 6;
+    CHECK_;
+    c->icount += n;
+    near_ret(c);
+    return 1;
+#undef R
+#undef CF_
+#undef ZF_
+#undef CHECK_
+}
+
 static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x4958, vgame_free_fall, "free fall", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD50A, vgame_waypoint_from_target, "waypoint from target", 1 },
@@ -3630,6 +3800,16 @@ static const recomp_override MATCHED[] = {
     { "matched", "START.EXE", START_47304, 0x0000, 0x9848, start_string_lookup, "look up a string by id", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xFAC1, chain_last, "last record of a chain", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0xA913, chain_last, "last record of a chain", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x5F63, chain_last, "last record of a chain", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x24B7, chain_last, "last record of a chain", 1 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x1C91, chain_last, "last record of a chain", 1 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x219D, chain_last, "last record of a chain", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xF968, heap_search, "near-heap free-block search", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0xA7BA, heap_search, "near-heap free-block search", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x263E, heap_search, "near-heap free-block search", 1 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x1E2E, heap_search, "near-heap free-block search", 1 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x21BE, heap_search, "near-heap free-block search", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x1D92, heap_search, "near-heap free-block search", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x826C, start_palette_bank, "copy a palette bank", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xEB10, strcat_ds, "string concatenate", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x5110, strcat_ds, "string concatenate", 1 },

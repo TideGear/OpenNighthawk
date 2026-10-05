@@ -253,6 +253,13 @@ int main(int argc, char **argv)
             for (int k = 0; k < 8; k++) r[k] = (uint16_t)rnd();
             for (int k = 0; k < 4; k++) seg[k] = (uint16_t)rnd();
             if (s % 3 == 0) { seg[S_DS] = cs; seg[S_ES] = cs; }
+            /* A quarter of the states take small counts in AX, CX and DX,
+             * for routines whose arguments are registers (an exact fit, a
+             * zero length). */
+            if ((s & 0x0C) == 0x0C) {
+                static const uint16_t tiny[8] = { 0, 1, 2, 3, 0xFFFF, 0xFFFE, 0, 1 };
+                r[R_AX] = tiny[rnd() & 7]; r[R_CX] = tiny[rnd() & 7]; r[R_DX] = tiny[rnd() & 7];
+            }
             r[R_SP] = (uint16_t)((r[R_SP] | 0x0100) & 0xFFFE);
             const uint16_t back = (uint16_t)(ip + 0x8000);
             const uint16_t flags = (uint16_t)((rnd() & 0x0ED5u) | 0x0002u);
