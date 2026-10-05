@@ -1997,6 +1997,28 @@ static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x130D, 0x0217, vgame_mclip_publish, "publish a clipped edge", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xEE9C, vgame_ldiv, "32-bit signed divide", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x48B8, vgame_frame_trail, "smoke trail", 1 },
+    /* The same bytes in START and END (the C runtime and two shared helpers):
+     * identical code with no relocations or fixed data addresses. */
+    { "matched", "START.EXE", START_47304, 0x0000, 0x96AE, vgame_abs16, "absolute value of a word", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x52BC, vgame_abs16, "absolute value of a word", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x97C0, vgame_shl32, "32-bit shift left", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x97CC, vgame_sar32, "32-bit arithmetic shift right", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x53CE, vgame_sar32, "32-bit arithmetic shift right", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x97F4, vgame_shr32, "32-bit logical shift right", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x85EC, vgame_read_vector, "read an interrupt vector", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x458B, vgame_read_vector, "read an interrupt vector", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x94DE, vgame_strlen, "string length", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x5182, vgame_strlen, "string length", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x94AC, vgame_strcpy, "string copy", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x5150, vgame_strcpy, "string copy", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x9612, vgame_memcpy, "block copy", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x5290, vgame_memcpy, "block copy", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x95F4, vgame_farcopy, "far block copy", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x5272, vgame_farcopy, "far block copy", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x978E, vgame_lmul, "32-bit multiply", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x8BEA, end_distance, "octagonal distance", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x96F4, vgame_ldiv, "32-bit signed divide", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x5302, vgame_ldiv, "32-bit signed divide", 1 },
 };
 
 void matched_register(void)

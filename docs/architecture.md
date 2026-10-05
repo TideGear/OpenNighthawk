@@ -929,7 +929,15 @@ reuses VGAME's matched version; then VGAME's clipped-edge publisher
 130D:0217 and the C runtime's signed 32-bit divide 0x0EE9C (both paths:
 two DIVs for a 16-bit divisor, the shift-down estimate and its one-step
 correction for a wider one; a zero divisor is declined) and the smoke trail
-0x048B8: 62 routines, each equal over 4,000 random states. On the strike route 38 of them run 13.9 million times in all and
+0x048B8: 62 routines, each equal over 4,000 random states. Twenty more
+addresses reuse them: START and END carry byte-identical copies of the C
+runtime helpers (string length and copy, block and far copies, the 32-bit
+shifts, multiply and divide, absolute value) and of the vector read and the
+octagonal distance - code with no relocations or fixed data addresses, so
+the same matched C serves every copy. 82 addresses in all. A state counts
+as returned only when the stack is back at the caller's level: in zeroed
+memory a wild jump can slide through `00 00` instructions onto the return
+address, which once passed for a return. On the strike route 38 of them run 13.9 million times in all and
 the recompiled engine still reaches the interpreter's final hash.
 REP string instructions are stepped as the interpreter steps them (one
 clock an iteration, one for a REP that finds CX at 0), and a routine whose

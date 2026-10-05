@@ -244,7 +244,11 @@ int main(int argc, char **argv)
                 steps++;
             }
             g_side[0].overflow = g_side[1].overflow = 1;      /* compare all memory */
-            if (steps >= 100000) { ms++; restore(); continue; }
+            /* A real return lands back at the caller's stack level (RET n
+             * pops at most a few words); a wild jump that happens to reach
+             * the return address - a slide through zeroed memory - does not. */
+            const uint16_t popped = (uint16_t)(a->r[R_SP] - (uint16_t)(r[R_SP] - 2));
+            if (steps >= 100000 || popped < 2 || popped > 18) { ms++; restore(); continue; }
             /* A random state that makes the original write over its own code
              * (a copy aimed at the routine) runs instructions it was not; the
              * game never does, and no equivalent can follow it. */
