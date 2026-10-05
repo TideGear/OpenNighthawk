@@ -288,7 +288,7 @@ static int vgame_clamp3(machine_t *m)
  * the angle's high byte, and the low byte interpolates toward the next
  * entry: BX = t[i] + (t[i+1] - t[i]) * frac / 256, rounded by the bit
  * shifted out of AL. Result in BX; AX and DX as the original leaves them. */
-static int vgame_sine(machine_t *m)
+static int table_sine(machine_t *m, uint16_t table)
 {
     cpu_t *c = &m->cpu;
     if (!room(c, 14)) return 0;
@@ -298,8 +298,8 @@ static int vgame_sine(machine_t *m)
     uint16_t bx = (uint16_t)(angle >> 8);                         /* mov bl, bh / mov bh, dh */
     bx = x86_shift(c, 4, bx, 1, 1);                               /* shl bx, 1 */
     const uint16_t ds = c->seg[S_DS];
-    uint16_t ax = seg_read16(c, ds, (uint16_t)(bx + 0x2086));
-    bx = seg_read16(c, ds, (uint16_t)(bx + 0x2084));
+    uint16_t ax = seg_read16(c, ds, (uint16_t)(bx + table + 2));
+    bx = seg_read16(c, ds, (uint16_t)(bx + table));
     ax = (uint16_t)alu_sub(c, ax, bx, 1, 0);
     c->r[R_AX] = ax;
     c->r[R_DX] = dx;
@@ -315,6 +315,8 @@ static int vgame_sine(machine_t *m)
     near_ret(c);
     return 1;
 }
+static int vgame_sine(machine_t *m) { return table_sine(m, 0x2084); }
+static int start_sine(machine_t *m) { return table_sine(m, 0xABF8); }
 
 /* VGAME 0x0FFDC, outcode(BX = x, BP = y): the clipping outcode in AL, bit
  * 3 left (x < 0), 0 right (x > [2293]), 2 above (y < 0), 1 below
@@ -1354,20 +1356,20 @@ static int vgame_recon_air_ground(machine_t *m)
  * table at 92A4 into [9262], keeping AL at [926D]; codes past 13h are
  * clamped to 13h, and with [926A] >= 3, 20h-21h map to 5 first. An
  * extended key uses its scan code directly, untranslated. */
-static int vgame_key_translate(machine_t *m)
+static int key_translate(machine_t *m, uint16_t base, uint16_t table)
 {
     cpu_t *c = &m->cpu;
     if (!room(c, 17)) return 0;
     const uint16_t ds = c->seg[S_DS];
     uint8_t al = (uint8_t)c->r[R_AX];
     const uint8_t ah = (uint8_t)(c->r[R_AX] >> 8);
-    mem_write8(c, phys(ds, 0x926D), al);
+    mem_write8(c, phys(ds, (uint16_t)(base + 0x0B)), al);
     alu_logic(c, ah, 0);                                          /* or ah, ah */
     unsigned n = 3;
     int xlat = 1;
     if (!(c->flags & F_ZF)) { al = ah; n += 2; xlat = 0; }        /* mov al, ah / jmp */
     else {
-        alu_sub(c, mem_read8(c, phys(ds, 0x926A)), 3, 0, 0); n += 2;
+        alu_sub(c, mem_read8(c, phys(ds, (uint16_t)(base + 0x08))), 3, 0, 0); n += 2;
         int low = (c->flags & F_CF) != 0;                         /* jb: straight to the clamp */
         int to13 = 0, five = 0;
         if (!low) {
@@ -1387,16 +1389,18 @@ static int vgame_key_translate(machine_t *m)
         if (to13) { al = 0x13; n++; }
     }
     if (xlat) {
-        c->r[R_BX] = 0x92A4;
-        al = mem_read8(c, phys(ds, (uint16_t)(0x92A4 + al)));
+        c->r[R_BX] = table;
+        al = mem_read8(c, phys(ds, (uint16_t)(table + al)));
         n += 2;                                                   /* mov bx / xlatb */
     }
     c->r[R_AX] = (uint16_t)(int16_t)(int8_t)al;                   /* cbw */
-    ds_put(c, 0x9262, c->r[R_AX]);
+    ds_put(c, base, c->r[R_AX]);
     c->icount += n + 3;                                           /* cbw, mov, ret */
     near_ret(c);
     return 1;
 }
+static int vgame_key_translate(machine_t *m) { return key_translate(m, 0x9262, 0x92A4); }
+static int start_key_translate(machine_t *m) { return key_translate(m, 0xAE52, 0xAE92); }
 
 /* VGAME 120A:0674, plane_shade: the plane's normal (three words at ES:SI-10)
  * dotted with the light vector at [7D7C], as 2.14 fixed point, gives the
@@ -1637,7 +1641,7 @@ static int start_cel_start(machine_t *m)
 /* END 0x0185C, widget_queue_dac(a, b, c): append a 6-byte DAC request at
  * 1EE8 + 6 * [1F24] and count it. Kept as written: the slot address goes
  * through a stack local, and AX is the 8-bit MUL's product. */
-static int end_queue_dac(machine_t *m)
+static int queue_dac(machine_t *m, uint16_t count_at, uint16_t base)
 {
     cpu_t *c = &m->cpu;
     if (!room(c, 19)) return 0;
@@ -1647,8 +1651,8 @@ static int end_queue_dac(machine_t *m)
     c->r[R_SP] = (uint16_t)(c->r[R_SP] - 2);
     const uint16_t bp = c->r[R_BP];
     set_r8(c, R_AL, 6);
-    x86_mul8(c, mem_read8(c, phys(ds, 0x1F24)));
-    uint16_t bx = (uint16_t)alu_add(c, c->r[R_AX], 0x1EE8, 1, 0);
+    x86_mul8(c, mem_read8(c, phys(ds, count_at)));
+    uint16_t bx = (uint16_t)alu_add(c, c->r[R_AX], base, 1, 0);
     seg_write16(c, ss, (uint16_t)(bp - 2), bx);
     c->r[R_AX] = seg_read16(c, ss, (uint16_t)(bp + 4));
     seg_write16(c, ds, bx, c->r[R_AX]);
@@ -1658,13 +1662,15 @@ static int end_queue_dac(machine_t *m)
     c->r[R_AX] = seg_read16(c, ss, (uint16_t)(bp + 8));
     seg_write16(c, ds, (uint16_t)(bx + 4), c->r[R_AX]);
     c->r[R_BX] = bx;
-    mem_write8(c, phys(ds, 0x1F24), (uint8_t)alu_inc(c, mem_read8(c, phys(ds, 0x1F24)), 0));
+    mem_write8(c, phys(ds, count_at), (uint8_t)alu_inc(c, mem_read8(c, phys(ds, count_at)), 0));
     c->r[R_SP] = bp;
     c->r[R_BP] = cpu_pop16(c);
     c->icount += 19;
     near_ret(c);
     return 1;
 }
+static int end_queue_dac(machine_t *m) { return queue_dac(m, 0x1F24, 0x1EE8); }
+static int start_queue_dac(machine_t *m) { return queue_dac(m, 0x64E2, 0x64A6); }
 
 /* END 0x0452C, widget_distance(x0, y0, x1, y1): the octagonal distance
  * max + min/4 of |dx| and |dy| (NEG on a negative difference). */
@@ -2213,10 +2219,10 @@ static int end_refill(machine_t *m)
 
 /* END 0x04A40: as VGAME's span-table clear, into the ES the caller set,
  * for rows [4198]..[419A] of the tables at 419C (to FFFF) and 4354 (to 0). */
-static int end_spans_reset(machine_t *m)
+static int spans_reset_es(machine_t *m, uint16_t first_at, uint16_t left, uint16_t right)
 {
     cpu_t *c = &m->cpu;
-    const uint16_t first = ds_get(c, 0x4198);
+    const uint16_t first = ds_get(c, first_at);
     if (first & 0x8000) {
         if (!room(c, 4)) return 0;
         c->r[R_DI] = (uint16_t)alu_logic(c, first, 1);
@@ -2224,33 +2230,284 @@ static int end_spans_reset(machine_t *m)
         near_ret(c);
         return 1;
     }
-    const uint16_t count = (uint16_t)(ds_get(c, 0x419A) + 1 - first);
+    const uint16_t count = (uint16_t)(ds_get(c, (uint16_t)(first_at + 2)) + 1 - first);
     const unsigned r = count ? count : 1;
     if (!room(c, 18 + 2 * r)) return 0;
     alu_logic(c, first, 1);
-    uint16_t cx = (uint16_t)alu_inc(c, ds_get(c, 0x419A), 1);
+    uint16_t cx = (uint16_t)alu_inc(c, ds_get(c, (uint16_t)(first_at + 2)), 1);
     cx = (uint16_t)alu_sub(c, cx, first, 1, 0);
     const uint16_t di2 = x86_shift(c, 4, first, 1, 1);
     c->r[R_BX] = cx;
     c->r[R_DX] = di2;
-    c->r[R_DI] = (uint16_t)alu_add(c, di2, 0x419C, 1, 0);
+    c->r[R_DI] = (uint16_t)alu_add(c, di2, left, 1, 0);
     c->r[R_AX] = 0xFFFF;
     c->r[R_CX] = cx;
     for (unsigned i = 0; i < count; i++) x86_stos(c, 1);
     c->r[R_CX] = 0;
-    ds_put(c, 0x4198, 0xFFFF);
+    ds_put(c, first_at, 0xFFFF);
     c->r[R_CX] = cx;
-    c->r[R_DI] = (uint16_t)alu_add(c, di2, 0x4354, 1, 0);
+    c->r[R_DI] = (uint16_t)alu_add(c, di2, right, 1, 0);
     c->r[R_AX] = (uint16_t)alu_sub(c, 0xFFFF, 0xFFFF, 1, 0);
     for (unsigned i = 0; i < count; i++) x86_stos(c, 1);
     c->r[R_CX] = 0;
-    ds_put(c, 0x419A, 0);
+    ds_put(c, (uint16_t)(first_at + 2), 0);
     c->icount += 18 + 2 * r;
     near_ret(c);
     return 1;
 }
+static int end_spans_reset(machine_t *m) { return spans_reset_es(m, 0x4198, 0x419C, 0x4354); }
+static int start_spans_reset(machine_t *m) { return spans_reset_es(m, 0x8F82, 0x8F86, 0x913E); }
 
 static int end_set_word_pair(machine_t *m) { return set_word_pair(m, 0x5158); }
+
+/* START 0x03E20 / END 0x01FE5: start the pointer widget on the screen
+ * segment seg: [base] = seg, the two bytes at seg:0 and seg:2 to base+0Ah
+ * and +0Bh, 2 to +0Ch and +0Dh, and the four position words at base+2..+8
+ * cleared. The far pointer goes through two stack locals, as written. */
+static int widget_init(machine_t *m, uint16_t base)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 23)) return 0;
+    const uint16_t ds = c->seg[S_DS], ss = c->seg[S_SS];
+    const uint16_t seg = arg(c, 0);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_SP] = (uint16_t)(c->r[R_SP] - 4);
+    const uint16_t bp = c->r[R_BP];
+    seg_write16(c, ss, (uint16_t)(bp - 2), seg);
+    seg_write16(c, ss, (uint16_t)(bp - 4), 0);
+    ds_put(c, base, seg);
+    const uint16_t bx = seg_read16(c, ss, (uint16_t)(bp - 4));    /* les bx, [bp-4] */
+    c->seg[S_ES] = seg_read16(c, ss, (uint16_t)(bp - 2));
+    mem_write8(c, phys(ds, (uint16_t)(base + 0x0A)), mem_read8(c, phys(c->seg[S_ES], bx)));
+    mem_write8(c, phys(ds, (uint16_t)(base + 0x0B)), mem_read8(c, phys(c->seg[S_ES], (uint16_t)(bx + 2))));
+    mem_write8(c, phys(ds, (uint16_t)(base + 0x0D)), 2);
+    mem_write8(c, phys(ds, (uint16_t)(base + 0x0C)), 2);
+    c->r[R_AX] = (uint16_t)alu_sub(c, 2, 2, 1, 0);                /* sub ax, ax */
+    ds_put(c, (uint16_t)(base + 8), 0);
+    ds_put(c, (uint16_t)(base + 4), 0);
+    ds_put(c, (uint16_t)(base + 6), 0);
+    ds_put(c, (uint16_t)(base + 2), 0);
+    c->r[R_BX] = bx;
+    c->r[R_SP] = bp;
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 23;
+    near_ret(c);
+    return 1;
+}
+static int start_widget_init(machine_t *m) { return widget_init(m, 0xE088); }
+static int end_widget_init(machine_t *m) { return widget_init(m, 0x7212); }
+
+/* START 0x0963E, memset(p, value, n) within DS: a byte to word-align, REP
+ * STOSW, then the odd byte; returns p (AX), BX the fill word. */
+static int start_fill(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (c->flags & F_DF) return 0;
+    const uint16_t p = arg(c, 0), v = arg(c, 1), n = arg(c, 2);
+    unsigned clocks = 9 + 4;
+    if (n) {
+        uint16_t k = n;
+        clocks += 4;
+        if (p & 1) { clocks += 2; k--; }
+        clocks += 1 + ((k >> 1) ? (k >> 1) : 1) + 1 + 1;
+    }
+    if (!room(c, clocks)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    const uint16_t di = c->r[R_DI];
+    c->r[R_DX] = di;
+    c->seg[S_ES] = c->seg[S_DS];
+    c->r[R_AX] = c->seg[S_DS];
+    c->r[R_DI] = p;
+    c->r[R_BX] = p;
+    c->r[R_CX] = n;
+    if (n) {
+        c->r[R_AX] = (uint16_t)((v & 0xFF) << 8 | (v & 0xFF));
+        alu_logic(c, p & 1, 1);                                   /* test di, 1 */
+        if (!(c->flags & F_ZF)) {
+            x86_stos(c, 0);
+            c->r[R_CX] = (uint16_t)alu_dec(c, c->r[R_CX], 1);
+        }
+        c->r[R_CX] = x86_shift(c, 5, c->r[R_CX], 1, 1);
+        rep_string(c, STR_STOS, 1, 0, 0);
+        c->r[R_CX] = (uint16_t)alu_add(c, c->r[R_CX], c->r[R_CX], 1, (c->flags & F_CF) ? 1u : 0u);
+        rep_string(c, STR_STOS, 0, 0, 0);
+    }
+    c->r[R_DI] = di;
+    const uint16_t t = c->r[R_BX]; c->r[R_BX] = c->r[R_AX]; c->r[R_AX] = t;   /* xchg bx, ax */
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += clocks;
+    near_ret(c);
+    return 1;
+}
+
+/* A byte as a routine will see it after its prologue has pushed eight bytes
+ * starting at stack_lo (the pushed bytes in `over`), for counting ahead. */
+static uint8_t peek_over(cpu_t *c, uint16_t seg, uint16_t off, uint32_t stack_lo, const uint8_t *over)
+{
+    const uint32_t a = phys(seg, off);
+    return a - stack_lo < 8 ? over[a - stack_lo] : mem_read8(c, a);
+}
+
+/* VGAME 0x0F06C / START 0x09848: look an id up in a table of (word id,
+ * zero-terminated string) entries ending in FFFFh; AX = the string, or 0.
+ * Stepped with the interpreter's LODSW/SCASB (DF honoured); its clocks are
+ * counted first by walking the same entries. RET 2. */
+static int string_lookup(machine_t *m, uint16_t table)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t ds = c->seg[S_DS];
+    const uint16_t id = arg(c, 0);
+    const int up = !(c->flags & F_DF);
+    /* The prologue pushes BP, SI, DI and DS (8 bytes below SP) before the
+     * walk; when the table overlaps them the walk reads the pushed words,
+     * so the count reads through them too. */
+    uint8_t pushed[8];
+    const uint16_t pv[4] = { c->seg[S_DS], c->r[R_DI], c->r[R_SI], c->r[R_BP] };
+    for (int i = 0; i < 4; i++) { pushed[2 * i] = (uint8_t)pv[i]; pushed[2 * i + 1] = (uint8_t)(pv[i] >> 8); }
+    const uint32_t stack_lo = phys(c->seg[S_SS], (uint16_t)(c->r[R_SP] - 8));
+#define PEEK(off) peek_over(c, ds, (uint16_t)(off), stack_lo, pushed)
+    uint16_t si = table;
+    unsigned clocks = 8, entries = 0;
+    for (;;) {
+        const uint16_t w = (uint16_t)(PEEK(si) | PEEK((uint16_t)(si + 1)) << 8);
+        si = (uint16_t)(si + (up ? 2 : -2));
+        clocks += 3;
+        if (w == id) break;
+        clocks += 3;
+        if (w == 0xFFFF) break;
+        uint16_t di = si;                                         /* the scan starts after the id */
+        unsigned k = 0;
+        for (;;) {
+            const uint8_t b = PEEK(di);
+            di = (uint16_t)(di + (up ? 1 : -1));
+            k++;
+            if (!b || k == 0xFFFF) break;
+        }
+        clocks += 3 + k + 2;                                      /* xchg, xor, mov cx; scan; mov si, jmp */
+        si = di;
+        if (++entries > 4096) return 0;
+    }
+    clocks += 6;
+#undef PEEK
+    if (!room(c, clocks)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, ds);
+    c->seg[S_ES] = cpu_pop16(c);
+    c->r[R_DX] = id;
+    c->r[R_SI] = table;
+    for (;;) {
+        x86_lods(c, 1, ds);
+        alu_sub(c, c->r[R_AX], id, 1, 0);
+        if (c->flags & F_ZF) break;
+        c->r[R_AX] = (uint16_t)alu_inc(c, c->r[R_AX], 1);
+        const uint16_t t = c->r[R_SI]; c->r[R_SI] = c->r[R_AX]; c->r[R_AX] = t;   /* xchg si, ax */
+        if (c->flags & F_ZF) break;
+        c->r[R_DI] = c->r[R_AX];                                  /* xchg di, ax (AX's old DI is dropped) */
+        c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);
+        c->r[R_CX] = 0xFFFF;
+        rep_string(c, STR_SCAS, 0, 0, 1);
+        c->r[R_SI] = c->r[R_DI];
+    }
+    { const uint16_t t = c->r[R_SI]; c->r[R_SI] = c->r[R_AX]; c->r[R_AX] = t; }
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += clocks;
+    near_ret(c);
+    c->r[R_SP] = (uint16_t)(c->r[R_SP] + 2);
+    return 1;
+}
+static int vgame_string_lookup(machine_t *m) { return string_lookup(m, 0x942C); }
+static int start_string_lookup(machine_t *m) { return string_lookup(m, 0xB196); }
+
+/* VGAME 0x0FAC1 / START 0x0A913: walk a chain of length-prefixed records
+ * (low bit of the length masked) from [BX+8], or [BX+6] when it equals
+ * [BX+0Ah], to the FFFEh terminator; SI = the last record before it. */
+static int chain_last(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t ds = c->seg[S_DS], bx = c->r[R_BX];
+    const int up = !(c->flags & F_DF);
+    uint16_t si = seg_read16(c, ds, (uint16_t)(bx + 8));
+    unsigned clocks = 4;
+    if (si == seg_read16(c, ds, (uint16_t)(bx + 0x0A))) { si = seg_read16(c, ds, (uint16_t)(bx + 6)); clocks++; }
+    unsigned steps = 0;
+    for (;;) {
+        const uint16_t w = seg_read16(c, ds, si);
+        si = (uint16_t)(si + (up ? 2 : -2));
+        clocks += 3;
+        if (w == 0xFFFE) break;
+        si = (uint16_t)(si + (w & 0xFFFE));
+        clocks += 4;
+        if (++steps > 0x4000) return 0;
+    }
+    clocks += 5;
+    if (!room(c, clocks)) return 0;
+    cpu_push16(c, c->r[R_DI]);
+    c->r[R_SI] = seg_read16(c, ds, (uint16_t)(bx + 8));
+    alu_sub(c, c->r[R_SI], seg_read16(c, ds, (uint16_t)(bx + 0x0A)), 1, 0);
+    if (c->flags & F_ZF) c->r[R_SI] = seg_read16(c, ds, (uint16_t)(bx + 6));
+    for (;;) {
+        x86_lods(c, 1, ds);
+        alu_sub(c, c->r[R_AX], 0xFFFE, 1, 0);
+        if (c->flags & F_ZF) break;
+        c->r[R_DI] = c->r[R_SI];
+        set_r8(c, R_AL, (uint8_t)alu_logic(c, c->r[R_AX] & 0xFE, 0));
+        c->r[R_SI] = (uint16_t)alu_add(c, c->r[R_SI], c->r[R_AX], 1, 0);
+    }
+    c->r[R_DI] = (uint16_t)alu_dec(c, c->r[R_DI], 1);
+    c->r[R_DI] = (uint16_t)alu_dec(c, c->r[R_DI], 1);
+    c->r[R_SI] = c->r[R_DI];
+    c->r[R_DI] = cpu_pop16(c);
+    c->icount += clocks;
+    near_ret(c);
+    return 1;
+}
+
+/* START 0x0826C: copy palette bank n (0-8, clamped above at 8; below 8 as
+ * given) - 768 bytes at the far pointer [D092] + n * 300h - to DS:64E3. */
+static int start_palette_bank(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 24 + 768)) return 0;
+    const uint16_t ds = c->seg[S_DS];
+    uint16_t n = arg(c, 0);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->seg[S_DS]);
+    cpu_push16(c, c->seg[S_ES]);
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, ds);
+    c->seg[S_ES] = cpu_pop16(c);
+    c->r[R_DI] = 0x64E3;
+    c->r[R_SI] = ds_get(c, 0xD092);
+    c->seg[S_DS] = ds_get(c, 0xD094);
+    unsigned clocks = 13;
+    alu_sub(c, n, 8, 1, 0);
+    if (!x86_cond(c, 0xC)) { n = 8; clocks++; }                   /* jl keeps n */
+    c->r[R_AX] = n;
+    c->r[R_BX] = 0x300;
+    x86_mul16(c, 0x300);
+    c->r[R_SI] = (uint16_t)alu_add(c, c->r[R_SI], c->r[R_AX], 1, 0);
+    c->r[R_CX] = 0x300;
+    rep_string(c, STR_MOVS, 0, c->seg[S_DS], 0);
+    clocks += 4 + 768 + 6;
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->seg[S_ES] = cpu_pop16(c);
+    c->seg[S_DS] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += clocks;
+    near_ret(c);
+    return 1;
+}
 
 static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x4958, vgame_free_fall, "free fall", 1 },
@@ -2367,6 +2624,18 @@ static const recomp_override MATCHED[] = {
     { "matched", "END.EXE", END_47304, 0x0000, 0x5A8A, start_next_dword, "next long format argument", 1 },
     { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x1E88, start_next_word, "next format argument", 1 },
     { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x1E90, start_next_dword, "next long format argument", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x3517, start_queue_dac, "queue a DAC request", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x3E20, start_widget_init, "start the pointer widget", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x1FE5, end_widget_init, "start the pointer widget", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x8AA0, start_spans_reset, "clear the span tables", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x8C88, start_sine, "sine by table", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x98D0, start_key_translate, "translate a key", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x963E, start_fill, "fill bytes", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xF06C, vgame_string_lookup, "look up a string by id", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x9848, start_string_lookup, "look up a string by id", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xFAC1, chain_last, "last record of a chain", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0xA913, chain_last, "last record of a chain", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x826C, start_palette_bank, "copy a palette bank", 1 },
 };
 
 void matched_register(void)

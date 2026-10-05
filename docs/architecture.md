@@ -942,7 +942,14 @@ multiply, and the formatter's two argument fetchers). END then reuses
 START's (pair ordering, record load, byte select, LZW reset, memset, memcpy,
 word-pair setter) at its own addresses and adds its report scaling, the
 terrain under the replayed aircraft, the replay buffer refill and its
-span-table clear: 106 addresses in all.
+span-table clear; then the runtime copies in DSWAP, SETUP and PLAYER, and a
+further round shared between programs (widget-state init, the DAC queue,
+span clear, table sine and key translation at START's addresses, a byte
+fill, a string table lookup, a record-chain walk and a palette-bank copy):
+124 addresses in all. A routine that pushes before it reads must count its
+clocks through what it is about to push: in random states the stack can sit
+inside the data it walks, which a string lookup's count first missed by
+nine clocks.
 The original is run until the routine's own near RET (the first taken with
 the stack at its entry level), and a state counts only if that RET reaches
 the pushed address. Two looser rules failed first: in zeroed memory a
