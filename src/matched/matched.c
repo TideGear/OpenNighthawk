@@ -29,6 +29,9 @@
 #define VGAME_47304 0x8287450CCA85106FULL
 #define START_47304 0xC65ECC83823E4907ULL
 #define END_47304   0xFA7167EE4E377EC1ULL
+#define PLAYER_47304 0xF61A7BE2C4607B24ULL
+#define DSWAP_47304 0xF947E1BD62AA2812ULL
+#define SETUP_47304 0xEDD5021CF28E7FC4ULL
 
 /* Room for n instructions before the run loop must look at events. */
 static int room(const cpu_t *c, unsigned n)
@@ -2358,6 +2361,12 @@ static const recomp_override MATCHED[] = {
     { "matched", "END.EXE", END_47304, 0x0000, 0x00A1, end_terrain_class, "terrain under the replay", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x4137, end_refill, "refill the replay buffer", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x4A40, end_spans_reset, "clear the span tables", 1 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x0557, vgame_read_vector, "read an interrupt vector", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x0C69, vgame_read_vector, "read an interrupt vector", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x5A82, start_next_word, "next format argument", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x5A8A, start_next_dword, "next long format argument", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x1E88, start_next_word, "next format argument", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x1E90, start_next_dword, "next long format argument", 1 },
 };
 
 void matched_register(void)
