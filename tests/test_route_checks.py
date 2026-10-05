@@ -28,7 +28,9 @@ class RouteChecks(unittest.TestCase):
             save = Path(folder) / "save"
             save.mkdir()
             def runner(cmd, **kwargs):
-                self.assertEqual(str(seed), cmd[2])
+                # Windows runners can expose TEMP through an 8.3 alias;
+                # the helper canonicalizes that spelling before execution.
+                self.assertTrue(Path(cmd[2]).samefile(seed))
                 self.assertEqual("interp", cmd[cmd.index("--engine") + 1])
                 out = Path(cmd[cmd.index("--out") + 1])
                 child_save = out / "fresh"

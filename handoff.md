@@ -84,6 +84,27 @@ routes are verified; an independent DOSBox recon flight is running (below).
 
 ## In flight at handoff
 
+- CI follow-up:46151f1,8c997de,316eac4 failed Route milestone regressions;
+  build/CTests/pacing passed. Reproduced locally by setting tempfile.tempdir
+  to Windows8.3 workspace alias: seed-path assertion compared spelling,
+  while helper correctly canonicalized it. Changed assertion to samefile;
+  all17 route tests pass under8.3 alias and all54Python pass normally.
+  Commit/push this verified fix; check subsequent CI rather than old failures.
+- Secret airstrip candidate found: pg-candidates-02 delay450M/startup
+  time_us700000005000000: primarytype4 target24=(10496,3840), departure/home58
+  (2880,11840), PG Limited War/Strike, cargo18/model38 atstation0, camera
+  atstation1. Private strip_trial.py (normal controls, readonly observations)
+  uses landing_pilot.control with a local working destination atstrip24;
+  no guest state edits. Live exec18479, output strip-trial-01, log
+  parity-audit-strip-trial-01.log. Requires original primary4000/8B event,
+  stopped inside strip approach box, consumed mission store, fuel/no loss;
+  no acceptance claim yet. If successful, formalize dedicated observer and
+  replay with its recorded startup clock under both engines before fixture.
+  Original secret-strip flag may suppress automaticmission end, so distinguish
+  primary completion from home return. Original VGAME041C6 only checks
+  type4 objectives inside approach box, speed<=1, every16frames, beforedeadline;
+  frame_objective_mark adds8B and setsprimary4000, zerosstore at3672.
+
 - Latest verified public career chain: exec66330 completed0. Fresh public
   interp and recomp-02 agree at all354 hashes/final2cbd245e873655d5/17.7B,
   full saved careers identical. Commit46151f1 pushed, includes chain helper,
