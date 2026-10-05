@@ -1,0 +1,121 @@
+{
+  "_about": "Roadmap progress. Each phase is a weighted list of items; weight is the item's share of that phase's effort, done its completion from 0 to 1. kind 'measured' means tools/progress.py computes done from the repository (or a census figure it records here); 'estimate' means a judgement, with its evidence. See docs/progress.md.",
+  "phase_weights": {
+    "P1": 45,
+    "P2": 30,
+    "P3": 25
+  },
+  "phases": {
+    "P1": [
+      {
+        "item": "Translation, lockstep, routes and the emulated PC (roadmap Phase 1 'Done')",
+        "weight": 60,
+        "done": 1.0,
+        "kind": "estimate",
+        "evidence": "All 17 code files translated (89,276 instructions); instruction lockstep 0 mismatches over 5.7M states; 27 routes identical across engines; fidelity.py 1,210/1,210; housekeeping done."
+      },
+      {
+        "item": "The picture against DOSBox, frame by frame",
+        "weight": 6,
+        "done": 0.9,
+        "kind": "estimate",
+        "evidence": "1,321 of 1,326 reference pictures exact, end drift +14 ms; 5 + 16 single-sample unmatched pictures remain."
+      },
+      {
+        "item": "Roland through Munt",
+        "weight": 6,
+        "done": 0.6,
+        "kind": "estimate",
+        "evidence": "Integration, MIDI parity and offline rendering done; independent reference PCM and a listening check open."
+      },
+      {
+        "item": "Individual mission objectives",
+        "weight": 6,
+        "done": 0.85,
+        "kind": "estimate",
+        "evidence": "All 8 objective types and returns verified; independent GOG DOSBox cargo reproduction and wider generated-assignment coverage open."
+      },
+      {
+        "item": "The remaining career flow",
+        "weight": 5,
+        "done": 0.8,
+        "kind": "estimate",
+        "evidence": "Promotion, medals, tour ribbon and rank-3 retirement earned and paired; rank-6 'General, At Last!' branch open."
+      },
+      {
+        "item": "A person playing it",
+        "weight": 8,
+        "done": 0.3,
+        "kind": "estimate",
+        "evidence": "Keyboard/mouse/joystick paths exist and record sessions; no structured playtest of controls, saves and feel yet."
+      },
+      {
+        "item": "Timing details still DOSBox's own",
+        "weight": 4,
+        "done": 0.65,
+        "kind": "estimate",
+        "evidence": "PIT control-word IRQ found and fixed; I/O slice suppression matched; exact retrace phase (the one-frame channel-3 note) and PLAYER's few-byte DAC gap open."
+      },
+      {
+        "item": "Rendered sound parity",
+        "weight": 5,
+        "done": 0.6,
+        "kind": "estimate",
+        "evidence": "DBOPL default, mixer rounding fixed; intro waveform within ~0.5% RMS but not exact; speech and speaker need reference PCM."
+      }
+    ],
+    "P2": [
+      {
+        "item": "Tooling: name leads, matched-routine runtime and its random-state lockstep",
+        "weight": 5,
+        "done": 1.0,
+        "kind": "estimate",
+        "evidence": "tools/reimp_names.py, src/matched, tests/func_lockstep.c (planted defects caught), pipeline step 7."
+      },
+      {
+        "item": "Routines named and explained in the repository",
+        "weight": 35,
+        "done": "census_matched_bytes",
+        "kind": "measured",
+        "evidence": "Counted as the census bytes of routines that have a named, explained matched equivalent; names that are only leads (reimp_names.py) do not count."
+      },
+      {
+        "item": "Matched functions replacing translations",
+        "weight": 60,
+        "done": "census_matched_bytes",
+        "kind": "measured",
+        "evidence": "Census bytes (seven programs) whose routine has a matched equivalent held to the original by func_lockstep and the routes."
+      }
+    ],
+    "P3": [
+      {
+        "item": "Code-override mechanism for switchable fixes",
+        "weight": 5,
+        "done": 1.0,
+        "kind": "estimate",
+        "evidence": "src/fixes, --fix/--list-fixes, recompiler isolation, ROM-free test."
+      },
+      {
+        "item": "Fixes for the original's bugs (docs/bugs.md)",
+        "weight": 35,
+        "done": "fixes_share",
+        "kind": "measured",
+        "evidence": "Fixes available over catalogued defects (### D headings in docs/bugs.md)."
+      },
+      {
+        "item": "60+ fps and 4K presentation",
+        "weight": 60,
+        "done": 0.0,
+        "kind": "estimate",
+        "evidence": "Not started."
+      }
+    ]
+  },
+  "census": {
+    "_about": "From the Reimp's census (tools/reimp_names.py output); refreshed by tools/progress.py --census FILE.",
+    "functions": 1535,
+    "bytes": 179213,
+    "matched_functions": 92,
+    "matched_bytes": 3646
+  }
+}
