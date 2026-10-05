@@ -810,6 +810,53 @@ timely impact with original no-credit behavior, not a completed mission return.
 The [independent parity audit](parity-audit.md) distinguishes engine equality
 from DOSBox flight/save/sound evidence and documents the remaining differences.
 
+## PIT control-word interrupts and re-recorded routes (5 October 2026)
+
+DOSBox 0.74 raises IRQ0 when a control word reaches PIT counter 0 while its
+output is low (`timer.cpp` `write_p43`). Its core takes a pending interrupt
+at the next STI (`core_normal/prefix_none.h`), and the INT 21h service stub
+begins with STI. START's teardown (`0x8CE6`-`0x8CFE`) writes control word
+36h, reload 0, then INT 21h AH=25h to restore INT 8. Under DOSBox the game's
+own timer handler (`0x8D0B`) therefore runs before the vector changes and
+reloads the PIT from `[AE03]` (about 70 Hz, `0x8DC4`). The BIOS tick then
+advances about four times faster, so START's four-tick palette loops
+(`0x31B3`-`0x31EC`) take about a quarter as long. The machine now does the
+same (`pit_control`, the STI-stub service entry, and no STI shadow inside
+the service stubs). `F117R_PIT_CONTROL_IRQ=0` restores the old behaviour.
+
+Against the saved GOG DOSBox capture, `tools/video_compare.py` reports
+1,321 exact pictures and +14 ms end drift (it was -570 ms). The roster fade
+now has three frames, as DOSBox's capture does, where it had thirteen.
+`tools/fidelity.py` still agrees on all 1,210 answers.
+
+Every recorded flight input carries absolute clocks, so the closed-loop
+pilots re-recorded them under the new timing. Each passes its strong observer
+under both engines with identical observation logs:
+
+| route | observer | final clock / hash |
+|---|---|---|
+| landing | `landing_pilot.py --replay` | 9,778,413,433 / `1d4ca533f4697474` |
+| strike | `strike_pilot.py --replay` | 8,813,613,420 / `4481029f711b1a3e` |
+| strike_return | `strike_pilot.py --complete --replay` | 14,469,567,223 / `a2442935828c96cc` |
+| recon | `recon_pilot.py --replay` | 7,549,654,902 / `bda4a4f85f274602` |
+| recon_return | `recon_pilot.py --complete --replay` (level acquisition) | 14,974,000,296 / `5617058ceb0bd231` |
+| cargo | `cargo_check.py` (original no-credit) | 7,182,189,465 / `ba4e2533e68c010d` |
+| cargo_d5_fixed | `cargo_check.py --fix D5` (credit) | 7,182,189,465 / `4bc86c6604105145` |
+| cargo_return | `cargo_check.py --complete` | 17,215,192,298 / `5e2d1782e45eb471` |
+| secret_airstrip | `airstrip_check.py` | 8,283,782,540 / `3cfb9b7fdfba46c3` |
+| secret_airstrip_return | `airstrip_check.py --complete` | 18,795,193,513 / `8e069648fc31c226` |
+
+`recon_career` now earns 248 points (total 2917; the sortie count and tour
+ribbon are unchanged). `career_serge` keeps every expected saved byte; its
+roster click now selects Serge's row at (100,136), since (100,146) lands on
+the "Press 'Delete'" line. `cargo_return` is hit again near home on the new
+timeline and holds 260 knots on final. `career_promotion`'s
+third sortie now generates a strike primary at the old startup clock, so it
+starts at `700000001000000` (photo/photo, found with
+`mission_candidates.py`); it still earns rank 1 and the second Airman's
+Medal, scoring 208 (total 491 rather than 500). Hashes quoted in earlier sections
+are from the previous timing.
+
 ## Where this goes next
 
 The optional Munt backend is isolated in `src/host/mt32.c` and enabled with

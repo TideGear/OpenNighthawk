@@ -1,19 +1,19 @@
 # Earn the prerequisite roster, fly a third sortie, promotion and medal.
 # seed-roster career_serge.args
 # expect-world LB
-# expect-exit VGAME.EXE 129 11000000000
+# expect-exit VGAME.EXE 129 10500000000
 # expect-save Roster.Fil 0 0900
-# expect-save Roster.Fil 770 d900
+# expect-save Roster.Fil 770 d000
 # expect-save Roster.Fil 778 0000
 # expect-save Roster.Fil 800 0000
 # expect-save Roster.Fil 754 0100
 # expect-save Roster.Fil 758 0200
-# expect-save Roster.Fil 772 f4010000
+# expect-save Roster.Fil 772 eb010000
 # expect-save Roster.Fil 776 0300
 --replay
 career_promotion.input
 --time-us
-700000000000000
+700000001000000
 --steps
 17700000000
 --type
