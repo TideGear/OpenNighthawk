@@ -615,6 +615,15 @@ from the ordinary input record; it changes no guest state. This route ends
 at primary completion with the aircraft still at the strip, rather than
 claiming a return to the mission's home.
 
+`cargo_check.py` separately observes a normal type-3 supply drop. It tracks
+the released player class-26h slot and weapon 18, requires ground penetration
+and matching impact globals with a sudden TTL change distinct from expiry,
+then applies the original octagonal distance and deadline tests. It requires
+an airborne aircraft and another second without primary credit, reproducing
+bug D5. No guest memory or saved statistics are edited. Both engines agree
+at 149 checkpoints/final and in all input/flight/report bytes. This is a
+timely impact with original no-credit behavior, not a completed mission return.
+
 The [independent parity audit](parity-audit.md) distinguishes engine equality
 from DOSBox flight/save/sound evidence and documents the remaining differences.
 

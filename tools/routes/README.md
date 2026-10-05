@@ -76,6 +76,14 @@ It stops airborne after credit and does not establish a return. The stronger
 target damage, primary credit, one matching hit event, weapon release events,
 consumed stores and an airborne aircraft with fuel and no ejection/crash.
 
+`cargo` reproduces original D5 through a normally released supply crate.
+`cargo_check.py --replay cargo.input --steps 7498892689` requires one cargo
+store and release, the actual player weapon slot, ground penetration and
+matching impact coordinates inside the delivery area before its deadline.
+It also requires an airborne aircraft with fuel and the retained absence of
+primary credit for a full second afterwards. Normal TTL expiry cannot pass.
+This route stops airborne and does not establish a home return.
+
 Keep run outputs and saves outside the repository. Use a fresh output
 directory for a baseline run, since an existing save can change the pilot
 and mission:

@@ -52,6 +52,8 @@ jobs:
         run: python tests/test_strike_checks.py
       - name: Secret-airstrip acceptance regressions
         run: python tests/test_airstrip_checks.py
+      - name: Supply-drop impact regressions
+        run: python tests/test_cargo_checks.py
       - name: Mission candidate input regressions
         run: python tests/test_mission_candidates.py
       - name: Reference observer and audio verdict regressions

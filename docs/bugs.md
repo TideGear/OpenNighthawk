@@ -126,6 +126,18 @@ Status values:
 - **Fix options.** Add `0x26` to the gate (the Reimp's proposal, awaiting the
   owner's decision there).
 - **Detail.** Reimp catalogue:626-675.
+- **Normal-input reproduction.** `tools/routes/cargo.args` drops the loaded
+  supply crate in a generated type-3 Persian Gulf mission. Player slot 11,
+  class 26h/weapon 18, impacts at (10500,3951), height -5: octagonal distance
+  113 from target 24, below 256, mission time 588 before deadline 1094.
+  Primary flag/event remain absent. `cargo_check.py` requires actual impact
+  rather than counting consumed stores or expiry. This is engine replay
+  evidence; independent DOSBox cargo reproduction remains open.
+- **Approach trap.** A shallower trial reached height 1, then pitch became
+  zero with slot-owner field zero, and the crate expired instead of crossing
+  ground. The shipped instructions at 6C23..6C4C apply the owner pitch floor
+  to any weapon at height 1. A steeper normal release skips that height and
+  reaches the actual impact handler. No game semantics were changed.
 
 ### D6. "Stealth mountains"
 

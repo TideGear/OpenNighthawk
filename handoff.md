@@ -102,19 +102,28 @@ routes are verified; an independent DOSBox recon flight has completed (below).
 - Cargo found in pg-candidates-04 atcase45000000/startup700000019000000:
   primarytype3,target24=(10496,3840),departure58,home51, station0cargo18
   /model38/store1; secondaryphoto. Search03 finished8caseswithnocargo.
-  New private cargo_trial.py normalsamefrontend/startup andshortstrip
-  approach, releasescargo at<400range withnose<-400/alt>128/bayopen;
-  tracksactualownedslot8..11 class38 andTTLtoimpact, readsimpactcoordinates
-  anddeliverydeadline. Liveexec92416, cargo-trial-01, logparity-audit-cargo-trial-01.log.
-  Verifygroundimpactwithinoriginaloctagonalrange256 andbeforedeadline,
-  one release/storeconsumption, andno originalprimary8B/4000credit (D5)
-  before claimingbug-compatiblearrival. No statewrites, no save fabrication.
+  Trials01..05 retained failures: no release, crash, off-area expiry,
+  ground-adjacent expiry or off-area obstacle impact. Trial06 succeeds with
+  full-throttle approach and steeper release belowpitch-1000: slot11/class38
+  /weapon18 impacts(10500,3951),z-5, octagonalrange113<256,time588<1094.
+  One release/store1->0, no original8B/4000credit, aircraftairbornefuel7084.
+  cargo-verified-{interp,recomp} input/CSV/result identical;149hashes/final
+  155c7328edcbe82c at7488092689 agree. Impact cockpit reviewed. New cargo
+  fixture extends1.2seconds to check retainedno-credit; retained observers
+  input/CSV/result identical,149hashes/final20b78dd06d275670 at7498892689
+  agree. Fuel7075/alt444, original no-credit retained. Independent DOSBox
+  cargo reproduction and aircraftreturn remain open.
+  Strongobserver cargo_check.py and5 regression cases added;64Python pass.
+  Coverage139059/230052=60.4%,24routes. No game semantics changed.
 - Retirement preparation: oneadditionalnormalSerge sortie replayedfrom
   earned03savedroster (no edits), privatecareer-four-recomp, exec93371done.
   Savedscore217,total500->717,sorties3->4,rank1/status0. No retirement claim.
-  Possible next task: a guarded earned-career replay loop starting with the
-  public seed route and carrying only eachprior actualsave unchanged; verify
-  normalphoto/landingresultseachleg andpairedcheckpoint/saveequality.99
+  Private career_chain.py now running exec52167/logparity-audit-career-chain-02:
+  paired sorties4..10 fromactual public-thirdsave, ordinary replay+ENDkeys,
+  strictbothphoto/landingparent gates,354hashes and802savecomparison eachleg.
+  Fourthrecomp passesflight andsaves717/sorties4; interp stillpending.
+  Initial harness attempt failed because instruction clock can overshoot
+  sampletarget; corrected >= sampling, preservedfirstoutput.99
   sorties retire; do not synthesize near-retirement roster to claimearned.
 
 - Secret-airstrip verified: strip-trial-02 normal adjusted descent aim

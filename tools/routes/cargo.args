@@ -1,0 +1,9 @@
+# Normal supply drop: timely ground impact in delivery area, original D5 no-credit.
+# Strong observer: cargo_check.py --replay cargo.input --steps 7498892689
+# expect-world PG
+--replay
+cargo.input
+--steps
+7498892689
+--time-us
+700000019000000

@@ -127,6 +127,22 @@ credit; that failure is retained. Only the normal control aim was adjusted.
 Adding the strip's interpreter coverage raises the route union to 138,771 /
 230,052 bytes (60.3%).
 
+The normal `cargo` route reproduces D5 in a generated Persian Gulf type-3
+mission. One supply crate, class 26h/weapon 18, is released into player slot
+11 and crosses ground altitude at (10500,3951), height -5. The original
+octagonal distance is 113 from target 24, below 256; mission time 588 is
+before deadline 1094. Impact globals match that slot's coordinates, TTL
+drops from 985 to zero, and primary flag/event stay absent for another
+1.2 seconds. Fuel remains 7075 and the aircraft recovers airborne to height
+444. This preserves the original bug rather than claiming objective credit.
+Both read-only observers' input/CSV/result files match exactly; 149
+checkpoints and final hash `20b78dd06d275670` agree at 7,498,892,689 clocks.
+The impact cockpit was reviewed. Five acceptance regressions reject expiry,
+hovering at height one, unmatched impact globals, wrong slots/weapons,
+late/outside-area impacts, loss and unexpected credit. All 64 Python tests
+pass. Coverage rises to 139,059 / 230,052 bytes (60.4%), across 24 routes.
+Independent DOSBox cargo reproduction and the home return remain open.
+
 Independent GOG recon attempt 06 ended after fuel exhaustion: no photos,
 parent result 1/status 1, nine failed acceptance checks, 104,607 observations.
 Its completed failed result is retained, and independent full-sortie parity
