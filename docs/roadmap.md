@@ -396,12 +396,16 @@ never instead of parity.
       Matched routines have a path now: `src/matched/matched.c`, placed for
       the recompiled engine only, held to the original by
       `tests/func_lockstep.c` from random states and by every route.
-      142 matched addresses in all seven programs, including routines that call original code (free fall, waypoint, orientation
-      transpose, sign, abs, clamps, 32-bit shifts and multiply, table sine,
-      clipping outcode, map projections, weapon effectiveness, setters,
-      string and block copies); the strike route runs 38
-      of them 13.9 million times with an unchanged final hash. Next: have the recompiler isolate matched sites
-      so their neighbours stay translated.
+      151 matched addresses in all seven programs (free fall, waypoint,
+      orientation transpose, sign, abs, clamps, 32-bit shifts and multiply,
+      table sine, clipping outcode, map projections, weapon effectiveness,
+      setters, string and block copies, camera matrix products and depths,
+      distances, square root). Matched routines can call original code,
+      near or far (`guest_call`, `guest_call_far`), and the recompiler
+      isolates each matched entry, so its neighbours stay translated. On the
+      strike route they run tens of millions of times with every checkpoint
+      and the final hash unchanged. Progress is measured in census bytes
+      (`tools/progress.py`).
 
 ## Phase 3 - fixes and enhancements (switchable)
 
