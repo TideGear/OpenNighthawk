@@ -37,6 +37,32 @@ further down are historical; this first section is the current state.
   Leave the pre-existing untracked `test.bat` out of the commit. The working
   tree passed `git diff --check`; no tests were run in this wrap-up turn.
 
+## Roster palette-loop finding (5 Oct, ~09:30 local)
+
+- The palette loop at START `0x31B3`-`0x31EC` waits 4 BIOS ticks (target =
+  `0040:006C` + 4) and calls the palette writer once per iteration. Locally
+  the tick is 18.2 Hz (PIT 0 reload 0, written at `0x8CF2`), so there are
+  eight iterations of ~28.5 ms. In the DOSBox-X run4 trace the tick runs about
+  every 13.6 ms (timer words 99B3 -> 99B6 -> 99B8), so the loop ends after two
+  `0x31EC` calls. That accounts for the 8-versus-2 caller counts.
+- Cause in DOSBox-X: START's teardown (`0x8CE6`-`0x8CFE`) writes control word
+  0x36 to PIT 0, then reload 0, then INT 21h AH=25h restoring the old INT 8
+  vector. DOSBox raises IRQ0 at once on a control word when the counter output
+  is low (`timer.cpp` `write_p43`), and DOSBox-X ran START's own handler
+  (`0x8D0B`) before the vector change. That handler rewrites PIT 0 from
+  `[AE03]` (0x42F7, ~70 Hz) at `0x8DC4`, so the 70 Hz tick persisted.
+- This is NOT shown for GOG DOSBox 0.74. 0.74 takes IRQs only between slices
+  and after a callback, i.e. after INT 21h has swapped the vector, so the
+  extra IRQ goes to the BIOS handler. A trial of the 0.74 behaviour (hold the
+  control-word IRQ until the next callback, or 25 instructions) left
+  Roster.Fil -> `rostscrn.pic` unchanged at 6.29M clocks, so it does not
+  explain the roster delay. The trial was reverted; no source changed. The
+  DOSBox-X trace is therefore not valid evidence of 0.74 timing here; the
+  remaining ~280 ms needs a 0.74-side measurement.
+- Next: measure the tick rate in the real GOG DOSBox 0.74 across this phase
+  (for example a guest-side probe or a heavy-debug 0.74 build from
+  `dosbox-src`), or an event-synchronised 0.74 AVI.
+
 ## Latest continuation (5 Oct, after 08:36 local)
 
 - Completed a generated Vietnam / Conventional War air-to-air objective
