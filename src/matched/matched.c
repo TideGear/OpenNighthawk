@@ -2342,12 +2342,12 @@ static int start_fill(machine_t *m)
     return 1;
 }
 
-/* A byte as a routine will see it after its prologue has pushed eight bytes
+/* A byte as a routine will see it after its prologue has pushed n bytes
  * starting at stack_lo (the pushed bytes in `over`), for counting ahead. */
-static uint8_t peek_over(cpu_t *c, uint16_t seg, uint16_t off, uint32_t stack_lo, const uint8_t *over)
+static uint8_t peek_over(cpu_t *c, uint16_t seg, uint16_t off, uint32_t stack_lo, const uint8_t *over, unsigned n)
 {
     const uint32_t a = phys(seg, off);
-    return a - stack_lo < 8 ? over[a - stack_lo] : mem_read8(c, a);
+    return a - stack_lo < n ? over[a - stack_lo] : mem_read8(c, a);
 }
 
 /* VGAME 0x0F06C / START 0x09848: look an id up in a table of (word id,
@@ -2367,7 +2367,7 @@ static int string_lookup(machine_t *m, uint16_t table)
     const uint16_t pv[4] = { c->seg[S_DS], c->r[R_DI], c->r[R_SI], c->r[R_BP] };
     for (int i = 0; i < 4; i++) { pushed[2 * i] = (uint8_t)pv[i]; pushed[2 * i + 1] = (uint8_t)(pv[i] >> 8); }
     const uint32_t stack_lo = phys(c->seg[S_SS], (uint16_t)(c->r[R_SP] - 8));
-#define PEEK(off) peek_over(c, ds, (uint16_t)(off), stack_lo, pushed)
+#define PEEK(off) peek_over(c, ds, (uint16_t)(off), stack_lo, pushed, 8)
     uint16_t si = table;
     unsigned clocks = 8, entries = 0;
     for (;;) {
@@ -2509,6 +2509,59 @@ static int start_palette_bank(machine_t *m)
     return 1;
 }
 
+/* VGAME 0x0EB10 / END 0x05110, strcat(dst, src) within DS: find dst's end
+ * and src's length by REPNE SCASB, then the word copy - aligned, unlike the
+ * other copies, on the source address. SI and DI restored, AX = dst.
+ * Forward only; the scans count through the BP the prologue pushes. */
+static int strcat_ds(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (c->flags & F_DF) return 0;
+    const uint16_t ds = c->seg[S_DS], dst = arg(c, 0), src = arg(c, 1);
+    const uint8_t pushed[2] = { (uint8_t)c->r[R_BP], (uint8_t)(c->r[R_BP] >> 8) };
+    const uint32_t stack_lo = phys(c->seg[S_SS], (uint16_t)(c->r[R_SP] - 2));
+    unsigned k1 = 0, k2 = 0;
+    for (uint16_t d = dst; k1 < 0xFFFF; d++) { k1++; if (!peek_over(c, ds, d, stack_lo, pushed, 2)) break; }
+    for (uint16_t d = src; k2 < 0xFFFF; d++) { k2++; if (!peek_over(c, ds, d, stack_lo, pushed, 2)) break; }
+    unsigned n = k2, clocks = 9 + k1 + 3 + k2 + 6;
+    if (src & 1) { clocks += 2; n--; }
+    clocks += 1 + ((n >> 1) ? (n >> 1) : 1) + 1 + 1 + 4;
+    if (!room(c, clocks)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    const uint16_t di0 = c->r[R_DI], si0 = c->r[R_SI];
+    c->r[R_DX] = di0;
+    c->r[R_BX] = si0;
+    c->seg[S_ES] = ds;
+    c->r[R_DI] = dst;
+    c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);                    /* xor ax, ax */
+    c->r[R_CX] = 0xFFFF;
+    rep_string(c, STR_SCAS, 0, 0, 1);                             /* repne scasb: dst's end */
+    c->r[R_SI] = (uint16_t)(c->r[R_DI] - 1);                      /* lea si, [di-1] */
+    c->r[R_DI] = src;
+    c->r[R_CX] = 0xFFFF;
+    rep_string(c, STR_SCAS, 0, 0, 1);                             /* repne scasb: src's length */
+    c->r[R_CX] = (uint16_t)~c->r[R_CX];                           /* not cx */
+    c->r[R_DI] = (uint16_t)alu_sub(c, c->r[R_DI], c->r[R_CX], 1, 0);
+    { const uint16_t t = c->r[R_SI]; c->r[R_SI] = c->r[R_DI]; c->r[R_DI] = t; }   /* xchg si, di */
+    c->r[R_AX] = dst;
+    alu_logic(c, c->r[R_SI] & 1, 1);                              /* test si, 1 */
+    if (!(c->flags & F_ZF)) {
+        x86_movs(c, 0, ds);
+        c->r[R_CX] = (uint16_t)alu_dec(c, c->r[R_CX], 1);
+    }
+    c->r[R_CX] = x86_shift(c, 5, c->r[R_CX], 1, 1);
+    rep_string(c, STR_MOVS, 1, ds, 0);
+    c->r[R_CX] = (uint16_t)alu_add(c, c->r[R_CX], c->r[R_CX], 1, (c->flags & F_CF) ? 1u : 0u);
+    rep_string(c, STR_MOVS, 0, ds, 0);
+    c->r[R_SI] = si0;
+    c->r[R_DI] = di0;
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += clocks;
+    near_ret(c);
+    return 1;
+}
+
 static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x4958, vgame_free_fall, "free fall", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD50A, vgame_waypoint_from_target, "waypoint from target", 1 },
@@ -2636,6 +2689,8 @@ static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xFAC1, chain_last, "last record of a chain", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0xA913, chain_last, "last record of a chain", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x826C, start_palette_bank, "copy a palette bank", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xEB10, strcat_ds, "string concatenate", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x5110, strcat_ds, "string concatenate", 1 },
 };
 
 void matched_register(void)
