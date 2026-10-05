@@ -163,6 +163,7 @@ static machine_t g_m;           /* side 1's CPU lives in a machine: matched code
 
 /* A matched routine's call into original code, run here by plain stepping:
  * the harness has no events to service. */
+static int g_lost;              /* a call into original code never came back */
 static int step_runner(machine_t *mm)
 {
     cpu_t *c = &mm->cpu;
@@ -171,6 +172,7 @@ static int step_runner(machine_t *mm)
         cpu_step(c);
         if (c->flags & F_TF) cpu_interrupt(c, 1);
     }
+    g_lost = 1;
     return RUN_SLICE;
 }
 
@@ -203,7 +205,9 @@ int main(int argc, char **argv)
     g_m.mem = g_mem[1];
     matched_runner = step_runner;
 
-    const uint16_t base = 0x1000;
+    /* Loaded at segment 0 the unrelocated image is also the relocated one:
+     * every fixup adds 0, so far calls and segment constants are right. */
+    const uint16_t base = 0;
     unsigned long long compared = 0, skipped = 0, bad = 0;
     for (unsigned mi = 0; mi < matched_count(); mi++) {
         const recomp_override *o = matched_entry(mi);
@@ -282,7 +286,11 @@ int main(int argc, char **argv)
              * game never does, and no equivalent can follow it. */
             const uint32_t self = phys(cs, ip);
             if (memcmp(g_mem[0] + self, g_pristine + self, 0x100)) { ms++; restore(); continue; }
-            if (!o->fn(&g_m)) { ms++; restore(); continue; }
+            g_lost = 0;
+            /* A state whose call into original code wanders off (a far call
+             * through a slot only the running game fills) returned on the
+             * original side by accident, not through the routine. */
+            if (!o->fn(&g_m) || g_lost) { ms++; restore(); continue; }
             mc++;
             g_cpu[1] = g_m.cpu;                /* compare() reads g_cpu[1] */
             if (compare(o->module, ((uint32_t)o->seg << 4) + ip, cs, ip, 0)) {

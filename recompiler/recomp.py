@@ -221,7 +221,8 @@ def override_sites(paths=OVERRIDE_TABLES):
     sites = {}
     for path in paths:
         try:
-            text = open(path, encoding="utf-8").read()
+            with open(path, encoding="utf-8") as f:
+                text = f.read()
         except OSError:
             continue
         for name, seg, ip in re.findall(

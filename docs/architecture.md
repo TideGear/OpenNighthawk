@@ -1091,9 +1091,20 @@ vector cosine; a scaled random number; random-times-n with two calls; the
 mission clock reader), all 177 checkpoints and the final hash
 `4481029f711b1a3e` equal the interpreter's without matched code.
 
-func_lockstep runs such calls by stepping the interpreter. A routine whose
-callee makes a far call into a relocated segment, or a BIOS call, cannot be
-followed from random states there (the harness image is unrelocated and has
-no BIOS); the harness reports it as "not testable here (routes only)" rather
-than equal, and its evidence is the routes: vector cosine ran 238,029 times
-and the clock reader once on the strike route above.
+`guest_call_far` does the same for a far `CALL ptr16:16`. It reads the
+target from the loaded instruction, so the loader's relocation is already
+in it, pushes CS and IP, and traps on the far return.
+
+func_lockstep runs such calls by stepping the interpreter. It loads each
+image at segment 0, where the unrelocated image is also the relocated one
+(every fixup adds 0), so far calls between the program's own segments are
+followed. A state counts only when every call the matched side makes comes
+back through its trap: otherwise the original side's "return" was a wild
+path, not the routine's. Some calls still cannot be followed from random
+states: a BIOS call (the harness has no BIOS), or a far call through a slot
+the running game fills (the graphics driver's jump table at 1E42:0188 holds
+`JMP FAR 0:0` in the file). The harness reports such a routine as "not
+testable here (routes only)" rather than equal, and its evidence is the
+routes. On the strike route the two sprite wrappers that call the driver ran
+5 times each, the vector cosine 238,029 times and the clock reader once,
+with all checkpoints equal to the interpreter's.

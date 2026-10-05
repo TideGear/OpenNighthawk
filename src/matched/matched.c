@@ -62,6 +62,29 @@ static int guest_call(machine_t *m, uint16_t target, uint16_t ret_ip)
     return rc == RUN_TRAP;
 }
 
+/* The same for a far CALL at CS:ins_ip (9A off seg): the target comes from
+ * the loaded code, so its segment is the relocated one. */
+static int guest_call_far(machine_t *m, uint16_t ins_ip, uint16_t ret_ip)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t cs = c->seg[S_CS];
+    const uint16_t off = seg_read16(c, cs, (uint16_t)(ins_ip + 1)), seg = seg_read16(c, cs, (uint16_t)(ins_ip + 3));
+    const uint8_t on = m->trap_on;
+    const uint16_t tcs = m->trap_cs, tip = m->trap_ip, tsp = m->trap_sp;
+    cpu_push16(c, cs);
+    cpu_push16(c, ret_ip);
+    c->seg[S_CS] = seg;
+    c->ip = off;
+    c->icount++;                                                  /* the CALL FAR */
+    m->trap_on = 1;
+    m->trap_cs = cs;
+    m->trap_ip = ret_ip;
+    m->trap_sp = (uint16_t)(c->r[R_SP] + 4);
+    const int rc = matched_runner(m);
+    m->trap_on = on; m->trap_cs = tcs; m->trap_ip = tip; m->trap_sp = tsp;
+    return rc == RUN_TRAP;
+}
+
 /* Room for n instructions before the run loop must look at events. */
 static int room(const cpu_t *c, unsigned n)
 {
@@ -2463,12 +2486,18 @@ static int chain_last(machine_t *m)
     cpu_t *c = &m->cpu;
     const uint16_t ds = c->seg[S_DS], bx = c->r[R_BX];
     const int up = !(c->flags & F_DF);
-    uint16_t si = seg_read16(c, ds, (uint16_t)(bx + 8));
+    /* Counted through the DI the routine pushes first: a chain may run
+     * over that stack word. */
+    const uint32_t stack_lo = phys(c->seg[S_SS], (uint16_t)(c->r[R_SP] - 2));
+    const uint8_t pushed[2] = { (uint8_t)c->r[R_DI], (uint8_t)(c->r[R_DI] >> 8) };
+#define PEEK16(off) (uint16_t)(peek_over(c, ds, (uint16_t)(off), stack_lo, pushed, 2) | \
+                               peek_over(c, ds, (uint16_t)((off) + 1), stack_lo, pushed, 2) << 8)
+    uint16_t si = PEEK16(bx + 8);
     unsigned clocks = 4;
-    if (si == seg_read16(c, ds, (uint16_t)(bx + 0x0A))) { si = seg_read16(c, ds, (uint16_t)(bx + 6)); clocks++; }
+    if (si == PEEK16(bx + 0x0A)) { si = PEEK16(bx + 6); clocks++; }
     unsigned steps = 0;
     for (;;) {
-        const uint16_t w = seg_read16(c, ds, si);
+        const uint16_t w = PEEK16(si);
         si = (uint16_t)(si + (up ? 2 : -2));
         clocks += 3;
         if (w == 0xFFFE) break;
@@ -2476,6 +2505,7 @@ static int chain_last(machine_t *m)
         clocks += 4;
         if (++steps > 0x4000) return 0;
     }
+#undef PEEK16
     clocks += 5;
     if (!room(c, clocks)) return 0;
     cpu_push16(c, c->r[R_DI]);
@@ -2692,6 +2722,11 @@ static int vgame_palette_step(machine_t *m)
     int clash = 0;
     for (uint32_t i = 0; i < len && !clash; i++) { const uint32_t a = phys(tgt_seg, (uint16_t)(tgt_off + i)); clash = (mark[a >> 3] >> (a & 7)) & 1; }
     for (uint32_t i = 0; i < 22 && !clash; i++) { const uint32_t a = phys(c->seg[S_SS], (uint16_t)(c->r[R_SP] - 8 + i)); clash = (mark[a >> 3] >> (a & 7)) & 1; }
+    /* The target against the four words pushed before it is read. */
+    for (uint32_t i = 0; i < 8 && !clash; i++) {
+        const uint32_t s = phys(c->seg[S_SS], (uint16_t)(c->r[R_SP] - 8 + i));
+        for (uint32_t j = 0; j < len && !clash; j++) clash = phys(tgt_seg, (uint16_t)(tgt_off + j)) == s;
+    }
     if (clash) return 0;
     unsigned clocks = 9 + 6;
     for (uint32_t i = 0; i < len; i++) {
@@ -3220,6 +3255,102 @@ static int vgame_isqrt(machine_t *m)
     return 1;
 }
 
+/* VGAME 0x01AE9 / 0x01B2E, compose_draw_sprite(x, y, size, kind): the
+ * sprite's two far-pointer words from the table at 920A/9208 (4 bytes a
+ * kind), its size less a quarter, and its top-left (centre less half the
+ * size) passed with the target page ([0344] or [4070]) to the blitter at
+ * 1E42:0188. */
+static int draw_sprite(machine_t *m, uint16_t page_at, uint16_t base)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 26)) return 0;
+    const uint16_t ss = c->seg[S_SS];
+    x86_enter(c, 2, 0);
+    const uint16_t bp = c->r[R_BP];
+#define A(o) seg_read16(c, ss, (uint16_t)(bp + (o)))
+    uint16_t bx = x86_shift(c, 4, A(0x0A), 2, 1);
+    c->r[R_BX] = bx;
+    cpu_push16(c, ds_get(c, (uint16_t)(bx - 0x6DF6)));
+    cpu_push16(c, ds_get(c, (uint16_t)(bx - 0x6DF8)));
+    uint16_t ax = x86_shift(c, 7, A(8), 2, 1);
+    ax = (uint16_t)alu_sub(c, ax, A(8), 1, 0);
+    ax = (uint16_t)alu_sub(c, 0, ax, 1, 0);
+    cpu_push16(c, ax);
+    cpu_push16(c, A(8));
+    for (int k = 0; k < 2; k++) {
+        if (k) ax = A(8);                       /* the first CWD takes the NEG's result */
+        uint16_t dx = (ax & 0x8000) ? 0xFFFF : 0;
+        ax = (uint16_t)alu_sub(c, ax, dx, 1, 0);
+        ax = x86_shift(c, 7, ax, 1, 1);
+        ax = (uint16_t)alu_sub(c, ax, A(k ? 4 : 6), 1, 0);
+        ax = (uint16_t)alu_sub(c, 0, ax, 1, 0);
+        cpu_push16(c, ax);
+        c->r[R_DX] = dx;
+    }
+#undef A
+    c->r[R_AX] = ax;
+    cpu_push16(c, ds_get(c, page_at));
+    c->icount += 25;
+    if (!guest_call_far(m, (uint16_t)(base + 0x3E), (uint16_t)(base + 0x43))) return 1;
+    if (!room(c, 2)) { c->ip = (uint16_t)(base + 0x43); return 1; }
+    x86_leave(c);
+    c->icount += 2;
+    near_ret(c);
+    return 1;
+}
+static int vgame_draw_sprite(machine_t *m) { return draw_sprite(m, 0x0344, 0x1AE9); }
+static int vgame_draw_sprite_block(machine_t *m) { return draw_sprite(m, 0x4070, 0x1B2E); }
+
+/* VGAME 0x0B792, camera_body_axis(axis, a, c, b): column `axis` of the
+ * camera matrix (words at B082/B088/B08E + 2*axis) times the vector (a, b,
+ * c), each product scaled by 104E:0000, summed in 32 bits; DX:AX. */
+static int vgame_camera_body_axis(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 8)) return 0;
+    const uint16_t ss = c->seg[S_SS];
+    x86_enter(c, 4, 0);
+    const uint16_t bp = c->r[R_BP];
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, seg_read16(c, ss, (uint16_t)(bp + 6)));
+    uint16_t bx = x86_shift(c, 4, seg_read16(c, ss, (uint16_t)(bp + 4)), 1, 1);
+    c->r[R_BX] = bx;
+    cpu_push16(c, ds_get(c, (uint16_t)(bx - 0x4F7E)));
+    c->r[R_SI] = bx;
+    c->icount += 7;
+    static const uint16_t call_at[3] = { 0xB7A5, 0xB7BA, 0xB7CF }, row[3] = { 0, 0x4F78, 0x4F72 }, argo[3] = { 0, 0x0A, 8 };
+    for (int k = 0; k < 3; k++) {
+        if (k) {
+            cpu_push16(c, seg_read16(c, ss, (uint16_t)(bp + argo[k])));
+            cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_SI] - row[k])));
+            c->icount += 2;
+        }
+        if (!guest_call_far(m, call_at[k], (uint16_t)(call_at[k] + 5))) return 1;
+        const unsigned rest = k < 2 ? 5 + 2 + 1 : 5 + 5;
+        if (!room(c, rest)) { c->ip = (uint16_t)(call_at[k] + 5); return 1; }
+        c->r[R_BX] = cpu_pop16(c);
+        c->r[R_BX] = cpu_pop16(c);
+        const uint16_t ax = c->r[R_AX], dx = (ax & 0x8000) ? 0xFFFF : 0;
+        c->r[R_DX] = dx;
+        if (!k) {
+            seg_write16(c, ss, (uint16_t)(bp - 4), ax);
+            seg_write16(c, ss, (uint16_t)(bp - 2), dx);
+        } else {
+            seg_write16(c, ss, (uint16_t)(bp - 4), (uint16_t)alu_add(c, seg_read16(c, ss, (uint16_t)(bp - 4)), ax, 1, 0));
+            seg_write16(c, ss, (uint16_t)(bp - 2),
+                        (uint16_t)alu_add(c, seg_read16(c, ss, (uint16_t)(bp - 2)), dx, 1, (c->flags & F_CF) ? 1u : 0u));
+        }
+        c->icount += 5;
+    }
+    c->r[R_AX] = seg_read16(c, ss, (uint16_t)(bp - 4));
+    c->r[R_DX] = seg_read16(c, ss, (uint16_t)(bp - 2));
+    c->r[R_SI] = cpu_pop16(c);
+    x86_leave(c);
+    c->icount += 5;
+    near_ret(c);
+    return 1;
+}
+
 static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x4958, vgame_free_fall, "free fall", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD50A, vgame_waypoint_from_target, "waypoint from target", 1 },
@@ -3365,6 +3496,9 @@ static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xC880, vgame_clock_from, "mission clock from a reading", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xC6B3, vgame_dist, "octagonal distance", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x2F5B, vgame_isqrt, "integer square root", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x1AE9, vgame_draw_sprite, "draw a sprite on the screen page", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x1B2E, vgame_draw_sprite_block, "draw a sprite on the block page", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xB792, vgame_camera_body_axis, "camera body axis", 1 },
 };
 
 void matched_register(void)
