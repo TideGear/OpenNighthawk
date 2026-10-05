@@ -140,6 +140,14 @@ def main():
         if r.returncode != 0:
             print("\n".join(l for l in r.stdout.splitlines() if "MISMATCH" in l))
             sys.exit("translated instructions differ from the interpreter")
+        print("7. every matched routine against the original")
+        exe = os.path.join(ROOT, "build", "func_lockstep.exe")
+        r = run([exe, "--states", "4000"], capture_output=True, text=True)
+        last = (r.stdout or "").strip().splitlines()[-1:] or ["(no output)"]
+        print("  " + last[0])
+        if r.returncode != 0:
+            print("\n".join(l for l in r.stdout.splitlines() if "MISMATCH" in l))
+            sys.exit("matched routines differ from the original")
     print("done: %s" % os.path.join(ROOT, "build", "f117a.exe"))
 
 
