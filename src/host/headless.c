@@ -6,6 +6,7 @@
  *           [--record FILE] [--replay FILE]
  *           [--hash-every N] [--hash-from N] [--trace FROM:TO:FILE]
  *           [--coverage FILE] [--screen FILE.ppm] [--shots EVERY:PREFIX]
+ *           [--opl-log FILE] [--midi-log FILE]
  *
  * WHEN is an absolute clock count, or PROG+N: N after the program PROG
  * (e.g. START.EXE) first starts. --type types KEYS (escapes in keys.h),
@@ -116,6 +117,12 @@ static void on_load(void *user, machine_t *m, const char *name, const uint8_t *f
 /* --opl-log: every OPL register write with its clock, for comparing the
  * music against a DOSBox raw OPL capture (tools/dosbox_compare.py). */
 static FILE *g_opl_log;
+static FILE *g_midi_log;
+static void on_midi(void *user, uint64_t icount, uint8_t byte)
+{
+    (void)user;
+    if (g_midi_log) fprintf(g_midi_log, "%llu %02X\n", (unsigned long long)icount, byte);
+}
 static void on_opl(void *user, uint64_t icount, uint8_t reg, uint8_t val)
 {
     (void)user;
@@ -137,6 +144,7 @@ int main(int argc, char **argv)
 {
     const char *data = NULL, *save = NULL, *log_path = NULL, *screen = NULL;
     const char *record = NULL, *replay = NULL, *coverage = NULL, *opl_log = NULL;
+    const char *midi_log = NULL;
     uint64_t steps = 100000000ull, ips = MACHINE_DEFAULT_IPS, hold_ms = 60;
     uint64_t time_us = 0, hash_every = 0, hash_from = 0;
     uint64_t trace_from = 0, trace_to = 0;
@@ -160,6 +168,7 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--hash-from") && v) { hash_from = strtoull(v, NULL, 0); i++; }
         else if (!strcmp(a, "--coverage") && v) { coverage = v; i++; }
         else if (!strcmp(a, "--opl-log") && v) { opl_log = v; i++; }
+        else if (!strcmp(a, "--midi-log") && v) { midi_log = v; i++; }
         else if (!strcmp(a, "--record") && v) { record = v; i++; }
         else if (!strcmp(a, "--replay") && v) { replay = v; i++; }
         else if (!strcmp(a, "--trace") && v) {
@@ -208,6 +217,11 @@ int main(int argc, char **argv)
         g_opl_log = fopen(opl_log, "w");
         if (!g_opl_log) { fprintf(stderr, "cannot write %s\n", opl_log); return 1; }
         hooks.opl_write = on_opl;
+    }
+    if (midi_log) {
+        g_midi_log = fopen(midi_log, "w");
+        if (!g_midi_log) { fprintf(stderr, "cannot write %s\n", midi_log); return 1; }
+        hooks.midi_byte = on_midi;
     }
     g_hold = ips * hold_ms / 1000ull;
     if (record) {
@@ -282,6 +296,7 @@ int main(int argc, char **argv)
     if (trace) fclose(trace);
     if (g_record) fclose(g_record);
     if (g_opl_log) fclose(g_opl_log);
+    if (g_midi_log) fclose(g_midi_log);
     double secs = (double)(clock() - t0) / CLOCKS_PER_SEC;
     printf("stopped at icount %llu (%s) after %.1f s host time, %.1f M instr/s; "
            "interpreted %llu; program %s; exit %s; final hash %016llx\n",

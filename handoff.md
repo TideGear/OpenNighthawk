@@ -121,10 +121,26 @@ routes are verified; an independent DOSBox recon flight has completed (below).
   Private career_chain.py now running exec52167/logparity-audit-career-chain-02:
   paired sorties4..10 fromactual public-thirdsave, ordinary replay+ENDkeys,
   strictbothphoto/landingparent gates,354hashes and802savecomparison eachleg.
-  Fourthrecomp passesflight andsaves717/sorties4; interp stillpending.
+  Sorties4/5/6 passbothengines: strictphotos/homeparent gates,354hashes,
+  input/CSV/result and802savebytes agree. Totals717/934/1151; rank1/1/2.
+  Seventhfailedstrictflight: rank2 changesassignment, existingrecord notvalid;
+  no careeradvancementclaim. Privatefirstseventhoutputretained (run/input logs).
   Initial harness attempt failed because instruction clock can overshoot
   sampletarget; corrected >= sampling, preservedfirstoutput.99
   sorties retire; do not synthesize near-retirement roster to claimearned.
+
+- Optional Munt integration implemented: F117R_WITH_MT32EMU OFF default;
+  enable with installedMT32EmuCMakepackage orF117R_MT32EMU_SOURCE path.
+  Separate Munt2.8.3 source atprivate munt-src, commit6e7c01fba7e1d50c8fa705834889fd0eac136075.
+  --mt32-control/--mt32-pcm userROMpair; sourcebuildsharedDLLcopiedbesideexe.
+  MIDI audio advancesonmachineclock, boundedMunt44.1k render/mixbeforeclip.
+  Headless--midi-log +audio_render--mt32 supportofflinevalidation. MissingROM,
+  incomplete/conflictingoptions, rejectedMIDI/overflow failexplicitly.
+  Enabledprivateinterpreterbuild9CTests, defaultgeneratedbuild10CTests,
+  64Python pass;7secDBOPL/Nuked308700stereoframes byteidenticalbefore/after.
+  Rolandroute26hashes/finalf075fcb3add06eb2 +13788MIDIclock/bytes equal.
+  Private munt-audit-build/results; logsparity-audit-munt-*. NoROMs available;
+  actualRolandrender/reference/listeningvalidation staysopen.
 
 - Secret-airstrip verified: strip-trial-02 normal adjusted descent aim
   completed primary4 atPGtarget24, (10497,3809), box1/nearest24, ground0,

@@ -629,4 +629,16 @@ from DOSBox flight/save/sound evidence and documents the remaining differences.
 
 ## Where this goes next
 
+The optional Munt backend is isolated in `src/host/mt32.c` and enabled with
+`F117R_WITH_MT32EMU`. It links the public C API, identifies the supplied
+control/PCM pair and fails startup on invalid ROMs. Each MPU byte first
+advances audio to its machine clock; complete messages enter Munt's MIDI
+queue. Rendering uses bounded blocks at the existing 44,100 Hz output rate,
+mixed with OPL/speaker before clipping. Queue rejection or oversized SysEx
+fails the session/render rather than silently dropping traffic.
+`f117run --midi-log` and `audio_render --mt32` provide capture and offline
+rendering without changing the DOS program. ROM-free tests cover message
+reassembly, real-time interleaving, running status, SysEx limits/recovery,
+invalid ROMs and audio chunk invariance. Rendered Roland parity needs ROMs.
+
 The open work, in order, is tracked in [roadmap.md](roadmap.md).

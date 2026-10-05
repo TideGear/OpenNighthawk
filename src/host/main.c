@@ -43,6 +43,7 @@ typedef struct {
     audio_t        *audio;
     present_frame   frame;            /* the last frame the VGA scanned out */
     int             have_frame;
+    int             audio_failed;
     midistream      midi;
     FILE           *record;           /* --record: every input as it is applied */
 #ifdef _WIN32
@@ -107,7 +108,8 @@ static void midi_send(void *user, const uint8_t *msg, size_t len)
 
 static void on_midi(void *u, uint64_t icount, uint8_t b)
 {
-    (void)u; (void)icount;
+    (void)u;
+    if (H.audio && !audio_midi_byte(H.audio, icount, b)) H.audio_failed = 1;
 #ifdef _WIN32
     midistream_byte(&H.midi, b, midi_send, NULL);
 #else
@@ -194,6 +196,7 @@ int main(int argc, char **argv)
     uint64_t time_us = 0, exit_after = 0;
     audio_opl_backend opl_backend = AUDIO_OPL_DBOPL;
     int no_record = 0;
+    const char *mt32_control = NULL, *mt32_pcm = NULL;
 
     for (int i = 1; i < argc; i++) {
         const char *a = argv[i], *v = i + 1 < argc ? argv[i + 1] : NULL;
@@ -214,6 +217,8 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--ips") && v) { ips = strtoull(v, NULL, 0); i++; }
         else if (!strcmp(a, "--scale") && v) { scale = atoi(v); i++; }
         else if (!strcmp(a, "--midi") && v) { midi_dev = atoi(v); i++; }
+        else if (!strcmp(a, "--mt32-control") && v) { mt32_control = v; i++; }
+        else if (!strcmp(a, "--mt32-pcm") && v) { mt32_pcm = v; i++; }
         else if (!strcmp(a, "--engine") && v) { engine = !strcmp(v, "interp") ? ENGINE_INTERP : ENGINE_RECOMP; i++; }
         else if (!strcmp(a, "--coverage") && v) { coverage = v; i++; }
         else if (!strcmp(a, "--fullscreen")) fullscreen = 1;
@@ -223,9 +228,14 @@ int main(int argc, char **argv)
                 "usage: f117a [--data DIR] [--save DIR] [--engine recomp|interp] [--ips N]\n"
                 "             [--scale N] [--fullscreen] [--no-aspect] [--midi N] [--log FILE]\n"
                 "             [--record FILE | --no-record] [--replay FILE] [--time-us N]\n"
-                "             [--exit-after CLOCKS] [--opl dbopl|nuked]\n");
+                "             [--exit-after CLOCKS] [--opl dbopl|nuked]\n"
+                "             [--mt32-control FILE --mt32-pcm FILE]\n");
             return 2;
         }
+    }
+    if ((mt32_control != NULL) != (mt32_pcm != NULL) || (mt32_control && midi_dev != -2)) {
+        fprintf(stderr, "Supply both --mt32-control and --mt32-pcm; choose one Roland output\n");
+        return 2;
     }
     if (!data) data = default_data_dir();
     if (!data) {
@@ -264,6 +274,13 @@ int main(int argc, char **argv)
     SDL_AudioStream *stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, NULL, NULL);
     if (stream) SDL_ResumeAudioStreamDevice(stream);
     H.audio = audio_create_backend(ips, opl_backend);
+    if (mt32_control) {
+        char error[256];
+        if (!audio_enable_mt32(H.audio, mt32_control, mt32_pcm, error, sizeof error)) {
+            fprintf(stderr, "%s\n", error);
+            audio_destroy(H.audio); SDL_Quit(); return 1;
+        }
+    }
 
 #ifdef _WIN32
     if (midi_dev != -2) {
@@ -471,7 +488,7 @@ int main(int argc, char **argv)
                 if (stream && SDL_GetAudioStreamQueued(stream) > AUDIO_RATE * 4 / 4)
                     SDL_ClearAudioStream(stream);
             }
-            if (exit_after && H.m.cpu.icount >= exit_after) running = 0;
+            if (H.audio_failed || (exit_after && H.m.cpu.icount >= exit_after)) running = 0;
         }
 
         /* Show the last frame the VGA scanned out. */
@@ -504,6 +521,7 @@ int main(int argc, char **argv)
     if (H.midi_out) { midiOutReset(H.midi_out); midiOutClose(H.midi_out); }
 #endif
     if (H.m.log) fclose(H.m.log);
+    audio_destroy(H.audio);
     SDL_Quit();
-    return 0;
+    return H.audio_failed ? 1 : 0;
 }

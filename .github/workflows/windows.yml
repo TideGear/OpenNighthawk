@@ -10,6 +10,25 @@ permissions:
   contents: read
 
 jobs:
+  munt:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: munt/munt
+          ref: 6e7c01fba7e1d50c8fa705834889fd0eac136075
+          path: .munt
+          persist-credentials: false
+      - name: Configure optional Munt build without ROMs
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DF117R_WITH_MT32EMU=ON "-DF117R_MT32EMU_SOURCE=${{ github.workspace }}/.munt/mt32emu"
+      - name: Build application, MIDI renderer and tests
+        run: cmake --build build --config Release --parallel
+      - name: ROM-free Munt and audio checks
+        run: ctest --test-dir build --build-config Release --output-on-failure
   windows:
     runs-on: windows-2022
     timeout-minutes: 20

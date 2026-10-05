@@ -178,7 +178,12 @@ never instead of parity.
       cursor changes were diagnosed as screenshot sampling aliasing.
 - [ ] **Roland through Munt** (libmt32emu, LGPL-2.1+): the MT-32 music in
       the game itself, and its output rendered and checked automatically.
-      Users supply their own MT-32 ROMs.
+      Optional integration now builds against an installed library or a
+      separate Munt source checkout. MIDI bytes advance the existing audio
+      clock; Munt is mixed at 44,100 Hz before clipping. Headless MIDI capture
+      and offline rendering are available. Default/Munt builds and MIDI
+      reassembly tests pass; existing DBOPL/Nuked PCM is unchanged. Users
+      supply their own MT-32 ROMs for synthesis/reference/listening validation.
 - [ ] **Individual mission objectives:** all nine theatres and all four
       mission categories now have flight routes (air combat, ground strike,
       and both training categories). Complete dedicated objective types,

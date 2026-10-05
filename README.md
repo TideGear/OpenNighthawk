@@ -18,8 +18,8 @@ options. Enhancements come after parity, never instead of it.
   front end (roster, pilot form, briefing, arming, hangar), takeoff, flight,
   the debriefing (END) and back to the front end. All three sound drivers
   work: AdLib (music and digitised speech through an OPL emulator), the PC
-  speaker, and Roland (MIDI sent to a Windows MIDI device; not yet listened
-  to on an MT-32).
+  speaker, and Roland (Windows MIDI or optional Munt synthesis with your
+  MT-32 ROMs; rendered Roland output still awaits ROM-based validation).
 - **Translated:** 89,276 instructions across all 17 code files and the
   LZEXE decompressor: 96% of the bytes of the code areas, and no
   untranslated stretch left that decodes as code (`tools/census.py`; the
@@ -76,8 +76,7 @@ options. Enhancements come after parity, never instead of it.
 - **Steam's release works too:** its game files are byte-identical to GOG's
   (`tools/verify_install.py`), and the app finds its install.
 - **Not yet done:** play by a person at the keyboard; full frame parity
-  with DOSBox; the Roland (MT-32) output listened to (Munt is
-  planned).
+  with DOSBox; rendered Roland (MT-32) output checked with user-supplied ROMs.
 
 How the parity claim is built and checked: [docs/architecture.md](docs/architecture.md).
 What is done and what is left: [docs/roadmap.md](docs/roadmap.md).
@@ -157,11 +156,30 @@ build\f117a.exe --data "D:\GOG\F-117A"
 | `--engine recomp\|interp` | recompiled code (default) or the reference interpreter only |
 | `--ips N` | emulated CPU speed, instructions per second (default 9,000,000: GOG DOSBox's `cycles=9000`) |
 | `--midi N` | send the Roland driver's MIDI to Windows MIDI device N (-1: the mapper) |
+| `--mt32-control FILE --mt32-pcm FILE` | render Roland through Munt using your control/PCM ROM pair (optional build); choose this or `--midi` |
 | `--opl dbopl\|nuked` | GOG DOSBox's OPL2 synthesizer (default), or Nuked OPL3 in OPL2 mode; both output at 44,100 Hz |
 | `--scale N`, `--fullscreen`, `--no-aspect` | window size; fullscreen; square pixels instead of 4:3 |
 
 The game asks its original SETUP questions at each start (joystick, sound
-card), as it did in 1991. Answer 2 for AdLib, or 3 for Roland with `--midi`.
+card), as it did in 1991. Answer 2 for AdLib, or 3 for Roland with `--midi`
+or the Munt ROM options.
+
+Munt is optional and no ROMs are included. Build against an installed
+[libmt32emu](https://github.com/munt/munt/tree/master/mt32emu) CMake package
+with `-DF117R_WITH_MT32EMU=ON`, or also pass
+`-DF117R_MT32EMU_SOURCE=C:/path/to/munt/mt32emu` for a separate source checkout.
+The source build uses a shared library, copied beside the Windows executables.
+Munt is LGPL-2.1-or-later; its source and license remain in that checkout.
+Version 2.8.3 at commit `6e7c01fba7e1d50c8fa705834889fd0eac136075` was built
+and checked without ROMs. Invalid or missing ROMs fail explicitly; synthesized
+Roland PCM and listening checks remain open.
+
+For offline validation, `f117run --midi-log FILE` records each MPU byte with
+its instruction clock. Render that log through the same audio path:
+
+```bat
+build\audio_render.exe midi.log roland.wav 9000000 1300000000 --mt32 "C:\ROMs\CONTROL.ROM" "C:\ROMs\PCM.ROM"
+```
 
 Host keys (chosen so as not to collide with the game's):
 

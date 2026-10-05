@@ -48,10 +48,16 @@ int main(void)
         audio_destroy(a); audio_destroy(b);
     }
     audio_t *a = audio_create(AUDIO_RATE); CHECK(a);
+    char error[256];
+    CHECK(!audio_enable_mt32(a, "missing-control.rom", "missing-pcm.rom", error, sizeof error));
+    CHECK(error[0]);
+    audio_midi_byte(a, 1000, 0x90);  /* Disabled backend leaves the audio clock alone. */
     machine_t *m = (machine_t *)calloc(1, sizeof *m); CHECK(m);
     m->port61 = 3; m->pit[2].mode = 3; m->pit[2].reload = 1193;
     audio_speaker(a, m, 0); audio_advance(a, 4096);
     CHECK(audio_take(a, x, 4096) == 4096);
+    CHECK(!audio_enable_mt32(a, "missing-control.rom", "missing-pcm.rom", error, sizeof error));
+    CHECK(strstr(error, "before audio rendering"));
     int positive = 0, negative = 0;
     for (int i = 0; i < 8192; ++i) { positive |= x[i] > 0; negative |= x[i] < 0; }
     CHECK(positive && negative);

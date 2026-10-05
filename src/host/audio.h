@@ -1,4 +1,4 @@
-/* audio.h - the AdLib and the PC speaker, rendered on the machine's clock.
+/* audio.h - AdLib, PC speaker and optional Munt on the machine's clock.
  *
  * Every register write and speaker change arrives with the icount it
  * happened at. Rendering advances to that moment before applying it, so a
@@ -25,6 +25,11 @@ audio_t *audio_create_backend(uint64_t ips, audio_opl_backend backend);
 void     audio_destroy(audio_t *a);
 void     audio_opl_write(audio_t *a, uint64_t icount, uint8_t reg, uint8_t val);
 void     audio_speaker(audio_t *a, const machine_t *m, uint64_t icount);
+/* Enable before rendering starts. Returns zero with a diagnostic on failure. */
+int      audio_enable_mt32(audio_t *a, const char *control, const char *pcm,
+                           char *error, size_t error_size);
+/* Returns zero if the enabled backend rejects a message. */
+int      audio_midi_byte(audio_t *a, uint64_t icount, uint8_t byte);
 /* Render everything up to icount into the internal buffer. */
 void     audio_advance(audio_t *a, uint64_t icount);
 /* Take rendered frames (stereo pairs); returns how many. */

@@ -3,6 +3,7 @@
 #include "opl3.h"
 #include "dbopl_bridge.h"
 #include "audio_mix.h"
+#include "mt32.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -19,6 +20,7 @@ typedef struct {
 struct audio {
     opl3_chip opl;
     dbopl_t *dbopl;
+    mt32_t *mt32;
     int32_t opl_last[2];
     uint64_t ips;
     uint64_t done;                        /* samples rendered so far */
@@ -53,7 +55,7 @@ audio_t *audio_create_backend(uint64_t ips, audio_opl_backend backend)
 
 void audio_destroy(audio_t *a)
 {
-    if (a) dbopl_destroy(a->dbopl);
+    if (a) { dbopl_destroy(a->dbopl); mt32_destroy(a->mt32); }
     free(a);
 }
 
@@ -75,37 +77,47 @@ static int speaker_level(const spk_state *s, uint64_t sample)
     }
 }
 
+static void render_frame(audio_t *a, int16_t roland_left, int16_t roland_right)
+{
+    int32_t s[2];
+    if (a->dbopl) {
+        dbopl_generate(a->dbopl, s, 1);
+        s[1] = s[0];
+    } else {
+        int16_t pair[2];
+        OPL3_GenerateResampled(&a->opl, pair);
+        s[0] = pair[0]; s[1] = pair[1];
+    }
+    /* The speaker, through a gentle DC blocker so a held level decays
+     * to silence as the real cone does. */
+    float v = speaker_level(&a->spk, a->done) && (a->spk.port61 & 2) ? 6000.0f : 0.0f;
+    a->spk_dc += (v - a->spk_dc) * 0.0005f;
+    float sp = (a->spk.port61 & 2) ? v - a->spk_dc : 0.0f;
+    /* GOG DOSBox's AdLib mixer channel uses SetScale(2.0). Apply its
+     * gain before mixing the separately driven speaker and clipping. */
+    int l = 2 * opl_mixer_sample(s[0], &a->opl_last[0]) + (int)sp;
+    int r = 2 * opl_mixer_sample(s[1], &a->opl_last[1]) + (int)sp;
+    l += roland_left; r += roland_right;
+    if (l > 32767) l = 32767;
+    if (l < -32768) l = -32768;
+    if (r > 32767) r = 32767;
+    if (r < -32768) r = -32768;
+    size_t at = (a->head + a->count) % BUF_FRAMES;
+    a->buf[at * 2] = (int16_t)l;
+    a->buf[at * 2 + 1] = (int16_t)r;
+    if (a->count < BUF_FRAMES) a->count++;
+    else a->head = (a->head + 1) % BUF_FRAMES;   /* overrun: drop the oldest */
+    a->done++;
+}
+
 static void render_to(audio_t *a, uint64_t target)
 {
     while (a->done < target) {
-        int32_t s[2];
-        if (a->dbopl) {
-            dbopl_generate(a->dbopl, s, 1);
-            s[1] = s[0];
-        } else {
-            int16_t pair[2];
-            OPL3_GenerateResampled(&a->opl, pair);
-            s[0] = pair[0]; s[1] = pair[1];
-        }
-        /* The speaker, through a gentle DC blocker so a held level decays
-         * to silence as the real cone does. */
-        float v = speaker_level(&a->spk, a->done) && (a->spk.port61 & 2) ? 6000.0f : 0.0f;
-        a->spk_dc += (v - a->spk_dc) * 0.0005f;
-        float sp = (a->spk.port61 & 2) ? v - a->spk_dc : 0.0f;
-        /* GOG DOSBox's AdLib mixer channel uses SetScale(2.0). Apply its
-         * gain before mixing the separately driven speaker and clipping. */
-        int l = 2 * opl_mixer_sample(s[0], &a->opl_last[0]) + (int)sp;
-        int r = 2 * opl_mixer_sample(s[1], &a->opl_last[1]) + (int)sp;
-        if (l > 32767) l = 32767;
-        if (l < -32768) l = -32768;
-        if (r > 32767) r = 32767;
-        if (r < -32768) r = -32768;
-        size_t at = (a->head + a->count) % BUF_FRAMES;
-        a->buf[at * 2] = (int16_t)l;
-        a->buf[at * 2 + 1] = (int16_t)r;
-        if (a->count < BUF_FRAMES) a->count++;
-        else a->head = (a->head + 1) % BUF_FRAMES;   /* overrun: drop the oldest */
-        a->done++;
+        unsigned frames = (unsigned)(target - a->done > 256 ? 256 : target - a->done);
+        int16_t roland[512] = { 0 };
+        if (a->mt32) mt32_render(a->mt32, roland, frames);
+        for (unsigned frame = 0; frame < frames; ++frame)
+            render_frame(a, roland[frame * 2], roland[frame * 2 + 1]);
     }
 }
 
@@ -119,6 +131,29 @@ void audio_opl_write(audio_t *a, uint64_t icount, uint8_t reg, uint8_t val)
     audio_advance(a, icount);
     if (a->dbopl) dbopl_write(a->dbopl, reg, val);
     else OPL3_WriteReg(&a->opl, reg, val);
+}
+
+int audio_enable_mt32(audio_t *a, const char *control, const char *pcm,
+                       char *error, size_t error_size)
+{
+    if (!a || a->done || a->mt32) {
+        if (error && error_size) {
+            const char *reason = "Munt must be enabled once before audio rendering starts";
+            size_t n = strlen(reason);
+            if (n >= error_size) n = error_size - 1;
+            memcpy(error, reason, n); error[n] = 0;
+        }
+        return 0;
+    }
+    a->mt32 = mt32_create(control, pcm, AUDIO_RATE, error, error_size);
+    return a->mt32 != NULL;
+}
+
+int audio_midi_byte(audio_t *a, uint64_t icount, uint8_t byte)
+{
+    if (!a || !a->mt32) return 1;
+    audio_advance(a, icount);
+    return mt32_byte(a->mt32, byte);
 }
 
 void audio_speaker(audio_t *a, const machine_t *m, uint64_t icount)

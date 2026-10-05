@@ -171,6 +171,19 @@ remain unmatched, all for a single sample. The end transition is about
 571 ms later here. Neither difference is dismissed as a pass.
 
 **Sound:** `audio_render` uses the application's actual audio implementation;
+
+Optional Munt integration now builds using libmt32emu 2.8.3, commit
+`6e7c01fba7e1d50c8fa705834889fd0eac136075`, from a separate source checkout.
+The enabled interpreter build passes nine ROM-free CTests; the default
+generated build passes ten, plus all 64 Python regressions. Missing ROMs and
+conflicting/incomplete output options fail explicitly. MIDI stream tests cover
+running status, real-time interleaving, bounded SysEx and recovery. The Roland
+boot route's 26 checkpoints/final agree, hash `f075fcb3add06eb2`; all 13,788
+captured clock/byte records match. A seven-second tone render retains all
+308,700 stereo frames byte-for-byte under both DBOPL and Nuked. Headless MIDI
+capture and offline Munt rendering are available, but no Roland PCM or
+listening success is claimed without the user-supplied ROMs.
+
 `tools/audio_compare.py` extracts PCM from the DOSBox AVI and aligns RMS
 envelopes. Over approximately 130.75 seconds, reference RMS is 0.100150 and
 our corrected RMS is 0.100761, a difference of about 0.6%. Before the gain
