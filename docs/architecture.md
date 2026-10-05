@@ -1100,7 +1100,10 @@ image at segment 0, where the unrelocated image is also the relocated one
 (every fixup adds 0), so far calls between the program's own segments are
 followed. A state counts only when every call the matched side makes comes
 back through its trap: otherwise the original side's "return" was a wild
-path, not the routine's. Some calls still cannot be followed from random
+path, not the routine's. When a matched routine runs out of room after a
+call and leaves the machine partway through it, the harness steps the
+original code on to the routine's return, as the run loop would, and then
+compares; the summary counts these states. Some calls still cannot be followed from random
 states: a BIOS call (the harness has no BIOS), or a far call through a slot
 the running game fills (the graphics driver's jump table at 1E42:0188 holds
 `JMP FAR 0:0` in the file). The harness reports such a routine as "not

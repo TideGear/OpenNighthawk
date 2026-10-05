@@ -3351,6 +3351,159 @@ static int vgame_camera_body_axis(machine_t *m)
     return 1;
 }
 
+/* VGAME 0x0B7E6, camera_relative_depth(a, b, c, d, e, f): the depth of one
+ * point from another - the matrix column at 49C2/49C8/49CE times
+ * (d - a, (c - f) >> 5, b - e), each product scaled by 104E:0000, summed in
+ * 32 bits and shifted right 3 (0x0EF74) - stored at [DEBE] and returned in
+ * AX. */
+static int vgame_camera_relative_depth(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 15)) return 0;
+    const uint16_t ss = c->seg[S_SS];
+    x86_enter(c, 0x0A, 0);
+    const uint16_t bp = c->r[R_BP];
+#define A(o) seg_read16(c, ss, (uint16_t)(bp + (o)))
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_SI]);
+    const uint16_t ax = (uint16_t)alu_sub(c, A(6), A(0x0C), 1, 0);
+    uint16_t cx = (uint16_t)alu_sub(c, A(8), A(0x0E), 1, 0);
+    cx = x86_shift(c, 7, cx, 5, 1);
+    const uint16_t dx = (uint16_t)alu_sub(c, A(0x0A), A(4), 1, 0);
+#undef A
+    c->r[R_AX] = ax; c->r[R_CX] = cx; c->r[R_DX] = dx;
+    c->r[R_SI] = ax; c->r[R_DI] = cx;
+    static const uint16_t call_at[3] = { 0xB80A, 0xB81D, 0xB830 }, row[3] = { 0x49C2, 0x49C8, 0x49CE };
+    cpu_push16(c, dx);
+    cpu_push16(c, ds_get(c, row[0]));
+    c->icount += 14;
+    for (int k = 0; k < 3; k++) {
+        if (!guest_call_far(m, call_at[k], (uint16_t)(call_at[k] + 5))) return 1;
+        if (!room(c, k < 2 ? 8 : 9)) { c->ip = (uint16_t)(call_at[k] + 5); return 1; }
+        c->r[R_BX] = cpu_pop16(c);
+        c->r[R_BX] = cpu_pop16(c);
+        const uint16_t p = c->r[R_AX], ph = (p & 0x8000) ? 0xFFFF : 0;
+        c->r[R_DX] = ph;
+        if (!k) {
+            seg_write16(c, ss, (uint16_t)(bp - 0x0A), p);
+            seg_write16(c, ss, (uint16_t)(bp - 8), ph);
+        } else {
+            seg_write16(c, ss, (uint16_t)(bp - 0x0A), (uint16_t)alu_add(c, seg_read16(c, ss, (uint16_t)(bp - 0x0A)), p, 1, 0));
+            seg_write16(c, ss, (uint16_t)(bp - 8),
+                        (uint16_t)alu_add(c, seg_read16(c, ss, (uint16_t)(bp - 8)), ph, 1, (c->flags & F_CF) ? 1u : 0u));
+        }
+        c->icount += 5;
+        if (k < 2) {                                /* the next term: DI, then SI, as pushed */
+            cpu_push16(c, k ? c->r[R_SI] : c->r[R_DI]);
+            cpu_push16(c, ds_get(c, row[k + 1]));
+            c->icount += 2;
+        }
+    }
+    c->r[R_AX] = seg_read16(c, ss, (uint16_t)(bp - 0x0A));
+    c->r[R_DX] = seg_read16(c, ss, (uint16_t)(bp - 8));
+    set_r8(c, R_CL, 3);
+    c->icount += 3;
+    if (!guest_call(m, 0xEF74, 0xB849)) return 1;
+    if (!room(c, 5)) { c->ip = 0xB849; return 1; }
+    ds_put(c, 0xDEBE, c->r[R_AX]);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    x86_leave(c);
+    c->icount += 5;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 1452:021B, camera_matrix_multiply(row, matrix), far: the 3-vector
+ * of fixed-point words at DS:row becomes row x matrix (3x3 words at
+ * DS:matrix), each element the high words of its three products summed and
+ * doubled - written back in place, element by element, as the original
+ * does (the first product's high word stands in the element while the
+ * other two are added). */
+static int vgame_camera_matrix_multiply(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 49)) return 0;
+    const uint16_t ds = c->seg[S_DS];
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->r[R_DI]);
+    const uint16_t si = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 6));
+    const uint16_t di = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 8));
+    c->r[R_SI] = si; c->r[R_DI] = di;
+#define W(b, o) seg_read16(c, ds, (uint16_t)((b) + (o)))
+    const uint16_t x = W(si, 0), y = W(si, 2), z = W(si, 4);
+    c->r[R_BX] = x; c->r[R_CX] = y; c->r[R_BP] = z;
+    for (int k = 0; k < 3; k++) {
+        c->r[R_AX] = x;
+        x86_imul16(c, W(di, 2 * k));
+        seg_write16(c, ds, (uint16_t)(si + 2 * k), c->r[R_DX]);
+    }
+    for (int k = 0; k < 3; k++) {
+        c->r[R_AX] = y;
+        x86_imul16(c, W(di, 6 + 2 * k));
+        uint16_t bx = c->r[R_DX];
+        c->r[R_AX] = z;
+        x86_imul16(c, W(di, 0x0C + 2 * k));
+        bx = (uint16_t)alu_add(c, bx, c->r[R_DX], 1, 0);
+        bx = (uint16_t)alu_add(c, bx, W(si, 2 * k), 1, 0);
+        bx = x86_shift(c, 4, bx, 1, 1);
+        seg_write16(c, ds, (uint16_t)(si + 2 * k), bx);
+        c->r[R_BX] = bx;
+    }
+#undef W
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 49;
+    far_ret(c);
+    return 1;
+}
+
+/* VGAME 1452:0330, camera_vec3_by_matrix32(vec, matrix, out), far: the
+ * 3-vector of words at DS:vec times the 3x3 matrix of words at DS:matrix,
+ * as three 32-bit sums of products at DS:out, built in place in the
+ * original's order. */
+static int vgame_camera_vec3_by_matrix32(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 51)) return 0;
+    const uint16_t ds = c->seg[S_DS], ss = c->seg[S_SS];
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->r[R_DI]);
+    const uint16_t bp = c->r[R_BP];
+    const uint16_t vec = seg_read16(c, ss, (uint16_t)(bp + 6));
+    const uint16_t di = seg_read16(c, ss, (uint16_t)(bp + 8));
+#define W(b, o) seg_read16(c, ds, (uint16_t)((b) + (o)))
+    const uint16_t v[3] = { W(vec, 0), W(vec, 2), W(vec, 4) };
+    const uint16_t si = seg_read16(c, ss, (uint16_t)(bp + 0x0A));
+    c->r[R_SI] = si; c->r[R_DI] = di;
+    c->r[R_BX] = v[0]; c->r[R_CX] = v[1]; c->r[R_BP] = v[2];
+    for (int r = 0; r < 3; r++)
+        for (int k = 0; k < 3; k++) {
+            c->r[R_AX] = v[r];
+            x86_imul16(c, W(di, 6 * r + 2 * k));
+            const uint16_t lo = (uint16_t)(si + 4 * k), hi = (uint16_t)(si + 4 * k + 2);
+            if (!r) {
+                seg_write16(c, ds, lo, c->r[R_AX]);
+                seg_write16(c, ds, hi, c->r[R_DX]);
+            } else {
+                seg_write16(c, ds, lo, (uint16_t)alu_add(c, W(lo, 0), c->r[R_AX], 1, 0));
+                seg_write16(c, ds, hi, (uint16_t)alu_add(c, W(hi, 0), c->r[R_DX], 1, (c->flags & F_CF) ? 1u : 0u));
+            }
+        }
+#undef W
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 51;
+    far_ret(c);
+    return 1;
+}
+
 static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x4958, vgame_free_fall, "free fall", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD50A, vgame_waypoint_from_target, "waypoint from target", 1 },
@@ -3499,6 +3652,9 @@ static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x1AE9, vgame_draw_sprite, "draw a sprite on the screen page", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x1B2E, vgame_draw_sprite_block, "draw a sprite on the block page", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xB792, vgame_camera_body_axis, "camera body axis", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xB7E6, vgame_camera_relative_depth, "camera relative depth", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1452, 0x021B, vgame_camera_matrix_multiply, "row times the camera matrix", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1452, 0x0330, vgame_camera_vec3_by_matrix32, "vector times a matrix, 32-bit", 2 },
 };
 
 void matched_register(void)

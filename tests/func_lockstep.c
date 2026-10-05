@@ -163,6 +163,22 @@ static machine_t g_m;           /* side 1's CPU lives in a machine: matched code
 
 /* A matched routine's call into original code, run here by plain stepping:
  * the harness has no events to service. */
+/* Step until the routine's own RET (near, or far) taken with SP at entry_sp. */
+static int run_to_ret(cpu_t *a, uint16_t entry_sp, int far, int *steps)
+{
+    while (*steps < 100000) {
+        const uint8_t op = a->mem[phys(a->seg[S_CS], a->ip)];
+        const uint16_t sp_before = a->r[R_SP];
+        cpu_step(a);
+        if (a->flags & F_TF) cpu_interrupt(a, 1);
+        ++*steps;
+        const int is_ret = far ? (op == 0xCB || op == 0xCA) : (op == 0xC3 || op == 0xC2);
+        if (is_ret && sp_before == entry_sp) return 1;
+    }
+    return 0;
+}
+
+static unsigned long long g_finished;   /* states the original code finished */
 static int g_lost;              /* a call into original code never came back */
 static int step_runner(machine_t *mm)
 {
@@ -254,8 +270,9 @@ int main(int argc, char **argv)
                 seg_write16(c, c->seg[S_SS], c->r[R_SP], back);    /* the caller's return address */
                 /* Half the states put small arguments above it: random words
                  * almost never reach a routine's edge cases (zero, -1, 1). */
+                const uint16_t args = o->matched == 2 ? 4 : 2;     /* above IP, and CS when far */
                 for (int a = 0; a < 4 && (s & 2); a++)
-                    seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_SP] + 2 + 2 * a), small[a]);
+                    seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_SP] + args + 2 * a), small[a]);
                 c->stop_at = c->icount + 100000;
             }
             int steps = 0;
@@ -264,16 +281,7 @@ int main(int argc, char **argv)
              * one taken with the stack back at the caller's level - and
              * accept the state only when it returns to the pushed address. */
             const uint16_t entry_sp = (uint16_t)(r[R_SP] - (o->matched == 2 ? 4 : 2));
-            int returned = 0;
-            while (steps < 100000) {
-                const uint8_t op = a->mem[phys(a->seg[S_CS], a->ip)];
-                const uint16_t sp_before = a->r[R_SP];
-                cpu_step(a);
-                if (a->flags & F_TF) cpu_interrupt(a, 1);
-                steps++;
-                const int is_ret = o->matched == 2 ? (op == 0xCB || op == 0xCA) : (op == 0xC3 || op == 0xC2);
-                if (is_ret && sp_before == entry_sp) { returned = 1; break; }
-            }
+            const int returned = run_to_ret(a, entry_sp, o->matched == 2, &steps);
             if (!returned || a->seg[S_CS] != cs || a->ip != back) steps = 100000;
             g_side[0].overflow = g_side[1].overflow = 1;      /* compare all memory */
             /* A real return lands back at the caller's stack level (RET n
@@ -291,6 +299,14 @@ int main(int argc, char **argv)
              * through a slot only the running game fills) returned on the
              * original side by accident, not through the routine. */
             if (!o->fn(&g_m) || g_lost) { ms++; restore(); continue; }
+            /* A routine that ran out of room after a call returns with the
+             * machine partway through it, as the original would be; the run
+             * loop then finishes it with the original code, and so does this. */
+            if (g_m.cpu.seg[S_CS] != cs || g_m.cpu.ip != back) {
+                int more = 0;
+                if (!run_to_ret(&g_m.cpu, entry_sp, o->matched == 2, &more)) { ms++; restore(); continue; }
+                g_finished++;
+            }
             mc++;
             g_cpu[1] = g_m.cpu;                /* compare() reads g_cpu[1] */
             if (compare(o->module, ((uint32_t)o->seg << 4) + ip, cs, ip, 0)) {
@@ -314,7 +330,7 @@ int main(int argc, char **argv)
                o->what, mc, ms, mb ? "MISMATCH" : mc ? "equal" : "not testable here (routes only)");
         compared += mc; skipped += ms; bad += mb;
     }
-    printf("matched routines: %u, %llu states compared, %llu skipped, %llu mismatching\n",
-           matched_count(), compared, skipped, bad);
+    printf("matched routines: %u, %llu states compared (%llu finished by the original code), %llu skipped, %llu mismatching\n",
+           matched_count(), compared, g_finished, skipped, bad);
     return bad ? 1 : 0;
 }
