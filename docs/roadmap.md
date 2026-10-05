@@ -396,7 +396,7 @@ never instead of parity.
       Matched routines have a path now: `src/matched/matched.c`, placed for
       the recompiled engine only, held to the original by
       `tests/func_lockstep.c` from random states and by every route.
-      134 matched addresses in all seven programs (free fall, waypoint, orientation
+      140 matched addresses in all seven programs, including routines that call original code (free fall, waypoint, orientation
       transpose, sign, abs, clamps, 32-bit shifts and multiply, table sine,
       clipping outcode, map projections, weapon effectiveness, setters,
       string and block copies); the strike route runs 38

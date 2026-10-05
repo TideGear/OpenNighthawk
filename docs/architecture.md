@@ -1065,3 +1065,35 @@ speaker channel), but no independent DOSBox flight reference or subjective
 listening verdict has been recorded.
 
 The open work, in order, is tracked in [roadmap.md](roadmap.md).
+
+### Matched routines that call original code
+
+Most of the original's bytes are in routines that call others, so a matched
+routine can call into original code: `guest_call` in matched.c pushes the
+original return address, points CS:IP at the callee and runs the machine
+(`machine_run` up to the current run's limit) until a return trap fires -
+`trap_cs:trap_ip` with SP back at the caller's level, checked at every
+dispatch in both engines' loops. The callee may be translated, interpreted
+or matched itself; interrupts, timers and events are serviced normally
+while it runs.
+
+A matched routine cannot be paused in the middle of its C, but the run loop
+must still stop at exact instruction counts (checkpoints, frames). So the
+guest state at every call must be the original's, stack frame included. If
+the nested run reaches the outer run's limit before the callee returns, the
+matched routine simply returns: the machine is inside the callee as the
+original would be, and when the callee returns the original code after the
+call finishes the routine. Likewise, if the code after a call would not fit
+before the next event, the routine sets IP to the original instruction
+after the call and returns. On the strike route, with six such routines
+running (far sine and cosine, which in turn call the matched table sine;
+vector cosine; a scaled random number; random-times-n with two calls; the
+mission clock reader), all 177 checkpoints and the final hash
+`4481029f711b1a3e` equal the interpreter's without matched code.
+
+func_lockstep runs such calls by stepping the interpreter. A routine whose
+callee makes a far call into a relocated segment, or a BIOS call, cannot be
+followed from random states there (the harness image is unrelocated and has
+no BIOS); the harness reports it as "not testable here (routes only)" rather
+than equal, and its evidence is the routes: vector cosine ran 238,029 times
+and the clock reader once on the strike route above.
