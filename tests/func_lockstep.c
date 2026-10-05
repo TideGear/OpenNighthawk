@@ -238,11 +238,20 @@ int main(int argc, char **argv)
             }
             int steps = 0;
             cpu_t *a = &g_cpu[0];
-            while (!(a->seg[S_CS] == cs && a->ip == back) && steps < 100000) {
+            /* Run the original until the routine's own near RET - the first
+             * one taken with the stack back at the caller's level - and
+             * accept the state only when it returns to the pushed address. */
+            const uint16_t entry_sp = (uint16_t)(r[R_SP] - 2);
+            int returned = 0;
+            while (steps < 100000) {
+                const uint8_t op = a->mem[phys(a->seg[S_CS], a->ip)];
+                const uint16_t sp_before = a->r[R_SP];
                 cpu_step(a);
                 if (a->flags & F_TF) cpu_interrupt(a, 1);
                 steps++;
+                if ((op == 0xC3 || op == 0xC2) && sp_before == entry_sp) { returned = 1; break; }
             }
+            if (!returned || a->seg[S_CS] != cs || a->ip != back) steps = 100000;
             g_side[0].overflow = g_side[1].overflow = 1;      /* compare all memory */
             /* A real return lands back at the caller's stack level (RET n
              * pops at most a few words); a wild jump that happens to reach
@@ -257,7 +266,20 @@ int main(int argc, char **argv)
             if (!o->fn(&g_m)) { ms++; restore(); continue; }
             mc++;
             g_cpu[1] = g_m.cpu;                /* compare() reads g_cpu[1] */
-            if (compare(o->module, ((uint32_t)o->seg << 4) + ip, cs, ip, 0)) mb++;
+            if (compare(o->module, ((uint32_t)o->seg << 4) + ip, cs, ip, 0)) {
+                mb++;
+                if (g_verbose) {
+                    printf("    state: AX %04X CX %04X DX %04X BX %04X SP %04X BP %04X SI %04X DI %04X"
+                           " DS %04X ES %04X SS %04X flags %04X, %d steps\n",
+                           r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], seg[S_DS], seg[S_ES], seg[S_SS], flags, steps);
+                    for (int k = 0; k < 2; k++) {
+                        const cpu_t *x = &g_cpu[k];
+                        printf("    %s: AX %04X CX %04X DX %04X BX %04X SP %04X BP %04X SI %04X DI %04X IP %04X flags %04X\n",
+                               k ? "matched " : "original", x->r[0], x->r[1], x->r[2], x->r[3], x->r[4], x->r[5],
+                               x->r[6], x->r[7], x->ip, x->flags);
+                    }
+                }
+            }
             restore();
             if (mb) break;
         }

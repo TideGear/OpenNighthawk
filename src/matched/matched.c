@@ -359,7 +359,7 @@ static unsigned rep_string(cpu_t *c, int op, int w16, uint16_t src_seg, int repn
 }
 
 /* VGAME 0x0EE1A, start the mission clock: [929E] = t, [92A0] = 0. */
-static int vgame_set_mission_clock(machine_t *m)
+static int set_word_pair(machine_t *m, uint16_t at)
 {
     cpu_t *c = &m->cpu;
     if (!room(c, 7)) return 0;
@@ -367,13 +367,15 @@ static int vgame_set_mission_clock(machine_t *m)
     cpu_push16(c, c->r[R_BP]);
     c->r[R_BP] = c->r[R_SP];
     c->r[R_AX] = t;
-    ds_put(c, 0x929E, t);
-    ds_put(c, 0x92A0, 0);
+    ds_put(c, at, t);
+    ds_put(c, (uint16_t)(at + 2), 0);
     c->r[R_BP] = cpu_pop16(c);
     c->icount += 7;
     near_ret(c);
     return 1;
 }
+static int vgame_set_mission_clock(machine_t *m) { return set_word_pair(m, 0x929E); }
+static int start_set_word_pair(machine_t *m) { return set_word_pair(m, 0xAE8C); }
 
 /* VGAME 0x0D9E7, set the scene walk's origin: [49AC..49B0] = x, y, z. */
 static int vgame_set_scene_origin(machine_t *m)
@@ -802,11 +804,11 @@ static int vgame_unhook_int0(machine_t *m)
 
 /* VGAME 0x0F79D: CL = 1 when bit 7 of (CX & ~[9264]) is clear, else 0;
  * AX that masked value, CH 0. */
-static int vgame_mask_test(machine_t *m)
+static int mask_test(machine_t *m, uint16_t at)
 {
     cpu_t *c = &m->cpu;
     if (!room(c, 8)) return 0;
-    const uint16_t ax = (uint16_t)alu_logic(c, (uint16_t)(~ds_get(c, 0x9264) & c->r[R_CX]), 1);
+    const uint16_t ax = (uint16_t)alu_logic(c, (uint16_t)(~ds_get(c, at) & c->r[R_CX]), 1);
     c->r[R_AX] = ax;
     c->r[R_CX] = (uint16_t)alu_logic(c, 0, 1);                    /* xor cx, cx */
     alu_logic(c, ax & 0x80, 0);                                   /* test al, 80h */
@@ -816,6 +818,8 @@ static int vgame_mask_test(machine_t *m)
     near_ret(c);
     return 1;
 }
+static int vgame_mask_test(machine_t *m) { return mask_test(m, 0x9264); }
+static int start_mask_test(machine_t *m) { return mask_test(m, 0xAE54); }
 
 /* VGAME 1058:0C9F: copy the axis word at [SI+2CCA] into its three
  * derived slots ([SI+2CB2], [SI+2CA2], [SI+2CAA]). AX preserved. */
@@ -1934,6 +1938,190 @@ static int vgame_frame_trail(machine_t *m)
     return 1;
 }
 
+/* START 0x039B3 / 0x039D5: order the word pair at p and p+4 (unsigned),
+ * larger first or smaller first, swapping through a stack local. */
+static int order_pair(machine_t *m, int larger_first)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 15)) return 0;
+    const uint16_t ds = c->seg[S_DS], ss = c->seg[S_SS];
+    const uint16_t p = arg(c, 0);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_SP] = (uint16_t)(c->r[R_SP] - 2);
+    const uint16_t bp = c->r[R_BP];
+    c->r[R_BX] = p;
+    uint16_t ax = seg_read16(c, ds, p);
+    alu_sub(c, seg_read16(c, ds, (uint16_t)(p + 4)), ax, 1, 0);
+    const int keep = larger_first ? x86_cond(c, 0x6) : !(c->flags & F_CF);   /* jbe / jae */
+    unsigned n = 10;
+    if (!keep) {
+        seg_write16(c, ss, (uint16_t)(bp - 2), ax);
+        ax = seg_read16(c, ds, (uint16_t)(p + 4));
+        seg_write16(c, ds, p, ax);
+        ax = seg_read16(c, ss, (uint16_t)(bp - 2));
+        seg_write16(c, ds, (uint16_t)(p + 4), ax);
+        n = 15;
+    }
+    c->r[R_AX] = ax;
+    c->r[R_SP] = bp;
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += n;
+    near_ret(c);
+    return 1;
+}
+static int start_order_desc(machine_t *m) { return order_pair(m, 1); }
+static int start_order_asc(machine_t *m) { return order_pair(m, 0); }
+
+/* START 0x0851A: copy 20 words from a far pointer to DS:6982. */
+static int start_load_record(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 33)) return 0;
+    const uint16_t ss = c->seg[S_SS];
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    const uint16_t bp = c->r[R_BP];
+    cpu_push16(c, c->seg[S_ES]);
+    cpu_push16(c, c->seg[S_DS]);
+    cpu_push16(c, c->seg[S_DS]);                                  /* push ds / pop es */
+    c->seg[S_ES] = cpu_pop16(c);
+    c->r[R_SI] = seg_read16(c, ss, (uint16_t)(bp + 4));           /* lds si, [bp+4] */
+    c->seg[S_DS] = seg_read16(c, ss, (uint16_t)(bp + 6));
+    c->r[R_CX] = 0x14;
+    c->r[R_DI] = 0x6982;
+    rep_string(c, STR_MOVS, 1, c->seg[S_DS], 0);
+    c->seg[S_DS] = cpu_pop16(c);
+    c->seg[S_ES] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 33;
+    near_ret(c);
+    return 1;
+}
+
+/* START 0x08530: AX = byte [69B6] for a zero argument, else [69B7]. */
+static int start_pick_byte(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 9)) return 0;
+    const uint16_t v = arg(c, 0);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+    alu_logic(c, v & 0xFF, 0);                                    /* test byte [bp+4], FFh */
+    const int zero = (c->flags & F_ZF) != 0;
+    c->r[R_AX] = mem_read8(c, phys(c->seg[S_DS], zero ? 0x69B6 : 0x69B7));
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += zero ? 9 : 8;
+    near_ret(c);
+    return 1;
+}
+
+/* START 0x08B3E memset(p, 0, n) and 0x08B6C memcpy(src, dst, n) within DS,
+ * by REP STOSB / MOVSB; DI (and SI, ES) preserved. */
+static int start_zero_bytes(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t p = arg(c, 0), n = arg(c, 1);
+    if (!room(c, 13 + (n ? n : 1u))) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->seg[S_ES]);
+    c->seg[S_ES] = c->seg[S_DS];
+    c->r[R_AX] = c->seg[S_DS];
+    c->r[R_DI] = p;
+    c->r[R_CX] = n;
+    set_r8(c, R_AL, (uint8_t)alu_logic(c, 0, 0));                 /* xor al, al */
+    rep_string(c, STR_STOS, 0, 0, 0);
+    c->seg[S_ES] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 13 + (n ? n : 1u);
+    near_ret(c);
+    return 1;
+}
+
+static int start_copy_bytes(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t src = arg(c, 0), dst = arg(c, 1), n = arg(c, 2);
+    if (!room(c, 15 + (n ? n : 1u))) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->seg[S_ES]);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_SI]);
+    c->r[R_AX] = c->seg[S_DS];
+    c->seg[S_ES] = c->seg[S_DS];
+    c->r[R_SI] = src;
+    c->r[R_DI] = dst;
+    c->r[R_CX] = n;
+    rep_string(c, STR_MOVS, 0, c->seg[S_DS], 0);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->seg[S_ES] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 15 + (n ? n : 1u);
+    near_ret(c);
+    return 1;
+}
+
+/* START 0x08C15, fixed-point multiply: (a * b) >> 14, rounded by the next
+ * bit; BX = SP. */
+static int start_fixmul(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 9)) return 0;
+    const uint16_t a = arg(c, 0), b = arg(c, 1);
+    c->r[R_BX] = c->r[R_SP];
+    c->r[R_AX] = a;
+    x86_imul16(c, b);
+    uint16_t ax = x86_shift(c, 4, c->r[R_AX], 1, 1);
+    uint16_t dx = x86_shift(c, 2, c->r[R_DX], 1, 1);              /* rcl dx, 1 */
+    ax = x86_shift(c, 4, ax, 1, 1);
+    dx = (uint16_t)alu_add(c, dx, 0, 1, (c->flags & F_CF) ? 1u : 0u);   /* adc dx, 0 */
+    c->r[R_DX] = dx;
+    c->r[R_AX] = dx;
+    (void)ax;
+    c->icount += 9;
+    near_ret(c);
+    return 1;
+}
+
+/* START 0x0A110 / 0x0A118: the formatter's argument fetchers - the next
+ * word (or double word, low in AX) from the list pointer in the caller's
+ * frame at [BP+8], which is advanced. */
+static int start_next_word(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 4)) return 0;
+    const uint16_t ss = c->seg[S_SS], bp = c->r[R_BP];
+    c->r[R_SI] = seg_read16(c, ss, (uint16_t)(bp + 8));
+    x86_lods(c, 1, c->seg[S_DS]);
+    seg_write16(c, ss, (uint16_t)(bp + 8), c->r[R_SI]);
+    c->icount += 4;
+    near_ret(c);
+    return 1;
+}
+
+static int start_next_dword(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 7)) return 0;
+    const uint16_t ss = c->seg[S_SS], bp = c->r[R_BP];
+    c->r[R_SI] = seg_read16(c, ss, (uint16_t)(bp + 8));
+    x86_lods(c, 1, c->seg[S_DS]);
+    const uint16_t lo = c->r[R_AX];
+    x86_lods(c, 1, c->seg[S_DS]);
+    c->r[R_DX] = c->r[R_AX];                                      /* mov dx, ax ... xchg */
+    c->r[R_AX] = lo;
+    seg_write16(c, ss, (uint16_t)(bp + 8), c->r[R_SI]);
+    c->icount += 7;
+    near_ret(c);
+    return 1;
+}
+
 static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x4958, vgame_free_fall, "free fall", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD50A, vgame_waypoint_from_target, "waypoint from target", 1 },
@@ -2019,6 +2207,17 @@ static const recomp_override MATCHED[] = {
     { "matched", "START.EXE", START_47304, 0x0000, 0x8BEA, end_distance, "octagonal distance", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x96F4, vgame_ldiv, "32-bit signed divide", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x5302, vgame_ldiv, "32-bit signed divide", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0xA745, start_mask_test, "masked sign test", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x96BC, start_set_word_pair, "set a word pair", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x39B3, start_order_desc, "order a pair, larger first", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x39D5, start_order_asc, "order a pair, smaller first", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x851A, start_load_record, "load a 20-word record", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x8530, start_pick_byte, "pick one of two bytes", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x8B3E, start_zero_bytes, "zero bytes", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x8B6C, start_copy_bytes, "copy bytes", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x8C15, start_fixmul, "fixed-point multiply", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0xA110, start_next_word, "next format argument", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0xA118, start_next_dword, "next long format argument", 1 },
 };
 
 void matched_register(void)
