@@ -9,6 +9,15 @@ on:
 permissions:
   contents: read
 
+# Commits are pushed one verified piece at a time, often minutes apart. Only
+# the newest commit on a branch needs testing: a newer push cancels the run
+# still in progress or queued for the same branch, which also keeps the
+# account's hosted runners from being saturated (queued jobs then time out
+# with "not acquired by Runner", which reads as a failure).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   munt:
     runs-on: windows-2022
