@@ -868,7 +868,39 @@ starts at `700000001000000` (photo/photo, found with
 Medal, scoring 208 (total 491 rather than 500). Hashes quoted in earlier sections
 are from the previous timing.
 
-## Where this goes next
+## Matched routines (Phase 2)
+
+A matched routine is hand-written C in `src/matched/matched.c` that does
+what one of the original's routines does, written to be read, and is equal
+to it: every register, flag, memory byte and the instruction clock, on every
+path. It is a code override with `matched` set: always on, placed only for
+the recompiled engine, never for the interpreter. Every route that compares
+the two engines therefore compares the matched C with the original
+instructions. `F117R_NO_MATCHED=1` leaves them all out.
+
+The routine's arithmetic uses the interpreter's own semantics (`x86_sem.h`,
+`x86_shift`), so flags cannot drift. A routine runs whole, so it declines
+(and the original instructions run) when it would cross the run loop's next
+look at events (`stop_at`); an interrupt due inside it still lands where it
+would have.
+
+`tests/func_lockstep.c` (CTest `func_lockstep`, needs the generated code)
+holds each one to the original from random states: the module image in
+memory, random registers, flags and memory, and a return address outside
+the routine. The interpreter runs until it returns there, the matched C runs
+once, and registers, segments, IP, flags, clock, ports, interrupts and all
+memory are compared. A planted off-by-one clock and a changed constant were
+both caught on the first state that reached them.
+
+The first three, from the Reimp's names (`tools/reimp_names.py`): VGAME
+0x04958 free fall, 0x0D50A waypoint from target, 0x0E289 orientation matrix
+transpose. Each is equal over 2,000 random states (one transpose state is
+skipped, where the random stack overlaps the matrix and the original returns
+elsewhere). On the strike route the recompiled engine ran free fall 9,587
+times and the transpose 35,019 times and reached the interpreter's final
+hash; `recomp_report` prints these counts (`[matched] ... ran N times`).
+
+
 
 The optional Munt backend is isolated in `src/host/mt32.c` and enabled with
 `F117R_WITH_MT32EMU`. It links the public C API, identifies the supplied

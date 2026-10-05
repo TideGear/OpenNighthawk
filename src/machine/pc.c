@@ -230,7 +230,7 @@ static void pit_control(machine_t *m, uint8_t v)
      * 21h entry (STI first) sees it before the call's work is done. */
     if (ch == 0 && m->pit_control_irq) {
         const unsigned mode = (v >> 1) & 7, nm = mode > 5 ? mode - 4 : mode;
-        if (nm == 0) { m->pic_irr &= (uint8_t)~1u; m->irq0_held = 0; }
+        if (nm == 0) { m->pic_irr &= 0xFEu; m->irq0_held = 0; }
         else if (!p->null_count && !pit_out(m, 0)) {
             m->irq0_held = 1;
             m->irq0_hold_until = m->cpu.icount + 25;

@@ -52,14 +52,14 @@ target_link_libraries(f117present PUBLIC f117machine)
 
 # ---- The recomp runtime: generated code if there is any ------------------
 # Switchable fixes attach to the runtime as code overrides (src/fixes).
-add_library(f117recomp_none STATIC src/recomp/recomp.c src/recomp/recomp_empty.c src/fixes/fixes.c)
-target_include_directories(f117recomp_none PUBLIC src/fixes)
+add_library(f117recomp_none STATIC src/recomp/recomp.c src/recomp/recomp_empty.c src/fixes/fixes.c src/matched/matched.c)
+target_include_directories(f117recomp_none PUBLIC src/fixes src/matched)
 target_link_libraries(f117recomp_none PUBLIC f117machine)
 
 if(F117R_GEN_DIR)
   file(GLOB F117R_GEN_SOURCES CONFIGURE_DEPENDS "${F117R_GEN_DIR}/gen_*.c")
-  add_library(f117recomp STATIC src/recomp/recomp.c src/fixes/fixes.c ${F117R_GEN_SOURCES})
-  target_include_directories(f117recomp PUBLIC src/fixes)
+  add_library(f117recomp STATIC src/recomp/recomp.c src/fixes/fixes.c src/matched/matched.c ${F117R_GEN_SOURCES})
+  target_include_directories(f117recomp PUBLIC src/fixes src/matched)
   target_link_libraries(f117recomp PUBLIC f117machine)
   if(MSVC)
     # Generated code: no warnings, and optimise each region on its own.
@@ -226,5 +226,9 @@ if(F117R_BUILD_TESTS)
     add_executable(insn_lockstep tests/insn_lockstep.c)
     target_link_libraries(insn_lockstep PRIVATE f117recomp)
     add_test(NAME insn_lockstep COMMAND insn_lockstep --states 4)
+    # Phase 2: every matched routine against the original from random states.
+    add_executable(func_lockstep tests/func_lockstep.c)
+    target_link_libraries(func_lockstep PRIVATE f117recomp)
+    add_test(NAME func_lockstep COMMAND func_lockstep --states 2000)
   endif()
 endif()

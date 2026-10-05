@@ -393,6 +393,11 @@ never instead of parity.
       203 (47% of its census bytes), START 69, END 41. Caller citations
       name 719. The table is a private lead list; each name still needs
       checking against the code before it is used.
+      Matched routines have a path now: `src/matched/matched.c`, placed for
+      the recompiled engine only, held to the original by
+      `tests/func_lockstep.c` from random states and by every route. Three
+      VGAME routines are matched (free fall, waypoint from target,
+      orientation transpose).
 
 ## Phase 3 - fixes and enhancements (switchable)
 

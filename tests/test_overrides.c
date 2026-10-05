@@ -60,9 +60,11 @@ int main(void)
     const recomp_override good = { "T1", "GAME.OVL", hash, 0x0001, 0x0020, skip_two, "test" };
     const recomp_override other = { "T2", "GAME.OVL", hash ^ 1, 0x0000, 0x0040, skip_two, "wrong file" };
     const recomp_override named = { "T3", "OTHER.OVL", 0, 0x0000, 0x0050, skip_two, "wrong name" };
-    CHECK(recomp_override_add(&good) == 0);
-    CHECK(recomp_override_add(&other) == 1);
-    CHECK(recomp_override_add(&named) == 2);
+    /* Matched routines (src/matched) are registered first, by recomp_init. */
+    const int base = recomp_override_add(&good);
+    CHECK(base >= 0);
+    CHECK(recomp_override_add(&other) == base + 1);
+    CHECK(recomp_override_add(&named) == base + 2);
     CHECK(recomp_override_add(&(recomp_override){ "X", "Y", 0, 0, 0, NULL, "" }) == -1);
 
     /* Registered but off: nothing is placed, before or after a load. */

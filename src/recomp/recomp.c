@@ -17,12 +17,15 @@
  */
 #include "recomp_rt.h"
 #include "recomp_gen.h"
+#include "matched.h"
 
 #include <stdlib.h>
 #include <string.h>
 
 uint8_t cpu_codebits[MEM_SIZE / 8];
 unsigned long long rc_mutant_hits;
+
+#define MAX_PLACED 256        /* overrides placed in one loaded module */
 
 typedef struct instance {
     const rc_module *mod;          /* NULL: a module with no translation */
@@ -41,8 +44,8 @@ typedef struct instance {
     int       ran;                 /* some region has verified: its code is running */
     int       floating;            /* recognised by content, not loaded by DOS */
     /* enabled overrides placed in this image, and the regions they refuse */
-    uint32_t  ov_lin[8];
-    int       ov_index[8];
+    uint32_t  ov_lin[MAX_PLACED];
+    int       ov_index[MAX_PLACED];
     int       nov;
     uint8_t  *refused;             /* per region: contains an override */
 } instance;
@@ -110,10 +113,11 @@ static void flush_coverage(instance *in);
 
 /* ---- code overrides (see recomp_rt.h) ---------------------------------- */
 
-#define MAX_OVERRIDES 64
+#define MAX_OVERRIDES 1024
 
 static recomp_override g_ov[MAX_OVERRIDES];
 static int g_ov_on[MAX_OVERRIDES];
+static unsigned long long g_ov_hits[MAX_OVERRIDES];   /* times it ran */
 static int g_nov;
 static uint8_t g_ov_bits[MEM_SIZE / 8];   /* linear address -> an override is placed */
 int recomp_overrides_live;
@@ -140,7 +144,7 @@ static void place_overrides(instance *in)
 {
     unplace_overrides(in);
     if (!in->live || in->floating) return;
-    for (int i = 0; i < g_nov && in->nov < 8; i++) {
+    for (int i = 0; i < g_nov && in->nov < MAX_PLACED; i++) {
         const recomp_override *o = &g_ov[i];
         if (!g_ov_on[i] || strcmp(o->module, in->name) != 0) continue;
         if (o->file_hash && o->file_hash != in->file_hash) continue;
@@ -166,7 +170,8 @@ int recomp_override_add(const recomp_override *o)
 {
     if (g_nov >= MAX_OVERRIDES || !o || !o->id || !o->module || !o->fn) return -1;
     g_ov[g_nov] = *o;
-    g_ov_on[g_nov] = 0;
+    const char *off = getenv("F117R_NO_MATCHED");
+    g_ov_on[g_nov] = o->matched && !(off && off[0] == '1');
     return g_nov++;
 }
 
@@ -174,7 +179,7 @@ int recomp_override_enable(const char *id, int on)
 {
     int n = 0;
     for (int i = 0; i < g_nov; i++)
-        if (!strcmp(id, "all") || !strcmp(id, g_ov[i].id)) { g_ov_on[i] = on != 0; n++; }
+        if (!g_ov[i].matched && (!strcmp(id, "all") || !strcmp(id, g_ov[i].id))) { g_ov_on[i] = on != 0; n++; }
     for (int i = 0; i < MAX_INST; i++) if (g_rt.inst[i].live) place_overrides(&g_rt.inst[i]);
     count_live_overrides();
     return n;
@@ -185,7 +190,7 @@ void recomp_override_ids(char *out, size_t n)
     size_t used = 0;
     if (n) out[0] = 0;
     for (int i = 0; i < g_nov; i++) {
-        if (!g_ov_on[i]) continue;
+        if (!g_ov_on[i] || g_ov[i].matched) continue;
         int seen = 0;
         for (int k = 0; k < i; k++) if (g_ov_on[k] && !strcmp(g_ov[k].id, g_ov[i].id)) seen = 1;
         if (seen) continue;
@@ -212,7 +217,10 @@ int recomp_override_step(machine_t *m)
     for (int k = 0; k < in->nov; k++) {
         const recomp_override *o = &g_ov[in->ov_index[k]];
         if (in->ov_lin[k] != lin || (uint16_t)(in->base + o->seg) != cs) continue;
-        return o->fn(m) ? 1 : -1;
+        if (o->matched && m->engine != ENGINE_RECOMP) return 0;
+        if (!o->fn(m)) return -1;
+        g_ov_hits[in->ov_index[k]]++;
+        return 1;
     }
     return 0;
 }
@@ -237,6 +245,7 @@ void recomp_init(machine_t *m)
 {
     (void)m;
     for (int i = 0; i < MAX_INST; i++) unregister(&g_rt.inst[i]);
+    matched_register();
     count_live_overrides();
     memset(cpu_codebits, 0, sizeof cpu_codebits);
     const char *cov = getenv("F117R_COVERAGE");
@@ -588,6 +597,11 @@ void recomp_report(machine_t *m, FILE *f)
             (unsigned long long)total);
     if (rc_mutant_hits)
         fprintf(f, "[recomp] the planted mutation ran %llu times\n", rc_mutant_hits);
+    for (int i = 0; i < g_nov; i++)
+        if (g_ov_hits[i])
+            fprintf(f, "[%s] %s %04X:%04X %s: ran %llu times\n", g_ov[i].matched ? "matched" : "override",
+                    g_ov[i].module, g_ov[i].seg, g_ov[i].ip, g_ov[i].what ? g_ov[i].what : "",
+                    (unsigned long long)g_ov_hits[i]);
     for (int pass = 0; pass < 25 && g_nmiss; pass++) {
         int best = 0;
         for (int k = 1; k < g_nmiss; k++) if (g_miss[k].n > g_miss[best].n) best = k;

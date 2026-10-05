@@ -53,6 +53,12 @@ typedef struct {
     uint16_t    seg, ip;     /* CS = load segment + seg */
     recomp_override_fn fn;
     const char *what;        /* one line, for --list-fixes */
+    int         matched;     /* Phase 2: a hand-written equivalent of the code
+                              * at this address, always on and placed only
+                              * for the recompiled engine (the interpreter
+                              * keeps running the original, so every route
+                              * compares the two); F117R_NO_MATCHED=1 leaves
+                              * them all out */
 } recomp_override;
 /* Register (off); the index, or -1 when the table is full. */
 int  recomp_override_add(const recomp_override *o);
