@@ -385,6 +385,14 @@ never instead of parity.
 - [ ] Name the translated routines and data, with explanations, drawing on
       the Reimp's mapping; matched functions replacing translations one at a
       time, each held to the same parity checks.
+      Started: `tools/reimp_names.py` joins the Reimp's census (1,535
+      functions in seven programs) and its address citations, read-only,
+      with this project's generated regions. 317 functions have an
+      implementing Reimp function (the doc comment above a definition cites
+      the address first), 58 of them with more than one candidate; VGAME has
+      203 (47% of its census bytes), START 69, END 41. Caller citations
+      name 719. The table is a private lead list; each name still needs
+      checking against the code before it is used.
 
 ## Phase 3 - fixes and enhancements (switchable)
 
