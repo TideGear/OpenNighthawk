@@ -198,6 +198,11 @@ int dos_int_hook(cpu_t *c, uint8_t vec)
             if (mem_read16(c, (uint32_t)vec * 4) != SERVICE_STUB(k) ||
                 mem_read16(c, (uint32_t)vec * 4 + 2) != m->iret_seg)
                 return 0;                      /* the program's own handler */
+            if (m->irq0_held && SERVICE_KIND[k] == KIND_STI) {
+                /* An IRQ0 is due at the stub's STI, before the callback. */
+                pc_release_irq0(m);
+                return 0;
+            }
             const uint16_t cs0 = c->seg[S_CS], ip0 = c->ip;
             const int over = dos_overhead(c, vec);
             int r = service(m, vec);

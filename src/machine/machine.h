@@ -157,6 +157,9 @@ struct machine {
     /* ---- 8253 ----------------------------------------------------- */
     pit_counter pit[3];
     uint64_t irq0_next;      /* icount of the next counter-0 interrupt */
+    uint64_t irq0_hold_until; /* icount; a control-word IRQ0 waits for an STI or this */
+    uint8_t  irq0_held;
+    uint8_t  pit_control_irq; /* F117R_PIT_CONTROL_IRQ=1: DOSBox 0.74's IRQ0 on a control word */
     uint64_t irq0_period_n;  /* edges since epoch, for exact scheduling */
 
     /* ---- keyboard controller --------------------------------------- */
@@ -322,6 +325,7 @@ int      mouse_int33(machine_t *m);
 
 /* ---- DOS / BIOS (dos.c) ---------------------------------------------- */
 int  dos_int_hook(cpu_t *c, uint8_t vec);
+void pc_release_irq0(machine_t *m);
 int  dos_boot(machine_t *m, const char *program);
 void dos_shutdown(machine_t *m);
 const char *dos_current_program(const machine_t *m);

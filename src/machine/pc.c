@@ -224,6 +224,18 @@ static void pit_control(machine_t *m, uint8_t v)
         }
         return;
     }
+    /* DOSBox raises IRQ0 when a control word reaches counter 0 while its
+     * output is low (cancels it for mode 0). Its core takes the interrupt at
+     * the next STI/IRET/POPF or slice end, not at once, so a following INT
+     * 21h entry (STI first) sees it before the call's work is done. */
+    if (ch == 0 && m->pit_control_irq) {
+        const unsigned mode = (v >> 1) & 7, nm = mode > 5 ? mode - 4 : mode;
+        if (nm == 0) { m->pic_irr &= (uint8_t)~1u; m->irq0_held = 0; }
+        else if (!p->null_count && !pit_out(m, 0)) {
+            m->irq0_held = 1;
+            m->irq0_hold_until = m->cpu.icount + 25;
+        }
+    }
     p->access = (uint8_t)((v >> 4) & 3);
     p->mode = (uint8_t)((v >> 1) & 7);
     p->write_hi_next = 0;
@@ -860,11 +872,20 @@ static void vga_scanout(machine_t *m)
     }
 }
 
+void pc_release_irq0(machine_t *m)
+{
+    if (!m->irq0_held) return;
+    m->irq0_held = 0;
+    pic_raise(m, 0);
+    wake(m);
+}
+
 void pc_events(machine_t *m)
 {
     cpu_t *c = &m->cpu;
     const uint64_t now = c->icount;
     input_poll(m);
+    if (m->irq0_held && now >= m->irq0_hold_until) pc_release_irq0(m);
     while (now >= m->irq0_next) {
         pic_raise(m, 0);
         pit0_schedule(m);
@@ -886,7 +907,9 @@ void pc_events(machine_t *m)
 
     /* Deliver: IF set (or the CPU waiting inside a BIOS call that would
      * have enabled interrupts), not at the shadow of STI/MOV SS. */
-    if (now == c->inhibit_at) return;
+    /* (DOSBox's STI has no shadow: its service stubs take the interrupt
+     * before the callback.) */
+    if (now == c->inhibit_at && c->seg[S_CS] != m->iret_seg) return;
     if (!(c->flags & F_IF) && c->halted != 2) return;
     int n = pic_pending(m);
     if (n < 0) return;
