@@ -118,10 +118,102 @@ static int vgame_transpose_matrix(machine_t *m)
     return 1;
 }
 
+/* The word argument n (0 = the first) of a near routine whose BP frame is
+ * not yet built: SS:[SP + 2 + 2n]. */
+static uint16_t arg(cpu_t *c, int n)
+{
+    return seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_SP] + 2 + 2 * n));
+}
+
+/* VGAME 0x0C863, sign16(v): -1, 0 or 1. Flags: the zero test's sub when v
+ * is 0, otherwise the second compare with zero. */
+static int vgame_sign16(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 9)) return 0;
+    const uint16_t v = arg(c, 0);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    alu_sub(c, v, 0, 1, 0);                                       /* cmp [bp+4], 0 */
+    unsigned n;
+    if (!(c->flags & F_ZF)) {                                     /* jne */
+        alu_sub(c, v, 0, 1, 0);
+        c->r[R_AX] = x86_cond(c, 0xE) ? 0xFFFF : 1;               /* jle */
+        n = 9;
+    } else {
+        c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);   /* sub ax, ax */
+        n = 7;
+    }
+    x86_leave(c);
+    c->icount += n;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x0C699, clamp(v, hi, lo): lo when lo < v, else hi when hi > v,
+ * else v (word compares, signed). Flags from the last compare made. */
+static int vgame_clamp(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 10)) return 0;
+    const uint16_t v = arg(c, 0), hi = arg(c, 1), lo = arg(c, 2);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_AX] = v;
+    alu_sub(c, lo, v, 1, 0);                                      /* cmp [bp+8], ax */
+    unsigned n;
+    if (!x86_cond(c, 0xD)) {                                      /* jge not taken */
+        c->r[R_AX] = lo;
+        n = 8;
+    } else {
+        alu_sub(c, hi, v, 1, 0);                                  /* cmp [bp+6], ax */
+        if (!x86_cond(c, 0xE)) { c->r[R_AX] = hi; n = 10; }       /* jle not taken */
+        else n = 9;
+    }
+    x86_leave(c);
+    c->icount += n;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x0BA2B, class5_takes_lock(object): the object's class byte (its
+ * 16-byte record at B2D0, byte 0x0C, low seven bits) selects a type byte at
+ * C630; types 0x0C and 0x0D answer 1, the rest 0. BX is left as the class,
+ * AL's type byte read leaves AH as it was before the mask. */
+static int vgame_class5_takes_lock(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 14)) return 0;
+    x86_enter(c, 2, 0);                                           /* enter 2, 0 */
+    const uint16_t object = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 4));
+    uint16_t bx = x86_shift(c, 4, object, 4, 1);                  /* shl bx, 4 */
+    bx = (uint16_t)((bx & 0xFF00) | mem_read8(c, phys(c->seg[S_DS], (uint16_t)(bx - 0x4D24))));
+    bx = (uint16_t)alu_logic(c, bx & 0x7F, 1);                    /* and bx, 7Fh */
+    c->r[R_BX] = bx;
+    uint16_t ax = (uint16_t)((c->r[R_AX] & 0xFF00) | mem_read8(c, phys(c->seg[S_DS], (uint16_t)(bx - 0x39D0))));
+    ax = (uint16_t)alu_logic(c, ax & 0x0F, 1);                    /* and ax, 0Fh */
+    unsigned n;
+    alu_sub(c, ax, 0x0C, 1, 0);                                   /* cmp ax, 0Ch */
+    if (c->flags & F_ZF) { ax = 1; n = 12; }
+    else {
+        alu_sub(c, ax, 0x0D, 1, 0);                               /* cmp ax, 0Dh */
+        if (c->flags & F_ZF) { ax = 1; n = 14; }
+        else { ax = (uint16_t)alu_sub(c, ax, ax, 1, 0); n = 14; } /* sub ax, ax */
+    }
+    c->r[R_AX] = ax;
+    x86_leave(c);
+    c->icount += n;
+    near_ret(c);
+    return 1;
+}
+
 static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x4958, vgame_free_fall, "free fall", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD50A, vgame_waypoint_from_target, "waypoint from target", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xE289, vgame_transpose_matrix, "transpose the orientation matrix", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xC863, vgame_sign16, "sign of a word", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xC699, vgame_clamp, "clamp a word", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xBA2B, vgame_class5_takes_lock, "object class takes a lock", 1 },
 };
 
 void matched_register(void)

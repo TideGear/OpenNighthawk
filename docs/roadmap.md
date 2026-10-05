@@ -395,9 +395,9 @@ never instead of parity.
       checking against the code before it is used.
       Matched routines have a path now: `src/matched/matched.c`, placed for
       the recompiled engine only, held to the original by
-      `tests/func_lockstep.c` from random states and by every route. Three
+      `tests/func_lockstep.c` from random states and by every route. Six
       VGAME routines are matched (free fall, waypoint from target,
-      orientation transpose).
+      orientation transpose, sign, clamp, class-takes-lock).
 
 ## Phase 3 - fixes and enhancements (switchable)
 

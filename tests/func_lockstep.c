@@ -212,11 +212,18 @@ int main(int argc, char **argv)
             r[R_SP] = (uint16_t)((r[R_SP] | 0x0100) & 0xFFFE);
             const uint16_t back = (uint16_t)(ip + 0x8000);
             const uint16_t flags = (uint16_t)((rnd() & 0x0ED5u) | 0x0002u);
+            uint16_t small[4];
+            for (int a = 0; a < 4; a++)
+                small[a] = (s & 4) ? (uint16_t)((int)(rnd() % 3) - 1) : (uint16_t)(rnd() % 32);
             for (int k = 0; k < 2; k++) {
                 cpu_t *c = k ? &g_m.cpu : &g_cpu[0];
                 set_state(c, cs, ip, r, seg, flags);
                 c->r[R_SP] = (uint16_t)(c->r[R_SP] - 2);
                 seg_write16(c, c->seg[S_SS], c->r[R_SP], back);    /* the caller's return address */
+                /* Half the states put small arguments above it: random words
+                 * almost never reach a routine's edge cases (zero, -1, 1). */
+                for (int a = 0; a < 4 && (s & 2); a++)
+                    seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_SP] + 2 + 2 * a), small[a]);
                 c->stop_at = c->icount + 100000;
             }
             int steps = 0;

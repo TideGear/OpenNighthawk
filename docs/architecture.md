@@ -892,9 +892,14 @@ once, and registers, segments, IP, flags, clock, ports, interrupts and all
 memory are compared. A planted off-by-one clock and a changed constant were
 both caught on the first state that reached them.
 
-The first three, from the Reimp's names (`tools/reimp_names.py`): VGAME
+Half the states put small words (-1, 0, 1, or 0-31) where the arguments
+sit, because random words almost never reach a routine's edge cases; an
+error planted only on `sign16`'s zero path was caught on the 16th state.
+
+Matched so far, from the Reimp's names (`tools/reimp_names.py`): VGAME
 0x04958 free fall, 0x0D50A waypoint from target, 0x0E289 orientation matrix
-transpose. Each is equal over 2,000 random states (one transpose state is
+transpose, 0x0C863 sign of a word, 0x0C699 clamp, 0x0BA2B "class takes a
+lock". Each is equal over 4,000 random states (one transpose state is
 skipped, where the random stack overlaps the matrix and the original returns
 elsewhere). On the strike route the recompiled engine ran free fall 9,587
 times and the transpose 35,019 times and reached the interpreter's final
