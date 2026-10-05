@@ -1570,23 +1570,23 @@ static int start_clamp(machine_t *m)
  * 1FFh... [8D74]=9, [8D76]=1FFh, [8D78]=100h; all 2048 three-byte entries'
  * prefix words at 7420 to FFFF, then the 256 literal entries' bytes at
  * 7422 to 0..255. */
-static int start_lzw_reset(machine_t *m)
+static int lzw_reset(machine_t *m, uint16_t bits_at, uint16_t table)
 {
     cpu_t *c = &m->cpu;
     if (!room(c, 7179)) return 0;
     const uint16_t ds = c->seg[S_DS];
-    mem_write8(c, phys(ds, 0x8D74), 9);
-    ds_put(c, 0x8D76, 0x1FF);
-    ds_put(c, 0x8D78, 0x100);
+    mem_write8(c, phys(ds, bits_at), 9);
+    ds_put(c, (uint16_t)(bits_at + 2), 0x1FF);
+    ds_put(c, (uint16_t)(bits_at + 4), 0x100);
     uint16_t bx = (uint16_t)alu_logic(c, 0, 1);
     for (int i = 0; i < 0x800; i++) {
-        ds_put(c, (uint16_t)(bx + 0x7420), 0xFFFF);
+        ds_put(c, (uint16_t)(bx + table), 0xFFFF);
         bx = (uint16_t)alu_add(c, bx, 3, 1, 0);
     }
     uint8_t al = 0;
     bx = (uint16_t)alu_logic(c, 0, 1);
     for (int i = 0; i < 0x100; i++) {
-        mem_write8(c, phys(ds, (uint16_t)(bx + 0x7422)), al);
+        mem_write8(c, phys(ds, (uint16_t)(bx + table + 2)), al);
         al = (uint8_t)alu_inc(c, al, 0);
         bx = (uint16_t)alu_add(c, bx, 3, 1, 0);
     }
@@ -1598,6 +1598,8 @@ static int start_lzw_reset(machine_t *m)
     near_ret(c);
     return 1;
 }
+static int start_lzw_reset(machine_t *m) { return lzw_reset(m, 0x8D74, 0x7420); }
+static int end_lzw_reset(machine_t *m) { return lzw_reset(m, 0x3F8A, 0x2636); }
 
 /* START 0x028CE, startui_cel_start(frame, x, y, count): unless a cel is
  * playing ([B2F4] non-zero, which answers 0), record the position, frame
@@ -1974,7 +1976,7 @@ static int start_order_desc(machine_t *m) { return order_pair(m, 1); }
 static int start_order_asc(machine_t *m) { return order_pair(m, 0); }
 
 /* START 0x0851A: copy 20 words from a far pointer to DS:6982. */
-static int start_load_record(machine_t *m)
+static int load_record(machine_t *m, uint16_t dst)
 {
     cpu_t *c = &m->cpu;
     if (!room(c, 33)) return 0;
@@ -1989,7 +1991,7 @@ static int start_load_record(machine_t *m)
     c->r[R_SI] = seg_read16(c, ss, (uint16_t)(bp + 4));           /* lds si, [bp+4] */
     c->seg[S_DS] = seg_read16(c, ss, (uint16_t)(bp + 6));
     c->r[R_CX] = 0x14;
-    c->r[R_DI] = 0x6982;
+    c->r[R_DI] = dst;
     rep_string(c, STR_MOVS, 1, c->seg[S_DS], 0);
     c->seg[S_DS] = cpu_pop16(c);
     c->seg[S_ES] = cpu_pop16(c);
@@ -1998,9 +2000,11 @@ static int start_load_record(machine_t *m)
     near_ret(c);
     return 1;
 }
+static int start_load_record(machine_t *m) { return load_record(m, 0x6982); }
+static int end_load_record(machine_t *m) { return load_record(m, 0x23C4); }
 
 /* START 0x08530: AX = byte [69B6] for a zero argument, else [69B7]. */
-static int start_pick_byte(machine_t *m)
+static int pick_byte(machine_t *m, uint16_t zero_at)
 {
     cpu_t *c = &m->cpu;
     if (!room(c, 9)) return 0;
@@ -2010,12 +2014,14 @@ static int start_pick_byte(machine_t *m)
     alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
     alu_logic(c, v & 0xFF, 0);                                    /* test byte [bp+4], FFh */
     const int zero = (c->flags & F_ZF) != 0;
-    c->r[R_AX] = mem_read8(c, phys(c->seg[S_DS], zero ? 0x69B6 : 0x69B7));
+    c->r[R_AX] = mem_read8(c, phys(c->seg[S_DS], zero ? zero_at : (uint16_t)(zero_at + 1)));
     c->r[R_BP] = cpu_pop16(c);
     c->icount += zero ? 9 : 8;
     near_ret(c);
     return 1;
 }
+static int start_pick_byte(machine_t *m) { return pick_byte(m, 0x69B6); }
+static int end_pick_byte(machine_t *m) { return pick_byte(m, 0x23F8); }
 
 /* START 0x08B3E memset(p, 0, n) and 0x08B6C memcpy(src, dst, n) within DS,
  * by REP STOSB / MOVSB; DI (and SI, ES) preserved. */
@@ -2122,6 +2128,127 @@ static int start_next_dword(machine_t *m)
     return 1;
 }
 
+/* END 0x00ECD / 0x00EE0: the report's bar scaling, (v << 7) / 146 and
+ * (v << 7) / 195, unsigned. */
+static int report_scale(machine_t *m, uint16_t divisor)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 10)) return 0;
+    const uint16_t v = arg(c, 0);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    set_r8(c, R_CL, 7);
+    c->r[R_AX] = x86_shift(c, 4, v, 7, 1);                        /* shl ax, cl */
+    c->r[R_CX] = divisor;
+    c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0);
+    x86_div16(c, divisor);
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 10;
+    near_ret(c);
+    return 1;
+}
+static int end_scale_146(machine_t *m) { return report_scale(m, 0x92); }
+static int end_scale_195(machine_t *m) { return report_scale(m, 0xC3); }
+
+/* END 0x000A1: the terrain class under the replayed aircraft - the far
+ * pointer at [7222] holds its record, whose x and y (words 74h and 76h)
+ * >> 11 index the 16-wide map at 55EA; low two bits to [6440] and AX. */
+static int end_terrain_class(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 16)) return 0;
+    const uint16_t ds = c->seg[S_DS];
+    cpu_push16(c, c->r[R_SI]);
+    set_r8(c, R_CL, 0x0B);
+    const uint16_t bx = ds_get(c, 0x7222), es = ds_get(c, 0x7224);
+    c->seg[S_ES] = es;
+    uint16_t si = x86_shift(c, 5, seg_read16(c, es, (uint16_t)(bx + 0x76)), 0x0B, 1);
+    set_r8(c, R_CL, 4);
+    si = x86_shift(c, 4, si, 4, 1);
+    set_r8(c, R_CL, 0x0B);
+    const uint16_t x = x86_shift(c, 5, seg_read16(c, es, (uint16_t)(bx + 0x74)), 0x0B, 1);
+    c->r[R_BX] = x;
+    uint8_t al = (uint8_t)alu_logic(c, mem_read8(c, phys(ds, (uint16_t)(x + si + 0x55EA))) & 3, 0);
+    mem_write8(c, phys(ds, 0x6440), al);
+    alu_sub(c, c->r[R_AX] >> 8, c->r[R_AX] >> 8, 0, 0);          /* sub ah, ah */
+    c->r[R_AX] = al;
+    c->r[R_SI] = cpu_pop16(c);
+    c->icount += 16;
+    near_ret(c);
+    return 1;
+}
+
+/* END 0x04137: refill the 512-byte buffer at DS:1C77 from the replay data
+ * (far pointer kept in the stack segment at 1ED9/1EDB), advancing it; AX =
+ * 200h, the bytes delivered. */
+static int end_refill(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 273)) return 0;
+    const uint16_t ss = c->seg[S_SS];
+    cpu_push16(c, c->seg[S_DS]);
+    cpu_push16(c, c->seg[S_ES]);
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->r[R_DI]);
+    c->r[R_AX] = c->seg[S_DS];
+    c->seg[S_ES] = c->seg[S_DS];
+    c->seg[S_DS] = seg_read16(c, ss, 0x1ED9);
+    c->r[R_CX] = 0x100;
+    c->r[R_SI] = seg_read16(c, ss, 0x1EDB);
+    c->r[R_DI] = 0x1C77;
+    rep_string(c, STR_MOVS, 1, c->seg[S_DS], 0);
+    seg_write16(c, ss, 0x1EDB, (uint16_t)alu_add(c, seg_read16(c, ss, 0x1EDB), 0x200, 1, 0));
+    c->r[R_AX] = 0x200;
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->seg[S_ES] = cpu_pop16(c);
+    c->seg[S_DS] = cpu_pop16(c);
+    c->icount += 273;
+    near_ret(c);
+    return 1;
+}
+
+/* END 0x04A40: as VGAME's span-table clear, into the ES the caller set,
+ * for rows [4198]..[419A] of the tables at 419C (to FFFF) and 4354 (to 0). */
+static int end_spans_reset(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t first = ds_get(c, 0x4198);
+    if (first & 0x8000) {
+        if (!room(c, 4)) return 0;
+        c->r[R_DI] = (uint16_t)alu_logic(c, first, 1);
+        c->icount += 4;
+        near_ret(c);
+        return 1;
+    }
+    const uint16_t count = (uint16_t)(ds_get(c, 0x419A) + 1 - first);
+    const unsigned r = count ? count : 1;
+    if (!room(c, 18 + 2 * r)) return 0;
+    alu_logic(c, first, 1);
+    uint16_t cx = (uint16_t)alu_inc(c, ds_get(c, 0x419A), 1);
+    cx = (uint16_t)alu_sub(c, cx, first, 1, 0);
+    const uint16_t di2 = x86_shift(c, 4, first, 1, 1);
+    c->r[R_BX] = cx;
+    c->r[R_DX] = di2;
+    c->r[R_DI] = (uint16_t)alu_add(c, di2, 0x419C, 1, 0);
+    c->r[R_AX] = 0xFFFF;
+    c->r[R_CX] = cx;
+    for (unsigned i = 0; i < count; i++) x86_stos(c, 1);
+    c->r[R_CX] = 0;
+    ds_put(c, 0x4198, 0xFFFF);
+    c->r[R_CX] = cx;
+    c->r[R_DI] = (uint16_t)alu_add(c, di2, 0x4354, 1, 0);
+    c->r[R_AX] = (uint16_t)alu_sub(c, 0xFFFF, 0xFFFF, 1, 0);
+    for (unsigned i = 0; i < count; i++) x86_stos(c, 1);
+    c->r[R_CX] = 0;
+    ds_put(c, 0x419A, 0);
+    c->icount += 18 + 2 * r;
+    near_ret(c);
+    return 1;
+}
+
+static int end_set_word_pair(machine_t *m) { return set_word_pair(m, 0x5158); }
+
 static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x4958, vgame_free_fall, "free fall", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD50A, vgame_waypoint_from_target, "waypoint from target", 1 },
@@ -2218,6 +2345,19 @@ static const recomp_override MATCHED[] = {
     { "matched", "START.EXE", START_47304, 0x0000, 0x8C15, start_fixmul, "fixed-point multiply", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0xA110, start_next_word, "next format argument", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0xA118, start_next_dword, "next long format argument", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x1CB1, start_order_desc, "order a pair, larger first", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x1CD3, start_order_asc, "order a pair, smaller first", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x448E, end_load_record, "load a 20-word record", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x44A4, end_pick_byte, "pick one of two bytes", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x4874, end_lzw_reset, "reset the LZW table", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x4ADE, start_zero_bytes, "zero bytes", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x4B0C, start_copy_bytes, "copy bytes", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x52CA, end_set_word_pair, "set a word pair", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x0ECD, end_scale_146, "report bar scale, 146", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x0EE0, end_scale_195, "report bar scale, 195", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x00A1, end_terrain_class, "terrain under the replay", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x4137, end_refill, "refill the replay buffer", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x4A40, end_spans_reset, "clear the span tables", 1 },
 };
 
 void matched_register(void)

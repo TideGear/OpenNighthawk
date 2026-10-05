@@ -938,7 +938,11 @@ the same matched C serves every copy. Eleven more START routines follow:
 two take the VGAME code with START's own data addresses (the masked sign
 test, the word-pair setter), the rest are START's own (pair ordering, a
 20-word record load, a byte select, memset and memcpy, a 2.14 fixed-point
-multiply, and the formatter's two argument fetchers): 93 addresses in all.
+multiply, and the formatter's two argument fetchers). END then reuses
+START's (pair ordering, record load, byte select, LZW reset, memset, memcpy,
+word-pair setter) at its own addresses and adds its report scaling, the
+terrain under the replayed aircraft, the replay buffer refill and its
+span-table clear: 106 addresses in all.
 The original is run until the routine's own near RET (the first taken with
 the stack at its entry level), and a state counts only if that RET reaches
 the pushed address. Two looser rules failed first: in zeroed memory a
