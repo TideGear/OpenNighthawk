@@ -20,6 +20,7 @@
 #include "audio.h"
 #include "midistream.h"
 #include "recomp_rt.h"
+#include "fixes.h"
 #include "inputlog.h"
 #include "host_clock.h"
 
@@ -221,6 +222,11 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--mt32-pcm") && v) { mt32_pcm = v; i++; }
         else if (!strcmp(a, "--engine") && v) { engine = !strcmp(v, "interp") ? ENGINE_INTERP : ENGINE_RECOMP; i++; }
         else if (!strcmp(a, "--coverage") && v) { coverage = v; i++; }
+        else if (!strcmp(a, "--fix") && v) {
+            if (!fixes_enable(v, 1)) { fprintf(stderr, "no fix %s (--list-fixes)\n", v); return 2; }
+            i++;
+        }
+        else if (!strcmp(a, "--list-fixes")) { fixes_list(stdout); return 0; }
         else if (!strcmp(a, "--fullscreen")) fullscreen = 1;
         else if (!strcmp(a, "--no-aspect")) aspect = 0;
         else {
@@ -229,7 +235,7 @@ int main(int argc, char **argv)
                 "             [--scale N] [--fullscreen] [--no-aspect] [--midi N] [--log FILE]\n"
                 "             [--record FILE | --no-record] [--replay FILE] [--time-us N]\n"
                 "             [--exit-after CLOCKS] [--opl dbopl|nuked]\n"
-                "             [--mt32-control FILE --mt32-pcm FILE]\n");
+                "             [--mt32-control FILE --mt32-pcm FILE] [--fix ID|all]... [--list-fixes]\n");
             return 2;
         }
     }

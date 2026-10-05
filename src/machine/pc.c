@@ -919,6 +919,10 @@ void cpu_irq_state_changed(cpu_t *c)
  * translation here, in which case the interpreter takes one step. */
 int recomp_run(machine_t *m);
 void recomp_note_interp(machine_t *m);
+/* Code overrides (recomp_rt.h): how many enabled ones are placed, and the
+ * step at CS:IP - 1 one ran, -1 it asked for the original, 0 none here. */
+extern int recomp_overrides_live;
+int recomp_override_step(machine_t *m);
 
 static int interp_step(machine_t *m)
 {
@@ -935,6 +939,21 @@ static int interp_step(machine_t *m)
         return RUN_FAULT;
     }
     /* The single-step trap fires after the instruction completes. */
+    if (c->flags & F_TF) cpu_interrupt(c, 1);
+    return RUN_SLICE;
+}
+
+/* An enabled code override at CS:IP: run it, or the original instruction
+ * when it declines, and return as a step does; -1 when none is placed here. */
+static int override_at(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const int o = recomp_override_step(m);
+    if (!o) return -1;
+    if (o < 0) {
+        recomp_note_interp(m);
+        return interp_step(m);
+    }
     if (c->flags & F_TF) cpu_interrupt(c, 1);
     return RUN_SLICE;
 }
@@ -967,6 +986,14 @@ int machine_run(machine_t *m, uint64_t until)
 
         if (m->engine == ENGINE_RECOMP && !(c->flags & F_TF)) {
             while (c->icount < c->stop_at && !c->halted) {
+                if (recomp_overrides_live) {
+                    const int rc = override_at(m);
+                    if (rc > RUN_SLICE) return rc;
+                    if (rc == RUN_SLICE) {
+                        if (m->exited) return RUN_EXITED;
+                        continue;
+                    }
+                }
                 if (recomp_run(m)) continue;
                 recomp_note_interp(m);
                 int rc = interp_step(m);
@@ -975,6 +1002,14 @@ int machine_run(machine_t *m, uint64_t until)
             }
         } else {
             while (c->icount < c->stop_at && !c->halted) {
+                if (recomp_overrides_live) {
+                    const int rc = override_at(m);
+                    if (rc > RUN_SLICE) return rc;
+                    if (rc == RUN_SLICE) {
+                        if (m->exited) return RUN_EXITED;
+                        continue;
+                    }
+                }
                 recomp_note_interp(m);
                 int rc = interp_step(m);
                 if (rc != RUN_SLICE) return rc;

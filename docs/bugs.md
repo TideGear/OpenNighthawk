@@ -7,9 +7,10 @@ what GOG ships). It is for anyone deciding which bugs to fix later and how.
 **Every bug listed here is present in the recompilation, deliberately.** The
 recompiled code is the original's machine code translated instruction for
 instruction, so it does what the original did, defects included. That is
-what 1:1 parity means. Fixes come later, as switchable patches layered on top
-(see [How a fix will attach](#how-a-fix-will-attach)), and parity stays the
-default reference.
+what 1:1 parity means. Fixes are switchable patches layered on top (see
+[How a fix will attach](#how-a-fix-will-attach)), each off unless named with
+`--fix ID`, and parity stays the default reference. The first, D5, exists;
+`--list-fixes` prints what is available.
 
 Most entries were established by the F-117A Reimp project. They are restated
 here with the Reimp's evidence; the detail lives in its
@@ -125,6 +126,15 @@ Status values:
   `0x6E4C`, skip `0x6EBB`, sibling `0x077F2`, saved type read at `0x70A0`.
 - **Fix options.** Add `0x26` to the gate (the Reimp's proposal, awaiting the
   owner's decision there).
+- **Fix available: `--fix D5`.** A code override on the gate's fall-through
+  `jmp` at VGAME `0000:6D2E` (473.04 file only) continues type 26h to
+  `0x6D31`, as the three admitted types do; every other type still jumps to
+  `0x6EBB`. The original's own test at `0x6D35` then takes the credit path.
+  Replaying the unchanged `cargo.input` with the fix on, the impact earns
+  primary flag 4000h and one 8Bh event under both engines (route
+  `cargo_d5_fixed`, 149 checkpoints, final `61fc0505fcee1ba3`); with it off
+  the run still ends at the original's `20b78dd06d275670`. The region
+  holding the gate is interpreted while the fix is on.
 - **Detail.** Reimp catalogue:626-675.
 - **Normal-input reproduction.** `tools/routes/cargo.args` drops the loaded
   supply crate in a generated type-3 Persian Gulf mission. Player slot 11,
@@ -319,9 +329,10 @@ order of preference:
 2. **Host-side fixes** (D11): the emulated PC's file layer, invisible to the
    program.
 3. **Code overrides** (D1, D2, D5, D34): a hand-written C function registered
-   for a module address replaces that address's translated code. The
-   run-time already decides per address what runs, so an override is one more
-   entry in that table, switchable at run time.
+   for a module address replaces that address's code under either engine
+   (`src/fixes/fixes.c`, mechanism in `src/recomp/recomp.c`). Each is pinned
+   to the shipped file it was written for by hash and switched at run time.
+   Implemented; D5 is the first.
 
 The Reimp grouped its fixes in tiers (MicroProse's own patches, fan fixes,
 its own). Those tiers can carry over unchanged.

@@ -36,4 +36,33 @@ void recomp_report(machine_t *m, FILE *f);
  * the next recompile should cover) to `path`, appending. */
 void recomp_write_misses(machine_t *m, const char *path);
 
+/* ---- code overrides ----------------------------------------------------
+ * Hand-written C that replaces the original's code at one address of one
+ * module, under either engine: how code fixes attach (docs/bugs.md). An
+ * override is registered off. Enabled, every instruction start at its
+ * address runs the C instead; a translated region containing the address
+ * is refused, so the interpreter, which looks first, reaches it. The C
+ * returns 1 having left CS:IP and the clock where the replaced code would
+ * have, or 0 to run the original instruction there after all. With none
+ * enabled nothing changes: the run loop tests one counter. */
+typedef int (*recomp_override_fn)(machine_t *m);
+typedef struct {
+    const char *id;          /* the switch, e.g. "D5" */
+    const char *module;      /* upper-case file name, e.g. "VGAME.EXE" */
+    uint64_t    file_hash;   /* FNV-1a 64 of the file as DOS reads it; 0 = any */
+    uint16_t    seg, ip;     /* CS = load segment + seg */
+    recomp_override_fn fn;
+    const char *what;        /* one line, for --list-fixes */
+} recomp_override;
+/* Register (off); the index, or -1 when the table is full. */
+int  recomp_override_add(const recomp_override *o);
+/* Switch every override with this id ("all" for every one); how many. */
+int  recomp_override_enable(const char *id, int on);
+void recomp_override_list(FILE *f);
+/* Enabled overrides now placed in loaded modules. */
+extern int recomp_overrides_live;
+/* At CS:IP: 1 an override ran, -1 one asked for the original instruction,
+ * 0 none is placed here. */
+int  recomp_override_step(machine_t *m);
+
 #endif

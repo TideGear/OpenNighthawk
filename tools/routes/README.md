@@ -84,6 +84,21 @@ It also requires an airborne aircraft with fuel and the retained absence of
 primary credit for a full second afterwards. Normal TTL expiry cannot pass.
 This route stops airborne and does not establish a home return.
 
+`cargo_return` continues the same delivery home: the aircraft holds 8,000 ft
+until 14,000 units from home 51, clear of the hills on the northern coast
+that ended a 2,500 ft attempt, then lands on the short runway (aim 50 units
+before its centre at 200 knots). It is hit on the way out and back (damage
+mask 8Eh, eight hits counted) and still returns. `cargo_check.py --complete
+--replay tools/routes/cargo_return.input --steps 20000000000` requires the
+original no-credit and consumed store throughout the return, then every
+landing gate and the parent block's successful result.
+
+`cargo_d5_fixed` replays `cargo.input` with fix D5 switched on (`--fix D5`):
+the same impact now earns the original's own primary credit, flag 4000h and
+one 8Bh event. `cargo_check.py --fix D5 --replay tools/routes/cargo.input
+--steps 7498892689` turns the verdict round and requires that credit at the
+impact, never before it.
+
 `secret_airstrip_return` delivers at the intact primary strip, turns and
 taxis for a second takeoff, then returns to home. Run `airstrip_check.py
 --complete --replay tools/routes/secret_airstrip_return.input --steps
@@ -99,6 +114,9 @@ score/count/status progression, every checkpoint and all save bytes must
 agree before another sortie starts. The replay's startup clock is retained.
 Promotion can change the generated assignment and require a new recording;
 failed flights stop the batch. Use only actual earned saves for this evidence.
+`--ahead N` runs the recompiled legs up to N sorties ahead, each in its own
+process, with the interpreter legs following from the same input bytes;
+sorties are still accepted in order and only when both legs agree.
 
 Keep run outputs and saves outside the repository. Use a fresh output
 directory for a baseline run, since an existing save can change the pilot

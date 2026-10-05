@@ -6,12 +6,18 @@ All input times and run limits are absolute instruction clocks.
 from __future__ import annotations
 
 import ctypes as C
+import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def library_path():
+    # F117R_MACHINE_API names another build's library (one built elsewhere
+    # while this checkout's is in use).
+    override = os.environ.get("F117R_MACHINE_API")
+    if override:
+        return Path(override)
     for folder in (ROOT / "build", ROOT / "build" / "Release"):
         for name in ("f117machine_api.dll", "libf117machine_api.so", "libf117machine_api.dylib"):
             path = folder / name
@@ -24,7 +30,7 @@ class Machine:
     SLICE, EXITED, FAULT = 0, 1, 2
 
     def __init__(self, data, save, *, log=None, ips=9_000_000,
-                 time_us=700_000_000_000_000, engine="interp", library=None):
+                 time_us=700_000_000_000_000, engine="interp", library=None, fixes=()):
         if engine not in ("interp", "recomp"):
             raise ValueError("engine must be interp or recomp")
         self.dll = C.CDLL(str(library or library_path()))
@@ -43,9 +49,14 @@ class Machine:
             "mouse": (C.c_int, [C.c_void_p, C.c_uint64, C.c_int, C.c_int, C.c_uint]),
             "record": (C.c_int, [C.c_void_p, C.c_char_p]),
             "screen": (C.c_int, [C.c_void_p, C.c_char_p]),
+            "fix": (C.c_int, [C.c_void_p, C.c_char_p, C.c_int]),
         }
         self.fn = {}
         for name, (result, args) in signatures.items():
+            # A library built before fixes existed lacks the switch; it can
+            # still run every unfixed machine.
+            if name == "fix" and not hasattr(self.dll, "f117_machine_fix"):
+                continue
             fn = getattr(self.dll, "f117_machine_" + name)
             fn.restype, fn.argtypes = result, args
             self.fn[name] = fn
@@ -55,6 +66,11 @@ class Machine:
                                       ips, time_us, int(engine == "recomp"))
         if not self.handle:
             raise RuntimeError(self.fn["error"](None).decode("utf-8", "replace"))
+        # Switchable fixes (docs/bugs.md); every one is off unless named.
+        for fix in fixes:
+            if "fix" not in self.fn or not self.fn["fix"](self.handle, fix.encode(), 1):
+                self.close()
+                raise ValueError("no fix " + fix)
 
     @staticmethod
     def _path(path):

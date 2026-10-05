@@ -194,16 +194,23 @@ never instead of parity.
       flight sound and listening validation remain open.
 - [ ] **Individual mission objectives:** all nine theatres and all four
       mission categories now have flight routes (air combat, ground strike,
-      and both training categories). Complete dedicated objective types,
-      including the supply-drop return leg. Timely cargo
-      impact now reproduces the original no-credit bug; secret-strip
-      delivery and home return are now verified. Reconnaissance
+      and both training categories). Complete dedicated objective types.
+      Timely cargo impact reproduces the original no-credit bug, and the
+      supply-drop return leg is verified (`cargo_return`: home 51 after hits
+      on the way, 380 checkpoints under both engines); secret-strip
+      delivery and home return are verified. Reconnaissance
       primary/secondary credits and raised-runway return are now verified.
       The existing transfer routes exercise generation and controls, then
       quit; they do not establish objective completion.
 - [ ] **The remaining career flow:** earned retirement and other
       awards. Promotion, Airman's Medal and the ten-mission tour ribbon are
-      now earned and saved. CO transfer
+      now earned and saved; rank 3 (Captain) is earned at sortie 15, and a
+      new rank-3 photo record carries the paired chain on towards the 99th
+      sortie. Retirement at 99 should reach END's "Wow, 99 missions!" remark
+      list (to be captured);
+      the "General, At Last!" page needs the pilot at rank 6 on the 99th
+      mission (total 27,720 and an average of 280), which needs a
+      higher-scoring sortie than this one's 219. CO transfer
       requests, briefing/arming, pilot creation/editing/erasure and roster
       save/reload, direct maintenance and retired/KIA dialogs are covered.
 - [ ] **A person playing it:** controls, joystick and mouse, saves, the feel.
@@ -237,10 +244,19 @@ never instead of parity.
 
 ## Phase 3 - fixes and enhancements (switchable)
 
-- [ ] Code overrides: hand-written C registered for a module address,
-      replacing that address's translation - how the fixes attach.
+- [x] Code overrides: hand-written C registered for a module address,
+      replacing that address's code under either engine - how the fixes
+      attach. Pinned to the shipped file by hash, off unless switched on
+      (`--fix ID`, `--list-fixes`; `fixes=` in the Python machine API).
+      Inert when off: the cargo return's 380 checkpoints match the build
+      without them. ROM-free `code_overrides` CTest. The containing region
+      is interpreted while an override is on; splitting regions at override
+      addresses in the recompiler remains to do.
 - [ ] Fixes for the original's bugs in [bugs.md](bugs.md) (D1 frame-rate
-      AI, D6 undetectable cells, ...), each on a switch.
+      AI, D6 undetectable cells, ...), each on a switch. D5 (supply drops
+      earn credit) is done and checked through normal input under both
+      engines (`cargo_d5_fixed`). Recorded sessions do not yet note which
+      fixes were on.
 - [ ] 60+ fps and 4K presentation.
 
 ## Housekeeping

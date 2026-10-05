@@ -227,6 +227,19 @@ the repository.
   check one bit; a write that changes a translated byte bumps the instance's
   generation and makes running code stop at the next boundary.
 
+- **Code overrides.** Hand-written C registered for one address of one
+  module (by name and file hash), off until switched on (`--fix ID`). The
+  run loop asks for an override before either engine takes an instruction;
+  with none enabled that is one counter test. A translated region whose
+  bytes include an enabled override's address is refused, because regions
+  jump within themselves without returning to the dispatcher, so the
+  interpreter reaches the address and the override runs. The override
+  leaves CS:IP and the clock where the replaced code would have, or
+  declines and the original instruction runs. Fixes attach this way
+  (`src/fixes/`). The refusal costs speed while a fix is on: the D5 route
+  interprets about a tenth of its instructions. Splitting regions at
+  override addresses in the recompiler would remove that cost.
+
 Data inside code regions costs speed, not correctness: F117.COM keeps
 variables after code that the walk reaches, VGAME patches its far-call thunk
 table in DGROUP at start, and MGRAPHIC uses part of MISC's image as a

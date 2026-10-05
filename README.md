@@ -194,6 +194,7 @@ build\f117a.exe --data "D:\GOG\F-117A"
 | `--mt32-control FILE --mt32-pcm FILE` | render Roland through Munt using your control/PCM ROM pair (optional build); choose this or `--midi` |
 | `--opl dbopl\|nuked` | GOG DOSBox's OPL2 synthesizer (default), or Nuked OPL3 in OPL2 mode; both output at 44,100 Hz |
 | `--scale N`, `--fullscreen`, `--no-aspect` | window size; fullscreen; square pixels instead of 4:3 |
+| `--fix ID`, `--list-fixes` | switch on a fix for one of the original's bugs (`all` for every one); every fix is off unless named, so the default is the original, bugs included |
 
 The game asks its original SETUP questions at each start (joystick, sound
 card), as it did in 1991. Answer 2 for AdLib, or 3 for Roland with `--midi`

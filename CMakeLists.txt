@@ -51,12 +51,15 @@ target_include_directories(f117present PUBLIC src/host)
 target_link_libraries(f117present PUBLIC f117machine)
 
 # ---- The recomp runtime: generated code if there is any ------------------
-add_library(f117recomp_none STATIC src/recomp/recomp.c src/recomp/recomp_empty.c)
+# Switchable fixes attach to the runtime as code overrides (src/fixes).
+add_library(f117recomp_none STATIC src/recomp/recomp.c src/recomp/recomp_empty.c src/fixes/fixes.c)
+target_include_directories(f117recomp_none PUBLIC src/fixes)
 target_link_libraries(f117recomp_none PUBLIC f117machine)
 
 if(F117R_GEN_DIR)
   file(GLOB F117R_GEN_SOURCES CONFIGURE_DEPENDS "${F117R_GEN_DIR}/gen_*.c")
-  add_library(f117recomp STATIC src/recomp/recomp.c ${F117R_GEN_SOURCES})
+  add_library(f117recomp STATIC src/recomp/recomp.c src/fixes/fixes.c ${F117R_GEN_SOURCES})
+  target_include_directories(f117recomp PUBLIC src/fixes)
   target_link_libraries(f117recomp PUBLIC f117machine)
   if(MSVC)
     # Generated code: no warnings, and optimise each region on its own.
@@ -210,6 +213,10 @@ if(F117R_BUILD_TESTS)
   add_executable(test_scanout tests/test_scanout.c)
   target_link_libraries(test_scanout PRIVATE f117present f117recomp_none)
   add_test(NAME vga_scanout COMMAND test_scanout)
+
+  add_executable(test_overrides tests/test_overrides.c)
+  target_link_libraries(test_overrides PRIVATE f117recomp_none)
+  add_test(NAME code_overrides COMMAND test_overrides)
 
   # Every translated instruction of the game against the interpreter, one
   # instruction at a time from random states (needs the generated code).

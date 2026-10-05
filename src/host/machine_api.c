@@ -4,6 +4,7 @@
  */
 #include "machine.h"
 #include "recomp_rt.h"
+#include "fixes.h"
 #include "keys.h"
 #include "inputlog.h"
 #include "present.h"
@@ -39,6 +40,7 @@ API void f117_machine_close(run_api *r)
     machine_shutdown(&r->m);
     if (r->m.log) fclose(r->m.log);
     free(r->m.mem);
+    fixes_enable("all", 0);          /* switches are process-wide: the next machine starts clean */
     if (live == r) live = NULL;
     free(r);
 }
@@ -76,6 +78,8 @@ API run_api *f117_machine_open(const char *data, const char *save,
 }
 
 API const char *f117_machine_error(run_api *r) { return r ? r->m.fault : error; }
+/* Switch a fix (docs/bugs.md) on or off; the number switched, 0 if none. */
+API int f117_machine_fix(run_api *r, const char *id, int on) { (void)r; return fixes_enable(id, on); }
 API int f117_machine_run(run_api *r, uint64_t until) { return machine_run(&r->m, until); }
 API uint64_t f117_machine_clock(run_api *r) { return r->m.cpu.icount; }
 API uint64_t f117_machine_hash(run_api *r) { return machine_state_hash(&r->m); }

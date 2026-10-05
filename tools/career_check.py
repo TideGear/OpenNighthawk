@@ -15,6 +15,7 @@ from pathlib import Path
 import re
 import struct
 import tempfile
+from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 
 from machine_api import Machine, RouteInputs
 from recon_pilot import recon_state, recon_errors
@@ -128,9 +129,11 @@ def main():
     parser.add_argument("--steps", type=int, required=True)
     parser.add_argument("--count", type=int, default=1)
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--ahead", type=int, default=0,
+                        help="run up to N recompiled legs ahead of their interpreter legs, in parallel processes")
     args = parser.parse_args()
-    if args.steps <= 0 or args.count <= 0:
-        parser.error("--steps and --count must be positive")
+    if args.steps <= 0 or args.count <= 0 or args.ahead < 0:
+        parser.error("--steps and --count must be positive, --ahead not negative")
     previous = args.initial_roster.read_bytes()
     first = career(previous)
     if first["status"] or first["sorties"] + args.count > 99:
@@ -144,22 +147,65 @@ def main():
             or (p[0] == "M" and len(p) == 7 and p[5:] == ["0", "0"])) for p in replay):
         raise ValueError("requires ordinary recorded keys and absolute mouse only")
     args.out.mkdir(parents=True, exist_ok=False)
+    numbers = range(first["sorties"] + 1, first["sorties"] + args.count + 1)
+    if args.ahead:
+        return pipelined(args, previous, replay, int(header[1]), numbers)
     summary = []
-    for number in range(first["sorties"] + 1, first["sorties"] + args.count + 1):
-        outputs, saved = [], []
-        for engine in ("recomp", "interp"):
-            out = args.out / f"sortie-{number:02}-{engine}"
-            report, roster = leg(args, engine, previous, replay, int(header[1]), out)
-            if report["errors"]: return 1
-            outputs.append(out); saved.append(roster)
-        if saved[0] != saved[1]: raise ValueError("paired 802-byte career saves differ")
-        for name in ("input.log", "flight.csv", "result.json", "hashes.json"):
-            if (outputs[0] / name).read_bytes() != (outputs[1] / name).read_bytes():
-                raise ValueError("paired career evidence differs: " + name)
-        previous = saved[0]
-        summary.append(report)
-        (args.out / "completed.json").write_text(json.dumps(summary, indent=2) + "\n")
-        print("paired sortie", number, "flight/career gates and all checkpoints/save bytes agree", flush=True)
+    for number in numbers:
+        legs = [leg(args, engine, previous, replay, int(header[1]),
+                    args.out / f"sortie-{number:02}-{engine}") for engine in ENGINES]
+        if any(report["errors"] for report, _ in legs): return 1
+        previous = accept(args, number, legs, summary)
+    return 0
+
+
+ENGINES = ("recomp", "interp")
+
+
+def accept(args, number, legs, summary):
+    """Both engines' legs of one sortie must agree in every artefact."""
+    outputs = [args.out / f"sortie-{number:02}-{engine}" for engine in ENGINES]
+    if legs[0][1] != legs[1][1]: raise ValueError("paired 802-byte career saves differ")
+    for name in ("input.log", "flight.csv", "result.json", "hashes.json"):
+        if (outputs[0] / name).read_bytes() != (outputs[1] / name).read_bytes():
+            raise ValueError("paired career evidence differs: " + name)
+    summary.append(legs[0][0])
+    (args.out / "completed.json").write_text(json.dumps(summary, indent=2) + "\n")
+    print("paired sortie", number, "flight/career gates and all checkpoints/save bytes agree", flush=True)
+    return legs[0][1]
+
+
+def pipelined(args, previous, replay, time_us, numbers):
+    """The recompiled legs run ahead, each from the preceding recompiled
+    save; every interpreter leg starts from the same bytes as its recompiled
+    leg. Sorties are accepted strictly in order and only when both legs
+    agree, so the accepted chain is exactly the sequential one: a later
+    disagreement stops it at the last paired sortie."""
+    out = lambda n, e: args.out / f"sortie-{n:02}-{e}"
+    summary, inputs, recomp, interp = [], {}, {}, {}
+    numbers = list(numbers)
+    queue, accepted, running = list(numbers), 0, None
+    with ProcessPoolExecutor(args.ahead + 1) as pool:
+        while accepted < len(numbers):
+            # recomp holds finished legs not yet accepted
+            if running is None and queue and len(recomp) < args.ahead:
+                n = queue.pop(0)
+                inputs[n] = previous
+                running = (n, pool.submit(leg, args, "recomp", previous, replay, time_us, out(n, "recomp")))
+            futures = ([running[1]] if running else []) + list(interp.values())
+            wait(futures, return_when=FIRST_COMPLETED)
+            if running and running[1].done():
+                n, future = running; running = None
+                recomp[n] = future.result()
+                if recomp[n][0]["errors"]: return 1
+                previous = recomp[n][1]
+                interp[n] = pool.submit(leg, args, "interp", inputs[n], replay, time_us, out(n, "interp"))
+            n = numbers[accepted]
+            if n in interp and interp[n].done():
+                result = interp.pop(n).result()
+                if result[0]["errors"]: return 1
+                accept(args, n, [recomp.pop(n), result], summary)
+                accepted += 1
     return 0
 
 

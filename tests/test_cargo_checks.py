@@ -52,6 +52,30 @@ class CargoChecks(unittest.TestCase):
                        dict(target_damaged=1), dict(ejection=1), dict(agl=0)):
             self.assertTrue(self.verdict(**change))
 
+    def credited(self, impact_change=(), before_change=()):
+        impact = dict(dict(self.impact, flags=0x4004, strip_events=1), **dict(impact_change))
+        live = dict(self.live, **dict(before_change))
+        return errors([self.before, live, impact, dict(impact, clock=912600000)], credited=True)
+
+    def test_fixed_d5_requires_the_credit_at_impact(self):
+        self.assertEqual(self.credited(), [])
+        self.assertTrue(self.credited(dict(flags=4)))                    # no credit flag
+        self.assertTrue(self.credited(dict(strip_events=0)))             # no 8Bh event
+        self.assertTrue(self.credited(dict(strip_events=2)))
+        self.assertTrue(self.credited(before_change=dict(flags=0x4004)))  # credit before impact
+        # The unfixed verdict still refuses the same credited rows.
+        impact = dict(self.impact, flags=0x4004, strip_events=1)
+        self.assertTrue(errors([self.before, self.live, impact, dict(impact, clock=912600000)]))
+
+    def test_complete_mode_requires_the_state_retained_after_delivery(self):
+        rows = [self.before, self.live, self.impact, dict(self.impact, clock=912600000)]
+        home = dict(self.impact, clock=950000000, agl=0)
+        self.assertEqual(errors(rows + [home], complete=True), [])
+        self.assertTrue(errors(rows, complete=True))                     # no return leg
+        for change in (dict(flags=0x4004), dict(strip_events=1), dict(store_count=1),
+                       dict(fuel=0), dict(ejection=1), dict(objective_type=4)):
+            self.assertTrue(errors(rows + [dict(home, **change)], complete=True))
+
 
 if __name__ == "__main__":
     unittest.main()

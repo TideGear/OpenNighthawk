@@ -6,6 +6,7 @@
  *           [--record FILE] [--replay FILE]
  *           [--hash-every N] [--hash-from N] [--trace FROM:TO:FILE]
  *           [--coverage FILE] [--screen FILE.ppm] [--shots EVERY:PREFIX]
+ *           [--fix ID|all]... [--list-fixes]
  *           [--opl-log FILE] [--midi-log FILE]
  *
  * WHEN is an absolute clock count, or PROG+N: N after the program PROG
@@ -28,6 +29,7 @@
 #include "keys.h"
 #include "present.h"
 #include "recomp_rt.h"
+#include "fixes.h"
 #include "inputlog.h"
 
 #include <stdio.h>
@@ -186,6 +188,11 @@ int main(int argc, char **argv)
             i++;
         }
         else if (!strcmp(a, "--engine") && v) { engine = !strcmp(v, "recomp") ? ENGINE_RECOMP : ENGINE_INTERP; i++; }
+        else if (!strcmp(a, "--fix") && v) {
+            if (!fixes_enable(v, 1)) { fprintf(stderr, "no fix %s (--list-fixes)\n", v); return 2; }
+            i++;
+        }
+        else if (!strcmp(a, "--list-fixes")) { fixes_list(stdout); return 0; }
         else if ((!strcmp(a, "--type") || !strcmp(a, "--click") || !strcmp(a, "--move")) && v && g_ncmd < MAX_CMDS) {
             script_cmd *t = &g_cmd[g_ncmd++];
             const char *colon = strchr(v, ':');

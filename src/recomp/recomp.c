@@ -40,6 +40,11 @@ typedef struct instance {
     int       live;
     int       ran;                 /* some region has verified: its code is running */
     int       floating;            /* recognised by content, not loaded by DOS */
+    /* enabled overrides placed in this image, and the regions they refuse */
+    uint32_t  ov_lin[8];
+    int       ov_index[8];
+    int       nov;
+    uint8_t  *refused;             /* per region: contains an override */
 } instance;
 
 #define MAX_INST 32
@@ -103,11 +108,108 @@ static void set_codebits(const instance *in, int on)
 
 static void flush_coverage(instance *in);
 
+/* ---- code overrides (see recomp_rt.h) ---------------------------------- */
+
+#define MAX_OVERRIDES 64
+
+static recomp_override g_ov[MAX_OVERRIDES];
+static int g_ov_on[MAX_OVERRIDES];
+static int g_nov;
+static uint8_t g_ov_bits[MEM_SIZE / 8];   /* linear address -> an override is placed */
+int recomp_overrides_live;
+
+static void count_live_overrides(void)
+{
+    int n = 0;
+    for (int i = 0; i < MAX_INST; i++) if (g_rt.inst[i].live) n += g_rt.inst[i].nov;
+    recomp_overrides_live = n;
+}
+
+static void unplace_overrides(instance *in)
+{
+    for (int k = 0; k < in->nov; k++)
+        g_ov_bits[in->ov_lin[k] >> 3] &= (uint8_t)~(1u << (in->ov_lin[k] & 7));
+    in->nov = 0;
+    if (in->refused && in->mod) memset(in->refused, 0, in->mod->nregions ? in->mod->nregions : 1);
+}
+
+/* Place the enabled overrides that belong to this module, and refuse every
+ * translated region whose bytes include one of their addresses: a region
+ * jumps within itself without returning to the dispatcher. */
+static void place_overrides(instance *in)
+{
+    unplace_overrides(in);
+    if (!in->live || in->floating) return;
+    for (int i = 0; i < g_nov && in->nov < 8; i++) {
+        const recomp_override *o = &g_ov[i];
+        if (!g_ov_on[i] || strcmp(o->module, in->name) != 0) continue;
+        if (o->file_hash && o->file_hash != in->file_hash) continue;
+        const uint32_t lin = phys((uint16_t)(in->base + o->seg), o->ip);
+        if (lin < in->lo || lin >= in->hi) continue;
+        in->ov_lin[in->nov] = lin;
+        in->ov_index[in->nov++] = i;
+        g_ov_bits[lin >> 3] |= (uint8_t)(1u << (lin & 7));
+        if (!in->mod) continue;
+        const rc_module *m = in->mod;
+        if (!in->refused) in->refused = (uint8_t *)calloc(m->nregions ? m->nregions : 1, 1);
+        if (!in->refused) continue;
+        const uint32_t off = lin - in->lo;
+        for (uint32_t r = 0; r < m->nregions; r++)
+            for (uint32_t k = 0; k < m->regions[r].nruns; k++) {
+                const rc_run *run = &m->runs[m->regions[r].run_first + k];
+                if (off >= run->off && off < run->off + run->len) { in->refused[r] = 1; break; }
+            }
+    }
+}
+
+int recomp_override_add(const recomp_override *o)
+{
+    if (g_nov >= MAX_OVERRIDES || !o || !o->id || !o->module || !o->fn) return -1;
+    g_ov[g_nov] = *o;
+    g_ov_on[g_nov] = 0;
+    return g_nov++;
+}
+
+int recomp_override_enable(const char *id, int on)
+{
+    int n = 0;
+    for (int i = 0; i < g_nov; i++)
+        if (!strcmp(id, "all") || !strcmp(id, g_ov[i].id)) { g_ov_on[i] = on != 0; n++; }
+    for (int i = 0; i < MAX_INST; i++) if (g_rt.inst[i].live) place_overrides(&g_rt.inst[i]);
+    count_live_overrides();
+    return n;
+}
+
+void recomp_override_list(FILE *f)
+{
+    for (int i = 0; i < g_nov; i++)
+        fprintf(f, "%-6s %-3s %s %04X:%04X  %s\n", g_ov[i].id, g_ov_on[i] ? "on" : "off",
+                g_ov[i].module, g_ov[i].seg, g_ov[i].ip, g_ov[i].what ? g_ov[i].what : "");
+}
+
+int recomp_override_step(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t cs = c->seg[S_CS];
+    const uint32_t lin = phys(cs, c->ip);
+    if (!((g_ov_bits[lin >> 3] >> (lin & 7)) & 1)) return 0;
+    instance *in = g_rt.by_para[lin >> 4];
+    if (!in || !in->live) return 0;
+    for (int k = 0; k < in->nov; k++) {
+        const recomp_override *o = &g_ov[in->ov_index[k]];
+        if (in->ov_lin[k] != lin || (uint16_t)(in->base + o->seg) != cs) continue;
+        return o->fn(m) ? 1 : -1;
+    }
+    return 0;
+}
+
 static void unregister(instance *in)
 {
     if (!in->live) return;
     if (in->floating && g_rt.nfloating) g_rt.nfloating--;
     if (g_rt.last_exec == in) g_rt.last_exec = NULL;
+    unplace_overrides(in);
+    free(in->refused);
     flush_coverage(in);
     set_codebits(in, 0);
     for (uint32_t p = in->lo >> 4; p <= ((in->hi - 1) >> 4) && p < 0x10000; p++)
@@ -121,6 +223,7 @@ void recomp_init(machine_t *m)
 {
     (void)m;
     for (int i = 0; i < MAX_INST; i++) unregister(&g_rt.inst[i]);
+    count_live_overrides();
     memset(cpu_codebits, 0, sizeof cpu_codebits);
     const char *cov = getenv("F117R_COVERAGE");
     if (cov && *cov) {
@@ -193,6 +296,8 @@ void recomp_module_load(void *user, machine_t *m, const char *name,
     }
     for (uint32_t p = lo >> 4; p <= ((hi - 1) >> 4) && p < 0x10000; p++) g_rt.by_para[p] = in;
     if (kind != MODLOAD_OVERLAY) g_rt.last_exec = in;
+    place_overrides(in);
+    count_live_overrides();
     dos_log(m, "[recomp] %s at %04X: %s\n", in->name, load_seg,
             mod ? "translated" : "no translation (interpreted)");
 }
@@ -304,6 +409,7 @@ static const rc_region *region_at(machine_t *m, instance *in, uint32_t lin, uint
         }
     if (ri == UINT32_MAX) return NULL;                     /* reached under another CS */
     const rc_region *r = &mod->regions[ri];
+    if (in->refused && in->refused[ri]) return NULL;       /* an override is placed in it */
     if (in->ok_gen[ri] != in->gen) {
         if (in->bad_gen[ri] == in->gen) return NULL;
         if (verify(m->mem, in, r)) { in->ok_gen[ri] = in->gen; g_rt.verify_ok++; in->ran = 1; }

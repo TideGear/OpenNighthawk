@@ -83,8 +83,13 @@ def landing_errors(rows, report, log, require_dos_exit=True):
     return errors
 
 
-def control(machine, state, tick, approach):
-    """Short, separated stick pulses; every key is released normally."""
+def control(machine, state, tick, approach, cruise=2500, aim=20, approach_speed=200):
+    """Short, separated stick pulses; every key is released normally.
+
+    `cruise` is the altitude held before the approach; a return leg over
+    hills can hold higher and lower it near home. `aim` is how far before
+    the runway centre the glide path meets the ground, and `approach_speed`
+    the speed held on final; a short runway needs both moved."""
     at = machine.clock + 1
     in_box = (state["box"] == 1 and state["nearest"] == state["home"]
               and abs(signed(state["x"] - state["home_x"])) <= state["box_width"] >> 5
@@ -102,8 +107,8 @@ def control(machine, state, tick, approach):
     error = signed(int(heading) - state["heading"])
     bank = clamp(error * 1.5, -6000, 6000)
     roll_error = bank - state["roll"]
-    altitude = clamp(state["surface"] + (-dy - 20) * 1.6,
-                     state["surface"] - 100, 2500) if approach else 2500
+    altitude = clamp(state["surface"] + (-dy - aim) * 1.6,
+                     state["surface"] - 100, 2500) if approach else cruise
     descent = -450 if approach and state["range"] < 1500 else 0
     if state["surface"] and approach:
         # A raised deck has no safe ground before its short approach box.
@@ -122,7 +127,7 @@ def control(machine, state, tick, approach):
     if tick % 10 == 0:
         command_at = at + machine.ips * 17 // 100
         if state["range"] < 2500:
-            want_throttle = clamp(42 + (200 - state["speed"]) * .1, 0, 85)
+            want_throttle = clamp(42 + (approach_speed - state["speed"]) * .1, 0, 85)
             if state["surface"]:
                 want_throttle = 85 if state["speed"] < 210 else 50 if state["speed"] > 240 else state["throttle"]
             if state["flags"] & 1:
