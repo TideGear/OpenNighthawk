@@ -67,7 +67,18 @@ with hash `197c6b398d6fbb9f`; the credit screenshot was reviewed. This is
 an airborne primary completion, not a verified return. No interpreted
 instruction starts inside known game modules were recorded on its recompiled
 replay. Adding its interpreter coverage raises the measured union to
-133,926 / 230,052 bytes (58.2%); return/career coverage is still pending.
+133,926 / 230,052 bytes (58.2%) before adding its return coverage.
+
+The separate `strike_return` route retains that primary damage and hit credit
+through a normal landing at home 33, (9792,1536), ground altitude zero.
+Speed/throttle zero, gear/brakes, fuel 2414, countdown 3 with S=8 and parent
+mission result 0/status 3 pass. Both observers' input logs, flight CSVs and
+result JSON are byte-identical. All 297 checkpoints and the final state
+agree at 14,872,594,982 clocks, hash `a4f05231eacf9d75`. The stopped cockpit
+was reviewed. Fine read-only sampling at idle home captures the final
+countdown increment before DOS exit; the acceptance threshold is unchanged.
+Adding this interpreter coverage raises the union to 134,132 / 230,052
+bytes (58.3%); recon return/career coverage remains pending.
 
 **Video:** current-build replay against the saved GOG video still matches
 1,319 exact RGB pictures in order. Seven reference pictures and 28 of ours

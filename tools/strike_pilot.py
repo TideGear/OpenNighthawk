@@ -14,6 +14,8 @@ from machine_api import Machine, RouteInputs
 from random_flights import base_route
 from recon_pilot import recon_state, control as navigate
 from run_route import route_args
+from landing_pilot import control as land, landing_errors, signed
+import math
 
 
 def strike_state(machine):
@@ -51,7 +53,7 @@ def control(machine, state, tick):
         machine.type(at, r"\r", hold_ms=20)
 
 
-def errors(rows):
+def errors(rows, complete=False):
     if not rows: return ["no observed flight"]
     last = rows[-1]; failures = []
     if last["objective_type"] != 2: failures.append("primary objective is not ground strike")
@@ -59,7 +61,8 @@ def errors(rows):
         failures.append("primary target damage or objective credit missing")
     if last["hit_events"] != 1 or not last["launch_events"]:
         failures.append("expected primary hit and weapon release events missing")
-    if last["ejection"] or last["fuel"] <= 0 or last["agl"] <= last["ground"]:
+    airborne = any(s["agl"] > s["ground"] + 100 for s in rows) if complete else last["agl"] > last["ground"]
+    if last["ejection"] or last["fuel"] <= 0 or not airborne:
         failures.append("not safely airborne at credit")
     if sum(s["stores"] for s in rows[0]["stations"]) <= sum(s["stores"] for s in last["stations"]):
         failures.append("no loaded store was consumed")
@@ -71,6 +74,7 @@ def main():
     parser.add_argument("--data", required=True); parser.add_argument("--out", required=True)
     parser.add_argument("--front-route"); parser.add_argument("--seconds", type=int, default=1500)
     parser.add_argument("--replay", help="observe recorded normal keys/mouse without adaptive controls")
+    parser.add_argument("--complete", action="store_true", help="also attempt home return after primary credit")
     parser.add_argument("--engine", choices=("recomp", "interp"), default="recomp")
     args = parser.parse_args(); out = Path(args.out); out.mkdir(parents=True, exist_ok=False)
     inputs = RouteInputs(route_args(args.front_route) if args.front_route else base_route()) if not args.replay else None
@@ -86,6 +90,7 @@ def main():
                 raise ValueError("only recorded keys and absolute mouse supported")
             replay.append(parts)
     rows = []; tick = 0; initialized = False; flight_start = None; last = ""
+    approach = False; flight_block = None; landed_report = {}
     with Machine(args.data, tempfile.mkdtemp(dir=out), log=out / "run.log", engine=args.engine) as machine:
         machine.record(out / "input.log")
         while machine.clock < 5_000_000_000 + args.seconds * machine.ips:
@@ -111,22 +116,49 @@ def main():
                     initialized = True
                 if elapsed > 190000000:
                     state = strike_state(machine); rows.append(dict(clock=machine.clock, seconds=elapsed / machine.ips, **state))
+                    flight_block = state["flight_block"]
                     if tick % 50 == 0:
                         print({k: state[k] for k in ("target_range", "altitude", "speed", "fuel", "weapon", "store_count", "lock", "launch_lock", "launch_events", "hit_events")}, flush=True)
                     if state["flags"] & 0x4000:
-                        machine.screen(out / "credit.ppm"); machine.run_until(machine.clock + machine.ips)
-                        if machine.program == "VGAME.EXE":
-                            rows.append(dict(clock=machine.clock, seconds=(machine.clock - flight_start) / machine.ips,
-                                             **strike_state(machine)))
-                        break
+                        if not (out / "credit.ppm").exists(): machine.screen(out / "credit.ppm")
+                        if not args.complete:
+                            machine.run_until(machine.clock + machine.ips)
+                            if machine.program == "VGAME.EXE":
+                                rows.append(dict(clock=machine.clock, seconds=(machine.clock - flight_start) / machine.ips,
+                                                 **strike_state(machine)))
+                            break
+                        if state["box"] and state["nearest"] == state["home"] and state["agl"] == max(state["ground"], state["surface"]):
+                            shot = out / ("stopped.ppm" if state["speed"] <= 1 else "touchdown.ppm")
+                            if not shot.exists(): machine.screen(shot)
                     if elapsed > args.seconds * machine.ips: break
-                    if not args.replay: control(machine, state, tick)
+                    if not args.replay or (args.complete and replay_pos == len(replay) and machine.clock > int(replay[-1][1])):
+                        if args.complete and state["flags"] & 0x4000:
+                            if math.hypot(signed(state["home_x"] - state["x"]), signed(state["home_y"] + 4000 - state["y"])) < 150:
+                                approach = True
+                            land(machine, state, tick, approach)
+                        else: control(machine, state, tick)
                     tick += 1; step = machine.ips // 5
             elif flight_start is not None: break
-            if machine.run_until(machine.clock + step) != Machine.SLICE: break
+            if args.complete and rows and rows[-1]["box"] and rows[-1]["nearest"] == rows[-1]["home"] and rows[-1]["speed"] <= 1 and rows[-1]["throttle"] == 0:
+                # The last countdown increment can be followed by DOS exit
+                # inside a normal 200 ms sample. Observe it before the next
+                # executable reuses VGAME's memory, without changing state.
+                until = machine.clock + step
+                ds = (machine.psp + 0x10 + 0x1e42) << 4
+                while machine.clock < until and machine.program == "VGAME.EXE":
+                    if machine.run_until(min(until, machine.clock + 128)) != Machine.SLICE: break
+                    if machine.program == "VGAME.EXE" and machine.read16(ds + 0x3dc8) != rows[-1]["stopped"]:
+                        rows.append(dict(clock=machine.clock, seconds=(machine.clock - flight_start) / machine.ips,
+                                         **strike_state(machine)))
+            elif machine.run_until(machine.clock + step) != Machine.SLICE: break
         machine.screen(out / "final.ppm")
+        failures = errors(rows, args.complete)
+        if args.complete and flight_block:
+            landed_report = dict(mission_result=machine.read16(flight_block + 0x28),
+                                 pilot_status=machine.read16(flight_block + 0x26))
+            failures.extend(landing_errors(rows, landed_report, (out / "run.log").read_text()))
         report = dict(clock=machine.clock, hash=f"{machine.hash:016x}", program=machine.program,
-                      errors=errors(rows), observation=rows[-1] if rows else None)
+                      errors=failures, observation=rows[-1] if rows else None, **landed_report)
         (out / "result.json").write_text(json.dumps(report, indent=2) + "\n")
         with (out / "flight.csv").open("w", newline="") as stream:
             if rows:

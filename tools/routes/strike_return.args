@@ -1,0 +1,10 @@
+# Normal Maverick primary strike, return to home 33, land, stop and debrief.
+# Strong observer: strike_pilot.py --complete --replay strike_return.input
+# expect-world LB
+# expect-exit VGAME.EXE 129 12000000000
+--replay
+strike_return.input
+--steps
+14872594982
+--time-us
+700000000000000

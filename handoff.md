@@ -84,6 +84,31 @@ routes are verified; an independent DOSBox recon flight is running (below).
 
 ## In flight at handoff
 
+- VERIFIED strike_return: normal primary strike and home33 landing.
+  Strong observers strike-return-02 and strike-return-verified-interp have
+  identical input.log, flight.csv and result.json, errors empty. Fine
+  read-only128-clock sampling observes counter3/S8 before DOS exit, keeping
+  the strict threshold. Parent result0/status3, fuel2414, stopped(9792,1536),
+  idle/gear/brakes, primary damage and hit credit retained. CLI297 hashes
+  and final match14872594982/a4f05231eacf9d75. Stopped PNG reviewed.
+  Coverage copied as exec-theatres-20261004/strike_return.cov (underscore
+  required to match route stem): union134132/230052=58.3%.20routes/49Python,
+  9CTests pass. Recon return/career coverage remains pending.
+- Promotion candidate02 selected Serge correctly: header9, both photos and
+  return pass. Debrief completed and saved score217,total66->283,sorties1->2,
+  rank remains0, status0. Do not claim promotion. Check all three original
+  thresholds and training gate in Reimp core/endreport.c; the prior assumed
+  eligibility was insufficient. Private promotion-serge-02-debrief-recomp
+  and parity-audit-promotion-serge-02-debrief-recomp.log are complete.
+  Candidate01's (100,146) click selected Hugo; corrected02 used(100,136),
+  then formContinue(258,182). No fabricated save data.
+- Independent dosbox-recon-05 is finished at its1900-second limit: no
+  credited photos, wrong lock0 while circling primary1(26304,24884).
+  No live reference process remains. Preserve as failed controller check.
+  Next fix: designation uses physical negative nose pitch; only photo cue
+  pointing includes camera offset0x6EF. Current pilot applies it before
+  designation too. Test that distinction and start a fresh reference run.
+
 - NEW strike objective: `tools/strike_pilot.py`, `strike.args/strike.input`,
   normal Libya training primary3 destroyed with weapon5=Maverick. Initial
   station0 stores2->0, releaseevents2, matchinghit1, flag5005, damaged1,

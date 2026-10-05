@@ -21,4 +21,8 @@ class StrikeChecks(unittest.TestCase):
     def test_reject_wrong_mission_and_loss(self):
         for change in (dict(objective_type=1), dict(ejection=1), dict(agl=0), dict(fuel=0)):
             self.assertTrue(errors([self.before, dict(self.after, **change)]))
+    def test_complete_mode_retains_airborne_history(self):
+        stopped = dict(self.after, agl=0, ground=0)
+        self.assertEqual(errors([self.before, stopped], complete=True), [])
+        self.assertTrue(errors([self.before, stopped]))
 if __name__ == "__main__": unittest.main()
