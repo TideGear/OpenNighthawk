@@ -336,6 +336,302 @@ static int vgame_outcode(machine_t *m)
     return 1;
 }
 
+/* A REP-prefixed string instruction as the interpreter steps it: one clock
+ * an iteration, one for a REP that finds CX already 0; REPNE/REPE stop on
+ * ZF as well (cmp). Returns the clocks taken. */
+enum { STR_MOVS, STR_SCAS };
+static unsigned rep_string(cpu_t *c, int op, int w16, uint16_t src_seg, int repne)
+{
+    if (c->r[R_CX] == 0) return 1;
+    unsigned n = 0;
+    for (;;) {
+        if (op == STR_MOVS) x86_movs(c, w16, src_seg);
+        else x86_scas(c, w16);
+        n++;
+        c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);
+        if (c->r[R_CX] == 0) break;
+        if (op == STR_SCAS && ((c->flags & F_ZF) != 0) == (repne != 0)) break;   /* REPNE stops on ZF=1, REPE on ZF=0 */
+    }
+    return n;
+}
+
+/* VGAME 0x0EE1A, start the mission clock: [929E] = t, [92A0] = 0. */
+static int vgame_set_mission_clock(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 7)) return 0;
+    const uint16_t t = arg(c, 0);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_AX] = t;
+    ds_put(c, 0x929E, t);
+    ds_put(c, 0x92A0, 0);
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 7;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x0D9E7, set the scene walk's origin: [49AC..49B0] = x, y, z. */
+static int vgame_set_scene_origin(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 10)) return 0;
+    const uint16_t x = arg(c, 0), y = arg(c, 1), z = arg(c, 2);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    ds_put(c, 0x49AC, x);
+    ds_put(c, 0x49AE, y);
+    ds_put(c, 0x49B0, z);
+    c->r[R_AX] = z;
+    x86_leave(c);
+    c->icount += 10;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x04E4B: [951C]:[951E] = [E574] + 7Ah : [E576] - a 32-bit value
+ * offset in its low word only (no carry into the high word, as shipped).
+ * Returns AX = 0, DX the high word; flags from SUB AX, AX. */
+static int vgame_deadline_from_clock(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 7)) return 0;
+    const uint16_t lo = ds_get(c, 0xE574), hi = ds_get(c, 0xE576);
+    const uint16_t sum = (uint16_t)alu_add(c, lo, 0x7A, 1, 0);
+    ds_put(c, 0x951C, sum);
+    ds_put(c, 0x951E, hi);
+    c->r[R_DX] = hi;
+    c->r[R_AX] = (uint16_t)alu_sub(c, sum, sum, 1, 0);
+    c->icount += 7;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x01BA7, read the far pointer at 0000:SI (an interrupt vector):
+ * BX = offset, AX = segment. */
+static int vgame_read_vector(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 7)) return 0;
+    cpu_push16(c, c->seg[S_DS]);                                  /* push ds */
+    c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);                    /* xor ax, ax */
+    c->r[R_BX] = seg_read16(c, 0, c->r[R_SI]);
+    c->r[R_AX] = seg_read16(c, 0, (uint16_t)(c->r[R_SI] + 2));
+    c->seg[S_DS] = cpu_pop16(c);                                  /* pop ds */
+    c->icount += 7;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x0EDC2, strupr(s): a-z become A-Z in place, up to the zero byte;
+ * returns s. Declines a string with no zero byte in its segment. */
+static int vgame_strupr(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t s = arg(c, 0), ds = c->seg[S_DS];
+    unsigned n = 5 + 3 + 3;                                       /* frame + jmp; last test; xchg, pop, ret */
+    uint32_t len = 0;
+    for (; len < 0x10000; len++) {
+        const uint8_t ch = mem_read8(c, phys(ds, (uint16_t)(s + len)));
+        if (!ch) break;
+        n += 3 + ((uint8_t)(ch - 0x61) < 0x1A ? 6 : 4);
+    }
+    if (len >= 0x10000 || !room(c, n)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    uint16_t ax = c->r[R_AX];
+    for (uint32_t i = 0; i < len; i++) {
+        const uint16_t at = (uint16_t)(s + i);
+        uint8_t al = mem_read8(c, phys(ds, at));
+        alu_logic(c, al, 0);                                      /* or al, al */
+        al = (uint8_t)alu_sub(c, al, 0x61, 0, 0);                 /* sub al, 'a' */
+        alu_sub(c, al, 0x1A, 0, 0);                               /* cmp al, 26 */
+        if (!(c->flags & F_CF)) { ax = (uint16_t)((ax & 0xFF00) | al); continue; }
+        al = (uint8_t)alu_add(c, al, 0x41, 0, 0);                 /* add al, 'A' */
+        mem_write8(c, phys(ds, at), al);
+        ax = (uint16_t)((ax & 0xFF00) | al);
+    }
+    alu_logic(c, 0, 0);                                           /* or al, al on the zero byte */
+    c->r[R_BX] = (uint16_t)(s + len);
+    c->r[R_DX] = (uint16_t)(ax & 0xFF00);                         /* xchg dx, ax */
+    c->r[R_AX] = s;
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += n;
+    near_ret(c);
+    return 1;
+}
+
+/* REPNE SCASB for AL = 0 from ES:DI with CX = FFFF, counted without
+ * running it: the iterations it will take (DF honoured). */
+static unsigned scan_zero_count(cpu_t *c, uint16_t di)
+{
+    const int delta = (c->flags & F_DF) ? -1 : 1;
+    unsigned k = 0;
+    while (k < 0xFFFF) {
+        const uint8_t b = mem_read8(c, phys(c->seg[S_ES], di));
+        k++;
+        if (!b) break;
+        di = (uint16_t)(di + delta);
+    }
+    return k;
+}
+
+/* VGAME 0x0EB82, strlen(s) by REPNE SCASB; DI kept, ES = DS. */
+static int vgame_strlen(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t s = arg(c, 0), es = c->seg[S_ES];
+    c->seg[S_ES] = c->seg[S_DS];
+    const unsigned k = scan_zero_count(c, s);
+    c->seg[S_ES] = es;
+    if (!room(c, 14 + k)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    const uint16_t di = c->r[R_DI];
+    c->seg[S_ES] = c->seg[S_DS];                                  /* mov ax, ds / mov es, ax */
+    c->r[R_DI] = s;
+    c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);                    /* xor ax, ax */
+    c->r[R_CX] = 0xFFFF;
+    rep_string(c, STR_SCAS, 0, 0, 1);                             /* repne scasb */
+    uint16_t cx = (uint16_t)~c->r[R_CX];                          /* not cx */
+    cx = (uint16_t)alu_dec(c, cx, 1);                             /* dec cx */
+    c->r[R_CX] = c->r[R_AX];                                      /* xchg cx, ax */
+    c->r[R_AX] = cx;
+    c->r[R_DX] = di;
+    c->r[R_DI] = di;
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 14 + k;
+    near_ret(c);
+    return 1;
+}
+
+/* Clocks the shared copy tail will take for CX = n bytes to DI = dst. */
+static unsigned copy_tail_clocks(uint16_t dst, uint16_t n)
+{
+    unsigned t = 2;                                               /* test al, 1 / je */
+    if (dst & 1) { t += 2; n = (uint16_t)(n - 1); }
+    t += 1;                                                       /* shr cx, 1 */
+    t += (n >> 1) ? (n >> 1) : 1;                                 /* rep movsw */
+    t += 1;                                                       /* adc cx, cx */
+    t += (n & 1) ? 1 : 1;                                         /* rep movsb: one byte, or CX=0 */
+    return t;
+}
+
+/* The copy tail VGAME's string routines share, with AX = DI = dst and
+ * CX bytes: a byte to word-align DI, REP MOVSW, then the odd byte through
+ * ADC CX, CX and REP MOVSB. Returns the clocks taken. */
+static unsigned copy_tail(cpu_t *c, uint16_t src_seg)
+{
+    unsigned n = 2;
+    alu_logic(c, c->r[R_AX] & 1, 0);                              /* test al, 1 */
+    if (!(c->flags & F_ZF)) {                                     /* je not taken */
+        x86_movs(c, 0, src_seg);
+        c->r[R_CX] = (uint16_t)alu_dec(c, c->r[R_CX], 1);
+        n += 2;
+    }
+    c->r[R_CX] = x86_shift(c, 5, c->r[R_CX], 1, 1);               /* shr cx, 1 */
+    n++;
+    n += rep_string(c, STR_MOVS, 1, src_seg, 0);                  /* rep movsw */
+    c->r[R_CX] = (uint16_t)alu_add(c, c->r[R_CX], c->r[R_CX], 1, (c->flags & F_CF) ? 1u : 0u);
+    n++;                                                          /* adc cx, cx */
+    n += rep_string(c, STR_MOVS, 0, src_seg, 0);                  /* rep movsb */
+    return n;
+}
+
+/* VGAME 0x0EB50, strcpy(dst, src): ES = DS, the length (with its zero) by
+ * REPNE SCASB, then the copy tail; SI and DI restored, AX = dst. Declines
+ * when DF is set (the tail's alignment arithmetic assumes forward). */
+static int vgame_strcpy(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (c->flags & F_DF) return 0;
+    const uint16_t dst = arg(c, 0), src = arg(c, 1), es = c->seg[S_ES];
+    c->seg[S_ES] = c->seg[S_DS];
+    const unsigned k = scan_zero_count(c, src);
+    c->seg[S_ES] = es;
+    const unsigned total = 10 + k + 3 + copy_tail_clocks(dst, (uint16_t)k) + 4;
+    if (!room(c, total)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    const uint16_t di = c->r[R_DI], si = c->r[R_SI];
+    c->r[R_DX] = di;
+    c->r[R_BX] = si;
+    c->r[R_SI] = src;
+    c->r[R_DI] = src;
+    c->seg[S_ES] = c->seg[S_DS];
+    c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);                    /* xor ax, ax */
+    c->r[R_CX] = 0xFFFF;
+    rep_string(c, STR_SCAS, 0, 0, 1);
+    c->r[R_CX] = (uint16_t)~c->r[R_CX];                           /* not cx */
+    c->r[R_DI] = dst;
+    c->r[R_AX] = dst;
+    copy_tail(c, c->seg[S_DS]);
+    c->r[R_SI] = si;
+    c->r[R_DI] = di;
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += total;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x0EDE0, memcpy(dst, src, n) within DS (ES = DS), the copy tail
+ * when n is non-zero; SI and DI restored, AX = dst. Forward only. */
+static int vgame_memcpy(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (c->flags & F_DF) return 0;
+    const uint16_t dst = arg(c, 0), src = arg(c, 1), n = arg(c, 2);
+    const unsigned total = 11 + (n ? copy_tail_clocks(dst, n) : 0) + 4;
+    if (!room(c, total)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    const uint16_t di = c->r[R_DI], si = c->r[R_SI];
+    c->r[R_DX] = di;
+    c->r[R_BX] = si;
+    c->seg[S_ES] = c->seg[S_DS];
+    c->r[R_SI] = src;
+    c->r[R_DI] = dst;
+    c->r[R_AX] = dst;
+    c->r[R_CX] = n;
+    if (n) copy_tail(c, c->seg[S_DS]);                            /* jcxz skips it */
+    c->r[R_SI] = si;
+    c->r[R_DI] = di;
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += total;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x0EDA4, farcopy(src_seg, src, dst_seg, dst, n): REP MOVSB between
+ * segments; DS, SI, DI restored, ES left as dst_seg, CX 0. */
+static int vgame_farcopy(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t sseg = arg(c, 0), src = arg(c, 1), dseg = arg(c, 2), dst = arg(c, 3), n = arg(c, 4);
+    const unsigned total = 16 + (n ? n : 1);
+    if (!room(c, total)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->seg[S_DS]);
+    c->seg[S_DS] = sseg;
+    c->r[R_SI] = src;
+    c->seg[S_ES] = dseg;
+    c->r[R_DI] = dst;
+    c->r[R_CX] = n;
+    rep_string(c, STR_MOVS, 0, c->seg[S_DS], 0);
+    c->seg[S_DS] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += total;
+    near_ret(c);
+    return 1;
+}
+
 static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x4958, vgame_free_fall, "free fall", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD50A, vgame_waypoint_from_target, "waypoint from target", 1 },
@@ -350,6 +646,15 @@ static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xC67A, vgame_clamp3, "clamp a bar value", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x104E, 0x008A, vgame_sine, "sine by table", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xFFDC, vgame_outcode, "clipping outcode", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xEE1A, vgame_set_mission_clock, "start the mission clock", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD9E7, vgame_set_scene_origin, "set the scene origin", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x4E4B, vgame_deadline_from_clock, "deadline from the clock", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x1BA7, vgame_read_vector, "read an interrupt vector", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xEDC2, vgame_strupr, "upper-case a string", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xEB82, vgame_strlen, "string length", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xEB50, vgame_strcpy, "string copy", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xEDE0, vgame_memcpy, "block copy", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xEDA4, vgame_farcopy, "far block copy", 1 },
 };
 
 void matched_register(void)

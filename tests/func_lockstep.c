@@ -235,6 +235,11 @@ int main(int argc, char **argv)
             }
             g_side[0].overflow = g_side[1].overflow = 1;      /* compare all memory */
             if (steps >= 100000) { ms++; restore(); continue; }
+            /* A random state that makes the original write over its own code
+             * (a copy aimed at the routine) runs instructions it was not; the
+             * game never does, and no equivalent can follow it. */
+            const uint32_t self = phys(cs, ip);
+            if (memcmp(g_mem[0] + self, g_pristine + self, 0x100)) { ms++; restore(); continue; }
             if (!o->fn(&g_m)) { ms++; restore(); continue; }
             mc++;
             g_cpu[1] = g_m.cpu;                /* compare() reads g_cpu[1] */

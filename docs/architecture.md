@@ -900,8 +900,16 @@ Matched so far, from the Reimp's names (`tools/reimp_names.py`), all VGAME:
 0x04958 free fall, 0x0D50A waypoint from target, 0x0E289 orientation matrix
 transpose, 0x0C863 sign, 0x0C699 clamp, 0x0BA2B "class takes a lock",
 0x0EE0C absolute value, the 32-bit shifts 0x0EF68/0x0EF74/0x0F018, 0x0C67A
-bar clamp, 104E:008A table sine and 0x0FFDC clipping outcode. Each is equal
-over 4,000 random states. The harness also caught a matched routine that
+bar clamp, 104E:008A table sine, 0x0FFDC clipping outcode, the setters
+0x0EE1A/0x0D9E7/0x04E4B, 0x01BA7 interrupt-vector read, and the string
+helpers 0x0EDC2 strupr, 0x0EB82 strlen, 0x0EB50 strcpy, 0x0EDE0 block copy
+and 0x0EDA4 far copy: 22 routines, each equal over 4,000 random states.
+REP string instructions are stepped as the interpreter steps them (one
+clock an iteration, one for a REP that finds CX at 0), and a routine whose
+clock depends on the data counts it first with a dry run so it can decline
+before changing anything. States where the original writes over its own
+code bytes are skipped: no equivalent can follow self-modification, and the
+game never does it. The harness also caught a matched routine that
 skipped a PUSH/POP pair: the original leaves BP's value in the stack word
 below SP, and that word is part of the comparison. On the strike route the
 recompiled engine runs them about 4.7 million times and reaches the
