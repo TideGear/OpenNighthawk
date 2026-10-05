@@ -25,6 +25,7 @@
 #include "matched.h"
 #include "recomp_rt.h"
 #include "x86_sem.h"
+#include <string.h>
 
 #define VGAME_47304 0x8287450CCA85106FULL
 #define START_47304 0xC65ECC83823E4907ULL
@@ -2562,6 +2563,153 @@ static int strcat_ds(machine_t *m)
     return 1;
 }
 
+/* VGAME 0x0EFB8, the C runtime's unsigned 32-bit divide: DX:AX = a / b for
+ * a = [bp+6]:[bp+4], b = [bp+A]:[bp+8]; two DIVs for a 16-bit divisor, else
+ * the divisor (CX:BX here) and dividend shifted down until it fits, one DIV
+ * and a correction by at most one. RET 8; BX and SI preserved. A zero
+ * divisor is declined. */
+static int vgame_uldiv(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t alo = arg(c, 0), ahi = arg(c, 1), blo = arg(c, 2), bhi = arg(c, 3);
+    if (!blo && !bhi) return 0;
+    if (!room(c, 4 + 3 + 9 + 4 + 6 * 16 + 14 + 4)) return 0;
+    const uint16_t ss = c->seg[S_SS];
+    cpu_push16(c, c->r[R_BP]); c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->r[R_BX]); cpu_push16(c, c->r[R_SI]);
+    const uint16_t bp = c->r[R_BP];
+    unsigned n = 4 + 3;
+    c->r[R_AX] = bhi;
+    alu_logic(c, bhi, 1);                                         /* or ax, ax */
+    if (c->flags & F_ZF) {
+        c->r[R_CX] = blo;
+        c->r[R_AX] = ahi;
+        c->r[R_DX] = (uint16_t)alu_logic(c, 0, 1);
+        x86_div16(c, blo);
+        const uint16_t q_hi = c->r[R_AX];
+        c->r[R_BX] = q_hi;
+        c->r[R_AX] = alo;
+        x86_div16(c, blo);
+        c->r[R_DX] = q_hi;
+        n += 9;
+    } else {
+        uint16_t cx = bhi, bx = blo, dx = ahi, ax = alo;
+        n += 4;
+        do {
+            cx = x86_shift(c, 5, cx, 1, 1);
+            bx = x86_shift(c, 3, bx, 1, 1);
+            dx = x86_shift(c, 5, dx, 1, 1);
+            ax = x86_shift(c, 3, ax, 1, 1);
+            alu_logic(c, cx, 1);
+            n += 6;
+        } while (!(c->flags & F_ZF));
+        c->r[R_CX] = cx; c->r[R_BX] = bx; c->r[R_DX] = dx; c->r[R_AX] = ax;
+        x86_div16(c, bx);
+        uint16_t si = c->r[R_AX];
+        x86_mul16(c, seg_read16(c, ss, (uint16_t)(bp + 0x0A)));
+        cx = c->r[R_AX];                                          /* xchg cx, ax */
+        c->r[R_AX] = seg_read16(c, ss, (uint16_t)(bp + 8));
+        x86_mul16(c, si);
+        c->r[R_DX] = (uint16_t)alu_add(c, c->r[R_DX], cx, 1, 0);
+        c->r[R_CX] = cx;
+        n += 7 + 1;                                               /* div .. add; jb */
+        int dec;
+        if (c->flags & F_CF) dec = 1;
+        else {
+            alu_sub(c, c->r[R_DX], seg_read16(c, ss, (uint16_t)(bp + 6)), 1, 0); n += 2;
+            if (x86_cond(c, 0x7)) dec = 1;
+            else {
+                n += 1;
+                if (c->flags & F_CF) dec = 0;
+                else {
+                    alu_sub(c, c->r[R_AX], seg_read16(c, ss, (uint16_t)(bp + 4)), 1, 0); n += 2;
+                    dec = !x86_cond(c, 0x6);
+                }
+            }
+        }
+        if (dec) { si = (uint16_t)alu_dec(c, si, 1); n++; }
+        c->r[R_DX] = (uint16_t)alu_logic(c, 0, 1);
+        c->r[R_SI] = c->r[R_AX];                                  /* xchg si, ax */
+        c->r[R_AX] = si;
+        n += 2;
+    }
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    n += 4;
+    c->icount += n;
+    near_ret(c);
+    c->r[R_SP] = (uint16_t)(c->r[R_SP] + 8);
+    return 1;
+}
+
+/* VGAME 0x0E530, frame_palette_step(current, target, n): each of n RGB
+ * entries of the current palette (far pointer) moves one step toward the
+ * target's (far pointer); AX = how many bytes changed. LOOP makes n = 0 mean
+ * 65536. Declined when the two palettes or the stack frame overlap, which
+ * the game never does, so the clock can be counted from memory first. */
+static int vgame_palette_step(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t cur_off = arg(c, 0), cur_seg = arg(c, 1), tgt_off = arg(c, 2), tgt_seg = arg(c, 3), n0 = arg(c, 4);
+    const uint32_t count = n0 ? n0 : 0x10000u;
+    const uint32_t len = 3 * count;
+    if (len > 0x8000) return 0;                                   /* keep the counting simple */
+    if ((uint32_t)(cur_off) + len > 0x10000 || (uint32_t)(tgt_off) + len > 0x10000) return 0;
+    /* Exact overlap test, wrap at 1 MB included: the current palette's
+     * bytes against the target's and the stack frame's. */
+    static uint8_t mark[MEM_SIZE / 8];
+    memset(mark, 0, sizeof mark);
+    for (uint32_t i = 0; i < len; i++) { const uint32_t a = phys(cur_seg, (uint16_t)(cur_off + i)); mark[a >> 3] |= (uint8_t)(1u << (a & 7)); }
+    int clash = 0;
+    for (uint32_t i = 0; i < len && !clash; i++) { const uint32_t a = phys(tgt_seg, (uint16_t)(tgt_off + i)); clash = (mark[a >> 3] >> (a & 7)) & 1; }
+    for (uint32_t i = 0; i < 22 && !clash; i++) { const uint32_t a = phys(c->seg[S_SS], (uint16_t)(c->r[R_SP] - 8 + i)); clash = (mark[a >> 3] >> (a & 7)) & 1; }
+    if (clash) return 0;
+    unsigned clocks = 9 + 6;
+    for (uint32_t i = 0; i < len; i++) {
+        const uint8_t a = mem_read8(c, phys(cur_seg, (uint16_t)(cur_off + i)));
+        const uint8_t b = mem_read8(c, phys(tgt_seg, (uint16_t)(tgt_off + i)));
+        clocks += a == b ? 4 : (b > a ? 7 : 8);
+        if (i % 3 == 2) clocks += 3;
+    }
+    if (!room(c, clocks)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->seg[S_DS]);
+    c->seg[S_DS] = cur_seg; c->r[R_SI] = cur_off;
+    c->seg[S_ES] = tgt_seg; c->r[R_DI] = tgt_off;
+    uint16_t bx = (uint16_t)alu_sub(c, c->r[R_BX], c->r[R_BX], 1, 0);
+    uint16_t ax = c->r[R_AX];
+    for (uint32_t e = 0; e < count; e++) {
+        for (int k = 0; k < 3; k++) {
+            const uint32_t at = phys(cur_seg, (uint16_t)(c->r[R_SI] + k));
+            const uint8_t a = mem_read8(c, at);
+            uint8_t step = 1;
+            ax = (uint16_t)(1 << 8 | a);
+            alu_sub(c, mem_read8(c, phys(tgt_seg, (uint16_t)(c->r[R_DI] + k))), a, 0, 0);
+            if (c->flags & F_ZF) continue;
+            if (!x86_cond(c, 0x7)) { step = 0xFF; ax = (uint16_t)(0xFF << 8 | a); }
+            bx = (uint16_t)alu_inc(c, bx, 1);
+            mem_write8(c, at, (uint8_t)alu_add(c, a, step, 0, 0));
+        }
+        c->r[R_SI] = (uint16_t)alu_add(c, c->r[R_SI], 3, 1, 0);
+        c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], 3, 1, 0);
+    }
+    c->r[R_CX] = 0;
+    c->r[R_BX] = bx;
+    c->r[R_AX] = bx;
+    (void)ax;
+    c->seg[S_DS] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += clocks;
+    near_ret(c);
+    return 1;
+}
+
 static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x4958, vgame_free_fall, "free fall", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD50A, vgame_waypoint_from_target, "waypoint from target", 1 },
@@ -2691,6 +2839,8 @@ static const recomp_override MATCHED[] = {
     { "matched", "START.EXE", START_47304, 0x0000, 0x826C, start_palette_bank, "copy a palette bank", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xEB10, strcat_ds, "string concatenate", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x5110, strcat_ds, "string concatenate", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xEFB8, vgame_uldiv, "32-bit unsigned divide", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xE530, vgame_palette_step, "step a palette toward its target", 1 },
 };
 
 void matched_register(void)
