@@ -15,7 +15,7 @@ development; nothing here builds against its tree.
 |---|---|---|
 | `src/cpu/cpu.c`, `cpu.h` | `tools/x86oracle/cpu.c`, `cpu.h` | Semantics moved to `x86_sem.h`; STI/MOV SS interrupt shadow; write tracking of translated bytes; `stop_at`; memory watch and tracing removed; faults leave IP at the instruction |
 | `src/cpu/x86_sem.h` | the helpers inside `cpu.c` | Moved, not changed; `IDIV` of `0x80000000` by -1 now traps instead of faulting the host |
-| `src/machine/dos.c`, `pc.c` | `tools/x86oracle/dos.c` | Split into DOS/BIOS and devices; extended for play (see architecture.md) |
+| `src/machine/dos*.c`, `pc.c` | `tools/x86oracle/dos.c` | Split into DOS/BIOS and devices; extended for play (see architecture.md); DOS/BIOS later split by service (`dos.c` dispatch, `dos_memory.c`, `dos_programs.c`, `dos_files.c`, `dos_keyboard.c`, `dos_video.c`) |
 | `tests/sstest.py`, `sst286.py`, `test186.c` | `tools/x86oracle/` | Paths made configurable |
 | `tests/cpu_api.c` | `tools/x86oracle/oracle_api.c` | Supplies the two machine hooks itself |
 | `tools/unpack.py` | `tools/x86oracle/unpack.py` | DLL path |
@@ -40,10 +40,10 @@ re-expressed in this code base, not copied files:
 
 | Here | DOSBox source | What |
 |---|---|---|
-| `src/machine/dos.c` memory allocation | `src/dos/dos_memory.cpp` | MCB chain: allocate (first/best/last fit), resize, free, free a process's blocks, compaction |
-| `src/machine/dos.c` `load_program`, `make_env`, `psp_make`, `terminate` | `src/dos/dos_execute.cpp`, `dos_classes.cpp` | EXEC sizing and placement, environment, PSP fields, entry registers, terminate |
-| `src/machine/dos.c` INT 21h services | `src/dos/dos.cpp`, `dos_ioctl.cpp`, `dos_files.cpp` | Register results of 30h, 33h, 09h, 11h/12h (FCB find, volume label), 2Dh, 43h, 44h, 48h-4Dh, 52h |
-| `src/machine/dos.c` INT 33h | `src/ints/mouse.cpp` | Three buttons, X granularity, position set |
+| `src/machine/dos_memory.c` memory allocation | `src/dos/dos_memory.cpp` | MCB chain: allocate (first/best/last fit), resize, free, free a process's blocks, compaction |
+| `src/machine/dos_programs.c` `dos_load_program`, `make_env`, `psp_make`, `dos_terminate` | `src/dos/dos_execute.cpp`, `dos_classes.cpp` | EXEC sizing and placement, environment, PSP fields, entry registers, terminate |
+| `src/machine/dos_files.c` INT 21h services | `src/dos/dos.cpp`, `dos_ioctl.cpp`, `dos_files.cpp` | Register results of 30h, 33h, 09h, 11h/12h (FCB find, volume label), 2Dh, 43h, 44h, 48h-4Dh, 52h |
+| `src/machine/mouse.c` INT 33h | `src/ints/mouse.cpp` | Three buttons, X granularity, position set |
 | `src/machine/pc.c` port delays | `src/hardware/iohandler.cpp` | Cycles per port read and write |
 | `src/machine/pc.c` scanout | `src/hardware/vga_draw.cpp` | Four-part mode-13h draw timing, retrace display-address latch and chain-4 wrapping |
 | `src/machine/pc.c` display palette | `src/hardware/vga_dac.cpp` | Triplet publication, changed-mask updates and alias colours |

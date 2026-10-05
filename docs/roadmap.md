@@ -245,8 +245,15 @@ never instead of parity.
 
 ## Housekeeping
 
-- [ ] Split `src/machine/dos.c` (about 2,300 lines) into memory, programs,
-      files, keyboard and video. The mouse driver is now in `mouse.c`.
+- [x] Split `src/machine/dos.c` (about 2,300 lines) into memory, programs,
+      files, keyboard and video (`dos_memory.c`, `dos_programs.c`,
+      `dos_files.c`, `dos_keyboard.c`, `dos_video.c`; `dos.c` keeps the
+      dispatch, BIOS stubs and boot). A token-level check shows every one of
+      the original's 85 top-level items moved unchanged apart from `static`
+      and a `dos_` prefix on 29 functions now shared through
+      `dos_internal.h`, all of them call sites. Six routes agree under both
+      engines before and after at every checkpoint, final state, screenshot
+      and saved file. The mouse driver is in `mouse.c`.
 - [x] Build-from-scratch steps in the README, tested on a fresh public clone:
       full interpreter build, coverage/recompilation, six-route parity at
       329 checkpoints/finals and 5,713,152 lockstep states (zero mismatches).

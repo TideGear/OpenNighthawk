@@ -22,7 +22,9 @@ depends on how much was translated; only speed does.
 
 ```
 src/cpu/        the CPU: state, the interpreter (cpu.c), the shared semantics (x86_sem.h)
-src/machine/    the PC: DOS and BIOS (dos.c), devices (pc.c), mouse driver (mouse.c)
+src/machine/    the PC: DOS and BIOS (dos.c dispatch and BIOS stubs; dos_memory.c,
+                dos_programs.c, dos_files.c, dos_keyboard.c, dos_video.c),
+                devices (pc.c), mouse driver (mouse.c)
 src/recomp/     the recompiled code's run-time (recomp.c) and the generated-code contract
 src/host/       the window, audio and input (main.c), the headless runner (headless.c),
                 presentation (present.c)
@@ -109,7 +111,8 @@ and the inputs with the clock counts at which they arrived.
 
 ## The PC
 
-`src/machine/dos.c` began as the Reimp oracle's DOS: the loader, the
+`src/machine/dos.c` (now split by service into the `dos_*.c` files) began
+as the Reimp oracle's DOS: the loader, the
 EXEC/overlay/terminate chain that F117.COM drives, the bump allocator and the
 file calls. `src/machine/pc.c` holds the devices. Both were extended from
 "run a scripted capture" to "play":

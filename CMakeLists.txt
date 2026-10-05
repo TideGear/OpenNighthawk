@@ -39,7 +39,9 @@ target_include_directories(f117cpu PUBLIC src/cpu)
 
 # ---- The emulated PC: DOS, BIOS and devices ------------------------------
 add_library(f117machine STATIC
-  src/machine/machine.c src/machine/pc.c src/machine/dos.c src/machine/mouse.c)
+  src/machine/machine.c src/machine/pc.c src/machine/dos.c
+  src/machine/dos_memory.c src/machine/dos_programs.c src/machine/dos_files.c
+  src/machine/dos_keyboard.c src/machine/dos_video.c src/machine/mouse.c)
 target_include_directories(f117machine PUBLIC src/machine src/recomp)
 target_link_libraries(f117machine PUBLIC f117cpu)
 
