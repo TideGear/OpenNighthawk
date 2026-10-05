@@ -908,11 +908,10 @@ recompiled engine runs them about 4.7 million times and reaches the
 interpreter's final hash. Placing an override refuses the translated region
 around its address, so nearby code is interpreted (755M to 815M
 instructions on that route); the recompiler should isolate matched sites as
-it does fix sites. Earlier figures: each is equal over 4,000 random states (one transpose state is
-skipped, where the random stack overlaps the matrix and the original returns
-elsewhere). On the strike route the recompiled engine ran free fall 9,587
-times and the transpose 35,019 times and reached the interpreter's final
-hash; `recomp_report` prints these counts (`[matched] ... ran N times`).
+it does fix sites. A skipped state is one where the original does not
+return within the budget, for instance when the random stack overlaps the
+data a routine writes. `recomp_report` prints the call counts
+(`[matched] ... ran N times`).
 
 
 
