@@ -908,7 +908,11 @@ text pen 0x0886A, weapon effectiveness 0x08A67, the 32-bit multiply
 0x0EF36, the divide-error hook pair 120A:027D/029E, 0x0F79D and the axis
 spread 1058:0C9F, the event-log append 0x04ABA, the altitude-alert reset
 0x049F9, the scene-word decoder 0x0C436 and the key sign extension 0x0C845:
-35 routines, each equal over 4,000 random states.
+and the renderer's helpers (destroyed-type test 0x0B9F6, polygon row spans
+130D:00B6/00D1, screen row offsets 1377:0116, span-table clear 0FB2:051F,
+which reads its relocated segment constant from the loaded code, and the
+clip-edge test 130D:064A): 41 routines, each equal over 4,000 random
+states.
 REP string instructions are stepped as the interpreter steps them (one
 clock an iteration, one for a REP that finds CX at 0), and a routine whose
 clock depends on the data counts it first with a dry run so it can decline

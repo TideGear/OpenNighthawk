@@ -979,6 +979,155 @@ static int vgame_key_sign_extend(machine_t *m)
     return 1;
 }
 
+/* VGAME 0x0B9F6, destroyed_type(object): 1 for object types 0x0C, 0x0D,
+ * 9 and 0x0B (as class5_takes_lock reads the type), else 0. */
+static int vgame_destroyed_type(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 18)) return 0;
+    x86_enter(c, 2, 0);
+    const uint16_t object = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 4));
+    uint16_t bx = x86_shift(c, 4, object, 4, 1);
+    bx = (uint16_t)((bx & 0xFF00) | mem_read8(c, phys(c->seg[S_DS], (uint16_t)(bx - 0x4D24))));
+    bx = (uint16_t)alu_logic(c, bx & 0x7F, 1);
+    c->r[R_BX] = bx;
+    uint16_t ax = (uint16_t)((c->r[R_AX] & 0xFF00) | mem_read8(c, phys(c->seg[S_DS], (uint16_t)(bx - 0x39D0))));
+    ax = (uint16_t)alu_logic(c, ax & 0x0F, 1);
+    static const uint16_t yes[] = { 0x0C, 0x0D, 0x09, 0x0B };
+    unsigned n = 9, hit = 0;
+    for (int i = 0; i < 4 && !hit; i++) {
+        alu_sub(c, ax, yes[i], 1, 0);
+        n += i ? 2 : 0;                                           /* each later cmp/j pair */
+        hit = (c->flags & F_ZF) != 0;
+    }
+    if (hit) { ax = 1; n += 3; }
+    else { ax = (uint16_t)alu_sub(c, ax, ax, 1, 0); n += 3; }
+    c->r[R_AX] = ax;
+    x86_leave(c);
+    c->icount += n;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 130D:00B6 and 130D:00D1: widen a polygon's row span by a side
+ * from BX to CX (ordered), into [85E4]/[85E6] or [85E8]/[85EA]. */
+static int poly_side(machine_t *m, uint16_t lo_at, uint16_t hi_at)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 10)) return 0;
+    unsigned n = 7;
+    alu_sub(c, c->r[R_CX], c->r[R_BX], 1, 0);
+    if (!x86_cond(c, 0xD)) {                                      /* jge not taken: xchg */
+        const uint16_t t = c->r[R_BX]; c->r[R_BX] = c->r[R_CX]; c->r[R_CX] = t;
+        n++;
+    }
+    alu_sub(c, c->r[R_CX], ds_get(c, hi_at), 1, 0);
+    if (!x86_cond(c, 0xC)) { ds_put(c, hi_at, c->r[R_CX]); n++; }  /* jl skips */
+    alu_sub(c, c->r[R_BX], ds_get(c, lo_at), 1, 0);
+    if (!x86_cond(c, 0xD)) { ds_put(c, lo_at, c->r[R_BX]); n++; }  /* jge skips */
+    c->icount += n;
+    near_ret(c);
+    return 1;
+}
+static int vgame_poly_side_a(machine_t *m) { return poly_side(m, 0x85E4, 0x85E6); }
+static int vgame_poly_side_b(machine_t *m) { return poly_side(m, 0x85E8, 0x85EA); }
+
+/* VGAME 1377:0116: the 200 row offsets at DS:861C become 0, 320, 640, ...
+ * (STOSW, ES = DS) and [85F2] = 7Ch. */
+static int vgame_row_offsets(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 608)) return 0;
+    c->r[R_CX] = 0xC8;
+    c->seg[S_ES] = c->seg[S_DS];
+    c->r[R_DI] = 0x861C;
+    uint16_t ax = (uint16_t)alu_sub(c, c->seg[S_DS], c->seg[S_DS], 1, 0);
+    for (int i = 0; i < 200; i++) {
+        c->r[R_AX] = ax;
+        x86_stos(c, 1);
+        ax = (uint16_t)alu_add(c, ax, 0x140, 1, 0);
+    }
+    c->r[R_AX] = ax;
+    c->r[R_CX] = 0;
+    c->r[R_BX] = 0x7C;
+    ds_put(c, 0x85F2, 0x7C);
+    c->icount += 608;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0FB2:051F, clear the span tables for the rows [2615]..[2617]
+ * used last frame: the left table (at 22A1 in the segment the code loads,
+ * 1E42h as relocated) to FFFF and the right (at 2459) to 0, then mark none
+ * used ([2615] = FFFF, [2617] = 0). Nothing when [2615] is negative. */
+static int vgame_spans_reset(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t first = ds_get(c, 0x2615);
+    if (first & 0x8000) {
+        if (!room(c, 4)) return 0;
+        c->r[R_DI] = (uint16_t)alu_logic(c, first, 1);
+        c->icount += 4;
+        near_ret(c);
+        return 1;
+    }
+    const uint16_t count = (uint16_t)(ds_get(c, 0x2617) + 1 - first);
+    const unsigned r = count ? count : 1;
+    if (!room(c, 20 + 2 * r)) return 0;
+    alu_logic(c, first, 1);                                       /* or di, di */
+    const uint16_t seg = seg_read16(c, c->seg[S_CS], (uint16_t)(c->ip + 0x09));   /* mov ax, imm16 */
+    c->seg[S_ES] = seg;
+    uint16_t cx = (uint16_t)alu_inc(c, ds_get(c, 0x2617), 1);
+    cx = (uint16_t)alu_sub(c, cx, first, 1, 0);
+    const uint16_t di2 = x86_shift(c, 4, first, 1, 1);           /* shl di, 1 */
+    c->r[R_BX] = cx;
+    c->r[R_DX] = di2;
+    c->r[R_DI] = (uint16_t)alu_add(c, di2, 0x22A1, 1, 0);
+    c->r[R_AX] = 0xFFFF;
+    c->r[R_CX] = cx;
+    for (unsigned i = 0; i < count; i++) x86_stos(c, 1);
+    c->r[R_CX] = 0;
+    ds_put(c, 0x2615, 0xFFFF);
+    c->r[R_CX] = cx;
+    c->r[R_DI] = (uint16_t)alu_add(c, di2, 0x2459, 1, 0);
+    c->r[R_AX] = (uint16_t)alu_sub(c, 0xFFFF, 0xFFFF, 1, 0);
+    for (unsigned i = 0; i < count; i++) x86_stos(c, 1);
+    c->r[R_CX] = 0;
+    ds_put(c, 0x2617, 0);
+    c->icount += 20 + 2 * r;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 130D:064A, mc32_on_edge: BP = 1 when DX:AX and CX:BX are both
+ * 16-bit (high words zero) and the point lies on one of the clip window's
+ * edges ([85FA]/[85FE] for x, [85FC]/[8600] for y), else 0. */
+static int vgame_mc32_on_edge(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 15)) return 0;
+    c->r[R_BP] = (uint16_t)alu_sub(c, c->r[R_BP], c->r[R_BP], 1, 0);
+    unsigned n = 1;
+    int on = 0;
+    alu_logic(c, c->r[R_DX], 1); n += 2;
+    if (c->flags & F_ZF) {
+        alu_logic(c, c->r[R_CX], 1); n += 2;
+        if (c->flags & F_ZF) {
+            const uint16_t at[4] = { 0x85FA, 0x85FE, 0x85FC, 0x8600 };
+            for (int i = 0; i < 4 && !on; i++) {
+                alu_sub(c, i < 2 ? c->r[R_AX] : c->r[R_BX], ds_get(c, at[i]), 1, 0);
+                n += 2;
+                on = (c->flags & F_ZF) != 0;
+            }
+        }
+    }
+    if (on) { c->r[R_BP] = (uint16_t)alu_inc(c, c->r[R_BP], 1); n += 2; }
+    else { alu_logic(c, c->r[R_BP], 1); n += 2; }
+    c->icount += n;
+    near_ret(c);
+    return 1;
+}
+
 static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x4958, vgame_free_fall, "free fall", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD50A, vgame_waypoint_from_target, "waypoint from target", 1 },
@@ -1015,6 +1164,12 @@ static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x49F9, vgame_alt_chain_reset, "reset the altitude-alert chain", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xC436, vgame_scene_word, "decode a scene word", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xC845, vgame_key_sign_extend, "sign-extend a key byte", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xB9F6, vgame_destroyed_type, "destroyed-object type test", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x130D, 0x00B6, vgame_poly_side_a, "polygon row span, first", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x130D, 0x00D1, vgame_poly_side_b, "polygon row span, second", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1377, 0x0116, vgame_row_offsets, "screen row offsets", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0FB2, 0x051F, vgame_spans_reset, "clear the span tables", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x130D, 0x064A, vgame_mc32_on_edge, "point on the clip edge", 1 },
 };
 
 void matched_register(void)
