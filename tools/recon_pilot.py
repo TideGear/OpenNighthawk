@@ -8,6 +8,7 @@ import argparse
 import csv
 import json
 import math
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -56,11 +57,13 @@ def control(machine, state, tick):
     roll_error = bank - state["roll"]
     want_pitch = clamp((2500 - state["altitude"]) * 2, -1000, 1800) + state["trim"]
     designated = state["lock"] != 0xFFFF and state["lock"] & 0x7F == state["target"]
-    # Point the sensor at the target before designation as well. Keeping
-    # level flight while a neighboring object is locked can leave the
-    # designation request pending forever on a moving secondary target.
+    # N casts a ray along the physical nose (recon_prepare). The photo
+    # cue separately includes the camera's 0x6EF mounting offset. Applying
+    # that offset before acquisition can aim N beyond a nearby target.
     if state["target_range"] < 1500:
-        want_pitch = -math.atan2(state["altitude"], state["target_range"] * 32) * 32768 / math.pi + 0x6EF
+        want_pitch = -math.atan2(state["altitude"], state["target_range"] * 32) * 32768 / math.pi
+        if designated:
+            want_pitch += 0x6EF
     pitch_error = want_pitch - state["pitch"]
     if abs(pitch_error) > 200:
         machine.type(at, r"\D" if pitch_error > 0 else r"\U", hold_ms=60)
@@ -120,13 +123,20 @@ def main():
     parser.add_argument("--engine", choices=("interp", "recomp"), default="recomp")
     parser.add_argument("--seconds", type=int, default=1800)
     parser.add_argument("--complete", action="store_true", help="also attempt secondary photo and home return")
+    parser.add_argument("--initial-roster", type=Path, help="continue from an earned roster file in a fresh private save directory")
     args = parser.parse_args()
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     inputs = RouteInputs(route_args(args.front_route)) if not args.replay else None
     rows, tick, initialized, start, last, writer = [], 0, False, None, "", None
     approach, flight_block, landed_report = False, None, {}
-    with Machine(args.data, tempfile.mkdtemp(prefix="save-", dir=out),
+    save = Path(tempfile.mkdtemp(prefix="save-", dir=out))
+    if args.initial_roster:
+        roster = args.initial_roster.read_bytes()
+        if len(roster) != 802:
+            raise ValueError("initial roster must be the original 802-byte saved file")
+        shutil.copyfile(args.initial_roster, save / "Roster.Fil")
+    with Machine(args.data, save,
                  log=out / "run.log", engine=args.engine) as machine, \
             (out / "flight.csv").open("w", newline="") as csvfile:
         machine.record(out / "input.log")
@@ -216,7 +226,20 @@ def main():
                     step = machine.ips // 5
             elif start is not None:
                 break
-            if machine.run_until(machine.clock + step) != Machine.SLICE:
+            if args.complete and rows and rows[-1]["box"] and rows[-1]["nearest"] == rows[-1]["home"] and rows[-1]["speed"] <= 1 and rows[-1]["throttle"] == 0:
+                # Observe the completed countdown before DOS exit lets the
+                # next executable reuse VGAME's memory. Keep the strict gate.
+                until = machine.clock + step
+                ds = (machine.psp + 0x10 + 0x1e42) << 4
+                while machine.clock < until and machine.program == "VGAME.EXE":
+                    if machine.run_until(min(until, machine.clock + 128)) != Machine.SLICE:
+                        break
+                    if machine.program == "VGAME.EXE" and machine.read16(ds + 0x3dc8) != rows[-1]["stopped"]:
+                        row = dict(clock=machine.clock, seconds=(machine.clock - start) / machine.ips,
+                                   **recon_state(machine))
+                        rows.append(row)
+                        writer.writerow(row)
+            elif machine.run_until(machine.clock + step) != Machine.SLICE:
                 break
         machine.screen(out / "final.ppm")
         if machine.program == "VGAME.EXE" and rows:

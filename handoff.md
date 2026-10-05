@@ -84,6 +84,36 @@ routes are verified; an independent DOSBox recon flight is running (below).
 
 ## In flight at handoff
 
+- Latest continuation: c4070a0 pushed; CI success (also f01e170). Recon
+  pilot now distinguishes the physical designation ray from the camera
+  0x6EF photo offset. Unit regression added;50Python pass. Fresh normal
+  adaptive recon-acquisition-06 earned both photos and landed, but coarse
+  sampling missed countdown3/S8. Added the same fine read-only sampling
+  used by strike; recon-acquisition-06-verified-{recomp,interp} now both
+  pass, final DSWAP13836105984/f4ae7ae4e610850d. All three observer files
+  (input/CSV/result) were compared and are byte-identical.
+  Optional --initial-roster copies an earned802-byte roster unchanged to a
+  fresh private save; no state fabrication. Serge03 seeded from02 debrief
+  SHA25605a58bcab9d4a68dbd5d1ea0db2c6d32f9d3c93be8134691ad1e5cccac442438.
+  Original END table: total thresholds300/1125/3000/7000/16000/27720,
+  average100/150/200/250/280/280, sorties2/5/10/20/40/99, plus training gate.
+  Serge02 total283 is17points short;03 normal both-photo return passes,
+  DSWAP14558070621/24a4e53ec0a1134d, fuel4449, stop(19204,9455), result0/3.
+  Live03 debrief recomp exec59035, private promotion-serge-03-debrief.args
+  steps17.7B, output promotion-serge-03-debrief-recomp preseeded from earned02.
+  Inspect rank754/score770/total772/sorties776 and promotion screenshot;
+  run interp with identical earned initial save and compare hashes/saves.
+  Serge02 interp debrief exec81560 has finished:350 hashes and final
+  a069f6775d65b94b/17.5B match recomp, all802 save bytes equal.
+  Coverage at auditroot/promotion-serge-02-debrief.cov.
+  Independent GOG dosbox-recon-06 live exec71596/Python30976/DOSBox4836,
+  ~75sec flight, primarytype1 target2=(4768,14144), secondarytype1 target1,
+  home36.1900sec limit. Shared controller fix loaded at launch. No photos
+  credited yet; do not claim reference pass. Log parity-audit-dosbox-recon-06.log.
+- Goal continuation explicitly supplies unbounded budget; earlier repeated
+  usageLimited status-only turns made no progress. Continue pending tests
+  and the full roadmap; do not stop because the old tool status was stale.
+
 - VERIFIED strike_return: normal primary strike and home33 landing.
   Strong observers strike-return-02 and strike-return-verified-interp have
   identical input.log, flight.csv and result.json, errors empty. Fine

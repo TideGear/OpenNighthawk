@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Diagnostic ground strike through normal controls; stop after primary hit.
+"""Diagnostic ground strike through normal controls, with optional return.
 
 Read-only mission/weapon observations select an effective loaded station.
-This initial diagnostic does not establish a return or completed sortie.
+The complete mode also checks home landing and the parent mission result.
 """
 import argparse
 import csv

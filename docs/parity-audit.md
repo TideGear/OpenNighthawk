@@ -51,9 +51,30 @@ The first adaptive reference attempt credited the primary photo but crashed
 on the next leg at 44% throttle, speed 164, after about 711 seconds. This is
 retained as a failed check (`dosbox-recon-02`), not a successful return. The
 diagnostic pilot now restores power below 240 knots, and the observer waits
-through DSWAP for END. A fresh reference attempt is running. An adaptive
+through DSWAP for END. Attempts 04 and 05 did not complete both objectives:
+04 credited the primary but failed to acquire the moving secondary; 05
+circled the primary with the scratch object designated for its full
+1,900-second limit. These are retained as controller failures. Attempt 06
+uses the physical nose angle for designation and adds the camera mounting
+offset only after acquiring the target, matching the two original routines.
+The corrected pilot's new normal-input return passes both engines' independent
+observers: input logs, flight CSVs and reports are identical, ending at
+DSWAP clock 13,836,105,984, hash `f4ae7ae4e610850d`. Both photo-credit events,
+intact targets, raised home stop and countdown 3 with S=8 pass. Fuel is 4910
+and parent result/status is 0/3. Fine read-only sampling captures the final
+countdown before the next executable reuses memory.
+An adaptive
 recompiled rerun with the correction still completes both photos and the
 return with the established `c403d0542430b898` hash and no acceptance errors.
+
+The Serge career candidate selected through the roster UI completed both
+photos and returned. Its debrief saved score 217, total 66 -> 283 and sorties
+1 -> 2, but rank stayed zero. The original first-promotion thresholds are
+total 300, average 100 and two sorties, with a separate training gate.
+This candidate is not a verified promotion. A further normal sortie starts
+from the earned 802-byte roster, copied unchanged into a fresh save directory.
+The candidate's 350 checkpoints/final and all saved bytes agree between
+engines; final hash is `a069f6775d65b94b` at 17,500,000,000 clocks.
 
 ## Independent comparisons with differences
 
