@@ -71,6 +71,11 @@ further down are historical; this first section is the current state.
   flag on and off, so it is the known unfiltered random note, not the PIT
   change. Timing offset at the end: +39 ms flag on, +11 ms flag off; a
   random-note-aware comparison of the remainder is still open.
+- PIT writers in the intro (to 1.25B clocks, `F117R_TRACE_PIT`): MPS_LOGO 2,
+  PLAYER 1+~226 reload writes, START 2 control sequences + ~80-110 handler
+  writes, flag on or off. Only START's control word finds the output low and
+  changes behaviour; PLAYER/MPS_LOGO counts are unchanged (PLAYER +1 from the
+  timing shift). VGAME and END are not covered by this check.
 - Next: with the flag on, retime the front-end routes (and
   `tools/start_settle`-style scripts), rebuild finals, run
   `tools/dosbox_compare.py` (music) and the frame comparison, then make it the
