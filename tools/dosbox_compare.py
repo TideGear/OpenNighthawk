@@ -23,8 +23,10 @@ to the millisecond, and starts with a dump of the registers set so far; the
 log from here is filtered the same way before the two are aligned.
 Different writes return exit status 1. A successful overlapping stream does
 not assert that its uncaptured ends or its synthesis match. The intro's
-random note can differ between DOSBox runs; it is still reported as a
-difference, never filtered out.
+"random" channel-3 note at 29.7 s comes from the sound driver's generator
+(0505:0562, state 034F:17E4 = ror3(state + 9248h)), which PLAYER calls about
+once per video frame; it differs when the two machines have run a different
+number of frames. It is reported as a difference, never filtered out.
 """
 from __future__ import annotations
 

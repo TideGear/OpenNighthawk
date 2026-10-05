@@ -454,8 +454,19 @@ new run and generates fresh shots, retaining the old artifacts. Replaying
 `intro-caauys37` this way after the BIOS DAC correction (`intro-0wp6pl8e`)
 leaves the 1,217 matches, 109 unmatched reference pictures and 89 unmatched
 shots unchanged. A fresh full music capture matches only its first 596
-writes before the known random channel-3 note at 29.7 s; it does not verify
-the whole music stream. Logs live outside the repository.
+writes before the channel-3 note at 29.7 s; it does not verify the whole
+music stream. That note is not random between runs: both saved 130-second
+DOSBox captures write A3h=49h/B3h=21h there, and this machine 92h/20h at
+every startup clock tried. It comes from the sound driver's generator at
+0505:0562 (state at 034F:17E4, `ror3(state + 9248h)`, frequency
+`(~state & [19FE]) + [1902]`), called through the driver entry 0505:0C17
+by PLAYER about once per video frame (1,334 calls here before the note).
+DOSBox's value is exactly one generator step ahead, so by 29.7 s DOSBox's
+PLAYER has run one more frame. That is a retrace-phase or frame-count
+difference, the open "exact phases" timing item, not a sound driver fault.
+DOSBox 0.74 does not restart its vertical timer between text mode and
+mode 13h (the periods differ by under its 0.0001 ms threshold), so that is
+not the cause. Logs live outside the repository.
 The music comparator now exits 1 on differing writes and rejects runner
 failures. `--reuse RUN_DIR` checks a saved stream; fresh runs retain their
 artifacts in separate `dbxcompare/music-*` folders. Four ROM-free stream
