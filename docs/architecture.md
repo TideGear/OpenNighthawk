@@ -532,6 +532,18 @@ matches 365 writes over 15.5 s (drift 0..36 ms). Screenshot deadlines now
 advance from their original schedule, avoiding accumulated instruction
 overshoot in later samples.
 
+**Transition timing diagnosis.** The main app was rebuilt against the fully
+covered generation used by the 27-route parity run (89,276 instruction
+starts). A fresh 130.8-second capture still has 1,319 exact pictures, seven
+unmatched DOSBox pictures and 28 unmatched shots. Repeating the same inputs
+with the interpreter produces byte-identical shot hashes and timestamps and
+the same final state (`e4114c0415d4920d`): the transition drift is not caused
+by generated code. Three independent DOSBox captures put the stable roster
+picture at 107.510-107.567 s; the recompiled and interpreted runs put it at
+108.411-108.435 s. After removing each run's global capture offset, the
+remaining drift is 0.571-0.585 s. The difference is repeatable and localized
+to START's first roster page; its machine-timing cause remains open.
+
 ## Observing flights through normal controls
 
 With `F117R_BUILD_TESTS=ON`, `f117machine_api` exposes a scalar host API.

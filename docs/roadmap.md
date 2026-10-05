@@ -175,6 +175,16 @@ never instead of parity.
   address-latch and DAC publication/alias tests pass.
   All 1,210 machine probes and six routes at 329 checkpoints plus final
   states agree; the 5.7-million-state instruction lockstep has no mismatches.
+  **Transition diagnosis:** the main app now uses the fully covered
+  89,276-instruction generation. A fresh 130.8-second comparison has the
+  same 1,319 matches, seven unmatched DOSBox pictures and 28 unmatched shots.
+  An interpreter capture has byte-identical shot hashes and timestamps and
+  the same final state (`e4114c0415d4920d`), so the delay is shared by both
+  engines rather than caused by generated regions. Against three independent
+  DOSBox captures, the stable roster picture appears at 107.510-107.567 s;
+  here it appears at 108.411-108.435 s. After the comparator's global offset,
+  the transition remains 0.571-0.585 s late. The mismatch is repeatable and
+  concentrated at START's first roster page; its machine-timing cause is open.
 
 ### Left
 

@@ -7,7 +7,7 @@ built and checked) and [docs/bugs.md](docs/bugs.md) (the original game's
 bugs). State as of 4 October 2026, late evening. Earlier "running" entries
 further down are historical; this first section is the current state.
 
-## Latest wrap-up (4 Oct, ~22:45): stopped for a new conversation
+## Prior wrap-up (4 Oct, ~22:45; superseded by the continuation below)
 
 The user asked for a handoff, commit, push and stop, after a session whose
 goal was "complete the plan in roadmap.md". Resume the roadmap when asked.
@@ -118,6 +118,51 @@ goal was "complete the plan in roadmap.md". Resume the roadmap when asked.
   `dos-split-app-build` (app ON, theatre gen) and `isolate2-build` (app OFF,
   the committed generation); scripts `build-*.cmd`, `route_cli.py`,
   `all_routes_parity.py` in `~/f117-recomp-local`.
+
+## Latest continuation (4 Oct, ~23:15 local)
+
+- Resumed the video-parity item. The main build is now configured to use the
+  fully covered 89,276-instruction generation at
+  `C:/Users/Tideg/f117-recomp-local/isolate2-pipeline/gen`; MSVC/Ninja build
+  completed. Its 27-route parity and 5,713,152-state lockstep were already
+  completed in `isolate2-parity.log` against this generation.
+- Fresh comparison `video/intro-szsaom2z` against the independent DOSBox
+  capture `intro-caauys37`: 1,319 exact pictures, seven unmatched reference
+  pictures, 28 unmatched shots, all one sample, final drift -570.671 ms.
+  Captures against two other independent reference AVIs report -584.938 ms
+  (`intro-thjqg7hw`) and -570.671 ms (`intro-z8ncy_nf`).
+- An interpreter-only capture against the same AVI (`video/intro-interp-current`)
+  has exactly the same shot hashes and timestamps as recomp, and the same
+  final hash `e4114c0415d4920d`. Across three distinct DOSBox video captures,
+  the stable roster image begins between 107.510 and 107.567 s; both local
+  engines begin it between 108.411 and 108.435 s. After global alignment the
+  repeatable transition drift is 0.571-0.585 s. This rules out generated
+  code as its source; the shared machine timing around START's first roster
+  page remains to trace. Do not claim frame parity.
+- The initial `build_recomp.py` invocation was stopped during its redundant
+  full-route rerun after it regenerated only 89,216 starts. The main app was
+  then rebuilt against the verified complete `isolate2-pipeline/gen` above.
+  The committed independent 27-route results remain the full parity evidence.
+  No tracked source code changed in this continuation; the pre-existing
+  untracked `test.bat` was left untouched. No processes remain running.
+
+### Next
+
+1. Continue tracing the stable ~0.58-second START transition difference;
+   the interpreter/recompiler comparison rules out generated code.
+2. Career chain is paired through sortie 52. Resume 53-98 from the saved
+   rank-3 roster with:
+
+   ```powershell
+   py tools/career_check.py `
+     --data D:/GOG/F-117A `
+     --initial-roster C:/Users/Tideg/f117-recomp-local/parity-audit-20261004/career-check-16-55/sortie-52-recomp/save-jlej_zhh/Roster.Fil `
+     --replay C:/Users/Tideg/f117-recomp-local/parity-audit-20261004/career-rank3-photo-01/input.log `
+     --steps 17000000000 --count 46 --ahead 3 `
+     --out C:/Users/Tideg/f117-recomp-local/parity-audit-20261005/career-check-53-98
+   ```
+
+3. Then continue Munt's reference PCM check and other mission objectives.
 
 ## Previous wrap-up (earlier on 4 Oct; superseded by the section above)
 
@@ -847,7 +892,7 @@ as the current state. Resume the full roadmap only when the user asks.
   conversation stop when it closes, so finish or record them before a
   handoff.
 
-## Next (from docs/roadmap.md, in the suggested order)
+## Earlier Next list (historical; superseded by the continuation above)
 
 1. Finish the picture comparison: match DOSBox's four-part scanout
    sampling, investigate the roster cursor changes and transition delay.
