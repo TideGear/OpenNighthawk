@@ -540,15 +540,25 @@ with the interpreter produces byte-identical shot hashes and timestamps and
 the same final state (`e4114c0415d4920d`): the transition drift is not caused
 by generated code. Three independent DOSBox captures put the stable roster
 picture at 107.510-107.567 s; the recompiled and interpreted runs put it at
-108.411-108.435 s. After removing each run's global capture offset, the
-remaining drift is 0.571-0.585 s. A closer comparison separates the DOSBox
-roster list-only picture (`a0fc2584`, 107.311-107.567 s) from its selected-
-pilot details picture (`eb49f15a`, first at 107.567 s). Local runs reach that
-details image at 108.411-108.423 s. Their logs open `rostscrn.pic` at
-107.481 s and `rostsprt.pic` at 107.696 s, so the remaining delay is after
-the roster background loads and before the selected-pilot detail page is
-stably displayed. This points toward START's shared post-page/menu timing
-(including D96), not scanout sampling; the machine-timing cause remains open.
+108.411-108.435 s. A closer comparison separates the DOSBox roster list-only
+picture (`a0fc2584`, 107.311-107.567 s) from the selected-pilot details
+picture (`eb49f15a`, first at 107.567 s). At the default 9 MIPS, local runs
+reach these pictures at 108.124 and 108.423 s; after the comparator's median
+capture offset, they are 0.528 and 0.571 s late. Almost all the residual
+delay is already present when the roster list first appears; the local
+list-to-details transition adds about 43 ms beyond DOSBox's 257 ms. Local
+logs open `rostscrn.pic` at 107.481 s and `rostsprt.pic` at 107.696 s.
+
+Clock-sensitivity captures against the same DOSBox video put the list/details
+residuals at 1.483/1.498 s with `--ips 4000000` (1,052 exact pictures; 274
+reference and 262 local pictures unmatched), and 0.385/0.428 s with
+`--ips 12000000` (1,317 exact pictures; 9 reference and 34 local pictures
+unmatched). The default remains 9 MIPS: changing it also shifts other game
+timing and does not establish a parity fix. These probes rule out screenshot
+cadence as the main cause but do not isolate the START/emulated-machine
+timing responsible for the roster-entry delay. The Reimp's D96 is an
+additional wait for its separately implemented native UI; it does not by
+itself explain or justify a wait in this translated START path.
 
 ## Observing flights through normal controls
 

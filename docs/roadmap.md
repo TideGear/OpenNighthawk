@@ -184,10 +184,16 @@ never instead of parity.
   DOSBox captures, the stable roster picture appears at 107.510-107.567 s;
   here it appears at 108.411-108.435 s. After the comparator's global offset,
   the transition remains 0.571-0.585 s late. Frame inspection separates the
-  roster list-only image from the selected-pilot details image; the latter is
-  late locally after `rostsprt.pic` loads. This points to START's shared
-  post-page/menu timing (including D96), not scanout sampling; the timing
-  cause is still open.
+  roster list-only image (`a0fc2584`, DOSBox 107.311-107.567 s) from selected
+  pilot details (`eb49f15a`, first at 107.567 s). At 9 MIPS the local frames
+  begin at 108.124 and 108.423 s; after capture alignment they are 0.528 and
+  0.571 s late. Nearly all the delay is before the roster list appears; the
+  list-to-details transition itself adds about 43 ms. Clock probes put these
+  residuals at 1.483/1.498 s at 4 MIPS and 0.385/0.428 s at 12 MIPS, while
+  changing many other frames too. The default stays 9 MIPS. Screenshot
+  cadence is not the main cause; the roster-entry timing source remains
+  open. Reimp D96 adds time to its separately implemented native UI and is
+  not evidence for adding a wait to translated START.
 
 ### Left
 
@@ -281,9 +287,12 @@ never instead of parity.
       engines (`cargo_d5_fixed`). D4 (secret airstrips in Libya, North Cape
       and the Middle East: world bytes corrected as read, START's masks
       widened at its entry) and D34 (destroyed-object table extension, five
-      overrides) are done, the Reimp's fixes; D2 (speech hang) and D96 (menu
-      timing) are its remaining ones. A session recorded with fixes on names
-      them (`# f117r-fixes D5`) and its replay switches them on again.
+      overrides) are done, the Reimp's fixes; D2 (speech hang) remains. D96
+      is an optional wait for the Reimp's separately implemented native UI,
+      not a patch for this translated START path. The measured roster-entry
+      timing difference is tracked under Phase 1. A session recorded with
+      fixes on names them (`# f117r-fixes D5`) and its replay switches them
+      on again.
 - [ ] 60+ fps and 4K presentation.
 
 ## Housekeeping

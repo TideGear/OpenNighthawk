@@ -30,7 +30,14 @@ from dosbox_compare import IPS, ROOT, run_dosbox
 WORK = Path.home() / "f117-recomp-local" / "video"
 # Match pc_init's mode-13h period. Exactly 70 Hz beats against the game's
 # retrace-paced pointer erase/redraw every ~11.6 seconds.
-VGA_PERIOD = IPS * 1000 // 70086
+
+
+def vga_period(ips):
+    return ips * 1000 // 70086
+
+
+def shot_time(path, ips):
+    return int(Path(path).stem.rsplit("_", 1)[1]) / ips
 
 
 def append_frame(out, rgb, when, source, duration):
@@ -84,15 +91,15 @@ def reference_frames(run):
     return out
 
 
-def our_frames(run, every):
+def our_frames(run, every, ips=IPS):
     out = []
     for path in sorted((run / "shots").glob("*.ppm")):
         with Image.open(path) as im:
             if im.size != (320, 200):
                 continue
             rgb = im.convert("RGB").tobytes()
-        when = int(path.stem.rsplit("_", 1)[1]) / IPS
-        append_frame(out, rgb, when, path, every / IPS)
+        when = shot_time(path, ips)
+        append_frame(out, rgb, when, path, every / ips)
     if not out:
         raise RuntimeError("no graphics shots produced")
     return out
@@ -180,24 +187,31 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--data", help="GOG install with DOSBOX and dosboxF117A.conf")
     ap.add_argument("--seconds", type=int, default=130)
+    ap.add_argument("--ips", type=int, default=IPS,
+                    help="emulated instructions per second for f117run (default: %(default)s)")
     source = ap.add_mutually_exclusive_group()
     source.add_argument("--reuse", type=Path, help="recompare an existing run")
     source.add_argument("--against", type=Path, help="run current build against a saved DOSBox capture")
     ap.add_argument("--diagnostics", action="store_true", help="write up to 12 paired difference PNGs")
     a = ap.parse_args()
-    if a.seconds <= 0:
-        ap.error("--seconds must be positive")
-    every = VGA_PERIOD
+    if a.seconds <= 0 or a.ips <= 0:
+        ap.error("--seconds and --ips must be positive")
+    ips = a.ips
+    every = vga_period(ips)
+    if every < 1:
+        ap.error("--ips is too low for the VGA frame sampler")
     if a.reuse:
         run = a.reuse.resolve()
-        every = json.loads((run / "settings.json").read_text())["every"]
+        saved = json.loads((run / "settings.json").read_text())
+        every = saved["every"]
+        ips = saved.get("ips", IPS)
     else:
         if not a.data:
             ap.error("--data is required unless --reuse is given")
         WORK.mkdir(parents=True, exist_ok=True)
         run = Path(tempfile.mkdtemp(prefix="intro-", dir=WORK))
         print("Artifacts:", run, flush=True)
-        settings = dict(seconds=a.seconds, every=every)
+        settings = dict(seconds=a.seconds, every=every, ips=ips)
         if a.against:
             reference = a.against.resolve()
             old_settings = json.loads((reference / "settings.json").read_text())
@@ -221,17 +235,19 @@ def main():
             print(f"DOSBox: {a.seconds} s with video capture", flush=True)
             run_dosbox(a.data, str(game), a.seconds, capture="video", work=str(run))
         (run / "shots").mkdir()
-        print(f"f117run: graphics shots every {every} clocks ({IPS / every:.6f} Hz)", flush=True)
+        print(f"f117run: {ips} instructions/s; graphics shots every {every} clocks "
+              f"({ips / every:.6f} Hz)", flush=True)
         proc = subprocess.run([
             str(Path(ROOT) / "build" / "f117run.exe"), "--engine", "recomp",
             "--data", str(game), "--save", str(run / "save"),
             "--log", str(run / "run.log"), "--type", "SETUP.EXE+200000:N",
-            "--type", "SETUP.EXE+2000000:2", "--steps", str((a.seconds + 15) * IPS),
+            "--type", "SETUP.EXE+2000000:2", "--ips", str(ips),
+            "--steps", str((a.seconds + 15) * ips),
             "--time-us", "700000000000000", "--shots", f"{every}:{run / 'shots' / 'shot'}"],
             capture_output=True, text=True)
         (run / "runner.txt").write_text(proc.stdout + proc.stderr)
         proc.check_returncode()
-    ref, ours = reference_frames(run), our_frames(run, every)
+    ref, ours = reference_frames(run), our_frames(run, every, ips)
     result = compare(ref, ours)
     (run / "comparison.json").write_text(json.dumps(dict(result=result, reference=ref, ours=ours), indent=2))
     if a.diagnostics:

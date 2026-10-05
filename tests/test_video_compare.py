@@ -6,7 +6,7 @@ import sys
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
-from video_compare import append_frame, compare
+from video_compare import append_frame, compare, shot_time, vga_period
 
 
 def frames(values):
@@ -17,6 +17,13 @@ def frames(values):
 
 
 class VideoCompareTest(unittest.TestCase):
+    def test_clock_controls_vga_period_and_shot_time(self):
+        self.assertEqual(vga_period(9_000_000), 128413)
+        self.assertEqual(vga_period(12_000_000), 171218)
+        self.assertEqual(shot_time(Path("shot_12000000.ppm"), 12_000_000), 1)
+        self.assertAlmostEqual(vga_period(12_000_000) / 12_000_000,
+                               1 / 70.086, places=7)
+
     def compare(self, a, b):
         with contextlib.redirect_stdout(io.StringIO()):
             return compare(frames(a), frames(b))

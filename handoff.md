@@ -4,10 +4,10 @@ For the next conversation working on this repository. Read this, then
 [docs/roadmap.md](docs/roadmap.md) (what is done and left - keep it
 updated), [docs/architecture.md](docs/architecture.md) (how parity is
 built and checked) and [docs/bugs.md](docs/bugs.md) (the original game's
-bugs). State as of 5 October 2026, 01:21 local. Earlier "running" entries
+bugs). State as of 5 October 2026, 01:41 local. Earlier "running" entries
 further down are historical; this first section is the current state.
 
-## Latest continuation (5 Oct, 01:21 local)
+## Latest continuation (5 Oct, 01:41 local)
 
 - The rank-3 career chain is now paired through retirement. Sorties 53-98
   completed from the saved sortie-52 roster using
@@ -29,13 +29,24 @@ further down are historical; this first section is the current state.
   and `.../end-073s.ppm`. This verifies rank-3 retirement, not the separate
   rank-6 "General, At Last!" branch (requires total 27,720, average 280).
 - Video comparison now distinguishes the DOSBox roster list-only frame
-  (`a0fc2584`) from the selected-pilot detail frame (`eb49f15a`). DOSBox
-  switches at 107.567 s; local details stabilize at 108.411-108.423 s.
-  Local `rostscrn.pic` and `rostsprt.pic` open at 107.481 and 107.696 s,
-  respectively. This narrows the shared delay to START's transition after
-  the roster background loads, likely its post-page/menu timing (D96); it
-  does not implicate scanout cadence. Interpreter and recompiler captures
-  remain identical.
+  (`a0fc2584`, 107.311-107.567 s) from selected-pilot details (`eb49f15a`,
+  first at 107.567 s). At the default 9 MIPS, local runs reach the two frames
+  at 108.124 and 108.423 s; after median capture alignment they are 0.528
+  and 0.571 s late. The list-to-details transition adds only about 43 ms
+  beyond DOSBox's 257 ms, so most residual delay accumulates before the
+  roster list appears. Local `rostscrn.pic` and `rostsprt.pic` open at
+  107.481 and 107.696 s. Diagnostic captures at 4 MIPS put the frames
+  1.483/1.498 s late (1,052 exact images, 274 reference/262 local unmatched);
+  at 12 MIPS they are 0.385/0.428 s late (1,317 matches, 9/34 unmatched).
+  Changing the clock also shifts other frames, so the 9 MIPS default remains.
+  Reimp D96 is a wait for its native UI, separate from the translated START
+  path, and is not evidence to add a guest-side delay here. Interpreter and
+  recompiler captures remain identical.
+- `tools/video_compare.py` now accepts `--ips` for clock-sensitivity
+  comparisons and records it in run settings; `tests/test_video_compare.py`
+  checks VGA sampling cadence and shot-time conversion. The 4 MIPS run is
+  `video/intro-bddvev98`; the 12 MIPS run is `video/intro-oj9892eq`; both are
+  outside the repository.
 - Munt diagnosis: interpreter/recompiler MIDI logs are byte-identical
   (188,505 bytes). A matched replay emits a 4,865-byte prefix; two offline
   renders of it have identical PCM. Independent live SDL captures differ in
@@ -50,8 +61,10 @@ further down are historical; this first section is the current state.
 
 ### Next
 
-1. Trace START's selected-pilot details transition after `rostsprt.pic`
-   loads, checking shared post-page/menu timing and D96 against DOSBox.
+1. Trace START's roster-entry timing from `rostscrn.pic` through the first
+   list frame against DOSBox. Most measured residual delay is before that
+   frame, not in the list-to-details transition; D96 belongs to Reimp's
+   native UI and should not be applied to translated START without evidence.
 2. Continue MT-32 validation with controlled random variation or
    timing/spectral criteria, and isolate live SDL queue behavior before
    drawing PCM conclusions.
