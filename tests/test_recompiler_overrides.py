@@ -14,6 +14,9 @@ class OverrideSites(unittest.TestCase):
         self.assertIn((0x0000, 0x8EDC), sites["START.EXE"])          # D4's table
         for ip in (0xE6BE, 0x0F97, 0x0FBD, 0x0F7E, 0x0D5E):         # D34
             self.assertIn((0x0000, ip), sites["VGAME.EXE"])
+        # Matched routines (Phase 2) are isolated the same way.
+        self.assertIn((0x0000, 0x4958), sites["VGAME.EXE"])          # free fall
+        self.assertIn((0x104E, 0x008A), sites["VGAME.EXE"])          # table sine
         # Data corrections share the brace layout but are not code.
         self.assertFalse(any(name.endswith(".WLD") for name in sites))
 

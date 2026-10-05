@@ -207,18 +207,26 @@ def write_module(mod, regions, out_dir, comments, mutate=None):
     return files
 
 
-def override_sites(path=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                                      "src", "fixes", "fixes.c")):
-    """The addresses the code overrides replace, read from the fix table
-    itself so the two cannot drift: {MODULE: [(seg, ip), ...]}."""
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+OVERRIDE_TABLES = (os.path.join(ROOT_DIR, "src", "fixes", "fixes.c"),
+                   os.path.join(ROOT_DIR, "src", "matched", "matched.c"))
+
+
+def override_sites(paths=OVERRIDE_TABLES):
+    """The addresses the code overrides replace - the switchable fixes and
+    the matched routines - read from their tables so the two cannot drift:
+    {MODULE: [(seg, ip), ...]}."""
+    if isinstance(paths, str):
+        paths = (paths,)
     sites = {}
-    try:
-        text = open(path, encoding="utf-8").read()
-    except OSError:
-        return sites
-    for name, seg, ip in re.findall(
-            r'\{\s*"[^"]+",\s*"([^"]+)",\s*[^,]+,\s*(0x[0-9A-Fa-f]+),\s*(0x[0-9A-Fa-f]+),\s*[A-Za-z_]\w*\s*,', text):
-        sites.setdefault(name.upper(), []).append((int(seg, 16), int(ip, 16)))
+    for path in paths:
+        try:
+            text = open(path, encoding="utf-8").read()
+        except OSError:
+            continue
+        for name, seg, ip in re.findall(
+                r'\{\s*"[^"]+",\s*"([^"]+)",\s*[^,]+,\s*(0x[0-9A-Fa-f]+),\s*(0x[0-9A-Fa-f]+),\s*[A-Za-z_]\w*\s*,', text):
+            sites.setdefault(name.upper(), []).append((int(seg, 16), int(ip, 16)))
     return sites
 
 
