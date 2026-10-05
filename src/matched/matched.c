@@ -2710,6 +2710,109 @@ static int vgame_palette_step(machine_t *m)
     return 1;
 }
 
+/* START 0x07387 / END 0x03CA1: point the program's shared-state pointers
+ * at the block the shell left in low memory - the segment word at 0000:04F0
+ * - with the fixed offsets 04F2/04F4 (START) and 1272. Through two stack
+ * locals, as written. */
+static int start_shared_pointers(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 19)) return 0;
+    const uint16_t ss = c->seg[S_SS];
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_SP] = (uint16_t)alu_sub(c, c->r[R_SP], 4, 1, 0);   /* sub sp, 4: its flags stand */
+    const uint16_t bp = c->r[R_BP];
+    ds_put(c, 0xCBDA, 0); ds_put(c, 0xCBD8, 0x4F2);
+    ds_put(c, 0xCAC2, 0); ds_put(c, 0xCAC0, 0x4F4);
+    seg_write16(c, ss, (uint16_t)(bp - 2), 0);
+    seg_write16(c, ss, (uint16_t)(bp - 4), 0x4F0);
+    const uint16_t bx = seg_read16(c, ss, (uint16_t)(bp - 4));
+    c->seg[S_ES] = seg_read16(c, ss, (uint16_t)(bp - 2));
+    c->r[R_BX] = bx;
+    ds_put(c, 0xE098, seg_read16(c, c->seg[S_ES], bx)); ds_put(c, 0xE096, 0);
+    c->r[R_AX] = seg_read16(c, c->seg[S_ES], bx);
+    ds_put(c, 0xCACC, c->r[R_AX]); ds_put(c, 0xCACA, 0x1272);
+    c->r[R_SP] = bp;
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 19;
+    near_ret(c);
+    return 1;
+}
+
+static int end_shared_pointers(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 15)) return 0;
+    const uint16_t ss = c->seg[S_SS];
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_SP] = (uint16_t)alu_sub(c, c->r[R_SP], 4, 1, 0);   /* sub sp, 4: its flags stand */
+    const uint16_t bp = c->r[R_BP];
+    seg_write16(c, ss, (uint16_t)(bp - 2), 0);
+    seg_write16(c, ss, (uint16_t)(bp - 4), 0x4F0);
+    const uint16_t bx = seg_read16(c, ss, (uint16_t)(bp - 4));
+    c->seg[S_ES] = seg_read16(c, ss, (uint16_t)(bp - 2));
+    c->r[R_BX] = bx;
+    ds_put(c, 0x7224, seg_read16(c, c->seg[S_ES], bx)); ds_put(c, 0x7222, 0);
+    c->r[R_AX] = seg_read16(c, c->seg[S_ES], bx);
+    ds_put(c, 0x55E0, c->r[R_AX]); ds_put(c, 0x55DE, 0x1272);
+    c->r[R_SP] = bp;
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 15;
+    near_ret(c);
+    return 1;
+}
+
+/* START 0x002BA, the home base's risk: the mean of three of the pilot's four
+ * skill bytes (the settings structure at far [CACA] points at them through
+ * +38h/+3Ch/+3Eh/+40h, bytes +60h/+54h/+58h/+5Ch; the sum of four over 3),
+ * less the setting at +42h, plus 2, capped at 10 (unsigned). */
+static int start_home_risk(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 33)) return 0;
+    const uint16_t ds = c->seg[S_DS], ss = c->seg[S_SS];
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_SP] = (uint16_t)(c->r[R_SP] - 2);
+    const uint16_t bp = c->r[R_BP];
+    cpu_push16(c, c->r[R_SI]);
+    const uint16_t bx = ds_get(c, 0xCACA), es = ds_get(c, 0xCACC);
+    c->seg[S_ES] = es;
+    c->r[R_BX] = bx;
+    static const uint8_t field[4] = { 0x38, 0x3C, 0x3E, 0x40 }, byte[4] = { 0x60, 0x54, 0x58, 0x5C };
+    uint16_t si = seg_read16(c, es, (uint16_t)(bx + field[0]));
+    uint16_t ax = mem_read8(c, phys(ds, (uint16_t)(si + byte[0])));
+    alu_sub(c, c->r[R_AX] >> 8, c->r[R_AX] >> 8, 0, 0);          /* sub ah, ah */
+    uint16_t cx = c->r[R_CX];
+    for (int k = 1; k < 4; k++) {
+        si = seg_read16(c, es, (uint16_t)(bx + field[k]));
+        cx = (uint16_t)((cx & 0xFF00) | mem_read8(c, phys(ds, (uint16_t)(si + byte[k]))));
+        if (k == 1) cx = (uint16_t)((alu_sub(c, cx >> 8, cx >> 8, 0, 0) << 8) | (cx & 0xFF));   /* sub ch, ch */
+        ax = (uint16_t)alu_add(c, ax, cx, 1, 0);
+    }
+    c->r[R_SI] = si;
+    c->r[R_AX] = ax;
+    c->r[R_CX] = 3;
+    c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0);
+    x86_div16(c, 3);
+    ax = (uint16_t)alu_sub(c, c->r[R_AX], seg_read16(c, es, (uint16_t)(bx + 0x42)), 1, 0);
+    ax = (uint16_t)alu_inc(c, ax, 1);
+    ax = (uint16_t)alu_inc(c, ax, 1);
+    seg_write16(c, ss, (uint16_t)(bp - 2), ax);
+    alu_sub(c, ax, 0x0A, 1, 0);
+    unsigned n = 32;
+    if (!x86_cond(c, 0x6)) { seg_write16(c, ss, (uint16_t)(bp - 2), 0x0A); n = 33; }   /* jbe */
+    c->r[R_AX] = seg_read16(c, ss, (uint16_t)(bp - 2));
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_SP] = bp;
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += n;
+    near_ret(c);
+    return 1;
+}
+
 static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x4958, vgame_free_fall, "free fall", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD50A, vgame_waypoint_from_target, "waypoint from target", 1 },
@@ -2841,6 +2944,10 @@ static const recomp_override MATCHED[] = {
     { "matched", "END.EXE", END_47304, 0x0000, 0x5110, strcat_ds, "string concatenate", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xEFB8, vgame_uldiv, "32-bit unsigned divide", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xE530, vgame_palette_step, "step a palette toward its target", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x946C, strcat_ds, "string concatenate", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x7387, start_shared_pointers, "point at the shared state", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x3CA1, end_shared_pointers, "point at the shared state", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x02BA, start_home_risk, "home base risk", 1 },
 };
 
 void matched_register(void)
