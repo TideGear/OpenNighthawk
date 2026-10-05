@@ -3094,6 +3094,132 @@ static int vgame_clock_from(machine_t *m)
     return 1;
 }
 
+/* VGAME 0x0C6B3, vg_dist(a, b): |a| and |b| (by 0x0EE0C, stored back in the
+ * argument slots), then the larger plus half the smaller, as a 32-bit sum
+ * clamped to 7FFFh. */
+static int vgame_dist(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 3)) return 0;
+    const uint16_t ss = c->seg[S_SS];
+    x86_enter(c, 4, 0);
+    const uint16_t bp = c->r[R_BP];
+    cpu_push16(c, seg_read16(c, ss, (uint16_t)(bp + 4)));
+    c->icount += 2;
+    if (!guest_call(m, 0xEE0C, 0xC6BD)) return 1;
+    if (!room(c, 4)) { c->ip = 0xC6BD; return 1; }
+    c->r[R_BX] = cpu_pop16(c);
+    seg_write16(c, ss, (uint16_t)(bp + 4), c->r[R_AX]);
+    cpu_push16(c, seg_read16(c, ss, (uint16_t)(bp + 6)));
+    c->icount += 3;
+    if (!guest_call(m, 0xEE0C, 0xC6C7)) return 1;
+    /* Count the rest from the values it will see. */
+    const int16_t b = (int16_t)c->r[R_AX], a = (int16_t)seg_read16(c, ss, (uint16_t)(bp + 4));
+    unsigned n = 4 + (b < a ? 5 : 3) + 8;
+    {
+        const int16_t big = b < a ? a : b, small = b < a ? b : a;
+        const int32_t sum = (int32_t)(int16_t)(small >> 1) + big;
+        const int16_t hi = (int16_t)(sum >> 16);
+        if (hi < 0) n += 3;
+        else if (hi > 0) n += 1 + 1 + 3;
+        else n += 1 + 2 + (((uint16_t)sum > 0x7FFF) ? 1 : 0) + 3;
+    }
+    if (!room(c, n)) { c->ip = 0xC6C7; return 1; }
+    c->r[R_BX] = cpu_pop16(c);
+    seg_write16(c, ss, (uint16_t)(bp + 6), c->r[R_AX]);
+    alu_sub(c, c->r[R_AX], seg_read16(c, ss, (uint16_t)(bp + 4)), 1, 0);
+    uint16_t ax, cx, dx;
+    if (!x86_cond(c, 0xD)) {                                      /* jge not taken: b < a */
+        ax = seg_read16(c, ss, (uint16_t)(bp + 4));
+        dx = (ax & 0x8000) ? 0xFFFF : 0;
+        cx = ax;
+        ax = seg_read16(c, ss, (uint16_t)(bp + 6));
+    } else {
+        ax = c->r[R_AX];
+        dx = (ax & 0x8000) ? 0xFFFF : 0;
+        cx = ax;
+        ax = seg_read16(c, ss, (uint16_t)(bp + 4));
+    }
+    ax = x86_shift(c, 7, ax, 1, 1);                               /* sar ax, 1 */
+    const uint16_t bx = dx;
+    dx = (ax & 0x8000) ? 0xFFFF : 0;                              /* cwd */
+    ax = (uint16_t)alu_add(c, ax, cx, 1, 0);
+    dx = (uint16_t)alu_add(c, dx, bx, 1, (c->flags & F_CF) ? 1u : 0u);
+    seg_write16(c, ss, (uint16_t)(bp - 4), ax);
+    alu_logic(c, dx, 1);                                          /* or dx, dx */
+    if (!x86_cond(c, 0xC)) {                                      /* jl not taken */
+        if (x86_cond(c, 0xF)) seg_write16(c, ss, (uint16_t)(bp - 4), 0x7FFF);   /* jg */
+        else {
+            alu_sub(c, ax, 0x7FFF, 1, 0);
+            if (!x86_cond(c, 0x6)) seg_write16(c, ss, (uint16_t)(bp - 4), 0x7FFF);
+        }
+    }
+    c->r[R_AX] = seg_read16(c, ss, (uint16_t)(bp - 4));
+    c->r[R_BX] = bx; c->r[R_CX] = cx; c->r[R_DX] = dx;
+    x86_leave(c);
+    c->icount += n;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x02F5B, fl_isqrt(v): 1 below 4; otherwise Newton's iteration from
+ * |v| / 4 - g = (g + |v| / g) / 2 until it moves by at most one - with |x|
+ * from 0x0EE0C each pass. At the top of each pass the state is the
+ * original's, so a pass that would not fit, or whose IDIV would fault, is
+ * left to the original from 0x02F79. */
+static int vgame_isqrt(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 3)) return 0;
+    const uint16_t ss = c->seg[S_SS];
+    x86_enter(c, 4, 0);
+    const uint16_t bp = c->r[R_BP];
+    cpu_push16(c, seg_read16(c, ss, (uint16_t)(bp + 4)));
+    c->icount += 2;
+    if (!guest_call(m, 0xEE0C, 0x2F65)) return 1;
+    if (!room(c, 7)) { c->ip = 0x2F65; return 1; }
+    c->r[R_BX] = cpu_pop16(c);
+    seg_write16(c, ss, (uint16_t)(bp + 4), c->r[R_AX]);
+    alu_sub(c, c->r[R_AX], 4, 1, 0);
+    if (!x86_cond(c, 0xD)) {                                      /* below 4 */
+        c->r[R_AX] = 1;
+        x86_leave(c);
+        c->icount += 7;
+        near_ret(c);
+        return 1;
+    }
+    c->r[R_AX] = x86_shift(c, 7, c->r[R_AX], 2, 1);
+    seg_write16(c, ss, (uint16_t)(bp - 4), c->r[R_AX]);
+    c->icount += 6;
+    for (;;) {                                                    /* 0x02F79 */
+        const int16_t v = (int16_t)seg_read16(c, ss, (uint16_t)(bp + 4));
+        const int16_t g = (int16_t)seg_read16(c, ss, (uint16_t)(bp - 4));
+        if (!g || (int32_t)v / g > 32767 || (int32_t)v / g < -32768 || !room(c, 10)) { c->ip = 0x2F79; return 1; }
+        c->r[R_AX] = (uint16_t)v;
+        c->r[R_DX] = (v < 0) ? 0xFFFF : 0;
+        x86_idiv16(c, (uint16_t)g, 0);
+        seg_write16(c, ss, (uint16_t)(bp - 2), c->r[R_AX]);
+        uint16_t ax = (uint16_t)alu_add(c, c->r[R_AX], (uint16_t)g, 1, 0);
+        ax = x86_shift(c, 7, ax, 1, 1);
+        seg_write16(c, ss, (uint16_t)(bp - 4), ax);
+        ax = (uint16_t)alu_sub(c, ax, seg_read16(c, ss, (uint16_t)(bp - 2)), 1, 0);
+        c->r[R_AX] = ax;
+        cpu_push16(c, ax);
+        c->icount += 9;
+        if (!guest_call(m, 0xEE0C, 0x2F92)) return 1;
+        if (!room(c, 6)) { c->ip = 0x2F92; return 1; }
+        c->r[R_BX] = cpu_pop16(c);
+        alu_sub(c, c->r[R_AX], 1, 1, 0);
+        c->icount += 3;
+        if (!x86_cond(c, 0xF)) break;                             /* jg loops */
+    }
+    c->r[R_AX] = seg_read16(c, ss, (uint16_t)(bp - 4));
+    x86_leave(c);
+    c->icount += 3;
+    near_ret(c);
+    return 1;
+}
+
 static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x4958, vgame_free_fall, "free fall", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD50A, vgame_waypoint_from_target, "waypoint from target", 1 },
@@ -3237,6 +3363,8 @@ static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x2F4A, vgame_rnd_scaled, "scaled random number", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xC88C, vgame_rnd_times, "random times n", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xC880, vgame_clock_from, "mission clock from a reading", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xC6B3, vgame_dist, "octagonal distance", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x2F5B, vgame_isqrt, "integer square root", 1 },
 };
 
 void matched_register(void)
