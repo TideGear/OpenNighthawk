@@ -87,6 +87,12 @@ typedef struct {
                         uint16_t load_seg, uint16_t reloc);
     /* Text written to the console by DOS (for logs). */
     void (*console)(void *user, const char *text);
+    /* The one hook that may change what the guest sees: the bytes a DOS
+     * read of `name` (basename) delivers, `n` of them from file offset
+     * `pos` of a file `size` bytes long, before they reach memory - how
+     * switchable data fixes correct a file as it is read (docs/bugs.md). */
+    void (*file_data)(void *user, machine_t *m, const char *name, long size, long pos,
+                      uint8_t *buf, size_t n);
 } machine_hooks;
 
 /* One input reaching the machine at a clock count (see machine_input_at). */

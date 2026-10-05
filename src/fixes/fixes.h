@@ -7,6 +7,8 @@
 #ifndef F117R_FIXES_H
 #define F117R_FIXES_H
 
+#include "machine.h"
+
 #include <stdio.h>
 
 /* Register every fix (off). Safe to call more than once. */
@@ -18,5 +20,8 @@ void fixes_list(FILE *f);
 void fixes_enabled(char *out, size_t n);
 /* Switch on each fix a recorded session names; 0 if one is unknown. */
 int  fixes_enable_list(const char *ids);
+/* machine_hooks.file_data: the data corrections of the fixes that are on. */
+void fixes_file_data(void *user, machine_t *m, const char *name, long size, long pos,
+                     uint8_t *buf, size_t n);
 
 #endif

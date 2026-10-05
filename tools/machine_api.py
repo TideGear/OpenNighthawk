@@ -50,12 +50,13 @@ class Machine:
             "record": (C.c_int, [C.c_void_p, C.c_char_p]),
             "screen": (C.c_int, [C.c_void_p, C.c_char_p]),
             "fix": (C.c_int, [C.c_void_p, C.c_char_p, C.c_int]),
+            "stage_write16": (None, [C.c_void_p, C.c_uint32, C.c_uint16]),
         }
         self.fn = {}
         for name, (result, args) in signatures.items():
             # A library built before fixes existed lacks the switch; it can
             # still run every unfixed machine.
-            if name == "fix" and not hasattr(self.dll, "f117_machine_fix"):
+            if name in ("fix", "stage_write16") and not hasattr(self.dll, "f117_machine_" + name):
                 continue
             fn = getattr(self.dll, "f117_machine_" + name)
             fn.restype, fn.argtypes = result, args
@@ -127,6 +128,13 @@ class Machine:
 
     def read16(self, address):
         return self._call("read16", address)
+
+    def stage_write16(self, address, value):
+        """STAGING ONLY: write one guest word, for a fix check that needs a
+        state normal play takes hours to build. Never for pilots or parity
+        observers; a run that calls it is a staged run."""
+        self.staged = True
+        return self._call("stage_write16", address, value)
 
     def read32(self, address):
         return self._call("read32", address)

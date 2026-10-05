@@ -4,10 +4,122 @@ For the next conversation working on this repository. Read this, then
 [docs/roadmap.md](docs/roadmap.md) (what is done and left - keep it
 updated), [docs/architecture.md](docs/architecture.md) (how parity is
 built and checked) and [docs/bugs.md](docs/bugs.md) (the original game's
-bugs). State as of 4 October 2026: the parity audit and expanded recon/career
-routes are verified; an independent DOSBox recon flight has completed (below).
+bugs). State as of 4 October 2026, late evening. Earlier "running" entries
+further down are historical; this first section is the current state.
 
-## Latest wrap-up: stopped for a new conversation
+## Latest wrap-up (4 Oct, ~22:45): stopped for a new conversation
+
+The user asked for a handoff, commit, push and stop, after a session whose
+goal was "complete the plan in roadmap.md". Resume the roadmap when asked.
+
+### Committed and pushed this session
+
+- `d8c6b67` README: leads with "fully **human-driven**, AI-coded
+  recompilation", the not-fire-and-forget commitment, why the buggy original
+  needs preserving, plus the Reimp README's non-affiliation notice, no-money
+  pledge, legal section and evidence rule.
+- `cfa8e57` dos.c split into dos_memory/programs/files/keyboard/video.c +
+  private dos_internal.h. Token-level check: all 85 top-level items moved
+  verbatim (mod `static` and a `dos_` prefix on 29 shared functions, all call
+  sites); two log tags the earlier rename pass had changed were restored.
+  Six routes x both engines x before/after identical (checkpoints, finals,
+  every shot and save file).
+- `83b4c8a` code overrides (src/recomp/recomp.c, src/fixes/fixes.c,
+  `--fix ID` / `--list-fixes` in f117run, f117a, `fixes=` in the Python
+  machine API), first fix D5 (supply drops credited; route
+  `cargo_d5_fixed`, both engines 149 checkpoints, final `61fc0505fcee1ba3`),
+  `cargo_return` route (delivery then home 51 after hits; 380 checkpoints,
+  final `98791aa3b6459905`, strong observer `cargo_check.py --complete`),
+  `career_check.py --ahead N` (pipelined engines), landing_pilot `cruise`,
+  `aim`, `approach_speed` params (defaults unchanged).
+- `9e9eaa2` input logs name the fixes a session ran with
+  (`# f117r-fixes D5` second line); replays switch them on.
+
+### Committed in the wrap-up commit (verify CI)
+
+- Recompiler isolates every override address in a one-instruction region,
+  reading the sites straight from `OVERRIDES` in src/fixes/fixes.c (regex in
+  recompiler/recomp.py `override_sites`; keep each row on one line).
+  Regenerated code differs only in START and VGAME; same 89,276
+  instructions. NOTE: the interpreted ~750M instructions on cargo routes
+  are the emulated BIOS idle stub 0060:00C4, not game code (an earlier doc
+  claim that D5 cost a tenth was wrong and was corrected).
+- D4 (`--fix D4`): `file_data` machine hook corrects 5 world bytes as read
+  (LB.WLD 0x53A, ME.WLD 0x597, NC.WLD 0x607 0->1; NC 0x1F1/0x201 08->09,
+  pinned by name, size, shipped byte); override at START entry 0000:8EDC
+  widens the 4 airstrip masks (DGROUP 0A95:11DA) to 0027h after LZEXE
+  unpacks. Evidence: Libya generator offered supply drop at airstrip
+  target 26 (startup 700000036000000, private lb-candidates-d4); VGAME loads
+  NC airstrips with flags 09 (d4_nc_check). Flying one remains open.
+- D34 (`--fix D34`): five overrides (VGAME entry E6BE empties extension;
+  append 0F97, lookup 0FBD, type write 0F7E, type read 0D5E), declining
+  until the table holds 30. `tools/d34_check.py --stage [--fix D34]` uses
+  the new STAGING-ONLY `stage_write16` API: unfixed, record 31's type 0x4A
+  lands on B838 (Reimp's measured value); fixed, count stays 30, log shows
+  record 31 kept past the table and found by the game's lookup, both
+  engines `13110a036af486ba`; unstaged run unchanged `197c6b398d6fbb9f`.
+- `mission_candidates.py --fix`, `F117R_MACHINE_API` env override for the
+  DLL, optional binding of new DLL exports, tests: `code_overrides` CTest
+  (overrides, log line, data corrections), `tests/test_recompiler_overrides.py`
+  (added to CI), cargo verdict regressions.
+- Full parity of this 7-site generation (separate build
+  `~/f117-recomp-local/isolate2-build`, gen `isolate2-pipeline/gen`,
+  `all_routes_parity.py`): ALL 27 ROUTES IDENTICAL under both engines at
+  every checkpoint and final (committed finals unchanged, e.g. strike
+  `197c6b398d6fbb9f`, career_promotion `2cbd245e873655d5`), lockstep
+  89,276 starts / 5,713,152 states / 0 mismatching (`isolate2-parity.log`,
+  `isolate2-parity/result.json`). 11 CTests (app build) and 13 Python test
+  files pass.
+- The main `build/` still holds the pre-override generation
+  (theatre-pipeline/gen). Next session: run
+  `py tools/build_recomp.py --data "D:/GOG/F-117A"` (or build with
+  `-DF117R_GEN_DIR=.../isolate2-pipeline/gen`) so build/ matches master.
+
+### Career toward retirement (in progress, private evidence)
+
+- Sorties 14-15 paired (career-check-14-15); rank 2 -> 3 (Captain) earned at
+  15, total 3122. Old rank-2 record then failed at rank 3 (assignment
+  changed). New rank-3 record: private `career-rank3-photo-01/input.log`
+  (startup 700000009000000, departure 36 / home 35, both photos, landed,
+  result 0/3, final e78a0dfa951114ae), front route `career-rank3-photo.front`.
+- `career_check.py --ahead 3 --steps 17000000000` batch from sortie 15's
+  save PAIRED SORTIES 16..52 (37 sorties; `career-check-16-55/completed.json`,
+  log `parity-audit-career-check-16-55.log`), stopped for this handoff.
+  Last paired: sortie 52, rank 3, score 207, total 10,781, final
+  `b80929026b785d0c` at 17B. Its save:
+  `parity-audit-20261004/career-check-16-55/sortie-52-recomp/save-jlej_zhh/Roster.Fil`.
+  Resume: `py tools/career_check.py --data D:/GOG/F-117A --initial-roster
+  THAT_SAVE --replay .../career-rank3-photo-01/input.log --steps 17000000000
+  --count 46 --ahead 3 --out .../career-check-53-98` (about 1.3 min a
+  sortie), then handle 99 separately (debrief END pages differ at
+  retirement; the tool requires START at the end - check the 99th's screens).
+- At 207-219 per sortie the average stays ~210 < 250, so rank stays 3 and
+  the record should keep working to 99. Retirement should reach END's
+  "Wow, 99 missions!" remark list. The user's screenshot
+  (Desktop\328920_screenshots_2015-10-21_00003.jpg) is END's remark page
+  `0x039D0` list "- General, At Last!" (Off we go into the wild blue
+  General's Office / Now I'll leave the fighting to them / When in doubt,
+  get a lieutenant to do it) - shown only for the 99th mission at rank 6,
+  which needs total >= 27,720 and average >= 280: a different, higher-scoring
+  career. Strings are in END.EXE around image 0xA9F1.
+
+### Other open items noted this session
+
+- Fixes left from the Reimp's set: D2 (speech busy-wait; needs a non-blocking
+  speech path on ASOUND 0x2552) and D96 (START page timing). Policy for the
+  app's default (Reimp: all fixes on) vs parity default (off) is the user's
+  call; currently every fix is off unless named.
+- Estimate given to the user: ~35-40% of the whole roadmap by effort,
+  ~6-12 weeks left (Phase 2 naming and Phase 3 60fps/4K dominate).
+- DISK: C: was full during the wrap-up (a link failed with LNK1180; 29 MB
+  free at one point, 13 GB after). Check free space before long runs; the
+  scratch builds head-build, dos-split-build and isolate-build were deleted.
+- Separate builds used this session (not the repo's build/):
+  `dos-split-app-build` (app ON, theatre gen) and `isolate2-build` (app OFF,
+  the committed generation); scripts `build-*.cmd`, `route_cli.py`,
+  `all_routes_parity.py` in `~/f117-recomp-local`.
+
+## Previous wrap-up (earlier on 4 Oct; superseded by the section above)
 
 The user requested a handoff, commit, push and stop. No test worker remains
 running. Earlier "running" entries below are historical; use this section

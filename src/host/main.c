@@ -330,6 +330,7 @@ int main(int argc, char **argv)
     hooks.vsync = on_vsync;
     hooks.midi_byte = on_midi;
     hooks.module_load = recomp_module_load;
+    hooks.file_data = fixes_file_data;
     /* A replay brings its own speed and boot time; a recording writes ours. */
     if (!time_us) time_us = machine_local_time_us();
     if (!machine_boot(&H.m, H.mem, data, save, "F117.COM", ips, time_us, &hooks)) {

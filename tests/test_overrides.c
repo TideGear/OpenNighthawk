@@ -4,6 +4,7 @@
 #include "machine.h"
 #include "recomp_rt.h"
 #include "inputlog.h"
+#include "fixes.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -134,6 +135,41 @@ int main(void)
         inputlog_close(r);
     }
     remove(path);
+
+    /* Data corrections (D4's world half): only the named file of the right
+     * size, only the byte expected there, only while the fix is on, and
+     * wherever the read window falls. */
+    static uint8_t wld[2159];
+    uint8_t got[16];
+    memset(wld, 0, sizeof wld);
+    memcpy(got, wld + 0x530, 16);
+    fixes_file_data(NULL, &m, "lb.wld", 2159, 0x530, got, 16);
+    CHECK(got[0x0A] == 0);                                     /* off */
+    CHECK(fixes_enable("D4", 1) == 1);
+    fixes_file_data(NULL, &m, "lb.wld", 2159, 0x530, got, 16);
+    CHECK(got[0x0A] == 1);                                     /* LB.WLD 0x53A */
+    memset(got, 0, sizeof got);
+    fixes_file_data(NULL, &m, "LB.WLD", 2160, 0x530, got, 16);
+    CHECK(got[0x0A] == 0);                                     /* another size */
+    fixes_file_data(NULL, &m, "PG.WLD", 2159, 0x530, got, 16);
+    CHECK(got[0x0A] == 0);                                     /* another file */
+    got[0x0A] = 7;
+    fixes_file_data(NULL, &m, "LB.WLD", 2159, 0x530, got, 16);
+    CHECK(got[0x0A] == 7);                                     /* not the shipped byte */
+    uint8_t one = 0;
+    fixes_file_data(NULL, &m, "LB.WLD", 2159, 0x53A, &one, 1);
+    CHECK(one == 1);                                           /* a one-byte window */
+    uint8_t nc[2] = { 0x08, 0x08 };
+    fixes_file_data(NULL, &m, "NC.WLD", 2383, 0x1F1, nc, 1);
+    fixes_file_data(NULL, &m, "NC.WLD", 2383, 0x201, nc + 1, 1);
+    CHECK(nc[0] == 0x09 && nc[1] == 0x09);                     /* North Cape's credit bit */
+    char on[64];
+    fixes_enabled(on, sizeof on);
+    CHECK(!strcmp(on, "D4"));
+    fixes_enable("all", 0);
+    one = 0;
+    fixes_file_data(NULL, &m, "LB.WLD", 2159, 0x53A, &one, 1);
+    CHECK(one == 0);
 
     recomp_shutdown(&m);
     if (failures) { fprintf(stderr, "%d failures\n", failures); return 1; }

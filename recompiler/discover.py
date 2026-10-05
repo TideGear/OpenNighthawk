@@ -18,6 +18,11 @@ Seeds, strongest first:
   3. coverage: instructions the interpreter executed in recorded runs;
   4. heuristics: far pointers in relocated data, and Microsoft C function
      prologues inside the code segments.
+
+Before any of them, each address a code override (src/fixes) replaces gets
+a region of its own instruction alone. Flow into it from anywhere then
+passes the dispatcher, where the override is found, and the run-time
+refuses only that one-instruction region while the override is on.
 """
 from __future__ import annotations
 
@@ -224,7 +229,9 @@ class Discovery:
         return p3 is not None and p3.raw[:1] == b"\xB8" and p3.raw[2:3] == b"\x4C"
 
     # ---- the walk -------------------------------------------------------------
-    def grow(self, seg, ip, why):
+    def grow(self, seg, ip, why, alone=False):
+        """alone: the region is this one instruction; its successors are
+        seeded as regions of their own."""
         if (seg, ip) in self.owner or (seg, ip) in self.bad:
             return
         first = self.decode_at(seg, ip)
@@ -263,13 +270,19 @@ class Discovery:
                 # near indirect: remembered, seeded after coverage
                 for t in self.pointer_table(seg, ins):
                     self.table_seeds.append((seg, t))
+            if alone:
+                for t in stack:
+                    self.add_seed(seg, t, why)
+                break
 
     def drain(self):
         while self.pending:
             seg, ip, why = self.pending.popleft()
             self.grow(seg, ip, why)
 
-    def run(self, coverage=(), heuristics=True):
+    def run(self, coverage=(), heuristics=True, isolate=()):
+        for seg, ip in isolate:
+            self.grow(seg, ip, "override", alone=True)
         for seg, ip in self.m.entries:
             self.add_seed(seg, ip, "entry")
         self.drain()

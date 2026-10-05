@@ -114,6 +114,18 @@ Status values:
 - **Fix options.** Widen the mask to `0x027` and correct the two world-data
   bytes at load time (debugcom's fan patch, packaged by damsonn, is the same
   8-byte change). Data patches, no code.
+- **Fix available: `--fix D4`,** as the Reimp decided: Libya, the Gulf,
+  North Cape and the Middle East. The world half corrects five bytes as DOS
+  reads the files (class byte LB.WLD `0x53A`, ME.WLD `0x597`, NC.WLD
+  `0x607` 0 to 1; NC.WLD `0x1F1` and `0x201` 08 to 09), each pinned by file
+  name, size and the shipped byte. The table half is an override at START's
+  entry `0000:8EDC`: START is LZEXE-packed, so its four masks (DGROUP
+  `0A95:11DA`, first word of entries 0-3) become 0027h in memory once it has
+  unpacked, and the original instruction then runs. Measured: Libya's
+  generator offers a supply drop at airstrip target 26 (startup clock
+  700000036000000, normal input) with the fix, which the shipped mask cannot;
+  VGAME loads North Cape's airstrips with flags 09 instead of 08. Flying an
+  airstrip mission outside the Gulf remains to do.
 - **Detail.** Reimp catalogue:524-622; Reimp `docs/re/04-mission-generator.md`.
 
 ### D5. Supply drops never award credit
@@ -133,8 +145,9 @@ Status values:
   Replaying the unchanged `cargo.input` with the fix on, the impact earns
   primary flag 4000h and one 8Bh event under both engines (route
   `cargo_d5_fixed`, 149 checkpoints, final `61fc0505fcee1ba3`); with it off
-  the run still ends at the original's `20b78dd06d275670`. The region
-  holding the gate is interpreted while the fix is on.
+  the run still ends at the original's `20b78dd06d275670`. The recompiler
+  gives `0x6D2E` a region of its own, so nothing else is interpreted for
+  it.
 - **Detail.** Reimp catalogue:626-675.
 - **Normal-input reproduction.** `tools/routes/cargo.args` drops the loaded
   supply crate in a generated type-3 Persian Gulf mission. Player slot 11,
@@ -235,6 +248,21 @@ Status values:
   `0x07549`, `0x043EC`; readers `0x006E3`, `0x00D43`, `0x00FBD`.
 - **Fix options.** Cap the table at 30 records (the Reimp's fix), as a patch
   at the two writers.
+- **Fix available: `--fix D34`,** the Reimp's design: the first 30 records
+  stay in the table, later ones go to an extension outside the guest.
+  Overrides cover every place a record is reached - the append `0x0F97`,
+  the lookup `0x0FBD`, the type write `0x0F7E` and read `0x0D5E` through
+  the index the lookup leaves in `[0x950C]` - and VGAME's entry empties the
+  extension. Each declines until the table is full, so a fixed flight is the
+  original's instruction for instruction until record 31: the strike route
+  ends at its committed `197c6b398d6fbb9f` either way. Staged check
+  (`tools/d34_check.py --stage [--fix D34]`, the count set to 30 after
+  mission setup): unfixed, the Maverick
+  hit makes record 31 and its type byte lands on the F7/F8 flag `B838` as
+  0x4A, the value the Reimp measured on the original; fixed, the count stays
+  30, `B834`-`B838` are untouched, the log shows record 31 kept past the
+  table and found by the game's lookup 0.66 million clocks later, the target
+  stays destroyed, and both engines end at `13110a036af486ba`.
 - **Detail.** Reimp catalogue:1331-1404.
 
 ### D35. Fast machines stop after the intro (reported)
@@ -324,8 +352,8 @@ The recompilation keeps the original's behaviour as the reference, and every
 fix will be optional, so a player can always choose 1:1. The mechanisms, in
 order of preference:
 
-1. **Data patches** (D4): bytes corrected as the file is read. The code is
-   untouched.
+1. **Data patches** (D4): bytes corrected as the file is read, through the
+   machine's `file_data` hook. The code is untouched. Implemented.
 2. **Host-side fixes** (D11): the emulated PC's file layer, invisible to the
    program.
 3. **Code overrides** (D1, D2, D5, D34): a hand-written C function registered

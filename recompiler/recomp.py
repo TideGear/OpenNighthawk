@@ -207,6 +207,21 @@ def write_module(mod, regions, out_dir, comments, mutate=None):
     return files
 
 
+def override_sites(path=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                      "src", "fixes", "fixes.c")):
+    """The addresses the code overrides replace, read from the fix table
+    itself so the two cannot drift: {MODULE: [(seg, ip), ...]}."""
+    sites = {}
+    try:
+        text = open(path, encoding="utf-8").read()
+    except OSError:
+        return sites
+    for name, seg, ip in re.findall(
+            r'\{\s*"[^"]+",\s*"([^"]+)",\s*[^,]+,\s*(0x[0-9A-Fa-f]+),\s*(0x[0-9A-Fa-f]+),\s*[A-Za-z_]\w*\s*,', text):
+        sites.setdefault(name.upper(), []).append((int(seg, 16), int(ip, 16)))
+    return sites
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", required=True, help="the game's install directory")
@@ -239,11 +254,15 @@ def main():
         print("coverage: %d seeds, %d rejected (bytes not this image's)" % (
             sum(len(v) for v in cov.values()), rejected))
     print("discovering code")
+    sites = override_sites()
+    if sites:
+        print("override sites: " + ", ".join("%s %04X:%04X" % (n, s, i) for n, v in sorted(sites.items()) for s, i in v))
     total_insns = 0
     tags = []
     for m in mods:
         d = Discovery(m)
-        regions = d.run(coverage=cov.get(m.name, []), heuristics=not a.no_heuristics)
+        regions = d.run(coverage=cov.get(m.name, []), heuristics=not a.no_heuristics,
+                        isolate=sites.get(m.name, ()))
         total_insns += sum(len(r.insns) for r in regions)
         write_module(m, regions, a.out, not a.no_comments, mutate)
         tags.append(tag(m.name))

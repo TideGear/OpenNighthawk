@@ -206,7 +206,7 @@ never instead of parity.
       awards. Promotion, Airman's Medal and the ten-mission tour ribbon are
       now earned and saved; rank 3 (Captain) is earned at sortie 15, and a
       new rank-3 photo record carries the paired chain on towards the 99th
-      sortie. Retirement at 99 should reach END's "Wow, 99 missions!" remark
+      sortie (both engines agree through sortie 52, total 10,781). Retirement at 99 should reach END's "Wow, 99 missions!" remark
       list (to be captured);
       the "General, At Last!" page needs the pilot at rank 6 on the 99th
       mission (total 27,720 and an average of 280), which needs a
@@ -249,13 +249,17 @@ never instead of parity.
       attach. Pinned to the shipped file by hash, off unless switched on
       (`--fix ID`, `--list-fixes`; `fixes=` in the Python machine API).
       Inert when off: the cargo return's 380 checkpoints match the build
-      without them. ROM-free `code_overrides` CTest. The containing region
-      is interpreted while an override is on; splitting regions at override
-      addresses in the recompiler remains to do.
+      without them. ROM-free `code_overrides` CTest. The recompiler reads
+      the fix table and isolates each override address in a
+      one-instruction region, so a fix costs no translated code around it.
 - [ ] Fixes for the original's bugs in [bugs.md](bugs.md) (D1 frame-rate
       AI, D6 undetectable cells, ...), each on a switch. D5 (supply drops
       earn credit) is done and checked through normal input under both
-      engines (`cargo_d5_fixed`). A session recorded with fixes on names
+      engines (`cargo_d5_fixed`). D4 (secret airstrips in Libya, North Cape
+      and the Middle East: world bytes corrected as read, START's masks
+      widened at its entry) and D34 (destroyed-object table extension, five
+      overrides) are done, the Reimp's fixes; D2 (speech hang) and D96 (menu
+      timing) are its remaining ones. A session recorded with fixes on names
       them (`# f117r-fixes D5`) and its replay switches them on again.
 - [ ] 60+ fps and 4K presentation.
 

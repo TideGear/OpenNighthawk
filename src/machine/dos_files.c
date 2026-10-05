@@ -588,7 +588,16 @@ int dos_int21(machine_t *m)
         if (h < 5) { c->r[R_AX] = 0; dos_ok(c); return 1; }   /* stdin: EOF */
         if (h >= DOS_MAX_FILES || !m->files[h].in_use) { dos_fail(c, ERR_BAD_HANDLE); return 1; }
         uint8_t *tmp = (uint8_t *)malloc(n ? n : 1);
+        const long pos = m->hooks.file_data ? ftell(m->files[h].fp) : 0;
         size_t got = n ? fread(tmp, 1, n, m->files[h].fp) : 0;
+        if (m->hooks.file_data && got) {
+            FILE *fp = m->files[h].fp;
+            const long after = ftell(fp);
+            fseek(fp, 0, SEEK_END);
+            const long size = ftell(fp);
+            fseek(fp, after, SEEK_SET);
+            m->hooks.file_data(m->hooks.user, m, dos_basename(m->files[h].path), size, pos, tmp, got);
+        }
         for (size_t i = 0; i < got; i++)
             mem_write8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_DX] + i)), tmp[i]);
         free(tmp);

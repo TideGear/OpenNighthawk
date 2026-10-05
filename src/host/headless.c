@@ -225,6 +225,7 @@ int main(int argc, char **argv)
     machine_hooks hooks;
     memset(&hooks, 0, sizeof hooks);
     hooks.module_load = on_load;
+    hooks.file_data = fixes_file_data;
     if (opl_log) {
         g_opl_log = fopen(opl_log, "w");
         if (!g_opl_log) { fprintf(stderr, "cannot write %s\n", opl_log); return 1; }

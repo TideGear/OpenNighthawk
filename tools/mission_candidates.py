@@ -44,6 +44,7 @@ def main():
     matching.add_argument("--primary-only", action="store_true", help="apply --types only to the primary objective")
     matching.add_argument("--both-objectives", action="store_true", help="require both objectives to match --types")
     parser.add_argument("--initial-roster", type=Path, help="copy an existing saved roster unchanged into each fresh case")
+    parser.add_argument("--fix", action="append", default=[], help="switch a fix on (docs/bugs.md), e.g. D4")
     args = parser.parse_args()
     wanted = set(map(int, args.types.split(","))) if args.types else set()
     roster = args.initial_roster.read_bytes() if args.initial_roster else None
@@ -60,8 +61,8 @@ def main():
         save = Path(tempfile.mkdtemp(prefix="save-", dir=out))
         if roster is not None:
             (save / "Roster.Fil").write_bytes(roster)
-        with Machine(args.data, save,
-                     log=out / "run.log", engine="recomp", time_us=time_us) as machine:
+        with Machine(args.data, save, log=out / "run.log", engine="recomp",
+                     time_us=time_us, fixes=args.fix) as machine:
             machine.record(out / "input.log")
             while machine.clock < 8_000_000_000 + delay:
                 inputs.poll(machine)

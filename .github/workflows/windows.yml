@@ -79,3 +79,5 @@ jobs:
         run: python tests/test_career_checks.py
       - name: Reference observer and audio verdict regressions
         run: python tests/test_parity_diagnostics.py
+      - name: Recompiler override-site regressions
+        run: python tests/test_recompiler_overrides.py

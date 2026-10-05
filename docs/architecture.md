@@ -236,9 +236,19 @@ the repository.
   interpreter reaches the address and the override runs. The override
   leaves CS:IP and the clock where the replaced code would have, or
   declines and the original instruction runs. Fixes attach this way
-  (`src/fixes/`). The refusal costs speed while a fix is on: the D5 route
-  interprets about a tenth of its instructions. Splitting regions at
-  override addresses in the recompiler would remove that cost.
+  (`src/fixes/`). The recompiler reads the fix table and gives each
+  override address a region of its own instruction alone, so the refused
+  region is that one instruction and the function around it stays
+  translated (before that, D5's refused region cost 1.5 million
+  interpreted instructions on its route).
+- **Data fixes.** The machine's one hook that may change what the guest
+  sees, `file_data`, hands each DOS read's bytes to the fixes before they
+  reach memory; a correction applies only to its named file, of its size,
+  where the shipped byte is. With no fix on nothing changes.
+- **Staging.** A fix for a state normal play takes hours to reach (a full
+  destroyed-object table) is checked by staging that state: the Python
+  machine API's `stage_write16` is its only guest write. Pilots and parity
+  observers never call it.
 
 Data inside code regions costs speed, not correctness: F117.COM keeps
 variables after code that the walk reaches, VGAME patches its far-call thunk

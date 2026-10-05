@@ -66,6 +66,7 @@ API run_api *f117_machine_open(const char *data, const char *save,
     recomp_init(&r->m);
     machine_hooks hooks = {0};
     hooks.module_load = recomp_module_load;
+    hooks.file_data = fixes_file_data;
     if (!machine_boot(&r->m, r->m.mem, data, save, "F117.COM", ips, time_us, &hooks)) {
         snprintf(error, sizeof error, "%s", r->m.fault);
         f117_machine_close(r);
@@ -99,6 +100,13 @@ API uint8_t f117_machine_read8(run_api *r, uint32_t address)
 API uint16_t f117_machine_read16(run_api *r, uint32_t address)
 {
     return (uint16_t)(f117_machine_read8(r, address) | ((uint16_t)f117_machine_read8(r, address + 1) << 8));
+}
+/* STAGING ONLY: the one guest write, for a fix check that must reach a
+ * state normal play takes hours to build (a full table). Pilots and parity
+ * observers never call it; a run that does is a staged run and says so. */
+API void f117_machine_stage_write16(run_api *r, uint32_t address, uint16_t value)
+{
+    mem_write16(&r->m.cpu, address & 0xFFFFF, value);
 }
 API uint32_t f117_machine_read32(run_api *r, uint32_t address)
 {
