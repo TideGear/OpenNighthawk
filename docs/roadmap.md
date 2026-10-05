@@ -183,8 +183,11 @@ never instead of parity.
   engines rather than caused by generated regions. Against three independent
   DOSBox captures, the stable roster picture appears at 107.510-107.567 s;
   here it appears at 108.411-108.435 s. After the comparator's global offset,
-  the transition remains 0.571-0.585 s late. The mismatch is repeatable and
-  concentrated at START's first roster page; its machine-timing cause is open.
+  the transition remains 0.571-0.585 s late. Frame inspection separates the
+  roster list-only image from the selected-pilot details image; the latter is
+  late locally after `rostsprt.pic` loads. This points to START's shared
+  post-page/menu timing (including D96), not scanout sampling; the timing
+  cause is still open.
 
 ### Left
 
@@ -199,9 +202,17 @@ never instead of parity.
       clock; Munt is mixed at 44,100 Hz before clipping. Headless MIDI capture
       and offline rendering are available. Default/Munt builds and MIDI
       reassembly tests pass; existing DBOPL/Nuked PCM is unchanged. Supplied
-      MT-32 1.07 ROMs now render original game MIDI offline and live. A host
-      startup bug that discarded the synth was fixed. Exact reference PCM,
-      flight sound and listening validation remain open.
+      MT-32 1.07 ROMs now render original game MIDI offline and live; a host
+      startup bug that discarded the synth was fixed. The
+      interpreter and recompiler MIDI logs match byte-for-byte (188,505
+      bytes); a matched 4,865-byte MIDI prefix renders to identical PCM in
+      two offline runs. Independent live SDL captures still differ despite
+      identical MIDI logs. Munt models hardware pitch variation with
+      `rand() & 3`, and the host queues 60 ms of startup silence and may clear
+      backlogs above 250 ms. Live PCM therefore needs controlled randomness
+      or timing/spectral criteria, plus queue-capture diagnosis, before it
+      can serve as an exact oracle. Exact reference PCM, flight sound and
+      listening validation remain open.
 - [ ] **Individual mission objectives:** all nine theatres and all four
       mission categories now have flight routes (air combat, ground strike,
       and both training categories). Complete dedicated objective types.
@@ -212,15 +223,17 @@ never instead of parity.
       primary/secondary credits and raised-runway return are now verified.
       The existing transfer routes exercise generation and controls, then
       quit; they do not establish objective completion.
-- [ ] **The remaining career flow:** earned retirement and other
-      awards. Promotion, Airman's Medal and the ten-mission tour ribbon are
-      now earned and saved; rank 3 (Captain) is earned at sortie 15, and a
-      new rank-3 photo record carries the paired chain on towards the 99th
-      sortie (both engines agree through sortie 52, total 10,781). Retirement at 99 should reach END's "Wow, 99 missions!" remark
-      list (to be captured);
-      the "General, At Last!" page needs the pilot at rank 6 on the 99th
-      mission (total 27,720 and an average of 280), which needs a
-      higher-scoring sortie than this one's 219. CO transfer
+- [ ] **The remaining career flow:** higher-rank awards and transfer
+      transitions. Promotion, Airman's Medal, the ten-mission tour ribbon,
+      and retirement are now earned and saved. A rank-3 (Captain) photo
+      record was paired from sorties 16 through 99 under both engines.
+      Sorties 53-98 each matched at 380 checkpoints and in all 802 saved
+      roster bytes; sortie 99 retired the pilot normally at rank 3 with
+      total 20,510. Timed END captures show its 99th-mission retirement
+      message and the rank-3 remark "Maybe I'll write a book, like
+      Schwarzkopf. The lecture circuit sounds nice and cushy." The
+      rank-6 "General, At Last!" branch remains open; it requires the 99th
+      mission at rank 6 (total 27,720 and an average of 280). CO transfer
       requests, briefing/arming, pilot creation/editing/erasure and roster
       save/reload, direct maintenance and retired/KIA dialogs are covered.
 - [ ] **A person playing it:** controls, joystick and mouse, saves, the feel.

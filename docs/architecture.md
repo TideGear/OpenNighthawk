@@ -541,8 +541,14 @@ the same final state (`e4114c0415d4920d`): the transition drift is not caused
 by generated code. Three independent DOSBox captures put the stable roster
 picture at 107.510-107.567 s; the recompiled and interpreted runs put it at
 108.411-108.435 s. After removing each run's global capture offset, the
-remaining drift is 0.571-0.585 s. The difference is repeatable and localized
-to START's first roster page; its machine-timing cause remains open.
+remaining drift is 0.571-0.585 s. A closer comparison separates the DOSBox
+roster list-only picture (`a0fc2584`, 107.311-107.567 s) from its selected-
+pilot details picture (`eb49f15a`, first at 107.567 s). Local runs reach that
+details image at 108.411-108.423 s. Their logs open `rostscrn.pic` at
+107.481 s and `rostsprt.pic` at 107.696 s, so the remaining delay is after
+the roster background loads and before the selected-pilot detail page is
+stably displayed. This points toward START's shared post-page/menu timing
+(including D96), not scanout sampling; the machine-timing cause remains open.
 
 ## Observing flights through normal controls
 
@@ -668,6 +674,16 @@ status at record offset 4Eh, checkpoints and all 802 saved bytes must pass
 before the next leg. The startup clock comes from the recording; promotion
 may require a different recording for the new assignment.
 
+The rank-3 photo career was paired through retirement: sorties 53-98 passed
+at 380 observations each, and sortie 99 advanced the selected pilot from 98
+to 99 sorties, score 207, total 20,303 to 20,510, and active to retired
+status. Both engines matched on the retirement sortie's checkpoints and all
+802 roster bytes. A private one-second END screen trace confirms the 99th-
+mission retirement message and captures the rank-3 remark page. It shows
+"Maybe I'll write a book, like Schwarzkopf. The lecture circuit sounds nice
+and cushy." The rank-6 "General, At Last!" retirement branch has not been
+reached; it needs a separate career averaging 280 points per sortie.
+
 `cargo_check.py` separately observes a normal type-3 supply drop. It tracks
 the released player class-26h slot and weapon 18, requires ground penetration
 and matching impact globals with a sudden TTL change distinct from expiry,
@@ -692,6 +708,20 @@ fails the session/render rather than silently dropping traffic.
 `f117run --midi-log` and `audio_render --mt32` provide capture and offline
 rendering without changing the DOS program. ROM-free tests cover message
 reassembly, real-time interleaving, running status, SysEx limits/recovery,
-invalid ROMs and audio chunk invariance. Rendered Roland parity needs ROMs.
+invalid ROMs and audio chunk invariance. Full ROM-based rendered Roland
+parity remains open.
+
+The supplied 1.07 ROM pair is now usable in both live and offline runs. The
+interpreter and recompiler MIDI logs are byte-identical (188,505 bytes); a
+matched replay emits the same 4,865-byte prefix, and two offline renders of
+that stream produce byte-identical PCM. Independent live SDL captures differ
+in PCM despite identical machine MIDI logs. Munt's pinned TVP implementation
+(commit `6e7c01fba7e1d50c8fa705834889fd0eac136075`) uses `rand() & 3` for
+hardware-like pitch variation, and the host app queues
+60 ms of startup silence and clears audio backlog above 250 ms. Thus live
+PCM is not yet a stable exact-equality oracle: isolate host queue effects and
+use a controlled random sequence or timing/spectral criteria when comparing
+renderers. Exact reference PCM, flight sound and listening validation remain
+open.
 
 The open work, in order, is tracked in [roadmap.md](roadmap.md).

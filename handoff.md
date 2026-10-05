@@ -4,8 +4,59 @@ For the next conversation working on this repository. Read this, then
 [docs/roadmap.md](docs/roadmap.md) (what is done and left - keep it
 updated), [docs/architecture.md](docs/architecture.md) (how parity is
 built and checked) and [docs/bugs.md](docs/bugs.md) (the original game's
-bugs). State as of 4 October 2026, late evening. Earlier "running" entries
+bugs). State as of 5 October 2026, 01:21 local. Earlier "running" entries
 further down are historical; this first section is the current state.
+
+## Latest continuation (5 Oct, 01:21 local)
+
+- The rank-3 career chain is now paired through retirement. Sorties 53-98
+  completed from the saved sortie-52 roster using
+  `career-rank3-photo-01/input.log`: 46 paired sorties, 380 checkpoints per
+  sortie, matching flight/career gates, observations, input records, and all
+  802 roster bytes. Private batch:
+  `C:/Users/Tideg/f117-recomp-local/parity-audit-20261005/career-check-53-98`.
+- Sortie 99 also passed under both engines from sortie 98's actual saved
+  roster. It earned 207 points, advanced total 20,303 to 20,510, and saved
+  status 1 (retired). The final checkpoints, records, reports and all 802
+  saved bytes agree. Private result:
+  `.../career-check-99/completed.json`.
+- A separate recomp rerun sampled END once per second. At 58s END displayed
+  "Congratulations on the successful completion of your 99th mission and
+  retirement from the Air Force." The remark page at 73s says "Maybe I'll
+  write a book, like Schwarzkopf. The lecture circuit sounds nice and
+  cushy." Screens are in
+  `C:/Users/Tideg/f117-recomp-local/parity-audit-20261005/career-check-99-screentrace/sortie-99-recomp/end-058s.ppm`
+  and `.../end-073s.ppm`. This verifies rank-3 retirement, not the separate
+  rank-6 "General, At Last!" branch (requires total 27,720, average 280).
+- Video comparison now distinguishes the DOSBox roster list-only frame
+  (`a0fc2584`) from the selected-pilot detail frame (`eb49f15a`). DOSBox
+  switches at 107.567 s; local details stabilize at 108.411-108.423 s.
+  Local `rostscrn.pic` and `rostsprt.pic` open at 107.481 and 107.696 s,
+  respectively. This narrows the shared delay to START's transition after
+  the roster background loads, likely its post-page/menu timing (D96); it
+  does not implicate scanout cadence. Interpreter and recompiler captures
+  remain identical.
+- Munt diagnosis: interpreter/recompiler MIDI logs are byte-identical
+  (188,505 bytes). A matched replay emits a 4,865-byte prefix; two offline
+  renders of it have identical PCM. Independent live SDL captures differ in
+  PCM despite identical machine logs. Munt's pinned TVP code uses
+  `rand() & 3` for hardware-like pitch variation; the app also primes 60 ms
+  of silence and can clear audio backlog above 250 ms. Exact live PCM is
+  therefore not a stable oracle yet. Isolate host queue effects and compare
+  using controlled randomness or timing/spectral criteria. No runtime code
+  changed during these diagnostics.
+- The main build uses the fully covered 89,276-instruction generation. The
+  rank-3 career chain remains paired through retirement as above.
+
+### Next
+
+1. Trace START's selected-pilot details transition after `rostsprt.pic`
+   loads, checking shared post-page/menu timing and D96 against DOSBox.
+2. Continue MT-32 validation with controlled random variation or
+   timing/spectral criteria, and isolate live SDL queue behavior before
+   drawing PCM conclusions.
+3. Continue other objective types and, separately, a rank-6 career for the
+   "General, At Last!" retirement branch.
 
 ## Prior wrap-up (4 Oct, ~22:45; superseded by the continuation below)
 
@@ -119,7 +170,7 @@ goal was "complete the plan in roadmap.md". Resume the roadmap when asked.
   the committed generation); scripts `build-*.cmd`, `route_cli.py`,
   `all_routes_parity.py` in `~/f117-recomp-local`.
 
-## Latest continuation (4 Oct, ~23:15 local)
+## Previous continuation (4 Oct, ~23:15 local; superseded above)
 
 - Resumed the video-parity item. The main build is now configured to use the
   fully covered 89,276-instruction generation at
