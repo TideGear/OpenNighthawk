@@ -104,6 +104,11 @@ routes are verified; an independent DOSBox recon flight is running (below).
   table2084 and rounded1.15 multiplication). Continuousatan approximation
   drove it low and into circles. A level nose casts a constant640-map-unit
   ray, an alternative ordinary acquisition approach to test, not a model fix.
+  Next live cargo search: pg-candidates-03, startup700000006000000 plus
+  one second percase, eight frontend delays, stop only ontype3. Log
+  parity-audit-pg-candidates-03.log. Candidate02 completed ontype4 at5seconds;
+  candidate01 fixed-clock controls all generatedsamephoto/photo. Verify03
+  before reusing its ordinaryinput record/clock for a drop test.
 
 - CI follow-up:46151f1,8c997de,316eac4 failed Route milestone regressions;
   build/CTests/pacing passed. Reproduced locally by setting tempfile.tempdir
