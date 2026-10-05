@@ -903,7 +903,10 @@ transpose, 0x0C863 sign, 0x0C699 clamp, 0x0BA2B "class takes a lock",
 bar clamp, 104E:008A table sine, 0x0FFDC clipping outcode, the setters
 0x0EE1A/0x0D9E7/0x04E4B, 0x01BA7 interrupt-vector read, and the string
 helpers 0x0EDC2 strupr, 0x0EB82 strlen, 0x0EB50 strcpy, 0x0EDE0 block copy
-and 0x0EDA4 far copy: 22 routines, each equal over 4,000 random states.
+and 0x0EDA4 far copy, the moving map's screen x/y 0x085F1/0x08608, the
+text pen 0x0886A, weapon effectiveness 0x08A67, the 32-bit multiply
+0x0EF36, the divide-error hook pair 120A:027D/029E, 0x0F79D and the axis
+spread 1058:0C9F: 31 routines, each equal over 4,000 random states.
 REP string instructions are stepped as the interpreter steps them (one
 clock an iteration, one for a REP that finds CX at 0), and a routine whose
 clock depends on the data counts it first with a dry run so it can decline

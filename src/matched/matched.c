@@ -632,6 +632,206 @@ static int vgame_farcopy(machine_t *m)
     return 1;
 }
 
+/* VGAME 0x085F1, the moving map's screen x of world x: (x - [40B2]) >>
+ * (10 - zoom [40AE]) + 112, arithmetic shift. CL is left as the shift. */
+static int vgame_map_screen_x(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 10)) return 0;
+    const uint16_t x = arg(c, 0);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    uint16_t ax = (uint16_t)alu_sub(c, x, ds_get(c, 0x40B2), 1, 0);
+    const uint8_t cl = (uint8_t)alu_sub(c, 10, mem_read8(c, phys(c->seg[S_DS], 0x40AE)), 0, 0);
+    set_r8(c, R_CL, cl);
+    ax = x86_shift(c, 7, ax, cl, 1);                              /* sar ax, cl */
+    c->r[R_AX] = (uint16_t)alu_add(c, ax, 0x70, 1, 0);
+    x86_leave(c);
+    c->icount += 10;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x08608, the moving map's screen y: ((y - [40B4]) >> (10 - zoom))
+ * * 3 >> 2 + 139 - the map's 4:3 aspect. */
+static int vgame_map_screen_y(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 12)) return 0;
+    const uint16_t y = arg(c, 0);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    const uint8_t cl = (uint8_t)alu_sub(c, 10, mem_read8(c, phys(c->seg[S_DS], 0x40AE)), 0, 0);
+    set_r8(c, R_CL, cl);
+    uint16_t ax = (uint16_t)alu_sub(c, y, ds_get(c, 0x40B4), 1, 0);
+    ax = x86_shift(c, 7, ax, cl, 1);                              /* sar ax, cl */
+    ax = x86_imul3(c, ax, 3);                                     /* imul ax, ax, 3 */
+    ax = x86_shift(c, 7, ax, 2, 1);                               /* sar ax, 2 */
+    c->r[R_AX] = (uint16_t)alu_add(c, ax, 0x8B, 1, 0);
+    x86_leave(c);
+    c->icount += 12;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x0886A, pen(colour): both text contexts ([4010], [4028]) take the
+ * colour at their offset 4. */
+static int vgame_pen(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 9)) return 0;
+    const uint16_t colour = arg(c, 0);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_AX] = colour;
+    uint16_t bx = ds_get(c, 0x4010);
+    ds_put(c, (uint16_t)(bx + 4), colour);
+    bx = ds_get(c, 0x4028);
+    ds_put(c, (uint16_t)(bx + 4), colour);
+    c->r[R_BX] = bx;
+    x86_leave(c);
+    c->icount += 9;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x08A67, effectiveness(weapon, object): the object's type (as in
+ * class5_takes_lock) indexes the weapon's 16-byte row at 3898; the signed
+ * byte comes back in AX. */
+static int vgame_weapon_effectiveness(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 17)) return 0;
+    const uint16_t weapon = arg(c, 0), object = arg(c, 1), ds = c->seg[S_DS];
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->r[R_SI]);
+    uint16_t bx = x86_shift(c, 4, object, 4, 1);
+    bx = (uint16_t)((bx & 0xFF00) | mem_read8(c, phys(ds, (uint16_t)(bx - 0x4D24))));
+    bx = (uint16_t)alu_logic(c, bx & 0x7F, 1);
+    uint16_t ax = (uint16_t)((c->r[R_AX] & 0xFF00) | mem_read8(c, phys(ds, (uint16_t)(bx - 0x39D0))));
+    const uint16_t type = (uint16_t)alu_logic(c, ax & 0x0F, 1);
+    bx = x86_shift(c, 4, weapon, 4, 1);
+    const uint8_t e = mem_read8(c, phys(ds, (uint16_t)(bx + type + 0x3898)));
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)e;                    /* cbw */
+    c->r[R_BX] = bx;
+    c->r[R_SI] = cpu_pop16(c);
+    x86_leave(c);
+    c->icount += 17;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x0EF36, the C runtime's 32-bit multiply: DX:AX = (a * b) mod 2^32
+ * for a = [bp+6]:[bp+4], b = [bp+A]:[bp+8]; one MUL when both high words
+ * are 0. RET 8 pops the arguments; BX is preserved, CX = b's low word. */
+static int vgame_lmul(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 19)) return 0;
+    const uint16_t alo = arg(c, 0), ahi = arg(c, 1), blo = arg(c, 2), bhi = arg(c, 3);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    alu_logic(c, (uint16_t)(bhi | ahi), 1);                       /* or cx, ax */
+    c->r[R_CX] = blo;
+    unsigned n;
+    if (!(c->flags & F_ZF)) {
+        const uint16_t bx = c->r[R_BX];
+        cpu_push16(c, bx);
+        c->r[R_AX] = ahi;
+        x86_mul16(c, blo);
+        uint16_t t = c->r[R_AX];
+        c->r[R_AX] = alo;
+        x86_mul16(c, bhi);
+        t = (uint16_t)alu_add(c, t, c->r[R_AX], 1, 0);
+        c->r[R_AX] = alo;
+        x86_mul16(c, blo);
+        c->r[R_DX] = (uint16_t)alu_add(c, c->r[R_DX], t, 1, 0);
+        c->r[R_BX] = cpu_pop16(c);
+        n = 19;
+    } else {
+        c->r[R_AX] = alo;
+        x86_mul16(c, blo);
+        n = 11;
+    }
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += n;
+    near_ret(c);
+    c->r[R_SP] = (uint16_t)(c->r[R_SP] + 8);                      /* ret 8 */
+    return 1;
+}
+
+/* VGAME 120A:027D / 120A:029E: install the renderer's divide-error handler
+ * (CS:0971) on INT 0, keeping the old vector at [5EE6]/[5EE8]; and put the
+ * old one back. ES preserved, BX = 0. */
+static int vgame_hook_int0(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 13)) return 0;
+    cpu_push16(c, c->seg[S_ES]);
+    c->r[R_BX] = (uint16_t)alu_sub(c, c->r[R_BX], c->r[R_BX], 1, 0);
+    ds_put(c, 0x5EE6, seg_read16(c, 0, 0));
+    ds_put(c, 0x5EE8, seg_read16(c, 0, 2));
+    seg_write16(c, 0, 2, c->seg[S_CS]);
+    seg_write16(c, 0, 0, 0x0971);
+    c->r[R_AX] = 0x0971;
+    c->seg[S_ES] = cpu_pop16(c);
+    c->icount += 13;
+    near_ret(c);
+    return 1;
+}
+
+static int vgame_unhook_int0(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 9)) return 0;
+    cpu_push16(c, c->seg[S_ES]);
+    c->r[R_BX] = (uint16_t)alu_sub(c, c->r[R_BX], c->r[R_BX], 1, 0);
+    seg_write16(c, 0, 0, ds_get(c, 0x5EE6));
+    const uint16_t seg = ds_get(c, 0x5EE8);
+    seg_write16(c, 0, 2, seg);
+    c->r[R_AX] = seg;
+    c->seg[S_ES] = cpu_pop16(c);
+    c->icount += 9;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x0F79D: CL = 1 when bit 7 of (CX & ~[9264]) is clear, else 0;
+ * AX that masked value, CH 0. */
+static int vgame_mask_test(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 8)) return 0;
+    const uint16_t ax = (uint16_t)alu_logic(c, (uint16_t)(~ds_get(c, 0x9264) & c->r[R_CX]), 1);
+    c->r[R_AX] = ax;
+    c->r[R_CX] = (uint16_t)alu_logic(c, 0, 1);                    /* xor cx, cx */
+    alu_logic(c, ax & 0x80, 0);                                   /* test al, 80h */
+    unsigned n = 7;
+    if (c->flags & F_ZF) { set_r8(c, R_CL, (uint8_t)alu_logic(c, 1, 0)); n = 8; }   /* or cl, 1 */
+    c->icount += n;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 1058:0C9F: copy the axis word at [SI+2CCA] into its three
+ * derived slots ([SI+2CB2], [SI+2CA2], [SI+2CAA]). AX preserved. */
+static int vgame_axis_spread(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 7)) return 0;
+    const uint16_t si = c->r[R_SI];
+    cpu_push16(c, c->r[R_AX]);
+    const uint16_t v = ds_get(c, (uint16_t)(si + 0x2CCA));
+    ds_put(c, (uint16_t)(si + 0x2CB2), v);
+    ds_put(c, (uint16_t)(si + 0x2CA2), v);
+    ds_put(c, (uint16_t)(si + 0x2CAA), v);
+    c->r[R_AX] = cpu_pop16(c);
+    c->icount += 7;
+    near_ret(c);
+    return 1;
+}
+
 static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x4958, vgame_free_fall, "free fall", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD50A, vgame_waypoint_from_target, "waypoint from target", 1 },
@@ -655,6 +855,15 @@ static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xEB50, vgame_strcpy, "string copy", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xEDE0, vgame_memcpy, "block copy", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xEDA4, vgame_farcopy, "far block copy", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x85F1, vgame_map_screen_x, "moving map screen x", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x8608, vgame_map_screen_y, "moving map screen y", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x886A, vgame_pen, "text pen colour", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x8A67, vgame_weapon_effectiveness, "weapon effectiveness", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xEF36, vgame_lmul, "32-bit multiply", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x120A, 0x027D, vgame_hook_int0, "hook the divide-error vector", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x120A, 0x029E, vgame_unhook_int0, "restore the divide-error vector", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xF79D, vgame_mask_test, "masked sign test", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1058, 0x0C9F, vgame_axis_spread, "spread an axis value", 1 },
 };
 
 void matched_register(void)
