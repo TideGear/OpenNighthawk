@@ -13,19 +13,63 @@ Optional comments declare milestones checked after the run:
     # expect-exit VGAME.EXE 0 1000000000
     # expect-save Roster.Fil 244 434845434b00
     # expect-open armsscrn.pic START.EXE 2
+    # seed-roster career_serge.args
 These require world files, screen-open counts, the program's exit code after
 a minimum elapsed clock count, or bytes at a saved file offset. They do not prove a landing.
+seed-roster earns a prerequisite route in a fresh process and copies its
+saved roster unchanged; cycles and failed prerequisites are rejected.
 """
 from __future__ import annotations
 
 import argparse
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
+
+
+def roster_seed(path, ancestors=()):
+    """Resolve and validate an earned-roster chain before starting a run."""
+    path = os.path.realpath(path)
+    if path in ancestors:
+        raise ValueError("cyclic seed-roster route chain")
+    with open(path) as source:
+        seeds = [line.split(maxsplit=2)[2].strip() for line in source
+                 if line.startswith("# seed-roster ")]
+    if len(seeds) > 1:
+        raise ValueError("a route can have only one seed-roster")
+    if not seeds:
+        return None
+    seed = os.path.realpath(os.path.join(os.path.dirname(path), seeds[0]))
+    roster_seed(seed, (*ancestors, path))
+    return seed
+
+
+def prepare_roster(path, data, engine, save, work):
+    """Earn the prerequisite through its normal input; copy only its roster."""
+    seed = roster_seed(path)
+    if seed is None:
+        return
+    out = tempfile.mkdtemp(prefix="earned-roster-", dir=work)
+    result = subprocess.run([sys.executable, os.path.abspath(__file__), seed,
+        "--data", data, "--engine", engine, "--out", out],
+        capture_output=True, text=True)
+    with open(os.path.join(out, "runner.txt"), "w") as stream:
+        stream.write((result.stdout or "") + (result.stderr or ""))
+    if result.returncode:
+        raise RuntimeError(f"prerequisite route failed; see {out}")
+    # The child may itself use a fresh seeded save; it records its location.
+    with open(os.path.join(out, "save-path.txt")) as stream:
+        source = os.path.join(stream.read().strip(), "Roster.Fil")
+    with open(source, "rb") as stream:
+        if len(stream.read()) != 802:
+            raise ValueError("prerequisite did not save an original 802-byte roster")
+    shutil.copyfile(source, os.path.join(save, "Roster.Fil"))
 
 
 def route_args(path):
@@ -93,8 +137,12 @@ def main():
     name = os.path.splitext(os.path.basename(a.route))[0]
     out = a.out or os.path.join(os.path.expanduser("~"), "f117-recomp-local", "runs", name + "_" + a.engine)
     os.makedirs(out, exist_ok=True)
+    save = (tempfile.mkdtemp(prefix="save-", dir=out) if roster_seed(a.route)
+            else os.path.join(out, "save"))
+    os.makedirs(save, exist_ok=True)
+    prepare_roster(a.route, a.data, a.engine, save, out)
     cmd = [os.path.join(ROOT, "build", "f117run.exe"), "--engine", a.engine, "--data", a.data,
-           "--save", os.path.join(out, "save"), "--log", os.path.join(out, "run.log")]
+           "--save", save, "--log", os.path.join(out, "run.log")]
     cmd += route_args(a.route) + extra
     result = subprocess.call(cmd)
     if result:
@@ -109,6 +157,9 @@ def main():
         errors = check_route(a.route, log.read(), save_path)
     for error in errors:
         print("route failed: " + error, file=sys.stderr)
+    if not errors:
+        with open(os.path.join(out, "save-path.txt"), "w") as stream:
+            stream.write(os.path.abspath(save_path) + "\n")
     return 1 if errors else 0
 
 

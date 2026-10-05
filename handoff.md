@@ -84,6 +84,31 @@ routes are verified; an independent DOSBox recon flight is running (below).
 
 ## In flight at handoff
 
+- Promotion continuation: both03 debrief engines finished,354 hashes/final
+  identical2cbd245e873655d5 at17.7B, all802 saved bytes equal. Promotion and
+  Airman's Medal pages reviewed in private promotion-contact.png: First
+  Lieutenant, rank1,total500,sorties3,medal at758 goes1->2. New public
+  career_serge and career_promotion normal K/M input fixtures;22routes.
+  run_route # seed-roster earns prerequisite afresh with selected engine,
+  validates its gates and copies only802-byte roster into fresh save.
+  Pipeline uses same helper; cycles/failed prerequisites rejected;53Python
+  pass. Fresh public recomp chain02 exec46827 completed0,354 hashes equal
+  verified private interp, final save equal and prerequisite roster equal.
+  Initial public recomp failed an incorrectly specified12Bflight minimum;
+  actual first flight11.313987B, corrected both routes to11B. Keep failure.
+  Fresh public interp exec66330 still live, finished its prerequisite and
+  currently promotion flight4.55B. Check parity-audit-career-promotion-public-interp.log
+  and output career-promotion-public-interp, save-path.txt names fresh save.
+  Compare all354 hashes/final and full save against public recomp-02 after
+  completion. Coverage career_serge.cov and career_promotion.cov copied from
+  verified private interp to exec-theatres-20261004; union138584/230052=60.2%.
+  Independent dosbox-recon-06 still live, ~615secflight, no photo credit,
+  circling primarytarget2 atlowaltitude180..255, wronglock0/20. No game model
+  defect established. Only controller/replay tool changes, no guest RAM writes.
+  Next objective types need Persian Gulf strike missions: original D4 masks
+  secret strips/supply to PG; strip needs quality above Green. D5 cargo
+  impacts never award credit in473.04, so parity test must preserve that bug.
+
 - Latest continuation: c4070a0 pushed; CI success (also f01e170). Recon
   pilot now distinguishes the physical designation ray from the camera
   0x6EF photo offset. Unit regression added;50Python pass. Fresh normal

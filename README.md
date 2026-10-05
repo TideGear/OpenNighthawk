@@ -223,6 +223,11 @@ The [parity audit](docs/parity-audit.md) documents independent DOSBox saves,
 flight observations, input stress, host pacing and rendered audio, including
 the remaining differences and checks requiring hardware or ROMs.
 
+`career_promotion` earns Serge's starting roster through `career_serge`,
+then flies another normal sortie to earn First Lieutenant and an Airman's
+Medal. Its `# seed-roster` prerequisite is replayed in a fresh process;
+only the resulting roster is carried forward. No saved game is distributed.
+
 ## Repository layout
 
 | Path | What |

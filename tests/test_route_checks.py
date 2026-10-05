@@ -7,11 +7,51 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
-from run_route import check_route, route_args
+from run_route import check_route, route_args, roster_seed, prepare_roster
 from build_recomp import headless
 
 
 class RouteChecks(unittest.TestCase):
+    def test_roster_chain_rejects_cycles_before_running(self):
+        with tempfile.TemporaryDirectory() as folder:
+            a, b = Path(folder) / "a.args", Path(folder) / "b.args"
+            a.write_text("# seed-roster b.args\n")
+            b.write_text("# seed-roster a.args\n")
+            with self.assertRaisesRegex(ValueError, "cyclic"):
+                roster_seed(a)
+
+    def test_seed_earns_roster_and_copies_only_saved_bytes(self):
+        with tempfile.TemporaryDirectory() as folder:
+            route, seed = Path(folder) / "promotion.args", Path(folder) / "sortie.args"
+            route.write_text("# seed-roster sortie.args\n")
+            seed.write_text("--steps\n10\n")
+            save = Path(folder) / "save"
+            save.mkdir()
+            def runner(cmd, **kwargs):
+                self.assertEqual(str(seed), cmd[2])
+                self.assertEqual("interp", cmd[cmd.index("--engine") + 1])
+                out = Path(cmd[cmd.index("--out") + 1])
+                child_save = out / "fresh"
+                child_save.mkdir()
+                (child_save / "Roster.Fil").write_bytes(b"r" * 802)
+                (child_save / "mission.dat").write_bytes(b"not a career save")
+                (out / "save-path.txt").write_text(str(child_save))
+                return SimpleNamespace(returncode=0, stdout="", stderr="")
+            with patch("run_route.subprocess.run", side_effect=runner):
+                prepare_roster(route, "unused", "interp", save, folder)
+            self.assertEqual(["Roster.Fil"], [p.name for p in save.iterdir()])
+            self.assertEqual(b"r" * 802, (save / "Roster.Fil").read_bytes())
+
+    def test_failed_prerequisite_cannot_seed_a_route(self):
+        with tempfile.TemporaryDirectory() as folder:
+            route, seed = Path(folder) / "promotion.args", Path(folder) / "sortie.args"
+            route.write_text("# seed-roster sortie.args\n")
+            seed.write_text("--steps\n10\n")
+            with patch("run_route.subprocess.run", return_value=
+                       SimpleNamespace(returncode=1, stdout="", stderr="failed milestone")):
+                with self.assertRaisesRegex(RuntimeError, "prerequisite route failed"):
+                    prepare_roster(route, "unused", "recomp", folder, folder)
+
     def test_replay_path_is_relative_to_route(self):
         with tempfile.TemporaryDirectory() as folder:
             route = Path(folder) / "landing.args"

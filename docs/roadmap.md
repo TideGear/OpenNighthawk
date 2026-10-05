@@ -27,12 +27,12 @@ never instead of parity.
 - Every translated instruction held to the interpreter from random states
   (`tests/insn_lockstep.c`, 5.7 million comparisons, 0 differences); the
   translator held to 8088 and 80286 silicon vectors.
-- Twenty scripted routes identical between the interpreter and the recompiled
+- Twenty-two scripted routes identical between the interpreter and the recompiled
   code: boot to flight; a full sortie through the debriefing; the speaker
   and Roland drivers; eight transfer-and-flight routes covering all nine
   theatres, three tensions and four mission categories. The routes execute
-  at least 58.3% of the code area (`tools/exercised.py`; recon return/career
-  coverage has not yet been added to that measurement). Theatre routes also require
+  at least 60.2% of the code area (`tools/exercised.py`, including the new
+  promotion routes). Theatre routes also require
   the expected world files, a clean VGAME exit and at least a billion clocks
   in flight; airborne screenshots were reviewed for the six added routes.
 - Pilot creation, Backspace editing, Escape cancellation and erasure through
@@ -72,6 +72,12 @@ never instead of parity.
   engines agree at 316 checkpoints/final and all 802 saved bytes. Independent
   milestones require score 275, total 2669 -> 2944, sorties 9 -> 10 and the
   tour ribbon 0 -> 1. Award screenshot reviewed.
+- Earned promotion and Airman's Medal: Serge's second sortie saves total
+  283 and rank zero; the third passes all promotion thresholds, saving rank
+  1, total 500, sorties 3 and medal counter 1 -> 2. Both engines agree at
+  354 checkpoints/final and all 802 saved bytes. Promotion/medal pages
+  reviewed. The route earns its starting roster through a prerequisite
+  sortie using normal inputs, with no committed or fabricated save data.
 - Ground-strike training primary destroyed by normally released Mavericks:
   target 3 damaged, primary flag, one matching hit event, two releases and
   station stores 2 -> 0; aircraft airborne with fuel and no ejection/crash.
@@ -163,8 +169,9 @@ never instead of parity.
       primary/secondary credits and raised-runway return are now verified.
       The existing transfer routes exercise generation and controls, then
       quit; they do not establish objective completion.
-- [ ] **The remaining career flow:** earned promotion/retirement and other
-      awards. The ten-mission tour ribbon is now earned and saved. CO transfer
+- [ ] **The remaining career flow:** earned retirement and other
+      awards. Promotion, Airman's Medal and the ten-mission tour ribbon are
+      now earned and saved. CO transfer
       requests, briefing/arming, pilot creation/editing/erasure and roster
       save/reload, direct maintenance and retired/KIA dialogs are covered.
 - [ ] **A person playing it:** controls, joystick and mouse, saves, the feel.

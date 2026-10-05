@@ -590,8 +590,21 @@ tools/routes/recon_return.input` under either engine.
 `recon_career` continues through debriefing and the earned tenth-mission tour
 ribbon. Both engines agree at 316 checkpoints/final hash `f8e2e8955bb74467`;
 all 802 saved bytes match. Save milestones independently require the earned
-score, sortie count and ribbon. Other award types, promotion and retirement
-remain open.
+score, sortie count and ribbon.
+
+`career_serge` selects Serge through the roster UI, completes both photos
+and saves his second sortie (score 217, total 283, rank zero). The promotion
+table requires total 300, average 100 and two sorties for the next rank;
+meeting the average and sortie requirements alone is insufficient.
+`career_promotion` declares `# seed-roster career_serge.args`: the runner
+earns that prerequisite in a fresh process using the selected engine, checks
+its milestones, then copies only the saved 802-byte roster unchanged into
+another fresh save directory. Cyclic chains and failed prerequisites fail
+before the next sortie. The pipeline and coverage runner use the same path.
+The third sortie earns rank 1 and another Airman's Medal: total 500,
+sorties 3, medal counter 1 -> 2. Its 354 checkpoints/final and all saved
+bytes match between engines, ending at hash `2cbd245e873655d5` at 17.7 billion
+clocks. The promotion and medal pages were reviewed. Retirement remains open.
 
 The [independent parity audit](parity-audit.md) distinguishes engine equality
 from DOSBox flight/save/sound evidence and documents the remaining differences.

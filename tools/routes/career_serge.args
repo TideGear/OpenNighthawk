@@ -1,0 +1,36 @@
+# Select Serge normally, complete both photos, return and save sortie two.
+# expect-world LB
+# expect-exit VGAME.EXE 129 11000000000
+# expect-save Roster.Fil 0 0900
+# expect-save Roster.Fil 770 d900
+# expect-save Roster.Fil 778 0000
+# expect-save Roster.Fil 754 0000
+# expect-save Roster.Fil 758 0100
+# expect-save Roster.Fil 772 1b010000
+# expect-save Roster.Fil 776 0200
+--replay
+career_serge.input
+--time-us
+700000000000000
+--steps
+17500000000
+--type
+END.EXE+150000000:\r
+--type
+END.EXE+300000000:\r
+--click
+END.EXE+400000000:271,64
+--type
+END.EXE+520000000:\r
+--type
+END.EXE+640000000:\r
+--type
+END.EXE+780000000:\r
+--type
+END.EXE+920000000:\r
+--type
+END.EXE+1100000000:\r
+--type
+END.EXE+1300000000:\r
+--type
+END.EXE+1500000000:\r

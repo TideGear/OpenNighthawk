@@ -76,6 +76,19 @@ from the earned 802-byte roster, copied unchanged into a fresh save directory.
 The candidate's 350 checkpoints/final and all saved bytes agree between
 engines; final hash is `a069f6775d65b94b` at 17,500,000,000 clocks.
 
+Serge's third sortie earns First Lieutenant and another Airman's Medal.
+Saved rank is 1, total 500, sorties 3 and medal counter 2 (previously 1).
+All 354 checkpoints/final and the complete 802-byte save match between
+engines, hash `2cbd245e873655d5` at 17,700,000,000 clocks. Promotion and
+medal pages were reviewed. Public `career_serge` / `career_promotion`
+fixtures contain only ordinary keyboard/mouse inputs. The second route
+earns the first route's roster afresh through the selected engine rather
+than depending on a distributed saved file.
+The fresh public recompilation chain reproduces all 354 promotion hashes
+and the verified save, with its prerequisite roster matching the verified
+second-sortie save. Adding both career routes' interpreter coverage raises
+the measured union to 138,584 / 230,052 bytes (60.2%).
+
 ## Independent comparisons with differences
 
 The added `strike` route destroys Libya training primary target 3 using

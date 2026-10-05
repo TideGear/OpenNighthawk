@@ -29,7 +29,7 @@ import subprocess
 import sys
 import tempfile
 
-from run_route import check_route, route_args
+from run_route import check_route, route_args, prepare_roster
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -65,6 +65,7 @@ def headless(engine, data, work, name, args, extra, route):
     # Each replay starts from the install's roster, including after a
     # coverage run or an earlier pipeline that edited/saved a pilot.
     save = tempfile.mkdtemp(prefix="save-", dir=rundir)
+    prepare_roster(route, data, engine, save, rundir)
     cmd = [exe, "--engine", engine, "--data", data, "--save", save,
            "--log", os.path.join(rundir, "run.log")] + args + extra
     r = run(cmd, capture_output=True, text=True)
