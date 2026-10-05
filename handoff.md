@@ -84,6 +84,25 @@ routes are verified; an independent DOSBox recon flight is running (below).
 
 ## In flight at handoff
 
+- Latest verified public career chain: exec66330 completed0. Fresh public
+  interp and recomp-02 agree at all354 hashes/final2cbd245e873655d5/17.7B,
+  full saved careers identical. Commit46151f1 pushed, includes chain helper,
+  two normal-input career fixtures, tests/docs.53Python pass at that commit.
+- Next objective search underway: uncommitted tools/mission_candidates.py
+  and tests/test_mission_candidates.py (54Python pass). Uses normal frontend
+  inputs and read-only strike_state, records every candidate's input/header.
+  Private pg-strike.front selects PG/Limited War/Strike Missions. Candidate
+  search01 exec7861 varies briefing input delays at fixed startup clock;
+  first two cases identical photo/photo mission, proving the RNG was already
+  seeded. Current tool now varies startup hardware clock by1second per case,
+  records time_us explicitly; no RNG or guest RAM edits. Search02 private
+  pg-candidates-02, parity-audit-pg-candidates-02.log, eight delays, stop on
+  either type3(cargo) or4(strip). Check before claiming a usable candidate.
+  Replay must preserve its recorded clock; current recon/strike pilots still
+  require the fixed700e header, so adapt explicitly for a new clock if used.
+  GOG dosbox-recon-06 still running without credited photo, wronglock0/20
+  around low-altitude primary. No independent complete sortie pass yet.
+
 - Promotion continuation: both03 debrief engines finished,354 hashes/final
   identical2cbd245e873655d5 at17.7B, all802 saved bytes equal. Promotion and
   Airman's Medal pages reviewed in private promotion-contact.png: First
