@@ -100,6 +100,11 @@ routes are verified; an independent DOSBox recon flight is running (below).
   either type3(cargo) or4(strip). Check before claiming a usable candidate.
   Replay must preserve its recorded clock; current recon/strike pilots still
   require the fixed700e header, so adapt explicitly for a new clock if used.
+  Search02's first four cases now genuinely differ: types1/1,2/1,1/2,2/1
+  at startup700e+0/1/2/3seconds. Tool behavior verified; no special candidate
+  yet. Candidate search01 (fixed clock) intentionally retained as evidence
+  that briefing delay alone does not change generation. All54Python and
+  9CTests pass. Utility and regression ready to commit with this evidence.
   GOG dosbox-recon-06 still running without credited photo, wronglock0/20
   around low-altitude primary. No independent complete sortie pass yet.
 
