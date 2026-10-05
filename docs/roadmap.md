@@ -263,12 +263,15 @@ never instead of parity.
       Root cause of the roster-entry delay found: DOSBox 0.74 raises IRQ0 on
       a PIT control word and takes it at the INT 21h stub's STI, so START's
       own timer handler restores a ~70 Hz tick before the INT 8 vector is
-      swapped; its 4-tick palette loops then run about 4x shorter. Implemented
-      as opt-in `F117R_PIT_CONTROL_IRQ=1`: video drift against the saved
-      0.74 capture falls from -570 ms to +14 ms (1,321 exact pictures).
-      Off by default because it changes START's screen timing: route inputs,
-      committed finals and the private career/objective evidence need
-      re-timing before it can become the default.
+      swapped; its 4-tick palette loops then run about 4x shorter. This is now
+      the default (`F117R_PIT_CONTROL_IRQ=0` turns it off): video drift
+      against the saved 0.74 capture falls from -570 ms to +14 ms (1,321
+      exact pictures, no multi-sample unmatched picture). Every recorded
+      flight route was re-recorded by its pilot under the new timing and
+      passes its strong observer under both engines (see
+      architecture.md, "PIT control-word interrupts"). The private career
+      chain evidence predates the change. Remaining: 5 single-sample
+      DOSBox pictures and 16 here.
 - [ ] **Roland through Munt** (libmt32emu, LGPL-2.1+): the MT-32 music in
       the game itself, and its output rendered and checked automatically.
       Optional integration now builds against an installed library or a
@@ -364,6 +367,10 @@ never instead of parity.
       All six routes agree at 329 checkpoints and final states; the
       5.7-million-state instruction lockstep reports zero differences.
       Exact phases and the remaining few-byte difference are still open.
+      The intro music's channel-3 note at 29.7 s shows the phase gap in
+      sound: it comes from the sound driver's per-frame generator, and both
+      DOSBox captures are exactly one generator step (one PLAYER frame)
+      ahead of this machine.
 - [ ] **Rendered sound parity:** the default now uses GOG DOSBox's own
       DBOPL synthesis core, rate and 2x gain; Nuked remains selectable.
       Timestamped host output passes chunk-boundary and speaker-gate tests.
