@@ -141,7 +141,10 @@ def main():
             else os.path.join(out, "save"))
     os.makedirs(save, exist_ok=True)
     prepare_roster(a.route, a.data, a.engine, save, out)
-    cmd = [os.path.join(ROOT, "build", "f117run.exe"), "--engine", a.engine, "--data", a.data,
+    # F117R_RUN_EXE names another build's runner (one built elsewhere while
+    # this checkout's is busy, or with other generated code).
+    runner = os.environ.get("F117R_RUN_EXE") or os.path.join(ROOT, "build", "f117run.exe")
+    cmd = [runner, "--engine", a.engine, "--data", a.data,
            "--save", save, "--log", os.path.join(out, "run.log")]
     cmd += route_args(a.route) + extra
     result = subprocess.call(cmd)
