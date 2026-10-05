@@ -7,6 +7,58 @@ built and checked) and [docs/bugs.md](docs/bugs.md) (the original game's
 bugs). State as of 4 October 2026: the parity audit and expanded recon/career
 routes are verified; an independent DOSBox recon flight has completed (below).
 
+## Latest wrap-up: stopped for a new conversation
+
+The user requested a handoff, commit, push and stop. No test worker remains
+running. Earlier "running" entries below are historical; use this section
+as the current state. Resume the full roadmap only when the user asks.
+
+- Commit6dff654 is pushed: secret-strip return, paired earned-career tool,
+  actual pilot-status assertions, controller/candidate improvements and docs.
+  All73 Python tests pass. The latest Munt interpreter build has9 passing
+  CTests. No new machine semantics are committed in this wrap-up.
+- Paired earned sorties7..13 completed under both engines. Private outputs
+  parity-audit-20261004/career-chain-05-NN-{recomp,interp}, each380 checkpoints,
+  identical input/CSV/result/save802 bytes and true saved status800=0.
+  Actual sortie13 save is career-chain-05-13-recomp/save/Roster.Fil:
+  rank2, score219, total2684, sorties13, hash4cd28bafd25577e6 at19B clocks.
+  Sortie14 recomp finished total2903/hash30de30869606bc5e; interpreter was
+  interrupted for this handoff, so14 is NOT paired/accepted. Restart from
+  actual13 using tools/career_check.py and private career-seven-photo-01/input.log,
+  steps19B, count2 to approach expected promotion15. Stop if assignment changes.
+  Verified paired summary: career-chain-05-verified.json. Old helper prints
+  an incorrect354 count and reads theatre778 as status; its actual saves
+  were separately checked at800. Use the corrected public tool going forward.
+- User supplied ROMs at C:/Users/Tideg/f117-recomp-local/roms. Use full
+  mt32_ctrl_1_07.rom +mt32_pcm.rom; their SHA1 matches Munt's known originals:
+  b083518fffb7f66b03c23b7eb4f868e62dc5a987 and
+  f6b1eebc4b2d200ec6d3d21d51325d5b48c60252. Other old/new revisions and
+  split images are present; no CM32L pair. Prefer first-generation1.07 for
+  the game's reported D36 later-hardware engine-sound issue. No ROMs in git.
+- Found/fixed a real host bug: main.c loaded Munt, then unconditionally
+  destroyed/recreated audio before machine_boot, losing the synth. Read the
+  replay clock before creating audio once. Offline original Roland log now
+  renders6,370,000 stereo frames at44.1k with MicroProse LCD messages.
+  SDL disk-driver live30-second original-game replay produces audible PCM;
+  the same replay without synth is exactly silent. Private diagnostics:
+  munt-audit-results/live, including final recheck after restoring dos.c.
+  Replay header9MHz overrides CLI1MHz; completed at270M clocks in~30.8s.
+  Initial analysis wrongly interpreted raw SDL PCM as floats; corrected
+  format is signed16 stereo. pcm-result.json contains the corrected measurements.
+  Exact Munt reference PCM comparison and flight engine sound remain OPEN.
+  Default root build is still Munt OFF. Enabled separate interpreter build:
+  munt-audit-build; build-munt-audit.cmd rebuilds it. Avoid relinking live apps.
+- Unfinished mechanical DOS split is preserved privately in dos-split-handoff
+  (six sources, internal header, CMake and tracked.patch). Public worktree
+  restored to original dos.c/CMake. Separate dos-split-build compiled and
+  passed6 headless CTests, but comprehensive parity is incomplete: only
+  before-split boot_to_flight interp/recomp54 hashes/finalf25e5dda5eed0987
+  finished. dos_split_check.py/log and interrupted outputs retained. Do not
+  mark housekeeping complete or restore that extraction without validating.
+  Fixes for missing machine.h/stdlib.h and pointer-return declarations are
+  in the archived sources; private initial split_dos.py is NOT idempotent.
+
+
 ## The goal and the decisions already made
 
 - **Recompile the whole DOS game for Windows with 1:1 parity**; then

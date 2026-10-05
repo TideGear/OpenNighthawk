@@ -204,8 +204,9 @@ running status, real-time interleaving, bounded SysEx and recovery. The Roland
 boot route's 26 checkpoints/final agree, hash `f075fcb3add06eb2`; all 13,788
 captured clock/byte records match. A seven-second tone render retains all
 308,700 stereo frames byte-for-byte under both DBOPL and Nuked. Headless MIDI
-capture and offline Munt rendering are available, but no Roland PCM or
-listening success is claimed without the user-supplied ROMs.
+capture and offline Munt rendering are available. These initial ROM-free
+checks were followed by the supplied-ROM synthesis checks recorded below;
+exact reference PCM and listening success remain unproven.
 
 `tools/audio_compare.py` extracts PCM from the DOSBox AVI and aligns RMS
 envelopes. Over approximately 130.75 seconds, reference RMS is 0.100150 and
@@ -276,6 +277,22 @@ The sound comparator requires NumPy and ffmpeg. DOSBox observation requires
 Windows and pywin32. Failed trials are retained separately, not overwritten
 or counted as successful outcomes.
 
+Supplied first-generation MT-32 1.07 control and PCM ROMs match Munt's known
+SHA1 digests. The original Roland MIDI log renders 6,370,000 stereo frames
+at 44,100 Hz. A live SDL disk-driver capture of a 30-second game replay
+contains sound (peak 9698, RMS 807.47); the same replay without a synth is
+exactly silent. This uncovered and fixed a host startup bug: recreating
+audio after loading the ROMs discarded Munt. The replay clock is now read
+before audio is created once. Nine Munt-build CTests and 73 Python tests
+pass. These are synthesis/integration checks; exact reference PCM and
+flight engine sound have not been established.
+
+Paired earned sorties 7 through 13 each agree at 380 checkpoints, final
+state, input/CSV/result files and all 802 saved bytes. Sortie 13 saves rank
+2, score 219, total 2684 and count 13, active status at file offset 800;
+final hash `4cd28bafd25577e6` at 19,000,000,000 clocks. Sortie 14 only finished
+under the recompilation before the requested handoff and is not paired evidence.
+
 ## Still requiring separate evidence
 
 Earned retirement and additional awards, air-combat hits and AI countermeasures,
@@ -285,5 +302,5 @@ original supply-drop credit bug must be preserved in parity mode.
 
 No WinMM joystick is attached on this machine, so physical calibration,
 deadzones and control feel require hardware and a player. MT-32 PCM requires
-the user's ROMs for the implemented optional Munt integration; the Roland boot route
-alone cannot validate its rendered sound.
+reference comparison with the supplied ROMs for the implemented optional Munt
+integration; the Roland boot route alone cannot validate exact rendered parity.

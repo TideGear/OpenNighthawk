@@ -19,7 +19,7 @@ options. Enhancements come after parity, never instead of it.
   the debriefing (END) and back to the front end. All three sound drivers
   work: AdLib (music and digitised speech through an OPL emulator), the PC
   speaker, and Roland (Windows MIDI or optional Munt synthesis with your
-  MT-32 ROMs; rendered Roland output still awaits ROM-based validation).
+  MT-32 ROMs; live synthesis tested, exact rendered parity still open).
 - **Translated:** 89,276 instructions across all 17 code files and the
   LZEXE decompressor: 96% of the bytes of the code areas, and no
   untranslated stretch left that decodes as code (`tools/census.py`; the
@@ -171,8 +171,9 @@ with `-DF117R_WITH_MT32EMU=ON`, or also pass
 The source build uses a shared library, copied beside the Windows executables.
 Munt is LGPL-2.1-or-later; its source and license remain in that checkout.
 Version 2.8.3 at commit `6e7c01fba7e1d50c8fa705834889fd0eac136075` was built
-and checked without ROMs. Invalid or missing ROMs fail explicitly; synthesized
-Roland PCM and listening checks remain open.
+and checked with first-generation MT-32 1.07 control and PCM ROMs. Invalid or
+missing ROMs fail explicitly. Original game MIDI renders offline and live;
+exact reference PCM comparison, flight sound and listening checks remain open.
 
 For offline validation, `f117run --midi-log FILE` records each MPU byte with
 its instruction clock. Render that log through the same audio path:

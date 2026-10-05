@@ -188,8 +188,10 @@ never instead of parity.
       separate Munt source checkout. MIDI bytes advance the existing audio
       clock; Munt is mixed at 44,100 Hz before clipping. Headless MIDI capture
       and offline rendering are available. Default/Munt builds and MIDI
-      reassembly tests pass; existing DBOPL/Nuked PCM is unchanged. Users
-      supply their own MT-32 ROMs for synthesis/reference/listening validation.
+      reassembly tests pass; existing DBOPL/Nuked PCM is unchanged. Supplied
+      MT-32 1.07 ROMs now render original game MIDI offline and live. A host
+      startup bug that discarded the synth was fixed. Exact reference PCM,
+      flight sound and listening validation remain open.
 - [ ] **Individual mission objectives:** all nine theatres and all four
       mission categories now have flight routes (air combat, ground strike,
       and both training categories). Complete dedicated objective types,

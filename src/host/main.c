@@ -273,6 +273,8 @@ int main(int argc, char **argv)
     SDL_AudioSpec spec = { SDL_AUDIO_S16, 2, AUDIO_RATE };
     SDL_AudioStream *stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, NULL, NULL);
     if (stream) SDL_ResumeAudioStreamDevice(stream);
+    /* A replay's clock must be known before creating either audio backend. */
+    if (replay) inputlog_read_header(replay, &ips, &time_us);
     H.audio = audio_create_backend(ips, opl_backend);
     if (mt32_control) {
         char error[256];
@@ -315,9 +317,7 @@ int main(int argc, char **argv)
     hooks.midi_byte = on_midi;
     hooks.module_load = recomp_module_load;
     /* A replay brings its own speed and boot time; a recording writes ours. */
-    if (replay) inputlog_read_header(replay, &ips, &time_us);
     if (!time_us) time_us = machine_local_time_us();
-    if (H.audio) { audio_destroy(H.audio); H.audio = audio_create_backend(ips, opl_backend); }
     if (!machine_boot(&H.m, H.mem, data, save, "F117.COM", ips, time_us, &hooks)) {
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "F-117A", H.m.fault, win);
         return 1;
