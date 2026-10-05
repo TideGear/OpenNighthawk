@@ -34,6 +34,34 @@
 #define DSWAP_47304 0xF947E1BD62AA2812ULL
 #define SETUP_47304 0xEDD5021CF28E7FC4ULL
 
+static int default_runner(machine_t *m) { return machine_run(m, m->run_until); }
+matched_runner_fn matched_runner = default_runner;
+
+/* Call original code at CS:target as a near CALL from the routine would,
+ * returning to ret_ip (the original instruction after that CALL), and run
+ * it until it returns. 1 when it returned; 0 when the run stopped first -
+ * the outer run's limit came, or the program ended - in which case the
+ * caller must return 1 at once: the machine is inside the callee, exactly
+ * as the original would be, and the original code from ret_ip finishes the
+ * routine when the callee returns. The guest state at every call must
+ * therefore be the original's, stack frame included. */
+static int guest_call(machine_t *m, uint16_t target, uint16_t ret_ip)
+{
+    cpu_t *c = &m->cpu;
+    const uint8_t on = m->trap_on;
+    const uint16_t tcs = m->trap_cs, tip = m->trap_ip, tsp = m->trap_sp;
+    cpu_push16(c, ret_ip);
+    c->ip = target;
+    c->icount++;                                                  /* the CALL */
+    m->trap_on = 1;
+    m->trap_cs = c->seg[S_CS];
+    m->trap_ip = ret_ip;
+    m->trap_sp = (uint16_t)(c->r[R_SP] + 2);
+    const int rc = matched_runner(m);
+    m->trap_on = on; m->trap_cs = tcs; m->trap_ip = tip; m->trap_sp = tsp;
+    return rc == RUN_TRAP;
+}
+
 /* Room for n instructions before the run loop must look at events. */
 static int room(const cpu_t *c, unsigned n)
 {
@@ -2946,6 +2974,126 @@ static int vgame_model_in_range(machine_t *m)
     return 1;
 }
 
+/* ---- Routines that call original code -----------------------------------
+ * Pattern: decline at entry if the code up to the first call does not fit;
+ * after each call, if what follows does not fit, leave the rest to the
+ * original from the instruction after the call (c->ip = that address). */
+
+static void far_ret(cpu_t *c)
+{
+    c->ip = cpu_pop16(c);
+    c->seg[S_CS] = cpu_pop16(c);
+}
+
+/* VGAME 104E:0076 / 104E:0066, far sin(a) and cos(a) = sin(a + 4000h): the
+ * table sine (104E:008A) on the argument, result in AX (and BX). */
+static int far_sine(machine_t *m, uint16_t offset, uint16_t ret_ip)
+{
+    cpu_t *c = &m->cpu;
+    const unsigned pre = offset ? 3 : 2;
+    if (!room(c, pre + 1)) return 0;
+    c->r[R_BX] = c->r[R_SP];
+    uint16_t a = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_SP] + 4));
+    if (offset) a = (uint16_t)alu_add(c, a, offset, 1, 0);       /* add bx, 4000h */
+    c->r[R_BX] = a;
+    c->icount += pre;
+    if (!guest_call(m, 0x008A, ret_ip)) return 1;
+    if (!room(c, 2)) { c->ip = ret_ip; return 1; }
+    c->r[R_AX] = c->r[R_BX];
+    c->icount += 2;
+    far_ret(c);
+    return 1;
+}
+static int vgame_far_sin(machine_t *m) { return far_sine(m, 0, 0x007F); }
+static int vgame_far_cos(machine_t *m) { return far_sine(m, 0x4000, 0x0073); }
+
+/* VGAME 0x0C831, vcos(a, r): the routine at 0x0C818 with the angle turned a
+ * quarter (AH + 40h). */
+static int vgame_vcos(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 7)) return 0;
+    const uint16_t a = arg(c, 0), r = arg(c, 1);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, r);
+    const uint8_t ah = (uint8_t)alu_add(c, a >> 8, 0x40, 0, 0);   /* add ah, 40h */
+    c->r[R_AX] = (uint16_t)(ah << 8 | (a & 0xFF));
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 6;
+    if (!guest_call(m, 0xC818, 0xC841)) return 1;
+    if (!room(c, 4)) { c->ip = 0xC841; return 1; }
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    x86_leave(c);
+    c->icount += 4;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x02F4A, rnd_scaled(n): 4000h - rnd(n), from the generator at
+ * 0x02ED9. */
+static int vgame_rnd_scaled(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 4)) return 0;
+    const uint16_t n = arg(c, 0);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, n);
+    c->icount += 3;
+    if (!guest_call(m, 0x2ED9, 0x2F53)) return 1;
+    if (!room(c, 5)) { c->ip = 0x2F53; return 1; }
+    c->r[R_BX] = cpu_pop16(c);
+    uint16_t ax = (uint16_t)alu_sub(c, c->r[R_AX], 0x4000, 1, 0);
+    c->r[R_AX] = (uint16_t)alu_sub(c, 0, ax, 1, 0);               /* neg ax */
+    x86_leave(c);
+    c->icount += 5;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x0C88C: (r * n) >> 15 with r from the generator at 0x0EE2C, by
+ * IMUL and the 32-bit arithmetic shift (0x0EF74). */
+static int vgame_rnd_times(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 3)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    c->icount += 2;
+    if (!guest_call(m, 0xEE2C, 0xC892)) return 1;
+    if (!room(c, 3)) { c->ip = 0xC892; return 1; }
+    x86_imul16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 4)));
+    set_r8(c, R_CL, 0x0F);
+    c->icount += 2;
+    if (!guest_call(m, 0xEF74, 0xC89A)) return 1;
+    if (!room(c, 2)) { c->ip = 0xC89A; return 1; }
+    x86_leave(c);
+    c->icount += 2;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x0C880: [9540] = the value from 0x01E72, which is also passed to
+ * 0x0EE1A (the clock setter). */
+static int vgame_clock_from(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 1)) return 0;
+    if (!guest_call(m, 0x1E72, 0xC883)) return 1;
+    if (!room(c, 3)) { c->ip = 0xC883; return 1; }
+    ds_put(c, 0x9540, c->r[R_AX]);
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 2;
+    if (!guest_call(m, 0xEE1A, 0xC88A)) return 1;
+    if (!room(c, 2)) { c->ip = 0xC88A; return 1; }
+    c->r[R_BX] = cpu_pop16(c);
+    c->icount += 2;
+    near_ret(c);
+    return 1;
+}
+
 static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x4958, vgame_free_fall, "free fall", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD50A, vgame_waypoint_from_target, "waypoint from target", 1 },
@@ -3083,6 +3231,12 @@ static const recomp_override MATCHED[] = {
     { "matched", "START.EXE", START_47304, 0x0000, 0x02BA, start_home_risk, "home base risk", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x1058, 0x0D09, vgame_axis_normalise, "normalise a joystick axis", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x120A, 0x02B2, vgame_model_in_range, "model range test", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x104E, 0x0076, vgame_far_sin, "far sine", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x104E, 0x0066, vgame_far_cos, "far cosine", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xC831, vgame_vcos, "vector cosine", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x2F4A, vgame_rnd_scaled, "scaled random number", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xC88C, vgame_rnd_times, "random times n", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xC880, vgame_clock_from, "mission clock from a reading", 1 },
 };
 
 void matched_register(void)

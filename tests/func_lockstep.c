@@ -161,6 +161,19 @@ static int compare(const char *mod, uint32_t off, uint16_t cs, uint16_t ip, int 
 
 static machine_t g_m;           /* side 1's CPU lives in a machine: matched code takes one */
 
+/* A matched routine's call into original code, run here by plain stepping:
+ * the harness has no events to service. */
+static int step_runner(machine_t *mm)
+{
+    cpu_t *c = &mm->cpu;
+    for (int i = 0; i < 200000; i++) {
+        if (c->ip == mm->trap_ip && c->r[R_SP] == mm->trap_sp && c->seg[S_CS] == mm->trap_cs) return RUN_TRAP;
+        cpu_step(c);
+        if (c->flags & F_TF) cpu_interrupt(c, 1);
+    }
+    return RUN_SLICE;
+}
+
 int main(int argc, char **argv)
 {
     int states = 2000;
@@ -188,6 +201,7 @@ int main(int argc, char **argv)
         c->cover = NULL;
     }
     g_m.mem = g_mem[1];
+    matched_runner = step_runner;
 
     const uint16_t base = 0x1000;
     unsigned long long compared = 0, skipped = 0, bad = 0;
@@ -229,6 +243,10 @@ int main(int argc, char **argv)
                 cpu_t *c = k ? &g_m.cpu : &g_cpu[0];
                 set_state(c, cs, ip, r, seg, flags);
                 c->r[R_SP] = (uint16_t)(c->r[R_SP] - 2);
+                if (o->matched == 2) {                             /* a far routine: CS too */
+                    seg_write16(c, c->seg[S_SS], c->r[R_SP], cs);
+                    c->r[R_SP] = (uint16_t)(c->r[R_SP] - 2);
+                }
                 seg_write16(c, c->seg[S_SS], c->r[R_SP], back);    /* the caller's return address */
                 /* Half the states put small arguments above it: random words
                  * almost never reach a routine's edge cases (zero, -1, 1). */
@@ -241,7 +259,7 @@ int main(int argc, char **argv)
             /* Run the original until the routine's own near RET - the first
              * one taken with the stack back at the caller's level - and
              * accept the state only when it returns to the pushed address. */
-            const uint16_t entry_sp = (uint16_t)(r[R_SP] - 2);
+            const uint16_t entry_sp = (uint16_t)(r[R_SP] - (o->matched == 2 ? 4 : 2));
             int returned = 0;
             while (steps < 100000) {
                 const uint8_t op = a->mem[phys(a->seg[S_CS], a->ip)];
@@ -249,14 +267,15 @@ int main(int argc, char **argv)
                 cpu_step(a);
                 if (a->flags & F_TF) cpu_interrupt(a, 1);
                 steps++;
-                if ((op == 0xC3 || op == 0xC2) && sp_before == entry_sp) { returned = 1; break; }
+                const int is_ret = o->matched == 2 ? (op == 0xCB || op == 0xCA) : (op == 0xC3 || op == 0xC2);
+                if (is_ret && sp_before == entry_sp) { returned = 1; break; }
             }
             if (!returned || a->seg[S_CS] != cs || a->ip != back) steps = 100000;
             g_side[0].overflow = g_side[1].overflow = 1;      /* compare all memory */
             /* A real return lands back at the caller's stack level (RET n
              * pops at most a few words); a wild jump that happens to reach
              * the return address - a slide through zeroed memory - does not. */
-            const uint16_t popped = (uint16_t)(a->r[R_SP] - (uint16_t)(r[R_SP] - 2));
+            const uint16_t popped = (uint16_t)(a->r[R_SP] - entry_sp);
             if (steps >= 100000 || popped < 2 || popped > 18) { ms++; restore(); continue; }
             /* A random state that makes the original write over its own code
              * (a copy aimed at the routine) runs instructions it was not; the
@@ -284,7 +303,7 @@ int main(int argc, char **argv)
             if (mb) break;
         }
         printf("%-10s %04X:%04X %-34s %6llu states compared, %4llu skipped, %s\n", o->module, o->seg, ip,
-               o->what, mc, ms, mb ? "MISMATCH" : "equal");
+               o->what, mc, ms, mb ? "MISMATCH" : mc ? "equal" : "not testable here (routes only)");
         compared += mc; skipped += ms; bad += mb;
     }
     printf("matched routines: %u, %llu states compared, %llu skipped, %llu mismatching\n",

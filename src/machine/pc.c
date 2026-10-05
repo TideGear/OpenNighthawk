@@ -1033,6 +1033,7 @@ static int override_at(machine_t *m)
 int machine_run(machine_t *m, uint64_t until)
 {
     cpu_t *c = &m->cpu;
+    m->run_until = until;
     for (;;) {
         if (m->exited) return RUN_EXITED;
         if (c->icount >= until) return RUN_SLICE;
@@ -1058,6 +1059,8 @@ int machine_run(machine_t *m, uint64_t until)
 
         if (m->engine == ENGINE_RECOMP && !(c->flags & F_TF)) {
             while (c->icount < c->stop_at && !c->halted) {
+                if (m->trap_on && c->ip == m->trap_ip && c->r[R_SP] == m->trap_sp && c->seg[S_CS] == m->trap_cs)
+                    return RUN_TRAP;
                 if (recomp_overrides_live) {
                     const int rc = override_at(m);
                     if (rc > RUN_SLICE) return rc;
@@ -1074,6 +1077,8 @@ int machine_run(machine_t *m, uint64_t until)
             }
         } else {
             while (c->icount < c->stop_at && !c->halted) {
+                if (m->trap_on && c->ip == m->trap_ip && c->r[R_SP] == m->trap_sp && c->seg[S_CS] == m->trap_cs)
+                    return RUN_TRAP;
                 if (recomp_overrides_live) {
                     const int rc = override_at(m);
                     if (rc > RUN_SLICE) return rc;

@@ -166,6 +166,11 @@ struct machine {
     uint64_t irq0_next;      /* icount of the next counter-0 interrupt */
     uint64_t irq0_hold_until; /* icount; a control-word IRQ0 waits for an STI or this */
     uint8_t  irq0_held;
+    /* A matched routine's call into original code (src/matched): machine_run
+     * returns RUN_TRAP when CS:IP and SP reach the call's return. */
+    uint8_t  trap_on;
+    uint16_t trap_cs, trap_ip, trap_sp;
+    uint64_t run_until;      /* the current machine_run's limit, for nested runs */
     uint8_t  pit_control_irq; /* DOSBox 0.74's IRQ0 on a PIT control word; F117R_PIT_CONTROL_IRQ=0 turns it off */
     uint64_t irq0_period_n;  /* edges since epoch, for exact scheduling */
 
@@ -267,7 +272,7 @@ struct machine {
 enum { ENGINE_INTERP = 0, ENGINE_RECOMP = 1 };
 
 /* Results of machine_run. */
-enum { RUN_SLICE = 0, RUN_EXITED, RUN_FAULT };
+enum { RUN_SLICE = 0, RUN_EXITED, RUN_FAULT, RUN_TRAP };
 
 /* Build a machine and load `program` (F117.COM) from `data_dir`. `mem` is
  * MEM_SIZE bytes, owned by the caller. Returns 0 on failure with the reason

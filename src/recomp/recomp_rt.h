@@ -53,7 +53,7 @@ typedef struct {
     uint16_t    seg, ip;     /* CS = load segment + seg */
     recomp_override_fn fn;
     const char *what;        /* one line, for --list-fixes */
-    int         matched;     /* Phase 2: a hand-written equivalent of the code
+    int         matched;     /* Phase 2 (1 near routine, 2 far): a hand-written equivalent of the code
                               * at this address, always on and placed only
                               * for the recompiled engine (the interpreter
                               * keeps running the original, so every route
