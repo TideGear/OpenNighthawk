@@ -76,6 +76,16 @@ further down are historical; this first section is the current state.
   writes, flag on or off. Only START's control word finds the output low and
   changes behaviour; PLAYER/MPS_LOGO counts are unchanged (PLAYER +1 from the
   timing shift). VGAME and END are not covered by this check.
+- Routes with the flag on (10:40, `run_route.py`, recomp only, output
+  `~/f117-recomp-local/pitflag/`): 19 of 27 pass their milestones
+  (boot_to_flight, cargo, cargo_d5_fixed, the six theatre strikes, recon,
+  frontend_dialogs, full_cycle, ibm_boot, roland_boot, roster_edit,
+  secret_airstrip, vietnam_airair, central_europe_airair, ground/air
+  training). 8 fail and need re-timed inputs: career_promotion, career_serge,
+  recon_career (saved-roster bytes wrong: the front-end clicks land on other
+  screens), landing (VGAME exits at 3.09B, expected >= 7B), cargo_return,
+  recon_return, secret_airstrip_return, strike_return (return legs end before
+  their minimum clock). The committed finals for the 19 would also change.
 - Next: with the flag on, retime the front-end routes (and
   `tools/start_settle`-style scripts), rebuild finals, run
   `tools/dosbox_compare.py` (music) and the frame comparison, then make it the
