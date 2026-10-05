@@ -615,6 +615,21 @@ from the ordinary input record; it changes no guest state. This route ends
 at primary completion with the aircraft still at the strip, rather than
 claiming a return to the mission's home.
 
+`airstrip_check.py --complete` additionally requires a second airborne leg,
+retained original credit/store consumption, normal home stop/countdown,
+successful parent result and VGAME exit 129. Damage at delivery rejects the
+flight; later target damage is reported and preserves the original earned
+credit. Completion sampling stays fine once home idle is reached: nearest
+target changes transiently within the original frame's target search.
+Only completion-counter changes trigger full reads during that fine phase.
+
+`career_check.py` chains actual saved rosters without editing their bytes.
+Each engine gets a fresh save directory. Strict photo/home acceptance,
+normal END inputs, positive saved score, sortie increment, active/retired
+status at record offset 4Eh, checkpoints and all 802 saved bytes must pass
+before the next leg. The startup clock comes from the recording; promotion
+may require a different recording for the new assignment.
+
 `cargo_check.py` separately observes a normal type-3 supply drop. It tracks
 the released player class-26h slot and weapon 18, requires ground penetration
 and matching impact globals with a sudden TTL change distinct from expiry,

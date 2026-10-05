@@ -143,6 +143,29 @@ late/outside-area impacts, loss and unexpected credit. All 64 Python tests
 pass. Coverage rises to 139,059 / 230,052 bytes (60.4%), across 24 routes.
 Independent DOSBox cargo reproduction and the home return remain open.
 
+`secret_airstrip_return` extends delivery with an ordinary ground turn,
+taxi to the far end, takeoff and home return. Both complete observers have
+byte-identical input, CSV and result files, no errors, and final hash
+`c7b303ee1aa60173` at 18,635,798,708 clocks. CLI replays also match all 372
+checkpoints and final state. Home 58 is reached at (2880,11786), ground
+altitude 0, speed/throttle 0, fuel 3000, gear/brakes and completed countdown;
+the parent records result 0/status 3 and VGAME exits 129. The strip is intact
+at verified delivery but becomes damaged later, with the player 8655 units
+away and no weapon releases or hits. Original credit remains earned. The
+observer reports that later damage separately and rejects damage at delivery.
+Coverage is now 139,381 / 230,052 bytes (60.6%) across 25 public routes.
+
+The paired earned-career tool was independently checked on sortie eight:
+both photo objectives and normal home return pass, all 380 checkpoints,
+input/CSV/result files and 802 saved bytes agree, final hash
+`ce0867bc52a1995b`. Score 219 advances total 1370 to 1589 and sorties 7 to 8.
+Its saved roster also matches the independently run private career batch.
+Pilot status is record offset 4Eh (Serge file offset 800); the previous
+offset-778 assertion checked theatre instead. Existing actual saved active
+statuses were rechecked at 800, and the public fixtures now assert both fields.
+The 73 Python regression tests pass. This establishes earned continuation,
+not retirement.
+
 Independent GOG recon attempt 06 ended after fuel exhaustion: no photos,
 parent result 1/status 1, nine failed acceptance checks, 104,607 observations.
 Its completed failed result is retained, and independent full-sortie parity
@@ -255,12 +278,12 @@ or counted as successful outcomes.
 
 ## Still requiring separate evidence
 
-Earned promotions/retirement, weapon hits and AI countermeasures,
-supply drops, secret airstrips, harder landing settings, in-flight video,
+Earned retirement and additional awards, air-combat hits and AI countermeasures,
+supply-drop home return, harder landing settings, in-flight video,
 digitized speech and speaker output against DOSBox remain open. The known
 original supply-drop credit bug must be preserved in parity mode.
 
 No WinMM joystick is attached on this machine, so physical calibration,
 deadzones and control feel require hardware and a player. MT-32 PCM requires
-the user's ROMs and the planned Munt integration; the Roland boot route
+the user's ROMs for the implemented optional Munt integration; the Roland boot route
 alone cannot validate its rendered sound.

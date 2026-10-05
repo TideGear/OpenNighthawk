@@ -31,7 +31,7 @@ never instead of parity.
   code: boot to flight; a full sortie through the debriefing; the speaker
   and Roland drivers; eight transfer-and-flight routes covering all nine
   theatres, three tensions and four mission categories. The routes execute
-  at least 60.4% of the code area (`tools/exercised.py`, including the new
+  at least 60.6% of the code area (`tools/exercised.py`, including the new
   promotion routes). Theatre routes also require
   the expected world files, a clean VGAME exit and at least a billion clocks
   in flight; airborne screenshots were reviewed for the six added routes.
@@ -100,6 +100,12 @@ never instead of parity.
   fuel 7261 and intact strip pass. Both observers' input/CSV/result files
   match; 167 checkpoints/final agree, hash `5762b7e88b22cda9`. Cargo-delivered
   cockpit reviewed. Aircraft remains at the strip; home return is not claimed.
+- Secret-airstrip return now departs the short strip after a normal ground
+  turn and taxi, then stops at home 58 with fuel 3000 and parent result
+  0/status 3. Credit and consumed stores persist through the second flight.
+  The strip is intact at delivery and damaged later while the aircraft is
+  elsewhere; this is reported explicitly. Both strong observers agree;
+  372 checkpoints/final match, hash `c7b303ee1aa60173`.
 - Supply drop reaches Persian Gulf target 24's delivery area before the
   deadline through normal release controls. The tracked player cargo crosses
   ground altitude with matching impact coordinates; one store/release and
@@ -187,9 +193,9 @@ never instead of parity.
 - [ ] **Individual mission objectives:** all nine theatres and all four
       mission categories now have flight routes (air combat, ground strike,
       and both training categories). Complete dedicated objective types,
-      including supply-drop and secret-airstrip return legs. Timely cargo
-      impact now reproduces the original no-credit bug; a secret-strip
-      primary landing is now verified. Reconnaissance
+      including the supply-drop return leg. Timely cargo
+      impact now reproduces the original no-credit bug; secret-strip
+      delivery and home return are now verified. Reconnaissance
       primary/secondary credits and raised-runway return are now verified.
       The existing transfer routes exercise generation and controls, then
       quit; they do not establish objective completion.

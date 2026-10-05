@@ -32,6 +32,21 @@ class AirstripChecks(unittest.TestCase):
     def test_ground_taxi_cannot_pass(self):
         self.assertTrue(errors([dict(self.before, agl=0), self.after]))
 
+    def test_return_preserves_delivery_despite_later_target_damage(self):
+        depart = dict(self.after, agl=2000, speed=400, throttle=100, box=0)
+        home = dict(self.after, nearest=58, target_damaged=1)
+        self.assertEqual(errors([self.before, self.after, depart, home], complete=True), [])
+        damaged_delivery = dict(self.after, target_damaged=1)
+        self.assertTrue(errors([self.before, damaged_delivery, depart, home], complete=True))
+
+    def test_return_requires_a_second_airborne_leg_and_retained_credit(self):
+        self.assertTrue(errors([self.before, self.after, self.after], complete=True))
+        depart = dict(self.after, agl=2000, speed=400, throttle=100, box=0)
+        for change in (dict(flags=8), dict(strip_events=0), dict(store_count=1),
+                       dict(objective_type=3), dict(ejection=1), dict(fuel=0)):
+            self.assertTrue(errors([self.before, self.after, depart,
+                                    dict(self.after, **change)], complete=True))
+
 
 if __name__ == "__main__":
     unittest.main()

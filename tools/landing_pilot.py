@@ -86,7 +86,10 @@ def landing_errors(rows, report, log, require_dos_exit=True):
 def control(machine, state, tick, approach):
     """Short, separated stick pulses; every key is released normally."""
     at = machine.clock + 1
-    if state["range"] < 100 and state["agl"] == max(state["ground"], state["surface"]):
+    in_box = (state["box"] == 1 and state["nearest"] == state["home"]
+              and abs(signed(state["x"] - state["home_x"])) <= state["box_width"] >> 5
+              and abs(signed(state["y"] - state["home_y"])) <= state["box_length"] >> 5)
+    if in_box and state["agl"] == max(state["ground"], state["surface"]):
         if not state["flags"] & 8:
             machine.type(at, "0")
         elif state["throttle"]:

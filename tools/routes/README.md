@@ -84,6 +84,22 @@ It also requires an airborne aircraft with fuel and the retained absence of
 primary credit for a full second afterwards. Normal TTL expiry cannot pass.
 This route stops airborne and does not establish a home return.
 
+`secret_airstrip_return` delivers at the intact primary strip, turns and
+taxis for a second takeoff, then returns to home. Run `airstrip_check.py
+--complete --replay tools/routes/secret_airstrip_return.input --steps
+18635798708 --data D:/GOG/F-117A --out PRIVATE_DIR` for the strong observer.
+The target is damaged after delivery; earned credit remains and that later
+damage is reported separately.
+
+`career_check.py --initial-roster ACTUAL_ROSTER --replay PHOTO_RECORD
+--steps CLOCK_BUDGET --count N --data D:/GOG/F-117A --out PRIVATE_DIR`
+earns successive sorties under both engines. Each starts with the preceding
+actual 802-byte save copied unchanged. Strict photo/home gates, saved
+score/count/status progression, every checkpoint and all save bytes must
+agree before another sortie starts. The replay's startup clock is retained.
+Promotion can change the generated assignment and require a new recording;
+failed flights stop the batch. Use only actual earned saves for this evidence.
+
 Keep run outputs and saves outside the repository. Use a fresh output
 directory for a baseline run, since an existing save can change the pilot
 and mission:

@@ -4,10 +4,28 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
-from landing_pilot import landing_errors
+from landing_pilot import landing_errors, control
 
 
 class LandingChecks(unittest.TestCase):
+    def test_braking_requires_the_actual_home_box(self):
+        class Input:
+            clock, ips = 0, 9000000
+            def __init__(self): self.keys = []
+            def type(self, at, keys, **kwargs): self.keys.append(keys)
+        state = dict(self.last, surface=0, altitude=0, pitch=0, roll=0, trim=0, heading=0,
+                     range=54, y=1654, box_length=1280, throttle=20, speed=40,
+                     flags=4, box=0)
+        machine = Input(); control(machine, state, 0, True)
+        self.assertNotIn("0", machine.keys)
+        self.assertNotIn("_", machine.keys)
+        state.update(range=31, y=1631, box=1)
+        machine = Input(); control(machine, state, 0, True)
+        self.assertEqual(machine.keys, ["0"])
+        state["flags"] |= 8
+        machine = Input(); control(machine, state, 0, True)
+        self.assertEqual(machine.keys, ["_"])
+
     def setUp(self):
         self.last = dict(agl=0, ground=0, x=9793, y=1539, home_x=9792,
             home_y=1600, box=1, nearest=33, home=33, box_width=288,

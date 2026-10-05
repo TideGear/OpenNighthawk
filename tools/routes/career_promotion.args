@@ -5,6 +5,7 @@
 # expect-save Roster.Fil 0 0900
 # expect-save Roster.Fil 770 d900
 # expect-save Roster.Fil 778 0000
+# expect-save Roster.Fil 800 0000
 # expect-save Roster.Fil 754 0100
 # expect-save Roster.Fil 758 0200
 # expect-save Roster.Fil 772 f4010000

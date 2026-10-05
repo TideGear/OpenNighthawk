@@ -8,6 +8,7 @@ import argparse
 import csv
 import json
 import math
+import re
 import shutil
 import tempfile
 from pathlib import Path
@@ -131,9 +132,18 @@ def main():
     parser.add_argument("--seconds", type=int, default=1800)
     parser.add_argument("--complete", action="store_true", help="also attempt secondary photo and home return")
     parser.add_argument("--initial-roster", type=Path, help="continue from an earned roster file in a fresh private save directory")
+    parser.add_argument("--time-us", type=int, default=700000000000000,
+                        help="emulated startup clock; replay uses its recorded header")
     parser.add_argument("--acquisition", choices=("nose", "level"), default="nose",
                         help="normal target designation approach for adaptive controls")
     args = parser.parse_args()
+    lines = []
+    if args.replay:
+        lines = Path(args.replay).read_text().splitlines()
+        header = re.fullmatch(r"# f117r-input ips=9000000 time_us=(\d+)", lines[0] if lines else "")
+        if not header:
+            raise ValueError("replay requires a recorded 9 MHz startup clock")
+        args.time_us = int(header[1])
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     inputs = RouteInputs(route_args(args.front_route)) if not args.replay else None
@@ -146,14 +156,11 @@ def main():
             raise ValueError("initial roster must be the original 802-byte saved file")
         shutil.copyfile(args.initial_roster, save / "Roster.Fil")
     with Machine(args.data, save,
-                 log=out / "run.log", engine=args.engine) as machine, \
+                 log=out / "run.log", engine=args.engine, time_us=args.time_us) as machine, \
             (out / "flight.csv").open("w", newline="") as csvfile:
         machine.record(out / "input.log")
         replay, replay_pos = [], 0
         if args.replay:
-            lines = Path(args.replay).read_text().splitlines()
-            if not lines or lines[0] != "# f117r-input ips=9000000 time_us=700000000000000":
-                raise ValueError("replay requires the route's fixed clock speed and boot time")
             for line in lines[1:]:
                 parts = line.split()
                 if not parts or parts[0].startswith("#"):

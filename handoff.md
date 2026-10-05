@@ -84,6 +84,38 @@ routes are verified; an independent DOSBox recon flight has completed (below).
 
 ## In flight at handoff
 
+- Latest verified continuation: secret_airstrip_return.args/input completes
+  delivery, normal ground turn/taxi/takeoff, and return to home58. Strong
+  observers strip-return-verified-{interp,recomp} input/CSV/result identical,
+  errors empty; 372 CLI checkpoints/final c7b303ee1aa60173 at18635798708.
+  Stop (2880,11786), ground0, idle/gear/brakes, fuel3000, parent0/status3,
+  actual VGAME exit129. Strip intact at delivery, damaged later with player
+  8655 units away and zero releases/hits. Report later damage explicitly.
+  Route minimum flight bound corrected from an assumed15B to14B; actual
+  completed flight spans14858442368 clocks. Coverage139381/230052=60.6%,
+  25 routes. 73 Python tests pass; no core semantics changed.
+- Public tools/career_check.py self-test career-tool-check-01 earns sortie8
+  from actual earned7 roster. Both engines' 380 checkpoints, input/CSV/result
+  and 802 save bytes agree, final ce0867bc52a1995b; total1370->1589, score219,
+  rank2, sorties7->8. Independently agrees with private career-chain-05-08.
+  IMPORTANT: saved pilot status is record+4Eh, Serge file800. Previous
+  status778 was actually theatre. Actual active status800 is rechecked0;
+  public career fixtures now assert both theatre778 and status800.
+- Private career_chain_05.py is running sequential paired earned sorties7
+  onward, stopping at next rank promotion. Log parity-audit-career-chain-05.log
+  under C:/Users/Tideg/f117-recomp-local. Outputs parity-audit-20261004/
+  career-chain-05-NN-{recomp,interp}. Its printed354 hash count is stale:
+  actual hashes.json contains380 per leg. Sorties7..11 paired verified;
+  rank2->3 expected near15. It copies only preceding actual saved roster.
+  At promotion find a normal photo/photo candidate using mission_candidates
+  --initial-roster ACTUAL_SAVE --both-objectives, then record recon_pilot
+  --time-us NEW_SEED --acquisition level --complete. Strongly pair the new
+  record; use public career_check for later earned batches toward99.
+  Do not fabricate near-retirement stats. Latest rank2 record is private
+  career-seven-photo-01/input.log, startup700000007000000; seven strong
+  observers match, final15428427129/97eca1f5d7e391c1. Further debrief replay
+  uses19B clocks. Old rank1 record becomes a ground-strike assignment at7.
+
 - Latest controller continuation: optional --acquisition level added to
   recon_pilot and dosbox_flight (defaultnose remains unchanged). Before
   designation it holds positive pitch and requestsN only at550..750range,
