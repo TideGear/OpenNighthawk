@@ -103,6 +103,12 @@ routes are verified; an independent DOSBox recon flight is running (below).
   steps17.7B, output promotion-serge-03-debrief-recomp preseeded from earned02.
   Inspect rank754/score770/total772/sorties776 and promotion screenshot;
   run interp with identical earned initial save and compare hashes/saves.
+  UPDATE03 debrief recomp finished: rank0->1, score217,total283->500,
+  sorties2->3,status0. Earned promotion saved; screenshot still to review.
+  Fresh interp debrief started with02 earned save copied unchanged,
+  parity-audit-promotion-serge-03-debrief-interp.log,17.7B budget and coverage
+  promotion-serge-03-debrief.cov. Check process/session terminal before
+  comparing all354 hashes/final and802-byte save. No public chained route yet.
   Serge02 interp debrief exec81560 has finished:350 hashes and final
   a069f6775d65b94b/17.5B match recomp, all802 save bytes equal.
   Coverage at auditroot/promotion-serge-02-debrief.cov.
