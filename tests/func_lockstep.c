@@ -112,6 +112,27 @@ static void set_state(cpu_t *c, uint16_t cs, uint16_t ip, const uint16_t *r, con
     c->int_depth = 0;
 }
 
+/* The routine's entry state: registers, and the stack as a caller leaves it. */
+static void setup_side(cpu_t *c, const recomp_override *o, uint16_t cs, uint16_t ip, const uint16_t *r,
+                       const uint16_t *seg, uint16_t flags, uint16_t back, int s, const uint16_t *small)
+{
+    set_state(c, cs, ip, r, seg, flags);
+    c->r[R_SP] = (uint16_t)(c->r[R_SP] - 2);
+    if (o->matched == 2) {                                     /* a far routine: CS too */
+        seg_write16(c, c->seg[S_SS], c->r[R_SP], cs);
+        c->r[R_SP] = (uint16_t)(c->r[R_SP] - 2);
+    }
+    seg_write16(c, c->seg[S_SS], c->r[R_SP], back);            /* the caller's return address */
+    /* Half the states put small arguments above it: random words
+     * almost never reach a routine's edge cases (zero, -1, 1). */
+    const uint16_t args = o->matched == 2 ? 4 : 2;             /* above IP, and CS when far */
+    for (int a = 0; a < 4 && (s & 2); a++)
+        seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_SP] + args + 2 * a), small[a]);
+    c->stop_at = c->icount + 100000;
+}
+
+static unsigned long long g_overrun;    /* routines that ran past the event limit */
+
 static int g_verbose, g_shown;
 
 static int compare(const char *mod, uint32_t off, uint16_t cs, uint16_t ip, int declined)
@@ -179,10 +200,12 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int far, int *steps)
 }
 
 static unsigned long long g_finished;   /* states the original code finished */
+static int g_ncalls;           /* guest calls made by the routine under test */
 static int g_lost;              /* a call into original code never came back */
 static int step_runner(machine_t *mm)
 {
     cpu_t *c = &mm->cpu;
+    g_ncalls++;
     for (int i = 0; i < 200000; i++) {
         if (c->ip == mm->trap_ip && c->r[R_SP] == mm->trap_sp && c->seg[S_CS] == mm->trap_cs) return RUN_TRAP;
         cpu_step(c);
@@ -266,22 +289,8 @@ int main(int argc, char **argv)
             uint16_t small[4];
             for (int a = 0; a < 4; a++)
                 small[a] = (s & 4) ? (uint16_t)((int)(rnd() % 3) - 1) : (uint16_t)(rnd() % 32);
-            for (int k = 0; k < 2; k++) {
-                cpu_t *c = k ? &g_m.cpu : &g_cpu[0];
-                set_state(c, cs, ip, r, seg, flags);
-                c->r[R_SP] = (uint16_t)(c->r[R_SP] - 2);
-                if (o->matched == 2) {                             /* a far routine: CS too */
-                    seg_write16(c, c->seg[S_SS], c->r[R_SP], cs);
-                    c->r[R_SP] = (uint16_t)(c->r[R_SP] - 2);
-                }
-                seg_write16(c, c->seg[S_SS], c->r[R_SP], back);    /* the caller's return address */
-                /* Half the states put small arguments above it: random words
-                 * almost never reach a routine's edge cases (zero, -1, 1). */
-                const uint16_t args = o->matched == 2 ? 4 : 2;     /* above IP, and CS when far */
-                for (int a = 0; a < 4 && (s & 2); a++)
-                    seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_SP] + args + 2 * a), small[a]);
-                c->stop_at = c->icount + 100000;
-            }
+            for (int k = 0; k < 2; k++)
+                setup_side(k ? &g_m.cpu : &g_cpu[0], o, cs, ip, r, seg, flags, back, s, small);
             int steps = 0;
             cpu_t *a = &g_cpu[0];
             /* Run the original until the routine's own near RET - the first
@@ -301,6 +310,30 @@ int main(int argc, char **argv)
              * game never does, and no equivalent can follow it. */
             const uint32_t self = phys(cs, ip);
             if (memcmp(g_mem[0] + self, g_pristine + self, 0x100)) { ms++; restore(); continue; }
+            /* The event limit: a routine told it has one instruction fewer than
+             * the original takes must decline. Running anyway would carry the
+             * clock past a checkpoint or a frame boundary - nothing in the
+             * comparison below can see that, as it gives every routine room.
+             * (A routine that calls original code legitimately returns partway,
+             * having run the callee to the limit; only a run with no such call
+             * is an overrun.) */
+            g_lost = 0; g_ncalls = 0;
+            g_m.cpu.stop_at = g_m.cpu.icount + (uint64_t)steps - 1;
+            const int probe_ran = o->fn(&g_m);
+            if (probe_ran && !g_ncalls && g_m.cpu.icount > g_m.cpu.stop_at) {
+                printf("  OVERRUN %s+%05X: ran to %llu with the limit at %llu (the original takes %d)\n", o->module,
+                       ((uint32_t)o->seg << 4) + ip, (unsigned long long)g_m.cpu.icount - 1000,
+                       (unsigned long long)g_m.cpu.stop_at - 1000, steps);
+                g_overrun++; mb++;
+                memcpy(g_mem[1], g_pristine, MEM_SIZE);
+                restore();
+                break;
+            }
+            if (probe_ran) {                                   /* it wrote: back to the entry state */
+                memcpy(g_mem[1], g_pristine, MEM_SIZE);
+                g_side[1].ndirty = 0; g_side[1].overflow = 1; g_side[1].io = 0; g_side[1].nread = 0;
+            }
+            setup_side(&g_m.cpu, o, cs, ip, r, seg, flags, back, s, small);
             g_lost = 0;
             /* A state whose call into original code wanders off (a far call
              * through a slot only the running game fills) returned on the

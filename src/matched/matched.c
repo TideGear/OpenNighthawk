@@ -2965,7 +2965,7 @@ static int vgame_axis_normalise(machine_t *m)
 static int vgame_model_in_range(machine_t *m)
 {
     cpu_t *c = &m->cpu;
-    if (!room(c, 37)) return 0;
+    if (!room(c, 41)) return 0;                                   /* the longest path: 10 + 8 + 2 * 10, then the 3-instruction failure tail */
     unsigned n = 0;
     uint16_t bx = c->r[R_AX]; n++;
     const uint16_t cx = ds_get(c, 0x7D5E); n++;

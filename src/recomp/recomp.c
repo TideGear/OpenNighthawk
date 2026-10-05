@@ -172,6 +172,11 @@ int recomp_override_add(const recomp_override *o)
     g_ov[g_nov] = *o;
     const char *off = getenv("F117R_NO_MATCHED");
     g_ov_on[g_nov] = o->matched && !(off && off[0] == '1');
+    /* F117R_MATCHED_LIMIT=N: only the first N matched routines, in table
+     * order - for bisecting a divergence between the engines. */
+    static int limit = -2, seen;
+    if (limit == -2) { const char *l = getenv("F117R_MATCHED_LIMIT"); limit = l && *l ? atoi(l) : -1; }
+    if (o->matched && limit >= 0 && seen++ >= limit) g_ov_on[g_nov] = 0;
     return g_nov++;
 }
 
