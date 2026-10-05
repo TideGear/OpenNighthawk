@@ -12,6 +12,7 @@ int machine_boot(machine_t *m, uint8_t *mem, const char *data_dir,
     FILE *log = m->log;
     int engine = m->engine;
     void *recomp = m->recomp;
+    free(m->opl_sched);
     memset(m, 0, sizeof *m);
     m->log = log;
     m->engine = engine;
@@ -83,6 +84,9 @@ void machine_shutdown(machine_t *m)
 {
     inventory_write();
     dos_shutdown(m);
+    free(m->opl_sched);
+    m->opl_sched = NULL;
+    m->opl_sched_n = m->opl_sched_i = m->opl_sched_cap = 0;
 }
 
 uint64_t machine_state_hash(const machine_t *m)

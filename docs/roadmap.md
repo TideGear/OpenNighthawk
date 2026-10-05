@@ -402,7 +402,9 @@ never instead of parity.
       engines (`cargo_d5_fixed`). D4 (secret airstrips in Libya, North Cape
       and the Middle East: world bytes corrected as read, START's masks
       widened at its entry) and D34 (destroyed-object table extension, five
-      overrides) are done, the Reimp's fixes; D2 (speech hang) remains. D96
+      overrides) are done, the Reimp's fixes; D2 (speech hang) is done too:
+      the driver's speech writes are played from the machine's schedule
+      instead of a busy-wait, value for value. D96
       is an optional wait for the Reimp's separately implemented native UI,
       not a patch for this translated START path. The measured roster-entry
       timing difference is tracked under Phase 1. A session recorded with

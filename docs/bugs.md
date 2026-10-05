@@ -86,6 +86,20 @@ Status values:
   sample, rendered at the sample the write's emulated time falls on.
 - **Fix options.** A non-blocking speech path (the Reimp's mixer), as a patch
   on `0x2552`.
+- **Fix available: `--fix D2`.** An override at ASOUND `0x2552` (AdLib arm,
+  `[17F2]` = 0; the Sound Blaster arms are untouched) queues the driver's
+  own OPL writes on the machine's schedule and returns at once: 0x25BB's
+  channel-0 setup, 0x2649's counter-0 wait, one level write to 43h per
+  sample at the PIT counter-2 rate (150 PIT clocks, 7955 Hz), and 0x2593's
+  key-off. Nothing masks the timer or spins, so the game and the music keep
+  running while the word plays. The music's own channel-0 writes are held
+  off meanwhile, and the channel is then restored from the driver's
+  register shadow (DS:1A06). Channel 1's key-off at 0x2593 is left out
+  because the music is still playing. On the strike route the scheduled
+  6,464 writes to 43h equal the original's value for value at the same
+  per-sample interval, under both engines. Newer DOSBox releases may avoid
+  the hang on their own; this fix removes the wait however the emulator
+  times it.
 - **Detail.** Reimp catalogue:452-503; Reimp `docs/re/10-sound.md`.
 
 ### D3. Keypad keys on the sound-driver screen (GOG, reported)

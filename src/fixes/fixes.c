@@ -17,6 +17,7 @@
 /* The files GOG ships: MicroProse's final 473.04 update. */
 #define VGAME_47304 0x8287450CCA85106FULL
 #define START_47304 0xC65ECC83823E4907ULL
+#define ASOUND_47304 0x9CD012D9D4A2CF30ULL
 
 /* D5. VGAME's impact gate at 0x06D1C admits weapon types 1Eh, 1Dh and 1Ch;
  * anything else reaches the jmp at 0x6D2E to the skip at 0x6EBB. A supply
@@ -172,6 +173,74 @@ static int fix_d34_get_type(machine_t *m)
     return 1;
 }
 
+/* D2. ASOUND.117 0x2552 speaks a word on the AdLib: 0x1DBA silences the
+ * music voices and spins until the timer's sequencer has cleared them,
+ * 0x2577 programs channel 0 and masks the timer interrupt, 0x2661 writes
+ * one carrier level per sample, timed on PIT counter 2 (mode 2, divisor
+ * 150), and 0x2593 keys off and unmasks. The game stops for the whole word
+ * and the spin can deadlock. The fix plays the same OPL writes - the same
+ * setup, levels and timing - from the machine's own schedule and returns at
+ * once: nothing waits and the timer keeps running, so the game and music
+ * go on while the word plays on channel 0 (the music's own channel-0 writes
+ * are held off meanwhile; afterwards the channel is restored from the
+ * driver's register shadow at DS:1A06). The Sound Blaster arms ([17F2] 1
+ * or 2) are left as they are.
+ *
+ * BX is a CS-relative list of (end, start, segment) runs ended by a zero
+ * word; a run's bytes are at (segment + [17E2]):start..end-1, and each
+ * byte's level is CS:[18h + byte / 4]. Segment 0x01B6 is the code's place
+ * in the image, DS the image's start. */
+static int fix_d2_speech(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t cs = c->seg[S_CS], ds = (uint16_t)(cs - 0x01B6);
+    if (seg_read16(c, ds, 0x17F2) != 0) return 0;          /* not the AdLib arm */
+    const uint64_t ips = m->ips;
+    const uint64_t pit = 1193182ull;
+    uint64_t at = c->icount;
+    const uint64_t busy = machine_opl_scheduled_until(m);
+    if (busy > at) at = busy;                               /* after a word still playing */
+    static const uint8_t setup[][2] = {
+        { 0x20, 0x23 }, { 0x23, 0x28 }, { 0x40, 0x3F }, { 0x43, 0x3F }, { 0x60, 0xAF },
+        { 0x63, 0xAF }, { 0x80, 0x0D }, { 0x83, 0x0F }, { 0xC0, 0x05 }, { 0xE0, 0x00 },
+        { 0xE3, 0x02 }, { 0xB0, 0x01 }, { 0xA0, 0x8F }, { 0xB0, 0x2E },
+    };
+    int ok = 1;
+    for (unsigned i = 0; i < sizeof setup / sizeof setup[0]; i++)
+        ok &= machine_opl_schedule(m, at, setup[i][0], setup[i][1], 0);
+    at += 0x988 * ips / pit;                                /* 0x2649's counter-0 wait */
+    ok &= machine_opl_schedule(m, at, 0xA0, 0x00, 0);
+    ok &= machine_opl_schedule(m, at, 0xB0, 0x20, 0);
+    const uint16_t base = seg_read16(c, ds, 0x17E2);
+    uint64_t n = 0;
+    for (uint16_t bx = c->r[R_BX];; bx = (uint16_t)(bx + 6)) {
+        const uint16_t end = seg_read16(c, cs, bx);
+        if (!end) break;
+        const uint16_t start = seg_read16(c, cs, (uint16_t)(bx + 2));
+        const uint16_t seg = (uint16_t)(seg_read16(c, cs, (uint16_t)(bx + 4)) + base);
+        for (uint16_t si = start; si != end; si++) {
+            const uint8_t level = mem_read8(c, phys(cs, (uint16_t)(0x18 + (mem_read8(c, phys(seg, si)) >> 2))));
+            n++;
+            ok &= machine_opl_schedule(m, at + n * 150u * ips / pit, 0x43, level, 0);
+        }
+    }
+    at += (n + 1) * 150u * ips / pit;
+    ok &= machine_opl_schedule(m, at, 0xB0, 0x00, 0);       /* 0x2593's key-off */
+    /* Channel 0 as the music left it in the driver's shadow, key last. */
+    static const uint8_t restore[] = { 0x20, 0x23, 0x40, 0x43, 0x60, 0x63, 0x80, 0x83,
+                                       0xE0, 0xE3, 0xC0, 0xA0, 0xB0 };
+    for (unsigned i = 0; i < sizeof restore; i++)
+        ok &= machine_opl_schedule(m, at, restore[i], 0, phys(ds, (uint16_t)(0x1A06 + restore[i])));
+    if (!ok) return 0;                                      /* no memory: speak as the original */
+    dos_log(m, "[fix D2] word of %llu samples scheduled @%llu\n",
+            (unsigned long long)n, (unsigned long long)c->icount);
+    c->op_cs = cs; c->op_ip = c->ip;
+    c->ip = seg_read16(c, c->seg[S_SS], c->r[R_SP]);       /* near ret */
+    c->r[R_SP] = (uint16_t)(c->r[R_SP] + 2);
+    c->icount += 4;
+    return 1;
+}
+
 static const recomp_override OVERRIDES[] = {
     { "D5", "VGAME.EXE", VGAME_47304, 0x0000, 0x6D2E, fix_d5, "the supply-drop impact gate" },
     { "D4", "START.EXE", START_47304, 0x0000, 0x8EDC, fix_d4_table, "START's entry: airstrip mission masks" },
@@ -180,6 +249,7 @@ static const recomp_override OVERRIDES[] = {
     { "D34", "VGAME.EXE", VGAME_47304, 0x0000, 0x0FBD, fix_d34_lookup, "destroyed-object lookup" },
     { "D34", "VGAME.EXE", VGAME_47304, 0x0000, 0x0F7E, fix_d34_set_type, "found record's type, written" },
     { "D34", "VGAME.EXE", VGAME_47304, 0x0000, 0x0D5E, fix_d34_get_type, "found record's type, read" },
+    { "D2", "ASOUND.117", ASOUND_47304, 0x01B6, 0x09F2, fix_d2_speech, "AdLib speech without the busy-wait" },
 };
 
 /* A byte corrected as it is read. */
@@ -202,6 +272,7 @@ static const data_fix DATA[] = {
 };
 
 static const struct { const char *id, *what; } FIXES[] = {
+    { "D2", "AdLib speech plays without stopping the game or risking its busy-wait hang" },
     { "D4", "secret-airstrip missions in Libya, North Cape and the Middle East" },
     { "D5", "supply drops earn their delivery credit" },
     { "D34", "the destroyed-object table keeps records past 30 without overwriting" },

@@ -281,6 +281,49 @@ static uint8_t opl_status(machine_t *m)
     return (uint8_t)(s | 0x06);   /* an OPL2 reads 06 in the unused bits */
 }
 
+static void opl_write_reg(machine_t *m, uint8_t reg, uint8_t val);
+
+/* Channel 0's registers: both operators (0 and 3) and the channel's own. */
+static int opl_channel0(uint8_t reg)
+{
+    switch (reg & 0xE0) {
+    case 0x20: case 0x40: case 0x60: case 0x80: case 0xE0: return (reg & 0x1F) == 0 || (reg & 0x1F) == 3;
+    default: return reg == 0xA0 || reg == 0xB0 || reg == 0xC0;
+    }
+}
+
+int machine_opl_schedule(machine_t *m, uint64_t at, uint8_t reg, uint8_t val, uint32_t shadow)
+{
+    if (m->opl_sched_i == m->opl_sched_n) m->opl_sched_i = m->opl_sched_n = 0;
+    if (m->opl_sched_n == m->opl_sched_cap) {
+        const uint32_t cap = m->opl_sched_cap ? m->opl_sched_cap * 2 : 4096;
+        void *p = realloc(m->opl_sched, cap * sizeof *m->opl_sched);
+        if (!p) return 0;
+        m->opl_sched = p;
+        m->opl_sched_cap = cap;
+    }
+    m->opl_sched[m->opl_sched_n++] = (struct machine_opl_event){ at, shadow, reg, val };
+    if (m->opl_sched_n == m->opl_sched_i + 1) wake(m);
+    return 1;
+}
+
+uint64_t machine_opl_scheduled_until(const machine_t *m)
+{
+    return m->opl_sched_i < m->opl_sched_n ? m->opl_sched[m->opl_sched_n - 1].at : 0;
+}
+
+static void opl_sched_issue(machine_t *m, uint64_t now)
+{
+    while (m->opl_sched_i < m->opl_sched_n && m->opl_sched[m->opl_sched_i].at <= now) {
+        const struct machine_opl_event *e = &m->opl_sched[m->opl_sched_i++];
+        const uint8_t val = e->shadow ? m->mem[e->shadow] : e->val;
+        const uint64_t keep = m->cpu.icount;
+        m->cpu.icount = e->at;                 /* the hook stamps its own time */
+        opl_write_reg(m, e->reg, val);
+        m->cpu.icount = keep;
+    }
+}
+
 static void opl_write_reg(machine_t *m, uint8_t reg, uint8_t val)
 {
     const uint64_t us = machine_now_us(m);
@@ -635,7 +678,11 @@ static void io_write8(machine_t *m, uint16_t port, uint8_t v)
         mpu_queue(m, 0xFEu);
         break;
     case 0x388: m->opl_index = v; break;
-    case 0x389: m->opl_writes++; opl_write_reg(m, m->opl_index, v); break;
+    case 0x389:
+        m->opl_writes++;
+        if (m->opl_sched_i < m->opl_sched_n && opl_channel0(m->opl_index)) { m->opl_sched_dropped++; break; }
+        opl_write_reg(m, m->opl_index, v);
+        break;
     case 0x3C0:
         if (!m->attr_flip) m->attr_idx = v;
         else m->attr[m->attr_idx & 0x1F] = v;
@@ -835,6 +882,7 @@ uint64_t pc_next_event(machine_t *m)
 {
     uint64_t t = m->irq0_next;
     if (m->vsync_next < t) t = m->vsync_next;
+    if (m->opl_sched_i < m->opl_sched_n && m->opl_sched[m->opl_sched_i].at < t) t = m->opl_sched[m->opl_sched_i].at;
     if (m->video_mode == 0x13 && m->frame_len && m->scan_next < t) t = m->scan_next;
     if (m->kbd_qn && !m->kbd_obf) {
         uint64_t k = m->kbd_next > m->cpu.icount ? m->kbd_next : m->cpu.icount;
@@ -885,6 +933,7 @@ void pc_events(machine_t *m)
     cpu_t *c = &m->cpu;
     const uint64_t now = c->icount;
     input_poll(m);
+    opl_sched_issue(m, now);
     if (m->irq0_held && now >= m->irq0_hold_until) pc_release_irq0(m);
     while (now >= m->irq0_next) {
         pic_raise(m, 0);

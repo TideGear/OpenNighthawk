@@ -30,6 +30,15 @@ static uint64_t fnv1a64(const uint8_t *p, size_t n)
     return h;
 }
 
+static struct { uint64_t at; uint8_t reg, val; } writes[16];
+static int nwrites;
+static void opl_seen(void *user, uint64_t icount, uint8_t reg, uint8_t val)
+{
+    (void)user;
+    if (nwrites < 16) { writes[nwrites].at = icount; writes[nwrites].reg = reg; writes[nwrites].val = val; }
+    nwrites++;
+}
+
 static int step_at(uint16_t cs, uint16_t ip)
 {
     m.cpu.seg[S_CS] = cs;
@@ -170,6 +179,34 @@ int main(void)
     one = 0;
     fixes_file_data(NULL, &m, "LB.WLD", 2159, 0x53A, &one, 1);
     CHECK(one == 0);
+
+    /* A fix's scheduled OPL writes (D2's speech): each at its own time,
+     * a shadow address read when issued, and the guest's channel-0 writes
+     * held off only while any remain. */
+    m.ips = 9000000;
+    pc_reset(&m);
+    m.hooks.opl_write = opl_seen;
+    m.cpu.icount = 1000;
+    CHECK(machine_opl_scheduled_until(&m) == 0);
+    CHECK(machine_opl_schedule(&m, 1500, 0x43, 0x08, 0));
+    CHECK(machine_opl_schedule(&m, 2000, 0xB0, 0, 0x5000));
+    CHECK(machine_opl_scheduled_until(&m) == 2000);
+    pc_io_write(&m.cpu, 0x388, 0x43, 1);
+    pc_io_write(&m.cpu, 0x389, 0x11, 1);                   /* channel 0: held off */
+    pc_io_write(&m.cpu, 0x388, 0x44, 1);
+    pc_io_write(&m.cpu, 0x389, 0x22, 1);                   /* channel 1: passes */
+    CHECK(nwrites == 1 && writes[0].reg == 0x44 && m.opl_sched_dropped == 1);
+    m.cpu.icount = 1499; pc_events(&m);
+    CHECK(nwrites == 1);                                   /* not yet due */
+    m.mem[0x5000] = 0x31;
+    m.cpu.icount = 2100; pc_events(&m);
+    CHECK(nwrites == 3 && writes[1].at == 1500 && writes[1].val == 0x08);
+    CHECK(writes[2].at == 2000 && writes[2].reg == 0xB0 && writes[2].val == 0x31);
+    CHECK(machine_opl_scheduled_until(&m) == 0);
+    pc_io_write(&m.cpu, 0x388, 0xB0, 1);
+    pc_io_write(&m.cpu, 0x389, 0x20, 1);                   /* free again */
+    CHECK(nwrites == 4 && writes[3].reg == 0xB0 && writes[3].val == 0x20);
+    machine_shutdown(&m);
 
     recomp_shutdown(&m);
     if (failures) { fprintf(stderr, "%d failures\n", failures); return 1; }

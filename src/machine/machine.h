@@ -195,6 +195,13 @@ struct machine {
     int      opl_t1_run, opl_t2_run, opl_t1_mask, opl_t2_mask;
     int      opl_t1_flag, opl_t2_flag;
     uint64_t opl_t1_due, opl_t2_due;     /* microseconds */
+    /* A fix's own OPL writes, issued at their icount (fix D2's speech).
+     * While any remain, the guest's writes to channel 0 are dropped: that
+     * channel is the speech voice. shadow, when non-zero, is the linear
+     * address of a byte whose value at the time of issue is written. */
+    struct machine_opl_event { uint64_t at; uint32_t shadow; uint8_t reg, val; } *opl_sched;
+    uint32_t opl_sched_n, opl_sched_i, opl_sched_cap;
+    uint64_t opl_sched_dropped;
 
     /* ---- MPU-401 --------------------------------------------------- */
     uint8_t  mpu_q[16];
@@ -326,6 +333,10 @@ int      mouse_int33(machine_t *m);
 /* ---- DOS / BIOS (dos.c) ---------------------------------------------- */
 int  dos_int_hook(cpu_t *c, uint8_t vec);
 void pc_release_irq0(machine_t *m);
+/* Queue a fix's OPL write (times must not decrease); see opl_sched. */
+int  machine_opl_schedule(machine_t *m, uint64_t at, uint8_t reg, uint8_t val, uint32_t shadow);
+/* The icount of the last queued write, or 0 when none is pending. */
+uint64_t machine_opl_scheduled_until(const machine_t *m);
 int  dos_boot(machine_t *m, const char *program);
 void dos_shutdown(machine_t *m);
 const char *dos_current_program(const machine_t *m);
