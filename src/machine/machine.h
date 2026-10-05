@@ -159,7 +159,7 @@ struct machine {
     uint64_t irq0_next;      /* icount of the next counter-0 interrupt */
     uint64_t irq0_hold_until; /* icount; a control-word IRQ0 waits for an STI or this */
     uint8_t  irq0_held;
-    uint8_t  pit_control_irq; /* F117R_PIT_CONTROL_IRQ=1: DOSBox 0.74's IRQ0 on a control word */
+    uint8_t  pit_control_irq; /* DOSBox 0.74's IRQ0 on a PIT control word; F117R_PIT_CONTROL_IRQ=0 turns it off */
     uint64_t irq0_period_n;  /* edges since epoch, for exact scheduling */
 
     /* ---- keyboard controller --------------------------------------- */

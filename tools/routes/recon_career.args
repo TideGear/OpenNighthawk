@@ -5,8 +5,8 @@
 # expect-exit END.EXE 35 500000000
 # expect-open awards.pic END.EXE 1
 # expect-open medals.pic END.EXE 1
-# Mission score 275 and total 2944 (previously 2669).
-# expect-save Roster.Fil 290 1301800b
+# Mission score 248 and total 2917 (previously 2669).
+# expect-save Roster.Fil 290 f800650b
 # Sorties nine -> ten, and the earned tour ribbon zero -> one.
 # expect-save Roster.Fil 296 0a00
 # expect-save Roster.Fil 314 01
@@ -23,6 +23,6 @@ END.EXE+520000000:\r
 --type
 END.EXE+640000000:\r
 --steps
-15800000000
+17200000000
 --time-us
 700000000000000

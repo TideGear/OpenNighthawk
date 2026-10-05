@@ -20,7 +20,7 @@ int machine_boot(machine_t *m, uint8_t *mem, const char *data_dir,
     memset(mem, 0, MEM_SIZE);
     m->ips = ips ? ips : MACHINE_DEFAULT_IPS;
     m->boot_time_us = boot_time_us;
-    { const char *e = getenv("F117R_PIT_CONTROL_IRQ"); m->pit_control_irq = e && e[0] == '1'; }
+    { const char *e = getenv("F117R_PIT_CONTROL_IRQ"); m->pit_control_irq = !(e && e[0] == '0'); }
     if (hooks) m->hooks = *hooks;
     snprintf(m->data_dir, sizeof m->data_dir, "%s", data_dir ? data_dir : ".");
     snprintf(m->save_dir, sizeof m->save_dir, "%s", save_dir ? save_dir : "");
