@@ -5,7 +5,7 @@ For the next conversation working on this repository. Read this, then
 updated), [docs/architecture.md](docs/architecture.md) (how parity is
 built and checked) and [docs/bugs.md](docs/bugs.md) (the original game's
 bugs). State as of 4 October 2026: the parity audit and expanded recon/career
-routes are verified; an independent DOSBox recon flight is running (below).
+routes are verified; an independent DOSBox recon flight has completed (below).
 
 ## The goal and the decisions already made
 
@@ -92,11 +92,13 @@ routes are verified; an independent DOSBox recon flight is running (below).
   gates;59Python pass. Recomp adaptive recon-level-07 completesbothphotos
   and raisedhome36return; replay observers recon-level-07-verified-{interp,
   recomp} input/CSV/result bytes identical, errors empty; finalDSWAP
-  13672636250/91b4bdf6f00ff61d. Controller change ready tocommit/push.
-  Independent GOG dosbox-recon-07 exec9548 nowearnedbothphotos, primary1
-  (28736,13840), secondary2, bothintact; at438secfuel7475/alt2460/speed301,
-  flags6205, returninghome36. Do not claimfullreturn beforeitsstrictresult.
-  Liveoutput dosbox-recon-07, parity-audit-dosbox-recon-07.log,1900seclimit.
+  13672636250/91b4bdf6f00ff61d. Controller committed/pushed in620bf05;
+  CI passed. Independent GOG dosbox-recon-07 completed: errors empty,
+  104757 observations, both intact photos/events and raised-home36 return.
+  Stops(19199,9452), altitude128, idle, gear/brakes, fuel3718, countdown2/S9,
+  parent0/status3 and END observed. Strict gates rechecked from flight.csv.
+  Wall-time inputs and different generated mission do not prove exact
+  dynamic-state equality. Output dosbox-recon-07 and associated audit log.
 - Cargo found in pg-candidates-04 atcase45000000/startup700000019000000:
   primarytype3,target24=(10496,3840),departure58,home51, station0cargo18
   /model38/store1; secondaryphoto. Search03 finished8caseswithnocargo.

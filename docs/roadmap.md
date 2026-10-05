@@ -67,6 +67,11 @@ never instead of parity.
   height 128, gear/brakes/idle, fuel remaining, countdown and parent result
   0/status 3 all pass. The route agrees at 272 checkpoints/final hash
   `c403d0542430b898`. Contact/stop and FRAME 2 screenshots reviewed.
+- Independent GOG DOSBox reconnaissance also completes both photos and the
+  raised home-36 return, reaches END and passes the same strict flight gates:
+  intact targets/events, idle stop inside the home box, fuel, countdown and
+  parent result 0/status 3. Its 104,757 observations use wall-time controls
+  and a different generated mission; exact dynamic-state equality is open.
 - Earned Overseas Long Tour Ribbon for the tenth mission: `recon_career`
   continues into END, displays the award and returns to the office. Both
   engines agree at 316 checkpoints/final and all 802 saved bytes. Independent

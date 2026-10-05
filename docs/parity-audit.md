@@ -139,8 +139,15 @@ and heading gates. Camera pointing still uses its separate mounting angle
 after acquisition. Its normal recompiled recon sortie completes both photos
 and the home return; both engines' replay observers have identical input,
 CSV and result files, final hash `91b4bdf6f00ff61d` at 13,672,636,250 clocks.
-GOG attempt 07 using that approach has independently earned both photo
-credits and is returning home. Its landing remains unverified.
+GOG attempt 07 using that approach independently completes both photo
+credits and the raised-home return, then enters END. All acceptance checks
+pass across 104,757 observations. The aircraft stops at (19199,9452), inside
+home 36's box, altitude/ground 128, zero speed/throttle, gear/brakes, fuel
+3718, countdown 2 with S=9 and parent result/status 0/3. Both photo targets
+remain intact with exactly one matching event each. Inputs follow wall time
+since each program starts; the generated primary and flight trajectory differ
+from the recompiled fixture. This establishes original-game completion with
+the same acceptance criteria, rather than exact dynamic-state equivalence.
 
 **Video:** current-build replay against the saved GOG video still matches
 1,319 exact RGB pictures in order. Seven reference pictures and 28 of ours
