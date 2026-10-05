@@ -1299,6 +1299,157 @@ static int vgame_planes_clear(machine_t *m)
     return 1;
 }
 
+/* VGAME 0x0BA56, recon_air_ground(unit): the terrain class under the unit
+ * (its 36-byte record at C16C: x, y >> 11 index the 16-wide map at B1A0,
+ * low two bits) goes to [49F6] for the last four units; for the others
+ * [49F6] = 1 only when the class is 0 and [3D90] is 0 too, else 0. */
+static int vgame_recon_air_ground(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 23)) return 0;
+    const uint16_t ds = c->seg[S_DS];
+    x86_enter(c, 2, 0);
+    cpu_push16(c, c->r[R_SI]);
+    const uint16_t unit = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 4));
+    uint16_t bx = x86_imul3(c, unit, 0x24);
+    uint16_t si = x86_shift(c, 5, seg_read16(c, ds, (uint16_t)(bx - 0x3E92)), 0x0B, 1);
+    si = x86_shift(c, 4, si, 4, 1);
+    bx = x86_shift(c, 5, seg_read16(c, ds, (uint16_t)(bx - 0x3E94)), 0x0B, 1);
+    c->r[R_BX] = bx;
+    uint16_t ax = (uint16_t)((c->r[R_AX] & 0xFF00) | mem_read8(c, phys(ds, (uint16_t)(bx + si - 0x4E60))));
+    ax = (uint16_t)alu_logic(c, ax & 3, 1);
+    c->r[R_AX] = ax;
+    uint16_t cx = (uint16_t)alu_sub(c, ds_get(c, 0xDEFC), 4, 1, 0);
+    c->r[R_CX] = cx;
+    alu_sub(c, cx, unit, 1, 0);                                   /* cmp cx, [bp+4] */
+    unsigned n;
+    if (!x86_cond(c, 0xF)) { ds_put(c, 0x49F6, ax); n = 18; }    /* jg not taken */
+    else {
+        ds_put(c, 0x49F6, 1);
+        alu_logic(c, ax, 1);                                      /* or ax, ax */
+        if (!(c->flags & F_ZF)) { ds_put(c, 0x49F6, 0); n = 21; }
+        else {
+            alu_sub(c, ds_get(c, 0x3D90), ax, 1, 0);
+            if (c->flags & F_ZF) n = 22;
+            else { ds_put(c, 0x49F6, 0); n = 23; }
+        }
+    }
+    c->r[R_SI] = cpu_pop16(c);
+    x86_leave(c);
+    c->icount += n;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x0F0F4, translate a key (AL, extended code in AH) through the
+ * table at 92A4 into [9262], keeping AL at [926D]; codes past 13h are
+ * clamped to 13h, and with [926A] >= 3, 20h-21h map to 5 first. An
+ * extended key uses its scan code directly, untranslated. */
+static int vgame_key_translate(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 17)) return 0;
+    const uint16_t ds = c->seg[S_DS];
+    uint8_t al = (uint8_t)c->r[R_AX];
+    const uint8_t ah = (uint8_t)(c->r[R_AX] >> 8);
+    mem_write8(c, phys(ds, 0x926D), al);
+    alu_logic(c, ah, 0);                                          /* or ah, ah */
+    unsigned n = 3;
+    int xlat = 1;
+    if (!(c->flags & F_ZF)) { al = ah; n += 2; xlat = 0; }        /* mov al, ah / jmp */
+    else {
+        alu_sub(c, mem_read8(c, phys(ds, 0x926A)), 3, 0, 0); n += 2;
+        int low = (c->flags & F_CF) != 0;                         /* jb: straight to the clamp */
+        int to13 = 0, five = 0;
+        if (!low) {
+            alu_sub(c, al, 0x22, 0, 0); n += 2;
+            if (!(c->flags & F_CF)) to13 = 1;                     /* jae */
+            else {
+                alu_sub(c, al, 0x20, 0, 0); n += 2;
+                if (c->flags & F_CF) low = 1;                     /* jb */
+                else five = 1;
+            }
+        }
+        if (five) { al = 5; n += 2; }                             /* mov al, 5 / jmp */
+        else if (low) {
+            alu_sub(c, al, 0x13, 0, 0); n += 2;
+            if (x86_cond(c, 0x7)) to13 = 1;                       /* jbe not taken */
+        }
+        if (to13) { al = 0x13; n++; }
+    }
+    if (xlat) {
+        c->r[R_BX] = 0x92A4;
+        al = mem_read8(c, phys(ds, (uint16_t)(0x92A4 + al)));
+        n += 2;                                                   /* mov bx / xlatb */
+    }
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)al;                   /* cbw */
+    ds_put(c, 0x9262, c->r[R_AX]);
+    c->icount += n + 3;                                           /* cbw, mov, ret */
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 120A:0674, plane_shade: the plane's normal (three words at ES:SI-10)
+ * dotted with the light vector at [7D7C], as 2.14 fixed point, gives the
+ * shade byte at [DI+7802]; SI ends 6 bytes on. BX preserved. */
+static int vgame_plane_shade(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 27)) return 0;
+    const uint16_t ds = c->seg[S_DS], es = c->seg[S_ES];
+    cpu_push16(c, c->r[R_BX]);
+    const uint16_t light = ds_get(c, 0x7D7C);
+    c->r[R_BX] = light;
+    uint16_t si = (uint16_t)alu_sub(c, c->r[R_SI], 0x0A, 1, 0);
+    uint16_t cx = 0, bp = 0;
+    for (int k = 0; k < 3; k++) {
+        c->r[R_AX] = seg_read16(c, es, si);
+        si = (uint16_t)alu_add(c, si, 2, 1, 0);
+        x86_imul16(c, seg_read16(c, ds, (uint16_t)(light + 2 * k)));
+        if (k == 0) { cx = c->r[R_AX]; bp = c->r[R_DX]; }
+        else {
+            cx = (uint16_t)alu_add(c, cx, c->r[R_AX], 1, 0);
+            bp = (uint16_t)alu_add(c, bp, c->r[R_DX], 1, (c->flags & F_CF) ? 1u : 0u);
+        }
+    }
+    for (int k = 0; k < 2; k++) {
+        cx = x86_shift(c, 4, cx, 1, 1);                           /* shl cx, 1 */
+        bp = x86_shift(c, 2, bp, 1, 1);                           /* rcl bp, 1 */
+    }
+    c->r[R_CX] = cx;
+    c->r[R_BP] = bp;
+    c->r[R_AX] = bp;
+    c->r[R_SI] = (uint16_t)alu_add(c, si, 4, 1, 0);
+    mem_write8(c, phys(ds, (uint16_t)(c->r[R_DI] + 0x7802)), (uint8_t)bp);
+    c->r[R_BX] = cpu_pop16(c);
+    c->icount += 27;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 130D:00EC, keep a polygon for clipping: the eight bytes at SI+10h
+ * go to the first slot at 85B8, or the second (85C0) when one is held;
+ * [85EE] counts them. */
+static int vgame_poly_collect(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 14)) return 0;
+    uint16_t bx = 0x85B8;
+    unsigned n = 13;
+    alu_sub(c, ds_get(c, 0x85EE), 0, 1, 0);
+    if (!(c->flags & F_ZF)) { bx = (uint16_t)alu_add(c, bx, 8, 1, 0); n = 14; }
+    ds_put(c, 0x85EE, (uint16_t)alu_inc(c, ds_get(c, 0x85EE), 1));
+    const uint16_t si = c->r[R_SI];
+    for (int k = 0; k < 4; k++) {
+        c->r[R_AX] = ds_get(c, (uint16_t)(si + 0x10 + 2 * k));
+        ds_put(c, (uint16_t)(bx + 2 * k), c->r[R_AX]);
+    }
+    c->r[R_BX] = bx;
+    c->icount += n;
+    near_ret(c);
+    return 1;
+}
+
 static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x4958, vgame_free_fall, "free fall", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD50A, vgame_waypoint_from_target, "waypoint from target", 1 },
@@ -1347,6 +1498,10 @@ static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x1377, 0x01E0, vgame_fill_begin, "begin a model fill", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x1452, 0x02AC, vgame_camera_row, "camera matrix row", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x120A, 0x0654, vgame_planes_clear, "clear the plane table", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xBA56, vgame_recon_air_ground, "terrain under a unit", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xF0F4, vgame_key_translate, "translate a key", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x120A, 0x0674, vgame_plane_shade, "shade a plane", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x130D, 0x00EC, vgame_poly_collect, "keep a polygon for clipping", 1 },
 };
 
 void matched_register(void)

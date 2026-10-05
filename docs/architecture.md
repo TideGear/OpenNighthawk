@@ -914,8 +914,10 @@ which reads its relocated segment constant from the loaded code, and the
 clip-edge test 130D:064A, the 32-bit outcode 130D:0671, the banked row
 tables 1377:0132/0155, the model fill's colour setup 1377:01E0, the camera
 matrix row 1452:02AC - whose second carry goes into DX, as shipped - and
-the plane-table clear 120A:0654): 47 routines, each equal over 4,000 random
-states. On the strike route 38 of them run 13.9 million times in all and
+the plane-table clear 120A:0654), plus the terrain-under-unit test
+0x0BA56, the key translation 0x0F0F4 (XLAT through 92A4), plane shading
+120A:0674 and the clip polygon collector 130D:00EC: 51 routines, each equal
+over 4,000 random states. On the strike route 38 of them run 13.9 million times in all and
 the recompiled engine still reaches the interpreter's final hash.
 REP string instructions are stepped as the interpreter steps them (one
 clock an iteration, one for a REP that finds CX at 0), and a routine whose
