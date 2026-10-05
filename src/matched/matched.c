@@ -339,13 +339,14 @@ static int vgame_outcode(machine_t *m)
 /* A REP-prefixed string instruction as the interpreter steps it: one clock
  * an iteration, one for a REP that finds CX already 0; REPNE/REPE stop on
  * ZF as well (cmp). Returns the clocks taken. */
-enum { STR_MOVS, STR_SCAS };
+enum { STR_MOVS, STR_SCAS, STR_STOS };
 static unsigned rep_string(cpu_t *c, int op, int w16, uint16_t src_seg, int repne)
 {
     if (c->r[R_CX] == 0) return 1;
     unsigned n = 0;
     for (;;) {
         if (op == STR_MOVS) x86_movs(c, w16, src_seg);
+        else if (op == STR_STOS) x86_stos(c, w16);
         else x86_scas(c, w16);
         n++;
         c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);
@@ -1128,6 +1129,176 @@ static int vgame_mc32_on_edge(machine_t *m)
     return 1;
 }
 
+/* VGAME 130D:0671, mc32_outcode: the clip outcode of the 32-bit point
+ * (DX:AX, CX:BX) against the window [85FA]..[85FE] x [85FC]..[8600], in
+ * BP: 4 left, 8 right, 1 above, 2 below. A negative high word is outside
+ * low, a positive one outside high; within 16 bits the words compare
+ * unsigned. */
+static int vgame_mc32_outcode(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 19)) return 0;
+    uint16_t bp = (uint16_t)alu_sub(c, c->r[R_BP], c->r[R_BP], 1, 0);
+    unsigned n = 1;
+    alu_logic(c, c->r[R_DX], 1); n += 2;                          /* or dx, dx / js */
+    if (c->flags & F_SF) { bp = (uint16_t)alu_logic(c, bp | 4, 1); n += 2; }
+    else if (n++, !(c->flags & F_ZF)) { bp = (uint16_t)alu_logic(c, bp | 8, 1); n += 2; }
+    else {
+        alu_sub(c, c->r[R_AX], ds_get(c, 0x85FA), 1, 0); n += 2;
+        if (c->flags & F_CF) { bp = (uint16_t)alu_logic(c, bp | 4, 1); n += 2; }
+        else {
+            alu_sub(c, c->r[R_AX], ds_get(c, 0x85FE), 1, 0); n += 2;
+            if (x86_cond(c, 0x7)) { bp = (uint16_t)alu_logic(c, bp | 8, 1); n += 2; }
+        }
+    }
+    alu_logic(c, c->r[R_CX], 1); n += 2;                          /* or cx, cx / js */
+    if (c->flags & F_SF) { bp = (uint16_t)alu_logic(c, bp | 1, 1); n += 2; }
+    else if (n++, !(c->flags & F_ZF)) { bp = (uint16_t)alu_logic(c, bp | 2, 1); n += 2; }
+    else {
+        alu_sub(c, c->r[R_BX], ds_get(c, 0x85FC), 1, 0); n += 2;
+        if (c->flags & F_CF) { bp = (uint16_t)alu_logic(c, bp | 1, 1); n += 2; }
+        else {
+            alu_sub(c, c->r[R_BX], ds_get(c, 0x8600), 1, 0); n += 2;
+            if (x86_cond(c, 0x7)) bp = (uint16_t)alu_logic(c, bp | 2, 1);
+            else alu_logic(c, bp, 1);                             /* or bp, bp */
+            n += 2;
+        }
+    }
+    c->r[R_BP] = bp;
+    c->icount += n;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 1377:0132 and 1377:0155: the row-offset table at DS:861C for the
+ * interleaved planar modes, two or four banks of 2000h with 80 or 160
+ * bytes a row ([85F2] = 88h or 94h). */
+static int row_banks(machine_t *m, unsigned rows, unsigned banks, uint16_t step, uint16_t tag)
+{
+    cpu_t *c = &m->cpu;
+    const unsigned per = banks * 2 + 2;                          /* stosw/add pairs, sub, add, loop */
+    if (!room(c, 8 + rows * per)) return 0;
+    c->seg[S_ES] = c->seg[S_DS];
+    c->r[R_DI] = 0x861C;
+    uint16_t ax = (uint16_t)alu_sub(c, c->seg[S_DS], c->seg[S_DS], 1, 0);
+    for (unsigned r = 0; r < rows; r++) {
+        for (unsigned b = 0; b < banks; b++) {
+            c->r[R_AX] = ax;
+            x86_stos(c, 1);
+            if (b + 1 < banks) ax = (uint16_t)alu_add(c, ax, 0x2000, 1, 0);
+        }
+        ax = (uint16_t)alu_sub(c, ax, (uint16_t)(0x2000 * (banks - 1)), 1, 0);
+        ax = (uint16_t)alu_add(c, ax, step, 1, 0);
+    }
+    c->r[R_AX] = ax;
+    c->r[R_CX] = 0;
+    c->r[R_BX] = tag;
+    ds_put(c, 0x85F2, tag);
+    c->icount += 8 + rows * per;
+    near_ret(c);
+    return 1;
+}
+static int vgame_row_banks2(machine_t *m) { return row_banks(m, 100, 2, 0x50, 0x88); }
+static int vgame_row_banks4(machine_t *m) { return row_banks(m, 50, 4, 0xA0, 0x94); }
+
+/* VGAME 1377:01E0, raster_model_fill_begin(AX = colour): keep the colour
+ * at [8606]; a shaded colour (AH = FFh, AL >= A0h) is darkened by [48C4]
+ * but not below its band's base (AL & F0h). ES = [861A]. */
+static int vgame_fill_begin(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 15)) return 0;
+    uint16_t ax = c->r[R_AX];
+    ds_put(c, 0x8606, ax);
+    unsigned n = 6;
+    alu_sub(c, ax >> 8, 0xFF, 0, 0);                              /* cmp ah, FFh */
+    if (c->flags & F_ZF) {
+        alu_sub(c, ax & 0xFF, 0xA0, 0, 0); n += 2;               /* cmp al, A0h */
+        if (!(c->flags & F_CF)) {
+            const uint8_t base = (uint8_t)alu_logic(c, ax & 0xF0, 0);
+            uint8_t al = (uint8_t)alu_sub(c, ax & 0xFF, mem_read8(c, phys(c->seg[S_DS], 0x48C4)), 0, 0);
+            alu_sub(c, al, base, 0, 0);
+            n += 6;
+            if (!x86_cond(c, 0x7)) { al = base; n++; }           /* ja skips */
+            mem_write8(c, phys(c->seg[S_DS], 0x8606), al);
+        }
+    }
+    c->r[R_AX] = ds_get(c, 0x861A);
+    c->seg[S_ES] = c->r[R_AX];
+    c->icount += n;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 1452:02AC, camera_matrix_multiply: DI's three words = the row at SI
+ * times the three columns at BX (stride 6), each a 1.15 fixed-point dot
+ * product kept as the high word after one more shift - as shipped, the
+ * second carry goes into DX, not BP. BX restored, DI advanced by 6. */
+static int vgame_camera_row(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 57)) return 0;
+    const uint16_t ds = c->seg[S_DS];
+    c->r[R_CX] = 3;
+    for (int k = 0; k < 3; k++) {
+        const uint16_t si = c->r[R_SI], bx = c->r[R_BX];
+        c->r[R_AX] = seg_read16(c, ds, si);
+        x86_imul16(c, seg_read16(c, ds, bx));
+        uint16_t bp = c->r[R_DX];
+        ds_put(c, 0x919A, c->r[R_AX]);
+        c->r[R_AX] = seg_read16(c, ds, (uint16_t)(si + 2));
+        x86_imul16(c, seg_read16(c, ds, (uint16_t)(bx + 6)));
+        ds_put(c, 0x919A, (uint16_t)alu_add(c, ds_get(c, 0x919A), c->r[R_AX], 1, 0));
+        bp = (uint16_t)alu_add(c, bp, c->r[R_DX], 1, (c->flags & F_CF) ? 1u : 0u);
+        c->r[R_AX] = seg_read16(c, ds, (uint16_t)(si + 4));
+        x86_imul16(c, seg_read16(c, ds, (uint16_t)(bx + 0x0C)));
+        ds_put(c, 0x919A, (uint16_t)alu_add(c, ds_get(c, 0x919A), c->r[R_AX], 1, 0));
+        uint16_t dx = (uint16_t)alu_add(c, c->r[R_DX], bp, 1, (c->flags & F_CF) ? 1u : 0u);
+        ds_put(c, 0x919A, x86_shift(c, 4, ds_get(c, 0x919A), 1, 1));   /* shl [919A], 1 */
+        dx = x86_shift(c, 2, dx, 1, 1);                           /* rcl dx, 1 */
+        c->r[R_DX] = dx;
+        c->r[R_BP] = bp;
+        ds_put(c, c->r[R_DI], dx);
+        c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], 2, 1, 0);
+        c->r[R_BX] = (uint16_t)alu_add(c, bx, 2, 1, 0);
+        c->r[R_CX]--;
+    }
+    c->r[R_BX] = (uint16_t)alu_sub(c, c->r[R_BX], 6, 1, 0);
+    c->icount += 57;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 120A:0654, model_planes_pass setup: clear (|[7D5C]| + 2) / 2 words
+ * at DS:7A02. ES preserved; DX the sign of [7D5C]. */
+static int vgame_planes_clear(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t v = ds_get(c, 0x7D5C);
+    const uint16_t sign = (v & 0x8000) ? 0xFFFF : 0;
+    const uint16_t mag = (uint16_t)((v ^ sign) - sign);
+    const uint16_t words = (uint16_t)((uint16_t)(mag + 2) >> 1);
+    const unsigned r = words ? words : 1;
+    if (!room(c, 15 + r)) return 0;
+    c->r[R_DX] = sign;
+    uint16_t ax = (uint16_t)alu_sub(c, (uint16_t)alu_logic(c, v ^ sign, 1), sign, 1, 0);
+    uint16_t cx = ax;
+    ax = (uint16_t)alu_sub(c, ax, ax, 1, 0);
+    cpu_push16(c, c->seg[S_ES]);
+    c->r[R_DI] = c->seg[S_DS];
+    c->seg[S_ES] = c->seg[S_DS];
+    c->r[R_DI] = 0x7A02;
+    c->r[R_AX] = (uint16_t)alu_sub(c, ax, ax, 1, 0);
+    cx = (uint16_t)alu_add(c, cx, 2, 1, 0);
+    cx = x86_shift(c, 5, cx, 1, 1);                               /* shr cx, 1 */
+    c->r[R_CX] = cx;
+    rep_string(c, STR_STOS, 1, 0, 0);
+    c->seg[S_ES] = cpu_pop16(c);
+    c->icount += 15 + r;
+    near_ret(c);
+    return 1;
+}
+
 static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x4958, vgame_free_fall, "free fall", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD50A, vgame_waypoint_from_target, "waypoint from target", 1 },
@@ -1170,6 +1341,12 @@ static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x1377, 0x0116, vgame_row_offsets, "screen row offsets", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0FB2, 0x051F, vgame_spans_reset, "clear the span tables", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x130D, 0x064A, vgame_mc32_on_edge, "point on the clip edge", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x130D, 0x0671, vgame_mc32_outcode, "32-bit clip outcode", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1377, 0x0132, vgame_row_banks2, "row offsets, two banks", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1377, 0x0155, vgame_row_banks4, "row offsets, four banks", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1377, 0x01E0, vgame_fill_begin, "begin a model fill", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1452, 0x02AC, vgame_camera_row, "camera matrix row", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x120A, 0x0654, vgame_planes_clear, "clear the plane table", 1 },
 };
 
 void matched_register(void)

@@ -911,8 +911,12 @@ spread 1058:0C9F, the event-log append 0x04ABA, the altitude-alert reset
 and the renderer's helpers (destroyed-type test 0x0B9F6, polygon row spans
 130D:00B6/00D1, screen row offsets 1377:0116, span-table clear 0FB2:051F,
 which reads its relocated segment constant from the loaded code, and the
-clip-edge test 130D:064A): 41 routines, each equal over 4,000 random
-states.
+clip-edge test 130D:064A, the 32-bit outcode 130D:0671, the banked row
+tables 1377:0132/0155, the model fill's colour setup 1377:01E0, the camera
+matrix row 1452:02AC - whose second carry goes into DX, as shipped - and
+the plane-table clear 120A:0654): 47 routines, each equal over 4,000 random
+states. On the strike route 38 of them run 13.9 million times in all and
+the recompiled engine still reaches the interpreter's final hash.
 REP string instructions are stepped as the interpreter steps them (one
 clock an iteration, one for a REP that finds CX at 0), and a routine whose
 clock depends on the data counts it first with a dry run so it can decline
