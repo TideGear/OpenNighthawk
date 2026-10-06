@@ -93,12 +93,22 @@ frame's polygons. The step's physics runs between them.
    graphics driver's slot at `1E42:0188`. Text, the HUD, the map and the
    cockpit panels go elsewhere. A census of every routine that writes the
    frame buffer, by caller, is the first piece of work.
-2. **What precision the scene has before it is flattened.** The projected
-   vertices that reach the polygon filler might carry fractional bits (the
-   clip outcode is 32-bit); if they do, a higher-resolution re-draw gets
-   real sub-pixel edges. If they are whole pixels, a re-draw at 4K can only
-   reproduce the same blocky shapes sharper. This decides what "4K" can
-   honestly mean.
+2. **What precision the scene has before it is flattened. (Answered from
+   the Reimp's documented routines; to be confirmed against the trace.)**
+   `model_xform_vertex` (`0x128B5`) turns each 16-bit model vertex into
+   *32-bit camera-space coordinates*: three 16 x 16 products per axis,
+   summed at 32 bits with the part's translation. The projection
+   (`0x129A2`) then divides `(x >> 8)` by the high word of z into an
+   *integer pixel*, and everything after that - the 32-bit clip arm (a
+   point is on the boundary exactly, in whole pixels), edge accumulation,
+   the span tables, the fill - works in whole pixels. So the edge stage has
+   no sub-pixel information to offer; the camera-space vertices before the
+   divide do. A real high-resolution re-draw therefore has to observe the
+   transformed vertices at `0x128B5`, redo the projection at N times the
+   resolution with the fraction kept, and redo the clip and the span
+   generation at that resolution. It cannot simply scale the original's
+   spans. (A cheaper "4K" that scales the integer-pixel edges draws the
+   same shapes sharper, with the 320x200 staircase intact.)
 3. **Whether successive frames draw the same objects in the same order.**
    Interpolating between two states needs a pairing: object A in frame n
    with object A in frame n+1. If the draw order is stable (the original
@@ -174,6 +184,7 @@ Decided, by the machine's design and measured facts above: presentation is
 an observer; the machine keeps its own steps; interpolation, not faster
 simulation, gives 60+ fps.
 
-Open, and the first thing Stage 0 answers: what "4K" can honestly be (a
-sharper scaled picture, or real sub-pixel edges) depends on whether the
-projected vertices carry fractional bits.
+Open: whether real sub-pixel "4K" (re-projecting the 32-bit camera-space
+vertices at the new resolution) is worth its cost against the cheaper scaled
+picture. The data for it exists; the clip and span stages would have to be
+redone at the new resolution.
