@@ -34,6 +34,17 @@ clicks or return legs were timed on the old schedule):
 `recon` flight rebuilds 34/34 draw-list phases exact but copies 2,917 bytes
 from entries 6 and 2 (see docs/presentation.md, "Second route").
 
+**Weak milestones hide stale routes (6 Oct, 09:40).** `run_route.py` passing
+is not the strong observer. `cargo_check.py --replay tools/routes/cargo.input
+--steps 7182189465` now reports "expected one impact" and the aircraft is still
+at 10,926 ft AGL, 507 kt at that clock: the supply drop no longer happens on
+the rational schedule, so `cargo`, `cargo_d5_fixed` and `cargo_return` all need
+a new delivery recording (private trials `parity-audit-20261004/cargo_trial*.py`
+and `cargo_return_trial.py`; copy with `root` pointed at D: and `DELIVERED` set
+to the new impact clock). The same check is untested for the other flight
+routes (`secret_airstrip`, theatre strikes, air-to-air, `landing`): run each
+route's strong observer, not just `run_route.py`.
+
 **Gate.** `tools/build_recomp.py --work ~/f117-recomp-local/p2-pipeline` on
 `12d7158` (log `p2-pipeline5.log`): 27/27 routes identical, lockstep 5,709,312
 states 0 mismatching, 191 matched routines 0 mismatching. This full gate has
