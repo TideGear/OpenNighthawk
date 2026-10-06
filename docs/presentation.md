@@ -517,3 +517,17 @@ of 56 phases, both pages) and the `strike_return` landing approach (45 of 45).
 The earlier windows (strike at 2.34B and 8.53B, landing at 2.34B and 9.90B,
 cargo, recon, Central Europe air-to-air) are still exact on the new build.
 
+**Stage 2, what the draw list already holds (6 Oct, 13:40).** The edge
+records ('E') carry integer screen endpoints, already rounded to the 320x200
+grid by the original's projection and clip, so scaling them by N and running
+the same edge walk gives only an N x N nearest-neighbour picture: the
+cheaper option in "What is decided and what is not". Real sub-pixel detail
+needs the vertices before that rounding, which the observer logs as the
+camera-space vertices per frame; the clip (which drops a whole edge that
+leaves the window rather than clipping it) and the span stage would have to
+be redone at the new resolution. The first Stage 2 build is therefore the
+scaled N x N renderer with the check from the stage list (at N = 1 it is the
+Stage 1 reference, bit exact; at N > 1 each N x N block agrees with the
+N = 1 pixel wherever no edge crosses it), and the sub-pixel re-projection
+follows only if that picture is judged too blocky.
+
