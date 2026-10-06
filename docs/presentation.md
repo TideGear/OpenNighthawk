@@ -63,25 +63,26 @@ The picture is made *from* projected polygons through span tables, so the
 polygon list (colour, vertices) exists in the middle of the path and is the
 natural place to observe.
 
-**One logic step is two draws.** The step itself (`frame_effect_timers`,
+**One logic step is two `game_draw` phases.** The step itself (`frame_effect_timers`,
 `0x04738`, then free fall `0x04958` 218 instructions later) was entered at
 instructions 514,934 and 1,295,143 of the window: 780,000 apart, which is
 8.6 steps a second at 9 million instructions a second, agreeing with the
 measured S = 9. `game_draw` (`0x01450`) was entered at 142,435, 522,343,
 921,618 and 1,303,588: twice per step, about half a step apart, one just
-after each step (7,400 and 8,400 instructions after it) and one midway. What
-the second draw is (a second view, the other half of a buffer, a repeat) is
-**not yet known**, and it matters: interpolation needs to know what a step
-draws, and whether the original already shows a picture between steps.
+after each step (7,400 and 8,400 instructions after it) and one midway.
+Splitting the window at those entries, the two halves of a step are
+different work, and the same from one step to the next:
 
-A fifth of the window (21%) runs in code that is not in the unpacked
-program: segment `0889` (relative `EF0F`), with tight loops at offsets
-`0F5E-0F9B`, `1175` and `121C` (about 7,000 iterations each, 51,000 passes at
-`0F91`). It has no store to the 64K region of the VGA screen in the census
-above, which counts a `REP MOVS` as one store, so the screen copy is either
-here or a single repeated instruction elsewhere. It is probably the final
-copy of the finished page to the screen (or a wait for it), and it cannot be
-decoded without a dump of that memory. Identifying it is part of Stage 0.
+| slice (instructions) | length | work |
+|---|---|---|
+| first `game_draw` to the second (contains the step) | 380,000 | 4,662 vertex transforms, 3,208 edge preparations, 1,538 fill stores |
+| second to the next first | 399,000 | 7,590 fill stores, 7,167 span-column stores, 6,644 table-clearing stores |
+| the same again, one step later | 382,000 | 4,662, 3,207 and 1,538: the first row to within one store |
+
+So a step is two **phases** of one picture: the scene is walked, transformed
+and cut into edges, and then spans are built and filled. Both belong to the
+same frame, and an observer must collect across both before it has the
+frame's polygons. The step's physics runs between them.
 
 ## What is not known (and has to be measured next)
 
