@@ -16,6 +16,8 @@ every primitive the observer captured, and compared with the dump at its end:
   text ('T')                                painted from the logged font by
                                             the library's text rules
   tick scales ('H')                         drawn by the library's rules
+  page copies ('D')                         the present (work page to display),
+                                            and whole-page copies
   sprites ('S')                             copied from the logged source,
                                             colour 0 transparent, clipped by
                                             the library's rules
@@ -374,6 +376,21 @@ def main():
                     if a < len(page):
                         page[a] = col
             totals["texts"] += 1
+        elif k == "D":                                       # whole-page copies: 44 present, 48 copy, 79 dissolve
+            v = [int(x) for x in f[2:]]
+            entry, count, sseg, dseg = v[:4]
+            page = pages.get(dseg)
+            if page is None or not count:
+                continue
+            if sseg in pages:
+                src = bytes(pages[sseg][:count])
+            elif len(v) >= 5 + count:
+                src = bytes(v[5:5 + count])
+            else:
+                totals["page copies without source bytes"] += 1
+                continue
+            page[:count] = src[:count]
+            totals["page copies"] += 1
         elif k == "H":
             v = [int(x) for x in f[2:]]
             si0, bx, dl, cl, col, x, lo, hi = v[:8]

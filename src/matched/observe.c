@@ -568,6 +568,44 @@ static int hook_lib_ticks(machine_t *m)
     return 0;
 }
 
+/* Graphics entries 44, 48 and 79 (1E42:01F6, 020A, 02D6): whole-page copies.
+ * 44 presents: unless the driver flips pages (cs:[11DC] set), it copies AX
+ * words from offset 0 of page 1 (cs:[0789]) to page 0 (cs:[0787], the
+ * display) - the 3-D window. 48 copies 32,000 words from the segment given
+ * as its argument to the current page, and 79 does the same as a dissolve
+ * (every offset below FA00h, in a shift-register order). Logged ('D'): the
+ * entry, the byte count, the source and destination segments, the flip flag,
+ * and with F117R_OBSERVE_PAGES for 48/79 the source bytes. */
+static int hook_lib_copy(machine_t *m)
+{
+    flush(m);
+    const f117_observer *o = g_f117_observer;
+    if (!o || !o->prim) return 0;
+    cpu_t *c = &m->cpu;
+    const int entry = (c->ip - 0x011A) / 5;
+    const uint16_t drv = slot_target_seg(m, c->ip);
+    static int32_t v[8 + 64000];
+    int n = 0;
+    v[n++] = entry;
+    if (entry == 44) {
+        const uint16_t flip = seg_read16(c, drv, 0x11DC);
+        v[n++] = flip ? 0 : 2 * c->r[R_AX];
+        v[n++] = seg_read16(c, drv, 0x0789);
+        v[n++] = seg_read16(c, drv, 0x0787);
+        v[n++] = flip;
+    } else {
+        const uint16_t src = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_SP] + 4));
+        v[n++] = 64000;
+        v[n++] = src;
+        v[n++] = seg_read16(c, drv, 0x0194);
+        v[n++] = 0;
+        if (getenv("F117R_OBSERVE_PAGES"))
+            for (uint32_t a = 0; a < 64000; a++) v[n++] = mem_read8(c, phys(src, (uint16_t)a));
+    }
+    o->prim(o->user, c->icount, 'D', v, n);
+    return 0;
+}
+
 /* Every other graphics entry: logged ('X', the entry number) so what draws
  * between two captured primitives is known, and so a pending capture is
  * closed before an uncaptured primitive draws over its pixels (a library
@@ -609,6 +647,9 @@ static const recomp_override OBSERVERS[] = {
     { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x01D3, hook_lib_spans, "library span fill (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x01EC, hook_lib_blit, "library blit (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x01E2, hook_lib_spans, "library span fill, mode 0 (observer)", 1 },
+    { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x01F6, hook_lib_copy, "library present (observer)", 1 },
+    { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x020A, hook_lib_copy, "library page copy (observer)", 1 },
+    { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x02D6, hook_lib_copy, "library page dissolve (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0151, hook_lib_ticks, "library tick scale (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0287, hook_lib_sprite, "library sprite, block argument (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0174, hook_lib_sprite, "library sprite (observer)", 1 },

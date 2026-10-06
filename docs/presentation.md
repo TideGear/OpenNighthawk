@@ -268,9 +268,17 @@ branches no capture exercised (opaque text, the width clip, dithered fills).
 **The display page.** The observer also dumps the display (A000, 'Y') at each
 `game_draw`, and the replay keeps one copy per page, each primitive drawn on
 the page it names. On 6 million instructions of flight the HUD phases' writes
-to the display replay exactly (7 of 7), but every 3-D phase changes about 500
-display bytes that no capture explains (7 of 7 inexact) - the next writer to
-find, in the same way as the outline edges: watch the first differing byte.
+to the display replay exactly, but every 3-D phase changes about 500
+display bytes the replay does not reproduce. The writer is graphics entry 44,
+the present (driver 11F1: unless the driver flips pages, cs:[11DC], it copies
+AX words - 42E0h, the 107 rows of the 3-D window - from offset 0 of page 1 to
+the display); 48 and 79 are whole-page copies and a dissolve. All three are
+captured ('D') and replayed, and on 30 million instructions **36 of 73 display
+phases are exact** (the work page stays 73 of 73): each 3-D phase still
+differs in about 480 bytes inside the copied window (e.g. 81C1h, row 103).
+Next: watch one of those bytes - the copy reads the work page at the moment
+of the present, so a primitive the replay applies before or after it, or a
+second present, is the likely cause.
 
 **How much of a frame is captured.** With `F117R_OBSERVE_PAGES=1` the
 observer dumps the library's whole 64 KB page segment at each `game_draw`
