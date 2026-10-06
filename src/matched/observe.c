@@ -240,8 +240,38 @@ static struct {
     uint8_t before[200 * 320];
 } g_line;
 
+/* With F117R_OBSERVE_PAGES, an entry no hook captures keeps the whole page
+ * it draws to, and the next event logs every byte that changed ('x': the
+ * entry, the page segment, the count, then offset, now and before for each)
+ * - attribution for the frame accounting, not a primitive to replay. */
+static struct {
+    int on, entry;
+    uint16_t page;
+    uint8_t before[65536];
+} g_any;
+
+static void any_flush(machine_t *m)
+{
+    if (!g_any.on) return;
+    g_any.on = 0;
+    const f117_observer *o = g_f117_observer;
+    if (!o || !o->prim) return;
+    cpu_t *c = &m->cpu;
+    static int32_t v[3 + 3 * 65536];
+    int n = 0;
+    v[n++] = g_any.entry; v[n++] = g_any.page;
+    const int count_at = n++;
+    for (uint32_t a = 0; a < 65536; a++) {
+        const uint8_t now = mem_read8(c, phys(g_any.page, (uint16_t)a));
+        if (now != g_any.before[a]) { v[n++] = (int32_t)a; v[n++] = now; v[n++] = g_any.before[a]; }
+    }
+    v[count_at] = (n - 3) / 3;
+    o->prim(o->user, c->icount, 'x', v, n);
+}
+
 static void line_flush(machine_t *m)
 {
+    any_flush(m);
     if (!g_line.on) return;
     g_line.on = 0;
     const f117_observer *o = g_f117_observer;
@@ -362,6 +392,37 @@ static int hook_lib_spans(machine_t *m)
     return 0;
 }
 
+/* Graphics entry 42 (1E42:01EC), the blit: a far call with eight words,
+ * (src_page, sx, sy, dst_page, dx, dy, w, h), each page an index into the
+ * driver's page table (cs:[0787 + 2 page]); a row is cs:[0004 + 2y] with no
+ * origin added. Logged ('C') with the two segments, and - for the frame
+ * accounting - the source bytes and the destination page's changes like
+ * any other entry. */
+static void any_begin(machine_t *m, int entry, uint16_t page);
+static int hook_lib_blit(machine_t *m)
+{
+    flush(m);
+    const f117_observer *o = g_f117_observer;
+    if (!o || !o->prim) return 0;
+    cpu_t *c = &m->cpu;
+    const uint16_t drv = slot_target_seg(m, 0x01EC), ss = c->seg[S_SS], sp = c->r[R_SP];
+    static int32_t v[10 + 64000];
+    int n = 10;
+    for (int k = 0; k < 8; k++) v[k] = (int16_t)seg_read16(c, ss, (uint16_t)(sp + 4 + 2 * k));
+    v[8] = seg_read16(c, drv, (uint16_t)(0x0787 + 2 * (v[0] & 0xFF)));
+    v[9] = seg_read16(c, drv, (uint16_t)(0x0787 + 2 * (v[3] & 0xFF)));
+    /* with the frame accounting on, the source rectangle's bytes follow, so
+     * a copy can be checked without a dump of every page */
+    if (getenv("F117R_OBSERVE_PAGES") && v[6] > 0 && v[7] > 0 && v[6] * v[7] <= 64000)
+        for (int y = 0; y < v[7]; y++) {
+            const uint16_t row = (uint16_t)(seg_read16(c, drv, (uint16_t)(4 + 2 * (v[2] + y))) + v[1]);
+            for (int x = 0; x < v[6]; x++) v[n++] = mem_read8(c, phys((uint16_t)v[8], (uint16_t)(row + x)));
+        }
+    o->prim(o->user, c->icount, 'C', v, n);
+    any_begin(m, 42, (uint16_t)v[9]);
+    return 0;
+}
+
 /* Every other graphics entry: logged ('X', the entry number) so what draws
  * between two captured primitives is known, and so a pending capture is
  * closed before an uncaptured primitive draws over its pixels (a library
@@ -373,7 +434,18 @@ static int hook_lib_other(machine_t *m)
     if (!o || !o->prim) return 0;
     const int32_t v[1] = { (int32_t)((m->cpu.ip - 0x011A) / 5) };
     o->prim(o->user, m->cpu.icount, 'X', v, 1);
+    any_begin(m, v[0], seg_read16(&m->cpu, slot_target_seg(m, m->cpu.ip), 0x0194));
     return 0;
+}
+
+static void any_begin(machine_t *m, int entry, uint16_t page)
+{
+    if (!getenv("F117R_OBSERVE_PAGES")) return;
+    cpu_t *c = &m->cpu;
+    g_any.entry = entry;
+    g_any.page = page;
+    for (uint32_t a = 0; a < 65536; a++) g_any.before[a] = mem_read8(c, phys(page, (uint16_t)a));
+    g_any.on = 1;
 }
 
 static const recomp_override OBSERVERS[] = {
@@ -382,6 +454,7 @@ static const recomp_override OBSERVERS[] = {
     { "observe", "VGAME.EXE", VGAME_47304, 0x130D, 0x0116, hook_poly_fill, "filled polygon fill (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x1377, 0x004C, hook_outline_begin, "fill or outline begin (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x01D3, hook_lib_spans, "library span fill (observer)", 1 },
+    { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x01EC, hook_lib_blit, "library blit (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x01B5, hook_lib_line, "library line (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x01BA, hook_lib_colour_ah, "library line colour (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x01BF, hook_lib_colour_stack, "library line colour (observer)", 1 },

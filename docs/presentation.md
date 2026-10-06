@@ -190,6 +190,26 @@ the 30 million instructions: 26 (1,948 calls), 62 (1,085), 42 the blit
 under 120 calls each, 18 (the transparent blit) among them at 74. Those
 are the ones still to capture.
 
+**What the other phase draws.** With `F117R_OBSERVE_PAGES=1` an entry no
+hook captures also keeps the whole page it draws to, and the next event logs
+every byte that changed ('x'), so every changed byte of a phase can be
+attributed. On 6 million instructions of the strike flight: in one phase of
+each step (the 3-D scene) **every changed byte is a captured fill or library
+primitive** (about 6,650 a phase, 955 of them library span fills and lines);
+in the other (the cockpit and HUD) the blit, entry 42, changes about 5,000 of
+6,670, then entries 73 (480), 5 (about 390), 1 (163), 4, 11, 18, 3 and 71,
+and the captured lines the rest. (The 82% / 2% split measured before had the
+two buffers the wrong way round: the origin a `game_draw` dump shows is the
+one the *next* phase draws to.)
+
+**The blit.** Entry 42 is `(src_page, sx, sy, dst_page, dx, dy, w, h)`, far,
+eight words; a page is an index into the driver's page table at cs:[0787]:
+0 the display (A000), 1 the work page (47BD, the one dumped), 2 the cockpit
+art (09C0). Each HUD phase restores instrument backgrounds from page 2 into
+page 1 and copies regions of page 1 to the display. Logged ('C') with the
+source bytes in accounting mode: **77 of 77 blits exact** (35,971 bytes) -
+every changed byte inside the destination and equal to its source.
+
 **How much of a frame is captured.** With `F117R_OBSERVE_PAGES=1` the
 observer dumps the library's whole 64 KB page segment at each `game_draw`
 entry, and painted pixels are logged by their exact offset in it. A phase is

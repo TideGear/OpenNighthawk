@@ -232,6 +232,8 @@ def main():
     line_colour, pending_line, first_line = None, None, []
     pending_spans = None
     first_span = []
+    first_blit = []
+    blit = None
     for line in open(sys.argv[1]):
         f = line.split()
         if not f:
@@ -266,6 +268,30 @@ def main():
             pending = []
         elif f[0] == "X":
             stats["entry %d" % int(f[2])] += 1
+        elif f[0] == "C":                           # the blit (graphics entry 42)
+            v = [int(x) for x in f[2:]]
+            stats["entry 42"] += 1
+            blit = (f[1], v[:10], v[10:]) if len(v) > 10 else None
+        elif f[0] == "x" and int(f[2]) == 42 and blit is not None:
+            # the destination's changes ('x', with F117R_OBSERVE_PAGES): every
+            # changed byte inside the destination rectangle, equal to the
+            # source byte the copy puts there (a row is 320 y, no origin)
+            (sp, sx, sy, dp, dx, dy, w, h, sseg, dseg), src = blit[1], blit[2]
+            v = [int(x) for x in f[3:]]
+            ok = v[0] == dseg
+            for j in range(v[1]):
+                at, now = v[2 + 3 * j], v[3 + 3 * j]
+                y, x = divmod(at, 320)
+                y -= dy; x -= dx
+                if not (0 <= y < h and 0 <= x < w and src[y * w + x] == now):
+                    ok = False
+                    if len(first_blit) < 3:
+                        first_blit.append((blit[0], blit[1][:8], at, now, src[y * w + x] if 0 <= y < h and 0 <= x < w else None))
+                    break
+            stats["blits checked"] += 1
+            stats["blits exact"] += ok
+            stats["blit bytes"] += v[1]
+            blit = None
         elif f[0] == "K":
             line_colour = int(f[2])
         elif f[0] == "N":
@@ -376,6 +402,11 @@ def main():
         stats["library span fills"], stats["library span fills exact"],
         100.0 * stats["library span fills exact"] / max(stats["library span fills"], 1),
         {k: stats[k] for k in sorted(stats) if k.startswith("span mode")}))
+    print("%d blits checked: every changed byte in the destination rectangle and equal to its source for %d (%.1f%%), %d bytes" % (
+        stats["blits checked"], stats["blits exact"], 100.0 * stats["blits exact"] / max(stats["blits checked"], 1),
+        stats["blit bytes"]))
+    for b in first_blit:
+        print("  blit at clock %s args %s: byte at %d now %d, source %s" % b)
     print("other graphics entries called:", ", ".join("%s x%d" % (k.split()[1], stats[k]) for k in sorted(
         (k for k in stats if k.startswith("entry ")), key=lambda k: -stats[k])))
     for b in first_span:
