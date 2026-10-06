@@ -466,3 +466,11 @@ LOG:FROM:TO`, with FROM just after the flight's `ordnance.pic` open, then
 drawer (entry 11), the sprite edge cases and entry 42's deltas; the landing
 window's 1,107 are the largest share.
 
+**No byte copied (6 Oct, later).** Entry 46 writes the DAC and the CRTC start
+and no pixel memory (driver 0x125C); its 'x' work-page deltas were the
+fill's own rows, which the 'b' records already replay. Skipping them on the
+work page (kept on the display page, where strike phase 62 needs one) leaves
+every phase exact on all five routes and **0 bytes copied from the original**:
+strike 73/73, recon 34/34, Central Europe air-to-air 29/29, landing 38/38,
+cargo 38/38, on both pages.
+

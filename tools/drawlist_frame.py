@@ -446,7 +446,7 @@ def main():
             v = [int(x) for x in f[2:]]
             entry, xseg, n = v[0], v[1], v[2]
             page = pages.get(xseg)
-            if (entry in (1, 2, 3, 4, 5, 6, 11, 73, 18, 71, 19) or page is None or
+            if (entry in (1, 2, 3, 4, 5, 6, 11, 73, 18, 71, 19) or (entry == 46 and xseg != 0xA000) or page is None or
                     (entry == 42 and xseg != 0xA000)):
                 continue
             for j in range(n):
