@@ -119,9 +119,9 @@
       {
         "item": "Stage 1: draw lists replayed bit-exact at 320x200",
         "weight": 10,
-        "done": 0.95,
+        "done": 0.97,
         "kind": "estimate",
-        "evidence": "Whole phases rebuilt byte for byte over the 64 KB work page and the A000 display page (tools/drawlist_frame.py): 73 of 73 phases on 30M instructions of the strike flight, and every phase of 30M-instruction windows of four more routes (recon 34, Central Europe air-to-air 29, landing 38, cargo 38), with no byte copied from the original on any of them. Work-page changes replay by rule; direct display writes from uncoded graphics entries are replayed from captured byte deltas. The remaining work is coverage of the other routes and unexercised branches (dithered fills, the sprite clip edge cases)."
+        "evidence": "Whole phases rebuilt byte for byte over the 64 KB work page and the A000 display page (tools/drawlist_frame.py): 73 of 73 phases on 30M instructions of the strike flight, and every phase of 30M-instruction windows of four more routes (recon 34, Central Europe air-to-air 29, landing 38, cargo 38), with no byte copied from the original on any of them. Work-page changes replay by rule; direct display writes from uncoded graphics entries are replayed from captured byte deltas. Entry 22 (the scaled RLE sprite) is decoded and replayed, which closed the two late-flight windows that had copied bytes. The remaining work is unexercised branches (dithered fills, the sprite clip edge cases) and windows not yet captured."
       },
       {
         "item": "Stage 2: high-resolution re-draw",

@@ -174,6 +174,138 @@ def text_pixels(entry, blk, chars, font):
     return out, colour_end
 
 
+def scaled_sprite(v):
+    """Graphics entry 22 (driver 0x0B70-0x0E2D): the scaled, flippable RLE
+    sprite, as (offset, colour) writes to the page. v is the 'W' record: the
+    entry, the page segment, the block's eleven words, x, y, width, height,
+    the source segment and offset, its width and height, the length of its
+    rows and their bytes. Clip (0x0BC0) to the block's y range (+0Eh, +10h)
+    and x range (+12h, +14h), step the source rows and columns by the
+    Bresenham-style error terms the driver keeps in cs:[085E] and cs:[0860],
+    colour 0 transparent, a negative width or height flipping that axis."""
+    blk = v[2:13]
+    x, y, wd, hd = (s16(t) for t in v[13:17])
+    sseg, sw, sh, nbytes = v[17], v[19], v[20], v[21]
+    data = v[22:22 + nbytes]
+    out = []
+    if not sseg or not sw or not sh or not data:
+        return out
+    ymin, ymax, xmin, xmax = (s16(t) for t in blk[7:11])
+    w, h = abs(wd), abs(hd)
+    flip_x, flip_y = wd < 0, hd < 0
+    top = bottom = left = right = 0
+    di, dx = y, x
+    if di < 0:
+        top = -di
+        if top >= h:
+            return out
+    bx = ymax - ymin
+    if bx < 0 or di > bx:
+        return out
+    if di + h - 1 - bx > 0:
+        bottom = di + h - 1 - bx
+    if dx < 0:
+        left = -dx
+        if left >= w:
+            return out
+    bx = xmax - xmin
+    if bx < 0 or dx > bx:
+        return out
+    if dx + w - 1 - bx > 0:
+        right = dx + w - 1 - bx
+    cols, rows = w - left - right, h - top - bottom
+    if cols <= 0 or rows <= 0:
+        return out
+    dx += xmin
+    di += ymin + top
+    vstep = 320
+    cx = top
+    if flip_y:
+        vstep, cx = -320, bottom
+        di += rows - 1
+    # the source row the first visible destination row starts on
+    row_at = [0]
+    pos = 0
+    for _ in range(sh):
+        row_at.append(pos + (data[pos] | data[pos + 1] << 8) + 4)
+        pos = row_at[-1]
+        if pos >= len(data):
+            break
+    r = 0
+    ax = -h
+    while True:
+        cx -= 1
+        if cx < 0:
+            break
+        ax += sh
+        if ax < 0:
+            continue
+        while True:
+            r += 1
+            ax -= h
+            if ax < 0:
+                break
+    verr = ax
+    dx += left
+    cx = left
+    step = 1
+    if flip_x:
+        cx, step = right, -1
+        dx += cols - 1
+    ax, scol = -w, 0
+    while True:
+        cx -= 1
+        if cx < 0:
+            break
+        ax += sw
+        if ax < 0:
+            continue
+        while True:
+            scol += 1
+            ax -= w
+            if ax < 0:
+                break
+    herr = ax
+    base = 320 * di + dx
+    for _ in range(rows):
+        a = row_at[r] if r < sh and r < len(row_at) else None
+        if a is not None and a + 4 <= len(data):
+            alen = data[a] | data[a + 1] << 8
+            lead = data[a + 2] | data[a + 3] << 8
+            if alen and alen + lead > scol:
+                buf = [0] * lead + data[a + 4:a + 4 + alen]
+                buf += [0] * max(0, sw - len(buf))
+                si, bp, p, col, load = scol, herr, base, 0, True
+                for _c in range(cols):
+                    # one destination pixel per column, as 0x0DD3-0x0DF6
+                    if load:
+                        col = buf[si] if si < len(buf) else 0
+                        si += 1
+                        load = False
+                    if col:
+                        out.append((p & 0xFFFF, col))
+                    p += step
+                    bp += sw
+                    if bp < 0:
+                        continue           # the same source pixel again
+                    bp -= w
+                    while bp >= 0:
+                        si += 1
+                        bp -= w
+                    load = True
+        # next destination row
+        base += vstep
+        ax = verr + sh
+        if ax >= 0:
+            while True:
+                r += 1
+                ax -= h
+                if ax < 0:
+                    break
+        verr = ax
+    return out
+
+
 def sprite_clip(blk):
     """Driver 0E41 (entries 71, 19): the sprite's block clipped to x in
     [+14h, +16h] and y in [+10h, +12h], signed, as the original adjusts it -
@@ -370,6 +502,14 @@ def main():
                     a = (320 * (dy + y) + dx + x) & 0xFFFF
                     if a < len(page):
                         page[a] = rows[y][x]
+        elif k == "W":                                       # entry 22, the scaled RLE sprite
+            v = [int(x) for x in f[2:]]
+            page = pages.get(v[1])
+            if page is not None:
+                for a, col in scaled_sprite(v):
+                    if a < len(page):
+                        page[a] = col
+            totals["scaled sprites"] += 1
         elif k == "T":
             v = [int(x) for x in f[2:]]
             entry, tseg, blk = v[0], v[1], v[2:13]
@@ -446,7 +586,7 @@ def main():
             v = [int(x) for x in f[2:]]
             entry, xseg, n = v[0], v[1], v[2]
             page = pages.get(xseg)
-            if (entry in (1, 2, 3, 4, 5, 6, 11, 73, 18, 71, 19) or (entry == 46 and xseg != 0xA000) or page is None or
+            if (entry in (1, 2, 3, 4, 5, 6, 11, 22, 73, 18, 71, 19) or (entry == 46 and xseg != 0xA000) or page is None or
                     (entry == 42 and xseg != 0xA000)):
                 continue
             for j in range(n):

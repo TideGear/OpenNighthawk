@@ -561,6 +561,58 @@ static int hook_lib_sprite(machine_t *m)
     return 0;
 }
 
+/* Graphics entry 22 (1E42:0188, driver 0B70): the scaled, flippable RLE
+ * sprite. Arguments after the return address: the block (SS offset; word 0
+ * the page, +0Eh..+14h the clip's y range and x range), x, y, a signed width
+ * and a signed height (the sign flips the axis), the source's offset and
+ * segment. The source is a word width, a word height, then per row a data
+ * length A, a leading transparent count B and A bytes. Logged ('W'): the
+ * entry, the page's segment, the block's eleven words, x, y, width, height,
+ * the source segment and offset, its width and height, the length of the rows
+ * that follow and those bytes (each row as stored, its two words included). */
+static int hook_lib_scaled(machine_t *m)
+{
+    flush(m);
+    const f117_observer *o = g_f117_observer;
+    if (!o || !o->prim) return 0;
+    cpu_t *c = &m->cpu;
+    const uint16_t ss = c->seg[S_SS], sp = c->r[R_SP];
+    const uint16_t blk = seg_read16(c, ss, (uint16_t)(sp + 4));
+    const uint16_t drv = slot_target_seg(m, c->ip);
+    const uint16_t soff = seg_read16(c, ss, (uint16_t)(sp + 0x0E)), sseg = seg_read16(c, ss, (uint16_t)(sp + 0x10));
+    static int32_t v[32 + 64000];
+    int n = 0;
+    v[n++] = 22;
+    v[n++] = seg_read16(c, drv, (uint16_t)(0x0787 + 2 * (seg_read16(c, ss, blk) & 0xFF)));
+    for (int k = 0; k < 11; k++) v[n++] = seg_read16(c, ss, (uint16_t)(blk + 2 * k));
+    v[n++] = (int16_t)seg_read16(c, ss, (uint16_t)(sp + 6));
+    v[n++] = (int16_t)seg_read16(c, ss, (uint16_t)(sp + 8));
+    v[n++] = (int16_t)seg_read16(c, ss, (uint16_t)(sp + 0x0A));
+    v[n++] = (int16_t)seg_read16(c, ss, (uint16_t)(sp + 0x0C));
+    v[n++] = sseg;
+    v[n++] = soff;
+    const uint16_t sw = sseg ? seg_read16(c, sseg, soff) : 0, sh = sseg ? seg_read16(c, sseg, (uint16_t)(soff + 2)) : 0;
+    v[n++] = sw;
+    v[n++] = sh;
+    const int len_at = n++;
+    int total = 0;
+    if (sw && sh && sh <= 256) {
+        uint16_t at = (uint16_t)(soff + 4);
+        for (int r = 0; r < sh; r++) {
+            const int len = seg_read16(c, sseg, at) + 4;
+            if (total + len > 60000) { total = -1; break; }
+            for (int k = 0; k < len; k++) v[n++] = mem_read8(c, phys(sseg, (uint16_t)(at + k)));
+            total += len;
+            at = (uint16_t)(at + len);
+        }
+    }
+    v[len_at] = total;
+    if (total < 0) { v[len_at] = 0; n = len_at + 1; }
+    o->prim(o->user, c->icount, 'W', v, n);
+    any_begin(m, 22, seg_read16(c, drv, 0x0194));
+    return 0;
+}
+
 /* Graphics entry 11 (1E42:0151): a tick scale (driver 071A). From row BX - 1
  * (+20 when DL >= 1, +1 more when CL is set) upward in steps of two rows,
  * while the row is not below the table's low limit: a tick at the table's x,
@@ -702,6 +754,7 @@ static const recomp_override OBSERVERS[] = {
     { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x02D6, hook_lib_copy, "library page dissolve (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0151, hook_lib_ticks, "library tick scale (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0287, hook_lib_sprite, "library sprite, block argument (observer)", 1 },
+    { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0188, hook_lib_scaled, "library scaled sprite (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0174, hook_lib_sprite, "library sprite (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x027D, hook_lib_sprite, "library clipped sprite, block argument (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0179, hook_lib_sprite, "library clipped sprite (observer)", 1 },

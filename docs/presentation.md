@@ -507,3 +507,13 @@ it scaled by a Bresenham-style step (0xDD3-0xDF6, the horizontal error term in
 ('S'), with its block, its source rows and the page, and replay it in
 `drawlist_frame.py` by those rules; then rerun both windows.
 
+**Entry 22 decoded and replayed (6 Oct, 13:30).** `hook_lib_scaled` in
+`observe.c` logs the scaled RLE sprite ('W': block, x, y, signed width and
+height, source and its rows), and `scaled_sprite` in `drawlist_frame.py`
+replays it by the driver's rules (clip to the block's ranges, Bresenham-style
+column and row stepping, flips, colour 0 transparent). On its first run both
+failing windows are exact with nothing copied: the strike impact window (56
+of 56 phases, both pages) and the `strike_return` landing approach (45 of 45).
+The earlier windows (strike at 2.34B and 8.53B, landing at 2.34B and 9.90B,
+cargo, recon, Central Europe air-to-air) are still exact on the new build.
+
