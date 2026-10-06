@@ -464,7 +464,7 @@ static int hook_lib_blit(machine_t *m)
     return 0;
 }
 
-/* Graphics entries 5, 4, 3 and 1 (1E42:0133, 012E, 0129, 011F): text. A
+/* Graphics entries 6, 5, 4, 3, 2 and 1 (1E42:0138, 0133, 012E, 0129, 0124, 011F): text. A
  * parameter block in SS - page, mode (1 opaque, else transparent),
  * foreground, background, x, y, font, the row clip (+0Eh, +10h) and the width
  * clip (+14h) - and a NUL-terminated string in SS; entry 5 is handed both
@@ -706,6 +706,8 @@ static const recomp_override OBSERVERS[] = {
     { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x027D, hook_lib_sprite, "library clipped sprite, block argument (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0179, hook_lib_sprite, "library clipped sprite (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x011F, hook_lib_text, "library text, rows clipped (observer)", 1 },
+    { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0124, hook_lib_text, "library text, left clipped (observer)", 1 },
+    { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0138, hook_lib_text, "library text, clipped on all sides (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0129, hook_lib_text, "library text, width clipped (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x012E, hook_lib_text, "library text (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0133, hook_lib_text, "library text, block argument (observer)", 1 },

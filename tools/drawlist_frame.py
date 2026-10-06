@@ -94,7 +94,7 @@ def text_pixels(entry, blk, chars, font):
     def width(c):
         return fixed_w if fixed_w else (widths[c - first] + spacing) & 0xFF
 
-    if entry == 3:
+    if entry in (3, 6):
         limit, dx = blk[10] & 0xFFFF, x & 0xFFFF
         if dx >= limit:
             return out, None
@@ -110,7 +110,24 @@ def text_pixels(entry, blk, chars, font):
             cut = (dx - limit) & 0xFF
             s[i + 1] = 0
             break
-    if entry == 1:
+    if entry in (2, 6):                  # driver 0x2B9: skip what lies left of the clip at +12h
+        left, right = blk[9] & 0xFFFF, blk[10] & 0xFFFF
+        if s16(right - left) < 0:
+            return out, None
+        if (x & 0xFFFF) < left:
+            cx, x = x & 0xFFFF, left
+            for i, c in enumerate(s):
+                if c == 0:
+                    return out, None         # the string ends inside the clipped part: nothing drawn
+                if c & 0x80 or c > last or c < first:
+                    continue
+                cx = (cx + width(c)) & 0xFFFF
+                if s16(cx) <= s16(left):
+                    continue
+                skip = (width(c) - (cx - left)) & 0xFF
+                s = s[i:]               # the painter starts at this character; earlier colour codes are lost
+                break
+    if entry in (1, 6):
         top, bottom = blk[7] & 0xFF, blk[8] & 0xFF
         dl = y & 0xFF
         dh = (rows - 1 + dl) & 0xFF
@@ -429,7 +446,7 @@ def main():
             v = [int(x) for x in f[2:]]
             entry, xseg, n = v[0], v[1], v[2]
             page = pages.get(xseg)
-            if (entry in (1, 3, 4, 5, 11, 73, 18, 71, 19) or page is None or
+            if (entry in (1, 2, 3, 4, 5, 6, 11, 73, 18, 71, 19) or page is None or
                     (entry == 42 and xseg != 0xA000)):
                 continue
             for j in range(n):

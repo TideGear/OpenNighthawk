@@ -442,11 +442,14 @@ redone at the new resolution.
 
 **Second route (6 Oct).** A 30M-instruction window of the `recon` route
 (clock 3.07B-3.10B, same capture command) rebuilds **34 of 34 phases exact on
-both pages**, but 2,917 bytes are copied from the original rather than
-replayed (the strike flight needed none). Fill styles are not the cause: every
-fill colour word in this window is solid, AND, OR or discard, which `paint`
-handles. The copied bytes are direct work-page writes ('x') by entries 6
-(1,960 bytes) and 2 (910) which the strike flight never called; entries 5, 1,
-4, 18 and 11 are the larger shared ones. Decoding 6 and 2 is the next Stage 1
-step.
-
+both pages**. At first 2,917 bytes were copied from the original rather than
+replayed (the strike flight needed none): fill styles were not the cause, the
+bytes were direct writes by graphics entries 6 and 2, which the strike flight
+never called. They are the text family's two remaining clip variants
+(driver 0x2A1 and 0x2B0): entry 6 cuts at the width clip (+14h), skips what
+lies left of the clip at +12h (0x2B9: the string restarts at the first visible
+character, earlier colour codes are lost, and its first glyph loses the
+overshoot as a left skip) and clips the rows; entry 2 does only the left skip.
+Both are hooked as 'T' and replayed by `text_pixels`; the copied bytes drop to
+129 and all 34 phases stay exact. What is left there is entries 11 (the HUD),
+18, 71 and 73 sprites' edge cases and the `x` deltas of entry 42.
