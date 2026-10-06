@@ -4040,6 +4040,86 @@ static int crt_null_check(machine_t *m)
     return 1;
 }
 
+/* A 32-bit by 16-bit signed divide that does not fault. */
+static int idiv_fits(int32_t n, int16_t d)
+{
+    if (d == 0 || (d == -1 && n == INT32_MIN)) return 0;
+    const int32_t q = n / d;
+    return q <= 32767 && q >= -32768;
+}
+
+/* VGAME 0x129A2 (120A:0902), model_project: DI points at a camera-space
+ * vertex of three 32-bit coordinates (x, y, z); BX at the output, two
+ * 32-bit pixels. With the orthographic switch [7D8E] clear, by the high word
+ * of z - at least 0x100: (x >> 8) / z_high and the same for y, the 24-bit
+ * numerators taken from bytes 1..3 and 5..7; from 1 to 0xFF: (x >> 1) /
+ * ((z >> 8) >> 1), the low word of z >> 8 halved; below 1: the sentinel
+ * 8000h in the x pixel's high word and nothing else. Each quotient is
+ * widened to 32 bits (CWD). A divide that would fault, and the orthographic
+ * case, are left to the original (which takes the divide-error vector). The
+ * fraction the divide throws away is the remainder: the sub-pixel position. */
+static int vgame_model_project(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 28)) return 0;
+    const uint16_t ds = c->seg[S_DS];
+    if (mem_read8(c, phys(ds, 0x7D8E)) != 0) return 0;            /* orthographic: the original */
+    undo_t u;
+    undo_begin(c, &u);
+    const uint16_t di = c->r[R_DI], bx = c->r[R_BX];
+    uint16_t cx = ds_get(c, (uint16_t)(di + 0x0A));
+    unsigned n = 3;                                               /* cmp, jne, mov cx */
+    alu_sub(c, mem_read8(c, phys(ds, 0x7D8E)), 0, 0, 0);
+    alu_sub(c, cx, 0x0100, 1, 0);
+    n += 2;                                                       /* cmp, jl */
+    c->r[R_CX] = cx;
+    if (!x86_cond(c, 0xC)) {                                      /* cx >= 0x100 */
+        for (int k = 0; k < 2; k++) {
+            const uint16_t at = (uint16_t)(di + (k ? 5 : 1));
+            const uint16_t w = seg_read16(c, ds, at);
+            const int8_t hi = (int8_t)mem_read8(c, phys(ds, (uint16_t)(at + 2)));
+            if (!idiv_fits((int32_t)(((uint32_t)(uint16_t)(int16_t)hi << 16) | w), (int16_t)cx)) return undo_abort(c, &u);
+            c->r[R_AX] = (uint16_t)(int16_t)hi;
+            c->r[R_DX] = w;                                       /* CWDE then XCHG: DX:AX */
+            const uint16_t t = c->r[R_AX]; c->r[R_AX] = c->r[R_DX]; c->r[R_DX] = t;
+            x86_idiv16(c, cx, 0);
+            c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0;
+            alu_logic(c, c->r[R_AX], 1);
+            undo_put16(c, &u, ds, (uint16_t)(bx + 4 * k), c->r[R_AX]);
+            undo_put16(c, &u, ds, (uint16_t)(bx + 4 * k + 2), c->r[R_DX]);
+            n += 9;
+        }
+    } else {
+        alu_sub(c, cx, 1, 1, 0);
+        n += 2;                                                   /* cmp cx, 1 / jl */
+        if (x86_cond(c, 0xC)) {                                   /* behind the eye: the sentinel */
+            undo_put16(c, &u, ds, (uint16_t)(bx + 2), 0x8000);
+            n += 1;
+        } else {
+            cx = x86_shift(c, 5, ds_get(c, (uint16_t)(di + 9)), 1, 1);
+            c->r[R_CX] = cx;
+            n += 2;
+            for (int k = 0; k < 2; k++) {
+                uint16_t dx = ds_get(c, (uint16_t)(di + 2 + 4 * k)), ax = ds_get(c, (uint16_t)(di + 4 * k));
+                dx = x86_shift(c, 7, dx, 1, 1);
+                ax = x86_shift(c, 3, ax, 1, 1);
+                if (!idiv_fits((int32_t)(((uint32_t)dx << 16) | ax), (int16_t)cx)) return undo_abort(c, &u);
+                c->r[R_AX] = ax; c->r[R_DX] = dx;
+                x86_idiv16(c, cx, 0);
+                c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0;
+                alu_logic(c, c->r[R_AX], 1);
+                undo_put16(c, &u, ds, (uint16_t)(bx + 4 * k), c->r[R_AX]);
+                undo_put16(c, &u, ds, (uint16_t)(bx + 4 * k + 2), c->r[R_DX]);
+                n += 9;
+            }
+        }
+    }
+    if (u.full || c->icount + n + 1 > c->stop_at) return undo_abort(c, &u);
+    c->icount += n + 1;                                           /* the RET */
+    near_ret(c);
+    return 1;
+}
+
 static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x4958, vgame_free_fall, "free fall", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD50A, vgame_waypoint_from_target, "waypoint from target", 1 },
@@ -4170,6 +4250,7 @@ static const recomp_override MATCHED[] = {
     { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x24B7, chain_last, "last record of a chain", 1 },
     { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x1C91, chain_last, "last record of a chain", 1 },
     { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x219D, chain_last, "last record of a chain", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x120A, 0x0902, vgame_model_project, "perspective projection of a camera-space vertex", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xF968, heap_search, "near-heap free-block search", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x4738, vgame_effect_timers, "effect timers", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x2E7F, vgame_ratio15, "ratio as a 1.15 fraction", 1 },

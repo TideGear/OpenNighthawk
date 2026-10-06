@@ -4,7 +4,7 @@
  *           [--engine interp|recomp] [--time-us N]
  *           [--type WHEN:KEYS]... [--click WHEN:X,Y]... [--move WHEN:X,Y]... [--hold MS]
  *           [--record FILE] [--replay FILE]
- *           [--hash-every N] [--hash-from N] [--trace FROM:TO:FILE]
+ *           [--hash-every N] [--hash-from N] [--peek LINEAR] [--trace FROM:TO:FILE]
  *           [--coverage FILE] [--screen FILE.ppm] [--shots EVERY:PREFIX]
  *           [--fix ID|all]... [--list-fixes]
  *           [--opl-log FILE] [--midi-log FILE] [--speaker-log FILE]
@@ -164,6 +164,8 @@ int main(int argc, char **argv)
     uint64_t steps = 100000000ull, ips = MACHINE_DEFAULT_IPS, hold_ms = 60;
     uint64_t time_us = 0, hash_every = 0, hash_from = 0;
     uint64_t trace_from = 0, trace_to = 0;
+    uint32_t peek_at = 0;                  /* --peek LINEAR (hex): print the word there at every hash line */
+    int peek_on = 0;
     static char trace_path[600];
     int engine = ENGINE_INTERP;
     uint64_t shot_every = 0, next_shot = 0;
@@ -181,6 +183,7 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--hold") && v) { hold_ms = strtoull(v, NULL, 0); i++; }
         else if (!strcmp(a, "--time-us") && v) { time_us = strtoull(v, NULL, 0); i++; }
         else if (!strcmp(a, "--hash-every") && v) { hash_every = strtoull(v, NULL, 0); i++; }
+        else if (!strcmp(a, "--peek") && v) { peek_at = strtoul(v, NULL, 16); peek_on = 1; i++; }
         else if (!strcmp(a, "--hash-from") && v) { hash_from = strtoull(v, NULL, 0); i++; }
         else if (!strcmp(a, "--coverage") && v) { coverage = v; i++; }
         else if (!strcmp(a, "--opl-log") && v) { opl_log = v; i++; }
@@ -326,6 +329,8 @@ int main(int argc, char **argv)
         if (m.cpu.icount >= next_hash) {
             printf("[hash] %llu %016llx %s\n", (unsigned long long)m.cpu.icount,
                    (unsigned long long)state_hash(&m), dos_current_program(&m));
+            if (peek_on)
+                printf("[peek] %llu %05X %04X\n", (unsigned long long)m.cpu.icount, peek_at, mem_read16(&m.cpu, peek_at));
             next_hash += hash_every;
         }
         if (rc != RUN_SLICE) break;
