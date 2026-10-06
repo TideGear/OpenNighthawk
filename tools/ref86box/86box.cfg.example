@@ -1,0 +1,37 @@
+﻿[Machine]
+cpu_family = 286
+cpu_multi = 1
+cpu_speed = 6000000
+cpu_use_dynarec = 0
+machine = ami286
+mem_size = 640
+time_sync = disabled
+
+[Video]
+gfxcard = vga
+
+[Input devices]
+keyboard_type = keyboard_at
+mouse_type = none
+
+[Sound]
+sndcard = adlib
+
+[Storage controllers]
+hdc_1 = xtide_at
+
+[Hard disks]
+hdd_01_fn = f117a.img
+hdd_01_ide_channel = 0:0
+hdd_01_parameters = 17, 8, 940, 0, ide
+hdd_01_speed = ramdisk
+
+[Floppy and CD-ROM drives]
+fdd_01_fn = boot.img
+fdd_01_type = 525_2hd
+
+[General]
+emu_build_num = 9001
+host_cpu = AMD Ryzen 9 7950X 16-Core Processor            
+uuid = 5e73c4be-25e9-5b06-a196-90c8f1549976
+vid_renderer = qt_software

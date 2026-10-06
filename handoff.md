@@ -19,31 +19,53 @@ roadmap order, starting with the open Phase 1 items. Work is in
 pushed commit. Build with `C:\Users\Tideg\f117-recomp-local\build-p3.cmd`
 into `p3-build`.
 
-**86Box as a second reference (6 Oct, 15:00; disk built, not yet booted).**
+**86Box as a second reference (6 Oct, 15:00; boots to the BIOS, not to DOS).**
 Owner's policy: parity with the original game on real hardware, not DOSBox;
 identified DOSBox quirks are not to be copied (memory
-`f117-parity-target-original-not-dosbox`). In `D:/86box`: `app/` is 86Box v6.0
-(b9001) extracted, with the IBM AT 5170 BIOS
-(`roms/machines/ibmat/BIOS_5170_15NOV85_U27/U47.BIN`) and
-`roms/video/vga/ibm_vga.bin` fetched by raw URL from the 86Box `roms` repo (the
-whole repo is too large to pull; the link is about 140 KB/s, resume with
-`curl -C -`); `fd13/` is the FreeDOS 1.3 floppy edition. `py
-tools/ref86box/build_hdd.py` (run in `D:/86box`, needs `pip install pyfatfs`)
-builds `vm/f117a.img`: 64 MB, geometry 130 cylinders x 16 heads x 63 sectors,
-one active FAT16 partition at LBA 63 holding FreeDOS (`\FREEDOS`, `KERNEL.SYS`,
-FDCONFIG/FDAUTO) and the 146 files of the GOG install in `\F117A`. The MBR has
-a partition table but no boot code. Next: a copy of the 1.44 MB boot floppy
-(`py tools/ref86box/make_boot_floppy.py` makes `vm/boot.img`: its `fdauto.bat` runs
-`fdisk /mbr` and `sys c:` unattended; written, not yet booted; note that
-backslash escapes in a shell heredoc corrupted the first attempt, hence `chr(92)`);
-86Box.exe does open a responding window in this session; an `86box.cfg` (86Box writes none until its UI is used, so the
-machine, hard-disk controller and drive geometry keys have to be written by
-hand; the IBM AT BIOS wants a drive type, so an AMI/Award 286 or 386 board with
-an auto-detecting IDE controller may be easier); then boot, and find a way to
-get frames and audio out (86Box has no debugger channel; desktop automation
-earlier failed with GetCursorPos access denied). First comparisons: the PIT
-control-word IRQ0 behaviour behind the roster timing, and the OPL output, the
-two places the machine deliberately follows DOSBox 0.74 / DBOPL.
+`f117-parity-target-original-not-dosbox`). Tools are in `tools/ref86box/`
+(copy them to `D:/86box`, which holds the downloads: `app/` 86Box v6.0 b9001,
+`fd13/` FreeDOS 1.3 floppy edition, `vm/` the profile; the download link is
+about 140 KB/s, resume with `curl -C -`; `pip install pyfatfs`).
+- `build_hdd.py` builds `vm/f117a.img`: 940 x 8 x 17 (IBM AT drive type 4, 62 MiB),
+  one active FAT16 partition at LBA 17 holding FreeDOS and the 146 GOG files in
+  `/F117A`; the MBR has a partition table and no boot code.
+  `make_boot_floppy.py` writes `vm/boot.img` from the 1.2 MB FreeDOS boot
+  floppy with an `fdauto.bat` that runs `fdisk /mbr` then `sys c:` unattended.
+  Neither has ever run: the VM has not reached DOS (the disk image is unchanged
+  after every launch).
+- What works in this session: 86Box launches with `86Box.exe -P D:/86box/vm -N`
+  and a responding window; **`PrintWindow` captures its window**
+  (`run3.ps1` takes a timed series; `CopyFromScreen` fails, there is no
+  interactive desktop); 86Box rewrites `86box.cfg` at start (it normalised my
+  hand-written keys; `86box.cfg.example` is what it accepted).
+- What does not: **keys cannot be injected** (`PostMessage` WM_KEYDOWN to the
+  window and its 5 child windows does nothing; 86Box probably reads raw input;
+  `SendInput` needs a desktop). So the BIOS must pass POST with no keypress.
+- Machines tried, with the BIOS and ROMs fetched by raw URL from the 86Box
+  `roms` repo into `app/roms`: `ibmat` (IBM AT 5170: only 512 KB, error 161
+  then 162), `ibmxt286` (IBM XT 286: 640 KB OK, but 162 "System Options Not
+  Set" for every CMOS I wrote, equipment byte 01/21/61, disk type 40/00; the
+  86Box nvr is `vm/nvr/<machine>.nvr`, 128 bytes, AT layout, checksum of
+  0x10-0x2D at 0x2E-0x2F, `setcmos2.py` writes one), and `ami286` (AMI 286
+  BIOS, 1024 KB OK, then a black screen; the hard disk is an XT-IDE card,
+  `hdc_1 = xtide_at` with `roms/hdd/xtide/ide_at.bin`, so no CMOS drive type is
+  needed, but the floppy needs a CMOS type, so it may never try to boot).
+- From 86Box's source (`src/86box.c`): `--logfile/-L FILE`, `--debug/-D` (Windows
+  debug console), `--clear/-X cmos|flash|both`, `--nohook/-W`, `--settings/-S`,
+  `--image/-I`, `--vmname/-V`, `--rompath/-R`, `--testmode/-T`; screenshot is
+  Ctrl+F11 (a raw, unscaled one too), saved as a PNG under `screenshots/`; no
+  debugger or GDB stub exists in the release build (Chrome tracing needs a
+  MINITRACE build). Searching did not find a scripted-capture interface.
+- Next, in order: (1) launch with `-D` and `-L` to see what the BIOS waits on;
+  (2) the cheapest way past the keyboard problem is for the owner, who has a
+  real desktop, to run 86Box once from `D:/86box/app` with `-P D:/86box/vm`,
+  press F1/Setup, save the CMOS (floppy 1.2 MB, no HDD type if XT-IDE), and
+  use Ctrl+F11 for frames; the saved `nvr` then makes later runs unattended;
+  (3) or choose a later BIOS that auto-configures (an AMI/Award 386/486 board,
+  a PS/1 with built-in setup); (4) once DOS boots, run the unattended floppy,
+  re-launch from the hard disk, and compare the intro and the PIT control-word
+  IRQ0 behaviour behind the roster timing, and the OPL output (the two places
+  the machine deliberately follows DOSBox 0.74 / DBOPL).
 
 **Routes and gate (6 Oct, 12:30).** All 27 routes were re-checked on the
 rational timing. Re-recorded or re-expected today: `strike`, `strike_return`,

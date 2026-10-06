@@ -8,7 +8,7 @@ warnings.filterwarnings("ignore")
 from pyfatfs.PyFatFS import PyFatFS
 
 B = chr(92)
-shutil.copy("fd13/144m/x86BOOT.img", "vm/boot.img")
+shutil.copy("fd13/120m/x86BOOT.img", "vm/boot.img")
 fs = PyFatFS("vm/boot.img")
 fs.writetext("/fdauto.bat", "@echo off\r\nset PATH=" + B + "freedos" + B + "bin\r\nfdisk /mbr\r\nsys c:\r\n"
                             "echo SYSDONE > c:" + B + "sysdone.txt\r\n")

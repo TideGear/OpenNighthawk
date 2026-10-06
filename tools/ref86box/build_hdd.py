@@ -6,7 +6,7 @@ from pathlib import Path
 from pyfatfs.PyFat import PyFat
 from pyfatfs.PyFatFS import PyFatFS
 
-C, H, S = 130, 16, 63                     # 130 * 16 * 63 sectors = 64.0 MB
+C, H, S = 940, 8, 17                      # IBM AT drive type 4: 940 * 8 * 17 sectors = 62.4 MiB
 total = C * H * S
 start = S                                 # the partition starts at LBA 63 (cylinder 0, head 1)
 size_sectors = total - start
