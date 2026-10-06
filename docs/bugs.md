@@ -254,6 +254,17 @@ Status values:
   displays these fields.
 - **Where.** END loop `0x003D9`; `0x00441`-`0x0045A`; far pointer
   `DS:0x55DE`.
+- **Fix available: `--fix D12`.** Two overrides in END: 0x0443 compares the
+  best rating signed, and 0x0450 sign-extends the rating before it joins the
+  total (`cwd` for `sub dx,dx`). Both clocks are unchanged. Checked on the
+  `career_serge` route (END's tally after a survived mission, record at ES:BX
+  020E:1272 on this route): unstaged, fixed and unfixed runs agree exactly
+  (best 66 -> 218, total 284, so a positive rating is untouched). With one
+  staged write, the best set to 0xFFF0 (-16) before the tally, the original
+  keeps 65,520 as the best rating and the fix replaces it with 218; the run
+  log names it (`[fix D12] best -16, rating 218: replaced`). The total's
+  sign extension only differs for a negative rating, which no route reaches;
+  that half is checked by reading the code, not by a run.
 - **Detail.** Reimp catalogue:893-940.
 
 ### D34. The destroyed-object table has no end

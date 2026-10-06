@@ -18,6 +18,7 @@
 #define VGAME_47304 0x8287450CCA85106FULL
 #define START_47304 0xC65ECC83823E4907ULL
 #define ASOUND_47304 0x9CD012D9D4A2CF30ULL
+#define END_47304   0xFA7167EE4E377EC1ULL
 
 /* D5. VGAME's impact gate at 0x06D1C admits weapon types 1Eh, 1Dh and 1Ch;
  * anything else reaches the jmp at 0x6D2E to the skip at 0x6EBB. A supply
@@ -31,6 +32,43 @@ static int fix_d5(machine_t *m)
     c->op_cs = c->seg[S_CS];
     c->op_ip = c->ip;
     c->ip = type == 0x26 ? 0x6D31 : 0x6EBB;
+    c->icount++;                     /* the one instruction it replaces */
+    return 1;
+}
+
+/* D12. END's tally after a survived mission (0x042C-0x045E): the rating comes
+ * back in AX, and ES:BX is the pilot's record, whose word at +2Eh is the best
+ * rating and whose dword at +32h is the running total. 0x0443 compares the
+ * best with the rating unsigned (`jae`), so a negative best (65,524 for -12)
+ * is never replaced by a better one and the first negative rating always
+ * replaces the initial 0; 0x0450 zero-extends the rating (`sub dx,dx`), so -12
+ * adds as +65,524. The fixes compare signed and sign-extend (`cwd`). Both leave
+ * every other path, and both clocks, as they were. */
+static int d12_logged;
+static int fix_d12_best(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t best = seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x2E)), rating = c->r[R_AX];
+    const int keep = (int16_t)best >= (int16_t)rating;
+    if (keep != (best >= rating) && !d12_logged) {
+        d12_logged = 1;
+        dos_log(m, "[fix D12] best %d, rating %d: %s @%llu (ES:BX %04X:%04X)\n", (int16_t)best, (int16_t)rating,
+                keep ? "kept" : "replaced", (unsigned long long)c->icount, c->seg[S_ES], c->r[R_BX]);
+    }
+    c->op_cs = c->seg[S_CS];
+    c->op_ip = c->ip;
+    c->ip = keep ? 0x044D : 0x0449;
+    c->icount += 2;                  /* the cmp and the jae */
+    return 1;
+}
+
+static int fix_d12_total(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0x0000;
+    c->op_cs = c->seg[S_CS];
+    c->op_ip = c->ip;
+    c->ip = 0x0452;
     c->icount++;                     /* the one instruction it replaces */
     return 1;
 }
@@ -250,6 +288,8 @@ static const recomp_override OVERRIDES[] = {
     { "D34", "VGAME.EXE", VGAME_47304, 0x0000, 0x0F7E, fix_d34_set_type, "found record's type, written" },
     { "D34", "VGAME.EXE", VGAME_47304, 0x0000, 0x0D5E, fix_d34_get_type, "found record's type, read" },
     { "D2", "ASOUND.117", ASOUND_47304, 0x01B6, 0x09F2, fix_d2_speech, "AdLib speech without the busy-wait" },
+    { "D12", "END.EXE", END_47304, 0x0000, 0x0443, fix_d12_best, "END's best-rating compare, signed" },
+    { "D12", "END.EXE", END_47304, 0x0000, 0x0450, fix_d12_total, "END's rating total, sign-extended" },
 };
 
 /* A byte corrected as it is read. */
@@ -276,6 +316,7 @@ static const struct { const char *id, *what; } FIXES[] = {
     { "D11", "saves are written to a temporary file and renamed into place, so an interrupted save keeps the old roster" },
     { "D4", "secret-airstrip missions in Libya, North Cape and the Middle East" },
     { "D5", "supply drops earn their delivery credit" },
+    { "D12", "END's best-rating and total tally treats ratings as signed" },
     { "D34", "the destroyed-object table keeps records past 30 without overwriting" },
 };
 #define NFIXES (sizeof FIXES / sizeof FIXES[0])
