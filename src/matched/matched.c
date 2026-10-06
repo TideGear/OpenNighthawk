@@ -26,7 +26,9 @@
 #include "observe.h"
 #include "recomp_rt.h"
 #include "x86_sem.h"
+#include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
 
 static int default_runner(machine_t *m) { return machine_run(m, m->run_until); }
@@ -3857,11 +3859,11 @@ static int vgame_map_cell_bounds(machine_t *m)
 {
     cpu_t *c = &m->cpu;
     if (!room(c, 7)) return 0;
-    const uint16_t ss = c->seg[S_SS];
     cpu_push16(c, c->r[R_BP]);
     c->r[R_BP] = c->r[R_SP];
-    const uint16_t bp = c->r[R_BP];
-#define A(o) seg_read16(c, ss, (uint16_t)(bp + (o)))
+    /* The original reads its arguments through the live BP and SS, which a
+     * misbehaving callee could have changed; so does this. */
+#define A(o) seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + (o)))
     cpu_push16(c, A(8));
     cpu_push16(c, A(4));
     cpu_push16(c, 0);
@@ -3869,7 +3871,7 @@ static int vgame_map_cell_bounds(machine_t *m)
     c->icount += 6;
     if (!guest_call(m, 0x13B9, 0x1370)) return 1;
     if (!room(c, 14)) { c->ip = 0x1370; return 1; }
-    c->r[R_SP] = bp;
+    c->r[R_SP] = c->r[R_BP];
     unsigned n = 0;
     for (int k = 0; k < 2; k++) {                                 /* the first corner: at least 0 */
         const uint16_t bx = A(k ? 8 : 4);
@@ -3885,7 +3887,7 @@ static int vgame_map_cell_bounds(machine_t *m)
     c->icount += 1 + n + 4;
     if (!guest_call(m, 0x13B9, 0x139B)) return 1;
     if (!room(c, 15)) { c->ip = 0x139B; return 1; }
-    c->r[R_SP] = bp;
+    c->r[R_SP] = c->r[R_BP];
     n = 1;
     for (int k = 0; k < 2; k++) {                                 /* the second corner: below [9510] */
         uint16_t ax = ds_get(c, 0x9510);
@@ -3987,7 +3989,7 @@ static int crt_call_with_zero(machine_t *m)
     c->icount += 6;
     if (!guest_call(m, (uint16_t)(at - 0x28), (uint16_t)(at + 0x0F))) return 1;
     if (!room(c, 3)) { c->ip = (uint16_t)(at + 0x0F); return 1; }
-    c->r[R_SP] = bp;
+    c->r[R_SP] = c->r[R_BP];                                      /* mov sp, bp: the live BP, as the original */
     c->r[R_BP] = cpu_pop16(c);
     c->icount += 3;
     near_ret(c);
@@ -4227,6 +4229,249 @@ static int vgame_model_xform_vertex(machine_t *m)
     return 1;
 }
 
+/* VGAME 0x12A2C (120A:098C), model_near_clip, far: two 3-D endpoints on the
+ * stack - (x0, y0, z0) at [bp+6], [bp+0Ah], [bp+0Eh] and (x1, y1, z1) at
+ * [bp+12h], [bp+16h], [bp+1Ah], each a 32-bit coordinate - are bisected until
+ * the midpoint's z has a high word of at most 1 (unsigned). A pass takes the
+ * midpoint (a + b + 1) >> 1 of each coordinate (x and y are kept in
+ * [7D72..7D78]) and replaces an endpoint, in place on the stack, with it: the
+ * second when the z high word less one is negative, else the first. 45
+ * instructions a pass (46 when it is the first), 33 for the last, 2 to set up
+ * the frame. A caller whose
+ * endpoints never converge would spin forever; past 40 passes, or if the work
+ * would not fit before the next event, the routine declines. */
+static int vgame_model_near_clip(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 2 + 33)) return 0;
+    const uint16_t ss = c->seg[S_SS], ds = c->seg[S_DS];
+    undo_t u;
+    undo_begin(c, &u);
+    undo_push16(c, &u, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    const uint16_t bp = c->r[R_BP];
+    unsigned n = 2;                                               /* push bp, mov bp, sp */
+    uint16_t ax = 0, dx = 0;
+#define ARG(o) seg_read16(c, ss, (uint16_t)(bp + (o)))
+#define SETARG(o, v) undo_put16(c, &u, ss, (uint16_t)(bp + (o)), (v))
+    for (int pass = 0;; pass++) {
+        if (pass > 40 || u.full) return undo_abort(c, &u);
+        static const uint8_t a0[3] = { 6, 0x0A, 0x0E }, a1[3] = { 0x12, 0x16, 0x1A };
+        for (int k = 0; k < 3; k++) {
+            ax = ARG(a0[k]); dx = ARG(a0[k] + 2);
+            ax = (uint16_t)alu_add(c, ax, ARG(a1[k]), 1, 0);
+            dx = (uint16_t)alu_add(c, dx, ARG(a1[k] + 2), 1, (c->flags & F_CF) ? 1u : 0u);
+            ax = (uint16_t)alu_add(c, ax, 1, 1, 0);
+            dx = (uint16_t)alu_add(c, dx, 0, 1, (c->flags & F_CF) ? 1u : 0u);
+            dx = x86_shift(c, 7, dx, 1, 1);                       /* sar dx, 1 */
+            ax = x86_shift(c, 3, ax, 1, 1);                       /* rcr ax, 1 */
+            if (k < 2) {
+                undo_put16(c, &u, ds, (uint16_t)(0x7D72 + 4 * k), ax);
+                undo_put16(c, &u, ds, (uint16_t)(0x7D74 + 4 * k), dx);
+                n += 10;
+            } else n += 8;
+        }
+        const uint16_t cx = dx;
+        c->r[R_CX] = cx;
+        alu_sub(c, cx, 1, 1, 0);
+        n += 3;                                                   /* mov cx, dx / cmp cx, 1 / jbe */
+        if (c->flags & (F_CF | F_ZF)) break;                      /* unsigned cx <= 1: done */
+        dx = (uint16_t)alu_sub(c, dx, 1, 1, 0);                   /* dec dx (its sign decides) */
+        const int second = (c->flags & F_SF) != 0;                /* js */
+        dx = (uint16_t)(dx + 1);                                  /* inc dx */
+        const unsigned oz = second ? 0x1A : 0x0E, ox = second ? 0x12 : 6, oy = second ? 0x16 : 0x0A;
+        SETARG(oz, ax); SETARG(oz + 2, dx);
+        SETARG(ox, ds_get(c, 0x7D72)); SETARG(ox + 2, ds_get(c, 0x7D74));
+        SETARG(oy, ds_get(c, 0x7D76)); SETARG(oy + 2, ds_get(c, 0x7D78));
+        n += 2 + (second ? 12 : 13);                              /* dec, js, inc, ten moves, then jmp (and, for the first endpoint, the jmp over the other arm) */
+        if (c->icount + n + 33 > c->stop_at) return undo_abort(c, &u);
+    }
+#undef ARG
+#undef SETARG
+    c->r[R_AX] = ax; c->r[R_DX] = dx;
+    c->r[R_BP] = cpu_pop16(c);
+    n += 2;                                                       /* pop bp, retf */
+    if (u.full || c->icount + n > c->stop_at) return undo_abort(c, &u);
+    c->icount += n;
+    far_ret(c);
+    return 1;
+}
+
+/* mov ax, [src]; mov dx, [src+2]; add ax, [add]; adc dx, 0; mov [dst], ax;
+ * mov [dst+2], dx: one projected coordinate offset by the screen origin. */
+static void edge_origin_pair(cpu_t *c, uint16_t src, uint16_t add, uint16_t dst)
+{
+    uint16_t ax = ds_get(c, src), dx = ds_get(c, (uint16_t)(src + 2));
+    ax = (uint16_t)alu_add(c, ax, ds_get(c, add), 1, 0);
+    dx = (uint16_t)alu_add(c, dx, 0, 1, (c->flags & F_CF) ? 1u : 0u);
+    c->r[R_AX] = ax; c->r[R_DX] = dx;
+    ds_put(c, dst, ax);
+    ds_put(c, (uint16_t)(dst + 2), dx);
+}
+
+/* The clipped crossing from two words at lo_at and hi_at (the near clip's
+ * [7D72..7D78]): shifted down a byte, widened, doubled and offset by the
+ * origin - 15 instructions - stored at slot + a and again at slot + b. */
+static void edge_clip_pair(cpu_t *c, uint16_t lo_at, uint16_t hi_at, uint16_t add, uint16_t si, unsigned a, unsigned b)
+{
+    uint16_t ax = ds_get(c, hi_at), dx = ds_get(c, lo_at);
+    dx = (uint16_t)((dx & 0xFF00u) | (dx >> 8));                  /* mov dl, dh */
+    dx = (uint16_t)((dx & 0x00FFu) | ((ax & 0xFFu) << 8));        /* mov dh, al */
+    ax = (uint16_t)((ax & 0xFF00u) | (ax >> 8));                  /* mov al, ah */
+    ax = (uint16_t)(int16_t)(int8_t)(ax & 0xFF);                  /* cwde: AL to AX */
+    { const uint16_t t = ax; ax = dx; dx = t; }                   /* xchg dx, ax */
+    ax = x86_shift(c, 4, ax, 1, 1);                               /* shl ax, 1 */
+    dx = x86_shift(c, 2, dx, 1, 1);                               /* rcl dx, 1 */
+    ax = (uint16_t)alu_add(c, ax, ds_get(c, add), 1, 0);
+    dx = (uint16_t)alu_add(c, dx, 0, 1, (c->flags & F_CF) ? 1u : 0u);
+    c->r[R_AX] = ax; c->r[R_DX] = dx;
+    ds_put(c, (uint16_t)(si + a), ax); ds_put(c, (uint16_t)(si + a + 2), dx);
+    ds_put(c, (uint16_t)(si + b), ax); ds_put(c, (uint16_t)(si + b + 2), dx);
+}
+
+/* After an edge arm's near clip: add sp, 18h; both clipped coordinates (30
+ * instructions); the clipper at 130D:033F; then the marker bit 4000h in
+ * [si+2] and RET. The arm that clipped the second endpoint (the code at
+ * 0x12B1D) stores the crossing at +8 and +0Ch, the other at +0 and +4. */
+static int edge_arm_tail(machine_t *m, int clipped_second)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t ret_clip = clipped_second ? 0x0ADF : 0x0C1B;
+    const uint16_t pub_call = clipped_second ? 0x0B2E : 0x0C69;
+    const uint16_t pub_ret = clipped_second ? 0x0B33 : 0x0C6E;
+    if (!room(c, 1 + 15 + 15 + 1)) { c->ip = ret_clip; return 1; }   /* ...and the call itself, which must also start before the limit */
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x18, 1, 0);
+    const uint16_t si = c->r[R_SI];
+    edge_clip_pair(c, 0x7D72, 0x7D74, 0x8602, si, clipped_second ? 8 : 0, 0x10);
+    edge_clip_pair(c, 0x7D76, 0x7D78, 0x8604, si, clipped_second ? 0x0C : 4, 0x14);
+    c->icount += 1 + 15 + 15;
+    if (!guest_call_far(m, pub_call, pub_ret)) return 1;
+    if (!room(c, 4)) { c->ip = pub_ret; return 1; }
+    c->r[R_AX] = 0x4040;
+    ds_put(c, (uint16_t)(si + 2), (uint16_t)alu_logic(c, ds_get(c, (uint16_t)(si + 2)) | 0x4040, 1));
+    c->icount += 4;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x12BDB (120A:0B3B), model_prepare_edge: BP the slot (SI = BP), DI
+ * and BX the two projected vertices (record offsets less 0xD6B4); a record's
+ * x high word of 8000h marks a vertex behind the eye. Both in front: both
+ * projections offset by the screen origin ([8602], [8604]) into the slot,
+ * then the clipper at 130D:033F. One behind: the visible end's projection
+ * into the slot, the twelve camera-space words of each end pushed, the near
+ * plane cut (120A:098C), the crossing stored twice, the clipper, and the
+ * marker. Both behind: 8080h in [si+2]. */
+static int vgame_model_prepare_edge(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 11)) return 0;
+    const uint16_t di0 = c->r[R_DI], bx0 = c->r[R_BX];
+    const uint16_t p0 = ds_get(c, (uint16_t)(di0 - 0x294A)), p1 = ds_get(c, (uint16_t)(bx0 - 0x294A));
+    enum { FRONT, P1_BEHIND, P0_BEHIND, BOTH } arm = p0 == 0x8000 ? (p1 == 0x8000 ? BOTH : P0_BEHIND)
+                                                                    : (p1 == 0x8000 ? P1_BEHIND : FRONT);
+    const unsigned pre = arm == FRONT || arm == P1_BEHIND ? 34 : arm == P0_BEHIND ? 33 : 11;
+    if (!room(c, pre + 1)) return 0;
+    const uint16_t si = c->r[R_BP];
+    c->r[R_SI] = si;
+    c->r[R_AX] = p0; c->r[R_DX] = p1;
+    alu_sub(c, p0, 0x8000, 1, 0);
+    alu_sub(c, p1, 0x8000, 1, 0);
+    if (arm == BOTH) {
+        c->r[R_AX] = 0x8080;
+        ds_put(c, (uint16_t)(si + 2), 0x8080);
+        c->icount += 11;
+        near_ret(c);
+        return 1;
+    }
+    if (arm == FRONT) {
+        c->r[R_AX] = 0xD6B4;
+        const uint16_t bx = (uint16_t)alu_add(c, bx0, 0xD6B4, 1, 0);
+        const uint16_t di = (uint16_t)alu_add(c, di0, 0xD6B4, 1, 0);
+        c->r[R_BX] = bx; c->r[R_DI] = di;
+        edge_origin_pair(c, di, 0x8602, si);
+        edge_origin_pair(c, (uint16_t)(di + 4), 0x8604, (uint16_t)(si + 4));
+        edge_origin_pair(c, bx, 0x8602, (uint16_t)(si + 8));
+        edge_origin_pair(c, (uint16_t)(bx + 4), 0x8604, (uint16_t)(si + 0x0C));
+        c->icount += 34;
+        if (!guest_call_far(m, 0x0BA4, 0x0BA9)) return 1;
+        if (!room(c, 1)) { c->ip = 0x0BA9; return 1; }
+        c->icount += 1;
+        near_ret(c);
+        return 1;
+    }
+    const int second = arm == P1_BEHIND;                          /* the second endpoint is the one cut */
+    const uint16_t vis = second ? di0 : bx0;                      /* the visible end's record */
+    const unsigned at = second ? 0 : 8;
+    edge_origin_pair(c, (uint16_t)(vis - 0x294C), 0x8602, (uint16_t)(si + at));
+    edge_origin_pair(c, (uint16_t)(vis - 0x2948), 0x8604, (uint16_t)(si + at + 4));
+    const uint16_t di = x86_shift(c, 4, di0, 1, 1);               /* shl di, 1 */
+    const uint16_t bx = x86_shift(c, 4, bx0, 1, 1);               /* shl bx, 1 */
+    c->r[R_DI] = di; c->r[R_BX] = bx;
+    const uint16_t base[2] = { second ? bx : di, second ? di : bx };
+    for (int e = 0; e < 2; e++)
+        for (int k = 0; k < 6; k++) cpu_push16(c, ds_get(c, (uint16_t)(base[e] - 0x3942 - 2 * k)));
+    c->icount += pre;
+    if (!guest_call_far(m, second ? 0x0ADA : 0x0C16, second ? 0x0ADF : 0x0C1B)) return 1;
+    return edge_arm_tail(m, second);
+}
+
+/* VGAME 0x12AD3 (120A:0A33), the model edge pass: ES:SI a list - a count
+ * word, then one word an edge, its low and high bytes the two vertex
+ * numbers - and BP walks the slots from 5EEAh, 18h bytes an edge. With the
+ * outcode switch [7D5A] set, an edge whose two endpoints' outcode bytes (at
+ * 7A02 + n) have no bit in common is skipped. Otherwise both vertex numbers
+ * times eight go to model_prepare_edge, with CX, BP and SI saved around it. */
+static int vgame_model_edge_pass(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 5)) return 0;
+    const uint16_t es = c->seg[S_ES];
+    c->r[R_BP] = 0x5EEA;
+    c->r[R_CX] = seg_read16(c, es, c->r[R_SI]);
+    c->r[R_SI] = (uint16_t)alu_add(c, c->r[R_SI], 2, 1, 0);
+    c->icount += 4;                                               /* lea, mov, add, jcxz */
+    if (c->r[R_CX] == 0) { c->icount += 1; near_ret(c); return 1; }
+    for (;;) {                                                    /* 0x12ADF */
+        if (!room(c, 8 + 3 + 6 + 3 + 1)) { c->ip = 0x0A3F; return 1; }
+        uint16_t di = seg_read16(c, es, c->r[R_SI]);
+        c->r[R_SI] = (uint16_t)alu_add(c, c->r[R_SI], 2, 1, 0);
+        uint16_t bx = (uint16_t)((di & 0xFF00u) | (di >> 8));     /* mov bx, di / mov bl, bh */
+        di = (uint16_t)alu_logic(c, di & 0xFF, 1);
+        bx = (uint16_t)alu_logic(c, bx & 0xFF, 1);
+        c->r[R_DI] = di; c->r[R_BX] = bx;
+        alu_sub(c, ds_get(c, 0x7D5A), 0, 1, 0);
+        unsigned n = 8;                                           /* mov, add, mov, mov, and, and, cmp, je */
+        int skip = 0;
+        if (!(c->flags & F_ZF)) {                                 /* the outcode test */
+            uint8_t al = mem_read8(c, phys(c->seg[S_DS], (uint16_t)(di + 0x7A02)));
+            al = (uint8_t)alu_logic(c, al & mem_read8(c, phys(c->seg[S_DS], (uint16_t)(bx + 0x7A02))), 0);
+            set_r8(c, R_AL, al);
+            n += 3;                                               /* mov al, and al, je */
+            skip = (c->flags & F_ZF) != 0;
+        }
+        if (!skip) {
+            for (int k = 0; k < 3; k++) { di = x86_shift(c, 4, di, 1, 1); bx = x86_shift(c, 4, bx, 1, 1); }
+            c->r[R_DI] = di; c->r[R_BX] = bx;
+            n += 6;
+            cpu_push16(c, c->r[R_CX]); cpu_push16(c, c->r[R_BP]); cpu_push16(c, c->r[R_SI]);
+            n += 3;
+            c->icount += n;
+            if (!guest_call(m, 0x0B3B, 0x0A74)) return 1;         /* call 0x12BDB */
+            if (!room(c, 3 + 2 + 1)) { c->ip = 0x0A74; return 1; }
+            c->r[R_SI] = cpu_pop16(c); c->r[R_BP] = cpu_pop16(c); c->r[R_CX] = cpu_pop16(c);
+            c->icount += 3;
+        } else c->icount += n;
+        c->r[R_BP] = (uint16_t)alu_add(c, c->r[R_BP], 0x18, 1, 0);          /* 0x12B17 */
+        c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);
+        c->icount += 2;                                           /* add, loop */
+        if (c->r[R_CX] == 0) break;
+    }
+    c->icount += 1;                                               /* ret */
+    near_ret(c);
+    return 1;
+}
+
 static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x4958, vgame_free_fall, "free fall", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD50A, vgame_waypoint_from_target, "waypoint from target", 1 },
@@ -4357,6 +4602,9 @@ static const recomp_override MATCHED[] = {
     { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x24B7, chain_last, "last record of a chain", 1 },
     { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x1C91, chain_last, "last record of a chain", 1 },
     { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x219D, chain_last, "last record of a chain", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x120A, 0x0A33, vgame_model_edge_pass, "model edge pass", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x120A, 0x0B3B, vgame_model_prepare_edge, "prepare one model edge", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x120A, 0x098C, vgame_model_near_clip, "near-plane clip of an edge", 2 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x120A, 0x0815, vgame_model_xform_vertex, "transform a model vertex to camera space", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x120A, 0x0902, vgame_model_project, "perspective projection of a camera-space vertex", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xF968, heap_search, "near-heap free-block search", 1 },

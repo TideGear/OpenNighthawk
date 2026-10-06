@@ -372,6 +372,8 @@ int main(int argc, char **argv)
     if (trace) fclose(trace);
     if (g_obs_file) fclose(g_obs_file);
     if (dump_len) {
+        const cpu_t *rr = &m.cpu;
+        printf("[regs] %llu CS:IP=%04X:%04X AX=%04X BX=%04X CX=%04X DX=%04X SI=%04X DI=%04X BP=%04X SP=%04X DS=%04X ES=%04X SS=%04X FL=%04X\n", (unsigned long long)rr->icount, rr->seg[S_CS], rr->ip, rr->r[R_AX], rr->r[R_BX], rr->r[R_CX], rr->r[R_DX], rr->r[R_SI], rr->r[R_DI], rr->r[R_BP], rr->r[R_SP], rr->seg[S_DS], rr->seg[S_ES], rr->seg[S_SS], rr->flags);
         printf("[dump] %05X:%X", dump_at, dump_len);
         for (uint32_t k = 0; k < dump_len; k++) printf("%s%02X", k % 32 ? "" : "\n", mem_read8(&m.cpu, dump_at + k));
         printf("\n");

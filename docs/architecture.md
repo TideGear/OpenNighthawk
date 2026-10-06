@@ -1111,3 +1111,27 @@ testable here (routes only)" rather than equal, and its evidence is the
 routes. On the strike route the two sprite wrappers that call the driver ran
 5 times each, the vector cosine 238,029 times and the clock reader once,
 with all checkpoints equal to the interpreter's.
+
+### Limits inside a matched routine, and the live shadow
+
+A matched routine must leave the machine exactly as the original would be
+at whatever clock the run stops. func_lockstep checks this three ways
+besides the full comparison: given one instruction less room than the
+original takes, a routine must decline (OVERRUN); stopped at a random clock
+inside its path, the state it leaves must equal the original's run to the
+same clock (mid-run stop); and it may never start a call into original code
+with the clock already at the limit (a timer due exactly at that call is
+taken before the call by the original, after it by a routine that called one
+clock early). The harness also plants sentinel words a routine tests for
+exactly (a part-switch escape, a vertex behind the eye) and accepts only a
+RET inside the routine, since a random callee can pop one word too many.
+
+`F117R_SHADOW=FROM:TO` checks matched routines on the live game: in that
+window each one runs, its result is kept, the state is put back, the original
+runs with every matched routine off up to the same clock, and the two are
+compared (a decline must change nothing). Device state is not part of the
+snapshot, so a window with interrupts inside a routine's calls can disturb
+the run; it is a diagnostic, not a gate. `F117R_MATCHED_LIMIT=N` (only the
+first N matched routines on) bisects a divergence to one routine, and
+`f117run --dump LINEAR:LENGTH` prints the registers and memory at the end of
+a run for comparing two engines at a chosen clock.

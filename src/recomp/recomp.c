@@ -19,6 +19,7 @@
 #include "recomp_gen.h"
 #include "matched.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -211,6 +212,105 @@ void recomp_override_list(FILE *f)
                 g_ov[i].module, g_ov[i].seg, g_ov[i].ip, g_ov[i].what ? g_ov[i].what : "");
 }
 
+/* F117R_SHADOW=FROM:TO (instruction counts): in that window every matched
+ * routine that runs is checked against the original on the live machine. The
+ * state is saved, the matched routine runs and its result is kept, the state
+ * is put back, and the original code runs (every matched routine off) up to
+ * the clock the matched one stopped at; the two end states - registers,
+ * flags, clock, and all of memory - are compared and any difference printed.
+ * A routine that declines is checked to have changed nothing. The original's
+ * result is the one the run continues from, so a shadowed run stays on the
+ * original's path. Devices are not part of the snapshot: use it on routines
+ * that touch no ports. */
+static uint64_t g_shadow_lo, g_shadow_hi;
+static int g_shadow_on, g_shadow_off;
+static uint8_t *g_shadow_mem[2];
+static unsigned long long g_shadow_checked, g_shadow_declined, g_shadow_bad;
+
+static void shadow_parse(void)
+{
+    static int done;
+    if (done) return;
+    done = 1;
+    const char *e = getenv("F117R_SHADOW");
+    if (!e || !*e) return;
+    unsigned long long lo = 0, hi = ~0ull;
+    if (sscanf(e, "%llu:%llu", &lo, &hi) < 1) return;
+    g_shadow_lo = lo; g_shadow_hi = hi;
+    g_shadow_mem[0] = (uint8_t *)malloc(MEM_SIZE);
+    g_shadow_mem[1] = (uint8_t *)malloc(MEM_SIZE);
+    g_shadow_on = g_shadow_mem[0] && g_shadow_mem[1];
+}
+
+static const char *shadow_cpu_diff(const cpu_t *a, const cpu_t *b)
+{
+    if (memcmp(a->r, b->r, sizeof a->r)) return "registers";
+    if (memcmp(a->seg, b->seg, sizeof a->seg)) return "segments";
+    if (a->ip != b->ip) return "ip";
+    if (a->flags != b->flags) return "flags";
+    if (a->icount != b->icount) return "clock";
+    return NULL;
+}
+
+/* Runs the routine under shadow; returns what o->fn returned. */
+static int shadow_run(machine_t *m, const recomp_override *o)
+{
+    cpu_t *c = &m->cpu;
+    const cpu_t before = *c;
+    memcpy(g_shadow_mem[0], m->mem, MEM_SIZE);
+    const int r = o->fn(m);
+    g_shadow_checked++;
+    if (!r) {                                                     /* a decline must leave everything as it was */
+        g_shadow_declined++;
+        const char *why = shadow_cpu_diff(&before, c);
+        if (!why && memcmp(g_shadow_mem[0], m->mem, MEM_SIZE)) why = "memory";
+        if (why) {
+            g_shadow_bad++;
+            fprintf(stderr, "[shadow] %s %04X:%04X declined at clock %llu but changed %s\n", o->module, o->seg, o->ip,
+                    (unsigned long long)before.icount, why);
+            *c = before;
+            memcpy(m->mem, g_shadow_mem[0], MEM_SIZE);
+        }
+        return 0;
+    }
+    const cpu_t after = *c;
+    memcpy(g_shadow_mem[1], m->mem, MEM_SIZE);
+    *c = before;
+    memcpy(m->mem, g_shadow_mem[0], MEM_SIZE);
+    const uint64_t run_until = m->run_until;
+    g_shadow_off = 1;
+    machine_run(m, after.icount);
+    g_shadow_off = 0;
+    m->run_until = run_until;                                     /* the outer run's limits, which the nested run overwrote */
+    const uint64_t replay_stop = c->stop_at;
+    c->stop_at = after.stop_at;
+    (void)replay_stop;
+    const char *why = shadow_cpu_diff(c, &after);
+    uint32_t at = 0;
+    if (!why) {
+        while (at < MEM_SIZE && m->mem[at] == g_shadow_mem[1][at]) at++;
+        if (at < MEM_SIZE) why = "memory";
+    }
+    if (why) {
+        g_shadow_bad++;
+        fprintf(stderr, "[shadow] %s %04X:%04X from clock %llu to %llu: %s differs", o->module, o->seg, o->ip,
+                (unsigned long long)before.icount, (unsigned long long)after.icount, why);
+        if (!strcmp(why, "memory")) {
+            fprintf(stderr, " at %05X (original %02X, matched %02X)", at, m->mem[at], g_shadow_mem[1][at]);
+            unsigned nd = 0;
+            for (uint32_t x = at; x < MEM_SIZE && nd < 24; x++)
+                if (m->mem[x] != g_shadow_mem[1][x]) { fprintf(stderr, "%s%05X:%02X/%02X", nd ? " " : "; ", x, m->mem[x], g_shadow_mem[1][x]); nd++; }
+        } else {
+            fprintf(stderr, "; AX %04X/%04X BX %04X/%04X CX %04X/%04X DX %04X/%04X SI %04X/%04X DI %04X/%04X BP %04X/%04X SP %04X/%04X IP %04X/%04X FL %04X/%04X",
+                    c->r[R_AX], after.r[R_AX], c->r[R_BX], after.r[R_BX], c->r[R_CX], after.r[R_CX], c->r[R_DX], after.r[R_DX],
+                    c->r[R_SI], after.r[R_SI], c->r[R_DI], after.r[R_DI], c->r[R_BP], after.r[R_BP], c->r[R_SP], after.r[R_SP],
+                    c->ip, after.ip, c->flags, after.flags);
+        }
+        fprintf(stderr, " (original/matched)\n");
+    }
+    return 1;                                                     /* the machine now holds the original's result */
+}
+
 int recomp_override_step(machine_t *m)
 {
     cpu_t *c = &m->cpu;
@@ -223,7 +323,10 @@ int recomp_override_step(machine_t *m)
         const recomp_override *o = &g_ov[in->ov_index[k]];
         if (in->ov_lin[k] != lin || (uint16_t)(in->base + o->seg) != cs) continue;
         if (o->matched && m->engine != ENGINE_RECOMP) return 0;
-        if (!o->fn(m)) return -1;
+        if (o->matched && g_shadow_off) return 0;
+        if (o->matched && g_shadow_on && c->icount >= g_shadow_lo && c->icount < g_shadow_hi) {
+            if (!shadow_run(m, o)) return -1;
+        } else if (!o->fn(m)) return -1;
         g_ov_hits[in->ov_index[k]]++;
         return 1;
     }
@@ -251,6 +354,7 @@ void recomp_init(machine_t *m)
     (void)m;
     for (int i = 0; i < MAX_INST; i++) unregister(&g_rt.inst[i]);
     matched_register();
+    shadow_parse();
     count_live_overrides();
     memset(cpu_codebits, 0, sizeof cpu_codebits);
     const char *cov = getenv("F117R_COVERAGE");
@@ -607,6 +711,8 @@ void recomp_report(machine_t *m, FILE *f)
             fprintf(f, "[%s] %s %04X:%04X %s: ran %llu times\n", g_ov[i].matched ? "matched" : "override",
                     g_ov[i].module, g_ov[i].seg, g_ov[i].ip, g_ov[i].what ? g_ov[i].what : "",
                     (unsigned long long)g_ov_hits[i]);
+    if (g_shadow_on)
+        fprintf(f, "[shadow] window %llu:%llu: %llu matched routines checked (%llu declined), %llu differing\n", (unsigned long long)g_shadow_lo, (unsigned long long)g_shadow_hi, g_shadow_checked, g_shadow_declined, g_shadow_bad);
     for (int pass = 0; pass < 25 && g_nmiss; pass++) {
         int best = 0;
         for (int k = 1; k < g_nmiss; k++) if (g_miss[k].n > g_miss[best].n) best = k;

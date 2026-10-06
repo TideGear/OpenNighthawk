@@ -133,6 +133,13 @@ static void setup_side(cpu_t *c, const recomp_override *o, uint16_t cs, uint16_t
 
 static unsigned long long g_overrun;    /* routines that ran past the event limit */
 
+/* Sentinel words to plant, by routine (segment, IP): at DS:[reg + disp]. */
+static const struct { uint16_t seg, ip; uint8_t reg; uint16_t disp; uint16_t val; } PLANTS[] = {
+    { 0x120A, 0x0B3B, R_DI, 0xD6B6, 0x8000 },     /* model_prepare_edge: a vertex behind the eye (x high word 8000h) */
+    { 0x120A, 0x0B3B, R_BX, 0xD6B6, 0x8000 },
+};
+
+static const char *g_ctx = "";   /* what the comparison in progress is: " (mid-run stop)" */
 static int g_verbose, g_shown;
 
 static int compare(const char *mod, uint32_t off, uint16_t cs, uint16_t ip, int declined)
@@ -164,15 +171,18 @@ static int compare(const char *mod, uint32_t off, uint16_t cs, uint16_t ip, int 
                     break;
                 }
             }
-        if (!why[0] && g_side[0].overflow && memcmp(g_mem[0], g_mem[1], MEM_SIZE))
-            snprintf(why, sizeof why, "memory");
+        if (!why[0] && g_side[0].overflow && memcmp(g_mem[0], g_mem[1], MEM_SIZE)) {
+            uint32_t x = 0;
+            while (g_mem[0][x] == g_mem[1][x]) x++;
+            snprintf(why, sizeof why, "memory %05X: %02X vs %02X", x, g_mem[0][x], g_mem[1][x]);
+        }
     }
     (void)declined;
     if (!why[0]) return 0;
     if (g_shown++ < 40 || g_verbose)
     {
         const uint32_t lin = ((uint32_t)cs * 16u + ip) & 0xFFFFFu;
-        printf("  MISMATCH %s+%05X (%04X:%04X) [%02X %02X %02X %02X %02X %02X]: %s\n", mod, off, cs, ip,
+        printf("  MISMATCH%s %s+%05X (%04X:%04X) [%02X %02X %02X %02X %02X %02X]: %s\n", g_ctx, mod, off, cs, ip,
                g_pristine[lin], g_pristine[lin + 1], g_pristine[lin + 2], g_pristine[lin + 3],
                g_pristine[lin + 4], g_pristine[lin + 5], why);
     }
@@ -189,9 +199,11 @@ static machine_t g_m;           /* side 1's CPU lives in a machine: matched code
  * code (within 0x300 bytes of its entry). A random callee that pops one word
  * too many returns to the caller's address from far away - a RET the routine
  * did not make, after which the two sides are not comparable. */
+static int g_trace;                     /* print every instruction of a re-run, to see where two sides part */
 static int run_to_ret(cpu_t *a, uint16_t entry_sp, int far, int *steps, uint16_t cs, uint16_t ip)
 {
     while (*steps < 100000) {
+        if (g_trace) printf("      %04X:%04X clk %llu sp %04X\n", a->seg[S_CS], a->ip, (unsigned long long)a->icount, a->r[R_SP]);
         const uint16_t here = a->ip;
         const int inside = a->seg[S_CS] == cs && (uint16_t)(here - ip) < 0x300;
         const uint8_t op = a->mem[phys(a->seg[S_CS], a->ip)];
@@ -205,15 +217,21 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int far, int *steps, uint16_t
     return 0;
 }
 
+static unsigned long long g_probed;     /* mid-run stops compared */
 static unsigned long long g_finished;   /* states the original code finished */
 static int g_ncalls;           /* guest calls made by the routine under test */
 static int g_lost;              /* a call into original code never came back */
+static int g_stopped;           /* a call into original code was stopped by the event limit, as a run loop would */
+static int g_callover;          /* a call into original code was started with the clock already past the limit */
 static int step_runner(machine_t *mm)
 {
     cpu_t *c = &mm->cpu;
     g_ncalls++;
+    if (c->icount > c->stop_at) g_callover = 1;  /* the CALL itself ran at or after the limit */
     for (int i = 0; i < 200000; i++) {
         if (c->ip == mm->trap_ip && c->r[R_SP] == mm->trap_sp && c->seg[S_CS] == mm->trap_cs) return RUN_TRAP;
+        if (c->icount >= c->stop_at) { g_stopped = 1; return RUN_SLICE; }
+        if (g_trace) printf("      (callee) %04X:%04X clk %llu sp %04X\n", c->seg[S_CS], c->ip, (unsigned long long)c->icount, c->r[R_SP]);
         cpu_step(c);
         if (c->flags & F_TF) cpu_interrupt(c, 1);
     }
@@ -282,6 +300,19 @@ int main(int argc, char **argv)
             for (int k = 0; k < 8; k++) r[k] = (uint16_t)rnd();
             for (int k = 0; k < 4; k++) seg[k] = (uint16_t)rnd();
             if (s % 3 == 0) { seg[S_DS] = cs; seg[S_ES] = cs; }
+            /* Sentinel words a routine tests for exactly, planted where its
+             * registers point: random memory has none, and the 00/FF/01 half
+             * has no 80h byte. Each in half the states, by routine. */
+            for (unsigned pk = 0; pk < sizeof PLANTS / sizeof PLANTS[0]; pk++) {
+                if (PLANTS[pk].seg != o->seg || PLANTS[pk].ip != o->ip || (rnd() & 1)) continue;
+                const uint32_t a = phys(seg[S_DS], (uint16_t)(r[PLANTS[pk].reg] + PLANTS[pk].disp));
+                if (a + 1 >= at && a < at + m->size + 2) continue;           /* not into the image */
+                for (int k = 0; k < 2; k++) {
+                    const uint8_t b = (uint8_t)(PLANTS[pk].val >> (8 * k));
+                    g_pristine[(a + (uint32_t)k) & 0xFFFFF] = g_mem[0][(a + (uint32_t)k) & 0xFFFFF] =
+                        g_mem[1][(a + (uint32_t)k) & 0xFFFFF] = b;
+                }
+            }
             /* A quarter of the states take small counts in AX, CX and DX,
              * for routines whose arguments are registers (an exact fit, a
              * zero length). */
@@ -336,10 +367,10 @@ int main(int argc, char **argv)
              * (A routine that calls original code legitimately returns partway,
              * having run the callee to the limit; only a run with no such call
              * is an overrun.) */
-            g_lost = 0; g_ncalls = 0;
+            g_lost = 0; g_ncalls = 0; g_callover = 0;
             g_m.cpu.stop_at = g_m.cpu.icount + (uint64_t)steps - 1;
             const int probe_ran = o->fn(&g_m);
-            if (probe_ran && !g_ncalls && g_m.cpu.icount > g_m.cpu.stop_at) {
+            if (probe_ran && (g_callover || (!g_ncalls && g_m.cpu.icount > g_m.cpu.stop_at))) {
                 printf("  OVERRUN %s+%05X: ran to %llu with the limit at %llu (the original takes %d)\n", o->module,
                        ((uint32_t)o->seg << 4) + ip, (unsigned long long)g_m.cpu.icount - 1000,
                        (unsigned long long)g_m.cpu.stop_at - 1000, steps);
@@ -371,6 +402,21 @@ int main(int argc, char **argv)
             if (compare(o->module, ((uint32_t)o->seg << 4) + ip, cs, ip, 0)) {
                 mb++;
                 if (g_verbose) {
+                    /* Where do the two sides part? Re-run the state with every instruction printed. */
+                    memcpy(g_mem[0], g_pristine, MEM_SIZE); memcpy(g_mem[1], g_pristine, MEM_SIZE);
+                    setup_side(&g_cpu[0], o, cs, ip, r, seg, flags, back, s, small);
+                    setup_side(&g_m.cpu, o, cs, ip, r, seg, flags, back, s, small);
+                    g_trace = 1;
+                    printf("    original, instruction by instruction:\n");
+                    int st2 = 0;
+                    run_to_ret(&g_cpu[0], entry_sp, o->matched == 2, &st2, cs, ip);
+                    printf("    matched, then the original from where it stopped:\n");
+                    g_lost = 0; g_stopped = 0;
+                    o->fn(&g_m);
+                    printf("      matched returned at %04X:%04X clk %llu\n", g_m.cpu.seg[S_CS], g_m.cpu.ip, (unsigned long long)g_m.cpu.icount);
+                    int st3 = 0;
+                    if (g_m.cpu.ip != back) run_to_ret(&g_m.cpu, entry_sp, o->matched == 2, &st3, cs, ip);
+                    g_trace = 0;
                     printf("    state: AX %04X CX %04X DX %04X BX %04X SP %04X BP %04X SI %04X DI %04X"
                            " DS %04X ES %04X SS %04X flags %04X, %d steps\n",
                            r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], seg[S_DS], seg[S_ES], seg[S_SS], flags, steps);
@@ -383,6 +429,44 @@ int main(int argc, char **argv)
                 }
             }
             restore();
+            /* A stop inside the routine. The run loop stops at exact instruction
+             * counts - a checkpoint, a frame - and a matched routine that has made
+             * a call or declined partway leaves the machine mid-routine, to be
+             * finished by the original code. That state must be the original's at
+             * that clock. Stop the matched side at a random count inside the
+             * original's path; if it left the machine at some count e, run the
+             * original for exactly e instructions from the same entry state and
+             * compare everything. (One state in four: it copies memory twice.) */
+            if (!mb && steps >= 2 && (s & 3) == 1) {
+                setup_side(&g_cpu[0], o, cs, ip, r, seg, flags, back, s, small);
+                setup_side(&g_m.cpu, o, cs, ip, r, seg, flags, back, s, small);
+                const uint64_t start = g_m.cpu.icount;
+                const uint64_t k = 1 + rnd() % (uint64_t)(steps - 1);
+                g_m.cpu.stop_at = start + k;
+                g_lost = 0; g_ncalls = 0; g_stopped = 0; g_callover = 0;
+                const int pr = o->fn(&g_m);
+                if (pr && g_callover) {
+                    printf("  OVERRUN %s %04X:%04X: a call started past the limit (stop at +%llu)\n", o->module, o->seg, ip, (unsigned long long)k);
+                    g_overrun++; mb++;
+                }
+                if (pr && !g_callover && !g_lost && g_m.cpu.icount - start < (uint64_t)steps) {
+                    const uint64_t e = g_m.cpu.icount - start;
+                    cpu_t *a = &g_cpu[0];
+                    /* by clock, not by step: an instruction can advance the clock by more than one */
+                    for (int guard = 0; a->icount < start + e && guard < 200000; guard++) { cpu_step(a); if (a->flags & F_TF) cpu_interrupt(a, 1); }
+                    g_side[0].overflow = g_side[1].overflow = 1;
+                    g_cpu[1] = g_m.cpu;
+                    if (a->icount != start + e) goto probe_done;      /* the clock jumped over the stop: not comparable */
+                    g_ctx = " (mid-run stop)";
+                    mc++;
+                    if (compare(o->module, ((uint32_t)o->seg << 4) + ip, cs, ip, 0)) mb++;
+                    g_ctx = "";
+                    g_probed++;
+                }
+                probe_done:
+                g_side[0].overflow = g_side[1].overflow = 1;      /* whatever it wrote, put all of memory back */
+                restore();
+            }
             if (mb) break;
         }
         printf("%-10s %04X:%04X %-34s %6llu states compared, %4llu skipped, %s\n", o->module, o->seg, ip,
