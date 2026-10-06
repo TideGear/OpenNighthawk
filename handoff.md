@@ -4,10 +4,82 @@ For the next conversation working on this repository. Read this, then
 [docs/roadmap.md](docs/roadmap.md) (what is done and left - keep it
 updated), [docs/architecture.md](docs/architecture.md) (how parity is
 built and checked) and [docs/bugs.md](docs/bugs.md) (the original game's
-bugs). State as of 5 October 2026, after 08:52 local. Earlier "running" entries
+bugs). State as of 5 October 2026, about 23:10 local. Earlier "running" entries
 further down are historical; this first section is the current state.
 
-## Current wrap-up status (5 Oct, 08:52 local)
+## Current state (5 Oct, ~23:10 local)
+
+All work is committed and pushed (last code commit `399afb8`); the main tree
+and the worktree `~/f117-recomp-local/wt` are both at `origin/master`. The
+standing goal is still "complete docs/roadmap.md", item by item; this is a
+handoff, not completion. Work happened in the worktree (built with
+`~/f117-recomp-local/build-p3.cmd` into `p3-build`) while the gate ran in the
+main tree.
+
+**Gate.** `tools/build_recomp.py --work ~/f117-recomp-local/p2-pipeline` on
+`12d7158` (log `p2-pipeline5.log`): 27/27 routes identical, lockstep 5,709,312
+states 0 mismatching, 191 matched routines 0 mismatching. Not rerun since: the
+later commits touch the observer (inert unless installed), host audio/config,
+CMake (Munt on by default) and docs, not generated or matched code.
+
+**P3 presentation, Stage 1 (current item; owner chose observe-and-replay).**
+Everything is in `docs/presentation.md`.
+- `src/matched/observe.c` hooks VGAME's fill and outline paths and every
+  graphics-library entry (jump slots `1E42:011A+5n`). Record kinds: fills
+  `E F B R b a`, outline edges `L`, lines `N`, colour `K`, span fills `Q`,
+  blits `C`, text `T` (with its font), sprites `S`, tick scales `H`, page
+  copies `D` (44 present, 48 copy, 79 dissolve), other entries `X`; with
+  `F117R_OBSERVE_PAGES=1` also page diffs `x`/`n`, the work page `Z` and the
+  display `Y` at each `game_draw`.
+- `tools/drawlist_frame.py LOG` rebuilds each phase from the draw list:
+  **work page 73 of 73 phases exact, 0 bytes copied from the original** (30M
+  instructions of strike flight). **Display page 36 of 73**: each 3-D phase
+  still differs in ~480 bytes inside the presented window (e.g. `A000:81C1`,
+  row 103). Next step: watch one such byte through the replay (wrap the page in
+  a `bytearray` subclass that prints writes, as done for the outline-edge
+  hunt) - likely the order of the present (entry 44) against the primitives,
+  or a second present.
+- `tools/drawlist_spans.py LOG` checks primitives one by one (fills, lines,
+  span fills, blits).
+- Capture: `F117R_OBSERVE_PAGES=1 p3-build/f117run.exe --engine recomp --data
+  D:/GOG/F-117A --replay tools/routes/strike.input --steps 8030000000
+  --time-us 700000000000000 --save DIR --log FILE --observe
+  OUT:8000000000:8030000000` (about 58 MB of log).
+- Driver facts: MGRAPHIC at CS `0889` in flight, data segment `06ED` (read from
+  its `MOV AX` immediates, which move with the load), page table `cs:[0787]`
+  (0 display A000, 1 work page 47BD, 2 cockpit art 09C0), current page
+  `cs:[0194]`, origin `cs:[0196]` (entries 24/26), rows `cs:[0004+2y]` = 320y.
+- `docs/progress.json`: Stage 0 0.9, Stage 1 0.9. After Stage 1: Stage 2
+  (high-resolution re-draw), Stages 3-4 (interpolation, pacing).
+
+**Sound and settings (owner-requested, done and checked).**
+- Roland radio calls are PC-speaker digitised sound (counter 2 mode 0, a count
+  of 0-80 every 79 PIT clocks). Point-sampling made them a screech; `e2e100c`
+  renders mode 0 as GOG DOSBox's "realsound" level, averaged per sample. The
+  owner confirmed it sounds right. AdLib plays music, effects and speech on the
+  OPL; Roland plays music and effects as MT-32 MIDI (the engine is one held
+  note on channel 8 bent with the throttle) and speech on the speaker.
+- Munt is in the default build (`FetchContent` at the pinned 2.8.3 commit;
+  `mt32emu-2.dll` beside the exe). The main `build\` was reconfigured with
+  `-DF117R_WITH_MT32EMU=ON` (an existing cache keeps OFF otherwise).
+- `f117a.ini` beside the exe holds the options (`src/host/config.c`, CTest
+  `host_config_file`; `f117a.example.ini` is copied there by the build). Roland
+  is one setting: `roland = munt|windows|off` plus `mt32-roms = FOLDER`; ROMs
+  are recognised by SHA-1 through Munt (`mt32_find_roms`), preferring MT-32
+  1.07. README has the supported-ROM table. Measured: control ROMs 1.04 and
+  1.07 render this game's MIDI bit-identically; 2.04 renders the flight effects
+  ~5 dB quieter and duller (consistent with D36 and DOS Days' "old MT-32").
+  The owner's own `build\f117a.ini` points at `D:\GOG\F-117A` and
+  `C:\Users\Tideg\f117-recomp-local\roms`. Examples use `C:\GOG Games\F-117A`.
+- Owner asked how Roland sound effects work; answered from the MIDI log. Open:
+  map each effect to its driver request (trap the sound driver) and check
+  whether the startup SysEx uploads custom timbres.
+
+**Still pending from earlier today (unchanged):** the `F117R_PIT_CONTROL_IRQ`
+default (policy: correct 0.74 behaviour, but 8 routes need retiming), D12
+verification, roster frame parity, MT-32 reference PCM. See the sections below.
+
+## Earlier wrap-up status (5 Oct, 08:52 local)
 
 - The user's immediate objective changed to wrapping up for a new conversation,
   committing and pushing the outstanding project work, then stopping. That
