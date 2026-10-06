@@ -176,10 +176,11 @@ only state a frame reads (models and terrain come from the game's files),
 and the Reimp's renderer is held to its own oracle, not to this machine's
 instruction-level one.
 
-The facts above hold for both. The choice is about dependency and scope, so
-it is made when Stage 1 starts, not before; Stage 0's observer is useful
-either way (it says what the original drew, which is the reference B must
-reproduce).
+**Decided (5 October 2026, by the owner): A, observe and replay.** The
+picture is made from the original's own primitives, captured in this
+project, with no dependency on the Reimp's renderer. B stays recorded as the
+road not taken; Stage 0's observer serves A directly (it says what the
+original drew, which Stage 1 must reproduce bit for bit).
 
 ## Stages
 
