@@ -74,6 +74,15 @@ the second draw is (a second view, the other half of a buffer, a repeat) is
 **not yet known**, and it matters: interpolation needs to know what a step
 draws, and whether the original already shows a picture between steps.
 
+A fifth of the window (21%) runs in code that is not in the unpacked
+program: segment `0889` (relative `EF0F`), with tight loops at offsets
+`0F5E-0F9B`, `1175` and `121C` (about 7,000 iterations each, 51,000 passes at
+`0F91`). It has no store to the 64K region of the VGA screen in the census
+above, which counts a `REP MOVS` as one store, so the screen copy is either
+here or a single repeated instruction elsewhere. It is probably the final
+copy of the finished page to the screen (or a wait for it), and it cannot be
+decoded without a dump of that memory. Identifying it is part of Stage 0.
+
 ## What is not known (and has to be measured next)
 
 1. **Where the scene is drawn.** The matched routines already name part of
