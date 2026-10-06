@@ -44,9 +44,9 @@ matched_runner_fn matched_runner = default_runner;
  * the outer run's limit came, or the program ended - in which case the
  * caller must return 1 at once: the machine is inside the callee, exactly
  * as the original would be, and the original code from ret_ip finishes the
- * routine when the callee returns. The guest state at every call must
+ * routine when the callee returns. `pops` is what the callee's RET n removes. The guest state at every call must
  * therefore be the original's, stack frame included. */
-static int guest_call(machine_t *m, uint16_t target, uint16_t ret_ip)
+static int guest_call_pop(machine_t *m, uint16_t target, uint16_t ret_ip, uint16_t pops)
 {
     cpu_t *c = &m->cpu;
     const uint8_t on = m->trap_on;
@@ -57,19 +57,19 @@ static int guest_call(machine_t *m, uint16_t target, uint16_t ret_ip)
     m->trap_on = 1;
     m->trap_cs = c->seg[S_CS];
     m->trap_ip = ret_ip;
-    m->trap_sp = (uint16_t)(c->r[R_SP] + 2);
+    m->trap_sp = (uint16_t)(c->r[R_SP] + 2 + pops);
     const int rc = matched_runner(m);
     m->trap_on = on; m->trap_cs = tcs; m->trap_ip = tip; m->trap_sp = tsp;
     return rc == RUN_TRAP;
 }
 
-/* The same for a far CALL at CS:ins_ip (9A off seg): the target comes from
- * the loaded code, so its segment is the relocated one. */
-static int guest_call_far(machine_t *m, uint16_t ins_ip, uint16_t ret_ip)
+static int guest_call(machine_t *m, uint16_t target, uint16_t ret_ip) { return guest_call_pop(m, target, ret_ip, 0); }
+
+/* The same for a far CALL to seg:off, returning to ret_ip in the caller's CS. */
+static int guest_call_far_to(machine_t *m, uint16_t seg, uint16_t off, uint16_t ret_ip)
 {
     cpu_t *c = &m->cpu;
     const uint16_t cs = c->seg[S_CS];
-    const uint16_t off = seg_read16(c, cs, (uint16_t)(ins_ip + 1)), seg = seg_read16(c, cs, (uint16_t)(ins_ip + 3));
     const uint8_t on = m->trap_on;
     const uint16_t tcs = m->trap_cs, tip = m->trap_ip, tsp = m->trap_sp;
     cpu_push16(c, cs);
@@ -84,6 +84,15 @@ static int guest_call_far(machine_t *m, uint16_t ins_ip, uint16_t ret_ip)
     const int rc = matched_runner(m);
     m->trap_on = on; m->trap_cs = tcs; m->trap_ip = tip; m->trap_sp = tsp;
     return rc == RUN_TRAP;
+}
+
+/* The same for a far CALL at CS:ins_ip (9A off seg): the target comes from
+ * the loaded code, so its segment is the relocated one. */
+static int guest_call_far(machine_t *m, uint16_t ins_ip, uint16_t ret_ip)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t cs = c->seg[S_CS];
+    return guest_call_far_to(m, seg_read16(c, cs, (uint16_t)(ins_ip + 3)), seg_read16(c, cs, (uint16_t)(ins_ip + 1)), ret_ip);
 }
 
 /* Room for n instructions before the run loop must look at events. */
@@ -3674,6 +3683,363 @@ found:                                                            /* 0x0F9CA */
 #undef CHECK_
 }
 
+/* VGAME 0x04738, frame_effect_timers: the first of the four effect timers
+ * (12-byte records, count at 39E0, kind at 39DE) still running counts down
+ * one frame; for kind 3 cockpit lamp 7 (0x0889B) then shows colour 29h
+ * while it runs on, 0 when it has just run out. One timer a call. */
+static int vgame_effect_timers(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 40)) return 0;                     /* the longest path to the call */
+    const uint16_t ss = c->seg[S_SS];
+    x86_enter(c, 2, 0);
+    const uint16_t bp = c->r[R_BP], local = (uint16_t)(bp - 2);
+    seg_write16(c, ss, local, 0);
+    unsigned n = 3;
+    for (;;) {
+        alu_sub(c, seg_read16(c, ss, local), 4, 1, 0);           /* cmp [bp-2], 4 */
+        n += 2;
+        if (x86_cond(c, 0xD)) break;                              /* jge: none running */
+        const uint16_t bx = x86_imul3(c, seg_read16(c, ss, local), 0x0C);
+        c->r[R_BX] = bx;
+        alu_sub(c, ds_get(c, (uint16_t)(bx + 0x39E0)), 0, 1, 0);
+        n += 3;
+        if (c->flags & F_ZF) {
+            seg_write16(c, ss, local, (uint16_t)alu_inc(c, seg_read16(c, ss, local), 1));
+            n++;
+            continue;
+        }
+        ds_put(c, (uint16_t)(bx + 0x39E0), (uint16_t)alu_dec(c, ds_get(c, (uint16_t)(bx + 0x39E0)), 1));
+        alu_sub(c, ds_get(c, (uint16_t)(bx + 0x39DE)), 3, 1, 0);
+        n += 3;
+        if (!(c->flags & F_ZF)) break;
+        alu_sub(c, ds_get(c, (uint16_t)(bx + 0x39E0)), 1, 1, 0);  /* cmp [..], 1 */
+        c->flags ^= F_CF;                                         /* cmc */
+        uint16_t ax = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, (c->flags & F_CF) ? 1u : 0u);
+        ax = (uint16_t)alu_logic(c, ax & 0x29, 1);
+        c->r[R_AX] = ax;
+        cpu_push16(c, ax);
+        cpu_push16(c, 7);
+        c->icount += n + 6;
+        if (!guest_call(m, 0x889B, 0x4773)) return 1;
+        if (!room(c, 4)) { c->ip = 0x4773; return 1; }
+        c->r[R_BX] = cpu_pop16(c);
+        c->r[R_BX] = cpu_pop16(c);
+        x86_leave(c);
+        c->icount += 4;
+        near_ret(c);
+        return 1;
+    }
+    x86_leave(c);
+    c->icount += n + 2;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x02E7F, ratio15(a, b): a / b as a 1.15 fixed-point fraction -
+ * |a| * 65536 / |b| by the 32-bit divide at 0x0EFB8, halved, with the sign
+ * of a times the sign of b; DX:AX from the last IMUL. */
+static int vgame_ratio15(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 26)) return 0;
+    const uint16_t ss = c->seg[S_SS];
+    x86_enter(c, 0x0C, 0);
+    const uint16_t bp = c->r[R_BP];
+    cpu_push16(c, c->r[R_SI]);
+    set_r8(c, R_AL, 1);
+    mem_write8(c, phys(ss, (uint16_t)(bp - 2)), 1);
+    mem_write8(c, phys(ss, (uint16_t)(bp - 4)), 1);
+    unsigned n = 7 + 2;
+    alu_sub(c, seg_read16(c, ss, (uint16_t)(bp + 4)), 0, 1, 0);
+    if (!x86_cond(c, 0xD)) { mem_write8(c, phys(ss, (uint16_t)(bp - 2)), 0xFF); n++; }
+    alu_sub(c, seg_read16(c, ss, (uint16_t)(bp + 6)), 0, 1, 0);
+    if (!x86_cond(c, 0xD)) { mem_write8(c, phys(ss, (uint16_t)(bp - 4)), 0xFF); n++; }
+    for (int k = 0; k < 2; k++) {
+        uint16_t ax = seg_read16(c, ss, (uint16_t)(bp + (k ? 4 : 6)));
+        uint16_t dx = (ax & 0x8000) ? 0xFFFF : 0;
+        ax = (uint16_t)alu_logic(c, ax ^ dx, 1);
+        ax = (uint16_t)alu_sub(c, ax, dx, 1, 0);
+        dx = (ax & 0x8000) ? 0xFFFF : 0;
+        c->r[R_AX] = ax; c->r[R_DX] = dx;
+        if (!k) { cpu_push16(c, dx); cpu_push16(c, ax); }
+        else { cpu_push16(c, ax); cpu_push16(c, 0); }
+    }
+    c->icount += n + 14;
+    if (!guest_call_pop(m, 0xEFB8, 0x2EBA, 8)) return 1;           /* RET 8: the callee takes its arguments */
+    if (!room(c, 17)) { c->ip = 0x2EBA; return 1; }
+    uint16_t dx = x86_shift(c, 5, c->r[R_DX], 1, 1);              /* shr dx, 1 */
+    uint16_t ax = x86_shift(c, 3, c->r[R_AX], 1, 1);              /* rcr ax, 1 */
+    const uint16_t cx = ax;
+    c->r[R_CX] = cx;
+    ax = (uint16_t)((ax & 0xFF00) | mem_read8(c, phys(ss, (uint16_t)(bp - 2))));
+    dx = ax;
+    ax = (uint16_t)((ax & 0xFF00) | mem_read8(c, phys(ss, (uint16_t)(bp - 4))));
+    ax = (uint16_t)(int16_t)(int8_t)(ax & 0xFF);                  /* cbw */
+    c->r[R_BX] = ax;
+    ax = (uint16_t)((ax & 0xFF00) | (dx & 0xFF));
+    ax = (uint16_t)(int16_t)(int8_t)(ax & 0xFF);
+    c->r[R_SI] = ax;
+    c->r[R_AX] = cx;
+    c->r[R_DX] = dx;
+    x86_imul16(c, c->r[R_SI]);
+    x86_imul16(c, c->r[R_BX]);
+    c->r[R_SI] = cpu_pop16(c);
+    x86_leave(c);
+    c->icount += 17;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x086CA, map_to_screen(x, y, *sx, *sy): 0 when the map is off
+ * ([368C] zero); otherwise the moving map's screen x and y (0x085F1,
+ * 0x08608) are stored through the pointers, and AX = 1 only when the point
+ * is strictly inside the map window: [DEC0] < sx < [E32E] - 1 and
+ * [DEC2] < sy < [E470] - 1. */
+static int vgame_map_to_screen(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 9)) return 0;
+    const uint16_t ss = c->seg[S_SS];
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    const uint16_t bp = c->r[R_BP];
+#define A(o) seg_read16(c, ss, (uint16_t)(bp + (o)))
+    cpu_push16(c, c->r[R_SI]);
+    alu_sub(c, ds_get(c, 0x368C), 0, 1, 0);
+    unsigned n = 5;
+    if (c->flags & F_ZF) goto outside;
+    cpu_push16(c, A(4));
+    c->icount += n + 1;
+    if (!guest_call(m, 0x85F1, 0x86E0)) return 1;
+    if (!room(c, 5)) { c->ip = 0x86E0; return 1; }
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = A(8);
+    ds_put(c, c->r[R_BX], c->r[R_AX]);
+    cpu_push16(c, A(6));
+    c->icount += 4;
+    if (!guest_call(m, 0x8608, 0x86EC)) return 1;
+    if (!room(c, 22)) { c->ip = 0x86EC; return 1; }
+    c->r[R_BX] = cpu_pop16(c);
+    const uint16_t bx = A(0x0A);
+    c->r[R_BX] = bx;
+    ds_put(c, bx, c->r[R_AX]);
+    const uint16_t si = A(8);
+    c->r[R_SI] = si;
+    c->r[R_AX] = ds_get(c, 0xDEC0);
+    alu_sub(c, ds_get(c, si), c->r[R_AX], 1, 0);
+    n = 7;
+    if (x86_cond(c, 0xE)) goto outside;                           /* jle */
+    c->r[R_AX] = (uint16_t)alu_dec(c, ds_get(c, 0xE32E), 1);
+    alu_sub(c, c->r[R_AX], ds_get(c, si), 1, 0);
+    n += 4;
+    if (x86_cond(c, 0xE)) goto outside;
+    c->r[R_AX] = ds_get(c, 0xDEC2);
+    alu_sub(c, ds_get(c, bx), c->r[R_AX], 1, 0);
+    n += 3;
+    if (x86_cond(c, 0xE)) goto outside;
+    c->r[R_AX] = (uint16_t)alu_dec(c, ds_get(c, 0xE470), 1);
+    alu_sub(c, c->r[R_AX], ds_get(c, bx), 1, 0);
+    n += 4;
+    if (x86_cond(c, 0xE)) goto outside;
+    c->r[R_AX] = 1;
+    goto done;
+outside:                                                          /* 0x086D5 */
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+done:
+#undef A
+    c->r[R_SI] = cpu_pop16(c);
+    x86_leave(c);
+    c->icount += n + 4;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x01360, map_cell_bounds(*x0, *y0, *x1, *y1): both corners of a
+ * map box through the cell transform at 0x013B9 - the first from origin
+ * (0, 0), the second from [2293]/[2295] - each corner clamped: the first
+ * to at least 0, the second to below [9510]. */
+static int vgame_map_cell_bounds(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 7)) return 0;
+    const uint16_t ss = c->seg[S_SS];
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    const uint16_t bp = c->r[R_BP];
+#define A(o) seg_read16(c, ss, (uint16_t)(bp + (o)))
+    cpu_push16(c, A(8));
+    cpu_push16(c, A(4));
+    cpu_push16(c, 0);
+    cpu_push16(c, 0);
+    c->icount += 6;
+    if (!guest_call(m, 0x13B9, 0x1370)) return 1;
+    if (!room(c, 14)) { c->ip = 0x1370; return 1; }
+    c->r[R_SP] = bp;
+    unsigned n = 0;
+    for (int k = 0; k < 2; k++) {                                 /* the first corner: at least 0 */
+        const uint16_t bx = A(k ? 8 : 4);
+        c->r[R_BX] = bx;
+        alu_sub(c, ds_get(c, bx), 0, 1, 0);
+        n += 3;
+        if (!x86_cond(c, 0xD)) { ds_put(c, bx, 0); n++; }
+    }
+    cpu_push16(c, A(0x0A));
+    cpu_push16(c, A(6));
+    cpu_push16(c, ds_get(c, 0x2295));
+    cpu_push16(c, ds_get(c, 0x2293));
+    c->icount += 1 + n + 4;
+    if (!guest_call(m, 0x13B9, 0x139B)) return 1;
+    if (!room(c, 15)) { c->ip = 0x139B; return 1; }
+    c->r[R_SP] = bp;
+    n = 1;
+    for (int k = 0; k < 2; k++) {                                 /* the second corner: below [9510] */
+        uint16_t ax = ds_get(c, 0x9510);
+        const uint16_t bx = A(k ? 0x0A : 6);
+        c->r[R_BX] = bx;
+        alu_sub(c, ds_get(c, bx), ax, 1, 0);
+        n += 4;
+        if (!x86_cond(c, 0xC)) {                                  /* jl skips */
+            ax = (uint16_t)alu_dec(c, ax, 1);
+            ds_put(c, bx, ax);
+            n += 2;
+        }
+        c->r[R_AX] = ax;
+    }
+#undef A
+    x86_leave(c);
+    c->icount += n + 2;
+    near_ret(c);
+    return 1;
+}
+
+/* The C runtime's initialiser / terminator walkers (VGAME 0x0E924 and
+ * 0x0E933 and their copies): call each non-null entry of the table of
+ * near (2-byte) or far (4-byte) function pointers [SI, DI), last first.
+ * Between calls the state is the one at the routine's entry (the loop's
+ * head is its first instruction), so a call that would not fit leaves the
+ * rest to the original from there. */
+static int crt_call_table(machine_t *m, int far)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t at = c->ip, back = (uint16_t)(at + (far ? 0x10 : 0x0C));
+    int started = 0;
+    for (;;) {
+        if (!room(c, 8)) { if (!started) return 0; c->ip = at; return 1; }
+        alu_sub(c, c->r[R_SI], c->r[R_DI], 1, 0);
+        if (!(c->flags & F_CF)) {                                 /* jae: done */
+            c->icount += 3;
+            near_ret(c);
+            return 1;
+        }
+        unsigned n;
+        int call;
+        uint16_t off, seg = 0;
+        if (!far) {
+            c->r[R_DI] = (uint16_t)alu_dec(c, c->r[R_DI], 1);
+            c->r[R_DI] = (uint16_t)alu_dec(c, c->r[R_DI], 1);
+            off = c->r[R_CX] = ds_get(c, c->r[R_DI]);
+            call = off != 0;                                      /* jcxz */
+            n = 6;
+        } else {
+            c->r[R_DI] = (uint16_t)alu_sub(c, c->r[R_DI], 4, 1, 0);
+            off = ds_get(c, c->r[R_DI]);
+            seg = ds_get(c, (uint16_t)(c->r[R_DI] + 2));
+            c->r[R_AX] = (uint16_t)alu_logic(c, off | seg, 1);
+            call = !(c->flags & F_ZF);
+            n = 6;
+        }
+        c->icount += n;
+        started = 1;
+        if (!call) continue;
+        const int ok = far ? guest_call_far_to(m, seg, off, back) : guest_call(m, off, back);
+        if (!ok) return 1;
+        if (!room(c, 1)) { c->ip = back; return 1; }
+        c->icount++;                                              /* jmp to the head */
+    }
+}
+static int crt_call_near_table(machine_t *m) { return crt_call_table(m, 0); }
+static int crt_call_far_table(machine_t *m) { return crt_call_table(m, 1); }
+
+/* VGAME 0x0F0EE and copies: AH = 0, then the routine after it (+6). */
+static int crt_ah0_call(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 2)) return 0;
+    const uint16_t at = c->ip;
+    set_r8(c, R_AH, (uint8_t)alu_logic(c, 0, 0));
+    c->icount += 1;
+    if (!guest_call(m, (uint16_t)(at + 6), (uint16_t)(at + 5))) return 1;
+    if (!room(c, 1)) { c->ip = (uint16_t)(at + 5); return 1; }
+    c->icount++;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x0EA1C and copies: f(a, b) = the routine 28h bytes before it
+ * called with (a, b, 0). */
+static int crt_call_with_zero(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 7)) return 0;
+    const uint16_t at = c->ip, ss = c->seg[S_SS];
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    const uint16_t bp = c->r[R_BP];
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+    cpu_push16(c, 0);
+    cpu_push16(c, seg_read16(c, ss, (uint16_t)(bp + 6)));
+    cpu_push16(c, seg_read16(c, ss, (uint16_t)(bp + 4)));
+    c->icount += 6;
+    if (!guest_call(m, (uint16_t)(at - 0x28), (uint16_t)(at + 0x0F))) return 1;
+    if (!room(c, 3)) { c->ip = (uint16_t)(at + 0x0F); return 1; }
+    c->r[R_SP] = bp;
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 3;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x0F04A and copies: the null-pointer check at exit - the XOR of
+ * the 42h bytes at DS:0, against 55h; on a mismatch the message (-26h) and
+ * the exit path (+4Dh) with 1. AX = 1 then. */
+static int crt_null_check(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 5 + 3 * 0x42 + 4)) return 0;
+    const uint16_t at = c->ip, ds = c->seg[S_DS];
+    cpu_push16(c, c->r[R_SI]);
+    c->r[R_SI] = (uint16_t)alu_logic(c, 0, 1);
+    uint8_t ah = (uint8_t)alu_logic(c, 0, 0);
+    c->flags = (uint16_t)(c->flags & ~F_DF);
+    uint8_t al = get_r8(c, R_AL);
+    for (int k = 0; k < 0x42; k++) {
+        al = mem_read8(c, phys(ds, c->r[R_SI]));
+        c->r[R_SI]++;
+        ah = (uint8_t)alu_logic(c, (uint16_t)(ah ^ al), 0);
+    }
+    c->r[R_CX] = 0;
+    ah = (uint8_t)alu_logic(c, (uint16_t)(ah ^ 0x55), 0);
+    c->r[R_AX] = (uint16_t)(ah << 8 | al);
+    c->icount += 5 + 3 * 0x42 + 2;
+    if (!(c->flags & F_ZF)) {
+        if (!guest_call(m, (uint16_t)(at - 0x26), (uint16_t)(at + 0x16))) return 1;
+        if (!room(c, 3)) { c->ip = (uint16_t)(at + 0x16); return 1; }
+        c->r[R_AX] = 1;
+        cpu_push16(c, 1);
+        c->icount += 2;
+        if (!guest_call(m, (uint16_t)(at + 0x4D), (uint16_t)(at + 0x1D))) return 1;
+        if (!room(c, 3)) { c->ip = (uint16_t)(at + 0x1D); return 1; }
+        c->r[R_AX] = 1;
+        c->icount++;
+    }
+    if (!room(c, 2)) { c->ip = (uint16_t)(at + 0x20); return 1; }
+    c->r[R_SI] = cpu_pop16(c);
+    c->icount += 2;
+    near_ret(c);
+    return 1;
+}
+
 static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x4958, vgame_free_fall, "free fall", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD50A, vgame_waypoint_from_target, "waypoint from target", 1 },
@@ -3805,6 +4171,34 @@ static const recomp_override MATCHED[] = {
     { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x1C91, chain_last, "last record of a chain", 1 },
     { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x219D, chain_last, "last record of a chain", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xF968, heap_search, "near-heap free-block search", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x4738, vgame_effect_timers, "effect timers", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x2E7F, vgame_ratio15, "ratio as a 1.15 fraction", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x86CA, vgame_map_to_screen, "map point to screen", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x1360, vgame_map_cell_bounds, "map cell bounds", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xE924, crt_call_near_table, "call the near initialiser table", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x9142, crt_call_near_table, "call the near initialiser table", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x5038, crt_call_near_table, "call the near initialiser table", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x12FC, crt_call_near_table, "call the near initialiser table", 1 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x0EE4, crt_call_near_table, "call the near initialiser table", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x177C, crt_call_near_table, "call the near initialiser table", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xE933, crt_call_far_table, "call the far initialiser table", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x9151, crt_call_far_table, "call the far initialiser table", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x5047, crt_call_far_table, "call the far initialiser table", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x130B, crt_call_far_table, "call the far initialiser table", 1 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x0283, crt_call_far_table, "call the far initialiser table", 1 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x0EF3, crt_call_far_table, "call the far initialiser table", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x178B, crt_call_far_table, "call the far initialiser table", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xF0EE, crt_ah0_call, "clear AH and call on", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x98CA, crt_ah0_call, "clear AH and call on", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x54A4, crt_ah0_call, "clear AH and call on", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x1890, crt_ah0_call, "clear AH and call on", 1 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x140C, crt_ah0_call, "clear AH and call on", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xEA1C, crt_call_with_zero, "call with a zero third argument", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x923A, crt_call_with_zero, "call with a zero third argument", 1 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x0F2E, crt_call_with_zero, "call with a zero third argument", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xF04A, crt_null_check, "null-pointer check at exit", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x9826, crt_null_check, "null-pointer check at exit", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x5400, crt_null_check, "null-pointer check at exit", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0xA7BA, heap_search, "near-heap free-block search", 1 },
     { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x263E, heap_search, "near-heap free-block search", 1 },
     { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x1E2E, heap_search, "near-heap free-block search", 1 },
