@@ -19,31 +19,23 @@ roadmap order, starting with the open Phase 1 items. Work is in
 pushed commit. Build with `C:\Users\Tideg\f117-recomp-local\build-p3.cmd`
 into `p3-build`.
 
-**Route status after the strike refresh (6 Oct, 09:30).** `583e848` refreshed
-`strike` and `strike_return`. Running every `tools/routes/*.args` under recomp
-with the p3-build timing, 22 pass and five fail; the full gate
-(`build_recomp.py`, work dir `D:/f117-gate/work`, C: had ~500 MB free so keep
-it on D:) stops at its coverage step because `career_promotion`'s prerequisite
-chain fails. Failing routes, all needing re-recorded inputs (their front-end
-clicks or return legs were timed on the old schedule):
-`recon_career` (saved Roster.Fil at 290: f300600b, expected f800650b),
-`career_serge` (VGAME exits at 3.85B, expected >= 11B; roster bytes wrong),
-`career_promotion` (depends on the two above), `cargo_return` (exits at
-9.61B, expected >= 13B) and `secret_airstrip_return` (exits at 4.57B, expected
->= 14B). Re-record with the pilots, then rerun the gate. Also on 6 Oct: the
-`recon` flight rebuilds 34/34 draw-list phases exact but copies 2,917 bytes
-from entries 6 and 2 (see docs/presentation.md, "Second route").
-
-**Weak milestones hide stale routes (6 Oct, 09:40).** `run_route.py` passing
-is not the strong observer. `cargo_check.py --replay tools/routes/cargo.input
---steps 7182189465` now reports "expected one impact" and the aircraft is still
-at 10,926 ft AGL, 507 kt at that clock: the supply drop no longer happens on
-the rational schedule, so `cargo`, `cargo_d5_fixed` and `cargo_return` all need
-a new delivery recording (private trials `parity-audit-20261004/cargo_trial*.py`
-and `cargo_return_trial.py`; copy with `root` pointed at D: and `DELIVERED` set
-to the new impact clock). The same check is untested for the other flight
-routes (`secret_airstrip`, theatre strikes, air-to-air, `landing`): run each
-route's strong observer, not just `run_route.py`.
+**Routes and gate (6 Oct, 12:30).** All 27 routes were re-checked on the
+rational timing. Re-recorded or re-expected today: `strike`, `strike_return`,
+`cargo`, `cargo_d5_fixed`, `cargo_return`, `secret_airstrip`,
+`secret_airstrip_return`, `career_serge`, `career_promotion` (new inputs), and
+`recon_career` (score 243, total 2912). Their strong observers
+(`cargo_check`, `airstrip_check`, `strike_pilot`) pass under both engines.
+Note `run_route.py` passing is only the weak milestone check: run the strong
+observer too. Private recording scripts are `parity-audit-20261004/*_trial*.py`
+(copy with the output root on D:). The full gate is now
+`py tools/build_recomp.py --data D:/GOG/F-117A --work D:/f117-gate/workN
+--jobs 12` (coverage and parity run in parallel; about 15 minutes, was about
+two hours; keep TEMP and the work dir on D:, C: has had under 1 GB free):
+27/27 routes identical, 89,281 instruction starts / 5,713,472 states 0
+mismatching, 191 matched routines / 657,148 states 0 mismatching. Overlapping
+the lockstep checks and 16 jobs was slower (17 min), so 12 jobs stays. CI was
+red from a25a3ef to 1360f41 on a stale `vga_period` test expectation; fixed.
+Stage 1: five routes rebuild every phase exact (see docs/presentation.md).
 
 **Gate.** `tools/build_recomp.py --work ~/f117-recomp-local/p2-pipeline` on
 `12d7158` (log `p2-pipeline5.log`): 27/27 routes identical, lockstep 5,709,312
