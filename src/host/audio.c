@@ -28,6 +28,8 @@ struct audio {
     size_t   head, count;                 /* ring of stereo frames */
     spk_state spk;                        /* the speaker since the last change */
     float    spk_dc;                      /* a DC blocker's memory */
+    float    spk_part;                    /* a held level's share of the sample under way */
+    float    spk_used;                    /* how much of that sample it covers (0..1) */
 };
 
 static uint64_t muldiv(uint64_t a, uint64_t b, uint64_t d)
@@ -77,6 +79,22 @@ static int speaker_level(const spk_state *s, uint64_t sample)
     }
 }
 
+/* Counter 2 in mode 0 with the gate and the data bit on is how a game plays
+ * digitised sound (F-117A's radio calls under Roland: a count of 0-80 written
+ * every 79 PIT clocks, the pulse width carrying the sample). The cone
+ * averages the pulses; point-sampling them at the output rate instead aliases
+ * the 15 kHz carrier's harmonics into a loud screech. So, as GOG DOSBox 0.74
+ * does (pcspeaker.cpp, "realsound"), the count is the level: (min(count, 80)
+ * - 40) x 5000/40, held until the next write, and averaged over each output
+ * sample. */
+static int speaker_dac(const spk_state *s, float *level)
+{
+    if ((s->port61 & 3) != 3 || (s->pit2.mode & 7) != 0) return 0;
+    const unsigned count = s->pit2.reload > 80 ? 80u : s->pit2.reload;
+    *level = ((float)count - 40.0f) * (5000.0f / 40.0f);
+    return 1;
+}
+
 static void render_frame(audio_t *a, int16_t roland_left, int16_t roland_right)
 {
     int32_t s[2];
@@ -90,9 +108,12 @@ static void render_frame(audio_t *a, int16_t roland_left, int16_t roland_right)
     }
     /* The speaker, through a gentle DC blocker so a held level decays
      * to silence as the real cone does. */
-    float v = speaker_level(&a->spk, a->done) && (a->spk.port61 & 2) ? 6000.0f : 0.0f;
+    float dac, v;
+    if (speaker_dac(&a->spk, &dac)) v = a->spk_part + dac * (1.0f - a->spk_used);
+    else v = a->spk_part + (speaker_level(&a->spk, a->done) && (a->spk.port61 & 2) ? 6000.0f : 0.0f) * (1.0f - a->spk_used);
+    a->spk_part = 0.0f; a->spk_used = 0.0f;
     a->spk_dc += (v - a->spk_dc) * 0.0005f;
-    float sp = (a->spk.port61 & 2) ? v - a->spk_dc : 0.0f;
+    float sp = (a->spk.port61 & 2) || v != 0.0f ? v - a->spk_dc : 0.0f;
     /* GOG DOSBox's AdLib mixer channel uses SetScale(2.0). Apply its
      * gain before mixing the separately driven speaker and clipping. */
     int l = 2 * opl_mixer_sample(s[0], &a->opl_last[0]) + (int)sp;
@@ -166,6 +187,16 @@ void audio_speaker_event(audio_t *a, uint64_t icount, uint8_t port61,
                          uint16_t reload, uint8_t mode, uint64_t epoch_clk)
 {
     audio_advance(a, icount);
+    /* A held level (the DAC, or the cone held by the data bit with the
+     * counter stopped) keeps its share of the sample the change falls in. */
+    float held;
+    int is_held = speaker_dac(&a->spk, &held);
+    if (!is_held && (a->spk.port61 & 3) != 3) { held = (a->spk.port61 & 2) ? 6000.0f : 0.0f; is_held = 1; }
+    if (is_held) {
+        const uint64_t num = icount * (uint64_t)AUDIO_RATE;
+        const float at = (float)(num % a->ips) / (float)a->ips;   /* position inside the sample under way */
+        if (at > a->spk_used) { a->spk_part += held * (at - a->spk_used); a->spk_used = at; }
+    }
     a->spk.icount = icount;
     a->spk.port61 = port61;
     a->spk.pit2.reload = reload;

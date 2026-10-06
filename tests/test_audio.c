@@ -64,6 +64,26 @@ int main(void)
     m->port61 = 0; audio_speaker(a, m, 4096); audio_advance(a, 8192);
     CHECK(audio_take(a, x, 4096) == 4096);
     for (int i = 0; i < 8192; ++i) CHECK(x[i] == 0);
+    audio_destroy(a);
+    /* Mode 0 with the gate and data bit on is digitised sound: the count is a
+     * held level, (min(count, 80) - 40) x 125, as in GOG DOSBox - not a pulse
+     * train point-sampled at the output rate (that aliased into a screech). */
+    a = audio_create(AUDIO_RATE); CHECK(a);
+    m->port61 = 3; m->pit[2].mode = 0; m->pit[2].reload = 60;
+    audio_speaker(a, m, 0); audio_advance(a, 64);
+    m->pit[2].reload = 20; audio_speaker(a, m, 64); audio_advance(a, 128);
+    m->pit[2].reload = 200; audio_speaker(a, m, 128); audio_advance(a, 129);
+    CHECK(audio_take(a, x, 129) == 129);
+    for (int i = 0; i < 64; ++i) CHECK(x[2 * i] > 2300 && x[2 * i] <= 2500);      /* +2500, the DC blocker barely moved */
+    for (int i = 64; i < 128; ++i) CHECK(x[2 * i] < -2400 && x[2 * i] > -2700);  /* -2500 */
+    CHECK(x[2 * 128] > 4800);                                                     /* counts above 80 clamp to +5000 */
+    /* a change part-way through a sample is averaged into it */
+    audio_destroy(a);
+    a = audio_create(2 * AUDIO_RATE); CHECK(a);
+    m->pit[2].reload = 80; audio_speaker(a, m, 0);
+    m->pit[2].reload = 0; audio_speaker(a, m, 1); audio_advance(a, 2);
+    CHECK(audio_take(a, x, 1) == 1);
+    CHECK(x[0] > -200 && x[0] < 200);                                            /* half +5000, half -5000 */
     audio_destroy(a); free(m);
     puts("DBOPL/Nuked timestamped audio and speaker gate pass");
     return 0;
