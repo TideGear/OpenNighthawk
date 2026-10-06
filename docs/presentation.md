@@ -474,3 +474,13 @@ every phase exact on all five routes and **0 bytes copied from the original**:
 strike 73/73, recon 34/34, Central Europe air-to-air 29/29, landing 38/38,
 cargo 38/38, on both pages.
 
+**Eight more routes (6 Oct, 12:40).** 30M-instruction windows starting 10M
+after each flight's `ordnance.pic` open, captured four at a time, rebuild every
+phase exactly on both pages with no byte copied from the original: Korea,
+Kuwait, Middle East and North Cape strikes (39, 33, 28 and 27 phases, in no
+fixed order), Central America ground training 27, Persian Gulf air training
+32, Vietnam air-to-air 27 and the secret airstrip 32. With the five routes
+above that is 13 routes. Still unexercised: dithered and stipple fills (no
+fill in these windows used one), the sprite clip edge cases, and windows later
+in each flight (weapon release, landing, the cockpit's other displays).
+
