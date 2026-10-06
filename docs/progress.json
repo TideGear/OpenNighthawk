@@ -119,9 +119,9 @@
       {
         "item": "Stage 1: draw lists replayed bit-exact at 320x200",
         "weight": 10,
-        "done": 0.25,
+        "done": 0.4,
         "kind": "estimate",
-        "evidence": "Capture built (polygons, edges, vertices); edge-to-span replay exact for 3,678 of 3,678 polygons (8,897 rows) on 30M instructions of flight (tools/drawlist_spans.py). Not yet: borders, near-clip join, fill styles, the graphics library's primitives, whole-frame pixel comparison."
+        "evidence": "Draw list captured; every filled polygon's final span rows (edges, near-clip join, borders) replayed exactly: 2,719 of 2,719 painted polygons on 30M instructions of flight (tools/drawlist_spans.py). Not yet: fill styles to pixels, the graphics library's primitives, whole-frame comparison."
       },
       {
         "item": "Stage 2: high-resolution re-draw",

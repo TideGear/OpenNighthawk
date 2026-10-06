@@ -20,7 +20,11 @@
  *       viewport (xmin, ymin, xmax, ymax), the accumulator (flags, lmin,
  *       lmax, rmin, rmax, drew, nclip), the top span row, the row count and
  *       each row's left and right bound
- *   'B' an outline polygon begun (1377:004C): the colour word
+ *   'B' a fill or an outline polygon begun (1377:004C; the fill entry calls
+ *       it, so it follows each 'F'): the colour word
+ *   'R' the fill paints (1377:005E): the colour word, the top row, the row
+ *       count and each row's bounds, after the near-clip join (an 'E' between
+ *       'F' and 'R') and the border runs
  *   'L' an edge of an outline polygon drawn as a line (1377:0055): slot */
 typedef struct f117_observer {
     void *user;

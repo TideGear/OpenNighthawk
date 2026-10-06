@@ -114,6 +114,22 @@ class Spans:
             self.rmax = max(self.rmax, b)
             self.rmin = min(self.rmin, a)
 
+    def run(self, x, a, b):
+        """1377:07E8: one vertical run at column x over rows a..b (borders)."""
+        if b < a:
+            a, b = b, a
+        if b <= self.ymin or a >= self.ymax:
+            return
+        a, b = max(a, self.ymin), min(b, self.ymax)
+        n = b - a
+        if n == 0:
+            return
+        if a < self.top:
+            self.top = a
+        for y in range(a, a + n + 1):
+            self.widen_left(y, x)
+            self.widen_right(y, x)
+
     def poly_edge(self, e):
         x0, y0, x1, y1, st = e["x0"], e["y0"], e["x1"], e["y1"], e["st"]
         self.flags |= st
@@ -132,10 +148,27 @@ class Spans:
             self.side(lo & 8, s16(y1), e["y1hi"])
 
 
+def rows_of(sp):
+    mine = []
+    if sp.top != NOLEFT:
+        y = sp.top
+        while sp.left.get(y, NOLEFT) != NOLEFT or sp.right.get(y, NORIGHT) != NORIGHT:
+            mine.append((sp.left.get(y, NOLEFT), sp.right.get(y, NORIGHT)))
+            y += 1
+    return mine
+
+
+def parse_edge(f):
+    v = [int(x) for x in f[2:]]
+    return {"x0": v[1] & 0xFFFF, "y0": v[2] & 0xFFFF, "x1": v[3] & 0xFFFF, "y1": v[4] & 0xFFFF,
+            "st": v[5] & 0xFFFF, "y0hi": s16(v[2] >> 16), "y1hi": s16(v[4] >> 16)}
+
+
 def main():
     if len(sys.argv) != 2:
         sys.exit(__doc__)
-    edges = []
+    pending = []              # edges since the last fill
+    poly = None               # the polygon between its fill entry ('F') and its painting ('R')
     stats = Counter()
     first_bad = []
     seen_fill = False         # the first polygon may have edges from before the log's window
@@ -144,47 +177,67 @@ def main():
         if not f:
             continue
         if f[0] == "E":
-            v = [int(x) for x in f[2:]]
-            edges.append({"x0": v[1] & 0xFFFF, "y0": v[2] & 0xFFFF, "x1": v[3] & 0xFFFF, "y1": v[4] & 0xFFFF,
-                          "st": v[5] & 0xFFFF, "y0hi": s16(v[2] >> 16), "y1hi": s16(v[4] >> 16)})
+            # the near-clip join is the one edge the fill entry adds, and only
+            # when two crossings were collected; any other edge is the next polygon's
+            if poly is not None and poly["nclip"] == 2 and not poly["join"]:
+                poly["join"].append(parse_edge(f))
+            else:
+                pending.append(parse_edge(f))
         elif f[0] == "F":
             v = [int(x) for x in f[2:]]
             if not seen_fill:
                 seen_fill = True
-                edges = []
+                pending = []
                 continue
             xmin, ymin, xmax, ymax = v[1:5]
             flags, lmin, lmax, rmin, rmax, drew, nclip = v[5:12]
             top, nrows = v[12], v[13]
             rows = [(v[14 + 2 * k], v[15 + 2 * k]) for k in range(nrows)]
             sp = Spans(ymin, ymax)
-            for e in edges:
+            for e in pending:
                 sp.poly_edge(e)
-            mine = []
-            if sp.top != NOLEFT:
-                y = sp.top
-                while sp.left.get(y, NOLEFT) != NOLEFT or sp.right.get(y, NORIGHT) != NORIGHT:
-                    mine.append((sp.left.get(y, NOLEFT), sp.right.get(y, NORIGHT)))
-                    y += 1
-            want_top = top if nrows else NOLEFT
-            ok_rows = (sp.top if mine else NOLEFT) == want_top and mine == rows
-            ok_acc = (sp.flags & 0xFFFF, sp.lmin, sp.lmax, sp.rmin, sp.rmax, sp.drew, sp.nclip) == \
-                     (flags & 0xFFFF, lmin, lmax, rmin, rmax, drew, nclip)
+            ok_rows = rows_of(sp) == rows and (sp.top if rows else NOLEFT) == (top if rows else NOLEFT)
+            ok_acc = (sp.flags & 0xFFFF, sp.lmin, sp.lmax, sp.rmin, sp.rmax, sp.drew, sp.nclip) ==                      (flags & 0xFFFF, lmin, lmax, rmin, rmax, drew, nclip)
             stats["polygons"] += 1
             stats["rows exact"] += ok_rows
             stats["accumulator exact"] += ok_acc
             stats["rows"] += len(rows)
-            if not ok_rows and len(first_bad) < 5:
-                first_bad.append((f[1], len(edges), sp.top, top, mine[:4], rows[:4], ok_acc,
-                                  (sp.flags & 0xFFFF, sp.lmin, sp.lmax, sp.rmin, sp.rmax, sp.drew, sp.nclip),
-                                  (flags & 0xFFFF, lmin, lmax, rmin, rmax, drew, nclip)))
-            edges = []
+            poly = {"sp": sp, "xmin": xmin, "xmax": xmax, "join": [], "clock": f[1], "nclip": nclip}
+            pending = []
+        elif f[0] == "R" and poly is not None:
+            v = [int(x) for x in f[2:]]
+            top, nrows = v[1], v[2]
+            want = [(v[3 + 2 * k], v[4 + 2 * k]) for k in range(nrows)]
+            sp = poly["sp"]
+            for e in poly["join"]:                   # 130D:0116 with two crossings: the join edge
+                sp.poly_edge(e)
+            fl = sp.flags
+            if sp.drew:
+                if fl & 5:
+                    sp.run(poly["xmax"] + 1, sp.rmax, sp.rmin)
+                if fl & 10:
+                    sp.run(poly["xmin"] - 1, sp.lmax, sp.lmin)
+            elif (fl & 5) and (fl & 10):
+                sp.run(poly["xmax"] + 1, sp.rmax, sp.rmin)
+                sp.run(poly["xmin"] - 1, sp.lmax, sp.lmin)
+            mine = rows_of(sp)
+            ok = mine == want and (sp.top if want else NOLEFT) == (top if want else NOLEFT)
+            stats["painted"] += 1
+            stats["painted exact"] += ok
+            stats["joins"] += bool(poly["join"])
+            stats["joins exact"] += bool(poly["join"]) and ok
+            if not ok and len(first_bad) < 5:
+                first_bad.append((poly["clock"], len(poly["join"]), sp.top, top, mine[:3], want[:3], len(mine), len(want)))
+            poly = None
     p = stats["polygons"]
-    print("%d filled polygons, %d span rows: rows exact for %d (%.1f%%), accumulator exact for %d (%.1f%%)" % (
+    print("%d filled polygons, %d span rows from their edges: exact for %d (%.1f%%), accumulator exact for %d (%.1f%%)" % (
         p, stats["rows"], stats["rows exact"], 100.0 * stats["rows exact"] / max(p, 1),
         stats["accumulator exact"], 100.0 * stats["accumulator exact"] / max(p, 1)))
+    q = stats["painted"]
+    print("%d painted, with the join and the borders: exact for %d (%.1f%%); %d had a near-clip join, %d of them exact" % (
+        q, stats["painted exact"], 100.0 * stats["painted exact"] / max(q, 1), stats["joins"], stats["joins exact"]))
     for b in first_bad:
-        print("  at clock %s, %d edges: top %s vs %s; rows %s vs %s; accumulator %s (%s vs %s)" % b)
+        print("  at clock %s (%d join edges): top %s vs %s; rows %s vs %s; %d vs %d rows" % b)
 
 
 if __name__ == "__main__":

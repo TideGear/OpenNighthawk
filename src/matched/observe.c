@@ -93,7 +93,36 @@ static int hook_poly_fill(machine_t *m)
     return 0;
 }
 
-/* 1377:004C, an outline polygon begun: AX the colour word. */
+/* 1377:005E, the fill paints: the span rows as they stand once the fill
+ * entry has added the near-clip join and the border runs - the ground truth
+ * for the whole polygon - and the colour word in AX. */
+static int hook_fill_rows(machine_t *m)
+{
+    const f117_observer *o = g_f117_observer;
+    if (!o || !o->prim) return 0;
+    cpu_t *c = &m->cpu;
+    const uint16_t ds = c->seg[S_DS];
+    int32_t v[3 + 2 * 256];
+    int n = 0;
+    v[n++] = c->r[R_AX];
+    const int16_t top = (int16_t)seg_read16(c, ds, 0x9160);
+    v[n++] = top;
+    const int rows_at = n++;
+    int rows = 0;
+    if (top >= 0 && top < 256)
+        for (int y = top; y < 256; y++) {
+            const int16_t l = (int16_t)seg_read16(c, ds, (uint16_t)(0x89DC + 2 * y));
+            const int16_t r = (int16_t)seg_read16(c, ds, (uint16_t)(0x8D9E + 2 * y));
+            if (l == 0x7FFF && (uint16_t)r == 0x8001u) break;
+            v[n++] = l; v[n++] = r; rows++;
+        }
+    v[rows_at] = rows;
+    o->prim(o->user, c->icount, 'R', v, n);
+    return 0;
+}
+
+/* 1377:004C, a fill or an outline polygon begun (the fill entry calls it
+ * too): AX the colour word. */
 static int hook_outline_begin(machine_t *m)
 {
     const f117_observer *o = g_f117_observer;
@@ -117,7 +146,8 @@ static const recomp_override OBSERVERS[] = {
     { "observe", "VGAME.EXE", VGAME_47304, 0x0000, 0x1450, hook_game_draw, "per-frame draw routine (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x130D, 0x004A, hook_poly_edge, "filled polygon edge (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x130D, 0x0116, hook_poly_fill, "filled polygon fill (observer)", 1 },
-    { "observe", "VGAME.EXE", VGAME_47304, 0x1377, 0x004C, hook_outline_begin, "outline polygon begin (observer)", 1 },
+    { "observe", "VGAME.EXE", VGAME_47304, 0x1377, 0x004C, hook_outline_begin, "fill or outline begin (observer)", 1 },
+    { "observe", "VGAME.EXE", VGAME_47304, 0x1377, 0x005E, hook_fill_rows, "fill paints its rows (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x1377, 0x0055, hook_outline_edge, "outline polygon edge (observer)", 1 },
 };
 

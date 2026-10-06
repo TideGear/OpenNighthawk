@@ -143,13 +143,16 @@ order by x, drop an edge that leaves the vertical clip, steep and shallow
 arms with their exact error terms) and the polygon accumulator (130D:004A:
 status OR, the y ranges that left through each side, the near-clip count) -
 written here from their documented behaviour. The fill hook records the
-span rows the original built, so each polygon is checked row by row. On 30
-million instructions of the strike route's flight: **3,678 polygons, 8,897
-rows, every row exact**; the accumulator matches for 99.0% (the rest are
-edges handed to the rasteriser and reset by a path other than the fill,
-not yet traced). Still to replay before a polygon is pixels: the border
-runs and the near-clip join that 130D:0116 adds before filling, and the
-fill styles (solid, dither, AND, OR, stipple, discard).
+span rows the original built, and a hook where the fill starts painting
+(1377:005E) records the final rows, after the fill entry has added the
+near-clip join (the one edge it hands the rasteriser when two crossings were
+collected, already clipped, so no clipper needs replaying) and the border
+runs (one column outside the viewport, over the y range that left through
+each side). On 30 million instructions of the strike route's flight: **3,678
+polygons, 8,897 edge rows and every accumulator exact; 2,719 painted
+polygons, every final row exact, including all 155 with a near-clip join.**
+Still to replay before a polygon is pixels: the fill styles (in this window
+solid 2,413, OR 521, AND 373, discard 372; dither and stipple not seen).
 
 ## What is not known (and has to be measured next)
 
