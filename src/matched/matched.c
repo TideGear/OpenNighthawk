@@ -4372,6 +4372,7 @@ static int vgame_model_prepare_edge(machine_t *m)
                                                                     : (p1 == 0x8000 ? P1_BEHIND : FRONT);
     const unsigned pre = arm == FRONT || arm == P1_BEHIND ? 34 : arm == P0_BEHIND ? 33 : 11;
     if (!room(c, pre + 1)) return 0;
+    if (g_f117_observer) observe_edge_prepared(m, c->r[R_BP], di0, bx0);
     const uint16_t si = c->r[R_BP];
     c->r[R_SI] = si;
     c->r[R_AX] = p0; c->r[R_DX] = p1;

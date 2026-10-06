@@ -119,9 +119,9 @@
       {
         "item": "Stage 1: draw lists replayed bit-exact at 320x200",
         "weight": 10,
-        "done": 0.0,
+        "done": 0.15,
         "kind": "estimate",
-        "evidence": "Not started."
+        "evidence": "Capture built: polygons (filled and outline) with their edges and the edges' camera-space vertices, logged per frame with the run unchanged (docs/presentation.md). The bit-exact 320x200 replay, which is the stage's check, is not built."
       },
       {
         "item": "Stage 2: high-resolution re-draw",

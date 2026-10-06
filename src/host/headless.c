@@ -130,13 +130,23 @@ static void obs_phase(void *u, uint64_t icount)
     (void)u;
     if (icount >= g_obs_from && icount < g_obs_to) fprintf(g_obs_file, "P %llu\n", (unsigned long long)icount);
 }
-static void obs_vertex(void *u, uint64_t icount, const int32_t xf[3], const int32_t px[2], int range)
+static void obs_vertex(void *u, uint64_t icount, const int32_t xf[3], const int32_t px[2], int range,
+                       uint16_t xf_at, uint16_t px_at)
 {
     (void)u;
     if (icount >= g_obs_from && icount < g_obs_to)
-        fprintf(g_obs_file, "V %llu %d %d %d %d %d %d\n", (unsigned long long)icount, xf[0], xf[1], xf[2], px[0], px[1], range);
+        fprintf(g_obs_file, "V %llu %d %d %d %d %d %d %04X %04X\n", (unsigned long long)icount, xf[0], xf[1], xf[2], px[0], px[1], range,
+                xf_at, px_at);
 }
-static const f117_observer g_obs = { 0, obs_phase, obs_vertex };
+static void obs_prim(void *u, uint64_t icount, char kind, const int32_t *v, int n)
+{
+    (void)u;
+    if (icount < g_obs_from || icount >= g_obs_to) return;
+    fprintf(g_obs_file, "%c %llu", kind, (unsigned long long)icount);
+    for (int k = 0; k < n; k++) fprintf(g_obs_file, " %d", v[k]);
+    fputc(10, g_obs_file);
+}
+static const f117_observer g_obs = { 0, obs_phase, obs_vertex, obs_prim };
 
 static FILE *g_opl_log;
 static FILE *g_midi_log;

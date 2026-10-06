@@ -51,16 +51,17 @@ static int step_at(uint16_t cs, uint16_t ip)
 /* The observer reads a projected vertex without touching the machine. */
 static int obs_calls, obs_range;
 static int32_t obs_xf[3], obs_px[2];
-static void obs_vertex_seen(void *u, uint64_t icount, const int32_t xf[3], const int32_t px[2], int range)
+static void obs_vertex_seen(void *u, uint64_t icount, const int32_t xf[3], const int32_t px[2], int range,
+                            uint16_t xf_at, uint16_t px_at)
 {
-    (void)u; (void)icount;
+    (void)u; (void)icount; (void)xf_at; (void)px_at;
     obs_calls++; obs_range = range;
     for (int k = 0; k < 3; k++) obs_xf[k] = xf[k];
     for (int k = 0; k < 2; k++) obs_px[k] = px[k];
 }
 static void check_observer(void)
 {
-    static const f117_observer o = { 0, 0, obs_vertex_seen };
+    static const f117_observer o = { 0, 0, obs_vertex_seen, 0 };
     memset(m.mem + 0x20000, 0, 0x100);
     m.cpu.seg[S_DS] = 0x2000;
     /* camera-space vertex at DS:0010: x = -2, y = 0x00012345, z with the high word 0x0200 (near) */

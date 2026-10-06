@@ -120,6 +120,22 @@ The original therefore draws in a stable order, and a pairing by slot works
 for most of a frame; where a count changes, the slots after the change shift
 and need a smarter match.
 
+**The draw list (Stage 1, capture).** The observer now records a frame's
+primitives as the original hands them to its rasteriser: `G` an edge
+prepared (its slot and the two projected vertex records it came from, so an
+edge leads back to camera-space vertices), `E` an edge of a filled polygon
+(130D:004A: slot, x0, y0, x1, y1), `F` the polygon's fill (130D:0116: the
+colour word), `B`/`L` an outline polygon begun (1377:004C) and its edges drawn
+as lines (1377:0055), and `V` each vertex with the addresses of its records.
+The high word of an edge's x0 holds the edge stage's markers (4040h clipped
+at one end, 8080h both ends behind the eye), so a reader masks it. Over 3
+million instructions of the strike route's flight (eight phases, about four
+steps): 1,889 vertices, 2,474 prepared edges, 388 filled polygons from 1,595
+edges, and 1,032 outline polygons with 459 drawn edges; the run's final
+hash is the same with the observer on. Not captured yet: the resident
+graphics library's calls (sprites, HUD), and polygons whose edges were
+prepared by the original because the matched routine declined.
+
 ## What is not known (and has to be measured next)
 
 1. **Where the scene is drawn.** The matched routines already name part of
