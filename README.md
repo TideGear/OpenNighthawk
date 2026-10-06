@@ -231,9 +231,13 @@ You supply two ROM files from a Roland MT-32 (or CM-32L): the **control ROM**
 (the unit's firmware) and the **PCM ROM** (its sampled sounds). Put them in
 one folder and point `mt32-roms` at it. The files are recognised by their
 SHA-1 (Munt's own table), so their names do not matter; with several in the
-folder, the first match in this order is used. F-117A (1991) was written for
-the first-generation MT-32, so a 1.0x control ROM is the most faithful choice;
-1.07 is what this project was checked with.
+folder, the first match in this order is used. F-117A (1991) wants the
+first-generation ("old") MT-32, the one with control ROM 1.0x
+([DOS Days](https://dosdays.co.uk/topics/Games/game_f117.php)), and rendering
+this game's own MIDI (a run from boot into flight) agrees: control ROMs 1.04
+and 1.07 give bit-identical output, while 2.04 plays the music much the same
+but the in-flight effects about 5 dB quieter and 5-7 dB duller above 3 kHz.
+Any 1.0x ROM is right; 2.0x and the CM-32L are accepted as fallbacks.
 
 | Control ROM | Size | SHA-1 |
 |---|---|---|
