@@ -531,3 +531,19 @@ Stage 1 reference, bit exact; at N > 1 each N x N block agrees with the
 N = 1 pixel wherever no edge crosses it), and the sub-pixel re-projection
 follows only if that picture is judged too blocky.
 
+**Stage 2, first check (6 Oct, 14:00): `tools/hires_spans.py`.** It re-walks
+every filled polygon's edges on an N-times finer grid (endpoints and the clip
+rows scaled by N, the original's edge walk unchanged) and tests the stage's
+rule: a coarse pixel whose eight neighbours are all inside the polygon is not
+crossed by any edge, so its N x N fine pixels must all be inside. On the
+strike window at 8.53B (69 phases, 3,332 such pixels): N = 1 agrees on all
+3,332 (the replay is the reference), **N = 2 on 88.8%, N = 4 on 85.8%**. A row
+test ("the fine span stays within a pixel of the coarse one") was wrong and is
+dropped: a shallow edge moves many coarse pixels across half a row. Every
+disagreement sits in 36 four-edge polygons whose edges carry the clipper's
+statuses 0x80 and 0x41 (an edge rejected to borders only, or near-clipped): the
+original clips whole edges in integer coordinates and records their borders
+from y ranges, and those rules do not scale. So the plain scaled walk is right
+for unclipped polygons and the clip stage is what has to be redone at the new
+resolution, as the open question in this page said.
+
