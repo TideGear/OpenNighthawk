@@ -196,6 +196,31 @@ static const char *default_data_dir(void)
     return NULL;
 }
 
+/* An MT-32 control and PCM ROM pair in a folder, by the names Munt and the
+ * DOSBox ports use: a first-generation MT-32 first (what a 1991 game was
+ * written for), then the later MT-32 and the CM-32L, each with its own PCM. */
+static int find_mt32_roms(const char *dir, char *ctrl, char *pcm, size_t size)
+{
+    static const char *const pairs[][2] = {
+        { "mt32_ctrl_1_07.rom", "mt32_pcm.rom" }, { "MT32_CONTROL.ROM", "MT32_PCM.ROM" },
+        { "mt32_ctrl_1_06.rom", "mt32_pcm.rom" }, { "mt32_ctrl_1_05.rom", "mt32_pcm.rom" },
+        { "mt32_ctrl_1_04.rom", "mt32_pcm.rom" }, { "mt32_ctrl_2_04.rom", "mt32_pcm.rom" },
+        { "mt32_ctrl_2_06.rom", "mt32_pcm.rom" }, { "mt32_ctrl_2_07.rom", "mt32_pcm.rom" },
+        { "cm32l_ctrl_1_02.rom", "cm32l_pcm.rom" }, { "CM32L_CONTROL.ROM", "CM32L_PCM.ROM" },
+        { NULL, NULL } };
+    const size_t n = strlen(dir);
+    const char *sep = n && (dir[n - 1] == '\\' || dir[n - 1] == '/') ? "" : "\\";
+    for (int i = 0; pairs[i][0]; i++) {
+        snprintf(ctrl, size, "%s%s%s", dir, sep, pairs[i][0]);
+        snprintf(pcm, size, "%s%s%s", dir, sep, pairs[i][1]);
+        FILE *a = fopen(ctrl, "rb"), *b = fopen(pcm, "rb");
+        if (a) fclose(a);
+        if (b) fclose(b);
+        if (a && b) return 1;
+    }
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     const char *data = NULL, *save = NULL, *log_path = NULL;
@@ -242,16 +267,27 @@ int main(int argc, char **argv)
         }
     }
     int from_cli = 0, cli_roland = 0;
+    enum { ROLAND_UNSET, ROLAND_MUNT, ROLAND_WINDOWS, ROLAND_OFF } roland = ROLAND_UNSET;
+    const char *mt32_roms = NULL;
 
     for (int i = 1; i < argc; i++) {
         const char *a = argv[i], *v = i + 1 < argc ? argv[i + 1] : NULL;
         if (!strcmp(a, CONFIG_CLI_MARK)) { from_cli = 1; continue; }
         /* a Roland output named on the command line replaces the file's */
-        if (from_cli && !cli_roland && (!strcmp(a, "--midi") || !strcmp(a, "--mt32-control") || !strcmp(a, "--mt32-pcm"))) {
+        if (from_cli && !cli_roland && (!strcmp(a, "--midi") || !strcmp(a, "--mt32-control") || !strcmp(a, "--mt32-pcm") ||
+                                        !strcmp(a, "--roland") || !strcmp(a, "--mt32-roms"))) {
             cli_roland = 1;
-            if (!strcmp(a, "--midi")) mt32_control = mt32_pcm = NULL;
-            else midi_dev = -2;
+            roland = ROLAND_UNSET; midi_dev = -2;
+            mt32_control = mt32_pcm = mt32_roms = NULL;
         }
+        if (!strcmp(a, "--roland") && v) {
+            if (!strcmp(v, "munt")) roland = ROLAND_MUNT;
+            else if (!strcmp(v, "windows")) roland = ROLAND_WINDOWS;
+            else if (!strcmp(v, "off")) roland = ROLAND_OFF;
+            else { fprintf(stderr, "--roland takes munt, windows or off\n"); return 2; }
+            i++; continue;
+        }
+        if (!strcmp(a, "--mt32-roms") && v) { mt32_roms = v; i++; continue; }
         if (!strcmp(a, "--config") && v) { i++; continue; }
         if (!strcmp(a, "--no-config")) continue;
         if (!strcmp(a, "--data") && v) { data = v; i++; }
@@ -295,9 +331,34 @@ int main(int argc, char **argv)
                 "             [--exit-after CLOCKS] [--opl dbopl|nuked]\n"
                 "             [--audio-queue-log FILE]\n"
                 "             [--audio-dump FILE]\n"
+                "             [--roland munt|windows|off] [--mt32-roms DIR]\n"
                 "             [--mt32-control FILE --mt32-pcm FILE] [--fix ID|all]... [--list-fixes]\n"
                 "             [--config FILE | --no-config]   (default: f117a.ini beside f117a.exe)\n");
             return 2;
+        }
+    }
+    /* --roland and --mt32-roms: the simple form of the Roland options */
+    if (roland == ROLAND_WINDOWS) {
+        mt32_control = mt32_pcm = NULL;
+        if (midi_dev == -2) midi_dev = -1;                    /* the MIDI mapper */
+    } else if (roland == ROLAND_OFF) {
+        mt32_control = mt32_pcm = NULL;
+        midi_dev = -2;
+    } else if (roland == ROLAND_MUNT || (roland == ROLAND_UNSET && mt32_roms && midi_dev == -2)) {
+        midi_dev = -2;
+        if (!mt32_control || !mt32_pcm) {
+            static char ctrl[1024], pcm[1024];
+            if (!mt32_roms || !find_mt32_roms(mt32_roms, ctrl, pcm, sizeof ctrl)) {
+                char msg[1300];
+                snprintf(msg, sizeof msg, mt32_roms
+                    ? "No MT-32 control and PCM ROMs found in %s (for example mt32_ctrl_1_07.rom and mt32_pcm.rom)."
+                    : "Roland through Munt needs your MT-32 ROMs: set mt32-roms to the folder holding them.%s",
+                    mt32_roms ? mt32_roms : "");
+                fprintf(stderr, "%s\n", msg);
+                SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "F-117A", msg, NULL);
+                return 2;
+            }
+            mt32_control = ctrl; mt32_pcm = pcm;
         }
     }
     if ((mt32_control != NULL) != (mt32_pcm != NULL) || (mt32_control && midi_dev != -2)) {
@@ -625,11 +686,11 @@ int main(int argc, char **argv)
          * than play an unexplained silence. */
         if (H.roland_unheard == 1) {
             H.roland_unheard = 2;
-            static const char *msg = "Roland music has no output: start with --midi -1 (Windows MIDI), "
-                                     "or --mt32-control FILE --mt32-pcm FILE (your MT-32 ROMs, through Munt)";
+            static const char *msg = "Roland music has no output: in f117a.ini set roland = munt and mt32-roms to "
+                                     "the folder with your MT-32 ROMs, or roland = windows (Windows MIDI)";
             fputs(msg, stderr);
             fputc(10, stderr);
-            SDL_SetWindowTitle(win, "F-117A - no Roland output: use --midi -1 or the MT-32 ROM options");
+            SDL_SetWindowTitle(win, "F-117A - no Roland output: set roland in f117a.ini");
         }
     }
 

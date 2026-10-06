@@ -190,8 +190,10 @@ build\f117a.exe --data "D:\GOG\F-117A"
 | `--save DIR` | where the game's own saves go (default: your user profile); the install is never written |
 | `--engine recomp\|interp` | recompiled code (default) or the reference interpreter only |
 | `--ips N` | emulated CPU speed, instructions per second (default 9,000,000: GOG DOSBox's `cycles=9000`) |
-| `--midi N` | send the Roland driver's MIDI to Windows MIDI device N (-1: the mapper) |
-| `--mt32-control FILE --mt32-pcm FILE` | render Roland through Munt using your control/PCM ROM pair; choose this or `--midi` |
+| `--roland munt\|windows\|off` | where Roland music goes: Munt's MT-32 emulation (needs `--mt32-roms`), the Windows MIDI synthesizer, or nowhere |
+| `--mt32-roms DIR` | the folder holding your MT-32 control and PCM ROMs (Munt's or DOSBox's file names, e.g. `mt32_ctrl_1_07.rom` and `mt32_pcm.rom`); on its own it means `--roland munt` |
+| `--midi N` | send Roland MIDI to Windows MIDI device N instead of the mapper |
+| `--mt32-control FILE --mt32-pcm FILE` | name the two ROM files instead of a folder |
 | `--opl dbopl\|nuked` | GOG DOSBox's OPL2 synthesizer (default), or Nuked OPL3 in OPL2 mode; both output at 44,100 Hz |
 | `--scale N`, `--fullscreen`, `--no-aspect` | window size; fullscreen; square pixels instead of 4:3 |
 | `--config FILE`, `--no-config` | read settings from FILE instead of `f117a.ini` beside the executable; or read none |
@@ -200,14 +202,14 @@ build\f117a.exe --data "D:\GOG\F-117A"
 Every option can also be kept in a settings file: copy `f117a.example.ini`
 (written beside `f117a.exe` by the build) to `f117a.ini` in the same folder
 and edit it - one option per line without its dashes (`data = D:\GOG\F-117A`,
-`mt32-control = ...`, `fullscreen = yes`, `fix = D4, D5`). Relative paths are
-taken from the file's folder, and an option given on the command line still
-wins (`--midi` there replaces the file's Munt ROMs, and the other way round).
+`roland = munt`, `mt32-roms = C:\ROMs`, `fullscreen = yes`, `fix = D4, D5`).
+Relative paths are taken from the file's folder, and an option given on the
+command line still wins (any Roland option there replaces all of the file's).
 `--config FILE` reads another file; `--no-config` ignores it.
 
 The game asks its original SETUP questions at each start (joystick, sound
-card), as it did in 1991. Answer 2 for AdLib, or 3 for Roland with `--midi`
-or the Munt ROM options.
+card), as it did in 1991. Answer 2 for AdLib, or 3 for Roland with `roland`
+set (and, for Munt, `mt32-roms`).
 
 Munt is part of the default build; no ROMs are included. CMake fetches
 [libmt32emu](https://github.com/munt/munt/tree/master/mt32emu) at a pinned
