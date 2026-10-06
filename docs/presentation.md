@@ -84,6 +84,21 @@ and cut into edges, and then spans are built and filled. Both belong to the
 same frame, and an observer must collect across both before it has the
 frame's polygons. The step's physics runs between them.
 
+A fifth of the traced window (21%) runs outside the unpacked VGAME image, in
+segment `0889`. A memory dump of it (`f117run --dump 08890:1400`) shows it is
+the **resident graphics library** that VGAME reaches through the
+`1E42:0188...` driver slots (each `JMP FAR 0:0` in the file, patched at
+load): a polygon **span fill** (for each row, left and right taken from two
+tables on the stack, a `REP STOSW` into the target page at the row's offset
+plus the page base), a **transparent sprite blit** (`LODSB; OR AL,AL; JE
+skip; STOSB`, so colour 0 is transparent), and further entry points. So the
+frame has *two* rasterisers: VGAME's own model rasteriser (transform, span
+tables, and the row loops at `0x1418C` and `0x1420C` that AND, OR or store a
+pattern) and this library, which draws what the model rasteriser does not
+(sprites, the HUD, panels). An observer on the driver slots sees every
+library call with its arguments before it becomes pixels, which is the
+right place for sprites and the HUD.
+
 ## What is not known (and has to be measured next)
 
 1. **Where the scene is drawn.** The matched routines already name part of
