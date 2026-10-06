@@ -4,7 +4,7 @@
  *           [--engine interp|recomp] [--time-us N]
  *           [--type WHEN:KEYS]... [--click WHEN:X,Y]... [--move WHEN:X,Y]... [--hold MS]
  *           [--record FILE] [--replay FILE]
- *           [--hash-every N] [--hash-from N] [--peek LINEAR] [--trace FROM:TO:FILE]
+ *           [--hash-every N] [--hash-from N] [--peek LINEAR] [--dump LINEAR:LENGTH] [--trace FROM:TO:FILE]
  *           [--coverage FILE] [--screen FILE.ppm] [--shots EVERY:PREFIX]
  *           [--fix ID|all]... [--list-fixes]
  *           [--opl-log FILE] [--midi-log FILE] [--speaker-log FILE]
@@ -166,6 +166,7 @@ int main(int argc, char **argv)
     uint64_t trace_from = 0, trace_to = 0;
     uint32_t peek_at = 0;                  /* --peek LINEAR (hex): print the word there at every hash line */
     int peek_on = 0;
+    uint32_t dump_at = 0, dump_len = 0;    /* --dump LINEAR:LENGTH (hex): the bytes there, at the end of the run */
     static char trace_path[600];
     int engine = ENGINE_INTERP;
     uint64_t shot_every = 0, next_shot = 0;
@@ -184,6 +185,7 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--time-us") && v) { time_us = strtoull(v, NULL, 0); i++; }
         else if (!strcmp(a, "--hash-every") && v) { hash_every = strtoull(v, NULL, 0); i++; }
         else if (!strcmp(a, "--peek") && v) { peek_at = strtoul(v, NULL, 16); peek_on = 1; i++; }
+        else if (!strcmp(a, "--dump") && v) { dump_at = strtoul(v, NULL, 16); const char *c2 = strchr(v, ':'); dump_len = c2 ? strtoul(c2 + 1, NULL, 16) : 0x100; i++; }
         else if (!strcmp(a, "--hash-from") && v) { hash_from = strtoull(v, NULL, 0); i++; }
         else if (!strcmp(a, "--coverage") && v) { coverage = v; i++; }
         else if (!strcmp(a, "--opl-log") && v) { opl_log = v; i++; }
@@ -336,6 +338,11 @@ int main(int argc, char **argv)
         if (rc != RUN_SLICE) break;
     }
     if (trace) fclose(trace);
+    if (dump_len) {
+        printf("[dump] %05X:%X", dump_at, dump_len);
+        for (uint32_t k = 0; k < dump_len; k++) printf("%s%02X", k % 32 ? "" : "\n", mem_read8(&m.cpu, dump_at + k));
+        printf("\n");
+    }
     if (g_record) fclose(g_record);
     if (g_opl_log) fclose(g_opl_log);
     if (g_midi_log) fclose(g_midi_log);
