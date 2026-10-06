@@ -151,6 +151,36 @@ and need a smarter match.
    sorts by depth, so it can reorder) or every object carries an id, the
    pairing is easy; otherwise it needs a matching step.
 
+## A fork to decide before Stage 1: observe the draw path, or render from state
+
+Two ways to get a high-resolution, interpolated picture, and they differ in
+what they depend on.
+
+**A. Observe the original's draw path (what Stages 0-3 describe).** Capture
+the original's own primitives (camera-space vertices, polygons, library
+calls) and re-draw them. Everything stays inside this project; the work is
+understanding and replaying the original's drawing, bit for bit at 320x200
+first, and the library's calls (sprites, HUD) need the same treatment.
+
+**B. Render from the game state with the Reimp's renderer.** The Reimp's
+`vg_ds` (`src/core/vgame_ds.h`) is a 64 KB image of VGAME's data segment
+with the original's own offsets, "the engine's simulation state" in the
+Reimp's words. A snapshot of the machine's data segment at a step boundary
+is therefore already a complete game state in the Reimp's format, and the
+Reimp has a renderer (`raster.c`, `model.c`, `scene.c`, `camera.c`) that
+takes a `vg_ds` and draws from it at parameterised sizes. Two consecutive
+snapshots give the two states to interpolate between. This would reuse
+verified code instead of re-deriving it, but it makes this project depend on
+the Reimp's renderer and on assets it loads, the data segment is not the
+only state a frame reads (models and terrain come from the game's files),
+and the Reimp's renderer is held to its own oracle, not to this machine's
+instruction-level one.
+
+The facts above hold for both. The choice is about dependency and scope, so
+it is made when Stage 1 starts, not before; Stage 0's observer is useful
+either way (it says what the original drew, which is the reference B must
+reproduce).
+
 ## Stages
 
 Each is judged by a check, in the manner of the rest of this project.
