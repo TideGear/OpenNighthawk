@@ -110,7 +110,7 @@ the runway heading, then begins the final descent. The other generated
 objective types remain open.
 
 `cargo` reproduces original D5 through a normally released supply crate.
-`cargo_check.py --replay cargo.input --steps 7498892689` requires one cargo
+`cargo_check.py --replay cargo.input --steps 7353559391` requires one cargo
 store and release, the actual player weapon slot, ground penetration and
 matching impact coordinates inside the delivery area before its deadline.
 It also requires an airborne aircraft with fuel and the retained absence of
@@ -129,13 +129,13 @@ landing gate and the parent block's successful result.
 `cargo_d5_fixed` replays `cargo.input` with fix D5 switched on (`--fix D5`):
 the same impact now earns the original's own primary credit, flag 4000h and
 one 8Bh event. `cargo_check.py --fix D5 --replay tools/routes/cargo.input
---steps 7498892689` turns the verdict round and requires that credit at the
+--steps 7353559391` turns the verdict round and requires that credit at the
 impact, never before it.
 
 `secret_airstrip_return` delivers at the intact primary strip, turns and
 taxis for a second takeoff, then returns to home. Run `airstrip_check.py
 --complete --replay tools/routes/secret_airstrip_return.input --steps
-18635798708 --data D:/GOG/F-117A --out PRIVATE_DIR` for the strong observer.
+17850000000 --data D:/GOG/F-117A --out PRIVATE_DIR` for the strong observer.
 The target is damaged after delivery; earned credit remains and that later
 damage is reported separately.
 

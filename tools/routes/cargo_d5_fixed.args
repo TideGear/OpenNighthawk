@@ -1,12 +1,12 @@
 # Normal supply drop with fix D5 switched on: the same inputs as cargo.args,
 # and the original's own credit path now awards the delivery (flag 4000h, one 8Bh event).
-# Strong observer: cargo_check.py --fix D5 --replay cargo.input --steps 7498892689
+# Strong observer: cargo_check.py --fix D5 --replay cargo.input --steps 7353559391
 # expect-world PG
 --fix
 D5
 --replay
 cargo.input
 --steps
-7182189465
+7353559391
 --time-us
 700000019000000
