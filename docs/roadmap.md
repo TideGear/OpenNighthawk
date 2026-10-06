@@ -352,18 +352,13 @@ never instead of parity.
       There are no multi-sample mismatches, and both local picture sequences
       are identical. Exact transition states vary with capture phase (see In
       progress).
-- [ ] **Refresh strike and return flight inputs after rational VGA slice
-      timing.** The checked-in `strike.input` and `strike_return.input` still
-      need replacement, along with route budgets and official route-runner
-      milestones. Fresh adaptive evidence now passes the completed strike and
-      home-33 return observer under both engines: target 3 damaged, two
-      Mavericks released, one matching hit, then a stopped landing with fuel
-      remaining and parent result 0/status 3. The observer input, flight CSV
-      and result JSON are byte-identical; final clock/hash is
-      15,029,717,426 / `7b49aac1f746ffa7`. `tools/strike_pilot.py` now steers
-      toward home after credit and uses an approach-speed target of 300 for
-      the successful recording. Private evidence and next steps are in
-      `handoff.md`, "Strike refresh".
+- [x] **Refresh strike and return flight inputs after rational VGA slice
+      timing.** `strike.input` and `strike_return.input` are replaced with the
+      adaptive recording (target 3 damaged, two Mavericks released, one
+      matching hit, landing at home 33, result 0/status 3; final clock/hash
+      15,029,717,426 / `7b49aac1f746ffa7`). Budgets are 8,850,000,000 and
+      15,040,000,000. `tools/run_route.py` passes both routes under both
+      engines (END opens `landed1.pic` at the same clock in each).
 - [ ] **Roland through Munt** (libmt32emu, LGPL-2.1+): the MT-32 music in
       the game itself, and its output rendered and checked automatically.
       Optional integration now builds against an installed library or a
