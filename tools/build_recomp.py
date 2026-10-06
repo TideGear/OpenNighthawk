@@ -29,11 +29,23 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 
 from run_route import check_route, route_args, prepare_roster
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
+
+
+_T0 = time.time()
+_LAST = [time.time()]
+
+
+def lap(label):
+    """Print the wall time since the previous lap, so a run shows where it goes."""
+    now = time.time()
+    print("  [%s took %.0f s; %.0f s since start]" % (label, now - _LAST[0], now - _T0))
+    _LAST[0] = now
 
 
 def run(cmd, **kw):
@@ -126,6 +138,7 @@ def main():
         recompile(a.data, gen, sorted(glob.glob(os.path.join(covdir, "*.cov"))))
         print("2. build")
         build(gen)
+        lap("translate and build")
     if not a.no_coverage and not a.parity_only:
         print("3. coverage")
         def cover(r):
@@ -138,9 +151,11 @@ def main():
             return name, icount, interp
         for name, icount, interp in parallel(a.jobs, routes, cover):
             print("  %-20s %d clocks, %d interpreted" % (name, icount, interp))
+        lap("coverage")
         print("4. translate again, build again")
         recompile(a.data, gen, sorted(glob.glob(os.path.join(covdir, "*.cov"))))
         build(gen)
+        lap("second translate and build")
     if not a.no_parity:
         print("5. parity")
         bad = 0
@@ -159,6 +174,7 @@ def main():
             print("  %-20s interp %d/%s  recomp %d/%s (%d interpreted)  %s" % (
                 name, ri[0], ri[1], rr[0], rr[1], rr[2], "IDENTICAL" if same else "DIFFERENT"))
             print("    %d checkpoints compared" % len(ri[3]))
+        lap("parity")
         if bad:
             sys.exit("%d route(s) differ between the engines" % bad)
         print("6. every translated instruction against the interpreter")
@@ -169,6 +185,7 @@ def main():
         if r.returncode != 0:
             print("\n".join(l for l in r.stdout.splitlines() if "MISMATCH" in l))
             sys.exit("translated instructions differ from the interpreter")
+        lap("instruction lockstep")
         print("7. every matched routine against the original")
         exe = os.path.join(ROOT, "build", "func_lockstep.exe")
         r = run([exe, "--states", "4000"], capture_output=True, text=True)
@@ -177,6 +194,7 @@ def main():
         if r.returncode != 0:
             print("\n".join(l for l in r.stdout.splitlines() if "MISMATCH" in l))
             sys.exit("matched routines differ from the original")
+    lap("matched-routine lockstep")
     print("done: %s" % os.path.join(ROOT, "build", "f117a.exe"))
 
 
