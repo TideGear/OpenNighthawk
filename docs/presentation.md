@@ -265,6 +265,13 @@ there. Not checked yet: what reaches the display page (A000) - the blits
 from the work page and the lines and fills drawn there directly - and the
 branches no capture exercised (opaque text, the width clip, dithered fills).
 
+**The display page.** The observer also dumps the display (A000, 'Y') at each
+`game_draw`, and the replay keeps one copy per page, each primitive drawn on
+the page it names. On 6 million instructions of flight the HUD phases' writes
+to the display replay exactly (7 of 7), but every 3-D phase changes about 500
+display bytes that no capture explains (7 of 7 inexact) - the next writer to
+find, in the same way as the outline edges: watch the first differing byte.
+
 **How much of a frame is captured.** With `F117R_OBSERVE_PAGES=1` the
 observer dumps the library's whole 64 KB page segment at each `game_draw`
 entry, and painted pixels are logged by their exact offset in it. A phase is

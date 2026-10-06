@@ -99,6 +99,11 @@ static int hook_game_draw(machine_t *m)
             v[0] = page; v[1] = origin;
             for (uint32_t a = 0; a < 65536; a++) v[2 + a] = mem_read8(c, phys(page, (uint16_t)a));
             o->prim(o->user, c->icount, 'Z', v, 2 + 65536);
+            /* and the display ('Y': A000, 64,000 bytes), which the HUD phase
+             * reaches by blits from the work page and by drawing on it */
+            v[0] = 0xA000; v[1] = 0;
+            for (uint32_t a = 0; a < 64000; a++) v[2 + a] = mem_read8(c, phys(0xA000, (uint16_t)a));
+            o->prim(o->user, c->icount, 'Y', v, 2 + 64000);
         }
     }
     return 0;
@@ -543,7 +548,7 @@ static int hook_lib_sprite(machine_t *m)
  * (2 when CL is set), 2 every fifth, else 1, skipped above the high limit.
  * The table (in the driver's data segment, at 1966h / 196Eh / 1976h, indexed
  * by SI + 4 when CL is set) and the colour [1866] are read here. Logged
- * ('H'): SI, BX, DL, CL, the colour, x, the low and the high limit. */
+ * ('H'): SI, BX, DL, CL, the colour, x, the low and the high limit, the page. */
 static int hook_lib_ticks(machine_t *m)
 {
     flush(m);
@@ -555,10 +560,10 @@ static int hook_lib_ticks(machine_t *m)
     const uint16_t dds = seg_read16(c, drv, 0x071D);
     const uint16_t si0 = c->r[R_SI], cl = c->r[R_CX] & 0xFF;
     const uint16_t si = (uint16_t)(si0 + (cl ? 4 : 0));
-    const int32_t v[8] = { si0, c->r[R_BX], (int8_t)(c->r[R_DX] & 0xFF), cl, mem_read8(c, phys(dds, 0x1866)),
+    const int32_t v[9] = { si0, c->r[R_BX], (int8_t)(c->r[R_DX] & 0xFF), cl, mem_read8(c, phys(dds, 0x1866)),
                            seg_read16(c, dds, (uint16_t)(si + 0x1966)), seg_read16(c, dds, (uint16_t)(si + 0x196E)),
-                           seg_read16(c, dds, (uint16_t)(si + 0x1976)) };
-    o->prim(o->user, c->icount, 'H', v, 8);
+                           seg_read16(c, dds, (uint16_t)(si + 0x1976)), seg_read16(c, drv, 0x0194) };
+    o->prim(o->user, c->icount, 'H', v, 9);
     any_begin(m, 11, seg_read16(c, drv, 0x0194));
     return 0;
 }

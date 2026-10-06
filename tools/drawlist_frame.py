@@ -222,33 +222,42 @@ def main():
     fill_rows = []           # the rows of the fill under way ('b'), to pair with their 'a'
     blit = None
     copied = set()           # offsets written from the original's own result this phase
+    pages = {}                # segment -> the replay of that page (the work page 'Z', the display 'Y')
+    dumps = {}                # segment -> the dump at the phase's start
+    seg = None
     for line in open(sys.argv[1]):
         f = line.split()
         if not f:
             continue
         k = f[0]
-        if k == "Z":
+        if k in ("Z", "Y"):
             v = f[2:]
+            dseg = int(v[0])
             z = bytes(int(x) for x in v[2:])
-            if page is not None:
-                diff = [a for a in range(65536) if page[a] != z[a]]
-                changed = sum(1 for a in range(65536) if start[a] != z[a])
-                print("phase %d (origin at start %04X): %d bytes changed; replay differs at %d%s; %d bytes copied, not replayed" % (
-                    phase, start_origin, changed, len(diff),
-                    "" if not diff else " (first %s)" % ", ".join("%04X:%d/%d" % (a, page[a], z[a]) for a in diff[:4]),
-                    len(copied)))
-                totals["phases"] += 1
-                totals["exact"] += not diff
-                totals["changed"] += changed
-                totals["copied"] += len(copied)
-            seg, origin = int(v[0]), int(v[1])                # the origin at the phase's start
-            start_origin = origin
-            page = bytearray(z)
-            start = z
-            phase += 1
-            copied = set()
+            name = "work" if k == "Z" else "display"
+            if dseg in pages:
+                rep, start = pages[dseg], dumps[dseg]
+                size = min(len(z), len(rep))
+                diff = [a for a in range(size) if rep[a] != z[a]]
+                changed = sum(1 for a in range(size) if start[a] != z[a])
+                print("phase %d %s page (origin at start %04X): %d bytes changed; replay differs at %d%s%s" % (
+                    phase, name, start_origin, changed, len(diff),
+                    "" if not diff else " (first %s)" % ", ".join("%04X:%d/%d" % (a, rep[a], z[a]) for a in diff[:4]),
+                    "; %d bytes copied, not replayed" % len(copied) if k == "Z" else ""))
+                totals[name + " phases"] += 1
+                totals[name + " exact"] += not diff
+                totals[name + " changed"] += changed
+                if k == "Z":
+                    totals["copied"] += len(copied)
+            if k == "Z":
+                seg, origin = dseg, int(v[1])                # the origin at the phase's start
+                start_origin = origin
+                phase += 1
+                copied = set()
+            pages[dseg] = bytearray(z)
+            dumps[dseg] = z
             continue
-        if page is None:
+        if seg is None:
             continue
         if k == "X" and int(f[2]) in (24, 26):       # the library's origin: 24 resets it, 26 sets it
             origin = 0 if int(f[2]) == 24 else int(f[3])
@@ -263,7 +272,8 @@ def main():
         elif k == "b":
             # y, x0, len, segment, offset, then the bytes before (unused: the replay has its own)
             y, x0, n, es, at = (int(x) for x in f[2:7])
-            if es != seg:
+            page = pages.get(es)
+            if page is None:
                 continue
             got = paint(fill_colour, y, x0, [page[(at + i) & 0xFFFF] for i in range(n)])
             if got is None:
@@ -273,7 +283,8 @@ def main():
                 page[(at + i) & 0xFFFF] = b
         elif k == "a" and fill_rows:
             y, x0, n, es, at = (int(x) for x in f[2:7])
-            if (at, n) in fill_rows:                         # a style with no rule yet: the original's bytes
+            page = pages.get(es)
+            if page is not None and (at, n) in fill_rows:    # a style with no rule yet: the original's bytes
                 for i in range(n):
                     page[(at + i) & 0xFFFF] = int(f[7 + i])
                     copied.add((at + i) & 0xFFFF)
@@ -285,7 +296,8 @@ def main():
             if handler != 0x046F or row1 - row0 != 320:
                 totals["outline edges with no rule"] += 1
                 continue
-            if es != seg:
+            page = pages.get(es)
+            if page is None:
                 continue
             for x, y in outline_pixels(x0, y0, x1, y1):
                 page[(row0 + 320 * y + x) & 0xFFFF] = col & 0xFF
@@ -293,16 +305,20 @@ def main():
             v = [int(x) for x in f[2:]]
             x0, y0, x1, y1 = v[:4]
             lseg, lorg = (v[5], v[6]) if len(v) >= 7 else (seg, origin)
-            if lseg != seg:                                  # drawn on another page (the display)
+            page = pages.get(lseg)
+            if page is None:
                 continue
             for x, y in line_pixels(x0, y0, x1, y1):
                 if 0 <= x < 320 and 0 <= y < 200:
-                    page[(320 * y + lorg + x) & 0xFFFF] = colour
+                    a = (320 * y + lorg + x) & 0xFFFF
+                    if a < len(page):
+                        page[a] = colour
         elif k == "Q":
             v = [int(x) for x in f[2:]]
             ya, mode, nrows = v[0], v[2], v[3]
             qseg, qorg = (v[4 + 2 * nrows], v[5 + 2 * nrows]) if len(v) >= 6 + 2 * nrows else (seg, origin)
-            if qseg != seg:
+            page = pages.get(qseg)
+            if page is None:
                 continue
             for r in range(nrows):
                 l, rt = v[4 + 2 * r], v[5 + 2 * r]
@@ -311,6 +327,8 @@ def main():
                     continue
                 for x in range(l, rt + 1):
                     a = (320 * y + qorg + x) & 0xFFFF
+                    if a >= len(page):
+                        continue
                     b = page[a]
                     page[a] = (colour if mode == 0 else b | colour if mode == 1 else
                                b & colour if mode == 2 else ((b & 0x0E) >> 1) | 0x98)
@@ -318,10 +336,11 @@ def main():
             v = [int(x) for x in f[2:]]
             sp, sx, sy, dp, dx, dy, w, h, sseg, dseg = v[:10]
             src = v[10:]
-            if dseg != seg:
+            page = pages.get(dseg)
+            if page is None:
                 continue
-            if sseg == seg:                                  # within the page: from the replay itself
-                rows = [bytes(page[(320 * (sy + y) + sx) & 0xFFFF:][:w]) for y in range(h)]
+            if sseg in pages:                                # from a replayed page: the replay itself
+                rows = [bytes(pages[sseg][(320 * (sy + y) + sx) & 0xFFFF:][:w]) for y in range(h)]
             else:
                 if len(src) != w * h:
                     totals["blits without source bytes"] += 1
@@ -329,7 +348,9 @@ def main():
                 rows = [bytes(src[y * w:(y + 1) * w]) for y in range(h)]
             for y in range(h):
                 for x in range(w):
-                    page[(320 * (dy + y) + dx + x) & 0xFFFF] = rows[y][x]
+                    a = (320 * (dy + y) + dx + x) & 0xFFFF
+                    if a < len(page):
+                        page[a] = rows[y][x]
         elif k == "T":
             v = [int(x) for x in f[2:]]
             entry, tseg, blk = v[0], v[1], v[2:13]
@@ -346,14 +367,22 @@ def main():
             pixels, end = text_pixels(entry, blk, chars, (first, last, shift, fixed, height, spacing, extra, widths, glyphs))
             if end is not None:                             # the painter ran: it set the library colour to the foreground
                 colour = blk[2] & 0xFF
-            if tseg == seg:
+            page = pages.get(tseg)
+            if page is not None:
                 for x, y, col in pixels:
-                    page[(320 * y + x) & 0xFFFF] = col
+                    a = (320 * y + x) & 0xFFFF
+                    if a < len(page):
+                        page[a] = col
             totals["texts"] += 1
         elif k == "H":
-            si0, bx, dl, cl, col, x, lo, hi = (int(x) for x in f[2:10])
-            for px, row in tick_pixels(si0, bx, dl, cl, x, lo, hi):
-                page[(320 * row + px) & 0xFFFF] = col
+            v = [int(x) for x in f[2:]]
+            si0, bx, dl, cl, col, x, lo, hi = v[:8]
+            page = pages.get(v[8] if len(v) > 8 else seg)
+            if page is not None:
+                for px, row in tick_pixels(si0, bx, dl, cl, x, lo, hi):
+                    a = (320 * row + px) & 0xFFFF
+                    if a < len(page):
+                        page[a] = col
             totals["tick scales"] += 1
         elif k == "S":
             v = [int(x) for x in f[2:]]
@@ -370,31 +399,38 @@ def main():
             else:
                 dx, dy, w, h, left, top = s16(blk[4]), s16(blk[5]), w0, h0, 0, 0
             totals["sprites"] += 1
-            if dseg != seg:
+            page = pages.get(dseg)
+            if page is None:
                 continue
             for y in range(h):
                 for x in range(w):
                     b = src[(top + y) * w0 + left + x]
-                    if b:                                    # colour 0 is transparent
-                        page[(320 * (dy + y) + dx + x) & 0xFFFF] = b
+                    a = (320 * (dy + y) + dx + x) & 0xFFFF
+                    if b and a < len(page):                  # colour 0 is transparent
+                        page[a] = b
         elif k == "x" and int(f[2]) in (1, 3, 4, 5, 11, 73, 18, 71, 19):
-            pass                                             # text and sprites: replayed from 'T' and 'S'
+            pass                                             # replayed from 'T', 'H' and 'S'
         elif k == "x":
             v = [int(x) for x in f[2:]]
             entry, xseg, n = v[0], v[1], v[2]
-            if entry == 42 or xseg != seg:
+            page = pages.get(xseg)
+            if entry == 42 or page is None:
                 continue
             for j in range(n):
                 a, now = v[3 + 3 * j], v[4 + 3 * j]
-                page[a] = now
-                copied.add(a)
+                if a < len(page):
+                    page[a] = now
+                    if xseg == seg:
+                        copied.add(a)
     t = totals
     for k in sorted(t):
         if "no rule" in k or "without" in k:
             print("%s: %d" % (k, t[k]))
     print("%d phases rebuilt from the draw list, %d exact; %d bytes changed in all, %d of them copied from the original rather than replayed" % (
-        t["phases"], t["exact"], t["changed"], t["copied"]))
-
+        t["work phases"], t["work exact"], t["work changed"], t["copied"]))
+    if t["display phases"]:
+        print("display page: %d phases rebuilt, %d exact; %d bytes changed in all" % (
+            t["display phases"], t["display exact"], t["display changed"]))
 
 if __name__ == "__main__":
     main()
