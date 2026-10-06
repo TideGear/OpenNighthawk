@@ -19,6 +19,21 @@ roadmap order, starting with the open Phase 1 items. Work is in
 pushed commit. Build with `C:\Users\Tideg\f117-recomp-local\build-p3.cmd`
 into `p3-build`.
 
+**Route status after the strike refresh (6 Oct, 09:30).** `583e848` refreshed
+`strike` and `strike_return`. Running every `tools/routes/*.args` under recomp
+with the p3-build timing, 22 pass and five fail; the full gate
+(`build_recomp.py`, work dir `D:/f117-gate/work`, C: had ~500 MB free so keep
+it on D:) stops at its coverage step because `career_promotion`'s prerequisite
+chain fails. Failing routes, all needing re-recorded inputs (their front-end
+clicks or return legs were timed on the old schedule):
+`recon_career` (saved Roster.Fil at 290: f300600b, expected f800650b),
+`career_serge` (VGAME exits at 3.85B, expected >= 11B; roster bytes wrong),
+`career_promotion` (depends on the two above), `cargo_return` (exits at
+9.61B, expected >= 13B) and `secret_airstrip_return` (exits at 4.57B, expected
+>= 14B). Re-record with the pilots, then rerun the gate. Also on 6 Oct: the
+`recon` flight rebuilds 34/34 draw-list phases exact but copies 2,917 bytes
+from entries 6 and 2 (see docs/presentation.md, "Second route").
+
 **Gate.** `tools/build_recomp.py --work ~/f117-recomp-local/p2-pipeline` on
 `12d7158` (log `p2-pipeline5.log`): 27/27 routes identical, lockstep 5,709,312
 states 0 mismatching, 191 matched routines 0 mismatching. This full gate has
