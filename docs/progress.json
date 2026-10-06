@@ -110,11 +110,11 @@
         "evidence": "Written from verified facts (S clamped to 15, host shows the last scanned frame, observer-only rule); open questions named."
       },
       {
-        "item": "Stage 0: observer that logs the drawing primitives per frame",
+        "item": "Stage 0: measure what draws, and an observer that logs the drawing primitives per frame",
         "weight": 6,
-        "done": 0.0,
+        "done": 0.4,
         "kind": "estimate",
-        "evidence": "Not started."
+        "evidence": "Measured and written up (docs/presentation.md): S is 9 in flight; a step is two game_draw phases; the model rasteriser and the resident graphics library are two rasterisers; sub-pixel exists only before the projection divide. The observer itself, and the deterministic-log check, are not built."
       },
       {
         "item": "Stage 1: draw lists replayed bit-exact at 320x200",
