@@ -4120,6 +4120,118 @@ static int vgame_model_project(machine_t *m)
     return 1;
 }
 
+/* VGAME 0x128B5 (120A:0815), model_xform_vertex: ES:SI the model vertex
+ * (three words, or a part-switch escape first), BX the matrix, DI the
+ * camera-space output (three 32-bit coordinates), BP the projection output.
+ * A first word in 8000h..800Fh switches to articulated part n (the
+ * translation at [7CDE + 12n] copied to [7CD2..7CDC], the matrix pointer
+ * advanced by 36n, SI past the escape - all three persist) and reads again.
+ * Then out[j] = vx * m[j] + vy * m[3 + j] + vz * m[6 + j] + t[j], every
+ * product and sum at 32 bits, then the projection at 0x129A2; on return
+ * BP += 8, DI += 16, SI += 6. (Segment 120A: the projection is at IP 0x0902.)
+ * Everything up to the call is done speculatively
+ * so that it can be undone if it would not fit; after the call the original
+ * finishes the routine if the eight instructions left do not. */
+static int vgame_model_xform_vertex(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 64)) return 0;
+    const uint16_t ds = c->seg[S_DS], es = c->seg[S_ES];
+    undo_t u;
+    undo_begin(c, &u);
+    unsigned n = 0;
+    undo_push16(c, &u, c->r[R_CX]);
+    undo_push16(c, &u, c->r[R_SI]);
+    undo_push16(c, &u, c->r[R_BX]);
+    undo_push16(c, &u, c->r[R_BP]);
+    n += 4;
+    uint16_t ax;
+    for (;;) {                                                    /* 0x128B9 */
+        if (n > 4000 || u.full) return undo_abort(c, &u);
+        ax = seg_read16(c, es, c->r[R_SI]);
+        alu_sub(c, ax, 0x8000, 1, 0);
+        n += 3;                                                   /* mov, cmp, jb */
+        if (c->flags & F_CF) break;
+        alu_sub(c, ax, 0x8010, 1, 0);
+        n += 2;                                                   /* cmp, jb */
+        if (!(c->flags & F_CF)) break;
+        /* 0x12868: switch to part n = AL. */
+        c->r[R_BP] = cpu_pop16(c);
+        c->r[R_BX] = cpu_pop16(c);
+        c->r[R_SI] = cpu_pop16(c);
+        ax = (uint16_t)(ax & 0x00FF);
+        undo_push16(c, &u, c->r[R_DI]);
+        uint16_t di = 0x7CDE, bx = ds_get(c, 0x7D50);
+        ax = x86_shift(c, 4, ax, 1, 1); ax = x86_shift(c, 4, ax, 1, 1);
+        di = (uint16_t)alu_add(c, di, ax, 1, 0);
+        bx = (uint16_t)alu_add(c, bx, ax, 1, 0);
+        ax = x86_shift(c, 4, ax, 1, 1);
+        di = (uint16_t)alu_add(c, di, ax, 1, 0);
+        ax = x86_shift(c, 4, ax, 1, 1); ax = x86_shift(c, 4, ax, 1, 1);
+        bx = (uint16_t)alu_add(c, bx, ax, 1, 0);
+        c->r[R_SI] = (uint16_t)alu_add(c, c->r[R_SI], 2, 1, 0);
+        for (int k = 0; k < 6; k++) {
+            ax = ds_get(c, (uint16_t)(di + 2 * k));
+            undo_put16(c, &u, ds, (uint16_t)(0x7CD2 + 2 * k), ax);
+        }
+        c->r[R_DI] = cpu_pop16(c);
+        c->r[R_BX] = bx;
+        undo_push16(c, &u, c->r[R_SI]);
+        undo_push16(c, &u, c->r[R_BX]);
+        undo_push16(c, &u, c->r[R_BP]);
+        n += 34;
+        /* the escape's pushes above restore bp/bx/si as the original does */
+    }
+    {                                                             /* 0x128C6 */
+        const uint16_t di = c->r[R_DI], bx = c->r[R_BX];
+        const uint16_t vy = seg_read16(c, es, (uint16_t)(c->r[R_SI] + 2));
+        const uint16_t vz = seg_read16(c, es, (uint16_t)(c->r[R_SI] + 4));
+        const uint16_t vx = ax;
+        c->r[R_CX] = vy; c->r[R_SI] = vz; c->r[R_BP] = vx;
+#define M(o) ds_get(c, (uint16_t)(bx + (o)))
+#define PUT(o, v) undo_put16(c, &u, ds, (uint16_t)(di + (o)), (v))
+        /* the three vx products: written */
+        for (int j = 0; j < 3; j++) {
+            c->r[R_AX] = vx;
+            x86_imul16(c, M(2 * j));
+            PUT(4 * j, c->r[R_AX]); PUT(4 * j + 2, c->r[R_DX]);
+        }
+        /* the vy and vz products: added into the outputs */
+        for (int pass = 0; pass < 2; pass++)
+            for (int j = 0; j < 3; j++) {
+                c->r[R_AX] = pass ? vz : vy;
+                x86_imul16(c, M((pass ? 12 : 6) + 2 * j));
+                if (pass) {                                       /* the part's translation rides along */
+                    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], ds_get(c, (uint16_t)(0x7CD2 + 4 * j)), 1, 0);
+                    c->r[R_DX] = (uint16_t)alu_add(c, c->r[R_DX], ds_get(c, (uint16_t)(0x7CD4 + 4 * j)), 1, (c->flags & F_CF) ? 1u : 0u);
+                }
+                PUT(4 * j, (uint16_t)alu_add(c, ds_get(c, (uint16_t)(di + 4 * j)), c->r[R_AX], 1, 0));
+                PUT(4 * j + 2, (uint16_t)alu_add(c, ds_get(c, (uint16_t)(di + 4 * j + 2)), c->r[R_DX], 1, (c->flags & F_CF) ? 1u : 0u));
+            }
+#undef M
+#undef PUT
+        n += 44;
+    }
+    c->r[R_BX] = cpu_pop16(c);                                    /* pop bx; push bx: BX = the projection output */
+    n += 2;                                                       /* push bx rewrites the same slot */
+    if (u.full || c->icount + n + 1 > c->stop_at) return undo_abort(c, &u);
+    c->icount += n;                                               /* committed: no undo from here */
+    c->r[R_SP] = (uint16_t)(c->r[R_SP] - 2);                      /* push bx: the slot popped above */
+    seg_write16(c, c->seg[S_SS], c->r[R_SP], c->r[R_BX]);
+    if (!guest_call(m, 0x0902, 0x08AA)) return 1;
+    if (!room(c, 8)) { c->ip = 0x08AA; return 1; }
+    c->r[R_BP] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_CX] = cpu_pop16(c);
+    c->r[R_BP] = (uint16_t)alu_add(c, c->r[R_BP], 8, 1, 0);
+    c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], 0x10, 1, 0);
+    c->r[R_SI] = (uint16_t)alu_add(c, c->r[R_SI], 6, 1, 0);
+    c->icount += 8;
+    near_ret(c);
+    return 1;
+}
+
 static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x4958, vgame_free_fall, "free fall", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD50A, vgame_waypoint_from_target, "waypoint from target", 1 },
@@ -4250,6 +4362,7 @@ static const recomp_override MATCHED[] = {
     { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x24B7, chain_last, "last record of a chain", 1 },
     { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x1C91, chain_last, "last record of a chain", 1 },
     { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x219D, chain_last, "last record of a chain", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x120A, 0x0815, vgame_model_xform_vertex, "transform a model vertex to camera space", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x120A, 0x0902, vgame_model_project, "perspective projection of a camera-space vertex", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xF968, heap_search, "near-heap free-block search", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x4738, vgame_effect_timers, "effect timers", 1 },

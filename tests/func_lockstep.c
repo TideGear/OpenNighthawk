@@ -185,16 +185,22 @@ static machine_t g_m;           /* side 1's CPU lives in a machine: matched code
 /* A matched routine's call into original code, run here by plain stepping:
  * the harness has no events to service. */
 /* Step until the routine's own RET (near, or far) taken with SP at entry_sp. */
-static int run_to_ret(cpu_t *a, uint16_t entry_sp, int far, int *steps)
+/* The routine's own RET: at the caller's stack level and inside the routine's
+ * code (within 0x300 bytes of its entry). A random callee that pops one word
+ * too many returns to the caller's address from far away - a RET the routine
+ * did not make, after which the two sides are not comparable. */
+static int run_to_ret(cpu_t *a, uint16_t entry_sp, int far, int *steps, uint16_t cs, uint16_t ip)
 {
     while (*steps < 100000) {
+        const uint16_t here = a->ip;
+        const int inside = a->seg[S_CS] == cs && (uint16_t)(here - ip) < 0x300;
         const uint8_t op = a->mem[phys(a->seg[S_CS], a->ip)];
         const uint16_t sp_before = a->r[R_SP];
         cpu_step(a);
         if (a->flags & F_TF) cpu_interrupt(a, 1);
         ++*steps;
         const int is_ret = far ? (op == 0xCB || op == 0xCA) : (op == 0xC3 || op == 0xC2);
-        if (is_ret && sp_before == entry_sp) return 1;
+        if (is_ret && sp_before == entry_sp) return inside;
     }
     return 0;
 }
@@ -283,6 +289,19 @@ int main(int argc, char **argv)
                 static const uint16_t tiny[8] = { 0, 1, 2, 3, 0xFFFF, 0xFFFE, 0, 1 };
                 r[R_AX] = tiny[rnd() & 7]; r[R_CX] = tiny[rnd() & 7]; r[R_DX] = tiny[rnd() & 7];
             }
+            /* One state in seven plants a part-switch escape (8000h-800Fh) and,
+             * after it, an ordinary small word at ES:SI: routines that read a
+             * tagged stream from there never meet a tag in random memory. */
+            if (s % 7 == 3 && (phys(seg[S_ES], r[R_SI]) < at || phys(seg[S_ES], r[R_SI]) >= at + m->size + 2)) {
+                /* (never inside the loaded image: it would persist in the routine's own code) */
+                const uint32_t a = phys(seg[S_ES], r[R_SI]);
+                const uint16_t tag = (uint16_t)(0x8000u | (rnd() & 0x0F));
+                for (int k = 0; k < 2; k++) {
+                    const uint8_t b = (uint8_t)(tag >> (8 * k));
+                    g_pristine[(a + (uint32_t)k) & 0xFFFFF] = g_mem[0][(a + (uint32_t)k) & 0xFFFFF] =
+                        g_mem[1][(a + (uint32_t)k) & 0xFFFFF] = b;
+                }
+            }
             r[R_SP] = (uint16_t)((r[R_SP] | 0x0100) & 0xFFFE);
             const uint16_t back = (uint16_t)(ip + 0x8000);
             const uint16_t flags = (uint16_t)((rnd() & 0x0ED5u) | 0x0002u);
@@ -297,14 +316,14 @@ int main(int argc, char **argv)
              * one taken with the stack back at the caller's level - and
              * accept the state only when it returns to the pushed address. */
             const uint16_t entry_sp = (uint16_t)(r[R_SP] - (o->matched == 2 ? 4 : 2));
-            const int returned = run_to_ret(a, entry_sp, o->matched == 2, &steps);
+            const int returned = run_to_ret(a, entry_sp, o->matched == 2, &steps, cs, ip);
             if (!returned || a->seg[S_CS] != cs || a->ip != back) steps = 100000;
             g_side[0].overflow = g_side[1].overflow = 1;      /* compare all memory */
             /* A real return lands back at the caller's stack level (RET n
              * pops at most a few words); a wild jump that happens to reach
              * the return address - a slide through zeroed memory - does not. */
             const uint16_t popped = (uint16_t)(a->r[R_SP] - entry_sp);
-            if (steps >= 100000 || popped < 2 || popped > 18) { ms++; restore(); continue; }
+            if (steps >= 100000 || popped < 2 || popped > 18) { if (getenv("FLWHY") && o->ip == 0x0815) printf("why1 s=%d steps=%d popped=%u\n", s, steps, popped); ms++; restore(); continue; }
             /* A random state that makes the original write over its own code
              * (a copy aimed at the routine) runs instructions it was not; the
              * game never does, and no equivalent can follow it. */
@@ -338,13 +357,13 @@ int main(int argc, char **argv)
             /* A state whose call into original code wanders off (a far call
              * through a slot only the running game fills) returned on the
              * original side by accident, not through the routine. */
-            if (!o->fn(&g_m) || g_lost) { ms++; restore(); continue; }
+            { const int fr = o->fn(&g_m); if (getenv("FLWHY") && o->ip == 0x0815) printf("why2 s=%d fn=%d lost=%d ip=%04X\n", s, fr, g_lost, g_m.cpu.ip); if (!fr || g_lost) { ms++; restore(); continue; } }
             /* A routine that ran out of room after a call returns with the
              * machine partway through it, as the original would be; the run
              * loop then finishes it with the original code, and so does this. */
             if (g_m.cpu.seg[S_CS] != cs || g_m.cpu.ip != back) {
                 int more = 0;
-                if (!run_to_ret(&g_m.cpu, entry_sp, o->matched == 2, &more)) { ms++; restore(); continue; }
+                if (!run_to_ret(&g_m.cpu, entry_sp, o->matched == 2, &more, cs, ip)) { ms++; restore(); continue; }
                 g_finished++;
             }
             mc++;
