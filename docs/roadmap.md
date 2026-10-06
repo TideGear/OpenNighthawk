@@ -431,7 +431,12 @@ never instead of parity.
       timing difference is tracked under Phase 1. A session recorded with
       fixes on names them (`# f117r-fixes D5`) and its replay switches them
       on again.
-- [ ] 60+ fps and 4K presentation.
+- [ ] 60+ fps and 4K presentation. Design in [presentation.md](presentation.md):
+      the original draws at most 15 pictures a second, so 60+ fps is
+      interpolation between its states, and real 4K needs the drawing
+      primitives captured as draw lists. Every stage is an observer of the
+      machine and cannot change it. Stage 0 (measure what draws what, and
+      whether projected vertices carry fractional bits) is next.
 
 ## Housekeeping
 

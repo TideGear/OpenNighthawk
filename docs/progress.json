@@ -103,8 +103,36 @@
         "evidence": "Fixes available over catalogued defects (### D headings in docs/bugs.md)."
       },
       {
-        "item": "60+ fps and 4K presentation",
-        "weight": 60,
+        "item": "Presentation design and its measured constraints (docs/presentation.md)",
+        "weight": 2,
+        "done": 1.0,
+        "kind": "estimate",
+        "evidence": "Written from verified facts (S clamped to 15, host shows the last scanned frame, observer-only rule); open questions named."
+      },
+      {
+        "item": "Stage 0: observer that logs the drawing primitives per frame",
+        "weight": 6,
+        "done": 0.0,
+        "kind": "estimate",
+        "evidence": "Not started."
+      },
+      {
+        "item": "Stage 1: draw lists replayed bit-exact at 320x200",
+        "weight": 10,
+        "done": 0.0,
+        "kind": "estimate",
+        "evidence": "Not started."
+      },
+      {
+        "item": "Stage 2: high-resolution re-draw",
+        "weight": 16,
+        "done": 0.0,
+        "kind": "estimate",
+        "evidence": "Not started."
+      },
+      {
+        "item": "Stage 3 and 4: interpolation to 60+ fps, pacing and polish",
+        "weight": 26,
         "done": 0.0,
         "kind": "estimate",
         "evidence": "Not started."
