@@ -136,6 +136,21 @@ hash is the same with the observer on. Not captured yet: the resident
 graphics library's calls (sprites, HUD), and polygons whose edges were
 prepared by the original because the matched routine declined.
 
+**Replaying the edges (Stage 1, first check).** `tools/drawlist_spans.py`
+takes the captured edges of every filled polygon and scan-converts them into
+an empty span table by the original's rules - the model edge walk (1377:072B:
+order by x, drop an edge that leaves the vertical clip, steep and shallow
+arms with their exact error terms) and the polygon accumulator (130D:004A:
+status OR, the y ranges that left through each side, the near-clip count) -
+written here from their documented behaviour. The fill hook records the
+span rows the original built, so each polygon is checked row by row. On 30
+million instructions of the strike route's flight: **3,678 polygons, 8,897
+rows, every row exact**; the accumulator matches for 99.0% (the rest are
+edges handed to the rasteriser and reset by a path other than the fill,
+not yet traced). Still to replay before a polygon is pixels: the border
+runs and the near-clip join that 130D:0116 adds before filling, and the
+fill styles (solid, dither, AND, OR, stipple, discard).
+
 ## What is not known (and has to be measured next)
 
 1. **Where the scene is drawn.** The matched routines already name part of

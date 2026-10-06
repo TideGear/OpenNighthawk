@@ -14,8 +14,12 @@
  *   'G' an edge prepared (model_prepare_edge): slot, the two projected
  *       vertex records it was made from (DS offsets) - links edges to vertices
  *   'E' an edge of a filled polygon handed to the rasteriser (130D:004A):
- *       slot, x0, y0, x1, y1 (screen, 32-bit), the slot's marker word
- *   'F' a filled polygon closed and filled (130D:0116): the colour word
+ *       slot, x0, y0, x1, y1 (screen, 32-bit), the slot's status word, and
+ *       the near-plane crossing kept at slot + 10h (x, y)
+ *   'F' a filled polygon closed and filled (130D:0116): the colour word, the
+ *       viewport (xmin, ymin, xmax, ymax), the accumulator (flags, lmin,
+ *       lmax, rmin, rmax, drew, nclip), the top span row, the row count and
+ *       each row's left and right bound
  *   'B' an outline polygon begun (1377:004C): the colour word
  *   'L' an edge of an outline polygon drawn as a line (1377:0055): slot */
 typedef struct f117_observer {

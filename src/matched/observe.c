@@ -54,21 +54,42 @@ static int hook_poly_edge(machine_t *m)
     if (!o || !o->prim) return 0;
     cpu_t *c = &m->cpu;
     const uint16_t si = c->r[R_SI];
-    const int32_t v[6] = { si, ds_dword(c, si), ds_dword(c, (uint16_t)(si + 4)), ds_dword(c, (uint16_t)(si + 8)),
-                           ds_dword(c, (uint16_t)(si + 0x0C)), (int32_t)seg_read16(c, c->seg[S_DS], (uint16_t)(si + 2)) };
-    o->prim(o->user, c->icount, 'E', v, 6);
+    const int32_t v[8] = { si, ds_dword(c, si), ds_dword(c, (uint16_t)(si + 4)), ds_dword(c, (uint16_t)(si + 8)),
+                           ds_dword(c, (uint16_t)(si + 0x0C)), (int32_t)seg_read16(c, c->seg[S_DS], (uint16_t)(si + 2)),
+                           ds_dword(c, (uint16_t)(si + 0x10)), ds_dword(c, (uint16_t)(si + 0x14)) };
+    o->prim(o->user, c->icount, 'E', v, 8);
     return 0;
 }
 
 /* 130D:0116, the filled polygon closed and filled: the colour word above
- * the far return address. */
+ * the far return address, then what the edges left for the fill - the
+ * viewport (85FA..8600), the polygon accumulator (85E2..85EE) and the span
+ * rows from the top row (9160) down while a row holds a bound (left at
+ * 89DC + 2y, right at 8D9E + 2y): the ground truth for replaying the edges. */
 static int hook_poly_fill(machine_t *m)
 {
     const f117_observer *o = g_f117_observer;
     if (!o || !o->prim) return 0;
     cpu_t *c = &m->cpu;
-    const int32_t v[1] = { seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_SP] + 4)) };
-    o->prim(o->user, c->icount, 'F', v, 1);
+    const uint16_t ds = c->seg[S_DS];
+    int32_t v[14 + 2 * 256];
+    int n = 0;
+    v[n++] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_SP] + 4));
+    for (uint16_t a = 0x85FA; a <= 0x8600; a = (uint16_t)(a + 2)) v[n++] = (int16_t)seg_read16(c, ds, a);
+    for (uint16_t a = 0x85E2; a <= 0x85EE; a = (uint16_t)(a + 2)) v[n++] = (int16_t)seg_read16(c, ds, a);
+    const int16_t top = (int16_t)seg_read16(c, ds, 0x9160);
+    v[n++] = top;
+    const int rows_at = n++;
+    int rows = 0;
+    if (top >= 0 && top < 256)
+        for (int y = top; y < 256; y++) {
+            const int16_t l = (int16_t)seg_read16(c, ds, (uint16_t)(0x89DC + 2 * y));
+            const int16_t r = (int16_t)seg_read16(c, ds, (uint16_t)(0x8D9E + 2 * y));
+            if (l == 0x7FFF && (uint16_t)r == 0x8001u) break;
+            v[n++] = l; v[n++] = r; rows++;
+        }
+    v[rows_at] = rows;
+    o->prim(o->user, c->icount, 'F', v, n);
     return 0;
 }
 
