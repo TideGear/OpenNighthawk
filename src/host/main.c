@@ -4,7 +4,10 @@
  *   f117a [--data DIR] [--save DIR] [--engine recomp|interp] [--ips N]
  *         [--scale N] [--fullscreen] [--no-aspect] [--midi N] [--log FILE]
  *         [--audio-queue-log FILE]
- *         [--audio-dump FILE]
+ *         [--audio-dump FILE] [--config FILE | --no-config]
+ *
+ * Every option can also be kept in f117a.ini beside the executable (or the
+ * file --config names): see config.h. The command line overrides it.
  *
  * The machine runs on its own clock (instructions); this loop keeps that
  * clock level with the wall clock, hands it the keyboard, mouse and stick
@@ -25,6 +28,7 @@
 #include "fixes.h"
 #include "inputlog.h"
 #include "host_clock.h"
+#include "config.h"
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
@@ -208,8 +212,48 @@ int main(int argc, char **argv)
     unsigned int mt32_seed = 0;
     int mt32_seed_set = 0;
 
+    /* f117a.ini (beside the executable, or --config FILE): its options go
+     * ahead of the command line's, so the command line wins. */
+    {
+        int explicit_ = 0;
+        const char *ini = config_path(argc, argv, SDL_GetBasePath(), &explicit_);
+        if (ini) {
+            char *text = config_read_file(ini);
+            char err[300], dir[1024], **merged = NULL;
+            if (!text) {
+                snprintf(err, sizeof err, "Cannot read the configuration file %s", ini);
+                fprintf(stderr, "%s\n", err);
+                SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "F-117A", err, NULL);
+                return 2;
+            }
+            snprintf(dir, sizeof dir, "%s", ini);
+            char *slash = strrchr(dir, '\\'), *fwd = strrchr(dir, '/');
+            if (fwd > slash) slash = fwd;
+            if (slash) slash[1] = 0; else dir[0] = 0;
+            const int n = config_merge(text, dir, argc, argv, &merged, err, sizeof err);
+            free(text);
+            if (n < 0) {
+                fprintf(stderr, "%s (%s)\n", err, ini);
+                SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "F-117A", err, NULL);
+                return 2;
+            }
+            argc = n;
+            argv = merged;
+        }
+    }
+    int from_cli = 0, cli_roland = 0;
+
     for (int i = 1; i < argc; i++) {
         const char *a = argv[i], *v = i + 1 < argc ? argv[i + 1] : NULL;
+        if (!strcmp(a, CONFIG_CLI_MARK)) { from_cli = 1; continue; }
+        /* a Roland output named on the command line replaces the file's */
+        if (from_cli && !cli_roland && (!strcmp(a, "--midi") || !strcmp(a, "--mt32-control") || !strcmp(a, "--mt32-pcm"))) {
+            cli_roland = 1;
+            if (!strcmp(a, "--midi")) mt32_control = mt32_pcm = NULL;
+            else midi_dev = -2;
+        }
+        if (!strcmp(a, "--config") && v) { i++; continue; }
+        if (!strcmp(a, "--no-config")) continue;
         if (!strcmp(a, "--data") && v) { data = v; i++; }
         else if (!strcmp(a, "--record") && v) { record = v; i++; }
         else if (!strcmp(a, "--no-record")) no_record = 1;
@@ -251,7 +295,8 @@ int main(int argc, char **argv)
                 "             [--exit-after CLOCKS] [--opl dbopl|nuked]\n"
                 "             [--audio-queue-log FILE]\n"
                 "             [--audio-dump FILE]\n"
-                "             [--mt32-control FILE --mt32-pcm FILE] [--fix ID|all]... [--list-fixes]\n");
+                "             [--mt32-control FILE --mt32-pcm FILE] [--fix ID|all]... [--list-fixes]\n"
+                "             [--config FILE | --no-config]   (default: f117a.ini beside f117a.exe)\n");
             return 2;
         }
     }
