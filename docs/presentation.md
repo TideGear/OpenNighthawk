@@ -453,3 +453,16 @@ overshoot as a left skip) and clips the rows; entry 2 does only the left skip.
 Both are hooked as 'T' and replayed by `text_pixels`; the copied bytes drop to
 129 and all 34 phases stay exact. What is left there is entries 11 (the HUD),
 18, 71 and 73 sprites' edge cases and the `x` deltas of entry 42.
+
+**Route coverage after entries 2 and 6 (6 Oct).** The same 30M-instruction
+windows now rebuild every phase exactly on both pages on four more routes:
+`recon` 34 of 34 (129 bytes copied), Central Europe air-to-air 29 of 29
+(1,134 copied), `landing` 38 of 38 (1,107 copied) and `cargo` 38 of 38 (130
+copied), besides the strike flight's 73 of 73 (none copied). Command per route:
+`F117R_OBSERVE_PAGES=1 F117R_RUN_EXE=p3-build/f117run.exe py tools/run_route.py
+tools/routes/NAME.args --data D:/GOG/F-117A --out DIR -- --observe
+LOG:FROM:TO`, with FROM just after the flight's `ordnance.pic` open, then
+`tools/drawlist_frame.py LOG`. The bytes still copied come from the HUD
+drawer (entry 11), the sprite edge cases and entry 42's deltas; the landing
+window's 1,107 are the largest share.
+
