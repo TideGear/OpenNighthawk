@@ -3,12 +3,12 @@
 # expect-world LB
 # expect-exit VGAME.EXE 129 10500000000
 # expect-save Roster.Fil 0 0900
-# expect-save Roster.Fil 770 d000
+# expect-save Roster.Fil 770 d100
 # expect-save Roster.Fil 778 0000
 # expect-save Roster.Fil 800 0000
 # expect-save Roster.Fil 754 0100
 # expect-save Roster.Fil 758 0200
-# expect-save Roster.Fil 772 eb010000
+# expect-save Roster.Fil 772 ed010000
 # expect-save Roster.Fil 776 0300
 --replay
 career_promotion.input

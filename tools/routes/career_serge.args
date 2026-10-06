@@ -2,12 +2,12 @@
 # expect-world LB
 # expect-exit VGAME.EXE 129 11000000000
 # expect-save Roster.Fil 0 0900
-# expect-save Roster.Fil 770 d900
+# expect-save Roster.Fil 770 da00
 # expect-save Roster.Fil 778 0000
 # expect-save Roster.Fil 800 0000
 # expect-save Roster.Fil 754 0000
 # expect-save Roster.Fil 758 0100
-# expect-save Roster.Fil 772 1b010000
+# expect-save Roster.Fil 772 1c010000
 # expect-save Roster.Fil 776 0200
 --replay
 career_serge.input
