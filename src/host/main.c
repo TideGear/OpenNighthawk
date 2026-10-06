@@ -581,7 +581,7 @@ int main(int argc, char **argv)
         if (H.roland_unheard == 1) {
             H.roland_unheard = 2;
             static const char *msg = "Roland music has no output: start with --midi -1 (Windows MIDI), "
-                                     "or --mt32-control FILE --mt32-pcm FILE (a Munt build with MT-32 ROMs)";
+                                     "or --mt32-control FILE --mt32-pcm FILE (your MT-32 ROMs, through Munt)";
             fputs(msg, stderr);
             fputc(10, stderr);
             SDL_SetWindowTitle(win, "F-117A - no Roland output: use --midi -1 or the MT-32 ROM options");

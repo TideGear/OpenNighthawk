@@ -975,8 +975,8 @@ data a routine writes. `recomp_report` prints the call counts
 
 
 
-The optional Munt backend is isolated in `src/host/mt32.c` and enabled with
-`F117R_WITH_MT32EMU`. It links the public C API, identifies the supplied
+The Munt backend is isolated in `src/host/mt32.c` and enabled with
+`F117R_WITH_MT32EMU` (on by default; Munt fetched at a pinned commit). It links the public C API, identifies the supplied
 control/PCM pair and fails startup on invalid ROMs. Each MPU byte first
 advances audio to its machine clock; complete messages enter Munt's MIDI
 queue. Rendering uses bounded blocks at the existing 44,100 Hz output rate,

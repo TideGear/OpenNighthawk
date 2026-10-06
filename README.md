@@ -47,8 +47,8 @@ options. Enhancements come after parity, never instead of it.
   front end (roster, pilot form, briefing, arming, hangar), takeoff, flight,
   the debriefing (END) and back to the front end. All three sound drivers
   work: AdLib (music and digitised speech through an OPL emulator), the PC
-  speaker, and Roland (Windows MIDI or optional Munt synthesis with your
-  MT-32 ROMs; live synthesis tested, exact rendered parity still open).
+  speaker, and Roland (Munt synthesis with your MT-32 ROMs, or Windows
+  MIDI; live synthesis tested, exact rendered parity still open).
 - **Translated:** 89,276 instructions across all 17 code files and the
   LZEXE decompressor: 96% of the bytes of the code areas, and no
   untranslated stretch left that decodes as code (`tools/census.py`; the
@@ -191,7 +191,7 @@ build\f117a.exe --data "D:\GOG\F-117A"
 | `--engine recomp\|interp` | recompiled code (default) or the reference interpreter only |
 | `--ips N` | emulated CPU speed, instructions per second (default 9,000,000: GOG DOSBox's `cycles=9000`) |
 | `--midi N` | send the Roland driver's MIDI to Windows MIDI device N (-1: the mapper) |
-| `--mt32-control FILE --mt32-pcm FILE` | render Roland through Munt using your control/PCM ROM pair (optional build); choose this or `--midi` |
+| `--mt32-control FILE --mt32-pcm FILE` | render Roland through Munt using your control/PCM ROM pair; choose this or `--midi` |
 | `--opl dbopl\|nuked` | GOG DOSBox's OPL2 synthesizer (default), or Nuked OPL3 in OPL2 mode; both output at 44,100 Hz |
 | `--scale N`, `--fullscreen`, `--no-aspect` | window size; fullscreen; square pixels instead of 4:3 |
 | `--fix ID`, `--list-fixes` | switch on a fix for one of the original's bugs (`all` for every one); every fix is off unless named, so the default is the original, bugs included |
@@ -200,12 +200,15 @@ The game asks its original SETUP questions at each start (joystick, sound
 card), as it did in 1991. Answer 2 for AdLib, or 3 for Roland with `--midi`
 or the Munt ROM options.
 
-Munt is optional and no ROMs are included. Build against an installed
-[libmt32emu](https://github.com/munt/munt/tree/master/mt32emu) CMake package
-with `-DF117R_WITH_MT32EMU=ON`, or also pass
-`-DF117R_MT32EMU_SOURCE=C:/path/to/munt/mt32emu` for a separate source checkout.
-The source build uses a shared library, copied beside the Windows executables.
-Munt is LGPL-2.1-or-later; its source and license remain in that checkout.
+Munt is part of the default build; no ROMs are included. CMake fetches
+[libmt32emu](https://github.com/munt/munt/tree/master/mt32emu) at a pinned
+commit and builds it as a shared library (`mt32emu-2.dll`), copied beside the
+Windows executables. Pass `-DF117R_MT32EMU_SOURCE=C:/path/to/munt/mt32emu` to
+use a checkout instead, `-DF117R_MT32EMU_SYSTEM=ON` for an installed CMake
+package, or `-DF117R_WITH_MT32EMU=OFF` to leave Munt out (a build directory
+configured before Munt became the default keeps its old setting until you
+pass `-DF117R_WITH_MT32EMU=ON`). Munt is LGPL-2.1-or-later; its source and
+license come with the fetched checkout (`build/_deps/munt-src`).
 Version 2.8.3 at commit `6e7c01fba7e1d50c8fa705834889fd0eac136075` was built
 and checked with first-generation MT-32 1.07 control and PCM ROMs. Invalid or
 missing ROMs fail explicitly. Original game MIDI renders offline and live;

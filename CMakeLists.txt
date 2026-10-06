@@ -14,8 +14,9 @@ set(CMAKE_C_EXTENSIONS OFF)
 
 option(F117R_BUILD_APP   "Build the SDL3 game executable" ON)
 option(F117R_BUILD_TESTS "Build the CPU test library and tools" ON)
-option(F117R_WITH_MT32EMU "Render Roland MIDI through separately supplied Munt/MT-32 ROMs" OFF)
-set(F117R_MT32EMU_SOURCE "" CACHE PATH "Optional Munt mt32emu source directory")
+option(F117R_WITH_MT32EMU "Render Roland MIDI through Munt (the MT-32 ROMs are supplied at run time)" ON)
+set(F117R_MT32EMU_SOURCE "" CACHE PATH "Optional Munt mt32emu source directory (default: fetched at a pinned commit)")
+option(F117R_MT32EMU_SYSTEM "Use an installed libmt32emu CMake package instead of fetching Munt" OFF)
 set(F117R_GEN_DIR "" CACHE PATH
     "Directory holding the generated translation (recomp_gen.c etc.); empty builds an interpreter-only executable")
 
@@ -115,14 +116,25 @@ if(F117R_BUILD_APP)
   add_library(f117mt32 STATIC src/host/mt32.c src/host/midistream.c)
   target_include_directories(f117mt32 PUBLIC src/host)
   if(F117R_WITH_MT32EMU)
-    if(F117R_MT32EMU_SOURCE)
+    if(F117R_MT32EMU_SYSTEM)
+      find_package(MT32Emu 2.7 CONFIG REQUIRED)
+    else()
+      # Munt's mt32emu (LGPL-2.1-or-later) as a shared library beside the
+      # executables: a given checkout, or the pinned commit (2.8.3 era).
       enable_language(CXX)
       set(libmt32emu_SHARED ON CACHE BOOL "" FORCE)
       set(libmt32emu_C_INTERFACE ON CACHE BOOL "" FORCE)
       set(libmt32emu_BUILD_TESTING OFF CACHE BOOL "" FORCE)
-      add_subdirectory("${F117R_MT32EMU_SOURCE}" mt32emu EXCLUDE_FROM_ALL)
-    else()
-      find_package(MT32Emu 2.7 CONFIG REQUIRED)
+      if(F117R_MT32EMU_SOURCE)
+        add_subdirectory("${F117R_MT32EMU_SOURCE}" mt32emu EXCLUDE_FROM_ALL)
+      else()
+        include(FetchContent)
+        FetchContent_Declare(munt
+          GIT_REPOSITORY https://github.com/munt/munt.git
+          GIT_TAG        6e7c01fba7e1d50c8fa705834889fd0eac136075
+          SOURCE_SUBDIR  mt32emu)
+        FetchContent_MakeAvailable(munt)
+      endif()
     endif()
     target_compile_definitions(f117mt32 PRIVATE F117R_HAS_MT32EMU)
     target_link_libraries(f117mt32 PUBLIC MT32Emu::mt32emu)
