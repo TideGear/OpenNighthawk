@@ -29,6 +29,7 @@
 #include "inputlog.h"
 #include "host_clock.h"
 #include "config.h"
+#include "mt32.h"
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
@@ -196,29 +197,28 @@ static const char *default_data_dir(void)
     return NULL;
 }
 
-/* An MT-32 control and PCM ROM pair in a folder, by the names Munt and the
- * DOSBox ports use: a first-generation MT-32 first (what a 1991 game was
- * written for), then the later MT-32 and the CM-32L, each with its own PCM. */
-static int find_mt32_roms(const char *dir, char *ctrl, char *pcm, size_t size)
+/* An MT-32 control and PCM ROM pair in a folder, recognised by content
+ * (mt32_find_roms: Munt's SHA-1 table), whatever the files are called. */
+static int find_mt32_roms(const char *dir, const char **ctrl, const char **pcm, char *what, size_t what_size)
 {
-    static const char *const pairs[][2] = {
-        { "mt32_ctrl_1_07.rom", "mt32_pcm.rom" }, { "MT32_CONTROL.ROM", "MT32_PCM.ROM" },
-        { "mt32_ctrl_1_06.rom", "mt32_pcm.rom" }, { "mt32_ctrl_1_05.rom", "mt32_pcm.rom" },
-        { "mt32_ctrl_1_04.rom", "mt32_pcm.rom" }, { "mt32_ctrl_2_04.rom", "mt32_pcm.rom" },
-        { "mt32_ctrl_2_06.rom", "mt32_pcm.rom" }, { "mt32_ctrl_2_07.rom", "mt32_pcm.rom" },
-        { "cm32l_ctrl_1_02.rom", "cm32l_pcm.rom" }, { "CM32L_CONTROL.ROM", "CM32L_PCM.ROM" },
-        { NULL, NULL } };
-    const size_t n = strlen(dir);
-    const char *sep = n && (dir[n - 1] == '\\' || dir[n - 1] == '/') ? "" : "\\";
-    for (int i = 0; pairs[i][0]; i++) {
-        snprintf(ctrl, size, "%s%s%s", dir, sep, pairs[i][0]);
-        snprintf(pcm, size, "%s%s%s", dir, sep, pairs[i][1]);
-        FILE *a = fopen(ctrl, "rb"), *b = fopen(pcm, "rb");
-        if (a) fclose(a);
-        if (b) fclose(b);
-        if (a && b) return 1;
+    int count = 0;
+    char **names = SDL_GlobDirectory(dir, NULL, 0, &count);
+    if (!names) return 0;
+    static char paths[256][1024];
+    const char *files[256];
+    int n = 0;
+    const size_t dl = strlen(dir);
+    const char *sep = dl && (dir[dl - 1] == '\\' || dir[dl - 1] == '/') ? "" : "\\";
+    for (int i = 0; i < count && n < 256; i++) {
+        snprintf(paths[n], sizeof paths[n], "%s%s%s", dir, sep, names[i]);
+        SDL_PathInfo info;
+        if (SDL_GetPathInfo(paths[n], &info) && info.type == SDL_PATHTYPE_FILE && info.size <= 1048576) {
+            files[n] = paths[n];
+            n++;
+        }
     }
-    return 0;
+    SDL_free(names);
+    return mt32_find_roms(files, n, ctrl, pcm, what, what_size);
 }
 
 int main(int argc, char **argv)
@@ -347,17 +347,20 @@ int main(int argc, char **argv)
     } else if (roland == ROLAND_MUNT || (roland == ROLAND_UNSET && mt32_roms && midi_dev == -2)) {
         midi_dev = -2;
         if (!mt32_control || !mt32_pcm) {
-            static char ctrl[1024], pcm[1024];
-            if (!mt32_roms || !find_mt32_roms(mt32_roms, ctrl, pcm, sizeof ctrl)) {
+            const char *ctrl = NULL, *pcm = NULL;
+            char what[120];
+            if (!mt32_roms || !find_mt32_roms(mt32_roms, &ctrl, &pcm, what, sizeof what)) {
                 char msg[1300];
                 snprintf(msg, sizeof msg, mt32_roms
-                    ? "No MT-32 control and PCM ROMs found in %s (for example mt32_ctrl_1_07.rom and mt32_pcm.rom)."
+                    ? "No MT-32 control ROM with its PCM ROM found in %s. Munt recognises the ROMs by content "
+                      "(MT-32 control 1.04-1.07 or 2.03-2.07, CM-32L), whatever the files are called."
                     : "Roland through Munt needs your MT-32 ROMs: set mt32-roms to the folder holding them.%s",
                     mt32_roms ? mt32_roms : "");
                 fprintf(stderr, "%s\n", msg);
                 SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "F-117A", msg, NULL);
                 return 2;
             }
+            fprintf(stderr, "Roland: Munt with %s (%s, %s)\n", what, ctrl, pcm);
             mt32_control = ctrl; mt32_pcm = pcm;
         }
     }

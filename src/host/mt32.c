@@ -69,6 +69,41 @@ int mt32_byte(mt32_t *s, uint8_t byte)
 }
 void mt32_render(mt32_t *s, int16_t *stereo, unsigned frames)
 { mt32emu_render_bit16s(s->context, stereo, frames); }
+
+int mt32_find_roms(const char *const *files, int n, const char **control, const char **pcm,
+                   char *description, size_t description_size)
+{
+    static const char *const CONTROLS[][2] = {
+        { "ctrl_mt32_1_07", "pcm_mt32" }, { "ctrl_mt32_1_06", "pcm_mt32" }, { "ctrl_mt32_1_05", "pcm_mt32" },
+        { "ctrl_mt32_1_04", "pcm_mt32" }, { "ctrl_mt32_bluer", "pcm_mt32" }, { "ctrl_mt32_2_07", "pcm_mt32" },
+        { "ctrl_mt32_2_06", "pcm_mt32" }, { "ctrl_mt32_2_04", "pcm_mt32" }, { "ctrl_mt32_2_03", "pcm_mt32" },
+        { "ctrl_cm32l_1_02", "pcm_cm32l" }, { "ctrl_cm32l_1_00", "pcm_cm32l" }, { "ctrl_cm32ln_1_00", "pcm_cm32l" } };
+    const int kinds = (int)(sizeof CONTROLS / sizeof CONTROLS[0]);
+    const char *ctrl_at[sizeof CONTROLS / sizeof CONTROLS[0]] = { NULL }, *ctrl_desc[sizeof CONTROLS / sizeof CONTROLS[0]] = { NULL };
+    const char *pcm_mt32 = NULL, *pcm_cm32l = NULL;
+    for (int i = 0; i < n; i++) {
+        mt32emu_rom_info info;
+        memset(&info, 0, sizeof info);
+        if (mt32emu_identify_rom_file(&info, files[i], NULL) != MT32EMU_RC_OK) continue;
+        if (info.control_rom_id)
+            for (int k = 0; k < kinds; k++)
+                if (!strcmp(info.control_rom_id, CONTROLS[k][0]) && !ctrl_at[k]) {
+                    ctrl_at[k] = files[i]; ctrl_desc[k] = info.control_rom_description;
+                }
+        if (info.pcm_rom_id && !strcmp(info.pcm_rom_id, "pcm_mt32") && !pcm_mt32) pcm_mt32 = files[i];
+        if (info.pcm_rom_id && !strcmp(info.pcm_rom_id, "pcm_cm32l") && !pcm_cm32l) pcm_cm32l = files[i];
+    }
+    for (int k = 0; k < kinds; k++) {
+        const char *p = !strcmp(CONTROLS[k][1], "pcm_mt32") ? pcm_mt32 : pcm_cm32l;
+        if (ctrl_at[k] && p) {
+            *control = ctrl_at[k];
+            *pcm = p;
+            if (description && description_size) snprintf(description, description_size, "%s", ctrl_desc[k] ? ctrl_desc[k] : CONTROLS[k][0]);
+            return 1;
+        }
+    }
+    return 0;
+}
 #else
 struct mt32 { int unused; };
 mt32_t *mt32_create(const char *control, const char *pcm, unsigned rate,
@@ -82,4 +117,10 @@ void mt32_destroy(mt32_t *s) { (void)s; }
 int mt32_byte(mt32_t *s, uint8_t byte) { (void)s; (void)byte; return 1; }
 void mt32_render(mt32_t *s, int16_t *stereo, unsigned frames)
 { (void)s; memset(stereo, 0, frames * 2 * sizeof *stereo); }
+int mt32_find_roms(const char *const *files, int n, const char **control, const char **pcm,
+                   char *description, size_t description_size)
+{
+    (void)files; (void)n; (void)control; (void)pcm; (void)description; (void)description_size;
+    return 0;
+}
 #endif

@@ -191,7 +191,7 @@ build\f117a.exe --data "D:\GOG\F-117A"
 | `--engine recomp\|interp` | recompiled code (default) or the reference interpreter only |
 | `--ips N` | emulated CPU speed, instructions per second (default 9,000,000: GOG DOSBox's `cycles=9000`) |
 | `--roland munt\|windows\|off` | where Roland music goes: Munt's MT-32 emulation (needs `--mt32-roms`), the Windows MIDI synthesizer, or nowhere |
-| `--mt32-roms DIR` | the folder holding your MT-32 control and PCM ROMs (Munt's or DOSBox's file names, e.g. `mt32_ctrl_1_07.rom` and `mt32_pcm.rom`); on its own it means `--roland munt` |
+| `--mt32-roms DIR` | the folder holding your MT-32 control and PCM ROMs, recognised by content whatever they are called (see [MT-32 ROMs](#mt-32-roms)); on its own it means `--roland munt` |
 | `--midi N` | send Roland MIDI to Windows MIDI device N instead of the mapper |
 | `--mt32-control FILE --mt32-pcm FILE` | name the two ROM files instead of a folder |
 | `--opl dbopl\|nuked` | GOG DOSBox's OPL2 synthesizer (default), or Nuked OPL3 in OPL2 mode; both output at 44,100 Hz |
@@ -224,6 +224,40 @@ Version 2.8.3 at commit `6e7c01fba7e1d50c8fa705834889fd0eac136075` was built
 and checked with first-generation MT-32 1.07 control and PCM ROMs. Invalid or
 missing ROMs fail explicitly. Original game MIDI renders offline and live;
 exact reference PCM comparison, flight sound and listening checks remain open.
+
+### MT-32 ROMs
+
+You supply two ROM files from a Roland MT-32 (or CM-32L): the **control ROM**
+(the unit's firmware) and the **PCM ROM** (its sampled sounds). Put them in
+one folder and point `mt32-roms` at it. The files are recognised by their
+SHA-1 (Munt's own table), so their names do not matter; with several in the
+folder, the first match in this order is used. F-117A (1991) was written for
+the first-generation MT-32, so a 1.0x control ROM is the most faithful choice;
+1.07 is what this project was checked with.
+
+| Control ROM | Size | SHA-1 |
+|---|---|---|
+| MT-32 1.07 | 64 KB | `b083518fffb7f66b03c23b7eb4f868e62dc5a987` |
+| MT-32 1.06 | 64 KB | `a553481f4e2794c10cfe597fef154eef0d8257de` |
+| MT-32 1.05 | 64 KB | `e17a3a6d265bf1fa150312061134293d2b58288c` |
+| MT-32 1.04 | 64 KB | `5a5cb5a77d7d55ee69657c2f870416daed52dea7` |
+| MT-32 BlueRidge | 64 KB | `7b8c2a5ddb42fd0732e2f22b3340dcf5360edf92` |
+| MT-32 2.07 | 128 KB | `47b52adefedaec475c925e54340e37673c11707c` |
+| MT-32 2.06 | 128 KB | `2869cf4c235d671668cfcb62415e2ce8323ad4ed` |
+| MT-32 2.04 | 128 KB | `2c16432b6c73dd2a3947cba950a0f4c19d6180eb` |
+| MT-32 2.03 | 128 KB | `5837064c9df4741a55f7c4d8787ac158dff2d3ce` |
+| CM-32L 1.02 | 64 KB | `a439fbb390da38cada95a7cbb1d6ca199cd66ef8` |
+| CM-32L 1.00 | 64 KB | `73683d585cd6948cc19547942ca0e14a0319456d` |
+| CM-32LN 1.00 | 64 KB | `dc1c5b1b90a4646d00f7daf3679733c7badc7077` |
+
+| PCM ROM | Size | SHA-1 | Goes with |
+|---|---|---|---|
+| MT-32 | 512 KB | `f6b1eebc4b2d200ec6d3d21d51325d5b48c60252` | every MT-32 control ROM |
+| CM-32L | 1 MB | `289cc298ad532b702461bfc738009d9ebe8025ea` | the CM-32L and CM-32LN control ROMs |
+
+Each ROM must be a single whole file; the split halves some dumps come as
+(`..._a` / `..._b`, `..._l` / `..._h`) are not combined. On Windows,
+`certutil -hashfile FILE SHA1` shows a file's SHA-1.
 
 For offline validation, `f117run --midi-log FILE` records each MPU byte with
 its instruction clock. `f117run --speaker-log FILE` records each speaker hook
