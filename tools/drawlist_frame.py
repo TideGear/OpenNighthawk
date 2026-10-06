@@ -13,6 +13,8 @@ every primitive the observer captured, and compared with the dump at its end:
   blits ('C')                               copied from the replay's page, or
                                             from the logged source bytes when
                                             the source is another page (art)
+  text ('T')                                painted from the logged font by
+                                            the library's text rules
 
 What has no replay rule yet is applied from what the original wrote and
 counted apart, so the share still copied rather than replayed is visible:
@@ -63,6 +65,90 @@ def outline_pixels(x0, y0, x1, y1):
                 x += step
                 err -= ady
     return out
+
+
+def text_pixels(entry, blk, chars, font):
+    """Graphics entries 1, 3, 4 and 5, the library's text (driver 0x3E8 sets
+    up, 0x31D cuts the string at the width clip for entry 3, 0x37F clips the
+    rows for entry 1, 0x61A paints): the pixels as (x, y, colour), and the
+    foreground left at the end (the library's colour from then on)."""
+    mode, fg, bg, x, y = blk[1] & 0xFF, blk[2] & 0xFF, blk[3] & 0xFF, blk[4], blk[5]
+    first, last, shift, fixed, height, spacing, extra, widths, glyphs = font
+    s = list(chars) + [0, 0]
+    out = []
+    if not chars:
+        return out, None
+    rows = height + (extra if blk[1] & 1 else 0)
+    fixed_w = (fixed + spacing) & 0xFF if fixed else 0
+    sh = (shift - 1) & 0xFF
+    stride = (last - first + 1) << sh
+    base = 0
+    cut = skip = 0                       # [1808] the last character's overshoot, [1807] a left skip
+
+    def width(c):
+        return fixed_w if fixed_w else (widths[c - first] + spacing) & 0xFF
+
+    if entry == 3:
+        limit, dx = blk[10] & 0xFFFF, x & 0xFFFF
+        if dx >= limit:
+            return out, None
+        limit += 1
+        for i, c in enumerate(s):
+            if c == 0:
+                break
+            if c & 0x80 or c > last or c < first:
+                continue
+            dx += width(c)
+            if dx < limit:
+                continue
+            cut = (dx - limit) & 0xFF
+            s[i + 1] = 0
+            break
+    if entry == 1:
+        top, bottom = blk[7] & 0xFF, blk[8] & 0xFF
+        dl = y & 0xFF
+        dh = (rows - 1 + dl) & 0xFF
+        if dl > bottom or dh < top:
+            return out, None
+        if dl < top:
+            rows = (dh - top + 1) & 0xFF
+            y = (y & 0xFF00) | top
+            base += (top - dl) * stride
+        if dh > bottom:
+            rows = (bottom - dl + 1) & 0xFF
+    colour_end = fg
+    for i, c in enumerate(s):
+        if c == 0:
+            break
+        nxt = s[i + 1]
+        if c & 0x80:
+            fg = colour_end = c & 0x7F
+            continue
+        if c > last or c < first:
+            continue
+        w = width(c)
+        if nxt == 0:
+            w = (w - cut) & 0xFF
+        w = (w - skip) & 0xFF
+        g = base + ((c - first) << sh)
+        draw = w
+        if mode != 1:
+            if nxt != 0 and draw:
+                draw = (draw - spacing) & 0xFF
+        if draw:
+            for r in range(rows):
+                at = g + r * stride
+                bits = ((glyphs[at] << 8 | glyphs[at + 1]) << skip) & 0xFFFF
+                for k in range(draw):
+                    on = bits & 0x8000
+                    bits = (bits << 1) & 0xFFFF
+                    if on:
+                        out.append((x + k, y + r, fg))
+                    elif mode == 1:
+                        out.append((x + k, y + r, bg))
+        skip = 0
+        x += w
+    return out, colour_end
 
 
 def main():
@@ -178,6 +264,28 @@ def main():
             for y in range(h):
                 for x in range(w):
                     page[(320 * (dy + y) + dx + x) & 0xFFFF] = rows[y][x]
+        elif k == "T":
+            v = [int(x) for x in f[2:]]
+            entry, tseg, blk = v[0], v[1], v[2:13]
+            n = v[13]
+            chars, rest = v[14:14 + n], v[14 + n:]
+            if not rest or not rest[0]:
+                totals["text with no font"] += 1
+                continue
+            first, last, shift, fixed, height, spacing, extra = rest[1:8]
+            count = last - first + 1
+            widths = rest[8:8 + count]
+            nbytes = rest[8 + count]
+            glyphs = rest[9 + count:9 + count + nbytes]
+            pixels, end = text_pixels(entry, blk, chars, (first, last, shift, fixed, height, spacing, extra, widths, glyphs))
+            if end is not None:                             # the painter ran: it set the library colour to the foreground
+                colour = blk[2] & 0xFF
+            if tseg == seg:
+                for x, y, col in pixels:
+                    page[(320 * y + x) & 0xFFFF] = col
+            totals["texts"] += 1
+        elif k == "x" and int(f[2]) in (1, 3, 4, 5):
+            pass                                             # text: replayed from its 'T'
         elif k == "x":
             v = [int(x) for x in f[2:]]
             entry, xseg, n = v[0], v[1], v[2]

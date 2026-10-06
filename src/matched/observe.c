@@ -434,6 +434,68 @@ static int hook_lib_blit(machine_t *m)
     return 0;
 }
 
+/* Graphics entries 5, 4, 3 and 1 (1E42:0133, 012E, 0129, 011F): text. A
+ * parameter block in SS - page, mode (1 opaque, else transparent),
+ * foreground, background, x, y, font, the row clip (+0Eh, +10h) and the width
+ * clip (+14h) - and a NUL-terminated string in SS; entry 5 is handed both
+ * as arguments, the others take the block at BP and the string at BX. 4
+ * draws, 3 first cuts the string at the width clip, 1 first clips the rows.
+ * Logged ('T') with the string and the font it uses, read from the driver's
+ * data segment (the immediate of its MOV AX at cs:03EB): the entry, the
+ * page's segment, the block's eleven words, the string's length and bytes, then the font's
+ * first and last character, shift, fixed width, height, spacing and extra
+ * height, its width table, and its glyph rows. */
+static int hook_lib_text(machine_t *m)
+{
+    flush(m);
+    const f117_observer *o = g_f117_observer;
+    if (!o || !o->prim) return 0;
+    cpu_t *c = &m->cpu;
+    const int entry = (c->ip - 0x011A) / 5;
+    const uint16_t ss = c->seg[S_SS], sp = c->r[R_SP];
+    const uint16_t blk = entry == 5 ? seg_read16(c, ss, (uint16_t)(sp + 4)) : c->r[R_BP];
+    const uint16_t str = entry == 5 ? seg_read16(c, ss, (uint16_t)(sp + 6)) : c->r[R_BX];
+    const uint16_t drv = slot_target_seg(m, c->ip);
+    static int32_t v[64 + 256 + 256 + 32768];
+    int n = 0;
+    v[n++] = entry;
+    v[n++] = seg_read16(c, drv, (uint16_t)(0x0787 + 2 * (seg_read16(c, ss, blk) & 0xFF)));   /* the page's segment */
+    for (int k = 0; k < 11; k++) v[n++] = seg_read16(c, ss, (uint16_t)(blk + 2 * k));
+    const int len_at = n++;
+    int len = 0;
+    while (len < 255) {
+        const uint8_t ch = mem_read8(c, phys(ss, (uint16_t)(str + len)));
+        if (!ch) break;
+        v[n++] = ch; len++;
+    }
+    v[len_at] = len;
+    /* the font: the driver's data segment, its table at 00D0 */
+    uint16_t dds = 0;
+    if (mem_read8(c, phys(drv, 0x03EB)) == 0xB8) dds = seg_read16(c, drv, 0x03EC);
+    const uint16_t font = (uint16_t)v[2 + 6];
+    int have = dds && font <= seg_read16(c, dds, 0x00D0);
+    uint16_t di = have ? seg_read16(c, dds, (uint16_t)(0x00D0 + 2 * (font + 1))) : 0;
+    if (!di) have = 0;
+    v[n++] = have;
+    if (have) {
+        const uint8_t first = mem_read8(c, phys(dds, (uint16_t)(di - 8))), last = mem_read8(c, phys(dds, (uint16_t)(di - 7)));
+        const uint8_t shift = mem_read8(c, phys(dds, (uint16_t)(di - 6))), fixed = mem_read8(c, phys(dds, (uint16_t)(di - 5)));
+        const uint8_t height = mem_read8(c, phys(dds, (uint16_t)(di - 4))), spacing = mem_read8(c, phys(dds, (uint16_t)(di - 3)));
+        const uint8_t extra = mem_read8(c, phys(dds, (uint16_t)(di - 2)));
+        v[n++] = first; v[n++] = last; v[n++] = shift; v[n++] = fixed; v[n++] = height; v[n++] = spacing; v[n++] = extra;
+        const int count = last >= first ? last - first + 1 : 0;
+        for (int k = 0; k < count; k++) v[n++] = mem_read8(c, phys(dds, (uint16_t)(di - 9 - (count - 1) + k)));
+        const unsigned sh = shift ? shift - 1u : 0u;
+        const long bytes = ((long)count << sh) * (height + extra) + 2;
+        v[n++] = (int32_t)bytes;
+        for (long k = 0; k < bytes && n < (int)(sizeof v / sizeof v[0]); k++)
+            v[n++] = mem_read8(c, phys(dds, (uint16_t)(di + k)));
+    }
+    o->prim(o->user, c->icount, 'T', v, n);
+    any_begin(m, entry, seg_read16(c, drv, 0x0194));
+    return 0;
+}
+
 /* Every other graphics entry: logged ('X', the entry number) so what draws
  * between two captured primitives is known, and so a pending capture is
  * closed before an uncaptured primitive draws over its pixels (a library
@@ -474,6 +536,10 @@ static const recomp_override OBSERVERS[] = {
     { "observe", "VGAME.EXE", VGAME_47304, 0x1377, 0x004C, hook_outline_begin, "fill or outline begin (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x01D3, hook_lib_spans, "library span fill (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x01EC, hook_lib_blit, "library blit (observer)", 1 },
+    { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x011F, hook_lib_text, "library text, rows clipped (observer)", 1 },
+    { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0129, hook_lib_text, "library text, width clipped (observer)", 1 },
+    { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x012E, hook_lib_text, "library text (observer)", 1 },
+    { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0133, hook_lib_text, "library text, block argument (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x01B5, hook_lib_line, "library line (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x01BA, hook_lib_colour_ah, "library line colour (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x01BF, hook_lib_colour_stack, "library line colour (observer)", 1 },

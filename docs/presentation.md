@@ -228,6 +228,23 @@ results and the rest are replayed. The 3-D phases are replayed completely.
 An off-by-one in the outline rule's error term makes all 14 phases of a
 6-million-instruction window inexact.
 
+**Text.** Entries 5, 4, 3 and 1 are the library's text: a parameter block in
+SS (page, mode, foreground, background, x, y, font, a row clip and a width
+clip) and a NUL-terminated string, 5 taking both as arguments and the others
+at BP and BX; 3 first cuts the string at the width clip (the last character
+narrowed by the overshoot), 1 first clips the rows. The painter (driver
+0x61A) draws 1-bit glyph rows (16-bit, high bit first) from a font in the
+driver's data segment (the table at 00D0: first and last character, a shift
+giving the glyph stride, a fixed width or a width table, height, spacing,
+extra rows), transparent or, in mode 1, opaque; a negative character code
+switches the foreground. The observer logs each call with its string and its
+font ('T'), so the replay needs no game data. With text replayed, **73 of 73
+phases are still exact and the bytes copied from the original fall to 49,432
+of 486,067 (10%)**: sprites (entries 73 and 18), the HUD drawer (11) and 71.
+Every call in this window is transparent, so the opaque branch is unchecked;
+dropping the row clip makes 7 of 14 phases inexact, but the width clip never
+cuts a string here.
+
 **How much of a frame is captured.** With `F117R_OBSERVE_PAGES=1` the
 observer dumps the library's whole 64 KB page segment at each `game_draw`
 entry, and painted pixels are logged by their exact offset in it. A phase is
