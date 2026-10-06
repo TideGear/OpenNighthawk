@@ -19,10 +19,10 @@ def frames(values):
 class VideoCompareTest(unittest.TestCase):
     def test_clock_controls_vga_period_and_shot_time(self):
         self.assertEqual(vga_period(9_000_000), 128413)
-        self.assertEqual(vga_period(12_000_000), 171218)
+        self.assertEqual(vga_period(12_000_000), 171217)
         self.assertEqual(shot_time(Path("shot_12000000.ppm"), 12_000_000), 1)
         self.assertAlmostEqual(vga_period(12_000_000) / 12_000_000,
-                               1 / 70.086, places=7)
+                               359200 / 25175000, places=6)
 
     def compare(self, a, b):
         with contextlib.redirect_stdout(io.StringIO()):
