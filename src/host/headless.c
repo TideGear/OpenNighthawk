@@ -4,7 +4,7 @@
  *           [--engine interp|recomp] [--time-us N]
  *           [--type WHEN:KEYS]... [--click WHEN:X,Y]... [--move WHEN:X,Y]... [--hold MS]
  *           [--record FILE] [--replay FILE]
- *           [--hash-every N] [--hash-from N] [--peek LINEAR] [--dump LINEAR:LENGTH] [--trace FROM:TO:FILE]
+ *           [--hash-every N] [--hash-from N] [--peek LINEAR] [--dump LINEAR:LENGTH] [--observe FILE:FROM:TO] [--trace FROM:TO:FILE]
  *           [--coverage FILE] [--screen FILE.ppm] [--shots EVERY:PREFIX]
  *           [--fix ID|all]... [--list-fixes]
  *           [--opl-log FILE] [--midi-log FILE] [--speaker-log FILE]
@@ -28,6 +28,7 @@
 #include "machine.h"
 #include "keys.h"
 #include "present.h"
+#include "observe.h"
 #include "recomp_rt.h"
 #include "fixes.h"
 #include "inputlog.h"
@@ -118,6 +119,25 @@ static void on_load(void *user, machine_t *m, const char *name, const uint8_t *f
 
 /* --opl-log: every OPL register write with its clock, for comparing the
  * music against a DOSBox raw OPL capture (tools/dosbox_compare.py). */
+/* --observe FILE:FROM:TO: log what the original draws (matched/observe.c) for
+ * the instructions in [FROM, TO): "P icount" for each phase of a picture and
+ * "V icount x y z px py range" for each projected vertex. Recompiled engine
+ * only; it reads and changes nothing. */
+static FILE *g_obs_file;
+static uint64_t g_obs_from, g_obs_to;
+static void obs_phase(void *u, uint64_t icount)
+{
+    (void)u;
+    if (icount >= g_obs_from && icount < g_obs_to) fprintf(g_obs_file, "P %llu\n", (unsigned long long)icount);
+}
+static void obs_vertex(void *u, uint64_t icount, const int32_t xf[3], const int32_t px[2], int range)
+{
+    (void)u;
+    if (icount >= g_obs_from && icount < g_obs_to)
+        fprintf(g_obs_file, "V %llu %d %d %d %d %d %d\n", (unsigned long long)icount, xf[0], xf[1], xf[2], px[0], px[1], range);
+}
+static const f117_observer g_obs = { 0, obs_phase, obs_vertex };
+
 static FILE *g_opl_log;
 static FILE *g_midi_log;
 static FILE *g_speaker_log;
@@ -185,6 +205,18 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--time-us") && v) { time_us = strtoull(v, NULL, 0); i++; }
         else if (!strcmp(a, "--hash-every") && v) { hash_every = strtoull(v, NULL, 0); i++; }
         else if (!strcmp(a, "--peek") && v) { peek_at = strtoul(v, NULL, 16); peek_on = 1; i++; }
+        else if (!strcmp(a, "--observe") && v) {
+            /* FILE may hold a drive letter's colon: split FROM and TO off the right. */
+            char path[600]; unsigned long long f = 0, t = ~0ull;
+            snprintf(path, sizeof path, "%s", v);
+            char *p2 = strrchr(path, ':'), *p1 = NULL;
+            if (p2) { *p2 = 0; p1 = strrchr(path, ':'); }
+            if (p2 && p1 && p1 > path + 1) { t = strtoull(p2 + 1, NULL, 0); *p1 = 0; f = strtoull(p1 + 1, NULL, 0); }
+            else if (p2) *p2 = ':';                     /* no window: the whole run */
+            g_obs_file = fopen(path, "w"); g_obs_from = f; g_obs_to = t;
+            if (!g_obs_file) { fprintf(stderr, "cannot write %s\n", path); return 2; }
+            observe_set(&g_obs); i++;
+        }
         else if (!strcmp(a, "--dump") && v) { dump_at = strtoul(v, NULL, 16); const char *c2 = strchr(v, ':'); dump_len = c2 ? strtoul(c2 + 1, NULL, 16) : 0x100; i++; }
         else if (!strcmp(a, "--hash-from") && v) { hash_from = strtoull(v, NULL, 0); i++; }
         else if (!strcmp(a, "--coverage") && v) { coverage = v; i++; }
@@ -338,6 +370,7 @@ int main(int argc, char **argv)
         if (rc != RUN_SLICE) break;
     }
     if (trace) fclose(trace);
+    if (g_obs_file) fclose(g_obs_file);
     if (dump_len) {
         printf("[dump] %05X:%X", dump_at, dump_len);
         for (uint32_t k = 0; k < dump_len; k++) printf("%s%02X", k % 32 ? "" : "\n", mem_read8(&m.cpu, dump_at + k));

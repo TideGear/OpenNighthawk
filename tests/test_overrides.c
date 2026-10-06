@@ -5,6 +5,7 @@
 #include "recomp_rt.h"
 #include "inputlog.h"
 #include "fixes.h"
+#include "observe.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -44,6 +45,52 @@ static int step_at(uint16_t cs, uint16_t ip)
     m.cpu.seg[S_CS] = cs;
     m.cpu.ip = ip;
     return recomp_override_step(&m);
+}
+
+
+/* The observer reads a projected vertex without touching the machine. */
+static int obs_calls, obs_range;
+static int32_t obs_xf[3], obs_px[2];
+static void obs_vertex_seen(void *u, uint64_t icount, const int32_t xf[3], const int32_t px[2], int range)
+{
+    (void)u; (void)icount;
+    obs_calls++; obs_range = range;
+    for (int k = 0; k < 3; k++) obs_xf[k] = xf[k];
+    for (int k = 0; k < 2; k++) obs_px[k] = px[k];
+}
+static void check_observer(void)
+{
+    static const f117_observer o = { 0, 0, obs_vertex_seen };
+    memset(m.mem + 0x20000, 0, 0x100);
+    m.cpu.seg[S_DS] = 0x2000;
+    /* camera-space vertex at DS:0010: x = -2, y = 0x00012345, z with the high word 0x0200 (near) */
+    const uint32_t xf[3] = { 0xFFFFFFFEu, 0x00012345u, 0x02001234u };
+    for (int k = 0; k < 3; k++)
+        for (int b = 0; b < 4; b++) m.mem[0x20010 + 4 * k + b] = (uint8_t)(xf[k] >> (8 * b));
+    const uint32_t px[2] = { 0xFFFFFF9Du, 0x000000C8u };           /* -99, 200 */
+    for (int k = 0; k < 2; k++)
+        for (int b = 0; b < 4; b++) m.mem[0x20040 + 4 * k + b] = (uint8_t)(px[k] >> (8 * b));
+    const uint64_t before = fnv1a64(m.mem + 0x20000, 0x100);
+    const uint16_t sp = m.cpu.r[R_SP];
+    observe_vertex(&m, 0x0010, 0x0040);                              /* no observer: nothing */
+    CHECK(obs_calls == 0);
+    observe_set(&o);
+    observe_vertex(&m, 0x0010, 0x0040);
+    CHECK(obs_calls == 1 && obs_range == 0);
+    CHECK(obs_xf[0] == -2 && obs_xf[1] == 0x12345 && obs_xf[2] == 0x02001234);
+    CHECK(obs_px[0] == -99 && obs_px[1] == 200);
+    m.mem[0x20010 + 0x0A] = 0x80;                                    /* z high word 0x8000.. behind the eye */
+    m.mem[0x20010 + 0x0B] = 0xFF;
+    observe_vertex(&m, 0x0010, 0x0040);
+    CHECK(obs_calls == 2 && obs_range == 2 && obs_px[0] == 0 && obs_px[1] == 0);
+    m.mem[0x20010 + 0x0A] = 0x10; m.mem[0x20010 + 0x0B] = 0x00;     /* z high word 0x10: mid range */
+    observe_vertex(&m, 0x0010, 0x0040);
+    CHECK(obs_range == 1 && obs_px[0] == -99);
+    m.mem[0x20010 + 0x0A] = 0x34; m.mem[0x20010 + 0x0B] = 0x12;     /* restore the bytes compared below */
+    m.mem[0x20010 + 0x0A] = (uint8_t)(xf[2] >> 16); m.mem[0x20010 + 0x0B] = (uint8_t)(xf[2] >> 24);
+    CHECK(fnv1a64(m.mem + 0x20000, 0x100) == before);                /* it read, and wrote nothing */
+    CHECK(m.cpu.r[R_SP] == sp);
+    observe_set(NULL);
 }
 
 int main(void)
@@ -210,6 +257,7 @@ int main(void)
     CHECK(nwrites == 4 && writes[3].reg == 0xB0 && writes[3].val == 0x20);
     machine_shutdown(&m);
 
+    check_observer();
     recomp_shutdown(&m);
     if (failures) { fprintf(stderr, "%d failures\n", failures); return 1; }
     printf("code overrides: all checks passed\n");

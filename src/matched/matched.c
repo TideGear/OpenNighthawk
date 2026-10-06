@@ -23,17 +23,11 @@
  * finds the leads); each routine here was read again in the original.
  */
 #include "matched.h"
+#include "observe.h"
 #include "recomp_rt.h"
 #include "x86_sem.h"
 #include <string.h>
 
-#define VGAME_47304 0x8287450CCA85106FULL
-#define START_47304 0xC65ECC83823E4907ULL
-#define END_47304   0xFA7167EE4E377EC1ULL
-#define PLAYER_47304 0xF61A7BE2C4607B24ULL
-#define DSWAP_47304 0xF947E1BD62AA2812ULL
-#define SETUP_47304 0xEDD5021CF28E7FC4ULL
-#define MPS_LOGO_47304 0x02B05A7CAB0B4197ULL
 
 static int default_runner(machine_t *m) { return machine_run(m, m->run_until); }
 matched_runner_fn matched_runner = default_runner;
@@ -4116,6 +4110,7 @@ static int vgame_model_project(machine_t *m)
     }
     if (u.full || c->icount + n + 1 > c->stop_at) return undo_abort(c, &u);
     c->icount += n + 1;                                           /* the RET */
+    if (g_f117_observer && g_f117_observer->vertex) observe_vertex(m, di, bx);
     near_ret(c);
     return 1;
 }
@@ -4431,6 +4426,7 @@ void matched_register(void)
     if (done) return;
     done = 1;
     for (unsigned i = 0; i < sizeof MATCHED / sizeof MATCHED[0]; i++) recomp_override_add(&MATCHED[i]);
+    observe_register();
 }
 
 unsigned matched_count(void) { return (unsigned)(sizeof MATCHED / sizeof MATCHED[0]); }

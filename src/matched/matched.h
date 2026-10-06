@@ -4,6 +4,16 @@
 
 #include "recomp_rt.h"
 
+/* The shipped programs, by file hash (FNV-1a 64 of the file as DOS reads it). */
+#define VGAME_47304 0x8287450CCA85106FULL
+#define START_47304 0xC65ECC83823E4907ULL
+#define END_47304   0xFA7167EE4E377EC1ULL
+#define PLAYER_47304 0xF61A7BE2C4607B24ULL
+#define DSWAP_47304 0xF947E1BD62AA2812ULL
+#define SETUP_47304 0xEDD5021CF28E7FC4ULL
+#define MPS_LOGO_47304 0x02B05A7CAB0B4197ULL
+
+
 /* Register every matched routine (once; recomp_init calls it). */
 void matched_register(void);
 unsigned matched_count(void);

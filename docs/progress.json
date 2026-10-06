@@ -112,9 +112,9 @@
       {
         "item": "Stage 0: measure what draws, and an observer that logs the drawing primitives per frame",
         "weight": 6,
-        "done": 0.4,
+        "done": 0.8,
         "kind": "estimate",
-        "evidence": "Measured and written up (docs/presentation.md): S is 9 in flight; a step is two game_draw phases; the model rasteriser and the resident graphics library are two rasterisers; sub-pixel exists only before the projection divide. The observer itself, and the deterministic-log check, are not built."
+        "evidence": "Measured and written up (docs/presentation.md) and the observer is built: hooks on game_draw and the matched projection, f117run --observe, hashes unchanged with it on, logs byte-identical across runs, ROM-free unit test. Not yet: a vertex observer on the original's own (non-matched) projection path and the library's driver slots."
       },
       {
         "item": "Stage 1: draw lists replayed bit-exact at 320x200",

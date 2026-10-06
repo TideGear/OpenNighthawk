@@ -52,13 +52,13 @@ target_link_libraries(f117present PUBLIC f117machine)
 
 # ---- The recomp runtime: generated code if there is any ------------------
 # Switchable fixes attach to the runtime as code overrides (src/fixes).
-add_library(f117recomp_none STATIC src/recomp/recomp.c src/recomp/recomp_empty.c src/fixes/fixes.c src/matched/matched.c)
+add_library(f117recomp_none STATIC src/recomp/recomp.c src/recomp/recomp_empty.c src/fixes/fixes.c src/matched/matched.c src/matched/observe.c)
 target_include_directories(f117recomp_none PUBLIC src/fixes src/matched)
 target_link_libraries(f117recomp_none PUBLIC f117machine)
 
 if(F117R_GEN_DIR)
   file(GLOB F117R_GEN_SOURCES CONFIGURE_DEPENDS "${F117R_GEN_DIR}/gen_*.c")
-  add_library(f117recomp STATIC src/recomp/recomp.c src/fixes/fixes.c src/matched/matched.c ${F117R_GEN_SOURCES})
+  add_library(f117recomp STATIC src/recomp/recomp.c src/fixes/fixes.c src/matched/matched.c src/matched/observe.c ${F117R_GEN_SOURCES})
   target_include_directories(f117recomp PUBLIC src/fixes src/matched)
   target_link_libraries(f117recomp PUBLIC f117machine)
   if(MSVC)

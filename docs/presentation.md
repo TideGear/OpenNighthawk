@@ -99,6 +99,27 @@ pattern) and this library, which draws what the model rasteriser does not
 library call with its arguments before it becomes pixels, which is the
 right place for sprites and the HUD.
 
+**The observer (Stage 0, built).** `src/matched/observe.c`/`observe.h`: a
+hook on `game_draw`'s entry and one in the matched projection, both pure
+readers. `f117run --observe FILE:FROM:TO` logs `P icount` for each phase of
+a picture and `V icount x y z px py range` for each projected vertex (the
+32-bit camera-space coordinates and the pixels the original made of them).
+Checks, on the strike route over 3 million instructions of flight: the
+final hash is identical with and without it; two logged runs are
+byte-identical; the eight phase entries land on exactly the instruction
+counts the trace found; the unit test (`test_overrides`) decodes a vertex
+and checks it wrote nothing.
+
+What the log shows: the two phases of a step draw **different sets** of
+vertices, 258 in one and 220-223 in the other, and each set is the same
+size from step to step (the 258 are 150 near, 93 mid-range and 15 behind the
+eye). Comparing the same phase of consecutive steps, **87% to 99% of the
+vertices are in the same slot, within 40 pixels** (225, 256, 220 of 258; 216
+of 223; 94 of 220 in the one pair where the count changed from 220 to 223).
+The original therefore draws in a stable order, and a pairing by slot works
+for most of a frame; where a count changes, the slots after the change shift
+and need a smarter match.
+
 ## What is not known (and has to be measured next)
 
 1. **Where the scene is drawn.** The matched routines already name part of

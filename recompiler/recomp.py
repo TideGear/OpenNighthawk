@@ -209,7 +209,8 @@ def write_module(mod, regions, out_dir, comments, mutate=None):
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OVERRIDE_TABLES = (os.path.join(ROOT_DIR, "src", "fixes", "fixes.c"),
-                   os.path.join(ROOT_DIR, "src", "matched", "matched.c"))
+                   os.path.join(ROOT_DIR, "src", "matched", "matched.c"),
+                   os.path.join(ROOT_DIR, "src", "matched", "observe.c"))
 
 
 def override_sites(paths=OVERRIDE_TABLES):
