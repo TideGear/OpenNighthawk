@@ -18,13 +18,19 @@ only draw the wrong picture, never change the game.
 
 ## What is known
 
-- **The original draws at most 15 pictures a second.** The flight model
+- **The original runs at a low, speed-dependent rate.** The flight model
   steps once per drawn frame and divides every per-second rate by
-  S = `[0x368E]`, which the frame-rate controller clamps to 15
-  ([bugs.md](bugs.md) D1). 60 fps cannot come from the original drawing
-  faster: it must come from *interpolating between its states*. Raising S
-  is not an option either: the flight model is 16-bit integer, and rates
-  smaller than S round to zero (that is D1's missed missiles).
+  S = `[0x368E]`, which the frame-rate controller clamps to at most 15
+  ([bugs.md](bugs.md) D1). **Measured** on the strike route at the default
+  9 million instructions a second (`f117run --peek 3B24E`, the word at
+  `[368E]`, every 250 million instructions): S is 12-13 in the first part of
+  the flight and **9** from about 5 billion instructions to the end of the
+  route. So a GOG-speed machine runs the flight at about 9 steps a second,
+  and a faster emulated CPU raises it towards 15. 60 fps cannot come from
+  the original drawing faster: it must come from *interpolating between its
+  states*, a jump of 4 to 7 times. Raising S is not an option: the flight
+  model is 16-bit integer, and rates smaller than S round to zero (that is
+  D1's missed missiles).
 - **The host shows the last frame the VGA scanned out** (`present_capture`
   on each vertical retrace, `src/host/main.c`) and scales it to the window
   with SDL (`--scale N`, `--fullscreen`, aspect correction). So a large
@@ -33,7 +39,37 @@ only draw the wrong picture, never change the game.
 - **Time is one real second per game second** (the mission-clock invariant),
   so interpolating game state against the host clock is meaningful.
 
-## What is not known (and has to be measured first)
+## Stage 0, first measurement: what draws
+
+A trace of 1.5 million instructions of the strike route in flight
+(`f117run --trace`, the registers before every instruction; the stores
+decoded offline from the original's bytes, each attributed to a routine by
+the Reimp's census) shows the 3-D scene drawn in stages, each a routine
+this project already has or is matching:
+
+1. **Transform and prepare**: `model_xform_vertex` (`0x128B5`, the most
+   store-heavy routine), `model_prepare_edge` (`0x12BDB`), the camera
+   matrix routines (`0x1473B`, `0x14850`), clipping (`mclip_*`,
+   `raster_clip_model_edge32`).
+2. **Edge and span tables**: `edge_column;raster_spans_col` (`0x10075`),
+   `raster_spans_clear_used` (`0x1003F`, which alone stores 1.4 MB in the
+   window by clearing tables) and `raster_spans_edge_clipped` (`0x101C6`),
+   all into one 64K region (linear `0x3xxxx`: the span tables).
+3. **Fill**: `raster_model_fill` (`0x1420C`, `0x1418C`, `0x140E6`) and the
+   fill at `0x142BF` write pixels into a second region (`0x5xxxx`, the back
+   page): 29 KB of pixels against 2.3 MB of table traffic.
+
+The picture is made *from* projected polygons through span tables, so the
+polygon list (colour, vertices) exists in the middle of the path and is the
+natural place to observe. The per-frame routine `game_draw` (`0x01450`) was
+entered at instructions 142,435 / 522,343 / 921,618 / 1,303,588 of the
+window, about 390,000 apart, which at 9 million instructions a second is
+more often than S = 9 steps a second suggests. **That discrepancy is not yet
+explained** (several draws a step? the cockpit and the outside view in
+separate passes?) and is the first thing to resolve: the interpolation
+needs to know what one logic step draws.
+
+## What is not known (and has to be measured next)
 
 1. **Where the scene is drawn.** The matched routines already name part of
    the path: the model fill setup (`1377:01E0`), the polygon row spans
@@ -83,9 +119,9 @@ wherever the edges do not cross it.
 
 **Stage 3 - interpolation to 60+ fps.** Between two consecutive draw lists,
 pair primitives and move their vertices linearly in time; draw at the host's
-display rate. The simulation is not advanced: the machine keeps its 15 Hz
+display rate. The simulation is not advanced: the machine keeps its own
 steps and the in-between pictures are only drawn. Cost to acknowledge:
-the picture is one logic step behind (up to 67 ms at 15 Hz), the standard
+the picture is one logic step behind (about 110 ms at the measured 9 steps a second, 67 ms at the clamp of 15), the standard
 price of interpolation. Check: at the instant of a logic frame the output is
 exactly that frame (so the original's picture is always reproducible), and
 the in-between frames have no primitive that is absent from both
@@ -120,7 +156,7 @@ path into Stage 1.
 ## What is decided and what is not
 
 Decided, by the machine's design and measured facts above: presentation is
-an observer; the machine keeps its 15 Hz steps; interpolation, not faster
+an observer; the machine keeps its own steps; interpolation, not faster
 simulation, gives 60+ fps.
 
 Open, and the first thing Stage 0 answers: what "4K" can honestly be (a
