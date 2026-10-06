@@ -431,12 +431,19 @@ never instead of parity.
       timing difference is tracked under Phase 1. A session recorded with
       fixes on names them (`# f117r-fixes D5`) and its replay switches them
       on again.
-- [ ] 60+ fps and 4K presentation. Design in [presentation.md](presentation.md):
-      the original draws at most 15 pictures a second, so 60+ fps is
-      interpolation between its states, and real 4K needs the drawing
-      primitives captured as draw lists. Every stage is an observer of the
-      machine and cannot change it. Stage 0 (measure what draws what, and
-      what the second `game_draw` phase does, and recording camera-space vertices) is next.
+- [ ] 60+ fps and 4K presentation. Design in [presentation.md](presentation.md).
+      Measured: the original runs at 9 logic steps a second at GOG speed
+      (S clamps at 15), a step is two `game_draw` phases that draw different
+      vertex sets, sub-pixel precision exists only before the projection
+      divide, and the picture comes from two rasterisers (VGAME's model
+      rasteriser and the resident graphics library). So 60+ fps is
+      interpolation between its states and real 4K needs the primitives
+      captured. Stage 0 is built: an observer (`src/matched/observe.c`,
+      `f117run --observe`) that logs frame phases and projected vertices,
+      changes nothing, and shows the draw order is stable from step to step.
+      Next: Stage 1 (draw lists), after deciding between observing the draw
+      path and rendering from a data-segment snapshot with the Reimp's
+      renderer (the fork in the design page).
 
 ## Housekeeping
 
