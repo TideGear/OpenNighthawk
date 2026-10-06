@@ -174,6 +174,19 @@ pixel to be on it, in its colour: **1,348 of 1,348 lines consistent.** The
 test is one-sided - a pixel that already had the line's colour does not
 change, so it cannot show a pixel the replay draws and the original does not.
 
+**How much of a frame is captured.** With `F117R_OBSERVE_PAGES=1` the
+observer dumps the library's whole 64 KB page segment at each `game_draw`
+entry, and painted pixels are logged by their exact offset in it. A phase is
+then rebuilt from the previous dump plus every captured primitive and
+compared with the next dump. The two `game_draw` phases of a step alternate
+between two buffers in the one segment (origin 0 and origin 8A29h - so the
+"two phases" are double buffering as much as anything), and each changes
+about 6,650 bytes. On the strike route's flight: in the origin-0 phases the
+captured polygons and lines account for **82%** of the change (1,166 bytes a
+phase left); in the origin-8A29h phases for about 2% - that buffer is drawn
+by something not yet captured. Finding those writers (by the store census,
+restricted to the unexplained offsets) is the next piece of Stage 1.
+
 ## What is not known (and has to be measured next)
 
 1. **Where the scene is drawn.** The matched routines already name part of

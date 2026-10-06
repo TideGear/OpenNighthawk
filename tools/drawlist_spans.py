@@ -269,7 +269,8 @@ def main():
             pending_line = (v[0], v[1], v[2], v[3], line_colour)
         elif f[0] == "n" and pending_line is not None:
             v = [int(x) for x in f[2:]]
-            changed = [(v[3 + 3 * k], v[4 + 3 * k], v[5 + 3 * k]) for k in range(v[2])]
+            # page, 0, count, then per pixel: offset, x | y << 16, value
+            changed = [(v[4 + 3 * k] & 0xFFFF, v[4 + 3 * k] >> 16, v[5 + 3 * k]) for k in range(v[2])]
             x0, y0, x1, y1, colour = pending_line
             mine = set(line_pixels(x0, y0, x1, y1))
             ok = all((x, y) in mine and val == colour for x, y, val in changed)
@@ -287,16 +288,16 @@ def main():
             k = len(fill["after"])
             fill["after"].append(v)
             if k < len(fill["before"]):
-                y, x0, n = fill["before"][k][:3]
-                got = paint(fill["colour"], y, x0, fill["before"][k][3:3 + n])
-                ok = got == v[3:3 + n]
+                y, x0, n = fill["before"][k][:3]               # then the segment and offset, then the bytes
+                got = paint(fill["colour"], y, x0, fill["before"][k][5:5 + n])
+                ok = got == v[5:5 + n]
                 stats["pixel rows"] += 1
                 stats["pixel rows exact"] += ok
                 st = "%02X" % ((fill["colour"] >> 8) & 0xFF)
                 stats["rows " + st] += 1
                 stats["rows exact " + st] += ok
                 if not ok and len(first_pix) < 4:
-                    first_pix.append((f[1], st, y, x0, fill["before"][k][3:3 + min(n, 8)], v[3:3 + min(n, 8)], got[:8]))
+                    first_pix.append((f[1], st, y, x0, fill["before"][k][5:5 + min(n, 8)], v[5:5 + min(n, 8)], got[:8]))
         elif f[0] == "R" and poly is not None:
             v = [int(x) for x in f[2:]]
             top, nrows = v[1], v[2]

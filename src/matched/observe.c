@@ -3,6 +3,7 @@
 #include "matched.h"
 #include "recomp_rt.h"
 #include "cpu.h"
+#include <stdlib.h>
 
 const f117_observer *g_f117_observer;
 
@@ -56,10 +57,11 @@ static void emit_row_bytes(machine_t *m, char kind)
     const f117_observer *o = g_f117_observer;
     cpu_t *c = &m->cpu;
     for (int k = 0; k < g_pend.n; k++) {
-        int32_t v[3 + 330];
+        int32_t v[5 + 330];
         int n = 0;
         v[n++] = g_pend.row[k].y; v[n++] = g_pend.row[k].x0; v[n++] = g_pend.row[k].len;
-        for (unsigned i = 0; i < g_pend.row[k].len && n < 3 + 330; i++)
+        v[n++] = g_pend.es; v[n++] = g_pend.row[k].at;
+        for (unsigned i = 0; i < g_pend.row[k].len && n < 5 + 330; i++)
             v[n++] = mem_read8(c, phys(g_pend.es, (uint16_t)(g_pend.row[k].at + i)));
         o->prim(o->user, c->icount, kind, v, n);
     }
@@ -85,6 +87,20 @@ static int hook_game_draw(machine_t *m)
     flush(m);
     const f117_observer *o = g_f117_observer;
     if (o && o->frame_phase) o->frame_phase(o->user, m->cpu.icount);
+    /* The whole page the library draws to ('Z': its segment, then 64,000
+     * bytes), so a frame can be rebuilt from the previous one plus every
+     * primitive captured in between, and what is left counted. */
+    if (o && o->prim && getenv("F117R_OBSERVE_PAGES")) {
+        cpu_t *c = &m->cpu;
+        const uint16_t drv = seg_read16(c, (uint16_t)(c->seg[S_DS]), 0x01B5 + 3);
+        if (drv) {
+            static int32_t v[2 + 65536];
+            const uint16_t page = seg_read16(c, drv, 0x0194), origin = seg_read16(c, drv, 0x0196);
+            v[0] = page; v[1] = origin;
+            for (uint32_t a = 0; a < 65536; a++) v[2 + a] = mem_read8(c, phys(page, (uint16_t)a));
+            o->prim(o->user, c->icount, 'Z', v, 2 + 65536);
+        }
+    }
     return 0;
 }
 
@@ -233,14 +249,14 @@ static void line_flush(machine_t *m)
     cpu_t *c = &m->cpu;
     int32_t v[4 + 3 * 400];
     int n = 0;
-    v[n++] = g_line.x0; v[n++] = g_line.y0;
+    v[n++] = g_line.page; v[n++] = 0;
     const int count_at = n++;
     int changed = 0;
     for (unsigned y = 0; y < g_line.h; y++)
         for (unsigned x = 0; x < g_line.w; x++) {
             const uint8_t now = mem_read8(c, phys(g_line.page, (uint16_t)(g_line.at[y] + x)));
             if (now != g_line.before[y * g_line.w + x] && n + 3 <= (int)(sizeof v / sizeof v[0])) {
-                v[n++] = (int32_t)(g_line.x0 + x); v[n++] = (int32_t)(g_line.y0 + y); v[n++] = now; changed++;
+                v[n++] = (int32_t)(uint16_t)(g_line.at[y] + x); v[n++] = (int32_t)(g_line.x0 + x) | ((int32_t)(g_line.y0 + y) << 16); v[n++] = now; changed++;
             }
         }
     v[count_at] = changed;
