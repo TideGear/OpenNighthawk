@@ -484,3 +484,26 @@ above that is 13 routes. Still unexercised: dithered and stipple fills (no
 fill in these windows used one), the sprite clip edge cases, and windows later
 in each flight (weapon release, landing, the cockpit's other displays).
 
+**Later in the flight (6 Oct, 13:00): the first real gaps.** Six more
+30M-instruction windows, taken at the Maverick release, the impact, the
+landing and the return legs. Four are exact with nothing copied: cargo at
+7.30B (45 phases), strike at 8.53B (69), landing at 9.90B (18) and
+`recon_return` at 14.0B (69). **Two are not**: the strike window at 8.72B
+(the impact; 56 phases, 53 exact work and 54 exact display, 5,312 bytes
+copied) and the `strike_return` window at 14.99B (the landing approach; 45
+phases, 34 exact work and 35 exact display, 23,205 bytes copied). In the
+second, the cockpit-HUD phases (origin 8A29h) differ from the first rows of
+the page on colours 76-78 (a +-1 ramp), and 37,379 work-page bytes come from
+graphics entry 22, which nothing hooks. Fill styles are not the cause: every
+fill row in that window is FF, FD or FB. Entry 22 (1E42 slot 0188, driver
+0x0B70) is a **scaled, flippable RLE sprite**: it takes a block at BP (page,
+and the clip rectangle at +0Eh..+14h), a destination x/y and a signed width and
+height (the sign flips the axis, driver 0x0C5D-0x0C5B clips them), reads each
+row of the source as a skip count, a run length and the run's bytes (colour 0
+transparent), expands the row into a 320-byte buffer at cs:0868h, and writes
+it scaled by a Bresenham-style step (0xDD3-0xDF6, the horizontal error term in
+`bp += [0842]; bp -= [0846]`) with rows repeated by the same rule
+(0xDFE-0xE26). Next: hook entry 22 in `observe.c` as a record like the sprite's
+('S'), with its block, its source rows and the page, and replay it in
+`drawlist_frame.py` by those rules; then rerun both windows.
+
