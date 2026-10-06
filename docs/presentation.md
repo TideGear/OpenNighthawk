@@ -439,3 +439,14 @@ Open: whether real sub-pixel "4K" (re-projecting the 32-bit camera-space
 vertices at the new resolution) is worth its cost against the cheaper scaled
 picture. The data for it exists; the clip and span stages would have to be
 redone at the new resolution.
+
+**Second route (6 Oct).** A 30M-instruction window of the `recon` route
+(clock 3.07B-3.10B, same capture command) rebuilds **34 of 34 phases exact on
+both pages**, but 2,917 bytes are copied from the original rather than
+replayed (the strike flight needed none). Fill styles are not the cause: every
+fill colour word in this window is solid, AND, OR or discard, which `paint`
+handles. The copied bytes are direct work-page writes ('x') by entries 6
+(1,960 bytes) and 2 (910) which the strike flight never called; entries 5, 1,
+4, 18 and 11 are the larger shared ones. Decoding 6 and 2 is the next Stage 1
+step.
+
