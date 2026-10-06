@@ -692,14 +692,17 @@ The committed `tools/routes/landing.input` contains only keyboard/mouse
 events and their clocks. `landing.args` replays them without the controller.
 Replay paths in route files resolve relative to the route file.
 
-The Libya return takes about 829 emulated seconds. Interpreter and recomp
-agree at all 195 checkpoints and final hash `9a20d983de7b7f4f`; independent
-adaptive runs produce byte-identical input logs and observation CSVs.
-The aircraft stops at (9793,1539), inside home target 33's box centred on
-(9792,1600), with half-width 9 and half-length 72 map units. Speed/throttle
-are zero, gear down, brakes on, fuel 4651, no ejection/crash state, and
-the original completion counter is 2 with S=11 (greater than 16/S).
-Screenshots of contact and the stop were reviewed.
+The Libya return takes about 843.5 emulated flight seconds. The input was
+re-recorded after the rational VGA slice-boundary update; the old input missed
+the runway. Interpreter and recomp now pass the strong observer with identical
+4,113-row flight logs, ending at clock `9,920,163,246` and hash
+`979600814c576e2f`. The aircraft stops at (9793,1549), inside home target 33's
+box centred on (9792,1600), with half-width 9 and half-length 72 map units.
+Speed/throttle are zero, gear down, brakes on, fuel 4,737, no ejection/crash
+state, and the original completion counter is 2 with S=11. The parent's
+mission result is 0/status 3. Screenshots of contact and the stop were
+reviewed. The committed route also passes its world, VGAME exit and END open
+milestones under both engines with a 10-billion-cycle budget.
 
 The observer additionally checks the parent flight block: mission result
 0 and pilot status 3. **DOS exit 129 is the debriefing handoff**, distinct
@@ -725,17 +728,21 @@ switch, N for forward-ray designation and Enter for the exposure.
 recorded whole flight and `recon.args` replays it without the controller.
 The navigation/camera approach draws on the Reimp's diagnostic photo pilot.
 
-Primary target 1 is photographed at about 345.5 emulated flight seconds,
-268 map units away. The sampled credit state has one exposure, shutter 3,
-the primary bit set and one event 8A naming target 1. Its damage bit is
-clear, the aircraft has no ejection/crash state, and camera 16 retains
-one store. The observer also checks these conditions after another second
-of flight; the shutter has returned to zero without another exposure.
-The credit screenshot shows FRAME 1 and PRIMARY PHOTO. The secondary
-photo objective and the return remain unfinished; the route stops airborne.
+After the rational VGA slice-boundary update, the former `recon.input` reached
+END at 6,349,054,055 under both engines without exposure or primary credit.
+A fresh adaptive run with level acquisition replaced it. Primary target 1 is
+photographed at 357.7 emulated flight seconds, 281 map units away. The credit
+sample has one exposure, shutter 1, the primary bit set and one event 8A
+naming target 1. Its damage bit is clear, the aircraft has no ejection/crash
+state, and camera 16 retains one store. The observer checks these conditions
+after another second; the shutter has returned to zero without another
+exposure. The credit screenshot is saved by the pilot. The secondary photo
+objective and return remain unfinished; the route stops airborne.
 
-Both engines agree at 123 checkpoints and final hash `eb19d05b7369a32b`
-at 6,180,124,257 clocks. Independent observers pass under both engines.
+Both engines pass with byte-identical 1,685-row observation CSVs, input logs
+and final clock/hash `6,289,654,045` / `0d92f4ffab92a97f`. The official route
+runner also passes its world/open milestones and reaches its 7,549,654,902
+clock budget with hash `34ade673e5039828` under both engines.
 As with landing, world/file milestones alone do not prove objective credit:
 
 ```powershell
@@ -747,14 +754,15 @@ types, absent credit, destroyed targets, crashes and empty cameras.
 
 ## Extended photo return and earned career award
 
-The extended `recon_return` route verifies secondary target 2 at 559.5 seconds
-with FRAME 2 and one event 4Ah. It returns to raised base 36, lands at height
-128 and stops within the home approach box, retaining 5009 fuel. Both engines'
-independent observers produce identical input/flight logs and final hash
-`c403d0542430b898`; the route also matches at 272 checkpoints. The complete
-gate requires both intact photo targets and credit events, plus the successful
-parent return result. Use `recon_pilot.py --complete --replay
-tools/routes/recon_return.input` under either engine.
+The current `recon_return` input was recaptured after the rational VGA
+slice-boundary refinement. The controller begins descent earlier for the
+raised deck (deck aim 300); it earns both photo credits with intact targets,
+then stops at (19200, 9460) on home 36's height-128 runway with 4,965 fuel.
+Both strong observers pass with byte-identical 6,150-row flight logs and
+input records, final clock 14,062,279,901/hash `3561ab31a4d3b6b1`, and mission
+result 0/status 3. The official route runner also passes world and VGAME exit
+gates, then completes END's debrief (exit 35) under both engines. The former
+pre-refinement recording did not pass under the updated timing.
 
 `recon_career` continues through debriefing and the earned tenth-mission tour
 ribbon. Both engines agree at 316 checkpoints/final hash `f8e2e8955bb74467`;
@@ -837,20 +845,77 @@ the service stubs). `F117R_PIT_CONTROL_IRQ=0` restores the old behaviour.
 
 Against the saved GOG DOSBox capture, `tools/video_compare.py` reports
 1,321 exact pictures and +14 ms end drift (it was -570 ms). The roster fade
-now has three frames, as DOSBox's capture does, where it had thirteen.
+now has three frames, as DOSBox's capture does, where it had thirteen. A
+half-period snapshot shift (`--shot-start 64206`) preserves the same unmatched
+RGB hashes and +14.279 ms end drift, ruling out a constant capture-phase
+error as the cause of the remaining one-sample differences.
 `tools/fidelity.py` still agrees on all 1,210 answers.
 
-Every recorded flight input carries absolute clocks, so the closed-loop
-pilots re-recorded them under the new timing. Each passes its strong observer
-under both engines with identical observation logs:
+The GOG config uses DOSBox's `svga_s3` part renderer. Its `VGA_DrawPart()`
+does not apply the sequencer screen-off flag, even though other DOSBox VGA
+draw paths do. START toggles SEQ1 bit 5 once per roughly 128,400 guest clocks;
+the local mode-13h presenter had turned those intervals into solid-black
+frames. The presenter now follows the S3 path and keeps the sequencer state
+available in the machine frame. Against the first saved reference this
+removes all five false black samples: 1,321 exact pictures, five reference
+and 11 local one-sample pictures unmatched, and +14.279 ms end drift. A
+separate GOG capture (`intro-qlh_wi26`) contains several of the local
+transition images absent from the first capture. The then-current
+integer-period build (`intro-rpay8p1l`) matches 1,329/1,332 exact pictures; only three
+one-sample MPS-logo transition images on each side remain, and both aircraft
+poses match. Two short independent captures preserve the local hashes but
+show different reference transition hashes. The residual is confined to
+logo transitions whose exact frames vary with capture timing, not aircraft
+rendering.
+
+The local scanout schedule also used to round each fractional 100-line VGA
+part deadline down to an integer guest cycle. DOSBox's `PIC_RunQueue` executes
+the corresponding delayed callback on the next whole cycle. The local part
+deadlines now round up to match that behavior. A new full comparison has the
+same 1,329 exact pictures and three one-sample logo differences per side; one
+local transition's RGB difference falls from eight pixels to seven. This
+corrects the event rounding but does not resolve the remaining logo frames.
+
+DOSBox 0.74's `VGA_SetupDrawing()` derives the frame rate and four-part draw
+delays from the selected pixel clock and CRTC totals, then schedules each as
+a fractional PIC delay. The local mode-13h timing now uses the corresponding
+rational period (25.175 MHz pixel clock, divided by 8, 100 horizontal clocks,
+449 total lines): 128,413.108 guest cycles at 9 MHz. Frame starts, line parts,
+retrace and status reads use this clock, with each event rounded up to the
+first whole guest instruction at or after its deadline. Headless `--shots-vga`
+also captures on the fractional frame cadence.
+
+`pc_slice_left()` also budgets DOS I/O and file transfers to the next rational
+VGA deadline (draw parts, vertical IRQ, retrace edges and frame end). On the
+same independent reference (`intro-qlh_wi26`), the refined comparison matches
+1,329 exact RGB pictures; three reference and three local one-sample logo
+images remain unmatched, with -0.000034 ms end drift. On a fresh independent
+DOSBox capture (`intro-cfku0zec`), it matches 1,321 pictures; 11 reference and
+11 local one-sample images remain unmatched, with no multi-sample mismatches
+and +14.268 ms end drift. The 1,332-picture local sequences are identical
+between runs. The horizon and roster mismatches from the preceding iteration
+are gone; remaining partial-logo and flight-transition reference images depend
+on capture phase. Two independent DOSBox captures also share only 1,321 exact
+images, with 11 one-sample differences per side at different frames. These
+transient logo and aircraft-transition mismatches are within reference
+capture-to-capture variation. Exact frame parity remains open.
+
+Except for landing, recon, and recon-return, the table below is paired
+strong-observer evidence from before the latest rational VGA slice-boundary
+refinement. Those routes have since been regenerated and retested (above).
+The former strike and strike-return inputs both reach END under both engines
+at clock 6,053,763,235/hash `d4014f1f18f7c1a1` without a weapon release or
+objective credit. Strike, strike-return, and other unrerun flight rows are
+historical until their inputs are refreshed or checked on the refined
+scheduler.
 
 | route | observer | final clock / hash |
 |---|---|---|
-| landing | `landing_pilot.py --replay` | 9,778,413,433 / `1d4ca533f4697474` |
-| strike | `strike_pilot.py --replay` | 8,813,613,420 / `4481029f711b1a3e` |
-| strike_return | `strike_pilot.py --complete --replay` | 14,469,567,223 / `a2442935828c96cc` |
-| recon | `recon_pilot.py --replay` | 7,549,654,902 / `bda4a4f85f274602` |
-| recon_return | `recon_pilot.py --complete --replay` (level acquisition) | 14,974,000,296 / `5617058ceb0bd231` |
+| landing | `landing_pilot.py --replay` | 9,920,163,246 / `979600814c576e2f` |
+| strike (prior build) | `strike_pilot.py --replay` | 8,813,613,420 / `4481029f711b1a3e` |
+| strike_return (prior build) | `strike_pilot.py --complete --replay` | 14,469,567,223 / `a2442935828c96cc` |
+| recon | `recon_pilot.py --replay` (level acquisition) | 6,289,654,045 / `0d92f4ffab92a97f` |
+| recon_return | `recon_pilot.py --complete --replay` (level acquisition, deck aim 300) | 14,062,279,901 / `3561ab31a4d3b6b1` |
 | cargo | `cargo_check.py` (original no-credit) | 7,182,189,465 / `ba4e2533e68c010d` |
 | cargo_d5_fixed | `cargo_check.py --fix D5` (credit) | 7,182,189,465 / `4bc86c6604105145` |
 | cargo_return | `cargo_check.py --complete` | 17,215,192,298 / `5e2d1782e45eb471` |
@@ -1045,7 +1110,7 @@ median spectral cosine after approximate alignment. These measurements mix
 synth variation and the measured SDL gaps, so they are not an exact sound
 parity verdict. The saved offline match establishes reproducibility for that
 captured MIDI prefix; it is not an independent DOSBox or hardware reference.
-Independent reference PCM and listening to the flight sound remain open.
+Independent reference PCM and listening for the Roland path remain open.
 
 For a completed generated type-8 sortie, a headless replay reached the same
 final hash `6c3336ef1c24da17` while recording 70,849 OPL writes, no MIDI bytes
@@ -1061,8 +1126,14 @@ flight seconds 29–41 remains at
 `C:/Users/Tideg/f117-recomp-local/munt-flight-audio-20261005/airair-type8-flight-29-41s.wav`;
 the smaller `airair-type8-flight-32-35s.mp3` is an excerpt for listening.
 This is the complete host audio path for this sortie (OPL plus the silent
-speaker channel), but no independent DOSBox flight reference or subjective
-listening verdict has been recorded.
+speaker channel). The same seeded type-8 route was captured through GOG DOSBox
+0.74's Ctrl+F6 mixer WAV recorder for its opening flight segment (62.3 s at
+44.1 kHz). An approximate comparison with a 60-second host-render crop aligns
+58.15 s; envelope correlation is 0.598, waveform correlation 0.361, median
+spectral cosine 0.972, and RMS 0.1011 versus 0.0920. The approximate offset
+and nonmatching PCM do not establish exact parity. The route's speaker gate
+is clear, so it does not cover audible speech or speaker output; a listening
+check remains open.
 
 The open work, in order, is tracked in [roadmap.md](roadmap.md).
 

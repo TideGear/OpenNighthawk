@@ -50,7 +50,9 @@ def recon_state(machine):
     return state
 
 
-def control(machine, state, tick, *, acquisition="nose"):
+def control(machine, state, tick, *, acquisition="nose", select_key="n",
+            select_range=1500, aim_range=1500, camera_aim=True,
+            pitch_tolerance=200):
     at = machine.clock + 1
     dx, dy = signed(state["target_x"] - state["x"]), signed(state["target_y"] - state["y"])
     heading = math.atan2(dx, -dy) * 32768 / math.pi
@@ -66,12 +68,12 @@ def control(machine, state, tick, *, acquisition="nose"):
         # nose pitch. This avoids the coarse sin(angle,32)+1 divisor while
         # acquiring a target; the normal camera angle follows acquisition.
         want_pitch = clamp(want_pitch, 300, 1200)
-    elif state["target_range"] < 1500:
+    elif state["target_range"] < aim_range:
         want_pitch = -math.atan2(state["altitude"], state["target_range"] * 32) * 32768 / math.pi
-        if designated:
+        if designated and camera_aim:
             want_pitch += 0x6EF
     pitch_error = want_pitch - state["pitch"]
-    if abs(pitch_error) > 200:
+    if abs(pitch_error) > pitch_tolerance:
         machine.type(at, r"\D" if pitch_error > 0 else r"\U", hold_ms=60)
     if abs(roll_error) > 300:
         machine.type(at + machine.ips // 10, r"\R" if roll_error > 0 else r"\L", hold_ms=60)
@@ -87,10 +89,10 @@ def control(machine, state, tick, *, acquisition="nose"):
             command = r"\s"
         elif not state["bay_switch"]:
             command = "8"
-        elif (state["target_range"] < 1500 and not designated and not state["flags"] & 0x100
+        elif (state["target_range"] < select_range and not designated and not state["flags"] & 0x100
               and (acquisition != "level" or (550 <= state["target_range"] <= 750
                    and state["pitch"] >= 0 and abs(signed(int(heading) - state["heading"])) < 1200))):
-            command = "n"
+            command = select_key
         elif designated and state["cue"] & 1 and not state["photos"]:
             command = r"\r"
         elif state["speed"] < 240 and state["throttle"] < 75:
@@ -222,7 +224,7 @@ def main():
                             waypoint_range = math.hypot(signed(state["home_x"] - state["x"]),
                                 signed(state["home_y"] + 4000 - state["y"]))
                             if waypoint_range < 150: approach = True
-                            landing_control(machine, state, tick, approach)
+                            landing_control(machine, state, tick, approach, deck_aim=300)
                         elif args.complete and state["flags"] & 0x4000:
                             ds = (machine.psp + 0x10 + 0x1E42) << 4
                             secondary = machine.read16(ds + 0xE318)

@@ -17,9 +17,9 @@
       {
         "item": "The picture against DOSBox, frame by frame",
         "weight": 6,
-        "done": 0.9,
+        "done": 0.95,
         "kind": "estimate",
-        "evidence": "1,321 of 1,326 reference pictures exact, end drift +14 ms; 5 + 16 single-sample unmatched pictures remain."
+        "evidence": "The SVGA_S3 screen-off fix removes five false black local pictures. DOSBox 0.74 source confirms fractional PIC scheduling from pixel clock/CRTC totals; local frame, line-part, retrace, status and I/O slice deadlines now use rational event times with whole-instruction ceiling boundaries. After the pc_slice_left refinement, saved independent capture intro-qlh_wi26 matches 1,329/1,332 exact pictures, with three one-sample logo images unmatched on each side and -0.000034 ms end drift. Fresh capture intro-cfku0zec matches 1,321/1,332, with 11 one-sample images unmatched on each side and +14.268 ms drift. The local 1,332-picture sequences are identical; remaining transition differences depend on reference capture phase. No multi-sample mismatch remains; exact frame parity is open."
       },
       {
         "item": "Roland through Munt",
@@ -31,9 +31,9 @@
       {
         "item": "Individual mission objectives",
         "weight": 6,
-        "done": 0.85,
+        "done": 0.8,
         "kind": "estimate",
-        "evidence": "All 8 objective types and returns verified; independent GOG DOSBox cargo reproduction and wider generated-assignment coverage open."
+        "evidence": "Recon primary and return inputs have been refreshed after rational VGA slice-boundary timing; both pass paired strong observers, and the return route also passes the official world, VGAME-exit and END-debrief gates. Strike and strike-return proofs still need refresh. Independent GOG DOSBox cargo reproduction and wider generated-assignment coverage remain open."
       },
       {
         "item": "The remaining career flow",
@@ -61,7 +61,7 @@
         "weight": 5,
         "done": 0.6,
         "kind": "estimate",
-        "evidence": "DBOPL default, mixer rounding fixed; intro waveform within ~0.5% RMS but not exact; speech and speaker need reference PCM."
+        "evidence": "DBOPL default, mixer rounding fixed; intro waveform within about 0.5% RMS but not exact. A seeded type-8 flight now has a 62.3-second independent GOG DOSBox WAV; approximate host alignment reaches 58.15 seconds (envelope correlation 0.598, waveform 0.361, median spectral cosine 0.972, RMS 0.1011 vs 0.0920), not exact parity. The route's PC-speaker gate is clear; speech, audible speaker output and listening remain open."
       }
     ],
     "P2": [
@@ -121,7 +121,7 @@
         "weight": 10,
         "done": 0.9,
         "kind": "estimate",
-        "evidence": "Whole phases rebuilt from the draw list byte for byte over the 64 KB work page (tools/drawlist_frame.py): 73 of 73 on 30M instructions of the strike flight with every changed byte replayed by rule (model fills and outlines, library lines, span fills, blits, text from logged fonts, sprites, tick scales); breaking a rule fails phases. Not yet: the display page (A000) itself, and branches no capture exercised (opaque text, the width clip, dithered fills)."
+        "evidence": "Whole phases rebuilt byte for byte over the 64 KB work page and the A000 display page (tools/drawlist_frame.py): 73 of 73 phases on 30M instructions of the strike flight. Work-page changes replay by rule; direct display writes from uncoded graphics entries are replayed from captured byte deltas. The remaining work is coverage across every route and unexercised branches (opaque text, the width clip, dithered fills)."
       },
       {
         "item": "Stage 2: high-resolution re-draw",

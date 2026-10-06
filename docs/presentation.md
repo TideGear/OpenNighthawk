@@ -197,7 +197,9 @@ every byte that changed ('x'). In the phase that draws the cockpit and HUD
 bytes, then entries 73 (480), 5 (about 390), 1 (163), 4, 11, 18, 3 and 71.
 Entries 24 and 26 only set the origin (to 0, and to their argument - the
 HUD phase moves it mid-phase), 62 computes an address, 65 sets a variable
-and 46 writes the DAC and the CRTC start; none of them draws. (Crediting each
+and 46 writes the DAC and the CRTC start; none draws in its own body. A
+nested state setter can still split a parent entry that resumes drawing after
+it. (Crediting each
 changed byte to the last capture that touched it suggested the 3-D phase was
 fully captured; it was not - see the replay below. The earlier 82% / 2%
 labels by origin were right.)
@@ -261,24 +263,32 @@ rebuilt exactly and nothing is copied from the original's results** - every
 changed byte of the work page in 30 million instructions of flight is
 replayed from the draw list. Dropping sprite transparency makes 7 of 14
 phases of the short window inexact; the tick scale's CL variant never occurs
-there. Not checked yet: what reaches the display page (A000) - the blits
-from the work page and the lines and fills drawn there directly - and the
-branches no capture exercised (opaque text, the width clip, dithered fills).
+there. The display page is also checked byte for byte at all 73 phase
+boundaries in the strike-flight trace; some direct writes from graphics
+entries not yet decoded are replayed from their captured byte deltas. The
+opaque text, width clip and dithered-fill branches remain unexercised.
 
 **The display page.** The observer also dumps the display (A000, 'Y') at each
 `game_draw`, and the replay keeps one copy per page, each primitive drawn on
-the page it names. On 6 million instructions of flight the HUD phases' writes
-to the display replay exactly, but every 3-D phase changes about 500
-display bytes the replay does not reproduce. The writer is graphics entry 44,
-the present (driver 11F1: unless the driver flips pages, cs:[11DC], it copies
-AX words - 42E0h, the 107 rows of the 3-D window - from offset 0 of page 1 to
-the display); 48 and 79 are whole-page copies and a dissolve. All three are
-captured ('D') and replayed, and on 30 million instructions **36 of 73 display
-phases are exact** (the work page stays 73 of 73): each 3-D phase still
-differs in about 480 bytes inside the copied window (e.g. 81C1h, row 103).
-Next: watch one of those bytes - the copy reads the work page at the moment
-of the present, so a primitive the replay applies before or after it, or a
-second present, is the likely cause.
+the page it names. Entry 44 is the present (driver 11F1: unless the driver
+flips pages, cs:[11DC], it copies AX words - 42E0h, the 107 rows of the 3-D
+window - from offset 0 of page 1 to the display); 48 and 79 are whole-page
+copies and a dissolve. The observer logs entry 44's source bytes at the copy
+and the display bytes changed by the original call. It also keeps the display
+page while an uncaptured graphics entry runs, because an entry can write to
+A000 directly even when the driver's active page points elsewhere.
+
+The first mismatch at A000:81C1h (row 103) was an entry 41 write after the
+present. A later 49-pixel mismatch came from an outer entry 41 resuming after
+nested entry 46 had flushed its page snapshot. Capturing both the active page
+and A000 across those nested boundaries accounts for both cases. On the
+30-million-instruction strike-flight trace, work-page replay is **73 of 73
+phases exact** (486,067 changed bytes), and display-page replay is **73 of 73
+phases exact** (22,493 changed bytes). For the one phase recaptured after the
+nested-boundary fix, the 64 KB work and 64,000-byte display snapshots at both
+phase boundaries match the full trace byte for byte; replacing that event
+slice in the full log preserves exact replay across all 73 phases. The
+unexercised drawing branches and other routes remain open.
 
 **How much of a frame is captured.** With `F117R_OBSERVE_PAGES=1` the
 observer dumps the library's whole 64 KB page segment at each `game_draw`
@@ -287,11 +297,12 @@ then rebuilt from the previous dump plus every captured primitive and
 compared with the next dump. The two `game_draw` phases of a step alternate
 between two buffers in the one segment (origin 0 and origin 8A29h - so the
 "two phases" are double buffering as much as anything), and each changes
-about 6,650 bytes. On the strike route's flight: in the origin-0 phases the
-captured polygons and lines account for **82%** of the change (1,166 bytes a
-phase left); in the origin-8A29h phases for about 2% - that buffer is drawn
-by something not yet captured. Finding those writers (by the store census,
-restricted to the unexplained offsets) is the next piece of Stage 1.
+about 6,650 bytes. On the strike route's flight, polygons and lines alone
+account for **82%** of the origin-0 phase changes (1,166 bytes a phase left)
+and about 2% in the origin-8A29h phases. The rest comes from the HUD and
+library entries described above. After recording those entries and direct
+display writes, the full work and display pages replay exactly on the 73
+captured phases; drawing rules for several raw library entries remain open.
 
 ## What is not known (and has to be measured next)
 

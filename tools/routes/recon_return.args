@@ -3,9 +3,20 @@
 # gear/brakes/idle, deck height 128 and parent return result 0/status 3.
 # expect-world LB
 # expect-exit VGAME.EXE 129 10000000000
+# expect-exit END.EXE 35 500000000
 --replay
 recon_return.input
+--type
+END.EXE+150000000:\r
+--type
+END.EXE+300000000:\r
+--click
+END.EXE+400000000:271,64
+--type
+END.EXE+520000000:\r
+--type
+END.EXE+640000000:\r
 --steps
-14974000296
+17200000000
 --time-us
 700000000000000

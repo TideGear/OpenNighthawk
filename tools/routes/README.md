@@ -66,7 +66,10 @@ four office-page loads; screenshots verify the dialogs and station changes.
 `recon_return` extends the photo route through secondary credit and a raised
 home-runway stop. `recon_pilot.py --complete --replay recon_return.input`
 checks both original event types, intact targets and the successful parent
-result block. `recon_career` continues into END, earns the tenth-mission tour
+result block. Its route args also acknowledge END's debrief so `run_route.py`
+can verify a normal END exit after the VGAME return. The current recording
+uses an earlier deck descent target and passes under interpreter and
+recompiler. `recon_career` continues through END, earns the tenth-mission tour
 ribbon and saves the changed score, sortie count and award. Those saved bytes
 are asserted independently of engine hash equality.
 

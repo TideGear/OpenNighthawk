@@ -4,80 +4,257 @@ For the next conversation working on this repository. Read this, then
 [docs/roadmap.md](docs/roadmap.md) (what is done and left - keep it
 updated), [docs/architecture.md](docs/architecture.md) (how parity is
 built and checked) and [docs/bugs.md](docs/bugs.md) (the original game's
-bugs). State as of 5 October 2026, about 23:10 local. Earlier "running" entries
-further down are historical; this first section is the current state.
+bugs). State as of 6 October 2026. Earlier "running" entries further down are
+historical; this first section is the current state.
 
-## Current state (5 Oct, ~23:10 local)
+## Current state (6 Oct 2026)
 
-All work is committed and pushed (last code commit `399afb8`); the main tree
-and the worktree `~/f117-recomp-local/wt` are both at `origin/master`. The
-standing goal is still "complete docs/roadmap.md", item by item; this is a
-handoff, not completion. Work happened in the worktree (built with
-`~/f117-recomp-local/build-p3.cmd` into `p3-build`) while the gate ran in the
-main tree.
+This wrap-up commits and pushes the current project work to `origin/master`.
+For the next conversation, the continuing project objective is to complete
+everything in `docs/roadmap.md` across Phases 1-3; it remains open. Resume in
+roadmap order, starting with the open Phase 1 items. Work is in
+`C:\Users\Tideg\f117-recomp-local\wt` on branch
+`roadmap-handoff-20261006`, based on `e3ea4ee`. The main checkout at
+`C:\Users\Tideg\My Drive\Development\F-117A Recomp` is kept on the same
+pushed commit. Build with `C:\Users\Tideg\f117-recomp-local\build-p3.cmd`
+into `p3-build`.
 
 **Gate.** `tools/build_recomp.py --work ~/f117-recomp-local/p2-pipeline` on
 `12d7158` (log `p2-pipeline5.log`): 27/27 routes identical, lockstep 5,709,312
-states 0 mismatching, 191 matched routines 0 mismatching. Not rerun since: the
-later commits touch the observer (inert unless installed), host audio/config,
-CMake (Munt on by default) and docs, not generated or matched code.
+states 0 mismatching, 191 matched routines 0 mismatching. This full gate has
+not been rerun since the observer, host audio/config, CMake, rational VGA
+timing, route-controller/input and documentation changes. Generated/matched
+guest code is unchanged, but the timing and controller changes alter flight
+outcomes; repeat the full gate after the remaining route artifacts are
+refreshed.
 
-**P3 presentation, Stage 1 (current item; owner chose observe-and-replay).**
+**P3 presentation, Stage 1 (open; owner chose observe-and-replay).**
 Everything is in `docs/presentation.md`.
 - `src/matched/observe.c` hooks VGAME's fill and outline paths and every
-  graphics-library entry (jump slots `1E42:011A+5n`). Record kinds: fills
-  `E F B R b a`, outline edges `L`, lines `N`, colour `K`, span fills `Q`,
-  blits `C`, text `T` (with its font), sprites `S`, tick scales `H`, page
-  copies `D` (44 present, 48 copy, 79 dissolve), other entries `X`; with
-  `F117R_OBSERVE_PAGES=1` also page diffs `x`/`n`, the work page `Z` and the
-  display `Y` at each `game_draw`.
+graphics-library entry (jump slots `1E42:011A+5n`). Record kinds include
+fills `E F B R b a`, outline edges `L`, lines `N`, colour `K`, span fills
+`Q`, blits `C`, text `T` (with its font), sprites `S`, tick scales `H`, page
+copies `D` (44 present, 48 copy, 79 dissolve), other entries `X`, and changed
+byte deltas `x`; with `F117R_OBSERVE_PAGES=1`, work-page `Z` and display-page
+`Y` snapshots are also recorded at each `game_draw`.
 - `tools/drawlist_frame.py LOG` rebuilds each phase from the draw list:
-  **work page 73 of 73 phases exact, 0 bytes copied from the original** (30M
-  instructions of strike flight). **Display page 36 of 73**: each 3-D phase
-  still differs in ~480 bytes inside the presented window (e.g. `A000:81C1`,
-  row 103). Next step: watch one such byte through the replay (wrap the page in
-  a `bytearray` subclass that prints writes, as done for the outline-edge
-  hunt) - likely the order of the present (entry 44) against the primitives,
-  or a second present.
+**work page 73 of 73 phases exact, 0 bytes copied from the original** and
+**display page 73 of 73 phases exact** (30M instructions of strike flight).
+The focused 30M-instruction recapture has phase-boundary snapshots identical
+to the full capture. After entry 44 presents the work page, MGRAPHIC entry 41
+can write directly to A000. Nested state setters can split a drawing call, so
+active and display page snapshots restart after every graphics entry. Direct
+display-page writes replay from recorded byte deltas. Other routes and
+branches still need coverage. The merged trace is at
+`C:\Users\Tideg\f117-recomp-local\presentation-complete-20261006\drawlist-merged.log`.
 - `tools/drawlist_spans.py LOG` checks primitives one by one (fills, lines,
-  span fills, blits).
-- Capture: `F117R_OBSERVE_PAGES=1 p3-build/f117run.exe --engine recomp --data
-  D:/GOG/F-117A --replay tools/routes/strike.input --steps 8030000000
-  --time-us 700000000000000 --save DIR --log FILE --observe
-  OUT:8000000000:8030000000` (about 58 MB of log).
+span fills, blits).
+- Capture command: `F117R_OBSERVE_PAGES=1 p3-build/f117run.exe --engine recomp
+--data D:/GOG/F-117A --replay tools/routes/strike.input --steps 8030000000
+--time-us 700000000000000 --save DIR --log FILE --observe
+OUT:8000000000:8030000000`.
 - Driver facts: MGRAPHIC at CS `0889` in flight, data segment `06ED` (read from
-  its `MOV AX` immediates, which move with the load), page table `cs:[0787]`
-  (0 display A000, 1 work page 47BD, 2 cockpit art 09C0), current page
-  `cs:[0194]`, origin `cs:[0196]` (entries 24/26), rows `cs:[0004+2y]` = 320y.
+its `MOV AX` immediates, which move with the load), page table `cs:[0787]`
+(0 display A000, 1 work page 47BD, 2 cockpit art 09C0), current page
+`cs:[0194]`, origin `cs:[0196]` (entries 24/26), rows `cs:[0004+2y]` = 320y.
 - `docs/progress.json`: Stage 0 0.9, Stage 1 0.9. After Stage 1: Stage 2
-  (high-resolution re-draw), Stages 3-4 (interpolation, pacing).
+(high-resolution re-draw), Stages 3-4 (interpolation, pacing).
+
+**Prior integer-period video comparison.** Current-build run
+`C:\Users\Tideg\f117-recomp-local\video\intro-v3s5pyl0` against the
+independent GOG DOSBox capture `intro-qlh_wi26` matched 1,329/1,332 exact RGB
+pictures; three reference and three local one-sample pictures remained
+unmatched, with +0.055 ms end drift and no multi-sample differences. At that
+stage, all six residuals were partial MPS-logo transitions. The two aircraft poses
+that were unmatched against the first reference (`intro-caauys37`) match this
+capture exactly. Six of the nine local logo hashes unmatched against the
+first reference occur in `intro-qlh_wi26`; two fresh short captures show
+different reference transition hashes, while the local logo hashes stay the
+same across phase-zero, quarter-period, and half-period captures. The first
+reference comparison after fixing S3 screen-off output is `intro-qei4ljnd`
+(1,321 exact, 5/11 unmatched, +14.279 ms). The S3 renderer fix is in
+`src/host/present.c`; machine SEQ1 state remains captured. A local metadata
+run (`video/logo-meta-20261006`) confirms the three residual snapshots are
+complete mode-13h scan frames (`scan_part=0`, `frame_blank=0`, SEQ1=1), taken
+1.557 ms after the recorded scanout frame time. DOSBox source schedules its
+100-line VGA parts as fractional PIC delays; local part deadlines now round
+up to the next whole guest cycle. The fresh comparison keeps the same match
+count and unmatched images; one local transition differs by one fewer pixel.
+DOSBox 0.74 source (`VGA_SetupDrawing`) confirms that frame and four-part
+draw delays derive from pixel clock/CRTC totals and are scheduled as
+fractional PIC delays. The local frame, line-part, retrace and status timing
+now use the corresponding rational period (128,413.108 guest cycles at
+9 MHz), rounding each event up to the first whole guest instruction.
+Headless `--shots-vga` samples on the same fractional cadence. Controlled
+run `D:\F117A-Recomp-Video\intro-pbyy9rzp` against the same reference matches
+1,326/1,332 exact pictures, with six reference and five local one-sample
+pictures unmatched and -0.000034 ms end drift. The earlier integer-period
+run matched 1,329 pictures and had three unmatched on each side, with
++0.055 ms drift. The rational clock adds one-sample differences around the
+horizon at 39.1 s and roster transitions at 107.2 s; stable aircraft and
+roster images still match. No multi-sample mismatch remains. Keep the
+source-grounded rational timing, but frame parity remains open. The reference is
+`C:\Users\Tideg\f117-recomp-local\video\intro-qlh_wi26`.
+A rational VGA slice-boundary refinement is now built: `pc_slice_left()` uses
+the exact next VGA deadline for DOS I/O and file-transfer budgets, including
+draw parts, vertical IRQ, retrace edges and frame end. Against saved reference
+`intro-qlh_wi26`, the latest run `D:\F117A-Recomp-Video\intro-_yrdf5cc`
+matches 1,329/1,332 pictures, with three one-sample logo images unmatched on
+each side and -0.000034 ms end drift. Against fresh reference
+`intro-cfku0zec`, run `D:\F117A-Recomp-Video\intro-f933_blc` matches
+1,321/1,332, with 11 one-sample images unmatched on each side, no multi-sample
+mismatches and +14.268 ms end drift. The local 1,332-picture sequences are
+byte-for-byte identical. The horizon and roster mismatches from the prior
+iteration are gone; partial logo and flight transition images vary with
+reference capture phase. As a control, the two independent DOSBox captures
+also match only 1,321/1,332 images, with 11 single-sample differences per
+side at different indices. This confirms those brief transition mismatches
+are within reference capture-to-capture variation.
+
+The committed landing input was regenerated for the updated slice schedule;
+`tools/routes/landing.args` now budgets 10 billion cycles. Strong interpreter
+and recomp observers produce byte-identical 4,113-row flight logs and pass
+mission result 0/status 3 at clock 9,920,163,246/hash
+`979600814c576e2f`. The official route runner also passes its world, VGAME
+exit and END open milestones under both engines.
+
+**Route revalidation.** The latest rational VGA slice-boundary change is
+behavior-affecting. Replaying the old `tools/routes/strike.input` through
+`strike_pilot.py --replay` under both engines now reaches END at clock
+6,053,763,235/hash `d4014f1f18f7c1a1` with no target damage, credit, hit or
+weapon release. The separate `strike_return.input` produces the same result
+under both engines and also fails all return and parent-result gates. A recomp
+adaptive strike attempt also failed to hit; a probe that released one Maverick
+had no impact/credit by 800 seconds. The old `recon.input` also reached END at clock
+6,349,054,055/hash `f68f61000ce0c49a` under both engines without exposure or
+photo credit. It has been replaced with a successful level-acquisition route:
+one exposure/credit event, intact target, camera/store retained and safe
+airborne state. Both strong observers produce byte-identical 1,685-row logs,
+input logs and final result (clock 6,289,654,045/hash
+`0d92f4ffab92a97f`). `tools/run_route.py tools/routes/recon.args` also passes
+under both engines at its 7,549,654,902 budget (hash `34ade673e5039828`).
+The recon return is now refreshed too. A new adaptive recording uses an
+earlier raised-deck descent target (deck aim 300); it earns both photo credits
+and stops on home 36's height-128 runway at (19200, 9460), with 4,965 fuel,
+mission result 0 and pilot status 3. Paired strong observers pass at clock
+14,062,279,901/hash `3561ab31a4d3b6b1`, with identical 6,150-row flight CSVs,
+input logs, and result JSON. `tools/routes/recon_return.input` is refreshed
+(SHA-256 `8b5d7e1f6a0b41ba0717d4c52b8280725c4ef9705dbafe9220f523f60a78a576`).
+The official route runner passes the LB world and VGAME exit gates, then
+finishes END's debrief with exit code 35 under both engines.
+
+**Strike refresh (6 Oct).** A new adaptive ground-strike input selected the
+known primary with `B`, released both Mavericks and earned one matching hit
+against target 3. A completed return replay then stopped at home 33 and passed
+the strong observer under both engines. Recompiler and interpreter runs have
+byte-identical `input.log`, `flight.csv` and `result.json` (SHA-256 respectively
+`E431D355BED6E93F99B8E5DA52445EEC39500C8A10C3D6833F9CAFC9427085E5`,
+`B4AED43EDEB5B3C7CDF434FE61C90AAC2A9BA253CD26590B286DE8197DBE555E` and
+`6100978CB60D9C8CFEF6299A5B816B03ECB62A5F6202D8B5B3A97AAF95382C42`). Final
+clock/hash is 15,029,717,426 / `7b49aac1f746ffa7`; target 3 is damaged, two
+stores are consumed, one hit event is present, and the aircraft stops at
+(9788,1531) with 2,698 fuel, result 0/status 3. The return controller now
+steers toward the home waypoint on every sample after credit; its approach
+speed target of 300 was needed for this recording. Evidence is under
+`D:\F117A-Recomp-Validation\slice-rational\strong-strike-return-new-{recomp,interp}-run4\`.
+The checked-in `strike.input` and `strike_return.input`, their route budgets,
+and official route-runner milestones have not yet been refreshed. Other
+unrerun flight rows remain historical until checked on this slice schedule.
+Outputs are under `D:\F117A-Recomp-Validation\slice-rational\`.
+
+**Independent DOSBox flight audio (6 Oct).** `tools/dosbox_flight.py` now has
+`--capture-audio`, which toggles DOSBox 0.74's Ctrl+F6 mixer WAV capture while
+VGAME runs. Replayed the first 207 normal-input events of the seeded type-8
+route through its opening flight segment. DOSBox accepted the recorded
+1992-03-07 20:26:42 clock seed, generated primary type 8/target 29, and
+recorded a 62.328-second, 44.1 kHz `vgame_000.wav`; the observer reports no
+errors. `audio_compare.py` aligns 58.15 seconds with the host render
+(envelope correlation 0.598, waveform correlation 0.361, median spectral
+cosine 0.972, RMS 0.1011 vs 0.0920). The estimated offset is -4.17 seconds,
+so these are broad-level/timbre diagnostics, not an exact PCM verdict. This
+AdLib flight's PC-speaker output gate stays clear. Private outputs are under
+`D:\F117A-Recomp-Validation\audio-reference\`.
+The observer Stage 1 strike-flight result below is a bounded subtask, not
+Phase 1 completion. The comparator accepts `--shot-start`, `--exe`, and
+`--work-dir`; headless accepts `--shots-start`, `--shots-vga`, and optional
+`--shot-meta` CSV. Keep large captures under D: because C: filled during the
+earlier video work.
+
+**Build.** `cmd.exe /c C:\Users\Tideg\f117-recomp-local\build-p3.cmd`
+completed with exit code 0 after the temporary memory-write diagnostic was
+removed from `src/cpu/cpu.h`; it was rebuilt with the S3 screen-off renderer,
+VGA event ceiling rounding, rational frame/retrace/status timing, and rational
+headless snapshots. The full comparison above used that linked executable.
+No formal test suite was run.
 
 **Sound and settings (owner-requested, done and checked).**
 - Roland radio calls are PC-speaker digitised sound (counter 2 mode 0, a count
-  of 0-80 every 79 PIT clocks). Point-sampling made them a screech; `e2e100c`
-  renders mode 0 as GOG DOSBox's "realsound" level, averaged per sample. The
-  owner confirmed it sounds right. AdLib plays music, effects and speech on the
-  OPL; Roland plays music and effects as MT-32 MIDI (the engine is one held
-  note on channel 8 bent with the throttle) and speech on the speaker.
+of 0-80 every 79 PIT clocks). Point-sampling made them a screech; `e2e100c`
+renders mode 0 as GOG DOSBox's "realsound" level, averaged per sample. The
+owner confirmed it sounds right. AdLib plays music, effects and speech on the
+OPL; Roland plays music and effects as MT-32 MIDI (the engine is one held
+note on channel 8 bent with the throttle) and speech on the speaker.
+- A split Roland-music plus AdLib-speech/effects option is not in the game's
+  setup; it selects one sound driver. The host can mix OPL, speaker and Munt
+  audio, but Roland mode does not also emit the game's AdLib speech/effect
+  stream. That hybrid would need explicit custom event routing and its sound
+  balance would be a preference, not an objectively best setting.
 - Munt is in the default build (`FetchContent` at the pinned 2.8.3 commit;
-  `mt32emu-2.dll` beside the exe). The main `build\` was reconfigured with
-  `-DF117R_WITH_MT32EMU=ON` (an existing cache keeps OFF otherwise).
+`mt32emu-2.dll` beside the exe). The main `build\` was reconfigured with
+`-DF117R_WITH_MT32EMU=ON` (an existing cache keeps OFF otherwise).
 - `f117a.ini` beside the exe holds the options (`src/host/config.c`, CTest
-  `host_config_file`; `f117a.example.ini` is copied there by the build). Roland
-  is one setting: `roland = munt|windows|off` plus `mt32-roms = FOLDER`; ROMs
-  are recognised by SHA-1 through Munt (`mt32_find_roms`), preferring MT-32
-  1.07. README has the supported-ROM table. Measured: control ROMs 1.04 and
-  1.07 render this game's MIDI bit-identically; 2.04 renders the flight effects
-  ~5 dB quieter and duller (consistent with D36 and DOS Days' "old MT-32").
-  The owner's own `build\f117a.ini` points at `D:\GOG\F-117A` and
-  `C:\Users\Tideg\f117-recomp-local\roms`. Examples use `C:\GOG Games\F-117A`.
+`host_config_file`; `f117a.example.ini` is copied there by the build). Roland
+is one setting: `roland = munt|windows|off` plus `mt32-roms = FOLDER`; ROMs
+are recognised by SHA-1 through Munt (`mt32_find_roms`), preferring MT-32
+1.07. README has the supported-ROM table. Measured: control ROMs 1.04 and
+1.07 render this game's MIDI bit-identically; 2.04 renders the flight effects
+~5 dB quieter and duller (consistent with D36 and DOS Days' "old MT-32").
+The owner's own `build\f117a.ini` points at `D:\GOG\F-117A` and
+`C:\Users\Tideg\f117-recomp-local\roms`. Examples use `C:\GOG Games\F-117A`.
 - Owner asked how Roland sound effects work; answered from the MIDI log. Open:
-  map each effect to its driver request (trap the sound driver) and check
-  whether the startup SysEx uploads custom timbres.
+map each effect to its driver request (trap the sound driver) and check
+whether the startup SysEx uploads custom timbres.
+**README.** Removed the external DOS Days link from the ROM paragraph; the
+first-generation MT-32 description and ROM guidance remain.
 
-**Still pending from earlier today (unchanged):** the `F117R_PIT_CONTROL_IRQ`
-default (policy: correct 0.74 behaviour, but 8 routes need retiming), D12
-verification, roster frame parity, MT-32 reference PCM. See the sections below.
+**Independent GOG DOSBox cargo reproduction (open).** `tools/dosbox_flight.py`
+can seed a private guest DOS date/tick and intercept BIOS RTC reads with its
+temporary resident `F117CLK.COM`; it never writes host time or DOSBox memory.
+The utility's 20-byte report verifies the DOS date/time and BCD RTC response.
+The GOG setup title is about 220 ms (four BIOS ticks) later than the local
+machine's `SETUP.EXE` start: local starts at clock 90,000 with BDA ticks
+1,340,345, while the raw-header GOG run showed 1,340,349. Private input-log
+copies shifted the seed by -220, -165 and -110 ms, aligning the setup tick to
+1,340,345, 1,340,346 and 1,340,347. Their GOG missions were respectively
+type 1 / target 1 / departure 63, type 2 / target 2 / departure 61, and
+type 1 / target 2 / departure 62. Unshifted seeded runs produced type 2.
+The clock-shift trials replayed the same recorded keyboard/mouse events and
+stopped at the first flight observation; none produced the required type-3
+supply drop. One later full-input retry
+(`dosbox-cargo-20261006-seeded4-retry1`) continued for 65.516 seconds but
+still generated type 2 / target 1; the aircraft was grounded and stopped
+with both stores remaining, zero launches and no cargo impact, then DOSBox
+left VGAME before the cargo observation completed. No GOG cargo-delivery
+evidence is claimed. Outputs are under
+`C:\Users\Tideg\f117-recomp-local\dosbox-cargo-20261006-*`; the aligned
+input copies are in the parent folder. A follow-up data/UI check found the
+GOG install, its copied replay folder and the local cargo route save all use
+the same 802-byte stock roster (`ROSTER.FIL` SHA-256
+`1977ab817899c3bc33f28a9ca5ee2f894e33ea7ae5f8d033e4c89b0be743bdb3`). The
+first recorded Shift+N is accepted at the DOS setup joystick prompt, as in
+the local route. An attempted DOSBox Ctrl+F5 screenshot capture injected keys
+and produced an R6000 stack-overflow screen in START, so that run was stopped
+and discarded; it is not evidence about the unmodified replay. The temporary
+screenshot instrumentation was removed. Further work should compare the
+mission-generator inputs/state directly rather than shift the clock again.
+
+**Other open work:** D12 negative-rating verification, the rank-6 career
+branch, independent GOG cargo evidence, roster frame parity, wider generated
+assignment coverage, and MT-32/reference speech PCM. `F117R_PIT_CONTROL_IRQ`
+is now on by default and the flight routes have been retimed; the 5 October
+section below records its earlier opt-in stage. The private career-chain
+evidence still predates the timing change. See `docs/roadmap.md` for the full
+list.
 
 ## Earlier wrap-up status (5 Oct, 08:52 local)
 
@@ -375,25 +552,17 @@ verification, roster frame parity, MT-32 reference PCM. See the sections below.
 
 ### Next
 
-1. Continue roster frame parity when DOSBox-X can be controlled: synchronize
-   a known guest event with a captured reference frame, then resolve the
-   estimated ~282 ms before the DOSBox-X screen/sprite opens and ~247 ms
-   after-open phase difference. The
-   corrected DOSBox-X run uses stock `ROSTER.FIL` and retains seven
-   `0x08378` calls (four before the screen picture, three after the sprite
-   sheet); local traces show 16 before the screen picture and nine after the
-   sprite sheet. The added 17-call retrace/PIT block takes essentially the
-   same 242-244 ms in both traces, so investigate the preceding palette/setup
-   phase. A new run5 check confirmed there is no video-capture command on the
-   debugger channel; if native UI control is available, start an AVI while
-   the trace run is paused and match its images to the GOG capture. Keep 9 MIPS
-   and leave D96 out of translated START until the timing cause is demonstrated.
-2. Continue MT-32/audio validation: compare the in-flight host render with an
-   independent DOSBox capture and listen to the flight sound. The Type-8
-   speaker-aware render covers the complete sortie; port 61h bit 1 stayed
-   clear, so the speaker contributes silence. The live same-seed variation is
-   explained by block partitioning, and the SDL capture gap is accounted for
-   by empty queue checks and a 167-frame zero run.
+1. Keep exact frame parity open after the rational VGA slice-boundary
+   refinement. The partial-logo and transition mismatches are single-sample;
+   independent DOSBox captures also differ on 11 one-sample images each, at
+   different indices. No persistent graphics mismatch remains in the current
+   sequence. Keep 9 MIPS and leave Reimp D96 out of translated START.
+2. Continue MT-32/audio validation. The seeded type-8 flight now has a
+   62.3-second independent DOSBox PCM capture and approximate host comparison
+   (details above); exact PCM and subjective listening remain open. Capture a
+   Roland-mode reference separately. The Type-8 route's speaker gate is clear,
+   and the existing live same-seed/block-partition and SDL queue findings
+   remain as documented.
 3. Complete the remaining objective evidence: independent GOG DOSBox cargo
    reproduction and wider generated-assignment coverage; separately pursue a
    rank-6 career for the "General, At Last!" retirement branch.

@@ -382,10 +382,10 @@ def main():
             page = pages.get(dseg)
             if page is None or not count:
                 continue
-            if sseg in pages:
-                src = bytes(pages[sseg][:count])
-            elif len(v) >= 5 + count:
+            if len(v) >= 5 + count:
                 src = bytes(v[5:5 + count])
+            elif sseg in pages:
+                src = bytes(pages[sseg][:count])
             else:
                 totals["page copies without source bytes"] += 1
                 continue
@@ -425,13 +425,12 @@ def main():
                     a = (320 * (dy + y) + dx + x) & 0xFFFF
                     if b and a < len(page):                  # colour 0 is transparent
                         page[a] = b
-        elif k == "x" and int(f[2]) in (1, 3, 4, 5, 11, 73, 18, 71, 19):
-            pass                                             # replayed from 'T', 'H' and 'S'
         elif k == "x":
             v = [int(x) for x in f[2:]]
             entry, xseg, n = v[0], v[1], v[2]
             page = pages.get(xseg)
-            if entry == 42 or page is None:
+            if (entry in (1, 3, 4, 5, 11, 73, 18, 71, 19) or page is None or
+                    (entry == 42 and xseg != 0xA000)):
                 continue
             for j in range(n):
                 a, now = v[3 + 3 * j], v[4 + 3 * j]

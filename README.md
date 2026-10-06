@@ -232,8 +232,7 @@ You supply two ROM files from a Roland MT-32 (or CM-32L): the **control ROM**
 one folder and point `mt32-roms` at it. The files are recognised by their
 SHA-1 (Munt's own table), so their names do not matter; with several in the
 folder, the first match in this order is used. F-117A (1991) wants the
-first-generation ("old") MT-32, the one with control ROM 1.0x
-([DOS Days](https://dosdays.co.uk/topics/Games/game_f117.php)), and rendering
+first-generation ("old") MT-32 with control ROM 1.0x. Rendering
 this game's own MIDI (a run from boot into flight) agrees: control ROMs 1.04
 and 1.07 give bit-identical output, while 2.04 plays the music much the same
 but the in-flight effects about 5 dB quieter and 5-7 dB duller above 3 kHz.

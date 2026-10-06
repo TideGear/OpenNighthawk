@@ -5,7 +5,7 @@
  *           [--type WHEN:KEYS]... [--click WHEN:X,Y]... [--move WHEN:X,Y]... [--hold MS]
  *           [--record FILE] [--replay FILE]
  *           [--hash-every N] [--hash-from N] [--peek LINEAR] [--dump LINEAR:LENGTH] [--observe FILE:FROM:TO] [--trace FROM:TO:FILE]
- *           [--coverage FILE] [--screen FILE.ppm] [--shots EVERY:PREFIX]
+ *           [--coverage FILE] [--screen FILE.ppm] [--shots EVERY:PREFIX | --shots-vga PREFIX] [--shots-start CLOCK] [--shot-meta FILE]
  *           [--fix ID|all]... [--list-fixes]
  *           [--opl-log FILE] [--midi-log FILE] [--speaker-log FILE]
  *
@@ -191,6 +191,7 @@ int main(int argc, char **argv)
     const char *data = NULL, *save = NULL, *log_path = NULL, *screen = NULL;
     const char *record = NULL, *replay = NULL, *coverage = NULL, *opl_log = NULL;
     const char *midi_log = NULL, *speaker_log = NULL;
+    const char *shot_meta_path = NULL;
     uint64_t steps = 100000000ull, ips = MACHINE_DEFAULT_IPS, hold_ms = 60;
     uint64_t time_us = 0, hash_every = 0, hash_from = 0;
     uint64_t trace_from = 0, trace_to = 0;
@@ -199,7 +200,9 @@ int main(int argc, char **argv)
     uint32_t dump_at = 0, dump_len = 0;    /* --dump LINEAR:LENGTH (hex): the bytes there, at the end of the run */
     static char trace_path[600];
     int engine = ENGINE_INTERP;
-    uint64_t shot_every = 0, next_shot = 0;
+    uint64_t shot_every = 0, next_shot = 0, shot_start = 0;
+    uint64_t shot_period_whole = 0, shot_period_remainder = 0, shot_period_fraction = 0;
+    int shot_vga = 0;
     static char shot_prefix[512] = "shot";
 
     for (int i = 1; i < argc; i++) {
@@ -243,7 +246,15 @@ int main(int argc, char **argv)
             snprintf(trace_path, sizeof trace_path, "%s", strchr(strchr(v, ':') + 1, ':') + 1);
             i++;
         }
+        else if (!strcmp(a, "--shots-start") && v) { shot_start = strtoull(v, NULL, 0); i++; }
+        else if (!strcmp(a, "--shot-meta") && v) { shot_meta_path = v; i++; }
+        else if (!strcmp(a, "--shots-vga") && v) {
+            shot_vga = 1; shot_every = 0;
+            snprintf(shot_prefix, sizeof shot_prefix, "%s", v);
+            i++;
+        }
         else if (!strcmp(a, "--shots") && v) {
+            shot_vga = 0;
             shot_every = strtoull(v, NULL, 0);
             const char *colon = strchr(v, ':');
             if (colon) snprintf(shot_prefix, sizeof shot_prefix, "%s", colon + 1);
@@ -318,6 +329,17 @@ int main(int argc, char **argv)
         return 1;
     }
     m.on_input = on_input;
+    if (shot_every || shot_vga) next_shot = shot_start;
+    if (shot_vga) {
+        const uint64_t numerator = ips * 359200ull;
+        shot_period_whole = numerator / 25175000ull;
+        shot_period_remainder = numerator % 25175000ull;
+        if (!shot_period_whole) { fprintf(stderr, "--shots-vga requires a positive VGA period\n"); return 2; }
+    }
+    FILE *shot_meta = shot_meta_path ? fopen(shot_meta_path, "w") : NULL;
+    if (shot_meta_path && !shot_meta) { fprintf(stderr, "cannot write %s\n", shot_meta_path); return 1; }
+    if (shot_meta)
+        fprintf(shot_meta, "requested_icount,frame_icount,video_mode,scan_valid,frame_blank,seq1,scan_part,scan_next,vsync_next,scan_frame,nonzero_pixels,nonblack_palette_entries,visible_pixels\n");
     for (int k = 0; k < g_ncmd; k++)
         if (!g_cmd[k].prog[0]) schedule(&m, &g_cmd[k], g_cmd[k].after);
     inputlog_reader *player = NULL;
@@ -331,7 +353,7 @@ int main(int argc, char **argv)
         uint64_t until = m.cpu.icount + ips / 100;       /* 10 ms slices */
         if (until > steps) until = steps;
         if (next_hash < until) until = next_hash;
-        if (shot_every && next_shot > m.cpu.icount && next_shot < until) until = next_shot;
+        if ((shot_every || shot_vga) && next_shot > m.cpu.icount && next_shot < until) until = next_shot;
         if (trace_path[0] && m.cpu.icount < trace_to) {
             /* Inside the trace window: one instruction boundary at a time. */
             if (m.cpu.icount >= trace_from) {
@@ -362,13 +384,39 @@ int main(int argc, char **argv)
                 g_samp[slot].cs = m.cpu.seg[S_CS]; g_samp[slot].ip = m.cpu.ip; g_samp[slot].n = 0; }
             if (slot >= 0) g_samp[slot].n++;
         }
-        if (shot_every && m.cpu.icount >= next_shot) {
+        if ((shot_every || shot_vga) && m.cpu.icount >= next_shot) {
             char path[600];
             snprintf(path, sizeof path, "%s_%011llu.ppm", shot_prefix, (unsigned long long)m.cpu.icount);
+            if (shot_meta) {
+                present_frame f;
+                present_capture(&m, &f);
+                unsigned nonzero_pixels = 0, nonblack_palette_entries = 0, visible_pixels = 0;
+                for (unsigned p = 0; p < 256; p++)
+                    if (f.dac[p * 3] || f.dac[p * 3 + 1] || f.dac[p * 3 + 2])
+                        nonblack_palette_entries++;
+                for (unsigned p = 0; p < 64000; p++) {
+                    unsigned color = f.vram[p];
+                    nonzero_pixels += color != 0;
+                    visible_pixels += f.dac[color * 3] || f.dac[color * 3 + 1] || f.dac[color * 3 + 2];
+                }
+                fprintf(shot_meta, "%llu,%llu,%u,%u,%u,%u,%u,%llu,%llu,%llu,%u,%u,%u\n",
+                        (unsigned long long)m.cpu.icount, (unsigned long long)f.icount,
+                        m.video_mode, m.scan_valid, f.blank, m.seq[1], m.scan_part,
+                        (unsigned long long)m.scan_next, (unsigned long long)m.vsync_next,
+                        (unsigned long long)m.scan_frame, nonzero_pixels,
+                        nonblack_palette_entries, visible_pixels);
+            }
             present_write_ppm(&m, path);
             /* Keep the capture clock periodic: an instruction finishing
              * just past the deadline must not shift every later sample. */
-            next_shot += shot_every;
+            if (shot_vga) {
+                next_shot += shot_period_whole;
+                shot_period_fraction += shot_period_remainder;
+                if (shot_period_fraction >= 25175000ull) {
+                    next_shot++;
+                    shot_period_fraction -= 25175000ull;
+                }
+            } else next_shot += shot_every;
         }
         if (m.cpu.icount >= next_hash) {
             printf("[hash] %llu %016llx %s\n", (unsigned long long)m.cpu.icount,
@@ -392,6 +440,7 @@ int main(int argc, char **argv)
     if (g_opl_log) fclose(g_opl_log);
     if (g_midi_log) fclose(g_midi_log);
     if (g_speaker_log) fclose(g_speaker_log);
+    if (shot_meta) fclose(shot_meta);
     double secs = (double)(clock() - t0) / CLOCKS_PER_SEC;
     printf("stopped at icount %llu (%s) after %.1f s host time, %.1f M instr/s; "
            "interpreted %llu; program %s; exit %s; final hash %016llx\n",

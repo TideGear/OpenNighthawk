@@ -41,7 +41,13 @@ def strike_state(machine):
 def control(machine, state, tick):
     # Reuse only its flight/configuration controls; suppress camera selection
     # and photo release. The actual station and strike interlock follow here.
-    navigate(machine, dict(state, weapon=16, photos=1), tick)
+    # The primary strike target is already in the onboard tracking database.
+    # Start within camera range and cycle the known contacts with B. N creates
+    # a new designation for an unlisted target and can leave the primary until
+    # after the aircraft has passed it.
+    navigate(machine, dict(state, weapon=16, photos=1), tick,
+             select_key="b", select_range=6000, aim_range=6000,
+             camera_aim=False, pitch_tolerance=100)
     at = machine.clock + machine.ips * 18 // 100
     candidates = [i for i, s in enumerate(state["stations"])
                   if s["stores"] and 0 < s["effect"] < 128 and s["weapon_class"] not in (0, 0xffff, 0xfffe)]
@@ -76,6 +82,9 @@ def main():
     parser.add_argument("--replay", help="observe recorded normal keys/mouse without adaptive controls")
     parser.add_argument("--complete", action="store_true", help="also attempt home return after primary credit")
     parser.add_argument("--engine", choices=("recomp", "interp"), default="recomp")
+    parser.add_argument("--landing-aim", type=int, default=20,
+                        help="runway approach aim relative to centre; negative aims beyond it")
+    parser.add_argument("--landing-approach-speed", type=int, default=200)
     args = parser.parse_args(); out = Path(args.out); out.mkdir(parents=True, exist_ok=False)
     inputs = RouteInputs(route_args(args.front_route) if args.front_route else base_route()) if not args.replay else None
     replay, replay_pos = [], 0
@@ -133,9 +142,13 @@ def main():
                     if elapsed > args.seconds * machine.ips: break
                     if not args.replay or (args.complete and replay_pos == len(replay) and machine.clock > int(replay[-1][1])):
                         if args.complete and state["flags"] & 0x4000:
-                            if math.hypot(signed(state["home_x"] - state["x"]), signed(state["home_y"] + 4000 - state["y"])) < 150:
+                            waypoint_range = math.hypot(
+                                signed(state["home_x"] - state["x"]),
+                                signed(state["home_y"] + 4000 - state["y"]))
+                            if waypoint_range < 150:
                                 approach = True
-                            land(machine, state, tick, approach)
+                            land(machine, state, tick, approach, aim=args.landing_aim,
+                                 approach_speed=args.landing_approach_speed)
                         else: control(machine, state, tick)
                     tick += 1; step = machine.ips // 5
             elif flight_start is not None: break

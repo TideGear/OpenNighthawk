@@ -256,33 +256,52 @@ static struct {
     uint8_t before[200 * 320];
 } g_line;
 
-/* With F117R_OBSERVE_PAGES, an entry no hook captures keeps the whole page
- * it draws to, and the next event logs every byte that changed ('x': the
- * entry, the page segment, the count, then offset, now and before for each)
- * - attribution for the frame accounting, not a primitive to replay. */
+/* With F117R_OBSERVE_PAGES, an entry no hook decodes keeps the whole active
+ * page and, when different, the VGA display page. The next event logs every
+ * changed byte ('x': entry, page segment, count, then offset, now and before
+ * for each). A nested entry can split a caller's drawing, so each boundary
+ * starts a fresh capture. */
 static struct {
     int on, entry;
     uint16_t page;
     uint8_t before[65536];
 } g_any;
+/* A library entry can name a work page in its driver state and still draw
+ * straight to VGA memory. Keep the display alongside the active page while
+ * an otherwise uncaptured entry runs. */
+static struct {
+    int on, entry;
+    uint8_t before[65536];
+} g_any_display;
 
-static void any_flush(machine_t *m)
+static void any_emit(machine_t *m, int entry, uint16_t page,
+                     const uint8_t *before, int emit_empty)
 {
-    if (!g_any.on) return;
-    g_any.on = 0;
     const f117_observer *o = g_f117_observer;
     if (!o || !o->prim) return;
     cpu_t *c = &m->cpu;
     static int32_t v[3 + 3 * 65536];
     int n = 0;
-    v[n++] = g_any.entry; v[n++] = g_any.page;
+    v[n++] = entry; v[n++] = page;
     const int count_at = n++;
     for (uint32_t a = 0; a < 65536; a++) {
-        const uint8_t now = mem_read8(c, phys(g_any.page, (uint16_t)a));
-        if (now != g_any.before[a]) { v[n++] = (int32_t)a; v[n++] = now; v[n++] = g_any.before[a]; }
+        const uint8_t now = mem_read8(c, phys(page, (uint16_t)a));
+        if (now != before[a]) { v[n++] = (int32_t)a; v[n++] = now; v[n++] = before[a]; }
     }
     v[count_at] = (n - 3) / 3;
-    o->prim(o->user, c->icount, 'x', v, n);
+    if (emit_empty || n > 3) o->prim(o->user, c->icount, 'x', v, n);
+}
+
+static void any_flush(machine_t *m)
+{
+    if (g_any.on) {
+        g_any.on = 0;
+        any_emit(m, g_any.entry, g_any.page, g_any.before, 1);
+    }
+    if (g_any_display.on) {
+        g_any_display.on = 0;
+        any_emit(m, g_any_display.entry, 0xA000, g_any_display.before, 0);
+    }
 }
 
 static void line_flush(machine_t *m)
@@ -420,6 +439,7 @@ static int hook_lib_spans(machine_t *m)
  * accounting - the source bytes and the destination page's changes like
  * any other entry. */
 static void any_begin(machine_t *m, int entry, uint16_t page);
+static void any_begin_display(machine_t *m, int entry, uint16_t page);
 static int hook_lib_blit(machine_t *m)
 {
     flush(m);
@@ -593,6 +613,16 @@ static int hook_lib_copy(machine_t *m)
         v[n++] = seg_read16(c, drv, 0x0789);
         v[n++] = seg_read16(c, drv, 0x0787);
         v[n++] = flip;
+        /* A work-page dump at game_draw can miss a transient change that
+         * entry 44 presents and the next phase then overwrites. Keep the
+         * source as it exists at the instant of the present, just like the
+         * full-page copies below. */
+        if (getenv("F117R_OBSERVE_PAGES") && !flip) {
+            const uint16_t src = (uint16_t)v[2];
+            const uint32_t count = (uint32_t)v[1];
+            for (uint32_t a = 0; a < count && n < (int)(sizeof v / sizeof v[0]); a++)
+                v[n++] = mem_read8(c, phys(src, (uint16_t)a));
+        }
     } else {
         const uint16_t src = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_SP] + 4));
         v[n++] = 64000;
@@ -603,6 +633,12 @@ static int hook_lib_copy(machine_t *m)
             for (uint32_t a = 0; a < 64000; a++) v[n++] = mem_read8(c, phys(src, (uint16_t)a));
     }
     o->prim(o->user, c->icount, 'D', v, n);
+    /* Entry 44 is a present, so the original copy runs after this hook.
+     * Snapshot the destination now; the next observer entry can record what
+     * the present actually changed there, including any row/window rules the
+     * source-side log cannot describe. */
+    if (entry == 44 && v[4] == 0)
+        any_begin(m, entry, (uint16_t)v[3]);
     return 0;
 }
 
@@ -622,10 +658,12 @@ static int hook_lib_other(machine_t *m)
                            seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_SP] + 4)),
                            seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_SP] + 6)) };
     o->prim(o->user, c->icount, 'X', v, 3);
-    /* entries that only set state (24 origin 0, 26 origin, 62 an address,
-     * 65 a variable, 46 the DAC and the CRTC start) draw nothing to keep */
-    if (v[0] != 24 && v[0] != 26 && v[0] != 46 && v[0] != 62 && v[0] != 65)
-        any_begin(m, v[0], seg_read16(c, slot_target_seg(m, c->ip), 0x0194));
+    /* Keep both pages through every entry. Some setters (24/26/46/62/65)
+     * draw nothing themselves, but can be called inside a drawing entry;
+     * the outer entry may resume writing after this hook flushes it. */
+    const uint16_t page = seg_read16(c, slot_target_seg(m, c->ip), 0x0194);
+    any_begin(m, v[0], page);
+    any_begin_display(m, v[0], page);
     return 0;
 }
 
@@ -637,6 +675,18 @@ static void any_begin(machine_t *m, int entry, uint16_t page)
     g_any.page = page;
     for (uint32_t a = 0; a < 65536; a++) g_any.before[a] = mem_read8(c, phys(page, (uint16_t)a));
     g_any.on = 1;
+}
+
+/* Unknown entries can target VGA memory directly even when the driver's
+ * active page points elsewhere. */
+static void any_begin_display(machine_t *m, int entry, uint16_t page)
+{
+    if (!getenv("F117R_OBSERVE_PAGES") || page == 0xA000) return;
+    cpu_t *c = &m->cpu;
+    g_any_display.entry = entry;
+    for (uint32_t a = 0; a < 65536; a++)
+        g_any_display.before[a] = mem_read8(c, phys(0xA000, (uint16_t)a));
+    g_any_display.on = 1;
 }
 
 static const recomp_override OBSERVERS[] = {

@@ -46,27 +46,28 @@ never instead of parity.
   both engines identical at 64 checkpoints/final. Required screen-open
   counts reject routes stuck in dialogs or missing a maintenance visit.
 - A normal-input Libya landing route: takeoff, return to base 33, runway
-  alignment, contact and a stop inside its approach box. Both engines
-  agree at 195 checkpoints/final; adaptive runs also produce identical
-  input logs and flight observations. The stronger observer checks zero
-  speed/throttle, gear down, brakes on, fuel remaining, no ejection/crash,
-  the completed countdown and the parent's mission result 0/status 3.
+  alignment, contact and a stop inside its approach box. After the rational
+  VGA slice-boundary update, the old input missed the runway and was
+  re-recorded. Both engines now pass the strong observer with byte-identical
+  4,113-row flight logs, ending at clock 9,920,163,246/hash
+  `979600814c576e2f`; mission result is 0/status 3, and the stopped aircraft
+  is at (9793,1549) with 4,737 fuel. The committed route also passes its
+  world, VGAME exit and END open checks under both engines. The observer checks
+  zero speed/throttle, gear down, brakes on, no ejection/crash, and the
+  completed countdown.
   DOS exit 129 is a separate debriefing handoff, not a landing result.
   Contact/stop screenshots reviewed. This covers the shipped training
   mission and its landing setting; other runways and objectives remain.
-- Generated reconnaissance primary completed through normal controls:
-  Libya/Cold War/Strike Missions, forward display, ground mode, camera,
-  bay, target designation and exposure. Both engines match at 123
-  checkpoints/final. Independent observers require one exposure and one
-  photo-credit event for target 1, primary credit, no target damage or
-  ejection, and the retained camera/store. Credit screenshot reviewed.
-  The route stops airborne after credit; its return is not established.
-- Extended reconnaissance completes both photos and returns to raised home
-  base 36. Independent observers' input/flight logs and final states match.
-  Two exposures, primary 8Ah and secondary 4Ah events, intact targets, deck
-  height 128, gear/brakes/idle, fuel remaining, countdown and parent result
-  0/status 3 all pass. The route agrees at 272 checkpoints/final hash
-  `c403d0542430b898`. Contact/stop and FRAME 2 screenshots reviewed.
+- Reconnaissance primary and raised-base-36 return were verified before the
+  latest rational VGA slice-boundary change. The primary route has now been
+  recaptured with level acquisition: both strong observers pass with
+  byte-identical 1,685-row logs, one exposure and photo-credit event, intact
+  target, retained camera/store and safe airborne flight. Final clock/hash:
+  6,289,654,045 / `0d92f4ffab92a97f`; the official route runner also passes
+  both engines' world/open milestones. The return input has now also been
+  recaptured: both observers and the official route runner pass, with both
+  photo credits, intact targets and a stopped return on the raised home-36
+  runway (see Left).
 - Independent GOG DOSBox reconnaissance also completes both photos and the
   raised home-36 return, reaches END and passes the same strict flight gates:
   intact targets/events, idle stop inside the home box, fuel, countdown and
@@ -83,17 +84,13 @@ never instead of parity.
   354 checkpoints/final and all 802 saved bytes. Promotion/medal pages
   reviewed. The route earns its starting roster through a prerequisite
   sortie using normal inputs, with no committed or fabricated save data.
-- Ground-strike training primary destroyed by normally released Mavericks:
-  target 3 damaged, primary flag, one matching hit event, two releases and
-  station stores 2 -> 0; aircraft airborne with fuel and no ejection/crash.
-  Independent observers' input logs and CSVs match under both engines;
-  176 checkpoints/final agree, hash `197c6b398d6fbb9f`. Screenshot reviewed.
-  The route stops airborne after credit and does not establish a return.
-- Maverick strike return to home 33: primary damage and hit credit retained,
-  normal landing, zero speed/throttle, gear/brakes, fuel remaining and the
-  completed countdown. Parent result 0/status 3; both independent observers'
-  input/CSV/result files match exactly. All 297 checkpoints and final hash
-  `a4f05231eacf9d75` agree. Stopped cockpit screenshot reviewed.
+- Ground-strike training and Maverick return were verified before the latest
+  rational VGA slice-boundary change: target 3 damage/credit, releases, safe
+  flight, then home-33 stop and parent result 0/status 3. Those previous
+  observer runs matched under both engines (176 and 297 checkpoints; hashes
+  `197c6b398d6fbb9f` and `a4f05231eacf9d75`). The checked-in `strike.input` no
+  longer earns a hit on the current build and these objective proofs need
+  refreshed recordings (see Left).
 - Secret-airstrip primary completed in Persian Gulf Limited War: normal
   landing at target 24, (10497,3809), inside its short approach box.
   Original event 8Bh, primary flag, mission store 1 -> 0, idle/gear/brakes,
@@ -112,7 +109,10 @@ never instead of parity.
   no primary credit reproduce original bug D5. The strong observer rejects
   mere expiry or store consumption. The return to home 51 is now verified in
   `cargo_return` under both engines; an independent GOG DOSBox cargo
-  reproduction remains open.
+  reproduction remains open. The 9 MIPS GOG replay now seeds DOS date, BIOS
+  ticks and RTC reads, but current runs still generate ground-strike or
+  reconnaissance missions rather than supply drops; no independent cargo
+  delivery is claimed.
 - Seeded random flights (`tools/random_flights.py`): every session
   identical at every hash; 30.5 minutes of flight in the 16-session batch.
 - Planted defects caught by the lockstep (`tools/mutation_check.py
@@ -252,7 +252,75 @@ never instead of parity.
   video comparison confirms the prior timing,
   but a frame capture synchronized to a guest event is still needed. Keep the
   frame-parity item open, retain 9 MIPS, and do not add Reimp D96 to translated
-  START.
+  START. A 6 October half-period sample-phase capture (`--shot-start 64206`,
+  worktree build, saved DOSBox capture `intro-3mlgpsvi`) yielded the same
+  unmatched RGB-hash sets as the phase-zero capture: 1,321 exact pictures,
+  five reference and 16 local one-sample pictures unmatched, end drift
+  +14.279 ms. A constant snapshot-phase offset does not account for the
+  residuals. `headless.c` and `video_compare.py` now accept that phase and an
+  explicit executable path for repeatable diagnostics.
+  **SEQ1 blanking diagnosis/fix (6 Oct):** the GOG run uses DOSBox's
+  `svga_s3` path, whose `VGA_DrawPart()` does not apply the sequencer
+  screen-off flag. The local host had turned `frame.blank` into a solid-black
+  mode-13h frame. `F117R_TRACE_VGA` showed START toggling SEQ1 bit 5 at
+  roughly 128,400-clock intervals, with each black unmatched shot just after
+  unblanking. The host renderer now follows the DOSBox S3 behavior while the
+  machine still records the sequencer state. Recomparison `intro-qei4ljnd`
+  removes all five black local samples: 1,321 exact pictures, five reference
+  and 11 local one-sample pictures unmatched, with +14.279 ms end drift.
+  Against this baseline, the remaining samples are partial-logo transitions
+  and two aircraft poses; the frame-parity item remains open.
+  **Independent-capture validation (6 Oct):** the current build was also
+  compared with the separate GOG capture `intro-qlh_wi26`; official run
+  `intro-rpay8p1l` matches 1,329/1,332 exact pictures, with three reference
+  and three local one-sample pictures unmatched and +0.055 ms end drift.
+  These six residuals are all partial MPS-logo transitions. The aircraft
+  poses unmatched against `intro-caauys37` match this reference exactly.
+  Six of nine local logo hashes unmatched against `intro-caauys37` also occur
+  in `intro-qlh_wi26`; two fresh short captures have different reference
+  transition hashes. A quarter-period local capture preserves the same local
+  transition hashes, so another constant snapshot phase does not remove them.
+  The item remains open for the three exact logo-state differences in this
+  reference pair.
+  **Fractional VGA-event rounding (6 Oct):** DOSBox schedules each of the
+  four 100-line draw parts as a fractional PIC delay; its `PIC_RunQueue`
+  executes the callback on the next whole CPU cycle. The local deadlines had
+  rounded down, one cycle early per part. They now round up. A fresh current-
+  build comparison (`intro-v3s5pyl0`) remains 1,329/1,332 exact with the same
+  three unmatched pictures on each side and +0.055 ms end drift. Only one
+  local logo picture changed; its RGB difference shrank from eight pixels to
+  seven. The timing correction is source-based, but it does not explain the
+  remaining transition images.
+  **Fractional frame-period lead (6 Oct):** the local frame period is an
+  integer 128,413 guest cycles at 9 MHz. DOSBox's VGA clock and mode-13h
+  totals imply 128,413.108 cycles; over the capture's 9,164 frames, that
+  difference predicts about 0.11 ms of phase drift, near the measured
+  +0.055 ms. An offline timestamp rescale by that exact period brings end
+  drift to -0.0001 ms without changing the 1,329 exact images or the three
+  unmatched images on each side. This accounts for the long-run timestamp
+  offset, but not the one-sample logo images, which vary across DOSBox
+  captures.
+  **Rational VGA event clock (6 Oct):** DOSBox 0.74 source confirms that
+  `VGA_SetupDrawing()` derives frame and part delays from its selected pixel
+  clock and CRTC totals, then schedules them as fractional PIC delays. The
+  local frame, line-part, retrace and status timing now use the corresponding
+  rational guest-clock period, rounding each event up to the first whole
+  guest instruction at or after its deadline. `--shots-vga` uses the same
+  fractional frame cadence. `pc_slice_left()` also computes DOS I/O and
+  file-transfer slice budgets from the next rational VGA deadline, including
+  draw parts, vertical IRQ, retrace edges and frame end. On the saved
+  independent reference, this boundary refinement yields 1,329 exact
+  pictures; three reference and three local one-sample logo images remain
+  unmatched, with -0.000034 ms end drift. On a fresh independent DOSBox
+  capture (`intro-cfku0zec`, 6 Oct), it yields 1,321 exact pictures; 11
+  reference and 11 local one-sample images remain unmatched, with no
+  multi-sample mismatches and +14.268 ms end drift. The 1,332-picture local
+      sequences are byte-for-byte identical across runs. The horizon and roster
+      mismatches seen in the preceding iteration are gone; the remaining partial-
+      logo and flight-transition images vary with reference capture phase. Two
+      independent DOSBox captures also match only 1,321/1,332 images, with 11
+      single-sample differences per side at different indices. Frame parity
+      remains open.
 
 ### Left
 
@@ -266,12 +334,36 @@ never instead of parity.
       swapped; its 4-tick palette loops then run about 4x shorter. This is now
       the default (`F117R_PIT_CONTROL_IRQ=0` turns it off): video drift
       against the saved 0.74 capture falls from -570 ms to +14 ms (1,321
-      exact pictures, no multi-sample unmatched picture). Every recorded
-      flight route was re-recorded by its pilot under the new timing and
-      passes its strong observer under both engines (see
-      architecture.md, "PIT control-word interrupts"). The private career
-      chain evidence predates the change. Remaining: 5 single-sample
-      DOSBox pictures and 16 here.
+      exact pictures, no multi-sample unmatched picture). At that timing
+      stage, recorded flight routes were regenerated by their pilots and
+      passed their strong observers under both engines (see architecture.md,
+      "PIT control-word interrupts"). The later rational VGA slice-boundary
+      refinement changed some route outcomes; current refresh results are
+      listed below. The private career chain evidence predates the timing
+      changes. The host renderer now also matches
+      DOSBox's `svga_s3` handling of the VGA sequencer screen-off bit; this
+      removes five false black local pictures. The integer-period build
+      matched 1,329/1,332 pictures against independent reference
+      `intro-qlh_wi26`. Rational frame, line-part, retrace, status and I/O slice
+      deadlines now follow DOSBox's fractional PIC schedule. After the slice
+      boundary refinement, the saved reference comparison matches 1,329 with
+      three one-sample logo images unmatched on each side; a fresh independent
+      capture matches 1,321 with 11 one-sample images unmatched on each side.
+      There are no multi-sample mismatches, and both local picture sequences
+      are identical. Exact transition states vary with capture phase (see In
+      progress).
+- [ ] **Refresh strike and return flight inputs after rational VGA slice
+      timing.** The checked-in `strike.input` and `strike_return.input` still
+      need replacement, along with route budgets and official route-runner
+      milestones. Fresh adaptive evidence now passes the completed strike and
+      home-33 return observer under both engines: target 3 damaged, two
+      Mavericks released, one matching hit, then a stopped landing with fuel
+      remaining and parent result 0/status 3. The observer input, flight CSV
+      and result JSON are byte-identical; final clock/hash is
+      15,029,717,426 / `7b49aac1f746ffa7`. `tools/strike_pilot.py` now steers
+      toward home after credit and uses an approach-speed target of 300 for
+      the successful recording. Private evidence and next steps are in
+      `handoff.md`, "Strike refresh".
 - [ ] **Roland through Munt** (libmt32emu, LGPL-2.1+): the MT-32 music in
       the game itself, and its output rendered and checked automatically.
       Optional integration now builds against an installed library or a
@@ -378,7 +470,12 @@ never instead of parity.
       86,524 stereo frames now match exactly up to the frequency change.
       The captured intro waveform still differs, with RMS within about
       0.5%. Resolve register timing, mixer block scheduling and capture
-      alignment; digitized speech and speaker output need reference PCM.
+      alignment. A seeded type-8 flight now has a 62.3-second GOG DOSBox
+      mixer WAV; an approximate 58.15-second host comparison has 0.598
+      envelope correlation, 0.361 waveform correlation and 0.972 median
+      spectral cosine (RMS 0.1011 vs 0.0920). This is not exact PCM parity;
+      the route's PC-speaker gate is clear. Digitized speech, audible speaker
+      output and a listening check remain open.
 
 ## Phase 2 - understood code
 
@@ -445,10 +542,12 @@ never instead of parity.
       their edges, outline edges, the graphics library's lines, span fills
       and blits, and every other library entry with its page changes - and
       changes nothing. Stage 1: whole phases are rebuilt from the draw list
-      byte for byte (`tools/drawlist_frame.py`, 73 of 73 on the strike
-      flight), every changed byte replayed by rule. Left for Stage 1: the
-      display page itself, and the drawing branches this flight never
-      exercised (opaque text, the width clip, dithered fills).
+      byte for byte (`tools/drawlist_frame.py`, 73 of 73 work and display
+      phases on the 30M-instruction strike flight). The work page is replayed
+      by drawing rules; direct display writes from still-uncoded entries are
+      captured as byte deltas. Left for Stage 1: coverage across every route
+      and drawing branches this flight never exercised (opaque text, the
+      width clip, dithered fills).
 
 ## Housekeeping
 

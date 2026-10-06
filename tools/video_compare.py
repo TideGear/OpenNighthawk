@@ -3,11 +3,12 @@
 
     py tools/video_compare.py --data DIR [--seconds 130]
     py tools/video_compare.py --reuse RUN_DIR
+    py tools/video_compare.py --data DIR --against RUN_DIR --exe EXE --shot-start CLOCK
 
 Captures stay outside the repository. Identical consecutive pictures are
 collapsed, retaining their times and durations. Exact RGB hashes are aligned
 in order; unmatched pictures are reported, never hidden by a tolerance.
-Sampling differs: DOSBox captures VGA scanout, --shots takes instantaneous
+Sampling differs: DOSBox captures VGA scanout, --shots-vga takes instantaneous
 VRAM snapshots. A mismatch is evidence to investigate, not automatically a
 translation defect. This checks graphics (320x200), not text-mode setup.
 """
@@ -28,12 +29,17 @@ from PIL import Image, ImageChops, ImageDraw
 from dosbox_compare import IPS, ROOT, run_dosbox
 
 WORK = Path.home() / "f117-recomp-local" / "video"
-# Match pc_init's mode-13h period. Exactly 70 Hz beats against the game's
-# retrace-paced pointer erase/redraw every ~11.6 seconds.
+# Mode-13h timing at 25.175 MHz, divided by the 8-pixel character clock,
+# 100 horizontal clocks, and 449 total lines. New captures dither integer
+# guest-cycle intervals to preserve this fractional period.
 
 
 def vga_period(ips):
-    return ips * 1000 // 70086
+    return ips * 359200 // 25175000
+
+
+def vga_period_seconds():
+    return 359200 / 25175000
 
 
 def shot_time(path, ips):
@@ -93,13 +99,16 @@ def reference_frames(run):
 
 def our_frames(run, every, ips=IPS):
     out = []
+    settings = json.loads((run / "settings.json").read_text())
+    duration = (vga_period_seconds() if settings.get("rational_shots")
+                else every / ips)
     for path in sorted((run / "shots").glob("*.ppm")):
         with Image.open(path) as im:
             if im.size != (320, 200):
                 continue
             rgb = im.convert("RGB").tobytes()
         when = shot_time(path, ips)
-        append_frame(out, rgb, when, path, every / ips)
+        append_frame(out, rgb, when, path, duration)
     if not out:
         raise RuntimeError("no graphics shots produced")
     return out
@@ -187,8 +196,13 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--data", help="GOG install with DOSBOX and dosboxF117A.conf")
     ap.add_argument("--seconds", type=int, default=130)
+    ap.add_argument("--exe", type=Path, help="f117run executable (default: ROOT/build/f117run.exe)")
+    ap.add_argument("--shot-start", type=int, default=0,
+                    help="first guest-clock snapshot phase (default: %(default)s)")
     ap.add_argument("--ips", type=int, default=IPS,
                     help="emulated instructions per second for f117run (default: %(default)s)")
+    ap.add_argument("--work-dir", type=Path, default=WORK,
+                    help="directory for capture artifacts (default: %(default)s)")
     source = ap.add_mutually_exclusive_group()
     source.add_argument("--reuse", type=Path, help="recompare an existing run")
     source.add_argument("--against", type=Path, help="run current build against a saved DOSBox capture")
@@ -207,11 +221,13 @@ def main():
         ips = saved.get("ips", IPS)
     else:
         if not a.data:
-            ap.error("--data is required unless --reuse is given")
-        WORK.mkdir(parents=True, exist_ok=True)
-        run = Path(tempfile.mkdtemp(prefix="intro-", dir=WORK))
+            ap.error("--data is required unless --reuse is given, including with --against")
+        work_dir = a.work_dir.resolve()
+        work_dir.mkdir(parents=True, exist_ok=True)
+        run = Path(tempfile.mkdtemp(prefix="intro-", dir=work_dir))
         print("Artifacts:", run, flush=True)
-        settings = dict(seconds=a.seconds, every=every, ips=ips)
+        settings = dict(seconds=a.seconds, every=every, ips=ips,
+                        shot_start=a.shot_start, rational_shots=True)
         if a.against:
             reference = a.against.resolve()
             old_settings = json.loads((reference / "settings.json").read_text())
@@ -235,15 +251,19 @@ def main():
             print(f"DOSBox: {a.seconds} s with video capture", flush=True)
             run_dosbox(a.data, str(game), a.seconds, capture="video", work=str(run))
         (run / "shots").mkdir()
-        print(f"f117run: {ips} instructions/s; graphics shots every {every} clocks "
-              f"({ips / every:.6f} Hz)", flush=True)
+        period = ips * 359200 / 25175000
+        print(f"f117run: {ips} instructions/s; rational VGA snapshots every "
+              f"{period:.6f} clocks ({1 / vga_period_seconds():.6f} Hz)", flush=True)
+        exe = a.exe.resolve() if a.exe else Path(ROOT) / "build" / "f117run.exe"
         proc = subprocess.run([
-            str(Path(ROOT) / "build" / "f117run.exe"), "--engine", "recomp",
+            str(exe), "--engine", "recomp",
             "--data", str(game), "--save", str(run / "save"),
             "--log", str(run / "run.log"), "--type", "SETUP.EXE+200000:N",
             "--type", "SETUP.EXE+2000000:2", "--ips", str(ips),
             "--steps", str((a.seconds + 15) * ips),
-            "--time-us", "700000000000000", "--shots", f"{every}:{run / 'shots' / 'shot'}"],
+            "--time-us", "700000000000000",
+            "--shots-vga", str(run / "shots" / "shot"),
+            "--shots-start", str(a.shot_start)],
             capture_output=True, text=True)
         (run / "runner.txt").write_text(proc.stdout + proc.stderr)
         proc.check_returncode()

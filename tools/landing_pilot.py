@@ -91,7 +91,8 @@ def landing_errors(rows, report, log, require_dos_exit=True):
     return errors
 
 
-def control(machine, state, tick, approach, cruise=2500, aim=20, approach_speed=200):
+def control(machine, state, tick, approach, cruise=2500, aim=20, approach_speed=200,
+            deck_aim=220):
     """Short, separated stick pulses; every key is released normally.
 
     `cruise` is the altitude held before the approach; a return leg over
@@ -122,7 +123,7 @@ def control(machine, state, tick, approach, cruise=2500, aim=20, approach_speed=
         # A raised deck has no safe ground before its short approach box.
         # Hold above it until close, then use a gentler descent than the
         # long flat-runway approach.
-        altitude = clamp(state["surface"] + (-dy - 220) * 1.6,
+        altitude = clamp(state["surface"] + (-dy - deck_aim) * 1.6,
                          max(64, state["surface"] - 64), 2500)
         descent = -200 if state["range"] < 1500 else 0
     want_pitch = clamp(descent + (altitude - state["altitude"]) * 2,

@@ -21,6 +21,8 @@
 #include <string.h>
 
 #define PIT_HZ 1193182ull
+#define VGA_FRAME_DEN 25175000ull
+#define VGA_FRAME_NUM_PER_IPS 359200ull /* 8 * 100 clocks/line * 449 lines */
 
 static void wake(machine_t *m) { m->cpu.stop_at = 0; }
 
@@ -28,6 +30,88 @@ static void wake(machine_t *m) { m->cpu.stop_at = 0; }
 static uint64_t muldiv(uint64_t a, uint64_t b, uint64_t d)
 {
     return (a / d) * b + ((a % d) * b) / d;
+}
+
+/* DOSBox schedules VGA timing from its pixel clock with fractional PIC
+ * delays. At 9 MIPS, mode 13h is 128,413.108 guest instructions per frame,
+ * not a fixed integer period. Keep frame starts and line events on that
+ * rational clock, rounding each callback up to the first whole instruction
+ * at or after its deadline. */
+static void vga_frame_period(const machine_t *m, uint64_t *whole,
+                             uint64_t *remainder)
+{
+    const uint64_t numerator = m->ips * VGA_FRAME_NUM_PER_IPS;
+    *whole = numerator / VGA_FRAME_DEN;
+    *remainder = numerator % VGA_FRAME_DEN;
+}
+
+/* floor(frames * remainder / denominator), without a large product. */
+static uint64_t vga_fraction_floor(uint64_t frames, uint64_t remainder)
+{
+    return (frames / VGA_FRAME_DEN) * remainder +
+           ((frames % VGA_FRAME_DEN) * remainder) / VGA_FRAME_DEN;
+}
+
+static uint64_t vga_fraction_remainder(uint64_t frames, uint64_t remainder)
+{
+    return ((frames % VGA_FRAME_DEN) * remainder) % VGA_FRAME_DEN;
+}
+
+/* First whole instruction at/after a line within a frame. `line` may be
+ * 449, which is the next frame boundary. */
+static uint64_t vga_line_deadline(const machine_t *m, uint64_t frame,
+                                  unsigned line)
+{
+    uint64_t whole, remainder;
+    vga_frame_period(m, &whole, &remainder);
+    const uint64_t frame_floor = frame * whole +
+                                 vga_fraction_floor(frame, remainder);
+    const uint64_t frame_rem = vga_fraction_remainder(frame, remainder);
+    const uint64_t line_den = VGA_FRAME_DEN * 449ull;
+    const uint64_t line_num = (uint64_t)line *
+        (m->ips * VGA_FRAME_NUM_PER_IPS);
+    const uint64_t line_floor = line_num / line_den;
+    const uint64_t line_rem = line_num % line_den;
+    const uint64_t fractional = frame_rem * 449ull + line_rem;
+    return frame_floor + line_floor +
+           (fractional + line_den - 1) / line_den;
+}
+
+/* Frame containing an instruction clock, using the same rounded boundary
+ * convention as the PIC event queue. */
+static uint64_t vga_frame_at(const machine_t *m, uint64_t icount)
+{
+    uint64_t whole, remainder;
+    vga_frame_period(m, &whole, &remainder);
+    (void)remainder;
+    if (!whole) return 0;
+    uint64_t lo = icount / (whole + 1), hi = icount / whole + 1;
+    while (lo < hi) {
+        const uint64_t mid = lo + (hi - lo + 1) / 2;
+        if (vga_line_deadline(m, mid, 0) <= icount) lo = mid;
+        else hi = mid - 1;
+    }
+    return lo;
+}
+
+/* Next DOSBox-style VGA budget boundary after `icount`. The DOS file-transfer
+ * and device-I/O models stop a slice at the four draw parts, the vertical
+ * interrupt 5 us after the visible area, retrace start/end, or frame start. */
+static uint64_t vga_slice_deadline_after(const machine_t *m, uint64_t icount)
+{
+    static const unsigned lines[] = { 100, 200, 300, 400, 412, 414, 449 };
+    const uint64_t frame = vga_frame_at(m, icount);
+    const uint64_t visible_end_irq_delay = (m->ips / 1000u) * 5u / 1000u;
+    uint64_t next = ~0ull;
+    for (size_t i = 0; i < sizeof lines / sizeof lines[0]; i++) {
+        uint64_t at = vga_line_deadline(m, frame, lines[i]);
+        if (at > icount && at < next) next = at;
+        if (lines[i] == 400) {
+            at += visible_end_irq_delay;
+            if (at > icount && at < next) next = at;
+        }
+    }
+    return next;
 }
 
 uint64_t machine_now_us(const machine_t *m)
@@ -480,7 +564,8 @@ void vga_set_mode(machine_t *m, uint8_t mode, int clear)
     m->scan_next = ~0ull;
     if (mode == 0x13 && m->frame_len) {
         /* Start with the next complete frame, not a partial old mode. */
-        m->scan_frame = (m->cpu.icount / m->frame_len + 1) * m->frame_len;
+        const uint64_t frame = vga_frame_at(m, m->cpu.icount) + 1;
+        m->scan_frame = vga_line_deadline(m, frame, 0);
         m->scan_next = m->scan_frame;
     }
     if (m->log) dos_log(m, "[video] mode %02Xh set by %s\n", mode, dos_current_program(m));
@@ -496,10 +581,19 @@ uint16_t vga_start_address(const machine_t *m)
  * Bit 0 is set whenever the beam is not drawing. */
 static uint8_t vga_status(machine_t *m)
 {
-    const uint64_t frame = m->frame_len;
-    const uint64_t at = (m->cpu.icount % frame) * 449ull;
-    const unsigned line = (unsigned)(at / frame);
-    const unsigned across = (unsigned)((at % frame) * 100ull / frame);
+    uint64_t whole, remainder;
+    vga_frame_period(m, &whole, &remainder);
+    const uint64_t frame = vga_frame_at(m, m->cpu.icount);
+    const uint64_t elapsed_floor = frame * whole +
+                                   vga_fraction_floor(frame, remainder);
+    const uint64_t elapsed_rem = vga_fraction_remainder(frame, remainder);
+    const uint64_t phase = (m->cpu.icount - elapsed_floor) * VGA_FRAME_DEN -
+                           elapsed_rem;
+    const uint64_t frame_num = m->ips * VGA_FRAME_NUM_PER_IPS;
+    const uint64_t line_pos = phase * 449ull;
+    const unsigned line = (unsigned)(line_pos / frame_num);
+    const unsigned across = (unsigned)(((line_pos % frame_num) * 100ull) /
+                                       frame_num);
     uint8_t v = 0;
     if (line >= 400 || across >= 80) v |= 0x01;
     if (line >= 412 && line < 414) v |= 0x08;
@@ -534,15 +628,8 @@ uint64_t pc_slice_left(const machine_t *m)
     if (m->irq0_next > now && m->irq0_next - now < left)
         left = m->irq0_next - now;
     if (m->frame_len) {
-        const uint64_t f = m->frame_len;
-        const uint64_t vint = f * 400u / 449u + per_ms * 5u / 1000u;
-        const uint64_t ev[] = { f * 100u / 449u, f * 200u / 449u,
-            f * 300u / 449u, f * 400u / 449u, vint,
-            f * 412u / 449u, f * 414u / 449u, f };
-        const uint64_t pos = now % f;
-        for (size_t i = 0; i < sizeof ev / sizeof ev[0]; i++)
-            if (ev[i] > pos && ev[i] - pos < left)
-                left = ev[i] - pos;
+        const uint64_t event = vga_slice_deadline_after(m, now);
+        if (event > now && event - now < left) left = event - now;
     }
     return left;
 }
@@ -690,7 +777,16 @@ static void io_write8(machine_t *m, uint16_t port, uint8_t v)
         break;
     case 0x3C2: m->misc_out = v; break;
     case 0x3C4: m->seq_idx = v; break;
-    case 0x3C5: m->seq[m->seq_idx & 7] = v; break;
+    case 0x3C5: {
+        unsigned index = m->seq_idx & 7;
+        uint8_t old = m->seq[index];
+        m->seq[index] = v;
+        if (index == 1 && ((old ^ v) & 0x20) && m->log && getenv("F117R_TRACE_VGA"))
+            dos_log(m, "[vga] seq1 %02X->%02X @%llu by %04X:%04X (%s)\n",
+                    old, v, (unsigned long long)m->cpu.icount,
+                    m->cpu.op_cs, m->cpu.op_ip, dos_current_program(m));
+        break;
+    }
     case 0x3C6:
         /* VGA_DAC_UpdateColor rebuilds the render palette on a mask write,
          * including any RGB components not yet completed by a blue write. */
@@ -801,8 +897,8 @@ void pc_reset(machine_t *m)
     m->pit[0].epoch_clk = 0;
     pit0_schedule(m);
     m->port61 = 0;
-    m->frame_len = muldiv(m->ips, 1000ull, 70086ull);
-    m->vsync_next = m->frame_len * 412ull / 449ull;
+    m->frame_len = (m->ips * VGA_FRAME_NUM_PER_IPS) / VGA_FRAME_DEN;
+    m->vsync_next = vga_line_deadline(m, 0, 412);
     m->pel_mask = 0xFF;
     vga_set_mode(m, 3, 1);
     m->mouse_xmin = 0; m->mouse_xmax = 639; m->mouse_ymin = 0; m->mouse_ymax = 199;
@@ -910,13 +1006,17 @@ static void vga_scanout(machine_t *m)
                 m->scan_time = m->scan_next;
                 m->scan_valid = 1;
                 m->scan_part = 0;
-                m->scan_frame += m->frame_len;
+                const uint64_t frame = vga_frame_at(m, m->scan_frame) + 1;
+                m->scan_frame = vga_line_deadline(m, frame, 0);
                 m->scan_next = m->scan_frame;
                 return;
             }
         }
         m->scan_part++;
-        m->scan_next = m->scan_frame + m->frame_len * (100u * m->scan_part) / 449u;
+        /* DOSBox schedules these fractional scan events and executes them
+         * on the first whole CPU cycle at or after the deadline. */
+        const uint64_t frame = vga_frame_at(m, m->scan_frame);
+        m->scan_next = vga_line_deadline(m, frame, 100u * m->scan_part);
     }
 }
 
@@ -949,7 +1049,8 @@ void pc_events(machine_t *m)
             if (m->video_mode == 0x13)
                 m->scan_latch = (uint16_t)(vga_start_address(m) * 4u);
             if (m->hooks.vsync) m->hooks.vsync(m->hooks.user, m->vsync_next);
-            m->vsync_next += m->frame_len;
+            const uint64_t frame = vga_frame_at(m, m->vsync_next) + 1;
+            m->vsync_next = vga_line_deadline(m, frame, 412);
         } else break;
     }
     kbd_poll(m);

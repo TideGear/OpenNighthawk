@@ -95,10 +95,10 @@ void present_render(const present_frame *f, uint32_t *out, int *w, int *h, int b
     *w = 320; *h = 200;
     uint32_t pal[256];
     for (unsigned i = 0; i < 256; i++) pal[i] = dac_rgb(f->dac, i & f->pel_mask);
-    if (f->blank) {
-        for (int i = 0; i < 64000; i++) out[i] = 0xFF000000u;
-        return;
-    }
+    /* GOG's DOSBox 0.74-2.1 selects VGA_DrawPart for svga_s3. In that
+     * renderer, the sequencer's screen-off flag is applied by the single-line
+     * path but not by VGA_DrawPart. Keep the machine's flag in its device
+     * state; do not turn a mode-13h frame black in our host renderer. */
     for (int i = 0; i < 64000; i++) out[i] = pal[f->vram[i]];
 }
 
