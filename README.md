@@ -126,7 +126,7 @@ Every result here was measured on GOG's installer
 `setup_f-117a_nighthawk_stealth_fighter_2.0_1.0_(28044).exe`, which ships
 MicroProse's final 473.04 update already applied (its VGAME.EXE is
 byte-identical to the one in `f11704 (473.04 Update).zip`).
-`py tools/verify_install.py --data "D:\GOG\F-117A"` checks your copy
+`py tools/verify_install.py --data "C:\GOG Games\F-117A"` checks your copy
 against the SHA-256 of every file the project reads.
 
 **Test evidence follows the same rule.** Routes commit only the inputs a
@@ -148,7 +148,7 @@ From a new PowerShell terminal, in the directory where you keep source:
 git clone https://github.com/TideGear/OpenNighthawk.git OpenNighthawk
 Set-Location OpenNighthawk
 py -m pip install capstone Pillow
-py tools/build_recomp.py --data "D:/GOG/F-117A" --work "$env:USERPROFILE/f117-recomp-local/OpenNighthawk"
+py tools/build_recomp.py --data "C:/GOG Games/F-117A" --work "$env:USERPROFILE/f117-recomp-local/OpenNighthawk"
 ```
 
 Replace the data path with your installed game. `capstone` is needed by the
@@ -165,7 +165,7 @@ compared with 89,216 in the earlier local build.
 For a checkout that is already set up, the default work directory works too:
 
 ```bat
-py tools\build_recomp.py --data "D:\GOG\F-117A"
+py tools\build_recomp.py --data "C:\GOG Games\F-117A"
 ```
 
 That one command translates the game, builds it, plays the scripted routes
@@ -173,7 +173,7 @@ in `tools/routes/` to gather coverage, translates and builds again, and
 verifies parity between the engines. The result is `build\f117a.exe`.
 `build.cmd` alone builds an interpreter-only executable.
 
-After a runtime change, `py tools\build_recomp.py --data "D:\GOG\F-117A"
+After a runtime change, `py tools\build_recomp.py --data "C:\GOG Games\F-117A"
 --parity-only` checks the existing build without translating or rebuilding.
 It compares checkpoints every 50 million clocks as well as final states,
 then runs the instruction lockstep.
@@ -181,7 +181,7 @@ then runs the instruction lockstep.
 ## Running
 
 ```bat
-build\f117a.exe --data "D:\GOG\F-117A"
+build\f117a.exe --data "C:\GOG Games\F-117A"
 ```
 
 | Option | Meaning |
@@ -201,7 +201,7 @@ build\f117a.exe --data "D:\GOG\F-117A"
 
 Every option can also be kept in a settings file: copy `f117a.example.ini`
 (written beside `f117a.exe` by the build) to `f117a.ini` in the same folder
-and edit it - one option per line without its dashes (`data = D:\GOG\F-117A`,
+and edit it - one option per line without its dashes (`data = C:\GOG Games\F-117A`,
 `roland = munt`, `mt32-roms = C:\ROMs`, `fullscreen = yes`, `fix = D4, D5`).
 Relative paths are taken from the file's folder, and an option given on the
 command line still wins (any Roland option there replaces all of the file's).
@@ -296,9 +296,9 @@ py tests\sst286.py
 rem The recompiler's generated code against the same vectors:
 py tests\sst_recomp.py --per-file=300
 rem Both engines on every scripted route (part of build_recomp.py):
-py tools\build_recomp.py --data "D:\GOG\F-117A"
+py tools\build_recomp.py --data "C:\GOG Games\F-117A"
 rem Plant defects in the generated code and check the comparison sees them:
-py tools\mutation_check.py --data "D:\GOG\F-117A" --random 8
+py tools\mutation_check.py --data "C:\GOG Games\F-117A" --random 8
 ```
 
 Your own play sessions are recorded too: each run of `f117a.exe` writes
@@ -313,7 +313,7 @@ inside the home approach box, a stop at idle, gear/brakes, the original
 countdown and the parent flight record's successful-return result:
 
 ```bat
-py tools\landing_pilot.py --data "D:\GOG\F-117A" --engine interp --replay tools/routes/landing.input --out C:/landing-check
+py tools\landing_pilot.py --data "C:\GOG Games\F-117A" --engine interp --replay tools/routes/landing.input --out C:/landing-check
 ```
 
 The reconnaissance route earns primary photo credit and stops airborne.
@@ -321,7 +321,7 @@ Its observer checks the exposure count, photo-credit event, intact target
 and retained camera:
 
 ```bat
-py tools\recon_pilot.py --data "D:\GOG\F-117A" --engine interp --replay tools/routes/recon.input --out C:/recon-check
+py tools\recon_pilot.py --data "C:\GOG Games\F-117A" --engine interp --replay tools/routes/recon.input --out C:/recon-check
 ```
 
 `recon_return` completes both photos and stops on the raised home runway;
@@ -331,7 +331,7 @@ observer checks both original credit events, intact targets and the parent
 result block:
 
 ```powershell
-py tools/recon_pilot.py --data "D:\GOG\F-117A" --engine interp --complete --replay tools/routes/recon_return.input --out C:/recon-return-check
+py tools/recon_pilot.py --data "C:\GOG Games\F-117A" --engine interp --complete --replay tools/routes/recon_return.input --out C:/recon-return-check
 ```
 
 The [parity audit](docs/parity-audit.md) documents independent DOSBox saves,
