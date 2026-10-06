@@ -317,8 +317,10 @@ static int hook_lib_line(machine_t *m)
     cpu_t *c = &m->cpu;
     const int16_t x0 = (int16_t)c->r[R_AX], y0 = (int16_t)c->r[R_BX], x1 = (int16_t)c->r[R_CX], y1 = (int16_t)c->r[R_DX];
     const uint16_t drv = slot_target_seg(m, 0x01B5);
-    const int32_t v[5] = { x0, y0, x1, y1, drv };
-    o->prim(o->user, c->icount, 'N', v, 5);
+    /* with the page and the origin it draws at (entries 12-16 and 24/26
+     * move them: the HUD draws some lines straight to the display) */
+    const int32_t v[7] = { x0, y0, x1, y1, drv, seg_read16(c, drv, 0x0194), seg_read16(c, drv, 0x0196) };
+    o->prim(o->user, c->icount, 'N', v, 7);
     int16_t xa = x0 < x1 ? x0 : x1, xb = x0 < x1 ? x1 : x0, ya = y0 < y1 ? y0 : y1, yb = y0 < y1 ? y1 : y0;
     if (xa < 0) xa = 0;
     if (ya < 0) ya = 0;
@@ -361,10 +363,11 @@ static int hook_lib_colour_stack(machine_t *m)
     return 0;
 }
 
-/* Graphics entry 37 (1E42:01D3), the library's span fill: rows AX..CX of
+/* Graphics entries 37 (1E42:01D3) and 40 (1E42:01E2, the same with mode 0),
+ * the library's span fill: rows AX..CX of
  * the table at SS:BX (left words, then right words 1B8h bytes on), combine
  * mode DX (0 set, 1 OR, 2 AND, 3 darken), the colour from entry 32/33. Logged
- * with its rows ('Q'); the rows' page bytes are kept like a line's bounding
+ * with its rows, then the page and the origin ('Q'); the rows' page bytes are kept like a line's bounding
  * box, so the next event logs the pixels it changed ('n'). */
 static int hook_lib_spans(machine_t *m)
 {
@@ -376,7 +379,7 @@ static int hook_lib_spans(machine_t *m)
     const uint16_t bx = c->r[R_BX], ss = c->seg[S_SS];
     int32_t v[4 + 2 * 220];
     int n = 0;
-    v[n++] = ya; v[n++] = yb; v[n++] = c->r[R_DX];
+    v[n++] = ya; v[n++] = yb; v[n++] = c->ip == 0x01E2 ? 0 : c->r[R_DX];   /* entry 40 is mode 0 */
     const int rows_at = n++;
     int rows = 0;
     if (ya >= 0 && yb >= ya && yb < 220)
@@ -386,9 +389,11 @@ static int hook_lib_spans(machine_t *m)
             rows++;
         }
     v[rows_at] = rows;
+    const uint16_t drv = slot_target_seg(m, 0x01D3);
+    v[n++] = seg_read16(c, drv, 0x0194);        /* then the page and the origin it fills at */
+    v[n++] = seg_read16(c, drv, 0x0196);
     o->prim(o->user, c->icount, 'Q', v, n);
     if (!rows) return 0;
-    const uint16_t drv = slot_target_seg(m, 0x01D3);
     g_line.page = seg_read16(c, drv, 0x0194);
     const uint16_t origin = seg_read16(c, drv, 0x0196);
     int16_t y0 = ya < 0 ? 0 : ya, y1 = yb > 199 ? 199 : yb;
@@ -496,6 +501,68 @@ static int hook_lib_text(machine_t *m)
     return 0;
 }
 
+/* Graphics entries 73, 18, 71 and 19 (1E42:0287, 0174, 027D, 0179): the
+ * sprite. A block in SS - the source segment, sx, sy, the destination page,
+ * dx, dy, w, h, and for 71/19 the clip (y low and high at +10h, +12h, x
+ * low and high at +14h, +16h) - copied with colour 0 transparent (driver
+ * 0EE6); 71 and 19 clip first (0E41). 73 and 71 take the block as an
+ * argument, 18 and 19 at BP. Logged ('S'): the entry, the destination's
+ * segment, the block's twelve words, then the source rectangle's bytes
+ * before any clip, each row read through the driver's row table. */
+static int hook_lib_sprite(machine_t *m)
+{
+    flush(m);
+    const f117_observer *o = g_f117_observer;
+    if (!o || !o->prim) return 0;
+    cpu_t *c = &m->cpu;
+    const int entry = (c->ip - 0x011A) / 5;
+    const uint16_t ss = c->seg[S_SS];
+    const uint16_t blk = entry == 73 || entry == 71 ? seg_read16(c, ss, (uint16_t)(c->r[R_SP] + 4)) : c->r[R_BP];
+    const uint16_t drv = slot_target_seg(m, c->ip);
+    static int32_t v[16 + 64000];
+    int n = 0;
+    v[n++] = entry;
+    v[n++] = seg_read16(c, drv, (uint16_t)(0x0787 + 2 * (seg_read16(c, ss, (uint16_t)(blk + 6)) & 0xFF)));
+    for (int k = 0; k < 12; k++) v[n++] = seg_read16(c, ss, (uint16_t)(blk + 2 * k));
+    const uint16_t src = (uint16_t)v[2], sx = (uint16_t)v[3], sy = (uint16_t)v[4];
+    const int w = (int16_t)v[8], h = (int16_t)v[9];
+    if (w > 0 && h > 0 && w * h <= 64000 && sy + h <= 256)
+        for (int y = 0; y < h; y++) {
+            const uint16_t row = (uint16_t)(seg_read16(c, drv, (uint16_t)(4 + 2 * (sy + y))) + sx);
+            for (int x = 0; x < w; x++) v[n++] = mem_read8(c, phys(src, (uint16_t)(row + x)));
+        }
+    o->prim(o->user, c->icount, 'S', v, n);
+    any_begin(m, entry, seg_read16(c, drv, 0x0194));
+    return 0;
+}
+
+/* Graphics entry 11 (1E42:0151): a tick scale (driver 071A). From row BX - 1
+ * (+20 when DL >= 1, +1 more when CL is set) upward in steps of two rows,
+ * while the row is not below the table's low limit: a tick at the table's x,
+ * drawn leftward when SI is 0 and rightward otherwise, 3 pixels every tenth
+ * (2 when CL is set), 2 every fifth, else 1, skipped above the high limit.
+ * The table (in the driver's data segment, at 1966h / 196Eh / 1976h, indexed
+ * by SI + 4 when CL is set) and the colour [1866] are read here. Logged
+ * ('H'): SI, BX, DL, CL, the colour, x, the low and the high limit. */
+static int hook_lib_ticks(machine_t *m)
+{
+    flush(m);
+    const f117_observer *o = g_f117_observer;
+    if (!o || !o->prim) return 0;
+    cpu_t *c = &m->cpu;
+    const uint16_t drv = slot_target_seg(m, c->ip);
+    if (mem_read8(c, phys(drv, 0x071C)) != 0xB8) return 0;
+    const uint16_t dds = seg_read16(c, drv, 0x071D);
+    const uint16_t si0 = c->r[R_SI], cl = c->r[R_CX] & 0xFF;
+    const uint16_t si = (uint16_t)(si0 + (cl ? 4 : 0));
+    const int32_t v[8] = { si0, c->r[R_BX], (int8_t)(c->r[R_DX] & 0xFF), cl, mem_read8(c, phys(dds, 0x1866)),
+                           seg_read16(c, dds, (uint16_t)(si + 0x1966)), seg_read16(c, dds, (uint16_t)(si + 0x196E)),
+                           seg_read16(c, dds, (uint16_t)(si + 0x1976)) };
+    o->prim(o->user, c->icount, 'H', v, 8);
+    any_begin(m, 11, seg_read16(c, drv, 0x0194));
+    return 0;
+}
+
 /* Every other graphics entry: logged ('X', the entry number) so what draws
  * between two captured primitives is known, and so a pending capture is
  * closed before an uncaptured primitive draws over its pixels (a library
@@ -536,6 +603,12 @@ static const recomp_override OBSERVERS[] = {
     { "observe", "VGAME.EXE", VGAME_47304, 0x1377, 0x004C, hook_outline_begin, "fill or outline begin (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x01D3, hook_lib_spans, "library span fill (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x01EC, hook_lib_blit, "library blit (observer)", 1 },
+    { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x01E2, hook_lib_spans, "library span fill, mode 0 (observer)", 1 },
+    { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0151, hook_lib_ticks, "library tick scale (observer)", 1 },
+    { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0287, hook_lib_sprite, "library sprite, block argument (observer)", 1 },
+    { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0174, hook_lib_sprite, "library sprite (observer)", 1 },
+    { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x027D, hook_lib_sprite, "library clipped sprite, block argument (observer)", 1 },
+    { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0179, hook_lib_sprite, "library clipped sprite (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x011F, hook_lib_text, "library text, rows clipped (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x0129, hook_lib_text, "library text, width clipped (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x012E, hook_lib_text, "library text (observer)", 1 },

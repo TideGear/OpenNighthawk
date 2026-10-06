@@ -446,10 +446,9 @@ never instead of parity.
       and blits, and every other library entry with its page changes - and
       changes nothing. Stage 1: whole phases are rebuilt from the draw list
       byte for byte (`tools/drawlist_frame.py`, 73 of 73 on the strike
-      flight); the 3-D scene and the HUD's text and blits are replayed by
-      rule, 90% of the changed bytes. Left for Stage 1: replay rules for the
-      sprites (entries 73, 18), the HUD drawer (11) and entry 71, still
-      applied from the original's results.
+      flight), every changed byte replayed by rule. Left for Stage 1: the
+      display page itself, and the drawing branches this flight never
+      exercised (opaque text, the width clip, dithered fills).
 
 ## Housekeeping
 

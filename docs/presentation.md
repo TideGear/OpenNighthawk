@@ -245,6 +245,26 @@ Every call in this window is transparent, so the opaque branch is unchecked;
 dropping the row clip makes 7 of 14 phases inexact, but the width clip never
 cuts a string here.
 
+**Sprites, tick scales, and the page.** Entries 73 and 18 copy a sprite
+(driver 0EE6: a block with the source segment, the source and destination
+corners, the destination page and the size; colour 0 is transparent), 71 and
+19 clip it first (0E41: signed limits, the far end compared with the
+original near end); the observer logs the block and the source bytes ('S').
+Entry 11 draws a tick scale (071A: from row BX upward in steps of two, a
+long tick every tenth and a medium one every fifth, leftward or rightward,
+limits and x from a table in the driver's data segment; logged with them,
+'H'). Entry 40 is entry 37 with mode 0. And the library's page moves:
+entries 12-16 point it at another page (the HUD draws some lines and span
+fills straight to the display), so each line and span fill now carries the
+page and the origin it was drawn at. **With these, 73 of 73 phases are
+rebuilt exactly and nothing is copied from the original's results** - every
+changed byte of the work page in 30 million instructions of flight is
+replayed from the draw list. Dropping sprite transparency makes 7 of 14
+phases of the short window inexact; the tick scale's CL variant never occurs
+there. Not checked yet: what reaches the display page (A000) - the blits
+from the work page and the lines and fills drawn there directly - and the
+branches no capture exercised (opaque text, the width clip, dithered fills).
+
 **How much of a frame is captured.** With `F117R_OBSERVE_PAGES=1` the
 observer dumps the library's whole 64 KB page segment at each `game_draw`
 entry, and painted pixels are logged by their exact offset in it. A phase is

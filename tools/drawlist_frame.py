@@ -15,6 +15,10 @@ every primitive the observer captured, and compared with the dump at its end:
                                             the source is another page (art)
   text ('T')                                painted from the logged font by
                                             the library's text rules
+  tick scales ('H')                         drawn by the library's rules
+  sprites ('S')                             copied from the logged source,
+                                            colour 0 transparent, clipped by
+                                            the library's rules
 
 What has no replay rule yet is applied from what the original wrote and
 counted apart, so the share still copied rather than replayed is visible:
@@ -151,6 +155,61 @@ def text_pixels(entry, blk, chars, font):
     return out, colour_end
 
 
+def sprite_clip(blk):
+    """Driver 0E41 (entries 71, 19): the sprite's block clipped to x in
+    [+14h, +16h] and y in [+10h, +12h], signed, as the original adjusts it -
+    the far end compared against the original near end - or None when
+    nothing is left. Returns (sx, sy, dx, dy, w, h) and the clip's offsets
+    into the source (left, top)."""
+    b = [s16(x) for x in blk]
+    sx, sy, dx, dy, w, h = b[1], b[2], b[4], b[5], b[6], b[7]
+    left = top = 0
+    for axis in (0, 1):
+        pos, size = (dx, w) if axis == 0 else (dy, h)
+        lo, hi = (b[10], b[11]) if axis == 0 else (b[8], b[9])
+        ax = pos
+        end = pos + size - 1
+        if ax < lo:
+            if end < lo:
+                return None
+            cut = lo - ax
+            pos += cut
+            size -= cut
+            if axis == 0:
+                sx += cut
+                left = cut
+            else:
+                sy += cut
+                top = cut
+        if end > hi:
+            if ax > hi:
+                return None
+            size -= end - hi
+        if axis == 0:
+            dx, w = pos, size
+        else:
+            dy, h = pos, size
+    return (sx, sy, dx, dy, w, h), (left, top)
+
+
+def tick_pixels(si0, bx, dl, cl, x, lo, hi):
+    """Graphics entry 11 (driver 071A): the tick scale's pixels as (x, row)."""
+    out = []
+    step = -1 if si0 == 0 else 1             # STD unless SI is non-zero
+    row = (bx - 1 + (0x14 if dl >= 1 else 0) + (1 if cl else 0)) & 0xFFFF
+    ch = 10
+    while row >= lo:
+        if row <= hi:
+            n = 2 if ch == 5 else (2 if cl else 3) if ch == 10 else 1
+            for k in range(n):
+                out.append((x + step * k, row))
+        row = (row - 2) & 0xFFFF
+        if row > 0xFFF0:
+            break
+        ch = 1 if ch == 10 else ch + 1
+    return out
+
+
 def main():
     if len(sys.argv) != 2:
         sys.exit(__doc__)
@@ -231,20 +290,27 @@ def main():
             for x, y in outline_pixels(x0, y0, x1, y1):
                 page[(row0 + 320 * y + x) & 0xFFFF] = col & 0xFF
         elif k == "N":
-            x0, y0, x1, y1 = (int(x) for x in f[2:6])
+            v = [int(x) for x in f[2:]]
+            x0, y0, x1, y1 = v[:4]
+            lseg, lorg = (v[5], v[6]) if len(v) >= 7 else (seg, origin)
+            if lseg != seg:                                  # drawn on another page (the display)
+                continue
             for x, y in line_pixels(x0, y0, x1, y1):
                 if 0 <= x < 320 and 0 <= y < 200:
-                    page[(320 * y + origin + x) & 0xFFFF] = colour
+                    page[(320 * y + lorg + x) & 0xFFFF] = colour
         elif k == "Q":
             v = [int(x) for x in f[2:]]
             ya, mode, nrows = v[0], v[2], v[3]
+            qseg, qorg = (v[4 + 2 * nrows], v[5 + 2 * nrows]) if len(v) >= 6 + 2 * nrows else (seg, origin)
+            if qseg != seg:
+                continue
             for r in range(nrows):
                 l, rt = v[4 + 2 * r], v[5 + 2 * r]
                 y = ya + r
                 if rt < l or (rt == l and rt in (0, 0x13F)) or not 0 <= y < 200:
                     continue
                 for x in range(l, rt + 1):
-                    a = (320 * y + origin + x) & 0xFFFF
+                    a = (320 * y + qorg + x) & 0xFFFF
                     b = page[a]
                     page[a] = (colour if mode == 0 else b | colour if mode == 1 else
                                b & colour if mode == 2 else ((b & 0x0E) >> 1) | 0x98)
@@ -284,8 +350,35 @@ def main():
                 for x, y, col in pixels:
                     page[(320 * y + x) & 0xFFFF] = col
             totals["texts"] += 1
-        elif k == "x" and int(f[2]) in (1, 3, 4, 5):
-            pass                                             # text: replayed from its 'T'
+        elif k == "H":
+            si0, bx, dl, cl, col, x, lo, hi = (int(x) for x in f[2:10])
+            for px, row in tick_pixels(si0, bx, dl, cl, x, lo, hi):
+                page[(320 * row + px) & 0xFFFF] = col
+            totals["tick scales"] += 1
+        elif k == "S":
+            v = [int(x) for x in f[2:]]
+            entry, dseg, blk, src = v[0], v[1], v[2:14], v[14:]
+            w0, h0 = s16(blk[6]), s16(blk[7])
+            if len(src) != max(w0, 0) * max(h0, 0):
+                totals["sprites without source bytes"] += 1
+                continue
+            if entry in (71, 19):
+                got = sprite_clip(blk)
+                if got is None:
+                    continue
+                (sx, sy, dx, dy, w, h), (left, top) = got
+            else:
+                dx, dy, w, h, left, top = s16(blk[4]), s16(blk[5]), w0, h0, 0, 0
+            totals["sprites"] += 1
+            if dseg != seg:
+                continue
+            for y in range(h):
+                for x in range(w):
+                    b = src[(top + y) * w0 + left + x]
+                    if b:                                    # colour 0 is transparent
+                        page[(320 * (dy + y) + dx + x) & 0xFFFF] = b
+        elif k == "x" and int(f[2]) in (1, 3, 4, 5, 11, 73, 18, 71, 19):
+            pass                                             # text and sprites: replayed from 'T' and 'S'
         elif k == "x":
             v = [int(x) for x in f[2:]]
             entry, xseg, n = v[0], v[1], v[2]
