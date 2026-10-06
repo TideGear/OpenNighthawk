@@ -61,13 +61,18 @@ this project already has or is matching:
 
 The picture is made *from* projected polygons through span tables, so the
 polygon list (colour, vertices) exists in the middle of the path and is the
-natural place to observe. The per-frame routine `game_draw` (`0x01450`) was
-entered at instructions 142,435 / 522,343 / 921,618 / 1,303,588 of the
-window, about 390,000 apart, which at 9 million instructions a second is
-more often than S = 9 steps a second suggests. **That discrepancy is not yet
-explained** (several draws a step? the cockpit and the outside view in
-separate passes?) and is the first thing to resolve: the interpolation
-needs to know what one logic step draws.
+natural place to observe.
+
+**One logic step is two draws.** The step itself (`frame_effect_timers`,
+`0x04738`, then free fall `0x04958` 218 instructions later) was entered at
+instructions 514,934 and 1,295,143 of the window: 780,000 apart, which is
+8.6 steps a second at 9 million instructions a second, agreeing with the
+measured S = 9. `game_draw` (`0x01450`) was entered at 142,435, 522,343,
+921,618 and 1,303,588: twice per step, about half a step apart, one just
+after each step (7,400 and 8,400 instructions after it) and one midway. What
+the second draw is (a second view, the other half of a buffer, a repeat) is
+**not yet known**, and it matters: interpolation needs to know what a step
+draws, and whether the original already shows a picture between steps.
 
 ## What is not known (and has to be measured next)
 
