@@ -436,7 +436,7 @@ never instead of parity.
       interpolation between its states, and real 4K needs the drawing
       primitives captured as draw lists. Every stage is an observer of the
       machine and cannot change it. Stage 0 (measure what draws what, and
-      whether projected vertices carry fractional bits) is next.
+      what the second `game_draw` phase does, and recording camera-space vertices) is next.
 
 ## Housekeeping
 

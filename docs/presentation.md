@@ -122,7 +122,7 @@ Each is judged by a check, in the manner of the rest of this project.
 **Stage 0 - measure (this page's open questions).** An observer in the
 recompiled engine that logs, per frame, every call to the drawing
 primitives with its arguments. Output: a census of what draws what, how
-many primitives a frame holds, whether vertices carry fractions, whether the
+many primitives a frame holds, what the transformed camera-space vertices hold, whether the
 order is stable. Check: the log of two runs of a route is identical, and
 turning the observer on leaves every checkpoint and final hash unchanged.
 
