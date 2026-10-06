@@ -19,6 +19,22 @@ roadmap order, starting with the open Phase 1 items. Work is in
 pushed commit. Build with `C:\Users\Tideg\f117-recomp-local\build-p3.cmd`
 into `p3-build`.
 
+**86Box as a second reference (6 Oct, 14:40; started).** Owner's policy: parity
+with the original game on real hardware, not DOSBox; identified DOSBox quirks
+are not to be copied (memory `f117-parity-target-original-not-dosbox`). Set up
+so far in `D:/86box`: `86box.zip` (v6.0 Windows, b9001, downloading with
+`curl -C -`; the link is about 140 KB/s so use resume), and the IBM AT 5170
+BIOS (`roms/machines/ibmat/BIOS_5170_15NOV85_U27/U47.BIN`) and
+`roms/video/vga/ibm_vga.bin` fetched from the 86Box `roms` repo by raw URL
+(the full repo zip is too large to fetch in one go). Still to do: extract the
+zip, write `86box.cfg` for `ibmat` + `vga` (+ an AdLib or Sound Blaster), build
+a bootable DOS hard-disk image holding the GOG install (FreeDOS is free; a FAT16
+image needs its boot sector and kernel installed), and find a way to get frames
+and audio out (86Box has no debugger channel; desktop automation earlier failed
+with GetCursorPos access denied). Candidate first comparisons are the PIT
+control-word IRQ0 behaviour behind the roster timing and the OPL output, since
+those are the two places the machine deliberately follows DOSBox 0.74 / DBOPL.
+
 **Routes and gate (6 Oct, 12:30).** All 27 routes were re-checked on the
 rational timing. Re-recorded or re-expected today: `strike`, `strike_return`,
 `cargo`, `cargo_d5_fixed`, `cargo_return`, `secret_airstrip`,
