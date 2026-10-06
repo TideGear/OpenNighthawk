@@ -22,6 +22,7 @@ repository.
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import glob
 import os
 import re
@@ -84,10 +85,30 @@ def headless(engine, data, work, name, args, extra, route):
     return int(m.group(1)), m.group(2), int(interp.group(1)) if interp else -1, checkpoints
 
 
+def parallel(jobs, items, work):
+    """Run work(item) for every item on `jobs` threads (each is a child process,
+    on its own virtual clock, so the results do not depend on the load) and
+    return the results in item order; the first failure is raised after the
+    others finish."""
+    def guarded(item):
+        try:
+            return work(item), None
+        except SystemExit as e:
+            return None, e
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, jobs)) as pool:
+        results = list(pool.map(guarded, items))
+    for _, error in results:
+        if error is not None:
+            raise error
+    return [value for value, _ in results]
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", required=True, help="the game's install directory (holds F117.COM)")
     ap.add_argument("--work", default=os.path.join(os.path.expanduser("~"), "f117-recomp-local"))
+    ap.add_argument("--jobs", type=int, default=max(1, min(12, (os.cpu_count() or 2) // 2)),
+                    help="routes to run at once in the coverage and parity steps (1 = one at a time)")
     ap.add_argument("--no-parity", action="store_true")
     ap.add_argument("--no-coverage", action="store_true")
     ap.add_argument("--parity-only", action="store_true", help="check the current build without translating or rebuilding")
@@ -107,13 +128,15 @@ def main():
         build(gen)
     if not a.no_coverage and not a.parity_only:
         print("3. coverage")
-        for r in routes:
+        def cover(r):
             name = os.path.splitext(os.path.basename(r))[0]
             # Appended to, never replaced: a build records only what it had
             # to INTERPRET, so code an earlier capture got translated is
             # absent from this one - dropping the old file would lose it.
             cov = os.path.join(covdir, name + ".cov")
             icount, h, interp, _ = headless("recomp", a.data, a.work, name, route_args(r), ["--coverage", cov], r)
+            return name, icount, interp
+        for name, icount, interp in parallel(a.jobs, routes, cover):
             print("  %-20s %d clocks, %d interpreted" % (name, icount, interp))
         print("4. translate again, build again")
         recompile(a.data, gen, sorted(glob.glob(os.path.join(covdir, "*.cov"))))
@@ -121,10 +144,16 @@ def main():
     if not a.no_parity:
         print("5. parity")
         bad = 0
-        for r in routes:
+
+        def replay(job):
+            r, engine = job
             name = os.path.splitext(os.path.basename(r))[0]
-            ri = headless("interp", a.data, a.work, name, route_args(r), ["--hash-every", "50000000"], r)
-            rr = headless("recomp", a.data, a.work, name, route_args(r), ["--hash-every", "50000000"], r)
+            return headless(engine, a.data, a.work, name, route_args(r), ["--hash-every", "50000000"], r)
+        jobs = [(r, e) for r in routes for e in ("interp", "recomp")]
+        done = parallel(a.jobs, jobs, replay)
+        for k, r in enumerate(routes):
+            name = os.path.splitext(os.path.basename(r))[0]
+            ri, rr = done[2 * k], done[2 * k + 1]
             same = ri[:2] == rr[:2] and ri[3] == rr[3]
             bad += not same
             print("  %-20s interp %d/%s  recomp %d/%s (%d interpreted)  %s" % (
