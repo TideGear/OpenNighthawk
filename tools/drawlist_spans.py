@@ -148,6 +148,23 @@ class Spans:
             self.side(lo & 8, s16(y1), e["y1hi"])
 
 
+def paint(colour, y, x0, before):
+    """A fill row in the original's style (VGAME 0x14279 dispatches on the
+    colour word's high byte): FF solid, FE AND, FD OR, FB discard (the rows
+    are cleared and nothing is painted), FC stipple, else a dither of the
+    two colour bytes."""
+    lo, hi = colour & 0xFF, (colour >> 8) & 0xFF
+    if hi == 0xFF:
+        return [lo] * len(before)
+    if hi == 0xFE:
+        return [b & lo for b in before]
+    if hi == 0xFD:
+        return [b | lo for b in before]
+    if hi == 0xFB:
+        return list(before)
+    return None                                       # stipple and dither: not replayed yet
+
+
 def rows_of(sp):
     mine = []
     if sp.top != NOLEFT:
@@ -172,6 +189,8 @@ def main():
     stats = Counter()
     first_bad = []
     seen_fill = False         # the first polygon may have edges from before the log's window
+    fill = None               # the painting in progress: its colour and the bytes before and after
+    first_pix = []
     for line in open(sys.argv[1]):
         f = line.split()
         if not f:
@@ -204,6 +223,24 @@ def main():
             stats["rows"] += len(rows)
             poly = {"sp": sp, "xmin": xmin, "xmax": xmax, "join": [], "clock": f[1], "nclip": nclip}
             pending = []
+        elif f[0] == "b" and fill is not None:
+            v = [int(x) for x in f[2:]]
+            fill["before"].append(v)
+        elif f[0] == "a" and fill is not None:
+            v = [int(x) for x in f[2:]]
+            k = len(fill["after"])
+            fill["after"].append(v)
+            if k < len(fill["before"]):
+                y, x0, n = fill["before"][k][:3]
+                got = paint(fill["colour"], y, x0, fill["before"][k][3:3 + n])
+                ok = got == v[3:3 + n]
+                stats["pixel rows"] += 1
+                stats["pixel rows exact"] += ok
+                st = "%02X" % ((fill["colour"] >> 8) & 0xFF)
+                stats["rows " + st] += 1
+                stats["rows exact " + st] += ok
+                if not ok and len(first_pix) < 4:
+                    first_pix.append((f[1], st, y, x0, fill["before"][k][3:3 + min(n, 8)], v[3:3 + min(n, 8)], got[:8]))
         elif f[0] == "R" and poly is not None:
             v = [int(x) for x in f[2:]]
             top, nrows = v[1], v[2]
@@ -220,6 +257,7 @@ def main():
             elif (fl & 5) and (fl & 10):
                 sp.run(poly["xmax"] + 1, sp.rmax, sp.rmin)
                 sp.run(poly["xmin"] - 1, sp.lmax, sp.lmin)
+            fill = {"colour": v[3 + 2 * nrows] & 0xFFFF, "before": [], "after": []}
             mine = rows_of(sp)
             ok = mine == want and (sp.top if want else NOLEFT) == (top if want else NOLEFT)
             stats["painted"] += 1
@@ -236,6 +274,13 @@ def main():
     q = stats["painted"]
     print("%d painted, with the join and the borders: exact for %d (%.1f%%); %d had a near-clip join, %d of them exact" % (
         q, stats["painted exact"], 100.0 * stats["painted exact"] / max(q, 1), stats["joins"], stats["joins exact"]))
+    r = stats["pixel rows"]
+    print("%d painted rows of pixels: exact for %d (%.1f%%)" % (r, stats["pixel rows exact"], 100.0 * stats["pixel rows exact"] / max(r, 1)))
+    for k in sorted(x for x in stats if x.startswith("rows ") and not x.startswith("rows exact")):
+        st = k.split()[1]
+        print("   style %s: %d rows, %d exact" % (st, stats[k], stats["rows exact " + st]))
+    for b in first_pix:
+        print("  pixels at clock %s, style %s, row %d from x %d: before %s after %s replay %s" % b)
     for b in first_bad:
         print("  at clock %s (%d join edges): top %s vs %s; rows %s vs %s; %d vs %d rows" % b)
 

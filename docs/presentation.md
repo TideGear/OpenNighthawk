@@ -151,8 +151,16 @@ runs (one column outside the viewport, over the y range that left through
 each side). On 30 million instructions of the strike route's flight: **3,678
 polygons, 8,897 edge rows and every accumulator exact; 2,719 painted
 polygons, every final row exact, including all 155 with a near-clip join.**
-Still to replay before a polygon is pixels: the fill styles (in this window
-solid 2,413, OR 521, AND 373, discard 372; dither and stipple not seen).
+**And to pixels.** The painting hook also records the page bytes each row
+covers (clamped to the viewport) before the fill, and the next event the
+observer sees records them after; the checker paints the row in the fill's
+style - from the colour word the fill really uses (`[8606]`, after its fade):
+FF solid, FE AND, FD OR, FB discard - and compares. **11,293 of 11,293
+painted rows are exact** (solid 4,474, OR 3,592, AND 1,903, discard 1,324),
+so the model polygons replay from the draw list to the original's pixels
+bit for bit. Not yet replayed: the dither and stipple styles (not seen in
+this window), outline polygons' lines, the sky and ground, and everything
+the resident graphics library draws (sprites, HUD, text).
 
 ## What is not known (and has to be measured next)
 

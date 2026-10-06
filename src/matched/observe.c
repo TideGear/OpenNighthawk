@@ -14,8 +14,12 @@ static int32_t ds_dword(cpu_t *c, uint16_t at)
     return (int32_t)((uint32_t)seg_read16(c, ds, at) | ((uint32_t)seg_read16(c, ds, (uint16_t)(at + 2)) << 16));
 }
 
+/* (flush, below) */
+static void flush(machine_t *m);
+
 void observe_vertex(machine_t *m, uint16_t di, uint16_t bx)
 {
+    flush(m);
     const f117_observer *o = g_f117_observer;
     if (!o || !o->vertex) return;
     cpu_t *c = &m->cpu;
@@ -30,10 +34,44 @@ void observe_vertex(machine_t *m, uint16_t di, uint16_t bx)
 
 void observe_edge_prepared(machine_t *m, uint16_t slot, uint16_t di, uint16_t bx)
 {
+    flush(m);
     const f117_observer *o = g_f117_observer;
     if (!o || !o->prim) return;
     const int32_t v[3] = { slot, (uint16_t)(di + 0xD6B4), (uint16_t)(bx + 0xD6B4) };
     o->prim(o->user, m->cpu.icount, 'G', v, 3);
+}
+
+/* The pixels a fill is about to paint: the R hook records each row's span,
+ * clamped to the viewport, and the page bytes there ('b'); the next event the
+ * observer sees - nothing draws in between - records the same bytes again
+ * ('a'). Replaying the fill style on the 'b' bytes must give the 'a' bytes. */
+static struct {
+    int n;
+    uint16_t es;
+    struct { int16_t y, x0; uint16_t at, len; } row[256];
+} g_pend;
+
+static void emit_row_bytes(machine_t *m, char kind)
+{
+    const f117_observer *o = g_f117_observer;
+    cpu_t *c = &m->cpu;
+    for (int k = 0; k < g_pend.n; k++) {
+        int32_t v[3 + 330];
+        int n = 0;
+        v[n++] = g_pend.row[k].y; v[n++] = g_pend.row[k].x0; v[n++] = g_pend.row[k].len;
+        for (unsigned i = 0; i < g_pend.row[k].len && n < 3 + 330; i++)
+            v[n++] = mem_read8(c, phys(g_pend.es, (uint16_t)(g_pend.row[k].at + i)));
+        o->prim(o->user, c->icount, kind, v, n);
+    }
+}
+
+/* Called first by every observer entry: closes a pending fill. */
+static void flush(machine_t *m)
+{
+    if (!g_pend.n) return;
+    const f117_observer *o = g_f117_observer;
+    if (o && o->prim) emit_row_bytes(m, 'a');
+    g_pend.n = 0;
 }
 
 /* The hooks below are told to the observer and then left alone - each
@@ -42,6 +80,7 @@ void observe_edge_prepared(machine_t *m, uint16_t slot, uint16_t di, uint16_t bx
 /* VGAME 0x01450, game_draw. */
 static int hook_game_draw(machine_t *m)
 {
+    flush(m);
     const f117_observer *o = g_f117_observer;
     if (o && o->frame_phase) o->frame_phase(o->user, m->cpu.icount);
     return 0;
@@ -50,6 +89,7 @@ static int hook_game_draw(machine_t *m)
 /* 130D:004A, one edge of a filled polygon: SI the slot. */
 static int hook_poly_edge(machine_t *m)
 {
+    flush(m);
     const f117_observer *o = g_f117_observer;
     if (!o || !o->prim) return 0;
     cpu_t *c = &m->cpu;
@@ -68,6 +108,7 @@ static int hook_poly_edge(machine_t *m)
  * 89DC + 2y, right at 8D9E + 2y): the ground truth for replaying the edges. */
 static int hook_poly_fill(machine_t *m)
 {
+    flush(m);
     const f117_observer *o = g_f117_observer;
     if (!o || !o->prim) return 0;
     cpu_t *c = &m->cpu;
@@ -98,6 +139,7 @@ static int hook_poly_fill(machine_t *m)
  * for the whole polygon - and the colour word in AX. */
 static int hook_fill_rows(machine_t *m)
 {
+    flush(m);
     const f117_observer *o = g_f117_observer;
     if (!o || !o->prim) return 0;
     cpu_t *c = &m->cpu;
@@ -117,7 +159,25 @@ static int hook_fill_rows(machine_t *m)
             v[n++] = l; v[n++] = r; rows++;
         }
     v[rows_at] = rows;
+    v[n++] = seg_read16(c, ds, 0x8606);                           /* the colour the fill uses, after the fade */
+    v[n++] = c->seg[S_ES];
     o->prim(o->user, c->icount, 'R', v, n);
+    /* the page bytes the rows cover, clamped to the viewport */
+    const int16_t xmin = (int16_t)seg_read16(c, ds, 0x85FA), xmax = (int16_t)seg_read16(c, ds, 0x85FE);
+    g_pend.n = 0;
+    g_pend.es = c->seg[S_ES];
+    for (int k = 0; k < rows && g_pend.n < 256; k++) {
+        const int16_t l = (int16_t)v[3 + 2 * k], r = (int16_t)v[4 + 2 * k];
+        const int16_t x0 = l < xmin ? xmin : l, x1 = r > xmax ? xmax : r;
+        if (x0 > x1) continue;
+        const int y = top + k;
+        g_pend.row[g_pend.n].y = (int16_t)y;
+        g_pend.row[g_pend.n].x0 = x0;
+        g_pend.row[g_pend.n].at = (uint16_t)(seg_read16(c, ds, (uint16_t)(0x861C + 2 * y)) + x0);
+        g_pend.row[g_pend.n].len = (uint16_t)(x1 - x0 + 1);
+        g_pend.n++;
+    }
+    emit_row_bytes(m, 'b');
     return 0;
 }
 
@@ -125,6 +185,7 @@ static int hook_fill_rows(machine_t *m)
  * too): AX the colour word. */
 static int hook_outline_begin(machine_t *m)
 {
+    flush(m);
     const f117_observer *o = g_f117_observer;
     if (!o || !o->prim) return 0;
     const int32_t v[1] = { m->cpu.r[R_AX] };
@@ -135,6 +196,7 @@ static int hook_outline_begin(machine_t *m)
 /* 1377:0055, an outline edge drawn as a line: SI the slot. */
 static int hook_outline_edge(machine_t *m)
 {
+    flush(m);
     const f117_observer *o = g_f117_observer;
     if (!o || !o->prim) return 0;
     const int32_t v[1] = { m->cpu.r[R_SI] };
