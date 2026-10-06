@@ -3,6 +3,16 @@ name: Windows build and ROM-free tests
 on:
   push:
     branches: [master]
+    # Prose only: nothing builds or tests from these, and a doc commit that
+    # started a run would cancel the code commit's run before it finished.
+    paths-ignore:
+      - 'docs/presentation.md'
+      - 'docs/roadmap.md'
+      - 'docs/architecture.md'
+      - 'docs/provenance.md'
+      - 'docs/parity-audit.md'
+      - 'handoff.md'
+      - 'README.md'
   pull_request:
   workflow_dispatch:
 
