@@ -19,21 +19,29 @@ roadmap order, starting with the open Phase 1 items. Work is in
 pushed commit. Build with `C:\Users\Tideg\f117-recomp-local\build-p3.cmd`
 into `p3-build`.
 
-**86Box as a second reference (6 Oct, 14:40; started).** Owner's policy: parity
-with the original game on real hardware, not DOSBox; identified DOSBox quirks
-are not to be copied (memory `f117-parity-target-original-not-dosbox`). Set up
-so far in `D:/86box`: `86box.zip` (v6.0 Windows, b9001, downloading with
-`curl -C -`; the link is about 140 KB/s so use resume), and the IBM AT 5170
-BIOS (`roms/machines/ibmat/BIOS_5170_15NOV85_U27/U47.BIN`) and
-`roms/video/vga/ibm_vga.bin` fetched from the 86Box `roms` repo by raw URL
-(the full repo zip is too large to fetch in one go). Still to do: extract the
-zip, write `86box.cfg` for `ibmat` + `vga` (+ an AdLib or Sound Blaster), build
-a bootable DOS hard-disk image holding the GOG install (FreeDOS is free; a FAT16
-image needs its boot sector and kernel installed), and find a way to get frames
-and audio out (86Box has no debugger channel; desktop automation earlier failed
-with GetCursorPos access denied). Candidate first comparisons are the PIT
-control-word IRQ0 behaviour behind the roster timing and the OPL output, since
-those are the two places the machine deliberately follows DOSBox 0.74 / DBOPL.
+**86Box as a second reference (6 Oct, 15:00; disk built, not yet booted).**
+Owner's policy: parity with the original game on real hardware, not DOSBox;
+identified DOSBox quirks are not to be copied (memory
+`f117-parity-target-original-not-dosbox`). In `D:/86box`: `app/` is 86Box v6.0
+(b9001) extracted, with the IBM AT 5170 BIOS
+(`roms/machines/ibmat/BIOS_5170_15NOV85_U27/U47.BIN`) and
+`roms/video/vga/ibm_vga.bin` fetched by raw URL from the 86Box `roms` repo (the
+whole repo is too large to pull; the link is about 140 KB/s, resume with
+`curl -C -`); `fd13/` is the FreeDOS 1.3 floppy edition. `py
+tools/ref86box/build_hdd.py` (run in `D:/86box`, needs `pip install pyfatfs`)
+builds `vm/f117a.img`: 64 MB, geometry 130 cylinders x 16 heads x 63 sectors,
+one active FAT16 partition at LBA 63 holding FreeDOS (`\FREEDOS`, `KERNEL.SYS`,
+FDCONFIG/FDAUTO) and the 146 files of the GOG install in `\F117A`. The MBR has
+a partition table but no boot code. Next: a copy of the 1.44 MB boot floppy
+(`fd13/144m/x86BOOT.img`) whose `fdauto.bat` runs `fdisk /mbr` and `sys c:`
+unattended; an `86box.cfg` (86Box writes none until its UI is used, so the
+machine, hard-disk controller and drive geometry keys have to be written by
+hand; the IBM AT BIOS wants a drive type, so an AMI/Award 286 or 386 board with
+an auto-detecting IDE controller may be easier); then boot, and find a way to
+get frames and audio out (86Box has no debugger channel; desktop automation
+earlier failed with GetCursorPos access denied). First comparisons: the PIT
+control-word IRQ0 behaviour behind the roster timing, and the OPL output, the
+two places the machine deliberately follows DOSBox 0.74 / DBOPL.
 
 **Routes and gate (6 Oct, 12:30).** All 27 routes were re-checked on the
 rational timing. Re-recorded or re-expected today: `strike`, `strike_return`,
