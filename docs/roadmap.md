@@ -396,7 +396,7 @@ never instead of parity.
       Matched routines have a path now: `src/matched/matched.c`, placed for
       the recompiled engine only, held to the original by
       `tests/func_lockstep.c` from random states and by every route.
-      151 matched addresses in all seven programs (free fall, waypoint,
+      191 matched addresses in all seven programs (free fall, waypoint,
       orientation transpose, sign, abs, clamps, 32-bit shifts and multiply,
       table sine, clipping outcode, map projections, weapon effectiveness,
       setters, string and block copies, camera matrix products and depths,
@@ -438,12 +438,17 @@ never instead of parity.
       divide, and the picture comes from two rasterisers (VGAME's model
       rasteriser and the resident graphics library). So 60+ fps is
       interpolation between its states and real 4K needs the primitives
-      captured. Stage 0 is built: an observer (`src/matched/observe.c`,
-      `f117run --observe`) that logs frame phases and projected vertices,
-      changes nothing, and shows the draw order is stable from step to step.
-      Next: Stage 1 (draw lists), after deciding between observing the draw
-      path and rendering from a data-segment snapshot with the Reimp's
-      renderer (the fork in the design page).
+      captured. The owner chose to observe and replay the original's draw
+      path (the fork in the design page). Stage 0 is built: an observer
+      (`src/matched/observe.c`, `f117run --observe`) that logs frame phases,
+      projected vertices and every drawing primitive - model polygons and
+      their edges, outline edges, the graphics library's lines, span fills
+      and blits, and every other library entry with its page changes - and
+      changes nothing. Stage 1: whole phases are rebuilt from the draw list
+      byte for byte (`tools/drawlist_frame.py`, 73 of 73 on the strike
+      flight); the 3-D scene is replayed completely, the HUD phase 83% by
+      rule. Left for Stage 1: replay rules for the eight HUD entries (sprites,
+      shapes, the HUD drawer) still applied from the original's results.
 
 ## Housekeeping
 

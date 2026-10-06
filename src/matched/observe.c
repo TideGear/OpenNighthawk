@@ -217,8 +217,19 @@ static int hook_outline_edge(machine_t *m)
     flush(m);
     const f117_observer *o = g_f117_observer;
     if (!o || !o->prim) return 0;
-    const int32_t v[1] = { m->cpu.r[R_SI] };
-    o->prim(o->user, m->cpu.icount, 'L', v, 1);
+    /* the slot, its endpoints (x0 [si], y0 [si+4], x1 [si+8], y1 [si+0Ch],
+     * the low words of 32-bit fields), the colour [8606], the page [861A],
+     * the first two rows of the row table [861C], and the handler the style
+     * table [85F2] sends it to (1377:046F, the plain line, so far) */
+    cpu_t *c = &m->cpu;
+    const uint16_t ds = c->seg[S_DS], si = c->r[R_SI];
+    const int32_t v[10] = { si,
+        (int16_t)seg_read16(c, ds, si), (int16_t)seg_read16(c, ds, (uint16_t)(si + 4)),
+        (int16_t)seg_read16(c, ds, (uint16_t)(si + 8)), (int16_t)seg_read16(c, ds, (uint16_t)(si + 12)),
+        seg_read16(c, ds, 0x8606), seg_read16(c, ds, 0x861A),
+        seg_read16(c, ds, 0x861C), seg_read16(c, ds, 0x861E),
+        seg_read16(c, c->seg[S_CS], (uint16_t)(seg_read16(c, ds, 0x85F2) + 6)) };
+    o->prim(o->user, c->icount, 'L', v, 10);
     return 0;
 }
 
@@ -432,9 +443,17 @@ static int hook_lib_other(machine_t *m)
     line_flush(m);                         /* not the fill's rows: the fill itself calls entries mid-paint */
     const f117_observer *o = g_f117_observer;
     if (!o || !o->prim) return 0;
-    const int32_t v[1] = { (int32_t)((m->cpu.ip - 0x011A) / 5) };
-    o->prim(o->user, m->cpu.icount, 'X', v, 1);
-    any_begin(m, v[0], seg_read16(&m->cpu, slot_target_seg(m, m->cpu.ip), 0x0194));
+    cpu_t *c = &m->cpu;
+    /* the entry, then the first two argument words (far call: SS:SP+4, +6) -
+     * entry 26 sets the origin from the first, so a replay can follow it */
+    const int32_t v[3] = { (int32_t)((c->ip - 0x011A) / 5),
+                           seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_SP] + 4)),
+                           seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_SP] + 6)) };
+    o->prim(o->user, c->icount, 'X', v, 3);
+    /* entries that only set state (24 origin 0, 26 origin, 62 an address,
+     * 65 a variable, 46 the DAC and the CRTC start) draw nothing to keep */
+    if (v[0] != 24 && v[0] != 26 && v[0] != 46 && v[0] != 62 && v[0] != 65)
+        any_begin(m, v[0], seg_read16(c, slot_target_seg(m, c->ip), 0x0194));
     return 0;
 }
 

@@ -112,16 +112,16 @@
       {
         "item": "Stage 0: measure what draws, and an observer that logs the drawing primitives per frame",
         "weight": 6,
-        "done": 0.8,
+        "done": 0.9,
         "kind": "estimate",
-        "evidence": "Measured and written up (docs/presentation.md) and the observer is built: hooks on game_draw and the matched projection, f117run --observe, hashes unchanged with it on, logs byte-identical across runs, ROM-free unit test. Not yet: a vertex observer on the original's own (non-matched) projection path and the library's driver slots."
+        "evidence": "Measured and written up (docs/presentation.md) and the observer is built: hooks on game_draw, the matched projection, VGAME's fill and outline paths and every graphics library entry (lines, span fills, blits decoded; the rest logged with their page changes), f117run --observe, hashes unchanged with it on, ROM-free unit test. Not yet: a vertex observer on the original's own (non-matched) projection path."
       },
       {
         "item": "Stage 1: draw lists replayed bit-exact at 320x200",
         "weight": 10,
-        "done": 0.6,
+        "done": 0.8,
         "kind": "estimate",
-        "evidence": "Model polygons replay to the original's pixels bit for bit (11,293 rows); the library's lines (entry 31) replay consistently (1,348 of 1,348, a one-sided check). Not yet: dither/stipple, sprites and blits, text, sky and ground, a whole-frame comparison."
+        "evidence": "Whole phases rebuilt from the draw list byte for byte over the 64 KB page (tools/drawlist_frame.py): 73 of 73 on 30M instructions of the strike flight, an off-by-one in a rule fails all of them. The 3-D phase is replayed completely; 17% of changed bytes (all HUD) still come from the original's recorded results. Not yet: replay rules for the HUD entries (73/18 sprites, 5/4/1/3 shapes, 11, 71), dither/stipple fill styles (not seen in the window)."
       },
       {
         "item": "Stage 2: high-resolution re-draw",

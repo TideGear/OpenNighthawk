@@ -25,7 +25,9 @@
  *   'R' the fill paints (1377:005E): the colour word, the top row, the row
  *       count and each row's bounds, after the near-clip join (an 'E' between
  *       'F' and 'R') and the border runs
- *   'L' an edge of an outline polygon drawn as a line (1377:0055): slot */
+ *   'L' an edge of an outline polygon drawn as a line (1377:0055): slot,
+ *       x0, y0, x1, y1, the colour word, the page segment, rows 0 and 1 of
+ *       the row table, and the line handler's offset in 1377 */
 typedef struct f117_observer {
     void *user;
     /* The original's per-frame routine (game_draw, VGAME 0x01450) was

@@ -192,15 +192,15 @@ are the ones still to capture.
 
 **What the other phase draws.** With `F117R_OBSERVE_PAGES=1` an entry no
 hook captures also keeps the whole page it draws to, and the next event logs
-every byte that changed ('x'), so every changed byte of a phase can be
-attributed. On 6 million instructions of the strike flight: in one phase of
-each step (the 3-D scene) **every changed byte is a captured fill or library
-primitive** (about 6,650 a phase, 955 of them library span fills and lines);
-in the other (the cockpit and HUD) the blit, entry 42, changes about 5,000 of
-6,670, then entries 73 (480), 5 (about 390), 1 (163), 4, 11, 18, 3 and 71,
-and the captured lines the rest. (The 82% / 2% split measured before had the
-two buffers the wrong way round: the origin a `game_draw` dump shows is the
-one the *next* phase draws to.)
+every byte that changed ('x'). In the phase that draws the cockpit and HUD
+(origin 8A29h at its start) the blit, entry 42, changes about 5,000 of 6,670
+bytes, then entries 73 (480), 5 (about 390), 1 (163), 4, 11, 18, 3 and 71.
+Entries 24 and 26 only set the origin (to 0, and to their argument - the
+HUD phase moves it mid-phase), 62 computes an address, 65 sets a variable
+and 46 writes the DAC and the CRTC start; none of them draws. (Crediting each
+changed byte to the last capture that touched it suggested the 3-D phase was
+fully captured; it was not - see the replay below. The earlier 82% / 2%
+labels by origin were right.)
 
 **The blit.** Entry 42 is `(src_page, sx, sy, dst_page, dx, dy, w, h)`, far,
 eight words; a page is an index into the driver's page table at cs:[0787]:
@@ -209,6 +209,24 @@ art (09C0). Each HUD phase restores instrument backgrounds from page 2 into
 page 1 and copies regions of page 1 to the display. Logged ('C') with the
 source bytes in accounting mode: **77 of 77 blits exact** (35,971 bytes) -
 every changed byte inside the destination and equal to its source.
+
+**Whole phases rebuilt from the draw list.** `tools/drawlist_frame.py`
+starts each phase from the page dump at its start, replays every captured
+primitive in order and compares the result with the dump at its end, byte
+for byte over the whole 64 KB page. Model fill rows are painted in their
+style from the replay's own bytes; library lines, span fills and blits by
+their rules (a blit within the page from the replay itself, from the art page
+from its logged bytes); outline polygons' edges by VGAME's own line routine
+(1377:046F, reached through the style table at [85F2]: endpoints from the
+edge slot, rows from [861C], colour [8606] - the writer the attribution
+above had hidden, and the last 222 bytes a 3-D phase); origin changes by
+entries 24 and 26. What has no rule yet is applied from the original's
+result and counted: the HUD entries above. **On 30 million instructions of
+the strike flight, 73 of 73 phases are rebuilt exactly**; of 486,067 bytes
+changed, 83,444 (17%, all in the HUD phases) come from those recorded
+results and the rest are replayed. The 3-D phases are replayed completely.
+An off-by-one in the outline rule's error term makes all 14 phases of a
+6-million-instruction window inexact.
 
 **How much of a frame is captured.** With `F117R_OBSERVE_PAGES=1` the
 observer dumps the library's whole 64 KB page segment at each `game_draw`
