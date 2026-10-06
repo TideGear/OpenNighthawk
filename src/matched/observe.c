@@ -247,7 +247,7 @@ static void line_flush(machine_t *m)
     const f117_observer *o = g_f117_observer;
     if (!o || !o->prim) return;
     cpu_t *c = &m->cpu;
-    int32_t v[4 + 3 * 400];
+    int32_t v[4 + 4 * 2000];
     int n = 0;
     v[n++] = g_line.page; v[n++] = 0;
     const int count_at = n++;
@@ -255,8 +255,9 @@ static void line_flush(machine_t *m)
     for (unsigned y = 0; y < g_line.h; y++)
         for (unsigned x = 0; x < g_line.w; x++) {
             const uint8_t now = mem_read8(c, phys(g_line.page, (uint16_t)(g_line.at[y] + x)));
-            if (now != g_line.before[y * g_line.w + x] && n + 3 <= (int)(sizeof v / sizeof v[0])) {
-                v[n++] = (int32_t)(uint16_t)(g_line.at[y] + x); v[n++] = (int32_t)(g_line.x0 + x) | ((int32_t)(g_line.y0 + y) << 16); v[n++] = now; changed++;
+            if (now != g_line.before[y * g_line.w + x] && n + 4 <= (int)(sizeof v / sizeof v[0])) {
+                v[n++] = (int32_t)(uint16_t)(g_line.at[y] + x); v[n++] = (int32_t)(g_line.x0 + x) | ((int32_t)(g_line.y0 + y) << 16);
+                v[n++] = now; v[n++] = g_line.before[y * g_line.w + x]; changed++;
             }
         }
     v[count_at] = changed;
@@ -319,11 +320,68 @@ static int hook_lib_colour_stack(machine_t *m)
     return 0;
 }
 
+/* Graphics entry 37 (1E42:01D3), the library's span fill: rows AX..CX of
+ * the table at SS:BX (left words, then right words 1B8h bytes on), combine
+ * mode DX (0 set, 1 OR, 2 AND, 3 darken), the colour from entry 32/33. Logged
+ * with its rows ('Q'); the rows' page bytes are kept like a line's bounding
+ * box, so the next event logs the pixels it changed ('n'). */
+static int hook_lib_spans(machine_t *m)
+{
+    flush(m);
+    const f117_observer *o = g_f117_observer;
+    if (!o || !o->prim) return 0;
+    cpu_t *c = &m->cpu;
+    const int16_t ya = (int16_t)c->r[R_AX], yb = (int16_t)c->r[R_CX];
+    const uint16_t bx = c->r[R_BX], ss = c->seg[S_SS];
+    int32_t v[4 + 2 * 220];
+    int n = 0;
+    v[n++] = ya; v[n++] = yb; v[n++] = c->r[R_DX];
+    const int rows_at = n++;
+    int rows = 0;
+    if (ya >= 0 && yb >= ya && yb < 220)
+        for (int y = ya; y <= yb; y++) {
+            v[n++] = seg_read16(c, ss, (uint16_t)(bx + 2 * y));
+            v[n++] = seg_read16(c, ss, (uint16_t)(bx + 0x1B8 + 2 * y));
+            rows++;
+        }
+    v[rows_at] = rows;
+    o->prim(o->user, c->icount, 'Q', v, n);
+    if (!rows) return 0;
+    const uint16_t drv = slot_target_seg(m, 0x01D3);
+    g_line.page = seg_read16(c, drv, 0x0194);
+    const uint16_t origin = seg_read16(c, drv, 0x0196);
+    int16_t y0 = ya < 0 ? 0 : ya, y1 = yb > 199 ? 199 : yb;
+    if (y0 > y1) return 0;
+    g_line.x0 = 0; g_line.y0 = (uint16_t)y0; g_line.w = 320; g_line.h = (uint16_t)(y1 - y0 + 1);
+    for (unsigned y = 0; y < g_line.h; y++) {
+        g_line.at[y] = (uint16_t)(seg_read16(c, drv, (uint16_t)(4 + 2 * (g_line.y0 + y))) + origin);
+        for (unsigned x = 0; x < 320; x++)
+            g_line.before[y * 320 + x] = mem_read8(c, phys(g_line.page, (uint16_t)(g_line.at[y] + x)));
+    }
+    g_line.on = 1;
+    return 0;
+}
+
+/* Every other graphics entry: logged ('X', the entry number) so what draws
+ * between two captured primitives is known, and so a pending capture is
+ * closed before an uncaptured primitive draws over its pixels (a library
+ * capture only: VGAME's fill calls entry 46 while it paints). */
+static int hook_lib_other(machine_t *m)
+{
+    line_flush(m);                         /* not the fill's rows: the fill itself calls entries mid-paint */
+    const f117_observer *o = g_f117_observer;
+    if (!o || !o->prim) return 0;
+    const int32_t v[1] = { (int32_t)((m->cpu.ip - 0x011A) / 5) };
+    o->prim(o->user, m->cpu.icount, 'X', v, 1);
+    return 0;
+}
+
 static const recomp_override OBSERVERS[] = {
     { "observe", "VGAME.EXE", VGAME_47304, 0x0000, 0x1450, hook_game_draw, "per-frame draw routine (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x130D, 0x004A, hook_poly_edge, "filled polygon edge (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x130D, 0x0116, hook_poly_fill, "filled polygon fill (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x1377, 0x004C, hook_outline_begin, "fill or outline begin (observer)", 1 },
+    { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x01D3, hook_lib_spans, "library span fill (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x01B5, hook_lib_line, "library line (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x01BA, hook_lib_colour_ah, "library line colour (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x01BF, hook_lib_colour_stack, "library line colour (observer)", 1 },
@@ -337,4 +395,18 @@ void observe_register(void)
     if (done) return;
     done = 1;
     for (unsigned i = 0; i < sizeof OBSERVERS / sizeof OBSERVERS[0]; i++) recomp_override_add(&OBSERVERS[i]);
+    /* the graphics entries not hooked above: 0..83 at 1E42:011A + 5n */
+    static recomp_override others[84];
+    unsigned n = 0;
+    for (unsigned e = 0; e < 84; e++) {
+        const uint16_t ip = (uint16_t)(0x011A + 5 * e);
+        int taken = 0;
+        for (unsigned i = 0; i < sizeof OBSERVERS / sizeof OBSERVERS[0]; i++)
+            if (OBSERVERS[i].seg == 0x1E42 && OBSERVERS[i].ip == ip) taken = 1;
+        if (taken) continue;
+        others[n] = (recomp_override){ "observe", "VGAME.EXE", VGAME_47304, 0x1E42, ip, hook_lib_other,
+                                       "graphics entry (observer)", 1 };
+        recomp_override_add(&others[n]);
+        n++;
+    }
 }

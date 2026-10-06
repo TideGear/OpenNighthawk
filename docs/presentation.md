@@ -174,6 +174,22 @@ pixel to be on it, in its colour: **1,348 of 1,348 lines consistent.** The
 test is one-sided - a pixel that already had the line's colour does not
 change, so it cannot show a pixel the replay draws and the original does not.
 
+**The library's span fills.** Entry 37 (1E42:01D3) fills rows ya..yb from
+two bound tables in the current colour; the observer logs the rows' bounds
+(a left of FFFFh is an empty row) and the changed pixels as for a line. A
+fill whose first row is negative fills nothing and is skipped. **2,183 of
+2,183 span fills consistent** in the same window, all mode 0 (the same
+one-sided test).
+
+**Every other graphics entry is logged** ('X', the entry number), so what
+draws between two captured primitives is known, and a pending line or span
+capture is closed before it - but not a model fill's capture, because the
+fill calls entry 46 while it paints (closing on it cut 546 rows short). In
+the 30 million instructions: 26 (1,948 calls), 62 (1,085), 42 the blit
+(407), 5 (389), 1 (370), 46 (232), 41 (230), 73 (222), then 21 more entries
+under 120 calls each, 18 (the transparent blit) among them at 74. Those
+are the ones still to capture.
+
 **How much of a frame is captured.** With `F117R_OBSERVE_PAGES=1` the
 observer dumps the library's whole 64 KB page segment at each `game_draw`
 entry, and painted pixels are logged by their exact offset in it. A phase is

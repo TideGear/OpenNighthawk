@@ -230,6 +230,8 @@ def main():
     fill = None               # the painting in progress: its colour and the bytes before and after
     first_pix = []
     line_colour, pending_line, first_line = None, None, []
+    pending_spans = None
+    first_span = []
     for line in open(sys.argv[1]):
         f = line.split()
         if not f:
@@ -262,15 +264,47 @@ def main():
             stats["rows"] += len(rows)
             poly = {"sp": sp, "xmin": xmin, "xmax": xmax, "join": [], "clock": f[1], "nclip": nclip}
             pending = []
+        elif f[0] == "X":
+            stats["entry %d" % int(f[2])] += 1
         elif f[0] == "K":
             line_colour = int(f[2])
         elif f[0] == "N":
             v = [int(x) for x in f[2:]]
             pending_line = (v[0], v[1], v[2], v[3], line_colour)
+        elif f[0] == "Q":
+            v = [int(x) for x in f[2:]]
+            if v[3]:                                 # a fill with no rows (first row negative) draws nothing
+                pending_spans = (v[0], v[1], v[2], [(v[4 + 2 * k], v[5 + 2 * k]) for k in range(v[3])], line_colour)
+                pending_line = None
+        elif f[0] == "n" and pending_spans is not None:
+            v = [int(x) for x in f[2:]]
+            ya, yb, mode, rows, colour = pending_spans
+            want = {}
+            for k, (l, r) in enumerate(rows):
+                y = ya + k
+                if r < l or (r == l and r in (0, 0x13F)):
+                    continue
+                for x in range(l, r + 1):
+                    want[(x, y)] = mode
+            ok = True
+            for k in range(v[2]):
+                x, y, now, before = v[4 + 4 * k] & 0xFFFF, v[4 + 4 * k] >> 16, v[5 + 4 * k], v[6 + 4 * k]
+                md = want.get((x, y))
+                exp = None if md is None else (colour if md == 0 else before | colour if md == 1 else
+                                               before & colour if md == 2 else ((before & 0x0E) >> 1) | 0x98)
+                if exp != now:
+                    ok = False
+                    if len(first_span) < 6:
+                        first_span.append((f[1], ya, yb, mode, colour, x, y, now, before, md, rows[max(0, y - ya - 1):y - ya + 2]))
+                    break
+            stats["library span fills"] += 1
+            stats["library span fills exact"] += ok
+            stats["span mode %d" % mode] += 1
+            pending_spans = None
         elif f[0] == "n" and pending_line is not None:
             v = [int(x) for x in f[2:]]
-            # page, 0, count, then per pixel: offset, x | y << 16, value
-            changed = [(v[4 + 3 * k] & 0xFFFF, v[4 + 3 * k] >> 16, v[5 + 3 * k]) for k in range(v[2])]
+            # page, 0, count, then per pixel: offset, x | y << 16, value, value before
+            changed = [(v[4 + 4 * k] & 0xFFFF, v[4 + 4 * k] >> 16, v[5 + 4 * k]) for k in range(v[2])]
             x0, y0, x1, y1, colour = pending_line
             mine = set(line_pixels(x0, y0, x1, y1))
             ok = all((x, y) in mine and val == colour for x, y, val in changed)
@@ -338,6 +372,14 @@ def main():
         print("   style %s: %d rows, %d exact" % (st, stats[k], stats["rows exact " + st]))
     print("%d library lines: every changed pixel on the replayed line and in its colour for %d (%.1f%%)" % (
         stats["lines"], stats["lines exact"], 100.0 * stats["lines exact"] / max(stats["lines"], 1)))
+    print("%d library span fills: every changed pixel on a replayed span with its mode's value for %d (%.1f%%); modes %s" % (
+        stats["library span fills"], stats["library span fills exact"],
+        100.0 * stats["library span fills exact"] / max(stats["library span fills"], 1),
+        {k: stats[k] for k in sorted(stats) if k.startswith("span mode")}))
+    print("other graphics entries called:", ", ".join("%s x%d" % (k.split()[1], stats[k]) for k in sorted(
+        (k for k in stats if k.startswith("entry ")), key=lambda k: -stats[k])))
+    for b in first_span:
+        print("  span fill at clock %s rows %d..%d mode %d colour %s: pixel (%d,%d) now %d before %d, replay mode %s; rows around it %s" % b)
     for b in first_line:
         print("  line at clock %s %s colour %s: %d pixels changed, off the replay: %s" % b)
     for b in first_pix:
