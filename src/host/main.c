@@ -49,6 +49,8 @@ typedef struct {
     int             audio_failed;
     midistream      midi;
     FILE           *record;           /* --record: every input as it is applied */
+    int             roland_out;       /* Roland MIDI goes somewhere: Munt or a Windows MIDI device */
+    int             roland_unheard;   /* the game sent Roland MIDI with nowhere to play it */
 #ifdef _WIN32
     HMIDIOUT        midi_out;
 #endif
@@ -112,6 +114,7 @@ static void midi_send(void *user, const uint8_t *msg, size_t len)
 static void on_midi(void *u, uint64_t icount, uint8_t b)
 {
     (void)u;
+    if (!H.roland_out && !H.roland_unheard) H.roland_unheard = 1;
     if (H.audio && !audio_midi_byte(H.audio, icount, b)) H.audio_failed = 1;
 #ifdef _WIN32
     midistream_byte(&H.midi, b, midi_send, NULL);
@@ -314,12 +317,14 @@ int main(int argc, char **argv)
             fprintf(stderr, "%s\n", error);
             audio_destroy(H.audio); SDL_Quit(); return 1;
         }
+        H.roland_out = 1;
     }
 
 #ifdef _WIN32
     if (midi_dev != -2) {
         UINT id = midi_dev < 0 ? MIDI_MAPPER : (UINT)midi_dev;
         if (midiOutOpen(&H.midi_out, id, 0, 0, CALLBACK_NULL) != MMSYSERR_NOERROR) H.midi_out = NULL;
+        else H.roland_out = 1;
     }
 #endif
     midistream_init(&H.midi);
@@ -571,6 +576,16 @@ int main(int argc, char **argv)
         SDL_RenderClear(ren);
         SDL_RenderTexture(ren, tex, &srcf, &dst);
         SDL_RenderPresent(ren);
+        /* Roland chosen in the game with no MIDI output: say so once, rather
+         * than play an unexplained silence. */
+        if (H.roland_unheard == 1) {
+            H.roland_unheard = 2;
+            static const char *msg = "Roland music has no output: start with --midi -1 (Windows MIDI), "
+                                     "or --mt32-control FILE --mt32-pcm FILE (a Munt build with MT-32 ROMs)";
+            fputs(msg, stderr);
+            fputc(10, stderr);
+            SDL_SetWindowTitle(win, "F-117A - no Roland output: use --midi -1 or the MT-32 ROM options");
+        }
     }
 
     if (H.record) fclose(H.record);
