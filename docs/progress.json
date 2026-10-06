@@ -119,9 +119,9 @@
       {
         "item": "Stage 1: draw lists replayed bit-exact at 320x200",
         "weight": 10,
-        "done": 0.55,
+        "done": 0.6,
         "kind": "estimate",
-        "evidence": "Model polygons replay from the captured draw list to the original's pixels bit for bit: 2,719 painted polygons, 11,293 pixel rows, all exact (tools/drawlist_spans.py). Not yet: dither/stipple, outline lines, sky and ground, the graphics library (sprites, HUD, text), a whole-frame comparison."
+        "evidence": "Model polygons replay to the original's pixels bit for bit (11,293 rows); the library's lines (entry 31) replay consistently (1,348 of 1,348, a one-sided check). Not yet: dither/stipple, sprites and blits, text, sky and ground, a whole-frame comparison."
       },
       {
         "item": "Stage 2: high-resolution re-draw",

@@ -165,6 +165,44 @@ def paint(colour, y, x0, before):
     return None                                       # stipple and dither: not replayed yet
 
 
+def line_pixels(x0, y0, x1, y1):
+    """Graphics entry 31, the library's line: the pixels it writes, as (x, y),
+    by its documented rules - an unsigned sort on x, the single-pixel case
+    decided by "were the two x's equal", a half-step error term, and the
+    major-axis step through a linear 320-byte-row address."""
+    ax, bx, cx, dx = x0, y0, x1, y1
+    xeq = (ax & 0xFFFF) == (cx & 0xFFFF)
+    if (ax & 0xFFFF) > (cx & 0xFFFF):
+        ax, cx, bx, dx = cx, ax, dx, bx
+    if xeq and bx == dx:
+        return [(ax, bx)]
+    si, bp = 1, 320
+    cx, dx = s16(cx - ax), s16(dx - bx)
+    if dx < 0:
+        bp, dx = -bp, -dx
+    if (cx & 0xFFFF) < (dx & 0xFFFF):
+        si, bp, dx, cx = bp, si, cx, dx
+    major, minor = cx, dx
+    di = bx * 320 + ax
+    err = s16(-(((major + 1) & 0xFFFF) >> 1))
+    si -= 1
+    out = []
+    n = major
+    while True:
+        out.append((di % 320, di // 320))
+        di += 1
+        n -= 1
+        if n < 0:
+            break
+        di += si
+        err = s16(err + minor)
+        if err < 0:
+            continue
+        err = s16(err - major)
+        di += bp
+    return out
+
+
 def rows_of(sp):
     mine = []
     if sp.top != NOLEFT:
@@ -191,6 +229,7 @@ def main():
     seen_fill = False         # the first polygon may have edges from before the log's window
     fill = None               # the painting in progress: its colour and the bytes before and after
     first_pix = []
+    line_colour, pending_line, first_line = None, None, []
     for line in open(sys.argv[1]):
         f = line.split()
         if not f:
@@ -223,6 +262,23 @@ def main():
             stats["rows"] += len(rows)
             poly = {"sp": sp, "xmin": xmin, "xmax": xmax, "join": [], "clock": f[1], "nclip": nclip}
             pending = []
+        elif f[0] == "K":
+            line_colour = int(f[2])
+        elif f[0] == "N":
+            v = [int(x) for x in f[2:]]
+            pending_line = (v[0], v[1], v[2], v[3], line_colour)
+        elif f[0] == "n" and pending_line is not None:
+            v = [int(x) for x in f[2:]]
+            changed = [(v[3 + 3 * k], v[4 + 3 * k], v[5 + 3 * k]) for k in range(v[2])]
+            x0, y0, x1, y1, colour = pending_line
+            mine = set(line_pixels(x0, y0, x1, y1))
+            ok = all((x, y) in mine and val == colour for x, y, val in changed)
+            stats["lines"] += 1
+            stats["lines exact"] += ok
+            if not ok and len(first_line) < 4:
+                bad = [(x, y, val) for x, y, val in changed if (x, y) not in mine or val != colour]
+                first_line.append((f[1], (x0, y0, x1, y1), colour, len(changed), bad[:5]))
+            pending_line = None
         elif f[0] == "b" and fill is not None:
             v = [int(x) for x in f[2:]]
             fill["before"].append(v)
@@ -279,6 +335,10 @@ def main():
     for k in sorted(x for x in stats if x.startswith("rows ") and not x.startswith("rows exact")):
         st = k.split()[1]
         print("   style %s: %d rows, %d exact" % (st, stats[k], stats["rows exact " + st]))
+    print("%d library lines: every changed pixel on the replayed line and in its colour for %d (%.1f%%)" % (
+        stats["lines"], stats["lines exact"], 100.0 * stats["lines exact"] / max(stats["lines"], 1)))
+    for b in first_line:
+        print("  line at clock %s %s colour %s: %d pixels changed, off the replay: %s" % b)
     for b in first_pix:
         print("  pixels at clock %s, style %s, row %d from x %d: before %s after %s replay %s" % b)
     for b in first_bad:

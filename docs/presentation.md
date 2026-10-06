@@ -162,6 +162,18 @@ bit for bit. Not yet replayed: the dither and stipple styles (not seen in
 this window), outline polygons' lines, the sky and ground, and everything
 the resident graphics library draws (sprites, HUD, text).
 
+**The library's lines.** Graphics entry 31 (the jump slot at 1E42:01B5,
+patched at load) draws 40 or so lines a frame; entries 32 and 33 set their
+colour. The observer logs each line's endpoints and colour, keeps its
+bounding box's page bytes (a pixel is page:rowtab[y] + origin + x, all three
+read from the driver's own code segment), and at the next event logs the
+pixels the line changed. The checker draws the line by the library's
+documented rules (an unsigned sort on x, the single-pixel case decided by
+"were the two x's equal", a half-step error term) and requires every changed
+pixel to be on it, in its colour: **1,348 of 1,348 lines consistent.** The
+test is one-sided - a pixel that already had the line's colour does not
+change, so it cannot show a pixel the replay draws and the original does not.
+
 ## What is not known (and has to be measured next)
 
 1. **Where the scene is drawn.** The matched routines already name part of
