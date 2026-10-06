@@ -33,8 +33,10 @@ builds `vm/f117a.img`: 64 MB, geometry 130 cylinders x 16 heads x 63 sectors,
 one active FAT16 partition at LBA 63 holding FreeDOS (`\FREEDOS`, `KERNEL.SYS`,
 FDCONFIG/FDAUTO) and the 146 files of the GOG install in `\F117A`. The MBR has
 a partition table but no boot code. Next: a copy of the 1.44 MB boot floppy
-(`fd13/144m/x86BOOT.img`) whose `fdauto.bat` runs `fdisk /mbr` and `sys c:`
-unattended; an `86box.cfg` (86Box writes none until its UI is used, so the
+(`py tools/ref86box/make_boot_floppy.py` makes `vm/boot.img`: its `fdauto.bat` runs
+`fdisk /mbr` and `sys c:` unattended; written, not yet booted; note that
+backslash escapes in a shell heredoc corrupted the first attempt, hence `chr(92)`);
+86Box.exe does open a responding window in this session; an `86box.cfg` (86Box writes none until its UI is used, so the
 machine, hard-disk controller and drive geometry keys have to be written by
 hand; the IBM AT BIOS wants a drive type, so an AMI/Award 286 or 386 board with
 an auto-detecting IDE controller may be easier); then boot, and find a way to
