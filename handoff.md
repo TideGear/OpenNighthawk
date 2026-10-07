@@ -14,7 +14,7 @@ date; `git log -p handoff.md` has them.
 - **Recompile the whole DOS game for Windows with 1:1 parity**, then
   understood (named) code, then switchable fixes and enhancements (60+ fps,
   4K). Phases and progress: `docs/roadmap.md`, `docs/progress.md`;
-  `py tools/progress.py --title` prints the scoreboard every commit title ends
+  `py tools/progress.py --title` prints the scoreboard every commit title starts
   with. Public repo, **code only**: no game data and no generated C, ever.
 - **Parity target: the original game on real PC hardware, not DOSBox.**
   Identified DOSBox quirks are not copied; label behaviour by evidence. The
