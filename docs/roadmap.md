@@ -1,596 +1,161 @@
 # Roadmap
 
-What is done, what is in progress, and what is left. The game's own bugs
-are tracked separately in [bugs.md](bugs.md); how parity is checked is in
-[architecture.md](architecture.md). Updated with every piece of work.
+What is done and what is left. The game's own bugs are in [bugs.md](bugs.md);
+how parity is built and checked is in [architecture.md](architecture.md); the
+commands, current figures and traps are in [../handoff.md](../handoff.md); the
+scoreboard is `py tools/progress.py` ([progress.md](progress.md)). Update this
+page with every piece of work, and keep it short: one entry per item, the
+evidence linked or in the commit, not narrated here.
 
 The order of the phases is the project's: **1:1 parity first**, then
-understood (named) code, then fixes and enhancements - each switchable,
-never instead of parity.
+understood (named) code, then fixes and enhancements - each switchable, never
+instead of parity.
 
 ## Phase 1 - recompiled, 1:1 with the original
 
 ### Done
 
-- **Other machines as references (6 Oct):** DOSBox-X (patched build, `-silent`,
-  capture starts itself, `AUTOTYPE` for SETUP) and 86Box (v6.0 built with its
-  VNC renderer: windowless, silent, scriptable) both run the original headless;
-  `tools/pc_parity.py` plays the intro on GOG's DOSBox (saved capture), DOSBox-X
-  and 86Box at once and checks the pictures against measured limits (DOSBox-X:
-  1,237 exact pictures in order, drift up to 0.2 s; 86Box: same scenes, order
-  and colours). Open: a faster 86Box board and a mouse so START and flight
-  can be scripted, and frame-exact timing there. Builds: `tools/ref86box/`.
-- [Parity audit](parity-audit.md) (a 4 October snapshot; the gate now runs 32
-  routes): sixteen routes and the full instruction
-  lockstep pass again; independent DOSBox roster saves match all 802 bytes.
-  Overlapping input, extended keys and emulated joystick extremes pass.
-  Host stall pacing and the missing 2x AdLib mixer gain were found and fixed.
-  GOG's DBOPL synthesizer is now the default, with Nuked selectable; both
-  use the reference's 44,100 Hz rate. Chip and host audio tests pass, while
-  exact reference PCM agreement remains open.
+- **Translation.** All 17 code files and the LZEXE decompressor: 89,281
+  instruction starts, 96% of the code-area bytes (the rest is strings, tables
+  and variables; `tools/census.py`). No game instruction is interpreted on the
+  routes.
+- **Engine parity.** 32 scripted routes are identical between the interpreter
+  and the recompiled code at every 50-million-clock checkpoint and at the end;
+  every translated instruction is held to the interpreter from random states
+  (5,713,472 comparisons, 0 differences); the interpreter and the translator are
+  held to 8088 and 80286 silicon vectors; 144 of 144 planted defects are
+  caught; seeded random flights are identical. See
+  [architecture.md](architecture.md#verification-why-11-is-a-claim-with-evidence).
+- **What the routes cover.** All nine theatres, three tensions and four mission
+  categories; all eight primary objective types with normal-input routes and
+  strong observers (reconnaissance, ground strike, supply drop with the original
+  D5 no-credit behaviour and `cargo_d5_fixed`, secret airstrip, air-to-air types
+  5-8), with verified return legs for types 1-4; landing; the speaker and Roland
+  driver boots; pilot creation, editing and erasure, KIA and retired dialogs and
+  direct maintenance through the original UI; the earned tenth-mission tour
+  ribbon, promotion and Airman's Medal; rank-3 career paired through retirement
+  at sortie 99; the rank-6 "General, At Last!" retirement branch reached with a
+  staged roster (`tools/career_rank6.py`; not an earned rank-6 career). Details
+  per route: [../tools/routes/README.md](../tools/routes/README.md).
+- **The emulated PC against GOG's DOSBox 0.74** (`tools/fidelity.py`): 1,210
+  comparable answers agree. The model follows DOSBox where it was measured to:
+  PSP and memory chain, the VGA's rational 70.086 Hz timing and four-part
+  scanout, the `svga_s3` screen-off behaviour, the DAC tables, the PIT
+  control-word interrupt that START's teardown triggers (the root cause of the
+  old roster-entry delay: video drift went from -570 ms to +14 ms), and ISA I/O
+  delay with its slice-boundary suppression. The mouse cursor is drawn into guest
+  video memory, as DOSBox's driver does.
+- **Pictures and music against GOG's DOSBox.** `tools/video_compare.py`: 1,329
+  exact RGB pictures in order against the saved reference capture, three
+  one-sample logo-transition images unmatched on each side, no end drift; a
+  second independent capture matches 1,321 with 11 per side, so the remaining
+  differences vary from capture to capture. Music: 22,687 AdLib register writes
+  over the logo and intro, identical in order and value, timing within 36 ms
+  (measured before the PIT and VGA-timing fixes).
+- **Other machines as references** (`tools/pc_parity.py`): DOSBox-X (a patched
+  source build that starts its own capture and runs windowless) matches 1,237
+  exact pictures in order, drift up to 0.2 s; 86Box (a source build with its VNC
+  renderer, windowless and silent) shows the same scenes, order and colours,
+  its VM being a 6 MHz 286. Builds and notes: `tools/ref86box/`.
+- **Independent GOG DOSBox flights.** Reconnaissance with both photos and the
+  raised-deck return completes on GOG's DOSBox and passes the same strict
+  gates. The supply mission is reproduced exactly on GOG's DOSBox (its autoexec
+  consumes about 275 ms of guest time, so the seed is set 275 ms early); delivery
+  there is open (below).
+- **The game version verified:** GOG's installer (build 28044) with the 473.04
+  update; Steam's release is byte-identical (`tools/verify_install.py`).
+- **The gate** (`tools/build_recomp.py`): translate, build, coverage, both
+  engines on every route, instruction and matched-routine lockstep; about 23
+  minutes. Repeated processes and what was optimised:
+  [repeated-processes.md](repeated-processes.md).
 
-- All 17 code files and the LZEXE decompressor translated: 89,276
-  instructions, 96.2% of the code-area bytes; the rest is strings, tables
-  and variables (`tools/census.py`). On every route and the longest random
-  flight the recompiled build interprets no game instruction.
-- Every translated instruction held to the interpreter from random states
-  (`tests/insn_lockstep.c`, 5.7 million comparisons, 0 differences); the
-  translator held to 8088 and 80286 silicon vectors.
-- Thirty-two scripted routes identical between the interpreter and the recompiled
-  code: boot to flight; a full sortie through the debriefing; the speaker
-  and Roland drivers; eight transfer-and-flight routes covering all nine
-  theatres, three tensions and four mission categories. The routes execute
-  at least 60.6% of the code area (`tools/exercised.py`, including the new
-  promotion routes). Theatre routes also require
-  the expected world files, a clean VGAME exit and at least a billion clocks
-  in flight; airborne screenshots were reviewed for the six added routes.
-- Pilot creation, Backspace editing, Escape cancellation and erasure through
-  the original roster UI: the new route matches at 38 checkpoints/final.
-  Saved names and cleared career counters are checked independently; both
-  802-byte rosters match. CHECK survives a fresh-process reload. Recorded
-  mouse/key input replays identically under the interpreter. Pipeline and
-  coverage replays now start with fresh saves, preserving previous outputs.
-- KIA/retired roster dialogs and direct maintenance navigation before and
-  after briefing: screens reviewed, AIM-9/AMRAAM station changes visible,
-  both engines identical at 64 checkpoints/final. Required screen-open
-  counts reject routes stuck in dialogs or missing a maintenance visit.
-- A normal-input Libya landing route: takeoff, return to base 33, runway
-  alignment, contact and a stop inside its approach box. After the rational
-  VGA slice-boundary update, the old input missed the runway and was
-  re-recorded. Both engines now pass the strong observer with byte-identical
-  4,113-row flight logs, ending at clock 9,920,163,246/hash
-  `979600814c576e2f`; mission result is 0/status 3, and the stopped aircraft
-  is at (9793,1549) with 4,737 fuel. The committed route also passes its
-  world, VGAME exit and END open checks under both engines. The observer checks
-  zero speed/throttle, gear down, brakes on, no ejection/crash, and the
-  completed countdown.
-  DOS exit 129 is a separate debriefing handoff, not a landing result.
-  Contact/stop screenshots reviewed. This covers the shipped training
-  mission and its landing setting; other runways and objectives remain.
-- Reconnaissance primary and raised-base-36 return were verified before the
-  latest rational VGA slice-boundary change. The primary route has now been
-  recaptured with level acquisition: both strong observers pass with
-  byte-identical 1,685-row logs, one exposure and photo-credit event, intact
-  target, retained camera/store and safe airborne flight. Final clock/hash:
-  6,289,654,045 / `0d92f4ffab92a97f`; the official route runner also passes
-  both engines' world/open milestones. The return input has now also been
-  recaptured: both observers and the official route runner pass, with both
-  photo credits, intact targets and a stopped return on the raised home-36
-  runway (see Left).
-- Independent GOG DOSBox reconnaissance also completes both photos and the
-  raised home-36 return, reaches END and passes the same strict flight gates:
-  intact targets/events, idle stop inside the home box, fuel, countdown and
-  parent result 0/status 3. Its 104,757 observations use wall-time controls
-  and a different generated mission; exact dynamic-state equality is open.
-- Earned Overseas Long Tour Ribbon for the tenth mission: `recon_career`
-  continues into END, displays the award and returns to the office. Both
-  engines agree at 316 checkpoints/final and all 802 saved bytes. Independent
-  milestones require score 275, total 2669 -> 2944, sorties 9 -> 10 and the
-  tour ribbon 0 -> 1. Award screenshot reviewed.
-- Earned promotion and Airman's Medal: Serge's second sortie saves total
-  283 and rank zero; the third passes all promotion thresholds, saving rank
-  1, total 500, sorties 3 and medal counter 1 -> 2. Both engines agree at
-  354 checkpoints/final and all 802 saved bytes. Promotion/medal pages
-  reviewed. The route earns its starting roster through a prerequisite
-  sortie using normal inputs, with no committed or fabricated save data.
-- Ground-strike training and Maverick return were verified before the latest
-  rational VGA slice-boundary change: target 3 damage/credit, releases, safe
-  flight, then home-33 stop and parent result 0/status 3. Those previous
-  observer runs matched under both engines (176 and 297 checkpoints; hashes
-  `197c6b398d6fbb9f` and `a4f05231eacf9d75`). The checked-in `strike.input` no
-  longer earns a hit on the current build and these objective proofs need
-  refreshed recordings (see Left).
-- Secret-airstrip primary completed in Persian Gulf Limited War: normal
-  landing at target 24, (10497,3809), inside its short approach box.
-  Original event 8Bh, primary flag, mission store 1 -> 0, idle/gear/brakes,
-  fuel 7261 and intact strip pass. Both observers' input/CSV/result files
-  match; 167 checkpoints/final agree, hash `5762b7e88b22cda9`. Cargo-delivered
-  cockpit reviewed. Aircraft remains at the strip; home return is not claimed.
-- Secret-airstrip return now departs the short strip after a normal ground
-  turn and taxi, then stops at home 58 with fuel 3000 and parent result
-  0/status 3. Credit and consumed stores persist through the second flight.
-  The strip is intact at delivery and damaged later while the aircraft is
-  elsewhere; this is reported explicitly. Both strong observers agree;
-  372 checkpoints/final match, hash `c7b303ee1aa60173`.
-- Supply drop reaches Persian Gulf target 24's delivery area before the
-  deadline through normal release controls. The tracked player cargo crosses
-  ground altitude with matching impact coordinates; one store/release and
-  no primary credit reproduce original bug D5. The strong observer rejects
-  mere expiry or store consumption. The return to home 51 is now verified in
-  `cargo_return` under both engines. Independent GOG DOSBox mission
-  generation is now reproduced: the generator was mapped locally tick by
-  tick (the type-3 window spans about -10 to +30 ms around the cargo seed;
-  every neighbour tick generates a different mission), which showed GOG
-  DOSBox seeds behave like the local machine 275 ms later - its autoexec
-  (`keyb us`, `cls`) consumes that guest time before the game reads the
-  clock (4/4 prior seeded triples match exactly, plus one new local
-  point). Seeding 275 ms early produced the exact type-3/target-24/
-  departure-58/home-51 mission in DOSBox. Its open-loop wall-clock replay
-  then diverges in flight (44 degrees of heading by 4.16B clocks, 4.4 km
-  by release time), so the crate never releases; delivery still needs a
-  closed-loop pilot, and no independent cargo delivery is claimed.
-- Seeded random flights (`tools/random_flights.py`): every session
-  identical at every hash; 30.5 minutes of flight in the 16-session batch.
-- Planted defects caught by the lockstep (`tools/mutation_check.py
-  --lockstep`): 12 of 12, 72 of 72, 60 of 60 - 144 of 144, of all four
-  kinds (removed instruction, flipped CF, ZF, AX bit), most at
-  instructions no route runs.
-- The emulated PC held to GOG's DOSBox 0.74-2.1 (`tools/fidelity.py`): DOS
-  memory, PSP, environment, EXEC and terminate, every DOS/BIOS service the
-  game uses and its cost in time, BIOS data, VGA registers, devices,
-  clocks. All comparable answers agree. DOSBox-X as a second reference.
-- The game's music against GOG's DOSBox (`tools/dosbox_compare.py`): the
-  logo and intro, 22,687 AdLib writes over 100.7 s, identical, timing
-  within 36 ms.
-- The game version verified: GOG's installer (build 28044) with the 473.04
-  update; Steam's release byte-identical (`tools/verify_install.py`).
-- Mouse driver cursor readback agrees with DOSBox: the cursor is now drawn
-  into guest video memory and saves/restores its background, rather than
-  being a host overlay. Eight readback probes agree; ROM-free clipping,
-  mode-change and text cursor tests pass. All six routes still agree at
-  329 checkpoints and final states, plus the 64-state instruction lockstep.
-- VGA DAC ports and BIOS palette calls share the same device state and I/O
-  costs. Read-address writes update the write index; BIOS blocks wrap the
-  palette index and use linear buffers across segment boundaries. All
-  1,210 fidelity answers agree; ROM-free DAC tests and six-route parity pass.
+### Open
 
-### In progress
-
-- **The picture against DOSBox:** `tools/video_compare.py` now captures
-  the hands-off logo, intro and roster as ZMBV, decodes every 320x200 frame
-  with ffmpeg and compares exact RGB pictures in order against `--shots`.
-  Two 130.8-second captures (9,165 frames each) match 1,217 distinct
-  consecutive pictures. Differences remain: 115 / 109 unmatched DOSBox
-  pictures, 89 here within the capture's time range. Most last one sample;
-  DOSBox reads four parts of a frame at different times, while shots read
-  all VRAM at once. The roster's mouse cursor also changes colour here
-  around 117.5 and 129.1 s, absent in both reference captures. Diagnostic
-  pairs differ in up to 78 pixels inside the cursor's 10x15 area; the pilot
-  names match. START draws this pointer itself; correcting the INT 33h
-  driver did not change it. A third run matches the same 1,217 pictures,
-  with 113 unmatched DOSBox pictures and 89 shots. Investigate the game's
-  palette handling and roster-entry delay before claiming frame parity.
-  Replaying the saved reference against the BIOS DAC correction leaves
-  these counts and picture timings unchanged. The full music rerun diverges
-  at the known random channel-3 note at 29.7 s; it is not a new full-stream
-  pass (the prefix matches 596 writes, with up to 55 ms timing drift).
-  Music differences now exit 1. Four ROM-free comparator regressions pass;
-  short fresh captures match 365 writes over 15.5 s and 300 over 10.4 s.
-  **Sampling diagnosis:** the apparent roster cursor colour changes were
-  background pixels exposed during START's pointer erase/redraw, sampled
-  by the 70 Hz screenshot clock beating against 70.086 Hz retrace (about
-  11.6 s). Sampling every 128,413 clocks, matching the runtime VGA period,
-  removes all unmatched roster pictures after 110 s and all multi-sample
-  differences. Saved-reference run `intro-ek_ltnum`: 1,219 exact pictures,
-  107 unmatched reference pictures and 74 shots, each one sample. The
-  transition delay (~0.57 s) and scanout differences remain unresolved.
-  **Four-part scanout implemented:** completed frames now retain the four
-  groups read during a frame and the displayed palette. Saved-reference
-  run `intro-p6mrjdbw` matches 1,319 pictures; seven reference pictures and
-  28 shots remain unmatched, each one sample. The roster matches after
-  110 s; transition delay remains ~0.57 s. ROM-free temporal scanout,
-  address-latch and DAC publication/alias tests pass.
-  All 1,210 machine probes and six routes at 329 checkpoints plus final
-  states agree; the 5.7-million-state instruction lockstep has no mismatches.
-  **Transition diagnosis:** the main app now uses the fully covered
-  89,276-instruction generation. A fresh 130.8-second comparison has the
-  same 1,319 matches, seven unmatched DOSBox pictures and 28 unmatched shots.
-  An interpreter capture has byte-identical shot hashes and timestamps and
-  the same final state (`e4114c0415d4920d`), so the delay is shared by both
-  engines rather than caused by generated regions. Against three independent
-  DOSBox captures, the stable roster picture appears at 107.510-107.567 s;
-  here it appears at 108.411-108.435 s. After the comparator's global offset,
-  the transition remains 0.571-0.585 s late. A fresh local run against the
-  same saved video reproduces 1,319 exact RGB pictures over 130.767 s (1,326
-  reference frames, 1,347 local shots; seven and 28 unmatched, all one
-  sample), offset -285.325 ms and end drift -570.671 ms. Frame inspection separates the
-  roster list-only image (`a0fc2584`, DOSBox 107.311-107.567 s) from selected
-  pilot details (`eb49f15a`, first at 107.567 s). At 9 MIPS the local frames
-  begin at 108.124 and 108.423 s; after capture alignment they are 0.528 and
-  0.571 s late. Nearly all the delay is before the roster list appears; the
-  list-to-details transition itself adds about 43 ms. Clock probes put these
-  residuals at 1.483/1.498 s at 4 MIPS and 0.385/0.428 s at 12 MIPS, while
-  changing many other frames too. The default stays 9 MIPS. Screenshot
-  cadence is not the main cause. The last shared transition image aligns at
-  106.526 s; the next partial is 442 ms late and the list is 528 ms late.
-  Local START opens `Roster.Fil` at 106.782 s, `rostscrn.pic` at 107.481 s
-  and `rostsprt.pic` at 107.696 s. A 9 MIPS trace from sprite open through
-  the first stable list frame spans 3,854,049 guest clocks (428.2 ms): 64,000
-  RLE90 pixel-decode iterations, MGRAPHIC page-copy and transparent-blit
-  work, then nine START palette writes at `0x08378`, from 163.4 to 388.5 ms
-  after the file open. An expanded DOSBox-X 2026.10.01 log at 9,000 cycles/ms
-  starts at `palettes.pal` open (106.401489 s) and covers 8,000,000
-  instructions through 108.008496 s. It records `Roster.Fil` read/write at
-  106.760483/106.761036, `rostscrn.pic` at 107.177204 and `rostsprt.pic` at
-  107.393696. Seven `0x08378` entries occur: four at 106.778615, 106.817953,
-  106.850761 and 106.893558, before `rostscrn.pic`; then three at 107.571473,
-  107.598189 and 107.626927, after `rostsprt.pic`. The earlier 4M-instruction
-  trace began at the sprite open and saw only the latter three. The expanded
-  trace was repeated with the stock install-root `ROSTER.FIL` used by the
-  packaged video capture. Although the earlier trace used a cloud-save copy
-  that differs at nine bytes, the corrected run 4 has the same seven palette
-  calls and file-open times. Its log is
-  `C:/Users/Tideg/f117-recomp-local/dosbox-ref-roster-mcp-20261005/run4/LOGCPU.TXT`.
-  A separate local pre-screen trace starts at `Roster.Fil` open (icount
-  961,032,646; 106.781405 s) and ends at `rostscrn.pic` open (icount
-  967,325,273; 107.480586 s), a 699.181 ms guest interval. It records 16
-  `0x08378` palette calls spanning about 427 ms, retrace polling over about
-  452 ms, followed by 17 retrace/PIT samples over about 242 ms; setup and
-  short gaps account for the remaining roughly 5 ms. The trace reaches the
-  same final machine hash as the video run and is at
-  `C:/Users/Tideg/f117-recomp-local/video/roster-pre-screen-trace/trace.txt`.
-  In the pre-screen phase, the local trace has 16 palette calls versus four
-  in DOSBox-X; after `rostsprt.pic`, the existing local list-painter trace
-  has nine calls versus three in the expanded DOSBox-X trace. The stock-file
-  rerun confirms the DOSBox-X count was not caused by using the cloud roster.
-  Measuring relative to `Roster.Fil` read within each trace, DOSBox-X opens
-  `rostscrn.pic` 416.721 ms later and the local run takes 699.181 ms, an
-  excess of 282.460 ms. The corresponding 17-call `0x08EAD` retrace/PIT
-  sampler starts 172.413 ms after the read in DOSBox-X and 457.056 ms after
-  it locally; from its first call to the screen-picture open, the interval is
-  244.308 versus 242.125 ms. The extra local time accumulates before this
-  sampler, alongside the 16-versus-four palette-call difference. These
-  event-relative guest timings do not depend on aligning the two log clock
-  origins, but they do not synchronize either event to a frame in the GOG
-  DOSBox 0.74 video. The expanded trace also records three 64,000-pixel RLE90
-  passes. The sprite-sheet decode takes about 121.4 ms versus 112.7 ms locally.
-  The saved DOSBox list-only
-  interval is 107.311-107.567 s; local is 108.124-108.423 s, with details
-  beginning at each interval's end. A provisional comparison suggests that
-  DOSBox-X opens the screen/sprite files about 302 ms earlier than local and
-  reaches the reference-list phase roughly 202 ms after its sprite open,
-  compared with 428 ms locally. These values combine separate runs and clock
-  origins. Anchoring the two instruction-log clocks at their `Roster.Fil`
-  opens (21 ms apart) estimates the screen/sprite opens about 282/281 ms
-  earlier in DOSBox-X; it puts the reference-list phase about 181 ms after
-  the DOSBox-X sprite open versus 428 ms locally, or about 247 ms of
-  after-open difference. This phase estimate is not a proven cause. The fresh
-  video comparison confirms the prior timing,
-  but a frame capture synchronized to a guest event is still needed. Keep the
-  frame-parity item open, retain 9 MIPS, and do not add Reimp D96 to translated
-  START. A 6 October half-period sample-phase capture (`--shot-start 64206`,
-  worktree build, saved DOSBox capture `intro-3mlgpsvi`) yielded the same
-  unmatched RGB-hash sets as the phase-zero capture: 1,321 exact pictures,
-  five reference and 16 local one-sample pictures unmatched, end drift
-  +14.279 ms. A constant snapshot-phase offset does not account for the
-  residuals. `headless.c` and `video_compare.py` now accept that phase and an
-  explicit executable path for repeatable diagnostics.
-  **SEQ1 blanking diagnosis/fix (6 Oct):** the GOG run uses DOSBox's
-  `svga_s3` path, whose `VGA_DrawPart()` does not apply the sequencer
-  screen-off flag. The local host had turned `frame.blank` into a solid-black
-  mode-13h frame. `F117R_TRACE_VGA` showed START toggling SEQ1 bit 5 at
-  roughly 128,400-clock intervals, with each black unmatched shot just after
-  unblanking. The host renderer now follows the DOSBox S3 behavior while the
-  machine still records the sequencer state. Recomparison `intro-qei4ljnd`
-  removes all five black local samples: 1,321 exact pictures, five reference
-  and 11 local one-sample pictures unmatched, with +14.279 ms end drift.
-  Against this baseline, the remaining samples are partial-logo transitions
-  and two aircraft poses; the frame-parity item remains open.
-  **Independent-capture validation (6 Oct):** the current build was also
-  compared with the separate GOG capture `intro-qlh_wi26`; official run
-  `intro-rpay8p1l` matches 1,329/1,332 exact pictures, with three reference
-  and three local one-sample pictures unmatched and +0.055 ms end drift.
-  These six residuals are all partial MPS-logo transitions. The aircraft
-  poses unmatched against `intro-caauys37` match this reference exactly.
-  Six of nine local logo hashes unmatched against `intro-caauys37` also occur
-  in `intro-qlh_wi26`; two fresh short captures have different reference
-  transition hashes. A quarter-period local capture preserves the same local
-  transition hashes, so another constant snapshot phase does not remove them.
-  The item remains open for the three exact logo-state differences in this
-  reference pair.
-  **Fractional VGA-event rounding (6 Oct):** DOSBox schedules each of the
-  four 100-line draw parts as a fractional PIC delay; its `PIC_RunQueue`
-  executes the callback on the next whole CPU cycle. The local deadlines had
-  rounded down, one cycle early per part. They now round up. A fresh current-
-  build comparison (`intro-v3s5pyl0`) remains 1,329/1,332 exact with the same
-  three unmatched pictures on each side and +0.055 ms end drift. Only one
-  local logo picture changed; its RGB difference shrank from eight pixels to
-  seven. The timing correction is source-based, but it does not explain the
-  remaining transition images.
-  **Fractional frame-period lead (6 Oct):** the local frame period is an
-  integer 128,413 guest cycles at 9 MHz. DOSBox's VGA clock and mode-13h
-  totals imply 128,413.108 cycles; over the capture's 9,164 frames, that
-  difference predicts about 0.11 ms of phase drift, near the measured
-  +0.055 ms. An offline timestamp rescale by that exact period brings end
-  drift to -0.0001 ms without changing the 1,329 exact images or the three
-  unmatched images on each side. This accounts for the long-run timestamp
-  offset, but not the one-sample logo images, which vary across DOSBox
-  captures.
-  **Rational VGA event clock (6 Oct):** DOSBox 0.74 source confirms that
-  `VGA_SetupDrawing()` derives frame and part delays from its selected pixel
-  clock and CRTC totals, then schedules them as fractional PIC delays. The
-  local frame, line-part, retrace and status timing now use the corresponding
-  rational guest-clock period, rounding each event up to the first whole
-  guest instruction at or after its deadline. `--shots-vga` uses the same
-  fractional frame cadence. `pc_slice_left()` also computes DOS I/O and
-  file-transfer slice budgets from the next rational VGA deadline, including
-  draw parts, vertical IRQ, retrace edges and frame end. On the saved
-  independent reference, this boundary refinement yields 1,329 exact
-  pictures; three reference and three local one-sample logo images remain
-  unmatched, with -0.000034 ms end drift. On a fresh independent DOSBox
-  capture (`intro-cfku0zec`, 6 Oct), it yields 1,321 exact pictures; 11
-  reference and 11 local one-sample images remain unmatched, with no
-  multi-sample mismatches and +14.268 ms end drift. The 1,332-picture local
-      sequences are byte-for-byte identical across runs. The horizon and roster
-      mismatches seen in the preceding iteration are gone; the remaining partial-
-      logo and flight-transition images vary with reference capture phase. Two
-      independent DOSBox captures also match only 1,321/1,332 images, with 11
-      single-sample differences per side at different indices. Frame parity
-      remains open.
-
-### Left
-
-- [ ] **The picture against DOSBox, frame by frame.** DOSBox's video capture
-      (ZMBV) comparison now runs; match scanout sampling and resolve the
-      transition timing differences (see In progress). The apparent roster
-      cursor changes were diagnosed as screenshot sampling aliasing.
-      Root cause of the roster-entry delay found: DOSBox 0.74 raises IRQ0 on
-      a PIT control word and takes it at the INT 21h stub's STI, so START's
-      own timer handler restores a ~70 Hz tick before the INT 8 vector is
-      swapped; its 4-tick palette loops then run about 4x shorter. This is now
-      the default (`F117R_PIT_CONTROL_IRQ=0` turns it off): video drift
-      against the saved 0.74 capture falls from -570 ms to +14 ms (1,321
-      exact pictures, no multi-sample unmatched picture). At that timing
-      stage, recorded flight routes were regenerated by their pilots and
-      passed their strong observers under both engines (see architecture.md,
-      "PIT control-word interrupts"). The later rational VGA slice-boundary
-      refinement changed some route outcomes; current refresh results are
-      listed below. The private career chain evidence predates the timing
-      changes. The host renderer now also matches
-      DOSBox's `svga_s3` handling of the VGA sequencer screen-off bit; this
-      removes five false black local pictures. The integer-period build
-      matched 1,329/1,332 pictures against independent reference
-      `intro-qlh_wi26`. Rational frame, line-part, retrace, status and I/O slice
-      deadlines now follow DOSBox's fractional PIC schedule. After the slice
-      boundary refinement, the saved reference comparison matches 1,329 with
-      three one-sample logo images unmatched on each side; a fresh independent
-      capture matches 1,321 with 11 one-sample images unmatched on each side.
-      There are no multi-sample mismatches, and both local picture sequences
-      are identical. Exact transition states vary with capture phase (see In
-      progress). Re-verified on the build with the recomp trap-poll fix for
-      nested guest_call returns (run `intro-n82oys6t` against saved reference
-      `intro-qlh_wi26`): same 1,329 exact pictures, three one-sample images
-      unmatched on each side, no multi-sample mismatch, end drift -0.000 ms.
-- [x] **Refresh strike and return flight inputs after rational VGA slice
-      timing.** `strike.input` and `strike_return.input` are replaced with the
-      adaptive recording (target 3 damaged, two Mavericks released, one
-      matching hit, landing at home 33, result 0/status 3; final clock/hash
-      15,029,717,426 / `7b49aac1f746ffa7`). Budgets are 8,850,000,000 and
-      15,040,000,000. `tools/run_route.py` passes both routes under both
-      engines (END opens `landed1.pic` at the same clock in each).
-- [ ] **Roland through Munt** (libmt32emu, LGPL-2.1+): the MT-32 music in
-      the game itself, and its output rendered and checked automatically.
-      Optional integration now builds against an installed library or a
-      separate Munt source checkout. MIDI bytes advance the existing audio
-      clock; Munt is mixed at 44,100 Hz before clipping. Headless MIDI capture
-      and offline rendering are available. `--speaker-log` captures PC speaker
-      state and `audio_render --speaker-log` merges it by guest clock with OPL
-      and optional MIDI events. Default/Munt builds and MIDI
-      reassembly tests pass; existing DBOPL/Nuked PCM is unchanged. Supplied
-      MT-32 1.07 ROMs now render original game MIDI offline and live; a host
-      startup bug that discarded the synth was fixed. The
-      interpreter and recompiler MIDI logs match byte-for-byte (188,505
-      bytes); a matched 4,865-byte MIDI prefix renders to identical PCM in
-      two offline runs. Optional live diagnostics record internal PCM,
-      queue depth and a fixed Munt seed; `audio_render --seed` repeats offline
-      PCM exactly. Two 12-million-clock live runs with seed 1 differ inside
-      the internal PCM at 0.373 s (RMS 3.31, peak 48, correlation 0.999993),
-      before SDL. In each short capture, SDL output matches all 57,776
-      overlapping internal frames byte-for-byte after an 83 ms lead. A
-      30-second capture has 60 empty-before queue checks among 1,802 updates,
-      reaches 70.29 ms maximum queued audio, and has no backlog clear or
-      discarded guest clocks. Its output contains a 167-frame zero run near
-      the first empty-queue check and then realigns 167 frames later, consistent
-      with brief playback starvation and timing drift. The live same-seed
-      variation is explained by Munt 2.8.3: `TVP::nextPitch()` draws from
-      global `rand()` while `Synth::produceStreams()` renders partials
-      serially, so changing audio block boundaries reassigns random draws.
-      Same-seed queue logs start with 126 and 124 produced frames. A new
-      `audio_render --step-clocks` diagnostic reproduces the effect: fixed
-      1 ms renders repeat byte-for-byte, while 1 ms and 10 ms PCM first differ
-      at 0.381 s. The 10 ms, seed-1 offline stereo render matches the saved
-      `interp-first30.wav` byte-for-byte. That is a saved interpreter baseline,
-      not an independent DOSBox or hardware reference. Live output remains
-      unsuitable for exact PCM checks until SDL gaps are removed or accounted
-      for. A completed type-8 sortie replay reached hash `6c3336ef1c24da17`
-      and recorded 70,849 OPL writes, no MIDI bytes and six port 61h bit-0
-      toggles. Its 18 speaker-hook entries all have audible-enable bit 1 clear.
-      The speaker-aware offline host mix now renders the full sortie through
-      clock 9,799,924,671 at
-      `C:/Users/Tideg/f117-recomp-local/munt-flight-audio-20261005/airair-type8-full-host-mix.wav`;
-      its prefix through 3.8 billion clocks is byte-identical to the prior
-      OPL-only render because the speaker is gated off. A 12-second excerpt
-      from about flight seconds 29–41 remains saved at
-      `C:/Users/Tideg/f117-recomp-local/munt-flight-audio-20261005/airair-type8-flight-29-41s.wav`;
-      independent DOSBox flight reference PCM and subjective listening
-      validation remain open.
-- [ ] **Individual mission objectives:** all nine theatres and all four
-      mission categories now have flight routes. All eight primary objective
-      type codes have dedicated normal-input routes with independent event
-      and state gates: reconnaissance type 1, ground strike type 2, supply
-      drop type 3, secret airstrip type 4, and air-to-air types 5–8. Types
-      1–4 also have verified return legs; type 1 earns both photo credits.
-      Type 3's normal route confirms the original D5 no-credit behavior, while
-      `cargo_d5_fixed` earns credit when that switchable fix is enabled.
-      Types 5, 7 and 8 use Vietnam / Conventional War; type 6 uses Central
-      Europe / Cold War. Type 5 uses one AMRAAM, types 6-8 three; each kills
-      the special slot-0 aircraft, earns primary credit and lands at home
-      with result 0/status 3. The 5 Oct recordings predated the rational
-      VGA/PIT timing and no longer reproduced; all four were re-recorded on
-      6 Oct and are now gate routes (`airair_type5`-`airair_type8`), each
-      replaying byte-identically under both engines: type 5 946 observations,
-      hash `96c08003b72f6a8b`; type 6 616, `33696aa9f6c6f6a8`; type 7 734,
-      `2b96c2633ed7b639`; type 8 764, `f873304b995b58ed`. Type 6 needed a
-      higher pursuit floor (11000 ft): at 8000 ft it flew into Central
-      Europe's terrain, the original's draw-detected collision. Independent
-      GOG DOSBox cargo delivery and wider generated-assignment coverage
-      remain open. The
-      transfer routes exercise generation and controls, then quit; they do
-      not establish objective completion.
-- [ ] **The remaining career flow:** higher-rank awards and transfer
-      transitions. Promotion, Airman's Medal, the ten-mission tour ribbon,
-      and retirement are now earned and saved. A rank-3 (Captain) photo
-      record was paired from sorties 16 through 99 under both engines.
-      Sorties 53-98 each matched at 380 checkpoints and in all 802 saved
-      roster bytes; sortie 99 retired the pilot normally at rank 3 with
-      total 20,510. Timed END captures show its 99th-mission retirement
-      message and the rank-3 remark "Maybe I'll write a book, like
-      Schwarzkopf. The lecture circuit sounds nice and cushy." The
-      rank-6 "General, At Last!" branch is reached too: sortie 98's saved
-      roster with the rank word set to 6 and the total to 27,930 (the cause
-      END tests, staged; every other byte unchanged) flies a normal 99th
-      sortie (`tools/career_rank6.py`, input `career_rank6.input`) under both
-      engines to the same hash `934f2fb9cb4227a6`, score 204, total 28,134,
-      retired at rank 6, and END shows the rank-6 remark list ("When in
-      doubt, get a lieutenant to do it."). The staged rank is not an earned
-      career: a rank-6 career earned from rank 1 still needs promotions. CO transfer
-      requests, briefing/arming, pilot creation/editing/erasure and roster
-      save/reload, direct maintenance and retired/KIA dialogs are covered.
+- [ ] **Exact frame parity with DOSBox.** The remaining unmatched pictures are
+      partial logo and aircraft transitions whose exact frame varies with the
+      capture's phase. A frame capture synchronised to a guest event would
+      settle it.
 - [ ] **A person playing it:** controls, joystick and mouse, saves, the feel.
-      Sessions record themselves for replay.
-- [ ] **Timing details still DOSBox's own:** its stub code at its own
-      addresses (vectors F000:xxxx), its per-millisecond slicing, its 386
-      against this machine's 286 (flag bits 12-14).
-      `tools/fade_calibration.py` now measures the original calibrators:
-      START/END's range agrees (seven/eight steps), with different phases;
-      PLAYER measures 5,839-5,844 DAC bytes per display period on DOSBox
-      versus 5,811 here (three repeat trials). Throughput remains unresolved.
-      Matching DOSBox's near-slice-end I/O delay suppression brings the
-      runtime to 5,836-5,841 bytes per period; all 1,210 machine probes agree.
-      All six routes agree at 329 checkpoints and final states; the
-      5.7-million-state instruction lockstep reports zero differences.
-      Exact phases and the remaining few-byte difference are still open.
-      The intro music's channel-3 note at 29.7 s shows the phase gap in
-      sound: it comes from the sound driver's per-frame generator, and both
-      DOSBox captures are exactly one generator step (one PLAYER frame)
-      ahead of this machine.
-- [ ] **Rendered sound parity:** the default now uses GOG DOSBox's own
-      DBOPL synthesis core, rate and 2x gain; Nuked remains selectable.
-      Timestamped host output passes chunk-boundary and speaker-gate tests.
-      A ROM-free tone probe found and fixed equal-rate mixer rounding;
-      86,524 stereo frames now match exactly up to the frequency change.
-      The captured intro waveform still differs, with RMS within about
-      0.5%. Resolve register timing, mixer block scheduling and capture
-      alignment. A seeded type-8 flight now has a 62.3-second GOG DOSBox
-      mixer WAV; an approximate 58.15-second host comparison has 0.598
-      envelope correlation, 0.361 waveform correlation and 0.972 median
-      spectral cosine (RMS 0.1011 vs 0.0920). This is not exact PCM parity;
-      the route's PC-speaker gate is clear. Digitized speech, audible speaker
-      output and a listening check remain open.
+      Sessions already record themselves for replay.
+- [ ] **86Box and DOSBox-X as routine checks.** Make `tools/pc_parity.py` the
+      routine PC-parity check (it passes today against limits measured on
+      6 Oct 2026); give 86Box a faster board (the 386/486 ROMs are in 86Box's
+      roms repository, each needing its own CMOS image) and a mouse (a DOS mouse
+      driver on the disk) so START and flight can be scripted and frame timing
+      compared; then decide whether DOSBox-X plus 86Box replace GOG's DOSBox for
+      routine checks (the saved GOG capture stays as a frozen regression
+      reference). Parity target: the original on real hardware, not DOSBox.
+- [ ] **Roland through Munt** (libmt32emu): the MT-32 music plays in the game
+      and renders offline from a MIDI log; the interpreter's and recompiler's
+      MIDI logs are byte-identical and offline renders are repeatable. Live
+      renders vary with audio block boundaries (a Munt random draw) and show
+      brief SDL starvation, so live output is not a stable PCM oracle. Open:
+      independent reference PCM and a listening check.
+- [ ] **Rendered sound parity:** the OPL defaults to GOG DOSBox's DBOPL core at
+      its rate and 2x gain. A tone probe matches exactly; the captured intro
+      still differs in RMS by about 0.5%, and a flight comparison against a GOG
+      mixer WAV is approximate (envelope correlation 0.60). Register timing, mixer
+      block scheduling, digitised speech, audible speaker output and a listening
+      check remain.
+- [ ] **Timing details still DOSBox's own:** its BIOS and DOS stubs at their own
+      addresses, its per-millisecond slicing, its 386 against this machine's 286
+      (flag bits 12-14). PLAYER's fade calibration is within a few bytes of
+      DOSBox's (5,836-5,841 against 5,839-5,844 DAC bytes per display period); the
+      phase gap behind the intro music's channel-3 note at 29.7 s was measured
+      before the PIT and VGA fixes and needs re-checking.
+- [ ] **Individual mission objectives:** independent GOG DOSBox cargo delivery
+      needs a closed-loop pilot (open-loop replay diverges across machines);
+      wider generated-assignment coverage; the strike-training mission (bugs.md
+      D7) is unresolved (the recon pilot never designated its target).
+- [ ] **The remaining career flow:** an earned rank-6 career (the branch is
+      reached only with a staged roster).
 
 ## Phase 2 - understood code
 
-- [ ] Name the translated routines and data, with explanations, drawing on
-      the Reimp's mapping; matched functions replacing translations one at a
-      time, each held to the same parity checks.
-      Started: `tools/reimp_names.py` joins the Reimp's census (1,535
-      functions in seven programs) and its address citations, read-only,
-      with this project's generated regions. 317 functions have an
-      implementing Reimp function (the doc comment above a definition cites
-      the address first), 58 of them with more than one candidate; VGAME has
-      203 (47% of its census bytes), START 69, END 41. Caller citations
-      name 719. The table is a private lead list; each name still needs
-      checking against the code before it is used.
-      Matched routines have a path now: `src/matched/matched.c`, placed for
-      the recompiled engine only, held to the original by
-      `tests/func_lockstep.c` from random states and by every route.
-      231 matched addresses in all seven programs (free fall, waypoint,
-      orientation transpose, sign, abs, clamps, 32-bit shifts and multiply,
-      table sine, clipping outcode, map projections, weapon effectiveness,
-      setters, string and block copies, camera matrix products and depths,
-      distances, square root). Matched routines can call original code,
-      near or far (`guest_call`, `guest_call_far`), and the recompiler
-      isolates each matched entry, so its neighbours stay translated. On the
-      strike route they run tens of millions of times with every checkpoint
-      and the final hash unchanged. Progress is measured in census bytes
-      (`tools/progress.py`).
+- [ ] Name the translated routines and data, with explanations, drawing on the
+      Reimp's mapping; matched functions replacing translations one at a time,
+      each held to the same parity checks. `tools/reimp_names.py` joins the
+      Reimp's census (1,535 functions) with this project's regions as a private
+      lead list. 231 addresses are matched (230 of the census functions, 10,411 of
+      179,213 bytes); the table is at the end of `src/matched/matched.c` and the
+      method is in [architecture.md](architecture.md#matched-routines-phase-2).
+      The remaining small routines are mostly far-segment or do port I/O, which
+      the lockstep cannot hold, so they are held by the routes only. Progress
+      is measured in census bytes ([progress.md](progress.md)).
 
 ## Phase 3 - fixes and enhancements (switchable)
 
-- [x] Code overrides: hand-written C registered for a module address,
-      replacing that address's code under either engine - how the fixes
-      attach. Pinned to the shipped file by hash, off unless switched on
-      (`--fix ID`, `--list-fixes`; `fixes=` in the Python machine API).
-      Inert when off: the cargo return's 380 checkpoints match the build
-      without them. ROM-free `code_overrides` CTest. The recompiler reads
-      the fix table and isolates each override address in a
-      one-instruction region, so a fix costs no translated code around it.
-- [ ] Fixes for the original's bugs in [bugs.md](bugs.md) (D1 frame-rate
-      AI, D6 undetectable cells, ...), each on a switch. D5 (supply drops
-      earn credit) is done and checked through normal input under both
-      engines (`cargo_d5_fixed`). D4 (secret airstrips in Libya, North Cape
-      and the Middle East: world bytes corrected as read, START's masks
-      widened at its entry) and D34 (destroyed-object table extension, five
-      overrides) are done, the Reimp's fixes; D2 (speech hang) is done too:
-      the driver's speech writes are played from the machine's schedule
-      instead of a busy-wait, value for value. D1 (frame-rate controller)
-      is done as a frame limiter at VGAME `0x441D`: a machine above GOG's
-      speed draws at GOG's 11.6 frames a second, so S settles at 9 and the
-      mission clock keeps GOG's pace (`d1_check.py`, route
-      `d1_fast_machine`); at GOG's speed it never waits. D96
-      is an optional wait for the Reimp's separately implemented native UI,
-      not a patch for this translated START path. The measured roster-entry
-      timing difference is tracked under Phase 1. A session recorded with
-      fixes on names them (`# f117r-fixes D5`) and its replay switches them
-      on again.
-- [ ] 60+ fps and 4K presentation. Design in [presentation.md](presentation.md).
-      Measured: the original runs at 9 logic steps a second at GOG speed
-      (S clamps at 15), a step is two `game_draw` phases that draw different
-      vertex sets, sub-pixel precision exists only before the projection
-      divide, and the picture comes from two rasterisers (VGAME's model
-      rasteriser and the resident graphics library). So 60+ fps is
-      interpolation between its states and real 4K needs the primitives
-      captured. The owner chose to observe and replay the original's draw
-      path (the fork in the design page). Stage 0 is built: an observer
-      (`src/matched/observe.c`, `f117run --observe`) that logs frame phases,
-      projected vertices and every drawing primitive - model polygons and
-      their edges, outline edges, the graphics library's lines, span fills
-      and blits, and every other library entry with its page changes - and
-      changes nothing. Stage 1: whole phases are rebuilt from the draw list
-      byte for byte (`tools/drawlist_frame.py`, 73 of 73 work and display
-      phases on the 30M-instruction strike flight). The work page is replayed
-      by drawing rules; direct display writes from still-uncoded entries are
-      captured as byte deltas. Left for Stage 1: coverage across every route
-      and drawing branches this flight never exercised (opaque text, the
-      width clip, dithered fills).
+- [x] **Code overrides** attach fixes: hand-written C registered for a module
+      address, pinned to the shipped file by hash, off unless switched on
+      (`--fix ID`, `--list-fixes`). Inert when off. Details:
+      [architecture.md](architecture.md#the-run-time).
+- [ ] **Fixes for the original's bugs** ([bugs.md](bugs.md)), each on a switch.
+      Done: D1 (a frame limiter at VGAME 0x441D holds a fast machine to GOG's
+      11.6 frames a second; `tools/d1_check.py`, route `d1_fast_machine`), D2
+      (speech played from the machine's schedule instead of a busy-wait), D4
+      (secret airstrips), D5 (supply drops earn credit; `cargo_d5_fixed`), D11
+      (saves written to a temporary file and renamed), D12 (END's signed
+      rating), D34 (destroyed-object table). Open: D6 (cause not proven), D7
+      (not located), D8 (needs a laser-guided-bomb route). D96 is the Reimp's
+      native-UI wait, not a patch for this translated START. A session recorded
+      with fixes on names them in its log and replays with them.
+- [ ] **60+ fps and 4K presentation**, design and status in
+      [presentation.md](presentation.md). The owner chose to observe and replay
+      the original's draw path. Stage 0 (the observer) and Stage 1 (draw lists
+      that rebuild every phase of the windows tried bit for bit, 0 bytes copied)
+      are built; Stage 2's first check shows the clip stage must be redone at
+      the new resolution; Stages 3 (interpolation) and 4 (pacing and polish) are
+      not started.
 
 ## Housekeeping
 
-- [x] Split `src/machine/dos.c` (about 2,300 lines) into memory, programs,
-      files, keyboard and video (`dos_memory.c`, `dos_programs.c`,
-      `dos_files.c`, `dos_keyboard.c`, `dos_video.c`; `dos.c` keeps the
-      dispatch, BIOS stubs and boot). A token-level check shows every one of
-      the original's 85 top-level items moved unchanged apart from `static`
-      and a `dos_` prefix on 29 functions now shared through
-      `dos_internal.h`, all of them call sites. Six routes agree under both
-      engines before and after at every checkpoint, final state, screenshot
-      and saved file. The mouse driver is in `mouse.c`.
-- [x] Build-from-scratch steps in the README, tested on a fresh public clone:
-      full interpreter build, coverage/recompilation, six-route parity at
-      329 checkpoints/finals and 5,713,152 lockstep states (zero mismatches).
-- [x] `.gitattributes` for line endings: LF text, CRLF Windows batch scripts,
-      binary assets excluded from conversion. Existing index text is LF.
-- [x] An automated full Windows interpreter build on GitHub, with four
-      ROM-free CPU/machine CTests, nine comparator tests and twelve route
-      milestone tests. First run
-      [passed](https://github.com/TideGear/OpenNighthawk/actions/runs/37192954631).
+- [x] `src/machine/dos.c` split by service (`dos_memory.c`, `dos_programs.c`,
+      `dos_files.c`, `dos_keyboard.c`, `dos_video.c`), the mouse driver in
+      `mouse.c`; routes agreed before and after at every checkpoint.
+- [x] Build-from-scratch steps in the README, tested on a fresh public clone.
+- [x] `.gitattributes` for line endings.
+- [x] An automated Windows build on GitHub with ROM-free CPU, machine and
+      comparator tests and the route milestone tests.
+- [x] Docs kept as reference, not diaries: session history lives in git, one
+      place per fact ([repeated-processes.md](repeated-processes.md) tracks
+      every repeated process).

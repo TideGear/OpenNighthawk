@@ -90,7 +90,8 @@ date; `git log -p handoff.md` has them.
   (`tools/career_rank6.py`), not an earned rank-6 career.
 - Fixes done: D1 (frame limiter at VGAME 0x441D), D2, D4, D5, D11, D12, D34.
   Open: D6, D7 (inconclusive probe), D8 (needs an LGB route).
-- Phase 2: 231 of 1,535 census functions matched (P2 10.20%).
+- Phase 2: 231 addresses matched (230 of 1,535 census functions, 10,411 of
+  179,213 bytes; P2 10.52%).
 - Phase 3 presentation Stage 1: draw lists rebuild every phase exactly on the
   routes and windows tried (`docs/presentation.md`); Stages 2-4 open.
 - References: GOG DOSBox intro 1,329 exact pictures with 3 unmatched each side
