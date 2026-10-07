@@ -26,12 +26,13 @@ import concurrent.futures
 import glob
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
 import time
 
-from run_route import check_route, route_args, prepare_roster
+from run_route import check_route, route_args, prepare_roster, roster_seed
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -53,12 +54,42 @@ def run(cmd, **kw):
     return subprocess.run(cmd, **kw)
 
 
+def sync_tree(new, gen):
+    """Copy the files of `new` into `gen`, touching only those whose bytes
+    differ (so the build tool, which goes by modification time, recompiles
+    only what changed), and remove files `new` no longer has. True when
+    anything changed."""
+    changed = False
+    os.makedirs(gen, exist_ok=True)
+    names = set(os.listdir(new))
+    for name in names:
+        src, dst = os.path.join(new, name), os.path.join(gen, name)
+        if os.path.isfile(dst):
+            with open(src, "rb") as a, open(dst, "rb") as b:
+                if a.read() == b.read():
+                    continue
+        shutil.copyfile(src, dst)
+        changed = True
+    for name in os.listdir(gen):
+        if name not in names:
+            os.remove(os.path.join(gen, name))
+            changed = True
+    return changed
+
+
 def recompile(data, gen, coverage_files):
-    cmd = [sys.executable, os.path.join(ROOT, "recompiler", "recomp.py"), "--data", data, "--out", gen]
+    """Translate into a scratch directory and bring `gen` up to date from it.
+    True when any generated file changed."""
+    scratch = gen + ".new"
+    shutil.rmtree(scratch, ignore_errors=True)
+    cmd = [sys.executable, os.path.join(ROOT, "recompiler", "recomp.py"), "--data", data, "--out", scratch]
     for c in coverage_files:
         cmd += ["--coverage", c]
     if run(cmd).returncode != 0:
         sys.exit("recompile failed")
+    changed = sync_tree(scratch, gen)
+    shutil.rmtree(scratch, ignore_errors=True)
+    return changed
 
 
 def build(gen):
@@ -94,21 +125,46 @@ def headless(engine, data, work, name, args, extra, route):
         sys.exit("route failed: " + "; ".join(errors))
     interp = re.search(r"interpreted (\d+)", r.stdout)
     checkpoints = tuple(re.findall(r"^\[hash\] (\d+) ([0-9a-f]+) (.*)$", r.stdout, re.M))
-    return int(m.group(1)), m.group(2), int(interp.group(1)) if interp else -1, checkpoints
+    return int(m.group(1)), m.group(2), int(interp.group(1)) if interp else -1, checkpoints, save, os.path.join(rundir, "run.log")
 
 
-def parallel(jobs, items, work):
+def session_groups(routes):
+    """Group routes that play the same session: the same options (so the same
+    inputs, budget, clock and replay file) and the same seed roster. Only
+    their `# expect-` milestones differ, and those are read from the log and
+    the saved files, so one run per engine serves them all; each route's
+    milestones are checked against it. The first route (by name) leads."""
+    groups = {}
+    for r in routes:
+        groups.setdefault((tuple(route_args(r)), roster_seed(r)), []).append(r)
+    return list(groups.values())
+
+
+def expected_cost(route, engine=None):
+    """A rough relative run time, for starting the longest runs first: the
+    clock budget, times 3 for the interpreter. Order never changes a result
+    (each run is a child process on its own virtual clock)."""
+    args = route_args(route)
+    steps = int(args[args.index("--steps") + 1]) if "--steps" in args else 0
+    return steps * (3 if engine == "interp" else 1)
+
+
+def parallel(jobs, items, work, cost=None):
     """Run work(item) for every item on `jobs` threads (each is a child process,
     on its own virtual clock, so the results do not depend on the load) and
     return the results in item order; the first failure is raised after the
-    others finish."""
+    others finish. With `cost`, the most expensive items are started first."""
     def guarded(item):
         try:
             return work(item), None
         except SystemExit as e:
             return None, e
+    order = sorted(range(len(items)), key=lambda i: -cost(items[i])) if cost else range(len(items))
+    results = [None] * len(items)
     with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, jobs)) as pool:
-        results = list(pool.map(guarded, items))
+        futures = {i: pool.submit(guarded, items[i]) for i in order}
+        for i, f in futures.items():
+            results[i] = f.result()
     for _, error in results:
         if error is not None:
             raise error
@@ -119,8 +175,11 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", required=True, help="the game's install directory (holds F117.COM)")
     ap.add_argument("--work", default=os.path.join(os.path.expanduser("~"), "f117-recomp-local"))
-    ap.add_argument("--jobs", type=int, default=max(1, min(12, (os.cpu_count() or 2) // 2)),
+    ap.add_argument("--jobs", type=int, default=max(1, min(24, (os.cpu_count() or 2) * 3 // 4)),
                     help="routes to run at once in the coverage and parity steps (1 = one at a time)")
+    ap.add_argument("--seed-coverage", metavar="DIR",
+                    help="start from the *.cov files of an earlier run's coverage directory, so the first "
+                         "translation is already complete and the second build can be skipped")
     ap.add_argument("--no-parity", action="store_true")
     ap.add_argument("--no-coverage", action="store_true")
     ap.add_argument("--parity-only", action="store_true", help="check the current build without translating or rebuilding")
@@ -131,7 +190,17 @@ def main():
     gen = os.path.join(a.work, "gen")
     covdir = os.path.join(a.work, "coverage")
     os.makedirs(covdir, exist_ok=True)
+    if a.seed_coverage:
+        for cov in glob.glob(os.path.join(a.seed_coverage, "*.cov")):
+            dst = os.path.join(covdir, os.path.basename(cov))
+            if not os.path.exists(dst):
+                shutil.copyfile(cov, dst)
     routes = sorted(glob.glob(os.path.join(HERE, "routes", "*.args")))
+    groups = session_groups(routes)
+    lead = {r: g[0] for g in groups for r in g}
+    shared = [g for g in groups if len(g) > 1]
+    for g in shared:
+        print("  one session serves %s" % ", ".join(os.path.splitext(os.path.basename(r))[0] for r in g))
 
     if not a.parity_only:
         print("1. translate")
@@ -147,16 +216,27 @@ def main():
             # to INTERPRET, so code an earlier capture got translated is
             # absent from this one - dropping the old file would lose it.
             cov = os.path.join(covdir, name + ".cov")
-            icount, h, interp, _ = headless("recomp", a.data, a.work, name, route_args(r), ["--coverage", cov], r)
+            icount, h, interp, *_ = headless("recomp", a.data, a.work, name, route_args(r), ["--coverage", cov], r)
             return name, icount, interp
-        for name, icount, interp in parallel(a.jobs, routes, cover):
+        for name, icount, interp in parallel(a.jobs, [g[0] for g in groups], cover, cost=expected_cost):
             print("  %-20s %d clocks, %d interpreted" % (name, icount, interp))
         lap("coverage")
         print("4. translate again, build again")
-        recompile(a.data, gen, sorted(glob.glob(os.path.join(covdir, "*.cov"))))
-        build(gen)
+        if recompile(a.data, gen, sorted(glob.glob(os.path.join(covdir, "*.cov")))):
+            build(gen)
+        else:
+            print("  the coverage added no translated code: the generated files are byte-identical, "
+                  "so the first build stands")
         lap("second translate and build")
     if not a.no_parity:
+        # Neither lockstep depends on the routes, only on the build, so they
+        # run beside the route replays instead of after them.
+        lockstep = {}
+        for key, exe_name, states in (("insn", "insn_lockstep.exe", "64"), ("func", "func_lockstep.exe", "4000")):
+            exe = os.path.join(ROOT, "build", exe_name)
+            print("  $ " + '"%s" --states %s (in the background)' % (exe, states))
+            lockstep[key] = subprocess.Popen([exe, "--states", states], stdout=subprocess.PIPE,
+                                             stderr=subprocess.STDOUT, text=True)
         print("5. parity")
         bad = 0
 
@@ -164,37 +244,45 @@ def main():
             r, engine = job
             name = os.path.splitext(os.path.basename(r))[0]
             return headless(engine, a.data, a.work, name, route_args(r), ["--hash-every", "50000000"], r)
-        jobs = [(r, e) for r in routes for e in ("interp", "recomp")]
-        done = parallel(a.jobs, jobs, replay)
-        for k, r in enumerate(routes):
-            name = os.path.splitext(os.path.basename(r))[0]
-            ri, rr = done[2 * k], done[2 * k + 1]
+        leads = [g[0] for g in groups]
+        jobs = [(r, e) for r in leads for e in ("interp", "recomp")]
+        done = parallel(a.jobs, jobs, replay, cost=lambda j: expected_cost(j[0], j[1]))
+        by_lead = {r: (done[2 * k], done[2 * k + 1]) for k, r in enumerate(leads)}
+        for g in groups:
+            ri, rr = by_lead[g[0]]
             same = ri[:2] == rr[:2] and ri[3] == rr[3]
-            bad += not same
-            print("  %-20s interp %d/%s  recomp %d/%s (%d interpreted)  %s" % (
-                name, ri[0], ri[1], rr[0], rr[1], rr[2], "IDENTICAL" if same else "DIFFERENT"))
-            print("    %d checkpoints compared" % len(ri[3]))
+            for r in g:
+                name = os.path.splitext(os.path.basename(r))[0]
+                # Every route in the group is held to its own milestones on
+                # the shared run (the leader's were checked as it ran).
+                if r != g[0]:
+                    for engine, run_result in zip(("interp", "recomp"), (ri, rr)):
+                        with open(run_result[5]) as log:
+                            errors = check_route(r, log.read(), run_result[4])
+                        if errors:
+                            sys.exit("route %s failed on the shared %s session: %s" % (name, engine, "; ".join(errors)))
+                bad += not same
+                print("  %-20s interp %d/%s  recomp %d/%s (%d interpreted)  %s" % (
+                    name, ri[0], ri[1], rr[0], rr[1], rr[2], "IDENTICAL" if same else "DIFFERENT"))
+                print("    %d checkpoints compared" % len(ri[3]))
         lap("parity")
         if bad:
+            for proc in lockstep.values():
+                proc.kill()
             sys.exit("%d route(s) differ between the engines" % bad)
-        print("6. every translated instruction against the interpreter")
-        exe = os.path.join(ROOT, "build", "insn_lockstep.exe")
-        r = run([exe, "--states", "64"], capture_output=True, text=True)
-        last = (r.stdout or "").strip().splitlines()[-1:] or ["(no output)"]
-        print("  " + last[0])
-        if r.returncode != 0:
-            print("\n".join(l for l in r.stdout.splitlines() if "MISMATCH" in l))
-            sys.exit("translated instructions differ from the interpreter")
-        lap("instruction lockstep")
-        print("7. every matched routine against the original")
-        exe = os.path.join(ROOT, "build", "func_lockstep.exe")
-        r = run([exe, "--states", "4000"], capture_output=True, text=True)
-        last = (r.stdout or "").strip().splitlines()[-1:] or ["(no output)"]
-        print("  " + last[0])
-        if r.returncode != 0:
-            print("\n".join(l for l in r.stdout.splitlines() if "MISMATCH" in l))
-            sys.exit("matched routines differ from the original")
-    lap("matched-routine lockstep")
+        for number, key, what, message in (
+                (6, "insn", "every translated instruction against the interpreter",
+                 "translated instructions differ from the interpreter"),
+                (7, "func", "every matched routine against the original",
+                 "matched routines differ from the original")):
+            print("%d. %s" % (number, what))
+            out, _ = lockstep[key].communicate()
+            last = (out or "").strip().splitlines()[-1:] or ["(no output)"]
+            print("  " + last[0])
+            if lockstep[key].returncode != 0:
+                print("\n".join(l for l in out.splitlines() if "MISMATCH" in l))
+                sys.exit(message)
+            lap(what)
     print("done: %s" % os.path.join(ROOT, "build", "f117a.exe"))
 
 
