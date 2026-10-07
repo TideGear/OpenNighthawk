@@ -5276,6 +5276,326 @@ static int vgame_cockpit_layout(machine_t *m)
     return 1;
 }
 
+/* VGAME 0x0895E and its twin 0x0898F, panel_text(s, x, y, colour): the text
+ * routine at 0x089C0 on the current page's text record - [4028] while the
+ * second page is shown ([40B6] set), else [4010]. Flags: the compare. */
+static int panel_text_at(machine_t *m, uint16_t ret_ip)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 11)) return 0;
+    const uint16_t a = arg(c, 0), b = arg(c, 1), d = arg(c, 2), e = arg(c, 3);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    alu_sub(c, mem_read8(c, phys(c->seg[S_DS], 0x40B6)), 0, 0, 0);   /* cmp byte [40B6], 0 */
+    const int second = !(c->flags & F_ZF);
+    cpu_push16(c, e);
+    cpu_push16(c, d);
+    cpu_push16(c, b);
+    cpu_push16(c, a);
+    cpu_push16(c, ds_get(c, second ? 0x4028 : 0x4010));
+    c->icount += second ? 9 : 10;
+    if (!guest_call(m, 0x89C0, ret_ip)) return 1;
+    if (!room(c, 2)) { c->ip = ret_ip; return 1; }
+    x86_leave(c);
+    c->icount += 2;
+    near_ret(c);
+    return 1;
+}
+static int vgame_panel_text(machine_t *m) { return panel_text_at(m, 0x898D); }
+static int vgame_panel_text2(machine_t *m) { return panel_text_at(m, 0x89BE); }
+
+/* VGAME 0x089C0, text_record(rec, s, x, y, colour): the record's +0Ch is
+ * cleared, +8/+0Ah take x, y and +4 the colour; the text's length (0x0EB82)
+ * and upper-cased form (0x0EDC2) go with the record to 1E42:0133. */
+static int vgame_text_record(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 12)) return 0;
+    const uint16_t rec = arg(c, 0), s = arg(c, 1), x = arg(c, 2), y = arg(c, 3), colour = arg(c, 4);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_BX] = rec;
+    ds_put(c, (uint16_t)(rec + 0x0C), 0);
+    ds_put(c, (uint16_t)(rec + 8), x);
+    ds_put(c, (uint16_t)(rec + 0x0A), y);
+    ds_put(c, (uint16_t)(rec + 4), colour);
+    c->r[R_AX] = colour;
+    cpu_push16(c, s);
+    c->icount += 11;
+    if (!guest_call(m, 0xEB82, 0x89E3)) return 1;
+    if (!room(c, 4)) { c->ip = 0x89E3; return 1; }
+    c->r[R_BX] = cpu_pop16(c);
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, s);
+    c->icount += 3;
+    if (!guest_call(m, 0xEDC2, 0x89EB)) return 1;
+    if (!room(c, 4)) { c->ip = 0x89EB; return 1; }
+    c->r[R_BX] = cpu_pop16(c);
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, rec);
+    c->icount += 3;
+    if (!guest_call_far(m, 0x89F0, 0x89F5)) return 1;
+    if (!room(c, 2)) { c->ip = 0x89F5; return 1; }
+    x86_leave(c);
+    c->icount += 2;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x02C87, attitude_step(a, b): the frame counter [2DF8] advances and
+ * every eighth frame sets [2DFB]; the library's 114A:04B4 turns the vector
+ * 2DDC by (a, b), and the result is copied over 2D94 (12h bytes, 0x0EDE0). */
+static int vgame_attitude_step(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 9)) return 0;
+    const uint16_t a = arg(c, 0), b = arg(c, 1);
+    x86_enter(c, 4, 0);
+    const uint16_t n = (uint16_t)alu_inc(c, ds_get(c, 0x2DF8), 1);
+    ds_put(c, 0x2DF8, n);
+    alu_logic(c, n & 7, 0);                                       /* test byte [2DF8], 7 */
+    unsigned k = 4;
+    if (c->flags & F_ZF) { mem_write8(c, phys(c->seg[S_DS], 0x2DFB), 1); k = 5; }
+    cpu_push16(c, 0x2DDC);
+    cpu_push16(c, b);
+    cpu_push16(c, a);
+    c->icount += k + 3;
+    if (!guest_call_far(m, 0x2CA4, 0x2CA9)) return 1;
+    if (!room(c, 6)) { c->ip = 0x2CA9; return 1; }
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0);      /* add sp, 6 */
+    cpu_push16(c, 0x12);
+    cpu_push16(c, 0x2DDC);
+    cpu_push16(c, 0x2D94);
+    c->icount += 4;
+    if (!guest_call(m, 0xEDE0, 0x2CB7)) return 1;
+    if (!room(c, 2)) { c->ip = 0x2CB7; return 1; }
+    x86_leave(c);
+    c->icount += 2;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x094AD and 0x094E1, two panel bars: the current page's first word
+ * (through [4028] or [4010], kept in a local) and the word at [[4040]] go to
+ * 1E42:01EC with the box (4Ah, 6Eh, 4Dh, 3Ch); the two differ only in which
+ * of the pair is pushed first. */
+static int panel_bar(machine_t *m, int page_first, uint16_t call_ip)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 18)) return 0;
+    x86_enter(c, 2, 0);
+    alu_sub(c, mem_read8(c, phys(c->seg[S_DS], 0x40B6)), 0, 0, 0);
+    const int second = !(c->flags & F_ZF);
+    const uint16_t bx = ds_get(c, second ? 0x4028 : 0x4010);
+    const uint16_t ax = ds_get(c, bx);
+    c->r[R_AX] = ax;
+    seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 2), ax);
+    static const uint16_t box[4] = { 0x3C, 0x4D, 0x6E, 0x4A };
+    for (int i = 0; i < 4; i++) cpu_push16(c, box[i]);
+    const uint16_t pb = ds_get(c, 0x4040);
+    c->r[R_BX] = pb;
+    const uint16_t other = ds_get(c, pb);
+    cpu_push16(c, page_first ? ax : other);
+    cpu_push16(c, 0x6E);
+    cpu_push16(c, 0x4A);
+    cpu_push16(c, page_first ? other : ax);
+    c->icount += (second ? 5 : 4) + 2 + 4 + 1 + 4;
+    if (!guest_call_far(m, call_ip, (uint16_t)(call_ip + 5))) return 1;
+    if (!room(c, 2)) { c->ip = (uint16_t)(call_ip + 5); return 1; }
+    x86_leave(c);
+    c->icount += 2;
+    near_ret(c);
+    return 1;
+}
+static int vgame_panel_bar_a(machine_t *m) { return panel_bar(m, 0, 0x94DA); }
+static int vgame_panel_bar_b(machine_t *m) { return panel_bar(m, 1, 0x950E); }
+
+/* VGAME 0x013B9, map_project(x, y, px, py): the map position to the screen
+ * at the current zoom - *px = (x - [0D1E] + [9512]) / [950E] and
+ * *py = ((y - [0D20]) * 4 / 3 + [9514]) / [950E]. Declines, before touching
+ * anything, when a divide would trap. Flags from the last add. */
+static int vgame_map_project(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 22)) return 0;
+    const uint16_t x = arg(c, 0), y = arg(c, 1), px = arg(c, 2), py = arg(c, 3);
+    const int16_t scale = (int16_t)ds_get(c, 0x950E);
+    const int16_t ax1 = (int16_t)(uint16_t)(x - ds_get(c, 0x0D1E) + ds_get(c, 0x9512));
+    const int16_t ay1 = (int16_t)(uint16_t)((uint16_t)((uint16_t)(y - ds_get(c, 0x0D20)) << 2));
+    const int16_t ay2 = (int16_t)(uint16_t)(ay1 / 3 + ds_get(c, 0x9514));
+    if (scale == 0 || (scale == -1 && (ax1 == INT16_MIN || ay2 == INT16_MIN))) return 0;
+    /* *px is written before the second half reads 0D20, 9514 and 950E: an
+     * alias would change what the checks above assumed. */
+    for (int k = -1; k <= 1; k++)
+        if ((uint16_t)(px + k) == 0x0D20 || (uint16_t)(px + k) == 0x9514 || (uint16_t)(px + k) == 0x950E) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    uint16_t ax = (uint16_t)alu_sub(c, x, ds_get(c, 0x0D1E), 1, 0);
+    ax = (uint16_t)alu_add(c, ax, ds_get(c, 0x9512), 1, 0);
+    c->r[R_AX] = ax;
+    c->r[R_DX] = (ax & 0x8000) ? 0xFFFF : 0;                      /* cwd */
+    x86_idiv16(c, (uint16_t)scale, 0);
+    c->r[R_BX] = px;
+    ds_put(c, px, c->r[R_AX]);
+    ax = (uint16_t)alu_sub(c, y, ds_get(c, 0x0D20), 1, 0);
+    ax = x86_shift(c, 4, ax, 2, 1);                               /* shl ax, 2 */
+    c->r[R_AX] = ax;
+    c->r[R_CX] = 3;
+    c->r[R_DX] = (ax & 0x8000) ? 0xFFFF : 0;
+    x86_idiv16(c, 3, 0);
+    ax = (uint16_t)alu_add(c, c->r[R_AX], ds_get(c, 0x9514), 1, 0);
+    c->r[R_AX] = ax;
+    c->r[R_DX] = (ax & 0x8000) ? 0xFFFF : 0;
+    x86_idiv16(c, (uint16_t)scale, 0);
+    c->r[R_BX] = py;
+    ds_put(c, py, c->r[R_AX]);
+    x86_leave(c);
+    c->icount += 22;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x0B933, point_range(x, y, bearing): the offset from the aircraft
+ * ([C0D0], [C0DE]) to (x, y); when asked, its bearing (0x0C702 on (-dx, dy))
+ * into [952E]; always its octagonal distance (0x0C6B3) into [952A]. */
+static int vgame_point_range(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 13)) return 0;
+    const uint16_t x = arg(c, 0), y = arg(c, 1), want = arg(c, 2);
+    x86_enter(c, 4, 0);
+    const uint16_t ss = c->seg[S_SS], bp = c->r[R_BP];
+    const uint16_t dx = (uint16_t)alu_sub(c, ds_get(c, 0xC0D0), x, 1, 0);
+    c->r[R_AX] = dx;
+    seg_write16(c, ss, (uint16_t)(bp - 2), dx);
+    const uint16_t dy = (uint16_t)alu_sub(c, ds_get(c, 0xC0DE), y, 1, 0);
+    c->r[R_CX] = dy;
+    seg_write16(c, ss, (uint16_t)(bp - 4), dy);
+    alu_sub(c, want, 0, 1, 0);                                    /* cmp [bp+8], 0 */
+    c->icount += 9;
+    if (!(c->flags & F_ZF)) {
+        cpu_push16(c, dy);
+        c->r[R_AX] = (uint16_t)alu_sub(c, 0, dx, 1, 0);           /* neg ax */
+        cpu_push16(c, c->r[R_AX]);
+        c->icount += 3;
+        if (!guest_call(m, 0xC702, 0xB957)) return 1;
+        if (!room(c, 6)) { c->ip = 0xB957; return 1; }
+        c->r[R_BX] = cpu_pop16(c);
+        c->r[R_BX] = cpu_pop16(c);
+        ds_put(c, 0x952E, c->r[R_AX]);
+        c->icount += 3;
+    }
+    cpu_push16(c, seg_read16(c, ss, (uint16_t)(bp - 4)));
+    cpu_push16(c, seg_read16(c, ss, (uint16_t)(bp - 2)));
+    c->icount += 2;
+    if (!guest_call(m, 0xC6B3, 0xB965)) return 1;
+    if (!room(c, 5)) { c->ip = 0xB965; return 1; }
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    ds_put(c, 0x952A, c->r[R_AX]);
+    x86_leave(c);
+    c->icount += 5;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x087C1, map_line_projected(x0, y0, x1, y1): each end through the
+ * moving map's screen x (0x085F1) and y (0x08608), then the library's line
+ * at 114A:0070 clipped to the map window ([DEC0], [E32E], [DEC2], [E470])
+ * on page 1. */
+static int vgame_map_line_projected(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 9)) return 0;
+    const uint16_t a = arg(c, 0), b = arg(c, 1), d = arg(c, 2), e = arg(c, 3);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, 1);
+    cpu_push16(c, ds_get(c, 0xE470));
+    cpu_push16(c, ds_get(c, 0xDEC2));
+    cpu_push16(c, ds_get(c, 0xE32E));
+    cpu_push16(c, ds_get(c, 0xDEC0));
+    cpu_push16(c, e);
+    c->icount += 8;
+    if (!guest_call(m, 0x8608, 0x87DC)) return 1;
+    static const struct { uint16_t target, ret; } step[3] = { { 0x85F1, 0x87E4 }, { 0x8608, 0x87EC }, { 0x85F1, 0x87F4 } };
+    const uint16_t next[3] = { d, b, a };
+    uint16_t at = 0x87DC;
+    for (int i = 0; i < 3; i++) {
+        if (!room(c, 4)) { c->ip = at; return 1; }
+        c->r[R_BX] = cpu_pop16(c);
+        cpu_push16(c, c->r[R_AX]);
+        cpu_push16(c, next[i]);
+        c->icount += 3;
+        if (!guest_call(m, step[i].target, step[i].ret)) return 1;
+        at = step[i].ret;
+    }
+    if (!room(c, 3)) { c->ip = at; return 1; }
+    c->r[R_BX] = cpu_pop16(c);
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 2;
+    if (!guest_call_far(m, 0x87F6, 0x87FB)) return 1;
+    if (!room(c, 2)) { c->ip = 0x87FB; return 1; }
+    x86_leave(c);
+    c->icount += 2;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x08575 / 0x085B3, map zoom in and out. In the cockpit's outside view
+ * ([C0A6] bit 7) the step [3D9E] moves instead. Otherwise the map scale
+ * [40AE] (with [DF06] = 0; 2..9) changes and the map is redrawn around the
+ * aircraft (0x08462), and with [DF06] = 1 the second scale [40B0] (0..7). */
+static int map_zoom(machine_t *m, int in)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 15)) return 0;
+    alu_logic(c, mem_read8(c, phys(c->seg[S_DS], 0xC0A6)) & 0x80, 0);
+    if (!(c->flags & F_ZF)) {
+        const uint16_t v = ds_get(c, 0x3D9E);
+        ds_put(c, 0x3D9E, (uint16_t)(in ? alu_dec(c, v, 1) : alu_inc(c, v, 1)));
+        c->icount += 4;
+        near_ret(c);
+        return 1;
+    }
+    c->icount += 2;
+    alu_sub(c, ds_get(c, 0xDF06), 0, 1, 0);
+    c->icount += 2;
+    if (c->flags & F_ZF) {
+        const uint16_t s = ds_get(c, 0x40AE);
+        alu_sub(c, s, in ? 9 : 2, 1, 0);
+        c->icount += 2;
+        if (in ? !x86_cond(c, 0xD) : !x86_cond(c, 0xE)) {         /* jge / jle not taken */
+            ds_put(c, 0x40AE, (uint16_t)(in ? alu_inc(c, s, 1) : alu_dec(c, s, 1)));
+            cpu_push16(c, ds_get(c, 0xC0DE));
+            cpu_push16(c, ds_get(c, 0xC0D0));
+            c->icount += 3;
+            const uint16_t ret = in ? 0x859E : 0x85DC;
+            if (!guest_call(m, 0x8462, ret)) return 1;
+            if (!room(c, 8)) { c->ip = ret; return 1; }
+            c->r[R_BX] = cpu_pop16(c);
+            c->r[R_BX] = cpu_pop16(c);
+            c->icount += 2;
+        }
+    }
+    alu_sub(c, ds_get(c, 0xDF06), 1, 1, 0);
+    c->icount += 2;
+    if (c->flags & F_ZF) {
+        const uint16_t s = ds_get(c, 0x40B0);
+        alu_sub(c, s, in ? 7 : 0, 1, 0);
+        c->icount += 2;
+        if (in ? !x86_cond(c, 0xD) : !(c->flags & F_ZF)) {        /* jge / je not taken */
+            ds_put(c, 0x40B0, (uint16_t)(in ? alu_inc(c, s, 1) : alu_dec(c, s, 1)));
+            c->icount += 1;
+        }
+    }
+    c->icount += 1;
+    near_ret(c);
+    return 1;
+}
+static int vgame_map_zoom_in(machine_t *m) { return map_zoom(m, 1); }
+static int vgame_map_zoom_out(machine_t *m) { return map_zoom(m, 0); }
+
 static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x4958, vgame_free_fall, "free fall", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD50A, vgame_waypoint_from_target, "waypoint from target", 1 },
@@ -5499,6 +5819,17 @@ static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xC89C, vgame_gauge_value, "gauge value", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x3A0D, vgame_panel_mode_3, "panel mode 3", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x8435, vgame_cockpit_layout, "cockpit layout", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x895E, vgame_panel_text, "panel text", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x898F, vgame_panel_text2, "panel text, second entry", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x89C0, vgame_text_record, "fill a text record", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x2C87, vgame_attitude_step, "attitude step", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x94AD, vgame_panel_bar_a, "panel bar", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x94E1, vgame_panel_bar_b, "panel bar, second form", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x13B9, vgame_map_project, "map projection to the screen", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xB933, vgame_point_range, "range and bearing to a point", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x87C1, vgame_map_line_projected, "map line, projected", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x8575, vgame_map_zoom_in, "map zoom in", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x85B3, vgame_map_zoom_out, "map zoom out", 1 },
 };
 
 void matched_register(void)
