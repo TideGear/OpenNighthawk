@@ -136,6 +136,10 @@ def main():
     parser.add_argument("--initial-roster", type=Path, help="continue from an earned roster file in a fresh private save directory")
     parser.add_argument("--time-us", type=int, default=700000000000000,
                         help="emulated startup clock; replay uses its recorded header")
+    parser.add_argument("--landing-aim", type=int, default=20,
+                        help="how far before the runway centre the glide path meets the ground")
+    parser.add_argument("--approach-speed", type=int, default=200,
+                        help="speed held on the final approach")
     parser.add_argument("--acquisition", choices=("nose", "level"), default="nose",
                         help="normal target designation approach for adaptive controls")
     args = parser.parse_args()
@@ -224,7 +228,8 @@ def main():
                             waypoint_range = math.hypot(signed(state["home_x"] - state["x"]),
                                 signed(state["home_y"] + 4000 - state["y"]))
                             if waypoint_range < 150: approach = True
-                            landing_control(machine, state, tick, approach, deck_aim=300)
+                            landing_control(machine, state, tick, approach, deck_aim=300,
+                                            aim=args.landing_aim, approach_speed=args.approach_speed)
                         elif args.complete and state["flags"] & 0x4000:
                             ds = (machine.psp + 0x10 + 0x1E42) << 4
                             secondary = machine.read16(ds + 0xE318)

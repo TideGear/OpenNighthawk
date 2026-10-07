@@ -1753,3 +1753,17 @@ as the current state. Resume the full roadmap only when the user asks.
   386). Next: a 386/486 machine, or an 8086 kernel on the floppy. Captures
   show only part of the screen (`run4.ps1` resizes the window but the
   display stretches; set mode 3 or print on row 0 to be seen).
+
+### 86Box boots to DOS (6 Oct, 20:10)
+
+- `D:/86box/vm` now boots FreeDOS from the hard disk to `C:\F117A>` on the
+  `ami286` machine with `hdc_1 = xtide_at`, no keypress. Needed, in order:
+  CMOS extended memory 0 (`tools/ref86box/cmos_ami286.py`); config
+  `vid_resize = 2`, `window_fixed_res = 640x400`, `dpi_scale = 0` and a
+  DPI-aware capture script (`run5.ps1`) so PrintWindow shows the whole
+  screen; and `patch_hd_boot.py` (a chain-loading MBR plus the BPB
+  geometry 17 x 8, 17 hidden) because FreeDOS read nothing with a zero
+  geometry. The FreeDOS floppy was not needed after the disk boots.
+- Next: put the F-117A boot (the GOG files are in `C:\F117A`) under the
+  script, capture the intro with Ctrl+F11 or PrintWindow, and compare the
+  PIT control-word IRQ0 behaviour and OPL output with this project's.
