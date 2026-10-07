@@ -862,7 +862,7 @@ def run_dosbox(dosbox, data, probe, work, child, tag="dosbox"):
         f.write('mount C "%s"\nc:\nkeyb us\ncls\nf117\nexit\n' % d)
     env = dict(os.environ, SDL_VIDEODRIVER="dummy", SDL_AUDIODRIVER="dummy")
     base = os.path.join(data, "dosboxF117A.conf")
-    extra = ["-nopromptfolder", "-fastlaunch"] if "dosbox-x" in os.path.basename(dosbox).lower() else []
+    extra = ["-silent", "-nogui", "-nopromptfolder", "-fastlaunch"] if "dosbox-x" in os.path.basename(dosbox).lower() else []
     subprocess.run([dosbox, "-conf", base, "-conf", conf, "-noconsole"] + extra, cwd=os.path.dirname(dosbox),
                    env=env, timeout=180)
     return open(os.path.join(d, "OUT.BIN"), "rb").read(), open(os.path.join(d, "CHILD.BIN"), "rb").read()
@@ -915,7 +915,7 @@ def main():
     a = ap.parse_args()
     tag = "dosbox" if a.reference == "gog" else "dosbox-x"
     dosbox = a.dosbox or (os.path.join(a.data, "DOSBOX", "DOSBox.exe") if a.reference == "gog" else
-                          os.path.join(os.path.expanduser("~"), "f117-recomp-local", "dosbox-x", "dosbox-x.exe"))
+                          r"D:\86box-src\dbx-src\src\dosbox-x.exe")
     probe, n = build_probe()
     child, nc = build_child()
     os.makedirs(a.work, exist_ok=True)

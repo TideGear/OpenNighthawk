@@ -1,0 +1,153 @@
+diff --git a/src/vnc.c b/src/vnc.c
+index cd539f5..a1da32e 100644
+--- a/src/vnc.c
++++ b/src/vnc.c
+@@ -172,6 +172,126 @@ vnc_display(rfbClientPtr cl)
+     }
+ }
+ 
++/* ---- PC-parity harness (tools/ref86box/86box-trace.patch) ------------------
++ * With B86_TRACE=DIR set, every displayed frame is logged with its emulated time
++ * (frames.csv: frame, tsc, microseconds, width, height, 64-bit hash) and each
++ * new picture is saved as a PPM; B86_KEYS="frame:down:scancode,..." injects
++ * keys at frame counts; B86_STOP=N exits after N frames. The emulator runs
++ * without a VNC client, so a run is a function of the machine and its inputs,
++ * not of wall-clock polling. */
++#include "cpu.h"
++#include <86box/timer.h>
++
++typedef struct {
++    uint64_t frame;
++    int      down;
++    int      scan;
++} tr_key_t;
++
++static FILE    *tr_csv;
++static char     tr_dir[900];
++static int      tr_init;
++static int      tr_stop;
++static uint64_t tr_n;
++static uint64_t tr_last_hash;
++static tr_key_t tr_keys[256];
++static int      tr_nkeys;
++static int      tr_nextkey;
++
++static void
++tr_setup(void)
++{
++    const char *s;
++    char        path[1024];
++
++    if (tr_init)
++        return;
++    tr_init = 1;
++    s       = getenv("B86_TRACE");
++    if (!s)
++        return;
++    snprintf(tr_dir, sizeof(tr_dir), "%s", s);
++    snprintf(path, sizeof(path), "%s/frames.csv", tr_dir);
++    tr_csv = fopen(path, "w");
++    s      = getenv("B86_STOP");
++    if (s)
++        tr_stop = atoi(s);
++    s = getenv("B86_KEYS");
++    while (s && *s && tr_nkeys < 256) {
++        unsigned long long f;
++        int                d;
++        int                c;
++        int                used = 0;
++
++        if (sscanf(s, "%llu:%d:%x%n", &f, &d, &c, &used) < 3)
++            break;
++        tr_keys[tr_nkeys].frame = f;
++        tr_keys[tr_nkeys].down  = d;
++        tr_keys[tr_nkeys].scan  = c;
++        tr_nkeys++;
++        s += used;
++        if (*s == ',')
++            s++;
++    }
++}
++
++static void
++tr_frame(int w, int h)
++{
++    uint64_t hash = 1469598103934665603ULL;
++    uint64_t us;
++
++    tr_setup();
++    if (!tr_csv)
++        return;
++    for (int row = 0; row < h; ++row) {
++        const uint64_t *p = (const uint64_t *) &(((uint8_t *) rfb->frameBuffer)[row * 2048 * sizeof(uint32_t)]);
++
++        for (int i = 0; i < w / 2; i++) {
++            hash ^= p[i];
++            hash *= 1099511628211ULL;
++        }
++    }
++    us = (cpu_s && cpu_s->rspeed) ? (uint64_t) (((double) tsc * 1000000.0) / (double) cpu_s->rspeed) : 0;
++    fprintf(tr_csv, "%llu,%llu,%llu,%d,%d,%016llx\n", (unsigned long long) tr_n, (unsigned long long) tsc,
++            (unsigned long long) us, w, h, (unsigned long long) hash);
++    if (hash != tr_last_hash) {
++        tr_last_hash = hash;
++        if (getenv("B86_PPM") != NULL) {
++            char  path[1024];
++            FILE *f;
++            int   half = (w == 640 && h == 400);
++
++            snprintf(path, sizeof(path), "%s/f%06llu.ppm", tr_dir, (unsigned long long) tr_n);
++            f = fopen(path, "wb");
++            if (f) {
++                fprintf(f, "P6 %d %d 255 ", half ? 320 : w, half ? 200 : h);
++                for (int row = 0; row < h; row += half ? 2 : 1) {
++                    const uint8_t *p8 = &(((uint8_t *) rfb->frameBuffer)[row * 2048 * sizeof(uint32_t)]);
++
++                    for (int i = 0; i < w; i += half ? 2 : 1) {
++                        fputc(p8[i * 4 + 2], f);
++                        fputc(p8[i * 4 + 1], f);
++                        fputc(p8[i * 4 + 0], f);
++                    }
++                }
++                fclose(f);
++            }
++        }
++    }
++    while (tr_nextkey < tr_nkeys && tr_keys[tr_nextkey].frame <= tr_n) {
++        keyboard_input(tr_keys[tr_nextkey].down, (uint16_t) tr_keys[tr_nextkey].scan);
++        tr_nextkey++;
++    }
++    tr_n++;
++    if (tr_stop && tr_n >= (uint64_t) tr_stop) {
++        fflush(tr_csv);
++        fclose(tr_csv);
++        tr_csv = NULL;
++        exit(0);
++    }
++}
++
+ static void
+ vnc_blit(int x, int y, int w, int h, int monitor_index)
+ {
+@@ -186,6 +306,8 @@ vnc_blit(int x, int y, int w, int h, int monitor_index)
+     if (screenshots)
+         video_screenshot((uint32_t *) rfb->frameBuffer, 0, 0, VNC_MAX_X);
+ 
++    tr_frame(w, h);
++
+     video_blit_complete_monitor(monitor_index);
+ 
+     if (!updatingSize)
+@@ -244,6 +366,12 @@ vnc_init(UNUSED(void *arg))
+ 
+     clients = 0;
+ 
++    if (getenv("B86_TRACE") != NULL) {
++        /* Harness run: no client will connect, so run without one. */
++        clients = 1;
++        plat_pause(0);
++    }
++
+     vnc_log("VNC: init complete.\n");
+ 
+     return 1;

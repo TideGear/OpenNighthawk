@@ -24,6 +24,8 @@ from __future__ import annotations
 import argparse
 import concurrent.futures
 import glob
+import hashlib
+import json
 import os
 import re
 import shutil
@@ -128,6 +130,108 @@ def headless(engine, data, work, name, args, extra, route):
     return int(m.group(1)), m.group(2), int(interp.group(1)) if interp else -1, checkpoints, save, os.path.join(rundir, "run.log")
 
 
+# ---- cached interpreter results ---------------------------------------------
+# The interpreter's run of a route is a pure function of the game files, the
+# route and the interpreter's own code (the CPU, the machine, the runner and
+# the fixes): a route plays on its own virtual clock. The matched routines and
+# the recompiler never run under it, so a commit that changes only
+# src/matched/matched.c cannot change any interpreter result, and the
+# interpreter half of parity (the slower half) can be reused.
+
+INTERP_INDEPENDENT = {os.path.join("src", "matched", "matched.c")}
+CACHE_MAX_AGE_DAYS = 14
+
+
+def file_digest(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(1 << 20), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def tree_digest(root, skip=()):
+    """One hash over every file under root (relative path and bytes), except `skip`."""
+    h = hashlib.sha256()
+    for base, dirs, files in os.walk(root):
+        dirs.sort()
+        for name in sorted(files):
+            full = os.path.join(base, name)
+            rel = os.path.relpath(full, root)
+            if rel in skip or "__pycache__" in rel:
+                continue
+            h.update(rel.encode() + b"|" + file_digest(full).encode() + b";")
+    return h.hexdigest()
+
+
+def interpreter_key(data):
+    """What every interpreter result depends on, apart from the route itself."""
+    h = hashlib.sha256()
+    h.update(tree_digest(os.path.join(ROOT, "src"), {os.path.relpath(os.path.join(ROOT, s), os.path.join(ROOT, "src")) for s in INTERP_INDEPENDENT}).encode())
+    h.update(file_digest(os.path.join(ROOT, "CMakeLists.txt")).encode())
+    h.update(tree_digest(data).encode())
+    return h.hexdigest()
+
+
+def route_cache_key(route, base_key):
+    """The route's whole file (milestones included), any file it replays, and its seed chain."""
+    h = hashlib.sha256(base_key.encode())
+    todo, seen = [route], set()
+    while todo:
+        r = todo.pop()
+        if r in seen:
+            continue
+        seen.add(r)
+        with open(r, "rb") as route_file:
+            h.update(route_file.read())
+        for a in route_args(r):
+            if os.path.isfile(a):
+                h.update(file_digest(a).encode())
+        seed = roster_seed(r)
+        if seed:
+            todo.append(seed)
+    return h.hexdigest()[:40]
+
+
+def cached_interp(cache_dir, key, name, rundir, route):
+    """A stored interpreter result as headless() would return it, or None."""
+    entry = os.path.join(cache_dir, key)
+    meta_path = os.path.join(entry, "result.json")
+    if not os.path.isfile(meta_path):
+        return None
+    with open(meta_path) as meta_file:
+        meta = json.load(meta_file)
+    if time.time() - meta["stored"] > CACHE_MAX_AGE_DAYS * 86400:
+        return None
+    os.makedirs(rundir, exist_ok=True)
+    save = tempfile.mkdtemp(prefix="save-", dir=rundir)
+    for f in os.listdir(os.path.join(entry, "save")):
+        shutil.copyfile(os.path.join(entry, "save", f), os.path.join(save, f))
+    log = os.path.join(rundir, "run.log")
+    shutil.copyfile(os.path.join(entry, "run.log"), log)
+    with open(log) as lf:
+        errors = check_route(route, lf.read(), save)
+    if errors:
+        sys.exit("route failed (cached interpreter run): " + "; ".join(errors))
+    cp = tuple(tuple(c) for c in meta["checkpoints"])
+    return meta["icount"], meta["hash"], meta["interpreted"], cp, save, log
+
+
+def store_interp(cache_dir, key, result):
+    icount, digest, interpreted, checkpoints, save, log = result
+    entry = os.path.join(cache_dir, key)
+    shutil.rmtree(entry, ignore_errors=True)
+    os.makedirs(os.path.join(entry, "save"))
+    for f in os.listdir(save):
+        p = os.path.join(save, f)
+        if os.path.isfile(p) and os.path.getsize(p) < (1 << 20):
+            shutil.copyfile(p, os.path.join(entry, "save", f))
+    shutil.copyfile(log, os.path.join(entry, "run.log"))
+    with open(os.path.join(entry, "result.json"), "w") as meta_file:
+        json.dump(dict(icount=icount, hash=digest, interpreted=interpreted, checkpoints=[list(c) for c in checkpoints],
+                       stored=time.time()), meta_file)
+
+
 def session_groups(routes):
     """Group routes that play the same session: the same options (so the same
     inputs, budget, clock and replay file) and the same seed roster. Only
@@ -180,6 +284,10 @@ def main():
     ap.add_argument("--seed-coverage", metavar="DIR",
                     help="start from the *.cov files of an earlier run's coverage directory, so the first "
                          "translation is already complete and the second build can be skipped")
+    ap.add_argument("--interp-cache", metavar="DIR", default=os.path.join(os.path.expanduser("~"), "f117-recomp-local", "interp-cache"),
+                    help="reuse interpreter results while the interpreter's inputs are unchanged ('' turns it off)")
+    ap.add_argument("--verify-interp-cache", action="store_true",
+                    help="run every interpreter route fresh and require it to equal the cached result")
     ap.add_argument("--no-parity", action="store_true")
     ap.add_argument("--no-coverage", action="store_true")
     ap.add_argument("--parity-only", action="store_true", help="check the current build without translating or rebuilding")
@@ -240,9 +348,26 @@ def main():
         print("5. parity")
         bad = 0
 
+        base_key = interpreter_key(a.data) if a.interp_cache else None
+        cache_stats = {"hit": 0, "miss": 0}
+
         def replay(job):
             r, engine = job
             name = os.path.splitext(os.path.basename(r))[0]
+            rundir = os.path.join(a.work, "runs", "%s_%s" % (name, engine))
+            if engine == "interp" and a.interp_cache:
+                key = route_cache_key(r, base_key)
+                hit = cached_interp(a.interp_cache, key, name, rundir, r)
+                if hit and not a.verify_interp_cache:
+                    cache_stats["hit"] += 1
+                    return hit
+                fresh = headless(engine, a.data, a.work, name, route_args(r), ["--hash-every", "50000000"], r)
+                if hit and fresh[:4] != hit[:4]:
+                    sys.exit("interpreter cache is STALE for %s: cached %s/%s, fresh %s/%s" % (
+                        name, hit[0], hit[1], fresh[0], fresh[1]))
+                store_interp(a.interp_cache, key, fresh)
+                cache_stats["miss"] += 1
+                return fresh
             return headless(engine, a.data, a.work, name, route_args(r), ["--hash-every", "50000000"], r)
         leads = [g[0] for g in groups]
         jobs = [(r, e) for r in leads for e in ("interp", "recomp")]
@@ -265,6 +390,8 @@ def main():
                 print("  %-20s interp %d/%s  recomp %d/%s (%d interpreted)  %s" % (
                     name, ri[0], ri[1], rr[0], rr[1], rr[2], "IDENTICAL" if same else "DIFFERENT"))
                 print("    %d checkpoints compared" % len(ri[3]))
+        if a.interp_cache:
+            print("  interpreter results: %d reused, %d run" % (cache_stats["hit"], cache_stats["miss"]))
         lap("parity")
         if bad:
             for proc in lockstep.values():

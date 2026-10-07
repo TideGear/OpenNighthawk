@@ -85,5 +85,79 @@ class SyncTree(unittest.TestCase):
                 self.assertEqual("three", f.read())
 
 
+class InterpreterCache(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        t = self.tmp.name
+        self.root, self.data = os.path.join(t, "repo"), os.path.join(t, "data")
+        for d in ("src/cpu", "src/matched", "src/fixes", self.data):
+            os.makedirs(d if os.path.isabs(d) else os.path.join(self.root, d))
+        self.write(os.path.join(self.root, "CMakeLists.txt"), "project")
+        self.write(os.path.join(self.root, "src/cpu/cpu.c"), "cpu v1")
+        self.write(os.path.join(self.root, "src/matched/matched.c"), "matched v1")
+        self.write(os.path.join(self.data, "F117.COM"), "game")
+        self.saved_root = gate.ROOT
+        gate.ROOT = self.root
+
+    def tearDown(self):
+        gate.ROOT = self.saved_root
+        self.tmp.cleanup()
+
+    @staticmethod
+    def write(path, text):
+        with open(path, "w") as f:
+            f.write(text)
+
+    def test_key_ignores_matched_but_not_the_interpreter_or_data(self):
+        base = gate.interpreter_key(self.data)
+        self.write(os.path.join(self.root, "src/matched/matched.c"), "matched v2")
+        self.assertEqual(base, gate.interpreter_key(self.data), "a matched routine cannot change an interpreter result")
+        self.write(os.path.join(self.root, "src/cpu/cpu.c"), "cpu v2")
+        self.assertNotEqual(base, gate.interpreter_key(self.data))
+        self.write(os.path.join(self.root, "src/cpu/cpu.c"), "cpu v1")
+        self.assertEqual(base, gate.interpreter_key(self.data))
+        self.write(os.path.join(self.data, "F117.COM"), "game changed")
+        self.assertNotEqual(base, gate.interpreter_key(self.data))
+        self.write(os.path.join(self.data, "F117.COM"), "game")
+        self.write(os.path.join(self.root, "src/fixes/fixes.c"), "a fix")
+        self.assertNotEqual(base, gate.interpreter_key(self.data), "fixes run under the interpreter too")
+
+    def test_route_key_follows_the_route_text_and_replay_file(self):
+        route = os.path.join(self.tmp.name, "r.args")
+        replay = os.path.join(self.tmp.name, "r.input")
+        self.write(replay, "keys")
+        self.write(route, "# expect-world LB\n--replay\nr.input\n--steps\n5\n")
+        k1 = gate.route_cache_key(route, "base")
+        self.write(route, "# expect-world CU\n--replay\nr.input\n--steps\n5\n")
+        self.assertNotEqual(k1, gate.route_cache_key(route, "base"), "a milestone edit invalidates the entry")
+        self.write(route, "# expect-world LB\n--replay\nr.input\n--steps\n5\n")
+        self.assertEqual(k1, gate.route_cache_key(route, "base"))
+        self.write(replay, "other keys")
+        self.assertNotEqual(k1, gate.route_cache_key(route, "base"), "a replayed input file is part of the key")
+        self.assertNotEqual(k1, gate.route_cache_key(route, "another base"))
+
+    def test_a_stored_result_comes_back_intact_and_expires(self):
+        cache = os.path.join(self.tmp.name, "cache")
+        rundir = os.path.join(self.tmp.name, "run")
+        save, log = os.path.join(self.tmp.name, "save"), os.path.join(self.tmp.name, "run.log")
+        os.makedirs(save)
+        self.write(os.path.join(save, "Roster.Fil"), "roster")
+        self.write(log, "[exec] log")
+        route = os.path.join(self.tmp.name, "r.args")
+        self.write(route, "--steps\n5\n")
+        result = (123, "abcd", 7, (("50000000", "ff", "START.EXE"),), save, log)
+        self.assertIsNone(gate.cached_interp(cache, "k", "r", rundir, route))
+        gate.store_interp(cache, "k", result)
+        got = gate.cached_interp(cache, "k", "r", rundir, route)
+        self.assertEqual(result[:4], got[:4])
+        with open(os.path.join(got[4], "Roster.Fil")) as f:
+            self.assertEqual("roster", f.read())
+        meta = os.path.join(cache, "k", "result.json")
+        info = gate.json.load(open(meta))
+        info["stored"] -= (gate.CACHE_MAX_AGE_DAYS + 1) * 86400
+        gate.json.dump(info, open(meta, "w"))
+        self.assertIsNone(gate.cached_interp(cache, "k", "r", rundir, route), "an old entry is not trusted")
+
+
 if __name__ == "__main__":
     unittest.main()

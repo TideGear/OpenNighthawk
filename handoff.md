@@ -58,8 +58,10 @@ date; `git log -p handoff.md` has them.
   minutes. Read the tally, not the exit code: every route `IDENTICAL`,
   instruction lockstep 0 mismatching, matched lockstep 0 mismatching. Last
   green: 32 routes identical, 5,713,472 instruction states, 231 matched
-  routines (753,179 states). Interpreter-result caching is the next planned
-  saving (`docs/repeated-processes.md`).
+  routines (753,179 states). Interpreter results are cached across gates
+  (`--interp-cache`, default `~/f117-recomp-local/interp-cache`; the key ignores
+  `src/matched/matched.c`), cutting parity from about 9 to 3 minutes when only
+  matched routines changed; `--verify-interp-cache` proves it equal.
 - **PC parity against other machines**: `py tools/pc_parity.py --data
   D:/GOG/F-117A` runs the intro on GOG's DOSBox (saved capture), DOSBox-X
   (patched build, headless) and 86Box (VNC build, headless) at once and checks
