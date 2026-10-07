@@ -100,7 +100,11 @@ make (Phase 4).
 - [ ] **Timing details still DOSBox's own:** its BIOS and DOS stubs at their own
       addresses, its per-millisecond slicing, its 386 against this machine's 286
       (flag bits 12-14). PLAYER's fade calibration is within a few bytes of
-      DOSBox's (5,836-5,841 against 5,839-5,844 DAC bytes per display period); the
+      DOSBox's (5,836-5,841 against 5,839-5,844 DAC bytes per display period);
+      against 86Box's 386DX/33 the intro's scenes keep their lengths within
+      0.31 s and drift 2.0 s over the intro (disk transfer, not CPU), and the
+      game's code runs there at 6.28 MIPS against this model's 9.00 M clocks a
+      second, a ratio set by the polling loops (`tools/ref86box/instr86.py`); the
       channel-3 note at 29.7 s, re-measured on 7 Oct after the PIT and VGA fixes
       against the saved GOG capture: 596 AdLib writes identical in order and
       value over 29.7 s with timing within 26 ms, then the pitch-glide write

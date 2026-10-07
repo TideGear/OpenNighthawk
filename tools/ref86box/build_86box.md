@@ -36,7 +36,7 @@ variables drive it:
 
 | Variable | Effect |
 |---|---|
-| `B86_TRACE=DIR` | `DIR/frames.csv`: every displayed frame with its emulated microseconds, size and hash |
+| `B86_TRACE=DIR` | `DIR/frames.csv`: every displayed frame with its emulated microseconds, size, hash and the instructions the guest has executed so far (the patch counts them in the 386 interpreter) |
 | `B86_KEYS="frame:down:scancode,..."` | key events at displayed-frame counts (set-1 scancodes, hex) |
 | `B86_MOUSE="frame:m:x,y;frame:b:mask;..."` | pointer to guest pixel x,y of 320x200 (a slam into the corner, then the move, fed 60 counts a frame; a count moves the guest pointer 1.5 pixels) and the button mask |
 | `B86_PPM=1` | each new picture saved as a PPM |
@@ -66,6 +66,16 @@ exit. Scene timing against this machine, from the traced `frames.csv`
 changes it by 0.1 s, so what remains is paced by the disk interface (ISA port
 I/O), not the CPU. All traced runs use `probe86.bare_boot` (the game needs
 almost all of conventional memory under this BIOS).
+
+**Instructions against this model's clocks** (`instr86.py`, from the same frames.csv and a
+`video_compare.py` run): between the intro's paired scenes the game's code runs at 6.28 MIPS
+on the 386DX/33 while this model runs 9.00 M clocks a second: 0.712 instructions for each
+clock, steady (0.70-0.73) in all 18 intervals. The intro is paced by timers, so both machines
+spend the same time in each interval and most of it in busy-wait loops (the retrace poll at
+0x3DA is read 456 M times over the 32 routes); the ratio therefore compares how fast a polling
+loop turns, not general CPU speed: about 0.48 us an iteration on 86Box (an ISA read costing
+roughly four 8.33 MHz bus clocks) against 1.2 us here (DOSBox's 8-clock read delay at 9 MHz).
+It cannot calibrate the model for CPU-bound work; that needs a stretch with no polling.
 
 Measured 7 Oct 2026 on it: the music's first 2,000 AdLib writes are identical to
 this machine's, channels 0, 1, 2 and 5 play the same notes in the same order,

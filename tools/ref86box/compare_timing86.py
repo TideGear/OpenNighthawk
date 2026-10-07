@@ -30,7 +30,7 @@ def ours_scenes(path):
 
 def box_scenes(path):
     out, prev, start, width = [], None, 0.0, ""
-    for frame, _tsc, us, w, _h, h in csv.reader(open(path)):
+    for frame, _tsc, us, w, _h, h, *_ in csv.reader(open(path)):
         t = int(us) / 1e6
         if h != prev:
             if prev is not None and t - start >= 1.0 and width == "640":

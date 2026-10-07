@@ -6,7 +6,7 @@
    powershell -File trace_86box.ps1 -Profile D:\86box\vmt -Out D:\86box\trace1 `
        -Stop 12000 [-Keys "3000:1:31,3003:0:31,3300:1:03,3303:0:03"] [-Ppm]
 
- Out\frames.csv: frame, tsc, emulated microseconds, width, height, hash. Keys are
+ Out\frames.csv: frame, tsc, emulated microseconds, width, height, hash, instructions. Keys are
  "frame:down:scancode" (86Box's set-1 scancodes, hex): N is 31, 2 is 03, Enter 1C.
  With -Ppm each new picture is also saved (320x200 for mode 13h). The process
  exits itself after -Stop frames; it is killed if it runs past -TimeoutSeconds.
