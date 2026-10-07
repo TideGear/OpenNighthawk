@@ -1,0 +1,10 @@
+# Vietnam air-to-air type 5: one AMRAAM kills the special aircraft, credit, land at home 33, debrief.
+# Strong observer: airair_pilot.py --replay airair_type5.input (both engines)
+# expect-world VN
+# expect-exit VGAME.EXE 129 8700000000
+--replay
+airair_type5.input
+--steps
+11740000000
+--time-us
+700000000000000

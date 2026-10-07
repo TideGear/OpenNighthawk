@@ -115,7 +115,7 @@ def air_weapon_station(state):
 
 
 def steer_to_special(machine, state, tick, target_station, last_b_request,
-                     last_fire):
+                     last_fire, floor=8000):
     """Pursue slot 0 and release a loaded AAM into its seeker cone."""
     if not state["air_units"] or state["special_killed"]:
         return last_b_request, last_fire
@@ -128,8 +128,10 @@ def steer_to_special(machine, state, tick, target_station, last_b_request,
     roll_error = bank - state["roll"]
 
     # The player weapon and AI aircraft both use the live AGL altitude here.
-    # Keep a safe floor while the objective aircraft is still climbing.
-    desired_altitude = clamp(target["z"] + 1500, 8000, 12000)
+    # Keep a safe floor while the objective aircraft is still climbing. The
+    # original detects terrain collision by drawing ([0xC6B2] -> [0x9F96],
+    # flight_end(2) at 0x4312); some theatres' terrain reaches 8000.
+    desired_altitude = clamp(target["z"] + 1500, floor, max(floor, 12000))
     want_pitch = clamp((desired_altitude - state["agl"]) * 2,
                        -1000, 1800) + state["trim"]
     pitch_error = want_pitch - state["pitch"]
@@ -238,6 +240,10 @@ def main():
     parser.add_argument("--landing-aim", type=int, default=20,
                         help="runway-centre offset used on the final approach")
     parser.add_argument("--replay", help="observe a recorded adaptive input log")
+    parser.add_argument("--floor", type=int, default=8000,
+                        help="lowest pursuit altitude, clear of the theatre's terrain")
+    parser.add_argument("--nudge", type=int, default=10,
+                        help="close-return centreline offset, in map units east of home")
     args = parser.parse_args()
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=False)
@@ -353,14 +359,15 @@ def main():
                                 # the actual home coordinates.
                                 landing_state = {
                                     **state,
-                                    "home_x": state["home_x"] + 10,
+                                    "home_x": state["home_x"] + args.nudge,
                                 }
                             landing_control(machine, landing_state, tick, approach,
                                             cruise=8000, aim=args.landing_aim,
                                             approach_speed=200)
                     elif replay is None and elapsed > 500_000_000:
                         last_b_request, last_fire = steer_to_special(
-                            machine, state, tick, target_station, last_b_request, last_fire)
+                            machine, state, tick, target_station, last_b_request, last_fire,
+                            args.floor)
                     if (state["objective_credit"] and state["box"]
                             and state["nearest"] == state["home"]
                             and state["speed"] <= 1 and state["throttle"] == 0):

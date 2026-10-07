@@ -227,6 +227,15 @@ Status values:
 - **What happens.** Players report the training mission not completing
   ("Strike Training vs Strike Mission"); a community workaround exists. Not
   located, and may not exist in this build.
+- **Measured here (6 Oct 2026), inconclusive.** Central America / Cold War /
+  Ground Strike Training at the default startup clock generates a
+  reconnaissance primary (type 1, target 1, camera on station 0), not a
+  strike. Two adaptive recon flights (nose and level acquisition) passed
+  within 3 map units of target 1 at about 2,500 ft, but the nose-ray
+  designation stayed on object 0, so no photo cue or exposure was made and
+  the sortie ran out its 30 minutes. That is the pilot's designation, not
+  yet evidence about the game: whether the training target can be
+  designated and credited is still open.
 - **Detail.** Reimp catalogue:724-727.
 
 ### D8. Laser-guided bomb pitch clamp

@@ -4473,6 +4473,809 @@ static int vgame_model_edge_pass(machine_t *m)
     return 1;
 }
 
+/* VGAME 0x0D4F5, normal time rate: when time is compressed ([3DA8] = 2) the
+ * rate returns to 1 and S ([368E]) doubles back, then 0x0D441 clamps it.
+ * Flags: the compare when the rate is not 2. */
+static int vgame_normal_time_rate(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 5)) return 0;
+    alu_sub(c, ds_get(c, 0x3DA8), 2, 1, 0);                       /* cmp [3DA8], 2 */
+    if (!(c->flags & F_ZF)) { c->icount += 3; near_ret(c); return 1; }   /* jne to the ret */
+    ds_put(c, 0x3DA8, 1);
+    ds_put(c, 0x368E, x86_shift(c, 4, ds_get(c, 0x368E), 1, 1)); /* shl [368E], 1 */
+    c->icount += 4;
+    if (!guest_call(m, 0xD441, 0xD509)) return 1;
+    if (!room(c, 1)) { c->ip = 0xD509; return 1; }
+    c->icount += 1;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x0B905, target_range(target): 0x0B933 on the target's map position
+ * (words 0 and 2 of its 16-byte record at B2D0) with a third argument of 1.
+ * BX is left as target*16. */
+static int vgame_target_range(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 8)) return 0;
+    const uint16_t target = arg(c, 0);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, 1);
+    const uint16_t bx = x86_shift(c, 4, target, 4, 1);           /* shl bx, 4 */
+    c->r[R_BX] = bx;
+    cpu_push16(c, ds_get(c, (uint16_t)(bx - 0x4D2E)));
+    cpu_push16(c, ds_get(c, (uint16_t)(bx - 0x4D30)));
+    c->icount += 7;
+    if (!guest_call(m, 0xB933, 0xB91B)) return 1;
+    if (!room(c, 2)) { c->ip = 0xB91B; return 1; }
+    x86_leave(c);
+    c->icount += 2;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x0EE2C, rnd(): the 32-bit generator at [929E] steps as
+ * seed * 343FDh + 269EC3h (by the 32-bit multiply at 0x0EF36) and the answer
+ * is its high word's low 15 bits; DX is left as the whole high word. */
+static int vgame_rnd(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 7)) return 0;
+    c->r[R_AX] = 0x43FD;
+    c->r[R_DX] = 3;
+    cpu_push16(c, 3);
+    cpu_push16(c, 0x43FD);
+    cpu_push16(c, ds_get(c, 0x92A0));
+    cpu_push16(c, ds_get(c, 0x929E));
+    c->icount += 6;
+    if (!guest_call_pop(m, 0xEF36, 0xEE3F, 8)) return 1;
+    if (!room(c, 7)) { c->ip = 0xEE3F; return 1; }
+    const uint16_t lo = (uint16_t)alu_add(c, c->r[R_AX], 0x9EC3, 1, 0);
+    const uint16_t hi = (uint16_t)alu_add(c, c->r[R_DX], 0x26, 1, (c->flags & F_CF) ? 1 : 0);
+    ds_put(c, 0x929E, lo);
+    ds_put(c, 0x92A0, hi);
+    c->r[R_DX] = hi;
+    const uint8_t ah = (uint8_t)alu_logic(c, (hi >> 8) & 0x7F, 0);   /* and ah, 7Fh */
+    c->r[R_AX] = (uint16_t)(ah << 8 | (hi & 0xFF));
+    c->icount += 7;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x0D41F, engine sound: sound 19h unless [43F2] is 0, [2E0A] is not
+ * and [C09A] is 0, which asks for 18h; through the driver thunk. Flags: the
+ * last compare made. */
+static int vgame_engine_sound(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 9)) return 0;
+    uint16_t sound = 0x19;
+    unsigned n;
+    alu_sub(c, ds_get(c, 0x43F2), 0, 1, 0);
+    if (!(c->flags & F_ZF)) n = 4;                                /* jne to push 19h */
+    else {
+        alu_sub(c, ds_get(c, 0x2E0A), 0, 1, 0);
+        if (c->flags & F_ZF) n = 6;                               /* je to push 19h */
+        else {
+            alu_sub(c, ds_get(c, 0xC09A), 0, 1, 0);
+            if (c->flags & F_ZF) { sound = 0x18; n = 7; }         /* je to push 18h */
+            else n = 8;                                           /* push 19h, jmp */
+        }
+    }
+    cpu_push16(c, sound);
+    c->icount += n;
+    if (!guest_call_far(m, 0xD43A, 0xD43F)) return 1;
+    if (!room(c, 2)) { c->ip = 0xD43F; return 1; }
+    c->r[R_BX] = cpu_pop16(c);
+    c->icount += 2;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x05021, set_element(i, v): while [368C] is set and element i's word
+ * (12-byte entries, at 4712) differs from v, 0x0D578 is called with
+ * ([4010], i, v). Flags: the last compare, or what 0x0D578 leaves. */
+static int vgame_set_element(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 12)) return 0;
+    const uint16_t i = arg(c, 0), v = arg(c, 1);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    alu_sub(c, ds_get(c, 0x368C), 0, 1, 0);
+    if (c->flags & F_ZF) { x86_leave(c); c->icount += 6; near_ret(c); return 1; }
+    c->r[R_AX] = v;
+    const uint16_t bx = x86_imul3(c, i, 0x0C);                   /* imul bx, [bp+4], 0Ch */
+    c->r[R_BX] = bx;
+    alu_sub(c, ds_get(c, (uint16_t)(bx + 0x4712)), v, 1, 0);
+    if (c->flags & F_ZF) { x86_leave(c); c->icount += 10; near_ret(c); return 1; }
+    cpu_push16(c, v);
+    cpu_push16(c, i);
+    cpu_push16(c, ds_get(c, 0x4010));
+    c->icount += 11;
+    if (!guest_call(m, 0xD578, 0x5043)) return 1;
+    if (!room(c, 2)) { c->ip = 0x5043; return 1; }
+    x86_leave(c);
+    c->icount += 2;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x0EF80, shl32_at(p, n): the 32-bit value at DS:p shifted left by n
+ * in place, by 0x0EF68; DX:AX the result, CX from the shift, BX restored. */
+static int vgame_shl32_at(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 8)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->r[R_BX]);
+    const uint16_t p = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 4));
+    c->r[R_BX] = p;
+    c->r[R_AX] = ds_get(c, p);
+    c->r[R_DX] = ds_get(c, (uint16_t)(p + 2));
+    c->r[R_CX] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 6));
+    c->icount += 7;
+    if (!guest_call(m, 0xEF68, 0xEF92)) return 1;
+    if (!room(c, 5)) { c->ip = 0xEF92; return 1; }
+    ds_put(c, p, c->r[R_AX]);
+    ds_put(c, (uint16_t)(p + 2), c->r[R_DX]);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    c->ip = cpu_pop16(c);
+    c->r[R_SP] = (uint16_t)(c->r[R_SP] + 4);                     /* ret 4 */
+    c->icount += 5;
+    return 1;
+}
+
+/* VGAME 0x056A9, tracked warning: the warning timer [3DC0] is set to two
+ * seconds' frames (S * 2) and sound 8 is requested with argument 1 through
+ * 0x0D3F9. */
+static int vgame_tracked_warning(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 6)) return 0;
+    const uint16_t ax = x86_shift(c, 4, ds_get(c, 0x368E), 1, 1); /* shl ax, 1 */
+    c->r[R_AX] = ax;
+    ds_put(c, 0x3DC0, ax);
+    cpu_push16(c, 1);
+    cpu_push16(c, 8);
+    c->icount += 5;
+    if (!guest_call(m, 0xD3F9, 0x56B8)) return 1;
+    if (!room(c, 3)) { c->ip = 0x56B8; return 1; }
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    c->icount += 3;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x0D557, a near wrapper passing its two word arguments to the far
+ * routine at 11B8:0008. */
+static int vgame_far_pair(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 5)) return 0;
+    const uint16_t a = arg(c, 0), b = arg(c, 1);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, b);
+    cpu_push16(c, a);
+    c->icount += 4;
+    if (!guest_call_far(m, 0xD560, 0xD565)) return 1;
+    if (!room(c, 4)) { c->ip = 0xD565; return 1; }
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    x86_leave(c);
+    c->icount += 4;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x0B91D, unit_range(i): 0x0B933 on air unit i's map position
+ * (words 1 and 2 of its 36-byte record at C16A) with a third argument of 0.
+ * BX is left as i*36. */
+static int vgame_unit_range(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 7)) return 0;
+    const uint16_t i = arg(c, 0);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, 0);
+    const uint16_t bx = x86_imul3(c, i, 0x24);                   /* imul bx, [bp+4], 24h */
+    c->r[R_BX] = bx;
+    cpu_push16(c, ds_get(c, (uint16_t)(bx - 0x3E92)));
+    cpu_push16(c, ds_get(c, (uint16_t)(bx - 0x3E94)));
+    c->icount += 6;
+    if (!guest_call(m, 0xB933, 0xB931)) return 1;
+    if (!room(c, 2)) { c->ip = 0xB931; return 1; }
+    x86_leave(c);
+    c->icount += 2;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x0C818, vsin(a, r): the far sine at 104E:0076 of (a, r), then
+ * 104E:0000 on its result with r still on the stack. */
+static int vgame_vsin(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 5)) return 0;
+    const uint16_t a = arg(c, 0), r = arg(c, 1);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, r);
+    cpu_push16(c, a);
+    c->icount += 4;
+    if (!guest_call_far(m, 0xC821, 0xC826)) return 1;
+    if (!room(c, 3)) { c->ip = 0xC826; return 1; }
+    c->r[R_BX] = cpu_pop16(c);
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 2;
+    if (!guest_call_far(m, 0xC828, 0xC82D)) return 1;
+    if (!room(c, 4)) { c->ip = 0xC82D; return 1; }
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    x86_leave(c);
+    c->icount += 4;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x08A4F, cockpit_message(s): the text is copied to C5A4 (by the
+ * string copy at 0x0EB50) and shown for three seconds' frames: [40CC] =
+ * S * 3. */
+static int vgame_cockpit_message(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 5)) return 0;
+    const uint16_t s = arg(c, 0);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, s);
+    cpu_push16(c, 0xC5A4);
+    c->icount += 4;
+    if (!guest_call(m, 0xEB50, 0x8A5B)) return 1;
+    if (!room(c, 6)) { c->ip = 0x8A5B; return 1; }
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    const uint16_t ax = x86_imul3(c, ds_get(c, 0x368E), 3);      /* imul ax, [368E], 3 */
+    c->r[R_AX] = ax;
+    ds_put(c, 0x40CC, ax);
+    x86_leave(c);
+    c->icount += 6;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x04D45, mission save: the deadline from the clock (0x04E4B),
+ * [DEBA] cleared, 0x04D5D, then 0x04E0B on the 600h-byte block at BA56. */
+static int vgame_mission_save(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 1)) return 0;
+    if (!guest_call(m, 0x4E4B, 0x4D48)) return 1;
+    if (!room(c, 2)) { c->ip = 0x4D48; return 1; }
+    ds_put(c, 0xDEBA, 0);
+    c->icount += 1;
+    if (!guest_call(m, 0x4D5D, 0x4D51)) return 1;
+    if (!room(c, 3)) { c->ip = 0x4D51; return 1; }
+    cpu_push16(c, 0x0600);
+    cpu_push16(c, 0xBA56);
+    c->icount += 2;
+    if (!guest_call(m, 0x4E0B, 0x4D5A)) return 1;
+    if (!room(c, 3)) { c->ip = 0x4D5A; return 1; }
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    c->icount += 3;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x0EF9C, sar32_at(p, n): the 32-bit value at DS:p shifted right
+ * arithmetically by n in place, by 0x0EF74; DX:AX the result, CX from the
+ * shift, BX restored. */
+static int vgame_sar32_at(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 8)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->r[R_BX]);
+    const uint16_t p = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 4));
+    c->r[R_BX] = p;
+    c->r[R_AX] = ds_get(c, p);
+    c->r[R_DX] = ds_get(c, (uint16_t)(p + 2));
+    c->r[R_CX] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 6));
+    c->icount += 7;
+    if (!guest_call(m, 0xEF74, 0xEFAE)) return 1;
+    if (!room(c, 5)) { c->ip = 0xEFAE; return 1; }
+    ds_put(c, p, c->r[R_AX]);
+    ds_put(c, (uint16_t)(p + 2), c->r[R_DX]);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    c->ip = cpu_pop16(c);
+    c->r[R_SP] = (uint16_t)(c->r[R_SP] + 4);                     /* ret 4 */
+    c->icount += 5;
+    return 1;
+}
+
+/* VGAME 0x045C5, seed the cockpit gauges: 0x045E0 for gauges 1, 2 and 3,
+ * the counter in a local word. */
+static int vgame_seed_gauges(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 4)) return 0;
+    x86_enter(c, 2, 0);
+    const uint16_t ss = c->seg[S_SS], local = (uint16_t)(c->r[R_BP] - 2);
+    seg_write16(c, ss, local, 1);
+    c->icount += 2;
+    for (;;) {
+        cpu_push16(c, seg_read16(c, ss, local));
+        c->icount += 1;
+        if (!guest_call(m, 0x45E0, 0x45D4)) return 1;
+        if (!room(c, 6)) { c->ip = 0x45D4; return 1; }
+        c->r[R_BX] = cpu_pop16(c);
+        const uint16_t n = (uint16_t)alu_inc(c, seg_read16(c, ss, local), 1);
+        seg_write16(c, ss, local, n);
+        alu_sub(c, n, 4, 1, 0);                                   /* cmp [bp-2], 4 */
+        c->icount += 4;
+        if (!x86_cond(c, 0xC)) break;                             /* jl */
+    }
+    x86_leave(c);
+    c->icount += 2;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x08880, map_marker(x, y, colour): 0x0886A sets the colour, then
+ * 0x087FD draws the point (x, y) to (x, y). */
+static int vgame_map_marker(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 4)) return 0;
+    const uint16_t x = arg(c, 0), y = arg(c, 1), colour = arg(c, 2);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, colour);
+    c->icount += 3;
+    if (!guest_call(m, 0x886A, 0x8889)) return 1;
+    if (!room(c, 6)) { c->ip = 0x8889; return 1; }
+    c->r[R_BX] = cpu_pop16(c);
+    cpu_push16(c, y);
+    cpu_push16(c, x);
+    cpu_push16(c, y);
+    cpu_push16(c, x);
+    c->icount += 5;
+    if (!guest_call(m, 0x87FD, 0x8899)) return 1;
+    if (!room(c, 2)) { c->ip = 0x8899; return 1; }
+    x86_leave(c);
+    c->icount += 2;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x02E5E: 0x0DFA9 with (2D94, [2DEE], [2DF0], [2DF2]), then the byte
+ * [2DFB] and the word [2DF8] cleared. Flags from the stack release. */
+static int vgame_matrix_from_angles(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 5)) return 0;
+    cpu_push16(c, ds_get(c, 0x2DF2));
+    cpu_push16(c, ds_get(c, 0x2DF0));
+    cpu_push16(c, ds_get(c, 0x2DEE));
+    cpu_push16(c, 0x2D94);
+    c->icount += 4;
+    if (!guest_call(m, 0xDFA9, 0x2E70)) return 1;
+    if (!room(c, 4)) { c->ip = 0x2E70; return 1; }
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0);      /* add sp, 8 */
+    mem_write8(c, phys(c->seg[S_DS], 0x2DFB), 0);
+    ds_put(c, 0x2DF8, 0);
+    c->icount += 4;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x089F7, panel_number(n, x, y, colour): n in decimal into the
+ * buffer at C604 (0x0EB9E, radix 10), then drawn there by 0x0895E. */
+static int vgame_panel_number(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 6)) return 0;
+    const uint16_t n = arg(c, 0), x = arg(c, 1), y = arg(c, 2), colour = arg(c, 3);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, 0x0A);
+    cpu_push16(c, 0xC604);
+    cpu_push16(c, n);
+    c->icount += 5;
+    if (!guest_call(m, 0xEB9E, 0x8A05)) return 1;
+    if (!room(c, 6)) { c->ip = 0x8A05; return 1; }
+    c->r[R_SP] = c->r[R_BP];                                      /* mov sp, bp */
+    cpu_push16(c, colour);
+    cpu_push16(c, y);
+    cpu_push16(c, x);
+    cpu_push16(c, 0xC604);
+    c->icount += 5;
+    if (!guest_call(m, 0x895E, 0x8A16)) return 1;
+    if (!room(c, 2)) { c->ip = 0x8A16; return 1; }
+    x86_leave(c);
+    c->icount += 2;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x087FD, map_line(x0, y0, x1, y1): the graphics library's line at
+ * 114A:0070 with the full-screen clip (0, 0)-(13Fh, C7h) and page 0. */
+static int vgame_map_line(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 12)) return 0;
+    const uint16_t a = arg(c, 0), b = arg(c, 1), d = arg(c, 2), e = arg(c, 3);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    static const uint16_t fixed[5] = { 0, 0xC7, 0, 0x13F, 0 };
+    for (int i = 0; i < 5; i++) cpu_push16(c, fixed[i]);
+    cpu_push16(c, e);
+    cpu_push16(c, d);
+    cpu_push16(c, b);
+    cpu_push16(c, a);
+    c->icount += 11;
+    if (!guest_call_far(m, 0x8818, 0x881D)) return 1;
+    if (!room(c, 2)) { c->ip = 0x881D; return 1; }
+    x86_leave(c);
+    c->icount += 2;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x0E3AC, cull(a, b, n): the register-argument routine at 0x0E3BF
+ * with BP = a, BX = b, CX = n; DI and BP restored. */
+static int vgame_cull(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 7)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    const uint16_t frame = c->r[R_SP];
+    c->r[R_BP] = frame;
+    cpu_push16(c, c->r[R_DI]);
+    const uint16_t ss = c->seg[S_SS];
+    c->r[R_CX] = seg_read16(c, ss, (uint16_t)(frame + 8));
+    c->r[R_BX] = seg_read16(c, ss, (uint16_t)(frame + 6));
+    c->r[R_BP] = seg_read16(c, ss, (uint16_t)(frame + 4));
+    c->icount += 6;
+    if (!guest_call(m, 0xE3BF, 0xE3BC)) return 1;
+    if (!room(c, 3)) { c->ip = 0xE3BC; return 1; }
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 3;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x03A3B: while [368C] is set, 0x039C0 with (4, [2E0A]). Flags: the
+ * compare, or what 0x039C0 leaves. */
+static int vgame_panel_mode_4(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 5)) return 0;
+    alu_sub(c, ds_get(c, 0x368C), 0, 1, 0);
+    if (c->flags & F_ZF) { c->icount += 3; near_ret(c); return 1; }
+    cpu_push16(c, ds_get(c, 0x2E0A));
+    cpu_push16(c, 4);
+    c->icount += 4;
+    if (!guest_call(m, 0x39C0, 0x3A4B)) return 1;
+    if (!room(c, 3)) { c->ip = 0x3A4B; return 1; }
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    c->icount += 3;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x00986: 0x00C38, then 0x009A0 and 0x00B05 each on [008E], then
+ * [0CA8] cleared. */
+static int vgame_mode_setup(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 1)) return 0;
+    if (!guest_call(m, 0x0C38, 0x0989)) return 1;
+    if (!room(c, 2)) { c->ip = 0x0989; return 1; }
+    cpu_push16(c, ds_get(c, 0x008E));
+    c->icount += 1;
+    if (!guest_call(m, 0x09A0, 0x0990)) return 1;
+    if (!room(c, 3)) { c->ip = 0x0990; return 1; }
+    c->r[R_BX] = cpu_pop16(c);
+    cpu_push16(c, ds_get(c, 0x008E));
+    c->icount += 2;
+    if (!guest_call(m, 0x0B05, 0x0998)) return 1;
+    if (!room(c, 3)) { c->ip = 0x0998; return 1; }
+    c->r[R_BX] = cpu_pop16(c);
+    ds_put(c, 0x0CA8, 0);
+    c->icount += 3;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x00CF3, copy_from_dot(s, d): s advances (in its argument slot) to
+ * the first '.' or the terminator, and the rest is copied to d by the string
+ * copy at 0x0EB50. Flags: the compare that ended the scan, or the copy's. */
+static int vgame_copy_from_dot(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t ds = c->seg[S_DS], ss = c->seg[S_SS];
+    /* Count first, touching nothing: push, mov, jmp; then each pass. */
+    uint64_t n = 3;
+    for (uint16_t p = arg(c, 0);; p++) {
+        const uint8_t ch = mem_read8(c, phys(ds, p));
+        n += 3;                                                   /* mov bx, cmp '.', jne */
+        if (ch == 0x2E) break;
+        n += 2;                                                   /* cmp 0, je */
+        if (ch == 0) break;
+        n += 1;                                                   /* inc [bp+4] */
+        if (n > 0x30000) return 0;                                /* a stray string: let the original run */
+    }
+    if (!room(c, (unsigned)n + 3)) return 0;
+    const uint16_t d = arg(c, 1);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    const uint16_t slot = (uint16_t)(c->r[R_BP] + 4);
+    for (;;) {
+        const uint16_t bx = seg_read16(c, ss, slot);
+        c->r[R_BX] = bx;
+        const uint8_t ch = mem_read8(c, phys(ds, bx));
+        alu_sub(c, ch, 0x2E, 0, 0);                               /* cmp byte [bx], '.' */
+        if (c->flags & F_ZF) break;
+        alu_sub(c, ch, 0, 0, 0);                                  /* cmp byte [bx], 0 */
+        if (c->flags & F_ZF) break;
+        seg_write16(c, ss, slot, (uint16_t)alu_inc(c, bx, 1));    /* inc word [bp+4] */
+    }
+    cpu_push16(c, d);
+    cpu_push16(c, c->r[R_BX]);
+    c->icount += n + 2;
+    if (!guest_call(m, 0xEB50, 0x0D0F)) return 1;
+    if (!room(c, 4)) { c->ip = 0x0D0F; return 1; }
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    x86_leave(c);
+    c->icount += 4;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x0F024, the run-time library's termination messages: 0x0F097 with
+ * FCh, the hook at [92A2] when one is set, then 0x0F097 with FFh. */
+static int vgame_rt_messages(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 5)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_AX] = 0xFC;
+    cpu_push16(c, 0xFC);
+    c->icount += 4;
+    if (!guest_call(m, 0xF097, 0xF02E)) return 1;
+    if (!room(c, 3)) { c->ip = 0xF02E; return 1; }
+    const uint16_t hook = ds_get(c, 0x92A2);
+    alu_sub(c, hook, 0, 1, 0);
+    c->icount += 2;
+    if (!(c->flags & F_ZF)) {
+        if (!guest_call(m, hook, 0xF039)) return 1;               /* call word ptr [92A2] */
+        if (!room(c, 3)) { c->ip = 0xF039; return 1; }
+    }
+    c->r[R_AX] = 0xFF;
+    cpu_push16(c, 0xFF);
+    c->icount += 2;
+    if (!guest_call(m, 0xF097, 0xF040)) return 1;
+    if (!room(c, 3)) { c->ip = 0xF040; return 1; }
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 3;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x0E9F4, open_stream(a, b, c): a stream slot from 0x0F38A; with
+ * none, 0; otherwise 0x0F1E0 (a, b, c, slot). SI restored. */
+static int vgame_open_stream(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 4)) return 0;
+    const uint16_t a = arg(c, 0), b = arg(c, 1), d = arg(c, 2);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->r[R_SI]);
+    c->icount += 3;
+    if (!guest_call(m, 0xF38A, 0xE9FB)) return 1;
+    if (!room(c, 9)) { c->ip = 0xE9FB; return 1; }
+    const uint16_t si = c->r[R_AX];
+    c->r[R_SI] = si;
+    alu_logic(c, si, 1);                                          /* or si, si */
+    if (c->flags & F_ZF) {
+        c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+        c->icount += 5;
+    } else {
+        cpu_push16(c, si);
+        cpu_push16(c, d);
+        cpu_push16(c, b);
+        cpu_push16(c, a);
+        c->icount += 7;
+        if (!guest_call(m, 0xF1E0, 0xEA13)) return 1;
+        if (!room(c, 5)) { c->ip = 0xEA13; return 1; }
+        c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0);  /* add sp, 8 */
+        c->icount += 1;
+    }
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 4;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x0D52E, far_triple(a, b, d): the far pair at 0x0D557 on (a, 0),
+ * its answer kept in a local; 11D8:000A on (answer, b, d) - the arguments
+ * the pair left on the stack - and 0x0D569 on the answer. */
+static int vgame_far_triple(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 6)) return 0;
+    const uint16_t a = arg(c, 0), b = arg(c, 1), d = arg(c, 2);
+    x86_enter(c, 2, 0);
+    const uint16_t ss = c->seg[S_SS], local = (uint16_t)(c->r[R_BP] - 2);
+    cpu_push16(c, d);
+    cpu_push16(c, b);
+    cpu_push16(c, 0);
+    cpu_push16(c, a);
+    c->icount += 5;
+    if (!guest_call(m, 0xD557, 0xD540)) return 1;
+    if (!room(c, 5)) { c->ip = 0xD540; return 1; }
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    seg_write16(c, ss, local, c->r[R_AX]);
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 4;
+    if (!guest_call_far(m, 0xD546, 0xD54B)) return 1;
+    if (!room(c, 3)) { c->ip = 0xD54B; return 1; }
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0);      /* add sp, 6 */
+    cpu_push16(c, seg_read16(c, ss, local));
+    c->icount += 2;
+    if (!guest_call(m, 0xD569, 0xD554)) return 1;
+    if (!room(c, 3)) { c->ip = 0xD554; return 1; }
+    c->r[R_BX] = cpu_pop16(c);
+    x86_leave(c);
+    c->icount += 3;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x0F1B6, release_buffer(stream): a stream (flag byte +6) that is
+ * open (83h) and owns its buffer (08h) frees it (0x0F8EC on word +4), drops
+ * the flag and zeroes the pointer words +0, +2 and +4. SI restored. */
+static int vgame_release_buffer(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 12)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->r[R_SI]);
+    const uint16_t ds = c->seg[S_DS];
+    const uint16_t si = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 4));
+    c->r[R_SI] = si;
+    const uint8_t fl = mem_read8(c, phys(ds, (uint16_t)(si + 6)));
+    set_r8(c, R_AL, fl);
+    unsigned n = 7;
+    alu_logic(c, fl & 0x83, 0);                                   /* test al, 83h */
+    if (!(c->flags & F_ZF)) {
+        alu_logic(c, fl & 0x08, 0);                               /* test al, 8 */
+        n += 2;
+        if (!(c->flags & F_ZF)) {
+            cpu_push16(c, ds_get(c, (uint16_t)(si + 4)));
+            c->icount += n + 1;
+            if (!guest_call(m, 0xF8EC, 0xF1CE)) return 1;
+            if (!room(c, 9)) { c->ip = 0xF1CE; return 1; }
+            c->r[R_CX] = cpu_pop16(c);
+            const uint32_t p = phys(ds, (uint16_t)(si + 6));
+            mem_write8(c, p, (uint8_t)alu_logic(c, mem_read8(c, p) & 0xF7, 0));
+            c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);            /* xor ax, ax */
+            ds_put(c, (uint16_t)(si + 4), 0);
+            ds_put(c, si, 0);
+            ds_put(c, (uint16_t)(si + 2), 0);
+            n = 6;                                                /* pop cx .. mov [si+2], ax */
+        }
+    }
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += n + 3;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x0C89C, gauge_value(i): the base word for gauge i (at 43EE) plus,
+ * when the mission record's byte +72h has bit 0, the far reading at
+ * 1E42:02EB for i. BX is left as i*2. */
+static int vgame_gauge_value(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 13)) return 0;
+    const uint16_t i = arg(c, 0);
+    x86_enter(c, 4, 0);
+    const uint16_t ss = c->seg[S_SS], local = (uint16_t)(c->r[R_BP] - 4);
+    const uint16_t off = ds_get(c, 0xE574), seg = ds_get(c, 0xE576);
+    c->r[R_BX] = off;
+    c->seg[S_ES] = seg;                                           /* les bx, [E574] */
+    alu_logic(c, mem_read8(c, phys(seg, (uint16_t)(off + 0x72))) & 1, 0);
+    if (!(c->flags & F_ZF)) {
+        cpu_push16(c, i);
+        c->icount += 5;
+        if (!guest_call_far(m, 0xC8AE, 0xC8B3)) return 1;
+        if (!room(c, 9)) { c->ip = 0xC8B3; return 1; }
+        c->r[R_BX] = cpu_pop16(c);
+        c->icount += 2;
+    } else {
+        c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+        c->icount += 5;
+    }
+    seg_write16(c, ss, local, c->r[R_AX]);
+    const uint16_t bx = x86_shift(c, 4, i, 1, 1);                /* shl bx, 1 */
+    c->r[R_BX] = bx;
+    c->r[R_AX] = (uint16_t)alu_add(c, ds_get(c, (uint16_t)(bx + 0x43EE)), seg_read16(c, ss, local), 1, 0);
+    x86_leave(c);
+    c->icount += 7;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x03A0D: while [368C] is set, the value [3666], at most 9999, is
+ * shown in tens by 0x039C0 (3, value / 10). */
+static int vgame_panel_mode_3(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 15)) return 0;
+    x86_enter(c, 2, 0);
+    const uint16_t ss = c->seg[S_SS], local = (uint16_t)(c->r[R_BP] - 2);
+    alu_sub(c, ds_get(c, 0x368C), 0, 1, 0);
+    if (c->flags & F_ZF) { x86_leave(c); c->icount += 5; near_ret(c); return 1; }
+    const uint16_t v = ds_get(c, 0x3666);
+    c->r[R_AX] = v;
+    seg_write16(c, ss, local, v);
+    unsigned n = 7;
+    alu_sub(c, v, 0x270F, 1, 0);                                  /* cmp ax, 9999 */
+    if (!x86_cond(c, 0xE)) { seg_write16(c, ss, local, 0x270F); n = 8; }   /* jle not taken */
+    c->r[R_CX] = 0x0A;
+    c->r[R_AX] = seg_read16(c, ss, local);
+    c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0;              /* cwd */
+    x86_idiv16(c, 0x0A, 0);
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, 3);
+    c->icount += n + 6;
+    if (!guest_call(m, 0x39C0, 0x3A37)) return 1;
+    if (!room(c, 4)) { c->ip = 0x3A37; return 1; }
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    x86_leave(c);
+    c->icount += 4;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x08435: the cockpit layout's fixed positions, then on into 0x08575
+ * (a jump, not a call: the original carries on from there). */
+static int vgame_cockpit_layout(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 8)) return 0;
+    static const uint16_t set[7][2] = { { 0xDF06, 0 }, { 0xDEC0, 0x4A }, { 0xE32E, 0x96 }, { 0xDEC2, 0x6E },
+                                        { 0xE470, 0xA9 }, { 0x98FA, 0x4D }, { 0x98FC, 0x3C } };
+    for (int i = 0; i < 7; i++) ds_put(c, set[i][0], set[i][1]);
+    c->icount += 8;
+    c->ip = 0x8575;
+    return 1;
+}
+
 static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x4958, vgame_free_fall, "free fall", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD50A, vgame_waypoint_from_target, "waypoint from target", 1 },
@@ -4667,6 +5470,35 @@ static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xB7E6, vgame_camera_relative_depth, "camera relative depth", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x1452, 0x021B, vgame_camera_matrix_multiply, "row times the camera matrix", 2 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x1452, 0x0330, vgame_camera_vec3_by_matrix32, "vector times a matrix, 32-bit", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD4F5, vgame_normal_time_rate, "normal time rate", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xB905, vgame_target_range, "range to a target", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xEE2C, vgame_rnd, "random number", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD41F, vgame_engine_sound, "engine sound", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x5021, vgame_set_element, "set a display element", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xEF80, vgame_shl32_at, "32-bit shift left in place", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x56A9, vgame_tracked_warning, "tracked warning", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD557, vgame_far_pair, "far call with two arguments", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xB91D, vgame_unit_range, "range to an air unit", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xC818, vgame_vsin, "vector sine", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x8A4F, vgame_cockpit_message, "cockpit message", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x4D45, vgame_mission_save, "mission save", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xEF9C, vgame_sar32_at, "32-bit arithmetic shift right in place", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x45C5, vgame_seed_gauges, "seed the cockpit gauges", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x8880, vgame_map_marker, "map marker", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x2E5E, vgame_matrix_from_angles, "attitude matrix from the angles", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x89F7, vgame_panel_number, "panel number", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x87FD, vgame_map_line, "map line", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xE3AC, vgame_cull, "cull by register arguments", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x3A3B, vgame_panel_mode_4, "panel mode 4", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x0986, vgame_mode_setup, "graphics mode setup", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x0CF3, vgame_copy_from_dot, "copy from the dot", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xF024, vgame_rt_messages, "run-time termination messages", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xE9F4, vgame_open_stream, "open a stream", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD52E, vgame_far_triple, "far call with three arguments", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xF1B6, vgame_release_buffer, "release a stream buffer", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xC89C, vgame_gauge_value, "gauge value", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x3A0D, vgame_panel_mode_3, "panel mode 3", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x8435, vgame_cockpit_layout, "cockpit layout", 1 },
 };
 
 void matched_register(void)

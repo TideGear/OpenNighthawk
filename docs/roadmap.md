@@ -424,20 +424,16 @@ never instead of parity.
       Type 3's normal route confirms the original D5 no-credit behavior, while
       `cargo_d5_fixed` earns credit when that switchable fix is enabled.
       Types 5, 7 and 8 use Vietnam / Conventional War; type 6 uses Central
-      Europe / Cold War. Type 5 uses one AMRAAM (station 0 stores 3 -> 2); the
-      special slot-0 aircraft kill, primary event and credit are verified,
-      followed by a home-33 landing. Both engines produced 813 identical
-      flight observations and final hash `40a40062ec774095`, with parent
-      result 0/status 3, likewise recorded 5 Oct before the timing changes. Types 6–8 each use three station-0 AMRAAMs, kill the
-      special slot-0 aircraft, earn primary credit and return to their home
-      base with fuel remaining. Replays match byte-for-byte across both
-      engines: type 6 has 619 flight observations and hash `d06a5ccf075b2e80`;
-      type 7 has 780 and hash `11c82f0235e24265`; type 8 has 741 and hash
-      `6c3336ef1c24da17`, recorded 5 Oct before the rational VGA/PIT timing
-      changes. Those recordings do not reproduce on the current build -
-      both engines agree on the new outcome, and a fresh adaptive type-6
-      attempt fails the intercept identically under both engines - so
-      re-recording needs pilot retuning, not just re-running. Independent
+      Europe / Cold War. Type 5 uses one AMRAAM, types 6-8 three; each kills
+      the special slot-0 aircraft, earns primary credit and lands at home
+      with result 0/status 3. The 5 Oct recordings predated the rational
+      VGA/PIT timing and no longer reproduced; all four were re-recorded on
+      6 Oct and are now gate routes (`airair_type5`-`airair_type8`), each
+      replaying byte-identically under both engines: type 5 946 observations,
+      hash `96c08003b72f6a8b`; type 6 616, `33696aa9f6c6f6a8`; type 7 734,
+      `2b96c2633ed7b639`; type 8 764, `f873304b995b58ed`. Type 6 needed a
+      higher pursuit floor (11000 ft): at 8000 ft it flew into Central
+      Europe's terrain, the original's draw-detected collision. Independent
       GOG DOSBox cargo delivery and wider generated-assignment coverage
       remain open. The
       transfer routes exercise generation and controls, then quit; they do
@@ -503,7 +499,7 @@ never instead of parity.
       Matched routines have a path now: `src/matched/matched.c`, placed for
       the recompiled engine only, held to the original by
       `tests/func_lockstep.c` from random states and by every route.
-      191 matched addresses in all seven programs (free fall, waypoint,
+      220 matched addresses in all seven programs (free fall, waypoint,
       orientation transpose, sign, abs, clamps, 32-bit shifts and multiply,
       table sine, clipping outcode, map projections, weapon effectiveness,
       setters, string and block copies, camera matrix products and depths,

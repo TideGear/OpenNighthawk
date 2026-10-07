@@ -1,0 +1,10 @@
+# Vietnam air-to-air type 8: three AMRAAMs, credit, land at home 33, debrief.
+# Strong observer: airair_pilot.py --replay airair_type8.input (both engines)
+# expect-world VN
+# expect-exit VGAME.EXE 129 7000000000
+--replay
+airair_type8.input
+--steps
+10020000000
+--time-us
+700000002000000

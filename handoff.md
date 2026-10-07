@@ -1710,3 +1710,46 @@ as the current state. Resume the full roadmap only when the user asks.
   then re-record, verify both engines, and commit replay routes so the
   gate covers types 5-8. D8 (bomb clamp) stays deferred: no LGB tooling
   or route exists. D6 stays as is: cause not proven, no data guess.
+
+### Air-to-air re-recorded, D1 redone, Phase 2 batches (6 Oct, evening)
+
+- **D1** (committed `aea8e35`): the earlier session's uncommitted pin of S at
+  0x44A3 was measured and was wrong - with no pacing, S = 9 on a machine
+  drawing about 33 fps (implied by the clock) ran the mission clock 3x fast (600 vs GOG's 209 over
+  162 s at 40 MIPS). Replaced with a frame limiter at 0x441D (GOG's 11.6
+  fps; inert at <= 9 MIPS, hash for hash). `tools/d1_check.py`, route
+  `d1_fast_machine`. Gate 28/28.
+- **Air-to-air types 5-8 re-recorded** under current timing and added as gate
+  routes `airair_type5`-`8` (hashes 96c08003b72f6a8b, 33696aa9f6c6f6a8,
+  2b96c2633ed7b639, f873304b995b58ed; each byte-identical under both
+  engines). The fresh type-6 failure was not an intercept problem: VGAME
+  exiting 129 with result 2 mid-flight is the original's draw-detected
+  terrain collision (`[0xC6B2]` -> `[0x9F96]` -> `flight_end(2)` at 0x4312);
+  `airair_pilot.py --floor 11000` clears Central Europe's terrain, and
+  `--nudge 0` (the close-return centreline offset, tuned for home 33) plus
+  `--landing-aim 100` lands at home 72. Route `expect-exit` minimums are
+  clocks since VGAME started, not absolute.
+- **Phase 2**: 29 more matched VGAME routines (191 -> 220; census 219 of
+  1,535 functions, 9,807 bytes, P2 10.20%), each equal in func_lockstep at
+  4,000 states; the far-library callers (engine sound, tracked warning,
+  map marker/line, panel number, far pair/triple, mode setup) are held by
+  the routes only. Lead list: `py tools/reimp_names.py --reimp "../F-117A
+  Reimp" --gen GEN --out FILE.tsv` - the Reimp checkout IS present (the
+  earlier note that naming was blocked was wrong).
+- Tooling traps hit: `build.cmd` logs to `%TEMP%\f117r-build.log`, so two
+  builds sharing TEMP read each other's log - give each tree its own TEMP;
+  the PowerShell tool resets the working directory, so `cd X; .\build.cmd`
+  builds the MAIN tree - call the worktree's `build.cmd` by absolute path.
+  C: had 0 bytes free; `dosbox-ref-roster-mcp-20261005` (6 GB) moved to
+  `D:/f117-local-moved/` with a junction left in place.
+- **86Box** (`30f4334`): POST now passes with no keypress. The black screen
+  after the memory test was an F1 prompt drawn below the rows a window
+  capture shows: CMOS register 0Eh = 10h, memory-size miscompare, because
+  the image claimed 384 KB of extended memory on a 640 KB VM.
+  `tools/ref86box/cmos_ami286.py` writes an image the AMI 286 BIOS accepts;
+  `hello_floppy.py`'s boot sector printed its line, so the BIOS boots
+  floppies. The FreeDOS 1.3 install floppy has not yet changed the disk
+  image in 5 minutes at a 6 MHz 286 (unconfirmed: its kernel may want a
+  386). Next: a 386/486 machine, or an 8086 kernel on the floppy. Captures
+  show only part of the screen (`run4.ps1` resizes the window but the
+  display stretches; set mode 3 or print on row 0 to be seen).

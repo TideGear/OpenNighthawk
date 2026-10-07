@@ -94,20 +94,28 @@ primary event at the credit sample, consumed AMRAAM store, and full landing
 result. The adaptive input log replays with `--engine recomp` and
 `--engine interp` for a direct flight-state parity check.
 
-Dedicated air-to-air objective routes currently cover types 5–8. Type 5 uses
-the Vietnam route and default `--time-us 700000000000000`; type 7 uses
-`vietnam_airair_type7.front` with `--time-us 700000003000000`; type 8 uses
-`vietnam_airair_type8.front` with `--time-us 700000002000000`. Type 6 uses
-`central_europe_airair.front` and the default startup clock. Types 6–8 each
-release three station-0 AMRAAMs, kill special unit 0 and earn primary credit.
-Type 6 returns to home 72 with `--landing-aim 30`; types 7 and 8 return to
-home 33, with type 7 using `--landing-aim 50` for the short runway. Their
-recorded inputs replay identically under both engines: type 6 has 619
-observations and hash `d06a5ccf075b2e80`; type 7 has 780 and hash
-`11c82f0235e24265`; type 8 has 741 and hash `6c3336ef1c24da17`. For a close
-objective return, `airair_pilot.py` holds cruise altitude while turning onto
-the runway heading, then begins the final descent. The other generated
-objective types remain open.
+Dedicated air-to-air objective routes cover types 5–8: `airair_type5` to
+`airair_type8`, each a recorded adaptive sortie replayed in the gate, ending
+in the debriefing (VGAME exit 129). Type 5 uses the Vietnam front and the
+default `--time-us 700000000000000`; type 7 uses `vietnam_airair_type7.front`
+with `--time-us 700000003000000`; type 8 uses `vietnam_airair_type8.front`
+with `--time-us 700000002000000`. Type 6 uses `central_europe_airair.front`
+and the default startup clock. Type 5 releases one station-0 AMRAAM, types
+6–8 three; each kills special unit 0, earns primary credit and lands at home
+with result 0/status 3. Recorded 6 Oct under the current timing (the 5 Oct
+recordings predate the rational VGA schedule and no longer reproduce), each
+replays byte-identically under both engines and matches its adaptive run:
+type 5 has 946 observations and hash `96c08003b72f6a8b`; type 6 616 and
+`33696aa9f6c6f6a8`; type 7 734 and `2b96c2633ed7b639`; type 8 764 and
+`f873304b995b58ed`. Type 6 was flown with `--floor 11000 --landing-aim 100
+--nudge 0`: at the default 8000 ft pursuit floor it flew into Central
+Europe's terrain (the original's draw-detected collision, `[0xC6B2]` ->
+`[0x9F96]` -> `flight_end(2)`), and the close-return centreline nudge of 10,
+tuned for home 33, puts home 72's touchdown on its box edge. Type 7 used
+`--landing-aim 50`. For a close objective return, `airair_pilot.py` holds
+cruise altitude while turning onto the runway heading, then begins the
+final descent. Strong observer: `airair_pilot.py --replay
+tools/routes/airair_typeN.input --engine interp|recomp`.
 
 `cargo` reproduces original D5 through a normally released supply crate.
 `cargo_check.py --replay cargo.input --steps 7353559391` requires one cargo
