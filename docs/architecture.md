@@ -814,8 +814,11 @@ status. Both engines matched on the retirement sortie's checkpoints and all
 802 roster bytes. A private one-second END screen trace confirms the 99th-
 mission retirement message and captures the rank-3 remark page. It shows
 "Maybe I'll write a book, like Schwarzkopf. The lecture circuit sounds nice
-and cushy." The rank-6 "General, At Last!" retirement branch has not been
-reached; it needs a separate career averaging 280 points per sortie.
+and cushy." The rank-6 "General, At Last!" retirement branch is reached with a
+staged cause: sortie 98's saved roster, rank word 6 and total 27,930, then a
+normal 99th sortie under both engines (`tools/career_rank6.py`): identical
+hash `934f2fb9cb4227a6`, total 28,134, retired, and END's rank-6 remark page.
+A career earned to rank 6 by promotions is not claimed.
 
 `cargo_check.py` separately observes a normal type-3 supply drop. It tracks
 the released player class-26h slot and weapon 18, requires ground penetration

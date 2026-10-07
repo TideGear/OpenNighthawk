@@ -447,8 +447,14 @@ never instead of parity.
       total 20,510. Timed END captures show its 99th-mission retirement
       message and the rank-3 remark "Maybe I'll write a book, like
       Schwarzkopf. The lecture circuit sounds nice and cushy." The
-      rank-6 "General, At Last!" branch remains open; it requires the 99th
-      mission at rank 6 (total 27,720 and an average of 280). CO transfer
+      rank-6 "General, At Last!" branch is reached too: sortie 98's saved
+      roster with the rank word set to 6 and the total to 27,930 (the cause
+      END tests, staged; every other byte unchanged) flies a normal 99th
+      sortie (`tools/career_rank6.py`, input `career_rank6.input`) under both
+      engines to the same hash `934f2fb9cb4227a6`, score 204, total 28,134,
+      retired at rank 6, and END shows the rank-6 remark list ("When in
+      doubt, get a lieutenant to do it."). The staged rank is not an earned
+      career: a rank-6 career earned from rank 1 still needs promotions. CO transfer
       requests, briefing/arming, pilot creation/editing/erasure and roster
       save/reload, direct maintenance and retired/KIA dialogs are covered.
 - [ ] **A person playing it:** controls, joystick and mouse, saves, the feel.

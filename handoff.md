@@ -1767,3 +1767,19 @@ as the current state. Resume the full roadmap only when the user asks.
 - Next: put the F-117A boot (the GOG files are in `C:\F117A`) under the
   script, capture the intro with Ctrl+F11 or PrintWindow, and compare the
   PIT control-word IRQ0 behaviour and OPL output with this project's.
+
+### Rank-6 retirement branch reached (6 Oct, 20:20)
+
+- Staged cause: sortie 98's saved roster (rank-3 chain) with the pilot's
+  rank word (+20h) = 6 and total (+32h) = 27,930; nothing else edited. The
+  99th sortie is recon at Libya: `recon_pilot.py --initial-roster STAGED
+  --replay front-takeoff.input --complete --approach-speed 240
+  --landing-aim 100` flew it adaptively (aim 20 / speed 200 touched down
+  short and rolled out of the box; 240/100 stops inside it), recorded as
+  `tools/routes/career_rank6.input`. `tools/career_rank6.py ENGINE ROSTER98
+  OUT` replays it with the normal END inputs under both engines: same hash
+  `934f2fb9cb4227a6`, total 28,134, status 1, and END shows "When in doubt,
+  get a lieutenant to do it." (rank-6 remark list). Not an earned career.
+- D7 probe: Central America ground-strike training generates a recon
+  primary at the default clock; the recon pilot passed within 3 units of
+  the target but never designated it. Inconclusive; noted in bugs.md.
