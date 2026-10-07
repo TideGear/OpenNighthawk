@@ -108,11 +108,18 @@ never instead of parity.
   ground altitude with matching impact coordinates; one store/release and
   no primary credit reproduce original bug D5. The strong observer rejects
   mere expiry or store consumption. The return to home 51 is now verified in
-  `cargo_return` under both engines; an independent GOG DOSBox cargo
-  reproduction remains open. The 9 MIPS GOG replay now seeds DOS date, BIOS
-  ticks and RTC reads, but current runs still generate ground-strike or
-  reconnaissance missions rather than supply drops; no independent cargo
-  delivery is claimed.
+  `cargo_return` under both engines. Independent GOG DOSBox mission
+  generation is now reproduced: the generator was mapped locally tick by
+  tick (the type-3 window spans about -10 to +30 ms around the cargo seed;
+  every neighbour tick generates a different mission), which showed GOG
+  DOSBox seeds behave like the local machine 275 ms later - its autoexec
+  (`keyb us`, `cls`) consumes that guest time before the game reads the
+  clock (4/4 prior seeded triples match exactly, plus one new local
+  point). Seeding 275 ms early produced the exact type-3/target-24/
+  departure-58/home-51 mission in DOSBox. Its open-loop wall-clock replay
+  then diverges in flight (44 degrees of heading by 4.16B clocks, 4.4 km
+  by release time), so the crate never releases; delivery still needs a
+  closed-loop pilot, and no independent cargo delivery is claimed.
 - Seeded random flights (`tools/random_flights.py`): every session
   identical at every hash; 30.5 minutes of flight in the 16-session batch.
 - Planted defects caught by the lockstep (`tools/mutation_check.py
@@ -351,7 +358,10 @@ never instead of parity.
       capture matches 1,321 with 11 one-sample images unmatched on each side.
       There are no multi-sample mismatches, and both local picture sequences
       are identical. Exact transition states vary with capture phase (see In
-      progress).
+      progress). Re-verified on the build with the recomp trap-poll fix for
+      nested guest_call returns (run `intro-n82oys6t` against saved reference
+      `intro-qlh_wi26`): same 1,329 exact pictures, three one-sample images
+      unmatched on each side, no multi-sample mismatch, end drift -0.000 ms.
 - [x] **Refresh strike and return flight inputs after rational VGA slice
       timing.** `strike.input` and `strike_return.input` are replaced with the
       adaptive recording (target 3 damaged, two Mavericks released, one
@@ -418,13 +428,18 @@ never instead of parity.
       special slot-0 aircraft kill, primary event and credit are verified,
       followed by a home-33 landing. Both engines produced 813 identical
       flight observations and final hash `40a40062ec774095`, with parent
-      result 0/status 3. Types 6–8 each use three station-0 AMRAAMs, kill the
+      result 0/status 3, likewise recorded 5 Oct before the timing changes. Types 6–8 each use three station-0 AMRAAMs, kill the
       special slot-0 aircraft, earn primary credit and return to their home
       base with fuel remaining. Replays match byte-for-byte across both
       engines: type 6 has 619 flight observations and hash `d06a5ccf075b2e80`;
       type 7 has 780 and hash `11c82f0235e24265`; type 8 has 741 and hash
-      `6c3336ef1c24da17`. Independent GOG DOSBox reproduction of the cargo
-      behavior and wider generated-assignment coverage remain open. The
+      `6c3336ef1c24da17`, recorded 5 Oct before the rational VGA/PIT timing
+      changes. Those recordings do not reproduce on the current build -
+      both engines agree on the new outcome, and a fresh adaptive type-6
+      attempt fails the intercept identically under both engines - so
+      re-recording needs pilot retuning, not just re-running. Independent
+      GOG DOSBox cargo delivery and wider generated-assignment coverage
+      remain open. The
       transfer routes exercise generation and controls, then quit; they do
       not establish objective completion.
 - [ ] **The remaining career flow:** higher-rank awards and transfer

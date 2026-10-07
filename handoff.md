@@ -1624,3 +1624,89 @@ as the current state. Resume the full roadmap only when the user asks.
   B select target, Shift+F10 eject. The carrier start has its brakes on;
   the runway ends about 25 s after full throttle - rotate at about 19 s and
   do not over-climb (it stalls).
+
+## Continuation (6 Oct, trap-poll fix and gate rerun)
+
+- Verifying the refreshed strike routes found a recomp-runtime bug: the
+  strike strong observer (`strike_pilot.py --replay strike.input`) died
+  with a native stack overflow under recomp, while `run_route.py` and the
+  interpreter passed. `F117R_MATCHED_LIMIT` bisection isolated matched
+  routine #128 (`vgame_model_prepare_edge`); diagnostics showed
+  `recomp_run` batching past the armed nested-call return trap, nesting
+  one C level per model edge (depth 150+). Fixed with a trap poll at
+  every region dispatch in `recomp_run` (`src/recomp/recomp.c`, +11
+  lines); `tests/test_run_slicing.py` pins one long `run_until` against
+  fine slicing (game data via `F117R_TEST_DATA`, skips without).
+- Paired strike/return observers are byte-identical across engines and
+  match the committed hashes (return clock 15029717426/hash
+  `7b49aac1f746ffa7`, result 0/status 3). Full gate rerun with the fix
+  (`py tools/build_recomp.py --data D:/GOG/F-117A --work D:/f117-gate/work5
+  --jobs 12`, log `D:/f117-gate/gate-fixed.log`): 27/27 routes identical,
+  fresh translation 89,281 instructions, lockstep 5,713,472 states and
+  matched lockstep 191 routines / 657,148 states, both 0 mismatching.
+  13/13 CTests and all ROM-free Python checks pass.
+- Frame parity re-verified on the fixed build against saved reference
+  `intro-qlh_wi26` (run `D:/F117A-Recomp-Video/intro-n82oys6t`): same
+  1,329 exact pictures, three one-sample images unmatched on each side,
+  no multi-sample mismatch, end drift -0.000 ms. `docs/progress.json`
+  objectives evidence and the roadmap picture item are updated; figures
+  unchanged (P1 86.10%, P2 9.73%, P3 37.10%, All 50.94%).
+- Working tree left uncommitted: `M src/recomp/recomp.c`,
+  `M docs/architecture.md`, `M docs/roadmap.md`, `M docs/progress.json`,
+  `?? tests/test_run_slicing.py`. The gate pointed `build/` at
+  `D:/f117-gate/work5/gen`. C: has ~0.3 GB free; keep TEMP/work on D:.
+
+### Cargo generator mapped; GOG DOSBox type-3 reproduced (6 Oct, later)
+
+- Mapped START's generator locally by replaying the fixed `cargo.input`
+  frontend under varied boot wall-clocks (`D:/f117-gate/tmp/probe_genmap.py`,
+  results in `D:/f117-gate/genmap/*/result.json`). The type-3 PG mission
+  (target 24, dep 58, home 51) sits in a window about -10 to +30 ms around
+  the cargo seed; every neighbouring 55 ms tick generates a different
+  mission, and the seed itself is bit-deterministic (identical hashes).
+- The four prior GOG DOSBox seeded triples match local runs exactly with
+  a +275 ms rule (DOSBox seed S behaves like local S+275 ms): -220 ms gave
+  (1,1,dep63), -165 ms gave (2,2,dep61), -110 ms gave (1,2,dep62), unshifted
+  gave (2,1,dep59) - all four confirmed, including one new local point at
+  +275 ms. Cause: GOG autoexec (`keyb us`, `cls`) consumes ~275 ms of guest
+  time before the game reads the clock, so the seed must be 275 ms early.
+- Seeded DOSBox 275 ms early (`D:/f117-gate/cargo-m275.input`,
+  `D:/f117-gate/dosbox-cargo-m275/`) generated the EXACT type-3/target-24/
+  departure-58/home-51 mission (seed accepted, RTC matches, 755/755 inputs
+  sent) - the first independent GOG supply mission. Its open-loop
+  wall-clock replay then diverges in flight (44 degrees of heading by
+  4.16B clocks, 4.4 km by release time; store never released), so no
+  independent delivery is claimed. Delivery needs a closed-loop cargo
+  pilot (state-feedback flying like the recon adaptive pilot), not replay.
+- Docs updated: roadmap objectives item, `docs/progress.json` evidence,
+  bugs.md D5. Figures unchanged.
+
+### Air-to-air recordings are stale under current timing (6 Oct, later)
+
+- The committed type 5-8 hashes (40a4/d06a/11c8/6c33, recorded 5 Oct
+  ~04:30-04:50) do not reproduce on the current build. Replaying the
+  recorded inputs gives a different trajectory under BOTH engines, which
+  agree exactly with each other (type 6: e7292f51c44b1e3a at 5182654366
+  vs d06a5ccf075b2e80 at 8788322832), so this is not engine divergence.
+  Ruled out, each with a same-hash failing run: matched routines
+  (F117R_NO_MATCHED=1 gives the same e729), the PIT flag (off gives a
+  third trajectory e6d2), roster pollution (D:/GOG/F-117A/Roster.Fil dated
+  9/22, pristine; saves are per-run copies), and the trap fix (interp
+  never calls recomp_run; nomatched recomp never arms the trap).
+- Cause: the recordings predate the behavior changes of 5-6 Oct, chiefly
+  the rational VGA schedule (a25a3ef, 6 Oct 07:51 - the same change that
+  forced re-records of strike/cargo/recon/career) and the PIT default
+  (a4d9a06); the fronts also changed (4f4e3e8). The flight model steps
+  per frame, so old absolute-clock inputs no longer transfer.
+- A fresh adaptive type-6 run with the documented params
+  (central_europe_airair.front, default clock, --landing-aim 30;
+  `D:/f117-gate/aa6-new*/`) generates the right mission (type 6/target
+  30) but fails the intercept identically under both engines (same hash
+  cdffee9649a8cc36; no lock/fire; VGAME exits code 129 at 4269694594 with
+  result 2). Re-recording therefore needs pilot retuning, not just
+  re-running. Roadmap objectives item now dates the type 5-8 evidence.
+- Next for this item: retune the airair intercept under current timing
+  (compare special-unit behavior/AI frame-stepping, adjust gains/aim),
+  then re-record, verify both engines, and commit replay routes so the
+  gate covers types 5-8. D8 (bomb clamp) stays deferred: no LGB tooling
+  or route exists. D6 stays as is: cause not proven, no data guess.

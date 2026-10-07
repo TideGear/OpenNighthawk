@@ -100,3 +100,5 @@ jobs:
         run: python tests/test_parity_diagnostics.py
       - name: Recompiler override-site regressions
         run: python tests/test_recompiler_overrides.py
+      - name: Run-slicing invariance regressions
+        run: python tests/test_run_slicing.py

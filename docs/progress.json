@@ -33,7 +33,7 @@
         "weight": 6,
         "done": 0.8,
         "kind": "estimate",
-        "evidence": "Recon primary and return inputs have been refreshed after rational VGA slice-boundary timing; both pass paired strong observers, and the return route also passes the official world, VGAME-exit and END-debrief gates. Strike and strike-return proofs still need refresh. Independent GOG DOSBox cargo reproduction and wider generated-assignment coverage remain open."
+        "evidence": "Strike and strike-return inputs have been refreshed after rational VGA slice-boundary timing and pass paired strong observers under both engines with byte-identical input, flight and result files (return clock 15029717426/hash 7b49aac1f746ffa7, result 0/status 3); both routes also pass the official world, VGAME-exit and END-debrief gates. Recon primary and return are likewise refreshed and paired. A recomp trap-poll fix (nested guest_call returns) was needed for long observer runs; the full gate passes with it (27/27 routes identical, both locksteps 0 mismatching). Independent GOG DOSBox supply-mission generation is reproduced (exact type-3/target-24/departure-58/home-51 triple at a -275 ms seed compensating autoexec overhead); open-loop replay then diverges in flight so delivery still needs a closed-loop pilot. Wider generated-assignment coverage remains open."
       },
       {
         "item": "The remaining career flow",

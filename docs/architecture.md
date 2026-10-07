@@ -1143,10 +1143,19 @@ Most of the original's bytes are in routines that call others, so a matched
 routine can call into original code: `guest_call` in matched.c pushes the
 original return address, points CS:IP at the callee and runs the machine
 (`machine_run` up to the current run's limit) until a return trap fires -
-`trap_cs:trap_ip` with SP back at the caller's level, checked at every
-dispatch in both engines' loops. The callee may be translated, interpreted
+`trap_cs:trap_ip` with SP back at the caller's level. The interpreter
+checks the trap after every instruction; `recomp_run` polls it at every
+region dispatch and reports at once, so the run loop takes RUN_TRAP there.
+That poll is load-bearing: without it one recomp batch runs to `stop_at`,
+blowing past the return point, and execution re-enters matched routines on
+the way - a C nesting level per call. Short slices (the headless runner's
+10 ms, the pilots' fifths of a second) unwind at each boundary, but a long
+single run over dense model drawing overflowed the C stack: a strike-replay
+run from boot died at clock 2344871415, and the replay's post-credit second
+at 8745491302. The callee may be translated, interpreted
 or matched itself; interrupts, timers and events are serviced normally
-while it runs.
+while it runs. `tests/test_run_slicing.py` pins the underlying promise -
+one long `run_until` reaches the same hash as fine slicing.
 
 A matched routine cannot be paused in the middle of its C, but the run loop
 must still stop at exact instruction counts (checkpoints, frames). So the

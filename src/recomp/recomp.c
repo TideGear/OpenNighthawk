@@ -582,6 +582,17 @@ int recomp_run(machine_t *m)
     cpu_t *c = &m->cpu;
     int ran = 0;
     while (c->icount < c->stop_at && !c->halted && !(c->flags & F_TF)) {
+        /* A nested call's return (a matched routine's guest_call): report
+         * at once, so the run loop takes RUN_TRAP there. Without this poll
+         * one recomp_run batch runs to stop_at, blowing past the return
+         * point; execution re-enters matched routines on the way, a C
+         * nesting level per call. Short slices unwind at each boundary,
+         * but a long single run (a strike replay's post-credit second, any
+         * machine_api run over dense model drawing) overflows the C stack.
+         * -1 is nonzero, so the run loop continues into its trap check. */
+        if (m->trap_on && c->seg[S_CS] == m->trap_cs && c->ip == m->trap_ip &&
+                c->r[R_SP] == m->trap_sp)
+            return -1;
         instance *in = NULL;
         const rc_region *r = lookup(m, &in);
         if (!r) break;
