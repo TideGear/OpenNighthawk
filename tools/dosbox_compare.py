@@ -91,13 +91,47 @@ def filter_log(path):
     return out
 
 
+def run_dosbox_x(data, game, seconds, *, work=WORK, exe):
+    """Capture the intro on DOSBox-X with no window, no sound and no host input.
+
+    `exe` is DOSBox-X built from source with the DBX_AUTO_VIDEO patch
+    (tools/ref86box/build_86box.md): with that variable set it records AVI
+    video from the first frame, so the capture starts at the same emulated
+    moment on every run. `-silent` runs without a window, SETUP's two
+    answers come from AUTOTYPE inside the guest, and the GOG configuration
+    is layered under one that forces windowed mode and silence (GOG's own
+    asks for fullscreen). The run ends after `seconds` of real time.
+    """
+    cap = os.path.join(work, "capture")
+    shutil.rmtree(cap, ignore_errors=True)
+    os.makedirs(cap)
+    conf = os.path.join(work, "compare.conf")
+    with open(conf, "w") as f:
+        f.write("\n".join(["[sdl]", "fullscreen=false", "output=surface", "[dosbox]", "captures=" + cap,
+                           "[mixer]", "nosound=true", "[autoexec]", "@echo off",
+                           'mount C "%s"' % game, "c:", "keyb us", "cls",
+                           "autotype -w 5 -p 0.8 n 2", "f117", "exit", ""]))
+    env = dict(os.environ, DBX_AUTO_VIDEO="1")
+    subprocess.run([exe, "-silent", "-nogui", "-conf", os.path.join(data, "dosboxF117A.conf"), "-conf", conf,
+                    "-time-limit", str(seconds)], env=env, cwd=os.path.dirname(exe),
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=seconds + 60)
+    files = sorted(os.listdir(cap))
+    if not files:
+        sys.exit("DOSBox-X wrote no capture")
+    return [os.path.join(cap, f) for f in files]
+
+
 def run_dosbox(data, game, seconds, *, capture="opl", work=WORK, dosbox=None):
     """Capture on a scratch install; Ctrl+Alt+F7 for OPL, F5 for video.
 
     The caller owns work/capture, which is replaced on each run. `dosbox` names
-    another build (DOSBox-X) to run with the same GOG configuration; the
-    default is GOG's own DOSBox 0.74 in the install.
+    another build (the patched DOSBox-X, see run_dosbox_x) and runs it with no
+    window; the default is GOG's own DOSBox 0.74 in the install.
     """
+    if dosbox:
+        if capture != "video":
+            raise ValueError("the DOSBox-X harness captures video")
+        return run_dosbox_x(data, game, seconds, work=work, exe=dosbox)
     import win32api, win32con, win32gui, win32process
     if capture not in ("opl", "video"):
         raise ValueError("capture must be opl or video")
@@ -108,7 +142,6 @@ def run_dosbox(data, game, seconds, *, capture="opl", work=WORK, dosbox=None):
     with open(conf, "w") as f:
         f.write("[sdl]\nfullscreen=false\noutput=surface\n[dosbox]\ncaptures=%s\n[autoexec]\n@echo off\n" % cap)
         f.write('mount C "%s"\nc:\nkeyb us\ncls\nf117\nexit\n' % game)
-    x_build = bool(dosbox)
     dosbox = dosbox or os.path.join(data, "DOSBOX", "DOSBox.exe")
     si = subprocess.STARTUPINFO()
     si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
@@ -141,14 +174,6 @@ def run_dosbox(data, game, seconds, *, capture="opl", work=WORK, dosbox=None):
         win32api.PostMessage(hwnd, msg, vk, lp)
 
     def toggle_capture():
-        if x_build:
-            # DOSBox-X: its host key (F11 on Windows) with I records video.
-            if capture != "video":
-                raise ValueError("DOSBox-X has no default OPL capture key; use video")
-            key(win32con.VK_F11, True, False); key(ord("I"), True, False)
-            time.sleep(0.1)
-            key(ord("I"), False, False); key(win32con.VK_F11, False, False)
-            return
         vk = win32con.VK_F7 if capture == "opl" else win32con.VK_F5
         key(win32con.VK_CONTROL, True, False); key(win32con.VK_MENU, True, True); key(vk, True, True)
         time.sleep(0.1)

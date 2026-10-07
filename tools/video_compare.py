@@ -18,6 +18,7 @@ import argparse
 from difflib import SequenceMatcher
 import hashlib
 import json
+import numpy as np
 from pathlib import Path
 import shutil
 import statistics
@@ -57,7 +58,7 @@ def append_frame(out, rgb, when, source, duration):
 
 
 def reference_frames(run):
-    out, offset = [], 0.0
+    out, offset, midframe = [], 0.0, 0
     for avi in sorted((run / "capture").glob("*.avi")):
         info = json.loads(subprocess.check_output([
             "ffprobe", "-v", "error", "-select_streams", "v:0",
@@ -67,7 +68,11 @@ def reference_frames(run):
         period = den / num
         # Mode 13h has both double flags set: DOSBox's raw capture keeps
         # it at 320x200. Never resize pixels or include text-mode captures.
-        if (width, height) != (320, 200):
+        # DOSBox-X records the same mode at 640x400, each pixel doubled in
+        # both directions; that is read back to 320x200 and the doubling is
+        # checked, so nothing is resampled.
+        doubled = (width, height) == (640, 400)
+        if (width, height) != (320, 200) and not doubled:
             print("  skipping non-mode-13h capture", avi.name, width, height)
             continue
         proc = subprocess.Popen([
@@ -76,12 +81,23 @@ def reference_frames(run):
             "-pix_fmt", "rgb24", "-"], stdout=subprocess.PIPE)
         frame = 0
         try:
+            size = width * height * 3
             while True:
-                rgb = proc.stdout.read(320 * 200 * 3)
+                rgb = proc.stdout.read(size)
                 if not rgb:
                     break
-                if len(rgb) != 320 * 200 * 3:
+                if len(rgb) != size:
                     raise RuntimeError("truncated decoded frame")
+                if doubled:
+                    px = np.frombuffer(rgb, dtype=np.uint8).reshape(400, 640, 3)
+                    if not (np.array_equal(px[0::2, 0::2], px[1::2, 1::2])
+                            and np.array_equal(px[0::2, 0::2], px[0::2, 1::2])
+                            and np.array_equal(px[0::2, 0::2], px[1::2, 0::2])):
+                        # A palette write landed between the two scanlines of
+                        # a doubled line (DOSBox-X draws scanline by scanline).
+                        # The first scanline of each pair is the picture.
+                        midframe += 1
+                    rgb = px[0::2, 0::2].tobytes()
                 append_frame(out, rgb, offset + frame * period,
                              f"{avi.name}:{frame}", period)
                 frame += 1
@@ -92,6 +108,8 @@ def reference_frames(run):
             raise RuntimeError("ffmpeg decode failed")
         offset += frame * period
         print(f"  {avi.name}: {frame} frames, {1 / period:.6f} fps")
+    if midframe:
+        print(f"  {midframe} doubled frames changed between the two scanlines of a pair (read from the first)")
     if not out:
         raise RuntimeError("no graphics frames captured")
     return out

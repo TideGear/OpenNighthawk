@@ -1,0 +1,14 @@
+diff --git a/src/hardware/hardware.cpp b/src/hardware/hardware.cpp
+index 70e1d4a..96c97ad 100644
+--- a/src/hardware/hardware.cpp
++++ b/src/hardware/hardware.cpp
+@@ -2288,6 +2288,9 @@ void CAPTURE_Init() {
+ 	}
+ 
+ 	CaptureState = 0; // make sure capture is off
++	/* PC-parity harness: with DBX_AUTO_VIDEO set, record AVI video from the first rendered
++	 * frame, so it starts at the same emulated moment on every run with no host key press. */
++	if (getenv("DBX_AUTO_VIDEO") != NULL) CaptureState |= CAPTURE_VIDEO;
+ 
+ #if !defined(C_EMSCRIPTEN)
+ 	// mapper shortcuts for capture
