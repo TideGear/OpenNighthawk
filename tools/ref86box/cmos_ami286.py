@@ -1,4 +1,4 @@
-"""cmos_ami286.py NVR: write a CMOS image the AMI 286 BIOS (86Box `ami286`)
+"""cmos_ami286.py OUT.nvr [EXTENDED_KB] NVR: write a CMOS image the AMI 286 BIOS (86Box `ami286`)
 accepts with no keypress.
 
 POST stops at an F1 prompt (drawn below the rows a window capture shows, so
@@ -20,6 +20,9 @@ cm[0x10] = 0x20                          # A: 1.2 MB, B: none
 cm[0x12] = 0x00                          # no CMOS hard disk (the XT-IDE ROM has its own)
 cm[0x14] = 0x01                          # one floppy, EGA/VGA, no FPU
 cm[0x15], cm[0x16] = 0x80, 0x02          # 640 KB base memory
+ext = int(sys.argv[2]) if len(sys.argv) > 2 else 0     # extended KB (a 386 board with 1 MB: 384)
+cm[0x17], cm[0x18] = ext & 0xFF, ext >> 8
+cm[0x30], cm[0x31] = ext & 0xFF, ext >> 8
 cm[0x32] = 0x19                          # century
 s = sum(cm[0x10:0x2E])
 cm[0x2E], cm[0x2F] = (s >> 8) & 0xFF, s & 0xFF

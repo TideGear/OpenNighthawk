@@ -71,10 +71,10 @@ index a67309d..c7c77fe 100644
      music_add_handler(adlib_get_buffer, adlib);
      return adlib;
 diff --git a/src/vnc.c b/src/vnc.c
-index cd539f5..ecd797a 100644
+index cd539f5..9f1171d 100644
 --- a/src/vnc.c
 +++ b/src/vnc.c
-@@ -172,6 +172,194 @@ vnc_display(rfbClientPtr cl)
+@@ -172,6 +172,196 @@ vnc_display(rfbClientPtr cl)
      }
  }
  
@@ -87,6 +87,7 @@ index cd539f5..ecd797a 100644
 + * not of wall-clock polling. */
 +#include "cpu.h"
 +#include <86box/timer.h>
++#include <86box/nvr.h>
 +
 +typedef struct {
 +    uint64_t frame;
@@ -262,6 +263,7 @@ index cd539f5..ecd797a 100644
 +        fflush(tr_csv);
 +        fclose(tr_csv);
 +        tr_csv = NULL;
++        nvr_save();
 +        exit(0);
 +    }
 +}
@@ -269,7 +271,7 @@ index cd539f5..ecd797a 100644
  static void
  vnc_blit(int x, int y, int w, int h, int monitor_index)
  {
-@@ -186,6 +374,8 @@ vnc_blit(int x, int y, int w, int h, int monitor_index)
+@@ -186,6 +376,8 @@ vnc_blit(int x, int y, int w, int h, int monitor_index)
      if (screenshots)
          video_screenshot((uint32_t *) rfb->frameBuffer, 0, 0, VNC_MAX_X);
  
@@ -278,7 +280,7 @@ index cd539f5..ecd797a 100644
      video_blit_complete_monitor(monitor_index);
  
      if (!updatingSize)
-@@ -244,6 +434,12 @@ vnc_init(UNUSED(void *arg))
+@@ -244,6 +436,12 @@ vnc_init(UNUSED(void *arg))
  
      clients = 0;
  

@@ -24,7 +24,7 @@ import probe86  # noqa: E402
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("out")
-    ap.add_argument("--profile", default=r"D:\86box\vmt")
+    ap.add_argument("--profile", default=r"D:\86box\vmt386")
     ap.add_argument("--frames", type=int, default=12000)
     ap.add_argument("--keys", default="3000:1:31,3003:0:31,3300:1:03,3303:0:03")
     ap.add_argument("--timeout", type=int, default=1200)
@@ -41,9 +41,7 @@ def main():
     shutil.copyfile(os.path.join(a.profile, "f117a.img"), img)
 
     def install(fs):
-        bat = fs.readtext("/FDAUTO.BAT").replace("\r\n", "\n")
-        lines = [l for l in bat.split("\n") if l.strip() and l.strip().upper() != "F117"] + ["F117"]
-        fs.writetext("/FDAUTO.BAT", "\r\n".join(lines) + "\r\n")
+        probe86.bare_boot(fs, ["F117"])
     probe86.with_partition(img, install, write=True)
     trace = os.path.join(a.out, "trace")
     opl = os.path.join(a.out, "opl86.log")

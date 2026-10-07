@@ -26,7 +26,7 @@ import probe86  # noqa: E402
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("out")
-    ap.add_argument("--profile", default=r"D:\86box\vmt")
+    ap.add_argument("--profile", default=r"D:\86box\vmt386")
     ap.add_argument("--mouse-driver", required=True)
     ap.add_argument("--keys", default="3000:1:31,3003:0:31,3300:1:03,3303:0:03")
     ap.add_argument("--mouse", default="")
@@ -51,11 +51,7 @@ def main():
 
     def install(fs):
         fs.writebytes("/F117A/CTMOUSE.EXE", driver)
-        # CTMOUSE costs 3 KB and START needs nearly all of conventional memory, so this boot is
-        # bare: no environment variables, one buffer, few files, a small environment block.
-        fs.writetext("/FDAUTO.BAT", "\r\n".join(["@echo off", "cd \\F117A"] + a.tail.split(",")) + "\r\n")
-        fs.writetext("/fdconfig.sys", "LASTDRIVE=C\r\nBUFFERS=1\r\nFILES=10\r\nSTACKS=0,0\r\n"
-                     "SHELL=\\FREEDOS\\BIN\\COMMAND.COM \\FREEDOS\\BIN /E:128 /P=\\FDAUTO.BAT\r\n")
+        probe86.bare_boot(fs, a.tail.split(","))
     probe86.with_partition(img, install, write=True)
     trace = os.path.join(a.out, "trace")
     env = dict(os.environ, B86_MOUSE=a.mouse)

@@ -349,7 +349,8 @@ current as of the last gate (see [../handoff.md](../handoff.md)).
    the pictures against limits measured on 6 October 2026. The same run
    judges the intro's music (GOG's and DOSBox-X's captured audio against the
    application's own render of this machine's AdLib log, `tools/sound_parity.py`;
-   86Box's AdLib writes in emulated time, `tools/ref86box/compare_opl86.py`) and
+   86Box's AdLib writes and scene timing in emulated time on a 386DX/33,
+   `tools/ref86box/compare_opl86.py`, `compare_timing86.py`) and
    a scripted START session's saved `ROSTER.FIL` byte for byte on DOSBox-X and
    86Box (`tools/save_parity.py`). The machine-behaviour probe
    (`tools/fidelity_all.py`, about 1,200 answers) is held to stored baselines

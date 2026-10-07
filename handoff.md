@@ -110,9 +110,10 @@ date; `git log -p handoff.md` has them.
    saved-data check beyond the roster (a career) and to flight.
 2. Interpreter-result cache in the gate (key excludes `matched.c`), then
    fast-forward and parallel reference runs (`docs/repeated-processes.md`).
-3. 86Box: a faster board (386/486 ROMs are in the 86Box roms repo; each needs
-   its own CMOS image) so frame timing and the music's pitch-bend channels can
-   be compared, then flight under script (the mouse and START already are).
+3. 86Box (now a 386DX/33, `make_profile386.py`): flight under script (the mouse
+   and START already are); the remaining 2 s intro drift is disk-interface
+   pacing; channels 3 and 4's pitch-bend writes land in different places
+   (speed-paced), which `compare_opl86.py` reports without judging.
 4. Roadmap Phase 1 leftovers: picture residuals, Munt listening checks,
    sound parity, DOSBox-specific timing details, a closed-loop cargo pilot for
    independent delivery, an earned rank-6 career.

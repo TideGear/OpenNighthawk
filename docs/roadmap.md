@@ -58,8 +58,9 @@ instead of parity.
   renderer, windowless and silent) shows the same scenes, order and colours,
   its VM being a 6 MHz 286. The same run checks the music (GOG envelope 0.963,
   spectral 0.992, level 1.005; DOSBox-X 0.90-0.92 and 0.947, its mixer 0.74 of
-  the level; 86Box: identical first 2,000 AdLib writes and notes on four of
-  six channels) and a scripted START session's saved roster (byte-identical on
+  the level; 86Box (a 386DX/33 profile): identical first 2,000 AdLib writes and notes on
+  four of six channels, scene timing within 0.31 s per scene and 2.0 s drift
+  over the intro) and a scripted START session's saved roster (byte-identical on
   DOSBox-X and 86Box); `tools/fidelity_all.py` holds the machine probe to
   stored baselines. Builds and notes: `tools/ref86box/`.
 - **Independent GOG DOSBox flights.** Reconnaissance with both photos and the
@@ -85,10 +86,9 @@ instead of parity.
 - [ ] **86Box and DOSBox-X as routine checks.** `tools/pc_parity.py` is the
       routine PC-parity check (pictures, music and saved data, against limits
       measured on 6 Oct 2026) and `tools/fidelity_all.py` the machine probe.
-      Open: give 86Box a faster board (the 386/486 ROMs are in 86Box's roms
-      repository, each needing its own CMOS image) so frame timing and the
-      pitch-bend channels can be compared; script flight and more saved data
-      (a career) on both; then decide whether DOSBox-X plus 86Box replace GOG's
+      Open: script flight and more saved data (a career) on both; find what
+      paces the remaining 2 s of intro drift on 86Box (the disk interface) and
+      the pitch-bend channels' different write positions; then decide whether DOSBox-X plus 86Box replace GOG's
       DOSBox for routine checks (the saved GOG capture stays as a frozen
       regression reference). Parity target: the original on real hardware, not
       DOSBox.

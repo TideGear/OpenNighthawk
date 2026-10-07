@@ -55,13 +55,26 @@ github.com/davidebreso/ctmouse; not kept in this repository, default path
 boots a bare FreeDOS (no environment variables, `BUFFERS=1`, `FILES=10`,
 `/E:128`): CTMOUSE's 3 KB otherwise makes START stop with "Not enough memory!".
 
-Measured 6 Oct 2026: the music's first 2,000 AdLib writes are identical to this
-machine's, and channels 0, 1, 2 and 5 play the same notes in the same order
-(the busy pitch-bend channels 3 and 4 follow the 286's speed and drift up to
-7 s over the intro); the scripted session saves a `ROSTER.FIL` byte-identical
+**The parity checks run on a 386DX/33, not the 286.** `make_profile386.py`
+builds `D:\86box\vmt386` from the 286 profile: board `ami495` (OPTi 495SX, AMI
+BIOS; `opt495sx.ami` is fetched from the 86Box roms repository), i386DX at 33 MHz,
+1 MB, and a CMOS made by driving the BIOS setup with injected keys ("auto
+configuration with BIOS defaults", F10, Y) and keeping the NVR 86Box saves on
+exit. Scene timing against this machine, from the traced `frames.csv`
+(`compare_timing86.py`): the 6 MHz 286 drifted 8.35 s over the intro, a 25 MHz
+286 2.45 s, the 386DX/33 1.8-2.0 s (scene lengths within 0.31 s); 40 MHz
+changes it by 0.1 s, so what remains is paced by the disk interface (ISA port
+I/O), not the CPU. All traced runs use `probe86.bare_boot` (the game needs
+almost all of conventional memory under this BIOS).
+
+Measured 7 Oct 2026 on it: the music's first 2,000 AdLib writes are identical to
+this machine's, channels 0, 1, 2 and 5 play the same notes in the same order,
+and channels 3 and 4 have the same number of key-ons (within 0.1%) but their
+pitch-bend writes fall in different places (the effect is paced by the
+loop, so by speed); the scripted session saves a `ROSTER.FIL` byte-identical
 to ours.
 
-## The profile (`D:\86box\vmf`)
+## The profile (`D:\86box\vmf`, the picture capture; the checks above use `vmt386`)
 
 `86box.cfg.vnc` here is the working configuration: `ami286`, 640 KB,
 `hdc_1 = xtide_at`, VGA, AdLib, `vid_renderer = vnc`, `sound_muted = 1`, no

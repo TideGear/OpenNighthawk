@@ -45,10 +45,19 @@ def with_partition(image, fn, write=False):
     return result
 
 
+def bare_boot(fs, commands):
+    """FDAUTO.BAT and FDCONFIG.SYS that leave the game nearly all of conventional memory: no
+    environment variables, one buffer, few files, a small environment block (START stops with
+    "Not enough memory!" on the 386 board under the stock FreeDOS boot, or with a mouse driver)."""
+    fs.writetext("/FDAUTO.BAT", "\r\n".join(["@echo off", "cd \\F117A"] + list(commands)) + "\r\n")
+    fs.writetext("/fdconfig.sys", "LASTDRIVE=C\r\nBUFFERS=1\r\nFILES=10\r\nSTACKS=0,0\r\n"
+                 "SHELL=\\FREEDOS\\BIN\\COMMAND.COM \\FREEDOS\\BIN /E:128 /P=\\FDAUTO.BAT\r\n")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("out")
-    ap.add_argument("--profile", default=r"D:\86box\vmt")
+    ap.add_argument("--profile", default=r"D:\86box\vmt386")
     ap.add_argument("--frames", type=int, default=9000)
     ap.add_argument("--timeout", type=int, default=900)
     a = ap.parse_args()

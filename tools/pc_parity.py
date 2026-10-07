@@ -179,6 +179,14 @@ def main():
             print("  " + (Path(slog).read_text(errors="replace").strip() or "sound 86box ERROR"))
             if src != 0:
                 failures.append("86box sound")
+        ours_run = next((Path(results[n]["run"]) for n in ("dosbox-x", "gog") if n in results and results[n].get("run")), None)
+        if ours_run is not None and (a.out / "86box-sound" / "trace" / "frames.csv").exists():
+            tlog = a.out / "86box-timing.log"
+            trc = run([PY, str(HERE / "ref86box" / "compare_timing86.py"), str(ours_run / "comparison.json"),
+                       str(a.out / "86box-sound" / "trace" / "frames.csv")], tlog)
+            print("  " + (Path(tlog).read_text(errors="replace").strip() or "timing 86box ERROR"))
+            if trc != 0:
+                failures.append("86box timing")
     saves = [("save-dbx", results.get("save-dbx")), ("86box save", results.get("86box", {}).get("save"))]
     for name, r in saves:
         if not r:
