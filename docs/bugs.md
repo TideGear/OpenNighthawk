@@ -236,6 +236,19 @@ Status values:
   the sortie ran out its 30 minutes. That is the pilot's designation, not
   yet evidence about the game: whether the training target can be
   designated and credited is still open.
+- **A strike training mission, found (7 Oct).** The start clock seeds the
+  mission generator. Of eight clocks 0-7 s past the default, 5 s and 7 s give
+  Ground Strike Training a strike primary (type 2, targets 1 and 21), the
+  others a reconnaissance. At +5 s the target is designated normally (lock 1
+  inside 2,900 map units) and the loaded weapon is a laser-guided bomb
+  (weapon 13, class 28, two stores). `strike_pilot.py --front-route
+  routes/central_america_strike_training.front --time-us 700000005000000`
+  flies it: the bomb is released (one launch event; at the target, or at 2,500
+  units with `--release-range 2500`), the target is not damaged, nothing is
+  credited and no hit event is logged. The pilot was written for a Maverick
+  (a seeker lock), so this does not yet separate a bad release from the game
+  not crediting the training bomb, nor from D8's pitch clamp; the next step is
+  the bomb's own state in flight.
 - **Detail.** Reimp catalogue:724-727.
 
 ### D8. Laser-guided bomb pitch clamp

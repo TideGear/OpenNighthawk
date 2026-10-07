@@ -38,6 +38,9 @@ def strike_state(machine):
     return state
 
 
+RELEASE_RANGE = [0]        # a laser-guided bomb is released at this range from the target (0: the seeker's own interlock)
+
+
 def control(machine, state, tick):
     # Reuse only its flight/configuration controls; suppress camera selection
     # and photo release. The actual station and strike interlock follow here.
@@ -55,6 +58,10 @@ def control(machine, state, tick):
     selected = max(candidates, key=lambda i: state["stations"][i]["effect"])
     if state["station"] != selected:
         if tick % 10 == 5: machine.type(at, r"\s", hold_ms=20)
+    elif RELEASE_RANGE[0]:
+        designated = state["lock"] != 0xFFFF and state["lock"] & 0x7f == state["target"]
+        if designated and not state["launch_events"] and state["target_range"] < RELEASE_RANGE[0] and tick % 10 == 5:
+            machine.type(at, r"\r", hold_ms=20)
     elif state["launch_lock"] and state["lock"] & 0x7f == state["target"] and tick % 10 == 5:
         machine.type(at, r"\r", hold_ms=20)
 
@@ -82,10 +89,15 @@ def main():
     parser.add_argument("--replay", help="observe recorded normal keys/mouse without adaptive controls")
     parser.add_argument("--complete", action="store_true", help="also attempt home return after primary credit")
     parser.add_argument("--engine", choices=("recomp", "interp"), default="recomp")
+    parser.add_argument("--time-us", type=int, default=700_000_000_000_000,
+                        help="the start clock; it seeds the mission generator (a recorded replay needs the default)")
+    parser.add_argument("--release-range", type=int, default=0,
+                        help="release the selected weapon once designated and this close (a laser-guided bomb)")
     parser.add_argument("--landing-aim", type=int, default=20,
                         help="runway approach aim relative to centre; negative aims beyond it")
     parser.add_argument("--landing-approach-speed", type=int, default=200)
     args = parser.parse_args(); out = Path(args.out); out.mkdir(parents=True, exist_ok=False)
+    RELEASE_RANGE[0] = args.release_range
     inputs = RouteInputs(route_args(args.front_route) if args.front_route else base_route()) if not args.replay else None
     replay, replay_pos = [], 0
     if args.replay:
@@ -100,7 +112,7 @@ def main():
             replay.append(parts)
     rows = []; tick = 0; initialized = False; flight_start = None; last = ""
     approach = False; flight_block = None; landed_report = {}
-    with Machine(args.data, tempfile.mkdtemp(dir=out), log=out / "run.log", engine=args.engine) as machine:
+    with Machine(args.data, tempfile.mkdtemp(dir=out), log=out / "run.log", engine=args.engine, time_us=args.time_us) as machine:
         machine.record(out / "input.log")
         while machine.clock < 5_000_000_000 + args.seconds * machine.ips:
             if inputs: inputs.poll(machine)
