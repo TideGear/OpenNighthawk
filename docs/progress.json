@@ -39,9 +39,9 @@
       {
         "item": "Timing details still DOSBox's own",
         "weight": 5,
-        "done": 0.75,
+        "done": 0.8,
         "kind": "estimate",
-        "evidence": "PIT control-word IRQ found and fixed; I/O slice suppression matched; the retrace-phase note settled (7 Oct): started 275 ms in, as GOG's DOSBox is, all 22,840 AdLib writes over 106 s are identical to its capture; PLAYER's few-byte DAC gap and the BIOS/DOS stub timing open."
+        "evidence": "PIT control-word IRQ found and fixed; I/O slice suppression matched; the retrace-phase note settled (7 Oct): started 275 ms in, as GOG's DOSBox is, all 22,840 AdLib writes over 106 s are identical to its capture; PLAYER's few-byte DAC gap and the BIOS/DOS stub timing open. The 386-against-286 flag bits 12-14 are never read by the translated code (10 of 13 PUSHF sites verified as save/restore pairs)."
       },
       {
         "item": "Rendered sound parity",

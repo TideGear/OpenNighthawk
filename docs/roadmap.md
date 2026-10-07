@@ -104,8 +104,12 @@ make (Phase 4).
       makes the alignment itself uncertain. Digitised speech, audible speaker
       output and a listening check remain.
 - [ ] **Timing details still DOSBox's own:** its BIOS and DOS stubs at their own
-      addresses, its per-millisecond slicing, its 386 against this machine's 286
-      (flag bits 12-14). PLAYER's fade calibration samples overlap DOSBox's
+      addresses and its per-millisecond slicing. Its 386 against this machine's
+      286 (flag bits 12-14) is settled for the translated code: of its 13 PUSHF
+      sites, 10 are real code and each runs to a balanced POPF (interrupts held
+      off around a retrace wait or a timer update, and an interrupt chain), none
+      reads the word; two are data the translator decoded as code (SETUP 1EAD,
+      VGAME 2DFD); ASOUND's three were not checked. PLAYER's fade calibration samples overlap DOSBox's
       (5,836-5,841 against 5,839-5,844 DAC bytes per display period; the
       calibrator is a phase-dependent diagnostic, `tools/fade_calibration.py`,
       not a verdict, and start phase is what moved the music note above);
