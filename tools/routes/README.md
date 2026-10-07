@@ -132,6 +132,13 @@ one 8Bh event. `cargo_check.py --fix D5 --replay tools/routes/cargo.input
 --steps 7353559391` turns the verdict round and requires that credit at the
 impact, never before it.
 
+`d1_fast_machine` is `boot_to_flight` on a 40 MIPS machine (`--ips
+40000000`) with fix D1 switched on, every program-relative input time scaled
+by 40/9 so the menus get the same emulated seconds. Its strong observer,
+`d1_check.py --data D:/GOG/F-117A`, flies the same inputs at GOG's 9 MIPS
+without fixes and at 40 MIPS with D1, and requires the settled S, the
+mission clock and the frame rate to agree.
+
 `secret_airstrip_return` delivers at the intact primary strip, turns and
 taxis for a second takeoff, then returns to home. Run `airstrip_check.py
 --complete --replay tools/routes/secret_airstrip_return.input --steps

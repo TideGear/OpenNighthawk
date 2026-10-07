@@ -69,6 +69,24 @@ Status values:
   `--ips` reproduces the fast-machine behaviour faithfully.
 - **Fix options.** Pin the controller's S, or step the flight model on a
   fixed clock (the Reimp's choice). Either is a patch over `0x441D`.
+- **Measured here.** Flying `boot_to_flight`'s inputs (input times scaled
+  to the machine's speed), GOG's 9 MIPS settles at S 9 and draws 11.6
+  frames a second; the mission clock advances 209 in 162 s. At 20 MIPS the
+  machine draws 16.8 a second, S sits clamped at 15 and the clock advances
+  181: the world runs 13% behind GOG's. That flight does not show the 15/3
+  swing.
+- **Fix available: `--fix D1`,** a frame limiter. An override at VGAME
+  `0x441D`, the controller's entry, which every frame passes once, holds
+  a frame that arrives before its slot (time passes and interrupts are
+  serviced, as in a HLT loop), so no machine draws faster than GOG's 11.6
+  frames a second. The controller is untouched and keeps measuring, so S
+  settles where GOG's does. Pinning S instead, without pacing, ran the
+  mission clock three times too fast at 40 MIPS (600 against 209). At 9
+  MIPS and below the fix never waits and the run is the original's, hash
+  for hash. `tools/d1_check.py` flies both machines and requires S 9, the
+  mission clock within 2 and frames a second within 0.2 of GOG's at 40
+  MIPS, where both engines give identical hashes; the gate plays route
+  `d1_fast_machine` (the same flight with the fix) under both engines.
 - **Detail.** Reimp catalogue:330-449; Reimp `docs/re/01-timing-architecture.md`.
 
 ### D2. AdLib digitised speech can hang the game
@@ -169,7 +187,11 @@ Status values:
   113 from target 24, below 256, mission time 588 before deadline 1094.
   Primary flag/event remain absent. `cargo_check.py` requires actual impact
   rather than counting consumed stores or expiry. This is engine replay
-  evidence; independent DOSBox cargo reproduction remains open.
+  evidence. Independent GOG DOSBox supply-mission generation is reproduced
+  (exact type-3/target-24/departure-58/home-51 triple at a -275 ms seed
+  compensating about 275 ms of autoexec guest time); open-loop replay then
+  diverges in flight, so independent delivery still needs a closed-loop
+  pilot and remains open.
 - **Approach trap.** A shallower trial reached height 1, then pitch became
   zero with slot-owner field zero, and the crate expired instead of crossing
   ground. The shipped instructions at 6C23..6C4C apply the owner pitch floor

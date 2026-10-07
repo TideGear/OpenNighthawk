@@ -1,0 +1,34 @@
+# boot_to_flight on a 40 MIPS machine with fix D1 switched on: the same
+# inputs, every program-relative time scaled by 40/9 so the menus get the
+# same emulated seconds. D1 paces VGAME's frames at GOG's 11.6 a second.
+# Strong observer: d1_check.py (S settles at 9, GOG's mission clock and frame rate).
+--type
+SETUP.EXE+888888:N
+--type
+SETUP.EXE+8888888:2
+--type
+START.EXE+133333333:\r
+--click
+START.EXE+533333333:258,182
+--click
+START.EXE+888888888:283,172
+--click
+START.EXE+1777777777:280,60
+--click
+START.EXE+3111111111:272,134
+--click
+START.EXE+4000000000:271,148
+--click
+START.EXE+4888888888:225,191
+--type
+VGAME.EXE+1333333333:\aq
+--type
+VGAME.EXE+1777777777:y
+--steps
+22222222222
+--time-us
+700000000000000
+--ips
+40000000
+--fix
+D1
