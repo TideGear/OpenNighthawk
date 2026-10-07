@@ -517,6 +517,13 @@ of 56 phases, both pages) and the `strike_return` landing approach (45 of 45).
 The earlier windows (strike at 2.34B and 8.53B, landing at 2.34B and 9.90B,
 cargo, recon, Central Europe air-to-air) are still exact on the new build.
 
+**Missile launches and kills (6 Oct, 19:35).** Four 30M-instruction windows
+on the re-recorded air-to-air routes, taken just before an AMRAAM release and
+just before the special aircraft's kill: `airair_type6` at 5.092B (59 phases)
+and 5.240B (57), `airair_type5` at 6.793B (57) and 6.914B (66). Every phase is
+exact on both pages with no byte copied from the original. Still unexercised:
+dithered and stipple fills and the sprite clip edge cases.
+
 **Stage 2, what the draw list already holds (6 Oct, 13:40).** The edge
 records ('E') carry integer screen endpoints, already rounded to the 320x200
 grid by the original's projection and clip, so scaling them by N and running
