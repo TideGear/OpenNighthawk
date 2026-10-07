@@ -695,7 +695,7 @@ static uint8_t io_read8(machine_t *m, uint16_t port)
     case 0x3C1: return m->attr[m->attr_idx & 0x1F];
     case 0x3C2: return 0x70;                 /* input status 0, as DOSBox reads it */
     case 0x3C4: return m->seq_idx;
-    case 0x3C5: return m->seq[m->seq_idx & 7];
+    case 0x3C5: machine_inventory_seq(m->seq_idx); return m->seq[m->seq_idx & 7];
     case 0x3C6: return m->pel_mask;
     case 0x3C7: return m->dac_state;
     case 0x3C8: return m->dac_widx;

@@ -41,6 +41,7 @@ int machine_boot(machine_t *m, uint8_t *mem, const char *data_dir,
  * programs use, counted, for the machine-fidelity probes. Counting only. */
 
 static uint32_t g_inv_port[0x10000][2];
+static uint32_t g_inv_seq[8];                /* reads of sequencer data, by the index selected */
 static struct { uint32_t key, n; } g_inv_svc[4096];
 static int g_inv_on = -1;
 
@@ -53,6 +54,11 @@ static int inv_on(void)
 void machine_inventory_port(uint16_t port, int write)
 {
     if (inv_on()) g_inv_port[port][write ? 1 : 0]++;
+}
+
+void machine_inventory_seq(uint8_t index)
+{
+    if (inv_on()) g_inv_seq[index & 7]++;
 }
 
 void machine_inventory_service(uint8_t vec, uint16_t ax)
@@ -74,6 +80,8 @@ static void inventory_write(void)
         if (g_inv_svc[i].key)
             fprintf(f, "int %02X ax %04X %u\n", (g_inv_svc[i].key >> 16) & 0xFF,
                     g_inv_svc[i].key & 0xFFFF, g_inv_svc[i].n);
+    for (int i = 0; i < 8; i++)
+        if (g_inv_seq[i]) fprintf(f, "seqread %d %u\n", i, g_inv_seq[i]);
     for (int p = 0; p < 0x10000; p++)
         for (int w = 0; w < 2; w++)
             if (g_inv_port[p][w]) fprintf(f, "port %04X %s %u\n", p, w ? "out" : "in", g_inv_port[p][w]);

@@ -50,8 +50,16 @@ def main():
     os.makedirs(a.out, exist_ok=True)
     subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
                     os.path.join(HERE, "start_vnc86.ps1"), "-Profile", a.profile], check=True)
-    time.sleep(6)
-    rfb = Rfb("127.0.0.1", 5900)
+    rfb = None
+    for _ in range(60):                           # the port opens when 86Box has started: seconds, longer under load
+        time.sleep(2)
+        try:
+            rfb = Rfb("127.0.0.1", 5900)
+            break
+        except OSError:
+            pass
+    if rfb is None:
+        sys.exit("86Box did not open its VNC port in 120 s")
     try:
         time.sleep(a.boot_wait)
         typing(rfb, "f117")

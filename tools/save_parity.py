@@ -20,6 +20,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -130,9 +131,25 @@ def run_dosbox_x(data, route, out, exe, seconds):
                                "@echo off", 'mount C "%s"' % game, "c:", "keyb us", "cls",
                                "autotype -w 5 -p 0.8 n 2", "f117", "exit", ""]))
     env = dict(os.environ, DBX_AUTO_INPUT=events, DBX_AUTO_INPUT_AT="START.EXE")
-    subprocess.run([exe, "-silent", "-nogui", "-conf", str(Path(data) / "dosboxF117A.conf"), "-conf", str(conf),
-                    "-time-limit", str(seconds)], env=env, cwd=os.path.dirname(exe),
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=seconds + 120)
+    roster = game / "ROSTER.FIL"
+    before = roster.read_bytes() if roster.exists() else None
+    proc = subprocess.Popen([exe, "-silent", "-nogui", "-conf", str(Path(data) / "dosboxF117A.conf"), "-conf", str(conf),
+                             "-time-limit", str(seconds)], env=env, cwd=os.path.dirname(exe),
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    # The inputs run on emulated time, so how long the session takes in real time depends on the load:
+    # stop when the roster's content has changed from the install's (START also rewrites it unchanged
+    # early on), not after a fixed wall time; `seconds` is only the ceiling.
+    deadline = time.time() + seconds
+    try:
+        while proc.poll() is None and time.time() < deadline:
+            time.sleep(2)
+            if roster.exists() and roster.read_bytes() != before:
+                time.sleep(5)                                 # the write is finished and the program idles
+                break
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+        proc.wait()
     return game
 
 
@@ -158,12 +175,12 @@ def main():
     ap.add_argument("--dosbox-x", default=DBX)
     ap.add_argument("--mouse-driver", default=r"D:\f117-gate\ctm\CTMOUSE.EXE", help="CuteMouse ctmouse.exe for the 86Box guest")
     ap.add_argument("--out", type=Path, default=Path.home() / "f117-recomp-local" / "save-parity")
-    ap.add_argument("--seconds", type=int, default=0, help="wall seconds for DOSBox-X (default: intro + route + margin)")
+    ap.add_argument("--seconds", type=int, default=0, help="ceiling in wall seconds for DOSBox-X (default: three times intro + route + margin)")
     ap.add_argument("--no-dosbox-x", action="store_true")
     ap.add_argument("--no-86box", action="store_true")
     a = ap.parse_args()
     events, last = route_events(a.route)
-    seconds = a.seconds or int(150 + last / 1000 + 60)
+    seconds = a.seconds or int(3 * (150 + last / 1000 + 60))      # a ceiling: the run ends when the roster is written
     ours = run_ours(a.data, a.route, a.out / "ours")
     ok = True
     if not a.no_dosbox_x:

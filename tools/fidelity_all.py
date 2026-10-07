@@ -19,11 +19,14 @@ DOSBox is empty: every answer agrees.
 
 Fields about speed (rates, costs in PIT counts) are compared only for the
 DOSBoxes, which run at this machine's modelled speed; against 86Box they are
-listed as informational.
+listed as informational. Answers that only describe how a DOS and BIOS lay
+memory out (segments, PSP, the memory chain, the child's frame) are judged
+against GOG's DOSBox alone, which this machine follows.
 """
 import argparse
 import json
 import os
+import re
 import struct
 import subprocess
 import sys
@@ -34,6 +37,13 @@ import fidelity  # noqa: E402
 
 BASELINE = os.path.join(HERE, "fidelity_baseline.json")
 DBX = r"D:\86box-src\dbx-src\src\dosbox-x.exe"
+
+
+# Answers that describe how a machine lays DOS out in memory - segment values at each call, the PSP,
+# the memory chain, the EXEC'd child's frame - not what the game can do. GOG's DOSBox is the one reference
+# held to them (this machine follows it, and the game was run on it); another DOS and another BIOS place
+# things differently, so for the others they are left out of the verdict and out of the baseline.
+LAYOUT = re.compile(r"( DS| ES)$|^psp |^mcb |^child|environment segment|segment$")
 
 
 def field_ok(kind, r, o):
@@ -48,8 +58,8 @@ def field_ok(kind, r, o):
     return r == o
 
 
-def differing(ref, ours, n, ref_child, ours_child, nc, speed_fields):
-    """Names of the answers where `ref` and `ours` disagree."""
+def differing(ref, ours, n, ref_child, ours_child, nc, speed_fields, layout=True):
+    """Names of the answers where `ref` and `ours` disagree (layout answers only when `layout`)."""
     out = []
     for k, (name, kind) in enumerate(fidelity.FIELDS):
         if kind == "ignore":
@@ -73,6 +83,8 @@ def differing(ref, ours, n, ref_child, ours_child, nc, speed_fields):
             eb = b[2 * sheet_n + 18 * k: 2 * sheet_n + 18 * k + 18]
             if ea != eb:
                 out.append("%s %d" % (label, k))
+    if not layout:
+        out = [x for x in out if not LAYOUT.search(x)]
     return sorted(set(out))
 
 
@@ -109,7 +121,7 @@ def main():
     baseline = json.load(open(BASELINE)) if os.path.exists(BASELINE) else {}
     found, failed = {}, []
     for name, (ref, ref_child) in sheets.items():
-        found[name] = differing(ref, ours, n, ref_child, ours_child, nc, speed_fields=name != "86box")
+        found[name] = differing(ref, ours, n, ref_child, ours_child, nc, speed_fields=name != "86box", layout=name == "gog")
         known = set(baseline.get(name, []))
         new, gone = sorted(set(found[name]) - known), sorted(known - set(found[name]))
         print("%-9s %4d answers differ from this machine; baseline %d; new %d; gone %d" % (

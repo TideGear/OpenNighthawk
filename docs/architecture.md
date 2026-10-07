@@ -355,9 +355,28 @@ current as of the last gate (see [../handoff.md](../handoff.md)).
    86Box (`tools/save_parity.py`). The machine-behaviour probe
    (`tools/fidelity_all.py`, about 1,200 answers) is held to stored baselines
    of known differences in `tools/fidelity_baseline.json`: none for GOG's
-   DOSBox, 220 for DOSBox-X (mostly its DOS memory layout), 351 for 86Box
-   (FreeDOS, the AMI BIOS, VGA register details, a 286's speed); a new
-   difference fails. Builds and notes: `tools/ref86box/`. Pictures are compared exactly as RGB, collapsing
+   DOSBox (held to every answer, DOS memory layout included, since this
+   machine follows it), 40 for DOSBox-X and 95 for 86Box; a new difference
+   fails. For the other two the answers that describe how a DOS and BIOS lay
+   memory out (segment values, PSP, memory chain, the EXEC'd child's frame)
+   are left out, so the lists hold behaviour: the DOS version, BDA words,
+   a few VGA/DAC registers, the PIC mask, the MPU port, 86Box's missing mouse
+   driver, speed-dependent counts. Which of those the game can see:
+   `tools/port_reads.py` replays every route with the machine's port
+   inventory and lists the ports its own code reads. It reads 0x21 (55
+   times), the PIT, 0x60/0x61, the Sound Blaster probe ports 0x226-0x22E and
+   0xB8B (unanswered, as on every reference), 0x388, the VGA retrace status
+   0x3DA, DAC data 0x3C9, MPU 0x330/0x331 (one route) and the sequencer data
+   port 0x3C5 - only register 1 (59,605 reads). It never reads 0x3C2, 0x3C4,
+   0x3C7, 0x3C8 or 0x3CE/0x3CF, so the differences there (input status 0,
+   sequencer registers 0 and 4, DAC index readback, graphics-controller
+   register 7) cannot reach it, and register 1 agrees. The one difference
+   on a port it reads, the PIC mask at start (F8 here as under GOG's DOSBox,
+   B8 on 86Box and a real AT BIOS, which leaves the floppy line unmasked), was
+   tested by starting the model at B8: routes end on the same clock count and
+   behave the same; only the hash differs, because the game writes back a
+   value derived from the one it read. Kept at F8, so no recorded hash moves.
+   Builds and notes: `tools/ref86box/`. Pictures are compared exactly as RGB, collapsing
    identical consecutive pictures and aligning them in order; unmatched
    pictures are reported, never hidden by a tolerance. Results:
    - GOG DOSBox: 1,329 exact pictures in order; three one-sample logo

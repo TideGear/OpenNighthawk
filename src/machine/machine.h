@@ -307,6 +307,7 @@ uint64_t machine_state_hash(const machine_t *m);
 
 /* F117R_INVENTORY=FILE: count the services and ports used (tooling only). */
 void machine_inventory_port(uint16_t port, int write);
+void machine_inventory_seq(uint8_t index);   /* a read of VGA sequencer data, by register */
 void machine_inventory_service(uint8_t vec, uint16_t ax);
 
 /* ---- input, from the host --------------------------------------------
