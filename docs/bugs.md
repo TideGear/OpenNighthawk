@@ -28,24 +28,24 @@ Status values:
 
 ## Summary
 
-| ID | Status | Program | Defect |
-|---|---|---|---|
-| D1 | Confirmed | VGAME | Frame-rate controller oscillates above ~16-18 fps, degrading AI and guidance |
-| D2 | Confirmed | ASOUND.117 | Digitised speech busy-waits; can hang the game |
-| D3 | Reported | SETUP | Crash on the sound screen when keypad keys go undetected (GOG/DOSBox) |
-| D4 | Confirmed | START + .WLD | Secret-airstrip missions disabled in Libya, North Cape, Middle East |
-| D5 | Confirmed | VGAME | Supply drops never award credit (despite the 473.04 note) |
-| D6 | Confirmed | world data + VGAME | "Stealth mountains": 20 terrain sectors where nothing can detect you |
-| D7 | Reported | ? | Strike training mission does not complete correctly |
-| D8 | Confirmed | VGAME | Laser-guided bomb pitch clamped at -11.25 degrees |
-| D10 | Reported | VGAME (shared code) | Mountain-collision routine stack corruption (fixed only on Mac 2.3.0) |
-| D11 | Reported | START | Fragile saves: ROSTER.FIL truncated in place |
-| D12 | Confirmed | END | Signed/unsigned mix in the hidden campaign rating tally |
-| D34 | Confirmed | VGAME | Destroyed-object table has no bound; long missions corrupt state |
-| D35 | Reported | ASOUND.LOG and others | Fast machines stop after the intro (delay-loop calibration) |
-| D36 | Reported | RSOUND.117 | Later MT-32/MT-100 models play no engine sound |
-| Q2-Q13 | Confirmed | VGAME, START | Smaller latent defects (below) |
-| R1 | Recomp | - | Open questions from this project (below) |
+| ID | Status | Program | Defect | Fix |
+|---|---|---|---|---|
+| D1 | Confirmed | VGAME | Frame-rate controller oscillates above ~16-18 fps, degrading AI and guidance | `--fix D1` |
+| D2 | Confirmed | ASOUND.117 | Digitised speech busy-waits; can hang the game | `--fix D2` |
+| D3 | Reported | SETUP | Crash on the sound screen when keypad keys go undetected (GOG/DOSBox) | - |
+| D4 | Confirmed | START + .WLD | Secret-airstrip missions disabled in Libya, North Cape, Middle East | `--fix D4` |
+| D5 | Confirmed | VGAME | Supply drops never award credit (despite the 473.04 note) | `--fix D5` |
+| D6 | Confirmed | world data + VGAME | "Stealth mountains": 20 terrain sectors where nothing can detect you | - |
+| D7 | Reported | ? | Strike training mission does not complete correctly | - |
+| D8 | Confirmed | VGAME | Laser-guided bomb pitch clamped at -11.25 degrees | - |
+| D10 | Reported | VGAME (shared code) | Mountain-collision routine stack corruption (fixed only on Mac 2.3.0) | - |
+| D11 | Reported | START | Fragile saves: ROSTER.FIL truncated in place | `--fix D11` |
+| D12 | Confirmed | END | Signed/unsigned mix in the hidden campaign rating tally | `--fix D12` |
+| D34 | Confirmed | VGAME | Destroyed-object table has no bound; long missions corrupt state | `--fix D34` |
+| D35 | Reported | ASOUND.LOG and others | Fast machines stop after the intro (delay-loop calibration) | - |
+| D36 | Reported | RSOUND.117 | Later MT-32/MT-100 models play no engine sound | - |
+| Q2-Q13 | Confirmed | VGAME, START | Smaller latent defects (below) | - |
+| R1 | Recomp | - | Open questions from this project (below) | - |
 
 ## The confirmed and reported defects
 
