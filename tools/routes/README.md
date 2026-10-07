@@ -82,7 +82,8 @@ consumed stores and an airborne aircraft with fuel and no ejection/crash.
 (+5 s) that makes it a ground strike, with the laser-guided bomb released
 inside its 80-150 map unit window (`docs/bugs.md` D7/D8); the same observer
 (`strike_pilot.py --replay strike_training.input`) takes the recording's own
-start clock from its header. `strike_return` replays a separate normal-input
+start clock and fixes from its header. `strike_training_d8` is the same
+mission with fix D8 on and the bomb released at 1,200 units. `strike_return` replays a separate normal-input
 flight through a home-33 landing. Run `py tools/strike_pilot.py --complete --replay
 tools/routes/strike_return.input --data D:/GOG/F-117A --out PRIVATE_DIR` (add
 `--engine interp` for the second observer). It checks that primary hit and

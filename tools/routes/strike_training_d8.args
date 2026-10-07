@@ -1,0 +1,14 @@
+# Central America / Cold War / Ground Strike Training as strike_training, with fix D8 on (the laser-guided
+# bomb's pitch clamp skipped): the bomb is released at 1,200 map units, far outside the 80-150 unit
+# window it has without the fix, and still destroys the target and earns the objective credit.
+# Strong observer: strike_pilot.py --replay strike_training_d8.input (takes the fix from the recording).
+# expect-world CU
+# expect-open ordnance.pic VGAME.EXE 1
+--fix
+D8
+--replay
+strike_training_d8.input
+--steps
+6670000000
+--time-us
+700000005000000

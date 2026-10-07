@@ -92,6 +92,7 @@ def main():
     parser.add_argument("--engine", choices=("recomp", "interp"), default="recomp")
     parser.add_argument("--time-us", type=int, default=700_000_000_000_000,
                         help="the start clock; it seeds the mission generator (a recorded replay needs the default)")
+    parser.add_argument("--fix", action="append", default=[], help="a switchable fix to run with (docs/bugs.md), e.g. D8")
     parser.add_argument("--release-range", type=int, default=0,
                         help="release the selected weapon once designated and this close (a laser-guided bomb)")
     parser.add_argument("--landing-aim", type=int, default=20,
@@ -107,6 +108,9 @@ def main():
         if not header:
             raise ValueError("replay requires the route's fixed speed and a recorded boot time")
         args.time_us = int(header[1])                  # the recording's own start clock
+        for line in lines[1:3]:                        # the fixes it was recorded with
+            if line.startswith("# f117r-fixes "):
+                args.fix = sorted(set(args.fix) | set(line.split()[2].split(",")))
         for line in lines[1:]:
             parts = line.split()
             if not parts or parts[0].startswith("#"): continue
@@ -115,7 +119,7 @@ def main():
             replay.append(parts)
     rows = []; tick = 0; initialized = False; flight_start = None; last = ""
     approach = False; flight_block = None; landed_report = {}
-    with Machine(args.data, tempfile.mkdtemp(dir=out), log=out / "run.log", engine=args.engine, time_us=args.time_us) as machine:
+    with Machine(args.data, tempfile.mkdtemp(dir=out), log=out / "run.log", engine=args.engine, time_us=args.time_us, fixes=tuple(args.fix)) as machine:
         machine.record(out / "input.log")
         while machine.clock < 5_000_000_000 + args.seconds * machine.ips:
             if inputs: inputs.poll(machine)

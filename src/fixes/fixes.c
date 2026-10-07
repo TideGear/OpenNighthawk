@@ -323,6 +323,26 @@ static int fix_d1_pace(machine_t *m)
     return 1;
 }
 
+/* D8, the laser-guided bomb's pitch clamp. After the guidance writes its pitch demand, VGAME 0x6C0F
+ * compares the bomb's pitch with -2048 and, when it is greater (shallower than 11.25 degrees down),
+ * stores -2048 (0x6C17): the bomb can dive harder than that and never less, so the guidance can
+ * steepen a dive and nothing else, and a bomb released beyond Z / 6.4 of range falls short. With the
+ * fix the compare and the store are skipped and the guidance's own demand stands. */
+static int d8_logged;
+static int fix_d8_clamp(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!d8_logged) {
+        d8_logged = 1;
+        dos_log(m, "[fix D8] bomb pitch clamp skipped @%llu\n", (unsigned long long)c->icount);
+    }
+    c->op_cs = c->seg[S_CS];
+    c->op_ip = c->ip;
+    c->ip = 0x6C1D;
+    c->icount += 2;                  /* the compare and the jle */
+    return 1;
+}
+
 static const recomp_override OVERRIDES[] = {
     { "D5", "VGAME.EXE", VGAME_47304, 0x0000, 0x6D2E, fix_d5, "the supply-drop impact gate" },
     { "D1", "VGAME.EXE", VGAME_47304, 0x0000, 0x441D, fix_d1_pace, "frames paced so S never reaches the unstable range" },
@@ -335,6 +355,7 @@ static const recomp_override OVERRIDES[] = {
     { "D2", "ASOUND.117", ASOUND_47304, 0x01B6, 0x09F2, fix_d2_speech, "AdLib speech without the busy-wait" },
     { "D12", "END.EXE", END_47304, 0x0000, 0x0443, fix_d12_best, "END's best-rating compare, signed" },
     { "D12", "END.EXE", END_47304, 0x0000, 0x0450, fix_d12_total, "END's rating total, sign-extended" },
+    { "D8", "VGAME.EXE", VGAME_47304, 0x0000, 0x6C0F, fix_d8_clamp, "the laser-guided bomb's pitch clamp, skipped" },
 };
 
 /* A byte corrected as it is read. */
@@ -364,6 +385,7 @@ static const struct { const char *id, *what; } FIXES[] = {
     { "D5", "supply drops earn their delivery credit" },
     { "D12", "END's best-rating and total tally treats ratings as signed" },
     { "D34", "the destroyed-object table keeps records past 30 without overwriting" },
+    { "D8", "the laser-guided bomb's guidance can flatten its dive: the 11.25-degree pitch clamp is skipped" },
 };
 #define NFIXES (sizeof FIXES / sizeof FIXES[0])
 

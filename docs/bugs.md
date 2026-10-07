@@ -36,8 +36,8 @@ Status values:
 | D4 | Confirmed | START + .WLD | Secret-airstrip missions disabled in Libya, North Cape, Middle East | `--fix D4` |
 | D5 | Confirmed | VGAME | Supply drops never award credit (despite the 473.04 note) | `--fix D5` |
 | D6 | Confirmed | world data + VGAME | "Stealth mountains": 20 terrain sectors where nothing can detect you | - |
-| D7 | Reported | ? | Strike training mission does not complete correctly | - |
-| D8 | Confirmed | VGAME | Laser-guided bomb pitch clamped at -11.25 degrees | - |
+| D7 | Explained | VGAME (via D8) | Strike training mission does not complete correctly: the bomb only hits from a 80-150 unit release | `--fix D8` |
+| D8 | Confirmed | VGAME | Laser-guided bomb pitch clamped at -11.25 degrees | `--fix D8` |
 | D10 | Reported | VGAME (shared code) | Mountain-collision routine stack corruption (fixed only on Mac 2.3.0) | - |
 | D11 | Reported | START | Fragile saves: ROSTER.FIL truncated in place | `--fix D11` |
 | D12 | Confirmed | END | Signed/unsigned mix in the hidden campaign rating tally | `--fix D12` |
@@ -275,6 +275,15 @@ Status values:
   keeps diving (one-sided correction at `0x6BDE`), which may be intended.
 - **Where.** VGAME bomb test `0x69E5`, `0x6A16`, clamp `0x6C17`; HARM
   `0x782B`, `0x6BDE`; release refusal past 70 degrees of bank at `0x7670`.
+- **Fix available: `--fix D8`.** The compare and the store at `0x6C0F-0x6C17`
+  are skipped (an override at `0x6C0F` continues at `0x6C1D`), so the bomb's
+  guidance can flatten its dive. Measured on Ground Strike Training (D7,
+  start clock +5 s): without the fix a release hits only from 80-150 map units;
+  with it releases from 250, 600, 1,200 and 2,500 units all destroy the target
+  and earn the objective credit (flag 0x4000, one hit event). Route
+  `strike_training_d8` replays the 1,200-unit release with the fix on;
+  `strike_training` is the same mission without it. With the fix off every
+  other route is unchanged.
 - **Detail.** Reimp catalogue:731-808; Reimp `docs/re/21-bomb-guidance.md`.
 
 ### D10. Mountain-collision stack corruption (Mac fix, DOS unknown)

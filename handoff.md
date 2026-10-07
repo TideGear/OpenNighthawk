@@ -61,7 +61,7 @@ date; `git log -p handoff.md` has them.
   minutes after a `matched.c`-only change, 17 from a fresh directory (23 before
   7 Oct; verdicts identical). Read the tally, not the exit code: every route `IDENTICAL`,
   instruction lockstep 0 mismatching, matched lockstep 0 mismatching. Last
-  green: 33 routes identical, 5,713,472 instruction states, 248 matched
+  green: 34 routes identical, 5,713,472 instruction states, 248 matched
   routines (806,801 states). Interpreter results are cached across gates
   (`--interp-cache`, default `~/f117-recomp-local/interp-cache`; the key ignores
   `src/matched/matched.c`), cutting parity from about 9 to 3 minutes when only
@@ -100,13 +100,13 @@ date; `git log -p handoff.md` has them.
 ## Current state
 
 - Phase 1 (recompiled, 1:1): translation, both engines and the gate are
-  green; 33 routes. All eight primary objective types have gate-replayed
+  green; 34 routes. All eight primary objective types have gate-replayed
   routes (recon, strike, cargo/D5, airstrip, air-to-air 5-8, each with a
   return leg for types 1-4). Rank-3 career paired through retirement; the
   rank-6 "General, At Last!" branch is reached with a staged roster
   (`tools/career_rank6.py`), not an earned rank-6 career.
-- Fixes done: D1 (frame limiter at VGAME 0x441D), D2, D4, D5, D11, D12, D34.
-  Open: D6, D7 (inconclusive probe), D8 (needs an LGB route).
+- Fixes done: D1 (frame limiter at VGAME 0x441D), D2, D4, D5, D8 (laser-guided
+  bomb clamp; explains D7), D11, D12, D34. Open: D6.
 - Phase 2: 248 addresses matched (247 of 1,535 census functions, 10,868 of
   179,213 bytes; P2 10.76%).
 - Phase 3 presentation Stage 1: draw lists rebuild every phase exactly on the

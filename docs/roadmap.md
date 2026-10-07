@@ -20,7 +20,7 @@ make (Phase 4).
   instruction starts, 96% of the code-area bytes (the rest is strings, tables
   and variables; `tools/census.py`). No game instruction is interpreted on the
   routes.
-- **Engine parity.** 33 scripted routes are identical between the interpreter
+- **Engine parity.** 34 scripted routes are identical between the interpreter
   and the recompiled code at every 50-million-clock checkpoint and at the end;
   every translated instruction is held to the interpreter from random states
   (5,713,472 comparisons, 0 differences); the interpreter and the translator are
@@ -133,8 +133,9 @@ make (Phase 4).
       D7) is settled as far as the original goes: a strike-type training mission is
       reproducible (start clock +5 s, `strike_pilot.py --time-us`) and is
       credited when the laser-guided bomb is released within about 80-150 map
-      units, and not otherwise (the D8 clamp's short reach, bugs.md D7). Open:
-      a gate-replayed route for it and a D8 fix that restores the bomb's reach.
+      units, and not otherwise (the D8 clamp's short reach, bugs.md D7); gate
+      routes `strike_training` and `strike_training_d8` (fix on: releases from
+      1,200 units hit).
 - [ ] **The remaining career flow:** an earned rank-6 career (the branch is
       reached only with a staged roster).
 
@@ -163,8 +164,9 @@ make (Phase 4).
       (speech played from the machine's schedule instead of a busy-wait), D4
       (secret airstrips), D5 (supply drops earn credit; `cargo_d5_fixed`), D11
       (saves written to a temporary file and renamed), D12 (END's signed
-      rating), D34 (destroyed-object table). Open: D6 (cause not proven), D7
-      (not located), D8 (needs a laser-guided-bomb route). D96 is the Reimp's
+      rating), D34 (destroyed-object table), D8 (the laser-guided bomb's pitch
+      clamp; also what makes D7's training strike hard to complete). Open: D6
+      (cause not proven). D96 is the Reimp's
       native-UI wait, not a patch for this translated START. A session recorded
       with fixes on names them in its log and replays with them.
 - [ ] **60+ fps and 4K presentation**, design and status in
