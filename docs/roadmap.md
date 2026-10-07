@@ -93,10 +93,16 @@ make (Phase 4).
       DOSBox.
 - [ ] **Rendered sound parity:** the OPL defaults to GOG DOSBox's DBOPL core at
       its rate and 2x gain. A tone probe matches exactly; the captured intro
-      still differs in RMS by about 0.5%, and a flight comparison against a GOG
-      mixer WAV is approximate (envelope correlation 0.60). Register timing, mixer
-      block scheduling, digitised speech, audible speaker output and a listening
-      check remain.
+      differs in RMS by about 0.5% (level 1.003 with the register stream exact,
+      envelope 0.970, spectral 0.986), and a flight comparison against a GOG
+      mixer WAV is approximate (envelope correlation 0.60). The register stream
+      is exact (above), so what is left is in the rendering: the per-segment
+      waveform correlation at a sample-fine alignment is 0.96-0.98 early and
+      0.6-0.9 in the busier stretches, and applying each write at its 1 ms mixer
+      block edge (floor or ceil) moves segments by -0.04 to +0.18, so it is not
+      the whole answer; the correlation peaks repeat every 1,000 samples, which
+      makes the alignment itself uncertain. Digitised speech, audible speaker
+      output and a listening check remain.
 - [ ] **Timing details still DOSBox's own:** its BIOS and DOS stubs at their own
       addresses, its per-millisecond slicing, its 386 against this machine's 286
       (flag bits 12-14). PLAYER's fade calibration is within a few bytes of
