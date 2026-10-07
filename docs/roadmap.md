@@ -130,10 +130,11 @@ make (Phase 4).
 - [ ] **Individual mission objectives:** independent GOG DOSBox cargo delivery
       needs a closed-loop pilot (open-loop replay diverges across machines);
       wider generated-assignment coverage; the strike-training mission (bugs.md
-      D7) is unresolved: a strike-type training mission is now reproducible (start
-      clock +5 s, `strike_pilot.py --time-us`) and the pilot's laser-guided bomb
-      releases without damaging the target, so the question is the bomb's flight,
-      not the mission generator (bugs.md D7).
+      D7) is settled as far as the original goes: a strike-type training mission is
+      reproducible (start clock +5 s, `strike_pilot.py --time-us`) and is
+      credited when the laser-guided bomb is released within about 80-150 map
+      units, and not otherwise (the D8 clamp's short reach, bugs.md D7). Open:
+      a gate-replayed route for it and a D8 fix that restores the bomb's reach.
 - [ ] **The remaining career flow:** an earned rank-6 career (the branch is
       reached only with a staged roster).
 

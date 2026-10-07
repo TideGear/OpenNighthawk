@@ -246,9 +246,24 @@ Status values:
   flies it: the bomb is released (one launch event; at the target, or at 2,500
   units with `--release-range 2500`), the target is not damaged, nothing is
   credited and no hit event is logged. The pilot was written for a Maverick
-  (a seeker lock), so this does not yet separate a bad release from the game
-  not crediting the training bomb, nor from D8's pitch clamp; the next step is
-  the bomb's own state in flight.
+  (a seeker lock), so the first releases did not separate a bad release from
+  the game not crediting the training bomb.
+- **Result (7 Oct): the mission completes; the bomb has a narrow window.**
+  Releasing once designated and within N map units of the target, at about
+  177 ft above the ground, the target is destroyed, one hit event is logged
+  and the objective is credited (flags 0x4000) for N = 80, 120 and 150, and
+  not for N = 40, 190, 220, 250, 400, 600, 900 or 2,500 (a release at the
+  target, or at 2,500, left it undamaged; the bomb fell short or long). So the
+  training strike cannot be shown to be impossible: it is credited, but only
+  from a release within roughly 80-150 map units, which is what D8's clamp
+  predicts (the bomb's guidance can steepen its fixed 11.25-degree dive but
+  never flatten it, so its reach is a fraction of the release height; the
+  Reimp's arithmetic gives about height / 6.4). A player who releases at the
+  range the other strike weapons use, or does not hold the designation to
+  that point, sees a bomb that never hits and a mission that does not
+  complete, which fits the report. Reproduce: `strike_pilot.py --front-route
+  routes/central_america_strike_training.front --time-us 700000005000000
+  --release-range 120`.
 - **Detail.** Reimp catalogue:724-727.
 
 ### D8. Laser-guided bomb pitch clamp
