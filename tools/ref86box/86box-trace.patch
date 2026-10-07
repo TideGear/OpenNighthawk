@@ -1,3 +1,16 @@
+diff --git a/src/qt/qt_main.cpp b/src/qt/qt_main.cpp
+index a99308a..8b58aa8 100644
+--- a/src/qt/qt_main.cpp
++++ b/src/qt/qt_main.cpp
+@@ -909,7 +909,7 @@ main(int argc, char *argv[])
+ 
+         /* Set the PAUSE mode depending on the renderer. */
+ #ifdef USE_VNC
+-        if (vid_api == RENDERER_VNC)
++        if (vid_api == RENDERER_VNC && getenv("B86_TRACE") == NULL)
+             plat_pause(1);
+         else
+ #endif
 diff --git a/src/vnc.c b/src/vnc.c
 index cd539f5..a1da32e 100644
 --- a/src/vnc.c
