@@ -53,9 +53,13 @@ date; `git log -p handoff.md` has them.
 
 - **Gate** (translate, build, coverage, both engines on every route, instruction
   lockstep, matched-routine lockstep): `py tools/build_recomp.py --data
-  D:/GOG/F-117A --work D:/f117-gate/workN` (add `--seed-coverage` the previous
-  work's `coverage` directory so the second build is skipped). About 23
-  minutes. Read the tally, not the exit code: every route `IDENTICAL`,
+  D:/GOG/F-117A --work D:/f117-gate/workN` (reuse the previous run's work
+  directory so the build is incremental, 6 s instead of 407 s; a first run in a
+  directory adds `--seed-coverage` the previous work's `coverage` directory; the
+  coverage replay is skipped when its inputs and the generated code are those of
+  a pass that added nothing, `--coverage-record ''` turns that off). About 7
+  minutes after a `matched.c`-only change, 17 from a fresh directory (23 before
+  7 Oct; verdicts identical). Read the tally, not the exit code: every route `IDENTICAL`,
   instruction lockstep 0 mismatching, matched lockstep 0 mismatching. Last
   green: 32 routes identical, 5,713,472 instruction states, 248 matched
   routines (806,801 states). Interpreter results are cached across gates

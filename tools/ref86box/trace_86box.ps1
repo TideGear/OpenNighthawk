@@ -24,7 +24,9 @@ $env:B86_TRACE = $Out
 $env:B86_STOP = "$Stop"
 if ($Keys) { $env:B86_KEYS = $Keys } else { Remove-Item Env:B86_KEYS -ErrorAction SilentlyContinue }
 if ($Ppm) { $env:B86_PPM = "1" } else { Remove-Item Env:B86_PPM -ErrorAction SilentlyContinue }
-Get-Process 86Box -ErrorAction SilentlyContinue | Stop-Process -Force
+# only a stale run of this very profile: other 86Box runs (other profiles) are left alone
+Get-CimInstance Win32_Process -Filter "Name='86Box.exe'" | Where-Object { $_.CommandLine -like "*$Profile*" } |
+    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 $p = Start-Process -FilePath $Exe -ArgumentList @("-P", $Profile, "-R", $Roms, "-N") `
      -WorkingDirectory (Split-Path $Exe) -WindowStyle Hidden -PassThru
 $p.PriorityClass = "BelowNormal"

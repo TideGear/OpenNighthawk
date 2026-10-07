@@ -1,7 +1,7 @@
 # Progress tracking
 
 Every commit title ends with the current progress, for example
-`(P1 86.10%, P2 6.93%, P3 15.00%, All 44.57%)`, printed by
+`(P1 93.55%, P2 10.76%, P3 39.60%, P4 42.90%, All 52.19%)`, printed by
 `py tools/progress.py --title`. This page says what the numbers mean, so
 that they can be checked and argued with.
 
@@ -17,11 +17,14 @@ that they can be checked and argued with.
   evidence beside it, and an estimate is only raised with new evidence.
 
 A phase's percentage is its items' weighted completion. **All** is the
-phases weighted by their share of the whole project's effort: Phase 1 45%,
-Phase 2 30%, Phase 3 25%. Phase 1 is the largest because building an exact
-recompilation, its machine and its proof was the bulk of the work; Phases 2
-and 3 are large too (thousands of routines to name and match; a new
-presentation path for 60+ fps and 4K), and their weights say so.
+phases weighted by their share of the whole project's effort: Phase 1 39%,
+Phase 2 30%, Phase 3 25%, Phase 4 6%. Phase 1 is the largest because building
+an exact recompilation, its machine and its proof was the bulk of the work;
+Phases 2 and 3 are large too (thousands of routines to name and match; a new
+presentation path for 60+ fps and 4K), and their weights say so. Phase 4 holds
+what only a person or an independent reference can settle (a person playing
+the game; Roland output against a reference, with a listening check), so the
+automated phases can reach 100% without pretending to have settled it.
 
 ## What is measured
 

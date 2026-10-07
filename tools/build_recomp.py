@@ -193,6 +193,36 @@ def route_cache_key(route, base_key):
     return h.hexdigest()[:40]
 
 
+def coverage_key(data, routes):
+    """What decides which instructions the routes make the recompiled engine interpret: the translator,
+    the sources other than the matched routines (a matched routine only takes the place of original
+    instructions that already ran, so it cannot add code the coverage has not seen; a wrong one fails
+    parity or lockstep), the game files and every route with what it replays."""
+    h = hashlib.sha256(interpreter_key(data).encode())
+    h.update(tree_digest(os.path.join(ROOT, "recompiler")).encode())
+    base = hashlib.sha256(b"coverage").hexdigest()
+    for r in routes:
+        h.update(route_cache_key(r, base).encode())
+    return h.hexdigest()
+
+
+def coverage_verified(path, key, gen_digest):
+    """True when the stored record says a coverage pass with this key, ending on exactly this generated
+    code, found nothing to add: repeating it would add nothing either."""
+    try:
+        with open(path) as f:
+            rec = json.load(f)
+    except (OSError, ValueError):
+        return False
+    return rec.get("key") == key and rec.get("gen") == gen_digest
+
+
+def record_coverage_verified(path, key, gen_digest):
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    with open(path, "w") as f:
+        json.dump({"key": key, "gen": gen_digest}, f)
+
+
 def cached_interp(cache_dir, key, name, rundir, route):
     """A stored interpreter result as headless() would return it, or None."""
     entry = os.path.join(cache_dir, key)
@@ -290,6 +320,9 @@ def main():
                     help="run every interpreter route fresh and require it to equal the cached result")
     ap.add_argument("--no-parity", action="store_true")
     ap.add_argument("--no-coverage", action="store_true")
+    ap.add_argument("--coverage-record", metavar="FILE", default=os.path.join(os.path.expanduser("~"), "f117-recomp-local", "coverage-verified.json"),
+                    help="where a finished coverage pass leaves its key, so an identical later gate skips the pass "
+                         "('' turns the skip off)")
     ap.add_argument("--parity-only", action="store_true", help="check the current build without translating or rebuilding")
     a = ap.parse_args()
     if a.parity_only and a.no_parity:
@@ -316,7 +349,14 @@ def main():
         print("2. build")
         build(gen)
         lap("translate and build")
-    if not a.no_coverage and not a.parity_only:
+    skip_coverage = False
+    key = gen_digest = None
+    if not a.no_coverage and not a.parity_only and a.coverage_record:
+        key, gen_digest = coverage_key(a.data, routes), tree_digest(gen)
+        skip_coverage = coverage_verified(a.coverage_record, key, gen_digest)
+        if skip_coverage:
+            print("3. coverage: skipped - the same inputs and generated code already gave a pass that added nothing")
+    if not a.no_coverage and not a.parity_only and not skip_coverage:
         print("3. coverage")
         def cover(r):
             name = os.path.splitext(os.path.basename(r))[0]
@@ -335,6 +375,8 @@ def main():
         else:
             print("  the coverage added no translated code: the generated files are byte-identical, "
                   "so the first build stands")
+            if a.coverage_record:
+                record_coverage_verified(a.coverage_record, key, gen_digest)
         lap("second translate and build")
     if not a.no_parity:
         # Neither lockstep depends on the routes, only on the build, so they

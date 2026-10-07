@@ -9,7 +9,8 @@ evidence linked or in the commit, not narrated here.
 
 The order of the phases is the project's: **1:1 parity first**, then
 understood (named) code, then fixes and enhancements - each switchable, never
-instead of parity.
+instead of parity - and last the checks only people and outside references can
+make (Phase 4).
 
 ## Phase 1 - recompiled, 1:1 with the original
 
@@ -71,8 +72,8 @@ instead of parity.
 - **The game version verified:** GOG's installer (build 28044) with the 473.04
   update; Steam's release is byte-identical (`tools/verify_install.py`).
 - **The gate** (`tools/build_recomp.py`): translate, build, coverage, both
-  engines on every route, instruction and matched-routine lockstep; about 23
-  minutes. Repeated processes and what was optimised:
+  engines on every route, instruction and matched-routine lockstep; about 7
+  minutes after a `matched.c`-only change. Repeated processes and what was optimised:
   [repeated-processes.md](repeated-processes.md).
 
 ### Open
@@ -81,8 +82,6 @@ instead of parity.
       partial logo and aircraft transitions whose exact frame varies with the
       capture's phase. A frame capture synchronised to a guest event would
       settle it.
-- [ ] **A person playing it:** controls, joystick and mouse, saves, the feel.
-      Sessions already record themselves for replay.
 - [ ] **86Box and DOSBox-X as routine checks.** `tools/pc_parity.py` is the
       routine PC-parity check (pictures, music and saved data, against limits
       measured on 6 Oct 2026) and `tools/fidelity_all.py` the machine probe.
@@ -92,12 +91,6 @@ instead of parity.
       DOSBox for routine checks (the saved GOG capture stays as a frozen
       regression reference). Parity target: the original on real hardware, not
       DOSBox.
-- [ ] **Roland through Munt** (libmt32emu): the MT-32 music plays in the game
-      and renders offline from a MIDI log; the interpreter's and recompiler's
-      MIDI logs are byte-identical and offline renders are repeatable. Live
-      renders vary with audio block boundaries (a Munt random draw) and show
-      brief SDL starvation, so live output is not a stable PCM oracle. Open:
-      independent reference PCM and a listening check.
 - [ ] **Rendered sound parity:** the OPL defaults to GOG DOSBox's DBOPL core at
       its rate and 2x gain. A tone probe matches exactly; the captured intro
       still differs in RMS by about 0.5%, and a flight comparison against a GOG
@@ -158,6 +151,20 @@ instead of parity.
       are built; Stage 2's first check shows the clip stage must be redone at
       the new resolution; Stages 3 (interpolation) and 4 (pacing and polish) are
       not started.
+
+## Phase 4 - checked by people and independent references
+
+What a machine cannot judge by itself: it needs a person, or a reference that
+this project did not build.
+
+- [ ] **A person playing it:** controls, joystick and mouse, saves, the feel.
+      Sessions already record themselves for replay.
+- [ ] **Roland through Munt** (libmt32emu): the MT-32 music plays in the game
+      and renders offline from a MIDI log; the interpreter's and recompiler's
+      MIDI logs are byte-identical and offline renders are repeatable. Live
+      renders vary with audio block boundaries (a Munt random draw) and show
+      brief SDL starvation, so live output is not a stable PCM oracle. Open:
+      independent reference PCM and a listening check.
 
 ## Housekeeping
 

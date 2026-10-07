@@ -10,7 +10,9 @@ $env:QT_QPA_PLATFORM = "offscreen"
 # Never audible: OpenAL gets its null device, on top of sound_muted = 1 in the profile.
 $env:ALSOFT_DRIVERS = "null"
 $env:SDL_AUDIODRIVER = "dummy"
-Get-Process 86Box -ErrorAction SilentlyContinue | Stop-Process -Force
+# only a stale run of this profile (traced runs of other profiles may be going)
+Get-CimInstance Win32_Process -Filter "Name='86Box.exe'" | Where-Object { $_.CommandLine -like "*$Profile*" } |
+    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 $p = Start-Process -FilePath $Exe -ArgumentList @("-P", $Profile, "-R", $Roms, "-N", "-L", $Log) `
      -WorkingDirectory (Split-Path $Exe) -WindowStyle Hidden -PassThru
 $p.PriorityClass = "BelowNormal"

@@ -104,15 +104,36 @@ def main():
     if not a.no_86box:
         def box():
             cap = a.out / "86box"
-            rc = run([PY, str(HERE / "ref86box" / "capture_intro.py"), str(cap), "--seconds", str(a.seconds)],
-                     a.out / "86box-capture.log")
-            # sequential: both runs start (and stop) the one headless 86Box
-            src = run([PY, str(HERE / "ref86box" / "sound86.py"), str(a.out / "86box-sound")],
-                      a.out / "86box-sound-run.log")
-            save = None
+            # three independent 86Box runs at once: each starts and stops only its own process (its
+            # profile is in its command line), the traced ones open no VNC port and run on emulated
+            # time, so load cannot change their results; the picture capture keeps port 5900
+            out = {}
+
+            def one(key, fn):
+                def go():
+                    try:
+                        out[key] = fn()
+                    except Exception as e:
+                        out[key] = e
+                t = threading.Thread(target=go)
+                t.start()
+                return t
+            runs = [
+                one("rc", lambda: run([PY, str(HERE / "ref86box" / "capture_intro.py"), str(cap), "--seconds", str(a.seconds)],
+                                      a.out / "86box-capture.log")),
+                one("sound_rc", lambda: run([PY, str(HERE / "ref86box" / "sound86.py"), str(a.out / "86box-sound")],
+                                            a.out / "86box-sound-run.log")),
+            ]
             if not a.no_save:
-                save = save_check(["--no-dosbox-x", "--out", str(a.out / "save-86box")], a.out / "86box-save.log", "86Box")
-            return dict(rc=rc, cap=str(cap), sound_rc=src, opl=str(a.out / "86box-sound" / "opl86.log"), save=save)
+                runs.append(one("save", lambda: save_check(["--no-dosbox-x", "--out", str(a.out / "save-86box")],
+                                                           a.out / "86box-save.log", "86Box")))
+            for t in runs:
+                t.join()
+            for v in out.values():
+                if isinstance(v, Exception):
+                    raise v
+            return dict(rc=out["rc"], cap=str(cap), sound_rc=out["sound_rc"], opl=str(a.out / "86box-sound" / "opl86.log"),
+                        save=out.get("save"))
         job("86box", box)
     for t in threads:
         t.join()

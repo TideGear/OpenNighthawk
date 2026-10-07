@@ -85,8 +85,11 @@ def main():
             json.dump(dict(profile=a.profile, seconds=a.seconds, frames=frames), f, indent=1)
         print("%d distinct pictures in %d s -> %s" % (len(frames), a.seconds, a.out))
     finally:
+        # this run's 86Box only (traced runs of other profiles may be going beside it)
         subprocess.run(["powershell", "-NoProfile", "-Command",
-                        "Get-Process 86Box -ErrorAction SilentlyContinue | Stop-Process -Force"])
+                        "Get-CimInstance Win32_Process -Filter \"Name='86Box.exe'\" | "
+                        "Where-Object { $_.CommandLine -like '*%s*' } | "
+                        "ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }" % a.profile])
 
 
 if __name__ == "__main__":

@@ -136,6 +136,33 @@ class InterpreterCache(unittest.TestCase):
         self.assertNotEqual(k1, gate.route_cache_key(route, "base"), "a replayed input file is part of the key")
         self.assertNotEqual(k1, gate.route_cache_key(route, "another base"))
 
+    def test_coverage_key_ignores_matched_but_not_the_translator_routes_or_data(self):
+        route = os.path.join(self.tmp.name, "r.args")
+        self.write(route, "--steps\n5\n")
+        os.makedirs(os.path.join(self.root, "recompiler"))
+        self.write(os.path.join(self.root, "recompiler", "recomp.py"), "translator v1")
+        base = gate.coverage_key(self.data, [route])
+        self.write(os.path.join(self.root, "src/matched/matched.c"), "matched v3")
+        self.assertEqual(base, gate.coverage_key(self.data, [route]), "a matched routine cannot add code to cover")
+        self.write(os.path.join(self.root, "recompiler", "recomp.py"), "translator v2")
+        self.assertNotEqual(base, gate.coverage_key(self.data, [route]))
+        self.write(os.path.join(self.root, "recompiler", "recomp.py"), "translator v1")
+        self.write(route, "--steps\n6\n")
+        self.assertNotEqual(base, gate.coverage_key(self.data, [route]), "a route edit changes what is interpreted")
+        self.write(route, "--steps\n5\n")
+        self.write(os.path.join(self.root, "src/cpu/cpu.c"), "cpu v9")
+        self.assertNotEqual(base, gate.coverage_key(self.data, [route]), "the engine decides what is interpreted")
+
+    def test_coverage_skip_needs_the_same_key_and_the_same_generated_code(self):
+        record = os.path.join(self.tmp.name, "sub", "coverage-verified.json")
+        self.assertFalse(gate.coverage_verified(record, "k", "g"), "nothing recorded yet")
+        gate.record_coverage_verified(record, "k", "g")
+        self.assertTrue(gate.coverage_verified(record, "k", "g"))
+        self.assertFalse(gate.coverage_verified(record, "k2", "g"))
+        self.assertFalse(gate.coverage_verified(record, "k", "g2"), "other generated code was not verified")
+        self.write(record, "not json")
+        self.assertFalse(gate.coverage_verified(record, "k", "g"))
+
     def test_a_stored_result_comes_back_intact_and_expires(self):
         cache = os.path.join(self.tmp.name, "cache")
         rundir = os.path.join(self.tmp.name, "run")

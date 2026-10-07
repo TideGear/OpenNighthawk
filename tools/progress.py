@@ -2,7 +2,7 @@
 """progress.py - how much of the roadmap is done, by phase and overall.
 
     py tools/progress.py              # the table and the commit-title suffix
-    py tools/progress.py --title      # only the suffix, e.g. (P1 85.90%, P2 6.93%, P3 15.00%, All 46.83%)
+    py tools/progress.py --title      # only the suffix, e.g. (P1 85.90%, P2 6.93%, P3 15.00%, P4 40.00%, All 46.83%)
     py tools/progress.py --census FILE.tsv   # refresh the census figures from reimp_names.py output
 
 Each phase is a weighted list of items in docs/progress.json: weight is the
@@ -73,7 +73,7 @@ def compute(data):
 
 
 def title(pct):
-    return "(P1 %.2f%%, P2 %.2f%%, P3 %.2f%%, All %.2f%%)" % (pct["P1"], pct["P2"], pct["P3"], pct["All"])
+    return "(%s, All %.2f%%)" % (", ".join("%s %.2f%%" % (p, pct[p]) for p in sorted(pct) if p != "All"), pct["All"])
 
 
 def main():

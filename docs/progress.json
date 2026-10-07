@@ -1,64 +1,51 @@
 {
   "_about": "Roadmap progress. Each phase is a weighted list of items; weight is the item's share of that phase's effort, done its completion from 0 to 1. kind 'measured' means tools/progress.py computes done from the repository (or a census figure it records here); 'estimate' means a judgement, with its evidence. See docs/progress.md.",
   "phase_weights": {
-    "P1": 45,
+    "P1": 39,
     "P2": 30,
-    "P3": 25
+    "P3": 25,
+    "P4": 6
   },
   "phases": {
     "P1": [
       {
         "item": "Translation, lockstep, routes and the emulated PC (roadmap Phase 1 'Done')",
-        "weight": 60,
+        "weight": 69,
         "done": 1.0,
         "kind": "estimate",
         "evidence": "All 17 code files translated (89,276 instructions); instruction lockstep 0 mismatches over 5.7M states; 27 routes identical across engines; fidelity.py 1,210/1,210; housekeeping done."
       },
       {
         "item": "The picture against DOSBox, frame by frame",
-        "weight": 6,
+        "weight": 7,
         "done": 0.95,
         "kind": "estimate",
         "evidence": "The SVGA_S3 screen-off fix removes five false black local pictures. DOSBox 0.74 source confirms fractional PIC scheduling from pixel clock/CRTC totals; local frame, line-part, retrace, status and I/O slice deadlines now use rational event times with whole-instruction ceiling boundaries. After the pc_slice_left refinement, saved independent capture intro-qlh_wi26 matches 1,329/1,332 exact pictures, with three one-sample logo images unmatched on each side and -0.000034 ms end drift. Fresh capture intro-cfku0zec matches 1,321/1,332, with 11 one-sample images unmatched on each side and +14.268 ms drift. The local 1,332-picture sequences are identical; remaining transition differences depend on reference capture phase. No multi-sample mismatch remains; exact frame parity is open."
       },
       {
-        "item": "Roland through Munt",
-        "weight": 6,
-        "done": 0.6,
-        "kind": "estimate",
-        "evidence": "Integration, MIDI parity and offline rendering done; independent reference PCM and a listening check open."
-      },
-      {
         "item": "Individual mission objectives",
-        "weight": 6,
+        "weight": 7,
         "done": 0.85,
         "kind": "estimate",
         "evidence": "Strike and strike-return inputs have been refreshed after rational VGA slice-boundary timing and pass paired strong observers under both engines with byte-identical input, flight and result files (return clock 15029717426/hash 7b49aac1f746ffa7, result 0/status 3); both routes also pass the official world, VGAME-exit and END-debrief gates. Recon primary and return are likewise refreshed and paired. A recomp trap-poll fix (nested guest_call returns) was needed for long observer runs; the full gate passes with it (27/27 routes identical, both locksteps 0 mismatching). Independent GOG DOSBox supply-mission generation is reproduced (exact type-3/target-24/departure-58/home-51 triple at a -275 ms seed compensating autoexec overhead); open-loop replay then diverges in flight so delivery still needs a closed-loop pilot. Air-to-air types 5-8 were re-recorded under the current timing and are gate routes (airair_type5-8), each replaying byte-identically under both engines with result 0/status 3; all eight primary objective types now have gate-replayed normal-input routes. Wider generated-assignment coverage remains open."
       },
       {
         "item": "The remaining career flow",
-        "weight": 5,
+        "weight": 6,
         "done": 0.85,
         "kind": "estimate",
         "evidence": "Promotion, medals, tour ribbon and rank-3 retirement earned and paired; rank-6 'General, At Last!' branch reached with a staged roster (rank 6, total 27,930) and a normal 99th sortie, paired under both engines (hash 934f2fb9cb4227a6); an earned rank-6 career is open."
       },
       {
-        "item": "A person playing it",
-        "weight": 8,
-        "done": 0.3,
-        "kind": "estimate",
-        "evidence": "Keyboard/mouse/joystick paths exist and record sessions; no structured playtest of controls, saves and feel yet."
-      },
-      {
         "item": "Timing details still DOSBox's own",
-        "weight": 4,
+        "weight": 5,
         "done": 0.65,
         "kind": "estimate",
         "evidence": "PIT control-word IRQ found and fixed; I/O slice suppression matched; exact retrace phase (the one-frame channel-3 note) and PLAYER's few-byte DAC gap open."
       },
       {
         "item": "Rendered sound parity",
-        "weight": 5,
+        "weight": 6,
         "done": 0.6,
         "kind": "estimate",
         "evidence": "DBOPL default, mixer rounding fixed; intro waveform within about 0.5% RMS but not exact. A seeded type-8 flight now has a 62.3-second independent GOG DOSBox WAV; approximate host alignment reaches 58.15 seconds (envelope correlation 0.598, waveform 0.361, median spectral cosine 0.972, RMS 0.1011 vs 0.0920), not exact parity. The route's PC-speaker gate is clear; speech, audible speaker output and listening remain open."
@@ -136,6 +123,22 @@
         "done": 0.0,
         "kind": "estimate",
         "evidence": "Not started."
+      }
+    ],
+    "P4": [
+      {
+        "item": "A person playing it",
+        "weight": 57,
+        "done": 0.3,
+        "kind": "estimate",
+        "evidence": "Keyboard/mouse/joystick paths exist and record sessions; no structured playtest of controls, saves and feel yet."
+      },
+      {
+        "item": "Roland through Munt",
+        "weight": 43,
+        "done": 0.6,
+        "kind": "estimate",
+        "evidence": "Integration, MIDI parity and offline rendering done; independent reference PCM and a listening check open."
       }
     ]
   },
