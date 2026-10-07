@@ -86,7 +86,7 @@ class Rfb:
             except socket.timeout:
                 break
             if t == 0:
-                _, n = struct.unpack(">xH", self.read(3))
+                (n,) = struct.unpack(">xH", self.read(3))
                 for _ in range(n):
                     x, y, w, h, enc = struct.unpack(">HHHHi", self.read(12))
                     if enc == 0:
@@ -104,7 +104,7 @@ class Rfb:
             elif t == 2:
                 pass
             elif t == 3:
-                self.read(3); self.read(struct.unpack(">I", self.read(4))[0] if False else 0)
+                self.read(3); self.read(struct.unpack(">I", self.read(4))[0])
         self.s.settimeout(30)
         return got
 

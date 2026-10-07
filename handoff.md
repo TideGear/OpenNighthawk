@@ -1783,3 +1783,16 @@ as the current state. Resume the full roadmap only when the user asks.
 - D7 probe: Central America ground-strike training generates a recon
   primary at the default clock; the recon pilot passed within 3 units of
   the target but never designated it. Inconclusive; noted in bugs.md.
+
+### 86Box runs the original headless (6 Oct, 21:25)
+
+- A source build of 86Box v6.0 with the VNC renderer (`tools/ref86box/build_86box.md`,
+  `D:\86box-src\build\src\86Box.exe`) runs with no window, no sound and no
+  desktop interference: `start_vnc86.ps1` + `vnc86.py` (type, key, click,
+  shot). The original's SETUP, MPS logo, intro, credits and sound menu are
+  captured (`D:/86box/intro/*.png`); the user heard the speaker once before
+  `sound_muted = 1` and OpenAL's null device were added.
+- The VM is a 6 MHz 286 (`ami286`), not GOG's 9 MIPS DOSBox machine; a faster
+  board (the 386/486 ROMs exist in the 86Box roms repo) is the next
+  refinement. Next: record the same intro timing on 86Box and compare the
+  PIT control-word IRQ0 behaviour and OPL output with this project's.
