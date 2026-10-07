@@ -1,8 +1,8 @@
 diff --git a/src/dos/dos_execute.cpp b/src/dos/dos_execute.cpp
-index 6ba9ffa..fc2aca0 100644
+index 6ba9ffa..b7a05c4 100644
 --- a/src/dos/dos_execute.cpp
 +++ b/src/dos/dos_execute.cpp
-@@ -289,6 +289,81 @@ static void SetupCMDLine(uint16_t pspseg, const DOS_ParamBlock& block) {
+@@ -289,6 +289,152 @@ static void SetupCMDLine(uint16_t pspseg, const DOS_ParamBlock& block) {
  	psp.SetCommandTail(block.exec.cmdtail);
  }
  
@@ -16,6 +16,8 @@ index 6ba9ffa..fc2aca0 100644
 +void Mouse_AutoPosition(float fx, float fy);
 +#include "keyboard.h"
 +#include <vector>
++#include <thread>
++#include <chrono>
 +namespace {
 +struct AutoEv { int kind; int a, b; bool down; };
 +std::vector<AutoEv> auto_evs;
@@ -23,7 +25,7 @@ index 6ba9ffa..fc2aca0 100644
 +void auto_key(int a, bool down) { KEYBOARD_AddKey((KBD_KEYS)a, down); }
 +void AutoHandler(Bitu i) {
 +	AutoEv &e = auto_evs[i];
-+	if (getenv("DBX_AUTO_LOG")) { FILE *f = fopen(getenv("DBX_AUTO_LOG"), "a"); if (f) { fprintf(f, "%.1f event %c %d %d %d\n", PIC_FullIndex(), e.kind, e.a, e.b, (int)e.down); fclose(f); } }
++	if (getenv("DBX_AUTO_LOG")) { FILE *f = fopen(getenv("DBX_AUTO_LOG"), "a"); if (f) { fprintf(f, "%.1f event %c %d %d %d\n", (double)PIC_FullIndex(), e.kind, e.a, e.b, (int)e.down); fclose(f); } }
 +	if (e.kind == 'k') auto_key(e.a, e.down);
 +	else if (e.kind == 'm') Mouse_AutoPosition((e.a + 0.5f) / 320.0f, (e.b + 0.5f) / 200.0f);
 +	else if (e.kind == 'b') { if (e.down) Mouse_ButtonPressed(0); else Mouse_ButtonReleased(0); }
@@ -43,17 +45,8 @@ index 6ba9ffa..fc2aca0 100644
 +	if (c == '0') return KBD_0;
 +	return 0;
 +}
-+void auto_schedule(const char *name) {
-+	if (getenv("DBX_AUTO_LOG")) { FILE *f = fopen(getenv("DBX_AUTO_LOG"), "a"); if (f) { fprintf(f, "%.1f exec %s\n", PIC_FullIndex(), name); fclose(f); } }
-+	const char *spec = getenv("DBX_AUTO_INPUT"), *at = getenv("DBX_AUTO_INPUT_AT");
-+	if (!auto_armed || !spec || !at) return;
-+	std::string prog(name), want(at);
-+	for (auto &ch : prog) ch = (char)toupper((unsigned char)ch);
-+	for (auto &ch : want) ch = (char)toupper((unsigned char)ch);
-+	if (prog.find(want) == std::string::npos) return;
-+	auto_armed = false;
++void schedule_spec(const std::string &s) {
 +	auto add = [&](double ms, AutoEv e) { auto_evs.push_back(e); PIC_AddEvent(AutoHandler, (pic_tickindex_t)ms, auto_evs.size() - 1); };
-+	std::string s(spec);
 +	size_t pos = 0;
 +	while (pos < s.size()) {
 +		size_t end = s.find(';', pos);
@@ -79,12 +72,90 @@ index 6ba9ffa..fc2aca0 100644
 +		}
 +	}
 +}
++
++struct LoopCfg {
++	const char *state = nullptr, *reply = nullptr;
++	double every = 200;
++	std::vector<std::pair<unsigned, unsigned>> reads;
++} loop_cfg;
++long loop_seq = 0;
++
++bool read_reply(long seq, std::string &spec) {
++	FILE *f = fopen(loop_cfg.reply, "r");
++	if (!f) return false;
++	std::string want = "R " + std::to_string(seq) + " ";
++	char line[4096];
++	bool found = false;
++	while (fgets(line, sizeof line, f)) {
++		std::string l(line);
++		while (!l.empty() && (l.back() == '\n' || l.back() == '\r')) l.pop_back();
++		if (l.compare(0, want.size(), want) == 0) { spec = l.substr(want.size()); found = true; }
++	}
++	fclose(f);
++	return found;
++}
++
++void LoopHandler(Bitu) {
++	uint16_t ds = (uint16_t)(dos.psp() + 0x10 + 0x1e42);
++	long seq = ++loop_seq;
++	FILE *f = fopen(loop_cfg.state, "a");
++	if (f) {
++		fprintf(f, "%ld %.1f max=%lld left=%lld cpu=%lld", seq, (double)PIC_FullIndex(), (long long)CPU_CycleMax,
++			(long long)CPU_CycleLeft, (long long)CPU_Cycles);
++		for (auto &r : loop_cfg.reads)
++			for (unsigned i = 0; i < r.second; i++) fprintf(f, " %02x", real_readb(ds, (uint16_t)(r.first + i)));
++		fprintf(f, "\n");
++		fclose(f);
++	}
++	std::string spec;
++	int waited = 0;
++	while (!read_reply(seq, spec)) {
++		if (++waited > 60000) { fprintf(stderr, "DBX_LOOP: no reply for tick %ld\n", seq); spec = "stop"; break; }
++		std::this_thread::sleep_for(std::chrono::milliseconds(1));
++	}
++	if (spec == "stop") return;
++	schedule_spec(spec);
++	PIC_AddEvent(LoopHandler, (pic_tickindex_t)loop_cfg.every, 0);
++}
++
++void auto_schedule(const char *name) {
++	if (getenv("DBX_AUTO_LOG")) { FILE *f = fopen(getenv("DBX_AUTO_LOG"), "a"); if (f) { fprintf(f, "%.1f exec %s\n", (double)PIC_FullIndex(), name); fclose(f); } }
++	const char *spec = getenv("DBX_AUTO_INPUT"), *at = getenv("DBX_AUTO_INPUT_AT");
++	if (!auto_armed || !at) return;
++	std::string prog(name), want(at);
++	for (auto &ch : prog) ch = (char)toupper((unsigned char)ch);
++	for (auto &ch : want) ch = (char)toupper((unsigned char)ch);
++	if (prog.find(want) == std::string::npos) return;
++	auto_armed = false;
++	if (spec) schedule_spec(spec);
++	if (getenv("DBX_LOOP_STATE") && getenv("DBX_LOOP_REPLY")) {
++		loop_cfg.state = getenv("DBX_LOOP_STATE");
++		loop_cfg.reply = getenv("DBX_LOOP_REPLY");
++		if (getenv("DBX_LOOP_EVERY")) loop_cfg.every = atof(getenv("DBX_LOOP_EVERY"));
++		if (const char *rd = getenv("DBX_LOOP_READS")) {
++			std::string r(rd);
++			size_t p = 0;
++			while (p < r.size()) {
++				size_t e = r.find(',', p);
++				if (e == std::string::npos) e = r.size();
++				std::string it = r.substr(p, e - p);
++				p = e + 1;
++				size_t c = it.find(':');
++				if (c != std::string::npos)
++					loop_cfg.reads.push_back({(unsigned)strtoul(it.substr(0, c).c_str(), nullptr, 0), (unsigned)strtoul(it.substr(c + 1).c_str(), nullptr, 0)});
++			}
++		}
++		FILE *f = fopen(loop_cfg.state, "w");
++		if (f) fclose(f);
++		PIC_AddEvent(LoopHandler, (pic_tickindex_t)loop_cfg.every, 0);
++	}
++}
 +}
 +
  /* FIXME: This code (or the shell perhaps) isn't very good at returning or
   *        printing an error message when it is unable to load and run an
   *        executable for whatever reason. Worst offense is that if it can't
-@@ -297,6 +372,7 @@ static void SetupCMDLine(uint16_t pspseg, const DOS_ParamBlock& block) {
+@@ -297,6 +443,7 @@ static void SetupCMDLine(uint16_t pspseg, const DOS_ParamBlock& block) {
   *        an error code so that the INT 21h EXEC call can print an informative
   *        error message! --J.C. */
  bool DOS_Execute(const char* name, PhysPt block_pt, uint16_t flags) {

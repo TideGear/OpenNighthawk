@@ -45,6 +45,24 @@ byte (identical, 6 Oct 2026). The music is judged from the capture's audio by
 at 0.74 of the level GOG's DOSBox and this machine produce (its mixer), which
 is reported, not judged.
 
+## Closed loop (DBX_LOOP_*)
+
+`DBX_LOOP_STATE=FILE` and `DBX_LOOP_REPLY=FILE` start a tick every
+`DBX_LOOP_EVERY` emulated milliseconds (default 200) once `DBX_AUTO_INPUT_AT`
+names the running program. Each tick appends `seq time max left cpu` and the
+bytes of `DBX_LOOP_READS` (`off:len,...`, DS-relative, DS = PSP + 0x10 + 0x1e42
+as in `tools/cargo_check.py` `observe`) to the state file. The emulator then
+waits in real time, with emulated time stopped, for a reply line
+`R <seq> <spec>` in the reply file; `<spec>` uses the `DBX_AUTO_INPUT` format,
+relative to that tick. `stop` ends the loop. If no reply comes within 60 s the
+loop ends with a message on stderr.
+
+Checked on SETUP (7 Oct 2026): ticks fall 200 ms apart; a reply of
+`300|k|n;400|k|n` at tick 3 (600.8 ms) taps n at 920.8 and 1020.8 ms; two runs
+gave identical state and event lines. `max=9000` is cycles per millisecond,
+the same 9 MIPS as `tools/machine_api.py`. Execs after the loop ends differ by
+about 1 ms between runs, because emulated time then runs freely.
+
 **Never run a GUI build over GOG's `dosboxF117A.conf` without `fullscreen=false`
 in a layer after it; that file asks for fullscreen.**
 
