@@ -105,8 +105,10 @@ make (Phase 4).
       output and a listening check remain.
 - [ ] **Timing details still DOSBox's own:** its BIOS and DOS stubs at their own
       addresses, its per-millisecond slicing, its 386 against this machine's 286
-      (flag bits 12-14). PLAYER's fade calibration is within a few bytes of
-      DOSBox's (5,836-5,841 against 5,839-5,844 DAC bytes per display period);
+      (flag bits 12-14). PLAYER's fade calibration samples overlap DOSBox's
+      (5,836-5,841 against 5,839-5,844 DAC bytes per display period; the
+      calibrator is a phase-dependent diagnostic, `tools/fade_calibration.py`,
+      not a verdict, and start phase is what moved the music note above);
       against 86Box's 386DX/33 the intro's scenes keep their lengths within
       0.31 s and drift 2.0 s over the intro (disk transfer, not CPU), and the
       game's code runs there at 6.28 MIPS against this model's 9.00 M clocks a
