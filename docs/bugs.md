@@ -190,8 +190,11 @@ Status values:
   evidence. Independent GOG DOSBox supply-mission generation is reproduced
   (exact type-3/target-24/departure-58/home-51 triple at a -275 ms seed
   compensating about 275 ms of autoexec guest time); open-loop replay then
-  diverges in flight, so independent delivery still needs a closed-loop
-  pilot and remains open.
+  diverges in flight. A closed-loop pilot (`tools/cargo_pilot.py`, gate route
+  `cargo_pilot`) now flies the same mission in our emulator, selects the
+  crate and releases it when the aircraft's own state is inside the release
+  window, and `cargo_check.py` gives one timely impact in the delivery area
+  with no credit. Independent delivery on DOSBox-X remains open.
 - **Approach trap.** A shallower trial reached height 1, then pitch became
   zero with slot-owner field zero, and the crate expired instead of crossing
   ground. The shipped instructions at 6C23..6C4C apply the owner pitch floor

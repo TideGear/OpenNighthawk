@@ -139,6 +139,13 @@ mask 8Eh, eight hits counted) and still returns. `cargo_check.py --complete
 original no-credit and consumed store throughout the return, then every
 landing gate and the parent block's successful result.
 
+`cargo_pilot` is a closed-loop supply drop: `tools/cargo_pilot.py` flies the
+generated type-3 mission in our emulator and releases the crate by the
+aircraft's own state (inside 120-235 units of target, 215 AGL or below, with
+the cargo bay selected), then pulls up. Its recorded input is replayed here.
+`cargo_check.py --replay cargo_pilot.input --steps 6409359385` requires one
+timely impact in the delivery area, no credit without fix D5, on both engines.
+
 `cargo_d5_fixed` replays `cargo.input` with fix D5 switched on (`--fix D5`):
 the same impact now earns the original's own primary credit, flag 4000h and
 one 8Bh event. `cargo_check.py --fix D5 --replay tools/routes/cargo.input

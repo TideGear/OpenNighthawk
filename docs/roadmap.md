@@ -128,8 +128,10 @@ make (Phase 4).
       match holds for starts of 5-20, 120-230 and 260-400 ms and fails at 0,
       40, 80 and 250, so it is a phase, not a clock error.
 - [ ] **Individual mission objectives:** independent GOG DOSBox cargo delivery
-      needs a closed-loop pilot (open-loop replay diverges across machines);
-      wider generated-assignment coverage; the strike-training mission (bugs.md
+      is open (open-loop replay diverges across machines): a closed-loop pilot
+      flies the generated mission in our emulator and releases the crate by its
+      own state (`tools/cargo_pilot.py`, gate route `cargo_pilot`), and the same
+      pilot on DOSBox-X is still to do; wider generated-assignment coverage; the strike-training mission (bugs.md
       D7) is settled as far as the original goes: a strike-type training mission is
       reproducible (start clock +5 s, `strike_pilot.py --time-us`) and is
       credited when the laser-guided bomb is released within about 80-150 map
