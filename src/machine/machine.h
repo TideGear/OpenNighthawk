@@ -346,6 +346,7 @@ int      mouse_int33(machine_t *m);
 /* ---- DOS / BIOS (dos.c) ---------------------------------------------- */
 int  dos_int_hook(cpu_t *c, uint8_t vec);
 void pc_release_irq0(machine_t *m);
+void pc_advance_boot(machine_t *m, uint64_t clocks);   /* start the clock this far in (--boot-ms) */
 /* Queue a fix's OPL write (times must not decrease); see opl_sched. */
 int  machine_opl_schedule(machine_t *m, uint64_t at, uint8_t reg, uint8_t val, uint32_t shadow);
 /* The icount of the last queued write, or 0 when none is pending. */

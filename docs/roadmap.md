@@ -104,14 +104,17 @@ make (Phase 4).
       against 86Box's 386DX/33 the intro's scenes keep their lengths within
       0.31 s and drift 2.0 s over the intro (disk transfer, not CPU), and the
       game's code runs there at 6.28 MIPS against this model's 9.00 M clocks a
-      second, a ratio set by the polling loops (`tools/ref86box/instr86.py`); the
-      channel-3 note at 29.7 s, re-measured on 7 Oct after the PIT and VGA fixes
-      against the saved GOG capture: 596 AdLib writes identical in order and
-      value over 29.7 s with timing within 26 ms, then the pitch-glide write
-      there takes a different value (A3=92 here, 49 there, 11 ms apart). 86Box
-      (386DX/33) differs at the same note, so the glide is paced by the loop and
-      its sample instant depends on small clock phase; not yet traced to a
-      cause.
+      second, a ratio set by the polling loops (`tools/ref86box/instr86.py`). The
+      intro music's channel-3 note at 29.7 s is settled (7 Oct): it is the
+      start phase. GOG's DOSBox starts F117 about 275 ms into its own life; this
+      machine started at 0 and its sound driver's per-frame generator sat one
+      step off from there on (596 writes matched, then 86% overall). Started
+      275 ms in (`f117run --boot-ms`, `dosbox_compare.GOG_BOOT_MS`) every one of
+      the 22,840 AdLib writes over 106.0 s is identical to GOG's capture in
+      order and value, timing -14 to +1 ms; `pc_parity.py` checks it. The
+      default stays 0 (every recorded route and hash is at that phase); the
+      match holds for starts of 5-20, 120-230 and 260-400 ms and fails at 0,
+      40, 80 and 250, so it is a phase, not a clock error.
 - [ ] **Individual mission objectives:** independent GOG DOSBox cargo delivery
       needs a closed-loop pilot (open-loop replay diverges across machines);
       wider generated-assignment coverage; the strike-training mission (bugs.md

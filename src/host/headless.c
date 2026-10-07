@@ -192,7 +192,7 @@ int main(int argc, char **argv)
     const char *record = NULL, *replay = NULL, *coverage = NULL, *opl_log = NULL;
     const char *midi_log = NULL, *speaker_log = NULL;
     const char *shot_meta_path = NULL;
-    uint64_t steps = 100000000ull, ips = MACHINE_DEFAULT_IPS, hold_ms = 60;
+    uint64_t steps = 100000000ull, ips = MACHINE_DEFAULT_IPS, hold_ms = 60, boot_ms = 0;
     uint64_t time_us = 0, hash_every = 0, hash_from = 0;
     uint64_t trace_from = 0, trace_to = 0;
     uint32_t peek_at = 0;                  /* --peek LINEAR (hex): print the word there at every hash line */
@@ -216,6 +216,7 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--screen") && v) { screen = v; i++; }
         else if (!strcmp(a, "--hold") && v) { hold_ms = strtoull(v, NULL, 0); i++; }
         else if (!strcmp(a, "--time-us") && v) { time_us = strtoull(v, NULL, 0); i++; }
+        else if (!strcmp(a, "--boot-ms") && v) { boot_ms = strtoull(v, NULL, 0); i++; }
         else if (!strcmp(a, "--hash-every") && v) { hash_every = strtoull(v, NULL, 0); i++; }
         else if (!strcmp(a, "--peek") && v) { peek_at = strtoul(v, NULL, 16); peek_on = 1; i++; }
         else if (!strcmp(a, "--observe") && v) {
@@ -329,6 +330,7 @@ int main(int argc, char **argv)
         return 1;
     }
     m.on_input = on_input;
+    if (boot_ms) { pc_advance_boot(&m, ips * boot_ms / 1000ull); steps += ips * boot_ms / 1000ull; }
     if (shot_every || shot_vga) next_shot = shot_start;
     if (shot_vga) {
         const uint64_t numerator = ips * 359200ull;

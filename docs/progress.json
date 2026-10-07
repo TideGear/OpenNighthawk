@@ -39,16 +39,16 @@
       {
         "item": "Timing details still DOSBox's own",
         "weight": 5,
-        "done": 0.65,
+        "done": 0.75,
         "kind": "estimate",
-        "evidence": "PIT control-word IRQ found and fixed; I/O slice suppression matched; exact retrace phase (the one-frame channel-3 note) and PLAYER's few-byte DAC gap open."
+        "evidence": "PIT control-word IRQ found and fixed; I/O slice suppression matched; the retrace-phase note settled (7 Oct): started 275 ms in, as GOG's DOSBox is, all 22,840 AdLib writes over 106 s are identical to its capture; PLAYER's few-byte DAC gap and the BIOS/DOS stub timing open."
       },
       {
         "item": "Rendered sound parity",
         "weight": 6,
-        "done": 0.6,
+        "done": 0.65,
         "kind": "estimate",
-        "evidence": "DBOPL default, mixer rounding fixed; intro waveform within about 0.5% RMS but not exact. A seeded type-8 flight now has a 62.3-second independent GOG DOSBox WAV; approximate host alignment reaches 58.15 seconds (envelope correlation 0.598, waveform 0.361, median spectral cosine 0.972, RMS 0.1011 vs 0.0920), not exact parity. The route's PC-speaker gate is clear; speech, audible speaker output and listening remain open."
+        "evidence": "DBOPL default, mixer rounding fixed; intro waveform within about 0.5% RMS but not exact. A seeded type-8 flight now has a 62.3-second independent GOG DOSBox WAV; approximate host alignment reaches 58.15 seconds (envelope correlation 0.598, waveform 0.361, median spectral cosine 0.972, RMS 0.1011 vs 0.0920), not exact parity. The route's PC-speaker gate is clear; speech, audible speaker output and listening remain open. Register timing is now exact: every AdLib write of the intro matches GOG's capture in order and value (7 Oct, see Timing details)."
       }
     ],
     "P2": [

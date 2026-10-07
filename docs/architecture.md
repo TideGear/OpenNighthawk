@@ -395,10 +395,13 @@ current as of the last gate (see [../handoff.md](../handoff.md)).
      286. Frame-exact timing there needs a faster board.
 
    Other comparisons: `tools/dosbox_compare.py` captures the AdLib register
-   writes in DOSBox and here over the logo and intro (22,687 writes over
-   100.7 s, identical in order and value, timing within 36 ms; measured before
-   the PIT and VGA-timing fixes, and the sound driver's note at 29.7 s then
-   differed by one PLAYER frame, a retrace-phase difference to re-check);
+   writes in DOSBox and here over the logo and intro: all 22,840 over 106.0 s
+   identical in order and value, timing -14 to +1 ms, with this machine
+   started 275 ms in as GOG's DOSBox is when F117 starts (`--boot-ms`). Started
+   at 0 the sound driver's per-frame generator is one step off from the note at
+   29.7 s on (the same generator step in all three GOG captures), 86% of the
+   writes match; the match holds for starts of 5-20, 120-230 and 260-400 ms, so
+   it is a start phase, not a clock error;
    `tools/fade_calibration.py` runs START's, PLAYER's and END's fade
    calibrators on both machines (START and END return the same range;
    PLAYER's DAC throughput is within a few bytes of DOSBox's after matching

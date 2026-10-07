@@ -218,6 +218,8 @@ def main():
     ap.add_argument("--exe", type=Path, help="f117run executable (default: ROOT/build/f117run.exe)")
     ap.add_argument("--shot-start", type=int, default=0,
                     help="first guest-clock snapshot phase (default: %(default)s)")
+    ap.add_argument("--boot-ms", type=int, default=0,
+                    help="start this machine's clock this many ms in, as GOG's DOSBox is after its own boot")
     ap.add_argument("--ips", type=int, default=IPS,
                     help="emulated instructions per second for f117run (default: %(default)s)")
     ap.add_argument("--work-dir", type=Path, default=WORK,
@@ -283,7 +285,7 @@ def main():
             "--steps", str((a.seconds + 15) * ips),
             "--time-us", "700000000000000", "--opl-log", str(run / "opl.log"),
             "--shots-vga", str(run / "shots" / "shot"),
-            "--shots-start", str(a.shot_start)],
+            "--shots-start", str(a.shot_start)] + (["--boot-ms", str(a.boot_ms)] if a.boot_ms else []),
             capture_output=True, text=True)
         (run / "runner.txt").write_text(proc.stdout + proc.stderr)
         proc.check_returncode()

@@ -237,6 +237,15 @@ static void pit0_schedule(machine_t *m)
     m->irq0_next = icount_at_clock(m, p->epoch_clk + k * full);
 }
 
+/* The machine starts `clocks` into its life, as GOG's DOSBox does when F117 starts after its own boot
+ * and autoexec: the clock moves on, and the timer's next edge is the next one on its own grid (nothing
+ * is owed from the time skipped). */
+void pc_advance_boot(machine_t *m, uint64_t clocks)
+{
+    m->cpu.icount += clocks;
+    pit0_schedule(m);
+}
+
 static void pit_loaded(machine_t *m, int ch)
 {
     pit_counter *p = &m->pit[ch];

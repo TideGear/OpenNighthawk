@@ -35,6 +35,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 PY = sys.executable
 DEFAULT_GOG_REFERENCE = Path.home() / "f117-recomp-local" / "video" / "intro-qlh_wi26"
+DEFAULT_GOG_MUSIC = Path.home() / "f117-recomp-local" / "video" / "gog-music" / "mps_logo_000.dro"   # GOG's raw OPL capture of the intro
 
 # Measured 6 Oct 2026 (see docs/repeated-processes.md and build_dosbox_x.md).
 LIMITS = {
@@ -44,6 +45,8 @@ LIMITS = {
     "dosbox-x": dict(min_exact=1200, max_multi_unmatched=3, max_drift_ms=350),   # measured 1237, 3, 157-200 ms (real-time capture varies)
     # 86Box: graphics pictures with no counterpart (of ~105); order must hold
     "86box": dict(max_unmatched=2),
+    # GOG's raw OPL capture: every write, from this machine started 275 ms in (dosbox_compare.GOG_BOOT_MS); measured 22,840, -14..+1 ms
+    "gog-music": dict(min_writes=22800, max_timing_ms=40),
 }
 
 
@@ -72,6 +75,7 @@ def main():
     ap.add_argument("--dosbox-x", type=Path, default=Path(r"D:\86box-src\dbx-src\src\dosbox-x.exe"))
     ap.add_argument("--seconds", type=int, default=130)
     ap.add_argument("--gog-reference", type=Path, default=DEFAULT_GOG_REFERENCE)
+    ap.add_argument("--gog-music", type=Path, default=DEFAULT_GOG_MUSIC, help="GOG DOSBox raw OPL capture (.dro) of the intro")
     ap.add_argument("--out", type=Path, default=Path.home() / "f117-recomp-local" / "pc-parity")
     for name in ("gog", "dosbox-x", "86box", "save"):
         ap.add_argument("--no-" + name, action="store_true")
@@ -99,6 +103,9 @@ def main():
         job("save-dbx", lambda: save_check(["--no-86box", "--out", str(a.out / "save-dosbox-x")], a.out / "dosbox-x-save.log", "DOSBox-X"))
     if not a.no_dosbox_x:
         job("dosbox-x", lambda: video_compare(a, a.out / "dosbox-x.log", ["--dosbox", str(a.dosbox_x)]))
+    if not a.no_gog and a.gog_music.is_file():
+        job("gog-music", lambda: dict(rc=run([PY, str(HERE / "dosbox_compare.py"), "--data", a.data, "--dro", str(a.gog_music),
+                                              "--seconds", "100"], a.out / "gog-music.log")))
     if not a.no_gog:
         job("gog", lambda: video_compare(a, a.out / "gog.log", ["--against", str(a.gog_reference)]))
     if not a.no_86box:
@@ -164,6 +171,18 @@ def main():
         print("  " + (line[0] if line else "sound %-8s ERROR see %s" % (name, slog)))
         if src != 0:
             failures.append(name + " sound")
+    if "gog-music" in results:
+        text = (a.out / "gog-music.log").read_text(errors="replace")
+        m = re.search(r"(\d+) writes in the same order with the same values, over ([\d.]+) s", text)
+        t = re.search(r"in ms: at the end ([+-]\d+), smallest ([+-]\d+), largest ([+-]\d+)", text)
+        same = "no difference until one sequence ended (DOSBox 0 more, here 0 more)" in text
+        ok = bool(m and t and same and int(m[1]) >= LIMITS["gog-music"]["min_writes"]
+                  and max(abs(int(t[2])), abs(int(t[3]))) <= LIMITS["gog-music"]["max_timing_ms"])
+        print("  music gog PASS  %s AdLib writes identical in order and value over %s s, timing %s to %s ms (need %d writes, within %d ms)" % (
+            m[1], m[2], t[2], t[3], LIMITS["gog-music"]["min_writes"], LIMITS["gog-music"]["max_timing_ms"]) if ok else
+            "  music gog FAIL  see %s" % (a.out / "gog-music.log"))
+        if not ok:
+            failures.append("gog music")
     if "86box" in results:
         r = results["86box"]
         shots = None

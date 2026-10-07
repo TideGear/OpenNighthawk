@@ -43,6 +43,12 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 WORK = os.path.join(os.path.expanduser("~"), "f117-recomp-local", "dbxcompare")
 IPS = 9_000_000
+# GOG's DOSBox starts F117 after its own boot and autoexec, about 275 ms of emulated time in (measured
+# on the cargo flights, see docs/bugs.md D5); the sound driver's per-frame generator and the video frames
+# fall in a phase that depends on it. Starting this machine's clock there makes the whole intro's AdLib
+# writes (22,840 over 106 s) identical to GOG's capture; at 0 the note at 29.7 s is one generator step off
+# and every later pitch glide with it (86% of the writes match).
+GOG_BOOT_MS = 275
 
 
 def dro_registers():
@@ -232,11 +238,14 @@ def main():
     ap.add_argument("--seconds", type=int, default=120)
     ap.add_argument("--window", type=int, default=40, help="writes that must match to align")
     ap.add_argument("--reuse", help="compare saved capture/*.dro and opl.log without running either machine")
+    ap.add_argument("--dro", help="compare this machine with a saved DOSBox capture (a .dro file) without running DOSBox")
     a = ap.parse_args()
     if a.window < 1 or a.seconds < 1:
         ap.error("--window and --seconds must be positive")
     if not a.reuse and not a.data:
         ap.error("--data is required unless --reuse is supplied")
+    if a.dro and (a.reuse or not os.path.isfile(a.dro)):
+        ap.error("--dro names a saved .dro file and excludes --reuse")
     if a.reuse:
         work = a.reuse
     else:
@@ -258,13 +267,17 @@ def main():
             p = os.path.join(a.data, f)
             if os.path.isfile(p) and not f.lower().startswith(("unins", "goggame", "gog", "launch", "support")):
                 shutil.copy2(p, game)
-        print("DOSBox: %d s with the raw OPL capture on" % a.seconds, flush=True)
-        dros = run_dosbox(a.data, game, a.seconds, work=work)
+        if a.dro:
+            dros = [a.dro]
+        else:
+            print("DOSBox: %d s with the raw OPL capture on" % a.seconds, flush=True)
+            dros = run_dosbox(a.data, game, a.seconds, work=work)
         steps = (a.seconds + 15) * IPS
         print("f117run: %d instructions with --opl-log" % steps, flush=True)
         r = subprocess.run([os.path.join(ROOT, "build", "f117run.exe"), "--engine", "recomp", "--data", game,
                             "--save", os.path.join(work, "save"), "--log", os.path.join(work, "run.log"),
                             "--type", "SETUP.EXE+200000:N", "--type", "SETUP.EXE+2000000:2",
+                            "--boot-ms", str(GOG_BOOT_MS),
                             "--steps", str(steps), "--time-us", "700000000000000", "--opl-log", log],
                            capture_output=True, text=True)
         with open(os.path.join(work, "runner.txt"), "w") as f:

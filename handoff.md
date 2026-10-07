@@ -152,4 +152,6 @@ date; `git log -p handoff.md` has them.
   over-climb.
 - `f117run` scripted input: Space is `\s` in route files; at most 4096 inputs.
 - DOSBox's raw OPL capture omits registers 02h-04h and records changes only;
-  the intro's channel-3 note at 29.7 s is random between runs.
+  the intro's channel-3 note at 29.7 s is not random: three GOG captures agree,
+  and this machine matches every write once started 275 ms in (`--boot-ms 275`;
+  `dosbox_compare.py --dro` does it).
