@@ -196,6 +196,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--data", help="GOG install with DOSBOX and dosboxF117A.conf")
     ap.add_argument("--seconds", type=int, default=130)
+    ap.add_argument("--dosbox", type=Path, help="run this DOSBox build (e.g. DOSBox-X) as the reference instead of GOG's DOSBox 0.74")
     ap.add_argument("--exe", type=Path, help="f117run executable (default: ROOT/build/f117run.exe)")
     ap.add_argument("--shot-start", type=int, default=0,
                     help="first guest-clock snapshot phase (default: %(default)s)")
@@ -249,7 +250,8 @@ def main():
                 shutil.copy2(path, game)
         if not a.against:
             print(f"DOSBox: {a.seconds} s with video capture", flush=True)
-            run_dosbox(a.data, str(game), a.seconds, capture="video", work=str(run))
+            run_dosbox(a.data, str(game), a.seconds, capture="video", work=str(run),
+                       dosbox=str(a.dosbox) if a.dosbox else None)
         (run / "shots").mkdir()
         period = ips * 359200 / 25175000
         print(f"f117run: {ips} instructions/s; rational VGA snapshots every "

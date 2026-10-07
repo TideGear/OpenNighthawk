@@ -91,10 +91,12 @@ def filter_log(path):
     return out
 
 
-def run_dosbox(data, game, seconds, *, capture="opl", work=WORK):
+def run_dosbox(data, game, seconds, *, capture="opl", work=WORK, dosbox=None):
     """Capture on a scratch install; Ctrl+Alt+F7 for OPL, F5 for video.
 
-    The caller owns work/capture, which is replaced on each run.
+    The caller owns work/capture, which is replaced on each run. `dosbox` names
+    another build (DOSBox-X) to run with the same GOG configuration; the
+    default is GOG's own DOSBox 0.74 in the install.
     """
     import win32api, win32con, win32gui, win32process
     if capture not in ("opl", "video"):
@@ -106,7 +108,8 @@ def run_dosbox(data, game, seconds, *, capture="opl", work=WORK):
     with open(conf, "w") as f:
         f.write("[sdl]\nfullscreen=false\noutput=surface\n[dosbox]\ncaptures=%s\n[autoexec]\n@echo off\n" % cap)
         f.write('mount C "%s"\nc:\nkeyb us\ncls\nf117\nexit\n' % game)
-    dosbox = os.path.join(data, "DOSBOX", "DOSBox.exe")
+    x_build = bool(dosbox)
+    dosbox = dosbox or os.path.join(data, "DOSBOX", "DOSBox.exe")
     si = subprocess.STARTUPINFO()
     si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
     si.wShowWindow = 7                                   # minimised, not activated
@@ -138,6 +141,14 @@ def run_dosbox(data, game, seconds, *, capture="opl", work=WORK):
         win32api.PostMessage(hwnd, msg, vk, lp)
 
     def toggle_capture():
+        if x_build:
+            # DOSBox-X: its host key (F11 on Windows) with I records video.
+            if capture != "video":
+                raise ValueError("DOSBox-X has no default OPL capture key; use video")
+            key(win32con.VK_F11, True, False); key(ord("I"), True, False)
+            time.sleep(0.1)
+            key(ord("I"), False, False); key(win32con.VK_F11, False, False)
+            return
         vk = win32con.VK_F7 if capture == "opl" else win32con.VK_F5
         key(win32con.VK_CONTROL, True, False); key(win32con.VK_MENU, True, True); key(vk, True, True)
         time.sleep(0.1)

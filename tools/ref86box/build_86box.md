@@ -54,3 +54,20 @@ including from a driver running on a separate Windows desktop
 typed into. Floppy-first boot order, an extended-memory size in CMOS the VM
 does not have, a zero BPB geometry and an MBR without boot code each
 stopped the boot before DOS.
+
+## The check (first result, 6 Oct 2026)
+
+`capture_intro.py OUT` boots the VM, runs F117, answers SETUP and samples the
+display once a second for 150 s; `compare_intro.py OUT SHOTS` matches each
+86Box picture to the nearest of this machine's pictures (the `shots/` of a
+`video_compare.py` run) in order. Run against `intro-n82oys6t`:
+
+- 105 distinct pictures on 86Box; 104 are within 3 levels per channel of a
+  picture of ours, none byte-exact, order preserved with no backward match.
+  The one unmatched picture is the first sample (SETUP's text screen has no
+  counterpart in the graphics-only comparison).
+- Both machines expand the VGA DAC identically (64 levels in steps of 4).
+  The residual difference is the animation instant: a 1 Hz sample on a
+  6 MHz 286 lands on a different frame of the same scene than ours does.
+  So the scenes, their order and the colours agree; frame-exact timing
+  does not and cannot until the VM runs at the modelled speed.
