@@ -3307,6 +3307,45 @@ static int rt_stack_check(machine_t *m, uint16_t limit, uint16_t overflow)
 static int start_stack_check(machine_t *m) { return rt_stack_check(m, 0xB154, 0x8FA4); }
 static int end_stack_check(machine_t *m) { return rt_stack_check(m, 0x531E, 0x4E9A); }
 
+/* VGAME 1452:0006 / 1452:0033, vg_sine_direct(a) and vg_cosine_direct(a): a quarter-wave table of words at
+ * the segment the code loads into ES (its relocated immediate, at CS:000B and CS:0038), 2,048 entries.
+ * The angle's bits 2-13 index it, inverted (NOT) when bit 14 is set for the sine and clear for the cosine;
+ * the sign comes from the angle's high byte (plus 40h for the cosine). Result in AX and BX; ES, BP restored. */
+static int vg_direct(machine_t *m, int cosine)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 22)) return 0;                                   /* the cosine's longest path: 22 */
+    const uint16_t ss = c->seg[S_SS], cs = c->seg[S_CS];
+    const uint16_t angle = seg_read16(c, ss, (uint16_t)(c->r[R_SP] + 4));
+    const uint16_t old_es = c->seg[S_ES];
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, old_es);
+    const uint16_t table = seg_read16(c, cs, (uint16_t)(cosine ? 0x0038 : 0x000B));
+    c->seg[S_ES] = table;
+    unsigned n = 11;                                              /* up to the branch on bit 14 */
+    uint16_t bx = (uint16_t)(angle >> 2);
+    const int bit14 = (angle >> 8) & 0x40;
+    if (cosine ? !bit14 : bit14) { bx = (uint16_t)~bx; n++; }     /* not bx */
+    bx = (uint16_t)(bx & 0x0FFE);
+    bx = seg_read16(c, table, bx);
+    uint8_t ah = (uint8_t)(angle >> 8);
+    if (cosine) ah = (uint8_t)alu_add(c, ah, 0x40, 0, 0);         /* add ah, 40h */
+    alu_logic(c, ah, 0);                                          /* or ah, ah */
+    n += 4;                                                       /* and, load, or, jns */
+    if (cosine) n++;
+    if (ah & 0x80) { bx = (uint16_t)alu_sub(c, 0, bx, 1, 0); n++; }   /* neg bx */
+    c->r[R_BX] = bx;
+    c->r[R_AX] = bx;
+    c->seg[S_ES] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += n + 4;                                           /* mov ax, pop, pop, retf */
+    far_ret(c);
+    return 1;
+}
+static int vgame_vg_sine_direct(machine_t *m) { return vg_direct(m, 0); }
+static int vgame_vg_cosine_direct(machine_t *m) { return vg_direct(m, 1); }
+
 /* START 0x096CE, mission_rand(): the 32-bit generator at [AE8C] steps as
  * seed * 343FDh + 269EC3h (by the 32-bit multiply at 0x0978E) and the answer
  * is its high word's low 15 bits; DX is left as the whole high word. */
@@ -6216,6 +6255,8 @@ static const recomp_override MATCHED[] = {
     { "matched", "START.EXE", START_47304, 0x0000, 0x532A, start_dist_t, "distance between two map points", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x58BE, start_onc_target, "target text from a map point", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x97D8, start_shl32_at, "32-bit shift left in place", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1452, 0x0006, vgame_vg_sine_direct, "sine from the quarter-wave table", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1452, 0x0033, vgame_vg_cosine_direct, "cosine from the quarter-wave table", 2 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x3070, start_fade_a, "start a fade, first form", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x3088, start_fade_b, "start a fade, second form", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x3E5E, start_flag_call, "call on a flag", 1 },
