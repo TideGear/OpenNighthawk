@@ -80,7 +80,7 @@ date; `git log -p handoff.md` has them.
   Details and builds: `tools/ref86box/` (`build_86box.md`, `build_dosbox_x.md`).
   Other references: `tools/fidelity.py`, `tools/dosbox_compare.py` (OPL; this
   machine started 275 ms in, `f117run --boot-ms 275`), `tools/video_compare.py`,
-  `tools/sound_parity.py`. Needs `D:117-gate\ctm\CTMOUSE.EXE` (CuteMouse,
+  `tools/sound_parity.py`. Needs `D:/f117-gate/ctm/CTMOUSE.EXE` (CuteMouse,
   not in the repository) for the 86Box save check and GOG's raw OPL capture
   under `~/f117-recomp-local/video/gog-music/`.
 - Routes: `tools/routes/*.args` with a README; `py tools/run_route.py ROUTE
