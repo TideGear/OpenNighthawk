@@ -127,7 +127,13 @@ Status values:
 - **Where.** Not traced to an instruction.
 - **In this recompilation.** The keyboard is a set-1 scancode stream with a
   real BIOS translation, so keypad keys reach SETUP as they would on a PC.
-  Untested whether the crash path exists.
+  Measured on the sound prompt ("Select Sound Driver", recomp engine, 7 Oct
+  2026): with NumLock off, keypad 1 or 2 makes SETUP terminate with code 0,
+  and F117.COM then terminates to DOS, so the player is returned to DOS
+  rather than crashing; with NumLock on, keypad 1 selects the driver as
+  main-row 1 does; a main-row x is ignored. The routine that takes the exit
+  is not located yet, so no fix is offered; a fix would change what the
+  original does with a BIOS extended key, which is a policy decision.
 - **Detail.** Reimp catalogue:507-520.
 
 ### D4. Secret-airstrip missions are disabled outside the Gulf
