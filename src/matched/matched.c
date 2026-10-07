@@ -3188,6 +3188,87 @@ static int start_onc_target(machine_t *m)
     return 1;
 }
 
+/* START 0x03070 / 0x03088, the two ways the fade is started: 0x030A0 with
+ * (0x64E3, a, b, arg) where (a, b) is (0, 100h) at 0x03070 and (100h, 0) at
+ * 0x03088, the caller's word last. */
+static int start_fade_call(machine_t *m, int first_is_100, uint16_t ret)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 10)) return 0;
+    const uint16_t arg0 = arg(c, 0);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, arg0);
+    if (first_is_100) {
+        c->r[R_AX] = 0x100;
+        cpu_push16(c, 0x100);
+        c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+        cpu_push16(c, 0);
+    } else {
+        c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+        cpu_push16(c, 0);
+        c->r[R_AX] = 0x100;
+        cpu_push16(c, 0x100);
+    }
+    c->r[R_AX] = 0x64E3;
+    cpu_push16(c, 0x64E3);
+    c->icount += 9;
+    if (!guest_call(m, 0x30A0, ret)) return 1;
+    if (!room(c, 3)) { c->ip = ret; return 1; }
+    x86_leave(c);
+    c->icount += 3;
+    near_ret(c);
+    return 1;
+}
+static int start_fade_a(machine_t *m) { return start_fade_call(m, 1, 0x3084); }
+static int start_fade_b(machine_t *m) { return start_fade_call(m, 0, 0x309C); }
+
+/* START 0x03E5E: when the byte at [73F2] is not zero, 0x076D1 (0). */
+static int start_flag_call(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 5)) return 0;
+    alu_sub(c, mem_read8(c, phys(c->seg[S_DS], 0x73F2)), 0, 0, 0);     /* cmp byte [73F2], 0 */
+    if (c->flags & F_ZF) { c->icount += 3; near_ret(c); return 1; }  /* je to ret */
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+    cpu_push16(c, 0);
+    c->icount += 4;
+    if (!guest_call(m, 0x76D1, 0x3E6B)) return 1;
+    if (!room(c, 2)) { c->ip = 0x3E6B; return 1; }
+    c->r[R_BX] = cpu_pop16(c);
+    c->icount += 2;
+    near_ret(c);
+    return 1;
+}
+
+/* START 0x03E84, set_pointer(x, y): the pair stored at [E08A]/[E08C]; when
+ * bit 1 of byte 72h of the structure at far [E096] is set, 0x085A7 runs. */
+static int start_set_pointer(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 13)) return 0;
+    const uint16_t x = arg(c, 0), y = arg(c, 1);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_AX] = x;
+    ds_put(c, 0xE08A, x);
+    c->r[R_AX] = y;
+    ds_put(c, 0xE08C, y);
+    const uint16_t bx = ds_get(c, 0xE096), es = ds_get(c, 0xE098);
+    c->r[R_BX] = bx;
+    c->seg[S_ES] = es;
+    alu_logic(c, mem_read8(c, phys(es, (uint16_t)(bx + 0x72))) & 2, 0);   /* test byte es:[bx+72h], 2 */
+    c->icount += 9;
+    if (!(c->flags & F_ZF)) {                                     /* je not taken */
+        if (!guest_call(m, 0x85A7, 0x3EA1)) return 1;
+        if (!room(c, 3)) { c->ip = 0x3EA1; return 1; }
+    }
+    x86_leave(c);
+    c->icount += 3;
+    near_ret(c);
+    return 1;
+}
+
 /* START 0x096CE, mission_rand(): the 32-bit generator at [AE8C] steps as
  * seed * 343FDh + 269EC3h (by the 32-bit multiply at 0x0978E) and the answer
  * is its high word's low 15 bits; DX is left as the whole high word. */
@@ -6097,6 +6178,10 @@ static const recomp_override MATCHED[] = {
     { "matched", "START.EXE", START_47304, 0x0000, 0x532A, start_dist_t, "distance between two map points", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x58BE, start_onc_target, "target text from a map point", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x97D8, start_shl32_at, "32-bit shift left in place", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x3070, start_fade_a, "start a fade, first form", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x3088, start_fade_b, "start a fade, second form", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x3E5E, start_flag_call, "call on a flag", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x3E84, start_set_pointer, "store the pointer position", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x1452, 0x0316, vgame_camera_matrix_copy, "copy a 3x3 camera matrix", 2 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x1452, 0x02E4, vgame_camera_matrix_transpose, "transpose a 3x3 camera matrix", 2 },
 };
