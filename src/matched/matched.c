@@ -3128,6 +3128,66 @@ static int vgame_camera_matrix_transpose(machine_t *m)
     return 1;
 }
 
+/* START 0x0532A, dist_t(a, b): the distance (0x05413) between two map
+ * points kept in 16-byte records at CBE0 (words 0 and 1, x then y) - the
+ * difference of x is the second argument pushed, y the first. */
+static int start_dist_t(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 15)) return 0;
+    const uint16_t ss = c->seg[S_SS];
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->r[R_SI]);
+    set_r8(c, R_CL, 4);
+    uint16_t bx = x86_shift(c, 4, seg_read16(c, ss, (uint16_t)(c->r[R_BP] + 4)), 4, 1);
+    uint16_t ax = ds_get(c, (uint16_t)(bx + 0xCBE2));
+    uint16_t si = x86_shift(c, 4, seg_read16(c, ss, (uint16_t)(c->r[R_BP] + 6)), 4, 1);
+    ax = (uint16_t)alu_sub(c, ax, ds_get(c, (uint16_t)(si + 0xCBE2)), 1, 0);
+    cpu_push16(c, ax);
+    ax = ds_get(c, (uint16_t)(bx + 0xCBE0));
+    ax = (uint16_t)alu_sub(c, ax, ds_get(c, (uint16_t)(si + 0xCBE0)), 1, 0);
+    cpu_push16(c, ax);
+    c->r[R_BX] = bx; c->r[R_SI] = si; c->r[R_AX] = ax;
+    c->icount += 14;
+    if (!guest_call(m, 0x5413, 0x534F)) return 1;
+    if (!room(c, 6)) { c->ip = 0x534F; return 1; }
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    x86_leave(c);
+    c->icount += 6;
+    near_ret(c);
+    return 1;
+}
+
+/* START 0x058BE, onc_target(i): 0x058DF on the settings word at far [CACA]+38h
+ * and record i's two words (16-byte records at CBE0). */
+static int start_onc_target(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 10)) return 0;
+    const uint16_t ss = c->seg[S_SS];
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    const uint16_t bx0 = ds_get(c, 0xCACA), es = ds_get(c, 0xCACC);
+    c->seg[S_ES] = es;
+    c->r[R_BX] = bx0;
+    cpu_push16(c, seg_read16(c, es, (uint16_t)(bx0 + 0x38)));
+    set_r8(c, R_CL, 4);
+    const uint16_t bx = x86_shift(c, 4, seg_read16(c, ss, (uint16_t)(c->r[R_BP] + 4)), 4, 1);
+    c->r[R_BX] = bx;
+    cpu_push16(c, ds_get(c, (uint16_t)(bx + 0xCBE2)));
+    cpu_push16(c, ds_get(c, (uint16_t)(bx + 0xCBE0)));
+    c->icount += 9;
+    if (!guest_call(m, 0x58DF, 0x58DB)) return 1;
+    if (!room(c, 3)) { c->ip = 0x58DB; return 1; }
+    x86_leave(c);
+    c->icount += 3;
+    near_ret(c);
+    return 1;
+}
+
 /* START 0x096CE, mission_rand(): the 32-bit generator at [AE8C] steps as
  * seed * 343FDh + 269EC3h (by the 32-bit multiply at 0x0978E) and the answer
  * is its high word's low 15 bits; DX is left as the whole high word. */
@@ -4800,7 +4860,7 @@ static int vgame_set_element(machine_t *m)
 
 /* VGAME 0x0EF80, shl32_at(p, n): the 32-bit value at DS:p shifted left by n
  * in place, by 0x0EF68; DX:AX the result, CX from the shift, BX restored. */
-static int vgame_shl32_at(machine_t *m)
+static int shl32_at(machine_t *m, uint16_t shift, uint16_t ret)
 {
     cpu_t *c = &m->cpu;
     if (!room(c, 8)) return 0;
@@ -4813,8 +4873,8 @@ static int vgame_shl32_at(machine_t *m)
     c->r[R_DX] = ds_get(c, (uint16_t)(p + 2));
     c->r[R_CX] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 6));
     c->icount += 7;
-    if (!guest_call(m, 0xEF68, 0xEF92)) return 1;
-    if (!room(c, 5)) { c->ip = 0xEF92; return 1; }
+    if (!guest_call(m, shift, ret)) return 1;
+    if (!room(c, 5)) { c->ip = ret; return 1; }
     ds_put(c, p, c->r[R_AX]);
     ds_put(c, (uint16_t)(p + 2), c->r[R_DX]);
     c->r[R_BX] = cpu_pop16(c);
@@ -4824,6 +4884,9 @@ static int vgame_shl32_at(machine_t *m)
     c->icount += 5;
     return 1;
 }
+static int vgame_shl32_at(machine_t *m) { return shl32_at(m, 0xEF68, 0xEF92); }
+/* START 0x097D8: the same routine, over START's own shift at 0x097C0. */
+static int start_shl32_at(machine_t *m) { return shl32_at(m, 0x97C0, 0x97EA); }
 
 /* VGAME 0x056A9, tracked warning: the warning timer [3DC0] is set to two
  * seconds' frames (S * 2) and sound 8 is requested with argument 1 through
@@ -6031,6 +6094,9 @@ static const recomp_override MATCHED[] = {
     { "matched", "START.EXE", START_47304, 0x0000, 0x8C7C, start_sine_arg, "sine of a stacked angle", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x3301, start_vsin, "scaled sine", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x3318, start_vcos, "scaled cosine", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x532A, start_dist_t, "distance between two map points", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x58BE, start_onc_target, "target text from a map point", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x97D8, start_shl32_at, "32-bit shift left in place", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x1452, 0x0316, vgame_camera_matrix_copy, "copy a 3x3 camera matrix", 2 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x1452, 0x02E4, vgame_camera_matrix_transpose, "transpose a 3x3 camera matrix", 2 },
 };
