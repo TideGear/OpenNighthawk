@@ -108,8 +108,13 @@ instead of parity.
       addresses, its per-millisecond slicing, its 386 against this machine's 286
       (flag bits 12-14). PLAYER's fade calibration is within a few bytes of
       DOSBox's (5,836-5,841 against 5,839-5,844 DAC bytes per display period); the
-      phase gap behind the intro music's channel-3 note at 29.7 s was measured
-      before the PIT and VGA fixes and needs re-checking.
+      channel-3 note at 29.7 s, re-measured on 7 Oct after the PIT and VGA fixes
+      against the saved GOG capture: 596 AdLib writes identical in order and
+      value over 29.7 s with timing within 26 ms, then the pitch-glide write
+      there takes a different value (A3=92 here, 49 there, 11 ms apart). 86Box
+      (386DX/33) differs at the same note, so the glide is paced by the loop and
+      its sample instant depends on small clock phase; not yet traced to a
+      cause.
 - [ ] **Individual mission objectives:** independent GOG DOSBox cargo delivery
       needs a closed-loop pilot (open-loop replay diverges across machines);
       wider generated-assignment coverage; the strike-training mission (bugs.md
