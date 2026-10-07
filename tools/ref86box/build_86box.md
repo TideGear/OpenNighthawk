@@ -26,6 +26,41 @@ intro, credits and sound menu on `ami286` (a 6 MHz 286).
    -DNEW_DYNAREC=OFF -DDYNAREC=ON` then `ninja -C build`. Output:
    `build/src/86Box.exe`.
 
+## Traced runs: emulated time, scripted input (`86box-trace.patch`)
+
+`git apply tools/ref86box/86box-trace.patch` in the checkout (it edits
+`src/vnc.c`, `src/qt/qt_main.cpp` and `src/sound/snd_adlib.c`) before step 5.
+A traced run needs no VNC client, so it is a function of the machine and its
+inputs, not of wall-clock polling. `trace_86box.ps1` starts it; environment
+variables drive it:
+
+| Variable | Effect |
+|---|---|
+| `B86_TRACE=DIR` | `DIR/frames.csv`: every displayed frame with its emulated microseconds, size and hash |
+| `B86_KEYS="frame:down:scancode,..."` | key events at displayed-frame counts (set-1 scancodes, hex) |
+| `B86_MOUSE="frame:m:x,y;frame:b:mask;..."` | pointer to guest pixel x,y of 320x200 (a slam into the corner, then the move, fed 60 counts a frame; a count moves the guest pointer 1.5 pixels) and the button mask |
+| `B86_PPM=1` | each new picture saved as a PPM |
+| `B86_STOP=N` | exit after N frames |
+| `B86_OPL=FILE` | every AdLib register write as `microseconds register value` |
+
+Its users: `probe86.py` (the machine-behaviour probe; answers are read back out
+of the disk image), `sound86.py` with `compare_opl86.py` (the music) and
+`sav86.py` (a scripted START session and its saved `ROSTER.FIL`;
+`tools/save_parity.py` turns a route file into the schedule).
+
+**A mouse needs a DOS driver, and the game needs almost all of conventional
+memory.** `sav86.py` puts CuteMouse's `ctmouse.exe` (GPL; a built copy is in
+github.com/davidebreso/ctmouse; not kept in this repository, default path
+`D:\f117-gate\ctm\CTMOUSE.EXE`) on the disk, sets `mouse_type = msserial` and
+boots a bare FreeDOS (no environment variables, `BUFFERS=1`, `FILES=10`,
+`/E:128`): CTMOUSE's 3 KB otherwise makes START stop with "Not enough memory!".
+
+Measured 6 Oct 2026: the music's first 2,000 AdLib writes are identical to this
+machine's, and channels 0, 1, 2 and 5 play the same notes in the same order
+(the busy pitch-bend channels 3 and 4 follow the 286's speed and drift up to
+7 s over the intro); the scripted session saves a `ROSTER.FIL` byte-identical
+to ours.
+
 ## The profile (`D:\86box\vmf`)
 
 `86box.cfg.vnc` here is the working configuration: `ami286`, 640 KB,

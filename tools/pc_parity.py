@@ -17,7 +17,8 @@ intro is played on each and its pictures compared with this machine's:
 
 The three run at once (none shows a window or makes a sound); with each,
 the intro's music is checked too (sound_parity.py on the DOSBoxes' captured audio,
-ref86box/compare_opl86.py on 86Box's AdLib writes). Each verdict is
+ref86box/compare_opl86.py on 86Box's AdLib writes), and a scripted START session's
+saved roster is compared byte for byte (save_parity.py, on DOSBox-X and 86Box). Each verdict is
 against the figures measured on 6 Oct 2026, so a change that makes this machine
 drift from a reference fails here; the thresholds are at the top of the file
 and say what was measured. Exit status is 0 when every enabled check passes.
@@ -72,7 +73,7 @@ def main():
     ap.add_argument("--seconds", type=int, default=130)
     ap.add_argument("--gog-reference", type=Path, default=DEFAULT_GOG_REFERENCE)
     ap.add_argument("--out", type=Path, default=Path.home() / "f117-recomp-local" / "pc-parity")
-    for name in ("gog", "dosbox-x", "86box"):
+    for name in ("gog", "dosbox-x", "86box", "save"):
         ap.add_argument("--no-" + name, action="store_true")
     a = ap.parse_args()
     a.out.mkdir(parents=True, exist_ok=True)
@@ -88,6 +89,14 @@ def main():
         t.start()
         threads.append(t)
 
+    def save_check(extra, log, label):
+        """A scripted START session's saved ROSTER.FIL against ours (save_parity.py)."""
+        rc = run([PY, str(HERE / "save_parity.py"), "--data", a.data, "--dosbox-x", str(a.dosbox_x)] + extra, log)
+        line = [l for l in Path(log).read_text(errors="replace").splitlines() if l.startswith("save ")]
+        return dict(rc=rc, line=line[-1] if line else "save %-10s %-8s ERROR see %s" % ("ROSTER.FIL", label, log))
+
+    if not a.no_dosbox_x and not a.no_save:
+        job("save-dbx", lambda: save_check(["--no-86box", "--out", str(a.out / "save-dosbox-x")], a.out / "dosbox-x-save.log", "DOSBox-X"))
     if not a.no_dosbox_x:
         job("dosbox-x", lambda: video_compare(a, a.out / "dosbox-x.log", ["--dosbox", str(a.dosbox_x)]))
     if not a.no_gog:
@@ -100,7 +109,10 @@ def main():
             # sequential: both runs start (and stop) the one headless 86Box
             src = run([PY, str(HERE / "ref86box" / "sound86.py"), str(a.out / "86box-sound")],
                       a.out / "86box-sound-run.log")
-            return dict(rc=rc, cap=str(cap), sound_rc=src, opl=str(a.out / "86box-sound" / "opl86.log"))
+            save = None
+            if not a.no_save:
+                save = save_check(["--no-dosbox-x", "--out", str(a.out / "save-86box")], a.out / "86box-save.log", "86Box")
+            return dict(rc=rc, cap=str(cap), sound_rc=src, opl=str(a.out / "86box-sound" / "opl86.log"), save=save)
         job("86box", box)
     for t in threads:
         t.join()
@@ -167,6 +179,13 @@ def main():
             print("  " + (Path(slog).read_text(errors="replace").strip() or "sound 86box ERROR"))
             if src != 0:
                 failures.append("86box sound")
+    saves = [("save-dbx", results.get("save-dbx")), ("86box save", results.get("86box", {}).get("save"))]
+    for name, r in saves:
+        if not r:
+            continue
+        print("  " + (r.get("line") or r.get("error", "save ERROR")))
+        if r.get("rc") != 0:
+            failures.append(name)
     print("RESULT:", "all checks passed" if not failures else "FAILED: " + ", ".join(failures))
     (a.out / "summary.json").write_text(json.dumps(
         {k: {kk: vv for kk, vv in v.items() if kk != "text"} for k, v in results.items()}, indent=1))

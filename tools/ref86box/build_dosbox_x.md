@@ -3,10 +3,16 @@
 DOSBox-X can run with no window and no sound (`-silent`) and type into the
 guest by itself (`AUTOTYPE`), but its video capture only starts from a host
 hotkey, and posted key messages do not reach it (it ignores input while the
-window is not focused, even on a hidden desktop). The one-line patch in
-`dosbox-x-auto-video.patch` starts AVI capture at initialisation when the
-environment variable `DBX_AUTO_VIDEO` is set, so a run is fully hands-off and
-the capture begins on the first rendered frame every time.
+window is not focused, even on a hidden desktop). `dosbox-x-auto-video.patch`
+fixes both: it starts AVI capture at initialisation when `DBX_AUTO_VIDEO` is
+set (the capture begins on the first rendered frame every time), and it
+schedules scripted input in emulated time: `DBX_AUTO_INPUT="ms|k|a;ms|c|x,y;..."`
+(keys, mouse moves and clicks in 320x200 guest pixels) starts when DOS first
+executes the program named in `DBX_AUTO_INPUT_AT`, so no host input is
+involved (`tools/save_parity.py` builds the string from a route file;
+`DBX_AUTO_LOG=FILE` logs each event). The pointer is set directly
+(`Mouse_AutoPosition`): DOSBox-X's own absolute move goes through the host
+pointer and is ignored in a window.
 
 ## Build (about 15 minutes after the downloads; MSYS2 as in build_86box.md)
 
@@ -17,7 +23,10 @@ the capture begins on the first rendered frame every time.
    dosbox-x-auto-video.patch`.
 3. In an MSYS2 UCRT64 shell in the checkout: `./build-mingw` (it builds its
    own SDL1; the result is a static `src/dosbox-x.exe`, no DLLs needed).
-   After a source change only `make -j10` in `src/` is needed.
+   After a source change only `make -j10` in `src/` is needed, run from
+   `bash -lc` with `MSYSTEM=UCRT64` and `TEMP` pointing at a writable folder
+   (plain `make` from another shell fails with "Cannot create temporary file
+   in C:\Windows").
 
 ## Use
 
@@ -28,6 +37,13 @@ answered by AUTOTYPE) and compares its pictures with this machine's, as for
 GOG's DOSBox. DOSBox-X records mode 13h at 640x400, each pixel doubled; the
 tool reads it back to 320x200 and reports the few frames where a palette
 write landed between the two scanlines of a pair.
+
+`py tools/save_parity.py --data GOG_DIR --no-86box` plays a route's START
+inputs here and on this machine and compares the saved `ROSTER.FIL` byte for
+byte (identical, 6 Oct 2026). The music is judged from the capture's audio by
+`tools/sound_parity.py`: envelope 0.90-0.92, spectral 0.947; DOSBox-X plays it
+at 0.74 of the level GOG's DOSBox and this machine produce (its mixer), which
+is reported, not judged.
 
 **Never run a GUI build over GOG's `dosboxF117A.conf` without `fullscreen=false`
 in a layer after it; that file asks for fullscreen.**

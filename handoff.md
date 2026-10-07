@@ -65,9 +65,12 @@ date; `git log -p handoff.md` has them.
 - **PC parity against other machines**: `py tools/pc_parity.py --data
   D:/GOG/F-117A` runs the intro on GOG's DOSBox (saved capture), DOSBox-X
   (patched build, headless) and 86Box (VNC build, headless) at once and checks
-  each against measured limits. Details and builds: `tools/ref86box/`
-  (`build_86box.md`, `build_dosbox_x.md`). Other references: `tools/fidelity.py`
-  (machine probes), `tools/dosbox_compare.py` (OPL), `tools/video_compare.py`.
+  each against measured limits: pictures, the intro's music, and a scripted
+  START session's saved roster (DOSBox-X and 86Box). `py tools/fidelity_all.py
+  --data D:/GOG/F-117A` holds the machine probe to `tools/fidelity_baseline.json`.
+  Details and builds: `tools/ref86box/` (`build_86box.md`, `build_dosbox_x.md`).
+  Other references: `tools/fidelity.py`, `tools/dosbox_compare.py` (OPL),
+  `tools/video_compare.py`.
 - Routes: `tools/routes/*.args` with a README; `py tools/run_route.py ROUTE
   --data DIR` is only the weak milestone check, so also run the route's strong
   observer (`strike_pilot`, `recon_pilot`, `cargo_check`, `airstrip_check`,
@@ -103,13 +106,13 @@ date; `git log -p handoff.md` has them.
 
 ## Open items, in order
 
-1. Make `pc_parity.py` the routine PC-parity check: confirm its thresholds on a
-   clean run and add it to the documented checks (it was just written).
+1. Keep `pc_parity.py` and `fidelity_all.py` in the routine checks; extend the
+   saved-data check beyond the roster (a career) and to flight.
 2. Interpreter-result cache in the gate (key excludes `matched.c`), then
    fast-forward and parallel reference runs (`docs/repeated-processes.md`).
 3. 86Box: a faster board (386/486 ROMs are in the 86Box roms repo; each needs
-   its own CMOS image), a mouse (needs a DOS mouse driver such as CTMOUSE on
-   the disk), then START and flight under script.
+   its own CMOS image) so frame timing and the music's pitch-bend channels can
+   be compared, then flight under script (the mouse and START already are).
 4. Roadmap Phase 1 leftovers: picture residuals, Munt listening checks,
    sound parity, DOSBox-specific timing details, a closed-loop cargo pilot for
    independent delivery, an earned rank-6 career.

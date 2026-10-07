@@ -1,3 +1,97 @@
+diff --git a/src/dos/dos_execute.cpp b/src/dos/dos_execute.cpp
+index 6ba9ffa..fc2aca0 100644
+--- a/src/dos/dos_execute.cpp
++++ b/src/dos/dos_execute.cpp
+@@ -289,6 +289,81 @@ static void SetupCMDLine(uint16_t pspseg, const DOS_ParamBlock& block) {
+ 	psp.SetCommandTail(block.exec.cmdtail);
+ }
+ 
++/* PC-parity harness (tools/ref86box/dosbox-x-auto-video.patch): DBX_AUTO_INPUT holds
++ * "ms|kind|arg;..." and DBX_AUTO_INPUT_AT names a program; when DOS executes it the events are
++ * scheduled in emulated time from that moment. kind k taps a key (arg: one character, or enter,
++ * bs, esc, space; capitals use shift), m moves the mouse to guest pixel x,y (320x200), c moves
++ * and clicks the left button. No host input device is involved. */
++#include "pic.h"
++#include "mouse.h"
++void Mouse_AutoPosition(float fx, float fy);
++#include "keyboard.h"
++#include <vector>
++namespace {
++struct AutoEv { int kind; int a, b; bool down; };
++std::vector<AutoEv> auto_evs;
++bool auto_armed = true;
++void auto_key(int a, bool down) { KEYBOARD_AddKey((KBD_KEYS)a, down); }
++void AutoHandler(Bitu i) {
++	AutoEv &e = auto_evs[i];
++	if (getenv("DBX_AUTO_LOG")) { FILE *f = fopen(getenv("DBX_AUTO_LOG"), "a"); if (f) { fprintf(f, "%.1f event %c %d %d %d\n", PIC_FullIndex(), e.kind, e.a, e.b, (int)e.down); fclose(f); } }
++	if (e.kind == 'k') auto_key(e.a, e.down);
++	else if (e.kind == 'm') Mouse_AutoPosition((e.a + 0.5f) / 320.0f, (e.b + 0.5f) / 200.0f);
++	else if (e.kind == 'b') { if (e.down) Mouse_ButtonPressed(0); else Mouse_ButtonReleased(0); }
++}
++int auto_keycode(const std::string &n, bool &shift) {
++	shift = false;
++	if (n == "enter") return KBD_enter;
++	if (n == "bs") return KBD_backspace;
++	if (n == "esc") return KBD_esc;
++	if (n == "space") return KBD_space;
++	if (n.size() != 1) return 0;
++	char c = n[0];
++	if (c >= 'A' && c <= 'Z') { shift = true; c = (char)(c - 'A' + 'a'); }
++	static const char *letters = "qwertyuiopasdfghjklzxcvbnm";
++	for (int k = 0; letters[k]; k++) if (letters[k] == c) return KBD_q + k;
++	if (c >= '1' && c <= '9') return KBD_1 + (c - '1');
++	if (c == '0') return KBD_0;
++	return 0;
++}
++void auto_schedule(const char *name) {
++	if (getenv("DBX_AUTO_LOG")) { FILE *f = fopen(getenv("DBX_AUTO_LOG"), "a"); if (f) { fprintf(f, "%.1f exec %s\n", PIC_FullIndex(), name); fclose(f); } }
++	const char *spec = getenv("DBX_AUTO_INPUT"), *at = getenv("DBX_AUTO_INPUT_AT");
++	if (!auto_armed || !spec || !at) return;
++	std::string prog(name), want(at);
++	for (auto &ch : prog) ch = (char)toupper((unsigned char)ch);
++	for (auto &ch : want) ch = (char)toupper((unsigned char)ch);
++	if (prog.find(want) == std::string::npos) return;
++	auto_armed = false;
++	auto add = [&](double ms, AutoEv e) { auto_evs.push_back(e); PIC_AddEvent(AutoHandler, (pic_tickindex_t)ms, auto_evs.size() - 1); };
++	std::string s(spec);
++	size_t pos = 0;
++	while (pos < s.size()) {
++		size_t end = s.find(';', pos);
++		if (end == std::string::npos) end = s.size();
++		std::string item = s.substr(pos, end - pos);
++		pos = end + 1;
++		size_t p1 = item.find('|'), p2 = item.find('|', p1 + 1);
++		if (p1 == std::string::npos || p2 == std::string::npos) continue;
++		double ms = atof(item.substr(0, p1).c_str());
++		char kind = item[p1 + 1];
++		std::string arg = item.substr(p2 + 1);
++		if (kind == 'k') {
++			bool shift; int code = auto_keycode(arg, shift);
++			if (!code) continue;
++			if (shift) add(ms, {'k', KBD_leftshift, 0, true});
++			add(ms + 20, {'k', code, 0, true});
++			add(ms + 60, {'k', code, 0, false});
++			if (shift) add(ms + 80, {'k', KBD_leftshift, 0, false});
++		} else if (kind == 'm' || kind == 'c') {
++			int x = atoi(arg.c_str()), y = atoi(arg.substr(arg.find(',') + 1).c_str());
++			add(ms, {'m', x, y, false});
++			if (kind == 'c') { add(ms + 40, {'b', 0, 0, true}); add(ms + 160, {'b', 0, 0, false}); }
++		}
++	}
++}
++}
++
+ /* FIXME: This code (or the shell perhaps) isn't very good at returning or
+  *        printing an error message when it is unable to load and run an
+  *        executable for whatever reason. Worst offense is that if it can't
+@@ -297,6 +372,7 @@ static void SetupCMDLine(uint16_t pspseg, const DOS_ParamBlock& block) {
+  *        an error code so that the INT 21h EXEC call can print an informative
+  *        error message! --J.C. */
+ bool DOS_Execute(const char* name, PhysPt block_pt, uint16_t flags) {
++	auto_schedule(name);
+ 	EXE_Header head;Bitu i;
+ 	uint16_t fhandle;uint16_t len;uint32_t pos;
+ 	uint16_t pspseg;
 diff --git a/src/hardware/hardware.cpp b/src/hardware/hardware.cpp
 index 70e1d4a..96c97ad 100644
 --- a/src/hardware/hardware.cpp
@@ -12,3 +106,20 @@ index 70e1d4a..96c97ad 100644
  
  #if !defined(C_EMSCRIPTEN)
  	// mapper shortcuts for capture
+diff --git a/src/ints/mouse.cpp b/src/ints/mouse.cpp
+index 84ada2d..d7ac036 100644
+--- a/src/ints/mouse.cpp
++++ b/src/ints/mouse.cpp
+@@ -1214,6 +1214,12 @@ void Mouse_Select(int x1, int y1, int x2, int y2, int w, int h, bool select) {
+ }
+ #endif
+ 
++/* PC-parity harness: put the INT 33h pointer at a fraction of the screen, no host pointer involved. */
++void Mouse_AutoPosition(float fx, float fy) {
++	mouse.x = fx * mouse.max_x;
++	mouse.y = fy * mouse.max_y;
++}
++
+ void Mouse_ButtonPressed(uint8_t button) {
+     if (!IS_PC98_ARCH && KEYBOARD_AUX_Active()) {
+         switch (button) {

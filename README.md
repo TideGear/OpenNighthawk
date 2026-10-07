@@ -96,8 +96,8 @@ options. Enhancements come after parity, never instead of it.
   investigation; the apparent roster cursor changes were screenshot aliasing.
 - **Two more reference machines, headless:** `tools/pc_parity.py` plays the
   intro on GOG's DOSBox (a saved capture), on DOSBox-X and on 86Box at once,
-  with no window and no sound, and checks the pictures against measured
-  limits: DOSBox-X matches 1,237 exact pictures in order (timing within
+  with no window and no sound, and checks the pictures, the music and a
+  scripted pilot-roster session's saved file against measured limits: DOSBox-X matches 1,237 exact pictures in order (timing within
   about 0.2 s); 86Box, a real-hardware-style emulator, shows the same scenes
   in the same order and with the same colours (its VM is a 6 MHz 286, so
   its timing is not comparable yet). Builds and notes: `tools/ref86box/`.
@@ -315,7 +315,8 @@ py tools\mutation_check.py --data "C:\GOG Games\F-117A" --random 8
 The machine model itself is checked against other PCs with
 `py tools\pc_parity.py --data "C:\GOG Games\F-117A"`, which plays the intro on
 GOG's DOSBox (a saved capture), DOSBox-X and 86Box, headless, and compares
-the pictures. DOSBox-X and 86Box are built from source for it; the steps are in
+the pictures, the music and a saved roster; `tools\fidelity_all.py` does the
+same for the machine-behaviour probe. DOSBox-X and 86Box are built from source for it; the steps are in
 [tools/ref86box/build_dosbox_x.md](tools/ref86box/build_dosbox_x.md) and
 [tools/ref86box/build_86box.md](tools/ref86box/build_86box.md). Every process the
 project repeats, and what it costs, is listed in

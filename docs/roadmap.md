@@ -56,7 +56,12 @@ instead of parity.
   source build that starts its own capture and runs windowless) matches 1,237
   exact pictures in order, drift up to 0.2 s; 86Box (a source build with its VNC
   renderer, windowless and silent) shows the same scenes, order and colours,
-  its VM being a 6 MHz 286. Builds and notes: `tools/ref86box/`.
+  its VM being a 6 MHz 286. The same run checks the music (GOG envelope 0.963,
+  spectral 0.992, level 1.005; DOSBox-X 0.90-0.92 and 0.947, its mixer 0.74 of
+  the level; 86Box: identical first 2,000 AdLib writes and notes on four of
+  six channels) and a scripted START session's saved roster (byte-identical on
+  DOSBox-X and 86Box); `tools/fidelity_all.py` holds the machine probe to
+  stored baselines. Builds and notes: `tools/ref86box/`.
 - **Independent GOG DOSBox flights.** Reconnaissance with both photos and the
   raised-deck return completes on GOG's DOSBox and passes the same strict
   gates. The supply mission is reproduced exactly on GOG's DOSBox (its autoexec
@@ -77,14 +82,16 @@ instead of parity.
       settle it.
 - [ ] **A person playing it:** controls, joystick and mouse, saves, the feel.
       Sessions already record themselves for replay.
-- [ ] **86Box and DOSBox-X as routine checks.** Make `tools/pc_parity.py` the
-      routine PC-parity check (it passes today against limits measured on
-      6 Oct 2026); give 86Box a faster board (the 386/486 ROMs are in 86Box's
-      roms repository, each needing its own CMOS image) and a mouse (a DOS mouse
-      driver on the disk) so START and flight can be scripted and frame timing
-      compared; then decide whether DOSBox-X plus 86Box replace GOG's DOSBox for
-      routine checks (the saved GOG capture stays as a frozen regression
-      reference). Parity target: the original on real hardware, not DOSBox.
+- [ ] **86Box and DOSBox-X as routine checks.** `tools/pc_parity.py` is the
+      routine PC-parity check (pictures, music and saved data, against limits
+      measured on 6 Oct 2026) and `tools/fidelity_all.py` the machine probe.
+      Open: give 86Box a faster board (the 386/486 ROMs are in 86Box's roms
+      repository, each needing its own CMOS image) so frame timing and the
+      pitch-bend channels can be compared; script flight and more saved data
+      (a career) on both; then decide whether DOSBox-X plus 86Box replace GOG's
+      DOSBox for routine checks (the saved GOG capture stays as a frozen
+      regression reference). Parity target: the original on real hardware, not
+      DOSBox.
 - [ ] **Roland through Munt** (libmt32emu): the MT-32 music plays in the game
       and renders offline from a MIDI log; the interpreter's and recompiler's
       MIDI logs are byte-identical and offline renders are repeatable. Live

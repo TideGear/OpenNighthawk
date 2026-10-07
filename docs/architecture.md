@@ -346,8 +346,17 @@ current as of the last gate (see [../handoff.md](../handoff.md)).
    GOG's DOSBox (a saved lossless capture), on DOSBox-X (a patched source
    build that starts its own capture and runs with no window) and on 86Box
    (a source build with its VNC renderer, windowless and silent), and checks
-   the pictures against limits measured on 6 October 2026. Builds and notes:
-   `tools/ref86box/`. Pictures are compared exactly as RGB, collapsing
+   the pictures against limits measured on 6 October 2026. The same run
+   judges the intro's music (GOG's and DOSBox-X's captured audio against the
+   application's own render of this machine's AdLib log, `tools/sound_parity.py`;
+   86Box's AdLib writes in emulated time, `tools/ref86box/compare_opl86.py`) and
+   a scripted START session's saved `ROSTER.FIL` byte for byte on DOSBox-X and
+   86Box (`tools/save_parity.py`). The machine-behaviour probe
+   (`tools/fidelity_all.py`, about 1,200 answers) is held to stored baselines
+   of known differences in `tools/fidelity_baseline.json`: none for GOG's
+   DOSBox, 220 for DOSBox-X (mostly its DOS memory layout), 351 for 86Box
+   (FreeDOS, the AMI BIOS, VGA register details, a 286's speed); a new
+   difference fails. Builds and notes: `tools/ref86box/`. Pictures are compared exactly as RGB, collapsing
    identical consecutive pictures and aligning them in order; unmatched
    pictures are reported, never hidden by a tolerance. Results:
    - GOG DOSBox: 1,329 exact pictures in order; three one-sample logo
