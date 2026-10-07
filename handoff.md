@@ -69,12 +69,20 @@ date; `git log -p handoff.md` has them.
 - **PC parity against other machines**: `py tools/pc_parity.py --data
   D:/GOG/F-117A` runs the intro on GOG's DOSBox (saved capture), DOSBox-X
   (patched build, headless) and 86Box (VNC build, headless) at once and checks
-  each against measured limits: pictures, the intro's music, and a scripted
-  START session's saved roster (DOSBox-X and 86Box). `py tools/fidelity_all.py
-  --data D:/GOG/F-117A` holds the machine probe to `tools/fidelity_baseline.json`.
+  each against measured limits (about 5 minutes): pictures, the intro's music
+  (GOG's audio and its raw OPL capture write for write, 86Box's AdLib writes),
+  scene timing on 86Box, and a scripted START session's saved roster
+  (`tools/save_parity.py`, DOSBox-X and 86Box). `py tools/fidelity_all.py
+  --data D:/GOG/F-117A` holds the machine probe to `tools/fidelity_baseline.json`
+  (behaviour only; `tools/port_reads.py` says which ports the game reads, so
+  which reference differences it can see). 86Box runs as a 386DX/33 profile
+  (`tools/ref86box/make_profile386.py`; `instr86.py` counts its instructions).
   Details and builds: `tools/ref86box/` (`build_86box.md`, `build_dosbox_x.md`).
-  Other references: `tools/fidelity.py`, `tools/dosbox_compare.py` (OPL),
-  `tools/video_compare.py`.
+  Other references: `tools/fidelity.py`, `tools/dosbox_compare.py` (OPL; this
+  machine started 275 ms in, `f117run --boot-ms 275`), `tools/video_compare.py`,
+  `tools/sound_parity.py`. Needs `D:117-gate\ctm\CTMOUSE.EXE` (CuteMouse,
+  not in the repository) for the 86Box save check and GOG's raw OPL capture
+  under `~/f117-recomp-local/video/gog-music/`.
 - Routes: `tools/routes/*.args` with a README; `py tools/run_route.py ROUTE
   --data DIR` is only the weak milestone check, so also run the route's strong
   observer (`strike_pilot`, `recon_pilot`, `cargo_check`, `airstrip_check`,
