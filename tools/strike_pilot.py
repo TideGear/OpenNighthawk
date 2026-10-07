@@ -16,6 +16,7 @@ from recon_pilot import recon_state, control as navigate
 from run_route import route_args
 from landing_pilot import control as land, landing_errors, signed
 import math
+import re
 
 
 def strike_state(machine):
@@ -102,8 +103,10 @@ def main():
     replay, replay_pos = [], 0
     if args.replay:
         lines = Path(args.replay).read_text().splitlines()
-        if not lines or lines[0] != "# f117r-input ips=9000000 time_us=700000000000000":
-            raise ValueError("replay requires the route's fixed speed and boot time")
+        header = re.match(r"# f117r-input ips=9000000 time_us=(\d+)$", lines[0]) if lines else None
+        if not header:
+            raise ValueError("replay requires the route's fixed speed and a recorded boot time")
+        args.time_us = int(header[1])                  # the recording's own start clock
         for line in lines[1:]:
             parts = line.split()
             if not parts or parts[0].startswith("#"): continue

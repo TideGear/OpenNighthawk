@@ -1,0 +1,13 @@
+# Normal controls: Central America / Cold War / Ground Strike Training, started at a clock that makes it a
+# ground strike (objective type 2, target 1); the laser-guided bomb is released once designated and within
+# 120 map units, inside the narrow window its fixed 11.25-degree dive allows (docs/bugs.md D7 and D8).
+# Stops airborne after target damage and objective credit; no return claim.
+# strike_pilot.py --replay strike_training.input verifies hit/release events and stores.
+# expect-world CU
+# expect-open ordnance.pic VGAME.EXE 1
+--replay
+strike_training.input
+--steps
+6660000000
+--time-us
+700000005000000

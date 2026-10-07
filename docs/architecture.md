@@ -427,7 +427,7 @@ route has a strong observer that checks what the milestones cannot:
 |---|---|---|
 | landing | `landing_pilot.py` | ground contact inside the home approach box, stop at idle, gear and brakes, the original countdown, parent flight block result 0 / status 3 |
 | recon, recon_return, recon_career | `recon_pilot.py`, `career_check.py` | exposure count and photo-credit events, intact targets, camera retained, both photos for the return, the saved ribbon bytes |
-| strike, strike_return | `strike_pilot.py` | weapon release, matching hit, credit, landing at home |
+| strike, strike_return, strike_training | `strike_pilot.py` | weapon release, matching hit, credit, landing at home |
 | cargo, cargo_d5_fixed, cargo_return | `cargo_check.py` | the released crate's ground impact and delivery area; no credit without `--fix D5`, credit with it |
 | secret_airstrip(_return) | `airstrip_check.py` | strip approach box, 8Bh event, store consumption, return leg |
 | airair_type5-8 | `airair_pilot.py` | kill of the special aircraft, primary event and credit, consumed stores, landing |

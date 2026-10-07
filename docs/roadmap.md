@@ -20,7 +20,7 @@ make (Phase 4).
   instruction starts, 96% of the code-area bytes (the rest is strings, tables
   and variables; `tools/census.py`). No game instruction is interpreted on the
   routes.
-- **Engine parity.** 32 scripted routes are identical between the interpreter
+- **Engine parity.** 33 scripted routes are identical between the interpreter
   and the recompiled code at every 50-million-clock checkpoint and at the end;
   every translated instruction is held to the interpreter from random states
   (5,713,472 comparisons, 0 differences); the interpreter and the translator are

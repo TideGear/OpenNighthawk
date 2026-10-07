@@ -61,7 +61,7 @@ date; `git log -p handoff.md` has them.
   minutes after a `matched.c`-only change, 17 from a fresh directory (23 before
   7 Oct; verdicts identical). Read the tally, not the exit code: every route `IDENTICAL`,
   instruction lockstep 0 mismatching, matched lockstep 0 mismatching. Last
-  green: 32 routes identical, 5,713,472 instruction states, 248 matched
+  green: 33 routes identical, 5,713,472 instruction states, 248 matched
   routines (806,801 states). Interpreter results are cached across gates
   (`--interp-cache`, default `~/f117-recomp-local/interp-cache`; the key ignores
   `src/matched/matched.c`), cutting parity from about 9 to 3 minutes when only
@@ -100,7 +100,7 @@ date; `git log -p handoff.md` has them.
 ## Current state
 
 - Phase 1 (recompiled, 1:1): translation, both engines and the gate are
-  green; 32 routes. All eight primary objective types have gate-replayed
+  green; 33 routes. All eight primary objective types have gate-replayed
   routes (recon, strike, cargo/D5, airstrip, air-to-air 5-8, each with a
   return leg for types 1-4). Rank-3 career paired through retirement; the
   rank-6 "General, At Last!" branch is reached with a staged roster
