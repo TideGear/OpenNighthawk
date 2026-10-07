@@ -3269,6 +3269,44 @@ static int start_set_pointer(machine_t *m)
     return 1;
 }
 
+/* The C runtime's stack check (START 0x0A4C6, END 0x05B4E; VGAME's copy at
+ * 0x0F8F0 is never run by any route, so it is left to the original): AX
+ * bytes are taken off the stack unless that would wrap or pass the limit
+ * word at `limit`, in which case the caller's return address is put back, AX
+ * is 0 and the overflow handler at `overflow` runs. The caller's address
+ * comes off the stack first and is jumped to (JMP CX), so the stack does not
+ * come back to where it was. */
+static int rt_stack_check(machine_t *m, uint16_t limit, uint16_t overflow)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 9)) return 0;
+    const uint16_t cx = cpu_pop16(c);
+    c->r[R_CX] = cx;
+    uint16_t bx = c->r[R_SP];
+    bx = (uint16_t)alu_sub(c, bx, c->r[R_AX], 1, 0);
+    c->r[R_BX] = bx;
+    unsigned n = 4;                                               /* pop, mov, sub, jb */
+    int over = (c->flags & F_CF) != 0;
+    if (!over) {
+        alu_sub(c, bx, ds_get(c, limit), 1, 0);
+        n += 2;                                                   /* cmp, jb */
+        over = (c->flags & F_CF) != 0;
+    }
+    if (over) {
+        cpu_push16(c, cx);
+        c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);               /* xor ax, ax */
+        c->ip = overflow;
+        c->icount += n + 3;
+    } else {
+        c->r[R_SP] = bx;
+        c->ip = cx;
+        c->icount += n + 2;                                       /* mov sp, bx; jmp cx */
+    }
+    return 1;
+}
+static int start_stack_check(machine_t *m) { return rt_stack_check(m, 0xB154, 0x8FA4); }
+static int end_stack_check(machine_t *m) { return rt_stack_check(m, 0x531E, 0x4E9A); }
+
 /* START 0x096CE, mission_rand(): the 32-bit generator at [AE8C] steps as
  * seed * 343FDh + 269EC3h (by the 32-bit multiply at 0x0978E) and the answer
  * is its high word's low 15 bits; DX is left as the whole high word. */
@@ -6182,6 +6220,8 @@ static const recomp_override MATCHED[] = {
     { "matched", "START.EXE", START_47304, 0x0000, 0x3088, start_fade_b, "start a fade, second form", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x3E5E, start_flag_call, "call on a flag", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x3E84, start_set_pointer, "store the pointer position", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0xA4C6, start_stack_check, "stack check", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x5B4E, end_stack_check, "stack check", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x1452, 0x0316, vgame_camera_matrix_copy, "copy a 3x3 camera matrix", 2 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x1452, 0x02E4, vgame_camera_matrix_transpose, "transpose a 3x3 camera matrix", 2 },
 };
