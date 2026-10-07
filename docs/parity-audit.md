@@ -1,5 +1,9 @@
 # Parity audit, 4 October 2026
 
+*A dated snapshot. Later figures (32 routes, 231 matched routines, the DOSBox-X
+and 86Box checks) are in [roadmap.md](roadmap.md) and [../handoff.md](../handoff.md);
+this page is kept for the findings and the reasoning.*
+
 The interpreter and recompiler share the CPU semantics and PC model. Equal
 machine hashes establish agreement between those engines; the DOSBox checks
 below independently test parts of that shared model. A completed route is

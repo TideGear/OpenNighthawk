@@ -12,7 +12,16 @@ never instead of parity.
 
 ### Done
 
-- [Parity audit](parity-audit.md): sixteen routes and the full instruction
+- **Other machines as references (6 Oct):** DOSBox-X (patched build, `-silent`,
+  capture starts itself, `AUTOTYPE` for SETUP) and 86Box (v6.0 built with its
+  VNC renderer: windowless, silent, scriptable) both run the original headless;
+  `tools/pc_parity.py` plays the intro on GOG's DOSBox (saved capture), DOSBox-X
+  and 86Box at once and checks the pictures against measured limits (DOSBox-X:
+  1,237 exact pictures in order, drift up to 0.2 s; 86Box: same scenes, order
+  and colours). Open: a faster 86Box board and a mouse so START and flight
+  can be scripted, and frame-exact timing there. Builds: `tools/ref86box/`.
+- [Parity audit](parity-audit.md) (a 4 October snapshot; the gate now runs 32
+  routes): sixteen routes and the full instruction
   lockstep pass again; independent DOSBox roster saves match all 802 bytes.
   Overlapping input, extended keys and emulated joystick extremes pass.
   Host stall pacing and the missing 2x AdLib mixer gain were found and fixed.
@@ -27,7 +36,7 @@ never instead of parity.
 - Every translated instruction held to the interpreter from random states
   (`tests/insn_lockstep.c`, 5.7 million comparisons, 0 differences); the
   translator held to 8088 and 80286 silicon vectors.
-- Twenty-four scripted routes identical between the interpreter and the recompiled
+- Thirty-two scripted routes identical between the interpreter and the recompiled
   code: boot to flight; a full sortie through the debriefing; the speaker
   and Roland drivers; eight transfer-and-flight routes covering all nine
   theatres, three tensions and four mission categories. The routes execute

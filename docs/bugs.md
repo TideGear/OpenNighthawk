@@ -9,8 +9,8 @@ recompiled code is the original's machine code translated instruction for
 instruction, so it does what the original did, defects included. That is
 what 1:1 parity means. Fixes are switchable patches layered on top (see
 [How a fix will attach](#how-a-fix-will-attach)), each off unless named with
-`--fix ID`, and parity stays the default reference. The first, D5, exists;
-`--list-fixes` prints what is available.
+`--fix ID`, and parity stays the default reference. D1, D2, D4, D5, D11, D12
+and D34 have fixes; `--list-fixes` prints what is available.
 
 Most entries were established by the F-117A Reimp project. They are restated
 here with the Reimp's evidence; the detail lives in its

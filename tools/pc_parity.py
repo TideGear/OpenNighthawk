@@ -1,0 +1,152 @@
+#!/usr/bin/env python3
+"""pc_parity.py - this machine's PC model held to three reference machines.
+
+    py tools/pc_parity.py --data GOG_DIR --dosbox-x PATH\\dosbox-x.exe [--seconds 130]
+                          [--gog-reference RUN_DIR] [--no-86box] [--no-dosbox-x] [--no-gog]
+
+The model (interpreter and recompiled code run on the same PC) cannot show an
+error in itself, so it is checked against machines it did not come from. The
+intro is played on each and its pictures compared with this machine's:
+
+  GOG DOSBox 0.74   the saved ZMBV capture (--gog-reference, default the
+                    reference run recorded 5 Oct); no DOSBox is started.
+  DOSBox-X          the patched build (tools/ref86box/build_dosbox_x.md),
+                    run headless; video_compare.py reads its capture.
+  86Box             the VNC build (tools/ref86box/build_86box.md), headless;
+                    capture_intro.py and compare_intro.py.
+
+The three run at once (none shows a window or makes a sound). Each verdict is
+against the figures measured on 6 Oct 2026, so a change that makes this machine
+drift from a reference fails here; the thresholds are at the top of the file
+and say what was measured. Exit status is 0 when every enabled check passes.
+"""
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+import threading
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+PY = sys.executable
+DEFAULT_GOG_REFERENCE = Path.home() / "f117-recomp-local" / "video" / "intro-qlh_wi26"
+
+# Measured 6 Oct 2026 (see docs/repeated-processes.md and build_dosbox_x.md).
+LIMITS = {
+    # exact pictures in order; unmatched pictures lasting more than one sample;
+    # largest timing drift in ms
+    "gog": dict(min_exact=1300, max_multi_unmatched=0, max_drift_ms=100),   # measured 1329, 0, 57 ms
+    "dosbox-x": dict(min_exact=1200, max_multi_unmatched=3, max_drift_ms=350),   # measured 1237, 3, 157-200 ms (real-time capture varies)
+    # 86Box: graphics pictures with no counterpart (of ~105); order must hold
+    "86box": dict(max_unmatched=2),
+}
+
+
+def run(cmd, log):
+    with open(log, "w") as f:
+        return subprocess.run(cmd, stdout=f, stderr=subprocess.STDOUT, text=True).returncode
+
+
+def video_compare(args, log, extra):
+    rc = run([PY, str(HERE / "video_compare.py"), "--data", args.data, "--seconds", str(args.seconds),
+              "--work-dir", str(args.out / "video")] + extra, log)
+    text = Path(log).read_text(errors="replace")
+    art = re.search(r"Artifacts: (.+)", text)
+    exact = re.search(r"(\d+) exact RGB pictures", text)
+    multi = re.search(r"unmatched lasting multiple samples: DOSBox (\d+), here (\d+)", text)
+    drift = re.search(r"timing drift \(ms\): min ([-+\d.]+), max ([-+\d.]+), end ([-+\d.]+)", text)
+    return dict(rc=rc, run=art and art.group(1).strip(),
+                exact=int(exact[1]) if exact else 0,
+                multi=(int(multi[1]) + int(multi[2])) if multi else 99,
+                drift=max(abs(float(drift[1])), abs(float(drift[2]))) if drift else 1e9, text=text)
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--data", required=True)
+    ap.add_argument("--dosbox-x", type=Path, default=Path(r"D:\86box-src\dbx-src\src\dosbox-x.exe"))
+    ap.add_argument("--seconds", type=int, default=130)
+    ap.add_argument("--gog-reference", type=Path, default=DEFAULT_GOG_REFERENCE)
+    ap.add_argument("--out", type=Path, default=Path.home() / "f117-recomp-local" / "pc-parity")
+    for name in ("gog", "dosbox-x", "86box"):
+        ap.add_argument("--no-" + name, action="store_true")
+    a = ap.parse_args()
+    a.out.mkdir(parents=True, exist_ok=True)
+    results, threads = {}, []
+
+    def job(name, fn):
+        def go():
+            try:
+                results[name] = fn()
+            except Exception as e:                                  # a failed reference is a failed check
+                results[name] = dict(error=str(e))
+        t = threading.Thread(target=go)
+        t.start()
+        threads.append(t)
+
+    if not a.no_dosbox_x:
+        job("dosbox-x", lambda: video_compare(a, a.out / "dosbox-x.log", ["--dosbox", str(a.dosbox_x)]))
+    if not a.no_gog:
+        job("gog", lambda: video_compare(a, a.out / "gog.log", ["--against", str(a.gog_reference)]))
+    if not a.no_86box:
+        def box():
+            cap = a.out / "86box"
+            rc = run([PY, str(HERE / "ref86box" / "capture_intro.py"), str(cap), "--seconds", str(a.seconds)],
+                     a.out / "86box-capture.log")
+            return dict(rc=rc, cap=str(cap))
+        job("86box", box)
+    for t in threads:
+        t.join()
+
+    failures = []
+    print("PC parity, intro, %d s" % a.seconds)
+    for name in ("gog", "dosbox-x"):
+        if name not in results:
+            continue
+        r, lim = results[name], LIMITS[name]
+        if "error" in r or r["rc"] not in (0, 1) or not r["run"]:
+            failures.append(name)
+            print("  %-9s ERROR %s" % (name, r.get("error", "no result; see %s" % (a.out / (name + ".log")))))
+            continue
+        # video_compare exits 1 whenever any picture is unmatched; the figures are the verdict.
+        ok = r["exact"] >= lim["min_exact"] and r["multi"] <= lim["max_multi_unmatched"] and r["drift"] <= lim["max_drift_ms"]
+        print("  %-9s %s  %d exact pictures (need %d), %d multi-sample unmatched (max %d), drift %.0f ms (max %d)" % (
+            name, "PASS" if ok else "FAIL", r["exact"], lim["min_exact"], r["multi"], lim["max_multi_unmatched"],
+            r["drift"], lim["max_drift_ms"]))
+        if not ok:
+            failures.append(name)
+    if "86box" in results:
+        r = results["86box"]
+        shots = None
+        if "dosbox-x" in results and results["dosbox-x"].get("run"):
+            shots = Path(results["dosbox-x"]["run"]) / "shots"
+        elif "gog" in results and results["gog"].get("run"):
+            shots = Path(results["gog"]["run"]) / "shots"
+        if "error" in r or r["rc"] != 0 or shots is None:
+            failures.append("86box")
+            print("  86box     ERROR capture or comparison pictures missing (%s)" % (r.get("error") or r.get("rc")))
+        else:
+            log = a.out / "86box-compare.log"
+            rc = run([PY, str(HERE / "ref86box" / "compare_intro.py"), r["cap"], str(shots)], log)
+            text = Path(log).read_text(errors="replace")
+            m = re.search(r"graphics pictures (\d+): exact (\d+), close (\d+), unmatched (\d+); backwards matches (\d+)", text)
+            if not m:
+                failures.append("86box")
+                print("  86box     ERROR no comparison result; see %s" % log)
+            else:
+                total, exact, close, unmatched, back = map(int, m.groups())
+                ok = unmatched <= LIMITS["86box"]["max_unmatched"] and back == 0
+                print("  86box     %s  %d pictures: %d exact, %d close, %d unmatched (max %d), %d out of order" % (
+                    "PASS" if ok else "FAIL", total, exact, close, unmatched, LIMITS["86box"]["max_unmatched"], back))
+                if not ok:
+                    failures.append("86box")
+    print("RESULT:", "all checks passed" if not failures else "FAILED: " + ", ".join(failures))
+    (a.out / "summary.json").write_text(json.dumps(
+        {k: {kk: vv for kk, vv in v.items() if kk != "text"} for k, v in results.items()}, indent=1))
+    return 1 if failures else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -49,19 +49,20 @@ options. Enhancements come after parity, never instead of it.
   work: AdLib (music and digitised speech through an OPL emulator), the PC
   speaker, and Roland (Munt synthesis with your MT-32 ROMs, or Windows
   MIDI; live synthesis tested, exact rendered parity still open).
-- **Translated:** 89,276 instructions across all 17 code files and the
+- **Translated:** 89,281 instructions across all 17 code files and the
   LZEXE decompressor: 96% of the bytes of the code areas, and no
   untranslated stretch left that decodes as code (`tools/census.py`; the
   rest is strings, tables and variables). On the scripted sessions no game
   instruction is interpreted; only the emulated BIOS's own stubs are.
-- **Parity, measured:** nineteen scripted sessions (boot to flight; a full
+- **Parity, measured:** thirty-two scripted sessions (boot to flight; a full
   sortie through the debriefing and back; boots under the speaker and Roland
   drivers, where the programs load at other addresses; transfer and flight
   routes across all nine theatres and all four mission categories; pilot
   creation, editing, erasure and saving; roster dialogs and direct maintenance;
   a destroyed ground-strike primary with consumed Mavericks and hit credit;
   a takeoff, return and landing at the home base; a credited reconnaissance
-  photograph)
+  photograph; every primary objective type, supply drops, secret airstrips,
+  air-to-air kills, and the career awards and retirement)
   end in
   identical state under the interpreter and the recompiled code - all of memory, the
   registers, and every byte sent to the sound card, the palette, MIDI and
@@ -93,9 +94,16 @@ options. Enhancements come after parity, never instead of it.
   28 shots remain unmatched,
   each lasting one sample. Scanout and transition timing remain under
   investigation; the apparent roster cursor changes were screenshot aliasing.
+- **Two more reference machines, headless:** `tools/pc_parity.py` plays the
+  intro on GOG's DOSBox (a saved capture), on DOSBox-X and on 86Box at once,
+  with no window and no sound, and checks the pictures against measured
+  limits: DOSBox-X matches 1,237 exact pictures in order (timing within
+  about 0.2 s); 86Box, a real-hardware-style emulator, shows the same scenes
+  in the same order and with the same colours (its VM is a 6 MHz 286, so
+  its timing is not comparable yet). Builds and notes: `tools/ref86box/`.
 - **Every translated instruction, not only the ones the sessions reach:**
   the sessions run about half the game's code (`tools/exercised.py`).
-  `tests/insn_lockstep.c` runs each of the 89,216 translated instructions
+  `tests/insn_lockstep.c` runs each of the 89,281 translated instruction starts
   from 64 random machine states through the generated code and the
   interpreter and compares everything it can change: 5.7 million
   comparisons, 0 differences.
@@ -303,6 +311,15 @@ py tools\build_recomp.py --data "C:\GOG Games\F-117A"
 rem Plant defects in the generated code and check the comparison sees them:
 py tools\mutation_check.py --data "C:\GOG Games\F-117A" --random 8
 ```
+
+The machine model itself is checked against other PCs with
+`py tools\pc_parity.py --data "C:\GOG Games\F-117A"`, which plays the intro on
+GOG's DOSBox (a saved capture), DOSBox-X and 86Box, headless, and compares
+the pictures. DOSBox-X and 86Box are built from source for it; the steps are in
+[tools/ref86box/build_dosbox_x.md](tools/ref86box/build_dosbox_x.md) and
+[tools/ref86box/build_86box.md](tools/ref86box/build_86box.md). Every process the
+project repeats, and what it costs, is listed in
+[docs/repeated-processes.md](docs/repeated-processes.md).
 
 Your own play sessions are recorded too: each run of `f117a.exe` writes
 `sessions\<date-time>\` (the input log and the save folder as it began)
