@@ -165,8 +165,12 @@ make (Phase 4).
       (secret airstrips), D5 (supply drops earn credit; `cargo_d5_fixed`), D11
       (saves written to a temporary file and renamed), D12 (END's signed
       rating), D34 (destroyed-object table), D8 (the laser-guided bomb's pitch
-      clamp; also what makes D7's training strike hard to complete). Open: D6
-      (cause not proven). D96 is the Reimp's
+      clamp; also what makes D7's training strike hard to complete), D6
+      (a detection cover of 0 reads as 4; optional, since the cells are not
+      proven a defect). D7 is fixed by D8. Open: D3 (keypad keys on the sound
+      screen), D10 (the mountain-collision stack corruption, DOS equivalent not
+      located), D35 (not reproduced here; no fix offered) and D36 (later MT-32 ROMs, see
+      the README's ROM note). D96 is the Reimp's
       native-UI wait, not a patch for this translated START. A session recorded
       with fixes on names them in its log and replays with them.
 - [ ] **60+ fps and 4K presentation**, design and status in

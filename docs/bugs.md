@@ -35,7 +35,7 @@ Status values:
 | D3 | Reported | SETUP | Crash on the sound screen when keypad keys go undetected (GOG/DOSBox) | - |
 | D4 | Confirmed | START + .WLD | Secret-airstrip missions disabled in Libya, North Cape, Middle East | `--fix D4` |
 | D5 | Confirmed | VGAME | Supply drops never award credit (despite the 473.04 note) | `--fix D5` |
-| D6 | Confirmed | world data + VGAME | "Stealth mountains": 20 terrain sectors where nothing can detect you | - |
+| D6 | Confirmed | world data + VGAME | "Stealth mountains": 20 terrain sectors where nothing can detect you | `--fix D6` |
 | D7 | Explained | VGAME (via D8) | Strike training mission does not complete correctly: the bomb only hits from a 80-150 unit release | `--fix D8` |
 | D8 | Confirmed | VGAME | Laser-guided bomb pitch clamped at -11.25 degrees | `--fix D8` |
 | D10 | Reported | VGAME (shared code) | Mountain-collision routine stack corruption (fixed only on Mac 2.3.0) | - |
@@ -216,7 +216,16 @@ Status values:
   the mechanism is measured, the cause is not proven.
 - **In this recompilation.** Reproduced exactly: it is the game's own
   arithmetic on the shipped world data, translated instruction for
-  instruction. A fix would be a switchable override at `0x55EB`.
+  instruction.
+- **Fix available: `--fix D6`** (off by default; whether the cells are a
+  defect is not proven, so the original's behaviour stays the default). An
+  override at `0x55EB` replaces the load and the AND: a sector whose cover
+  bits are 0 reads as 4, the lowest nonzero cover, and every other sector runs
+  the original's two instructions. `tools/d6_check.py` shows it at work: the
+  table VGAME holds in Central Europe has the 12 cover-0 sectors the Reimp
+  found; with the player's own sector made one, the fixed run logs `[fix D6]
+  cover 0 read as 4` and the plain run logs nothing. With the fix off every
+  route is unchanged.
 - **Where.** VGAME `0x5582` (detection), `0x55B8`, `0x55CB`/`0x55E8` (the
   player's sector), `0x55EB`, `0x5654`.
 - **Detail.** Reimp catalogue:679-752, at Reimp commit `9e0716dc` (the

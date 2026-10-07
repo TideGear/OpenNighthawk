@@ -106,7 +106,8 @@ date; `git log -p handoff.md` has them.
   rank-6 "General, At Last!" branch is reached with a staged roster
   (`tools/career_rank6.py`), not an earned rank-6 career.
 - Fixes done: D1 (frame limiter at VGAME 0x441D), D2, D4, D5, D8 (laser-guided
-  bomb clamp; explains D7), D11, D12, D34. Open: D6.
+  bomb clamp; explains D7), D6 (optional: cover-0 sectors, `tools/d6_check.py`),
+  D11, D12, D34.
 - Phase 2: 248 addresses matched (247 of 1,535 census functions, 10,868 of
   179,213 bytes; P2 10.76%).
 - Phase 3 presentation Stage 1: draw lists rebuild every phase exactly on the

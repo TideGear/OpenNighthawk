@@ -343,6 +343,32 @@ static int fix_d8_clamp(machine_t *m)
     return 1;
 }
 
+/* D6, "stealth mountains". VGAME's detection (0x5582) multiplies range, bias and the cover of the
+ * player's own 2,048-unit sector, cover = [0xB1A0 + (x >> 11) + ((y >> 11) << 4)] & 0x0C. Twenty sectors
+ * of the shipped worlds (12 in CE, 7 in NC, 1 in CU) have cover 0, so nothing can ever detect the player in
+ * them, from any bearing: flat ground, no base or carrier among them. Not proven a defect (docs/bugs.md D6);
+ * with the fix a cover of 0 reads as the lowest nonzero value, 4, so those sectors are no better than any
+ * other. The two instructions at 0x55EB (the load and the AND) are replaced. */
+static int d6_logged;
+static int fix_d6_cover(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t off = (uint16_t)(c->r[R_BX] + c->r[R_SI] + 0xB1A0);
+    if (seg_read16(c, c->seg[S_DS], off) & 0x0C) return 0;       /* any other sector: the original's load and AND */
+    if (!d6_logged) {
+        d6_logged = 1;
+        dos_log(m, "[fix D6] cover 0 read as 4 @%llu (sector byte at DS:%04X)\n", (unsigned long long)c->icount, off);
+    }
+    c->op_cs = c->seg[S_CS];
+    c->op_ip = c->ip;
+    c->r[R_AX] = 4;
+    /* The flags an AND leaves for the result 4: CF, OF, PF, ZF, SF clear (the IMUL that follows overwrites them). */
+    c->flags &= (uint16_t)~(0x0001u | 0x0004u | 0x0040u | 0x0080u | 0x0800u);
+    c->ip = 0x55F2;
+    c->icount += 2;                  /* the load and the AND */
+    return 1;
+}
+
 static const recomp_override OVERRIDES[] = {
     { "D5", "VGAME.EXE", VGAME_47304, 0x0000, 0x6D2E, fix_d5, "the supply-drop impact gate" },
     { "D1", "VGAME.EXE", VGAME_47304, 0x0000, 0x441D, fix_d1_pace, "frames paced so S never reaches the unstable range" },
@@ -356,6 +382,7 @@ static const recomp_override OVERRIDES[] = {
     { "D12", "END.EXE", END_47304, 0x0000, 0x0443, fix_d12_best, "END's best-rating compare, signed" },
     { "D12", "END.EXE", END_47304, 0x0000, 0x0450, fix_d12_total, "END's rating total, sign-extended" },
     { "D8", "VGAME.EXE", VGAME_47304, 0x0000, 0x6C0F, fix_d8_clamp, "the laser-guided bomb's pitch clamp, skipped" },
+    { "D6", "VGAME.EXE", VGAME_47304, 0x0000, 0x55EB, fix_d6_cover, "detection: a sector cover of 0 reads as 4" },
 };
 
 /* A byte corrected as it is read. */
@@ -386,6 +413,7 @@ static const struct { const char *id, *what; } FIXES[] = {
     { "D12", "END's best-rating and total tally treats ratings as signed" },
     { "D34", "the destroyed-object table keeps records past 30 without overwriting" },
     { "D8", "the laser-guided bomb's guidance can flatten its dive: the 11.25-degree pitch clamp is skipped" },
+    { "D6", "no terrain sector hides the player completely: a detection cover of 0 reads as the lowest nonzero cover" },
 };
 #define NFIXES (sizeof FIXES / sizeof FIXES[0])
 
