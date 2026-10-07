@@ -1,6 +1,6 @@
 # Parity audit, 4 October 2026
 
-*A dated snapshot. Later figures (32 routes, 231 matched routines, the DOSBox-X
+*A dated snapshot. Later figures (32 routes, 239 matched routines, the DOSBox-X
 and 86Box checks) are in [roadmap.md](roadmap.md) and [../handoff.md](../handoff.md);
 this page is kept for the findings and the reasoning.*
 

@@ -57,8 +57,8 @@ date; `git log -p handoff.md` has them.
   work's `coverage` directory so the second build is skipped). About 23
   minutes. Read the tally, not the exit code: every route `IDENTICAL`,
   instruction lockstep 0 mismatching, matched lockstep 0 mismatching. Last
-  green: 32 routes identical, 5,713,472 instruction states, 231 matched
-  routines (753,179 states). Interpreter results are cached across gates
+  green: 32 routes identical, 5,713,472 instruction states, 239 matched
+  routines (788,862 states). Interpreter results are cached across gates
   (`--interp-cache`, default `~/f117-recomp-local/interp-cache`; the key ignores
   `src/matched/matched.c`), cutting parity from about 9 to 3 minutes when only
   matched routines changed; `--verify-interp-cache` proves it equal.
@@ -95,8 +95,8 @@ date; `git log -p handoff.md` has them.
   (`tools/career_rank6.py`), not an earned rank-6 career.
 - Fixes done: D1 (frame limiter at VGAME 0x441D), D2, D4, D5, D11, D12, D34.
   Open: D6, D7 (inconclusive probe), D8 (needs an LGB route).
-- Phase 2: 231 addresses matched (230 of 1,535 census functions, 10,411 of
-  179,213 bytes; P2 10.52%).
+- Phase 2: 239 addresses matched (238 of 1,535 census functions, 10,621 of
+  179,213 bytes; P2 10.63%).
 - Phase 3 presentation Stage 1: draw lists rebuild every phase exactly on the
   routes and windows tried (`docs/presentation.md`); Stages 2-4 open.
 - References: GOG DOSBox intro 1,329 exact pictures with 3 unmatched each side

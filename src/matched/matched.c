@@ -3048,6 +3048,201 @@ static int far_sine(machine_t *m, uint16_t offset, uint16_t ret_ip)
 static int vgame_far_sin(machine_t *m) { return far_sine(m, 0, 0x007F); }
 static int vgame_far_cos(machine_t *m) { return far_sine(m, 0x4000, 0x0073); }
 
+/* VGAME 104E:0000, far fixed-point multiply: (a * b) >> 14, rounded by the
+ * next bit, from the far frame (a at SP+4, b at SP+6); the same routine as
+ * START's near 0x08C15. */
+static int vgame_far_fixmul(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 9)) return 0;
+    const uint16_t a = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_SP] + 4));
+    const uint16_t b = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_SP] + 6));
+    c->r[R_BX] = c->r[R_SP];
+    c->r[R_AX] = a;
+    x86_imul16(c, b);
+    uint16_t ax = x86_shift(c, 4, c->r[R_AX], 1, 1);
+    uint16_t dx = x86_shift(c, 2, c->r[R_DX], 1, 1);              /* rcl dx, 1 */
+    ax = x86_shift(c, 4, ax, 1, 1);
+    dx = (uint16_t)alu_add(c, dx, 0, 1, (c->flags & F_CF) ? 1u : 0u);   /* adc dx, 0 */
+    c->r[R_DX] = dx;
+    c->r[R_AX] = dx;
+    (void)ax;
+    c->icount += 9;
+    far_ret(c);
+    return 1;
+}
+
+/* VGAME 1452:0316, camera_matrix_copy(src, dst): nine words, src to dst,
+ * by REP MOVSW with ES = DS; ES, SI, DI and BP restored. */
+static int vgame_camera_matrix_copy(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 24)) return 0;
+    const uint16_t ds = c->seg[S_DS], ss = c->seg[S_SS];
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->seg[S_ES]);
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->r[R_DI]);
+    c->r[R_AX] = ds;
+    c->seg[S_ES] = ds;
+    c->r[R_SI] = seg_read16(c, ss, (uint16_t)(c->r[R_BP] + 6));
+    c->r[R_DI] = seg_read16(c, ss, (uint16_t)(c->r[R_BP] + 8));
+    c->r[R_CX] = 9;
+    const unsigned n = rep_string(c, STR_MOVS, 1, ds, 0);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->seg[S_ES] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 15 + n;
+    far_ret(c);
+    return 1;
+}
+
+/* VGAME 1452:02E4, camera_matrix_transpose(src, dst): the nine words of a
+ * 3x3 matrix, read in order and stored transposed (word k of the source to
+ * dst offset 6*(k%3) + 2*(k/3)); AX is left as the last word, SI past the
+ * source (LODSW, so it follows DF). */
+static int vgame_camera_matrix_transpose(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 28)) return 0;
+    const uint16_t ds = c->seg[S_DS], ss = c->seg[S_SS];
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->r[R_DI]);
+    c->r[R_SI] = seg_read16(c, ss, (uint16_t)(c->r[R_BP] + 6));
+    const uint16_t di = seg_read16(c, ss, (uint16_t)(c->r[R_BP] + 8));
+    static const uint8_t to[9] = { 0, 6, 12, 2, 8, 14, 4, 10, 16 };
+    c->r[R_DI] = di;
+    for (int k = 0; k < 9; k++) {
+        x86_lods(c, 1, ds);                                       /* lodsw: SI steps with DF */
+        seg_write16(c, ds, (uint16_t)(di + to[k]), c->r[R_AX]);
+    }
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 28;
+    far_ret(c);
+    return 1;
+}
+
+/* START 0x096CE, mission_rand(): the 32-bit generator at [AE8C] steps as
+ * seed * 343FDh + 269EC3h (by the 32-bit multiply at 0x0978E) and the answer
+ * is its high word's low 15 bits; DX is left as the whole high word. */
+static int start_rand(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 7)) return 0;
+    c->r[R_AX] = 0x43FD;
+    c->r[R_DX] = 3;
+    cpu_push16(c, 3);
+    cpu_push16(c, 0x43FD);
+    cpu_push16(c, ds_get(c, 0xAE8E));
+    cpu_push16(c, ds_get(c, 0xAE8C));
+    c->icount += 6;
+    if (!guest_call_pop(m, 0x978E, 0x96E1, 8)) return 1;
+    if (!room(c, 7)) { c->ip = 0x96E1; return 1; }
+    const uint16_t lo = (uint16_t)alu_add(c, c->r[R_AX], 0x9EC3, 1, 0);
+    const uint16_t hi = (uint16_t)alu_add(c, c->r[R_DX], 0x26, 1, (c->flags & F_CF) ? 1 : 0);
+    ds_put(c, 0xAE8C, lo);
+    ds_put(c, 0xAE8E, hi);
+    c->r[R_DX] = hi;
+    const uint8_t ah = (uint8_t)alu_logic(c, (hi >> 8) & 0x7F, 0);   /* and ah, 7Fh */
+    c->r[R_AX] = (uint16_t)(ah << 8 | (hi & 0xFF));
+    c->icount += 7;
+    near_ret(c);
+    return 1;
+}
+
+/* START 0x076C0, rnd(n): mission_rand() modulo n (n of 0 is left to the
+ * original, where the DIV faults). */
+static int start_rnd(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t n = arg(c, 0);
+    if (!n || !room(c, 3)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    c->icount += 2;
+    if (!guest_call(m, 0x96CE, 0x76C6)) return 1;
+    if (!room(c, 6)) { c->ip = 0x76C6; return 1; }
+    c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0);     /* sub dx, dx */
+    x86_div16(c, n);
+    c->r[R_AX] = c->r[R_DX];
+    x86_leave(c);
+    c->icount += 6;
+    near_ret(c);
+    return 1;
+}
+
+/* START 0x08C7C, sine(angle on the stack): the table sine at 0x08C88 of the
+ * word at SP+2, returned in AX (and BX). */
+static int start_sine_arg(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 3)) return 0;
+    c->r[R_BX] = arg(c, 0);
+    c->icount += 2;
+    if (!guest_call(m, 0x8C88, 0x8C85)) return 1;
+    if (!room(c, 2)) { c->ip = 0x8C85; return 1; }
+    c->r[R_AX] = c->r[R_BX];
+    c->icount += 2;
+    near_ret(c);
+    return 1;
+}
+
+/* START 0x03301, vsin(a, r): sine of a, scaled by r through the fixed-point
+ * multiply at 0x08C15. */
+static int start_vsin(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 5)) return 0;
+    const uint16_t a = arg(c, 0), r = arg(c, 1);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, r);
+    cpu_push16(c, a);
+    c->icount += 4;
+    if (!guest_call(m, 0x8C7C, 0x330D)) return 1;
+    if (!room(c, 3)) { c->ip = 0x330D; return 1; }
+    c->r[R_BX] = cpu_pop16(c);
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 2;
+    if (!guest_call(m, 0x8C15, 0x3312)) return 1;
+    if (!room(c, 5)) { c->ip = 0x3312; return 1; }
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    x86_leave(c);
+    c->icount += 5;
+    near_ret(c);
+    return 1;
+}
+
+/* START 0x03318, vcos(a, r): vsin of a + 4000h. */
+static int start_vcos(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 7)) return 0;
+    const uint16_t a = arg(c, 0), r = arg(c, 1);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, r);
+    const uint8_t ah = (uint8_t)alu_add(c, (a >> 8) & 0xFF, 0x40, 0, 0);   /* add ah, 40h */
+    c->r[R_AX] = (uint16_t)(ah << 8 | (a & 0xFF));
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 6;
+    if (!guest_call(m, 0x3301, 0x3328)) return 1;
+    if (!room(c, 5)) { c->ip = 0x3328; return 1; }
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    x86_leave(c);
+    c->icount += 5;
+    near_ret(c);
+    return 1;
+}
+
 /* VGAME 0x0C831, vcos(a, r): the routine at 0x0C818 with the angle turned a
  * quarter (AH + 40h). */
 static int vgame_vcos(machine_t *m)
@@ -5830,6 +6025,14 @@ static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x87C1, vgame_map_line_projected, "map line, projected", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x8575, vgame_map_zoom_in, "map zoom in", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x85B3, vgame_map_zoom_out, "map zoom out", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x104E, 0x0000, vgame_far_fixmul, "far fixed-point multiply", 2 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x96CE, start_rand, "mission random number", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x76C0, start_rnd, "random number below n", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x8C7C, start_sine_arg, "sine of a stacked angle", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x3301, start_vsin, "scaled sine", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x3318, start_vcos, "scaled cosine", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1452, 0x0316, vgame_camera_matrix_copy, "copy a 3x3 camera matrix", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1452, 0x02E4, vgame_camera_matrix_transpose, "transpose a 3x3 camera matrix", 2 },
 };
 
 void matched_register(void)
