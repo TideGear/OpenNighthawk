@@ -11,6 +11,65 @@ index a99308a..8b58aa8 100644
              plat_pause(1);
          else
  #endif
+diff --git a/src/sound/snd_adlib.c b/src/sound/snd_adlib.c
+index a67309d..c7c77fe 100644
+--- a/src/sound/snd_adlib.c
++++ b/src/sound/snd_adlib.c
+@@ -33,6 +33,7 @@
+ #include <86box/snd_opl.h>
+ #include <86box/snd_adlib.h>
+ #include <86box/plat_unused.h>
++#include "cpu.h"
+ 
+ #ifdef ENABLE_ADLIB_LOG
+ uint8_t adlib_do_log = ENABLE_ADLIB_LOG;
+@@ -113,6 +114,34 @@ adlib_mca_feedb(void *priv)
+     return (adlib->pos_regs[2] & 1);
+ }
+ 
++/* PC-parity harness: with B86_OPL=FILE every AdLib register write is logged as
++ * "microseconds register value" in emulated time (tools/ref86box/sound86.py). */
++static FILE    *adlib_trace;
++static int      adlib_trace_init;
++static uint8_t  adlib_trace_reg;
++static void   (*adlib_real_write)(uint16_t addr, uint8_t val, void *priv);
++
++static void
++adlib_traced_write(uint16_t addr, uint8_t val, void *priv)
++{
++    if (!adlib_trace_init) {
++        const char *path = getenv("B86_OPL");
++
++        adlib_trace_init = 1;
++        if (path)
++            adlib_trace = fopen(path, "w");
++    }
++    if (adlib_trace) {
++        if ((addr & 1) == 0)
++            adlib_trace_reg = val;
++        else
++            fprintf(adlib_trace, "%llu %02X %02X\n",
++                    (unsigned long long) (cpu_s && cpu_s->rspeed ? ((double) tsc * 1000000.0) / (double) cpu_s->rspeed : 0),
++                    adlib_trace_reg, val);
++    }
++    adlib_real_write(addr, val, priv);
++}
++
+ void *
+ adlib_init(UNUSED(const device_t *info))
+ {
+@@ -120,9 +149,10 @@ adlib_init(UNUSED(const device_t *info))
+ 
+     adlib_log("adlib_init\n");
+     fm_driver_get(FM_YM3812, &adlib->opl);
++    adlib_real_write = adlib->opl.write;
+     io_sethandler(0x0388, 0x0002,
+                   adlib->opl.read, NULL, NULL,
+-                  adlib->opl.write, NULL, NULL,
++                  adlib_traced_write, NULL, NULL,
+                   adlib->opl.priv);
+     music_add_handler(adlib_get_buffer, adlib);
+     return adlib;
 diff --git a/src/vnc.c b/src/vnc.c
 index cd539f5..a1da32e 100644
 --- a/src/vnc.c

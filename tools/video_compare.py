@@ -281,7 +281,7 @@ def main():
             "--log", str(run / "run.log"), "--type", "SETUP.EXE+200000:N",
             "--type", "SETUP.EXE+2000000:2", "--ips", str(ips),
             "--steps", str((a.seconds + 15) * ips),
-            "--time-us", "700000000000000",
+            "--time-us", "700000000000000", "--opl-log", str(run / "opl.log"),
             "--shots-vga", str(run / "shots" / "shot"),
             "--shots-start", str(a.shot_start)],
             capture_output=True, text=True)

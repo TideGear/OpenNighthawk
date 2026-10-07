@@ -15,7 +15,9 @@ intro is played on each and its pictures compared with this machine's:
   86Box             the VNC build (tools/ref86box/build_86box.md), headless;
                     capture_intro.py and compare_intro.py.
 
-The three run at once (none shows a window or makes a sound). Each verdict is
+The three run at once (none shows a window or makes a sound); with each,
+the intro's music is checked too (sound_parity.py on the DOSBoxes' captured audio,
+ref86box/compare_opl86.py on 86Box's AdLib writes). Each verdict is
 against the figures measured on 6 Oct 2026, so a change that makes this machine
 drift from a reference fails here; the thresholds are at the top of the file
 and say what was measured. Exit status is 0 when every enabled check passes.
@@ -95,7 +97,10 @@ def main():
             cap = a.out / "86box"
             rc = run([PY, str(HERE / "ref86box" / "capture_intro.py"), str(cap), "--seconds", str(a.seconds)],
                      a.out / "86box-capture.log")
-            return dict(rc=rc, cap=str(cap))
+            # sequential: both runs start (and stop) the one headless 86Box
+            src = run([PY, str(HERE / "ref86box" / "sound86.py"), str(a.out / "86box-sound")],
+                      a.out / "86box-sound-run.log")
+            return dict(rc=rc, cap=str(cap), sound_rc=src, opl=str(a.out / "86box-sound" / "opl86.log"))
         job("86box", box)
     for t in threads:
         t.join()
@@ -117,6 +122,15 @@ def main():
             r["drift"], lim["max_drift_ms"]))
         if not ok:
             failures.append(name)
+        # the same run's AdLib log, rendered by the application, against the capture's sound
+        avi = (a.gog_reference if name == "gog" else Path(r["run"])) / "capture" / "mps_logo_000.avi"
+        slog = a.out / (name + "-sound.log")
+        src = run([PY, str(HERE / "sound_parity.py"), "--reference", name, "--avi", str(avi),
+                   "--opl-log", str(Path(r["run"]) / "opl.log")], slog)
+        line = [l for l in Path(slog).read_text(errors="replace").splitlines() if l.startswith("sound ")]
+        print("  " + (line[0] if line else "sound %-8s ERROR see %s" % (name, slog)))
+        if src != 0:
+            failures.append(name + " sound")
     if "86box" in results:
         r = results["86box"]
         shots = None
@@ -142,6 +156,17 @@ def main():
                     "PASS" if ok else "FAIL", total, exact, close, unmatched, LIMITS["86box"]["max_unmatched"], back))
                 if not ok:
                     failures.append("86box")
+        ours_log = next((Path(results[n]["run"]) / "opl.log" for n in ("dosbox-x", "gog")
+                         if n in results and results[n].get("run")), None)
+        if r.get("sound_rc") != 0 or ours_log is None or not Path(r["opl"]).exists():
+            failures.append("86box sound")
+            print("  sound 86box    ERROR no AdLib log (sound86.py rc %s, see %s)" % (r.get("sound_rc"), a.out / "86box-sound-run.log"))
+        else:
+            slog = a.out / "86box-sound.log"
+            src = run([PY, str(HERE / "ref86box" / "compare_opl86.py"), str(ours_log), r["opl"]], slog)
+            print("  " + (Path(slog).read_text(errors="replace").strip() or "sound 86box ERROR"))
+            if src != 0:
+                failures.append("86box sound")
     print("RESULT:", "all checks passed" if not failures else "FAILED: " + ", ".join(failures))
     (a.out / "summary.json").write_text(json.dumps(
         {k: {kk: vv for kk, vv in v.items() if kk != "text"} for k, v in results.items()}, indent=1))
