@@ -100,8 +100,9 @@ make (Phase 4).
       animation the scenes now hold 86Box's pace to a frame; the drift left
       (+1.48 s at START's roster screen) is in the loads: DOS file reads and
       writes, program starts and overlays. Open: those, the mouse driver (the
-      reference VM loads none; which DOS the reference VM runs is the owner's
-      choice, FreeDOS for now), the recompiled engine charging the same costs.
+      reference VM loads none), the reference VM on MS-DOS 6.22 (the owner's
+      choice, 8 Oct 2026: the last standalone MS-DOS; FreeDOS 1.3's costs stand
+      in until it is measured), the recompiled engine charging the same costs.
 - [ ] **Rendered sound:** the register stream is exact (every AdLib write of
       the intro in order and value, above), which is what the original sends to
       its chip. How the OPL waveform is synthesised is the emulator's, not the
@@ -112,8 +113,9 @@ make (Phase 4).
       rewrites counter 2's count every 3.3 ms; taken at once, as before, that
       restarted the wave and mostly held the cone high. Speech under the speaker
       and Roland drivers is pulse-width modulation (counter 2 mode 0, a count of
-      1-72 every 79 clocks, 15.1 kHz); `speaker = realsound` (default) averages
-      each carrier period, `pwm` keeps the carrier. `tools/speaker_parity.py`
+      1-72 every 79 clocks, 15.1 kHz); `speaker = realsound` (the default, the
+      owner's choice on 8 Oct 2026) averages each carrier period, `pwm` keeps the
+      carrier. `tools/speaker_parity.py`
       against DOSBox-X: the intro's 736 gate changes and 440 control words
       identical, its audio envelope 0.87, spectral 0.92-0.93, level 0.95 (before:
       0.69, 0.54, 0.47); the radio call's 12,924 counts identical. Open: an
