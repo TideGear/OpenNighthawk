@@ -112,8 +112,8 @@ def main():
         def box():
             cap = a.out / "86box"
             # three independent 86Box runs at once: each starts and stops only its own process (its
-            # profile is in its command line), the traced ones open no VNC port and run on emulated
-            # time, so load cannot change their results; the picture capture keeps port 5900
+            # profile is in its command line); all three are traced, open no VNC port and run on
+            # emulated time in fast-forward, so load cannot change their results
             out = {}
 
             def one(key, fn):

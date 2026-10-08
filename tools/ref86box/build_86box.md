@@ -124,7 +124,16 @@ typed into. Floppy-first boot order, an extended-memory size in CMOS the VM
 does not have, a zero BPB geometry and an MBR without boot code each
 stopped the boot before DOS.
 
-## The check (first result, 6 Oct 2026)
+## The check
+
+Since 7 Oct 2026 `capture_intro.py OUT` is traced: the 386 profile in
+fast-forward, SETUP answered at frames 3000 and 3300, and the picture on
+screen sampled once per emulated second from frame 3300 (`--vnc` keeps the
+real-time capture below). Result: 88 distinct pictures, 87 compared, 4 exact,
+83 close, 0 unmatched, order preserved; two runs gave the same 88 pictures at
+the same times; 48 s instead of about 3 min.
+
+First result (6 Oct 2026, the VNC capture):
 
 `capture_intro.py OUT` boots the VM, runs F117, answers SETUP and samples the
 display once a second for 150 s; `compare_intro.py OUT SHOTS` matches each
