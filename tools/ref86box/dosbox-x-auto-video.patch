@@ -264,7 +264,7 @@ index 70e1d4a..96c97ad 100644
  #if !defined(C_EMSCRIPTEN)
  	// mapper shortcuts for capture
 diff --git a/src/ints/bios.cpp b/src/ints/bios.cpp
-index 8cb0254..dd4c740 100644
+index 8cb0254..abaa04a 100644
 --- a/src/ints/bios.cpp
 +++ b/src/ints/bios.cpp
 @@ -3081,8 +3081,19 @@ static void InitRtc () {
@@ -287,7 +287,7 @@ index 8cb0254..dd4c740 100644
      switch (reg_ah) {
      case 0x00:  /* Get System time */
          {
-@@ -3091,12 +3102,29 @@ static Bitu INT1A_Handler(void) {
+@@ -3091,12 +3102,31 @@ static Bitu INT1A_Handler(void) {
              mem_writeb(BIOS_24_HOURS_FLAG,0); // reset the "flag"
              reg_cx=(uint16_t)(ticks >> 16u);
              reg_dx=(uint16_t)(ticks & 0xffff);
@@ -297,8 +297,10 @@ index 8cb0254..dd4c740 100644
 +                int ip = 0, near_ret = 0, dx = 0;
 +                const PhysPt sp = SegPhys(ss) + reg_sp;
 +                if (sscanf(stage, "%i,%i,%i", &ip, &near_ret, &dx) == 3 &&
-+                    mem_readw(sp) == ip && mem_readw(sp + 6) == near_ret)
++                    mem_readw(sp) == ip && mem_readw(sp + 6) == near_ret) {
++                    fprintf(stderr, "int1a tick %u staged %d\n", (unsigned)(ticks & 0xffff), dx);
 +                    reg_dx = (uint16_t)dx;
++                }
 +            }
              break;
          }
@@ -317,7 +319,7 @@ index 8cb0254..dd4c740 100644
          InitRtc();                          // make sure BCD and no am/pm
          if (RtcUpdateDone()) {              // make sure it's safe to read
              reg_ch = ReadCmosByte(0x04);    // hours
-@@ -3125,6 +3153,14 @@ static Bitu INT1A_Handler(void) {
+@@ -3125,6 +3155,14 @@ static Bitu INT1A_Handler(void) {
          }
          break;
      case 0x04:  /* GET REAL-TIME ClOCK DATE  (AT,XT286,PS) */
@@ -332,7 +334,7 @@ index 8cb0254..dd4c740 100644
          InitRtc();                          // make sure BCD and no am/pm
          if (RtcUpdateDone()) {              // make sure it's safe to read
              reg_ch = ReadCmosByte(0x32);    // century
-@@ -13006,10 +13042,10 @@ void BIOS_OnPowerOn(Section* sec) {
+@@ -13006,10 +13044,10 @@ void BIOS_OnPowerOn(Section* sec) {
      test = new BIOS(control->GetSection("joystick"));
  }
  
@@ -346,7 +348,7 @@ index 8cb0254..dd4c740 100644
  void swapInPrevCD(bool pressed);
  
  void INT10_OnResetComplete();
-@@ -13068,14 +13104,14 @@ void BIOS_Init() {
+@@ -13068,14 +13106,14 @@ void BIOS_Init() {
      /* make sure CD swap and floppy swap mapper events are available */
      MAPPER_AddHandler(swapInNextDisk,MK_o,MMODHOST,"swapimg","Swap floppy drive",&item); /* Originally "Swap Image" but this version does not swap CDs */
      item->set_text("Swap floppy drive");
