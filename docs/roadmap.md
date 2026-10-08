@@ -89,9 +89,10 @@ make (Phase 4).
       flown, landed and debriefed there saves the same roster entry as our
       machine's except the mission score (167 against 168; the flights differ:
       DOSBox-X's handover staged into ours scores 167 here too;
-      tools/ref86box/build_dosbox_x.md). On 86Box the same sortie lands with the stick keys
-      held 160 ms (`--min-hold-ms`) and saves a roster byte-identical to
-      DOSBox-X's, but the landing is marginal there (200 ms crashes); the 86Box intro drift is
+      tools/ref86box/build_dosbox_x.md). On 86Box the same sortie lands and saves a roster
+      byte-identical to DOSBox-X's once the adaptor sends the stick as whole
+      game frames (86Box runs the game at about half the frame rate; 7 of 9
+      flights pass over a +-15% range of the one estimated scale); the 86Box intro drift is
       explained (8 Oct 2026: 1.4 s of the 2.0 is the IBM VGA's 8-bit bus
       during the credits' panning, 0.24 s the disk path; with both fast the
       drift is about 0.5 s, tools/ref86box/build_86box.md), and the pitch-bend
@@ -150,8 +151,7 @@ make (Phase 4).
       impact in the delivery area on each; the strike-training mission is
       reproduced on DOSBox-X (same target, loadout) and its closed-loop pilot
       (`--pilot strike`: `n` until designated, release at 80) delivers there as on
-      the Machine, and on 86Box the mission and designation match but the
-      flight misses (the lock breaks near 1,400 units); wider generated-assignment coverage; the strike-training mission (bugs.md
+      the Machine and, with the stick sent as whole frames, on 86Box; wider generated-assignment coverage; the strike-training mission (bugs.md
       D7) is settled as far as the original goes: a strike-type training mission is
       reproducible (start clock +5 s, `strike_pilot.py --time-us`) and is
       credited when the laser-guided bomb is released within about 80-150 map

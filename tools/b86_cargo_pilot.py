@@ -236,8 +236,38 @@ class B86Machine:
         return self.read8(address) | (self.read8(address + 1) << 8)
 
     min_hold_ms = 0                 # a key held at least this long (--min-hold-ms)
+    frame_taps = True               # the stick in whole game frames (--no-frame-taps turns it off)
+    stick_owed = None               # per axis, key-down time asked for and not yet sent (us)
+
+    def _frame_tap(self, at, keys, hold_ms):
+        """The stick as whole game frames. The game reads the stick once a frame and moves the aircraft a
+        frame's worth for each frame the key is down (tools/stick_response.py): on this machine and
+        DOSBox-X (S 13-15) a 60 ms tap is always one frame and moves the roll 596 units, here (S 6-9) it
+        is one frame of about 1,000 or none. So the time asked for is scaled to this machine's response
+        (STICK_SCALE), kept per axis, and sent as whole frames (a hold of n frame periods is seen by n
+        frames), the remainder carried to the next press."""
+        if self.stick_owed is None:
+            self.stick_owed = {"pitch": 0.0, "roll": 0.0}
+        axis, sign = {"U": ("pitch", -1), "D": ("pitch", 1), "L": ("roll", -1), "R": ("roll", 1)}[keys[1]]
+        fps = max(1, self.read16(DS_BASE + 0x368E))
+        frame_us = 1_000_000 / fps
+        owed = self.stick_owed[axis] + sign * hold_ms * 1000 * STICK_SCALE
+        frames = int(abs(owed) / frame_us + 0.5)
+        self.stick_owed[axis] = owed - (1 if owed >= 0 else -1) * frames * frame_us
+        if not frames:
+            return True
+        hold = round(frames * frame_us * IPS / 1_000_000)
+        for make, brk in key_bytes(keys):
+            for code in make:
+                self._queue(at, code)
+            for code in brk:
+                self._queue(at + hold, code)
+        return True
 
     def type(self, at, keys, *, hold_ms=60, gap_ms=60):
+        if self.frame_taps and keys[:1] == "\\" and keys[1:2] in ("U", "D", "L", "R") and len(keys) == 2:
+            self._frame_tap(at, keys, hold_ms)
+            return
         if keys.startswith("\\") and keys[1:2] in ("U", "D", "L", "R"):
             # The stick only: at about half this machine's frame rate a 60 ms tap can fall between the
             # game's key samples; command keys (n, Enter, Space) keep their short taps.
@@ -362,6 +392,10 @@ def fly(args):
     return int(bool(report["errors"]))
 
 
+# The stick's response per ms of key-down time on this machine against 86Box's (tools/stick_response.py,
+# 8 Oct 2026: roll 596 units for a 60 ms tap at S 14-15 here; about 7.5 units a ms at S 6-9 there).
+STICK_SCALE = 1.3
+
 # 86Box has no DOS-level view of program starts; END follows VGAME's end by DSWAP's load (16 ms on
 # DOSBox-X, longer from 86Box's disk), so END's keys are timed from VGAME's end plus this.
 END_AFTER_VGAME_MS = 1000
@@ -475,6 +509,9 @@ def main():
     parser.add_argument("--landing-throttle-gain", type=float, default=.6, help="recon: landing_pilot's throttle gain")
     parser.add_argument("--deck-aim", type=int, default=300, help="recon: how far before the deck's centre the glide meets it")
     parser.add_argument("--deck-pitch-floor", type=int, default=-300, help="recon: the lowest pitch on a raised-deck approach")
+    parser.add_argument("--no-frame-taps", dest="frame_taps", action="store_false",
+                        help="send the stick's taps as the pilot asks, not as whole game frames (see _frame_tap)")
+    parser.add_argument("--stick-scale", type=float, help="with --frame-taps: this machine's stick response over 86Box's (default STICK_SCALE)")
     parser.add_argument("--min-hold-ms", type=int, default=0,
                         help="hold the stick (arrow) keys at least this long (86Box's game runs at about half this machine's frame rate)")
     parser.add_argument("--front-end-clock", type=int, help="the Machine clock of VGAME's exec in the front")
@@ -486,6 +523,10 @@ def main():
     dbx.PILOT[0] = args.pilot
     dbx.READS[0] = HERE / "routes" / PILOTS[args.pilot]["reads"]
     B86Machine.min_hold_ms = args.min_hold_ms
+    B86Machine.frame_taps = args.frame_taps
+    if args.stick_scale:
+        global STICK_SCALE
+        STICK_SCALE = args.stick_scale
     if args.front_end_clock:
         FRONT_END_CLOCK[0] = args.front_end_clock
     if args.start_exec_clock:

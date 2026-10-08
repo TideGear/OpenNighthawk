@@ -18,9 +18,9 @@
       {
         "item": "86Box and DOSBox-X as routine checks",
         "weight": 5,
-        "done": 0.85,
+        "done": 0.95,
         "kind": "estimate",
-        "evidence": "Done: tools/pc_parity.py checks pictures, music and the saved roster on both against measured limits, fidelity_all.py holds the machine probe, 86Box runs are deterministic (8 Oct 2026: the harness hook in the emulation thread; repeat runs byte-identical), the closed-loop supply drop delivers on both, a closed-loop career sortie saves its roster on both (DOSBox-X's and 86Box's byte-identical, ours differing only in the mission score, which END scores the same from either machine's handover), the 86Box intro drift and pitch-bend writes are explained, and the decision to use them as the routine references is made. Open: the strike-training hit on 86Box and a robust 86Box landing (marginal at its frame rate)."
+        "evidence": "Done: tools/pc_parity.py checks pictures, music and the saved roster on both against measured limits, fidelity_all.py holds the machine probe, 86Box runs are deterministic (8 Oct 2026: the harness hook in the emulation thread; repeat runs byte-identical), the closed-loop supply drop delivers on both, a closed-loop career sortie saves its roster on both (DOSBox-X's and 86Box's byte-identical, ours differing only in the mission score, which END scores the same from either machine's handover), the 86Box intro drift and pitch-bend writes are explained, and the decision to use them as the routine references is made. The 86Box adaptor sends the stick as whole game frames (the game runs at about half the frame rate there), and the supply drop, the strike-training hit and the career landing then pass on 86Box too. Open: those flights pass 7 of 9 over a +-15% range of the one estimated stick scale, so a mission with a narrow window can still miss on 86Box."
       },
       {
         "item": "The picture against DOSBox, frame by frame",

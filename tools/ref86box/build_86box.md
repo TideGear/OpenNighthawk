@@ -97,14 +97,28 @@ target 24, secondary 1) then match the Machine's.
 pilot (`--front-end-clock 2761292060 --start-exec-clock 956971536 --seed-tick 31324` and the
 Machine's recorded front end). Strike training (8 Oct 2026): the generated mission is the
 Machine's (target 1 at 21200, 24272, the same loadout) and the primary is designated at about
-3,050 map units, but the deterministic flight misses: the lock breaks near 1,400 units (the nose
+3,050 map units; with the stick's own taps the deterministic flight misses (the frame taps below
+make it hit): the lock breaks near 1,400 units (the nose
 is left within the pilot's pitch and roll deadbands while the target leaves the seeker's view),
 and the laser-guided bomb's hit window is narrow (bugs.md D7). Before runs were deterministic,
 2 of 10 flights hit. Tighter deadbands and a wings-level release window were tried and made the
-Machine and DOSBox-X flights miss, so they were not kept. The game runs at about half this machine's
-frame rate here (S 4-5 against 7-8), and the stick's 60 ms taps steer badly: with the arrow keys held
-at least 200 ms (`--min-hold-ms`) the approach tracks the bearing as on the Machine (heading error 97
-at 2,000 units against 868), but no hold length tried (120-240 ms) gives a hit reliably.
+Machine and DOSBox-X flights miss, so they were not kept.
+
+**The stick as whole frames** (8 Oct 2026). The game reads the stick once a frame and moves the
+aircraft a frame's worth for each frame the key is down (`tools/stick_response.py`, isolated taps on
+each machine): on the Machine and DOSBox-X (S 13-15 in that climb) a 60 ms tap is always one frame and
+rolls the aircraft 596 units, 120 ms 1,192, 200 ms 2,384, identical on both; here (S 6-9) a 60 ms tap
+is one frame of about 1,000 or none (-992, +5, -649). The pilots' small corrections therefore arrived
+as random, oversized steps: the strike approach wandered 900 units off the bearing and the deck
+approach rocked the wings to 22 degrees. The adaptor now sends the stick as whole game frames
+(`_frame_tap`, on by default, `--no-frame-taps` to turn it off): the time asked for, scaled by
+`STICK_SCALE` (1.3, this machine's response per ms over 86Box's), is kept per axis and sent as whole
+frame periods from S, the remainder carried to the next press. With it the supply drop delivers, the
+strike-training bomb hits and the career sortie lands (roster byte-identical to DOSBox-X's), and over
+scales of 1.1, 1.3 and 1.5 seven of the nine flights pass: the supply drop at all three, the strike at
+1.1 and 1.3 (it misses at 1.5), the career at 1.3 and 1.5 (at 1.1 the photo is taken outside the
+camera's cue and not credited). Holding the arrow keys a fixed minimum (`--min-hold-ms`) was the first
+try: it steadied the strike approach but no length passed all the flights.
 
 **A career sortie** (`--pilot recon --debrief`, as `build_dosbox_x.md`'s, `--seed-tick 31233`): END's
 keys go through the loop's replies from VGAME's end plus 1 s (86Box has no view of program starts),
@@ -112,9 +126,9 @@ including a click (the loop's `m x,y` and `b n` replies, added for it), and the 
 the last key, once START has written `ROSTER.FIL`, which is read back from the disk image. With the
 stick's taps the landing pilot rocks the wings on the deck approach (left and right every two ticks, to
 about 22 degrees of bank) and the aircraft crashes short of the raised deck: START records the pilot as
-lost (status 2). With `--min-hold-ms 160` it lands and stops, and the saved roster is byte-identical to
-DOSBox-X's (mission score 167; ours scores 168, the flights differ) and passes `career_check`; at 200 ms
-it crashes again, so the landing is marginal on this machine. `replies.log` in the run directory holds
+lost (status 2). With the stick in whole frames (above) it lands and stops, and the saved roster is
+byte-identical to DOSBox-X's (mission score 167; ours scores 168, the flights differ) and passes
+`career_check`. `replies.log` in the run directory holds
 every reply with input. Its front end is
 the route's START-to-VGAME events (2 keys, 11 clicks) on displayed frames:
 START.EXE first appears at frame 10,775 on this profile (measured by memory
