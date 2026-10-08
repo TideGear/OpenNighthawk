@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The closed-loop supply drop of cargo_pilot.py, flown in 86Box instead of the Machine.
+"""A closed-loop pilot (cargo_pilot.py's supply drop, or --pilot strike's strike_pilot.py) flown in 86Box instead of the Machine.
 
 86Box has no DOS-level notion of "the running program's PSP" (unlike DOSBox-X), so VGAME's data
 segment is found instead by a 48-byte signature from its own loaded image (tools/ref86box/
@@ -35,10 +35,12 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 from machine_api import Machine  # noqa: E402
-from cargo_pilot import pilot_state, control  # noqa: E402
-from cargo_check import errors, impacts  # noqa: E402
-from dosbox_cargo_pilot import (key_bytes, read_ranges, MACHINE_PSP, DS_BASE, MEM_MASK, READS,  # noqa: E402
-                                 FRONT_END_CLOCK)
+import cargo_pilot  # noqa: E402
+import strike_pilot  # noqa: E402
+import dosbox_cargo_pilot as dbx  # noqa: E402
+from cargo_check import errors as cargo_errors, impacts  # noqa: E402
+from dosbox_cargo_pilot import (key_bytes, read_ranges, MACHINE_PSP, DS_BASE, MEM_MASK,  # noqa: E402
+                                 FRONT_END_CLOCK, PILOTS)
 
 sys.path.insert(0, str(HERE / "ref86box"))
 import probe86  # noqa: E402
@@ -53,7 +55,7 @@ TICK_MS = 200
 SETUP_CLOCK = 90000
 # From a DOSBox-X run of this exact route (tools/ref86box/build_dosbox_x.md): START.EXE execs at
 # Machine clock 956881664 (START's own session start), VGAME.EXE at 3371769171.
-START_EXEC_CLOCK = 956881664
+START_EXEC_CLOCK = [956881664]            # the route's own (--start-exec-clock); the strike front end is 956971536
 # 86Box's own frame rate at this video mode (tools/ref86box/sav86.py; independent of CPU speed).
 FPS = 70.086
 # The displayed frame at which START.EXE is first found in RAM on this profile (bare boot, no
@@ -62,7 +64,7 @@ FPS = 70.086
 FRAME_START_EXEC = 10775
 # START's mission generator seed tick (tools/ref86box/build_dosbox_x.md's DBX_INT1A_TICK value):
 # the Machine's BIOS tick count at the moment START reads it for this route.
-SEED_TICK = 31579
+SEED_TICK = [31579]
 
 
 def front_schedule(route_lines):
@@ -75,7 +77,7 @@ def front_schedule(route_lines):
     keys, mouse = [], []
 
     def frame(clock):
-        return FRAME_START_EXEC + round(FPS * (clock - START_EXEC_CLOCK) / IPS)
+        return FRAME_START_EXEC + round(FPS * (clock - START_EXEC_CLOCK[0]) / IPS)
 
     pending_ext = False
     last_pos = [(-1, -1)]
@@ -83,7 +85,7 @@ def front_schedule(route_lines):
     last_move_frame = [0]
     for p in events:
         clock = int(p[1])
-        if clock < START_EXEC_CLOCK or clock >= FRONT_END_CLOCK:
+        if clock < START_EXEC_CLOCK[0] or clock >= FRONT_END_CLOCK[0]:
             continue
         f = frame(clock)
         if p[0] == "K":
@@ -152,7 +154,7 @@ class B86Machine:
         mouse_file.write_text(mouse)
         env = dict(os.environ, B86_LOOP_STATE=str(self.state_path), B86_LOOP_REPLY=self.reply_prefix,
                    B86_LOOP_EVERY=str(TICK_MS), B86_LOOP_READS=",".join("0x%x:%d" % r for r in self.ranges),
-                   B86_KEYS_FILE=str(keys_file), B86_MOUSE_FILE=str(mouse_file), B86_SEED_TICK=str(SEED_TICK))
+                   B86_KEYS_FILE=str(keys_file), B86_MOUSE_FILE=str(mouse_file), B86_SEED_TICK=str(SEED_TICK[0]))
         if turbo:
             env["B86_FAST"] = "1"
         trace = out / "trace"
@@ -273,36 +275,58 @@ class B86Machine:
 
 
 def fly(args):
+    strike = args.pilot == "strike"
+    pilot_state = strike_pilot.strike_state if strike else cargo_pilot.pilot_state
     route = args.front.read_text().splitlines()
     header = re.fullmatch(r"# f117r-input ips=9000000 time_us=(\d+)", route[0] if route else "")
     if not header:
         raise ValueError("the front file needs its recorded start clock header")
     args.out.mkdir(parents=True, exist_ok=False)
-    rows, tick = [], 0
+    if strike:
+        strike_pilot.RELEASE_RANGE[0] = args.release_range
+        strike_pilot.SELECT_KEY[0] = args.select_key
+        strike_pilot.SELECT_EVERY[0] = args.select_every
+    rows, tick, initialized = [], 0, False
     with B86Machine(args.data, route, args.out, int(header[1]), not args.realtime) as machine:
         start = machine.start
-        machine.type(start + 100_000_000, "+")
-        machine.type(start + 170_000_000, r"\D", hold_ms=1000)
+        if not strike:
+            machine.type(start + 100_000_000, "+")
+            machine.type(start + 170_000_000, r"\D", hold_ms=1000)
         while machine.clock < 5_000_000_000 + args.seconds * machine.ips:
             elapsed = machine.clock - start
+            if strike and not initialized and elapsed > 40_000_000:
+                if pilot_state(machine)["flags"] & 8:
+                    machine.type(start + 80_000_000, "0")
+                machine.type(start + 100_000_000, "+")
+                machine.type(start + 170_000_000, r"\D", hold_ms=1000)
+                initialized = True
             if elapsed > 190_000_000:
                 state = pilot_state(machine)
                 rows.append(dict(clock=machine.clock, seconds=elapsed / machine.ips, **state))
                 if tick % 50 == 0:
                     print({k: state[k] for k in ("target_range", "altitude", "speed", "throttle", "weapon",
-                                                  "store_count", "launch_events", "cargo_ttl")}, flush=True)
-                if impacts(rows) and machine.clock - impacts(rows)[0][1]["clock"] >= machine.ips:
+                                                  "store_count", "launch_events")}, flush=True)
+                if strike:
+                    if state["flags"] & 0x4000:
+                        machine.run_until(machine.clock + machine.ips)
+                        rows.append(dict(clock=machine.clock, seconds=(machine.clock - start) / machine.ips,
+                                         **pilot_state(machine)))
+                        break
+                elif impacts(rows) and machine.clock - impacts(rows)[0][1]["clock"] >= machine.ips:
                     break
                 if elapsed > args.seconds * machine.ips:
                     break
-                control(machine, state, tick, args.release_lo, args.release_hi)
+                if strike:
+                    strike_pilot.control(machine, state, tick)
+                else:
+                    cargo_pilot.control(machine, state, tick, args.release_lo, args.release_hi)
                 tick += 1
                 step = machine.ips // 5
             else:
                 step = 90_000
             if machine.run_until(machine.clock + step) != Machine.SLICE:
                 break
-        failures = errors(rows) if rows else ["no observed flight"]
+        failures = (strike_pilot.errors(rows) if strike else cargo_errors(rows)) if rows else ["no observed flight"]
         report = dict(backend="86box", clock=machine.clock, hash=None, program=machine.program,
                       errors=failures, fixes=[], release=[args.release_lo, args.release_hi],
                       observation=rows[-1] if rows else None)
@@ -316,14 +340,29 @@ def fly(args):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--pilot", choices=sorted(PILOTS), default="cargo")
     parser.add_argument("--data", required=True)
     parser.add_argument("--front", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--release-lo", type=int, default=60)
     parser.add_argument("--release-hi", type=int, default=300)
+    parser.add_argument("--release-range", type=int, default=80, help="strike: release the bomb this close")
+    parser.add_argument("--select-key", default="n", help="strike: n (next target) or b (drop lock)")
+    parser.add_argument("--select-every", type=int, default=2, help="strike: press the select key every this many ticks until designated")
+    parser.add_argument("--front-end-clock", type=int, help="the Machine clock of VGAME's exec in the front")
+    parser.add_argument("--start-exec-clock", type=int, help="the Machine clock of START's exec in the front")
+    parser.add_argument("--seed-tick", type=int, help="START's seed tick on the Machine")
     parser.add_argument("--seconds", type=int, default=1500)
     parser.add_argument("--realtime", action="store_true", help="pace 86Box to real time")
     args = parser.parse_args()
+    dbx.PILOT[0] = args.pilot
+    dbx.READS[0] = HERE / "routes" / PILOTS[args.pilot]["reads"]
+    if args.front_end_clock:
+        FRONT_END_CLOCK[0] = args.front_end_clock
+    if args.start_exec_clock:
+        START_EXEC_CLOCK[0] = args.start_exec_clock
+    if args.seed_tick:
+        SEED_TICK[0] = args.seed_tick
     return fly(args)
 
 

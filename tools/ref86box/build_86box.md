@@ -89,7 +89,15 @@ by search and the state is replaced by srand(N) stepped as many times.
 caught 0 steps in, restaged to 31579; VGAME's mission bytes (objective 3,
 target 24, secondary 1) then match the Machine's.
 
-`tools/b86_cargo_pilot.py` flies `cargo_pilot.py` this way. Its front end is
+`tools/b86_cargo_pilot.py` flies `cargo_pilot.py` this way, or with `--pilot strike` the strike-training
+pilot (`--front-end-clock 2761292060 --start-exec-clock 956971536 --seed-tick 31324` and the
+Machine's recorded front end). Strike training (8 Oct 2026, ten flights): the generated mission
+is the Machine's in all ten (target 1 at 21200, 24272, the same loadout) and the primary is
+designated at about 3,050 map units in all ten, but only 2 of 10 hit: on this track the lock
+breaks near 1,400 units in most flights (the nose is left within the pilot's pitch and roll
+deadbands while the target leaves the seeker's view), and the laser-guided bomb's hit window
+is narrow (bugs.md D7). Tighter deadbands and a wings-level release window were tried and
+made the Machine and DOSBox-X flights miss, so they were not kept. Its front end is
 the route's START-to-VGAME events (2 keys, 11 clicks) on displayed frames:
 START.EXE first appears at frame 10,775 on this profile (measured by memory
 dumps, between 10,700 and 10,850), and later events follow at 70.086 frames
