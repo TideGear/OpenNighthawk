@@ -140,10 +140,10 @@ index 600e597..7682a3b 100644
      monitors[monitor_index].mon_blit_data_ptr->buffer_in_use = 1;
      monitors[monitor_index].mon_blit_data_ptr->x             = x;
 diff --git a/src/vnc.c b/src/vnc.c
-index cd539f5..d0a9682 100644
+index cd539f5..88088ac 100644
 --- a/src/vnc.c
 +++ b/src/vnc.c
-@@ -172,6 +172,551 @@ vnc_display(rfbClientPtr cl)
+@@ -172,6 +172,585 @@ vnc_display(rfbClientPtr cl)
      }
  }
  
@@ -273,7 +273,11 @@ index cd539f5..d0a9682 100644
 +    int    down;
 +    int    scan;
 +    int    live;
++    int    kind; /* 0 a key byte; 1 the mouse to the top-left corner; 2 a relative move a,b; 3 buttons a */
++    int    a, b;
 +} loop_ev_t;
++
++static int tr_pend_x, tr_pend_y; /* mouse movement still to be sent, a little each frame (tr_frame) */
 +
 +static char      loop_state_path[1024];
 +static char      loop_reply_prefix[1024];
@@ -376,7 +380,16 @@ index cd539f5..d0a9682 100644
 +    }
 +    for (int i = loop_evs_head; i < loop_nevs; i++) {
 +        if (loop_evs[i].live && loop_evs[i].at_us <= (double) us) {
-+            loop_inject(loop_evs[i].down ? loop_evs[i].scan : (loop_evs[i].scan | 0x80));
++            if (loop_evs[i].kind == 1) {
++                tr_pend_x -= 600;
++                tr_pend_y -= 400;
++            } else if (loop_evs[i].kind == 2) {
++                tr_pend_x += loop_evs[i].a;
++                tr_pend_y += loop_evs[i].b;
++            } else if (loop_evs[i].kind == 3)
++                mouse_set_buttons_ex(loop_evs[i].a);
++            else
++                loop_inject(loop_evs[i].down ? loop_evs[i].scan : (loop_evs[i].scan | 0x80));
 +            loop_evs[i].live = 0;
 +        }
 +    }
@@ -440,6 +453,28 @@ index cd539f5..d0a9682 100644
 +                    n = sizeof(argbuf) - 1;
 +                memcpy(argbuf, arg, n);
 +                argbuf[n] = 0;
++                if (kind == 'm' || kind == 'b') {
++                    /* m x,y: the pointer to guest pixel (x, y) as B86_MOUSE's m does (a slam to the
++                     * corner, then the scaled move 430 ms later); b n: the buttons. */
++                    int    x = 0, y = 0;
++                    double mx = getenv("B86_MOUSE_KX") ? atof(getenv("B86_MOUSE_KX")) : 0.667;
++                    double my = getenv("B86_MOUSE_KY") ? atof(getenv("B86_MOUSE_KY")) : 0.667;
++
++                    sscanf(argbuf, "%d,%d", &x, &y);
++                    for (int e = 0; e < (kind == 'm' ? 2 : 1); e++) {
++                        if (loop_nevs >= loop_evs_cap) {
++                            loop_evs_cap = loop_evs_cap ? loop_evs_cap * 2 : 256;
++                            loop_evs      = realloc(loop_evs, (size_t) loop_evs_cap * sizeof(loop_ev_t));
++                        }
++                        loop_ev_t *ev = &loop_evs[loop_nevs++];
++                        memset(ev, 0, sizeof(*ev));
++                        ev->live  = 1;
++                        ev->at_us = (double) us + ms * 1000.0 + (e ? 430000.0 : 0.0);
++                        ev->kind  = kind == 'b' ? 3 : (e ? 2 : 1);
++                        ev->a     = kind == 'b' ? x : (int) (x * mx + 0.5);
++                        ev->b     = (int) (y * my + 0.5);
++                    }
++                }
 +                if (kind == 'r') {
 +                    int byte = (int) strtol(argbuf, NULL, 16);
 +
@@ -459,6 +494,7 @@ index cd539f5..d0a9682 100644
 +                        loop_evs[loop_nevs].scan = 0xE0;
 +                    }
 +                    loop_evs[loop_nevs].live  = 1;
++                    loop_evs[loop_nevs].kind  = 0;
 +                    loop_nevs++;
 +                }
 +                p = semi ? semi + 1 : p + strlen(p);
@@ -493,8 +529,6 @@ index cd539f5..d0a9682 100644
 +} tr_mouse_t;
 +static tr_mouse_t tr_mouse[512];
 +static int        tr_nmouse;
-+static int        tr_pend_x;
-+static int        tr_pend_y;
 +
 +static void
 +tr_setup(void)
@@ -695,7 +729,7 @@ index cd539f5..d0a9682 100644
  static void
  vnc_blit(int x, int y, int w, int h, int monitor_index)
  {
-@@ -234,16 +779,32 @@ vnc_init(UNUSED(void *arg))
+@@ -234,16 +813,32 @@ vnc_init(UNUSED(void *arg))
          rfb->width  = allowedX;
          rfb->height = allowedY;
  

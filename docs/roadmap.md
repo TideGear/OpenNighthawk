@@ -89,7 +89,9 @@ make (Phase 4).
       flown, landed and debriefed there saves the same roster entry as our
       machine's except the mission score (167 against 168; the flights differ:
       DOSBox-X's handover staged into ours scores 167 here too;
-      tools/ref86box/build_dosbox_x.md). Open: the same on 86Box; the 86Box intro drift is
+      tools/ref86box/build_dosbox_x.md). On 86Box the same sortie lands with the stick keys
+      held 160 ms (`--min-hold-ms`) and saves a roster byte-identical to
+      DOSBox-X's, but the landing is marginal there (200 ms crashes); the 86Box intro drift is
       explained (8 Oct 2026: 1.4 s of the 2.0 is the IBM VGA's 8-bit bus
       during the credits' panning, 0.24 s the disk path; with both fast the
       drift is about 0.5 s, tools/ref86box/build_86box.md), and the pitch-bend

@@ -37,6 +37,9 @@ sys.path.insert(0, str(HERE))
 from machine_api import Machine  # noqa: E402
 import cargo_pilot  # noqa: E402
 import strike_pilot  # noqa: E402
+import recon_pilot  # noqa: E402
+import math  # noqa: E402
+from landing_pilot import control as landing_control, signed  # noqa: E402
 import dosbox_cargo_pilot as dbx  # noqa: E402
 from cargo_check import errors as cargo_errors, impacts  # noqa: E402
 from dosbox_cargo_pilot import (key_bytes, read_ranges, MACHINE_PSP, DS_BASE, MEM_MASK,  # noqa: E402
@@ -232,7 +235,13 @@ class B86Machine:
     def read16(self, address):
         return self.read8(address) | (self.read8(address + 1) << 8)
 
+    min_hold_ms = 0                 # a key held at least this long (--min-hold-ms)
+
     def type(self, at, keys, *, hold_ms=60, gap_ms=60):
+        if keys.startswith("\\") and keys[1:2] in ("U", "D", "L", "R"):
+            # The stick only: at about half this machine's frame rate a 60 ms tap can fall between the
+            # game's key samples; command keys (n, Enter, Space) keep their short taps.
+            hold_ms = max(hold_ms, self.min_hold_ms)
         hold, gap = IPS * hold_ms // 1000, IPS * gap_ms // 1000
         for make, brk in key_bytes(keys):
             for code in make:
@@ -245,6 +254,17 @@ class B86Machine:
         ms = max(0.0, (at - self.clock) * 1000 / IPS)
         self.pending.append("%.4f|r|%02x" % (ms, code))
 
+    def click(self, at, x, y):
+        """A left click at guest pixel (x, y): the loop's m (a slam to the corner, then the scaled move
+        430 ms later), the button down 570 ms and up 785 ms after it, the spacing of front_schedule."""
+        ms = max(0.0, (at - self.clock) * 1000 / IPS)
+        self.pending += ["%.4f|m|%d,%d" % (ms, x, y), "%.4f|b|1" % (ms + 570), "%.4f|b|0" % (ms + 785)]
+
+    def tick(self):
+        self._reply(";".join(self.pending))
+        self.pending = []
+        self._take_state()
+
     def run_until(self, until):
         self._reply(";".join(self.pending))
         self.pending = []
@@ -252,6 +272,10 @@ class B86Machine:
         return self.SLICE if self.program == "VGAME.EXE" else self.EXITED
 
     def _reply(self, spec):
+        if spec:
+            # Every reply that carries input, with its tick: the run's own input record.
+            with open(self.out / "replies.log", "a") as log:
+                log.write("%d %.1f %s\n" % (self.seq, self.clock * 1000 / IPS, spec))
         final = "%s%d" % (self.reply_prefix, self.seq)
         with open(final + ".tmp", "w") as f:
             f.write(spec + "\n")
@@ -338,6 +362,104 @@ def fly(args):
     return int(bool(report["errors"]))
 
 
+# 86Box has no DOS-level view of program starts; END follows VGAME's end by DSWAP's load (16 ms on
+# DOSBox-X, longer from 86Box's disk), so END's keys are timed from VGAME's end plus this.
+END_AFTER_VGAME_MS = 1000
+# START, back after END, writes the roster within a minute; the run stops this long after END's last key.
+SAVE_WAIT_MS = 90_000
+
+
+def debrief(machine):
+    """END's screens with strike_pilot.END_KEYS, from VGAME's end (plus END_AFTER_VGAME_MS), then
+    long enough for START to write the roster."""
+    at_end = machine.clock + round(END_AFTER_VGAME_MS * IPS / 1000)
+    keys = strike_pilot.END_KEYS
+    last = at_end
+    for option, value in zip(keys[::2], keys[1::2]):
+        when, what = value.split(":", 1)
+        at = at_end + int(when.split("+", 1)[1])
+        last = max(last, at)
+        if option == "--type":
+            machine.type(at, what, hold_ms=60)
+        else:
+            x, y = map(int, what.split(","))
+            machine.click(at, x, y)
+    stop = last + round(SAVE_WAIT_MS * IPS / 1000)
+    while machine.clock < stop:
+        machine.tick()
+
+
+def fly_recon(args):
+    route = args.front.read_text().splitlines()
+    header = re.fullmatch(r"# f117r-input ips=9000000 time_us=(\d+)", route[0] if route else "")
+    if not header:
+        raise ValueError("the front file needs its recorded start clock header")
+    args.out.mkdir(parents=True, exist_ok=False)
+    rows, tick, approach = [], 0, False
+    with B86Machine(args.data, route, args.out, int(header[1]), not args.realtime) as machine:
+        start = machine.start
+        initialized = False
+        while machine.clock < start + args.seconds * machine.ips:
+            elapsed = machine.clock - start
+            if not initialized and elapsed > 30_000_000:
+                if recon_pilot.recon_state(machine)["flags"] & 8:
+                    machine.type(start + 80_000_000, "0")
+                machine.type(start + 100_000_000, "+")
+                machine.type(start + 170_000_000, r"\D", hold_ms=1000)
+                initialized = True
+            if elapsed > 190_000_000:
+                state = recon_pilot.recon_state(machine)
+                rows.append(dict(clock=machine.clock, seconds=elapsed / machine.ips, **state))
+                if tick % 50 == 0:
+                    print({k: state[k] for k in ("target_range", "range", "altitude", "speed", "photos",
+                                                  "credit_events", "fuel")}, flush=True)
+                if state["flags"] & 0x4000:
+                    waypoint_range = math.hypot(signed(state["home_x"] - state["x"]),
+                                                signed(state["home_y"] + 4000 - state["y"]))
+                    if waypoint_range < 150:
+                        approach = True
+                    landing_control(machine, state, tick, approach, deck_aim=args.deck_aim, aim=20, approach_speed=200,
+                                    throttle_gain=args.landing_throttle_gain, deck_pitch_floor=args.deck_pitch_floor)
+                else:
+                    recon_pilot.control(machine, state, tick, acquisition="nose")
+                tick += 1
+                step = machine.ips // 5
+            else:
+                step = 90_000
+            if machine.run_until(machine.clock + step) != Machine.SLICE:
+                break
+        last = rows[-1] if rows else {}
+        report = dict(backend="86box", program=machine.program, clock=machine.clock,
+                      credited=bool(last.get("flags", 0) & 0x4000),
+                      landed_home=bool(last and last["speed"] <= 1 and last["agl"] == max(last["ground"], last["surface"])
+                                       and abs(signed(last["x"] - last["home_x"])) <= last["box_width"] >> 5
+                                       and abs(signed(last["y"] - last["home_y"])) <= last["box_length"] >> 5),
+                      observation=last or None)
+        if args.debrief and machine.program != "VGAME.EXE":
+            debrief(machine)
+            report["debriefed"] = True
+    # The stop reply ends 86Box; the saved roster is on its disk image.
+    img = os.path.join(str(args.out / "profile"), "f117a.img")
+    got = {}
+
+    def grab(fs):
+        for name in ("ROSTER.FIL", "Roster.Fil"):
+            if fs.exists("/F117A/" + name):
+                got["roster"] = fs.readbytes("/F117A/" + name)
+                return
+    probe86.with_partition(img, grab)
+    if "roster" in got:
+        (args.out / "ROSTER.FIL").write_bytes(got["roster"])
+    report["roster_saved"] = "roster" in got
+    (args.out / "result.json").write_text(json.dumps(report, indent=2) + "\n")
+    with (args.out / "flight.csv").open("w", newline="") as stream:
+        if rows:
+            writer = csv.DictWriter(stream, fieldnames=rows[0]); writer.writeheader(); writer.writerows(rows)
+    print(json.dumps({k: v for k, v in report.items() if k != "observation"}), flush=True)
+    ok = report["credited"] and report["landed_home"] and report.get("debriefed", not args.debrief)
+    return 0 if ok else 1
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--pilot", choices=sorted(PILOTS), default="cargo")
@@ -349,6 +471,12 @@ def main():
     parser.add_argument("--release-range", type=int, default=80, help="strike: release the bomb this close")
     parser.add_argument("--select-key", default="n", help="strike: n (next target) or b (drop lock)")
     parser.add_argument("--select-every", type=int, default=2, help="strike: press the select key every this many ticks until designated")
+    parser.add_argument("--debrief", action="store_true", help="recon: take END's screens after the flight; START saves the roster")
+    parser.add_argument("--landing-throttle-gain", type=float, default=.6, help="recon: landing_pilot's throttle gain")
+    parser.add_argument("--deck-aim", type=int, default=300, help="recon: how far before the deck's centre the glide meets it")
+    parser.add_argument("--deck-pitch-floor", type=int, default=-300, help="recon: the lowest pitch on a raised-deck approach")
+    parser.add_argument("--min-hold-ms", type=int, default=0,
+                        help="hold the stick (arrow) keys at least this long (86Box's game runs at about half this machine's frame rate)")
     parser.add_argument("--front-end-clock", type=int, help="the Machine clock of VGAME's exec in the front")
     parser.add_argument("--start-exec-clock", type=int, help="the Machine clock of START's exec in the front")
     parser.add_argument("--seed-tick", type=int, help="START's seed tick on the Machine")
@@ -357,12 +485,15 @@ def main():
     args = parser.parse_args()
     dbx.PILOT[0] = args.pilot
     dbx.READS[0] = HERE / "routes" / PILOTS[args.pilot]["reads"]
+    B86Machine.min_hold_ms = args.min_hold_ms
     if args.front_end_clock:
         FRONT_END_CLOCK[0] = args.front_end_clock
     if args.start_exec_clock:
         START_EXEC_CLOCK[0] = args.start_exec_clock
     if args.seed_tick:
         SEED_TICK[0] = args.seed_tick
+    if args.pilot == "recon":
+        return fly_recon(args)
     return fly(args)
 
 

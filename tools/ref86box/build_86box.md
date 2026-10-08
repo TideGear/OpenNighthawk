@@ -101,7 +101,21 @@ Machine's (target 1 at 21200, 24272, the same loadout) and the primary is design
 is left within the pilot's pitch and roll deadbands while the target leaves the seeker's view),
 and the laser-guided bomb's hit window is narrow (bugs.md D7). Before runs were deterministic,
 2 of 10 flights hit. Tighter deadbands and a wings-level release window were tried and made the
-Machine and DOSBox-X flights miss, so they were not kept. Its front end is
+Machine and DOSBox-X flights miss, so they were not kept. The game runs at about half this machine's
+frame rate here (S 4-5 against 7-8), and the stick's 60 ms taps steer badly: with the arrow keys held
+at least 200 ms (`--min-hold-ms`) the approach tracks the bearing as on the Machine (heading error 97
+at 2,000 units against 868), but no hold length tried (120-240 ms) gives a hit reliably.
+
+**A career sortie** (`--pilot recon --debrief`, as `build_dosbox_x.md`'s, `--seed-tick 31233`): END's
+keys go through the loop's replies from VGAME's end plus 1 s (86Box has no view of program starts),
+including a click (the loop's `m x,y` and `b n` replies, added for it), and the run stops 90 s after
+the last key, once START has written `ROSTER.FIL`, which is read back from the disk image. With the
+stick's taps the landing pilot rocks the wings on the deck approach (left and right every two ticks, to
+about 22 degrees of bank) and the aircraft crashes short of the raised deck: START records the pilot as
+lost (status 2). With `--min-hold-ms 160` it lands and stops, and the saved roster is byte-identical to
+DOSBox-X's (mission score 167; ours scores 168, the flights differ) and passes `career_check`; at 200 ms
+it crashes again, so the landing is marginal on this machine. `replies.log` in the run directory holds
+every reply with input. Its front end is
 the route's START-to-VGAME events (2 keys, 11 clicks) on displayed frames:
 START.EXE first appears at frame 10,775 on this profile (measured by memory
 dumps, between 10,700 and 10,850), and later events follow at 70.086 frames
