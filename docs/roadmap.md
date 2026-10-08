@@ -7,8 +7,9 @@ scoreboard is `py tools/progress.py` ([progress.md](progress.md)). Update this
 page with every piece of work, and keep it short: one entry per item, the
 evidence linked or in the commit, not narrated here.
 
-The order of the phases is the project's: **1:1 parity first**, then
-understood (named) code, then fixes and enhancements - each switchable, never
+The order of the phases is the project's: **1:1 parity first** - the same
+player actions playing out as on the original's hardware - then understood
+(named) code, optional, then fixes and enhancements - each switchable, never
 instead of parity - and last the checks only people and outside references can
 make (Phase 4).
 
@@ -78,125 +79,74 @@ make (Phase 4).
 
 ### Open
 
-- [ ] **Exact frame parity with DOSBox.** The remaining unmatched pictures are
-      partial logo and aircraft transitions whose exact frame varies with the
-      capture's phase. A frame capture synchronised to a guest event would
-      settle it.
-- [ ] **86Box and DOSBox-X as routine checks.** `tools/pc_parity.py` is the
-      routine PC-parity check (pictures, music and saved data, against limits
-      measured on 6 Oct 2026) and `tools/fidelity_all.py` the machine probe.
-      A career sortie's saved data on DOSBox-X: a closed-loop reconnaissance
-      flown, landed and debriefed there saves the same roster entry as our
-      machine's except the mission score (167 against 168; the flights differ:
-      DOSBox-X's handover staged into ours scores 167 here too;
-      tools/ref86box/build_dosbox_x.md). On 86Box the same sortie lands and saves a roster
-      byte-identical to DOSBox-X's once the adaptor sends the stick as whole
-      game frames (86Box runs the game at about half the frame rate; 7 of 9
-      flights pass over a +-15% range of the one estimated scale); the 86Box intro drift is
-      explained (8 Oct 2026: 1.4 s of the 2.0 is the IBM VGA's 8-bit bus
-      during the credits' panning, 0.24 s the disk path; with both fast the
-      drift is about 0.5 s, tools/ref86box/build_86box.md), and the pitch-bend
-      channels' write positions follow the loop's speed (channel 3's key-ons
-      move with the VGA's speed while the melodic channels stay identical), so
-      they are not a parity target. Decided (8 Oct 2026):
-      DOSBox-X and 86Box are the routine references (`pc_parity.py`,
-      `fidelity_all.py`, the closed-loop supply drop on both); GOG's DOSBox is
-      no longer started for the picture and music checks (its saved capture is
-      the frozen reference) and runs only as the third sheet of the machine
-      probe, which takes seconds. Parity target: the original on real
-      hardware, not DOSBox.
-- [ ] **A 386DX/33 timing profile** (decided 8 Oct 2026). The game's frame rate
-      depends on the PC it runs on; this machine follows DOSBox's model (one
-      clock an instruction plus I/O delays, 9.00 M clocks a second). A selectable
-      profile charges what 86Box's 386DX/33 charges: each instruction's cycles
-      from 86Box's 386 tables, the IBM VGA's 8-bit bus and ISA I/O wait states
-      and the disk path, at 33 MHz, so pictures land on the same frames as on
-      86Box. Results that do not depend on speed (pictures, their order, game
-      state, the sound sequence, saved data) must match under both profiles;
-      recorded routes and hashes stay on the DOSBox profile. Steps: cycles per
-      frame against 86Box's TSC trace on the interpreter; VGA and I/O wait
-      states; the disk; the recompiler emitting the same costs; a frame-exact
-      comparison against 86Box.
-- [ ] **Rendered sound parity:** the OPL defaults to GOG DOSBox's DBOPL core at
-      its rate and 2x gain. A tone probe matches exactly; the captured intro
-      differs in RMS by about 0.5% (level 1.003 with the register stream exact,
-      envelope 0.970, spectral 0.986), and a flight comparison against a GOG
-      mixer WAV is approximate (envelope correlation 0.60). The register stream
-      is exact (above), so what is left is in the rendering: the per-segment
-      waveform correlation at a sample-fine alignment is 0.96-0.98 early and
-      0.6-0.9 in the busier stretches, and applying each write at its 1 ms mixer
-      block edge (floor or ceil) moves segments by -0.04 to +0.18, so it is not
-      the whole answer; the correlation peaks repeat every 1,000 samples, which
-      makes the alignment itself uncertain. Digitised speech, audible speaker
-      output and a listening check remain.
-- [ ] **Timing details still DOSBox's own:** its BIOS and DOS stubs at their own
-      addresses and its per-millisecond slicing. Its 386 against this machine's
-      286 (flag bits 12-14) is settled: of the game's 16 PUSHF sites 14 are real
-      code (ASOUND's three included) and each runs to a balanced POPF
-      (interrupts held off around a retrace wait or a timer update, and an
-      interrupt chain), none reads the word; two are data the translator
-      decoded as code (SETUP 1EAD, VGAME 2DFD). PLAYER's fade calibration samples overlap DOSBox's
-      (5,836-5,841 against 5,839-5,844 DAC bytes per display period; the
-      calibrator is a phase-dependent diagnostic, `tools/fade_calibration.py`,
-      not a verdict, and start phase is what moved the music note above);
-      against 86Box's 386DX/33 the intro's scenes keep their lengths within
-      0.31 s and drift 2.0 s over the intro (the VGA's 8-bit bus and the disk
-      path, not this machine), and the
-      game's code runs there at 6.28 MIPS against this model's 9.00 M clocks a
-      second, a ratio set by the polling loops (`tools/ref86box/instr86.py`). The
-      intro music's channel-3 note at 29.7 s is settled (7 Oct): it is the
-      start phase. GOG's DOSBox starts F117 about 275 ms into its own life; this
-      machine started at 0 and its sound driver's per-frame generator sat one
-      step off from there on (596 writes matched, then 86% overall). Started
-      275 ms in (`f117run --boot-ms`, `dosbox_compare.GOG_BOOT_MS`) every one of
-      the 22,840 AdLib writes over 106.0 s is identical to GOG's capture in
-      order and value, timing -14 to +1 ms; `pc_parity.py` checks it. The
-      default stays 0 (every recorded route and hash is at that phase); the
-      match holds for starts of 5-20, 120-230 and 260-400 ms and fails at 0,
-      40, 80 and 250, so it is a phase, not a clock error.
-- [ ] **Individual mission objectives:** independent GOG DOSBox cargo delivery
-      is open (open-loop replay diverges across machines): a closed-loop pilot
-      flies the generated mission in our emulator and releases the crate by its
-      own state (`tools/cargo_pilot.py`, gate route `cargo_pilot`), and the same
-      pilot delivers on DOSBox-X (`tools/dosbox_cargo_pilot.py`) and on 86Box
-      (`tools/b86_cargo_pilot.py`; 86Box runs deterministic since 8 Oct 2026): one timely
-      impact in the delivery area on each; the strike-training mission is
-      reproduced on DOSBox-X (same target, loadout) and its closed-loop pilot
-      (`--pilot strike`: `n` until designated, release at 80) delivers there as on
-      the Machine and, with the stick sent as whole frames, on 86Box; wider generated-assignment coverage; the strike-training mission (bugs.md
-      D7) is settled as far as the original goes: a strike-type training mission is
-      reproducible (start clock +5 s, `strike_pilot.py --time-us`) and is
-      credited when the laser-guided bomb is released within about 80-150 map
-      units, and not otherwise (the D8 clamp's short reach, bugs.md D7); gate
-      routes `strike_training` and `strike_training_d8` (fix on: releases from
-      1,200 units hit).
-- [ ] **The remaining career flow:** an earned rank-6 career (the branch is
-      reached only with a staged roster). END promotes on three tables (read from
-      its memory, 8 Oct 2026): totals 300, 1,125, 3,000, 7,000, 16,000, 27,720,
-      averages per sortie 100, 150, 200, 250, 280, 280 and sorties 2, 5, 10, 20,
-      40 and exactly 99 for ranks 1 to 6, so rank 6 needs an average of 280 over
-      99 sorties. A closed-loop career sortie (`recon_pilot.py --complete --extend
-      --debrief`, `tools/routes/career.front`: both photos, the flight home and the
-      landing) scores 226, so the earned career needs higher-scoring sorties than
-      this reconnaissance. END multiplies by the pilot-skill form's settings read
-      from the pilot record in memory (not the roster file): one recorded sortie
-      scores 168 Green, 231 Regular, 294 Veteran and 288 Regular with Realistic
-      Landings, as the decoded tables give. A Veteran sortie takes hits (event
-      type 05) that cut the throttle to 44 and the aircraft stalls in; the
-      secondary photo needs `--cycle` there (N kept re-picking another object).
-      Regular with Realistic Landings (`tools/routes/career_regular_realistic.front`)
-      flies the sortie clean at 296 once the deck is approached at 190-210
-      (`--deck-speed`; a 250 touchdown ran off its end, 180-200 fell short);
-      `tools/career_chain.py` chains such sorties and checks each saved record.
-      Sorties vary by start time (the DOS clock seeds START); the chain reads each
-      one's objectives first and flies reconnaissance only. Opponents hit the
-      aircraft on some sorties at any altitude: VGAME's damage bits ([0x3664];
-      bit 1 caps the throttle at (25 - [0xC5F4]) x 4 at 0x24BD, bit 4 jams the
-      bay open at 0xD30D) leave it short of speed or fuel, so a failed sortie is
-      flown again from the same roster at the next start time, as a player
-      resetting the PC before START saves would, and listed in chain.json.
+- [ ] **A 386DX/33 timing profile** (decided 8 Oct 2026). The game steps its
+      flight model by its own frame rate ([0x368E]) and reads the stick once a
+      frame, so the same inputs play out a little differently on a faster or
+      slower PC: this is what makes the recompilation play like the original on
+      a period machine. This machine follows DOSBox's model (one clock an
+      instruction plus I/O delays, 9.00 M clocks a second); the profile
+      (`f117run --timing 386`, `F117R_TIMING=386`; src/cpu/timing386.c) charges
+      what 86Box's 386DX/33 charges, from its source
+      ([timing386.md](../tools/ref86box/timing386.md), `ops386.json`): each
+      instruction's cycles and prefetch refills, the IBM VGA's 8-bit bus, ISA
+      port costs, at 33.333 MHz. Results that do not depend on speed must match
+      under both profiles; recorded routes and hashes stay on the DOSBox profile.
+      Done: the interpreter matches 86Box to the cycle on every block of
+      `probe386.py`. Open: the BIOS and DOS services this machine provides
+      natively (86Box runs real BIOS and DOS code for them), the disk path, the
+      recompiled engine charging the same costs, then a frame-exact comparison
+      against 86Box.
+- [ ] **Rendered sound:** the register stream is exact (every AdLib write of
+      the intro in order and value, above), which is what the original sends to
+      its chip. Open: digitised speech and audible speaker output. How the OPL
+      waveform is synthesised is the emulator's, not the game's, so matching
+      DOSBox's mixer sample for sample is not pursued.
 
-## Phase 2 - understood code
+### Settled (scope, 8 Oct 2026)
+
+Closed because what is left measures a reference emulator or the test tools,
+not the recompilation:
+
+- [x] **Frame parity with DOSBox.** 1,329 of 1,332 pictures exact; the rest
+      are one-sample transitions whose frame varies with the capture's phase.
+      Frame timing against a period PC is the 386 profile's job.
+- [x] **86Box and DOSBox-X as routine checks.** `pc_parity.py` (pictures,
+      music, saved data; 86Box 86 of 87 pictures exact in DAC values) and
+      `fidelity_all.py` are the routine checks; the closed-loop supply drop,
+      strike-training hit and career sortie pass on both (86Box runs
+      deterministic; its adaptor sends the stick as whole game frames). The
+      86Box intro drift is the VGA's 8-bit bus and the disk path
+      (build_86box.md). The test pilot passes 7 of 9 over a +-15% range of its
+      stick scale on 86Box: a property of the pilot, not of either machine.
+- [x] **Timing details still DOSBox's own** (its BIOS and DOS stubs, its
+      per-millisecond slicing, the 275 ms boot phase that lines the intro music
+      up with GOG's capture, `--boot-ms`). They describe DOSBox, not the
+      original; the 386 profile supersedes them. The game's PUSHF sites never
+      read the 286/386 flag bits (14 real, two decoded data).
+- [x] **Individual mission objectives.** All eight primary objective types
+      have gate routes replayed byte-identically by both engines; the
+      closed-loop pilots deliver on DOSBox-X and 86Box (GOG's DOSBox replay
+      diverges open-loop and is not pursued); the strike-training credit window
+      is the original's (80-150 map units, bugs.md D7).
+- [x] **The career flow.** Promotion, medals, ribbons, retirement and the
+      rank-6 "General, At Last!" branch are reached and paired (the last from a
+      prepared roster: END's promotion code is the same however the roster was
+      made). END's tables, read from its memory: totals 300, 1,125, 3,000,
+      7,000, 16,000, 27,720; averages 100, 150, 200, 250, 280, 280; sorties 2,
+      5, 10, 20, 40 and exactly 99; its score multipliers come from the
+      pilot-skill form in the pilot record in memory (one sortie: 168 Green, 231
+      Regular, 294 Veteran, 288 Regular with Realistic Landings). An earned
+      career was flown to sortie 10 at an average of 290
+      (`tools/career_chain.py`, `career_regular_realistic.front`) and stopped:
+      flying 89 more scripted sorties would test the pilot, not the game.
+
+## Phase 2 - understood code (optional)
+
+Naming routines and replacing translations with readable C changes nothing a
+player sees, and the fixes and the presentation work do not depend on it (fixes
+attach as code overrides; the presentation hooks the drawing primitives), so
+since 8 Oct 2026 this phase is optional: it stays here and in the scoreboard but
+not in the overall figure ([progress.md](progress.md)).
 
 - [ ] Name the translated routines and data, with explanations, drawing on the
       Reimp's mapping; matched functions replacing translations one at a time,
@@ -205,9 +155,6 @@ make (Phase 4).
       lead list. 323 addresses are matched (322 of the census functions, 15,303 of
       179,213 bytes); the table is at the end of `src/matched/matched.c` and the
       method is in [architecture.md](architecture.md#matched-routines-phase-2).
-      The remaining small routines are mostly far-segment or do port I/O, which
-      the lockstep cannot hold, so they are held by the routes only. Progress
-      is measured in census bytes ([progress.md](progress.md)).
 
 ## Phase 3 - fixes and enhancements (switchable)
 

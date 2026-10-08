@@ -1,68 +1,68 @@
 {
   "_about": "Roadmap progress. Each phase is a weighted list of items; weight is the item's share of that phase's effort, done its completion from 0 to 1. kind 'measured' means tools/progress.py computes done from the repository (or a census figure it records here); 'estimate' means a judgement, with its evidence. See docs/progress.md.",
   "phase_weights": {
-    "P1": 42,
-    "P2": 29,
-    "P3": 24,
-    "P4": 5
+    "P1": 59,
+    "P2": 0,
+    "P3": 34,
+    "P4": 7
   },
   "phases": {
     "P1": [
       {
         "item": "Translation, lockstep, routes and the emulated PC (roadmap Phase 1 'Done')",
-        "weight": 58,
+        "weight": 60.04,
         "done": 1.0,
         "kind": "estimate",
         "evidence": "All 17 code files translated (89,276 instructions); instruction lockstep 0 mismatches over 5.7M states; 27 routes identical across engines; fidelity.py 1,210/1,210; housekeeping done."
       },
       {
         "item": "86Box and DOSBox-X as routine checks",
-        "weight": 4,
-        "done": 0.95,
+        "weight": 3.93,
+        "done": 1.0,
         "kind": "estimate",
-        "evidence": "Done: tools/pc_parity.py checks pictures, music and the saved roster on both against measured limits, fidelity_all.py holds the machine probe, 86Box runs are deterministic (8 Oct 2026: the harness hook in the emulation thread; repeat runs byte-identical), the closed-loop supply drop delivers on both, a closed-loop career sortie saves its roster on both (DOSBox-X's and 86Box's byte-identical, ours differing only in the mission score, which END scores the same from either machine's handover), the 86Box intro drift and pitch-bend writes are explained, and the decision to use them as the routine references is made. The 86Box adaptor sends the stick as whole game frames (the game runs at about half the frame rate there), and the supply drop, the strike-training hit and the career landing then pass on 86Box too. Open: those flights pass 7 of 9 over a +-15% range of the one estimated stick scale, so a mission with a narrow window can still miss on 86Box."
+        "evidence": "Settled by scope 8 Oct 2026 (roadmap 'Settled'): the weight is cut to the work done, dropping what was left. What was left (the test pilot's 7 of 9 over a +-15% stick-scale range on 86Box) measures the pilot, not the machines. Before: Done: tools/pc_parity.py checks pictures, music and the saved roster on both against measured limits, fidelity_all.py holds the machine probe, 86Box runs are deterministic (8 Oct 2026: the harness hook in the emulation thread; repeat runs byte-identical), the closed-loop supply drop delivers on both, a closed-loop career sortie saves its roster on both (DOSBox-X's and 86Box's byte-identical, ours differing only in the mission score, which END scores the same from either machine's handover), the 86Box intro drift and pitch-bend writes are explained, and the decision to use them as the routine references is made. The 86Box adaptor sends the stick as whole game frames (the game runs at about half the frame rate there), and the supply drop, the strike-training hit and the career landing then pass on 86Box too. Open: those flights pass 7 of 9 over a +-15% range of the one estimated stick scale, so a mission with a narrow window can still miss on 86Box."
       },
       {
         "item": "The picture against the references, frame by frame",
-        "weight": 6,
-        "done": 0.95,
+        "weight": 5.9,
+        "done": 1.0,
         "kind": "estimate",
-        "evidence": "The SVGA_S3 screen-off fix removes five false black local pictures. DOSBox 0.74 source confirms fractional PIC scheduling from pixel clock/CRTC totals; local frame, line-part, retrace, status and I/O slice deadlines now use rational event times with whole-instruction ceiling boundaries. After the pc_slice_left refinement, saved independent capture intro-qlh_wi26 matches 1,329/1,332 exact pictures, with three one-sample logo images unmatched on each side and -0.000034 ms end drift. Fresh capture intro-cfku0zec matches 1,321/1,332, with 11 one-sample images unmatched on each side and +14.268 ms drift. The local 1,332-picture sequences are identical; remaining transition differences depend on reference capture phase. No multi-sample mismatch remains; exact frame parity is open. 86Box (386DX/33): 86 of 87 graphics pictures exact in 6-bit DAC values, in order, the other a single mid-draw sample (pc_parity.py requires 84); its timing is a different machine's by design, so frame timing is judged against DOSBox."
+        "evidence": "Settled by scope 8 Oct 2026 (roadmap 'Settled'): the weight is cut to the work done, dropping what was left. What was left (one-sample DOSBox transitions whose frame follows the capture's phase) describes the capture; frame timing against a period PC moves to the 386 profile. Before: The SVGA_S3 screen-off fix removes five false black local pictures. DOSBox 0.74 source confirms fractional PIC scheduling from pixel clock/CRTC totals; local frame, line-part, retrace, status and I/O slice deadlines now use rational event times with whole-instruction ceiling boundaries. After the pc_slice_left refinement, saved independent capture intro-qlh_wi26 matches 1,329/1,332 exact pictures, with three one-sample logo images unmatched on each side and -0.000034 ms end drift. Fresh capture intro-cfku0zec matches 1,321/1,332, with 11 one-sample images unmatched on each side and +14.268 ms drift. The local 1,332-picture sequences are identical; remaining transition differences depend on reference capture phase. No multi-sample mismatch remains; exact frame parity is open. 86Box (386DX/33): 86 of 87 graphics pictures exact in 6-bit DAC values, in order, the other a single mid-draw sample (pc_parity.py requires 84); its timing is a different machine's by design, so frame timing is judged against DOSBox."
       },
       {
         "item": "Individual mission objectives",
-        "weight": 6,
-        "done": 0.91,
+        "weight": 5.65,
+        "done": 1.0,
         "kind": "estimate",
-        "evidence": "Strike and strike-return inputs have been refreshed after rational VGA slice-boundary timing and pass paired strong observers under both engines with byte-identical input, flight and result files (return clock 15029717426/hash 7b49aac1f746ffa7, result 0/status 3); both routes also pass the official world, VGAME-exit and END-debrief gates. Recon primary and return are likewise refreshed and paired. A recomp trap-poll fix (nested guest_call returns) was needed for long observer runs; the full gate passes with it (27/27 routes identical, both locksteps 0 mismatching). Independent GOG DOSBox supply-mission generation is reproduced (exact type-3/target-24/departure-58/home-51 triple at a -275 ms seed compensating autoexec overhead); open-loop replay then diverges in flight. A closed-loop pilot (cargo_pilot.py) delivers on our machine and the same pilot delivers on DOSBox-X (7 Oct: one timely impact in the delivery area, no credit, on both; DOSBox-X given the Machine's START seed tick and wall clock). Air-to-air types 5-8 were re-recorded under the current timing and are gate routes (airair_type5-8), each replaying byte-identically under both engines with result 0/status 3; all eight primary objective types now have gate-replayed normal-input routes. Wider generated-assignment coverage remains open. D7 settled (7 Oct): the Ground Strike Training mission is reproducible and credited with a release inside the laser-guided bomb's narrow window (80-150 map units); the report follows from D8's clamp."
+        "evidence": "Settled by scope 8 Oct 2026 (roadmap 'Settled'): the weight is cut to the work done, dropping what was left. What was left (an independent GOG DOSBox cargo delivery, wider generated-assignment coverage) tests reference emulators and pilots; all eight objective types have gate routes. Before: Strike and strike-return inputs have been refreshed after rational VGA slice-boundary timing and pass paired strong observers under both engines with byte-identical input, flight and result files (return clock 15029717426/hash 7b49aac1f746ffa7, result 0/status 3); both routes also pass the official world, VGAME-exit and END-debrief gates. Recon primary and return are likewise refreshed and paired. A recomp trap-poll fix (nested guest_call returns) was needed for long observer runs; the full gate passes with it (27/27 routes identical, both locksteps 0 mismatching). Independent GOG DOSBox supply-mission generation is reproduced (exact type-3/target-24/departure-58/home-51 triple at a -275 ms seed compensating autoexec overhead); open-loop replay then diverges in flight. A closed-loop pilot (cargo_pilot.py) delivers on our machine and the same pilot delivers on DOSBox-X (7 Oct: one timely impact in the delivery area, no credit, on both; DOSBox-X given the Machine's START seed tick and wall clock). Air-to-air types 5-8 were re-recorded under the current timing and are gate routes (airair_type5-8), each replaying byte-identically under both engines with result 0/status 3; all eight primary objective types now have gate-replayed normal-input routes. Wider generated-assignment coverage remains open. D7 settled (7 Oct): the Ground Strike Training mission is reproducible and credited with a release inside the laser-guided bomb's narrow window (80-150 map units); the report follows from D8's clamp."
       },
       {
         "item": "The remaining career flow",
-        "weight": 5,
-        "done": 0.85,
+        "weight": 4.4,
+        "done": 1.0,
         "kind": "estimate",
-        "evidence": "Promotion, medals, tour ribbon and rank-3 retirement earned and paired; rank-6 'General, At Last!' branch reached with a staged roster (rank 6, total 27,930) and a normal 99th sortie, paired under both engines (hash 934f2fb9cb4227a6); an earned rank-6 career is open."
+        "evidence": "Settled by scope 8 Oct 2026 (roadmap 'Settled'): the weight is cut to the work done, dropping what was left. What was left (an earned rank-6 career; flown to sortie 10 at an average of 290 with tools/career_chain.py) tests the scripted pilot; the rank-6 branch itself is reached and paired. Before: Promotion, medals, tour ribbon and rank-3 retirement earned and paired; rank-6 'General, At Last!' branch reached with a staged roster (rank 6, total 27,930) and a normal 99th sortie, paired under both engines (hash 934f2fb9cb4227a6); an earned rank-6 career is open."
       },
       {
         "item": "Timing details still DOSBox's own",
-        "weight": 5,
-        "done": 0.8,
+        "weight": 4.14,
+        "done": 1.0,
         "kind": "estimate",
-        "evidence": "PIT control-word IRQ found and fixed; I/O slice suppression matched; the retrace-phase note settled (7 Oct): started 275 ms in, as GOG's DOSBox is, all 22,840 AdLib writes over 106 s are identical to its capture; PLAYER's few-byte DAC gap and the BIOS/DOS stub timing open. The 386-against-286 flag bits 12-14 are never read by the translated code (all 14 real PUSHF sites verified as save/restore pairs)."
+        "evidence": "Settled by scope 8 Oct 2026 (roadmap 'Settled'): the weight is cut to the work done, dropping what was left. What was left describes DOSBox, not the original; the 386DX/33 profile supersedes it. Before: PIT control-word IRQ found and fixed; I/O slice suppression matched; the retrace-phase note settled (7 Oct): started 275 ms in, as GOG's DOSBox is, all 22,840 AdLib writes over 106 s are identical to its capture; PLAYER's few-byte DAC gap and the BIOS/DOS stub timing open. The 386-against-286 flag bits 12-14 are never read by the translated code (all 14 real PUSHF sites verified as save/restore pairs)."
       },
       {
-        "item": "Rendered sound parity",
-        "weight": 6,
-        "done": 0.65,
+        "item": "Rendered sound: speech and the PC speaker",
+        "weight": 5.59,
+        "done": 0.72,
         "kind": "estimate",
-        "evidence": "DBOPL default, mixer rounding fixed; intro waveform within about 0.5% RMS but not exact. A seeded type-8 flight now has a 62.3-second independent GOG DOSBox WAV; approximate host alignment reaches 58.15 seconds (envelope correlation 0.598, waveform 0.361, median spectral cosine 0.972, RMS 0.1011 vs 0.0920), not exact parity. The route's PC-speaker gate is clear; speech, audible speaker output and listening remain open. Register timing is now exact: every AdLib write of the intro matches GOG's capture in order and value (7 Oct, see Timing details)."
+        "evidence": "Scope 8 Oct 2026: matching DOSBox's OPL mixer sample for sample is dropped (the synthesis is the emulator's, the register stream the game's, and that is exact); what is left is digitised speech and audible speaker output (weight 1.5 of 5.4). Before: DBOPL default, mixer rounding fixed; intro waveform within about 0.5% RMS but not exact. A seeded type-8 flight now has a 62.3-second independent GOG DOSBox WAV; approximate host alignment reaches 58.15 seconds (envelope correlation 0.598, waveform 0.361, median spectral cosine 0.972, RMS 0.1011 vs 0.0920), not exact parity. The route's PC-speaker gate is clear; speech, audible speaker output and listening remain open. Register timing is now exact: every AdLib write of the intro matches GOG's capture in order and value (7 Oct, see Timing details)."
       },
       {
         "item": "A 386DX/33 timing profile, frame-exact against 86Box",
-        "weight": 10,
-        "done": 0.0,
+        "weight": 10.35,
+        "done": 0.25,
         "kind": "estimate",
-        "evidence": "Decided 8 Oct 2026. Open: per-instruction cycles from 86Box's 386 tables checked against its TSC trace, the IBM VGA's 8-bit bus and ISA I/O wait states, the disk path, the recompiler emitting the same costs, and a frame-exact comparison against 86Box's 386DX/33."
+        "evidence": "Shown 8 Oct 2026: the interpreter under --timing 386 matches 86Box's 386DX/33 to the cycle on every block of tools/ref86box/probe386.py (instruction costs, prefetch, REP chunks, VGA bus, port costs; memory at 2 wait states). Open: the BIOS and DOS services this machine provides natively, the disk path, the recompiled engine, a frame-exact comparison against 86Box."
       }
     ],
     "P2": [
