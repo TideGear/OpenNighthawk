@@ -153,7 +153,7 @@
     "_about": "From the Reimp's census (tools/reimp_names.py output); refreshed by tools/progress.py --census FILE.",
     "functions": 1535,
     "bytes": 179213,
-    "matched_functions": 249,
-    "matched_bytes": 10961
+    "matched_functions": 255,
+    "matched_bytes": 11147
   }
 }

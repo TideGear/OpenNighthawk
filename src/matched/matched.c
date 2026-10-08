@@ -3269,6 +3269,222 @@ static int start_set_pointer(machine_t *m)
     return 1;
 }
 
+/* PLAYER 0x00F32, one of two bytes picked by the low byte of the argument: the
+ * byte at [19DA] when it is zero, otherwise the one at [19DB]; AH is 0.
+ * Flags: the test of the argument byte. */
+static int player_pick_byte(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 9)) return 0;
+    const uint8_t sel = mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_SP] + 2)));   /* [bp+4] */
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);   /* sub ax, ax */
+    alu_logic(c, sel & 0xFF, 0);                                  /* test byte [bp+4], 0FFh */
+    const int zero = (c->flags & F_ZF) != 0;
+    c->r[R_AX] = mem_read8(c, phys(c->seg[S_DS], zero ? 0x19DA : 0x19DB));
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += zero ? 9 : 8;
+    near_ret(c);
+    return 1;
+}
+
+/* SETUP 0x01244, copy a zero-terminated string between near pointers: the
+ * destination at [bp+4] and the source at [bp+6] are both words on the
+ * caller's stack that step one byte a pass, so the caller sees them moved on
+ * (past the terminator). BX is the last destination, AL the last byte (0);
+ * SI is restored. A pass is 8 instructions. Flags: the OR of the byte. */
+static int setup_strcpy_near(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 11)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->r[R_SI]);
+    c->icount += 3;
+    const uint16_t ss = c->seg[S_SS], ds = c->seg[S_DS];
+    const uint16_t dst_slot = (uint16_t)(c->r[R_BP] + 4), src_slot = (uint16_t)(c->r[R_BP] + 6);
+    for (;;) {
+        if (!room(c, 8)) { c->ip = 0x1248; return 1; }
+        const uint16_t dst = seg_read16(c, ss, dst_slot);
+        c->r[R_BX] = dst;
+        seg_write16(c, ss, dst_slot, (uint16_t)alu_inc(c, dst, 1));       /* inc word [bp+4] */
+        const uint16_t src = seg_read16(c, ss, src_slot);
+        c->r[R_SI] = src;
+        seg_write16(c, ss, src_slot, (uint16_t)alu_inc(c, src, 1));       /* inc word [bp+6] */
+        const uint8_t b = mem_read8(c, phys(ds, src));
+        set_r8(c, R_AL, b);
+        mem_write8(c, phys(ds, dst), b);
+        alu_logic(c, b, 0);                                       /* or al, al */
+        c->icount += 8;
+        if (b == 0) break;
+    }
+    if (!room(c, 3)) { c->ip = 0x125C; return 1; }
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 3;
+    near_ret(c);
+    return 1;
+}
+
+/* SETUP 0x0125F, copy a zero-terminated string to a far destination: the
+ * destination is the far pointer at [bp+4], the source a near pointer at
+ * [bp+8] in DS. SI, DI and ES are restored; AL is the last byte (0). A pass
+ * (LODSB, STOSB, OR, JNE) is 4 instructions and goes by the direction flag. */
+static int setup_strcpy_far(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 11)) return 0;
+    const uint16_t ss = c->seg[S_SS];
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->seg[S_ES]);
+    c->r[R_DI] = seg_read16(c, ss, (uint16_t)(c->r[R_BP] + 4));            /* les di, [bp+4] */
+    c->seg[S_ES] = seg_read16(c, ss, (uint16_t)(c->r[R_BP] + 6));
+    c->r[R_SI] = seg_read16(c, ss, (uint16_t)(c->r[R_BP] + 8));
+    c->icount += 7;
+    for (;;) {
+        if (!room(c, 4)) { c->ip = 0x126B; return 1; }
+        x86_lods(c, 0, c->seg[S_DS]);
+        x86_stos(c, 0);
+        const uint8_t b = get_r8(c, R_AL);
+        alu_logic(c, b, 0);                                       /* or al, al */
+        c->icount += 4;
+        if (b == 0) break;
+    }
+    if (!room(c, 5)) { c->ip = 0x1271; return 1; }
+    c->seg[S_ES] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 5;
+    near_ret(c);
+    return 1;
+}
+
+/* END 0x04B72, copy a zero-terminated string from a far source to ES:DI:
+ * DI is the word at [bp+4], the source the far pointer at [bp+6]. SI and DI
+ * (and DS, ES) are restored; the last byte copied is the terminator. A pass
+ * (MOVSB and a test of the byte just copied) is 3 instructions; the flags
+ * are the last test's. */
+static int end_strcpy_from_far(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 8 + 3)) return 0;
+    const uint16_t ss = c->seg[S_SS];
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->seg[S_ES]);
+    cpu_push16(c, c->seg[S_DS]);
+    c->r[R_SI] = seg_read16(c, ss, (uint16_t)(c->r[R_BP] + 6));            /* lds si, [bp+6] */
+    c->seg[S_DS] = seg_read16(c, ss, (uint16_t)(c->r[R_BP] + 8));
+    c->r[R_DI] = seg_read16(c, ss, (uint16_t)(c->r[R_BP] + 4));
+    c->icount += 8;
+    for (;;) {
+        if (!room(c, 3)) { c->ip = 0x4B7F; return 1; }
+        x86_movs(c, 0, c->seg[S_DS]);
+        const uint8_t b = mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_SI] - 1)));
+        alu_logic(c, b, 0);                                       /* test byte [si-1], 0FFh */
+        c->icount += 3;
+        if (b == 0) break;
+    }
+    if (!room(c, 6)) { c->ip = 0x4B86; return 1; }
+    c->seg[S_DS] = cpu_pop16(c);
+    c->seg[S_ES] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 6;
+    near_ret(c);
+    return 1;
+}
+
+/* PLAYER 0x00664, the word at a 20-bit linear address given as a long
+ * (low word at [bp+4], high at [bp+6]): the segment is the long shifted
+ * right four places, the offset its low nibble, and the pair is left in
+ * ES:BX. DX is the high word shifted, AX the word read. Flags: the AND of
+ * the offset. 22 instructions. */
+static int player_linear_word(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 22)) return 0;
+    const uint16_t ss = c->seg[S_SS];
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_SP] = (uint16_t)alu_sub(c, c->r[R_SP], 4, 1, 0);       /* sub sp, 4 */
+    const uint16_t bp = c->r[R_BP];
+    uint16_t ax = seg_read16(c, ss, (uint16_t)(bp + 4));
+    uint16_t dx = seg_read16(c, ss, (uint16_t)(bp + 6));
+    for (int i = 0; i < 4; i++) {
+        dx = x86_shift(c, 5, dx, 1, 1);                           /* shr dx, 1 */
+        ax = x86_shift(c, 3, ax, 1, 1);                           /* rcr ax, 1 */
+    }
+    c->r[R_DX] = dx;
+    seg_write16(c, ss, (uint16_t)(bp - 2), ax);
+    ax = (uint16_t)((ax & 0xFF00) | mem_read8(c, phys(ss, (uint16_t)(bp + 4))));   /* mov al, [bp+4] */
+    ax = (uint16_t)alu_logic(c, ax & 0xF, 1);                     /* and ax, 0Fh */
+    seg_write16(c, ss, (uint16_t)(bp - 4), ax);
+    c->r[R_BX] = ax;                                              /* les bx, [bp-4] */
+    c->seg[S_ES] = seg_read16(c, ss, (uint16_t)(bp - 2));
+    c->r[R_AX] = seg_read16(c, c->seg[S_ES], c->r[R_BX]);
+    c->r[R_SP] = bp;
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 22;
+    near_ret(c);
+    return 1;
+}
+
+/* PLAYER 0x0257B, find AL among the six bytes at CS:[24D8..24DD] (searched
+ * from the last backwards): found, BX is the matching four-byte record at
+ * 1C96 + 4 * index, AX is the index times four and CF is clear; not found,
+ * CF is set and BX is left six below its start. CX counts down as the search
+ * goes. Flags are the last compare or decrement; a find ends on CLC. */
+static int player_find_in_table(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 36)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    uint16_t bx = 0x24DD;
+    uint16_t cx = 6;
+    const uint8_t al = get_r8(c, R_AL);
+    unsigned n = 4;
+    int found = 0;
+    for (;;) {
+        alu_sub(c, mem_read8(c, phys(c->seg[S_CS], bx)), al, 0, 0);   /* cmp cs:[bx], al */
+        n += 2;
+        if (c->flags & F_ZF) { found = 1; break; }
+        bx = (uint16_t)alu_dec(c, bx, 1);
+        cx--;
+        n += 2;
+        if (cx == 0) break;
+    }
+    if (found) {
+        cx = (uint16_t)alu_dec(c, cx, 1);                         /* dec cx */
+        uint16_t ax = cx;                                         /* mov ax, cx */
+        ax = x86_shift(c, 4, ax, 1, 1);                           /* shl ax, 1 */
+        ax = x86_shift(c, 4, ax, 1, 1);
+        c->r[R_AX] = ax;
+        bx = (uint16_t)alu_add(c, 0x1C96, ax, 1, 0);              /* lea bx, [1C96]; add bx, ax */
+        set_flag(c, F_CF, 0);                                     /* clc */
+        n += 7;
+    } else {
+        set_flag(c, F_CF, 1);                                     /* stc */
+        n += 2;
+    }
+    c->r[R_BX] = bx;
+    c->r[R_CX] = cx;
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += n + 3;
+    near_ret(c);
+    return 1;
+}
+
 /* The C runtime's stack check (START 0x0A4C6, END 0x05B4E; VGAME's copy at
  * 0x0F8F0 is never run by any route, so it is left to the original): AX
  * bytes are taken off the stack unless that would wrap or pass the limit
@@ -6178,6 +6394,12 @@ static const recomp_override MATCHED[] = {
     { "matched", "END.EXE", END_47304, 0x0000, 0x5400, crt_null_check, "null-pointer check at exit", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0xA7BA, heap_search, "near-heap free-block search", 1 },
     { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x263E, heap_search, "near-heap free-block search", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x0F32, player_pick_byte, "one of two bytes picked by an argument", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x1244, setup_strcpy_near, "copy a string, near pointers", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x125F, setup_strcpy_far, "copy a string to a far destination", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x4B72, end_strcpy_from_far, "copy a string from a far source", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x0664, player_linear_word, "word at a linear address", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x257B, player_find_in_table, "find a byte in the six-byte table", 1 },
     { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x1E2E, heap_search, "near-heap free-block search", 1 },
     { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x21BE, heap_search, "near-heap free-block search", 1 },
     { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x1D92, heap_search, "near-heap free-block search", 1 },
