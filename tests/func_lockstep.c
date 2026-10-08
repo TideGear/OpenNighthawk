@@ -200,12 +200,14 @@ static machine_t g_m;           /* side 1's CPU lives in a machine: matched code
  * too many returns to the caller's address from far away - a RET the routine
  * did not make, after which the two sides are not comparable. */
 static int g_trace;                     /* print every instruction of a re-run, to see where two sides part */
+static uint16_t g_reach;                /* the furthest instruction run inside the routine, from its entry */
 static int run_to_ret(cpu_t *a, uint16_t entry_sp, int far, int *steps, uint16_t cs, uint16_t ip)
 {
     while (*steps < 100000) {
         if (g_trace) printf("      %04X:%04X clk %llu sp %04X\n", a->seg[S_CS], a->ip, (unsigned long long)a->icount, a->r[R_SP]);
         const uint16_t here = a->ip;
         const int inside = a->seg[S_CS] == cs && (uint16_t)(here - ip) < 0x300;
+        if (inside && (uint16_t)(here - ip) > g_reach) g_reach = (uint16_t)(here - ip);
         const uint8_t op = a->mem[phys(a->seg[S_CS], a->ip)];
         const uint16_t sp_before = a->r[R_SP];
         cpu_step(a);
@@ -347,7 +349,9 @@ int main(int argc, char **argv)
              * one taken with the stack back at the caller's level - and
              * accept the state only when it returns to the pushed address. */
             const uint16_t entry_sp = (uint16_t)(r[R_SP] - (o->matched == 2 ? 4 : 2));
+            g_reach = 0;
             const int returned = run_to_ret(a, entry_sp, o->matched == 2, &steps, cs, ip);
+            const uint16_t reach = g_reach;
             if (!returned || a->seg[S_CS] != cs || a->ip != back) steps = 100000;
             g_side[0].overflow = g_side[1].overflow = 1;      /* compare all memory */
             /* A real return lands back at the caller's stack level (RET n
@@ -357,11 +361,15 @@ int main(int argc, char **argv)
             if (steps >= 100000 || popped < 2 || popped > 18) { if (getenv("FLWHY") && o->ip == 0x0815) printf("why1 s=%d steps=%d popped=%u\n", s, steps, popped); ms++; restore(); continue; }
             /* A random state that makes the original write over its own code
              * (a copy aimed at the routine) runs instructions it was not; the
-             * game never does, and no equivalent can follow it. The whole
-             * window run_to_ret counts as the routine's own: a long routine's
-             * fixed data words can land in its own code when DS = CS. */
+             * game never does, and no equivalent can follow it. The window is
+             * 0x300 bytes (what run_to_ret counts as the routine's own: a long
+             * routine's fixed data words can land in its own code when DS = CS),
+             * or to the furthest instruction the original ran in the routine
+             * when that lies further: START's route leg runs to +0x123, and a
+             * write landing past +0x100 went unseen at one seed. */
             const uint32_t self = phys(cs, ip);
-            if (memcmp(g_mem[0] + self, g_pristine + self, 0x300)) { ms++; restore(); continue; }
+            const size_t window = reach + 8u > 0x300u ? (size_t)reach + 8u : 0x300u;
+            if (memcmp(g_mem[0] + self, g_pristine + self, window)) { ms++; restore(); continue; }
             /* The event limit: a routine told it has one instruction fewer than
              * the original takes must decline. Running anyway would carry the
              * clock past a checkpoint or a frame boundary - nothing in the
