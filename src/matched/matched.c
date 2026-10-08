@@ -5099,6 +5099,2399 @@ static int start_vcos(machine_t *m)
     return 1;
 }
 
+/* ---- START: the front end's mission generator and screens ---------------
+ * Small helpers for START's routines, which are Microsoft C with a BP frame:
+ * the frame word at BP+d, CWD, and the epilogue MOV SP, BP / POP BP. */
+
+static uint16_t bp_get(cpu_t *c, int d) { return seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + d)); }
+static void bp_put(cpu_t *c, int d, uint16_t v) { seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + d), v); }
+static uint8_t bp_get8(cpu_t *c, int d) { return mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] + d))); }
+static void bp_put8(cpu_t *c, int d, uint8_t v) { mem_write8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] + d)), v); }
+static uint8_t ds_get8(cpu_t *c, uint16_t off) { return mem_read8(c, phys(c->seg[S_DS], off)); }
+static void ds_put8(cpu_t *c, uint16_t off, uint8_t v) { mem_write8(c, phys(c->seg[S_DS], off), v); }
+static void cwd(cpu_t *c) { c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0; }
+
+/* PUSH BP / MOV BP, SP / SUB SP, n (the SUB's flags; no SUB when n is 0). */
+static void frame_open(cpu_t *c, uint16_t locals)
+{
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    if (locals) c->r[R_SP] = (uint16_t)alu_sub(c, c->r[R_SP], locals, 1, 0);
+}
+
+/* MOV SP, BP / POP BP / RET. */
+static void frame_close_ret(cpu_t *c)
+{
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+}
+
+/* START 0x05413, dist(dx, dy): the octagonal distance |larger| + |smaller| / 2
+ * of two offsets (each made absolute by 0x096AE, the larger kept by a signed
+ * compare), summed in 32 bits and capped at 7FFFh. The absolute values are
+ * stored back over the arguments. Flags from the last test of the sum. */
+static int start_dist(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 5)) return 0;
+    frame_open(c, 4);
+    cpu_push16(c, bp_get(c, 4));
+    c->icount += 4;
+    if (!guest_call(m, 0x96AE, 0x541F)) return 1;
+    if (!room(c, 4)) { c->ip = 0x541F; return 1; }
+    c->r[R_BX] = cpu_pop16(c);
+    bp_put(c, 4, c->r[R_AX]);
+    cpu_push16(c, bp_get(c, 6));
+    c->icount += 3;
+    if (!guest_call(m, 0x96AE, 0x5429)) return 1;
+    if (!room(c, 25)) { c->ip = 0x5429; return 1; }               /* the longest way to the RET */
+    c->r[R_BX] = cpu_pop16(c);
+    bp_put(c, 6, c->r[R_AX]);
+    const uint16_t ady = c->r[R_AX], adx = bp_get(c, 4);
+    alu_sub(c, ady, adx, 1, 0);                                   /* cmp ax, [bp+4] */
+    unsigned n = 4;
+    uint16_t larger, smaller;
+    if (!x86_cond(c, 0xD)) { larger = adx; smaller = ady; n += 5; }   /* jge not taken: |dx| larger */
+    else { larger = ady; smaller = adx; n += 3; }
+    c->r[R_AX] = larger;
+    cwd(c);
+    c->r[R_CX] = larger;
+    c->r[R_AX] = x86_shift(c, 7, smaller, 1, 1);                  /* sar ax, 1 */
+    c->r[R_BX] = c->r[R_DX];                                      /* the larger's sign */
+    cwd(c);
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], c->r[R_CX], 1, 0);
+    c->r[R_DX] = (uint16_t)alu_add(c, c->r[R_DX], c->r[R_BX], 1, (c->flags & F_CF) ? 1u : 0u);
+    bp_put(c, -4, c->r[R_AX]);
+    alu_logic(c, c->r[R_DX], 1);                                  /* or dx, dx */
+    n += 8;
+    if (!x86_cond(c, 0xC)) {                                      /* jl not taken */
+        n++;
+        int cap = x86_cond(c, 0xF);                               /* jg: past 16 bits */
+        if (!cap) {
+            alu_sub(c, c->r[R_AX], 0x7FFF, 1, 0);
+            n += 2;
+            cap = !x86_cond(c, 0x6);                              /* jbe not taken */
+        }
+        if (cap) { bp_put(c, -4, 0x7FFF); n++; }
+    }
+    c->r[R_AX] = bp_get(c, -4);
+    c->icount += n + 4;
+    frame_close_ret(c);
+    return 1;
+}
+
+/* START 0x07C05, level_scale(level, lo, hi): the 32-bit value hi:lo brought
+ * to a terrain level's scale - doubled at level 0, as it is at 1, and shifted
+ * right (logically, by 0x097F4) 2, 4 or 6 places at 2, 3 and 4. Any other
+ * level returns AX = level - 4 and DX as it came, flags from the last DEC. */
+static int start_level_scale(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 19)) return 0;                                   /* level 4: to its CALL */
+    frame_open(c, 0);
+    uint16_t ax = bp_get(c, 4);
+    unsigned n = 4;                                               /* to the switch */
+    alu_logic(c, ax, 1);                                          /* or ax, ax */
+    n += 2;
+    int level = 0;
+    while (!(c->flags & F_ZF) && level < 4) {
+        ax = (uint16_t)alu_dec(c, ax, 1);
+        n += 2;
+        level++;
+    }
+    c->r[R_AX] = ax;
+    if (!(c->flags & F_ZF)) {                                     /* no case: the epilogue */
+        c->icount += n + 3;
+        frame_close_ret(c);
+        return 1;
+    }
+    c->r[R_AX] = bp_get(c, 6);
+    c->r[R_DX] = bp_get(c, 8);
+    if (level == 0) {
+        c->r[R_AX] = x86_shift(c, 4, c->r[R_AX], 1, 1);           /* shl ax, 1 */
+        c->r[R_DX] = x86_shift(c, 2, c->r[R_DX], 1, 1);           /* rcl dx, 1 */
+        c->icount += n + 5 + 3;
+        frame_close_ret(c);
+        return 1;
+    }
+    if (level == 1) {
+        c->icount += n + 3 + 3;
+        frame_close_ret(c);
+        return 1;
+    }
+    set_r8(c, R_CL, (uint8_t)(2 * (level - 1)));                  /* 2, 4 or 6 */
+    c->icount += n + (level == 2 ? 3 : 4);                        /* the loads, and a JMP to the shared call */
+    if (!guest_call(m, 0x97F4, 0x7C2C)) return 1;
+    if (!room(c, 4)) { c->ip = 0x7C2C; return 1; }
+    c->icount += 4;                                               /* jmp, and the epilogue */
+    frame_close_ret(c);
+    return 1;
+}
+
+/* START 0x06A7C, surname(name): a pointer to the last word of the string - the
+ * character after the last space found scanning back from its end (strlen by
+ * 0x094DE). With no space the scan stops at index 0 and the string itself is
+ * returned; a space at index 0 is returned as found. */
+static int start_surname(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 6)) return 0;
+    frame_open(c, 2);
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, bp_get(c, 4));
+    c->icount += 5;
+    if (!guest_call(m, 0x94DE, 0x6A89)) return 1;
+    if (!room(c, 4)) { c->ip = 0x6A89; return 1; }
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1);             /* the last index */
+    bp_put(c, -2, c->r[R_AX]);
+    c->icount += 4;
+    for (;;) {                                                    /* 0x06A97: index BX, string SI */
+        if (!room(c, 15)) { c->ip = 0x6A97; return 1; }           /* a pass, or the last one and the exit */
+        c->r[R_BX] = bp_get(c, -2);
+        c->r[R_SI] = bp_get(c, 4);
+        alu_sub(c, ds_get8(c, (uint16_t)(c->r[R_BX] + c->r[R_SI])), 0x20, 0, 0);
+        c->icount += 4;
+        if (c->flags & F_ZF) break;                               /* a space */
+        alu_logic(c, c->r[R_BX], 1);                              /* or bx, bx */
+        c->icount += 2;
+        if (x86_cond(c, 0xE)) break;                              /* at the start: jle to the exit */
+        bp_put(c, -2, (uint16_t)alu_dec(c, bp_get(c, -2), 1));
+        c->icount += 1;
+    }
+    alu_logic(c, c->r[R_BX], 1);                                  /* or bx, bx */
+    c->icount += 2;
+    if (!x86_cond(c, 0xE)) { bp_put(c, -2, (uint16_t)alu_inc(c, bp_get(c, -2), 1)); c->icount += 1; }
+    c->r[R_AX] = (uint16_t)alu_add(c, bp_get(c, -2), c->r[R_SI], 1, 0);
+    c->r[R_SI] = cpu_pop16(c);
+    c->icount += 6;
+    frame_close_ret(c);
+    return 1;
+}
+
+/* START 0x071AD, form_hover(): the form's hit test (0x0393D over the list at
+ * 6FFE, count at [6FFD]) gives the item under the pointer, 0 for none. When it
+ * differs from the one lit before ([D096]), the old item's colour is restored
+ * (the DAC request 0x03517 from 11D0h) and the new one lit (from 11C1h), each
+ * at slot F5h - item; the new item becomes [D096]. */
+static int start_form_hover(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define NEED(n, at) do { if (!room(c, (n))) { c->ip = (at); return 1; } } while (0)
+    if (!room(c, 9)) return 0;
+    frame_open(c, 2);
+    set_r8(c, R_AL, ds_get8(c, 0x6FFD));
+    set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0x6FFE;
+    cpu_push16(c, 0x6FFE);
+    c->icount += 8;
+    if (!guest_call(m, 0x393D, 0x71C0)) return 1;
+    NEED(5, 0x71C0);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    bp_put8(c, -2, get_r8(c, R_AL));
+    alu_sub(c, ds_get8(c, 0xD096), 0, 0, 0);                      /* cmp byte [D096], 0 */
+    c->icount += 5;
+    if (!(c->flags & F_ZF)) {                                     /* something was lit */
+        NEED(3, 0x71CC);
+        set_r8(c, R_AL, ds_get8(c, 0xD096));
+        alu_sub(c, bp_get8(c, -2), get_r8(c, R_AL), 0, 0);
+        c->icount += 3;
+        if (!(c->flags & F_ZF)) {                                 /* and it is not the new item: restore it */
+            NEED(9, 0x71D4);
+            c->r[R_CX] = 1;
+            cpu_push16(c, 1);
+            c->r[R_CX] = 0x11D0;
+            cpu_push16(c, 0x11D0);
+            set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
+            c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], 0xF5, 1, 0);
+            c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0);   /* neg ax */
+            cpu_push16(c, c->r[R_AX]);
+            c->icount += 8;
+            if (!guest_call(m, 0x3517, 0x71E7)) return 1;
+            NEED(1, 0x71E7);
+            c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0);
+            c->icount += 1;
+        }
+    }
+    NEED(2, 0x71EA);
+    alu_sub(c, bp_get8(c, -2), 0, 0, 0);                          /* cmp byte [bp-2], 0 */
+    c->icount += 2;
+    if (!(c->flags & F_ZF)) {                                     /* an item is under the pointer */
+        NEED(3, 0x71F0);
+        set_r8(c, R_AL, ds_get8(c, 0xD096));
+        alu_sub(c, bp_get8(c, -2), get_r8(c, R_AL), 0, 0);
+        c->icount += 3;
+        if (!(c->flags & F_ZF)) {                                 /* newly: light it */
+            NEED(10, 0x71F8);
+            c->r[R_AX] = 1;
+            cpu_push16(c, 1);
+            c->r[R_AX] = 0x11C1;
+            cpu_push16(c, 0x11C1);
+            set_r8(c, R_AL, bp_get8(c, -2));
+            set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
+            c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], 0xF5, 1, 0);
+            c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0);   /* neg ax */
+            cpu_push16(c, c->r[R_AX]);
+            c->icount += 9;
+            if (!guest_call(m, 0x3517, 0x720E)) return 1;         /* its arguments stay pushed: MOV SP, BP clears them */
+        }
+    }
+    NEED(5, 0x720E);
+    set_r8(c, R_AL, bp_get8(c, -2));
+    ds_put8(c, 0xD096, get_r8(c, R_AL));
+    c->icount += 5;
+    frame_close_ret(c);
+    return 1;
+#undef NEED
+}
+
+/* START 0x03DA2, modal_hover(): the modal box's hit test (0x0393D over the
+ * buttons at B30C, count at [B30B]). Over button i (from 1) the three-byte
+ * colours at 11BEh go to 679Eh - 3i and the ones at 11C4h to 6795h + 3i;
+ * over none the 11C4h colours go to 679Bh and are copied on to 6798h (MOVSW,
+ * MOVSB with ES = DS, stepping by DF). When the button differs from [D096] the
+ * DAC request 0x03517 (E7h, 6798h, 2) is queued; the button becomes [D096]. */
+static int start_modal_hover(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define NEED(n, at) do { if (!room(c, (n))) { c->ip = (at); return 1; } } while (0)
+    if (!room(c, 11)) return 0;
+    frame_open(c, 4);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_SI]);
+    set_r8(c, R_AL, ds_get8(c, 0xB30B));
+    set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0xB30C;
+    cpu_push16(c, 0xB30C);
+    c->icount += 10;
+    if (!guest_call(m, 0x393D, 0x3DB7)) return 1;
+    NEED(5, 0x3DB7);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    bp_put(c, -2, c->r[R_AX]);
+    alu_logic(c, c->r[R_AX], 1);                                  /* or ax, ax */
+    c->icount += 5;
+    if (!(c->flags & F_ZF)) {                                     /* over a button */
+        NEED(24, 0x3DC0);                                         /* to the second copy's end and the test */
+        const uint16_t three = (uint16_t)alu_add(c, x86_shift(c, 4, c->r[R_AX], 1, 1), c->r[R_AX], 1, 0);
+        c->r[R_CX] = three;
+        c->r[R_AX] = (uint16_t)alu_sub(c, 0, (uint16_t)alu_sub(c, three, 0x679E, 1, 0), 1, 0);   /* 679Eh - 3i */
+        cpu_push16(c, three);
+        c->r[R_DI] = c->r[R_AX];
+        c->r[R_SI] = 0x11BE;
+        cpu_push16(c, c->seg[S_DS]);
+        c->seg[S_ES] = cpu_pop16(c);
+        x86_movs(c, 1, c->seg[S_DS]);
+        x86_movs(c, 0, c->seg[S_DS]);
+        c->r[R_CX] = cpu_pop16(c);
+        c->r[R_BX] = c->r[R_CX];
+        c->r[R_DI] = (uint16_t)(c->r[R_BX] + 0x6795);
+        c->r[R_SI] = 0x11C4;
+        c->icount += 18;
+    } else {
+        NEED(16, 0x3DE3);
+        c->r[R_AX] = 0x679B;
+        c->r[R_DI] = 0x679B;
+        c->r[R_SI] = 0x11C4;
+        cpu_push16(c, c->seg[S_DS]);
+        c->seg[S_ES] = cpu_pop16(c);
+        x86_movs(c, 1, c->seg[S_DS]);
+        x86_movs(c, 0, c->seg[S_DS]);
+        c->r[R_DX] = 0x6798;
+        c->r[R_DI] = 0x6798;
+        c->r[R_SI] = 0x679B;
+        c->icount += 10;
+    }
+    x86_movs(c, 1, c->seg[S_DS]);                                 /* 0x03DF6 */
+    x86_movs(c, 0, c->seg[S_DS]);
+    set_r8(c, R_AL, ds_get8(c, 0xD096));
+    set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
+    alu_sub(c, c->r[R_AX], bp_get(c, -2), 1, 0);
+    c->icount += 6;
+    if (!(c->flags & F_ZF)) {                                     /* a change: queue the colours */
+        NEED(7, 0x3E02);
+        c->r[R_AX] = 2;
+        cpu_push16(c, 2);
+        c->r[R_AX] = 0x6798;
+        cpu_push16(c, 0x6798);
+        c->r[R_AX] = 0xE7;
+        cpu_push16(c, 0xE7);
+        c->icount += 6;
+        if (!guest_call(m, 0x3517, 0x3E11)) return 1;
+        NEED(1, 0x3E11);
+        c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0);
+        c->icount += 1;
+    }
+    NEED(7, 0x3E14);
+    set_r8(c, R_AL, bp_get8(c, -2));
+    ds_put8(c, 0xD096, get_r8(c, R_AL));
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->icount += 7;
+    frame_close_ret(c);
+    return 1;
+#undef NEED
+}
+
+/* START 0x00E23, weapon_shortage(): clears the 20 flags at D878, then marks
+ * rnd(5) distinct entries of the 16-byte table at 01C4 (an FFh entry is no
+ * weapon; an entry already marked is drawn again): the flag at D878 + i for
+ * the draw i is set to 1 when the flag of the weapon it names is clear. Both
+ * D878 and D879 then take byte 42h of the settings at far [CACA]. */
+static int start_weapon_shortage(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define NEED(n, at) do { if (!room(c, (n))) { c->ip = (at); return 1; } } while (0)
+    if (!room(c, 4)) return 0;
+    frame_open(c, 6);
+    bp_put(c, -2, 0);
+    c->icount += 4;
+    do {                                                          /* 0x00E2E */
+        NEED(5, 0x0E2E);
+        c->r[R_BX] = bp_get(c, -2);
+        ds_put8(c, (uint16_t)(c->r[R_BX] - 0x2788), 0);
+        bp_put(c, -2, (uint16_t)alu_inc(c, bp_get(c, -2), 1));
+        alu_sub(c, bp_get(c, -2), 0x14, 1, 0);
+        c->icount += 5;
+    } while (c->flags & F_CF);                                    /* jb */
+    NEED(3, 0x0E3F);
+    c->r[R_AX] = 5;
+    cpu_push16(c, 5);
+    c->icount += 2;
+    if (!guest_call(m, 0x76C0, 0x0E46)) return 1;
+    NEED(4, 0x0E46);
+    c->r[R_BX] = cpu_pop16(c);
+    bp_put(c, -4, c->r[R_AX]);
+    bp_put(c, -2, 0);
+    c->icount += 4;
+    for (;;) {                                                    /* 0x00E7C: while marked < wanted */
+        NEED(3, 0x0E7C);
+        c->r[R_AX] = bp_get(c, -2);
+        alu_sub(c, bp_get(c, -4), c->r[R_AX], 1, 0);
+        c->icount += 3;
+        if (!x86_cond(c, 0x7)) break;                             /* ja */
+        NEED(3, 0x0E51);
+        c->r[R_AX] = 0x10;
+        cpu_push16(c, 0x10);
+        c->icount += 2;
+        if (!guest_call(m, 0x76C0, 0x0E58)) return 1;
+        NEED(5, 0x0E58);
+        c->r[R_BX] = cpu_pop16(c);
+        c->r[R_BX] = c->r[R_AX];
+        bp_put(c, -6, c->r[R_BX]);
+        alu_sub(c, ds_get8(c, (uint16_t)(c->r[R_BX] + 0x1C4)), 0xFF, 0, 0);
+        c->icount += 5;
+        if (c->flags & F_ZF) continue;                            /* no weapon there */
+        NEED(4, 0x0E65);
+        set_r8(c, R_BL, ds_get8(c, (uint16_t)(c->r[R_BX] + 0x1C4)));
+        set_r8(c, R_BH, (uint8_t)alu_sub(c, get_r8(c, R_BH), get_r8(c, R_BH), 0, 0));
+        alu_sub(c, ds_get8(c, (uint16_t)(c->r[R_BX] - 0x2788)), get_r8(c, R_BH), 0, 0);
+        c->icount += 4;
+        if (!(c->flags & F_ZF)) continue;                         /* already short */
+        NEED(3, 0x0E71);
+        c->r[R_BX] = bp_get(c, -6);
+        ds_put8(c, (uint16_t)(c->r[R_BX] - 0x2788), 1);
+        bp_put(c, -2, (uint16_t)alu_inc(c, bp_get(c, -2), 1));
+        c->icount += 3;
+    }
+    NEED(7, 0x0E84);
+    c->r[R_BX] = ds_get(c, 0xCACA);
+    c->seg[S_ES] = ds_get(c, 0xCACC);
+    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x42))));
+    ds_put8(c, 0xD879, get_r8(c, R_AL));
+    ds_put8(c, 0xD878, get_r8(c, R_AL));
+    c->icount += 7;
+    frame_close_ret(c);
+    return 1;
+#undef NEED
+}
+
+/* START 0x059FE, time_string(buffer, t): the clock text for a time in
+ * seconds-of-day units. The template at 0DD2h is copied (0x094AC) and its
+ * digits advanced: the hours' tens by byte 33h of the settings at far
+ * [E096], the units by t / 1800 % 10 plus 8 (6 when that byte is not zero),
+ * carried into the tens past '9'; the minutes' digits from t / 30 % 60
+ * rounded down to a multiple of 5. */
+static int start_time_string(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 8)) return 0;
+    frame_open(c, 4);
+    cpu_push16(c, c->r[R_SI]);
+    c->r[R_AX] = 0x0DD2;
+    cpu_push16(c, 0x0DD2);
+    cpu_push16(c, bp_get(c, 4));
+    c->icount += 7;
+    if (!guest_call(m, 0x94AC, 0x5A0F)) return 1;
+    if (!room(c, 53)) { c->ip = 0x5A0F; return 1; }              /* the longest way to the RET */
+    const uint16_t ds = c->seg[S_DS];
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    uint16_t es = ds_get(c, 0xE098);
+    uint16_t far = ds_get(c, 0xE096);
+    c->r[R_BX] = far;
+    c->seg[S_ES] = es;
+    set_r8(c, R_AL, mem_read8(c, phys(es, (uint16_t)(far + 0x33))));
+    uint16_t buf = bp_get(c, 4);
+    c->r[R_BX] = buf;
+    mem_write8(c, phys(ds, buf), (uint8_t)alu_add(c, mem_read8(c, phys(ds, buf)), get_r8(c, R_AL), 0, 0));
+    c->r[R_AX] = bp_get(c, 6);
+    c->r[R_CX] = 0x708;
+    cwd(c);
+    x86_idiv16(c, 0x708, 0);                                      /* t / 1800 */
+    c->r[R_CX] = 0x0A;
+    cwd(c);
+    x86_idiv16(c, 0x0A, 0);                                       /* ... % 10 in DL */
+    const uint16_t units = (uint16_t)(buf + 1);
+    mem_write8(c, phys(ds, units), (uint8_t)alu_add(c, mem_read8(c, phys(ds, units)), get_r8(c, R_DL), 0, 0));
+    far = ds_get(c, 0xE096);
+    es = ds_get(c, 0xE098);
+    c->r[R_SI] = far;
+    c->seg[S_ES] = es;
+    alu_sub(c, mem_read8(c, phys(es, (uint16_t)(far + 0x33))), 1, 0, 0);   /* cmp byte es:[si+33h], 1 */
+    uint8_t al = (uint8_t)alu_sub(c, get_r8(c, R_AL), get_r8(c, R_AL), 0, (c->flags & F_CF) ? 1u : 0u);   /* sbb al, al */
+    al = (uint8_t)alu_logic(c, al & 0xFE, 0);
+    al = (uint8_t)alu_add(c, al, 8, 0, 0);
+    set_r8(c, R_AL, al);
+    mem_write8(c, phys(ds, units), (uint8_t)alu_add(c, mem_read8(c, phys(ds, units)), al, 0, 0));
+    alu_sub(c, mem_read8(c, phys(ds, units)), 0x39, 0, 0);
+    unsigned n = 22;
+    if (!x86_cond(c, 0xE)) {                                      /* past '9': carry into the tens */
+        al = (uint8_t)alu_sub(c, mem_read8(c, phys(ds, units)), 0x0A, 0, 0);
+        set_r8(c, R_AL, al);
+        mem_write8(c, phys(ds, units), al);
+        mem_write8(c, phys(ds, buf), (uint8_t)alu_inc(c, mem_read8(c, phys(ds, buf)), 0));
+        n += 4;
+    }
+    c->r[R_CX] = 5;
+    c->r[R_DX] = 0x3C;
+    c->r[R_AX] = bp_get(c, 6);
+    c->r[R_BX] = 0x1E;
+    c->r[R_SI] = 0x3C;
+    cwd(c);
+    x86_idiv16(c, 0x1E, 0);                                       /* t / 30 */
+    cwd(c);
+    x86_idiv16(c, 0x3C, 0);                                       /* ... % 60 */
+    c->r[R_AX] = c->r[R_DX];
+    cwd(c);
+    x86_idiv16(c, 5, 0);
+    x86_imul16(c, 5);                                             /* down to a multiple of 5 */
+    bp_put(c, -4, c->r[R_AX]);
+    c->r[R_CX] = 0x0A;
+    cwd(c);
+    x86_idiv16(c, 0x0A, 0);
+    buf = bp_get(c, 4);
+    c->r[R_BX] = buf;
+    mem_write8(c, phys(ds, (uint16_t)(buf + 3)), (uint8_t)alu_add(c, mem_read8(c, phys(ds, (uint16_t)(buf + 3))), get_r8(c, R_AL), 0, 0));
+    c->r[R_AX] = bp_get(c, -4);
+    cwd(c);
+    x86_idiv16(c, 0x0A, 0);
+    mem_write8(c, phys(ds, (uint16_t)(buf + 4)), (uint8_t)alu_add(c, mem_read8(c, phys(ds, (uint16_t)(buf + 4))), get_r8(c, R_DL), 0, 0));
+    c->r[R_SI] = cpu_pop16(c);
+    c->icount += n + 27;
+    frame_close_ret(c);
+    return 1;
+}
+
+/* START's target slots: 16-byte records at CBE0 (x, y at +0/+2, a word at
+ * +0Ch), slots 3.. below the count [D33C]. The tail shared by target_near and
+ * target_for_type, from the return of the object finder: a found object (its
+ * record pointer in AX, 0 for none) has its 32-bit map position (+4 and +8)
+ * brought down by 32 (0x097CC) to x and to 8000h - y; when a slot from 3 up
+ * already holds that point its index is the answer, otherwise the point is
+ * stored in the caller's slot, with the object's first word plus 100h at
+ * +0Ch, and that slot is the answer. No object answers FFFFh. */
+typedef struct {
+    uint16_t found;              /* the instruction after the finder's CALL */
+    uint16_t obj;                /* the first instruction for a found object */
+    int pops;                    /* 4: the finder's arguments are dropped by ADD SP, 8 (else POP BX) */
+    int16_t x, y, idx, slot;     /* frame offsets of the point, the scan index and the slot argument */
+} target_tail;
+
+static int target_place(machine_t *m, const target_tail *t)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t f = t->found, g = t->obj;
+#define NEED(n, at) do { if (!room(c, (n))) { c->ip = (uint16_t)(at); return 1; } } while (0)
+    NEED(5, f);                                                   /* the test, or the test and the failure */
+    if (t->pops) c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0);
+    else c->r[R_BX] = cpu_pop16(c);
+    bp_put(c, -2, c->r[R_AX]);
+    alu_logic(c, c->r[R_AX], 1);                                  /* or ax, ax */
+    c->icount += 4;
+    if (c->flags & F_ZF) {                                        /* no object */
+        NEED(5, g + 0x7B);
+        c->r[R_AX] = 0xFFFF;
+        c->icount += 1;
+        goto out;
+    }
+    NEED(6, g);
+    c->r[R_BX] = c->r[R_AX];
+    c->r[R_CX] = c->r[R_AX];
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 4));
+    c->r[R_DX] = ds_get(c, (uint16_t)(c->r[R_BX] + 6));
+    set_r8(c, R_CL, 5);
+    c->icount += 5;
+    if (!guest_call(m, 0x97CC, (uint16_t)(g + 0x0F))) return 1;
+    NEED(6, g + 0x0F);
+    bp_put(c, t->x, c->r[R_AX]);
+    c->r[R_BX] = bp_get(c, -2);
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 8));
+    c->r[R_DX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0x0A));
+    set_r8(c, R_CL, 5);
+    c->icount += 5;
+    if (!guest_call(m, 0x97CC, (uint16_t)(g + 0x20))) return 1;
+    NEED(5, g + 0x20);
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], 0x8000, 1, 0);
+    c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0);       /* neg ax: 8000h - y */
+    bp_put(c, t->y, c->r[R_AX]);
+    bp_put(c, t->idx, 3);
+    c->icount += 5;
+    for (;;) {                                                    /* g + 32h: the scan */
+        NEED(20, g + 0x32);                                       /* a pass, or a pass and the store */
+        c->r[R_AX] = bp_get(c, t->idx);
+        alu_sub(c, ds_get(c, 0xD33C), c->r[R_AX], 1, 0);
+        c->icount += 3;
+        if (x86_cond(c, 0xE)) break;                              /* no more slots */
+        c->r[R_BX] = x86_shift(c, 4, c->r[R_AX], 4, 1);
+        set_r8(c, R_CL, 4);
+        c->r[R_CX] = bp_get(c, t->x);
+        alu_sub(c, ds_get(c, (uint16_t)(c->r[R_BX] - 0x3420)), c->r[R_CX], 1, 0);
+        c->icount += 6;
+        if (c->flags & F_ZF) {
+            c->r[R_CX] = bp_get(c, t->y);
+            alu_sub(c, ds_get(c, (uint16_t)(c->r[R_BX] - 0x341E)), c->r[R_CX], 1, 0);
+            c->icount += 3;
+            if (c->flags & F_ZF) { c->icount += 1; goto out; }    /* the point is there: AX its index */
+        }
+        bp_put(c, t->idx, (uint16_t)alu_inc(c, bp_get(c, t->idx), 1));
+        c->icount += 1;
+    }
+    c->r[R_AX] = bp_get(c, t->x);
+    set_r8(c, R_CL, 4);
+    c->r[R_BX] = x86_shift(c, 4, bp_get(c, t->slot), 4, 1);
+    ds_put(c, (uint16_t)(c->r[R_BX] - 0x3420), c->r[R_AX]);
+    c->r[R_AX] = bp_get(c, t->y);
+    ds_put(c, (uint16_t)(c->r[R_BX] - 0x341E), c->r[R_AX]);
+    c->r[R_SI] = bp_get(c, -2);
+    c->r[R_AX] = ds_get(c, c->r[R_SI]);
+    set_r8(c, R_AH, (uint8_t)alu_add(c, get_r8(c, R_AH), 1, 0, 0));   /* add ah, 1 */
+    ds_put(c, (uint16_t)(c->r[R_BX] - 0x3414), c->r[R_AX]);
+    c->r[R_AX] = bp_get(c, t->slot);
+    c->icount += 13;
+out:
+    c->r[R_SI] = cpu_pop16(c);
+    c->icount += 4;
+    frame_close_ret(c);
+    return 1;
+#undef NEED
+}
+
+/* START 0x0512E, target_near(x, y, slot): the object nearest the map point
+ * (0x07744 on x * 32 and (8000h - y) * 32, both 32-bit by 0x097C0), placed in
+ * a target slot as target_place says. */
+static int start_target_near(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 14)) return 0;
+    frame_open(c, 4);
+    cpu_push16(c, c->r[R_SI]);
+    c->r[R_AX] = bp_get(c, 6);
+    cwd(c);
+    c->r[R_CX] = c->r[R_AX];
+    c->r[R_BX] = c->r[R_DX];
+    c->r[R_AX] = 0x8000;
+    c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0);
+    c->r[R_AX] = (uint16_t)alu_sub(c, 0x8000, c->r[R_CX], 1, 0);
+    c->r[R_DX] = (uint16_t)alu_sub(c, 0, c->r[R_BX], 1, (c->flags & F_CF) ? 1u : 0u);   /* sbb dx, bx */
+    set_r8(c, R_CL, 5);
+    c->icount += 13;
+    if (!guest_call(m, 0x97C0, 0x514B)) return 1;
+    if (!room(c, 6)) { c->ip = 0x514B; return 1; }
+    cpu_push16(c, c->r[R_DX]);
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = bp_get(c, 4);
+    cwd(c);
+    set_r8(c, R_CL, 5);
+    c->icount += 5;
+    if (!guest_call(m, 0x97C0, 0x5156)) return 1;
+    if (!room(c, 3)) { c->ip = 0x5156; return 1; }
+    cpu_push16(c, c->r[R_DX]);
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 2;
+    if (!guest_call(m, 0x7744, 0x515B)) return 1;
+    static const target_tail T = { 0x515B, 0x5165, 1, 4, 6, -4, 8 };
+    return target_place(m, &T);
+}
+
+/* START 0x051E8, target_for_type(slot, type): an object of the given type
+ * (0x07904 on the type byte, sign-extended), placed in a target slot as
+ * target_place says. */
+static int start_target_for_type(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 8)) return 0;
+    frame_open(c, 8);
+    cpu_push16(c, c->r[R_SI]);
+    set_r8(c, R_AL, bp_get8(c, 6));
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);     /* cbw */
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 7;
+    if (!guest_call(m, 0x7904, 0x51F7)) return 1;
+    static const target_tail T = { 0x51F7, 0x51FF, 0, -4, -6, -8, 4 };
+    return target_place(m, &T);
+}
+
+/* START 0x05282, pick_weapon(row): over the 16 weapons (from 2 when the
+ * setting at far [CACA]+42h is not zero), those whose flag at D878 is clear
+ * are scored by the byte at row + 16 * weapon + 1D86h (signed); the best score
+ * wins, and a tie among several is broken by rnd(count) (0x076C0). Returns
+ * the weapon number. */
+static int start_pick_weapon(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define NEED(n, at) do { if (!room(c, (n))) { c->ip = (at); return 1; } } while (0)
+    if (!room(c, 11)) return 0;
+    frame_open(c, 0x16);
+    cpu_push16(c, c->r[R_SI]);
+    bp_put(c, -0x16, 0);                                          /* how many share the best score */
+    bp_put8(c, -2, 0);                                            /* the best score */
+    c->r[R_BX] = ds_get(c, 0xCACA);
+    c->seg[S_ES] = ds_get(c, 0xCACC);
+    alu_sub(c, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x42)), 0, 1, 0);
+    bp_put(c, -0x14, (c->flags & F_ZF) ? 0 : 2);                  /* the first weapon */
+    c->icount += 11;
+    for (;;) {                                                    /* 0x052CF */
+        NEED(31, 0x52CF);                                         /* the longest pass */
+        alu_sub(c, bp_get(c, -0x14), 0x10, 1, 0);
+        c->icount += 2;
+        if (!(c->flags & F_CF)) break;                            /* jae: all 16 seen */
+        c->r[R_BX] = bp_get(c, -0x14);
+        alu_sub(c, ds_get8(c, (uint16_t)(c->r[R_BX] - 0x2788)), 0, 0, 0);
+        c->icount += 3;
+        if (c->flags & F_ZF) {                                    /* available */
+            set_r8(c, R_CL, 4);
+            c->r[R_SI] = x86_shift(c, 4, c->r[R_BX], 4, 1);
+            c->r[R_AX] = c->r[R_BX];
+            c->r[R_BX] = bp_get(c, 4);
+            set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + c->r[R_SI] + 0x1D86)));
+            c->r[R_CX] = c->r[R_AX];
+            c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);   /* cbw */
+            set_r8(c, R_DL, bp_get8(c, -2));
+            set_r8(c, R_DH, (uint8_t)alu_sub(c, get_r8(c, R_DH), get_r8(c, R_DH), 0, 0));
+            alu_sub(c, c->r[R_AX], c->r[R_DX], 1, 0);
+            c->icount += 12;
+            if (!x86_cond(c, 0xE)) {                              /* a new best: this one alone */
+                bp_put8(c, -2, get_r8(c, R_CL));
+                set_r8(c, R_AL, bp_get8(c, -0x14));
+                bp_put8(c, -0x12, get_r8(c, R_AL));
+                bp_put(c, -0x16, 1);
+                c->icount += 5;
+            } else {                                              /* 0x052AB: as good as the best? */
+                set_r8(c, R_CL, 4);
+                c->r[R_SI] = x86_shift(c, 4, bp_get(c, -0x14), 4, 1);
+                set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + c->r[R_SI] + 0x1D86)));
+                c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);
+                set_r8(c, R_CL, bp_get8(c, -2));
+                set_r8(c, R_CH, (uint8_t)alu_sub(c, get_r8(c, R_CH), get_r8(c, R_CH), 0, 0));
+                alu_sub(c, c->r[R_AX], c->r[R_CX], 1, 0);
+                c->icount += 9;
+                if (c->flags & F_ZF) {                            /* a tie: one more candidate */
+                    set_r8(c, R_AL, bp_get8(c, -0x14));
+                    c->r[R_SI] = bp_get(c, -0x16);
+                    bp_put8(c, (int)(int16_t)c->r[R_SI] - 0x12, get_r8(c, R_AL));
+                    bp_put(c, -0x16, (uint16_t)alu_inc(c, bp_get(c, -0x16), 1));
+                    c->icount += 4;
+                }
+            }
+        }
+        bp_put(c, -0x14, (uint16_t)alu_inc(c, bp_get(c, -0x14), 1));   /* 0x052CC */
+        c->icount += 1;
+    }
+    NEED(2, 0x530A);
+    alu_sub(c, bp_get(c, -0x16), 1, 1, 0);
+    c->icount += 2;
+    if (c->flags & F_ZF) {                                        /* a single best */
+        NEED(7, 0x5310);
+        set_r8(c, R_AL, bp_get8(c, -0x12));
+        c->icount += 1;
+    } else {
+        NEED(2, 0x5317);
+        cpu_push16(c, bp_get(c, -0x16));
+        c->icount += 1;
+        if (!guest_call(m, 0x76C0, 0x531D)) return 1;
+        NEED(10, 0x531D);
+        c->r[R_BX] = cpu_pop16(c);
+        c->r[R_SI] = c->r[R_AX];
+        set_r8(c, R_AL, bp_get8(c, (int)(int16_t)c->r[R_SI] - 0x12));
+        c->icount += 4;
+    }
+    set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));   /* 0x05313 */
+    c->r[R_SI] = cpu_pop16(c);
+    c->icount += 6;
+    frame_close_ret(c);
+    return 1;
+#undef NEED
+}
+
+/* START 0x05356, slot_fill(slot, target): fills mission slot `slot` (36-byte
+ * records at D3BE; its type word at +16h) from target slot `target`: the
+ * point, offset by (+9, -12), at +2/+4 and as 32-bit values times 32 at
+ * +8/+0Ch; +6 is 0Ch when bit 1 of the target's byte +7 is set, else 8Ch;
+ * the type's speed (32-byte records at 171A) at +1Ah and that speed over the
+ * type's second word times 8192 (0x096F4) at +1Ch; +10h = FC00h, +12h/+14h
+ * = 0, +18h |= 403h, +0 = target. */
+static int start_slot_fill(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 24)) return 0;
+    frame_open(c, 2);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_SI]);
+    c->r[R_AX] = 0x24;
+    x86_imul16(c, bp_get(c, 4));
+    const uint16_t rec = c->r[R_AX];                              /* slot * 36 */
+    c->r[R_BX] = rec;
+    c->r[R_AX] = ds_get(c, (uint16_t)(rec - 0x2C2C));
+    bp_put(c, -2, c->r[R_AX]);                                    /* the type */
+    set_r8(c, R_CL, 4);
+    const uint16_t tgt = x86_shift(c, 4, bp_get(c, 6), 4, 1);
+    c->r[R_SI] = tgt;
+    c->r[R_AX] = (uint16_t)alu_add(c, ds_get(c, (uint16_t)(tgt - 0x3420)), 9, 1, 0);
+    ds_put(c, (uint16_t)(rec - 0x2C40), c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)alu_sub(c, ds_get(c, (uint16_t)(tgt - 0x341E)), 0x0C, 1, 0);
+    ds_put(c, (uint16_t)(rec - 0x2C3E), c->r[R_AX]);
+    c->r[R_AX] = ds_get(c, (uint16_t)(rec - 0x2C40));
+    c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0);
+    set_r8(c, R_CL, 5);
+    c->r[R_DI] = rec;
+    c->icount += 23;
+    if (!guest_call(m, 0x97C0, 0x5397)) return 1;
+    if (!room(c, 6)) { c->ip = 0x5397; return 1; }
+    uint16_t di = c->r[R_DI];
+    ds_put(c, (uint16_t)(di - 0x2C3A), c->r[R_AX]);
+    ds_put(c, (uint16_t)(di - 0x2C38), c->r[R_DX]);
+    c->r[R_AX] = ds_get(c, (uint16_t)(di - 0x2C3E));
+    c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0);
+    set_r8(c, R_CL, 5);
+    c->icount += 5;
+    if (!guest_call(m, 0x97C0, 0x53AA)) return 1;
+    if (!room(c, 29)) { c->ip = 0x53AA; return 1; }
+    di = c->r[R_DI];
+    ds_put(c, (uint16_t)(di - 0x2C36), c->r[R_AX]);
+    ds_put(c, (uint16_t)(di - 0x2C34), c->r[R_DX]);
+    set_r8(c, R_AH, ds_get8(c, (uint16_t)(c->r[R_SI] - 0x3419)));
+    c->r[R_AX] = (uint16_t)alu_logic(c, c->r[R_AX] & 0x200, 1);
+    alu_sub(c, c->r[R_AX], 1, 1, 0);                              /* cmp ax, 1: CF when the bit is clear */
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, (c->flags & F_CF) ? 1u : 0u);   /* sbb ax, ax */
+    set_r8(c, R_AL, (uint8_t)alu_logic(c, get_r8(c, R_AL) & 0x80, 0));
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], 0x8C, 1, 0);
+    ds_put(c, (uint16_t)(di - 0x2C3C), c->r[R_AX]);
+    set_r8(c, R_CL, 5);
+    const uint16_t type = x86_shift(c, 4, bp_get(c, -2), 5, 1);  /* type * 32 */
+    c->r[R_BX] = type;
+    c->r[R_AX] = ds_get(c, (uint16_t)(type + 0x171A));
+    ds_put(c, (uint16_t)(di - 0x2C28), c->r[R_AX]);
+    ds_put(c, (uint16_t)(di - 0x2C32), 0xFC00);
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+    ds_put(c, (uint16_t)(di - 0x2C30), 0);
+    ds_put(c, (uint16_t)(di - 0x2C2E), 0);
+    ds_put(c, (uint16_t)(di - 0x2C2A), (uint16_t)alu_logic(c, ds_get(c, (uint16_t)(di - 0x2C2A)) | 0x403, 1));
+    c->r[R_AX] = bp_get(c, 6);
+    ds_put(c, (uint16_t)(di - 0x2C42), c->r[R_AX]);
+    c->r[R_AX] = ds_get(c, (uint16_t)(di - 0x2C28));
+    cwd(c);
+    cpu_push16(c, c->r[R_DX]);
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = ds_get(c, (uint16_t)(type + 0x171C));
+    cwd(c);
+    set_r8(c, R_CL, 0x0D);
+    c->icount += 28;
+    if (!guest_call(m, 0x97C0, 0x5404)) return 1;
+    if (!room(c, 3)) { c->ip = 0x5404; return 1; }
+    cpu_push16(c, c->r[R_DX]);
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 2;
+    if (!guest_call_pop(m, 0x96F4, 0x5409, 8)) return 1;
+    if (!room(c, 6)) { c->ip = 0x5409; return 1; }
+    ds_put(c, (uint16_t)(c->r[R_DI] - 0x2C26), c->r[R_AX]);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->icount += 6;
+    frame_close_ret(c);
+    return 1;
+}
+
+/* START 0x05743, angle(dx, dy): the bearing of an offset as a 16-bit angle
+ * (4000h a quarter turn): 0 straight along +dy, 4000h along +dx. The axes
+ * answer at once; otherwise the smaller of |dx|, |dy| over the larger (as
+ * 2.14 fixed point, by 0x096F4) goes through the approximation
+ * r * (2800h - (|1333h - r| * B00h >> 14)) >> 14 (0x0978E), and the octant
+ * (the signs, and which was larger) places it. */
+static int start_angle(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define NEED(n, at) do { if (!room(c, (n))) { c->ip = (at); return 1; } } while (0)
+    if (!room(c, 16)) return 0;                                   /* the axes, or the first CALL */
+    frame_open(c, 0x0E);
+    cpu_push16(c, c->r[R_SI]);
+    alu_sub(c, bp_get(c, 4), 0, 1, 0);                            /* cmp [bp+4], 0 */
+    c->icount += 6;
+    if (c->flags & F_ZF) {                                        /* along the dy axis */
+        alu_sub(c, bp_get(c, 6), 0, 1, 0);
+        if (!x86_cond(c, 0xE)) c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+        else c->r[R_AX] = 0x8000;
+        c->icount += 4;
+        goto out;
+    }
+    alu_sub(c, bp_get(c, 6), 0, 1, 0);
+    c->icount += 2;
+    if (c->flags & F_ZF) {                                        /* along the dx axis */
+        alu_sub(c, bp_get(c, 4), 0, 1, 0);
+        c->r[R_AX] = x86_cond(c, 0xE) ? 0xC000 : 0x4000;
+        c->icount += 4;
+        goto out;
+    }
+    cpu_push16(c, bp_get(c, 6));
+    c->icount += 1;
+    if (!guest_call(m, 0x96AE, 0x577F)) return 1;
+    NEED(4, 0x577F);
+    c->r[R_BX] = cpu_pop16(c);
+    cpu_push16(c, bp_get(c, 4));
+    c->r[R_SI] = c->r[R_AX];                                      /* |dy| */
+    c->icount += 3;
+    if (!guest_call(m, 0x96AE, 0x5788)) return 1;
+    NEED(5, 0x5788);
+    c->r[R_BX] = cpu_pop16(c);
+    alu_sub(c, c->r[R_AX], c->r[R_SI], 1, 0);
+    c->icount += 3;
+    /* |dx| > |dy|: dy * 16384 / |dx|, flag 1; else |dx| * 16384 / |dy|, flag 0. */
+    const int dx_larger = !x86_cond(c, 0xE);
+    const int16_t num = dx_larger ? 6 : 4, den = dx_larger ? 4 : 6;
+    const uint16_t r1 = dx_larger ? 0x5793 : 0x57B4, r2 = dx_larger ? 0x579A : 0x57BB, r3 = dx_larger ? 0x57A6 : 0x57C7;
+    const uint16_t at = dx_larger ? 0x578D : 0x57AE;
+    NEED(2, at);
+    cpu_push16(c, bp_get(c, num));
+    c->icount += 1;
+    if (!guest_call(m, 0x96AE, r1)) return 1;
+    NEED(4, r1);
+    c->r[R_BX] = cpu_pop16(c);
+    cwd(c);
+    set_r8(c, R_CL, 0x0E);
+    c->icount += 3;
+    if (!guest_call(m, 0x97C0, r2)) return 1;
+    NEED(4, r2);
+    bp_put(c, -8, c->r[R_AX]);
+    bp_put(c, -6, c->r[R_DX]);
+    cpu_push16(c, bp_get(c, den));
+    c->icount += 3;
+    if (!guest_call(m, 0x96AE, r3)) return 1;
+    NEED(dx_larger ? 9 : 8, r3);                                  /* to the divide's CALL */
+    c->r[R_BX] = cpu_pop16(c);
+    bp_put(c, -0x0C, dx_larger ? 1 : 0);
+    c->icount += dx_larger ? 3 : 2;
+    cwd(c);                                                       /* 0x057CD */
+    cpu_push16(c, c->r[R_DX]);
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, bp_get(c, -6));
+    cpu_push16(c, bp_get(c, -8));
+    c->icount += 5;
+    if (!guest_call_pop(m, 0x96F4, 0x57D9, 8)) return 1;
+    NEED(8, 0x57D9);
+    bp_put(c, -0x0E, c->r[R_AX]);                                 /* the ratio r */
+    cwd(c);
+    cpu_push16(c, c->r[R_DX]);
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)alu_sub(c, 0x1333, bp_get(c, -0x0E), 1, 0);
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 7;
+    if (!guest_call(m, 0x96AE, 0x57E9)) return 1;
+    NEED(5, 0x57E9);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_CX] = 0x0B00;
+    x86_imul16(c, 0x0B00);
+    set_r8(c, R_CL, 0x0E);
+    c->icount += 4;
+    if (!guest_call(m, 0x97CC, 0x57F4)) return 1;
+    NEED(7, 0x57F4);
+    c->r[R_CX] = 0x2800;
+    c->r[R_BX] = (uint16_t)alu_sub(c, c->r[R_BX], c->r[R_BX], 1, 0);
+    c->r[R_CX] = (uint16_t)alu_sub(c, 0x2800, c->r[R_AX], 1, 0);
+    c->r[R_BX] = (uint16_t)alu_sub(c, 0, c->r[R_DX], 1, (c->flags & F_CF) ? 1u : 0u);   /* sbb bx, dx */
+    cpu_push16(c, c->r[R_BX]);
+    cpu_push16(c, c->r[R_CX]);
+    c->icount += 6;
+    if (!guest_call_pop(m, 0x978E, 0x5802, 8)) return 1;
+    NEED(2, 0x5802);
+    set_r8(c, R_CL, 0x0E);
+    c->icount += 1;
+    if (!guest_call(m, 0x97CC, 0x5807)) return 1;
+    NEED(15, 0x5807);                                             /* the octant, the longest way */
+    bp_put(c, -2, c->r[R_AX]);
+    alu_sub(c, bp_get(c, 4), 0, 1, 0);
+    c->icount += 3;
+    {
+        const int dx_pos = !x86_cond(c, 0xE);
+        alu_sub(c, bp_get(c, 6), 0, 1, 0);
+        const int dy_pos = !x86_cond(c, 0xE);
+        alu_sub(c, bp_get(c, -0x0C), 0, 1, 0);
+        const int flag = !(c->flags & F_ZF);
+        c->icount += 4;
+        uint16_t ax = c->r[R_AX];
+        if (dx_pos && dy_pos) {
+            if (flag) { ax = (uint16_t)alu_sub(c, 0x4000, bp_get(c, -2), 1, 0); c->icount += 3; }
+        } else if (dx_pos) {
+            if (flag) { set_r8(c, R_AH, (uint8_t)alu_add(c, get_r8(c, R_AH), 0x40, 0, 0)); ax = c->r[R_AX]; c->icount += 2; }
+            else { ax = (uint16_t)alu_sub(c, 0x8000, bp_get(c, -2), 1, 0); c->icount += 4; }
+        } else if (dy_pos) {
+            if (flag) ax = (uint16_t)alu_sub(c, ax, 0x4000, 1, 0);
+            else ax = (uint16_t)alu_sub(c, 0, ax, 1, 0);          /* neg ax */
+            c->icount += 2;
+        } else {
+            if (flag) { ax = (uint16_t)alu_sub(c, 0xC000, bp_get(c, -2), 1, 0); c->icount += 4; }
+            else { set_r8(c, R_AH, (uint8_t)alu_add(c, get_r8(c, R_AH), 0x80, 0, 0)); ax = c->r[R_AX]; c->icount += 1; }
+        }
+        c->r[R_AX] = ax;
+    }
+out:
+    c->r[R_SI] = cpu_pop16(c);
+    c->icount += 4;
+    frame_close_ret(c);
+    return 1;
+#undef NEED
+}
+
+/* START 0x07C56, terrain_tile(level, x, y): the tile at a terrain level, -1
+ * outside it (x or y negative, or not below the level's size [107E + 2 *
+ * level]). Levels 0-2 are indexed tiles: the tile of the next level at
+ * (x / 4, y / 4) (recursively) picks a 4x4 block, 16 bytes each, in the
+ * level's table (B3A0, B5A0, B7A0), and (x & 3, y & 3) the byte in it.
+ * Level 3 is a 16-wide byte map at B9A0, level 4 a 4-wide one at BAA0. A
+ * level above 4 answers level - 4. */
+static int start_terrain_tile(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 39)) return 0;                                   /* the longest path to a CALL or the RET */
+    unsigned n = 5;
+    frame_open(c, 0);
+    cpu_push16(c, c->r[R_SI]);
+    int outside = 1;
+    alu_sub(c, bp_get(c, 6), 0, 1, 0);
+    if (!x86_cond(c, 0xC)) {
+        alu_sub(c, bp_get(c, 8), 0, 1, 0);
+        n += 2;
+        if (!x86_cond(c, 0xC)) {
+            c->r[R_AX] = bp_get(c, 6);
+            c->r[R_BX] = x86_shift(c, 4, bp_get(c, 4), 1, 1);
+            const uint16_t size = ds_get(c, (uint16_t)(c->r[R_BX] + 0x107E));
+            alu_sub(c, size, c->r[R_AX], 1, 0);
+            n += 5;
+            if (!x86_cond(c, 0xE)) {
+                c->r[R_AX] = bp_get(c, 8);
+                alu_sub(c, size, c->r[R_AX], 1, 0);
+                n += 3;
+                outside = !x86_cond(c, 0xF);
+            }
+        }
+    }
+    if (outside) {
+        c->r[R_AX] = 0xFFFF;
+        c->icount += n + 2 + 4;
+        c->r[R_SI] = cpu_pop16(c);
+        frame_close_ret(c);
+        return 1;
+    }
+    uint16_t ax = bp_get(c, 4);
+    n += 2;                                                       /* mov ax, [bp+4] / jmp to the switch */
+    alu_logic(c, ax, 1);                                          /* or ax, ax */
+    n += 2;
+    int level = 0;
+    if (!(c->flags & F_ZF)) {
+        n++;                                                      /* level 0's JMP (a JNE over it otherwise) */
+        do { ax = (uint16_t)alu_dec(c, ax, 1); n += 2; level++; } while (!(c->flags & F_ZF) && level < 4);
+    } else n++;
+    c->r[R_AX] = ax;
+    if (!(c->flags & F_ZF)) {                                     /* no case */
+        n--;                                                      /* (counted a JMP that is not there) */
+        c->icount += n + 4;
+        c->r[R_SI] = cpu_pop16(c);
+        frame_close_ret(c);
+        return 1;
+    }
+    if (level == 2) n--;                                          /* levels 2-4 are reached by JE, no JMP */
+    if (level >= 3) n--;
+    if (level <= 2) {
+        static const uint16_t table[3] = { 0xB3A0, 0xB5A0, 0xB7A0 };
+        static const uint16_t back[3] = { 0x7CA0, 0x7CDB, 0x7D13 };
+        c->r[R_AX] = x86_shift(c, 7, x86_shift(c, 7, bp_get(c, 8), 1, 1), 1, 1);
+        cpu_push16(c, c->r[R_AX]);
+        c->r[R_AX] = x86_shift(c, 7, x86_shift(c, 7, bp_get(c, 6), 1, 1), 1, 1);
+        cpu_push16(c, c->r[R_AX]);
+        c->r[R_AX] = (uint16_t)(level + 1);
+        cpu_push16(c, c->r[R_AX]);
+        c->icount += n + 10;
+        if (!guest_call(m, 0x7C56, back[level])) return 1;
+        if (!room(c, 19)) { c->ip = back[level]; return 1; }
+        c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0);
+        set_r8(c, R_CL, 4);
+        uint16_t si = x86_shift(c, 4, c->r[R_AX], 4, 1);          /* the block, 16 bytes */
+        set_r8(c, R_AL, bp_get8(c, 8));
+        ax = (uint16_t)alu_logic(c, c->r[R_AX] & 3, 1);
+        ax = x86_shift(c, 4, x86_shift(c, 4, ax, 1, 1), 1, 1);   /* (y & 3) * 4 */
+        si = (uint16_t)alu_add(c, si, ax, 1, 0);
+        c->r[R_SI] = si;
+        set_r8(c, R_BL, bp_get8(c, 6));
+        c->r[R_BX] = (uint16_t)alu_logic(c, c->r[R_BX] & 3, 1);
+        c->r[R_AX] = ax;
+        set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + si + table[level])));
+        c->icount += level ? 13 : 12;                             /* to the byte read (and its JMP) */
+    } else if (level == 3) {
+        set_r8(c, R_CL, 4);
+        c->r[R_SI] = x86_shift(c, 4, bp_get(c, 8), 4, 1);
+        c->r[R_BX] = bp_get(c, 6);
+        set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + c->r[R_SI] + 0xB9A0)));
+        c->icount += n + 6;
+    } else {
+        c->r[R_SI] = x86_shift(c, 4, x86_shift(c, 4, bp_get(c, 8), 1, 1), 1, 1);
+        c->r[R_BX] = bp_get(c, 6);
+        set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + c->r[R_SI] + 0xBAA0)));
+        c->icount += n + 6;
+    }
+    set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));   /* 0x07CBF */
+    c->r[R_SI] = cpu_pop16(c);
+    c->icount += 2 + 4;                                           /* sub ah, ah / jmp, and the epilogue */
+    frame_close_ret(c);
+    return 1;
+}
+
+/* Normalise joystick axis SI (0-3), START 0x084B1 and END 0x0441D: the raw
+ * reading [raw+2i] against the centre [centre+2i] becomes a byte at
+ * [out+i]: 7Fh at the centre; below it (the difference negative, signed)
+ * 0..7Fh scaled by the low range [lo+2i], a reading at or under the recorded
+ * minimum [min+2i] becoming the new minimum (and range) with 00h; above it
+ * 80h..FFh scaled by the high range [hi+2i], a reading at or past the maximum
+ * [max+2i] giving FFh - and in END's copy also the new maximum and range
+ * (START's leaves them). AX, DX, DS preserved. Where the original's DIV
+ * would fault, the routine stops at the DIV and the original takes the
+ * fault. */
+typedef struct {
+    uint16_t raw, centre, min, max, lo, hi, out;   /* the word tables, and the byte results */
+    uint16_t div_lo, div_hi;                       /* the two DIVs */
+    int widen;                                     /* a reading past the maximum widens it */
+} axis_variant;
+
+static int axis_normalise(machine_t *m, const axis_variant *v)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 23)) return 0;                                   /* the longest path */
+    const uint16_t ds = c->seg[S_DS];
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, c->r[R_DX]);
+    cpu_push16(c, ds);
+    uint16_t si = x86_shift(c, 4, c->r[R_SI], 1, 1);             /* shl si, 1 */
+    c->r[R_SI] = si;
+    uint16_t ax = ds_get(c, (uint16_t)(si + v->raw));
+    c->r[R_DX] = ax;
+    ax = (uint16_t)alu_sub(c, ax, ds_get(c, (uint16_t)(si + v->centre)), 1, 0);
+    c->r[R_AX] = ax;
+    unsigned n = 8;
+    if (c->flags & F_ZF) {                                        /* at the centre */
+        set_r8(c, R_AH, 0x7F);
+        n += 2;
+    } else if (n++, c->flags & F_SF) {                            /* below the centre */
+        alu_sub(c, c->r[R_DX], ds_get(c, (uint16_t)(si + v->min)), 1, 0);
+        n += 2;
+        if (!x86_cond(c, 0x7)) {                                  /* at or under the minimum: a new one */
+            ds_put(c, (uint16_t)(si + v->min), c->r[R_DX]);
+            c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0);
+            ds_put(c, (uint16_t)(si + v->lo), c->r[R_AX]);
+            c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+            n += 5;
+        } else {
+            c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0);   /* neg ax */
+            c->r[R_DX] = c->r[R_AX];
+            c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+            const uint16_t range = ds_get(c, (uint16_t)(si + v->lo));
+            if (!range || c->r[R_DX] >= range) {                  /* the DIV faults: leave it to the original */
+                c->icount += n + 3;
+                c->ip = v->div_lo;
+                return 1;
+            }
+            x86_div16(c, range);
+            c->r[R_AX] = (uint16_t)~c->r[R_AX];
+            c->r[R_AX] = x86_shift(c, 5, c->r[R_AX], 1, 1);
+            n += 6;
+        }
+    } else {                                                      /* above the centre */
+        alu_sub(c, c->r[R_DX], ds_get(c, (uint16_t)(si + v->max)), 1, 0);
+        n += 2;
+        if (!(c->flags & F_CF)) {                                 /* at or past the maximum */
+            if (v->widen) {
+                ds_put(c, (uint16_t)(si + v->max), c->r[R_DX]);
+                ds_put(c, (uint16_t)(si + v->hi), c->r[R_AX]);
+                n += 2;
+            }
+            c->r[R_AX] = (uint16_t)~alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+            n += 3;
+        } else {
+            c->r[R_DX] = c->r[R_AX];
+            c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+            const uint16_t range = ds_get(c, (uint16_t)(si + v->hi));
+            if (!range || c->r[R_DX] >= range) {
+                c->icount += n + 2;
+                c->ip = v->div_hi;
+                return 1;
+            }
+            x86_div16(c, range);
+            c->r[R_AX] = x86_shift(c, 5, c->r[R_AX], 1, 1);
+            set_r8(c, R_AH, (uint8_t)alu_add(c, get_r8(c, R_AH), 0x80, 0, 0));
+            n += 5;
+        }
+    }
+    si = x86_shift(c, 5, c->r[R_SI], 1, 1);                       /* shr si, 1 */
+    c->r[R_SI] = si;
+    ds_put8(c, (uint16_t)(si + v->out), get_r8(c, R_AH));
+    c->seg[S_DS] = cpu_pop16(c);
+    c->r[R_DX] = cpu_pop16(c);
+    c->r[R_AX] = cpu_pop16(c);
+    c->icount += n + 6;
+    near_ret(c);
+    return 1;
+}
+static const axis_variant START_AXIS = { 0x69AA, 0x6992, 0x6982, 0x698A, 0x699A, 0x69A2, 0x69B2, 0x84E4, 0x8507, 0 };
+static const axis_variant END_AXIS = { 0x23EC, 0x23D4, 0x23C4, 0x23CC, 0x23DC, 0x23E4, 0x23F4, 0x4450, 0x447B, 1 };
+static int start_axis_normalise(machine_t *m) { return axis_normalise(m, &START_AXIS); }
+static int end_axis_normalise(machine_t *m) { return axis_normalise(m, &END_AXIS); }
+
+/* END 0x00EF3, time_string(t, buffer): the debriefing's clock text. t is
+ * first moved on by (([71F0] + [7202]) & 0Fh) * 256; the template at 2C5h is
+ * copied (0x05150) and its digits advanced: the hours' tens by byte 33h of
+ * the settings at far [7222], the units by t / 1800 % 10 plus 8 (6 when that
+ * byte is not zero), carried into the tens past '9'; the minutes' digits from
+ * t / 30 % 60 and the seconds' from t * 2 % 60 (unsigned). Returns the
+ * buffer. */
+static int end_time_string(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 13)) return 0;
+    frame_open(c, 8);
+    cpu_push16(c, c->r[R_SI]);
+    c->r[R_AX] = (uint16_t)alu_add(c, ds_get(c, 0x71F0), ds_get(c, 0x7202), 1, 0);
+    set_r8(c, R_AH, get_r8(c, R_AL));
+    c->r[R_AX] = (uint16_t)alu_logic(c, c->r[R_AX] & 0x0F00, 1);
+    bp_put(c, 4, (uint16_t)alu_add(c, bp_get(c, 4), c->r[R_AX], 1, 0));
+    c->r[R_AX] = 0x2C5;
+    cpu_push16(c, 0x2C5);
+    cpu_push16(c, bp_get(c, 6));
+    c->icount += 12;
+    if (!guest_call(m, 0x5150, 0x0F13)) return 1;
+    if (!room(c, 62)) { c->ip = 0x0F13; return 1; }               /* the longest way to the RET */
+    const uint16_t ds = c->seg[S_DS];
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    uint16_t far = ds_get(c, 0x7222), es = ds_get(c, 0x7224);
+    c->r[R_BX] = far;
+    c->seg[S_ES] = es;
+    set_r8(c, R_AL, mem_read8(c, phys(es, (uint16_t)(far + 0x33))));
+    const uint16_t buf = bp_get(c, 6);
+    c->r[R_BX] = buf;
+    mem_write8(c, phys(ds, buf), (uint8_t)alu_add(c, mem_read8(c, phys(ds, buf)), get_r8(c, R_AL), 0, 0));
+    c->r[R_AX] = bp_get(c, 4);
+    c->r[R_CX] = 0x708;
+    c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0);
+    x86_div16(c, 0x708);                                          /* t / 1800 */
+    c->r[R_CX] = 0x0A;
+    cwd(c);
+    x86_idiv16(c, 0x0A, 0);                                       /* ... % 10 in DL */
+    const uint16_t units = (uint16_t)(buf + 1);
+    mem_write8(c, phys(ds, units), (uint8_t)alu_add(c, mem_read8(c, phys(ds, units)), get_r8(c, R_DL), 0, 0));
+    far = ds_get(c, 0x7222);
+    es = ds_get(c, 0x7224);
+    c->r[R_SI] = far;
+    c->seg[S_ES] = es;
+    alu_sub(c, mem_read8(c, phys(es, (uint16_t)(far + 0x33))), 1, 0, 0);   /* cmp byte es:[si+33h], 1 */
+    uint8_t al = (uint8_t)alu_sub(c, get_r8(c, R_AL), get_r8(c, R_AL), 0, (c->flags & F_CF) ? 1u : 0u);   /* sbb al, al */
+    al = (uint8_t)alu_logic(c, al & 0xFE, 0);
+    al = (uint8_t)alu_add(c, al, 8, 0, 0);
+    set_r8(c, R_AL, al);
+    mem_write8(c, phys(ds, units), (uint8_t)alu_add(c, mem_read8(c, phys(ds, units)), al, 0, 0));
+    alu_sub(c, mem_read8(c, phys(ds, units)), 0x39, 0, 0);
+    unsigned n = 22;
+    if (!x86_cond(c, 0x6)) {                                      /* past '9': carry into the tens */
+        al = (uint8_t)alu_sub(c, mem_read8(c, phys(ds, units)), 0x0A, 0, 0);
+        set_r8(c, R_AL, al);
+        mem_write8(c, phys(ds, units), al);
+        mem_write8(c, phys(ds, buf), (uint8_t)alu_inc(c, mem_read8(c, phys(ds, buf)), 0));
+        n += 4;
+    }
+    c->r[R_CX] = 0x3C;
+    c->r[R_AX] = bp_get(c, 4);
+    c->r[R_BX] = 0x1E;
+    c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0);
+    x86_div16(c, 0x1E);                                           /* t / 30 */
+    c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0);
+    x86_div16(c, 0x3C);                                           /* ... % 60: the minutes */
+    c->r[R_AX] = c->r[R_DX];
+    bp_put(c, -6, c->r[R_AX]);
+    c->r[R_BX] = 0x0A;
+    cwd(c);
+    x86_idiv16(c, 0x0A, 0);
+    const uint16_t si = bp_get(c, 6);
+    c->r[R_SI] = si;
+    mem_write8(c, phys(ds, (uint16_t)(si + 3)), (uint8_t)alu_add(c, mem_read8(c, phys(ds, (uint16_t)(si + 3))), get_r8(c, R_AL), 0, 0));
+    c->r[R_AX] = bp_get(c, -6);
+    cwd(c);
+    x86_idiv16(c, 0x0A, 0);
+    mem_write8(c, phys(ds, (uint16_t)(si + 4)), (uint8_t)alu_add(c, mem_read8(c, phys(ds, (uint16_t)(si + 4))), get_r8(c, R_DL), 0, 0));
+    c->r[R_AX] = x86_shift(c, 4, bp_get(c, 4), 1, 1);             /* t * 2 */
+    c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0);
+    x86_div16(c, 0x3C);                                           /* % 60: the seconds */
+    c->r[R_AX] = c->r[R_DX];
+    c->r[R_CX] = c->r[R_DX];
+    cwd(c);
+    x86_idiv16(c, 0x0A, 0);
+    mem_write8(c, phys(ds, (uint16_t)(si + 6)), (uint8_t)alu_add(c, mem_read8(c, phys(ds, (uint16_t)(si + 6))), get_r8(c, R_AL), 0, 0));
+    c->r[R_AX] = c->r[R_CX];
+    cwd(c);
+    x86_idiv16(c, 0x0A, 0);
+    mem_write8(c, phys(ds, (uint16_t)(si + 7)), (uint8_t)alu_add(c, mem_read8(c, phys(ds, (uint16_t)(si + 7))), get_r8(c, R_DL), 0, 0));
+    c->r[R_AX] = si;
+    c->r[R_SI] = cpu_pop16(c);
+    c->icount += n + 36;
+    frame_close_ret(c);
+    return 1;
+}
+
+/* END 0x02AFA, promote(): unless the mission's result word (far [7222]+30h)
+ * is set (AX = 0), the ranks from 5 down are tried against the pilot (far
+ * [55DE]): while the pilot's rank (+20h) is not above it, rank r is earned
+ * with points (+32h, 32 bits) of at least the word at 5B0h + 2r, missions
+ * (+36h) of at least 5C8h + 2r, and points per mission (0x05302) of at least
+ * 5BCh + 2r. Earned, the pilot is promoted ([55E6] = 1, the rank goes up)
+ * when below rank 5 and [6982] is not 1 (with it 1, [55E7] = 1 instead), or
+ * at rank 5 with exactly 99 missions. Returns AX as the last value loaded. */
+static int end_promote(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define NEED(n, at) do { if (!room(c, (n))) { c->ip = (at); return 1; } } while (0)
+    if (!room(c, 15)) return 0;
+    frame_open(c, 2);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_SI]);
+    c->r[R_BX] = ds_get(c, 0x7222);
+    c->seg[S_ES] = ds_get(c, 0x7224);
+    alu_sub(c, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x30)), 0, 1, 0);
+    c->icount += 8;
+    if (!(c->flags & F_ZF)) {                                     /* a result: no promotion */
+        c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+        c->icount += 2;
+        goto out;
+    }
+    bp_put(c, -2, 5);                                             /* the rank tried */
+    c->icount += 2;
+    for (;;) {                                                    /* 0x02B31 */
+        NEED(23, 0x2B31);
+        c->r[R_AX] = bp_get(c, -2);
+        c->r[R_BX] = ds_get(c, 0x55DE);
+        c->seg[S_ES] = ds_get(c, 0x55E0);
+        const uint16_t es = c->seg[S_ES], bx = c->r[R_BX];
+        alu_sub(c, seg_read16(c, es, (uint16_t)(bx + 0x20)), c->r[R_AX], 1, 0);
+        c->icount += 4;
+        if (x86_cond(c, 0xF)) goto out;                           /* the pilot's rank is above it */
+        c->r[R_SI] = x86_shift(c, 4, c->r[R_AX], 1, 1);
+        c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_SI] + 0x5B0));   /* the points needed, 0:AX */
+        c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0);
+        alu_sub(c, c->r[R_DX], seg_read16(c, es, (uint16_t)(bx + 0x34)), 1, 0);
+        c->icount += 6;
+        int earned = 0;
+        if (!x86_cond(c, 0xF)) {
+            c->icount += 1;
+            int enough = x86_cond(c, 0xC);                        /* the high word is below the pilot's */
+            if (!enough) {
+                alu_sub(c, c->r[R_AX], seg_read16(c, es, (uint16_t)(bx + 0x32)), 1, 0);
+                c->icount += 2;
+                enough = !x86_cond(c, 0x7);
+            }
+            if (enough) {                                         /* 0x02B56: the missions */
+                c->r[R_AX] = seg_read16(c, es, (uint16_t)(bx + 0x36));
+                alu_sub(c, ds_get(c, (uint16_t)(c->r[R_SI] + 0x5C8)), c->r[R_AX], 1, 0);
+                c->icount += 3;
+                earned = !x86_cond(c, 0x7);
+            }
+        }
+        if (!earned) {                                            /* 0x02B2E: the next rank down */
+            bp_put(c, -2, (uint16_t)alu_dec(c, bp_get(c, -2), 1));
+            c->icount += 1;
+            continue;
+        }
+        c->r[R_CX] = c->r[R_AX];
+        cpu_push16(c, c->r[R_DX]);
+        cpu_push16(c, c->r[R_AX]);
+        cpu_push16(c, seg_read16(c, es, (uint16_t)(bx + 0x34)));
+        cpu_push16(c, seg_read16(c, es, (uint16_t)(bx + 0x32)));
+        c->r[R_DI] = c->r[R_AX];                                  /* the missions */
+        c->icount += 6;
+        if (!guest_call_pop(m, 0x5302, 0x2B71, 8)) return 1;      /* points per mission */
+        NEED(23, 0x2B71);
+        c->r[R_CX] = ds_get(c, (uint16_t)(c->r[R_SI] + 0x5BC));
+        c->r[R_BX] = (uint16_t)alu_sub(c, c->r[R_BX], c->r[R_BX], 1, 0);
+        alu_sub(c, c->r[R_DX], 0, 1, 0);                          /* cmp dx, bx */
+        c->icount += 4;
+        int average = 0;
+        if (!x86_cond(c, 0xC)) {
+            c->icount += 1;
+            average = x86_cond(c, 0xF);
+            if (!average) {
+                alu_sub(c, c->r[R_AX], c->r[R_CX], 1, 0);
+                c->icount += 2;
+                average = !(c->flags & F_CF);
+            }
+        }
+        if (!average) {
+            bp_put(c, -2, (uint16_t)alu_dec(c, bp_get(c, -2), 1));
+            c->icount += 1;
+            continue;
+        }
+        c->r[R_BX] = ds_get(c, 0x55DE);                           /* 0x02B81 */
+        c->seg[S_ES] = ds_get(c, 0x55E0);
+        const uint16_t rank_at = (uint16_t)(c->r[R_BX] + 0x20);
+        alu_sub(c, seg_read16(c, c->seg[S_ES], rank_at), 5, 1, 0);
+        c->icount += 3;
+        int promote = 0;
+        if (c->flags & F_ZF) {                                    /* at rank 5: only with 99 missions */
+            alu_sub(c, c->r[R_DI], 0x63, 1, 0);
+            c->icount += 2;
+            promote = (c->flags & F_ZF) != 0;
+        }
+        if (!promote) {                                           /* 0x02B19 */
+            alu_sub(c, seg_read16(c, c->seg[S_ES], rank_at), 5, 1, 0);
+            c->icount += 2;
+            if (!(c->flags & F_CF)) goto out;                     /* rank 5 or above */
+            alu_sub(c, ds_get8(c, 0x6982), 1, 0, 0);
+            c->icount += 2;
+            if (c->flags & F_ZF) { ds_put8(c, 0x55E7, 1); c->icount += 2; goto out; }
+        }
+        ds_put8(c, 0x55E6, 1);                                    /* 0x02B91 */
+        seg_write16(c, c->seg[S_ES], rank_at, (uint16_t)alu_inc(c, seg_read16(c, c->seg[S_ES], rank_at), 1));
+        c->icount += 2;
+        goto out;
+    }
+out:
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->icount += 5;
+    frame_close_ret(c);
+    return 1;
+#undef NEED
+}
+
+/* END 0x02476, awards(): the ribbons, the medal and the next rank step after
+ * a mission, for the pilot at far [55DE] and the mission's result at far
+ * [7222] (+30h, zero for a mission flown home; +34h flags; +36h).
+ * - +44h, once: set (and [55DD] = 1) when the result is set and [6D89] or
+ *   [720E] is.
+ * - With no result, by the pilot's missions (+36h): +46h at 5-9, +48h from
+ *   10 (clearing +46h), +4Ah at 30-59, +4Ch from 60 (clearing +4Ah); each new
+ *   one is [55E2] = 1-4.
+ * - +22h, once: set (and [643A] = 1) when the result's +36h is 7 or more and
+ *   its flags +34h have bits 3 and 2.
+ * - The point steps: +2Ch past 1200 points (+30h); else +2Ah, +28h, +26h at
+ *   (count + 1) * 900, 600, 300; else +24h (below 9) at (count + 1) * 100.
+ *   The first step reached is the award 6..2: given at once ([643A], and the
+ *   count goes up) when [6982] and the result are zero, else noted in [55DA].
+ * SI is preserved; the routine has no frame. */
+static int end_awards(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 110)) return 0;                                  /* the longest path */
+    unsigned n = 0;
+#define LES(reg, at) do { c->r[reg] = ds_get(c, (at)); c->seg[S_ES] = ds_get(c, (uint16_t)((at) + 2)); n++; } while (0)
+#define ESW(off) seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + (off)))
+#define ESPUT(off, v) seg_write16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + (off)), (v))
+    cpu_push16(c, c->r[R_SI]);
+    n++;
+    LES(R_BX, 0x55DE);
+    alu_sub(c, ESW(0x44), 0, 1, 0);
+    n += 2;
+    if (c->flags & F_ZF) {                                        /* the one-time award */
+        LES(R_BX, 0x7222);
+        alu_sub(c, ESW(0x30), 0, 1, 0);
+        n += 2;
+        if (!(c->flags & F_ZF)) {
+            alu_sub(c, ds_get8(c, 0x6D89), 0, 0, 0);
+            n += 2;
+            int give = !(c->flags & F_ZF);
+            if (!give) { alu_sub(c, ds_get8(c, 0x720E), 0, 0, 0); n += 2; give = !(c->flags & F_ZF); }
+            if (give) {
+                LES(R_BX, 0x55DE);
+                ESPUT(0x44, 1);
+                ds_put8(c, 0x55DD, 1);
+                n += 2;
+            }
+        }
+    }
+    LES(R_BX, 0x7222);                                            /* 0x024AA */
+    alu_sub(c, ESW(0x30), 0, 1, 0);
+    n += 2;
+    if (!(c->flags & F_ZF)) n++;                                  /* jmp past the ribbons */
+    else {
+        /* The service ribbons by missions flown: (field, from, below, clears, ribbon). */
+        static const struct { uint8_t field, from, below, clears, ribbon; } rib[4] = {
+            { 0x46, 5, 10, 0, 1 }, { 0x48, 10, 0, 0x46, 2 }, { 0x4A, 30, 60, 0, 3 }, { 0x4C, 60, 0, 0x4A, 4 } };
+        for (int k = 0; k < 4; k++) {
+            LES(R_BX, 0x55DE);
+            alu_sub(c, ESW(rib[k].field), 0, 1, 0);
+            n += 2;
+            if (!(c->flags & F_ZF)) continue;                     /* had it */
+            alu_sub(c, ESW(0x36), rib[k].from, 1, 0);
+            n += 2;
+            if (c->flags & F_CF) continue;                        /* too few */
+            if (rib[k].below) {
+                alu_sub(c, ESW(0x36), rib[k].below, 1, 0);
+                n += 2;
+                if (!(c->flags & F_CF)) continue;                 /* the next one's range */
+            }
+            if (rib[k].clears) { ESPUT(rib[k].clears, 0); n++; LES(R_BX, 0x55DE); }
+            ESPUT(rib[k].field, 1);
+            ds_put8(c, 0x55E2, rib[k].ribbon);
+            n += 2;
+        }
+    }
+    LES(R_BX, 0x55DE);                                            /* 0x0254E: the medal */
+    alu_sub(c, ESW(0x22), 0, 1, 0);
+    n += 2;
+    if (c->flags & F_ZF) {
+        c->r[R_AX] = c->seg[S_ES];
+        n++;
+        LES(R_SI, 0x7222);
+        const uint16_t res = c->r[R_SI];
+        alu_sub(c, seg_read16(c, c->seg[S_ES], (uint16_t)(res + 0x36)), 7, 1, 0);
+        n += 2;
+        if (!(c->flags & F_CF)) {
+            c->r[R_CX] = seg_read16(c, c->seg[S_ES], (uint16_t)(res + 0x34));
+            c->r[R_DX] = c->r[R_CX];
+            alu_logic(c, get_r8(c, R_CL) & 8, 0);
+            n += 4;
+            if (!(c->flags & F_ZF)) {
+                alu_logic(c, get_r8(c, R_DL) & 4, 0);
+                n += 2;
+                if (!(c->flags & F_ZF)) {
+                    c->seg[S_ES] = c->r[R_AX];
+                    ESPUT(0x22, 1);
+                    ds_put8(c, 0x643A, 1);
+                    n += 3;
+                }
+            }
+        }
+    }
+    LES(R_BX, 0x55DE);                                            /* 0x02583: the point steps */
+    alu_sub(c, ESW(0x2C), 0, 1, 0);
+    n += 2;
+    int award = 0;
+    uint8_t field = 0;
+    if (c->flags & F_ZF) {
+        alu_sub(c, ESW(0x30), 0x4B0, 1, 0);
+        n += 2;
+        if (x86_cond(c, 0x7)) { award = 6; field = 0x2C; }
+    }
+    static const struct { uint8_t field; uint16_t step; uint8_t award; } pts[4] = {
+        { 0x2A, 0x384, 5 }, { 0x28, 0x258, 4 }, { 0x26, 0x12C, 3 }, { 0x24, 0x64, 2 } };
+    for (int k = 0; k < 4 && !award; k++) {
+        if (pts[k].field == 0x24) {                               /* the last step stops at 9 */
+            alu_sub(c, ESW(0x24), 9, 1, 0);
+            n += 2;
+            if (!(c->flags & F_CF)) break;
+        }
+        c->r[R_AX] = (uint16_t)alu_inc(c, ESW(pts[k].field), 1);
+        c->r[R_CX] = pts[k].step;
+        x86_mul16(c, pts[k].step);
+        alu_sub(c, c->r[R_AX], ESW(0x30), 1, 0);
+        n += 6;
+        if (!x86_cond(c, 0x7)) { award = pts[k].award; field = pts[k].field; }
+    }
+    if (award) {
+        alu_sub(c, ds_get8(c, 0x6982), 0, 0, 0);
+        n += 2;
+        int now = 0;
+        if (c->flags & F_ZF) {
+            LES(R_BX, 0x7222);
+            alu_sub(c, ESW(0x30), 0, 1, 0);
+            n += 2;
+            now = (c->flags & F_ZF) != 0;
+        }
+        if (now) {                                                /* given: the count goes up */
+            ds_put8(c, 0x643A, (uint8_t)award);
+            LES(R_BX, 0x55DE);
+            if (award == 6) ESPUT(0x2C, 1);
+            else ESPUT(field, (uint16_t)alu_inc(c, ESW(field), 1));
+            n += 2;
+        } else {
+            ds_put8(c, 0x55DA, (uint8_t)award);
+            n += (award == 6) ? 1 : 2;                            /* (rank 6 returns there; the rest JMP to the RET) */
+        }
+    }
+    c->r[R_SI] = cpu_pop16(c);
+    c->icount += n + 2;
+    near_ret(c);
+    return 1;
+#undef LES
+#undef ESW
+#undef ESPUT
+}
+
+/* START 0x0819D, the LZW reader's refill: the next 512 bytes of the packed
+ * image, at the far pointer [6497]:[6499] (read through SS), are copied to
+ * the input buffer DS:6235 (REP MOVSW, stepping by DF) and the pointer
+ * advanced; AX = 200h, the bytes now buffered. */
+static int start_lzw_refill(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 10 + 256 + 7)) return 0;
+    const uint16_t ss = c->seg[S_SS], ds = c->seg[S_DS];
+    cpu_push16(c, ds);
+    cpu_push16(c, c->seg[S_ES]);
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->r[R_DI]);
+    c->r[R_AX] = ds;
+    c->seg[S_ES] = ds;
+    c->seg[S_DS] = seg_read16(c, ss, 0x6497);
+    c->r[R_CX] = 0x100;
+    c->r[R_SI] = seg_read16(c, ss, 0x6499);
+    c->r[R_DI] = 0x6235;
+    const unsigned n = rep_string(c, STR_MOVS, 1, c->seg[S_DS], 0);
+    seg_write16(c, ss, 0x6499, (uint16_t)alu_add(c, seg_read16(c, ss, 0x6499), 0x200, 1, 0));
+    c->r[R_AX] = 0x200;
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->seg[S_ES] = cpu_pop16(c);
+    c->seg[S_DS] = cpu_pop16(c);
+    c->icount += 10 + n + 7;
+    near_ret(c);
+    return 1;
+}
+
+/* START 0x0A76C, the heap's free(block) for the near heap described at AE1E:
+ * a block at or above the heap's start ([AE24]) has its header word (at
+ * block - 2) marked free (bit 0), and the rover [AE26] moves back to it when
+ * it lies below. BX is left as the header's address. */
+static int start_heap_free(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 18)) return 0;
+    frame_open(c, 0);
+    cpu_push16(c, c->r[R_SI]);
+    uint16_t bx = bp_get(c, 4);
+    c->r[R_SI] = 0xAE1E;
+    alu_sub(c, ds_get(c, 0xAE24), bx, 1, 0);                      /* cmp [si+6], bx */
+    unsigned n = 8;                                               /* with the JMP at the entry */
+    if (c->flags & F_CF) {                                        /* jae not taken: a heap block */
+        bx = (uint16_t)alu_dec(c, alu_dec(c, bx, 1), 1);
+        ds_put8(c, bx, (uint8_t)alu_logic(c, ds_get8(c, bx) | 1, 0));
+        alu_sub(c, ds_get(c, 0xAE26), bx, 1, 0);                  /* cmp [si+8], bx */
+        n += 5;
+        if (!x86_cond(c, 0x6)) { ds_put(c, 0xAE26, bx); n++; }    /* jbe not taken */
+    }
+    c->r[R_BX] = bx;
+    c->r[R_SI] = cpu_pop16(c);
+    c->icount += n + 4;
+    frame_close_ret(c);
+    return 1;
+}
+
+/* START 0x025D9, date_string(buffer): the mission's date. The theatre (far
+ * [CACA]+38h) picks a starting month (byte 882h + theatre), year (word 896h +
+ * 2 * theatre) and day (byte 88Ch + theatre, plus the day count at +36h);
+ * whole months (lengths at 8C2h + month) are taken off while the day is not
+ * below the month's length, a month past 12 wraps into the next year, and
+ * the text is printed by 0x0959E with the format at 878h: the month's name
+ * (word 8A8h + 2 * month), the day, the year. Returns the buffer. */
+static int start_date_string(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 19)) return 0;
+    frame_open(c, 6);
+    cpu_push16(c, c->r[R_SI]);
+    const uint16_t bx = ds_get(c, 0xCACA);
+    c->seg[S_ES] = ds_get(c, 0xCACC);
+    c->r[R_BX] = bx;
+    const uint16_t theatre = seg_read16(c, c->seg[S_ES], (uint16_t)(bx + 0x38));
+    set_r8(c, R_AL, ds_get8(c, (uint16_t)(theatre + 0x882)));
+    set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
+    bp_put(c, -4, c->r[R_AX]);                                    /* month */
+    c->r[R_AX] = theatre;
+    c->r[R_SI] = x86_shift(c, 4, theatre, 1, 1);
+    c->r[R_CX] = ds_get(c, (uint16_t)(c->r[R_SI] + 0x896));
+    bp_put(c, -2, c->r[R_CX]);                                    /* year */
+    c->r[R_SI] = theatre;
+    set_r8(c, R_AL, ds_get8(c, (uint16_t)(theatre + 0x88C)));
+    set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], seg_read16(c, c->seg[S_ES], (uint16_t)(bx + 0x36)), 1, 0);
+    bp_put(c, -6, c->r[R_AX]);                                    /* day */
+    c->icount += 19;
+    for (;;) {                                                    /* 0x02613 */
+        if (!room(c, 18)) { c->ip = 0x2613; return 1; }           /* a pass, or the last one to the CALL */
+        c->r[R_BX] = bp_get(c, -4);
+        set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + 0x8C2)));
+        set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
+        alu_sub(c, c->r[R_AX], bp_get(c, -6), 1, 0);
+        c->icount += 5;
+        if (!(c->flags & F_CF)) break;                            /* the day lies in this month */
+        bp_put(c, -6, (uint16_t)alu_sub(c, bp_get(c, -6), c->r[R_AX], 1, 0));
+        bp_put(c, -4, (uint16_t)alu_inc(c, bp_get(c, -4), 1));
+        c->icount += 2;
+    }
+    alu_sub(c, c->r[R_BX], 0x0C, 1, 0);
+    c->icount += 2;
+    if (!x86_cond(c, 0x6)) {                                      /* past December */
+        bp_put(c, -4, (uint16_t)alu_sub(c, bp_get(c, -4), 0x0C, 1, 0));
+        bp_put(c, -2, (uint16_t)alu_inc(c, bp_get(c, -2), 1));
+        c->icount += 2;
+    }
+    cpu_push16(c, bp_get(c, -2));
+    cpu_push16(c, bp_get(c, -6));
+    c->r[R_BX] = x86_shift(c, 4, bp_get(c, -4), 1, 1);
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x8A8)));
+    c->r[R_AX] = 0x878;
+    cpu_push16(c, 0x878);
+    cpu_push16(c, bp_get(c, 4));
+    c->icount += 8;
+    if (!guest_call(m, 0x959E, 0x2646)) return 1;
+    if (!room(c, 6)) { c->ip = 0x2646; return 1; }
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x0A, 1, 0);
+    c->r[R_AX] = bp_get(c, 4);
+    c->r[R_SI] = cpu_pop16(c);
+    c->icount += 6;
+    frame_close_ret(c);
+    return 1;
+}
+
+/* A target record (16 bytes at CBDE) is shown on the briefing map when it has
+ * a type (word +6) or bit 0 of +8 or bit 1 of +9 is set, and bit 3 of +9 is
+ * clear. `n` counts the instructions of that test as the original makes it;
+ * flags as it leaves them. */
+static int site_shown(cpu_t *c, uint16_t rec, unsigned *n)
+{
+    alu_sub(c, ds_get(c, (uint16_t)(rec + 6)), 0, 1, 0);
+    *n += 3;                                                      /* (with the load of the record) */
+    if (c->flags & F_ZF) {
+        c->r[R_AX] = ds_get(c, (uint16_t)(rec + 8));
+        c->r[R_CX] = c->r[R_AX];
+        alu_logic(c, get_r8(c, R_AL) & 1, 0);
+        *n += 4;
+        if (c->flags & F_ZF) {
+            alu_logic(c, get_r8(c, R_CH) & 2, 0);
+            *n += 2;
+            if (c->flags & F_ZF) return 0;
+        }
+    }
+    alu_logic(c, ds_get8(c, (uint16_t)(rec + 9)) & 8, 0);
+    *n += 2;
+    return (c->flags & F_ZF) != 0;
+}
+
+/* The briefing map's site boxes, START 0x01F3F and END's copy at 0x005CA (the
+ * debriefing map). For each shown target i (16-byte records, count in a word):
+ * unless it is marked a lone site (bit 3 of +8 with bit 2 of +9 clear), it is
+ * paired with the first other shown target j at the same place word (+0); a
+ * pair is boxed once, at the first of the two, around the midpoint (screen x
+ * = sum / 124h, y = sum / 186h), and a site without a partner around its own
+ * point (x / 92h, y / C3h). A shown target with a type has bit 6 of +9
+ * cleared. START stores each box as four words from 6D62 on - the centre less
+ * 7 (clamped at 0), and that plus 14 - with the pair (i, j or 0) in the byte
+ * pairs at B286, the count at [B2E6] and [6D21] = count + 8. END stores the
+ * centre less (1, 2) in the word tables at 54BA and 5532 and the pair at 5440,
+ * the count at [54B8]. END loads the two loop counts the other way round (the
+ * count compared with j, AX = j). */
+typedef struct {
+    int end;                                  /* END's copy */
+    uint16_t recs, count, boxes;              /* the records, their count, the boxes made */
+    int16_t p, i, q, j, x, y;                 /* frame offsets: i's record, i, j's record, j, the centre */
+    uint16_t locals, inner, centre, outer, done;   /* frame size; the loop heads and the exit */
+} site_box_variant;
+
+static int site_boxes(machine_t *m, const site_box_variant *v)
+{
+    cpu_t *c = &m->cpu;
+#define NEED(n, at) do { if (!room(c, (n))) { c->ip = (at); return 1; } } while (0)
+    if (!room(c, 10)) return 0;
+    frame_open(c, v->locals);
+    cpu_push16(c, c->r[R_SI]);
+    if (!v->end) bp_put(c, -2, 0x6D62);                           /* START: the next box */
+    bp_put(c, v->p, v->recs);
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+    ds_put(c, v->boxes, 0);
+    bp_put(c, v->i, 0);
+    c->icount += v->end ? 9 : 10;
+    for (;;) {                                                    /* each target */
+        NEED(28, v->outer);
+        c->r[R_AX] = bp_get(c, v->i);
+        alu_sub(c, ds_get(c, v->count), c->r[R_AX], 1, 0);
+        c->icount += 3;
+        if (x86_cond(c, 0x6)) break;                              /* all seen */
+        unsigned n = 0;
+        c->r[R_BX] = bp_get(c, v->p);
+        const int shown = site_shown(c, c->r[R_BX], &n);
+        c->icount += n;
+        if (shown) {
+            alu_sub(c, ds_get(c, (uint16_t)(c->r[R_BX] + 6)), 0, 1, 0);
+            c->icount += 2;
+            if (!(c->flags & F_ZF)) {
+                const uint16_t at = (uint16_t)(c->r[R_BX] + 9);
+                ds_put8(c, at, (uint8_t)alu_logic(c, ds_get8(c, at) & 0xBF, 0));
+                c->icount += 1;
+            }
+            c->r[R_BX] = bp_get(c, v->p);
+            c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 8));
+            c->r[R_CX] = c->r[R_AX];
+            alu_logic(c, get_r8(c, R_AL) & 8, 0);
+            c->icount += 5;
+            int lone = 0;
+            if (!(c->flags & F_ZF)) {
+                alu_logic(c, get_r8(c, R_CH) & 4, 0);
+                c->icount += 2;
+                lone = (c->flags & F_ZF) != 0;
+            }
+            if (lone) {                                           /* no partner to look for */
+                c->r[R_AX] = ds_get(c, v->count);
+                bp_put(c, v->j, c->r[R_AX]);
+                c->icount += 3;
+            } else {                                              /* find the partner j */
+                bp_put(c, v->q, v->recs);
+                bp_put(c, v->j, 0);
+                c->icount += 4;                                   /* with the JMP to the search */
+                for (;;) {
+                    NEED(23, v->inner);
+                    int more;
+                    if (v->end) {
+                        c->r[R_AX] = bp_get(c, v->j);
+                        alu_sub(c, ds_get(c, v->count), c->r[R_AX], 1, 0);
+                        more = !x86_cond(c, 0x6);                 /* jbe */
+                    } else {
+                        c->r[R_AX] = ds_get(c, v->count);
+                        alu_sub(c, bp_get(c, v->j), c->r[R_AX], 1, 0);
+                        more = (c->flags & F_CF) != 0;            /* jae */
+                    }
+                    c->icount += 3;
+                    if (!more) break;                             /* none: j = count */
+                    unsigned k = 0;
+                    c->r[R_BX] = bp_get(c, v->q);
+                    if (site_shown(c, c->r[R_BX], &k)) {
+                        c->r[R_SI] = bp_get(c, v->p);
+                        c->r[R_AX] = ds_get(c, c->r[R_SI]);
+                        alu_sub(c, ds_get(c, c->r[R_BX]), c->r[R_AX], 1, 0);
+                        k += 4;
+                        if (c->flags & F_ZF) {
+                            c->r[R_AX] = bp_get(c, v->i);
+                            alu_sub(c, bp_get(c, v->j), c->r[R_AX], 1, 0);
+                            k += 3;
+                            if (!(c->flags & F_ZF)) { c->icount += k; break; }   /* found j */
+                        }
+                    }
+                    bp_put(c, v->j, (uint16_t)alu_inc(c, bp_get(c, v->j), 1));
+                    bp_put(c, v->q, (uint16_t)alu_add(c, bp_get(c, v->q), 0x10, 1, 0));
+                    c->icount += k + 2;
+                }
+            }
+            NEED(58, v->centre);                                  /* the box's centre */
+            if (v->end) {
+                c->r[R_AX] = bp_get(c, v->j);
+                alu_sub(c, ds_get(c, v->count), c->r[R_AX], 1, 0);
+            } else {
+                c->r[R_AX] = ds_get(c, v->count);
+                alu_sub(c, bp_get(c, v->j), c->r[R_AX], 1, 0);
+            }
+            c->icount += 3;
+            int centre = 1;
+            if (c->flags & F_ZF) {                                /* alone: its own point */
+                c->r[R_BX] = bp_get(c, v->p);
+                c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 2));
+                c->r[R_CX] = 0x92;
+                c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0);
+                x86_div16(c, 0x92);
+                bp_put(c, v->x, c->r[R_AX]);
+                c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 4));
+                c->r[R_CX] = 0xC3;
+                c->icount += 9;
+            } else {
+                c->r[R_AX] = bp_get(c, v->i);
+                alu_sub(c, bp_get(c, v->j), c->r[R_AX], 1, 0);
+                c->icount += 3;
+                if (x86_cond(c, 0x6)) centre = 0;                 /* the pair was boxed at j */
+                else {                                            /* the pair's midpoint */
+                    c->r[R_BX] = bp_get(c, v->q);
+                    c->r[R_SI] = bp_get(c, v->p);
+                    c->r[R_AX] = (uint16_t)alu_add(c, ds_get(c, (uint16_t)(c->r[R_BX] + 2)), ds_get(c, (uint16_t)(c->r[R_SI] + 2)), 1, 0);
+                    c->r[R_CX] = 0x124;
+                    c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0);
+                    x86_div16(c, 0x124);
+                    bp_put(c, v->x, c->r[R_AX]);
+                    c->r[R_AX] = (uint16_t)alu_add(c, ds_get(c, (uint16_t)(c->r[R_BX] + 4)), ds_get(c, (uint16_t)(c->r[R_SI] + 4)), 1, 0);
+                    c->r[R_CX] = 0x186;
+                    c->icount += 11;
+                }
+            }
+            if (centre) {
+                c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0);
+                x86_div16(c, c->r[R_CX]);
+                bp_put(c, v->y, c->r[R_AX]);
+                c->icount += 3;
+            }
+            c->r[R_AX] = bp_get(c, v->i);
+            alu_sub(c, bp_get(c, v->j), c->r[R_AX], 1, 0);
+            c->icount += 3;
+            if (!x86_cond(c, 0x6) && v->end) {                    /* END: the centre and the pair */
+                c->r[R_CX] = (uint16_t)alu_dec(c, bp_get(c, v->x), 1);
+                c->r[R_BX] = x86_shift(c, 4, ds_get(c, v->boxes), 1, 1);
+                ds_put(c, (uint16_t)(c->r[R_BX] + 0x54BA), c->r[R_CX]);
+                c->r[R_CX] = (uint16_t)alu_dec(c, alu_dec(c, bp_get(c, v->y), 1), 1);
+                ds_put(c, (uint16_t)(c->r[R_BX] + 0x5532), c->r[R_CX]);
+                ds_put8(c, (uint16_t)(c->r[R_BX] + 0x5440), get_r8(c, R_AL));
+                c->r[R_AX] = bp_get(c, v->j);
+                alu_sub(c, ds_get(c, v->count), c->r[R_AX], 1, 0);
+                c->icount += 13;
+                if (!x86_cond(c, 0x6)) {                          /* a partner */
+                    ds_put8(c, (uint16_t)(c->r[R_BX] + 0x5441), get_r8(c, R_AL));
+                    c->icount += 2;
+                } else {
+                    c->r[R_BX] = x86_shift(c, 4, ds_get(c, v->boxes), 1, 1);
+                    ds_put8(c, (uint16_t)(c->r[R_BX] + 0x5441), 0);
+                    c->icount += 3;
+                }
+                ds_put(c, v->boxes, (uint16_t)alu_inc(c, ds_get(c, v->boxes), 1));
+                c->icount += 1;
+            } else if (!x86_cond(c, 0x6)) {                       /* START: the box */
+                for (int k = 0; k < 2; k++) {                     /* x0, then y0: the centre less 7, at least 0 */
+                    const int16_t from = k ? v->y : v->x;
+                    alu_sub(c, bp_get(c, from), 7, 1, 0);
+                    c->icount += 2;
+                    if (!(c->flags & F_CF)) {
+                        c->r[R_AX] = (uint16_t)alu_sub(c, bp_get(c, from), 7, 1, 0);
+                        c->r[R_BX] = bp_get(c, -2);
+                        ds_put(c, (uint16_t)(c->r[R_BX] + 2 * k), c->r[R_AX]);
+                        c->icount += 5;
+                    } else {
+                        c->r[R_BX] = bp_get(c, -2);
+                        ds_put(c, (uint16_t)(c->r[R_BX] + 2 * k), 0);
+                        c->icount += 2;
+                    }
+                }
+                c->r[R_BX] = bp_get(c, -2);                       /* x1, y1 = x0, y0 + 14 */
+                c->r[R_AX] = (uint16_t)alu_add(c, ds_get(c, c->r[R_BX]), 0x0E, 1, 0);
+                ds_put(c, (uint16_t)(c->r[R_BX] + 4), c->r[R_AX]);
+                c->r[R_AX] = (uint16_t)alu_add(c, ds_get(c, (uint16_t)(c->r[R_BX] + 2)), 0x0E, 1, 0);
+                ds_put(c, (uint16_t)(c->r[R_BX] + 6), c->r[R_AX]);
+                set_r8(c, R_AL, bp_get8(c, v->i));
+                c->r[R_BX] = x86_shift(c, 4, ds_get(c, v->boxes), 1, 1);
+                ds_put8(c, (uint16_t)(c->r[R_BX] - 0x4D7A), get_r8(c, R_AL));
+                c->r[R_AX] = ds_get(c, v->count);
+                alu_sub(c, bp_get(c, v->j), c->r[R_AX], 1, 0);
+                c->icount += 14;
+                if (c->flags & F_CF) {                            /* a partner */
+                    set_r8(c, R_AL, bp_get8(c, v->j));
+                    ds_put8(c, (uint16_t)(c->r[R_BX] - 0x4D79), get_r8(c, R_AL));
+                } else {
+                    c->r[R_BX] = x86_shift(c, 4, ds_get(c, v->boxes), 1, 1);
+                    ds_put8(c, (uint16_t)(c->r[R_BX] - 0x4D79), 0);
+                }
+                c->icount += 3;
+                bp_put(c, -2, (uint16_t)alu_add(c, bp_get(c, -2), 8, 1, 0));
+                ds_put(c, v->boxes, (uint16_t)alu_inc(c, ds_get(c, v->boxes), 1));
+                c->icount += 2;
+            }
+        }
+        bp_put(c, v->i, (uint16_t)alu_inc(c, bp_get(c, v->i), 1));      /* the next target */
+        bp_put(c, v->p, (uint16_t)alu_add(c, bp_get(c, v->p), 0x10, 1, 0));
+        c->icount += 2;
+    }
+    NEED(7, v->done);
+    if (!v->end) {
+        set_r8(c, R_AL, (uint8_t)alu_add(c, ds_get8(c, v->boxes), 8, 0, 0));
+        ds_put8(c, 0x6D21, get_r8(c, R_AL));
+        c->icount += 3;
+    }
+    c->r[R_SI] = cpu_pop16(c);
+    c->icount += 4;
+    frame_close_ret(c);
+    return 1;
+#undef NEED
+}
+static const site_box_variant START_BOXES = { 0, 0xCBDE, 0xD33C, 0xB2E6, -4, -0x0A, -0x0C, -0x0E, -6, -8, 0x0E, 0x1F6E, 0x1FA4, 0x207C, 0x20C9 };
+static const site_box_variant END_BOXES = { 1, 0x56EA, 0x6446, 0x54B8, -2, -8, -0x0A, -0x0C, -4, -6, 0x0C, 0x05F4, 0x062B, 0x06C2, 0x070F };
+static int start_site_boxes(machine_t *m) { return site_boxes(m, &START_BOXES); }
+static int end_site_boxes(machine_t *m) { return site_boxes(m, &END_BOXES); }
+
+/* START 0x02E50, range_ring(x, y, r, colour, solid): a circle on the map
+ * screen around the map point (x / 92h, y / C3h) of radius r / 128, in the
+ * colour (kept at [DC1C]), stepping the angle by 8/256 of a turn when solid,
+ * 16 when dotted (8 from r 3000, 4 from 7000). Each point is (vsin(a, r) *
+ * 128 / 92h + x, vcos(a, r) * 128 / -C3h + y); a solid ring joins it to the
+ * last point with the line drawer (0x0829A on the page at DC18), a dotted
+ * one (and the first point of either) plots it when it lies on the screen
+ * (x below 320, y below 200, unsigned). */
+static int start_range_ring(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define NEED(n, at) do { if (!room(c, (n))) { c->ip = (at); return 1; } } while (0)
+    if (!room(c, 32)) return 0;
+    frame_open(c, 0x0E);
+    c->r[R_AX] = bp_get(c, 0x0A);
+    ds_put(c, 0xDC1C, c->r[R_AX]);
+    alu_sub(c, bp_get(c, 0x0C), 0, 1, 0);
+    unsigned n = 7;
+    if (!(c->flags & F_ZF)) { bp_put(c, -8, 8); n += 2; }         /* the step */
+    else { bp_put(c, -8, 0x10); n += 1; }
+    static const uint16_t far_r[2] = { 0x0BB8, 0x1B58 }, fine[2] = { 8, 4 };
+    for (int k = 0; k < 2; k++) {                                 /* a dotted ring's step by its size */
+        alu_sub(c, bp_get(c, 0x0C), 0, 1, 0);
+        n += 2;
+        if (!(c->flags & F_ZF)) continue;
+        alu_sub(c, bp_get(c, 8), far_r[k], 1, 0);
+        n += 2;
+        if (!x86_cond(c, 0xC)) { bp_put(c, -8, fine[k]); n++; }
+    }
+    set_r8(c, R_CL, 7);
+    bp_put(c, 8, x86_shift(c, 7, bp_get(c, 8), 7, 1));            /* sar [bp+8], 7 */
+    c->r[R_CX] = 0x92;
+    c->r[R_AX] = bp_get(c, 4);
+    c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0);
+    x86_div16(c, 0x92);
+    bp_put(c, 4, c->r[R_AX]);
+    c->r[R_CX] = 0xC3;
+    c->r[R_AX] = bp_get(c, 6);
+    c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0);
+    x86_div16(c, 0xC3);
+    bp_put(c, 6, c->r[R_AX]);
+    bp_put(c, -4, 0);                                             /* the angle step count a */
+    c->icount += n + 14;
+    for (;;) {                                                    /* 0x02EEB */
+        NEED(8, 0x2EEB);
+        alu_sub(c, bp_get(c, -4), 0x100, 1, 0);
+        c->icount += 2;
+        if (x86_cond(c, 0xF)) break;                              /* past a whole turn */
+        cpu_push16(c, bp_get(c, 8));
+        c->r[R_AX] = (uint16_t)(bp_get8(c, -4) << 8 | get_r8(c, R_AL));   /* mov ah, [bp-4] */
+        set_r8(c, R_AL, (uint8_t)alu_sub(c, get_r8(c, R_AL), get_r8(c, R_AL), 0, 0));
+        bp_put(c, -2, c->r[R_AX]);                                /* the angle */
+        cpu_push16(c, c->r[R_AX]);
+        c->icount += 5;
+        if (!guest_call(m, 0x3301, 0x2F01)) return 1;
+        NEED(12, 0x2F01);
+        c->r[R_BX] = cpu_pop16(c);
+        c->r[R_BX] = cpu_pop16(c);
+        set_r8(c, R_CL, 7);
+        c->r[R_AX] = x86_shift(c, 4, c->r[R_AX], 7, 1);
+        c->r[R_BX] = 0x92;
+        cwd(c);
+        x86_idiv16(c, 0x92, 0);
+        c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], bp_get(c, 4), 1, 0);
+        bp_put(c, -6, c->r[R_AX]);                                /* x */
+        cpu_push16(c, bp_get(c, 8));
+        cpu_push16(c, bp_get(c, -2));
+        c->icount += 11;
+        if (!guest_call(m, 0x3318, 0x2F1C)) return 1;
+        NEED(26, 0x2F1C);
+        c->r[R_BX] = cpu_pop16(c);
+        c->r[R_BX] = cpu_pop16(c);
+        set_r8(c, R_CL, 7);
+        c->r[R_AX] = x86_shift(c, 4, c->r[R_AX], 7, 1);
+        c->r[R_CX] = 0xFF3D;
+        cwd(c);
+        x86_idiv16(c, 0xFF3D, 0);
+        c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], bp_get(c, 6), 1, 0);
+        bp_put(c, -0x0C, c->r[R_AX]);                             /* y */
+        alu_sub(c, bp_get(c, -4), 0, 1, 0);
+        c->icount += 11;
+        int join = 0;
+        if (!(c->flags & F_ZF)) {
+            alu_sub(c, bp_get(c, 0x0C), 0, 1, 0);
+            c->icount += 2;
+            join = !(c->flags & F_ZF);
+        }
+        int draw = 1;
+        if (join) {                                               /* a line from the last point */
+            cpu_push16(c, bp_get(c, 0x0A));
+            cpu_push16(c, bp_get(c, -0x0E));
+            cpu_push16(c, bp_get(c, -0x0A));
+            c->icount += 4;
+        } else {                                                  /* 0x02EB8: a point, if on the screen */
+            c->icount += 1;
+            alu_sub(c, bp_get(c, -6), 0x140, 1, 0);
+            c->icount += 2;
+            if (!(c->flags & F_CF)) draw = 0;
+            else {
+                alu_sub(c, c->r[R_AX], 0xC8, 1, 0);
+                c->icount += 2;
+                if (!(c->flags & F_CF)) draw = 0;
+                else {
+                    cpu_push16(c, bp_get(c, 0x0A));
+                    cpu_push16(c, c->r[R_AX]);
+                    cpu_push16(c, bp_get(c, -6));
+                    c->icount += 3;
+                }
+            }
+        }
+        if (draw) {                                               /* 0x02ECB */
+            cpu_push16(c, c->r[R_AX]);
+            cpu_push16(c, bp_get(c, -6));
+            c->r[R_AX] = 0xDC18;
+            cpu_push16(c, 0xDC18);
+            c->icount += 4;
+            if (!guest_call(m, 0x829A, 0x2ED6)) return 1;
+            NEED(7, 0x2ED6);
+            c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x0C, 1, 0);
+            c->icount += 1;
+        }
+        c->r[R_AX] = bp_get(c, -6);                               /* 0x02ED9: this point is the last */
+        bp_put(c, -0x0A, c->r[R_AX]);
+        c->r[R_AX] = bp_get(c, -0x0C);
+        bp_put(c, -0x0E, c->r[R_AX]);
+        c->r[R_AX] = bp_get(c, -8);
+        bp_put(c, -4, (uint16_t)alu_add(c, bp_get(c, -4), c->r[R_AX], 1, 0));
+        c->icount += 6;
+    }
+    c->icount += 3;
+    frame_close_ret(c);
+    return 1;
+#undef NEED
+}
+
+/* START 0x0183A, site_rings(): for each briefing-map box (count [B2E6]), the
+ * site it stands for (its first target, or its partner when the first has no
+ * type) and, when that target has a type, its threat ring: the radius is the
+ * type's range (14-byte records at 15CE: the range times the factor at +2 /
+ * 16 unless [B284] is 1; the 18-byte records at 1AB0 when [B2E8] is 2) times
+ * 64; the ring is solid when bit 0 of the type's +4 is set (always for the
+ * 1AB0 kind). The box's three palette bytes at 64E3 + 3 * (C0h + box) are
+ * set from 11ACh (bit 6 of +8: a known site) or 11BBh, and the ring is drawn
+ * by 0x02E50 when bit 6 of +9 is set. Finally the DAC request 0x03517 (C0h,
+ * 6723h, count) is queued. */
+static int start_site_rings(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define NEED(n, at) do { if (!room(c, (n))) { c->ip = (at); return 1; } } while (0)
+    if (!room(c, 8)) return 0;
+    frame_open(c, 0x0A);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_SI]);
+    bp_put(c, -2, 0xC0);                                          /* the palette slot */
+    bp_put(c, -8, 0);                                             /* the box */
+    c->icount += 8;
+    for (;;) {                                                    /* 0x018FA */
+        NEED(73, 0x18FA);                                         /* the longest pass, to the ring's CALL */
+        c->r[R_AX] = ds_get(c, 0xB2E6);
+        alu_sub(c, bp_get(c, -8), c->r[R_AX], 1, 0);
+        c->icount += 3;
+        if (!(c->flags & F_CF)) break;
+        c->r[R_BX] = x86_shift(c, 4, bp_get(c, -8), 1, 1);
+        set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] - 0x4D7A)));
+        c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);
+        set_r8(c, R_CL, 4);
+        c->r[R_SI] = (uint16_t)alu_add(c, x86_shift(c, 4, c->r[R_AX], 4, 1), 0xCBDE, 1, 0);
+        bp_put(c, -0x0A, c->r[R_SI]);
+        alu_sub(c, ds_get(c, (uint16_t)(c->r[R_SI] + 6)), 0, 1, 0);
+        c->icount += 11;
+        if (c->flags & F_ZF) {                                    /* no type: the partner */
+            set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] - 0x4D79)));
+            c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);
+            c->r[R_AX] = (uint16_t)alu_add(c, x86_shift(c, 4, c->r[R_AX], 4, 1), 0xCBDE, 1, 0);
+            bp_put(c, -0x0A, c->r[R_AX]);
+            c->icount += 5;
+        }
+        c->r[R_BX] = bp_get(c, -0x0A);
+        alu_sub(c, ds_get(c, (uint16_t)(c->r[R_BX] + 6)), 0, 1, 0);
+        c->icount += 3;
+        if (!(c->flags & F_ZF)) {                                 /* a typed site: its ring */
+            alu_sub(c, ds_get8(c, 0xB2E8), 2, 0, 0);
+            c->icount += 2;
+            int solid = 1;
+            if (!(c->flags & F_ZF)) {                             /* 0x0184F: the 15CE kind */
+                alu_sub(c, ds_get8(c, 0xB284), 1, 0, 0);
+                const int scaled = !(c->flags & F_ZF);
+                c->r[R_AX] = 0x0E;
+                x86_imul16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 6)));
+                c->r[R_BX] = c->r[R_AX];
+                c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0x15CE));
+                c->icount += 3 + 4;                               /* jmp, cmp, jne; and the load */
+                if (scaled) {                                     /* range * factor / 16, toward zero */
+                    x86_imul16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x15D0)));
+                    cwd(c);
+                    c->r[R_AX] = (uint16_t)alu_sub(c, (uint16_t)alu_logic(c, c->r[R_AX] ^ c->r[R_DX], 1), c->r[R_DX], 1, 0);
+                    c->r[R_CX] = 4;
+                    c->r[R_AX] = x86_shift(c, 7, c->r[R_AX], 4, 1);
+                    c->r[R_AX] = (uint16_t)alu_sub(c, (uint16_t)alu_logic(c, c->r[R_AX] ^ c->r[R_DX], 1), c->r[R_DX], 1, 0);
+                    c->icount += 8;
+                } else c->icount += 1;                            /* jmp */
+                set_r8(c, R_CL, 6);                               /* 0x01882 */
+                c->r[R_AX] = x86_shift(c, 4, c->r[R_AX], 6, 1);
+                bp_put(c, -6, c->r[R_AX]);
+                c->r[R_AX] = 0x0E;
+                c->r[R_BX] = bp_get(c, -0x0A);
+                x86_imul16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 6)));
+                c->r[R_BX] = c->r[R_AX];
+                alu_logic(c, ds_get8(c, (uint16_t)(c->r[R_BX] + 0x15D2)) & 1, 0);
+                c->icount += 9;
+                solid = !(c->flags & F_ZF);
+            } else {                                              /* 0x0193F: the 1AB0 kind */
+                c->r[R_AX] = 0x12;
+                x86_imul16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 6)));
+                c->r[R_BX] = c->r[R_AX];
+                c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0x1AB0));
+                set_r8(c, R_CL, 6);
+                c->r[R_AX] = x86_shift(c, 4, c->r[R_AX], 6, 1);
+                bp_put(c, -6, c->r[R_AX]);
+                c->icount += 8;
+            }
+            if (solid) { bp_put(c, -4, 1); c->icount += 2; }
+            else { bp_put(c, -4, 0); c->icount += 1; }
+            c->r[R_BX] = bp_get(c, -0x0A);                        /* 0x018A7: the box's colours */
+            alu_logic(c, ds_get8(c, (uint16_t)(c->r[R_BX] + 8)) & 0x40, 0);
+            const int known = !(c->flags & F_ZF);
+            const uint16_t slot = bp_get(c, -2);
+            c->r[R_AX] = slot;
+            c->r[R_BX] = (uint16_t)alu_add(c, x86_shift(c, 4, slot, 1, 1), slot, 1, 0);
+            c->r[R_DI] = (uint16_t)(c->r[R_BX] + 0x64E3);
+            c->r[R_SI] = known ? 0x11AC : 0x11BB;
+            c->icount += 3 + (known ? 7 : 6);
+            cpu_push16(c, c->seg[S_DS]);                          /* 0x018D2 */
+            c->seg[S_ES] = cpu_pop16(c);
+            x86_movs(c, 1, c->seg[S_DS]);
+            x86_movs(c, 0, c->seg[S_DS]);
+            c->r[R_BX] = bp_get(c, -0x0A);
+            alu_logic(c, ds_get8(c, (uint16_t)(c->r[R_BX] + 9)) & 0x40, 0);
+            c->icount += 7;
+            if (!(c->flags & F_ZF)) {                             /* draw the ring */
+                cpu_push16(c, bp_get(c, -4));
+                cpu_push16(c, bp_get(c, -2));
+                cpu_push16(c, bp_get(c, -6));
+                cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 4)));
+                cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 2)));
+                c->icount += 5;
+                if (!guest_call(m, 0x2E50, 0x18F1)) return 1;
+                NEED(3, 0x18F1);
+                c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x0A, 1, 0);
+                c->icount += 1;
+            }
+        }
+        bp_put(c, -8, (uint16_t)alu_inc(c, bp_get(c, -8), 1));    /* 0x018F4 */
+        bp_put(c, -2, (uint16_t)alu_inc(c, bp_get(c, -2), 1));
+        c->icount += 2;
+    }
+    cpu_push16(c, c->r[R_AX]);                                    /* the count */
+    c->r[R_AX] = 0x6723;
+    cpu_push16(c, 0x6723);
+    c->r[R_AX] = 0xC0;
+    cpu_push16(c, 0xC0);
+    c->icount += 5;
+    if (!guest_call(m, 0x3517, 0x1961)) return 1;
+    NEED(6, 0x1961);
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->icount += 6;
+    frame_close_ret(c);
+    return 1;
+#undef NEED
+}
+
+/* START 0x07744, obj_near(x, y): the object nearest a 32-bit map point.
+ * At terrain levels 1 and 2 (the point at each level's scale by 0x07C05),
+ * the tile under the point and its eight neighbours (offsets from the tables
+ * at 105A/106C through 1054) are looked up (0x07C56); each tile's objects
+ * (7-byte records from the list at [C85C + 2 * (32 * level + tile)], count
+ * at [0F0A + ...]) whose type byte (+6) is enabled in D2A6 are measured by
+ * |dx| + |dy| from the point (quartered at level 1; the offsets kept four
+ * times larger at level 2). The nearest so far is recorded: its distance at
+ * [CA90] (7FFFh for none), type at [CA8E], record at [CA9A], level, index,
+ * tile x and y as bytes at CA9C-CA9F, and its 32-bit position at CA92/CA96.
+ * Returns CA8E, or 0 when nothing was found. */
+static int start_obj_near(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define NEED(n, at) do { if (!room(c, (n))) { c->ip = (at); return 1; } } while (0)
+    if (!room(c, 8)) return 0;
+    frame_open(c, 0x24);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_SI]);
+    ds_put(c, 0xCA90, 0x7FFF);
+    bp_put(c, -0x0E, 1);                                          /* the level */
+    c->icount += 8;
+    for (;;) {                                                    /* 0x078E1: each level */
+        NEED(11, 0x78E1);
+        alu_sub(c, bp_get(c, -0x0E), 2, 1, 0);
+        c->icount += 2;
+        if (x86_cond(c, 0xF)) break;
+        bp_put(c, -0x12, 0);                                      /* the neighbour */
+        c->icount += 2;
+        for (;;) {                                                /* 0x0781F: each of the nine tiles */
+            NEED(6, 0x781F);
+            alu_sub(c, bp_get(c, -0x12), 9, 1, 0);
+            c->icount += 2;
+            if (!x86_cond(c, 0xC)) { c->icount += 1; break; }     /* jmp to the level's end */
+            cpu_push16(c, bp_get(c, 6));
+            cpu_push16(c, bp_get(c, 4));
+            cpu_push16(c, bp_get(c, -0x0E));
+            c->icount += 3;
+            if (!guest_call(m, 0x7C05, 0x7834)) return 1;         /* x at the level's scale */
+            NEED(4, 0x7834);
+            c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0);
+            bp_put(c, -0x20, c->r[R_AX]);
+            set_r8(c, R_CL, 0x0C);
+            c->icount += 3;
+            if (!guest_call(m, 0x97F4, 0x783F)) return 1;         /* its tile column */
+            NEED(8, 0x783F);
+            bp_put(c, -0x18, c->r[R_AX]);
+            c->r[R_AX] = bp_get(c, -0x20);
+            set_r8(c, R_AH, (uint8_t)alu_logic(c, get_r8(c, R_AH) & 0x0F, 0));
+            bp_put(c, -0x0C, c->r[R_AX]);                         /* x within the tile */
+            cpu_push16(c, bp_get(c, 0x0A));
+            cpu_push16(c, bp_get(c, 8));
+            cpu_push16(c, bp_get(c, -0x0E));
+            c->icount += 7;
+            if (!guest_call(m, 0x7C05, 0x7857)) return 1;         /* y at the level's scale */
+            NEED(28, 0x7857);
+            c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0);
+            bp_put(c, -0x20, c->r[R_AX]);
+            bp_put(c, -0x1E, c->r[R_DX]);
+            set_r8(c, R_AH, (uint8_t)alu_logic(c, get_r8(c, R_AH) & 0x0F, 0));   /* y within the tile */
+            c->r[R_BX] = x86_shift(c, 4, bp_get(c, -0x12), 1, 1);
+            const uint16_t ox = ds_get(c, (uint16_t)(c->r[R_BX] + 0x105A)), oy = ds_get(c, (uint16_t)(c->r[R_BX] + 0x106C));
+            c->r[R_CX] = ox;
+            c->r[R_DX] = oy;
+            c->r[R_BX] = x86_shift(c, 4, ox, 1, 1);
+            c->r[R_SI] = (uint16_t)alu_add(c, (uint16_t)alu_sub(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x1054)), bp_get(c, -0x0C), 1, 0), 0x800, 1, 0);
+            bp_put(c, -0x24, c->r[R_SI]);                         /* the tile's x origin from the point */
+            c->r[R_BX] = x86_shift(c, 4, oy, 1, 1);
+            c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], ds_get(c, (uint16_t)(c->r[R_BX] + 0x1054)), 1, 0);
+            c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0);   /* neg ax */
+            set_r8(c, R_AH, (uint8_t)alu_add(c, get_r8(c, R_AH), 8, 0, 0));
+            bp_put(c, -2, c->r[R_AX]);                            /* and its y origin */
+            c->r[R_AX] = ox;
+            set_r8(c, R_CL, 0x0C);
+            c->r[R_BX] = ox;
+            c->r[R_SI] = oy;
+            c->r[R_AX] = bp_get(c, -0x20);
+            c->r[R_DX] = bp_get(c, -0x1E);
+            c->r[R_DI] = ox;
+            c->icount += 27;
+            if (!guest_call(m, 0x97F4, 0x78A5)) return 1;         /* the tile row */
+            NEED(7, 0x78A5);
+            c->r[R_SI] = (uint16_t)alu_add(c, c->r[R_SI], c->r[R_AX], 1, 0);
+            bp_put(c, -0x1C, c->r[R_SI]);
+            bp_put(c, -0x18, (uint16_t)alu_add(c, bp_get(c, -0x18), c->r[R_DI], 1, 0));
+            cpu_push16(c, c->r[R_SI]);
+            cpu_push16(c, bp_get(c, -0x18));
+            cpu_push16(c, bp_get(c, -0x0E));
+            c->icount += 6;
+            if (!guest_call(m, 0x7C56, 0x78B7)) return 1;         /* the tile there */
+            NEED(13, 0x78B7);
+            c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0);
+            bp_put(c, -0x22, c->r[R_AX]);
+            c->r[R_AX] = (uint16_t)alu_inc(c, c->r[R_AX], 1);
+            c->icount += 4;
+            if (!(c->flags & F_ZF)) {                             /* a tile: its objects */
+                set_r8(c, R_CL, 5);
+                c->r[R_BX] = x86_shift(c, 4, (uint16_t)alu_add(c, x86_shift(c, 4, bp_get(c, -0x0E), 5, 1), bp_get(c, -0x22), 1, 0), 1, 1);
+                c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] - 0x37A4));
+                bp_put(c, -0x0A, c->r[R_AX]);                     /* the object's record */
+                bp_put(c, -0x14, 0);                              /* its index */
+                c->icount += 9;
+                for (;;) {                                        /* 0x077C1 */
+                    NEED(23, 0x77C1);
+                    c->r[R_AX] = bp_get(c, -0x14);
+                    set_r8(c, R_CL, 5);
+                    c->r[R_BX] = x86_shift(c, 4, (uint16_t)alu_add(c, x86_shift(c, 4, bp_get(c, -0x0E), 5, 1), bp_get(c, -0x22), 1, 0), 1, 1);
+                    alu_sub(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x0F0A)), c->r[R_AX], 1, 0);
+                    c->icount += 8;
+                    if (x86_cond(c, 0x6)) break;                  /* the tile's last */
+                    c->r[R_BX] = bp_get(c, -0x0A);
+                    set_r8(c, R_BL, ds_get8(c, (uint16_t)(c->r[R_BX] + 6)));
+                    set_r8(c, R_BH, (uint8_t)alu_sub(c, get_r8(c, R_BH), get_r8(c, R_BH), 0, 0));
+                    alu_sub(c, ds_get8(c, (uint16_t)(c->r[R_BX] - 0x2D5A)), get_r8(c, R_BH), 0, 0);
+                    c->icount += 5;
+                    if (!(c->flags & F_ZF)) {                     /* an enabled type: measure it */
+                        c->r[R_BX] = bp_get(c, -0x0A);
+                        c->r[R_AX] = (uint16_t)alu_add(c, ds_get(c, c->r[R_BX]), bp_get(c, -0x24), 1, 0);
+                        bp_put(c, -0x16, c->r[R_AX]);             /* dx */
+                        c->r[R_CX] = (uint16_t)alu_add(c, ds_get(c, (uint16_t)(c->r[R_BX] + 2)), bp_get(c, -2), 1, 0);
+                        bp_put(c, -0x1A, c->r[R_CX]);             /* dy */
+                        cpu_push16(c, c->r[R_CX]);
+                        c->r[R_SI] = c->r[R_AX];
+                        c->icount += 9;
+                        if (!guest_call(m, 0x96AE, 0x77FE)) return 1;
+                        NEED(4, 0x77FE);
+                        c->r[R_BX] = cpu_pop16(c);
+                        cpu_push16(c, c->r[R_SI]);
+                        c->r[R_SI] = c->r[R_AX];
+                        c->icount += 3;
+                        if (!guest_call(m, 0x96AE, 0x7805)) return 1;
+                        NEED(42, 0x7805);
+                        c->r[R_BX] = cpu_pop16(c);
+                        c->r[R_SI] = (uint16_t)alu_add(c, c->r[R_SI], c->r[R_AX], 1, 0);
+                        bp_put(c, -6, c->r[R_SI]);                /* |dx| + |dy| */
+                        alu_sub(c, bp_get(c, -0x0E), 1, 1, 0);
+                        c->icount += 5;
+                        set_r8(c, R_CL, 2);
+                        if (!(c->flags & F_ZF)) {                 /* level 2: the offsets times 4 */
+                            bp_put(c, -0x16, x86_shift(c, 4, bp_get(c, -0x16), 2, 1));
+                            bp_put(c, -0x1A, x86_shift(c, 4, bp_get(c, -0x1A), 2, 1));
+                            c->icount += 4;
+                        } else {                                  /* level 1: the distance over 4 */
+                            bp_put(c, -6, x86_shift(c, 7, bp_get(c, -6), 2, 1));
+                            c->icount += 3;
+                        }
+                        c->r[R_AX] = ds_get(c, 0xCA90);           /* 0x07762 */
+                        alu_sub(c, bp_get(c, -6), c->r[R_AX], 1, 0);
+                        c->icount += 3;
+                        if (!x86_cond(c, 0xD)) {                  /* the nearest yet: record it */
+                            static const struct { int16_t from; uint16_t to; } b[4] = {
+                                { -0x0E, 0xCA9C }, { -0x14, 0xCA9D }, { -0x18, 0xCA9E }, { -0x1C, 0xCA9F } };
+                            for (int k = 0; k < 4; k++) { set_r8(c, R_AL, bp_get8(c, b[k].from)); ds_put8(c, b[k].to, get_r8(c, R_AL)); }
+                            c->r[R_AX] = bp_get(c, -0x0A);
+                            ds_put(c, 0xCA9A, c->r[R_AX]);
+                            c->r[R_BX] = c->r[R_AX];
+                            set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + 6)));
+                            set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
+                            ds_put(c, 0xCA8E, c->r[R_AX]);
+                            c->r[R_AX] = bp_get(c, -6);
+                            ds_put(c, 0xCA90, c->r[R_AX]);
+                            static const struct { int16_t off, lo; uint16_t to; } p[2] = { { -0x16, 4, 0xCA92 }, { -0x1A, 8, 0xCA96 } };
+                            for (int k = 0; k < 2; k++) {         /* the object's position: the point plus the offset */
+                                c->r[R_AX] = bp_get(c, p[k].off);
+                                cwd(c);
+                                c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], bp_get(c, p[k].lo), 1, 0);
+                                c->r[R_DX] = (uint16_t)alu_add(c, c->r[R_DX], bp_get(c, p[k].lo + 2), 1, (c->flags & F_CF) ? 1u : 0u);
+                                ds_put(c, p[k].to, c->r[R_AX]);
+                                ds_put(c, (uint16_t)(p[k].to + 2), c->r[R_DX]);
+                            }
+                            c->icount += 28;
+                        }
+                    }
+                    bp_put(c, -0x0A, (uint16_t)alu_add(c, bp_get(c, -0x0A), 7, 1, 0));   /* 0x077BA */
+                    bp_put(c, -0x14, (uint16_t)alu_inc(c, bp_get(c, -0x14), 1));
+                    c->icount += 2;
+                }
+            } else c->icount += 1;                                /* jmp */
+            bp_put(c, -0x12, (uint16_t)alu_inc(c, bp_get(c, -0x12), 1));   /* 0x0781C */
+            c->icount += 1;
+        }
+        bp_put(c, -0x0E, (uint16_t)alu_inc(c, bp_get(c, -0x0E), 1));   /* 0x078DE */
+        c->icount += 1;
+    }
+    alu_sub(c, ds_get(c, 0xCA90), 0x7FFF, 1, 0);                  /* 0x078EF */
+    if (!(c->flags & F_ZF)) { c->r[R_AX] = 0xCA8E; c->icount += 4; }
+    else { c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0); c->icount += 3; }
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->icount += 5;
+    frame_close_ret(c);
+    return 1;
+#undef NEED
+}
+
 /* VGAME 0x0C831, vcos(a, r): the routine at 0x0C818 with the angle turned a
  * quarter (AH + 40h). */
 static int vgame_vcos(machine_t *m)
@@ -7983,6 +10376,32 @@ static const recomp_override MATCHED[] = {
     { "matched", "END.EXE", END_47304, 0x0000, 0x5B4E, end_stack_check, "stack check", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x1452, 0x0316, vgame_camera_matrix_copy, "copy a 3x3 camera matrix", 2 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x1452, 0x02E4, vgame_camera_matrix_transpose, "transpose a 3x3 camera matrix", 2 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x5413, start_dist, "octagonal distance of two offsets", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x7C05, start_level_scale, "a value at a terrain level's scale", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x6A7C, start_surname, "the last word of a name", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x71AD, start_form_hover, "form hover highlight", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x3DA2, start_modal_hover, "modal button hover highlight", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x0E23, start_weapon_shortage, "draw the weapon shortages", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x59FE, start_time_string, "clock text for a time", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x512E, start_target_near, "target slot for the object near a point", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x51E8, start_target_for_type, "target slot for an object of a type", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x5282, start_pick_weapon, "pick the best-rated weapon", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x5356, start_slot_fill, "fill a mission slot from a target", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x5743, start_angle, "bearing of an offset", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x7C56, start_terrain_tile, "terrain tile at a level", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x84B1, start_axis_normalise, "normalise a joystick axis", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x819D, start_lzw_refill, "refill the LZW input buffer", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0xA76C, start_heap_free, "free a near heap block", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x25D9, start_date_string, "the mission's date text", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x1F3F, start_site_boxes, "briefing map hover boxes", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x2E50, start_range_ring, "draw a range ring", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x183A, start_site_rings, "threat rings for the map's sites", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x7744, start_obj_near, "the object nearest a map point", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x05CA, end_site_boxes, "debriefing map site boxes", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x441D, end_axis_normalise, "normalise a joystick axis", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x0EF3, end_time_string, "clock text for a time", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x2AFA, end_promote, "promotion check", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x2476, end_awards, "ribbons, medal and point steps", 1 },
 };
 
 void matched_register(void)
