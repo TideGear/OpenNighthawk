@@ -39,10 +39,52 @@ File and line numbers are that tree's (8 Oct 2026). 1 us = 33.333 cycles.
   table's 6. The flag ends up set by the BIOS: OPTi register 0x21 bit 4
   (opti495.c:159-161; ports 0x22/0x24), from the CMOS setup in `vmt386\nvr`.
   Read it from the running VM.
-- Code fetched from unshadowed ROM costs 33 cycles per 4 bytes
-  (`cpu_rom_prefetch_cycles`, cpu.c:582; mem.c:654-658): the system BIOS at
-  F0000, the VGA BIOS at C0000 and the XT-IDE ROM at C8000, unless shadowed
-  (OPTi registers 0x22/0x23).
+- ROM code costs what RAM code costs under this core. The 33-cycle ROM rate
+  (`cpu_rom_prefetch_cycles`, cpu.c:579-582) is installed only by
+  `getpccache()` (mem.c:637-660), and the core's fetch helpers, built with
+  `OPS_286_386`, never call it (386_common.h:300-345).
+
+## Each instruction in detail
+
+The per-opcode table is `ops386.json` (513 entries: one-byte opcodes with
+group opcodes split by ModRM reg, `0F xx`, and what follows REP; each with its
+`CLOCK_CYCLES` and `PREFETCH_RUN` arguments for the register and memory forms,
+flushes, data-dependent costs and the source line), read from a preprocessed
+`386.c` and checked by hand; macro definitions and constants are in
+`ops386_meta.json`. The rules around it (386.c:226-427, 386_common.c:503-573):
+
+- A step: `ins_cycles = cycles`, fetch, dispatch; prefixes are handlers that
+  call the next handler, so a prefixed instruction is one step. Segment
+  override 4, REP/REPNE 2, LOCK 4, 66/67 2, `0F` 0, each also counted in
+  `prefetch_prefixes`. Then `tsc += ins_cycles - cycles` once, at the end:
+  devices that read the clock during an instruction see its start.
+- `prefetch_run(instr, bytes, modrm, reads, reads_l, writes, writes_l, ea32)`:
+  `mem = reads * read + ... + writes_l * write_l`; `instr = max(instr, mem)`;
+  the queue loses the prefixes, `bytes` and the ModRM displacement (mod 0
+  rm 6: 2; mod 1: 1; mod 2: 2); while it is below 0 it gains 4 bytes and
+  `cycles -= cpu_prefetch_cycles` (the only time the queue costs anything);
+  then `instr - mem` refills it free, 4 bytes per `cpu_prefetch_cycles`, the
+  remainder dropped; cap 16. `prefetch_flush()` empties it: taken jumps,
+  CALL, RET, RETF, IRET, far JMP and CALL; INT n, exceptions and IRQ entry do
+  not flush. A handler without `PREFETCH_RUN` (a prefix alone, WAIT, MOV SS, a
+  zero-count shift) leaves its prefixes to the next instruction's run. Some
+  byte counts are as coded, not as encoded (RET imm16 5, ENTER 3, `0F` forms
+  count the `0F` as a prefix).
+- Device cycles (VGA, an AdLib read) go straight into `cycles`; `prefetch_run`
+  still counts the access at `cpu_cycles_write`, so they never feed the free
+  refill, except in handlers that pass `cycles_old - cycles` as the
+  instruction's cycles (far CALL and JMP, RETF, IRET, INT).
+- An unfinished REP string instruction sets `pc` back to its first prefix and
+  ends the step after more than 100 cycles (device cycles included): STOSB to
+  RAM 21 elements a step, MOVSB 26, STOSB to the VGA 3, STOSW 2. Each step
+  pays the prefixes again, counts as an instruction and lets an interrupt in.
+  CMPS, INS and OUTS do one element a step; CX = 0 costs the prefix and
+  `PREFETCH_RUN(0, 1, ...)`.
+- POP SS and MOV SS execute the next instruction inside themselves: one step,
+  no interrupt check between; MOV SS itself charges nothing.
+- A real-mode hardware interrupt's entry costs 0 and does not flush. Faults:
+  `x86_int` (#DE, #UD, BOUND, single step, NMI) 70; a word at offset FFFF
+  (#GP/#SS through `abrt`) 0. Misaligned accesses cost nothing on the 386.
 
 ## The VGA
 

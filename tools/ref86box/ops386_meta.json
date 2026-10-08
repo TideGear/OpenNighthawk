@@ -1,0 +1,40 @@
+{
+ "core": "exec386_2386 (cpu/386.c:227-427), table ops_2386_386 (cpu/386_ops.h:2411) + ops_2386_386_0f (386_ops.h:659), REP tables ops_2386_REPE/REPNE (386_ops.h:2503/2595); 16-bit operand + 16-bit address entries (index 0-255).",
+ "macros": {
+  "CLOCK_CYCLES(c)": "cpu/386.c:198-208: cycles -= c (fpu_cycles is 0 without an FPU)",
+  "CLOCK_CYCLES_ALWAYS(c)": "cpu/386.c:213: cycles -= c",
+  "PREFETCH_RUN(...)": "cpu/386.c:180-184: prefetch_run(...) if cpu_prefetch_cycles != 0 (cpu/386_common.c:515-567)",
+  "PREFETCH_PREFIX()": "cpu/386.c:186-190: prefetch_prefixes++",
+  "PREFETCH_FLUSH()": "cpu/386.c:191: prefetch_flush() -> prefetch_bytes = 0 (386_common.c:569-573)"
+ },
+ "timing_constants_386": {
+  "timing_rr": 2,
+  "timing_rm": 6,
+  "timing_mr": 7,
+  "timing_mm": 6,
+  "timing_rml": 6,
+  "timing_mrl": 7,
+  "timing_mml": 6,
+  "timing_bt": 4,
+  "timing_bnt": 3,
+  "timing_int": 0,
+  "timing_int_rm": 37,
+  "timing_iret_rm": 22,
+  "timing_call_rm": 17,
+  "timing_retf_rm": 18,
+  "timing_jmp_rm": 12,
+  "timing_misaligned": 0,
+  "src": "cpu/cpu.c:1047-1081 (timing_misaligned=0 at cpu.c:777)"
+ },
+ "resolution": "is486=0, is586/P6=0, cpu_use_dynarec=0, no FPU, real mode (msw&1=0), no faults. Numbers are CLOCK_CYCLES totals of the path; the PREFETCH_RUN queue refill adds cycles on top (see notes.md).",
+ "fields": {
+  "cycles_reg/cycles_mem": "sum of CLOCK_CYCLES / cycles -= on the path (mod=3 / mod!=3); equal for non-ModRM ops",
+  "prefetch_reg/prefetch_mem": "[instr_cycles, bytes, modrm, reads, reads_l, writes, writes_l, ea32] as passed; \"rmdat\" = the ModRM byte (low byte of fetchdat); null = no PREFETCH_RUN",
+  "flush": "PREFETCH_FLUSH() called (true / \"when taken\" / false)"
+ },
+ "interrupts": {
+  "hardware_irq_real_mode": "0 cycles: 3 pushes + IVT read + loadcs_2386, no CLOCK_CYCLES, no prefetch run or flush (cpu/386.c:386-403); its memory-device cycles land in the interrupted instruction's tsc step",
+  "exceptions_via_x86_int": "70 cycles (386_common.c:1648): #DE (DIV/IDIV), #UD, BOUND (#5), #NM (ESC with EM/TS), single-step trap (386.c:356-367) and NMI (386.c:371-377)",
+  "faults_via_abrt": "#GP/#SS raised with x86gpf/x86ss in real mode (e.g. word access at offset FFFF) go through x86_doabrt_2386 (x86seg.c:87-120): 0 cycles"
+ }
+}
