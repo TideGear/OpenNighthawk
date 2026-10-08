@@ -283,7 +283,7 @@ class B86Machine:
         # 86Box deletes the previous reply itself once it has read the next one.
         try:
             os.remove("%s%d" % (self.reply_prefix, self.seq - 1))
-        except FileNotFoundError:
+        except (FileNotFoundError, PermissionError):
             pass
 
     def screen(self, path):
