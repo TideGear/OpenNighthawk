@@ -87,7 +87,8 @@ make (Phase 4).
       measured on 6 Oct 2026) and `tools/fidelity_all.py` the machine probe.
       A career sortie's saved data on DOSBox-X: a closed-loop reconnaissance
       flown, landed and debriefed there saves the same roster entry as our
-      machine's except the mission score (167 against 168; the flights differ;
+      machine's except the mission score (167 against 168; the flights differ:
+      DOSBox-X's handover staged into ours scores 167 here too;
       tools/ref86box/build_dosbox_x.md). Open: the same on 86Box; the 86Box intro drift is
       explained (8 Oct 2026: 1.4 s of the 2.0 is the IBM VGA's 8-bit bus
       during the credits' panning, 0.24 s the disk path; with both fast the

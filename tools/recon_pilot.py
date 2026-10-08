@@ -138,6 +138,8 @@ def main():
                         help="emulated startup clock; replay uses its recorded header")
     parser.add_argument("--primary-only", action="store_true", help="with --complete, go home after the primary photo")
     parser.add_argument("--debrief", action="store_true", help="after the flight, take END's screens (writes ROSTER.FIL)")
+    parser.add_argument("--deck-pitch-floor", type=int, default=None,
+                        help="the lowest pitch commanded on a raised-deck approach (none: the original recipe)")
     parser.add_argument("--landing-throttle-gain", type=float, default=.1,
                         help="throttle per knot short of the approach speed (landing_pilot.control)")
     parser.add_argument("--landing-aim", type=int, default=20,
@@ -235,7 +237,8 @@ def main():
                             if waypoint_range < 150: approach = True
                             landing_control(machine, state, tick, approach, deck_aim=300,
                                             aim=args.landing_aim, approach_speed=args.approach_speed,
-                                            throttle_gain=args.landing_throttle_gain)
+                                            throttle_gain=args.landing_throttle_gain,
+                                            deck_pitch_floor=args.deck_pitch_floor)
                         elif args.complete and state["flags"] & 0x4000:
                             ds = (machine.psp + 0x10 + 0x1E42) << 4
                             secondary = machine.read16(ds + 0xE318)

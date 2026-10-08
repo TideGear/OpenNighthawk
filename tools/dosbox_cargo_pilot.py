@@ -498,8 +498,8 @@ def fly_recon(args):
                                                 signed(state["home_y"] + 4000 - state["y"]))
                     if waypoint_range < 150:
                         approach = True
-                    landing_control(machine, state, tick, approach, deck_aim=300, aim=20, approach_speed=200,
-                                    throttle_gain=args.landing_throttle_gain)
+                    landing_control(machine, state, tick, approach, deck_aim=args.deck_aim, aim=20, approach_speed=200,
+                                    throttle_gain=args.landing_throttle_gain, deck_pitch_floor=args.deck_pitch_floor)
                 else:
                     recon_pilot.control(machine, state, tick, acquisition="nose")
                 tick += 1
@@ -544,6 +544,8 @@ def main():
     parser.add_argument("--select-every", type=int, default=2, help="strike: press the select key every this many ticks until designated")
     parser.add_argument("--debrief", action="store_true", help="recon: take END's screens after the flight; START saves the roster")
     parser.add_argument("--landing-throttle-gain", type=float, default=.6, help="recon: landing_pilot's throttle gain")
+    parser.add_argument("--deck-aim", type=int, default=300, help="recon: how far before the deck's centre the glide meets it")
+    parser.add_argument("--deck-pitch-floor", type=int, default=-300, help="recon: the lowest pitch on a raised-deck approach")
     parser.add_argument("--front-end-clock", type=int, help="the Machine clock of VGAME's exec in the front")
     parser.add_argument("--seed-tick", type=int, help="START's seed tick on the Machine (staged by DBX_INT1A_TICK)")
     parser.add_argument("--seconds", type=int, default=1500)

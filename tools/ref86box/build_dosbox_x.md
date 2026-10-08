@@ -145,6 +145,13 @@ ticking after VGAME), and START, once back, writes the sortie into `ROSTER.FIL`.
 own closed-loop sortie the two rosters differ in three words only, the mission score (167 against 168,
 and the same word at +46 and the running total): the flights differ, so the score does; the sortie
 count, rank, status and the other fields agree, and `career_check.career_errors` passes on both.
+The score difference is the flights, not the scoring: END reads the flight's result from a handover
+block VGAME leaves in the shell's memory (0xBAA bytes at the flight block + 0x3E0; the event log is its
+last 0x600), and DOSBox-X's block, captured as END starts and staged into ours as VGAME hands over
+(`stage_write16`), makes our END score 167, DOSBox-X's own score. The two blocks differ in 57 bytes, the
+event log's track points a map cell or so apart. The shell's blocks are not at the same addresses on the
+three machines (the flight block at 0x20E0 here, 0x88F0 on DOSBox-X, 0x204F0 on 86Box; DOSBox-X loads the
+programs at PSP 202A, this machine at 196A), so such a capture takes each machine's own pointer.
 
 **Never run a GUI build over GOG's `dosboxF117A.conf` without `fullscreen=false`
 in a layer after it; that file asks for fullscreen.**

@@ -92,7 +92,7 @@ def landing_errors(rows, report, log, require_dos_exit=True):
 
 
 def control(machine, state, tick, approach, cruise=2500, aim=20, approach_speed=200,
-            deck_aim=220, throttle_gain=.1):
+            deck_aim=220, throttle_gain=.1, deck_pitch_floor=None):
     """Short, separated stick pulses; every key is released normally.
 
     `cruise` is the altitude held before the approach; a return leg over
@@ -128,6 +128,10 @@ def control(machine, state, tick, approach, cruise=2500, aim=20, approach_speed=
         descent = -200 if state["range"] < 1500 else 0
     want_pitch = clamp(descent + (altitude - state["altitude"]) * 2,
                        -1000, 1800) + state["trim"]
+    if deck_pitch_floor is not None and state["surface"] and approach:
+        # The deck approach aims below the deck inside deck_aim; at a slow frame rate (86Box, S 4-5)
+        # the nose overshot to -800 and the aircraft went in short. A floor keeps the sink gentle.
+        want_pitch = max(want_pitch, deck_pitch_floor)
     pitch_error = want_pitch - state["pitch"]
     if abs(pitch_error) > 200:
         machine.type(at, r"\D" if pitch_error > 0 else r"\U", hold_ms=60)
