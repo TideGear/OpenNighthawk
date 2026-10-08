@@ -4,7 +4,8 @@
  * happened at. Rendering advances to that moment before applying it, so a
  * write lands on the sample its emulated time corresponds to - which is
  * what lets the AdLib driver's digitised speech (one OPL write per sample at
- * 7955 Hz, paced by PIT counter 2) come out as it did on the card.
+ * 7955 Hz, paced by PIT counter 2) come out as it did on the card. The PC
+ * speaker is run from counter 2's writes by speaker.c.
  */
 #ifndef F117R_AUDIO_H
 #define F117R_AUDIO_H
@@ -25,8 +26,13 @@ audio_t *audio_create_backend(uint64_t ips, audio_opl_backend backend);
 void     audio_destroy(audio_t *a);
 void     audio_opl_write(audio_t *a, uint64_t icount, uint8_t reg, uint8_t val);
 void     audio_speaker(audio_t *a, const machine_t *m, uint64_t icount);
+/* One change to counter 2 or port 61h as the machine reports it: the state
+ * after it (port 61h bits 0-1, counter 2's count, mode and null-count flag). */
 void     audio_speaker_event(audio_t *a, uint64_t icount, uint8_t port61,
-                             uint16_t reload, uint8_t mode, uint64_t epoch_clk);
+                             uint16_t reload, uint8_t mode, uint8_t null_count);
+/* The speaker model (speaker.h: 0 realsound, the default; 1 pwm). Choose it
+ * before the first speaker change; returns zero otherwise. */
+int      audio_set_speaker_model(audio_t *a, int model);
 /* Enable before rendering starts. Returns zero with a diagnostic on failure. */
 int      audio_enable_mt32(audio_t *a, const char *control, const char *pcm,
                            char *error, size_t error_size);

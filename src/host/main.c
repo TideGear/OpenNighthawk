@@ -232,6 +232,7 @@ int main(int argc, char **argv)
     const char *coverage = NULL, *record = NULL, *replay = NULL;
     uint64_t time_us = 0, exit_after = 0;
     audio_opl_backend opl_backend = AUDIO_OPL_DBOPL;
+    int speaker_model = 0;                  /* speaker.h: realsound */
     int no_record = 0;
     const char *mt32_control = NULL, *mt32_pcm = NULL;
     unsigned int mt32_seed = 0;
@@ -302,6 +303,12 @@ int main(int argc, char **argv)
             else { fprintf(stderr, "--opl requires dbopl or nuked\n"); return 2; }
             i++;
         }
+        else if (!strcmp(a, "--speaker") && v) {
+            if (!strcmp(v, "realsound")) speaker_model = 0;
+            else if (!strcmp(v, "pwm")) speaker_model = 1;
+            else { fprintf(stderr, "--speaker takes realsound or pwm\n"); return 2; }
+            i++;
+        }
         else if (!strcmp(a, "--save") && v) { save = v; i++; }
         else if (!strcmp(a, "--log") && v) { log_path = v; i++; }
         else if (!strcmp(a, "--audio-queue-log") && v) { audio_queue_log_path = v; i++; }
@@ -328,7 +335,7 @@ int main(int argc, char **argv)
                 "usage: f117a [--data DIR] [--save DIR] [--engine recomp|interp] [--ips N]\n"
                 "             [--scale N] [--fullscreen] [--no-aspect] [--midi N] [--log FILE]\n"
                 "             [--record FILE | --no-record] [--replay FILE] [--time-us N]\n"
-                "             [--exit-after CLOCKS] [--opl dbopl|nuked]\n"
+                "             [--exit-after CLOCKS] [--opl dbopl|nuked] [--speaker realsound|pwm]\n"
                 "             [--audio-queue-log FILE]\n"
                 "             [--audio-dump FILE]\n"
                 "             [--roland munt|windows|off] [--mt32-roms DIR]\n"
@@ -419,6 +426,7 @@ int main(int argc, char **argv)
         }
     }
     H.audio = audio_create_backend(ips, opl_backend);
+    if (H.audio) audio_set_speaker_model(H.audio, speaker_model);
     if (mt32_control) {
         char error[256];
         if (mt32_seed_set) srand(mt32_seed);

@@ -89,6 +89,20 @@ It runs in fast-forward (`[cpu] turbo=true`, `--realtime` to turn it off):
 `flight.csv` identical to a real-time run, since emulated time is still
 cycles / 9000 per ms.
 
+## The speaker (DBX_SPEAKER_LOG)
+
+`DBX_SPEAKER_LOG=FILE` logs every write to port 42h, to 43h for counter 2, and
+to 61h as `emulated-ms port value` (`src/hardware/iohandler.cpp`).
+`-silent` also switches DOSBox-X's PC speaker off (`pcspeaker.cpp` returns at
+init), so `tools/speaker_parity.py` runs it without that switch, on an
+invisible desktop of its own with the SDL dummy drivers and `[mixer]
+nosound=true`: no window and no sound, and the AVI capture holds the speaker.
+DOSBox-X ignores a mode 0 count written without a new control word
+(`PCSPEAKER_SetCounter_NoNewMode`, "FIXME"), so it plays none of the game's
+digitised speech, though the writes are there. Those writes, one per counter 0
+interrupt, come 78.0 PIT clocks apart on DOSBox-X for the count of 79 the
+driver gives counter 0 in mode 2 (79.0 on the Machine, the data sheet's period).
+
 ## Wall clock (DBX_WALL_US)
 
 `DBX_WALL_US=us` pins the guest's date and time to the Machine's wall clock.

@@ -169,9 +169,11 @@ static void on_speaker(void *user, uint64_t icount)
         uint16_t reload;
         int mode;
         unsigned port61 = (unsigned)pc_speaker_state(g_speaker_machine, &reload, &mode);
-        fprintf(g_speaker_log, "%llu %02X %u %d %llu\n",
+        /* the last field tells a control word (the counter waits for a count) from a count */
+        fprintf(g_speaker_log, "%llu %02X %u %d %llu %u\n",
                 (unsigned long long)icount, port61, (unsigned)reload, mode,
-                (unsigned long long)g_speaker_machine->pit[2].epoch_clk);
+                (unsigned long long)g_speaker_machine->pit[2].epoch_clk,
+                (unsigned)g_speaker_machine->pit[2].null_count);
     }
 }
 

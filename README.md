@@ -272,14 +272,19 @@ Each ROM must be a single whole file; the split halves some dumps come as
 
 For offline validation, `f117run --midi-log FILE` records each MPU byte with
 its instruction clock. `f117run --speaker-log FILE` records each speaker hook
-event with the guest clock, port 61h low bits, PIT2 reload and mode, and PIT2
-epoch in PIT clocks. `audio_render` merges OPL, speaker, and optional
-MIDI events by guest clock; for example, render a complete OPL/speaker replay
+event with the guest clock, port 61h low bits, PIT2 reload and mode, PIT2
+epoch in PIT clocks and PIT2's null-count flag (1 after a control word).
+`audio_render` merges OPL, speaker, and optional MIDI events by guest clock;
+for example, render a complete OPL/speaker replay
 through a known end clock with:
 
 ```bat
 build\audio_render.exe opl.log flight.wav 9000000 9799924671 --speaker-log speaker.log
 ```
+
+`--speaker-model pwm` renders the speaker's digitised speech with its 15 kHz
+carrier instead of without it (`realsound`, the default; `speaker` in
+`f117a.ini`).
 
 To include Roland, add `--mt32` and the control and PCM ROM paths as in this
 example:

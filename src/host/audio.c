@@ -4,18 +4,12 @@
 #include "dbopl_bridge.h"
 #include "audio_mix.h"
 #include "mt32.h"
+#include "speaker.h"
 
 #include <stdlib.h>
 #include <string.h>
 
-#define PIT_HZ 1193182ull
 #define BUF_FRAMES (AUDIO_RATE * 2)       /* two seconds of slack */
-
-typedef struct {
-    uint64_t icount;
-    uint8_t  port61;
-    pit_counter pit2;
-} spk_state;
 
 struct audio {
     opl3_chip opl;
@@ -26,10 +20,9 @@ struct audio {
     uint64_t done;                        /* samples rendered so far */
     int16_t  buf[BUF_FRAMES * 2];
     size_t   head, count;                 /* ring of stereo frames */
-    spk_state spk;                        /* the speaker since the last change */
+    speaker_t spk;                        /* PIT counter 2 and port 61h, run here */
+    uint8_t  spk_port61;                  /* the bits the speaker model last saw */
     float    spk_dc;                      /* a DC blocker's memory */
-    float    spk_part;                    /* a held level's share of the sample under way */
-    float    spk_used;                    /* how much of that sample it covers (0..1) */
 };
 
 static uint64_t muldiv(uint64_t a, uint64_t b, uint64_t d)
@@ -48,6 +41,7 @@ audio_t *audio_create_backend(uint64_t ips, audio_opl_backend backend)
     audio_t *a = (audio_t *)calloc(1, sizeof *a);
     if (!a) return NULL;
     a->ips = ips;
+    speaker_init(&a->spk, ips, AUDIO_RATE, SPEAKER_REALSOUND);
     if (backend == AUDIO_OPL_DBOPL) {
         a->dbopl = dbopl_create(AUDIO_RATE);
         if (!a->dbopl) { free(a); return NULL; }
@@ -61,39 +55,9 @@ void audio_destroy(audio_t *a)
     free(a);
 }
 
-/* The speaker cone: driven by counter 2's output through the AND gate of
- * port 61 bit 1, with bit 0 gating the counter itself. */
-static int speaker_level(const spk_state *s, uint64_t sample)
-{
-    if (!(s->port61 & 2)) return 0;
-    if (!(s->port61 & 1)) return 1;        /* data bit high, counter stopped: out is high */
-    const pit_counter *p = &s->pit2;
-    const uint32_t full = p->reload ? p->reload : 65536u;
-    const uint64_t clk = muldiv(sample, PIT_HZ, AUDIO_RATE);
-    const uint64_t t = clk > p->epoch_clk ? clk - p->epoch_clk : 0;
-    switch (p->mode & 7) {
-    case 3: case 7: return (t % full) < (full + 1) / 2;
-    case 2: case 6: return (t % full) != full - 1;
-    case 0: return t >= full;
-    default: return 1;
-    }
-}
-
-/* Counter 2 in mode 0 with the gate and the data bit on is how a game plays
- * digitised sound (F-117A's radio calls under Roland: a count of 0-80 written
- * every 79 PIT clocks, the pulse width carrying the sample). The cone
- * averages the pulses; point-sampling them at the output rate instead aliases
- * the 15 kHz carrier's harmonics into a loud screech. So, as GOG DOSBox 0.74
- * does (pcspeaker.cpp, "realsound"), the count is the level: (min(count, 80)
- * - 40) x 5000/40, held until the next write, and averaged over each output
- * sample. */
-static int speaker_dac(const spk_state *s, float *level)
-{
-    if ((s->port61 & 3) != 3 || (s->pit2.mode & 7) != 0) return 0;
-    const unsigned count = s->pit2.reload > 80 ? 80u : s->pit2.reload;
-    *level = ((float)count - 40.0f) * (5000.0f / 40.0f);
-    return 1;
-}
+/* The speaker's full swing: GOG DOSBox 0.74 (+-5000) and DOSBox-X (0..10000)
+ * both give the cone a span of 10,000. */
+#define SPEAKER_SPAN 10000.0f
 
 static void render_frame(audio_t *a, int16_t roland_left, int16_t roland_right)
 {
@@ -106,14 +70,11 @@ static void render_frame(audio_t *a, int16_t roland_left, int16_t roland_right)
         OPL3_GenerateResampled(&a->opl, pair);
         s[0] = pair[0]; s[1] = pair[1];
     }
-    /* The speaker, through a gentle DC blocker so a held level decays
-     * to silence as the real cone does. */
-    float dac, v;
-    if (speaker_dac(&a->spk, &dac)) v = a->spk_part + dac * (1.0f - a->spk_used);
-    else v = a->spk_part + (speaker_level(&a->spk, a->done) && (a->spk.port61 & 2) ? 6000.0f : 0.0f) * (1.0f - a->spk_used);
-    a->spk_part = 0.0f; a->spk_used = 0.0f;
+    /* The speaker, through a gentle DC blocker (about 3.5 Hz) so a held
+     * level decays to silence as the cone does. */
+    const float v = SPEAKER_SPAN * speaker_take(&a->spk, a->done);
     a->spk_dc += (v - a->spk_dc) * 0.0005f;
-    float sp = (a->spk.port61 & 2) || v != 0.0f ? v - a->spk_dc : 0.0f;
+    const float sp = v - a->spk_dc;
     /* GOG DOSBox's AdLib mixer channel uses SetScale(2.0). Apply its
      * gain before mixing the separately driven speaker and clipping. */
     int l = 2 * opl_mixer_sample(s[0], &a->opl_last[0]) + (int)sp;
@@ -131,20 +92,28 @@ static void render_frame(audio_t *a, int16_t roland_left, int16_t roland_right)
     a->done++;
 }
 
-static void render_to(audio_t *a, uint64_t target)
+/* Render up to `target` samples; the speaker model runs alongside, sample by
+ * sample, so it never gets more than one sample ahead of the frames taken. */
+static void render_to(audio_t *a, uint64_t target, uint64_t icount)
 {
     while (a->done < target) {
         unsigned frames = (unsigned)(target - a->done > 256 ? 256 : target - a->done);
         int16_t roland[512] = { 0 };
         if (a->mt32) mt32_render(a->mt32, roland, frames);
-        for (unsigned frame = 0; frame < frames; ++frame)
+        for (unsigned frame = 0; frame < frames; ++frame) {
+            /* the first clock count at or past the end of the sample under way */
+            uint64_t end = muldiv(a->done + 1, a->ips, AUDIO_RATE);
+            if (muldiv(end, AUDIO_RATE, a->ips) < a->done + 1) end++;
+            speaker_advance(&a->spk, end < icount ? end : icount);
             render_frame(a, roland[frame * 2], roland[frame * 2 + 1]);
+        }
     }
+    speaker_advance(&a->spk, icount);
 }
 
 void audio_advance(audio_t *a, uint64_t icount)
 {
-    render_to(a, muldiv(icount, AUDIO_RATE, a->ips));
+    render_to(a, muldiv(icount, AUDIO_RATE, a->ips), icount);
 }
 
 void audio_opl_write(audio_t *a, uint64_t icount, uint8_t reg, uint8_t val)
@@ -177,33 +146,33 @@ int audio_midi_byte(audio_t *a, uint64_t icount, uint8_t byte)
     return mt32_byte(a->mt32, byte);
 }
 
+int audio_set_speaker_model(audio_t *a, int model)
+{
+    if (!a || a->done || a->spk.events || (model != SPEAKER_REALSOUND && model != SPEAKER_PWM)) return 0;
+    speaker_init(&a->spk, a->ips, AUDIO_RATE, (speaker_model)model);
+    return 1;
+}
+
 void audio_speaker(audio_t *a, const machine_t *m, uint64_t icount)
 {
     audio_speaker_event(a, icount, m->port61, m->pit[2].reload,
-                        m->pit[2].mode, m->pit[2].epoch_clk);
+                        m->pit[2].mode, m->pit[2].null_count);
 }
 
+/* The machine reports every change to counter 2 and port 61h bits 0-1 after
+ * making it; which one it was follows from its state: bits that differ from
+ * the last seen, else a control word (the counter waits for a count), else a
+ * count. */
 void audio_speaker_event(audio_t *a, uint64_t icount, uint8_t port61,
-                         uint16_t reload, uint8_t mode, uint64_t epoch_clk)
+                         uint16_t reload, uint8_t mode, uint8_t null_count)
 {
     audio_advance(a, icount);
-    /* A held level (the DAC, or the cone held by the data bit with the
-     * counter stopped) keeps its share of the sample the change falls in. */
-    float held;
-    int is_held = speaker_dac(&a->spk, &held);
-    if (!is_held && (a->spk.port61 & 3) != 3) { held = (a->spk.port61 & 2) ? 6000.0f : 0.0f; is_held = 1; }
-    if (is_held) {
-        const uint64_t num = icount * (uint64_t)AUDIO_RATE;
-        const float at = (float)(num % a->ips) / (float)a->ips;   /* position inside the sample under way */
-        if (at > a->spk_used) { a->spk_part += held * (at - a->spk_used); a->spk_used = at; }
-    }
-    a->spk.icount = icount;
-    a->spk.port61 = port61;
-    a->spk.pit2.reload = reload;
-    a->spk.pit2.mode = mode;
-    a->spk.pit2.epoch_clk = epoch_clk;
-    /* The counter's epoch is in PIT clocks; the renderer works in samples
-     * converted to PIT clocks, so the two agree. */
+    port61 &= 3;
+    if (port61 != a->spk_port61) {
+        a->spk_port61 = port61;
+        speaker_port61(&a->spk, icount, port61);
+    } else if (null_count) speaker_control(&a->spk, icount, mode);
+    else speaker_count(&a->spk, icount, reload);
 }
 
 size_t audio_take(audio_t *a, int16_t *out, size_t max_frames)
