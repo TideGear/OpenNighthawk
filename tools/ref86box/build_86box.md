@@ -29,7 +29,7 @@ intro, credits and sound menu on `ami286` (a 6 MHz 286).
 ## Traced runs: emulated time, scripted input (`86box-trace.patch`)
 
 `git apply tools/ref86box/86box-trace.patch` in the checkout (it edits
-`src/vnc.c`, `src/qt/qt_main.cpp` and `src/sound/snd_adlib.c`) before step 5.
+`src/vnc.c`, `src/qt/qt_main.cpp`, `src/sound/snd_adlib.c` and `src/cpu/386.c`) before step 5.
 A traced run needs no VNC client, so it is a function of the machine and its
 inputs, not of wall-clock polling. `trace_86box.ps1` starts it; environment
 variables drive it:
@@ -42,6 +42,17 @@ variables drive it:
 | `B86_PPM=1` | each new picture saved as a PPM |
 | `B86_STOP=N` | exit after N frames |
 | `B86_OPL=FILE` | every AdLib register write as `microseconds register value` |
+| `B86_FAST=1` | fast-forward: `pc_run()` back to back instead of one quantum per host millisecond; emulated time is still the TSC. `sound86.py` and `sav86.py` set it unless `--realtime` |
+
+86Box is not bit-deterministic between runs, even at real time: two real-time
+music runs gave the same 30,937 AdLib writes in the same order with timing
+spread over -10..+166 us, and 7 of 12,000 frame hashes differed (`frames.csv`
+is sampled when the blit thread hashes the screen). Fast-forward stays inside
+that: the same writes in the same order (-201..+10 us against the two real-time
+runs), 20-23 frame hashes differing, the first frame logged 1.7 ms later (the
+blit thread lags a fast emulation), the saved roster identical; music run 49 s
+instead of 178 s, save run 95 s instead of 277 s (7 Oct 2026). `probe86.py` has
+not been checked in fast-forward and does not set it.
 
 Its users: `probe86.py` (the machine-behaviour probe; answers are read back out
 of the disk image), `sound86.py` with `compare_opl86.py` (the music) and

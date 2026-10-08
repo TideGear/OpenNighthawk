@@ -33,14 +33,21 @@ pointer and is ignored in a window.
 `py tools/video_compare.py --data GOG_DIR --dosbox PATH\dosbox-x.exe
 --seconds 130 --work-dir DIR` runs the intro on DOSBox-X headless (the GOG
 configuration under a layer that forces windowed mode and silence, SETUP
-answered by AUTOTYPE) and compares its pictures with this machine's, as for
-GOG's DOSBox. DOSBox-X records mode 13h at 640x400, each pixel doubled; the
+answered through `DBX_AUTO_INPUT` 5.0 and 5.8 s after SETUP starts) and
+compares its pictures with this machine's, as for GOG's DOSBox. It runs in
+fast-forward (`[cpu] turbo=true`): the capture takes 11 s instead of 130 s,
+and `-time-limit` counts emulated seconds, so it covers the same span. Two
+fast-forward captures are byte-identical; two real-time ones differed in 3,826
+of 17,398 logo frames (AUTOTYPE waits in host time, and the pacing does too),
+and the comparison report was the same for both kinds (7 Oct 2026). DOSBox-X records mode 13h at 640x400, each pixel doubled; the
 tool reads it back to 320x200 and reports the few frames where a palette
 write landed between the two scanlines of a pair.
 
 `py tools/save_parity.py --data GOG_DIR --no-86box` plays a route's START
 inputs here and on this machine and compares the saved `ROSTER.FIL` byte for
-byte (identical, 6 Oct 2026). The music is judged from the capture's audio by
+byte (identical, 6 Oct 2026; in fast-forward too, 54 s instead of 227 s;
+SETUP is still answered by AUTOTYPE there, since its inputs are anchored at
+START). The music is judged from the capture's audio by
 `tools/sound_parity.py`: envelope 0.90-0.92, spectral 0.947; DOSBox-X plays it
 at 0.74 of the level GOG's DOSBox and this machine produce (its mixer), which
 is reported, not judged.

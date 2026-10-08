@@ -20,10 +20,10 @@ index b605001..3ef80a9 100644
              cycdiff = oldcyc - cycles;
  
 diff --git a/src/qt/qt_main.cpp b/src/qt/qt_main.cpp
-index a99308a..8b58aa8 100644
+index a99308a..a406ab0 100644
 --- a/src/qt/qt_main.cpp
 +++ b/src/qt/qt_main.cpp
-@@ -909,7 +909,7 @@ main(int argc, char *argv[])
+@@ -909,11 +909,14 @@ main(int argc, char *argv[])
  
          /* Set the PAUSE mode depending on the renderer. */
  #ifdef USE_VNC
@@ -32,6 +32,13 @@ index a99308a..8b58aa8 100644
              plat_pause(1);
          else
  #endif
+             plat_pause(0);
++        /* PC-parity harness: B86_FAST runs pc_run() back to back; emulated time is still the TSC. */
++        if (getenv("B86_FAST") != NULL)
++            fast_forward = true;
+ 
+         cpu_thread_running = true;
+         main_thread        = new std::thread(main_thread_fn);
 diff --git a/src/sound/snd_adlib.c b/src/sound/snd_adlib.c
 index a67309d..c7c77fe 100644
 --- a/src/sound/snd_adlib.c

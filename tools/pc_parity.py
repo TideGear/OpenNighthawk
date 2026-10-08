@@ -42,7 +42,7 @@ LIMITS = {
     # exact pictures in order; unmatched pictures lasting more than one sample;
     # largest timing drift in ms
     "gog": dict(min_exact=1300, max_multi_unmatched=0, max_drift_ms=100),   # measured 1329, 0, 57 ms
-    "dosbox-x": dict(min_exact=1200, max_multi_unmatched=3, max_drift_ms=350),   # measured 1237, 3, 157-200 ms (real-time capture varies)
+    "dosbox-x": dict(min_exact=1200, max_multi_unmatched=3, max_drift_ms=350),   # measured 1237, 3, 143-200 ms (real-time captures varied; fast-forward ones are identical)
     # 86Box: graphics pictures with no counterpart (of ~105); order must hold
     "86box": dict(max_unmatched=2),
     # GOG's raw OPL capture: every write, from this machine started 275 ms in (dosbox_compare.GOG_BOOT_MS); measured 22,840, -14..+1 ms

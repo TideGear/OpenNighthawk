@@ -34,6 +34,8 @@ def main():
     ap.add_argument("--frames", type=int, default=30000)
     ap.add_argument("--ppm", action="store_true")
     ap.add_argument("--timeout", type=int, default=2400)
+    ap.add_argument("--realtime", action="store_true",
+                    help="pace 86Box to real time (fast-forward is the default; see build_86box.md)")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     work = os.path.normpath(os.path.join(a.out, "profile"))
@@ -55,6 +57,8 @@ def main():
     probe86.with_partition(img, install, write=True)
     trace = os.path.join(a.out, "trace")
     env = dict(os.environ, B86_MOUSE=a.mouse)
+    if not a.realtime:
+        env["B86_FAST"] = "1"
     cmd = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", os.path.join(HERE, "trace_86box.ps1"),
            "-Profile", work, "-Out", trace, "-Stop", str(a.frames), "-Keys", a.keys, "-TimeoutSeconds", str(a.timeout)]
     if a.ppm:

@@ -97,16 +97,18 @@ def filter_log(path):
     return out
 
 
-def run_dosbox_x(data, game, seconds, *, work=WORK, exe):
+def run_dosbox_x(data, game, seconds, *, work=WORK, exe, turbo=True):
     """Capture the intro on DOSBox-X with no window, no sound and no host input.
 
     `exe` is DOSBox-X built from source with the DBX_AUTO_VIDEO patch
     (tools/ref86box/build_86box.md): with that variable set it records AVI
     video from the first frame, so the capture starts at the same emulated
     moment on every run. `-silent` runs without a window, SETUP's two
-    answers come from AUTOTYPE inside the guest, and the GOG configuration
+    answers are scheduled in emulated time (DBX_AUTO_INPUT, 5.0 and 5.8 s
+    after SETUP starts; AUTOTYPE waits in host time), and the GOG configuration
     is layered under one that forces windowed mode and silence (GOG's own
-    asks for fullscreen). The run ends after `seconds` of real time.
+    asks for fullscreen). It runs in fast-forward by default; `-time-limit`
+    counts emulated seconds, so the run ends after `seconds` of emulated time.
     """
     cap = os.path.join(work, "capture")
     shutil.rmtree(cap, ignore_errors=True)
@@ -114,10 +116,10 @@ def run_dosbox_x(data, game, seconds, *, work=WORK, exe):
     conf = os.path.join(work, "compare.conf")
     with open(conf, "w") as f:
         f.write("\n".join(["[sdl]", "fullscreen=false", "output=surface", "[dosbox]", "captures=" + cap,
-                           "[mixer]", "nosound=true", "[autoexec]", "@echo off",
-                           'mount C "%s"' % game, "c:", "keyb us", "cls",
-                           "autotype -w 5 -p 0.8 n 2", "f117", "exit", ""]))
-    env = dict(os.environ, DBX_AUTO_VIDEO="1")
+                           "[mixer]", "nosound=true", "[cpu]", "turbo=%s" % str(turbo).lower(),
+                           "stop turbo on key=false", "[autoexec]", "@echo off",
+                           'mount C "%s"' % game, "c:", "keyb us", "cls", "f117", "exit", ""]))
+    env = dict(os.environ, DBX_AUTO_VIDEO="1", DBX_AUTO_INPUT_AT="SETUP", DBX_AUTO_INPUT="5000|k|n;5800|k|2")
     subprocess.run([exe, "-silent", "-nogui", "-conf", os.path.join(data, "dosboxF117A.conf"), "-conf", conf,
                     "-time-limit", str(seconds)], env=env, cwd=os.path.dirname(exe),
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=seconds + 60)

@@ -118,7 +118,7 @@ def run_ours(data, route, out):
     return out / "save"
 
 
-def run_dosbox_x(data, route, out, exe, seconds):
+def run_dosbox_x(data, route, out, exe, seconds, turbo=True):
     events, last = route_events(route)
     game = out / "game"
     shutil.rmtree(game, ignore_errors=True)
@@ -127,7 +127,8 @@ def run_dosbox_x(data, route, out, exe, seconds):
         if p.is_file() and not p.name.lower().startswith(("unins", "goggame", "gog", "launch", "support")):
             shutil.copy2(p, game)
     conf = out / "save.conf"
-    conf.write_text("\n".join(["[sdl]", "fullscreen=false", "output=surface", "[dosbox]", "captures=" + str(out / "capture"), "[mixer]", "nosound=true", "[autoexec]",
+    conf.write_text("\n".join(["[sdl]", "fullscreen=false", "output=surface", "[dosbox]", "captures=" + str(out / "capture"), "[mixer]", "nosound=true",
+                               "[cpu]", "turbo=%s" % str(turbo).lower(), "stop turbo on key=false", "[autoexec]",
                                "@echo off", 'mount C "%s"' % game, "c:", "keyb us", "cls",
                                "autotype -w 5 -p 0.8 n 2", "f117", "exit", ""]))
     env = dict(os.environ, DBX_AUTO_INPUT=events, DBX_AUTO_INPUT_AT="START.EXE")

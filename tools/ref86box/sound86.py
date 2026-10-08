@@ -28,6 +28,8 @@ def main():
     ap.add_argument("--frames", type=int, default=12000)
     ap.add_argument("--keys", default="3000:1:31,3003:0:31,3300:1:03,3303:0:03")
     ap.add_argument("--timeout", type=int, default=1200)
+    ap.add_argument("--realtime", action="store_true",
+                    help="pace 86Box to real time (fast-forward is the default; see build_86box.md)")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     work = os.path.normpath(os.path.join(a.out, "profile"))
@@ -46,6 +48,8 @@ def main():
     trace = os.path.join(a.out, "trace")
     opl = os.path.join(a.out, "opl86.log")
     env = dict(os.environ, B86_OPL=opl)
+    if not a.realtime:
+        env["B86_FAST"] = "1"
     subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
                     os.path.join(HERE, "trace_86box.ps1"), "-Profile", work, "-Out", trace,
                     "-Stop", str(a.frames), "-Keys", a.keys, "-TimeoutSeconds", str(a.timeout)], check=True, env=env)
