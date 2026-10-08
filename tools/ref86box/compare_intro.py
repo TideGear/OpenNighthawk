@@ -9,9 +9,11 @@ writes them under its run directory). Ours are reduced to their distinct
 pictures first. Each 86Box picture is then matched to the nearest of ours,
 searching forward from the previous match, and the report gives:
 
-  exact       86Box's picture is byte-identical to one of ours
-  close       mean absolute difference under 3 levels per channel (a DAC or
-              rounding difference, not a different picture)
+  exact       86Box's picture has the same 6-bit DAC values as one of ours at
+              every pixel. The two expand them to 8 bits differently: 86Box
+              floor(v*255/63), ours v<<2|v>>4, and v>>2 recovers v from both
+  close       mean absolute difference under 0.75 DAC levels (3 of 8 bits) per channel (not a
+              different picture)
   unmatched   anything else
   order       whether the matches never go backwards in our timeline
 
@@ -46,7 +48,8 @@ def load_ours(shots, ips):
 
 
 def arr(path):
-    return np.asarray(Image.open(path).convert("RGB"), dtype=np.int16)
+    """The picture as 6-bit DAC values."""
+    return np.asarray(Image.open(path).convert("RGB"), dtype=np.int16) >> 2
 
 
 def main():
@@ -87,7 +90,7 @@ def main():
             back += 1
         if best == 0:
             exact += 1; kind = "exact"
-        elif best < 3:
+        elif best < 0.75:
             close += 1; kind = "close"
         else:
             unmatched += 1; kind = "unmatched"
@@ -98,8 +101,8 @@ def main():
     print("graphics pictures %d: exact %d, close %d, unmatched %d; backwards matches %d" %
           (graphics, exact, close, unmatched, back))
     for name, kind, info in rows:
-        if kind in ("unmatched", "no candidate"):
-            print("  %s %s %s" % (name, kind, "" if info is None else "best diff %.1f" % info[0]))
+        if kind in ("close", "unmatched", "no candidate"):
+            print("  %s %s %s" % (name, kind, "" if info is None else "best diff %.3f" % info[0]))
     print("order preserved: %s" % ("yes" if back == 0 else "NO"))
     return 0 if unmatched == 0 and back == 0 else 1
 

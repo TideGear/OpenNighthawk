@@ -142,6 +142,8 @@ def main():
                         help="emulated startup clock; replay uses its recorded header")
     parser.add_argument("--extend", action="store_true",
                         help="with --complete: fly straight out and re-attack a secondary target the turn cannot reach")
+    parser.add_argument("--cycle", action="store_true",
+                        help="with --complete: while another object is designated, select the secondary with b only")
     parser.add_argument("--primary-only", action="store_true", help="with --complete, go home after the primary photo")
     parser.add_argument("--debrief", action="store_true", help="after the flight, take END's screens (writes ROSTER.FIL)")
     parser.add_argument("--deck-pitch-floor", type=int, default=None,
@@ -270,7 +272,12 @@ def main():
                                 working = {**working, "target_x": int(state["x"] + 5000 * math.sin(theta)) & 0xFFFF,
                                            "target_y": int(state["y"] - 5000 * math.cos(theta)) & 0xFFFF,
                                            "target_range": 5000.0}
-                            control(machine, working, tick, acquisition=args.acquisition)
+                            # With another object designated, step on with b only: N from the nose
+                            # can pick the same wrong object again each time, and b's next press
+                            # then starts over (a Veteran sortie alternated 22 and 0 for 500 s).
+                            wrong_lock = state["lock"] != 0xFFFF and state["lock"] & 0x7F != secondary
+                            control(machine, working, tick, acquisition=args.acquisition,
+                                    select_range=0 if args.cycle and wrong_lock else 1500)
                             if tick % 10 == 5 and working["target_range"] < 1500 and state["lock"] != 0xFFFF and state["lock"] & 0x7F != secondary:
                                 machine.type(machine.clock + 1, "b", hold_ms=20)
                         else:

@@ -227,7 +227,10 @@ Since 7 Oct 2026 `capture_intro.py OUT` is traced: the 386 profile in
 fast-forward, SETUP answered at frames 3000 and 3300, and the picture on
 screen sampled once per emulated second from frame 3300 (`--vnc` keeps the
 real-time capture below). Result: 88 distinct pictures, 87 compared, 4 exact,
-83 close, 0 unmatched, order preserved; two runs gave the same 88 pictures at
+83 close, 0 unmatched, order preserved (since 8 Oct 2026 the comparison is in
+6-bit DAC values, since 86Box expands them as floor(v*255/63) and this machine
+as v<<2|v>>4: 86 exact, 1 close, the close one a single sample taken
+mid-draw); two runs gave the same 88 pictures at
 the same times; 48 s instead of about 3 min.
 
 First result (6 Oct 2026, the VNC capture):

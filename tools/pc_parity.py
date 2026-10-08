@@ -43,8 +43,9 @@ LIMITS = {
     # largest timing drift in ms
     "gog": dict(min_exact=1300, max_multi_unmatched=0, max_drift_ms=100),   # measured 1329, 0, 57 ms
     "dosbox-x": dict(min_exact=1200, max_multi_unmatched=3, max_drift_ms=350),   # measured 1237, 3, 143-200 ms (real-time captures varied; fast-forward ones are identical)
-    # 86Box: graphics pictures with no counterpart (of ~105); order must hold
-    "86box": dict(max_unmatched=2),
+    # 86Box: graphics pictures matching ours in 6-bit DAC values, and with no counterpart; order must
+    # hold. Measured 8 Oct 2026: 86 of 87 exact, the other a single sample taken mid-draw
+    "86box": dict(min_exact=84, max_unmatched=2),
     # GOG's raw OPL capture: every write, from this machine started 275 ms in (dosbox_compare.GOG_BOOT_MS); measured 22,840, -14..+1 ms
     "gog-music": dict(min_writes=22800, max_timing_ms=40),
 }
@@ -203,9 +204,10 @@ def main():
                 print("  86box     ERROR no comparison result; see %s" % log)
             else:
                 total, exact, close, unmatched, back = map(int, m.groups())
-                ok = unmatched <= LIMITS["86box"]["max_unmatched"] and back == 0
-                print("  86box     %s  %d pictures: %d exact, %d close, %d unmatched (max %d), %d out of order" % (
-                    "PASS" if ok else "FAIL", total, exact, close, unmatched, LIMITS["86box"]["max_unmatched"], back))
+                lim = LIMITS["86box"]
+                ok = exact >= lim["min_exact"] and unmatched <= lim["max_unmatched"] and back == 0
+                print("  86box     %s  %d pictures: %d exact (need %d), %d close, %d unmatched (max %d), %d out of order" % (
+                    "PASS" if ok else "FAIL", total, exact, lim["min_exact"], close, unmatched, lim["max_unmatched"], back))
                 if not ok:
                     failures.append("86box")
         ours_log = next((Path(results[n]["run"]) / "opl.log" for n in ("dosbox-x", "gog")

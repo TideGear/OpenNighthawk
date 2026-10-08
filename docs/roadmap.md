@@ -55,9 +55,9 @@ make (Phase 4).
   (measured before the PIT and VGA-timing fixes).
 - **Other machines as references** (`tools/pc_parity.py`): DOSBox-X (a patched
   source build that starts its own capture and runs windowless) matches 1,237
-  exact pictures in order, drift up to 0.2 s; 86Box (a source build with its VNC
-  renderer, windowless and silent) shows the same scenes, order and colours,
-  its VM being a 6 MHz 286. The same run checks the music (GOG envelope 0.963,
+  exact pictures in order, drift up to 0.2 s; 86Box (a source build, windowless and
+  silent, the 386DX/33 profile) matches 86 of 87 graphics pictures exactly in
+  6-bit DAC values, in order (the other a single sample taken mid-draw). The same run checks the music (GOG envelope 0.963,
   spectral 0.992, level 1.005; DOSBox-X 0.90-0.92 and 0.947, its mixer 0.74 of
   the level; 86Box (a 386DX/33 profile): identical first 2,000 AdLib writes and notes on
   four of six channels, scene timing within 0.31 s per scene and 2.0 s drift
@@ -166,7 +166,12 @@ make (Phase 4).
       99 sorties. A closed-loop career sortie (`recon_pilot.py --complete --extend
       --debrief`, `tools/routes/career.front`: both photos, the flight home and the
       landing) scores 226, so the earned career needs higher-scoring sorties than
-      this reconnaissance.
+      this reconnaissance. END multiplies by the pilot-skill form's settings read
+      from the pilot record in memory (not the roster file): one recorded sortie
+      scores 168 Green, 231 Regular, 294 Veteran and 288 Regular with Realistic
+      Landings, as the decoded tables give. A Veteran sortie takes hits (event
+      type 05) that cut the throttle to 44 and the aircraft stalls in; the
+      secondary photo needs `--cycle` there (N kept re-picking another object).
 
 ## Phase 2 - understood code
 

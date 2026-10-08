@@ -389,10 +389,12 @@ current as of the last gate (see [../handoff.md](../handoff.md)).
      between the two scanlines of a doubled line (its 640x400 capture of mode
      13h); the tool reads the first scanline and reports how many frames
      differ.
-   - 86Box: 104 of 105 graphics pictures within 3 levels of ours, in order,
-     none byte-exact: the same scenes and colours (both expand the DAC in
-     steps of 4), at different animation instants because its VM is a 6 MHz
-     286. Frame-exact timing there needs a faster board.
+   - 86Box (the 386DX/33 profile): 86 of 87 graphics pictures exact in 6-bit
+     DAC values, in order, the other a single sample taken mid-draw. The 8-bit
+     captures differ by up to 1 level because the two expand the DAC
+     differently (86Box floor(v*255/63), ours v<<2|v>>4), so
+     `compare_intro.py` compares v>>2. Timing differs by design: 86Box models
+     a 386DX/33's instruction timings, VGA bus and disk, this machine DOSBox's.
 
    Other comparisons: `tools/dosbox_compare.py` captures the AdLib register
    writes in DOSBox and here over the logo and intro: all 22,840 over 106.0 s
