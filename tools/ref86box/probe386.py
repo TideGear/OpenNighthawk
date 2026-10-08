@@ -157,6 +157,26 @@ def blocks():
     add("in al,dx (201h unclaimed) x32", rep(32, 0xEC), 32, bytes([0xBA, 0x01, 0x02]))
     add("mov sreg pop ss pair x16", rep(16, 0x16, 0x17), 32)
     add("aam/aad x16", rep(16, 0xD4, 0x0A, 0xD5, 0x0A), 32)
+    # The services the game polls (an inventory of a strike mission: INT 21h AH=0Bh 2.3 million
+    # times, INT 33h AX=3 2.3 million, INT 16h AH=1 7,600). 86Box runs real BIOS and FreeDOS code
+    # for them; this machine answers them natively, so their cost is what the profile must charge.
+    add("int 21h ah=0Bh x16", rep(16, 0xB4, 0x0B, 0xCD, 0x21), 32)
+    add("int 33h ax=3 x16", rep(16, 0xB8, 0x03, 0x00, 0xCD, 0x33), 32)
+    add("int 16h ah=1 x16", rep(16, 0xB4, 0x01, 0xCD, 0x16), 32)
+    add("int 1Ah ah=0 x16", rep(16, 0xB4, 0x00, 0xCD, 0x1A), 32)
+    add("int 21h ah=2Ch x16", rep(16, 0xB4, 0x2C, 0xCD, 0x21), 32)
+    # The video BIOS (IBM VGA ROM on 86Box; answered natively here): the mode set START and VGAME
+    # make, a 256-colour palette block, the cursor, and text output in both modes.
+    add("int 10h ax=0013h (13h from 13h)", bytes([0xB8, 0x13, 0x00, 0xCD, 0x10]), 2)
+    add("int 10h ax=1012h 256 colours", bytes([0xB8, 0x12, 0x10, 0x31, 0xDB, 0xB9, 0x00, 0x01,
+                                                 0xBA]) + BUF.to_bytes(2, "little") + bytes([0xCD, 0x10]), 5)
+    add("int 10h ah=02h x16", rep(16, 0xB4, 0x02, 0x31, 0xDB, 0x31, 0xD2, 0xCD, 0x10), 64)
+    add("int 10h ah=0Fh x16", rep(16, 0xB4, 0x0F, 0xCD, 0x10), 32)
+    add("int 10h ah=0Eh x16 (mode 13h)", rep(16, 0xB8, 0x41, 0x0E, 0xBB, 0x0F, 0x00, 0xCD, 0x10), 48)
+    add("int 10h ax=0003h (3 from 13h)", bytes([0xB8, 0x03, 0x00, 0xCD, 0x10]), 2)
+    add("int 10h ah=0Eh x16 (mode 3)", rep(16, 0xB8, 0x41, 0x0E, 0xBB, 0x07, 0x00, 0xCD, 0x10), 48)
+    add("int 10h ah=09h x16 (mode 3)", rep(16, 0xB8, 0x20, 0x09, 0xBB, 0x07, 0x00, 0xB9, 0x01, 0x00, 0xCD, 0x10), 64)
+    add("int 10h ax=0013h (13h from 3)", bytes([0xB8, 0x13, 0x00, 0xCD, 0x10]), 2)
     return b
 
 

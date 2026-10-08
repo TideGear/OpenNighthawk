@@ -93,13 +93,15 @@ make (Phase 4).
       under both profiles; recorded routes and hashes stay on the DOSBox profile.
       Done: the interpreter matches 86Box to the cycle on all 77 blocks of
       `probe386.py` (ALU, memory forms, jumps, calls, INT, REP chunks with
-      prefixes, VGA memory, ports). Open: the BIOS and DOS services this machine provides
-      natively (86Box runs real BIOS and DOS code for them), the disk path, the
-      recompiled engine charging the same costs.
-      Frame comparison (`frames386.py`, timing386.md): over the intro 1,238 of
-      1,275 pictures exact, drift +1,571 ms, all of it in seven load steps (EXEC,
-      overlays, DOS reads and writes, the BIOS mode set); between them it stays
-      within 24-28 frames.
+      prefixes, VGA memory, ports), and the services it answers natively are
+      charged their measured 86Box cost (video BIOS mode sets, palette, text;
+      INT 16h, 1Ah; INT 21h AH=0Bh and 2Ch, FreeDOS's): 89 of 91 probe blocks
+      exact. Frame comparison (`frames386.py`, timing386.md): over the intro's
+      animation the scenes now hold 86Box's pace to a frame; the drift left
+      (+1.48 s at START's roster screen) is in the loads: DOS file reads and
+      writes, program starts and overlays. Open: those, the mouse driver (the
+      reference VM loads none; which DOS the reference VM runs is the owner's
+      choice, FreeDOS for now), the recompiled engine charging the same costs.
 - [ ] **Rendered sound:** the register stream is exact (every AdLib write of
       the intro in order and value, above), which is what the original sends to
       its chip. Open: digitised speech and audible speaker output. How the OPL

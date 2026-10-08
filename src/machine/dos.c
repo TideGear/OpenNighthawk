@@ -21,6 +21,7 @@
  */
 #include "machine.h"
 #include "dos_internal.h"
+#include "timing386.h"
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
@@ -176,6 +177,59 @@ static void finish_direct(machine_t *m, unsigned kind, int overhead)
     cpu_irq_state_changed(c);
 }
 
+/* The 386DX/33 profile (src/cpu/timing386.h): what a natively answered service costs on 86Box's
+ * 386DX/33, where real BIOS and DOS code runs for it, beyond what this machine's own INT, stub and
+ * IRET already cost there. Measured per call with tools/ref86box/probe386.py (interrupts off) and
+ * calibrated so its blocks match 86Box. The DOS entries are FreeDOS 1.3's, the reference VM's DOS;
+ * the video entries the IBM VGA BIOS's. The whole cost lands at the INT, as with a BIOS that keeps
+ * interrupts off. Services not listed cost what this machine charges. */
+static uint32_t t386_service_cycles(uint8_t vec, uint16_t ax, uint16_t cx, uint8_t mode_before)
+{
+    const uint8_t ah = (uint8_t)(ax >> 8), al = (uint8_t)ax;
+    switch (vec) {
+    case 0x10:
+        switch (ah) {
+        case 0x00:                                   /* set mode: mostly clearing video memory */
+            if ((al & 0x7F) == 0x13) return mode_before == 0x13 ? T386_SVC_SET13_FROM13 : T386_SVC_SET13_FROM3;
+            if ((al & 0x7F) == 0x03) return T386_SVC_SET3;
+            return 0;
+        case 0x02: return T386_SVC_CURSOR;
+        case 0x09: return T386_SVC_WRITE_CHAR_TEXT * (cx ? cx : 1);
+        case 0x0E: return mode_before == 0x13 ? T386_SVC_TELETYPE_13 : T386_SVC_TELETYPE_TEXT;
+        case 0x0F: return T386_SVC_GET_MODE;
+        case 0x10: return al == 0x12 ? T386_SVC_DAC_BASE + T386_SVC_DAC_EACH * cx : 0;
+        default: return 0;
+        }
+    case 0x16: return ah == 0x01 ? T386_SVC_KEY_CHECK : 0;
+    case 0x1A: return ah == 0x00 ? T386_SVC_TICKS : 0;
+    case 0x21:
+        if (ah == 0x0B) return T386_SVC_DOS_STDIN_STATUS;
+        if (ah == 0x2C) return T386_SVC_DOS_GET_TIME;
+        return 0;
+    default: return 0;
+    }
+}
+
+/* A DOS call's time under the 386 profile. FreeDOS enables interrupts inside INT 21h, so its time
+ * passes with interrupts on: the call ends in the overhead stub's LOOP (interrupts on, as DOSBox's
+ * own overhead), its count set for the measured cost, and the few cycles a whole loop pass cannot
+ * make up are charged at the INT. 1 when the call ends there (the caller then goes through it). */
+static int t386_dos_time(machine_t *m, uint8_t vec, uint16_t ax)
+{
+    cpu_t *c = &m->cpu;
+    if (vec != 0x21) return 0;
+    const uint32_t want = t386_service_cycles(vec, ax, 0, m->video_mode);
+    if (!want) return 0;
+    uint32_t n = 1, rest = 0;
+    if (want > T386_DOS_LOOP_BASE + T386_DOS_LOOP_EACH) {
+        n = (want - T386_DOS_LOOP_BASE) / T386_DOS_LOOP_EACH;
+        rest = want - T386_DOS_LOOP_BASE - n * T386_DOS_LOOP_EACH;
+    }
+    mem_write16(c, phys(m->iret_seg, (uint16_t)(STUB_OVERHEAD + 2)), (uint16_t)n);   /* MOV CX, n */
+    c->t386_dev += rest;
+    return 1;
+}
+
 static int service(machine_t *m, uint8_t vec)
 {
     machine_inventory_service(vec, m->cpu.r[R_AX]);
@@ -204,8 +258,11 @@ int dos_int_hook(cpu_t *c, uint8_t vec)
                 return 0;
             }
             const uint16_t cs0 = c->seg[S_CS], ip0 = c->ip;
-            const int over = dos_overhead(c, vec);
+            const uint16_t ax0 = c->r[R_AX], cx0 = c->r[R_CX];
+            const uint8_t mode0 = m->video_mode;
+            const int over = c->t386 ? t386_dos_time(m, vec, ax0) : dos_overhead(c, vec);
             int r = service(m, vec);
+            if (r && c->t386 && !over) c->t386_dev += t386_service_cycles(vec, ax0, cx0, mode0);
             /* Not when the call waits, ends the program or starts another. */
             if (r && !c->halted && !m->exited && c->seg[S_CS] == cs0 && c->ip == ip0)
                 finish_direct(m, SERVICE_KIND[k], over);
@@ -218,8 +275,11 @@ int dos_int_hook(cpu_t *c, uint8_t vec)
              * does (CALLBACK_SCF/SZF), the carry and zero results go into the
              * frame's flags, so the IRET restores everything else as the
              * caller had it. */
-            const int over = dos_overhead(c, SERVICES[k]);
+            const uint16_t ax0 = c->r[R_AX], cx0 = c->r[R_CX];
+            const uint8_t mode0 = m->video_mode;
+            const int over = c->t386 ? t386_dos_time(m, SERVICES[k], ax0) : dos_overhead(c, SERVICES[k]);
             int r = service(m, SERVICES[k]);
+            if (r && c->t386 && !over) c->t386_dev += t386_service_cycles(SERVICES[k], ax0, cx0, mode0);
             if (c->halted != 2 && !m->exited) {
                 const uint16_t at = (uint16_t)(c->r[R_SP] + 4);
                 uint16_t fl = seg_read16(c, c->seg[S_SS], at);

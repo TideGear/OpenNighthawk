@@ -34,6 +34,28 @@ typedef struct {
 #define T386_MEM_CACHED 2
 #define T386_MEM_UNCACHED 6
 
+/* Natively answered services, cycles per call beyond this machine's INT, stub and IRET (src/machine/
+ * dos.c t386_service_cycles; calibrated with tools/ref86box/probe386.py). */
+#define T386_SVC_SET13_FROM13      2655679
+#define T386_SVC_SET13_FROM3       2414565
+#define T386_SVC_SET3              1704399
+#define T386_SVC_CURSOR            355
+#define T386_SVC_WRITE_CHAR_TEXT   508
+#define T386_SVC_TELETYPE_13       4847
+#define T386_SVC_TELETYPE_TEXT     728
+#define T386_SVC_GET_MODE          207
+#define T386_SVC_DAC_BASE          99   /* measured at 256 colours only: the split is an estimate */
+#define T386_SVC_DAC_EACH          194
+#define T386_SVC_KEY_CHECK         188
+#define T386_SVC_TICKS             89
+#define T386_SVC_DOS_STDIN_STATUS  3459    /* FreeDOS 1.3 */
+#define T386_SVC_DOS_GET_TIME      4037    /* FreeDOS 1.3 */
+
+/* The overhead stub's cost under the profile at a LOOP count of n: T386_DOS_LOOP_BASE +
+ * T386_DOS_LOOP_EACH * n beyond the call's own INT (calibrated with probe386.py). */
+#define T386_DOS_LOOP_BASE         6
+#define T386_DOS_LOOP_EACH         13
+
 /* Turn the profile on: memory at `mem_wait` cycles (T386_MEM_*), VGA memory [vga_lo, vga_lo +
  * vga_size) at `vga_byte` cycles a byte, the prefetch queue empty. */
 void t386_enable(cpu_t *c, int mem_wait, uint32_t vga_lo, uint32_t vga_size, uint32_t vga_byte);
