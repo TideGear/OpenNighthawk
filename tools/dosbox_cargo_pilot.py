@@ -353,6 +353,8 @@ def fly(args):
     args.out.mkdir(parents=True, exist_ok=False)
     if strike:
         strike_pilot.RELEASE_RANGE[0] = args.release_range
+        strike_pilot.SELECT_KEY[0] = args.select_key
+        strike_pilot.SELECT_EVERY[0] = args.select_every
     rows, tick, initialized = [], 0, False
     with DosboxMachine(args.data, route, args.out, int(header[1]), not args.realtime) as machine:
         start = machine.start
@@ -416,7 +418,9 @@ def main():
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--release-lo", type=int, default=60)
     parser.add_argument("--release-hi", type=int, default=300)
-    parser.add_argument("--release-range", type=int, default=120, help="strike: release the bomb this close")
+    parser.add_argument("--release-range", type=int, default=80, help="strike: release the bomb this close")
+    parser.add_argument("--select-key", default="n", help="strike: n (next target) or b (drop lock)")
+    parser.add_argument("--select-every", type=int, default=2, help="strike: press the select key every this many ticks until designated")
     parser.add_argument("--front-end-clock", type=int, help="the Machine clock of VGAME's exec in the front")
     parser.add_argument("--seed-tick", type=int, help="START's seed tick on the Machine (staged by DBX_INT1A_TICK)")
     parser.add_argument("--seconds", type=int, default=1500)

@@ -119,8 +119,14 @@ data segment, offset 0xAE8C): 31324 on the strike-training front end, where DOSB
 route; a scan of ticks around it, one second of flight each, finds the mission that matches the
 Machine's target position and loadout (31324 does; the neighbours give other missions).
 The staged call logs `int1a tick N staged M` on stderr. `--pilot strike` flies that mission,
-and its controls are `strike_pilot.py`'s own, but its designation of the target (B cycles
-contacts) depends on the track and does not yet work on DOSBox-X; the Machine's flight does.
+and its controls are `strike_pilot.py`'s own. Designation: `b` is *drop lock*, not a cycle (the
+Reimp's key table: `n` is next target), so the original recipe held a decoy (contact 27) until
+the track passed it and only a lucky track let the game re-acquire the primary. The pilot now
+presses `n` every second tick until the primary is the lock (the target becomes available at
+about 3,050 map units; every tick and every fourth tick fail on both machines), releases the bomb
+at 80 (`--select-key n --select-every 2 --release-range 80`, the DOSBox-X defaults): one
+primary hit and credit on the Machine and on DOSBox-X (8 of 8 flights over release ranges 40-100
+and the select intervals 2 and 3, except one Machine release at 40 that left late).
 
 The route types SETUP's keys through `DBX_AUTO_INPUT`, so the configuration
 has no `autotype`: its n and 2 at 5 s would end MPS_LOGO early and skip the

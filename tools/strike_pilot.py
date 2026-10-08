@@ -39,6 +39,8 @@ def strike_state(machine):
     return state
 
 
+SELECT_EVERY = [0]         # press the select key every this many ticks until designated (0: the navigator, every tenth)
+SELECT_KEY = ["b"]        # the key pressed to designate the target: b drops a lock, n takes the next target
 RELEASE_RANGE = [0]        # a laser-guided bomb is released at this range from the target (0: the seeker's own interlock)
 
 
@@ -50,9 +52,13 @@ def control(machine, state, tick):
     # a new designation for an unlisted target and can leave the primary until
     # after the aircraft has passed it.
     navigate(machine, dict(state, weapon=16, photos=1), tick,
-             select_key="b", select_range=6000, aim_range=6000,
+             select_key=SELECT_KEY[0], select_range=0 if SELECT_EVERY[0] else 6000, aim_range=6000,
              camera_aim=False, pitch_tolerance=100)
     at = machine.clock + machine.ips * 18 // 100
+    if SELECT_EVERY[0] and state["target_range"] < 6000 and tick % SELECT_EVERY[0] == 1:
+        # Take the next contact until the primary is the lock (n steps one contact a press).
+        if not (state["lock"] != 0xFFFF and state["lock"] & 0x7f == state["target"]):
+            machine.type(machine.clock + machine.ips * 5 // 100, SELECT_KEY[0], hold_ms=20)
     candidates = [i for i, s in enumerate(state["stations"])
                   if s["stores"] and 0 < s["effect"] < 128 and s["weapon_class"] not in (0, 0xffff, 0xfffe)]
     if not candidates: return
@@ -95,11 +101,13 @@ def main():
     parser.add_argument("--fix", action="append", default=[], help="a switchable fix to run with (docs/bugs.md), e.g. D8")
     parser.add_argument("--release-range", type=int, default=0,
                         help="release the selected weapon once designated and this close (a laser-guided bomb)")
+    parser.add_argument("--select-key", default="b", help="b (the original recipe) or n (next target)")
+    parser.add_argument("--select-every", type=int, default=0)
     parser.add_argument("--landing-aim", type=int, default=20,
                         help="runway approach aim relative to centre; negative aims beyond it")
     parser.add_argument("--landing-approach-speed", type=int, default=200)
     args = parser.parse_args(); out = Path(args.out); out.mkdir(parents=True, exist_ok=False)
-    RELEASE_RANGE[0] = args.release_range
+    RELEASE_RANGE[0] = args.release_range; SELECT_KEY[0] = args.select_key; SELECT_EVERY[0] = args.select_every
     inputs = RouteInputs(route_args(args.front_route) if args.front_route else base_route()) if not args.replay else None
     replay, replay_pos = [], 0
     if args.replay:
