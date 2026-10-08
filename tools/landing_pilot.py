@@ -92,7 +92,7 @@ def landing_errors(rows, report, log, require_dos_exit=True):
 
 
 def control(machine, state, tick, approach, cruise=2500, aim=20, approach_speed=200,
-            deck_aim=220):
+            deck_aim=220, throttle_gain=.1):
     """Short, separated stick pulses; every key is released normally.
 
     `cruise` is the altitude held before the approach; a return leg over
@@ -136,7 +136,7 @@ def control(machine, state, tick, approach, cruise=2500, aim=20, approach_speed=
     if tick % 10 == 0:
         command_at = at + machine.ips * 17 // 100
         if state["range"] < 2500:
-            want_throttle = clamp(42 + (approach_speed - state["speed"]) * .1, 0, 85)
+            want_throttle = clamp(42 + (approach_speed - state["speed"]) * throttle_gain, 0, 85)
             if state["surface"]:
                 want_throttle = 85 if state["speed"] < 210 else 50 if state["speed"] > 240 else state["throttle"]
             if state["flags"] & 1:

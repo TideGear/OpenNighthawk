@@ -136,6 +136,10 @@ def main():
     parser.add_argument("--initial-roster", type=Path, help="continue from an earned roster file in a fresh private save directory")
     parser.add_argument("--time-us", type=int, default=700000000000000,
                         help="emulated startup clock; replay uses its recorded header")
+    parser.add_argument("--primary-only", action="store_true", help="with --complete, go home after the primary photo")
+    parser.add_argument("--debrief", action="store_true", help="after the flight, take END's screens (writes ROSTER.FIL)")
+    parser.add_argument("--landing-throttle-gain", type=float, default=.1,
+                        help="throttle per knot short of the approach speed (landing_pilot.control)")
     parser.add_argument("--landing-aim", type=int, default=20,
                         help="how far before the runway centre the glide path meets the ground")
     parser.add_argument("--approach-speed", type=int, default=200,
@@ -224,12 +228,14 @@ def main():
                         machine.run_until(machine.clock + machine.ips)
                         break
                     if not args.replay or (args.complete and replay_pos == len(replay) and machine.clock > int(replay[-1][1])):
-                        if args.complete and state["flags"] & 0x6000 == 0x6000:
+                        done = 0x4000 if args.primary_only else 0x6000
+                        if args.complete and state["flags"] & done == done:
                             waypoint_range = math.hypot(signed(state["home_x"] - state["x"]),
                                 signed(state["home_y"] + 4000 - state["y"]))
                             if waypoint_range < 150: approach = True
                             landing_control(machine, state, tick, approach, deck_aim=300,
-                                            aim=args.landing_aim, approach_speed=args.approach_speed)
+                                            aim=args.landing_aim, approach_speed=args.approach_speed,
+                                            throttle_gain=args.landing_throttle_gain)
                         elif args.complete and state["flags"] & 0x4000:
                             ds = (machine.psp + 0x10 + 0x1E42) << 4
                             secondary = machine.read16(ds + 0xE318)
@@ -248,6 +254,18 @@ def main():
                     tick += 1
                     step = machine.ips // 5
             elif start is not None:
+                if args.debrief:
+                    # END's screens with the career routes' keys until START is back; END writes the
+                    # sortie into the roster on the way (strike_pilot.END_KEYS).
+                    from strike_pilot import END_KEYS
+                    end_inputs = RouteInputs(END_KEYS)
+                    limit = machine.clock + 3_000_000_000
+                    while machine.clock < limit and machine.program.upper() != "START.EXE":
+                        end_inputs.poll(machine)
+                        if machine.run_until(machine.clock + 90_000) != Machine.SLICE:
+                            break
+                    machine.run_until(machine.clock + 600_000_000)                # START writes the roster once back
+                    print(machine.clock, machine.program, "after the debriefing", flush=True)
                 break
             if args.complete and rows and rows[-1]["box"] and rows[-1]["nearest"] == rows[-1]["home"] and rows[-1]["speed"] <= 1 and rows[-1]["throttle"] == 0:
                 # Observe the completed countdown before DOS exit lets the
@@ -265,6 +283,10 @@ def main():
             elif machine.run_until(machine.clock + step) != Machine.SLICE:
                 break
         machine.screen(out / "final.ppm")
+        if args.debrief:
+            for f in save.rglob("*"):
+                if f.name.upper() == "ROSTER.FIL":
+                    shutil.copyfile(f, out / "ROSTER.FIL")
         if machine.program == "VGAME.EXE" and rows:
             final_state = recon_state(machine)
             final_row = {"clock": machine.clock, "seconds": (machine.clock - machine.start) / machine.ips,
@@ -274,7 +296,7 @@ def main():
         if args.complete and flight_block:
             landed_report = {"mission_result": machine.read16(flight_block + 0x28),
                              "pilot_status": machine.read16(flight_block + 0x26)}
-        errors = recon_errors(rows, args.complete)
+        errors = recon_errors(rows, args.complete and not args.primary_only)
         if args.complete:
             errors.extend(landing_errors(rows, landed_report, (out / "run.log").read_text()))
         report = {"clock": machine.clock, "hash": f"{machine.hash:016x}",

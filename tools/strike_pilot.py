@@ -8,6 +8,7 @@ import argparse
 import csv
 import json
 from pathlib import Path
+import os
 import tempfile
 
 from machine_api import Machine, RouteInputs
@@ -41,6 +42,9 @@ def strike_state(machine):
 
 SELECT_EVERY = [0]         # press the select key every this many ticks until designated (0: the navigator, every tenth)
 SELECT_KEY = ["b"]        # the key pressed to designate the target: b drops a lock, n takes the next target
+# END's screens as tools/routes/career_serge.args takes them, from END's own start.
+END_KEYS = ["--type", r"END.EXE+150000000:\r", "--type", r"END.EXE+300000000:\r", "--click", "END.EXE+400000000:271,64"] + [
+    a for t in (520, 640, 780, 920, 1100, 1300, 1500) for a in ("--type", r"END.EXE+%d000000:\r" % t)]
 RELEASE_RANGE = [0]        # a laser-guided bomb is released at this range from the target (0: the seeker's own interlock)
 
 
@@ -103,9 +107,12 @@ def main():
                         help="release the selected weapon once designated and this close (a laser-guided bomb)")
     parser.add_argument("--select-key", default="b", help="b (the original recipe) or n (next target)")
     parser.add_argument("--select-every", type=int, default=0)
+    parser.add_argument("--debrief", action="store_true", help="after the flight, take END's screens with the career routes' keys (writes ROSTER.FIL)")
     parser.add_argument("--landing-aim", type=int, default=20,
                         help="runway approach aim relative to centre; negative aims beyond it")
     parser.add_argument("--landing-approach-speed", type=int, default=200)
+    parser.add_argument("--landing-throttle-gain", type=float, default=.1,
+                        help="throttle per knot short of the approach speed (0.1 keeps the slow aircraft at 50)")
     args = parser.parse_args(); out = Path(args.out); out.mkdir(parents=True, exist_ok=False)
     RELEASE_RANGE[0] = args.release_range; SELECT_KEY[0] = args.select_key; SELECT_EVERY[0] = args.select_every
     inputs = RouteInputs(route_args(args.front_route) if args.front_route else base_route()) if not args.replay else None
@@ -125,9 +132,10 @@ def main():
             if parts[0] != "K" and not (parts[0] == "M" and parts[5:] == ["0", "0"]):
                 raise ValueError("only recorded keys and absolute mouse supported")
             replay.append(parts)
-    rows = []; tick = 0; initialized = False; flight_start = None; last = ""
+    rows = []; tick = 0; initialized = False; flight_start = None; last = ""; debriefed = False
     approach = False; flight_block = None; landed_report = {}
-    with Machine(args.data, tempfile.mkdtemp(dir=out), log=out / "run.log", engine=args.engine, time_us=args.time_us, fixes=tuple(args.fix)) as machine:
+    save_dir = tempfile.mkdtemp(dir=out)
+    with Machine(args.data, save_dir, log=out / "run.log", engine=args.engine, time_us=args.time_us, fixes=tuple(args.fix)) as machine:
         machine.record(out / "input.log")
         while machine.clock < 5_000_000_000 + args.seconds * machine.ips:
             if inputs: inputs.poll(machine)
@@ -175,10 +183,22 @@ def main():
                             if waypoint_range < 150:
                                 approach = True
                             land(machine, state, tick, approach, aim=args.landing_aim,
-                                 approach_speed=args.landing_approach_speed)
+                                 approach_speed=args.landing_approach_speed, throttle_gain=args.landing_throttle_gain)
                         else: control(machine, state, tick)
                     tick += 1; step = machine.ips // 5
-            elif flight_start is not None: break
+            elif flight_start is not None:
+                if args.debrief and not debriefed:
+                    # The debriefing: END's screens taken with the career routes' own keys until START
+                    # is back (the roster is written on the way), then the flight is over.
+                    debriefed = True
+                    end_inputs = RouteInputs(END_KEYS)
+                    limit = machine.clock + 3_000_000_000
+                    while machine.clock < limit and machine.program.upper() != "START.EXE":
+                        end_inputs.poll(machine)
+                        if machine.run_until(machine.clock + 90000) != Machine.SLICE: break
+                    machine.run_until(machine.clock + 600_000_000)                # START writes the roster once back
+                    print(machine.clock, machine.program, "after the debriefing", flush=True)
+                break
             if args.complete and rows and rows[-1]["box"] and rows[-1]["nearest"] == rows[-1]["home"] and rows[-1]["speed"] <= 1 and rows[-1]["throttle"] == 0:
                 # The last countdown increment can be followed by DOS exit
                 # inside a normal 200 ms sample. Observe it before the next
@@ -192,6 +212,11 @@ def main():
                                          **strike_state(machine)))
             elif machine.run_until(machine.clock + step) != Machine.SLICE: break
         machine.screen(out / "final.ppm")
+        if args.debrief:
+            import glob, shutil
+            for f in glob.glob(os.path.join(save_dir, "**", "*"), recursive=True):
+                if os.path.basename(f).upper() == "ROSTER.FIL":
+                    shutil.copyfile(f, out / "ROSTER.FIL")
         failures = errors(rows, args.complete)
         if args.complete and flight_block:
             landed_report = dict(mission_result=machine.read16(flight_block + 0x28),

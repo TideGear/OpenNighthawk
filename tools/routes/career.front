@@ -1,0 +1,34 @@
+# The career route's front end (tools/routes/career_serge.input): Serge chosen from the roster
+# (100,136), Libya, Cold War, Strike Missions, briefing and hangar; the generated mission is a
+# reconnaissance. For recon_pilot.py --front-route ... --complete --primary-only --debrief, which
+# flies it, lands, takes END's screens and lets START save the sortie into ROSTER.FIL.
+--type
+SETUP.EXE+200000:N
+--type
+SETUP.EXE+2000000:2
+--type
+START.EXE+30000000:\r
+--click
+START.EXE+120000000:258,182
+--click
+START.EXE+160000000:100,136
+--click
+START.EXE+220000000:258,182
+--click
+START.EXE+270000000:283,172
+--click
+START.EXE+400000000:28,84
+--click
+START.EXE+480000000:206,149
+--click
+START.EXE+510000000:284,170
+--click
+START.EXE+540000000:215,193
+--click
+START.EXE+1100000000:280,60
+--click
+START.EXE+1700000000:272,134
+--click
+START.EXE+1900000000:271,148
+--click
+START.EXE+2100000000:225,191
