@@ -3864,6 +3864,159 @@ static int player_free_buffer(machine_t *m) { return crt_free_buffer(m, &player_
 static const crt_stream start_free_buffer_S = { 0xAEA6, 0xAF46, 0x9C32, 0, 0xAE61, 0x9BF3 };
 static int start_free_buffer(machine_t *m) { return crt_free_buffer(m, &start_free_buffer_S); }
 
+/* The runtime start-up check, 0x0115C in DSWAP and its copies in PLAYER and SETUP: the first
+ * 66 bytes of the data segment are exclusive-ored together into AH and the
+ * result must be 55h. If not, `fail` is called and then `halt`, with 1 pushed (the
+ * exit); if the exit returns, AX is 1. On a pass AX is the last byte read
+ * (AH is zero). The direction flag is cleared. 198 instructions in the loop. */
+typedef struct { uint16_t entry, fail, halt; } crt_check;
+
+static int crt_startup_check(machine_t *m, const crt_check *s)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 5 + 3 * 66 + 2 + 2)) return 0;
+    cpu_push16(c, c->r[R_SI]);
+    c->r[R_SI] = (uint16_t)alu_logic(c, 0, 1);                    /* xor si, si */
+    c->r[R_CX] = 0x42;
+    set_r8(c, R_AH, (uint8_t)alu_logic(c, 0, 0));                 /* xor ah, ah */
+    set_flag(c, F_DF, 0);                                         /* cld */
+    for (int i = 0; i < 0x42; i++) {
+        x86_lods(c, 0, c->seg[S_DS]);
+        set_r8(c, R_AH, (uint8_t)alu_logic(c, get_r8(c, R_AH) ^ get_r8(c, R_AL), 0));   /* xor ah, al */
+        c->r[R_CX]--;                                             /* loop: no flags */
+    }
+    set_r8(c, R_AH, (uint8_t)alu_logic(c, get_r8(c, R_AH) ^ 0x55, 0));   /* xor ah, 55h */
+    c->icount += 5 + 3 * 0x42 + 2;
+    if (!(c->flags & F_ZF)) {                                     /* je not taken */
+        c->icount += 0;
+        if (!guest_call(m, s->fail, (uint16_t)(s->entry + 0x16))) return 1;
+        if (!room(c, 3)) { c->ip = (uint16_t)(s->entry + 0x16); return 1; }
+        c->r[R_AX] = 1;
+        cpu_push16(c, 1);
+        c->icount += 2;
+        if (!guest_call(m, s->halt, (uint16_t)(s->entry + 0x1D))) return 1;
+        if (!room(c, 3)) { c->ip = (uint16_t)(s->entry + 0x1D); return 1; }
+        c->r[R_AX] = 1;
+        c->icount += 1;
+    }
+    c->r[R_SI] = cpu_pop16(c);
+    c->icount += 2;
+    near_ret(c);
+    return 1;
+}
+static const crt_check DSWAP_CHECK = { 0x115C, 0x1136, 0x13B5 };
+static const crt_check PLAYER_CHECK = { 0x15E0, 0x15BA, 0x1839 };
+static const crt_check SETUP_CHECK = { 0x1994, 0x196E, 0x1BED };
+static int dswap_startup_check(machine_t *m) { return crt_startup_check(m, &DSWAP_CHECK); }
+static int player_startup_check(machine_t *m) { return crt_startup_check(m, &PLAYER_CHECK); }
+static int setup_startup_check(machine_t *m) { return crt_startup_check(m, &SETUP_CHECK); }
+
+/* END 0x042D0 and START 0x08364: the argument (a word at [bp+4]) goes in DX, with CX
+ * 100h, BX 0 and ES made DS, to the callee, which does the work. */
+static int crt_es_call(machine_t *m, uint16_t entry, uint16_t callee)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 7 + 2)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_AX] = c->seg[S_DS];
+    c->seg[S_ES] = c->r[R_AX];
+    c->r[R_DX] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 4));
+    c->r[R_CX] = 0x100;
+    c->r[R_BX] = (uint16_t)alu_logic(c, 0, 1);                    /* xor bx, bx */
+    c->icount += 7;
+    if (!guest_call(m, callee, (uint16_t)(entry + 0x12))) return 1;
+    if (!room(c, 2)) { c->ip = (uint16_t)(entry + 0x12); return 1; }
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 2;
+    near_ret(c);
+    return 1;
+}
+static int end_es_call(machine_t *m) { return crt_es_call(m, 0x42D0, 0x42E4); }
+static int start_es_call(machine_t *m) { return crt_es_call(m, 0x8364, 0x8378); }
+
+/* END 0x011A2 and START 0x02B06, repeat(n): the callee is called n times (n is the
+ * word at [bp+4], counted down in place; a count of zero calls nothing). */
+static int crt_repeat_call(machine_t *m, uint16_t entry, uint16_t callee)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 3 + 2)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    const uint16_t slot = (uint16_t)(c->r[R_BP] + 4);
+    c->icount += 3;                                               /* push, mov, jmp */
+    for (;;) {
+        if (!room(c, 2)) { c->ip = (uint16_t)(entry + 0xB); return 1; }
+        alu_sub(c, seg_read16(c, c->seg[S_SS], slot), 0, 1, 0);   /* cmp word [bp+4], 0 */
+        c->icount += 2;                                           /* cmp, jne */
+        if (c->flags & F_ZF) break;
+        if (!guest_call(m, callee, (uint16_t)(entry + 8))) return 1;
+        if (!room(c, 1)) { c->ip = (uint16_t)(entry + 8); return 1; }
+        seg_write16(c, c->seg[S_SS], slot, (uint16_t)alu_dec(c, seg_read16(c, c->seg[S_SS], slot), 1));
+        c->icount += 1;
+    }
+    if (!room(c, 3)) { c->ip = (uint16_t)(entry + 0x11); return 1; }
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 3;
+    near_ret(c);
+    return 1;
+}
+static int end_repeat_call(machine_t *m) { return crt_repeat_call(m, 0x11A2, 0x4393); }
+static int start_repeat_call(machine_t *m) { return crt_repeat_call(m, 0x2B06, 0x8427); }
+
+/* END 0x00242 and START 0x0588D, write(buffer, size, count, ...): the product of two arguments
+ * (unsigned in END, signed in START) is the byte count; the callee is
+ * given the stream's two words in the data segment, the buffer's far
+ * pointer and the count, and the first word grows by the count written. The
+ * callee's pushes come in a different order in the two programs. */
+typedef struct { uint16_t entry, callee, stream, is_signed, pointer_first; } crt_write;
+
+static int crt_write_block(machine_t *m, const crt_write *s)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 14 + 6)) return 0;
+    const uint16_t ss = c->seg[S_SS];
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_SP] = (uint16_t)alu_sub(c, c->r[R_SP], 4, 1, 0);       /* sub sp, 4 */
+    const uint16_t bp = c->r[R_BP];
+    cpu_push16(c, c->r[R_SI]);
+    c->r[R_AX] = seg_read16(c, ss, (uint16_t)(bp + 4));
+    seg_write16(c, ss, (uint16_t)(bp - 4), c->r[R_AX]);
+    c->r[R_AX] = seg_read16(c, ss, (uint16_t)(bp + 8));
+    const uint16_t factor = seg_read16(c, ss, (uint16_t)(bp + 6));
+    if (s->is_signed) x86_imul16(c, factor); else x86_mul16(c, factor);
+    cpu_push16(c, c->r[R_AX]);
+    if (s->pointer_first) {
+        cpu_push16(c, ds_get(c, s->stream));
+        cpu_push16(c, ds_get(c, (uint16_t)(s->stream + 2)));
+        cpu_push16(c, seg_read16(c, ss, (uint16_t)(bp - 4)));
+        cpu_push16(c, c->seg[S_DS]);
+    } else {
+        cpu_push16(c, seg_read16(c, ss, (uint16_t)(bp - 4)));
+        cpu_push16(c, c->seg[S_DS]);
+        cpu_push16(c, ds_get(c, s->stream));
+        cpu_push16(c, ds_get(c, (uint16_t)(s->stream + 2)));
+    }
+    c->r[R_SI] = c->r[R_AX];
+    c->icount += 14;
+    if (!guest_call(m, s->callee, (uint16_t)(s->entry + 0x25))) return 1;
+    if (!room(c, 6)) { c->ip = (uint16_t)(s->entry + 0x25); return 1; }
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0xA, 1, 0);     /* add sp, 0Ah */
+    ds_put(c, s->stream, (uint16_t)alu_add(c, ds_get(c, s->stream), c->r[R_SI], 1, 0));
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 6;
+    near_ret(c);
+    return 1;
+}
+static const crt_write END_WRITE = { 0x0242, 0x5272, 0x543C, 0, 0 };
+static const crt_write START_WRITE = { 0x588D, 0x95F4, 0xB390, 1, 1 };
+static int end_write_block(machine_t *m) { return crt_write_block(m, &END_WRITE); }
+static int start_write_block(machine_t *m) { return crt_write_block(m, &START_WRITE); }
+
 /* The C runtime's stack check (START 0x0A4C6, END 0x05B4E; VGAME's copy at
  * 0x0F8F0 is never run by any route, so it is left to the original): AX
  * bytes are taken off the stack unless that would wrap or pass the limit
@@ -6774,6 +6927,15 @@ static const recomp_override MATCHED[] = {
     { "matched", "START.EXE", START_47304, 0x0000, 0xA7BA, heap_search, "near-heap free-block search", 1 },
     { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x263E, heap_search, "near-heap free-block search", 1 },
     { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x0F32, player_pick_byte, "one of two bytes picked by an argument", 1 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x115C, dswap_startup_check, "start-up checksum", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x15E0, player_startup_check, "start-up checksum", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x1994, setup_startup_check, "start-up checksum", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x42D0, end_es_call, "call with ES set to DS", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x8364, start_es_call, "call with ES set to DS", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x11A2, end_repeat_call, "call n times", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x2B06, start_repeat_call, "call n times", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x0242, end_write_block, "write a block of records", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x588D, start_write_block, "write a block of records", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xF5B0, vgame_getbuf, "getbuf: a stream's buffer", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0xA4DE, start_getbuf, "getbuf: a stream's buffer", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x5B66, end_getbuf, "getbuf: a stream's buffer", 1 },
