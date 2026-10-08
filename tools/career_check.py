@@ -23,10 +23,12 @@ from landing_pilot import landing_errors
 from run_route import route_args
 
 
-def career(roster):
+def career(roster, pilot=None):
+    """The selected pilot's record, or `pilot`'s."""
     if len(roster) != 802:
         raise ValueError("requires an unchanged original 802-byte saved roster")
-    pilot = struct.unpack_from("<H", roster)[0]
+    if pilot is None:
+        pilot = struct.unpack_from("<H", roster)[0]
     if pilot >= 10:
         raise ValueError("invalid selected pilot in the saved roster")
     base = 2 + pilot * 80
