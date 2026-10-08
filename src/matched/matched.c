@@ -3654,6 +3654,216 @@ static int start_line(machine_t *m) { return line_draw(m, &LINE_START); }
 static int end_line(machine_t *m) { return line_draw(m, &LINE_END); }
 static int dswap_line(machine_t *m) { return line_draw(m, &LINE_DSWAP); }
 
+/* The C runtime's stream routines, which every program carries a copy of.
+ * A stream (FILE) is 8 bytes - [0] the next byte, [2] the count left, [4] the
+ * buffer, [6] flags, [7] the file number - and has a second record in a
+ * parallel table `ext` apart from the first by a fixed distance: [ext+0] flags,
+ * [ext+2] the buffer size. */
+typedef struct {
+    uint16_t base;               /* the first stream */
+    uint16_t ext;                /* the parallel record of the first stream */
+    uint16_t callee;             /* flush a stream (A: the buffer allocator) */
+    uint16_t last;               /* B: the word holding the last stream */
+    uint16_t flags;              /* C: the table of per-file-number flags */
+    uint16_t entry;              /* the routine's address, for the return points */
+} crt_stream;
+
+/* 0x022C2 in PLAYER and its copies, getbuf(stream): a buffer of 512 bytes from the allocator
+ * (the callee, given 200h), or, if there is none, the one-byte buffer
+ * inside the parallel record; the stream gets it, empty. Flags: the OR of the
+ * stream flags. */
+static int crt_getbuf(machine_t *m, const crt_stream *s)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 6 + 15)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->r[R_SI]);
+    c->r[R_SI] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 4));
+    c->r[R_AX] = 0x200;
+    cpu_push16(c, 0x200);
+    c->icount += 6;
+    if (!guest_call(m, s->callee, (uint16_t)(s->entry + 0xE))) return 1;
+    if (!room(c, 15)) { c->ip = (uint16_t)(s->entry + 0xE); return 1; }
+    c->r[R_CX] = cpu_pop16(c);                                    /* pop cx */
+    const uint16_t si = c->r[R_SI];                               /* the callee need not keep it */
+    uint16_t bx = si;
+    bx = (uint16_t)alu_sub(c, bx, s->base, 1, 0);
+    bx = (uint16_t)alu_add(c, bx, s->ext, 1, 0);
+    c->r[R_BX] = bx;
+    uint16_t ax = c->r[R_AX];
+    alu_logic(c, ax, 1);                                          /* or ax, ax */
+    const uint16_t fl = (uint16_t)(si + 6);
+    const uint8_t old = mem_read8(c, phys(c->seg[S_DS], fl));
+    if (ax != 0) {
+        mem_write8(c, phys(c->seg[S_DS], fl), (uint8_t)alu_logic(c, old | 8, 0));
+        ds_put(c, (uint16_t)(bx + 2), 0x200);
+    } else {
+        mem_write8(c, phys(c->seg[S_DS], fl), (uint8_t)alu_logic(c, old | 4, 0));
+        ds_put(c, (uint16_t)(bx + 2), 1);
+        ax = (uint16_t)(bx + 1);                                  /* lea ax, [bx+1] */
+        c->r[R_AX] = ax;
+    }
+    ds_put(c, si, ax);
+    ds_put(c, (uint16_t)(si + 4), ax);
+    ds_put(c, (uint16_t)(si + 2), 0);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 15;
+    near_ret(c);
+    return 1;
+}
+
+/* 0x01D1C in DSWAP and its copies, flush_all(which): every stream that is open
+ * for reading or writing (flags & 83h) is flushed through the callee, and a
+ * result of -1 marks an error. Returns the number flushed when `which` is 1,
+ * otherwise 0 or -1 for the errors. RET 2. */
+static int crt_flush_all(machine_t *m, const crt_stream *s)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t head = (uint16_t)(s->entry + 0x1A), ret_ip = (uint16_t)(s->entry + 0x2A);
+    if (!room(c, 9 + 3)) return 0;
+    const uint16_t ss = c->seg[S_SS];
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_SP] = (uint16_t)alu_sub(c, c->r[R_SP], 2, 1, 0);       /* sub sp, 2 */
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_SI]);
+    c->r[R_SI] = s->base;
+    c->r[R_DI] = (uint16_t)alu_sub(c, c->r[R_DI], c->r[R_DI], 1, 0);   /* sub di, di */
+    seg_write16(c, ss, (uint16_t)(c->r[R_BP] - 2), c->r[R_DI]);
+    c->icount += 9;                                               /* up to the jump to the head */
+    for (;;) {
+        if (!room(c, 14)) { c->ip = head; return 1; }
+        alu_sub(c, ds_get(c, s->last), c->r[R_SI], 1, 0);         /* cmp [last], si */
+        if (c->flags & F_CF) { c->icount += 2; break; }           /* jb: past the last */
+        const uint8_t fl = mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_SI] + 6)));
+        alu_logic(c, fl & 0x83, 0);                               /* test byte [si+6], 83h */
+        unsigned k = 4;                                           /* cmp, jb, test, je */
+        if (!(c->flags & F_ZF)) {
+            cpu_push16(c, c->r[R_SI]);
+            c->icount += k + 1;
+            if (!guest_call(m, s->callee, ret_ip)) return 1;
+            if (!room(c, 8)) { c->ip = ret_ip; return 1; }
+            c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 2, 1, 0);          /* add sp, 2 */
+            c->r[R_AX] = (uint16_t)alu_inc(c, c->r[R_AX], 1);                /* inc ax */
+            k = 2;                                                           /* add, inc */
+            if (c->flags & F_ZF) {                                           /* je: it was -1 */
+                seg_write16(c, ss, (uint16_t)(c->r[R_BP] - 2), 0xFFFF);
+                k += 2;                                                      /* je, mov */
+            } else {
+                c->r[R_DI] = (uint16_t)alu_inc(c, c->r[R_DI], 1);            /* inc di */
+                k += 3;                                                      /* je, inc, jmp */
+            }
+        }
+        c->r[R_SI] = (uint16_t)alu_add(c, c->r[R_SI], 8, 1, 0);   /* add si, 8 */
+        c->icount += k + 1;
+    }
+    if (!room(c, 9)) { c->ip = (uint16_t)(s->entry + 0x34); return 1; }
+    alu_sub(c, seg_read16(c, ss, (uint16_t)(c->r[R_BP] + 4)), 1, 1, 0);      /* cmp [bp+4], 1 */
+    if (!(c->flags & F_ZF)) {
+        c->r[R_AX] = seg_read16(c, ss, (uint16_t)(c->r[R_BP] - 2));
+        c->icount += 1;
+    } else {
+        c->r[R_AX] = c->r[R_DI];
+        c->icount += 2;
+    }
+    c->icount += 2;                                               /* cmp, jne */
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 5;
+    c->ip = cpu_pop16(c);
+    c->r[R_SP] = (uint16_t)(c->r[R_SP] + 2);                      /* ret 2 */
+    return 1;
+}
+
+/* 0x0196B in PLAYER and its copies, free_buffer(close, stream): when the stream's parallel
+ * record has flag 10h and its file's flag 40h is set, the callee flushes it,
+ * and with `close` not zero the record, the stream's count, pointer and buffer
+ * are cleared. */
+static int crt_free_buffer(machine_t *m, const crt_stream *s)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t ret_ip = (uint16_t)(s->entry + 0x27);
+    if (!room(c, 20)) return 0;
+    const uint16_t ss = c->seg[S_SS];
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->r[R_DI]);
+    uint16_t si = seg_read16(c, ss, (uint16_t)(c->r[R_BP] + 6));
+    c->r[R_SI] = si;
+    uint16_t di = si;
+    di = (uint16_t)alu_sub(c, di, s->base, 1, 0);
+    di = (uint16_t)alu_add(c, di, s->ext, 1, 0);
+    c->r[R_DI] = di;
+    c->icount += 8;
+    alu_logic(c, mem_read8(c, phys(c->seg[S_DS], di)) & 0x10, 0); /* test byte [di], 10h */
+    c->icount += 2;
+    if (!(c->flags & F_ZF)) {
+        c->r[R_BX] = (uint16_t)alu_logic(c, 0, 1);                /* xor bx, bx */
+        c->r[R_BX] = mem_read8(c, phys(c->seg[S_DS], (uint16_t)(si + 7)));
+        alu_logic(c, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] + s->flags))) & 0x40, 0);
+        c->icount += 4;
+        if (!(c->flags & F_ZF)) {
+            cpu_push16(c, si);
+            c->icount += 1;
+            if (!guest_call(m, s->callee, ret_ip)) return 1;
+            if (!room(c, 3 + 5 + 4)) { c->ip = ret_ip; return 1; }
+            c->r[R_AX] = cpu_pop16(c);                            /* pop ax */
+            si = c->r[R_SI];                                      /* the callee need not keep SI or DI */
+            di = c->r[R_DI];
+            alu_sub(c, seg_read16(c, ss, (uint16_t)(c->r[R_BP] + 4)), 0, 1, 0);   /* cmp [bp+4], 0 */
+            c->icount += 3;
+            if (!(c->flags & F_ZF)) {
+                c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);                /* xor ax, ax */
+                mem_write8(c, phys(c->seg[S_DS], di), 0);
+                ds_put(c, (uint16_t)(di + 2), 0);
+                ds_put(c, si, 0);
+                ds_put(c, (uint16_t)(si + 4), 0);
+                c->icount += 5;
+            }
+        }
+    }
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 4;
+    near_ret(c);
+    return 1;
+}
+
+static const crt_stream vgame_getbuf_S = { 0x92B8, 0x9358, 0xF91A, 0, 0, 0xF5B0 };
+static int vgame_getbuf(machine_t *m) { return crt_getbuf(m, &vgame_getbuf_S); }
+static const crt_stream start_getbuf_S = { 0xAEA6, 0xAF46, 0xA768, 0, 0, 0xA4DE };
+static int start_getbuf(machine_t *m) { return crt_getbuf(m, &start_getbuf_S); }
+static const crt_stream end_getbuf_S = { 0x5172, 0x5212, 0x5DAA, 0, 0, 0x5B66 };
+static int end_getbuf(machine_t *m) { return crt_getbuf(m, &end_getbuf_S); }
+static const crt_stream player_getbuf_S = { 0x1AD2, 0x1B72, 0x222A, 0, 0, 0x22C2 };
+static int player_getbuf(machine_t *m) { return crt_getbuf(m, &player_getbuf_S); }
+static const crt_stream dswap_getbuf_S = { 0x2710, 0x27B0, 0x2060, 0, 0, 0x1C60 };
+static int dswap_getbuf(machine_t *m) { return crt_getbuf(m, &dswap_getbuf_S); }
+static const crt_stream dswap_flush_all_S = { 0x2710, 0, 0x1CA2, 0x2850, 0, 0x1D1C };
+static int dswap_flush_all(machine_t *m) { return crt_flush_all(m, &dswap_flush_all_S); }
+static const crt_stream end_flush_all_S = { 0x5172, 0, 0x5BA8, 0x52B2, 0, 0x5C22 };
+static int end_flush_all(machine_t *m) { return crt_flush_all(m, &end_flush_all_S); }
+static const crt_stream player_flush_all_S = { 0x1AD2, 0, 0x19AA, 0x1C12, 0, 0x1A24 };
+static int player_flush_all(machine_t *m) { return crt_flush_all(m, &player_flush_all_S); }
+static const crt_stream start_flush_all_S = { 0xAEA6, 0, 0x9C32, 0xAFE6, 0, 0x9CAC };
+static int start_flush_all(machine_t *m) { return crt_flush_all(m, &start_flush_all_S); }
+static const crt_stream vgame_flush_all_S = { 0x92B8, 0, 0xF2C6, 0x93F8, 0, 0xF340 };
+static int vgame_flush_all(machine_t *m) { return crt_flush_all(m, &vgame_flush_all_S); }
+static const crt_stream dswap_free_buffer_S = { 0x2710, 0x27B0, 0x1CA2, 0, 0x26D1, 0x1677 };
+static int dswap_free_buffer(machine_t *m) { return crt_free_buffer(m, &dswap_free_buffer_S); }
+static const crt_stream end_free_buffer_S = { 0x5172, 0x5212, 0x5BA8, 0, 0x5131, 0x5629 };
+static int end_free_buffer(machine_t *m) { return crt_free_buffer(m, &end_free_buffer_S); }
+static const crt_stream player_free_buffer_S = { 0x1AD2, 0x1B72, 0x19AA, 0, 0x1A69, 0x196B };
+static int player_free_buffer(machine_t *m) { return crt_free_buffer(m, &player_free_buffer_S); }
+static const crt_stream start_free_buffer_S = { 0xAEA6, 0xAF46, 0x9C32, 0, 0xAE61, 0x9BF3 };
+static int start_free_buffer(machine_t *m) { return crt_free_buffer(m, &start_free_buffer_S); }
+
 /* The C runtime's stack check (START 0x0A4C6, END 0x05B4E; VGAME's copy at
  * 0x0F8F0 is never run by any route, so it is left to the original): AX
  * bytes are taken off the stack unless that would wrap or pass the limit
@@ -6564,6 +6774,20 @@ static const recomp_override MATCHED[] = {
     { "matched", "START.EXE", START_47304, 0x0000, 0xA7BA, heap_search, "near-heap free-block search", 1 },
     { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x263E, heap_search, "near-heap free-block search", 1 },
     { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x0F32, player_pick_byte, "one of two bytes picked by an argument", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xF5B0, vgame_getbuf, "getbuf: a stream's buffer", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0xA4DE, start_getbuf, "getbuf: a stream's buffer", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x5B66, end_getbuf, "getbuf: a stream's buffer", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x22C2, player_getbuf, "getbuf: a stream's buffer", 1 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x1C60, dswap_getbuf, "getbuf: a stream's buffer", 1 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x1D1C, dswap_flush_all, "flush every open stream", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x5C22, end_flush_all, "flush every open stream", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x1A24, player_flush_all, "flush every open stream", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x9CAC, start_flush_all, "flush every open stream", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xF340, vgame_flush_all, "flush every open stream", 1 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x1677, dswap_free_buffer, "flush and free a stream's buffer", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x5629, end_free_buffer, "flush and free a stream's buffer", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x196B, player_free_buffer, "flush and free a stream's buffer", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x9BF3, start_free_buffer, "flush and free a stream's buffer", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x829A, start_line, "line drawer", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x4206, end_line, "line drawer", 1 },
     { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x0790, dswap_line, "line drawer", 1 },
