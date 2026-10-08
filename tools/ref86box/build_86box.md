@@ -37,9 +37,13 @@ variables drive it:
 | Variable | Effect |
 |---|---|
 | `B86_TRACE=DIR` | `DIR/frames.csv`: every displayed frame with its emulated microseconds, size, hash and the instructions the guest has executed so far (the patch counts them in the 386 interpreter) |
-| `B86_KEYS="frame:down:scancode,..."` | key events at displayed-frame counts (set-1 scancodes, hex) |
-| `B86_MOUSE="frame:m:x,y;frame:b:mask;..."` | pointer to guest pixel x,y of 320x200 (a slam into the corner, then the move, fed 60 counts a frame; a count moves the guest pointer 1.5 pixels) and the button mask |
-| `B86_PPM=1` | each new picture saved as a PPM |
+| `B86_KEYS="frame:down:scancode,..."` | key events at displayed-frame counts (set-1 scancodes, hex; an extended key is `e0xx`); up to 8,192 |
+| `B86_MOUSE="frame:m:x,y;frame:b:mask;..."` | pointer to guest pixel x,y of 320x200 (a slam into the corner, then the move 30 frames later, fed 60 counts a frame; a count moves the guest pointer 1.5 pixels) and the button mask. The pointer is not at x,y until well after the `m` frame, so a press goes 40 frames after it and the release 55 (as `save_parity.py` does); a press at the route's own spacing clicks mid-move and does nothing |
+| `B86_KEYS_FILE=FILE`, `B86_MOUSE_FILE=FILE` | the same schedules read from a file: a long route's inline string exceeds the Windows command-line and environment limits |
+| `B86_PPM=1`, `B86_PPM_AFTER=N` | each new picture saved as a PPM (about 0.9-1.5 MB each), from frame N on if given |
+| `B86_DUMP_FILE=FILE`, `B86_DUMP_AT=N` | conventional memory (0-0x9FFFF) written to FILE once at frame N |
+| `B86_LOOP_STATE`, `B86_LOOP_REPLY`, `B86_LOOP_EVERY`, `B86_LOOP_READS` | the closed loop, as DOSBox-X's `DBX_LOOP_*` (build_dosbox_x.md), keyed to VGAME instead of a program name (below) |
+| `B86_SEED_TICK=N` | START's mission generator restaged to seed N (below) |
 | `B86_STOP=N` | exit after N frames |
 | `B86_OPL=FILE` | every AdLib register write as `microseconds register value` |
 | `B86_FAST=1` | fast-forward: `pc_run()` back to back instead of one quantum per host millisecond; emulated time is still the TSC. `sound86.py` and `sav86.py` set it unless `--realtime` |
@@ -53,6 +57,44 @@ runs), 20-23 frame hashes differing, the first frame logged 1.7 ms later (the
 blit thread lags a fast emulation), the saved roster identical; music run 49 s
 instead of 178 s, save run 95 s instead of 277 s (7 Oct 2026). `probe86.py` has
 not been checked in fast-forward and does not set it.
+
+### Closed loop (B86_LOOP_*) and the seed (B86_SEED_TICK)
+
+86Box knows nothing of DOS, so it cannot name the running program or its PSP
+the way DOSBox-X does. VGAME is found by its own bytes instead: a 48-byte run
+of its loaded image (file offset 0xE6CE, by its entry point, no relocation in
+it) is searched for at every paragraph of conventional memory each frame; at
+load segment L, VGAME's DS is L + 0x1E42, the Machine's own `PSP + 0x10 +
+0x1E42`, so the read sets are the same. From then on, every `B86_LOOP_EVERY`
+emulated ms (200 by default) the emulator appends `seq ms max=9000 left=0
+cpu=0 seg=L live=0|1` and the DS-relative bytes of `B86_LOOP_READS` (up to
+1,024 ranges) to `B86_LOOP_STATE`, and blocks, with emulated time stopped,
+until `B86_LOOP_REPLY<seq>` exists. A reply is `ms|r|hexbyte;...`: raw XT
+scancode bytes (0xE0 sent as its own item) at that many ms after the tick, as
+`key_bytes()` in `dosbox_cargo_pilot.py` writes them; `stop` exits 86Box.
+`live` is 0 once a second VGAME run of bytes (offset 0x10, near the image
+start) no longer matches: DSWAP and END load over it, and the data segment
+then holds their bytes, not VGAME's.
+
+START seeds its mission generator (state at its DS:AE8C, DS = load segment +
+0xA95) with srand(BIOS tick) as `requestr.pic`'s decode ends. 86Box runs real
+BIOS ROM code, so the INT 1Ah call cannot be trapped as `DBX_INT1A_TICK` does,
+and poking the tick count is off by a few ticks (a different mission each
+run); freezing it for START's whole session stopped the menus responding.
+`B86_SEED_TICK=N` restages the generator instead: START is found by its own
+signature (file offset 0x8EEC), and the first frame its state leaves the C
+runtime's `srand(1)`, the seed tick and step count that produced it are found
+by search and the state is replaced by srand(N) stepped as many times.
+`TRACE/seed.txt` records it. Checked (7 Oct 2026): 86Box's own tick was 3380,
+caught 0 steps in, restaged to 31579; VGAME's mission bytes (objective 3,
+target 24, secondary 1) then match the Machine's.
+
+`tools/b86_cargo_pilot.py` flies `cargo_pilot.py` this way. Its front end is
+the route's START-to-VGAME events (2 keys, 11 clicks) on displayed frames:
+START.EXE first appears at frame 10,775 on this profile (measured by memory
+dumps, between 10,700 and 10,850), and later events follow at 70.086 frames
+per second of the Machine's clock. Over that span 86Box's own clock (274 s)
+agrees with DOSBox-X's (268 s) to 2%.
 
 Its users: `probe86.py` (the machine-behaviour probe; answers are read back out
 of the disk image), `sound86.py` with `compare_opl86.py` (the music) and

@@ -365,8 +365,8 @@ def main():
     parser.add_argument("--data", required=True)
     parser.add_argument("--front", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
-    parser.add_argument("--release-lo", type=int, default=80)
-    parser.add_argument("--release-hi", type=int, default=360)
+    parser.add_argument("--release-lo", type=int, default=60)
+    parser.add_argument("--release-hi", type=int, default=300)
     parser.add_argument("--seconds", type=int, default=1500)
     parser.add_argument("--realtime", action="store_true",
                         help="pace DOSBox-X to real time (fast-forward gives identical ticks, about 8x faster)")

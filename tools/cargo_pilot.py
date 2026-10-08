@@ -8,7 +8,7 @@ inside the release window). The verdict is cargo_check.py's own: one timely impa
 delivery area, with no D5 credit unless --fix D5 is on.
 
     py tools/cargo_pilot.py --data GOG_DIR --front tools/routes/cargo.input --out DIR \
-        [--release-lo 80 --release-hi 360] [--fix D5]
+        [--release-lo 60 --release-hi 300] [--fix D5]
 """
 import argparse
 import csv
@@ -47,32 +47,33 @@ def pilot_state(machine):
 
 LEVEL_PITCH = 211
 PULL_UP_PITCH = 2000
-HOLD_AGL = 200
-RELEASE_AGL = 215
+# 200 survived the Machine's and DOSBox-X's own tracks, but on 86Box, whose track differs run to run,
+# three of six flights ended in the original's draw-detected terrain collision (exit 129) at 150-290.
+HOLD_AGL = 400
 RUN_IN_RANGE = 835
-RUN_IN_AGL = 206
+RUN_IN_AGL = 400
 # Measured on the approach (about 590 knots): AGL holds at pitch 0-100, the pitch stays where a key
 # hold leaves it, and AGL changes by about (pitch - 50) / 40 per tick.
 RUN_IN_LEVEL = 50
-# The crate starts at AGL - 20 with the aircraft's pitch ([0x2DF0]); a level release gives it a step of
-# 2 or 3 per frame down, and a crate whose height lands on exactly 1 gets pitch 0 there and expires
-# (bugs.md D5, approach trap). So the release is near level (AGL barely moves before the game reads
-# it) and only at an AGL whose start height minus 1 shares no factor with 6. A crate pitch above 0 is
-# pulled down each frame; one released at or below 0 keeps that pitch and barely falls. A release
-# 80-360 short of the target lands inside the delivery area (it carries about 180 forward).
-RELEASE_PITCH_MAX = 100
-
-
-def release_height_clear(agl):
-    return (agl - 20 - 1) % 6 in (1, 5)
+# The crate starts at AGL - 20 with the aircraft's pitch ([0x2DF0]); a crate whose height lands on
+# exactly 1 gets pitch 0 there and expires (bugs.md D5, approach trap), so its chance of being trapped
+# is about one over its fall per frame. A pitch above 0 is pulled down each frame until it crosses 0,
+# and where it ends up depends on the frame rate: about -224 on a 9 MIPS PC (S = [0x368E] 7-8), -43
+# on 86Box's 386DX/33 (S = 4), where it then falls one unit a tick and is all but certain to trap. A
+# pitch at or below 0 is kept, so the release is a dive: the crate keeps the aircraft's -1200 or less
+# and falls several units a frame on any machine. A steep crate carries little forward (about 0.3
+# map units per unit of height, against 1.4 at -224), so the window is 60-300 short of the target.
+RELEASE_DIVE = -1600
+RELEASE_PITCH = -1200
+RELEASE_AGL_MIN = 150
 
 
 def in_run_in(state):
     return not state["launch_events"] and state["target_range"] <= RUN_IN_RANGE
 
 
-def dive_pitch(state):
-    # The approach holds 200 AGL with a gentle altitude feedback (the navigator's own glide levelled
+def dive_pitch(state, release_lo, release_hi):
+    # The approach holds HOLD_AGL with a gentle altitude feedback (the navigator's own glide levelled
     # the aircraft far out and below 200 AGL the pitch swings by several hundred units around any
     # command). The crate takes the aircraft's pitch at the release and falls at about 1/43 of it per
     # tick, and a crate that only reaches height 1 expires instead of impacting; a release near level
@@ -83,6 +84,8 @@ def dive_pitch(state):
         return PULL_UP_PITCH if state["agl"] < 700 else LEVEL_PITCH
     if state["agl"] < MIN_DIVE_AGL:
         return 500
+    if in_run_in(state) and release_lo <= state["target_range"] <= release_hi:
+        return RELEASE_DIVE
     if in_run_in(state):
         # The hold below presses only for errors over 100, so it leaves AGL anywhere from about 150
         # to 250 and porpoises; the run-in holds RUN_IN_AGL within a few units for the release.
@@ -106,10 +109,11 @@ def control(machine, state, tick, release_lo, release_hi):
              if s["weapon"] == CARGO_WEAPON and s["stores"] > 0]
     release = (bool(cargo) and state["station"] == cargo[0] and state["launch_events"] == 0
                and release_lo <= state["target_range"] <= release_hi
-               and state["agl"] <= RELEASE_AGL and release_height_clear(state["agl"])
-               and 0 < state["pitch"] <= RELEASE_PITCH_MAX
-               and tick - last_release_press[0] >= 3)
-    pitch_error = dive_pitch(state) - state["pitch"]
+               and state["agl"] >= RELEASE_AGL_MIN and state["pitch"] <= RELEASE_PITCH
+               and tick > last_release_press[0])
+    # Every tick, not every third: on 86Box the dive's chance can last two ticks and a press can be
+    # missed; once the one crate is gone its store count reads 0 and no further press is sent.
+    pitch_error = dive_pitch(state, release_lo, release_hi) - state["pitch"]
     # The game ignores Enter while a pitch arrow is held, so a releasing tick sends no pitch press.
     if abs(pitch_error) > (30 if in_run_in(state) else 100) and not release:
         # One millisecond of hold moves the pitch about 3.5 units; a press is capped at one tick.
@@ -134,8 +138,8 @@ def main():
     parser.add_argument("--front", type=Path, required=True,
                         help="a recorded input file whose front end (before VGAME) is replayed")
     parser.add_argument("--out", type=Path, required=True)
-    parser.add_argument("--release-lo", type=int, default=80)
-    parser.add_argument("--release-hi", type=int, default=360)
+    parser.add_argument("--release-lo", type=int, default=60)
+    parser.add_argument("--release-hi", type=int, default=300)
     parser.add_argument("--seconds", type=int, default=1500)
     parser.add_argument("--engine", choices=("recomp", "interp"), default="recomp")
     parser.add_argument("--fix", action="append", default=[], help="a switchable fix (docs/bugs.md), e.g. D5")

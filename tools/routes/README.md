@@ -141,9 +141,9 @@ landing gate and the parent block's successful result.
 
 `cargo_pilot` is a closed-loop supply drop: `tools/cargo_pilot.py` flies the
 generated type-3 mission in our emulator and releases the crate by the
-aircraft's own state (inside 120-235 units of target, 215 AGL or below, with
+aircraft's own state (in a steep dive, 60-300 units short of target, 150 AGL or more, with
 the cargo bay selected), then pulls up. Its recorded input is replayed here.
-`cargo_check.py --replay cargo_pilot.input --steps 6409359385` requires one
+`cargo_check.py --replay cargo_pilot.input --steps 6382359385` requires one
 timely impact in the delivery area, no credit without fix D5, on both engines.
 
 `cargo_d5_fixed` replays `cargo.input` with fix D5 switched on (`--fix D5`):

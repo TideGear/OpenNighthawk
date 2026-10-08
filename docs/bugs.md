@@ -201,8 +201,10 @@ Status values:
   crate and releases it when the aircraft's own state is inside the release
   window, and `cargo_check.py` gives one timely impact in the delivery area
   with no credit. The same pilot delivers on DOSBox-X
-  (`tools/dosbox_cargo_pilot.py`): one timely impact in the delivery area,
-  no credit.
+  (`tools/dosbox_cargo_pilot.py`) and, in 8 of 10 flights, on 86Box
+  (`tools/b86_cargo_pilot.py`): one timely impact in the delivery area, no
+  credit. The two 86Box misses never got a release: its flight track differs
+  run to run and the release window can last two ticks.
 - **Approach trap.** The shipped instructions at 6C23..6C4C apply the owner
   pitch floor (slot field +22, zero for the crate) to any weapon at height 1,
   so a crate whose height lands on exactly 1 gets pitch 0, stays there and
@@ -210,9 +212,12 @@ Status values:
   with the aircraft's pitch (0x7786); a pitch above 0 is pulled down each
   frame, so a near-level release falls 2 or 3 units per frame, and the trap
   springs when the start height minus 1 is a multiple of that step (seen at
-  start heights 189 with step 2 and 187 with step 3). `cargo_pilot.py`
-  releases near level only at AGLs where start height minus 1 shares no
-  factor with 6. No game semantics were changed.
+  start heights 189 with step 2 and 187 with step 3). On 86Box's 386DX/33
+  the frame divisor S is 4 (7-8 on a 9 MIPS PC), a near-level crate falls one
+  unit a frame and traps almost always. `cargo_pilot.py` therefore releases in
+  a steep dive (aircraft pitch -1200 or lower, 150 or more AGL, 60-300 map
+  units short of the target): the crate keeps that pitch and falls several
+  units a frame on every machine. No game semantics were changed.
 
 ### D6. "Stealth mountains"
 

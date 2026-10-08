@@ -99,10 +99,10 @@ index a67309d..c7c77fe 100644
      music_add_handler(adlib_get_buffer, adlib);
      return adlib;
 diff --git a/src/vnc.c b/src/vnc.c
-index cd539f5..0a297a5 100644
+index cd539f5..d4426bc 100644
 --- a/src/vnc.c
 +++ b/src/vnc.c
-@@ -172,6 +172,197 @@ vnc_display(rfbClientPtr cl)
+@@ -172,6 +172,549 @@ vnc_display(rfbClientPtr cl)
      }
  }
  
@@ -117,6 +117,7 @@ index cd539f5..0a297a5 100644
 +extern uint64_t b86_ins;                                 /* instructions executed (cpu/386.c) */
 +#include <86box/timer.h>
 +#include <86box/nvr.h>
++#include <86box/mem.h>
 +
 +typedef struct {
 +    uint64_t frame;
@@ -124,13 +125,317 @@ index cd539f5..0a297a5 100644
 +    int      scan;
 +} tr_key_t;
 +
-+static FILE    *tr_csv;
-+static char     tr_dir[900];
++/* ---- B86_LOOP_* (the 86Box closed-loop pilot, tools/ref86box/86box-trace.patch) ------------
++ * 86Box has no DOS-level notion of "the running program's PSP" (unlike DOSBox-X), so the
++ * running VGAME.EXE is found instead by its own bytes: a 48-byte run from its loaded image
++ * (file offset 0xe6ce, chosen to contain no relocation) is scanned for in conventional RAM at
++ * every paragraph boundary. Once found at load segment L, L+0x1E42 is VGAME's DGROUP segment,
++ * the same DS tools/landing_pilot.py and friends already use (DS = (PSP+0x10+0x1E42) << 4 on
++ * the Machine and DOSBox-X; here PSP+0x10 is simply L). B86_LOOP_STATE=FILE and
++ * B86_LOOP_REPLY=PREFIX name the state file and reply prefix, B86_LOOP_EVERY sets the tick
++ * period in emulated milliseconds (default 200), and B86_LOOP_READS="off:len,..." (DS-relative)
++ * is appended to each tick. A tick only fires once the signature is found; the emulator blocks
++ * in tr_frame (so emulated time stops) until the reply file PREFIX<seq> appears. Its first line
++ * is a ';'-separated list of "ms|r|hexbyte": a raw XT scan code byte (0xE0 prefix bytes and
++ * break codes with bit 7 set are both sent as their own 'r' item, as key_bytes() in
++ * tools/dosbox_cargo_pilot.py already produces for DOSBox-X) injected via keyboard_input() at
++ * the tick's microsecond time plus ms*1000; "stop" ends the loop. */
++static const uint8_t VGAME_SIG[48] = {
++    0x8b, 0x36, 0x02, 0x00, 0x2b, 0xf7, 0x81, 0xfe, 0x00, 0x10, 0x72, 0x03, 0xbe, 0x00, 0x10, 0xfa,
++    0x8e, 0xd7, 0x81, 0xc4, 0x8e, 0xe5, 0xfb, 0x73, 0x10, 0x16, 0x1f, 0xe8, 0x38, 0x09, 0x33, 0xc0,
++    0x50, 0xe8, 0xa5, 0x09, 0xb8, 0xff, 0x4c, 0xcd, 0x21, 0x8b, 0xc6, 0xb1, 0x04, 0xd3, 0xe0, 0x48
++};
++#define VGAME_SIG_OFF  0xe6ce
++#define VGAME_DS_PARA  0x1e42
++/* Liveness: bytes near the start of VGAME's image (a function prologue at offset 0x10, no
++ * relocation, found in no other program), which DSWAP and END overwrite when they load at the same
++ * segment; the entry-point signature above is 59 KB in, past their images, so it survives them. */
++static const uint8_t VGAME_LIVE_SIG[48] = {
++    0xc8, 0x04, 0x00, 0x00, 0xc7, 0x46, 0xfe, 0x00, 0x00, 0xc7, 0x46, 0xfc, 0xf0, 0x04, 0xc4, 0x5e,
++    0xfc, 0x26, 0x8b, 0x07, 0xa3, 0x76, 0xe5, 0xc7, 0x06, 0x74, 0xe5, 0x00, 0x00, 0x26, 0x8b, 0x07,
++    0xa3, 0x26, 0x99, 0xc7, 0x06, 0x24, 0x99, 0x72, 0x12, 0xc4, 0x1e, 0x74, 0xe5, 0x26, 0xff, 0x77
++};
++#define VGAME_LIVE_OFF 0x10
++/* START.EXE's own copy of the same C-runtime startup prologue (recompiler/discover.py's Discovery
++ * on tools/routes' START.EXE), at its own file offset. */
++static const uint8_t START_SIG[48] = {
++    0x8b, 0x36, 0x02, 0x00, 0x2b, 0xf7, 0x81, 0xfe, 0x00, 0x10, 0x72, 0x03, 0xbe, 0x00, 0x10, 0xfa,
++    0x8e, 0xd7, 0x81, 0xc4, 0x9e, 0xe0, 0xfb, 0x73, 0x10, 0x16, 0x1f, 0xe8, 0xf6, 0x08, 0x33, 0xc0,
++    0x50, 0xe8, 0x63, 0x09, 0xb8, 0xff, 0x4c, 0xcd, 0x21, 0x8b, 0xc6, 0xb1, 0x04, 0xd3, 0xe0, 0x48
++};
++#define START_SIG_OFF  0x8eec
++static FILE    *tr_csv;                                  /* B86_TRACE's frames.csv */
++static char     tr_dir[900];                             /* B86_TRACE's directory */
++static uint64_t tr_n;                                    /* displayed frames so far */
++
++/* B86_SEED_TICK=N: START.EXE seeds its mission generator (state at its DS:AE8C, stepped as
++ * s*343FDh+269EC3h) with srand(BIOS tick low word) as requestr.pic's decode ends. 86Box's BIOS is
++ * real ROM code, so the call cannot be trapped the way DOSBox-X's DBX_INT1A_TICK does, and poking
++ * the tick count lands a few ticks off. Instead the generator itself is restaged: START's C runtime
++ * leaves the state at 1 (srand(1)); the first frame it holds anything else, the seed tick t and the
++ * step count k that produced it are recovered by search, and the state is replaced by srand(N)
++ * stepped k times, so the stream from then on is the Machine's. A continuous freeze of the tick
++ * count was tried first and stopped the menus responding to clicks; a single tick poke at START's
++ * load gave a different mission each run. The result is written to TRACE/seed.txt. */
++#define START_DS_PARA 0x0a95
++static uint32_t lcg(uint32_t s) { return s * 0x343FDu + 0x269EC3u; }
++static void seed_rng_stage(void) {
++    const char *s = getenv("B86_SEED_TICK");
++    static int   done, armed;
++    static uint32_t state_at;
++
++    if (!s || done)
++        return;
++    if (!state_at) {
++        for (uint32_t seg = 0; seg < 0xA000 - (START_SIG_OFF >> 4) - 4; seg++) {
++            if (!memcmp(&ram[seg * 16 + START_SIG_OFF], START_SIG, sizeof(START_SIG))) {
++                state_at = ((seg + START_DS_PARA) << 4) + 0xAE8C;
++                break;
++            }
++        }
++        if (!state_at)
++            return;
++    }
++    uint32_t v = *(uint32_t *) &ram[state_at];
++    if (v == 1) {
++        armed = 1;                                       /* the C runtime's srand(1) */
++        return;
++    }
++    if (!armed)
++        return;
++    done = 1;
++    for (uint32_t t = 0; t < 0x10000; t++) {
++        uint32_t x = t;
++        for (int k = 0; k <= 64; k++) {
++            if (x == v) {
++                uint32_t y = (uint32_t) atoll(s) & 0xFFFF;
++                for (int i = 0; i < k; i++)
++                    y = lcg(y);
++                *(uint32_t *) &ram[state_at] = y;
++                char path[1024];
++                snprintf(path, sizeof(path), "%s/seed.txt", tr_dir);
++                FILE *f = fopen(path, "w");
++                if (f) {
++                    fprintf(f, "frame %llu seed tick %u steps %d state %08x -> %08x\n",
++                            (unsigned long long) tr_n, t, k, v, y);
++                    fclose(f);
++                }
++                return;
++            }
++            x = lcg(x);
++        }
++    }
++}
++
++typedef struct {
++    double at_us;
++    int    down;
++    int    scan;
++    int    live;
++} loop_ev_t;
++
++static char      loop_state_path[1024];
++static char      loop_reply_prefix[1024];
++static double    loop_every_us = 200000.0;
++static double    loop_next_us  = -1.0;
++static int       loop_init;
++static int       loop_locked;
++static int       loop_stopped;
++static uint32_t  loop_seg;
++static long      loop_seq;
++static int       loop_ext_pending;                       /* a 0xE0 byte awaiting its code byte */
++static loop_ev_t *loop_evs;
++static int       loop_nevs;
++static int       loop_evs_cap;
++static int       loop_evs_head;                          /* events before this index are all consumed */
++static struct { unsigned off, len; } loop_reads[1024];
++static int       loop_nreads;
++
++static void
++loop_setup(void)
++{
++    const char *s;
++
++    if (loop_init)
++        return;
++    loop_init = 1;
++    s = getenv("B86_LOOP_STATE");
++    if (!s)
++        return;
++    snprintf(loop_state_path, sizeof(loop_state_path), "%s", s);
++    s = getenv("B86_LOOP_REPLY");
++    if (s)
++        snprintf(loop_reply_prefix, sizeof(loop_reply_prefix), "%s", s);
++    s = getenv("B86_LOOP_EVERY");
++    if (s)
++        loop_every_us = atof(s) * 1000.0;
++    s = getenv("B86_LOOP_READS");
++    while (s && *s && loop_nreads < 1024) {
++        unsigned off = 0, len = 0;
++        int      used = 0;
++
++        if (sscanf(s, "%i:%u%n", &off, &len, &used) < 2)
++            break;
++        loop_reads[loop_nreads].off = off;
++        loop_reads[loop_nreads].len = len;
++        loop_nreads++;
++        s += used;
++        if (*s == ',')
++            s++;
++    }
++    FILE *f = fopen(loop_state_path, "w");
++    if (f)
++        fclose(f);
++}
++
++static int
++loop_try_lock(void)
++{
++    for (uint32_t seg = 0; seg < 0xA000 - (VGAME_SIG_OFF >> 4) - 4; seg++) {
++        uint32_t addr = seg * 16 + VGAME_SIG_OFF;
++
++        if (!memcmp(&ram[addr], VGAME_SIG, sizeof(VGAME_SIG))) {
++            loop_seg = seg;
++            return 1;
++        }
++    }
++    return 0;
++}
++
++/* A raw XT scan code byte: 0xE0 is a standalone prefix (no down/up of its own), everything
++ * else is down (bit 7 clear) or up (bit 7 set) of the low 7 bits, extended if 0xE0 preceded it. */
++static void
++loop_inject(int byte)
++{
++    if (byte == 0xE0) {
++        loop_ext_pending = 1;
++        return;
++    }
++    int down = !(byte & 0x80);
++    int scan = byte & 0x7F;
++
++    if (loop_ext_pending) {
++        scan |= 0xE000;
++        loop_ext_pending = 0;
++    }
++    keyboard_input(down, (uint16_t) scan);
++}
++
++static void
++loop_tick(uint64_t us)
++{
++    loop_setup();
++    if (!loop_state_path[0] || loop_stopped)
++        return;
++    if (!loop_locked) {
++        if (!loop_try_lock())
++            return;
++        loop_locked = 1;
++        loop_next_us = (double) us;
++    }
++    for (int i = loop_evs_head; i < loop_nevs; i++) {
++        if (loop_evs[i].live && loop_evs[i].at_us <= (double) us) {
++            loop_inject(loop_evs[i].down ? loop_evs[i].scan : (loop_evs[i].scan | 0x80));
++            loop_evs[i].live = 0;
++        }
++    }
++    while (loop_evs_head < loop_nevs && !loop_evs[loop_evs_head].live)
++        loop_evs_head++;
++    if (loop_evs_head > 4096 && loop_evs_head * 2 > loop_nevs) {
++        memmove(loop_evs, loop_evs + loop_evs_head, (loop_nevs - loop_evs_head) * sizeof(loop_ev_t));
++        loop_nevs -= loop_evs_head;
++        loop_evs_head = 0;
++    }
++    if ((double) us < loop_next_us)
++        return;
++    uint32_t ds_base = (loop_seg + VGAME_DS_PARA) << 4;
++    int      live    = !memcmp(&ram[loop_seg * 16 + VGAME_LIVE_OFF], VGAME_LIVE_SIG, sizeof(VGAME_LIVE_SIG));
++    FILE    *f        = fopen(loop_state_path, "a");
++    if (f) {
++        fprintf(f, "%ld %.4f max=9000 left=0 cpu=0 seg=%04x live=%d", loop_seq, (double) us / 1000.0,
++                (unsigned) loop_seg, live);
++        for (int i = 0; i < loop_nreads; i++)
++            for (unsigned k = 0; k < loop_reads[i].len; k++)
++                fprintf(f, " %02x", ram[(ds_base + loop_reads[i].off + k) & 0xFFFFF]);
++        fprintf(f, "\n");
++        fclose(f);
++    }
++    char path[1200];
++    snprintf(path, sizeof(path), "%s%ld", loop_reply_prefix, loop_seq);
++    for (;;) {
++        FILE *rf = fopen(path, "r");
++        if (rf) {
++            char line[8192] = { 0 };
++            if (!fgets(line, sizeof(line), rf))
++                line[0] = 0;
++            fclose(rf);
++            char prev[1200];
++            snprintf(prev, sizeof(prev), "%s%ld", loop_reply_prefix, loop_seq - 1);
++            remove(prev);
++            if (!strncmp(line, "stop", 4)) {
++                /* The pilot is done: exit, as B86_STOP does, so no 86Box outlives its driver
++                 * (killing the PowerShell wrapper leaves the emulator running). */
++                loop_stopped = 1;
++                if (tr_csv)
++                    fclose(tr_csv);
++                exit(0);
++            }
++            const char *p = line;
++            while (*p && *p != '\r' && *p != '\n') {
++                double      ms   = atof(p);
++                const char *bar1 = strchr(p, '|');
++                if (!bar1)
++                    break;
++                char        kind = bar1[1];
++                const char *bar2 = strchr(bar1 + 1, '|');
++                if (!bar2)
++                    break;
++                const char *arg  = bar2 + 1;
++                const char *semi = strchr(arg, ';');
++                size_t      n    = semi ? (size_t) (semi - arg) : strlen(arg);
++                char        argbuf[64];
++
++                if (n >= sizeof(argbuf))
++                    n = sizeof(argbuf) - 1;
++                memcpy(argbuf, arg, n);
++                argbuf[n] = 0;
++                if (kind == 'r') {
++                    int byte = (int) strtol(argbuf, NULL, 16);
++
++                    if (loop_nevs >= loop_evs_cap) {
++                        loop_evs_cap = loop_evs_cap ? loop_evs_cap * 2 : 256;
++                        loop_evs      = realloc(loop_evs, (size_t) loop_evs_cap * sizeof(loop_ev_t));
++                    }
++                    loop_evs[loop_nevs].at_us = (double) us + ms * 1000.0;
++                    loop_evs[loop_nevs].down  = !(byte & 0x80);
++                    loop_evs[loop_nevs].scan  = byte & 0x7F;
++                    /* 0xE0 is carried as its own entry (scan 0 with the extended bit folded
++                     * into "down" meaninglessly); loop_inject's own 0xE0-prefix state only
++                     * applies to the live PC-parity stream, so here we fold it into scan
++                     * directly when the byte itself is 0xE0. */
++                    if (byte == 0xE0) {
++                        loop_evs[loop_nevs].down = 2;      /* 2 marks "this is a literal 0xE0 byte" */
++                        loop_evs[loop_nevs].scan = 0xE0;
++                    }
++                    loop_evs[loop_nevs].live  = 1;
++                    loop_nevs++;
++                }
++                p = semi ? semi + 1 : p + strlen(p);
++            }
++            loop_seq++;
++            loop_next_us += loop_every_us;
++            return;
++        }
++        if (loop_stopped)
++            return;
++        plat_delay_ms(1);
++    }
++}
++
 +static int      tr_init;
 +static int      tr_stop;
-+static uint64_t tr_n;
 +static uint64_t tr_last_hash;
-+static tr_key_t tr_keys[256];
++static tr_key_t tr_keys[8192];
 +static int      tr_nkeys;
 +static int      tr_nextkey;
 +
@@ -168,7 +473,36 @@ index cd539f5..0a297a5 100644
 +    s      = getenv("B86_STOP");
 +    if (s)
 +        tr_stop = atoi(s);
-+    s = getenv("B86_MOUSE");
++    /* B86_KEYS/B86_MOUSE as inline strings hit the command-line and environment-block size
++     * limits for a long route; B86_KEYS_FILE/B86_MOUSE_FILE name a file holding the same text. */
++    static char *keys_buf, *mouse_buf;
++    const char  *kf = getenv("B86_KEYS_FILE");
++    const char  *mf = getenv("B86_MOUSE_FILE");
++    if (kf) {
++        FILE *f = fopen(kf, "rb");
++        if (f) {
++            fseek(f, 0, SEEK_END);
++            long n = ftell(f);
++            fseek(f, 0, SEEK_SET);
++            keys_buf = malloc((size_t) n + 1);
++            fread(keys_buf, 1, (size_t) n, f);
++            keys_buf[n] = 0;
++            fclose(f);
++        }
++    }
++    if (mf) {
++        FILE *f = fopen(mf, "rb");
++        if (f) {
++            fseek(f, 0, SEEK_END);
++            long n = ftell(f);
++            fseek(f, 0, SEEK_SET);
++            mouse_buf = malloc((size_t) n + 1);
++            fread(mouse_buf, 1, (size_t) n, f);
++            mouse_buf[n] = 0;
++            fclose(f);
++        }
++    }
++    s = mouse_buf ? mouse_buf : getenv("B86_MOUSE");
 +    while (s && *s && tr_nmouse < 510) {
 +        unsigned long long f;
 +        int                a = 0;
@@ -199,8 +533,8 @@ index cd539f5..0a297a5 100644
 +    }
 +    if (tr_nmouse)
 +        plat_mouse_capture(1);
-+    s = getenv("B86_KEYS");
-+    while (s && *s && tr_nkeys < 256) {
++    s = keys_buf ? keys_buf : getenv("B86_KEYS");
++    while (s && *s && tr_nkeys < 8192) {
 +        unsigned long long f;
 +        int                d;
 +        int                c;
@@ -225,6 +559,21 @@ index cd539f5..0a297a5 100644
 +    uint64_t us;
 +
 +    tr_setup();
++    {
++        /* one-shot diagnostic: B86_DUMP_AT=frame,B86_DUMP_FILE=path dumps 0-0xA0000 of ram */
++        static int dumped;
++        const char *df = getenv("B86_DUMP_FILE");
++        const char *da = getenv("B86_DUMP_AT");
++
++        if (!dumped && df && da && tr_n >= (uint64_t) atoll(da)) {
++            dumped = 1;
++            FILE *df_f = fopen(df, "wb");
++            if (df_f) {
++                fwrite(ram, 1, 0xA0000, df_f);
++                fclose(df_f);
++            }
++        }
++    }
 +    if (!tr_csv)
 +        return;
 +    for (int row = 0; row < h; ++row) {
@@ -240,7 +589,8 @@ index cd539f5..0a297a5 100644
 +            (unsigned long long) us, w, h, (unsigned long long) hash, (unsigned long long) b86_ins);
 +    if (hash != tr_last_hash) {
 +        tr_last_hash = hash;
-+        if (getenv("B86_PPM") != NULL) {
++        const char *ppm_after = getenv("B86_PPM_AFTER");
++        if (getenv("B86_PPM") != NULL && (!ppm_after || tr_n >= (uint64_t) atoll(ppm_after))) {
 +            char  path[1024];
 +            FILE *f;
 +            int   half = (w == 640 && h == 400);
@@ -287,6 +637,8 @@ index cd539f5..0a297a5 100644
 +        tr_pend_x -= dx;
 +        tr_pend_y -= dy;
 +    }
++    seed_rng_stage();
++    loop_tick(us);
 +    tr_n++;
 +    if (tr_stop && tr_n >= (uint64_t) tr_stop) {
 +        fflush(tr_csv);
@@ -300,7 +652,7 @@ index cd539f5..0a297a5 100644
  static void
  vnc_blit(int x, int y, int w, int h, int monitor_index)
  {
-@@ -186,6 +377,8 @@ vnc_blit(int x, int y, int w, int h, int monitor_index)
+@@ -186,6 +729,8 @@ vnc_blit(int x, int y, int w, int h, int monitor_index)
      if (screenshots)
          video_screenshot((uint32_t *) rfb->frameBuffer, 0, 0, VNC_MAX_X);
  
@@ -309,7 +661,7 @@ index cd539f5..0a297a5 100644
      video_blit_complete_monitor(monitor_index);
  
      if (!updatingSize)
-@@ -234,9 +427,13 @@ vnc_init(UNUSED(void *arg))
+@@ -234,9 +779,13 @@ vnc_init(UNUSED(void *arg))
          rfb->width  = allowedX;
          rfb->height = allowedY;
  
@@ -325,7 +677,7 @@ index cd539f5..0a297a5 100644
      }
  
      /* Set up our BLIT handlers. */
-@@ -244,6 +441,12 @@ vnc_init(UNUSED(void *arg))
+@@ -244,6 +793,12 @@ vnc_init(UNUSED(void *arg))
  
      clients = 0;
  
