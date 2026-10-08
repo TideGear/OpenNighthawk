@@ -243,15 +243,25 @@ the profile.
 ## Services this machine answers natively
 
 86Box runs real BIOS and DOS code (the IBM VGA BIOS, the board's AMI BIOS,
-FreeDOS 1.3) for the services this machine answers natively. Their cost per
-call, measured with `probe386.py` and charged under the profile
-(`src/machine/dos.c` t386_service_cycles, the figures in
-`src/cpu/timing386.h`): INT 10h mode set 13h about 2.66 million cycles from
-13h (80 ms; most of it clearing video memory at ISA speed), 2.41 million from
-mode 3, mode 3 1.70 million; a 256-colour palette block 49,800; cursor,
-get-mode, teletype and write-character a few hundred to 4,900; INT 16h key
-check 250; INT 1Ah tick count 150; INT 21h AH=0Bh 3,500 and AH=2Ch 4,100
-(FreeDOS's). Video BIOS calls are charged at the INT, with interrupts held;
+and DOS) for the services this machine answers natively. The reference DOS is
+MS-DOS 5.00 (`build_msdos_vm.py` builds the VM from the owner's disks; 4.01
+and 6.22 VMs too). Their cost per call, measured with `probe386.py` with every
+IRQ masked (the BIOS and DOS enable interrupts inside, so an unmasked tick adds
+its handler) and charged under the profile (`src/machine/dos.c`
+t386_service_cycles, the figures in `src/cpu/timing386.h`): INT 10h mode set
+13h about 2.69 million cycles from 13h (80 ms; most of it clearing video memory
+at ISA speed), 2.41 million from mode 3, mode 3 1.71 million; a 256-colour
+palette block 49,400; cursor, get-mode, teletype and write-character a few
+hundred to 4,900; INT 16h key check 250; INT 1Ah tick count 150. The DOS calls
+by DOS (cycles a call; the CPU blocks and BIOS calls are identical on all four):
+
+| | FreeDOS 1.3 | MS-DOS 4.01 | MS-DOS 5.00 | MS-DOS 6.22 |
+|---|---|---|---|---|
+| INT 21h AH=0Bh | 3,526 | 3,121 | 3,483 | 3,483 |
+| INT 21h AH=2Ch | 4,104 | 1,833 | 1,956 | 1,952 |
+
+so 5.00 and 6.22 are the same machine for this game. 90 of 91 probe blocks are
+exact against the 5.00 VM (the other is INT 33h: the VM has no mouse). Video BIOS calls are charged at the INT, with interrupts held;
 DOS calls pass their time in the stub's LOOP with interrupts on, as FreeDOS
 enables them inside INT 21h. Charged at the INT, the intro's 689,000 AH=0Bh
 polls held the music driver's interrupts back and its scenes ran up to 140 ms

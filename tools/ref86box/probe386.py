@@ -188,6 +188,9 @@ def build():
         code.extend(bs)
     emit([0xB8, 0x13, 0x00, 0xCD, 0x10])                # mov ax,13h / int 10h: mode 13h, so A000 is the VGA's
     emit([0xFA, 0xFC])                                   # cli, cld
+    # The BIOS and DOS enable interrupts inside their own code, so CLI alone lets a timer tick land in
+    # a measured service and add its handler. Every IRQ is masked at the PIC for the blocks.
+    emit([0xE4, 0x21, 0x50, 0xB0, 0xFF, 0xE6, 0x21])    # in al,21h / push ax / mov al,0FFh / out 21h,al
     emit([0x8C, 0xC8, 0x8E, 0xD8, 0x8E, 0xC0])          # mov ax,cs / mov ds,ax / mov es,ax
     names = []
     for i, (name, setup, body, count) in enumerate(blocks()):
@@ -204,6 +207,7 @@ def build():
             emit(body)
         emit([0x8C, 0xC8, 0x8E, 0xC0, 0x8E, 0xD8])      # mov ax,cs / mov es,ax / mov ds,ax (restore)
     emit([0xB0, 0xFF, 0xE6, 0xE9])                       # the end mark
+    emit([0x58, 0xE6, 0x21])                             # pop ax / out 21h,al: the PIC mask back
     emit([0xFB, 0xB8, 0x03, 0x00, 0xCD, 0x10])          # sti / mov ax,3 / int 10h: text mode again
     emit([0xB8, 0x00, 0x4C, 0xCD, 0x21])                # mov ax,4C00 / int 21h
     assert org + len(code) < BUF
@@ -241,9 +245,10 @@ def run_86box(out, profile, probe, frames=3000, timeout=600):
 
     def install(fs):
         fs.writebytes("/F117A/F117.COM", probe)
-        bat = fs.readtext("/FDAUTO.BAT").replace("\r\n", "\n")
+        start = "/FDAUTO.BAT" if fs.exists("/FDAUTO.BAT") else "/AUTOEXEC.BAT"     # FreeDOS's or MS-DOS's
+        bat = fs.readtext(start).replace("\r\n", "\n")
         lines = [l for l in bat.split("\n") if l.strip() and l.strip().upper() != "F117"] + ["F117"]
-        fs.writetext("/FDAUTO.BAT", "\r\n".join(lines) + "\r\n")
+        fs.writetext(start, "\r\n".join(lines) + "\r\n")
     probe86.with_partition(img, install, write=True)
     log = os.path.join(out, "86box-ports.log")
     if os.path.exists(log):

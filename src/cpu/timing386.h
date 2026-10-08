@@ -35,21 +35,22 @@ typedef struct {
 #define T386_MEM_UNCACHED 6
 
 /* Natively answered services, cycles per call beyond this machine's INT, stub and IRET (src/machine/
- * dos.c t386_service_cycles; calibrated with tools/ref86box/probe386.py). */
-#define T386_SVC_SET13_FROM13      2655679
-#define T386_SVC_SET13_FROM3       2414565
-#define T386_SVC_SET3              1704399
+ * dos.c t386_service_cycles), calibrated with tools/ref86box/probe386.py against the MS-DOS 5.00
+ * reference VM (build_msdos_vm.py), every IRQ masked while it measures. */
+#define T386_SVC_SET13_FROM13      2690185
+#define T386_SVC_SET13_FROM3       2414511
+#define T386_SVC_SET3              1705359
 #define T386_SVC_CURSOR            355
-#define T386_SVC_WRITE_CHAR_TEXT   508
+#define T386_SVC_WRITE_CHAR_TEXT   481
 #define T386_SVC_TELETYPE_13       4847
 #define T386_SVC_TELETYPE_TEXT     728
 #define T386_SVC_GET_MODE          207
-#define T386_SVC_DAC_BASE          99   /* measured at 256 colours only: the split is an estimate */
-#define T386_SVC_DAC_EACH          194
+#define T386_SVC_DAC_BASE          167   /* measured at 256 colours only: the split is an estimate */
+#define T386_SVC_DAC_EACH          192
 #define T386_SVC_KEY_CHECK         188
 #define T386_SVC_TICKS             89
-#define T386_SVC_DOS_STDIN_STATUS  3459    /* FreeDOS 1.3 */
-#define T386_SVC_DOS_GET_TIME      4037    /* FreeDOS 1.3 */
+#define T386_SVC_DOS_STDIN_STATUS  3416    /* MS-DOS 5.00 (6.22 the same) */
+#define T386_SVC_DOS_GET_TIME      1889    /* MS-DOS 5.00 (6.22 4 cycles less) */
 
 /* The overhead stub's cost under the profile at a LOOP count of n: T386_DOS_LOOP_BASE +
  * T386_DOS_LOOP_EACH * n beyond the call's own INT (calibrated with probe386.py). */
