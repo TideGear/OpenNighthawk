@@ -18,9 +18,9 @@
       {
         "item": "86Box and DOSBox-X as routine checks",
         "weight": 5,
-        "done": 0.6,
+        "done": 0.85,
         "kind": "estimate",
-        "evidence": "Added 7 Oct 2026: this open roadmap item had no entry, so it counted for nothing. Done: tools/pc_parity.py checks pictures, music and the saved roster on both against measured limits (all pass, traced and fast-forwarded), fidelity_all.py holds the machine probe, and the closed-loop cargo pilot delivers on DOSBox-X. Open: a flight on 86Box, a career's saved data on both, what paces 86Box's 2 s intro drift and its pitch-bend write positions, 86Box's run-to-run variation, and the decision whether they replace GOG's DOSBox for routine checks."
+        "evidence": "Done: tools/pc_parity.py checks pictures, music and the saved roster on both against measured limits, fidelity_all.py holds the machine probe, 86Box runs are deterministic (8 Oct 2026: the harness hook in the emulation thread; repeat runs byte-identical), the closed-loop supply drop delivers on both, a closed-loop career sortie saves its roster on both (DOSBox-X's and 86Box's byte-identical, ours differing only in the mission score, which END scores the same from either machine's handover), the 86Box intro drift and pitch-bend writes are explained, and the decision to use them as the routine references is made. Open: the strike-training hit on 86Box and a robust 86Box landing (marginal at its frame rate)."
       },
       {
         "item": "The picture against DOSBox, frame by frame",
