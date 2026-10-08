@@ -357,9 +357,11 @@ int main(int argc, char **argv)
             if (steps >= 100000 || popped < 2 || popped > 18) { if (getenv("FLWHY") && o->ip == 0x0815) printf("why1 s=%d steps=%d popped=%u\n", s, steps, popped); ms++; restore(); continue; }
             /* A random state that makes the original write over its own code
              * (a copy aimed at the routine) runs instructions it was not; the
-             * game never does, and no equivalent can follow it. */
+             * game never does, and no equivalent can follow it. The whole
+             * window run_to_ret counts as the routine's own: a long routine's
+             * fixed data words can land in its own code when DS = CS. */
             const uint32_t self = phys(cs, ip);
-            if (memcmp(g_mem[0] + self, g_pristine + self, 0x100)) { ms++; restore(); continue; }
+            if (memcmp(g_mem[0] + self, g_pristine + self, 0x300)) { ms++; restore(); continue; }
             /* The event limit: a routine told it has one instruction fewer than
              * the original takes must decline. Running anyway would carry the
              * clock past a checkpoint or a frame boundary - nothing in the
