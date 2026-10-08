@@ -172,3 +172,70 @@ The figures agree with the source above: 2 cycles a register ALU op, a taken
 jump 7 plus the queue refill, MUL 21, DIV 22, IN 12, an AdLib read 12 + 32
 (so the BIOS runs the ISA bus at /4, not the chipset's default /6, which
 would make it 47), 32 extra a VGA byte and 64 a word.
+
+## Frame comparison: `frames386.py`
+
+`tools/ref86box/frames386.py OUT` runs the intro on both machines and compares
+them picture by picture: 86Box traced (`trace_86box.ps1`, a copy of `vmt386`,
+`probe86.bare_boot`, fast-forward, a PPM per new picture) and this machine with
+`f117run --timing 386 --engine interp --shots-vga --shots-changed --frame-log`
+(each VGA frame's scan-out clock, steps and screen-off bit; only changed
+pictures written). SETUP is answered the same way on both (n, then 2 300 frames
+later). Pictures are compared in 6-bit DAC values and aligned in order on exact
+equality; 86Box posts no frame while the screen is off, so a gap of more than
+1.5 frame periods is a blank picture, matched against our screen-off frames.
+The origin is the first picture both show; drift is 86Box's time since it minus
+ours. The report gives scene 0 (SETUP's last key to the origin), every step of
+two frames or more between consecutive exact pictures with the events of our
+log in the interval, and the drift per scene. PASS needs every picture exact and
+on the same frame. `--box DIR`/`--ours DIR` reuse a run (rerun only ours after a
+profile change: about 15 s); `--only box|ours` makes one run. Both runs are
+deterministic: two runs gave byte-identical `frames.csv` on each side.
+
+Result (8 Oct 2026, 139.8 s from the origin): **FAIL**. 1,238 of 1,275 86Box
+picture changes exact in order (992 of the 993 held two frames or more); the 37
+others are 36 single-frame pictures (mid-draw or mid-fade: 86Box scans line by
+line, this machine in four 100-line parts) and START's mode-set blank, which this
+machine does not have. Drift at the end +1,571 ms (+110 frames), all of it in
+seven steps, each at a load:
+
+| where (86Box s) | added | our events in the interval |
+|---|---|---|
+| scene 0, key to MPS logo | +215 ms | SETUP exits, EXEC MPS_LOGO, ASOUND.LOG overlay, INT 10h mode 13h (86Box: 85.6 ms screen-off) |
+| 0.00-0.39 | +130 ms | MPS_LOGO reads `labslogo.SS` in 24 DOS reads of 512 bytes |
+| 5.65-7.56 | +171 ms | MPS_LOGO exits; ASOUND.117, MISC and MGRAPHIC overlays; EXEC PLAYER |
+| 7.56-8.49 (blank) | +71 ms | PLAYER opens and reads the three title pictures (23 reads, 154 KB) |
+| 102.1-108.6 | +270 ms | PLAYER exits; EXEC DSWAP, then START; INT 10h mode set; two reads |
+| 108.6-109.9 | +886 ms | START reads and rewrites `ROSTER.FIL` (2 reads, 3 writes) |
+| 109.9-111.4 | +86 ms | START reads `rostscrn.pic`, `rostsprt.pic` |
+
+Between those steps the drift stays put: over PLAYER's 95 s of animation,
+credits and panning pictures (scenes from 8.5 to 102 s) it moves only between 24
+and 28 frames, with no trend, and each scene keeps one or two adjacent values (the
+game's scene changes wait on timer ticks, so the phase between the tick and the
+frame decides between two neighbouring frames). A steady 0.109-frame offset is
+where each machine takes its picture (86Box at vertical sync start, this machine
+at line 400). So the CPU, VGA and port costs hold 86Box's pace. What is missing
+is the disk and DOS path (`EXEC`, overlay loads, reads and writes go through
+FreeDOS, the AMI BIOS's INT 13h and the IDE model on 86Box, and cost nothing
+here) and the BIOS's INT 10h mode set (screen off and the video memory cleared
+at ISA speed). Two 86Box runs attribute them: with `B86_BUFFERS=20` (FreeDOS's
+sector buffers) the `ROSTER.FIL` step goes and the end drift falls to +300 ms;
+with `B86_VGA_FAST=1` scene 0 falls from +215 to +101 ms, which puts about
+114 ms of it on the mode set's video memory. The first step (24 reads of 512
+bytes, +130 ms with 1 buffer, +116 ms with 20) is about 5 ms a DOS read.
+
+The mouse: the VM loads no driver (the image's stock `FDAUTO.BAT` and
+`FDCONFIG.SYS` load none, `FREEDOS\BIN` has none, `86box.cfg` has
+`mouse_type = none`, and `bare_boot` replaces the boot files anyway), so INT
+33h reaches the BIOS's dummy handler. This machine always provided a driver;
+`f117run --no-mouse` (INT 33h answers as without one) is now the default here.
+SETUP resets the mouse once; PLAYER polls INT 33h AX=3 and INT 21h AH=0Bh in
+its wait loop (591,735 times each over the intro). The intro's pictures and
+timing are the same either way, on both machines. 86Box with CuteMouse loaded
+(`--mouse-driver`, `mouse_type = msserial`) gives the same 1,275 pictures and the
+same steps as without (frame times within 108 cycles); START draws its own
+pointer on the roster screen in both. With our driver the roster screen's
+pointer area changes about every six frames (150 more picture changes in its
+last 28 s, against none on 86Box with CuteMouse): a lead for INT 33h, not for
+the profile.

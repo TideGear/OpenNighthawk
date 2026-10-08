@@ -95,8 +95,11 @@ make (Phase 4).
       `probe386.py` (ALU, memory forms, jumps, calls, INT, REP chunks with
       prefixes, VGA memory, ports). Open: the BIOS and DOS services this machine provides
       natively (86Box runs real BIOS and DOS code for them), the disk path, the
-      recompiled engine charging the same costs, then a frame-exact comparison
-      against 86Box.
+      recompiled engine charging the same costs.
+      Frame comparison (`frames386.py`, timing386.md): over the intro 1,238 of
+      1,275 pictures exact, drift +1,571 ms, all of it in seven load steps (EXEC,
+      overlays, DOS reads and writes, the BIOS mode set); between them it stays
+      within 24-28 frames.
 - [ ] **Rendered sound:** the register stream is exact (every AdLib write of
       the intro in order and value, above), which is what the original sends to
       its chip. Open: digitised speech and audible speaker output. How the OPL

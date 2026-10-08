@@ -6,6 +6,7 @@
  *           [--record FILE] [--replay FILE]
  *           [--hash-every N] [--hash-from N] [--peek LINEAR] [--dump LINEAR:LENGTH] [--observe FILE:FROM:TO] [--trace FROM:TO:FILE]
  *           [--coverage FILE] [--screen FILE.ppm] [--shots EVERY:PREFIX | --shots-vga PREFIX] [--shots-start CLOCK] [--shot-meta FILE]
+ *           [--shots-changed] [--frame-log FILE] [--no-mouse]
  *           [--fix ID|all]... [--list-fixes]
  *           [--opl-log FILE] [--midi-log FILE] [--speaker-log FILE]
  *
@@ -181,6 +182,31 @@ static void on_input(void *user, const machine_input *in)
     if (g_record) inputlog_write(g_record, in);
 }
 
+/* --shots-changed: a shot is written only when its picture differs from the
+ * last one written, so a long capture keeps each picture once, named by the
+ * clock at which it was first sampled. Returns whether it wrote. */
+static int shot_write_changed(const machine_t *m, const char *path)
+{
+    static present_frame f;
+    static uint32_t buf[640 * 400], last[640 * 400];
+    static int last_w, last_h;
+    int w, h;
+    present_capture(m, &f);
+    present_render(&f, buf, &w, &h, 0);
+    if (w == last_w && h == last_h && !memcmp(buf, last, (size_t)w * h * sizeof buf[0])) return 0;
+    memcpy(last, buf, (size_t)w * h * sizeof buf[0]);
+    last_w = w; last_h = h;
+    FILE *o = fopen(path, "wb");
+    if (!o) return 0;
+    fprintf(o, "P6\n%d %d\n255\n", w, h);
+    for (int i = 0; i < w * h; i++) {
+        uint8_t p[3] = { (uint8_t)(buf[i] >> 16), (uint8_t)(buf[i] >> 8), (uint8_t)buf[i] };
+        fwrite(p, 1, 3, o);
+    }
+    fclose(o);
+    return 1;
+}
+
 static uint64_t state_hash(const machine_t *m)
 {
     return machine_state_hash(m);
@@ -192,6 +218,9 @@ int main(int argc, char **argv)
     const char *record = NULL, *replay = NULL, *coverage = NULL, *opl_log = NULL;
     const char *midi_log = NULL, *speaker_log = NULL;
     const char *shot_meta_path = NULL;
+    const char *frame_log_path = NULL;     /* --frame-log FILE: each shot's clock, its picture's scan time, the steps so far, screen-off */
+    int shots_changed = 0;
+    int no_mouse = 0;                      /* --no-mouse: INT 33h answers as with no driver loaded */
     uint64_t steps = 100000000ull, ips = MACHINE_DEFAULT_IPS, hold_ms = 60, boot_ms = 0;
     uint64_t time_us = 0, hash_every = 0, hash_from = 0;
     uint64_t trace_from = 0, trace_to = 0;
@@ -256,6 +285,9 @@ int main(int argc, char **argv)
         }
         else if (!strcmp(a, "--shots-start") && v) { shot_start = strtoull(v, NULL, 0); i++; }
         else if (!strcmp(a, "--shot-meta") && v) { shot_meta_path = v; i++; }
+        else if (!strcmp(a, "--shots-changed")) shots_changed = 1;
+        else if (!strcmp(a, "--no-mouse")) no_mouse = 1;
+        else if (!strcmp(a, "--frame-log") && v) { frame_log_path = v; i++; }
         else if (!strcmp(a, "--shots-vga") && v) {
             shot_vga = 1; shot_every = 0;
             snprintf(shot_prefix, sizeof shot_prefix, "%s", v);
@@ -342,6 +374,7 @@ int main(int argc, char **argv)
         return 1;
     }
     m.on_input = on_input;
+    if (no_mouse) m.mouse_present = 0;
     if (boot_ms) { pc_advance_boot(&m, ips * boot_ms / 1000ull); steps += ips * boot_ms / 1000ull; }
     if (shot_every || shot_vga) next_shot = shot_start;
     if (shot_vga) {
@@ -352,6 +385,9 @@ int main(int argc, char **argv)
     }
     FILE *shot_meta = shot_meta_path ? fopen(shot_meta_path, "w") : NULL;
     if (shot_meta_path && !shot_meta) { fprintf(stderr, "cannot write %s\n", shot_meta_path); return 1; }
+    FILE *frame_log = frame_log_path ? fopen(frame_log_path, "w") : NULL;
+    if (frame_log_path && !frame_log) { fprintf(stderr, "cannot write %s\n", frame_log_path); return 1; }
+    if (frame_log) fprintf(frame_log, "icount,frame_icount,video_mode,steps,written,blank\n");
     if (shot_meta)
         fprintf(shot_meta, "requested_icount,frame_icount,video_mode,scan_valid,frame_blank,seq1,scan_part,scan_next,vsync_next,scan_frame,nonzero_pixels,nonblack_palette_entries,visible_pixels\n");
     for (int k = 0; k < g_ncmd; k++)
@@ -420,7 +456,15 @@ int main(int argc, char **argv)
                         (unsigned long long)m.scan_frame, nonzero_pixels,
                         nonblack_palette_entries, visible_pixels);
             }
-            present_write_ppm(&m, path);
+            int written = 1;
+            if (shots_changed) written = shot_write_changed(&m, path);
+            else present_write_ppm(&m, path);
+            if (frame_log) {
+                static present_frame lf;
+                present_capture(&m, &lf);
+                fprintf(frame_log, "%llu,%llu,%u,%llu,%d,%d\n", (unsigned long long)m.cpu.icount,
+                        (unsigned long long)lf.icount, m.video_mode, (unsigned long long)m.interp_steps, written, lf.blank);
+            }
             /* Keep the capture clock periodic: an instruction finishing
              * just past the deadline must not shift every later sample. */
             if (shot_vga) {
@@ -455,6 +499,7 @@ int main(int argc, char **argv)
     if (g_midi_log) fclose(g_midi_log);
     if (g_speaker_log) fclose(g_speaker_log);
     if (shot_meta) fclose(shot_meta);
+    if (frame_log) fclose(frame_log);
     double secs = (double)(clock() - t0) / CLOCKS_PER_SEC;
     printf("stopped at icount %llu (%s) after %.1f s host time, %.1f M instr/s; "
            "interpreted %llu; program %s; exit %s; final hash %016llx\n",
