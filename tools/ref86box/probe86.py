@@ -50,8 +50,9 @@ def bare_boot(fs, commands):
     environment variables, one buffer, few files, a small environment block (START stops with
     "Not enough memory!" on the 386 board under the stock FreeDOS boot, or with a mouse driver)."""
     fs.writetext("/FDAUTO.BAT", "\r\n".join(["@echo off", "cd \\F117A"] + list(commands)) + "\r\n")
-    fs.writetext("/fdconfig.sys", "LASTDRIVE=C\r\nBUFFERS=1\r\nFILES=10\r\nSTACKS=0,0\r\n"
+    fs.writetext("/fdconfig.sys", ("LASTDRIVE=C\r\nBUFFERS=%s\r\nFILES=10\r\nSTACKS=0,0\r\n"
                  "SHELL=\\FREEDOS\\BIN\\COMMAND.COM \\FREEDOS\\BIN /E:128 /P=\\FDAUTO.BAT\r\n")
+                 % os.environ.get("B86_BUFFERS", "1"))   # a test knob: DOS's sector buffers (1 leaves START its memory)
 
 
 def main():

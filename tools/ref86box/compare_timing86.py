@@ -18,8 +18,8 @@ import json
 import sys
 
 # Measured 7 Oct 2026 on the 386DX/33: 19 paired, 0.23 s, 1.80 s. The drift is made in the loading phases
-# (+0.4 s and +0.9 s), which the disk interface (ISA port I/O at the 86Box's bus speed) paces, not the CPU:
-# 40 MHz changes it by 0.1 s. The 6 MHz 286 drifted 8.35 s, a 25 MHz 286 2.45 s.
+# (+0.57 s at the title pictures, +0.80 s at the credits' load); the disk path explains 0.24 s and the
+# second step is neither disk nor CPU (build_86box.md). The 6 MHz 286 drifted 8.35 s, a 25 MHz 286 2.45 s.
 LIMITS = dict(min_paired=17, max_duration_diff=0.35, max_drift=2.2)
 
 

@@ -86,7 +86,9 @@ make (Phase 4).
       routine PC-parity check (pictures, music and saved data, against limits
       measured on 6 Oct 2026) and `tools/fidelity_all.py` the machine probe.
       Open: script flight and more saved data (a career) on both; find what
-      paces the remaining 2 s of intro drift on 86Box (the disk interface) and
+      paces 0.8 s of the 86Box intro drift (one step at the credits'
+      picture load, not disk and not CPU; the disk path explains 0.24 s of
+      the 2.0, tools/ref86box/build_86box.md) and
       the pitch-bend channels' different write positions. Decided (8 Oct 2026):
       DOSBox-X and 86Box are the routine references (`pc_parity.py`,
       `fidelity_all.py`, the closed-loop supply drop on both); GOG's DOSBox is
@@ -117,7 +119,8 @@ make (Phase 4).
       calibrator is a phase-dependent diagnostic, `tools/fade_calibration.py`,
       not a verdict, and start phase is what moved the music note above);
       against 86Box's 386DX/33 the intro's scenes keep their lengths within
-      0.31 s and drift 2.0 s over the intro (disk transfer, not CPU), and the
+      0.31 s and drift 2.0 s over the intro (0.24 s of it the disk path, 0.8 s
+      one step at the credits' load that is neither disk nor CPU), and the
       game's code runs there at 6.28 MIPS against this model's 9.00 M clocks a
       second, a ratio set by the polling loops (`tools/ref86box/instr86.py`). The
       intro music's channel-3 note at 29.7 s is settled (7 Oct): it is the

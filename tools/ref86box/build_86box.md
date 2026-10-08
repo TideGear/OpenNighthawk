@@ -123,9 +123,16 @@ BIOS; `opt495sx.ami` is fetched from the 86Box roms repository), i386DX at 33 MH
 configuration with BIOS defaults", F10, Y) and keeping the NVR 86Box saves on
 exit. Scene timing against this machine, from the traced `frames.csv`
 (`compare_timing86.py`): the 6 MHz 286 drifted 8.35 s over the intro, a 25 MHz
-286 2.45 s, the 386DX/33 1.8-2.0 s (scene lengths within 0.31 s); 40 MHz
-changes it by 0.1 s, so what remains is paced by the disk interface (ISA port
-I/O), not the CPU. All traced runs use `probe86.bare_boot` (the game needs
+286 2.45 s, the 386DX/33 1.8-2.0 s (scene lengths within 0.31 s). Where it
+builds (8 Oct 2026, per paired scene): +0.57 s between the scenes at 3.9 and 13.0 s
+(the title pictures load) and +0.80 s between 35.8 and 45.6 s (`credit.PAN` loads at
+41.0 s), then a few hundredths a scene. The disk path is part of the first step only: a
+16-bit AT IDE controller (`hdc_1 = ide_isa`, the drive written into the CMOS as type
+47, 940/8/17) and 20 DOS buffers (`B86_BUFFERS=20` for `probe86.bare_boot`) take the
+drift from 1.98 s to 1.74 s and the first step to +0.31 s. A 40 MHz CPU takes the first
+step to +0.47 s and leaves the second at +0.80 s, so the second is paced by neither the
+disk nor the CPU (a fixed wait or a sync point that falls one way here and the other on
+this machine; not located). All traced runs use `probe86.bare_boot` (the game needs
 almost all of conventional memory under this BIOS).
 
 **Instructions against this model's clocks** (`instr86.py`, from the same frames.csv and a
