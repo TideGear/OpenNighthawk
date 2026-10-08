@@ -3485,6 +3485,175 @@ static int player_find_in_table(machine_t *m)
     return 1;
 }
 
+/* The line drawer (START 0x0829A, END 0x04206, DSWAP 0x00790; the three programs carry the
+ * same routine): line(surface, x0, y0, x1, y1, colour) draws a Bresenham line
+ * of one-byte pixels into the surface whose segment is word `surface` of a
+ * table, one row at a time through a table of row offsets, clipping each
+ * pixel to 320 columns and `rows` rows. Arguments, near, at [bp+4]..[bp+14]:
+ * a pointer to the surface number, then x0, y0, x1, y1 and the colour.
+ *
+ * The ends are ordered by x (the first compare, signed in START and END,
+ * unsigned in DSWAP), the steeper axis is made the major one (AH = 1 when y
+ * is), and the pixel loop steps the major axis every pass and the minor one
+ * when the running error DX, stepped by the minor length BP and wound back
+ * by the major length, crosses zero. Both lengths and the minor step live in
+ * three words of the data segment, which stay written. The routine runs
+ * pixel by pixel, a pass being at most 27 instructions; when the next pass
+ * would not fit before the next event it leaves the loop head as IP with the
+ * state of the original there, and the original code carries on. Flags,
+ * registers and words are all the original's: BX is the last pixel's offset,
+ * CX the count run out (-1), AX the colour with AH the axis flag, DX the
+ * error, and SI, DI, ES, BP are restored. */
+typedef struct {
+    uint16_t segment_table;       /* segment of surface n at [segment_table + 2n] */
+    uint16_t row_table;           /* offset of row y at [row_table + 2y] */
+    uint16_t step_word;           /* the minor axis's direction, 1 or -1 */
+    uint16_t major_word;          /* the major axis's length */
+    uint16_t minor_word;          /* the minor axis's length */
+    uint16_t rows;                /* rows past which a pixel is clipped */
+    int      unsigned_compares;   /* the two ordering compares test unsigned (DSWAP) */
+    uint16_t loop_ip;             /* the pixel loop's head */
+    uint16_t exit_ip;             /* the first of the five instructions that leave */
+} line_variant;
+
+static int line_draw(machine_t *m, const line_variant *v)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 60)) return 0;
+    const uint16_t ss = c->seg[S_SS];
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->seg[S_ES]);
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->r[R_DI]);
+    const uint16_t bp = c->r[R_BP];
+    uint16_t bx = seg_read16(c, ss, (uint16_t)(bp + 4));
+    bx = ds_get(c, bx);
+    bx = x86_shift(c, 4, bx, 1, 1);                               /* shl bx, 1 */
+    c->seg[S_ES] = ds_get(c, (uint16_t)(bx + v->segment_table));
+    uint16_t ax = seg_read16(c, ss, (uint16_t)(bp + 6));
+    bx = seg_read16(c, ss, (uint16_t)(bp + 8));
+    uint16_t cx = seg_read16(c, ss, (uint16_t)(bp + 10));
+    uint16_t dx = seg_read16(c, ss, (uint16_t)(bp + 12));
+    unsigned n = 5 + 4 + 4 + 2;
+    alu_sub(c, ax, cx, 1, 0);                                     /* cmp ax, cx */
+    if (!x86_cond(c, v->unsigned_compares ? 0x6 : 0xE)) {         /* jle / jbe */
+        uint16_t t = cx; cx = ax; ax = t;                         /* xchg cx, ax */
+        t = dx; dx = bx; bx = t;                                  /* xchg dx, bx */
+        n += 2;
+    }
+    uint16_t si = ax, di = bx;
+    n += 3;                                                       /* mov si; mov di; jne */
+    int point = 0;
+    if (c->flags & F_ZF) {                                        /* the x ends are equal */
+        alu_sub(c, bx, dx, 1, 0);                                 /* cmp bx, dx */
+        n += 2;
+        if (c->flags & F_ZF) {
+            cx = (uint16_t)alu_sub(c, cx, cx, 1, 0);              /* sub cx, cx */
+            ax = (uint16_t)((ax & 0xFF00) | mem_read8(c, phys(ss, (uint16_t)(bp + 14))));
+            n += 3;
+            point = 1;
+        }
+    }
+    uint16_t bpv = bp;                                            /* BP, until the loop */
+    if (!point) {
+        ds_put(c, v->step_word, 1);
+        cx = (uint16_t)alu_sub(c, cx, ax, 1, 0);                  /* sub cx, ax */
+        dx = (uint16_t)alu_sub(c, dx, bx, 1, 0);                  /* sub dx, bx */
+        n += 4;
+        if (x86_cond(c, 0x8)) {                                   /* jns not taken */
+            dx = (uint16_t)alu_sub(c, 0, dx, 1, 0);               /* neg dx */
+            ds_put(c, v->step_word, (uint16_t)alu_sub(c, 0, ds_get(c, v->step_word), 1, 0));
+            n += 2;
+        }
+        ax = (uint16_t)((ax & 0xFF00) | mem_read8(c, phys(ss, (uint16_t)(bp + 14))));
+        ax = (uint16_t)(ax & 0x00FF);                             /* sub ah, ah */
+        alu_sub(c, 0, 0, 0, 0);
+        alu_sub(c, cx, dx, 1, 0);                                 /* cmp cx, dx */
+        n += 4;
+        if (!x86_cond(c, v->unsigned_compares ? 0x3 : 0xD)) {     /* jge / jae not taken */
+            ax = (uint16_t)(ax | 0x0100);                         /* mov ah, 1 */
+            const uint16_t t = dx; dx = cx; cx = t;               /* xchg dx, cx */
+            n += 2;
+        }
+        ds_put(c, v->major_word, cx);
+        ds_put(c, v->minor_word, dx);
+        bpv = ds_get(c, v->minor_word);
+        cx = ds_get(c, v->major_word);
+        dx = cx;
+        dx = (uint16_t)alu_inc(c, dx, 1);                         /* inc dx */
+        dx = x86_shift(c, 5, dx, 1, 1);                           /* shr dx, 1 */
+        dx = (uint16_t)alu_sub(c, 0, dx, 1, 0);                   /* neg dx */
+        n += 8;
+    }
+    c->icount += n;
+    c->r[R_AX] = ax; c->r[R_BX] = bx; c->r[R_CX] = cx; c->r[R_DX] = dx;
+    c->r[R_SI] = si; c->r[R_DI] = di; c->r[R_BP] = bpv;
+    for (;;) {
+        if (!room(c, 28)) { c->ip = v->loop_ip; return 1; }
+        unsigned k = 2;                                           /* cmp si, 0; js */
+        alu_sub(c, si, 0, 1, 0);
+        int clip = x86_cond(c, 0x8);
+        if (!clip) {
+            alu_sub(c, si, 0x140, 1, 0); k += 2;                  /* cmp si, 140h; jge */
+            clip = x86_cond(c, 0xD);
+        }
+        if (!clip) {
+            alu_sub(c, di, 0, 1, 0); k += 2;                      /* cmp di, 0; js */
+            clip = x86_cond(c, 0x8);
+        }
+        if (!clip) {
+            alu_sub(c, di, v->rows, 1, 0); k += 2;                /* cmp di, rows; jge */
+            clip = x86_cond(c, 0xD);
+        }
+        if (!clip) {
+            bx = di;
+            bx = x86_shift(c, 4, bx, 1, 1);                       /* shl bx, 1 */
+            bx = ds_get(c, (uint16_t)(bx + v->row_table));
+            bx = (uint16_t)alu_add(c, bx, si, 1, 0);              /* add bx, si */
+            mem_write8(c, phys(c->seg[S_ES], bx), (uint8_t)ax);
+            k += 5;
+        }
+        cx = (uint16_t)alu_dec(c, cx, 1);                         /* dec cx */
+        k += 2;                                                   /* dec; js */
+        if (x86_cond(c, 0x8)) { c->icount += k; break; }
+        const int major_y = (ax >> 8) != 0;
+        alu_logic(c, (ax >> 8) & 0xFF, 0);                        /* test ah, 0FFh */
+        k += 2;                                                   /* test; jne */
+        if (!major_y) { si = (uint16_t)alu_inc(c, si, 1); k += 2; }    /* inc si; jmp */
+        else          { di = (uint16_t)alu_add(c, di, ds_get(c, v->step_word), 1, 0); k += 1; }
+        dx = (uint16_t)alu_add(c, dx, bpv, 1, 0);                 /* add dx, bp */
+        k += 2;                                                   /* add; js */
+        if (!x86_cond(c, 0x8)) {
+            dx = (uint16_t)alu_sub(c, dx, ds_get(c, v->major_word), 1, 0);
+            alu_logic(c, (ax >> 8) & 0xFF, 0);                    /* test ah, 0FFh */
+            k += 3;                                               /* sub; test; jne */
+            if (!major_y) { di = (uint16_t)alu_add(c, di, ds_get(c, v->step_word), 1, 0); k += 2; }   /* add; jmp */
+            else          { si = (uint16_t)alu_inc(c, si, 1); k += 1; }
+            k += 1;                                               /* jmp to the head */
+        }
+        c->icount += k;
+        c->r[R_AX] = ax; c->r[R_BX] = bx; c->r[R_CX] = cx; c->r[R_DX] = dx;
+        c->r[R_SI] = si; c->r[R_DI] = di;
+    }
+    c->r[R_AX] = ax; c->r[R_BX] = bx; c->r[R_CX] = cx; c->r[R_DX] = dx;
+    c->r[R_SI] = si; c->r[R_DI] = di;
+    if (!room(c, 5)) { c->ip = v->exit_ip; return 1; }
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->seg[S_ES] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 5;
+    near_ret(c);
+    return 1;
+}
+static const line_variant LINE_START = { 0xCAB0, 0x67F2, 0x67EC, 0x67E4, 0x67E6, 0xA8, 0, 0x8305, 0x834D };
+static const line_variant LINE_END = { 0x55D0, 0x2234, 0x222E, 0x2226, 0x2228, 0xA8, 0, 0x4271, 0x42B9 };
+static const line_variant LINE_DSWAP = { 0x29E0, 0x074C, 0x073E, 0x0736, 0x0738, 0x140, 1, 0x07FB, 0x0843 };
+static int start_line(machine_t *m) { return line_draw(m, &LINE_START); }
+static int end_line(machine_t *m) { return line_draw(m, &LINE_END); }
+static int dswap_line(machine_t *m) { return line_draw(m, &LINE_DSWAP); }
+
 /* The C runtime's stack check (START 0x0A4C6, END 0x05B4E; VGAME's copy at
  * 0x0F8F0 is never run by any route, so it is left to the original): AX
  * bytes are taken off the stack unless that would wrap or pass the limit
@@ -6395,6 +6564,9 @@ static const recomp_override MATCHED[] = {
     { "matched", "START.EXE", START_47304, 0x0000, 0xA7BA, heap_search, "near-heap free-block search", 1 },
     { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x263E, heap_search, "near-heap free-block search", 1 },
     { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x0F32, player_pick_byte, "one of two bytes picked by an argument", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x829A, start_line, "line drawer", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x4206, end_line, "line drawer", 1 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x0790, dswap_line, "line drawer", 1 },
     { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x1244, setup_strcpy_near, "copy a string, near pointers", 1 },
     { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x125F, setup_strcpy_far, "copy a string to a far destination", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x4B72, end_strcpy_from_far, "copy a string from a far source", 1 },
