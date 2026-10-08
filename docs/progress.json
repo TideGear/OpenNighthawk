@@ -60,9 +60,9 @@
       {
         "item": "A 386DX/33 timing profile, frame-exact against 86Box",
         "weight": 10.35,
-        "done": 0.25,
+        "done": 0.6,
         "kind": "estimate",
-        "evidence": "Shown 8 Oct 2026: the interpreter under --timing 386 matches 86Box's 386DX/33 to the cycle on every block of tools/ref86box/probe386.py (instruction costs, prefetch, REP chunks, VGA bus, port costs; memory at 2 wait states). Open: the BIOS and DOS services this machine provides natively, the disk path, the recompiled engine, a frame-exact comparison against 86Box."
+        "evidence": "Shown 8 Oct 2026: the interpreter under --timing 386 matches 86Box's 386DX/33 to the cycle on 92 of 93 probe blocks (instructions, prefetch, REP chunks, VGA bus, ports, the BIOS, MS-DOS 5.00 and Microsoft MOUSE.COM 6.26 services); the game's frame rate in flight is S 5-9 against 86Box's 6-9 (DOSBox's model 14-15); over the intro's animation the scenes hold 86Box's pace to a frame. Open: file loading (+1.48 s of drift in the loads, against a RAM-disk-speed disk model), the recompiled engine charging the costs (speed, and matched routines under the profile)."
       }
     ],
     "P2": [

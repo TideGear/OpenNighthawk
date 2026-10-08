@@ -98,13 +98,18 @@ make (Phase 4).
       INT 16h, 1Ah; INT 21h AH=0Bh and 2Ch; INT 33h): 92 of 93 probe blocks
       exact against an MS-DOS 5.00 reference VM with Microsoft MOUSE.COM 6.26
       (`build_msdos_vm.py`; 5.00 and 6.22 cost the same on the game's calls,
-      4.01 10% less, FreeDOS twice on 2Ch; CuteMouse 45% cheaper than 6.26). Frame comparison (`frames386.py`, timing386.md): over the intro's
-      animation the scenes now hold 86Box's pace to a frame; the drift left
-      (+1.48 s at START's roster screen) is in the loads: DOS file reads and
-      writes, program starts and overlays. Open: those, the mouse driver (the
-      file loading (the VM's disk is a RAM-disk-speed model, so load times are
-      not period ones; the frame comparison re-aligns at loads), the recompiled
-      engine charging the same costs.
+      4.01 10% less, FreeDOS twice on 2Ch; CuteMouse 45% cheaper than 6.26).
+      Shown: the game's frame rate in flight (S) is 5-9 under the profile and
+      6-9 on 86Box, against 14-15 on DOSBox's model, so the same inputs now fly
+      at the period PC's pace (`stick_response.py --machine machine386`); over
+      the intro's animation the scenes hold 86Box's pace to a frame
+      (`frames386.py`, timing386.md). The drift left (+1.48 s at START's roster
+      screen) is in the loads: DOS file reads and writes, program starts and
+      overlays. Open: file loading (the VM's disk is a RAM-disk-speed model, so
+      its load times are not period ones; the frame comparison re-aligns at
+      loads), and the recompiled engine charging the same costs, which only
+      speeds the profile up (it plays at about 10 times real time through the
+      interpreter) and lets matched routines run under it.
 - [ ] **Rendered sound:** the register stream is exact (every AdLib write of
       the intro in order and value, above), which is what the original sends to
       its chip. How the OPL waveform is synthesised is the emulator's, not the

@@ -240,6 +240,24 @@ pointer area changes about every six frames (150 more picture changes in its
 last 28 s, against none on 86Box with CuteMouse): a lead for INT 33h, not for
 the profile.
 
+## The game's frame rate in flight
+
+What the profile is for: the game steps its flight model by its own frame rate
+(S, [0x368E], frames a second) and reads the stick once a frame, so S decides how
+the same inputs fly. `stick_response.py` reads S through the supply-drop route's
+first flight minutes on each machine (8 Oct 2026):
+
+| machine | S in flight |
+|---|---|
+| this machine, DOSBox's model (9 M clocks a second) | 14, 15 |
+| DOSBox-X | 13, 15 |
+| 86Box 386DX/33 | 6, 7, 8, 9 |
+| this machine, `--timing 386` | 5, 7, 8, 9 |
+
+So under the profile the game runs at the period PC's pace, not DOSBox's. A single
+stick tap's effect (the same table) varies with where the tap falls in a frame and
+does not compare closely at three repeats a size; S is the figure that does.
+
 ## Services this machine answers natively
 
 86Box runs real BIOS and DOS code (the IBM VGA BIOS, the board's AMI BIOS,

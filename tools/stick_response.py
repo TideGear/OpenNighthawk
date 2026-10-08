@@ -12,6 +12,7 @@ key holds assume this machine's response, and the 86Box game runs at about half 
 """
 import argparse
 import json
+import os
 import statistics
 import sys
 import tempfile
@@ -26,13 +27,14 @@ TAPS = [(key, ms) for ms in (20, 60, 120, 200, 400) for key in (r"\U", r"\L")] *
 
 
 def run(machine, start):
-    machine.type(start + 100_000_000, "+")
-    machine.type(start + 170_000_000, r"\D", hold_ms=1000)
-    first = start + 400_000_000
-    plan = [(first + i * 27_000_000, key, ms) for i, (key, ms) in enumerate(TAPS)]
+    k = machine.ips / 9_000_000          # the clock constants below are the 9 MHz model's: scaled to seconds
+    machine.type(start + int(100_000_000 * k), "+")
+    machine.type(start + int(170_000_000 * k), r"\D", hold_ms=1000)
+    first = start + int(400_000_000 * k)
+    plan = [(first + int(i * 27_000_000 * k), key, ms) for i, (key, ms) in enumerate(TAPS)]
     rows = []
-    while machine.clock < plan[-1][0] + 40_000_000:
-        if machine.clock - start > 190_000_000:
+    while machine.clock < plan[-1][0] + int(40_000_000 * k):
+        if machine.clock - start > int(190_000_000 * k):
             s = pilot_state(machine)
             rows.append((machine.clock, s["pitch"], s["roll"], s["S"], s["agl"]))
         for at, key, ms in plan:
@@ -55,24 +57,30 @@ def run(machine, start):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--machine", choices=("machine", "dosbox-x", "86box"), required=True)
+    ap.add_argument("--machine", choices=("machine", "machine386", "dosbox-x", "86box"), required=True,
+                    help="machine386: this machine under --timing 386 (the interpreter, 33.33 M cycles a second)")
     ap.add_argument("--data", required=True)
     ap.add_argument("--out", type=Path, required=True)
     a = ap.parse_args()
     route = (HERE / "routes" / "cargo_pilot.input").read_text().splitlines()
     time_us = int(route[0].split("time_us=")[1])
-    if a.machine == "machine":
+    if a.machine in ("machine", "machine386"):
         a.out.mkdir(parents=True)
         replay = [l.split() for l in route[1:] if l and not l.startswith("#")]
         pos = 0
-        with Machine(a.data, tempfile.mkdtemp(dir=a.out), engine="recomp", time_us=time_us) as m:
+        if a.machine == "machine386":
+            os.environ["F117R_TIMING"] = "386"
+        ips, engine = (33_333_333, "interp") if a.machine == "machine386" else (9_000_000, "recomp")
+        k = ips / 9_000_000
+        with Machine(a.data, tempfile.mkdtemp(dir=a.out), engine=engine, time_us=time_us, ips=ips) as m:
             while m.program != "VGAME.EXE":
-                while pos < len(replay) and int(replay[pos][1]) < m.clock + m.ips:
+                while pos < len(replay) and int(int(replay[pos][1]) * k) < m.clock + m.ips:
                     q = replay[pos]
-                    if q[0] == "K": m.key(int(q[1]), int(q[2], 16))
-                    else: m.mouse(int(q[1]), *map(int, q[2:5]))
+                    at = int(int(q[1]) * k)
+                    if q[0] == "K": m.key(at, int(q[2], 16))
+                    else: m.mouse(at, *map(int, q[2:5]))
                     pos += 1
-                m.run_until(m.clock + 90_000)
+                m.run_until(m.clock + int(90_000 * k))
             result = run(m, m.start)
     else:
         a.out.mkdir(parents=True)
