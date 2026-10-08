@@ -9,7 +9,7 @@ evidence linked or in the commit, not narrated here.
 
 The order of the phases is the project's: **1:1 parity first** - the same
 player actions playing out as on the original's hardware - then understood
-(named) code, optional, then fixes and enhancements - each switchable, never
+(named) code, then fixes and enhancements - each switchable, never
 instead of parity - and last the checks only people and outside references can
 make (Phase 4).
 
@@ -140,13 +140,7 @@ not the recompilation:
       (`tools/career_chain.py`, `career_regular_realistic.front`) and stopped:
       flying 89 more scripted sorties would test the pilot, not the game.
 
-## Phase 2 - understood code (optional)
-
-Naming routines and replacing translations with readable C changes nothing a
-player sees, and the fixes and the presentation work do not depend on it (fixes
-attach as code overrides; the presentation hooks the drawing primitives), so
-since 8 Oct 2026 this phase is optional: it stays here and in the scoreboard but
-not in the overall figure ([progress.md](progress.md)).
+## Phase 2 - understood code
 
 - [ ] Name the translated routines and data, with explanations, drawing on the
       Reimp's mapping; matched functions replacing translations one at a time,

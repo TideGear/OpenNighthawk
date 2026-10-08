@@ -18,11 +18,11 @@ that they can be checked and argued with.
   evidence beside it, and an estimate is only raised with new evidence.
 
 A phase's percentage is its items' weighted completion. **All** is the
-phases weighted by their share of the whole project's effort: Phase 1 59%,
-Phase 3 34%, Phase 4 7%. Phase 2 is optional since 8 Oct 2026 (it changes
-nothing a player sees) and is shown but weighted 0. Phase 1 is the largest
-because building an exact recompilation, its machine and its proof was the
-bulk of the work; Phase 3 holds a new presentation path for 60+ fps and 4K.
+phases weighted by their share of the whole project's effort: Phase 1 42%,
+Phase 2 29%, Phase 3 24%, Phase 4 5%. Phase 1 is the largest because building
+an exact recompilation, its machine and its proof was the bulk of the work;
+Phases 2 and 3 are large too (thousands of routines to name and match; a new
+presentation path for 60+ fps and 4K), and their weights say so.
 Items closed by scope keep only the weight of the work done (8 Oct 2026: the
 roadmap's "Settled" list), so dropping work never reads as finishing it. Phase 4 holds
 what only a person or an independent reference can settle (a person playing

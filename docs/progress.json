@@ -1,10 +1,10 @@
 {
   "_about": "Roadmap progress. Each phase is a weighted list of items; weight is the item's share of that phase's effort, done its completion from 0 to 1. kind 'measured' means tools/progress.py computes done from the repository (or a census figure it records here); 'estimate' means a judgement, with its evidence. See docs/progress.md.",
   "phase_weights": {
-    "P1": 59,
-    "P2": 0,
-    "P3": 34,
-    "P4": 7
+    "P1": 42,
+    "P2": 29,
+    "P3": 24,
+    "P4": 5
   },
   "phases": {
     "P1": [
