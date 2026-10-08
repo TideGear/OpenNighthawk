@@ -8971,9 +8971,8 @@ static int vgame_mc32_bisect_both(machine_t *m)
 {
     cpu_t *c = &m->cpu;
     if (!room(c, 5 + 2 + 8 + 1)) return 0;
-    const uint16_t ds = c->seg[S_DS];
     ds_put(c, 0x85E0, 0x20);
-#define END(p, k) seg_read16(c, ds, (uint16_t)((p) + 2 * (k)))
+#define END(p, k) seg_read16(c, c->seg[S_DS], (uint16_t)((p) + 2 * (k)))
     c->r[R_AX] = END(c->r[R_DI], 0); c->r[R_DX] = END(c->r[R_DI], 1);
     c->r[R_BX] = END(c->r[R_DI], 2); c->r[R_CX] = END(c->r[R_DI], 3);
     c->icount += 5;
@@ -9005,10 +9004,10 @@ static int vgame_mc32_bisect_both(machine_t *m)
             if (!(c->flags & F_ZF)) { set_flag(c, F_CF, 1); c->icount += 2; break; }   /* out */
             end = di;
         }
-        seg_write16(c, ds, end, c->r[R_AX]);
-        seg_write16(c, ds, (uint16_t)(end + 2), c->r[R_DX]);
-        seg_write16(c, ds, (uint16_t)(end + 4), c->r[R_BX]);
-        seg_write16(c, ds, (uint16_t)(end + 6), c->r[R_CX]);
+        seg_write16(c, c->seg[S_DS], end, c->r[R_AX]);
+        seg_write16(c, c->seg[S_DS], (uint16_t)(end + 2), c->r[R_DX]);
+        seg_write16(c, c->seg[S_DS], (uint16_t)(end + 4), c->r[R_BX]);
+        seg_write16(c, c->seg[S_DS], (uint16_t)(end + 6), c->r[R_CX]);
         if (to_si) {                                              /* from DI's end again */
             c->r[R_AX] = END(di, 0); c->r[R_DX] = END(di, 1); c->r[R_BX] = END(di, 2); c->r[R_CX] = END(di, 3);
             c->icount += 4;
@@ -10440,6 +10439,353 @@ static int vgame_scene_hit_lookup(machine_t *m)
     return 1;
 }
 
+/* VGAME 0x0B991, camimage_target_model(obj): the model the camera image
+ * shows for mission object obj (16-byte records at B2D0, the type word at
+ * +0Ch). Its type unless the record's byte +6 has bit 7 (it is hit): then
+ * the decoded scene word (0x0C436) indexes the per-type flag tables (the
+ * table for its high byte at [0A60 + 2 * high], the byte at the low byte);
+ * flag 20h keeps the type with 100h set, else the wreck - 100h plus the
+ * mission's [C0D8] when the object was destroyed outright (0x0B9F6), the
+ * theatre's [DED0] when not, sign-extended. SI, DI preserved. */
+static int vgame_camimage_target_model(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 8)) return 0;
+    x86_enter(c, 0x0A, 0);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_SI]);
+    c->r[R_BX] = x86_shift(c, 4, FRAME(4), 4, 1);
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] - 0x4D24)));
+    c->r[R_SI] = c->r[R_BX];
+    c->icount += 7;
+    NEAR_THEN(0xC436, 0xB9A6, 0, 20);
+    c->r[R_BX] = cpu_pop16(c);
+    alu_logic(c, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_SI] - 0x4D2A))) & 0x80, 0);
+    c->icount += 3;
+    unsigned n;
+    if (c->flags & F_ZF) {                                        /* not hit: its own type */
+        c->r[R_BX] = x86_shift(c, 4, FRAME(4), 4, 1);
+        c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] - 0x4D24));
+        n = 3;
+    } else {
+        set_r8(c, R_CL, 8);
+        c->r[R_BX] = c->r[R_AX];
+        c->r[R_DI] = (uint16_t)alu_logic(c, c->r[R_AX] & 0xFF, 1);
+        c->r[R_BX] = x86_shift(c, 7, c->r[R_BX], 8, 1);
+        c->r[R_BX] = x86_shift(c, 4, c->r[R_BX], 1, 1);
+        c->r[R_BX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0x0A60));
+        set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] + c->r[R_DI]))));
+        alu_logic(c, get_r8(c, R_AL) & 0x20, 0);
+        c->icount += 10;
+        if (!(c->flags & F_ZF)) {                                 /* the type, marked */
+            c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_SI] - 0x4D24));
+            set_r8(c, R_AH, (uint8_t)alu_logic(c, get_r8(c, R_AH) | 1, 0));
+            n = 3;
+        } else {                                                  /* the wreck */
+            cpu_push16(c, FRAME(4));
+            c->icount += 1;
+            NEAR_THEN(0xB9F6, 0xB9D5, 0, 12);
+            c->r[R_BX] = cpu_pop16(c);
+            alu_logic(c, c->r[R_AX], 1);
+            const int outright = !(c->flags & F_ZF);
+            set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_DS], outright ? 0xC0D8 : 0xDED0)));
+            c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);
+            set_r8(c, R_AH, (uint8_t)alu_add(c, get_r8(c, R_AH), 1, 0, 0));
+            n = 3 + (outright ? 2 : 1) + 3;
+        }
+    }
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    x86_leave(c);
+    c->icount += n + 4;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 114A:0461 (0x11901), camimage_scale(kind, v), far: v scaled by a
+ * camera image kind - 0: v/2, 1: v/2 + v/8, 2: v/2 + v/4, 3: v/2 + v/4 +
+ * v/8 (each term its own arithmetic shift), others: v - written back to
+ * v's argument slot and returned. */
+static int vgame_camimage_scale(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 25)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_AX] = FRAME(6);
+    alu_logic(c, c->r[R_AX], 1);
+    unsigned n = 5;
+    int kind = 0;
+    if (!(c->flags & F_ZF)) {
+        for (kind = 1; kind <= 3; kind++) {
+            c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1);
+            n += 2;
+            if (c->flags & F_ZF) break;
+        }
+    }
+    if (kind == 0) {
+        SETFRAME(8, x86_shift(c, 7, FRAME(8), 1, 1));
+        n += 2;
+    } else if (kind <= 3) {
+        c->r[R_AX] = x86_shift(c, 7, FRAME(8), 1, 1);
+        c->r[R_CX] = x86_shift(c, 7, FRAME(8), kind == 1 ? 3 : 2, 1);
+        n += 4;
+        if (kind == 3) {
+            c->r[R_DX] = x86_shift(c, 7, FRAME(8), 3, 1);
+            c->r[R_CX] = (uint16_t)alu_add(c, c->r[R_CX], c->r[R_DX], 1, 0);
+            n += 3;
+        }
+        c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], c->r[R_CX], 1, 0);
+        SETFRAME(8, c->r[R_AX]);
+        n += kind == 1 ? 3 : 4;                                   /* add, mov, jmp (and the jump there) */
+    } else n += 1;                                                /* jmp */
+    c->r[R_AX] = FRAME(8);
+    x86_leave(c);
+    c->icount += n + 3;
+    far_ret(c);
+    return 1;
+}
+
+/* VGAME 0x00871, scene_cell_index(level, x, y): the terrain cell index at
+ * (x, y) in the five-level map hierarchy, AX (AH 0). Level 4 cells are
+ * offset by 2 (the slots are moved in place); a cell outside 0 ..
+ * [0506 + 2 * level] - 1 on either axis answers 0. Level 4 reads the byte
+ * map at B03C (8 wide), level 3 the one at 9F98 (16 wide); levels 2, 1
+ * and 0 take their parent (level + 1 at (x >> 2, y >> 2), by recursion)
+ * and read its 4x4 block - 16 bytes a parent - at 9D40, 9B38 and 9934,
+ * at (y & 3) * 4 + (x & 3). Any other level leaves AX as the switch's
+ * countdown left it. SI preserved. */
+static int vgame_scene_cell_index(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 40)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->r[R_SI]);
+    alu_sub(c, FRAME(4), 4, 1, 0);
+    unsigned n = 5;
+    if (c->flags & F_ZF) {
+        SETFRAME(6, (uint16_t)alu_add(c, FRAME(6), 2, 1, 0));
+        SETFRAME(8, (uint16_t)alu_add(c, FRAME(8), 2, 1, 0));
+        n += 2;
+    }
+    /* inside the level's map? */
+    int inside = 0;
+    alu_sub(c, FRAME(6), 0, 1, 0);
+    n += 2;
+    if (!x86_cond(c, 0xC)) {
+        alu_sub(c, FRAME(8), 0, 1, 0);
+        n += 2;
+        if (!x86_cond(c, 0xC)) {
+            c->r[R_AX] = FRAME(6);
+            c->r[R_BX] = x86_shift(c, 4, FRAME(4), 1, 1);
+            alu_sub(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x506)), c->r[R_AX], 1, 0);
+            n += 5;
+            if (!x86_cond(c, 0xE)) {
+                c->r[R_AX] = FRAME(8);
+                alu_sub(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x506)), c->r[R_AX], 1, 0);
+                n += 3;
+                inside = x86_cond(c, 0xF);
+            }
+        }
+    }
+    if (!inside) {
+        c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+        c->r[R_SI] = cpu_pop16(c);
+        x86_leave(c);
+        c->icount += n + 4;
+        near_ret(c);
+        return 1;
+    }
+    /* the switch on the level */
+    c->r[R_AX] = FRAME(4);
+    n += 2;
+    alu_logic(c, c->r[R_AX], 1);
+    n += 2;
+    int level = 0;
+    if (!(c->flags & F_ZF)) {
+        for (level = 1; level <= 4; level++) {
+            c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1);
+            n += 2;
+            if (c->flags & F_ZF) break;
+        }
+    }
+    if (level > 4) {
+        c->r[R_SI] = cpu_pop16(c);
+        x86_leave(c);
+        c->icount += n + 3;
+        near_ret(c);
+        return 1;
+    }
+    if (level >= 2) n += 1;                                       /* jmp to the case */
+    if (level == 4) {
+        c->r[R_SI] = x86_shift(c, 4, FRAME(8), 3, 1);
+        c->r[R_BX] = FRAME(6);
+        set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] + c->r[R_SI] - 0x4FC4))));
+        n += 4;
+    } else if (level == 3) {
+        c->r[R_SI] = x86_shift(c, 4, FRAME(8), 4, 1);
+        c->r[R_BX] = FRAME(6);
+        set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] + c->r[R_SI] - 0x6068))));
+        n += 5;
+    } else {                                                      /* a 4x4 block of the parent cell */
+        static const uint16_t call_at[3] = { 0x0946, 0x0914, 0x08E2 }, block[3] = { 0x9934, 0x9B38, 0x9D40 };
+        c->r[R_AX] = x86_shift(c, 7, FRAME(8), 2, 1);
+        cpu_push16(c, c->r[R_AX]);
+        c->r[R_AX] = x86_shift(c, 7, FRAME(6), 2, 1);
+        cpu_push16(c, c->r[R_AX]);
+        cpu_push16(c, (uint16_t)(level + 1));
+        c->icount += n + 7;
+        NEAR_THEN(0x0871, (uint16_t)(call_at[level] + 3), 0, 11 + 4);
+        c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0);
+        c->r[R_SI] = x86_shift(c, 4, c->r[R_AX], 4, 1);
+        set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] + 8))));
+        c->r[R_AX] = (uint16_t)alu_logic(c, c->r[R_AX] & 3, 1);
+        c->r[R_AX] = x86_shift(c, 4, c->r[R_AX], 2, 1);
+        c->r[R_SI] = (uint16_t)alu_add(c, c->r[R_SI], c->r[R_AX], 1, 0);
+        set_r8(c, R_BL, mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] + 6))));
+        c->r[R_BX] = (uint16_t)alu_logic(c, c->r[R_BX] & 3, 1);
+        set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] + c->r[R_SI] + block[level]))));
+        n = 11;
+    }
+    set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
+    c->r[R_SI] = cpu_pop16(c);
+    x86_leave(c);
+    c->icount += n + 4;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x093B2, clock_field(v): v mod 60 (signed) appended to the text
+ * at 98A6 as decimal (the runtime's itoa 0x0EB9E into DED6 and strcat
+ * 0x0EB10), with a leading "0" (the string at 4141) below 10. */
+static int vgame_clock_field(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 9 + 3 + 1)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_CX] = 0x3C;
+    c->r[R_AX] = FRAME(4);
+    c->r[R_DX] = sign_word(c->r[R_AX]);
+    x86_idiv16(c, 0x3C, 0);                                       /* by 60: it cannot fault */
+    SETFRAME(4, c->r[R_DX]);
+    alu_sub(c, c->r[R_DX], 0x0A, 1, 0);
+    c->icount += 9;
+    if (x86_cond(c, 0xC)) {                                       /* one digit: pad it */
+        cpu_push16(c, 0x4141);
+        cpu_push16(c, 0x98A6);
+        c->icount += 2;
+        NEAR_THEN(0xEB10, 0x93CF, 0, 2 + 3 + 1);
+        c->r[R_BX] = cpu_pop16(c);
+        c->r[R_BX] = cpu_pop16(c);
+        c->icount += 2;
+    }
+    cpu_push16(c, 0x0A);
+    cpu_push16(c, 0xDED6);
+    cpu_push16(c, FRAME(4));
+    c->icount += 3;
+    NEAR_THEN(0xEB9E, 0x93DC, 0, 3 + 1);
+    c->r[R_SP] = c->r[R_BP];                                      /* mov sp, bp */
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, 0x98A6);
+    c->icount += 3;
+    NEAR_THEN(0xEB10, 0x93E5, 0, 4);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    x86_leave(c);
+    c->icount += 4;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x092CD and 0x09335, the clock texts at 98A6 for a time t in
+ * ticks (2 a second) plus the clock offset [98A0], written back to t's
+ * slot: the hours (t / 1800, clock_field) after the string at `start`,
+ * the hour digits shifted into the theatre's zone - [368A] added to the
+ * tens, 8 (6 when [368A] is 0) to the units, carrying past '9' - then
+ * `sep` and the minutes (t / 30), and for the deadline a second separator
+ * (413F) and the seconds (2t). The two share their code but for 68h
+ * bytes. */
+static int clock_text(machine_t *m, uint16_t start, uint16_t sep, int seconds)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t o = seconds ? 0x68 : 0;
+    if (!room(c, 7)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_AX] = ds_get(c, 0x98A0);
+    SETFRAME(4, (uint16_t)alu_add(c, FRAME(4), c->r[R_AX], 1, 0));
+    cpu_push16(c, start);
+    cpu_push16(c, 0x98A6);
+    c->icount += 6;
+    NEAR_THEN(0xEB50, (uint16_t)(0x92DF + o), 0, 7 + 1);
+    static const uint16_t unit[2] = { 0x708, 0x1E };
+    for (int k = 0; k < 2; k++) {                                 /* hours, then minutes */
+        c->r[R_BX] = cpu_pop16(c);                                /* the copy's or the append's arguments */
+        c->r[R_BX] = cpu_pop16(c);
+        c->r[R_AX] = FRAME(4);
+        c->r[R_CX] = unit[k];
+        c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0);
+        x86_div16(c, unit[k]);                                    /* DX = 0: it cannot fault */
+        cpu_push16(c, c->r[R_AX]);
+        c->icount += 7;
+        const uint16_t ret = (uint16_t)((k ? 0x9332 : 0x92EF) + o);
+        if (k == 0) {
+            NEAR_THEN(0x93B2, ret, 0, 10 + 4 + 2 + 1);
+            c->r[R_BX] = cpu_pop16(c);
+            /* the hour digits into the theatre's zone */
+            const uint16_t ds = c->seg[S_DS];
+            const uint8_t zone = mem_read8(c, phys(ds, 0x368A));
+            set_r8(c, R_AL, zone);
+            mem_write8(c, phys(ds, 0x98A6), (uint8_t)alu_add(c, mem_read8(c, phys(ds, 0x98A6)), zone, 0, 0));
+            alu_sub(c, ds_get(c, 0x368A), 1, 1, 0);
+            uint8_t al = (uint8_t)alu_sub(c, get_r8(c, R_AL), get_r8(c, R_AL), 0, CF_IN);   /* sbb al, al */
+            al = (uint8_t)alu_logic(c, al & 0xFE, 0);
+            al = (uint8_t)alu_add(c, al, 8, 0, 0);
+            set_r8(c, R_AL, al);
+            mem_write8(c, phys(ds, 0x98A7), (uint8_t)alu_add(c, mem_read8(c, phys(ds, 0x98A7)), al, 0, 0));
+            alu_sub(c, mem_read8(c, phys(ds, 0x98A7)), 0x39, 0, 0);
+            unsigned n = 10;
+            if (!x86_cond(c, 0xE)) {                              /* past '9': carry into the tens */
+                set_r8(c, R_AL, (uint8_t)alu_sub(c, mem_read8(c, phys(ds, 0x98A7)), 0x0A, 0, 0));
+                mem_write8(c, phys(ds, 0x98A7), get_r8(c, R_AL));
+                mem_write8(c, phys(ds, 0x98A6), (uint8_t)alu_inc(c, mem_read8(c, phys(ds, 0x98A6)), 0));
+                n += 4;
+            }
+            cpu_push16(c, sep);
+            cpu_push16(c, 0x98A6);
+            c->icount += n + 2;
+            NEAR_THEN(0xEB10, (uint16_t)(0x9322 + o), 0, 7 + 1);
+        } else {
+            NEAR_THEN(0x93B2, ret, 0, seconds ? 3 + 1 : 3);
+        }
+    }
+    c->r[R_BX] = cpu_pop16(c);
+    if (seconds) {
+        cpu_push16(c, 0x413F);
+        cpu_push16(c, 0x98A6);
+        c->icount += 3;
+        NEAR_THEN(0xEB10, 0x93A4, 0, 5 + 1);
+        c->r[R_BX] = cpu_pop16(c);
+        c->r[R_BX] = cpu_pop16(c);
+        c->r[R_AX] = x86_shift(c, 4, FRAME(4), 1, 1);
+        cpu_push16(c, c->r[R_AX]);
+        c->icount += 5;
+        NEAR_THEN(0x93B2, 0x93AF, 0, 3);
+        c->r[R_BX] = cpu_pop16(c);
+        x86_leave(c);
+        c->icount += 3;
+    } else {
+        x86_leave(c);
+        c->icount += 3;
+    }
+    near_ret(c);
+    return 1;
+}
+static int vgame_nav_time(machine_t *m) { return clock_text(m, 0x4139, 0x413A, 0); }
+static int vgame_panel_deadline(machine_t *m) { return clock_text(m, 0x413C, 0x413D, 1); }
+
 #undef FAR_THEN
 #undef NEAR_THEN
 #undef FRAME
@@ -10804,6 +11150,12 @@ static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x120A, 0x0008, vgame_model_matrix, "model renderer matrix", 2 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x5582, vgame_detect_evaluate, "sensor detection strength", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xB850, vgame_scene_hit_lookup, "scene object under a map point", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xB991, vgame_camimage_target_model, "camera image model of a target", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x114A, 0x0461, vgame_camimage_scale, "camera image scale by kind", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x0871, vgame_scene_cell_index, "terrain cell index by level", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x93B2, vgame_clock_field, "clock field text", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x92CD, vgame_nav_time, "navigation clock text", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x9335, vgame_panel_deadline, "deadline clock text", 1 },
 };
 
 void matched_register(void)
