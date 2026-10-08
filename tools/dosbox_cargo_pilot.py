@@ -5,7 +5,8 @@ The front end (SETUP, START's mission choice and the hangar) is the recorded inp
 to DOSBox-X as raw scancodes and driver positions in emulated time. From VGAME's start the emulator
 pauses every 200 ms, dumps the data segment bytes the pilot reads (tools/routes/cargo_pilot.reads), and
 waits for the keys and clicks the pilot queues for that tick. The pilot, its controls and its verdict
-are cargo_pilot.py's own; this file only supplies the machine.
+are cargo_pilot.py's own; this file only supplies the machine. DOSBox-X runs in fast-forward unless
+--realtime is given: emulated time is still 9,000 cycles per ms, and both give identical ticks.
 
     py tools/dosbox_cargo_pilot.py --data GOG_DIR --front tools/routes/cargo_pilot.input --out DIR
     py tools/dosbox_cargo_pilot.py --data GOG_DIR --front tools/routes/cargo_pilot.input --out DIR --trace-reads FILE
@@ -37,6 +38,10 @@ IPS = 9_000_000
 FRONT_END_CLOCK = 3371769171
 TICK_MS = 200
 SETUP_CLOCK = 90000
+# START seeds its mission generator (srand at 0x96BC) from the BIOS tick count read at 0x8607, called
+# from 0x7379, as requestr.pic's decode ends. That moment is within a few ms of a tick on both
+# emulators, so the Machine's value (31579 on this route) is staged rather than left to timing.
+START_SEED = "0x860B,0x737C,31579"
 
 
 def key_bytes(text):
@@ -129,7 +134,7 @@ class DosboxMachine:
     ips = IPS
     psp = MACHINE_PSP
 
-    def __init__(self, data, front_route, out, time_us):
+    def __init__(self, data, front_route, out, time_us, turbo=False):
         self.out = out
         self.state_path = out / "loop.state"
         self.reply_prefix = str(out / "reply.")
@@ -137,11 +142,12 @@ class DosboxMachine:
         conf = out / "loop.conf"
         conf.write_text("\n".join([
             "[sdl]", "fullscreen=false", "output=surface", "[mixer]", "nosound=true",
-            "[autoexec]", "@echo off", 'mount C "%s"' % data, "c:", "keyb us", "cls",
-            "autotype -w 5 -p 0.8 n 2", "f117", "exit", ""]))
+            # Fast-forward drops the real-time sleeps; emulated time is still cycles / 9000 per ms.
+            "[cpu]", "turbo=%s" % str(turbo).lower(), "stop turbo on key=false",
+            "[autoexec]", "@echo off", 'mount C "%s"' % data, "c:", "keyb us", "cls", "f117", "exit", ""]))
         env = dict(os.environ, SDL_VIDEODRIVER="dummy",
                    DBX_AUTO_INPUT_AT="SETUP", DBX_AUTO_INPUT=front_spec(front_route),
-                   DBX_WALL_US=str(time_us + SETUP_CLOCK * 1_000_000 // IPS),
+                   DBX_WALL_US=str(time_us + SETUP_CLOCK * 1_000_000 // IPS), DBX_INT1A_TICK=START_SEED,
                    DBX_LOOP_AT="VGAME", DBX_LOOP_STATE=str(self.state_path),
                    DBX_LOOP_REPLY=self.reply_prefix, DBX_LOOP_EVERY=str(TICK_MS),
                    DBX_LOOP_READS=",".join("0x%x:%d" % r for r in self.ranges),
@@ -153,10 +159,13 @@ class DosboxMachine:
         self.dump = {}
         self.offset = 0
         self.buffer = b""
+        self.queue = []
         self.seq = 0
         self.pending = []
         self.clock = None
         self.base = None
+        self.vgame_ms = None
+        self.log_offset = 0
         self.program = "VGAME.EXE"
         self.hash = None
         self.start = None
@@ -173,32 +182,43 @@ class DosboxMachine:
         if self.state_path.exists():
             with open(self.state_path, "rb") as f:
                 f.seek(self.offset)
-                self.buffer += f.read()
+                data = f.read()
+            self.offset += len(data)
+            self.buffer += data
         end = self.buffer.rfind(b"\n")
         if end < 0:
             return []
         complete, self.buffer = self.buffer[:end + 1], self.buffer[end + 1:]
-        self.offset += len(complete)
         return complete.decode().splitlines()
 
     def _take_state(self):
         deadline = time.time() + 7200
         while True:
-            lines = self._new_lines()
-            if lines:
+            self.queue.extend(self._new_lines())
+            if self.queue:
                 break
             if self.proc.poll() is not None:
                 raise RuntimeError("DOSBox-X exited before the next tick")
             if time.time() > deadline:
                 raise TimeoutError("no DOSBox-X tick")
             time.sleep(0.001)
-        line = lines[0]
-        parts = line.split()
+        parts = self.queue.pop(0).split()
         self.seq = int(parts[0])
         ms = float(parts[1])
         if self.base is None:
             self.base = FRONT_END_CLOCK - round(ms * IPS / 1000)
+            self.vgame_ms = ms
         self.clock = round(ms * IPS / 1000) + self.base
+        # A program executed after VGAME (DSWAP, END) means the flight is over and the data segment reused.
+        with open(self.out / "auto.log", "rb") as log:
+            log.seek(self.log_offset)
+            text = log.read()
+        text = text[:text.rfind(b"\n") + 1]
+        self.log_offset += len(text)
+        for line in text.decode().splitlines():
+            p = line.split()
+            if len(p) >= 3 and p[1] == "exec" and self.vgame_ms < float(p[0]) <= ms:
+                self.program = p[2].rsplit("\\", 1)[-1].upper()
         data = [int(b, 16) for b in parts[6:]]
         expect = sum(n for _, n in self.ranges)
         if len(data) != expect:
@@ -236,7 +256,7 @@ class DosboxMachine:
         self._reply("%s" % ";".join(self.pending))
         self.pending = []
         self._take_state()
-        return self.SLICE
+        return self.SLICE if self.program == "VGAME.EXE" else self.EXITED
 
     def _reply(self, spec):
         final = "%s%d" % (self.reply_prefix, self.seq)
@@ -304,7 +324,7 @@ def fly(args):
         raise ValueError("the front file needs its recorded start clock header")
     args.out.mkdir(parents=True, exist_ok=False)
     rows, tick = [], 0
-    with DosboxMachine(args.data, route, args.out, int(header[1])) as machine:
+    with DosboxMachine(args.data, route, args.out, int(header[1]), not args.realtime) as machine:
         start = machine.start
         # The Machine's flags byte is uninitialised at exec (0x244 there, bit 8 clear), so no "0" is sent.
         machine.type(start + 100_000_000, "+")
@@ -345,9 +365,11 @@ def main():
     parser.add_argument("--data", required=True)
     parser.add_argument("--front", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
-    parser.add_argument("--release-lo", type=int, default=120)
-    parser.add_argument("--release-hi", type=int, default=235)
+    parser.add_argument("--release-lo", type=int, default=80)
+    parser.add_argument("--release-hi", type=int, default=360)
     parser.add_argument("--seconds", type=int, default=1500)
+    parser.add_argument("--realtime", action="store_true",
+                        help="pace DOSBox-X to real time (fast-forward gives identical ticks, about 8x faster)")
     parser.add_argument("--trace-reads", type=Path, help="write the Machine's DS read set to this file and stop")
     args = parser.parse_args()
     if args.trace_reads:

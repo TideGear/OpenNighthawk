@@ -71,7 +71,14 @@ runs, because emulated time then runs freely.
 `tools/dosbox_cargo_pilot.py` drives the supply-drop pilot through this loop.
 Its reads are the set in `tools/routes/cargo_pilot.reads`, regenerated from the
 Machine with `--trace-reads`; a read outside that set raises KeyError rather
-than guessing.
+than guessing. A program executed after VGAME ends the flight. Result (7 Oct
+2026): one timely impact in the delivery area, no credit, as on the Machine;
+the two flights differ from the first observed tick (closed loop, not
+lockstep), and DOSBox-X itself is deterministic (two runs, identical ticks).
+It runs in fast-forward (`[cpu] turbo=true`, `--realtime` to turn it off):
+107 s wall instead of 12 min, with all 1,642 ticks, `result.json` and
+`flight.csv` identical to a real-time run, since emulated time is still
+cycles / 9000 per ms.
 
 ## Wall clock (DBX_WALL_US)
 
@@ -82,9 +89,24 @@ INT 1Ah 02h/04h return that time (BCD for the RTC calls), and the BIOS tick
 count at 0x46C is set from it with the Machine's formula. Checked (7 Oct 2026):
 a file written in the guest reads 1992-03-07 20:26, the Machine's date. The
 cargo pilot sets `DBX_WALL_US` from the flight's `time_us` and its setup clock.
-This does not yet reproduce the Machine's cargo mission: the target matches
-(24) from the second tick, but the secondary target is 2 where the Machine has
-1, so the flight does not yet match its baseline.
+
+## Staged seed tick (DBX_INT1A_TICK)
+
+START seeds its mission generator (`srand` at 0x96BC) from the BIOS tick count,
+read by INT 1Ah 00h at 0x8607 when called from 0x7379, as `requestr.pic`'s
+decode ends. The tick count stops during the decode on both emulators, and the
+decode starts within a few ms of a tick: the Machine reads 31579, DOSBox-X
+31580, and the missions differ (secondary target 1 against 2).
+`DBX_INT1A_TICK="ip,near_ret,dx"` stages DX for the INT 1Ah 00h call whose
+return IP and the caller's near return (the word 6 bytes above the interrupt
+frame) match; the cargo pilot passes `0x860B,0x737C,31579`. Checked (7 Oct
+2026): START then takes the Machine's 267 generator steps in the same groups,
+ends on the same state (1efde604), and VGAME's mission bytes (objective 3,
+target 24, secondary 1) agree from the second tick.
+
+The route types SETUP's keys through `DBX_AUTO_INPUT`, so the configuration
+has no `autotype`: its n and 2 at 5 s would end MPS_LOGO early and skip the
+intro, leaving START 100 s longer to idle before the recorded clicks.
 
 **Never run a GUI build over GOG's `dosboxF117A.conf` without `fullscreen=false`
 in a layer after it; that file asks for fullscreen.**

@@ -200,12 +200,19 @@ Status values:
   `cargo_pilot`) now flies the same mission in our emulator, selects the
   crate and releases it when the aircraft's own state is inside the release
   window, and `cargo_check.py` gives one timely impact in the delivery area
-  with no credit. Independent delivery on DOSBox-X remains open.
-- **Approach trap.** A shallower trial reached height 1, then pitch became
-  zero with slot-owner field zero, and the crate expired instead of crossing
-  ground. The shipped instructions at 6C23..6C4C apply the owner pitch floor
-  to any weapon at height 1. A steeper normal release skips that height and
-  reaches the actual impact handler. No game semantics were changed.
+  with no credit. The same pilot delivers on DOSBox-X
+  (`tools/dosbox_cargo_pilot.py`): one timely impact in the delivery area,
+  no credit.
+- **Approach trap.** The shipped instructions at 6C23..6C4C apply the owner
+  pitch floor (slot field +22, zero for the crate) to any weapon at height 1,
+  so a crate whose height lands on exactly 1 gets pitch 0, stays there and
+  expires instead of reaching the impact handler. The crate starts at AGL - 20
+  with the aircraft's pitch (0x7786); a pitch above 0 is pulled down each
+  frame, so a near-level release falls 2 or 3 units per frame, and the trap
+  springs when the start height minus 1 is a multiple of that step (seen at
+  start heights 189 with step 2 and 187 with step 3). `cargo_pilot.py`
+  releases near level only at AGLs where start height minus 1 shares no
+  factor with 6. No game semantics were changed.
 
 ### D6. "Stealth mountains"
 
