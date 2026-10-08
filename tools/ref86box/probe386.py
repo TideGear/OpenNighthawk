@@ -13,6 +13,7 @@ setup and its instructions. The table is the reference the 386DX/33 timing profi
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -162,6 +163,8 @@ def blocks():
     # for them; this machine answers them natively, so their cost is what the profile must charge.
     add("int 21h ah=0Bh x16", rep(16, 0xB4, 0x0B, 0xCD, 0x21), 32)
     add("int 33h ax=3 x16", rep(16, 0xB8, 0x03, 0x00, 0xCD, 0x33), 32)
+    add("int 33h ax=4 x16 (set position)", rep(16, 0xB8, 0x04, 0x00, 0xB9, 0xA0, 0x00, 0xBA, 0x64, 0x00, 0xCD, 0x33), 64)
+    add("int 33h ax=7 (x range)", bytes([0xB8, 0x07, 0x00, 0x31, 0xC9, 0xBA, 0x7F, 0x02, 0xCD, 0x33]), 4)
     add("int 16h ah=1 x16", rep(16, 0xB4, 0x01, 0xCD, 0x16), 32)
     add("int 1Ah ah=0 x16", rep(16, 0xB4, 0x00, 0xCD, 0x1A), 32)
     add("int 21h ah=2Ch x16", rep(16, 0xB4, 0x2C, 0xCD, 0x21), 32)
@@ -232,11 +235,16 @@ def costs(marks, names):
     return by
 
 
-def run_86box(out, profile, probe, frames=3000, timeout=600):
+def run_86box(out, profile, probe, frames=3000, timeout=600, mouse_driver=None):
+    """mouse_driver: a DOS mouse driver file loaded before the probe, with 86Box's Microsoft serial
+    mouse on COM1 (the profiles have none)."""
     work = os.path.normpath(os.path.join(out, "profile"))
     shutil.rmtree(work, ignore_errors=True)
     os.makedirs(work)
-    shutil.copyfile(os.path.join(profile, "86box.cfg"), os.path.join(work, "86box.cfg"))
+    cfg = open(os.path.join(profile, "86box.cfg"), encoding="utf-8-sig").read()
+    if mouse_driver:
+        cfg = re.sub(r"(?m)^mouse_type\s*=.*$", "mouse_type = msserial", cfg)
+    open(os.path.join(work, "86box.cfg"), "w", encoding="utf-8").write(cfg)
     shutil.copytree(os.path.join(profile, "nvr"), os.path.join(work, "nvr"))
     subprocess.run(["cmd", "/c", "mklink", "/J", os.path.join(work, "roms"), r"D:\86box\app\roms"],
                    stdout=subprocess.DEVNULL, check=True)
@@ -247,8 +255,12 @@ def run_86box(out, profile, probe, frames=3000, timeout=600):
         fs.writebytes("/F117A/F117.COM", probe)
         start = "/FDAUTO.BAT" if fs.exists("/FDAUTO.BAT") else "/AUTOEXEC.BAT"     # FreeDOS's or MS-DOS's
         bat = fs.readtext(start).replace("\r\n", "\n")
-        lines = [l for l in bat.split("\n") if l.strip() and l.strip().upper() != "F117"] + ["F117"]
-        fs.writetext(start, "\r\n".join(lines) + "\r\n")
+        lines = [l for l in bat.split("\n") if l.strip() and l.strip().upper() != "F117"]
+        if mouse_driver:
+            name = os.path.basename(mouse_driver).upper()
+            fs.writebytes("/F117A/" + name, open(mouse_driver, "rb").read())
+            lines.append(name.split(".")[0])
+        fs.writetext(start, "\r\n".join(lines + ["F117"]) + "\r\n")
     probe86.with_partition(img, install, write=True)
     log = os.path.join(out, "86box-ports.log")
     if os.path.exists(log):

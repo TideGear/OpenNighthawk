@@ -260,8 +260,19 @@ by DOS (cycles a call; the CPU blocks and BIOS calls are identical on all four):
 | INT 21h AH=0Bh | 3,526 | 3,121 | 3,483 | 3,483 |
 | INT 21h AH=2Ch | 4,104 | 1,833 | 1,956 | 1,952 |
 
-so 5.00 and 6.22 are the same machine for this game. 90 of 91 probe blocks are
-exact against the 5.00 VM (the other is INT 33h: the VM has no mouse). Video BIOS calls are charged at the INT, with interrupts held;
+so 5.00 and 6.22 are the same machine for this game.
+
+The mouse: no MS-DOS release includes a driver (it came with the mouse). On the
+5.00 VM with 86Box's Microsoft serial mouse on COM1, cycles per INT 33h AX=3
+(the position, 2.3 million calls a mission): no driver 63, Microsoft MOUSE.COM
+6.26 389, 8.20 370, CuteMouse 2.1 214; 9.01 (1993) hangs while loading on this
+board. The reference is 6.26 (1989-90), loaded by the 5.00 VM
+(`build_msdos_vm.py --mouse`). With it loaded every other INT 10h call costs 195
+more (the driver hooks INT 10h to follow the video mode), and a mode set 6,750
+to 16,260 less. The VM's reset (AX=0) waits on a timer tick, so it is not timed
+with IRQs masked. 92 of 93 probe blocks are exact against the 5.00 VM with
+6.26; the other is INT 21h AH=2Ch by 4 cycles a call, which varies that much
+between runs, as mode sets do by a few hundred cycles in 2.7 million. Video BIOS calls are charged at the INT, with interrupts held;
 DOS calls pass their time in the stub's LOOP with interrupts on, as FreeDOS
 enables them inside INT 21h. Charged at the INT, the intro's 689,000 AH=0Bh
 polls held the music driver's interrupts back and its scenes ran up to 140 ms

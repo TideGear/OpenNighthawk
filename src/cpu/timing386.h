@@ -47,10 +47,19 @@ typedef struct {
 #define T386_SVC_GET_MODE          207
 #define T386_SVC_DAC_BASE          167   /* measured at 256 colours only: the split is an estimate */
 #define T386_SVC_DAC_EACH          192
+#define T386_SVC_MOUSE_POSITION    347     /* Microsoft MOUSE.COM 6.26, serial mouse on COM1 */
+#define T386_SVC_MOUSE_SET_POSITION 569
+#define T386_SVC_MOUSE_RANGE       639     /* AX=7 measured; 8 and 0Fh taken as the same */
+#define T386_SVC_MOUSE_INT10_HOOK  195     /* each INT 10h through MOUSE.COM's hook */
+/* A mode set with MOUSE.COM loaded costs less than without it on the reference VM (measured,
+ * every IRQ masked; the driver's hook takes its own path to the BIOS): these are subtracted. */
+#define T386_SVC_MOUSE_SET13_FROM13 16262
+#define T386_SVC_MOUSE_SET13_FROM3 6752
+#define T386_SVC_MOUSE_SET3        9054
 #define T386_SVC_KEY_CHECK         188
 #define T386_SVC_TICKS             89
 #define T386_SVC_DOS_STDIN_STATUS  3416    /* MS-DOS 5.00 (6.22 the same) */
-#define T386_SVC_DOS_GET_TIME      1889    /* MS-DOS 5.00 (6.22 4 cycles less) */
+#define T386_SVC_DOS_GET_TIME      1885    /* MS-DOS 5.00 (6.22 the same; it varies by 4 between runs) */
 
 /* The overhead stub's cost under the profile at a LOOP count of n: T386_DOS_LOOP_BASE +
  * T386_DOS_LOOP_EACH * n beyond the call's own INT (calibrated with probe386.py). */

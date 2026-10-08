@@ -18,7 +18,8 @@ with a new 62 MB hard disk:
   3. a first boot in 86Box, which shows the disk boots (AUTOEXEC.BAT writes a file); then the game (a
      copy of the install) goes into C:\\F117A and CONFIG.SYS / AUTOEXEC.BAT give a plain period
      setup: FILES=20, BUFFERS=20, no disk cache, then the game. The board's BIOS reports no extended
-     memory, so there is no HIMEM or DOS=HIGH.
+     memory, so there is no HIMEM or DOS=HIGH. --mouse adds a driver (C:\MOUSE, loaded before the game)
+     and 86Box's Microsoft serial mouse on COM1.
 
 MS-DOS is the owner's copy: the disks and the built image stay outside the repository.
 """
@@ -154,6 +155,7 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--data", default=r"D:\GOG\F-117A")
     ap.add_argument("--frames", type=int, default=1500, help="frames for the first boot")
+    ap.add_argument("--mouse", help="a DOS mouse driver file loaded from AUTOEXEC.BAT, with 86Box's serial mouse on COM1")
     a = ap.parse_args()
     a.out = os.path.normpath(a.out)          # mklink needs backslashes
     root =os.path.normcase(os.path.abspath(os.path.join(HERE, "..", "..")))
@@ -190,11 +192,23 @@ def main():
                 fs.writebytes("/F117A/" + name.upper(), open(p, "rb").read())
                 n += 1
         fs.writetext("/CONFIG.SYS", CONFIG)
-        fs.writetext("/AUTOEXEC.BAT", AUTOEXEC + "F117\r\n")
+        load = ""
+        if a.mouse:
+            name = os.path.basename(a.mouse).upper()
+            fs.makedirs("/MOUSE", recreate=True)
+            fs.writebytes("/MOUSE/" + name, open(a.mouse, "rb").read())
+            load = "C:\\MOUSE\\" + name.split(".")[0] + "\r\n"
+        fs.writetext("/AUTOEXEC.BAT", AUTOEXEC.replace("CD \\F117A\r\n", load + "CD \\F117A\r\n") + "F117\r\n")
         return n
     n = with_partition(img, install, write=True)
-    open(os.path.join(a.out, "DOS-VERSION.txt"), "w").write("MS-DOS %s from %s\n" % (version, os.path.basename(boot_disk)))
-    print("profile %s: MS-DOS %s (%s), %d game files" % (a.out, version, ", ".join(sysfiles), n))
+    if a.mouse:                                  # 86Box's Microsoft serial mouse on COM1
+        cfg = open(os.path.join(a.out, "86box.cfg"), encoding="utf-8-sig").read()
+        cfg = re.sub(r"(?m)^mouse_type\s*=.*$", "mouse_type = msserial", cfg)
+        open(os.path.join(a.out, "86box.cfg"), "w", encoding="utf-8").write(cfg)
+    open(os.path.join(a.out, "DOS-VERSION.txt"), "w").write("MS-DOS %s from %s%s\n" % (
+        version, os.path.basename(boot_disk), "; mouse driver %s" % a.mouse if a.mouse else ""))
+    print("profile %s: MS-DOS %s (%s), %d game files%s" % (a.out, version, ", ".join(sysfiles), n,
+                                                            ", mouse " + os.path.basename(a.mouse) if a.mouse else ""))
 
 
 if __name__ == "__main__":

@@ -183,23 +183,43 @@ static void finish_direct(machine_t *m, unsigned kind, int overhead)
  * calibrated so its blocks match 86Box. The DOS entries are FreeDOS 1.3's, the reference VM's DOS;
  * the video entries the IBM VGA BIOS's. The whole cost lands at the INT, as with a BIOS that keeps
  * interrupts off. Services not listed cost what this machine charges. */
-static uint32_t t386_service_cycles(uint8_t vec, uint16_t ax, uint16_t cx, uint8_t mode_before)
+/* The IBM VGA BIOS's INT 10h functions the game uses. */
+static uint32_t t386_video_cycles(uint8_t ah, uint8_t al, uint16_t cx, uint8_t mode_before)
+{
+    switch (ah) {
+    case 0x00:                                       /* set mode: mostly clearing video memory */
+        if ((al & 0x7F) == 0x13) return mode_before == 0x13 ? T386_SVC_SET13_FROM13 : T386_SVC_SET13_FROM3;
+        if ((al & 0x7F) == 0x03) return T386_SVC_SET3;
+        return 0;
+    case 0x02: return T386_SVC_CURSOR;
+    case 0x09: return T386_SVC_WRITE_CHAR_TEXT * (cx ? cx : 1);
+    case 0x0E: return mode_before == 0x13 ? T386_SVC_TELETYPE_13 : T386_SVC_TELETYPE_TEXT;
+    case 0x0F: return T386_SVC_GET_MODE;
+    case 0x10: return al == 0x12 ? T386_SVC_DAC_BASE + T386_SVC_DAC_EACH * cx : 0;
+    default: return 0;
+    }
+}
+
+static uint32_t t386_service_cycles(uint8_t vec, uint16_t ax, uint16_t cx, uint8_t mode_before, int mouse)
 {
     const uint8_t ah = (uint8_t)(ax >> 8), al = (uint8_t)ax;
     switch (vec) {
-    case 0x10:
-        switch (ah) {
-        case 0x00:                                   /* set mode: mostly clearing video memory */
-            if ((al & 0x7F) == 0x13) return mode_before == 0x13 ? T386_SVC_SET13_FROM13 : T386_SVC_SET13_FROM3;
-            if ((al & 0x7F) == 0x03) return T386_SVC_SET3;
-            return 0;
-        case 0x02: return T386_SVC_CURSOR;
-        case 0x09: return T386_SVC_WRITE_CHAR_TEXT * (cx ? cx : 1);
-        case 0x0E: return mode_before == 0x13 ? T386_SVC_TELETYPE_13 : T386_SVC_TELETYPE_TEXT;
-        case 0x0F: return T386_SVC_GET_MODE;
-        case 0x10: return al == 0x12 ? T386_SVC_DAC_BASE + T386_SVC_DAC_EACH * cx : 0;
-        default: return 0;
+    case 0x10: {
+        /* MOUSE.COM hooks INT 10h to follow the video mode: every call passes through it; a mode set
+         * through the hook measures cheaper than without the driver. */
+        uint32_t t = t386_video_cycles(ah, al, cx, mode_before);
+        if (mouse && t) {
+            if (ah != 0x00) t += T386_SVC_MOUSE_INT10_HOOK;
+            else if ((al & 0x7F) == 0x13) t -= mode_before == 0x13 ? T386_SVC_MOUSE_SET13_FROM13 : T386_SVC_MOUSE_SET13_FROM3;
+            else if ((al & 0x7F) == 0x03) t -= T386_SVC_MOUSE_SET3;
         }
+        return t;
+    }
+    case 0x33:                                      /* Microsoft MOUSE.COM 6.26, the reference VM's */
+        if (ax == 0x0003) return T386_SVC_MOUSE_POSITION;
+        if (ax == 0x0004) return T386_SVC_MOUSE_SET_POSITION;
+        if (ax == 0x0007 || ax == 0x0008 || ax == 0x000F) return T386_SVC_MOUSE_RANGE;
+        return 0;
     case 0x16: return ah == 0x01 ? T386_SVC_KEY_CHECK : 0;
     case 0x1A: return ah == 0x00 ? T386_SVC_TICKS : 0;
     case 0x21:
@@ -218,7 +238,7 @@ static int t386_dos_time(machine_t *m, uint8_t vec, uint16_t ax)
 {
     cpu_t *c = &m->cpu;
     if (vec != 0x21) return 0;
-    const uint32_t want = t386_service_cycles(vec, ax, 0, m->video_mode);
+    const uint32_t want = t386_service_cycles(vec, ax, 0, m->video_mode, m->mouse_present);
     if (!want) return 0;
     uint32_t n = 1, rest = 0;
     if (want > T386_DOS_LOOP_BASE + T386_DOS_LOOP_EACH) {
@@ -262,7 +282,7 @@ int dos_int_hook(cpu_t *c, uint8_t vec)
             const uint8_t mode0 = m->video_mode;
             const int over = c->t386 ? t386_dos_time(m, vec, ax0) : dos_overhead(c, vec);
             int r = service(m, vec);
-            if (r && c->t386 && !over) c->t386_dev += t386_service_cycles(vec, ax0, cx0, mode0);
+            if (r && c->t386 && !over) c->t386_dev += t386_service_cycles(vec, ax0, cx0, mode0, m->mouse_present);
             /* Not when the call waits, ends the program or starts another. */
             if (r && !c->halted && !m->exited && c->seg[S_CS] == cs0 && c->ip == ip0)
                 finish_direct(m, SERVICE_KIND[k], over);
@@ -279,7 +299,7 @@ int dos_int_hook(cpu_t *c, uint8_t vec)
             const uint8_t mode0 = m->video_mode;
             const int over = c->t386 ? t386_dos_time(m, SERVICES[k], ax0) : dos_overhead(c, SERVICES[k]);
             int r = service(m, SERVICES[k]);
-            if (r && c->t386 && !over) c->t386_dev += t386_service_cycles(SERVICES[k], ax0, cx0, mode0);
+            if (r && c->t386 && !over) c->t386_dev += t386_service_cycles(SERVICES[k], ax0, cx0, mode0, m->mouse_present);
             if (c->halted != 2 && !m->exited) {
                 const uint16_t at = (uint16_t)(c->r[R_SP] + 4);
                 uint16_t fl = seg_read16(c, c->seg[S_SS], at);

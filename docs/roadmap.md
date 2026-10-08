@@ -95,13 +95,15 @@ make (Phase 4).
       `probe386.py` (ALU, memory forms, jumps, calls, INT, REP chunks with
       prefixes, VGA memory, ports), and the services it answers natively are
       charged their measured 86Box cost (video BIOS mode sets, palette, text;
-      INT 16h, 1Ah; INT 21h AH=0Bh and 2Ch): 90 of 91 probe blocks exact against
-      an MS-DOS 5.00 reference VM (`build_msdos_vm.py`; 5.00 and 6.22 cost the
-      same on the game's calls, 4.01 10% less, FreeDOS twice on 2Ch). Frame comparison (`frames386.py`, timing386.md): over the intro's
+      INT 16h, 1Ah; INT 21h AH=0Bh and 2Ch; INT 33h): 92 of 93 probe blocks
+      exact against an MS-DOS 5.00 reference VM with Microsoft MOUSE.COM 6.26
+      (`build_msdos_vm.py`; 5.00 and 6.22 cost the same on the game's calls,
+      4.01 10% less, FreeDOS twice on 2Ch; CuteMouse 45% cheaper than 6.26). Frame comparison (`frames386.py`, timing386.md): over the intro's
       animation the scenes now hold 86Box's pace to a frame; the drift left
       (+1.48 s at START's roster screen) is in the loads: DOS file reads and
       writes, program starts and overlays. Open: those, the mouse driver (the
-      reference VM has no mouse), file loading on the MS-DOS VM, the recompiled
+      file loading (the VM's disk is a RAM-disk-speed model, so load times are
+      not period ones; the frame comparison re-aligns at loads), the recompiled
       engine charging the same costs.
 - [ ] **Rendered sound:** the register stream is exact (every AdLib write of
       the intro in order and value, above), which is what the original sends to
