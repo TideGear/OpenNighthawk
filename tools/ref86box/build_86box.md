@@ -44,6 +44,7 @@ variables drive it:
 | `B86_DUMP_FILE=FILE`, `B86_DUMP_AT=N` | conventional memory (0-0x9FFFF) written to FILE once at frame N |
 | `B86_LOOP_STATE`, `B86_LOOP_REPLY`, `B86_LOOP_EVERY`, `B86_LOOP_READS` | the closed loop, as DOSBox-X's `DBX_LOOP_*` (build_dosbox_x.md), keyed to VGAME instead of a program name (below) |
 | `B86_SEED_TICK=N` | START's mission generator restaged to seed N (below) |
+| `B86_PORTLOG=FILE` | every write to the debug port 0xE9: the cycle counter at the start of the OUT, the instructions executed and the value (`probe386.py`) |
 | `B86_STOP=N` | exit after N frames |
 | `B86_OPL=FILE` | every AdLib register write as `microseconds register value` |
 | `B86_FAST=1` | fast-forward: `pc_run()` back to back instead of one quantum per host millisecond; emulated time is still the TSC. `sound86.py` and `sav86.py` set it unless `--realtime` |

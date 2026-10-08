@@ -77,3 +77,55 @@ File and line numbers are that tree's (8 Oct 2026). 1 us = 33.333 cycles.
   word, 4,352 a sector, slower when run from unshadowed ROM).
 - READ MULTIPLE 2,000 us before the first data, WRITE 2,000 us before the
   first DRQ then 96.08 us a sector; SEEK and recalibrate 1,000 us.
+
+## Measured: `probe386.py`
+
+`tools/ref86box/probe386.py OUT` runs blocks of one instruction class each
+(interrupts off, mode 13h) and reads 86Box's cycle counter at a debug-port
+write before each (`B86_PORTLOG`, build_86box.md); this machine logs its
+clock the same way (`F117R_PORTLOG`). A block's count includes its mark
+(`mov al,n` / `out 0E9h,al`), its setup and the three-instruction restore of
+DS and ES (the empty block: 29 cycles, 5 instructions). 86Box counts a REP
+instruction once per dispatch, so its instruction count there is the chunks,
+not the elements. Measured 8 Oct 2026 on `vmt386`:
+
+| block | instructions timed | 86Box cycles | 86Box instructions counted |
+|---|---|---|---|
+| empty (the mark itself) | 0 | 29 | 5 |
+| nop x64 | 64 | 221 | 69 |
+| add r16,r16 x64 | 64 | 157 | 69 |
+| mov r16,imm16 x64 | 64 | 157 | 69 |
+| mov r16,[si] x64 | 64 | 287 | 70 |
+| mov [si],r16 x64 | 64 | 217 | 70 |
+| add [si],r16 x64 | 64 | 537 | 70 |
+| cmp r16,[bx+si] x64 | 64 | 417 | 71 |
+| mov r16,[si+disp16] x64 | 64 | 287 | 70 |
+| push/pop x32 | 64 | 221 | 69 |
+| lodsb x64 | 64 | 351 | 70 |
+| shl r16,1 x64 | 64 | 221 | 69 |
+| shl r16,cl(5) x32 | 32 | 127 | 38 |
+| jmp short +0 x64 | 64 | 605 | 69 |
+| jnz not taken x64 | 64 | 223 | 70 |
+| jz taken +0 x64 | 64 | 607 | 70 |
+| loop x64 | 64 | 861 | 70 |
+| mul r16 x32 | 32 | 703 | 38 |
+| div r16 x32 | 32 | 739 | 40 |
+| les r16,[si] x32 | 32 | 255 | 38 |
+| mov ds,r16 x32 | 32 | 95 | 38 |
+| rep movsb 200 | 200 | 853 | 16 |
+| rep stosb 200 | 200 | 1053 | 17 |
+| rep movsw 200 | 200 | 853 | 16 |
+| in al,40h x32 | 32 | 413 | 37 |
+| in al,61h x32 | 32 | 413 | 37 |
+| in al,dx(388h) x32 | 32 | 1439 | 38 |
+| in al,dx(3DAh) x32 | 32 | 415 | 38 |
+| mov es:[di],al (A000) x32 | 32 | 1293 | 40 |
+| mov al,es:[di] (A000) x32 | 32 | 1315 | 40 |
+| rep stosb A000 200 | 200 | 7571 | 76 |
+| rep stosw A000 200 | 200 | 14037 | 109 |
+| rep movsb A000->A000 200 | 200 | 14383 | 110 |
+
+The figures agree with the source above: 2 cycles a register ALU op, a taken
+jump 7 plus the queue refill, MUL 21, DIV 22, IN 12, an AdLib read 12 + 32
+(so the BIOS runs the ISA bus at /4, not the chipset's default /6, which
+would make it 47), 32 extra a VGA byte and 64 a word.

@@ -729,6 +729,14 @@ void pc_io_write(cpu_t *c, uint16_t port, uint32_t val, int width)
 {
     machine_t *m = machine_of(c);
     machine_inventory_port(port, 1);
+    if (port == 0xE9) {
+        /* The debug port: with F117R_PORTLOG set, the clock at the start of the OUT and the
+         * value, as the 86Box harness logs it (tools/ref86box/probe386.py). */
+        static FILE *f;
+        static int tried;
+        if (!tried) { const char *p = getenv("F117R_PORTLOG"); tried = 1; if (p && *p) f = fopen(p, "w"); }
+        if (f) { fprintf(f, "%llu %u\n", (unsigned long long)m->cpu.icount, (unsigned)(val & 0xFF)); fflush(f); }
+    }
     io_delay(m, 1);
     machine_io_note(m, ((uint64_t)port << 24) | ((uint64_t)width << 16) | (val & 0xFFFFu), m->cpu.icount);
     io_write8(m, port, (uint8_t)val);

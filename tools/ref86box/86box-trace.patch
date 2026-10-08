@@ -19,6 +19,47 @@ index b605001..3ef80a9 100644
  
              cycdiff = oldcyc - cycles;
  
+diff --git a/src/io.c b/src/io.c
+index dbb3530..99138ed 100644
+--- a/src/io.c
++++ b/src/io.c
+@@ -395,6 +395,27 @@ inb(uint16_t port)
+     return ret;
+ }
+ 
++/* PC-parity harness (tools/ref86box/86box-trace.patch): with B86_PORTLOG set, every write to the
++   debug port 0xE9 logs the cycle counter at the start of the OUT, the instructions executed and the
++   value, so a probe program can time instruction blocks (tools/ref86box/timing386.md). */
++extern uint64_t b86_ins;
++static void
++b86_port_log(uint8_t val)
++{
++    static FILE *f;
++    static int   tried;
++    if (!tried) {
++        const char *path = getenv("B86_PORTLOG");
++        tried = 1;
++        if (path && *path)
++            f = fopen(path, "w");
++    }
++    if (f) {
++        fprintf(f, "%llu %llu %u\n", (unsigned long long) tsc, (unsigned long long) b86_ins, val);
++        fflush(f);
++    }
++}
++
+ void
+ outb(uint16_t port, uint8_t val)
+ {
+@@ -404,6 +425,8 @@ outb(uint16_t port, uint8_t val)
+ #ifdef ENABLE_IO_LOG
+     uint8_t qfound = 0;
+ #endif
++    if (port == 0xe9)
++        b86_port_log(val);
+ 
+     io_port = port;
+     io_val  = val;
 diff --git a/src/qt/qt_main.cpp b/src/qt/qt_main.cpp
 index a99308a..a406ab0 100644
 --- a/src/qt/qt_main.cpp
