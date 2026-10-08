@@ -19,6 +19,7 @@ logic explained, not a transcript of instructions - goes into src/matched/matche
 """
 import argparse
 import os
+import re
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -107,6 +108,9 @@ def draft(mod, seg, entry, name):
                 lines.append("goto L_%04X;" % ins.next_ip if inside(ins.next_ip) else "EXIT(0x%04X);" % ins.next_ip)
         out += ["    " + l for l in lines]
     out += ["#undef CHECK", "#undef IC", "#undef EXIT", "#undef INTERP", "#undef CODE8", "#undef CODE16", "}"]
+    # Keep only the labels something jumps to.
+    used = set(re.findall(r"goto (L_[0-9A-F]{4});", "\n".join(out)))
+    out = [re.sub(r"^(\s*)(L_[0-9A-F]{4}): ", lambda mt: mt[0] if mt[2] in used else mt[1], line) for line in out]
     return "\n".join(out) + "\n", len(insns)
 
 
