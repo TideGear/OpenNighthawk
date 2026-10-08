@@ -92,13 +92,15 @@ def landing_errors(rows, report, log, require_dos_exit=True):
 
 
 def control(machine, state, tick, approach, cruise=2500, aim=20, approach_speed=200,
-            deck_aim=220, throttle_gain=.1, deck_pitch_floor=None):
+            deck_aim=220, throttle_gain=.1, deck_pitch_floor=None, deck_speed=(210, 240, 50)):
     """Short, separated stick pulses; every key is released normally.
 
     `cruise` is the altitude held before the approach; a return leg over
     hills can hold higher and lower it near home. `aim` is how far before
     the runway centre the glide path meets the ground, and `approach_speed`
-    the speed held on final; a short runway needs both moved."""
+    the speed held on final; a short runway needs both moved. `deck_speed` is the band a raised
+    deck's approach holds (low, high, the throttle above it; 50 holds about 250): with Realistic Landings nothing stops the aircraft for it, and a
+    touchdown at 250 ran off the deck's end at 79."""
     at = machine.clock + 1
     in_box = (state["box"] == 1 and state["nearest"] == state["home"]
               and abs(signed(state["x"] - state["home_x"])) <= state["box_width"] >> 5
@@ -142,7 +144,8 @@ def control(machine, state, tick, approach, cruise=2500, aim=20, approach_speed=
         if state["range"] < 2500:
             want_throttle = clamp(42 + (approach_speed - state["speed"]) * throttle_gain, 0, 85)
             if state["surface"]:
-                want_throttle = 85 if state["speed"] < 210 else 50 if state["speed"] > 240 else state["throttle"]
+                want_throttle = (85 if state["speed"] < deck_speed[0] else deck_speed[2] if state["speed"] > deck_speed[1]
+                                 else state["throttle"])
             if state["flags"] & 1:
                 machine.type(command_at, "6", hold_ms=20)
             elif abs(state["throttle"] - want_throttle) > 5:

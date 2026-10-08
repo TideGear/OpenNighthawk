@@ -142,6 +142,8 @@ def main():
                         help="emulated startup clock; replay uses its recorded header")
     parser.add_argument("--extend", action="store_true",
                         help="with --complete: fly straight out and re-attack a secondary target the turn cannot reach")
+    parser.add_argument("--deck-speed", type=int, nargs=3, default=[210, 240, 50], metavar=("LOW", "HIGH", "THROTTLE"),
+                        help="a raised deck's approach speed band and the throttle above it (Realistic Landings: 190 210 30)")
     parser.add_argument("--cycle", action="store_true",
                         help="with --complete: while another object is designated, select the secondary with b only")
     parser.add_argument("--primary-only", action="store_true", help="with --complete, go home after the primary photo")
@@ -247,7 +249,8 @@ def main():
                             landing_control(machine, state, tick, approach, deck_aim=300,
                                             aim=args.landing_aim, approach_speed=args.approach_speed,
                                             throttle_gain=args.landing_throttle_gain,
-                                            deck_pitch_floor=args.deck_pitch_floor)
+                                            deck_pitch_floor=args.deck_pitch_floor,
+                                            deck_speed=tuple(args.deck_speed))
                         elif args.complete and state["flags"] & 0x4000:
                             ds = (machine.psp + 0x10 + 0x1E42) << 4
                             secondary = machine.read16(ds + 0xE318)

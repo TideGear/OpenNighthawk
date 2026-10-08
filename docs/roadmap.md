@@ -184,6 +184,10 @@ make (Phase 4).
       Landings, as the decoded tables give. A Veteran sortie takes hits (event
       type 05) that cut the throttle to 44 and the aircraft stalls in; the
       secondary photo needs `--cycle` there (N kept re-picking another object).
+      Regular with Realistic Landings (`tools/routes/career_regular_realistic.front`)
+      flies the sortie clean at 296 once the deck is approached at 190-210
+      (`--deck-speed`; a 250 touchdown ran off its end, 180-200 fell short);
+      `tools/career_chain.py` chains such sorties and checks each saved record.
 
 ## Phase 2 - understood code
 
