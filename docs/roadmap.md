@@ -87,10 +87,13 @@ make (Phase 4).
       measured on 6 Oct 2026) and `tools/fidelity_all.py` the machine probe.
       Open: script flight and more saved data (a career) on both; find what
       paces the remaining 2 s of intro drift on 86Box (the disk interface) and
-      the pitch-bend channels' different write positions; then decide whether DOSBox-X plus 86Box replace GOG's
-      DOSBox for routine checks (the saved GOG capture stays as a frozen
-      regression reference). Parity target: the original on real hardware, not
-      DOSBox.
+      the pitch-bend channels' different write positions. Decided (8 Oct 2026):
+      DOSBox-X and 86Box are the routine references (`pc_parity.py`,
+      `fidelity_all.py`, the closed-loop supply drop on both); GOG's DOSBox is
+      no longer started for the picture and music checks (its saved capture is
+      the frozen reference) and runs only as the third sheet of the machine
+      probe, which takes seconds. Parity target: the original on real
+      hardware, not DOSBox.
 - [ ] **Rendered sound parity:** the OPL defaults to GOG DOSBox's DBOPL core at
       its rate and 2x gain. A tone probe matches exactly; the captured intro
       differs in RMS by about 0.5% (level 1.003 with the register stream exact,
