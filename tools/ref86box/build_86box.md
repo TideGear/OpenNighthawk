@@ -193,6 +193,16 @@ to 9,022 (ours 8,982) while channels 0, 1, 2 and 5 stay identical, so the busy c
 writes follow the game loop's speed on the machine that runs it, not a fixed schedule;
 no single fixed PC speed reproduces them, and they are not a parity target.
 
+**MS-DOS reference VMs.** `build_msdos_vm.py --disks DIR --out D:\86box\vmt386dosNNN`
+builds vmt386's board with a new disk booting the owner's MS-DOS (4.01, 5.00 and
+6.22 are built: `vmt386dos401`, `vmt386dos500`, `vmt386dos622`): what `SYS C:` does,
+written by the script (the system disk's boot code, IO.SYS and MSDOS.SYS first and
+contiguous, COMMAND.COM), the MBR code of the FreeDOS VM's disk, a first boot that
+proves the disk boots, then the game and `FILES=20`, `BUFFERS=20`. The board's BIOS
+reports no extended memory, so there is no HIMEM. MS-DOS 5.00 is the 386 timing
+profile's reference ([timing386.md](timing386.md)). The VMs have no mouse
+(`mouse_type = none`, as vmt386).
+
 ## The profile (`D:\86box\vmf`, the picture capture; the checks above use `vmt386`)
 
 `86box.cfg.vnc` here is the working configuration: `ami286`, 640 KB,
