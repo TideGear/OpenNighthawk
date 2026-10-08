@@ -1,8 +1,55 @@
+diff --git a/src/dos/dos.cpp b/src/dos/dos.cpp
+index c91f9e7..f8472da 100644
+--- a/src/dos/dos.cpp
++++ b/src/dos/dos.cpp
+@@ -72,6 +72,7 @@
+ unsigned char exepack_handling = EXEPACK_UNPACK;
+ static bool first_run=true;
+ bool sync_time = false, manualtime = false;
++bool dbx_pinned_wall(struct tm *out, int *centis);
+ extern std::string log_dev_con_str;
+ extern bool use_quick_reboot;
+ #if !defined(OSFREE)
+@@ -1558,6 +1559,12 @@ static Bitu DOS_21Handler(void) {
+                 // Real hardware testing: DOS appears to read the CMOS once at startup and then the date
+                 // is stored and counted internally. It does not read via INT 1Ah. This means it is possible
+                 // for DOS and the BIOS 1Ah/CMOS to have totally different time and date!
++                struct tm pinned;
++                if (dbx_pinned_wall(&pinned, nullptr)) {
++                    dos.date.year = pinned.tm_year + 1900;
++                    dos.date.month = pinned.tm_mon + 1;
++                    dos.date.day = pinned.tm_mday;
++                }
+                 reg_cx = dos.date.year;
+                 reg_dh = dos.date.month;
+                 reg_dl = dos.date.day;
+@@ -1626,6 +1633,8 @@ static Bitu DOS_21Handler(void) {
+             break;
+         case 0x2c: {    /* Get System Time */
+             // use BIOS to get RTC time
++            struct tm pinned;
++            int centis = 0;
+             if (IS_PC98_ARCH) {
+                 CPU_Push16(reg_ax);
+                 CPU_Push16(reg_bx);
+@@ -1650,6 +1659,12 @@ static Bitu DOS_21Handler(void) {
+ 
+                 reg_dl = 0;
+             }
++            else if (dbx_pinned_wall(&pinned, &centis)) {
++                reg_ch = pinned.tm_hour;
++                reg_cl = pinned.tm_min;
++                reg_dh = pinned.tm_sec;
++                reg_dl = (uint8_t)centis;
++            }
+             else {
+                 // It turns out according to real hardware, that DOS reads the date and time once on startup
+                 // and then relies on the BIOS_TIMER counter after that for time, and caches the date. So
 diff --git a/src/dos/dos_execute.cpp b/src/dos/dos_execute.cpp
-index 6ba9ffa..b7a05c4 100644
+index 6ba9ffa..576a058 100644
 --- a/src/dos/dos_execute.cpp
 +++ b/src/dos/dos_execute.cpp
-@@ -289,6 +289,152 @@ static void SetupCMDLine(uint16_t pspseg, const DOS_ParamBlock& block) {
+@@ -289,6 +289,191 @@ static void SetupCMDLine(uint16_t pspseg, const DOS_ParamBlock& block) {
  	psp.SetCommandTail(block.exec.cmdtail);
  }
  
@@ -10,18 +57,42 @@ index 6ba9ffa..b7a05c4 100644
 + * "ms|kind|arg;..." and DBX_AUTO_INPUT_AT names a program; when DOS executes it the events are
 + * scheduled in emulated time from that moment. kind k taps a key (arg: one character, or enter,
 + * bs, esc, space; capitals use shift), m moves the mouse to guest pixel x,y (320x200), c moves
-+ * and clicks the left button. No host input device is involved. */
++ * and clicks the left button, r injects a raw keyboard byte (hex), d sets the raw mouse driver
++ * position x,y, b presses (1) or releases (0) the left button. DBX_LOOP_* runs a closed loop:
++ * every DBX_LOOP_EVERY ms it appends the state (DBX_LOOP_READS, DS-relative "off:len") to
++ * DBX_LOOP_STATE and waits for the file DBX_LOOP_REPLY<seq> holding one spec line ("stop" ends
++ * the loop); DBX_LOOP_AT names the start program (default DBX_AUTO_INPUT_AT). No host input
++ * device is involved. */
 +#include "pic.h"
 +#include "mouse.h"
 +void Mouse_AutoPosition(float fx, float fy);
++void Mouse_AutoRaw(float x, float y);
++void KEYBOARD_AddBuffer(uint16_t data);
 +#include "keyboard.h"
 +#include <vector>
 +#include <thread>
 +#include <chrono>
++#include <ctime>
++/* DBX_WALL_US (microseconds since 1970 UTC) is the wall clock at the exec of DBX_AUTO_INPUT_AT;
++ * from there DOS and the BIOS RTC read it advanced by emulated time, as the Machine's clock does. */
++static bool wall_pinned = false;
++static int64_t wall_us_at_anchor = 0;
++static double wall_pic_at_anchor = 0;
++void dbx_pin_bios_ticks(void);
++bool dbx_pinned_wall(struct tm *out, int *centis) {
++	if (!wall_pinned) return false;
++	const int64_t us = wall_us_at_anchor + (int64_t)((PIC_FullIndex() - wall_pic_at_anchor) * 1000.0);
++	const time_t t = (time_t)(us / 1000000);
++	const struct tm *g = gmtime(&t);
++	if (!g) return false;
++	*out = *g;
++	if (centis) *centis = (int)((us / 10000) % 100);
++	return true;
++}
 +namespace {
 +struct AutoEv { int kind; int a, b; bool down; };
 +std::vector<AutoEv> auto_evs;
-+bool auto_armed = true;
++bool auto_armed = true, loop_armed = true;
 +void auto_key(int a, bool down) { KEYBOARD_AddKey((KBD_KEYS)a, down); }
 +void AutoHandler(Bitu i) {
 +	AutoEv &e = auto_evs[i];
@@ -29,6 +100,8 @@ index 6ba9ffa..b7a05c4 100644
 +	if (e.kind == 'k') auto_key(e.a, e.down);
 +	else if (e.kind == 'm') Mouse_AutoPosition((e.a + 0.5f) / 320.0f, (e.b + 0.5f) / 200.0f);
 +	else if (e.kind == 'b') { if (e.down) Mouse_ButtonPressed(0); else Mouse_ButtonReleased(0); }
++	else if (e.kind == 'r') KEYBOARD_AddBuffer((uint16_t)e.a);
++	else if (e.kind == 'd') Mouse_AutoRaw((float)e.a, (float)e.b);
 +}
 +int auto_keycode(const std::string &n, bool &shift) {
 +	shift = false;
@@ -69,6 +142,13 @@ index 6ba9ffa..b7a05c4 100644
 +			int x = atoi(arg.c_str()), y = atoi(arg.substr(arg.find(',') + 1).c_str());
 +			add(ms, {'m', x, y, false});
 +			if (kind == 'c') { add(ms + 40, {'b', 0, 0, true}); add(ms + 160, {'b', 0, 0, false}); }
++		} else if (kind == 'r') {
++			add(ms, {'r', (int)strtol(arg.c_str(), nullptr, 16), 0, true});
++		} else if (kind == 'd') {
++			int x = atoi(arg.c_str()), y = atoi(arg.substr(arg.find(',') + 1).c_str());
++			add(ms, {'d', x, y, false});
++		} else if (kind == 'b') {
++			add(ms, {'b', 0, 0, arg == "1"});
 +		}
 +	}
 +}
@@ -81,17 +161,16 @@ index 6ba9ffa..b7a05c4 100644
 +long loop_seq = 0;
 +
 +bool read_reply(long seq, std::string &spec) {
-+	FILE *f = fopen(loop_cfg.reply, "r");
++	std::string path = std::string(loop_cfg.reply) + std::to_string(seq);
++	FILE *f = fopen(path.c_str(), "r");
 +	if (!f) return false;
-+	std::string want = "R " + std::to_string(seq) + " ";
 +	char line[4096];
-+	bool found = false;
-+	while (fgets(line, sizeof line, f)) {
-+		std::string l(line);
-+		while (!l.empty() && (l.back() == '\n' || l.back() == '\r')) l.pop_back();
-+		if (l.compare(0, want.size(), want) == 0) { spec = l.substr(want.size()); found = true; }
-+	}
++	bool found = fgets(line, sizeof line, f) != nullptr;
 +	fclose(f);
++	if (found) {
++		spec = line;
++		while (!spec.empty() && (spec.back() == '\n' || spec.back() == '\r')) spec.pop_back();
++	}
 +	return found;
 +}
 +
@@ -100,10 +179,10 @@ index 6ba9ffa..b7a05c4 100644
 +	long seq = ++loop_seq;
 +	FILE *f = fopen(loop_cfg.state, "a");
 +	if (f) {
-+		fprintf(f, "%ld %.1f max=%lld left=%lld cpu=%lld", seq, (double)PIC_FullIndex(), (long long)CPU_CycleMax,
-+			(long long)CPU_CycleLeft, (long long)CPU_Cycles);
++		fprintf(f, "%ld %.4f max=%lld left=%lld cpu=%lld psp=%04x", seq, (double)PIC_FullIndex(), (long long)CPU_CycleMax,
++			(long long)CPU_CycleLeft, (long long)CPU_Cycles, (unsigned)dos.psp());
 +		for (auto &r : loop_cfg.reads)
-+			for (unsigned i = 0; i < r.second; i++) fprintf(f, " %02x", real_readb(ds, (uint16_t)(r.first + i)));
++			for (unsigned i = 0; i < r.second; i++) fprintf(f, " %02x", mem_readb((((uint32_t)ds << 4) + r.first + i) & 0xFFFFF));
 +		fprintf(f, "\n");
 +		fclose(f);
 +	}
@@ -120,15 +199,22 @@ index 6ba9ffa..b7a05c4 100644
 +
 +void auto_schedule(const char *name) {
 +	if (getenv("DBX_AUTO_LOG")) { FILE *f = fopen(getenv("DBX_AUTO_LOG"), "a"); if (f) { fprintf(f, "%.1f exec %s\n", (double)PIC_FullIndex(), name); fclose(f); } }
-+	const char *spec = getenv("DBX_AUTO_INPUT"), *at = getenv("DBX_AUTO_INPUT_AT");
-+	if (!auto_armed || !at) return;
-+	std::string prog(name), want(at);
++	std::string prog(name);
 +	for (auto &ch : prog) ch = (char)toupper((unsigned char)ch);
-+	for (auto &ch : want) ch = (char)toupper((unsigned char)ch);
-+	if (prog.find(want) == std::string::npos) return;
-+	auto_armed = false;
-+	if (spec) schedule_spec(spec);
-+	if (getenv("DBX_LOOP_STATE") && getenv("DBX_LOOP_REPLY")) {
++	auto named = [&](const char *env) {
++		if (!env) return false;
++		std::string want(env);
++		for (auto &ch : want) ch = (char)toupper((unsigned char)ch);
++		return prog.find(want) != std::string::npos;
++	};
++	if (auto_armed && named(getenv("DBX_AUTO_INPUT_AT"))) {
++		auto_armed = false;
++		if (const char *w = getenv("DBX_WALL_US")) { wall_us_at_anchor = atoll(w); wall_pic_at_anchor = PIC_FullIndex(); wall_pinned = true; dbx_pin_bios_ticks(); }
++		if (const char *spec = getenv("DBX_AUTO_INPUT")) schedule_spec(spec);
++	}
++	const char *loop_at = getenv("DBX_LOOP_AT") ? getenv("DBX_LOOP_AT") : getenv("DBX_AUTO_INPUT_AT");
++	if (loop_armed && named(loop_at) && getenv("DBX_LOOP_STATE") && getenv("DBX_LOOP_REPLY")) {
++		loop_armed = false;
 +		loop_cfg.state = getenv("DBX_LOOP_STATE");
 +		loop_cfg.reply = getenv("DBX_LOOP_REPLY");
 +		if (getenv("DBX_LOOP_EVERY")) loop_cfg.every = atof(getenv("DBX_LOOP_EVERY"));
@@ -147,7 +233,7 @@ index 6ba9ffa..b7a05c4 100644
 +		}
 +		FILE *f = fopen(loop_cfg.state, "w");
 +		if (f) fclose(f);
-+		PIC_AddEvent(LoopHandler, (pic_tickindex_t)loop_cfg.every, 0);
++		PIC_AddEvent(LoopHandler, (pic_tickindex_t)0.01, 0);
 +	}
 +}
 +}
@@ -155,7 +241,7 @@ index 6ba9ffa..b7a05c4 100644
  /* FIXME: This code (or the shell perhaps) isn't very good at returning or
   *        printing an error message when it is unable to load and run an
   *        executable for whatever reason. Worst offense is that if it can't
-@@ -297,6 +443,7 @@ static void SetupCMDLine(uint16_t pspseg, const DOS_ParamBlock& block) {
+@@ -297,6 +482,7 @@ static void SetupCMDLine(uint16_t pspseg, const DOS_ParamBlock& block) {
   *        an error code so that the INT 21h EXEC call can print an informative
   *        error message! --J.C. */
  bool DOS_Execute(const char* name, PhysPt block_pt, uint16_t flags) {
@@ -177,11 +263,97 @@ index 70e1d4a..96c97ad 100644
  
  #if !defined(C_EMSCRIPTEN)
  	// mapper shortcuts for capture
+diff --git a/src/ints/bios.cpp b/src/ints/bios.cpp
+index 8cb0254..29102fa 100644
+--- a/src/ints/bios.cpp
++++ b/src/ints/bios.cpp
+@@ -3081,8 +3081,19 @@ static void InitRtc () {
+     WriteCmosByte(0x0b, (ReadCmosByte(0x0b) & 0x7du/*clear=SET[7]|DM[2]*/) | 0x03u/*set=24/12[1]|DSE[0]*/);
+ }
+ 
++bool dbx_pinned_wall(struct tm *out, int *centis);
++static uint8_t pinned_bcd(int v) { return (uint8_t)(((v / 10) << 4) | (v % 10)); }
++/* As the Machine's ROM does: the BIOS tick count starts at the time of day, then the timer adds to it. */
++void dbx_pin_bios_ticks(void) {
++    struct tm t;
++    int cs = 0;
++    if (!dbx_pinned_wall(&t, &cs)) return;
++    uint64_t secs = (uint64_t)t.tm_hour * 3600u + (uint64_t)t.tm_min * 60u + (uint64_t)t.tm_sec;
++    mem_writed(BIOS_TIMER, (uint32_t)((secs * 1000u + (uint64_t)cs * 10u) * 1193182ull / 65536ull / 1000u));
++}
+ static Bitu INT1A_Handler(void) {
+     CALLBACK_SIF(true);
++    struct tm pinned;
+     switch (reg_ah) {
+     case 0x00:  /* Get System time */
+         {
+@@ -3097,6 +3108,14 @@ static Bitu INT1A_Handler(void) {
+         mem_writed(BIOS_TIMER,((unsigned int)reg_cx<<16u)|reg_dx);
+         break;
+     case 0x02:  /* GET REAL-TIME CLOCK TIME (AT,XT286,PS) */
++        if (dbx_pinned_wall(&pinned, nullptr)) {
++            reg_ch = pinned_bcd(pinned.tm_hour);
++            reg_cl = pinned_bcd(pinned.tm_min);
++            reg_dh = pinned_bcd(pinned.tm_sec);
++            reg_dl = 0;
++            CALLBACK_SCF(false);
++            break;
++        }
+         InitRtc();                          // make sure BCD and no am/pm
+         if (RtcUpdateDone()) {              // make sure it's safe to read
+             reg_ch = ReadCmosByte(0x04);    // hours
+@@ -3125,6 +3144,14 @@ static Bitu INT1A_Handler(void) {
+         }
+         break;
+     case 0x04:  /* GET REAL-TIME ClOCK DATE  (AT,XT286,PS) */
++        if (dbx_pinned_wall(&pinned, nullptr)) {
++            reg_ch = pinned_bcd((pinned.tm_year + 1900) / 100);
++            reg_cl = pinned_bcd((pinned.tm_year + 1900) % 100);
++            reg_dh = pinned_bcd(pinned.tm_mon + 1);
++            reg_dl = pinned_bcd(pinned.tm_mday);
++            CALLBACK_SCF(false);
++            break;
++        }
+         InitRtc();                          // make sure BCD and no am/pm
+         if (RtcUpdateDone()) {              // make sure it's safe to read
+             reg_ch = ReadCmosByte(0x32);    // century
+@@ -13006,10 +13033,10 @@ void BIOS_OnPowerOn(Section* sec) {
+     test = new BIOS(control->GetSection("joystick"));
+ }
+ 
+-void swapInNextDisk(bool pressed);
++void swapInNextDisk(bool pressed);
+ void swapInPrevDisk(bool pressed);
+-void swapInCD(bool pressed, bool rev);
+-void swapInNextCD(bool pressed);
++void swapInCD(bool pressed, bool rev);
++void swapInNextCD(bool pressed);
+ void swapInPrevCD(bool pressed);
+ 
+ void INT10_OnResetComplete();
+@@ -13068,14 +13095,14 @@ void BIOS_Init() {
+     /* make sure CD swap and floppy swap mapper events are available */
+     MAPPER_AddHandler(swapInNextDisk,MK_o,MMODHOST,"swapimg","Swap floppy drive",&item); /* Originally "Swap Image" but this version does not swap CDs */
+     item->set_text("Swap floppy drive");
+-
++
+     /* make sure CD swap and floppy swap mapper events are available */
+     MAPPER_AddHandler(swapInPrevDisk, MK_o, MMODHOST | MMOD3, "swapimgrev", "Swap floppy drive (prev)", &item); /*  */
+     item->set_text("Swap floppy drive (prev)");
+ 
+     MAPPER_AddHandler(swapInNextCD,MK_d,MMODHOST,"swapcd","Swap CD drive",&item); /* Variant of "Swap Image" for CDs */
+-    item->set_text("Swap CD drive");
+-
++    item->set_text("Swap CD drive");
++
+     MAPPER_AddHandler(swapInPrevCD, MK_d, MMODHOST | MMOD3, "swapcdrev", "Swap CD drive (prev)", &item); /* Variant of "Swap Image" for CDs */
+     item->set_text("Swap CD drive (prev)");
+ 
 diff --git a/src/ints/mouse.cpp b/src/ints/mouse.cpp
-index 84ada2d..d7ac036 100644
+index 84ada2d..260a8f1 100644
 --- a/src/ints/mouse.cpp
 +++ b/src/ints/mouse.cpp
-@@ -1214,6 +1214,12 @@ void Mouse_Select(int x1, int y1, int x2, int y2, int w, int h, bool select) {
+@@ -1214,6 +1214,18 @@ void Mouse_Select(int x1, int y1, int x2, int y2, int w, int h, bool select) {
  }
  #endif
  
@@ -189,6 +361,12 @@ index 84ada2d..d7ac036 100644
 +void Mouse_AutoPosition(float fx, float fy) {
 +	mouse.x = fx * mouse.max_x;
 +	mouse.y = fy * mouse.max_y;
++}
++
++/* PC-parity harness: the INT 33h pointer at driver coordinates, as the Machine reports them. */
++void Mouse_AutoRaw(float x, float y) {
++	mouse.x = x;
++	mouse.y = y;
 +}
 +
  void Mouse_ButtonPressed(uint8_t button) {

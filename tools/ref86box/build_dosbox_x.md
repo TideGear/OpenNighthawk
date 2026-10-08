@@ -47,21 +47,44 @@ is reported, not judged.
 
 ## Closed loop (DBX_LOOP_*)
 
-`DBX_LOOP_STATE=FILE` and `DBX_LOOP_REPLY=FILE` start a tick every
-`DBX_LOOP_EVERY` emulated milliseconds (default 200) once `DBX_AUTO_INPUT_AT`
-names the running program. Each tick appends `seq time max left cpu` and the
-bytes of `DBX_LOOP_READS` (`off:len,...`, DS-relative, DS = PSP + 0x10 + 0x1e42
-as in `tools/cargo_check.py` `observe`) to the state file. The emulator then
-waits in real time, with emulated time stopped, for a reply line
-`R <seq> <spec>` in the reply file; `<spec>` uses the `DBX_AUTO_INPUT` format,
-relative to that tick. `stop` ends the loop. If no reply comes within 60 s the
-loop ends with a message on stderr.
+`DBX_LOOP_STATE=FILE` names the state file and `DBX_LOOP_REPLY=PREFIX` the
+reply prefix. A tick starts every `DBX_LOOP_EVERY` emulated milliseconds
+(default 200) once `DBX_LOOP_AT` (default `DBX_AUTO_INPUT_AT`) names the running
+program. Each tick appends `seq time max left cpu psp` and the bytes of
+`DBX_LOOP_READS` (`off:len,...`, DS-relative, DS = PSP + 0x10 + 0x1e42 as in
+`tools/cargo_check.py` `observe`) to the state file. The emulator then waits in
+real time, with emulated time stopped, for the file `PREFIX<seq>`; its first
+line is the spec, in the `DBX_AUTO_INPUT` format and relative to that tick.
+One file per tick keeps the reply from being read half-written if the writer
+renames it into place. `stop` ends the loop. Spec kinds: `k` a key tap, `m`/`c`
+mouse move (and click) in guest pixels, `r` a raw keyboard byte (hex), `d` the
+raw mouse driver position `x,y` (the Machine's driver x is 2 times the pixel
+x), `b` left button down (1) or up (0).
 
-Checked on SETUP (7 Oct 2026): ticks fall 200 ms apart; a reply of
-`300|k|n;400|k|n` at tick 3 (600.8 ms) taps n at 920.8 and 1020.8 ms; two runs
-gave identical state and event lines. `max=9000` is cycles per millisecond,
-the same 9 MIPS as `tools/machine_api.py`. Execs after the loop ends differ by
-about 1 ms between runs, because emulated time then runs freely.
+Checked on SETUP (7 Oct 2026): ticks fall 200 ms apart from 0.9 ms; a reply of
+`300|k|n;400|k|n` at tick 3 (400.9 ms) taps n (KBD_n, 35) at 720.9 and 820.9
+ms, each make 20 ms after its item and each break 40 ms later. Empty replies
+keep the run going. `max=9000` is cycles per millisecond, the same 9 MIPS as
+`tools/machine_api.py`. Execs after the loop ends differ by about 1 ms between
+runs, because emulated time then runs freely.
+
+`tools/dosbox_cargo_pilot.py` drives the supply-drop pilot through this loop.
+Its reads are the set in `tools/routes/cargo_pilot.reads`, regenerated from the
+Machine with `--trace-reads`; a read outside that set raises KeyError rather
+than guessing.
+
+## Wall clock (DBX_WALL_US)
+
+`DBX_WALL_US=us` pins the guest's date and time to the Machine's wall clock.
+At the `DBX_AUTO_INPUT_AT` anchor the emulator records `us` and the emulated
+millisecond, so `us + (now - anchor)` is the wall time. INT 21h 2Ah/2Ch and
+INT 1Ah 02h/04h return that time (BCD for the RTC calls), and the BIOS tick
+count at 0x46C is set from it with the Machine's formula. Checked (7 Oct 2026):
+a file written in the guest reads 1992-03-07 20:26, the Machine's date. The
+cargo pilot sets `DBX_WALL_US` from the flight's `time_us` and its setup clock.
+This does not yet reproduce the Machine's cargo mission: the target matches
+(24) from the second tick, but the secondary target is 2 where the Machine has
+1, so the flight does not yet match its baseline.
 
 **Never run a GUI build over GOG's `dosboxF117A.conf` without `fullscreen=false`
 in a layer after it; that file asks for fullscreen.**
