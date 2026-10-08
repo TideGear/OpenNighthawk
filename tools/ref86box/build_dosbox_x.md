@@ -119,7 +119,8 @@ data segment, offset 0xAE8C): 31324 on the strike-training front end, where DOSB
 route; a scan of ticks around it, one second of flight each, finds the mission that matches the
 Machine's target position and loadout (31324 does; the neighbours give other missions).
 The staged call logs `int1a tick N staged M` on stderr. `--pilot strike` flies that mission,
-and its controls are `strike_pilot.py`'s own. Designation: `b` is *drop lock*, not a cycle (the
+and its controls are `strike_pilot.py`'s own. `--pilot recon --debrief` flies a career sortie
+(below). Designation: `b` is *drop lock*, not a cycle (the
 Reimp's key table: `n` is next target), so the original recipe held a decoy (contact 27) until
 the track passed it and only a lucky track let the game re-acquire the primary. The pilot now
 presses `n` every second tick until the primary is the lock (the target becomes available at
@@ -131,6 +132,19 @@ and the select intervals 2 and 3, except one Machine release at 40 that left lat
 The route types SETUP's keys through `DBX_AUTO_INPUT`, so the configuration
 has no `autotype`: its n and 2 at 5 s would end MPS_LOGO early and skip the
 intro, leaving START 100 s longer to idle before the recorded clicks.
+
+### A career sortie (8 Oct 2026)
+
+`--pilot recon --debrief` with the front end of `tools/routes/career.front` (Serge from the roster,
+Libya, Cold War: a reconnaissance) recorded on the Machine (`recon_pilot.py --complete --primary-only
+--debrief --landing-throttle-gain 0.6`), `--front-end-clock 3061225637 --seed-tick 31233` (DOSBox-X
+reads 31234; 31233 gives the Machine's target 2 at 24320, 22272) and the read set
+`tools/routes/career.reads`: the primary photo is credited, the aircraft lands and stops on the home
+runway, END's screens are taken with `strike_pilot.END_KEYS` through the loop's replies (the loop keeps
+ticking after VGAME), and START, once back, writes the sortie into `ROSTER.FIL`. Against the Machine's
+own closed-loop sortie the two rosters differ in three words only, the mission score (167 against 168,
+and the same word at +46 and the running total): the flights differ, so the score does; the sortie
+count, rank, status and the other fields agree, and `career_check.career_errors` passes on both.
 
 **Never run a GUI build over GOG's `dosboxF117A.conf` without `fullscreen=false`
 in a layer after it; that file asks for fullscreen.**
