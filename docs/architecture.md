@@ -518,14 +518,19 @@ caught real defects:
 - Calls that cannot be followed from random states (a BIOS call; a far call
   through the graphics driver's slot at 1E42:0188, which holds `JMP FAR 0:0` in
   the file) make a routine "not testable here (routes only)": its evidence is
-  the routes, not the lockstep.
+  the routes, not the lockstep. Step 8 of the gate (`routes_only_unrun` in
+  `tools/build_recomp.py`) fails when such a routine ran on no recompiled route
+  (each route's output lists `[matched] ... ran N times`): with no route
+  executing it there is no evidence at all, and the routine is dropped (VGAME
+  0xF024, the run-time termination messages, was, 8 Oct 2026; 21 routes-only
+  routines remain, each run by 1 to 34 routes).
 
 `F117R_SHADOW=FROM:TO` re-runs matched routines against the original on the
 live game in a window (a diagnostic, not a gate: device state is not in the
 snapshot). `f117run --dump LINEAR:LENGTH` prints registers and memory at the
 end of a run for comparing two engines at a chosen clock.
 
-361 addresses are matched in all seven programs. The programs carry
+360 addresses are matched in all seven programs. The programs carry
 byte-identical copies of the C runtime helpers (string and block copies, the
 32-bit shifts, multiply and divide), so one matched routine serves several
 addresses. Candidates come from `tools/reimp_names.py`; the list is the table

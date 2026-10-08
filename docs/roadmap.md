@@ -169,7 +169,7 @@ not the recompilation:
       Reimp's mapping; matched functions replacing translations one at a time,
       each held to the same parity checks. `tools/reimp_names.py` joins the
       Reimp's census (1,535 functions) with this project's regions as a private
-      lead list. 361 addresses are matched (360 of the census functions, 22,191 of
+      lead list. 360 addresses are matched (359 of the census functions, 22,153 of
       179,213 bytes); the table is at the end of `src/matched/matched.c` and the
       method is in [architecture.md](architecture.md#matched-routines-phase-2).
 

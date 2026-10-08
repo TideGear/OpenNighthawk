@@ -317,8 +317,31 @@ def start_locksteps(work):
         exe = os.path.join(ROOT, "build", exe_name)
         print("  $ " + '"%s" --states %s (in the background)' % (exe, states))
         log = open(os.path.join(work, "%s_lockstep.log" % key), "w+")
-        procs[key] = (subprocess.Popen([exe, "--states", states], stdout=log, stderr=subprocess.STDOUT, text=True), log)
+        # func --verbose: its per-routine lines name the "routes only" routines step 8 checks
+        extra = ["--verbose"] if key == "func" else []
+        procs[key] = (subprocess.Popen([exe, "--states", states] + extra, stdout=log, stderr=subprocess.STDOUT, text=True), log)
     return procs
+
+
+def routes_only_unrun(func_out, runs_dir):
+    """The matched routines func_lockstep cannot test ("not testable here (routes only)") that no
+    recompiled route ran: each route's f117run output ends with a "[matched] MODULE SEG:IP ...: ran N
+    times" line per routine that ran (recomp_report). Such a routine has no evidence at all."""
+    only = []
+    for line in func_out.splitlines():
+        if "routes only" in line:
+            m = re.match(r"(\S+)\s+([0-9A-F]{4}):([0-9A-F]{4})\s+(.*?)\s{2,}", line)
+            if m:
+                only.append((m.group(1).upper(), m.group(2), m.group(3), m.group(4)))
+    ran = set()
+    for name in os.listdir(runs_dir) if os.path.isdir(runs_dir) else []:
+        p = os.path.join(runs_dir, name, "runner.txt")
+        if name.endswith("_recomp") and os.path.exists(p):
+            for line in open(p, errors="replace"):
+                m = re.match(r"\[matched\] (\S+) ([0-9A-F]{4}):([0-9A-F]{4}) .*: ran (\d+) times", line)
+                if m and int(m.group(4)):
+                    ran.add((m.group(1).upper(), m.group(2), m.group(3)))
+    return ["%s %s:%s %s" % k for k in only if k[:3] not in ran]
 
 
 def stop_locksteps(procs):
@@ -478,6 +501,16 @@ def main():
                 print("\n".join(l for l in out.splitlines() if "MISMATCH" in l))
                 sys.exit(message)
             lap(what)
+            if key == "func":
+                func_out = out
+        print("8. every routes-only matched routine runs on a route")
+        unrun = routes_only_unrun(func_out, os.path.join(a.work, "runs"))
+        if unrun:
+            for name in unrun:
+                print("  NOT RUN: " + name)
+            sys.exit("%d matched routine(s) have no evidence: the lockstep cannot test them and no route runs them"
+                     % len(unrun))
+        print("  every routes-only routine ran on at least one route")
     print("done: %s" % os.path.join(ROOT, "build", "f117a.exe"))
 
 

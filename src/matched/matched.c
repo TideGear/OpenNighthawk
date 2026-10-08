@@ -7107,38 +7107,6 @@ static int vgame_copy_from_dot(machine_t *m)
     return 1;
 }
 
-/* VGAME 0x0F024, the run-time library's termination messages: 0x0F097 with
- * FCh, the hook at [92A2] when one is set, then 0x0F097 with FFh. */
-static int vgame_rt_messages(machine_t *m)
-{
-    cpu_t *c = &m->cpu;
-    if (!room(c, 5)) return 0;
-    cpu_push16(c, c->r[R_BP]);
-    c->r[R_BP] = c->r[R_SP];
-    c->r[R_AX] = 0xFC;
-    cpu_push16(c, 0xFC);
-    c->icount += 4;
-    if (!guest_call(m, 0xF097, 0xF02E)) return 1;
-    if (!room(c, 3)) { c->ip = 0xF02E; return 1; }
-    const uint16_t hook = ds_get(c, 0x92A2);
-    alu_sub(c, hook, 0, 1, 0);
-    c->icount += 2;
-    if (!(c->flags & F_ZF)) {
-        if (!guest_call(m, hook, 0xF039)) return 1;               /* call word ptr [92A2] */
-        if (!room(c, 3)) { c->ip = 0xF039; return 1; }
-    }
-    c->r[R_AX] = 0xFF;
-    cpu_push16(c, 0xFF);
-    c->icount += 2;
-    if (!guest_call(m, 0xF097, 0xF040)) return 1;
-    if (!room(c, 3)) { c->ip = 0xF040; return 1; }
-    c->r[R_SP] = c->r[R_BP];
-    c->r[R_BP] = cpu_pop16(c);
-    c->icount += 3;
-    near_ret(c);
-    return 1;
-}
-
 /* VGAME 0x0E9F4, open_stream(a, b, c): a stream slot from 0x0F38A; with
  * none, 0; otherwise 0x0F1E0 (a, b, c, slot). SI restored. */
 static int vgame_open_stream(machine_t *m)
@@ -11081,7 +11049,6 @@ static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x3A3B, vgame_panel_mode_4, "panel mode 4", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x0986, vgame_mode_setup, "graphics mode setup", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x0CF3, vgame_copy_from_dot, "copy from the dot", 1 },
-    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xF024, vgame_rt_messages, "run-time termination messages", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xE9F4, vgame_open_stream, "open a stream", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD52E, vgame_far_triple, "far call with three arguments", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xF1B6, vgame_release_buffer, "release a stream buffer", 1 },
