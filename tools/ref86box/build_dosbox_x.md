@@ -75,7 +75,9 @@ keep the run going. `max=9000` is cycles per millisecond, the same 9 MIPS as
 `tools/machine_api.py`. Execs after the loop ends differ by about 1 ms between
 runs, because emulated time then runs freely.
 
-`tools/dosbox_cargo_pilot.py` drives the supply-drop pilot through this loop.
+`tools/dosbox_cargo_pilot.py` drives a pilot through this loop (`--pilot cargo`, the default, or
+`--pilot strike`). It mounts a private copy of the install (`OUT/game`), never the install itself: START
+rewrites `ROSTER.FIL` in a front end that creates a pilot, and the Machine reads the same file.
 Its reads are the set in `tools/routes/cargo_pilot.reads`, regenerated from the
 Machine with `--trace-reads`; a read outside that set raises KeyError rather
 than guessing. A program executed after VGAME ends the flight. Result (7 Oct
@@ -110,6 +112,15 @@ frame) match; the cargo pilot passes `0x860B,0x737C,31579`. Checked (7 Oct
 2026): START then takes the Machine's 267 generator steps in the same groups,
 ends on the same state (1efde604), and VGAME's mission bytes (objective 3,
 target 24, secondary 1) agree from the second tick.
+
+The Machine's value for any route is the BIOS tick at the first change of the generator (START's
+data segment, offset 0xAE8C): 31324 on the strike-training front end, where DOSBox-X reads 31325.
+`--seed-tick` and `--front-end-clock` (VGAME's exec clock in the Machine) set both for another
+route; a scan of ticks around it, one second of flight each, finds the mission that matches the
+Machine's target position and loadout (31324 does; the neighbours give other missions).
+The staged call logs `int1a tick N staged M` on stderr. `--pilot strike` flies that mission,
+and its controls are `strike_pilot.py`'s own, but its designation of the target (B cycles
+contacts) depends on the track and does not yet work on DOSBox-X; the Machine's flight does.
 
 The route types SETUP's keys through `DBX_AUTO_INPUT`, so the configuration
 has no `autotype`: its n and 2 at 5 s would end MPS_LOGO early and skip the

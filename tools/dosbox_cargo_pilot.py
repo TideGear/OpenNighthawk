@@ -17,6 +17,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -26,22 +27,23 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 from machine_api import Machine  # noqa: E402
-from cargo_pilot import pilot_state, control  # noqa: E402
-from cargo_check import errors, impacts  # noqa: E402
+import cargo_pilot  # noqa: E402
+import strike_pilot  # noqa: E402
+from cargo_check import errors as cargo_errors, impacts  # noqa: E402
 
 DOSBOX = "D:/86box-src/dbx-src/src/dosbox-x.exe"
-READS = HERE / "routes" / "cargo_pilot.reads"
+READS = [HERE / "routes" / "cargo_pilot.reads"]
 MACHINE_PSP = 6506
 DS_BASE = ((MACHINE_PSP + 0x10 + 0x1E42) << 4)
 MEM_MASK = 0xFFFFF
 IPS = 9_000_000
-FRONT_END_CLOCK = 3371769171
+FRONT_END_CLOCK = [3371769171]
 TICK_MS = 200
 SETUP_CLOCK = 90000
 # START seeds its mission generator (srand at 0x96BC) from the BIOS tick count read at 0x8607, called
 # from 0x7379, as requestr.pic's decode ends. That moment is within a few ms of a tick on both
 # emulators, so the Machine's value (31579 on this route) is staged rather than left to timing.
-START_SEED = "0x860B,0x737C,31579"
+START_SEED = ["0x860B,0x737C,31579"]
 
 
 def key_bytes(text):
@@ -105,7 +107,7 @@ def front_spec(route_lines):
             continue
         p = line.split()
         clock = int(p[1])
-        if clock >= FRONT_END_CLOCK:
+        if clock >= FRONT_END_CLOCK[0]:
             break
         ms = (clock - SETUP_CLOCK) * 1000 / IPS
         if p[0] == "K":
@@ -119,10 +121,12 @@ def front_spec(route_lines):
 
 def read_ranges():
     ranges = []
-    for line in READS.read_text().splitlines():
+    for line in READS[0].read_text().splitlines():
         if line.strip() and not line.startswith("#"):
             off, length = line.split()
             ranges.append((int(off, 0), int(length, 0)))
+    # The flight's event list grows as the flight goes on, and the Machine's trace saw only its own length.
+    ranges.extend(EXTRA_READS.get(PILOT[0], []))
     return ranges
 
 
@@ -139,15 +143,19 @@ class DosboxMachine:
         self.state_path = out / "loop.state"
         self.reply_prefix = str(out / "reply.")
         self.ranges = read_ranges()
+        # The game saves into the folder it is mounted from (START writes ROSTER.FIL in a front end that
+        # creates a pilot), so DOSBox-X gets a private copy and never the install.
+        game = out / "game"
+        shutil.copytree(data, game, ignore=shutil.ignore_patterns("DOSBOX", "cloud_saves"))
         conf = out / "loop.conf"
         conf.write_text("\n".join([
             "[sdl]", "fullscreen=false", "output=surface", "[mixer]", "nosound=true",
             # Fast-forward drops the real-time sleeps; emulated time is still cycles / 9000 per ms.
             "[cpu]", "turbo=%s" % str(turbo).lower(), "stop turbo on key=false",
-            "[autoexec]", "@echo off", 'mount C "%s"' % data, "c:", "keyb us", "cls", "f117", "exit", ""]))
+            "[autoexec]", "@echo off", 'mount C "%s"' % game, "c:", "keyb us", "cls", "f117", "exit", ""]))
         env = dict(os.environ, SDL_VIDEODRIVER="dummy",
                    DBX_AUTO_INPUT_AT="SETUP", DBX_AUTO_INPUT=front_spec(front_route),
-                   DBX_WALL_US=str(time_us + SETUP_CLOCK * 1_000_000 // IPS), DBX_INT1A_TICK=START_SEED,
+                   DBX_WALL_US=str(time_us + SETUP_CLOCK * 1_000_000 // IPS), DBX_INT1A_TICK=START_SEED[0],
                    DBX_LOOP_AT="VGAME", DBX_LOOP_STATE=str(self.state_path),
                    DBX_LOOP_REPLY=self.reply_prefix, DBX_LOOP_EVERY=str(TICK_MS),
                    DBX_LOOP_READS=",".join("0x%x:%d" % r for r in self.ranges),
@@ -206,7 +214,7 @@ class DosboxMachine:
         self.seq = int(parts[0])
         ms = float(parts[1])
         if self.base is None:
-            self.base = FRONT_END_CLOCK - round(ms * IPS / 1000)
+            self.base = FRONT_END_CLOCK[0] - round(ms * IPS / 1000)
             self.vgame_ms = ms
         self.clock = round(ms * IPS / 1000) + self.base
         # A program executed after VGAME (DSWAP, END) means the flight is over and the data segment reused.
@@ -233,6 +241,8 @@ class DosboxMachine:
     def read8(self, address):
         off = (address - DS_BASE) & MEM_MASK
         if off not in self.dump:
+            if os.environ.get("F117_DBX_LENIENT"):
+                return 0                        # a seed scan reads only the mission identifiers
             raise KeyError("read at DS+0x%x is outside the DOSBox-X read set" % off)
         return self.dump[off]
 
@@ -279,7 +289,23 @@ class DosboxMachine:
                 self.proc.kill()
 
 
-def trace_reads(data, front, out, target):
+def _cargo_main():
+    return cargo_pilot.main
+
+
+def _strike_main():
+    return strike_pilot.main
+
+
+PILOTS = {
+    "cargo": dict(trace_main=_cargo_main, reads="cargo_pilot.reads"),
+    "strike": dict(trace_main=_strike_main, reads="strike_training.reads"),
+}
+PILOT = ["cargo"]
+EXTRA_READS = {"strike": [(0xba5a, 6 * 255)]}
+
+
+def trace_reads(pilot_argv, target):
     seen = set()
     orig8, orig16 = Machine.read8, Machine.read16
 
@@ -292,8 +318,8 @@ def trace_reads(data, front, out, target):
         return orig16(self, address)
 
     Machine.read8, Machine.read16 = read8, read16
-    sys.argv = ["cargo_pilot.py", "--data", data, "--front", str(front), "--out", str(out)]
-    from cargo_pilot import main as pilot_main
+    sys.argv = [PILOT[0] + "_pilot.py"] + pilot_argv
+    pilot_main = PILOTS[PILOT[0]]["trace_main"]()
     try:
         pilot_main()
     finally:
@@ -312,43 +338,65 @@ def trace_reads(data, front, out, target):
                 run = [off]
         if run:
             ranges.append((run[0], len(run)))
-        target.write_text("# DS-relative bytes read by cargo_pilot on the Machine: offset length\n" +
+        target.write_text("# DS-relative bytes read by the %s pilot on the Machine: offset length\n" % PILOT[0] +
                           "".join("0x%x %d\n" % r for r in ranges))
         print("read set", len(ranges), "ranges,", sum(n for _, n in ranges), "bytes", flush=True)
 
 
 def fly(args):
+    strike = PILOT[0] == "strike"
+    pilot_state = strike_pilot.strike_state if strike else cargo_pilot.pilot_state
     route = args.front.read_text().splitlines()
     header = re.fullmatch(r"# f117r-input ips=9000000 time_us=(\d+)", route[0] if route else "")
     if not header:
         raise ValueError("the front file needs its recorded start clock header")
     args.out.mkdir(parents=True, exist_ok=False)
-    rows, tick = [], 0
+    if strike:
+        strike_pilot.RELEASE_RANGE[0] = args.release_range
+    rows, tick, initialized = [], 0, False
     with DosboxMachine(args.data, route, args.out, int(header[1]), not args.realtime) as machine:
         start = machine.start
-        # The Machine's flags byte is uninitialised at exec (0x244 there, bit 8 clear), so no "0" is sent.
-        machine.type(start + 100_000_000, "+")
-        machine.type(start + 170_000_000, r"\D", hold_ms=1000)
+        if not strike:
+            # The Machine's flags byte is uninitialised at exec (0x244 there, bit 8 clear), so no "0" is sent.
+            machine.type(start + 100_000_000, "+")
+            machine.type(start + 170_000_000, r"\D", hold_ms=1000)
         while machine.clock < 5_000_000_000 + args.seconds * machine.ips:
             elapsed = machine.clock - start
+            if strike and not initialized and elapsed > 40_000_000:
+                # The strike pilot reads the brake flag after 40 ms, as strike_pilot.py does.
+                if pilot_state(machine)["flags"] & 8:
+                    machine.type(start + 80_000_000, "0")
+                machine.type(start + 100_000_000, "+")
+                machine.type(start + 170_000_000, r"\D", hold_ms=1000)
+                initialized = True
             if elapsed > 190_000_000:
                 state = pilot_state(machine)
                 rows.append(dict(clock=machine.clock, seconds=elapsed / machine.ips, **state))
                 if tick % 50 == 0:
                     print({k: state[k] for k in ("target_range", "altitude", "speed", "throttle", "weapon",
-                                                  "store_count", "launch_events", "cargo_ttl")}, flush=True)
-                if impacts(rows) and machine.clock - impacts(rows)[0][1]["clock"] >= machine.ips:
+                                                  "store_count", "launch_events")}, flush=True)
+                if strike:
+                    if state["flags"] & 0x4000:
+                        # As strike_pilot.py: observe one more second after the credit.
+                        machine.run_until(machine.clock + machine.ips)
+                        rows.append(dict(clock=machine.clock, seconds=(machine.clock - start) / machine.ips,
+                                         **pilot_state(machine)))
+                        break
+                elif impacts(rows) and machine.clock - impacts(rows)[0][1]["clock"] >= machine.ips:
                     break
                 if elapsed > args.seconds * machine.ips:
                     break
-                control(machine, state, tick, args.release_lo, args.release_hi)
+                if strike:
+                    strike_pilot.control(machine, state, tick)
+                else:
+                    cargo_pilot.control(machine, state, tick, args.release_lo, args.release_hi)
                 tick += 1
                 step = machine.ips // 5
             else:
                 step = 90_000
             if machine.run_until(machine.clock + step) != Machine.SLICE:
                 break
-        failures = errors(rows) if rows else ["no observed flight"]
+        failures = (strike_pilot.errors(rows) if strike else cargo_errors(rows)) if rows else ["no observed flight"]
         report = dict(backend="dosbox-x", clock=machine.clock, hash=None, program=machine.program,
                       errors=failures, fixes=[], release=[args.release_lo, args.release_hi],
                       observation=rows[-1] if rows else None)
@@ -362,19 +410,32 @@ def fly(args):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--pilot", choices=sorted(PILOTS), default="cargo")
     parser.add_argument("--data", required=True)
-    parser.add_argument("--front", type=Path, required=True)
+    parser.add_argument("--front", type=Path, help="a recorded input whose front end (before VGAME) is replayed")
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--release-lo", type=int, default=60)
     parser.add_argument("--release-hi", type=int, default=300)
+    parser.add_argument("--release-range", type=int, default=120, help="strike: release the bomb this close")
+    parser.add_argument("--front-end-clock", type=int, help="the Machine clock of VGAME's exec in the front")
+    parser.add_argument("--seed-tick", type=int, help="START's seed tick on the Machine (staged by DBX_INT1A_TICK)")
     parser.add_argument("--seconds", type=int, default=1500)
     parser.add_argument("--realtime", action="store_true",
                         help="pace DOSBox-X to real time (fast-forward gives identical ticks, about 8x faster)")
-    parser.add_argument("--trace-reads", type=Path, help="write the Machine's DS read set to this file and stop")
-    args = parser.parse_args()
+    parser.add_argument("--trace-reads", type=Path,
+                        help="write the Machine's DS read set to this file and stop; the pilot's own arguments follow --")
+    args, rest = parser.parse_known_args()
+    PILOT[0] = args.pilot
+    READS[0] = HERE / "routes" / PILOTS[args.pilot]["reads"]
+    if args.front_end_clock:
+        FRONT_END_CLOCK[0] = args.front_end_clock
+    if args.seed_tick:
+        START_SEED[0] = "0x860B,0x737C,%d" % args.seed_tick
     if args.trace_reads:
-        trace_reads(args.data, args.front, args.out, args.trace_reads)
+        trace_reads([a for a in rest if a != "--"], args.trace_reads)
         return 0
+    if rest or not args.front:
+        parser.error("--front is required")
     return fly(args)
 
 

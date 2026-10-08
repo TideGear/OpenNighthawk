@@ -133,7 +133,9 @@ make (Phase 4).
       own state (`tools/cargo_pilot.py`, gate route `cargo_pilot`), and the same
       pilot delivers on DOSBox-X (`tools/dosbox_cargo_pilot.py`) and on 86Box
       (`tools/b86_cargo_pilot.py`, 8 of 10 flights; 8 Oct 2026): one timely
-      impact in the delivery area on each; wider generated-assignment coverage; the strike-training mission (bugs.md
+      impact in the delivery area on each; the strike-training mission is
+      reproduced on DOSBox-X (same target, loadout) but its pilot does not yet
+      designate the target there; wider generated-assignment coverage; the strike-training mission (bugs.md
       D7) is settled as far as the original goes: a strike-type training mission is
       reproducible (start clock +5 s, `strike_pilot.py --time-us`) and is
       credited when the laser-guided bomb is released within about 80-150 map
