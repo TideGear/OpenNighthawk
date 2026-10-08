@@ -159,7 +159,14 @@ make (Phase 4).
       routes `strike_training` and `strike_training_d8` (fix on: releases from
       1,200 units hit).
 - [ ] **The remaining career flow:** an earned rank-6 career (the branch is
-      reached only with a staged roster).
+      reached only with a staged roster). END promotes on three tables (read from
+      its memory, 8 Oct 2026): totals 300, 1,125, 3,000, 7,000, 16,000, 27,720,
+      averages per sortie 100, 150, 200, 250, 280, 280 and sorties 2, 5, 10, 20,
+      40 and exactly 99 for ranks 1 to 6, so rank 6 needs an average of 280 over
+      99 sorties. A closed-loop career sortie (`recon_pilot.py --complete --extend
+      --debrief`, `tools/routes/career.front`: both photos, the flight home and the
+      landing) scores 226, so the earned career needs higher-scoring sorties than
+      this reconnaissance.
 
 ## Phase 2 - understood code
 

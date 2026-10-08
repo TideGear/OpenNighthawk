@@ -103,6 +103,10 @@ def control(machine, state, tick, *, acquisition="nose", select_key="n",
             machine.type(at + machine.ips * 17 // 100, command, hold_ms=20)
 
 
+EXTEND_WITHIN = 1200      # a secondary target closer than this and 45 degrees or more off the nose: extend
+EXTEND_TO = 3000          # out to this range before turning in again
+
+
 def recon_errors(rows, complete=False):
     if not rows or not any(s["agl"] > s["ground"] + 100 for s in rows):
         return ["no airborne flight recorded"]
@@ -136,6 +140,8 @@ def main():
     parser.add_argument("--initial-roster", type=Path, help="continue from an earned roster file in a fresh private save directory")
     parser.add_argument("--time-us", type=int, default=700000000000000,
                         help="emulated startup clock; replay uses its recorded header")
+    parser.add_argument("--extend", action="store_true",
+                        help="with --complete: fly straight out and re-attack a secondary target the turn cannot reach")
     parser.add_argument("--primary-only", action="store_true", help="with --complete, go home after the primary photo")
     parser.add_argument("--debrief", action="store_true", help="after the flight, take END's screens (writes ROSTER.FIL)")
     parser.add_argument("--deck-pitch-floor", type=int, default=None,
@@ -161,6 +167,7 @@ def main():
     inputs = RouteInputs(route_args(args.front_route)) if not args.replay else None
     rows, tick, initialized, start, last, writer = [], 0, False, None, "", None
     approach, flight_block, landed_report = False, None, {}
+    extending = False
     save = Path(tempfile.mkdtemp(prefix="save-", dir=out))
     if args.initial_roster:
         roster = args.initial_roster.read_bytes()
@@ -248,6 +255,21 @@ def main():
                                 "cue": state["cue"] >> 1}
                             working["target_range"] = math.hypot(signed(working["target_x"] - state["x"]),
                                 signed(working["target_y"] - state["y"]))
+                            # Extend and re-attack: a target inside the turning circle (about 560 units at
+                            # 350 knots) stays abeam, never in the camera's view, and the navigator orbits
+                            # it. Close and well off the nose, fly straight out to EXTEND_TO, then turn in.
+                            bearing = math.atan2(signed(working["target_x"] - state["x"]),
+                                                 -signed(working["target_y"] - state["y"])) * 32768 / math.pi
+                            off_nose = abs(signed(int(bearing) - state["heading"]))
+                            if args.extend and working["target_range"] < EXTEND_WITHIN and off_nose > 8192:
+                                extending = True
+                            if extending and working["target_range"] > EXTEND_TO:
+                                extending = False
+                            if extending:
+                                theta = state["heading"] * math.pi / 32768
+                                working = {**working, "target_x": int(state["x"] + 5000 * math.sin(theta)) & 0xFFFF,
+                                           "target_y": int(state["y"] - 5000 * math.cos(theta)) & 0xFFFF,
+                                           "target_range": 5000.0}
                             control(machine, working, tick, acquisition=args.acquisition)
                             if tick % 10 == 5 and working["target_range"] < 1500 and state["lock"] != 0xFFFF and state["lock"] & 0x7F != secondary:
                                 machine.type(machine.clock + 1, "b", hold_ms=20)
