@@ -535,9 +535,15 @@ static int vgame_strupr(machine_t *m)
 static unsigned scan_zero_count(cpu_t *c, uint16_t di)
 {
     const int delta = (c->flags & F_DF) ? -1 : 1;
+    /* The routines that call this push BP before they scan; a string that runs over the
+     * two bytes about to be pushed would be read differently, so such a scan is left to the
+     * original (a count no room can hold). */
+    const uint32_t own0 = phys(c->seg[S_SS], (uint16_t)(c->r[R_SP] - 2)), own1 = phys(c->seg[S_SS], (uint16_t)(c->r[R_SP] - 1));
     unsigned k = 0;
     while (k < 0xFFFF) {
-        const uint8_t b = mem_read8(c, phys(c->seg[S_ES], di));
+        const uint32_t at = phys(c->seg[S_ES], di);
+        if (at == own0 || at == own1) return 0x1000000;
+        const uint8_t b = mem_read8(c, at);
         k++;
         if (!b) break;
         di = (uint16_t)(di + delta);
@@ -4036,7 +4042,6 @@ static int crt_stbuf_set(machine_t *m, const crt_stbuf *s)
 {
     cpu_t *c = &m->cpu;
     if (!room(c, 40)) return 0;
-    const uint16_t ds = c->seg[S_DS];
     cpu_push16(c, c->r[R_BP]);
     c->r[R_BP] = c->r[R_SP];
     cpu_push16(c, c->r[R_SI]);
@@ -4056,11 +4061,11 @@ static int crt_stbuf_set(machine_t *m, const crt_stbuf *s)
         c->r[R_DI] = c->r[R_SI];
         c->r[R_DI] = (uint16_t)alu_sub(c, c->r[R_DI], s->base, 1, 0);
         c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], s->ext, 1, 0);
-        alu_logic(c, mem_read8(c, phys(ds, (uint16_t)(c->r[R_SI] + 6))) & 0xC, 0);   /* test byte [si+6], 0Ch */
+        alu_logic(c, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_SI] + 6))) & 0xC, 0);   /* test byte [si+6], 0Ch */
         c->icount += 5;
         if (!(c->flags & F_ZF)) fail = 1;
         else {
-            alu_logic(c, mem_read8(c, phys(ds, c->r[R_DI])) & 1, 0);     /* test byte [di], 1 */
+            alu_logic(c, mem_read8(c, phys(c->seg[S_DS], c->r[R_DI])) & 1, 0);     /* test byte [di], 1 */
             c->icount += 2;
             if (!(c->flags & F_ZF)) fail = 1;
         }
@@ -4096,9 +4101,9 @@ static int crt_stbuf_set(machine_t *m, const crt_stbuf *s)
         ds_put(c, si, ax);
         ds_put(c, (uint16_t)(si + 2), 0x200);
         ds_put(c, (uint16_t)(di + 2), 0x200);
-        const uint8_t fl = mem_read8(c, phys(ds, (uint16_t)(si + 6)));
-        mem_write8(c, phys(ds, (uint16_t)(si + 6)), (uint8_t)alu_logic(c, fl | 2, 0));
-        mem_write8(c, phys(ds, di), 0x11);
+        const uint8_t fl = mem_read8(c, phys(c->seg[S_DS], (uint16_t)(si + 6)));
+        mem_write8(c, phys(c->seg[S_DS], (uint16_t)(si + 6)), (uint8_t)alu_logic(c, fl | 2, 0));
+        mem_write8(c, phys(c->seg[S_DS], di), 0x11);
         c->r[R_AX] = 1;
         c->icount += 8;
     } else {
@@ -4189,7 +4194,7 @@ typedef struct { uint16_t entry, base, ext, flush_all, write; } crt_fflush;
 static int crt_fflush_stream(machine_t *m, const crt_fflush *s)
 {
     cpu_t *c = &m->cpu;
-    const uint16_t ss = c->seg[S_SS], ds = c->seg[S_DS];
+    const uint16_t ss = c->seg[S_SS];
     /* Before each stretch of straight code: room for it, or leave at its first instruction. */
 #define NEED(n, off) do { if (!room(c, (n))) { c->ip = (uint16_t)(s->entry + (off)); return 1; } } while (0)
     if (!room(c, 8)) return 0;
@@ -4215,7 +4220,7 @@ static int crt_fflush_stream(machine_t *m, const crt_fflush *s)
     NEED(6, 0x18);
     c->r[R_SI] = seg_read16(c, ss, (uint16_t)(bp + 4));
     {
-        const uint8_t fl = mem_read8(c, phys(ds, (uint16_t)(c->r[R_SI] + 6)));
+        const uint8_t fl = mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_SI] + 6)));
         c->r[R_AX] = (uint16_t)((c->r[R_AX] & 0xFF00) | fl);      /* mov al, [si+6] */
         c->r[R_CX] = c->r[R_AX];                                  /* mov cx, ax */
         c->r[R_AX] = (uint16_t)((c->r[R_AX] & 0xFF00) | alu_logic(c, fl & 3, 0));   /* and al, 3 */
@@ -4231,7 +4236,7 @@ static int crt_fflush_stream(machine_t *m, const crt_fflush *s)
                 NEED(4, 0x2B);
                 c->r[R_BX] = c->r[R_SI];
                 c->r[R_BX] = (uint16_t)alu_sub(c, c->r[R_BX], s->base, 1, 0);
-                alu_logic(c, mem_read8(c, phys(ds, (uint16_t)(c->r[R_BX] + s->ext))) & 1, 0);   /* test byte [bx+ext], 1 */
+                alu_logic(c, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] + s->ext))) & 1, 0);   /* test byte [bx+ext], 1 */
                 c->icount += 4;
                 if (!(c->flags & F_ZF)) open = 1;
             }
@@ -4246,7 +4251,7 @@ static int crt_fflush_stream(machine_t *m, const crt_fflush *s)
                     NEED(6, 0x44);                                /* five and the CALL */
                     cpu_push16(c, c->r[R_AX]);
                     cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_SI] + 4)));
-                    set_r8(c, R_CL, mem_read8(c, phys(ds, (uint16_t)(c->r[R_SI] + 7))));
+                    set_r8(c, R_CL, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_SI] + 7))));
                     set_r8(c, R_CH, (uint8_t)alu_sub(c, get_r8(c, R_CH), get_r8(c, R_CH), 0, 0));   /* sub ch, ch */
                     cpu_push16(c, c->r[R_CX]);
                     c->icount += 5;
@@ -4258,7 +4263,7 @@ static int crt_fflush_stream(machine_t *m, const crt_fflush *s)
                     if (!(c->flags & F_ZF)) {                     /* short write */
                         NEED(2, 0x59);
                         const uint16_t fl6 = (uint16_t)(c->r[R_SI] + 6);
-                        mem_write8(c, phys(ds, fl6), (uint8_t)alu_logic(c, mem_read8(c, phys(ds, fl6)) | 0x20, 0));
+                        mem_write8(c, phys(c->seg[S_DS], fl6), (uint8_t)alu_logic(c, mem_read8(c, phys(c->seg[S_DS], fl6)) | 0x20, 0));
                         c->r[R_DI] = 0xFFFF;
                         c->icount += 2;
                     }
@@ -4487,7 +4492,7 @@ typedef struct { uint16_t entry, stream, format, overflow; } crt_sprintf_t;
 static int crt_sprintf(machine_t *m, const crt_sprintf_t *s)
 {
     cpu_t *c = &m->cpu;
-    const uint16_t ss = c->seg[S_SS], ds = c->seg[S_DS];
+    const uint16_t ss = c->seg[S_SS];
     if (!room(c, 17)) return 0;
     cpu_push16(c, c->r[R_BP]);
     c->r[R_BP] = c->r[R_SP];
@@ -4495,7 +4500,7 @@ static int crt_sprintf(machine_t *m, const crt_sprintf_t *s)
     const uint16_t bp = c->r[R_BP];
     cpu_push16(c, c->r[R_DI]);
     cpu_push16(c, c->r[R_SI]);
-    mem_write8(c, phys(ds, (uint16_t)(s->stream + 6)), 0x42);
+    mem_write8(c, phys(c->seg[S_DS], (uint16_t)(s->stream + 6)), 0x42);
     c->r[R_AX] = seg_read16(c, ss, (uint16_t)(bp + 4));
     ds_put(c, (uint16_t)(s->stream + 4), c->r[R_AX]);
     c->r[R_SI] = s->stream;
@@ -4518,7 +4523,7 @@ static int crt_sprintf(machine_t *m, const crt_sprintf_t *s)
         const uint16_t bx = ds_get(c, s->stream);
         c->r[R_BX] = bx;
         ds_put(c, s->stream, (uint16_t)alu_inc(c, ds_get(c, s->stream), 1));
-        mem_write8(c, phys(ds, bx), 0);
+        mem_write8(c, phys(c->seg[S_DS], bx), 0);
         c->icount += 4;                                           /* mov, inc, mov, jmp */
     } else {
         cpu_push16(c, c->r[R_SI]);
@@ -4546,6 +4551,248 @@ static int crt_sprintf(machine_t *m, const crt_sprintf_t *s)
 SPRINTF(start, 0x959E, 0xCAA4, 0x9D06, 0x9992)
 SPRINTF(end, 0x521C, 0x55C2, 0x5678, 0x54D8)
 SPRINTF(dswap, 0x107A, 0x29D8, 0x16C6, 0x1440)
+/* Small routines that call one other and little else. Each checks for room before the
+ * stretch, the CALL included, and leaves at the stretch's first instruction otherwise. */
+
+/* flush_all(1) as a routine of its own (END 0x05C1A, PLAYER 0x01A1C, VGAME 0x0F338): the
+ * callee takes its argument off the stack (RET 2). */
+static int crt_flush_all_one(machine_t *m, uint16_t entry, uint16_t callee)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 3)) return 0;
+    c->r[R_AX] = 1;
+    cpu_push16(c, 1);
+    c->icount += 2;
+    if (!guest_call_pop(m, callee, (uint16_t)(entry + 7), 2)) return 1;
+    if (!room(c, 1)) { c->ip = (uint16_t)(entry + 7); return 1; }
+    c->icount += 1;
+    near_ret(c);
+    return 1;
+}
+static int end_flush_all_one(machine_t *m) { return crt_flush_all_one(m, 0x5C1A, 0x5C22); }
+static int player_flush_all_one(machine_t *m) { return crt_flush_all_one(m, 0x1A1C, 0x1A24); }
+static int vgame_flush_all_one(machine_t *m) { return crt_flush_all_one(m, 0xF338, 0xF340); }
+
+/* END 0x015D7 and 0x015EF: the argument, 100h and 0 (in either order) and 1F25h are
+ * handed to 0x01607; the pair differ only in the order of the 100h and the 0. */
+static int crt_three_args(machine_t *m, uint16_t entry, int zero_first)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 10)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 4)));
+    if (zero_first) {
+        c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+        cpu_push16(c, c->r[R_AX]);
+        c->r[R_AX] = 0x100;
+        cpu_push16(c, 0x100);
+    } else {
+        c->r[R_AX] = 0x100;
+        cpu_push16(c, 0x100);
+        c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+        cpu_push16(c, c->r[R_AX]);
+    }
+    c->r[R_AX] = 0x1F25;
+    cpu_push16(c, 0x1F25);
+    c->icount += 9;
+    if (!guest_call(m, 0x1607, (uint16_t)(entry + 0x14))) return 1;
+    if (!room(c, 3)) { c->ip = (uint16_t)(entry + 0x14); return 1; }
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 3;
+    near_ret(c);
+    return 1;
+}
+static int end_three_args_a(machine_t *m) { return crt_three_args(m, 0x15D7, 0); }
+static int end_three_args_b(machine_t *m) { return crt_three_args(m, 0x15EF, 1); }
+
+/* SETUP 0x00503 and END 0x02023: when the byte at `flag` is not zero, the callee is
+ * called with 0. */
+static int crt_call_if_flag(machine_t *m, uint16_t entry, uint16_t flag, uint16_t callee)
+{
+    cpu_t *c = &m->cpu;
+    const int set = mem_read8(c, phys(c->seg[S_DS], flag)) != 0;
+    if (!room(c, set ? 5 : 3)) return 0;
+    alu_sub(c, mem_read8(c, phys(c->seg[S_DS], flag)), 0, 0, 0);  /* cmp byte [flag], 0 */
+    c->icount += 2;
+    if (set) {
+        c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+        cpu_push16(c, c->r[R_AX]);
+        c->icount += 2;
+        if (!guest_call(m, callee, (uint16_t)(entry + 0xD))) return 1;
+        if (!room(c, 2)) { c->ip = (uint16_t)(entry + 0xD); return 1; }
+        c->r[R_BX] = cpu_pop16(c);
+        c->icount += 1;
+    }
+    c->icount += 1;
+    near_ret(c);
+    return 1;
+}
+static int setup_call_if_flag(machine_t *m) { return crt_call_if_flag(m, 0x503, 0xAC8, 0x53B); }
+static int end_call_if_flag(machine_t *m) { return crt_call_if_flag(m, 0x2023, 0x2608, 0x3F44); }
+
+/* END 0x052DC, rand(): the seed (a long at [5158]) times 343FDh plus 269EC3h, kept, and
+ * its high word less the top bit returned. The multiply is the 32-bit multiply, RET 8. */
+static int end_rand(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 7)) return 0;
+    c->r[R_AX] = 0x43FD;
+    c->r[R_DX] = 3;
+    cpu_push16(c, 3);
+    cpu_push16(c, 0x43FD);
+    cpu_push16(c, ds_get(c, 0x515A));
+    cpu_push16(c, ds_get(c, 0x5158));
+    c->icount += 6;
+    if (!guest_call_pop(m, 0x539C, 0x52EF, 8)) return 1;
+    if (!room(c, 7)) { c->ip = 0x52EF; return 1; }
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], 0x9EC3, 1, 0);
+    c->r[R_DX] = (uint16_t)alu_add(c, c->r[R_DX], 0x26, 1, (c->flags & F_CF) ? 1 : 0);   /* adc dx, 26h */
+    ds_put(c, 0x5158, c->r[R_AX]);
+    ds_put(c, 0x515A, c->r[R_DX]);
+    c->r[R_AX] = c->r[R_DX];
+    set_r8(c, R_AH, (uint8_t)alu_logic(c, get_r8(c, R_AH) & 0x7F, 0));   /* and ah, 7Fh */
+    c->icount += 7;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x0462E, the start of release_hold(index) (the index at [bp+4], the counts at 3668h):
+ * the count is stepped down; while it was above zero the rest of the routine, which the
+ * census holds as another function from 0x04657, is the original's; once it has run out the
+ * count is left at zero, the callee is called with 3DD5h and the routine returns. */
+static int vgame_release_count(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 11)) return 0;
+    x86_enter(c, 6, 0);
+    const uint16_t bp = c->r[R_BP];
+    seg_write16(c, c->seg[S_SS], (uint16_t)(bp - 4), 0xFFFF);
+    uint16_t bx = seg_read16(c, c->seg[S_SS], (uint16_t)(bp + 4));
+    bx = x86_shift(c, 4, bx, 1, 1);                               /* shl bx, 1 */
+    c->r[R_BX] = bx;
+    const uint16_t slot = (uint16_t)(bx + 0x3668);
+    c->r[R_AX] = ds_get(c, slot);
+    ds_put(c, slot, (uint16_t)alu_dec(c, c->r[R_AX], 1));         /* dec word [bx+3668h] */
+    alu_logic(c, c->r[R_AX], 1);                                  /* or ax, ax */
+    c->icount += 8;
+    if (x86_cond(c, 0xF)) { c->ip = 0x4657; return 1; }           /* jg: the rest of the routine is the original's */
+    ds_put(c, slot, 0);
+    cpu_push16(c, 0x3DD5);
+    c->icount += 2;
+    if (!guest_call(m, 0x8A4F, 0x4654)) return 1;
+    if (!room(c, 3)) { c->ip = 0x4654; return 1; }
+    c->r[R_BX] = cpu_pop16(c);
+    x86_leave(c);
+    c->icount += 3;
+    near_ret(c);
+    return 1;
+}
+
+/* START 0x09A72, release_buffer(stream): when the stream is open for reading or writing
+ * (flags & 83h) and owns its buffer (flag 8), the buffer is freed (the callee) and
+ * the stream loses the flag and its buffer, pointer and count. */
+static int start_release_buffer(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 12)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->r[R_SI]);
+    c->r[R_SI] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 4));
+    const uint8_t fl = mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_SI] + 6)));
+    set_r8(c, R_AL, fl);
+    alu_logic(c, fl & 0x83, 0);                                   /* test al, 83h */
+    c->icount += 7;
+    int release = 0;
+    if (!(c->flags & F_ZF)) {
+        alu_logic(c, fl & 8, 0);                                  /* test al, 8 */
+        c->icount += 2;
+        if (!(c->flags & F_ZF)) release = 1;
+    }
+    if (release) {
+        cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_SI] + 4)));
+        c->icount += 1;
+        if (!guest_call(m, 0xA76C, 0x9A8A)) return 1;
+        if (!room(c, 9)) { c->ip = 0x9A8A; return 1; }
+        c->r[R_CX] = cpu_pop16(c);
+        const uint16_t si = c->r[R_SI];
+        const uint16_t f6 = (uint16_t)(si + 6);
+        mem_write8(c, phys(c->seg[S_DS], f6), (uint8_t)alu_logic(c, mem_read8(c, phys(c->seg[S_DS], f6)) & 0xF7, 0));
+        c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);                /* xor ax, ax */
+        ds_put(c, (uint16_t)(si + 4), 0);
+        ds_put(c, si, 0);
+        ds_put(c, (uint16_t)(si + 2), 0);
+        c->icount += 6;
+    }
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 3;
+    near_ret(c);
+    return 1;
+}
+
+/* END 0x0206A: the error handler - the word at [6D98] is 3, a message built by the
+ * callee at 112Ah from the two argument words and a text, and the exit routine is
+ * then called with -1. */
+static int end_fatal(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 10)) return 0;
+    const uint16_t ss = c->seg[S_SS];
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    ds_put(c, 0x6D98, 3);
+    cpu_push16(c, seg_read16(c, ss, (uint16_t)(c->r[R_BP] + 6)));
+    cpu_push16(c, seg_read16(c, ss, (uint16_t)(c->r[R_BP] + 4)));
+    c->r[R_AX] = 0x2DC;
+    cpu_push16(c, 0x2DC);
+    c->r[R_AX] = 0x6D8C;
+    cpu_push16(c, 0x6D8C);
+    c->icount += 9;
+    if (!guest_call(m, 0x112A, 0x2084)) return 1;
+    if (!room(c, 4)) { c->ip = 0x2084; return 1; }
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_AX] = 0xFFFF;
+    cpu_push16(c, 0xFFFF);
+    c->icount += 3;
+    if (!guest_call(m, 0x2092, 0x208D)) return 1;
+    if (!room(c, 4)) { c->ip = 0x208D; return 1; }
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 4;
+    near_ret(c);
+    return 1;
+}
+
+/* PLAYER 0x005D0: two calls of 0x014CA with 1Bh and 23h and a pair of words each. */
+static int player_two_calls(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 5)) return 0;                                    /* four and the CALL */
+    cpu_push16(c, ds_get(c, 0x1E78));
+    cpu_push16(c, ds_get(c, 0x1E76));
+    c->r[R_AX] = 0x1B;
+    cpu_push16(c, 0x1B);
+    c->icount += 4;
+    if (!guest_call(m, 0x14CA, 0x05DF)) return 1;
+    if (!room(c, 6)) { c->ip = 0x05DF; return 1; }                /* five and the CALL */
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0);       /* add sp, 6 */
+    cpu_push16(c, ds_get(c, 0x2090));
+    cpu_push16(c, ds_get(c, 0x208E));
+    c->r[R_AX] = 0x23;
+    cpu_push16(c, 0x23);
+    c->icount += 5;
+    if (!guest_call(m, 0x14CA, 0x05F1)) return 1;
+    if (!room(c, 2)) { c->ip = 0x05F1; return 1; }
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0);
+    c->icount += 2;
+    near_ret(c);
+    return 1;
+}
+
 /* The C runtime's stack check (START 0x0A4C6, END 0x05B4E; VGAME's copy at
  * 0x0F8F0 is never run by any route, so it is left to the original): AX
  * bytes are taken off the stack unless that would wrap or pass the limit
@@ -6038,7 +6285,8 @@ static int edge_arm_tail(machine_t *m, int clipped_second)
     if (!guest_call_far(m, pub_call, pub_ret)) return 1;
     if (!room(c, 4)) { c->ip = pub_ret; return 1; }
     c->r[R_AX] = 0x4040;
-    ds_put(c, (uint16_t)(si + 2), (uint16_t)alu_logic(c, ds_get(c, (uint16_t)(si + 2)) | 0x4040, 1));
+    const uint16_t slot = (uint16_t)(c->r[R_SI] + 2);              /* SI as the clipper left it */
+    ds_put(c, slot, (uint16_t)alu_logic(c, ds_get(c, slot) | 0x4040, 1));
     c->icount += 4;
     near_ret(c);
     return 1;
@@ -7462,6 +7710,18 @@ static const recomp_override MATCHED[] = {
     { "matched", "START.EXE", START_47304, 0x0000, 0xA7BA, heap_search, "near-heap free-block search", 1 },
     { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x263E, heap_search, "near-heap free-block search", 1 },
     { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x0F32, player_pick_byte, "one of two bytes picked by an argument", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x5C1A, end_flush_all_one, "flush all, mode 1", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x1A1C, player_flush_all_one, "flush all, mode 1", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xF338, vgame_flush_all_one, "flush all, mode 1", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x15D7, end_three_args_a, "call with the argument, 100h, 0, 1F25h", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x15EF, end_three_args_b, "call with the argument, 0, 100h, 1F25h", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x0503, setup_call_if_flag, "call when a flag is set", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x2023, end_call_if_flag, "call when a flag is set", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x52DC, end_rand, "random number", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x462E, vgame_release_count, "release a counted hold", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x9A72, start_release_buffer, "release a stream's buffer", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x206A, end_fatal, "fatal error message and exit", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x05D0, player_two_calls, "two calls with word pairs", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x959E, start_sprintf, "format into a string", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x521C, end_sprintf, "format into a string", 1 },
     { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x107A, dswap_sprintf, "format into a string", 1 },
