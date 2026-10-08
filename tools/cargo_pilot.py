@@ -47,8 +47,9 @@ def pilot_state(machine):
 
 LEVEL_PITCH = 211
 PULL_UP_PITCH = 2000
-# 200 survived the Machine's and DOSBox-X's own tracks, but on 86Box, whose track differs run to run,
-# three of six flights ended in the original's draw-detected terrain collision (exit 129) at 150-290.
+# 200 survived the Machine's and DOSBox-X's own tracks, but on 86Box (before its runs were made
+# deterministic) three of six flights ended in the original's draw-detected terrain collision
+# (exit 129) at 150-290.
 HOLD_AGL = 400
 RUN_IN_RANGE = 835
 RUN_IN_AGL = 400

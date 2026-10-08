@@ -48,15 +48,19 @@ variables drive it:
 | `B86_OPL=FILE` | every AdLib register write as `microseconds register value` |
 | `B86_FAST=1` | fast-forward: `pc_run()` back to back instead of one quantum per host millisecond; emulated time is still the TSC. `sound86.py` and `sav86.py` set it unless `--realtime` |
 
-86Box is not bit-deterministic between runs, even at real time: two real-time
-music runs gave the same 30,937 AdLib writes in the same order with timing
-spread over -10..+166 us, and 7 of 12,000 frame hashes differed (`frames.csv`
-is sampled when the blit thread hashes the screen). Fast-forward stays inside
-that: the same writes in the same order (-201..+10 us against the two real-time
-runs), 20-23 frame hashes differing, the first frame logged 1.7 ms later (the
-blit thread lags a fast emulation), the saved roster identical; music run 49 s
-instead of 178 s, save run 95 s instead of 277 s (7 Oct 2026). `probe86.py` has
-not been checked in fast-forward and does not set it.
+**Runs are deterministic** (8 Oct 2026). The harness's frame hook (key and mouse
+injection, the closed loop, the seed staging, the frame hash and PPMs) runs in the
+emulation thread as each frame is posted (`video.c`'s `b86_frame_hook`, set by
+`vnc.c`), after the previous blit has finished, and hashes the emulated frame
+buffer (`buffer32`). Before, it ran on the blit thread, so each injected input
+landed a host-dependent moment later: two music runs differed by -10..+166 us in
+AdLib timing and 7 of 12,000 frame hashes, and closed-loop flights parted from
+the first input. Now two fast-forward music runs give byte-identical AdLib logs
+(30,937 writes, times included), two intro captures byte-identical `frames.csv`
+(13,020 frames, hash and TSC), and two closed-loop supply drops (1,531 ticks) and
+two strike-training flights (2,696 ticks) byte-identical `flight.csv`; `pc_parity.py`
+passes unchanged. Fast-forward: music 49 s instead of 178 s, save 95 s instead of
+277 s. `probe86.py` has not been checked in fast-forward and does not set it.
 
 ### Closed loop (B86_LOOP_*) and the seed (B86_SEED_TICK)
 
@@ -91,13 +95,13 @@ target 24, secondary 1) then match the Machine's.
 
 `tools/b86_cargo_pilot.py` flies `cargo_pilot.py` this way, or with `--pilot strike` the strike-training
 pilot (`--front-end-clock 2761292060 --start-exec-clock 956971536 --seed-tick 31324` and the
-Machine's recorded front end). Strike training (8 Oct 2026, ten flights): the generated mission
-is the Machine's in all ten (target 1 at 21200, 24272, the same loadout) and the primary is
-designated at about 3,050 map units in all ten, but only 2 of 10 hit: on this track the lock
-breaks near 1,400 units in most flights (the nose is left within the pilot's pitch and roll
-deadbands while the target leaves the seeker's view), and the laser-guided bomb's hit window
-is narrow (bugs.md D7). Tighter deadbands and a wings-level release window were tried and
-made the Machine and DOSBox-X flights miss, so they were not kept. Its front end is
+Machine's recorded front end). Strike training (8 Oct 2026): the generated mission is the
+Machine's (target 1 at 21200, 24272, the same loadout) and the primary is designated at about
+3,050 map units, but the deterministic flight misses: the lock breaks near 1,400 units (the nose
+is left within the pilot's pitch and roll deadbands while the target leaves the seeker's view),
+and the laser-guided bomb's hit window is narrow (bugs.md D7). Before runs were deterministic,
+2 of 10 flights hit. Tighter deadbands and a wings-level release window were tried and made the
+Machine and DOSBox-X flights miss, so they were not kept. Its front end is
 the route's START-to-VGAME events (2 keys, 11 clicks) on displayed frames:
 START.EXE first appears at frame 10,775 on this profile (measured by memory
 dumps, between 10,700 and 10,850), and later events follow at 70.086 frames

@@ -201,10 +201,9 @@ Status values:
   crate and releases it when the aircraft's own state is inside the release
   window, and `cargo_check.py` gives one timely impact in the delivery area
   with no credit. The same pilot delivers on DOSBox-X
-  (`tools/dosbox_cargo_pilot.py`) and, in 8 of 10 flights, on 86Box
-  (`tools/b86_cargo_pilot.py`): one timely impact in the delivery area, no
-  credit. The two 86Box misses never got a release: its flight track differs
-  run to run and the release window can last two ticks.
+  (`tools/dosbox_cargo_pilot.py`) and on 86Box (`tools/b86_cargo_pilot.py`,
+  whose runs are now deterministic): one timely impact in the delivery area,
+  no credit.
 - **Approach trap.** The shipped instructions at 6C23..6C4C apply the owner
   pitch floor (slot field +22, zero for the crate) to any weapon at height 1,
   so a crate whose height lands on exactly 1 gets pitch 0, stays there and

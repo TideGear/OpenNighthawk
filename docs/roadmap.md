@@ -143,12 +143,12 @@ make (Phase 4).
       flies the generated mission in our emulator and releases the crate by its
       own state (`tools/cargo_pilot.py`, gate route `cargo_pilot`), and the same
       pilot delivers on DOSBox-X (`tools/dosbox_cargo_pilot.py`) and on 86Box
-      (`tools/b86_cargo_pilot.py`, 8 of 10 flights; 8 Oct 2026): one timely
+      (`tools/b86_cargo_pilot.py`; 86Box runs deterministic since 8 Oct 2026): one timely
       impact in the delivery area on each; the strike-training mission is
       reproduced on DOSBox-X (same target, loadout) and its closed-loop pilot
       (`--pilot strike`: `n` until designated, release at 80) delivers there as on
-      the Machine, and on 86Box the mission and designation match in 10 of 10
-      flights but only 2 of 10 hit (the lock breaks near 1,400 units); wider generated-assignment coverage; the strike-training mission (bugs.md
+      the Machine, and on 86Box the mission and designation match but the
+      flight misses (the lock breaks near 1,400 units); wider generated-assignment coverage; the strike-training mission (bugs.md
       D7) is settled as far as the original goes: a strike-type training mission is
       reproducible (start clock +5 s, `strike_pilot.py --time-us`) and is
       credited when the laser-guided bomb is released within about 80-150 map
