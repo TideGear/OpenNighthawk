@@ -52,13 +52,13 @@ def recon_state(machine):
 
 def control(machine, state, tick, *, acquisition="nose", select_key="n",
             select_range=1500, aim_range=1500, camera_aim=True,
-            pitch_tolerance=200):
+            pitch_tolerance=200, cruise=2500):
     at = machine.clock + 1
     dx, dy = signed(state["target_x"] - state["x"]), signed(state["target_y"] - state["y"])
     heading = math.atan2(dx, -dy) * 32768 / math.pi
     bank = clamp(signed(int(heading) - state["heading"]) * 1.5, -6000, 6000)
     roll_error = bank - state["roll"]
-    want_pitch = clamp((2500 - state["altitude"]) * 2, -1000, 1800) + state["trim"]
+    want_pitch = clamp((cruise - state["altitude"]) * 2, -1000, 1800) + state["trim"]
     designated = state["lock"] != 0xFFFF and state["lock"] & 0x7F == state["target"]
     # N casts a ray along the physical nose (recon_prepare). The photo
     # cue separately includes the camera's 0x6EF mounting offset. Applying
@@ -144,6 +144,8 @@ def main():
                         help="with --complete: fly straight out and re-attack a secondary target the turn cannot reach")
     parser.add_argument("--deck-speed", type=int, nargs=3, default=[210, 240, 50], metavar=("LOW", "HIGH", "THROTTLE"),
                         help="a raised deck's approach speed band and the throttle above it (Realistic Landings: 190 210 30)")
+    parser.add_argument("--cruise-throttle", type=int, help="the throttle held on the way home outside 2,500")
+    parser.add_argument("--cruise-altitude", type=int, default=2500, help="the altitude held between targets and on the way home")
     parser.add_argument("--cycle", action="store_true",
                         help="with --complete: while another object is designated, select the secondary with b only")
     parser.add_argument("--primary-only", action="store_true", help="with --complete, go home after the primary photo")
@@ -246,11 +248,12 @@ def main():
                             waypoint_range = math.hypot(signed(state["home_x"] - state["x"]),
                                 signed(state["home_y"] + 4000 - state["y"]))
                             if waypoint_range < 150: approach = True
-                            landing_control(machine, state, tick, approach, deck_aim=300,
+                            landing_control(machine, state, tick, approach, deck_aim=300, cruise=args.cruise_altitude,
                                             aim=args.landing_aim, approach_speed=args.approach_speed,
                                             throttle_gain=args.landing_throttle_gain,
                                             deck_pitch_floor=args.deck_pitch_floor,
-                                            deck_speed=tuple(args.deck_speed))
+                                            deck_speed=tuple(args.deck_speed),
+                                            cruise_throttle=args.cruise_throttle)
                         elif args.complete and state["flags"] & 0x4000:
                             ds = (machine.psp + 0x10 + 0x1E42) << 4
                             secondary = machine.read16(ds + 0xE318)
@@ -279,12 +282,13 @@ def main():
                             # can pick the same wrong object again each time, and b's next press
                             # then starts over (a Veteran sortie alternated 22 and 0 for 500 s).
                             wrong_lock = state["lock"] != 0xFFFF and state["lock"] & 0x7F != secondary
-                            control(machine, working, tick, acquisition=args.acquisition,
+                            control(machine, working, tick, acquisition=args.acquisition, cruise=args.cruise_altitude,
                                     select_range=0 if args.cycle and wrong_lock else 1500)
                             if tick % 10 == 5 and working["target_range"] < 1500 and state["lock"] != 0xFFFF and state["lock"] & 0x7F != secondary:
                                 machine.type(machine.clock + 1, "b", hold_ms=20)
                         else:
-                            control(machine, state, tick, acquisition=args.acquisition)
+                            control(machine, state, tick, acquisition=args.acquisition,
+                                    cruise=args.cruise_altitude)
                     flight_block = state["flight_block"]
                     tick += 1
                     step = machine.ips // 5

@@ -8,9 +8,11 @@ Each sortie boots the game with the previous sortie's saved ROSTER.FIL in a fres
 flies recon_pilot.py's closed-loop career sortie from FRONT (--complete --extend --debrief: both
 photos, the flight home, the landing, END's screens; START then saves the roster). After each sortie
 the selected pilot's record is read (career_check.career) and checked (career_check.career_errors):
-the sortie count advances by one, the score is added to the total, the rank never falls. The chain
-stops at the first sortie that fails that check, so every saved roster in it is one a player could
-have earned. DIR/NN holds each sortie's run and DIR/chain.json the records.
+the sortie count advances by one, the score is added to the total, the rank never falls. A sortie
+that fails that check or the flight's own (recon_errors, landing_errors), or loses the pilot, is
+discarded and flown again from the same roster at the next start time, as a player resetting the PC
+before START saves it would; chain.json lists each sortie's discarded attempts. So every saved
+roster in the chain is one a player could have earned. DIR/NN holds each sortie's run and DIR/chain.json the records.
 
 The generated mission depends on the roster and on when the game was started (the DOS clock seeds
 START's generator). The pilot flies reconnaissance, so before each sortie the chain boots the game to
@@ -34,7 +36,7 @@ from run_route import route_args  # noqa: E402
 # above rank 6's average of 280; Realistic Landings stops nothing on the deck, so it is approached at
 # 190-210 (a 250 touchdown ran off its end), and --cycle finds the secondary target.
 PILOT = ["--complete", "--extend", "--cycle", "--debrief", "--landing-throttle-gain", "0.6", "--deck-pitch-floor", "-300",
-         "--deck-speed", "190", "210", "30", "--seconds", "2400"]
+         "--deck-speed", "190", "210", "30", "--cruise-throttle", "100", "--seconds", "2400"]
 
 
 def objectives(data, front, roster, time_us, scratch):
@@ -64,7 +66,8 @@ def main():
     ap.add_argument("--start-roster", type=Path, help="continue from this saved roster (default: the install's)")
     ap.add_argument("--time-us", type=int, default=700_000_000_000_000, help="the first start time tried")
     ap.add_argument("--time-step-us", type=int, default=1_000_000)
-    ap.add_argument("--tries", type=int, default=40, help="start times tried for a reconnaissance per sortie")
+    ap.add_argument("--tries", type=int, default=60, help="start times tried per sortie")
+    ap.add_argument("--flights", type=int, default=12, help="flights discarded before a sortie gives up")
     a = ap.parse_args()
     a.out.mkdir(parents=True, exist_ok=True)
     log = a.out / "chain.json"
@@ -79,43 +82,49 @@ def main():
             break
         n = len(chain) + 1
         run = a.out / ("%02d" % n)
-        if run.exists():
-            shutil.rmtree(run)
-        run.mkdir(parents=True)
-        time_us, tried = None, []
-        for k in range(a.tries):
+        tried, discarded, kept, k = [], [], None, 0
+        while kept is None and k < a.tries and len(discarded) < a.flights:
             t = a.time_us + k * a.time_step_us
+            k += 1
+            if run.exists():
+                shutil.rmtree(run)
+            run.mkdir(parents=True)
             kinds = objectives(a.data, a.front, roster, t, run)
+            shutil.rmtree(run / "save", ignore_errors=True)
             tried.append([t, kinds])
-            if kinds == (1, 1):
-                time_us = t
-                break
-        shutil.rmtree(run / "save", ignore_errors=True)
-        if time_us is None:
-            print("sortie", n, "no reconnaissance in %d start times" % a.tries, tried, flush=True)
+            if kinds != (1, 1):
+                continue
+            rc = subprocess.run([sys.executable, str(HERE / "recon_pilot.py"), "--data", a.data, "--out", str(run),
+                                 "--front-route", a.front, "--initial-roster", str(roster),
+                                 "--time-us", str(t)] + PILOT,
+                                stdout=open(a.out / ("%02d.log" % n), "w"), stderr=subprocess.STDOUT).returncode
+            saved = run / "ROSTER.FIL"
+            if not saved.exists():
+                discarded.append(dict(time_us=t, rc=rc, why="saved no roster"))
+                continue
+            after = career_check.career(saved.read_bytes())
+            before = career_check.career(roster.read_bytes(), after["pilot"])
+            errors = career_check.career_errors(before, after)
+            flight = json.loads((run / "result.json").read_text()).get("errors", [])
+            if errors or flight or after["status"]:
+                # A player whose sortie went wrong can reset the PC before START saves it and fly
+                # again from the same career: the attempt is discarded, never chained.
+                discarded.append(dict(time_us=t, rc=rc, score=after["score"], status=after["status"],
+                                      why=(errors + flight)[:3]))
+                print("sortie %d: attempt at %d discarded (score %d status %d) %s" % (
+                    n, t, after["score"], after["status"], "; ".join((errors + flight)[:2])), flush=True)
+                continue
+            kept = dict(sortie=n, rc=rc, time_us=t, tried=tried, discarded=discarded, before=before, after=after)
+        if kept is None:
+            print("sortie %d: no clean sortie in %d start times (%d flown)" % (n, k, len(discarded)), flush=True)
             break
-        rc = subprocess.run([sys.executable, str(HERE / "recon_pilot.py"), "--data", a.data, "--out", str(run),
-                             "--front-route", a.front, "--initial-roster", str(roster),
-                             "--time-us", str(time_us)] + PILOT,
-                            stdout=open(a.out / ("%02d.log" % n), "w"), stderr=subprocess.STDOUT).returncode
-        saved = run / "ROSTER.FIL"
-        if not saved.exists():
-            print("sortie", n, "saved no roster (rc %d)" % rc, flush=True)
-            break
-        after = career_check.career(saved.read_bytes())
-        pilot = after["pilot"]
-        before = career_check.career(roster.read_bytes(), pilot)
-        errors = career_check.career_errors(before, after)
-        result = json.loads((run / "result.json").read_text())
-        chain.append(dict(sortie=n, rc=rc, time_us=time_us, tried=tried, flight_errors=result.get("errors", []), before=before, after=after,
-                          career_errors=errors))
+        pilot = kept["after"]["pilot"]
+        chain.append(kept)
         log.write_text(json.dumps(chain, indent=1) + "\n")
-        print("sortie %d: rank %d score %d total %d sorties %d status %d%s" % (
-            n, after["rank"], after["score"], after["total"], after["sorties"], after["status"],
-            "" if not errors else "  " + "; ".join(errors)), flush=True)
-        if errors or after["status"]:
-            break
-        roster = saved
+        after = kept["after"]
+        print("sortie %d: rank %d score %d total %d sorties %d (%d discarded)" % (
+            n, after["rank"], after["score"], after["total"], after["sorties"], len(discarded)), flush=True)
+        roster = run / "ROSTER.FIL"
     return 0
 
 

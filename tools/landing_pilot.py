@@ -92,7 +92,7 @@ def landing_errors(rows, report, log, require_dos_exit=True):
 
 
 def control(machine, state, tick, approach, cruise=2500, aim=20, approach_speed=200,
-            deck_aim=220, throttle_gain=.1, deck_pitch_floor=None, deck_speed=(210, 240, 50)):
+            deck_aim=220, throttle_gain=.1, deck_pitch_floor=None, deck_speed=(210, 240, 50), cruise_throttle=None):
     """Short, separated stick pulses; every key is released normally.
 
     `cruise` is the altitude held before the approach; a return leg over
@@ -100,7 +100,9 @@ def control(machine, state, tick, approach, cruise=2500, aim=20, approach_speed=
     the runway centre the glide path meets the ground, and `approach_speed`
     the speed held on final; a short runway needs both moved. `deck_speed` is the band a raised
     deck's approach holds (low, high, the throttle above it; 50 holds about 250): with Realistic Landings nothing stops the aircraft for it, and a
-    touchdown at 250 ran off the deck's end at 79."""
+    touchdown at 250 ran off the deck's end at 79. `cruise_throttle`, when given, is held on the way
+    home outside 2,500: a long career reconnaissance flown back at the photo run's 60 ran dry 3,750
+    short."""
     at = machine.clock + 1
     in_box = (state["box"] == 1 and state["nearest"] == state["home"]
               and abs(signed(state["x"] - state["home_x"])) <= state["box_width"] >> 5
@@ -152,6 +154,10 @@ def control(machine, state, tick, approach, cruise=2500, aim=20, approach_speed=
                 machine.type(command_at, "-" if state["throttle"] > want_throttle else "=", hold_ms=20)
         elif not state["flags"] & 1:
             machine.type(command_at, "6", hold_ms=20)
+        elif cruise_throttle is not None and abs(state["throttle"] - cruise_throttle) > 5:
+            # "=" left the throttle at 60 through 294 presses on the way home; "+" is what sets full power
+            # after the takeoff, so raise with it.
+            machine.type(command_at, "-" if state["throttle"] > cruise_throttle else "+", hold_ms=20)
 
 
 def main():

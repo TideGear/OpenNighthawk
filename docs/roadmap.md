@@ -188,6 +188,13 @@ make (Phase 4).
       flies the sortie clean at 296 once the deck is approached at 190-210
       (`--deck-speed`; a 250 touchdown ran off its end, 180-200 fell short);
       `tools/career_chain.py` chains such sorties and checks each saved record.
+      Sorties vary by start time (the DOS clock seeds START); the chain reads each
+      one's objectives first and flies reconnaissance only. Opponents hit the
+      aircraft on some sorties at any altitude: VGAME's damage bits ([0x3664];
+      bit 1 caps the throttle at (25 - [0xC5F4]) x 4 at 0x24BD, bit 4 jams the
+      bay open at 0xD30D) leave it short of speed or fuel, so a failed sortie is
+      flown again from the same roster at the next start time, as a player
+      resetting the PC before START saves would, and listed in chain.json.
 
 ## Phase 2 - understood code
 
