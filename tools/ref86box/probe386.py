@@ -75,6 +75,88 @@ def blocks():
     add("rep stosw A000 200", bytes([0xF3, 0xAB]), 200, vga_es + bytes([0xB9, 0xC8, 0x00]))
     add("rep movsb A000->A000 200", bytes([0x26, 0xF3, 0xA4]), 200,
         vga_es + bytes([0xBE, 0x00, 0x10, 0xB9, 0xC8, 0x00]))                # es: override on the source
+
+    # Calls and interrupts. A body may be a function of its own address (the COM's offset).
+    def near_calls(n):
+        def body(at):
+            out = bytearray([0xEB, 0x01, 0xC3])                           # jmp over / ret
+            for k in range(n):
+                nxt = 3 + 3 * k + 3
+                out += bytes([0xE8]) + ((2 - nxt) & 0xFFFF).to_bytes(2, "little")
+            return bytes(out)
+        return body
+
+    def far_calls(n):
+        def body(at):
+            retf = at + 2 + 2
+            setup = bytes([0xEB, 0x01, 0xCB])                             # jmp over / retf
+            out = bytearray(setup)
+            for k in range(n):                                            # push cs / call near retf
+                nxt = 3 + 4 * k + 4
+                out += bytes([0x0E, 0xE8]) + ((2 - nxt) & 0xFFFF).to_bytes(2, "little")
+            return bytes(out)
+        return body
+
+    def far_mem_calls(n):
+        def body(at):
+            out = bytearray([0xEB, 0x01, 0xCB])                           # jmp over / retf at at+2
+            for k in range(n):
+                out += bytes([0xFF, 0x1E]) + BUF.to_bytes(2, "little")   # call far [BUF]
+            return bytes(out)
+        return body
+
+    def ints(n):
+        def body(at):
+            out = bytearray([0xEB, 0x01, 0xCF])                           # jmp over / iret at at+2
+            out += bytes([0xCD, 0x60]) * n
+            return bytes(out)
+        return body
+    far_ptr = lambda at: bytes([0xC7, 0x06]) + BUF.to_bytes(2, "little") + (at + 2).to_bytes(2, "little") +         bytes([0x8C, 0x0E]) + (BUF + 2).to_bytes(2, "little")             # mov [BUF],retf / mov [BUF+2],cs
+    vec60 = lambda at: bytes([0x1E, 0x31, 0xC0, 0x8E, 0xD8, 0xC7, 0x06, 0x80, 0x01]) + (at + 2).to_bytes(2, "little") +         bytes([0x8C, 0x0E, 0x82, 0x01, 0x1F])                             # push ds / ds=0 / [180h]=iret / [182h]=cs / pop ds
+    add("call near/ret x32", near_calls(32), 65)
+    add("push cs + call near/retf x32", far_calls(32), 97)
+    add("call far [mem]/retf x32", far_mem_calls(32), 65, far_ptr)
+    add("int 60h/iret x16", ints(16), 33, vec60)
+    add("es: mov r16,[si] x64", rep(64, 0x26, 0x8B, 0x04), 64, si_buf)
+    add("cs: rep movsb 200", bytes([0x2E, 0xF3, 0xA4]), 200, si_buf + di_buf2 + bytes([0xB9, 0xC8, 0x00]))
+    add("repe cmpsb 50", bytes([0xF3, 0xA6]), 50, si_buf + bytes([0x89, 0xF7, 0xB9, 0x32, 0x00]))   # di=si: all equal
+    add("repne scasb 50", bytes([0xF2, 0xAE]), 50, di_buf2 + bytes([0xB0, 0xEE, 0xB9, 0x32, 0x00]))
+    add("rep stosb cx=0", bytes([0xF3, 0xAA]), 1, di_buf2 + bytes([0x31, 0xC9]))
+    add("movsb x32", rep(32, 0xA4), 32, si_buf + di_buf2)
+    add("stosw x32", rep(32, 0xAB), 32, di_buf2)
+    add("shl r16,cl(0) x32", rep(32, 0xD3, 0xE0), 32, bytes([0xB1, 0x00]))
+    add("shl r16,4 (C1) x32", rep(32, 0xC1, 0xE0, 0x04), 32)
+    add("sar [si],1 x32", rep(32, 0xD1, 0x3C), 32, si_buf)
+    add("inc r16 x64", rep(64, 0x40), 64)
+    add("inc word [si] x32", rep(32, 0xFF, 0x04), 32, si_buf)
+    add("add r16,imm8 (83) x64", rep(64, 0x83, 0xC0, 0x05), 64)
+    add("add [si],imm8 (83) x32", rep(32, 0x83, 0x04, 0x05), 32, si_buf)
+    add("cmp [si+disp8],imm16 x32", rep(32, 0x81, 0x7C, 0x02, 0x34, 0x12), 32, si_buf)
+    add("mov [si],imm16 x32", rep(32, 0xC7, 0x04, 0x34, 0x12), 32, si_buf)
+    add("mov ax,[moffs] x32", rep(32, 0xA1, 0x00, 0x80), 32)
+    add("mov [moffs],ax x32", rep(32, 0xA3, 0x00, 0x80), 32)
+    add("xchg ax,r16 x64", rep(64, 0x93), 64)
+    add("xchg r16,[si] x32", rep(32, 0x87, 0x1C), 32, si_buf)
+    add("imul r16 x32", rep(32, 0xF7, 0xEB), 32, bytes([0xBB, 0x03, 0x00]))
+    add("imul r16,r16,imm8 x32", rep(32, 0x6B, 0xC3, 0x07), 32)
+    add("cwd/idiv r16 x32", rep(32, 0x99, 0xF7, 0xFB), 64, bytes([0xB8, 0xE8, 0x03, 0xBB, 0x07, 0x00]))
+    add("neg r16 x64", rep(64, 0xF7, 0xD8), 64)
+    add("cbw/cwd x32", rep(32, 0x98, 0x99), 64)
+    add("xlat x32", rep(32, 0xD7), 32, bytes([0xBB]) + BUF.to_bytes(2, "little"))
+    add("push imm16 / pop x32", rep(32, 0x68, 0x34, 0x12, 0x58), 64)
+    add("pusha/popa x16", rep(16, 0x60, 0x61), 32)
+    add("enter 4,0/leave x16", rep(16, 0xC8, 0x04, 0x00, 0x00, 0xC9), 32)
+    add("lea r16,[bx+si+disp8] x64", rep(64, 0x8D, 0x40, 0x10), 64)
+    add("test r16,imm16 x64", rep(64, 0xA9, 0x34, 0x12), 64)
+    add("clc/stc/cld x32", rep(32, 0xF8, 0xF9, 0xFC), 96)
+    add("lahf/sahf x32", rep(32, 0x9F, 0x9E), 64)
+    add("pushf/popf x32", rep(32, 0x9C, 0x9D), 64)
+    add("jcxz not taken x64", rep(64, 0xE3, 0x00), 64, bytes([0xB9, 0x01, 0x00]))
+    add("out dx,al (3C8h) x32", rep(32, 0xEE), 32, bytes([0xBA, 0xC8, 0x03, 0xB0, 0x00]))
+    add("out 21h,al x32", rep(32, 0xE6, 0x21), 32, bytes([0xE4, 0x21]))
+    add("in al,dx (201h unclaimed) x32", rep(32, 0xEC), 32, bytes([0xBA, 0x01, 0x02]))
+    add("mov sreg pop ss pair x16", rep(16, 0x16, 0x17), 32)
+    add("aam/aad x16", rep(16, 0xD4, 0x0A, 0xD5, 0x0A), 32)
     return b
 
 
@@ -91,8 +173,15 @@ def build():
     for i, (name, setup, body, count) in enumerate(blocks()):
         names.append((name, count))
         emit([0xB0, i, 0xE6, 0xE9])                      # mov al,i / out E9h,al
-        emit(setup)
-        emit(body)
+        if callable(setup) or callable(body):
+            # a setup that names the body's address: its length does not depend on it
+            slen = len(setup(0)) if callable(setup) else len(setup)
+            at = org + len(code) + slen
+            emit(setup(at) if callable(setup) else setup)
+            emit(body(at) if callable(body) else body)
+        else:
+            emit(setup)
+            emit(body)
         emit([0x8C, 0xC8, 0x8E, 0xC0, 0x8E, 0xD8])      # mov ax,cs / mov es,ax / mov ds,ax (restore)
     emit([0xB0, 0xFF, 0xE6, 0xE9])                       # the end mark
     emit([0xFB, 0xB8, 0x03, 0x00, 0xCD, 0x10])          # sti / mov ax,3 / int 10h: text mode again
@@ -146,7 +235,7 @@ def run_86box(out, profile, probe, frames=3000, timeout=600):
     return log
 
 
-def run_ours(out, probe, engine):
+def run_ours(out, probe, engine, timing=None):
     d = os.path.join(out, "ours")
     os.makedirs(d, exist_ok=True)
     open(os.path.join(d, "F117.COM"), "wb").write(probe)
@@ -154,7 +243,8 @@ def run_ours(out, probe, engine):
     if os.path.exists(log):
         os.remove(log)
     env = dict(os.environ, F117R_PORTLOG=log)
-    subprocess.run([os.path.join(ROOT, "build", "f117run.exe"), "--engine", engine, "--data", d,
+    subprocess.run([os.path.join(ROOT, "build", "f117run.exe"), "--engine", engine, "--data", d]
+                   + (["--timing", timing] if timing else []) + [
                     "--save", os.path.join(out, "ours_save"), "--steps", "50000000",
                     "--log", os.path.join(out, "ours.log")], env=env, capture_output=True, timeout=300)
     return log
@@ -166,19 +256,21 @@ def main():
     ap.add_argument("--profile", default=r"D:\86box\vmt386")
     ap.add_argument("--no-86box", action="store_true", help="reuse OUT_DIR/86box-ports.log")
     ap.add_argument("--engine", default="interp", choices=("interp", "recomp"))
+    ap.add_argument("--timing", choices=("386",), help="run this machine under the 386DX/33 profile")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     probe, names = build()
     box_log = os.path.join(a.out, "86box-ports.log") if a.no_86box else run_86box(a.out, a.profile, probe)
     box = costs(marks_86box(box_log), names)
-    ours = costs(marks_ours(run_ours(a.out, probe, a.engine)), names)
+    ours = costs(marks_ours(run_ours(a.out, probe, a.engine, a.timing)), names)
     rows = []
-    print("%-28s %8s %6s %8s %8s" % ("block", "86Box", "ins", "per ins", "ours"))
+    print("%-28s %8s %6s %8s %8s %6s" % ("block", "86Box", "ins", "per ins", "ours", "diff"))
     for i, (name, count) in enumerate(names):
         bc, bi = box.get(i, (None, None))
         oc = ours.get(i, (None, None))[0]
         rows.append(dict(block=name, count=count, box_cycles=bc, box_ins=bi, ours=oc))
-        print("%-28s %8s %6s %8s %8s" % (name, bc, bi, "" if bc is None or not count else "%.2f" % (bc / count), oc))
+        print("%-28s %8s %6s %8s %8s %6s" % (name, bc, bi, "" if bc is None or not count else "%.2f" % (bc / count), oc,
+                                            "" if bc is None or oc is None else oc - bc))
     json.dump(rows, open(os.path.join(a.out, "probe386.json"), "w"), indent=1)
     missing = [r["block"] for r in rows if r["box_cycles"] is None or r["ours"] is None]
     if missing:

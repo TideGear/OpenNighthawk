@@ -78,6 +78,14 @@ retrace bit, the OPL's timers, the joystick one-shots, and the audio the
 host renders. A run is therefore a pure function of the program, its files,
 and the inputs with the clock counts at which they arrived.
 
+- **The 386DX/33 profile** (`f117run --timing 386`, `F117R_TIMING=386`;
+  `src/cpu/timing386.c`) makes the clock count CPU cycles at 33,333,333 a
+  second instead: each instruction costs what 86Box's 386DX/33 charges for it
+  (its cycles, prefetch refills, prefixes, REP chunks), VGA memory 32 cycles a
+  byte, and ports 86Box's costs in place of DOSBox's delays
+  ([timing386.md](../tools/ref86box/timing386.md)). `probe386.py` holds the
+  interpreter to 86Box block by block; the recompiled engine does not charge
+  these costs yet and `--timing 386` refuses it. Recorded routes run without it.
 - **The default speed is 9,000,000 a second**, GOG DOSBox's `cycles=9000`
   for this game. The game's behaviour depends on machine speed (bug D1);
   this is the speed GOG players have, and `--ips` changes it.

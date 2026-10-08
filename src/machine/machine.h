@@ -290,6 +290,9 @@ uint64_t machine_local_time_us(void);
  * (RUN_EXITED) or something unrecoverable happens (RUN_FAULT). */
 int  machine_run(machine_t *m, uint64_t until);
 
+/* The clock under F117R_TIMING=386 (src/cpu/timing386.h): CPU cycles of a 33.333 MHz 386DX. */
+#define MACHINE_386_IPS 33333333ull
+
 /* Microseconds of emulated time at icount. */
 uint64_t machine_now_us(const machine_t *m);
 

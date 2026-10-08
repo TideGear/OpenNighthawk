@@ -91,8 +91,9 @@ make (Phase 4).
       instruction's cycles and prefetch refills, the IBM VGA's 8-bit bus, ISA
       port costs, at 33.333 MHz. Results that do not depend on speed must match
       under both profiles; recorded routes and hashes stay on the DOSBox profile.
-      Done: the interpreter matches 86Box to the cycle on every block of
-      `probe386.py`. Open: the BIOS and DOS services this machine provides
+      Done: the interpreter matches 86Box to the cycle on all 77 blocks of
+      `probe386.py` (ALU, memory forms, jumps, calls, INT, REP chunks with
+      prefixes, VGA memory, ports). Open: the BIOS and DOS services this machine provides
       natively (86Box runs real BIOS and DOS code for them), the disk path, the
       recompiled engine charging the same costs, then a frame-exact comparison
       against 86Box.

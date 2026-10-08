@@ -212,6 +212,13 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--save") && v) { save = v; i++; }
         else if (!strcmp(a, "--steps") && v) { steps = strtoull(v, NULL, 0); i++; }
         else if (!strcmp(a, "--ips") && v) { ips = strtoull(v, NULL, 0); i++; }
+        else if (!strcmp(a, "--timing") && v) {
+            /* 386: the 386DX/33 profile, the clock in its cycles (src/cpu/timing386.h) */
+            if (strcmp(v, "386")) { fprintf(stderr, "--timing takes 386\n"); return 2; }
+            _putenv_s("F117R_TIMING", "386");
+            ips = MACHINE_386_IPS;
+            i++;
+        }
         else if (!strcmp(a, "--log") && v) { log_path = v; i++; }
         else if (!strcmp(a, "--screen") && v) { screen = v; i++; }
         else if (!strcmp(a, "--hold") && v) { hold_ms = strtoull(v, NULL, 0); i++; }
@@ -289,6 +296,11 @@ int main(int argc, char **argv)
         if (!fixes_enable_list(ids)) { fprintf(stderr, "%s names an unknown fix: %s\n", replay, ids); return 2; }
     }
     if (!time_us) time_us = machine_local_time_us();
+    if (ips == MACHINE_386_IPS && engine == ENGINE_RECOMP && getenv("F117R_TIMING")) {
+        /* The translated code does not charge the profile's costs yet. */
+        fprintf(stderr, "--timing 386 runs the interpreter only (--engine interp)\n");
+        return 2;
+    }
 
     static machine_t m;
     g_speaker_machine = &m;

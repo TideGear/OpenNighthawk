@@ -1,5 +1,6 @@
 /* machine.c - building and tearing down the emulated PC. */
 #include "machine.h"
+#include "timing386.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -32,6 +33,15 @@ int machine_boot(machine_t *m, uint8_t *mem, const char *data_dir,
     m->cpu.int_hook = dos_int_hook;
     m->cpu.io_read = pc_io_read;
     m->cpu.io_write = pc_io_write;
+    {
+        /* F117R_TIMING=386: the 386DX/33 profile (src/cpu/timing386.h). The caller runs the clock at
+         * MACHINE_386_IPS; F117R_T386_MEM sets the memory wait states (2 cached, 6 not). */
+        const char *e = getenv("F117R_TIMING");
+        if (e && !strcmp(e, "386")) {
+            const char *w = getenv("F117R_T386_MEM");
+            t386_enable(&m->cpu, w && *w ? atoi(w) : T386_MEM_CACHED, 0xA0000u, 0x20000u, 32u);
+        }
+    }
 
     pc_reset(m);
     return dos_boot(m, program);

@@ -16,6 +16,7 @@
  */
 #include "machine.h"
 #include "x86_sem.h"
+#include "timing386.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -643,8 +644,26 @@ uint64_t pc_slice_left(const machine_t *m)
     return left;
 }
 
+/* The 386DX/33 profile's port costs, 86Box's (tools/ref86box/timing386.md): an AdLib status read
+ * isa_timing * 8 = 32 with the ISA bus at /4, the CMOS 32, a port no device answers io_delay = 11,
+ * the rest nothing. `claimed` are the ports 86Box's vmt386 board decodes. */
+static uint32_t t386_port_cycles(uint16_t port, int write)
+{
+    if (!write && (port == 0x388 || port == 0x389)) return 32;
+    if (port == 0x70 || port == 0x71) return 32;
+    if (write && port == 0x84) return 11;
+    const int claimed = port < 0x30 || (port >= 0x40 && port <= 0x43) || port == 0x60 || port == 0x61 ||
+                        port == 0x64 || (port >= 0x80 && port <= 0x8F) || port == 0xA0 || port == 0xA1 ||
+                        (port >= 0xC0 && port <= 0xDF) || (port >= 0x170 && port <= 0x177) ||
+                        (port >= 0x1F0 && port <= 0x1F7) || port == 0x376 || port == 0x3F6 ||
+                        port == 0x388 || port == 0x389 || (port >= 0x3B0 && port <= 0x3DF) ||
+                        (port >= 0x3F0 && port <= 0x3F7) || (port >= 0x3F8 && port <= 0x3FF);
+    return claimed ? 0 : 11;
+}
+
 static void io_delay(machine_t *m, int write)
 {
+    if (m->cpu.t386) return;               /* the profile charges per port (pc_io_read/write) */
     /* Charge before the device answers. The AdLib detection depends on
      * real bus time passing while it polls the timer status. */
     /* DOSBox 0.74's IO_USEC_read_delay / write_delay: CPU_CycleMax / 1024
@@ -663,6 +682,7 @@ uint32_t pc_io_read(cpu_t *c, uint16_t port, int width)
     machine_t *m = machine_of(c);
     machine_inventory_port(port, 0);
     io_delay(m, 0);
+    if (m->cpu.t386) m->cpu.t386_dev += t386_port_cycles(port, 0) * (width == 2 ? 2u : 1u);
     if (width == 2)
         return io_read8(m, port) | ((uint32_t)io_read8(m, (uint16_t)(port + 1)) << 8);
     return io_read8(m, port);
@@ -738,6 +758,7 @@ void pc_io_write(cpu_t *c, uint16_t port, uint32_t val, int width)
         if (f) { fprintf(f, "%llu %u\n", (unsigned long long)m->cpu.icount, (unsigned)(val & 0xFF)); fflush(f); }
     }
     io_delay(m, 1);
+    if (m->cpu.t386) m->cpu.t386_dev += t386_port_cycles(port, 1) * (width == 2 ? 2u : 1u);
     machine_io_note(m, ((uint64_t)port << 24) | ((uint64_t)width << 16) | (val & 0xFFFFu), m->cpu.icount);
     io_write8(m, port, (uint8_t)val);
     if (width == 2) io_write8(m, (uint16_t)(port + 1), (uint8_t)(val >> 8));

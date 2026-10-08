@@ -112,6 +112,20 @@ struct cpu {
     uint32_t      cover_lo, cover_hi;
 
     void    *user;         /* host context (the machine) */
+
+    /* The 386DX/33 timing profile (timing386.h). With t386 off an instruction costs one clock. */
+    int      t386;
+    int      t386_mem;          /* memory wait states: T386_MEM_CACHED or _UNCACHED */
+    int      t386_seg_pfx, t386_rep_pfx, t386_lock_pfx;   /* this step's prefixes */
+    int      t386_modrm;        /* this step's ModRM byte, -1 when it has none */
+    int      t386_elem;         /* a REP step ran an element (CX was not 0) */
+    int      t386_fault;        /* this step raised a divide error */
+    uint32_t t386_dev;          /* device cycles this step: VGA memory, ports */
+    int      t386_pf_bytes, t386_pf_prefixes;             /* the prefetch queue */
+    int      t386_chunk, t386_chunk_n;                    /* the REP chunk in progress (-1: none) */
+    uint32_t t386_chunk_held;   /* its cycles, not yet on the clock */
+    uint32_t t386_vga_lo, t386_vga_size;                  /* VGA memory the bus charges for */
+    uint32_t t386_vga_byte;     /* cycles a byte there: 32 (ISA 8 x 4) */
 };
 
 /* ---- recompiled-code tracking ------------------------------------------
@@ -143,14 +157,23 @@ static inline uint32_t phys(uint16_t s, uint16_t o)
     return (uint32_t)(((uint32_t)s << 4) + o) & 0xFFFFFu;
 }
 
+/* The 386 profile's VGA bus: each byte read or written in the VGA's window costs its ISA cycles. */
+static inline void t386_vga_access(cpu_t *c, uint32_t a)
+{
+    if (c->t386 && (a & 0xFFFFFu) - c->t386_vga_lo < c->t386_vga_size) c->t386_dev += c->t386_vga_byte;
+}
+
 static inline uint8_t mem_read8(cpu_t *c, uint32_t a)
 {
+    t386_vga_access(c, a);
     return c->mem[a & 0xFFFFFu];
 }
 
 static inline uint16_t mem_read16(cpu_t *c, uint32_t a)
 {
     /* The 8086 wraps inside the 20-bit space. */
+    t386_vga_access(c, a);
+    t386_vga_access(c, a + 1);
     return (uint16_t)(c->mem[a & 0xFFFFFu] |
                       ((uint16_t)c->mem[(a + 1) & 0xFFFFFu] << 8));
 }
@@ -158,6 +181,7 @@ static inline uint16_t mem_read16(cpu_t *c, uint32_t a)
 static inline void mem_write8(cpu_t *c, uint32_t a, uint8_t v)
 {
     a &= 0xFFFFFu;
+    t386_vga_access(c, a);
     if ((cpu_codebits[a >> 3] >> (a & 7)) & 1u) {
         if (c->mem[a] != v) { c->mem[a] = v; cpu_code_written(c, a); }
         return;

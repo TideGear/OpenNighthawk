@@ -35,7 +35,7 @@ else()
 endif()
 
 # ---- CPU core: the reference interpreter and the shared semantics -------
-add_library(f117cpu STATIC src/cpu/cpu.c)
+add_library(f117cpu STATIC src/cpu/cpu.c src/cpu/timing386.c)
 target_include_directories(f117cpu PUBLIC src/cpu)
 
 # ---- The emulated PC: DOS, BIOS and devices ------------------------------
@@ -173,7 +173,7 @@ endif()
 if(F117R_BUILD_TESTS)
   # Flat API over the core for the Python vector harnesses and the
   # unpacker. Self-contained: it supplies the two machine hooks itself.
-  add_library(f117cpu_api SHARED tests/cpu_api.c src/cpu/cpu.c)
+  add_library(f117cpu_api SHARED tests/cpu_api.c src/cpu/cpu.c src/cpu/timing386.c)
   target_include_directories(f117cpu_api PRIVATE src/cpu)
 
   # Read-only observation plus normal input for diagnostic pilots.

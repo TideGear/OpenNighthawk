@@ -11,6 +11,7 @@
  *   3. Speed, a distant third.
  */
 #include "x86_sem.h"
+#include "timing386.h"
 
 #include <string.h>
 
@@ -150,6 +151,7 @@ void cpu_interrupt(cpu_t *c, uint8_t vec)
 
 void x86_divide_error(cpu_t *c)
 {
+    c->t386_fault = 1;
     if (c->model >= CPU_80286) { c->ip = c->op_ip; c->seg[S_CS] = c->op_cs; }
     cpu_interrupt(c, 0);
 }
@@ -300,6 +302,7 @@ typedef struct {
 static void decode_modrm(cpu_t *c, modrm_t *m)
 {
     uint8_t b = fetch8(c);
+    c->t386_modrm = b;
     m->mod = (b >> 6) & 3;
     m->reg = (b >> 3) & 7;
     m->rm  = b & 7;
@@ -424,6 +427,7 @@ void cpu_dump(const cpu_t *c, FILE *f)
     do {                                                                      \
         if (c->rep_prefix) {                                                  \
             if (c->r[R_CX] == 0) break;                                       \
+            c->t386_elem = 1;                                                 \
             body;                                                             \
             c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);                          \
             int again_ = c->r[R_CX] != 0;                                     \
@@ -446,6 +450,10 @@ int cpu_step(cpu_t *c)
     }
     c->seg_override = -1;
     c->rep_prefix = 0;
+    c->t386_seg_pfx = c->t386_rep_pfx = c->t386_lock_pfx = 0;
+    c->t386_modrm = -1;
+    c->t386_elem = c->t386_fault = 0;
+    c->t386_dev = 0;
 
     uint8_t op;
     int more_prefixes = 1;
@@ -454,13 +462,13 @@ int cpu_step(cpu_t *c)
     do {
         op = fetch8(c);
         switch (op) {
-        case 0x26: c->seg_override = S_ES; break;
-        case 0x2E: c->seg_override = S_CS; break;
-        case 0x36: c->seg_override = S_SS; break;
-        case 0x3E: c->seg_override = S_DS; break;
-        case 0xF0: case 0xF1: break;             /* LOCK (0xF1 aliases it) */
-        case 0xF2: c->rep_prefix = 0xF2; break;  /* REPNE */
-        case 0xF3: c->rep_prefix = 0xF3; break;  /* REP / REPE */
+        case 0x26: c->seg_override = S_ES; c->t386_seg_pfx++; break;
+        case 0x2E: c->seg_override = S_CS; c->t386_seg_pfx++; break;
+        case 0x36: c->seg_override = S_SS; c->t386_seg_pfx++; break;
+        case 0x3E: c->seg_override = S_DS; c->t386_seg_pfx++; break;
+        case 0xF0: case 0xF1: c->t386_lock_pfx++; break;   /* LOCK (0xF1 aliases it) */
+        case 0xF2: c->rep_prefix = 0xF2; c->t386_rep_pfx++; break;  /* REPNE */
+        case 0xF3: c->rep_prefix = 0xF3; c->t386_rep_pfx++; break;  /* REP / REPE */
         default:   more_prefixes = 0; break;
         }
     } while (more_prefixes);
@@ -961,6 +969,6 @@ int cpu_step(cpu_t *c)
         return STOP_FAULT;
     }
 
-    c->icount++;
+    c->icount += c->t386 ? t386_step(c, op, c->t386_fault) : 1;
     return STOP_NONE;
 }

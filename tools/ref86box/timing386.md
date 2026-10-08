@@ -28,9 +28,10 @@ File and line numbers are that tree's (8 Oct 2026). 1 us = 33.333 cycles.
   (`mem_cycles`). A taken branch flushes the queue.
 - REP string instructions (x86_ops_rep_2386.h): the prefix costs 2 each time
   it is dispatched; per element MOVS 4, STOS 5, LODS 5, CMPS 9, SCAS 8, INS 15,
-  OUTS 14. MOVS to SCAS run until about 100 cycles are spent
+  OUTS 14. MOVS, STOS, LODS and SCAS run until about 100 cycles are spent
   (`cycles_end = cycles - 100`, line 217) and are dispatched again, paying the
-  2 again; INS and OUTS do one element per dispatch.
+  2 again (REPNE SCASB: 13 elements a dispatch, measured); CMPS, INS and OUTS
+  do one element per dispatch.
 
 ## Memory
 
