@@ -22,6 +22,7 @@ repository.
 from __future__ import annotations
 
 import argparse
+import atexit
 import concurrent.futures
 import glob
 import hashlib
@@ -305,6 +306,30 @@ def parallel(jobs, items, work, cost=None):
     return [value for value, _ in results]
 
 
+LOCKSTEPS = (("insn", "insn_lockstep.exe", "64"), ("func", "func_lockstep.exe", "4000"))
+
+
+def start_locksteps(work):
+    """Both locksteps depend only on the build, so they start as soon as it exists and run beside the
+    coverage and parity routes; their output goes to files (an unread pipe could fill and stall them)."""
+    procs = {}
+    for key, exe_name, states in LOCKSTEPS:
+        exe = os.path.join(ROOT, "build", exe_name)
+        print("  $ " + '"%s" --states %s (in the background)' % (exe, states))
+        log = open(os.path.join(work, "%s_lockstep.log" % key), "w+")
+        procs[key] = (subprocess.Popen([exe, "--states", states], stdout=log, stderr=subprocess.STDOUT, text=True), log)
+    return procs
+
+
+def stop_locksteps(procs):
+    for proc, log in procs.values():
+        if proc.poll() is None:
+            proc.kill()
+        proc.wait()
+        log.close()
+    procs.clear()
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", required=True, help="the game's install directory (holds F117.COM)")
@@ -349,6 +374,10 @@ def main():
         print("2. build")
         build(gen)
         lap("translate and build")
+    lockstep = {}
+    atexit.register(stop_locksteps, lockstep)
+    if not a.no_parity:
+        lockstep.update(start_locksteps(a.work))
     skip_coverage = False
     key = gen_digest = None
     if not a.no_coverage and not a.parity_only and a.coverage_record:
@@ -371,7 +400,11 @@ def main():
         lap("coverage")
         print("4. translate again, build again")
         if recompile(a.data, gen, sorted(glob.glob(os.path.join(covdir, "*.cov")))):
+            # The locksteps ran the first build; the rebuild replaces their executables.
+            stop_locksteps(lockstep)
             build(gen)
+            if not a.no_parity:
+                lockstep.update(start_locksteps(a.work))
         else:
             print("  the coverage added no translated code: the generated files are byte-identical, "
                   "so the first build stands")
@@ -379,14 +412,6 @@ def main():
                 record_coverage_verified(a.coverage_record, key, gen_digest)
         lap("second translate and build")
     if not a.no_parity:
-        # Neither lockstep depends on the routes, only on the build, so they
-        # run beside the route replays instead of after them.
-        lockstep = {}
-        for key, exe_name, states in (("insn", "insn_lockstep.exe", "64"), ("func", "func_lockstep.exe", "4000")):
-            exe = os.path.join(ROOT, "build", exe_name)
-            print("  $ " + '"%s" --states %s (in the background)' % (exe, states))
-            lockstep[key] = subprocess.Popen([exe, "--states", states], stdout=subprocess.PIPE,
-                                             stderr=subprocess.STDOUT, text=True)
         print("5. parity")
         bad = 0
 
@@ -436,8 +461,6 @@ def main():
             print("  interpreter results: %d reused, %d run" % (cache_stats["hit"], cache_stats["miss"]))
         lap("parity")
         if bad:
-            for proc in lockstep.values():
-                proc.kill()
             sys.exit("%d route(s) differ between the engines" % bad)
         for number, key, what, message in (
                 (6, "insn", "every translated instruction against the interpreter",
@@ -445,10 +468,13 @@ def main():
                 (7, "func", "every matched routine against the original",
                  "matched routines differ from the original")):
             print("%d. %s" % (number, what))
-            out, _ = lockstep[key].communicate()
-            last = (out or "").strip().splitlines()[-1:] or ["(no output)"]
+            proc, log = lockstep[key]
+            proc.wait()
+            log.seek(0)
+            out = log.read()
+            last = out.strip().splitlines()[-1:] or ["(no output)"]
             print("  " + last[0])
-            if lockstep[key].returncode != 0:
+            if proc.returncode != 0:
                 print("\n".join(l for l in out.splitlines() if "MISMATCH" in l))
                 sys.exit(message)
             lap(what)
