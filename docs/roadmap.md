@@ -187,8 +187,10 @@ make (Phase 4).
       [presentation.md](presentation.md). The owner chose to observe and replay
       the original's draw path. Stage 0 (the observer) and Stage 1 (draw lists
       that rebuild every phase of the windows tried bit for bit, 0 bytes copied)
-      are built; Stage 2's first check shows the clip stage must be redone at
-      the new resolution; Stages 3 (interpolation) and 4 (pacing and polish) are
+      are built; Stage 2's first build (`tools/hires_frame.py`) shows the scaled
+      edge walk cracks along shared polygon edges (85% flat-pixel agreement; 100%
+      with the nearest-neighbour floor, which is no sharper), so the next step is
+      the sub-pixel re-projection of the model polygons; Stages 3 (interpolation) and 4 (pacing and polish) are
       not started.
 
 ## Phase 4 - checked by people and independent references

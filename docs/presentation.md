@@ -70,7 +70,7 @@ Each stage is judged by a check, as in the rest of the project.
 |---|---|---|---|
 | 0 | Observer: log every call to the drawing primitives per frame | the log is identical across runs; hashes unchanged with it on | done |
 | 1 | Draw lists: a frame's primitives as a list, replayed at 320x200 | the replay reproduces the original's work and display pages bit for bit, every phase of every route | done for the windows below; unexercised branches listed below |
-| 2 | Re-draw the list at N times the resolution | N = 1 is Stage 1 exactly; at N > 1 every N x N block agrees with the N = 1 pixel wherever no edge crosses it | first check run; the clip stage must be redone |
+| 2 | Re-draw the list at N times the resolution | N = 1 is Stage 1 exactly; at N > 1 every N x N block agrees with the N = 1 pixel wherever no edge crosses it | first build run (`hires_frame.py`): the scaled walk cracks along shared edges; the clip stage must be redone |
 | 3 | Interpolate between consecutive draw lists to the host display rate | at a logic frame the output is exactly that frame; no in-between primitive absent from both neighbours | not started |
 | 4 | Pacing, vsync, a picture-age setting, HUD handling, a switch to the original picture | - | not started |
 
@@ -169,6 +169,38 @@ plain scaled walk is right for unclipped polygons and the clip stage is what
 has to be redone. The first Stage 2 build is the scaled N x N renderer with
 that check; the sub-pixel re-projection follows only if that picture is
 judged too blocky.
+
+### First Stage 2 build (8 October 2026)
+
+`tools/hires_frame.py LOG [N] [OUT_DIR|-] [--floor]` replays a log with the Stage 1 replay
+(`drawlist_frame.main`, which gained three hooks and is otherwise unchanged: 25 of 25 phases
+exact as before) and keeps beside each page a picture N times finer. Every write the replay
+makes is mirrored as an N x N block, except a model polygon's fill: its edges are re-walked on the
+fine grid, the coarse pixels no edge can cross (all eight neighbours inside) are covered whole, a
+fine row the walk does not reach takes the plain scaled span, and the fill's style is applied to
+the fine rows. A page copy or blit between replayed pages carries the fine rows across, so the
+present shows the fine picture.
+
+Result on the strike window (25 phases, 3,125 polygons, N = 2): 84.9% of the coarse pixels whose
+3x3 neighbourhood is one value keep that value on all four fine pixels, and 8.4% of the fine
+picture differs from the plain scaled copy (N = 4: the same 84.9%, 8.6%). The disagreements are
+not edges: they are cracks where two polygons meet. Each polygon's fine walk puts its boundary at
+the top-left corner of a coarse pixel, and a polygon that ends there (the ground triangle's lower
+side, clipped edges with statuses 0x80 and 0x41) stops a fine row short of its neighbour, so an
+older colour shows through along the shared edge (a strip of the sky colour 127 in a ground region
+of 238 in the first sample). Covering each polygon's interior whole and extending its far sides by
+N - 1 fine pixels does not close them, because the shared edge is not on one fine row for both
+polygons.
+
+With `--floor` each fine fill is laid over the nearest-neighbour fill and never takes coverage
+from it: the flat-pixel agreement is 100%, and only 0.13% of the fine picture differs from the
+scaled copy, so the picture is correct and no sharper. The two modes bracket the method. What the
+integer edge walk cannot give is a rule that tiles neighbouring polygons on a finer grid (the
+original's inclusive spans overdraw on both sides at 1x, and nothing in the list says where the
+true shared edge lies); it needs the camera-space vertices and a fill rule that tiles (top-left),
+which is the sub-pixel re-projection this stage's earlier text held back. The next Stage 2 step is
+therefore that re-projection for the model polygons, judged by this tool's two numbers: agreement
+at 100% and the fine picture differing from the scaled copy by more than 0.13%.
 
 ## Open questions and risks
 

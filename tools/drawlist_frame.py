@@ -361,9 +361,14 @@ def tick_pixels(si0, bx, dl, cl, x, lo, hi):
     return out
 
 
-def main():
-    if len(sys.argv) != 2:
-        sys.exit(__doc__)
+def main(path=None, page_factory=bytearray, hook=None, on_phase=None):
+    """Replay LOG. page_factory makes each page from its dump (hires_frame.py gives pages that
+    mirror every write on a finer grid); hook(record, pages) sees every record first and
+    on_phase(kind, segment, page) sees each page just before the next dump replaces it."""
+    if path is None:
+        if len(sys.argv) != 2:
+            sys.exit(__doc__)
+        path = sys.argv[1]
     page = None              # the replay, a bytearray of the 64 KB page
     seg = origin = None
     phase = 0
@@ -376,11 +381,13 @@ def main():
     pages = {}                # segment -> the replay of that page (the work page 'Z', the display 'Y')
     dumps = {}                # segment -> the dump at the phase's start
     seg = None
-    for line in open(sys.argv[1]):
+    for line in open(path):
         f = line.split()
         if not f:
             continue
         k = f[0]
+        if hook:
+            hook(f, pages)
         if k in ("Z", "Y"):
             v = f[2:]
             dseg = int(v[0])
@@ -405,7 +412,9 @@ def main():
                 start_origin = origin
                 phase += 1
                 copied = set()
-            pages[dseg] = bytearray(z)
+            if on_phase and dseg in pages:
+                on_phase(k, dseg, pages[dseg], z)
+            pages[dseg] = page_factory(z)
             dumps[dseg] = z
             continue
         if seg is None:
@@ -502,6 +511,8 @@ def main():
                     a = (320 * (dy + y) + dx + x) & 0xFFFF
                     if a < len(page):
                         page[a] = rows[y][x]
+            if sseg in pages and hasattr(page, "copy_hi_rect"):
+                page.copy_hi_rect(pages[sseg], sx, sy, dx, dy, w, h)
         elif k == "W":                                       # entry 22, the scaled RLE sprite
             v = [int(x) for x in f[2:]]
             page = pages.get(v[1])
@@ -546,7 +557,10 @@ def main():
             else:
                 totals["page copies without source bytes"] += 1
                 continue
+            same = sseg in pages and bytes(pages[sseg][:count]) == src[:count]    # the replay's own source page
             page[:count] = src[:count]
+            if same and hasattr(page, "copy_hi_rect"):
+                page.copy_hi_rect(pages[sseg], 0, 0, 0, 0, 320, count // 320)
             totals["page copies"] += 1
         elif k == "H":
             v = [int(x) for x in f[2:]]
