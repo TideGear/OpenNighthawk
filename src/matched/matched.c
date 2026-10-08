@@ -4793,6 +4793,120 @@ static int player_two_calls(machine_t *m)
     return 1;
 }
 
+/* PLAYER 0x01FE8, DSWAP 0x01C3C and SETUP 0x01C22, alloc_or_die(size): the allocator is called with
+ * the size while the word at `slot` holds 400h (the heap's growth step), which is put back
+ * afterwards; with no block the failure routine takes over (a jump, AX the step's old value). */
+typedef struct { uint16_t entry, slot, alloc, die; } crt_alloc_die;
+
+static int crt_alloc_or_die(machine_t *m, const crt_alloc_die *s)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 8)) return 0;
+    cpu_push16(c, c->r[R_BX]);
+    cpu_push16(c, c->seg[S_ES]);
+    cpu_push16(c, c->r[R_CX]);
+    c->r[R_CX] = 0x400;
+    {
+        const uint16_t old = ds_get(c, s->slot);                  /* xchg [slot], cx */
+        ds_put(c, s->slot, c->r[R_CX]);
+        c->r[R_CX] = old;
+    }
+    cpu_push16(c, c->r[R_CX]);
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 7;
+    if (!guest_call(m, s->alloc, (uint16_t)(s->entry + 0xF))) return 1;
+    if (!room(c, 9)) { c->ip = (uint16_t)(s->entry + 0xF); return 1; }
+    c->r[R_BX] = cpu_pop16(c);
+    ds_put(c, s->slot, cpu_pop16(c));                             /* pop word [slot] */
+    c->r[R_CX] = cpu_pop16(c);
+    c->r[R_DX] = c->seg[S_DS];
+    alu_logic(c, c->r[R_AX], 1);                                  /* or ax, ax */
+    c->icount += 5;
+    if (c->r[R_AX] == 0) {                                        /* je: no block */
+        c->r[R_AX] = c->r[R_CX];
+        c->icount += 3;                                           /* je, mov, jmp */
+        c->ip = s->die;
+        return 1;
+    }
+    c->seg[S_ES] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    c->icount += 4;                                               /* je, pop es, pop bx, ret */
+    near_ret(c);
+    return 1;
+}
+#define ALLOCDIE(P, E, SLOT, ALLOC, DIE) \
+    static const crt_alloc_die P##_ALLOCDIE = { E, SLOT, ALLOC, DIE }; \
+    static int P##_alloc_or_die(machine_t *m) { return crt_alloc_or_die(m, &P##_ALLOCDIE); }
+ALLOCDIE(player, 0x1FE8, 0x1C94, 0x222A, 0x115E)
+ALLOCDIE(dswap, 0x1C3C, 0x28D4, 0x2060, 0x0D46)
+ALLOCDIE(setup, 0x1C22, 0x0EBC, 0x1C46, 0x15DE)
+
+/* END 0x05422, PLAYER 0x0180E and SETUP 0x01BC2, find_message(code): the table of messages is a
+ * run of entries - a code word then a zero-ended text - ended by a code of FFFFh. The
+ * text of the entry whose code is the argument is returned (0 at the end of the
+ * table). ES becomes DS; RET 2. */
+typedef struct { uint16_t entry, table; } crt_message;
+
+static int crt_find_message(machine_t *m, const crt_message *s)
+{
+    cpu_t *c = &m->cpu;
+    if (c->flags & F_DF) return 0;
+    if (!room(c, 8)) return 0;
+    const uint16_t head = (uint16_t)(s->entry + 0xD);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->seg[S_DS]);                                  /* push ds; pop es: the word stays below SP */
+    c->seg[S_ES] = cpu_pop16(c);
+    c->r[R_DX] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 4));
+    c->r[R_SI] = s->table;
+    c->icount += 8;
+    for (;;) {
+        const uint16_t code = seg_read16(c, c->seg[S_DS], c->r[R_SI]);
+        unsigned cost, k = 0;
+        if (code == c->r[R_DX]) cost = 3;
+        else if ((uint16_t)(code + 1) == 0) cost = 6;
+        else {
+            for (uint16_t p = (uint16_t)(c->r[R_SI] + 2); k < 0xFFFF; p++) {
+                k++;
+                if (mem_read8(c, phys(c->seg[S_DS], p)) == 0) break;
+            }
+            cost = 9 + k + 2;
+        }
+        if (!room(c, cost)) { c->ip = head; return 1; }
+        x86_lods(c, 1, c->seg[S_DS]);                             /* lodsw */
+        alu_sub(c, c->r[R_AX], c->r[R_DX], 1, 0);                 /* cmp ax, dx */
+        c->icount += 3;                                           /* lodsw, cmp, je */
+        if (c->flags & F_ZF) break;
+        c->r[R_AX] = (uint16_t)alu_inc(c, c->r[R_AX], 1);         /* inc ax */
+        { const uint16_t t = c->r[R_SI]; c->r[R_SI] = c->r[R_AX]; c->r[R_AX] = t; }   /* xchg si, ax */
+        c->icount += 3;                                           /* inc, xchg, je */
+        if (c->flags & F_ZF) break;
+        { const uint16_t t = c->r[R_DI]; c->r[R_DI] = c->r[R_AX]; c->r[R_AX] = t; }   /* xchg di, ax */
+        c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);                /* xor ax, ax */
+        c->r[R_CX] = 0xFFFF;
+        rep_string(c, STR_SCAS, 0, 0, 1);                         /* repne scasb */
+        c->r[R_SI] = c->r[R_DI];
+        c->icount += 3 + k + 2;                                   /* xchg, xor, mov, the scan, mov, jmp */
+    }
+    if (!room(c, 6)) { c->ip = (uint16_t)(s->entry + 0x22); return 1; }
+    { const uint16_t t = c->r[R_SI]; c->r[R_SI] = c->r[R_AX]; c->r[R_AX] = t; }   /* xchg si, ax */
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    c->ip = cpu_pop16(c);
+    c->r[R_SP] = (uint16_t)(c->r[R_SP] + 2);                      /* ret 2 */
+    c->icount += 6;
+    return 1;
+}
+#define MESSAGE(P, E, TABLE) \
+    static const crt_message P##_MESSAGE = { E, TABLE }; \
+    static int P##_find_message(machine_t *m) { return crt_find_message(m, &P##_MESSAGE); }
+MESSAGE(end, 0x5422, 0x535E)
+MESSAGE(player, 0x180E, 0x1CDA)
+MESSAGE(setup, 0x1BC2, 0x0EE4)
 /* The C runtime's stack check (START 0x0A4C6, END 0x05B4E; VGAME's copy at
  * 0x0F8F0 is never run by any route, so it is left to the original): AX
  * bytes are taken off the stack unless that would wrap or pass the limit
@@ -7710,6 +7824,12 @@ static const recomp_override MATCHED[] = {
     { "matched", "START.EXE", START_47304, 0x0000, 0xA7BA, heap_search, "near-heap free-block search", 1 },
     { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x263E, heap_search, "near-heap free-block search", 1 },
     { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x0F32, player_pick_byte, "one of two bytes picked by an argument", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x1FE8, player_alloc_or_die, "allocate or die", 1 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x1C3C, dswap_alloc_or_die, "allocate or die", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x1C22, setup_alloc_or_die, "allocate or die", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x5422, end_find_message, "find a message text", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x180E, player_find_message, "find a message text", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x1BC2, setup_find_message, "find a message text", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x5C1A, end_flush_all_one, "flush all, mode 1", 1 },
     { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x1A1C, player_flush_all_one, "flush all, mode 1", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xF338, vgame_flush_all_one, "flush all, mode 1", 1 },
