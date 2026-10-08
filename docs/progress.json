@@ -10,10 +10,17 @@
     "P1": [
       {
         "item": "Translation, lockstep, routes and the emulated PC (roadmap Phase 1 'Done')",
-        "weight": 69,
+        "weight": 64,
         "done": 1.0,
         "kind": "estimate",
         "evidence": "All 17 code files translated (89,276 instructions); instruction lockstep 0 mismatches over 5.7M states; 27 routes identical across engines; fidelity.py 1,210/1,210; housekeeping done."
+      },
+      {
+        "item": "86Box and DOSBox-X as routine checks",
+        "weight": 5,
+        "done": 0.6,
+        "kind": "estimate",
+        "evidence": "Added 7 Oct 2026: this open roadmap item had no entry, so it counted for nothing. Done: tools/pc_parity.py checks pictures, music and the saved roster on both against measured limits (all pass, traced and fast-forwarded), fidelity_all.py holds the machine probe, and the closed-loop cargo pilot delivers on DOSBox-X. Open: a flight on 86Box, a career's saved data on both, what paces 86Box's 2 s intro drift and its pitch-bend write positions, 86Box's run-to-run variation, and the decision whether they replace GOG's DOSBox for routine checks."
       },
       {
         "item": "The picture against DOSBox, frame by frame",
