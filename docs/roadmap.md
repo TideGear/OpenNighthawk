@@ -104,9 +104,22 @@ make (Phase 4).
       choice, FreeDOS for now), the recompiled engine charging the same costs.
 - [ ] **Rendered sound:** the register stream is exact (every AdLib write of
       the intro in order and value, above), which is what the original sends to
-      its chip. Open: digitised speech and audible speaker output. How the OPL
-      waveform is synthesised is the emulator's, not the game's, so matching
-      DOSBox's mixer sample for sample is not pursued.
+      its chip. How the OPL waveform is synthesised is the emulator's, not the
+      game's, so matching DOSBox's mixer sample for sample is not pursued.
+      The speaker: the host runs PIT counter 2 itself from the machine's writes,
+      clock by clock, as the 8254 data sheet has it (`src/host/speaker.c`), and
+      integrates the cone's input over each sample. The speaker driver's music
+      rewrites counter 2's count every 3.3 ms; taken at once, as before, that
+      restarted the wave and mostly held the cone high. Speech under the speaker
+      and Roland drivers is pulse-width modulation (counter 2 mode 0, a count of
+      1-72 every 79 clocks, 15.1 kHz); `speaker = realsound` (default) averages
+      each carrier period, `pwm` keeps the carrier. `tools/speaker_parity.py`
+      against DOSBox-X: the intro's 736 gate changes and 440 control words
+      identical, its audio envelope 0.87, spectral 0.92-0.93, level 0.95 (before:
+      0.69, 0.54, 0.47); the radio call's 12,924 counts identical. Open: an
+      audio reference for the speech (DOSBox-X ignores mode 0 counts written
+      without a control word and plays nothing), the speaker's timing against
+      86Box, and the AdLib speech's in-flight writes against a reference.
 
 ### Settled (scope, 8 Oct 2026)
 

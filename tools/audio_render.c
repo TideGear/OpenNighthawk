@@ -1,4 +1,4 @@
-/* Render an OPL or MIDI event log using the application's actual audio path. */
+/* Render an OPL or MIDI event log, and a speaker log, using the application's actual audio path. */
 #include "audio.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -40,7 +40,7 @@ typedef struct {
 typedef struct {
     uint64_t clock, epoch_clk;
     uint16_t reload;
-    uint8_t port61, mode;
+    uint8_t port61, mode, null_count;
 } speaker_event;
 
 static int next_audio_event(FILE *input, int midi, audio_event *event)
@@ -57,19 +57,25 @@ static int next_audio_event(FILE *input, int midi, audio_event *event)
     return 1;
 }
 
+/* f117run --speaker-log: "clock port61 reload mode epoch null_count"; logs
+ * written before the null-count field have five fields (read as 0). */
 static int next_speaker_event(FILE *input, speaker_event *event)
 {
+    char line[256];
     unsigned long long clock, epoch_clk;
-    unsigned port61, reload, mode;
-    int n = fscanf(input, "%llu %x %u %u %llu",
-                   &clock, &port61, &reload, &mode, &epoch_clk);
-    if (n == EOF) return 0;
-    if (n != 5 || port61 > 3 || reload > 65535 || mode > 7) return -1;
+    unsigned port61, reload, mode, null_count = 0;
+    do {
+        if (!fgets(line, sizeof line, input)) return 0;
+    } while (line[0] == '\n' || line[0] == '\r');
+    int n = sscanf(line, "%llu %x %u %u %llu %u",
+                   &clock, &port61, &reload, &mode, &epoch_clk, &null_count);
+    if (n < 5 || port61 > 3 || reload > 65535 || mode > 7 || null_count > 1) return -1;
     event->clock = (uint64_t)clock;
     event->epoch_clk = (uint64_t)epoch_clk;
     event->port61 = (uint8_t)port61;
     event->reload = (uint16_t)reload;
     event->mode = (uint8_t)mode;
+    event->null_count = (uint8_t)null_count;
     return 1;
 }
 
@@ -77,8 +83,9 @@ int main(int argc, char **argv)
 {
     if (argc < 5) {
         fprintf(stderr, "usage: audio_render OPL.LOG OUT.WAV IPS END_CLOCK [dbopl|nuked]\n"
-                        "       [--speaker-log FILE] [--step-clocks N]\n"
-                        "       audio_render MIDI.LOG OUT.WAV IPS END_CLOCK --mt32 CONTROL.ROM PCM.ROM [--seed N] [--step-clocks N] [--speaker-log FILE]\n");
+                        "       [--speaker-log FILE] [--speaker-model realsound|pwm] [--step-clocks N]\n"
+                        "       audio_render MIDI.LOG OUT.WAV IPS END_CLOCK --mt32 CONTROL.ROM PCM.ROM [--seed N] [--step-clocks N]\n"
+                        "       [--speaker-log FILE] [--speaker-model realsound|pwm]\n");
         return 2;
     }
     uint64_t ips = strtoull(argv[3], NULL, 10), end = strtoull(argv[4], NULL, 10);
@@ -89,6 +96,7 @@ int main(int argc, char **argv)
     int midi = argc > 5 && !strcmp(argv[5], "--mt32");
     audio_opl_backend backend = AUDIO_OPL_DBOPL;
     const char *speaker_path = NULL, *control = NULL, *pcm = NULL;
+    int speaker_model = 0;                      /* speaker.h: realsound */
     unsigned int seed = 0;
     int have_seed = 0;
     if (midi) {
@@ -109,6 +117,10 @@ int main(int argc, char **argv)
                 step_clocks = (uint64_t)value;
             } else if (!strcmp(argv[i], "--speaker-log") && !speaker_path) {
                 speaker_path = argv[i + 1];
+            } else if (!strcmp(argv[i], "--speaker-model")) {
+                if (!strcmp(argv[i + 1], "realsound")) speaker_model = 0;
+                else if (!strcmp(argv[i + 1], "pwm")) speaker_model = 1;
+                else return 2;
             } else return 2;
             i += 2;
         }
@@ -121,6 +133,11 @@ int main(int argc, char **argv)
                 i++;
             } else if (!strcmp(argv[i], "--speaker-log") && i + 1 < argc && !speaker_path) {
                 speaker_path = argv[i + 1];
+                i += 2;
+            } else if (!strcmp(argv[i], "--speaker-model") && i + 1 < argc) {
+                if (!strcmp(argv[i + 1], "realsound")) speaker_model = 0;
+                else if (!strcmp(argv[i + 1], "pwm")) speaker_model = 1;
+                else return 2;
                 i += 2;
             } else if (!strcmp(argv[i], "--step-clocks") && i + 1 < argc) {
                 char *parse_end = NULL;
@@ -142,7 +159,9 @@ int main(int argc, char **argv)
         return 1;
     }
     audio_t *audio = audio_create_backend(ips, backend);
-    if (!audio) { fclose(input); fclose(out); if (speaker_input) fclose(speaker_input); return 1; }
+    if (!audio || !audio_set_speaker_model(audio, speaker_model)) {
+        audio_destroy(audio); fclose(input); fclose(out); if (speaker_input) fclose(speaker_input); return 1;
+    }
     if (midi) {
         char error[256];
         if (have_seed) srand(seed);
@@ -174,7 +193,7 @@ int main(int argc, char **argv)
             if (have_event < 0) rc = 1;
         } else {
             audio_speaker_event(audio, clock, speaker.port61, speaker.reload,
-                                speaker.mode, speaker.epoch_clk);
+                                speaker.mode, speaker.null_count);
             have_speaker = next_speaker_event(speaker_input, &speaker);
             if (have_speaker < 0) rc = 1;
         }

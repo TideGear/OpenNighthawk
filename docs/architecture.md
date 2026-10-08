@@ -360,7 +360,9 @@ current as of the last gate (see [../handoff.md](../handoff.md)).
    86Box's AdLib writes and scene timing in emulated time on a 386DX/33,
    `tools/ref86box/compare_opl86.py`, `compare_timing86.py`) and
    a scripted START session's saved `ROSTER.FIL` byte for byte on DOSBox-X and
-   86Box (`tools/save_parity.py`). The machine-behaviour probe
+   86Box (`tools/save_parity.py`). The speaker is held to DOSBox-X apart
+   from it (`tools/speaker_parity.py`: the speaker driver's port writes and
+   intro audio, the radio call's counts). The machine-behaviour probe
    (`tools/fidelity_all.py`, about 1,200 answers) is held to stored baselines
    of known differences in `tools/fidelity_baseline.json`: none for GOG's
    DOSBox (held to every answer, DOS memory layout included, since this
@@ -550,6 +552,34 @@ the random sequence to different partials; a fixed offline quantum
 (`audio_render --step-clocks`) is repeatable. Live SDL playback also shows brief
 starvation gaps. Live output is therefore not a stable PCM oracle. Independent
 reference PCM and a listening check for Roland, and exact OPL PCM agreement,
-remain open ([roadmap.md](roadmap.md)). The speaker is silent on the type-8
-sortie (port 61h bit 1 stays clear), so it does not cover audible speech or
-speaker output.
+remain open ([roadmap.md](roadmap.md)).
+
+The PC speaker is the cone driven by PIT counter 2's OUT through port 61h
+bit 1, with bit 0 the counter's gate. The machine reports each control word,
+count and change of those bits (the speaker hook; which one it was follows
+from counter 2's null-count flag), and `src/host/speaker.c` runs counter 2
+from them one PIT clock at a time as the 8254 data sheet describes it, with
+86Box's `pit.c` as the executable reference: in modes 2 and 3 a count written
+while counting waits for the end of the period or half-cycle; in mode 0 a count
+drives OUT low at once and high N+1 clocks after. The cone's input is
+integrated over each output sample, one PIT clock late so every clock is
+complete. The machine's own counter 2 model (port 61h bit 5, counter reads)
+is unchanged; only the sound comes from this one.
+
+The game uses the speaker three ways. Under the speaker (IBM) driver
+ISOUND.117 the music and effects are counter 2 in mode 3, gated on and off at
+port 61h, the count rewritten for vibrato and noise every 3.3 ms without a
+control word. Under the speaker and Roland drivers the radio calls are
+"realsound": the driver (RSOUND.117 file offset 0x2C23, ISOUND.117 0x21A0
+onward) sets counter 0 to mode 2 with count 79 (15.1 kHz) and counter 2 to
+mode 0 (control word 90h), and its timer handler writes each SPEECH.117 sample,
+prescaled to 1-72 by 0x29EF, as counter 2's count, twice. So OUT is low for
+N+1 of every 79 clocks: pulse-width modulation. `speaker = realsound` (the
+default; `--speaker`, `audio_render --speaker-model`) passes the train through
+a moving average one carrier period long, measured from the writes, which
+removes the carrier and leaves the level GOG DOSBox 0.74 and 86Box derive from
+the count (with the hardware's polarity and the full 10,000 swing tones have);
+`pwm` keeps the 15.1 kHz carrier, as the PC sends it. Under AdLib the speech
+is OPL writes (bug D2) and the speaker stays off (port 61h bit 1 clear).
+`tools/speaker_parity.py` holds the port-level stream and the intro's speaker
+audio to DOSBox-X ([roadmap.md](roadmap.md)).

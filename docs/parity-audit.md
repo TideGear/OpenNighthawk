@@ -301,7 +301,9 @@ under the recompilation before the requested handoff and is not paired evidence.
 
 Earned retirement and additional awards, air-combat hits and AI countermeasures,
 supply-drop home return, harder landing settings, in-flight video,
-digitized speech and speaker output against DOSBox remain open. The known
+an audio reference for the digitized speech remain open (the speaker's
+port-level stream and the intro's speaker audio are held to DOSBox-X by
+`tools/speaker_parity.py`). The known
 original supply-drop credit bug must be preserved in parity mode.
 
 No WinMM joystick is attached on this machine, so physical calibration,

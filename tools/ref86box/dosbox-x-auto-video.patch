@@ -263,6 +263,41 @@ index 70e1d4a..96c97ad 100644
  
  #if !defined(C_EMSCRIPTEN)
  	// mapper shortcuts for capture
+diff --git a/src/hardware/iohandler.cpp b/src/hardware/iohandler.cpp
+index 34222c4..2b5fdb2 100644
+--- a/src/hardware/iohandler.cpp
++++ b/src/hardware/iohandler.cpp
+@@ -26,6 +26,9 @@
+ #include "cpu.h"
+ #include "../src/cpu/lazyflags.h"
+ #include "callback.h"
++#include "pic.h"
++#include <stdio.h>
++#include <stdlib.h>
+ 
+ //#define ENABLE_PORTLOG
+ 
+@@ -490,8 +493,20 @@ void log_io(Bitu width, bool write, Bitu port, Bitu val) {
+ #endif
+ 
+ 
++/* PC-parity harness (tools/ref86box/dosbox-x-auto-video.patch): with DBX_SPEAKER_LOG=FILE every
++ * write to PIT counter 2 (port 42h), a control word for it (43h, counter bits 2) and port 61h is
++ * logged as "emulated-ms port value", the speaker's whole input. */
++static void dbx_speaker_log(Bitu port, uint8_t val) {
++	static FILE *f = NULL;
++	static bool tried = false;
++	if (!tried) { tried = true; const char *p = getenv("DBX_SPEAKER_LOG"); if (p && *p) f = fopen(p, "w"); }
++	if (f && (port == 0x42 || port == 0x61 || (port == 0x43 && (val >> 6) == 2)))
++		fprintf(f, "%.6f %02X %02X\n", (double)PIC_FullIndex(), (unsigned)port, (unsigned)val);
++}
++
+ void IO_WriteB(Bitu port,uint8_t val) {
+ 	log_io(0, true, port, val);
++	dbx_speaker_log(port, val);
+ 	if (GCC_UNLIKELY(GETFLAG(VM) && (CPU_IO_Exception(port,1)))) {
+ 		CPU_ForceV86FakeIO_Out(port,val,1);
+ 	}
 diff --git a/src/ints/bios.cpp b/src/ints/bios.cpp
 index 8cb0254..abaa04a 100644
 --- a/src/ints/bios.cpp
