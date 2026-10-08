@@ -18,8 +18,9 @@ that they can be checked and argued with.
   evidence beside it, and an estimate is only raised with new evidence.
 
 A phase's percentage is its items' weighted completion. **All** is the
-phases weighted by their share of the whole project's effort: Phase 1 39%,
-Phase 2 30%, Phase 3 25%, Phase 4 6%. Phase 1 is the largest because building
+phases weighted by their share of the whole project's effort: Phase 1 42%,
+Phase 2 29%, Phase 3 24%, Phase 4 5% (Phase 1 grew on 8 Oct 2026 by the 386DX/33
+timing profile). Phase 1 is the largest because building
 an exact recompilation, its machine and its proof was the bulk of the work;
 Phases 2 and 3 are large too (thousands of routines to name and match; a new
 presentation path for 60+ fps and 4K), and their weights say so. Phase 4 holds

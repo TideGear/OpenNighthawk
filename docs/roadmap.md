@@ -105,6 +105,18 @@ make (Phase 4).
       the frozen reference) and runs only as the third sheet of the machine
       probe, which takes seconds. Parity target: the original on real
       hardware, not DOSBox.
+- [ ] **A 386DX/33 timing profile** (decided 8 Oct 2026). The game's frame rate
+      depends on the PC it runs on; this machine follows DOSBox's model (one
+      clock an instruction plus I/O delays, 9.00 M clocks a second). A selectable
+      profile charges what 86Box's 386DX/33 charges: each instruction's cycles
+      from 86Box's 386 tables, the IBM VGA's 8-bit bus and ISA I/O wait states
+      and the disk path, at 33 MHz, so pictures land on the same frames as on
+      86Box. Results that do not depend on speed (pictures, their order, game
+      state, the sound sequence, saved data) must match under both profiles;
+      recorded routes and hashes stay on the DOSBox profile. Steps: cycles per
+      frame against 86Box's TSC trace on the interpreter; VGA and I/O wait
+      states; the disk; the recompiler emitting the same costs; a frame-exact
+      comparison against 86Box.
 - [ ] **Rendered sound parity:** the OPL defaults to GOG DOSBox's DBOPL core at
       its rate and 2x gain. A tone probe matches exactly; the captured intro
       differs in RMS by about 0.5% (level 1.003 with the register stream exact,
