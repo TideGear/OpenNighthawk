@@ -5182,8 +5182,8 @@ static int start_dist(machine_t *m)
 }
 
 /* START 0x07C05, level_scale(level, lo, hi): the 32-bit value hi:lo brought
- * to a terrain level's scale - doubled at level 0, as it is at 1, and shifted
- * right (logically, by 0x097F4) 2, 4 or 6 places at 2, 3 and 4. Any other
+ * to a terrain level's scale - doubled at level 0, unchanged at 1, and
+ * shifted right (logically, by 0x097F4) 2, 4 or 6 places at 2, 3 and 4. Any other
  * level returns AX = level - 4 and DX as it came, flags from the last DEC. */
 static int start_level_scale(machine_t *m)
 {
@@ -5437,11 +5437,11 @@ static int start_modal_hover(machine_t *m)
 #undef NEED
 }
 
-/* START 0x00E23, weapon_shortage(): clears the 20 flags at D878, then marks
- * rnd(5) distinct entries of the 16-byte table at 01C4 (an FFh entry is no
- * weapon; an entry already marked is drawn again): the flag at D878 + i for
- * the draw i is set to 1 when the flag of the weapon it names is clear. Both
- * D878 and D879 then take byte 42h of the settings at far [CACA]. */
+/* START 0x00E23, weapon_shortage(): clears the 20 flags at D878, then sets
+ * rnd(5) of them: a random entry r of the 16-byte table at 01C4 (FFh for no
+ * weapon) whose weapon's flag (D878 + the entry) is clear has its own flag
+ * D878 + r set; any other draw is made again. Both D878 and D879 then take
+ * byte 42h of the settings at far [CACA]. */
 static int start_weapon_shortage(machine_t *m)
 {
     cpu_t *c = &m->cpu;
@@ -5510,10 +5510,10 @@ static int start_weapon_shortage(machine_t *m)
 #undef NEED
 }
 
-/* START 0x059FE, time_string(buffer, t): the clock text for a time in
- * seconds-of-day units. The template at 0DD2h is copied (0x094AC) and its
+/* START 0x059FE, time_string(buffer, t): the clock text for a time of day
+ * in 2-second units. The template at 0DD2h is copied (0x094AC) and its
  * digits advanced: the hours' tens by byte 33h of the settings at far
- * [E096], the units by t / 1800 % 10 plus 8 (6 when that byte is not zero),
+ * [E096], the units by t / 1800 % 10 plus 6 (8 when that byte is not zero),
  * carried into the tens past '9'; the minutes' digits from t / 30 % 60
  * rounded down to a multiple of 5. */
 static int start_time_string(machine_t *m)
@@ -5841,10 +5841,10 @@ static int start_pick_weapon(machine_t *m)
 /* START 0x05356, slot_fill(slot, target): fills mission slot `slot` (36-byte
  * records at D3BE; its type word at +16h) from target slot `target`: the
  * point, offset by (+9, -12), at +2/+4 and as 32-bit values times 32 at
- * +8/+0Ch; +6 is 0Ch when bit 1 of the target's byte +7 is set, else 8Ch;
- * the type's speed (32-byte records at 171A) at +1Ah and that speed over the
- * type's second word times 8192 (0x096F4) at +1Ch; +10h = FC00h, +12h/+14h
- * = 0, +18h |= 403h, +0 = target. */
+ * +8/+0Ch; +6 is 8Ch when bit 1 of the target's byte +7 is set, else 0Ch;
+ * the type's speed (32-byte records at 171A) at +1Ah and the type's second
+ * word times 8192 over that speed (0x096F4) at +1Ch; +10h = FC00h,
+ * +12h/+14h = 0, +18h |= 403h, +0 = target. */
 static int start_slot_fill(machine_t *m)
 {
     cpu_t *c = &m->cpu;
@@ -6267,13 +6267,13 @@ static const axis_variant END_AXIS = { 0x23EC, 0x23D4, 0x23C4, 0x23CC, 0x23DC, 0
 static int start_axis_normalise(machine_t *m) { return axis_normalise(m, &START_AXIS); }
 static int end_axis_normalise(machine_t *m) { return axis_normalise(m, &END_AXIS); }
 
-/* END 0x00EF3, time_string(t, buffer): the debriefing's clock text. t is
- * first moved on by (([71F0] + [7202]) & 0Fh) * 256; the template at 2C5h is
- * copied (0x05150) and its digits advanced: the hours' tens by byte 33h of
- * the settings at far [7222], the units by t / 1800 % 10 plus 8 (6 when that
- * byte is not zero), carried into the tens past '9'; the minutes' digits from
- * t / 30 % 60 and the seconds' from t * 2 % 60 (unsigned). Returns the
- * buffer. */
+/* END 0x00EF3, time_string(t, buffer): the debriefing's clock text, t in
+ * 2-second units as in START's, first moved on by (([71F0] + [7202]) & 0Fh)
+ * * 256. The template at 2C5h is copied (0x05150) and its digits advanced:
+ * the hours' tens by byte 33h of the settings at far [7222], the units by
+ * t / 1800 % 10 plus 6 (8 when that byte is not zero), carried into the tens
+ * past '9'; the minutes' digits from t / 30 % 60 and the seconds' from
+ * t * 2 % 60 (unsigned divides). Returns the buffer. */
 static int end_time_string(machine_t *m)
 {
     cpu_t *c = &m->cpu;
@@ -6675,9 +6675,9 @@ static int start_lzw_refill(machine_t *m)
 }
 
 /* START 0x0A76C, the heap's free(block) for the near heap described at AE1E:
- * a block at or above the heap's start ([AE24]) has its header word (at
- * block - 2) marked free (bit 0), and the rover [AE26] moves back to it when
- * it lies below. BX is left as the header's address. */
+ * a block above the heap's start ([AE24]) has its header word (at block - 2)
+ * marked free (bit 0), and the rover [AE26] moves back to that header when it
+ * lies above it. BX is left as the header's address. */
 static int start_heap_free(machine_t *m)
 {
     cpu_t *c = &m->cpu;
@@ -6705,8 +6705,8 @@ static int start_heap_free(machine_t *m)
 /* START 0x025D9, date_string(buffer): the mission's date. The theatre (far
  * [CACA]+38h) picks a starting month (byte 882h + theatre), year (word 896h +
  * 2 * theatre) and day (byte 88Ch + theatre, plus the day count at +36h);
- * whole months (lengths at 8C2h + month) are taken off while the day is not
- * below the month's length, a month past 12 wraps into the next year, and
+ * whole months (lengths at 8C2h + month) are taken off while the day exceeds
+ * the month's length, a month past 12 wraps into the next year, and
  * the text is printed by 0x0959E with the format at 878h: the month's name
  * (word 8A8h + 2 * month), the day, the year. Returns the buffer. */
 static int start_date_string(machine_t *m)
@@ -7490,6 +7490,409 @@ static int start_obj_near(machine_t *m)
     frame_close_ret(c);
     return 1;
 #undef NEED
+}
+
+/* The mission handover between the front end and the debriefing: START
+ * 0x05625 writes it into the shared block at far [E096] + 7Ah for VGAME,
+ * END 0x00113 reads it back from far [7222] + 7Ah, each through its block
+ * copier (START 0x0588D, END 0x00242: buffer, size, count, the far pointer
+ * kept in a rover) - the counts, the target records (16 bytes each), the
+ * mission slots (36 bytes each), the text and tables, in one fixed order.
+ * Each argument is loaded into AX, CX or DX and pushed (or pushed from
+ * memory) exactly as the original does, as the registers reach the callee. */
+typedef struct { uint8_t kind, reg; uint16_t v; } handover_push;   /* kind 0: MOV reg, v / PUSH reg; 1: PUSH reg; 2: PUSH [v] */
+typedef struct { handover_push p[3]; uint16_t ret; } handover_copy;
+typedef struct { uint16_t block, rover, copier; unsigned n; const handover_copy *copy; } handover_variant;
+
+#define IMM(r, v) { 0, r, v }
+#define REG(r) { 1, r, 0 }
+#define MEM(a) { 2, 0, a }
+static const handover_copy START_HANDOVER[15] = {
+    { { IMM(R_AX, 1), IMM(R_CX, 2), IMM(R_DX, 0xD88C) }, 0x5645 },
+    { { IMM(R_AX, 1), IMM(R_CX, 2), IMM(R_DX, 0xD33C) }, 0x5657 },     /* the target count */
+    { { IMM(R_AX, 1), IMM(R_CX, 2), IMM(R_DX, 0xCACE) }, 0x5669 },
+    { { IMM(R_AX, 1), IMM(R_CX, 2), IMM(R_DX, 0xE084) }, 0x567B },
+    { { MEM(0xD33C), IMM(R_AX, 0x10), IMM(R_AX, 0xCBDE) }, 0x568D },    /* the targets */
+    { { IMM(R_AX, 1), IMM(R_CX, 2), IMM(R_DX, 0xD890) }, 0x569F },     /* the slot count */
+    { { MEM(0xD890), IMM(R_AX, 0x24), IMM(R_AX, 0xD3BE) }, 0x56B1 },    /* the mission slots */
+    { { IMM(R_AX, 1), IMM(R_CX, 0x80), IMM(R_DX, 0xD7F6) }, 0x56C3 },
+    { { IMM(R_AX, 1), IMM(R_CX, 0x80), IMM(R_CX, 0xD33E) }, 0x56D5 },
+    { { IMM(R_AX, 0x2EE), IMM(R_AX, 1), IMM(R_CX, 0xDD70) }, 0x56E7 },  /* the text */
+    { { IMM(R_AX, 0x100), IMM(R_AX, 1), IMM(R_CX, 0xCAD8) }, 0x56F9 },
+    { { IMM(R_AX, 1), IMM(R_CX, 2), IMM(R_DX, 0xD876) }, 0x570B },
+    { { IMM(R_AX, 1), IMM(R_AX, 2), IMM(R_CX, 0xCABC) }, 0x571D },
+    { { IMM(R_AX, 4), REG(R_AX), IMM(R_AX, 0x15B2) }, 0x572C },
+    { { IMM(R_AX, 2), IMM(R_AX, 0x12), IMM(R_AX, 0xE05E) }, 0x573E },
+};
+static const handover_copy END_HANDOVER[16] = {
+    { { IMM(R_AX, 1), IMM(R_CX, 2), IMM(R_DX, 0x6983) }, 0x0133 },
+    { { IMM(R_AX, 1), IMM(R_CX, 2), IMM(R_DX, 0x6446) }, 0x0145 },     /* the target count */
+    { { IMM(R_AX, 1), IMM(R_CX, 2), IMM(R_DX, 0x55E4) }, 0x0157 },
+    { { IMM(R_AX, 1), IMM(R_CX, 2), IMM(R_DX, 0x7210) }, 0x0169 },
+    { { MEM(0x6446), IMM(R_AX, 0x10), IMM(R_AX, 0x56EA) }, 0x017B },    /* the targets */
+    { { IMM(R_AX, 1), IMM(R_CX, 2), IMM(R_DX, 0x6D8A) }, 0x018D },     /* the slot count */
+    { { MEM(0x6D8A), IMM(R_AX, 0x24), IMM(R_AX, 0x64CA) }, 0x019F },    /* the mission slots */
+    { { IMM(R_AX, 1), IMM(R_CX, 0x80), IMM(R_DX, 0x6902) }, 0x01B1 },
+    { { IMM(R_AX, 1), IMM(R_CX, 0x80), IMM(R_CX, 0x6448) }, 0x01C3 },
+    { { IMM(R_AX, 0x2EE), IMM(R_AX, 1), IMM(R_CX, 0x6EFA) }, 0x01D5 },  /* the text */
+    { { IMM(R_AX, 0x100), IMM(R_CX, 1), IMM(R_DX, 0x55EA) }, 0x01E7 },
+    { { IMM(R_AX, 1), IMM(R_CX, 2), IMM(R_DX, 0x543A) }, 0x01F9 },
+    { { IMM(R_AX, 1), IMM(R_AX, 2), IMM(R_CX, 0x5438) }, 0x020B },
+    { { IMM(R_AX, 4), REG(R_AX), IMM(R_AX, 0x5DA4) }, 0x021A },
+    { { IMM(R_AX, 2), IMM(R_AX, 0x12), IMM(R_AX, 0x71E8) }, 0x022C },
+    { { IMM(R_AX, 0x100), IMM(R_AX, 6), IMM(R_AX, 0x5E38) }, 0x023E },  /* (END's own: 6 x 256 bytes at 5E38) */
+};
+#undef IMM
+#undef REG
+#undef MEM
+static const handover_variant START_HANDOVER_V = { 0xE096, 0xB390, 0x588D, 15, START_HANDOVER };
+static const handover_variant END_HANDOVER_V = { 0x7222, 0x543C, 0x0242, 16, END_HANDOVER };
+
+/* The instructions of a copy before its CALL: two for a load and push, one for a bare push. */
+static unsigned handover_len(const handover_copy *w)
+{
+    unsigned n = 0;
+    for (int a = 0; a < 3; a++) n += w->p[a].kind ? 1 : 2;
+    return n;
+}
+
+static int handover_blocks(machine_t *m, const handover_variant *v)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 5 + handover_len(&v->copy[0]) + 1)) return 0;
+    c->r[R_AX] = (uint16_t)alu_add(c, ds_get(c, v->block), 0x7A, 1, 0);   /* the block's far pointer + 7Ah */
+    c->r[R_DX] = ds_get(c, (uint16_t)(v->block + 2));
+    ds_put(c, v->rover, c->r[R_AX]);
+    ds_put(c, (uint16_t)(v->rover + 2), c->r[R_DX]);
+    c->icount += 5;
+    for (unsigned k = 0; k < v->n; k++) {
+        const handover_copy *w = &v->copy[k];
+        for (int a = 0; a < 3; a++) {
+            const handover_push *p = &w->p[a];
+            if (p->kind == 0) c->r[p->reg] = p->v;
+            cpu_push16(c, p->kind == 2 ? ds_get(c, p->v) : c->r[p->reg]);
+        }
+        c->icount += handover_len(w);
+        if (!guest_call(m, v->copier, w->ret)) return 1;
+        const unsigned next = k + 1 < v->n ? handover_len(&v->copy[k + 1]) + 1 : 1;   /* the next copy and its CALL, or the RET */
+        if (!room(c, 1 + next)) { c->ip = w->ret; return 1; }
+        c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0);
+        c->icount += 1;
+    }
+    c->icount += 1;
+    near_ret(c);
+    return 1;
+}
+static int start_write_handover(machine_t *m) { return handover_blocks(m, &START_HANDOVER_V); }
+static int end_load_handover(machine_t *m) { return handover_blocks(m, &END_HANDOVER_V); }
+
+/* END 0x000C9, handover_text(): the handover read (0x00113), the 2EEh bytes
+ * of text at 6EFA are indexed: [6DFA] = 6EFA, and each NUL starts the next
+ * string, whose address goes to the word table at 6DFA (at most 128). */
+static int end_handover_text(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 5)) return 0;
+    frame_open(c, 4);
+    cpu_push16(c, c->r[R_SI]);
+    c->icount += 4;
+    if (!guest_call(m, 0x0113, 0x00D3)) return 1;
+    if (!room(c, 3)) { c->ip = 0x00D3; return 1; }
+    ds_put(c, 0x6DFA, 0x6EFA);
+    bp_put(c, -2, 1);                                             /* the next string's index */
+    bp_put(c, -4, 0);                                             /* the byte */
+    c->icount += 3;
+    for (;;) {                                                    /* 0x000E3 */
+        if (!room(c, 17)) { c->ip = 0x00E3; return 1; }          /* a byte, or the last and the RET */
+        c->r[R_BX] = bp_get(c, -4);
+        alu_sub(c, ds_get8(c, (uint16_t)(c->r[R_BX] + 0x6EFA)), 0, 0, 0);
+        c->icount += 3;
+        if (c->flags & F_ZF) {                                    /* a NUL */
+            alu_sub(c, bp_get(c, -2), 0x80, 1, 0);
+            c->icount += 2;
+            if (!x86_cond(c, 0xD)) {                              /* room in the table */
+                c->r[R_BX] = (uint16_t)alu_add(c, c->r[R_BX], 0x6EFB, 1, 0);
+                c->r[R_SI] = x86_shift(c, 4, bp_get(c, -2), 1, 1);
+                ds_put(c, (uint16_t)(c->r[R_SI] + 0x6DFA), c->r[R_BX]);
+                bp_put(c, -2, (uint16_t)alu_inc(c, bp_get(c, -2), 1));
+                c->icount += 5;
+            }
+        }
+        bp_put(c, -4, (uint16_t)alu_inc(c, bp_get(c, -4), 1));
+        alu_sub(c, bp_get(c, -4), 0x2EE, 1, 0);
+        c->icount += 3;
+        if (!x86_cond(c, 0xC)) break;
+    }
+    c->r[R_SI] = cpu_pop16(c);
+    c->icount += 4;
+    frame_close_ret(c);
+    return 1;
+}
+
+/* Would IDIV r/m16 by d fault on DX:AX (a zero divisor, or a quotient out of
+ * the 286's range)? The routine then stops at the IDIV for the original. */
+static int idiv16_faults(const cpu_t *c, uint16_t d)
+{
+    if (!d) return 1;
+    const int32_t n = (int32_t)(((uint32_t)c->r[R_DX] << 16) | c->r[R_AX]);
+    if ((int16_t)d == -1 && n == INT32_MIN) return 1;
+    const int32_t q = n / (int16_t)d;
+    return q > 32767 || q < -32768;
+}
+
+/* START 0x02F4C, route_leg(x0, y0, x1, y1, stop): the briefing map's route
+ * animation along one leg. The longer axis steps by a whole pixel (40h in
+ * 10.6 fixed point, signed by the direction), the other by its share
+ * (difference * 64 / the longer difference, by IDIV), from the start's centre
+ * (* 64 + 32) for the longer difference less one steps. At each step, while
+ * stop is 0 it is polled (0x0405F (1), the key check); from the third step
+ * the point is plotted in colour 0 by the line drawer 0x0829A on the page at
+ * DC18, and while not stopped on the one at DC02 too. The pixel position is
+ * left in the x1, y1 arguments. Returns stop (0 for a leg of no length). */
+static int start_route_leg(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define NEED(n, at) do { if (!room(c, (n))) { c->ip = (at); return 1; } } while (0)
+    if (!room(c, 7)) return 0;
+    frame_open(c, 0x0C);
+    c->r[R_AX] = (uint16_t)alu_sub(c, bp_get(c, 8), bp_get(c, 4), 1, 0);
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 6;
+    if (!guest_call(m, 0x96AE, 0x2F5C)) return 1;
+    NEED(6, 0x2F5C);
+    c->r[R_BX] = cpu_pop16(c);
+    bp_put(c, -2, c->r[R_AX]);                                    /* |dx| */
+    c->r[R_AX] = (uint16_t)alu_sub(c, bp_get(c, 0x0A), bp_get(c, 6), 1, 0);
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 5;
+    if (!guest_call(m, 0x96AE, 0x2F6A)) return 1;
+    NEED(33, 0x2F6A);
+    c->r[R_BX] = cpu_pop16(c);
+    bp_put(c, -4, c->r[R_AX]);                                    /* |dy| */
+    alu_sub(c, bp_get(c, -2), 0, 1, 0);
+    c->icount += 4;
+    if (c->flags & F_ZF) {
+        alu_logic(c, c->r[R_AX], 1);                              /* or ax, ax */
+        c->icount += 2;
+        if (c->flags & F_ZF) { c->icount += 1 + 3; frame_close_ret(c); return 1; }   /* no length: AX = 0 */
+    }
+    c->r[R_AX] = bp_get(c, -2);
+    alu_sub(c, bp_get(c, -4), c->r[R_AX], 1, 0);
+    c->icount += 3;
+    /* Along x when |dy| <= |dx| (signed), else along y: (the long step, the
+     * short step, the long axis's start and end, the short axis's). */
+    const int along_x = !x86_cond(c, 0xF);
+    const int16_t lon = along_x ? -2 : -4, sho = along_x ? -4 : -2;
+    const int16_t s0 = along_x ? 6 : 4, s1 = along_x ? 0x0A : 8;  /* the short axis's start, end */
+    const int16_t l0 = along_x ? 4 : 6, l1 = along_x ? 8 : 0x0A;  /* the long axis's */
+    const uint16_t idiv_ip = along_x ? 0x2F92 : 0x2FC0;
+    if (!along_x) { c->r[R_AX] = bp_get(c, -4); c->icount += 1; }
+    c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1);
+    bp_put(c, -6, c->r[R_AX]);                                    /* the steps */
+    c->r[R_AX] = (uint16_t)alu_sub(c, bp_get(c, s1), bp_get(c, s0), 1, 0);
+    set_r8(c, R_CL, 6);
+    c->r[R_AX] = x86_shift(c, 4, c->r[R_AX], 6, 1);
+    cwd(c);
+    c->icount += 7;
+    const uint16_t d = bp_get(c, lon);
+    if (idiv16_faults(c, d)) { c->ip = idiv_ip; return 1; }       /* the original takes the fault */
+    x86_idiv16(c, d, 0);
+    bp_put(c, sho, c->r[R_AX]);                                   /* the short step */
+    c->r[R_AX] = bp_get(c, l0);
+    alu_sub(c, bp_get(c, l1), c->r[R_AX], 1, 0);
+    c->icount += 5;
+    if (!x86_cond(c, 0xE)) { bp_put(c, lon, 0x40); c->icount += 2; }
+    else { bp_put(c, lon, 0xFFC0); c->icount += along_x ? 2 : 1; }
+    set_r8(c, R_CL, 6);                                           /* 0x02FDA: the centre of the start pixel */
+    c->r[R_AX] = (uint16_t)alu_add(c, x86_shift(c, 4, bp_get(c, 4), 6, 1), 0x20, 1, 0);
+    bp_put(c, 4, c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)alu_add(c, x86_shift(c, 4, bp_get(c, 6), 6, 1), 0x20, 1, 0);
+    bp_put(c, 6, c->r[R_AX]);
+    bp_put(c, -0x0C, 0);                                          /* the step */
+    c->icount += 11;
+    for (;;) {                                                    /* 0x03061 */
+        NEED(23, 0x3061);
+        c->r[R_AX] = bp_get(c, -6);
+        alu_sub(c, bp_get(c, -0x0C), c->r[R_AX], 1, 0);
+        c->icount += 3;
+        if (!x86_cond(c, 0xC)) break;
+        alu_sub(c, bp_get(c, 0x0C), 0, 1, 0);
+        c->icount += 2;
+        if (c->flags & F_ZF) {                                    /* not stopped: poll the keys */
+            c->r[R_AX] = 1;
+            cpu_push16(c, 1);
+            c->icount += 2;
+            if (!guest_call(m, 0x405F, 0x3006)) return 1;
+            NEED(20, 0x3006);
+            c->r[R_BX] = cpu_pop16(c);
+            bp_put(c, 0x0C, c->r[R_AX]);
+            c->icount += 2;
+        }
+        set_r8(c, R_CL, 6);                                       /* 0x0300A: the pixel */
+        c->r[R_AX] = x86_shift(c, 7, bp_get(c, 4), 6, 1);
+        bp_put(c, 8, c->r[R_AX]);
+        c->r[R_DX] = x86_shift(c, 7, bp_get(c, 6), 6, 1);
+        bp_put(c, 0x0A, c->r[R_DX]);
+        alu_sub(c, bp_get(c, -0x0C), 1, 1, 0);
+        c->icount += 9;
+        if (!x86_cond(c, 0xE)) {                                  /* from the third step: plot it */
+            c->r[R_CX] = (uint16_t)alu_sub(c, c->r[R_CX], c->r[R_CX], 1, 0);
+            cpu_push16(c, 0);
+            cpu_push16(c, c->r[R_DX]);
+            cpu_push16(c, c->r[R_AX]);
+            cpu_push16(c, c->r[R_DX]);
+            cpu_push16(c, c->r[R_AX]);
+            c->r[R_BX] = 0xDC18;
+            cpu_push16(c, 0xDC18);
+            c->icount += 8;
+            if (!guest_call(m, 0x829A, 0x3030)) return 1;
+            NEED(12, 0x3030);
+            c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x0C, 1, 0);
+            alu_sub(c, bp_get(c, 0x0C), 0, 1, 0);
+            c->icount += 3;
+            if (c->flags & F_ZF) {                                /* and on the other page */
+                c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+                cpu_push16(c, 0);
+                cpu_push16(c, bp_get(c, 0x0A));
+                cpu_push16(c, bp_get(c, 8));
+                cpu_push16(c, bp_get(c, 0x0A));
+                cpu_push16(c, bp_get(c, 8));
+                c->r[R_AX] = 0xDC02;
+                cpu_push16(c, 0xDC02);
+                c->icount += 8;
+                if (!guest_call(m, 0x829A, 0x304F)) return 1;
+                NEED(6, 0x304F);
+                c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x0C, 1, 0);
+                c->icount += 1;
+            }
+        }
+        c->r[R_AX] = bp_get(c, -2);                               /* 0x03052: the next step */
+        bp_put(c, 4, (uint16_t)alu_add(c, bp_get(c, 4), c->r[R_AX], 1, 0));
+        c->r[R_AX] = bp_get(c, -4);
+        bp_put(c, 6, (uint16_t)alu_add(c, bp_get(c, 6), c->r[R_AX], 1, 0));
+        bp_put(c, -0x0C, (uint16_t)alu_inc(c, bp_get(c, -0x0C), 1));
+        c->icount += 5;
+    }
+    c->r[R_AX] = bp_get(c, 0x0C);
+    c->icount += 1 + 3;
+    frame_close_ret(c);
+    return 1;
+#undef NEED
+}
+
+/* START 0x0A1A4, the formatter's digits: the 32-bit value DX:AX in base CX,
+ * written backwards (STD, STOSB) at ES:DI, at least SI digits; a digit past
+ * '9' is moved on by the byte at the caller's [BP-1] (to 'a' or 'A'). On the
+ * return DI points at the first digit and CX is the count; DF is cleared.
+ * Each digit divides the high word, then the remainder and the low word,
+ * the value kept in DX:BX between digits. With CX 0 the routine stops at the
+ * first DIV and the original takes the fault. */
+static int start_format_digits(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 3)) return 0;
+    set_flag(c, F_DF, 1);                                         /* std */
+    cpu_push16(c, c->r[R_DI]);
+    const uint16_t t = c->r[R_BX];                                /* xchg bx, ax */
+    c->r[R_BX] = c->r[R_AX];
+    c->r[R_AX] = t;
+    c->icount += 3;
+    for (;;) {                                                    /* 0x0A1A7 */
+        if (!room(c, 21)) { c->ip = 0xA1A7; return 1; }           /* a digit, or the tests and the exit */
+        alu_logic(c, c->r[R_SI], 1);                              /* or si, si */
+        c->icount += 2;
+        if (!x86_cond(c, 0xF)) {                                  /* the minimum is met: anything left? */
+            alu_logic(c, c->r[R_BX], 1);
+            c->icount += 2;
+            if (c->flags & F_ZF) {
+                alu_logic(c, c->r[R_DX], 1);
+                c->icount += 2;
+                if (c->flags & F_ZF) { c->icount += 1; break; }   /* jmp to the exit */
+            }
+        }
+        uint16_t x = c->r[R_DX];                                  /* xchg dx, ax */
+        c->r[R_DX] = c->r[R_AX];
+        c->r[R_AX] = x;
+        c->r[R_DX] = (uint16_t)alu_logic(c, 0, 1);                /* xor dx, dx */
+        if (!c->r[R_CX]) { c->icount += 2; c->ip = 0xA1B8; return 1; }   /* the DIV faults */
+        x86_div16(c, c->r[R_CX]);                                 /* the high word */
+        x = c->r[R_BX];                                           /* xchg bx, ax */
+        c->r[R_BX] = c->r[R_AX];
+        c->r[R_AX] = x;
+        x86_div16(c, c->r[R_CX]);                                 /* the remainder and the low word */
+        x = c->r[R_DX];                                           /* xchg dx, ax */
+        c->r[R_DX] = c->r[R_AX];
+        c->r[R_AX] = x;
+        x = c->r[R_BX];                                           /* xchg bx, dx */
+        c->r[R_BX] = c->r[R_DX];
+        c->r[R_DX] = x;
+        set_r8(c, R_AL, (uint8_t)alu_add(c, get_r8(c, R_AL), 0x30, 0, 0));
+        alu_sub(c, get_r8(c, R_AL), 0x39, 0, 0);
+        c->icount += 10;
+        if (!x86_cond(c, 0x6)) {                                  /* a letter */
+            set_r8(c, R_AL, (uint8_t)alu_add(c, get_r8(c, R_AL), bp_get8(c, -1), 0, 0));
+            c->icount += 1;
+        }
+        /* STOSB, backwards (DF is set): written out, as MSVC 19.51 /O2 stalls optimising x86_stos here. */
+        mem_write8(c, phys(c->seg[S_ES], c->r[R_DI]), get_r8(c, R_AL));
+        c->r[R_DI] = (uint16_t)(c->r[R_DI] - 1);
+        c->r[R_AX] = c->r[R_DX];
+        c->r[R_SI] = (uint16_t)alu_dec(c, c->r[R_SI], 1);
+        c->icount += 4;
+    }
+    c->r[R_CX] = cpu_pop16(c);
+    c->r[R_CX] = (uint16_t)alu_sub(c, c->r[R_CX], c->r[R_DI], 1, 0);   /* the count */
+    c->r[R_DI] = (uint16_t)alu_inc(c, c->r[R_DI], 1);
+    set_flag(c, F_DF, 0);                                         /* cld */
+    c->icount += 5;
+    near_ret(c);
+    return 1;
+}
+
+/* START 0x0A141, the formatter's put-character into a string stream: AL
+ * (made a word by CBW) is stored at the stream's next byte (the stream at the
+ * caller's [BP+4]: next pointer +0, room +2) and AX = 0; when the room runs
+ * out (the count goes negative) the stream's flush 0x09992 (char, stream) is
+ * called instead and AX is 0 unless it answered FFFFh. DI preserved. */
+static int start_format_putc(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 11)) return 0;
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);     /* cbw */
+    cpu_push16(c, c->r[R_DI]);
+    c->r[R_BX] = bp_get(c, 4);
+    const uint16_t room_at = (uint16_t)(c->r[R_BX] + 2);
+    ds_put(c, room_at, (uint16_t)alu_dec(c, ds_get(c, room_at), 1));
+    c->icount += 5;
+    int zero = 1;
+    if (!(c->flags & F_SF)) {                                     /* room for it */
+        c->r[R_DI] = ds_get(c, c->r[R_BX]);
+        ds_put(c, c->r[R_BX], (uint16_t)alu_inc(c, ds_get(c, c->r[R_BX]), 1));
+        ds_put8(c, c->r[R_DI], get_r8(c, R_AL));
+        c->icount += 3;
+    } else {
+        cpu_push16(c, c->seg[S_ES]);
+        cpu_push16(c, c->r[R_CX]);
+        cpu_push16(c, c->r[R_DX]);
+        cpu_push16(c, c->r[R_BX]);
+        cpu_push16(c, c->r[R_AX]);
+        c->icount += 5;
+        if (!guest_call(m, 0x9992, 0xA15D)) return 1;
+        if (!room(c, 9)) { c->ip = 0xA15D; return 1; }
+        c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 4, 1, 0);
+        c->r[R_DX] = cpu_pop16(c);
+        c->r[R_CX] = cpu_pop16(c);
+        c->seg[S_ES] = cpu_pop16(c);
+        alu_sub(c, c->r[R_AX], 0xFFFF, 1, 0);
+        c->icount += 6;
+        zero = !(c->flags & F_ZF);
+        if (!zero) c->icount += 1;                                /* jmp over the XOR */
+    }
+    if (zero) { c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1); c->icount += 1; }
+    c->r[R_DI] = cpu_pop16(c);
+    c->icount += 2;
+    near_ret(c);
+    return 1;
 }
 
 /* VGAME 0x0C831, vcos(a, r): the routine at 0x0C818 with the angle turned a
@@ -9632,12 +10035,13 @@ static int vgame_release_buffer(machine_t *m)
             if (!guest_call(m, 0xF8EC, 0xF1CE)) return 1;
             if (!room(c, 9)) { c->ip = 0xF1CE; return 1; }
             c->r[R_CX] = cpu_pop16(c);
-            const uint32_t p = phys(ds, (uint16_t)(si + 6));
+            const uint16_t s2 = c->r[R_SI];                       /* SI and DS as the callee left them */
+            const uint32_t p = phys(c->seg[S_DS], (uint16_t)(s2 + 6));
             mem_write8(c, p, (uint8_t)alu_logic(c, mem_read8(c, p) & 0xF7, 0));
             c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);            /* xor ax, ax */
-            ds_put(c, (uint16_t)(si + 4), 0);
-            ds_put(c, si, 0);
-            ds_put(c, (uint16_t)(si + 2), 0);
+            ds_put(c, (uint16_t)(s2 + 4), 0);
+            ds_put(c, s2, 0);
+            ds_put(c, (uint16_t)(s2 + 2), 0);
             n = 6;                                                /* pop cx .. mov [si+2], ax */
         }
     }
@@ -10402,6 +10806,12 @@ static const recomp_override MATCHED[] = {
     { "matched", "END.EXE", END_47304, 0x0000, 0x0EF3, end_time_string, "clock text for a time", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x2AFA, end_promote, "promotion check", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x2476, end_awards, "ribbons, medal and point steps", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x5625, start_write_handover, "write the mission handover", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x2F4C, start_route_leg, "animate one leg of the route", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0xA1A4, start_format_digits, "the formatter's digits", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0xA141, start_format_putc, "the formatter's put-character", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x0113, end_load_handover, "read the mission handover", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x00C9, end_handover_text, "index the handover's text", 1 },
 };
 
 void matched_register(void)
