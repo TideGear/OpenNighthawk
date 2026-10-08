@@ -29,7 +29,7 @@ intro, credits and sound menu on `ami286` (a 6 MHz 286).
 ## Traced runs: emulated time, scripted input (`86box-trace.patch`)
 
 `git apply tools/ref86box/86box-trace.patch` in the checkout (it edits
-`src/vnc.c`, `src/qt/qt_main.cpp`, `src/sound/snd_adlib.c` and `src/cpu/386.c`) before step 5.
+`src/vnc.c`, `src/qt/qt_main.cpp`, `src/sound/snd_adlib.c`, `src/cpu/386.c` and `src/video/vid_vga.c`) before step 5.
 A traced run needs no VNC client, so it is a function of the machine and its
 inputs, not of wall-clock polling. `trace_86box.ps1` starts it; environment
 variables drive it:
