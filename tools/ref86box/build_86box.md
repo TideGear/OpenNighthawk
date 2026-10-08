@@ -155,7 +155,10 @@ this machine's, channels 0, 1, 2 and 5 play the same notes in the same order,
 and channels 3 and 4 have the same number of key-ons (within 0.1%) but their
 pitch-bend writes fall in different places (the effect is paced by the
 loop, so by speed); the scripted session saves a `ROSTER.FIL` byte-identical
-to ours.
+to ours. Checked 8 Oct 2026: with `B86_VGA_FAST=1` channel 3's key-ons go from 8,986
+to 9,022 (ours 8,982) while channels 0, 1, 2 and 5 stay identical, so the busy channels'
+writes follow the game loop's speed on the machine that runs it, not a fixed schedule;
+no single fixed PC speed reproduces them, and they are not a parity target.
 
 ## The profile (`D:\86box\vmf`, the picture capture; the checks above use `vmt386`)
 

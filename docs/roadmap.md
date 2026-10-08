@@ -88,8 +88,10 @@ make (Phase 4).
       Open: script flight and more saved data (a career) on both; the 86Box intro drift is
       explained (8 Oct 2026: 1.4 s of the 2.0 is the IBM VGA's 8-bit bus
       during the credits' panning, 0.24 s the disk path; with both fast the
-      drift is about 0.5 s, tools/ref86box/build_86box.md); open:
-      the pitch-bend channels' different write positions. Decided (8 Oct 2026):
+      drift is about 0.5 s, tools/ref86box/build_86box.md), and the pitch-bend
+      channels' write positions follow the loop's speed (channel 3's key-ons
+      move with the VGA's speed while the melodic channels stay identical), so
+      they are not a parity target. Decided (8 Oct 2026):
       DOSBox-X and 86Box are the routine references (`pc_parity.py`,
       `fidelity_all.py`, the closed-loop supply drop on both); GOG's DOSBox is
       no longer started for the picture and music checks (its saved capture is
