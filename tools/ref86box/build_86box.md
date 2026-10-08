@@ -130,9 +130,14 @@ builds (8 Oct 2026, per paired scene): +0.57 s between the scenes at 3.9 and 13.
 16-bit AT IDE controller (`hdc_1 = ide_isa`, the drive written into the CMOS as type
 47, 940/8/17) and 20 DOS buffers (`B86_BUFFERS=20` for `probe86.bare_boot`) take the
 drift from 1.98 s to 1.74 s and the first step to +0.31 s. A 40 MHz CPU takes the first
-step to +0.47 s and leaves the second at +0.80 s, so the second is paced by neither the
-disk nor the CPU (a fixed wait or a sync point that falls one way here and the other on
-this machine; not located). All traced runs use `probe86.bare_boot` (the game needs
+step to +0.47 s and leaves the second at +0.80 s. The second is video memory: the
+profile's IBM VGA costs 8 ISA bus clocks a byte (86Box's `timing_vga`), and the credits'
+panning pictures write the screen every frame; with `B86_VGA_FAST=1` (a test knob in
+`vid_vga.c`: one bus clock a byte) the step is gone (+0.51 s before and after it) and the
+drift over the whole intro is 0.56 s, the title-picture step. The intro music lags by
+the same amounts, since the game loop advances it. So the drift is the reference PC's
+own disk and video speed, which this machine (and DOSBox) do not charge; it is not an
+error in this machine. The routine check keeps the stock card (a period PC). All traced runs use `probe86.bare_boot` (the game needs
 almost all of conventional memory under this BIOS).
 
 **Instructions against this model's clocks** (`instr86.py`, from the same frames.csv and a

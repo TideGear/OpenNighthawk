@@ -98,6 +98,23 @@ index a67309d..c7c77fe 100644
                    adlib->opl.priv);
      music_add_handler(adlib_get_buffer, adlib);
      return adlib;
+diff --git a/src/video/vid_vga.c b/src/video/vid_vga.c
+index 1d3db46..8914734 100644
+--- a/src/video/vid_vga.c
++++ b/src/video/vid_vga.c
+@@ -156,7 +156,11 @@ vga_standalone_init(const device_t *info)
+ 
+     rom_init(&vga->bios_rom, "roms/video/vga/ibm_vga.bin", 0xc0000, 0x8000, 0x7fff, 0x2000, MEM_MAPPING_EXTERNAL);
+ 
+-    video_inform(VIDEO_FLAG_TYPE_SPECIAL, &timing_vga);
++    {
++        /* Parity harness test knob: B86_VGA_FAST drops the 8-bit ISA write and read costs to one bus clock. */
++        static video_timings_t timing_vga_fast = { .type = VIDEO_ISA, .write_b = 1, .write_w = 1, .write_l = 2, .read_b = 1, .read_w = 1, .read_l = 2 };
++        video_inform(VIDEO_FLAG_TYPE_SPECIAL, getenv("B86_VGA_FAST") ? &timing_vga_fast : &timing_vga);
++    }
+ 
+     vga_init(info, vga, 0);
+ 
 diff --git a/src/vnc.c b/src/vnc.c
 index cd539f5..d4426bc 100644
 --- a/src/vnc.c
