@@ -69,7 +69,7 @@ Each stage is judged by a check, as in the rest of the project.
 | Stage | What | Check | Status |
 |---|---|---|---|
 | 0 | Observer: log every call to the drawing primitives per frame | the log is identical across runs; hashes unchanged with it on | done |
-| 1 | Draw lists: a frame's primitives as a list, replayed at 320x200 | the replay reproduces the original's work and display pages bit for bit, every phase of every route | done for the windows below; unexercised branches listed below |
+| 1 | Draw lists: a frame's primitives as a list, replayed at 320x200 | the replay reproduces the original's work and display pages bit for bit, every phase of every route | done for the windows below, in Python and in C (`src/present/drawlist.c`); unexercised branches listed below |
 | 2 | Re-draw the list at N times the resolution | N = 1 is Stage 1 exactly; at N > 1 every N x N block agrees with the N = 1 pixel wherever no edge crosses it | model polygons re-drawn from their sub-pixel vertices (`hires_subpixel.py`): N = 1 exact, flat agreement 99.96-100% before a guard, 100% after; text, sprites, HUD and 3-4% of the polygons stay scaled |
 | 3 | Interpolate between consecutive draw lists to the host display rate | at a logic frame the output is exactly that frame; no in-between primitive absent from both neighbours | 320x200 study done (`interp_frame.py`, below): exact at both ends on seven windows, no violations; the live path is not built |
 | 4 | Pacing, vsync, a picture-age setting, HUD handling, a switch to the original picture | - | not started |
@@ -148,6 +148,34 @@ FROM just after the flight's `ordnance.pic` open, then `drawlist_frame.py LOG`.
 opaque text branch and the width clip, sprite clip edge cases, the tick scale's
 CL variant, and windows in the rest of each flight (weapon release on other
 weapons, the cockpit's other displays).
+
+### The replay in C
+
+`src/present/drawlist.c` is `drawlist_frame.py` in C, rule for rule: it is fed one record at a
+time (`drawlist_record`, a log line's values without the clock) and draws on the pages it was
+seeded with (`drawlist_seed`, the work page and the display as the observer dumps them). It reads
+nothing from the machine. Where the Python replay copies a page copy's logged source bytes (the
+present, entry 44), the C replay uses its own copy of the source page when it holds it, so the
+display check also covers the work page at the instant of the present; `prefer_logged` does as
+the Python does.
+
+`build/test_drawlist.exe LOG [--carry] [--logged]` replays a log and prints
+`drawlist_frame.py`'s lines, so the two outputs diff. `--carry` seeds each page once, from its
+first dump, and carries the replay from phase to phase, as a live replay must. On eight 30M
+windows (strike 8.53B and 8.70B, landing 9.70B and 9.89B, `airair_type6` 5.08B and 5.23B,
+`airair_type5` 6.793B, a night take-off roll 2.50B; 447 phases), the output is identical to the
+Python replay's in all three modes, and every phase is exact on both pages, carried too: seeded
+once, the replay stays exact for the whole window, so what the original draws on the two pages
+in flight is all in the records. A log of 75 MB replays in under a second.
+
+Not everything in the records is replayed by a rule. The work page is (only the take-off window
+copies 225 bytes, drawn by graphics entry 41), but the display leans on the logged byte changes
+('x') of entry 41, which has no rule yet and draws on the display in every phase of the strike
+and air-to-air windows, and of writes that follow an entry 46 (8 phases of the 8.53B strike
+window): without the entry 41 records 0 of 69 (strike) and 1 of 57 (`airair_type5`) display
+phases are exact, without entry 46's 61 of 69. The changes of entries 42 and 44 on the display
+duplicate the replayed blit and present. So a live replay needs the byte changes, which cost a
+page snapshot at every graphics entry, until entry 41 is decoded.
 
 ## Stage 2: what the list holds and what it needs
 
