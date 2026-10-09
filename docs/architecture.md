@@ -269,7 +269,8 @@ lose code an earlier capture got translated.
   the recompiler gives each override address a region of its own (one
   instruction) and the function around it stays translated. An override
   leaves CS:IP and the clock where the replaced code would have, or declines
-  and the original instruction runs.
+  and the original instruction runs. Each loaded module can place all 1,024
+  registry entries; matched routines and observer hooks share that capacity.
 - **Data fixes.** The machine's one hook that may change what the guest
   sees, `file_data`, hands each DOS read's bytes to the fixes before they
   reach memory; a correction applies only to its named file, of its size,
@@ -301,7 +302,7 @@ current as of the last gate (see [../handoff.md](../handoff.md)).
 3. **The two engines on whole sessions.** `f117run` runs the same inputs
    under `--engine interp` and `--engine recomp` and hashes all of memory,
    the registers and everything the machine sent out (every port write with
-   its value and clock, every file write) every 50 million clocks. The 32
+   its value and clock, every file write) every 50 million clocks. The 35
    routes in `tools/routes/` must be identical at every checkpoint;
    `tools/build_recomp.py` (the gate) repeats this on every change.
    Routes also declare milestones - `# expect-world`, `# expect-exit`,
@@ -316,8 +317,8 @@ current as of the last gate (see [../handoff.md](../handoff.md)).
    instruction through the machine's interpreter step and through the
    generated region entered there, comparing registers, segments, IP, flags,
    the clock, the interrupt shadow, every byte written, every port access
-   and every interrupt raised. 89,281 instruction starts at 64 states each:
-   5,713,472 comparisons, 0 mismatches (512 starts are declined to the
+   and every interrupt raised. 89,276 instruction starts at 64 states each:
+   5,713,152 comparisons, 0 mismatches (512 states are declined to the
    interpreter: bytes the gap sweep took for code that are invalid 286
    opcodes). The reference is the machine's own step (`cpu_step` plus the TF
    trap), not bare `cpu_step`.
@@ -507,6 +508,13 @@ caught real defects:
 - Half the states put small words (-1, 0, 1, 0-31) where the arguments sit,
   and the other half use memory of mostly 00, FF and 01 bytes, so edge cases
   and exact tests on memory are reached.
+- START and END's uninitialised graphics-driver thunks are replaced with
+  RETF on both sides of the check, so drawing wrappers can return and their
+  surrounding work is compared. The routes still check the real driver.
+  END's DAC-loader states clear the BIOS gray-scale flag that overlaps the
+  module image at segment 0; some START map-caption states plant the exact
+  argument kinds 64h and 65h. `--only MODULE:IP,...` selects routines for
+  diagnosis; the full gate checks the whole table.
 - A state counts only when the original returns to the pushed address with the
   stack at its entry level (a looser rule let a routine that clears its own
   stack slide to the return address through `00 00`). States where the original
@@ -522,15 +530,14 @@ caught real defects:
   `tools/build_recomp.py`) fails when such a routine ran on no recompiled route
   (each route's output lists `[matched] ... ran N times`): with no route
   executing it there is no evidence at all, and the routine is dropped (VGAME
-  0xF024, the run-time termination messages, was, 8 Oct 2026; 21 routes-only
-  routines remain, each run by 1 to 34 routes).
+  0xF024, the run-time termination messages, was, 8 Oct 2026).
 
 `F117R_SHADOW=FROM:TO` re-runs matched routines against the original on the
 live game in a window (a diagnostic, not a gate: device state is not in the
 snapshot). `f117run --dump LINEAR:LENGTH` prints registers and memory at the
 end of a run for comparing two engines at a chosen clock.
 
-392 addresses are matched in all seven programs. The programs carry
+484 addresses are matched in all seven programs. The programs carry
 byte-identical copies of the C runtime helpers (string and block copies, the
 32-bit shifts, multiply and divide), so one matched routine serves several
 addresses. Candidates come from `tools/reimp_names.py`; the list is the table

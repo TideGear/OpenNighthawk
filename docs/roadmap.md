@@ -17,14 +17,15 @@ make (Phase 4).
 
 ### Done
 
-- **Translation.** All 17 code files and the LZEXE decompressor: 89,281
+- **Translation.** All 17 code files and the LZEXE decompressor: 89,276
   instruction starts, 96% of the code-area bytes (the rest is strings, tables
-  and variables; `tools/census.py`). No game instruction is interpreted on the
-  routes.
-- **Engine parity.** 34 scripted routes are identical between the interpreter
+  and variables; `tools/census.py`). The coverage pass adds no further
+  translated code; changed code and declined override entries can fall back
+  to the interpreter.
+- **Engine parity.** 35 scripted routes are identical between the interpreter
   and the recompiled code at every 50-million-clock checkpoint and at the end;
   every translated instruction is held to the interpreter from random states
-  (5,713,472 comparisons, 0 differences); the interpreter and the translator are
+  (5,713,152 comparisons, 0 differences); the interpreter and the translator are
   held to 8088 and 80286 silicon vectors; 144 of 144 planted defects are
   caught; seeded random flights are identical. See
   [architecture.md](architecture.md#verification-why-11-is-a-claim-with-evidence).
@@ -174,9 +175,12 @@ not the recompilation:
       Reimp's mapping; matched functions replacing translations one at a time,
       each held to the same parity checks. `tools/reimp_names.py` joins the
       Reimp's census (1,535 functions) with this project's regions as a private
-      lead list. 392 addresses are matched (391 of the census functions, 28,216 of
+      lead list. 484 addresses are matched (483 of the census functions, 39,387 of
       179,213 bytes); the table is at the end of `src/matched/matched.c` and the
       method is in [architecture.md](architecture.md#matched-routines-phase-2).
+      The resumed batches add 37 VGAME, 34 START/END and 21 small-program
+      routines, checked at two 4,000-state seeds. Three unequal candidates
+      were excluded: START 0x11DB, MPS_LOGO 0x1ADC and 0x1C82.
 
 ## Phase 3 - fixes and enhancements (switchable)
 

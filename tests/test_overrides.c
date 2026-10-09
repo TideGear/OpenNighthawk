@@ -47,6 +47,34 @@ static int step_at(uint16_t cs, uint16_t ip)
     return recomp_override_step(&m);
 }
 
+/* Matched routines and observer hooks share a module's placements. Large
+ * batches must not silently discard the hooks after the old 256-slot limit. */
+static void check_override_capacity(void)
+{
+    enum { COUNT = 300, FIRST = 0x10, SEG = 0x6000 };
+    static uint8_t image[0x200];
+    const int live_before = recomp_overrides_live;
+    for (unsigned i = 0; i < COUNT; i++) {
+        const recomp_override o = { "CAP", "MANY.OVL", 0, 0,
+            (uint16_t)(FIRST + i), skip_two, "placement capacity" };
+        CHECK(recomp_override_add(&o) >= 0);
+    }
+    recomp_module_load(NULL, &m, "MANY.OVL", image, sizeof image,
+                       MODLOAD_OVERLAY, SEG, SEG);
+    CHECK(recomp_overrides_live == live_before);
+    CHECK(recomp_override_enable("CAP", 1) == COUNT);
+    CHECK(recomp_overrides_live == live_before + COUNT);
+    const int calls_before = calls;
+    answer = 1;
+    CHECK(step_at(SEG, FIRST) == 1);
+    CHECK(step_at(SEG, FIRST + COUNT - 1) == 1);
+    CHECK(calls == calls_before + 2);
+    CHECK(step_at(SEG, FIRST + COUNT) == 0);
+    CHECK(recomp_override_enable("CAP", 0) == COUNT);
+    CHECK(recomp_overrides_live == live_before);
+    CHECK(step_at(SEG, FIRST + COUNT - 1) == 0);
+}
+
 
 /* The observer reads a projected vertex without touching the machine. */
 static int obs_calls, obs_range;
@@ -259,6 +287,7 @@ int main(void)
     machine_shutdown(&m);
 
     check_observer();
+    check_override_capacity();
     recomp_shutdown(&m);
     if (failures) { fprintf(stderr, "%d failures\n", failures); return 1; }
     printf("code overrides: all checks passed\n");

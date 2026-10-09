@@ -26,7 +26,8 @@
 uint8_t cpu_codebits[MEM_SIZE / 8];
 unsigned long long rc_mutant_hits;
 
-#define MAX_PLACED 256        /* overrides placed in one loaded module */
+#define MAX_OVERRIDES 1024
+#define MAX_PLACED MAX_OVERRIDES /* every registered override can share a module */
 
 typedef struct instance {
     const rc_module *mod;          /* NULL: a module with no translation */
@@ -113,8 +114,6 @@ static void set_codebits(const instance *in, int on)
 static void flush_coverage(instance *in);
 
 /* ---- code overrides (see recomp_rt.h) ---------------------------------- */
-
-#define MAX_OVERRIDES 1024
 
 static recomp_override g_ov[MAX_OVERRIDES];
 static int g_ov_on[MAX_OVERRIDES];
@@ -734,4 +733,3 @@ void recomp_report(machine_t *m, FILE *f)
         e->n = 0;
     }
 }
-
