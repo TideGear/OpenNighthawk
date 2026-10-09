@@ -204,11 +204,19 @@ not the recompilation:
       [presentation.md](presentation.md). The owner chose to observe and replay
       the original's draw path. Stage 0 (the observer) and Stage 1 (draw lists
       that rebuild every phase of the windows tried bit for bit, 0 bytes copied)
-      are built; Stage 2's first build (`tools/hires_frame.py`) shows the scaled
-      edge walk cracks along shared polygon edges (85% flat-pixel agreement; 100%
-      with the nearest-neighbour floor, which is no sharper), so the next step is
-      the sub-pixel re-projection of the model polygons; Stages 3 (interpolation) and 4 (pacing and polish) are
-      not started.
+      are built. Stage 2 (8 Oct 2026, `tools/hires_subpixel.py`): the model
+      polygons re-projected from their camera-space vertices and filled with a
+      tiling rule are equal to Stage 1 at N=1, agree on 99.96-100% of flat
+      pixels at N=2 and 4 and show 1.5-5.4 times the nearest-neighbour floor's
+      change (real edge detail); text, sprites, the HUD and the cockpit art stay
+      scaled copies, and 3-6% of polygons (near-clipped, horizon slivers) too.
+      Stage 3 (`tools/interp_frame.py`, a 320x200 study): the replay is exact at
+      both logic frames, 86-98% of model polygons pair between steps and 1 of 182
+      flight steps was a held cut; at 320x200 the in-between frames change under
+      1% of pixels, so the gain comes on Stage 2's grid. Open: the live path (the
+      host pairs two steps' records and draws against the mission clock), how
+      the HUD and text are sourced at 4K (the owner's call), and Stage 4 (pacing,
+      vsync, a switch to the original picture).
 
 ## Phase 4 - checked by people and independent references
 

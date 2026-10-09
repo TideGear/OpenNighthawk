@@ -127,16 +127,16 @@
       {
         "item": "Stage 2: high-resolution re-draw",
         "weight": 16,
-        "done": 0.0,
+        "done": 0.5,
         "kind": "estimate",
-        "evidence": "Not started."
+        "evidence": "Shown 8 Oct 2026 (tools/hires_subpixel.py, docs/presentation.md): the model polygons re-projected from the logged camera-space vertices and filled with a tiling rule; equal to Stage 1 at N=1 in five windows (strike, recon, landing, two air-to-air); at N=2 and 4 flat-pixel agreement 99.96-100% and the fine picture 1.5-5.4 times the nearest-neighbour floor's change. Open: text, sprites, the HUD and the cockpit art (still scaled copies), 3-6% of polygons (near-clipped, horizon slivers), the live path."
       },
       {
         "item": "Stage 3 and 4: interpolation to 60+ fps, pacing and polish",
         "weight": 26,
-        "done": 0.0,
+        "done": 0.15,
         "kind": "estimate",
-        "evidence": "Not started."
+        "evidence": "Stage 3 studied 8 Oct 2026 (tools/interp_frame.py): at 320x200 the replay is exact at both logic frames in seven windows, 86-98% of model polygons pair between steps, 1 of 182 flight steps was a cut held, no in-between primitive is absent from both neighbours; the 320x200 in-between frames change under 1% of pixels, so the payoff needs Stage 2's fine grid. Open: the live path (the machine hands the host each step's records; the host pairs two steps and draws against the mission clock), Stage 4 (pacing, vsync, a switch to the original picture, HUD handling)."
       }
     ],
     "P4": [

@@ -3,165 +3,188 @@
 For the next conversation on this repository. Read this, then
 [docs/roadmap.md](docs/roadmap.md) (what is done and left; keep it current),
 [docs/architecture.md](docs/architecture.md) (how parity is built and
-checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs) and
+checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
+[docs/presentation.md](docs/presentation.md) (60+ fps and 4K) and
 [docs/repeated-processes.md](docs/repeated-processes.md) (every process we run
-more than once, what it costs, what was optimised). State as of 6 October
-2026. Earlier session-by-session logs were removed from this file on that
-date; `git log -p handoff.md` has them.
+more than once, what it costs, what was optimised). State as of the evening of
+8 October 2026. Earlier session-by-session logs were removed from this file;
+`git log -p handoff.md` has them.
 
 ## Goal and standing decisions
 
-- **Recompile the whole DOS game for Windows with 1:1 parity**, then
-  understood (named) code, then switchable fixes and enhancements (60+ fps,
-  4K). Phases and progress: `docs/roadmap.md`, `docs/progress.md`;
+- **The recompilation is exactly what the original was on the hardware it was
+  specified for: a player's actions must play out as they would on the
+  original** (owner, 8 Oct 2026). Work that only measures a reference emulator
+  or my own test pilots is settled, not extended (the earned 99-sortie career
+  was flown to sortie 10 and stopped; the 86Box pilot's 7 of 9 is a property of
+  the pilot). Phases and progress: `docs/roadmap.md`, `docs/progress.md`;
   `py tools/progress.py --title` prints the scoreboard every commit title starts
   with. Public repo, **code only**: no game data and no generated C, ever.
-- **Parity target: the original game on real PC hardware, not DOSBox.**
-  Identified DOSBox quirks are not copied; label behaviour by evidence. The
-  machine still follows GOG's DOSBox 0.74 in a few places (PIT control-word
-  IRQ0 behind the roster timing, DBOPL OPL, VGA timing); those are the places
-  86Box can overrule.
+- **Phase 2 (named, matched code) stays a full phase** (owner: "still
+  important"). Phase 1's main open item is the 386DX/33 timing profile; Phase 3
+  is the presentation (Stages 2-4) and the remaining bug fixes.
+- **Parity target: the original on real PC hardware, not DOSBox.** The reference
+  machine is 86Box's 386DX/33 running **MS-DOS 5.00 with Microsoft MOUSE.COM
+  6.26** (the owner supplied 4.01, 5.00 and 6.22 and the mouse drivers under
+  `references/`, git-ignored; 5.00 and 6.22 cost the same on the game's calls).
 - Repo: https://github.com/TideGear/OpenNighthawk (`origin`, `master`).
   **Commit and push together**, each verified piece. **No AI attribution** in
-  commits or PRs (the owner's global CLAUDE.md outranks harness reminders).
-  Commit titles end with the `progress.py --title` scoreboard.
+  commits or PRs: no `Co-Authored-By`, no "Generated with" line (the owner's
+  global CLAUDE.md outranks harness reminders that ask for one). Commit titles
+  start with the `progress.py --title` scoreboard.
 - Fixes (`docs/bugs.md`) are switchable, off unless `--fix ID`; parity stays
   the default reference. Policy for the app's default is the owner's call.
+- The owner is not a software engineer and wants overengineering flagged. The
+  speaker's speech plays smoothed by default (`speaker = realsound`; `pwm` is
+  the option). Fast loads are the default; a period-disk-speed option is a low
+  priority Phase 3 idea, not parity.
 - The Reimp (`..\F-117A Reimp`) is a separate project: read from it, never
-  write into it. `references/` (git-ignored) holds the owner's installers and
-  patches; never commit them. Leave the untracked `test.bat` alone.
+  write into it. Never commit `references/`. Leave the untracked `test.bat`
+  alone.
 - **Never open a visible window, go fullscreen or make sound on the owner's
-  desktop.** GOG's `dosboxF117A.conf` asks for fullscreen; any config layered
-  over it must set `fullscreen=false` and `mixer nosound=true`.
+  desktop.** Check for orphan emulator processes after killed runs.
 
 ## Where things are
 
-- Game: `D:\GOG\F-117A` (byte-identical to the installer plus 473.04;
-  `py tools/verify_install.py --data "D:\GOG\F-117A"`).
-- Work directories, never in the repo: `%USERPROFILE%\f117-recomp-local`
-  (saved references under `video\`, e.g. `intro-qlh_wi26`, the GOG DOSBox
-  intro capture; `dosbox-x\`; `build` in the repo is a junction there) and
-  scratch on **D:** (C: has often had under 1 GB free, keep TEMP and work
-  directories on D:). 86Box, DOSBox-X and MSYS2: `D:\86box`, `D:\86box-src`,
-  `D:\msys64`. Evidence cited in docs: `D:\f117-gate\genmap`,
-  `dosbox-cargo-m275`, `cargo-m275.input`.
-- A second worktree at `C:\Users\Tideg\f117-recomp-local\wt` lets code work
-  continue while a gate compiles the main tree (call its `build.cmd` by
-  absolute path; give each tree its own TEMP; they share nothing else).
+- Game: `D:\GOG\F-117A` (never mounted or written by a tool; copy per run).
+- Work directories, never in the repo: `%USERPROFILE%\f117-recomp-local` (the
+  generated C in `gen\`, route runs, `build` is a junction there; its `video\`
+  captures were moved to `D:\f117-local\video`, junctioned back) and scratch on
+  **D:** (`D:\f117-gate`; C: is nearly full). Emulators: `D:\86box`,
+  `D:\86box-src`, `D:\msys64`. The 86Box VMs: `vmt386` (FreeDOS),
+  `vmt386dos401`, `vmt386dos500` (with MOUSE.COM 6.26), `vmt386dos622`, built by
+  `tools/ref86box/build_msdos_vm.py` from `references/MS-DOS` (extracted copies
+  and the mouse drivers in `D:\f117-msdos`, `D:\f117-mouse`).
+- **Worktrees on D:\f117-wt** (one build each, junctioned to
+  `%USERPROFILE%\f117-recomp-local\build-<hash>`): `p2-vgame`, `p2-start`,
+  `p2-small` (Phase 2 batches, below), `sound-speech` and `t386-frames` (merged
+  already; delete when convenient: `git worktree remove`). Agents work only in
+  their own worktree and never run the gate or the translator (shared `gen`).
 
 ## Build and check
 
-- **Gate** (translate, build, coverage, both engines on every route, instruction
-  lockstep, matched-routine lockstep): `py tools/build_recomp.py --data
-  D:/GOG/F-117A --work D:/f117-gate/workN` (reuse the previous run's work
-  directory so the build is incremental, 6 s instead of 407 s; a first run in a
-  directory adds `--seed-coverage` the previous work's `coverage` directory; the
-  coverage replay is skipped when its inputs and the generated code are those of
-  a pass that added nothing, `--coverage-record ''` turns that off). About 7
-  minutes after a `matched.c`-only change, 17 from a fresh directory (23 before
-  7 Oct; verdicts identical). Read the tally, not the exit code: every route `IDENTICAL`,
-  instruction lockstep 0 mismatching, matched lockstep 0 mismatching. Last
-  green: 35 routes identical, 5,713,472 instruction states, 250 matched
-  routines (814,041 states). Interpreter results are cached across gates
-  (`--interp-cache`, default `~/f117-recomp-local/interp-cache`; the key ignores
-  `src/matched/matched.c`), cutting parity from about 9 to 3 minutes when only
-  matched routines changed; `--verify-interp-cache` proves it equal.
-- **PC parity against other machines**: `py tools/pc_parity.py --data
-  D:/GOG/F-117A` runs the intro on GOG's DOSBox (saved capture), DOSBox-X
-  (patched build, headless) and 86Box (VNC build, headless) at once and checks
-  each against measured limits (about 5 minutes): pictures, the intro's music
-  (GOG's audio and its raw OPL capture write for write, 86Box's AdLib writes),
-  scene timing on 86Box, and a scripted START session's saved roster
-  (`tools/save_parity.py`, DOSBox-X and 86Box). `py tools/fidelity_all.py
-  --data D:/GOG/F-117A` holds the machine probe to `tools/fidelity_baseline.json`
-  (behaviour only; `tools/port_reads.py` says which ports the game reads, so
-  which reference differences it can see). 86Box runs as a 386DX/33 profile
-  (`tools/ref86box/make_profile386.py`; `instr86.py` counts its instructions).
-  Details and builds: `tools/ref86box/` (`build_86box.md`, `build_dosbox_x.md`).
-  Other references: `tools/fidelity.py`, `tools/dosbox_compare.py` (OPL; this
-  machine started 275 ms in, `f117run --boot-ms 275`), `tools/video_compare.py`,
-  `tools/sound_parity.py`. Needs `D:/f117-gate/ctm/CTMOUSE.EXE` (CuteMouse,
-  not in the repository) for the 86Box save check and GOG's raw OPL capture
-  under `~/f117-recomp-local/video/gog-music/`.
-- Routes: `tools/routes/*.args` with a README; `py tools/run_route.py ROUTE
-  --data DIR` is only the weak milestone check, so also run the route's strong
-  observer (`strike_pilot`, `recon_pilot`, `cargo_check`, `airstrip_check`,
-  `airair_pilot`, `career_check`, `d1_check`, `career_rank6`). Adaptive pilots
-  record an input; the gate replays it. A timing change invalidates every
-  recording at once.
-- Matched routines (Phase 2): `src/matched/matched.c`, held by
-  `tests/func_lockstep.c`; candidates from `py tools/reimp_names.py --reimp
-  "../F-117A Reimp" --gen GEN --out FILE.tsv`, then `py tools/progress.py
-  --census FILE.tsv` after a batch. Routines that call the far library or do
-  port I/O show "not testable here" and are held by the routes only.
-- ROM-free tests: `py tests/test_*.py` and `ctest` (13). CI is
-  `.github/workflows/windows.yml`.
+- **Build** (PowerShell, from the repo): `cmd.exe /c ".\build.cmd OFF"` builds
+  the core, `f117run` and the tests; `ON` adds the SDL app. A bare `build.cmd`
+  is OFF. A new worktree needs `-DF117R_GEN_DIR=C:/Users/Tideg/f117-recomp-local/gen`.
+- **Gate**: `py tools/build_recomp.py --data D:/GOG/F-117A --seed-coverage
+  C:/Users/Tideg/f117-recomp-local/coverage` (about 21 minutes). Read the tally,
+  not the exit code: 35 routes `IDENTICAL`, instruction lockstep 0 mismatching,
+  matched lockstep 0 mismatching, and **step 8**: every "routes only" matched
+  routine ran on some recompiled route (new 8 Oct: it dropped VGAME 0xF024).
+  Last green (before the final merge below): 35 routes, 5,709,632 instruction
+  states, 392 matched routines at four seeds (about 1.27 million states each).
+  Do not edit `src/` or rebuild while a gate runs.
+- **PC parity**: `py tools/pc_parity.py --data D:/GOG/F-117A` (about 12
+  minutes): all pass as of 8 Oct. The 86Box pictures must be exact in DAC
+  values except those named, with their hash, in
+  `tools/ref86box/expected_misses86.txt` (p003 and p038, single samples between
+  two of our pictures); the DOSBox-X roster check runs without fast-forward
+  (`save_parity.py --no-turbo`), since fast-forward missed clicks under load.
+- **The 386DX/33 profile**: `f117run --timing 386` (interpreter only; the
+  recompiled engine does not charge the costs yet). `tools/ref86box/probe386.py`
+  times 93 instruction and service blocks on 86Box and on this machine: 92 of 93
+  exact (INT 21h 2Ch varies by 4 cycles a call). `frames386.py` compares the
+  intro frame by frame; `stick_response.py --machine machine386` reads the
+  flight frame rate S: 5-9 under the profile, 6-9 on 86Box, 14-15 on DOSBox's
+  model. Reference text: `tools/ref86box/timing386.md`, per-opcode costs in
+  `ops386.json`, generated `src/cpu/timing386_ops.h`
+  (`gen_timing386.py`).
+- Matched routines: `src/matched/matched.c`, held by `tests/func_lockstep.c`
+  (`build\func_lockstep.exe --states 4000 --verbose`, about 5 minutes; run at
+  more than one `--seed`: adding routines shifts every routine's random
+  states). `py tools/matched_draft.py --data D:/GOG/F-117A --module VGAME.EXE
+  --ip 0xNNNN` writes a correct starting draft (equal by construction, derived
+  from the executable: written outside the repo, never committed as is).
+  Census: `py tools/reimp_names.py --reimp "../F-117A Reimp" --gen
+  C:/Users/Tideg/f117-recomp-local/gen --out D:/f117-gate/census.tsv`, then
+  `py tools/progress.py --census D:/f117-gate/census.tsv`.
 
 ## Current state
 
-- Phase 1 (recompiled, 1:1): translation, both engines and the gate are
-  green; 35 routes. All eight primary objective types have gate-replayed
-  routes (recon, strike, cargo/D5, airstrip, air-to-air 5-8, each with a
-  return leg for types 1-4). Rank-3 career paired through retirement; the
-  rank-6 "General, At Last!" branch is reached with a staged roster
-  (`tools/career_rank6.py`), not an earned rank-6 career.
-- Fixes done: D1 (frame limiter at VGAME 0x441D), D2, D4, D5, D8 (laser-guided
-  bomb clamp; explains D7), D6 (optional: cover-0 sectors, `tools/d6_check.py`),
-  D11, D12, D34.
-- Phase 2: 250 addresses matched (249 of 1,535 census functions, 10,961 of
-  179,213 bytes; P2 10.81%).
-- Phase 3 presentation Stage 1: draw lists rebuild every phase exactly on the
-  routes and windows tried (`docs/presentation.md`); Stages 2-4 open.
-- References: GOG DOSBox intro 1,329 exact pictures with 3 unmatched each side
-  and no end drift; DOSBox-X 1,237 exact, drift up to +200 ms; 86Box scenes
-  and order match, 104 of 105 pictures within 3 levels (the VM is a 6 MHz 286,
-  so frame-exact timing is not meaningful yet).
+- **Scoreboard**: P1 95.19%, P2 19.96%, P3 56.50%, P4 42.90%, All 61.47%.
+- **Phase 1**: 86Box and DOSBox-X are routine references (`pc_parity.py`);
+  86Box is deterministic. The profile matches 86Box's CPU, BIOS, DOS and mouse
+  costs and the game's flight frame rate; open there: file loading (+1.5 s of
+  drift in the intro's loads against a RAM-disk-speed disk model) and the
+  recompiled engine charging the same costs. Sound: the PC speaker is driven as
+  the 8254 does it (`src/host/speaker.c`, `tools/speaker_parity.py`); open:
+  digitised speech has no audio reference, and the listening check is the
+  owner's (Phase 4).
+- **Phase 2**: 392 addresses matched (391 census functions, 28,216 of 179,213
+  bytes). **Three unmerged branches hold more** (pushed to origin, each with a
+  last commit marked "WIP, UNVERIFIED"; merge only after `func_lockstep` at two
+  seeds, dropping any routine that is not equal, then the gate):
+  `p2-vgame` (VGAME), `p2-start` (START and END), `p2-small` (PLAYER, MPS_LOGO,
+  DSWAP, SETUP). Each branch is based on the master of 8 Oct 17:30; master has
+  since changed only docs, tools and `observe.c`, so they merge cleanly. The
+  agents added helpers with a prefix (`vg2_`, `st2_`, `sm_`); if two branches
+  define the same helper, rename one.
+- **Phase 3**: 9 of 14 catalogued bug fixes. Presentation Stage 2 (sub-pixel
+  re-projection, `tools/hires_subpixel.py`) and a Stage 3 study
+  (`tools/interp_frame.py`) are merged (their crops and strips are in
+  `D:\f117-gate\p3-stage2` and `p3-stage3`); see `docs/presentation.md`.
+- **Phase 4**: untouched (a person playing it; Roland by ear).
 
 ## Open items, in order
 
-1. Keep `pc_parity.py` and `fidelity_all.py` in the routine checks; extend the
-   saved-data check beyond the roster (a career) and to flight.
-2. Interpreter-result cache in the gate (key excludes `matched.c`), then
-   fast-forward and parallel reference runs (`docs/repeated-processes.md`).
-3. 86Box (now a 386DX/33, `make_profile386.py`): flight under script (the mouse
-   and START already are); the remaining 2 s intro drift is disk-interface
-   pacing; channels 3 and 4's pitch-bend writes land in different places
-   (speed-paced), which `compare_opl86.py` reports without judging.
-4. Roadmap Phase 1 leftovers: picture residuals, Munt listening checks,
-   sound parity, DOSBox-specific timing details, a closed-loop cargo pilot on
-   DOSBox-X for independent delivery (ours in the emulator is `cargo_pilot`),
-   an earned rank-6 career.
-5. Phase 2 batches (the remaining small routines are far-segment or I/O);
-   Phase 2 naming; Phase 3 stages 2-4.
+1. **Confirm `git status -sb` shows master level with `origin/master`.** The
+   Stage 3 merge and these handoff docs were gated green (35 routes identical,
+   392 matched routines, step 8) and pushed on the evening of 8 Oct; if master
+   is ahead, something was left local: gate it and push.
+2. Resume the three Phase 2 branches: `git -C D:/f117-wt/<b> status`, rebuild
+   (`cmake --build build --target func_lockstep f117machine_api` after
+   `vcvars64.bat`), lockstep, commit, then merge, gate, refresh the census and
+   the "N addresses are matched" lines in `docs/roadmap.md` and
+   `docs/architecture.md`. About 1,140 routines (157 KB) remain; the useful
+   ones are 100-500 byte routines the lockstep can exercise and the shared C
+   runtime copies. The agents' reports (final lockstep line, routines dropped,
+   helper names) are in their transcripts, not the repo.
+3. 386 profile: have the translated engine charge the profile's costs (speed:
+   it plays at about 10 times real time through the interpreter; and matched
+   routines under the profile need cycle costs, or fall back to the
+   translation), then raise the profile's estimate. File loading is a decision
+   (re-align at loads, as the frame comparison does, or model a period disk).
+4. Phase 3: the live presentation path (the host pairs two steps' records and
+   draws on Stage 2's grid against the mission clock), the HUD/text at 4K (the
+   owner's call), Stage 4 (pacing, a switch to the original picture); bug fixes
+   D3, D10 (not located) and D36.
+5. Checks still to tighten: DOSBox-X's and GOG's picture comparisons count
+   misses (their misses move between real-time captures), so a name list does
+   not hold there.
 
 ## Traps that cost time
 
-- **The shell tool halves backslashes** and turns `\n` into real newlines
-  inside heredocs and Python it runs. Write scripts with the Write tool and
-  edit with the Edit tool; avoid escapes in inline Python.
-- CRLF: several tracked files are CRLF in the working tree (git normalises).
-  Patch scripts must match the file's own endings; open with `newline=""`.
+- **Inline Python and the shell tool collapse backslashes and `\n`** inside
+  heredocs (a `\n` becomes a real newline, `\R` a carriage return). Write
+  scripts with the Write tool and edit files with the Edit tool; for a
+  one-line fix to a string with escapes use a script file, not `python -`.
+- CRLF: several tracked files are CRLF in the working tree. Patch scripts must
+  open with `newline=""` and match the file's own endings.
 - `build.cmd` writes `%TEMP%\f117r-build.log`: two builds sharing TEMP read each
-  other's log. The PowerShell tool resets its working directory, so
-  `cd X; .\build.cmd` builds the main tree.
-- `rm -rf` with a relative glob after `cd` is refused by the safety check; use
-  explicit absolute paths. A file-removal on a project folder via PowerShell
-  may be refused too.
-- DOSBox 0.74 (SDL 1.2) sees posted keys only with `SDL_VIDEODRIVER=windib`;
-  DOSBox-X does not take posted keys at all, which is why the patched build
-  starts its own capture and `AUTOTYPE` answers SETUP. The release 86Box cannot
-  be typed into at all; use the VNC build (`tools/ref86box/build_86box.md`).
+  other's log. The PowerShell tool resets its working directory.
+- A new worktree's first full build is 10-20 minutes; a build left half-done
+  under a parallel build job can leave no `.exe` (rebuild with `cmake --build`).
+- **An 86Box or DOSBox-X process left behind by a killed run** holds files and
+  slows everything; look with `Get-Process 86Box, dosbox-x` before and after.
+  `trace_86box.ps1 -Ppm` hung when started from the shell tool; start it from
+  Python `subprocess`.
+- The probe (`probe386.py`) masks every IRQ: the BIOS and DOS enable
+  interrupts inside their calls, so an unmasked timer tick pollutes a block.
+  Microsoft MOUSE.COM 9.01 hangs loading on the 386 board (its reset waits on a
+  timer tick).
+- Sub-agents hit the account's session limit and stop mid-work (twice on 8
+  Oct); their worktrees keep the uncommitted edits. Ask them to commit each
+  verified group; resume with `SendMessage` to the agent id.
+- MSVC at /O2 never finished compiling a loop using `x86_stos` in a matched
+  routine; write that store out by hand.
 - VGAME exiting 129 with parent result 2 mid-flight is the original's
-  render-detected terrain collision, not an engine fault.
-- A staged poke the game overwrites is the wrong poke; stage the cause, and
-  check the shipped default first. A port-only copy of an original record
-  desyncs silently. Segment cells stay native in lockstep.
+  render-detected terrain collision, not an engine fault. Opponents damage some
+  career sorties at any altitude (VGAME `[0x3664]` bits); a throttle key held
+  at 60 means the engine-damage cap, not a lost key.
 - Game keys (Key Control Card): 0 brakes, 6 gear, 8 bay, Space select weapon,
-  Enter fire, Backspace cannon, B select target, Shift+F10 eject. The carrier
-  start has its brakes on; rotate about 19 s after full throttle and do not
-  over-climb.
-- `f117run` scripted input: Space is `\s` in route files; at most 4096 inputs.
-- DOSBox's raw OPL capture omits registers 02h-04h and records changes only;
-  the intro's channel-3 note at 29.7 s is not random: three GOG captures agree,
-  and this machine matches every write once started 275 ms in (`--boot-ms 275`;
-  `dosbox_compare.py --dro` does it).
+  Enter fire, Backspace cannon, B select target, Shift+F10 eject. `f117run`
+  scripted input: Space is `\s` in route files; at most 4096 inputs.
+- DOSBox 0.74 sees posted keys only with `SDL_VIDEODRIVER=windib`; DOSBox-X
+  does not take posted keys (the patched build starts its own capture and
+  `AUTOTYPE` answers SETUP); the release 86Box cannot be typed into (use the
+  VNC build, `tools/ref86box/build_86box.md`).
