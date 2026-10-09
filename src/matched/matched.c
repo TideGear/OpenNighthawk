@@ -8518,6 +8518,300 @@ static int player_fade_frame(machine_t *m)
     return 1;
 }
 
+/* PLAYER 0x00E0C, fade_start(steps): a palette fade over |steps| x 60 ticks.
+ * When no rate is known yet ([13D2] = 0) the colours the DAC takes in one
+ * retrace are measured first (0x00DE4). The colours a frame is that count over
+ * 20, at most 100h, into [13D0], the start colour [13CE] its negative; the level
+ * [13D6] and its step [13D8] are 10000h over (frames x ticks) / 256 - 1, negated
+ * for a negative `steps`; then the first step (0x00E65). A divisor of 0 or 1 is
+ * left to the original (its DIV takes the divide-error interrupt). */
+static int player_fade_divisor(cpu_t *c, uint16_t v, uint16_t *d)
+{
+    const uint16_t a = (v & 0x8000) ? (uint16_t)-v : v;          /* cwd / xor / sub: |v| */
+    const uint16_t ticks = (uint16_t)((a & 0xFF) * 0x3C);
+    uint16_t frames = (uint16_t)(ds_get(c, 0x13D2) / 20);
+    if (frames > 0xFF) frames = 0x100;
+    *d = (uint16_t)((((uint32_t)frames * ticks) >> 8) - 1);
+    return *d > 1;
+}
+
+static int player_fade_start(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 5)) return 0;
+    const int measure = ds_get(c, 0x13D2) == 0;
+    uint16_t d;
+    if (!measure && !player_fade_divisor(c, arg(c, 0), &d)) return 0;   /* nothing in between: decide now */
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    alu_sub(c, ds_get(c, 0x13D2), 0, 1, 0);                       /* cmp [13D2], 0 */
+    c->icount += 4;
+    if (measure) {
+        if (!guest_call(m, 0x0DE4, 0x0E19)) return 1;
+        if (!player_fade_divisor(c, bp_get(c, 4), &d)) { c->ip = 0x0E19; return 1; }
+    }
+    if (!room(c, 15 + 14 + 1)) { c->ip = 0x0E19; return 1; }
+    const uint16_t v = bp_get(c, 4);
+    c->r[R_AX] = v;
+    cwd(c);
+    c->r[R_AX] = (uint16_t)alu_logic(c, c->r[R_AX] ^ c->r[R_DX], 1);
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_DX], 1, 0);
+    c->r[R_BX] = c->r[R_DX];                                      /* the sign, for the end */
+    set_r8(c, R_AH, 0x3C);
+    x86_mul8(c, 0x3C);                                            /* mul ah: the ticks */
+    ds_put(c, 0x13D4, c->r[R_AX]);
+    c->r[R_AX] = ds_get(c, 0x13D2);
+    c->r[R_DX] = (uint16_t)alu_logic(c, 0, 1);
+    c->r[R_CX] = 0x14;
+    x86_div16(c, c->r[R_CX]);
+    alu_logic(c, get_r8(c, R_AH), 0);                             /* or ah, ah */
+    unsigned n = 14;
+    if (!(c->flags & F_ZF)) { c->r[R_AX] = 0x100; n++; }
+    ds_put(c, 0x13D0, c->r[R_AX]);
+    ds_put(c, 0x13CE, c->r[R_AX]);
+    ds_put(c, 0x13CE, (uint16_t)alu_sub(c, 0, ds_get(c, 0x13CE), 1, 0));   /* neg [13CE] */
+    x86_mul16(c, ds_get(c, 0x13D4));
+    c->r[R_CX] = (uint16_t)((get_r8(c, R_DL) << 8) | get_r8(c, R_AH));   /* mov ch, dl / mov cl, ah */
+    c->r[R_CX] = (uint16_t)alu_dec(c, c->r[R_CX], 1);
+    c->r[R_DX] = 1;
+    c->r[R_AX] = 0;
+    x86_div16(c, c->r[R_CX]);                                     /* 10000h / the divisor: checked above */
+    c->r[R_AX] = (uint16_t)alu_logic(c, c->r[R_AX] ^ c->r[R_BX], 1);
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_BX], 1, 0);
+    ds_put(c, 0x13D8, c->r[R_AX]);
+    ds_put(c, 0x13D6, c->r[R_AX]);
+    c->icount += n + 14;
+    if (!guest_call(m, 0x0E65, 0x0E63)) return 1;
+    if (!room(c, 2)) { c->ip = 0x0E63; return 1; }
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 2;
+    near_ret(c);
+    return 1;
+}
+
+/* PLAYER 0x0144C, strchr(s, ch): the first ch in s (its terminator included),
+ * or 0. Two REPNE SCASBs in DS (ES = DS): the length of s with its zero, then
+ * ch within that. Both are counted first, through the three words the
+ * prologue pushes; with DF set (the scans would run backwards) it is left to
+ * the original. */
+static int player_strchr(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (c->flags & F_DF) return 0;
+    const uint16_t ds = c->seg[S_DS], s = arg(c, 0);
+    const uint8_t ch = (uint8_t)arg(c, 1);
+    const uint16_t pv[3] = { ds, c->r[R_DI], c->r[R_BP] };        /* at SP-6 (pushed, then popped into ES), SP-4, SP-2 */
+    uint8_t pushed[6];
+    for (int i = 0; i < 3; i++) { pushed[2 * i] = (uint8_t)pv[i]; pushed[2 * i + 1] = (uint8_t)(pv[i] >> 8); }
+    const uint32_t lo = phys(c->seg[S_SS], (uint16_t)(c->r[R_SP] - 6));
+#define PEEK(o) peek_over(c, ds, (uint16_t)(o), lo, pushed, 6)
+    unsigned k1 = 0, k2 = 0;
+    do k1++; while (PEEK(s + k1 - 1) != 0 && k1 < 0xFFFF);
+    do k2++; while (PEEK(s + k2 - 1) != ch && k2 < k1);
+    const int found = PEEK(s + k2 - 1) == ch;
+#undef PEEK
+    const unsigned total = 9 + k1 + 4 + k2 + 3 + (found ? 0 : 1) + 5;
+    if (!room(c, total)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->r[R_DI]);
+    c->r[R_DI] = s;
+    cpu_push16(c, ds);
+    c->seg[S_ES] = cpu_pop16(c);
+    c->r[R_BX] = s;
+    c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);
+    c->r[R_CX] = 0xFFFF;
+    rep_string(c, STR_SCAS, 0, 0, 1);                             /* repne scasb: the length */
+    c->r[R_CX] = (uint16_t)alu_inc(c, c->r[R_CX], 1);
+    c->r[R_CX] = (uint16_t)alu_sub(c, 0, c->r[R_CX], 1, 0);       /* neg cx */
+    set_r8(c, R_AL, ch);
+    c->r[R_DI] = c->r[R_BX];
+    rep_string(c, STR_SCAS, 0, 0, 1);                             /* repne scasb: ch */
+    c->r[R_DI] = (uint16_t)alu_dec(c, c->r[R_DI], 1);
+    alu_sub(c, ds_get8(c, c->r[R_DI]), ch, 0, 0);                 /* cmp [di], al */
+    if (!(c->flags & F_ZF)) c->r[R_DI] = (uint16_t)alu_logic(c, 0, 1);
+    c->r[R_AX] = c->r[R_DI];
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += total;
+    near_ret(c);
+    return 1;
+}
+
+/* MPS_LOGO 0146:0650, strcmp(a, b), far: -1, 0 or 1 as a sorts before, with or
+ * after b. REPNE SCASB takes b's length with its zero, then REPE CMPSB compares
+ * that many bytes; SBB AX, AX / SBB AX, -1 turn the last compare's borrow
+ * into -1 or 1. SI and DI kept, ES = DS. Both runs are counted first, through
+ * the BP the prologue pushes; with DF set it is left to the original. */
+static int mps_logo_strcmp(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (c->flags & F_DF) return 0;
+    const uint16_t ds = c->seg[S_DS], a = arg(c, 1), b = arg(c, 2);
+    const uint8_t pushed[2] = { (uint8_t)c->r[R_BP], (uint8_t)(c->r[R_BP] >> 8) };
+    const uint32_t lo = phys(c->seg[S_SS], (uint16_t)(c->r[R_SP] - 2));
+#define PEEK(o) peek_over(c, ds, (uint16_t)(o), lo, pushed, 2)
+    unsigned k1 = 0, k2 = 0;
+    do k1++; while (PEEK(b + k1 - 1) != 0 && k1 < 0xFFFF);
+    do k2++; while (PEEK(a + k2 - 1) == PEEK(b + k2 - 1) && k2 < k1);
+    const int equal = PEEK(a + k2 - 1) == PEEK(b + k2 - 1);
+#undef PEEK
+    const unsigned total = 10 + k1 + 2 + k2 + 1 + (equal ? 0 : 2) + 4;
+    if (!room(c, total)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    const uint16_t di = c->r[R_DI], si = c->r[R_SI];
+    c->r[R_DX] = di;
+    c->r[R_BX] = si;
+    c->seg[S_ES] = ds;                                            /* mov ax, ds / mov es, ax */
+    c->r[R_SI] = a;
+    c->r[R_DI] = b;
+    c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);
+    c->r[R_CX] = 0xFFFF;
+    rep_string(c, STR_SCAS, 0, 0, 1);                             /* repne scasb */
+    c->r[R_CX] = (uint16_t)~c->r[R_CX];
+    c->r[R_DI] = (uint16_t)alu_sub(c, c->r[R_DI], c->r[R_CX], 1, 0);
+    do {                                                          /* repe cmpsb */
+        x86_cmps(c, 0, ds);
+        c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);
+    } while (c->r[R_CX] != 0 && (c->flags & F_ZF));
+    if (!(c->flags & F_ZF)) {
+        c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, (c->flags & F_CF) ? 1u : 0u);
+        c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], 0xFFFF, 1, (c->flags & F_CF) ? 1u : 0u);
+    }
+    c->r[R_SI] = si;
+    c->r[R_DI] = di;
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += total;
+    far_ret(c);
+    return 1;
+}
+
+/* MPS_LOGO 0045:000E, normalise(p): the far pointer p (offset, segment) with
+ * its offset brought under 10h, the rest moved into the segment; DX:AX. An
+ * offset already under 10h comes back as it was. */
+static int mps_logo_normalise(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 16)) return 0;
+    x86_enter(c, 8, 0);
+    cpu_push16(c, c->r[R_DI]);
+    const uint16_t off = bp_get(c, 6), seg = bp_get(c, 8);
+    c->r[R_AX] = off;
+    c->r[R_DX] = seg;
+    bp_put(c, -2, seg);
+    c->r[R_BX] = off;
+    alu_sub(c, off, 0x0F, 1, 0);                                  /* cmp bx, 0Fh */
+    if (!x86_cond(c, 0x6)) {                                      /* jbe not taken */
+        uint16_t di = x86_shift(c, 5, off, 4, 1);                 /* shr di, 4 */
+        di = (uint16_t)alu_add(c, di, seg, 1, 0);
+        c->r[R_AX] = (uint16_t)alu_logic(c, off & 0x0F, 1);
+        c->r[R_DX] = di;
+        c->icount += 16;
+    } else {
+        c->r[R_AX] = c->r[R_BX];
+        c->r[R_DX] = bp_get(c, -2);
+        c->icount += 13;
+    }
+    c->r[R_DI] = cpu_pop16(c);
+    x86_leave(c);
+    far_ret(c);
+    return 1;
+}
+
+/* MPS_LOGO 0045:0062, the BIOS tick count (0040:006C) as a long, as written:
+ * each SHL AH, 8 empties AH, so AX = the low two bytes, AH the second, and DX
+ * the sign of AH (CWD). ES = 40h, BX = 6Ch, CX = the low byte. */
+static int mps_logo_bios_ticks(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 17)) return 0;
+    c->r[R_BX] = 0x40;
+    c->seg[S_ES] = 0x40;
+    uint8_t ah = mem_read8(c, phys(0x40, 0x6F));
+    for (uint16_t at = 0x6E; at >= 0x6D; at--) {                  /* shl ah, 8 / or ah, es:[at] */
+        ah = (uint8_t)x86_shift(c, 4, ah, 8, 0);
+        ah = (uint8_t)alu_logic(c, ah | mem_read8(c, phys(0x40, at)), 0);
+    }
+    set_r8(c, R_AH, ah);
+    set_r8(c, R_AL, (uint8_t)alu_sub(c, get_r8(c, R_AL), get_r8(c, R_AL), 0, 0));   /* sub al, al */
+    cwd(c);
+    c->r[R_BX] = 0x6C;
+    set_r8(c, R_CL, mem_read8(c, phys(0x40, 0x6C)));
+    set_r8(c, R_CH, (uint8_t)alu_sub(c, get_r8(c, R_CH), get_r8(c, R_CH), 0, 0));   /* sub ch, ch */
+    c->r[R_AX] = (uint16_t)alu_logic(c, c->r[R_AX] | c->r[R_CX], 1);
+    c->icount += 17;
+    far_ret(c);
+    return 1;
+}
+
+/* MPS_LOGO 0045:008E, strcpy_far(dst, src): the zero-terminated string at
+ * DS:src copied, with its zero, to the far pointer dst; a byte a turn (six
+ * instructions), each turn making sure of its room and the exit's. */
+static int mps_logo_strcpy_far(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 12)) return 0;
+    x86_enter(c, 4, 0);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_SI]);
+    c->r[R_AX] = bp_get(c, 8);
+    bp_put(c, -2, c->r[R_AX]);
+    c->r[R_AX] = bp_get(c, 6);
+    bp_put(c, -4, c->r[R_AX]);
+    cpu_push16(c, c->seg[S_ES]);
+    c->r[R_AX] = bp_get(c, -2);
+    c->seg[S_ES] = c->r[R_AX];
+    c->r[R_DI] = bp_get(c, -4);
+    c->r[R_SI] = bp_get(c, 0x0A);
+    c->icount += 12;
+    do {                                                          /* 00AC */
+        if (!room(c, 6 + 5)) { c->ip = 0x00AC; return 1; }
+        set_r8(c, R_AL, ds_get8(c, c->r[R_SI]));
+        c->r[R_SI] = (uint16_t)alu_inc(c, c->r[R_SI], 1);
+        mem_write8(c, phys(c->seg[S_ES], c->r[R_DI]), get_r8(c, R_AL));
+        c->r[R_DI] = (uint16_t)alu_inc(c, c->r[R_DI], 1);
+        alu_sub(c, get_r8(c, R_AL), 0, 0, 0);                     /* cmp al, 0 */
+        c->icount += 6;
+    } while (!(c->flags & F_ZF));
+    c->seg[S_ES] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    x86_leave(c);
+    c->icount += 5;
+    far_ret(c);
+    return 1;
+}
+
+/* MPS_LOGO 006D:05A2, close_handle(h): a zero handle sets the error word [0C74]
+ * to 6 (an invalid handle); otherwise (DS, h) go to 0045:0102 by a far call. */
+static int mps_logo_close_handle(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 9)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_CX] = bp_get(c, 6);
+    alu_logic(c, c->r[R_CX], 1);                                  /* or cx, cx */
+    c->icount += 5;
+    if (c->flags & F_ZF) {
+        c->r[R_AX] = 6;
+        ds_put(c, 0x0C74, 6);
+        c->icount += 4;                                           /* mov, mov, leave, retf */
+    } else {
+        cpu_push16(c, c->seg[S_DS]);
+        cpu_push16(c, c->r[R_CX]);
+        c->icount += 2;
+        if (!guest_call_far(m, 0x05B6, 0x05BB)) return 1;
+        if (!room(c, 2)) { c->ip = 0x05BB; return 1; }
+        c->icount += 2;                                           /* leave, retf */
+    }
+    x86_leave(c);
+    far_ret(c);
+    return 1;
+}
+
 /* VGAME 0x0C831, vcos(a, r): the routine at 0x0C818 with the angle turned a
  * quarter (AH + 40h). */
 static int vgame_vcos(machine_t *m)
@@ -10901,8 +11195,7 @@ static int sm3_open_stream(machine_t *m, uint16_t find_at, uint16_t open_at, int
 {
     cpu_t *c = &m->cpu;
     if (!room(c, 4)) return 0;
-    const int a0 = far ? 1 : 0;
-    const uint16_t a = arg(c, a0), b = arg(c, a0 + 1), d = arg(c, a0 + 2);
+    const int at = far ? 6 : 4;                                   /* the first argument, [bp+at] */
     const uint16_t find_ret = sm3_after_call(c, find_at), open_ret = sm3_after_call(c, open_at);
     cpu_push16(c, c->r[R_BP]);
     c->r[R_BP] = c->r[R_SP];
@@ -10918,9 +11211,7 @@ static int sm3_open_stream(machine_t *m, uint16_t find_at, uint16_t open_at, int
         c->icount += 5;
     } else {
         cpu_push16(c, si);
-        cpu_push16(c, d);
-        cpu_push16(c, b);
-        cpu_push16(c, a);
+        for (int k = 2; k >= 0; k--) cpu_push16(c, bp_get(c, at + 2 * k));   /* the arguments, last first */
         c->icount += 7;
         if (!sm3_call(m, open_at)) return 1;
         if (!room(c, 5)) { c->ip = open_ret; return 1; }
@@ -20203,6 +20494,13 @@ static const recomp_override MATCHED[] = {
     { "matched", "SETUP.EXE", SETUP_47304, 0x0237, 0x0115, setup_settings_out, "copy the joystick settings out", 2 },
     { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x0E65, player_fade_step, "a palette fade step", 1 },
     { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x0EE3, player_fade_frame, "a palette fade frame", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x0E0C, player_fade_start, "start a palette fade", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x144C, player_strchr, "find a character in a string", 1 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x0650, mps_logo_strcmp, "compare two strings", 2 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0045, 0x000E, mps_logo_normalise, "normalise a far pointer", 2 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0045, 0x0062, mps_logo_bios_ticks, "the BIOS tick count", 2 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0045, 0x008E, mps_logo_strcpy_far, "copy a string to a far destination", 2 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x006D, 0x05A2, mps_logo_close_handle, "close a handle", 2 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x11ED, 0x00AE, vgame_pic_rle, "the picture decoder's row (RLE) step", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x11ED, 0x0127, vgame_pic_lzw, "the picture decoder's code and table step", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x48AA, end_pic_rle, "the picture decoder's row (RLE) step", 1 },
