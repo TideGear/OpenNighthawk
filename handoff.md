@@ -11,8 +11,8 @@ Earlier session logs are in `git log -p handoff.md`.
 
 ## What to do first
 
-1. `git status -sb`: the speed-study follow-up is on master and
-   `speed-study-followup`, pushed together after the full gate passed (item 3).
+1. `git status -sb`: the 15 FPS experiment report is on master and
+   `speed15-study`, pushed together after the full gate passed (item 3).
    The earlier repairs remain on `lockstep-code-below`. Leave any
    pre-existing untracked files alone.
 2. The app's default frame rate is the open decision. The owner's rule (9 Oct):
@@ -20,19 +20,22 @@ Earlier session logs are in `git log -p handoff.md`.
    first and the developers' intent second. Read `docs/speed-sweep.md` (merged
    from branch `speed-sweep`) and `docs/bugs.md` D1, then decide with the owner.
    The current default is `timing = dosbox` (GOG's 9 million instructions a
-   second). The speed study has not finished: the 15 frames a second limiter
-   candidate and the pilots' engagement results are still to run. The D1
+   second). The 15 frames a second limiter experiment is complete: S settles
+   at 12 and the mission clock runs about 1.25x real time. The pilots'
+   controlled engagement results remain to run. The D1
    sweep is now complete (90 flights); initial control-response sweeps and
    boot-clock alignment work are in `D:\f117-gate\speedsweep\` and
    `docs/speed-sweep.md`.
-3. **Green and pushed.** Latest gate: `D:\f117-gate\merge11\gate.log`,
-   541 s (99 s build, 443 s parity); 13 unit tests, 35 identical routes,
-   34 reused interpreter sessions, both instruction profiles 5,718,912
+3. **Green and pushed.** Latest gate: `D:\f117-gate\merge12\gate.log`,
+   1,313 s (13 s build, 491 s coverage, 7 s second build, 801 s parity);
+   13 unit tests, 35 identical routes, 34 fresh interpreter sessions,
+   both instruction profiles 5,718,912
    states with zero mismatches. Matched seeds `0x5EED0F117A`, `0xC0FFEE`
-   and `0x6db66e6284b5`: 2,475,889 / 2,474,978 / 2,477,064 comparisons,
+   and `0x28f2a50a608e`: 2,475,889 / 2,474,978 / 2,475,567 comparisons,
    zero mismatches. Every routes-only routine ran; no event-limit overruns.
-   Coverage safely skipped with unchanged inputs and generated code.
-   This batch changes measurement tooling and docs; the app default stays
+   Coverage added nothing; the second translation was byte-identical.
+   This batch corrects D1 comments/help and documents the private 15 FPS
+   experiment and existing presentation work; the app default stays
    at 9 MIPS with fixes off. Previous repair gate: `merge9` tested HEAD `f2a7d2c`:
    all 35 routes identical, both 5,718,912-state instruction checks and both
    fixed matched seeds passed. The rotating seed `0xf2a7d2c1bf36` caught one
@@ -55,6 +58,10 @@ Earlier session logs are in `git log -p handoff.md`.
 
 ## Goal and standing decisions
 
+- **Usage cutoff (owner, 9 Oct).** When the 5-hour Codex allowance is 15% or
+  less, wrap up, update this handoff, commit, push, and stop. The available
+  tools do not expose that allowance; do not confuse goal token usage with
+  the account allowance. Act on a visible meter or the owner's notice.
 - **Parity first.** The recompilation is what the original did on the hardware
   of its time (owner, 8 Oct 2026). Where the developers' intent can be
   established, it guides the defaults (owner, 9 Oct: "1:1 parity with the
@@ -65,7 +72,8 @@ Earlier session logs are in `git log -p handoff.md`.
   without anything breaking. The original caps its frame-rate estimate S at 15
   (verified in the VGAME listing at `0x0D479`), so above 15 frames a second the
   mission clock runs at frames divided by 15 times real time. A limiter at
-  exactly 15 frames a second is an untested hypothesis. Four game ticks
+  exactly 15 frames a second was tested: S becomes 12 and the clock still
+  runs about 1.25x real time. Four game ticks
   are not a 15 fps period at the measured 66.75-70.09 Hz. The owner decides
   the default.
 - **Phases.** Phase 1 (parity, including the 386 profile), then Phase 2 (named,
@@ -99,7 +107,7 @@ Earlier session logs are in `git log -p handoff.md`.
 - Generated C: `C:\Users\Tideg\f117-recomp-local\gen` (never committed);
   coverage in `...\coverage`; route runs in `...\runs`.
 - Scratch and logs on D: (`D:\f117-gate\...`). The current gate's log is
-  `D:\f117-gate\merge10\gate.log`; earlier gates are in `merge3` to `merge9`.
+  `D:\f117-gate\merge12\gate.log`; earlier gates are in `merge3` to `merge11`.
 - Research (read only): `D:\f117-gate\macresearch\` (Mac 2.1, 2.3.1 and 2.3.2
   listings, the Amiga listing, `dos_ctl_sim.py`). The archives are in the
   Reimp's `reference\` folder.
@@ -115,6 +123,10 @@ Earlier session logs are in `git log -p handoff.md`.
   study is merged: `tools/speed_sweep.py`, `tools/d1_check.py --route`, the write-up `docs/speed-sweep.md`, and the 199 raw flights in `D:\f117-gate\speedsweep\main\runs.jsonl` (with `table.txt`). `p3-stage2` and
   `p3-stage3` are old. Remove merged worktrees when convenient
   (`git worktree remove`).
+- Private experiment: `D:\f117-wt\speed15-experiment` is detached at
+  `28f2a50`, with only `D1_FPS_X10` changed from 116 to 150. Keep that change
+  out of production. Its DLL and source provenance are recorded in
+  `D:\f117-gate\speed15\experiment.json`; the main checkout still uses 116.
 
 ## Build and check
 
@@ -229,10 +241,18 @@ Earlier session logs are in `git log -p handoff.md`.
     diverge and end after 23-29 of 30 taps: descriptive, not proof of a safe
     speed. `controls-aligned/` holds the raw reports. The unaligned typed
     386 run never established an airborne response (all zero, AGL 128).
-    Next: controlled combat and a genuine 15 fps experiment. D1's comments
-    and descriptions in `src/fixes/fixes.c` still repeat the disproved
-    no-wait/oscillation/realtime claims; correct them in the next source
-    batch, with a fresh gate.
+    Next: controlled combat on matching missions. D1's comments and help
+    descriptions are now corrected, with a fresh full gate.
+  - Actual 15 FPS experiment: 45 new flights, nine routes at each of
+    9/12/16/20/40 MIPS; 45 retained unfixed baselines are not new flights.
+    All nine inactive-cap 9 MIPS hashes match. At 16 MIPS and above complete
+    flights hold 15 FPS, S = 12 and about 1.25 mission seconds per emulated
+    second. Korea at 40 MIPS exits after 41.50 sampled flight seconds and is
+    excluded from means. No oscillations or errors. Interpreter checks of
+    boot_to_flight and middle_east_strike at 40 MIPS match all 30,000 raw
+    observation rows each and final hashes. Artifacts: `D:\f117-gate\speed15\`.
+    The real-time-clock hypothesis is rejected; combat equivalence remains
+    unmeasured. No default or production limiter constant changed.
   - Open (Phase 1): file loading drift (about +0.6 s by START's roster on the
     MS-DOS machine; the disk model is RAM-disk speed).
 - **Reference machine**
@@ -263,6 +283,12 @@ Earlier session logs are in `git log -p handoff.md`.
   - Open: START 0x11DB (a one-clock error, not retried); MPS_LOGO 0x1ADC and
     0x1C82; routes-only candidates (see the commit messages). The stack checks
     START 0xA4C6 and END 0x5B4E run only inline in the formatter scans.
+  - Owner suggested REA: https://github.com/morluto/rea. Worth a small trial
+    for difficult routines using Ghidra pseudocode/xrefs, retaining our parity
+    gates. Its DOS MZ/COM guide verifies Linux/macOS; the Windows adapter is
+    experimental and admits PE only. Linux/possibly WSL and unpacked copies
+    would be needed. Nothing installed. See `docs/ghidra-dos.md` and
+    `docs/windows-ghidra-p0.md` in that repository.
 - **Phase 3 (presentation and fixes)**
   - Fixes with a switch: 10 of 14 catalogued defects (D1, D2, D3, D4, D5, D6,
     D8, D11, D12, D34; D7 is fixed by D8). D3 was fixed on 9 Oct: keypad digits
@@ -287,8 +313,8 @@ Earlier session logs are in `git log -p handoff.md`.
 1. **The default frame rate** (the owner's decision). The clock runs faster than
    real time at every speed measured, so no setting is real time as the game
    stands. Candidates: GOG's DOSBox pace (the current default), the 386 profile
-   (the hardware the manual names), and a limiter at 15 frames a second (the
-   hypothesis that keeps the clock real; not written yet). Before choosing,
+   (the hardware the manual names). The private 15 FPS limiter did not keep
+   the clock real (S = 12, clock about 1.25x); it is not shipped. Before choosing,
    measure what speed does to the enemy: launches and hits on the player, our
    hits, and control response, over many missions at each speed with the same
    mission (fixed seeds: the front end's timing changes the mission below 9
@@ -318,6 +344,10 @@ Earlier session logs are in `git log -p handoff.md`.
    census and every count in README, roadmap, handoff and architecture.
 5. **Phase 3**: the owner's decisions (the HUD and text at 4K; the Stage 4 display
    check). D10 and D35 remain unlocated or unreproduced.
+   The roadmap/progress evidence now reflects the already-built fine-grid
+   interpolation and pacing; completion estimates are unchanged. A stale
+   header in `src/present/drawfeed.h` still claims one game second is real
+   time; correct it in the next source batch with its normal gate.
 6. **Reference machine**: keep `vmt386dos500`. Decide with the owner whether to
    copy the six DOS register differences.
 7. **Checks still to tighten**: DOSBox-X's and GOG's picture comparisons count
@@ -358,7 +388,8 @@ Earlier session logs are in `git log -p handoff.md`.
   machine.
 - `d1_check.py` flies `boot_to_flight` by default: a parked jet, not a fight.
   Use `--route` for busy missions.
-- `progress.py --title` rewrites `docs/progress.json`: commit it with the docs.
+- `progress.py --title` only prints the title prefix; it does not refresh
+  `docs/progress.json`. Update evidence/counts explicitly when appropriate.
 - **Engagement results across speeds need the same mission.** The front end's
   timing seeds the mission generator, so below 9 MIPS and on some routes above
   it the missions differ. `tools/speed_sweep.py` flags runs whose mission differs

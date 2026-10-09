@@ -282,18 +282,17 @@ static int fix_d2_speech(machine_t *m)
 
 /* D1. VGAME's frame-rate controller (0x441D-0x44A9, the tail of 0x3ADA)
  * measures the frame rate every 4S frames and sets S = [0x368E], the
- * divisor of every per-second rate, to it. The frame loop never waits: S
- * follows however fast the machine draws. Above about 16-18 fps the
- * correction carried in [0x43E8] underflows the unsigned tick count and S
- * oscillates, degrading AI and weapon guidance. The fix is a frame limiter:
+ * divisor of every per-second rate, to it. The original frame loop waits,
+ * and the speed study did not reproduce the claimed 15-to-3 oscillation.
+ * This optional limiter preserves the parked GOG baseline on faster CPUs:
  * at 0x441D, which every frame passes once, a frame that arrives before its
  * slot waits there (time passes, interrupts are serviced, as in a HLT
- * loop), so no machine draws faster than a GOG-speed one: 11.6 frames a
- * second, measured in flight at 9 MIPS, where S settles at 9. The
- * controller itself is
- * untouched and keeps measuring honestly, so S settles at the paced rate
- * and one game second stays one real second; pinning S without pacing ran
- * the world three times too fast at 40 MIPS. At 40 MIPS the fix gives S 9,
+ * loop), capping faster CPUs at the parked baseline of 11.6 frames a
+ * second, measured on boot_to_flight at 9 MIPS, where S settles at 9.
+ * Airborne scenes can run faster at that same CPU speed. The controller
+ * is untouched: at this cap S settles at 9 and the mission clock runs
+ * about 1.2882 times real time, rather than at real time. Pinning S without
+ * pacing ran the world three times too fast at 40 MIPS. There the fix gives S 9,
  * 11.6 frames a second and GOG's mission clock to the tick over 160 s of
  * flight. At GOG's speed and below it never waits: the machine runs as the
  * original, hash for hash. */
@@ -305,9 +304,8 @@ static int fix_d1_pace(machine_t *m)
 {
     cpu_t *c = &m->cpu;
     const uint64_t period = m->ips * 10 / D1_FPS_X10, now = c->icount;
-    /* GOG's own speed and slower: the rate varies around 11.6 frame to
-     * frame, and holding its faster frames would change the play the
-     * default machine gives. */
+    /* GOG's own speed and slower: holding its faster frames would change
+     * the play the default machine gives. */
     if (m->ips <= D1_GOG_IPS) return 0;
     if (d1_next > now + period) d1_next = 0;           /* a new machine */
     if (now >= d1_next) {
@@ -399,7 +397,7 @@ static int fix_d3_keypad(machine_t *m)
 
 static const recomp_override OVERRIDES[] = {
     { "D5", "VGAME.EXE", VGAME_47304, 0x0000, 0x6D2E, fix_d5, "the supply-drop impact gate" },
-    { "D1", "VGAME.EXE", VGAME_47304, 0x0000, 0x441D, fix_d1_pace, "frames paced so S never reaches the unstable range" },
+    { "D1", "VGAME.EXE", VGAME_47304, 0x0000, 0x441D, fix_d1_pace, "frames paced at the parked GOG baseline" },
     { "D4", "START.EXE", START_47304, 0x0000, 0x8EDC, fix_d4_table, "START's entry: airstrip mission masks" },
     { "D34", "VGAME.EXE", VGAME_47304, 0x0000, 0xE6BE, fix_d34_start, "VGAME's entry: empty extension" },
     { "D34", "VGAME.EXE", VGAME_47304, 0x0000, 0x0F97, fix_d34_append, "destroyed-object append" },
@@ -434,7 +432,7 @@ static const data_fix DATA[] = {
 };
 
 static const struct { const char *id, *what; } FIXES[] = {
-    { "D1", "frames are paced on fast machines, so the frame-rate controller never oscillates" },
+    { "D1", "frames are capped at 11.6 fps above 9 MIPS, matching the parked GOG baseline" },
     { "D2", "AdLib speech plays without stopping the game or risking its busy-wait hang" },
     { "D11", "saves are written to a temporary file and renamed into place, so an interrupted save keeps the old roster" },
     { "D4", "secret-airstrip missions in Libya, North Cape and the Middle East" },

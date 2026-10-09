@@ -103,7 +103,7 @@ boot_to_flight draws 11.6 at 9 MIPS. No speed gives a clock ratio of 1.00; the o
   the tick (Reimp `src/core/frame_weapons.c`, VGAME `0x5046`, `0x5852`, `0x683E`), so the
   "player on frames, AI on the tick" explanation does not apply.
 - **Not run:** the pilots (own hits, kills, deliveries); a controlled threat profile;
-  the candidate 15 fps limiter; a GOG DOSBox measurement of
+  a GOG DOSBox measurement of
   the game tick rate in flight (this machine loses one tick in 21 frames at 11 MIPS and up;
   whether DOSBox does depends on its interrupt latency at the retrace poll).
 
@@ -148,7 +148,7 @@ are not four 60 Hz ticks: the measured tick rate is 66.75-70.09 Hz, so a
 four-tick wait alone corresponds to about 16.69-17.52 fps. The earlier
 "15 fps (four ticks)" wording assumed the controller's nominal 60 Hz rather
 than the timer's measured rate. A cap at 15 fps also does not by itself prove
-S will stay at 15; the original controller must be measured with it enabled.
+S will stay at 15. The actual experiment below measures that controller.
 
 ## Control-response measurements
 
@@ -209,3 +209,63 @@ highest speed at which nothing breaks.
 The common-clock typed 386 run selected another mission, stayed at AGL 128
 and reported zero response to every tap. It did not establish an airborne
 control comparison; its takeoff inputs need checking before using that run.
+
+## Actual 15 FPS limiter experiment (9 October 2026)
+
+An isolated checkout at `28f2a50`, `D:/f117-wt/speed15-experiment`, changes
+only `D1_FPS_X10` from 116 to 150 in `src/fixes/fixes.c`. It uses the same
+frame-entry wait as D1, the original controller is untouched, and the wait
+remains inactive at 9 MIPS and below. The experiment is not the shipped D1
+and does not change the app default.
+
+Build that checkout with `build.cmd -DF117R_BUILD_APP=OFF
+-DF117R_GEN_DIR=C:/Users/Tideg/f117-recomp-local/gen`, then run:
+
+```
+$env:F117R_MACHINE_API = 'D:/f117-wt/speed15-experiment/build/f117machine_api.dll'
+py tools/speed_sweep.py --data D:/GOG/F-117A --out D:/f117-gate/speed15/sweep --speeds 9 12 16 20 40 --fix D1 --seconds 300 --jobs 8
+Remove-Item Env:F117R_MACHINE_API
+```
+
+`D:/f117-gate/speed15/experiment.json` records the exact source delta,
+command and DLL SHA-256. Forty-five unfixed rows from the preceding D1
+sweep were retained as baselines, rather than rerun; those rows are not
+new experimental flights. The output directory is separate from both the
+unfixed and production-D1 studies. `runs.jsonl` and `samples/` retain the
+new fixed flights; `summarize.py` reports complete flights separately from
+early exits.
+
+All 45 experimental flights finished without errors or 15-to-3 swings.
+Means over complete flights, omitting the first five seconds:
+
+| MIPS | complete flights | drawn FPS | S mean | mission seconds per emulated second |
+|---|---|---|---|---|
+| 9 (wait inactive) | 9 | 16.273 | 14.100 | 1.1718 |
+| 12 | 9 | 14.794 | 11.868 | 1.2464 |
+| 16 | 9 | 15.000 | 12.000 | 1.2501 |
+| 20 | 9 | 14.999 | 12.000 | 1.2509 |
+| 40 | 8 | 15.000 | 12.000 | 1.2500 |
+
+All nine 9 MIPS final hashes equal the retained unfixed baselines. At 40
+MIPS Korea leaves VGAME for END after 41.50 sampled flight seconds; that
+short flight is retained in the raw data and excluded from this table.
+Mission identifiers still differ across CPU speeds, as in the other pacing
+sweeps. A cap is an upper bound: it cannot raise slower scenes to 15 FPS.
+
+**The cap does not make the clock real.** At 15 drawn FPS the controller
+settles at S = 12, with no overrun correction, and the mission clock runs
+about 1.25 times real time. This agrees with the controller's arithmetic:
+`60F / (R + F/2)` is about 12.12 at F = 15 and R = 66.75, and its integer
+estimate rounds to 12. The earlier hypothesis assumed a 15 FPS cap would
+hold S at its clamp of 15; it does not. This result rejects that hypothesis,
+not the original's higher frame rate. Combat effectiveness remains a
+separate measurement on matching missions.
+
+**Independent engine check.** The same experimental DLL also flew
+`boot_to_flight` and `middle_east_strike` at 40 MIPS under the interpreter
+for 300 seconds each. All 30,000 observation rows per flight and the final
+machine hashes are identical to recompilation: `05a9b3747a918a85` and
+`814b693377e773f9`. Artifacts: `D:/f117-gate/speed15/pair-interp/` and
+`compare_pairs.py`. The two interpreter flights took 318 and 407 s beside
+the full gate. These checks verify this timing observation in both engines;
+they do not establish combat equivalence at different speeds.

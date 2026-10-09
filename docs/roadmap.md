@@ -242,6 +242,9 @@ not the recompilation:
       Ten control flights now share mission identifiers after boot-clock
       alignment; their progressive input sequences still diverge, so they
       do not establish a safe speed.
+      An [isolated 15 FPS experiment](speed-sweep.md#actual-15-fps-limiter-experiment-9-october-2026)
+      settles at S 12 with a 1.25x mission clock: the proposed cap does not
+      restore real-time pacing. Production D1 and the default are unchanged.
 - [ ] **60+ fps and 4K presentation**, design and status in
       [presentation.md](presentation.md). The owner chose to observe and replay
       the original's draw path. Stage 0 (the observer) and Stage 1 (draw lists
@@ -261,10 +264,15 @@ not the recompilation:
       memory and C ports of the replay and the interpolation draw from them;
       on the strike flight all 9,845 logic frames equal the display at their
       close and all 9,843 pairs are exact at both ends, hashes unchanged; it
-      costs 35% (replay) and 54% (interp) of the recompiled run. Open:
-      in-between frames on Stage 2's grid, how the HUD and text are sourced at
-      4K (the owner's call), and Stage 4 (pacing to the host display, vsync, a
-      switch to the original picture).
+      costs 35% (replay) and 54% (interp) of the recompiled run. In-between
+      frames also run on Stage 2's grid (`--present-scale N`): all 9,843
+      strike pairs match at both coarse and fine endpoints at N = 1/2/4/9,
+      with guest hashes unchanged. Stage 4 host pacing, vsync, picture-age
+      selection and the original-picture switch are built; dummy-driver
+      measurements are in [presentation.md](presentation.md#stage-4-pacing-and-the-pictures-age-9-october-2026).
+      Open: the HUD/text source at 4K (the owner's call), near-clipped
+      polygons still scaled, and a real-display check of refresh pacing,
+      motion and 4K output (Phase 4).
 
 ## Phase 4 - checked by people and independent references
 

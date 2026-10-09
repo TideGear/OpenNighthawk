@@ -540,8 +540,9 @@ in its records ('V'), so a finer grid needs no more from the machine.
 
 **Pacing.** With `--present interp`, `f117a` draws the in-between frame in its main loop just before
 it presents (with vsync), at the machine's clock at that moment, instead of at the emulated VGA's
-retrace; the machine's clock is kept level with the wall clock, so t follows the mission clock at
-the host display's own rate. `--present-log FILE` writes, for every frame presented, the host clock
+retrace; the machine's clock is kept level with the wall clock, so t follows emulated time at
+the host display's own rate. The faster mission clock is separate from that time base.
+`--present-log FILE` writes, for every frame presented, the host clock
 after the present, the machine's clock, the two logic frames shown and t. No visible window was
 opened: SDL's dummy video driver, which paces presents at 60 Hz in software, and the dummy audio
 driver. `strike.input` to 3.5B (the first 1.2B instructions of the flight), one run at a time;

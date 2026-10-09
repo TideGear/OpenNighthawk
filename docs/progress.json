@@ -129,14 +129,14 @@
         "weight": 16,
         "done": 0.5,
         "kind": "estimate",
-        "evidence": "Shown 8 Oct 2026 (tools/hires_subpixel.py, docs/presentation.md): the model polygons re-projected from the logged camera-space vertices and filled with a tiling rule; equal to Stage 1 at N=1 in five windows (strike, recon, landing, two air-to-air); at N=2 and 4 flat-pixel agreement 99.96-100% and the fine picture 1.5-5.4 times the nearest-neighbour floor's change. Open: text, sprites, the HUD and the cockpit art (still scaled copies), 3-6% of polygons (near-clipped, horizon slivers), the live path."
+        "evidence": "Model polygons re-projected from camera-space vertices and filled on a fine grid (hires_subpixel.py and src/present/hires.c; docs/presentation.md). Live --present-scale N built: all 9,845 strike logic frames equal the display at close; N=1/2/4/9 keep guest hashes unchanged. The flat-pixel guard restores the remaining 0.002-0.010% of flat blocks at N=2/4/9. Open: text, sprites, HUD and cockpit art remain scaled copies; near-clipped polygons and geometry outside the supported projection rule also remain scaled. Completion estimate unchanged pending those requirements."
       },
       {
         "item": "Stage 3 and 4: interpolation to 60+ fps, pacing and polish",
         "weight": 26,
         "done": 0.45,
         "kind": "estimate",
-        "evidence": "Stage 3 studied 8 Oct 2026 (tools/interp_frame.py): at 320x200 the replay is exact at both logic frames in seven windows, 86-98% of model polygons pair between steps, 1 of 182 flight steps was a cut held, no in-between primitive is absent from both neighbours; the 320x200 in-between frames change under 1% of pixels, so the payoff needs Stage 2's fine grid. Open: the live path (the machine hands the host each step's records; the host pairs two steps and draws against the mission clock), Stage 4 (pacing, vsync, a switch to the original picture, HUD handling). Live path built 9 Oct 2026 (src/present/drawfeed.c, interp.c; f117run/f117a --present replay|interp, present = in f117a.ini, off by default): the observer hands each logic frame's records to the host in memory, no page snapshots; on the strike flight 9,845 of 9,845 logic frames equal the display at their close and 9,843 of 9,843 pairs are exact at both ends, hashes unchanged with the feed on under both engines; cost +35% (replay) and +54% (interp) of the recompiled run. Open: in-between frames on Stage 2's grid, pacing to the host display (Stage 4), the HUD and text at 4K (the owner's call)."
+        "evidence": "Live draw feed and interpolation built (src/present/drawfeed.c, interp.c). All 9,843 strike frame pairs exact at coarse and fine endpoints at N=1/2/4/9; guest hashes unchanged. Host presents at vsync with machine-clock t; dummy-driver 60 Hz runs measured, with original-picture switch (--present scan) and picture-age selection (--present-age interp|extrapolate). Extrapolation predicts worse than holding the old frame in 191 of 265 measured steps, so interpolation remains the presentation mode default when enabled. See docs/presentation.md for cost and frame intervals. Open: HUD/text source at 4K, real-display refresh/motion/4K checks and polish. Completion estimate unchanged pending those requirements."
       }
     ],
     "P4": [

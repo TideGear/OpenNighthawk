@@ -7,8 +7,8 @@
 Flies each typed-input route (tools/routes/*.args) at each speed through the machine API. A speed
 is millions of instructions a second, or `386` for the 386DX/33 cycle profile (src/cpu/timing386.h,
 its clock 33,333,333 cycles a second). Front-end inputs are scaled to the emulated seconds they have
-at 9 MIPS. The mission generated depends on the machine's speed below 9 MIPS and under the 386
-profile (the table flags it); above 9 MIPS it is GOG's. VGAME's keys are timed from the first drawn frame, at the emulated second
+at 9 MIPS. The generated mission can change with speed because START seeds its RNG from the
+BIOS tick (the table flags differing mission identifiers). VGAME's keys are timed from the first drawn frame, at the emulated second
 into the flight they have at 9 MIPS (each route's 9 MIPS run is flown first to find that frame);
 the quit keys (Alt+Q, Y) are dropped. The flight is watched for --seconds emulated seconds from the
 first frame, the first 5 left out while S settles. Per run, from the flight engine's data segment:
