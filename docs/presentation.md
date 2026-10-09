@@ -72,7 +72,7 @@ Each stage is judged by a check, as in the rest of the project.
 | 1 | Draw lists: a frame's primitives as a list, replayed at 320x200 | the replay reproduces the original's work and display pages bit for bit, every phase of every route | done for the windows below, in Python and in C (`src/present/drawlist.c`); unexercised branches listed below |
 | 2 | Re-draw the list at N times the resolution | N = 1 is Stage 1 exactly; at N > 1 every N x N block agrees with the N = 1 pixel wherever no edge crosses it | model polygons re-drawn from their sub-pixel vertices (`hires_subpixel.py`, and in C `hires.c`, live with `--present-scale N`): N = 1 exact, flat agreement 99.96-100% before a guard, 100% after; text, sprites, HUD and 3-4% of the polygons stay scaled |
 | 3 | Interpolate between consecutive draw lists to the host display rate | at a logic frame the output is exactly that frame; no in-between primitive absent from both neighbours | 320x200 study done (`interp_frame.py`, below): exact at both ends on seven windows, no violations; live path built at 320x200 (below): the feed, the presentation from the replay, and the interpolation in C, exact at both ends of 9,843 live frame pairs |
-| 4 | Pacing, vsync, a picture-age setting, HUD handling, a switch to the original picture | - | not started |
+| 4 | Pacing, vsync, a picture-age setting, HUD handling, a switch to the original picture | pictures at the display's refresh with t on the mission clock; the age setting measured | pacing at the host's vsync and the age setting built (below); HUD handling is the owner's choice (options below); `--present scan` is the switch |
 
 Interpolation shows the picture one logic step behind (about 110 ms at 9
 steps a second, 67 ms at the clamp of 15), the standard price. Stage 1 needs
@@ -532,6 +532,83 @@ again, 8,332 of its 9,030 replayed VGA frames in-between frames.
 **Left for the live path.** Pacing to the host's display rather than the emulated VGA's (the
 in-between frames are drawn at the VGA's 70 Hz) and Stage 2's finer grid. The camera-space vertices of a frame are
 in its records ('V'), so a finer grid needs no more from the machine.
+
+## Stage 4: pacing and the picture's age (9 October 2026)
+
+**Pacing.** With `--present interp`, `f117a` draws the in-between frame in its main loop just before
+it presents (with vsync), at the machine's clock at that moment, instead of at the emulated VGA's
+retrace; the machine's clock is kept level with the wall clock, so t follows the mission clock at
+the host display's own rate. `--present-log FILE` writes, for every frame presented, the host clock
+after the present, the machine's clock, the two logic frames shown and t. No visible window was
+opened: SDL's dummy video driver, which paces presents at 60 Hz in software, and the dummy audio
+driver. `strike.input` to 3.5B (the first 1.2B instructions of the flight), one run at a time;
+every run ends on the hash `f117run` has there (`bc8e3ae5a872405d`):
+
+| run | frames presented (from the replay / in-between) | host frame interval, median / p99 / max (ms) | refreshes missed (over 20 ms) | machine clock against the wall clock at a present, p99 | host frames a logic step is shown over (mean) |
+|---|---|---|---|---|---|
+| scan | 23,336 | 16.667 / 16.668 / 17.8 | 0 | - | - |
+| interp, N = 1 | 23,336 (7,733 / 7,429) | 16.667 / 16.668 / 23.2 | 1 | 0.026 ms | 3.75 |
+| interp, N = 2 | 23,336 (7,733 / 7,425) | 16.667 / 16.668 / 17.0 | 0 | 0.029 ms | 3.75 |
+| extrapolate, N = 1 | 23,336 (7,733 / 7,722) | 16.667 / 16.670 / 23.9 | 1 | 0.025 ms | 3.75 |
+| interp, N = 4 | 12,623 (4,765 / 4,567) | 16.667 / 151 / 396 | 3,113 | fell 2.3 s behind | 2.57 |
+| replay, N = 4 | 17,255 (9,030 / 0) | 16.667 / 99.8 / 147 | 2,344 | - | - |
+
+Within a step t only advances (5,671 advances at N = 1, none backwards), and every frame of a step
+is drawn at the clock it is presented at. At N = 4 the misses come from showing a 1280 x 800 picture
+through the dummy driver's software renderer (the replay alone, drawing no in-between frame, misses
+as often), not from drawing it: `f117run` draws an in-between frame at N = 4 in about 3 ms. The first
+extrapolate run had a 628 ms stall: a span fill carried past its two positions left the screen by
+tens of thousands of pixels and the span rule walked them; a prediction now keeps span fills on the
+screen (interpolation never leaves the range between two real fills, so the study is unchanged).
+
+What needs the owner's eyes on a real display: whether frames are steady at the monitor's refresh
+(vsync on a GPU renderer, not the dummy driver's software pacing), the look of motion at 60 and
+144 Hz, and the window at 4K.
+
+**Picture age** (`--present-age interp|extrapolate`, `present-age =`; `interp` by default).
+`interp` shows the in-between frame of the last two logic frames: exact at every logic frame, one
+step (about 110 ms) behind. `extrapolate` shows each frame from its close and moves the paired
+primitives on past it as they moved from the frame before (t from 1 to 2): no age added, but the
+picture between closes is a prediction, and it jumps to the real frame at the next close. Its error
+just before that close, the prediction a whole step on against the frame the original then draws
+(`test_interp LOG --extrapolate`), beside the frame before held (what `interp` shows then, late but
+real), share of pixels that differ:
+
+| window | 3-D window: extrapolated / held | whole display: extrapolated / held | prediction nearer / as near / further |
+|---|---|---|---|
+| strike 8.53B | 1.86% / 1.76% | 2.94% / 2.86% | 7 / 0 / 24 |
+| strike 8.70B (impact) | 26.2% / 23.4% | 16.3% / 14.7% | 4 / 0 / 23 |
+| landing 9.70B | 14.5% / 10.7% | 7.8% / 5.7% | 3 / 0 / 26 |
+| landing 9.89B | 0.49% / 0.45% | 0.26% / 0.24% | 7 / 5 / 19 |
+| air-to-air type 6, 5.08B | 2.56% / 1.73% | 2.12% / 1.58% | 0 / 0 / 27 |
+| air-to-air type 6, 5.23B | 20.1% / 17.9% | 12.2% / 10.9% | 2 / 0 / 23 |
+| air-to-air type 5, 6.793B | 1.22% / 1.06% | 2.04% / 1.88% | 4 / 0 / 21 |
+| take-off 2.50B | 6.50% / 6.12% | 3.52% / 3.30% | 16 / 26 / 28 |
+
+The prediction is further from the real frame than the old frame is in most steps (191 of 265),
+most where the scene turns or jumps (the impact, the approach): the original's motion between steps
+is not steady (a step often repeats a position and the next jumps, Stage 3), and a pairing that is
+harmless between two real positions is carried past them. So `interp` stays the default;
+`extrapolate` trades a misprediction, corrected with a jump at each close, for the step of latency.
+
+**Cost of the scale** (the strike route, recompiled, the runner's CPU time, one run at a time; the
+check draws each pair twice more): scan 95.4 s, replay 120.8 s, interp 148.1 s; interp at N = 2
+253.2 s, N = 4 345.2 s, N = 9 645.1 s; replay at N = 9 166.4 s. Over the 67,394 in-between frames the
+run draws, one costs about 1.6 ms more at N = 2 than at N = 1, 2.9 ms at N = 4 and 7.4 ms at N = 9
+(the fine pages copied and redrawn); showing it then means 5.2 million pixels at N = 9 through the
+palette and up to the GPU each frame, which with the in-between frame is on the edge of a 60 Hz frame
+on one thread.
+
+**The HUD, text and sprites at 4K: the owner's call.** They stay scaled copies (each original pixel
+a 9 x 9 block at N = 9). The sources they could come from instead, with what each costs:
+
+| source | what changes | cost |
+|---|---|---|
+| scaled copies (now) | nothing: the original's pixels, large | none |
+| the library's line, tick, span and colour-replace records redrawn on the fine grid | the HUD ladder, tapes, boxes and markers become thin and sharp at the same places; a line one original pixel wide becomes one fine pixel, unless drawn N wide (a choice of look) | a few hundred lines of C beside the existing rules, held by the N = 1 identity and the flat-pixel check; little run time |
+| a pixel-art upscaler (Scale2x/EPX, xBR) on text glyphs and sprites | the original's shapes, smoothed diagonals; deterministic | small for glyphs (cached per glyph); for sprites and the cockpit art per draw, or cached per source image |
+| an upscaler on the whole non-polygon layer | one step for everything not refilled | needs the layers kept apart; tens of ms a frame at 4K on one thread, so a GPU shader or threads |
+| new high-resolution fonts and art | the look of a remaster, not the original's pixels | artwork and licensing; outside this project's own sources |
 
 ## Open questions and risks
 

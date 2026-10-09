@@ -912,7 +912,11 @@ int interp_inbetween_ex(const interp_frame *A, const interp_frame *B, const inte
         if (j < 0) { st[IS_HELD_SPAN_NO_PAIR]++; continue; }
         const int32_t *va = S->rec[s->ri].v, *vb = O->rec[j].v;
         const int na = va[3], nb = vb[3];
-        const int64_t ya = rnd(lerp(va[0], vb[0], w)), yb = rnd(lerp(va[1], vb[1], w));
+        int64_t ya = rnd(lerp(va[0], vb[0], w)), yb = rnd(lerp(va[1], vb[1], w));
+        /* Between two fills every row lies between theirs; carried past them it
+         * can leave the screen by any amount, so a prediction keeps to it. */
+        const int clamp = (flags & INTERP_EXTRAPOLATE) && w < 0;
+        if (clamp) { if (ya < 0) ya = 0; if (yb > 199) yb = 199; }
         if (yb < ya || yb - ya + 1 > SPAN_N) { st[IS_HELD_SPAN]++; continue; }
         int n = 0;
         vals[n++] = (int32_t)ya; vals[n++] = (int32_t)yb; vals[n++] = va[2]; vals[n++] = (int32_t)(yb - ya + 1);
@@ -922,8 +926,10 @@ int interp_inbetween_ex(const interp_frame *A, const interp_frame *B, const inte
             if (ra > na - 1) ra = na - 1;
             if (rb < 0) rb = 0;
             if (rb > nb - 1) rb = nb - 1;
-            vals[n++] = (int32_t)rnd(lerp(va[4 + 2 * ra], vb[4 + 2 * rb], w));
-            vals[n++] = (int32_t)rnd(lerp(va[5 + 2 * ra], vb[5 + 2 * rb], w));
+            int64_t l = rnd(lerp(va[4 + 2 * ra], vb[4 + 2 * rb], w)), r = rnd(lerp(va[5 + 2 * ra], vb[5 + 2 * rb], w));
+            if (clamp) { l = l < 0 ? 0 : l > 319 ? 319 : l; r = r < 0 ? 0 : r > 319 ? 319 : r; }
+            vals[n++] = (int32_t)l;
+            vals[n++] = (int32_t)r;
         }
         for (int q = 4 + 2 * na; q < S->rec[s->ri].n; q++) vals[n++] = va[q];
         rep[s->ri] = made.n;
