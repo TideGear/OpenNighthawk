@@ -69,9 +69,9 @@ Each stage is judged by a check, as in the rest of the project.
 | Stage | What | Check | Status |
 |---|---|---|---|
 | 0 | Observer: log every call to the drawing primitives per frame | the log is identical across runs; hashes unchanged with it on | done |
-| 1 | Draw lists: a frame's primitives as a list, replayed at 320x200 | the replay reproduces the original's work and display pages bit for bit, every phase of every route | done for the windows below; unexercised branches listed below |
+| 1 | Draw lists: a frame's primitives as a list, replayed at 320x200 | the replay reproduces the original's work and display pages bit for bit, every phase of every route | done for the windows below, in Python and in C (`src/present/drawlist.c`); unexercised branches listed below |
 | 2 | Re-draw the list at N times the resolution | N = 1 is Stage 1 exactly; at N > 1 every N x N block agrees with the N = 1 pixel wherever no edge crosses it | model polygons re-drawn from their sub-pixel vertices (`hires_subpixel.py`): N = 1 exact, flat agreement 99.96-100% before a guard, 100% after; text, sprites, HUD and 3-4% of the polygons stay scaled |
-| 3 | Interpolate between consecutive draw lists to the host display rate | at a logic frame the output is exactly that frame; no in-between primitive absent from both neighbours | 320x200 study done (`interp_frame.py`, below): exact at both ends on seven windows, no violations; the live path is not built |
+| 3 | Interpolate between consecutive draw lists to the host display rate | at a logic frame the output is exactly that frame; no in-between primitive absent from both neighbours | 320x200 study done (`interp_frame.py`, below): exact at both ends on seven windows, no violations; live path built at 320x200 (below): the feed, the presentation from the replay, and the interpolation in C, exact at both ends of 9,843 live frame pairs |
 | 4 | Pacing, vsync, a picture-age setting, HUD handling, a switch to the original picture | - | not started |
 
 Interpolation shows the picture one logic step behind (about 110 ms at 9
@@ -95,7 +95,7 @@ or AND/OR/discard styles; `a` is dither/stipple), `B`/`L` outline polygon and
 its edges, `N` library line, `K` colour, `Q` span fill, `C` blit, `T` text
 (with its font, so the replay needs no game data), `S` sprite, `W` scaled RLE
 sprite, `H` tick scale, `D` page copies (44 present, 48 copy, 79 dissolve),
-`X` any other entry, `x` changed byte deltas, `J` the display palette (768 six-bit DAC
+`M` colour replace (entry 41), `X` any other entry, `x` changed byte deltas, `J` the display palette (768 six-bit DAC
 components, logged beside `Y` with `F117R_OBSERVE_PAGES=1`).
 
 `tools/drawlist_frame.py LOG` rebuilds each phase from the previous page dump
@@ -116,9 +116,12 @@ replay rules rest on:
   sprites (73 and 18; 71 and 19 clip first), tick scales (11), the scaled
   flippable RLE sprite (22, with Bresenham-style column and row stepping), the
   page switches (12-16, so lines and span fills carry the page and origin they
-  were drawn at) and the present (44). Entry 46 writes only the DAC and CRTC
-  start, so its byte deltas are the fill's own rows. Entries 24 and 26 set the
-  origin.
+  were drawn at), the present (44) and the colour replace (41, driver 1188: in a
+  rectangle x0..x1, y0..y1 of a page from the page table, every byte equal to one
+  colour becomes another; rows from the row table, no origin; the HUD and the
+  cockpit's displays use it on the display every phase). Entry 46 writes only
+  the DAC and CRTC start, so its byte deltas are the fill's own rows. Entries 24
+  and 26 set the origin.
 - **Capture traps found on the way:** a nested state setter can split a parent
   entry that resumes drawing, and an entry can write to A000 directly even when
   the active page points elsewhere, so both page snapshots restart after every
@@ -148,6 +151,33 @@ FROM just after the flight's `ordnance.pic` open, then `drawlist_frame.py LOG`.
 opaque text branch and the width clip, sprite clip edge cases, the tick scale's
 CL variant, and windows in the rest of each flight (weapon release on other
 weapons, the cockpit's other displays).
+
+### The replay in C
+
+`src/present/drawlist.c` is `drawlist_frame.py` in C, rule for rule: it is fed one record at a
+time (`drawlist_record`, a log line's values without the clock) and draws on the pages it was
+seeded with (`drawlist_seed`, the work page and the display as the observer dumps them). It reads
+nothing from the machine. Where the Python replay copies a page copy's logged source bytes (the
+present, entry 44), the C replay uses its own copy of the source page when it holds it, so the
+display check also covers the work page at the instant of the present; `prefer_logged` does as
+the Python does.
+
+`build/test_drawlist.exe LOG [--carry] [--logged]` replays a log and prints
+`drawlist_frame.py`'s lines, so the two outputs diff. `--carry` seeds each page once, from its
+first dump, and carries the replay from phase to phase, as a live replay must. On eight 30M
+windows (strike 8.53B and 8.70B, landing 9.70B and 9.89B, `airair_type6` 5.08B and 5.23B,
+`airair_type5` 6.793B, a night take-off roll 2.50B; 447 phases), the output is identical to the
+Python replay's in all three modes, and every phase is exact on both pages, carried too: seeded
+once, the replay stays exact for the whole window, so what the original draws on the two pages
+in flight is all in the records. A log of 75 MB replays in under a second.
+
+Everything in the records is replayed by a rule. Until graphics entry 41 (the colour replace)
+was decoded, the display leaned on its logged byte changes ('x'): it draws on the display in
+every phase of the strike and air-to-air windows, and without its records 0 of 69 (strike) and 1
+of 57 (`airair_type5`) display phases were exact. With its rule ('M'; 0 to 330 a window), the
+same eight windows, re-recorded, are exact on both pages in every phase, seeded each phase or
+carried, with every 'x' record removed from the logs, and the C and Python outputs are
+identical; dropping the 'M' records instead leaves 0 of 69 and 1 of 57 display phases exact.
 
 ## Stage 2: what the list holds and what it needs
 
@@ -354,6 +384,98 @@ behind. It needs a rasteriser for the model polygons, lines, spans and the other
 Stage 1's replay ported, or Stage 2's if the picture is to be finer, since only on a finer grid
 does motion of a fraction of a pixel show. It stays an observer: the machine is asked for nothing
 it does not already compute.
+
+## The live path, first part: feed and replay (9 October 2026)
+
+What the live path takes from the machine, in process:
+
+- **The feed** (`src/present/drawfeed.c`) is an observer that keeps every record in memory, a
+  logic frame at a time: a frame closes at the first phase after one that presented (entry 44),
+  as `interp_frame.py` groups them, and waits in a ring of 8 until the host takes it. At the
+  close it copies A000 into the frame, which is what the replay must equal. Two observer fields
+  serve it (`observe.h`): `sources` has the records carry a blit's and a page copy's source
+  bytes, as `F117R_OBSERVE_PAGES` gives a log, and `want_pages` asks for the page dumps at one
+  phase, which the feed does once to seed the replay (and again after a frame differs or one is
+  dropped). The feed takes no page snapshots: since entry 41 is decoded every drawing entry has a
+  rule, and only a log keeps the pages through each graphics entry, for the byte changes ('x')
+  the rules are checked against. Entries 13-16, 24-26, 45, 46, 62 and 65 have no rule; they set
+  state (pages, origin, DAC, CRTC start); in the eight windows only entry 46 has byte changes, and
+  they are the model fill's own rows (the fill calls it while it paints), which the replay draws
+  from the 'b' records, so they need no snapshot either. Were one to draw, the frame would
+  differ from A000 at its close and the replay would be seeded again.
+- **The replay** (`drawlive`, same file) runs `drawlist.c` on each closed frame, carried from the
+  one seed, and compares the display with the frame's copy of A000. A frame that differs is not
+  shown and the replay is seeded again.
+- The observer now reads guest memory directly, never through `mem_read8`, which charges the 386
+  profile's VGA bus cycles: under `--timing 386` an installed observer's reads of A000 would have
+  moved the clock. Its page snapshots are `memcpy`s; the logs it writes are byte for byte those
+  of the earlier observer (strike 8.53B, landing 9.89B).
+
+**Unchanged machine.** `boot_to_flight` and `strike`, each under both engines, with and without
+`f117run --present replay`: the `--hash-every 50000000` checkpoints (54 and 177) and the final
+hashes are identical, and equal between the engines. The observer's hooks exist only in the
+recompiled engine, so under the interpreter the feed sees nothing.
+
+**Cost.** The recompiled strike route (8.85B instructions), the runner's CPU time, least of three
+runs one at a time:
+
+| presentation | with page snapshots (entry 41 undecoded) | without (9 October) |
+|---|---|---|
+| scan | 78.8 s | 78.8 s |
+| replay | 158.6 s (+101%) | 106.7 s (+35%) |
+| interp | 179.2 s (+127%) | 121.5 s (+54%) |
+
+The host's speed varied by a third between runs that day (the scan route took 78.8 to 104.1 s),
+so only figures from the same set compare; an earlier wall-clock set gave 66.6, 100.0 and
+111.8 s. At 106.7 s the replay still runs at 83 M instructions a second, nine times the original's
+9 MIPS. What the feed still costs is the records themselves (every vertex, edge and fill row, the
+fill rows with their page bytes) and the copy of A000 at each frame's close.
+
+**The replay live.** Over the whole strike flight (2.33B to 8.85B) 9,845 logic frames close; the
+replay, seeded once at the first, equals the display at every frame's close: 9,845 of 9,845, none
+dropped. `boot_to_flight`: 368 of 368.
+
+**Presenting from the replay** (`f117run --present replay`, `f117a --present replay`, or
+`present = replay` in `f117a.ini`). In flight the screen is the replayed display with the scanned
+frame's palette; elsewhere (another program, text mode, a CRTC start other than 0, or no frame
+closed for a quarter second) the scanned-out picture. A frame is presented from its close, so the
+picture is up to one step later than the scan shows it. `f117run` checks it at every VGA frame
+and prints a `[present]` summary; `--frame-log` gains a `replay` column, and `--screen` and the
+shots write the presented picture. Strike, the whole flight: 68,918 VGA frames, 50,620 of them
+presented from the replay; 36,632 equal to the scanned-out picture bit for bit, 5,406 a scan of
+the next logic frame (equal to the next replayed frame: the replay presents it at its close),
+8,582 a scan taken while the original was drawing the next frame on the display (the present
+and the HUD drawn on A000 over several VGA frames), none unsettled; 9,843 of the 9,845 logic
+frames are equal to a scanned-out picture at some VGA frame. With `--shots-vga` over the 8.53B
+window, 189 of 234 shots are byte-identical to the scanned run's. The window, headless
+(`SDL_VIDEODRIVER=dummy`, `SDL_AUDIO_DRIVER=dummy`) replaying `strike.input` to 3.5B, ends on the
+same hash with `--present replay` as without and as `f117run` (`bc8e3ae5a872405d`); its log's
+`[present]` line: 2,062 of 2,062 logic frames exact, 9,030 VGA frames shown from the replay.
+
+**Interpolation** (`src/present/interp.c`) is `interp_frame.py` in C: the same parse into batches
+and polygons, the same pairing (batch and polygon alignment, span fills, outline edges, HUD
+lines), the same in-between list (polygons re-walked by the original's edge rules, camera-space
+edges projected by the original's divide) drawn by the C replay from the pages at the skeleton's
+start. `build/test_interp.exe LOG` prints `interp_frame.py LOG --pairing --check --primitives`'s
+report; on the eight windows above it is identical, line for line: 273 frame pairs exact at both
+ends (t = 1e-6 and 1 - 1e-6), 819 in-between frames, no provenance violation.
+
+Live, `drawlive` keeps the last two replayed frames, each with the replay as it stood at its
+start, and pairs them as the newer closes. `--present interp` (`f117run`, `f117a`,
+`present = interp`) draws, at each VGA frame, the in-between frame at
+t = (now - close of the newer) / (close of the newer - close of the older) on the machine's clock,
+which is the mission clock's base (one game second is one real second): the older frame at the
+newer one's close, the newer one a step later, so the picture is a step behind the replay's.
+`f117run` also draws every pair at its two ends and compares them with the two replayed
+pictures. Strike, the whole flight: 9,843 of 9,843 pairs exact at both ends; of 50,620 VGA frames
+presented, 47,708 are in-between frames; the hashes are unchanged (`boot_to_flight`: 366 of 366
+pairs). Drawing an in-between frame at every VGA frame costs the recompiled strike route a
+further 14% of the scan route's time (the table above). The window, headless, to 3.5B with `--present interp`: the same hash
+again, 8,332 of its 9,030 replayed VGA frames in-between frames.
+
+**Left for the live path.** Pacing to the host's display rather than the emulated VGA's (the
+in-between frames are drawn at the VGA's 70 Hz) and Stage 2's finer grid. The camera-space vertices of a frame are
+in its records ('V'), so a finer grid needs no more from the machine.
 
 ## Open questions and risks
 

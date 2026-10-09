@@ -4,7 +4,7 @@
  *   f117a [--data DIR] [--save DIR] [--engine recomp|interp] [--ips N]
  *         [--scale N] [--fullscreen] [--no-aspect] [--midi N] [--log FILE]
  *         [--audio-queue-log FILE]
- *         [--audio-dump FILE] [--config FILE | --no-config]
+ *         [--audio-dump FILE] [--present scan|replay|interp] [--config FILE | --no-config]
  *
  * Every option can also be kept in f117a.ini beside the executable (or the
  * file --config names): see config.h. The command line overrides it.
@@ -14,6 +14,13 @@
  * between slices, plays the audio it produced and shows the last frame its
  * VGA scanned out. None of that changes what the program computes: the
  * same inputs at the same instruction counts give the same run.
+ *
+ * --present replay shows, in flight, the Stage 1 replay of the original's
+ * draw records (src/present/drawfeed.h) in place of the scanned-out picture:
+ * the same picture at 320x200, each logic frame from its close, and the
+ * scanned one wherever the replay does not hold the screen. --present interp
+ * shows the in-between frames of the last two logic frames (Stage 3) at the
+ * VGA's rate, a logic step behind.
  *
  * Host keys (chosen not to collide with the game's own bindings):
  *   Alt+Enter          toggle fullscreen
@@ -30,6 +37,7 @@
 #include "host_clock.h"
 #include "config.h"
 #include "mt32.h"
+#include "drawfeed.h"
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
@@ -63,6 +71,12 @@ typedef struct {
 
 static host_t H;
 
+/* --present replay */
+static int g_replay;                  /* 1 replay, 2 interp */
+static drawfeed g_feed;
+static drawlive g_live;
+static uint64_t g_presented;          /* VGA frames shown from the replay */
+
 /* ---- machine hooks ------------------------------------------------------ */
 
 static void on_opl(void *u, uint64_t icount, uint8_t reg, uint8_t val)
@@ -90,6 +104,11 @@ static void on_vsync(void *u, uint64_t icount)
 {
     (void)u; (void)icount;
     present_capture(&H.m, &H.frame);
+    if (g_replay) {
+        drawlive_update(&g_live, &g_feed);
+        g_presented += (uint64_t)(g_replay == 2 ? drawlive_present_interp(&g_live, &H.m, &H.frame)
+                                                : drawlive_present(&g_live, &H.m, &H.frame));
+    }
     H.have_frame = 1;
 }
 
@@ -328,6 +347,14 @@ int main(int argc, char **argv)
             i++;
         }
         else if (!strcmp(a, "--list-fixes")) { fixes_list(stdout); return 0; }
+        else if (!strcmp(a, "--present") && v) {
+            if (strcmp(v, "replay") && strcmp(v, "scan") && strcmp(v, "interp")) {
+                fprintf(stderr, "--present takes scan, replay or interp\n");
+                return 2;
+            }
+            g_replay = !strcmp(v, "replay") ? 1 : !strcmp(v, "interp") ? 2 : 0;
+            i++;
+        }
         else if (!strcmp(a, "--fullscreen")) fullscreen = 1;
         else if (!strcmp(a, "--no-aspect")) aspect = 0;
         else {
@@ -337,7 +364,7 @@ int main(int argc, char **argv)
                 "             [--record FILE | --no-record] [--replay FILE] [--time-us N]\n"
                 "             [--exit-after CLOCKS] [--opl dbopl|nuked] [--speaker realsound|pwm]\n"
                 "             [--audio-queue-log FILE]\n"
-                "             [--audio-dump FILE]\n"
+                "             [--audio-dump FILE] [--present scan|replay|interp]\n"
                 "             [--roland munt|windows|off] [--mt32-roms DIR]\n"
                 "             [--mt32-control FILE --mt32-pcm FILE] [--fix ID|all]... [--list-fixes]\n"
                 "             [--config FILE | --no-config]   (default: f117a.ini beside f117a.exe)\n");
@@ -471,6 +498,12 @@ int main(int argc, char **argv)
     hooks.midi_byte = on_midi;
     hooks.module_load = recomp_module_load;
     hooks.file_data = fixes_file_data;
+    if (g_replay) {
+        drawfeed_init(&g_feed, H.mem);
+        drawlive_init(&g_live);
+        g_live.interp = g_replay == 2;
+        observe_set(&g_feed.obs);
+    }
     /* A replay brings its own speed and boot time; a recording writes ours. */
     if (!time_us) time_us = machine_local_time_us();
     if (!machine_boot(&H.m, H.mem, data, save, "F117.COM", ips, time_us, &hooks)) {
@@ -714,6 +747,11 @@ int main(int argc, char **argv)
         fprintf(H.m.log, "stopped at icount %llu; program %s; final hash %016llx\n",
                 (unsigned long long)H.m.cpu.icount, dos_current_program(&H.m), (unsigned long long)hsh);
         recomp_report(&H.m, H.m.log);
+        if (g_replay)
+            fprintf(H.m.log, "[present] replay: %llu logic frames, %llu equal to the display at their close, %llu not; "
+                    "%llu VGA frames presented from the replay, %llu of them in-between frames\n", (unsigned long long)g_live.frames,
+                    (unsigned long long)g_live.exact, (unsigned long long)g_live.inexact, (unsigned long long)g_presented,
+                    (unsigned long long)g_live.inbetweens);
     }
     recomp_shutdown(&H.m);
     machine_shutdown(&H.m);

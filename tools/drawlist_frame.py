@@ -21,6 +21,8 @@ every primitive the observer captured, and compared with the dump at its end:
   sprites ('S')                             copied from the logged source,
                                             colour 0 transparent, clipped by
                                             the library's rules
+  colour replaces ('M', graphics entry 41)  one colour put for another in a
+                                            rectangle
 
 What has no replay rule yet is applied from what the original wrote and
 counted apart, so the share still copied rather than replayed is visible:
@@ -596,11 +598,24 @@ def main(path=None, page_factory=bytearray, hook=None, on_phase=None):
                     a = (320 * (dy + y) + dx + x) & 0xFFFF
                     if b and a < len(page):                  # colour 0 is transparent
                         page[a] = b
+        elif k == "M":                                       # entry 41 (driver 1188): a colour replaced in a rectangle
+            v = [int(x) for x in f[2:]]
+            mseg, x0, y0, x1, y1, find, put, row0, row1 = v[:9]
+            rows, cols = (y1 - y0 + 1) & 0xFFFF, (x1 - x0 + 1) & 0xFFFF
+            page = pages.get(mseg)
+            if row1 - row0 != 320 or not rows or rows > 256:
+                totals["colour replaces with no rule"] += 1
+            elif page is not None:
+                for r in range(rows):
+                    for k2 in range(cols or 65536):     # LOOP counts: 0 is 65,536
+                        a = (row0 + 320 * r + x0 + k2) & 0xFFFF
+                        if a < len(page) and page[a] == find:
+                            page[a] = put
         elif k == "x":
             v = [int(x) for x in f[2:]]
             entry, xseg, n = v[0], v[1], v[2]
             page = pages.get(xseg)
-            if (entry in (1, 2, 3, 4, 5, 6, 11, 22, 73, 18, 71, 19) or (entry == 46 and xseg != 0xA000) or page is None or
+            if (entry in (1, 2, 3, 4, 5, 6, 11, 22, 41, 73, 18, 71, 19) or (entry == 46 and xseg != 0xA000) or page is None or
                     (entry == 42 and xseg != 0xA000)):
                 continue
             for j in range(n):

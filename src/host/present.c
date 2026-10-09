@@ -105,10 +105,15 @@ void present_render(const present_frame *f, uint32_t *out, int *w, int *h, int b
 int present_write_ppm(const machine_t *m, const char *path)
 {
     static present_frame f;
+    present_capture(m, &f);
+    return present_frame_write_ppm(&f, path);
+}
+
+int present_frame_write_ppm(const present_frame *f, const char *path)
+{
     static uint32_t buf[640 * 400];
     int w, h;
-    present_capture(m, &f);
-    present_render(&f, buf, &w, &h, 0);
+    present_render(f, buf, &w, &h, 0);
     FILE *o = fopen(path, "wb");
     if (!o) return 0;
     fprintf(o, "P6\n%d %d\n255\n", w, h);

@@ -10,7 +10,8 @@
 #include <stdint.h>
 #include "machine.h"
 
-/* The primitives the draw list is made of (observe_prim's `kind`):
+/* The primitives the draw list is made of (observe_prim's `kind`; the
+ * graphics library's are described at their hooks in observe.c):
  *   'G' an edge prepared (model_prepare_edge): slot, the two projected
  *       vertex records it was made from (DS offsets) - links edges to vertices
  *   'E' an edge of a filled polygon handed to the rasteriser (130D:004A):
@@ -42,6 +43,16 @@ typedef struct f117_observer {
                    uint16_t xf_at, uint16_t px_at);
     /* A draw-list primitive (see above): n values in v. */
     void (*prim)(void *user, uint64_t icount, char kind, const int32_t *v, int n);
+    /* Nonzero: the records carry what a replay needs beyond the primitives,
+     * a blit's and a whole-page copy's source bytes, as F117R_OBSERVE_PAGES
+     * gives a log. (A log also has the byte changes of each graphics entry,
+     * 'x', from a page snapshot at every entry, to check the rules with.) */
+    int sources;
+    /* Asked at each game_draw (may be NULL): nonzero to have the pages at
+     * this phase ('Z' the work page, 'Y' the display, 'J' the palette), as
+     * F117R_OBSERVE_PAGES has them at every phase. A live replay asks until
+     * it has its first 'Z'. */
+    int (*want_pages)(void *user);
 } f117_observer;
 
 extern const f117_observer *g_f117_observer;

@@ -11,7 +11,7 @@
 static const char *const VALUED[] = {
     "data", "save", "engine", "ips", "scale", "midi", "log", "record", "replay", "time-us",
     "exit-after", "opl", "audio-queue-log", "audio-dump", "mt32-control", "mt32-pcm", "mt32-seed",
-    "coverage", "fix", "roland", "mt32-roms", "speaker", NULL };
+    "coverage", "fix", "roland", "mt32-roms", "speaker", "present", NULL };
 static const char *const PATHS[] = {
     "data", "save", "log", "record", "replay", "audio-queue-log", "audio-dump", "mt32-control",
     "mt32-pcm", "mt32-roms", "coverage", NULL };

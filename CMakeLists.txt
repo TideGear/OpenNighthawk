@@ -47,8 +47,9 @@ target_include_directories(f117machine PUBLIC src/machine src/recomp)
 target_link_libraries(f117machine PUBLIC f117cpu)
 
 # ---- Presentation shared by the window and the headless runner -----------
-add_library(f117present STATIC src/host/present.c src/host/keys.c src/host/inputlog.c)
-target_include_directories(f117present PUBLIC src/host)
+add_library(f117present STATIC src/host/present.c src/host/keys.c src/host/inputlog.c
+  src/present/drawlist.c src/present/drawfeed.c src/present/interp.c)
+target_include_directories(f117present PUBLIC src/host src/present src/matched)
 target_link_libraries(f117present PUBLIC f117machine)
 
 # ---- The recomp runtime: generated code if there is any ------------------
@@ -231,6 +232,14 @@ if(F117R_BUILD_TESTS)
   add_executable(test_scanout tests/test_scanout.c)
   target_link_libraries(test_scanout PRIVATE f117present f117recomp_none)
   add_test(NAME vga_scanout COMMAND test_scanout)
+
+  # The Stage 1 replay against an observer log's page dumps (a log is needed:
+  # test_drawlist LOG, see docs/presentation.md).
+  add_executable(test_drawlist tests/test_drawlist.c)
+  target_link_libraries(test_drawlist PRIVATE f117present)
+  # Stage 3's in-between frames against the same log (test_interp LOG).
+  add_executable(test_interp tests/test_interp.c)
+  target_link_libraries(test_interp PRIVATE f117present)
 
   add_executable(test_overrides tests/test_overrides.c)
   target_link_libraries(test_overrides PRIVATE f117present f117recomp_none)
