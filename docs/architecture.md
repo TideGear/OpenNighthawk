@@ -546,7 +546,11 @@ end of a run for comparing two engines at a chosen clock.
 484 addresses are matched in all seven programs. The programs carry
 byte-identical copies of the C runtime helpers (string and block copies, the
 32-bit shifts, multiply and divide), so one matched routine serves several
-addresses. Candidates come from `tools/reimp_names.py`; the list is the table
+addresses. MPS_LOGO carries the same library built for a larger model: its
+calls are far (9A), or PUSH CS / CALL to a far routine, where the others' are
+near, and some of its routines return far with the arguments a word higher.
+The shared routines read each call's kind from the code (`sm3_call`) and take
+a far flag. Candidates come from `tools/reimp_names.py`; the list is the table
 at the end of `matched.c`.
 
 ## Audio
