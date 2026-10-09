@@ -178,6 +178,7 @@ def main():
     ap.add_argument("--out", type=Path, default=Path.home() / "f117-recomp-local" / "save-parity")
     ap.add_argument("--seconds", type=int, default=0, help="ceiling in wall seconds for DOSBox-X (default: three times intro + route + margin)")
     ap.add_argument("--no-dosbox-x", action="store_true")
+    ap.add_argument("--no-turbo", action="store_true", help="DOSBox-X at its own speed instead of fast-forward (about four times slower)")
     ap.add_argument("--no-86box", action="store_true")
     a = ap.parse_args()
     events, last = route_events(a.route)
@@ -185,7 +186,7 @@ def main():
     ours = run_ours(a.data, a.route, a.out / "ours")
     ok = True
     if not a.no_dosbox_x:
-        game = run_dosbox_x(a.data, a.route, a.out / "dosbox-x", a.dosbox_x, seconds)
+        game = run_dosbox_x(a.data, a.route, a.out / "dosbox-x", a.dosbox_x, seconds, turbo=not a.no_turbo)
         for name in SAVED:
             ok &= compare(name, ours, game, "DOSBox-X")
     if not a.no_86box:

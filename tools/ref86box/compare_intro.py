@@ -100,9 +100,12 @@ def main():
     graphics = len([f for f in ref if f["size"] == [320, 200]])
     print("graphics pictures %d: exact %d, close %d, unmatched %d; backwards matches %d" %
           (graphics, exact, close, unmatched, back))
+    hashes = {f["file"]: f["hash"][:12] for f in ref}
     for name, kind, info in rows:
         if kind in ("close", "unmatched", "no candidate"):
-            print("  %s %s %s" % (name, kind, "" if info is None else "best diff %.3f" % info[0]))
+            # one line per picture that is not exact, with its content hash: pc_parity.py holds these
+            # to the reviewed list in expected_misses86.txt (a miss not on it fails)
+            print("  %s %s %s hash %s" % (name, kind, "" if info is None else "best diff %.3f" % info[0], hashes.get(name, "?")))
     print("order preserved: %s" % ("yes" if back == 0 else "NO"))
     return 0 if unmatched == 0 and back == 0 else 1
 

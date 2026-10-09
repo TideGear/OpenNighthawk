@@ -43,12 +43,37 @@ LIMITS = {
     # largest timing drift in ms
     "gog": dict(min_exact=1300, max_multi_unmatched=0, max_drift_ms=100),   # measured 1329, 0, 57 ms
     "dosbox-x": dict(min_exact=1200, max_multi_unmatched=3, max_drift_ms=350),   # measured 1237, 3, 143-200 ms (real-time captures varied; fast-forward ones are identical)
-    # 86Box: graphics pictures matching ours in 6-bit DAC values, and with no counterpart; order must
-    # hold. Measured 8 Oct 2026: 86 of 87 exact, the other a single sample taken mid-draw
-    "86box": dict(min_exact=84, max_unmatched=2),
+    # 86Box: every graphics picture matches ours exactly in 6-bit DAC values, in order, except the
+    # ones named in ref86box/expected_misses86.txt (each tied to its picture's hash). Measured 8 Oct 2026:
+    # 86 of 87 exact, the other a single sample taken mid-draw. min_total guards against a comparison
+    # that found nothing to compare.
+    "86box": dict(min_total=80),
     # GOG's raw OPL capture: every write, from this machine started 275 ms in (dosbox_compare.GOG_BOOT_MS); measured 22,840, -14..+1 ms
     "gog-music": dict(min_writes=22800, max_timing_ms=40),
 }
+
+
+def judge_86box_pictures(text, expected_text, min_total):
+    """compare_intro.py's report against the reviewed list of expected misses: (ok, summary, stale).
+    Every picture that is not exact must be on the list with its current hash, none may be unmatched or
+    out of order, and the counts must add up (a picture the report does not name cannot slip through)."""
+    m = re.search(r"graphics pictures (\d+): exact (\d+), close (\d+), unmatched (\d+); backwards matches (\d+)", text)
+    if not m:
+        return False, "ERROR no comparison result", []
+    total, exact, close, unmatched, back = map(int, m.groups())
+    expected = {}
+    for line in expected_text.splitlines():
+        if line.strip() and not line.startswith("#"):
+            name, digest = line.split()[:2]
+            expected[name] = digest
+    seen = dict(re.findall(r"^\s+(p\d+\.png) close .*?hash (\w+)", text, re.M))
+    unlisted = sorted(n for n, h in seen.items() if expected.get(n) != h)
+    stale = sorted(n for n in expected if n not in seen)
+    ok = (total >= min_total and unmatched == 0 and back == 0 and not unlisted
+          and len(seen) == close and exact + close == total)
+    summary = "%d pictures: %d exact, %d close (on the reviewed list: %s), %d unmatched, %d out of order" % (
+        total, exact, close, "all" if not unlisted else "NOT " + ", ".join(unlisted), unmatched, back)
+    return ok, summary, stale
 
 
 def run(cmd, log):
@@ -101,7 +126,9 @@ def main():
         return dict(rc=rc, line=line[-1] if line else "save %-10s %-8s ERROR see %s" % ("ROSTER.FIL", label, log))
 
     if not a.no_dosbox_x and not a.no_save:
-        job("save-dbx", lambda: save_check(["--no-86box", "--out", str(a.out / "save-dosbox-x")], a.out / "dosbox-x-save.log", "DOSBox-X"))
+        # at DOSBox-X's own speed: in fast-forward its scripted clicks miss (the roster came out with a
+        # pilot not erased, 61 bytes off, and START once waited 25 minutes), so the check takes 4 minutes
+        job("save-dbx", lambda: save_check(["--no-86box", "--no-turbo", "--out", str(a.out / "save-dosbox-x")], a.out / "dosbox-x-save.log", "DOSBox-X"))
     if not a.no_dosbox_x:
         job("dosbox-x", lambda: video_compare(a, a.out / "dosbox-x.log", ["--dosbox", str(a.dosbox_x)]))
     if not a.no_gog and a.gog_music.is_file():
@@ -203,11 +230,12 @@ def main():
                 failures.append("86box")
                 print("  86box     ERROR no comparison result; see %s" % log)
             else:
-                total, exact, close, unmatched, back = map(int, m.groups())
-                lim = LIMITS["86box"]
-                ok = exact >= lim["min_exact"] and unmatched <= lim["max_unmatched"] and back == 0
-                print("  86box     %s  %d pictures: %d exact (need %d), %d close, %d unmatched (max %d), %d out of order" % (
-                    "PASS" if ok else "FAIL", total, exact, lim["min_exact"], close, unmatched, lim["max_unmatched"], back))
+                ok, summary, stale = judge_86box_pictures(
+                    text, (HERE / "ref86box" / "expected_misses86.txt").read_text(encoding="utf-8"),
+                    LIMITS["86box"]["min_total"])
+                print("  86box     %s  %s" % ("PASS" if ok else "FAIL", summary))
+                if stale:
+                    print("            listed but now exact (remove from expected_misses86.txt): %s" % ", ".join(stale))
                 if not ok:
                     failures.append("86box")
         ours_log = next((Path(results[n]["run"]) / "opl.log" for n in ("dosbox-x", "gog")

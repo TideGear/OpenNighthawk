@@ -43,11 +43,14 @@ and the comparison report was the same for both kinds (7 Oct 2026). DOSBox-X rec
 tool reads it back to 320x200 and reports the few frames where a palette
 write landed between the two scanlines of a pair.
 
-`py tools/save_parity.py --data GOG_DIR --no-86box` plays a route's START
+`py tools/save_parity.py --data GOG_DIR --no-86box [--no-turbo]` plays a route's START
 inputs here and on this machine and compares the saved `ROSTER.FIL` byte for
-byte (identical, 6 Oct 2026; in fast-forward too, 54 s instead of 227 s;
-SETUP is still answered by AUTOTYPE there, since its inputs are anchored at
-START). The music is judged from the capture's audio by
+byte (identical, 6 Oct 2026, at DOSBox-X's own speed, 227 s). Fast-forward
+(the default until 8 Oct, 54 s) is not reliable for it: it passed once
+on an idle machine, but on a busy one the scripted clicks missed, the saved
+roster came out with a pilot not erased (61 bytes off) and START once waited 25
+minutes, so `pc_parity.py` runs it with `--no-turbo`. SETUP is still answered by
+AUTOTYPE there, since its inputs are anchored at START. The music is judged from the capture's audio by
 `tools/sound_parity.py`: envelope 0.90-0.92, spectral 0.947; DOSBox-X plays it
 at 0.74 of the level GOG's DOSBox and this machine produce (its mixer), which
 is reported, not judged.
