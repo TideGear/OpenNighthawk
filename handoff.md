@@ -76,8 +76,9 @@ more than once, what it costs, what was optimised). State as of the evening of
   routine ran on some recompiled route (new 8 Oct: it dropped VGAME 0xF024),
   and **step 9**: no matched routine ran past its event limit on a route (new
   9 Oct; a `[matched] OVERRUN` line in a route's output names it).
-  Last green (9 Oct): 35 routes, 5,713,152 instruction states per timing
-  profile, 488 matched routines (1,588,531 states), no mismatches, no overruns.
+  Last green (9 Oct): 35 routes, 5,714,880 instruction states per timing
+  profile, 606 matched routines (1,975,245 states; 1,976,226 at seed
+  0xC0FFEE), no mismatches, no overruns.
   Do not edit `src/` or rebuild while a gate runs.
 - **PC parity**: `py tools/pc_parity.py --data D:/GOG/F-117A` (about 12
   minutes): all pass as of 8 Oct. The 86Box pictures must be exact in DAC
@@ -130,18 +131,23 @@ more than once, what it costs, what was optimised). State as of the evening of
   the 8254 does it (`src/host/speaker.c`, `tools/speaker_parity.py`); open:
   digitised speech has no audio reference, and the listening check is the
   owner's (Phase 4).
-- **Phase 2**: 484 addresses matched (483 census functions, 39,387 of 179,213
-  bytes). The three batches are merged: `p2-vgame` adds 37 routines,
-  `p2-start` 34 START/END routines, `p2-small` 21 PLAYER/MPS_LOGO/DSWAP/SETUP
-  routines. Each batch was checked at 4,000 states with seeds 0x5EED0F117A
-  and 0xC0FFEE. Dropped: START 0x11DB (one instruction clock early),
-  MPS_LOGO 0x1ADC (memory differs) and 0x1C82 (mid-run stop differs).
-  Their translations remain in use. Logs: `D:\f117-gate\p2-*-seed*.log`;
-  the final integrated gate: `D:\f117-gate\p2-resume-final-gate.log`;
-  merged second seed: `D:\f117-gate\p2-merged-seed2.log`.
-  Runtime placement capacity now equals the 1,024-entry override registry:
-  VGAME's matched routines plus observer hooks exceed the former 256 slots.
-  The 300-entry override regression failed before the fix and passes after it.
+- **Phase 2**: 606 addresses matched (603 census functions, 51,445 of 179,213
+  bytes). Batches on branches `p2-vgame`, `p2-start`, `p2-small` (worktrees
+  in D:\f117-wt), merged into master by the main session and gated there;
+  each was checked at seeds 0x5EED0F117A and 0xC0FFEE (VGAME's 9 Oct batch
+  also at 0x1234, 0xBEEF, 0x7777, 0xA5A5). Merging caught three defects the
+  branches' locksteps could not: `vgame_model_poly_finish` claimed 21 and 19
+  where its longest paths are 23 and 21; `vgame_view_caption` counted one
+  instruction too many on a path random states rarely reach (bisected with
+  `F117R_MATCHED_LIMIT` over only the new rows, several limits in parallel,
+  comparing `--hash-every` checkpoints); and port I/O (`IO_SLACK`, architecture.md). Agents'
+  notes on what is left: identical copies across programs (heap free, the
+  formatter's output, START's picture decoder 0x890A/0x8983), and routines
+  whose paths after DOS calls only routes reach. Dropped: START 0x11DB,
+  MPS_LOGO 0x1ADC and 0x1C82 (old), and routes-only candidates listed in
+  the branches' commit messages. Logs: `D:\f117-gate\merge3\`.
+  Runtime placement capacity equals the 1,024-entry override registry.
+
 - **Phase 2 picture decoder** (VGAME 11ED:00AE/0127, END 0x48AA/0x4923):
   shared `pic_rle_row` + `pic_lzw_step`. The RLE rows are lockstep-green at
   both seeds; the LZW step is routes-only (random SP never equals the
@@ -159,16 +165,13 @@ more than once, what it costs, what was optimised). State as of the evening of
 
 ## Open items, in order
 
-1. **Confirm `git status -sb` shows master level with `origin/master`.** The
-   Phase 2 merges, translated 386 timing and these docs were gated green
-   (35 routes identical, 484 matched routines, both instruction profiles,
-   step 8) and pushed on the evening of 8 Oct; if master
-   is ahead, something was left local: gate it and push.
+1. **Confirm `git status -sb` shows master level with `origin/master`**; if
+   master is ahead, something was left local: gate it and push.
 2. 386 profile: file loading remains a decision (re-align at loads, as the
    frame comparison does, or model a period disk; fast loads are the default
    standing choice). Handwritten matched routines can gain direct cycle costs
    later; their original bodies already run under the translated profile.
-3. Phase 2: 1,052 census routines (139,826 bytes) remain. Useful candidates
+3. Phase 2: 932 census routines (127,768 bytes) remain. Useful candidates
    are 100-500 byte routines the lockstep can exercise and shared C runtime
    copies. Refresh the census and the matched-address counts after each
    verified batch. The three rejected candidates above need correction

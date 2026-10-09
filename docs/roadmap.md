@@ -17,7 +17,7 @@ make (Phase 4).
 
 ### Done
 
-- **Translation.** All 17 code files and the LZEXE decompressor: 89,276
+- **Translation.** All 17 code files and the LZEXE decompressor: 89,303
   instruction starts, 96% of the code-area bytes (the rest is strings, tables
   and variables; `tools/census.py`). The coverage pass adds no further
   translated code; changed code and declined override entries can fall back
@@ -25,7 +25,7 @@ make (Phase 4).
 - **Engine parity.** 35 scripted routes are identical between the interpreter
   and the recompiled code at every 50-million-clock checkpoint and at the end;
   every translated instruction is held to the interpreter from random states
-  (5,713,152 comparisons, 0 differences); the interpreter and the translator are
+  (5,714,880 comparisons, 0 differences); the interpreter and the translator are
   held to 8088 and 80286 silicon vectors; 144 of 144 planted defects are
   caught; seeded random flights are identical. See
   [architecture.md](architecture.md#verification-why-11-is-a-claim-with-evidence).
@@ -198,11 +198,12 @@ not the recompilation:
       Reimp's mapping; matched functions replacing translations one at a time,
       each held to the same parity checks. `tools/reimp_names.py` joins the
       Reimp's census (1,535 functions) with this project's regions as a private
-      lead list. 488 addresses are matched (487 of the census functions, 39,974 of
+      lead list. 606 addresses are matched (603 of the census functions, 51,445 of
       179,213 bytes); the table is at the end of `src/matched/matched.c` and the
       method is in [architecture.md](architecture.md#matched-routines-phase-2).
-      The resumed batches add 37 VGAME, 34 START/END and 21 small-program
-      routines, checked at two 4,000-state seeds, and the picture decoder's
+      The batches of 8-9 Oct add 37 + 34 VGAME, 34 + 40 START/END and 21 + 44
+      small-program routines, each checked at two 4,000-state seeds (the 9 Oct
+      VGAME batch also at four more), and the picture decoder's
       RLE row and LZW step in VGAME and END (the step is routes-only: its
       prefix walk checked room once for a chain of any depth, now every turn).
       Three unequal candidates were excluded: START 0x11DB, MPS_LOGO 0x1ADC
