@@ -6850,6 +6850,7 @@ static int dswap_heap_free(machine_t *m) { return sm3_heap_free(m, 0x268E, 0, 0)
 static int setup_heap_free(machine_t *m) { return sm3_heap_free(m, 0x0E4A, 0, 0); }
 static int mps_logo_heap_free(machine_t *m) { return sm3_heap_free(m, 0x01C4, 0, 1); }
 static int mps_logo_heap_free_jmp(machine_t *m) { return sm3_heap_free(m, 0x01C4, 1, 1); }
+static int st4_end_heap_free(machine_t *m) { return sm3_heap_free(m, 0x50EE, 0, 0); }   /* END 0x05DC0 */
 
 /* START 0x025D9, date_string(buffer): the mission's date. The theatre (far
  * [CACA]+38h) picks a starting month (byte 882h + theatre), year (word 896h +
@@ -21471,6 +21472,1733 @@ static const pic_lzw PIC_LZW_DSWAP = { 0x2472, 0x247A, 0x247B, 0x247C, 0x2480, 0
 static const pic_rle PIC_RLE_DSWAP = { 0x2483, 0x2476, 0x2474, 0x247E, 0x2478, 0x2479,
     0x0B56, 0x0B6E, 0x0B75, 0x0B78, 0x0B9D, 0x0B82, 0x0B85 };
 static int dswap_pic_rle(machine_t *m) { return pic_rle_row(m, &PIC_RLE_DSWAP, &PIC_LZW_DSWAP); }
+/* START's copy, 0x0890A and its step 0x08983: the same code with START's data
+ * (the reader vector at [8D6A], the table reset 0x088D4). */
+static const pic_lzw PIC_LZW_START = { 0x8D6C, 0x8D74, 0x8D75, 0x8D76, 0x8D7A, 0x8D7C,
+    0x8D7E, 0x8D80, 0x7420, 0x6235, 0x8F81, 0x8D6A, 0x88D4, 0x8A2B,
+    0x8983, 0x898D, 0x899D, 0x89B0, 0x89E1, 0 };
+static const pic_rle PIC_RLE_START = { 0x8D7D, 0x8D70, 0x8D6E, 0x8D78, 0x8D72, 0x8D73,
+    0x890A, 0x8922, 0x8929, 0x892C, 0x8951, 0x8936, 0x8939 };
+static int st4_start_pic_rle(machine_t *m) { return pic_rle_row(m, &PIC_RLE_START, &PIC_LZW_START); }
+static int st4_start_pic_lzw(machine_t *m) { return pic_lzw_step(m, &PIC_LZW_START); }
+
+/* ---- START and END, fourth batch ----------------------------------------
+ * Several of these are the first piece of a longer routine (the census
+ * splits a routine where a jump lands): the piece runs here and the
+ * original code carries on from the jump it ends with. */
+
+/* START 0x02651, the objective line's opening: for the objective record at
+ * the argument, its target (word +2, a 16-byte record at CBDE, kept at
+ * [bp-6]) and that target's name (the name index at DC70 by the target's
+ * first word, or 0 for none, at [bp-4]); then the kind byte of the
+ * objective's type (+8, 12-byte records at 11DE) at [bp-2], widened into
+ * AX for the switch at 0x02840. */
+static int st4_start_objective_open(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 25)) return 0;
+    frame_open(c, 0x5A);
+    cpu_push16(c, c->r[R_SI]);
+    set_r8(c, R_CL, 4);
+    uint16_t bx = ds_get(c, (uint16_t)(bp_get(c, 4) + 2));
+    bx = x86_shift(c, 4, bx, 4, 1);                               /* shl bx, cl */
+    bx = (uint16_t)alu_add(c, bx, 0xCBDE, 1, 0);
+    bp_put(c, -6, bx);
+    alu_sub(c, ds_get(c, bx), 0, 1, 0);                           /* cmp [bx], 0 */
+    unsigned n = 12;
+    if (!(c->flags & F_ZF)) {
+        bx = x86_shift(c, 4, ds_get(c, bx), 1, 1);
+        c->r[R_AX] = ds_get(c, (uint16_t)(bx + 0xDC70));
+        bp_put(c, -4, c->r[R_AX]);
+        n += 5;
+    } else {
+        bp_put(c, -4, 0);
+        n += 1;
+    }
+    c->r[R_AX] = 0x000C;
+    bx = bp_get(c, 4);
+    x86_imul16(c, ds_get(c, (uint16_t)(bx + 8)));
+    bx = c->r[R_AX];
+    set_r8(c, R_AL, ds_get8(c, (uint16_t)(bx + 0x11DE)));
+    bp_put8(c, -2, get_r8(c, R_AL));
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);     /* cbw */
+    c->r[R_BX] = bx;
+    c->icount += n + 8;
+    c->ip = 0x2840;
+    return 1;
+}
+
+/* END 0x03021, the post-mission scorer's opening: nine state bytes cleared
+ * and five frame words zeroed, then on to its loop over the event log at
+ * 0x034ED. */
+static int st4_end_scorer_open(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    static const uint16_t BYTES[9] = { 0x720E, 0x6D89, 0x5B9A, 0x55E8, 0x55DB, 0x6984, 0x64C8, 0x6D88, 0x55DC };
+    static const int WORDS[5] = { -0x0A, -0x0C, -6, -2, -8 };
+    if (!room(c, 21)) return 0;
+    frame_open(c, 0x0E);
+    cpu_push16(c, c->r[R_SI]);
+    set_r8(c, R_AL, (uint8_t)alu_sub(c, get_r8(c, R_AL), get_r8(c, R_AL), 0, 0));
+    for (int i = 0; i < 9; i++) ds_put8(c, BYTES[i], get_r8(c, R_AL));
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+    for (int i = 0; i < 5; i++) bp_put(c, WORDS[i], c->r[R_AX]);
+    c->icount += 21;
+    c->ip = 0x34ED;
+    return 1;
+}
+
+/* END 0x023D6, an award ribbon row's layout (count, rows, index): a third
+ * of the count, one less when it divides exactly ([bp-0Eh]); the ribbon
+ * width 104h ([bp-6]); twice the index ([bp-8]). When three per row fit
+ * the rows given and some are left over, the left-over one or two pick the
+ * row's offset (8Dh or 88h, [bp-0Ah]) and the code goes on at 0x02435;
+ * otherwise at 0x02430. */
+static int st4_end_ribbon_layout(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 35)) return 0;
+    frame_open(c, 0x0E);
+    c->r[R_AX] = bp_get(c, 8);
+    c->r[R_CX] = 3;
+    cwd(c);
+    x86_idiv16(c, 3, 0);                                          /* cannot fail: a word over 3 */
+    bp_put(c, -0x0E, c->r[R_AX]);
+    c->r[R_AX] = bp_get(c, 8);
+    cwd(c);
+    x86_idiv16(c, 3, 0);
+    alu_logic(c, c->r[R_DX], 1);                                  /* or dx, dx */
+    unsigned n = 13;
+    if (c->flags & F_ZF) {
+        c->r[R_AX] = (uint16_t)alu_dec(c, bp_get(c, -0x0E), 1);
+        bp_put(c, -0x0E, c->r[R_AX]);
+        n += 3;
+    }
+    bp_put(c, -6, 0x0104);
+    c->r[R_AX] = x86_shift(c, 4, bp_get(c, 4), 1, 1);
+    bp_put(c, -8, c->r[R_AX]);
+    c->r[R_AX] = bp_get(c, -0x0E);
+    c->r[R_CX] = c->r[R_AX];
+    c->r[R_AX] = x86_shift(c, 4, c->r[R_AX], 1, 1);
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], c->r[R_CX], 1, 0);
+    alu_sub(c, c->r[R_AX], bp_get(c, 6), 1, 0);
+    n += 10;
+    uint16_t to = 0x2430;
+    if (!x86_cond(c, 0xF)) {                                      /* jg not taken */
+        c->r[R_AX] = c->r[R_DX];
+        alu_logic(c, c->r[R_AX], 1);
+        n += 3;
+        if (!(c->flags & F_ZF)) {
+            c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1);
+            n += 2;
+            if (c->flags & F_ZF) { bp_put(c, -0x0A, 0x008D); n += 2; }
+            else {
+                c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1);
+                n += 2;
+                if (c->flags & F_ZF) { bp_put(c, -0x0A, 0x0088); n += 2; }
+                else n += 1;
+            }
+            to = 0x2435;
+        }
+    }
+    c->icount += n;
+    c->ip = to;
+    return 1;
+}
+
+/* END 0x022EB, the award slots' opening: a 12-byte flag list at [bp-0Eh]
+ * cleared (0x04ADE), the counters at [bp-16h] and [bp-2] zeroed, the far
+ * pointer at [bp-14h] set to the debriefing record ([55DE]) + 22h and the
+ * slot counter [bp-10h] to 0; the first slot's word tested, and a used one
+ * recorded in the list. The loop goes on at 0x02335. */
+static int st4_end_award_slots_open(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 9)) return 0;
+    frame_open(c, 0x16);
+    cpu_push16(c, c->r[R_SI]);
+    c->r[R_AX] = 0x000C;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)(c->r[R_BP] - 0x0E);                   /* lea ax, [bp-0Eh] */
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 8;
+    if (!guest_call(m, 0x4ADE, 0x22FD)) return 1;
+    ST2_NEED(20, 0x22FD);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    set_r8(c, R_AL, (uint8_t)alu_sub(c, get_r8(c, R_AL), get_r8(c, R_AL), 0, 0));
+    bp_put8(c, -0x16, get_r8(c, R_AL));
+    bp_put8(c, -2, get_r8(c, R_AL));
+    c->r[R_AX] = ds_get(c, 0x55DE);
+    c->r[R_DX] = ds_get(c, 0x55E0);
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], 0x22, 1, 0);
+    bp_put(c, -0x14, c->r[R_AX]);
+    bp_put(c, -0x12, c->r[R_DX]);
+    bp_put(c, -0x10, 0);
+    c->r[R_BX] = bp_get(c, -0x14);                                /* les bx, [bp-14h] */
+    c->seg[S_ES] = bp_get(c, -0x12);
+    alu_sub(c, seg_read16(c, c->seg[S_ES], c->r[R_BX]), 0, 1, 0);
+    unsigned n = 14;
+    if (!(c->flags & F_ZF)) {                                     /* a used slot: note its number */
+        set_r8(c, R_AL, bp_get8(c, -0x16));
+        set_r8(c, R_CL, bp_get8(c, -2));
+        set_r8(c, R_CH, (uint8_t)alu_sub(c, get_r8(c, R_CH), get_r8(c, R_CH), 0, 0));
+        c->r[R_SI] = c->r[R_CX];
+        mem_write8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] + c->r[R_SI] - 0x0E)), get_r8(c, R_AL));
+        bp_put8(c, -2, (uint8_t)alu_inc(c, bp_get8(c, -2), 0));
+        n += 6;
+    }
+    c->icount += n;
+    c->ip = 0x2335;
+    return 1;
+}
+
+/* START 0x00B01 and 0x063FB, a screen's hover, each frame: the menu hit
+ * test (0x0393D) over the screen's item list gives the item under the
+ * pointer ([bp-2]). 0x00B01 (the weapon screen): none goes to 0x00B70;
+ * above 12h, or the one already lit ([D096]), to 0x00B49; else the item's
+ * colours are queued (0x03517: index 100h - item, 11BEh, 1) and its
+ * description drawn (0x00BD4). 0x063FB (the roster screen): nothing lit,
+ * or the item lit, goes to 0x06491; else, unless the item is the pilot's
+ * own (100h - item - [CACA]->[0] = -1, to 0x0644A), its colours are
+ * queued (11CDh) and the code goes on at 0x0644A. */
+static int st4_start_weapon_hover(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 10)) return 0;
+    frame_open(c, 2);
+    cpu_push16(c, c->r[R_SI]);
+    set_r8(c, R_AL, ds_get8(c, 0x6C5D));
+    set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0x6C5E;
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 9;
+    if (!guest_call(m, 0x393D, 0x0B15)) return 1;
+    ST2_NEED(20, 0x0B15);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    bp_put8(c, -2, get_r8(c, R_AL));
+    alu_logic(c, get_r8(c, R_AL), 0);
+    if (c->flags & F_ZF) { c->icount += 5; c->ip = 0x0B70; return 1; }
+    alu_sub(c, get_r8(c, R_AL), 0x12, 0, 0);
+    if (x86_cond(c, 7)) { c->icount += 7; c->ip = 0x0B49; return 1; }
+    alu_sub(c, get_r8(c, R_AL), ds_get8(c, 0xD096), 0, 0);
+    if (c->flags & F_ZF) { c->icount += 9; c->ip = 0x0B49; return 1; }
+    c->r[R_CX] = 1;
+    cpu_push16(c, c->r[R_CX]);
+    c->r[R_CX] = 0x11BE;
+    cpu_push16(c, c->r[R_CX]);
+    set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
+    c->r[R_CX] = c->r[R_AX];
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], 0x0100, 1, 0);
+    c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0);       /* neg ax */
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_SI] = c->r[R_CX];
+    c->icount += 19;
+    if (!guest_call(m, 0x3517, 0x0B3F)) return 1;
+    ST2_NEED(3, 0x0B3F);
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0);
+    cpu_push16(c, c->r[R_SI]);
+    c->icount += 2;
+    if (!guest_call(m, 0x0BD4, 0x0B46)) return 1;
+    ST2_NEED(2, 0x0B46);
+    c->r[R_BX] = cpu_pop16(c);
+    c->icount += 2;
+    c->ip = 0x0B70;
+    return 1;
+}
+
+static int st4_start_roster_hover(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 10)) return 0;
+    frame_open(c, 2);
+    cpu_push16(c, c->r[R_SI]);
+    set_r8(c, R_AL, ds_get8(c, 0x7051));
+    set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0x7052;
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 9;
+    if (!guest_call(m, 0x393D, 0x640F)) return 1;
+    ST2_NEED(23, 0x640F);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    bp_put8(c, -2, get_r8(c, R_AL));
+    alu_sub(c, ds_get8(c, 0xD096), 0, 0, 0);
+    if (c->flags & F_ZF) { c->icount += 5; c->ip = 0x6491; return 1; }
+    set_r8(c, R_AL, ds_get8(c, 0xD096));
+    alu_sub(c, bp_get8(c, -2), get_r8(c, R_AL), 0, 0);
+    if (c->flags & F_ZF) { c->icount += 8; c->ip = 0x6491; return 1; }
+    set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
+    c->r[R_BX] = ds_get(c, 0xCACA);                               /* les bx, [CACA] */
+    c->seg[S_ES] = ds_get(c, 0xCACC);
+    c->r[R_CX] = c->r[R_AX];
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], seg_read16(c, c->seg[S_ES], c->r[R_BX]), 1, 0);
+    c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0);       /* neg ax */
+    alu_sub(c, c->r[R_AX], 0xFFFF, 1, 0);
+    if (c->flags & F_ZF) { c->icount += 15; c->ip = 0x644A; return 1; }
+    c->r[R_AX] = 1;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0x11CD;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_CX] = (uint16_t)alu_sub(c, c->r[R_CX], 0x0100, 1, 0);
+    c->r[R_CX] = (uint16_t)alu_sub(c, 0, c->r[R_CX], 1, 0);       /* neg cx */
+    cpu_push16(c, c->r[R_CX]);
+    c->icount += 22;
+    if (!guest_call(m, 0x3517, 0x6447)) return 1;
+    ST2_NEED(1, 0x6447);
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0);
+    c->icount += 1;
+    c->ip = 0x644A;
+    return 1;
+}
+
+/* START 0x09D06 and END 0x05678, the formatter's scan (printf's _output):
+ * 171h bytes of locals by the stack check (0x0A4C6 / 0x05B4E), the state
+ * cleared, the next format character taken (lodsb from [bp+6], kept at
+ * [bp-2]); at the end of the string, or with the count already negative,
+ * the count is the answer (to the exit at entry+4CFh). Otherwise the
+ * character's class (from the table at `classes`, by char - 20h up to 58h,
+ * low nibble; others 0) times 8 plus the old state indexes the same table
+ * again, whose high nibble is the new state ([bp-5]); its handler comes
+ * from the jump table at `handlers`. */
+typedef struct { uint16_t entry, chk, limit, overflow, classes, handlers; } st4_format_scan_t;
+
+static int st4_format_scan(machine_t *m, const st4_format_scan_t *s)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = s->entry;
+    if (!room(c, 43)) return 0;                                   /* the stack check's 8 and the scan's 31 */
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_AX] = 0x0171;
+    cpu_push16(c, AT(9));                                         /* call the stack check */
+    c->icount += 4;
+    rt_stack_check(m, s->limit, s->overflow);
+    if (c->ip != AT(9)) return 1;                                 /* overflow: its handler runs */
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->r[R_DI]);
+    c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);
+    bp_put(c, -8, c->r[R_AX]);
+    bp_put8(c, -5, get_r8(c, R_AL));
+    c->r[R_SI] = bp_get(c, 6);
+    set_r8(c, R_AL, ds_get8(c, c->r[R_SI]));                      /* lodsb */
+    c->r[R_SI] = (uint16_t)(c->r[R_SI] + ((c->flags & F_DF) ? -1 : 1));
+    bp_put(c, 6, c->r[R_SI]);
+    bp_put8(c, -2, get_r8(c, R_AL));
+    alu_logic(c, get_r8(c, R_AL), 0);
+    unsigned n = 11;
+    int done = (c->flags & F_ZF) != 0;
+    if (!done) {
+        alu_sub(c, bp_get(c, -8), 0, 1, 0);
+        n += 2;
+        done = !x86_cond(c, 0xD);                                 /* jge not taken: a negative count */
+    }
+    if (done) {
+        c->r[R_AX] = bp_get(c, -8);
+        c->icount += n + 2;
+        c->ip = AT(0x4CF);
+        return 1;
+    }
+    c->r[R_BX] = s->classes;
+    set_r8(c, R_AL, (uint8_t)alu_sub(c, get_r8(c, R_AL), 0x20, 0, 0));
+    alu_sub(c, get_r8(c, R_AL), 0x58, 0, 0);
+    n += 4;
+    if (!x86_cond(c, 7)) {                                        /* ja not taken */
+        set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + get_r8(c, R_AL))));   /* xlat */
+        set_r8(c, R_AL, (uint8_t)alu_logic(c, get_r8(c, R_AL) & 0x0F, 0));
+        n += 3;
+    } else {
+        set_r8(c, R_AL, 0);
+        n += 1;
+    }
+    set_r8(c, R_CL, 3);
+    set_r8(c, R_AL, (uint8_t)x86_shift(c, 4, get_r8(c, R_AL), 3, 0));
+    set_r8(c, R_AL, (uint8_t)alu_add(c, get_r8(c, R_AL), bp_get8(c, -5), 0, 0));
+    set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + get_r8(c, R_AL))));   /* xlat */
+    set_r8(c, R_CL, (uint8_t)alu_inc(c, get_r8(c, R_CL), 0));
+    set_r8(c, R_AL, (uint8_t)x86_shift(c, 5, get_r8(c, R_AL), get_r8(c, R_CL), 0));
+    bp_put8(c, -5, get_r8(c, R_AL));
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);     /* cbw */
+    c->r[R_BX] = x86_shift(c, 4, c->r[R_AX], 1, 1);
+    c->icount += n + 11;
+    c->ip = seg_read16(c, c->seg[S_CS], (uint16_t)(c->r[R_BX] + s->handlers));
+    return 1;
+}
+static const st4_format_scan_t ST4_FORMAT_SCAN_START = { 0x9D06, 0xA4C6, 0xB154, 0x8FA4, 0xAFEE, 0x9CF6 };
+static const st4_format_scan_t ST4_FORMAT_SCAN_END = { 0x5678, 0x5B4E, 0x531E, 0x4E9A, 0x52BA, 0x5668 };
+static int st4_start_format_scan(machine_t *m) { return st4_format_scan(m, &ST4_FORMAT_SCAN_START); }
+static int st4_end_format_scan(machine_t *m) { return st4_format_scan(m, &ST4_FORMAT_SCAN_END); }
+
+/* START 0x058DF, the aircraft's clamp opening: a 4-byte frame and the
+ * aircraft record's word +38h ([CACA] far) in AX for the switch at
+ * 0x05956. END 0x03682 is the same for the debriefing record ([7222],
+ * word +28h; 2 bytes; on at 0x036BC). */
+static int st4_record_switch_open(machine_t *m, uint16_t locals, uint16_t rec, uint16_t field, uint16_t to)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 6)) return 0;
+    frame_open(c, locals);
+    c->r[R_BX] = ds_get(c, rec);                                  /* les bx, [rec] */
+    c->seg[S_ES] = ds_get(c, (uint16_t)(rec + 2));
+    c->r[R_AX] = seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + field));
+    c->icount += 6;
+    c->ip = to;
+    return 1;
+}
+static int st4_start_clamp_open(machine_t *m) { return st4_record_switch_open(m, 4, 0xCACA, 0x38, 0x5956); }
+static int st4_end_debrief_switch_open(machine_t *m) { return st4_record_switch_open(m, 2, 0x7222, 0x28, 0x36BC); }
+
+/* END 0x00880, an icon's placement opening: the icon record at the
+ * argument gives its kind (byte +4, low six bits) in AX for the switch at
+ * 0x00977, in an 8-byte frame with DI and SI kept. */
+static int st4_end_icon_place_open(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 9)) return 0;
+    frame_open(c, 8);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_SI]);
+    c->r[R_BX] = bp_get(c, 4);
+    set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + 4)));
+    c->r[R_AX] = (uint16_t)alu_logic(c, c->r[R_AX] & 0x003F, 1);
+    c->icount += 9;
+    c->ip = 0x0977;
+    return 1;
+}
+
+/* START 0x094FA and 0x09516, the C runtime's itoa(value, buffer, radix) and
+ * ltoa(value, buffer, radix) entries: BL = 1, the value in DX:AX (an int
+ * sign-extended only in radix 10), the radix in CX and the buffer in DI,
+ * on to the shared conversion (0x0A464; ltoa loads them at 0x0A458). */
+static int st4_start_itoa(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 13)) return 0;
+    frame_open(c, 0);
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->r[R_DI]);
+    set_r8(c, R_BL, 1);
+    c->r[R_CX] = bp_get(c, 8);
+    c->r[R_AX] = bp_get(c, 4);
+    c->r[R_DX] = (uint16_t)alu_logic(c, 0, 1);
+    alu_sub(c, c->r[R_CX], 0x0A, 1, 0);
+    unsigned n = 10;
+    if (c->flags & F_ZF) { cwd(c); n++; }
+    c->r[R_DI] = bp_get(c, 6);
+    c->icount += n + 2;
+    c->ip = 0xA464;
+    return 1;
+}
+
+static int st4_start_ltoa(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 6)) return 0;
+    frame_open(c, 0);
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->r[R_DI]);
+    set_r8(c, R_BL, 1);
+    c->icount += 6;
+    c->ip = 0xA458;
+    return 1;
+}
+
+/* START 0x09694, isprint(c): AL = 57h and the class byte of c (the C
+ * runtime's table at B051). (The entries at 0x09699 and 0x0969E, isgraph
+ * and iscntrl, take masks 17h and 20h.) */
+static int st4_start_isprint(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 8)) return 0;
+    c->r[R_AX] = 0x0057;                                          /* and the JMP to the shared test */
+    frame_open(c, 0);
+    c->r[R_BX] = bp_get(c, 4);
+    set_r8(c, R_AL, (uint8_t)alu_logic(c, get_r8(c, R_AL) & ds_get8(c, (uint16_t)(c->r[R_BX] + 0xB051)), 0));
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 8;
+    near_ret(c);
+    return 1;
+}
+
+/* END 0x03E45, a random number below n: rand() (0x052DC) times n, as a long
+ * (0x0539C, which pops its two longs), shifted right 15 (0x053CE). The
+ * pushed n stays on the stack until MOV SP, BP. */
+static int st4_end_random_below(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 7)) return 0;
+    frame_open(c, 0);
+    c->r[R_AX] = bp_get(c, 4);
+    c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0);
+    cpu_push16(c, c->r[R_DX]);
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 6;
+    if (!guest_call(m, 0x52DC, 0x3E52)) return 1;
+    ST2_NEED(4, 0x3E52);
+    cwd(c);
+    cpu_push16(c, c->r[R_DX]);
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 3;
+    if (!guest_call_pop(m, 0x539C, 0x3E58, 8)) return 1;
+    ST2_NEED(2, 0x3E58);
+    set_r8(c, R_CL, 0x0F);
+    c->icount += 1;
+    if (!guest_call(m, 0x53CE, 0x3E5D)) return 1;
+    ST2_NEED(3, 0x3E5D);
+    c->icount += 3;
+    frame_close_ret(c);
+    return 1;
+}
+
+/* START 0x08E6D and END 0x04D51, the clock's rate step: the tick counter
+ * ([tick]) counts and the driver's rate query (a far call through its
+ * thunk) answers - END counts a second, seven-step counter first and skips
+ * the query (AX as it came) on its seventh. Zero leaves things as they are;
+ * a negative answer sets the divisor ([div]) to 1 and the period ([period])
+ * to the base count ([base]); a positive one takes the divisor from [want]
+ * and the period as base / divisor (a zero divisor is left to the
+ * original's DIV, which takes the divide-error interrupt). Either way the
+ * countdown [count] restarts at 1. */
+typedef struct { uint16_t entry, tick, step, call, want, div, base, period, count; } st4_rate_t;
+
+static int st4_rate_step(machine_t *m, const st4_rate_t *s)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t back = (uint16_t)(s->call + 5);                /* the OR after the query */
+    if (!room(c, s->step ? 18 : 2)) return 0;                     /* END: the counters and the rest without a query */
+    ds_put8(c, s->tick, (uint8_t)alu_inc(c, ds_get8(c, s->tick), 0));
+    unsigned n = 1;
+    int query = 1;
+    if (s->step) {
+        ds_put8(c, s->step, (uint8_t)alu_inc(c, ds_get8(c, s->step), 0));
+        alu_sub(c, ds_get8(c, s->step), 7, 0, 0);
+        n += 3;
+        if (c->flags & F_ZF) { ds_put8(c, s->step, 0); n += 2; query = 0; }   /* mov, jmp */
+    }
+    if (query) {
+        c->icount += n;
+        if (!guest_call_far(m, s->call, back)) return 1;
+        ST2_NEED(12, back);
+        n = 0;
+    }
+    alu_logic(c, c->r[R_AX], 1);                                  /* or ax, ax */
+    n += 2;                                                       /* or, je */
+    if (c->flags & F_ZF) { c->icount += n + 1; near_ret(c); return 1; }
+    n += 2;                                                       /* js, jmp */
+    if (c->flags & F_SF) {
+        ds_put(c, s->div, 1);
+        c->r[R_AX] = ds_get(c, s->base);
+        ds_put(c, s->period, c->r[R_AX]);
+        n += 3;
+    } else {
+        c->r[R_BX] = ds_get(c, s->want);
+        ds_put(c, s->div, c->r[R_BX]);
+        c->r[R_AX] = ds_get(c, s->base);
+        c->r[R_DX] = (uint16_t)alu_logic(c, 0, 1);
+        n += 4;
+        if (c->r[R_BX] == 0) {                                    /* the DIV traps: the original takes it */
+            c->icount += n;
+            c->ip = (uint16_t)(back + 0x1A);
+            return 1;
+        }
+        x86_div16(c, c->r[R_BX]);
+        ds_put(c, s->period, c->r[R_AX]);
+        n += 2;
+    }
+    ds_put8(c, s->count, 1);
+    c->icount += n + 2;
+    near_ret(c);
+    return 1;
+}
+static const st4_rate_t ST4_RATE_START = { 0x8E6D, 0xADFC, 0, 0x8E71, 0xAE0A, 0xAE07, 0xAE0C, 0xAE01, 0xAE09 };
+static const st4_rate_t ST4_RATE_END = { 0x4D51, 0x50CC, 0x50CD, 0x4D67, 0x50DB, 0x50D8, 0x50DD, 0x50D2, 0x50DA };
+static int st4_start_rate_step(machine_t *m) { return st4_rate_step(m, &ST4_RATE_START); }
+static int st4_end_rate_step(machine_t *m) { return st4_rate_step(m, &ST4_RATE_END); }
+
+/* The INT 21h at CS:at, made as translated code makes it: IP past it, the
+ * machine's DOS (its interrupt hook) or the vector takes it, one
+ * instruction. 1 when it came back to the next instruction; 0 when the
+ * machine is elsewhere (the vector's handler, a program's end), and the
+ * routine returns 1 at once. Time a DOS transfer charges is not an
+ * instruction: the caller checks room after the call. */
+static int st4_int21(machine_t *m, uint16_t at)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t cs = c->seg[S_CS], next = (uint16_t)(at + 2);
+    c->op_cs = cs;
+    c->op_ip = at;
+    c->ip = next;
+    cpu_interrupt(c, 0x21);
+    c->icount++;
+    return c->seg[S_CS] == cs && c->ip == next && !c->halted;
+}
+
+/* The C runtime's DOS returns (START 0x098A8 / 0x098BD, END 0x05482 /
+ * 0x05497), reached by a JMP: with CF the error is mapped (0x098D0 /
+ * 0x054AA: errno from AL, or AH when set) and the answer is -1 in DX:AX;
+ * without, the first form answers 0 and the second AX as it is. Then
+ * MOV SP, BP / POP BP / RET. */
+typedef struct { uint16_t zero, as_is, maperr; } st4_dos_t;
+static const st4_dos_t ST4_DOS_START = { 0x98A8, 0x98BD, 0x98D0 };
+static const st4_dos_t ST4_DOS_END = { 0x5482, 0x5497, 0x54AA };
+
+static int st4_dos_return(machine_t *m, const st4_dos_t *d, int zero)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t at = zero ? d->zero : d->as_is;
+    const uint16_t after = (uint16_t)(d->as_is + 5);               /* the MOV AX, -1 after the mapping's CALL */
+    ST2_NEED(5, at);
+    if (c->flags & F_CF) {
+        c->icount += 1;                                           /* jb taken / jae not taken: on to the CALL */
+        if (!guest_call(m, d->maperr, after)) return 1;
+        ST2_NEED(5, after);
+        c->r[R_AX] = 0xFFFF;
+        cwd(c);
+        c->icount += 5;                                           /* mov, cwd, mov, pop, ret */
+    } else if (zero) {
+        c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);
+        c->icount += 5;                                           /* jb, xor, mov, pop, ret */
+    } else {
+        c->icount += 4;                                           /* jae, mov, pop, ret */
+    }
+    frame_close_ret(c);
+    return 1;
+}
+
+/* START 0x0A210, close(handle): a handle past the count ([AE5F]) answers
+ * error 9 (EBADF); otherwise DOS closes it (3Eh) and, done, its flags byte
+ * (AE61 + handle) is cleared. The answer is 0 or -1 (0x098A8). */
+static int st4_start_close(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 9)) return 0;
+    frame_open(c, 0);
+    c->r[R_BX] = bp_get(c, 4);
+    alu_sub(c, c->r[R_BX], ds_get(c, 0xAE5F), 1, 0);
+    if (!(c->flags & F_CF)) {
+        c->r[R_AX] = 0x0900;
+        set_flag(c, F_CF, 1);
+        c->icount += 9;                                           /* ..., jb, mov, stc, jmp, jmp */
+        return st4_dos_return(m, &ST4_DOS_START, 1);
+    }
+    set_r8(c, R_AH, 0x3E);
+    c->icount += 6;
+    if (!st4_int21(m, 0xA224)) return 1;
+    ST2_NEED(3, 0xA226);
+    if (c->flags & F_CF) c->icount += 2;                          /* jb, jmp */
+    else {
+        ds_put8(c, (uint16_t)(c->r[R_BX] + 0xAE61), 0);
+        c->icount += 3;                                           /* jb, mov, jmp */
+    }
+    return st4_dos_return(m, &ST4_DOS_START, 1);
+}
+
+/* START 0x0A4B8, unlink(path): DOS deletes the file (41h); 0 or -1. */
+static int st4_start_unlink(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 5)) return 0;
+    frame_open(c, 0);
+    c->r[R_DX] = bp_get(c, 4);
+    set_r8(c, R_AH, 0x41);
+    c->icount += 4;
+    if (!st4_int21(m, 0xA4C0)) return 1;
+    ST2_NEED(1, 0xA4C2);
+    c->icount += 1;                                               /* jmp */
+    return st4_dos_return(m, &ST4_DOS_START, 1);
+}
+
+/* START 0x0A520 and END 0x05096, lseek(handle, offset, whence): a handle
+ * past the count answers error 9. A negative offset (high bit of its high
+ * word) from the current position or the end (whence 1 or 2) is checked
+ * first: the base is found (4201h, or 4202h after noting the current one)
+ * and a sum below zero answers error 16h (EINVAL) - after moving back to
+ * the noted position when the base was the end; whence 0 with a negative
+ * offset answers 16h at once. Then DOS moves the pointer (42h, AL =
+ * whence) and the handle's flags lose bit 1 (its end-of-file mark). The
+ * answer is the new position in DX:AX, or -1 (0x098BD). */
+typedef struct { uint16_t entry, count, flags; const st4_dos_t *dos; } st4_lseek_t;
+
+static int st4_lseek(machine_t *m, const st4_lseek_t *s)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = s->entry;
+    unsigned n;
+    if (!room(c, 14)) return 0;
+    frame_open(c, 4);
+    c->r[R_BX] = bp_get(c, 4);
+    alu_sub(c, c->r[R_BX], ds_get(c, s->count), 1, 0);
+    if (!(c->flags & F_CF)) {
+        c->r[R_AX] = 0x0900;
+        set_flag(c, F_CF, 1);
+        c->icount += 11;                                          /* ..., jb, mov, jmp, stc, jmp, jmp */
+        return st4_dos_return(m, s->dos, 0);
+    }
+    alu_logic(c, bp_get(c, 8) & 0x8000, 1);                       /* test [bp+8], 8000h */
+    n = 8;
+    if (c->flags & F_ZF) goto move;
+    alu_sub(c, bp_get(c, 10), 0, 1, 0);
+    n += 2;
+    if (c->flags & F_ZF) goto invalid;
+    c->r[R_CX] = (uint16_t)alu_logic(c, 0, 1);
+    c->r[R_DX] = c->r[R_CX];
+    c->r[R_AX] = 0x4201;
+    c->icount += n + 3;
+    if (!st4_int21(m, AT(0x28))) return 1;                        /* the current position */
+    ST2_NEED(11, AT(0x2A));
+    if (c->flags & F_CF) { c->icount += 2; return st4_dos_return(m, s->dos, 0); }   /* jb, jmp */
+    alu_logic(c, bp_get(c, 10) & 2, 1);                           /* test [bp+0Ah], 2 */
+    n = 3;
+    if (!(c->flags & F_ZF)) {                                     /* from the end */
+        bp_put(c, -2, c->r[R_DX]);
+        bp_put(c, -4, c->r[R_AX]);
+        c->r[R_DX] = c->r[R_CX];
+        c->r[R_AX] = 0x4202;
+        c->icount += n + 4;
+        if (!st4_int21(m, AT(0x4C))) return 1;
+        ST2_NEED(8, AT(0x4E));
+        c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], bp_get(c, 6), 1, 0);
+        c->r[R_DX] = (uint16_t)alu_add(c, c->r[R_DX], bp_get(c, 8), 1, (c->flags & F_CF) ? 1u : 0u);
+        n = 3;
+        if (!(c->flags & F_SF)) goto move;
+        c->r[R_CX] = bp_get(c, -2);                               /* below zero: back where it was */
+        c->r[R_DX] = bp_get(c, -4);
+        c->r[R_AX] = 0x4200;
+        c->icount += n + 3;
+        if (!st4_int21(m, AT(0x5F))) return 1;
+        ST2_NEED(5, AT(0x61));
+        n = 1;                                                    /* jmp */
+        goto invalid;
+    }
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], bp_get(c, 6), 1, 0);
+    c->r[R_DX] = (uint16_t)alu_add(c, c->r[R_DX], bp_get(c, 8), 1, (c->flags & F_CF) ? 1u : 0u);
+    n += 3;
+    if (!(c->flags & F_SF)) goto move;
+invalid:                                                          /* entry + 3Bh */
+    c->r[R_AX] = 0x1600;
+    set_flag(c, F_CF, 1);
+    c->icount += n + 4;                                           /* mov, stc, jmp, jmp */
+    return st4_dos_return(m, s->dos, 0);
+move:                                                             /* entry + 63h */
+    c->r[R_DX] = bp_get(c, 6);
+    c->r[R_CX] = bp_get(c, 8);
+    set_r8(c, R_AL, bp_get8(c, 10));
+    set_r8(c, R_AH, 0x42);
+    c->icount += n + 4;
+    if (!st4_int21(m, AT(0x6E))) return 1;
+    ST2_NEED(3, AT(0x70));
+    if (c->flags & F_CF) c->icount += 2;                          /* jb, jmp */
+    else {
+        const uint16_t f = (uint16_t)(c->r[R_BX] + s->flags);
+        ds_put8(c, f, (uint8_t)alu_logic(c, ds_get8(c, f) & 0xFD, 0));
+        c->icount += 3;                                           /* jb, and, jmp */
+    }
+    return st4_dos_return(m, s->dos, 0);
+}
+static const st4_lseek_t ST4_LSEEK_START = { 0xA520, 0xAE5F, 0xAE61, &ST4_DOS_START };
+static const st4_lseek_t ST4_LSEEK_END = { 0x5096, 0x512F, 0x5131, &ST4_DOS_END };
+static int st4_start_lseek(machine_t *m) { return st4_lseek(m, &ST4_LSEEK_START); }
+static int st4_end_lseek(machine_t *m) { return st4_lseek(m, &ST4_LSEEK_END); }
+
+/* START's and END's own DOS wrappers (assembly, not the C runtime's): each
+ * keeps DI, SI, ES and BP on the stack around one DOS call and takes them
+ * back for MOV SP, BP / POP BP / RET. A failed call jumps to the fatal
+ * error report (START 0x08230 / 0x0824B, END 0x041E5) with DX the message
+ * and CX -1 (the open's errors 2-4 name the file in BX). */
+static void st4_wrap_open(cpu_t *c)
+{
+    frame_open(c, 0);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->seg[S_ES]);
+    cpu_push16(c, c->r[R_BP]);
+}
+
+static void st4_wrap_close(cpu_t *c)                              /* pop bp, pop es, pop si, pop di, mov sp, bp, pop bp, ret */
+{
+    c->r[R_BP] = cpu_pop16(c);
+    c->seg[S_ES] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    frame_close_ret(c);
+}
+
+/* After the call: a failure (CF) is MOV DX, msg / MOV CX, -1 / JMP fatal;
+ * otherwise on through the frame. `ok` counts the instructions from the
+ * call to the POPs (the JAE, and a POP DS before it). */
+static int st4_wrap_end(machine_t *m, uint16_t back, unsigned ok, uint16_t msg, uint16_t fatal)
+{
+    cpu_t *c = &m->cpu;
+    ST2_NEED(ok + 7, back);
+    if (c->flags & F_CF) {
+        c->r[R_DX] = msg;
+        c->r[R_CX] = 0xFFFF;
+        c->icount += ok + 3;
+        c->ip = fatal;
+        return 1;
+    }
+    c->icount += ok + 7;
+    st4_wrap_close(c);
+    return 1;
+}
+
+/* START 0x0800A and END 0x03FA4, allocate(bytes): DOS allocates the bytes
+ * rounded up to paragraphs (48h); AX is its answer (the segment, or the
+ * error), whatever the carry. */
+static int st4_dos_alloc(machine_t *m, uint16_t entry)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 16)) return 0;
+    st4_wrap_open(c);
+    set_r8(c, R_AH, 0x48);
+    uint16_t bx = bp_get(c, 4);
+    for (int i = 0; i < 4; i++) bx = x86_shift(c, 5, bx, 1, 1);
+    c->r[R_BX] = bx;
+    alu_logic(c, bp_get(c, 4) & 0x000F, 1);
+    unsigned n = 14;
+    if (!(c->flags & F_ZF)) { c->r[R_BX] = (uint16_t)alu_inc(c, c->r[R_BX], 1); n++; }
+    c->icount += n;
+    if (!st4_int21(m, AT(0x1C))) return 1;
+    ST2_NEED(7, AT(0x1E));
+    c->icount += 7;
+    st4_wrap_close(c);
+    return 1;
+}
+static int st4_start_dos_alloc(machine_t *m) { return st4_dos_alloc(m, 0x800A); }
+static int st4_end_dos_alloc(machine_t *m) { return st4_dos_alloc(m, 0x3FA4); }
+
+/* START 0x08030 and END 0x03FCA, release(segment): DOS frees the block
+ * (49h, ES = the segment); AX is 0 when it did, DOS's error when not. */
+static int st4_dos_free(machine_t *m, uint16_t entry)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 10)) return 0;
+    st4_wrap_open(c);
+    set_r8(c, R_AH, 0x49);
+    c->r[R_BX] = bp_get(c, 4);
+    c->seg[S_ES] = c->r[R_BX];
+    c->icount += 9;
+    if (!st4_int21(m, AT(0x0E))) return 1;
+    ST2_NEED(9, AT(0x10));
+    if (c->flags & F_CF) c->icount += 8;
+    else { c->r[R_AX] = 0; c->icount += 9; }
+    st4_wrap_close(c);
+    return 1;
+}
+static int st4_start_dos_free(machine_t *m) { return st4_dos_free(m, 0x8030); }
+static int st4_end_dos_free(machine_t *m) { return st4_dos_free(m, 0x3FCA); }
+
+/* START 0x08123 and END 0x040BD, close the handle (3Eh). */
+static int st4_dos_close(machine_t *m, uint16_t entry, uint16_t msg, uint16_t fatal)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 9)) return 0;
+    st4_wrap_open(c);
+    set_r8(c, R_AH, 0x3E);
+    c->r[R_BX] = bp_get(c, 4);
+    c->icount += 8;
+    if (!st4_int21(m, AT(0x0C))) return 1;
+    return st4_wrap_end(m, AT(0x0E), 1, msg, fatal);
+}
+static int st4_start_dos_close(machine_t *m) { return st4_dos_close(m, 0x8123, 0x646D, 0x824B); }
+static int st4_end_dos_close(machine_t *m) { return st4_dos_close(m, 0x40BD, 0x1EAF, 0x41E5); }
+
+/* START 0x08144 and END 0x040DE, read(handle, count, buffer) into the stack
+ * segment (DS = SS, left so); START 0x0816F and END 0x04109 the same into
+ * a buffer in the segment given fifth (DS kept around the call). AX is
+ * the count read. */
+static int st4_dos_read(machine_t *m, uint16_t entry, uint16_t msg, uint16_t fatal)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 13)) return 0;
+    st4_wrap_open(c);
+    set_r8(c, R_AH, 0x3F);
+    c->r[R_BX] = c->seg[S_SS];
+    c->seg[S_DS] = c->r[R_BX];
+    c->r[R_BX] = bp_get(c, 4);
+    c->r[R_CX] = bp_get(c, 6);
+    c->r[R_DX] = bp_get(c, 8);
+    c->icount += 12;
+    if (!st4_int21(m, AT(0x16))) return 1;
+    return st4_wrap_end(m, AT(0x18), 1, msg, fatal);
+}
+static int st4_start_dos_read(machine_t *m) { return st4_dos_read(m, 0x8144, 0x6480, 0x824B); }
+static int st4_end_dos_read(machine_t *m) { return st4_dos_read(m, 0x40DE, 0x1EC2, 0x41E5); }
+
+static int st4_dos_read_far(machine_t *m, uint16_t entry, uint16_t msg, uint16_t fatal)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 14)) return 0;
+    st4_wrap_open(c);
+    cpu_push16(c, c->seg[S_DS]);
+    set_r8(c, R_AH, 0x3F);
+    c->r[R_BX] = bp_get(c, 10);
+    c->seg[S_DS] = c->r[R_BX];
+    c->r[R_BX] = bp_get(c, 4);
+    c->r[R_CX] = bp_get(c, 6);
+    c->r[R_DX] = bp_get(c, 8);
+    c->icount += 13;
+    if (!st4_int21(m, AT(0x18))) return 1;
+    ST2_NEED(9, AT(0x1A));                                        /* the POP DS and the rest */
+    c->seg[S_DS] = cpu_pop16(c);
+    return st4_wrap_end(m, AT(0x1A), 2, msg, fatal);              /* (its room check is the one just made) */
+}
+static int st4_start_dos_read_far(machine_t *m) { return st4_dos_read_far(m, 0x816F, 0x6480, 0x824B); }
+static int st4_end_dos_read_far(machine_t *m) { return st4_dos_read_far(m, 0x4109, 0x1EC2, 0x41E5); }
+
+/* START 0x08075, open(name, mode) with the name in the stack segment (DS =
+ * SS, left so): the handle in AX, and the transfer size [649D] set to 200h.
+ * A failure is fatal: file or path not found (2, 3) report 6435h with the
+ * name, too many open files (4) 6445h with it, any other 6460h with the
+ * error in CX (0x08230). */
+static int st4_start_dos_open(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = 0x8075;
+    if (!room(c, 12)) return 0;
+    st4_wrap_open(c);
+    set_r8(c, R_AH, 0x3D);
+    set_r8(c, R_AL, bp_get8(c, 6));
+    c->r[R_BX] = c->seg[S_SS];
+    c->seg[S_DS] = c->r[R_BX];
+    c->r[R_DX] = bp_get(c, 4);
+    c->icount += 11;
+    if (!st4_int21(m, AT(0x13))) return 1;
+    ST2_NEED(11, AT(0x15));
+    if (!(c->flags & F_CF)) {
+        ds_put(c, 0x649D, 0x0200);
+        c->icount += 9;
+        st4_wrap_close(c);
+        return 1;
+    }
+    alu_sub(c, c->r[R_AX], 2, 1, 0);
+    unsigned n = 3;
+    int named = (c->flags & F_ZF) != 0;
+    if (!named) {
+        alu_sub(c, c->r[R_AX], 3, 1, 0);
+        n += 2;
+        named = (c->flags & F_ZF) != 0;
+    }
+    if (named) {
+        c->r[R_BX] = bp_get(c, 4);
+        c->r[R_AX] = 0x6435;
+        c->r[R_CX] = 0xFFFF;
+        n += 4;
+    } else {
+        alu_sub(c, c->r[R_AX], 4, 1, 0);
+        n += 2;
+        if (c->flags & F_ZF) {
+            c->r[R_CX] = 0xFFFF;
+            c->r[R_BX] = bp_get(c, 4);
+            c->r[R_AX] = 0x6445;
+        } else {
+            c->r[R_CX] = c->r[R_AX];
+            c->r[R_AX] = 0x6460;
+            c->r[R_BX] = bp_get(c, 4);
+        }
+        n += 4;
+    }
+    c->icount += n;
+    c->ip = 0x8230;
+    return 1;
+}
+
+/* START 0x0804E, find the file named by the FCB at 6187: the DTA set to
+ * 61B3 (1Ah) and DOS's search (11h); when found (AL 0), AL is the first
+ * difference between the name asked (617E) and the name found (61BB), up
+ * to the asked name's end - 0 for the same name. */
+static int st4_start_find_fcb(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 3)) return 0;
+    set_r8(c, R_AH, 0x1A);
+    c->r[R_DX] = 0x61B3;
+    c->icount += 2;
+    if (!st4_int21(m, 0x8053)) return 1;
+    ST2_NEED(3, 0x8055);
+    set_r8(c, R_AH, 0x11);
+    c->r[R_DX] = 0x6187;
+    c->icount += 2;
+    if (!st4_int21(m, 0x805A)) return 1;
+    ST2_NEED(4, 0x805C);
+    alu_logic(c, get_r8(c, R_AL), 0);
+    if (!(c->flags & F_ZF)) { c->icount += 3; near_ret(c); return 1; }   /* or, jne, ret */
+    set_r8(c, R_AH, (uint8_t)alu_logic(c, 0, 0));
+    c->r[R_BX] = 0xFFFF;
+    c->icount += 4;                                               /* or, jne, xor, mov */
+    for (;;) {
+        ST2_NEED(7, 0x8065);
+        c->r[R_BX] = (uint16_t)alu_inc(c, c->r[R_BX], 1);
+        set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + 0x617E)));
+        alu_logic(c, get_r8(c, R_AL), 0);
+        if (c->flags & F_ZF) { c->icount += 5; break; }           /* the asked name's end: ret */
+        set_r8(c, R_AL, (uint8_t)alu_sub(c, get_r8(c, R_AL), ds_get8(c, (uint16_t)(c->r[R_BX] + 0x61BB)), 0, 0));
+        c->icount += 6;
+        if (!(c->flags & F_ZF)) { c->icount += 1; break; }        /* a difference: ret */
+    }
+    near_ret(c);
+    return 1;
+}
+
+/* The bytes REPNE SCASB looks at from ES:DI for a zero, with CX = FFFFh. */
+static unsigned st4_scan_len(cpu_t *c, uint16_t di)
+{
+    const int delta = (c->flags & F_DF) ? -1 : 1;
+    unsigned k = 0;
+    uint8_t b;
+    do {
+        b = mem_read8(c, phys(c->seg[S_ES], di));
+        di = (uint16_t)(di + delta);
+        k++;
+    } while (b && k < 0xFFFF);
+    return k;
+}
+
+/* START 0x09873 and END 0x0544D, the C runtime's message report (n): the
+ * text of message n (0x09848 / 0x05422, which pops its argument; 0 for
+ * none) is written to the standard error handle (40h, BX 2) - after the
+ * hook at [hook] when the magic word before it is D6D6h. Pops n. */
+typedef struct { uint16_t entry, find, magic, hook; } st4_message_t;
+
+static int st4_message(machine_t *m, const st4_message_t *s)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = s->entry;
+    if (!room(c, 5)) return 0;
+    frame_open(c, 0);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, bp_get(c, 4));
+    c->icount += 4;
+    if (!guest_call_pop(m, s->find, AT(0x0A), 2)) return 1;
+    const unsigned k = c->r[R_AX] ? st4_scan_len(c, c->r[R_AX]) : 0;
+    ST2_NEED(c->r[R_AX] ? 13 + k : 6, AT(0x0A));                  /* to the write, or the return */
+    alu_logic(c, c->r[R_AX], 1);
+    if (c->flags & F_ZF) {                                        /* no such message */
+        c->r[R_DI] = cpu_pop16(c);
+        c->icount += 6;
+        frame_close_ret(c);
+        c->r[R_SP] = (uint16_t)(c->r[R_SP] + 2);
+        return 1;
+    }
+    const uint16_t t = c->r[R_DX];
+    c->r[R_DX] = c->r[R_AX];                                      /* xchg dx, ax */
+    c->r[R_AX] = t;
+    c->r[R_DI] = c->r[R_DX];
+    c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);
+    c->r[R_CX] = 0xFFFF;
+    rep_string(c, STR_SCAS, 0, 0, 1);                             /* repne scasb */
+    c->r[R_CX] = (uint16_t)~c->r[R_CX];                           /* not cx */
+    c->r[R_CX] = (uint16_t)alu_dec(c, c->r[R_CX], 1);
+    c->r[R_BX] = 2;
+    alu_sub(c, ds_get(c, s->magic), 0xD6D6, 1, 0);
+    c->icount += 11 + k;                                          /* or, je, xchg, mov, xor, mov, the scan, not, dec, mov, cmp, jne */
+    if (c->flags & F_ZF) {
+        if (!guest_call(m, ds_get(c, s->hook), AT(0x2A))) return 1;
+        ST2_NEED(2, AT(0x2A));
+    }
+    set_r8(c, R_AH, 0x40);
+    c->icount += 1;
+    if (!st4_int21(m, AT(0x2C))) return 1;
+    ST2_NEED(4, AT(0x2E));
+    c->r[R_DI] = cpu_pop16(c);
+    c->icount += 4;
+    frame_close_ret(c);
+    c->r[R_SP] = (uint16_t)(c->r[R_SP] + 2);
+    return 1;
+}
+static const st4_message_t ST4_MESSAGE_START = { 0x9873, 0x9848, 0xB170, 0xB172 };
+static const st4_message_t ST4_MESSAGE_END = { 0x544D, 0x5422, 0x5338, 0x533A };
+static int st4_start_message(machine_t *m) { return st4_message(m, &ST4_MESSAGE_START); }
+static int st4_end_message(machine_t *m) { return st4_message(m, &ST4_MESSAGE_END); }
+
+/* START 0x09800 and END 0x053DA, the run-time error report: message FCh
+ * (the "run-time error" lead-in), the hook at [hook] when there is one,
+ * then message FFh (the line's end). */
+typedef struct { uint16_t entry, message, hook; } st4_rterror_t;
+
+static int st4_rterror(machine_t *m, const st4_rterror_t *s)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = s->entry;
+    if (!room(c, 5)) return 0;
+    frame_open(c, 0);
+    c->r[R_AX] = 0x00FC;
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 4;
+    if (!guest_call_pop(m, s->message, AT(0x0A), 2)) return 1;
+    ST2_NEED(6, AT(0x0A));
+    alu_sub(c, ds_get(c, s->hook), 0, 1, 0);
+    c->icount += 2;
+    if (!(c->flags & F_ZF)) {
+        if (!guest_call(m, ds_get(c, s->hook), AT(0x15))) return 1;
+        ST2_NEED(3, AT(0x15));
+    }
+    c->r[R_AX] = 0x00FF;
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 2;
+    if (!guest_call_pop(m, s->message, AT(0x1C), 2)) return 1;
+    ST2_NEED(3, AT(0x1C));
+    c->icount += 3;
+    frame_close_ret(c);
+    return 1;
+}
+static const st4_rterror_t ST4_RTERROR_START = { 0x9800, 0x9873, 0xAE90 };
+static const st4_rterror_t ST4_RTERROR_END = { 0x53DA, 0x544D, 0x515C };
+static int st4_start_rterror(machine_t *m) { return st4_rterror(m, &ST4_RTERROR_START); }
+static int st4_end_rterror(machine_t *m) { return st4_rterror(m, &ST4_RTERROR_END); }
+
+/* START 0x09115 and END 0x0500B, put the interrupt vectors back at exit:
+ * the far hook at [hook] (when its segment is not 0, with BX 2), then the
+ * divide-error vector (25h 00h) from [vec0], and the second vector saved
+ * at [num] / [vec1] when [saved] says one was. DS is kept around each. */
+typedef struct { uint16_t entry, hook, vec0, saved, num, vec1; } st4_vectors_t;
+
+static int st4_restore_vectors(machine_t *m, const st4_vectors_t *s)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = s->entry;
+    if (!room(c, 6)) return 0;
+    c->r[R_CX] = ds_get(c, (uint16_t)(s->hook + 2));
+    c->icount += 2;
+    if (c->r[R_CX] != 0) {
+        c->r[R_BX] = 2;
+        c->icount += 1;
+        if (!guest_call_far_to(m, ds_get(c, (uint16_t)(s->hook + 2)), ds_get(c, s->hook), AT(0x0D))) return 1;
+        ST2_NEED(4, AT(0x0D));
+    }
+    cpu_push16(c, c->seg[S_DS]);
+    c->r[R_DX] = ds_get(c, s->vec0);                              /* lds dx, [vec0] */
+    c->seg[S_DS] = ds_get(c, (uint16_t)(s->vec0 + 2));
+    c->r[R_AX] = 0x2500;
+    c->icount += 3;
+    if (!st4_int21(m, AT(0x15))) return 1;
+    ST2_NEED(8, AT(0x17));
+    c->seg[S_DS] = cpu_pop16(c);
+    alu_sub(c, ds_get8(c, s->saved), 0, 0, 0);
+    if (c->flags & F_ZF) { c->icount += 4; near_ret(c); return 1; }
+    cpu_push16(c, c->seg[S_DS]);
+    set_r8(c, R_AL, ds_get8(c, s->num));
+    c->r[R_DX] = ds_get(c, s->vec1);
+    c->seg[S_DS] = ds_get(c, (uint16_t)(s->vec1 + 2));
+    set_r8(c, R_AH, 0x25);
+    c->icount += 7;
+    if (!st4_int21(m, AT(0x29))) return 1;
+    ST2_NEED(2, AT(0x2B));
+    c->seg[S_DS] = cpu_pop16(c);
+    c->icount += 2;
+    near_ret(c);
+    return 1;
+}
+static const st4_vectors_t ST4_VECTORS_START = { 0x9115, 0xB180, 0xAE44, 0xAE82, 0xAE83, 0xAE84 };
+static const st4_vectors_t ST4_VECTORS_END = { 0x500B, 0x5348, 0x5114, 0x5152, 0x5153, 0x5154 };
+static int st4_start_restore_vectors(machine_t *m) { return st4_restore_vectors(m, &ST4_VECTORS_START); }
+static int st4_end_restore_vectors(machine_t *m) { return st4_restore_vectors(m, &ST4_VECTORS_END); }
+
+/* START 0x0405F, wait up to n ticks for a press (0x03F33) and sound it: the
+ * wait's answer in AL - 0 (none) answers 0 at once, 1 and 2 sound cue 1Ah
+ * or 23h through the driver (its thunk at 0A95:6BB1) and answer 0, 3
+ * sounds 1Ah and answers 1; any other is answered as it came. */
+static int st4_start_wait_sound(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = 0x405F;
+    if (!room(c, 5)) return 0;
+    frame_open(c, 2);
+    cpu_push16(c, bp_get(c, 4));
+    c->icount += 4;
+    if (!guest_call(m, 0x3F33, AT(0x0C))) return 1;
+    ST2_NEED(14, AT(0x0C));
+    c->r[R_BX] = cpu_pop16(c);
+    set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
+    alu_logic(c, c->r[R_AX], 1);                                  /* (jmp) or ax, ax */
+    unsigned n = 5;
+    uint16_t cue = 0, answer = 0;
+    if (c->flags & F_ZF) {                                        /* 0x0407A */
+        c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+        c->icount += n + 5;                                       /* sub, jmp, mov, pop, ret */
+        frame_close_ret(c);
+        return 1;
+    }
+    c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1);
+    n += 2;
+    if (c->flags & F_ZF) { cue = 0x1A; n += 1; }                  /* 0x04070: mov ax, 1Ah */
+    else {
+        c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1);
+        n += 2;
+        if (c->flags & F_ZF) { cue = 0x23; n += 2; }              /* 0x0407E: mov ax, 23h / jmp */
+        else {
+            c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1);
+            n += 2;
+            if (c->flags & F_ZF) { cue = 0x1A; answer = 1; n += 1; }   /* 0x04083 */
+            else { c->icount += n + 3; frame_close_ret(c); return 1; }  /* mov sp, bp / pop bp / ret */
+        }
+    }
+    c->r[R_AX] = cue;
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += n + 1;
+    const uint16_t call = answer ? AT(0x28) : AT(0x15);
+    if (!guest_call_far(m, call, (uint16_t)(call + 5))) return 1;
+    ST2_NEED(6, (uint16_t)(call + 5));
+    c->r[R_BX] = cpu_pop16(c);
+    if (answer) c->r[R_AX] = 1;
+    else c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+    c->icount += 6;
+    frame_close_ret(c);
+    return 1;
+}
+
+/* END 0x011B7, a message box's opening (text, x, y, width, centred, lines):
+ * the box template at 6DB8 (its line count [6DC4] from the fifth argument)
+ * copied into the frame and its first word set to -1, the text measured by
+ * the wrapped-text routine (0x01A75) for the box's size ([55B6] wide plus
+ * 12, [55B8] high plus 12), and its left edge [55B2]: x, or centred on x,
+ * held inside the 320-pixel screen. Its last test goes on at 0x0123F. */
+static int st4_end_box_open(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 25 + 11)) return 0;
+    frame_open(c, 0x18);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_SI]);
+    bp_put(c, -0x18, 0x6DB8);
+    c->r[R_AX] = bp_get(c, 0x0A);
+    ds_put(c, 0x6DC4, c->r[R_AX]);
+    c->r[R_DI] = (uint16_t)(c->r[R_BP] - 0x16);
+    c->r[R_SI] = 0x6DB8;
+    c->seg[S_ES] = c->seg[S_SS];                                  /* push ss / pop es */
+    c->r[R_CX] = 0x000B;
+    const unsigned k = rep_string(c, STR_MOVS, 1, c->seg[S_DS], 0);   /* rep movsw */
+    bp_put(c, -0x16, 0xFFFF);
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_CX] = 8;
+    cpu_push16(c, c->r[R_CX]);
+    cpu_push16(c, bp_get(c, 0x0E));
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, bp_get(c, 4));
+    c->r[R_AX] = (uint16_t)(c->r[R_BP] - 0x16);
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 24 + k;                                          /* the 24 before the CALL, the copy one a word */
+    if (!guest_call(m, 0x1A75, 0x11F2)) return 1;
+    ST2_NEED(23, 0x11F2);
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x0E, 1, 0);
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], 0x0C, 1, 0);
+    ds_put(c, 0x55B6, c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)alu_add(c, bp_get(c, -0x0C), 0x0C, 1, 0);
+    ds_put(c, 0x55B8, c->r[R_AX]);
+    alu_sub(c, bp_get(c, 0x0C), 0, 1, 0);
+    unsigned n = 8;
+    if (c->flags & F_ZF) { c->r[R_AX] = bp_get(c, 6); n += 1; }
+    else {
+        c->r[R_AX] = x86_shift(c, 7, ds_get(c, 0x55B6), 1, 1);   /* sar ax, 1 */
+        c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], bp_get(c, 6), 1, 0);
+        c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0);   /* neg ax */
+        n += 5;
+    }
+    ds_put(c, 0x55B2, c->r[R_AX]);                                /* 0x01219 */
+    alu_logic(c, c->r[R_AX], 1);
+    n += 3;
+    if (!x86_cond(c, 0xD)) {                                      /* jge not taken: off the left */
+        ds_put(c, 0x55B2, 0);
+        n += 2;
+    } else {
+        c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], ds_get(c, 0x55B6), 1, 0);
+        alu_sub(c, c->r[R_AX], 0x0140, 1, 0);
+        n += 3;
+        if (!x86_cond(c, 0xE)) {                                  /* jle not taken: off the right */
+            c->r[R_AX] = 0x0140;
+            c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], ds_get(c, 0x55B6), 1, 0);
+            ds_put(c, 0x55B2, c->r[R_AX]);
+            n += 3;
+        }
+    }
+    alu_sub(c, bp_get(c, 0x0C), 0, 1, 0);                         /* 0x0123B */
+    c->icount += n + 1;
+    c->ip = 0x123F;
+    return 1;
+}
+
+/* END 0x039D0, the debriefing's closing remark: none when the debriefing
+ * record ([7222]) shows a death (+28h) or a capture (+30h). Otherwise the
+ * remark box's colours are set ([6D98] 4, [6D90] FDh, [6D92] FEh) and a
+ * remark table chosen ([55C0], with its size in [55BE]) with a style
+ * ([bp-4]) and a picture ([bp-2], 0x0398F's for the first): a clean
+ * sortie (no crash [55E6], no loss [643A], no ejection [6D89] or
+ * ditching [720E], not the mission kind 63h) gets the praise table
+ * (48E7h, 8); an ejection or ditching that still lost nothing, unflagged
+ * by [6440], 4510h (7); mission kind 63h 4A4Ah, or 4E53h when its target
+ * kind (+20h) is not 6 (4, style 2); a crash or loss 4C32h (5, style 1);
+ * else 4AEBh (5) for under three kills (+2Ch of [7222]) or 464Eh (6).
+ * The style's picture is drawn (0x01901 with the table at 1036h), a remark
+ * picked at random (0x03E45) and drawn wrapped in the box at 6D8C
+ * (0x01A75, the style's place from 1048h/1042h/103Ch), and the box shown
+ * (0x0206A at 1054h/104Eh). */
+static int st4_end_closing_remark(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = 0x39D0;
+    if (!room(c, 64)) return 0;                                   /* the longest way to the first call */
+    frame_open(c, 4);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_SI]);
+    c->r[R_BX] = ds_get(c, 0x7222);                               /* les bx, [7222] */
+    c->seg[S_ES] = ds_get(c, 0x7224);
+    alu_sub(c, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x28)), 0, 1, 0);
+    unsigned n = 8;
+    int skip = !(c->flags & F_ZF);
+    if (!skip) {
+        alu_sub(c, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x30)), 0, 1, 0);
+        n += 2;
+        skip = !(c->flags & F_ZF);
+    }
+    if (skip) {                                                   /* jmp 0x03B3B */
+        c->icount += n + 6;                                       /* jmp, pop, pop, mov, pop, ret */
+        c->r[R_SI] = cpu_pop16(c);
+        c->r[R_DI] = cpu_pop16(c);
+        frame_close_ret(c);
+        return 1;
+    }
+    ds_put(c, 0x6D98, 4);
+    ds_put(c, 0x6D90, 0x00FD);
+    ds_put(c, 0x6D92, 0x00FE);
+    n += 3;
+    uint16_t table, picture = 0;
+    uint8_t size, style;
+#define ST4_ZERO8(a) (alu_sub(c, ds_get8(c, (a)), 0, 0, 0), (c->flags & F_ZF) != 0)
+#define ST4_REC_IS(f, v) (alu_sub(c, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + (f))), (v), 1, 0), (c->flags & F_ZF) != 0)
+    /* 0x039FF: a clean sortie */
+    n += 2; if (!ST4_ZERO8(0x55E6)) goto q;
+    n += 2; if (!ST4_ZERO8(0x643A)) goto q;
+    n += 2; if (!ST4_ZERO8(0x6D89)) goto q;
+    n += 2; if (!ST4_ZERO8(0x720E)) goto q;
+    c->r[R_BX] = ds_get(c, 0x55DE);
+    c->seg[S_ES] = ds_get(c, 0x55E0);
+    n += 3; if (ST4_REC_IS(0x36, 0x63)) goto q;
+    table = 0x48E7; size = 8; style = 0; picture = 0x398F;
+    n += 2 + 3;                                                   /* mov, mov; mov, mov, jmp */
+    goto chosen;
+q:  /* 0x03A3D: an ejection or ditching that lost nothing */
+    n += 2;
+    if (ST4_ZERO8(0x6D89)) {
+        n += 2;
+        if (ST4_ZERO8(0x720E)) goto r;
+    }
+    n += 2; if (!ST4_ZERO8(0x6440)) goto r;
+    n += 2; if (!ST4_ZERO8(0x55E6)) goto r;
+    n += 2; if (!ST4_ZERO8(0x643A)) goto r;
+    table = 0x4510; size = 7; style = 0; picture = 0x398F;
+    n += 3 + 3;                                                   /* mov, mov, jmp; mov, mov, jmp */
+    goto chosen;
+r:  /* 0x03A6D: the special mission kind */
+    c->r[R_BX] = ds_get(c, 0x55DE);
+    c->seg[S_ES] = ds_get(c, 0x55E0);
+    n += 3;
+    if (ST4_REC_IS(0x36, 0x63)) {
+        n += 2;
+        if (ST4_REC_IS(0x20, 6)) { table = 0x4A4A; n += 2; goto kind63; }
+    }
+    n += 2; if (!ST4_REC_IS(0x36, 0x63)) goto s;                 /* 0x03A87 */
+    n += 2; if (ST4_REC_IS(0x20, 6)) goto s;
+    table = 0x4E53;
+    n += 1;
+kind63:                                                           /* 0x03A9B */
+    size = 4; style = 2;
+    n += 3 + 1;                                                   /* mov, mov, jmp; mov */
+    goto chosen;
+s:  /* 0x03AA6: a crash or a loss */
+    n += 2;
+    if (ST4_ZERO8(0x55E6)) {
+        n += 2;
+        if (ST4_ZERO8(0x643A)) goto u;
+    }
+    table = 0x4C32; size = 5; style = 1;
+    n += 3 + 2;                                                   /* mov, mov, jmp; mov, mov */
+    goto chosen;
+u:  /* 0x03AC1: by kills */
+    c->r[R_BX] = ds_get(c, 0x7222);
+    c->seg[S_ES] = ds_get(c, 0x7224);
+    alu_sub(c, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x2C)), 3, 1, 0);
+    n += 3;
+    if (c->flags & F_CF) { table = 0x4AEB; size = 5; n += 2 + 2 + 2; }  /* mov, jmp; mov, jmp; mov, mov */
+    else { table = 0x464E; size = 6; n += 2 + 2; }               /* mov, mov; mov, mov */
+    style = 1;
+chosen:
+#undef ST4_ZERO8
+#undef ST4_REC_IS
+    ds_put(c, 0x55C0, table);
+    ds_put8(c, 0x55BE, size);
+    bp_put8(c, -4, style);
+    bp_put(c, -2, picture);
+    /* 0x03AE8 */
+    cpu_push16(c, bp_get(c, -2));
+    set_r8(c, R_BL, bp_get8(c, -4));
+    set_r8(c, R_BH, (uint8_t)alu_sub(c, get_r8(c, R_BH), get_r8(c, R_BH), 0, 0));
+    c->r[R_BX] = x86_shift(c, 4, c->r[R_BX], 1, 1);
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x1036)));
+    c->r[R_SI] = c->r[R_BX];
+    c->icount += n + 6;
+    if (!guest_call(m, 0x1901, AT(0x12B))) return 1;
+    ST2_NEED(13, AT(0x12B));
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_AX] = 1;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 8;
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_SI] + 0x1048)));
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_SI] + 0x1042)));
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_SI] + 0x103C)));
+    set_r8(c, R_AL, ds_get8(c, 0x55BE));
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);     /* cbw */
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 12;
+    if (!guest_call(m, 0x3E45, AT(0x149))) return 1;
+    ST2_NEED(8, AT(0x149));
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = x86_shift(c, 4, c->r[R_AX], 1, 1);
+    c->r[R_DI] = ds_get(c, 0x55C0);
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + c->r[R_DI])));
+    c->r[R_AX] = 0x6D8C;
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 7;
+    if (!guest_call(m, 0x1A75, AT(0x15B))) return 1;
+    ST2_NEED(4, AT(0x15B));
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x0E, 1, 0);
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_SI] + 0x1054)));
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_SI] + 0x104E)));
+    c->icount += 3;
+    if (!guest_call(m, 0x206A, AT(0x169))) return 1;
+    ST2_NEED(7, AT(0x169));
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->icount += 7;
+    frame_close_ret(c);
+    return 1;
+}
+
+/* START 0x0196A, the briefing map's marks one by one (fast): for each of the
+ * [B2E6] marks - each first waited for (0x0405F with 8; its answer becomes
+ * `fast`) and sounded (cue 1Ch through the driver) until a key makes it
+ * fast - the mark's target record (CBDE + 16 x the byte at B286 + 2i) and
+ * place (the 8-byte entries at 6D62: x + 6, y + 5) are taken. A mark whose
+ * flag byte (B287 + 2i) is set is drawn as a symbol: the sprite [E082] at
+ * (x - 1, y), its shadow [D29E] 3 to the right - or, in the night view
+ * ([B2E8] = 1), [D08E] 2 to the left and its shadow 3 to the right of that;
+ * otherwise as its target: [D29E] for a target with no word +6, [E09A] for
+ * one flagged 8 (+8), else [E082], or in the night view [D08E] one to the
+ * left. Each is drawn on the map window (DC18) and, unless fast, on the
+ * small map (DC02) too (0x03693). The answer is `fast` widened. */
+static int st4_start_map_marks(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 6)) return 0;
+    frame_open(c, 0x0C);
+    cpu_push16(c, c->r[R_SI]);
+    bp_put(c, -0x0A, 0);
+    c->icount += 6;
+    for (;;) {
+        unsigned n;
+        ST2_NEED(42, 0x1A35);                                     /* the longest way to the next call, or the return */
+        c->r[R_AX] = ds_get(c, 0xB2E6);
+        alu_sub(c, bp_get(c, -0x0A), c->r[R_AX], 1, 0);
+        if (!(c->flags & F_CF)) {                                 /* all done: 0x01AAD */
+            set_r8(c, R_AL, bp_get8(c, 4));
+            c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);
+            c->r[R_SI] = cpu_pop16(c);
+            c->icount += 3 + 6;
+            frame_close_ret(c);
+            return 1;
+        }
+        alu_sub(c, bp_get8(c, 4), 0, 0, 0);
+        n = 5;
+        if (c->flags & F_ZF) {                                    /* not fast: wait, and sound the mark */
+            c->r[R_AX] = 8;
+            cpu_push16(c, c->r[R_AX]);
+            c->icount += n + 2;
+            if (!guest_call(m, 0x405F, 0x1A4A)) return 1;
+            ST2_NEED(5, 0x1A4A);
+            c->r[R_BX] = cpu_pop16(c);
+            bp_put8(c, 4, get_r8(c, R_AL));
+            c->r[R_AX] = 0x001C;
+            cpu_push16(c, c->r[R_AX]);
+            c->icount += 4;
+            if (!guest_call_far(m, 0x1A52, 0x1A57)) return 1;
+            ST2_NEED(38, 0x1A57);
+            c->r[R_BX] = cpu_pop16(c);
+            n = 1;
+        }
+        /* 0x01A58: the mark's target and place */
+        uint16_t bx = x86_shift(c, 4, bp_get(c, -0x0A), 1, 1);
+        c->r[R_BX] = bx;
+        set_r8(c, R_AL, ds_get8(c, (uint16_t)(bx + 0xB286)));
+        c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);
+        set_r8(c, R_CL, 4);
+        c->r[R_AX] = x86_shift(c, 4, c->r[R_AX], 4, 1);
+        c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], 0xCBDE, 1, 0);
+        bp_put(c, -4, c->r[R_AX]);
+        set_r8(c, R_CL, 3);
+        c->r[R_SI] = x86_shift(c, 4, bp_get(c, -0x0A), 3, 1);
+        c->r[R_AX] = (uint16_t)alu_add(c, ds_get(c, (uint16_t)(c->r[R_SI] + 0x6D62)), 6, 1, 0);
+        bp_put(c, -6, c->r[R_AX]);
+        c->r[R_CX] = (uint16_t)alu_add(c, ds_get(c, (uint16_t)(c->r[R_SI] + 0x6D64)), 5, 1, 0);
+        bp_put(c, -8, c->r[R_CX]);
+        alu_sub(c, ds_get8(c, (uint16_t)(bx + 0xB287)), 0, 0, 0);
+        n += 19;
+        if (c->flags & F_ZF) {                                    /* as its target: 0x019D7 */
+            bx = bp_get(c, -4);
+            c->r[R_BX] = bx;
+            alu_sub(c, ds_get(c, (uint16_t)(bx + 6)), 0, 1, 0);
+            n += 1 + 3;                                           /* jmp; mov, cmp, je */
+            if (c->flags & F_ZF) {
+                c->r[R_AX] = ds_get(c, 0xD29E);
+                bp_put(c, -2, c->r[R_AX]);
+                n += 2;
+            } else {
+                alu_logic(c, ds_get8(c, (uint16_t)(bx + 8)) & 8, 0);
+                n += 2;
+                if (!(c->flags & F_ZF)) {
+                    c->r[R_AX] = ds_get(c, 0xE09A);
+                    bp_put(c, -2, c->r[R_AX]);
+                    n += 3;
+                } else {
+                    alu_sub(c, ds_get8(c, 0xB2E8), 1, 0, 0);
+                    n += 2;
+                    if (c->flags & F_ZF) {                        /* the night view */
+                        c->r[R_AX] = ds_get(c, 0xD08E);
+                        bp_put(c, -2, c->r[R_AX]);
+                        bp_put(c, -6, (uint16_t)alu_dec(c, bp_get(c, -6), 1));
+                        n += 4;
+                    } else {
+                        c->r[R_AX] = ds_get(c, 0xE082);
+                        bp_put(c, -2, c->r[R_AX]);
+                        n += 3;
+                    }
+                }
+            }
+            /* 0x01A08 */
+            cpu_push16(c, bp_get(c, -2));
+            cpu_push16(c, c->r[R_CX]);
+            cpu_push16(c, bp_get(c, -6));
+            c->r[R_AX] = 0xDC18;
+            cpu_push16(c, c->r[R_AX]);
+            c->icount += n + 5;
+            if (!guest_call(m, 0x3693, 0x1A16)) return 1;
+            ST2_NEED(9, 0x1A16);
+            c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0);
+            alu_sub(c, bp_get8(c, 4), 0, 0, 0);
+            n = 3;
+            if (!(c->flags & F_ZF)) goto next;
+            cpu_push16(c, bp_get(c, -2));
+            cpu_push16(c, bp_get(c, -8));
+            cpu_push16(c, bp_get(c, -6));
+            n += 3;
+        } else {                                                  /* as a symbol: 0x01A91 */
+            alu_sub(c, ds_get8(c, 0xB2E8), 1, 0, 0);
+            n += 2;                                               /* cmp, je */
+            if (!(c->flags & F_ZF)) {                             /* 0x01979 */
+                c->r[R_AX] = ds_get(c, 0xE082);
+                bp_put(c, -2, c->r[R_AX]);
+                bp_put(c, -6, (uint16_t)alu_dec(c, bp_get(c, -6), 1));
+                c->r[R_AX] = (uint16_t)alu_add(c, bp_get(c, -6), 3, 1, 0);
+                n += 1 + 5;                                       /* jmp; mov, mov, dec, mov, add */
+            } else {                                              /* 0x01A9B, the night view */
+                c->r[R_CX] = ds_get(c, 0xD08E);
+                bp_put(c, -2, c->r[R_CX]);
+                c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1);
+                c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1);
+                bp_put(c, -6, c->r[R_AX]);
+                c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], 5, 1, 0);
+                n += 7;                                           /* mov, mov, dec, dec, mov, add, jmp */
+            }
+            /* 0x01988 */
+            bp_put(c, -0x0C, c->r[R_AX]);
+            cpu_push16(c, bp_get(c, -2));
+            cpu_push16(c, bp_get(c, -8));
+            cpu_push16(c, bp_get(c, -6));
+            c->r[R_AX] = 0xDC18;
+            cpu_push16(c, c->r[R_AX]);
+            c->icount += n + 6;
+            if (!guest_call(m, 0x3693, 0x199B)) return 1;
+            ST2_NEED(7, 0x199B);
+            c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0);
+            cpu_push16(c, ds_get(c, 0xD29E));
+            cpu_push16(c, bp_get(c, -8));
+            cpu_push16(c, bp_get(c, -0x0C));
+            c->r[R_AX] = 0xDC18;
+            cpu_push16(c, c->r[R_AX]);
+            c->icount += 6;
+            if (!guest_call(m, 0x3693, 0x19AF)) return 1;
+            ST2_NEED(9, 0x19AF);
+            c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0);
+            alu_sub(c, bp_get8(c, 4), 0, 0, 0);
+            n = 3;
+            if (!(c->flags & F_ZF)) goto next;
+            cpu_push16(c, bp_get(c, -2));
+            cpu_push16(c, bp_get(c, -8));
+            cpu_push16(c, bp_get(c, -6));
+            c->r[R_AX] = 0xDC02;
+            cpu_push16(c, c->r[R_AX]);
+            c->icount += n + 5;
+            if (!guest_call(m, 0x3693, 0x19C8)) return 1;
+            ST2_NEED(8, 0x19C8);
+            c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0);
+            cpu_push16(c, ds_get(c, 0xD29E));
+            cpu_push16(c, bp_get(c, -8));
+            cpu_push16(c, bp_get(c, -0x0C));
+            n = 5;                                                /* add, push, push, push, jmp */
+        }
+        /* 0x01A28: on the small map too */
+        c->r[R_AX] = 0xDC02;
+        cpu_push16(c, c->r[R_AX]);
+        c->icount += n + 2;
+        if (!guest_call(m, 0x3693, 0x1A2F)) return 1;
+        ST2_NEED(2, 0x1A2F);
+        c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0);
+        n = 1;
+next:                                                             /* 0x01A32 */
+        bp_put(c, -0x0A, (uint16_t)alu_inc(c, bp_get(c, -0x0A), 1));
+        c->icount += n + 1;
+    }
+}
+
+/* END 0x00DA3, the replay's clock and score panel (event): the panel's box
+ * cleared in colour E2h (0x049D2 on the window at 6DA2: 75, 180 to 248,
+ * 195), the window's style set (shadow 3, colours 15 and 8), the event's
+ * time (its 6-byte record at 5E38 + 6 x event, by 0x00EF3 into the frame)
+ * and the scorer's rating so far (0x03021) each formatted (0x0521C with
+ * 2A7h and 2B0h) and drawn shadowed at (78, 180) and (78, 188) (0x019C3);
+ * past the first event the caption 2BBh too (0x0112A at 195, 184); then
+ * the rectangle (75, 180, 174 x 17) is published to page 0 through the
+ * driver (5FA:24CC). */
+static int st4_end_score_panel(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = 0x0DA3;
+    if (!room(c, 16)) return 0;
+    frame_open(c, 0x52);
+    ds_put(c, 0x6DA6, 0x00E2);
+    c->r[R_AX] = 0x00C3;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_CX] = 0x00F8;
+    cpu_push16(c, c->r[R_CX]);
+    c->r[R_CX] = 0x00B4;
+    cpu_push16(c, c->r[R_CX]);
+    c->r[R_DX] = 0x004B;
+    cpu_push16(c, c->r[R_DX]);
+    c->r[R_DX] = 0x6DA2;
+    bp_put(c, -2, c->r[R_DX]);
+    cpu_push16(c, c->r[R_DX]);
+    c->icount += 15;
+    if (!guest_call(m, 0x49D2, AT(0x26))) return 1;
+    ST2_NEED(11, AT(0x26));
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x0A, 1, 0);
+    ds_put(c, 0x6DAE, 3);
+    ds_put(c, 0x6DA6, 0x000F);
+    ds_put(c, 0x6DA8, 8);
+    c->r[R_AX] = (uint16_t)(c->r[R_BP] - 0x52);
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 6;
+    x86_mul16(c, bp_get(c, 4));
+    c->r[R_BX] = c->r[R_AX];
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x5E38)));
+    c->icount += 10;
+    if (!guest_call(m, 0x0EF3, AT(0x4E))) return 1;
+    ST2_NEED(8, AT(0x4E));
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0x02A7;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)(c->r[R_BP] - 0x42);
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 7;
+    if (!guest_call(m, 0x521C, AT(0x5C))) return 1;
+    ST2_NEED(10, AT(0x5C));
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0);
+    c->r[R_AX] = 0x00B4;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0x004E;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_CX] = (uint16_t)(c->r[R_BP] - 0x42);
+    cpu_push16(c, c->r[R_CX]);
+    c->r[R_DX] = 0x6DA2;
+    cpu_push16(c, c->r[R_DX]);
+    c->icount += 9;
+    if (!guest_call(m, 0x19C3, AT(0x72))) return 1;
+    ST2_NEED(3, AT(0x72));
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0);
+    cpu_push16(c, bp_get(c, 4));
+    c->icount += 2;
+    if (!guest_call(m, 0x3021, AT(0x7B))) return 1;
+    ST2_NEED(7, AT(0x7B));
+    c->r[R_BX] = cpu_pop16(c);
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0x02B0;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)(c->r[R_BP] - 0x42);
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 6;
+    if (!guest_call(m, 0x521C, AT(0x88))) return 1;
+    ST2_NEED(10, AT(0x88));
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0);
+    c->r[R_AX] = 0x00BC;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0x004E;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)(c->r[R_BP] - 0x42);
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0x6DA2;
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 9;
+    if (!guest_call(m, 0x19C3, AT(0x9E))) return 1;
+    ST2_NEED(18, AT(0x9E));                                       /* to the caption's call, or the publishing one */
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0);
+    alu_sub(c, bp_get(c, 4), 0, 1, 0);
+    unsigned n = 3;
+    if (!(c->flags & F_ZF)) {                                     /* past the first event: the caption */
+        c->r[R_AX] = 0x00B8;
+        cpu_push16(c, c->r[R_AX]);
+        c->r[R_AX] = 0x00C3;
+        cpu_push16(c, c->r[R_AX]);
+        c->r[R_AX] = 0x02BB;
+        cpu_push16(c, c->r[R_AX]);
+        c->r[R_AX] = 0x6DA2;
+        cpu_push16(c, c->r[R_AX]);
+        c->icount += n + 8;
+        if (!guest_call(m, 0x112A, AT(0xBA))) return 1;
+        ST2_NEED(16, AT(0xBA));
+        c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0);
+        n = 1;
+    }
+    /* 0x00E60: publish the panel */
+    c->r[R_AX] = 0x0011;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0x00AE;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0x00B4;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_CX] = 0x004B;
+    cpu_push16(c, c->r[R_CX]);
+    c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0);
+    cpu_push16(c, c->r[R_DX]);
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, c->r[R_CX]);
+    c->r[R_AX] = 1;
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += n + 14;
+    if (!guest_call_far(m, AT(0xD6), AT(0xDB))) return 1;
+    ST2_NEED(3, AT(0xDB));
+    c->icount += 3;
+    frame_close_ret(c);
+    return 1;
+}
+/* ST4-END */
 
 /* VGAME 0x078FD, scene_obstacle_probe(x, y, z): the world object at a map
  * position, by 0x01007 (which looks it up and replaces it), with the
@@ -25408,6 +27136,53 @@ static const recomp_override MATCHED[] = {
     { "matched", "START.EXE", START_47304, 0x0000, 0x7218, start_roster_read, "read the roster", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0xA836, start_heap_grow, "grow the near heap", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x5E86, end_heap_grow, "grow the near heap", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x890A, st4_start_pic_rle, "the picture decoder's row (RLE) step", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x8983, st4_start_pic_lzw, "the picture decoder's code and table step", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x5DC0, st4_end_heap_free, "free a near heap block", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x2651, st4_start_objective_open, "the objective line's opening", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x3021, st4_end_scorer_open, "the scorer's opening", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x23D6, st4_end_ribbon_layout, "a ribbon row's layout", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x22EB, st4_end_award_slots_open, "the award slots' opening", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x0B01, st4_start_weapon_hover, "the weapon screen's hover", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x63FB, st4_start_roster_hover, "the roster screen's hover", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x9D06, st4_start_format_scan, "the formatter's scan", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x5678, st4_end_format_scan, "the formatter's scan", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x58DF, st4_start_clamp_open, "the aircraft clamp's opening", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x3682, st4_end_debrief_switch_open, "the debriefing picture's opening", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x0880, st4_end_icon_place_open, "an icon placement's opening", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x94FA, st4_start_itoa, "itoa", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x9516, st4_start_ltoa, "ltoa", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x9694, st4_start_isprint, "isprint", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x3E45, st4_end_random_below, "a random number below n", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x8E6D, st4_start_rate_step, "the clock's rate step", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x4D51, st4_end_rate_step, "the clock's rate step", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0xA210, st4_start_close, "close a handle", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0xA4B8, st4_start_unlink, "delete a file", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0xA520, st4_start_lseek, "move a file pointer", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x5096, st4_end_lseek, "move a file pointer", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x800A, st4_start_dos_alloc, "allocate memory", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x3FA4, st4_end_dos_alloc, "allocate memory", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x8030, st4_start_dos_free, "release memory", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x3FCA, st4_end_dos_free, "release memory", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x8123, st4_start_dos_close, "close a file", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x40BD, st4_end_dos_close, "close a file", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x8144, st4_start_dos_read, "read a file", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x40DE, st4_end_dos_read, "read a file", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x816F, st4_start_dos_read_far, "read a file to a far buffer", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x4109, st4_end_dos_read_far, "read a file to a far buffer", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x8075, st4_start_dos_open, "open a file", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x804E, st4_start_find_fcb, "find a file by its FCB", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x9873, st4_start_message, "report a run-time message", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x544D, st4_end_message, "report a run-time message", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x9800, st4_start_rterror, "report a run-time error", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x53DA, st4_end_rterror, "report a run-time error", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x9115, st4_start_restore_vectors, "put the interrupt vectors back", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x500B, st4_end_restore_vectors, "put the interrupt vectors back", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x405F, st4_start_wait_sound, "wait for a press and sound it", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x11B7, st4_end_box_open, "a message box's opening", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x39D0, st4_end_closing_remark, "the debriefing's closing remark", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x196A, st4_start_map_marks, "the briefing map's marks one by one", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x0DA3, st4_end_score_panel, "the replay's clock and score panel", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x39C0, vgame_cockpit_number, "gauge number text", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x45E0, vgame_countermeasure_gauge, "countermeasure count gauge", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x4B03, vgame_cockpit_target_name, "describe a target", 1 },

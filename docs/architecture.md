@@ -525,7 +525,17 @@ caught real defects:
 - A state counts only when the original returns to the pushed address with the
   stack at its entry level (a looser rule let a routine that clears its own
   stack slide to the return address through `00 00`). States where the original
-  writes over its own code are skipped.
+  writes over its own code are skipped. The RET must lie in the routine's own
+  code, the 0x300 bytes from its entry unless `SPANS` names its range: a long
+  routine entered at its first piece (START's formatter, END's scorer), or
+  one that ends in a shared tail placed before it (the C runtime's DOS returns).
+- DOS: for the routines named in `DOS_STUBS` the harness answers INT 21h itself
+  (AX, sometimes DX, from the side's record so far; AL 0 and CF set one time in
+  four each), so the code after a DOS call is compared on every state. Elsewhere
+  INT 21h goes through a vector that the image's bytes make up and seldom comes
+  back. The machine's DOS is held by the routes. A matched routine makes the
+  call as translated code does (`st4_int21`) and checks room after it, since a
+  DOS transfer charges time.
 - OVERRUN: given one instruction less room than the original takes, a routine
   must decline. Mid-run stop: stopped at a random clock inside its path, the
   state it leaves must equal the original's at that clock. It may never start a
