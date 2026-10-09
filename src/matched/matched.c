@@ -56,6 +56,7 @@ static int guest_call_pop(machine_t *m, uint16_t target, uint16_t ret_ip, uint16
     m->trap_sp = (uint16_t)(c->r[R_SP] + 2 + pops);
     const int rc = matched_runner(m);
     m->trap_on = on; m->trap_cs = tcs; m->trap_ip = tip; m->trap_sp = tsp;
+    c->io_cross = 0;                                              /* the nested run took any crossing */
     return rc == RUN_TRAP;
 }
 
@@ -79,6 +80,7 @@ static int guest_call_far_to(machine_t *m, uint16_t seg, uint16_t off, uint16_t 
     m->trap_sp = (uint16_t)(c->r[R_SP] + 4);
     const int rc = matched_runner(m);
     m->trap_on = on; m->trap_cs = tcs; m->trap_ip = tip; m->trap_sp = tsp;
+    c->io_cross = 0;                                              /* the nested run took any crossing */
     return rc == RUN_TRAP;
 }
 
@@ -90,6 +92,13 @@ static int guest_call_far(machine_t *m, uint16_t ins_ip, uint16_t ret_ip)
     const uint16_t cs = c->seg[S_CS];
     return guest_call_far_to(m, seg_read16(c, cs, (uint16_t)(ins_ip + 3)), seg_read16(c, cs, (uint16_t)(ins_ip + 1)), ret_ip);
 }
+
+/* The ISA bus delay one port access can add beyond its instruction (pc.c
+ * io_delay: a read costs ips/1000/1024 clocks, a write less). The original
+ * stops right after an access whose delay crosses the run loop's limit, so
+ * a stretch with k port accesses claims k of these beside its instructions:
+ * no delay can then cross inside a matched routine. Needs m. */
+#define IO_SLACK(k) ((unsigned)(k) * (unsigned)(m->ips / 1000u / 1024u))
 
 /* Room for n instructions before the run loop must look at events. */
 static int room(const cpu_t *c, unsigned n)
@@ -8164,7 +8173,7 @@ static int sm3_retrace_timer(machine_t *m)
             c->icount += 1;
         }
         for (;;) {
-            if (!room(c, 5)) { c->ip = wait ? wait_start : wait_end; return 1; }
+            if (!room(c, 5 + IO_SLACK(1))) { c->ip = wait ? wait_start : wait_end; return 1; }
             c->r[R_BX] = (uint16_t)alu_dec(c, c->r[R_BX], 1);
             c->icount += 2;                                       /* dec bx, je */
             if (c->flags & F_ZF) { gave_up = 1; break; }
@@ -8177,7 +8186,7 @@ static int sm3_retrace_timer(machine_t *m)
         }
     }
     if (!gave_up) {
-        if (!room(c, 9)) { c->ip = latch; return 1; }
+        if (!room(c, 9 + IO_SLACK(3))) { c->ip = latch; return 1; }
         set_r8(c, R_AL, 0);
         c->icount += 1;
         x86_out(c, 0x43, 0);                                      /* latch counter 0 */
@@ -8212,14 +8221,14 @@ static int sm3_screen_switch(machine_t *m, uint8_t mode, int off)
     c->r[R_DX] = 0x03DA;
     c->icount += 1;
     for (;;) {                                                    /* in al, dx / test al, 8 / je */
-        if (!room(c, 3)) { c->ip = wait; return 1; }
+        if (!room(c, 3 + IO_SLACK(1))) { c->ip = wait; return 1; }
         x86_in(c, c->r[R_DX], 0);
         c->icount += 1;
         alu_logic(c, get_r8(c, R_AL) & 8, 0);
         c->icount += 2;
         if (!(c->flags & F_ZF)) break;
     }
-    if (!room(c, 11)) { c->ip = (uint16_t)(wait + 5); return 1; }
+    if (!room(c, 11 + IO_SLACK(4))) { c->ip = (uint16_t)(wait + 5); return 1; }
     c->r[R_DX] = 0x03D8;
     set_r8(c, R_AL, mode);
     c->icount += 2;
@@ -8260,7 +8269,7 @@ static int player_dac_in_retrace(machine_t *m)
     c->icount += 2;
     for (int wait = 0; wait < 2; wait++) {                        /* the retrace's start (0DE8), then its end (0DED) */
         for (;;) {
-            if (!room(c, 3)) { c->ip = wait ? 0x0DED : 0x0DE8; return 1; }
+            if (!room(c, 3 + IO_SLACK(1))) { c->ip = wait ? 0x0DED : 0x0DE8; return 1; }
             x86_in(c, c->r[R_DX], 0);
             c->icount += 1;
             alu_logic(c, get_r8(c, R_AL) & 8, 0);
@@ -8269,7 +8278,7 @@ static int player_dac_in_retrace(machine_t *m)
             break;
         }
     }
-    if (!room(c, 4)) { c->ip = 0x0DF2; return 1; }
+    if (!room(c, 4 + IO_SLACK(1))) { c->ip = 0x0DF2; return 1; }
     c->r[R_CX] = 0;
     x86_cli(c);
     set_r8(c, R_DL, 0xC8);
@@ -8277,7 +8286,7 @@ static int player_dac_in_retrace(machine_t *m)
     x86_out(c, c->r[R_DX], 0);                                    /* the write index: AL */
     c->icount += 1;
     do {                                                          /* 0DF9: a byte a turn, then the STI */
-        if (!room(c, 8 + 1)) { c->ip = 0x0DF9; return 1; }
+        if (!room(c, 8 + 1 + IO_SLACK(2))) { c->ip = 0x0DF9; return 1; }
         x86_lods(c, 0, c->seg[S_DS]);
         set_r8(c, R_DL, 0xC9);
         c->icount += 2;
@@ -8302,7 +8311,7 @@ static int player_dac_in_retrace(machine_t *m)
 static int player_joystick_button(machine_t *m)
 {
     cpu_t *c = &m->cpu;
-    if (!room(c, 12)) return 0;
+    if (!room(c, 12 + IO_SLACK(1))) return 0;
     cpu_push16(c, c->r[R_BP]);
     c->r[R_BP] = c->r[R_SP];
     c->r[R_DX] = 0x0201;
@@ -8330,7 +8339,7 @@ static int player_joystick_button(machine_t *m)
 static int setup_joystick_read(machine_t *m)
 {
     cpu_t *c = &m->cpu;
-    if (!room(c, 16)) return 0;
+    if (!room(c, 16 + IO_SLACK(1))) return 0;
     cpu_push16(c, c->r[R_AX]);
     cpu_push16(c, c->r[R_BX]);
     cpu_push16(c, c->r[R_CX]);
@@ -8348,7 +8357,7 @@ static int setup_joystick_read(machine_t *m)
     x86_out(c, c->r[R_DX], 0);                                    /* fire the one-shots */
     c->icount += 3;                                               /* out, and the two jumps that delay */
     for (;;) {                                                    /* 0076: ten a turn */
-        if (!room(c, 10 + 6)) { c->ip = 0x0076; return 1; }
+        if (!room(c, 10 + 6 + IO_SLACK(1))) { c->ip = 0x0076; return 1; }
         x86_in(c, c->r[R_DX], 0);
         c->icount += 1;
         c->r[R_AX] = (uint16_t)alu_logic(c, c->r[R_AX] & c->r[R_BX], 1);
@@ -8473,7 +8482,7 @@ static int player_fade_step(machine_t *m)
 static int player_fade_frame(machine_t *m)
 {
     cpu_t *c = &m->cpu;
-    if (!room(c, 15)) return 0;
+    if (!room(c, 15 + IO_SLACK(1))) return 0;
     cpu_push16(c, c->r[R_SI]);
     c->r[R_AX] = ds_get(c, 0x13CE);
     uint16_t bx = ds_get(c, 0x13D0);
@@ -8496,7 +8505,7 @@ static int player_fade_frame(machine_t *m)
             if (!room(c, 2)) { c->ip = 0x0F07; return 1; }
             c->icount += 2;                                       /* the REP with CX 0, jmp */
         } else {                                                  /* whole, or left to the original */
-            if (!room(c, (unsigned)c->r[R_CX] + 1)) { c->ip = 0x0F07; return 1; }
+            if (!room(c, (unsigned)c->r[R_CX] + 1 + IO_SLACK(c->r[R_CX]))) { c->ip = 0x0F07; return 1; }
             do {
                 x86_outs(c, 0, c->seg[S_DS]);
                 c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);
@@ -8506,7 +8515,7 @@ static int player_fade_frame(machine_t *m)
         }
     } else {                                                      /* the 8086's loop */
         do {
-            if (!room(c, 3)) { c->ip = 0x0F0C; return 1; }
+            if (!room(c, 3 + IO_SLACK(1))) { c->ip = 0x0F0C; return 1; }
             x86_lods(c, 0, c->seg[S_DS]);
             c->icount += 1;
             x86_out(c, c->r[R_DX], 0);
@@ -16138,7 +16147,7 @@ static int st2_set_dac(machine_t *m, uint16_t entry)
     c->r[R_DX] = 0x03DA;                                          /* the CRT status port */
     c->icount += 1;
     for (;;) {                                                    /* 0x08391: wait for a vertical retrace to begin */
-        ST2_NEED(3, S(0x8391));
+        ST2_NEED(3 + IO_SLACK(1), S(0x8391));
         x86_in(c, c->r[R_DX], 0);
         c->icount += 1;
         alu_logic(c, (uint32_t)get_r8(c, R_AL) & 0x08, 0);
@@ -16149,7 +16158,7 @@ static int st2_set_dac(machine_t *m, uint16_t entry)
     c->r[R_BP] = 0;                                               /* colours written since the retrace began */
     c->icount += 2;
     /* 0x083A8: one colour, interrupts off. */
-    ST2_NEED(17, S(0x83A8));
+    ST2_NEED(17 + IO_SLACK(4), S(0x83A8));
     x86_cli(c);
     c->icount += 1;
     set_r8(c, R_DL, 0xC8);                                        /* the DAC's write index */
@@ -17446,7 +17455,7 @@ static int st3_retrace_timer(machine_t *m, uint16_t entry)
             c->icount += 1;
         }
         for (;;) {
-            ST2_NEED(5, head);                                    /* dec, je, in, test, jcc (or dec, je, mov, popf) */
+            ST2_NEED(5 + IO_SLACK(1), head);                                    /* dec, je, in, test, jcc (or dec, je, mov, popf) */
             c->r[R_BX] = (uint16_t)alu_dec(c, c->r[R_BX], 1);
             c->icount += 2;
             if (c->flags & F_ZF) goto done;                       /* given up: AX = 0 */
@@ -17457,7 +17466,7 @@ static int st3_retrace_timer(machine_t *m, uint16_t entry)
             if (wait ? !(c->flags & F_ZF) : (c->flags & F_ZF)) break;
         }
     }
-    ST2_NEED(11, AT(0x19));                                       /* the latch and two reads, MOV and POPF */
+    ST2_NEED(11 + IO_SLACK(3), AT(0x19));                                       /* the latch and two reads, MOV and POPF */
     set_r8(c, R_AL, 0);
     c->icount += 1;
     x86_out(c, 0x43, 0);                                          /* latch channel 0 */
@@ -17491,7 +17500,7 @@ static int end_retrace_timer(machine_t *m) { return st3_retrace_timer(m, 0x4DA3)
 static int st3_joystick_read(machine_t *m, uint16_t entry)
 {
     cpu_t *c = &m->cpu;
-    if (!room(c, 16)) return 0;
+    if (!room(c, 16 + IO_SLACK(1))) return 0;
     cpu_push16(c, c->r[R_AX]);
     cpu_push16(c, c->r[R_BX]);
     cpu_push16(c, c->r[R_CX]);
@@ -17510,7 +17519,7 @@ static int st3_joystick_read(machine_t *m, uint16_t entry)
     x86_out(c, c->r[R_DX], 0);                                    /* fire the one-shots */
     c->icount += 3;                                               /* the OUT and two delay JMPs */
     for (;;) {                                                    /* 0x08483 */
-        ST2_NEED(10, AT(0x1A));
+        ST2_NEED(10 + IO_SLACK(1), AT(0x1A));
         x86_in(c, c->r[R_DX], 0);
         c->icount += 1;
         c->r[R_AX] = (uint16_t)alu_logic(c, c->r[R_AX] & c->r[R_BX], 1);   /* and ax, bx */
@@ -17777,7 +17786,7 @@ static int st3_timer_reload(machine_t *m, const st3_timer_reload_t *s)
 {
     cpu_t *c = &m->cpu;
     const uint16_t entry = s->entry;
-    if (!room(c, 19)) return 0;
+    if (!room(c, 19 + IO_SLACK(3))) return 0;
     c->r[R_DX] = ds_get(c, s->cur);
     alu_sub(c, c->r[R_DX], ds_get(c, s->want), 1, 0);
     c->icount += 3;

@@ -547,6 +547,16 @@ caught real defects:
   such line. It is the only room check a routes-only routine meets: the
   picture decoder's LZW step walked a prefix chain of any depth after one
   room check (9 Oct 2026), and with that bug put back step 9 names it.
+- Port accesses: the bus delay (`io_delay`) can carry the clock across the
+  limit inside one IN or OUT, and the original then stops right after that
+  instruction. The machine notes the clock of such a crossing
+  (`cpu.io_cross`) and the dispatcher reports a matched routine that went
+  on past it. A stretch with k port accesses therefore claims
+  `IO_SLACK(k)` (k times the read delay, ips/1000/1024) beside its
+  instructions, so no delay can cross inside a matched routine; when that
+  room is not there the routine parks and the original runs the stretch.
+  Ten routines do port I/O; three of them shifted a checkpoint by two
+  clocks before the rule (9 Oct 2026).
 
 `F117R_SHADOW=FROM:TO` re-runs matched routines against the original on the
 live game in a window (a diagnostic, not a gate: device state is not in the

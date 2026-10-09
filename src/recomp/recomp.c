@@ -330,6 +330,7 @@ int recomp_override_step(machine_t *m)
         if (o->matched && c->t386) return -1;
         if (o->matched && g_shadow_off) return 0;
         const uint64_t limit = c->stop_at, charged = c->charged;
+        c->io_cross = 0;
         if (o->matched && g_shadow_on && c->icount >= g_shadow_lo && c->icount < g_shadow_hi) {
             if (!shadow_run(m, o)) return -1;
         } else if (!o->fn(m)) return -1;
@@ -337,12 +338,16 @@ int recomp_override_step(machine_t *m)
          * cannot carry the clock past a limit nothing moved: one that does
          * ran through an event the original would have taken inside it. Time
          * charged beyond instructions (a port's bus delay, a DOS transfer)
-         * may cross the limit, as it does in the original, and is left out;
-         * a guest call that took an event moves the limit, and the check
+         * may cross the limit, as it does in the original, and is left out -
+         * but the original stops after the instruction whose delay crossed
+         * it (io_cross), so a routine that went on from there did too much.
+         * A guest call that took an event moves the limit, and the check
          * stands down. */
         const uint64_t ran_to = c->icount - (c->charged - charged);
-        if (o->matched && c->stop_at == limit && ran_to > limit && !g_ov_over[in->ov_index[k]]++)
-            g_ov_over_by[in->ov_index[k]] = ran_to - limit;
+        const uint64_t past = ran_to > limit ? ran_to - limit
+                            : c->io_cross && c->icount > c->io_cross + 1 ? c->icount - c->io_cross : 0;
+        if (o->matched && c->stop_at == limit && past && !g_ov_over[in->ov_index[k]]++)
+            g_ov_over_by[in->ov_index[k]] = past;
         g_ov_hits[in->ov_index[k]]++;
         return 1;
     }
