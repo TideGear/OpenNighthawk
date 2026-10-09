@@ -5046,9 +5046,9 @@ static int rt_stack_check(machine_t *m, uint16_t limit, uint16_t overflow)
  * between SP (the caller's, once its return address is off) and the limit word
  * at `limit`, or 0 when SP is not above it. The return address comes off the
  * stack into DX:CX and is put back for the RETF; flags from the NEG, or from the
- * XOR when there is no room. The near copies (PLAYER 0x0237E, DSWAP 0x02064)
- * return by JMP CX, as the stack checks do, which tests/func_lockstep.c cannot
- * follow (it waits for a RET), so only the far one is placed. */
+ * XOR when there is no room. The near copies (VGAME 0x0F908, PLAYER 0x0237E,
+ * DSWAP 0x02064) return by JMP CX, which tests/func_lockstep.c accepts as the
+ * routine's return when the address is already off the stack. */
 static int sm3_stack_avail(machine_t *m, uint16_t limit, int far)
 {
     cpu_t *c = &m->cpu;
@@ -11734,6 +11734,1228 @@ static int map_zoom(machine_t *m, int in)
 static int vgame_map_zoom_in(machine_t *m) { return map_zoom(m, 1); }
 static int vgame_map_zoom_out(machine_t *m) { return map_zoom(m, 0); }
 
+/* ---- The C runtime's DOS layer, fourth batch (sm4_) ----------------------
+ * VGAME's C runtime (0x0E6BE-0x0FFFF) and the copies of it in PLAYER,
+ * MPS_LOGO, DSWAP and SETUP. Most of these routines make a DOS call. The INT
+ * instruction itself runs as original code (sm4_int): the machine's DOS
+ * services, their stubs, their time and any interrupt taken inside them are
+ * then exactly the original's, and the routine's own instructions before and
+ * after it are the matched C. MPS_LOGO's copy is built for the larger model:
+ * its routines return far with the arguments a word higher. */
+
+#define SM4_AT(o) ((uint16_t)(entry + (o)))
+#define SM4_NEED(n, at) do { if (!room(c, (n))) { c->ip = (uint16_t)(at); return 1; } } while (0)
+
+/* The INT n instruction at CS:at, run as original code until it returns to
+ * the instruction after it (at + 2) with the stack as it was. 1 when it
+ * returned; 0 when the run stopped first (the outer limit, the program's
+ * end), and the caller must return 1 at once: the original code carries on
+ * from wherever the machine is. The run takes the INT at the clock it is
+ * started with, so the routine claims room only for its own instructions
+ * before it, as for a CALL. */
+static int sm4_int(machine_t *m, uint16_t at)
+{
+    cpu_t *c = &m->cpu;
+    const uint8_t on = m->trap_on;
+    const uint16_t tcs = m->trap_cs, tip = m->trap_ip, tsp = m->trap_sp;
+    c->ip = at;
+    m->trap_on = 1;
+    m->trap_cs = c->seg[S_CS];
+    m->trap_ip = (uint16_t)(at + 2);
+    m->trap_sp = c->r[R_SP];
+    const int rc = matched_runner(m);
+    m->trap_on = on; m->trap_cs = tcs; m->trap_ip = tip; m->trap_sp = tsp;
+    c->io_cross = 0;                                              /* the nested run took any crossing */
+    return rc == RUN_TRAP;
+}
+
+/* RET or RETF; and MOV SP, BP / POP BP before it. */
+static void sm4_ret(cpu_t *c, int far)
+{
+    c->ip = cpu_pop16(c);
+    if (far) c->seg[S_CS] = cpu_pop16(c);
+}
+static void sm4_leave_ret(cpu_t *c, int far)
+{
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    sm4_ret(c, far);
+}
+
+/* The endings the runtime's DOS calls jump to, with the call's carry: at x
+ * (STATUS) the answer is 0, or on carry -1 in DX:AX; at x + 8 (CODE) 0, or
+ * on carry the DOS error code (AL, AH cleared); at x + 15h (KEEP) AX and DX
+ * as DOS left them, or on carry -1 in DX:AX. A carry first records the error
+ * (errno and the DOS code) through the mapper at x + 28h, a near CALL. Each
+ * closes the BP frame and returns. Entered with the machine at the ending's
+ * first instruction; the stretch to the mapper's CALL or the return is at
+ * most 5 instructions. */
+enum { SM4_STATUS = 0x00, SM4_CODE = 0x08, SM4_KEEP = 0x15 };
+
+static int sm4_dos_end(machine_t *m, uint16_t x, unsigned kind, int far)
+{
+    cpu_t *c = &m->cpu;
+    SM4_NEED(5, x + kind);
+    const int carry = (c->flags & F_CF) != 0;
+    c->icount += 1;                                               /* jb / jae */
+    if (kind == SM4_CODE && carry) {
+        cpu_push16(c, c->r[R_AX]);
+        c->icount += 1;
+        if (!guest_call(m, (uint16_t)(x + 0x28), (uint16_t)(x + 0x0E))) return 1;
+        SM4_NEED(5, x + 0x0E);
+        c->r[R_AX] = cpu_pop16(c);
+        set_r8(c, R_AH, (uint8_t)alu_logic(c, 0, 0));             /* xor ah, ah */
+        c->icount += 5;
+        sm4_leave_ret(c, far);
+        return 1;
+    }
+    if (kind == SM4_KEEP && !carry) {
+        c->icount += 3;
+        sm4_leave_ret(c, far);
+        return 1;
+    }
+    if (carry) {                                                  /* x + 17h */
+        if (!guest_call(m, (uint16_t)(x + 0x28), (uint16_t)(x + 0x1A))) return 1;
+        SM4_NEED(5, x + 0x1A);
+        c->r[R_AX] = 0xFFFF;
+        cwd(c);
+        c->icount += 5;
+        sm4_leave_ret(c, far);
+        return 1;
+    }
+    c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);                    /* xor ax, ax */
+    c->icount += 4;
+    sm4_leave_ret(c, far);
+    return 1;
+}
+
+/* A DOS call with one argument: PUSH BP / MOV BP, SP, the argument into
+ * the segment or word register `reg` (S_ES for a segment, else a register
+ * index), AH = fn, INT 21h, and a JMP to the ending `kind` at x. VGAME
+ * 0x0EE8E freemem(seg) (49h, CODE), 0x0F5A2 unlink(name) (41h, STATUS), and
+ * their copies. */
+static int sm4_dos_call1(machine_t *m, uint16_t entry, int seg_reg, int reg, uint8_t fn, uint16_t x, unsigned kind, int far)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 4)) return 0;
+    frame_open(c, 0);
+    const uint16_t v = bp_get(c, far ? 6 : 4);
+    if (seg_reg) c->seg[S_ES] = v; else c->r[reg] = v;
+    set_r8(c, R_AH, fn);
+    c->icount += 4;
+    if (!sm4_int(m, SM4_AT(8))) return 1;
+    SM4_NEED(1, SM4_AT(0x0A));
+    c->icount += 1;                                               /* jmp */
+    return sm4_dos_end(m, x, kind, far);
+}
+static int vgame_dos_freemem(machine_t *m) { return sm4_dos_call1(m, 0xEE8E, 1, 0, 0x49, 0xF0CC, SM4_CODE, 0); }
+static int vgame_dos_unlink(machine_t *m) { return sm4_dos_call1(m, 0xF5A2, 0, R_DX, 0x41, 0xF0CC, SM4_STATUS, 0); }
+static int player_dos_freemem(machine_t *m) { return sm4_dos_call1(m, 0x14E0, 1, 0, 0x49, 0x186E, SM4_CODE, 0); }
+static int mps_logo_dos_freemem(machine_t *m) { return sm4_dos_call1(m, 0x0748, 1, 0, 0x49, 0x0B3E, SM4_CODE, 1); }
+static int mps_logo_dos_unlink(machine_t *m) { return sm4_dos_call1(m, 0x17A2, 0, R_DX, 0x41, 0x0B3E, SM4_STATUS, 1); }
+
+/* VGAME 0x0EE52, allocmem(paragraphs, *seg): DOS function 48h; *seg gets the
+ * new block's segment, or on failure the largest block available (BX), and
+ * the answer is the CODE ending's. */
+static int sm4_dos_allocmem(machine_t *m, uint16_t entry, uint16_t x, int far)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 4)) return 0;
+    frame_open(c, 0);
+    c->r[R_BX] = bp_get(c, far ? 6 : 4);
+    set_r8(c, R_AH, 0x48);
+    c->icount += 4;
+    if (!sm4_int(m, SM4_AT(8))) return 1;
+    SM4_NEED(6 + 5, SM4_AT(0x0A));                                /* to the ending's CALL or RET */
+    c->r[R_CX] = c->r[R_BX];
+    c->icount += 2;
+    if (!(c->flags & F_CF)) { c->r[R_CX] = c->r[R_AX]; c->icount += 1; }
+    c->r[R_BX] = bp_get(c, far ? 8 : 6);
+    ds_put(c, c->r[R_BX], c->r[R_CX]);
+    c->icount += 3;                                               /* and the JMP */
+    return sm4_dos_end(m, x, SM4_CODE, far);
+}
+static int vgame_dos_allocmem(machine_t *m) { return sm4_dos_allocmem(m, 0xEE52, 0xF0CC, 0); }
+static int player_dos_allocmem(machine_t *m) { return sm4_dos_allocmem(m, 0x14A0, 0x186E, 0); }
+static int mps_logo_dos_allocmem(machine_t *m) { return sm4_dos_allocmem(m, 0x070C, 0x0B3E, 1); }
+
+
+/* VGAME 0x0FA70, the near heap's resize: the data segment's DOS block is set
+ * to hold AX bytes (DOS function 4Ah; 0 is 64K). The heap descriptor at BX:
+ * flag bit 2 means the data segment is DOS memory starting at the PSP
+ * ([psp]) and its size word sits at BX-2: a size that already covers the
+ * request, and is not below the top (BX+4), is kept without a call. CF on
+ * failure; otherwise AX is the size asked for and, for a DOS-memory heap,
+ * [BX-2] its last byte. CX and BX are kept, SI is the data segment. */
+static int sm4_heap_resize(machine_t *m, uint16_t entry, uint16_t psp)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 27)) return 0;                                   /* the longest way to the INT */
+    c->r[R_DX] = c->r[R_AX];
+    alu_logic(c, ds_get8(c, (uint16_t)(c->r[R_BX] + 2)) & 4, 0);
+    c->icount += 3;
+    if (!(c->flags & F_ZF)) {
+        c->r[R_DX] = (uint16_t)alu_dec(c, c->r[R_DX], 1);
+        c->r[R_SI] = (uint16_t)alu_dec(c, ds_get(c, (uint16_t)(c->r[R_BX] + 4)), 1);
+        alu_sub(c, c->r[R_DX], c->r[R_SI], 1, 0);
+        c->icount += 5;
+        if (!(c->flags & F_CF)) {
+            alu_sub(c, ds_get(c, (uint16_t)(c->r[R_BX] - 2)), c->r[R_DX], 1, 0);
+            c->icount += 2;
+            if (!(c->flags & F_CF)) {                             /* big enough already: 0x0FABC */
+                set_flag(c, F_CF, 0);
+                c->icount += 3;                                   /* clc, jmp, ret */
+                near_ret(c);
+                return 1;
+            }
+        }
+        c->r[R_DX] = (uint16_t)alu_inc(c, c->r[R_DX], 1);
+        c->icount += 1;
+    }
+    cpu_push16(c, c->r[R_BX]);                                    /* 0x0FA87 */
+    cpu_push16(c, c->r[R_CX]);
+    c->r[R_SI] = c->seg[S_DS];
+    c->seg[S_ES] = c->r[R_SI];
+    set_r8(c, R_CL, 4);
+    c->r[R_AX] = x86_shift(c, 5, c->r[R_AX], 4, 1);               /* shr ax, cl: paragraphs */
+    c->icount += 7;
+    if (c->flags & F_ZF) { c->r[R_AX] = 0x1000; c->icount += 1; }
+    alu_logic(c, ds_get8(c, (uint16_t)(c->r[R_BX] + 2)) & 4, 0);
+    c->icount += 2;
+    if (!(c->flags & F_ZF)) {                                     /* counted from the PSP */
+        c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], c->r[R_SI], 1, 0);
+        c->r[R_BX] = ds_get(c, psp);
+        c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_BX], 1, 0);
+        c->seg[S_ES] = c->r[R_BX];
+        c->icount += 4;
+    }
+    c->r[R_BX] = c->r[R_AX];
+    set_r8(c, R_AH, 0x4A);
+    c->icount += 2;
+    if (!sm4_int(m, SM4_AT(0x3A))) return 1;
+    SM4_NEED(11, SM4_AT(0x3C));
+    c->r[R_CX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    c->icount += 3;
+    if (c->flags & F_CF) { c->icount += 1; near_ret(c); return 1; }
+    c->r[R_AX] = c->r[R_DX];
+    alu_logic(c, ds_get8(c, (uint16_t)(c->r[R_BX] + 2)) & 4, 0);
+    c->icount += 3;
+    if (!(c->flags & F_ZF)) {
+        c->r[R_DX] = (uint16_t)alu_dec(c, c->r[R_DX], 1);
+        ds_put(c, (uint16_t)(c->r[R_BX] - 2), c->r[R_DX]);
+        c->icount += 2;
+    }
+    set_flag(c, F_CF, 0);
+    c->icount += 3;                                               /* clc, jmp, ret */
+    near_ret(c);
+    return 1;
+}
+static int vgame_heap_resize(machine_t *m) { return sm4_heap_resize(m, 0xFA70, 0x9268); }
+static int player_heap_resize(machine_t *m) { return sm4_heap_resize(m, 0x2466, 0x1A60); }
+static int mps_logo_heap_resize(machine_t *m) { return sm4_heap_resize(m, 0x1C40, 0x01FE); }
+static int dswap_heap_resize(machine_t *m) { return sm4_heap_resize(m, 0x214C, 0x26C8); }
+static int setup_heap_resize(machine_t *m) { return sm4_heap_resize(m, 0x1CD6, 0x0E84); }
+
+/* A program's file table: the count of handles ([nfile]) and a flag byte
+ * per handle (flags + handle); the endings (sm4_dos_end) at x. MPS_LOGO's
+ * routines are far: their arguments sit a word higher. */
+typedef struct { uint16_t entry, nfile, flags, x; int far; } sm4_file_t;
+
+/* VGAME 0x0F3DE, lseek(fd, offset, whence): DOS function 42h, the answer the
+ * new position in DX:AX (the KEEP ending). A handle past [nfile] fails with
+ * error 9. A negative offset is checked first: from the start (whence 0) it
+ * fails with 16h (EINVAL); from the current position or the end the target
+ * is found (4201h, or 4202h after the current position is noted) and, when
+ * it is still negative, the error is 16h - after the file is put back where
+ * it was (4200h) when the end was asked for. A successful move clears the
+ * handle's end-of-file flag (bit 1). */
+static int sm4_lseek(machine_t *m, const sm4_file_t *f)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = f->entry;
+    const int a = f->far ? 2 : 0;
+    if (!room(c, 16)) return 0;                                   /* the longest way to an INT or the ending's CALL */
+    frame_open(c, 4);
+    c->r[R_BX] = bp_get(c, 4 + a);
+    alu_sub(c, c->r[R_BX], ds_get(c, f->nfile), 1, 0);
+    c->icount += 6;
+    if (!(c->flags & F_CF)) {                                     /* no such handle */
+        c->r[R_AX] = 0x0900;
+        c->icount += 2;                                           /* and the JMP to 0x0F41C */
+        goto fail;
+    }
+    alu_logic(c, bp_get(c, 8 + a) & 0x8000, 1);
+    c->icount += 2;
+    if (c->flags & F_ZF) goto seek;                               /* a positive offset */
+    alu_sub(c, bp_get(c, 0x0A + a), 0, 1, 0);
+    c->icount += 2;
+    if (c->flags & F_ZF) goto einval;                             /* negative from the start */
+    c->r[R_CX] = (uint16_t)alu_logic(c, 0, 1);
+    c->r[R_DX] = c->r[R_CX];
+    c->r[R_AX] = 0x4201;
+    c->icount += 3;
+    if (!sm4_int(m, SM4_AT(0x28))) return 1;
+    SM4_NEED(12, SM4_AT(0x2A));
+    c->icount += 1;                                               /* jb */
+    if (c->flags & F_CF) goto end;
+    alu_logic(c, bp_get(c, 0x0A + a) & 2, 1);
+    c->icount += 2;
+    if (!(c->flags & F_ZF)) {                                     /* from the end: 0x0F41F */
+        bp_put(c, -2, c->r[R_DX]);
+        bp_put(c, -4, c->r[R_AX]);
+        c->r[R_DX] = c->r[R_CX];
+        c->r[R_AX] = 0x4202;
+        c->icount += 4;
+        if (!sm4_int(m, SM4_AT(0x4C))) return 1;
+        SM4_NEED(7, SM4_AT(0x4E));
+        c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], bp_get(c, 6 + a), 1, 0);
+        c->r[R_DX] = (uint16_t)alu_add(c, c->r[R_DX], bp_get(c, 8 + a), 1, (c->flags & F_CF) != 0);
+        c->icount += 3;
+        if (!(c->flags & F_SF)) goto seek;
+        c->r[R_CX] = bp_get(c, -2);                               /* back where it was */
+        c->r[R_DX] = bp_get(c, -4);
+        c->r[R_AX] = 0x4200;
+        c->icount += 3;
+        if (!sm4_int(m, SM4_AT(0x5F))) return 1;
+        SM4_NEED(7, SM4_AT(0x61));
+        c->icount += 1;                                           /* jmp 0x0F419 */
+        goto einval;
+    }
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], bp_get(c, 6 + a), 1, 0);
+    c->r[R_DX] = (uint16_t)alu_add(c, c->r[R_DX], bp_get(c, 8 + a), 1, (c->flags & F_CF) != 0);
+    c->icount += 3;
+    if (!(c->flags & F_SF)) goto seek;
+einval:                                                           /* 0x0F419 */
+    c->r[R_AX] = 0x1600;
+    c->icount += 1;
+fail:                                                             /* 0x0F41C */
+    set_flag(c, F_CF, 1);
+    c->icount += 2;                                               /* stc, jmp */
+    goto end;
+seek:                                                             /* 0x0F441 */
+    c->r[R_DX] = bp_get(c, 6 + a);
+    c->r[R_CX] = bp_get(c, 8 + a);
+    set_r8(c, R_AL, bp_get8(c, 0x0A + a));
+    set_r8(c, R_AH, 0x42);
+    c->icount += 4;
+    if (!sm4_int(m, SM4_AT(0x6E))) return 1;
+    SM4_NEED(7, SM4_AT(0x70));
+    c->icount += 1;                                               /* jb */
+    if (!(c->flags & F_CF)) {
+        const uint16_t at = (uint16_t)(f->flags + c->r[R_BX]);
+        ds_put8(c, at, (uint8_t)alu_logic(c, ds_get8(c, at) & 0xFD, 0));
+        c->icount += 1;
+    }
+end:                                                              /* 0x0F455 */
+    c->icount += 1;                                               /* jmp to the ending */
+    return sm4_dos_end(m, f->x, SM4_KEEP, f->far);
+}
+static const sm4_file_t SM4_LSEEK_VGAME = { 0xF3DE, 0x926F, 0x9271, 0xF0CC, 0 };
+static const sm4_file_t SM4_LSEEK_PLAYER = { 0x2304, 0x1A67, 0x1A69, 0x186E, 0 };
+static const sm4_file_t SM4_LSEEK_MPS_LOGO = { 0x181A, 0x0205, 0x0207, 0x0B3E, 1 };
+static const sm4_file_t SM4_LSEEK_DSWAP = { 0x0F7E, 0x26CF, 0x26D1, 0x13EA, 0 };
+static int vgame_lseek(machine_t *m) { return sm4_lseek(m, &SM4_LSEEK_VGAME); }
+static int player_lseek(machine_t *m) { return sm4_lseek(m, &SM4_LSEEK_PLAYER); }
+static int mps_logo_lseek(machine_t *m) { return sm4_lseek(m, &SM4_LSEEK_MPS_LOGO); }
+static int dswap_lseek(machine_t *m) { return sm4_lseek(m, &SM4_LSEEK_DSWAP); }
+
+/* VGAME 0x0F3BE, close(fd): DOS function 3Eh, the STATUS ending; a handle
+ * past [nfile] fails with error 9, and a closed one's flag byte is cleared. */
+static int sm4_close(machine_t *m, const sm4_file_t *f)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = f->entry;
+    if (!room(c, 11)) return 0;
+    frame_open(c, 0);
+    c->r[R_BX] = bp_get(c, f->far ? 6 : 4);
+    alu_sub(c, c->r[R_BX], ds_get(c, f->nfile), 1, 0);
+    c->icount += 5;
+    if (!(c->flags & F_CF)) {
+        c->r[R_AX] = 0x0900;
+        set_flag(c, F_CF, 1);
+        c->icount += 3;                                           /* mov, stc, jmp */
+    } else {
+        set_r8(c, R_AH, 0x3E);
+        c->icount += 1;
+        if (!sm4_int(m, SM4_AT(0x14))) return 1;
+        SM4_NEED(8, SM4_AT(0x16));
+        c->icount += 1;                                           /* jb */
+        if (!(c->flags & F_CF)) {
+            ds_put8(c, (uint16_t)(f->flags + c->r[R_BX]), 0);
+            c->icount += 1;
+        }
+    }
+    c->icount += 1;                                               /* jmp to the ending */
+    return sm4_dos_end(m, f->x, SM4_STATUS, f->far);
+}
+static const sm4_file_t SM4_CLOSE_VGAME = { 0xF3BE, 0x926F, 0x9271, 0xF0CC, 0 };
+static const sm4_file_t SM4_CLOSE_MPS_LOGO = { 0x14F0, 0x0205, 0x0207, 0x0B3E, 1 };
+static int vgame_close(machine_t *m) { return sm4_close(m, &SM4_CLOSE_VGAME); }
+static int mps_logo_close(machine_t *m) { return sm4_close(m, &SM4_CLOSE_MPS_LOGO); }
+
+/* VGAME 0x0E8F7, the run-time's interrupt vectors put back at exit: the
+ * far hook at [hook] (when its segment word is set) is called with BX = 2,
+ * vector 0 gets the address kept at [div0], and when [saved] is set the
+ * vector numbered [saved + 1] gets the one kept at [saved + 2]. DS is kept. */
+typedef struct { uint16_t entry, hook, div0, saved; } sm4_vectors_t;
+
+static int sm4_restore_vectors(machine_t *m, const sm4_vectors_t *s)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = s->entry;
+    if (!room(c, 5)) return 0;
+    c->r[R_CX] = ds_get(c, (uint16_t)(s->hook + 2));
+    c->icount += 2;
+    if (c->r[R_CX]) {
+        c->r[R_BX] = 2;
+        c->icount += 1;                                           /* mov (the CALL FAR counts itself) */
+        if (!guest_call_far_to(m, ds_get(c, (uint16_t)(s->hook + 2)), ds_get(c, s->hook), SM4_AT(0x0D))) return 1;
+        SM4_NEED(3, SM4_AT(0x0D));
+    }
+    cpu_push16(c, c->seg[S_DS]);                                  /* 0x0E904 */
+    c->r[R_DX] = ds_get(c, s->div0);
+    c->seg[S_DS] = ds_get(c, (uint16_t)(s->div0 + 2));
+    c->r[R_AX] = 0x2500;
+    c->icount += 3;
+    if (!sm4_int(m, SM4_AT(0x15))) return 1;
+    SM4_NEED(7, SM4_AT(0x17));
+    c->seg[S_DS] = cpu_pop16(c);
+    alu_sub(c, ds_get8(c, s->saved), 0, 0, 0);
+    c->icount += 3;
+    if (!(c->flags & F_ZF)) {
+        cpu_push16(c, c->seg[S_DS]);
+        set_r8(c, R_AL, ds_get8(c, (uint16_t)(s->saved + 1)));
+        const uint16_t off = ds_get(c, (uint16_t)(s->saved + 2));
+        c->seg[S_DS] = ds_get(c, (uint16_t)(s->saved + 4));
+        c->r[R_DX] = off;
+        set_r8(c, R_AH, 0x25);
+        c->icount += 4;
+        if (!sm4_int(m, SM4_AT(0x29))) return 1;
+        SM4_NEED(2, SM4_AT(0x2B));
+        c->seg[S_DS] = cpu_pop16(c);
+        c->icount += 1;
+    }
+    c->icount += 1;
+    near_ret(c);
+    return 1;
+}
+static const sm4_vectors_t SM4_VECTORS_VGAME = { 0xE8F7, 0x9416, 0x9254, 0x9292 };
+static const sm4_vectors_t SM4_VECTORS_PLAYER = { 0x12CF, 0x1CC4, 0x1A4C, 0x1A8A };
+static const sm4_vectors_t SM4_VECTORS_MPS_LOGO = { 0x0256, 0x0478, 0x01EA, 0x0228 };
+static const sm4_vectors_t SM4_VECTORS_DSWAP = { 0x0EB7, 0x28E8, 0x26B4, 0x26F2 };
+static const sm4_vectors_t SM4_VECTORS_SETUP = { 0x174F, 0x0ED0, 0x0E70, 0x0EAE };
+static int vgame_restore_vectors(machine_t *m) { return sm4_restore_vectors(m, &SM4_VECTORS_VGAME); }
+static int player_restore_vectors(machine_t *m) { return sm4_restore_vectors(m, &SM4_VECTORS_PLAYER); }
+static int mps_logo_restore_vectors(machine_t *m) { return sm4_restore_vectors(m, &SM4_VECTORS_MPS_LOGO); }
+static int dswap_restore_vectors(machine_t *m) { return sm4_restore_vectors(m, &SM4_VECTORS_DSWAP); }
+static int setup_restore_vectors(machine_t *m) { return sm4_restore_vectors(m, &SM4_VECTORS_SETUP); }
+
+/* VGAME 0x0EBC4, kbhit(): a character pushed back ([ungot], high byte 0)
+ * answers FFh at once; otherwise the console hook at [hook] is called with
+ * BX = FFFFh when [hook - 2] holds its signature D6D6h, and DOS function 0Bh
+ * answers (AH cleared). */
+static int sm4_kbhit(machine_t *m, uint16_t entry, uint16_t ungot, uint16_t hook)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 9)) return 0;
+    c->r[R_AX] = ds_get(c, ungot);
+    alu_logic(c, get_r8(c, R_AH), 0);
+    set_r8(c, R_AL, 0xFF);
+    c->icount += 4;
+    if (c->flags & F_ZF) { c->icount += 1; near_ret(c); return 1; }
+    alu_sub(c, ds_get(c, (uint16_t)(hook - 2)), 0xD6D6, 1, 0);
+    c->icount += 2;
+    if (c->flags & F_ZF) {
+        cpu_push16(c, c->r[R_BX]);
+        c->r[R_BX] = 0xFFFF;
+        c->icount += 2;
+        if (!guest_call(m, ds_get(c, hook), SM4_AT(0x19))) return 1;
+        SM4_NEED(2, SM4_AT(0x19));
+        c->r[R_BX] = cpu_pop16(c);
+        c->icount += 1;
+    }
+    set_r8(c, R_AH, 0x0B);
+    c->icount += 1;
+    if (!sm4_int(m, SM4_AT(0x1C))) return 1;
+    SM4_NEED(2, SM4_AT(0x1E));
+    set_r8(c, R_AH, 0);
+    c->icount += 2;
+    near_ret(c);
+    return 1;
+}
+static int vgame_kbhit(machine_t *m) { return sm4_kbhit(m, 0xEBC4, 0x929C, 0x9408); }
+static int player_kbhit(machine_t *m) { return sm4_kbhit(m, 0x1380, 0x1A90, 0x1CB6); }
+
+/* VGAME 0x0EBEA, getch(): a character pushed back ([ungot], high byte 0) is
+ * the answer and the slot is emptied (FFFFh); otherwise the console hook is
+ * called as kbhit calls it and DOS function 08h (input without echo, DH = 8
+ * swapped into AH) reads one; AH cleared. DX is left as the AX it came in
+ * with. */
+static int sm4_getch(machine_t *m, uint16_t entry, uint16_t ungot, uint16_t hook)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 9)) return 0;
+    set_r8(c, R_DH, 8);
+    c->r[R_AX] = ds_get(c, ungot);
+    alu_logic(c, get_r8(c, R_AH), 0);
+    c->icount += 4;
+    if (c->flags & F_ZF) {
+        ds_put(c, ungot, 0xFFFF);
+        c->icount += 3;                                           /* mov, jmp, ret */
+        near_ret(c);
+        return 1;
+    }
+    alu_sub(c, ds_get(c, (uint16_t)(hook - 2)), 0xD6D6, 1, 0);
+    c->icount += 2;
+    if (c->flags & F_ZF) {
+        cpu_push16(c, c->r[R_BX]);
+        c->r[R_BX] = 0xFFFF;
+        c->icount += 2;
+        if (!guest_call(m, ds_get(c, hook), SM4_AT(0x21))) return 1;
+        SM4_NEED(2, SM4_AT(0x21));
+        c->r[R_BX] = cpu_pop16(c);
+        c->icount += 1;
+    }
+    const uint16_t t = c->r[R_DX];                                /* xchg dx, ax */
+    c->r[R_DX] = c->r[R_AX];
+    c->r[R_AX] = t;
+    c->icount += 1;
+    if (!sm4_int(m, SM4_AT(0x23))) return 1;
+    SM4_NEED(2, SM4_AT(0x25));
+    set_r8(c, R_AH, 0);
+    c->icount += 2;
+    near_ret(c);
+    return 1;
+}
+static int vgame_getch(machine_t *m) { return sm4_getch(m, 0xEBEA, 0x929C, 0x9408); }
+static int player_getch(machine_t *m) { return sm4_getch(m, 0x13A6, 0x1A90, 0x1CB6); }
+
+/* VGAME 0x0EE6A, bioskey(cmd): INT 16h with AH = cmd. For a status request
+ * (cmd's low nibble 1) an empty buffer (ZF) answers 0; for anything but a
+ * shift-state request (low nibble 2) a 0 answer becomes -1. */
+static int sm4_bioskey(machine_t *m, uint16_t entry, int far)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 5)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    set_r8(c, R_AH, bp_get8(c, far ? 6 : 4));
+    set_r8(c, R_DL, (uint8_t)alu_logic(c, get_r8(c, R_AH) & 0x0F, 0));
+    c->icount += 5;
+    if (!sm4_int(m, SM4_AT(0x0B))) return 1;
+    SM4_NEED(10, SM4_AT(0x0D));
+    c->icount += 1;                                               /* jne */
+    int done = 0;
+    if (c->flags & F_ZF) {
+        alu_sub(c, get_r8(c, R_DL), 1, 0, 0);
+        c->icount += 2;
+        if (c->flags & F_ZF) {
+            c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);
+            c->icount += 2;                                       /* xor, jmp */
+            done = 1;
+        }
+    }
+    if (!done) {
+        alu_sub(c, get_r8(c, R_DL), 2, 0, 0);
+        c->icount += 2;
+        if (!(c->flags & F_ZF)) {
+            alu_logic(c, c->r[R_AX], 1);
+            c->icount += 2;
+            if (c->flags & F_ZF) { c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1); c->icount += 1; }
+        }
+    }
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 2;
+    sm4_ret(c, far);
+    return 1;
+}
+static int sm4_step(const cpu_t *c);
+static void sm4_stosb(cpu_t *c);
+
+/* VGAME 0x0F54E, the conversion itoa and ltoa end in: DX:AX as text in radix
+ * CX at DI (in DS; ES is set to it), BL 1 for a signed conversion, which
+ * writes '-' and negates only in radix 10. Digits come lowest first, two
+ * DIVs a digit (the high word's skipped while it is 0), as 0-9 then a-z, then
+ * the string is reversed in place (after any '-'). The answer is the buffer;
+ * it returns from the entry's frame (SI and DI were pushed after BP). Room is
+ * checked each turn of either loop. The callers decline radix 0, the divide
+ * error. `core` is this code's address. */
+static int sm4_ntoa(machine_t *m, uint16_t core, int far)
+{
+    cpu_t *c = &m->cpu;
+    SM4_NEED(17, core);                                           /* to the first digit */
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->seg[S_DS]);
+    c->seg[S_ES] = cpu_pop16(c);
+    set_flag(c, F_DF, 0);
+    { const uint16_t t = c->r[R_BX]; c->r[R_BX] = c->r[R_AX]; c->r[R_AX] = t; }
+    alu_logic(c, get_r8(c, R_AL), 0);
+    c->icount += 7;
+    if (!(c->flags & F_ZF)) {                                     /* signed */
+        alu_sub(c, c->r[R_CX], 10, 1, 0);
+        c->icount += 2;
+        if (c->flags & F_ZF) {
+            alu_logic(c, c->r[R_DX], 1);
+            c->icount += 2;
+            if (c->flags & F_SF) {                                /* negative: '-' and the magnitude */
+                set_r8(c, R_AL, '-');
+                sm4_stosb(c);
+                c->r[R_BX] = (uint16_t)alu_sub(c, 0, c->r[R_BX], 1, 0);
+                c->r[R_DX] = (uint16_t)alu_add(c, c->r[R_DX], 0, 1, (c->flags & F_CF) != 0);
+                c->r[R_DX] = (uint16_t)alu_sub(c, 0, c->r[R_DX], 1, 0);
+                c->icount += 5;
+            }
+        }
+    }
+    c->r[R_SI] = c->r[R_DI];
+    c->icount += 1;
+    do {                                                          /* 0x0F56C: one digit */
+        SM4_NEED(18, core + 0x1E);
+        { const uint16_t t = c->r[R_DX]; c->r[R_DX] = c->r[R_AX]; c->r[R_AX] = t; }
+        c->r[R_DX] = (uint16_t)alu_logic(c, 0, 1);
+        alu_logic(c, c->r[R_AX], 1);
+        c->icount += 4;
+        if (!(c->flags & F_ZF)) { x86_div16(c, c->r[R_CX]); c->icount += 1; }
+        { const uint16_t t = c->r[R_BX]; c->r[R_BX] = c->r[R_AX]; c->r[R_AX] = t; }
+        x86_div16(c, c->r[R_CX]);
+        { const uint16_t t = c->r[R_DX]; c->r[R_DX] = c->r[R_AX]; c->r[R_AX] = t; }
+        { const uint16_t t = c->r[R_BX]; c->r[R_BX] = c->r[R_DX]; c->r[R_DX] = t; }
+        set_r8(c, R_AL, (uint8_t)alu_add(c, get_r8(c, R_AL), 0x30, 0, 0));
+        alu_sub(c, get_r8(c, R_AL), 0x39, 0, 0);
+        c->icount += 7;
+        if (!x86_cond(c, 0x6)) {                                  /* jbe not taken: a letter */
+            set_r8(c, R_AL, (uint8_t)alu_add(c, get_r8(c, R_AL), 0x27, 0, 0));
+            c->icount += 1;
+        }
+        sm4_stosb(c);
+        c->r[R_AX] = c->r[R_DX];
+        c->r[R_AX] = (uint16_t)alu_logic(c, c->r[R_AX] | c->r[R_BX], 1);
+        c->icount += 4;
+    } while (!(c->flags & F_ZF));
+    ds_put8(c, c->r[R_DI], get_r8(c, R_AL));                      /* the terminating 0 */
+    c->icount += 1;
+    do {                                                          /* 0x0F58C: reverse in place */
+        SM4_NEED(13, core + 0x3E);
+        c->r[R_DI] = (uint16_t)alu_dec(c, c->r[R_DI], 1);
+        set_r8(c, R_AL, ds_get8(c, c->r[R_SI]));               /* lodsb */
+        c->r[R_SI] = (uint16_t)(c->r[R_SI] + sm4_step(c));
+        const uint8_t t = ds_get8(c, c->r[R_DI]);
+        ds_put8(c, c->r[R_DI], get_r8(c, R_AL));
+        set_r8(c, R_AL, t);
+        ds_put8(c, (uint16_t)(c->r[R_SI] - 1), t);
+        c->r[R_AX] = (uint16_t)(c->r[R_SI] + 1);
+        alu_sub(c, c->r[R_AX], c->r[R_DI], 1, 0);
+        c->icount += 7;
+    } while (c->flags & F_CF);
+    c->r[R_AX] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->icount += 6;
+    sm4_leave_ret(c, far);
+    return 1;
+}
+
+/* VGAME 0x0EB9E, itoa(value, buf, radix): signed in radix 10 (the word sign
+ * extended), unsigned otherwise; the conversion at `core`. */
+static int sm4_itoa(machine_t *m, uint16_t core, int far)
+{
+    cpu_t *c = &m->cpu;
+    const int a = far ? 2 : 0;
+    if (!room(c, 13) || arg(c, 2 + a / 2) == 0) return 0;          /* radix 0: the divide error, left to the original */
+    frame_open(c, 0);
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->r[R_DI]);
+    set_r8(c, R_BL, 1);
+    c->r[R_CX] = bp_get(c, 8 + a);
+    c->r[R_AX] = bp_get(c, 4 + a);
+    c->r[R_DX] = (uint16_t)alu_logic(c, 0, 1);
+    alu_sub(c, c->r[R_CX], 10, 1, 0);
+    c->icount += 10;
+    if (c->flags & F_ZF) { cwd(c); c->icount += 1; }
+    c->r[R_DI] = bp_get(c, 6 + a);
+    c->icount += 2;                                               /* and the JMP */
+    return sm4_ntoa(m, core, far);
+}
+
+/* VGAME 0x0EBBA, ltoa(value, buf, radix): signed in radix 10; the entry at
+ * core - 0Ch reads the arguments. */
+static int sm4_ltoa(machine_t *m, uint16_t core, int far)
+{
+    cpu_t *c = &m->cpu;
+    const int a = far ? 2 : 0;
+    if (!room(c, 10) || arg(c, 3 + a / 2) == 0) return 0;
+    frame_open(c, 0);
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->r[R_DI]);
+    set_r8(c, R_BL, 1);
+    c->r[R_CX] = bp_get(c, 0x0A + a);
+    c->r[R_AX] = bp_get(c, 4 + a);
+    c->r[R_DX] = bp_get(c, 6 + a);
+    c->r[R_DI] = bp_get(c, 8 + a);
+    c->icount += 10;                                              /* with the JMP */
+    return sm4_ntoa(m, core, far);
+}
+static int vgame_itoa(machine_t *m) { return sm4_itoa(m, 0xF54E, 0); }
+static int vgame_ltoa(machine_t *m) { return sm4_ltoa(m, 0xF54E, 0); }
+static int player_itoa(machine_t *m) { return sm4_itoa(m, 0x1F7C, 0); }
+static int player_ltoa(machine_t *m) { return sm4_ltoa(m, 0x1F7C, 0); }
+static int mps_logo_itoa(machine_t *m) { return sm4_itoa(m, 0x1A7C, 1); }
+
+/* VGAME 0x0F85F, _write's flush of its text-mode buffer (called with _write's
+ * frame): the bytes from DX up to DI go to the handle at [bp+4] by DOS
+ * function 40h, their count is added to the total at [bp-2], and DI goes back
+ * to DX; AX, BX and CX are kept. A failed or short write leaves through
+ * _write's own ending, which the original code runs from 0x0F880. */
+static int sm4_write_flush(machine_t *m, uint16_t entry, int far)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 11)) return 0;
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, c->r[R_BX]);
+    cpu_push16(c, c->r[R_CX]);
+    c->r[R_CX] = (uint16_t)alu_sub(c, c->r[R_DI], c->r[R_DX], 1, 0);
+    c->icount += 6;
+    if (c->r[R_CX]) {
+        cpu_push16(c, c->r[R_CX]);
+        c->r[R_BX] = bp_get(c, far ? 6 : 4);
+        set_r8(c, R_AH, 0x40);
+        c->icount += 3;
+        if (!sm4_int(m, SM4_AT(0x0F))) return 1;
+        SM4_NEED(10, SM4_AT(0x11));
+        c->r[R_CX] = cpu_pop16(c);
+        c->icount += 2;
+        if (c->flags & F_CF) { c->ip = SM4_AT(0x21); return 1; }  /* the error: the original's way out */
+        bp_put(c, -2, (uint16_t)alu_add(c, bp_get(c, -2), c->r[R_AX], 1, 0));
+        alu_sub(c, c->r[R_CX], c->r[R_AX], 1, 0);
+        c->icount += 3;
+        if (x86_cond(c, 0x7)) { c->ip = SM4_AT(0x21); return 1; } /* ja: a short write */
+    }
+    c->r[R_CX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_AX] = cpu_pop16(c);
+    c->r[R_DI] = c->r[R_DX];
+    c->icount += 5;
+    near_ret(c);
+    return 1;
+}
+static int vgame_write_flush(machine_t *m) { return sm4_write_flush(m, 0xF85F, 0); }
+static int player_write_flush(machine_t *m) { return sm4_write_flush(m, 0x219D, 0); }
+static int mps_logo_write_flush(machine_t *m) { return sm4_write_flush(m, 0x16AE, 1); }
+static int dswap_write_flush(machine_t *m) { return sm4_write_flush(m, 0x1FD3, 0); }
+
+/* VGAME 0x0F7AE, _write(fd, buf, n), the KEEP ending's answer the bytes
+ * written. A handle past [nfile] fails with error 9. The console hook is
+ * called when its signature is there; a handle opened for appending (flag
+ * 20h) is moved to its end first. In binary mode (flag 80h clear) the
+ * buffer goes to DOS function 40h as it is: n = 0 answers 0 at once, a DOS
+ * error is error 9's way, and 0 bytes written answer 0 for a device
+ * (flag 40h) given ^Z, else error 1Ch (ENOSPC). In text mode a buffer
+ * with no LF also goes as it is; otherwise it is copied through a buffer
+ * on the stack (200h bytes, or 80h when stackavail is under 228h) with each
+ * LF made CR LF, flushed (0x0F85F) whenever full and at the end, and the
+ * answer is the bytes written less the CRs added. With stackavail at or
+ * under A8h the original's stack check runs from 0x0F859. Room is checked
+ * at each turn of the copy and after every call. */
+typedef struct { uint16_t entry, nfile, flags, hook, x, avail; } sm4_write_t;
+
+/* STOSB, and the string step, written out: MSVC at /O2 does not finish
+ * compiling x86_stos inside a loop here. */
+static int sm4_step(const cpu_t *c) { return (c->flags & F_DF) ? -1 : 1; }
+static void sm4_stosb(cpu_t *c)
+{
+    mem_write8(c, phys(c->seg[S_ES], c->r[R_DI]), get_r8(c, R_AL));
+    c->r[R_DI] = (uint16_t)(c->r[R_DI] + sm4_step(c));
+}
+
+static int sm4_write(machine_t *m, const sm4_write_t *w)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = w->entry;
+    if (!room(c, 11)) return 0;
+    frame_open(c, 8);
+    c->r[R_BX] = bp_get(c, 4);
+    alu_sub(c, c->r[R_BX], ds_get(c, w->nfile), 1, 0);
+    c->icount += 6;
+    if (!(c->flags & F_CF)) {
+        c->r[R_AX] = 0x0900;
+        set_flag(c, F_CF, 1);
+        c->icount += 3;                                           /* mov, stc, jmp */
+        return sm4_dos_end(m, w->x, SM4_KEEP, 0);
+    }
+    alu_sub(c, ds_get(c, (uint16_t)(w->hook - 2)), 0xD6D6, 1, 0);
+    c->icount += 2;
+    if (c->flags & F_ZF) {
+        if (!guest_call(m, ds_get(c, w->hook), SM4_AT(0x22))) return 1;
+    }
+    SM4_NEED(18, SM4_AT(0x22));                                   /* 0x0F7D0 */
+    alu_logic(c, ds_get8(c, (uint16_t)(w->flags + c->r[R_BX])) & 0x20, 0);
+    c->icount += 2;
+    if (!(c->flags & F_ZF)) {                                     /* appending: to the end first */
+        c->r[R_AX] = 0x4202;
+        c->r[R_CX] = (uint16_t)alu_logic(c, 0, 1);
+        c->r[R_DX] = c->r[R_CX];
+        c->icount += 3;
+        if (!sm4_int(m, SM4_AT(0x30))) return 1;
+        SM4_NEED(17, SM4_AT(0x32));
+        c->icount += 1;                                           /* jb */
+        if (c->flags & F_CF) { c->icount += 1; return sm4_dos_end(m, w->x, SM4_KEEP, 0); }
+    }
+    alu_logic(c, ds_get8(c, (uint16_t)(w->flags + c->r[R_BX])) & 0x80, 0);   /* 0x0F7E2 */
+    c->icount += 2;
+    if (c->flags & F_ZF) { c->icount += 1; goto binary; }         /* jmp 0x0F8B7 */
+    c->r[R_DX] = bp_get(c, 6);                                    /* text mode: 0x0F7E9 */
+    cpu_push16(c, c->seg[S_DS]);
+    c->seg[S_ES] = cpu_pop16(c);
+    c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);
+    bp_put(c, -2, 0);
+    bp_put(c, -4, 0);
+    set_flag(c, F_DF, 0);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_SI]);
+    c->r[R_DI] = c->r[R_DX];
+    c->r[R_SI] = c->r[R_DX];
+    bp_put(c, -8, c->r[R_SP]);
+    c->r[R_CX] = bp_get(c, 8);
+    c->icount += 14;
+    if (!c->r[R_CX]) goto total;                                  /* jcxz 0x0F83D */
+    {
+        /* repne scasb for LF over the buffer: counted first, as it will run */
+        unsigned k = 0;
+        uint16_t di = c->r[R_DI], cx = c->r[R_CX];
+        do { k++; cx--; if (mem_read8(c, phys(c->seg[S_ES], di)) == 0x0A) break; di++; } while (cx);
+        SM4_NEED(k + 14, SM4_AT(0x57));
+    }
+    set_r8(c, R_AL, 0x0A);
+    c->icount += 1 + rep_string(c, STR_SCAS, 0, 0, 1) + 1;      /* mov al, repne scasb, jne */
+    if (!(c->flags & F_ZF)) {                                     /* no LF: as it is */
+        c->r[R_SI] = cpu_pop16(c);
+        c->r[R_DI] = cpu_pop16(c);
+        c->icount += 3;
+        goto binary;
+    }
+    if (!guest_call(m, w->avail, SM4_AT(0x60))) return 1;          /* stackavail */
+    SM4_NEED(14, SM4_AT(0x60));
+    alu_sub(c, c->r[R_AX], 0xA8, 1, 0);
+    c->icount += 2;
+    if (x86_cond(c, 0x6)) { c->ip = SM4_AT(0xAB); return 1; }    /* too little stack: the original's check */
+    c->r[R_SP] = (uint16_t)alu_sub(c, c->r[R_SP], 2, 1, 0);
+    c->r[R_BX] = c->r[R_SP];                                      /* the buffer's end */
+    c->r[R_DX] = 0x0200;
+    alu_sub(c, c->r[R_AX], 0x0228, 1, 0);
+    c->icount += 5;
+    if (c->flags & F_CF) { c->r[R_DX] = 0x0080; c->icount += 1; }
+    c->r[R_SP] = (uint16_t)alu_sub(c, c->r[R_SP], c->r[R_DX], 1, 0);
+    c->r[R_DX] = c->r[R_SP];
+    c->r[R_DI] = c->r[R_DX];
+    cpu_push16(c, c->seg[S_SS]);
+    c->seg[S_ES] = cpu_pop16(c);
+    c->r[R_CX] = bp_get(c, 8);
+    c->icount += 6;
+    for (;;) {                                                    /* 0x0F82E: a byte */
+        SM4_NEED(15, SM4_AT(0x80));
+        set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_DS], c->r[R_SI])));   /* lodsb */
+        c->r[R_SI] = (uint16_t)(c->r[R_SI] + sm4_step(c));
+        alu_sub(c, get_r8(c, R_AL), 0x0A, 0, 0);
+        c->icount += 3;
+        if (c->flags & F_ZF) {                                    /* LF: CR first */
+            set_r8(c, R_AL, 0x0D);
+            alu_sub(c, c->r[R_DI], c->r[R_BX], 1, 0);
+            c->icount += 3;
+            if (c->flags & F_ZF) {
+                if (!guest_call(m, (uint16_t)(entry + 0xB1), SM4_AT(0x9A))) return 1;
+                SM4_NEED(9, SM4_AT(0x9A));
+            }
+            sm4_stosb(c);
+            set_r8(c, R_AL, 0x0A);
+            bp_put(c, -4, (uint16_t)alu_inc(c, bp_get(c, -4), 1));
+            c->icount += 4;
+        }
+        alu_sub(c, c->r[R_DI], c->r[R_BX], 1, 0);                 /* 0x0F833 */
+        c->icount += 2;
+        if (c->flags & F_ZF) {                                    /* the buffer is full */
+            if (!guest_call(m, (uint16_t)(entry + 0xB1), SM4_AT(0xA5))) return 1;
+            SM4_NEED(4, SM4_AT(0xA5));
+            c->icount += 1;                                       /* jmp 0x0F837 */
+        }
+        sm4_stosb(c);
+        c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);                  /* loop */
+        c->icount += 2;
+        if (!c->r[R_CX]) break;
+    }
+    if (!guest_call(m, (uint16_t)(entry + 0xB1), SM4_AT(0x8F))) return 1;
+total:                                                            /* 0x0F83D */
+    SM4_NEED(11, SM4_AT(0x8F));
+    c->r[R_AX] = (uint16_t)alu_sub(c, bp_get(c, -2), bp_get(c, -4), 1, 0);
+    c->icount += 3;                                               /* jmp, mov, sub */
+    c->r[R_SP] = bp_get(c, -8);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->icount += 4;                                               /* with the JMP */
+    return sm4_dos_end(m, w->x, SM4_KEEP, 0);
+binary:                                                           /* 0x0F8B7 */
+    c->r[R_CX] = bp_get(c, 8);
+    alu_logic(c, c->r[R_CX], 1);
+    c->icount += 3;
+    if (!c->r[R_CX]) {
+        c->r[R_AX] = c->r[R_CX];
+        c->icount += 2;
+        return sm4_dos_end(m, w->x, SM4_KEEP, 0);
+    }
+    c->r[R_DX] = bp_get(c, 6);
+    set_r8(c, R_AH, 0x40);
+    c->icount += 2;
+    if (!sm4_int(m, SM4_AT(0x11A))) return 1;
+    SM4_NEED(15, SM4_AT(0x11C));
+    c->icount += 1;                                               /* jae */
+    if (c->flags & F_CF) {
+        set_r8(c, R_AH, 9);
+        c->icount += 3;                                           /* mov, jmp, jmp */
+        return sm4_dos_end(m, w->x, SM4_KEEP, 0);
+    }
+    alu_logic(c, c->r[R_AX], 1);
+    c->icount += 2;
+    if (c->flags & F_ZF) {                                        /* nothing written */
+        alu_logic(c, ds_get8(c, (uint16_t)(w->flags + c->r[R_BX])) & 0x40, 0);
+        c->icount += 2;
+        int eof = 0;
+        if (!(c->flags & F_ZF)) {
+            c->r[R_BX] = c->r[R_DX];
+            alu_sub(c, ds_get8(c, c->r[R_BX]), 0x1A, 0, 0);
+            c->icount += 3;
+            eof = (c->flags & F_ZF) != 0;
+        }
+        if (eof) { set_flag(c, F_CF, 0); c->icount += 2; }
+        else { set_flag(c, F_CF, 1); c->r[R_AX] = 0x1C00; c->icount += 3; }
+    }
+    c->icount += 1;                                               /* jmp to the ending */
+    return sm4_dos_end(m, w->x, SM4_KEEP, 0);
+}
+static const sm4_write_t SM4_WRITE_VGAME = { 0xF7AE, 0x926F, 0x9271, 0x9408, 0xF0CC, 0xF908 };
+static const sm4_write_t SM4_WRITE_PLAYER = { 0x20EC, 0x1A67, 0x1A69, 0x1CB6, 0x186E, 0x237E };
+static const sm4_write_t SM4_WRITE_DSWAP = { 0x1F22, 0x26CF, 0x26D1, 0x28DA, 0x13EA, 0x2064 };
+static int vgame_write(machine_t *m) { return sm4_write(m, &SM4_WRITE_VGAME); }
+static int player_write(machine_t *m) { return sm4_write(m, &SM4_WRITE_PLAYER); }
+static int dswap_write(machine_t *m) { return sm4_write(m, &SM4_WRITE_DSWAP); }
+
+/* VGAME 0x0E876, the run-time's exit with its three other entries: exit(code)
+ * at +0 (CX 0), _exit(code) at +7 (CX 1), _cexit() at +0Fh (CX 100h, SI and
+ * DI saved) and _c_exit() at +19h (CX 101h). Unless CL is set, the exit
+ * tables run first (two near-pointer tables, 0x0E924, and the console hook
+ * at [hook] when [sig] holds D6D6h); then the terminator tables (near
+ * 0x0E924 and far 0x0E933, over [term]) and the null-pointer check (whose
+ * nonzero answer, for exit(0), makes the code FFh). The run-time's vectors
+ * are put back (0x0E8F7); with CH clear the program ends (DOS function 4Ch,
+ * the code in AL), which is left to the original code: the matched code
+ * stops at the INT. With CH set it returns. */
+typedef struct { uint16_t entry, first, second_lo, second_hi, term, sig, null_check; } sm4_exit_t;
+
+static int sm4_exit(machine_t *m, const sm4_exit_t *s, int mode)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = s->entry;
+    if (!room(c, 12)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    if (mode >= 2) { cpu_push16(c, c->r[R_SI]); cpu_push16(c, c->r[R_DI]); }
+    static const uint16_t CX[4] = { 0x0000, 0x0001, 0x0100, 0x0101 };
+    if (mode == 0) c->r[R_CX] = (uint16_t)alu_logic(c, 0, 1);    /* xor cx, cx */
+    else c->r[R_CX] = CX[mode];
+    c->icount += mode >= 2 ? (mode == 2 ? 6 : 5) : 4;            /* with the JMP, but at +19h */
+    cpu_push16(c, c->r[R_CX]);                                    /* 0x0E897 */
+    alu_logic(c, get_r8(c, R_CL), 0);
+    c->icount += 3;
+    if (c->flags & F_ZF) {                                        /* the exit tables */
+        c->r[R_SI] = s->first;
+        c->r[R_DI] = s->first;
+        c->icount += 2;
+        if (!guest_call(m, SM4_AT(0xAE), SM4_AT(0x2F))) return 1;
+        SM4_NEED(3, SM4_AT(0x2F));
+        c->r[R_SI] = s->second_lo;
+        c->r[R_DI] = s->second_hi;
+        c->icount += 2;
+        if (!guest_call(m, SM4_AT(0xAE), SM4_AT(0x38))) return 1;
+        SM4_NEED(5, SM4_AT(0x38));
+        alu_sub(c, ds_get(c, s->sig), 0xD6D6, 1, 0);
+        c->icount += 2;
+        if (c->flags & F_ZF) {
+            if (!guest_call(m, ds_get(c, (uint16_t)(s->sig + 6)), SM4_AT(0x44))) return 1;
+            SM4_NEED(3, SM4_AT(0x44));
+        }
+    }
+    c->r[R_SI] = s->term;                                         /* 0x0E8BA */
+    c->r[R_DI] = s->term;
+    c->icount += 2;
+    if (!guest_call(m, SM4_AT(0xAE), SM4_AT(0x4D))) return 1;
+    SM4_NEED(3, SM4_AT(0x4D));
+    c->r[R_SI] = s->term;
+    c->r[R_DI] = s->term;
+    c->icount += 2;
+    if (!guest_call(m, SM4_AT(0xBD), SM4_AT(0x56))) return 1;
+    SM4_NEED(1, SM4_AT(0x56));
+    if (!guest_call(m, s->null_check, SM4_AT(0x59))) return 1;
+    SM4_NEED(10, SM4_AT(0x59));
+    alu_logic(c, c->r[R_AX], 1);
+    c->icount += 2;
+    if (!(c->flags & F_ZF)) {                                     /* the null check failed */
+        c->r[R_AX] = cpu_pop16(c);
+        alu_logic(c, get_r8(c, R_AH), 0);
+        cpu_push16(c, c->r[R_AX]);
+        c->icount += 4;
+        if (c->flags & F_ZF) {
+            alu_sub(c, bp_get(c, 4), 0, 1, 0);
+            c->icount += 2;
+            if (c->flags & F_ZF) { bp_put(c, 4, 0x00FF); c->icount += 1; }
+        }
+    }
+    if (!guest_call(m, SM4_AT(0x81), SM4_AT(0x71))) return 1;      /* the vectors back */
+    SM4_NEED(7, SM4_AT(0x71));
+    c->r[R_AX] = cpu_pop16(c);
+    alu_logic(c, get_r8(c, R_AH), 0);
+    c->icount += 3;
+    if (c->flags & F_ZF) {                                        /* the end: DOS 4Ch by the original */
+        c->r[R_AX] = bp_get(c, 4);
+        set_r8(c, R_AH, 0x4C);
+        c->icount += 2;
+        c->ip = SM4_AT(0x7B);
+        return 1;
+    }
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 4;
+    near_ret(c);
+    return 1;
+}
+static const sm4_exit_t SM4_EXIT_VGAME = { 0xE876, 0x989C, 0x9422, 0x9424, 0x9424, 0x9406, 0xF04A };
+static const sm4_exit_t SM4_EXIT_PLAYER = { 0x124E, 0x1E58, 0x1CD0, 0x1CD2, 0x1CD2, 0x1CB4, 0x15E0 };
+static const sm4_exit_t SM4_EXIT_DSWAP = { 0x0E36, 0x29E0, 0x28F4, 0x28F6, 0x28F6, 0x28D8, 0x115C };
+static const sm4_exit_t SM4_EXIT_SETUP = { 0x16CE, 0x0FCE, 0x0EDC, 0x0EDC, 0x0EDC, 0x0EC0, 0x1994 };
+static int vgame_exit(machine_t *m) { return sm4_exit(m, &SM4_EXIT_VGAME, 0); }
+static int player_exit(machine_t *m) { return sm4_exit(m, &SM4_EXIT_PLAYER, 0); }
+static int player_cexit(machine_t *m) { return sm4_exit(m, &SM4_EXIT_PLAYER, 2); }
+static int player_c_exit(machine_t *m) { return sm4_exit(m, &SM4_EXIT_PLAYER, 3); }
+static int dswap_exit(machine_t *m) { return sm4_exit(m, &SM4_EXIT_DSWAP, 0); }
+static int setup_exit(machine_t *m) { return sm4_exit(m, &SM4_EXIT_SETUP, 0); }
+
+/* REPE CMPSB (DS:SI against ES:DI) as the interpreter steps it: one clock an
+ * iteration, one when CX is already 0. Written out: MSVC at /O2 does not
+ * finish compiling the string helpers inside a loop here. */
+static unsigned sm4_repe_cmpsb(cpu_t *c)
+{
+    if (!c->r[R_CX]) return 1;
+    unsigned n = 0;
+    for (;;) {
+        const uint8_t a = mem_read8(c, phys(c->seg[S_DS], c->r[R_SI]));
+        const uint8_t b = mem_read8(c, phys(c->seg[S_ES], c->r[R_DI]));
+        alu_sub(c, a, b, 0, 0);
+        c->r[R_SI] = (uint16_t)(c->r[R_SI] + sm4_step(c));
+        c->r[R_DI] = (uint16_t)(c->r[R_DI] + sm4_step(c));
+        n++;
+        c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);
+        if (!c->r[R_CX] || !(c->flags & F_ZF)) return n;
+    }
+}
+
+/* VGAME 0x0E7A8, the run-time's start-up (_cinit): the divide-error vector
+ * is saved at [div0] and pointed at the handler (entry - 32h, in CS); the
+ * far hook at [hook], when set, is called twice (BX 0, then 3, with DX:AX
+ * from [hook+4] and [hook+8]; a carry from the first ends the program,
+ * which is left to the original code from 0x0E7E8). The environment (its
+ * segment at PSP:2Ch) is searched for the variable named at [name]
+ * (thirteen bytes, "_C_FILE_INFO=" in the file): its value, letters from
+ * A taken two to a byte, becomes the handles' flag bytes at [flags]. Each
+ * of handles 4..0 then has flag 40h cleared, and set again when DOS 4400h
+ * reports a device. The far and near initialiser tables (both empty at
+ * [table]) run last. Room is checked at each turn of either walk. */
+typedef struct { uint16_t entry, div0, hook, psp, name, flags, table; } sm4_cinit_t;
+
+static int sm4_cinit(machine_t *m, const sm4_cinit_t *s)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = s->entry;
+    if (!room(c, 1)) return 0;
+    c->r[R_AX] = 0x3500;
+    c->icount += 1;
+    if (!sm4_int(m, SM4_AT(0x03))) return 1;
+    SM4_NEED(6, SM4_AT(0x05));
+    ds_put(c, s->div0, c->r[R_BX]);
+    ds_put(c, (uint16_t)(s->div0 + 2), c->seg[S_ES]);
+    cpu_push16(c, c->seg[S_CS]);
+    c->seg[S_DS] = cpu_pop16(c);
+    c->r[R_AX] = 0x2500;
+    c->r[R_DX] = (uint16_t)(entry - 0x32);
+    c->icount += 6;
+    if (!sm4_int(m, SM4_AT(0x15))) return 1;
+    SM4_NEED(12, SM4_AT(0x17));
+    cpu_push16(c, c->seg[S_SS]);
+    c->seg[S_DS] = cpu_pop16(c);
+    alu_sub(c, ds_get(c, s->hook), 0, 1, 0);
+    c->icount += 4;
+    if (!(c->flags & F_ZF)) {                                     /* the hook */
+        ds_put(c, (uint16_t)(s->hook + 2), c->seg[S_CS]);
+        ds_put(c, (uint16_t)(s->hook + 0x0A), c->seg[S_CS]);
+        c->seg[S_ES] = ds_get(c, s->psp);
+        c->r[R_SI] = seg_read16(c, c->seg[S_ES], 0x2C);
+        c->r[R_AX] = ds_get(c, (uint16_t)(s->hook + 4));
+        c->seg[S_DS] = ds_get(c, (uint16_t)(s->hook + 6));
+        c->r[R_DX] = c->seg[S_DS];
+        c->r[R_BX] = (uint16_t)alu_logic(c, 0, 1);
+        c->icount += 7;
+        if (!guest_call_far_to(m, seg_read16(c, c->seg[S_SS], (uint16_t)(s->hook + 2)),
+                               seg_read16(c, c->seg[S_SS], s->hook), SM4_AT(0x3E))) return 1;
+        SM4_NEED(5, SM4_AT(0x3E));
+        c->icount += 1;                                           /* jae */
+        if (c->flags & F_CF) { c->ip = SM4_AT(0x40); return 1; } /* the end: the original's way */
+        c->r[R_AX] = seg_read16(c, c->seg[S_SS], (uint16_t)(s->hook + 8));
+        c->seg[S_DS] = seg_read16(c, c->seg[S_SS], (uint16_t)(s->hook + 0x0A));
+        c->r[R_DX] = c->seg[S_DS];
+        c->r[R_BX] = 3;
+        c->icount += 3;
+        if (!guest_call_far_to(m, seg_read16(c, c->seg[S_SS], (uint16_t)(s->hook + 2)),
+                               seg_read16(c, c->seg[S_SS], s->hook), SM4_AT(0x54))) return 1;
+        SM4_NEED(7, SM4_AT(0x54));
+        cpu_push16(c, c->seg[S_SS]);
+        c->seg[S_DS] = cpu_pop16(c);
+        c->icount += 2;
+    }
+    c->seg[S_ES] = ds_get(c, s->psp);                             /* 0x0E7FE */
+    c->r[R_CX] = seg_read16(c, c->seg[S_ES], 0x2C);
+    c->icount += 3;
+    if (c->r[R_CX]) {
+        c->seg[S_ES] = c->r[R_CX];
+        c->r[R_DI] = (uint16_t)alu_logic(c, 0, 1);
+        c->icount += 2;
+        for (;;) {                                                /* 0x0E80D: a variable */
+            /* the turn's string instructions, counted first (they only read) */
+            const int d = (c->flags & F_DF) ? -1 : 1;
+            unsigned k1 = 0, k2 = 0;
+            uint16_t si = s->name, di = c->r[R_DI], cx = 13;
+            int eq;
+            do {
+                k1++;
+                eq = mem_read8(c, phys(c->seg[S_DS], si)) == mem_read8(c, phys(c->seg[S_ES], di));
+                si = (uint16_t)(si + d); di = (uint16_t)(di + d); cx--;
+            } while (cx && eq);
+            if (!eq) {
+                int z;
+                cx = 0x7FFF;
+                do { k2++; z = !mem_read8(c, phys(c->seg[S_ES], di)); di = (uint16_t)(di + d); cx--; } while (cx && !z);
+            }
+            SM4_NEED(eq ? 12 + k1 : 10 + k1 + k2, SM4_AT(0x65));
+            alu_sub(c, mem_read8(c, phys(c->seg[S_ES], c->r[R_DI])), 0, 0, 0);
+            c->icount += 2;
+            if (c->flags & F_ZF) break;                           /* the end of the environment */
+            c->r[R_CX] = 13;
+            c->r[R_SI] = s->name;
+            c->icount += 2 + sm4_repe_cmpsb(c) + 1;
+            if (c->flags & F_ZF) {                                /* found: its value */
+                cpu_push16(c, c->seg[S_ES]);
+                cpu_push16(c, c->seg[S_DS]);
+                c->seg[S_ES] = cpu_pop16(c);
+                c->seg[S_DS] = cpu_pop16(c);
+                c->r[R_SI] = c->r[R_DI];
+                c->r[R_DI] = s->flags;
+                set_r8(c, R_CL, 4);
+                c->icount += 7;
+                for (;;) {                                        /* 0x0E833: two letters a byte */
+                    SM4_NEED(11, SM4_AT(0x8B));
+                    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_DS], c->r[R_SI])));
+                    c->r[R_SI] = (uint16_t)(c->r[R_SI] + sm4_step(c));
+                    set_r8(c, R_AL, (uint8_t)alu_sub(c, get_r8(c, R_AL), 0x41, 0, 0));
+                    c->icount += 3;
+                    if (c->flags & F_CF) break;
+                    set_r8(c, R_AL, (uint8_t)x86_shift(c, 4, get_r8(c, R_AL), get_r8(c, R_CL), 0));
+                    { const uint16_t t = c->r[R_DX]; c->r[R_DX] = c->r[R_AX]; c->r[R_AX] = t; }
+                    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_DS], c->r[R_SI])));
+                    c->r[R_SI] = (uint16_t)(c->r[R_SI] + sm4_step(c));
+                    set_r8(c, R_AL, (uint8_t)alu_sub(c, get_r8(c, R_AL), 0x41, 0, 0));
+                    c->icount += 5;
+                    if (c->flags & F_CF) break;
+                    set_r8(c, R_AL, (uint8_t)alu_logic(c, get_r8(c, R_AL) | get_r8(c, R_DL), 0));
+                    sm4_stosb(c);
+                    c->icount += 3;
+                }
+                cpu_push16(c, c->seg[S_SS]);                      /* 0x0E845 */
+                c->seg[S_DS] = cpu_pop16(c);
+                c->icount += 2;
+                break;
+            }
+            c->r[R_CX] = 0x7FFF;
+            c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);
+            c->icount += 2 + rep_string(c, STR_SCAS, 0, 0, 1) + 1;
+            if (!(c->flags & F_ZF)) break;                        /* no more */
+            c->icount += 1;                                       /* jmp 0x0E80D */
+        }
+    }
+    c->r[R_BX] = 4;                                               /* 0x0E847 */
+    c->icount += 1;
+    for (;;) {                                                    /* 0x0E84A: handles 4..0 */
+        SM4_NEED(2, SM4_AT(0xA2));
+        const uint16_t f = (uint16_t)(s->flags + c->r[R_BX]);
+        ds_put8(c, f, (uint8_t)alu_logic(c, ds_get8(c, f) & 0xBF, 0));
+        c->r[R_AX] = 0x4400;
+        c->icount += 2;
+        if (!sm4_int(m, SM4_AT(0xAA))) return 1;
+        SM4_NEED(9, SM4_AT(0xAC));
+        c->icount += 1;                                           /* jb */
+        if (!(c->flags & F_CF)) {
+            alu_logic(c, get_r8(c, R_DL) & 0x80, 0);
+            c->icount += 2;
+            if (!(c->flags & F_ZF)) {
+                const uint16_t g = (uint16_t)(s->flags + c->r[R_BX]);
+                ds_put8(c, g, (uint8_t)alu_logic(c, ds_get8(c, g) | 0x40, 0));
+                c->icount += 1;
+            }
+        }
+        c->r[R_BX] = (uint16_t)alu_dec(c, c->r[R_BX], 1);
+        c->icount += 2;
+        if (c->flags & F_SF) break;
+    }
+    c->r[R_SI] = s->table;
+    c->r[R_DI] = s->table;
+    c->icount += 2;
+    if (!guest_call(m, SM4_AT(0x18B), SM4_AT(0xC4))) return 1;
+    SM4_NEED(3, SM4_AT(0xC4));
+    c->r[R_SI] = s->table;
+    c->r[R_DI] = s->table;
+    c->icount += 2;
+    if (!guest_call(m, SM4_AT(0x17C), SM4_AT(0xCD))) return 1;
+    SM4_NEED(1, SM4_AT(0xCD));
+    c->icount += 1;
+    near_ret(c);
+    return 1;
+}
+static const sm4_cinit_t SM4_CINIT_VGAME = { 0xE7A8, 0x9254, 0x9416, 0x9268, 0x9246, 0x9271, 0x9422 };
+static const sm4_cinit_t SM4_CINIT_PLAYER = { 0x1180, 0x1A4C, 0x1CC4, 0x1A60, 0x1A3E, 0x1A69, 0x1CD0 };
+static const sm4_cinit_t SM4_CINIT_DSWAP = { 0x0D68, 0x26B4, 0x28E8, 0x26C8, 0x26A6, 0x26D1, 0x28F4 };
+static const sm4_cinit_t SM4_CINIT_SETUP = { 0x1600, 0x0E70, 0x0ED0, 0x0E84, 0x0E62, 0x0E8D, 0x0EDC };
+static int vgame_cinit(machine_t *m) { return sm4_cinit(m, &SM4_CINIT_VGAME); }
+static int player_cinit(machine_t *m) { return sm4_cinit(m, &SM4_CINIT_PLAYER); }
+static int dswap_cinit(machine_t *m) { return sm4_cinit(m, &SM4_CINIT_DSWAP); }
+static int setup_cinit(machine_t *m) { return sm4_cinit(m, &SM4_CINIT_SETUP); }
+
+/* VGAME 0x0FE40, far: the near routine at 0x0FE50, reached from another
+ * segment. */
+static int vgame_far_to_fe50(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 1)) return 0;
+    if (!guest_call(m, 0xFE50, 0xFE43)) return 1;
+    SM4_NEED(1, 0xFE43);
+    c->icount += 1;
+    sm4_ret(c, 1);
+    return 1;
+}
+
+/* stackavail() in the near copies (sm3_stack_avail): they return by JMP CX. */
+static int vgame_stack_avail(machine_t *m) { return sm3_stack_avail(m, 0x93FE, 0); }
+static int player_stack_avail(machine_t *m) { return sm3_stack_avail(m, 0x1C7E, 0); }
+static int dswap_stack_avail(machine_t *m) { return sm3_stack_avail(m, 0x28BC, 0); }
+
+static int vgame_bioskey(machine_t *m) { return sm4_bioskey(m, 0xEE6A, 0); }
+static int mps_logo_bioskey(machine_t *m) { return sm4_bioskey(m, 0x0724, 1); }
+
 /* ---- VGAME, second batch ------------------------------------------------ */
 
 /* |v| as `cwd; xor ax, dx; sub ax, dx` computes it (8000h stays 8000h). */
@@ -17756,6 +18978,8 @@ static int st3_pic_row(machine_t *m, const st3_pic_row_t *s)
 static const st3_pic_row_t ST3_PIC_ROW_START = { 0x885F, 0x649D, 0x6235, 0x8889, 0x8D70, 0x8C20, 0x890A };
 static const st3_pic_row_t ST3_PIC_ROW_END = { 0x47FF, 0x1EDF, 0x1C77, 0x4829, 0x3F86, 0x3E36, 0x48AA };
 static int start_pic_row(machine_t *m) { return st3_pic_row(m, &ST3_PIC_ROW_START); }
+static const st3_pic_row_t SM4_PIC_ROW_DSWAP = { 0x0AAB, 0x03EF, 0x0187, 0x0AD5, 0x2476, 0x2326, 0x0B56 };
+static int dswap_pic_row(machine_t *m) { return st3_pic_row(m, &SM4_PIC_ROW_DSWAP); }
 static int end_pic_row(machine_t *m) { return st3_pic_row(m, &ST3_PIC_ROW_END); }
 
 /* START 0x08DA4 and END 0x04C88, the timer's reload, the end of its
@@ -19598,6 +20822,17 @@ static const st3_heap_grow_t ST3_HEAP_GROW_START = { 0xA836, 0xB16C, 0xA913, 0xA
 static const st3_heap_grow_t ST3_HEAP_GROW_END = { 0x5E86, 0x5334, 0x5F63, 0x5F12 };
 static int start_heap_grow(machine_t *m) { return st3_heap_grow(m, &ST3_HEAP_GROW_START); }
 static int end_heap_grow(machine_t *m) { return st3_heap_grow(m, &ST3_HEAP_GROW_END); }
+/* The near heap's growth (st3_heap_grow, START 0x0A836) in the other programs. */
+static const st3_heap_grow_t SM4_HEAP_GROW_VGAME = { 0xF9E4, 0x9402, 0xFAC1, 0xFA70 };
+static const st3_heap_grow_t SM4_HEAP_GROW_PLAYER = { 0x23DA, 0x1C94, 0x24B7, 0x2466 };
+static const st3_heap_grow_t SM4_HEAP_GROW_MPS_LOGO = { 0x1BB4, 0x0448, 0x1C91, 0x1C40 };
+static const st3_heap_grow_t SM4_HEAP_GROW_DSWAP = { 0x20C0, 0x28D4, 0x219D, 0x214C };
+static const st3_heap_grow_t SM4_HEAP_GROW_SETUP = { 0x1C4A, 0x0EBC, 0x1D27, 0x1CD6 };
+static int vgame_heap_grow(machine_t *m) { return st3_heap_grow(m, &SM4_HEAP_GROW_VGAME); }
+static int player_heap_grow(machine_t *m) { return st3_heap_grow(m, &SM4_HEAP_GROW_PLAYER); }
+static int mps_logo_heap_grow(machine_t *m) { return st3_heap_grow(m, &SM4_HEAP_GROW_MPS_LOGO); }
+static int dswap_heap_grow(machine_t *m) { return st3_heap_grow(m, &SM4_HEAP_GROW_DSWAP); }
+static int setup_heap_grow(machine_t *m) { return st3_heap_grow(m, &SM4_HEAP_GROW_SETUP); }
 
 /* ---- VGAME, second batch of matched routines (Phase 2) -------------------
  *
@@ -24218,6 +25453,43 @@ static int vgame_stick_read(machine_t *m)
     far_ret(c);
     return 1;
 }
+
+/* SETUP 0237:002C and 0237:004D: the same two routines, 0C65h lower in
+ * SETUP's joystick segment (port read 0237:005C, axis_spread 0237:003A,
+ * axis_normalise 0237:00A4). */
+static int sm4_stick_centre(machine_t *m, uint16_t d)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 1)) return 0;
+    VG3_NEAR((uint16_t)(0x0CC1 - d), (uint16_t)(0x0C94 - d), 2);
+    c->r[R_SI] = (uint16_t)alu_sub(c, c->r[R_SI], c->r[R_SI], 1, 0);
+    c->icount += 1;
+    VG3_NEAR((uint16_t)(0x0C9F - d), (uint16_t)(0x0C99 - d), 3);
+    c->r[R_SI] = (uint16_t)alu_inc(c, c->r[R_SI], 1);
+    c->r[R_SI] = (uint16_t)alu_inc(c, c->r[R_SI], 1);
+    c->icount += 2;
+    VG3_NEAR((uint16_t)(0x0C9F - d), (uint16_t)(0x0C9E - d), 1);
+    c->icount += 1;
+    far_ret(c);
+    return 1;
+}
+static int sm4_stick_read(machine_t *m, uint16_t d)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 1)) return 0;
+    VG3_NEAR((uint16_t)(0x0CC1 - d), (uint16_t)(0x0CB5 - d), 2);
+    c->r[R_SI] = (uint16_t)alu_sub(c, c->r[R_SI], c->r[R_SI], 1, 0);
+    c->icount += 1;
+    VG3_NEAR((uint16_t)(0x0D09 - d), (uint16_t)(0x0CBA - d), 2);
+    c->r[R_SI] = 1;
+    c->icount += 1;
+    VG3_NEAR((uint16_t)(0x0D09 - d), (uint16_t)(0x0CC0 - d), 1);
+    c->icount += 1;
+    far_ret(c);
+    return 1;
+}
+static int setup_stick_centre(machine_t *m) { return sm4_stick_centre(m, 0x0C65); }
+static int setup_stick_read(machine_t *m) { return sm4_stick_read(m, 0x0C65); }
 
 /* VGAME 120A:04F5, model_part_light (DI = the part's inverse matrix): the
  * base-local light direction (7C9C..7CA0) copied into the next 6-byte
@@ -29378,6 +30650,71 @@ static const recomp_override MATCHED[] = {
     { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0045, 0x0062, mps_logo_bios_ticks, "the BIOS tick count", 2 },
     { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0045, 0x008E, mps_logo_strcpy_far, "copy a string to a far destination", 2 },
     { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x006D, 0x05A2, mps_logo_close_handle, "close a handle", 2 },
+    /* The C runtime's DOS layer, fourth batch (sm4_) */
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xEE8E, vgame_dos_freemem, "free a DOS memory block", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xF5A2, vgame_dos_unlink, "delete a file", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x14E0, player_dos_freemem, "free a DOS memory block", 1 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x0748, mps_logo_dos_freemem, "free a DOS memory block", 2 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x17A2, mps_logo_dos_unlink, "delete a file", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xEE52, vgame_dos_allocmem, "allocate a DOS memory block", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x14A0, player_dos_allocmem, "allocate a DOS memory block", 1 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x070C, mps_logo_dos_allocmem, "allocate a DOS memory block", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xFA70, vgame_heap_resize, "resize the near heap's segment", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x2466, player_heap_resize, "resize the near heap's segment", 1 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x1C40, mps_logo_heap_resize, "resize the near heap's segment", 1 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x214C, dswap_heap_resize, "resize the near heap's segment", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x1CD6, setup_heap_resize, "resize the near heap's segment", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xF9E4, vgame_heap_grow, "grow the near heap", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x23DA, player_heap_grow, "grow the near heap", 1 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x1BB4, mps_logo_heap_grow, "grow the near heap", 1 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x20C0, dswap_heap_grow, "grow the near heap", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x1C4A, setup_heap_grow, "grow the near heap", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xF3DE, vgame_lseek, "move a file's position", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x2304, player_lseek, "move a file's position", 1 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x181A, mps_logo_lseek, "move a file's position", 2 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x0F7E, dswap_lseek, "move a file's position", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xF3BE, vgame_close, "close a file", 1 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x14F0, mps_logo_close, "close a file", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xE8F7, vgame_restore_vectors, "put the run-time's vectors back", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x12CF, player_restore_vectors, "put the run-time's vectors back", 1 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x0256, mps_logo_restore_vectors, "put the run-time's vectors back", 1 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x0EB7, dswap_restore_vectors, "put the run-time's vectors back", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x174F, setup_restore_vectors, "put the run-time's vectors back", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xEBC4, vgame_kbhit, "is a key waiting", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x1380, player_kbhit, "is a key waiting", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xEBEA, vgame_getch, "read a key", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x13A6, player_getch, "read a key", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xEE6A, vgame_bioskey, "the BIOS keyboard", 1 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x0724, mps_logo_bioskey, "the BIOS keyboard", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xEB9E, vgame_itoa, "a word as text", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xEBBA, vgame_ltoa, "a long as text", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x135A, player_itoa, "a word as text", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x1376, player_ltoa, "a long as text", 1 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x173A, mps_logo_itoa, "a word as text", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xF908, vgame_stack_avail, "stack space left", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x237E, player_stack_avail, "stack space left", 1 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x2064, dswap_stack_avail, "stack space left", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xF85F, vgame_write_flush, "_write's flush of its text buffer", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x219D, player_write_flush, "_write's flush of its text buffer", 1 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x16AE, mps_logo_write_flush, "_write's flush of its text buffer", 1 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x1FD3, dswap_write_flush, "_write's flush of its text buffer", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xF7AE, vgame_write, "write to a file", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x20EC, player_write, "write to a file", 1 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x1F22, dswap_write, "write to a file", 1 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x0AAB, dswap_pic_row, "decode a picture row", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0237, 0x002C, setup_stick_centre, "centre the joystick calibration", 2 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0237, 0x004D, setup_stick_read, "read both joystick axes", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xE876, vgame_exit, "end the program", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x124E, player_exit, "end the program", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x125D, player_cexit, "the exit's clean-up, returning", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x1267, player_c_exit, "the exit's short clean-up, returning", 1 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x0E36, dswap_exit, "end the program", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x16CE, setup_exit, "end the program", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xFE40, vgame_far_to_fe50, "far entry to 0x0FE50", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xE7A8, vgame_cinit, "the run-time's start-up", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x1180, player_cinit, "the run-time's start-up", 1 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x0D68, dswap_cinit, "the run-time's start-up", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x1600, setup_cinit, "the run-time's start-up", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x11ED, 0x00AE, vgame_pic_rle, "the picture decoder's row (RLE) step", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x11ED, 0x0127, vgame_pic_lzw, "the picture decoder's code and table step", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x48AA, end_pic_rle, "the picture decoder's row (RLE) step", 1 },
