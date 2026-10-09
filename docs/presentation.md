@@ -393,10 +393,16 @@ What the live path takes from the machine, in process:
   logic frame at a time: a frame closes at the first phase after one that presented (entry 44),
   as `interp_frame.py` groups them, and waits in a ring of 8 until the host takes it. At the
   close it copies A000 into the frame, which is what the replay must equal. Two observer fields
-  serve it (`observe.h`): `sources` has the records carry what `F117R_OBSERVE_PAGES` gives a log
-  beyond the primitives (a blit's and a page copy's source bytes, the byte changes of the
-  entries no hook decodes), and `want_pages` asks for the page dumps at one phase, which the
-  feed does once to seed the replay (and again after a frame differs or one is dropped).
+  serve it (`observe.h`): `sources` has the records carry a blit's and a page copy's source
+  bytes, as `F117R_OBSERVE_PAGES` gives a log, and `want_pages` asks for the page dumps at one
+  phase, which the feed does once to seed the replay (and again after a frame differs or one is
+  dropped). The feed takes no page snapshots: since entry 41 is decoded every drawing entry has a
+  rule, and only a log keeps the pages through each graphics entry, for the byte changes ('x')
+  the rules are checked against. Entries 13-16, 24-26, 45, 46, 62 and 65 have no rule; they set
+  state (pages, origin, DAC, CRTC start); in the eight windows only entry 46 has byte changes, and
+  they are the model fill's own rows (the fill calls it while it paints), which the replay draws
+  from the 'b' records, so they need no snapshot either. Were one to draw, the frame would differ from A000 at its close and the replay
+  would be seeded again.
 - **The replay** (`drawlive`, same file) runs `drawlist.c` on each closed frame, carried from the
   one seed, and compares the display with the frame's copy of A000. A frame that differs is not
   shown and the replay is seeded again.
@@ -456,8 +462,7 @@ pairs). Drawing an in-between frame at every VGA frame costs the recompiled stri
 again, 8,332 of its 9,030 replayed VGA frames in-between frames.
 
 **Left for the live path.** Pacing to the host's display rather than the emulated VGA's (the
-in-between frames are drawn at the VGA's 70 Hz), Stage 2's finer grid, and decoding graphics
-entry 41, which would drop the per-entry page snapshots. The camera-space vertices of a frame are
+in-between frames are drawn at the VGA's 70 Hz) and Stage 2's finer grid. The camera-space vertices of a frame are
 in its records ('V'), so a finer grid needs no more from the machine.
 
 ## Open questions and risks

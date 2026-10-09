@@ -43,10 +43,10 @@ typedef struct f117_observer {
                    uint16_t xf_at, uint16_t px_at);
     /* A draw-list primitive (see above): n values in v. */
     void (*prim)(void *user, uint64_t icount, char kind, const int32_t *v, int n);
-    /* Nonzero: the records carry what a replay needs beyond the primitives -
-     * a blit's and a whole-page copy's source bytes, and the byte changes of
-     * the graphics entries no hook decodes ('x') - as F117R_OBSERVE_PAGES
-     * gives a log. Each graphics entry then costs a page snapshot. */
+    /* Nonzero: the records carry what a replay needs beyond the primitives,
+     * a blit's and a whole-page copy's source bytes, as F117R_OBSERVE_PAGES
+     * gives a log. (A log also has the byte changes of each graphics entry,
+     * 'x', from a page snapshot at every entry, to check the rules with.) */
     int sources;
     /* Asked at each game_draw (may be NULL): nonzero to have the pages at
      * this phase ('Z' the work page, 'Y' the display, 'J' the palette), as

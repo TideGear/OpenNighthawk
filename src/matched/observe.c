@@ -36,7 +36,7 @@ static int log_pages(void)
     return env;
 }
 
-/* What a replay needs beyond the primitives (observe.h): for a log, or
+/* The source bytes of a blit and a page copy (observe.h): for a log, or
  * when the observer asks. */
 static int want_sources(void)
 {
@@ -532,8 +532,7 @@ static int hook_lib_recolour(machine_t *m)
     v[7] = peek16(c, drv, (uint16_t)(4 + 2 * v[2]));
     v[8] = peek16(c, drv, (uint16_t)(4 + 2 * (v[2] + 1)));
     o->prim(o->user, c->icount, 'M', v, 9);
-    /* a log keeps the bytes it changed too ('x'), to check the rule against */
-    if (log_pages()) any_begin(m, 41, (uint16_t)v[0]);
+    any_begin(m, 41, (uint16_t)v[0]);
     return 0;
 }
 
@@ -792,9 +791,11 @@ static int hook_lib_other(machine_t *m)
     return 0;
 }
 
+/* Only a log keeps the pages through an entry: every entry that draws now
+ * has a rule, so the byte changes are there to check the rules against. */
 static void any_begin(machine_t *m, int entry, uint16_t page)
 {
-    if (!want_sources()) return;
+    if (!log_pages()) return;
     g_any.entry = entry;
     g_any.page = page;
     peek_page(&m->cpu, page, g_any.before);
@@ -805,7 +806,7 @@ static void any_begin(machine_t *m, int entry, uint16_t page)
  * active page points elsewhere. */
 static void any_begin_display(machine_t *m, int entry, uint16_t page)
 {
-    if (!want_sources() || page == 0xA000) return;
+    if (!log_pages() || page == 0xA000) return;
     g_any_display.entry = entry;
     peek_page(&m->cpu, 0xA000, g_any_display.before);
     g_any_display.on = 1;
