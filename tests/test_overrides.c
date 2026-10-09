@@ -122,6 +122,42 @@ static void check_observer(void)
     observe_set(NULL);
 }
 
+/* A switched-on fix takes the place of the parity routine at its address, whichever of the two was
+ * registered first: the parity routine is registered first here, as recomp_init does, and once the fix
+ * is on only the fix runs there (recomp_override_step). */
+static int parity_calls, fix_calls;
+static int parity_routine(machine_t *mm)
+{
+    parity_calls++;
+    mm->cpu.ip = (uint16_t)(mm->cpu.ip + 2);
+    mm->cpu.icount++;
+    return 1;
+}
+static int fix_routine(machine_t *mm)
+{
+    fix_calls++;
+    mm->cpu.ip = (uint16_t)(mm->cpu.ip + 4);
+    mm->cpu.icount++;
+    return 1;
+}
+
+static void check_fix_takes_place(void)
+{
+    enum { SEG = 0x6400, IP = 0x0040 };
+    static uint8_t image[0x200];
+    m.engine = ENGINE_RECOMP;                  /* parity routines run only on the recompiled engine */
+    const recomp_override parity = { "PARITY", "FIXPLACE.OVL", 0, 0, IP, parity_routine, "parity routine (test)", 1 };
+    const recomp_override fix = { "FIXTEST", "FIXPLACE.OVL", 0, 0, IP, fix_routine, "fix (test)" };
+    CHECK(recomp_override_add(&parity) >= 0);
+    CHECK(recomp_override_add(&fix) >= 0);
+    recomp_module_load(NULL, &m, "FIXPLACE.OVL", image, sizeof image, MODLOAD_OVERLAY, SEG, SEG);
+    CHECK(step_at(SEG, IP) == 1 && parity_calls == 1 && fix_calls == 0);   /* the fix is off: the parity routine */
+    CHECK(recomp_override_enable("FIXTEST", 1) == 1);
+    CHECK(step_at(SEG, IP) == 1 && parity_calls == 1 && fix_calls == 1);   /* on: the fix alone */
+    CHECK(recomp_override_enable("FIXTEST", 0) == 1);
+    CHECK(step_at(SEG, IP) == 1 && parity_calls == 2 && fix_calls == 1);   /* off again */
+}
+
 int main(void)
 {
     m.mem = calloc(1, MEM_SIZE);
@@ -288,6 +324,14 @@ int main(void)
 
     check_observer();
     check_override_capacity();
+    /* No two of the real tables' entries share a place, except where the matched routine calls the
+     * observer itself (vgame_model_edge_spans and vgame_model_poly_finish): at one address only the
+     * first that applies runs, and a merge once left two observer hooks idle this way. */
+    static const char *const deliberate[] = { "VGAME.EXE 130D:004A", "VGAME.EXE 130D:0116", NULL };
+    observe_register();
+    fixes_register();
+    CHECK(recomp_override_duplicates(stdout, deliberate) == 0);
+    check_fix_takes_place();
     recomp_shutdown(&m);
     if (failures) { fprintf(stderr, "%d failures\n", failures); return 1; }
     printf("code overrides: all checks passed\n");

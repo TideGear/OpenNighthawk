@@ -65,6 +65,8 @@ int  recomp_override_add(const recomp_override *o);
 /* Switch every override with this id ("all" for every one); how many. */
 int  recomp_override_enable(const char *id, int on);
 void recomp_override_list(FILE *f);
+/* Overrides sharing a place, printed; the count of those not in `allowed` ("MODULE SEG:OFF"). */
+int recomp_override_duplicates(FILE *f, const char *const *allowed);
 /* The enabled overrides' ids, space-separated, each once ("" for none). */
 void recomp_override_ids(char *out, size_t n);
 /* Enabled overrides now placed in loaded modules. */

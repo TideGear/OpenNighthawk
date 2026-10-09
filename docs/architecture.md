@@ -264,7 +264,13 @@ lose code an earlier capture got translated.
 - **Code overrides.** Hand-written C registered for one address of one
   module (by name and file hash). Fixes are overrides off until switched on
   (`--fix ID`); matched routines are overrides always on for the recompiled
-  engine. The run loop asks for an override before either engine takes an
+  engine, and so are observer hooks. A switched-on fix takes the place of the
+  matched routine (and any observer) at its address, whatever the order they
+  were registered in, because the matched routine reproduces the original and
+  the fix is the deviation that was asked for. Two parity routines or observers
+  at one address leave one silently idle: the unit test `code_overrides` lists
+  such pairs and fails on any that are not named as deliberate (an observer a
+  matched routine calls itself). The run loop asks for an override before either engine takes an
   instruction; with none enabled that is one counter test. A translated
   region whose bytes include an enabled override's address is refused, so
   the recompiler gives each override address a region of its own (one
@@ -272,8 +278,9 @@ lose code an earlier capture got translated.
   leaves CS:IP and the clock where the replaced code would have, or declines
   and the original instruction runs. Under the 386 timing profile, matched
   entries use the original body until their handwritten clocks charge cycles.
-  Each loaded module can place all 1,024
-  registry entries; matched routines and observer hooks share that capacity.
+  Each loaded module can place all 4,096
+  registry entries; matched routines and observer hooks share that capacity,
+  and the registry warns on stderr if it fills (a dropped entry is a lost routine).
 - **Data fixes.** The machine's one hook that may change what the guest
   sees, `file_data`, hands each DOS read's bytes to the fixes before they
   reach memory; a correction applies only to its named file, of its size,

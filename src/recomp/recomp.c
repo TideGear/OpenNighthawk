@@ -213,6 +213,35 @@ void recomp_override_ids(char *out, size_t n)
     }
 }
 
+/* A parity routine is a matched routine; the observer hooks are matched too, but are not parity routines
+ * (their id is "observe"). */
+static int is_parity(const recomp_override *o) { return o->matched && strcmp(o->id, "observe") != 0; }
+
+/* Registered overrides that share a place (module, segment, offset). Two parity routines or observers
+ * there, or two fixes, leave one of them silently idle, so each such pair is printed and counted unless
+ * named in `allowed` ("MODULE SEG:OFF", NULL-ended: the observers a matched routine calls itself). A fix
+ * over a parity routine is by design (recomp_override_step runs the fix there) and is printed, not
+ * counted. Returns how many pairs were counted. */
+int recomp_override_duplicates(FILE *f, const char *const *allowed)
+{
+    int n = 0;
+    for (int i = 0; i < g_nov; i++)
+        for (int k = 0; k < i; k++) {
+            if (strcmp(g_ov[i].module, g_ov[k].module) || g_ov[i].seg != g_ov[k].seg || g_ov[i].ip != g_ov[k].ip) continue;
+            char key[64];
+            snprintf(key, sizeof key, "%s %04X:%04X", g_ov[i].module, g_ov[i].seg, g_ov[i].ip);
+            const int by_design = (!g_ov[i].matched && is_parity(&g_ov[k])) || (!g_ov[k].matched && is_parity(&g_ov[i]));
+            int ok = 0;
+            for (const char *const *a = allowed; a && *a; a++) if (!strcmp(*a, key)) ok = 1;
+            fprintf(f, "%s: %s (%s) after %s (%s)%s\n", key, g_ov[i].id, g_ov[i].what ? g_ov[i].what : "",
+                    g_ov[k].id, g_ov[k].what ? g_ov[k].what : "",
+                    ok ? ", deliberate" : by_design ? ", a fix in its place" : "");
+            n += !(ok || by_design);
+            break;
+        }
+    return n;
+}
+
 void recomp_override_list(FILE *f)
 {
     for (int i = 0; i < g_nov; i++)
@@ -327,10 +356,19 @@ int recomp_override_step(machine_t *m)
     if (!((g_ov_bits[lin >> 3] >> (lin & 7)) & 1)) return 0;
     instance *in = g_rt.by_para[lin >> 4];
     if (!in || !in->live) return 0;
+    /* A switched-on fix takes the place of the parity routine (and any observer) at its address, whatever
+     * order they were registered in: the parity routine reproduces the original, and the fix is the
+     * deviation that was switched on. Found first, it alone runs there. */
+    int fix = -1;
+    for (int k = 0; k < in->nov && fix < 0; k++) {
+        const recomp_override *o = &g_ov[in->ov_index[k]];
+        if (!o->matched && in->ov_lin[k] == lin && (uint16_t)(in->base + o->seg) == cs) fix = k;
+    }
     for (int k = 0; k < in->nov; k++) {
+        if (fix >= 0 && k != fix) continue;
         const recomp_override *o = &g_ov[in->ov_index[k]];
         if (in->ov_lin[k] != lin || (uint16_t)(in->base + o->seg) != cs) continue;
-        if (o->matched && m->engine != ENGINE_RECOMP) return 0;
+        if (o->matched && m->engine != ENGINE_RECOMP) continue;   /* an observer placed there still runs */
         /* Their hand-written clocks count instructions, not 386 cycles.
          * Interpret the entry, then resume the translated original body. */
         if (o->matched && c->t386) return -1;
