@@ -185,6 +185,11 @@ more than once, what it costs, what was optimised). State as of the evening of
 5. Checks still to tighten: DOSBox-X's and GOG's picture comparisons count
    misses (their misses move between real-time captures), so a name list does
    not hold there.
+6. The machine's DOS against MS-DOS 5.00 (`fidelity_all.py`, 86Box side, now
+   on `vmt386dos500`): six answers differ, all register leftovers - AX after
+   INT 21h 3Eh (3E01 there, 3E00 here) and 49h, an EXEC child's AX/BX/DX, the
+   entry FLAGS (0244 / 0200). Copy them only if the game is shown to read
+   one; they are recorded in `tools/fidelity_baseline.json`.
 
 ## Traps that cost time
 
