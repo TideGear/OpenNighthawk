@@ -75,6 +75,23 @@ Status values:
   machine draws 16.8 a second, S sits clamped at 15 and the clock advances
   181: the world runs 13% behind GOG's. That flight does not show the 15/3
   swing.
+- **Re-read 9 Oct 2026 (the VGAME listing).** `[0x43E8]` is the original's
+  frame wait, not only an overrun correction. At `0x0409` the frame set-up
+  calls `0x04C7`, which waits until the tick byte `[0x264A]` has advanced by
+  `[0x43E8]` ticks. `0x0D441` sets `[0x43E8]` = clamp((9 + trunc(-120/S)) >> 1,
+  1, 4) when the measured S is above 15, and 0 otherwise; so the wait sets a
+  frame period of at least N ticks: N = 1 for S 16-23 (a 60 fps cap), 2 for
+  24-35 (30 fps), 3 for 40 and up (20 fps). S itself is clamped to 15 at
+  `0x0D479`. This is the original's code, so it runs in this recompilation.
+  The 15/3 swing described above did not appear in any run here: at 16 and
+  18 MIPS S held at 15 throughout. What does appear is the clamp's effect:
+  above 15 frames a second the mission clock runs at frames divided by 15
+  times real time (180 in 161.66 s at 16 MIPS: 1.11, as 16.7 / 15 predicts;
+  209 in 161.66 s at GOG's 9 MIPS: 1.29, with S 9 against 11.6 frames a
+  second). So no setting measured here keeps the clock real. Under test: a
+  limiter at exactly 15 frames a second (4 ticks), which would hold S at its
+  clamp with the clock real; the wait's own cap is not 15 and is not what
+  holds the game there.
 - **Speed sweep (9 Oct 2026, `tools/d1_check.py --no-fix --route`).** In
   flight the game draws at most about 16.5-17 frames a second whatever the
   machine's speed, and at GOG's 9 MIPS it already does: on the Middle East
