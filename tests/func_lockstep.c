@@ -150,6 +150,10 @@ static const struct { uint16_t seg, ip; uint8_t reg; uint16_t disp; uint16_t val
     { 0x0000, 0x48AA, PLANT_ABS, 0x3F86, 0x0002 },   /* ... so the LZW step runs its body, briefly */
     { 0x11ED, 0x00AE, PLANT_ABS, 0x9688, 0x989B },   /* pic_rle_row, VGAME's copy */
     { 0x11ED, 0x00AE, PLANT_ABS, 0x968A, 0x0002 },
+    { 0x1377, 0x0B09, PLANT_ABS, 0x8606, 0xFE3C },   /* model_fill: the AND, OR, stipple and clear styles */
+    { 0x1377, 0x0B09, PLANT_ABS, 0x8606, 0xFD3C },
+    { 0x1377, 0x0B09, PLANT_ABS, 0x8606, 0xFC3C },
+    { 0x1377, 0x0B09, PLANT_ABS, 0x8606, 0xFB3C },
 };
 
 static const char *g_ctx = "";   /* what the comparison in progress is: " (mid-run stop)" */
@@ -244,6 +248,32 @@ static const struct { const char *module; uint16_t ip; int arg; uint16_t v[2]; }
     { "START.EXE", 0x1B37, 0, { 0x0064, 0x0065 } },     /* the map caption's kinds 64h and 65h */
 };
 
+/* Entry points inside a longer routine whose RET lies before the entry (a second entry that jumps back to
+ * a shared exit): the routine's own code starts `below` bytes under the entry, and a RET there is its own. */
+static const struct { const char *module; uint16_t seg, ip, below; } CODE_BELOW[] = {
+    { "VGAME.EXE", 0x1377, 0x0968, 0x00CC },     /* model fill: the jump to the common exit 089C */
+    { "VGAME.EXE", 0x1377, 0x099F, 0x0007 },     /* stipple fill, exit at 0998 */
+    { "VGAME.EXE", 0x1377, 0x0A1C, 0x0007 },     /* AND fill from a row, exit at 0A15 */
+    { "VGAME.EXE", 0x1377, 0x0A9C, 0x0007 },     /* OR fill from a row, exit at 0A95 */
+    { "VGAME.EXE", 0x1377, 0x0B4F, 0x0007 },     /* solid fill from a row, exit at 0B48 */
+    { "VGAME.EXE", 0x1377, 0x0B09, 0x019E },     /* fill by style: the clear (096B), stipple, AND and OR fills */
+    { "VGAME.EXE", 0x1377, 0x0B1B, 0x01B0 },
+    { "VGAME.EXE", 0x1377, 0x0B23, 0x01B8 },
+    { "VGAME.EXE", 0x1377, 0x0B2B, 0x01C0 },
+    { "VGAME.EXE", 0x1377, 0x0B33, 0x01C8 },
+    { "VGAME.EXE", 0x1377, 0x0886, 0x0012 },     /* planar fill: a skipped row's tail at 0874 */
+    { "VGAME.EXE", 0x1377, 0x08A3, 0x002F },     /* planar fill rows: 0874, and the exit at 089C */
+    { "VGAME.EXE", 0x1377, 0x094A, 0x00D6 },     /* planar one-byte span: on to 092E, then 08A3, 0874, 089C */
+};
+
+static uint16_t code_below(const recomp_override *o)
+{
+    for (unsigned i = 0; i < sizeof CODE_BELOW / sizeof CODE_BELOW[0]; i++)
+        if (!strcmp(CODE_BELOW[i].module, o->module) && CODE_BELOW[i].seg == o->seg && CODE_BELOW[i].ip == o->ip)
+            return CODE_BELOW[i].below;
+    return 0;
+}
+
 static machine_t g_m;           /* side 1's CPU lives in a machine: matched code takes one */
 
 /* A matched routine's call into original code, run here by plain stepping:
@@ -255,13 +285,21 @@ static machine_t g_m;           /* side 1's CPU lives in a machine: matched code
  * did not make, after which the two sides are not comparable. */
 static int g_trace;                     /* print every instruction of a re-run, to see where two sides part */
 static uint16_t g_reach;                /* the furthest instruction run inside the routine, from its entry */
+static uint16_t g_below;                /* how far the routine's code reaches below its entry (CODE_BELOW) */
+/* For those routines the original's code is watched after every step: a write that lands in it and is
+ * written back later (a row table over the code when DS = CS) runs changed instructions and leaves no
+ * trace in the end state. */
+static int g_self_written;
 static int run_to_ret(cpu_t *a, uint16_t entry_sp, int far, int *steps, uint16_t cs, uint16_t ip)
 {
+    const uint32_t watch = phys(cs, (uint16_t)(ip - g_below));
+    const int watching = g_below && a->mem == g_mem[0];
     while (*steps < 100000) {
+        if (watching && !g_self_written && memcmp(a->mem + watch, g_pristine + watch, 0x300u + g_below)) g_self_written = 1;
         if (g_trace) printf("      %04X:%04X clk %llu sp %04X\n", a->seg[S_CS], a->ip, (unsigned long long)a->icount, a->r[R_SP]);
         const uint16_t here = a->ip;
-        const int inside = a->seg[S_CS] == cs && (uint16_t)(here - ip) < 0x300;
-        if (inside && (uint16_t)(here - ip) > g_reach) g_reach = (uint16_t)(here - ip);
+        const int inside = a->seg[S_CS] == cs && (uint16_t)(here - (uint16_t)(ip - g_below)) < 0x300u + g_below;
+        if (inside && (uint16_t)(here - ip) < 0x300 && (uint16_t)(here - ip) > g_reach) g_reach = (uint16_t)(here - ip);
         const uint8_t op = a->mem[phys(a->seg[S_CS], a->ip)];
         const uint16_t sp_before = a->r[R_SP];
         cpu_step(a);
@@ -342,6 +380,7 @@ int main(int argc, char **argv)
         for (unsigned k = 0; k < RC_NMODULES; k++)
             if (!strcmp(RC_MODULES[k]->name, o->module) && RC_MODULES[k]->file_hash == o->file_hash) m = RC_MODULES[k];
         if (!m) { printf("%s %04X:%04X: module not in the generated code\n", o->module, o->seg, o->ip); bad++; continue; }
+        g_below = code_below(o);
         for (uint32_t a = 0; a < MEM_SIZE; a += 8) { uint64_t v = rnd(); memcpy(g_pristine + a, &v, 8); }
         const uint32_t at = (uint32_t)base * 16u + m->origin;
         memcpy(g_pristine + at, m->image, m->size);
@@ -419,9 +458,10 @@ int main(int argc, char **argv)
              * accept the state only when it returns to the pushed address. */
             const uint16_t entry_sp = (uint16_t)(r[R_SP] - (o->matched == 2 ? 4 : 2));
             g_reach = 0;
+            g_self_written = 0;
             const int returned = run_to_ret(a, entry_sp, o->matched == 2, &steps, cs, ip);
             const uint16_t reach = g_reach;
-            if (!returned || a->seg[S_CS] != cs || a->ip != back) steps = 100000;
+            if (!returned || a->seg[S_CS] != cs || a->ip != back || g_self_written) steps = 100000;
             g_side[0].overflow = g_side[1].overflow = 1;      /* compare all memory */
             /* A real return lands back at the caller's stack level (RET n
              * pops at most a few words); a wild jump that happens to reach
@@ -436,8 +476,8 @@ int main(int argc, char **argv)
              * or to the furthest instruction the original ran in the routine
              * when that lies further: START's route leg runs to +0x123, and a
              * write landing past +0x100 went unseen at one seed. */
-            const uint32_t self = phys(cs, ip);
-            const size_t window = reach + 8u > 0x300u ? (size_t)reach + 8u : 0x300u;
+            const uint32_t self = phys(cs, (uint16_t)(ip - g_below));
+            const size_t window = (reach + 8u > 0x300u ? (size_t)reach + 8u : 0x300u) + g_below;
             if (memcmp(g_mem[0] + self, g_pristine + self, window)) { ms++; restore(); continue; }
             /* The event limit: a routine told it has one instruction fewer than
              * the original takes must decline. Running anyway would carry the

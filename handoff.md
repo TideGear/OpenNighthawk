@@ -131,7 +131,7 @@ more than once, what it costs, what was optimised). State as of the evening of
   the 8254 does it (`src/host/speaker.c`, `tools/speaker_parity.py`); open:
   digitised speech has no audio reference, and the listening check is the
   owner's (Phase 4).
-- **Phase 2**: 606 addresses matched (603 census functions, 51,445 of 179,213
+- **Phase 2**: 637 addresses matched (633 census functions, 52,972 of 179,213
   bytes). Batches on branches `p2-vgame`, `p2-start`, `p2-small` (worktrees
   in D:\f117-wt), merged into master by the main session and gated there;
   each was checked at seeds 0x5EED0F117A and 0xC0FFEE (VGAME's 9 Oct batch

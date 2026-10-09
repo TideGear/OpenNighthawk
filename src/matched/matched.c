@@ -8389,24 +8389,8 @@ static int setup_joystick_read(machine_t *m)
 /* SETUP 0237:0115, settings_out(p): the 20 words at DS:0DF4 (the joystick
  * settings) are copied to the far pointer p; ES is kept. The reverse of
  * VGAME's copy_settings. */
-static int setup_settings_out(machine_t *m)
-{
-    cpu_t *c = &m->cpu;
-    if (!room(c, 9 + 20)) return 0;
-    cpu_push16(c, c->r[R_BP]);
-    c->r[R_BP] = c->r[R_SP];
-    cpu_push16(c, c->seg[S_ES]);
-    c->r[R_DI] = bp_get(c, 6);                                    /* les di, [bp+6] */
-    c->seg[S_ES] = bp_get(c, 8);
-    c->r[R_CX] = 0x14;
-    c->r[R_SI] = 0x0DF4;
-    const unsigned copied = rep_string(c, STR_MOVS, 1, c->seg[S_DS], 0);
-    c->seg[S_ES] = cpu_pop16(c);
-    c->r[R_BP] = cpu_pop16(c);
-    c->icount += 9 + copied;
-    far_ret(c);
-    return 1;
-}
+static int vg4_settings_out(machine_t *m, uint16_t from);   /* with VGAME's fourth batch */
+static int setup_settings_out(machine_t *m) { return vg4_settings_out(m, 0x0DF4); }
 
 /* PLAYER 0x00E65, one step of a palette fade: the start colour [13CE] moves on
  * by [13D0] (within 0-255), and [13D0] colours from that one in the 256-colour
@@ -22934,93 +22918,10 @@ static int vgame_model_line(machine_t *m)
 }
 
 /* VGAME 1377:0A89, model_fill_or (AL = colour): the polygon's spans ORed
- * into the page at ES, row by row from [9160] while a row's left end
- * (table at 89DC) is not 7FFFh. Each span is clipped to the window's
- * columns [85FA]..[85FE] (one wholly outside is skipped), its odd first
- * byte ORed alone, then whole words (AH = AL), then an odd last byte; the
- * row's ends go back to empty (7FFFh, 8001h). [9160] ends as 7FFFh. Rows
- * and words look at the room and stop at their loop's head. */
-static int vgame_model_fill_or(machine_t *m)
-{
-    cpu_t *c = &m->cpu;
-    if (!room(c, 6)) return 0;
-    set_r8(c, R_AH, get_r8(c, R_AL));
-    c->r[R_SI] = ds_get(c, 0x9160);
-    alu_sub(c, c->r[R_SI], 0x7FFF, 1, 0);
-    unsigned n = 4;                                               /* mov, mov, cmp, jne */
-    if (!(c->flags & F_ZF)) {
-        c->r[R_SI] = x86_shift(c, 4, c->r[R_SI], 1, 1);
-        n += 1;
-        for (;;) {                                                /* 0A9E: a row */
-            VG3_ROOM_OR_STOP(34, 0x0A9E);
-            const uint16_t si = c->r[R_SI];
-            c->r[R_BX] = ds_get(c, (uint16_t)(si + 0x89DC));
-            c->r[R_CX] = ds_get(c, (uint16_t)(si + 0x8D9E));
-            alu_sub(c, c->r[R_BX], 0x7FFF, 1, 0);
-            n += 4;
-            if (c->flags & F_ZF) break;                           /* the last row */
-            alu_sub(c, c->r[R_BX], ds_get(c, 0x85FE), 1, 0);
-            n += 2;
-            int inside = !x86_cond(c, 0xF);                       /* jg: right of the window */
-            if (inside) {
-                alu_sub(c, c->r[R_CX], ds_get(c, 0x85FA), 1, 0);
-                n += 2;
-                inside = !x86_cond(c, 0xC);                       /* jl: left of it */
-            }
-            if (inside) {
-                alu_sub(c, c->r[R_BX], ds_get(c, 0x85FA), 1, 0);
-                n += 2;
-                if (!x86_cond(c, 0xD)) { c->r[R_BX] = ds_get(c, 0x85FA); n++; }
-                alu_sub(c, c->r[R_CX], ds_get(c, 0x85FE), 1, 0);
-                n += 2;
-                if (!x86_cond(c, 0xE)) { c->r[R_CX] = ds_get(c, 0x85FE); n++; }
-                c->r[R_CX] = (uint16_t)alu_inc(c, (uint16_t)alu_sub(c, c->r[R_CX], c->r[R_BX], 1, 0), 1);
-                c->r[R_DI] = (uint16_t)alu_add(c, ds_get(c, (uint16_t)(si + 0x861C)), c->r[R_BX], 1, 0);
-                alu_logic(c, c->r[R_DI] & 1, 1);
-                n += 6;
-                int more = 1;
-                if (!(c->flags & F_ZF)) {                         /* an odd first byte */
-                    const uint32_t at = phys(c->seg[S_ES], c->r[R_DI]);
-                    mem_write8(c, at, (uint8_t)alu_logic(c, mem_read8(c, at) | get_r8(c, R_AL), 0));
-                    c->r[R_DI] = (uint16_t)alu_inc(c, c->r[R_DI], 1);
-                    c->r[R_CX] = (uint16_t)alu_dec(c, c->r[R_CX], 1);
-                    n += 4;
-                    more = !(c->flags & F_ZF);
-                }
-                if (more) {
-                    c->r[R_BX] = c->r[R_CX];
-                    c->r[R_CX] = x86_shift(c, 5, c->r[R_CX], 1, 1);   /* shr cx, 1 */
-                    n += 3;
-                    if (!(c->flags & F_ZF)) {
-                        do {                                      /* 0AE8: the words */
-                            VG3_ROOM_OR_STOP(3 + 7, 0x0AE8);
-                            const uint16_t w = seg_read16(c, c->seg[S_ES], c->r[R_DI]);
-                            seg_write16(c, c->seg[S_ES], c->r[R_DI], (uint16_t)alu_logic(c, w | c->r[R_AX], 1));
-                            c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], 2, 1, 0);
-                            c->r[R_CX]--;
-                            n += 3;
-                        } while (c->r[R_CX]);
-                    }
-                    c->r[R_BX] = (uint16_t)alu_logic(c, c->r[R_BX] & 1, 1);
-                    n += 2;
-                    if (!(c->flags & F_ZF)) {                     /* an odd last byte */
-                        const uint32_t at = phys(c->seg[S_ES], c->r[R_DI]);
-                        mem_write8(c, at, (uint8_t)alu_logic(c, mem_read8(c, at) | get_r8(c, R_AL), 0));
-                        n++;
-                    }
-                }
-            }
-            ds_put(c, (uint16_t)(si + 0x89DC), 0x7FFF);           /* 0AF8: the row is empty again */
-            ds_put(c, (uint16_t)(si + 0x8D9E), 0x8001);
-            c->r[R_SI] = (uint16_t)alu_add(c, si, 2, 1, 0);
-            n += 4;                                               /* mov, mov, add, jmp */
-        }
-    }
-    ds_put(c, 0x9160, 0x7FFF);                                    /* 0A95 */
-    c->icount += n + 2;
-    near_ret(c);
-    return 1;
-}
+ * into the page at ES; the body is shared with the AND fill (vg4_fill_logic,
+ * with the fourth batch). */
+static int vg4_fill_logic(machine_t *m, int or_op, int from_si, int started);   /* below */
+static int vgame_model_fill_or(machine_t *m) { return vg4_fill_logic(m, 1, 0, 0); }
 
 /* VGAME 120A:00CF and 120A:01B4, far: draw a model, or run it without
  * drawing. Args: the model (an index into the table at ES:2 in the model
@@ -24938,6 +24839,890 @@ done:
 }
 /* VG3-END */
 
+/* ---- VGAME, fourth batch of matched routines (Phase 2) -------------------
+ *
+ * The model renderer's span fills (1377:0886..0BC5) with their many entry
+ * points, port and timer glue, and small wrappers. Held as the third batch:
+ * each check claims room for the longest path to the next one (every
+ * branch, the exit tails, the CALL before a guest call), loops whose length
+ * depends on data check every turn and stop at their head, and a stretch
+ * with k port accesses claims IO_SLACK(k) beside its instructions. */
+
+/* At a shared body's entry: decline when nothing has run yet (the original
+ * runs the routine), else stop there (the original carries on). Needs
+ * `started`. */
+#define VG4_ENTRY(need_, ip_) do {                                                    \
+        if (!room(c, (need_))) { if (!started) return 0; c->ip = (uint16_t)(ip_); return 1; } \
+    } while (0)
+#define VG4_ES8(off) mem_read8(c, phys(c->seg[S_ES], (uint16_t)(off)))
+
+/* STOSB and STOSW written out (MSVC /O2 stalls on x86_stos inside a loop). */
+static void vg4_stosb(cpu_t *c)
+{
+    mem_write8(c, phys(c->seg[S_ES], c->r[R_DI]), get_r8(c, R_AL));
+    c->r[R_DI] = (uint16_t)(c->r[R_DI] + ((c->flags & F_DF) ? 0xFFFFu : 1u));
+}
+static void vg4_stosw(cpu_t *c)
+{
+    seg_write16(c, c->seg[S_ES], c->r[R_DI], c->r[R_AX]);
+    c->r[R_DI] = (uint16_t)(c->r[R_DI] + ((c->flags & F_DF) ? 0xFFFEu : 2u));
+}
+static void vg4_xchg_ahal(cpu_t *c) { c->r[R_AX] = (uint16_t)((c->r[R_AX] << 8) | (c->r[R_AX] >> 8)); }
+
+/* The span fills' rows. [9160] is the first row with a span (7FFFh: none);
+ * row r (SI or BX = 2r) has its page offset at 861C, its left end at 89DC
+ * (7FFFh ends the polygon) and its right end at 8D9E. A row once drawn is
+ * emptied (7FFFh, 8001h) and [9160] is left 7FFFh. */
+#define VG4_ROW_PAGE 0x861C
+#define VG4_ROW_LEFT 0x89DC
+#define VG4_ROW_RIGHT 0x8D9E
+
+/* A span's ends in registers l and r against the window's columns
+ * [85FA]..[85FE], counted into *n: 0 when it lies wholly outside (right of
+ * the window, or left of it), else 1 with both ends clamped. */
+static int vg4_clip_span(cpu_t *c, unsigned *n, int l, int r)
+{
+    alu_sub(c, c->r[l], ds_get(c, 0x85FE), 1, 0);
+    *n += 2;
+    if (x86_cond(c, 0xF)) return 0;                               /* jg */
+    alu_sub(c, c->r[r], ds_get(c, 0x85FA), 1, 0);
+    *n += 2;
+    if (x86_cond(c, 0xC)) return 0;                               /* jl */
+    alu_sub(c, c->r[l], ds_get(c, 0x85FA), 1, 0);
+    *n += 2;
+    if (!x86_cond(c, 0xD)) { c->r[l] = ds_get(c, 0x85FA); (*n)++; }   /* jge skips */
+    alu_sub(c, c->r[r], ds_get(c, 0x85FE), 1, 0);
+    *n += 2;
+    if (!x86_cond(c, 0xE)) { c->r[r] = ds_get(c, 0x85FE); (*n)++; }   /* jle skips */
+    return 1;
+}
+
+/* A row emptied: its ends back to 7FFFh and 8001h (two MOVs). */
+static void vg4_row_empty(cpu_t *c, uint16_t row)
+{
+    ds_put(c, (uint16_t)(row + VG4_ROW_LEFT), 0x7FFF);
+    ds_put(c, (uint16_t)(row + VG4_ROW_RIGHT), 0x8001);
+}
+
+/* VGAME 1377:089C, model_fill_none: no rows pending ([9160] = 7FFFh), the
+ * fills' common exit; 1377:0968 jumps to it. */
+static int vg4_fill_none(machine_t *m, unsigned before)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, before + 2)) return 0;
+    ds_put(c, 0x9160, 0x7FFF);
+    c->icount += before + 2;
+    near_ret(c);
+    return 1;
+}
+static int vgame_fill_none(machine_t *m) { return vg4_fill_none(m, 0); }
+static int vgame_fill_none_jmp(machine_t *m) { return vg4_fill_none(m, 1); }
+
+/* VGAME 1377:096B, model_fill_clear: the rows emptied without drawing, from
+ * [9160] (none when 7FFFh); 1377:0976 does the same from the row in BX.
+ * BX is left at the ending row's index (2r); flags from its compare. */
+static int vg4_fill_clear(machine_t *m, int from_bx, int started)
+{
+    cpu_t *c = &m->cpu;
+    unsigned n = 0;
+    if (!from_bx) {
+        VG4_ENTRY(5, 0x096B);
+        c->r[R_BX] = ds_get(c, 0x9160);
+        alu_sub(c, c->r[R_BX], 0x7FFF, 1, 0);
+        n = 3;
+        if (c->flags & F_ZF) { c->icount += n + 1; near_ret(c); return 1; }
+    } else {
+        VG4_ENTRY(2, 0x0976);
+    }
+    ds_put(c, 0x9160, 0x7FFF);
+    c->r[R_BX] = x86_shift(c, 4, c->r[R_BX], 1, 1);
+    n += 2;
+    for (;;) {                                                    /* 097E: a row */
+        VG3_ROOM_OR_STOP(6, 0x097E);
+        const uint16_t bx = c->r[R_BX];
+        alu_sub(c, ds_get(c, (uint16_t)(bx + VG4_ROW_LEFT)), 0x7FFF, 1, 0);
+        n += 2;
+        if (c->flags & F_ZF) break;
+        vg4_row_empty(c, bx);
+        c->r[R_BX] = (uint16_t)alu_add(c, bx, 2, 1, 0);
+        n += 4;
+    }
+    c->icount += n + 1;
+    near_ret(c);
+    return 1;
+}
+static int vgame_fill_clear(machine_t *m) { return vg4_fill_clear(m, 0, 0); }
+static int vgame_fill_clear_from(machine_t *m) { return vg4_fill_clear(m, 1, 0); }
+
+/* VGAME 1377:0997: the clear's RET, a census entry of its own. */
+static int vgame_fill_clear_ret(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 1)) return 0;
+    c->icount += 1;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 1377:099F, model_fill_stipple (AL = colour): every other pixel of
+ * each row's clipped span, in a checkerboard - the first pixel is skipped
+ * when the column's parity (bit 0 of the clipped left end) equals the row's
+ * (bit 0 of r): SHL SI / XOR SI, BX / TEST SI, 2. Rows from [9160] (none
+ * when 7FFFh or above). */
+static int vg4_fill_stipple(machine_t *m, int started)
+{
+    cpu_t *c = &m->cpu;
+    VG4_ENTRY(5, 0x099F);
+    c->r[R_BX] = ds_get(c, 0x9160);
+    alu_sub(c, c->r[R_BX], 0x7FFF, 1, 0);
+    unsigned n = 3;
+    if (!(c->flags & F_CF)) goto done;                            /* jae */
+    c->r[R_BX] = x86_shift(c, 4, c->r[R_BX], 1, 1);
+    n += 1;
+    for (;;) {                                                    /* 09AB: a row */
+        VG3_ROOM_OR_STOP(29, 0x09AB);
+        const uint16_t bx = c->r[R_BX];
+        c->r[R_DI] = ds_get(c, (uint16_t)(bx + VG4_ROW_PAGE));
+        c->r[R_SI] = ds_get(c, (uint16_t)(bx + VG4_ROW_LEFT));
+        c->r[R_BP] = ds_get(c, (uint16_t)(bx + VG4_ROW_RIGHT));
+        alu_sub(c, c->r[R_SI], 0x7FFF, 1, 0);
+        n += 5;
+        if (c->flags & F_ZF) break;
+        if (vg4_clip_span(c, &n, R_SI, R_BP)) {
+            c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], c->r[R_SI], 1, 0);
+            c->r[R_CX] = (uint16_t)alu_sub(c, c->r[R_BP], c->r[R_SI], 1, 0);
+            c->r[R_SI] = x86_shift(c, 4, c->r[R_SI], 1, 1);
+            c->r[R_SI] = (uint16_t)alu_logic(c, c->r[R_SI] ^ bx, 1);
+            alu_logic(c, c->r[R_SI] & 2, 1);
+            n += 7;
+            int draw = 1;
+            if (c->flags & F_ZF) {                                /* skip the first pixel */
+                c->r[R_DI] = (uint16_t)alu_inc(c, c->r[R_DI], 1);
+                c->r[R_CX] = (uint16_t)alu_dec(c, c->r[R_CX], 1);
+                n += 3;
+                draw = !(c->flags & F_SF);
+            }
+            if (draw) {
+                c->r[R_CX] = (uint16_t)alu_inc(c, x86_shift(c, 5, c->r[R_CX], 1, 1), 1);
+                n += 2;
+                do {                                              /* 09F4: a pixel, then one skipped */
+                    VG3_ROOM_OR_STOP(3 + 4, 0x09F4);
+                    vg4_stosb(c);
+                    c->r[R_DI] = (uint16_t)alu_inc(c, c->r[R_DI], 1);
+                    c->r[R_CX]--;
+                    n += 3;
+                } while (c->r[R_CX]);
+            }
+        }
+        vg4_row_empty(c, bx);                                     /* 09F8 */
+        c->r[R_BX] = (uint16_t)alu_add(c, bx, 2, 1, 0);
+        n += 4;
+    }
+done:
+    ds_put(c, 0x9160, 0x7FFF);                                    /* 0998 */
+    c->icount += n + 2;
+    near_ret(c);
+    return 1;
+}
+static int vgame_fill_stipple(machine_t *m) { return vg4_fill_stipple(m, 0); }
+
+/* VGAME 1377:0A09 and 1377:0A89, model_fill_and and model_fill_or (AL =
+ * colour): the spans ANDed or ORed into the page at ES, row by row from
+ * [9160] while a row's left end is not 7FFFh. Each span is clipped to the
+ * window, its odd first byte combined alone, then whole words (AH = AL),
+ * then an odd last byte. 1377:0A1C and 1377:0A9C enter after the setup, SI
+ * the row and AX the colour pair as they are. The two bodies are the same
+ * code 80h apart. Rows and words look at the room at their loop's head. */
+static int vg4_fill_logic(machine_t *m, int or_op, int from_si, int started)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t base = or_op ? 0x0A89 : 0x0A09;
+    unsigned n = 0;
+    if (!from_si) {
+        VG4_ENTRY(6, base);
+        set_r8(c, R_AH, get_r8(c, R_AL));
+        c->r[R_SI] = ds_get(c, 0x9160);
+        alu_sub(c, c->r[R_SI], 0x7FFF, 1, 0);
+        n = 4;                                                    /* mov, mov, cmp, jne */
+        if (c->flags & F_ZF) goto done;
+    } else {
+        VG4_ENTRY(1, base + 0x13);
+    }
+    c->r[R_SI] = x86_shift(c, 4, c->r[R_SI], 1, 1);
+    n += 1;
+    for (;;) {                                                    /* +15h: a row */
+        VG3_ROOM_OR_STOP(34, base + 0x15);
+        const uint16_t si = c->r[R_SI];
+        c->r[R_BX] = ds_get(c, (uint16_t)(si + VG4_ROW_LEFT));
+        c->r[R_CX] = ds_get(c, (uint16_t)(si + VG4_ROW_RIGHT));
+        alu_sub(c, c->r[R_BX], 0x7FFF, 1, 0);
+        n += 4;
+        if (c->flags & F_ZF) break;                               /* the last row */
+        if (vg4_clip_span(c, &n, R_BX, R_CX)) {
+            c->r[R_CX] = (uint16_t)alu_inc(c, (uint16_t)alu_sub(c, c->r[R_CX], c->r[R_BX], 1, 0), 1);
+            c->r[R_DI] = (uint16_t)alu_add(c, ds_get(c, (uint16_t)(si + VG4_ROW_PAGE)), c->r[R_BX], 1, 0);
+            alu_logic(c, c->r[R_DI] & 1, 1);
+            n += 6;
+            int more = 1;
+            if (!(c->flags & F_ZF)) {                             /* an odd first byte */
+                const uint32_t at = phys(c->seg[S_ES], c->r[R_DI]);
+                const uint8_t b = mem_read8(c, at);
+                mem_write8(c, at, (uint8_t)alu_logic(c, or_op ? (b | get_r8(c, R_AL)) : (b & get_r8(c, R_AL)), 0));
+                c->r[R_DI] = (uint16_t)alu_inc(c, c->r[R_DI], 1);
+                c->r[R_CX] = (uint16_t)alu_dec(c, c->r[R_CX], 1);
+                n += 4;
+                more = !(c->flags & F_ZF);
+            }
+            if (more) {
+                c->r[R_BX] = c->r[R_CX];
+                c->r[R_CX] = x86_shift(c, 5, c->r[R_CX], 1, 1);   /* shr cx, 1 */
+                n += 3;
+                if (!(c->flags & F_ZF)) {
+                    do {                                          /* +5Fh: the words */
+                        VG3_ROOM_OR_STOP(3 + 7, base + 0x5F);
+                        const uint16_t w = seg_read16(c, c->seg[S_ES], c->r[R_DI]);
+                        seg_write16(c, c->seg[S_ES], c->r[R_DI],
+                                    (uint16_t)alu_logic(c, or_op ? (w | c->r[R_AX]) : (w & c->r[R_AX]), 1));
+                        c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], 2, 1, 0);
+                        c->r[R_CX]--;
+                        n += 3;
+                    } while (c->r[R_CX]);
+                }
+                c->r[R_BX] = (uint16_t)alu_logic(c, c->r[R_BX] & 1, 1);
+                n += 2;
+                if (!(c->flags & F_ZF)) {                         /* an odd last byte */
+                    const uint32_t at = phys(c->seg[S_ES], c->r[R_DI]);
+                    const uint8_t b = mem_read8(c, at);
+                    mem_write8(c, at, (uint8_t)alu_logic(c, or_op ? (b | get_r8(c, R_AL)) : (b & get_r8(c, R_AL)), 0));
+                    n++;
+                }
+            }
+        }
+        vg4_row_empty(c, si);                                     /* +6Fh: the row is empty again */
+        c->r[R_SI] = (uint16_t)alu_add(c, si, 2, 1, 0);
+        n += 4;                                                   /* mov, mov, add, jmp */
+    }
+done:
+    ds_put(c, 0x9160, 0x7FFF);                                    /* +0Ch */
+    c->icount += n + 2;
+    near_ret(c);
+    return 1;
+}
+static int vgame_fill_and(machine_t *m) { return vg4_fill_logic(m, 0, 0, 0); }
+static int vgame_fill_and_from(machine_t *m) { return vg4_fill_logic(m, 0, 1, 0); }
+static int vgame_fill_or_from(machine_t *m) { return vg4_fill_logic(m, 1, 1, 0); }
+
+/* VGAME 1377:0B3B, model_fill_solid (AX = the colour pair, kept at [9170]):
+ * each row's clipped span in the pair's two colours, alternating by column
+ * and swapped on odd rows (a dither; one colour when the bytes agree): the
+ * first pixel alone, an odd byte to align DI, words by REP STOSW, an odd
+ * last byte. 1377:0B4F enters with SI the row. */
+static int vg4_fill_solid(machine_t *m, int from_si, int started)
+{
+    cpu_t *c = &m->cpu;
+    unsigned n = 0;
+    if (!from_si) {
+        VG4_ENTRY(6, 0x0B3B);
+        ds_put(c, 0x9170, c->r[R_AX]);
+        c->r[R_SI] = ds_get(c, 0x9160);
+        alu_sub(c, c->r[R_SI], 0x7FFF, 1, 0);
+        n = 4;
+        if (c->flags & F_ZF) goto done;
+    } else {
+        VG4_ENTRY(1, 0x0B4F);
+    }
+    c->r[R_SI] = x86_shift(c, 4, c->r[R_SI], 1, 1);
+    n += 1;
+    for (;;) {                                                    /* 0B51: a row */
+        VG3_ROOM_OR_STOP(37, 0x0B51);
+        const uint16_t si = c->r[R_SI];
+        c->r[R_DI] = ds_get(c, (uint16_t)(si + VG4_ROW_PAGE));
+        c->r[R_BX] = ds_get(c, (uint16_t)(si + VG4_ROW_LEFT));
+        c->r[R_BP] = ds_get(c, (uint16_t)(si + VG4_ROW_RIGHT));
+        alu_sub(c, c->r[R_BX], 0x7FFF, 1, 0);
+        n += 5;
+        if (c->flags & F_ZF) break;
+        if (vg4_clip_span(c, &n, R_BX, R_BP)) {
+            c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], c->r[R_BX], 1, 0);
+            c->r[R_AX] = ds_get(c, 0x9170);
+            alu_logic(c, si & 2, 1);
+            n += 4;
+            if (c->flags & F_ZF) { vg4_xchg_ahal(c); n++; }       /* even row */
+            alu_logic(c, c->r[R_BX] & 1, 1);
+            n += 2;
+            if (c->flags & F_ZF) { vg4_xchg_ahal(c); n++; }       /* even column */
+            vg4_stosb(c);
+            c->r[R_CX] = (uint16_t)alu_sub(c, c->r[R_BP], c->r[R_BX], 1, 0);
+            n += 4;
+            if (!(c->flags & F_ZF)) {
+                alu_logic(c, c->r[R_DI] & 1, 1);
+                n += 2;
+                int more = 1;
+                if (!(c->flags & F_ZF)) {                         /* align DI */
+                    vg4_xchg_ahal(c);
+                    vg4_stosb(c);
+                    c->r[R_CX] = (uint16_t)alu_dec(c, c->r[R_CX], 1);
+                    n += 4;
+                    more = !(c->flags & F_ZF);
+                }
+                if (more) {
+                    vg4_xchg_ahal(c);
+                    c->r[R_CX] = x86_shift(c, 5, c->r[R_CX], 1, 1);
+                    n += 2;
+                    c->icount += n;                               /* 0BAF: rep stosw */
+                    n = 0;
+                    const unsigned words = c->r[R_CX] ? c->r[R_CX] : 1u;
+                    if (!room(c, words + 6)) { c->ip = 0x0BAF; return 1; }
+                    while (c->r[R_CX]) { vg4_stosw(c); c->r[R_CX]--; }
+                    n += words + 1;                               /* the words, jae */
+                    if (c->flags & F_CF) { vg4_stosb(c); n++; }   /* an odd last byte */
+                }
+            }
+        }
+        vg4_row_empty(c, si);                                     /* 0BB4 */
+        c->r[R_SI] = (uint16_t)alu_add(c, si, 2, 1, 0);
+        n += 4;
+    }
+done:
+    ds_put(c, 0x9160, 0x7FFF);                                    /* 0B48 */
+    c->icount += n + 2;
+    near_ret(c);
+    return 1;
+}
+static int vgame_fill_solid(machine_t *m) { return vg4_fill_solid(m, 0, 0); }
+static int vgame_fill_solid_from(machine_t *m) { return vg4_fill_solid(m, 1, 0); }
+
+/* VGAME 1377:0B09, model_fill: the fill style is AH of [8606] (AL the
+ * colour) - below FBh a colour pair for the solid fill, FFh one colour
+ * (AH = AL), FEh AND, FDh OR, FCh stipple, FBh clear without drawing.
+ * 1377:0B1B, 0B23, 0B2B and 0B33 enter the chain of compares at FEh, FDh,
+ * FCh and FBh with AX as it is; past FBh it falls into the solid fill. */
+static int vg4_fill_select(machine_t *m, int stage)
+{
+    cpu_t *c = &m->cpu;
+    static const uint8_t style[4] = { 0xFE, 0xFD, 0xFC, 0xFB };
+    if (!room(c, 14)) return 0;                                   /* the longest chain, from 0B09 */
+    unsigned n = 0;
+    if (stage == 0) {
+        c->r[R_AX] = ds_get(c, 0x8606);
+        alu_sub(c, get_r8(c, R_AH), 0xFB, 0, 0);
+        n = 3;
+        if (c->flags & F_CF) { c->icount += n; return vg4_fill_solid(m, 0, 1); }   /* a pair */
+        alu_sub(c, get_r8(c, R_AH), 0xFF, 0, 0);
+        n += 2;
+        if (c->flags & F_ZF) {                                    /* one colour */
+            set_r8(c, R_AH, get_r8(c, R_AL));
+            c->icount += n + 2;
+            return vg4_fill_solid(m, 0, 1);
+        }
+        stage = 1;
+    }
+    for (; stage <= 4; stage++) {
+        alu_sub(c, get_r8(c, R_AH), style[stage - 1], 0, 0);
+        n += 2;
+        if (!(c->flags & F_ZF)) continue;
+        c->icount += n + 1;                                       /* the JMP */
+        switch (stage) {
+        case 1: return vg4_fill_logic(m, 0, 0, 1);
+        case 2: return vg4_fill_logic(m, 1, 0, 1);
+        case 3: return vg4_fill_stipple(m, 1);
+        default: return vg4_fill_clear(m, 0, 1);
+        }
+    }
+    c->icount += n;
+    return vg4_fill_solid(m, 0, 1);
+}
+static int vgame_fill_select(machine_t *m) { return vg4_fill_select(m, 0); }
+static int vgame_fill_select_and(machine_t *m) { return vg4_fill_select(m, 1); }
+static int vgame_fill_select_or(machine_t *m) { return vg4_fill_select(m, 2); }
+static int vgame_fill_select_stipple(machine_t *m) { return vg4_fill_select(m, 3); }
+static int vgame_fill_select_clear(machine_t *m) { return vg4_fill_select(m, 4); }
+
+/* VGAME 1377:0886, model_fill_planar: the spans filled in the 16-colour
+ * planar modes, through the graphics controller's bit mask (index 8 at
+ * 3CEh, then data at DX = 3CFh), with the colour already latched in the
+ * set/reset registers: written bytes only load and store the latches. Per
+ * row: the clipped span's first byte under its left mask (9188 + x & 7),
+ * the middle bytes under a full mask - a checkerboard pattern 55h ORed with
+ * [9176], rotated on odd rows - with an odd byte to align DI and REP STOSW,
+ * and the last byte under its right mask (9190 + x & 7); a span within one
+ * byte (1377:094A) takes both masks at once. Rows run from [9160] (none
+ * when 7FFFh or above) up to row [8600]. Entries: 1377:08A3, a row (SI the
+ * row, DX the data port); 1377:0874, a row skipped (emptied, then the next
+ * one); 1377:094A, the one-byte span. */
+enum { VG4_PLANAR_BEGIN, VG4_PLANAR_ROW, VG4_PLANAR_SKIP, VG4_PLANAR_SINGLE };
+static int vg4_fill_planar(machine_t *m, int entry)
+{
+    cpu_t *c = &m->cpu;
+    unsigned n = 0;
+    switch (entry) {
+    case VG4_PLANAR_BEGIN:
+        if (!room(c, 9 + IO_SLACK(1))) return 0;
+        c->r[R_SI] = ds_get(c, 0x9160);
+        alu_sub(c, c->r[R_SI], 0x7FFF, 1, 0);
+        n = 3;
+        if (!(c->flags & F_CF)) goto done;                        /* jae */
+        c->r[R_SI] = x86_shift(c, 4, c->r[R_SI], 1, 1);
+        c->r[R_DX] = 0x3CE;
+        set_r8(c, R_AL, 8);
+        c->icount += n + 3;
+        x86_out(c, c->r[R_DX], 0);                                /* the bit mask register */
+        c->r[R_DX] = (uint16_t)alu_inc(c, c->r[R_DX], 1);
+        n = 3;                                                    /* out, inc, jmp */
+        goto row;
+    case VG4_PLANAR_ROW:
+        if (!room(c, 65 + IO_SLACK(3))) return 0;
+        goto row_checked;
+    case VG4_PLANAR_SKIP:
+        if (!room(c, 4)) return 0;
+        goto skip;
+    default:
+        if (!room(c, 21 + IO_SLACK(1))) return 0;
+        goto single;
+    }
+row:                                                              /* 08A3 */
+    VG3_ROOM_OR_STOP(65 + IO_SLACK(3), 0x08A3);
+row_checked:
+    {
+        const uint16_t si = c->r[R_SI];
+        c->r[R_DI] = ds_get(c, (uint16_t)(si + VG4_ROW_PAGE));
+        c->r[R_BX] = ds_get(c, (uint16_t)(si + VG4_ROW_LEFT));
+        c->r[R_BP] = ds_get(c, (uint16_t)(si + VG4_ROW_RIGHT));
+        alu_sub(c, c->r[R_BX], 0x7FFF, 1, 0);
+        n += 5;
+        if (c->flags & F_ZF) goto done;
+        if (!vg4_clip_span(c, &n, R_BX, R_BP)) goto skip;
+        c->r[R_AX] = x86_shift(c, 5, (uint16_t)(c->r[R_BX] >> 2), 1, 1);   /* x / 8, three SHRs each */
+        c->r[R_CX] = x86_shift(c, 5, (uint16_t)(c->r[R_BP] >> 2), 1, 1);
+        c->r[R_BP] = (uint16_t)alu_logic(c, c->r[R_BP] & 7, 1);
+        c->r[R_BX] = (uint16_t)alu_logic(c, c->r[R_BX] & 7, 1);
+        c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], c->r[R_AX], 1, 0);
+        c->r[R_CX] = (uint16_t)alu_sub(c, c->r[R_CX], c->r[R_AX], 1, 0);
+        n += 13;
+        if (c->flags & F_ZF) goto single;                         /* one byte */
+        set_r8(c, R_AL, VG3_DS8(c->r[R_BX] + 0x9188));            /* the left mask */
+        c->icount += n + 1;
+        x86_out(c, c->r[R_DX], 0);
+        c->r[R_AX] = 0xFF55;
+        set_r8(c, R_AL, (uint8_t)alu_logic(c, get_r8(c, R_AL) | VG3_DS8(0x9176), 0));
+        alu_logic(c, si & 2, 1);
+        n = 5;                                                    /* out, mov, or, test, je */
+        if (!(c->flags & F_ZF)) { set_r8(c, R_AL, (uint8_t)x86_shift(c, 0, get_r8(c, R_AL), 1, 0)); n++; }
+        alu_sub(c, get_r8(c, R_AL), VG4_ES8(c->r[R_DI]), 0, 0);  /* 0905: latch, store */
+        vg4_stosb(c);
+        vg4_xchg_ahal(c);
+        c->icount += n + 3;
+        x86_out(c, c->r[R_DX], 0);                                /* the full mask */
+        set_r8(c, R_AL, get_r8(c, R_AH));
+        c->r[R_CX] = (uint16_t)alu_dec(c, c->r[R_CX], 1);
+        n = 4;                                                    /* out, mov, dec, je */
+        if (!(c->flags & F_ZF)) {
+            alu_logic(c, c->r[R_DI] & 1, 1);
+            n += 2;
+            if (!(c->flags & F_ZF)) {                             /* align DI */
+                vg4_stosb(c);
+                c->r[R_CX] = (uint16_t)alu_dec(c, c->r[R_CX], 1);
+                n += 2;
+            }
+            c->r[R_CX] = x86_shift(c, 5, c->r[R_CX], 1, 1);
+            n += 2;
+            if (!(c->flags & F_ZF)) {
+                c->icount += n;                                   /* 091D: rep stosw */
+                n = 0;
+                if (!room(c, (unsigned)c->r[R_CX] + 17 + IO_SLACK(1))) { c->ip = 0x091D; return 1; }
+                n = c->r[R_CX];
+                while (c->r[R_CX]) { vg4_stosw(c); c->r[R_CX]--; }
+            }
+            n += 1;                                               /* jae */
+            if (c->flags & F_CF) { vg4_stosb(c); n++; }
+        }
+        set_r8(c, R_AL, VG3_DS8(c->r[R_BP] + 0x9190));            /* 0922: the right mask */
+        c->icount += n + 1;
+        x86_out(c, c->r[R_DX], 0);
+        set_r8(c, R_AL, get_r8(c, R_AH));
+        alu_sub(c, get_r8(c, R_AH), VG4_ES8(c->r[R_DI]), 0, 0);
+        vg4_stosb(c);
+        n = 4;
+        goto tail;
+    }
+single:                                                           /* 094A */
+    set_r8(c, R_AL, VG3_DS8(c->r[R_BX] + 0x9188));
+    set_r8(c, R_AL, (uint8_t)alu_logic(c, get_r8(c, R_AL) & VG3_DS8(c->r[R_BP] + 0x9190), 0));
+    c->icount += n + 2;
+    x86_out(c, c->r[R_DX], 0);                                    /* both masks */
+    set_r8(c, R_AL, 0x55);
+    set_r8(c, R_AL, (uint8_t)alu_logic(c, get_r8(c, R_AL) | VG3_DS8(0x9176), 0));
+    alu_logic(c, c->r[R_SI] & 2, 1);
+    n = 5;                                                        /* out, mov, or, test, je */
+    if (!(c->flags & F_ZF)) { set_r8(c, R_AL, (uint8_t)x86_shift(c, 0, get_r8(c, R_AL), 1, 0)); n++; }
+    alu_sub(c, get_r8(c, R_AH), VG4_ES8(c->r[R_DI]), 0, 0);
+    vg4_stosb(c);
+    n += 3;                                                       /* cmp, stosb, jmp */
+tail:                                                             /* 092E: the row done; the next unless past [8600] */
+    vg4_row_empty(c, c->r[R_SI]);
+    c->r[R_SI] = (uint16_t)alu_add(c, c->r[R_SI], 2, 1, 0);
+    c->r[R_AX] = x86_shift(c, 5, c->r[R_SI], 1, 1);
+    alu_sub(c, c->r[R_AX], ds_get(c, 0x8600), 1, 0);
+    n += 7;
+    if (x86_cond(c, 7)) { n += 1; goto done; }                    /* ja: jmp to the exit */
+    n += 1;
+    goto row;
+skip:                                                             /* 0874 */
+    vg4_row_empty(c, c->r[R_SI]);
+    c->r[R_SI] = (uint16_t)alu_add(c, c->r[R_SI], 2, 1, 0);
+    n += 4;
+    goto row;
+done:
+    ds_put(c, 0x9160, 0x7FFF);                                    /* 089C */
+    c->icount += n + 2;
+    near_ret(c);
+    return 1;
+}
+static int vgame_fill_planar(machine_t *m) { return vg4_fill_planar(m, VG4_PLANAR_BEGIN); }
+static int vgame_fill_planar_row(machine_t *m) { return vg4_fill_planar(m, VG4_PLANAR_ROW); }
+static int vgame_fill_planar_skip(machine_t *m) { return vg4_fill_planar(m, VG4_PLANAR_SKIP); }
+static int vgame_fill_planar_single(machine_t *m) { return vg4_fill_planar(m, VG4_PLANAR_SINGLE); }
+
+/* VGAME 1377:01BD, model_fill_colour (AL = colour): [8606] = the colour
+ * (AH cleared); the planar modes' set/reset pair for it - the word at
+ * 9198 + 2 * colour, bytes swapped - goes to the graphics controller
+ * (index 0, set/reset, with the low byte; index 1, enable set/reset, with
+ * the high byte); ES = the page segment [861A]. */
+static int vgame_fill_colour(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 16 + IO_SLACK(2))) return 0;
+    c->r[R_BX] = c->r[R_AX];
+    set_r8(c, R_BH, (uint8_t)alu_sub(c, get_r8(c, R_BH), get_r8(c, R_BH), 0, 0));
+    ds_put(c, 0x8606, c->r[R_BX]);
+    c->r[R_BX] = x86_shift(c, 4, c->r[R_BX], 1, 1);
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0x9198));
+    vg4_xchg_ahal(c);
+    c->r[R_BX] = c->r[R_AX];
+    c->r[R_DX] = 0x3CE;
+    set_r8(c, R_AL, 0);
+    c->icount += 9;
+    x86_out(c, c->r[R_DX], 1);
+    set_r8(c, R_AL, (uint8_t)alu_inc(c, get_r8(c, R_AL), 0));
+    set_r8(c, R_AH, get_r8(c, R_BL));
+    c->icount += 3;
+    x86_out(c, c->r[R_DX], 1);
+    c->r[R_AX] = ds_get(c, 0x861A);
+    c->seg[S_ES] = c->r[R_AX];
+    c->icount += 4;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 1377:0356, planar_pixel: DI = the page byte of pixel x = [9162]
+ * on row [9164] (x / 8 plus the row's offset at 861C), the graphics
+ * controller's index set to the bit mask (8 to 3CEh; DX left at 3CFh) and
+ * AL that pixel's mask (9180 + x & 7). BX = x & 7, SI = 2 * row. */
+static int vgame_planar_pixel(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 15 + IO_SLACK(1))) return 0;
+    c->r[R_BX] = ds_get(c, 0x9162);
+    c->r[R_DI] = x86_shift(c, 5, (uint16_t)(c->r[R_BX] >> 2), 1, 1);   /* three SHR DI, 1 */
+    c->r[R_SI] = x86_shift(c, 4, ds_get(c, 0x9164), 1, 1);
+    c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], ds_get(c, (uint16_t)(c->r[R_SI] + VG4_ROW_PAGE)), 1, 0);
+    c->r[R_DX] = 0x3CE;
+    set_r8(c, R_AL, 8);
+    c->icount += 10;
+    x86_out(c, c->r[R_DX], 0);
+    c->r[R_DX] = (uint16_t)alu_inc(c, c->r[R_DX], 1);
+    c->r[R_BX] = (uint16_t)alu_logic(c, c->r[R_BX] & 7, 1);
+    set_r8(c, R_AL, VG3_DS8(c->r[R_BX] + 0x9180));
+    c->icount += 5;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 1377:000C, raster_mode(letter), far: the display mode by its
+ * letter, upper-cased (61h and above less 20h) and kept at [85F4] with AH
+ * cleared, and its set-up run: 'E' the planar row offsets (1377:00F3), 'M'
+ * 1377:0116, 'C' 1377:0132, 'T' 1377:0155; any other letter, nothing. */
+static int vgame_raster_mode(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    static const struct { uint8_t letter; uint16_t setup, back; } MODES[4] = {
+        { 'E', 0x00F3, 0x0024 }, { 'M', 0x0116, 0x002D }, { 'C', 0x0132, 0x0036 }, { 'T', 0x0155, 0x003F } };
+    if (!room(c, 18)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_AX] = bp_get(c, 6);
+    set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
+    alu_sub(c, get_r8(c, R_AL), 0x61, 0, 0);
+    unsigned n = 6;
+    if (!(c->flags & F_CF)) { set_r8(c, R_AL, (uint8_t)alu_sub(c, get_r8(c, R_AL), 0x20, 0, 0)); n++; }
+    ds_put(c, 0x85F4, c->r[R_AX]);
+    n++;
+    for (int k = 0; k < 4; k++) {
+        alu_sub(c, get_r8(c, R_AL), MODES[k].letter, 0, 0);
+        n += 2;
+        if (c->flags & F_ZF) {
+            c->icount += n;
+            VG3_NEAR(MODES[k].setup, MODES[k].back, 2);
+            n = 0;
+            break;
+        }
+    }
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += n + 2;
+    far_ret(c);
+    return 1;
+}
+
+/* VGAME 0FB2:0519, far: the far entry of the box state routine (0FB2:051F),
+ * keeping DI. */
+static int vgame_box_state_far(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 2)) return 0;
+    cpu_push16(c, c->r[R_DI]);
+    c->icount += 1;
+    VG3_NEAR(0x051F, 0x051D, 2);
+    c->r[R_DI] = cpu_pop16(c);
+    c->icount += 2;
+    far_ret(c);
+    return 1;
+}
+
+/* VGAME 0FB2:0555, span_column (SI = the value, DI and DX the two ends):
+ * SI is stored over the column span from the lower end to the higher - held
+ * to 0 and to [2295] - in one of the two span tables of the segment in the
+ * code (the driver's, 1E42h relocated): 22A1 for SI 0, 2459 for SI equal to
+ * [2293], neither (nothing stored) for any other SI. The extent seen so far
+ * widens to cover it: [2615] the lowest start, [2617] the highest end. */
+static int vgame_span_column(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 29)) return 0;
+    c->r[R_AX] = seg_read16(c, c->seg[S_CS], 0x0556);             /* mov ax, seg (relocated) */
+    c->seg[S_ES] = c->r[R_AX];
+    c->r[R_CX] = c->r[R_DI];
+    alu_logic(c, c->r[R_SI], 1);
+    c->r[R_DI] = 0x22A1;
+    unsigned n = 6;
+    if (!(c->flags & F_ZF)) {
+        alu_sub(c, c->r[R_SI], ds_get(c, 0x2293), 1, 0);
+        n += 2;
+        if (!(c->flags & F_ZF)) { c->icount += n + 1; near_ret(c); return 1; }
+        c->r[R_DI] = 0x2459;
+        n++;
+    }
+    alu_sub(c, c->r[R_CX], c->r[R_DX], 1, 0);                     /* 056E: the ends in order */
+    n += 2;
+    if (!x86_cond(c, 0xD)) { const uint16_t t = c->r[R_DX]; c->r[R_DX] = c->r[R_CX]; c->r[R_CX] = t; n++; }
+    alu_logic(c, c->r[R_DX], 1);
+    n += 2;
+    if (c->flags & F_SF) { c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0); n++; }
+    alu_sub(c, c->r[R_CX], ds_get(c, 0x2295), 1, 0);
+    n += 2;
+    if (!x86_cond(c, 0xE)) { c->r[R_CX] = ds_get(c, 0x2295); n++; }
+    alu_sub(c, c->r[R_CX], ds_get(c, 0x2617), 1, 0);
+    n += 2;
+    if (!x86_cond(c, 6)) { ds_put(c, 0x2617, c->r[R_CX]); n++; }
+    alu_sub(c, c->r[R_DX], ds_get(c, 0x2615), 1, 0);
+    n += 2;
+    if (c->flags & F_CF) { ds_put(c, 0x2615, c->r[R_DX]); n++; }
+    c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], c->r[R_DX], 1, 0);
+    c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], c->r[R_DX], 1, 0);
+    c->r[R_CX] = (uint16_t)alu_inc(c, (uint16_t)alu_sub(c, c->r[R_CX], c->r[R_DX], 1, 0), 1);
+    c->r[R_AX] = c->r[R_SI];
+    c->icount += n + 5;
+    const unsigned words = c->r[R_CX] ? c->r[R_CX] : 1u;          /* 05A1: rep stosw */
+    if (!room(c, words + 1)) { c->ip = 0x05A1; return 1; }
+    while (c->r[R_CX]) { vg4_stosw(c); c->r[R_CX]--; }
+    c->icount += words + 1;
+    near_ret(c);
+    return 1;
+}
+
+/* The joystick settings (20 words at DS:from) copied to the far pointer
+ * argument; ES kept. VGAME 1058:0D7A copies VGAME's 2CA2; SETUP 0237:0115
+ * copies SETUP's 0DF4. */
+static int vg4_settings_out(machine_t *m, uint16_t from)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 9 + 20)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->seg[S_ES]);
+    c->r[R_DI] = bp_get(c, 6);                                    /* les di, [bp+6] */
+    c->seg[S_ES] = bp_get(c, 8);
+    c->r[R_CX] = 0x14;
+    c->r[R_SI] = from;
+    const unsigned copied = rep_string(c, STR_MOVS, 1, c->seg[S_DS], 0);
+    c->seg[S_ES] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 9 + copied;
+    far_ret(c);
+    return 1;
+}
+static int vgame_settings_out(machine_t *m) { return vg4_settings_out(m, 0x2CA2); }
+
+/* VGAME 1058:0DA2, keyboard_hook, far: the keyboard handler installed - the
+ * BIOS shift state's Num Lock bit (0040:0017 bit 5) cleared, the handler's
+ * key state at SS:2CD6..2CDD reset (two 80h centres, the rest 0), the old
+ * INT 9 vector kept in the code at CS:0181 and 1058:006C put in its place
+ * with interrupts off. It stops after the STI, as the original's run does,
+ * so a pending interrupt lands where it would. */
+static int vgame_keyboard_hook(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 25)) return 0;
+    cpu_push16(c, c->seg[S_DS]);
+    mem_write8(c, phys(0x0040, 0x0017), (uint8_t)alu_logic(c, mem_read8(c, phys(0x0040, 0x0017)) & 0xDF, 0));
+    c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);                    /* xor ax, ax */
+    const uint16_t ss = c->seg[S_SS];
+    mem_write8(c, phys(ss, 0x2CD8), 0);
+    seg_write16(c, ss, 0x2CD9, 0);
+    mem_write8(c, phys(ss, 0x2CDB), 0);
+    mem_write8(c, phys(ss, 0x2CDC), 0);
+    mem_write8(c, phys(ss, 0x2CDD), 0);
+    mem_write8(c, phys(ss, 0x2CD6), 0x80);
+    mem_write8(c, phys(ss, 0x2CD7), 0x80);
+    c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);
+    c->seg[S_DS] = 0;
+    c->r[R_BX] = 0x24;
+    c->r[R_AX] = seg_read16(c, 0, 0x24);
+    c->r[R_DX] = seg_read16(c, 0, 0x26);
+    seg_write16(c, c->seg[S_CS], 0x0181, c->r[R_AX]);
+    seg_write16(c, c->seg[S_CS], 0x0183, c->r[R_DX]);
+    c->r[R_AX] = 0x006C;
+    c->r[R_DX] = c->seg[S_CS];
+    x86_cli(c);
+    seg_write16(c, 0, 0x24, c->r[R_AX]);
+    seg_write16(c, 0, 0x26, c->r[R_DX]);
+    c->icount += 24;
+    x86_sti(c);
+    c->icount += 1;
+    c->ip = 0x0DF0;
+    return 1;
+}
+
+/* VGAME 1058:0DF2, keyboard_unhook, far: the INT 9 vector kept at CS:0181
+ * put back, with interrupts off; it stops after the STI. */
+static int vgame_keyboard_unhook(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 10)) return 0;
+    cpu_push16(c, c->seg[S_DS]);
+    c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);
+    c->seg[S_DS] = 0;
+    c->r[R_BX] = 0x24;
+    c->r[R_AX] = seg_read16(c, c->seg[S_CS], 0x0181);
+    c->r[R_DX] = seg_read16(c, c->seg[S_CS], 0x0183);
+    x86_cli(c);
+    seg_write16(c, 0, 0x24, c->r[R_AX]);
+    seg_write16(c, 0, 0x26, c->r[R_DX]);
+    c->icount += 9;
+    x86_sti(c);
+    c->icount += 1;
+    c->ip = 0x0E0A;
+    return 1;
+}
+
+/* VGAME 0x01D54, timer_program (CX = ticks to count): the PIT's channel 0
+ * (mode 3, both bytes) loaded with the rate [2630], kept at [2632]; the
+ * reprogram count [2634] goes up, [2642] = -CX, and [2640] counts the
+ * programs with CX nonzero. It stops after its STI. */
+static int vgame_timer_program(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 19 + IO_SLACK(3))) return 0;
+    c->r[R_DX] = ds_get(c, 0x2632);
+    alu_sub(c, c->r[R_DX], ds_get(c, 0x2630), 1, 0);
+    unsigned n = 3;
+    if (!(c->flags & F_ZF)) {
+        c->r[R_DX] = ds_get(c, 0x2630);
+        ds_put(c, 0x2632, c->r[R_DX]);
+        n += 2;
+    }
+    set_r8(c, R_AL, 0x36);
+    c->icount += n + 1;
+    x86_out(c, 0x43, 0);
+    set_r8(c, R_AL, get_r8(c, R_DL));
+    c->icount += 3;                                               /* out, jmp, mov */
+    x86_out(c, 0x40, 0);
+    set_r8(c, R_AL, get_r8(c, R_DH));
+    c->icount += 3;
+    x86_out(c, 0x40, 0);
+    ds_put(c, 0x2634, (uint16_t)alu_inc(c, ds_get(c, 0x2634), 1));
+    c->r[R_CX] = (uint16_t)alu_sub(c, 0, c->r[R_CX], 1, 0);       /* neg cx */
+    ds_put(c, 0x2642, c->r[R_CX]);
+    n = 5;                                                        /* out, inc, neg, mov, je */
+    if (!(c->flags & F_ZF)) { ds_put(c, 0x2640, (uint16_t)alu_inc(c, ds_get(c, 0x2640), 1)); n++; }
+    c->icount += n;
+    x86_sti(c);
+    c->icount += 1;
+    c->ip = 0x1D87;
+    return 1;
+}
+
+/* VGAME 0x004C7, timing_wait(n): when n > 0, wait until the timer tick
+ * byte [264A] (the interrupt handler's) has moved on by n (mod 256). The
+ * wait checks the room every turn and stops at its head. */
+static int vgame_timing_wait(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 6)) return 0;
+    x86_enter(c, 2, 0);
+    alu_sub(c, bp_get(c, 4), 0, 1, 0);
+    unsigned n = 3;
+    if (!x86_cond(c, 0xE)) {                                      /* jle skips the wait */
+        set_r8(c, R_AL, (uint8_t)alu_add(c, bp_get8(c, 4), VG3_DS8(0x264A), 0, 0));
+        bp_put8(c, -2, get_r8(c, R_AL));
+        n += 3;
+        do {                                                      /* 04DB */
+            VG3_ROOM_OR_STOP(3 + 2, 0x04DB);
+            set_r8(c, R_AL, VG3_DS8(0x264A));
+            alu_sub(c, bp_get8(c, -2), get_r8(c, R_AL), 0, 0);
+            n += 3;
+        } while (!(c->flags & F_ZF));
+    }
+    x86_leave(c);
+    c->icount += n + 2;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x0B96C, release_angle: the angle a class-1Eh weapon keeps for its
+ * release - (4000h - |pitch [2DF0]|) << 12 over the height above ground
+ * [2DF4] + 1000h, less 4000h - by the runtime's abs (0x0EE0C), 32-bit shift
+ * (0x0EF68) and 32-bit divide (0x0EE9C, RET 8: it takes the denominator
+ * the first call left on the stack too). */
+static int vgame_release_angle(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 6)) return 0;
+    c->r[R_AX] = ds_get(c, 0x2DF4);
+    set_r8(c, R_AH, (uint8_t)alu_add(c, get_r8(c, R_AH), 0x10, 0, 0));
+    cpu_push16(c, 0);
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, ds_get(c, 0x2DF0));
+    c->icount += 5;
+    VG3_NEAR(0xEE0C, 0xB97C, 6);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], 0x4000, 1, 0);
+    c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0);       /* neg ax */
+    c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0;              /* cwd */
+    set_r8(c, R_CL, 0x0C);
+    c->icount += 5;
+    VG3_NEAR(0xEF68, 0xB988, 3);
+    cpu_push16(c, c->r[R_DX]);
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 2;
+    if (!guest_call_pop(m, 0xEE9C, 0xB98D, 8)) return 1;
+    if (!room(c, 2)) { c->ip = 0xB98D; return 1; }
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], 0x4000, 1, 0);
+    c->icount += 2;
+    near_ret(c);
+    return 1;
+}
+/* VG4-END */
+
 static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x4958, vgame_free_fall, "free fall", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD50A, vgame_waypoint_from_target, "waypoint from target", 1 },
@@ -25479,6 +26264,37 @@ static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x120A, 0x0561, vgame_model_planes, "a model's planes and visible vertices", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xEA30, vgame_fread, "read items from a stream", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x11FE, vgame_map_walk, "walk the map view's objects", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1377, 0x089C, vgame_fill_none, "no fill rows pending", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1377, 0x0968, vgame_fill_none_jmp, "no fill rows pending, by a jump", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1377, 0x096B, vgame_fill_clear, "empty the fill rows", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1377, 0x0976, vgame_fill_clear_from, "empty the fill rows from BX", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1377, 0x0997, vgame_fill_clear_ret, "the fill clear's return", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1377, 0x099F, vgame_fill_stipple, "stipple fill of the polygon", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1377, 0x0A09, vgame_fill_and, "AND the polygon spans into the page", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1377, 0x0A1C, vgame_fill_and_from, "AND fill from row SI", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1377, 0x0A9C, vgame_fill_or_from, "OR fill from row SI", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1377, 0x0B09, vgame_fill_select, "fill the polygon in its style", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1377, 0x0B1B, vgame_fill_select_and, "fill style from AND", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1377, 0x0B23, vgame_fill_select_or, "fill style from OR", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1377, 0x0B2B, vgame_fill_select_stipple, "fill style from stipple", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1377, 0x0B33, vgame_fill_select_clear, "fill style from clear", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1377, 0x0B3B, vgame_fill_solid, "solid or dithered fill", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1377, 0x0B4F, vgame_fill_solid_from, "solid fill from row SI", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1377, 0x0886, vgame_fill_planar, "planar fill of the polygon", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1377, 0x08A3, vgame_fill_planar_row, "planar fill from row SI", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1377, 0x0874, vgame_fill_planar_skip, "planar fill, a row skipped", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1377, 0x094A, vgame_fill_planar_single, "planar fill, a one-byte span", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1377, 0x01BD, vgame_fill_colour, "set the fill colour", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1377, 0x0356, vgame_planar_pixel, "a planar pixel's byte and mask", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1377, 0x000C, vgame_raster_mode, "set the raster mode by letter", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0FB2, 0x0519, vgame_box_state_far, "box state, far entry", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0FB2, 0x0555, vgame_span_column, "store a span column", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1058, 0x0D7A, vgame_settings_out, "copy the joystick settings out", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1058, 0x0DA2, vgame_keyboard_hook, "install the keyboard handler", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1058, 0x0DF2, vgame_keyboard_unhook, "restore the keyboard vector", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x1D54, vgame_timer_program, "program the timer rate", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x04C7, vgame_timing_wait, "wait for timer ticks", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xB96C, vgame_release_angle, "class-1Eh release angle", 1 },
     { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x0B20, dswap_lzw_reset, "reset the LZW table", 1 },
     { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x1F1C, player_format_digits, "the formatter's digits", 1 },
     { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x14BC, mps_logo_free_stream, "first free stream", 2 },

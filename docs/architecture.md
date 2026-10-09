@@ -526,6 +526,11 @@ caught real defects:
   stack at its entry level (a looser rule let a routine that clears its own
   stack slide to the return address through `00 00`). States where the original
   writes over its own code are skipped.
+- The routine's own RET lies within 0x300 bytes above its entry, or for the
+  entries in `CODE_BELOW` (second entries into the model fills that jump back
+  to a shared exit) as far below it as the table says; for those the
+  original's code is also watched after every step, since a row table over the
+  code (DS = CS) can change an instruction, run it and write the bytes back.
 - OVERRUN: given one instruction less room than the original takes, a routine
   must decline. Mid-run stop: stopped at a random clock inside its path, the
   state it leaves must equal the original's at that clock. It may never start a
@@ -563,7 +568,7 @@ live game in a window (a diagnostic, not a gate: device state is not in the
 snapshot). `f117run --dump LINEAR:LENGTH` prints registers and memory at the
 end of a run for comparing two engines at a chosen clock.
 
-606 addresses are matched in all seven programs. The programs carry
+637 addresses are matched in all seven programs. The programs carry
 byte-identical copies of the C runtime helpers (string and block copies, the
 32-bit shifts, multiply and divide), so one matched routine serves several
 addresses. MPS_LOGO carries the same library built for a larger model: its
