@@ -19034,6 +19034,758 @@ finish:                                                           /* 0DC34 */
 #undef VG2_SET_LOW
 #undef VG2_ROOM_OR_STOP
 
+/* ---- VGAME, third batch of matched routines (Phase 2) --------------------
+ *
+ * Text and panel glue, the raster wrappers and the runtime's integer to
+ * text. Held the same way as the second batch: a callee runs as original
+ * code, the stretch after it needs room for all of its instructions
+ * (counting the CALL that ends it) or IP is left at the return address, and
+ * a loop whose length depends on data looks at the room on every turn and
+ * stops at its head when there is none. */
+
+/* A near call to target_ returning to ret_, then room for the next_
+ * instructions after it; otherwise IP is left at the return address. */
+#define VG3_NEAR(target_, ret_, next_) do {                                           \
+        if (!guest_call(m, (target_), (ret_))) return 1;                              \
+        if (!room(c, (next_))) { c->ip = (ret_); return 1; }                          \
+    } while (0)
+/* The same for a far call at CS:ip_ (9A off seg; five bytes). */
+#define VG3_FAR(ip_, next_) do {                                                      \
+        if (!guest_call_far(m, (ip_), (uint16_t)((ip_) + 5))) return 1;               \
+        if (!room(c, (next_))) { c->ip = (uint16_t)((ip_) + 5); return 1; }           \
+    } while (0)
+/* Count the n instructions run so far; stop at ip_ (the original carries on
+ * from there) unless need_ more fit. */
+#define VG3_ROOM_OR_STOP(need_, ip_) do {                                             \
+        c->icount += n; n = 0;                                                        \
+        if (!room(c, (need_))) { c->ip = (uint16_t)(ip_); return 1; }                 \
+    } while (0)
+#define VG3_FRAME(o) seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + (o)))
+#define VG3_SETFRAME(o, v) seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + (o)), (v))
+#define VG3_DS8(off) mem_read8(c, phys(c->seg[S_DS], (uint16_t)(off)))
+#define VG3_SETDS8(off, v) mem_write8(c, phys(c->seg[S_DS], (uint16_t)(off)), (uint8_t)(v))
+/* ADD SP, k after a call: the caller's release of its arguments. */
+#define VG3_DROP(k) (c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], (k), 1, 0))
+
+/* VGAME 130D:0191 and 130D:01A7, near: close a clipped model polygon along
+ * the window's right or left edge - a vertical run (mpoly_run, 1377:07E8)
+ * one column outside the window ([85FE]+1, or [85FA]-1) over the rows the
+ * side recorded ([85EA]..[85E8] for the right, [85E6]..[85E4] for the
+ * left). */
+static int vg3_poly_edge_run(machine_t *m, uint16_t edge_at, int step, uint16_t rows_at, uint16_t call_ip)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 5 + 1)) return 0;                              /* counting the CALL */
+    c->r[R_AX] = (uint16_t)(step > 0 ? alu_inc(c, ds_get(c, edge_at), 1) : alu_dec(c, ds_get(c, edge_at), 1));
+    cpu_push16(c, c->r[R_AX]);                                    /* x */
+    cpu_push16(c, ds_get(c, rows_at));                            /* y1 */
+    cpu_push16(c, ds_get(c, (uint16_t)(rows_at + 2)));            /* y0 */
+    c->icount += 5;
+    VG3_FAR(call_ip, 2);
+    VG3_DROP(6);
+    c->icount += 2;
+    near_ret(c);
+    return 1;
+}
+static int vgame_poly_edge_right(machine_t *m) { return vg3_poly_edge_run(m, 0x85FE, 1, 0x85E8, 0x019E); }
+static int vgame_poly_edge_left(machine_t *m) { return vg3_poly_edge_run(m, 0x85FA, -1, 0x85E4, 0x01B4); }
+
+/* VGAME 0x08342, view_caption: while the cockpit is shown ([368C]) the
+ * view's direction caption goes to the message buffer 98A6 - " AHEAD"
+ * (40F8), the right (4108), behind (4100) or the left (4110) for the view
+ * quadrant [E582] of 0, 4000h, 8000h or C000h, the buffer as it was for
+ * anything else - and is drawn by the display text routine 0x089C0 at
+ * (C5h, C1h) on the element [4010] in the colour pair that follows the
+ * element's state cache [4856] (2Fh/2Eh when it is 1, else 2Dh/2Ch).
+ * The element's words +2 and +6 are set to 1 and the background colour
+ * for the draw and put back after. */
+static int vgame_view_caption(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    static const uint16_t caption[4] = { 0x40F8, 0x4108, 0x4100, 0x4110 };
+    if (!room(c, 34)) return 0;
+    x86_enter(c, 8, 0);
+    alu_sub(c, ds_get(c, 0x368C), 0, 1, 0);
+    if (c->flags & F_ZF) {                                        /* the cockpit is hidden */
+        x86_leave(c);
+        c->icount += 6;
+        near_ret(c);
+        return 1;
+    }
+    alu_sub(c, ds_get(c, 0x4856), 1, 1, 0);
+    unsigned n = 3 + 4 + 2;                                       /* enter .. jne; cmp .. mov; mov ax, jmp */
+    if (c->flags & F_ZF) { VG3_SETFRAME(-2, 0x2F); VG3_SETFRAME(-4, 0x2E); n++; }
+    else { VG3_SETFRAME(-2, 0x2D); VG3_SETFRAME(-4, 0x2C); }
+    uint16_t ax = ds_get(c, 0xE582);
+    alu_logic(c, ax, 1);                                          /* or ax, ax */
+    n += 2;
+    int k = 0;
+    while (!(c->flags & F_ZF) && k < 3) {                         /* sub ax, 4000h; je */
+        ax = (uint16_t)alu_sub(c, ax, 0x4000, 1, 0);
+        k++;
+        n += 2;
+    }
+    c->r[R_AX] = ax;
+    if (c->flags & F_ZF) {                                        /* a quadrant: its caption */
+        cpu_push16(c, caption[k]);
+        cpu_push16(c, 0x98A6);
+        c->icount += n + (k ? 2 : 1) + 1;
+        VG3_NEAR(0xEB50, 0x837B, 3 + 15 + 1);                     /* strcpy */
+        c->r[R_BX] = cpu_pop16(c);
+        c->r[R_BX] = cpu_pop16(c);
+        n = 3;
+    }
+    c->r[R_BX] = ds_get(c, 0x4010);                               /* 083A1: draw it */
+    VG3_SETFRAME(-6, ds_get(c, (uint16_t)(c->r[R_BX] + 2)));
+    VG3_SETFRAME(-8, ds_get(c, (uint16_t)(c->r[R_BX] + 6)));
+    c->r[R_AX] = VG3_FRAME(-4);
+    ds_put(c, (uint16_t)(c->r[R_BX] + 6), c->r[R_AX]);
+    c->r[R_BX] = ds_get(c, 0x4010);
+    ds_put(c, (uint16_t)(c->r[R_BX] + 2), 1);
+    cpu_push16(c, VG3_FRAME(-2));
+    cpu_push16(c, 0xC1);
+    cpu_push16(c, 0xC5);
+    cpu_push16(c, 0x98A6);
+    cpu_push16(c, ds_get(c, 0x4010));
+    c->icount += n + 15;
+    VG3_NEAR(0x89C0, 0x83D3, 8);
+    c->r[R_AX] = VG3_FRAME(-8);
+    c->r[R_BX] = ds_get(c, 0x4010);
+    ds_put(c, (uint16_t)(c->r[R_BX] + 6), c->r[R_AX]);
+    c->r[R_AX] = VG3_FRAME(-6);
+    c->r[R_BX] = ds_get(c, 0x4010);
+    ds_put(c, (uint16_t)(c->r[R_BX] + 2), c->r[R_AX]);
+    x86_leave(c);
+    c->icount += 8;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x0B13C, camera_view_caption: the camera's direction relative to
+ * the aircraft - the bearing [2DEE] less the heading [DF00], rounded to a
+ * quadrant (+2000h, top two bits) with the two side quadrants swapped
+ * (+8000h on the high byte) - and, when it differs from the quadrant the
+ * caption shows ([E582]), the new quadrant is kept there and the caption
+ * redrawn (view_caption, 0x08342). */
+static int vgame_camera_view_caption(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 17)) return 0;
+    x86_enter(c, 2, 0);
+    uint16_t ax = (uint16_t)alu_sub(c, ds_get(c, 0x2DEE), ds_get(c, 0xDF00), 1, 0);
+    ax = (uint16_t)((ax & 0x00FF) | (alu_add(c, ax >> 8, 0x20, 0, 0) << 8));
+    ax = (uint16_t)alu_logic(c, ax & 0xC000, 1);
+    c->r[R_AX] = ax;
+    VG3_SETFRAME(-2, ax);
+    alu_sub(c, ax, 0x4000, 1, 0);
+    unsigned n = 8;
+    int side = (c->flags & F_ZF) != 0;
+    if (!side) {
+        alu_sub(c, ax, 0xC000, 1, 0);
+        side = (c->flags & F_ZF) != 0;
+        n += 2;
+    }
+    if (side) {                                                   /* add byte [bp-1], 80h */
+        const uint16_t at = (uint16_t)(c->r[R_BP] - 1);
+        mem_write8(c, phys(c->seg[S_SS], at), (uint8_t)alu_add(c, mem_read8(c, phys(c->seg[S_SS], at)), 0x80, 0, 0));
+        n++;
+    }
+    c->r[R_AX] = ds_get(c, 0xE582);
+    alu_sub(c, VG3_FRAME(-2), c->r[R_AX], 1, 0);
+    n += 3;
+    if (!(c->flags & F_ZF)) {                                     /* a new quadrant */
+        c->r[R_AX] = VG3_FRAME(-2);
+        ds_put(c, 0xE582, c->r[R_AX]);
+        c->icount += n + 2;
+        VG3_NEAR(0x8342, 0xB16F, 2);
+        n = 0;
+    }
+    x86_leave(c);
+    c->icount += n + 2;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0FB2:0324 and 0FB2:069A, far: the far entries of two near raster
+ * routines (0FB2:0330, the sky bands, and 0FB2:06A6, a boxed line into
+ * the span tables), keeping BP, SI, DI and ES around the call; they push
+ * them in different orders. */
+static int vg3_raster_far_entry(machine_t *m, int bp_first, uint16_t target, uint16_t ret_ip)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 4 + 1)) return 0;
+    if (bp_first) {
+        cpu_push16(c, c->r[R_BP]); cpu_push16(c, c->r[R_SI]); cpu_push16(c, c->r[R_DI]); cpu_push16(c, c->seg[S_ES]);
+    } else {
+        cpu_push16(c, c->seg[S_ES]); cpu_push16(c, c->r[R_SI]); cpu_push16(c, c->r[R_DI]); cpu_push16(c, c->r[R_BP]);
+    }
+    c->icount += 4;
+    VG3_NEAR(target, ret_ip, 5);
+    if (bp_first) {
+        c->seg[S_ES] = cpu_pop16(c); c->r[R_DI] = cpu_pop16(c); c->r[R_SI] = cpu_pop16(c); c->r[R_BP] = cpu_pop16(c);
+    } else {
+        c->r[R_BP] = cpu_pop16(c); c->r[R_DI] = cpu_pop16(c); c->r[R_SI] = cpu_pop16(c); c->seg[S_ES] = cpu_pop16(c);
+    }
+    c->icount += 5;
+    far_ret(c);
+    return 1;
+}
+static int vgame_sky_bands_far(machine_t *m) { return vg3_raster_far_entry(m, 1, 0x0330, 0x032B); }
+static int vgame_boxed_line_far(machine_t *m) { return vg3_raster_far_entry(m, 0, 0x06A6, 0x06A1); }
+
+/* VGAME 1058:0C91 and 1058:0CB2, far: read the joystick port (1058:0CC1,
+ * both axes' counts into [2CCA]/[2CCC]) and then, for axis 0 and axis 1
+ * (SI 0 and 2, or 0 and 1), either centre the calibration on the reading
+ * (axis_spread, 1058:0C9F) or turn the reading into the axis byte
+ * (axis_normalise, 1058:0D09). SI is left at the second axis. */
+static int vgame_stick_centre(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 1)) return 0;
+    VG3_NEAR(0x0CC1, 0x0C94, 2);                                  /* read the port */
+    c->r[R_SI] = (uint16_t)alu_sub(c, c->r[R_SI], c->r[R_SI], 1, 0);
+    c->icount += 1;
+    VG3_NEAR(0x0C9F, 0x0C99, 3);
+    c->r[R_SI] = (uint16_t)alu_inc(c, c->r[R_SI], 1);
+    c->r[R_SI] = (uint16_t)alu_inc(c, c->r[R_SI], 1);
+    c->icount += 2;
+    VG3_NEAR(0x0C9F, 0x0C9E, 1);
+    c->icount += 1;
+    far_ret(c);
+    return 1;
+}
+
+static int vgame_stick_read(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 1)) return 0;
+    VG3_NEAR(0x0CC1, 0x0CB5, 2);                                  /* read the port */
+    c->r[R_SI] = (uint16_t)alu_sub(c, c->r[R_SI], c->r[R_SI], 1, 0);
+    c->icount += 1;
+    VG3_NEAR(0x0D09, 0x0CBA, 2);
+    c->r[R_SI] = 1;
+    c->icount += 1;
+    VG3_NEAR(0x0D09, 0x0CC0, 1);
+    c->icount += 1;
+    far_ret(c);
+    return 1;
+}
+
+/* VGAME 120A:04F5, model_part_light (DI = the part's inverse matrix): the
+ * base-local light direction (7C9C..7CA0) copied into the next 6-byte
+ * light slot [7D7C], turned into the part's frame there by the camera
+ * matrix product (1452:021B) and the slot pointer moved on. BX and DI
+ * are kept. */
+static int vgame_model_part_light(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 10 + 1)) return 0;
+    cpu_push16(c, c->r[R_BX]);
+    c->r[R_BX] = ds_get(c, 0x7D7C);
+    for (int k = 0; k < 3; k++) {
+        c->r[R_AX] = ds_get(c, (uint16_t)(0x7C9C + 2 * k));
+        ds_put(c, (uint16_t)(c->r[R_BX] + 2 * k), c->r[R_AX]);
+    }
+    cpu_push16(c, c->r[R_DI]);                                    /* the matrix */
+    cpu_push16(c, c->r[R_BX]);                                    /* the vector */
+    c->icount += 10;
+    VG3_FAR(0x050D, 5);
+    VG3_DROP(2);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    ds_put(c, 0x7D7C, (uint16_t)alu_add(c, ds_get(c, 0x7D7C), 6, 1, 0));
+    c->icount += 5;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 120A:0CA8, model_face (BX = face): a face whose byte at 7702 is
+ * above 7Fh is drawn - its colour (7802) becomes the fill colour [7D8A]
+ * and its command stream (word BX of the table at ES:SI) goes to the
+ * fill (120A:0CE9). DI, BX and SI are kept; AL is the colour. */
+static int vgame_model_face(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 9 + 1)) return 0;
+    alu_sub(c, VG3_DS8(c->r[R_BX] + 0x7702), 0x7F, 0, 0);
+    if (x86_cond(c, 6)) {                                         /* jbe: hidden */
+        c->icount += 3;
+        near_ret(c);
+        return 1;
+    }
+    set_r8(c, R_AL, VG3_DS8(c->r[R_BX] + 0x7802));
+    VG3_SETDS8(0x7D8A, get_r8(c, R_AL));
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_BX]);
+    cpu_push16(c, c->r[R_SI]);
+    c->r[R_BX] = x86_shift(c, 4, c->r[R_BX], 1, 1);               /* shl bx, 1 */
+    c->r[R_SI] = seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + c->r[R_SI]));
+    c->icount += 9;
+    VG3_NEAR(0x0CE9, 0x0CC1, 4);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->icount += 4;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 120A:0C76, model_faces: the faces of a model by the count [7D5A] -
+ * below zero, the faces listed as bytes at 7902 up to an FFh; zero, the
+ * one stream at ES:SI straight to the fill (120A:0CE9); above zero, faces
+ * 0 to count-1 - each through model_face (120A:0CA8). Every turn looks at
+ * the room, and stops at its loop's head when there is none. */
+static int vgame_model_faces(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 5 + 1)) return 0;
+    c->r[R_CX] = ds_get(c, 0x7D5A);
+    alu_logic(c, c->r[R_CX], 1);                                  /* or cx, cx */
+    unsigned n = 3;                                               /* mov, or, js */
+    if (c->flags & F_SF) {                                        /* a list */
+        c->r[R_DI] = 0x7902;
+        n += 1;
+        for (;;) {                                                /* 0C98 */
+            VG3_ROOM_OR_STOP(6, 0x0C98);
+            set_r8(c, R_BL, VG3_DS8(c->r[R_DI]));
+            c->r[R_DI]++;
+            alu_sub(c, get_r8(c, R_BL), 0xFF, 0, 0);
+            if (c->flags & F_ZF) { c->icount += 4 + 1; near_ret(c); return 1; }
+            set_r8(c, R_BH, (uint8_t)alu_sub(c, get_r8(c, R_BH), get_r8(c, R_BH), 0, 0));
+            c->icount += 5;
+            VG3_NEAR(0x0CA8, 0x0CA5, 1);
+            n = 1;                                                /* jmp */
+        }
+    }
+    if (c->flags & F_ZF) {                                        /* no faces: the stream itself */
+        c->r[R_CX] = (uint16_t)alu_inc(c, c->r[R_CX], 1);
+        n += 2;                                                   /* jne, inc cx */
+        do {                                                      /* 0C81: once, unless the count on */
+            VG3_ROOM_OR_STOP(2, 0x0C81);                          /* the stack was written over */
+            cpu_push16(c, c->r[R_CX]);
+            c->icount += 1;
+            VG3_NEAR(0x0CE9, 0x0C85, 2 + 2);
+            c->r[R_CX] = (uint16_t)(cpu_pop16(c) - 1);            /* pop cx, loop */
+            n = 2;
+        } while (c->r[R_CX]);
+        c->icount += n + 1;
+        near_ret(c);
+        return 1;
+    }
+    c->r[R_BX] = (uint16_t)alu_sub(c, c->r[R_BX], c->r[R_BX], 1, 0);
+    n += 2;                                                       /* jne, sub bx */
+    for (;;) {                                                    /* 0C8B */
+        VG3_ROOM_OR_STOP(2, 0x0C8B);
+        cpu_push16(c, c->r[R_CX]);
+        c->icount += 1;
+        VG3_NEAR(0x0CA8, 0x0C8F, 3 + 2);
+        c->r[R_CX] = cpu_pop16(c);
+        c->r[R_BX] = (uint16_t)alu_inc(c, c->r[R_BX], 1);
+        c->r[R_CX]--;
+        n = 3;                                                    /* pop, inc, loop */
+        if (!c->r[R_CX]) break;
+    }
+    c->icount += n + 1;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 130D:004A, model_edge_spans (SI = a clipped edge's slot), far: the
+ * edge's flag word [si+2] gathers into [85E2]; bit 40h keeps the polygon
+ * for clipping (130D:00EC). An edge in view (bit 80h clear) marks the
+ * polygon drawn ([85EC] |= 4), goes into the span tables (mpoly_edge,
+ * 1377:072B) and, where an end left the window (bits 0-1 for the first
+ * end's rows at +4/+6, bits 2-3 for the second's at +0Ch/+0Eh), widens the
+ * left (bit 1 or 3: 130D:00B6) or right (130D:00D1) side's rows. A culled
+ * edge (bit 80h) widens one side by the rows +6/+0Eh when bits 0-1 say so.
+ * AX is the flag word the side routines see. */
+static int vgame_model_edge_spans(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 15)) return 0;                                  /* a culled edge's side: 5 + 3 + 2 + 4 and the CALL */
+    const uint16_t si = c->r[R_SI];
+    c->r[R_AX] = ds_get(c, (uint16_t)(si + 2));
+    ds_put(c, 0x85E2, (uint16_t)alu_logic(c, ds_get(c, 0x85E2) | c->r[R_AX], 1));
+    c->r[R_AX] = ds_get(c, (uint16_t)(si + 2));
+    alu_logic(c, c->r[R_AX] & 0x40, 0);
+    c->icount += 5;
+    if (!(c->flags & F_ZF)) VG3_NEAR(0x00EC, 0x005B, 10);         /* keep it for clipping */
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_SI] + 2));
+    alu_logic(c, c->r[R_AX] & 0x80, 0);
+    unsigned n = 3;
+    if (c->flags & F_ZF) {                                        /* in view */
+        ds_put(c, 0x85EC, (uint16_t)alu_logic(c, ds_get(c, 0x85EC) | 4, 1));
+        c->icount += n + 1;
+        VG3_FAR(0x0067, 10);                                      /* into the span tables */
+        n = 0;
+        static const struct { uint8_t any, left; uint8_t rows; uint16_t call_left, call_right, next; } end[2] = {
+            { 3, 2, 4, 0x0083, 0x007D, 0x0086 }, { 0x0C, 8, 0x0C, 0x009A, 0x0094, 0x009D } };
+        c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_SI] + 2));
+        n += 1;
+        for (int k = 0; k < 2; k++) {
+            alu_logic(c, get_r8(c, R_AL) & end[k].any, 0);
+            n += 2;                                               /* test, je */
+            if (c->flags & F_ZF) continue;
+            c->r[R_BX] = ds_get(c, (uint16_t)(c->r[R_SI] + end[k].rows));
+            c->r[R_CX] = ds_get(c, (uint16_t)(c->r[R_SI] + end[k].rows + 2));
+            alu_logic(c, get_r8(c, R_AL) & end[k].left, 0);
+            c->icount += n + 4;
+            n = 0;
+            if (!(c->flags & F_ZF)) {
+                VG3_NEAR(0x00B6, (uint16_t)(end[k].call_left + 3), k ? 1 : 7);
+            } else {
+                VG3_NEAR(0x00D1, (uint16_t)(end[k].call_right + 3), k ? 2 : 8);
+                n = 1;                                            /* jmp */
+            }
+        }
+        c->icount += n + 1;
+        far_ret(c);
+        return 1;
+    }
+    alu_logic(c, get_r8(c, R_AL) & 3, 0);                         /* culled */
+    n += 2;
+    if (!(c->flags & F_ZF)) {
+        c->r[R_BX] = ds_get(c, (uint16_t)(c->r[R_SI] + 6));
+        c->r[R_CX] = ds_get(c, (uint16_t)(c->r[R_SI] + 0x0E));
+        alu_logic(c, get_r8(c, R_AL) & 2, 0);
+        c->icount += n + 4;
+        if (!(c->flags & F_ZF)) VG3_NEAR(0x00B6, 0x00B4, 2);
+        else VG3_NEAR(0x00D1, 0x00AF, 2);
+        n = 1;                                                    /* jmp */
+    }
+    c->icount += n + 1;
+    far_ret(c);
+    return 1;
+}
+
+/* VGAME 130D:0116, model_poly_finish(style), far: the end of a model
+ * polygon. The fill style's begin entry (1377:004C) is called; a polygon
+ * kept for clipping twice ([85EE] = 2) is clipped (130D:033F on the slot
+ * at 85B8) and its edge added (130D:004A). When the polygon was drawn
+ * ([85EC]) its sides that left the window ([85E2] bits 0/2 right, 1/3
+ * left) are closed along the window's edges (130D:0191, 130D:01A7) and it
+ * is filled (1377:005E with the style in AX); a polygon wholly outside
+ * is filled only when it crossed both sides. The side rows go back to
+ * empty (7FFFh / 8000h) and [85EC], [85E2] and [85EE] to zero. */
+static int vgame_model_poly_finish(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 4 + 1)) return 0;
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_AX] = VG3_FRAME(6);
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 4;
+    VG3_FAR(0x011D, 21);                                          /* the style's begin */
+    VG3_DROP(2);
+    alu_sub(c, ds_get(c, 0x85EE), 2, 1, 0);
+    unsigned n = 3;
+    if (c->flags & F_ZF) {                                        /* clip the kept polygon */
+        cpu_push16(c, c->r[R_SI]);
+        c->r[R_SI] = 0x85B8;
+        c->icount += n + 2;
+        VG3_FAR(0x0131, 1);
+        VG3_FAR(0x0136, 19);
+        c->r[R_SI] = cpu_pop16(c);
+        n = 1;
+    }
+    c->r[R_DX] = ds_get(c, 0x85EC);                               /* 013C */
+    alu_logic(c, c->r[R_DX], 1);
+    n += 3;
+    int fill = 1;
+    if (!(c->flags & F_ZF)) {                                     /* drawn: close each side that left */
+        c->r[R_AX] = ds_get(c, 0x85E2);
+        alu_logic(c, get_r8(c, R_AL) & 5, 0);
+        n += 3;
+        if (!(c->flags & F_ZF)) {
+            c->icount += n;
+            VG3_NEAR(0x0191, 0x014E, 5);
+            n = 0;
+        }
+        c->r[R_AX] = ds_get(c, 0x85E2);
+        alu_logic(c, get_r8(c, R_AL) & 0x0A, 0);
+        n += 3;
+        if (!(c->flags & F_ZF)) {
+            c->icount += n;
+            VG3_NEAR(0x01A7, 0x0158, 2);
+            n = 0;
+        }
+    } else {                                                      /* 017E: outside; both sides or nothing */
+        c->r[R_AX] = ds_get(c, 0x85E2);
+        alu_logic(c, get_r8(c, R_AL) & 5, 0);
+        n += 3;
+        if (!(c->flags & F_ZF)) {
+            alu_logic(c, get_r8(c, R_AL) & 0x0A, 0);
+            n += 2;
+        }
+        if (c->flags & F_ZF) fill = 0;
+        else {
+            c->icount += n;
+            VG3_NEAR(0x0191, 0x018C, 1);
+            VG3_NEAR(0x01A7, 0x018F, 3);
+            n = 1;                                                /* jmp */
+        }
+    }
+    if (fill) {                                                   /* 0158 */
+        c->r[R_AX] = VG3_FRAME(6);
+        c->icount += n + 1;
+        VG3_FAR(0x015B, 12);                                      /* fill it */
+        n = 0;
+    }
+    c->r[R_AX] = 0x7FFF;                                          /* 0160: empty the sides */
+    ds_put(c, 0x85E8, 0x7FFF);
+    ds_put(c, 0x85E4, 0x7FFF);
+    c->r[R_AX] = 0x8000;                                          /* not ax */
+    ds_put(c, 0x85EA, 0x8000);
+    ds_put(c, 0x85E6, 0x8000);
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+    ds_put(c, 0x85EC, 0);
+    ds_put(c, 0x85E2, 0);
+    ds_put(c, 0x85EE, 0);
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += n + 12;
+    far_ret(c);
+    return 1;
+}
+
+/* VGAME 1377:00F3, row_offsets_planar: the row-offset table at DS:861C
+ * for the planar modes, 200 rows of 40 bytes - or, when [916E] is set (the
+ * 640-wide mode, from 1377:00C2), 480 rows of 80 bytes, with the span
+ * limits [9172] = 79 and [9174] = -81 for 80-byte rows. ES = DS; the
+ * words are stored by STOSW (so by the direction flag); the style table
+ * [85F2] = 70h. */
+static int vgame_row_offsets_planar(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const int wide = ds_get(c, 0x916E) != 0;
+    const unsigned rows = wide ? 480 : 200, step = wide ? 0x50 : 0x28;
+    const unsigned total = 2 + 5 + 3 * rows + (wide ? 12 : 3);
+    if (!room(c, total)) return 0;
+    alu_sub(c, ds_get(c, 0x916E), 0, 1, 0);
+    c->r[R_CX] = (uint16_t)rows;
+    c->r[R_AX] = c->seg[S_DS];
+    c->seg[S_ES] = c->seg[S_DS];
+    c->r[R_DI] = 0x861C;
+    uint16_t ax = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+    for (unsigned r = 0; r < rows; r++) {                         /* stosw; add ax, step; loop */
+        seg_write16(c, c->seg[S_ES], c->r[R_DI], ax);
+        c->r[R_DI] = (uint16_t)(c->r[R_DI] + ((c->flags & F_DF) ? -2 : 2));
+        ax = (uint16_t)alu_add(c, ax, step, 1, 0);
+    }
+    c->r[R_CX] = 0;
+    c->r[R_BX] = 0x70;
+    ds_put(c, 0x85F2, 0x70);
+    if (wide) {
+        ax = x86_shift(c, 4, 0x28, 1, 1);                         /* mov ax, 28h; shl ax, 1 */
+        c->r[R_BX] = ax;
+        ax = (uint16_t)alu_sub(c, ax, 1, 1, 0);
+        ds_put(c, 0x9172, ax);
+        ax = (uint16_t)alu_inc(c, c->r[R_BX], 1);
+        ax = (uint16_t)alu_sub(c, 0, ax, 1, 0);                   /* neg ax */
+        ds_put(c, 0x9174, ax);
+    }
+    c->r[R_AX] = ax;
+    c->icount += total;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 1377:046F, model_line (SI = the edge's slot: x0 +0, y0 +4, x1 +8,
+ * y1 +0Ch): a line in the colour [8606] on the page ES = [861A], rows from
+ * the offset table at 861C. A shallow line runs along x from the left end,
+ * one byte a column (STOSB, so by the direction flag), stepping a row
+ * (+-140h) when the error crosses zero; a steep one runs down y from the
+ * top end, a row a step, stepping a column. BP is left as the minor step;
+ * SI and DI are kept. Each pixel looks at the room and stops at its loop's
+ * head when there is none. */
+static int vgame_model_line(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 22 + 19)) return 0;
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->r[R_DI]);
+    c->r[R_AX] = ds_get(c, 0x861A);
+    c->seg[S_ES] = c->r[R_AX];
+    const uint16_t s = c->r[R_SI];
+    uint16_t y1 = ds_get(c, (uint16_t)(s + 0x0C)), y0 = ds_get(c, (uint16_t)(s + 4));
+    uint16_t x1 = ds_get(c, (uint16_t)(s + 8)), x0 = ds_get(c, s);
+    /* |y1 - y0| and |x1 - x0| by CWD, XOR, SUB */
+    uint16_t a = (uint16_t)alu_sub(c, y1, y0, 1, 0);
+    uint16_t sx = (a & 0x8000) ? 0xFFFF : 0;
+    a = (uint16_t)alu_logic(c, a ^ sx, 1);
+    const uint16_t ady = (uint16_t)alu_sub(c, a, sx, 1, 0);
+    a = (uint16_t)alu_sub(c, x1, x0, 1, 0);
+    sx = (a & 0x8000) ? 0xFFFF : 0;
+    a = (uint16_t)alu_logic(c, a ^ sx, 1);
+    const uint16_t adx = (uint16_t)alu_sub(c, a, sx, 1, 0);
+    alu_sub(c, ady, adx, 1, 0);
+    unsigned n = 22;
+    uint16_t minor, major;                                        /* the error's two steps (SI, DX) */
+    uint16_t cnt, row, col, step;
+    int steep = x86_cond(c, 7);                                   /* ja */
+    if (!steep) {
+        minor = ady; major = adx;
+        alu_sub(c, x1, x0, 1, 0);
+        n += 2;
+        if (!x86_cond(c, 0xD)) {                                  /* jge not taken: from the left end */
+            uint16_t t = x0; x0 = x1; x1 = t;
+            t = y0; y0 = y1; y1 = t;
+            n += 2;
+        }
+        step = 0x140;
+        alu_sub(c, y1, y0, 1, 0);
+        n += 3;
+        if (!x86_cond(c, 0xD)) { step = (uint16_t)alu_sub(c, 0, step, 1, 0); n++; }
+        row = y0; col = x0;
+        cnt = (uint16_t)alu_inc(c, (uint16_t)alu_sub(c, x1, x0, 1, 0), 1);
+    } else {
+        minor = adx; major = ady;                                 /* xchg si, dx */
+        alu_sub(c, y1, y0, 1, 0);
+        n += 3;
+        if (!x86_cond(c, 0xD)) {                                  /* from the top end */
+            uint16_t t = x0; x0 = x1; x1 = t;
+            t = y0; y0 = y1; y1 = t;
+            n += 2;
+        }
+        step = 1;
+        alu_sub(c, x1, x0, 1, 0);
+        n += 3;
+        if (!x86_cond(c, 0xD)) { step = (uint16_t)alu_sub(c, 0, step, 1, 0); n++; }
+        row = y0; col = x0;
+        cnt = (uint16_t)alu_inc(c, (uint16_t)alu_sub(c, y1, y0, 1, 0), 1);
+    }
+    c->r[R_SI] = minor;
+    c->r[R_DX] = major;
+    c->r[R_BP] = step;
+    c->r[R_DI] = (uint16_t)(ds_get(c, (uint16_t)(x86_shift(c, 4, row, 1, 1) + 0x861C)) + col);
+    c->r[R_CX] = cnt;
+    uint16_t err = x86_shift(c, 5, cnt, 1, 1);                    /* shr bx, 1 */
+    c->r[R_BX] = (uint16_t)alu_sub(c, 0, err, 1, 0);              /* neg bx */
+    c->r[R_AX] = ds_get(c, 0x8606);
+    n += steep ? 10 : 11;
+    const uint16_t head = steep ? 0x0500 : 0x04C4;
+    for (;;) {
+        VG3_ROOM_OR_STOP(7 + 4, head);
+        const uint8_t colour = get_r8(c, R_AL);
+        mem_write8(c, phys(c->seg[S_ES], c->r[R_DI]), colour);
+        if (steep) {
+            c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], 0x140, 1, 0);
+            n += 1;
+        } else {
+            c->r[R_DI] = (uint16_t)(c->r[R_DI] + ((c->flags & F_DF) ? -1 : 1));
+        }
+        c->r[R_BX] = (uint16_t)alu_add(c, c->r[R_BX], c->r[R_SI], 1, 0);
+        n += 3;                                                   /* store, add, jns */
+        const int stepped = !(c->flags & F_SF);
+        if (stepped) {                                            /* the minor step */
+            c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], c->r[R_BP], 1, 0);
+            c->r[R_BX] = (uint16_t)alu_sub(c, c->r[R_BX], c->r[R_DX], 1, 0);
+            n += 2;
+        }
+        c->r[R_CX]--;
+        n += 1;                                                   /* loop */
+        if (!c->r[R_CX]) {
+            if (!stepped || steep) n += 1;                        /* jmp to the end */
+            break;
+        }
+    }
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->icount += n + 3;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 1377:0A89, model_fill_or (AL = colour): the polygon's spans ORed
+ * into the page at ES, row by row from [9160] while a row's left end
+ * (table at 89DC) is not 7FFFh. Each span is clipped to the window's
+ * columns [85FA]..[85FE] (one wholly outside is skipped), its odd first
+ * byte ORed alone, then whole words (AH = AL), then an odd last byte; the
+ * row's ends go back to empty (7FFFh, 8001h). [9160] ends as 7FFFh. Rows
+ * and words look at the room and stop at their loop's head. */
+static int vgame_model_fill_or(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 6)) return 0;
+    set_r8(c, R_AH, get_r8(c, R_AL));
+    c->r[R_SI] = ds_get(c, 0x9160);
+    alu_sub(c, c->r[R_SI], 0x7FFF, 1, 0);
+    unsigned n = 4;                                               /* mov, mov, cmp, jne */
+    if (!(c->flags & F_ZF)) {
+        c->r[R_SI] = x86_shift(c, 4, c->r[R_SI], 1, 1);
+        n += 1;
+        for (;;) {                                                /* 0A9E: a row */
+            VG3_ROOM_OR_STOP(34, 0x0A9E);
+            const uint16_t si = c->r[R_SI];
+            c->r[R_BX] = ds_get(c, (uint16_t)(si + 0x89DC));
+            c->r[R_CX] = ds_get(c, (uint16_t)(si + 0x8D9E));
+            alu_sub(c, c->r[R_BX], 0x7FFF, 1, 0);
+            n += 4;
+            if (c->flags & F_ZF) break;                           /* the last row */
+            alu_sub(c, c->r[R_BX], ds_get(c, 0x85FE), 1, 0);
+            n += 2;
+            int inside = !x86_cond(c, 0xF);                       /* jg: right of the window */
+            if (inside) {
+                alu_sub(c, c->r[R_CX], ds_get(c, 0x85FA), 1, 0);
+                n += 2;
+                inside = !x86_cond(c, 0xC);                       /* jl: left of it */
+            }
+            if (inside) {
+                alu_sub(c, c->r[R_BX], ds_get(c, 0x85FA), 1, 0);
+                n += 2;
+                if (!x86_cond(c, 0xD)) { c->r[R_BX] = ds_get(c, 0x85FA); n++; }
+                alu_sub(c, c->r[R_CX], ds_get(c, 0x85FE), 1, 0);
+                n += 2;
+                if (!x86_cond(c, 0xE)) { c->r[R_CX] = ds_get(c, 0x85FE); n++; }
+                c->r[R_CX] = (uint16_t)alu_inc(c, (uint16_t)alu_sub(c, c->r[R_CX], c->r[R_BX], 1, 0), 1);
+                c->r[R_DI] = (uint16_t)alu_add(c, ds_get(c, (uint16_t)(si + 0x861C)), c->r[R_BX], 1, 0);
+                alu_logic(c, c->r[R_DI] & 1, 1);
+                n += 6;
+                int more = 1;
+                if (!(c->flags & F_ZF)) {                         /* an odd first byte */
+                    const uint32_t at = phys(c->seg[S_ES], c->r[R_DI]);
+                    mem_write8(c, at, (uint8_t)alu_logic(c, mem_read8(c, at) | get_r8(c, R_AL), 0));
+                    c->r[R_DI] = (uint16_t)alu_inc(c, c->r[R_DI], 1);
+                    c->r[R_CX] = (uint16_t)alu_dec(c, c->r[R_CX], 1);
+                    n += 4;
+                    more = !(c->flags & F_ZF);
+                }
+                if (more) {
+                    c->r[R_BX] = c->r[R_CX];
+                    c->r[R_CX] = x86_shift(c, 5, c->r[R_CX], 1, 1);   /* shr cx, 1 */
+                    n += 3;
+                    if (!(c->flags & F_ZF)) {
+                        do {                                      /* 0AE8: the words */
+                            VG3_ROOM_OR_STOP(3 + 7, 0x0AE8);
+                            const uint16_t w = seg_read16(c, c->seg[S_ES], c->r[R_DI]);
+                            seg_write16(c, c->seg[S_ES], c->r[R_DI], (uint16_t)alu_logic(c, w | c->r[R_AX], 1));
+                            c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], 2, 1, 0);
+                            c->r[R_CX]--;
+                            n += 3;
+                        } while (c->r[R_CX]);
+                    }
+                    c->r[R_BX] = (uint16_t)alu_logic(c, c->r[R_BX] & 1, 1);
+                    n += 2;
+                    if (!(c->flags & F_ZF)) {                     /* an odd last byte */
+                        const uint32_t at = phys(c->seg[S_ES], c->r[R_DI]);
+                        mem_write8(c, at, (uint8_t)alu_logic(c, mem_read8(c, at) | get_r8(c, R_AL), 0));
+                        n++;
+                    }
+                }
+            }
+            ds_put(c, (uint16_t)(si + 0x89DC), 0x7FFF);           /* 0AF8: the row is empty again */
+            ds_put(c, (uint16_t)(si + 0x8D9E), 0x8001);
+            c->r[R_SI] = (uint16_t)alu_add(c, si, 2, 1, 0);
+            n += 4;                                               /* mov, mov, add, jmp */
+        }
+    }
+    ds_put(c, 0x9160, 0x7FFF);                                    /* 0A95 */
+    c->icount += n + 2;
+    near_ret(c);
+    return 1;
+}
+/* VG3-END */
+
 static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x4958, vgame_free_fall, "free fall", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD50A, vgame_waypoint_from_target, "waypoint from target", 1 },
@@ -19500,6 +20252,22 @@ static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x120A, 0x043C, vgame_model_vertex_world, "a model vertex into world space", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xE2B6, vgame_compose_emit_object, "place an object in the scene", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xDB3C, vgame_scene_defer_object, "defer an object in distance order", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x130D, 0x0191, vgame_poly_edge_right, "close a polygon on the window's right", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x130D, 0x01A7, vgame_poly_edge_left, "close a polygon on the window's left", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x8342, vgame_view_caption, "the view's direction caption", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xB13C, vgame_camera_view_caption, "the camera's direction caption", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0FB2, 0x0324, vgame_sky_bands_far, "far entry of the sky bands", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0FB2, 0x069A, vgame_boxed_line_far, "far entry of a boxed line", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1058, 0x0C91, vgame_stick_centre, "centre the joystick calibration", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1058, 0x0CB2, vgame_stick_read, "read both joystick axes", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x120A, 0x04F5, vgame_model_part_light, "the light in a part's frame", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x120A, 0x0CA8, vgame_model_face, "draw a model face", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x120A, 0x0C76, vgame_model_faces, "draw a model's faces", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x130D, 0x004A, vgame_model_edge_spans, "a clipped edge into the polygon", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x130D, 0x0116, vgame_model_poly_finish, "finish and fill a model polygon", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1377, 0x00F3, vgame_row_offsets_planar, "row offsets for the planar modes", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1377, 0x046F, vgame_model_line, "draw a model line", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1377, 0x0A89, vgame_model_fill_or, "OR the polygon spans into the page", 1 },
     { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x0B20, dswap_lzw_reset, "reset the LZW table", 1 },
     { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x1F1C, player_format_digits, "the formatter's digits", 1 },
     { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x14BC, mps_logo_free_stream, "first free stream", 2 },
