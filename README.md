@@ -57,9 +57,9 @@ options. Nine catalogued fixes are available now, all off by default.
   rest is strings, tables and variables). On the scripted sessions no game
   instruction is interpreted under the default timing profile; only the
   emulated BIOS's own stubs are.
-- **Named and matched:** 648 routine addresses (644 census functions,
-  54,277 of 179,213 code bytes) have explained C equivalents checked against
-  their original bodies. Another 891 census functions remain. Under the
+- **Named and matched:** 653 routine addresses (649 census functions,
+  54,834 of 179,213 code bytes) have explained C equivalents checked against
+  their original bodies. Another 886 census functions remain. Under the
   386 profile, matched entries use their original translated bodies until
   their handwritten clocks gain cycle costs.
 - **Parity, measured:** thirty-five scripted sessions (boot to flight; a full
