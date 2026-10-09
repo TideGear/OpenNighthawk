@@ -68,6 +68,23 @@ FRAME_START_EXEC = 10775
 # START's mission generator seed tick (tools/ref86box/build_dosbox_x.md's DBX_INT1A_TICK value):
 # the Machine's BIOS tick count at the moment START reads it for this route.
 SEED_TICK = [31579]
+# The profile's mouse driver (probe86.mouse_calibration): counts per pixel and the pointer's shortfall.
+MOUSE_CAL = [0.667, 0.667, 0, 0]
+
+
+def setup_schedule(route_lines):
+    """SETUP's two answers as B86_KEYS: the route's own key presses before START's exec (shift left
+    out), at displayed frames 3000 and 3300, when SETUP is waiting for each. Every recorded route
+    answers N and 2 (AdLib); a route answering 1 there flies with the speaker driver."""
+    answers = []
+    for p in (l.split() for l in route_lines if l and not l.startswith("#")):
+        if p[0] == "K" and int(p[1]) < START_EXEC_CLOCK[0]:
+            byte = int(p[2], 16)
+            if not byte & 0x80 and byte not in (0x2A, 0x36):
+                answers.append(byte)
+    if len(answers) != 2:
+        raise SystemExit("the route's front end has %d SETUP answers, not 2: %s" % (len(answers), answers))
+    return ",".join("%d:1:%02x,%d:0:%02x" % (f, b, f + 3, b) for f, b in zip((3000, 3300), answers))
 
 
 def front_schedule(route_lines):
@@ -105,7 +122,7 @@ def front_schedule(route_lines):
         else:
             x, y, buttons = int(p[2]), int(p[3]), int(p[4])
             if (x, y) != last_pos[0]:
-                mouse.append("%d:m:%d,%d" % (f, x, y))
+                mouse.append("%d:m:%d,%d" % (f, x + MOUSE_CAL[2], y + MOUSE_CAL[3]))
                 last_pos[0] = (x, y)
                 last_move_frame[0] = f
             if buttons != last_buttons[0]:
@@ -143,21 +160,24 @@ class B86Machine:
                        stdout=subprocess.DEVNULL, check=True)
         img = os.path.join(work, "f117a.img")
         shutil.copyfile(os.path.join(PROFILE, "f117a.img"), img)
-        driver = open(MOUSE_DRIVER, "rb").read()
 
         def install(fs):
-            fs.writebytes("/F117A/CTMOUSE.EXE", driver)
+            MOUSE_CAL[:] = probe86.mouse_calibration(fs)
+            if fs.exists("/AUTOEXEC.BAT") and not fs.exists("/FDAUTO.BAT"):
+                return                       # an MS-DOS VM (probe86.bare_boot): its own mouse driver and F117
+            fs.writebytes("/F117A/CTMOUSE.EXE", open(MOUSE_DRIVER, "rb").read())
             probe86.bare_boot(fs, ["CTMOUSE", "F117"])
         probe86.with_partition(img, install, write=True)
         keys, mouse = front_schedule(front_route)
-        setup = "3000:1:31,3003:0:31,3300:1:03,3303:0:03"
+        setup = setup_schedule(front_route)
         keys_file = out / "keys.txt"
         keys_file.write_text(setup + ("," + keys if keys else ""))
         mouse_file = out / "mouse.txt"
         mouse_file.write_text(mouse)
         env = dict(os.environ, B86_LOOP_STATE=str(self.state_path), B86_LOOP_REPLY=self.reply_prefix,
                    B86_LOOP_EVERY=str(TICK_MS), B86_LOOP_READS=",".join("0x%x:%d" % r for r in self.ranges),
-                   B86_KEYS_FILE=str(keys_file), B86_MOUSE_FILE=str(mouse_file), B86_SEED_TICK=str(SEED_TICK[0]))
+                   B86_KEYS_FILE=str(keys_file), B86_MOUSE_FILE=str(mouse_file), B86_SEED_TICK=str(SEED_TICK[0]),
+                   B86_MOUSE_KX=str(MOUSE_CAL[0]), B86_MOUSE_KY=str(MOUSE_CAL[1]))
         if turbo:
             env["B86_FAST"] = "1"
         trace = out / "trace"
@@ -288,7 +308,8 @@ class B86Machine:
         """A left click at guest pixel (x, y): the loop's m (a slam to the corner, then the scaled move
         430 ms later), the button down 570 ms and up 785 ms after it, the spacing of front_schedule."""
         ms = max(0.0, (at - self.clock) * 1000 / IPS)
-        self.pending += ["%.4f|m|%d,%d" % (ms, x, y), "%.4f|b|1" % (ms + 570), "%.4f|b|0" % (ms + 785)]
+        self.pending += ["%.4f|m|%d,%d" % (ms, x + MOUSE_CAL[2], y + MOUSE_CAL[3]), "%.4f|b|1" % (ms + 570),
+                         "%.4f|b|0" % (ms + 785)]
 
     def tick(self):
         self._reply(";".join(self.pending))
@@ -495,6 +516,7 @@ def fly_recon(args):
 
 
 def main():
+    global PROFILE, FRAME_START_EXEC
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--pilot", choices=sorted(PILOTS), default="cargo")
     parser.add_argument("--data", required=True)
@@ -518,8 +540,14 @@ def main():
     parser.add_argument("--start-exec-clock", type=int, help="the Machine clock of START's exec in the front")
     parser.add_argument("--seed-tick", type=int, help="START's seed tick on the Machine")
     parser.add_argument("--seconds", type=int, default=1500)
+    parser.add_argument("--profile", help="the 86Box profile, copied per run (default %s)" % PROFILE)
+    parser.add_argument("--frame-start-exec", type=int,
+                        help="the displayed frame START.EXE starts at on that profile (default %d, measured on the default)"
+                        % FRAME_START_EXEC)
     parser.add_argument("--realtime", action="store_true", help="pace 86Box to real time")
     args = parser.parse_args()
+    PROFILE = args.profile or PROFILE
+    FRAME_START_EXEC = args.frame_start_exec or FRAME_START_EXEC
     dbx.PILOT[0] = args.pilot
     dbx.READS[0] = HERE / "routes" / PILOTS[args.pilot]["reads"]
     B86Machine.min_hold_ms = args.min_hold_ms

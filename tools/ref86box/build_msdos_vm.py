@@ -17,9 +17,16 @@ with a new 62 MB hard disk:
      DRVSPACE.BIN is left out, so DOS loads no compression driver;
   3. a first boot in 86Box, which shows the disk boots (AUTOEXEC.BAT writes a file); then the game (a
      copy of the install) goes into C:\\F117A and CONFIG.SYS / AUTOEXEC.BAT give a plain period
-     setup: FILES=20, BUFFERS=20, no disk cache, then the game. The board's BIOS reports no extended
-     memory, so there is no HIMEM or DOS=HIGH. --mouse adds a driver (C:\MOUSE, loaded before the game)
-     and 86Box's Microsoft serial mouse on COM1.
+     setup: FILES=20, BUFFERS=20, no disk cache, then the game. --mouse adds a driver (C:\\MOUSE, loaded
+     before the game) and 86Box's Microsoft serial mouse on COM1;
+  4. a boot that runs that MS-DOS's MEM /C into C:\\MEM.TXT (copied to the profile's MEM.TXT): the free
+     conventional memory the game starts with.
+
+The board has 1 MB by default (--mem-kb), so no extended memory and no HIMEM. With more, the first
+boot answers the BIOS's "CMOS memory size mismatch" by entering its setup and saving (F1, F10, Y),
+which writes the size POST found into the CMOS. --himem (needs extended memory) loads that MS-DOS's
+HIMEM.SYS with DOS=HIGH; HIMEM.SYS and MEM.EXE are expanded from the setup disks (Windows'
+expand.exe reads their SZDD compression) into C:\\DOS.
 
 MS-DOS is the owner's copy: the disks and the built image stay outside the repository.
 """
@@ -42,7 +49,11 @@ C, H, S = 940, 8, 17                     # build_hdd.py: IBM AT drive type 4
 TOTAL = C * H * S
 START = S                                # the partition at LBA 17
 
-CONFIG = "FILES=20\r\nBUFFERS=20\r\n"     # the board reports no extended memory: no HIMEM, no DOS=HIGH
+CONFIG = "FILES=20\r\nBUFFERS=20\r\n"
+HIMEM = "DEVICE=C:\\DOS\\HIMEM.SYS\r\nDOS=HIGH\r\n"
+# the AMI BIOS's "CMOS memory size mismatch" prompt (up by frame 575 with 4 MB): F1 enters setup, F10
+# and Y save the CMOS with the size POST found, and the board restarts (set-1 scancodes)
+SETUP_SAVE_KEYS = "700:1:3b,703:0:3b,780:1:44,783:0:44,840:1:15,843:0:15,880:1:1c,883:0:1c"
 AUTOEXEC = "@ECHO OFF\r\nPROMPT $P$G\r\nPATH C:\\DOS\r\nCD \\F117A\r\n"
 
 
@@ -148,6 +159,36 @@ def system_disk(disks):
     sys.exit("no image in %s holds IO.SYS, MSDOS.SYS and COMMAND.COM" % disks)
 
 
+def dos_file(disks, name):
+    """`name` (e.g. HIMEM.SYS) from the setup disks, expanded if it is stored compressed (HIMEM.SY_)."""
+    packed = name[:-1] + "_"
+    for disk in sorted(os.listdir(disks)):
+        if not disk.lower().endswith(".img"):
+            continue
+        fs = PyFatFS(os.path.join(disks, disk), read_only=True)
+        have = {n.upper(): n for n in fs.listdir("/")}
+        for n in (name, packed):
+            if n in have:
+                data = fs.readbytes("/" + have[n])
+                fs.close()
+                if not data.startswith(b"SZDD"):
+                    return data
+                with tempfile.TemporaryDirectory() as t:
+                    src, dst = os.path.join(t, packed), os.path.join(t, name)
+                    open(src, "wb").write(data)
+                    subprocess.run([os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "expand.exe"),
+                                    src, dst], stdout=subprocess.DEVNULL, check=True)
+                    return open(dst, "rb").read()
+        fs.close()
+    sys.exit("no %s or %s on the disks in %s" % (name, packed, disks))
+
+
+def boot(profile, out, frames, keys=""):
+    subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+                    os.path.join(HERE, "trace_86box.ps1"), "-Profile", profile, "-Out", out,
+                    "-Stop", str(frames), "-TimeoutSeconds", "600"] + (["-Keys", keys] if keys else []), check=True)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--disks", required=True)
@@ -156,7 +197,11 @@ def main():
     ap.add_argument("--data", default=r"D:\GOG\F-117A")
     ap.add_argument("--frames", type=int, default=1500, help="frames for the first boot")
     ap.add_argument("--mouse", help="a DOS mouse driver file loaded from AUTOEXEC.BAT, with 86Box's serial mouse on COM1")
+    ap.add_argument("--mem-kb", type=int, default=1024, help="the board's memory (86Box mem_size); above 1024 it has extended memory")
+    ap.add_argument("--himem", action="store_true", help="load MS-DOS's HIMEM.SYS with DOS=HIGH (needs --mem-kb above 1024)")
     a = ap.parse_args()
+    if a.himem and a.mem_kb <= 1024:
+        sys.exit("--himem needs extended memory: --mem-kb above 1024")
     a.out = os.path.normpath(a.out)          # mklink needs backslashes
     root =os.path.normcase(os.path.abspath(os.path.join(HERE, "..", "..")))
     if os.path.normcase(os.path.abspath(a.out)).startswith(root):
@@ -168,7 +213,9 @@ def main():
     install_system(img, boot_disk)
     sysfiles = with_partition(img, lambda fs: sorted(n.upper() for n in fs.listdir("/")))
     shutil.copytree(os.path.join(a.src, "nvr"), os.path.join(a.out, "nvr"), dirs_exist_ok=True)
-    shutil.copyfile(os.path.join(a.src, "86box.cfg"), os.path.join(a.out, "86box.cfg"))
+    cfg = open(os.path.join(a.src, "86box.cfg"), encoding="utf-8-sig").read()
+    cfg = re.sub(r"(?m)^mem_size\s*=.*$", "mem_size = %d" % a.mem_kb, cfg)
+    open(os.path.join(a.out, "86box.cfg"), "w", encoding="utf-8").write(cfg)
     roms = os.path.join(a.out, "roms")
     if not os.path.exists(roms):
         subprocess.run(["cmd", "/c", "mklink", "/J", roms, r"D:\86box\app\roms"], stdout=subprocess.DEVNULL, check=True)
@@ -176,11 +223,16 @@ def main():
     # 3. a first boot: MS-DOS writes a file, showing the disk boots and its files system is sound
     with_partition(img, lambda fs: fs.writetext("/AUTOEXEC.BAT", "ECHO DONE > C:\\BOOTED.TXT\r\n"), write=True)
     trace = os.path.join(a.out, "first-boot")
-    subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
-                    os.path.join(HERE, "trace_86box.ps1"), "-Profile", a.out, "-Out", trace,
-                    "-Stop", str(a.frames), "-TimeoutSeconds", "600"], check=True)
+    boot(a.out, trace, a.frames, SETUP_SAVE_KEYS if a.mem_kb > 1024 else "")
     if not with_partition(img, lambda fs: fs.exists("/BOOTED.TXT")):
         sys.exit("the first boot did not reach AUTOEXEC.BAT: see %s" % trace)
+    cmos = open(os.path.join(a.out, "nvr", "ami495.nvr"), "rb").read()
+    if cmos[0x17:0x19] != cmos[0x30:0x32]:
+        sys.exit("the CMOS's extended memory (%d KB) is not what POST found (%d KB): see %s"
+                 % (struct.unpack_from("<H", cmos, 0x17)[0], struct.unpack_from("<H", cmos, 0x30)[0], trace))
+    dos = {"MEM.EXE": dos_file(a.disks, "MEM.EXE")}
+    if a.himem:
+        dos["HIMEM.SYS"] = dos_file(a.disks, "HIMEM.SYS")
 
     def install(fs):
         fs.remove("/BOOTED.TXT")
@@ -191,24 +243,45 @@ def main():
             if os.path.isfile(p) and not name.lower().startswith(("unins", "goggame", "gog", "launch", "support")):
                 fs.writebytes("/F117A/" + name.upper(), open(p, "rb").read())
                 n += 1
-        fs.writetext("/CONFIG.SYS", CONFIG)
+        fs.makedirs("/DOS", recreate=True)
+        for name, data in dos.items():
+            fs.writebytes("/DOS/" + name, data)
+        fs.writetext("/CONFIG.SYS", (HIMEM if a.himem else "") + CONFIG)
         load = ""
         if a.mouse:
             name = os.path.basename(a.mouse).upper()
             fs.makedirs("/MOUSE", recreate=True)
             fs.writebytes("/MOUSE/" + name, open(a.mouse, "rb").read())
             load = "C:\\MOUSE\\" + name.split(".")[0] + "\r\n"
-        fs.writetext("/AUTOEXEC.BAT", AUTOEXEC.replace("CD \\F117A\r\n", load + "CD \\F117A\r\n") + "F117\r\n")
-        return n
-    n = with_partition(img, install, write=True)
+        # 4. the memory check: the game's AUTOEXEC.BAT with MEM /C in place of the game
+        fs.writetext("/AUTOEXEC.BAT", AUTOEXEC.replace("CD \\F117A\r\n", load + "MEM /C > C:\\MEM.TXT\r\n"))
+        return n, load
+    n, load = with_partition(img, install, write=True)
     if a.mouse:                                  # 86Box's Microsoft serial mouse on COM1
         cfg = open(os.path.join(a.out, "86box.cfg"), encoding="utf-8-sig").read()
         cfg = re.sub(r"(?m)^mouse_type\s*=.*$", "mouse_type = msserial", cfg)
         open(os.path.join(a.out, "86box.cfg"), "w", encoding="utf-8").write(cfg)
-    open(os.path.join(a.out, "DOS-VERSION.txt"), "w").write("MS-DOS %s from %s%s\n" % (
-        version, os.path.basename(boot_disk), "; mouse driver %s" % a.mouse if a.mouse else ""))
-    print("profile %s: MS-DOS %s (%s), %d game files%s" % (a.out, version, ", ".join(sysfiles), n,
-                                                            ", mouse " + os.path.basename(a.mouse) if a.mouse else ""))
+    boot(a.out, os.path.join(a.out, "mem-boot"), a.frames)
+
+    def finish(fs):
+        mem = fs.readtext("/MEM.TXT") if fs.exists("/MEM.TXT") else ""
+        if fs.exists("/MEM.TXT"):
+            fs.remove("/MEM.TXT")
+        fs.writetext("/AUTOEXEC.BAT", AUTOEXEC.replace("CD \\F117A\r\n", load + "CD \\F117A\r\n") + "F117\r\n")
+        return mem
+    mem = with_partition(img, finish, write=True)
+    largest = re.search(r"Largest executable program size\s*:\s*(\d+)", mem)
+    if not largest:
+        sys.exit("the memory check boot wrote no MEM /C report: see %s" % os.path.join(a.out, "mem-boot"))
+    if a.himem and not ("HIMEM" in mem and "MS-DOS resident in High Memory Area" in mem):
+        sys.exit("HIMEM.SYS did not load or DOS is not high:\n" + mem)
+    open(os.path.join(a.out, "MEM.TXT"), "w").write(mem)
+    open(os.path.join(a.out, "DOS-VERSION.txt"), "w").write("MS-DOS %s from %s%s; %d KB%s\n" % (
+        version, os.path.basename(boot_disk), "; mouse driver %s" % a.mouse if a.mouse else "", a.mem_kb,
+        ", HIMEM.SYS and DOS=HIGH" if a.himem else ""))
+    print("profile %s: MS-DOS %s (%s), %d game files%s, %d KB%s; largest executable program %s bytes"
+          % (a.out, version, ", ".join(sysfiles), n, ", mouse " + os.path.basename(a.mouse) if a.mouse else "",
+             a.mem_kb, ", HIMEM and DOS=HIGH" if a.himem else "", largest.group(1)))
 
 
 if __name__ == "__main__":

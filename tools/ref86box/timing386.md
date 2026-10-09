@@ -225,6 +225,13 @@ with `B86_VGA_FAST=1` scene 0 falls from +215 to +101 ms, which puts about
 114 ms of it on the mode set's video memory. The first step (24 reads of 512
 bytes, +130 ms with 1 buffer, +116 ms with 20) is about 5 ms a DOS read.
 
+On the MS-DOS 5.00 VMs with MOUSE.COM (`--profile`, ours `--ours-mouse`, 9 Oct
+2026), also FAIL on the same terms: `vmt386dos500` 1,238 of 1,277 exact in order,
+end drift +642.5 ms; `vmt386dos500h` (HIMEM, DOS=HIGH) 1,237 of 1,273, +728.1 ms.
+START's `ROSTER.FIL` step is about +630 ms there (+886 ms under the FreeDOS bare
+boot's one buffer); the HIMEM VM falls 86 ms further behind at PLAYER's load
+(5.6-13.2 s) and holds it.
+
 The mouse: the VM loads no driver (the image's stock `FDAUTO.BAT` and
 `FDCONFIG.SYS` load none, `FREEDOS\BIN` has none, `86box.cfg` has
 `mouse_type = none`, and `bare_boot` replaces the boot files anyway), so INT
@@ -290,7 +297,12 @@ more (the driver hooks INT 10h to follow the video mode), and a mode set 6,750
 to 16,260 less. The VM's reset (AX=0) waits on a timer tick, so it is not timed
 with IRQs masked. 92 of 93 probe blocks are exact against the 5.00 VM with
 6.26; the other is INT 21h AH=2Ch by 4 cycles a call, which varies that much
-between runs, as mode sets do by a few hundred cycles in 2.7 million. Video BIOS calls are charged at the INT, with interrupts held;
+between runs, as mode sets do by a few hundred cycles in 2.7 million. With
+4 MB, HIMEM.SYS and DOS=HIGH (`vmt386dos500h`, 9 Oct 2026; two runs identical) 89
+are exact: INT 21h AH=0Bh costs about 561 cycles a call more and AH=2Ch 156 more,
+the 13h-from-13h mode set 10,980 less and mode 3 from 13h 120 more. With
+HIMEM.SYS loaded and DOS low, AH=0Bh is exact and AH=2Ch within its 4 cycles, so
+the DOS calls' extra cost is DOS=HIGH's; the profile charges the DOS-low figures. Video BIOS calls are charged at the INT, with interrupts held;
 DOS calls pass their time in the stub's LOOP with interrupts on, as FreeDOS
 enables them inside INT 21h. Charged at the INT, the intro's 689,000 AH=0Bh
 polls held the music driver's interrupts back and its scenes ran up to 140 ms

@@ -52,7 +52,8 @@ more than once, what it costs, what was optimised). State as of the evening of
   captures were moved to `D:\f117-local\video`, junctioned back) and scratch on
   **D:** (`D:\f117-gate`; C: is nearly full). Emulators: `D:\86box`,
   `D:\86box-src`, `D:\msys64`. The 86Box VMs: `vmt386` (FreeDOS),
-  `vmt386dos401`, `vmt386dos500` (with MOUSE.COM 6.26), `vmt386dos622`, built by
+  `vmt386dos401`, `vmt386dos500` (with MOUSE.COM 6.26; `vmt386dos500h` the same
+  with 4 MB, HIMEM.SYS and DOS=HIGH), `vmt386dos622`, built by
   `tools/ref86box/build_msdos_vm.py` from `references/MS-DOS` (extracted copies
   and the mouse drivers in `D:\f117-msdos`, `D:\f117-mouse`).
 - **Worktrees on D:\f117-wt** (one build each, junctioned to

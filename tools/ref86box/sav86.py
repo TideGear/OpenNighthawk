@@ -53,10 +53,12 @@ def main():
 
     def install(fs):
         fs.writebytes("/F117A/CTMOUSE.EXE", driver)
-        probe86.bare_boot(fs, a.tail.split(","))
-    probe86.with_partition(img, install, write=True)
+        probe86.bare_boot(fs, a.tail.split(","))        # an MS-DOS VM keeps its own driver (MOUSE.COM)
+        return probe86.mouse_calibration(fs)
+    kx, ky, dx, dy = probe86.with_partition(img, install, write=True)
+    mouse = re.sub(r"(\d+):m:(-?\d+),(-?\d+)", lambda m: "%s:m:%d,%d" % (m[1], int(m[2]) + dx, int(m[3]) + dy), a.mouse)
     trace = os.path.join(a.out, "trace")
-    env = dict(os.environ, B86_MOUSE=a.mouse)
+    env = dict(os.environ, B86_MOUSE=mouse, B86_MOUSE_KX=str(kx), B86_MOUSE_KY=str(ky))
     if not a.realtime:
         env["B86_FAST"] = "1"
     cmd = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", os.path.join(HERE, "trace_86box.ps1"),
