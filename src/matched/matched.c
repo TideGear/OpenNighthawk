@@ -17042,7 +17042,7 @@ leave:                                                            /* 0x00D60 */
  * helpers, and their timer and joystick readers. Shared routines take their
  * copy's entry (AT) and the addresses that differ between the two. */
 
-FFLUSH(start, 0x9C32, 0xAEA6, 0xAF46, 0x9CAC, 0xA31A)
+FFLUSH(start, 0x9C32, 0xAEA6, 0xAF46, 0x9CAC, 0xA31A, 0)
 
 /* START 0x0A124 and END 0x05A96, the formatter's string argument: when the
  * format's flags at the caller's [BP-4] have bit 5 (a far pointer) the next
@@ -21999,7 +21999,8 @@ static int vgame_model_poly_finish(machine_t *m)
     c->r[R_AX] = VG3_FRAME(6);
     cpu_push16(c, c->r[R_AX]);
     c->icount += 4;
-    VG3_FAR(0x011D, 21);                                          /* the style's begin */
+    VG3_FAR(0x011D, 23);                                          /* the style's begin; the longest path to
+                                                                   * the next call or RETF: outside, one side */
     VG3_DROP(2);
     alu_sub(c, ds_get(c, 0x85EE), 2, 1, 0);
     unsigned n = 3;
@@ -22008,7 +22009,7 @@ static int vgame_model_poly_finish(machine_t *m)
         c->r[R_SI] = 0x85B8;
         c->icount += n + 2;
         VG3_FAR(0x0131, 1);
-        VG3_FAR(0x0136, 19);
+        VG3_FAR(0x0136, 21);
         c->r[R_SI] = cpu_pop16(c);
         n = 1;
     }
