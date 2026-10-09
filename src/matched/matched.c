@@ -13563,16 +13563,20 @@ static int vgame_panel_deadline(machine_t *m) { return clock_text(m, 0x413C, 0x4
  * the data segment (a far call into the segment the game fills in), so the
  * routines run those calls as original code. */
 
+/* The shared routines below are written for START and take the entry of their copy (END carries the
+ * same code at another address): the addresses inside one are the entry plus a fixed distance. */
+#define AT(o) ((uint16_t)(entry + (o)))
+
 /* Stop at `at` (the original instruction about to run) when the stretch to
  * the next call or return does not fit before the run loop must look at
  * events: the original code then carries on from there. */
 #define ST2_NEED(n, at) do { if (!room(c, (n))) { c->ip = (uint16_t)(at); return 1; } } while (0)
 
-/* START 0x03567, draw_text(win, s, x, y): the window record's pen (+8, +0xA)
+/* START 0x03567 and END 0x0188D, draw_text(win, s, x, y): the window record's pen (+8, +0xA)
  * is set to (x, y) and the driver's text entry draws the string s in the
  * window. BX is left as s (the two POPs take it off the stack). The caller
  * publishes the dirty rectangle with 0x03588. */
-static int start_draw_text(machine_t *m)
+static int st2_draw_text(machine_t *m, uint16_t entry)
 {
     cpu_t *c = &m->cpu;
     if (!room(c, 10)) return 0;
@@ -13586,8 +13590,8 @@ static int start_draw_text(machine_t *m)
     cpu_push16(c, bp_get(c, 6));
     cpu_push16(c, c->r[R_BX]);
     c->icount += 9;
-    if (!guest_call_far(m, 0x357D, 0x3582)) return 1;            /* the driver's text entry */
-    ST2_NEED(5, 0x3582);
+    if (!guest_call_far(m, AT(0x16), AT(0x1B))) return 1;            /* the driver's text entry */
+    ST2_NEED(5, AT(0x1B));
     c->r[R_BX] = cpu_pop16(c);
     c->r[R_BX] = cpu_pop16(c);
     c->icount += 2;
@@ -13596,11 +13600,11 @@ static int start_draw_text(machine_t *m)
     return 1;
 }
 
-/* START 0x0373C, text_width(win, s): the sum of the driver's width entry
+/* START 0x0373C and END 0x01A3B, text_width(win, s): the sum of the driver's width entry
  * for each character of the string s, in the window's font (+0xC). The
  * string pointer is stepped in the caller's frame; flags are the last test
  * for the string's end. */
-static int start_text_width(machine_t *m)
+static int st2_text_width(machine_t *m, uint16_t entry)
 {
     cpu_t *c = &m->cpu;
     if (!room(c, 8)) return 0;
@@ -13611,7 +13615,7 @@ static int start_text_width(machine_t *m)
     bp_put(c, -2, 0);                                             /* the width so far */
     c->icount += 8;                                               /* through the jump to the test */
     for (;;) {                                                    /* 0x03767 */
-        ST2_NEED(9, 0x3767);
+        ST2_NEED(9, AT(0x2B));
         c->r[R_BX] = bp_get(c, 6);
         alu_sub(c, ds_get8(c, c->r[R_BX]), 0, 0, 0);
         c->icount += 3;
@@ -13622,8 +13626,8 @@ static int start_text_width(machine_t *m)
         set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));   /* sub ah, ah */
         cpu_push16(c, c->r[R_AX]);
         c->icount += 5;
-        if (!guest_call_far(m, 0x375D, 0x3762)) return 1;         /* the driver's character width */
-        ST2_NEED(3, 0x3762);
+        if (!guest_call_far(m, AT(0x21), AT(0x26))) return 1;         /* the driver's character width */
+        ST2_NEED(3, AT(0x26));
         c->r[R_BX] = cpu_pop16(c);
         c->r[R_BX] = cpu_pop16(c);
         bp_put(c, -2, (uint16_t)alu_add(c, bp_get(c, -2), c->r[R_AX], 1, 0));
@@ -13636,9 +13640,9 @@ static int start_text_width(machine_t *m)
     return 1;
 }
 
-/* START 0x02A84, draw_text_centred(win, s, cx, y): draw_text with x = cx
- * less half the string's width (0x0373C, halved arithmetically). */
-static int start_draw_text_centred(machine_t *m)
+/* START 0x02A84 and END 0x010FA, draw_text_centred(win, s, cx, y): draw_text with
+ * x = cx less half the string's width (text_width, halved arithmetically). */
+static int st2_draw_text_centred(machine_t *m, uint16_t entry, uint16_t width_fn)
 {
     cpu_t *c = &m->cpu;
     if (!room(c, 5)) return 0;
@@ -13646,8 +13650,8 @@ static int start_draw_text_centred(machine_t *m)
     cpu_push16(c, bp_get(c, 6));
     cpu_push16(c, bp_get(c, 4));
     c->icount += 4;
-    if (!guest_call(m, 0x373C, 0x2A90)) return 1;
-    ST2_NEED(12, 0x2A90);
+    if (!guest_call(m, width_fn, AT(0x0C))) return 1;
+    ST2_NEED(12, AT(0x0C));
     c->r[R_BX] = cpu_pop16(c);
     c->r[R_BX] = cpu_pop16(c);
     c->r[R_AX] = x86_shift(c, 7, c->r[R_AX], 1, 1);               /* sar ax, 1 */
@@ -13660,8 +13664,8 @@ static int start_draw_text_centred(machine_t *m)
     cpu_push16(c, bp_get(c, 6));
     cpu_push16(c, c->r[R_BX]);
     c->icount += 11;
-    if (!guest_call_far(m, 0x2AA9, 0x2AAE)) return 1;
-    ST2_NEED(5, 0x2AAE);
+    if (!guest_call_far(m, AT(0x25), AT(0x2A))) return 1;
+    ST2_NEED(5, AT(0x2A));
     c->r[R_BX] = cpu_pop16(c);
     c->r[R_BX] = cpu_pop16(c);
     c->icount += 2;
@@ -13670,10 +13674,10 @@ static int start_draw_text_centred(machine_t *m)
     return 1;
 }
 
-/* START 0x03693, draw_sprite(win, x, y, handle): the driver's blit entry
+/* START 0x03693 and END 0x01992, draw_sprite(win, x, y, handle): the driver's blit entry
  * with the sprite's first two words (its size) pushed from the start of the
  * segment the handle names. ES:BX is left at that segment, offset 0. */
-static int start_draw_sprite(machine_t *m)
+static int st2_draw_sprite(machine_t *m, uint16_t entry)
 {
     cpu_t *c = &m->cpu;
     if (!room(c, 15)) return 0;
@@ -13691,8 +13695,8 @@ static int start_draw_sprite(machine_t *m)
     cpu_push16(c, bp_get(c, 6));
     cpu_push16(c, bp_get(c, 4));
     c->icount += 14;
-    if (!guest_call_far(m, 0x36BB, 0x36C0)) return 1;
-    ST2_NEED(3, 0x36C0);
+    if (!guest_call_far(m, AT(0x28), AT(0x2D))) return 1;
+    ST2_NEED(3, AT(0x2D));
     frame_close_ret(c);
     c->icount += 3;
     return 1;
@@ -13830,12 +13834,13 @@ static int start_publish_text(machine_t *m)
     return 1;
 }
 
-/* START 0x036C4, draw_text_shadowed(win, s, x, y): when the window record
+/* START 0x036C4 and END 0x019C3 and 0x0112A (the last with the centred draw),
+ * draw_text_shadowed(win, s, x, y): when the window record
  * has a shadow colour (+6 not FFFFh) the string is first drawn in that
  * colour (the record's text colour +4 replaced in a local copy) at (x+1, y),
  * (x, y+1) and (x+1, y+1); then the text itself at (x, y). SI and DI are
  * preserved. */
-static int start_draw_text_shadowed(machine_t *m)
+static int st2_draw_text_shadowed(machine_t *m, uint16_t entry, uint16_t draw_fn)
 {
     cpu_t *c = &m->cpu;
     if (!room(c, 8)) return 0;
@@ -13846,7 +13851,7 @@ static int start_draw_text_shadowed(machine_t *m)
     alu_sub(c, ds_get(c, (uint16_t)(c->r[R_BX] + 6)), 0xFFFF, 1, 0);
     c->icount += 8;
     if (!(c->flags & F_ZF)) {
-        ST2_NEED(27, 0x36D5);
+        ST2_NEED(27, AT(0x11));
         c->r[R_DI] = (uint16_t)(c->r[R_BP] - 0x16);               /* a local copy of the record */
         c->r[R_SI] = c->r[R_BX];
         c->seg[S_ES] = c->seg[S_SS];
@@ -13863,8 +13868,8 @@ static int start_draw_text_shadowed(machine_t *m)
         cpu_push16(c, c->r[R_CX]);
         c->r[R_SI] = c->r[R_AX];
         c->icount += 10;
-        if (!guest_call(m, 0x3567, 0x36FB)) return 1;             /* (x+1, y) */
-        ST2_NEED(10, 0x36FB);
+        if (!guest_call(m, draw_fn, AT(0x37))) return 1;             /* (x+1, y) */
+        ST2_NEED(10, AT(0x37));
         c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0);
         c->r[R_AX] = (uint16_t)alu_inc(c, bp_get(c, 0x0A), 1);
         cpu_push16(c, c->r[R_AX]);
@@ -13874,8 +13879,8 @@ static int start_draw_text_shadowed(machine_t *m)
         cpu_push16(c, c->r[R_CX]);
         c->r[R_DI] = c->r[R_AX];
         c->icount += 9;
-        if (!guest_call(m, 0x3567, 0x3712)) return 1;             /* (x, y+1) */
-        ST2_NEED(7, 0x3712);
+        if (!guest_call(m, draw_fn, AT(0x4E))) return 1;             /* (x, y+1) */
+        ST2_NEED(7, AT(0x4E));
         c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0);
         cpu_push16(c, c->r[R_DI]);
         cpu_push16(c, c->r[R_SI]);
@@ -13883,19 +13888,19 @@ static int start_draw_text_shadowed(machine_t *m)
         c->r[R_AX] = (uint16_t)(c->r[R_BP] - 0x16);
         cpu_push16(c, c->r[R_AX]);
         c->icount += 6;
-        if (!guest_call(m, 0x3567, 0x3721)) return 1;             /* (x+1, y+1) */
-        ST2_NEED(6, 0x3721);
+        if (!guest_call(m, draw_fn, AT(0x5D))) return 1;             /* (x+1, y+1) */
+        ST2_NEED(6, AT(0x5D));
         c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0);
         c->icount += 1;
     }
-    ST2_NEED(5, 0x3724);                                          /* the text itself */
+    ST2_NEED(5, AT(0x60));                                          /* the text itself */
     cpu_push16(c, bp_get(c, 0x0A));
     cpu_push16(c, bp_get(c, 8));
     cpu_push16(c, bp_get(c, 6));
     cpu_push16(c, bp_get(c, 4));
     c->icount += 4;
-    if (!guest_call(m, 0x3567, 0x3733)) return 1;
-    ST2_NEED(6, 0x3733);
+    if (!guest_call(m, draw_fn, AT(0x6F))) return 1;
+    ST2_NEED(6, AT(0x6F));
     c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0);
     c->r[R_SI] = cpu_pop16(c);
     c->r[R_DI] = cpu_pop16(c);
@@ -14121,12 +14126,12 @@ static int start_draw_station_weapon(machine_t *m)
 }
 
 
-/* START 0x02CB4, draw_box_frame(win, x, y, w, h): a dialog's frame. The driver's
+/* START 0x02CB4 and END 0x01332, draw_box_frame(win, x, y, w, h): a dialog's frame. The driver's
  * rectangle copy (0A95:6A8A) puts four 2x2 corner tiles from sheet 0 at the box's
  * corners, then the routine at 0x08A32 fills five bars in the colour it writes
  * into the window's +4 before each: E0h across the top, E6h the bottom, E1h the
  * left edge, E5h the right edge and E2h the interior. SI and DI are preserved. */
-static int start_draw_box_frame(machine_t *m)
+static int st2_draw_box_frame(machine_t *m, uint16_t entry, uint16_t fill_fn)
 {
     cpu_t *c = &m->cpu;
     if (!room(c, 17)) return 0;
@@ -14147,8 +14152,8 @@ static int start_draw_box_frame(machine_t *m)
     cpu_push16(c, c->r[R_CX]);
     cpu_push16(c, c->r[R_AX]);
     c->icount += 16;
-    if (!guest_call_far(m, 0x2CD1, 0x2CD6)) return 1;
-    ST2_NEED(19, 0x2CD6);
+    if (!guest_call_far(m, AT(0x1D), AT(0x22))) return 1;
+    ST2_NEED(19, AT(0x22));
     c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x0010, 1, 0);
     c->r[R_AX] = 0x0002;
     cpu_push16(c, c->r[R_AX]);
@@ -14168,8 +14173,8 @@ static int start_draw_box_frame(machine_t *m)
     c->r[R_DI] = c->r[R_CX];
     c->r[R_SI] = c->r[R_DX];
     c->icount += 18;
-    if (!guest_call_far(m, 0x2CFA, 0x2CFF)) return 1;
-    ST2_NEED(20, 0x2CFF);
+    if (!guest_call_far(m, AT(0x46), AT(0x4B))) return 1;
+    ST2_NEED(20, AT(0x4B));
     c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x0010, 1, 0);
     c->r[R_AX] = 0x0002;
     cpu_push16(c, c->r[R_AX]);
@@ -14190,8 +14195,8 @@ static int start_draw_box_frame(machine_t *m)
     bp_put(c, -0x2, c->r[R_CX]);
     bp_put(c, -0x4, c->r[R_DX]);
     c->icount += 19;
-    if (!guest_call_far(m, 0x2D28, 0x2D2D)) return 1;
-    ST2_NEED(12, 0x2D2D);
+    if (!guest_call_far(m, AT(0x74), AT(0x79))) return 1;
+    ST2_NEED(12, AT(0x79));
     c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x0010, 1, 0);
     c->r[R_AX] = 0x0002;
     cpu_push16(c, c->r[R_AX]);
@@ -14204,8 +14209,8 @@ static int start_draw_box_frame(machine_t *m)
     cpu_push16(c, c->r[R_AX]);
     cpu_push16(c, c->r[R_AX]);
     c->icount += 11;
-    if (!guest_call_far(m, 0x2D41, 0x2D46)) return 1;
-    ST2_NEED(17, 0x2D46);
+    if (!guest_call_far(m, AT(0x8D), AT(0x92))) return 1;
+    ST2_NEED(17, AT(0x92));
     c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x0010, 1, 0);
     c->r[R_BX] = bp_get(c, 0x4);
     ds_put(c, (uint16_t)(c->r[R_BX] + 0x0004), 0x00E0);
@@ -14223,8 +14228,8 @@ static int start_draw_box_frame(machine_t *m)
     bp_put(c, -0x6, c->r[R_AX]);
     bp_put(c, -0x8, c->r[R_CX]);
     c->icount += 16;
-    if (!guest_call(m, 0x8A32, 0x2D6D)) return 1;
-    ST2_NEED(11, 0x2D6D);
+    if (!guest_call(m, fill_fn, AT(0xB9))) return 1;
+    ST2_NEED(11, AT(0xB9));
     c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x000A, 1, 0);
     c->r[R_BX] = bp_get(c, 0x4);
     ds_put(c, (uint16_t)(c->r[R_BX] + 0x0004), 0x00E6);
@@ -14236,8 +14241,8 @@ static int start_draw_box_frame(machine_t *m)
     cpu_push16(c, bp_get(c, -0x8));
     cpu_push16(c, c->r[R_BX]);
     c->icount += 10;
-    if (!guest_call(m, 0x8A32, 0x2D8A)) return 1;
-    ST2_NEED(18, 0x2D8A);
+    if (!guest_call(m, fill_fn, AT(0xD6))) return 1;
+    ST2_NEED(18, AT(0xD6));
     c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x000A, 1, 0);
     c->r[R_BX] = bp_get(c, 0x4);
     ds_put(c, (uint16_t)(c->r[R_BX] + 0x0004), 0x00E1);
@@ -14256,8 +14261,8 @@ static int start_draw_box_frame(machine_t *m)
     bp_put(c, -0xA, c->r[R_AX]);
     bp_put(c, -0xC, c->r[R_CX]);
     c->icount += 17;
-    if (!guest_call(m, 0x8A32, 0x2DB4)) return 1;
-    ST2_NEED(10, 0x2DB4);
+    if (!guest_call(m, fill_fn, AT(0x100))) return 1;
+    ST2_NEED(10, AT(0x100));
     c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x000A, 1, 0);
     c->r[R_BX] = bp_get(c, 0x4);
     ds_put(c, (uint16_t)(c->r[R_BX] + 0x0004), 0x00E5);
@@ -14268,8 +14273,8 @@ static int start_draw_box_frame(machine_t *m)
     cpu_push16(c, c->r[R_DI]);
     cpu_push16(c, c->r[R_BX]);
     c->icount += 9;
-    if (!guest_call(m, 0x8A32, 0x2DCE)) return 1;
-    ST2_NEED(9, 0x2DCE);
+    if (!guest_call(m, fill_fn, AT(0x11A))) return 1;
+    ST2_NEED(9, AT(0x11A));
     c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x000A, 1, 0);
     c->r[R_BX] = bp_get(c, 0x4);
     ds_put(c, (uint16_t)(c->r[R_BX] + 0x0004), 0x00E2);
@@ -14279,8 +14284,8 @@ static int start_draw_box_frame(machine_t *m)
     cpu_push16(c, bp_get(c, -0x8));
     cpu_push16(c, c->r[R_BX]);
     c->icount += 8;
-    if (!guest_call(m, 0x8A32, 0x2DE9)) return 1;
-    ST2_NEED(6, 0x2DE9);
+    if (!guest_call(m, fill_fn, AT(0x135))) return 1;
+    ST2_NEED(6, AT(0x135));
     c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x000A, 1, 0);
     c->r[R_SI] = cpu_pop16(c);
     c->r[R_DI] = cpu_pop16(c);
@@ -14290,14 +14295,14 @@ static int start_draw_box_frame(machine_t *m)
 }
 
 
-/* START 0x08A32, fill_rect(win, x0, y0, x1, y1): a filled rectangle, inclusive,
+/* START 0x08A32 and END 0x049D2, fill_rect(win, x0, y0, x1, y1): a filled rectangle, inclusive,
  * by the driver's span entries: after the driver's begin entry (whose answer is
  * kept and handed back at the end), the window's page and colour (+0, +4) are
  * set and the span tables cleared (0x08AA0); the rows y0..y1 get x0 in the left
  * table (8F86h) and x1 in the right (913Eh) with the first and last row at
  * 8F82h and 8F84h, and the driver draws the spans. A row count of 0 fills
  * nothing. */
-static int start_fill_rect(machine_t *m)
+static int st2_fill_rect(machine_t *m, uint16_t entry, uint16_t clear_fn, uint16_t first, uint16_t last, uint16_t left, uint16_t right)
 {
     cpu_t *c = &m->cpu;
     if (!room(c, 8)) return 0;
@@ -14309,32 +14314,32 @@ static int start_fill_rect(machine_t *m)
     cpu_push16(c, c->seg[S_DS]);
     c->seg[S_ES] = cpu_pop16(c);                                  /* ES = DS */
     c->icount += 7;
-    if (!guest_call_far(m, 0x8A3A, 0x8A3F)) return 1;             /* driver: begin (its answer is kept) */
-    ST2_NEED(4, 0x8A3F);
+    if (!guest_call_far(m, AT(0x08), AT(0x0D))) return 1;             /* driver: begin (its answer is kept) */
+    ST2_NEED(4, AT(0x0D));
     cpu_push16(c, c->r[R_AX]);
     c->r[R_BX] = bp_get(c, 4);
     c->r[R_AX] = ds_get(c, c->r[R_BX]);                           /* the window's page */
     c->icount += 3;
-    if (!guest_call_far(m, 0x8A45, 0x8A4A)) return 1;             /* driver: the target page */
-    ST2_NEED(2, 0x8A4A);
+    if (!guest_call_far(m, AT(0x13), AT(0x18))) return 1;             /* driver: the target page */
+    ST2_NEED(2, AT(0x18));
     set_r8(c, R_AH, ds_get8(c, (uint16_t)(c->r[R_BX] + 4)));      /* the window's colour */
     c->icount += 1;
-    if (!guest_call_far(m, 0x8A4D, 0x8A52)) return 1;             /* driver: the colour */
-    ST2_NEED(1, 0x8A52);
-    if (!guest_call(m, 0x8AA0, 0x8A55)) return 1;                 /* clear the span tables */
+    if (!guest_call_far(m, AT(0x1B), AT(0x20))) return 1;             /* driver: the colour */
+    ST2_NEED(1, AT(0x20));
+    if (!guest_call(m, clear_fn, AT(0x23))) return 1;                 /* clear the span tables */
     /* The rows y0..y1 (inclusive; a count of 0 is a 64K-row run) take x0 in the left
      * table and x1 in the right, two word fills of the same length. */
     const uint16_t y0 = bp_get(c, 8), y1 = bp_get(c, 0x0C);
     const uint16_t rows = (uint16_t)(y1 - y0 + 1);
     const unsigned r = rows ? rows : 1u;
-    ST2_NEED(20 + 2 * r, 0x8A55);
+    ST2_NEED(20 + 2 * r, AT(0x23));
     c->r[R_CX] = y1;
     c->r[R_SI] = y0;
-    ds_put(c, 0x8F84, c->r[R_CX]);                                /* the table's last row */
-    ds_put(c, 0x8F82, c->r[R_SI]);                                /* and first */
+    ds_put(c, last, c->r[R_CX]);                                /* the table's last row */
+    ds_put(c, first, c->r[R_SI]);                                /* and first */
     c->r[R_CX] = (uint16_t)alu_sub(c, c->r[R_CX], c->r[R_SI], 1, 0);
     c->r[R_CX] = (uint16_t)alu_inc(c, c->r[R_CX], 1);
-    c->r[R_DI] = 0x8F86;                                          /* the left table */
+    c->r[R_DI] = left;                                          /* the left table */
     c->r[R_SI] = x86_shift(c, 4, c->r[R_SI], 1, 1);
     c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], c->r[R_SI], 1, 0);
     c->r[R_AX] = bp_get(c, 6);                                    /* x0 */
@@ -14342,22 +14347,22 @@ static int start_fill_rect(machine_t *m)
     c->icount += 11;
     c->icount += rep_string(c, STR_STOS, 1, 0, 0);
     c->r[R_CX] = c->r[R_DX];
-    c->r[R_DI] = 0x913E;                                          /* the right table */
+    c->r[R_DI] = right;                                          /* the right table */
     c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], c->r[R_SI], 1, 0);
     c->r[R_AX] = bp_get(c, 0x0A);                                 /* x1 */
     c->icount += 4;
     c->icount += rep_string(c, STR_STOS, 1, 0, 0);
-    c->r[R_BX] = 0x8F86;
-    c->r[R_AX] = ds_get(c, 0x8F82);
-    c->r[R_CX] = ds_get(c, 0x8F84);
+    c->r[R_BX] = left;
+    c->r[R_AX] = ds_get(c, first);
+    c->r[R_CX] = ds_get(c, last);
     c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0);
     c->icount += 4;
-    if (!guest_call_far(m, 0x8A8E, 0x8A93)) return 1;             /* driver: fill the spans */
-    ST2_NEED(2, 0x8A93);
+    if (!guest_call_far(m, AT(0x5C), AT(0x61))) return 1;             /* driver: fill the spans */
+    ST2_NEED(2, AT(0x61));
     c->r[R_AX] = cpu_pop16(c);
     c->icount += 1;
-    if (!guest_call_far(m, 0x8A94, 0x8A99)) return 1;             /* driver: end */
-    ST2_NEED(6, 0x8A99);
+    if (!guest_call_far(m, AT(0x62), AT(0x67))) return 1;             /* driver: end */
+    ST2_NEED(6, AT(0x67));
     c->r[R_BP] = cpu_pop16(c);
     c->r[R_SI] = cpu_pop16(c);
     c->r[R_DI] = cpu_pop16(c);
@@ -14452,6 +14457,22 @@ static int start_draw_load_caption(machine_t *m)
     c->icount += 3;
     return 1;
 }
+
+static int start_draw_text(machine_t *m) { return st2_draw_text(m, 0x3567); }
+static int end_draw_text(machine_t *m) { return st2_draw_text(m, 0x188D); }
+static int start_text_width(machine_t *m) { return st2_text_width(m, 0x373C); }
+static int end_text_width(machine_t *m) { return st2_text_width(m, 0x1A3B); }
+static int start_draw_text_centred(machine_t *m) { return st2_draw_text_centred(m, 0x2A84, 0x373C); }
+static int end_draw_text_centred(machine_t *m) { return st2_draw_text_centred(m, 0x10FA, 0x1A3B); }
+static int start_draw_sprite(machine_t *m) { return st2_draw_sprite(m, 0x3693); }
+static int end_draw_sprite(machine_t *m) { return st2_draw_sprite(m, 0x1992); }
+static int start_draw_text_shadowed(machine_t *m) { return st2_draw_text_shadowed(m, 0x36C4, 0x3567); }
+static int end_draw_text_shadowed(machine_t *m) { return st2_draw_text_shadowed(m, 0x19C3, 0x188D); }
+static int end_panel_text_line(machine_t *m) { return st2_draw_text_shadowed(m, 0x112A, 0x10FA); }
+static int start_draw_box_frame(machine_t *m) { return st2_draw_box_frame(m, 0x2CB4, 0x8A32); }
+static int end_draw_box_frame(machine_t *m) { return st2_draw_box_frame(m, 0x1332, 0x49D2); }
+static int start_fill_rect(machine_t *m) { return st2_fill_rect(m, 0x8A32, 0x8AA0, 0x8F82, 0x8F84, 0x8F86, 0x913E); }
+static int end_fill_rect(machine_t *m) { return st2_fill_rect(m, 0x49D2, 0x4A40, 0x4198, 0x419A, 0x419C, 0x4354); }
 
 static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x4958, vgame_free_fall, "free fall", 1 },
@@ -14862,6 +14883,14 @@ static const recomp_override MATCHED[] = {
     { "matched", "START.EXE", START_47304, 0x0000, 0x2CB4, start_draw_box_frame, "draw a dialog's frame", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x8A32, start_fill_rect, "fill a rectangle by spans", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x0E96, start_draw_load_caption, "draw the fuel figure", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x188D, end_draw_text, "draw a string in a window", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x1A3B, end_text_width, "width of a string in a window's font", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x10FA, end_draw_text_centred, "draw a string centred on x", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x1992, end_draw_sprite, "draw a sprite in a window", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x19C3, end_draw_text_shadowed, "draw a string with a shadow", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x112A, end_panel_text_line, "draw a centred string with a shadow", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x1332, end_draw_box_frame, "draw a dialog's frame", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x49D2, end_fill_rect, "fill a rectangle by spans", 1 },
 };
 
 void matched_register(void)
