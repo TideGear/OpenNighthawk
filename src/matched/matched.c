@@ -19252,7 +19252,7 @@ static const st3_pic_start_t ST3_PIC_START_END = { 0x4829, 0x1C77, 0x3F82, 0x419
 static int start_pic_start(machine_t *m) { return st3_pic_start(m, &ST3_PIC_START_START); }
 static int end_pic_start(machine_t *m) { return st3_pic_start(m, &ST3_PIC_START_END); }
 
-static int start_open_stream(machine_t *m) { return open_stream(m, 0xA1DC, 0x9219, 0x9A9C, 0x9231); }
+static int start_open_stream(machine_t *m) { return sm3_open_stream(m, 0x9216, 0x922E, 0); }
 static int end_format_digits(machine_t *m) { return format_digits(m, 0x5B16); }
 
 /* START 0x09A9C, _openfile(name, mode, share, stream): the mode string's
