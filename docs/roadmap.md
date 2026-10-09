@@ -135,8 +135,18 @@ make (Phase 4).
       identical, its audio envelope 0.87, spectral 0.92-0.93, level 0.95 (before:
       0.69, 0.54, 0.47); the radio call's 12,924 counts identical. Open: an
       audio reference for the speech (DOSBox-X ignores mode 0 counts written
-      without a control word and plays nothing), the speaker's timing against
-      86Box, and the AdLib speech's in-flight writes against a reference.
+      without a control word and plays nothing) and the speaker's timing against
+      86Box. The AdLib speech against 86Box (9 Oct 2026, the cargo route's
+      takeoff call through `b86_cargo_pilot.py` with `B86_OPL`): 6,464
+      writes to register 43h on both, 7,938 and 7,936 a second, 0.814 s each,
+      so the timer pacing is the reference's. The values differ because the
+      86Box VM (MS-DOS 5.00 with MOUSE.COM) has too little free memory for
+      VGAME 0x0110 to load the 26,408-byte SPEECH.117: VGAME's `[0x008A]`
+      stays 0, request 0x28 is never sent and the driver plays the call's
+      offsets from segment 0. Here the file loads and the call is its bytes
+      15,654-22,117 through the driver's table. Whether the machine should
+      have the reference's free memory, and lose the speech, is the owner's
+      call.
 
 ### Settled (scope, 8 Oct 2026)
 
