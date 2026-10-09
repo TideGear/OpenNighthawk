@@ -211,6 +211,20 @@ static void stub_driver_thunks(uint8_t *pristine, uint32_t at, const rc_module *
     }
 }
 
+/* A byte of the loaded image a routine reads as data at a low address: the BIOS data area (0:0489h, the
+ * gray-scale flag END's DAC loader tests) lies inside END's image here, where it is a code byte that happens
+ * to have the flag set, so the routine's normal path was never reached. Set in both sides' memory. */
+static const struct { const char *module; uint16_t ip; uint32_t linear; uint8_t value; } IMAGE_PATCHES[] = {
+    { "END.EXE", 0x42E4, 0x0489, 0x00 },
+};
+
+static void patch_image_for(uint8_t *pristine, const recomp_override *o)
+{
+    for (unsigned i = 0; i < sizeof IMAGE_PATCHES / sizeof IMAGE_PATCHES[0]; i++)
+        if (!strcmp(IMAGE_PATCHES[i].module, o->module) && IMAGE_PATCHES[i].ip == o->ip)
+            pristine[IMAGE_PATCHES[i].linear] = IMAGE_PATCHES[i].value;
+}
+
 static machine_t g_m;           /* side 1's CPU lives in a machine: matched code takes one */
 
 /* A matched routine's call into original code, run here by plain stepping:
@@ -313,6 +327,7 @@ int main(int argc, char **argv)
         const uint32_t at = (uint32_t)base * 16u + m->origin;
         memcpy(g_pristine + at, m->image, m->size);
         stub_driver_thunks(g_pristine, at, m);
+        patch_image_for(g_pristine, o);
         memcpy(g_mem[0], g_pristine, MEM_SIZE);
         memcpy(g_mem[1], g_pristine, MEM_SIZE);
         const uint16_t cs = (uint16_t)(base + o->seg), ip = o->ip;
@@ -326,6 +341,7 @@ int main(int argc, char **argv)
                 for (uint32_t a = 0; a < MEM_SIZE; a++) g_pristine[a] = pick[rnd() & 3];
                 memcpy(g_pristine + at, m->image, m->size);
                 stub_driver_thunks(g_pristine, at, m);
+                patch_image_for(g_pristine, o);
                 memcpy(g_mem[0], g_pristine, MEM_SIZE);
                 memcpy(g_mem[1], g_pristine, MEM_SIZE);
             }
@@ -411,7 +427,7 @@ int main(int argc, char **argv)
             g_lost = 0; g_ncalls = 0; g_callover = 0;
             g_m.cpu.stop_at = g_m.cpu.icount + (uint64_t)steps - 1;
             const int probe_ran = o->fn(&g_m);
-            if (probe_ran && (g_callover || (!g_ncalls && g_m.cpu.icount > g_m.cpu.stop_at))) {
+            if (probe_ran && (g_callover || (!g_ncalls && g_m.cpu.stop_at && g_m.cpu.icount > g_m.cpu.stop_at))) {   /* (a limit of 0 is STI or POPF asking the run loop to look at interrupts: the routine stopped there) */
                 printf("  OVERRUN %s+%05X: ran to %llu with the limit at %llu (the original takes %d)\n", o->module,
                        ((uint32_t)o->seg << 4) + ip, (unsigned long long)g_m.cpu.icount - 1000,
                        (unsigned long long)g_m.cpu.stop_at - 1000, steps);

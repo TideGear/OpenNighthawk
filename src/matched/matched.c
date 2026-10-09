@@ -14474,6 +14474,810 @@ static int end_draw_box_frame(machine_t *m) { return st2_draw_box_frame(m, 0x133
 static int start_fill_rect(machine_t *m) { return st2_fill_rect(m, 0x8A32, 0x8AA0, 0x8F82, 0x8F84, 0x8F86, 0x913E); }
 static int end_fill_rect(machine_t *m) { return st2_fill_rect(m, 0x49D2, 0x4A40, 0x4198, 0x419A, 0x419C, 0x4354); }
 
+/* START 0x024F7, draw_target_block(win, n): the briefing's block for target n (0 the
+ * primary, else the secondary), whose record is 12h bytes at E05Eh + n * 12h. The
+ * window gets size 3 (+0Ch) and ink 0 (+4); the block's heading (string 07F0h at
+ * (26h, 4Eh) for the primary, 0815h at (26h, 8Ch) for the secondary) is drawn with
+ * 0x03567, then the paragraph for the target's kind (the record's word at +8 indexes
+ * the string pointers at 1F24h) word-wrapped by 0x03776 (104h wide, lines 7 apart)
+ * below it; a label (083Ch, ink 4) follows the paragraph, and the objective text
+ * that 0x02651 builds from the record is wrapped under it (lines 6 apart). */
+static int start_draw_target_block(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 13)) return 0;
+    frame_open(c, 0x104);
+    cpu_push16(c, c->r[R_SI]);
+    c->r[R_AX] = 0x12;
+    x86_mul16(c, bp_get(c, 6));
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], 0xE05E, 1, 0);
+    bp_put(c, -2, c->r[R_AX]);                                    /* the target's record */
+    c->r[R_BX] = bp_get(c, 4);
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x0C), 3);                  /* the window's size */
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x04), 0);                  /* and ink */
+    alu_sub(c, bp_get(c, 6), 0, 1, 0);
+    c->icount += 13;
+    if (c->flags & F_ZF) {                                        /* the primary target: its heading at (26h, 4Eh) */
+        ST2_NEED(10, 0x251E);
+        c->r[R_AX] = 0x4E;
+        bp_put(c, -0x104, c->r[R_AX]);
+        cpu_push16(c, c->r[R_AX]);
+        c->r[R_AX] = 0x26; cpu_push16(c, c->r[R_AX]);
+        c->r[R_AX] = 0x07F0; cpu_push16(c, c->r[R_AX]);
+        cpu_push16(c, c->r[R_BX]);
+        c->icount += 9;
+    } else {                                                      /* the secondary: at (26h, 8Ch) */
+        ST2_NEED(9, 0x2531);
+        c->r[R_AX] = 0x8C;
+        bp_put(c, -0x104, c->r[R_AX]);
+        cpu_push16(c, c->r[R_AX]);
+        c->r[R_AX] = 0x26; cpu_push16(c, c->r[R_AX]);
+        c->r[R_AX] = 0x0815; cpu_push16(c, c->r[R_AX]);
+        cpu_push16(c, bp_get(c, 4));
+        c->icount += 8;
+    }
+    if (!guest_call(m, 0x3567, 0x2547)) return 1;                 /* draw_text */
+    ST2_NEED(18, 0x2547);
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0);
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+    cpu_push16(c, c->r[R_AX]);                                    /* the paragraph for the target's kind: wrapped */
+    c->r[R_CX] = 7; cpu_push16(c, c->r[R_CX]);                    /* 104h wide, lines 7 apart, not centred */
+    c->r[R_CX] = 0x0104; cpu_push16(c, c->r[R_CX]);
+    c->r[R_DX] = (uint16_t)alu_add(c, bp_get(c, -0x104), 8, 1, 0);
+    cpu_push16(c, c->r[R_DX]);
+    c->r[R_DX] = 0x26; cpu_push16(c, c->r[R_DX]);
+    c->r[R_BX] = bp_get(c, -2);
+    c->r[R_SI] = ds_get(c, (uint16_t)(c->r[R_BX] + 8));           /* the record's kind */
+    c->r[R_SI] = x86_shift(c, 4, c->r[R_SI], 1, 1);
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_SI] + 0x1F24)));
+    cpu_push16(c, bp_get(c, 4));
+    c->icount += 17;
+    if (!guest_call(m, 0x3776, 0x2573)) return 1;                 /* draw_wrapped */
+    ST2_NEED(14, 0x2573);
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x0E, 1, 0);
+    c->r[R_BX] = bp_get(c, 4);
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0x0A));        /* the pen below the paragraph, +2 */
+    c->r[R_AX] = (uint16_t)alu_inc(c, c->r[R_AX], 1);
+    c->r[R_AX] = (uint16_t)alu_inc(c, c->r[R_AX], 1);
+    bp_put(c, -0x104, c->r[R_AX]);
+    ds_put(c, (uint16_t)(c->r[R_BX] + 4), 4);                     /* ink 4 for the label */
+    cpu_push16(c, bp_get(c, -0x104));
+    c->r[R_AX] = 0x26; cpu_push16(c, c->r[R_AX]);
+    c->r[R_CX] = 0x083C; cpu_push16(c, c->r[R_CX]);
+    cpu_push16(c, c->r[R_BX]);
+    c->icount += 13;
+    if (!guest_call(m, 0x3567, 0x2597)) return 1;
+    ST2_NEED(7, 0x2597);
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0);
+    c->r[R_BX] = bp_get(c, 4);
+    ds_put(c, (uint16_t)(c->r[R_BX] + 4), 0);                     /* ink 0 again */
+    c->r[R_AX] = (uint16_t)(c->r[R_BP] - 0x102);                  /* the objective text goes in the local buffer */
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, bp_get(c, -2));
+    c->icount += 6;
+    if (!guest_call(m, 0x2651, 0x25AD)) return 1;                 /* build the objective text */
+    ST2_NEED(17, 0x25AD);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 6; cpu_push16(c, c->r[R_AX]);                    /* 104h wide, lines 6 apart */
+    c->r[R_AX] = 0x0104; cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)alu_add(c, bp_get(c, -0x104), 8, 1, 0);
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0x26; cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)(c->r[R_BP] - 0x102);
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, bp_get(c, 4));
+    c->icount += 16;
+    if (!guest_call(m, 0x3776, 0x25D1)) return 1;
+    ST2_NEED(5, 0x25D1);
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x0E, 1, 0);
+    c->r[R_SI] = cpu_pop16(c);
+    c->icount += 2;
+    frame_close_ret(c);
+    c->icount += 3;
+    return 1;
+}
+
+/* START 0x03776 and END 0x01A75, draw_wrapped(win, s, x, y, w, dy, centre): word wrap.
+ * The string s is cut into lines no wider than w (each character measured by the
+ * driver's width entry, in the window's font +0Ch): a line ends at a line feed, at the
+ * text's end or, when the next character would not fit, at the last space (or hyphen,
+ * which stays on the line) before it. Each line is copied out (0x09612), measured
+ * (0x0373C) and, when the window has ink (+0 not FFFFh), drawn with its shadow
+ * (0x036C4) at x, or centred in w when `centre` is set, the pen y stepping down by
+ * dy after every line (a line feed alone steps too). Returns the widest line's width.
+ * END's copy compares the same pairs the other way round (so AX and the flags differ at
+ * three tests: `swapped`). */
+static int st2_draw_wrapped(machine_t *m, uint16_t entry, uint16_t copy_fn, uint16_t width_fn, uint16_t draw_fn, int swapped)
+{
+    cpu_t *c = &m->cpu;
+#define S(x) AT((x) - 0x3776)
+    /* The frame: [bp-2] the font, [bp-4] where the line starts, [bp-6] its width, [bp-8] the widest line so far,
+     * [bp-0xA] the scan pointer, [bp-0xC] the end-of-text flag, [bp-0x10] the line's length, [bp-0x112] the last
+     * character's address, [bp-0x110...] the line copied out. Arguments: win [bp+4], s [bp+6], x [bp+8], y [bp+0xA],
+     * w [bp+0xC], dy [bp+0xE], centre [bp+0x10]. */
+    if (!room(c, 21)) return 0;
+    frame_open(c, 0x112);
+    cpu_push16(c, c->r[R_SI]);
+    bp_put(c, -8, 0);
+    c->r[R_AX] = bp_get(c, 6);
+    bp_put(c, -0x0A, c->r[R_AX]);
+    bp_put(c, -4, c->r[R_AX]);
+    c->r[R_BX] = bp_get(c, 4);
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0x0C));
+    bp_put(c, -2, c->r[R_AX]);
+    c->r[R_AX] = bp_get(c, 0x0A);
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x0A), c->r[R_AX]);          /* the pen's y */
+    bp_put8(c, -0x0C, 0);
+    c->icount += 14;
+    goto new_line_body;
+new_line:                                                         /* 0x0379F: a line from [bp-4] */
+    ST2_NEED(7, S(0x379F));
+new_line_body:
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+    bp_put(c, -0x10, c->r[R_AX]);
+    bp_put(c, -6, c->r[R_AX]);
+    c->icount += 4;
+    goto fits;
+take_char:                                                        /* 0x037A9: while the line fits, take a character */
+    ST2_NEED(12, S(0x37A9));
+    c->r[R_BX] = bp_get(c, -0x0A);
+    alu_sub(c, ds_get8(c, c->r[R_BX]), 0, 0, 0);
+    c->icount += 3;
+    if (c->flags & F_ZF) goto line_end;                           /* the text ends */
+    alu_sub(c, ds_get8(c, c->r[R_BX]), 0x0A, 0, 0);
+    c->icount += 2;
+    if (c->flags & F_ZF) goto line_end;                           /* a line feed */
+    bp_put(c, -0x112, c->r[R_BX]);
+    bp_put(c, -0x0A, (uint16_t)alu_inc(c, bp_get(c, -0x0A), 1));
+    cpu_push16(c, bp_get(c, -2));
+    set_r8(c, R_AL, ds_get8(c, c->r[R_BX]));
+    set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 6;
+    if (!guest_call_far(m, S(0x37C5), S(0x37CA))) return 1;       /* the driver's character width */
+    ST2_NEED(7, S(0x37CA));
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    bp_put(c, -6, (uint16_t)alu_add(c, bp_get(c, -6), c->r[R_AX], 1, 0));
+    bp_put(c, -0x10, (uint16_t)alu_inc(c, bp_get(c, -0x10), 1));
+    c->icount += 4;
+fits:                                                             /* 0x037D2: the width against the limit [bp+0xC] */
+    if (!swapped) {                                               /* START: CMP width, limit; JBE */
+        c->r[R_AX] = bp_get(c, 0x0C);
+        alu_sub(c, bp_get(c, -6), c->r[R_AX], 1, 0);
+        c->icount += 3;
+        if (x86_cond(c, 0x6)) goto take_char;
+    } else {                                                      /* END: AX = the width; CMP limit, AX; JAE */
+        c->r[R_AX] = bp_get(c, -6);
+        alu_sub(c, bp_get(c, 0x0C), c->r[R_AX], 1, 0);
+        c->icount += 3;
+        if (x86_cond(c, 0x3)) goto take_char;
+    }
+line_end:                                                         /* 0x037DA: the text ends, or the line is full */
+    ST2_NEED(3, S(0x37DA));
+    if (!swapped) alu_sub(c, bp_get(c, -6), c->r[R_AX], 1, 0);
+    else alu_sub(c, bp_get(c, 0x0C), c->r[R_AX], 1, 0);
+    c->icount += 2;
+    if (x86_cond(c, swapped ? 0x3 : 0x6)) goto space_check;      /* it fits */
+    c->icount += 1;                                               /* too wide: back up one first */
+    goto back_up;
+back_scan:                                                        /* 0x037E1: back up to a space, a hyphen or the start */
+    ST2_NEED(8, S(0x37E1));
+    alu_sub(c, ds_get8(c, c->r[R_BX]), 0, 0, 0);
+    c->icount += 2;
+    if (c->flags & F_ZF) goto at_break;
+    alu_sub(c, ds_get8(c, c->r[R_BX]), 0x0A, 0, 0);
+    c->icount += 2;
+    if (c->flags & F_ZF) goto at_break;
+    alu_sub(c, ds_get8(c, c->r[R_BX]), 0x2D, 0, 0);
+    c->icount += 2;
+    if (c->flags & F_ZF) goto at_break;
+    if (!swapped) alu_sub(c, bp_get(c, 6), c->r[R_BX], 1, 0);    /* the text's start against the scan */
+    else alu_sub(c, c->r[R_BX], bp_get(c, 6), 1, 0);
+    c->icount += 2;
+    if (x86_cond(c, swapped ? 0x6 : 0x3)) goto at_break;
+back_up:                                                          /* 0x037F5: one character back */
+    ST2_NEED(5, S(0x37F5));
+    bp_put(c, -0x0A, (uint16_t)alu_dec(c, bp_get(c, -0x0A), 1));
+    bp_put(c, -0x10, (uint16_t)alu_dec(c, bp_get(c, -0x10), 1));
+    c->icount += 2;
+space_check:                                                      /* 0x037FB: stop on a space */
+    ST2_NEED(3, S(0x37FB));
+    c->r[R_BX] = bp_get(c, -0x0A);
+    alu_sub(c, ds_get8(c, c->r[R_BX]), 0x20, 0, 0);
+    c->icount += 3;
+    if (!(c->flags & F_ZF)) goto back_scan;
+at_break:                                                         /* 0x03803: the line is [bp-4], [bp-0x10] long */
+    ST2_NEED(13, S(0x3803));
+    alu_sub(c, ds_get8(c, c->r[R_BX]), 0x2D, 0, 0);
+    c->icount += 2;
+    if (c->flags & F_ZF) {                                        /* a hyphen stays on the line */
+        bp_put(c, -0x10, (uint16_t)alu_inc(c, bp_get(c, -0x10), 1));
+        c->icount += 1;
+    }
+    alu_sub(c, ds_get8(c, c->r[R_BX]), 0, 0, 0);
+    c->icount += 2;
+    if (c->flags & F_ZF) { bp_put8(c, -0x0C, 1); c->icount += 1; }   /* the text's end: this is the last line */
+    alu_sub(c, bp_get(c, -0x10), 0, 1, 0);
+    c->icount += 2;
+    if (c->flags & F_ZF) goto empty_line;
+    cpu_push16(c, bp_get(c, -0x10));                              /* copy the line out */
+    cpu_push16(c, bp_get(c, -4));
+    c->r[R_AX] = (uint16_t)(c->r[R_BP] - 0x110);
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 4;
+    if (!guest_call(m, copy_fn, S(0x3828))) return 1;
+    ST2_NEED(7, S(0x3828));
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0);
+    c->r[R_SI] = bp_get(c, -0x10);
+    mem_write8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] + c->r[R_SI] - 0x110)), 0);   /* and end it */
+    c->r[R_AX] = (uint16_t)(c->r[R_BP] - 0x110);
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, bp_get(c, 4));
+    c->icount += 6;
+    if (!guest_call(m, width_fn, S(0x383E))) return 1;            /* its width */
+    ST2_NEED(23, S(0x383E));
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    bp_put(c, -6, c->r[R_AX]);
+    alu_sub(c, c->r[R_AX], bp_get(c, -8), 1, 0);
+    c->icount += 5;
+    if (x86_cond(c, 0x7)) { bp_put(c, -8, c->r[R_AX]); c->icount += 1; }   /* the widest line so far */
+    c->r[R_BX] = bp_get(c, 4);
+    alu_sub(c, ds_get(c, c->r[R_BX]), 0xFFFF, 1, 0);
+    c->icount += 3;
+    if (c->flags & F_ZF) goto next_line_y;                        /* the window has no ink: measure only */
+    alu_sub(c, bp_get(c, 0x10), 0, 1, 0);
+    c->icount += 2;
+    if (c->flags & F_ZF) {                                        /* left-aligned at x */
+        c->r[R_AX] = bp_get(c, 8);
+        c->icount += 2;
+    } else {                                                      /* centred in the width */
+        c->r[R_AX] = bp_get(c, 0x0C);
+        c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], bp_get(c, -6), 1, 0);
+        c->r[R_AX] = x86_shift(c, 5, c->r[R_AX], 1, 1);
+        c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], bp_get(c, 8), 1, 0);
+        c->icount += 4;
+    }
+    ds_put(c, (uint16_t)(c->r[R_BX] + 8), c->r[R_AX]);            /* the pen's x */
+    c->r[R_BX] = bp_get(c, 4);
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x0A)));
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 8)));
+    c->r[R_AX] = (uint16_t)(c->r[R_BP] - 0x110);
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, c->r[R_BX]);
+    c->icount += 7;
+    if (!guest_call(m, draw_fn, S(0x387E))) return 1;             /* draw the line (shadowed) */
+    ST2_NEED(15, S(0x387E));
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0);
+    c->icount += 2;                                               /* and the jump down to the next line */
+    goto next_line_y;
+empty_line:                                                       /* 0x03883: a line feed only */
+    ST2_NEED(15, S(0x3883));
+    alu_sub(c, ds_get8(c, c->r[R_BX]), 0x0A, 0, 0);
+    c->icount += 2;
+    if (!(c->flags & F_ZF)) goto next_start;
+next_line_y:                                                      /* 0x03888: step down by dy */
+    c->r[R_AX] = bp_get(c, 0x0E);
+    c->r[R_BX] = bp_get(c, 4);
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x0A), (uint16_t)alu_add(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x0A)), c->r[R_AX], 1, 0));
+    c->icount += 3;
+next_start:                                                       /* 0x03891: the next line starts past the break */
+    bp_put(c, -0x0A, (uint16_t)alu_inc(c, bp_get(c, -0x0A), 1));
+    c->r[R_AX] = bp_get(c, -0x0A);
+    bp_put(c, -4, c->r[R_AX]);
+    alu_sub(c, bp_get8(c, -0x0C), 0, 0, 0);
+    c->icount += 5;
+    if (c->flags & F_ZF) { c->icount += 1; goto new_line; }       /* the text goes on: jmp back */
+    c->r[R_AX] = bp_get(c, -8);                                   /* the widest line */
+    c->r[R_SI] = cpu_pop16(c);
+    c->icount += 2;
+    frame_close_ret(c);
+    c->icount += 3;
+    return 1;
+#undef S
+}
+
+static int start_draw_wrapped(machine_t *m) { return st2_draw_wrapped(m, 0x3776, 0x9612, 0x373C, 0x36C4, 0); }
+static int end_draw_wrapped(machine_t *m) { return st2_draw_wrapped(m, 0x1A75, 0x5290, 0x1A3B, 0x19C3, 1); }
+
+/* START 0x08378 and END 0x042E4, set_dac(): load CX colours into the VGA DAC from the
+ * RGB triples at ES:DX, starting at index BL, each with interrupts off (CLI, the index
+ * to port 3C8h, three bytes to 3C9h, STI). It first waits for a vertical retrace to
+ * begin (bit 3 of the status port 3DAh) and counts the colours written since in BP
+ * (the later colours re-test the port, and pause after a retrace ends). The routine
+ * goes as far as the first colour's STI: that makes the machine look at pending
+ * interrupts at the next boundary (the run loop's limit is then 0), so LOOP, the other
+ * colours and the return are left to the original code. When the BIOS data area's
+ * gray-scale summing flag ([0489h] bit 1) is set the routine instead goes on at
+ * 0x083D1 with a loop of its own, which the original code carries on (it returns
+ * without popping BP). */
+static int st2_set_dac(machine_t *m, uint16_t entry)
+{
+    cpu_t *c = &m->cpu;
+#define S(x) AT((x) - 0x8378)
+    /* Registers in: ES:DX the RGB triples (6 bits each), BL the first DAC index, CX how many. */
+    if (!room(c, 12)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->seg[S_DS]);
+    c->r[R_SI] = c->seg[S_ES];
+    c->seg[S_DS] = c->r[R_SI];                                    /* DS = ES: the table is read through DS:SI */
+    c->r[R_SI] = c->r[R_DX];
+    cpu_push16(c, c->seg[S_DS]);
+    c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);
+    c->seg[S_DS] = c->r[R_AX];                                    /* DS = 0: the BIOS data area */
+    alu_logic(c, ds_get8(c, 0x0489) & 2, 0);                      /* test [0489h], 2: the gray-scale summing flag */
+    c->seg[S_DS] = cpu_pop16(c);
+    c->icount += 12;
+    if (!(c->flags & F_ZF)) { c->ip = S(0x83D1); return 1; }      /* gray-scale: the original's other loop (it returns without
+                                                                   * popping BP) carries on */
+vsync_wait:                                                       /* 0x0838E */
+    ST2_NEED(1, S(0x838E));
+    c->r[R_DX] = 0x03DA;                                          /* the CRT status port */
+    c->icount += 1;
+    for (;;) {                                                    /* 0x08391: wait for a vertical retrace to begin */
+        ST2_NEED(3, S(0x8391));
+        x86_in(c, c->r[R_DX], 0);
+        c->icount += 1;
+        alu_logic(c, (uint32_t)get_r8(c, R_AL) & 0x08, 0);
+        c->icount += 2;
+        if (!(c->flags & F_ZF)) break;
+    }
+    ST2_NEED(2, S(0x8396));
+    c->r[R_BP] = 0;                                               /* colours written since the retrace began */
+    c->icount += 2;
+write_colour:                                                     /* 0x083A8: one colour, interrupts off */
+    ST2_NEED(17, S(0x83A8));
+    x86_cli(c);
+    c->icount += 1;
+    set_r8(c, R_DL, 0xC8);                                        /* the DAC's write index */
+    set_r8(c, R_AL, get_r8(c, R_BL));
+    c->r[R_BX] = (uint16_t)alu_inc(c, c->r[R_BX], 1);
+    c->icount += 3;
+    x86_out(c, c->r[R_DX], 0);
+    c->icount += 3;                                               /* the OUT, and the two jumps that delay */
+    c->r[R_DX] = (uint16_t)alu_inc(c, c->r[R_DX], 1);             /* the data port */
+    x86_lods(c, 0, c->seg[S_DS]);
+    c->icount += 2;
+    x86_out(c, c->r[R_DX], 0);                                    /* red */
+    c->icount += 2;
+    x86_lods(c, 0, c->seg[S_DS]);
+    c->icount += 1;
+    x86_out(c, c->r[R_DX], 0);                                    /* green */
+    c->icount += 2;
+    x86_lods(c, 0, c->seg[S_DS]);
+    c->icount += 1;
+    x86_out(c, c->r[R_DX], 0);                                    /* blue */
+    c->icount += 1;
+    x86_sti(c);
+    c->icount += 1;
+    /* STI makes the machine look at pending interrupts at the next boundary (the run loop's limit
+     * is now 0), so the routine ends here: LOOP, the other colours and the return are the original's. */
+    c->ip = S(0x83BF);
+    return 1;
+#undef S
+}
+
+static int start_set_dac(machine_t *m) { return st2_set_dac(m, 0x8378); }
+static int end_set_dac(machine_t *m) { return st2_set_dac(m, 0x42E4); }
+
+/* A box's position on one axis (START 0x02B68..0x02BD6 do it twice): with the centre flag [bp+0C] set the
+ * argument at [bp+arg] is the centre, so the position is size/2 less than it; otherwise the argument is the
+ * position. It is stored at out_at, and clamped to 0 below and so the box ends within `limit` above. The
+ * result is left in AX; returns the instructions run. */
+static unsigned st2_place_axis(cpu_t *c, uint16_t size_at, int arg, uint16_t out_at, uint16_t limit)
+{
+    unsigned n = 2;
+    alu_sub(c, bp_get(c, 0x0C), 0, 1, 0);
+    if (c->flags & F_ZF) {
+        c->r[R_AX] = bp_get(c, arg);
+        n += 1;
+    } else {
+        c->r[R_AX] = ds_get(c, size_at);
+        c->r[R_AX] = x86_shift(c, 7, c->r[R_AX], 1, 1);
+        c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], bp_get(c, arg), 1, 0);
+        c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0);
+        n += 5;
+    }
+    ds_put(c, out_at, c->r[R_AX]);
+    alu_logic(c, c->r[R_AX], 1);
+    n += 3;
+    if (c->flags & F_SF) {                                        /* off the low edge */
+        ds_put(c, out_at, 0);
+        n += 2;
+        return n;
+    }
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], ds_get(c, size_at), 1, 0);
+    alu_sub(c, c->r[R_AX], limit, 1, 0);
+    n += 3;
+    if (x86_cond(c, 0xF)) {                                       /* past the far edge: flush against it */
+        c->r[R_AX] = limit;
+        c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], ds_get(c, size_at), 1, 0);
+        ds_put(c, out_at, c->r[R_AX]);
+        n += 3;
+    }
+    return n;
+}
+
+/* START 0x02B1B, draw_popup(s, x, y, flag, centre, w): a bevelled text box in the
+ * window DC2Eh. The text s is first measured by draw_wrapped on a copy of the window
+ * with no ink (w wide, lines 8 apart), which gives the widest line and the pen's end: the box is
+ * those + 12 each way. It is placed with (x, y) as its corner or, when `centre` is
+ * set, its centre, and kept inside the 320 by 200 screen (st2_place_axis). The
+ * driver's page copy then saves the backdrop (a strip: the whole width from row 4
+ * when the box is deeper than 62h, else from row 0 to its height + 4), the frame is
+ * drawn (0x02CB4), the text drawn in ink 15 with shadow 8 (w - 12 wide, at (10, 6)
+ * in the box) and the box shown on both pages. The window's flag [DC3A] is set
+ * to `flag`. */
+static int start_draw_popup(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 36)) return 0;
+    frame_open(c, 0x18);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_SI]);
+    bp_put(c, -0x18, 0xDC2E);                                     /* the window */
+    c->r[R_AX] = bp_get(c, 0x0A);
+    ds_put(c, 0xDC3A, c->r[R_AX]);
+    c->r[R_DI] = (uint16_t)(c->r[R_BP] - 0x16);                   /* a copy of the window record, to measure with */
+    c->r[R_SI] = 0xDC2E;
+    c->seg[S_ES] = c->seg[S_SS];
+    c->r[R_CX] = 0x0B;
+    c->icount += 13;
+    c->icount += rep_string(c, STR_MOVS, 1, c->seg[S_DS], 0);
+    bp_put(c, -0x16, 0xFFFF);                                     /* no ink: measure only */
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+    cpu_push16(c, c->r[R_AX]);                                    /* draw_wrapped(copy, s, 0, 0, w, 8, centre) */
+    c->r[R_CX] = 8; cpu_push16(c, c->r[R_CX]);
+    cpu_push16(c, bp_get(c, 0x0E));
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, bp_get(c, 4));
+    c->r[R_AX] = (uint16_t)(c->r[R_BP] - 0x16);
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 11;
+    if (!guest_call(m, 0x3776, 0x2B56)) return 1;
+    ST2_NEED(6 + 2 * 16 + 6, 0x2B56);
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x0E, 1, 0);
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], 0x0C, 1, 0);    /* the widest line + 12: the box's width */
+    ds_put(c, 0xB2FC, c->r[R_AX]);
+    c->r[R_AX] = bp_get(c, -0x0C);                                /* the pen below the text + 12: its height */
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], 0x0C, 1, 0);
+    ds_put(c, 0xB302, c->r[R_AX]);
+    c->icount += 6;
+    c->icount += st2_place_axis(c, 0xB2FC, 6, 0xB2F6, 0x140);     /* x on the 320-wide screen */
+    c->icount += st2_place_axis(c, 0xB302, 8, 0xB2F8, 0xC8);      /* y on the 200 high */
+    alu_sub(c, ds_get(c, 0xB302), 0x62, 1, 0);                    /* the saved strip: from the box's own origin ... */
+    c->icount += 2;
+    if (!x86_cond(c, 0xE)) {                                      /* ... when it is deep: the whole height from (width, 4) */
+        c->r[R_AX] = ds_get(c, 0xB2FC);
+        bp_put(c, 6, c->r[R_AX]);
+        bp_put(c, 8, 4);
+        c->icount += 4;
+    } else {
+        bp_put(c, 6, 0);
+        c->r[R_AX] = ds_get(c, 0xB302);
+        c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], 4, 1, 0);
+        bp_put(c, 8, c->r[R_AX]);
+        c->icount += 4;
+    }
+    ST2_NEED(11, 0x2BF8);
+    cpu_push16(c, ds_get(c, 0xB302));
+    cpu_push16(c, ds_get(c, 0xB2FC));
+    cpu_push16(c, bp_get(c, 8));
+    cpu_push16(c, bp_get(c, 6));
+    c->r[R_AX] = 2; cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, ds_get(c, 0xB2F8));
+    cpu_push16(c, ds_get(c, 0xB2F6));
+    c->r[R_CX] = 1; cpu_push16(c, c->r[R_CX]);
+    c->icount += 10;
+    if (!guest_call_far(m, 0x2C16, 0x2C1B)) return 1;             /* the driver's copy: save the backdrop */
+    ST2_NEED(9, 0x2C1B);
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x10, 1, 0);
+    cpu_push16(c, ds_get(c, 0xB302));
+    cpu_push16(c, ds_get(c, 0xB2FC));
+    c->r[R_AX] = 4; cpu_push16(c, c->r[R_AX]);
+    c->r[R_CX] = (uint16_t)alu_sub(c, c->r[R_CX], c->r[R_CX], 1, 0);
+    cpu_push16(c, c->r[R_CX]);
+    cpu_push16(c, bp_get(c, -0x18));
+    c->icount += 8;
+    if (!guest_call(m, 0x2CB4, 0x2C33)) return 1;                 /* draw_box_frame */
+    ST2_NEED(17, 0x2C33);
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x0A, 1, 0);
+    c->r[R_BX] = bp_get(c, -0x18);
+    ds_put(c, (uint16_t)(c->r[R_BX] + 4), 0x0F);                  /* ink 15, shadow 8 */
+    ds_put(c, (uint16_t)(c->r[R_BX] + 6), 0x08);
+    cpu_push16(c, bp_get(c, 0x0C));                               /* draw_wrapped(win, s, 10, 6, w - 12, 8, centre) */
+    c->r[R_AX] = 8; cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)alu_sub(c, ds_get(c, 0xB2FC), 0x0C, 1, 0);
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0x0A; cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 6; cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, bp_get(c, 4));
+    cpu_push16(c, c->r[R_BX]);
+    c->icount += 16;
+    if (!guest_call(m, 0x3776, 0x2C60)) return 1;
+    ST2_NEED(14, 0x2C60);
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x0E, 1, 0);
+    cpu_push16(c, ds_get(c, 0xB302));
+    cpu_push16(c, ds_get(c, 0xB2FC));
+    cpu_push16(c, ds_get(c, 0xB2F8));
+    cpu_push16(c, ds_get(c, 0xB2F6));
+    c->r[R_AX] = 1; cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 4; cpu_push16(c, c->r[R_AX]);
+    c->r[R_CX] = (uint16_t)alu_sub(c, c->r[R_CX], c->r[R_CX], 1, 0);
+    cpu_push16(c, c->r[R_CX]);
+    c->r[R_DX] = 2; cpu_push16(c, c->r[R_DX]);
+    c->icount += 13;
+    if (!guest_call_far(m, 0x2C82, 0x2C87)) return 1;             /* show the box on page 1 */
+    ST2_NEED(13, 0x2C87);
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x10, 1, 0);
+    cpu_push16(c, ds_get(c, 0xB302));
+    cpu_push16(c, ds_get(c, 0xB2FC));
+    cpu_push16(c, ds_get(c, 0xB2F8));
+    cpu_push16(c, ds_get(c, 0xB2F6));
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_CX] = 4; cpu_push16(c, c->r[R_CX]);
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 2; cpu_push16(c, c->r[R_AX]);
+    c->icount += 12;
+    if (!guest_call_far(m, 0x2CA6, 0x2CAB)) return 1;             /* and on page 0 */
+    ST2_NEED(6, 0x2CAB);
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x10, 1, 0);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->icount += 3;
+    frame_close_ret(c);
+    c->icount += 3;
+    return 1;
+}
+
+/* START 0x0332E, open_modal(desc, x, y): lays out and draws a dialog. The descriptor
+ * (a five-word record: text, the first and second button's labels at +2 and +4, the box's
+ * size written back at +6 and +8) is measured by draw_wrapped on a copy of the window
+ * DC2Eh with no ink (12 less than the width given, lines 8 apart); the box becomes
+ * that + 12 wide and the text's end + 1Ah high, its frame is drawn (0x02CB4), the text
+ * drawn in ink 15 shadow 8, and the buttons (0x02DF2, ink E8h and, for the second, E7h)
+ * placed in the descriptor's hit boxes (+0Eh, +16h): one button centred, or two in
+ * thirds of the width. The driver's page copy last saves the area on page 1 (and shows
+ * it on both pages). */
+static int start_open_modal(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 37)) return 0;
+    frame_open(c, 0x1C);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_SI]);
+    ds_put(c, 0xDC3A, 4);
+    c->r[R_DI] = (uint16_t)(c->r[R_BP] - 0x16);                   /* a copy of the window record, to measure with */
+    c->r[R_SI] = 0xDC2E;
+    c->seg[S_ES] = c->seg[S_SS];
+    c->r[R_CX] = 0x0B;
+    c->icount += 11;
+    c->icount += rep_string(c, STR_MOVS, 1, c->seg[S_DS], 0);
+    ST2_NEED(15, 0x3349);
+    bp_put(c, -0x16, 0xFFFF);
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_CX] = 0x0008;
+    cpu_push16(c, c->r[R_CX]);
+    c->r[R_BX] = bp_get(c, 0x4);
+    c->r[R_DX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0x0006));
+    c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], 0x000C, 1, 0);
+    cpu_push16(c, c->r[R_DX]);
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX])));
+    c->r[R_DX] = (uint16_t)(c->r[R_BP] + 0xFFEA);
+    cpu_push16(c, c->r[R_DX]);
+    c->icount += 14;
+    if (!guest_call(m, 0x3776, 0x336A)) return 1;
+    ST2_NEED(16, 0x336A);
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x000E, 1, 0);
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], 0x000C, 1, 0);
+    c->r[R_BX] = bp_get(c, 0x4);
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x0006), c->r[R_AX]);
+    c->r[R_AX] = bp_get(c, -0xC);
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], 0x001A, 1, 0);
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x0008), c->r[R_AX]);
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x0006)));
+    c->r[R_AX] = 0x0004;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_CX] = (uint16_t)alu_sub(c, c->r[R_CX], c->r[R_CX], 1, 0);
+    cpu_push16(c, c->r[R_CX]);
+    c->r[R_CX] = 0xDC2E;
+    cpu_push16(c, c->r[R_CX]);
+    c->icount += 15;
+    if (!guest_call(m, 0x2CB4, 0x3391)) return 1;
+    ST2_NEED(18, 0x3391);
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x000A, 1, 0);
+    ds_put(c, 0xDC32, 0x000F);
+    ds_put(c, 0xDC34, 0x0008);
+    c->r[R_AX] = 0x0001;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0x0008;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_BX] = bp_get(c, 0x4);
+    c->r[R_CX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0x0006));
+    c->r[R_CX] = (uint16_t)alu_sub(c, c->r[R_CX], 0x000C, 1, 0);
+    cpu_push16(c, c->r[R_CX]);
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0x0006;
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX])));
+    c->r[R_CX] = 0xDC2E;
+    cpu_push16(c, c->r[R_CX]);
+    c->icount += 17;
+    if (!guest_call(m, 0x3776, 0x33C0)) return 1;
+    ST2_NEED(4, 0x33C0);
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x000E, 1, 0);
+    c->r[R_BX] = bp_get(c, 0x4);
+    c->icount += 2;
+    alu_sub(c, ds_get(c, (uint16_t)(c->r[R_BX] + 4)), 0, 1, 0);   /* a second button? */
+    c->icount += 2;
+    if (!(c->flags & F_ZF)) {                                     /* two buttons: thirds of the width */
+        ST2_NEED(17, 0x33CC);
+        c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 6));
+        c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], 4, 1, 0);
+        c->r[R_CX] = 3;
+        c->r[R_BX] = c->r[R_AX];
+        c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0);
+        x86_div16(c, c->r[R_CX]);                                 /* DX is 0, the divisor 3: no fault */
+        c->r[R_AX] = (uint16_t)alu_inc(c, c->r[R_AX], 1);
+        c->r[R_AX] = (uint16_t)alu_inc(c, c->r[R_AX], 1);
+        bp_put(c, -0x1A, c->r[R_AX]);
+        c->r[R_AX] = c->r[R_BX];
+        c->r[R_AX] = x86_shift(c, 4, c->r[R_AX], 1, 1);
+        c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0);
+        x86_div16(c, c->r[R_CX]);
+        c->r[R_AX] = (uint16_t)alu_inc(c, c->r[R_AX], 1);
+        c->r[R_AX] = (uint16_t)alu_inc(c, c->r[R_AX], 1);
+        bp_put(c, -0x1C, c->r[R_AX]);
+        c->icount += 17;
+    } else {                                                      /* one button: half the width */
+        ST2_NEED(6, 0x33EF);
+        c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 6));
+        c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], 4, 1, 0);
+        c->r[R_AX] = x86_shift(c, 5, c->r[R_AX], 1, 1);
+        c->r[R_AX] = (uint16_t)alu_inc(c, c->r[R_AX], 1);
+        c->r[R_AX] = (uint16_t)alu_inc(c, c->r[R_AX], 1);
+        bp_put(c, -0x1A, c->r[R_AX]);
+        c->icount += 6;
+    }
+    ST2_NEED(9, 0x33FC);
+    c->r[R_AX] = 0x00E8;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = bp_get(c, -0xC);
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], 0x000A, 1, 0);
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, bp_get(c, -0x1A));
+    c->r[R_BX] = bp_get(c, 0x4);
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x0002)));
+    c->icount += 8;
+    if (!guest_call(m, 0x2DF2, 0x3413)) return 1;
+    ST2_NEED(22, 0x3413);
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x0008, 1, 0);
+    bp_put(c, -0x18, c->r[R_AX]);
+    c->r[R_AX] = x86_shift(c, 7, c->r[R_AX], 1, 1);
+    c->r[R_CX] = c->r[R_AX];
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], bp_get(c, 0x6), 1, 0);
+    c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0);
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], bp_get(c, -0x1A), 1, 0);
+    c->r[R_BX] = bp_get(c, 0x4);
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x000E), c->r[R_AX]);
+    c->r[R_CX] = (uint16_t)alu_add(c, c->r[R_CX], bp_get(c, 0x6), 1, 0);
+    c->r[R_CX] = (uint16_t)alu_add(c, c->r[R_CX], bp_get(c, -0x1A), 1, 0);
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x0012), c->r[R_CX]);
+    c->r[R_AX] = bp_get(c, 0x8);
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], bp_get(c, -0xC), 1, 0);
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], 0x0006, 1, 0);
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x0010), c->r[R_AX]);
+    c->r[R_AX] = bp_get(c, 0x8);
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], bp_get(c, -0xC), 1, 0);
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], 0x0016, 1, 0);
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x0014), c->r[R_AX]);
+    c->icount += 20;
+    alu_sub(c, ds_get(c, (uint16_t)(c->r[R_BX] + 4)), 0, 1, 0);
+    c->icount += 2;
+    if (!(c->flags & F_ZF)) {                                     /* the second button, too */
+    ST2_NEED(8, 0x3452);
+    c->r[R_AX] = 0x00E7;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = bp_get(c, -0xC);
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], 0x000A, 1, 0);
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, bp_get(c, -0x1C));
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x0004)));
+    c->icount += 7;
+    if (!guest_call(m, 0x2DF2, 0x3466)) return 1;
+    ST2_NEED(20, 0x3466);
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x0008, 1, 0);
+    bp_put(c, -0x18, c->r[R_AX]);
+    c->r[R_AX] = x86_shift(c, 7, c->r[R_AX], 1, 1);
+    c->r[R_CX] = c->r[R_AX];
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], bp_get(c, 0x6), 1, 0);
+    c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0);
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], bp_get(c, -0x1C), 1, 0);
+    c->r[R_BX] = bp_get(c, 0x4);
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x0016), c->r[R_AX]);
+    c->r[R_CX] = (uint16_t)alu_add(c, c->r[R_CX], bp_get(c, 0x6), 1, 0);
+    c->r[R_CX] = (uint16_t)alu_add(c, c->r[R_CX], bp_get(c, -0x1C), 1, 0);
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x001A), c->r[R_CX]);
+    c->r[R_AX] = bp_get(c, 0x8);
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], bp_get(c, -0xC), 1, 0);
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], 0x0006, 1, 0);
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x0018), c->r[R_AX]);
+    c->r[R_AX] = bp_get(c, 0x8);
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], bp_get(c, -0xC), 1, 0);
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], 0x0016, 1, 0);
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x001C), c->r[R_AX]);
+    c->icount += 20;
+    }
+    ST2_NEED(15, 0x349F);
+    c->r[R_BX] = bp_get(c, 0x4);
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x0008)));
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x0006)));
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0x0008));
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], 0x0004, 1, 0);
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_CX] = 0x0002;
+    cpu_push16(c, c->r[R_CX]);
+    cpu_push16(c, bp_get(c, 0x8));
+    cpu_push16(c, bp_get(c, 0x6));
+    c->r[R_DX] = 0x0001;
+    cpu_push16(c, c->r[R_DX]);
+    c->icount += 14;
+    if (!guest_call_far(m, 0x34C0, 0x34C5)) return 1;
+    ST2_NEED(15, 0x34C5);
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x0010, 1, 0);
+    c->r[R_BX] = bp_get(c, 0x4);
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x0008)));
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x0006)));
+    cpu_push16(c, bp_get(c, 0x8));
+    cpu_push16(c, bp_get(c, 0x6));
+    c->r[R_AX] = 0x0001;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0x0004;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_CX] = (uint16_t)alu_sub(c, c->r[R_CX], c->r[R_CX], 1, 0);
+    cpu_push16(c, c->r[R_CX]);
+    c->r[R_DX] = 0x0002;
+    cpu_push16(c, c->r[R_DX]);
+    c->icount += 14;
+    if (!guest_call_far(m, 0x34E6, 0x34EB)) return 1;
+    ST2_NEED(14, 0x34EB);
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x0010, 1, 0);
+    c->r[R_BX] = bp_get(c, 0x4);
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x0008)));
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x0006)));
+    cpu_push16(c, bp_get(c, 0x8));
+    cpu_push16(c, bp_get(c, 0x6));
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_CX] = 0x0004;
+    cpu_push16(c, c->r[R_CX]);
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0x0002;
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 13;
+    if (!guest_call_far(m, 0x3509, 0x350E)) return 1;
+    ST2_NEED(6, 0x350E);
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x0010, 1, 0);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->icount += 6;
+    frame_close_ret(c);
+    return 1;
+}
+
 static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x4958, vgame_free_fall, "free fall", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD50A, vgame_waypoint_from_target, "waypoint from target", 1 },
@@ -14891,6 +15695,13 @@ static const recomp_override MATCHED[] = {
     { "matched", "END.EXE", END_47304, 0x0000, 0x112A, end_panel_text_line, "draw a centred string with a shadow", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x1332, end_draw_box_frame, "draw a dialog's frame", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x49D2, end_fill_rect, "fill a rectangle by spans", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x24F7, start_draw_target_block, "draw a briefing target block", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x3776, start_draw_wrapped, "draw word-wrapped text", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x1A75, end_draw_wrapped, "draw word-wrapped text", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x8378, start_set_dac, "write colours to the DAC in the retrace", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x42E4, end_set_dac, "write colours to the DAC in the retrace", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x2B1B, start_draw_popup, "draw a text box", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x332E, start_open_modal, "lay out and draw a dialog", 1 },
 };
 
 void matched_register(void)
