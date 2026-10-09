@@ -1809,7 +1809,6 @@ static int vgame_mclip_publish(machine_t *m)
  * shifted down with the dividend until it fits, the quotient estimated with
  * one DIV and corrected by at most one. RET 8. Declines a zero divisor,
  * where the original takes the divide-error interrupt. */
-static void far_ret(cpu_t *c);
 static int crt_ldiv(machine_t *m, int far)
 {
     const unsigned d = far ? 2 : 0;                               /* the far return address takes a word more */
@@ -8938,6 +8937,11 @@ static unsigned sm_rep_stos(cpu_t *c, int w16)
  * destination (or the source, for a copy) is on an even address. Returns the end of the source as a
  * normalised far pointer, DX:AX; DS, ES, SI, DI, BP are restored. The loops check for room at each command.
  * The source and destination may overlap, so the copies run a byte (or word) at a time. */
+#ifdef _MSC_VER
+/* MSVC 19.51 /O2 stalls on this command loop even with STOS written out.
+ * Keep the workaround local to PLAYER's picture decompressor. */
+#pragma optimize("", off)
+#endif
 static int player_unpack(machine_t *m)
 {
     cpu_t *c = &m->cpu;
@@ -9109,6 +9113,9 @@ finish:                                                           /* 0x1081: the
  * The stretches with a data-dependent length each check for room first and leave the machine at their
  * first instruction (the REP SCASB, a string's start, a character) so the original can carry on from
  * there. Nothing is read ahead of the pushes: the scan reads memory as the original would find it. */
+#ifdef _MSC_VER
+#pragma optimize("", on)
+#endif
 typedef struct { uint16_t entry, psp, alloc, envp, marker; int far; } sm_envp;
 
 static int sm_setenvp(machine_t *m, const sm_envp *s)
@@ -9250,223 +9257,13 @@ static int sm_setenvp(machine_t *m, const sm_envp *s)
     if (s->far) far_ret(c); else near_ret(c);
     return 1;
 }
-#define SM_SETENVP(P, E, PSP, ALLOC, ENVP, MARKER, FAR)     static const sm_envp P##_ENVP = { E, PSP, ALLOC, ENVP, MARKER, FAR };     static int P##_setenvp(machine_t *m) { return sm_setenvp(m, &P##_ENVP); }
+#define SM_SETENVP(P, E, PSP, ALLOC, ENVP, MARKER, FAR) \
+    static const sm_envp P##_ENVP = { E, PSP, ALLOC, ENVP, MARKER, FAR }; \
+    static int P##_setenvp(machine_t *m) { return sm_setenvp(m, &P##_ENVP); }
 SM_SETENVP(player, 0x1790, 0x1A60, 0x1FE8, 0x1A81, 0x1A3E, 0)
 SM_SETENVP(dswap, 0x130C, 0x26C8, 0x1C3C, 0x26E9, 0x26A6, 0)
 SM_SETENVP(setup, 0x1B44, 0x0E84, 0x1C22, 0x0EA5, 0x0E62, 0)
 SM_SETENVP(mps_logo, 0x0A5E, 0x01FE, 0x17B0, 0x021F, 0x01DC, 1)
-
-/* The iterations a REPNE SCASB would run from ES:di for `count` bytes looking for `al`: found by reading ahead
- * (nothing it reads is written first). A repeat with a count of 0 runs nothing and takes one clock. */
-static unsigned sm_scas_run(cpu_t *c, uint16_t di, uint8_t al, unsigned count)
-{
-    if (count == 0) return 1;
-    const int step = x86_str_delta(c, 0);
-    unsigned k = 0;
-    while (k < count) {
-        const uint8_t b = mem_read8(c, phys(c->seg[S_ES], di));
-        k++;
-        di = (uint16_t)(di + step);
-        if (b == al) break;
-    }
-    return k;
-}
-
-/* MPS_LOGO 0x01ADC, strstr(haystack, needle) in the far-model library (near pointers into DS, arguments at
- * [bp+6] and [bp+8], RETF): where the needle first occurs in the haystack, or 0; an empty needle gives the
- * haystack. The needle's length less one is kept in the local at [bp-2], DX is the haystack still to search
- * and BX where to look next. Each candidate is found by scanning for the needle's first byte (REPNE SCASB)
- * and the rest compared (REPE CMPSB). ES is left at DS. Every scan checks for room first and leaves the
- * machine at its first instruction otherwise. */
-static int mps_logo_strstr(machine_t *m)
-{
-    cpu_t *c = &m->cpu;
-    enum { E = 0x067C };                                          /* the entry, 0x1ADC in the image */
-    if (!room(c, 10)) return 0;
-#define NEED(n_, off_) do { if (!room(c, (n_))) { c->ip = (uint16_t)(E + (off_)); return 1; } } while (0)
-    cpu_push16(c, c->r[R_BP]);
-    c->r[R_BP] = c->r[R_SP];
-    c->r[R_SP] = (uint16_t)alu_sub(c, c->r[R_SP], 2, 1, 0);       /* sub sp, 2: room for the local */
-    cpu_push16(c, c->r[R_SI]);
-    cpu_push16(c, c->r[R_DI]);
-    c->seg[S_ES] = c->seg[S_DS];                                  /* push ds / pop es */
-    c->r[R_DI] = bp_get(c, 8);                                    /* the needle */
-    c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);
-    c->r[R_CX] = 0xFFFF;
-    c->icount += 10;
-
-    unsigned k = sm_scas_run(c, c->r[R_DI], 0, c->r[R_CX]);       /* the needle's length: REPNE SCASB for the NUL */
-    NEED(k + 3 + 2, 0x12);
-    rep_string(c, STR_SCAS, 0, 0, 1);
-    c->r[R_CX] = (uint16_t)~c->r[R_CX];
-    c->r[R_CX] = (uint16_t)alu_dec(c, c->r[R_CX], 1);
-    c->icount += k + 3;                                           /* ... not cx, dec cx, jcxz */
-    if (c->r[R_CX] == 0) {                                        /* an empty needle: the haystack */
-        c->r[R_AX] = bp_get(c, 6);
-        c->icount += 2;
-        goto done;
-    }
-
-    NEED(6, 0x19);
-    c->r[R_CX] = (uint16_t)alu_dec(c, c->r[R_CX], 1);
-    bp_put(c, -2, c->r[R_CX]);
-    c->r[R_DI] = bp_get(c, 6);                                    /* the haystack */
-    c->r[R_BX] = c->r[R_DI];
-    c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);
-    c->r[R_CX] = 0xFFFF;
-    c->icount += 6;
-
-    k = sm_scas_run(c, c->r[R_DI], 0, c->r[R_CX]);                /* its length */
-    NEED(k + 5 + 1, 0x27);
-    rep_string(c, STR_SCAS, 0, 0, 1);
-    c->r[R_CX] = (uint16_t)~c->r[R_CX];
-    c->r[R_CX] = (uint16_t)alu_dec(c, c->r[R_CX], 1);
-    c->r[R_DX] = c->r[R_CX];
-    c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], bp_get(c, -2), 1, 0);
-    c->icount += k + 5;                                           /* ... not, dec, mov, sub, jbe */
-    if (x86_cond(c, 0x6)) {                                       /* jbe: the haystack is too short */
-        c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);                /* not found: xor ax, ax */
-        c->icount += 1;
-        goto done;
-    }
-    NEED(1, 0x33);
-    c->r[R_DI] = c->r[R_BX];                                      /* mov di, bx */
-    c->icount += 1;
-    for (;;) {                                                    /* 0x1B11: look for the needle's first byte */
-        const uint16_t needle = bp_get(c, 8);
-        const uint8_t first = mem_read8(c, phys(c->seg[S_DS], needle));
-        k = sm_scas_run(c, c->r[R_BX], first, c->r[R_DX]);
-        NEED(4 + k + 1, 0x35);
-        c->r[R_SI] = needle;
-        x86_lods(c, 0, c->seg[S_DS]);
-        c->r[R_DI] = c->r[R_BX];
-        c->r[R_CX] = c->r[R_DX];
-        rep_string(c, STR_SCAS, 0, 0, 1);
-        c->icount += 4 + k + 1;                                   /* ... and the jne */
-        if (c->flags & F_ZF) {                                    /* found: compare the rest */
-            const unsigned left = bp_get(c, -2);
-            NEED(4 + (left ? left : 1u) + 1 + 2, 0x41);
-            c->r[R_DX] = c->r[R_CX];
-            c->r[R_BX] = c->r[R_DI];
-            c->r[R_CX] = (uint16_t)left;
-            c->icount += 4;                                       /* ... mov cx, [bp-2], jcxz */
-            if (c->r[R_CX] == 0) {                                /* a one-byte needle: matched */
-                c->r[R_AX] = (uint16_t)(c->r[R_BX] - 1);
-                c->icount += 2;
-                goto done;
-            }
-            do {                                                  /* repe cmpsb */
-                x86_cmps(c, 0, c->seg[S_DS]);
-                c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);
-                c->icount += 1;
-            } while (c->r[R_CX] != 0 && (c->flags & F_ZF));
-            c->icount += 1;                                       /* jne */
-            if (c->flags & F_ZF) {                                /* every byte matched */
-                c->r[R_AX] = (uint16_t)(c->r[R_BX] - 1);          /* lea ax, [bx-1] */
-                c->icount += 2;
-                goto done;
-            }
-            continue;                                             /* a mismatch: look on from there */
-        }
-        c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);                /* the first byte is nowhere: not found */
-        c->icount += 1;
-        goto done;
-    }
-done:
-    NEED(5, 0x5A);
-    c->r[R_DI] = cpu_pop16(c);
-    c->r[R_SI] = cpu_pop16(c);
-    c->r[R_SP] = c->r[R_BP];
-    c->r[R_BP] = cpu_pop16(c);
-    c->icount += 5;
-    far_ret(c);
-    return 1;
-#undef NEED
-}
-
-/* MPS_LOGO 0x01C82, the far-model library's block copy for blocks that may cross a segment (RETF):
- * copy(dst, src, count) with far pointers at [bp+6] and [bp+0Ah], the count at [bp+0Eh]; returns dst in
- * DX:AX. It copies forward in passes, each as far as the nearer of the two segments' ends (the smaller of
- * count, 10000h - DI and 10000h - SI, found with borrow arithmetic): words, then the odd byte. When a pass
- * leaves an offset at 0 that segment register moves on by 1000h paragraphs. DF is not cleared, so the
- * string instructions follow it. Each pass checks for room first and leaves the machine at its start. */
-static int mps_logo_huge_copy(machine_t *m)
-{
-    cpu_t *c = &m->cpu;
-    enum { E = 0x0822 };                                          /* the entry, 0x1C82 in the image */
-    if (!room(c, 7)) return 0;
-#define NEED(n_, off_) do { if (!room(c, (n_))) { c->ip = (uint16_t)(E + (off_)); return 1; } } while (0)
-    cpu_push16(c, c->r[R_BP]);
-    c->r[R_BP] = c->r[R_SP];
-    c->r[R_CX] = bp_get(c, 0x0E);
-    cpu_push16(c, c->seg[S_DS]);
-    cpu_push16(c, c->r[R_DI]);
-    cpu_push16(c, c->r[R_SI]);
-    c->icount += 7;                                               /* ... and the jcxz */
-    if (c->r[R_CX] != 0) {
-        NEED(2, 0x0B);
-        c->r[R_SI] = bp_get(c, 0x0A);                             /* lds si, [bp+0Ah] */
-        c->seg[S_DS] = bp_get(c, 0x0C);
-        c->r[R_DI] = bp_get(c, 6);                                /* les di, [bp+6] */
-        c->seg[S_ES] = bp_get(c, 8);
-        c->icount += 2;
-        for (;;) {                                                /* 0x1C93: one pass */
-            /* the pass's length: min(count, 10000h - DI, 10000h - SI), as the borrow arithmetic finds it */
-            unsigned chunk = c->r[R_CX];
-            if (chunk > (unsigned)(0x10000 - c->r[R_DI])) chunk = (unsigned)(0x10000 - c->r[R_DI]);
-            if (chunk > (unsigned)(0x10000 - c->r[R_SI])) chunk = (unsigned)(0x10000 - c->r[R_SI]);
-            NEED(21 + ((chunk >> 1) ? (chunk >> 1) : 1u) + 1 + 11, 0x11);
-            uint16_t ax = (uint16_t)alu_dec(c, c->r[R_CX], 1);
-            uint16_t dx = (uint16_t)~c->r[R_DI];
-            c->r[R_DX] = dx;
-            ax = (uint16_t)alu_sub(c, ax, dx, 1, 0);
-            c->r[R_BX] = (uint16_t)alu_sub(c, c->r[R_BX], c->r[R_BX], 1, (c->flags & F_CF) ? 1u : 0u);   /* sbb bx, bx */
-            ax = (uint16_t)alu_logic(c, ax & c->r[R_BX], 1);
-            ax = (uint16_t)alu_add(c, ax, dx, 1, 0);
-            dx = (uint16_t)~c->r[R_SI];
-            c->r[R_DX] = dx;
-            ax = (uint16_t)alu_sub(c, ax, dx, 1, 0);
-            c->r[R_BX] = (uint16_t)alu_sub(c, c->r[R_BX], c->r[R_BX], 1, (c->flags & F_CF) ? 1u : 0u);
-            ax = (uint16_t)alu_logic(c, ax & c->r[R_BX], 1);
-            ax = (uint16_t)alu_add(c, ax, dx, 1, 0);
-            ax = (uint16_t)alu_inc(c, ax, 1);
-            { const uint16_t cx = c->r[R_CX]; c->r[R_CX] = ax; ax = cx; }       /* xchg cx, ax */
-            ax = (uint16_t)alu_sub(c, ax, c->r[R_CX], 1, 0);       /* what is left after this pass */
-            c->r[R_AX] = ax;
-            c->r[R_CX] = x86_shift(c, 5, c->r[R_CX], 1, 1);       /* shr cx, 1 */
-            unsigned n = 18;                                      /* the instructions so far, through the shift */
-            n += rep_string(c, STR_MOVS, 1, c->seg[S_DS], 0);     /* rep movsw */
-            c->r[R_CX] = (uint16_t)alu_add(c, c->r[R_CX], c->r[R_CX], 1, (c->flags & F_CF) ? 1u : 0u);   /* adc cx, cx */
-            n += 1 + rep_string(c, STR_MOVS, 0, c->seg[S_DS], 0); /* the adc, and rep movsb */
-            { const uint16_t cx = c->r[R_CX]; c->r[R_CX] = c->r[R_AX]; c->r[R_AX] = cx; }   /* xchg cx, ax */
-            c->icount += n + 2;                                   /* ... xchg, jcxz */
-            if (c->r[R_CX] == 0) break;
-            alu_logic(c, c->r[R_SI], 1);                          /* or si, si */
-            c->icount += 2;
-            if (c->r[R_SI] == 0) {                                /* the source wrapped: its next segment */
-                c->seg[S_DS] = (uint16_t)alu_add(c, c->seg[S_DS], 0x1000, 1, 0);
-                c->icount += 3;
-            }
-            alu_logic(c, c->r[R_DI], 1);                          /* or di, di */
-            c->icount += 2;
-            if (c->r[R_DI] == 0) {                                /* the destination wrapped */
-                c->seg[S_ES] = (uint16_t)alu_add(c, c->seg[S_ES], 0x1000, 1, 0);
-                c->icount += 4;                                   /* ... and the jump back */
-            }
-        }
-    }
-    NEED(7, 0x53);
-    c->r[R_AX] = bp_get(c, 6);
-    c->r[R_DX] = bp_get(c, 8);
-    c->r[R_SI] = cpu_pop16(c);
-    c->r[R_DI] = cpu_pop16(c);
-    c->seg[S_DS] = cpu_pop16(c);
-    c->r[R_BP] = cpu_pop16(c);
-    c->icount += 7;
-    far_ret(c);
-    return 1;
-#undef NEED
-}
 
 /* A 32-bit by 16-bit signed divide that does not fault. */
 static int idiv_fits(int32_t n, int16_t d)
@@ -14556,8 +14353,6 @@ static const recomp_override MATCHED[] = {
     { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x2414, setup_axis_normalise, "normalise a joystick axis", 1 },
     { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x05DE, mps_logo_strcat, "string concatenate", 2 },
     { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x061E, mps_logo_strcpy, "string copy", 2 },
-    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x067C, mps_logo_strstr, "find a string in a string", 2 },
-    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x0822, mps_logo_huge_copy, "copy a block across segments", 2 },
     { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x1006, player_unpack, "unpack a compressed picture", 1 },
     { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x1790, player_setenvp, "copy the environment", 1 },
     { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x130C, dswap_setenvp, "copy the environment", 1 },

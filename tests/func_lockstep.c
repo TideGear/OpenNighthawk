@@ -190,13 +190,6 @@ static int compare(const char *mod, uint32_t off, uint16_t cs, uint16_t ip, int 
 }
 
 
-/* Development aid: FLWHY=<hex ip> prints why a routine's states are skipped. */
-static int flwhy(const recomp_override *o)
-{
-    const char *e = getenv("FLWHY");
-    return e && o->ip == (uint16_t)strtoul(e, NULL, 16);
-}
-
 static machine_t g_m;           /* side 1's CPU lives in a machine: matched code takes one */
 
 /* A matched routine's call into original code, run here by plain stepping:
@@ -211,7 +204,7 @@ static uint16_t g_reach;                /* the furthest instruction run inside t
 static int run_to_ret(cpu_t *a, uint16_t entry_sp, int far, int *steps, uint16_t cs, uint16_t ip)
 {
     while (*steps < 100000) {
-        if (g_trace) printf("      %04X:%04X clk %llu sp %04X si %04X ds %04X\n", a->seg[S_CS], a->ip, (unsigned long long)a->icount, a->r[R_SP], a->r[R_SI], a->seg[S_DS]);
+        if (g_trace) printf("      %04X:%04X clk %llu sp %04X\n", a->seg[S_CS], a->ip, (unsigned long long)a->icount, a->r[R_SP]);
         const uint16_t here = a->ip;
         const int inside = a->seg[S_CS] == cs && (uint16_t)(here - ip) < 0x300;
         if (inside && (uint16_t)(here - ip) > g_reach) g_reach = (uint16_t)(here - ip);
@@ -251,12 +244,10 @@ static int step_runner(machine_t *mm)
 int main(int argc, char **argv)
 {
     int states = 2000;
-    unsigned from = 0;
     g_rng = 0x5EED0F117AULL;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--states") && i + 1 < argc) states = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--seed") && i + 1 < argc) g_rng = strtoull(argv[++i], NULL, 0) | 1;
-        else if (!strcmp(argv[i], "--from") && i + 1 < argc) from = (unsigned)atoi(argv[++i]);
         else if (!strcmp(argv[i], "--verbose")) g_verbose = 1;
         else { fprintf(stderr, "usage: func_lockstep [--states N] [--seed S] [--verbose]\n"); return 2; }
     }
@@ -284,7 +275,6 @@ int main(int argc, char **argv)
     const uint16_t base = 0;
     unsigned long long compared = 0, skipped = 0, bad = 0;
     for (unsigned mi = 0; mi < matched_count(); mi++) {
-        if (mi < from) continue;                  /* development filter: only the routines from this table index on */
         const recomp_override *o = matched_entry(mi);
         const rc_module *m = NULL;
         for (unsigned k = 0; k < RC_NMODULES; k++)
@@ -360,9 +350,7 @@ int main(int argc, char **argv)
              * accept the state only when it returns to the pushed address. */
             const uint16_t entry_sp = (uint16_t)(r[R_SP] - (o->matched == 2 ? 4 : 2));
             g_reach = 0;
-            g_trace = flwhy(o) && getenv("FLTRACE") && s == atoi(getenv("FLTRACE"));
             const int returned = run_to_ret(a, entry_sp, o->matched == 2, &steps, cs, ip);
-            g_trace = 0;
             const uint16_t reach = g_reach;
             if (!returned || a->seg[S_CS] != cs || a->ip != back) steps = 100000;
             g_side[0].overflow = g_side[1].overflow = 1;      /* compare all memory */
@@ -370,7 +358,7 @@ int main(int argc, char **argv)
              * pops at most a few words); a wild jump that happens to reach
              * the return address - a slide through zeroed memory - does not. */
             const uint16_t popped = (uint16_t)(a->r[R_SP] - entry_sp);
-            if (steps >= 100000 || popped < 2 || popped > 18) { if (flwhy(o)) printf("why1 s=%d steps=%d popped=%u\n", s, steps, popped); ms++; restore(); continue; }
+            if (steps >= 100000 || popped < 2 || popped > 18) { if (getenv("FLWHY") && o->ip == 0x0815) printf("why1 s=%d steps=%d popped=%u\n", s, steps, popped); ms++; restore(); continue; }
             /* A random state that makes the original write over its own code
              * (a copy aimed at the routine) runs instructions it was not; the
              * game never does, and no equivalent can follow it. The window is
@@ -410,7 +398,7 @@ int main(int argc, char **argv)
             /* A state whose call into original code wanders off (a far call
              * through a slot only the running game fills) returned on the
              * original side by accident, not through the routine. */
-            { const int fr = o->fn(&g_m); if (flwhy(o)) printf("why2 s=%d fn=%d lost=%d ip=%04X\n", s, fr, g_lost, g_m.cpu.ip); if (!fr || g_lost) { ms++; restore(); continue; } }
+            { const int fr = o->fn(&g_m); if (getenv("FLWHY") && o->ip == 0x0815) printf("why2 s=%d fn=%d lost=%d ip=%04X\n", s, fr, g_lost, g_m.cpu.ip); if (!fr || g_lost) { ms++; restore(); continue; } }
             /* A routine that ran out of room after a call returns with the
              * machine partway through it, as the original would be; the run
              * loop then finishes it with the original code, and so does this. */
