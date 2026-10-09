@@ -26,7 +26,7 @@ from cargo_pilot import pilot_state  # noqa: E402
 TAPS = [(key, ms) for ms in (20, 60, 120, 200, 400) for key in (r"\U", r"\L")] * 3
 
 
-def run(machine, start):
+def run(machine, start, hashes=None):
     k = machine.ips / 9_000_000          # the clock constants below are the 9 MHz model's: scaled to seconds
     machine.type(start + int(100_000_000 * k), "+")
     machine.type(start + int(170_000_000 * k), r"\D", hold_ms=1000)
@@ -37,6 +37,8 @@ def run(machine, start):
         if machine.clock - start > int(190_000_000 * k):
             s = pilot_state(machine)
             rows.append((machine.clock, s["pitch"], s["roll"], s["S"], s["agl"]))
+            if hashes is not None:
+                hashes.append((machine.clock, "%016x" % machine.hash))
         for at, key, ms in plan:
             if machine.clock <= at < machine.clock + machine.ips // 5:
                 machine.type(at, key, hold_ms=ms)
@@ -51,17 +53,21 @@ def run(machine, start):
         b, a = before[-1], after[3]
         delta = (a[1] - b[1]) if key == r"\U" else (a[2] - b[2])
         out.setdefault("%s %d ms" % ("pitch" if key == r"\U" else "roll", ms), []).append(delta)
-    s_values = sorted({r[3] for r in rows})
+    # The executable's load notification precedes its flight initialisation.
+    # Measure frame rate during the tap window, after takeoff and loading.
+    s_values = sorted({r[3] for r in rows if r[0] >= first})
     return {k: dict(mean=round(statistics.mean(v)), each=v) for k, v in sorted(out.items())}, s_values, rows[-1][4] if rows else None
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--machine", choices=("machine", "machine386", "dosbox-x", "86box"), required=True,
-                    help="machine386: this machine under --timing 386 (the interpreter, 33.33 M cycles a second)")
+                    help="machine386: this machine under --timing 386 (33.33 M cycles a second)")
+    ap.add_argument("--engine", choices=("interp", "recomp"), help="engine for machine or machine386")
     ap.add_argument("--data", required=True)
     ap.add_argument("--out", type=Path, required=True)
     a = ap.parse_args()
+    hashes = [] if a.machine in ("machine", "machine386") else None
     route = (HERE / "routes" / "cargo_pilot.input").read_text().splitlines()
     time_us = int(route[0].split("time_us=")[1])
     if a.machine in ("machine", "machine386"):
@@ -71,17 +77,22 @@ def main():
         if a.machine == "machine386":
             os.environ["F117R_TIMING"] = "386"
         ips, engine = (33_333_333, "interp") if a.machine == "machine386" else (9_000_000, "recomp")
+        engine = a.engine or engine
         k = ips / 9_000_000
         with Machine(a.data, tempfile.mkdtemp(dir=a.out), engine=engine, time_us=time_us, ips=ips) as m:
             while m.program != "VGAME.EXE":
+                if m.clock > 600 * ips:
+                    raise RuntimeError("front end did not reach flight within ten guest minutes")
                 while pos < len(replay) and int(int(replay[pos][1]) * k) < m.clock + m.ips:
                     q = replay[pos]
                     at = int(int(q[1]) * k)
                     if q[0] == "K": m.key(at, int(q[2], 16))
                     else: m.mouse(at, *map(int, q[2:5]))
                     pos += 1
-                m.run_until(m.clock + int(90_000 * k))
-            result = run(m, m.start)
+                rc = m.run_until(m.clock + int(90_000 * k))
+                if rc != Machine.SLICE:
+                    raise RuntimeError("front end stopped (%d) in %s" % (rc, m.program))
+            result = run(m, m.start, hashes)
     else:
         a.out.mkdir(parents=True)
         if a.machine == "dosbox-x":
@@ -95,6 +106,8 @@ def main():
                 make(a.data, route, a.out / "run", time_us, True) as m:
             result = run(m, m.start)
     report = dict(machine=a.machine, response=result[0], S=result[1], agl_at_end=result[2])
+    if hashes is not None:
+        report.update(engine=engine, checkpoints=hashes)
     (a.out / "response.json").write_text(json.dumps(report, indent=1) + "\n")
     print(json.dumps({k: v for k, v in report.items()}, indent=1))
 

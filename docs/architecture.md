@@ -269,7 +269,9 @@ lose code an earlier capture got translated.
   the recompiler gives each override address a region of its own (one
   instruction) and the function around it stays translated. An override
   leaves CS:IP and the clock where the replaced code would have, or declines
-  and the original instruction runs. Each loaded module can place all 1,024
+  and the original instruction runs. Under the 386 timing profile, matched
+  entries use the original body until their handwritten clocks charge cycles.
+  Each loaded module can place all 1,024
   registry entries; matched routines and observer hooks share that capacity.
 - **Data fixes.** The machine's one hook that may change what the guest
   sees, `file_data`, hands each DOS read's bytes to the fixes before they
@@ -322,6 +324,10 @@ current as of the last gate (see [../handoff.md](../handoff.md)).
    interpreter: bytes the gap sweep took for code that are invalid 286
    opcodes). The reference is the machine's own step (`cpu_step` plus the TF
    trap), not bare `cpu_step`.
+   The gate repeats this under the 386 profile, comparing the prefetch queue
+   and held REP chunk as well. States exercise cached and uncached memory,
+   partly filled queues and unfinished chunks. A diagnostic instruction
+   budget stops after one operation even when its clock cost is zero.
 5. **Replay.** Input logs recorded on one engine replay on the other, and in
    the windowed game, to the same clock count and final state.
 6. **The check can see a defect.** `tools/mutation_check.py` plants one wrong

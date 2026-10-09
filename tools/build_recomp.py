@@ -306,20 +306,21 @@ def parallel(jobs, items, work, cost=None):
     return [value for value, _ in results]
 
 
-LOCKSTEPS = (("insn", "insn_lockstep.exe", "64"), ("func", "func_lockstep.exe", "4000"))
+LOCKSTEPS = (("insn", "insn_lockstep.exe", "64", ()),
+             ("insn386", "insn_lockstep.exe", "64", ("--timing386",)),
+             ("func", "func_lockstep.exe", "4000", ("--verbose",)))
 
 
 def start_locksteps(work):
-    """Both locksteps depend only on the build, so they start as soon as it exists and run beside the
+    """Locksteps depend only on the build, so they start as soon as it exists and run beside the
     coverage and parity routes; their output goes to files (an unread pipe could fill and stall them)."""
     procs = {}
-    for key, exe_name, states in LOCKSTEPS:
+    for key, exe_name, states, extra in LOCKSTEPS:
         exe = os.path.join(ROOT, "build", exe_name)
-        print("  $ " + '"%s" --states %s (in the background)' % (exe, states))
+        print("  $ " + '"%s" --states %s %s (in the background)' % (exe, states, " ".join(extra)))
         log = open(os.path.join(work, "%s_lockstep.log" % key), "w+")
         # func --verbose: its per-routine lines name the "routes only" routines step 8 checks
-        extra = ["--verbose"] if key == "func" else []
-        procs[key] = (subprocess.Popen([exe, "--states", states] + extra, stdout=log, stderr=subprocess.STDOUT, text=True), log)
+        procs[key] = (subprocess.Popen([exe, "--states", states] + list(extra), stdout=log, stderr=subprocess.STDOUT, text=True), log)
     return procs
 
 
@@ -488,9 +489,11 @@ def main():
         for number, key, what, message in (
                 (6, "insn", "every translated instruction against the interpreter",
                  "translated instructions differ from the interpreter"),
+                ("6b", "insn386", "every translated instruction under the 386 timing profile",
+                 "translated instructions differ under the 386 timing profile"),
                 (7, "func", "every matched routine against the original",
                  "matched routines differ from the original")):
-            print("%d. %s" % (number, what))
+            print("%s. %s" % (number, what))
             proc, log = lockstep[key]
             proc.wait()
             log.seek(0)

@@ -28,11 +28,35 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-from discover import Discovery          # noqa: E402
+from discover import Discovery, Region  # noqa: E402
 from emit import Ctx, emit              # noqa: E402
 from modules import load_all            # noqa: E402
 
 REGIONS_PER_FILE = 120
+MAX_REGION_INSNS = 1024
+
+
+def bounded_regions(regions, limit=MAX_REGION_INSNS):
+    """Bound the compiler's CFG size; cross-piece flow uses the dispatcher.
+
+    Every instruction keeps its decode and live operands. CHECK already
+    polls at every instruction, so an extra dispatcher boundary changes no
+    guest instruction or event deadline.
+    """
+    if limit < 1:
+        raise ValueError("region limit must be positive")
+    out = []
+    for r in regions:
+        if len(r.insns) <= limit:
+            out.append(r)
+            continue
+        ips = sorted(r.insns)
+        for start in range(0, len(ips), limit):
+            part = ips[start:start + limit]
+            seed = r.seed_ip if r.seed_ip in part else part[0]
+            out.append(Region(r.seg, seed, {ip: r.insns[ip] for ip in part},
+                              {ip: r.live[ip] for ip in part}))
+    return out
 
 try:
     import capstone
@@ -101,15 +125,17 @@ def mutate_lines(lines, kind, ins):
     "skip" instead makes the instruction do nothing at all - no effect, no
     branch - and continue at the next one."""
     if kind == "skip":
-        return [lines[0], "rc_mutant_hits++;", "IC(); EXIT(0x%04X);" % ins.next_ip]
+        timing = [line for line in lines if line.startswith("TIMING(")]
+        return [lines[0]] + timing + ["rc_mutant_hits++;", "IC(0x%02X); EXIT(0x%04X);" % (ins.op, ins.next_ip)]
     stmt = MUTATIONS[kind] + " rc_mutant_hits++;"
     for i in range(len(lines) - 1, -1, -1):
-        if lines[i].startswith("IC();"):
+        if lines[i].startswith("IC("):
             return lines[:i] + [stmt] + lines[i:]
     return lines + [stmt]
 
 
 def write_module(mod, regions, out_dir, comments, mutate=None):
+    regions = bounded_regions(regions)
     t = tag(mod.name)
     mutated = 0
     files = []

@@ -60,9 +60,9 @@
       {
         "item": "A 386DX/33 timing profile, frame-exact against 86Box",
         "weight": 10.35,
-        "done": 0.6,
+        "done": 0.8,
         "kind": "estimate",
-        "evidence": "Shown 8 Oct 2026: the interpreter under --timing 386 matches 86Box's 386DX/33 to the cycle on 92 of 93 probe blocks (instructions, prefetch, REP chunks, VGA bus, ports, the BIOS, MS-DOS 5.00 and Microsoft MOUSE.COM 6.26 services); the game's frame rate in flight is S 5-9 against 86Box's 6-9 (DOSBox's model 14-15); over the intro's animation the scenes hold 86Box's pace to a frame. Open: file loading (+1.48 s of drift in the loads, against a RAM-disk-speed disk model), the recompiled engine charging the costs (speed, and matched routines under the profile)."
+        "evidence": "Shown 8 Oct 2026: both engines charge the same 386DX/33 profile; all 93 probe blocks match the saved MS-DOS 5.00/MOUSE.COM 6.26 reference (AH=2Ch varies by four cycles between runs); 5,713,152 instruction comparisons under the profile, repeated with code in VRAM at a second seed, have zero differences including prefetch and held REP state. Paired flight sessions have all 574 memory/register/output/scanout checkpoints and stick responses identical. STI and SS-load shadows are mapped to cycle retirement, including a following zero-cycle instruction (four regressions fail before and pass after). Matched entries run the original translated body under the profile. Earlier reference work showed the intro animation holds 86Box's pace to a frame. Open: file loading (+1.48 s of drift in the loads, against a RAM-disk-speed disk model); direct cycle charges in handwritten matched routines are a later speed improvement."
       }
     ],
     "P2": [

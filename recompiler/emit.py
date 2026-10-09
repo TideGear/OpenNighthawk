@@ -150,7 +150,7 @@ STRING_FN = {0xA4: "x86_movs", 0xA5: "x86_movs", 0xAA: "x86_stos", 0xAB: "x86_st
              0x6E: "x86_outs", 0x6F: "x86_outs"}
 
 
-def emit(ins: Insn, ctx: Ctx):
+def _emit(ins: Insn, ctx: Ctx):
     """C statements for one instruction, label first."""
     X = ins.ip
     NX = ins.next_ip
@@ -249,8 +249,10 @@ def emit(ins: Insn, ctx: Ctx):
             if cmp:
                 again += " && ((c->flags & F_ZF) != 0) == %d" % (1 if ins.rep == 0xF3 else 0)
             out.append("if (c->r[R_CX] == 0) { IC(); %s }" % transfer(ctx, NX))
+            out.append("if (c->t386) c->t386_elem = 1;")
             out.append("%s(%s);" % (fn, args))
             out.append("c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);")
+            out.append("if (c->t386) c->ip = (%s) ? %s : %s;" % (again, h16(X), h16(NX)))
             out.append("IC(); if (%s) goto L_%04X; %s" % (again, X, transfer(ctx, NX)))
             return out
     elif 0x80 <= op <= 0x83:
@@ -504,3 +506,20 @@ def emit(ins: Insn, ctx: Ctx):
     else:
         out.append("IC(); " + tail)
     return out
+
+
+def emit(ins: Insn, ctx: Ctx):
+    """Semantics and the interpreter's timing inputs from the same decode."""
+    lines = _emit(ins, ctx)
+    if ins.kind != K_INVALID:
+        ns = nr = nl = 0
+        for byte in ins.raw:
+            if byte in (0x26, 0x2E, 0x36, 0x3E): ns += 1
+            elif byte in (0xF2, 0xF3): nr += 1
+            elif byte in (0xF0, 0xF1): nl += 1
+            else: break
+        m = ins.modrm
+        modrm = (m.mod << 6) | (m.reg << 3) | m.rm if m else -1
+        lines.insert(1, "TIMING(%s, %d, %d, %d, %d, %d, %d);" %
+                     (h16(ins.next_ip), modrm, ins.seg_ovr, ins.rep, ns, nr, nl))
+    return [line.replace("IC()", "IC(%s)" % h8(ins.op)) for line in lines]

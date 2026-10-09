@@ -330,9 +330,10 @@ int main(int argc, char **argv)
         if (!fixes_enable_list(ids)) { fprintf(stderr, "%s names an unknown fix: %s\n", replay, ids); return 2; }
     }
     if (!time_us) time_us = machine_local_time_us();
-    if (ips == MACHINE_386_IPS && engine == ENGINE_RECOMP && getenv("F117R_TIMING")) {
-        /* The translated code does not charge the profile's costs yet. */
-        fprintf(stderr, "--timing 386 runs the interpreter only (--engine interp)\n");
+    const char *timing = getenv("F117R_TIMING");
+    if (timing && !strcmp(timing, "386") && ips != MACHINE_386_IPS) {
+        fprintf(stderr, "386 timing requires %llu cycles/s; replay/options specify %llu\n",
+                (unsigned long long)MACHINE_386_IPS, (unsigned long long)ips);
         return 2;
     }
 

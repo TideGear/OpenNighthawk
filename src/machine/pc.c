@@ -1097,7 +1097,7 @@ void pc_events(machine_t *m)
      * have enabled interrupts), not at the shadow of STI/MOV SS. */
     /* (DOSBox's STI has no shadow: its service stubs take the interrupt
      * before the callback.) */
-    if (now == c->inhibit_at && c->seg[S_CS] != m->iret_seg) return;
+    if (now == c->inhibit_at && (c->t386 || c->seg[S_CS] != m->iret_seg)) return;
     if (!(c->flags & F_IF) && c->halted != 2) return;
     int n = pic_pending(m);
     if (n < 0) return;

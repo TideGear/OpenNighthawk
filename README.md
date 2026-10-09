@@ -4,9 +4,10 @@ This is a fully **human-driven**, AI-coded recompilation (**not a
 reimplementation or a decompilation**) of the PC DOS classic *F-117A
 Nighthawk Stealth Fighter 2.0* (MicroProse, 1991) for Windows. The
 original's machine code is translated, instruction by instruction, into C
-and compiled natively. It runs on an emulated PC timed like the GOG
-release's DOSBox, and every instruction is checked against a reference
-interpreter validated on real silicon.
+and compiled natively. Its emulated PC supports the GOG release's DOSBox
+timing and a 386DX/33 profile measured against 86Box. Every translated
+instruction is checked against a reference interpreter validated on real
+silicon.
 
 **This is not a lazy, fire-and-forget project.** I decide what gets
 built, what counts as proof, which results to distrust and measure again,
@@ -30,7 +31,7 @@ this project treats it as one.
 **1:1 parity with the original is the first priority.** The game does
 exactly what the DOS original does, including its bugs, which are tracked in
 [docs/bugs.md](docs/bugs.md) so they can be fixed later as switchable
-options. Enhancements come after parity, never instead of it.
+options. Nine catalogued fixes are available now, all off by default.
 
 > **Not affiliated with anyone.** This is an unofficial, fan-made project. It
 > is not affiliated with, authorized by, endorsed by, or associated with
@@ -49,11 +50,18 @@ options. Enhancements come after parity, never instead of it.
   work: AdLib (music and digitised speech through an OPL emulator), the PC
   speaker, and Roland (Munt synthesis with your MT-32 ROMs, or Windows
   MIDI; live synthesis tested, exact rendered parity still open).
-- **Translated:** 89,281 instructions across all 17 code files and the
+- **Translated:** 89,276 instruction starts in the latest checked build,
+  across all 17 code files and the
   LZEXE decompressor: 96% of the bytes of the code areas, and no
   untranslated stretch left that decodes as code (`tools/census.py`; the
   rest is strings, tables and variables). On the scripted sessions no game
-  instruction is interpreted; only the emulated BIOS's own stubs are.
+  instruction is interpreted under the default timing profile; only the
+  emulated BIOS's own stubs are.
+- **Named and matched:** 484 routine addresses (483 census functions,
+  39,387 of 179,213 code bytes) have explained C equivalents checked against
+  their original bodies. Another 1,052 census functions remain. Under the
+  386 profile, matched entries use their original translated bodies until
+  their handwritten clocks gain cycle costs.
 - **Parity, measured:** thirty-five scripted sessions (boot to flight; a full
   sortie through the debriefing and back; boots under the speaker and Roland
   drivers, where the programs load at other addresses; transfer and flight
@@ -98,22 +106,34 @@ options. Enhancements come after parity, never instead of it.
   intro on GOG's DOSBox (a saved capture), on DOSBox-X and on 86Box at once,
   with no window and no sound, and checks the pictures, the music and a
   scripted pilot-roster session's saved file against measured limits: DOSBox-X matches 1,237 exact pictures in order (timing within
-  about 0.2 s); 86Box, a real-hardware-style emulator, shows the same scenes
-  in the same order and with the same colours (its VM is a 6 MHz 286, so
-  its timing is not comparable yet). Builds and notes: `tools/ref86box/`.
+  about 0.2 s). The 86Box reference is now a 386DX/33 running MS-DOS 5.00
+  with Microsoft MOUSE.COM 6.26. Its intro pictures match in VGA DAC values
+  except two documented samples between consecutive pictures; the check
+  rejects any other difference. Builds and notes: `tools/ref86box/`.
+- **386 timing on both engines:** the latest calibration matches all 93
+  saved 86Box instruction and service probes (the DOS time query varies by
+  four cycles between runs). Paired flight sessions have 574 identical
+  machine-state checkpoints and stick responses. File loading still drifts
+  against the reference VM's disk model; fast loads remain the default.
+  This profile is currently exposed through the headless runner:
+  `build\f117run.exe --timing 386 --engine recomp --data INSTALL_DIR`.
 - **Every translated instruction, not only the ones the sessions reach:**
   the sessions run about half the game's code (`tools/exercised.py`).
-  `tests/insn_lockstep.c` runs each of the 89,281 translated instruction starts
+  `tests/insn_lockstep.c` runs each of the 89,276 translated instruction starts
   from 64 random machine states through the generated code and the
   interpreter and compares everything it can change: 5.7 million
-  comparisons, 0 differences.
+  comparisons per timing profile, 0 differences. The 386 check includes
+  prefetch and unfinished REP state; a second seed also checks code in VGA
+  memory.
 - **The translator is checked against silicon:** 90,900 8088 and 94,200
   80286 hardware test vectors run through generated code with 0 unexplained
   differences.
 - **Steam's release works too:** its game files are byte-identical to GOG's
   (`tools/verify_install.py`), and the app finds its install.
-- **Not yet done:** play by a person at the keyboard; full frame parity
-  with DOSBox; rendered Roland (MT-32) output checked with user-supplied ROMs.
+- **Not yet done:** the remaining named C routines; live 60+ fps and 4K
+  presentation (offline studies exist); full frame parity; remaining bug
+  fixes; play by a person at the keyboard; rendered Roland output against
+  an independent reference and listening checks.
 
 How the parity claim is built and checked: [docs/architecture.md](docs/architecture.md).
 What is done and what is left: [docs/roadmap.md](docs/roadmap.md).
@@ -178,13 +198,17 @@ py tools\build_recomp.py --data "C:\GOG Games\F-117A"
 
 That one command translates the game, builds it, plays the scripted routes
 in `tools/routes/` to gather coverage, translates and builds again, and
-verifies parity between the engines. The result is `build\f117a.exe`.
-`build.cmd` alone builds an interpreter-only executable.
+verifies parity between the engines. With `F117R_BUILD_APP=ON` (the CMake
+default), the result includes `build\f117a.exe`. If this checkout was
+configured for headless work, enable the app after the gate with
+`build.cmd -DF117R_BUILD_APP=ON`. A build without generated C supports only
+the interpreter; `build.cmd` reuses the checkout's existing CMake settings.
 
 After a runtime change, `py tools\build_recomp.py --data "C:\GOG Games\F-117A"
 --parity-only` checks the existing build without translating or rebuilding.
 It compares checkpoints every 50 million clocks as well as final states,
-then runs the instruction lockstep.
+then runs instruction checks under both timing profiles, matched-routine
+checks, and confirms every routine that needs route coverage was exercised.
 
 ## Running
 
@@ -203,6 +227,7 @@ build\f117a.exe --data "C:\GOG Games\F-117A"
 | `--midi N` | send Roland MIDI to Windows MIDI device N instead of the mapper |
 | `--mt32-control FILE --mt32-pcm FILE` | name the two ROM files instead of a folder |
 | `--opl dbopl\|nuked` | GOG DOSBox's OPL2 synthesizer (default), or Nuked OPL3 in OPL2 mode; both output at 44,100 Hz |
+| `--speaker realsound\|pwm` | smoothed digitised speaker speech (default), or the original PWM carrier |
 | `--scale N`, `--fullscreen`, `--no-aspect` | window size; fullscreen; square pixels instead of 4:3 |
 | `--config FILE`, `--no-config` | read settings from FILE instead of `f117a.ini` beside the executable; or read none |
 | `--fix ID`, `--list-fixes` | switch on a fix for one of the original's bugs (`all` for every one); every fix is off unless named, so the default is the original, bugs included |

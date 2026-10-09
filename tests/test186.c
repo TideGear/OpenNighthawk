@@ -9,6 +9,7 @@
  * the same bytes still do the 8086 thing when the model is 8086.
  */
 #include "cpu.h"
+#include "timing386.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -265,6 +266,33 @@ static void test_real_prologue(void)
           "frame not restored: BP=%04X SP=%04X", cpu.r[R_BP], cpu.r[R_SP]);
 }
 
+/* The shadow is an instruction boundary even when that instruction costs
+ * several cycles, or the following zero-count shift costs no cycles. */
+static void test_386_shadow(void)
+{
+    static const uint8_t cases[][6] = {
+        { 0xFB, 0xC1, 0xE0, 0x00, 0x90, 0x90 },       /* STI */
+        { 0x17, 0xC1, 0xE0, 0x00, 0x90, 0x90 },       /* POP SS */
+        { 0x8E, 0xD0, 0xC1, 0xE0, 0x00, 0x90 },       /* MOV SS,AX */
+        { 0x26, 0x8E, 0xD0, 0xC1, 0xE0, 0x00 },       /* prefixed MOV SS,AX */
+    };
+    printf("386 interrupt shadows follow instructions, not one-cycle clocks\n");
+    for (unsigned i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+        setup(CPU_80286);
+        cpu.r[R_AX] = STK_SEG;
+        stk_set(0x1000, STK_SEG);
+        code(cases[i], sizeof cases[i]);
+        t386_enable(&cpu, T386_MEM_CACHED, 0xA0000, 0x20000, 32);
+        cpu.icount = 1000;
+        step();
+        CHECK(cpu.inhibit_at == cpu.icount, "case %u: shadow is not at retirement", i);
+        const uint64_t before = cpu.icount;
+        step();
+        CHECK(cpu.icount == before, "case %u: shift by zero advanced the clock", i);
+        CHECK(cpu.inhibit_at != cpu.icount, "case %u: shadow survived the next instruction", i);
+    }
+}
+
 int main(void)
 {
     mem = (uint8_t *)calloc(MEM_SIZE, 1);
@@ -277,6 +305,7 @@ int main(void)
     test_shifts();
     test_model_corners();
     test_real_prologue();
+    test_386_shadow();
     printf(failures ? "\n%d FAILURE(S)\n" : "\nall passed\n", failures);
     free(mem);
     return failures ? 1 : 0;

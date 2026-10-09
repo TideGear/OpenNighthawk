@@ -14,6 +14,7 @@
 #define F117R_RECOMP_GEN_H
 
 #include "x86_sem.h"
+#include "timing386.h"
 
 /* A region: returns 1 after running at least the CHECK of its entry
  * instruction (CS:IP say where to go next), 0 to have the interpreter take
@@ -59,6 +60,9 @@ typedef struct {
 
 /* How often a planted mutation ran (recompiler --mutate; 0 otherwise). */
 extern unsigned long long rc_mutant_hits;
+/* Diagnostics can stop after N translated instructions even when a REP
+ * element or zero-count shift advances no clock. -1 means unlimited. */
+extern int rc_instruction_budget;
 
 /* The generated list (recomp_modules.c in the generated directory). */
 extern const rc_module *const RC_MODULES[];
@@ -73,10 +77,16 @@ extern const unsigned RC_NMODULES;
  *               it (loader-relocated or run-time-patched operands) */
 #define CHECK(ip_) do { if (c->icount >= c->stop_at) { c->ip = (ip_); return 1; } \
                         c->op_ip = (ip_); } while (0)
-#define IC()       (c->icount++)
+#define TIMING(next_, modrm_, seg_, rep_, ns_, nr_, nl_) do { if (c->t386) { \
+    if (rc_instruction_budget == 0) { c->ip = c->op_ip; return 1; } \
+    if (rc_instruction_budget > 0) rc_instruction_budget--; \
+    t386_begin(c, next_, modrm_, seg_, rep_, ns_, nr_, nl_); } } while (0)
+#define IC(op_)    (c->icount += c->t386 ? t386_step(c, op_, c->t386_fault) : 1)
 #define EXIT(ip_)  do { c->ip = (uint16_t)(ip_); return 1; } while (0)
 #define INTERP(ip_) do { c->ip = (uint16_t)(ip_); return 0; } while (0)
-#define CODE8(o_)  mem_read8(c, phys(c->seg[S_CS], (uint16_t)(o_)))
-#define CODE16(o_) seg_read16(c, c->seg[S_CS], (uint16_t)(o_))
+/* Instruction bytes use the prefetch timing, as cpu_step's fetch8/fetch16
+ * do; they must not also charge the data bus when code executes in VRAM. */
+#define CODE8(o_)  (c->mem[phys(c->seg[S_CS], (uint16_t)(o_))])
+#define CODE16(o_) ((uint16_t)(CODE8(o_) | ((uint16_t)CODE8((o_) + 1) << 8)))
 
 #endif /* F117R_RECOMP_GEN_H */

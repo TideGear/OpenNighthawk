@@ -1,7 +1,8 @@
 /* insn_lockstep.c - every translated instruction of the game, one at a time,
  * held to the interpreter.
  *
- *     insn_lockstep [--states N] [--seed S] [--only NAME] [--verbose]
+ *     insn_lockstep [--states N] [--seed S] [--only NAME] [--timing386]
+ *                   [--base-seg SEG] [--verbose]
  *
  * The routes prove parity for the code they run, about half of the game.
  * This covers the rest: for every instruction start the translation has, in
@@ -26,6 +27,7 @@
 #include "recomp_gen.h"
 
 unsigned long long rc_mutant_hits;
+int rc_instruction_budget = -1;
 
 /* ---- the machine hooks: record, never emulate ----------------------------
  * Every write is logged (all memory is marked as code, so mem_write8 reports
@@ -128,7 +130,7 @@ static void set_state(cpu_t *c, uint16_t cs, uint16_t ip, const uint16_t *r, con
     c->int_depth = 0;
 }
 
-static int g_verbose, g_shown;
+static int g_verbose, g_shown, g_timing386;
 
 static int compare(const char *mod, uint32_t off, uint16_t cs, uint16_t ip, int declined)
 {
@@ -148,6 +150,11 @@ static int compare(const char *mod, uint32_t off, uint16_t cs, uint16_t ip, int 
                                               (unsigned long long)a->icount, (unsigned long long)b->icount);
     else if (a->halted != b->halted) snprintf(why, sizeof why, "halted %d vs %d", a->halted, b->halted);
     else if (a->inhibit_at != b->inhibit_at) snprintf(why, sizeof why, "interrupt shadow");
+    else if (g_timing386 && (a->t386_pf_bytes != b->t386_pf_bytes ||
+             a->t386_pf_prefixes != b->t386_pf_prefixes ||
+             a->t386_chunk != b->t386_chunk || a->t386_chunk_n != b->t386_chunk_n ||
+             a->t386_chunk_held != b->t386_chunk_held))
+        snprintf(why, sizeof why, "386 prefetch or REP chunk");
     else if (g_side[0].io != g_side[1].io) snprintf(why, sizeof why, "ports or interrupts");
     else if (g_side[0].overflow != g_side[1].overflow) snprintf(why, sizeof why, "write volume");
     else {
@@ -178,13 +185,16 @@ int main(int argc, char **argv)
 {
     int states = 8;
     const char *only = NULL;
+    uint16_t base = 0x1000;
     g_rng = 0x5EED0F117AULL;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--states") && i + 1 < argc) states = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--seed") && i + 1 < argc) g_rng = strtoull(argv[++i], NULL, 0) | 1;
         else if (!strcmp(argv[i], "--only") && i + 1 < argc) only = argv[++i];
         else if (!strcmp(argv[i], "--verbose")) g_verbose = 1;
-        else { fprintf(stderr, "usage: insn_lockstep [--states N] [--seed S] [--only NAME] [--verbose]\n"); return 2; }
+        else if (!strcmp(argv[i], "--timing386")) g_timing386 = 1;
+        else if (!strcmp(argv[i], "--base-seg") && i + 1 < argc) base = (uint16_t)strtoul(argv[++i], NULL, 0);
+        else { fprintf(stderr, "usage: insn_lockstep [--states N] [--seed S] [--only NAME] [--timing386] [--base-seg SEG] [--verbose]\n"); return 2; }
     }
     if (RC_NMODULES == 0) { fprintf(stderr, "no generated code linked in (build with F117R_GEN_DIR)\n"); return 2; }
 
@@ -203,7 +213,6 @@ int main(int argc, char **argv)
         g_cpu[k].cover = NULL;
     }
 
-    const uint16_t base = 0x1000;
     unsigned long long tested = 0, declined = 0, bad = 0, total_insns = 0;
     for (unsigned mi = 0; mi < RC_NMODULES; mi++) {
         const rc_module *m = RC_MODULES[mi];
@@ -239,10 +248,30 @@ int main(int argc, char **argv)
                 uint16_t flags = (uint16_t)((rnd() & 0x0ED5u) | 0x0002u);   /* no TF */
                 set_state(&g_cpu[0], cs, ip, r, seg, flags);
                 set_state(&g_cpu[1], cs, ip, r, seg, flags);
+                if (g_timing386) {
+                    const int wait = s & 1 ? T386_MEM_CACHED : T386_MEM_UNCACHED;
+                    const int pf = (int)(rnd() % 17);
+                    const int prefixes = (int)(rnd() % 4);
+                    const int chunk = (s & 2) ? (int)(rnd() % 101) : -1;
+                    const int chunk_n = chunk < 0 ? 0 : (int)(rnd() % 20);
+                    const uint32_t held = chunk < 0 ? 0 : (uint32_t)(rnd() % 1000);
+                    for (int k = 0; k < 2; k++) {
+                        cpu_t *c = &g_cpu[k];
+                        t386_enable(c, wait, 0xA0000u, 0x20000u, 32);
+                        c->t386_pf_bytes = pf;
+                        c->t386_pf_prefixes = prefixes;
+                        c->t386_chunk = chunk;
+                        c->t386_chunk_n = chunk_n;
+                        c->t386_chunk_held = held;
+                        /* REP elements and zero-count shifts can retire with
+                         * no clock advance. Stop by instruction count too. */
+                    }
+                }
                 /* The machine's interpreter step (pc.c interp_step): the
                  * instruction, then the single-step trap if TF is set. */
                 cpu_step(&g_cpu[0]);
                 if (g_cpu[0].flags & F_TF) cpu_interrupt(&g_cpu[0], 1);
+                rc_instruction_budget = g_timing386 ? 1 : -1;
                 int ran = rg->fn(&g_cpu[1]);
                 if (!ran) {
                     if (s == 0 && g_verbose) {

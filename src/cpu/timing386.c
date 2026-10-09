@@ -22,6 +22,20 @@ void t386_enable(cpu_t *c, int mem_wait, uint32_t vga_lo, uint32_t vga_size, uin
     c->t386_vga_byte = vga_byte;
 }
 
+void t386_begin(cpu_t *c, uint16_t next, int modrm, int seg, int rep,
+                int seg_prefixes, int rep_prefixes, int lock_prefixes)
+{
+    c->seg_override = seg;
+    c->rep_prefix = rep;
+    c->t386_seg_pfx = seg_prefixes;
+    c->t386_rep_pfx = rep_prefixes;
+    c->t386_lock_pfx = lock_prefixes;
+    c->t386_modrm = modrm;
+    c->t386_elem = c->t386_fault = 0;
+    c->t386_dev = 0;
+    c->ip = next;
+}
+
 /* The prefetch queue (386_common.c:515-567). */
 static uint32_t prefetch_run(cpu_t *c, int instr, int bytes, int modrm, int reads, int writes)
 {
@@ -87,7 +101,7 @@ static uint32_t rep_step(cpu_t *c, uint8_t op, const t386_op_t *e, int prefix_cy
     return t;
 }
 
-uint32_t t386_step(cpu_t *c, uint8_t op, int stop)
+static uint32_t step_cycles(cpu_t *c, uint8_t op, int stop)
 {
     const int npfx = c->t386_seg_pfx + c->t386_rep_pfx + c->t386_lock_pfx;
     const int prefix_cycles = 4 * c->t386_seg_pfx + 2 * c->t386_rep_pfx + 4 * c->t386_lock_pfx;
@@ -169,4 +183,18 @@ uint32_t t386_step(cpu_t *c, uint8_t op, int stop)
     }
     if (e->flush == 1 || (e->flush == 2 && taken)) c->t386_pf_bytes = 0;
     return total;
+}
+
+uint32_t t386_step(cpu_t *c, uint8_t op, int stop)
+{
+    /* x86_inhibit_next marks icount + 1 under the instruction clock.
+     * Here the shadow belongs at the cycle clock's retirement boundary.
+     * Expire the previous instruction's shadow even if this one costs zero;
+     * rep_step can establish its own hold while a chunk is unfinished. */
+    if (c->inhibit_at == c->icount) c->inhibit_at = ~0ull;
+    const uint32_t cycles = step_cycles(c, op, stop);
+    if (op == 0xFB || op == 0x17 ||
+            (op == 0x8E && ((c->t386_modrm >> 3) & 3) == S_SS))
+        c->inhibit_at = c->icount + cycles;
+    return cycles;
 }

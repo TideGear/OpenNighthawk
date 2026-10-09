@@ -100,6 +100,7 @@ class Gen:
 
 API_EXTRA = r'''
 #include "recomp_gen.h"
+int rc_instruction_budget = -1;
 extern const rc_fn GEN_TESTS[];
 extern const unsigned char GEN_REP[];
 typedef struct { cpu_t cpu; uint8_t *mem; } oracle_t;
@@ -121,7 +122,8 @@ __declspec(dllexport) long orc_gen_interpreted(void) { return g_interp; }
 def build(files, outdir):
     api = os.path.join(outdir, "sst_api_extra.c")
     open(api, "w").write(API_EXTRA)
-    srcs = [os.path.join(ROOT, "src", "cpu", "cpu.c"), os.path.join(ROOT, "tests", "cpu_api.c"), api] + files
+    srcs = [os.path.join(ROOT, "src", "cpu", "cpu.c"), os.path.join(ROOT, "src", "cpu", "timing386.c"),
+            os.path.join(ROOT, "tests", "cpu_api.c"), api] + files
     dll = os.path.join(outdir, "sst_recomp.dll")
     inc = '/I"%s" /I"%s"' % (os.path.join(ROOT, "src", "cpu"), os.path.join(ROOT, "src", "recomp"))
     rsp = os.path.join(outdir, "cl.rsp")

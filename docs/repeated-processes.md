@@ -19,6 +19,10 @@ shared the machine with a large compile, so it is a ceiling, not a best case.
 The 484-routine, 35-route gate on 8 Oct took 14.8 minutes (886 s): build
 7 s, coverage 237 s, second translation 3 s, fresh parity 638 s, no lockstep
 tail. Both locksteps had zero mismatches and every routes-only routine ran.
+The subsequent translated-386 gate took **16.1 minutes** (964 s): build
+7 s, coverage 277 s, second translation 4 s, fresh parity 676 s, no lockstep
+tail. All 35 routes were identical, both 5,713,152-state instruction checks
+and the 484-routine check had zero mismatches, and every routes-only routine ran.
 
 Stage times, earlier run: translate and build 457 s, coverage 173 s, second
 build 2 s (skipped), parity 503 s, lockstep tail 229 s.
@@ -40,7 +44,9 @@ by name; today: `recon_career` and `recon_return`.
 | Process | Trigger | Measured cost | Redundancy and status |
 |---|---|---|---|
 | Matched-routine lockstep (`func_lockstep --states 4000`) | every gate; every new matched routine | 3-4.5 min for 250 routines; 8.5-10.2 min for 415-429 routines with three branches checked together; about 14 min for 484 routines beside fresh parity (8 Oct); 12 s at 300 states | single process. **Not sharded, on purpose (analysed 6 Oct):** one random stream runs through every routine and part of it depends on what each routine does, so splitting it changes the test states; per-routine seeding would be a different test, not the same one faster. The time is mostly copying and comparing 1 MB of memory per state (about 0.2 ms x 924,000 states); the safe speed-up is tracking writes instead, which is a larger change to the harness (open, low priority, since the gate now runs it beside parity) |
-| Instruction lockstep (`insn_lockstep --states 64`) | every gate | seconds | none found |
+| Instruction lockstep (`insn_lockstep --states 64`, also `--timing386`) | every gate | no wait tail in the latest gate; 5.7 million states per profile (8 Oct) | runs beside coverage and parity; the 386 check also compares prefetch and held REP state; a second-seed run with `--base-seg 0x9FFF` checks code in VRAM |
+| 386 flight engine parity (`stick_response --machine machine386 --engine interp/recomp`) | after a profile or translated timing change | 80 s interpreter, 60 s recomp, alongside the gate (8 Oct) | all 574 memory/register/output/scanout checkpoints and stick responses identical; use separate processes because the runtime is global |
+| Oversized generated regions | every generated build | 479 s before bounding regions; 120 s after (8 Oct) | a 6,446-instruction VGAME function dominated MSVC compilation; cap regions at 1,024 instructions, preserving each decode and live operand and dispatching across pieces. Both timing profiles retain the 5,713,152-state instruction verdicts; whole-route gate required |
 | Census refresh (`reimp_names.py`, then `progress.py --census`) | after each batch of matched routines | about a minute | the lead list only changes when the Reimp does; regenerate it then, refresh the census each batch |
 | Route recording (adaptive pilots) | after a timing change moves a flight | 10-20 min per flight; try several parameters in parallel | recorded inputs replace them in the gate; a timing change invalidates all of them at once (see `airair_type5-8`, `strike`, `cargo`, `recon`) |
 | Draw-list capture windows | per presentation stage | 3-4 min per window, four at a time | windows are independent and already run in parallel |

@@ -25,6 +25,7 @@
 
 uint8_t cpu_codebits[MEM_SIZE / 8];
 unsigned long long rc_mutant_hits;
+int rc_instruction_budget = -1;
 
 #define MAX_OVERRIDES 1024
 #define MAX_PLACED MAX_OVERRIDES /* every registered override can share a module */
@@ -322,6 +323,9 @@ int recomp_override_step(machine_t *m)
         const recomp_override *o = &g_ov[in->ov_index[k]];
         if (in->ov_lin[k] != lin || (uint16_t)(in->base + o->seg) != cs) continue;
         if (o->matched && m->engine != ENGINE_RECOMP) return 0;
+        /* Their hand-written clocks count instructions, not 386 cycles.
+         * Interpret the entry, then resume the translated original body. */
+        if (o->matched && c->t386) return -1;
         if (o->matched && g_shadow_off) return 0;
         if (o->matched && g_shadow_on && c->icount >= g_shadow_lo && c->icount < g_shadow_hi) {
             if (!shadow_run(m, o)) return -1;

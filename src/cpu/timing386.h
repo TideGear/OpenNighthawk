@@ -70,6 +70,11 @@ typedef struct {
  * vga_size) at `vga_byte` cycles a byte, the prefetch queue empty. */
 void t386_enable(cpu_t *c, int mem_wait, uint32_t vga_lo, uint32_t vga_size, uint32_t vga_byte);
 
+/* A translated instruction has already decoded these fields. Prepare the same
+ * timing inputs as cpu_step, including every repeated prefix. */
+void t386_begin(cpu_t *c, uint16_t next, int modrm, int seg, int rep,
+                int seg_prefixes, int rep_prefixes, int lock_prefixes);
+
 /* Called by cpu_step after the instruction ran: the cycles it costs, which the caller adds to the
  * clock in place of one. */
 uint32_t t386_step(cpu_t *c, uint8_t op, int stop);

@@ -96,8 +96,9 @@ make (Phase 4).
       `probe386.py` (ALU, memory forms, jumps, calls, INT, REP chunks with
       prefixes, VGA memory, ports), and the services it answers natively are
       charged their measured 86Box cost (video BIOS mode sets, palette, text;
-      INT 16h, 1Ah; INT 21h AH=0Bh and 2Ch; INT 33h): 92 of 93 probe blocks
-      exact against an MS-DOS 5.00 reference VM with Microsoft MOUSE.COM 6.26
+      INT 16h, 1Ah; INT 21h AH=0Bh and 2Ch; INT 33h): all 93 probe blocks
+      exact in the latest run against the saved MS-DOS 5.00 reference with
+      Microsoft MOUSE.COM 6.26 (AH=2Ch varies by four cycles between runs)
       (`build_msdos_vm.py`; 5.00 and 6.22 cost the same on the game's calls,
       4.01 10% less, FreeDOS twice on 2Ch; CuteMouse 45% cheaper than 6.26).
       Shown: the game's frame rate in flight (S) is 5-9 under the profile and
@@ -108,9 +109,15 @@ make (Phase 4).
       screen) is in the loads: DOS file reads and writes, program starts and
       overlays. Open: file loading (the VM's disk is a RAM-disk-speed model, so
       its load times are not period ones; the frame comparison re-aligns at
-      loads), and the recompiled engine charging the same costs, which only
-      speeds the profile up (it plays at about 10 times real time through the
-      interpreter) and lets matched routines run under it.
+      loads). Both engines now charge the same profile: 5,713,152 instruction
+      comparisons each in RAM and with code in VRAM, no differences; paired
+      flight sessions have 574 identical state checkpoints and stick responses
+      (`stick_response.py --machine machine386 --engine interp|recomp`).
+      Matched entries use the original translated body under this profile.
+      STI and SS loads hold interrupts through the following instruction even
+      when it costs zero cycles; four regressions failed before the fix and
+      pass after it. Regions are capped at 1,024 instructions to bound MSVC's
+      optimisation work (generated rebuild 479 s to 120 s).
 - [ ] **Rendered sound:** the register stream is exact (every AdLib write of
       the intro in order and value, above), which is what the original sends to
       its chip. How the OPL waveform is synthesised is the emulator's, not the
