@@ -43,7 +43,7 @@ Status values:
 | D12 | Confirmed | END | Signed/unsigned mix in the hidden campaign rating tally | `--fix D12` |
 | D34 | Confirmed | VGAME | Destroyed-object table has no bound; long missions corrupt state | `--fix D34` |
 | D35 | Reported | ASOUND.LOG and others | Fast machines stop after the intro (delay-loop calibration) | - |
-| D36 | Reported | RSOUND.117 | Later MT-32/MT-100 models play no engine sound | - |
+| D36 | Reported | RSOUND.117 | Later MT-32/MT-100 models play no engine sound (not reproduced on 2.0x ROMs) | - |
 | Q2-Q13 | Confirmed | VGAME, START | Smaller latent defects (below) | - |
 | R1 | Recomp | - | Open questions from this project (below) | - |
 
@@ -419,6 +419,23 @@ Status values:
 
 - **What happens.** RSOUND.117 depends on first-generation MT-32 sample
   addresses; later models and the MT-100 play no engine sound.
+- **How the engine is made.** VGAME sends sound request 0x17 every frame
+  with the airspeed in knots (`[0xB07E]` / 27, `0x02802`). RSOUND's entry
+  `0x124C` turns it into channel 8's pitch bend (`0x1F40` + 5 x knots) and
+  volume (`0x39` + knots / 16); its timer tick (`0x0BAD`) starts the engine
+  sequence on that channel once the engine flag is set and the speed is
+  above zero: program 7, which the start-up upload makes memory timbre 7
+  "Jet Engine" (three PCM partials on waves 24, 7 and 24, one synth
+  partial; a 24-semitone bend range), note 23 held. A jet standing braked
+  sends the updates but never starts the note.
+- **Checked here (9 October 2026), with Munt:** not reproduced. Control ROMs
+  2.04 and 2.07 have the same PCM wave map as 1.07 (all 128 entries equal;
+  waves 24 and 7 loop in both). The landing flight's engine alone renders
+  at about 1,155 RMS, steady, on 1.05 and 1.07, and at 750-970 RMS,
+  unsteady, on 2.04 and 2.07: about 3.4 dB quieter, not silent. The MT-100
+  and CM-32L use other PCM ROMs and were not tried. Munt models the
+  firmware's tables, not all of its code, so a real 2.0x unit can still
+  differ; no fix is offered for a failure this machine does not show.
 - **Detail.** Reimp catalogue:1430-1439.
 
 ## Smaller confirmed defects (Q-series and quirks)
@@ -444,6 +461,7 @@ Reimp catalogue's Q sections and the cited Reimp documents.
 | D18 | START | NULL passed to `sprintf %s` prints "(null)" | `0x02651`, `0x0267B` |
 | D44 | ASOUND.117 | Noise take-over's second arm tests the first generator's count (copy-paste) | `0x202E`, `0x2089` |
 | - | ASOUND.117 | A "level changed" local is uninitialised and leaks between voices | `0x2EC0` |
+| - | RSOUND.117 | Volume and pan are sent unmasked: music fades send values of 80h and more (pan from FFh down in steps of 4, volume 82h-89h; 31 in one strike session), which a real MT-32 reads as status bytes | volume `0x0490`, pan `0x04E1` |
 | D61 | VGAME | A ladder rung past the 23-entry label table reads bytes outside it | MGRAPHIC `047E:064F` |
 | D63 | MGRAPHIC | Right clip is an unsigned compare: a string at negative x is dropped whole | entry 6, `0x031D` |
 | D75 | VGAME | Stale `[bp-0x30]`/`[bp-0x2E]` read when the impact point is skipped past 0x2000 of roll | `0x0AEB5`, `0x0AD81` |

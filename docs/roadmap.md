@@ -210,8 +210,9 @@ not the recompilation:
       proven a defect). D7 is fixed by D8. Open: D3 (keypad digits with
       NumLock off return to DOS from the sound prompt; the exit is not located),
       D10 (the mountain-collision stack corruption, DOS equivalent not
-      located), D35 (not reproduced here; no fix offered) and D36 (later MT-32 ROMs, see
-      the README's ROM note). D96 is the Reimp's
+      located), D35 (not reproduced here; no fix offered) and D36 (not
+      reproduced: on 2.0x control ROMs Munt plays the engine 3.4 dB quieter,
+      not silent; no fix offered). D96 is the Reimp's
       native-UI wait, not a patch for this translated START. A session recorded
       with fixes on names them in its log and replays with them.
 - [ ] **60+ fps and 4K presentation**, design and status in
