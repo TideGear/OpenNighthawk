@@ -18166,9 +18166,11 @@ buffered:
     } else {
         c->icount += 1;                                           /* jl taken */
     }
-walk:
-    if (!room(c, 28)) { c->ip = s->walk; return 1; }
+    /* The chain can be thousands of entries deep, so room is checked every
+     * turn: a turn is 10 instructions, the last one 6 plus the 22 of the
+     * tail up to the reset call or the jmp bp. The loop head takes AX. */
     for (;;) {
+        if (!room(c, 28)) { c->ip = s->walk; return 1; }
         c->r[R_BX] = c->r[R_AX];                                  /* mov bx, ax */
         c->r[R_BX] = (uint16_t)alu_add(c, c->r[R_BX], c->r[R_AX], 1, 0);
         c->r[R_BX] = (uint16_t)alu_add(c, c->r[R_BX], c->r[R_AX], 1, 0);

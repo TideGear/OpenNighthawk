@@ -182,16 +182,15 @@ not the recompilation:
       Reimp's mapping; matched functions replacing translations one at a time,
       each held to the same parity checks. `tools/reimp_names.py` joins the
       Reimp's census (1,535 functions) with this project's regions as a private
-      lead list. 484 addresses are matched (483 of the census functions, 39,387 of
+      lead list. 488 addresses are matched (487 of the census functions, 39,974 of
       179,213 bytes); the table is at the end of `src/matched/matched.c` and the
       method is in [architecture.md](architecture.md#matched-routines-phase-2).
       The resumed batches add 37 VGAME, 34 START/END and 21 small-program
-      routines, checked at two 4,000-state seeds. Three unequal candidates
-      were excluded: START 0x11DB, MPS_LOGO 0x1ADC and 0x1C82. Open batch:
-      the VGAME/END picture-decoder family (11ED:00AE/0127, 0x48AA/0x4923):
-      the RLE rows are green at both seeds but the LZW step breaks routes
-      (state, not clocks; walk area suspect, see handoff), so the gate is
-      red until it is fixed.
+      routines, checked at two 4,000-state seeds, and the picture decoder's
+      RLE row and LZW step in VGAME and END (the step is routes-only: its
+      prefix walk checked room once for a chain of any depth, now every turn).
+      Three unequal candidates were excluded: START 0x11DB, MPS_LOGO 0x1ADC
+      and 0x1C82.
 
 ## Phase 3 - fixes and enhancements (switchable)
 
