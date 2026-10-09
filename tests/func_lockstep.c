@@ -62,6 +62,8 @@ static uint32_t io_r(cpu_t *c, uint16_t port, int width)
     return width == 1 ? (uint32_t)(v & 0xFF) : (uint32_t)(v & 0xFFFF);
 }
 
+static int g_dos;                  /* the routine under test is in DOS_STUBS: INT 21h is answered here */
+
 static int int_h(cpu_t *c, uint8_t vec)
 {
     side_t *s = side_of(c);
@@ -69,6 +71,16 @@ static int int_h(cpu_t *c, uint8_t vec)
     for (int i = 0; i < 8; i++) s->io = mix(s->io, c->r[i]);
     for (int i = 0; i < 4; i++) s->io = mix(s->io, c->seg[i]);
     s->io = mix(s->io, ((uint64_t)c->ip << 16) | c->flags);
+    if (g_dos && vec == 0x21) {     /* a DOS that answers: AX (and DX), and CF one time in four */
+        s->nread++;
+        const uint64_t v = mix(s->io, s->nread);   /* (the record so far is the same on both sides) */
+        const int wide = get_r8(c, R_AH) == 0x42 || ((v >> 56) & 3) == 1;
+        c->r[R_AX] = (uint16_t)(v >> 16);
+        if (((v >> 58) & 3) == 0) set_r8(c, R_AL, 0);  /* AL 0 (success, found) one time in four */
+        if (wide) c->r[R_DX] = (uint16_t)(v >> 32);
+        set_flag(c, F_CF, ((v >> 60) & 3) == 0);
+        return 1;
+    }
     return 0;                       /* not emulated: the CPU dispatches it */
 }
 
@@ -150,6 +162,8 @@ static const struct { uint16_t seg, ip; uint8_t reg; uint16_t disp; uint16_t val
     { 0x0000, 0x48AA, PLANT_ABS, 0x3F86, 0x0002 },   /* ... so the LZW step runs its body, briefly */
     { 0x11ED, 0x00AE, PLANT_ABS, 0x9688, 0x989B },   /* pic_rle_row, VGAME's copy */
     { 0x11ED, 0x00AE, PLANT_ABS, 0x968A, 0x0002 },
+    { 0x0000, 0x890A, PLANT_ABS, 0x8D6E, 0x8F81 },   /* pic_rle_row, START's copy */
+    { 0x0000, 0x890A, PLANT_ABS, 0x8D70, 0x0002 },
 };
 
 static const char *g_ctx = "";   /* what the comparison in progress is: " (mid-run stop)" */
@@ -244,24 +258,59 @@ static const struct { const char *module; uint16_t ip; int arg; uint16_t v[2]; }
     { "START.EXE", 0x1B37, 0, { 0x0064, 0x0065 } },     /* the map caption's kinds 64h and 65h */
 };
 
+/* Routines whose own RET lies outside the 0x300 bytes from their entry (a long routine entered at
+ * its first piece, or one that ends in a shared tail placed before it): where their code starts and
+ * how far it reaches. */
+static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
+    { "END.EXE", 0x3021, 0x3021, 0x0700 },      /* the scorer: its RET is at 0x03680 */
+    { "START.EXE", 0x9D06, 0x9D06, 0x0500 },    /* the formatter: its exit is at entry + 4CFh */
+    { "END.EXE", 0x5678, 0x5678, 0x0500 },
+    { "START.EXE", 0x94FA, 0x94FA, 0x1000 },    /* itoa and ltoa: the shared conversion returns at 0x0A4B6 */
+    { "START.EXE", 0x9516, 0x9516, 0x1000 },
+    { "START.EXE", 0xA210, 0x98A8, 0x0990 },    /* the C runtime's DOS returns: START 0x098A8-0x098C9 */
+    { "START.EXE", 0xA4B8, 0x98A8, 0x0C10 },
+    { "START.EXE", 0xA520, 0x98A8, 0x0D00 },
+    { "END.EXE", 0x5096, 0x5096, 0x0410 },      /* ... END 0x05482-0x054A3 */
+};
+static uint16_t g_from, g_span = 0x300; /* the routine under test's code: from g_from, g_span bytes */
+
+/* Routines whose paths go on after DOS calls: here INT 21h is answered by int_h (AX and sometimes DX
+ * from the same hash as port reads, CF set one time in four) instead of running through a vector that
+ * the loaded image's bytes make up, which seldom comes back. Both sides get the same answers. */
+static const struct { const char *module; uint16_t ip; } DOS_STUBS[] = {
+    { "START.EXE", 0xA210 },            /* close */
+    { "START.EXE", 0xA4B8 },            /* unlink */
+    { "START.EXE", 0xA520 },            /* lseek */
+    { "END.EXE", 0x5096 },
+    { "START.EXE", 0x800A }, { "END.EXE", 0x3FA4 },     /* START's and END's own wrappers */
+    { "START.EXE", 0x8030 }, { "END.EXE", 0x3FCA },
+    { "START.EXE", 0x8123 }, { "END.EXE", 0x40BD },
+    { "START.EXE", 0x8144 }, { "END.EXE", 0x40DE },
+    { "START.EXE", 0x816F }, { "END.EXE", 0x4109 },
+    { "START.EXE", 0x8075 }, { "START.EXE", 0x804E },
+    { "START.EXE", 0x9873 }, { "END.EXE", 0x544D },     /* the run-time messages */
+    { "START.EXE", 0x9800 }, { "END.EXE", 0x53DA },
+    { "START.EXE", 0x9115 }, { "END.EXE", 0x500B },     /* the vectors put back */
+};
+
 static machine_t g_m;           /* side 1's CPU lives in a machine: matched code takes one */
 
 /* A matched routine's call into original code, run here by plain stepping:
  * the harness has no events to service. */
 /* Step until the routine's own RET (near, or far) taken with SP at entry_sp. */
 /* The routine's own RET: at the caller's stack level and inside the routine's
- * code (within 0x300 bytes of its entry). A random callee that pops one word
+ * code (within 0x300 bytes from its entry, or its SPANS range). A random callee that pops one word
  * too many returns to the caller's address from far away - a RET the routine
  * did not make, after which the two sides are not comparable. */
 static int g_trace;                     /* print every instruction of a re-run, to see where two sides part */
-static uint16_t g_reach;                /* the furthest instruction run inside the routine, from its entry */
+static uint16_t g_reach;                /* the furthest instruction run inside the routine, from g_from */
 static int run_to_ret(cpu_t *a, uint16_t entry_sp, int far, int *steps, uint16_t cs, uint16_t ip)
 {
     while (*steps < 100000) {
         if (g_trace) printf("      %04X:%04X clk %llu sp %04X\n", a->seg[S_CS], a->ip, (unsigned long long)a->icount, a->r[R_SP]);
         const uint16_t here = a->ip;
-        const int inside = a->seg[S_CS] == cs && (uint16_t)(here - ip) < 0x300;
-        if (inside && (uint16_t)(here - ip) > g_reach) g_reach = (uint16_t)(here - ip);
+        const int inside = a->seg[S_CS] == cs && (uint16_t)(here - g_from) < g_span;
+        if (inside && (uint16_t)(here - g_from) > g_reach) g_reach = (uint16_t)(here - g_from);
         const uint8_t op = a->mem[phys(a->seg[S_CS], a->ip)];
         const uint16_t sp_before = a->r[R_SP];
         cpu_step(a);
@@ -350,6 +399,12 @@ int main(int argc, char **argv)
         memcpy(g_mem[0], g_pristine, MEM_SIZE);
         memcpy(g_mem[1], g_pristine, MEM_SIZE);
         const uint16_t cs = (uint16_t)(base + o->seg), ip = o->ip;
+        g_from = ip; g_span = 0x300;
+        for (unsigned k = 0; k < sizeof SPANS / sizeof SPANS[0]; k++)
+            if (!strcmp(SPANS[k].module, o->module) && SPANS[k].ip == o->ip) { g_from = SPANS[k].from; g_span = SPANS[k].span; }
+        g_dos = 0;
+        for (unsigned k = 0; k < sizeof DOS_STUBS / sizeof DOS_STUBS[0]; k++)
+            if (!strcmp(DOS_STUBS[k].module, o->module) && DOS_STUBS[k].ip == o->ip) g_dos = 1;
         unsigned long long mc = 0, ms = 0, mb = 0;
         for (int s = 0; s < states; s++) {
             if (s == states / 2) {
@@ -436,8 +491,8 @@ int main(int argc, char **argv)
              * or to the furthest instruction the original ran in the routine
              * when that lies further: START's route leg runs to +0x123, and a
              * write landing past +0x100 went unseen at one seed. */
-            const uint32_t self = phys(cs, ip);
-            const size_t window = reach + 8u > 0x300u ? (size_t)reach + 8u : 0x300u;
+            const uint32_t self = phys(cs, g_from);
+            const size_t window = reach + 8u > g_span ? (size_t)reach + 8u : g_span;
             if (memcmp(g_mem[0] + self, g_pristine + self, window)) { ms++; restore(); continue; }
             /* The event limit: a routine told it has one instruction fewer than
              * the original takes must decline. Running anyway would carry the
