@@ -173,7 +173,7 @@ static void keep_step(drawlive_step *s, const drawfeed_frame *fr)
 /* Draw the in-between list on a copy of the replay at the skeleton's start. */
 static const uint8_t *draw_list(drawlive *r, const drawlive_step *skel)
 {
-    memcpy(&r->scratch, &skel->start, sizeof r->scratch);
+    drawlist_copy(&r->scratch, &skel->start);
     for (int i = 0; i < r->ilist.n; i++)
         drawlist_record(&r->scratch, r->ilist.rec[i].kind, r->ilist.rec[i].v, r->ilist.rec[i].n);
     const drawlist_page *disp = drawlist_get(&r->scratch, 0xA000);
@@ -204,10 +204,10 @@ int drawlive_update(drawlive *r, drawfeed *f)
     int taken = 0;
     const drawfeed_frame *fr;
     while ((fr = drawfeed_oldest(f))) {
-        if (fr->seq != r->next_seq) drawlist_init(&r->list);    /* a frame was dropped: wait for a seed */
+        if (fr->seq != r->next_seq) drawlist_reset(&r->list);   /* a frame was dropped: wait for a seed */
         r->next_seq = fr->seq + 1;
         drawlive_step *step = r->interp ? &r->step[r->last ^ 1] : NULL;
-        if (step) memcpy(&step->start, &r->list, sizeof step->start);
+        if (step) drawlist_copy(&step->start, &r->list);
         size_t at = 0;
         char kind;
         uint64_t icount;
@@ -241,7 +241,7 @@ int drawlive_update(drawlive *r, drawfeed *f)
         } else {
             r->inexact++;
             r->shown = 0;
-            drawlist_init(&r->list);
+            drawlist_reset(&r->list);
             drawfeed_reseed(f);
         }
         drawfeed_pop(f);

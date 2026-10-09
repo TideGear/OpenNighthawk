@@ -48,7 +48,7 @@ target_link_libraries(f117machine PUBLIC f117cpu)
 
 # ---- Presentation shared by the window and the headless runner -----------
 add_library(f117present STATIC src/host/present.c src/host/keys.c src/host/inputlog.c
-  src/present/drawlist.c src/present/drawfeed.c src/present/interp.c)
+  src/present/drawlist.c src/present/drawfeed.c src/present/interp.c src/present/hires.c)
 target_include_directories(f117present PUBLIC src/host src/present src/matched)
 target_link_libraries(f117present PUBLIC f117machine)
 
@@ -240,6 +240,9 @@ if(F117R_BUILD_TESTS)
   # Stage 3's in-between frames against the same log (test_interp LOG).
   add_executable(test_interp tests/test_interp.c)
   target_link_libraries(test_interp PRIVATE f117present)
+  # Stage 2's sub-pixel polygons against the same log (test_hires LOG N).
+  add_executable(test_hires tests/test_hires.c)
+  target_link_libraries(test_hires PRIVATE f117present)
 
   add_executable(test_overrides tests/test_overrides.c)
   target_link_libraries(test_overrides PRIVATE f117present f117recomp_none)

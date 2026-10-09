@@ -288,6 +288,30 @@ The pass takes about 5 s a window at N = 2 in Python (only the 0.1-0.6% of pixel
 cost of the polygon stage is small; what is not cheap is everything still scaled (the HUD and its text, sprites and
 the cockpit art, which are most of the picture's remaining coarseness).
 
+### Sub-pixel re-projection in C (9 October 2026)
+
+`src/present/hires.c` is `hires_subpixel.py`'s builder in C, and `drawlist.c` gained the fine picture
+`HiPage` keeps (`drawlist_set_scale`: every write mirrored as an N x N block unless the page is paused
+while a refilled polygon's rows arrive; blits and page copies between held pages carry the fine rows).
+`build/test_hires.exe LOG N [--carry]` prints the study's report; on the eight windows of the C replay
+(re-recorded with entry 41) it is identical to `hires_subpixel.py`'s at N = 1, 2 and 4 (24 of 24).
+At N = 1 every display page is the replay's own, seeded each phase and carried (447 of 447 both ways).
+
+| window | polygons (refilled) | N = 2: flat, rule alone / guard restores / unlike scaled | N = 4 | N = 10 (C only) | N = 2 carried |
+|---|---|---|---|---|---|
+| strike 8.53B | 2,601 (2,347) | 100% / 0 / 0.022% | 100% / 0 / 0.033% | 99.999% / 13 / 0.040% | 99.999% / 16 / 0.286% |
+| strike 8.70B | 3,022 (2,882) | 100% / 0 / 0.015% | 100% / 0 / 0.027% | 100% / 0 / 0.034% | 100% / 2 / 0.076% |
+| landing 9.70B | 4,916 (4,876) | 100% / 0 / 0.216% | 100% / 2 / 0.403% | 100% / 2 / 0.532% | 100% / 0 / 0.216% |
+| landing 9.89B | 2,585 (2,498) | 100% / 0 / 0.177% | 100% / 0 / 0.243% | 100% / 0 / 0.306% | 100% / 0 / 0.177% |
+| air-to-air type 6, 5.08B | 3,305 (3,204) | 99.997% / 37 / 0.054% | 99.989% / 137 / 0.115% | 99.981% / 229 / 0.159% | 99.994% / 75 / 0.443% |
+| air-to-air type 6, 5.23B | 3,037 (2,704) | 100% / 1 / 0.057% | 100% / 1 / 0.114% | 100% / 5 / 0.154% | 100% / 2 / 0.324% |
+| air-to-air type 5, 6.793B | 4,111 (3,771) | 100% / 2 / 0.060% | 99.997% / 32 / 0.104% | 99.997% / 38 / 0.137% | 99.990% / 116 / 0.348% |
+| take-off 2.50B | 139 (133) | 100% / 0 / 0.000% | 100% / 0 / 0.001% | 100% / 0 / 0.001% | 100% / 0 / 0.000% |
+
+"Carried" seeds the pages once, as the live replay does, instead of from each phase's dumps: the fine
+detail of what a phase does not redraw then stays, so more of the picture differs from the scaled
+copy, and the horizon residue the guard restores is counted over the carried picture.
+
 ## Stage 3: interpolation, a 320x200 study (8 October 2026)
 
 `tools/interp_frame.py LOG` (`--check`, `--pairing`, `--primitives`, `--geometry`, `--predict`,
