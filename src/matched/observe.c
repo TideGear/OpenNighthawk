@@ -104,6 +104,11 @@ static int hook_game_draw(machine_t *m)
             v[0] = 0xA000; v[1] = 0;
             for (uint32_t a = 0; a < 64000; a++) v[2 + a] = mem_read8(c, phys(0xA000, (uint16_t)a));
             o->prim(o->user, c->icount, 'Y', v, 2 + 64000);
+            /* and the palette the display would show ('A': 256 RGB triples, 6-bit
+             * DAC values), so a picture rebuilt from the list can be seen in
+             * its own colours */
+            for (uint32_t a = 0; a < 768; a++) v[a] = m->dac_display[a];
+            o->prim(o->user, c->icount, 'A', v, 768);
         }
     }
     return 0;

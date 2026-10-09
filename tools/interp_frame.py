@@ -279,7 +279,7 @@ def project(xf):
     if zhi >= 0x100:
         a, b = idiv(x >> 8, zhi), idiv(y >> 8, zhi)
     elif zhi >= 1:
-        d = s16((z >> 8) & 0xFFFF) >> 1
+        d = ((z >> 8) & 0xFFFF) >> 1
         a, b = idiv(x >> 1, d), idiv(y >> 1, d)
     else:
         return None
@@ -295,27 +295,45 @@ def vertex_distance(va, vb):
 
 
 def batch_distance(a, b):
-    """Mean screen motion of the vertices of two batches of equal size (None: nothing to compare)."""
+    """Mean screen motion of the vertices (the first min(n) of two batches; None: nothing to compare)."""
     ds = [vertex_distance(x, y) for x, y in zip(a.verts, b.verts)]
     ds = [d for d in ds if d is not None]
     return sum(ds) / len(ds) if ds else None
 
 
 MAX_MOTION = 60        # a batch whose vertices moved further than this (pixels, mean) is not paired
+MAX_COUNT_DIFF = 0.1   # batches of 3 or more vertices may differ in count by this share (at least 1)
+
+
+def compatible(a, b):
+    """May batch a be the same model chunk as batch b? Equal vertex counts, or - for chunks of
+    three or more vertices - counts that differ by a few (a chunk whose far vertices were not
+    needed this step) when the shared first vertices are near each other in camera space."""
+    if a.sig == b.sig:
+        return True
+    lo = min(a.sig, b.sig)
+    if lo < 3 or abs(a.sig - b.sig) > max(1, int(MAX_COUNT_DIFF * max(a.sig, b.sig))):
+        return False
+    for va, vb in zip(a.verts[:lo], b.verts[:lo]):
+        z = max(abs(va[2]), abs(vb[2]), 1 << 16)
+        if max(abs(va[k] - vb[k]) for k in range(3)) > z // 4:
+            return False
+    return True
 
 
 def align_batches(A, B):
-    """Pair batches of two frames: equal vertex counts, in order, by the longest common
-    subsequence, look-alikes decided by the smaller screen motion. Returns [(i, j)]."""
+    """Pair batches of two frames in order by the longest common subsequence of compatible
+    batches (equal counts count most), look-alikes decided by the smaller screen motion.
+    Returns [(i, j)]."""
     na, nb = len(A), len(B)
 
     def score(i, j):
-        if A[i].sig != B[j].sig:
+        if not compatible(A[i], B[j]):
             return None
         d = batch_distance(A[i], B[j])
         if d is not None and d > MAX_MOTION:
             return None
-        return 1000.0 - (d if d is not None else 0.0)
+        return 1000.0 - 100.0 * abs(A[i].sig - B[j].sig) - (d if d is not None else 0.0)
     best = [[0.0] * (nb + 1) for _ in range(na + 1)]
     for i in range(na - 1, -1, -1):
         for j in range(nb - 1, -1, -1):
@@ -451,7 +469,7 @@ def interp_edge(ea, eb, w, bat_a, bat_b, viewport, space, stats):
     if space == "camera" and lo == 0:
         va0, va1 = vertex_of(bat_a, ea["slot"], 0), vertex_of(bat_a, ea["slot"], 1)
         vb0, vb1 = vertex_of(bat_b, eb["slot"], 0), vertex_of(bat_b, eb["slot"], 1)
-        if va0 and va1 and vb0 and vb1 and 2 not in (va0[5], va1[5], vb0[5], vb1[5]):
+        if va0 and va1 and vb0 and vb1 and 2 not in (va0[5], va1[5], vb0[5], vb1[5]) and                 bat_a.edges[ea["slot"]] == bat_b.edges[eb["slot"]]:
             ox, oy = s16(ea["x0"]) - s16(va0[3]), s16(ea["y0"]) - s16(va0[4])
             ox2, oy2 = s16(eb["x0"]) - s16(vb0[3]), s16(eb["y0"]) - s16(vb0[4])
             if (ox, oy) == (ox2, oy2) and s16(ea["x1"]) - s16(va1[3]) == ox and s16(ea["y1"]) - s16(va1[4]) == oy and \
@@ -568,10 +586,25 @@ class Pairing:
                     if id(p) in paired:
                         c["polygons paired"] += 1
                     elif b.idx not in bpaired:
-                        c["polygons unpaired: batch has no pair"] += 1
+                        c["polygons unpaired: " + self.why(fr, b)] += 1
                     else:
                         c["polygons unpaired: no polygon with its edges in the paired batch"] += 1
         return c
+
+    def why(self, fr, b):
+        """Why batch b of frame fr has no pair in the other frame."""
+        other = self.B if fr is self.A else self.A
+        same = [o for o in other.batches if (compatible(b, o) if fr is self.A else compatible(o, b))]
+        if not same:
+            return "no batch of its size (%s)" % ("1 vertex" if b.sig == 1 else "model split or merged, or count changed too much")
+        near = []
+        for o in same:
+            d = batch_distance(b, o) if fr is self.A else batch_distance(o, b)
+            if d is None or d <= MAX_MOTION:
+                near.append(o)
+        if not near:
+            return "every batch with its vertex count moved over %d px" % MAX_MOTION
+        return "equal batch exists but in another order or taken by a nearer one"
 
     def motion(self):
         """Per-vertex screen motion between the frames over the paired batches (max of |dx|, |dy|)."""
@@ -661,6 +694,11 @@ def inbetween(A, B, pairing, t, space="screen", stats=None, skeleton=None):
             nv = interp_line(v, other.recs[mine[n]].v, w)
             replace[i] = "L %s %s\n" % (skel.recs[i].line.split()[1], " ".join(str(x) for x in nv))
             stats["outline edges moved"] += 1
+    for i, r in enumerate(skel.recs):
+        if r.kind == "D" and r.v[0] == 44 and len(r.v) > 5 and i not in replace:
+            # the present: the replay's own work page is the source, not the bytes the original
+            # logged (those are the original's picture and would hide every change)
+            replace[i] = "D %s %s\n" % (r.line.split()[1], " ".join(str(x) for x in r.v[:5]))
     return [replace.get(i, r.line) for i, r in enumerate(skel.recs)], stats
 
 
@@ -800,15 +838,18 @@ def check_exact(frames, space, eps=1e-6):
 
 
 def colour_error(pic_a, pic_b, pal, rows=None):
-    """Fraction of pixels whose index differs and the mean per-channel difference (0-255) of the
-    two display pages over the first `rows` rows."""
+    """Over the first `rows` rows of two display pages: the fraction of pixels whose index differs,
+    the mean per-channel difference (0-255), and the fraction that differ by more than 32 per
+    channel on average (a shade change is not a moved edge)."""
     n = 320 * (rows or 200)
-    d = diff = 0
+    d = diff = big = 0
     for x, y in zip(pic_a[:n], pic_b[:n]):
         if x != y:
             diff += 1
-            d += sum(abs(p - q) for p, q in zip(pal[x], pal[y]))
-    return diff / n, d / (3.0 * n)
+            e = sum(abs(p - q) for p, q in zip(pal[x], pal[y]))
+            d += e
+            big += e > 96
+    return diff / n, d / (3.0 * n), big / n
 
 
 def predict(frames, space, window_rows=107):
@@ -841,36 +882,65 @@ def report_predict(rows):
         return
     for scope in ("3D", "all"):
         for name in ("interp", "hold n", "hold n+2"):
-            fr = [r[name + " " + scope][0] for r in rows]
-            ce = [r[name + " " + scope][1] for r in rows]
-            print("  %-9s %-3s: %.2f%% of pixels differ from the real middle frame (mean colour error %.2f/255), worst frame %.2f%%" % (
-                name, scope, 100.0 * sum(fr) / len(fr), sum(ce) / len(ce), 100.0 * max(fr)))
+            fr = [r[name + " " + scope] for r in rows]
+            print("  %-9s %-3s: %.2f%% of pixels differ from the real middle frame, %.2f%% by more than a shade "
+                  "(mean colour error %.2f/255); worst frame %.2f%% / %.2f%%" % (
+                      name, scope, 100.0 * sum(f[0] for f in fr) / len(fr), 100.0 * sum(f[2] for f in fr) / len(fr),
+                      sum(f[1] for f in fr) / len(fr), 100.0 * max(f[0] for f in fr), 100.0 * max(f[2] for f in fr)))
 
 
-def strips(frames, outdir, space, steps, first=0, count=2, rows=200):
-    """PNG strips: for logic pairs first .. first + count - 1, the in-between frames at t = j / steps,
-    j = 0 .. steps, as a grid (two columns), written to outdir/strip_NN.png."""
-    import os
-    os.makedirs(outdir, exist_ok=True)
-    for n in range(first, min(first + count, len(frames) - 2)):
-        A, B = frames[n], frames[n + 1]
-        pal = palette_of(A.last)
-        P = Pairing(A, B)
-        pics = []
-        for j in range(steps + 1):
-            t = j / steps
-            lines, st = inbetween(A, B, P, t, space)
-            _, y = render(A if (t < 0.5 or t <= 0) else B, lines)
-            pics.append(picture(y, pal)[:320 * 3 * rows])
-        rgb, W, H = montage_rows(pics, 2, rows)
-        path = os.path.join(outdir, "strip_%02d.png" % n)
-        write_png(path, rgb, W, H)
-        print("wrote", path)
+def geometry_error(frames, space):
+    """The edge endpoints of polygons present in frames n, n + 1 and n + 2 with the same clip
+    status: how far (pixels, the larger of |dx| and |dy| per endpoint) frame n held, and the
+    midpoint of n and n + 2 interpolated, lie from where frame n + 1 really has them."""
+    hold, interp = [], []
+    for n in range(len(frames) - 2):
+        A, B, C = frames[n], frames[n + 1], frames[n + 2]
+        pab, pac = Pairing(A, B), Pairing(A, C)
+        ab = {id(pa): pb for pa, pb, _, _ in pab.poly_pairs}
+        for pa, pc, ba, bc in pac.poly_pairs:
+            pb = ab.get(id(pa))
+            if pb is None:
+                continue
+            sts = [e["st"] for e in pa.edges]
+            if sts != [e["st"] for e in pb.edges] or sts != [e["st"] for e in pc.edges]:
+                continue
+            vp = pa.f[1:5]
+            for ea, eb, ec in zip(pa.edges, pb.edges, pc.edges):
+                if ea["st"] & 0x80:
+                    continue
+                mid = interp_edge(ea, ec, 0.5, ba, bc, vp, space, Counter())
+                for (xa, ya), (xb, yb), (xm, ym) in (((s16(ea["x0"]), s16(ea["y0"])), (s16(eb["x0"]), s16(eb["y0"])), (s16(mid["x0"]), s16(mid["y0"]))),
+                                                     ((s16(ea["x1"]), s16(ea["y1"])), (s16(eb["x1"]), s16(eb["y1"])), (s16(mid["x1"]), s16(mid["y1"])))):
+                    hold.append(max(abs(xa - xb), abs(ya - yb)))
+                    interp.append(max(abs(xm - xb), abs(ym - yb)))
+    return hold, interp
 
 
-def montage_rows(pictures, cols, rows, gap=2):
-    """Tile pictures of 320 x rows RGB into one image."""
-    w, h = 320, rows
+def report_geometry(hold, interp):
+    if not hold:
+        print("no polygons in three frames")
+        return
+    for name, e in (("hold n", hold), ("interpolated", interp)):
+        print("  %-12s edge endpoints off from the real middle frame: mean %.2f px, median %d, p95 %d, p99 %d; exact %.1f%%, within 1 px %.1f%% (%d endpoints)" % (
+            name, sum(e) / len(e), percentile(e, .5), percentile(e, .95), percentile(e, .99),
+            100.0 * sum(1 for x in e if x == 0) / len(e), 100.0 * sum(1 for x in e if x <= 1) / len(e), len(e)))
+
+
+def crop_scale(rgb, box, scale):
+    """Crop a 320 x 200 RGB picture to box = (x0, y0, x1, y1) and enlarge it by whole pixels."""
+    x0, y0, x1, y1 = box
+    rows = []
+    for y in range(y0, y1):
+        row = rgb[(y * 320 + x0) * 3:(y * 320 + x1) * 3]
+        if scale > 1:
+            row = b"".join(row[k:k + 3] * scale for k in range(0, len(row), 3))
+        rows.extend([row] * scale)
+    return b"".join(rows), (x1 - x0) * scale, (y1 - y0) * scale
+
+
+def tile(pictures, w, h, cols, gap=2):
+    """Tile equal-sized RGB pictures (w x h) into one image."""
     nrows = (len(pictures) + cols - 1) // cols
     W, H = cols * w + (cols - 1) * gap, nrows * h + (nrows - 1) * gap
     img = bytearray(b" " * (W * H * 3))
@@ -882,19 +952,47 @@ def montage_rows(pictures, cols, rows, gap=2):
     return bytes(img), W, H
 
 
+def strips(frames, outdir, space, steps, first=0, count=2, box=(0, 0, 320, 200), scale=1, cols=2, name="strip"):
+    """PNG strips: for logic pairs first .. first + count - 1, the in-between frames at t = j / steps,
+    j = 0 .. steps (the display page, cropped to box and enlarged), as a grid, written to
+    outdir/NAME_NN.png."""
+    import os
+    os.makedirs(outdir, exist_ok=True)
+    for n in range(first, min(first + count, len(frames) - 2)):
+        A, B = frames[n], frames[n + 1]
+        pal = palette_of(A.last)
+        P = Pairing(A, B)
+        pics = []
+        for j in range(steps + 1):
+            t = j / steps
+            lines, st = inbetween(A, B, P, t, space)
+            _, y = render(A if (t < 0.5 or t <= 0) else B, lines)
+            pic, w, h = crop_scale(picture(y, pal), box, scale)
+            pics.append(pic)
+        rgb, W, H = tile(pics, w, h, cols)
+        path = os.path.join(outdir, "%s_%02d.png" % (name, n))
+        write_png(path, rgb, W, H)
+        print("wrote", path)
+
+
 def main(argv):
     import argparse
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("log")
     ap.add_argument("--per-frame", type=int, default=0, help="phases per logic frame (default: split after each present)")
-    ap.add_argument("--space", choices=("screen", "camera"), default="screen")
+    ap.add_argument("--space", choices=("screen", "camera"), default="camera")
     ap.add_argument("--pairing", action="store_true", help="pairing rates and causes")
     ap.add_argument("--check", action="store_true", help="t = 0 and t = 1 against the Stage 1 replay")
     ap.add_argument("--predict", action="store_true", help="interpolate n and n+2 at 1/2 and compare with n+1")
+    ap.add_argument("--geometry", action="store_true", help="edge endpoints: interpolated n,n+2 midpoint against real n+1")
     ap.add_argument("--strip", metavar="DIR", help="write PNG strips of in-between frames")
     ap.add_argument("--from-frame", type=int, default=0, help="first logic frame to use")
     ap.add_argument("--frames", type=int, default=0, help="how many frames to use (default all)")
     ap.add_argument("--count", type=int, default=2, help="strips: how many logic steps to draw")
+    ap.add_argument("--crop", default="0,0,320,200", help="strips: x0,y0,x1,y1 of the display page to show")
+    ap.add_argument("--scale", type=int, default=1, help="strips: enlargement")
+    ap.add_argument("--cols", type=int, default=2, help="strips: tiles per row")
+    ap.add_argument("--name", default="strip")
     ap.add_argument("--steps", type=int, default=7, help="in-between frames per logic step (strips)")
     a = ap.parse_args(argv)
     phases = read_log(a.log)
@@ -910,8 +1008,10 @@ def main(argv):
             print("  %s: %d" % (k, res[k]))
     if a.predict:
         report_predict(predict(frames, a.space))
+    if a.geometry:
+        report_geometry(*geometry_error(frames, a.space))
     if a.strip:
-        strips(frames, a.strip, a.space, a.steps, 0, a.count)
+        strips(frames, a.strip, a.space, a.steps, 0, a.count, tuple(int(x) for x in a.crop.split(",")), a.scale, a.cols, a.name)
     return phases, frames, a
 
 
