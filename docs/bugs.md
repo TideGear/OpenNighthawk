@@ -53,7 +53,7 @@ Status values:
 
 - **What happens.** The flight model steps once per drawn frame and divides
   every per-second rate by S = `[0x368E]`, frames per second. AI and weapon
-  guidance run on the 60 Hz tick. The controller clamps S to [4 -
+  guidance on the 60 Hz tick (unverified; see below). The controller clamps S to [4 -
   time_scale, 15]. Above about 16-18 fps the correction carried in
   `[0x43E8]` underflows the unsigned tick count, and S oscillates between 15
   and 3 every four seconds. Missiles miss and enemy AI degrades. Slow
@@ -92,20 +92,8 @@ Status values:
   limiter at exactly 15 frames a second (4 ticks), which would hold S at its
   clamp with the clock real; the wait's own cap is not 15 and is not what
   holds the game there.
-- **Speed sweep (9 Oct 2026, `tools/d1_check.py --no-fix --route`).** In
-  flight the game draws at most about 16.5-17 frames a second whatever the
-  machine's speed, and at GOG's 9 MIPS it already does: on the Middle East
-  strike and the Central Europe air-to-air flights S sits mostly at its
-  clamp of 15 at 9 MIPS (16.7 and 16.5 frames a second). Faster machines
-  add at most 2% more frames and run the mission clock 3-6% behind GOG's
-  (13-15 MIPS). Only the parked `boot_to_flight` jet has spare time at 9
-  MIPS (S 9, 11.6 frames a second, the figures above), reaching the ceiling
-  at 13-14 MIPS (S 13, clock within 1% of GOG's) and the clamp from 16 MIPS
-  (clock 14% behind). So GOG's speed is the highest that does not move the
-  world: the app's default stays there. At every speed the mission clock
-  runs ahead of real time (209 in 162 s parked, 196 and 125 in 162 and
-  103 s flying at 9 MIPS): S lags the frames drawn; that is the original
-  under GOG's DOSBox.
+- **Speed study (9 Oct 2026, `docs/speed-sweep.md`).** Not reproduced in the original's own loop. The frame wait at `0x0409` runs in this build (traced at 40 MIPS), and in 199 flights at 3-40 MIPS and on the 386 profile S never fell from 15 to 3. The model that predicted the swing omitted the wait. At 13 MIPS and up the frame rate settles near 16.7 and S sits at 15, so the mission clock runs about 1.11 times real time. On boot_to_flight at GOG's 9 MIPS it runs 1.29 times real time (S 9 against 11.6 frames a second). Measured against GOG's own speed, 13-14 MIPS keeps the clock within 1% and 16 MIPS and up runs it 14% slower. No speed gives real time (1.00).
+- **AI and weapons.** The description above has AI and weapon guidance on the 60 Hz tick. The launch check at VGAME `0x5046` runs only when the accumulator `[0x3D8A]` changes, and that accumulator is updated in the per-frame code beside the frame counter (`0x4552`-`0x45BE`, next to `0x4423`), so launches are checked per drawn frame. Guidance (`0x683E`) is not checked yet, and no enemy hit rate has been measured: that needs a controlled threat profile (`docs/speed-sweep.md`).
 - **Fix available: `--fix D1`,** a frame limiter. An override at VGAME
   `0x441D`, the controller's entry, which every frame passes once, holds
   a frame that arrives before its slot (time passes and interrupts are

@@ -16,9 +16,12 @@ Earlier session logs are in `git log -p handoff.md`.
    as the untracked `test.bat`.
 2. The app's default frame rate is the open decision. The owner's rule (9 Oct):
    the default is the highest frame rate at which nothing breaks, with parity
-   first and the developers' intent second. Read the speed study (branch
-   `speed-sweep`, and `docs/bugs.md` D1) and decide with the owner. The current
-   default is `timing = dosbox` (GOG's 9 million instructions a second).
+   first and the developers' intent second. Read `docs/speed-sweep.md` (merged
+   from branch `speed-sweep`) and `docs/bugs.md` D1, then decide with the owner.
+   The current default is `timing = dosbox` (GOG's 9 million instructions a
+   second). The speed study has not finished: the 15 frames a second limiter
+   candidate, the pilots' engagement results, the control-response measurements
+   and the `--fix D1` sweep are still to run.
 3. Gate, then push, as below. Commit each verified piece with its scoreboard
    title.
 
@@ -81,7 +84,7 @@ Earlier session logs are in `git log -p handoff.md`.
 - Worktrees (`D:\f117-wt`): every Phase 2 and live-path branch is merged into
   master: `p2-vgame`, `p2-start`, `p2-small`, `p3-live`, `ref-vm`,
   `lockstep-par`, `sound-speech`, `t386-frames`. `speed-sweep` holds the speed
-  study's tools and results: review it, then merge it. `p3-stage2` and
+  study is merged: `tools/speed_sweep.py`, `tools/d1_check.py --route`, the write-up `docs/speed-sweep.md`, and the 199 raw flights in `D:\f117-gate\speedsweep\main\runs.jsonl` (with `table.txt`). `p3-stage2` and
   `p3-stage3` are old. Remove merged worktrees when convenient
   (`git worktree remove`).
 
@@ -176,6 +179,14 @@ Earlier session logs are in `git log -p handoff.md`.
       9 MIPS (S 9 against 11.6 frames a second).
     - No 15-to-3 swing appeared in any run here. The earlier D1 text said it
       would; `docs/bugs.md` D1 is corrected.
+  - Speed study (`docs/speed-sweep.md`): the original's wait runs in this build
+    (traced at 40 MIPS); 199 flights at 3-40 MIPS and on the 386 profile never
+    swung. Game ticks: 70.08 a second at 7-8.5 MIPS, 67.9-68.2 at 9-10, 66.75
+    from 11 MIPS up (one tick lost in 21 frames), 69.2 on the 386 profile. The
+    controller assumes 60 ticks a second. The mission clock per emulated second,
+    over nine typed routes: 1.28 on the 386 profile, 1.17 at 9 MIPS, 1.11 at 40;
+    no speed gives 1.00. The manual (p. 177, as read by the agent) puts the top
+    detail level at 'average 386 and above'.
   - Open (Phase 1): file loading drift (about +0.6 s by START's roster on the
     MS-DOS machine; the disk model is RAM-disk speed).
 - **Reference machine**
@@ -227,14 +238,22 @@ Earlier session logs are in `git log -p handoff.md`.
 
 ## Open items, in order
 
-1. **The default frame rate** (the owner's decision). The candidates are GOG's
-   DOSBox pace (the current default, 9 MIPS: 1.29 times real time in our
-   build), the 386 profile (the reference hardware's pace), and a limiter at 15
-   frames a second (the hypothesis: a real-time clock). The speed study's
-   first experiment is whether the original's wait runs in our build and holds
-   the frame rate; its second is the 15 frames a second limiter. Its results are
-   on branch `speed-sweep` and in `docs/bugs.md` D1. Measure the enemy hit rate
-   and control response alongside the clock before recommending anything.
+1. **The default frame rate** (the owner's decision). The clock runs faster than
+   real time at every speed measured, so no setting is real time as the game
+   stands. Candidates: GOG's DOSBox pace (the current default), the 386 profile
+   (the hardware the manual names), and a limiter at 15 frames a second (the
+   hypothesis that keeps the clock real; not written yet). Before choosing,
+   measure what speed does to the enemy: launches and hits on the player, our
+   hits, and control response, over many missions at each speed with the same
+   mission (fixed seeds: the front end's timing changes the mission below 9
+   MIPS and on some routes above it).
+   The tick question, which the owner's decision depends on: the controller
+   assumes 60 ticks a second, while the game's timer is calibrated to the 70 Hz
+   VGA retrace (`0x1D01`, reload 17024). If the original's timer is 70 Hz on a
+   real VGA, its world runs about 70/60 = 1.17 times real time by design, even
+   with a perfect frame controller. This is the speed study's reading of the
+   listing, not measured on hardware (none is available here); settle it with
+   the owner, since it decides whether parity means that speed too.
 2. **Fixes under `--timing 386`**: a fix counts instructions, not 386 cycles,
    when it runs under the 386 profile (matched routines are run as the original
    body there; fixes are not). Decide: refuse fixes with `--timing 386`, or
@@ -284,6 +303,10 @@ Earlier session logs are in `git log -p handoff.md`.
 - `d1_check.py` flies `boot_to_flight` by default: a parked jet, not a fight.
   Use `--route` for busy missions.
 - `progress.py --title` rewrites `docs/progress.json`: commit it with the docs.
+- **Engagement results across speeds need the same mission.** The front end's
+  timing seeds the mission generator, so below 9 MIPS and on some routes above
+  it the missions differ. `tools/speed_sweep.py` flags runs whose mission differs
+  from the 9 MIPS run; compare hits and launches only on matching missions.
 - **Background work**: a killed run can leave `86Box.exe` or `f117run.exe`
   holding files; look with `tasklist` before and after. Run long jobs in the
   background; never sleep in the foreground.
