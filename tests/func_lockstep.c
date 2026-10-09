@@ -133,10 +133,19 @@ static void setup_side(cpu_t *c, const recomp_override *o, uint16_t cs, uint16_t
 
 static unsigned long long g_overrun;    /* routines that ran past the event limit */
 
-/* Sentinel words to plant, by routine (segment, IP): at DS:[reg + disp]. */
+/* Sentinel words to plant, by routine (segment, IP): at DS:[reg + disp], or at DS:disp when reg is PLANT_ABS. */
+#define PLANT_ABS 8
 static const struct { uint16_t seg, ip; uint8_t reg; uint16_t disp; uint16_t val; } PLANTS[] = {
     { 0x120A, 0x0B3B, R_DI, 0xD6B6, 0x8000 },     /* model_prepare_edge: a vertex behind the eye (x high word 8000h) */
     { 0x120A, 0x0B3B, R_BX, 0xD6B6, 0x8000 },
+    { 0x0000, 0xDB3C, PLANT_ABS, 0x49F4, 0x0032 },   /* scene_defer_object: a full list of 50 */
+    { 0x0000, 0xDB3C, PLANT_ABS, 0xE328, 0x0002 },   /* ... in view mode 2 */
+    { 0x0000, 0xDB3C, PLANT_ABS, 0x49AA, 0x0005 },   /* ... with detail class 5 */
+    { 0x0000, 0x4E5F, PLANT_ABS, 0x9912, 0x0030 },   /* frame_palette_cycle: the four phases of the clock ... */
+    { 0x0000, 0x4E5F, PLANT_ABS, 0x9912, 0x0020 },
+    { 0x0000, 0x4E5F, PLANT_ABS, 0x9912, 0x0010 },
+    { 0x0000, 0x4E5F, PLANT_ABS, 0x9912, 0x0040 },
+    { 0x0000, 0x4E5F, PLANT_ABS, 0x43DC, 0x0000 },   /* ... with the cycle enabled */
 };
 
 static const char *g_ctx = "";   /* what the comparison in progress is: " (mid-run stop)" */
@@ -360,7 +369,7 @@ int main(int argc, char **argv)
              * has no 80h byte. Each in half the states, by routine. */
             for (unsigned pk = 0; pk < sizeof PLANTS / sizeof PLANTS[0]; pk++) {
                 if (PLANTS[pk].seg != o->seg || PLANTS[pk].ip != o->ip || (rnd() & 1)) continue;
-                const uint32_t a = phys(seg[S_DS], (uint16_t)(r[PLANTS[pk].reg] + PLANTS[pk].disp));
+                const uint32_t a = phys(seg[S_DS], (uint16_t)((PLANTS[pk].reg == PLANT_ABS ? 0 : r[PLANTS[pk].reg]) + PLANTS[pk].disp));
                 if (a + 1 >= at && a < at + m->size + 2) continue;           /* not into the image */
                 for (int k = 0; k < 2; k++) {
                     const uint8_t b = (uint8_t)(PLANTS[pk].val >> (8 * k));
