@@ -532,6 +532,7 @@ static int vgame_strupr(machine_t *m)
 
 /* REPNE SCASB for AL = 0 from ES:DI with CX = FFFF, counted without
  * running it: the iterations it will take (DF honoured). */
+static void far_ret(cpu_t *c);
 static unsigned scan_zero_count(cpu_t *c, uint16_t di)
 {
     const int delta = (c->flags & F_DF) ? -1 : 1;
@@ -613,14 +614,14 @@ static unsigned copy_tail(cpu_t *c, uint16_t src_seg)
     return n;
 }
 
-/* VGAME 0x0EB50, strcpy(dst, src): ES = DS, the length (with its zero) by
+/* VGAME 0x0EB50 (and MPS_LOGO 0x01A7E, whose copy is far: the arguments a word higher, RETF), strcpy(dst, src): ES = DS, the length (with its zero) by
  * REPNE SCASB, then the copy tail; SI and DI restored, AX = dst. Declines
  * when DF is set (the tail's alignment arithmetic assumes forward). */
-static int vgame_strcpy(machine_t *m)
+static int crt_strcpy(machine_t *m, int far)
 {
     cpu_t *c = &m->cpu;
     if (c->flags & F_DF) return 0;
-    const uint16_t dst = arg(c, 0), src = arg(c, 1), es = c->seg[S_ES];
+    const uint16_t dst = arg(c, far), src = arg(c, 1 + far), es = c->seg[S_ES];
     c->seg[S_ES] = c->seg[S_DS];
     const unsigned k = scan_zero_count(c, src);
     c->seg[S_ES] = es;
@@ -645,9 +646,11 @@ static int vgame_strcpy(machine_t *m)
     c->r[R_DI] = di;
     c->r[R_BP] = cpu_pop16(c);
     c->icount += total;
-    near_ret(c);
+    if (far) far_ret(c); else near_ret(c);
     return 1;
 }
+static int vgame_strcpy(machine_t *m) { return crt_strcpy(m, 0); }
+static int mps_logo_strcpy(machine_t *m) { return crt_strcpy(m, 1); }
 
 /* VGAME 0x0EDE0, memcpy(dst, src, n) within DS (ES = DS), the copy tail
  * when n is non-zero; SI and DI restored, AX = dst. Forward only. */
@@ -890,23 +893,25 @@ static int mask_test(machine_t *m, uint16_t at)
 static int vgame_mask_test(machine_t *m) { return mask_test(m, 0x9264); }
 static int start_mask_test(machine_t *m) { return mask_test(m, 0xAE54); }
 
-/* VGAME 1058:0C9F: copy the axis word at [SI+2CCA] into its three
- * derived slots ([SI+2CB2], [SI+2CA2], [SI+2CAA]). AX preserved. */
-static int vgame_axis_spread(machine_t *m)
+/* VGAME 1058:0C9F and SETUP 0x023AA: copy the axis word at [SI+src] into its
+ * three derived slots ([SI+d1], [SI+d2], [SI+d3]). AX preserved. */
+static int axis_spread(machine_t *m, uint16_t src, uint16_t d1, uint16_t d2, uint16_t d3)
 {
     cpu_t *c = &m->cpu;
     if (!room(c, 7)) return 0;
     const uint16_t si = c->r[R_SI];
     cpu_push16(c, c->r[R_AX]);
-    const uint16_t v = ds_get(c, (uint16_t)(si + 0x2CCA));
-    ds_put(c, (uint16_t)(si + 0x2CB2), v);
-    ds_put(c, (uint16_t)(si + 0x2CA2), v);
-    ds_put(c, (uint16_t)(si + 0x2CAA), v);
+    const uint16_t v = ds_get(c, (uint16_t)(si + src));
+    ds_put(c, (uint16_t)(si + d1), v);
+    ds_put(c, (uint16_t)(si + d2), v);
+    ds_put(c, (uint16_t)(si + d3), v);
     c->r[R_AX] = cpu_pop16(c);
     c->icount += 7;
     near_ret(c);
     return 1;
 }
+static int vgame_axis_spread(machine_t *m) { return axis_spread(m, 0x2CCA, 0x2CB2, 0x2CA2, 0x2CAA); }
+static int setup_axis_spread(machine_t *m) { return axis_spread(m, 0x0E1C, 0x0E04, 0x0DF4, 0x0DFC); }
 
 /* VGAME 0x04ABA, eventlog_add(kind, target): while the log at B9F0 (6-byte
  * records, count [951A]) has fewer than 255, append (mission time [9912],
@@ -1798,26 +1803,28 @@ static int vgame_mclip_publish(machine_t *m)
     return 1;
 }
 
-/* VGAME 0x0EE9C, the C runtime's signed 32-bit divide: DX:AX = a / b for
+/* VGAME 0x0EE9C (and MPS_LOGO 0x01BB6, a far copy: RETF 8, the arguments two bytes higher), the C runtime's signed 32-bit divide: DX:AX = a / b for
  * a = [bp+6]:[bp+4], b = [bp+A]:[bp+8], truncating, the argument slots
  * made positive in place. A 16-bit divisor takes two DIVs; a wider one is
  * shifted down with the dividend until it fits, the quotient estimated with
  * one DIV and corrected by at most one. RET 8. Declines a zero divisor,
  * where the original takes the divide-error interrupt. */
-static int vgame_ldiv(machine_t *m)
+static void far_ret(cpu_t *c);
+static int crt_ldiv(machine_t *m, int far)
 {
+    const unsigned d = far ? 2 : 0;                               /* the far return address takes a word more */
     cpu_t *c = &m->cpu;
     const uint16_t ss = c->seg[S_SS];
     const uint16_t sp = c->r[R_SP];
-    if (!seg_read16(c, ss, (uint16_t)(sp + 6)) && !seg_read16(c, ss, (uint16_t)(sp + 8))) return 0;
+    if (!seg_read16(c, ss, (uint16_t)(sp + 6 + d)) && !seg_read16(c, ss, (uint16_t)(sp + 8 + d))) return 0;
     if (!room(c, 64 + 6 * 16)) return 0;
     unsigned n = 0;
     cpu_push16(c, c->r[R_BP]); c->r[R_BP] = c->r[R_SP];
     cpu_push16(c, c->r[R_DI]); cpu_push16(c, c->r[R_SI]); cpu_push16(c, c->r[R_BX]);
     n += 5;
     const uint16_t bp = c->r[R_BP];
-#define ARG(o) seg_read16(c, ss, (uint16_t)(bp + (o)))
-#define SETARG(o, v) seg_write16(c, ss, (uint16_t)(bp + (o)), (v))
+#define ARG(o) seg_read16(c, ss, (uint16_t)(bp + (o) + d))
+#define SETARG(o, v) seg_write16(c, ss, (uint16_t)(bp + (o) + d), (v))
     uint16_t di = (uint16_t)alu_logic(c, 0, 1); n++;              /* xor di, di */
     for (int k = 0; k < 2; k++) {                                 /* make a, then b, positive */
         const int hi = k ? 0x0A : 6, lo = k ? 8 : 4;
@@ -1912,10 +1919,12 @@ static int vgame_ldiv(machine_t *m)
 #undef ARG
 #undef SETARG
     c->icount += n;
-    near_ret(c);
+    if (far) far_ret(c); else near_ret(c);
     c->r[R_SP] = (uint16_t)(c->r[R_SP] + 8);
     return 1;
 }
+static int vgame_ldiv(machine_t *m) { return crt_ldiv(m, 0); }
+static int mps_logo_ldiv(machine_t *m) { return crt_ldiv(m, 1); }
 
 /* VGAME 0x048B8, frame_trail: the smoke trail behind the object [3D96]
  * (none when it is -1). Every frame each of the 16 puffs (8 bytes at 3A08:
@@ -2580,15 +2589,15 @@ static int start_palette_bank(machine_t *m)
     return 1;
 }
 
-/* VGAME 0x0EB10 / END 0x05110, strcat(dst, src) within DS: find dst's end
+/* VGAME 0x0EB10 / END 0x05110 (and MPS_LOGO 0x01A3E, a far copy: the arguments a word higher, RETF), strcat(dst, src) within DS: find dst's end
  * and src's length by REPNE SCASB, then the word copy - aligned, unlike the
  * other copies, on the source address. SI and DI restored, AX = dst.
  * Forward only; the scans count through the BP the prologue pushes. */
-static int strcat_ds(machine_t *m)
+static int crt_strcat(machine_t *m, int far)
 {
     cpu_t *c = &m->cpu;
     if (c->flags & F_DF) return 0;
-    const uint16_t ds = c->seg[S_DS], dst = arg(c, 0), src = arg(c, 1);
+    const uint16_t ds = c->seg[S_DS], dst = arg(c, far), src = arg(c, 1 + far);
     const uint8_t pushed[2] = { (uint8_t)c->r[R_BP], (uint8_t)(c->r[R_BP] >> 8) };
     const uint32_t stack_lo = phys(c->seg[S_SS], (uint16_t)(c->r[R_SP] - 2));
     unsigned k1 = 0, k2 = 0;
@@ -2629,9 +2638,11 @@ static int strcat_ds(machine_t *m)
     c->r[R_DI] = di0;
     c->r[R_BP] = cpu_pop16(c);
     c->icount += clocks;
-    near_ret(c);
+    if (far) far_ret(c); else near_ret(c);
     return 1;
 }
+static int strcat_ds(machine_t *m) { return crt_strcat(m, 0); }
+static int mps_logo_strcat(machine_t *m) { return crt_strcat(m, 1); }
 
 /* VGAME 0x0EFB8, the C runtime's unsigned 32-bit divide: DX:AX = a / b for
  * a = [bp+6]:[bp+4], b = [bp+A]:[bp+8]; two DIVs for a 16-bit divisor, else
@@ -3444,18 +3455,18 @@ static int player_linear_word(machine_t *m)
     return 1;
 }
 
-/* PLAYER 0x0257B, find AL among the six bytes at CS:[24D8..24DD] (searched
- * from the last backwards): found, BX is the matching four-byte record at
- * 1C96 + 4 * index, AX is the index times four and CF is clear; not found,
+/* PLAYER 0x0257B (and MPS_LOGO 0x031C6, a far copy), find AL among the six bytes ending at
+ * CS:[last] (searched from the last backwards): found, BX is the matching four-byte record at
+ * records + 4 * index, AX is the index times four and CF is clear; not found,
  * CF is set and BX is left six below its start. CX counts down as the search
  * goes. Flags are the last compare or decrement; a find ends on CLC. */
-static int player_find_in_table(machine_t *m)
+static int find_in_table(machine_t *m, uint16_t last, uint16_t records, int far)
 {
     cpu_t *c = &m->cpu;
     if (!room(c, 36)) return 0;
     cpu_push16(c, c->r[R_BP]);
     c->r[R_BP] = c->r[R_SP];
-    uint16_t bx = 0x24DD;
+    uint16_t bx = last;
     uint16_t cx = 6;
     const uint8_t al = get_r8(c, R_AL);
     unsigned n = 4;
@@ -3475,7 +3486,7 @@ static int player_find_in_table(machine_t *m)
         ax = x86_shift(c, 4, ax, 1, 1);                           /* shl ax, 1 */
         ax = x86_shift(c, 4, ax, 1, 1);
         c->r[R_AX] = ax;
-        bx = (uint16_t)alu_add(c, 0x1C96, ax, 1, 0);              /* lea bx, [1C96]; add bx, ax */
+        bx = (uint16_t)alu_add(c, records, ax, 1, 0);            /* lea bx, [records]; add bx, ax */
         set_flag(c, F_CF, 0);                                     /* clc */
         n += 7;
     } else {
@@ -3487,9 +3498,11 @@ static int player_find_in_table(machine_t *m)
     c->r[R_SP] = c->r[R_BP];
     c->r[R_BP] = cpu_pop16(c);
     c->icount += n + 3;
-    near_ret(c);
+    if (far) far_ret(c); else near_ret(c);
     return 1;
 }
+static int player_find_in_table(machine_t *m) { return find_in_table(m, 0x24DD, 0x1C96, 0); }
+static int mps_logo_find_in_table(machine_t *m) { return find_in_table(m, 0x1CB7, 0x044A, 1); }
 
 /* The line drawer (START 0x0829A, END 0x04206, DSWAP 0x00790; the three programs carry the
  * same routine): line(surface, x0, y0, x1, y1, colour) draws a Bresenham line
@@ -4358,7 +4371,7 @@ CLASS(dswap, 0x1412, 0x26CD, 0x26CA, 0x26FC, 0x26C2)
  * to the last, with neither read, write nor update open (flags & 83h zero) is
  * cleared - count, flags, next and buffer zero, file number 0FFh - and returned
  * (0 if none). */
-typedef struct { uint16_t entry, base, last; } crt_freestream;
+typedef struct { uint16_t entry, base, last; int far; } crt_freestream;   /* far: the copy that ends in RETF */
 
 static int crt_free_stream(machine_t *m, const crt_freestream *s)
 {
@@ -4400,7 +4413,7 @@ static int crt_free_stream(machine_t *m, const crt_freestream *s)
     c->r[R_SI] = cpu_pop16(c);
     c->r[R_DI] = cpu_pop16(c);
     c->icount += 4;
-    near_ret(c);
+    if (s->far) far_ret(c); else near_ret(c);
     return 1;
 }
 #define FREESTREAM(P, E, BASE, LAST) \
@@ -4554,9 +4567,9 @@ SPRINTF(dswap, 0x107A, 0x29D8, 0x16C6, 0x1440)
 /* Small routines that call one other and little else. Each checks for room before the
  * stretch, the CALL included, and leaves at the stretch's first instruction otherwise. */
 
-/* flush_all(1) as a routine of its own (END 0x05C1A, PLAYER 0x01A1C, VGAME 0x0F338): the
+/* flush_all(1) as a routine of its own (END 0x05C1A, PLAYER 0x01A1C, VGAME 0x0F338, and MPS_LOGO 0x023E0, whose copy ends in RETF): the
  * callee takes its argument off the stack (RET 2). */
-static int crt_flush_all_one(machine_t *m, uint16_t entry, uint16_t callee)
+static int crt_flush_all_one(machine_t *m, uint16_t entry, uint16_t callee, int far)
 {
     cpu_t *c = &m->cpu;
     if (!room(c, 3)) return 0;
@@ -4566,12 +4579,13 @@ static int crt_flush_all_one(machine_t *m, uint16_t entry, uint16_t callee)
     if (!guest_call_pop(m, callee, (uint16_t)(entry + 7), 2)) return 1;
     if (!room(c, 1)) { c->ip = (uint16_t)(entry + 7); return 1; }
     c->icount += 1;
-    near_ret(c);
+    if (far) far_ret(c); else near_ret(c);
     return 1;
 }
-static int end_flush_all_one(machine_t *m) { return crt_flush_all_one(m, 0x5C1A, 0x5C22); }
-static int player_flush_all_one(machine_t *m) { return crt_flush_all_one(m, 0x1A1C, 0x1A24); }
-static int vgame_flush_all_one(machine_t *m) { return crt_flush_all_one(m, 0xF338, 0xF340); }
+static int end_flush_all_one(machine_t *m) { return crt_flush_all_one(m, 0x5C1A, 0x5C22, 0); }
+static int player_flush_all_one(machine_t *m) { return crt_flush_all_one(m, 0x1A1C, 0x1A24, 0); }
+static int vgame_flush_all_one(machine_t *m) { return crt_flush_all_one(m, 0xF338, 0xF340, 0); }
+static int mps_logo_flush_all_one(machine_t *m) { return crt_flush_all_one(m, 0x0F80, 0x0F88, 1); }
 
 /* END 0x015D7 and 0x015EF: the argument, 100h and 0 (in either order) and 1F25h are
  * handed to 0x01607; the pair differ only in the order of the 100h and the 0. */
@@ -7780,14 +7794,14 @@ static int start_route_leg(machine_t *m)
 #undef NEED
 }
 
-/* START 0x0A1A4, the formatter's digits: the 32-bit value DX:AX in base CX,
+/* START 0x0A1A4 and PLAYER 0x01F1C, the formatter's digits: the 32-bit value DX:AX in base CX,
  * written backwards (STD, STOSB) at ES:DI, at least SI digits; a digit past
  * '9' is moved on by the byte at the caller's [BP-1] (to 'a' or 'A'). On the
  * return DI points at the first digit and CX is the count; DF is cleared.
  * Each digit divides the high word, then the remainder and the low word,
  * the value kept in DX:BX between digits. With CX 0 the routine stops at the
  * first DIV and the original takes the fault. */
-static int start_format_digits(machine_t *m)
+static int format_digits(machine_t *m, uint16_t entry)
 {
     cpu_t *c = &m->cpu;
     if (!room(c, 3)) return 0;
@@ -7798,7 +7812,7 @@ static int start_format_digits(machine_t *m)
     c->r[R_AX] = t;
     c->icount += 3;
     for (;;) {                                                    /* 0x0A1A7 */
-        if (!room(c, 21)) { c->ip = 0xA1A7; return 1; }           /* a digit, or the tests and the exit */
+        if (!room(c, 21)) { c->ip = (uint16_t)(entry + 3); return 1; }   /* a digit, or the tests and the exit */
         alu_logic(c, c->r[R_SI], 1);                              /* or si, si */
         c->icount += 2;
         if (!x86_cond(c, 0xF)) {                                  /* the minimum is met: anything left? */
@@ -7814,7 +7828,7 @@ static int start_format_digits(machine_t *m)
         c->r[R_DX] = c->r[R_AX];
         c->r[R_AX] = x;
         c->r[R_DX] = (uint16_t)alu_logic(c, 0, 1);                /* xor dx, dx */
-        if (!c->r[R_CX]) { c->icount += 2; c->ip = 0xA1B8; return 1; }   /* the DIV faults */
+        if (!c->r[R_CX]) { c->icount += 2; c->ip = (uint16_t)(entry + 0x14); return 1; }   /* the DIV faults */
         x86_div16(c, c->r[R_CX]);                                 /* the high word */
         x = c->r[R_BX];                                           /* xchg bx, ax */
         c->r[R_BX] = c->r[R_AX];
@@ -7848,6 +7862,8 @@ static int start_format_digits(machine_t *m)
     near_ret(c);
     return 1;
 }
+static int start_format_digits(machine_t *m) { return format_digits(m, 0xA1A4); }
+static int player_format_digits(machine_t *m) { return format_digits(m, 0x1F1C); }
 
 /* START 0x0A141, the formatter's put-character into a string stream: AL
  * (made a word by CBW) is stored at the stream's next byte (the stream at the
@@ -8883,6 +8899,575 @@ static int crt_null_check(machine_t *m)
     return 1;
 }
 
+/* ---- PLAYER, MPS_LOGO, DSWAP and SETUP: the small programs' copies of routines matched elsewhere ----
+ * The same code at other addresses; each entry below has its own data offsets. */
+static const crt_freestream MPS_LOGO_FREESTREAM = { 0x14BC, 0x027C, 0x03BC, 1 };
+static int mps_logo_free_stream(machine_t *m) { return crt_free_stream(m, &MPS_LOGO_FREESTREAM); }
+CLASS(mps_logo, 0x0B66, 0x0203, 0x0200, 0x0268, 0x01F8)
+FREESTREAM(dswap, 0x1B9C, 0x2710, 0x2850)
+static const axis_variant SETUP_AXIS = { 0x0E1C, 0x0E04, 0x0DF4, 0x0DFC, 0x0E0C, 0x0E14, 0x0E24, 0x2447, 0x2472, 1 };
+static int setup_axis_normalise(machine_t *m) { return axis_normalise(m, &SETUP_AXIS); }
+static int dswap_string_lookup(machine_t *m) { return string_lookup(m, 0x28FE); }
+static int dswap_lzw_reset(machine_t *m) { return lzw_reset(m, 0x247A, 0x0B26); }
+static int mps_logo_mask_test(machine_t *m) { return mask_test(m, 0x01FA); }
+static int dswap_mask_test(machine_t *m) { return mask_test(m, 0x26C4); }
+
+/* A REP STOS (byte or word) as the interpreter steps it, written out: x86_stos in a loop stalls MSVC 19.51
+ * /O2. One clock an iteration; a REP that finds CX 0 takes one. Returns the clocks taken. */
+static unsigned sm_rep_stos(cpu_t *c, int w16)
+{
+    if (c->r[R_CX] == 0) return 1;
+    const int delta = x86_str_delta(c, w16);
+    unsigned n = 0;
+    do {
+        if (w16) seg_write16(c, c->seg[S_ES], c->r[R_DI], c->r[R_AX]);
+        else     mem_write8(c, phys(c->seg[S_ES], c->r[R_DI]), get_r8(c, R_AL));
+        c->r[R_DI] = (uint16_t)(c->r[R_DI] + delta);
+        c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);
+        n++;
+    } while (c->r[R_CX] != 0);
+    return n;
+}
+
+/* PLAYER 0x01006, unpack(src, dst): the picture decompressor. src (far, [bp+4]) holds commands, dst (far,
+ * [bp+8]) receives the picture. A command byte is a length: positive, that many literal bytes follow and
+ * are copied; zero, a fill follows (a count, then the byte to repeat); 81h-FFh, skip (length - 80h) bytes of
+ * the destination; 80h begins an escape word that follows: positive, skip that many bytes; zero, the end;
+ * negative, a run of words: its high byte less 80h is a count of bytes - below 40h the bytes are copied from
+ * the source, from 40h up the count (less 40h) is of a single byte repeated - done as words once the
+ * destination (or the source, for a copy) is on an even address. Returns the end of the source as a
+ * normalised far pointer, DX:AX; DS, ES, SI, DI, BP are restored. The loops check for room at each command.
+ * The source and destination may overlap, so the copies run a byte (or word) at a time. */
+static int player_unpack(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { CMD = 0x101F, COPY = 0x1028, AFTER_COPY = 0x102A, FILL = 0x1033, AFTER_FILL = 0x1039,
+           SKIP = 0x1018, ESCAPE = 0x1048, WORDS = 0x1059, WORD_FILL = 0x106A, FINISH = 0x1081 };
+    if (!room(c, 10)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->seg[S_DS]);
+    cpu_push16(c, c->seg[S_ES]);
+    c->r[R_SI] = bp_get(c, 4);                                    /* lds si, [bp+4] */
+    c->seg[S_DS] = bp_get(c, 6);
+    c->r[R_DI] = bp_get(c, 8);                                    /* les di, [bp+8] */
+    c->seg[S_ES] = bp_get(c, 0x0A);
+    set_r8(c, R_CH, (uint8_t)alu_logic(c, 0, 0));                 /* xor ch, ch */
+    c->icount += 10;                                              /* ... and the jump to the first command */
+#define SRC8() mem_read8(c, phys(c->seg[S_DS], c->r[R_SI]))
+#define NEED(n_, at_) do { if (!room(c, (n_))) { c->ip = (at_); return 1; } } while (0)
+    unsigned n;
+    uint16_t ax;
+    goto command;
+
+command:                                                          /* 0x101F: the next command after a skip */
+    NEED(5, CMD);
+    set_r8(c, R_CL, SRC8());
+    c->r[R_SI] = (uint16_t)alu_inc(c, c->r[R_SI], 1);
+    if (c->r[R_CX] == 0) { c->icount += 3; goto fill; }           /* jcxz */
+    alu_logic(c, get_r8(c, R_CL), 0);                             /* or cl, cl */
+    c->icount += 5;
+    if (x86_cond(c, 0xC)) goto skip;                              /* jl: a skip */
+    goto copy;
+
+after_copy:                                                       /* 0x102A */
+    NEED(5, AFTER_COPY);
+    set_r8(c, R_CL, SRC8());
+    c->r[R_SI] = (uint16_t)alu_inc(c, c->r[R_SI], 1);
+    alu_logic(c, get_r8(c, R_CL), 0);
+    if (x86_cond(c, 0xC)) { c->icount += 4; goto skip; }
+    c->icount += 5;
+    if (x86_cond(c, 0xF)) goto copy;                              /* jg */
+    goto fill;                                                    /* a zero length: a fill */
+
+after_fill:                                                       /* 0x1039 */
+    NEED(6, AFTER_FILL);
+    set_r8(c, R_CL, SRC8());
+    c->r[R_SI] = (uint16_t)alu_inc(c, c->r[R_SI], 1);
+    if (c->r[R_CX] == 0) { c->icount += 3; goto fill; }
+    alu_logic(c, get_r8(c, R_CL), 0);
+    if (x86_cond(c, 0xC)) { c->icount += 5; goto skip; }
+    c->icount += 6;                                               /* ... and the jump to the copy */
+    goto copy;
+
+copy:                                                             /* 0x1028: CX literal bytes */
+    NEED(c->r[R_CX], COPY);
+    c->icount += rep_string(c, STR_MOVS, 0, c->seg[S_DS], 0);
+    goto after_copy;
+
+fill:                                                             /* 0x1033: a count, then the byte to repeat */
+    NEED(3 + (SRC8() ? SRC8() : 1u), FILL);
+    set_r8(c, R_CL, SRC8());
+    c->r[R_SI] = (uint16_t)alu_inc(c, c->r[R_SI], 1);
+    x86_lods(c, 0, c->seg[S_DS]);
+    c->icount += 3 + sm_rep_stos(c, 0);
+    goto after_fill;
+
+skip:                                                             /* 0x1018: a skip, or the escape */
+    NEED(3, SKIP);
+    set_r8(c, R_CL, (uint8_t)alu_sub(c, get_r8(c, R_CL), 0x80, 0, 0));
+    if (c->flags & F_ZF) { c->icount += 2; goto escape; }
+    c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], c->r[R_CX], 1, 0);
+    c->icount += 3;
+    goto command;
+
+escape:                                                           /* 0x1048: the escape word */
+    NEED(8, ESCAPE);
+    x86_lods(c, 1, c->seg[S_DS]);
+    ax = c->r[R_AX];
+    alu_logic(c, ax, 1);                                          /* or ax, ax */
+    if (x86_cond(c, 0xF)) {                                       /* jg: skip ax bytes */
+        c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], ax, 1, 0);
+        c->icount += 5;
+        goto command;
+    }
+    if (c->flags & F_ZF) { c->icount += 4; goto finish; }         /* je: the end */
+    c->r[R_CX] = ax;
+    set_r8(c, R_CH, (uint8_t)alu_sub(c, get_r8(c, R_CH), 0x80, 0, 0));
+    alu_sub(c, get_r8(c, R_CH), 0x40, 0, 0);
+    c->icount += 8;
+    if (x86_cond(c, 0xD)) goto word_fill;                         /* jge: a repeated byte */
+    goto words;
+
+words:                                                            /* 0x1059: copy CX bytes as words */
+    {
+        const int odd = c->r[R_SI] & 1;
+        const unsigned k = (uint16_t)(odd ? c->r[R_CX] - 1 : c->r[R_CX]) >> 1;
+        NEED(2 + (odd ? 2 : 0) + 1 + (k ? k : 1u) + 1 + 2, WORDS);
+    }
+    alu_logic(c, c->r[R_SI] & 1, 1);                              /* test si, 1 */
+    n = 2;
+    if (!(c->flags & F_ZF)) {                                     /* an odd source: one byte first */
+        x86_movs(c, 0, c->seg[S_DS]);
+        c->r[R_CX] = (uint16_t)alu_dec(c, c->r[R_CX], 1);
+        n += 2;
+    }
+    c->r[R_CX] = x86_shift(c, 5, c->r[R_CX], 1, 1);               /* shr cx, 1 */
+    n += 1 + rep_string(c, STR_MOVS, 1, c->seg[S_DS], 0) + 1;
+    if (!(c->flags & F_CF)) { c->icount += n; goto command; }     /* jae: no odd byte left */
+    x86_movs(c, 0, c->seg[S_DS]);
+    c->icount += n + 2;                                           /* the last byte, and the jump */
+    goto command;
+
+word_fill:                                                        /* 0x106A: CX - 4000h bytes of one value */
+    {
+        const int odd = c->r[R_DI] & 1;
+        const uint16_t count = (uint16_t)(c->r[R_CX] - 0x4000);
+        const unsigned k = (uint16_t)(odd ? count - 1 : count) >> 1;
+        NEED(5 + (odd ? 2 : 0) + 1 + (k ? k : 1u) + 1 + 2, WORD_FILL);
+    }
+    set_r8(c, R_CH, (uint8_t)alu_sub(c, get_r8(c, R_CH), 0x40, 0, 0));
+    x86_lods(c, 0, c->seg[S_DS]);
+    set_r8(c, R_AH, get_r8(c, R_AL));
+    alu_logic(c, c->r[R_DI] & 1, 1);                              /* test di, 1 */
+    n = 5;
+    if (!(c->flags & F_ZF)) {                                     /* an odd destination: one byte first */
+        mem_write8(c, phys(c->seg[S_ES], c->r[R_DI]), get_r8(c, R_AL));
+        c->r[R_DI] = (uint16_t)(c->r[R_DI] + x86_str_delta(c, 0));
+        c->r[R_CX] = (uint16_t)alu_dec(c, c->r[R_CX], 1);
+        n += 2;
+    }
+    c->r[R_CX] = x86_shift(c, 5, c->r[R_CX], 1, 1);
+    n += 1 + sm_rep_stos(c, 1) + 1;
+    if (!(c->flags & F_CF)) { c->icount += n; goto command; }
+    mem_write8(c, phys(c->seg[S_ES], c->r[R_DI]), get_r8(c, R_AL));
+    c->r[R_DI] = (uint16_t)(c->r[R_DI] + x86_str_delta(c, 0));
+    c->icount += n + 2;
+    goto command;
+
+finish:                                                           /* 0x1081: the end of the source, normalised */
+    NEED(13, FINISH);
+    c->r[R_AX] = c->r[R_SI];
+    set_r8(c, R_CL, 4);
+    ax = x86_shift(c, 5, c->r[R_AX], 4, 1);                       /* shr ax, cl */
+    c->r[R_DX] = c->seg[S_DS];
+    c->r[R_DX] = (uint16_t)alu_add(c, c->r[R_DX], ax, 1, 0);
+    c->r[R_AX] = (uint16_t)alu_logic(c, c->r[R_SI] & 0x0F, 1);
+    c->seg[S_ES] = cpu_pop16(c);
+    c->seg[S_DS] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 13;
+    near_ret(c);
+    return 1;
+#undef SRC8
+#undef NEED
+}
+
+/* PLAYER 0x01790, DSWAP 0x0130C, SETUP 0x01B44 and MPS_LOGO 0x01EBE (a far copy), the C start-up's
+ * environment copy: the environment segment (the word at 2Ch of the program prefix, whose segment is in the
+ * data word `psp`) holds zero-ended strings ended by an empty one. Their count (SI) and the length of the
+ * block (DI) are found with REPNE SCASB; the block is copied by the allocator `alloc` (size in AX, returned
+ * in AX; it is called with CX 9) into one allocation and the array of string pointers into another, which
+ * is kept in the word `envp`. Strings that begin with the 12-byte marker (the word first, then six words
+ * compared) are copied but get no pointer; the array ends in a zero. DS and ES change places for the copy
+ * and DS is restored at the end.
+ *
+ * The stretches with a data-dependent length each check for room first and leave the machine at their
+ * first instruction (the REP SCASB, a string's start, a character) so the original can carry on from
+ * there. Nothing is read ahead of the pushes: the scan reads memory as the original would find it. */
+typedef struct { uint16_t entry, psp, alloc, envp, marker; int far; } sm_envp;
+
+static int sm_setenvp(machine_t *m, const sm_envp *s)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t e = s->entry;
+    const uint16_t scan_ip = (uint16_t)(e + 0x24), grow_ip = (uint16_t)(e + 0x2A);
+    const uint16_t first_ret = (uint16_t)(e + 0x3A), second_ret = (uint16_t)(e + 0x40);
+    const uint16_t string_ip = (uint16_t)(e + 0x51), copy_ip = (uint16_t)(e + 0x6F);
+    const uint16_t next_ip = (uint16_t)(e + 0x75), end_ip = (uint16_t)(e + 0x77);
+    if (!room(c, 14)) return 0;                                   /* the longest way to the scan */
+
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->seg[S_DS]);
+    c->seg[S_ES] = ds_get(c, s->psp);                             /* the program prefix */
+    const uint16_t env = seg_read16(c, c->seg[S_ES], 0x2C);       /* its environment segment */
+    c->r[R_BX] = env;
+    c->seg[S_ES] = env;
+    c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);                    /* xor ax, ax */
+    c->r[R_SI] = (uint16_t)alu_logic(c, 0, 1);
+    c->r[R_DI] = (uint16_t)alu_logic(c, 0, 1);
+    c->r[R_CX] = 0xFFFF;
+    alu_logic(c, env, 1);                                         /* or bx, bx */
+    unsigned n = 12;
+    int scanning = 0;
+    if (env != 0) {                                               /* a first string to look at */
+        alu_sub(c, mem_read8(c, phys(env, 0)), 0, 0, 0);          /* cmp byte es:[0], 0 */
+        n += 2;
+        scanning = !(c->flags & F_ZF);
+    }
+    c->icount += n;
+    /* The scan: each pass finds a string's end (REPNE SCASB, CX counting down across passes),
+     * counts it (SI) and looks at the byte after: another NUL ends the list. */
+    while (scanning) {
+        const int step = x86_str_delta(c, 0);
+        unsigned k = 1;                                           /* a REP with CX 0 takes one clock */
+        if (c->r[R_CX] != 0) {
+            k = 0;
+            uint16_t d = c->r[R_DI];
+            for (unsigned left = c->r[R_CX]; left; left--) {
+                k++;
+                const uint8_t b = mem_read8(c, phys(c->seg[S_ES], d));
+                d = (uint16_t)(d + step);
+                if (b == 0) break;                                /* AL is 0 */
+            }
+        }
+        if (!room(c, k + 3)) { c->ip = scan_ip; return 1; }
+        rep_string(c, STR_SCAS, 0, 0, 1);                         /* repne scasb */
+        c->r[R_SI] = (uint16_t)alu_inc(c, c->r[R_SI], 1);
+        x86_scas(c, 0);                                           /* scasb: the byte after the NUL */
+        c->icount += k + 3;                                       /* the scan, inc, scasb, jne */
+        scanning = !(c->flags & F_ZF);
+    }
+    if (!room(c, 8)) { c->ip = grow_ip; return 1; }
+    c->r[R_AX] = (uint16_t)alu_inc(c, c->r[R_DI], 1);             /* the block, rounded down to even */
+    set_r8(c, R_AL, (uint8_t)alu_logic(c, get_r8(c, R_AL) & 0xFE, 0));
+    c->r[R_SI] = (uint16_t)alu_inc(c, c->r[R_SI], 1);
+    c->r[R_DI] = c->r[R_SI];
+    c->r[R_SI] = x86_shift(c, 4, c->r[R_SI], 1, 1);               /* the pointers: two bytes each */
+    c->r[R_CX] = 9;
+    c->icount += 7;
+    if (!guest_call(m, s->alloc, first_ret)) return 1;
+    if (!room(c, 3)) { c->ip = first_ret; return 1; }
+    cpu_push16(c, c->r[R_AX]);                                    /* the string block */
+    c->r[R_AX] = c->r[R_SI];
+    c->icount += 2;
+    if (!guest_call(m, s->alloc, second_ret)) return 1;
+    if (!room(c, 11)) { c->ip = second_ret; return 1; }
+    ds_put(c, s->envp, c->r[R_AX]);                               /* the pointer array */
+    {
+        const uint16_t es = c->seg[S_ES], ds = c->seg[S_DS];      /* push es, push ds, pop es, pop ds */
+        cpu_push16(c, es);
+        cpu_push16(c, ds);
+        c->seg[S_ES] = cpu_pop16(c);
+        c->seg[S_DS] = cpu_pop16(c);
+    }
+    c->r[R_CX] = c->r[R_DI];
+    c->r[R_BX] = c->r[R_AX];
+    c->r[R_SI] = (uint16_t)alu_logic(c, 0, 1);
+    c->r[R_DI] = cpu_pop16(c);                                    /* the string block */
+    c->r[R_CX] = (uint16_t)alu_dec(c, c->r[R_CX], 1);
+    c->icount += 11;
+    if (c->r[R_CX] != 0) {                                        /* jcxz not taken: copy the strings */
+        for (;;) {
+            if (!room(c, 3)) { c->ip = string_ip; return 1; }
+            const uint16_t word = seg_read16(c, c->seg[S_DS], c->r[R_SI]);
+            c->r[R_AX] = word;
+            alu_sub(c, word, seg_read16(c, c->seg[S_SS], s->marker), 1, 0);
+            c->icount += 3;
+            int keep = 1;                                         /* the string gets a pointer */
+            if (c->flags & F_ZF) {                                /* might be the marker: compare all of it */
+                if (!room(c, 15)) { c->ip = (uint16_t)(e + 0x5A); return 1; }
+                cpu_push16(c, c->r[R_CX]);
+                cpu_push16(c, c->r[R_SI]);
+                cpu_push16(c, c->r[R_DI]);
+                c->r[R_DI] = s->marker;
+                c->r[R_CX] = 6;
+                unsigned k = 0;
+                for (;;) {                                        /* repe cmpsw */
+                    x86_cmps(c, 1, c->seg[S_DS]);
+                    k++;
+                    c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);
+                    if (c->r[R_CX] == 0 || !(c->flags & F_ZF)) break;
+                }
+                c->r[R_DI] = cpu_pop16(c);
+                c->r[R_SI] = cpu_pop16(c);
+                c->r[R_CX] = cpu_pop16(c);
+                c->icount += 5 + k + 3 + 1;                       /* pushes, movs, the scan, pops, je */
+                keep = !(c->flags & F_ZF);
+            }
+            if (keep) {
+                if (!room(c, 3)) { c->ip = (uint16_t)(e + 0x6A); return 1; }
+                seg_write16(c, c->seg[S_ES], c->r[R_BX], c->r[R_DI]);   /* the pointer */
+                c->r[R_BX] = (uint16_t)alu_inc(c, c->r[R_BX], 1);
+                c->r[R_BX] = (uint16_t)alu_inc(c, c->r[R_BX], 1);
+                c->icount += 3;
+            }
+            for (;;) {                                            /* copy the string, its NUL last */
+                if (!room(c, 4)) { c->ip = copy_ip; return 1; }
+                x86_lods(c, 0, c->seg[S_DS]);
+                mem_write8(c, phys(c->seg[S_ES], c->r[R_DI]), get_r8(c, R_AL));   /* stosb, by hand (x86_stos stalls MSVC) */
+                c->r[R_DI] = (uint16_t)(c->r[R_DI] + x86_str_delta(c, 0));
+                alu_logic(c, get_r8(c, R_AL), 0);                 /* or al, al */
+                c->icount += 4;
+                if (c->flags & F_ZF) break;
+            }
+            if (!room(c, 1)) { c->ip = next_ip; return 1; }
+            c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);              /* loop */
+            c->icount += 1;
+            if (c->r[R_CX] == 0) break;
+        }
+    }
+    if (!room(c, 4)) { c->ip = end_ip; return 1; }
+    seg_write16(c, c->seg[S_ES], c->r[R_BX], c->r[R_CX]);         /* the array's end */
+    c->seg[S_DS] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 4;
+    if (s->far) far_ret(c); else near_ret(c);
+    return 1;
+}
+#define SM_SETENVP(P, E, PSP, ALLOC, ENVP, MARKER, FAR)     static const sm_envp P##_ENVP = { E, PSP, ALLOC, ENVP, MARKER, FAR };     static int P##_setenvp(machine_t *m) { return sm_setenvp(m, &P##_ENVP); }
+SM_SETENVP(player, 0x1790, 0x1A60, 0x1FE8, 0x1A81, 0x1A3E, 0)
+SM_SETENVP(dswap, 0x130C, 0x26C8, 0x1C3C, 0x26E9, 0x26A6, 0)
+SM_SETENVP(setup, 0x1B44, 0x0E84, 0x1C22, 0x0EA5, 0x0E62, 0)
+SM_SETENVP(mps_logo, 0x0A5E, 0x01FE, 0x17B0, 0x021F, 0x01DC, 1)
+
+/* The iterations a REPNE SCASB would run from ES:di for `count` bytes looking for `al`: found by reading ahead
+ * (nothing it reads is written first). A repeat with a count of 0 runs nothing and takes one clock. */
+static unsigned sm_scas_run(cpu_t *c, uint16_t di, uint8_t al, unsigned count)
+{
+    if (count == 0) return 1;
+    const int step = x86_str_delta(c, 0);
+    unsigned k = 0;
+    while (k < count) {
+        const uint8_t b = mem_read8(c, phys(c->seg[S_ES], di));
+        k++;
+        di = (uint16_t)(di + step);
+        if (b == al) break;
+    }
+    return k;
+}
+
+/* MPS_LOGO 0x01ADC, strstr(haystack, needle) in the far-model library (near pointers into DS, arguments at
+ * [bp+6] and [bp+8], RETF): where the needle first occurs in the haystack, or 0; an empty needle gives the
+ * haystack. The needle's length less one is kept in the local at [bp-2], DX is the haystack still to search
+ * and BX where to look next. Each candidate is found by scanning for the needle's first byte (REPNE SCASB)
+ * and the rest compared (REPE CMPSB). ES is left at DS. Every scan checks for room first and leaves the
+ * machine at its first instruction otherwise. */
+static int mps_logo_strstr(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { E = 0x067C };                                          /* the entry, 0x1ADC in the image */
+    if (!room(c, 10)) return 0;
+#define NEED(n_, off_) do { if (!room(c, (n_))) { c->ip = (uint16_t)(E + (off_)); return 1; } } while (0)
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_SP] = (uint16_t)alu_sub(c, c->r[R_SP], 2, 1, 0);       /* sub sp, 2: room for the local */
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->r[R_DI]);
+    c->seg[S_ES] = c->seg[S_DS];                                  /* push ds / pop es */
+    c->r[R_DI] = bp_get(c, 8);                                    /* the needle */
+    c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);
+    c->r[R_CX] = 0xFFFF;
+    c->icount += 10;
+
+    unsigned k = sm_scas_run(c, c->r[R_DI], 0, c->r[R_CX]);       /* the needle's length: REPNE SCASB for the NUL */
+    NEED(k + 3 + 2, 0x12);
+    rep_string(c, STR_SCAS, 0, 0, 1);
+    c->r[R_CX] = (uint16_t)~c->r[R_CX];
+    c->r[R_CX] = (uint16_t)alu_dec(c, c->r[R_CX], 1);
+    c->icount += k + 3;                                           /* ... not cx, dec cx, jcxz */
+    if (c->r[R_CX] == 0) {                                        /* an empty needle: the haystack */
+        c->r[R_AX] = bp_get(c, 6);
+        c->icount += 2;
+        goto done;
+    }
+
+    NEED(6, 0x19);
+    c->r[R_CX] = (uint16_t)alu_dec(c, c->r[R_CX], 1);
+    bp_put(c, -2, c->r[R_CX]);
+    c->r[R_DI] = bp_get(c, 6);                                    /* the haystack */
+    c->r[R_BX] = c->r[R_DI];
+    c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);
+    c->r[R_CX] = 0xFFFF;
+    c->icount += 6;
+
+    k = sm_scas_run(c, c->r[R_DI], 0, c->r[R_CX]);                /* its length */
+    NEED(k + 5 + 1, 0x27);
+    rep_string(c, STR_SCAS, 0, 0, 1);
+    c->r[R_CX] = (uint16_t)~c->r[R_CX];
+    c->r[R_CX] = (uint16_t)alu_dec(c, c->r[R_CX], 1);
+    c->r[R_DX] = c->r[R_CX];
+    c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], bp_get(c, -2), 1, 0);
+    c->icount += k + 5;                                           /* ... not, dec, mov, sub, jbe */
+    if (x86_cond(c, 0x6)) {                                       /* jbe: the haystack is too short */
+        c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);                /* not found: xor ax, ax */
+        c->icount += 1;
+        goto done;
+    }
+    NEED(1, 0x33);
+    c->r[R_DI] = c->r[R_BX];                                      /* mov di, bx */
+    c->icount += 1;
+    for (;;) {                                                    /* 0x1B11: look for the needle's first byte */
+        const uint16_t needle = bp_get(c, 8);
+        const uint8_t first = mem_read8(c, phys(c->seg[S_DS], needle));
+        k = sm_scas_run(c, c->r[R_BX], first, c->r[R_DX]);
+        NEED(4 + k + 1, 0x35);
+        c->r[R_SI] = needle;
+        x86_lods(c, 0, c->seg[S_DS]);
+        c->r[R_DI] = c->r[R_BX];
+        c->r[R_CX] = c->r[R_DX];
+        rep_string(c, STR_SCAS, 0, 0, 1);
+        c->icount += 4 + k + 1;                                   /* ... and the jne */
+        if (c->flags & F_ZF) {                                    /* found: compare the rest */
+            const unsigned left = bp_get(c, -2);
+            NEED(4 + (left ? left : 1u) + 1 + 2, 0x41);
+            c->r[R_DX] = c->r[R_CX];
+            c->r[R_BX] = c->r[R_DI];
+            c->r[R_CX] = (uint16_t)left;
+            c->icount += 4;                                       /* ... mov cx, [bp-2], jcxz */
+            if (c->r[R_CX] == 0) {                                /* a one-byte needle: matched */
+                c->r[R_AX] = (uint16_t)(c->r[R_BX] - 1);
+                c->icount += 2;
+                goto done;
+            }
+            do {                                                  /* repe cmpsb */
+                x86_cmps(c, 0, c->seg[S_DS]);
+                c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);
+                c->icount += 1;
+            } while (c->r[R_CX] != 0 && (c->flags & F_ZF));
+            c->icount += 1;                                       /* jne */
+            if (c->flags & F_ZF) {                                /* every byte matched */
+                c->r[R_AX] = (uint16_t)(c->r[R_BX] - 1);          /* lea ax, [bx-1] */
+                c->icount += 2;
+                goto done;
+            }
+            continue;                                             /* a mismatch: look on from there */
+        }
+        c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);                /* the first byte is nowhere: not found */
+        c->icount += 1;
+        goto done;
+    }
+done:
+    NEED(5, 0x5A);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 5;
+    far_ret(c);
+    return 1;
+#undef NEED
+}
+
+/* MPS_LOGO 0x01C82, the far-model library's block copy for blocks that may cross a segment (RETF):
+ * copy(dst, src, count) with far pointers at [bp+6] and [bp+0Ah], the count at [bp+0Eh]; returns dst in
+ * DX:AX. It copies forward in passes, each as far as the nearer of the two segments' ends (the smaller of
+ * count, 10000h - DI and 10000h - SI, found with borrow arithmetic): words, then the odd byte. When a pass
+ * leaves an offset at 0 that segment register moves on by 1000h paragraphs. DF is not cleared, so the
+ * string instructions follow it. Each pass checks for room first and leaves the machine at its start. */
+static int mps_logo_huge_copy(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { E = 0x0822 };                                          /* the entry, 0x1C82 in the image */
+    if (!room(c, 7)) return 0;
+#define NEED(n_, off_) do { if (!room(c, (n_))) { c->ip = (uint16_t)(E + (off_)); return 1; } } while (0)
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_CX] = bp_get(c, 0x0E);
+    cpu_push16(c, c->seg[S_DS]);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_SI]);
+    c->icount += 7;                                               /* ... and the jcxz */
+    if (c->r[R_CX] != 0) {
+        NEED(2, 0x0B);
+        c->r[R_SI] = bp_get(c, 0x0A);                             /* lds si, [bp+0Ah] */
+        c->seg[S_DS] = bp_get(c, 0x0C);
+        c->r[R_DI] = bp_get(c, 6);                                /* les di, [bp+6] */
+        c->seg[S_ES] = bp_get(c, 8);
+        c->icount += 2;
+        for (;;) {                                                /* 0x1C93: one pass */
+            /* the pass's length: min(count, 10000h - DI, 10000h - SI), as the borrow arithmetic finds it */
+            unsigned chunk = c->r[R_CX];
+            if (chunk > (unsigned)(0x10000 - c->r[R_DI])) chunk = (unsigned)(0x10000 - c->r[R_DI]);
+            if (chunk > (unsigned)(0x10000 - c->r[R_SI])) chunk = (unsigned)(0x10000 - c->r[R_SI]);
+            NEED(21 + ((chunk >> 1) ? (chunk >> 1) : 1u) + 1 + 11, 0x11);
+            uint16_t ax = (uint16_t)alu_dec(c, c->r[R_CX], 1);
+            uint16_t dx = (uint16_t)~c->r[R_DI];
+            c->r[R_DX] = dx;
+            ax = (uint16_t)alu_sub(c, ax, dx, 1, 0);
+            c->r[R_BX] = (uint16_t)alu_sub(c, c->r[R_BX], c->r[R_BX], 1, (c->flags & F_CF) ? 1u : 0u);   /* sbb bx, bx */
+            ax = (uint16_t)alu_logic(c, ax & c->r[R_BX], 1);
+            ax = (uint16_t)alu_add(c, ax, dx, 1, 0);
+            dx = (uint16_t)~c->r[R_SI];
+            c->r[R_DX] = dx;
+            ax = (uint16_t)alu_sub(c, ax, dx, 1, 0);
+            c->r[R_BX] = (uint16_t)alu_sub(c, c->r[R_BX], c->r[R_BX], 1, (c->flags & F_CF) ? 1u : 0u);
+            ax = (uint16_t)alu_logic(c, ax & c->r[R_BX], 1);
+            ax = (uint16_t)alu_add(c, ax, dx, 1, 0);
+            ax = (uint16_t)alu_inc(c, ax, 1);
+            { const uint16_t cx = c->r[R_CX]; c->r[R_CX] = ax; ax = cx; }       /* xchg cx, ax */
+            ax = (uint16_t)alu_sub(c, ax, c->r[R_CX], 1, 0);       /* what is left after this pass */
+            c->r[R_AX] = ax;
+            c->r[R_CX] = x86_shift(c, 5, c->r[R_CX], 1, 1);       /* shr cx, 1 */
+            unsigned n = 18;                                      /* the instructions so far, through the shift */
+            n += rep_string(c, STR_MOVS, 1, c->seg[S_DS], 0);     /* rep movsw */
+            c->r[R_CX] = (uint16_t)alu_add(c, c->r[R_CX], c->r[R_CX], 1, (c->flags & F_CF) ? 1u : 0u);   /* adc cx, cx */
+            n += 1 + rep_string(c, STR_MOVS, 0, c->seg[S_DS], 0); /* the adc, and rep movsb */
+            { const uint16_t cx = c->r[R_CX]; c->r[R_CX] = c->r[R_AX]; c->r[R_AX] = cx; }   /* xchg cx, ax */
+            c->icount += n + 2;                                   /* ... xchg, jcxz */
+            if (c->r[R_CX] == 0) break;
+            alu_logic(c, c->r[R_SI], 1);                          /* or si, si */
+            c->icount += 2;
+            if (c->r[R_SI] == 0) {                                /* the source wrapped: its next segment */
+                c->seg[S_DS] = (uint16_t)alu_add(c, c->seg[S_DS], 0x1000, 1, 0);
+                c->icount += 3;
+            }
+            alu_logic(c, c->r[R_DI], 1);                          /* or di, di */
+            c->icount += 2;
+            if (c->r[R_DI] == 0) {                                /* the destination wrapped */
+                c->seg[S_ES] = (uint16_t)alu_add(c, c->seg[S_ES], 0x1000, 1, 0);
+                c->icount += 4;                                   /* ... and the jump back */
+            }
+        }
+    }
+    NEED(7, 0x53);
+    c->r[R_AX] = bp_get(c, 6);
+    c->r[R_DX] = bp_get(c, 8);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->seg[S_DS] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 7;
+    far_ret(c);
+    return 1;
+#undef NEED
+}
+
 /* A 32-bit by 16-bit signed divide that does not fault. */
 static int idiv_fits(int32_t n, int16_t d)
 {
@@ -9903,9 +10488,10 @@ static int vgame_copy_from_dot(machine_t *m)
     return 1;
 }
 
-/* VGAME 0x0E9F4, open_stream(a, b, c): a stream slot from 0x0F38A; with
- * none, 0; otherwise 0x0F1E0 (a, b, c, slot). SI restored. */
-static int vgame_open_stream(machine_t *m)
+/* VGAME 0x0E9F4 and DSWAP 0x00F06, open_stream(a, b, c): a stream slot from the finder
+ * `find` (whose call returns to find_ret); with none, 0; otherwise `open` (a, b, c,
+ * slot), returning to open_ret. SI restored. */
+static int open_stream(machine_t *m, uint16_t find, uint16_t find_ret, uint16_t open, uint16_t open_ret)
 {
     cpu_t *c = &m->cpu;
     if (!room(c, 4)) return 0;
@@ -9914,8 +10500,8 @@ static int vgame_open_stream(machine_t *m)
     c->r[R_BP] = c->r[R_SP];
     cpu_push16(c, c->r[R_SI]);
     c->icount += 3;
-    if (!guest_call(m, 0xF38A, 0xE9FB)) return 1;
-    if (!room(c, 9)) { c->ip = 0xE9FB; return 1; }
+    if (!guest_call(m, find, find_ret)) return 1;
+    if (!room(c, 9)) { c->ip = find_ret; return 1; }
     const uint16_t si = c->r[R_AX];
     c->r[R_SI] = si;
     alu_logic(c, si, 1);                                          /* or si, si */
@@ -9928,8 +10514,8 @@ static int vgame_open_stream(machine_t *m)
         cpu_push16(c, b);
         cpu_push16(c, a);
         c->icount += 7;
-        if (!guest_call(m, 0xF1E0, 0xEA13)) return 1;
-        if (!room(c, 5)) { c->ip = 0xEA13; return 1; }
+        if (!guest_call(m, open, open_ret)) return 1;
+        if (!room(c, 5)) { c->ip = open_ret; return 1; }
         c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0);  /* add sp, 8 */
         c->icount += 1;
     }
@@ -9940,6 +10526,8 @@ static int vgame_open_stream(machine_t *m)
     near_ret(c);
     return 1;
 }
+static int vgame_open_stream(machine_t *m) { return open_stream(m, 0xF38A, 0xE9FB, 0xF1E0, 0xEA13); }
+static int dswap_open_stream(machine_t *m) { return open_stream(m, 0x1B9C, 0x0F0D, 0x1520, 0x0F25); }
 
 /* VGAME 0x0D52E, far_triple(a, b, d): the far pair at 0x0D557 on (a, 0),
  * its answer kept in a local; 11D8:000A on (answer, b, d) - the arguments
@@ -13952,6 +14540,29 @@ static const recomp_override MATCHED[] = {
     { "matched", "START.EXE", START_47304, 0x0000, 0xA141, start_format_putc, "the formatter's put-character", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x0113, end_load_handover, "read the mission handover", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x00C9, end_handover_text, "index the handover's text", 1 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x0B20, dswap_lzw_reset, "reset the LZW table", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x1F1C, player_format_digits, "the formatter's digits", 1 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x14BC, mps_logo_free_stream, "first free stream", 2 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x0B66, mps_logo_class_lookup, "map a character class", 1 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x0F06, dswap_open_stream, "open a stream", 1 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x1A3F, mps_logo_mask_test, "masked sign test", 1 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x1F11, dswap_mask_test, "masked sign test", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x23AA, setup_axis_spread, "spread an axis value", 1 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x1B9C, dswap_free_stream, "first free stream", 1 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x138A, dswap_string_lookup, "look up a string by id", 1 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x0F80, mps_logo_flush_all_one, "flush all, mode 1", 2 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x1D66, mps_logo_find_in_table, "find a byte in the six-byte table", 2 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x0756, mps_logo_ldiv, "32-bit signed divide", 2 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x2414, setup_axis_normalise, "normalise a joystick axis", 1 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x05DE, mps_logo_strcat, "string concatenate", 2 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x061E, mps_logo_strcpy, "string copy", 2 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x067C, mps_logo_strstr, "find a string in a string", 2 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x0822, mps_logo_huge_copy, "copy a block across segments", 2 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x1006, player_unpack, "unpack a compressed picture", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x1790, player_setenvp, "copy the environment", 1 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x130C, dswap_setenvp, "copy the environment", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x1B44, setup_setenvp, "copy the environment", 1 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x0A5E, mps_logo_setenvp, "copy the environment", 2 },
 };
 
 void matched_register(void)
