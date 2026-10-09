@@ -71,7 +71,7 @@ Each stage is judged by a check, as in the rest of the project.
 | 0 | Observer: log every call to the drawing primitives per frame | the log is identical across runs; hashes unchanged with it on | done |
 | 1 | Draw lists: a frame's primitives as a list, replayed at 320x200 | the replay reproduces the original's work and display pages bit for bit, every phase of every route | done for the windows below; unexercised branches listed below |
 | 2 | Re-draw the list at N times the resolution | N = 1 is Stage 1 exactly; at N > 1 every N x N block agrees with the N = 1 pixel wherever no edge crosses it | model polygons re-drawn from their sub-pixel vertices (`hires_subpixel.py`): N = 1 exact, flat agreement 99.96-100% before a guard, 100% after; text, sprites, HUD and 3-4% of the polygons stay scaled |
-| 3 | Interpolate between consecutive draw lists to the host display rate | at a logic frame the output is exactly that frame; no in-between primitive absent from both neighbours | not started |
+| 3 | Interpolate between consecutive draw lists to the host display rate | at a logic frame the output is exactly that frame; no in-between primitive absent from both neighbours | 320x200 study done (`interp_frame.py`, below): exact at both ends on seven windows, no violations; the live path is not built |
 | 4 | Pacing, vsync, a picture-age setting, HUD handling, a switch to the original picture | - | not started |
 
 Interpolation shows the picture one logic step behind (about 110 ms at 9
@@ -258,14 +258,108 @@ The pass takes about 5 s a window at N = 2 in Python (only the 0.1-0.6% of pixel
 cost of the polygon stage is small; what is not cheap is everything still scaled (the HUD and its text, sprites and
 the cockpit art, which are most of the picture's remaining coarseness).
 
+## Stage 3: interpolation, a 320x200 study (8 October 2026)
+
+`tools/interp_frame.py LOG` (`--check`, `--pairing`, `--primitives`, `--geometry`, `--predict`,
+`--strip DIR`) pairs each logic frame of an observer log with the next and builds in-between frames
+with the Stage 1 replay itself (`drawlist_frame.main`, fed a synthetic list; no replay rule is
+copied). Windows are 30M instructions, taken as in Stage 1.
+
+**The logic frame.** A step is not always two phases. The phases that present (graphics entry 44)
+close a frame: with a sensor display up (a Maverick's MFD) a step is two phases (the main scene in
+the 64 KB page at origin 0, then the inset scene, the HUD text and the present, at another origin),
+otherwise one. Measured at 9 MIPS: 8.8-10.6 steps a second in the strike and air-to-air windows,
+10.1 and 13.6 in the landing windows, 22.8 in a night take-off roll.
+
+**Pairing.** The projection delivers a model chunk's vertices to one buffer from `C6B4` (a *batch*:
+one run of `V` records); edges are numbered inside it (`G` slot, 18h apart from `5EEA`) and a
+polygon is the list of edge slots its `E` records carry. So identity is (batch, edge slots):
+1. batches are aligned between the frames in order by longest common subsequence. A pair needs an
+   equal vertex count, or (chunks of three vertices or more) a count within 10% with 70% of the
+   shared leading vertices within a quarter of their depth of each other in camera space, and a
+   mean screen motion under 60 px; look-alikes go to the smaller motion;
+2. painted polygons inside a paired batch pair by equal edge-slot lists (LCS), colour ignored (the
+   skeleton's colour is used);
+3. span fills (`Q`) pair by the colour set before them, their mode and their order; outline edges
+   (`L`) by batch, slot and colour; HUD library lines (`N`) by colour, page and order when the group
+   has the same size in both frames and the line moved under 30 px.
+
+**Interpolation.** An in-between frame at t takes the nearer frame's list as its *skeleton* and
+moves every paired primitive the fraction w of the way (w = t from frame n, 1 - t from frame
+n + 1). Everything else (text, sprites, blits, ticks, an unpaired polygon, a polygon whose clip
+status or fill style differs) stays as the skeleton has it, which is a switch at t = 0.5. A moved
+polygon has its edges moved, its span rows rebuilt by the original's edge walk
+(`drawlist_spans.Spans`, exact on all painted polygons) and is painted in the skeleton's fill style;
+the present copies the replayed work page, not the bytes the original logged. Edges that are
+unclipped and whose ends project from front-range vertices are interpolated in camera space and
+projected by the original's divide (`project`, equal to the logged pixels for every vertex); the
+others interpolate integer screen endpoints. Camera space is the right choice: of the edge ends of
+polygons present in frames n, n + 1 and n + 2, 90.3% land exactly where frame n + 1 really has
+them when n and n + 2 are interpolated in camera space (strike window), 79.8% in screen space and
+73.0% holding frame n; on the 9.89B landing 98.0%, 95.4% and 95.3%. A frame pair is a *cut* (held
+whole) when under half the polygons pair or the median vertex motion exceeds 40 px.
+
+**Checks** (`--check`, `--primitives`; seven windows of 28 to 73 logic frames):
+- the Stage 1 replay of every frame is exact on the work page and the display, and so is the
+  machinery at t = 1e-6 and 1 - 1e-6 (every paired polygon, span fill, outline edge and HUD line
+  regenerated and moved by almost nothing): every frame of all seven windows, bit for bit;
+- provenance: every record of an in-between list is a record of frame n or n + 1 or the
+  regeneration of one paired in both (a moved polygon asserts it): 0 violations in 741 in-between
+  frames. In 20 of them the display holds a colour index neither neighbour does (AND and OR fills
+  over a changed background); the rule does not forbid that.
+
+| window (instruction clock) | steps/s | polygons paired | cuts held | vertex motion per step, px (mean / median / p95 / max) | edge ends exact: hold n -> interpolated | display pixels an in-between frame changes |
+|---|---|---|---|---|---|---|
+| strike 8.53B | 10.6 | 91.1% | 0 / 33 | 2.6 / 0 / 9 / 308 | 73.0% -> 90.3% | 0.13% |
+| strike impact 8.70B | 9.4 | 86.2% | 1 / 29 | 4.9 / 1 / 19 / 5165 | 25.3% -> 40.3% | 0.86% |
+| landing approach 9.70B | 10.1 | 98.0% | 0 / 31 | 1.5 / 1 / 6 / 116 | 50.6% -> 66.9% | 0.38% |
+| landing 9.89B | 13.6 | 95.6% | 0 / 33 | 0.6 / 0 / 1 / 202 | 95.3% -> 98.0% | 0.00% |
+| AMRAAM launch 5.08B | 9.3 | 98.5% | 0 / 29 | 1.0 / 0 / 3 / 226 | 77.3% -> 83.0% | 0.06% |
+| AMRAAM kill 5.23B | 8.8 | 97.6% | 0 / 27 | 2.3 / 1 / 12 / 292 | 64.2% -> 60.7% | 0.91% |
+| take-off roll 2.50B (night) | 22.8 | 29.9% (87 painted) | 3 / 72 | 11.6 / 5 / 32 / 1002 | - | 0.18% |
+
+The last column is the share of display pixels an in-between frame (t = 1/4, 1/2, 3/4) differs from
+its skeleton frame's own picture: at 320x200 an in-between frame is nearly its neighbour, since
+vertices move a pixel or two a step and an in-between frame moves a fraction of that. The motion
+is not uniform either: in the kill window frames n and n + 1 are often equal and n + 2 jumps, so
+the midpoint of n and n + 2 is worse than holding n for those edges (the 60.7%); that is a limit
+of the test, not of the moved edges. The night take-off roll has almost no filled polygons (the
+HUD, the moving map and outline edges carry the motion); its three cuts are frames with 0-5
+polygons.
+
+**What is held and why** (painted polygons not moved, 1.5% to 14% by window): a polygon with no pair
+is a model chunk with no partner: an object entering or leaving, a chunk whose vertex count
+changed by more than a tenth, one drawn as a single chunk in one step and two in the next (the
+MFD's target model, 87 + 82 against 169 vertices), an explosion's chunks. A clip status that
+differs (an edge crossing the window or the near plane between steps; 6-141 polygons a window)
+would change the span rows by rules this study does not redo. An HUD group that changes size (the
+heading tape adds and drops ticks) holds, and every `T`, `S`, `W`, `C`, `H` and `D` record. The
+strips in `D:/f117-gate/p3-stage3/png` show it: numbers and text change at the middle, the
+Maverick's "FIRED" appears there, target boxes jump, and in the impact window the terrain
+silhouette's detail changes at the middle while its position moves smoothly.
+
+**What would need a smarter match:** models drawn in a different number of chunks from step to
+step (the vertex stream, not the batch, would be the identity); polygons that gain or lose an edge
+to the near plane (the clipper, `model_prepare_edge`, redone); explosion and tracer sprites, which
+cannot be paired and should switch.
+
+**What the live path would take** from the machine each logic step: the batches (camera-space
+vertices, ranges and the edge table), each painted polygon's edges with status words and clip
+data, fill style and colour, the span fills, outline edges, HUD lines and every other draw record
+in order, with the page each draws to, and the palette: what the observer logs now without the
+page dumps, plus the cockpit art read once. The host keeps two consecutive steps, pairs them (the
+alignment is a few thousand table cells a step) and draws the display frame at host time h from
+the pair (n, n + 1) with t = (h - t_n) / (t_n+1 - t_n) taken on the mission clock, one step
+behind. It needs a rasteriser for the model polygons, lines, spans and the other primitives:
+Stage 1's replay ported, or Stage 2's if the picture is to be finer, since only on a finer grid
+does motion of a fraction of a pixel show. It stays an observer: the machine is asked for nothing
+it does not already compute.
+
 ## Open questions and risks
 
-- **Pairing for interpolation.** Interpolation needs object A in frame n paired
-  with object A in frame n+1. The two phases of a step draw different sets of
-  vertices, each the same size from step to step, and 87-99% of vertices are
-  in the same slot within 40 pixels from one step to the next, so slot pairing
-  works for most of a frame; where a count changes, the slots after it shift and
-  need a smarter match.
+- **Pairing for interpolation.** Done for 86-99% of painted polygons by batch alignment
+  (Stage 3 above); what is left is chunks whose vertex count changes by more than a tenth or
+  that are split differently between steps.
 - **Things that are not smooth** (explosions, tracers, the HUD, a cut between
   views) must be left alone: hold the previous frame or switch on the logic
   frame.
