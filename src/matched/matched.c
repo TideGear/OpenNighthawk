@@ -14889,6 +14889,1001 @@ quit:
     return 1;
 }
 
+/* VGAME 0x0BC5F, camimage_place_near_effect(model, x, y, z, a1, a2, a3): a
+ * model placed relative to the eye for the camera view. x and y are 32-bit
+ * (the words at +6/+8 and +A/+C); the eye is at [B792] (x), [B796] (y) and
+ * [B834] (z). rel_x = x - eye x, rel_y = y + eye y - 100h:0000h (low words
+ * kept), rel_z = z - eye z. A relative position whose low word has |v| >=
+ * 7FFFh is out of range and nothing is drawn; otherwise the camera origin
+ * is set to (0, 0, -rel_z) (0x0D9E7), [E328] to 1, and the model is placed
+ * by 0x0E2B6 as (model, -a1, a2, a3, rel_x, -rel_y, z != 0). */
+static int vgame_camimage_place_near_effect(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 20)) return 0;
+    x86_enter(c, 0x0A, 0);
+    c->r[R_AX] = ds_get(c, 0xB796);
+    c->r[R_DX] = ds_get(c, 0xB798);
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], VG2_FRAME(0x0A), 1, 0);
+    c->r[R_DX] = (uint16_t)alu_add(c, c->r[R_DX], VG2_FRAME(0x0C), 1, (c->flags & F_CF) ? 1u : 0u);
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], 0, 1, 0);
+    c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], 0x0100, 1, (c->flags & F_CF) ? 1u : 0u);
+    VG2_SETFRAME(-8, c->r[R_AX]);
+    VG2_SETFRAME(-6, c->r[R_DX]);
+    c->r[R_AX] = (uint16_t)alu_sub(c, VG2_FRAME(0x0E), ds_get(c, 0xB834), 1, 0);
+    VG2_SETFRAME(-0x0A, c->r[R_AX]);
+    c->r[R_AX] = VG2_FRAME(6);
+    c->r[R_DX] = VG2_FRAME(8);
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], ds_get(c, 0xB792), 1, 0);
+    c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], ds_get(c, 0xB794), 1, (c->flags & F_CF) ? 1u : 0u);
+    VG2_SETFRAME(-4, c->r[R_AX]);
+    cpu_push16(c, c->r[R_DX]);
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 19;
+    VG2_NEAR(0xEE0C, 0xBC9D, 7);                                  /* |rel_x| */
+    VG2_POP2();
+    alu_sub(c, c->r[R_AX], 0x7FFF, 1, 0);
+    unsigned n = 4;                                               /* pop, pop, cmp, jge */
+    if (x86_cond(c, 0xD)) goto quit;
+    cpu_push16(c, VG2_FRAME(-6));
+    cpu_push16(c, VG2_FRAME(-8));
+    c->icount += n + 2;
+    VG2_NEAR(0xEE0C, 0xBCAD, 10);                                 /* |rel_y| */
+    VG2_POP2();
+    alu_sub(c, c->r[R_AX], 0x7FFF, 1, 0);
+    n = 4;
+    if (x86_cond(c, 0xD)) goto quit;
+    c->r[R_AX] = (uint16_t)alu_sub(c, 0, VG2_FRAME(-0x0A), 1, 0);
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, 0);
+    cpu_push16(c, 0);
+    c->icount += n + 5;
+    VG2_NEAR(0xD9E7, 0xBCC1, 17);                                 /* the camera origin */
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0);
+    ds_put(c, 0xE328, 1);
+    alu_sub(c, VG2_FRAME(0x0E), 1, 1, 0);
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, (c->flags & F_CF) ? 1u : 0u);   /* sbb ax, ax */
+    c->r[R_AX] = (uint16_t)alu_inc(c, c->r[R_AX], 1);
+    cpu_push16(c, c->r[R_AX]);                                    /* z != 0 */
+    c->r[R_AX] = (uint16_t)alu_sub(c, 0, VG2_FRAME(-8), 1, 0);
+    cpu_push16(c, c->r[R_AX]);                                    /* -rel_y */
+    cpu_push16(c, VG2_FRAME(-4));                                 /* rel_x */
+    cpu_push16(c, VG2_FRAME(0x14));
+    cpu_push16(c, VG2_FRAME(0x12));
+    c->r[R_AX] = (uint16_t)alu_sub(c, 0, VG2_FRAME(0x10), 1, 0);
+    cpu_push16(c, c->r[R_AX]);                                    /* -a1 */
+    cpu_push16(c, VG2_FRAME(4));                                  /* model */
+    c->icount += 16;
+    VG2_NEAR(0xE2B6, 0xBCED, 2);
+    n = 0;
+quit:
+    x86_leave(c);
+    c->icount += n + 2;
+    near_ret(c);
+    return 1;
+}
+
+/* The five wrappers of the palette set-up in the 1039 segment: ES = DS,
+ * BX, CX and DX loaded with a first colour, a count and a table, and the
+ * driver's far entry 14C2:0000 (or 14C2:00B7 for the two-argument form)
+ * called with the table's far pointer (ES:DX) and, for the four-argument
+ * form, the count and first colour. All return far, the pushed arguments
+ * removed with ADD SP. */
+typedef struct { uint16_t bx, cx, dx; int args; uint16_t lcall_ip; int zero_bx; } vg2_palette_call;
+static int vg2_palette_set(machine_t *m, const vg2_palette_call *p)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 10)) return 0;
+    c->r[R_AX] = c->seg[S_DS];
+    c->seg[S_ES] = c->r[R_AX];
+    if (p->zero_bx) c->r[R_BX] = (uint16_t)alu_sub(c, c->r[R_BX], c->r[R_BX], 1, 0);   /* sub bx, bx */
+    else c->r[R_BX] = p->bx;
+    c->r[R_CX] = p->cx;
+    c->r[R_DX] = p->dx;
+    cpu_push16(c, c->seg[S_ES]);
+    cpu_push16(c, c->r[R_DX]);
+    if (p->args == 4) { cpu_push16(c, c->r[R_CX]); cpu_push16(c, c->r[R_BX]); }
+    c->icount += p->args == 4 ? 9 : 7;
+    if (!guest_call_far(m, p->lcall_ip, (uint16_t)(p->lcall_ip + 5))) return 1;
+    if (!room(c, 2)) { c->ip = (uint16_t)(p->lcall_ip + 5); return 1; }
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], (uint16_t)(p->args * 2), 1, 0);
+    c->icount += 2;
+    far_ret(c);
+    return 1;
+}
+/* 1039:009D and 1039:00B7, eight colours from index 98h: the tables at 206A and 1212. */
+static const vg2_palette_call VG2_PAL_206A = { 0x98, 8, 0x206A, 4, 0x00AE, 0 };
+static const vg2_palette_call VG2_PAL_1212 = { 0x98, 8, 0x1212, 4, 0x00C8, 0 };
+/* 1039:00D1 (the 14C2:00B7 form), 1039:00E8 and 1039:0101: all 256 colours from index 0: the table at D4A, D4A and 134A. */
+static const vg2_palette_call VG2_PAL_D4A_READ = { 0, 0x100, 0x0D4A, 2, 0x00DF, 1 };
+static const vg2_palette_call VG2_PAL_D4A = { 0, 0x100, 0x0D4A, 4, 0x00F8, 1 };
+static const vg2_palette_call VG2_PAL_134A = { 0, 0x100, 0x134A, 4, 0x0111, 1 };
+static int vgame_palette_206a(machine_t *m) { return vg2_palette_set(m, &VG2_PAL_206A); }
+static int vgame_palette_1212(machine_t *m) { return vg2_palette_set(m, &VG2_PAL_1212); }
+static int vgame_palette_d4a_read(machine_t *m) { return vg2_palette_set(m, &VG2_PAL_D4A_READ); }
+static int vgame_palette_d4a(machine_t *m) { return vg2_palette_set(m, &VG2_PAL_D4A); }
+static int vgame_palette_134a(machine_t *m) { return vg2_palette_set(m, &VG2_PAL_134A); }
+
+/* VGAME 1452:0288, three rows through 1452:02AC: the routine takes a
+ * pointer to three 6-byte rows (SI, from the first argument) and two more
+ * words (BX and DI) and calls its row routine on each, SI advancing by 6
+ * between; SI and DI are restored. */
+static int vgame_matrix_rows3(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 8)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->r[R_DI]);
+    c->r[R_SI] = VG2_FRAME(6);
+    c->r[R_BX] = VG2_FRAME(8);
+    c->r[R_DI] = VG2_FRAME(0x0A);
+    c->icount += 7;
+    VG2_NEAR(0x02AC, 0x0299, 2);
+    c->r[R_SI] = (uint16_t)alu_add(c, c->r[R_SI], 6, 1, 0);
+    c->icount += 1;
+    VG2_NEAR(0x02AC, 0x029F, 2);
+    c->r[R_SI] = (uint16_t)alu_add(c, c->r[R_SI], 6, 1, 0);
+    c->icount += 1;
+    VG2_NEAR(0x02AC, 0x02A5, 5);
+    c->r[R_SI] = (uint16_t)alu_add(c, c->r[R_SI], 6, 1, 0);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 5;
+    far_ret(c);
+    return 1;
+}
+
+/* VGAME 1058:0D8C, copy_settings(p): the 20 words at the far pointer p
+ * (argument, offset then segment) are copied to DS:2CA2. DS and ES are
+ * restored. */
+static int vgame_copy_settings(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 13 + 20)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->seg[S_ES]);
+    cpu_push16(c, c->seg[S_DS]);
+    cpu_push16(c, c->seg[S_DS]);
+    c->seg[S_ES] = cpu_pop16(c);
+    c->r[R_SI] = VG2_FRAME(6);
+    c->seg[S_DS] = VG2_FRAME(8);
+    c->r[R_CX] = 0x14;
+    c->r[R_DI] = 0x2CA2;
+    const unsigned copied = rep_string(c, STR_MOVS, 1, c->seg[S_DS], 0);
+    c->seg[S_DS] = cpu_pop16(c);
+    c->seg[S_ES] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 13 + copied;
+    far_ret(c);
+    return 1;
+}
+
+/* VGAME 11ED:0078, lzw_reset: the picture decoder's string table starts
+ * again - the code length 9 bits, the mask 1FFh, the next code 100h; the
+ * 800h three-byte entries at C6B4 get the prefix FFFFh and the first 100h
+ * of them the suffix byte equal to their index. */
+static int vgame_lzw_table_reset(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 7 + 3 * 0x800 + 3 + 4 * 0x100 + 1)) return 0;
+    VG2_SETDS8(0x968E, 9);
+    ds_put(c, 0x9690, 0x01FF);
+    c->r[R_DX] = 0x0100;
+    ds_put(c, 0x9692, c->r[R_DX]);
+    c->r[R_AX] = 0xFFFF;
+    c->r[R_BX] = (uint16_t)alu_logic(c, 0, 1);                    /* xor bx, bx */
+    c->r[R_CX] = 0x0800;
+    do {
+        ds_put(c, (uint16_t)(c->r[R_BX] - 0x394C), c->r[R_AX]);
+        c->r[R_BX] = (uint16_t)alu_add(c, c->r[R_BX], 3, 1, 0);
+        c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);
+    } while (c->r[R_CX] != 0);
+    VG2_SET_LOW(R_AX, 0);
+    c->r[R_BX] = (uint16_t)alu_logic(c, 0, 1);
+    c->r[R_CX] = 0x0100;
+    do {
+        VG2_SETDS8(c->r[R_BX] - 0x394A, c->r[R_AX]);
+        VG2_SET_LOW(R_AX, alu_inc(c, c->r[R_AX] & 0xFF, 0));
+        c->r[R_BX] = (uint16_t)alu_add(c, c->r[R_BX], 3, 1, 0);
+        c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);
+    } while (c->r[R_CX] != 0);
+    c->icount += 7 + 3 * 0x800 + 3 + 4 * 0x100 + 1;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x078FD, scene_obstacle_probe(x, y, z): the world object at a map
+ * position, by 0x01007 (which looks it up and replaces it), with the
+ * coordinates widened to 32 bits and scaled by 32 through the runtime's
+ * shift 0x0EF68: (x << 5, (8000h - y) << 5, z). */
+static int vgame_scene_obstacle_probe(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 16)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_AX] = VG2_FRAME(8);
+    c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0;              /* cwd */
+    cpu_push16(c, c->r[R_DX]);
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = VG2_FRAME(6);
+    c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0;
+    c->r[R_CX] = c->r[R_AX];
+    c->r[R_BX] = c->r[R_DX];
+    c->r[R_AX] = 0x8000;
+    c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0);
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_CX], 1, 0);
+    c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_BX], 1, (c->flags & F_CF) ? 1u : 0u);
+    VG2_SET_LOW(R_CX, 5);
+    c->icount += 15;
+    VG2_NEAR(0xEF68, 0x791C, 6);
+    cpu_push16(c, c->r[R_DX]);
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = VG2_FRAME(4);
+    c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0;
+    VG2_SET_LOW(R_CX, 5);
+    c->icount += 5;
+    VG2_NEAR(0xEF68, 0x7927, 3);
+    cpu_push16(c, c->r[R_DX]);
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 2;
+    VG2_NEAR(0x1007, 0x792C, 2);
+    x86_leave(c);
+    c->icount += 2;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 1039:011A, scene_detail_level, far: the detail level 0 to 15 of
+ * the view. 0 while [7D8E] is set. Otherwise the signed byte [4993] (a
+ * negative one as 0) is halved, [49AA] taken off and the result clamped
+ * to 0..31; a final halving gives the level, and 0 when [43E6] is clear. */
+static int vgame_scene_detail_level(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 25)) return 0;
+    set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));   /* sub ah, ah */
+    set_r8(c, R_AL, VG2_DS8(0x7D8E));
+    alu_logic(c, get_r8(c, R_AL), 0);                             /* or al, al */
+    unsigned n = 4;
+    if (get_r8(c, R_AL) == 0) {
+        set_r8(c, R_AL, VG2_DS8(0x4993));
+        c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);  /* cbw */
+        set_r8(c, R_AH, (uint8_t)~get_r8(c, R_AH));               /* not ah */
+        set_r8(c, R_AL, (uint8_t)alu_logic(c, get_r8(c, R_AL) & get_r8(c, R_AH), 0));
+        set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
+        c->r[R_AX] = x86_shift(c, 5, c->r[R_AX], 1, 1);           /* shr ax, 1 */
+        set_r8(c, R_AH, get_r8(c, R_AL));
+        set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), VG2_DS8(0x49AA), 0, 0));
+        n += 9;                                                   /* mov .. jns */
+        if (c->flags & F_SF) {
+            set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
+            n += 1;
+        }
+        alu_sub(c, get_r8(c, R_AH), 0x1F, 0, 0);
+        n += 2;
+        if (!x86_cond(c, 0xE)) { set_r8(c, R_AH, 0x1F); n += 1; }
+        c->r[R_AX] = x86_shift(c, 5, c->r[R_AX], 1, 1);
+        set_r8(c, R_AL, VG2_DS8(0x43E6));
+        alu_logic(c, get_r8(c, R_AL), 0);
+        n += 4;
+        if (get_r8(c, R_AL) == 0) {
+            set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
+            n += 1;
+        }
+    }
+    set_r8(c, R_AL, get_r8(c, R_AH));
+    set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
+    c->icount += n + 3;
+    far_ret(c);
+    return 1;
+}
+
+/* VGAME 120A:04C9, a vertex through the camera: the three words at 7D84
+ * are copied to the vertex slot at the pointer [7D7C] (7C9C to begin
+ * with), transformed by the camera matrix (1452:021B) and the pointer
+ * advanced by 6. BX and DI are saved and restored. */
+static int vgame_model_vertex_camera(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 12)) return 0;
+    cpu_push16(c, c->r[R_BX]);
+    c->r[R_BX] = 0x7C9C;
+    ds_put(c, 0x7D7C, c->r[R_BX]);
+    c->r[R_AX] = ds_get(c, 0x7D84);
+    ds_put(c, c->r[R_BX], c->r[R_AX]);
+    c->r[R_AX] = ds_get(c, 0x7D86);
+    ds_put(c, (uint16_t)(c->r[R_BX] + 2), c->r[R_AX]);
+    c->r[R_AX] = ds_get(c, 0x7D88);
+    ds_put(c, (uint16_t)(c->r[R_BX] + 4), c->r[R_AX]);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_BX]);
+    c->icount += 11;
+    VG2_FAR(0x04E5, 5);
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 2, 1, 0);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    ds_put(c, 0x7D7C, (uint16_t)alu_add(c, ds_get(c, 0x7D7C), 6, 1, 0));
+    c->icount += 5;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x04E5F, frame_palette_cycle: the day and night palette moves one
+ * step toward its target. With t = [9912] & 3F the game clock's phase, only
+ * every 16th tick does anything (and not while [43DC] is set); the four
+ * phases each step one band of the live palette at 104A (3 bytes a colour)
+ * toward the target - the table at 164A, or at 1C4A when [368A] is set -
+ * by 0x0E530:
+ *   t = 00h  colours 10h..4Fh, only when bit 6 of [9912] is set;
+ *   t = 10h  colours 60h..9Fh;   t = 20h  colours A0h..CFh;   t = 30h  colours D0h..FFh.
+ * The band is then sent to the video driver (14C2:0000, colour, count,
+ * pointer), the count at phase 10h being cut to 38h when the cockpit is
+ * shown ([368C]). */
+static int vgame_frame_palette_cycle(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 40)) return 0;
+    x86_enter(c, 0x10, 0);
+    set_r8(c, R_AL, VG2_DS8(0x9912));
+    c->r[R_AX] = (uint16_t)alu_logic(c, c->r[R_AX] & 0x3F, 1);
+    VG2_SETFRAME(-0x0C, c->r[R_AX]);
+    alu_logic(c, get_r8(c, R_AL) & 0x0F, 0);                      /* test al, 0Fh */
+    unsigned n = 6;                                               /* enter .. jne */
+    if (!(c->flags & F_ZF)) goto idle;
+    alu_sub(c, ds_get(c, 0x43DC), 0, 1, 0);
+    n += 2;
+    if (!(c->flags & F_ZF)) goto idle;
+    VG2_SETFRAME(-6, 0);
+    n += 1;
+    alu_sub(c, c->r[R_AX], 0x30, 1, 0);
+    if (c->flags & F_ZF) {                                        /* phase 30h */
+        VG2_SETFRAME(-2, 0xD0);
+        VG2_SETFRAME(-6, 0x30);
+        n += 6;
+        goto band;
+    }
+    n += 3;
+    if (x86_cond(c, 0x7)) goto band;                              /* above: nothing set */
+    alu_logic(c, get_r8(c, R_AL), 0);                             /* or al, al */
+    n += 2;
+    if (get_r8(c, R_AL) == 0) {                                   /* phase 0 */
+        alu_logic(c, VG2_DS8(0x9912) & 0x40, 0);
+        n += 2;
+        if (!(c->flags & F_ZF)) {
+            VG2_SETFRAME(-2, 0x10);
+            VG2_SETFRAME(-6, 0x40);
+            n += 2;
+        }
+        goto band;
+    }
+    set_r8(c, R_AL, (uint8_t)alu_sub(c, get_r8(c, R_AL), 0x10, 0, 0));
+    n += 2;
+    if (c->flags & F_ZF) {                                        /* phase 10h */
+        VG2_SETFRAME(-2, 0x60);
+        VG2_SETFRAME(-6, 0x40);
+        n += 3;
+        goto band;
+    }
+    set_r8(c, R_AL, (uint8_t)alu_sub(c, get_r8(c, R_AL), 0x10, 0, 0));
+    n += 2;
+    if (c->flags & F_ZF) {                                        /* phase 20h */
+        VG2_SETFRAME(-2, 0xA0);
+        VG2_SETFRAME(-6, 0x30);
+        n += 3;
+        goto band;
+    }
+    n += 1;                                                       /* jmp */
+band:                                                             /* 04EA5 */
+    alu_sub(c, VG2_FRAME(-6), 0, 1, 0);
+    n += 2;
+    if (c->flags & F_ZF) goto quit;                               /* no band this tick */
+    VG2_SETFRAME(-0x0A, 0x104A);
+    VG2_SETFRAME(-8, c->seg[S_DS]);
+    VG2_SETFRAME(-0x0E, 0x164A);
+    n += 3;
+    alu_sub(c, ds_get(c, 0x368A), 0, 1, 0);
+    n += 2;
+    if (!(c->flags & F_ZF)) {                                     /* the night target */
+        c->r[R_AX] = (uint16_t)alu_add(c, x86_imul3(c, VG2_FRAME(-2), 3), 0x1C4A, 1, 0);
+        n += 3;
+    } else {
+        c->r[R_AX] = x86_imul3(c, VG2_FRAME(-2), 3);
+        c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], VG2_FRAME(-0x0E), 1, 0);
+        n += 2;
+    }
+    cpu_push16(c, VG2_FRAME(-6));                                 /* the count */
+    cpu_push16(c, c->seg[S_DS]);
+    cpu_push16(c, c->r[R_AX]);                                    /* the target band */
+    c->r[R_AX] = x86_imul3(c, VG2_FRAME(-2), 3);
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], VG2_FRAME(-0x0A), 1, 0);
+    c->r[R_DX] = VG2_FRAME(-8);
+    cpu_push16(c, c->r[R_DX]);
+    cpu_push16(c, c->r[R_AX]);                                    /* the live band */
+    c->icount += n + 8;
+    VG2_NEAR(0xE530, 0x4EFD, 14);
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x0A, 1, 0);
+    alu_sub(c, VG2_FRAME(-0x0C), 0x10, 1, 0);
+    n = 3;                                                        /* add, cmp, jne */
+    if (c->flags & F_ZF) {
+        alu_sub(c, ds_get(c, 0x368C), 0, 1, 0);
+        n += 2;
+        if (!(c->flags & F_ZF)) {
+            VG2_SETFRAME(-6, 0x38);
+            n += 1;
+        }
+    }
+    c->r[R_AX] = x86_imul3(c, VG2_FRAME(-2), 3);
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], VG2_FRAME(-0x0A), 1, 0);
+    c->r[R_DX] = VG2_FRAME(-8);
+    cpu_push16(c, c->r[R_DX]);
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, VG2_FRAME(-6));
+    cpu_push16(c, VG2_FRAME(-2));
+    c->icount += n + 7;
+    VG2_FAR(0x4F24, 2);
+    n = 0;
+    goto quit;
+idle:                                                             /* 04E77: jmp 04F29 */
+    n += 1;
+quit:
+    x86_leave(c);
+    c->icount += n + 2;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x0C5B2, camimage_near_effects(a1, a2, a3): the camera's own
+ * near-object markers, while a target is tracked ([3D96] not -1). Of the 16
+ * slots at 3A08 (8 bytes: x, y, ...), each one in use (x not 0) is placed
+ * relative to the eye by 0x0B7E6 with the three words given; one in front
+ * of the eye ([DEBE] between -255 and -1) is then drawn: its size is
+ * 0x114A:0461 of the slot's kind (word +6) and 200h / [DEBE] (|v|, limited
+ * 0..FF), clamped by 0x0C67A, becomes the high byte of the model word
+ * [49F6] (with the kind's bits 1 to 3 below it), and the marker is placed
+ * with x and y widened by 32 (0x0EF68) by 0x0BC5F as model 25h. SI is
+ * restored. */
+static int vgame_camimage_near_effects(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 8)) return 0;
+    x86_enter(c, 4, 0);
+    cpu_push16(c, c->r[R_SI]);
+    alu_sub(c, ds_get(c, 0x3D96), 0xFFFF, 1, 0);
+    unsigned n = 4;                                               /* enter, push, cmp, jne */
+    if (c->flags & F_ZF) { n += 1; goto leave_; }                 /* no target: jmp 0C677 */
+    VG2_SETFRAME(-2, 0);
+    n += 1;
+head:                                                             /* 0C5C6 */
+    {
+        const uint16_t slot = (uint16_t)((uint16_t)(VG2_FRAME(-2) << 3));
+        VG2_ROOM_OR_STOP(ds_get(c, (uint16_t)(slot + 0x3A08)) ? 4 + 8 : 9, 0xC5C6);
+    }
+    c->r[R_BX] = x86_shift(c, 4, VG2_FRAME(-2), 3, 1);
+    alu_sub(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x3A08)), 0, 1, 0);
+    n += 4;                                                       /* mov, shl, cmp, jne */
+    if (c->flags & F_ZF) { n += 1; goto next; }                   /* an empty slot: jmp 0C66B */
+    cpu_push16(c, VG2_FRAME(8));
+    cpu_push16(c, VG2_FRAME(6));
+    cpu_push16(c, VG2_FRAME(4));
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x3A0C)));
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x3A0A)));
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x3A08)));
+    c->r[R_SI] = c->r[R_BX];
+    c->icount += n + 7;
+    n = 0;
+    VG2_NEAR(0xB7E6, 0xC5F0, 12);                                 /* the slot relative to the eye */
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x0C, 1, 0);
+    alu_sub(c, ds_get(c, 0xDEBE), 0, 1, 0);
+    n = 3;                                                        /* add, cmp, jge */
+    if (x86_cond(c, 0xD)) goto next;                              /* not in front */
+    alu_sub(c, ds_get(c, 0xDEBE), 0xFF00, 1, 0);
+    n += 2;
+    if (x86_cond(c, 0xE)) goto next;                              /* too far */
+    cpu_push16(c, 0xFF);
+    cpu_push16(c, 4);
+    c->r[R_AX] = 0x0200;
+    c->r[R_DX] = 0;                                               /* cwd */
+    x86_idiv16(c, ds_get(c, 0xDEBE), 0);                          /* [DEBE] is -255..-1: it cannot fault */
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += n + 6;
+    VG2_NEAR(0xEE0C, 0xC613, 4);                                  /* |200h / [DEBE]| */
+    c->r[R_BX] = cpu_pop16(c);
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_SI] + 0x3A0E)));
+    c->icount += 3;
+    VG2_FAR(0xC619, 4);                                           /* the size, by 114A:0461 */
+    VG2_POP2();
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 3;
+    VG2_NEAR(0xC67A, 0xC624, 18);                                 /* clamped */
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0);
+    VG2_SETFRAME(-4, c->r[R_AX]);
+    VG2_SET_LOW(R_AX, VG2_DS8(c->r[R_SI] + 0x3A0E));
+    c->r[R_AX] = (uint16_t)alu_logic(c, c->r[R_AX] & 0x0E, 1);
+    c->r[R_AX] = x86_shift(c, 7, c->r[R_AX], 1, 1);               /* sar ax, 1 */
+    c->r[R_CX] = (uint16_t)((c->r[R_CX] & 0x00FF) | (VG2_FRAME(-4) & 0xFF) << 8);   /* mov ch, [bp-4] */
+    VG2_SET_LOW(R_CX, alu_sub(c, c->r[R_CX] & 0xFF, c->r[R_CX] & 0xFF, 0, 0));      /* sub cl, cl */
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], c->r[R_CX], 1, 0);
+    ds_put(c, 0x49F6, c->r[R_AX]);
+    cpu_push16(c, 1);
+    cpu_push16(c, 0);
+    cpu_push16(c, 0);
+    cpu_push16(c, 0);
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_SI] + 0x3A0C)));
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_SI] + 0x3A0A));
+    c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0);
+    VG2_SET_LOW(R_CX, 5);
+    c->icount += 17;
+    VG2_NEAR(0xEF68, 0xC654, 6);                                  /* y << 5 */
+    cpu_push16(c, c->r[R_DX]);
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_SI] + 0x3A08));
+    c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0);
+    VG2_SET_LOW(R_CX, 5);
+    c->icount += 5;
+    VG2_NEAR(0xEF68, 0xC661, 4);                                  /* x << 5 */
+    cpu_push16(c, c->r[R_DX]);
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, 0x25);
+    c->icount += 3;
+    VG2_NEAR(0xBC5F, 0xC668, 5);                                  /* the marker */
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x14, 1, 0);
+    n = 1;
+next:                                                             /* 0C66B */
+    VG2_SETFRAME(-2, (uint16_t)alu_inc(c, VG2_FRAME(-2), 1));
+    alu_sub(c, VG2_FRAME(-2), 0x10, 1, 0);
+    n += 3;                                                       /* inc, cmp, jge */
+    if (x86_cond(c, 0xD)) goto leave_;
+    n += 1;                                                       /* jmp 0C5C6 */
+    goto head;
+leave_:                                                           /* 0C677 */
+    VG2_ROOM_OR_STOP(3, 0xC677);
+    c->r[R_SI] = cpu_pop16(c);
+    x86_leave(c);
+    c->icount += 3;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x0C4BA, camimage_aircraft_glint(a1, a2, a3, x, y, z): the glint
+ * on a flagged aircraft in the camera view. Six slots at 3A8A (8 bytes: two
+ * jitter offsets to the angles, a frame counter, an active flag) each add
+ * their jitter to a1 and a2, fold a2 back when it passes a quarter turn
+ * (|a2| > 4000h or = 8000h: a2 = 8000h - a2 and a1 += 8000h in its high
+ * byte), and place a model by 0x0E2B6: slots 0..3 the frame model 25h +
+ * counter, slots 4 and 5 model 24h (the counter then also saved at
+ * [C06C]); the counter advances at each use. A slot that is idle or has
+ * reached 6 gets new jitter from the random numbers (0x0C88C: 7 twice,
+ * the offsets from the table at 4398) and a counter of 1 or 2, and is
+ * marked active. SI is restored. */
+static int vgame_camimage_aircraft_glint(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 4)) return 0;
+    x86_enter(c, 8, 0);
+    cpu_push16(c, c->r[R_SI]);
+    VG2_SETFRAME(-4, 0);
+    unsigned n = 4;                                               /* enter, push, mov, jmp */
+head:                                                             /* 0C533 */
+    {
+        const int16_t i = (int16_t)VG2_FRAME(-4);
+        const uint16_t slot = (uint16_t)((uint16_t)i << 3);
+        unsigned need = 16;
+        if (i >= 6) need = 5;
+        else if (ds_get(c, (uint16_t)(slot + 0x3A90)) == 0) need = 8;
+        else if ((int16_t)ds_get(c, (uint16_t)(slot + 0x3A8E)) >= 6) need = 10;
+        VG2_ROOM_OR_STOP(need, 0xC533);
+    }
+    alu_sub(c, VG2_FRAME(-4), 6, 1, 0);
+    n += 2;
+    if (x86_cond(c, 0xD)) goto leave_;                            /* all six done */
+    c->r[R_BX] = x86_shift(c, 4, VG2_FRAME(-4), 3, 1);
+    alu_sub(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x3A90)), 0, 1, 0);
+    n += 4;
+    if (c->flags & F_ZF) goto respawn;                            /* idle */
+    alu_sub(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x3A8E)), 6, 1, 0);
+    n += 2;
+    if (x86_cond(c, 0xD)) goto respawn;                           /* the counter ran out */
+    c->r[R_AX] = (uint16_t)alu_add(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x3A8A)), VG2_FRAME(4), 1, 0);
+    VG2_SETFRAME(-2, c->r[R_AX]);                                 /* a1 + jitter */
+    c->r[R_AX] = (uint16_t)alu_add(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x3A8C)), VG2_FRAME(6), 1, 0);
+    VG2_SETFRAME(-6, c->r[R_AX]);                                 /* a2 + jitter */
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += n + 7;
+    VG2_NEAR(0xEE0C, 0xC565, 23);                                 /* |a2| */
+    c->r[R_BX] = cpu_pop16(c);
+    alu_sub(c, c->r[R_AX], 0x4000, 1, 0);
+    n = 3;                                                        /* pop, cmp, jg */
+    int fold = x86_cond(c, 0xF);
+    if (!fold) {
+        alu_sub(c, VG2_FRAME(-6), 0x8000, 1, 0);
+        n += 2;                                                   /* cmp, jne */
+        fold = (c->flags & F_ZF) != 0;
+    }
+    if (fold) {
+        c->r[R_AX] = (uint16_t)alu_sub(c, 0x8000, VG2_FRAME(-6), 1, 0);
+        VG2_SETFRAME(-6, c->r[R_AX]);
+        const uint32_t hi = phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 1));
+        mem_write8(c, hi, (uint8_t)alu_add(c, mem_read8(c, hi), 0x80, 0, 0));
+        n += 4;
+    }
+    alu_sub(c, VG2_FRAME(-4), 4, 1, 0);
+    n += 2;                                                       /* cmp, jl */
+    if (!x86_cond(c, 0xC)) {                                      /* slots 4 and 5: model 24h */
+        n += 1;                                                   /* jmp 0C4C6 */
+        c->r[R_BX] = x86_shift(c, 4, VG2_FRAME(-4), 3, 1);
+        c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0x3A8E));
+        ds_put(c, (uint16_t)(c->r[R_BX] + 0x3A8E), (uint16_t)alu_inc(c, c->r[R_AX], 1));
+        ds_put(c, 0xC06C, c->r[R_AX]);
+        cpu_push16(c, VG2_FRAME(0x0E));
+        cpu_push16(c, VG2_FRAME(0x0C));
+        cpu_push16(c, VG2_FRAME(0x0A));
+        cpu_push16(c, VG2_FRAME(8));
+        cpu_push16(c, VG2_FRAME(-6));
+        cpu_push16(c, VG2_FRAME(-2));
+        cpu_push16(c, 0x24);
+        c->icount += n + 12;
+    } else {                                                      /* slots 0..3: model 25h + counter */
+        cpu_push16(c, VG2_FRAME(0x0E));
+        cpu_push16(c, VG2_FRAME(0x0C));
+        cpu_push16(c, VG2_FRAME(0x0A));
+        cpu_push16(c, VG2_FRAME(8));
+        cpu_push16(c, VG2_FRAME(-6));
+        cpu_push16(c, VG2_FRAME(-2));
+        c->r[R_BX] = x86_shift(c, 4, VG2_FRAME(-4), 3, 1);
+        c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0x3A8E));
+        ds_put(c, (uint16_t)(c->r[R_BX] + 0x3A8E), (uint16_t)alu_inc(c, c->r[R_AX], 1));
+        c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], 0x25, 1, 0);
+        cpu_push16(c, c->r[R_AX]);
+        c->icount += n + 13;
+    }
+    n = 0;
+    VG2_NEAR(0xE2B6, 0xC4EE, 3);                                  /* the glint model */
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x0E, 1, 0);
+    n = 2;                                                        /* add, jmp */
+    goto advance;
+respawn:                                                          /* 0C4F3: new jitter and lifetime */
+    cpu_push16(c, 7);
+    c->icount += n + 1;
+    n = 0;
+    VG2_NEAR(0xC88C, 0xC4F8, 10);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = x86_shift(c, 4, c->r[R_AX], 1, 1);
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0x4398));
+    c->r[R_BX] = x86_shift(c, 4, VG2_FRAME(-4), 3, 1);
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x3A8A), c->r[R_AX]);
+    cpu_push16(c, 7);
+    c->r[R_SI] = c->r[R_BX];
+    c->icount += 9;
+    VG2_NEAR(0xC88C, 0xC512, 7);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = x86_shift(c, 4, c->r[R_AX], 1, 1);
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0x4398));
+    ds_put(c, (uint16_t)(c->r[R_SI] + 0x3A8C), c->r[R_AX]);
+    cpu_push16(c, 2);
+    c->icount += 6;
+    VG2_NEAR(0xC88C, 0xC524, 5);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_AX] = (uint16_t)alu_inc(c, c->r[R_AX], 1);
+    ds_put(c, (uint16_t)(c->r[R_SI] + 0x3A8E), c->r[R_AX]);
+    ds_put(c, (uint16_t)(c->r[R_SI] + 0x3A90), 1);
+    n = 4;                                                        /* pop, inc, mov, mov */
+advance:                                                          /* 0C530 */
+    VG2_SETFRAME(-4, (uint16_t)alu_inc(c, VG2_FRAME(-4), 1));
+    n += 1;
+    goto head;
+leave_:                                                           /* 0C5AF */
+    VG2_ROOM_OR_STOP(3, 0xC5AF);
+    c->r[R_SI] = cpu_pop16(c);
+    x86_leave(c);
+    c->icount += 3;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 120A:043C, model_vertex_world: a model vertex (three words at ES:SI)
+ * is rotated by the camera matrix (1452:0330, row vector by matrix to
+ * 32 bits) twice - first the vertex at the slot BX by the matrix at 7D3E
+ * and then, negated, the offset at 7D56 (the second multiply is given
+ * DI - 12h) - and the six 32-bit sums go to the three dwords at [7D56]
+ * (offsets 0, 4, 8): each is the camera position dword ([7CD2], [7CD6],
+ * [7CDA] with the word after it) plus the rotated vertex ([7D3E], [7D42],
+ * [7D46] likewise). BX is restored. */
+static int vgame_model_vertex_world(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 11)) return 0;
+    const uint16_t es = c->seg[S_ES];
+    for (int k = 0; k < 3; k++)
+        seg_write16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] + 2 * k), seg_read16(c, es, (uint16_t)(c->r[R_SI] + 2 * k)));
+    c->r[R_AX] = 0x7D3E;                                          /* lea ax, [7D3E] */
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, ds_get(c, 0x7D50));
+    cpu_push16(c, c->r[R_BX]);
+    c->icount += 10;
+    VG2_FAR(0x0459, 11);                                          /* the vertex by the matrix */
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 4, 1, 0);
+    for (int k = 0; k < 3; k++) {                                 /* neg [bx], [bx+2], [bx+4] */
+        const uint16_t a = (uint16_t)(c->r[R_BX] + 2 * k);
+        ds_put(c, a, (uint16_t)alu_sub(c, 0, ds_get(c, a), 1, 0));
+    }
+    cpu_push16(c, ds_get(c, 0x7D56));
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_DI], 0x12, 1, 0);
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, c->r[R_BX]);
+    c->icount += 10;
+    VG2_FAR(0x0475, 28);                                          /* the offset by the matrix */
+    c->r[R_BX] = ds_get(c, 0x7D56);
+    static const uint16_t sum[3][5] = {
+        { 0, 0x7CD2, 0x7CD4, 0x7D3E, 0x7D40 },
+        { 4, 0x7CD6, 0x7CD8, 0x7D42, 0x7D44 },
+        { 8, 0x7CDA, 0x7CDC, 0x7D46, 0x7D48 } };
+    for (int k = 0; k < 3; k++) {
+        const uint16_t lo = (uint16_t)(c->r[R_BX] + sum[k][0]), hi = (uint16_t)(lo + 2);
+        for (int s = 0; s < 2; s++) {
+            c->r[R_AX] = ds_get(c, sum[k][1 + 2 * s]);
+            ds_put(c, lo, (uint16_t)alu_add(c, ds_get(c, lo), c->r[R_AX], 1, 0));
+            c->r[R_AX] = ds_get(c, sum[k][2 + 2 * s]);
+            ds_put(c, hi, (uint16_t)alu_add(c, ds_get(c, hi), c->r[R_AX], 1, (c->flags & F_CF) ? 1u : 0u));
+        }
+    }
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 4, 1, 0);
+    c->icount += 1 + 24 + 3;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x0E2B6, compose_emit_object(model, a1, a2, a3, x, y, z): an object
+ * placed in the scene. The arguments are stored (x, y, z at 499A..499E, the
+ * model word at 4986); the model word's bit 15 is kept on the stack, its
+ * high byte (below bit 15) selects a table (words at 0A60, indexing with
+ * the model number's low byte) whose byte gives the detail class: its low
+ * three bits go to [49AA], and the model page word for the high byte
+ * ([B78A + 2 * high byte]) to [8590]. The position is taken relative to
+ * the camera ([49AC..49B0] subtracted, to 4994..4998) and culled by
+ * 0x0E3BF. A culled object ends the routine. A visible one with bit 7 of
+ * its class goes to the deferred list (0x0DB3C). Otherwise the detail level
+ * (1039:011A) goes to [48C4], the second matrix (49D0) is built by
+ * 1452:03AB from the negated first two angles and the third, its off-
+ * diagonal pairs are swapped (a transpose), and the model is drawn by
+ * 120A:00CF with the position, y negated. SI, DI and BP are restored. */
+static int vgame_compose_emit_object(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 42)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->r[R_DI]);
+    c->r[R_AX] = VG2_FRAME(6);
+    ds_put(c, 0x499A, c->r[R_AX]);
+    c->r[R_AX] = VG2_FRAME(8);
+    ds_put(c, 0x499C, c->r[R_AX]);
+    c->r[R_AX] = VG2_FRAME(0x0A);
+    ds_put(c, 0x499E, c->r[R_AX]);
+    c->r[R_AX] = VG2_FRAME(4);
+    ds_put(c, 0x4986, c->r[R_AX]);
+    c->r[R_BX] = (uint16_t)alu_sub(c, c->r[R_BX], c->r[R_BX], 1, 0);
+    alu_logic(c, c->r[R_AX] & 0x8000, 1);                         /* test ax, 8000h */
+    unsigned pre = 40;                                            /* the instructions up to the call */
+    if (!(c->flags & F_ZF)) { c->r[R_BX] = (uint16_t)alu_inc(c, c->r[R_BX], 1); pre++; }
+    cpu_push16(c, c->r[R_BX]);                                    /* bit 15 */
+    c->r[R_AX] = (uint16_t)alu_logic(c, c->r[R_AX] & 0x7FFF, 1);
+    VG2_SET_LOW(R_BX, c->r[R_AX] >> 8);                           /* mov bl, ah */
+    c->r[R_AX] = (uint16_t)alu_logic(c, c->r[R_AX] & 0x7F, 1);
+    VG2_SETFRAME(4, c->r[R_AX]);
+    c->r[R_BX] = (uint16_t)alu_add(c, c->r[R_BX], c->r[R_BX], 1, 0);
+    c->r[R_SI] = ds_get(c, (uint16_t)(c->r[R_BX] + 0x0A60));
+    c->r[R_AX] = (uint16_t)alu_logic(c, c->r[R_AX] & 0xFF, 1);
+    c->r[R_SI] = (uint16_t)alu_add(c, c->r[R_SI], c->r[R_AX], 1, 0);
+    x86_lods(c, 0, c->seg[S_DS]);                                 /* the class byte */
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)alu_logic(c, c->r[R_AX] & 7, 1);
+    ds_put(c, 0x49AA, c->r[R_AX]);
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] - 0x4876));
+    ds_put(c, 0x8590, c->r[R_AX]);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BX] = (uint16_t)alu_sub(c, VG2_FRAME(0x0E), ds_get(c, 0x49AE), 1, 0);
+    ds_put(c, 0x4996, c->r[R_BX]);
+    c->r[R_CX] = (uint16_t)alu_sub(c, VG2_FRAME(0x10), ds_get(c, 0x49B0), 1, 0);
+    ds_put(c, 0x4998, c->r[R_CX]);
+    c->r[R_BP] = (uint16_t)alu_sub(c, VG2_FRAME(0x0C), ds_get(c, 0x49AC), 1, 0);
+    ds_put(c, 0x4994, c->r[R_BP]);
+    c->icount += pre;
+    VG2_NEAR(0xE3BF, 0xE326, 8);                                  /* project and cull */
+    c->r[R_BP] = cpu_pop16(c);
+    c->r[R_AX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    unsigned n = 4;                                               /* pop, pop, pop, jne */
+    if (!(c->flags & F_ZF)) goto done;                            /* culled */
+    alu_logic(c, c->r[R_AX] & 0x80, 1);
+    n += 2;
+    if (!(c->flags & F_ZF)) {                                     /* a deferred draw */
+        c->icount += n;
+        VG2_NEAR(0xDB3C, 0xE333, 5);
+        n = 1;                                                    /* jmp */
+        goto done;
+    }
+    ds_put(c, 0xC05C, c->r[R_BX]);
+    c->icount += n + 1;
+    VG2_FAR(0xE33A, 11);                                          /* the detail level */
+    VG2_SETDS8(0x48C4, c->r[R_AX]);
+    c->r[R_AX] = 0x49D0;
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, VG2_FRAME(0x0A));
+    c->r[R_AX] = (uint16_t)alu_sub(c, 0, VG2_FRAME(8), 1, 0);
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)alu_sub(c, 0, VG2_FRAME(6), 1, 0);
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 10;
+    VG2_FAR(0xE355, 24);                                          /* the second matrix */
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0);
+    {
+        static const uint16_t swap[3][2] = { { 0x49D2, 0x49D6 }, { 0x49D4, 0x49DC }, { 0x49DA, 0x49DE } };
+        for (int k = 0; k < 3; k++) {
+            c->r[R_AX] = ds_get(c, swap[k][0]);
+            c->r[R_DX] = ds_get(c, swap[k][1]);
+            ds_put(c, swap[k][0], c->r[R_DX]);
+            ds_put(c, swap[k][1], c->r[R_AX]);
+        }
+    }
+    c->r[R_AX] = 0xC05A;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0x49D0;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)alu_sub(c, 0, ds_get(c, 0x4996), 1, 0);
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, ds_get(c, 0x4998));
+    cpu_push16(c, ds_get(c, 0x4994));
+    cpu_push16(c, VG2_FRAME(4));
+    c->icount += 23;
+    VG2_FAR(0xE3A0, 5);                                           /* the model */
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x0C, 1, 0);
+    n = 1;
+done:                                                             /* 0E3A8 */
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += n + 4;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x0DB3C, scene_defer_object: the object being placed (its fields
+ * at 4986..499E and 49F6, set by 0x0E2B6) goes on the list of deferred
+ * objects, which is kept in order of distance. The list is [49F4] pointers
+ * at 4E6C to 22-byte records at 4A20; a full list (50 entries) drops its
+ * first and reuses that record. The record's key is the camera distance
+ * dword [4990] arithmetically shifted right by (4 - [E328]) * 2 (0x0EF74),
+ * 2000h added to its high word for the detail class 5 in view mode 2; then
+ * the detail level (1039:011A) and the eight words follow. The new record
+ * is inserted after the last entry whose key is not above it, the later
+ * pointers moved up one place, and the count incremented. */
+static int vgame_scene_defer_object(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t count = ds_get(c, 0x49F4);
+    if (!room(c, count == 0x32 ? 357 : 12)) return 0;
+    x86_enter(c, 6, 0);
+    alu_sub(c, count, 0x32, 1, 0);
+    unsigned n = 3;                                               /* enter, cmp, jne */
+    if (c->flags & F_ZF) {                                        /* full: drop the first entry */
+        c->r[R_AX] = ds_get(c, 0x4E6C);
+        VG2_SETFRAME(-2, c->r[R_AX]);
+        VG2_SETFRAME(-4, 1);
+        n += 3;
+        do {
+            c->r[R_BX] = x86_shift(c, 4, VG2_FRAME(-4), 1, 1);
+            c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0x4E6C));
+            ds_put(c, (uint16_t)(c->r[R_BX] + 0x4E6A), c->r[R_AX]);
+            VG2_SETFRAME(-4, (uint16_t)alu_inc(c, VG2_FRAME(-4), 1));
+            alu_sub(c, VG2_FRAME(-4), 0x32, 1, 0);
+            n += 7;
+        } while (x86_cond(c, 0xC));
+        ds_put(c, 0x49F4, (uint16_t)alu_dec(c, ds_get(c, 0x49F4), 1));
+        n += 2;                                                   /* dec, jmp */
+    } else {                                                      /* the next free record */
+        c->r[R_AX] = x86_imul3(c, ds_get(c, 0x49F4), 0x16);
+        c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], 0x4A20, 1, 0);
+        VG2_SETFRAME(-2, c->r[R_AX]);
+        n += 3;
+    }
+    c->r[R_AX] = ds_get(c, 0x4990);
+    c->r[R_DX] = ds_get(c, 0x4992);
+    VG2_SET_LOW(R_CX, 4);
+    VG2_SET_LOW(R_CX, alu_sub(c, c->r[R_CX] & 0xFF, VG2_DS8(0xE328), 0, 0));
+    VG2_SET_LOW(R_CX, x86_shift(c, 4, c->r[R_CX] & 0xFF, 1, 0));  /* shl cl, 1 */
+    c->icount += n + 5;
+    VG2_NEAR(0xEF74, 0xDB8B, 10);                                 /* the key: distance >> CL */
+    c->r[R_BX] = VG2_FRAME(-2);
+    ds_put(c, c->r[R_BX], c->r[R_AX]);
+    ds_put(c, (uint16_t)(c->r[R_BX] + 2), c->r[R_DX]);
+    alu_sub(c, ds_get(c, 0xE328), 2, 1, 0);
+    n = 5;                                                        /* mov, mov, mov, cmp, jne */
+    if (c->flags & F_ZF) {
+        alu_sub(c, ds_get(c, 0x49AA), 5, 1, 0);
+        n += 2;
+        if (c->flags & F_ZF) {
+            ds_put(c, c->r[R_BX], (uint16_t)alu_add(c, ds_get(c, c->r[R_BX]), 0, 1, 0));
+            ds_put(c, (uint16_t)(c->r[R_BX] + 2),
+                   (uint16_t)alu_add(c, ds_get(c, (uint16_t)(c->r[R_BX] + 2)), 0x20, 1, (c->flags & F_CF) ? 1u : 0u));
+            n += 2;
+        }
+    }
+    c->icount += n;
+    VG2_FAR(0xDBA8, 23);                                          /* the detail level */
+    set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
+    c->r[R_BX] = VG2_FRAME(-2);
+    ds_put(c, (uint16_t)(c->r[R_BX] + 4), c->r[R_AX]);
+    {
+        static const uint16_t fields[8][2] = {
+            { 0x49F6, 6 }, { 0x4986, 8 }, { 0x4994, 0x0A }, { 0x4996, 0x0C },
+            { 0x4998, 0x0E }, { 0x499A, 0x10 }, { 0x499C, 0x12 }, { 0x499E, 0x14 } };
+        for (int k = 0; k < 8; k++) {
+            c->r[R_AX] = ds_get(c, fields[k][0]);
+            ds_put(c, (uint16_t)(c->r[R_BX] + fields[k][1]), c->r[R_AX]);
+        }
+    }
+    c->r[R_AX] = (uint16_t)alu_dec(c, ds_get(c, 0x49F4), 1);
+    VG2_SETFRAME(-4, c->r[R_AX]);
+    n = 3 + 16 + 4;                                               /* sub .. jmp */
+search:                                                           /* 0DBF1: from the end, back to the place */
+    VG2_ROOM_OR_STOP(17, 0xDBF1);
+    alu_sub(c, VG2_FRAME(-4), 0xFFFF, 1, 0);
+    n += 2;
+    if (x86_cond(c, 0xE)) goto place;                             /* jle: the front of the list */
+    c->r[R_BX] = VG2_FRAME(-2);
+    c->r[R_AX] = ds_get(c, c->r[R_BX]);
+    c->r[R_DX] = ds_get(c, (uint16_t)(c->r[R_BX] + 2));
+    c->r[R_BX] = x86_shift(c, 4, VG2_FRAME(-4), 1, 1);
+    c->r[R_BX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0x4E6C));
+    alu_sub(c, ds_get(c, (uint16_t)(c->r[R_BX] + 2)), c->r[R_DX], 1, 0);
+    n += 7;                                                       /* mov .. cmp */
+    n += 1;                                                       /* jl */
+    if (x86_cond(c, 0xC)) goto earlier;                           /* that entry's key is lower: look further */
+    n += 1;                                                       /* jg */
+    if (x86_cond(c, 0xF)) goto place;
+    alu_sub(c, ds_get(c, c->r[R_BX]), c->r[R_AX], 1, 0);
+    n += 2;                                                       /* cmp, jbe */
+    if (!x86_cond(c, 0x6)) goto place;
+earlier:                                                          /* 0DBEE */
+    VG2_SETFRAME(-4, (uint16_t)alu_dec(c, VG2_FRAME(-4), 1));
+    n += 1;
+    goto search;
+place:                                                            /* 0DC13: move the later pointers up */
+    c->r[R_AX] = (uint16_t)alu_dec(c, ds_get(c, 0x49F4), 1);
+    VG2_SETFRAME(-6, c->r[R_AX]);
+    n += 4;                                                       /* mov, dec, mov, jmp */
+shift:                                                            /* 0DC2C */
+    VG2_ROOM_OR_STOP(10, 0xDC2C);
+    c->r[R_AX] = VG2_FRAME(-4);
+    alu_sub(c, VG2_FRAME(-6), c->r[R_AX], 1, 0);
+    n += 3;
+    if (!x86_cond(c, 0xF)) goto finish;                           /* jg not taken */
+    c->r[R_BX] = x86_shift(c, 4, VG2_FRAME(-6), 1, 1);
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0x4E6C));
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x4E6E), c->r[R_AX]);
+    VG2_SETFRAME(-6, (uint16_t)alu_dec(c, VG2_FRAME(-6), 1));
+    n += 5;
+    goto shift;
+finish:                                                           /* 0DC34 */
+    c->r[R_AX] = VG2_FRAME(-2);
+    c->r[R_BX] = x86_shift(c, 4, VG2_FRAME(-4), 1, 1);
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x4E6E), c->r[R_AX]);
+    ds_put(c, 0x49F4, (uint16_t)alu_inc(c, ds_get(c, 0x49F4), 1));
+    x86_leave(c);
+    c->icount += n + 7;
+    near_ret(c);
+    return 1;
+}
+
 #undef VG2_NEAR
 #undef VG2_FAR
 #undef VG2_FRAME
@@ -15313,6 +16308,24 @@ static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xB4F5, vgame_panel_marker_label, "label of a projected marker", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD9A2, vgame_compose_camera, "the frame's camera matrices", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x889B, vgame_cockpit_lamp, "set a cockpit lamp", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xBC5F, vgame_camimage_place_near_effect, "camera view: model placed near the eye", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1039, 0x009D, vgame_palette_206a, "set 8 colours from the table at 206A", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1039, 0x00B7, vgame_palette_1212, "set 8 colours from the table at 1212", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1039, 0x00D1, vgame_palette_d4a_read, "palette call, two-argument form", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1039, 0x00E8, vgame_palette_d4a, "set 256 colours from the table at 0D4A", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1039, 0x0101, vgame_palette_134a, "set 256 colours from the table at 134A", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1452, 0x0288, vgame_matrix_rows3, "three matrix rows", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1058, 0x0D8C, vgame_copy_settings, "copy the 20-word settings block", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x11ED, 0x0078, vgame_lzw_table_reset, "reset the picture decoder's string table", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x78FD, vgame_scene_obstacle_probe, "probe an obstacle in the world", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1039, 0x011A, vgame_scene_detail_level, "detail level of the view", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x120A, 0x04C9, vgame_model_vertex_camera, "a vertex through the camera", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x4E5F, vgame_frame_palette_cycle, "day and night palette step", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xC5B2, vgame_camimage_near_effects, "camera view: near-object markers", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xC4BA, vgame_camimage_aircraft_glint, "camera view: aircraft glint", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x120A, 0x043C, vgame_model_vertex_world, "a model vertex into world space", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xE2B6, vgame_compose_emit_object, "place an object in the scene", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xDB3C, vgame_scene_defer_object, "defer an object in distance order", 1 },
 };
 
 void matched_register(void)

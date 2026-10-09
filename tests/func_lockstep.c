@@ -133,10 +133,19 @@ static void setup_side(cpu_t *c, const recomp_override *o, uint16_t cs, uint16_t
 
 static unsigned long long g_overrun;    /* routines that ran past the event limit */
 
-/* Sentinel words to plant, by routine (segment, IP): at DS:[reg + disp]. */
+/* Sentinel words to plant, by routine (segment, IP): at DS:[reg + disp], or at DS:disp when reg is PLANT_ABS. */
+#define PLANT_ABS 8
 static const struct { uint16_t seg, ip; uint8_t reg; uint16_t disp; uint16_t val; } PLANTS[] = {
     { 0x120A, 0x0B3B, R_DI, 0xD6B6, 0x8000 },     /* model_prepare_edge: a vertex behind the eye (x high word 8000h) */
     { 0x120A, 0x0B3B, R_BX, 0xD6B6, 0x8000 },
+    { 0x0000, 0xDB3C, PLANT_ABS, 0x49F4, 0x0032 },   /* scene_defer_object: a full list of 50 */
+    { 0x0000, 0xDB3C, PLANT_ABS, 0xE328, 0x0002 },   /* ... in view mode 2 */
+    { 0x0000, 0xDB3C, PLANT_ABS, 0x49AA, 0x0005 },   /* ... with detail class 5 */
+    { 0x0000, 0x4E5F, PLANT_ABS, 0x9912, 0x0030 },   /* frame_palette_cycle: the four phases of the clock ... */
+    { 0x0000, 0x4E5F, PLANT_ABS, 0x9912, 0x0020 },
+    { 0x0000, 0x4E5F, PLANT_ABS, 0x9912, 0x0010 },
+    { 0x0000, 0x4E5F, PLANT_ABS, 0x9912, 0x0040 },
+    { 0x0000, 0x4E5F, PLANT_ABS, 0x43DC, 0x0000 },   /* ... with the cycle enabled */
 };
 
 static const char *g_ctx = "";   /* what the comparison in progress is: " (mid-run stop)" */
@@ -189,6 +198,15 @@ static int compare(const char *mod, uint32_t off, uint16_t cs, uint16_t ip, int 
     return 1;
 }
 
+
+/* EXPERIMENT (not committed): F117_STUB_DRIVER=1 turns VGAME's graphics-driver slots (JMP FAR 0:0 in the file) into RETF, so a call through
+ * one returns and the code after it is reached. */
+static void stub_driver(const char *module)
+{
+    if (!getenv("F117_STUB_DRIVER") || strcmp(module, "VGAME.EXE")) return;
+    for (uint32_t a = 0x1E420; a < 0x1E800; a++)
+        if (g_pristine[a] == 0xEA && !g_pristine[a + 1] && !g_pristine[a + 2] && !g_pristine[a + 3] && !g_pristine[a + 4]) g_pristine[a] = 0xCB;
+}
 
 static machine_t g_m;           /* side 1's CPU lives in a machine: matched code takes one */
 
@@ -243,11 +261,12 @@ static int step_runner(machine_t *mm)
 
 int main(int argc, char **argv)
 {
-    int states = 2000;
+    int states = 2000, from_ = 0;
     g_rng = 0x5EED0F117AULL;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--states") && i + 1 < argc) states = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--seed") && i + 1 < argc) g_rng = strtoull(argv[++i], NULL, 0) | 1;
+        else if (!strcmp(argv[i], "--from") && i + 1 < argc) from_ = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--verbose")) g_verbose = 1;
         else { fprintf(stderr, "usage: func_lockstep [--states N] [--seed S] [--verbose]\n"); return 2; }
     }
@@ -275,6 +294,7 @@ int main(int argc, char **argv)
     const uint16_t base = 0;
     unsigned long long compared = 0, skipped = 0, bad = 0;
     for (unsigned mi = 0; mi < matched_count(); mi++) {
+        if ((int)mi < from_) continue;
         const recomp_override *o = matched_entry(mi);
         const rc_module *m = NULL;
         for (unsigned k = 0; k < RC_NMODULES; k++)
@@ -283,6 +303,7 @@ int main(int argc, char **argv)
         for (uint32_t a = 0; a < MEM_SIZE; a += 8) { uint64_t v = rnd(); memcpy(g_pristine + a, &v, 8); }
         const uint32_t at = (uint32_t)base * 16u + m->origin;
         memcpy(g_pristine + at, m->image, m->size);
+        stub_driver(o->module);
         memcpy(g_mem[0], g_pristine, MEM_SIZE);
         memcpy(g_mem[1], g_pristine, MEM_SIZE);
         const uint16_t cs = (uint16_t)(base + o->seg), ip = o->ip;
@@ -295,6 +316,7 @@ int main(int argc, char **argv)
                 static const uint8_t pick[4] = { 0x00, 0xFF, 0x01, 0x00 };
                 for (uint32_t a = 0; a < MEM_SIZE; a++) g_pristine[a] = pick[rnd() & 3];
                 memcpy(g_pristine + at, m->image, m->size);
+                stub_driver(o->module);
                 memcpy(g_mem[0], g_pristine, MEM_SIZE);
                 memcpy(g_mem[1], g_pristine, MEM_SIZE);
             }
@@ -307,7 +329,7 @@ int main(int argc, char **argv)
              * has no 80h byte. Each in half the states, by routine. */
             for (unsigned pk = 0; pk < sizeof PLANTS / sizeof PLANTS[0]; pk++) {
                 if (PLANTS[pk].seg != o->seg || PLANTS[pk].ip != o->ip || (rnd() & 1)) continue;
-                const uint32_t a = phys(seg[S_DS], (uint16_t)(r[PLANTS[pk].reg] + PLANTS[pk].disp));
+                const uint32_t a = phys(seg[S_DS], (uint16_t)((PLANTS[pk].reg == PLANT_ABS ? 0 : r[PLANTS[pk].reg]) + PLANTS[pk].disp));
                 if (a + 1 >= at && a < at + m->size + 2) continue;           /* not into the image */
                 for (int k = 0; k < 2; k++) {
                     const uint8_t b = (uint8_t)(PLANTS[pk].val >> (8 * k));
