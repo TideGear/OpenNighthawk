@@ -51,9 +51,10 @@ more than once, what it costs, what was optimised). State as of the evening of
   generated C in `gen\`, route runs, `build` is a junction there; its `video\`
   captures were moved to `D:\f117-local\video`, junctioned back) and scratch on
   **D:** (`D:\f117-gate`; C: is nearly full). Emulators: `D:\86box`,
-  `D:\86box-src`, `D:\msys64`. The 86Box VMs: `vmt386` (FreeDOS),
-  `vmt386dos401`, `vmt386dos500` (with MOUSE.COM 6.26; `vmt386dos500h` the same
-  with 4 MB, HIMEM.SYS and DOS=HIGH), `vmt386dos622`, built by
+  `D:\86box-src`, `D:\msys64`. The 86Box VMs: `vmt386dos500` (MS-DOS 5.00
+  with MOUSE.COM 6.26, every 86Box tool's default, `probe86.REFERENCE`),
+  `vmt386` (FreeDOS, by `--profile`), `vmt386dos401`, `vmt386dos500h` (5.00 with
+  4 MB, HIMEM.SYS and DOS=HIGH), `vmt386dos622`, the MS-DOS ones built by
   `tools/ref86box/build_msdos_vm.py` from `references/MS-DOS` (extracted copies
   and the mouse drivers in `D:\f117-msdos`, `D:\f117-mouse`).
 - **Worktrees on D:\f117-wt** (one build each, junctioned to
@@ -84,8 +85,8 @@ more than once, what it costs, what was optimised). State as of the evening of
 - **PC parity**: `py tools/pc_parity.py --data D:/GOG/F-117A` (about 12
   minutes): all pass as of 8 Oct. The 86Box pictures must be exact in DAC
   values except those named, with their hash, in
-  `tools/ref86box/expected_misses86.txt` (p003 and p038, single samples between
-  two of our pictures); the DOSBox-X roster check runs without fast-forward
+  `tools/ref86box/expected_misses86.txt` (p085, a single sample of START's
+  roster half drawn while 86Box loads its files); the DOSBox-X roster check runs without fast-forward
   (`save_parity.py --no-turbo`), since fast-forward missed clicks under load.
 - **The 386DX/33 profile**: `f117run --timing 386 --engine interp|recomp`.
   Both engines charge the same costs; matched entries run the original
@@ -94,7 +95,7 @@ more than once, what it costs, what was optimised). State as of the evening of
   all 93 exact in the latest check against the saved MS-DOS 5.00/MOUSE.COM
   6.26 reference (INT 21h 2Ch varies by 4 cycles between runs). `frames386.py` compares the
   intro frame by frame; `stick_response.py --machine machine386` reads the
-  earlier flight frame rate S: 5-9 under the profile, 6-9 on 86Box, 14-15 on DOSBox's
+  earlier flight frame rate S: 5-9 under the profile, 7-9 on 86Box, 14-15 on DOSBox's
   model. Reference text: `tools/ref86box/timing386.md`, per-opcode costs in
   `ops386.json`, generated `src/cpu/timing386_ops.h`
   (`gen_timing386.py`). New checks: `insn_lockstep --timing386 --states 64`

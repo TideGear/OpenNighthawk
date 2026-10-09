@@ -58,8 +58,9 @@ make (Phase 4).
 - **Other machines as references** (`tools/pc_parity.py`): DOSBox-X (a patched
   source build that starts its own capture and runs windowless) matches 1,237
   exact pictures in order, drift up to 0.2 s; 86Box (a source build, windowless and
-  silent, the 386DX/33 profile) matches 86 of 87 graphics pictures exactly in
-  6-bit DAC values, in order (the other a single sample taken mid-draw). The same run checks the music (GOG envelope 0.963,
+  silent, the 386DX/33 with MS-DOS 5.00 and MOUSE.COM) matches 85 of 86 graphics
+  pictures exactly in 6-bit DAC values, in order (the other a single sample of
+  START's roster screen half drawn while its files load). The same run checks the music (GOG envelope 0.963,
   spectral 0.992, level 1.005; DOSBox-X 0.90-0.92 and 0.947, its mixer 0.74 of
   the level; 86Box (a 386DX/33 profile): identical first 2,000 AdLib writes and notes on
   four of six channels, scene timing within 0.31 s per scene and 2.0 s drift
@@ -102,10 +103,10 @@ make (Phase 4).
       (`build_msdos_vm.py`; 5.00 and 6.22 cost the same on the game's calls,
       4.01 10% less, FreeDOS twice on 2Ch; CuteMouse 45% cheaper than 6.26).
       Shown: the game's frame rate in flight (S) is 5-9 under the profile and
-      6-9 on 86Box, against 14-15 on DOSBox's model, so the same inputs now fly
+      7-9 on 86Box, against 14-15 on DOSBox's model, so the same inputs now fly
       at the period PC's pace (`stick_response.py --machine machine386`); over
       the intro's animation the scenes hold 86Box's pace to a frame
-      (`frames386.py`, timing386.md). The drift left (+1.48 s at START's roster
+      (`frames386.py`, timing386.md). The drift left (+0.64 s at START's roster
       screen) is in the loads: DOS file reads and writes, program starts and
       overlays. Open: file loading (the VM's disk is a RAM-disk-speed model, so
       its load times are not period ones; the frame comparison re-aligns at
@@ -158,7 +159,7 @@ not the recompilation:
       are one-sample transitions whose frame varies with the capture's phase.
       Frame timing against a period PC is the 386 profile's job.
 - [x] **86Box and DOSBox-X as routine checks.** `pc_parity.py` (pictures,
-      music, saved data; 86Box 86 of 87 pictures exact in DAC values) and
+      music, saved data; 86Box 85 of 86 pictures exact in DAC values) and
       `fidelity_all.py` are the routine checks; the closed-loop supply drop,
       strike-training hit and career sortie pass on both (86Box runs
       deterministic; its adaptor sends the stick as whole game frames). The
