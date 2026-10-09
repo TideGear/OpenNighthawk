@@ -105,6 +105,34 @@ static void near_ret(cpu_t *c)
 static uint16_t ds_get(cpu_t *c, uint16_t off) { return seg_read16(c, c->seg[S_DS], off); }
 static void ds_put(cpu_t *c, uint16_t off, uint16_t v) { seg_write16(c, c->seg[S_DS], off, v); }
 
+/* The CALL instruction at CS:at, made as the original makes it: E8 (near), 9A
+ * (far, the target from the loaded code), or PUSH CS / E8 (a far routine of the
+ * same segment, one instruction more). The C runtime's copy in MPS_LOGO is the
+ * same library built for a larger model, its calls far where the other
+ * programs' are near, so shared routines read the kind from the code.
+ * sm3_after_call is the address the call returns to. */
+static uint16_t sm3_after_call(cpu_t *c, uint16_t at)
+{
+    const uint8_t op = mem_read8(c, phys(c->seg[S_CS], at));
+    return (uint16_t)(at + (op == 0x9A ? 5 : op == 0x0E ? 4 : 3));
+}
+
+static int sm3_call(machine_t *m, uint16_t at)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t cs = c->seg[S_CS];
+    const uint8_t op = mem_read8(c, phys(cs, at));
+    if (op == 0x9A) return guest_call_far(m, at, (uint16_t)(at + 5));
+    uint16_t pops = 0;
+    if (op == 0x0E) {                                             /* push cs: the callee returns far */
+        cpu_push16(c, cs);
+        c->icount++;
+        at = (uint16_t)(at + 1);
+        pops = 2;
+    }
+    return guest_call_pop(m, (uint16_t)(at + 3 + seg_read16(c, cs, (uint16_t)(at + 1))), (uint16_t)(at + 3), pops);
+}
+
 /* VGAME 0x04958, free fall. While the height at [C62E] is above zero the
  * fall rate [B782] steepens by 12 a frame, down to no less than -16 before
  * the step, and the height moves by it. Flags: the last compare when the
@@ -652,13 +680,15 @@ static int crt_strcpy(machine_t *m, int far)
 static int vgame_strcpy(machine_t *m) { return crt_strcpy(m, 0); }
 static int mps_logo_strcpy(machine_t *m) { return crt_strcpy(m, 1); }
 
-/* VGAME 0x0EDE0, memcpy(dst, src, n) within DS (ES = DS), the copy tail
+/* VGAME 0x0EDE0 (and MPS_LOGO 0x02BD6, a far copy: the arguments a word
+ * higher, RETF), memcpy(dst, src, n) within DS (ES = DS), the copy tail
  * when n is non-zero; SI and DI restored, AX = dst. Forward only. */
-static int vgame_memcpy(machine_t *m)
+static int crt_memcpy(machine_t *m, int far)
 {
     cpu_t *c = &m->cpu;
     if (c->flags & F_DF) return 0;
-    const uint16_t dst = arg(c, 0), src = arg(c, 1), n = arg(c, 2);
+    const int a0 = far ? 1 : 0;
+    const uint16_t dst = arg(c, a0), src = arg(c, a0 + 1), n = arg(c, a0 + 2);
     const unsigned total = 11 + (n ? copy_tail_clocks(dst, n) : 0) + 4;
     if (!room(c, total)) return 0;
     cpu_push16(c, c->r[R_BP]);
@@ -676,9 +706,11 @@ static int vgame_memcpy(machine_t *m)
     c->r[R_DI] = di;
     c->r[R_BP] = cpu_pop16(c);
     c->icount += total;
-    near_ret(c);
+    if (far) far_ret(c); else near_ret(c);
     return 1;
 }
+static int vgame_memcpy(machine_t *m) { return crt_memcpy(m, 0); }
+static int mps_logo_memcpy(machine_t *m) { return crt_memcpy(m, 1); }
 
 /* VGAME 0x0EDA4, farcopy(src_seg, src, dst_seg, dst, n): REP MOVSB between
  * segments; DS, SI, DI restored, ES left as dst_seg, CX 0. */
@@ -799,14 +831,16 @@ static int vgame_weapon_effectiveness(machine_t *m)
     return 1;
 }
 
-/* VGAME 0x0EF36, the C runtime's 32-bit multiply: DX:AX = (a * b) mod 2^32
+/* VGAME 0x0EF36 (and MPS_LOGO 0x01C50, a far copy: RETF 8, the arguments a
+ * word higher), the C runtime's 32-bit multiply: DX:AX = (a * b) mod 2^32
  * for a = [bp+6]:[bp+4], b = [bp+A]:[bp+8]; one MUL when both high words
  * are 0. RET 8 pops the arguments; BX is preserved, CX = b's low word. */
-static int vgame_lmul(machine_t *m)
+static int crt_lmul(machine_t *m, int far)
 {
     cpu_t *c = &m->cpu;
     if (!room(c, 19)) return 0;
-    const uint16_t alo = arg(c, 0), ahi = arg(c, 1), blo = arg(c, 2), bhi = arg(c, 3);
+    const int a0 = far ? 1 : 0;                                   /* the far return address takes a word more */
+    const uint16_t alo = arg(c, a0), ahi = arg(c, a0 + 1), blo = arg(c, a0 + 2), bhi = arg(c, a0 + 3);
     cpu_push16(c, c->r[R_BP]);
     c->r[R_BP] = c->r[R_SP];
     alu_logic(c, (uint16_t)(bhi | ahi), 1);                       /* or cx, ax */
@@ -833,10 +867,12 @@ static int vgame_lmul(machine_t *m)
     }
     c->r[R_BP] = cpu_pop16(c);
     c->icount += n;
-    near_ret(c);
+    if (far) far_ret(c); else near_ret(c);
     c->r[R_SP] = (uint16_t)(c->r[R_SP] + 8);                      /* ret 8 */
     return 1;
 }
+static int vgame_lmul(machine_t *m) { return crt_lmul(m, 0); }
+static int mps_logo_lmul(machine_t *m) { return crt_lmul(m, 1); }
 
 /* VGAME 120A:027D / 120A:029E: install the renderer's divide-error handler
  * (CS:0971) on INT 0, keeping the old vector at [5EE6]/[5EE8]; and put the
@@ -2425,12 +2461,13 @@ static uint8_t peek_over(cpu_t *c, uint16_t seg, uint16_t off, uint32_t stack_lo
 /* VGAME 0x0F06C / START 0x09848: look an id up in a table of (word id,
  * zero-terminated string) entries ending in FFFFh; AX = the string, or 0.
  * Stepped with the interpreter's LODSW/SCASB (DF honoured); its clocks are
- * counted first by walking the same entries. RET 2. */
-static int string_lookup(machine_t *m, uint16_t table)
+ * counted first by walking the same entries. RET 2 (RETF 2 in MPS_LOGO's far
+ * copy at 0146:0ADC, the id a word higher). */
+static int sm3_string_lookup(machine_t *m, uint16_t table, int far)
 {
     cpu_t *c = &m->cpu;
     const uint16_t ds = c->seg[S_DS];
-    const uint16_t id = arg(c, 0);
+    const uint16_t id = arg(c, far ? 1 : 0);
     const int up = !(c->flags & F_DF);
     /* The prologue pushes BP, SI, DI and DS (8 bytes below SP) before the
      * walk; when the table overlaps them the walk reads the pushed words,
@@ -2491,10 +2528,12 @@ static int string_lookup(machine_t *m, uint16_t table)
     c->r[R_SP] = c->r[R_BP];
     c->r[R_BP] = cpu_pop16(c);
     c->icount += clocks;
-    near_ret(c);
+    if (far) far_ret(c); else near_ret(c);
     c->r[R_SP] = (uint16_t)(c->r[R_SP] + 2);
     return 1;
 }
+static int string_lookup(machine_t *m, uint16_t table) { return sm3_string_lookup(m, table, 0); }
+static int mps_logo_string_lookup(machine_t *m) { return sm3_string_lookup(m, 0x0554, 1); }
 static int vgame_string_lookup(machine_t *m) { return string_lookup(m, 0x942C); }
 static int start_string_lookup(machine_t *m) { return string_lookup(m, 0xB196); }
 
@@ -3691,7 +3730,8 @@ typedef struct {
     uint16_t entry;              /* the routine's address, for the return points */
 } crt_stream;
 
-/* 0x022C2 in PLAYER and its copies, getbuf(stream): a buffer of 512 bytes from the allocator
+/* 0x022C2 in PLAYER and its copies (MPS_LOGO's, 0146:17D6, calls the allocator far),
+ * getbuf(stream): a buffer of 512 bytes from the allocator
  * (the callee, given 200h), or, if there is none, the one-byte buffer
  * inside the parallel record; the stream gets it, empty. Flags: the OR of the
  * stream flags. */
@@ -3706,8 +3746,9 @@ static int crt_getbuf(machine_t *m, const crt_stream *s)
     c->r[R_AX] = 0x200;
     cpu_push16(c, 0x200);
     c->icount += 6;
-    if (!guest_call(m, s->callee, (uint16_t)(s->entry + 0xE))) return 1;
-    if (!room(c, 15)) { c->ip = (uint16_t)(s->entry + 0xE); return 1; }
+    const uint16_t back = sm3_after_call(c, (uint16_t)(s->entry + 0xB));
+    if (!sm3_call(m, (uint16_t)(s->entry + 0xB))) return 1;
+    if (!room(c, 15)) { c->ip = back; return 1; }
     c->r[R_CX] = cpu_pop16(c);                                    /* pop cx */
     const uint16_t si = c->r[R_SI];                               /* the callee need not keep it */
     uint16_t bx = si;
@@ -3737,14 +3778,16 @@ static int crt_getbuf(machine_t *m, const crt_stream *s)
     return 1;
 }
 
-/* 0x01D1C in DSWAP and its copies, flush_all(which): every stream that is open
+/* 0x01D1C in DSWAP and its copies (MPS_LOGO's, 0146:0F88, calls the flush far), flush_all(which): every stream that is open
  * for reading or writing (flags & 83h) is flushed through the callee, and a
  * result of -1 marks an error. Returns the number flushed when `which` is 1,
  * otherwise 0 or -1 for the errors. RET 2. */
 static int crt_flush_all(machine_t *m, const crt_stream *s)
 {
     cpu_t *c = &m->cpu;
-    const uint16_t head = (uint16_t)(s->entry + 0x1A), ret_ip = (uint16_t)(s->entry + 0x2A);
+    const uint16_t call_at = (uint16_t)(s->entry + 0x27);           /* the flush: far in MPS_LOGO */
+    const uint16_t head = (uint16_t)(s->entry + 0x1A), ret_ip = sm3_after_call(c, call_at);
+    const uint16_t done = (uint16_t)(ret_ip + 0xA);                  /* past the loop */
     if (!room(c, 9 + 3)) return 0;
     const uint16_t ss = c->seg[S_SS];
     cpu_push16(c, c->r[R_BP]);
@@ -3766,7 +3809,7 @@ static int crt_flush_all(machine_t *m, const crt_stream *s)
         if (!(c->flags & F_ZF)) {
             cpu_push16(c, c->r[R_SI]);
             c->icount += k + 1;
-            if (!guest_call(m, s->callee, ret_ip)) return 1;
+            if (!sm3_call(m, call_at)) return 1;
             if (!room(c, 8)) { c->ip = ret_ip; return 1; }
             c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 2, 1, 0);          /* add sp, 2 */
             c->r[R_AX] = (uint16_t)alu_inc(c, c->r[R_AX], 1);                /* inc ax */
@@ -3782,7 +3825,7 @@ static int crt_flush_all(machine_t *m, const crt_stream *s)
         c->r[R_SI] = (uint16_t)alu_add(c, c->r[R_SI], 8, 1, 0);   /* add si, 8 */
         c->icount += k + 1;
     }
-    if (!room(c, 9)) { c->ip = (uint16_t)(s->entry + 0x34); return 1; }
+    if (!room(c, 9)) { c->ip = done; return 1; }
     alu_sub(c, seg_read16(c, ss, (uint16_t)(c->r[R_BP] + 4)), 1, 1, 0);      /* cmp [bp+4], 1 */
     if (!(c->flags & F_ZF)) {
         c->r[R_AX] = seg_read16(c, ss, (uint16_t)(c->r[R_BP] - 2));
@@ -3802,14 +3845,16 @@ static int crt_flush_all(machine_t *m, const crt_stream *s)
     return 1;
 }
 
-/* 0x0196B in PLAYER and its copies, free_buffer(close, stream): when the stream's parallel
+/* 0x0196B in PLAYER and its copies (MPS_LOGO's, 0146:0ECD, reaches the far flush by
+ * PUSH CS / CALL), free_buffer(close, stream): when the stream's parallel
  * record has flag 10h and its file's flag 40h is set, the callee flushes it,
  * and with `close` not zero the record, the stream's count, pointer and buffer
  * are cleared. */
 static int crt_free_buffer(machine_t *m, const crt_stream *s)
 {
     cpu_t *c = &m->cpu;
-    const uint16_t ret_ip = (uint16_t)(s->entry + 0x27);
+    const uint16_t call_at = (uint16_t)(s->entry + 0x24);          /* PUSH CS / CALL in MPS_LOGO */
+    const uint16_t ret_ip = sm3_after_call(c, call_at);
     if (!room(c, 20)) return 0;
     const uint16_t ss = c->seg[S_SS];
     cpu_push16(c, c->r[R_BP]);
@@ -3833,7 +3878,7 @@ static int crt_free_buffer(machine_t *m, const crt_stream *s)
         if (!(c->flags & F_ZF)) {
             cpu_push16(c, si);
             c->icount += 1;
-            if (!guest_call(m, s->callee, ret_ip)) return 1;
+            if (!sm3_call(m, call_at)) return 1;
             if (!room(c, 3 + 5 + 4)) { c->ip = ret_ip; return 1; }
             c->r[R_AX] = cpu_pop16(c);                            /* pop ax */
             si = c->r[R_SI];                                      /* the callee need not keep SI or DI */
@@ -3867,6 +3912,10 @@ static int end_getbuf(machine_t *m) { return crt_getbuf(m, &end_getbuf_S); }
 static const crt_stream player_getbuf_S = { 0x1AD2, 0x1B72, 0x222A, 0, 0, 0x22C2 };
 static int player_getbuf(machine_t *m) { return crt_getbuf(m, &player_getbuf_S); }
 static const crt_stream dswap_getbuf_S = { 0x2710, 0x27B0, 0x2060, 0, 0, 0x1C60 };
+static const crt_stream mps_logo_getbuf_S = { 0x027C, 0x031C, 0x1A64, 0, 0, 0x17D6 };
+static int mps_logo_getbuf(machine_t *m) { return crt_getbuf(m, &mps_logo_getbuf_S); }
+static const crt_stream mps_logo_flush_all_S = { 0x027C, 0, 0x0F0C, 0x03BC, 0, 0x0F88 };
+static int mps_logo_flush_all(machine_t *m) { return crt_flush_all(m, &mps_logo_flush_all_S); }
 static int dswap_getbuf(machine_t *m) { return crt_getbuf(m, &dswap_getbuf_S); }
 static const crt_stream dswap_flush_all_S = { 0x2710, 0, 0x1CA2, 0x2850, 0, 0x1D1C };
 static int dswap_flush_all(machine_t *m) { return crt_flush_all(m, &dswap_flush_all_S); }
@@ -3884,6 +3933,8 @@ static const crt_stream end_free_buffer_S = { 0x5172, 0x5212, 0x5BA8, 0, 0x5131,
 static int end_free_buffer(machine_t *m) { return crt_free_buffer(m, &end_free_buffer_S); }
 static const crt_stream player_free_buffer_S = { 0x1AD2, 0x1B72, 0x19AA, 0, 0x1A69, 0x196B };
 static int player_free_buffer(machine_t *m) { return crt_free_buffer(m, &player_free_buffer_S); }
+static const crt_stream mps_logo_free_buffer_S = { 0x027C, 0x031C, 0x0F0C, 0, 0x0207, 0x0ECD };
+static int mps_logo_free_buffer(machine_t *m) { return crt_free_buffer(m, &mps_logo_free_buffer_S); }
 static const crt_stream start_free_buffer_S = { 0xAEA6, 0xAF46, 0x9C32, 0, 0xAE61, 0x9BF3 };
 static int start_free_buffer(machine_t *m) { return crt_free_buffer(m, &start_free_buffer_S); }
 
@@ -4041,7 +4092,8 @@ static int end_write_block(machine_t *m) { return crt_write_block(m, &END_WRITE)
 static int start_write_block(machine_t *m) { return crt_write_block(m, &START_WRITE); }
 
 /* The C runtime's buffered-output setup for the three standard streams that are
- * not buffered by default (0x09B82 in START and the copies in END, PLAYER and DSWAP),
+ * not buffered by default (0x09B82 in START and the copies in END, PLAYER, DSWAP and
+ * MPS_LOGO, whose allocator call is far),
  * stbuf(stream): for the second, third or fourth stream (BX the word that holds
  * that stream's spare buffer), unless it already has a buffer or flags 0Ch, it is
  * given the spare buffer - or one of 200h bytes from the allocator, kept as the
@@ -4099,8 +4151,9 @@ static int crt_stbuf_set(machine_t *m, const crt_stbuf *s)
             c->r[R_AX] = 0x200;
             cpu_push16(c, 0x200);
             c->icount += 3;
-            if (!guest_call(m, s->alloc, (uint16_t)(s->entry + 0x61))) return 1;
-            if (!room(c, 25)) { c->ip = (uint16_t)(s->entry + 0x61); return 1; }
+            const uint16_t back = sm3_after_call(c, (uint16_t)(s->entry + 0x5E));
+            if (!sm3_call(m, (uint16_t)(s->entry + 0x5E))) return 1;
+            if (!room(c, 25)) { c->ip = back; return 1; }
             c->r[R_BX] = cpu_pop16(c);                            /* pop bx, pop bx: the first is the 200h */
             c->r[R_BX] = cpu_pop16(c);
             c->icount += 2;
@@ -4142,16 +4195,22 @@ STBUF(start, 0x9B82, 0xAEAE, 0xAEB6, 0xAEC6, 0xAFE8, 0xAFEA, 0xAFEC, 0xAEA6, 0xA
 STBUF(end, 0x55B8, 0x517A, 0x5182, 0x5192, 0x52B4, 0x52B6, 0x52B8, 0x5172, 0x5212, 0x5DAA)
 STBUF(player, 0x18FA, 0x1ADA, 0x1AE2, 0x1AF2, 0x1C14, 0x1C16, 0x1C18, 0x1AD2, 0x1B72, 0x222A)
 STBUF(dswap, 0x1606, 0x2718, 0x2720, 0x2730, 0x2852, 0x2854, 0x2856, 0x2710, 0x27B0, 0x2060)
+STBUF(mps_logo, 0x0E5A, 0x0284, 0x028C, 0x029C, 0x03BE, 0x03C0, 0x03C2, 0x027C, 0x031C, 0x1A64)
 
 /* printf(format, ...): the second stream is given its temporary buffer (stbuf),
  * the formatter is run on it with a pointer to the arguments, and the buffer is
- * released (the flush-and-free routine); the formatter's result comes back. */
-typedef struct { uint16_t entry, stbuf, format, release, stream; } crt_printf_t;
+ * released (the flush-and-free routine); the formatter's result comes back.
+ * MPS_LOGO's copy (0146:05A0) is far, the arguments a word higher, and calls the
+ * formatter far; the calls are read from the code. */
+typedef struct { uint16_t entry, stbuf, format, release, stream; int far; } crt_printf_t;
 
 static int crt_printf(machine_t *m, const crt_printf_t *s)
 {
     cpu_t *c = &m->cpu;
     if (!room(c, 7 + 7)) return 0;
+    const int a = s->far ? 2 : 0;                                 /* the far return address takes a word more */
+    const uint16_t format_at = (uint16_t)(s->entry + 0x1F), format_back = sm3_after_call(c, format_at);
+    const uint16_t release_at = (uint16_t)(format_back + 0xB);
     const uint16_t ss = c->seg[S_SS];
     cpu_push16(c, c->r[R_BP]);
     c->r[R_BP] = c->r[R_SP];
@@ -4162,26 +4221,26 @@ static int crt_printf(machine_t *m, const crt_printf_t *s)
     c->r[R_SI] = s->stream;
     cpu_push16(c, s->stream);
     c->icount += 7;
-    if (!guest_call(m, s->stbuf, (uint16_t)(s->entry + 0xF))) return 1;
+    if (!sm3_call(m, (uint16_t)(s->entry + 0xC))) return 1;
     if (!room(c, 7 + 7)) { c->ip = (uint16_t)(s->entry + 0xF); return 1; }
     c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 2, 1, 0);       /* add sp, 2 */
     c->r[R_DI] = c->r[R_AX];
-    c->r[R_AX] = (uint16_t)(bp + 6);                              /* lea ax, [bp+6] */
+    c->r[R_AX] = (uint16_t)(bp + 6 + a);                          /* lea ax, [bp+6] */
     cpu_push16(c, c->r[R_AX]);
-    cpu_push16(c, seg_read16(c, ss, (uint16_t)(bp + 4)));
+    cpu_push16(c, seg_read16(c, ss, (uint16_t)(bp + 4 + a)));
     c->r[R_AX] = s->stream;
     cpu_push16(c, c->r[R_AX]);
     c->icount += 7;
-    if (!guest_call(m, s->format, (uint16_t)(s->entry + 0x22))) return 1;
-    if (!room(c, 5 + 7)) { c->ip = (uint16_t)(s->entry + 0x22); return 1; }
+    if (!sm3_call(m, format_at)) return 1;
+    if (!room(c, 5 + 7)) { c->ip = format_back; return 1; }
     c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0);       /* add sp, 6 */
     seg_write16(c, ss, (uint16_t)(bp - 4), c->r[R_AX]);
     c->r[R_AX] = s->stream;
     cpu_push16(c, c->r[R_AX]);
     cpu_push16(c, c->r[R_DI]);
     c->icount += 5;
-    if (!guest_call(m, s->release, (uint16_t)(s->entry + 0x30))) return 1;
-    if (!room(c, 7)) { c->ip = (uint16_t)(s->entry + 0x30); return 1; }
+    if (!sm3_call(m, release_at)) return 1;
+    if (!room(c, 7)) { c->ip = sm3_after_call(c, release_at); return 1; }
     c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 4, 1, 0);       /* add sp, 4 */
     c->r[R_AX] = seg_read16(c, ss, (uint16_t)(bp - 4));
     c->r[R_SI] = cpu_pop16(c);
@@ -4189,16 +4248,17 @@ static int crt_printf(machine_t *m, const crt_printf_t *s)
     c->r[R_SP] = c->r[R_BP];
     c->r[R_BP] = cpu_pop16(c);
     c->icount += 7;
-    near_ret(c);
+    if (s->far) far_ret(c); else near_ret(c);
     return 1;
 }
-#define PRINTF(P, E, STB, FMT, REL, STREAM) \
-    static const crt_printf_t P##_PRINTF = { E, STB, FMT, REL, STREAM }; \
+#define PRINTF(P, E, STB, FMT, REL, STREAM, FAR) \
+    static const crt_printf_t P##_PRINTF = { E, STB, FMT, REL, STREAM, FAR }; \
     static int P##_printf(machine_t *m) { return crt_printf(m, &P##_PRINTF); }
-PRINTF(start, 0x9430, 0x9B82, 0x9D06, 0x9BF3, 0xAEAE)
-PRINTF(end, 0x505A, 0x55B8, 0x5678, 0x5629, 0x517A)
-PRINTF(player, 0x131E, 0x18FA, 0x1A7E, 0x196B, 0x1ADA)
-PRINTF(dswap, 0x0F42, 0x1606, 0x16C6, 0x1677, 0x2718)
+PRINTF(start, 0x9430, 0x9B82, 0x9D06, 0x9BF3, 0xAEAE, 0)
+PRINTF(end, 0x505A, 0x55B8, 0x5678, 0x5629, 0x517A, 0)
+PRINTF(player, 0x131E, 0x18FA, 0x1A7E, 0x196B, 0x1ADA, 0)
+PRINTF(dswap, 0x0F42, 0x1606, 0x16C6, 0x1677, 0x2718, 0)
+PRINTF(mps_logo, 0x05A0, 0x0E5A, 0x0FE4, 0x0ECD, 0x0284, 1)
 
 /* fflush(stream): with no stream (0) every stream is flushed (flush_all with 0);
  * otherwise, for a stream open for writing only - or one whose second record has bit 1 -
@@ -4206,14 +4266,19 @@ PRINTF(dswap, 0x0F42, 0x1606, 0x16C6, 0x1677, 0x2718)
  * file with the low-level write; a short write marks the stream (flag 20h) and
  * the result becomes -1, otherwise 0. The stream is then emptied: next back to
  * the start, the count zero. Returns the result in AX. */
-typedef struct { uint16_t entry, base, ext, flush_all, write; } crt_fflush;
+typedef struct { uint16_t entry, base, ext, flush_all, write; int far; } crt_fflush;
 
 static int crt_fflush_stream(machine_t *m, const crt_fflush *s)
 {
     cpu_t *c = &m->cpu;
     const uint16_t ss = c->seg[S_SS];
+    /* MPS_LOGO's copy (0146:0F0C) is far, the stream at [bp+6], and calls the
+     * write far: the code after that call lies two bytes further on. */
+    const int at = s->far ? 6 : 4;
+    const uint16_t write_at = (uint16_t)(s->entry + 0x4E);
+    const unsigned grow = (unsigned)(uint16_t)(sm3_after_call(c, write_at) - (s->entry + 0x51));
     /* Before each stretch of straight code: room for it, or leave at its first instruction. */
-#define NEED(n, off) do { if (!room(c, (n))) { c->ip = (uint16_t)(s->entry + (off)); return 1; } } while (0)
+#define NEED(n, off) do { if (!room(c, (n))) { c->ip = (uint16_t)(s->entry + (off) + ((off) > 0x4E ? grow : 0)); return 1; } } while (0)
     if (!room(c, 8)) return 0;
     cpu_push16(c, c->r[R_BP]);
     c->r[R_BP] = c->r[R_SP];
@@ -4222,7 +4287,7 @@ static int crt_fflush_stream(machine_t *m, const crt_fflush *s)
     cpu_push16(c, c->r[R_DI]);
     cpu_push16(c, c->r[R_SI]);
     c->r[R_DI] = (uint16_t)alu_sub(c, c->r[R_DI], c->r[R_DI], 1, 0);   /* sub di, di */
-    alu_sub(c, seg_read16(c, ss, (uint16_t)(bp + 4)), c->r[R_DI], 1, 0);   /* cmp [bp+4], di */
+    alu_sub(c, seg_read16(c, ss, (uint16_t)(bp + at)), c->r[R_DI], 1, 0);  /* cmp [bp+4], di */
     c->icount += 8;                                               /* the eight up to and with JNE */
     if (c->flags & F_ZF) {                                        /* no stream: flush them all */
         NEED(3, 0xF);                                             /* sub, push and the CALL */
@@ -4235,7 +4300,7 @@ static int crt_fflush_stream(machine_t *m, const crt_fflush *s)
         goto leave;
     }
     NEED(6, 0x18);
-    c->r[R_SI] = seg_read16(c, ss, (uint16_t)(bp + 4));
+    c->r[R_SI] = seg_read16(c, ss, (uint16_t)(bp + at));
     {
         const uint8_t fl = mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_SI] + 6)));
         c->r[R_AX] = (uint16_t)((c->r[R_AX] & 0xFF00) | fl);      /* mov al, [si+6] */
@@ -4272,7 +4337,7 @@ static int crt_fflush_stream(machine_t *m, const crt_fflush *s)
                     set_r8(c, R_CH, (uint8_t)alu_sub(c, get_r8(c, R_CH), get_r8(c, R_CH), 0, 0));   /* sub ch, ch */
                     cpu_push16(c, c->r[R_CX]);
                     c->icount += 5;
-                    if (!guest_call(m, s->write, (uint16_t)(s->entry + 0x51))) return 1;
+                    if (!sm3_call(m, write_at)) return 1;
                     NEED(3, 0x51);
                     c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0);       /* add sp, 6 */
                     alu_sub(c, seg_read16(c, ss, (uint16_t)(bp - 2)), c->r[R_AX], 1, 0);   /* cmp [bp-2], ax */
@@ -4301,16 +4366,17 @@ leave:
     c->r[R_SP] = c->r[R_BP];
     c->r[R_BP] = cpu_pop16(c);
     c->icount += 5;
-    near_ret(c);
+    if (s->far) far_ret(c); else near_ret(c);
     return 1;
 #undef NEED
 }
-#define FFLUSH(P, E, BASE, EXT, ALL, WRITE) \
-    static const crt_fflush P##_FFLUSH = { E, BASE, EXT, ALL, WRITE }; \
+#define FFLUSH(P, E, BASE, EXT, ALL, WRITE, FAR) \
+    static const crt_fflush P##_FFLUSH = { E, BASE, EXT, ALL, WRITE, FAR }; \
     static int P##_fflush(machine_t *m) { return crt_fflush_stream(m, &P##_FFLUSH); }
-FFLUSH(player, 0x19AA, 0x1AD2, 0x1B72, 0x1A24, 0x20EC)
-FFLUSH(end, 0x5BA8, 0x5172, 0x5212, 0x5C22, 0x5C6C)
-FFLUSH(dswap, 0x1CA2, 0x2710, 0x27B0, 0x1D1C, 0x1F22)
+FFLUSH(player, 0x19AA, 0x1AD2, 0x1B72, 0x1A24, 0x20EC, 0)
+FFLUSH(end, 0x5BA8, 0x5172, 0x5212, 0x5C22, 0x5C6C, 0)
+FFLUSH(dswap, 0x1CA2, 0x2710, 0x27B0, 0x1D1C, 0x1F22, 0)
+FFLUSH(mps_logo, 0x0F0C, 0x027C, 0x031C, 0x0F88, 0x15FA, 1)
 /* The rest of the call-free duplicates. */
 
 /* END 0x054AA, PLAYER 0x01896, DSWAP 0x01412, a character-class lookup: AL is stored in a byte; if AH is not
@@ -4710,11 +4776,13 @@ static int vgame_release_count(machine_t *m)
 
 /* START 0x09A72, release_buffer(stream): when the stream is open for reading or writing
  * (flags & 83h) and owns its buffer (flag 8), the buffer is freed (the callee) and
- * the stream loses the flag and its buffer, pointer and count. */
-static int start_release_buffer(machine_t *m)
+ * the stream loses the flag and its buffer, pointer and count. MPS_LOGO's copy
+ * (0146:0D46) calls the free far; `call_at` is the CALL's address. */
+static int sm3_release_buffer(machine_t *m, uint16_t call_at)
 {
     cpu_t *c = &m->cpu;
     if (!room(c, 12)) return 0;
+    const uint16_t back = sm3_after_call(c, call_at);
     cpu_push16(c, c->r[R_BP]);
     c->r[R_BP] = c->r[R_SP];
     cpu_push16(c, c->r[R_SI]);
@@ -4732,8 +4800,8 @@ static int start_release_buffer(machine_t *m)
     if (release) {
         cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_SI] + 4)));
         c->icount += 1;
-        if (!guest_call(m, 0xA76C, 0x9A8A)) return 1;
-        if (!room(c, 9)) { c->ip = 0x9A8A; return 1; }
+        if (!sm3_call(m, call_at)) return 1;
+        if (!room(c, 9)) { c->ip = back; return 1; }
         c->r[R_CX] = cpu_pop16(c);
         const uint16_t si = c->r[R_SI];
         const uint16_t f6 = (uint16_t)(si + 6);
@@ -4750,6 +4818,8 @@ static int start_release_buffer(machine_t *m)
     near_ret(c);
     return 1;
 }
+static int start_release_buffer(machine_t *m) { return sm3_release_buffer(m, 0x9A87); }
+static int mps_logo_release_buffer(machine_t *m) { return sm3_release_buffer(m, 0x0D5B); }
 
 /* END 0x0206A: the error handler - the word at [6D98] is 3, a message built by the
  * callee at 112Ah from the two argument words and a text, and the exit routine is
@@ -4962,6 +5032,41 @@ static int rt_stack_check(machine_t *m, uint16_t limit, uint16_t overflow)
 }
 static int start_stack_check(machine_t *m) { return rt_stack_check(m, 0xB154, 0x8FA4); }
 static int end_stack_check(machine_t *m) { return rt_stack_check(m, 0x531E, 0x4E9A); }
+
+/* The C runtime's stackavail(), MPS_LOGO's far one at 0146:1A50: AX = the bytes
+ * between SP (the caller's, once its return address is off) and the limit word
+ * at `limit`, or 0 when SP is not above it. The return address comes off the
+ * stack into DX:CX and is put back for the RETF; flags from the NEG, or from the
+ * XOR when there is no room. The near copies (PLAYER 0x0237E, DSWAP 0x02064)
+ * return by JMP CX, as the stack checks do, which tests/func_lockstep.c cannot
+ * follow (it waits for a RET), so only the far one is placed. */
+static int sm3_stack_avail(machine_t *m, uint16_t limit, int far)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, far ? 10 : 7)) return 0;
+    const uint16_t ip = cpu_pop16(c);                             /* pop cx */
+    c->r[R_CX] = ip;
+    uint16_t cs = 0;
+    if (far) { cs = cpu_pop16(c); c->r[R_DX] = cs; }              /* pop dx */
+    const uint16_t lim = ds_get(c, limit);
+    alu_sub(c, lim, c->r[R_SP], 1, 0);                            /* cmp ax, sp */
+    if (!(c->flags & F_CF)) {                                     /* jae: no room */
+        c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);                /* xor ax, ax (then jmp back) */
+    } else {
+        const uint16_t d = (uint16_t)alu_sub(c, lim, c->r[R_SP], 1, 0);
+        c->r[R_AX] = (uint16_t)alu_sub(c, 0, d, 1, 0);            /* neg ax */
+    }
+    c->icount += far ? 10 : 7;
+    if (far) {
+        cpu_push16(c, cs);
+        cpu_push16(c, ip);
+        far_ret(c);
+    } else {
+        c->ip = ip;
+    }
+    return 1;
+}
+static int mps_logo_stack_avail(machine_t *m) { return sm3_stack_avail(m, 0x0232, 1); }
 
 /* VGAME 1452:0006 / 1452:0033, vg_sine_direct(a) and vg_cosine_direct(a): a quarter-wave table of words at
  * the segment the code loads into ES (its relocated immediate, at CS:000B and CS:0038), 2,048 entries.
@@ -6695,30 +6800,47 @@ static int start_lzw_refill(machine_t *m)
 /* START 0x0A76C, the heap's free(block) for the near heap described at AE1E:
  * a block above the heap's start ([AE24]) has its header word (at block - 2)
  * marked free (bit 0), and the rover [AE26] moves back to that header when it
- * lies above it. BX is left as the header's address. */
-static int start_heap_free(machine_t *m)
+ * lies above it. BX is left as the header's address.
+ * The copies (sm3_heap_free): PLAYER 0x02390, DSWAP 0x02076, SETUP 0x01D48,
+ * and MPS_LOGO's far one at 0146:1B6A, also entered through the far JMP at
+ * 0146:1A6A. `jumps` counts the jumps taken before the frame (START's near
+ * JMP, MPS_LOGO's far JMP to the same segment). */
+static int sm3_heap_free(machine_t *m, uint16_t heap, unsigned jumps, int far)
 {
     cpu_t *c = &m->cpu;
-    if (!room(c, 18)) return 0;
+    if (!room(c, jumps + 17)) return 0;
     frame_open(c, 0);
     cpu_push16(c, c->r[R_SI]);
-    uint16_t bx = bp_get(c, 4);
-    c->r[R_SI] = 0xAE1E;
-    alu_sub(c, ds_get(c, 0xAE24), bx, 1, 0);                      /* cmp [si+6], bx */
-    unsigned n = 8;                                               /* with the JMP at the entry */
+    uint16_t bx = bp_get(c, far ? 6 : 4);
+    c->r[R_SI] = heap;
+    const uint16_t start = (uint16_t)(heap + 6), rover = (uint16_t)(heap + 8);
+    alu_sub(c, ds_get(c, start), bx, 1, 0);                       /* cmp [si+6], bx */
+    unsigned n = jumps + 7;
     if (c->flags & F_CF) {                                        /* jae not taken: a heap block */
         bx = (uint16_t)alu_dec(c, alu_dec(c, bx, 1), 1);
         ds_put8(c, bx, (uint8_t)alu_logic(c, ds_get8(c, bx) | 1, 0));
-        alu_sub(c, ds_get(c, 0xAE26), bx, 1, 0);                  /* cmp [si+8], bx */
+        alu_sub(c, ds_get(c, rover), bx, 1, 0);                   /* cmp [si+8], bx */
         n += 5;
-        if (!x86_cond(c, 0x6)) { ds_put(c, 0xAE26, bx); n++; }    /* jbe not taken */
+        if (!x86_cond(c, 0x6)) { ds_put(c, rover, bx); n++; }     /* jbe not taken */
     }
     c->r[R_BX] = bx;
     c->r[R_SI] = cpu_pop16(c);
     c->icount += n + 4;
-    frame_close_ret(c);
+    if (far) {
+        c->r[R_SP] = c->r[R_BP];
+        c->r[R_BP] = cpu_pop16(c);
+        far_ret(c);
+    } else {
+        frame_close_ret(c);
+    }
     return 1;
 }
+static int start_heap_free(machine_t *m) { return sm3_heap_free(m, 0xAE1E, 1, 0); }
+static int player_heap_free(machine_t *m) { return sm3_heap_free(m, 0x1A26, 0, 0); }
+static int dswap_heap_free(machine_t *m) { return sm3_heap_free(m, 0x268E, 0, 0); }
+static int setup_heap_free(machine_t *m) { return sm3_heap_free(m, 0x0E4A, 0, 0); }
+static int mps_logo_heap_free(machine_t *m) { return sm3_heap_free(m, 0x01C4, 0, 1); }
+static int mps_logo_heap_free_jmp(machine_t *m) { return sm3_heap_free(m, 0x01C4, 1, 1); }
 
 /* START 0x025D9, date_string(buffer): the mission's date. The theatre (far
  * [CACA]+38h) picks a starting month (byte 882h + theatre), year (word 896h +
@@ -7872,15 +7994,18 @@ static int player_format_digits(machine_t *m) { return format_digits(m, 0x1F1C);
 /* START 0x0A141 and END 0x05AB3, the formatter's put-character into a string stream:
  * AL (made a word by CBW) is stored at the stream's next byte (the stream at the
  * caller's [BP+4]: next pointer +0, room +2) and AX = 0; when the room runs
- * out (the count goes negative) the stream's flush (START 0x09992, END 0x054D8;
- * char, stream) is called instead and AX is 0 unless it answered FFFFh. DI preserved. */
-static int st3_format_putc(machine_t *m, uint16_t entry, uint16_t flush)
+ * out (the count goes negative) the stream's flush (START 0x09992, END 0x054D8; char, stream) is
+ * called instead and AX is 0 unless it answered FFFFh. DI preserved.
+ * The copies (sm3_format_putc): PLAYER 0x01EB9, and MPS_LOGO 0146:1420, whose
+ * caller has a far frame (the stream at [BP+6]) and whose flush is a far routine
+ * of the same segment, called by PUSH CS / CALL. */
+static int sm3_format_putc(machine_t *m, uint16_t flush, uint16_t ret_ip, int far)
 {
     cpu_t *c = &m->cpu;
-    if (!room(c, 11)) return 0;
+    if (!room(c, far ? 12 : 11)) return 0;
     c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);     /* cbw */
     cpu_push16(c, c->r[R_DI]);
-    c->r[R_BX] = bp_get(c, 4);
+    c->r[R_BX] = bp_get(c, far ? 6 : 4);
     const uint16_t room_at = (uint16_t)(c->r[R_BX] + 2);
     ds_put(c, room_at, (uint16_t)alu_dec(c, ds_get(c, room_at), 1));
     c->icount += 5;
@@ -7897,9 +8022,12 @@ static int st3_format_putc(machine_t *m, uint16_t entry, uint16_t flush)
         cpu_push16(c, c->r[R_BX]);
         cpu_push16(c, c->r[R_AX]);
         c->icount += 5;
-        const uint16_t back = (uint16_t)(entry + 0x1C);           /* after the CALL */
-        if (!guest_call(m, flush, back)) return 1;
-        if (!room(c, 9)) { c->ip = back; return 1; }
+        if (far) {                                                /* push cs: the flush returns far */
+            cpu_push16(c, c->seg[S_CS]);
+            c->icount += 1;
+        }
+        if (!guest_call_pop(m, flush, ret_ip, far ? 2 : 0)) return 1;
+        if (!room(c, 9)) { c->ip = ret_ip; return 1; }
         c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 4, 1, 0);
         c->r[R_DX] = cpu_pop16(c);
         c->r[R_CX] = cpu_pop16(c);
@@ -7915,8 +8043,486 @@ static int st3_format_putc(machine_t *m, uint16_t entry, uint16_t flush)
     near_ret(c);
     return 1;
 }
-static int start_format_putc(machine_t *m) { return st3_format_putc(m, 0xA141, 0x9992); }
-static int end_format_putc(machine_t *m) { return st3_format_putc(m, 0x5AB3, 0x54D8); }
+static int start_format_putc(machine_t *m) { return sm3_format_putc(m, 0x9992, 0xA15D, 0); }
+static int end_format_putc(machine_t *m) { return sm3_format_putc(m, 0x54D8, 0x5ACF, 0); }
+static int player_format_putc(machine_t *m) { return sm3_format_putc(m, 0x200C, 0x1ED5, 0); }
+static int mps_logo_format_putc(machine_t *m) { return sm3_format_putc(m, 0x0C62, 0x143D, 1); }
+
+/* The formatter's output loops (PLAYER 0x01EE2 and 0x01F00, MPS_LOGO 0146:144A
+ * and 0146:1468; START and END carry the same code): CX characters go through
+ * the put-character routine `putc` - the bytes at ES:SI (SI taken from DI) or,
+ * for padding, DL each time - and the caller's count at [BP-8] grows by CX; if
+ * any put failed (its AX, ORed into DI, is not zero) the count becomes -1. DI
+ * is kept, and nothing happens for CX = 0. Flags: OR DI, DI. The loop runs on
+ * the registers the put leaves; each turn makes sure of the room to the next
+ * call or to the end, or stops after the call. */
+static int sm3_format_out(machine_t *m, uint16_t putc, int pad)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t head = (uint16_t)(c->ip + (pad ? 8 : 0xA));    /* lodsb es: / mov al, dl */
+    const uint16_t back = (uint16_t)(head + 5);                   /* after the CALL */
+    if (c->r[R_CX] == 0) {                                        /* jcxz to the RET */
+        if (!room(c, 2)) return 0;
+        c->icount += 2;
+        near_ret(c);
+        return 1;
+    }
+    const unsigned pre = pad ? 4 : 5;                             /* jcxz, (mov si, di,) add, push, xor */
+    if (!room(c, pre + 2)) return 0;
+    if (!pad) c->r[R_SI] = c->r[R_DI];
+    const uint16_t ss = c->seg[S_SS], count_at = (uint16_t)(c->r[R_BP] - 8);
+    seg_write16(c, ss, count_at, (uint16_t)alu_add(c, seg_read16(c, ss, count_at), c->r[R_CX], 1, 0));
+    cpu_push16(c, c->r[R_DI]);
+    c->r[R_DI] = (uint16_t)alu_logic(c, 0, 1);                    /* xor di, di */
+    c->icount += pre;
+    do {
+        if (pad) set_r8(c, R_AL, get_r8(c, R_DL));                /* mov al, dl */
+        else x86_lods(c, 0, c->seg[S_ES]);                        /* lodsb es: */
+        c->icount += 1;
+        if (!guest_call(m, putc, back)) return 1;
+        if (!room(c, 7)) { c->ip = back; return 1; }              /* or, loop, and the next turn or the end */
+        c->r[R_DI] = (uint16_t)alu_logic(c, c->r[R_DI] | c->r[R_AX], 1);   /* or di, ax */
+        c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);                  /* loop */
+        c->icount += 2;
+    } while (c->r[R_CX] != 0);
+    alu_logic(c, c->r[R_DI], 1);                                  /* or di, di */
+    const int failed = c->r[R_DI] != 0;
+    c->r[R_DI] = cpu_pop16(c);
+    c->icount += 3;                                               /* or, pop, je */
+    if (failed) {
+        seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 8), 0xFFFF);
+        c->icount += 1;
+    }
+    c->icount += 1;
+    near_ret(c);
+    return 1;
+}
+static int player_format_write(machine_t *m) { return sm3_format_out(m, 0x1EB9, 0); }
+static int player_format_pad(machine_t *m) { return sm3_format_out(m, 0x1EB9, 1); }
+static int mps_logo_format_write(machine_t *m) { return sm3_format_out(m, 0x1420, 0); }
+static int mps_logo_format_pad(machine_t *m) { return sm3_format_out(m, 0x1420, 1); }
+
+/* PLAYER 0x01E9C (START 0x0A124 and END 0x05A96 carry the same code), the
+ * formatter's next pointer argument into ES:DI: with the far flag (20h in the
+ * caller's [BP-4]) a double word from `dword_fn`, segment and offset; otherwise
+ * a word from `word_fn`, in DS (ES 0 for a null pointer, flags from OR AX, AX). */
+static int sm3_format_next_ptr(machine_t *m, uint16_t word_fn, uint16_t dword_fn)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 3)) return 0;
+    const uint16_t at = c->ip;
+    alu_logic(c, mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 4))) & 0x20, 0);   /* test byte [bp-4], 20h */
+    c->icount += 2;
+    if (!(c->flags & F_ZF)) {
+        if (!guest_call(m, dword_fn, (uint16_t)(at + 9))) return 1;
+        if (!room(c, 3)) { c->ip = (uint16_t)(at + 9); return 1; }
+        c->seg[S_ES] = c->r[R_DX];
+        c->r[R_DI] = c->r[R_AX];
+        c->icount += 3;
+    } else {
+        if (!guest_call(m, word_fn, (uint16_t)(at + 0x11))) return 1;
+        if (!room(c, 6)) { c->ip = (uint16_t)(at + 0x11); return 1; }
+        c->r[R_DI] = c->r[R_AX];
+        alu_logic(c, c->r[R_AX], 1);                              /* or ax, ax */
+        if (c->flags & F_ZF) { c->seg[S_ES] = c->r[R_AX]; c->icount += 5; }
+        else {                                                    /* push ds / pop es */
+            cpu_push16(c, c->seg[S_DS]);
+            c->seg[S_ES] = cpu_pop16(c);
+            c->icount += 6;
+        }
+    }
+    near_ret(c);
+    return 1;
+}
+static int player_format_next_ptr(machine_t *m) { return sm3_format_next_ptr(m, 0x1E88, 0x1E90); }
+
+/* PLAYER 0x029B7 and SETUP 0x011AF (START 0x08EAD and END 0x04DA3 carry the
+ * same bytes): the timer count at the start of a vertical retrace. With
+ * interrupts off, wait for the CRT status (3DAh) to leave the retrace (bit 3),
+ * then for the next one to begin, each wait giving up after 65535 reads; then
+ * latch the PIT's counter 0 (43h <- 0) and read it from 40h, low byte then
+ * high. AX = BX = the count, or what BX held when a wait gave up (0). Each
+ * port is read at the clock the original reads it. The closing POPF can let an
+ * interrupt in, so the routine stops after it and the original's RET follows. */
+static int sm3_retrace_timer(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t at = c->ip;
+    const uint16_t wait_end = (uint16_t)(at + 7), wait_start = (uint16_t)(at + 0x11);
+    const uint16_t latch = (uint16_t)(at + 0x19), done = (uint16_t)(at + 0x2B);
+    if (!room(c, 4)) return 0;
+    x86_pushf(c);
+    x86_cli(c);
+    c->r[R_DX] = 0x03DA;
+    c->r[R_BX] = (uint16_t)alu_logic(c, 0, 1);                    /* xor bx, bx */
+    c->icount += 4;
+    int gave_up = 0;
+    for (int wait = 0; wait < 2 && !gave_up; wait++) {            /* the retrace's end, then the next start */
+        if (wait) {
+            if (!room(c, 1)) { c->ip = (uint16_t)(wait_start - 2); return 1; }
+            c->r[R_BX] = (uint16_t)alu_logic(c, 0, 1);            /* xor bx, bx */
+            c->icount += 1;
+        }
+        for (;;) {
+            if (!room(c, 5)) { c->ip = wait ? wait_start : wait_end; return 1; }
+            c->r[R_BX] = (uint16_t)alu_dec(c, c->r[R_BX], 1);
+            c->icount += 2;                                       /* dec bx, je */
+            if (c->flags & F_ZF) { gave_up = 1; break; }
+            x86_in(c, c->r[R_DX], 0);
+            c->icount += 1;
+            alu_logic(c, get_r8(c, R_AL) & 0x08, 0);              /* test al, 8 */
+            c->icount += 2;                                       /* test, jne / je */
+            if (((c->flags & F_ZF) != 0) == (wait != 0)) continue;   /* still in (or not yet in) the retrace */
+            break;
+        }
+    }
+    if (!gave_up) {
+        if (!room(c, 9)) { c->ip = latch; return 1; }
+        set_r8(c, R_AL, 0);
+        c->icount += 1;
+        x86_out(c, 0x43, 0);                                      /* latch counter 0 */
+        c->icount += 2;                                           /* the OUT and the JMP that delays */
+        x86_in(c, 0x40, 0);
+        c->icount += 2;
+        set_r8(c, R_BL, get_r8(c, R_AL));
+        c->icount += 1;
+        x86_in(c, 0x40, 0);
+        c->icount += 2;
+        set_r8(c, R_BH, get_r8(c, R_AL));
+        c->icount += 1;
+    }
+    if (!room(c, 2)) { c->ip = done; return 1; }
+    c->r[R_AX] = c->r[R_BX];
+    x86_popf(c);
+    c->icount += 2;
+    c->ip = (uint16_t)(done + 3);                                 /* the RET */
+    return 1;
+}
+
+/* PLAYER 0x00DB0 and 0x00DCA: the screen off or on, in a vertical retrace.
+ * Wait for one to begin (the CRT status 3DAh, bit 3; each read at the clock
+ * the original reads it), then write `mode` (2 or 0Ah) to the mode control
+ * port 3D8h and set (off) or clear the screen-off bit, bit 5 of sequencer
+ * register 1. Flags: the OR or the AND. */
+static int sm3_screen_switch(machine_t *m, uint8_t mode, int off)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t wait = (uint16_t)(c->ip + 3);
+    if (!room(c, 1)) return 0;
+    c->r[R_DX] = 0x03DA;
+    c->icount += 1;
+    for (;;) {                                                    /* in al, dx / test al, 8 / je */
+        if (!room(c, 3)) { c->ip = wait; return 1; }
+        x86_in(c, c->r[R_DX], 0);
+        c->icount += 1;
+        alu_logic(c, get_r8(c, R_AL) & 8, 0);
+        c->icount += 2;
+        if (!(c->flags & F_ZF)) break;
+    }
+    if (!room(c, 11)) { c->ip = (uint16_t)(wait + 5); return 1; }
+    c->r[R_DX] = 0x03D8;
+    set_r8(c, R_AL, mode);
+    c->icount += 2;
+    x86_out(c, c->r[R_DX], 0);
+    c->icount += 1;
+    c->r[R_DX] = 0x03C4;
+    set_r8(c, R_AL, 1);
+    c->icount += 2;
+    x86_out(c, c->r[R_DX], 0);                                    /* the sequencer's index: register 1 */
+    c->icount += 1;
+    c->r[R_DX] = (uint16_t)alu_inc(c, c->r[R_DX], 1);
+    c->icount += 1;
+    x86_in(c, c->r[R_DX], 0);
+    c->icount += 1;
+    const uint8_t v = get_r8(c, R_AL);
+    set_r8(c, R_AL, (uint8_t)alu_logic(c, off ? (v | 0x20u) : (v & 0xDFu), 0));
+    c->icount += 1;
+    x86_out(c, c->r[R_DX], 0);
+    c->icount += 2;                                               /* out, ret */
+    near_ret(c);
+    return 1;
+}
+static int player_screen_off(machine_t *m) { return sm3_screen_switch(m, 0x02, 1); }
+static int player_screen_on(machine_t *m) { return sm3_screen_switch(m, 0x0A, 0); }
+
+/* PLAYER 0x00DE4: colours to the DAC for as long as a vertical retrace lasts.
+ * Wait for a retrace to begin and then to end; then, with interrupts off, the
+ * DAC's write index is set to AL (the last status read) and bytes from DS:SI go
+ * to the data port 3C9h until the next retrace begins, CX counting them. The
+ * STI that follows lets interrupts in, so the routine stops after it; the
+ * original stores the count in [13D2] and returns. */
+static int player_dac_in_retrace(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 2)) return 0;
+    cpu_push16(c, c->r[R_SI]);
+    c->r[R_DX] = 0x03DA;
+    c->icount += 2;
+    for (int wait = 0; wait < 2; wait++) {                        /* the retrace's start (0DE8), then its end (0DED) */
+        for (;;) {
+            if (!room(c, 3)) { c->ip = wait ? 0x0DED : 0x0DE8; return 1; }
+            x86_in(c, c->r[R_DX], 0);
+            c->icount += 1;
+            alu_logic(c, get_r8(c, R_AL) & 8, 0);
+            c->icount += 2;
+            if (((c->flags & F_ZF) != 0) == (wait == 0)) continue;
+            break;
+        }
+    }
+    if (!room(c, 4)) { c->ip = 0x0DF2; return 1; }
+    c->r[R_CX] = 0;
+    x86_cli(c);
+    set_r8(c, R_DL, 0xC8);
+    c->icount += 3;
+    x86_out(c, c->r[R_DX], 0);                                    /* the write index: AL */
+    c->icount += 1;
+    do {                                                          /* 0DF9: a byte a turn, then the STI */
+        if (!room(c, 8 + 1)) { c->ip = 0x0DF9; return 1; }
+        x86_lods(c, 0, c->seg[S_DS]);
+        set_r8(c, R_DL, 0xC9);
+        c->icount += 2;
+        x86_out(c, c->r[R_DX], 0);
+        c->icount += 1;
+        c->r[R_CX] = (uint16_t)alu_inc(c, c->r[R_CX], 1);
+        set_r8(c, R_DL, 0xDA);
+        c->icount += 2;
+        x86_in(c, c->r[R_DX], 0);
+        c->icount += 1;
+        alu_logic(c, get_r8(c, R_AL) & 8, 0);
+        c->icount += 2;
+    } while (c->flags & F_ZF);
+    x86_sti(c);
+    c->icount += 1;
+    c->ip = 0x0E06;
+    return 1;
+}
+
+/* PLAYER 0x00F1A, joystick_button(n): 1 while button n (0 or 1; bit n + 4 of
+ * the game port 201h, which reads 0 when pressed) is held, else 0. */
+static int player_joystick_button(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 12)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_DX] = 0x0201;
+    c->icount += 3;
+    x86_in(c, c->r[R_DX], 0);
+    c->icount += 1;
+    c->r[R_CX] = (uint16_t)alu_add(c, bp_get(c, 4), 4, 1, 0);     /* mov cx, [bp+4] / add cx, 4 */
+    uint8_t al = (uint8_t)x86_shift(c, 5, get_r8(c, R_AL), get_r8(c, R_CL), 0);   /* shr al, cl */
+    al = (uint8_t)alu_logic(c, al & 1, 0);
+    set_r8(c, R_AL, al);
+    set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));   /* sub ah, ah */
+    c->r[R_AX] = (uint16_t)alu_logic(c, c->r[R_AX] ^ 1, 1);
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 8;
+    near_ret(c);
+    return 1;
+}
+
+/* SETUP 0237:005C, read the joystick: the game port 201h is fired (OUT) with
+ * interrupts off, then read until both axis bits (0 and 1) have dropped or CX
+ * runs out (LOOPNE from 0, at most 65536 reads); each read with axis 0 still
+ * set adds one to BP, with axis 1 one to DI. Running out makes both FFFFh.
+ * The STI after it lets interrupts in, so the routine stops there; the original
+ * stores BP and DI at [0E1C] and [0E1E] and restores the seven registers. */
+static int setup_joystick_read(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 16)) return 0;
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, c->r[R_BX]);
+    cpu_push16(c, c->r[R_CX]);
+    cpu_push16(c, c->r[R_DX]);
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = (uint16_t)alu_sub(c, c->r[R_BP], c->r[R_BP], 1, 0);
+    c->r[R_CX] = (uint16_t)alu_sub(c, c->r[R_CX], c->r[R_CX], 1, 0);
+    c->r[R_DI] = (uint16_t)alu_sub(c, c->r[R_DI], c->r[R_DI], 1, 0);
+    c->r[R_DX] = 0x0201;
+    c->r[R_BX] = 3;
+    x86_cli(c);
+    c->icount += 13;
+    x86_out(c, c->r[R_DX], 0);                                    /* fire the one-shots */
+    c->icount += 3;                                               /* out, and the two jumps that delay */
+    for (;;) {                                                    /* 0076: ten a turn */
+        if (!room(c, 10 + 6)) { c->ip = 0x0076; return 1; }
+        x86_in(c, c->r[R_DX], 0);
+        c->icount += 1;
+        c->r[R_AX] = (uint16_t)alu_logic(c, c->r[R_AX] & c->r[R_BX], 1);
+        c->r[R_SI] = c->r[R_AX];
+        set_r8(c, R_AL, (uint8_t)alu_logic(c, get_r8(c, R_AL) & 1, 0));
+        c->r[R_BP] = (uint16_t)alu_add(c, c->r[R_BP], c->r[R_AX], 1, 0);
+        c->r[R_AX] = c->r[R_SI];
+        c->r[R_AX] = x86_shift(c, 5, c->r[R_AX], 1, 1);           /* shr ax, 1 */
+        c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], c->r[R_AX], 1, 0);
+        alu_logic(c, c->r[R_SI], 1);                              /* or si, si */
+        c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);                  /* loopne */
+        c->icount += 9;
+        if (c->r[R_CX] == 0 || (c->flags & F_ZF)) break;
+    }
+    c->icount += 1;                                               /* je */
+    if (!(c->flags & F_ZF)) {                                     /* ran out: both FFFFh */
+        c->r[R_BP] = (uint16_t)alu_sub(c, c->r[R_BP], c->r[R_BP], 1, 0);
+        c->r[R_BP] = (uint16_t)~c->r[R_BP];
+        c->r[R_DI] = (uint16_t)alu_sub(c, c->r[R_DI], c->r[R_DI], 1, 0);
+        c->r[R_DI] = (uint16_t)~c->r[R_DI];
+        c->icount += 4;
+    }
+    x86_sti(c);
+    c->icount += 1;
+    c->ip = 0x0094;
+    return 1;
+}
+
+/* SETUP 0237:0115, settings_out(p): the 20 words at DS:0DF4 (the joystick
+ * settings) are copied to the far pointer p; ES is kept. The reverse of
+ * VGAME's copy_settings. */
+static int setup_settings_out(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 9 + 20)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->seg[S_ES]);
+    c->r[R_DI] = bp_get(c, 6);                                    /* les di, [bp+6] */
+    c->seg[S_ES] = bp_get(c, 8);
+    c->r[R_CX] = 0x14;
+    c->r[R_SI] = 0x0DF4;
+    const unsigned copied = rep_string(c, STR_MOVS, 1, c->seg[S_DS], 0);
+    c->seg[S_ES] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 9 + copied;
+    far_ret(c);
+    return 1;
+}
+
+/* PLAYER 0x00E65, one step of a palette fade: the start colour [13CE] moves on
+ * by [13D0] (within 0-255), and [13D0] colours from that one in the 256-colour
+ * table at 13DA (three bytes each, wrapping at the end) are scaled by the level
+ * [13D6] (a 16-bit fraction: each 6-bit component times the level, rounded,
+ * the high byte) into the buffer at 16DA. At the table's end the level moves by
+ * the step [13D8], held to FFFFh going up and 0 going down. */
+static int player_fade_step(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 14)) return 0;
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->r[R_DI]);
+    uint16_t bx = ds_get(c, 0x13CE);
+    c->r[R_CX] = ds_get(c, 0x13D0);
+    bx = (uint16_t)alu_add(c, bx, c->r[R_CX], 1, 0);
+    bx = (uint16_t)(bx & 0x00FF);                                 /* xor bh, bh */
+    alu_logic(c, 0, 0);
+    c->r[R_BX] = bx;
+    ds_put(c, 0x13CE, bx);
+    uint16_t si = 0x13DA;
+    for (int k = 0; k < 3; k++) si = (uint16_t)alu_add(c, si, bx, 1, 0);
+    c->r[R_SI] = si;
+    c->r[R_DI] = 0x16DA;
+    cpu_push16(c, c->seg[S_DS]);
+    c->seg[S_ES] = cpu_pop16(c);
+    c->icount += 14;
+    do {                                                          /* 0E87: a colour a turn */
+        if (!room(c, 32 + 3)) { c->ip = 0x0E87; return 1; }
+        for (int k = 0; k < 3; k++) {
+            x86_lods(c, 0, c->seg[S_DS]);
+            set_r8(c, R_AH, (uint8_t)alu_logic(c, 0, 0));         /* xor ah, ah */
+            x86_mul16(c, ds_get(c, 0x13D6));
+            c->r[R_AX] = x86_shift(c, 4, c->r[R_AX], 1, 1);       /* shl ax, 1 */
+            c->r[R_DX] = (uint16_t)alu_add(c, c->r[R_DX], 0, 1, (c->flags & F_CF) ? 1u : 0u);
+            set_r8(c, R_AL, get_r8(c, R_DL));
+            mem_write8(c, phys(c->seg[S_ES], c->r[R_DI]), get_r8(c, R_AL));   /* stosb, written out */
+            c->r[R_DI] = (uint16_t)(c->r[R_DI] + x86_str_delta(c, 0));
+        }
+        set_r8(c, R_BL, (uint8_t)alu_inc(c, get_r8(c, R_BL), 0));
+        c->icount += 21 + 2;                                      /* the three components, inc bl, jne */
+        if (c->flags & F_ZF) {                                    /* past the table's end */
+            c->r[R_SI] = 0x13DA;
+            c->r[R_AX] = ds_get(c, 0x13D8);
+            alu_logic(c, c->r[R_AX], 1);                          /* or ax, ax */
+            c->icount += 4;
+            const uint16_t level = ds_get(c, 0x13D6);
+            if (!(c->flags & F_SF)) {                             /* rising */
+                ds_put(c, 0x13D6, (uint16_t)alu_add(c, level, c->r[R_AX], 1, 0));
+                c->icount += 2;
+                if (c->flags & F_CF) { ds_put(c, 0x13D6, 0xFFFF); c->icount += 2; }
+            } else {                                              /* falling */
+                ds_put(c, 0x13D6, (uint16_t)alu_add(c, level, c->r[R_AX], 1, 0));
+                c->icount += 2;
+                if (!(c->flags & F_CF)) { ds_put(c, 0x13D6, 0); c->icount += 1; }
+            }
+        }
+        c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);                  /* loop */
+        c->icount += 1;
+    } while (c->r[R_CX] != 0);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->icount += 3;
+    near_ret(c);
+    return 1;
+}
+
+/* PLAYER 0x00EE3: the fade's colours to the DAC, then its next step. From the
+ * start colour [13CE] (the DAC's write index), 3 * [13D0] bytes of the buffer
+ * at 16DA go to the data port: by REP OUTSB, or on an 8086 - told apart by
+ * SHR DX, 20h, which only the 8086 does not mask to nothing - by a LODSB / OUT
+ * loop. Then the fade step (0x00E65) and [13D4], the steps left, counts down. */
+static int player_fade_frame(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 15)) return 0;
+    cpu_push16(c, c->r[R_SI]);
+    c->r[R_AX] = ds_get(c, 0x13CE);
+    uint16_t bx = ds_get(c, 0x13D0);
+    c->r[R_CX] = bx;
+    bx = (uint16_t)alu_add(c, bx, c->r[R_CX], 1, 0);
+    bx = (uint16_t)alu_add(c, bx, c->r[R_CX], 1, 0);
+    c->r[R_BX] = bx;
+    c->r[R_SI] = 0x16DA;
+    c->r[R_DX] = 0xFFFF;
+    set_r8(c, R_CL, 0x20);
+    c->r[R_DX] = x86_shift(c, 5, c->r[R_DX], 0x20, 1);            /* shr dx, cl: an 8086 clears DX and sets ZF */
+    c->r[R_CX] = bx;
+    c->r[R_DX] = 0x03C8;
+    c->icount += 12;
+    x86_out(c, c->r[R_DX], 0);                                    /* the first colour */
+    c->r[R_DX] = 0x03C9;
+    c->icount += 3;                                               /* out, mov, je */
+    if (!(c->flags & F_ZF)) {                                     /* rep outsb */
+        if (c->r[R_CX] == 0) {
+            if (!room(c, 2)) { c->ip = 0x0F07; return 1; }
+            c->icount += 2;                                       /* the REP with CX 0, jmp */
+        } else {                                                  /* whole, or left to the original */
+            if (!room(c, (unsigned)c->r[R_CX] + 1)) { c->ip = 0x0F07; return 1; }
+            do {
+                x86_outs(c, 0, c->seg[S_DS]);
+                c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);
+                c->icount += 1;
+            } while (c->r[R_CX] != 0);
+            c->icount += 1;                                       /* jmp */
+        }
+    } else {                                                      /* the 8086's loop */
+        do {
+            if (!room(c, 3)) { c->ip = 0x0F0C; return 1; }
+            x86_lods(c, 0, c->seg[S_DS]);
+            c->icount += 1;
+            x86_out(c, c->r[R_DX], 0);
+            c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);
+            c->icount += 2;
+        } while (c->r[R_CX] != 0);
+    }
+    if (!room(c, 1)) { c->ip = 0x0F10; return 1; }
+    if (!guest_call(m, 0x0E65, 0x0F13)) return 1;
+    if (!room(c, 3)) { c->ip = 0x0F13; return 1; }
+    ds_put(c, 0x13D4, (uint16_t)alu_dec(c, ds_get(c, 0x13D4), 1));
+    c->r[R_SI] = cpu_pop16(c);
+    c->icount += 3;
+    near_ret(c);
+    return 1;
+}
 
 /* VGAME 0x0C831, vcos(a, r): the routine at 0x0C818 with the angle turned a
  * quarter (AH + 40h). */
@@ -10294,18 +10900,21 @@ static int vgame_copy_from_dot(machine_t *m)
 }
 
 /* VGAME 0x0E9F4 and DSWAP 0x00F06, open_stream(a, b, c): a stream slot from the finder
- * `find` (whose call returns to find_ret); with none, 0; otherwise `open` (a, b, c,
- * slot), returning to open_ret. SI restored. */
-static int open_stream(machine_t *m, uint16_t find, uint16_t find_ret, uint16_t open, uint16_t open_ret)
+ * (the CALL at find_at); with none, 0; otherwise the opener (a, b, c, slot), the CALL
+ * at open_at. SI restored. MPS_LOGO's copy (0146:0374) is far, the arguments a word
+ * higher, and makes both calls far. */
+static int sm3_open_stream(machine_t *m, uint16_t find_at, uint16_t open_at, int far)
 {
     cpu_t *c = &m->cpu;
     if (!room(c, 4)) return 0;
-    const uint16_t a = arg(c, 0), b = arg(c, 1), d = arg(c, 2);
+    const int a0 = far ? 1 : 0;
+    const uint16_t a = arg(c, a0), b = arg(c, a0 + 1), d = arg(c, a0 + 2);
+    const uint16_t find_ret = sm3_after_call(c, find_at), open_ret = sm3_after_call(c, open_at);
     cpu_push16(c, c->r[R_BP]);
     c->r[R_BP] = c->r[R_SP];
     cpu_push16(c, c->r[R_SI]);
     c->icount += 3;
-    if (!guest_call(m, find, find_ret)) return 1;
+    if (!sm3_call(m, find_at)) return 1;
     if (!room(c, 9)) { c->ip = find_ret; return 1; }
     const uint16_t si = c->r[R_AX];
     c->r[R_SI] = si;
@@ -10319,7 +10928,7 @@ static int open_stream(machine_t *m, uint16_t find, uint16_t find_ret, uint16_t 
         cpu_push16(c, b);
         cpu_push16(c, a);
         c->icount += 7;
-        if (!guest_call(m, open, open_ret)) return 1;
+        if (!sm3_call(m, open_at)) return 1;
         if (!room(c, 5)) { c->ip = open_ret; return 1; }
         c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0);  /* add sp, 8 */
         c->icount += 1;
@@ -10328,11 +10937,36 @@ static int open_stream(machine_t *m, uint16_t find, uint16_t find_ret, uint16_t 
     c->r[R_SP] = c->r[R_BP];
     c->r[R_BP] = cpu_pop16(c);
     c->icount += 4;
-    near_ret(c);
+    if (far) far_ret(c); else near_ret(c);
     return 1;
 }
-static int vgame_open_stream(machine_t *m) { return open_stream(m, 0xF38A, 0xE9FB, 0xF1E0, 0xEA13); }
-static int dswap_open_stream(machine_t *m) { return open_stream(m, 0x1B9C, 0x0F0D, 0x1520, 0x0F25); }
+static int vgame_open_stream(machine_t *m) { return sm3_open_stream(m, 0xE9F8, 0xEA10, 0); }
+static int dswap_open_stream(machine_t *m) { return sm3_open_stream(m, 0x0F0A, 0x0F22, 0); }
+static int mps_logo_open_stream(machine_t *m) { return sm3_open_stream(m, 0x0378, 0x0392, 1); }
+
+/* MPS_LOGO 0146:03A0, the far copy of crt_call_with_zero: open_stream(a, b, 0)
+ * by a far CALL to 0146:0374; the arguments a word higher, RETF. */
+static int mps_logo_call_with_zero(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 7)) return 0;
+    const uint16_t ss = c->seg[S_SS];
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    const uint16_t bp = c->r[R_BP];
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+    cpu_push16(c, 0);
+    cpu_push16(c, seg_read16(c, ss, (uint16_t)(bp + 8)));
+    cpu_push16(c, seg_read16(c, ss, (uint16_t)(bp + 6)));
+    c->icount += 6;
+    if (!sm3_call(m, 0x03AC)) return 1;
+    if (!room(c, 3)) { c->ip = 0x03B1; return 1; }
+    c->r[R_SP] = c->r[R_BP];                                      /* mov sp, bp: the live BP, as the original */
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 3;
+    far_ret(c);
+    return 1;
+}
 
 /* VGAME 0x0D52E, far_triple(a, b, d): the far pair at 0x0D557 on (a, 0),
  * its answer kept in a local; 11D8:000A on (answer, b, d) - the arguments
@@ -20115,6 +20749,15 @@ static int vgame_pic_rle(machine_t *m) { return pic_rle_row(m, &PIC_RLE_VGAME, &
 static int end_pic_rle(machine_t *m) { return pic_rle_row(m, &PIC_RLE_END, &PIC_LZW_END); }
 static int vgame_pic_lzw(machine_t *m) { return pic_lzw_step(m, &PIC_LZW_VGAME); }
 static int end_pic_lzw(machine_t *m) { return pic_lzw_step(m, &PIC_LZW_END); }
+/* DSWAP's copy, 0x00B56 and its step 0x00BCF: the same code with its own data. The
+ * step alone is not placed: tests/func_lockstep.c cannot hold it (it leaves by JMP BP),
+ * and the row step runs it as C. */
+static const pic_lzw PIC_LZW_DSWAP = { 0x2472, 0x247A, 0x247B, 0x247C, 0x2480, 0x2482,
+    0x2484, 0x2486, 0x0B26, 0x0187, 0x2687, 0x2470, 0x0B20, 0x0C77,
+    0x0BCF, 0x0BD9, 0x0BE9, 0x0BFC, 0x0C2D, 0 };
+static const pic_rle PIC_RLE_DSWAP = { 0x2483, 0x2476, 0x2474, 0x247E, 0x2478, 0x2479,
+    0x0B56, 0x0B6E, 0x0B75, 0x0B78, 0x0B9D, 0x0B82, 0x0B85 };
+static int dswap_pic_rle(machine_t *m) { return pic_rle_row(m, &PIC_RLE_DSWAP, &PIC_LZW_DSWAP); }
 
 /* VGAME 0x078FD, scene_obstacle_probe(x, y, z): the world object at a map
  * position, by 0x01007 (which looks it up and replaces it), with the
@@ -21434,6 +22077,43 @@ static const recomp_override MATCHED[] = {
     { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x130C, dswap_setenvp, "copy the environment", 1 },
     { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x1B44, setup_setenvp, "copy the environment", 1 },
     { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x0A5E, mps_logo_setenvp, "copy the environment", 2 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x1D27, chain_last, "last record of a chain", 1 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x07F0, mps_logo_lmul, "32-bit multiply", 2 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x1776, mps_logo_memcpy, "block copy", 2 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x2390, player_heap_free, "free a near heap block", 1 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x2076, dswap_heap_free, "free a near heap block", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x1D48, setup_heap_free, "free a near heap block", 1 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x1B6A, mps_logo_heap_free, "free a near heap block", 2 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x1A6A, mps_logo_heap_free_jmp, "free a near heap block, by a far jump", 2 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x1EB9, player_format_putc, "the formatter's put-character", 1 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x1420, mps_logo_format_putc, "the formatter's put-character", 1 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x1A50, mps_logo_stack_avail, "stack space left", 2 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x17D6, mps_logo_getbuf, "getbuf: a stream's buffer", 1 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x0F88, mps_logo_flush_all, "flush every open stream", 1 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x0F0C, mps_logo_fflush, "flush a stream", 2 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x0E5A, mps_logo_stbuf, "temporary buffer for a stream", 1 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x05A0, mps_logo_printf, "formatted output to the second stream", 2 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x0ECD, mps_logo_free_buffer, "flush and free a stream's buffer", 1 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x0D46, mps_logo_release_buffer, "release a stream's buffer", 1 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x0374, mps_logo_open_stream, "open a stream", 2 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x03A0, mps_logo_call_with_zero, "call with a zero third argument", 2 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x0ADC, mps_logo_string_lookup, "look up a string by id", 2 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x0B56, dswap_pic_rle, "the picture decoder's row (RLE) step", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x1EE2, player_format_write, "the formatter's output of a string", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x1F00, player_format_pad, "the formatter's padding", 1 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x144A, mps_logo_format_write, "the formatter's output of a string", 1 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x1468, mps_logo_format_pad, "the formatter's padding", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x1E9C, player_format_next_ptr, "the formatter's next pointer argument", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x29B7, sm3_retrace_timer, "timer count at a retrace", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x11AF, sm3_retrace_timer, "timer count at a retrace", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x0DB0, player_screen_off, "screen off in a retrace", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x0DCA, player_screen_on, "screen on in a retrace", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x0DE4, player_dac_in_retrace, "colours to the DAC during a retrace", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x0F1A, player_joystick_button, "joystick button", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0237, 0x005C, setup_joystick_read, "read the joystick", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0237, 0x0115, setup_settings_out, "copy the joystick settings out", 2 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x0E65, player_fade_step, "a palette fade step", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x0EE3, player_fade_frame, "a palette fade frame", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x11ED, 0x00AE, vgame_pic_rle, "the picture decoder's row (RLE) step", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x11ED, 0x0127, vgame_pic_lzw, "the picture decoder's code and table step", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x48AA, end_pic_rle, "the picture decoder's row (RLE) step", 1 },
