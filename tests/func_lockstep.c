@@ -164,6 +164,10 @@ static const struct { uint16_t seg, ip; uint8_t reg; uint16_t disp; uint16_t val
     { 0x11ED, 0x00AE, PLANT_ABS, 0x968A, 0x0002 },
     { 0x0000, 0x890A, PLANT_ABS, 0x8D6E, 0x8F81 },   /* pic_rle_row, START's copy */
     { 0x0000, 0x890A, PLANT_ABS, 0x8D70, 0x0002 },
+    { 0x1377, 0x0B09, PLANT_ABS, 0x8606, 0xFE3C },   /* model_fill: the AND, OR, stipple and clear styles */
+    { 0x1377, 0x0B09, PLANT_ABS, 0x8606, 0xFD3C },
+    { 0x1377, 0x0B09, PLANT_ABS, 0x8606, 0xFC3C },
+    { 0x1377, 0x0B09, PLANT_ABS, 0x8606, 0xFB3C },
 };
 
 static const char *g_ctx = "";   /* what the comparison in progress is: " (mid-run stop)" */
@@ -293,6 +297,32 @@ static const struct { const char *module; uint16_t ip; } DOS_STUBS[] = {
     { "START.EXE", 0x9115 }, { "END.EXE", 0x500B },     /* the vectors put back */
 };
 
+/* Entry points inside a longer routine whose RET lies before the entry (a second entry that jumps back to
+ * a shared exit): the routine's own code starts `below` bytes under the entry, and a RET there is its own. */
+static const struct { const char *module; uint16_t seg, ip, below; } CODE_BELOW[] = {
+    { "VGAME.EXE", 0x1377, 0x0968, 0x00CC },     /* model fill: the jump to the common exit 089C */
+    { "VGAME.EXE", 0x1377, 0x099F, 0x0007 },     /* stipple fill, exit at 0998 */
+    { "VGAME.EXE", 0x1377, 0x0A1C, 0x0007 },     /* AND fill from a row, exit at 0A15 */
+    { "VGAME.EXE", 0x1377, 0x0A9C, 0x0007 },     /* OR fill from a row, exit at 0A95 */
+    { "VGAME.EXE", 0x1377, 0x0B4F, 0x0007 },     /* solid fill from a row, exit at 0B48 */
+    { "VGAME.EXE", 0x1377, 0x0B09, 0x019E },     /* fill by style: the clear (096B), stipple, AND and OR fills */
+    { "VGAME.EXE", 0x1377, 0x0B1B, 0x01B0 },
+    { "VGAME.EXE", 0x1377, 0x0B23, 0x01B8 },
+    { "VGAME.EXE", 0x1377, 0x0B2B, 0x01C0 },
+    { "VGAME.EXE", 0x1377, 0x0B33, 0x01C8 },
+    { "VGAME.EXE", 0x1377, 0x0886, 0x0012 },     /* planar fill: a skipped row's tail at 0874 */
+    { "VGAME.EXE", 0x1377, 0x08A3, 0x002F },     /* planar fill rows: 0874, and the exit at 089C */
+    { "VGAME.EXE", 0x1377, 0x094A, 0x00D6 },     /* planar one-byte span: on to 092E, then 08A3, 0874, 089C */
+};
+
+static uint16_t code_below(const recomp_override *o)
+{
+    for (unsigned i = 0; i < sizeof CODE_BELOW / sizeof CODE_BELOW[0]; i++)
+        if (!strcmp(CODE_BELOW[i].module, o->module) && CODE_BELOW[i].seg == o->seg && CODE_BELOW[i].ip == o->ip)
+            return CODE_BELOW[i].below;
+    return 0;
+}
+
 static machine_t g_m;           /* side 1's CPU lives in a machine: matched code takes one */
 
 /* A matched routine's call into original code, run here by plain stepping:
@@ -304,9 +334,17 @@ static machine_t g_m;           /* side 1's CPU lives in a machine: matched code
  * did not make, after which the two sides are not comparable. */
 static int g_trace;                     /* print every instruction of a re-run, to see where two sides part */
 static uint16_t g_reach;                /* the furthest instruction run inside the routine, from g_from */
+static uint16_t g_below;                /* how far the routine's code reaches below its entry (CODE_BELOW) */
+/* For those routines the original's code is watched after every step: a write that lands in it and is
+ * written back later (a row table over the code when DS = CS) runs changed instructions and leaves no
+ * trace in the end state. */
+static int g_self_written;
 static int run_to_ret(cpu_t *a, uint16_t entry_sp, int far, int *steps, uint16_t cs, uint16_t ip)
 {
+    const uint32_t watch = phys(cs, (uint16_t)(ip - g_below));
+    const int watching = g_below && a->mem == g_mem[0];
     while (*steps < 100000) {
+        if (watching && !g_self_written && memcmp(a->mem + watch, g_pristine + watch, 0x300u + g_below)) g_self_written = 1;
         if (g_trace) printf("      %04X:%04X clk %llu sp %04X\n", a->seg[S_CS], a->ip, (unsigned long long)a->icount, a->r[R_SP]);
         const uint16_t here = a->ip;
         const int inside = a->seg[S_CS] == cs && (uint16_t)(here - g_from) < g_span;
@@ -391,6 +429,7 @@ int main(int argc, char **argv)
         for (unsigned k = 0; k < RC_NMODULES; k++)
             if (!strcmp(RC_MODULES[k]->name, o->module) && RC_MODULES[k]->file_hash == o->file_hash) m = RC_MODULES[k];
         if (!m) { printf("%s %04X:%04X: module not in the generated code\n", o->module, o->seg, o->ip); bad++; continue; }
+        g_below = code_below(o);
         for (uint32_t a = 0; a < MEM_SIZE; a += 8) { uint64_t v = rnd(); memcpy(g_pristine + a, &v, 8); }
         const uint32_t at = (uint32_t)base * 16u + m->origin;
         memcpy(g_pristine + at, m->image, m->size);
@@ -402,6 +441,7 @@ int main(int argc, char **argv)
         g_from = ip; g_span = 0x300;
         for (unsigned k = 0; k < sizeof SPANS / sizeof SPANS[0]; k++)
             if (!strcmp(SPANS[k].module, o->module) && SPANS[k].ip == o->ip) { g_from = SPANS[k].from; g_span = SPANS[k].span; }
+        if (g_below) { g_from = (uint16_t)(ip - g_below); g_span = (uint16_t)(0x300u + g_below); }   /* CODE_BELOW as a range */
         g_dos = 0;
         for (unsigned k = 0; k < sizeof DOS_STUBS / sizeof DOS_STUBS[0]; k++)
             if (!strcmp(DOS_STUBS[k].module, o->module) && DOS_STUBS[k].ip == o->ip) g_dos = 1;
@@ -474,9 +514,10 @@ int main(int argc, char **argv)
              * accept the state only when it returns to the pushed address. */
             const uint16_t entry_sp = (uint16_t)(r[R_SP] - (o->matched == 2 ? 4 : 2));
             g_reach = 0;
+            g_self_written = 0;
             const int returned = run_to_ret(a, entry_sp, o->matched == 2, &steps, cs, ip);
             const uint16_t reach = g_reach;
-            if (!returned || a->seg[S_CS] != cs || a->ip != back) steps = 100000;
+            if (!returned || a->seg[S_CS] != cs || a->ip != back || g_self_written) steps = 100000;
             g_side[0].overflow = g_side[1].overflow = 1;      /* compare all memory */
             /* A real return lands back at the caller's stack level (RET n
              * pops at most a few words); a wild jump that happens to reach

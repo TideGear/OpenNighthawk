@@ -536,6 +536,11 @@ caught real defects:
   back. The machine's DOS is held by the routes. A matched routine makes the
   call as translated code does (`st4_int21`) and checks room after it, since a
   DOS transfer charges time.
+- `CODE_BELOW` gives the same kind of range for second entries into the model
+  fills that jump back to a shared exit below them: the code starts that many
+  bytes under the entry. For those the original's code is also watched after
+  every step, since a row table over the code (DS = CS) can change an
+  instruction, run it and write the bytes back.
 - OVERRUN: given one instruction less room than the original takes, a routine
   must decline. Mid-run stop: stopped at a random clock inside its path, the
   state it leaves must equal the original's at that clock. It may never start a
