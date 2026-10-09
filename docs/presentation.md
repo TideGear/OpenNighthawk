@@ -401,8 +401,8 @@ What the live path takes from the machine, in process:
   the rules are checked against. Entries 13-16, 24-26, 45, 46, 62 and 65 have no rule; they set
   state (pages, origin, DAC, CRTC start); in the eight windows only entry 46 has byte changes, and
   they are the model fill's own rows (the fill calls it while it paints), which the replay draws
-  from the 'b' records, so they need no snapshot either. Were one to draw, the frame would differ from A000 at its close and the replay
-  would be seeded again.
+  from the 'b' records, so they need no snapshot either. Were one to draw, the frame would
+  differ from A000 at its close and the replay would be seeded again.
 - **The replay** (`drawlive`, same file) runs `drawlist.c` on each closed frame, carried from the
   one seed, and compares the display with the frame's copy of A000. A frame that differs is not
   shown and the replay is seeded again.
@@ -414,10 +414,22 @@ What the live path takes from the machine, in process:
 **Unchanged machine.** `boot_to_flight` and `strike`, each under both engines, with and without
 `f117run --present replay`: the `--hash-every 50000000` checkpoints (54 and 177) and the final
 hashes are identical, and equal between the engines. The observer's hooks exist only in the
-recompiled engine, so under the interpreter the feed sees nothing. The feed costs the recompiled
-strike route 50% of its speed (66.6 s to 100.0 s, 133 to 88 M instructions a second, about ten
-times the original's 9 MIPS), most of it the page snapshot at every graphics entry that entry
-41's byte changes need.
+recompiled engine, so under the interpreter the feed sees nothing.
+
+**Cost.** The recompiled strike route (8.85B instructions), the runner's CPU time, least of three
+runs one at a time:
+
+| presentation | with page snapshots (entry 41 undecoded) | without (9 October) |
+|---|---|---|
+| scan | 78.8 s | 78.8 s |
+| replay | 158.6 s (+101%) | 106.7 s (+35%) |
+| interp | 179.2 s (+127%) | 121.5 s (+54%) |
+
+The host's speed varied by a third between runs that day (the scan route took 78.8 to 104.1 s),
+so only figures from the same set compare; an earlier wall-clock set gave 66.6, 100.0 and
+111.8 s. At 106.7 s the replay still runs at 83 M instructions a second, nine times the original's
+9 MIPS. What the feed still costs is the records themselves (every vertex, edge and fill row, the
+fill rows with their page bytes) and the copy of A000 at each frame's close.
 
 **The replay live.** Over the whole strike flight (2.33B to 8.85B) 9,845 logic frames close; the
 replay, seeded once at the first, equals the display at every frame's close: 9,845 of 9,845, none
@@ -457,8 +469,8 @@ newer one's close, the newer one a step later, so the picture is a step behind t
 `f117run` also draws every pair at its two ends and compares them with the two replayed
 pictures. Strike, the whole flight: 9,843 of 9,843 pairs exact at both ends; of 50,620 VGA frames
 presented, 47,708 are in-between frames; the hashes are unchanged (`boot_to_flight`: 366 of 366
-pairs). Drawing an in-between frame at every VGA frame costs the recompiled strike route another
-12% (100.0 s to 111.8 s). The window, headless, to 3.5B with `--present interp`: the same hash
+pairs). Drawing an in-between frame at every VGA frame costs the recompiled strike route a
+further 14% of the scan route's time (the table above). The window, headless, to 3.5B with `--present interp`: the same hash
 again, 8,332 of its 9,030 replayed VGA frames in-between frames.
 
 **Left for the live path.** Pacing to the host's display rather than the emulated VGA's (the
