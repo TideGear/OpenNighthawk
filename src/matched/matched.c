@@ -5004,8 +5004,10 @@ static int crt_find_message(machine_t *m, const crt_message *s)
 MESSAGE(end, 0x5422, 0x535E)
 MESSAGE(player, 0x180E, 0x1CDA)
 MESSAGE(setup, 0x1BC2, 0x0EE4)
-/* The C runtime's stack check (START 0x0A4C6, END 0x05B4E; VGAME's copy at
- * 0x0F8F0 is never run by any route, so it is left to the original): AX
+/* The C runtime's stack check (START 0x0A4C6, END 0x05B4E, VGAME 0x0F8F0),
+ * run inline by the formatter scans (st4_format_scan): the routes reach the
+ * checks only from there, so none has a table row of its own (a row nothing
+ * runs is no evidence; the lockstep cannot follow its JMP CX return). AX
  * bytes are taken off the stack unless that would wrap or pass the limit
  * word at `limit`, in which case the caller's return address is put back, AX
  * is 0 and the overflow handler at `overflow` runs. The caller's address
@@ -5039,8 +5041,6 @@ static int rt_stack_check(machine_t *m, uint16_t limit, uint16_t overflow)
     }
     return 1;
 }
-static int start_stack_check(machine_t *m) { return rt_stack_check(m, 0xB154, 0x8FA4); }
-static int end_stack_check(machine_t *m) { return rt_stack_check(m, 0x531E, 0x4E9A); }
 
 /* The C runtime's stackavail(), MPS_LOGO's far one at 0146:1A50: AX = the bytes
  * between SP (the caller's, once its return address is off) and the limit word
@@ -26987,8 +26987,6 @@ static const recomp_override MATCHED[] = {
     { "matched", "START.EXE", START_47304, 0x0000, 0x3088, start_fade_b, "start a fade, second form", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x3E5E, start_flag_call, "call on a flag", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x3E84, start_set_pointer, "store the pointer position", 1 },
-    { "matched", "START.EXE", START_47304, 0x0000, 0xA4C6, start_stack_check, "stack check", 1 },
-    { "matched", "END.EXE", END_47304, 0x0000, 0x5B4E, end_stack_check, "stack check", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x1452, 0x0316, vgame_camera_matrix_copy, "copy a 3x3 camera matrix", 2 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x1452, 0x02E4, vgame_camera_matrix_transpose, "transpose a 3x3 camera matrix", 2 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xE3BF, vgame_camera_transform, "camera transform and cull", 1 },
