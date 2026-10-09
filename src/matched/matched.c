@@ -22596,6 +22596,608 @@ static const st4_vectors_t ST4_VECTORS_START = { 0x9115, 0xB180, 0xAE44, 0xAE82,
 static const st4_vectors_t ST4_VECTORS_END = { 0x500B, 0x5348, 0x5114, 0x5152, 0x5153, 0x5154 };
 static int st4_start_restore_vectors(machine_t *m) { return st4_restore_vectors(m, &ST4_VECTORS_START); }
 static int st4_end_restore_vectors(machine_t *m) { return st4_restore_vectors(m, &ST4_VECTORS_END); }
+
+/* START 0x0405F, wait up to n ticks for a press (0x03F33) and sound it: the
+ * wait's answer in AL - 0 (none) answers 0 at once, 1 and 2 sound cue 1Ah
+ * or 23h through the driver (its thunk at 0A95:6BB1) and answer 0, 3
+ * sounds 1Ah and answers 1; any other is answered as it came. */
+static int st4_start_wait_sound(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = 0x405F;
+    if (!room(c, 5)) return 0;
+    frame_open(c, 2);
+    cpu_push16(c, bp_get(c, 4));
+    c->icount += 4;
+    if (!guest_call(m, 0x3F33, AT(0x0C))) return 1;
+    ST2_NEED(14, AT(0x0C));
+    c->r[R_BX] = cpu_pop16(c);
+    set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
+    alu_logic(c, c->r[R_AX], 1);                                  /* (jmp) or ax, ax */
+    unsigned n = 5;
+    uint16_t cue = 0, answer = 0;
+    if (c->flags & F_ZF) {                                        /* 0x0407A */
+        c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+        c->icount += n + 5;                                       /* sub, jmp, mov, pop, ret */
+        frame_close_ret(c);
+        return 1;
+    }
+    c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1);
+    n += 2;
+    if (c->flags & F_ZF) { cue = 0x1A; n += 1; }                  /* 0x04070: mov ax, 1Ah */
+    else {
+        c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1);
+        n += 2;
+        if (c->flags & F_ZF) { cue = 0x23; n += 2; }              /* 0x0407E: mov ax, 23h / jmp */
+        else {
+            c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1);
+            n += 2;
+            if (c->flags & F_ZF) { cue = 0x1A; answer = 1; n += 1; }   /* 0x04083 */
+            else { c->icount += n + 3; frame_close_ret(c); return 1; }  /* mov sp, bp / pop bp / ret */
+        }
+    }
+    c->r[R_AX] = cue;
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += n + 1;
+    const uint16_t call = answer ? AT(0x28) : AT(0x15);
+    if (!guest_call_far(m, call, (uint16_t)(call + 5))) return 1;
+    ST2_NEED(6, (uint16_t)(call + 5));
+    c->r[R_BX] = cpu_pop16(c);
+    if (answer) c->r[R_AX] = 1;
+    else c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+    c->icount += 6;
+    frame_close_ret(c);
+    return 1;
+}
+
+/* END 0x011B7, a message box's opening (text, x, y, width, centred, lines):
+ * the box template at 6DB8 (its line count [6DC4] from the fifth argument)
+ * copied into the frame and its first word set to -1, the text measured by
+ * the wrapped-text routine (0x01A75) for the box's size ([55B6] wide plus
+ * 12, [55B8] high plus 12), and its left edge [55B2]: x, or centred on x,
+ * held inside the 320-pixel screen. Its last test goes on at 0x0123F. */
+static int st4_end_box_open(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 25 + 11)) return 0;
+    frame_open(c, 0x18);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_SI]);
+    bp_put(c, -0x18, 0x6DB8);
+    c->r[R_AX] = bp_get(c, 0x0A);
+    ds_put(c, 0x6DC4, c->r[R_AX]);
+    c->r[R_DI] = (uint16_t)(c->r[R_BP] - 0x16);
+    c->r[R_SI] = 0x6DB8;
+    c->seg[S_ES] = c->seg[S_SS];                                  /* push ss / pop es */
+    c->r[R_CX] = 0x000B;
+    const unsigned k = rep_string(c, STR_MOVS, 1, c->seg[S_DS], 0);   /* rep movsw */
+    bp_put(c, -0x16, 0xFFFF);
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_CX] = 8;
+    cpu_push16(c, c->r[R_CX]);
+    cpu_push16(c, bp_get(c, 0x0E));
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, bp_get(c, 4));
+    c->r[R_AX] = (uint16_t)(c->r[R_BP] - 0x16);
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 24 + k;                                          /* the 24 before the CALL, the copy one a word */
+    if (!guest_call(m, 0x1A75, 0x11F2)) return 1;
+    ST2_NEED(23, 0x11F2);
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x0E, 1, 0);
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], 0x0C, 1, 0);
+    ds_put(c, 0x55B6, c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)alu_add(c, bp_get(c, -0x0C), 0x0C, 1, 0);
+    ds_put(c, 0x55B8, c->r[R_AX]);
+    alu_sub(c, bp_get(c, 0x0C), 0, 1, 0);
+    unsigned n = 8;
+    if (c->flags & F_ZF) { c->r[R_AX] = bp_get(c, 6); n += 1; }
+    else {
+        c->r[R_AX] = x86_shift(c, 7, ds_get(c, 0x55B6), 1, 1);   /* sar ax, 1 */
+        c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], bp_get(c, 6), 1, 0);
+        c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0);   /* neg ax */
+        n += 5;
+    }
+    ds_put(c, 0x55B2, c->r[R_AX]);                                /* 0x01219 */
+    alu_logic(c, c->r[R_AX], 1);
+    n += 3;
+    if (!x86_cond(c, 0xD)) {                                      /* jge not taken: off the left */
+        ds_put(c, 0x55B2, 0);
+        n += 2;
+    } else {
+        c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], ds_get(c, 0x55B6), 1, 0);
+        alu_sub(c, c->r[R_AX], 0x0140, 1, 0);
+        n += 3;
+        if (!x86_cond(c, 0xE)) {                                  /* jle not taken: off the right */
+            c->r[R_AX] = 0x0140;
+            c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], ds_get(c, 0x55B6), 1, 0);
+            ds_put(c, 0x55B2, c->r[R_AX]);
+            n += 3;
+        }
+    }
+    alu_sub(c, bp_get(c, 0x0C), 0, 1, 0);                         /* 0x0123B */
+    c->icount += n + 1;
+    c->ip = 0x123F;
+    return 1;
+}
+
+/* END 0x039D0, the debriefing's closing remark: none when the debriefing
+ * record ([7222]) shows a death (+28h) or a capture (+30h). Otherwise the
+ * remark box's colours are set ([6D98] 4, [6D90] FDh, [6D92] FEh) and a
+ * remark table chosen ([55C0], with its size in [55BE]) with a style
+ * ([bp-4]) and a picture ([bp-2], 0x0398F's for the first): a clean
+ * sortie (no crash [55E6], no loss [643A], no ejection [6D89] or
+ * ditching [720E], not the mission kind 63h) gets the praise table
+ * (48E7h, 8); an ejection or ditching that still lost nothing, unflagged
+ * by [6440], 4510h (7); mission kind 63h 4A4Ah, or 4E53h when its target
+ * kind (+20h) is not 6 (4, style 2); a crash or loss 4C32h (5, style 1);
+ * else 4AEBh (5) for under three kills (+2Ch of [7222]) or 464Eh (6).
+ * The style's picture is drawn (0x01901 with the table at 1036h), a remark
+ * picked at random (0x03E45) and drawn wrapped in the box at 6D8C
+ * (0x01A75, the style's place from 1048h/1042h/103Ch), and the box shown
+ * (0x0206A at 1054h/104Eh). */
+static int st4_end_closing_remark(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = 0x39D0;
+    if (!room(c, 64)) return 0;                                   /* the longest way to the first call */
+    frame_open(c, 4);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_SI]);
+    c->r[R_BX] = ds_get(c, 0x7222);                               /* les bx, [7222] */
+    c->seg[S_ES] = ds_get(c, 0x7224);
+    alu_sub(c, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x28)), 0, 1, 0);
+    unsigned n = 8;
+    int skip = !(c->flags & F_ZF);
+    if (!skip) {
+        alu_sub(c, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x30)), 0, 1, 0);
+        n += 2;
+        skip = !(c->flags & F_ZF);
+    }
+    if (skip) {                                                   /* jmp 0x03B3B */
+        c->icount += n + 6;                                       /* jmp, pop, pop, mov, pop, ret */
+        c->r[R_SI] = cpu_pop16(c);
+        c->r[R_DI] = cpu_pop16(c);
+        frame_close_ret(c);
+        return 1;
+    }
+    ds_put(c, 0x6D98, 4);
+    ds_put(c, 0x6D90, 0x00FD);
+    ds_put(c, 0x6D92, 0x00FE);
+    n += 3;
+    uint16_t table, picture = 0;
+    uint8_t size, style;
+#define ST4_ZERO8(a) (alu_sub(c, ds_get8(c, (a)), 0, 0, 0), (c->flags & F_ZF) != 0)
+#define ST4_REC_IS(f, v) (alu_sub(c, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + (f))), (v), 1, 0), (c->flags & F_ZF) != 0)
+    /* 0x039FF: a clean sortie */
+    n += 2; if (!ST4_ZERO8(0x55E6)) goto q;
+    n += 2; if (!ST4_ZERO8(0x643A)) goto q;
+    n += 2; if (!ST4_ZERO8(0x6D89)) goto q;
+    n += 2; if (!ST4_ZERO8(0x720E)) goto q;
+    c->r[R_BX] = ds_get(c, 0x55DE);
+    c->seg[S_ES] = ds_get(c, 0x55E0);
+    n += 3; if (ST4_REC_IS(0x36, 0x63)) goto q;
+    table = 0x48E7; size = 8; style = 0; picture = 0x398F;
+    n += 2 + 3;                                                   /* mov, mov; mov, mov, jmp */
+    goto chosen;
+q:  /* 0x03A3D: an ejection or ditching that lost nothing */
+    n += 2;
+    if (ST4_ZERO8(0x6D89)) {
+        n += 2;
+        if (ST4_ZERO8(0x720E)) goto r;
+    }
+    n += 2; if (!ST4_ZERO8(0x6440)) goto r;
+    n += 2; if (!ST4_ZERO8(0x55E6)) goto r;
+    n += 2; if (!ST4_ZERO8(0x643A)) goto r;
+    table = 0x4510; size = 7; style = 0; picture = 0x398F;
+    n += 3 + 3;                                                   /* mov, mov, jmp; mov, mov, jmp */
+    goto chosen;
+r:  /* 0x03A6D: the special mission kind */
+    c->r[R_BX] = ds_get(c, 0x55DE);
+    c->seg[S_ES] = ds_get(c, 0x55E0);
+    n += 3;
+    if (ST4_REC_IS(0x36, 0x63)) {
+        n += 2;
+        if (ST4_REC_IS(0x20, 6)) { table = 0x4A4A; n += 2; goto kind63; }
+    }
+    n += 2; if (!ST4_REC_IS(0x36, 0x63)) goto s;                 /* 0x03A87 */
+    n += 2; if (ST4_REC_IS(0x20, 6)) goto s;
+    table = 0x4E53;
+    n += 1;
+kind63:                                                           /* 0x03A9B */
+    size = 4; style = 2;
+    n += 3 + 1;                                                   /* mov, mov, jmp; mov */
+    goto chosen;
+s:  /* 0x03AA6: a crash or a loss */
+    n += 2;
+    if (ST4_ZERO8(0x55E6)) {
+        n += 2;
+        if (ST4_ZERO8(0x643A)) goto u;
+    }
+    table = 0x4C32; size = 5; style = 1;
+    n += 3 + 2;                                                   /* mov, mov, jmp; mov, mov */
+    goto chosen;
+u:  /* 0x03AC1: by kills */
+    c->r[R_BX] = ds_get(c, 0x7222);
+    c->seg[S_ES] = ds_get(c, 0x7224);
+    alu_sub(c, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x2C)), 3, 1, 0);
+    n += 3;
+    if (c->flags & F_CF) { table = 0x4AEB; size = 5; n += 2 + 2 + 2; }  /* mov, jmp; mov, jmp; mov, mov */
+    else { table = 0x464E; size = 6; n += 2 + 2; }               /* mov, mov; mov, mov */
+    style = 1;
+chosen:
+#undef ST4_ZERO8
+#undef ST4_REC_IS
+    ds_put(c, 0x55C0, table);
+    ds_put8(c, 0x55BE, size);
+    bp_put8(c, -4, style);
+    bp_put(c, -2, picture);
+    /* 0x03AE8 */
+    cpu_push16(c, bp_get(c, -2));
+    set_r8(c, R_BL, bp_get8(c, -4));
+    set_r8(c, R_BH, (uint8_t)alu_sub(c, get_r8(c, R_BH), get_r8(c, R_BH), 0, 0));
+    c->r[R_BX] = x86_shift(c, 4, c->r[R_BX], 1, 1);
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x1036)));
+    c->r[R_SI] = c->r[R_BX];
+    c->icount += n + 6;
+    if (!guest_call(m, 0x1901, AT(0x12B))) return 1;
+    ST2_NEED(13, AT(0x12B));
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_AX] = 1;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 8;
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_SI] + 0x1048)));
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_SI] + 0x1042)));
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_SI] + 0x103C)));
+    set_r8(c, R_AL, ds_get8(c, 0x55BE));
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);     /* cbw */
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 12;
+    if (!guest_call(m, 0x3E45, AT(0x149))) return 1;
+    ST2_NEED(8, AT(0x149));
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = x86_shift(c, 4, c->r[R_AX], 1, 1);
+    c->r[R_DI] = ds_get(c, 0x55C0);
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + c->r[R_DI])));
+    c->r[R_AX] = 0x6D8C;
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 7;
+    if (!guest_call(m, 0x1A75, AT(0x15B))) return 1;
+    ST2_NEED(4, AT(0x15B));
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x0E, 1, 0);
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_SI] + 0x1054)));
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_SI] + 0x104E)));
+    c->icount += 3;
+    if (!guest_call(m, 0x206A, AT(0x169))) return 1;
+    ST2_NEED(7, AT(0x169));
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->icount += 7;
+    frame_close_ret(c);
+    return 1;
+}
+
+/* START 0x0196A, the briefing map's marks one by one (fast): for each of the
+ * [B2E6] marks - each first waited for (0x0405F with 8; its answer becomes
+ * `fast`) and sounded (cue 1Ch through the driver) until a key makes it
+ * fast - the mark's target record (CBDE + 16 x the byte at B286 + 2i) and
+ * place (the 8-byte entries at 6D62: x + 6, y + 5) are taken. A mark whose
+ * flag byte (B287 + 2i) is set is drawn as a symbol: the sprite [E082] at
+ * (x - 1, y), its shadow [D29E] 3 to the right - or, in the night view
+ * ([B2E8] = 1), [D08E] 2 to the left and its shadow 3 to the right of that;
+ * otherwise as its target: [D29E] for a target with no word +6, [E09A] for
+ * one flagged 8 (+8), else [E082], or in the night view [D08E] one to the
+ * left. Each is drawn on the map window (DC18) and, unless fast, on the
+ * small map (DC02) too (0x03693). The answer is `fast` widened. */
+static int st4_start_map_marks(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 6)) return 0;
+    frame_open(c, 0x0C);
+    cpu_push16(c, c->r[R_SI]);
+    bp_put(c, -0x0A, 0);
+    c->icount += 6;
+    for (;;) {
+        unsigned n;
+        ST2_NEED(42, 0x1A35);                                     /* the longest way to the next call, or the return */
+        c->r[R_AX] = ds_get(c, 0xB2E6);
+        alu_sub(c, bp_get(c, -0x0A), c->r[R_AX], 1, 0);
+        if (!(c->flags & F_CF)) {                                 /* all done: 0x01AAD */
+            set_r8(c, R_AL, bp_get8(c, 4));
+            c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);
+            c->r[R_SI] = cpu_pop16(c);
+            c->icount += 3 + 6;
+            frame_close_ret(c);
+            return 1;
+        }
+        alu_sub(c, bp_get8(c, 4), 0, 0, 0);
+        n = 5;
+        if (c->flags & F_ZF) {                                    /* not fast: wait, and sound the mark */
+            c->r[R_AX] = 8;
+            cpu_push16(c, c->r[R_AX]);
+            c->icount += n + 2;
+            if (!guest_call(m, 0x405F, 0x1A4A)) return 1;
+            ST2_NEED(5, 0x1A4A);
+            c->r[R_BX] = cpu_pop16(c);
+            bp_put8(c, 4, get_r8(c, R_AL));
+            c->r[R_AX] = 0x001C;
+            cpu_push16(c, c->r[R_AX]);
+            c->icount += 4;
+            if (!guest_call_far(m, 0x1A52, 0x1A57)) return 1;
+            ST2_NEED(38, 0x1A57);
+            c->r[R_BX] = cpu_pop16(c);
+            n = 1;
+        }
+        /* 0x01A58: the mark's target and place */
+        uint16_t bx = x86_shift(c, 4, bp_get(c, -0x0A), 1, 1);
+        c->r[R_BX] = bx;
+        set_r8(c, R_AL, ds_get8(c, (uint16_t)(bx + 0xB286)));
+        c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);
+        set_r8(c, R_CL, 4);
+        c->r[R_AX] = x86_shift(c, 4, c->r[R_AX], 4, 1);
+        c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], 0xCBDE, 1, 0);
+        bp_put(c, -4, c->r[R_AX]);
+        set_r8(c, R_CL, 3);
+        c->r[R_SI] = x86_shift(c, 4, bp_get(c, -0x0A), 3, 1);
+        c->r[R_AX] = (uint16_t)alu_add(c, ds_get(c, (uint16_t)(c->r[R_SI] + 0x6D62)), 6, 1, 0);
+        bp_put(c, -6, c->r[R_AX]);
+        c->r[R_CX] = (uint16_t)alu_add(c, ds_get(c, (uint16_t)(c->r[R_SI] + 0x6D64)), 5, 1, 0);
+        bp_put(c, -8, c->r[R_CX]);
+        alu_sub(c, ds_get8(c, (uint16_t)(bx + 0xB287)), 0, 0, 0);
+        n += 19;
+        if (c->flags & F_ZF) {                                    /* as its target: 0x019D7 */
+            bx = bp_get(c, -4);
+            c->r[R_BX] = bx;
+            alu_sub(c, ds_get(c, (uint16_t)(bx + 6)), 0, 1, 0);
+            n += 1 + 3;                                           /* jmp; mov, cmp, je */
+            if (c->flags & F_ZF) {
+                c->r[R_AX] = ds_get(c, 0xD29E);
+                bp_put(c, -2, c->r[R_AX]);
+                n += 2;
+            } else {
+                alu_logic(c, ds_get8(c, (uint16_t)(bx + 8)) & 8, 0);
+                n += 2;
+                if (!(c->flags & F_ZF)) {
+                    c->r[R_AX] = ds_get(c, 0xE09A);
+                    bp_put(c, -2, c->r[R_AX]);
+                    n += 3;
+                } else {
+                    alu_sub(c, ds_get8(c, 0xB2E8), 1, 0, 0);
+                    n += 2;
+                    if (c->flags & F_ZF) {                        /* the night view */
+                        c->r[R_AX] = ds_get(c, 0xD08E);
+                        bp_put(c, -2, c->r[R_AX]);
+                        bp_put(c, -6, (uint16_t)alu_dec(c, bp_get(c, -6), 1));
+                        n += 4;
+                    } else {
+                        c->r[R_AX] = ds_get(c, 0xE082);
+                        bp_put(c, -2, c->r[R_AX]);
+                        n += 3;
+                    }
+                }
+            }
+            /* 0x01A08 */
+            cpu_push16(c, bp_get(c, -2));
+            cpu_push16(c, c->r[R_CX]);
+            cpu_push16(c, bp_get(c, -6));
+            c->r[R_AX] = 0xDC18;
+            cpu_push16(c, c->r[R_AX]);
+            c->icount += n + 5;
+            if (!guest_call(m, 0x3693, 0x1A16)) return 1;
+            ST2_NEED(9, 0x1A16);
+            c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0);
+            alu_sub(c, bp_get8(c, 4), 0, 0, 0);
+            n = 3;
+            if (!(c->flags & F_ZF)) goto next;
+            cpu_push16(c, bp_get(c, -2));
+            cpu_push16(c, bp_get(c, -8));
+            cpu_push16(c, bp_get(c, -6));
+            n += 3;
+        } else {                                                  /* as a symbol: 0x01A91 */
+            alu_sub(c, ds_get8(c, 0xB2E8), 1, 0, 0);
+            n += 2;                                               /* cmp, je */
+            if (!(c->flags & F_ZF)) {                             /* 0x01979 */
+                c->r[R_AX] = ds_get(c, 0xE082);
+                bp_put(c, -2, c->r[R_AX]);
+                bp_put(c, -6, (uint16_t)alu_dec(c, bp_get(c, -6), 1));
+                c->r[R_AX] = (uint16_t)alu_add(c, bp_get(c, -6), 3, 1, 0);
+                n += 1 + 5;                                       /* jmp; mov, mov, dec, mov, add */
+            } else {                                              /* 0x01A9B, the night view */
+                c->r[R_CX] = ds_get(c, 0xD08E);
+                bp_put(c, -2, c->r[R_CX]);
+                c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1);
+                c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1);
+                bp_put(c, -6, c->r[R_AX]);
+                c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], 5, 1, 0);
+                n += 7;                                           /* mov, mov, dec, dec, mov, add, jmp */
+            }
+            /* 0x01988 */
+            bp_put(c, -0x0C, c->r[R_AX]);
+            cpu_push16(c, bp_get(c, -2));
+            cpu_push16(c, bp_get(c, -8));
+            cpu_push16(c, bp_get(c, -6));
+            c->r[R_AX] = 0xDC18;
+            cpu_push16(c, c->r[R_AX]);
+            c->icount += n + 6;
+            if (!guest_call(m, 0x3693, 0x199B)) return 1;
+            ST2_NEED(7, 0x199B);
+            c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0);
+            cpu_push16(c, ds_get(c, 0xD29E));
+            cpu_push16(c, bp_get(c, -8));
+            cpu_push16(c, bp_get(c, -0x0C));
+            c->r[R_AX] = 0xDC18;
+            cpu_push16(c, c->r[R_AX]);
+            c->icount += 6;
+            if (!guest_call(m, 0x3693, 0x19AF)) return 1;
+            ST2_NEED(9, 0x19AF);
+            c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0);
+            alu_sub(c, bp_get8(c, 4), 0, 0, 0);
+            n = 3;
+            if (!(c->flags & F_ZF)) goto next;
+            cpu_push16(c, bp_get(c, -2));
+            cpu_push16(c, bp_get(c, -8));
+            cpu_push16(c, bp_get(c, -6));
+            c->r[R_AX] = 0xDC02;
+            cpu_push16(c, c->r[R_AX]);
+            c->icount += n + 5;
+            if (!guest_call(m, 0x3693, 0x19C8)) return 1;
+            ST2_NEED(8, 0x19C8);
+            c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0);
+            cpu_push16(c, ds_get(c, 0xD29E));
+            cpu_push16(c, bp_get(c, -8));
+            cpu_push16(c, bp_get(c, -0x0C));
+            n = 5;                                                /* add, push, push, push, jmp */
+        }
+        /* 0x01A28: on the small map too */
+        c->r[R_AX] = 0xDC02;
+        cpu_push16(c, c->r[R_AX]);
+        c->icount += n + 2;
+        if (!guest_call(m, 0x3693, 0x1A2F)) return 1;
+        ST2_NEED(2, 0x1A2F);
+        c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0);
+        n = 1;
+next:                                                             /* 0x01A32 */
+        bp_put(c, -0x0A, (uint16_t)alu_inc(c, bp_get(c, -0x0A), 1));
+        c->icount += n + 1;
+    }
+}
+
+/* END 0x00DA3, the replay's clock and score panel (event): the panel's box
+ * cleared in colour E2h (0x049D2 on the window at 6DA2: 75, 180 to 248,
+ * 195), the window's style set (shadow 3, colours 15 and 8), the event's
+ * time (its 6-byte record at 5E38 + 6 x event, by 0x00EF3 into the frame)
+ * and the scorer's rating so far (0x03021) each formatted (0x0521C with
+ * 2A7h and 2B0h) and drawn shadowed at (78, 180) and (78, 188) (0x019C3);
+ * past the first event the caption 2BBh too (0x0112A at 195, 184); then
+ * the rectangle (75, 180, 174 x 17) is published to page 0 through the
+ * driver (5FA:24CC). */
+static int st4_end_score_panel(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = 0x0DA3;
+    if (!room(c, 16)) return 0;
+    frame_open(c, 0x52);
+    ds_put(c, 0x6DA6, 0x00E2);
+    c->r[R_AX] = 0x00C3;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_CX] = 0x00F8;
+    cpu_push16(c, c->r[R_CX]);
+    c->r[R_CX] = 0x00B4;
+    cpu_push16(c, c->r[R_CX]);
+    c->r[R_DX] = 0x004B;
+    cpu_push16(c, c->r[R_DX]);
+    c->r[R_DX] = 0x6DA2;
+    bp_put(c, -2, c->r[R_DX]);
+    cpu_push16(c, c->r[R_DX]);
+    c->icount += 15;
+    if (!guest_call(m, 0x49D2, AT(0x26))) return 1;
+    ST2_NEED(11, AT(0x26));
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x0A, 1, 0);
+    ds_put(c, 0x6DAE, 3);
+    ds_put(c, 0x6DA6, 0x000F);
+    ds_put(c, 0x6DA8, 8);
+    c->r[R_AX] = (uint16_t)(c->r[R_BP] - 0x52);
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 6;
+    x86_mul16(c, bp_get(c, 4));
+    c->r[R_BX] = c->r[R_AX];
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x5E38)));
+    c->icount += 10;
+    if (!guest_call(m, 0x0EF3, AT(0x4E))) return 1;
+    ST2_NEED(8, AT(0x4E));
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0x02A7;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)(c->r[R_BP] - 0x42);
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 7;
+    if (!guest_call(m, 0x521C, AT(0x5C))) return 1;
+    ST2_NEED(10, AT(0x5C));
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0);
+    c->r[R_AX] = 0x00B4;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0x004E;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_CX] = (uint16_t)(c->r[R_BP] - 0x42);
+    cpu_push16(c, c->r[R_CX]);
+    c->r[R_DX] = 0x6DA2;
+    cpu_push16(c, c->r[R_DX]);
+    c->icount += 9;
+    if (!guest_call(m, 0x19C3, AT(0x72))) return 1;
+    ST2_NEED(3, AT(0x72));
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0);
+    cpu_push16(c, bp_get(c, 4));
+    c->icount += 2;
+    if (!guest_call(m, 0x3021, AT(0x7B))) return 1;
+    ST2_NEED(7, AT(0x7B));
+    c->r[R_BX] = cpu_pop16(c);
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0x02B0;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)(c->r[R_BP] - 0x42);
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 6;
+    if (!guest_call(m, 0x521C, AT(0x88))) return 1;
+    ST2_NEED(10, AT(0x88));
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0);
+    c->r[R_AX] = 0x00BC;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0x004E;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)(c->r[R_BP] - 0x42);
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0x6DA2;
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 9;
+    if (!guest_call(m, 0x19C3, AT(0x9E))) return 1;
+    ST2_NEED(18, AT(0x9E));                                       /* to the caption's call, or the publishing one */
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0);
+    alu_sub(c, bp_get(c, 4), 0, 1, 0);
+    unsigned n = 3;
+    if (!(c->flags & F_ZF)) {                                     /* past the first event: the caption */
+        c->r[R_AX] = 0x00B8;
+        cpu_push16(c, c->r[R_AX]);
+        c->r[R_AX] = 0x00C3;
+        cpu_push16(c, c->r[R_AX]);
+        c->r[R_AX] = 0x02BB;
+        cpu_push16(c, c->r[R_AX]);
+        c->r[R_AX] = 0x6DA2;
+        cpu_push16(c, c->r[R_AX]);
+        c->icount += n + 8;
+        if (!guest_call(m, 0x112A, AT(0xBA))) return 1;
+        ST2_NEED(16, AT(0xBA));
+        c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0);
+        n = 1;
+    }
+    /* 0x00E60: publish the panel */
+    c->r[R_AX] = 0x0011;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0x00AE;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0x00B4;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_CX] = 0x004B;
+    cpu_push16(c, c->r[R_CX]);
+    c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0);
+    cpu_push16(c, c->r[R_DX]);
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, c->r[R_CX]);
+    c->r[R_AX] = 1;
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += n + 14;
+    if (!guest_call_far(m, AT(0xD6), AT(0xDB))) return 1;
+    ST2_NEED(3, AT(0xDB));
+    c->icount += 3;
+    frame_close_ret(c);
+    return 1;
+}
 /* ST4-END */
 
 /* VGAME 0x078FD, scene_obstacle_probe(x, y, z): the world object at a map
@@ -26576,6 +27178,11 @@ static const recomp_override MATCHED[] = {
     { "matched", "END.EXE", END_47304, 0x0000, 0x53DA, st4_end_rterror, "report a run-time error", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x9115, st4_start_restore_vectors, "put the interrupt vectors back", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x500B, st4_end_restore_vectors, "put the interrupt vectors back", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x405F, st4_start_wait_sound, "wait for a press and sound it", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x11B7, st4_end_box_open, "a message box's opening", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x39D0, st4_end_closing_remark, "the debriefing's closing remark", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x196A, st4_start_map_marks, "the briefing map's marks one by one", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x0DA3, st4_end_score_panel, "the replay's clock and score panel", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x39C0, vgame_cockpit_number, "gauge number text", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x45E0, vgame_countermeasure_gauge, "countermeasure count gauge", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x4B03, vgame_cockpit_target_name, "describe a target", 1 },
