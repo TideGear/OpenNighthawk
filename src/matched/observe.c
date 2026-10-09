@@ -198,6 +198,9 @@ static int hook_poly_fill(machine_t *m)
     return 0;
 }
 
+void observe_poly_edge(machine_t *m) { hook_poly_edge(m); }
+void observe_poly_fill(machine_t *m) { hook_poly_fill(m); }
+
 /* 1377:005E, the fill paints: the span rows as they stand once the fill
  * entry has added the near-clip join and the border runs - the ground truth
  * for the whole polygon - and the colour word in AX. */

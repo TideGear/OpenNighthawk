@@ -430,6 +430,15 @@ What the live path takes from the machine, in process:
 - **The replay** (`drawlive`, same file) runs `drawlist.c` on each closed frame, carried from the
   one seed, and compares the display with the frame's copy of A000. A frame that differs is not
   shown and the replay is seeded again.
+- Where a matched routine is placed at an observer hook's address, the matched routine runs and the
+  hook does not (the first override placed at an address is the one called, and the matched routines
+  are registered first). Phase 2 placed `vgame_model_edge_spans` (130D:004A) and
+  `vgame_model_poly_finish` (130D:0116) on the hooks that log a polygon's edges ('E') and its fill
+  entry ('F'), so from that merge until the fix below the feed had neither: the replay stayed exact
+  (the fill rows carry the pixels) and the interpolation's checks passed, but it paired no polygon.
+  The two matched routines now call the observer at their entry, as the projection and
+  `model_prepare_edge` do for 'V' and 'G'; the strike 8.53B log is again byte for byte the one
+  recorded before the merge.
 - The observer now reads guest memory directly, never through `mem_read8`, which charges the 386
   profile's VGA bus cycles: under `--timing 386` an installed observer's reads of A000 would have
   moved the clock. Its page snapshots are `memcpy`s; the logs it writes are byte for byte those
