@@ -34,12 +34,16 @@ SETTLE = 5                      # emulated seconds left out at the start
 STEP = 90_000                   # one slice; well under every input's spacing
 
 
-def fly(data, ips, engine, fixes):
-    args = [l.strip() for l in open(os.path.join(HERE, "routes", "boot_to_flight.args"))
+def fly(data, ips, engine, fixes, route="boot_to_flight.args"):
+    args = [l.strip() for l in open(os.path.join(HERE, "routes", route))
             if l.strip() and not l.startswith("#")]
     inputs = RouteInputs(args)
     scale = ips / GOG_IPS
-    inputs.pending = [(p, int(at * scale), o, c) for p, at, o, c in inputs.pending if p != "VGAME.EXE"]
+    # VGAME's keys are dropped on the default route (its only ones quit); on others only the quit
+    # (Alt+Q, then Y) is, so the flight is flown as the route flies it.
+    def flown(p, c):
+        return p != "VGAME.EXE" or (route != "boot_to_flight.args" and r"\aq" not in str(c) and str(c).strip() != "y")
+    inputs.pending = [(p, int(at * scale), o, c) for p, at, o, c in inputs.pending if flown(p, c)]
     samples = []
     with tempfile.TemporaryDirectory() as save, \
             Machine(data, save, ips=ips, engine=engine, fixes=fixes) as m:
@@ -71,9 +75,11 @@ def main():
     ap.add_argument("--ips", type=int, default=40_000_000)
     ap.add_argument("--engine", default="recomp", choices=("recomp", "interp"))
     ap.add_argument("--no-fix", action="store_true")
+    ap.add_argument("--route", default="boot_to_flight.args",
+                    help="a typed-input route in tools/routes (its VGAME keys are dropped; the flight is watched)")
     a = ap.parse_args()
-    ref = fly(a.data, GOG_IPS, a.engine, ())
-    fast = fly(a.data, a.ips, a.engine, () if a.no_fix else ("D1",))
+    ref = fly(a.data, GOG_IPS, a.engine, (), a.route)
+    fast = fly(a.data, a.ips, a.engine, () if a.no_fix else ("D1",), a.route)
     for r in (ref, fast):
         print(f"{r['ips']:>10} ips {','.join(r['fixes']) or 'no fixes':>8}: S {r['S']} {r['S_counts']}, "
               f"mission clock {r['clock']} in {r['seconds']} s, {r['fps']} frames/s, hash {r['hash']}")

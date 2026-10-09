@@ -75,6 +75,20 @@ Status values:
   machine draws 16.8 a second, S sits clamped at 15 and the clock advances
   181: the world runs 13% behind GOG's. That flight does not show the 15/3
   swing.
+- **Speed sweep (9 Oct 2026, `tools/d1_check.py --no-fix --route`).** In
+  flight the game draws at most about 16.5-17 frames a second whatever the
+  machine's speed, and at GOG's 9 MIPS it already does: on the Middle East
+  strike and the Central Europe air-to-air flights S sits mostly at its
+  clamp of 15 at 9 MIPS (16.7 and 16.5 frames a second). Faster machines
+  add at most 2% more frames and run the mission clock 3-6% behind GOG's
+  (13-15 MIPS). Only the parked `boot_to_flight` jet has spare time at 9
+  MIPS (S 9, 11.6 frames a second, the figures above), reaching the ceiling
+  at 13-14 MIPS (S 13, clock within 1% of GOG's) and the clamp from 16 MIPS
+  (clock 14% behind). So GOG's speed is the highest that does not move the
+  world: the app's default stays there. At every speed the mission clock
+  runs ahead of real time (209 in 162 s parked, 196 and 125 in 162 and
+  103 s flying at 9 MIPS): S lags the frames drawn; that is the original
+  under GOG's DOSBox.
 - **Fix available: `--fix D1`,** a frame limiter. An override at VGAME
   `0x441D`, the controller's entry, which every frame passes once, holds
   a frame that arrives before its slot (time passes and interrupts are

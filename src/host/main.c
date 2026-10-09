@@ -1,7 +1,7 @@
 /* main.c - the game in a window: SDL3 video, input, audio and MIDI around
  * the emulated PC.
  *
- *   f117a [--data DIR] [--save DIR] [--engine recomp|interp] [--ips N]
+ *   f117a [--data DIR] [--save DIR] [--engine recomp|interp] [--ips N] [--timing dosbox|386]
  *         [--scale N] [--fullscreen] [--no-aspect] [--midi N] [--log FILE]
  *         [--audio-queue-log FILE]
  *         [--audio-dump FILE] [--present scan|replay|interp] [--config FILE | --no-config]
@@ -333,6 +333,14 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--audio-queue-log") && v) { audio_queue_log_path = v; i++; }
         else if (!strcmp(a, "--audio-dump") && v) { audio_dump_path = v; i++; }
         else if (!strcmp(a, "--ips") && v) { ips = strtoull(v, NULL, 0); i++; }
+        else if (!strcmp(a, "--timing") && v) {
+            /* dosbox (the default): GOG DOSBox's 9 million instructions a second, at which the game
+             * already draws its most frames a second in flight (docs/bugs.md D1); 386: the 386DX/33
+             * profile, the pace of a 1991 PC (src/cpu/timing386.h) */
+            if (!strcmp(v, "386")) { _putenv_s("F117R_TIMING", "386"); ips = MACHINE_386_IPS; }
+            else if (strcmp(v, "dosbox")) { fprintf(stderr, "--timing takes dosbox or 386\n"); return 2; }
+            i++;
+        }
         else if (!strcmp(a, "--scale") && v) { scale = atoi(v); i++; }
         else if (!strcmp(a, "--midi") && v) { midi_dev = atoi(v); i++; }
         else if (!strcmp(a, "--mt32-control") && v) { mt32_control = v; i++; }
@@ -359,7 +367,7 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--no-aspect")) aspect = 0;
         else {
             fprintf(stderr,
-                "usage: f117a [--data DIR] [--save DIR] [--engine recomp|interp] [--ips N]\n"
+                "usage: f117a [--data DIR] [--save DIR] [--engine recomp|interp] [--ips N] [--timing dosbox|386]\n"
                 "             [--scale N] [--fullscreen] [--no-aspect] [--midi N] [--log FILE]\n"
                 "             [--record FILE | --no-record] [--replay FILE] [--time-us N]\n"
                 "             [--exit-after CLOCKS] [--opl dbopl|nuked] [--speaker realsound|pwm]\n"
