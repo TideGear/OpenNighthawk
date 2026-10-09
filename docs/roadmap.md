@@ -241,10 +241,16 @@ not the recompilation:
       Stage 3 (`tools/interp_frame.py`, a 320x200 study): the replay is exact at
       both logic frames, 86-98% of model polygons pair between steps and 1 of 182
       flight steps was a held cut; at 320x200 the in-between frames change under
-      1% of pixels, so the gain comes on Stage 2's grid. Open: the live path (the
-      host pairs two steps' records and draws against the mission clock), how
-      the HUD and text are sourced at 4K (the owner's call), and Stage 4 (pacing,
-      vsync, a switch to the original picture).
+      1% of pixels, so the gain comes on Stage 2's grid. The live path (9 Oct
+      2026, `--present replay|interp`, `present =` in f117a.ini, off by
+      default): the observer hands each logic frame's records to the host in
+      memory and C ports of the replay and the interpolation draw from them;
+      on the strike flight all 9,845 logic frames equal the display at their
+      close and all 9,843 pairs are exact at both ends, hashes unchanged; it
+      costs 35% (replay) and 54% (interp) of the recompiled run. Open:
+      in-between frames on Stage 2's grid, how the HUD and text are sourced at
+      4K (the owner's call), and Stage 4 (pacing to the host display, vsync, a
+      switch to the original picture).
 
 ## Phase 4 - checked by people and independent references
 

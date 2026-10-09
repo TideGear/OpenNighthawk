@@ -120,9 +120,9 @@
       {
         "item": "Stage 1: draw lists replayed bit-exact at 320x200",
         "weight": 10,
-        "done": 0.97,
+        "done": 0.99,
         "kind": "estimate",
-        "evidence": "Whole phases rebuilt byte for byte over the 64 KB work page and the A000 display page (tools/drawlist_frame.py): 73 of 73 phases on 30M instructions of the strike flight, and every phase of 30M-instruction windows of four more routes (recon 34, Central Europe air-to-air 29, landing 38, cargo 38), with no byte copied from the original on any of them. Work-page changes replay by rule; direct display writes from uncoded graphics entries are replayed from captured byte deltas. Entry 22 (the scaled RLE sprite) is decoded and replayed, which closed the two late-flight windows that had copied bytes. The remaining work is unexercised branches (dithered fills, the sprite clip edge cases) and windows not yet captured."
+        "evidence": "Whole phases rebuilt byte for byte over the 64 KB work page and the A000 display page (tools/drawlist_frame.py): 73 of 73 phases on 30M instructions of the strike flight, and every phase of 30M-instruction windows of four more routes (recon 34, Central Europe air-to-air 29, landing 38, cargo 38), with no byte copied from the original on any of them. Work-page changes replay by rule; direct display writes from uncoded graphics entries are replayed from captured byte deltas. Entry 22 (the scaled RLE sprite) is decoded and replayed, which closed the two late-flight windows that had copied bytes. The remaining work is unexercised branches (dithered fills, the sprite clip edge cases) and windows not yet captured. Live (9 Oct 2026, src/present/drawlist.c, a rule-for-rule port of drawlist_frame.py, identical output): 8 windows, 447 phases exact on the work page and display with no byte copied from the original; graphics entry 41 is a colour replace in a rectangle, now a record (M) and a rule. Left: entries that only set state (13-16, 24-26, 45, 46, 62, 65)."
       },
       {
         "item": "Stage 2: high-resolution re-draw",
@@ -134,9 +134,9 @@
       {
         "item": "Stage 3 and 4: interpolation to 60+ fps, pacing and polish",
         "weight": 26,
-        "done": 0.15,
+        "done": 0.45,
         "kind": "estimate",
-        "evidence": "Stage 3 studied 8 Oct 2026 (tools/interp_frame.py): at 320x200 the replay is exact at both logic frames in seven windows, 86-98% of model polygons pair between steps, 1 of 182 flight steps was a cut held, no in-between primitive is absent from both neighbours; the 320x200 in-between frames change under 1% of pixels, so the payoff needs Stage 2's fine grid. Open: the live path (the machine hands the host each step's records; the host pairs two steps and draws against the mission clock), Stage 4 (pacing, vsync, a switch to the original picture, HUD handling)."
+        "evidence": "Stage 3 studied 8 Oct 2026 (tools/interp_frame.py): at 320x200 the replay is exact at both logic frames in seven windows, 86-98% of model polygons pair between steps, 1 of 182 flight steps was a cut held, no in-between primitive is absent from both neighbours; the 320x200 in-between frames change under 1% of pixels, so the payoff needs Stage 2's fine grid. Open: the live path (the machine hands the host each step's records; the host pairs two steps and draws against the mission clock), Stage 4 (pacing, vsync, a switch to the original picture, HUD handling). Live path built 9 Oct 2026 (src/present/drawfeed.c, interp.c; f117run/f117a --present replay|interp, present = in f117a.ini, off by default): the observer hands each logic frame's records to the host in memory, no page snapshots; on the strike flight 9,845 of 9,845 logic frames equal the display at their close and 9,843 of 9,843 pairs are exact at both ends, hashes unchanged with the feed on under both engines; cost +35% (replay) and +54% (interp) of the recompiled run. Open: in-between frames on Stage 2's grid, pacing to the host display (Stage 4), the HUD and text at 4K (the owner's call)."
       }
     ],
     "P4": [
