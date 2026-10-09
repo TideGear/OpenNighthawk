@@ -73,9 +73,11 @@ more than once, what it costs, what was optimised). State as of the evening of
   not the exit code: 35 routes `IDENTICAL`, instruction lockstep under both
   timing profiles 0 mismatching,
   matched lockstep 0 mismatching, and **step 8**: every "routes only" matched
-  routine ran on some recompiled route (new 8 Oct: it dropped VGAME 0xF024).
-  Last green: 35 routes, 5,713,152 instruction states per timing profile, 484 matched routines
-  at two seeds (1,585,370 and 1,585,993 states), no mismatches.
+  routine ran on some recompiled route (new 8 Oct: it dropped VGAME 0xF024),
+  and **step 9**: no matched routine ran past its event limit on a route (new
+  9 Oct; a `[matched] OVERRUN` line in a route's output names it).
+  Last green (9 Oct): 35 routes, 5,713,152 instruction states per timing
+  profile, 488 matched routines (1,588,531 states), no mismatches, no overruns.
   Do not edit `src/` or rebuild while a gate runs.
 - **PC parity**: `py tools/pc_parity.py --data D:/GOG/F-117A` (about 12
   minutes): all pass as of 8 Oct. The 86Box pictures must be exact in DAC

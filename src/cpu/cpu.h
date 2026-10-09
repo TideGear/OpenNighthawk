@@ -95,6 +95,9 @@ struct cpu {
 
     /* The run loop looks at events when icount >= stop_at. */
     uint64_t stop_at;
+    /* Clocks charged beyond the instructions themselves (the bus delay, DOS
+     * transfers): one instruction can carry the clock this far past stop_at. */
+    uint64_t charged;
     /* No hardware interrupt is taken at the boundary where icount equals
      * this: the one after STI, MOV SS or POP SS. ~0 when unused. */
     uint64_t inhibit_at;

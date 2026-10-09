@@ -119,6 +119,8 @@ static void flush_coverage(instance *in);
 static recomp_override g_ov[MAX_OVERRIDES];
 static int g_ov_on[MAX_OVERRIDES];
 static unsigned long long g_ov_hits[MAX_OVERRIDES];   /* times it ran */
+static unsigned long long g_ov_over[MAX_OVERRIDES];   /* times it came back past the event limit */
+static unsigned long long g_ov_over_by[MAX_OVERRIDES];/* by how many instructions, the first time */
 static int g_nov;
 static uint8_t g_ov_bits[MEM_SIZE / 8];   /* linear address -> an override is placed */
 int recomp_overrides_live;
@@ -327,9 +329,20 @@ int recomp_override_step(machine_t *m)
          * Interpret the entry, then resume the translated original body. */
         if (o->matched && c->t386) return -1;
         if (o->matched && g_shadow_off) return 0;
+        const uint64_t limit = c->stop_at, charged = c->charged;
         if (o->matched && g_shadow_on && c->icount >= g_shadow_lo && c->icount < g_shadow_hi) {
             if (!shadow_run(m, o)) return -1;
         } else if (!o->fn(m)) return -1;
+        /* A matched routine claims room before it runs, so its instructions
+         * cannot carry the clock past a limit nothing moved: one that does
+         * ran through an event the original would have taken inside it. Time
+         * charged beyond instructions (a port's bus delay, a DOS transfer)
+         * may cross the limit, as it does in the original, and is left out;
+         * a guest call that took an event moves the limit, and the check
+         * stands down. */
+        const uint64_t ran_to = c->icount - (c->charged - charged);
+        if (o->matched && c->stop_at == limit && ran_to > limit && !g_ov_over[in->ov_index[k]]++)
+            g_ov_over_by[in->ov_index[k]] = ran_to - limit;
         g_ov_hits[in->ov_index[k]]++;
         return 1;
     }
@@ -725,6 +738,11 @@ void recomp_report(machine_t *m, FILE *f)
             fprintf(f, "[%s] %s %04X:%04X %s: ran %llu times\n", g_ov[i].matched ? "matched" : "override",
                     g_ov[i].module, g_ov[i].seg, g_ov[i].ip, g_ov[i].what ? g_ov[i].what : "",
                     (unsigned long long)g_ov_hits[i]);
+    for (int i = 0; i < g_nov; i++)
+        if (g_ov_over[i])
+            fprintf(f, "[matched] OVERRUN %s %04X:%04X %s: past the event limit %llu times, the first by %llu instructions\n",
+                    g_ov[i].module, g_ov[i].seg, g_ov[i].ip, g_ov[i].what ? g_ov[i].what : "",
+                    g_ov_over[i], g_ov_over_by[i]);
     if (g_shadow_on)
         fprintf(f, "[shadow] window %llu:%llu: %llu matched routines checked (%llu declined), %llu differing\n", (unsigned long long)g_shadow_lo, (unsigned long long)g_shadow_hi, g_shadow_checked, g_shadow_declined, g_shadow_bad);
     for (int pass = 0; pass < 25 && g_nmiss; pass++) {

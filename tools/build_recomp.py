@@ -345,6 +345,19 @@ def routes_only_unrun(func_out, runs_dir):
     return ["%s %s:%s %s" % k for k in only if k[:3] not in ran]
 
 
+def overruns(runs_dir):
+    """The "[matched] OVERRUN" lines of the recompiled routes' output (recomp_report): a matched
+    routine that came back past its event limit claimed too little room, and the original would have
+    taken an interrupt or event inside it. Routes-only routines meet no other room check."""
+    found = []
+    for name in sorted(os.listdir(runs_dir)) if os.path.isdir(runs_dir) else []:
+        p = os.path.join(runs_dir, name, "runner.txt")
+        if name.endswith("_recomp") and os.path.exists(p):
+            found += ["%s: %s" % (name, line.strip()) for line in open(p, errors="replace")
+                      if line.startswith("[matched] OVERRUN")]
+    return found
+
+
 def stop_locksteps(procs):
     for proc, log in procs.values():
         if proc.poll() is None:
@@ -514,6 +527,13 @@ def main():
             sys.exit("%d matched routine(s) have no evidence: the lockstep cannot test them and no route runs them"
                      % len(unrun))
         print("  every routes-only routine ran on at least one route")
+        print("9. no matched routine runs past its event limit on a route")
+        over = overruns(os.path.join(a.work, "runs"))
+        if over:
+            for line in over:
+                print("  " + line)
+            sys.exit("%d matched routine(s) ran past the event limit" % len(over))
+        print("  none did")
     print("done: %s" % os.path.join(ROOT, "build", "f117a.exe"))
 
 

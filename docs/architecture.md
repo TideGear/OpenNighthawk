@@ -537,6 +537,15 @@ caught real defects:
   (each route's output lists `[matched] ... ran N times`): with no route
   executing it there is no evidence at all, and the routine is dropped (VGAME
   0xF024, the run-time termination messages, was, 8 Oct 2026).
+- Room on the routes: the dispatcher (`recomp_override_step`) checks every
+  matched routine it runs. One whose instructions carry the clock past an
+  event limit nothing moved claimed too little room, and the run's output
+  ends with `[matched] OVERRUN ...`; time charged beyond instructions (a
+  port's bus delay, a DOS transfer, kept in `cpu.charged`) may cross a limit
+  as it does in the original and is left out. Step 9 of the gate fails on any
+  such line. It is the only room check a routes-only routine meets: the
+  picture decoder's LZW step walked a prefix chain of any depth after one
+  room check (9 Oct 2026), and with that bug put back step 9 names it.
 
 `F117R_SHADOW=FROM:TO` re-runs matched routines against the original on the
 live game in a window (a diagnostic, not a gate: device state is not in the

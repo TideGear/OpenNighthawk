@@ -672,7 +672,7 @@ static void io_delay(machine_t *m, int write)
     const uint64_t delay = write ? per_ms / 1365u : per_ms / 1024u;
     /* DOSBox suppresses the bus delay when less than three delays remain
      * in the current CPU slice (IO_USEC_read/write_delay). */
-    if (pc_slice_left(m) >= 3u * delay) m->cpu.icount += delay;
+    if (pc_slice_left(m) >= 3u * delay) { m->cpu.icount += delay; m->cpu.charged += delay; }
 }
 
 static uint8_t io_read8(machine_t *m, uint16_t port);

@@ -194,8 +194,9 @@ static void transfer_cost(machine_t *m, uint32_t bytes)
     cpu_t *c = &m->cpu;
     const uint64_t left = pc_slice_left(m);
     const uint64_t want = 4ull * bytes;
-    if (want + 5 < left) c->icount += want;
-    else if (left > 5) c->icount += left - 5;
+    const uint64_t cost = want + 5 < left ? want : left > 5 ? left - 5 : 0;
+    c->icount += cost;
+    c->charged += cost;
 }
 
 void dos_close_files_of(machine_t *m, uint16_t owner)
