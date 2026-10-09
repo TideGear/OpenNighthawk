@@ -71,7 +71,7 @@ Each stage is judged by a check, as in the rest of the project.
 | 0 | Observer: log every call to the drawing primitives per frame | the log is identical across runs; hashes unchanged with it on | done |
 | 1 | Draw lists: a frame's primitives as a list, replayed at 320x200 | the replay reproduces the original's work and display pages bit for bit, every phase of every route | done for the windows below, in Python and in C (`src/present/drawlist.c`); unexercised branches listed below |
 | 2 | Re-draw the list at N times the resolution | N = 1 is Stage 1 exactly; at N > 1 every N x N block agrees with the N = 1 pixel wherever no edge crosses it | model polygons re-drawn from their sub-pixel vertices (`hires_subpixel.py`): N = 1 exact, flat agreement 99.96-100% before a guard, 100% after; text, sprites, HUD and 3-4% of the polygons stay scaled |
-| 3 | Interpolate between consecutive draw lists to the host display rate | at a logic frame the output is exactly that frame; no in-between primitive absent from both neighbours | 320x200 study done (`interp_frame.py`, below): exact at both ends on seven windows, no violations; live path: the feed and the N = 1 presentation from the replay are built (below), interpolation is not |
+| 3 | Interpolate between consecutive draw lists to the host display rate | at a logic frame the output is exactly that frame; no in-between primitive absent from both neighbours | 320x200 study done (`interp_frame.py`, below): exact at both ends on seven windows, no violations; live path built at 320x200 (below): the feed, the presentation from the replay, and the interpolation in C, exact at both ends of 9,843 live frame pairs |
 | 4 | Pacing, vsync, a picture-age setting, HUD handling, a switch to the original picture | - | not started |
 
 Interpolation shows the picture one logic step behind (about 110 ms at 9
@@ -432,9 +432,31 @@ window, 189 of 234 shots are byte-identical to the scanned run's. The window, he
 same hash with `--present replay` as without and as `f117run` (`bc8e3ae5a872405d`); its log's
 `[present]` line: 2,062 of 2,062 logic frames exact, 9,030 VGA frames shown from the replay.
 
-**Left for the live path.** Interpolation (Stage 3's pairing and in-between frames, driven by
-the mission clock), Stage 2's finer grid, and decoding graphics entry 41, which would drop the
-per-entry page snapshots.
+**Interpolation** (`src/present/interp.c`) is `interp_frame.py` in C: the same parse into batches
+and polygons, the same pairing (batch and polygon alignment, span fills, outline edges, HUD
+lines), the same in-between list (polygons re-walked by the original's edge rules, camera-space
+edges projected by the original's divide) drawn by the C replay from the pages at the skeleton's
+start. `build/test_interp.exe LOG` prints `interp_frame.py LOG --pairing --check --primitives`'s
+report; on the eight windows above it is identical, line for line: 273 frame pairs exact at both
+ends (t = 1e-6 and 1 - 1e-6), 819 in-between frames, no provenance violation.
+
+Live, `drawlive` keeps the last two replayed frames, each with the replay as it stood at its
+start, and pairs them as the newer closes. `--present interp` (`f117run`, `f117a`,
+`present = interp`) draws, at each VGA frame, the in-between frame at
+t = (now - close of the newer) / (close of the newer - close of the older) on the machine's clock,
+which is the mission clock's base (one game second is one real second): the older frame at the
+newer one's close, the newer one a step later, so the picture is a step behind the replay's.
+`f117run` also draws every pair at its two ends and compares them with the two replayed
+pictures. Strike, the whole flight: 9,843 of 9,843 pairs exact at both ends; of 50,620 VGA frames
+presented, 47,708 are in-between frames; the hashes are unchanged (`boot_to_flight`: 366 of 366
+pairs). Drawing an in-between frame at every VGA frame costs the recompiled strike route another
+12% (100.0 s to 111.8 s). The window, headless, to 3.5B with `--present interp`: the same hash
+again, 8,332 of its 9,030 replayed VGA frames in-between frames.
+
+**Left for the live path.** Pacing to the host's display rather than the emulated VGA's (the
+in-between frames are drawn at the VGA's 70 Hz), Stage 2's finer grid, and decoding graphics
+entry 41, which would drop the per-entry page snapshots. The camera-space vertices of a frame are
+in its records ('V'), so a finer grid needs no more from the machine.
 
 ## Open questions and risks
 

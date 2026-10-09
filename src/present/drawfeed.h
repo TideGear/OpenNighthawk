@@ -14,6 +14,7 @@
 
 #include "observe.h"
 #include "drawlist.h"
+#include "interp.h"
 #include "present.h"
 
 #include <stddef.h>
@@ -55,8 +56,24 @@ void drawfeed_reseed(drawfeed *f);
 /* Walk a frame's records from *at (start at 0): 0 at the end. */
 int drawfeed_next(const drawfeed_frame *fr, size_t *at, char *kind, uint64_t *icount, const int32_t **v, int *n);
 
+/* A replayed frame kept for interpolation: its records, the replay as it
+ * stood at its start, and the picture it left. */
+typedef struct {
+    int32_t       *vals;
+    size_t         nvals, cvals;
+    interp_rec    *rec;
+    int            nrec, crec;
+    interp_frame  *parsed;
+    drawlist       start;
+    uint8_t        picture[64000];
+    uint64_t       seq, end;
+    int            ok;            /* exact, and no page dump inside */
+} drawlive_step;
+
 /* The replay of the feed, a frame at a time: the picture it leaves on the
- * display, and how it compared with the display at each frame's close. */
+ * display, and how it compared with the display at each frame's close. With
+ * interp set, the last two frames are kept and paired (interp.h), and the
+ * picture at a moment between two closes is the in-between frame. */
 typedef struct {
     drawlist list;
     uint64_t next_seq;
@@ -64,6 +81,14 @@ typedef struct {
     uint8_t  picture[64000];
     uint64_t picture_seq, picture_end;
     uint64_t frames, exact, inexact, unseeded;
+    /* interpolation */
+    int            interp, check;  /* check: draw each pair at t = 1e-6 and 1 - 1e-6 and compare */
+    drawlive_step  step[2];
+    int            last;           /* the newer step */
+    interp_pairing *pair;          /* the two steps paired, or NULL */
+    interp_list    ilist;
+    drawlist       scratch;
+    uint64_t       pairs, pairs_exact, pairs_inexact, inbetweens;
 } drawlive;
 
 void drawlive_init(drawlive *r);
@@ -83,5 +108,12 @@ int drawlive_current(const drawlive *r, const machine_t *m);
 /* Put the replayed picture in a captured frame (present.h) in place of the
  * scanned-out pixels, keeping its palette: 1 when it did. */
 int drawlive_present(const drawlive *r, const machine_t *m, present_frame *f);
+
+/* With interp: the in-between picture at the machine's clock now - one game
+ * second is one real second (the mission clock's invariant), so the clock is
+ * the time base - between the two frames last closed: the older at the newer
+ * one's close, the newer one a step later, so the picture is a step behind.
+ * Falls back to drawlive_present when no pair is held. */
+int drawlive_present_interp(drawlive *r, const machine_t *m, present_frame *f);
 
 #endif

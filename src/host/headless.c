@@ -6,7 +6,7 @@
  *           [--record FILE] [--replay FILE]
  *           [--hash-every N] [--hash-from N] [--peek LINEAR] [--dump LINEAR:LENGTH] [--observe FILE:FROM:TO] [--trace FROM:TO:FILE]
  *           [--coverage FILE] [--screen FILE.ppm] [--shots EVERY:PREFIX | --shots-vga PREFIX] [--shots-start CLOCK] [--shot-meta FILE]
- *           [--shots-changed] [--frame-log FILE] [--no-mouse] [--present scan|replay]
+ *           [--shots-changed] [--frame-log FILE] [--no-mouse] [--present scan|replay|interp]
  *           [--fix ID|all]... [--list-fixes]
  *           [--opl-log FILE] [--midi-log FILE] [--speaker-log FILE]
  *
@@ -31,6 +31,8 @@
  * the scanned-out VGA, and checks it: each logic frame against the display
  * at its close, and at every VGA frame the presented picture against the
  * scanned-out one ([present] at the end). The machine runs as without it.
+ * --present interp shows the in-between frames of the last two logic frames
+ * instead (Stage 3), and checks every pair drawn at its two ends.
  */
 #include "machine.h"
 #include "keys.h"
@@ -223,7 +225,7 @@ static int shot_write_changed(const machine_t *m, const char *path)
  * read. They are equal, or the scan already shows the next frame (the replay
  * presents a frame at its close, the first phase after its present), or the
  * scan caught the original drawing on the display: the next frame decides. */
-static int g_replay;
+static int g_replay;                       /* 1 replay, 2 interp */
 static drawfeed g_feed;
 static drawlive g_live;
 static struct {
@@ -247,7 +249,7 @@ static int capture(const machine_t *m, present_frame *f)
     present_capture(m, f);
     if (!g_replay) return 0;
     drawlive_update(&g_live, &g_feed);
-    return drawlive_present(&g_live, m, f);
+    return g_replay == 2 ? drawlive_present_interp(&g_live, m, f) : drawlive_present(&g_live, m, f);
 }
 
 static void on_vsync_check(void *user, uint64_t icount)
@@ -258,6 +260,10 @@ static void on_vsync_check(void *user, uint64_t icount)
     drawlive_update(&g_live, &g_feed);
     present_capture(m, &f);
     g_pc.vsyncs++;
+    if (g_replay == 2) {                    /* interpolation: the pictures are drawn, not compared */
+        g_pc.presented += (uint64_t)drawlive_present_interp(&g_live, m, &f);
+        return;
+    }
     /* the scans that differed from the frame before: the next frame, or a drawing */
     if (g_pc.npend && g_live.picture_seq != g_pc.pend_seq) {
         const int next = g_live.shown && g_live.picture_seq == g_pc.pend_seq + 1;
@@ -363,8 +369,11 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--no-mouse")) no_mouse = 1;
         else if (!strcmp(a, "--frame-log") && v) { frame_log_path = v; i++; }
         else if (!strcmp(a, "--present") && v) {
-            if (strcmp(v, "replay") && strcmp(v, "scan")) { fprintf(stderr, "--present takes scan or replay\n"); return 2; }
-            g_replay = !strcmp(v, "replay");
+            if (strcmp(v, "replay") && strcmp(v, "scan") && strcmp(v, "interp")) {
+                fprintf(stderr, "--present takes scan, replay or interp\n");
+                return 2;
+            }
+            g_replay = !strcmp(v, "replay") ? 1 : !strcmp(v, "interp") ? 2 : 0;
             i++;
         }
         else if (!strcmp(a, "--shots-vga") && v) {
@@ -429,6 +438,7 @@ int main(int argc, char **argv)
     if (g_replay) {
         drawfeed_init(&g_feed, mem);
         drawlive_init(&g_live);
+        g_live.interp = g_live.check = g_replay == 2;
         observe_set(&g_feed.obs);
         hooks.vsync = on_vsync_check;
     }
@@ -609,12 +619,19 @@ int main(int argc, char **argv)
         printf("[present] replay: %llu logic frames, %llu equal to the display at their close, %llu not, %llu before a seed; "
                "%llu dropped\n", (unsigned long long)g_live.frames, (unsigned long long)g_live.exact,
                (unsigned long long)g_live.inexact, (unsigned long long)g_live.unseeded, (unsigned long long)g_feed.dropped);
-        printf("[present] %llu VGA frames, %llu presented from the replay: %llu equal to the scanned-out picture, "
-               "%llu the next logic frame already scanned out, %llu the original drawing on the display, %llu unsettled; "
-               "%llu logic frames equal to a scanned-out picture\n",
-               (unsigned long long)g_pc.vsyncs, (unsigned long long)g_pc.presented, (unsigned long long)g_pc.equal,
-               (unsigned long long)g_pc.next, (unsigned long long)g_pc.mid, (unsigned long long)(g_pc.unsettled + g_pc.npend),
-               (unsigned long long)g_pc.frames_seen);
+        if (g_replay == 2)
+            printf("[present] interp: %llu frame pairs, %llu exact at both ends (t = 1e-6 and 1 - 1e-6), %llu not; "
+                   "%llu VGA frames, %llu presented, %llu of them in-between frames\n",
+                   (unsigned long long)g_live.pairs, (unsigned long long)g_live.pairs_exact,
+                   (unsigned long long)g_live.pairs_inexact, (unsigned long long)g_pc.vsyncs,
+                   (unsigned long long)g_pc.presented, (unsigned long long)g_live.inbetweens);
+        else
+            printf("[present] %llu VGA frames, %llu presented from the replay: %llu equal to the scanned-out picture, "
+                   "%llu the next logic frame already scanned out, %llu the original drawing on the display, %llu unsettled; "
+                   "%llu logic frames equal to a scanned-out picture\n",
+                   (unsigned long long)g_pc.vsyncs, (unsigned long long)g_pc.presented, (unsigned long long)g_pc.equal,
+                   (unsigned long long)g_pc.next, (unsigned long long)g_pc.mid, (unsigned long long)(g_pc.unsettled + g_pc.npend),
+                   (unsigned long long)g_pc.frames_seen);
     }
     for (int pass = 0; pass < 4 && g_nsamp; pass++) {
         int best = 0;

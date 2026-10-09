@@ -141,6 +141,64 @@ void drawlive_init(drawlive *r)
     drawlist_init(&r->list);
 }
 
+/* Keep a replayed frame's records for interpolation (P, Z, Y and J left out). */
+static void keep_step(drawlive_step *s, const drawfeed_frame *fr)
+{
+    interp_frame_free(s->parsed);
+    s->parsed = NULL;
+    if (fr->len > s->cvals) {
+        s->cvals = fr->len;
+        s->vals = (int32_t *)realloc(s->vals, s->cvals * sizeof *s->vals);
+    }
+    memcpy(s->vals, fr->rec, fr->len * sizeof *s->vals);
+    s->nvals = fr->len;
+    s->nrec = 0;
+    size_t at = 0;
+    char kind;
+    uint64_t icount;
+    const int32_t *v;
+    int n;
+    while (drawfeed_next(fr, &at, &kind, &icount, &v, &n)) {
+        if (kind == 'P' || kind == 'Z' || kind == 'Y' || kind == 'J') continue;
+        if (s->nrec == s->crec) {
+            s->crec = s->crec ? 2 * s->crec : 4096;
+            s->rec = (interp_rec *)realloc(s->rec, (size_t)s->crec * sizeof *s->rec);
+        }
+        interp_rec r = { kind, icount, s->vals + (v - fr->rec), n };
+        s->rec[s->nrec++] = r;
+    }
+    s->parsed = interp_parse(s->rec, s->nrec);
+}
+
+/* Draw the in-between list on a copy of the replay at the skeleton's start. */
+static const uint8_t *draw_list(drawlive *r, const drawlive_step *skel)
+{
+    memcpy(&r->scratch, &skel->start, sizeof r->scratch);
+    for (int i = 0; i < r->ilist.n; i++)
+        drawlist_record(&r->scratch, r->ilist.rec[i].kind, r->ilist.rec[i].v, r->ilist.rec[i].n);
+    const drawlist_page *disp = drawlist_get(&r->scratch, 0xA000);
+    return disp && disp->size >= 64000 ? disp->b : NULL;
+}
+
+static void pair_steps(drawlive *r)
+{
+    interp_pairing_free(r->pair);
+    r->pair = NULL;
+    drawlive_step *a = &r->step[r->last ^ 1], *b = &r->step[r->last];
+    if (!a->ok || !b->ok || b->seq != a->seq + 1) return;
+    r->pair = interp_pair(a->parsed, b->parsed);
+    r->pairs++;
+    if (!r->check) return;
+    int sb, ok = 1;
+    interp_inbetween(a->parsed, b->parsed, r->pair, 1e-6, &r->ilist, &sb, NULL);
+    const uint8_t *p = draw_list(r, sb ? b : a);
+    ok &= p && !memcmp(p, a->picture, 64000);
+    interp_inbetween(a->parsed, b->parsed, r->pair, 1 - 1e-6, &r->ilist, &sb, NULL);
+    p = draw_list(r, sb ? b : a);
+    ok &= p && !memcmp(p, b->picture, 64000);
+    if (ok) r->pairs_exact++; else r->pairs_inexact++;
+}
+
 int drawlive_update(drawlive *r, drawfeed *f)
 {
     int taken = 0;
@@ -148,6 +206,8 @@ int drawlive_update(drawlive *r, drawfeed *f)
     while ((fr = drawfeed_oldest(f))) {
         if (fr->seq != r->next_seq) drawlist_init(&r->list);    /* a frame was dropped: wait for a seed */
         r->next_seq = fr->seq + 1;
+        drawlive_step *step = r->interp ? &r->step[r->last ^ 1] : NULL;
+        if (step) memcpy(&step->start, &r->list, sizeof step->start);
         size_t at = 0;
         char kind;
         uint64_t icount;
@@ -169,6 +229,15 @@ int drawlive_update(drawlive *r, drawfeed *f)
             r->shown = 1;
             r->picture_seq = fr->seq;
             r->picture_end = fr->end;
+            if (step) {
+                keep_step(step, fr);
+                memcpy(step->picture, disp->b, 64000);
+                step->seq = fr->seq;
+                step->end = fr->end;
+                step->ok = !fr->seeded && step->start.have_seg;
+                r->last ^= 1;
+                pair_steps(r);
+            }
         } else {
             r->inexact++;
             r->shown = 0;
@@ -193,5 +262,22 @@ int drawlive_present(const drawlive *r, const machine_t *m, present_frame *f)
 {
     if (f->text || !drawlive_current(r, m)) return 0;
     memcpy(f->vram, r->picture, sizeof r->picture);
+    return 1;
+}
+
+int drawlive_present_interp(drawlive *r, const machine_t *m, present_frame *f)
+{
+    const drawlive_step *a = &r->step[r->last ^ 1], *b = &r->step[r->last];
+    if (!r->pair || f->text || !drawlive_current(r, m) || r->picture_seq != b->seq || b->end <= a->end)
+        return drawlive_present(r, m, f);
+    const double t = (double)(m->cpu.icount - b->end) / (double)(b->end - a->end);
+    if (t <= 0) { memcpy(f->vram, a->picture, 64000); return 1; }
+    if (t >= 1) { memcpy(f->vram, b->picture, 64000); return 1; }
+    int sb;
+    interp_inbetween(a->parsed, b->parsed, r->pair, t, &r->ilist, &sb, NULL);
+    const uint8_t *p = draw_list(r, sb ? b : a);
+    if (!p) return drawlive_present(r, m, f);
+    memcpy(f->vram, p, 64000);
+    r->inbetweens++;
     return 1;
 }

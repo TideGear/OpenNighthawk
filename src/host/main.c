@@ -4,7 +4,7 @@
  *   f117a [--data DIR] [--save DIR] [--engine recomp|interp] [--ips N]
  *         [--scale N] [--fullscreen] [--no-aspect] [--midi N] [--log FILE]
  *         [--audio-queue-log FILE]
- *         [--audio-dump FILE] [--present scan|replay] [--config FILE | --no-config]
+ *         [--audio-dump FILE] [--present scan|replay|interp] [--config FILE | --no-config]
  *
  * Every option can also be kept in f117a.ini beside the executable (or the
  * file --config names): see config.h. The command line overrides it.
@@ -18,7 +18,9 @@
  * --present replay shows, in flight, the Stage 1 replay of the original's
  * draw records (src/present/drawfeed.h) in place of the scanned-out picture:
  * the same picture at 320x200, each logic frame from its close, and the
- * scanned one wherever the replay does not hold the screen.
+ * scanned one wherever the replay does not hold the screen. --present interp
+ * shows the in-between frames of the last two logic frames (Stage 3) at the
+ * VGA's rate, a logic step behind.
  *
  * Host keys (chosen not to collide with the game's own bindings):
  *   Alt+Enter          toggle fullscreen
@@ -70,7 +72,7 @@ typedef struct {
 static host_t H;
 
 /* --present replay */
-static int g_replay;
+static int g_replay;                  /* 1 replay, 2 interp */
 static drawfeed g_feed;
 static drawlive g_live;
 static uint64_t g_presented;          /* VGA frames shown from the replay */
@@ -104,7 +106,8 @@ static void on_vsync(void *u, uint64_t icount)
     present_capture(&H.m, &H.frame);
     if (g_replay) {
         drawlive_update(&g_live, &g_feed);
-        g_presented += (uint64_t)drawlive_present(&g_live, &H.m, &H.frame);
+        g_presented += (uint64_t)(g_replay == 2 ? drawlive_present_interp(&g_live, &H.m, &H.frame)
+                                                : drawlive_present(&g_live, &H.m, &H.frame));
     }
     H.have_frame = 1;
 }
@@ -345,8 +348,11 @@ int main(int argc, char **argv)
         }
         else if (!strcmp(a, "--list-fixes")) { fixes_list(stdout); return 0; }
         else if (!strcmp(a, "--present") && v) {
-            if (strcmp(v, "replay") && strcmp(v, "scan")) { fprintf(stderr, "--present takes scan or replay\n"); return 2; }
-            g_replay = !strcmp(v, "replay");
+            if (strcmp(v, "replay") && strcmp(v, "scan") && strcmp(v, "interp")) {
+                fprintf(stderr, "--present takes scan, replay or interp\n");
+                return 2;
+            }
+            g_replay = !strcmp(v, "replay") ? 1 : !strcmp(v, "interp") ? 2 : 0;
             i++;
         }
         else if (!strcmp(a, "--fullscreen")) fullscreen = 1;
@@ -358,7 +364,7 @@ int main(int argc, char **argv)
                 "             [--record FILE | --no-record] [--replay FILE] [--time-us N]\n"
                 "             [--exit-after CLOCKS] [--opl dbopl|nuked] [--speaker realsound|pwm]\n"
                 "             [--audio-queue-log FILE]\n"
-                "             [--audio-dump FILE] [--present scan|replay]\n"
+                "             [--audio-dump FILE] [--present scan|replay|interp]\n"
                 "             [--roland munt|windows|off] [--mt32-roms DIR]\n"
                 "             [--mt32-control FILE --mt32-pcm FILE] [--fix ID|all]... [--list-fixes]\n"
                 "             [--config FILE | --no-config]   (default: f117a.ini beside f117a.exe)\n");
@@ -495,6 +501,7 @@ int main(int argc, char **argv)
     if (g_replay) {
         drawfeed_init(&g_feed, H.mem);
         drawlive_init(&g_live);
+        g_live.interp = g_replay == 2;
         observe_set(&g_feed.obs);
     }
     /* A replay brings its own speed and boot time; a recording writes ours. */
@@ -742,8 +749,9 @@ int main(int argc, char **argv)
         recomp_report(&H.m, H.m.log);
         if (g_replay)
             fprintf(H.m.log, "[present] replay: %llu logic frames, %llu equal to the display at their close, %llu not; "
-                    "%llu VGA frames presented from the replay\n", (unsigned long long)g_live.frames,
-                    (unsigned long long)g_live.exact, (unsigned long long)g_live.inexact, (unsigned long long)g_presented);
+                    "%llu VGA frames presented from the replay, %llu of them in-between frames\n", (unsigned long long)g_live.frames,
+                    (unsigned long long)g_live.exact, (unsigned long long)g_live.inexact, (unsigned long long)g_presented,
+                    (unsigned long long)g_live.inbetweens);
     }
     recomp_shutdown(&H.m);
     machine_shutdown(&H.m);
