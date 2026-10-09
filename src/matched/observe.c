@@ -4,15 +4,49 @@
 #include "recomp_rt.h"
 #include "cpu.h"
 #include <stdlib.h>
+#include <string.h>
 
 const f117_observer *g_f117_observer;
 
 void observe_set(const f117_observer *o) { g_f117_observer = o; }
 
+/* Guest memory is read directly, never through the machine's accessors: they
+ * charge the 386 profile's VGA bus cycles (cpu.h), and an observer must not
+ * move the clock. */
+static uint8_t peek8(const cpu_t *c, uint16_t seg, uint16_t off) { return c->mem[phys(seg, off)]; }
+static uint16_t peek16(const cpu_t *c, uint16_t seg, uint16_t off)
+{
+    return (uint16_t)(peek8(c, seg, off) | peek8(c, seg, (uint16_t)(off + 1)) << 8);
+}
+
+/* A whole 64 KB segment as it stands. */
+static void peek_page(const cpu_t *c, uint16_t seg, uint8_t *out)
+{
+    const uint32_t base = (uint32_t)seg << 4;
+    if (base + 65536u <= 0x100000u) memcpy(out, c->mem + base, 65536);
+    else for (uint32_t a = 0; a < 65536; a++) out[a] = peek8(c, seg, (uint16_t)a);
+}
+
+/* F117R_OBSERVE_PAGES: a log for checking a replay - the pages at every
+ * phase and what a replay needs beyond the primitives. */
+static int log_pages(void)
+{
+    static int env = -1;
+    if (env < 0) env = getenv("F117R_OBSERVE_PAGES") != NULL;
+    return env;
+}
+
+/* What a replay needs beyond the primitives (observe.h): for a log, or
+ * when the observer asks. */
+static int want_sources(void)
+{
+    return log_pages() || (g_f117_observer && g_f117_observer->sources);
+}
+
 static int32_t ds_dword(cpu_t *c, uint16_t at)
 {
     const uint16_t ds = c->seg[S_DS];
-    return (int32_t)((uint32_t)seg_read16(c, ds, at) | ((uint32_t)seg_read16(c, ds, (uint16_t)(at + 2)) << 16));
+    return (int32_t)((uint32_t)peek16(c, ds, at) | ((uint32_t)peek16(c, ds, (uint16_t)(at + 2)) << 16));
 }
 
 /* (flush, below) */
@@ -26,7 +60,7 @@ void observe_vertex(machine_t *m, uint16_t di, uint16_t bx)
     cpu_t *c = &m->cpu;
     int32_t xf[3], px[2] = { 0, 0 };
     for (int k = 0; k < 3; k++) xf[k] = ds_dword(c, (uint16_t)(di + 4 * k));
-    const int16_t zhi = (int16_t)seg_read16(c, c->seg[S_DS], (uint16_t)(di + 0x0A));
+    const int16_t zhi = (int16_t)peek16(c, c->seg[S_DS], (uint16_t)(di + 0x0A));
     const int range = zhi >= 0x100 ? 0 : zhi >= 1 ? 1 : 2;
     if (range != 2)
         for (int k = 0; k < 2; k++) px[k] = ds_dword(c, (uint16_t)(bx + 4 * k));
@@ -62,7 +96,7 @@ static void emit_row_bytes(machine_t *m, char kind)
         v[n++] = g_pend.row[k].y; v[n++] = g_pend.row[k].x0; v[n++] = g_pend.row[k].len;
         v[n++] = g_pend.es; v[n++] = g_pend.row[k].at;
         for (unsigned i = 0; i < g_pend.row[k].len && n < 5 + 330; i++)
-            v[n++] = mem_read8(c, phys(g_pend.es, (uint16_t)(g_pend.row[k].at + i)));
+            v[n++] = peek8(c, g_pend.es, (uint16_t)(g_pend.row[k].at + i));
         o->prim(o->user, c->icount, kind, v, n);
     }
 }
@@ -90,19 +124,22 @@ static int hook_game_draw(machine_t *m)
     /* The whole page the library draws to ('Z': its segment, then 64,000
      * bytes), so a frame can be rebuilt from the previous one plus every
      * primitive captured in between, and what is left counted. */
-    if (o && o->prim && getenv("F117R_OBSERVE_PAGES")) {
+    if (o && o->prim && ((o->want_pages && o->want_pages(o->user)) || log_pages())) {
         cpu_t *c = &m->cpu;
-        const uint16_t drv = seg_read16(c, (uint16_t)(c->seg[S_DS]), 0x01B5 + 3);
+        const uint16_t drv = peek16(c, (uint16_t)(c->seg[S_DS]), 0x01B5 + 3);
         if (drv) {
             static int32_t v[2 + 65536];
-            const uint16_t page = seg_read16(c, drv, 0x0194), origin = seg_read16(c, drv, 0x0196);
+            static uint8_t bytes[65536];
+            const uint16_t page = peek16(c, drv, 0x0194), origin = peek16(c, drv, 0x0196);
             v[0] = page; v[1] = origin;
-            for (uint32_t a = 0; a < 65536; a++) v[2 + a] = mem_read8(c, phys(page, (uint16_t)a));
+            peek_page(c, page, bytes);
+            for (uint32_t a = 0; a < 65536; a++) v[2 + a] = bytes[a];
             o->prim(o->user, c->icount, 'Z', v, 2 + 65536);
             /* and the display ('Y': A000, 64,000 bytes), which the HUD phase
              * reaches by blits from the work page and by drawing on it */
             v[0] = 0xA000; v[1] = 0;
-            for (uint32_t a = 0; a < 64000; a++) v[2 + a] = mem_read8(c, phys(0xA000, (uint16_t)a));
+            peek_page(c, 0xA000, bytes);
+            for (uint32_t a = 0; a < 64000; a++) v[2 + a] = bytes[a];
             o->prim(o->user, c->icount, 'Y', v, 2 + 64000);
             /* and the palette the display shows ('J': the 256 DAC entries, six bits a component,
              * as the render uses them), so a picture rebuilt from the log has its colours */
@@ -122,7 +159,7 @@ static int hook_poly_edge(machine_t *m)
     cpu_t *c = &m->cpu;
     const uint16_t si = c->r[R_SI];
     const int32_t v[8] = { si, ds_dword(c, si), ds_dword(c, (uint16_t)(si + 4)), ds_dword(c, (uint16_t)(si + 8)),
-                           ds_dword(c, (uint16_t)(si + 0x0C)), (int32_t)seg_read16(c, c->seg[S_DS], (uint16_t)(si + 2)),
+                           ds_dword(c, (uint16_t)(si + 0x0C)), (int32_t)peek16(c, c->seg[S_DS], (uint16_t)(si + 2)),
                            ds_dword(c, (uint16_t)(si + 0x10)), ds_dword(c, (uint16_t)(si + 0x14)) };
     o->prim(o->user, c->icount, 'E', v, 8);
     return 0;
@@ -142,17 +179,17 @@ static int hook_poly_fill(machine_t *m)
     const uint16_t ds = c->seg[S_DS];
     int32_t v[14 + 2 * 256];
     int n = 0;
-    v[n++] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_SP] + 4));
-    for (uint16_t a = 0x85FA; a <= 0x8600; a = (uint16_t)(a + 2)) v[n++] = (int16_t)seg_read16(c, ds, a);
-    for (uint16_t a = 0x85E2; a <= 0x85EE; a = (uint16_t)(a + 2)) v[n++] = (int16_t)seg_read16(c, ds, a);
-    const int16_t top = (int16_t)seg_read16(c, ds, 0x9160);
+    v[n++] = peek16(c, c->seg[S_SS], (uint16_t)(c->r[R_SP] + 4));
+    for (uint16_t a = 0x85FA; a <= 0x8600; a = (uint16_t)(a + 2)) v[n++] = (int16_t)peek16(c, ds, a);
+    for (uint16_t a = 0x85E2; a <= 0x85EE; a = (uint16_t)(a + 2)) v[n++] = (int16_t)peek16(c, ds, a);
+    const int16_t top = (int16_t)peek16(c, ds, 0x9160);
     v[n++] = top;
     const int rows_at = n++;
     int rows = 0;
     if (top >= 0 && top < 256)
         for (int y = top; y < 256; y++) {
-            const int16_t l = (int16_t)seg_read16(c, ds, (uint16_t)(0x89DC + 2 * y));
-            const int16_t r = (int16_t)seg_read16(c, ds, (uint16_t)(0x8D9E + 2 * y));
+            const int16_t l = (int16_t)peek16(c, ds, (uint16_t)(0x89DC + 2 * y));
+            const int16_t r = (int16_t)peek16(c, ds, (uint16_t)(0x8D9E + 2 * y));
             if (l == 0x7FFF && (uint16_t)r == 0x8001u) break;
             v[n++] = l; v[n++] = r; rows++;
         }
@@ -174,23 +211,23 @@ static int hook_fill_rows(machine_t *m)
     int32_t v[3 + 2 * 256];
     int n = 0;
     v[n++] = c->r[R_AX];
-    const int16_t top = (int16_t)seg_read16(c, ds, 0x9160);
+    const int16_t top = (int16_t)peek16(c, ds, 0x9160);
     v[n++] = top;
     const int rows_at = n++;
     int rows = 0;
     if (top >= 0 && top < 256)
         for (int y = top; y < 256; y++) {
-            const int16_t l = (int16_t)seg_read16(c, ds, (uint16_t)(0x89DC + 2 * y));
-            const int16_t r = (int16_t)seg_read16(c, ds, (uint16_t)(0x8D9E + 2 * y));
+            const int16_t l = (int16_t)peek16(c, ds, (uint16_t)(0x89DC + 2 * y));
+            const int16_t r = (int16_t)peek16(c, ds, (uint16_t)(0x8D9E + 2 * y));
             if (l == 0x7FFF && (uint16_t)r == 0x8001u) break;
             v[n++] = l; v[n++] = r; rows++;
         }
     v[rows_at] = rows;
-    v[n++] = seg_read16(c, ds, 0x8606);                           /* the colour the fill uses, after the fade */
+    v[n++] = peek16(c, ds, 0x8606);                           /* the colour the fill uses, after the fade */
     v[n++] = c->seg[S_ES];
     o->prim(o->user, c->icount, 'R', v, n);
     /* the page bytes the rows cover, clamped to the viewport */
-    const int16_t xmin = (int16_t)seg_read16(c, ds, 0x85FA), xmax = (int16_t)seg_read16(c, ds, 0x85FE);
+    const int16_t xmin = (int16_t)peek16(c, ds, 0x85FA), xmax = (int16_t)peek16(c, ds, 0x85FE);
     g_pend.n = 0;
     g_pend.es = c->seg[S_ES];
     for (int k = 0; k < rows && g_pend.n < 256; k++) {
@@ -200,7 +237,7 @@ static int hook_fill_rows(machine_t *m)
         const int y = top + k;
         g_pend.row[g_pend.n].y = (int16_t)y;
         g_pend.row[g_pend.n].x0 = x0;
-        g_pend.row[g_pend.n].at = (uint16_t)(seg_read16(c, ds, (uint16_t)(0x861C + 2 * y)) + x0);
+        g_pend.row[g_pend.n].at = (uint16_t)(peek16(c, ds, (uint16_t)(0x861C + 2 * y)) + x0);
         g_pend.row[g_pend.n].len = (uint16_t)(x1 - x0 + 1);
         g_pend.n++;
     }
@@ -233,11 +270,11 @@ static int hook_outline_edge(machine_t *m)
     cpu_t *c = &m->cpu;
     const uint16_t ds = c->seg[S_DS], si = c->r[R_SI];
     const int32_t v[10] = { si,
-        (int16_t)seg_read16(c, ds, si), (int16_t)seg_read16(c, ds, (uint16_t)(si + 4)),
-        (int16_t)seg_read16(c, ds, (uint16_t)(si + 8)), (int16_t)seg_read16(c, ds, (uint16_t)(si + 12)),
-        seg_read16(c, ds, 0x8606), seg_read16(c, ds, 0x861A),
-        seg_read16(c, ds, 0x861C), seg_read16(c, ds, 0x861E),
-        seg_read16(c, c->seg[S_CS], (uint16_t)(seg_read16(c, ds, 0x85F2) + 6)) };
+        (int16_t)peek16(c, ds, si), (int16_t)peek16(c, ds, (uint16_t)(si + 4)),
+        (int16_t)peek16(c, ds, (uint16_t)(si + 8)), (int16_t)peek16(c, ds, (uint16_t)(si + 12)),
+        peek16(c, ds, 0x8606), peek16(c, ds, 0x861A),
+        peek16(c, ds, 0x861C), peek16(c, ds, 0x861E),
+        peek16(c, c->seg[S_CS], (uint16_t)(peek16(c, ds, 0x85F2) + 6)) };
     o->prim(o->user, c->icount, 'L', v, 10);
     return 0;
 }
@@ -250,7 +287,7 @@ static int hook_outline_edge(machine_t *m)
 static uint16_t slot_target_seg(machine_t *m, uint16_t slot)
 {
     cpu_t *c = &m->cpu;
-    return seg_read16(c, c->seg[S_CS], (uint16_t)(slot + 3));
+    return peek16(c, c->seg[S_CS], (uint16_t)(slot + 3));
 }
 
 static struct {
@@ -285,12 +322,15 @@ static void any_emit(machine_t *m, int entry, uint16_t page,
     if (!o || !o->prim) return;
     cpu_t *c = &m->cpu;
     static int32_t v[3 + 3 * 65536];
+    static uint8_t now[65536];
     int n = 0;
     v[n++] = entry; v[n++] = page;
     const int count_at = n++;
-    for (uint32_t a = 0; a < 65536; a++) {
-        const uint8_t now = mem_read8(c, phys(page, (uint16_t)a));
-        if (now != before[a]) { v[n++] = (int32_t)a; v[n++] = now; v[n++] = before[a]; }
+    peek_page(c, page, now);
+    for (uint32_t b = 0; b < 65536; b += 64) {
+        if (!memcmp(now + b, before + b, 64)) continue;
+        for (uint32_t a = b; a < b + 64; a++)
+            if (now[a] != before[a]) { v[n++] = (int32_t)a; v[n++] = now[a]; v[n++] = before[a]; }
     }
     v[count_at] = (n - 3) / 3;
     if (emit_empty || n > 3) o->prim(o->user, c->icount, 'x', v, n);
@@ -323,7 +363,7 @@ static void line_flush(machine_t *m)
     int changed = 0;
     for (unsigned y = 0; y < g_line.h; y++)
         for (unsigned x = 0; x < g_line.w; x++) {
-            const uint8_t now = mem_read8(c, phys(g_line.page, (uint16_t)(g_line.at[y] + x)));
+            const uint8_t now = peek8(c, g_line.page, (uint16_t)(g_line.at[y] + x));
             if (now != g_line.before[y * g_line.w + x] && n + 4 <= (int)(sizeof v / sizeof v[0])) {
                 v[n++] = (int32_t)(uint16_t)(g_line.at[y] + x); v[n++] = (int32_t)(g_line.x0 + x) | ((int32_t)(g_line.y0 + y) << 16);
                 v[n++] = now; v[n++] = g_line.before[y * g_line.w + x]; changed++;
@@ -347,7 +387,7 @@ static int hook_lib_line(machine_t *m)
     const uint16_t drv = slot_target_seg(m, 0x01B5);
     /* with the page and the origin it draws at (entries 12-16 and 24/26
      * move them: the HUD draws some lines straight to the display) */
-    const int32_t v[7] = { x0, y0, x1, y1, drv, seg_read16(c, drv, 0x0194), seg_read16(c, drv, 0x0196) };
+    const int32_t v[7] = { x0, y0, x1, y1, drv, peek16(c, drv, 0x0194), peek16(c, drv, 0x0196) };
     o->prim(o->user, c->icount, 'N', v, 7);
     int16_t xa = x0 < x1 ? x0 : x1, xb = x0 < x1 ? x1 : x0, ya = y0 < y1 ? y0 : y1, yb = y0 < y1 ? y1 : y0;
     if (xa < 0) xa = 0;
@@ -355,14 +395,14 @@ static int hook_lib_line(machine_t *m)
     if (xb > 319) xb = 319;
     if (yb > 199) yb = 199;
     if (xa > xb || ya > yb) return 0;
-    g_line.page = seg_read16(c, drv, 0x0194);
-    const uint16_t origin = seg_read16(c, drv, 0x0196);
+    g_line.page = peek16(c, drv, 0x0194);
+    const uint16_t origin = peek16(c, drv, 0x0196);
     g_line.x0 = (uint16_t)xa; g_line.y0 = (uint16_t)ya;
     g_line.w = (uint16_t)(xb - xa + 1); g_line.h = (uint16_t)(yb - ya + 1);
     for (unsigned y = 0; y < g_line.h; y++) {
-        g_line.at[y] = (uint16_t)(seg_read16(c, drv, (uint16_t)(4 + 2 * (g_line.y0 + y))) + origin + g_line.x0);
+        g_line.at[y] = (uint16_t)(peek16(c, drv, (uint16_t)(4 + 2 * (g_line.y0 + y))) + origin + g_line.x0);
         for (unsigned x = 0; x < g_line.w; x++)
-            g_line.before[y * g_line.w + x] = mem_read8(c, phys(g_line.page, (uint16_t)(g_line.at[y] + x)));
+            g_line.before[y * g_line.w + x] = peek8(c, g_line.page, (uint16_t)(g_line.at[y] + x));
     }
     g_line.on = 1;
     return 0;
@@ -386,7 +426,7 @@ static int hook_lib_colour_stack(machine_t *m)
     const f117_observer *o = g_f117_observer;
     if (!o || !o->prim) return 0;
     cpu_t *c = &m->cpu;
-    const int32_t v[1] = { seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_SP] + 4)) & 0xFF };
+    const int32_t v[1] = { peek16(c, c->seg[S_SS], (uint16_t)(c->r[R_SP] + 4)) & 0xFF };
     o->prim(o->user, c->icount, 'K', v, 1);
     return 0;
 }
@@ -412,25 +452,25 @@ static int hook_lib_spans(machine_t *m)
     int rows = 0;
     if (ya >= 0 && yb >= ya && yb < 220)
         for (int y = ya; y <= yb; y++) {
-            v[n++] = seg_read16(c, ss, (uint16_t)(bx + 2 * y));
-            v[n++] = seg_read16(c, ss, (uint16_t)(bx + 0x1B8 + 2 * y));
+            v[n++] = peek16(c, ss, (uint16_t)(bx + 2 * y));
+            v[n++] = peek16(c, ss, (uint16_t)(bx + 0x1B8 + 2 * y));
             rows++;
         }
     v[rows_at] = rows;
     const uint16_t drv = slot_target_seg(m, 0x01D3);
-    v[n++] = seg_read16(c, drv, 0x0194);        /* then the page and the origin it fills at */
-    v[n++] = seg_read16(c, drv, 0x0196);
+    v[n++] = peek16(c, drv, 0x0194);        /* then the page and the origin it fills at */
+    v[n++] = peek16(c, drv, 0x0196);
     o->prim(o->user, c->icount, 'Q', v, n);
     if (!rows) return 0;
-    g_line.page = seg_read16(c, drv, 0x0194);
-    const uint16_t origin = seg_read16(c, drv, 0x0196);
+    g_line.page = peek16(c, drv, 0x0194);
+    const uint16_t origin = peek16(c, drv, 0x0196);
     int16_t y0 = ya < 0 ? 0 : ya, y1 = yb > 199 ? 199 : yb;
     if (y0 > y1) return 0;
     g_line.x0 = 0; g_line.y0 = (uint16_t)y0; g_line.w = 320; g_line.h = (uint16_t)(y1 - y0 + 1);
     for (unsigned y = 0; y < g_line.h; y++) {
-        g_line.at[y] = (uint16_t)(seg_read16(c, drv, (uint16_t)(4 + 2 * (g_line.y0 + y))) + origin);
+        g_line.at[y] = (uint16_t)(peek16(c, drv, (uint16_t)(4 + 2 * (g_line.y0 + y))) + origin);
         for (unsigned x = 0; x < 320; x++)
-            g_line.before[y * 320 + x] = mem_read8(c, phys(g_line.page, (uint16_t)(g_line.at[y] + x)));
+            g_line.before[y * 320 + x] = peek8(c, g_line.page, (uint16_t)(g_line.at[y] + x));
     }
     g_line.on = 1;
     return 0;
@@ -453,15 +493,15 @@ static int hook_lib_blit(machine_t *m)
     const uint16_t drv = slot_target_seg(m, 0x01EC), ss = c->seg[S_SS], sp = c->r[R_SP];
     static int32_t v[10 + 64000];
     int n = 10;
-    for (int k = 0; k < 8; k++) v[k] = (int16_t)seg_read16(c, ss, (uint16_t)(sp + 4 + 2 * k));
-    v[8] = seg_read16(c, drv, (uint16_t)(0x0787 + 2 * (v[0] & 0xFF)));
-    v[9] = seg_read16(c, drv, (uint16_t)(0x0787 + 2 * (v[3] & 0xFF)));
+    for (int k = 0; k < 8; k++) v[k] = (int16_t)peek16(c, ss, (uint16_t)(sp + 4 + 2 * k));
+    v[8] = peek16(c, drv, (uint16_t)(0x0787 + 2 * (v[0] & 0xFF)));
+    v[9] = peek16(c, drv, (uint16_t)(0x0787 + 2 * (v[3] & 0xFF)));
     /* with the frame accounting on, the source rectangle's bytes follow, so
      * a copy can be checked without a dump of every page */
-    if (getenv("F117R_OBSERVE_PAGES") && v[6] > 0 && v[7] > 0 && v[6] * v[7] <= 64000)
+    if (want_sources() && v[6] > 0 && v[7] > 0 && v[6] * v[7] <= 64000)
         for (int y = 0; y < v[7]; y++) {
-            const uint16_t row = (uint16_t)(seg_read16(c, drv, (uint16_t)(4 + 2 * (v[2] + y))) + v[1]);
-            for (int x = 0; x < v[6]; x++) v[n++] = mem_read8(c, phys((uint16_t)v[8], (uint16_t)(row + x)));
+            const uint16_t row = (uint16_t)(peek16(c, drv, (uint16_t)(4 + 2 * (v[2] + y))) + v[1]);
+            for (int x = 0; x < v[6]; x++) v[n++] = peek8(c, (uint16_t)v[8], (uint16_t)(row + x));
         }
     o->prim(o->user, c->icount, 'C', v, n);
     any_begin(m, 42, (uint16_t)v[9]);
@@ -487,46 +527,46 @@ static int hook_lib_text(machine_t *m)
     cpu_t *c = &m->cpu;
     const int entry = (c->ip - 0x011A) / 5;
     const uint16_t ss = c->seg[S_SS], sp = c->r[R_SP];
-    const uint16_t blk = entry == 5 ? seg_read16(c, ss, (uint16_t)(sp + 4)) : c->r[R_BP];
-    const uint16_t str = entry == 5 ? seg_read16(c, ss, (uint16_t)(sp + 6)) : c->r[R_BX];
+    const uint16_t blk = entry == 5 ? peek16(c, ss, (uint16_t)(sp + 4)) : c->r[R_BP];
+    const uint16_t str = entry == 5 ? peek16(c, ss, (uint16_t)(sp + 6)) : c->r[R_BX];
     const uint16_t drv = slot_target_seg(m, c->ip);
     static int32_t v[64 + 256 + 256 + 32768];
     int n = 0;
     v[n++] = entry;
-    v[n++] = seg_read16(c, drv, (uint16_t)(0x0787 + 2 * (seg_read16(c, ss, blk) & 0xFF)));   /* the page's segment */
-    for (int k = 0; k < 11; k++) v[n++] = seg_read16(c, ss, (uint16_t)(blk + 2 * k));
+    v[n++] = peek16(c, drv, (uint16_t)(0x0787 + 2 * (peek16(c, ss, blk) & 0xFF)));   /* the page's segment */
+    for (int k = 0; k < 11; k++) v[n++] = peek16(c, ss, (uint16_t)(blk + 2 * k));
     const int len_at = n++;
     int len = 0;
     while (len < 255) {
-        const uint8_t ch = mem_read8(c, phys(ss, (uint16_t)(str + len)));
+        const uint8_t ch = peek8(c, ss, (uint16_t)(str + len));
         if (!ch) break;
         v[n++] = ch; len++;
     }
     v[len_at] = len;
     /* the font: the driver's data segment, its table at 00D0 */
     uint16_t dds = 0;
-    if (mem_read8(c, phys(drv, 0x03EB)) == 0xB8) dds = seg_read16(c, drv, 0x03EC);
+    if (peek8(c, drv, 0x03EB) == 0xB8) dds = peek16(c, drv, 0x03EC);
     const uint16_t font = (uint16_t)v[2 + 6];
-    int have = dds && font <= seg_read16(c, dds, 0x00D0);
-    uint16_t di = have ? seg_read16(c, dds, (uint16_t)(0x00D0 + 2 * (font + 1))) : 0;
+    int have = dds && font <= peek16(c, dds, 0x00D0);
+    uint16_t di = have ? peek16(c, dds, (uint16_t)(0x00D0 + 2 * (font + 1))) : 0;
     if (!di) have = 0;
     v[n++] = have;
     if (have) {
-        const uint8_t first = mem_read8(c, phys(dds, (uint16_t)(di - 8))), last = mem_read8(c, phys(dds, (uint16_t)(di - 7)));
-        const uint8_t shift = mem_read8(c, phys(dds, (uint16_t)(di - 6))), fixed = mem_read8(c, phys(dds, (uint16_t)(di - 5)));
-        const uint8_t height = mem_read8(c, phys(dds, (uint16_t)(di - 4))), spacing = mem_read8(c, phys(dds, (uint16_t)(di - 3)));
-        const uint8_t extra = mem_read8(c, phys(dds, (uint16_t)(di - 2)));
+        const uint8_t first = peek8(c, dds, (uint16_t)(di - 8)), last = peek8(c, dds, (uint16_t)(di - 7));
+        const uint8_t shift = peek8(c, dds, (uint16_t)(di - 6)), fixed = peek8(c, dds, (uint16_t)(di - 5));
+        const uint8_t height = peek8(c, dds, (uint16_t)(di - 4)), spacing = peek8(c, dds, (uint16_t)(di - 3));
+        const uint8_t extra = peek8(c, dds, (uint16_t)(di - 2));
         v[n++] = first; v[n++] = last; v[n++] = shift; v[n++] = fixed; v[n++] = height; v[n++] = spacing; v[n++] = extra;
         const int count = last >= first ? last - first + 1 : 0;
-        for (int k = 0; k < count; k++) v[n++] = mem_read8(c, phys(dds, (uint16_t)(di - 9 - (count - 1) + k)));
+        for (int k = 0; k < count; k++) v[n++] = peek8(c, dds, (uint16_t)(di - 9 - (count - 1) + k));
         const unsigned sh = shift ? shift - 1u : 0u;
         const long bytes = ((long)count << sh) * (height + extra) + 2;
         v[n++] = (int32_t)bytes;
         for (long k = 0; k < bytes && n < (int)(sizeof v / sizeof v[0]); k++)
-            v[n++] = mem_read8(c, phys(dds, (uint16_t)(di + k)));
+            v[n++] = peek8(c, dds, (uint16_t)(di + k));
     }
     o->prim(o->user, c->icount, 'T', v, n);
-    any_begin(m, entry, seg_read16(c, drv, 0x0194));
+    any_begin(m, entry, peek16(c, drv, 0x0194));
     return 0;
 }
 
@@ -546,22 +586,22 @@ static int hook_lib_sprite(machine_t *m)
     cpu_t *c = &m->cpu;
     const int entry = (c->ip - 0x011A) / 5;
     const uint16_t ss = c->seg[S_SS];
-    const uint16_t blk = entry == 73 || entry == 71 ? seg_read16(c, ss, (uint16_t)(c->r[R_SP] + 4)) : c->r[R_BP];
+    const uint16_t blk = entry == 73 || entry == 71 ? peek16(c, ss, (uint16_t)(c->r[R_SP] + 4)) : c->r[R_BP];
     const uint16_t drv = slot_target_seg(m, c->ip);
     static int32_t v[16 + 64000];
     int n = 0;
     v[n++] = entry;
-    v[n++] = seg_read16(c, drv, (uint16_t)(0x0787 + 2 * (seg_read16(c, ss, (uint16_t)(blk + 6)) & 0xFF)));
-    for (int k = 0; k < 12; k++) v[n++] = seg_read16(c, ss, (uint16_t)(blk + 2 * k));
+    v[n++] = peek16(c, drv, (uint16_t)(0x0787 + 2 * (peek16(c, ss, (uint16_t)(blk + 6)) & 0xFF)));
+    for (int k = 0; k < 12; k++) v[n++] = peek16(c, ss, (uint16_t)(blk + 2 * k));
     const uint16_t src = (uint16_t)v[2], sx = (uint16_t)v[3], sy = (uint16_t)v[4];
     const int w = (int16_t)v[8], h = (int16_t)v[9];
     if (w > 0 && h > 0 && w * h <= 64000 && sy + h <= 256)
         for (int y = 0; y < h; y++) {
-            const uint16_t row = (uint16_t)(seg_read16(c, drv, (uint16_t)(4 + 2 * (sy + y))) + sx);
-            for (int x = 0; x < w; x++) v[n++] = mem_read8(c, phys(src, (uint16_t)(row + x)));
+            const uint16_t row = (uint16_t)(peek16(c, drv, (uint16_t)(4 + 2 * (sy + y))) + sx);
+            for (int x = 0; x < w; x++) v[n++] = peek8(c, src, (uint16_t)(row + x));
         }
     o->prim(o->user, c->icount, 'S', v, n);
-    any_begin(m, entry, seg_read16(c, drv, 0x0194));
+    any_begin(m, entry, peek16(c, drv, 0x0194));
     return 0;
 }
 
@@ -581,21 +621,21 @@ static int hook_lib_scaled(machine_t *m)
     if (!o || !o->prim) return 0;
     cpu_t *c = &m->cpu;
     const uint16_t ss = c->seg[S_SS], sp = c->r[R_SP];
-    const uint16_t blk = seg_read16(c, ss, (uint16_t)(sp + 4));
+    const uint16_t blk = peek16(c, ss, (uint16_t)(sp + 4));
     const uint16_t drv = slot_target_seg(m, c->ip);
-    const uint16_t soff = seg_read16(c, ss, (uint16_t)(sp + 0x0E)), sseg = seg_read16(c, ss, (uint16_t)(sp + 0x10));
+    const uint16_t soff = peek16(c, ss, (uint16_t)(sp + 0x0E)), sseg = peek16(c, ss, (uint16_t)(sp + 0x10));
     static int32_t v[32 + 64000];
     int n = 0;
     v[n++] = 22;
-    v[n++] = seg_read16(c, drv, (uint16_t)(0x0787 + 2 * (seg_read16(c, ss, blk) & 0xFF)));
-    for (int k = 0; k < 11; k++) v[n++] = seg_read16(c, ss, (uint16_t)(blk + 2 * k));
-    v[n++] = (int16_t)seg_read16(c, ss, (uint16_t)(sp + 6));
-    v[n++] = (int16_t)seg_read16(c, ss, (uint16_t)(sp + 8));
-    v[n++] = (int16_t)seg_read16(c, ss, (uint16_t)(sp + 0x0A));
-    v[n++] = (int16_t)seg_read16(c, ss, (uint16_t)(sp + 0x0C));
+    v[n++] = peek16(c, drv, (uint16_t)(0x0787 + 2 * (peek16(c, ss, blk) & 0xFF)));
+    for (int k = 0; k < 11; k++) v[n++] = peek16(c, ss, (uint16_t)(blk + 2 * k));
+    v[n++] = (int16_t)peek16(c, ss, (uint16_t)(sp + 6));
+    v[n++] = (int16_t)peek16(c, ss, (uint16_t)(sp + 8));
+    v[n++] = (int16_t)peek16(c, ss, (uint16_t)(sp + 0x0A));
+    v[n++] = (int16_t)peek16(c, ss, (uint16_t)(sp + 0x0C));
     v[n++] = sseg;
     v[n++] = soff;
-    const uint16_t sw = sseg ? seg_read16(c, sseg, soff) : 0, sh = sseg ? seg_read16(c, sseg, (uint16_t)(soff + 2)) : 0;
+    const uint16_t sw = sseg ? peek16(c, sseg, soff) : 0, sh = sseg ? peek16(c, sseg, (uint16_t)(soff + 2)) : 0;
     v[n++] = sw;
     v[n++] = sh;
     const int len_at = n++;
@@ -603,9 +643,9 @@ static int hook_lib_scaled(machine_t *m)
     if (sw && sh && sh <= 256) {
         uint16_t at = (uint16_t)(soff + 4);
         for (int r = 0; r < sh; r++) {
-            const int len = seg_read16(c, sseg, at) + 4;
+            const int len = peek16(c, sseg, at) + 4;
             if (total + len > 60000) { total = -1; break; }
-            for (int k = 0; k < len; k++) v[n++] = mem_read8(c, phys(sseg, (uint16_t)(at + k)));
+            for (int k = 0; k < len; k++) v[n++] = peek8(c, sseg, (uint16_t)(at + k));
             total += len;
             at = (uint16_t)(at + len);
         }
@@ -613,7 +653,7 @@ static int hook_lib_scaled(machine_t *m)
     v[len_at] = total;
     if (total < 0) { v[len_at] = 0; n = len_at + 1; }
     o->prim(o->user, c->icount, 'W', v, n);
-    any_begin(m, 22, seg_read16(c, drv, 0x0194));
+    any_begin(m, 22, peek16(c, drv, 0x0194));
     return 0;
 }
 
@@ -632,15 +672,15 @@ static int hook_lib_ticks(machine_t *m)
     if (!o || !o->prim) return 0;
     cpu_t *c = &m->cpu;
     const uint16_t drv = slot_target_seg(m, c->ip);
-    if (mem_read8(c, phys(drv, 0x071C)) != 0xB8) return 0;
-    const uint16_t dds = seg_read16(c, drv, 0x071D);
+    if (peek8(c, drv, 0x071C) != 0xB8) return 0;
+    const uint16_t dds = peek16(c, drv, 0x071D);
     const uint16_t si0 = c->r[R_SI], cl = c->r[R_CX] & 0xFF;
     const uint16_t si = (uint16_t)(si0 + (cl ? 4 : 0));
-    const int32_t v[9] = { si0, c->r[R_BX], (int8_t)(c->r[R_DX] & 0xFF), cl, mem_read8(c, phys(dds, 0x1866)),
-                           seg_read16(c, dds, (uint16_t)(si + 0x1966)), seg_read16(c, dds, (uint16_t)(si + 0x196E)),
-                           seg_read16(c, dds, (uint16_t)(si + 0x1976)), seg_read16(c, drv, 0x0194) };
+    const int32_t v[9] = { si0, c->r[R_BX], (int8_t)(c->r[R_DX] & 0xFF), cl, peek8(c, dds, 0x1866),
+                           peek16(c, dds, (uint16_t)(si + 0x1966)), peek16(c, dds, (uint16_t)(si + 0x196E)),
+                           peek16(c, dds, (uint16_t)(si + 0x1976)), peek16(c, drv, 0x0194) };
     o->prim(o->user, c->icount, 'H', v, 9);
-    any_begin(m, 11, seg_read16(c, drv, 0x0194));
+    any_begin(m, 11, peek16(c, drv, 0x0194));
     return 0;
 }
 
@@ -664,29 +704,29 @@ static int hook_lib_copy(machine_t *m)
     int n = 0;
     v[n++] = entry;
     if (entry == 44) {
-        const uint16_t flip = seg_read16(c, drv, 0x11DC);
+        const uint16_t flip = peek16(c, drv, 0x11DC);
         v[n++] = flip ? 0 : 2 * c->r[R_AX];
-        v[n++] = seg_read16(c, drv, 0x0789);
-        v[n++] = seg_read16(c, drv, 0x0787);
+        v[n++] = peek16(c, drv, 0x0789);
+        v[n++] = peek16(c, drv, 0x0787);
         v[n++] = flip;
         /* A work-page dump at game_draw can miss a transient change that
          * entry 44 presents and the next phase then overwrites. Keep the
          * source as it exists at the instant of the present, just like the
          * full-page copies below. */
-        if (getenv("F117R_OBSERVE_PAGES") && !flip) {
+        if (log_pages() && !flip) {
             const uint16_t src = (uint16_t)v[2];
             const uint32_t count = (uint32_t)v[1];
             for (uint32_t a = 0; a < count && n < (int)(sizeof v / sizeof v[0]); a++)
-                v[n++] = mem_read8(c, phys(src, (uint16_t)a));
+                v[n++] = peek8(c, src, (uint16_t)a);
         }
     } else {
-        const uint16_t src = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_SP] + 4));
+        const uint16_t src = peek16(c, c->seg[S_SS], (uint16_t)(c->r[R_SP] + 4));
         v[n++] = 64000;
         v[n++] = src;
-        v[n++] = seg_read16(c, drv, 0x0194);
+        v[n++] = peek16(c, drv, 0x0194);
         v[n++] = 0;
-        if (getenv("F117R_OBSERVE_PAGES"))
-            for (uint32_t a = 0; a < 64000; a++) v[n++] = mem_read8(c, phys(src, (uint16_t)a));
+        if (want_sources())
+            for (uint32_t a = 0; a < 64000; a++) v[n++] = peek8(c, src, (uint16_t)a);
     }
     o->prim(o->user, c->icount, 'D', v, n);
     /* Entry 44 is a present, so the original copy runs after this hook.
@@ -711,13 +751,13 @@ static int hook_lib_other(machine_t *m)
     /* the entry, then the first two argument words (far call: SS:SP+4, +6) -
      * entry 26 sets the origin from the first, so a replay can follow it */
     const int32_t v[3] = { (int32_t)((c->ip - 0x011A) / 5),
-                           seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_SP] + 4)),
-                           seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_SP] + 6)) };
+                           peek16(c, c->seg[S_SS], (uint16_t)(c->r[R_SP] + 4)),
+                           peek16(c, c->seg[S_SS], (uint16_t)(c->r[R_SP] + 6)) };
     o->prim(o->user, c->icount, 'X', v, 3);
     /* Keep both pages through every entry. Some setters (24/26/46/62/65)
      * draw nothing themselves, but can be called inside a drawing entry;
      * the outer entry may resume writing after this hook flushes it. */
-    const uint16_t page = seg_read16(c, slot_target_seg(m, c->ip), 0x0194);
+    const uint16_t page = peek16(c, slot_target_seg(m, c->ip), 0x0194);
     any_begin(m, v[0], page);
     any_begin_display(m, v[0], page);
     return 0;
@@ -725,11 +765,10 @@ static int hook_lib_other(machine_t *m)
 
 static void any_begin(machine_t *m, int entry, uint16_t page)
 {
-    if (!getenv("F117R_OBSERVE_PAGES")) return;
-    cpu_t *c = &m->cpu;
+    if (!want_sources()) return;
     g_any.entry = entry;
     g_any.page = page;
-    for (uint32_t a = 0; a < 65536; a++) g_any.before[a] = mem_read8(c, phys(page, (uint16_t)a));
+    peek_page(&m->cpu, page, g_any.before);
     g_any.on = 1;
 }
 
@@ -737,11 +776,9 @@ static void any_begin(machine_t *m, int entry, uint16_t page)
  * active page points elsewhere. */
 static void any_begin_display(machine_t *m, int entry, uint16_t page)
 {
-    if (!getenv("F117R_OBSERVE_PAGES") || page == 0xA000) return;
-    cpu_t *c = &m->cpu;
+    if (!want_sources() || page == 0xA000) return;
     g_any_display.entry = entry;
-    for (uint32_t a = 0; a < 65536; a++)
-        g_any_display.before[a] = mem_read8(c, phys(0xA000, (uint16_t)a));
+    peek_page(&m->cpu, 0xA000, g_any_display.before);
     g_any_display.on = 1;
 }
 

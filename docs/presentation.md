@@ -71,7 +71,7 @@ Each stage is judged by a check, as in the rest of the project.
 | 0 | Observer: log every call to the drawing primitives per frame | the log is identical across runs; hashes unchanged with it on | done |
 | 1 | Draw lists: a frame's primitives as a list, replayed at 320x200 | the replay reproduces the original's work and display pages bit for bit, every phase of every route | done for the windows below, in Python and in C (`src/present/drawlist.c`); unexercised branches listed below |
 | 2 | Re-draw the list at N times the resolution | N = 1 is Stage 1 exactly; at N > 1 every N x N block agrees with the N = 1 pixel wherever no edge crosses it | model polygons re-drawn from their sub-pixel vertices (`hires_subpixel.py`): N = 1 exact, flat agreement 99.96-100% before a guard, 100% after; text, sprites, HUD and 3-4% of the polygons stay scaled |
-| 3 | Interpolate between consecutive draw lists to the host display rate | at a logic frame the output is exactly that frame; no in-between primitive absent from both neighbours | 320x200 study done (`interp_frame.py`, below): exact at both ends on seven windows, no violations; the live path is not built |
+| 3 | Interpolate between consecutive draw lists to the host display rate | at a logic frame the output is exactly that frame; no in-between primitive absent from both neighbours | 320x200 study done (`interp_frame.py`, below): exact at both ends on seven windows, no violations; live path: the feed and the N = 1 presentation from the replay are built (below), interpolation is not |
 | 4 | Pacing, vsync, a picture-age setting, HUD handling, a switch to the original picture | - | not started |
 
 Interpolation shows the picture one logic step behind (about 110 ms at 9
@@ -382,6 +382,59 @@ behind. It needs a rasteriser for the model polygons, lines, spans and the other
 Stage 1's replay ported, or Stage 2's if the picture is to be finer, since only on a finer grid
 does motion of a fraction of a pixel show. It stays an observer: the machine is asked for nothing
 it does not already compute.
+
+## The live path, first part: feed and replay (9 October 2026)
+
+What the live path takes from the machine, in process:
+
+- **The feed** (`src/present/drawfeed.c`) is an observer that keeps every record in memory, a
+  logic frame at a time: a frame closes at the first phase after one that presented (entry 44),
+  as `interp_frame.py` groups them, and waits in a ring of 8 until the host takes it. At the
+  close it copies A000 into the frame, which is what the replay must equal. Two observer fields
+  serve it (`observe.h`): `sources` has the records carry what `F117R_OBSERVE_PAGES` gives a log
+  beyond the primitives (a blit's and a page copy's source bytes, the byte changes of the
+  entries no hook decodes), and `want_pages` asks for the page dumps at one phase, which the
+  feed does once to seed the replay (and again after a frame differs or one is dropped).
+- **The replay** (`drawlive`, same file) runs `drawlist.c` on each closed frame, carried from the
+  one seed, and compares the display with the frame's copy of A000. A frame that differs is not
+  shown and the replay is seeded again.
+- The observer now reads guest memory directly, never through `mem_read8`, which charges the 386
+  profile's VGA bus cycles: under `--timing 386` an installed observer's reads of A000 would have
+  moved the clock. Its page snapshots are `memcpy`s; the logs it writes are byte for byte those
+  of the earlier observer (strike 8.53B, landing 9.89B).
+
+**Unchanged machine.** `boot_to_flight` and `strike`, each under both engines, with and without
+`f117run --present replay`: the `--hash-every 50000000` checkpoints (54 and 177) and the final
+hashes are identical, and equal between the engines. The observer's hooks exist only in the
+recompiled engine, so under the interpreter the feed sees nothing. The feed costs the recompiled
+strike route 50% of its speed (66.6 s to 100.0 s, 133 to 88 M instructions a second, about ten
+times the original's 9 MIPS), most of it the page snapshot at every graphics entry that entry
+41's byte changes need.
+
+**The replay live.** Over the whole strike flight (2.33B to 8.85B) 9,845 logic frames close; the
+replay, seeded once at the first, equals the display at every frame's close: 9,845 of 9,845, none
+dropped. `boot_to_flight`: 368 of 368.
+
+**Presenting from the replay** (`f117run --present replay`, `f117a --present replay`, or
+`present = replay` in `f117a.ini`). In flight the screen is the replayed display with the scanned
+frame's palette; elsewhere (another program, text mode, a CRTC start other than 0, or no frame
+closed for a quarter second) the scanned-out picture. A frame is presented from its close, so the
+picture is up to one step later than the scan shows it. `f117run` checks it at every VGA frame
+and prints a `[present]` summary; `--frame-log` gains a `replay` column, and `--screen` and the
+shots write the presented picture. Strike, the whole flight: 68,918 VGA frames, 50,620 of them
+presented from the replay; 36,632 equal to the scanned-out picture bit for bit, 5,406 a scan of
+the next logic frame (equal to the next replayed frame: the replay presents it at its close),
+8,582 a scan taken while the original was drawing the next frame on the display (the present
+and the HUD drawn on A000 over several VGA frames), none unsettled; 9,843 of the 9,845 logic
+frames are equal to a scanned-out picture at some VGA frame. With `--shots-vga` over the 8.53B
+window, 189 of 234 shots are byte-identical to the scanned run's. The window, headless
+(`SDL_VIDEODRIVER=dummy`, `SDL_AUDIO_DRIVER=dummy`) replaying `strike.input` to 3.5B, ends on the
+same hash with `--present replay` as without and as `f117run` (`bc8e3ae5a872405d`); its log's
+`[present]` line: 2,062 of 2,062 logic frames exact, 9,030 VGA frames shown from the replay.
+
+**Left for the live path.** Interpolation (Stage 3's pairing and in-between frames, driven by
+the mission clock), Stage 2's finer grid, and decoding graphics entry 41, which would drop the
+per-entry page snapshots.
 
 ## Open questions and risks
 

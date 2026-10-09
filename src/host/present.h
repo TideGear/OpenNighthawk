@@ -30,4 +30,7 @@ void present_render(const present_frame *f, uint32_t *out, int *w, int *h, int b
 /* Write the machine's current screen as a binary PPM. */
 int present_write_ppm(const machine_t *m, const char *path);
 
+/* Write a captured frame as a binary PPM. */
+int present_frame_write_ppm(const present_frame *f, const char *path);
+
 #endif
