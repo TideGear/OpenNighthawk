@@ -32,8 +32,10 @@ keep their meaning, and a presentation bug can only draw the wrong picture.
   (`--scale N`, `--fullscreen`, aspect correction). A large window or a 4K
   display already works as a scaled 320x200 picture; every scene edge is
   still on the 320x200 grid.
-- **Time is one real second per game second** (the mission-clock invariant),
-  so interpolating game state against the host clock is meaningful.
+- **Presentation uses the machine clock.** The host paces emulated seconds
+  against real seconds; the original's mission clock runs faster at every
+  speed measured ([speed-sweep.md](speed-sweep.md)). Interpolation follows
+  the machine's frame timestamps without changing that world speed.
 - **One logic step is two `game_draw` phases** (`game_draw` is `0x01450`):
   one just after the step and one about half a step later. They alternate
   between two buffers in the library's 64 KB page segment (origin 0 and
@@ -520,7 +522,7 @@ Live, `drawlive` keeps the last two replayed frames, each with the replay as it 
 start, and pairs them as the newer closes. `--present interp` (`f117run`, `f117a`,
 `present = interp`) draws, at each VGA frame, the in-between frame at
 t = (now - close of the newer) / (close of the newer - close of the older) on the machine's clock,
-which is the mission clock's base (one game second is one real second): the older frame at the
+which paces emulated time against real time: the older frame at the
 newer one's close, the newer one a step later, so the picture is a step behind the replay's.
 `f117run` also draws every pair at its two ends and compares them with the two replayed
 pictures. Strike, the whole flight: 9,843 of 9,843 pairs exact at both ends; of 50,620 VGA frames
@@ -622,8 +624,8 @@ a 9 x 9 block at N = 9). The sources they could come from instead, with what eac
   list (a clip window held in a register, a dither phase), the replay misses
   pixels; that is a finding that says what else to record, not a failure of
   method.
-- **Time base.** Interpolating against the host clock needs one agreed time
-  base with the machine; the mission-clock invariant provides it.
+- **Time base.** Interpolation and host pacing use the machine clock. The
+  original's faster mission clock is a separate default-speed decision.
 - **Is sub-pixel "4K" worth its cost** against the cheaper scaled picture? For the 3-D scene the polygon stage is
   cheap and verified (above); what remains is whether the HUD, text and sprites also need a finer source than their
   scaled copies, and the near-clipped polygons (3-4% of the polygons, no sub-pixel rule yet).

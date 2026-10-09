@@ -260,5 +260,8 @@ if(F117R_BUILD_TESTS)
     add_executable(func_lockstep tests/func_lockstep.c)
     target_link_libraries(func_lockstep PRIVATE f117recomp)
     add_test(NAME func_lockstep COMMAND func_lockstep --states 2000)
+    # This seed aliases the shadow-text source with PUSH SS's stack write.
+    add_test(NAME matched_shadow_stack_alias COMMAND func_lockstep --states 4000
+      --seed 0xf2a7d2c1bf36 --only START.EXE:36C4,END.EXE:19C3,END.EXE:112A)
   endif()
 endif()

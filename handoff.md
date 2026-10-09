@@ -11,11 +11,9 @@ Earlier session logs are in `git log -p handoff.md`.
 
 ## What to do first
 
-1. `git status -sb`: master is nine commits ahead of `origin/master` and is
-   not pushed (item 3). Those nine commits, the fix in `tests/func_lockstep.c`
-   and this file are on the WIP branch `lockstep-code-below`, pushed to origin
-   for handoff. The untracked files at the repo root (`cand_*.py`, `cmp_*.py`)
-   predate this work; leave them, as the untracked `test.bat`.
+1. `git status -sb`: the gate repairs are on master and `lockstep-code-below`,
+   pushed together after the full gate passed (item 3). Leave any
+   pre-existing untracked files alone.
 2. The app's default frame rate is the open decision. The owner's rule (9 Oct):
    the default is the highest frame rate at which nothing breaks, with parity
    first and the developers' intent second. Read `docs/speed-sweep.md` (merged
@@ -24,22 +22,25 @@ Earlier session logs are in `git log -p handoff.md`.
    second). The speed study has not finished: the 15 frames a second limiter
    candidate, the pilots' engagement results, the control-response measurements
    and the `--fix D1` sweep are still to run.
-3. **Not green yet: master is not pushed.** The one full gate run on the nine
-   local commits (merge8, HEAD `303c384` with the speed study) failed at step
-   7c, seed `0x303c384910a7`, with one mismatch: VGAME 1377:00F3
-   (`vgame_row_offsets_planar`). It is a harness fault. A random DS put the
-   480-row table over the routine's own loop displacement at 1377:00D4, so the
-   original rewrote its loop and left after five rows. The routine's 640-wide
-   branch starts at 00C2, below its entry, and the harness accepted no RET
-   there, so that branch was almost never compared (341 states compared, against
-   about 3,990 per seed now). The fix is one row in `CODE_BELOW`, in
-   `tests/func_lockstep.c` on the branch: `{ "VGAME.EXE", 0x1377, 0x00F3, 0x0031 }`. Checked
-   at `0x303c384910a7`, `0x5EED0F117A` and `0xC0FFEE`: 0 mismatching; a one-step
-   mutant in the wide branch fails on the first state. Not yet run: the full
-   gate on the fixed tree. Next: check out `lockstep-code-below`, run the gate
-   there (log to `D:\f117-gate\merge9\gate.log`) and read the tally. If it is
-   green, fast-forward master to the branch and push master. If not, fix on the
-   branch and push the branch again.
+3. **Green and pushed.** `merge9` tested HEAD `f2a7d2c`:
+   all 35 routes identical, both 5,718,912-state instruction checks and both
+   fixed matched seeds passed. The rotating seed `0xf2a7d2c1bf36` caught one
+   real matched-code bug in START `0000:36C4`: the shared shadow-text helper
+   replaced PUSH SS / POP ES with an assignment. Its source record can alias
+   the temporary stack write through the 20-bit wrap, changing the copied
+   shadow colour. Restoring the push/pop passes that seed on START 36C4 and
+   END 19C3/112A (14,752 comparisons). CTest now retains it as
+   `matched_shadow_stack_alias` (13 tests in the gate's unit step).
+   The full rerun, `D:\f117-gate\merge10\gate.log`, passed in 1,157 s:
+   13 unit tests; 35 identical routes (34 fresh interpreter sessions); both
+   instruction profiles 5,718,912 states, zero mismatches; matched seeds
+   `0x5EED0F117A`, `0xC0FFEE`, `0xf2a7d2c1bf36` compared 2,475,889,
+   2,474,978 and 2,474,931 states, zero mismatches. Every routes-only routine
+   ran and no route reported an event-limit overrun. Coverage added nothing.
+   The preceding `CODE_BELOW` fix for VGAME `1377:00F3` remains:
+   its 640-wide loop and RET lie below its entry (`00C2` and `00F2`), and the
+   harness now compares about 3,990 states instead of 341. It passed the old
+   failing seed `0x303c384910a7` and both fixed seeds; a one-step mutant fails.
 
 ## Goal and standing decisions
 
@@ -85,9 +86,8 @@ Earlier session logs are in `git log -p handoff.md`.
 - Game: `D:\GOG\F-117A` (never mounted or written by a tool; copy per run).
 - Generated C: `C:\Users\Tideg\f117-recomp-local\gen` (never committed);
   coverage in `...\coverage`; route runs in `...\runs`.
-- Scratch and logs on D: (`D:\f117-gate\...`; C: is nearly full). The last
-  gate's log is `D:\f117-gate\merge8\gate.log`; earlier gates are in `merge3`
-  to `merge7`.
+- Scratch and logs on D: (`D:\f117-gate\...`). The current gate's log is
+  `D:\f117-gate\merge10\gate.log`; earlier gates are in `merge3` to `merge9`.
 - Research (read only): `D:\f117-gate\macresearch\` (Mac 2.1, 2.3.1 and 2.3.2
   listings, the Amiga listing, `dos_ctl_sim.py`). The archives are in the
   Reimp's `reference\` folder.
@@ -116,8 +116,8 @@ Earlier session logs are in `git log -p handoff.md`.
   C:/Users/Tideg/f117-recomp-local/coverage`, about 20 minutes, run in the
   background. Do not edit `src/` or rebuild while it runs. Read the tally, not
   the exit code:
-  - after the build, the unit tests (`ctest -E func_lockstep`, 12 tests, as
-    CI runs them);
+  - after the build, the unit tests (`ctest -E func_lockstep`, 13 tests with
+    generated code, including the shadow-text stack-alias regression);
   - steps 6 and 6b: every translated instruction (89,366 starts, 5,718,912
     states per timing profile) against the interpreter, 0 mismatching;
   - steps 7, 7b and 7c: every matched routine at three seeds (0x5EED0F117A,
@@ -301,9 +301,8 @@ Earlier session logs are in `git log -p handoff.md`.
   `\d` into real characters (a `\f` in a path became a form feed; `"\aq"` became
   a bell). Use the Edit or Write tool for strings with escapes, or a script file.
 - **Stale binaries**: a usage message that lacks a new option means the build
-  predates the edit. Rebuild before testing. Right now `build/` holds a mutant
-  build: the mutation check changed `matched.c` (step 0x52). The source is
-  reverted, the binaries are not, and the gate rebuilds them.
+  predates the edit. Rebuild before testing. The old mutation-check binary
+  was replaced by the merge9 gate and the shadow-text fix build.
 - **Git Bash and cmd**: `cmd /c` in Git Bash is rewritten as a path and starts an
   interactive shell. Use `MSYS_NO_PATHCONV=1 cmd /c "C:\...\build.cmd"
   "-DF117R_GEN_DIR=C:/Users/Tideg/f117-recomp-local/gen"` with the absolute path,

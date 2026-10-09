@@ -16388,7 +16388,10 @@ static int st2_draw_text_shadowed(machine_t *m, uint16_t entry, uint16_t draw_fn
         ST2_NEED(27, AT(0x11));
         c->r[R_DI] = (uint16_t)(c->r[R_BP] - 0x16);               /* a local copy of the record */
         c->r[R_SI] = c->r[R_BX];
-        c->seg[S_ES] = c->seg[S_SS];
+        /* The source record can alias this stack slot, including through
+         * the 20-bit address wrap: preserve PUSH SS's memory write. */
+        cpu_push16(c, c->seg[S_SS]);
+        c->seg[S_ES] = cpu_pop16(c);
         c->r[R_CX] = 0x0B;
         c->icount += 5;
         c->icount += rep_string(c, STR_MOVS, 1, c->seg[S_DS], 0);

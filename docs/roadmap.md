@@ -204,6 +204,10 @@ not the recompilation:
       prefix walk checked room once for a chain of any depth, now every turn).
       Three unequal candidates were excluded: START 0x11DB, MPS_LOGO 0x1ADC
       and 0x1C82.
+      Follow-up gate repairs (9 Oct): the lockstep now includes VGAME
+      1377:00F3's loop and RET below its entry; START/END's shadow-text
+      helper preserves PUSH SS's memory write when its source aliases the
+      stack, with seed `0xf2a7d2c1bf36` retained as a CTest regression.
 
 ## Phase 3 - fixes and enhancements (switchable)
 

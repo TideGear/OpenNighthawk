@@ -24,6 +24,14 @@ The subsequent translated-386 gate took **16.1 minutes** (964 s): build
 tail. All 35 routes were identical, both 5,713,152-state instruction checks
 and the 484-routine check had zero mismatches, and every routes-only routine ran.
 
+The 9 Oct gate with 762 matched addresses and the shadow-text regression
+(`D:\f117-gate\merge10\gate.log`) took **19.3 minutes** (1,157 s): build and
+13 unit tests 12 s, coverage 415 s, second translation 7 s (no code added),
+fresh parity 723 s (34 interpreter sessions for 35 routes), no lockstep tail.
+Both instruction profiles and all three matched seeds had zero mismatches;
+all routes were identical, all routes-only routines ran, and no route overran
+an event limit.
+
 Stage times, earlier run: translate and build 457 s, coverage 173 s, second
 build 2 s (skipped), parity 503 s, lockstep tail 229 s.
 
@@ -43,6 +51,7 @@ by name; today: `recon_career` and `recon_return`.
 
 | Process | Trigger | Measured cost | Redundancy and status |
 |---|---|---|---|
+| Shadow-text stack-alias regression (`ctest -R matched_shadow_stack_alias`) | every gate's unit-test step, with generated code | about 2 s (9 Oct) | seed `0xf2a7d2c1bf36`, START 36C4 and END 19C3/112A only; preserves the state that caught an omitted PUSH SS memory write in the shared matched helper; 14,752 comparisons, zero mismatches after the fix |
 | Matched-routine lockstep (`func_lockstep --states 4000`) | every gate (three seeds); every new matched routine | single process 21 min for 653 routines beside a gate (9 Oct); 8 shards 3 min 11 s, the same report line for line | **Sharded since 9 Oct 2026** (`tools/func_lockstep_par.py`, `--shard K/N`), with the owner's approval: each routine draws from its own stream (the seed, its module and address), so a shard tests what one run does, and a routine's states no longer move when other routines are added (before, one stream ran through the table and merges met paths a branch never drew). The states are the same in number and kind, not the old ones. The gate runs seeds 0x5EED0F117A and 0xC0FFEE and one from the gated commit's hash, so successive gates draw new states. Left: tracking writes instead of copying 1 MB a state |
 | Instruction lockstep (`insn_lockstep --states 64`, also `--timing386`) | every gate | no wait tail in the latest gate; 5.7 million states per profile (8 Oct) | runs beside coverage and parity; the 386 check also compares prefetch and held REP state; a second-seed run with `--base-seg 0x9FFF` checks code in VRAM |
 | 386 flight engine parity (`stick_response --machine machine386 --engine interp/recomp`) | after a profile or translated timing change | 80 s interpreter, 60 s recomp, alongside the gate (8 Oct) | all 574 memory/register/output/scanout checkpoints and stick responses identical; use separate processes because the runtime is global |

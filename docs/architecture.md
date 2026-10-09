@@ -84,8 +84,9 @@ and the inputs with the clock counts at which they arrived.
   (its cycles, prefetch refills, prefixes, REP chunks), VGA memory 32 cycles a
   byte, and ports 86Box's costs in place of DOSBox's delays
   ([timing386.md](../tools/ref86box/timing386.md)). `probe386.py` holds the
-  interpreter to 86Box block by block; the recompiled engine does not charge
-  these costs yet and `--timing 386` refuses it. Recorded routes run without it.
+  interpreter to 86Box block by block; both engines charge these costs and
+  instruction lockstep checks them. Matched routines use the original body
+  under this profile. Recorded routes run on the default DOSBox profile.
 - **The default speed is 9,000,000 a second**, GOG DOSBox's `cycles=9000`
   for this game. The game's behaviour depends on machine speed (bug D1);
   this is the speed GOG players have, and `--ips` changes it.
@@ -522,6 +523,11 @@ caught real defects:
 - Half the states put small words (-1, 0, 1, 0-31) where the arguments sit,
   and the other half use memory of mostly 00, FF and 01 bytes, so edge cases
   and exact tests on memory are reached.
+- Stack writes matter even for a PUSH/POP pair that only transfers a segment
+  register. START's shadow-text source can alias the temporary PUSH SS slot
+  through the 20-bit wrap; replacing PUSH SS / POP ES with an assignment
+  changed the record it copied. The seed `0xf2a7d2c1bf36` catches this;
+  `matched_shadow_stack_alias` keeps that regression in the unit-test step.
 - START and END's uninitialised graphics-driver thunks are replaced with
   RETF on both sides of the check, so drawing wrappers can return and their
   surrounding work is compared. The routes still check the real driver.
@@ -545,7 +551,12 @@ caught real defects:
   DOS transfer charges time.
 - `CODE_BELOW` gives the same kind of range for second entries into the model
   fills that jump back to a shared exit below them: the code starts that many
-  bytes under the entry. For those the original's code is also watched after
+  bytes under the entry. VGAME `1377:00F3` also needs it: its 640-wide row-table
+  loop starts at `00C2` and returns at `00F2`, below the entry. Without that
+  range the harness mostly skipped that branch, and missed a row table
+  overwriting the loop displacement. The range raises compared states from
+  341 to about 3,990 per 4,000-state seed; a one-step defect in the branch
+  fails on its first state. For those the original's code is also watched after
   every step, since a row table over the code (DS = CS) can change an
   instruction, run it and write the bytes back.
 - OVERRUN: given one instruction less room than the original takes, a routine
