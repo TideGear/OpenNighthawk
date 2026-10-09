@@ -22366,7 +22366,7 @@ static int vgame_view_caption(machine_t *m)
         cpu_push16(c, caption[k]);
         cpu_push16(c, 0x98A6);
         c->icount += n + (k ? 2 : 1) + 1;
-        VG3_NEAR(0xEB50, 0x837B, 3 + 15 + 1);                     /* strcpy */
+        VG3_NEAR(0xEB50, 0x837B, 3 + 14 + 1);                     /* strcpy */
         c->r[R_BX] = cpu_pop16(c);
         c->r[R_BX] = cpu_pop16(c);
         n = 3;
@@ -22383,7 +22383,7 @@ static int vgame_view_caption(machine_t *m)
     cpu_push16(c, 0xC5);
     cpu_push16(c, 0x98A6);
     cpu_push16(c, ds_get(c, 0x4010));
-    c->icount += n + 15;
+    c->icount += n + 14;
     VG3_NEAR(0x89C0, 0x83D3, 8);
     c->r[R_AX] = VG3_FRAME(-8);
     c->r[R_BX] = ds_get(c, 0x4010);
@@ -23021,6 +23021,1921 @@ static int vgame_model_fill_or(machine_t *m)
     near_ret(c);
     return 1;
 }
+
+/* VGAME 120A:00CF and 120A:01B4, far: draw a model, or run it without
+ * drawing. Args: the model (an index into the table at ES:2 in the model
+ * segment [8590], whose word 0 is the count), its position x, y, z (to
+ * 7CCC) and the orientation word(s) (7D4C, and 7D4E for the draw). The
+ * position goes through the camera matrix (1452:0330 with 7B28, into the
+ * 32-bit 7CD2..). The model's detail levels are (range, data) pairs
+ * walked while the depth |[7CDC]| lies beyond the range; the chosen
+ * level's first word is its own range, and a depth not inside it marks
+ * the model as not hit ([7D8C] = 80h). Unless the draw has [7D8E] set, a
+ * model out of reach (120A:02B2) is marked and skipped; otherwise the
+ * level's parts (120A:0317, with its count) and planes (120A:0561) are
+ * set up, fewer than four planes mark it, and the draw goes on to hook
+ * the divide error (027D), project (06B5), the edges (0A33), the faces
+ * (0C76) and unhook (029E). A model not marked sets bit 80h of [C6B2]. */
+typedef struct {
+    int draw;                                                     /* 00CF; else 01B4 */
+    uint16_t call_vec, loop, ret_range, call_parts, call_planes;  /* addresses in each copy */
+} vg3_model_run_t;
+static const vg3_model_run_t VG3_MODEL_DRAW = { 1, 0x0116, 0x0131, 0x015D, 0x016E, 0x017A };
+static const vg3_model_run_t VG3_MODEL_PROBE = { 0, 0x01F5, 0x0210, 0x0235, 0x0246, 0x0252 };
+
+#define VG3_MARK() (VG3_SETDS8(0x7D8C, 0x80))                     /* mov byte [7D8C], 80h; nop */
+
+static int vg3_model_run(machine_t *m, const vg3_model_run_t *t)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, t->draw ? 27 : 25)) return 0;
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    VG3_SETDS8(0x7D8C, 0);
+    c->r[R_AX] = ds_get(c, 0x8590);
+    c->seg[S_ES] = c->r[R_AX];
+    c->r[R_SI] = (uint16_t)alu_sub(c, c->r[R_SI], c->r[R_SI], 1, 0);
+    c->r[R_AX] = seg_read16(c, c->seg[S_ES], 0);
+    alu_sub(c, c->r[R_AX], VG3_FRAME(6), 1, 0);
+    if (!x86_cond(c, 7)) {                                        /* ja not taken: no such model */
+        c->r[R_BP] = cpu_pop16(c);
+        c->icount += 10 + 2;
+        far_ret(c);
+        return 1;
+    }
+    static const uint16_t to[5] = { 0x7CCC, 0x7CCE, 0x7CD0, 0x7D4C, 0x7D4E };
+    const int args = t->draw ? 5 : 4;
+    for (int k = 0; k < args; k++) {
+        c->r[R_AX] = VG3_FRAME(8 + 2 * k);
+        ds_put(c, to[k], c->r[R_AX]);
+    }
+    cpu_push16(c, 0x7CD2);                                        /* out */
+    cpu_push16(c, 0x7B28);                                        /* the camera matrix */
+    c->r[R_AX] = 0x7CCC;
+    cpu_push16(c, 0x7CCC);                                        /* the position */
+    c->icount += 10 + 2 * args + 6;
+    VG3_FAR(t->call_vec, 9);
+    VG3_DROP(6);
+    c->r[R_BX] = x86_shift(c, 4, VG3_FRAME(6), 1, 1);             /* shl bx, 1 */
+    c->r[R_SI] = seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 2));
+    {                                                             /* the depth, |[7CDC]| */
+        const uint16_t z = ds_get(c, 0x7CDC);
+        const uint16_t sx = (z & 0x8000) ? 0xFFFF : 0;
+        c->r[R_DX] = sx;
+        c->r[R_AX] = (uint16_t)alu_logic(c, z ^ sx, 1);
+        c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], sx, 1, 0);
+        c->r[R_DX] = c->r[R_AX];
+    }
+    unsigned n = 9;
+    do {                                                          /* the detail levels */
+        VG3_ROOM_OR_STOP(6 + 12, t->loop);
+        c->r[R_AX] = seg_read16(c, c->seg[S_ES], c->r[R_SI]);
+        c->r[R_SI] = (uint16_t)alu_add(c, c->r[R_SI], 2, 1, 0);
+        c->r[R_BX] = seg_read16(c, c->seg[S_ES], c->r[R_SI]);
+        c->r[R_SI] = (uint16_t)alu_add(c, c->r[R_SI], 2, 1, 0);
+        alu_sub(c, c->r[R_DX], c->r[R_AX], 1, 0);
+        n += 6;
+    } while (x86_cond(c, 7));
+    c->r[R_SI] = c->r[R_BX];
+    c->r[R_AX] = seg_read16(c, c->seg[S_ES], c->r[R_SI]);
+    c->r[R_SI] = (uint16_t)alu_add(c, c->r[R_SI], 2, 1, 0);
+    alu_sub(c, c->r[R_AX], c->r[R_DX], 1, 0);
+    n += 5;
+    if (!x86_cond(c, 7)) { VG3_MARK(); n += 2; }                  /* beyond the level's own range */
+    int reach = 1;
+    if (t->draw) {
+        alu_sub(c, VG3_DS8(0x7D8E), 0, 0, 0);
+        n += 2;
+        reach = (c->flags & F_ZF) != 0;                           /* [7D8E] skips the reach test */
+    }
+    int marked = 0;
+    if (reach) {
+        c->icount += n;
+        VG3_NEAR(0x02B2, t->ret_range, 12);                       /* in reach? */
+        n = 1;                                                    /* je */
+        if (!(c->flags & F_ZF)) { VG3_MARK(); n += 3; marked = 1; }
+    }
+    if (!marked) {                                                /* the parts and planes */
+        c->r[R_CX] = seg_read16(c, c->seg[S_ES], c->r[R_SI]);
+        c->r[R_SI] = (uint16_t)alu_add(c, c->r[R_SI], 2, 1, 0);
+        c->icount += n + 2;
+        VG3_NEAR(0x0317, (uint16_t)(t->call_parts + 3), 4);
+        c->r[R_AX] = seg_read16(c, c->seg[S_ES], c->r[R_SI]);
+        c->r[R_SI] = (uint16_t)alu_add(c, c->r[R_SI], 2, 1, 0);
+        ds_put(c, 0x7D5C, c->r[R_AX]);
+        c->icount += 3;
+        VG3_NEAR(0x0561, (uint16_t)(t->call_planes + 3), t->draw ? 9 : 16);
+        {
+            const uint16_t v = ds_get(c, 0x7D5A);
+            const uint16_t sx = (v & 0x8000) ? 0xFFFF : 0;
+            c->r[R_DX] = sx;
+            c->r[R_AX] = (uint16_t)alu_logic(c, v ^ sx, 1);
+            c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], sx, 1, 0);
+            alu_sub(c, c->r[R_AX], 4, 1, 0);
+        }
+        n = 6;
+        if (x86_cond(c, 2)) { VG3_MARK(); n += 2; }               /* jae not taken: under four planes */
+        if (t->draw) {                                            /* 0190: draw it */
+            static const uint16_t step[5][2] = {
+                { 0x027D, 0x0193 }, { 0x06B5, 0x0196 }, { 0x0A33, 0x0199 }, { 0x0C76, 0x019C }, { 0x029E, 0x019F } };
+            c->icount += n;
+            n = 0;
+            for (int k = 0; k < 5; k++) VG3_NEAR(step[k][0], step[k][1], k < 4 ? 1 : 8);
+        }
+    }
+    c->r[R_BX] = ds_get(c, 0x7D8C);                               /* tail */
+    c->r[R_BX] = (uint16_t)alu_logic(c, c->r[R_BX] & 0x80, 1);
+    c->r[R_BX] = (uint16_t)alu_logic(c, c->r[R_BX] ^ 0x80, 1);
+    n += 4;
+    if (!(c->flags & F_ZF)) n++;                                  /* nop */
+    ds_put(c, 0xC6B2, (uint16_t)alu_logic(c, ds_get(c, 0xC6B2) | c->r[R_BX], 1));
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += n + 3;
+    far_ret(c);
+    return 1;
+}
+static int vgame_model_draw(machine_t *m) { return vg3_model_run(m, &VG3_MODEL_DRAW); }
+static int vgame_model_probe(machine_t *m) { return vg3_model_run(m, &VG3_MODEL_PROBE); }
+#undef VG3_MARK
+
+/* VGAME 1452:03AB, rotation_from_angles(a0, a1, a2, out), far: the sines and
+ * cosines of the three angles (1452:0006, 1452:0033; a0 into 919C/919E,
+ * a2 into 91A4/91A6, a1 into 91A0/91A2) and from them the 3x3 rotation
+ * matrix at DS:out, in 1.15 fixed point - each product an IMUL taken
+ * doubled (SHL AX, RCL DX). With s/c the sines and cosines:
+ *   out[0] = c2 c0 - s2 s1 s0    out[1] = s2 c0 + c2 s1 s0    out[2] = -c1 s0
+ *   out[3] = -s2 c1              out[4] = c2 c1               out[5] = s1
+ *   out[6] = c2 s0 + s2 s1 c0    out[7] = s2 s0 - c2 s1 c0    out[8] = c1 c0
+ * Every operand is read from memory when the original reads it. */
+static uint16_t vg3_q15(cpu_t *c, uint16_t a, uint16_t at)       /* mov ax, a; imul [at]; shl ax, 1; rcl dx, 1 */
+{
+    c->r[R_AX] = a;
+    x86_imul16(c, ds_get(c, at));
+    c->r[R_AX] = x86_shift(c, 4, c->r[R_AX], 1, 1);
+    c->r[R_DX] = x86_shift(c, 2, c->r[R_DX], 1, 1);
+    return c->r[R_DX];
+}
+
+static int vgame_rotation_from_angles(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { S0 = 0x919C, C0 = 0x919E, S1 = 0x91A0, C1 = 0x91A2, S2 = 0x91A4, C2 = 0x91A6 };
+    static const struct { uint8_t arg; uint16_t sin_at, cos_at, call; } angle[3] = {
+        { 6, S0, C0, 0x03B5 }, { 0x0A, S2, C2, 0x03CB }, { 8, S1, C1, 0x03E1 } };
+    if (!room(c, 4 + 1 + 1)) return 0;                          /* to the first CALL */
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    x86_push_reg(c, R_DI);
+    c->r[R_DI] = VG3_FRAME(0x0C);
+    c->icount += 4;
+    for (int k = 0; k < 3; k++) {
+        cpu_push16(c, VG3_FRAME(angle[k].arg));
+        c->icount += 1;
+        VG3_FAR(angle[k].call, 2);                                /* sine */
+        ds_put(c, angle[k].sin_at, c->r[R_AX]);
+        c->icount += 1;
+        VG3_FAR((uint16_t)(angle[k].call + 8), k < 2 ? 4 : 2 + 86 + 3);   /* cosine of the same */
+        ds_put(c, angle[k].cos_at, c->r[R_AX]);
+        VG3_DROP(2);
+        c->icount += 2;
+    }
+    const uint16_t di = c->r[R_DI];
+    uint16_t t;
+    t = vg3_q15(c, ds_get(c, S2), S1);                            /* out[0] */
+    t = vg3_q15(c, t, S0);
+    c->r[R_CX] = c->r[R_DX] = (uint16_t)alu_sub(c, 0, t, 1, 0);
+    vg3_q15(c, ds_get(c, C2), C0);
+    ds_put(c, di, c->r[R_DX] = (uint16_t)alu_add(c, c->r[R_DX], c->r[R_CX], 1, 0));
+    t = vg3_q15(c, ds_get(c, C2), S1);                            /* out[1] */
+    c->r[R_CX] = vg3_q15(c, t, S0);
+    vg3_q15(c, ds_get(c, S2), C0);
+    ds_put(c, (uint16_t)(di + 2), c->r[R_DX] = (uint16_t)alu_add(c, c->r[R_DX], c->r[R_CX], 1, 0));
+    vg3_q15(c, ds_get(c, C1), S0);                                /* out[2] */
+    ds_put(c, (uint16_t)(di + 4), c->r[R_DX] = (uint16_t)alu_sub(c, 0, c->r[R_DX], 1, 0));
+    vg3_q15(c, ds_get(c, S2), C1);                                /* out[3] */
+    ds_put(c, (uint16_t)(di + 6), c->r[R_DX] = (uint16_t)alu_sub(c, 0, c->r[R_DX], 1, 0));
+    ds_put(c, (uint16_t)(di + 8), vg3_q15(c, ds_get(c, C2), C1)); /* out[4] */
+    c->r[R_DX] = ds_get(c, S1);                                   /* out[5] */
+    ds_put(c, (uint16_t)(di + 0x0A), c->r[R_DX]);
+    t = vg3_q15(c, ds_get(c, S2), S1);                            /* out[6] */
+    c->r[R_CX] = vg3_q15(c, t, C0);
+    vg3_q15(c, ds_get(c, C2), S0);
+    ds_put(c, (uint16_t)(di + 0x0C), c->r[R_DX] = (uint16_t)alu_add(c, c->r[R_DX], c->r[R_CX], 1, 0));
+    t = vg3_q15(c, ds_get(c, C2), S1);                            /* out[7] */
+    t = vg3_q15(c, t, C0);
+    c->r[R_CX] = c->r[R_DX] = (uint16_t)alu_sub(c, 0, t, 1, 0);
+    vg3_q15(c, ds_get(c, S2), S0);
+    ds_put(c, (uint16_t)(di + 0x0E), c->r[R_DX] = (uint16_t)alu_add(c, c->r[R_DX], c->r[R_CX], 1, 0));
+    ds_put(c, (uint16_t)(di + 0x10), vg3_q15(c, ds_get(c, C1), C0));   /* out[8] */
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 86 + 3;
+    far_ret(c);
+    return 1;
+}
+
+/* VGAME 0x013F1, map_object(type, x, y): one object of the map view. At
+ * the finer levels ([E328] >= 3) only objects whose attribute bit 7 (the
+ * byte table [0A62] by the type's low byte) matches the pass's filter
+ * [9516] are drawn. The model segment is the map's ([B78C] into [8590]),
+ * the orientation at 49D0 is built from three zero angles (1452:03AB)
+ * and transposed (0x0E289), and the model is drawn at (x, 0, -y) by
+ * model_draw (120A:00CF) with 49D0 and C05A. SI is kept. */
+static int vgame_map_object(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 18)) return 0;
+    x86_enter(c, 2, 0);
+    x86_push_reg(c, R_SI);
+    alu_sub(c, ds_get(c, 0xE328), 3, 1, 0);
+    unsigned n = 4;
+    if (!x86_cond(c, 0xC)) {                                      /* jl not taken: filter by attribute */
+        c->r[R_BX] = ds_get(c, 0x0A62);
+        c->r[R_SI] = (uint16_t)alu_logic(c, VG3_FRAME(4) & 0xFF, 1);
+        set_r8(c, R_AL, VG3_DS8(c->r[R_BX] + c->r[R_SI]));
+        c->r[R_AX] = (uint16_t)alu_logic(c, c->r[R_AX] & 0x80, 1);
+        alu_sub(c, c->r[R_AX], ds_get(c, 0x9516), 1, 0);
+        n += 7;
+        if (!(c->flags & F_ZF)) {                                 /* filtered out */
+            c->r[R_SI] = cpu_pop16(c);
+            x86_leave(c);
+            c->icount += n + 3;
+            near_ret(c);
+            return 1;
+        }
+    }
+    c->r[R_AX] = ds_get(c, 0xB78C);
+    ds_put(c, 0x8590, c->r[R_AX]);
+    cpu_push16(c, 0x49D0);
+    cpu_push16(c, 0);
+    cpu_push16(c, 0);
+    cpu_push16(c, 0);
+    c->icount += n + 6;
+    VG3_FAR(0x1422, 2);                                           /* the orientation */
+    VG3_DROP(8);
+    c->icount += 1;
+    VG3_NEAR(0xE289, 0x142D, 11);                                 /* transposed */
+    cpu_push16(c, 0xC05A);
+    cpu_push16(c, 0x49D0);
+    c->r[R_AX] = (uint16_t)alu_sub(c, 0, VG3_FRAME(8), 1, 0);     /* -y */
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, 0);
+    cpu_push16(c, VG3_FRAME(6));                                  /* x */
+    set_r8(c, R_AL, VG3_FRAME(4) & 0xFF);
+    set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
+    cpu_push16(c, c->r[R_AX]);                                    /* the type */
+    c->icount += 10;
+    VG3_FAR(0x1444, 4);                                           /* model_draw */
+    VG3_DROP(0x0C);
+    c->r[R_SI] = cpu_pop16(c);
+    x86_leave(c);
+    c->icount += 4;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x0EC90, filelength(fd): the C runtime's length of an open file.
+ * A handle below zero or not below the handle count [926F] sets errno
+ * [9262] to 9 (EBADF) and returns -1. Otherwise the position is read
+ * (lseek(fd, 0, 1) at 0x0F3DE); a failure returns -1; else the end is
+ * sought (lseek(fd, 0, 2)) and, when the end differs from where the
+ * file was, the position is put back. DX:AX is the length. SI is kept. */
+static int vgame_filelength(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 17)) return 0;
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_SP] = (uint16_t)alu_sub(c, c->r[R_SP], 8, 1, 0);
+    x86_push_reg(c, R_SI);
+    c->r[R_SI] = VG3_FRAME(4);
+    alu_logic(c, c->r[R_SI], 1);
+    unsigned n = 7;
+    int bad = x86_cond(c, 0xC);                                   /* jl */
+    if (!bad) {
+        alu_sub(c, ds_get(c, 0x926F), c->r[R_SI], 1, 0);
+        n += 2;
+        bad = !x86_cond(c, 0xF);                                  /* jg not taken */
+    }
+    if (bad) {
+        ds_put(c, 0x9262, 9);
+        c->r[R_AX] = 0xFFFF;
+        c->r[R_DX] = 0xFFFF;
+        n += 4;
+    } else {
+        static const struct { uint16_t whence, call; } seek[2] = { { 1, 0xECB9 }, { 2, 0xECDF } };
+        int put_back = 0;
+        for (int k = 0; k < 2; k++) {                             /* where it is, then the end */
+            c->r[R_AX] = seek[k].whence;
+            cpu_push16(c, c->r[R_AX]);
+            c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+            cpu_push16(c, 0);
+            cpu_push16(c, 0);
+            cpu_push16(c, c->r[R_SI]);
+            c->icount += n + 6;
+            VG3_NEAR(0xF3DE, (uint16_t)(seek[k].call + 3), k ? 13 : 16);
+            VG3_DROP(8);
+            VG3_SETFRAME(k ? -4 : -8, c->r[R_AX]);
+            VG3_SETFRAME(k ? -2 : -6, c->r[R_DX]);
+            n = 5;                                                /* add, mov, mov, cmp, jne */
+            if (k == 0) {
+                alu_sub(c, c->r[R_AX], 0xFFFF, 1, 0);
+                if (!(c->flags & F_ZF)) continue;
+                alu_sub(c, c->r[R_DX], c->r[R_AX], 1, 0);
+                n += 2;
+                if (!(c->flags & F_ZF)) continue;
+                VG3_SETFRAME(-4, c->r[R_AX]);                     /* failed: -1 */
+                VG3_SETFRAME(-2, c->r[R_AX]);
+                n += 3;
+                break;
+            }
+            alu_sub(c, c->r[R_AX], VG3_FRAME(-8), 1, 0);
+            put_back = 1;
+            if (c->flags & F_ZF) {
+                alu_sub(c, c->r[R_DX], VG3_FRAME(-6), 1, 0);
+                n += 2;
+                put_back = !(c->flags & F_ZF);
+            }
+        }
+        if (put_back) {                                           /* lseek(fd, where, 0) */
+            c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+            cpu_push16(c, 0);
+            cpu_push16(c, VG3_FRAME(-6));
+            cpu_push16(c, VG3_FRAME(-8));
+            cpu_push16(c, c->r[R_SI]);
+            c->icount += n + 5;
+            VG3_NEAR(0xF3DE, 0xED02, 7);
+            VG3_DROP(8);
+            n = 1;
+        }
+        c->r[R_AX] = VG3_FRAME(-4);
+        c->r[R_DX] = VG3_FRAME(-2);
+        n += 2;
+    }
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += n + 4;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x0F91A, malloc(size): the C runtime's near heap (descriptor at
+ * 922E). A size above FFE8h fails at once; otherwise a free block is
+ * looked for (0x0F968, CF clear when found), and when there is none the
+ * heap is grown (0x0F9E4, CF set when it cannot be) and looked through
+ * again. AX is the block or 0 (DX:AX 0 on failure). SI and DI are kept. */
+static int vgame_malloc(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 15)) return 0;
+    x86_push_reg(c, R_BP);                                        /* (after JMP 0F93F) */
+    c->r[R_BP] = c->r[R_SP];
+    x86_push_reg(c, R_SI);
+    x86_push_reg(c, R_DI);
+    c->r[R_CX] = VG3_FRAME(4);
+    alu_sub(c, c->r[R_CX], 0xFFE8, 1, 0);
+    unsigned n = 8;
+    int ok = 0;
+    if (!x86_cond(c, 7)) {                                        /* ja not taken: worth a look */
+        c->r[R_BX] = 0x922E;
+        c->icount += n + 1;
+        VG3_NEAR(0xF968, 0xF952, 5);                              /* a free block? */
+        n = 1;                                                    /* jae */
+        ok = !(c->flags & F_CF);
+        if (!ok) {
+            c->icount += n;
+            VG3_NEAR(0xF9E4, 0xF957, 8);                          /* grow the heap */
+            n = 1;                                                /* jb */
+            if (!(c->flags & F_CF)) {
+                c->icount += n;
+                VG3_NEAR(0xF968, 0xF95C, 8);                      /* and look again */
+                n = 1;                                            /* jae */
+                ok = !(c->flags & F_CF);
+            }
+        }
+    }
+    if (!ok) {                                                    /* 0F95E: none */
+        c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);
+        c->r[R_DX] = 0;
+        n += 3;
+    }
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += n + 4;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x0F2C6, flush(stream): the C runtime's flush of one stream - or,
+ * for a null stream, of all of them (0x0F340 with 0; its RET 2 takes
+ * the argument). A stream open for writing only (flag bits 0-1 = 2)
+ * whose buffer is its own (flag bit 3, or bit 0 of the buffer record
+ * at stream - 92B8h + 9358h) and holds bytes (ptr +0 beyond base +4)
+ * has them written (0x0F7AE on its handle +7); a short write sets the
+ * error bit 20h and the result -1. The pointer goes back to the base
+ * and the count +2 to 0. AX is 0 or -1. */
+static int vgame_flush(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 34)) return 0;
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_SP] = (uint16_t)alu_sub(c, c->r[R_SP], 2, 1, 0);
+    x86_push_reg(c, R_DI);
+    x86_push_reg(c, R_SI);
+    c->r[R_DI] = (uint16_t)alu_sub(c, c->r[R_DI], c->r[R_DI], 1, 0);
+    alu_sub(c, VG3_FRAME(4), 0, 1, 0);
+    unsigned n = 8;
+    if (c->flags & F_ZF) {                                        /* no stream: all of them */
+        c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+        cpu_push16(c, 0);
+        c->icount += n + 2;
+        if (!guest_call_pop(m, 0xF340, 0xF2DB, 2)) return 1;      /* flush all: RET 2 takes the argument */
+        if (!room(c, 6)) { c->ip = 0xF2DB; return 1; }
+        n = 1;                                                    /* jmp */
+    } else {
+        const uint16_t s = c->r[R_SI] = VG3_FRAME(4);
+        set_r8(c, R_AL, VG3_DS8(s + 6));
+        c->r[R_CX] = c->r[R_AX];
+        set_r8(c, R_AL, (uint8_t)alu_logic(c, get_r8(c, R_AL) & 3, 0));
+        alu_sub(c, get_r8(c, R_AL), 2, 0, 0);
+        n += 6;
+        if (c->flags & F_ZF) {                                    /* writing */
+            alu_logic(c, get_r8(c, R_CL) & 8, 0);
+            n += 2;
+            int own = !(c->flags & F_ZF);
+            if (!own) {
+                c->r[R_BX] = (uint16_t)alu_sub(c, s, 0x92B8, 1, 0);
+                alu_logic(c, VG3_DS8(c->r[R_BX] - 0x6CA8) & 1, 0);
+                n += 4;
+                own = !(c->flags & F_ZF);
+            }
+            if (own) {
+                c->r[R_AX] = (uint16_t)alu_sub(c, ds_get(c, s), ds_get(c, (uint16_t)(s + 4)), 1, 0);
+                VG3_SETFRAME(-2, c->r[R_AX]);
+                alu_logic(c, c->r[R_AX], 1);
+                n += 5;
+                if (!x86_cond(c, 0xE)) {                          /* jle not taken: bytes to write */
+                    cpu_push16(c, c->r[R_AX]);
+                    cpu_push16(c, ds_get(c, (uint16_t)(s + 4)));
+                    set_r8(c, R_CL, VG3_DS8(s + 7));
+                    set_r8(c, R_CH, (uint8_t)alu_sub(c, get_r8(c, R_CH), get_r8(c, R_CH), 0, 0));
+                    cpu_push16(c, c->r[R_CX]);
+                    c->icount += n + 5;
+                    VG3_NEAR(0xF7AE, 0xF317, 14);                 /* write */
+                    VG3_DROP(6);
+                    alu_sub(c, VG3_FRAME(-2), c->r[R_AX], 1, 0);
+                    n = 3;
+                    if (!(c->flags & F_ZF)) {                     /* short: an error */
+                        const uint16_t at = (uint16_t)(c->r[R_SI] + 6);
+                        VG3_SETDS8(at, alu_logic(c, VG3_DS8(at) | 0x20, 0));
+                        c->r[R_DI] = 0xFFFF;
+                        n += 2;
+                    }
+                }
+            }
+        }
+        const uint16_t si = c->r[R_SI];                           /* 0F326 */
+        c->r[R_AX] = ds_get(c, (uint16_t)(si + 4));
+        ds_put(c, si, c->r[R_AX]);
+        ds_put(c, (uint16_t)(si + 2), 0);
+        c->r[R_AX] = c->r[R_DI];
+        n += 4;
+    }
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += n + 5;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x0F122, filbuf(stream): the C runtime's refill of a stream's
+ * buffer, returning its first byte. A stream not open (flag bits 83h
+ * clear) or at an error (40h) returns -1; one open for writing (2) takes
+ * the error bit 20h and returns -1. Otherwise it is marked reading (1);
+ * a stream with no buffer of its own (flag bits 0Ch clear and bit 0 of
+ * its buffer record at stream - 92B8h + 9358h clear) gets one (0x0F5B0).
+ * The buffer (base +4, size at record +2) is read from the handle +7
+ * (0x0F458): nothing read sets the end bit 10h, a failure the error bit
+ * 20h, either with the count 0 and -1 returned. Else, when the handle's
+ * byte (at handle - 6D8Fh) has both bits 82h and the stream's flag
+ * neither, the buffer record takes bit 20h; the count is the bytes less
+ * one and the pointer moves past the first, which AX returns. */
+static int vgame_filbuf(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 29)) return 0;
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    x86_push_reg(c, R_SI);
+    x86_push_reg(c, R_DI);
+    const uint16_t s = c->r[R_SI] = VG3_FRAME(4);
+    set_r8(c, R_AL, VG3_DS8(s + 6));
+    alu_logic(c, get_r8(c, R_AL) & 0x83, 0);
+    unsigned n = 8;
+    int fail = (c->flags & F_ZF) != 0;                            /* not open */
+    if (!fail) {
+        alu_logic(c, get_r8(c, R_AL) & 0x40, 0);
+        n += 2;
+        fail = !(c->flags & F_ZF);                                /* at an error */
+    }
+    if (!fail) {
+        alu_logic(c, get_r8(c, R_AL) & 2, 0);
+        n += 2;
+        if (!(c->flags & F_ZF)) {                                 /* writing: an error */
+            VG3_SETDS8(s + 6, alu_logic(c, VG3_DS8(s + 6) | 0x20, 0));
+            n += 2;
+            fail = 1;
+        }
+    }
+    if (!fail) {
+        set_r8(c, R_AL, (uint8_t)alu_logic(c, get_r8(c, R_AL) | 1, 0));
+        VG3_SETDS8(s + 6, get_r8(c, R_AL));
+        c->r[R_DI] = (uint16_t)alu_add(c, (uint16_t)alu_sub(c, s, 0x92B8, 1, 0), 0x9358, 1, 0);
+        alu_logic(c, get_r8(c, R_AL) & 0x0C, 0);
+        n += 7;
+        int has = !(c->flags & F_ZF);
+        if (!has) {
+            alu_logic(c, VG3_DS8(c->r[R_DI]) & 1, 0);
+            n += 2;
+            has = !(c->flags & F_ZF);
+        }
+        if (!has) {                                               /* get it a buffer */
+            cpu_push16(c, s);
+            c->icount += n + 1;
+            VG3_NEAR(0xF5B0, 0xF155, 9);
+            c->r[R_AX] = cpu_pop16(c);
+            n = 1;
+        }
+        const uint16_t si = c->r[R_SI], di = c->r[R_DI];          /* 0F156: read it */
+        c->r[R_AX] = ds_get(c, (uint16_t)(si + 4));
+        ds_put(c, si, c->r[R_AX]);
+        cpu_push16(c, ds_get(c, (uint16_t)(di + 2)));
+        cpu_push16(c, c->r[R_AX]);
+        c->r[R_BX] = (uint16_t)alu_logic(c, 0, 1);
+        set_r8(c, R_BL, VG3_DS8(si + 7));
+        cpu_push16(c, c->r[R_BX]);
+        c->icount += n + 7;
+        VG3_NEAR(0xF458, 0xF168, 24);
+        VG3_DROP(6);
+        alu_logic(c, c->r[R_AX], 1);
+        n = 3;
+        const uint16_t sj = c->r[R_SI];
+        if (c->flags & F_ZF) {                                    /* nothing: the end */
+            VG3_SETDS8(sj + 6, alu_logic(c, VG3_DS8(sj + 6) | 0x10, 0));
+            n += 1;
+            fail = 2;
+        } else {
+            alu_sub(c, c->r[R_AX], 0xFFFF, 1, 0);
+            n += 2;
+            if (c->flags & F_ZF) {                                /* failed: an error */
+                VG3_SETDS8(sj + 6, alu_logic(c, VG3_DS8(sj + 6) | 0x20, 0));
+                n += 2;
+                fail = 2;
+            }
+        }
+        if (fail) {
+            ds_put(c, (uint16_t)(sj + 2), 0);                     /* 0F184 */
+            n += 1;
+        } else {                                                  /* 0F18E */
+            set_r8(c, R_BH, VG3_DS8(c->r[R_BX] - 0x6D8F));
+            set_r8(c, R_BH, (uint8_t)alu_logic(c, get_r8(c, R_BH) & 0x82, 0));
+            alu_sub(c, get_r8(c, R_BH), 0x82, 0, 0);
+            n += 4;
+            if (c->flags & F_ZF) {
+                set_r8(c, R_BH, VG3_DS8(sj + 6));
+                alu_logic(c, get_r8(c, R_BH) & 0x82, 0);
+                n += 3;
+                if (c->flags & F_ZF) {
+                    const uint16_t dj = c->r[R_DI];
+                    VG3_SETDS8(dj, alu_logic(c, VG3_DS8(dj) | 0x20, 0));
+                    n += 1;
+                }
+            }
+            c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1);     /* 0F1A5 */
+            ds_put(c, (uint16_t)(sj + 2), c->r[R_AX]);
+            c->r[R_BX] = ds_get(c, sj);
+            c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);
+            set_r8(c, R_AL, VG3_DS8(c->r[R_BX]));
+            c->r[R_BX] = (uint16_t)alu_inc(c, c->r[R_BX], 1);
+            ds_put(c, sj, c->r[R_BX]);
+            n += 7;
+        }
+    }
+    if (fail) {                                                   /* 0F189 */
+        c->r[R_AX] = 0xFFFF;
+        n += 2;
+    }
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += n + 4;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x0F1E0, openfile(name, mode, share, stream): the C runtime's open
+ * of a stream. The mode's first letter picks the flags (SI) and the
+ * stream flag ([bp-4]): 'r' 0 and read (1), 'w' 301h and write (2), 'a'
+ * 109h and write; anything else fails (0). The letters after it, up to
+ * the end or the first one not understood, add '+' (read and write: SI
+ * bit 1 set, bit 0 clear, flag 80h; not twice), 't' (4000h) and 'b'
+ * (8000h; neither after either). The file is opened (0x0F5F2 with the
+ * flags, share and 1A4h); a negative handle fails. Otherwise the open
+ * count [93FA] goes up and the stream is set: its flag, handle +7, the
+ * pointer, base and count 0 and its buffer record (stream - 92B8h +
+ * 9358h) cleared. AX is the stream or 0. Each letter looks at the room. */
+static int vgame_openfile(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 22)) return 0;
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_SP] = (uint16_t)alu_sub(c, c->r[R_SP], 8, 1, 0);
+    x86_push_reg(c, R_DI);
+    x86_push_reg(c, R_SI);
+    c->r[R_BX] = VG3_FRAME(6);
+    set_r8(c, R_AL, VG3_DS8(c->r[R_BX]));
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);      /* cbw */
+    alu_sub(c, c->r[R_AX], 'w', 1, 0);
+    unsigned n = 10;
+    int fail = 0;
+    if (c->flags & F_ZF) {                                        /* 'w' */
+        c->r[R_SI] = 0x301;
+        VG3_SETFRAME(-4, (VG3_FRAME(-4) & 0xFF00) | 2);
+        n += 3;
+    } else if (x86_cond(c, 7)) {                                  /* above 'w' */
+        n += 1;
+        fail = 1;
+    } else {
+        set_r8(c, R_AL, (uint8_t)alu_sub(c, get_r8(c, R_AL), 'a', 0, 0));
+        n += 3;
+        if (c->flags & F_ZF) {                                    /* 'a' */
+            c->r[R_SI] = 0x109;
+            VG3_SETFRAME(-4, (VG3_FRAME(-4) & 0xFF00) | 2);
+            n += 4;
+        } else {
+            set_r8(c, R_AL, (uint8_t)alu_sub(c, get_r8(c, R_AL), 'r' - 'a', 0, 0));
+            n += 2;
+            if (c->flags & F_ZF) {                                /* 'r' */
+                c->r[R_SI] = (uint16_t)alu_sub(c, c->r[R_SI], c->r[R_SI], 1, 0);
+                VG3_SETFRAME(-4, (VG3_FRAME(-4) & 0xFF00) | 1);
+                n += 2;
+            } else fail = 1;
+        }
+    }
+    if (!fail) {
+        VG3_SETFRAME(-2, 1);                                      /* 0F208: letters still understood */
+        n += 1;
+        for (;;) {                                                /* 0F20D: the next letter */
+            VG3_ROOM_OR_STOP(19, 0xF20D);
+            VG3_SETFRAME(6, (uint16_t)alu_inc(c, VG3_FRAME(6), 1));
+            c->r[R_BX] = VG3_FRAME(6);
+            alu_sub(c, VG3_DS8(c->r[R_BX]), 0, 0, 0);
+            n += 4;
+            if (c->flags & F_ZF) break;
+            alu_sub(c, VG3_FRAME(-2), 0, 1, 0);
+            n += 2;
+            if (c->flags & F_ZF) break;
+            set_r8(c, R_AL, VG3_DS8(c->r[R_BX]));
+            c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);
+            alu_sub(c, c->r[R_AX], 't', 1, 0);
+            n += 4;
+            uint16_t add = 0, mask = 0xC000;                      /* the bits a letter sets, and those it may not meet */
+            if (c->flags & F_ZF) add = 0x4000;                    /* 't' */
+            else {
+                n += 1;                                           /* ja */
+                if (!x86_cond(c, 7)) {
+                    set_r8(c, R_AL, (uint8_t)alu_sub(c, get_r8(c, R_AL), '+', 0, 0));
+                    n += 2;
+                    if (c->flags & F_ZF) { add = 2; mask = 2; }   /* '+' */
+                    else {
+                        set_r8(c, R_AL, (uint8_t)alu_sub(c, get_r8(c, R_AL), 'b' - '+', 0, 0));
+                        n += 2;
+                        if (c->flags & F_ZF) add = 0x8000;        /* 'b' */
+                    }
+                }
+            }
+            if (add) {
+                alu_logic(c, c->r[R_SI] & mask, 1);
+                n += 2;
+                if (c->flags & F_ZF) {                            /* taken */
+                    c->r[R_SI] = (uint16_t)alu_logic(c, c->r[R_SI] | add, 1);
+                    n += 2;                                       /* or, jmp */
+                    if (add == 2) {
+                        c->r[R_SI] = (uint16_t)alu_logic(c, c->r[R_SI] & 0xFFFE, 1);
+                        VG3_SETFRAME(-4, (VG3_FRAME(-4) & 0xFF00) | 0x80);
+                        n += 2;
+                    }
+                    continue;
+                }
+            }
+            VG3_SETFRAME(-2, 0);                                  /* 0F230: not understood */
+            n += 2;
+        }
+        c->r[R_AX] = 0x1A4;                                       /* 0F272: open it */
+        cpu_push16(c, 0x1A4);
+        cpu_push16(c, VG3_FRAME(8));
+        cpu_push16(c, c->r[R_SI]);
+        cpu_push16(c, VG3_FRAME(4));
+        c->icount += n + 5;
+        VG3_NEAR(0xF5F2, 0xF280, 27);
+        VG3_DROP(8);
+        VG3_SETFRAME(-6, c->r[R_AX]);
+        alu_logic(c, c->r[R_AX], 1);
+        n = 4;
+        if (x86_cond(c, 0xC)) { n += 1; fail = 1; }               /* jge not taken: jmp to the failure */
+        else {                                                    /* 0F28D: set the stream up */
+            ds_put(c, 0x93FA, (uint16_t)alu_inc(c, ds_get(c, 0x93FA), 1));
+            const uint16_t di = c->r[R_DI] = VG3_FRAME(0x0A);
+            c->r[R_AX] = (uint16_t)alu_add(c, (uint16_t)alu_sub(c, di, 0x92B8, 1, 0), 0x9358, 1, 0);
+            VG3_SETFRAME(-8, c->r[R_AX]);
+            set_r8(c, R_AL, VG3_FRAME(-4) & 0xFF);
+            VG3_SETDS8(di + 6, get_r8(c, R_AL));
+            c->r[R_BX] = VG3_FRAME(-8);
+            VG3_SETDS8(c->r[R_BX], 0);
+            c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+            ds_put(c, (uint16_t)(di + 2), 0);
+            ds_put(c, (uint16_t)(c->r[R_BX] + 4), 0);
+            ds_put(c, di, 0);
+            ds_put(c, (uint16_t)(di + 4), 0);
+            set_r8(c, R_AL, VG3_FRAME(-6) & 0xFF);
+            VG3_SETDS8(di + 7, get_r8(c, R_AL));
+            c->r[R_AX] = di;
+            n += 18;
+        }
+    }
+    if (fail) {                                                   /* 0F1FD */
+        c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+        n += 2;
+    }
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += n + 5;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x00C38, load_terrain: the theatre's terrain file. Its name in the
+ * buffer [8E] is given the extension at 0CEF (0x00CF3) and the file opened
+ * with the mode at 0CF4 (0x0EA1C, the stream kept in [991C]); then read
+ * (0x0EA30, fread) are one 2-byte word into 075E, 16 bytes and then 256
+ * into the level-3 grid 9F98, and 512 each into the refinement blocks of
+ * levels 2, 1 and 0 (9D40, 9B38, 9934); the file is closed (0x0E946). The
+ * level-4 grid B03C takes the theatre's 64-byte template (0A68 + theatre
+ * * 64, the theatre at +38h of the settings [9924]) by 0x0EDE0. */
+static int vgame_load_terrain(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    static const struct { uint16_t buf, size, count, call; } part[6] = {
+        { 0x075E, 2, 1, 0x0C5B }, { 0x9F98, 1, 0x10, 0x0C6C }, { 0x9F98, 1, 0x100, 0x0C7E },
+        { 0x9D40, 1, 0x200, 0x0C90 }, { 0x9B38, 1, 0x200, 0x0CA2 }, { 0x9934, 1, 0x200, 0x0CB4 } };
+    if (!room(c, 3 + 1)) return 0;
+    cpu_push16(c, 0x0CEF);
+    cpu_push16(c, ds_get(c, 0x008E));
+    c->icount += 2;
+    VG3_NEAR(0x0CF3, 0x0C42, 4 + 1);                              /* the extension */
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    cpu_push16(c, 0x0CF4);
+    cpu_push16(c, ds_get(c, 0x008E));
+    c->icount += 4;
+    VG3_NEAR(0xEA1C, 0x0C4E, 7 + 1);                              /* fopen */
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    ds_put(c, 0x991C, c->r[R_AX]);
+    cpu_push16(c, c->r[R_AX]);                                    /* the stream */
+    c->icount += 4;
+    for (int k = 0; k < 6; k++) {                                 /* fread(buf, size, count, stream) */
+        if (k) {
+            VG3_DROP(8);
+            cpu_push16(c, ds_get(c, 0x991C));
+            c->icount += 2;
+        }
+        cpu_push16(c, part[k].count);
+        cpu_push16(c, part[k].size);
+        cpu_push16(c, part[k].buf);
+        c->icount += 3;
+        VG3_NEAR(0xEA30, (uint16_t)(part[k].call + 3), k < 5 ? 5 + 1 : 2 + 1);
+    }
+    VG3_DROP(8);
+    cpu_push16(c, ds_get(c, 0x991C));
+    c->icount += 2;
+    VG3_NEAR(0xE946, 0x0CC1, 8 + 1);                              /* fclose */
+    c->r[R_BX] = cpu_pop16(c);
+    cpu_push16(c, 0x40);
+    {                                                             /* les bx, [9924] */
+        const uint16_t off = ds_get(c, 0x9924), seg = ds_get(c, 0x9926);
+        c->r[R_BX] = off;
+        c->seg[S_ES] = seg;
+    }
+    c->r[R_AX] = seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x38));
+    c->r[R_AX] = x86_shift(c, 4, c->r[R_AX], 6, 1);
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], 0x0A68, 1, 0);
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, 0xB03C);
+    c->icount += 8;
+    VG3_NEAR(0xEDE0, 0x0CD9, 2);                                  /* the level-4 template */
+    VG3_DROP(6);
+    c->icount += 2;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x0E946, fclose(stream): the C runtime's close. A stream at an
+ * error (flag 40h) or not open (83h clear) returns -1. Otherwise it is
+ * flushed (0x0F2C6, the result kept), its buffer freed (0x0F1B6) and its
+ * handle +7 closed (0x0F3BE; a failure gives -1). A temporary file (its
+ * number at stream - 92B8h - 6CA4h) is then removed (0x0F5A2): its name
+ * is the prefix at 9298, a '\' (929A) unless the prefix starts with one,
+ * and the number in decimal (0x0EB9E), built in a 14-byte frame buffer; a
+ * failed removal gives -1. The flag byte is cleared; AX is 0 or -1. */
+static int vgame_fclose(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 19)) return 0;
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_SP] = (uint16_t)alu_sub(c, c->r[R_SP], 0x0E, 1, 0);
+    x86_push_reg(c, R_DI);
+    x86_push_reg(c, R_SI);
+    c->r[R_DI] = 0xFFFF;
+    const uint16_t s = c->r[R_SI] = VG3_FRAME(4);
+    alu_logic(c, VG3_DS8(s + 6) & 0x40, 0);
+    unsigned n = 9;
+    int open = 0;
+    if (c->flags & F_ZF) {
+        alu_logic(c, VG3_DS8(s + 6) & 0x83, 0);
+        n += 2;
+        open = !(c->flags & F_ZF);
+    }
+    if (!open) n += 1;                                            /* jmp to the end */
+    else {
+        cpu_push16(c, s);
+        c->icount += n + 1;
+        VG3_NEAR(0xF2C6, 0xE96A, 8);                              /* flush */
+        VG3_DROP(2);
+        c->r[R_DI] = c->r[R_AX];
+        c->r[R_BX] = (uint16_t)alu_sub(c, c->r[R_SI], 0x92B8, 1, 0);
+        c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] - 0x6CA4));
+        VG3_SETFRAME(-4, c->r[R_AX]);                             /* the temporary number */
+        cpu_push16(c, c->r[R_SI]);
+        c->icount += 7;
+        VG3_NEAR(0xF1B6, 0xE980, 5);                              /* free the buffer */
+        VG3_DROP(2);
+        set_r8(c, R_AL, VG3_DS8(c->r[R_SI] + 7));
+        set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
+        cpu_push16(c, c->r[R_AX]);
+        c->icount += 4;
+        VG3_NEAR(0xF3BE, 0xE98C, 12);                             /* close the handle */
+        VG3_DROP(2);
+        alu_logic(c, c->r[R_AX], 1);
+        n = 3;
+        int failed = x86_cond(c, 0xC);                            /* jl */
+        if (!failed) {
+            alu_sub(c, VG3_FRAME(-4), 0, 1, 0);
+            n += 2;
+            if (!(c->flags & F_ZF)) {                             /* a temporary file: remove it */
+                c->r[R_AX] = 0x9298;
+                cpu_push16(c, 0x9298);
+                c->r[R_AX] = (uint16_t)(c->r[R_BP] - 0x0E);
+                cpu_push16(c, c->r[R_AX]);
+                c->icount += n + 4;
+                VG3_NEAR(0xEB50, 0xE9A4, 11);                     /* strcpy */
+                VG3_DROP(4);
+                c->r[R_AX] = (uint16_t)(c->r[R_BP] - 0x0C);
+                VG3_SETFRAME(-2, c->r[R_AX]);
+                alu_sub(c, mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x0E))), 0x5C, 0, 0);   /* a backslash */
+                n = 5;
+                if (!(c->flags & F_ZF)) {
+                    c->r[R_AX] = 0x929A;
+                    cpu_push16(c, 0x929A);
+                    c->r[R_AX] = (uint16_t)(c->r[R_BP] - 0x0E);
+                    cpu_push16(c, c->r[R_AX]);
+                    c->icount += n + 4;
+                    VG3_NEAR(0xEB10, 0xE9BE, 7);                  /* strcat */
+                    VG3_DROP(4);
+                    n = 2;                                        /* add, jmp */
+                } else {
+                    VG3_SETFRAME(-2, (uint16_t)alu_dec(c, VG3_FRAME(-2), 1));
+                    n += 1;
+                }
+                c->r[R_AX] = 10;                                  /* 0E9C7 */
+                cpu_push16(c, 10);
+                cpu_push16(c, VG3_FRAME(-2));
+                cpu_push16(c, VG3_FRAME(-4));
+                c->icount += n + 4;
+                VG3_NEAR(0xEB9E, 0xE9D4, 4);                      /* itoa */
+                VG3_DROP(6);
+                c->r[R_AX] = (uint16_t)(c->r[R_BP] - 0x0E);
+                cpu_push16(c, c->r[R_AX]);
+                c->icount += 3;
+                VG3_NEAR(0xF5A2, 0xE9DE, 11);                     /* remove */
+                VG3_DROP(2);
+                alu_logic(c, c->r[R_AX], 1);
+                n = 3;
+                failed = !(c->flags & F_ZF);
+            }
+        }
+        if (failed) { c->r[R_DI] = 0xFFFF; n += 1; }
+    }
+    VG3_SETDS8(c->r[R_SI] + 6, 0);                                /* 0E9E8 */
+    c->r[R_AX] = c->r[R_DI];
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += n + 7;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x04C73, objective_kinds: each of the two objectives (18-byte
+ * records at E306; one with its byte +5 clear is skipped) whose target (16-
+ * byte records at B2D0, the index at +0) stands on a scene object - looked
+ * up by 0x00D14 at the target's map position, (8000h - y) and x each
+ * shifted left 5 as 32-bit numbers (0x0EF68) - gets a kind of its own,
+ * the next from [0610]: the object's kind attributes (bytes at C630 by the
+ * kind's low seven bits) and its name (copied by 0x0EB50 from the kind's
+ * string, pointers at DF08, the next pointer set past it by 0x0EB82) go
+ * to the new kind, and the scene object is overridden to it (0x00F3D with
+ * kind + 100h). The target's kind word (+0Eh) becomes kind + 100h whether
+ * or not an object was found; [9F40] keeps the last object, [3DA4] is
+ * cleared. Each objective looks at the room before it starts. */
+static int vgame_objective_kinds(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 5)) return 0;
+    x86_enter(c, 4, 0);
+    x86_push_reg(c, R_SI);
+    c->r[R_AX] = ds_get(c, 0x0610);
+    VG3_SETFRAME(-4, c->r[R_AX]);                                 /* the next kind */
+    VG3_SETFRAME(-2, 0);                                          /* the objective */
+    unsigned n = 5;
+    for (;;) {                                                    /* 04C83 */
+        VG3_ROOM_OR_STOP(12, 0x4C83);
+        c->r[R_BX] = x86_imul3(c, VG3_FRAME(-2), 0x12);
+        alu_logic(c, VG3_DS8(c->r[R_BX] - 0x1CF5), 0);
+        n += 3;
+        if (c->flags & F_ZF) n += 1;                              /* jmp past it */
+        else {
+            c->r[R_AX] = 0x8000;                                  /* (8000h - y) << 5 */
+            c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0);
+            c->r[R_BX] = ds_get(c, (uint16_t)(c->r[R_BX] - 0x1CFA));
+            c->r[R_BX] = x86_shift(c, 4, c->r[R_BX], 4, 1);
+            c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], ds_get(c, (uint16_t)(c->r[R_BX] - 0x4D2E)), 1, 0);
+            c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, (c->flags & F_CF) ? 1u : 0u);
+            set_r8(c, R_CL, 5);
+            c->r[R_SI] = c->r[R_BX];
+            c->icount += n + 8;
+            VG3_NEAR(0xEF68, 0x4CAA, 6);
+            cpu_push16(c, c->r[R_DX]);
+            cpu_push16(c, c->r[R_AX]);
+            c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_SI] - 0x4D30));    /* x << 5 */
+            c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0);
+            set_r8(c, R_CL, 5);
+            c->icount += 5;
+            VG3_NEAR(0xEF68, 0x4CB7, 3);
+            cpu_push16(c, c->r[R_DX]);
+            cpu_push16(c, c->r[R_AX]);
+            c->icount += 2;
+            VG3_NEAR(0x0D14, 0x4CBC, 20);                         /* the scene object there */
+            VG3_DROP(8);
+            ds_put(c, 0x9F40, c->r[R_AX]);
+            alu_logic(c, c->r[R_AX], 1);
+            n = 4;
+            if (!(c->flags & F_ZF)) {                             /* found: a kind of its own */
+                c->r[R_BX] = c->r[R_AX];
+                set_r8(c, R_BL, VG3_DS8(c->r[R_BX]));
+                c->r[R_BX] = (uint16_t)alu_logic(c, c->r[R_BX] & 0x7F, 1);
+                set_r8(c, R_AL, VG3_DS8(c->r[R_BX] - 0x39D0));
+                c->r[R_BX] = VG3_FRAME(-4);
+                VG3_SETDS8(c->r[R_BX] - 0x39D0, get_r8(c, R_AL));
+                c->r[R_SI] = ds_get(c, 0x9F40);
+                set_r8(c, R_BL, VG3_DS8(c->r[R_SI]));
+                c->r[R_BX] = (uint16_t)alu_logic(c, c->r[R_BX] & 0x7F, 1);
+                c->r[R_BX] = x86_shift(c, 4, c->r[R_BX], 1, 1);
+                cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] - 0x20F8)));   /* the object's name */
+                c->r[R_BX] = x86_shift(c, 4, VG3_FRAME(-4), 1, 1);
+                cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] - 0x20F8)));   /* the new kind's */
+                c->r[R_SI] = c->r[R_BX];
+                c->icount += n + 15;
+                VG3_NEAR(0xEB50, 0x4CF5, 4);                      /* strcpy */
+                c->r[R_BX] = cpu_pop16(c);
+                c->r[R_BX] = cpu_pop16(c);
+                cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_SI] - 0x20F8)));
+                c->icount += 3;
+                VG3_NEAR(0xEB82, 0x4CFE, 9);                      /* strlen */
+                c->r[R_BX] = cpu_pop16(c);
+                c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], ds_get(c, (uint16_t)(c->r[R_SI] - 0x20F8)), 1, 0);
+                c->r[R_AX] = (uint16_t)alu_inc(c, c->r[R_AX], 1);
+                ds_put(c, (uint16_t)(c->r[R_SI] - 0x20F6), c->r[R_AX]);   /* the next name goes after it */
+                c->r[R_AX] = VG3_FRAME(-4);
+                set_r8(c, R_AH, (uint8_t)alu_add(c, get_r8(c, R_AH), 1, 0, 0));
+                cpu_push16(c, c->r[R_AX]);
+                cpu_push16(c, ds_get(c, 0x9F40));
+                c->icount += 8;
+                VG3_NEAR(0x0F3D, 0x4D16, 16);                     /* override the object */
+                c->r[R_BX] = cpu_pop16(c);
+                c->r[R_BX] = cpu_pop16(c);
+                n = 2;
+            }
+            c->r[R_AX] = VG3_FRAME(-4);                           /* 04D18: the target's kind */
+            set_r8(c, R_AH, (uint8_t)alu_add(c, get_r8(c, R_AH), 1, 0, 0));
+            c->r[R_BX] = x86_imul3(c, VG3_FRAME(-2), 0x12);
+            c->r[R_BX] = ds_get(c, (uint16_t)(c->r[R_BX] - 0x1CFA));
+            c->r[R_BX] = x86_shift(c, 4, c->r[R_BX], 4, 1);
+            ds_put(c, (uint16_t)(c->r[R_BX] - 0x4D24), c->r[R_AX]);
+            VG3_SETFRAME(-4, (uint16_t)alu_inc(c, VG3_FRAME(-4), 1));
+            n += 7;
+        }
+        VG3_SETFRAME(-2, (uint16_t)alu_inc(c, VG3_FRAME(-2), 1));  /* 04D30 */
+        alu_sub(c, VG3_FRAME(-2), 2, 1, 0);
+        n += 3;
+        if (x86_cond(c, 0xD)) break;                              /* jge */
+        n += 1;                                                   /* jmp back */
+    }
+    ds_put(c, 0x3DA4, 0);
+    c->r[R_SI] = cpu_pop16(c);
+    x86_leave(c);
+    c->icount += n + 4;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 114A:033C, panel_balance_bar(v, colour, top, bottom), far: while
+ * the cockpit is shown ([368C]) a bar for a signed value on the panel
+ * element [4010] in the colour (its +4): a positive v from column 56h
+ * rightwards, a negative one leftwards to column 88h, v/2 columns long
+ * (rounded toward zero), between rows top+BBh and bottom+BBh (the box
+ * fill at 0FB2:0246). Nothing for v = 0. */
+static int vgame_panel_balance_bar(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 26)) return 0;
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    alu_sub(c, ds_get(c, 0x368C), 0, 1, 0);
+    unsigned n = 4;
+    if (!(c->flags & F_ZF)) {
+        c->r[R_AX] = VG3_FRAME(8);
+        c->r[R_BX] = ds_get(c, 0x4010);
+        ds_put(c, (uint16_t)(c->r[R_BX] + 4), c->r[R_AX]);        /* the colour */
+        alu_sub(c, VG3_FRAME(6), 0, 1, 0);
+        n += 5;
+        int side = 0;                                             /* +1 right of 56h, -1 left of 88h */
+        if (!x86_cond(c, 0xE)) side = 1;
+        else {
+            alu_sub(c, VG3_FRAME(6), 0, 1, 0);
+            n += 2;
+            if (!x86_cond(c, 0xD)) side = -1;
+        }
+        if (side) {
+            const uint16_t v = VG3_FRAME(6);
+            const uint16_t sx = (v & 0x8000) ? 0xFFFF : 0;        /* cwd; sub ax, dx; sar ax, 1 */
+            const uint16_t edge = side > 0 ? 0x56 : 0x88;
+            const uint16_t bottom = (uint16_t)alu_add(c, VG3_FRAME(0x0C), 0xBB, 1, 0);
+            cpu_push16(c, bottom);
+            if (side < 0) cpu_push16(c, edge);
+            c->r[R_AX] = side > 0 ? 0 : (uint16_t)alu_add(c, VG3_FRAME(0x0A), 0xBB, 1, 0);
+            if (side < 0) cpu_push16(c, c->r[R_AX]);
+            c->r[R_DX] = sx;
+            uint16_t half = (uint16_t)alu_sub(c, v, sx, 1, 0);
+            half = x86_shift(c, 7, half, 1, 1);
+            c->r[R_AX] = (uint16_t)alu_add(c, half, edge, 1, 0);
+            cpu_push16(c, c->r[R_AX]);
+            if (side > 0) {
+                c->r[R_AX] = (uint16_t)alu_add(c, VG3_FRAME(0x0A), 0xBB, 1, 0);
+                cpu_push16(c, c->r[R_AX]);
+                cpu_push16(c, edge);
+            }
+            cpu_push16(c, ds_get(c, 0x4010));
+            c->icount += n + 14;
+            if (side > 0) {
+                VG3_FAR(0x0376, 3);
+                c->r[R_SP] = c->r[R_BP];
+                n = 1;                                            /* mov sp, bp */
+            } else {
+                VG3_FAR(0x03A6, 2);
+                n = 0;
+            }
+        }
+    }
+    x86_leave(c);
+    c->icount += n + 2;
+    far_ret(c);
+    return 1;
+}
+
+/* VGAME 120A:0317, model_parts_setup (CX = the parts, ES:SI the model's
+ * part stream): the eye's position negated into 7C6C, and for a model of
+ * parts, each part's camera matrix pair: the base part's from the
+ * orientation [7D4C], each further one from its own rotation - a byte
+ * picking the angle (word table [7D4E]) and a byte the axis (1 the second
+ * angle, below 1 the first, above the third; 1452:03AB into the pair's
+ * +24h) - composed with the base (1452:0288 rows into 7B4C.., then the
+ * transpose 1452:02E4 into +12h). [7D50] walks the pairs (36 bytes). The
+ * eye's 32-bit position (7CD2..) is copied to 7CDE.., and each part's
+ * offset (six bytes in the stream after the first) gives its eye
+ * position: the base's from 7C6C by the camera matrix (1452:021B) and
+ * 120A:04C9, the rest by 120A:043C, 1452:021B and the light (120A:04F5).
+ * No parts: [7D50] = 7B28. BP is the part count throughout. */
+static int vgame_model_parts_setup(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 22)) return 0;
+    ds_put(c, 0x7D58, c->r[R_CX]);
+    static const uint16_t eye[3][2] = { { 0x7CCC, 0x7C6C }, { 0x7CCE, 0x7C6E }, { 0x7CD0, 0x7C70 } };
+    for (int k = 0; k < 3; k++) {                                 /* the eye, negated */
+        c->r[R_AX] = (uint16_t)alu_sub(c, 0, ds_get(c, eye[k][0]), 1, 0);
+        ds_put(c, eye[k][1], c->r[R_AX]);
+    }
+    alu_sub(c, c->r[R_CX], 0, 1, 0);
+    if (!x86_cond(c, 0xF)) {                                      /* jg not taken: no parts */
+        c->r[R_AX] = 0x7B28;
+        ds_put(c, 0x7D50, 0x7B28);
+        c->icount += 12 + 3;
+        near_ret(c);
+        return 1;
+    }
+    c->r[R_BP] = c->r[R_CX];
+    c->r[R_BX] = 0x7B4C;
+    ds_put(c, 0x7D50, 0x7B4C);
+    c->r[R_DI] = 0x7B28;
+    c->r[R_BX] = ds_get(c, 0x7D4C);                               /* the base part: the orientation */
+    unsigned n = 12 + 6;
+    for (int first = 1;; first = 0) {
+        if (!first) {                                             /* 0355: a further part's rotation */
+            set_r8(c, R_BL, mem_read8(c, phys(c->seg[S_ES], c->r[R_SI])));
+            set_r8(c, R_BH, (uint8_t)alu_sub(c, get_r8(c, R_BH), get_r8(c, R_BH), 0, 0));
+            c->r[R_BX] = x86_shift(c, 4, c->r[R_BX], 1, 1);
+            c->r[R_BX] = (uint16_t)alu_add(c, c->r[R_BX], ds_get(c, 0x7D4E), 1, 0);
+            c->r[R_BX] = ds_get(c, c->r[R_BX]);                   /* the angle */
+            c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+            c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0);
+            alu_sub(c, mem_read8(c, phys(c->seg[S_ES], (uint16_t)(c->r[R_SI] + 1))), 1, 0, 0);
+            n += 9;
+            if (!(c->flags & F_ZF)) {                             /* not the second angle */
+                const uint16_t t = c->r[R_BX]; c->r[R_BX] = c->r[R_AX]; c->r[R_AX] = t;
+                n += 2;
+                if (!x86_cond(c, 0xC)) {                          /* the third */
+                    const uint16_t u = c->r[R_DX]; c->r[R_DX] = c->r[R_AX]; c->r[R_AX] = u;
+                    n += 1;
+                }
+            }
+            c->r[R_SI] = (uint16_t)alu_add(c, c->r[R_SI], 2, 1, 0);
+            c->r[R_DI] = (uint16_t)alu_add(c, ds_get(c, 0x7D50), 0x24, 1, 0);
+            cpu_push16(c, c->r[R_DI]);
+            cpu_push16(c, c->r[R_DX]);
+            cpu_push16(c, c->r[R_BX]);
+            cpu_push16(c, c->r[R_AX]);
+            c->icount += n + 7;
+            VG3_FAR(0x037F, 3 + 3 + 1);                           /* its rotation */
+            VG3_DROP(6);
+            c->r[R_BX] = cpu_pop16(c);
+            c->r[R_DI] = 0x7B4C;
+            n = 3;
+        }
+        cpu_push16(c, ds_get(c, 0x7D50));                         /* 038C: composed with the base */
+        cpu_push16(c, c->r[R_DI]);
+        cpu_push16(c, c->r[R_BX]);
+        c->icount += n + 3;
+        VG3_FAR(0x0392, 6 + 1);
+        c->r[R_BX] = cpu_pop16(c);
+        VG3_DROP(2);
+        c->r[R_DI] = cpu_pop16(c);
+        c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], 0x12, 1, 0);
+        cpu_push16(c, c->r[R_DI]);
+        cpu_push16(c, c->r[R_BX]);
+        c->icount += 6;
+        VG3_FAR(0x03A1, 4 + 21 + 1);                              /* and its transpose */
+        VG3_DROP(4);
+        ds_put(c, 0x7D50, (uint16_t)alu_add(c, ds_get(c, 0x7D50), 0x24, 1, 0));
+        c->r[R_BP] = (uint16_t)alu_dec(c, c->r[R_BP], 1);
+        n = 4;
+        if (c->flags & F_ZF) break;
+    }
+    c->r[R_BX] = 0x7B4C;                                          /* 03B1 */
+    ds_put(c, 0x7D50, 0x7B4C);
+    for (int k = 0; k < 6; k++) {                                 /* the 32-bit eye position, copied */
+        c->r[R_AX] = ds_get(c, (uint16_t)(0x7CD2 + 2 * k));
+        ds_put(c, (uint16_t)(0x7CDE + 2 * k), c->r[R_AX]);
+    }
+    c->r[R_AX] = 0x7CDE;
+    ds_put(c, 0x7D56, 0x7CDE);
+    c->r[R_BP] = ds_get(c, 0x7D58);
+    c->r[R_BX] = 0x7C6C;
+    c->r[R_DI] = 0x7B5E;
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_BX]);
+    c->icount += n + 21;
+    VG3_FAR(0x03F2, 3);                                           /* the base part's eye */
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->icount += 2;
+    VG3_NEAR(0x04C9, 0x03FC, 7);
+    n = 1;                                                        /* jmp */
+    for (;;) {                                                    /* 042D: the next part */
+        ds_put(c, 0x7D56, (uint16_t)alu_add(c, ds_get(c, 0x7D56), 0x0C, 1, 0));
+        c->r[R_BX] = (uint16_t)alu_add(c, c->r[R_BX], 6, 1, 0);
+        c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], 0x24, 1, 0);
+        c->r[R_BP] = (uint16_t)alu_dec(c, c->r[R_BP], 1);
+        n += 5;
+        if (c->flags & F_ZF) break;
+        c->icount += n;
+        VG3_NEAR(0x043C, 0x0402, 12 + 1);                         /* its pivot */
+        static const uint16_t ax_at[3] = { 0x7C6C, 0x7C6E, 0x7C70 };
+        for (int k = 0; k < 3; k++) {                             /* the eye less the part's offset */
+            c->r[R_AX] = (uint16_t)alu_sub(c, ds_get(c, ax_at[k]),
+                                           seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_SI] + 2 * k)), 1, 0);
+            ds_put(c, (uint16_t)(c->r[R_BX] + 2 * k), c->r[R_AX]);
+        }
+        c->r[R_SI] = (uint16_t)alu_add(c, c->r[R_SI], 6, 1, 0);
+        cpu_push16(c, c->r[R_DI]);
+        cpu_push16(c, c->r[R_BX]);
+        c->icount += 12;
+        VG3_FAR(0x0423, 3);                                       /* into the part's frame */
+        c->r[R_BX] = cpu_pop16(c);
+        c->r[R_DI] = cpu_pop16(c);
+        c->icount += 2;
+        VG3_NEAR(0x04F5, 0x042D, 6);                              /* and the light */
+        n = 0;
+    }
+    c->icount += n + 1;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 120A:06B5, model_vertices ([7D5C] vertices from ES:SI): none, then
+ * nothing. A positive count transforms each vertex to camera space
+ * (120A:0815) into C6B4 (16 bytes a vertex, DI) and D6B4 (8 bytes, BP),
+ * [7D4A] = C6B4. A model of parts ([7D5A] not 0) reads a part switch
+ * (8000h-800Fh) as: the part's matrix ([7D50] + 36 * part, in BX) and its
+ * 32-bit eye position (7CDE + 12 * part, copied to 7CD2..) for the
+ * vertices after it; and a vertex whose byte at 7A02 + its index is 0 is
+ * skipped (only its slots and six stream bytes passed). A negative count
+ * takes that many indices (bytes) into the shared vertex table 4EE6 (12
+ * bytes each, 32-bit, plus the eye position into C6B4) and projects each
+ * (120A:0902) into D6B4. Every vertex and every switch looks at the room
+ * and stops at its loop's head when there is none. */
+static int vgame_model_vertices(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 12)) return 0;
+    c->r[R_DI] = (uint16_t)alu_sub(c, c->r[R_DI], c->r[R_DI], 1, 0);
+    c->r[R_BX] = ds_get(c, 0x7D50);
+    c->r[R_CX] = ds_get(c, 0x7D5C);
+    alu_sub(c, c->r[R_CX], 0, 1, 0);
+    unsigned n = 5;
+    if (c->flags & F_ZF) { c->icount += n + 1; near_ret(c); return 1; }
+    n += 1;                                                       /* jns */
+    if (!(c->flags & F_SF)) {                                     /* 06C9: transform them */
+        c->r[R_DI] = 0xC6B4;
+        c->r[R_BP] = 0xD6B4;
+        ds_put(c, 0x7D4A, 0xC6B4);
+        alu_sub(c, ds_get(c, 0x7D5A), 0, 1, 0);
+        n += 5;
+        if (c->flags & F_ZF) {                                    /* one part: every vertex */
+            c->icount += n;
+            do {                                                  /* 06DC */
+                VG3_NEAR(0x0815, 0x06DF, 2);
+                c->r[R_CX]--;                                     /* loop */
+                c->icount += 1;
+            } while (c->r[R_CX]);
+            c->icount += 1;
+            near_ret(c);
+            return 1;
+        }
+        c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0);
+        n += 1;
+        for (;;) {                                                /* 072C */
+            VG3_ROOM_OR_STOP(33, 0x072C);
+            c->r[R_AX] = seg_read16(c, c->seg[S_ES], c->r[R_SI]);
+            alu_sub(c, c->r[R_AX], 0x8000, 1, 0);
+            n += 3;
+            if (!(c->flags & F_CF)) {
+                alu_sub(c, c->r[R_AX], 0x8010, 1, 0);
+                n += 2;
+                if (c->flags & F_CF) {                            /* 06E2: a part switch */
+                    const uint16_t part = (uint16_t)alu_logic(c, c->r[R_AX] & 0x0F, 1);
+                    cpu_push16(c, c->r[R_DI]);
+                    c->r[R_DI] = 0x7CDE;
+                    c->r[R_BX] = ds_get(c, 0x7D50);
+                    uint16_t ax = x86_shift(c, 4, part, 1, 1);
+                    ax = x86_shift(c, 4, ax, 1, 1);               /* part * 4 */
+                    c->r[R_BX] = (uint16_t)alu_add(c, c->r[R_BX], ax, 1, 0);
+                    c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], ax, 1, 0);
+                    ax = x86_shift(c, 4, ax, 1, 1);               /* * 8 */
+                    c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], ax, 1, 0);
+                    ax = x86_shift(c, 4, ax, 1, 1);
+                    ax = x86_shift(c, 4, ax, 1, 1);               /* * 32 */
+                    c->r[R_BX] = (uint16_t)alu_add(c, c->r[R_BX], ax, 1, 0);
+                    c->r[R_SI] = (uint16_t)alu_add(c, c->r[R_SI], 2, 1, 0);
+                    for (int k = 0; k < 6; k++) {
+                        ax = ds_get(c, (uint16_t)(c->r[R_DI] + 2 * k));
+                        ds_put(c, (uint16_t)(0x7CD2 + 2 * k), ax);
+                    }
+                    c->r[R_AX] = ax;
+                    c->r[R_DI] = cpu_pop16(c);
+                    n += 28;
+                    continue;
+                }
+            }
+            alu_sub(c, VG3_DS8(c->r[R_DX] + 0x7A02), 0, 0, 0);    /* xchg dx, bx around the test */
+            n += 4;
+            if (!(c->flags & F_ZF)) {                             /* drawn: transform it */
+                cpu_push16(c, c->r[R_DX]);
+                c->icount += n + 1;
+                VG3_NEAR(0x0815, 0x0748, 4);
+                c->r[R_DX] = cpu_pop16(c);
+                c->r[R_DX] = (uint16_t)alu_inc(c, c->r[R_DX], 1);
+                n = 3;
+            } else {                                              /* 074D: passed over */
+                c->r[R_BP] = (uint16_t)alu_add(c, c->r[R_BP], 8, 1, 0);
+                c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], 0x10, 1, 0);
+                c->r[R_SI] = (uint16_t)alu_add(c, c->r[R_SI], 6, 1, 0);
+                c->r[R_DX] = (uint16_t)alu_inc(c, c->r[R_DX], 1);
+                n += 5;
+            }
+            c->r[R_CX]--;                                         /* loop */
+            if (!c->r[R_CX]) break;
+        }
+        c->icount += n + 1;
+        near_ret(c);
+        return 1;
+    }
+    n += 1;                                                       /* jmp 075A */
+    c->r[R_CX] = (uint16_t)alu_sub(c, 0, c->r[R_CX], 1, 0);       /* the shared vertices */
+    c->r[R_DI] = 0xC6B4;
+    ds_put(c, 0x7D4A, 0xC6B4);
+    n += 3;
+    for (;;) {                                                    /* 0764 */
+        VG3_ROOM_OR_STOP(33, 0x0764);
+        set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_ES], c->r[R_SI])));
+        set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
+        uint16_t ax = c->r[R_AX];
+        for (int k = 0; k < 3; k++) ax = x86_shift(c, 4, ax, 1, 1);   /* * 8 */
+        c->r[R_BP] = ax;
+        ax = x86_shift(c, 4, ax, 1, 1);                           /* * 16 */
+        c->r[R_BX] = (uint16_t)alu_add(c, 0x4EE6, ax, 1, 0);
+        c->r[R_DI] = (uint16_t)alu_add(c, 0xC6B4, ax, 1, 0);
+        static const uint16_t eye[3] = { 0x7CD2, 0x7CD6, 0x7CDA };
+        for (int k = 0; k < 3; k++) {                             /* table + eye, 32-bit */
+            const uint16_t bx = c->r[R_BX], di = c->r[R_DI];
+            c->r[R_AX] = ds_get(c, (uint16_t)(bx + 4 * k));
+            c->r[R_DX] = ds_get(c, (uint16_t)(bx + 4 * k + 2));
+            c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], ds_get(c, eye[k]), 1, 0);
+            c->r[R_DX] = (uint16_t)alu_add(c, c->r[R_DX], ds_get(c, (uint16_t)(eye[k] + 2)), 1, (c->flags & F_CF) ? 1u : 0u);
+            ds_put(c, (uint16_t)(di + 4 * k), c->r[R_AX]);
+            ds_put(c, (uint16_t)(di + 4 * k + 2), c->r[R_DX]);
+        }
+        c->r[R_BX] = (uint16_t)alu_add(c, 0xD6B4, c->r[R_BP], 1, 0);
+        cpu_push16(c, c->r[R_CX]);
+        c->icount += n + 11 + 18 + 3;
+        VG3_NEAR(0x0902, 0x07C3, 4);                              /* project it */
+        c->r[R_SI] = (uint16_t)alu_inc(c, c->r[R_SI], 1);
+        c->r[R_CX] = cpu_pop16(c);
+        c->r[R_CX]--;                                             /* loop */
+        n = 3;
+        if (!c->r[R_CX]) break;
+    }
+    c->icount += n + 1;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 120A:0561, model_planes (ES:SI the model's plane stream): the
+ * plane count [7D5A] (its sign is the face list's kind; zero, nothing).
+ * Each plane - a, b, c and a 32-bit d - is tested against the eye's
+ * position for this part (BX, from 7C6C): a x + b y + c z + d below zero
+ * faces away. Its visibility byte at 7702 + plane is FFh for a plane
+ * facing the eye (always under [7D8E]), else 0, masked by [7D68] (7Fh
+ * after a failed condition); a visible plane goes into [7D8C] (with bit
+ * 80h as well when a, c and d are all zero) and is shaded (120A:0674).
+ * Within the stream, 80xxh switches the part (its eye at 7C6C + 6 * part,
+ * its light slot [7D7C] = 7C9C + 6 * part) and 8100h tests the setting
+ * word (table [7D4E], by the next byte) against the byte after it. Then
+ * the vertex flags 7A02 are cleared (120A:0654) and each visible plane's
+ * vertex list (a count and that many indices) sets its vertices' flags
+ * to 1; a negative count also builds the face order (120A:0E5B from 7702
+ * into 7902) and steps SI past it. Each plane, each stream word and each
+ * list looks at the room and stops at its loop's head when there is
+ * none. */
+static int vgame_model_planes(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 15)) return 0;
+    c->r[R_AX] = seg_read16(c, c->seg[S_ES], c->r[R_SI]);
+    c->r[R_SI] = (uint16_t)alu_add(c, c->r[R_SI], 2, 1, 0);
+    ds_put(c, 0x7D5A, c->r[R_AX]);
+    alu_logic(c, c->r[R_AX], 1);
+    if (c->flags & F_ZF) { c->icount += 6; near_ret(c); return 1; }
+    {                                                             /* |count| */
+        const uint16_t sx = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0;
+        c->r[R_DX] = sx;
+        c->r[R_AX] = (uint16_t)alu_logic(c, c->r[R_AX] ^ sx, 1);
+        c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], sx, 1, 0);
+    }
+    c->r[R_CX] = c->r[R_AX];
+    c->r[R_DI] = (uint16_t)alu_sub(c, c->r[R_DI], c->r[R_DI], 1, 0);
+    c->r[R_BX] = 0x7C6C;
+    c->r[R_AX] = 0x7C9C;
+    ds_put(c, 0x7D7C, 0x7C9C);
+    VG3_SETDS8(0x7D68, 0xFF);
+    unsigned n = 5 + 10;
+    for (;;) {                                                    /* 0589: the next stream word */
+        VG3_ROOM_OR_STOP(40, 0x0589);
+        c->r[R_AX] = seg_read16(c, c->seg[S_ES], c->r[R_SI]);
+        c->r[R_SI] = (uint16_t)alu_add(c, c->r[R_SI], 2, 1, 0);
+        alu_sub(c, get_r8(c, R_AH), 0x80, 0, 0);
+        n += 4;
+        if (c->flags & F_ZF) {                                    /* 0540: the part */
+            uint16_t ax = (uint16_t)alu_logic(c, c->r[R_AX] & 0xFF, 1);
+            c->r[R_BX] = 0x7C6C;
+            ax = x86_shift(c, 4, ax, 1, 1);
+            ds_put(c, 0x7D7C, ax);
+            c->r[R_BX] = (uint16_t)alu_add(c, c->r[R_BX], ax, 1, 0);
+            ax = x86_shift(c, 4, ax, 1, 1);
+            c->r[R_BX] = (uint16_t)alu_add(c, c->r[R_BX], ax, 1, 0);
+            ds_put(c, 0x7D7C, (uint16_t)alu_add(c, ds_get(c, 0x7D7C), ax, 1, 0));
+            c->r[R_AX] = 0x7C9C;
+            ds_put(c, 0x7D7C, (uint16_t)alu_add(c, ds_get(c, 0x7D7C), 0x7C9C, 1, 0));
+            n += 11;
+            continue;
+        }
+        alu_sub(c, c->r[R_AX], 0x8100, 1, 0);
+        n += 2;
+        if (c->flags & F_ZF) {                                    /* 051D: a condition */
+            cpu_push16(c, c->r[R_BX]);
+            set_r8(c, R_BL, mem_read8(c, phys(c->seg[S_ES], c->r[R_SI])));
+            c->r[R_BX] = (uint16_t)alu_logic(c, c->r[R_BX] & 0x1F, 1);
+            c->r[R_BX] = x86_shift(c, 4, c->r[R_BX], 1, 1);
+            c->r[R_BX] = (uint16_t)alu_add(c, c->r[R_BX], ds_get(c, 0x7D4E), 1, 0);
+            set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_ES], (uint16_t)(c->r[R_SI] + 1))));
+            c->r[R_SI] = (uint16_t)alu_add(c, c->r[R_SI], 2, 1, 0);
+            c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);
+            alu_sub(c, c->r[R_AX], ds_get(c, c->r[R_BX]), 1, 0);
+            c->r[R_BX] = cpu_pop16(c);
+            n += 11;
+            if (!(c->flags & F_ZF)) { VG3_SETDS8(0x7D68, 0x7F); n += 3; }
+            continue;
+        }
+        cpu_push16(c, c->r[R_CX]);                                /* a plane */
+        const uint16_t bx = c->r[R_BX];
+        x86_imul16(c, ds_get(c, bx));
+        c->r[R_CX] = c->r[R_AX];
+        c->r[R_BP] = c->r[R_DX];
+        for (int k = 1; k < 3; k++) {
+            c->r[R_AX] = seg_read16(c, c->seg[S_ES], c->r[R_SI]);
+            c->r[R_SI] = (uint16_t)alu_add(c, c->r[R_SI], 2, 1, 0);
+            x86_imul16(c, ds_get(c, (uint16_t)(bx + 2 * k)));
+            c->r[R_CX] = (uint16_t)alu_add(c, c->r[R_CX], c->r[R_AX], 1, 0);
+            c->r[R_BP] = (uint16_t)alu_add(c, c->r[R_BP], c->r[R_DX], 1, (c->flags & F_CF) ? 1u : 0u);
+        }
+        c->r[R_CX] = (uint16_t)alu_add(c, c->r[R_CX], seg_read16(c, c->seg[S_ES], c->r[R_SI]), 1, 0);
+        c->r[R_BP] = (uint16_t)alu_add(c, c->r[R_BP], seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_SI] + 2)), 1,
+                                       (c->flags & F_CF) ? 1u : 0u);
+        c->r[R_SI] = (uint16_t)alu_add(c, c->r[R_SI], 4, 1, 0);
+        c->r[R_AX] = c->r[R_BP];
+        c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0 : 0xFFFF;          /* cwd; not dx */
+        alu_sub(c, VG3_DS8(0x7D8E), 0, 0, 0);
+        n += 22;
+        if (!(c->flags & F_ZF)) { set_r8(c, R_DL, 0xFF); n++; }
+        set_r8(c, R_DL, (uint8_t)alu_logic(c, get_r8(c, R_DL) & VG3_DS8(0x7D68), 0));
+        VG3_SETDS8(c->r[R_DI] + 0x7702, get_r8(c, R_DL));
+        n += 3;
+        if (c->flags & F_SF) {                                    /* visible */
+            const uint16_t si = c->r[R_SI];
+            uint16_t any = seg_read16(c, c->seg[S_ES], (uint16_t)(si - 0x0A));
+            any = (uint16_t)alu_logic(c, any | seg_read16(c, c->seg[S_ES], (uint16_t)(si - 6)), 1);
+            any = (uint16_t)alu_logic(c, any | seg_read16(c, c->seg[S_ES], (uint16_t)(si - 4)), 1);
+            any = (uint16_t)alu_logic(c, any | seg_read16(c, c->seg[S_ES], (uint16_t)(si - 2)), 1);
+            c->r[R_AX] = any;
+            n += 5;
+            if (!any) { set_r8(c, R_DL, (uint8_t)alu_logic(c, get_r8(c, R_DL) | 0x80, 0)); n++; }
+            VG3_SETDS8(0x7D8C, alu_logic(c, VG3_DS8(0x7D8C) | get_r8(c, R_DL), 0));
+            c->icount += n + 1;
+            VG3_NEAR(0x0674, 0x05F8, 5);                          /* shade it */
+            n = 0;
+        }
+        c->r[R_DI] = (uint16_t)alu_inc(c, c->r[R_DI], 1);         /* 05F8 */
+        c->r[R_CX] = cpu_pop16(c);
+        c->r[R_CX]--;                                             /* loop */
+        n += 3;
+        if (!c->r[R_CX]) break;
+        VG3_SETDS8(0x7D68, 0xFF);                                 /* 0583 */
+        n += 2;
+    }
+    c->icount += n;
+    VG3_NEAR(0x0654, 0x05FF, 8);                                  /* clear the vertex flags */
+    c->r[R_BX] = (uint16_t)alu_sub(c, c->r[R_BX], c->r[R_BX], 1, 0);
+    {
+        const uint16_t v = ds_get(c, 0x7D5A);
+        const uint16_t sx = (v & 0x8000) ? 0xFFFF : 0;
+        c->r[R_DX] = sx;
+        c->r[R_AX] = (uint16_t)alu_logic(c, v ^ sx, 1);
+        c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], sx, 1, 0);
+    }
+    c->r[R_BP] = c->r[R_AX];
+    c->r[R_AX] = 1;
+    c->r[R_DI] = 0x7702;
+    n = 8;
+    do {                                                          /* 0612: a plane's vertex list */
+        VG3_ROOM_OR_STOP(17, 0x0612);
+        set_r8(c, R_CL, mem_read8(c, phys(c->seg[S_ES], c->r[R_SI])));
+        c->r[R_SI] = (uint16_t)alu_inc(c, c->r[R_SI], 1);
+        c->r[R_CX] = (uint16_t)alu_logic(c, c->r[R_CX] & 0xFF, 1);
+        n += 4;
+        if (!(c->flags & F_ZF)) {
+            alu_sub(c, VG3_DS8(c->r[R_DI]), 0x7F, 0, 0);
+            n += 2;
+            if (!x86_cond(c, 7)) {                                /* hidden: past its list */
+                c->r[R_SI] = (uint16_t)alu_add(c, c->r[R_SI], c->r[R_CX], 1, 0);
+                n += 2;
+            } else {
+                do {                                              /* 0626: its vertices */
+                    VG3_ROOM_OR_STOP(13, 0x0626);
+                    set_r8(c, R_BL, mem_read8(c, phys(c->seg[S_ES], c->r[R_SI])));
+                    c->r[R_SI] = (uint16_t)alu_inc(c, c->r[R_SI], 1);
+                    VG3_SETDS8(c->r[R_BX] + 0x7A02, get_r8(c, R_AL));
+                    c->r[R_CX]--;
+                    n += 4;
+                } while (c->r[R_CX]);
+            }
+        }
+        c->r[R_DI] = (uint16_t)alu_inc(c, c->r[R_DI], 1);         /* 0630 */
+        c->r[R_BP] = (uint16_t)alu_dec(c, c->r[R_BP], 1);
+        n += 3;
+    } while (!(c->flags & F_ZF));
+    alu_sub(c, ds_get(c, 0x7D5A), 0, 1, 0);
+    n += 2;
+    if (!(c->flags & F_SF)) { c->icount += n + 1; near_ret(c); return 1; }
+    c->r[R_DI] = 0x7902;                                          /* 063C: the face order */
+    c->r[R_BX] = 0x7702;
+    cpu_push16(c, c->r[R_SI]);
+    c->icount += n + 3;
+    VG3_NEAR(0x0E5B, 0x0648, 7);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_AX] = (uint16_t)alu_sub(c, 0, ds_get(c, 0x7D5A), 1, 0);
+    c->r[R_AX] = x86_shift(c, 4, c->r[R_AX], 1, 1);
+    c->r[R_AX] = (uint16_t)alu_inc(c, c->r[R_AX], 1);
+    c->r[R_SI] = (uint16_t)alu_add(c, c->r[R_SI], c->r[R_AX], 1, 0);
+    c->icount += 7;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x0EA30, fread(buf, size, count, stream): the C runtime's read of
+ * size * count bytes (none: 0). The stream's buffer size is its record's
+ * (+2 of stream - 92B8h + 9358h) when it has a buffer of its own (flag
+ * bits 0Ch or record bit 0), else 200h. While bytes are wanted: those in
+ * the buffer (count +2, pointer +0) are copied (0x0EDE0) and taken from
+ * it; with the buffer empty and still a buffer's worth wanted, whole
+ * buffers are read straight into buf (0x0F458 on the handle +7; nothing
+ * sets the end bit 10h, a failure the error bit 20h, either ends the
+ * read); less than that refills the buffer by filbuf (0x0F122), its first
+ * byte stored, and the buffer size taken again. AX is the whole items
+ * read. A divide by a zero buffer size, or by a size that was written
+ * over, is left to the original at the DIV. Each pass looks at the room
+ * and stops at the loop's head when there is none. */
+static int vgame_fread(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 23)) return 0;
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_SP] = (uint16_t)alu_sub(c, c->r[R_SP], 4, 1, 0);
+    x86_push_reg(c, R_SI);
+    x86_push_reg(c, R_DI);
+    c->r[R_AX] = VG3_FRAME(6);
+    x86_mul16(c, VG3_FRAME(8));                                   /* mul word [bp+8] */
+    c->r[R_CX] = c->r[R_AX];
+    unsigned n = 9;
+    if (c->r[R_CX] == 0) {                                        /* jcxz: nothing; jmp to the end */
+        c->icount += n + 1 + 5;
+        goto out_ret;
+    }
+    VG3_SETFRAME(-2, c->r[R_AX]);                                 /* the bytes wanted */
+    c->r[R_BX] = VG3_FRAME(4);                                    /* buf */
+    c->r[R_SI] = VG3_FRAME(0x0A);                                 /* stream */
+    c->r[R_DI] = 0x9358;
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_SI], 0x92B8, 1, 0);
+    c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], c->r[R_AX], 1, 0);
+    alu_logic(c, VG3_DS8(c->r[R_SI] + 6) & 0x0C, 0);
+    n += 9;
+    {
+        int own = !(c->flags & F_ZF);
+        if (!own) {
+            alu_logic(c, VG3_DS8(c->r[R_DI]) & 1, 0);
+            n += 2;
+            own = !(c->flags & F_ZF);
+        }
+        if (own) { c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_DI] + 2)); n += 2; }
+        else { c->r[R_AX] = 0x200; n += 1; }
+        VG3_SETFRAME(-4, c->r[R_AX]);                             /* the buffer size */
+        n += 1;
+    }
+    for (;;) {                                                    /* 0EA6B */
+        VG3_ROOM_OR_STOP(22, 0xEA6B);
+        alu_logic(c, VG3_DS8(c->r[R_SI] + 6) & 0x0C, 0);
+        n += 2;
+        int own = !(c->flags & F_ZF);
+        if (!own) {
+            alu_logic(c, VG3_DS8(c->r[R_DI]) & 1, 0);
+            n += 2;
+            own = !(c->flags & F_ZF);
+        }
+        int copied = 0;
+        if (own) {                                                /* 0EA76: what the buffer holds */
+            c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_SI] + 2));
+            alu_logic(c, c->r[R_AX], 1);
+            n += 3;
+            if (!(c->flags & F_ZF)) {
+                alu_sub(c, c->r[R_AX], c->r[R_CX], 1, 0);
+                n += 2;
+                if (!x86_cond(c, 6)) { c->r[R_AX] = c->r[R_CX]; n++; }
+                cpu_push16(c, c->r[R_AX]);
+                cpu_push16(c, c->r[R_BX]);
+                cpu_push16(c, c->r[R_CX]);
+                cpu_push16(c, c->r[R_AX]);
+                cpu_push16(c, ds_get(c, c->r[R_SI]));
+                cpu_push16(c, c->r[R_BX]);
+                c->icount += n + 6;
+                VG3_NEAR(0xEDE0, 0xEA8D, 21);                     /* memcpy */
+                VG3_DROP(6);
+                c->r[R_CX] = cpu_pop16(c);
+                c->r[R_BX] = cpu_pop16(c);
+                c->r[R_AX] = cpu_pop16(c);
+                const uint16_t si = c->r[R_SI], got = c->r[R_AX];
+                c->r[R_CX] = (uint16_t)alu_sub(c, c->r[R_CX], got, 1, 0);
+                ds_put(c, (uint16_t)(si + 2), (uint16_t)alu_sub(c, ds_get(c, (uint16_t)(si + 2)), got, 1, 0));
+                c->r[R_BX] = (uint16_t)alu_add(c, c->r[R_BX], got, 1, 0);
+                ds_put(c, si, (uint16_t)alu_add(c, ds_get(c, si), got, 1, 0));
+                n = 9;                                            /* .. jmp 0EAA0 */
+                copied = 1;
+            }
+        }
+        int end = 0;                                              /* 1: the bytes are in, 2: stopped short */
+        if (!copied) {
+            alu_sub(c, c->r[R_CX], VG3_FRAME(-4), 1, 0);          /* 0EAA4 */
+            n += 2;
+            if (!(c->flags & F_CF)) {                             /* whole buffers, straight in */
+                c->r[R_DX] = (uint16_t)alu_logic(c, 0, 1);
+                c->r[R_AX] = c->r[R_CX];
+                n += 2;
+                if (VG3_FRAME(-4) == 0) { c->icount += n; c->ip = 0xEAAD; return 1; }   /* the DIV faults */
+                x86_div16(c, VG3_FRAME(-4));
+                c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_CX], c->r[R_DX], 1, 0);
+                cpu_push16(c, c->r[R_BX]);
+                cpu_push16(c, c->r[R_CX]);
+                cpu_push16(c, c->r[R_AX]);
+                cpu_push16(c, c->r[R_BX]);
+                c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);
+                set_r8(c, R_AL, VG3_DS8(c->r[R_SI] + 7));
+                cpu_push16(c, c->r[R_AX]);
+                c->icount += n + 10;
+                VG3_NEAR(0xF458, 0xEAC1, 22);                     /* read */
+                VG3_DROP(6);
+                c->r[R_CX] = cpu_pop16(c);
+                c->r[R_BX] = cpu_pop16(c);
+                alu_logic(c, c->r[R_AX], 1);
+                n = 5;
+                if (c->flags & F_ZF) {                            /* nothing: the end */
+                    VG3_SETDS8(c->r[R_SI] + 6, alu_logic(c, VG3_DS8(c->r[R_SI] + 6) | 0x10, 0));
+                    n += 2;
+                    end = 2;
+                } else {
+                    alu_sub(c, c->r[R_AX], 0xFFFF, 1, 0);
+                    n += 2;
+                    if (c->flags & F_ZF) {                        /* failed: an error */
+                        VG3_SETDS8(c->r[R_SI] + 6, alu_logic(c, VG3_DS8(c->r[R_SI] + 6) | 0x20, 0));
+                        n += 1;
+                        end = 2;
+                    } else {
+                        c->r[R_CX] = (uint16_t)alu_sub(c, c->r[R_CX], c->r[R_AX], 1, 0);
+                        c->r[R_BX] = (uint16_t)alu_add(c, c->r[R_BX], c->r[R_AX], 1, 0);
+                        n += 3;
+                    }
+                }
+            } else {                                              /* 0EAD5: refill the buffer */
+                cpu_push16(c, c->r[R_BX]);
+                cpu_push16(c, c->r[R_CX]);
+                cpu_push16(c, c->r[R_SI]);
+                c->icount += n + 3;
+                VG3_NEAR(0xF122, 0xEADB, 23);                     /* filbuf */
+                c->r[R_CX] = cpu_pop16(c);
+                c->r[R_CX] = cpu_pop16(c);
+                c->r[R_BX] = cpu_pop16(c);
+                alu_sub(c, c->r[R_AX], 0xFFFF, 1, 0);
+                n = 5;
+                if (c->flags & F_ZF) end = 2;
+                else {
+                    VG3_SETDS8(c->r[R_BX], get_r8(c, R_AL));      /* its first byte */
+                    c->r[R_BX] = (uint16_t)alu_inc(c, c->r[R_BX], 1);
+                    c->r[R_CX] = (uint16_t)alu_dec(c, c->r[R_CX], 1);
+                    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_DI] + 2));
+                    VG3_SETFRAME(-4, c->r[R_AX]);
+                    n += 6;
+                }
+            }
+        }
+        if (end) break;
+        n += 1;                                                   /* 0EAA0: jcxz */
+        if (!c->r[R_CX]) break;
+        n += 1;                                                   /* jmp 0EA6B */
+    }
+    n += 1;                                                       /* 0EAF9: jcxz */
+    if (!c->r[R_CX]) {
+        c->r[R_AX] = VG3_FRAME(8);                                /* all of them */
+        n += 1;
+    } else {                                                      /* the whole items in */
+        c->r[R_AX] = (uint16_t)alu_sub(c, VG3_FRAME(-2), c->r[R_CX], 1, 0);
+        c->r[R_DX] = (uint16_t)alu_logic(c, 0, 1);
+        n += 3;
+        if (VG3_FRAME(6) == 0) { c->icount += n; c->ip = 0xEB02; return 1; }   /* the DIV faults */
+        x86_div16(c, VG3_FRAME(6));
+        n += 2;                                                   /* div, jmp */
+    }
+    c->icount += n + 5;
+out_ret:
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x011FE, map_walk(x, y, zoom): the map view's objects, in five
+ * passes ([9518] from 4 down to 0) over the terrain quadtree. The centre
+ * (x, y) >> zoom goes to [9512]/[9514]. Each pass takes its level from
+ * the table at 0CFC ([E328]), the filter [9516] (80h for passes 1 and 0,
+ * else 0) and the object shift [DEF8] = 2 * (4 - level) + zoom; the cell
+ * size [950E] = 1000h >> shift (a pass whose cells are 16 or less is
+ * skipped) and the cells a side [9510] = 4 << 2 * (4 - level). The cells
+ * in view (0x01360 into the frame: x from [bp-6] to [bp-12h], y from
+ * [bp-8] to [bp-2]) are walked; each cell's pattern (0x00871; -1 none)
+ * gives its object list (pointer table at E330 by level, count table at
+ * 061E) and every object of it not marked (+4) is drawn (0x013F1, with
+ * [7D8E] = shift + 0Eh) at the cell's centre plus its offset << shift.
+ * Every pass, row, cell and object looks at the room and stops at its
+ * loop's head when there is none. */
+static int vgame_map_walk(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 10)) return 0;
+    x86_enter(c, 0x14, 0);
+    set_r8(c, R_CL, VG3_FRAME(8) & 0xFF);
+    c->r[R_AX] = x86_shift(c, 7, VG3_FRAME(4), get_r8(c, R_CL), 1);
+    ds_put(c, 0x9512, c->r[R_AX]);
+    c->r[R_AX] = x86_shift(c, 7, VG3_FRAME(6), get_r8(c, R_CL), 1);
+    ds_put(c, 0x9514, c->r[R_AX]);
+    ds_put(c, 0x9518, 4);
+    unsigned n = 10;
+pass:                                                             /* 01348 */
+    VG3_ROOM_OR_STOP(37, 0x1348);
+    alu_sub(c, ds_get(c, 0x9518), 0, 1, 0);
+    n += 2;
+    if (x86_cond(c, 0xC)) goto done;                              /* jl: all five done */
+    alu_sub(c, ds_get(c, 0x9518), 1, 1, 0);
+    n += 2;
+    if (!x86_cond(c, 0xF)) { c->r[R_AX] = 0x80; n += 2; }         /* passes 1 and 0: filter 80h */
+    else { c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0); n += 2; }
+    ds_put(c, 0x9516, c->r[R_AX]);                                /* 01221 */
+    c->r[R_BX] = x86_shift(c, 4, ds_get(c, 0x9518), 1, 1);
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0x0CFC));
+    ds_put(c, 0xE328, c->r[R_AX]);                                /* the level */
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], 4, 1, 0);
+    c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0);
+    c->r[R_AX] = x86_shift(c, 4, c->r[R_AX], 1, 1);
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], VG3_FRAME(8), 1, 0);
+    ds_put(c, 0xDEF8, c->r[R_AX]);                                /* the object shift */
+    c->r[R_CX] = c->r[R_AX];
+    c->r[R_AX] = x86_shift(c, 7, 0x1000, get_r8(c, R_CL), 1);
+    ds_put(c, 0x950E, c->r[R_AX]);                                /* the cell size */
+    alu_sub(c, c->r[R_AX], 0x10, 1, 0);
+    n += 16;
+    if (!x86_cond(c, 0xF)) { n += 1; goto next_pass; }            /* cells too small */
+    set_r8(c, R_CL, 4);
+    set_r8(c, R_CL, (uint8_t)alu_sub(c, 4, VG3_DS8(0xE328), 0, 0));
+    set_r8(c, R_CL, (uint8_t)x86_shift(c, 4, get_r8(c, R_CL), 1, 0));
+    c->r[R_AX] = x86_shift(c, 4, 4, get_r8(c, R_CL), 1);
+    ds_put(c, 0x9510, c->r[R_AX]);                                /* cells a side */
+    c->r[R_AX] = (uint16_t)(c->r[R_BP] - 2);
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)(c->r[R_BP] - 8);
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_CX] = (uint16_t)(c->r[R_BP] - 0x12);
+    cpu_push16(c, c->r[R_CX]);
+    c->r[R_CX] = (uint16_t)(c->r[R_BP] - 6);
+    cpu_push16(c, c->r[R_CX]);
+    c->icount += n + 14;
+    VG3_NEAR(0x1360, 0x1273, 4);                                  /* the cells in view */
+    VG3_DROP(8);
+    c->r[R_AX] = VG3_FRAME(-8);
+    VG3_SETFRAME(-0x0E, c->r[R_AX]);                              /* the first row */
+    n = 4;
+row:                                                              /* 01334 */
+    VG3_ROOM_OR_STOP(6, 0x1334);
+    c->r[R_AX] = VG3_FRAME(-2);
+    alu_sub(c, VG3_FRAME(-0x0E), c->r[R_AX], 1, 0);
+    n += 3;
+    if (x86_cond(c, 0xF)) goto next_pass;                         /* past the last row */
+    c->r[R_AX] = VG3_FRAME(-6);
+    VG3_SETFRAME(-0x0C, c->r[R_AX]);                              /* the first cell */
+    n += 3;
+cell:                                                             /* 012D3 */
+    VG3_ROOM_OR_STOP(20, 0x12D3);
+    c->r[R_AX] = VG3_FRAME(-0x12);
+    alu_sub(c, VG3_FRAME(-0x0C), c->r[R_AX], 1, 0);
+    n += 3;
+    if (x86_cond(c, 0xF)) {                                       /* past the last cell: the next row */
+        VG3_SETFRAME(-0x0E, (uint16_t)alu_inc(c, VG3_FRAME(-0x0E), 1));
+        n += 1;
+        goto row;
+    }
+    c->r[R_AX] = VG3_FRAME(-0x0C);                                /* the cell's centre */
+    x86_imul16(c, ds_get(c, 0x950E));
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], ds_get(c, 0x9512), 1, 0);
+    c->r[R_CX] = x86_shift(c, 7, ds_get(c, 0x950E), 1, 1);
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], c->r[R_CX], 1, 0);
+    VG3_SETFRAME(-0x14, c->r[R_AX]);
+    c->r[R_AX] = VG3_FRAME(-0x0E);
+    x86_imul16(c, ds_get(c, 0x950E));
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], ds_get(c, 0x9514), 1, 0);
+    c->r[R_CX] = (uint16_t)alu_add(c, c->r[R_CX], c->r[R_AX], 1, 0);
+    VG3_SETFRAME(-4, c->r[R_CX]);
+    cpu_push16(c, VG3_FRAME(-0x0E));
+    cpu_push16(c, VG3_FRAME(-0x0C));
+    cpu_push16(c, ds_get(c, 0xE328));
+    c->icount += n + 15;
+    VG3_NEAR(0x0871, 0x130E, 12);                                 /* the cell's pattern */
+    VG3_DROP(6);
+    VG3_SETFRAME(-0x10, c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)alu_inc(c, c->r[R_AX], 1);
+    n = 4;
+    if (c->flags & F_ZF) goto next_cell;                          /* none */
+    c->r[R_BX] = x86_shift(c, 4, ds_get(c, 0xE328), 5, 1);
+    c->r[R_BX] = (uint16_t)alu_add(c, c->r[R_BX], VG3_FRAME(-0x10), 1, 0);
+    c->r[R_BX] = x86_shift(c, 4, c->r[R_BX], 1, 1);
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] - 0x1CD0));
+    ds_put(c, 0xE476, c->r[R_AX]);                                /* its object list */
+    VG3_SETFRAME(-0x0A, 0);
+    n += 8;
+object:                                                           /* 012BB */
+    VG3_ROOM_OR_STOP(27, 0x12BB);
+    c->r[R_AX] = VG3_FRAME(-0x0A);
+    c->r[R_BX] = x86_shift(c, 4, ds_get(c, 0xE328), 5, 1);
+    c->r[R_BX] = (uint16_t)alu_add(c, c->r[R_BX], VG3_FRAME(-0x10), 1, 0);
+    c->r[R_BX] = x86_shift(c, 4, c->r[R_BX], 1, 1);
+    alu_sub(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x061E)), c->r[R_AX], 1, 0);
+    n += 7;
+    if (!x86_cond(c, 7)) goto next_cell;                          /* the list is done */
+    c->r[R_BX] = ds_get(c, 0xE476);                               /* 0127F */
+    alu_sub(c, ds_get(c, (uint16_t)(c->r[R_BX] + 4)), 0, 1, 0);
+    n += 3;
+    if (c->flags & F_ZF) {                                        /* draw it */
+        c->r[R_AX] = (uint16_t)alu_add(c, ds_get(c, 0xDEF8), 0x0E, 1, 0);
+        ds_put(c, 0x7D8E, c->r[R_AX]);
+        set_r8(c, R_CL, VG3_DS8(0xDEF8));
+        c->r[R_AX] = x86_shift(c, 4, VG3_FRAME(-4), get_r8(c, R_CL), 1);
+        c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], ds_get(c, (uint16_t)(c->r[R_BX] + 2)), 1, 0);
+        cpu_push16(c, c->r[R_AX]);                                /* y */
+        c->r[R_AX] = x86_shift(c, 4, VG3_FRAME(-0x14), get_r8(c, R_CL), 1);
+        c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], ds_get(c, c->r[R_BX]), 1, 0);
+        cpu_push16(c, c->r[R_AX]);                                /* x */
+        set_r8(c, R_AL, VG3_DS8(c->r[R_BX] + 6));
+        set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
+        cpu_push16(c, c->r[R_AX]);                                /* type */
+        c->icount += n + 15;
+        VG3_NEAR(0x13F1, 0x12B0, 3);                              /* map_object */
+        VG3_DROP(6);
+        n = 1;
+    }
+    ds_put(c, 0xE476, (uint16_t)alu_add(c, ds_get(c, 0xE476), 7, 1, 0));   /* 012B3 */
+    VG3_SETFRAME(-0x0A, (uint16_t)alu_inc(c, VG3_FRAME(-0x0A), 1));
+    n += 2;
+    goto object;
+next_cell:                                                        /* 012D0 */
+    VG3_SETFRAME(-0x0C, (uint16_t)alu_inc(c, VG3_FRAME(-0x0C), 1));
+    n += 1;
+    goto cell;
+next_pass:                                                        /* 01344 */
+    ds_put(c, 0x9518, (uint16_t)alu_dec(c, ds_get(c, 0x9518), 1));
+    n += 1;
+    goto pass;
+done:
+    x86_leave(c);
+    c->icount += n + 2;
+    near_ret(c);
+    return 1;
+}
 /* VG3-END */
 
 static const recomp_override MATCHED[] = {
@@ -23546,6 +25461,24 @@ static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x1377, 0x00F3, vgame_row_offsets_planar, "row offsets for the planar modes", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x1377, 0x046F, vgame_model_line, "draw a model line", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x1377, 0x0A89, vgame_model_fill_or, "OR the polygon spans into the page", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x120A, 0x00CF, vgame_model_draw, "draw a model", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x120A, 0x01B4, vgame_model_probe, "run a model without drawing", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1452, 0x03AB, vgame_rotation_from_angles, "rotation matrix from three angles", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x13F1, vgame_map_object, "one object of the map view", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xEC90, vgame_filelength, "length of an open file", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xF91A, vgame_malloc, "allocate from the near heap", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xF2C6, vgame_flush, "flush a stream", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xF122, vgame_filbuf, "refill a stream buffer", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xF1E0, vgame_openfile, "open a stream", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x0C38, vgame_load_terrain, "load the theatre terrain file", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xE946, vgame_fclose, "close a stream", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x4C73, vgame_objective_kinds, "a kind of its own for each objective target", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x114A, 0x033C, vgame_panel_balance_bar, "a signed bar on the panel", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x120A, 0x0317, vgame_model_parts_setup, "set up a model's parts", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x120A, 0x06B5, vgame_model_vertices, "a model's vertices to camera space", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x120A, 0x0561, vgame_model_planes, "a model's planes and visible vertices", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xEA30, vgame_fread, "read items from a stream", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x11FE, vgame_map_walk, "walk the map view's objects", 1 },
     { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x0B20, dswap_lzw_reset, "reset the LZW table", 1 },
     { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x1F1C, player_format_digits, "the formatter's digits", 1 },
     { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x14BC, mps_logo_free_stream, "first free stream", 2 },
