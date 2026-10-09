@@ -1,6 +1,6 @@
 /* func_lockstep.c - every matched routine (src/matched) held to the original.
  *
- *     func_lockstep [--states N] [--seed S] [--verbose]
+ *     func_lockstep [--states N] [--seed S] [--verbose] [--only MODULE:IP,...]
  *
  * Phase 2 replaces translated routines with hand-written C that must be
  * equal to the original, not similar. For each matched routine, the
@@ -190,6 +190,47 @@ static int compare(const char *mod, uint32_t off, uint16_t cs, uint16_t ip, int 
 }
 
 
+/* START and END call the graphics driver through a table of 5-byte thunks in
+ * their data segment. In the file each is JMP FAR 0:0 (the game fills them in
+ * after loading), so a far call through one runs the program's first bytes
+ * from a random state and the state is lost: every routine whose path reaches
+ * a draw call could not be compared past it. Here each thunk a far call in the
+ * code points at becomes a RETF, a driver that draws nothing; both sides see
+ * the same bytes, so what is compared is the routine's own work around the
+ * call: its arguments, the code after it and the clock. The driver's drawing
+ * is held by the routes. */
+static void stub_driver_thunks(uint8_t *pristine, uint32_t at, const rc_module *m)
+{
+    if (strcmp(m->name, "START.EXE") && strcmp(m->name, "END.EXE")) return;
+    for (uint32_t i = 0; i + 5 <= m->size; i++) {
+        if (m->image[i] != 0x9A) continue;
+        const uint32_t lin = (uint32_t)(m->image[i + 3] | m->image[i + 4] << 8) * 16u + (uint32_t)(m->image[i + 1] | m->image[i + 2] << 8);
+        if (lin + 5 > m->size) continue;
+        static const uint8_t jmp_far_0[5] = { 0xEA, 0, 0, 0, 0 };
+        if (!memcmp(m->image + lin, jmp_far_0, 5)) pristine[at + lin] = 0xCB;
+    }
+}
+
+/* A byte of the loaded image a routine reads as data at a low address: the BIOS data area (0:0489h, the
+ * gray-scale flag END's DAC loader tests) lies inside END's image here, where it is a code byte that happens
+ * to have the flag set, so the routine's normal path was never reached. Set in both sides' memory. */
+static const struct { const char *module; uint16_t ip; uint32_t linear; uint8_t value; } IMAGE_PATCHES[] = {
+    { "END.EXE", 0x42E4, 0x0489, 0x00 },
+};
+
+static void patch_image_for(uint8_t *pristine, const recomp_override *o)
+{
+    for (unsigned i = 0; i < sizeof IMAGE_PATCHES / sizeof IMAGE_PATCHES[0]; i++)
+        if (!strcmp(IMAGE_PATCHES[i].module, o->module) && IMAGE_PATCHES[i].ip == o->ip)
+            pristine[IMAGE_PATCHES[i].linear] = IMAGE_PATCHES[i].value;
+}
+
+/* Argument words a routine compares for exactly, planted in the first argument slots in some states (the
+ * small random arguments never reach them). */
+static const struct { const char *module; uint16_t ip; int arg; uint16_t v[2]; } ARG_PLANTS[] = {
+    { "START.EXE", 0x1B37, 0, { 0x0064, 0x0065 } },     /* the map caption's kinds 64h and 65h */
+};
+
 static machine_t g_m;           /* side 1's CPU lives in a machine: matched code takes one */
 
 /* A matched routine's call into original code, run here by plain stepping:
@@ -244,12 +285,14 @@ static int step_runner(machine_t *mm)
 int main(int argc, char **argv)
 {
     int states = 2000;
+    const char *only = NULL;        /* --only MODULE:IP[,MODULE:IP...]: just those routines (IP in hex), for quick runs */
     g_rng = 0x5EED0F117AULL;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--states") && i + 1 < argc) states = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--seed") && i + 1 < argc) g_rng = strtoull(argv[++i], NULL, 0) | 1;
         else if (!strcmp(argv[i], "--verbose")) g_verbose = 1;
-        else { fprintf(stderr, "usage: func_lockstep [--states N] [--seed S] [--verbose]\n"); return 2; }
+        else if (!strcmp(argv[i], "--only") && i + 1 < argc) only = argv[++i];
+        else { fprintf(stderr, "usage: func_lockstep [--states N] [--seed S] [--verbose] [--only MODULE:IP,...]\n"); return 2; }
     }
     if (RC_NMODULES == 0) { fprintf(stderr, "no generated code linked in (build with F117R_GEN_DIR)\n"); return 2; }
 
@@ -276,6 +319,12 @@ int main(int argc, char **argv)
     unsigned long long compared = 0, skipped = 0, bad = 0;
     for (unsigned mi = 0; mi < matched_count(); mi++) {
         const recomp_override *o = matched_entry(mi);
+        if (only) {
+            char key[64];
+            snprintf(key, sizeof key, "%s:%X", o->module, (unsigned)o->ip);
+            const char *f = strstr(only, key);
+            if (!f || (f != only && f[-1] != ',') || (f[strlen(key)] && f[strlen(key)] != ',')) continue;
+        }
         const rc_module *m = NULL;
         for (unsigned k = 0; k < RC_NMODULES; k++)
             if (!strcmp(RC_MODULES[k]->name, o->module) && RC_MODULES[k]->file_hash == o->file_hash) m = RC_MODULES[k];
@@ -283,6 +332,8 @@ int main(int argc, char **argv)
         for (uint32_t a = 0; a < MEM_SIZE; a += 8) { uint64_t v = rnd(); memcpy(g_pristine + a, &v, 8); }
         const uint32_t at = (uint32_t)base * 16u + m->origin;
         memcpy(g_pristine + at, m->image, m->size);
+        stub_driver_thunks(g_pristine, at, m);
+        patch_image_for(g_pristine, o);
         memcpy(g_mem[0], g_pristine, MEM_SIZE);
         memcpy(g_mem[1], g_pristine, MEM_SIZE);
         const uint16_t cs = (uint16_t)(base + o->seg), ip = o->ip;
@@ -295,6 +346,8 @@ int main(int argc, char **argv)
                 static const uint8_t pick[4] = { 0x00, 0xFF, 0x01, 0x00 };
                 for (uint32_t a = 0; a < MEM_SIZE; a++) g_pristine[a] = pick[rnd() & 3];
                 memcpy(g_pristine + at, m->image, m->size);
+                stub_driver_thunks(g_pristine, at, m);
+                patch_image_for(g_pristine, o);
                 memcpy(g_mem[0], g_pristine, MEM_SIZE);
                 memcpy(g_mem[1], g_pristine, MEM_SIZE);
             }
@@ -341,6 +394,9 @@ int main(int argc, char **argv)
             uint16_t small[4];
             for (int a = 0; a < 4; a++)
                 small[a] = (s & 4) ? (uint16_t)((int)(rnd() % 3) - 1) : (uint16_t)(rnd() % 32);
+            for (unsigned pk = 0; pk < sizeof ARG_PLANTS / sizeof ARG_PLANTS[0]; pk++)
+                if (!strcmp(ARG_PLANTS[pk].module, o->module) && ARG_PLANTS[pk].ip == o->ip && (rnd() & 1))
+                    small[ARG_PLANTS[pk].arg] = ARG_PLANTS[pk].v[rnd() & 1];
             for (int k = 0; k < 2; k++)
                 setup_side(k ? &g_m.cpu : &g_cpu[0], o, cs, ip, r, seg, flags, back, s, small);
             int steps = 0;
@@ -380,7 +436,7 @@ int main(int argc, char **argv)
             g_lost = 0; g_ncalls = 0; g_callover = 0;
             g_m.cpu.stop_at = g_m.cpu.icount + (uint64_t)steps - 1;
             const int probe_ran = o->fn(&g_m);
-            if (probe_ran && (g_callover || (!g_ncalls && g_m.cpu.icount > g_m.cpu.stop_at))) {
+            if (probe_ran && (g_callover || (!g_ncalls && g_m.cpu.stop_at && g_m.cpu.icount > g_m.cpu.stop_at))) {   /* (a limit of 0 is STI or POPF asking the run loop to look at interrupts: the routine stopped there) */
                 printf("  OVERRUN %s+%05X: ran to %llu with the limit at %llu (the original takes %d)\n", o->module,
                        ((uint32_t)o->seg << 4) + ip, (unsigned long long)g_m.cpu.icount - 1000,
                        (unsigned long long)g_m.cpu.stop_at - 1000, steps);
