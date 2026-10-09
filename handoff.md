@@ -11,9 +11,11 @@ Earlier session logs are in `git log -p handoff.md`.
 
 ## What to do first
 
-1. `git status -sb`: master should match `origin/master`. The untracked files
-   at the repo root (`cand_*.py`, `cmp_*.py`) predate this work; leave them,
-   as the untracked `test.bat`.
+1. `git status -sb`: master is nine commits ahead of `origin/master` and is
+   not pushed (item 3). Those nine commits, the fix in `tests/func_lockstep.c`
+   and this file are on the WIP branch `lockstep-code-below`, pushed to origin
+   for handoff. The untracked files at the repo root (`cand_*.py`, `cmp_*.py`)
+   predate this work; leave them, as the untracked `test.bat`.
 2. The app's default frame rate is the open decision. The owner's rule (9 Oct):
    the default is the highest frame rate at which nothing breaks, with parity
    first and the developers' intent second. Read `docs/speed-sweep.md` (merged
@@ -22,8 +24,22 @@ Earlier session logs are in `git log -p handoff.md`.
    second). The speed study has not finished: the 15 frames a second limiter
    candidate, the pilots' engagement results, the control-response measurements
    and the `--fix D1` sweep are still to run.
-3. Gate, then push, as below. Commit each verified piece with its scoreboard
-   title.
+3. **Not green yet: master is not pushed.** The one full gate run on the nine
+   local commits (merge8, HEAD `303c384` with the speed study) failed at step
+   7c, seed `0x303c384910a7`, with one mismatch: VGAME 1377:00F3
+   (`vgame_row_offsets_planar`). It is a harness fault. A random DS put the
+   480-row table over the routine's own loop displacement at 1377:00D4, so the
+   original rewrote its loop and left after five rows. The routine's 640-wide
+   branch starts at 00C2, below its entry, and the harness accepted no RET
+   there, so that branch was almost never compared (341 states compared, against
+   about 3,990 per seed now). The fix is one row in `CODE_BELOW`, in
+   `tests/func_lockstep.c` on the branch: `{ "VGAME.EXE", 0x1377, 0x00F3, 0x0031 }`. Checked
+   at `0x303c384910a7`, `0x5EED0F117A` and `0xC0FFEE`: 0 mismatching; a one-step
+   mutant in the wide branch fails on the first state. Not yet run: the full
+   gate on the fixed tree. Next: check out `lockstep-code-below`, run the gate
+   there (log to `D:\f117-gate\merge9\gate.log`) and read the tally. If it is
+   green, fast-forward master to the branch and push master. If not, fix on the
+   branch and push the branch again.
 
 ## Goal and standing decisions
 
@@ -285,7 +301,13 @@ Earlier session logs are in `git log -p handoff.md`.
   `\d` into real characters (a `\f` in a path became a form feed; `"\aq"` became
   a bell). Use the Edit or Write tool for strings with escapes, or a script file.
 - **Stale binaries**: a usage message that lacks a new option means the build
-  predates the edit. Rebuild before testing.
+  predates the edit. Rebuild before testing. Right now `build/` holds a mutant
+  build: the mutation check changed `matched.c` (step 0x52). The source is
+  reverted, the binaries are not, and the gate rebuilds them.
+- **Git Bash and cmd**: `cmd /c` in Git Bash is rewritten as a path and starts an
+  interactive shell. Use `MSYS_NO_PATHCONV=1 cmd /c "C:\...\build.cmd"
+  "-DF117R_GEN_DIR=C:/Users/Tideg/f117-recomp-local/gen"` with the absolute path,
+  because `cmd` does not start in Bash's directory.
 - **Merge conflicts**: `git checkout --theirs <file>` replaces the whole file,
   not the conflict. To recreate a conflict, use `git checkout -m <file>` and
   resolve the hunks. Check for duplicate matched rows with
@@ -297,6 +319,11 @@ Earlier session logs are in `git log -p handoff.md`.
 - **Unit tests in the gate**: the gate runs them after the build now, as CI
   does. CI caught an override-registry capacity failure the local gate had
   missed (the registry is 4,096 entries and warns when full).
+- **Code below an entry**: the lockstep watches a routine's own code from its
+  entry and accepts its RET only inside that span; `CODE_BELOW` widens the span.
+  A routine whose RET or code lies below its entry is skipped silently unless
+  listed, and a random DS can put a table over that code unseen. A low count of
+  states compared is the tell: VGAME 1377:00F3 compared 341 states before its row.
 - **The MS-DOS result was misattributed**: `b86_cargo_pilot.py` defaulted to
   FreeDOS `vmt386`. Check which profile a tool actually runs before blaming a
   machine.
