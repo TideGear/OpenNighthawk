@@ -37,8 +37,8 @@ options. Enhancements come after parity, never instead of it.
 > Atari Interactive, Inc., MicroProse, or any other rights holder.
 > *F-117A Nighthawk Stealth Fighter* and all related marks are the property
 > of their respective owners. **You must own a legal copy of the original
-> game to use this software.** It is [sold on
-> Steam](https://store.steampowered.com/app/328920/) and on
+> game to use this software.** It is sold on
+> [Steam](https://store.steampowered.com/app/328920/) and on
 > [GOG](https://www.gog.com/en/game/f117a_nighthawk_stealth_fighter_20). Please buy it.
 
 ## Status
