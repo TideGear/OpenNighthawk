@@ -302,6 +302,8 @@ def batch_distance(a, b):
 
 
 MAX_MOTION = 60        # a batch whose vertices moved further than this (pixels, mean) is not paired
+MAX_HUD_MOTION = 30    # a HUD line that moved further than this between steps is held
+MAX_EDGE_MOTION = 80   # a paired polygon with an edge end that moved further than this is held
 MAX_COUNT_DIFF = 0.1   # batches of 3 or more vertices may differ in count by this share (at least 1)
 
 
@@ -314,11 +316,11 @@ def compatible(a, b):
     lo = min(a.sig, b.sig)
     if lo < 3 or abs(a.sig - b.sig) > max(1, int(MAX_COUNT_DIFF * max(a.sig, b.sig))):
         return False
+    near = 0
     for va, vb in zip(a.verts[:lo], b.verts[:lo]):
         z = max(abs(va[2]), abs(vb[2]), 1 << 16)
-        if max(abs(va[k] - vb[k]) for k in range(3)) > z // 4:
-            return False
-    return True
+        near += max(abs(va[k] - vb[k]) for k in range(3)) <= z // 4
+    return near >= 0.7 * lo      # a vertex dropped from the middle shifts the rest: most must still agree
 
 
 def align_batches(A, B):
@@ -400,6 +402,7 @@ class Frame:
         self.batches = parse_phase(self)
         self.polys = [p for b in self.batches for p in b.polys]
         self.spans = self._spans()
+        self.hud = self._hud_lines()
 
     def _spans(self):
         """The library span fills ('Q') keyed by the colour set just before them ('K'), their mode
@@ -412,6 +415,18 @@ class Frame:
                 k = (colour, r.v[2])
                 out[k + (seen[k],)] = i
                 seen[k] += 1
+        return out
+
+    def _hud_lines(self):
+        """The library's lines ('N': the HUD's ladder, tapes and markers) grouped by the colour set
+        just before them and the page they draw to: {(colour, page, origin): [record indexes]}."""
+        out, colour = {}, None
+        for i, r in enumerate(self.recs):
+            if r.kind == "K":
+                colour = r.v[0]
+            elif r.kind == "N":
+                v = r.v
+                out.setdefault((colour,) + tuple(v[5:7]), []).append(i)
         return out
 
     def lines(self):
@@ -505,6 +520,10 @@ def interp_poly(pa, pb, bat_a, bat_b, w, space, stats):
         stats["held: clip status differs"] += 1
         return None
     vp = pa.f[1:5]
+    for ea, eb in zip(pa.edges, pb.edges):
+        if not ea["st"] & 0x80 and max(abs(s16(ea[k]) - s16(eb[k])) for k in ("x0", "y0", "x1", "y1")) > MAX_EDGE_MOTION:
+            stats["held: an edge end moved over %d px (not the same vertex?)" % MAX_EDGE_MOTION] += 1
+            return None
     edges = [interp_edge(ea, eb, w, bat_a, bat_b, vp, space, stats) for ea, eb in zip(pa.edges, pb.edges)]
     join = [interp_edge(ea, eb, w, bat_a, bat_b, vp, "screen", stats) for ea, eb in zip(pa.join, pb.join)]
     return poly_rows(pa, edges, join)
@@ -626,7 +645,7 @@ def rowbase_of(frame):
     return c.most_common(1)[0][0] if c else 0
 
 
-def inbetween(A, B, pairing, t, space="screen", stats=None, skeleton=None):
+def inbetween(A, B, pairing, t, space="camera", stats=None, skeleton=None, hud=True):
     """The record lines of the in-between frame at t (0 <= t <= 1): frame A at t = 0, frame B at
     t = 1, and for 0 < t < 1 the nearer frame's list (or the one named by skeleton, "A" or "B") with
     its paired primitives moved."""
@@ -657,7 +676,10 @@ def inbetween(A, B, pairing, t, space="screen", stats=None, skeleton=None):
             stats["held: nothing painted"] += 1
             continue
         mine = p.rows[0][4] - p.rows[0][1] - 320 * p.rows[0][0] if p.rows else base
-        replace[p.ri] = "".join(poly_lines(p, top, rows, mine, int(skel.recs[p.ri].line.split()[1])))
+        new_lines = poly_lines(p, top, rows, mine, int(skel.recs[p.ri].line.split()[1]))
+        assert pb in (B if skel is A else A).polys and pa in skel.polys and             [e["slot"] for e in pa.edges] == [e["slot"] for e in pb.edges], "an unpaired polygon was moved"
+        stats["regenerated lines"] += len(new_lines)
+        replace[p.ri] = "".join(new_lines)
         for i in p.bi + p.ai:
             replace[i] = ""
         stats["polygons moved"] += 1
@@ -674,6 +696,23 @@ def inbetween(A, B, pairing, t, space="screen", stats=None, skeleton=None):
             continue
         replace[i] = "Q %s %s\n" % (skel.recs[i].line.split()[1], " ".join(str(x) for x in v))
         stats["span fills moved"] += 1
+        stats["regenerated lines"] += 1
+    if hud:
+        for key, idx in skel.hud.items():
+            oth = other.hud.get(key, [])
+            stats["HUD lines"] += len(idx)
+            if len(oth) != len(idx):
+                stats["held: HUD lines whose group changed in size"] += len(idx)
+                continue
+            for i, j in zip(idx, oth):
+                a, b = skel.recs[i].v, other.recs[j].v
+                if max(abs(a[k] - b[k]) for k in range(4)) > MAX_HUD_MOTION:
+                    stats["held: HUD line that moved over %d px" % MAX_HUD_MOTION] += 1
+                    continue
+                nv = [rnd(lerp(a[k], b[k], w)) for k in range(4)] + a[4:]
+                replace[i] = "N %s %s\n" % (skel.recs[i].line.split()[1], " ".join(str(x) for x in nv))
+                stats["HUD lines moved"] += 1
+                stats["regenerated lines"] += 1
     bmap = {i: j for i, j in pairing.batch_pairs} if skel is A else {j: i for i, j in pairing.batch_pairs}
     for b in skel.batches:
         ob = other.batches[bmap[b.idx]] if b.idx in bmap else None
@@ -694,6 +733,7 @@ def inbetween(A, B, pairing, t, space="screen", stats=None, skeleton=None):
             nv = interp_line(v, other.recs[mine[n]].v, w)
             replace[i] = "L %s %s\n" % (skel.recs[i].line.split()[1], " ".join(str(x) for x in nv))
             stats["outline edges moved"] += 1
+            stats["regenerated lines"] += 1
     for i, r in enumerate(skel.recs):
         if r.kind == "D" and r.v[0] == 44 and len(r.v) > 5 and i not in replace:
             # the present: the replay's own work page is the source, not the bytes the original
@@ -975,6 +1015,45 @@ def strips(frames, outdir, space, steps, first=0, count=2, box=(0, 0, 320, 200),
         print("wrote", path)
 
 
+def check_primitives(frames, space, ts=(0.25, 0.5, 0.75), render_colours=True):
+    """The in-between frames at t in ts for every pair: how much of each frame's draw list was
+    moved and how much held (and why), and the provenance rule: every line of the in-between
+    list is a line of frame n or n + 1 or a regeneration of a primitive paired in both, so
+    none is absent from both. With render_colours the in-between display's colour indexes are
+    also compared with those of the two neighbours."""
+    res = Counter()
+    for n in range(len(frames) - 2):
+        A, B = frames[n], frames[n + 1]
+        P = Pairing(A, B)
+        cut = is_cut(P)
+        res["frame pairs"] += 1
+        res["frame pairs that are cuts (hold)"] += bool(cut)
+        known = set(A.lines()) | set(B.lines())
+        da, db = dump_bytes(B.yline)[:64000], dump_bytes(frames[n + 2].yline)[:64000]   # the display after A, after B
+        ya, yb = set(da), set(db)
+        for t in ts:
+            st = Counter()
+            lines, st = inbetween(A, B, P, t, space, st)
+            res["in-between frames"] += 1
+            flat = []
+            for line in lines:
+                flat.extend(line.splitlines(True))
+            novel = [l for l in flat if l not in known]
+            kinds = {l[0] for l in novel}
+            res["records in the list"] += len(flat)
+            res["records neither frame has"] += len(novel)
+            res["provenance violations"] += (len(novel) > st["regenerated lines"] + st["D"]) or not kinds <= set("RbQLDN")
+            for k, v in st.items():
+                res[k] += v
+            if render_colours:
+                _, y = render(A if t < 0.5 else B, lines)
+                extra = set(y[:64000]) - ya - yb
+                res["pixels compared"] += 64000
+                res["pixels that differ from the skeleton frame's own picture"] += diff_count(y, da if t < 0.5 else db)
+                res["in-between displays with a colour index in neither neighbour"] += bool(extra)
+    return res
+
+
 def main(argv):
     import argparse
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -984,6 +1063,7 @@ def main(argv):
     ap.add_argument("--pairing", action="store_true", help="pairing rates and causes")
     ap.add_argument("--check", action="store_true", help="t = 0 and t = 1 against the Stage 1 replay")
     ap.add_argument("--predict", action="store_true", help="interpolate n and n+2 at 1/2 and compare with n+1")
+    ap.add_argument("--primitives", action="store_true", help="what moves and what holds, and the provenance rule")
     ap.add_argument("--geometry", action="store_true", help="edge endpoints: interpolated n,n+2 midpoint against real n+1")
     ap.add_argument("--strip", metavar="DIR", help="write PNG strips of in-between frames")
     ap.add_argument("--from-frame", type=int, default=0, help="first logic frame to use")
@@ -1004,6 +1084,10 @@ def main(argv):
         report_pairing(frames)
     if a.check:
         res = check_exact(frames, a.space)
+        for k in sorted(res):
+            print("  %s: %d" % (k, res[k]))
+    if a.primitives:
+        res = check_primitives(frames, a.space)
         for k in sorted(res):
             print("  %s: %d" % (k, res[k]))
     if a.predict:
