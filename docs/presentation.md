@@ -70,7 +70,7 @@ Each stage is judged by a check, as in the rest of the project.
 |---|---|---|---|
 | 0 | Observer: log every call to the drawing primitives per frame | the log is identical across runs; hashes unchanged with it on | done |
 | 1 | Draw lists: a frame's primitives as a list, replayed at 320x200 | the replay reproduces the original's work and display pages bit for bit, every phase of every route | done for the windows below; unexercised branches listed below |
-| 2 | Re-draw the list at N times the resolution | N = 1 is Stage 1 exactly; at N > 1 every N x N block agrees with the N = 1 pixel wherever no edge crosses it | first build run (`hires_frame.py`): the scaled walk cracks along shared edges; the clip stage must be redone |
+| 2 | Re-draw the list at N times the resolution | N = 1 is Stage 1 exactly; at N > 1 every N x N block agrees with the N = 1 pixel wherever no edge crosses it | model polygons re-drawn from their sub-pixel vertices (`hires_subpixel.py`): N = 1 exact, flat agreement 99.96-100% before a guard, 100% after; text, sprites, HUD and 3-4% of the polygons stay scaled |
 | 3 | Interpolate between consecutive draw lists to the host display rate | at a logic frame the output is exactly that frame; no in-between primitive absent from both neighbours | not started |
 | 4 | Pacing, vsync, a picture-age setting, HUD handling, a switch to the original picture | - | not started |
 
@@ -95,7 +95,8 @@ or AND/OR/discard styles; `a` is dither/stipple), `B`/`L` outline polygon and
 its edges, `N` library line, `K` colour, `Q` span fill, `C` blit, `T` text
 (with its font, so the replay needs no game data), `S` sprite, `W` scaled RLE
 sprite, `H` tick scale, `D` page copies (44 present, 48 copy, 79 dissolve),
-`X` any other entry, `x` changed byte deltas.
+`X` any other entry, `x` changed byte deltas, `J` the display palette (768 six-bit DAC
+components, logged beside `Y` with `F117R_OBSERVE_PAGES=1`).
 
 `tools/drawlist_frame.py LOG` rebuilds each phase from the previous page dump
 plus every captured primitive in order and compares it, byte for byte over
@@ -202,6 +203,61 @@ which is the sub-pixel re-projection this stage's earlier text held back. The ne
 therefore that re-projection for the model polygons, judged by this tool's two numbers: agreement
 at 100% and the fine picture differing from the scaled copy by more than 0.13%.
 
+### Sub-pixel re-projection (8 October 2026)
+
+`tools/hires_subpixel.py LOG [N] [-] [--grow G] [--crops DIR] [--no-guard]` fills each model polygon
+from its true geometry on the N-times grid, over the same replay as `hires_frame.py`:
+
+- **Vertices.** An `E` edge record names its slot; the `G` record of that slot names the two vertex
+  records; each `V` record has the camera-space x, y, z and the pixel the original made. The projection
+  (`0x129A2`) is `x >> 8` over the high word of z (or `x >> 1` over `(z >> 8) >> 1` below 0x100): every `V` record
+  of a strike window reproduces under that formula (13,402 of 13,402). The divide's remainder is the sub-pixel
+  position; the divide truncates toward zero, so a vertex left of the centre is moved into the pixel
+  the original chose (the position is `px` plus the remainder taken floor-wise), which keeps every vertex inside its
+  own coarse pixel. The origin ([8602], [8604]) is 159, 52 in these windows, read from the polygon's
+  unclipped edges.
+- **Fill rule.** A fine pixel is painted when its centre is inside the true polygon (left and top
+  inclusive: two polygons sharing a vertex pair compute the same crossing, so they tile), and inside the original's
+  own footprint for that polygon (the rows its fill painted); a coarse pixel with all eight neighbours in the
+  footprint is covered whole. The clip is therefore the original's own: the footprint carries its borders,
+  and nothing is added outside it. The polygon's overshoot is what the original's inclusive spans add to
+  the true shape (both end pixels of every edge row count): it is measured per polygon at N = 1 as the least of
+  0, 0.5, 1, 1.5, 2, 3 pixels with which the true shape covers the whole footprint, and kept at that many
+  pixels of the grid being drawn. At N = 1 the footprint is exactly the original's, so the picture is Stage 1's
+  (25/25, 31/31, 18/18, 59/59 and 20/20 display pages equal on the windows below); at N > 1 an edge lies within
+  that many fine pixels of its true place (0.5 for 90% of the ground windows' polygons, and for 47% in the air-to-air window with the missile, where 1 takes
+  most of the rest). A pure
+  top-left rule (`--grow 0`) tiles without overshoot but differs from the original at N = 1 in 0.7% of the pixels.
+- **Left scaled** (counted by the tool): polygons with a near-clipped edge (the crossing is the original's own
+  approximation, x/128 at a plane at z of about 0x10000, which is no sub-pixel geometry), with a vertex behind the
+  eye, with a footprint more than 3 pixels from its geometry (edge-on slivers at the horizon, border runs),
+  and fills in a style with no replay rule. Text, sprites, lines, blits and the HUD are scaled copies.
+
+Windows (30M instructions from just after `ordnance.pic`, except landing at 9.90B and airair_type6 at the AMRAAM launch
+5.092B; `F117R_OBSERVE_PAGES=1`), N = 2 / N = 4. "Flat" is the stage's agreement over the display pages; "rule alone" counts it before the guard
+(which restores the value on a flat block that disagrees); "unlike scaled" is the share of the fine picture differing from
+the plain scaled copy after the guard, beside the floor mode's (`hires_frame.py --floor`) and the first build's walk:
+
+| window | polygons (refilled) | flat, rule alone | guard restores | unlike scaled | floor mode | first walk |
+|---|---|---|---|---|---|---|
+| strike | 3,125 (3,021) | 100% / 100% | 0 / 0 | 0.245% / 0.450% | 0.127% / 0.144% | 84.9% flat, 8.4% unlike |
+| recon | 2,503 (2,333) | 100% / 99.966% | 0 / 281 | 0.114% / 0.233% | 0.077% / 0.081% | 80.3% flat, 11.2% unlike |
+| landing (9.90B) | 1,479 (1,434) | 100% / 100% | 0 / 0 | 0.178% / 0.242% | 0.059% / 0.060% | 78.0% flat, 10.8% unlike |
+| air-to-air type 6 (5.092B) | 3,522 (3,426) | 99.997% / 99.988% | 35 / 137 | 0.058% / 0.118% | 0.020% / 0.022% | 99.7% flat, 0.2% unlike |
+| air-to-air Central Europe | 4,603 (4,401) | 99.965% / 99.956% | 187 / 238 | 0.310% / 0.568% | 0.112% / 0.122% | 85.0% flat, 8.0% unlike |
+
+The picture differs from the scaled copy by 1.5 to 3.0 times what the floor mode changes (N = 2; recon is the
+weakest at 1.5) and 2.9 to 5.4 times (N = 4), and the difference grows with N, as real extra detail should; the first walk's large figure is
+cracks, not detail. The residue of the flat disagreements (0.00-0.04% of the flat pixels) is the horizon: a ground
+polygon whose true top lies half a coarse row below the row the original's inclusive spans started it in, while
+the pixel above it in the original is the same ground colour (drawn by an earlier phase): the fine row between them
+keeps the sky. They are restored by the guard and counted, not hidden. Side-by-side crops (scaled copy,
+floor mode, this rule, and where the rule differs) are written by `--crops DIR`; edges of the hills, the ground
+bands and the horizon are the visible gain, and the rest of the picture is unchanged.
+The pass takes about 5 s a window at N = 2 in Python (only the 0.1-0.6% of pixels near an edge change), so the
+cost of the polygon stage is small; what is not cheap is everything still scaled (the HUD and its text, sprites and
+the cockpit art, which are most of the picture's remaining coarseness).
+
 ## Open questions and risks
 
 - **Pairing for interpolation.** Interpolation needs object A in frame n paired
@@ -219,5 +275,6 @@ at 100% and the fine picture differing from the scaled copy by more than 0.13%.
   method.
 - **Time base.** Interpolating against the host clock needs one agreed time
   base with the machine; the mission-clock invariant provides it.
-- **Is sub-pixel "4K" worth its cost** against the cheaper scaled picture? The
-  data exists; the clip and span stages would be redone.
+- **Is sub-pixel "4K" worth its cost** against the cheaper scaled picture? For the 3-D scene the polygon stage is
+  cheap and verified (above); what remains is whether the HUD, text and sprites also need a finer source than their
+  scaled copies, and the near-clipped polygons (3-4% of the polygons, no sub-pixel rule yet).

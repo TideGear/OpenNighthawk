@@ -104,6 +104,10 @@ static int hook_game_draw(machine_t *m)
             v[0] = 0xA000; v[1] = 0;
             for (uint32_t a = 0; a < 64000; a++) v[2 + a] = mem_read8(c, phys(0xA000, (uint16_t)a));
             o->prim(o->user, c->icount, 'Y', v, 2 + 64000);
+            /* and the palette the display shows ('J': the 256 DAC entries, six bits a component,
+             * as the render uses them), so a picture rebuilt from the log has its colours */
+            for (unsigned k = 0; k < 768; k++) v[k] = m->dac_display[k];
+            o->prim(o->user, c->icount, 'J', v, 768);
         }
     }
     return 0;
