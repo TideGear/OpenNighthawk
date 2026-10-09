@@ -75,6 +75,15 @@ Status values:
   machine draws 16.8 a second, S sits clamped at 15 and the clock advances
   181: the world runs 13% behind GOG's. That flight does not show the 15/3
   swing.
+- **Not reproduced in the original's own loop.** The frame wait at `0x0409`
+  (`call 0x04C7`, `[0x43E8]` game ticks a frame) runs in this build (traced
+  at 40 MIPS) and keeps the window's ticks above the correction: in 199
+  flights at 3-40 MIPS and on the 386 profile S never fell from 15 to 3.
+  Above about 13 MIPS S sits at 15 with about 16.7 frames a second and the
+  world runs 1.11 times real time. The model that predicted the swing
+  omitted the wait. AI, launches and guidance step per frame scaled by S, not
+  on the tick (Reimp `frame_weapons.c`, VGAME `0x683E`). Measurements and
+  open questions: [speed-sweep.md](speed-sweep.md).
 - **Fix available: `--fix D1`,** a frame limiter. An override at VGAME
   `0x441D`, the controller's entry, which every frame passes once, holds
   a frame that arrives before its slot (time passes and interrupts are
