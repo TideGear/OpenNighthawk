@@ -105,7 +105,9 @@ def main():
     ap.add_argument("--out", type=Path, default=Path.home() / "f117-recomp-local" / "pc-parity")
     for name in ("gog", "dosbox-x", "86box", "save"):
         ap.add_argument("--no-" + name, action="store_true")
+    ap.add_argument("--profile86", help="the 86Box profile for the intro, music and save runs (each tool's default otherwise)")
     a = ap.parse_args()
+    profile86 = ["--profile", a.profile86] if a.profile86 else []
     a.out.mkdir(parents=True, exist_ok=True)
     results, threads = {}, []
 
@@ -154,13 +156,14 @@ def main():
                 t.start()
                 return t
             runs = [
-                one("rc", lambda: run([PY, str(HERE / "ref86box" / "capture_intro.py"), str(cap), "--seconds", str(a.seconds)],
-                                      a.out / "86box-capture.log")),
-                one("sound_rc", lambda: run([PY, str(HERE / "ref86box" / "sound86.py"), str(a.out / "86box-sound")],
+                one("rc", lambda: run([PY, str(HERE / "ref86box" / "capture_intro.py"), str(cap), "--seconds", str(a.seconds)]
+                                      + profile86, a.out / "86box-capture.log")),
+                one("sound_rc", lambda: run([PY, str(HERE / "ref86box" / "sound86.py"), str(a.out / "86box-sound")] + profile86,
                                             a.out / "86box-sound-run.log")),
             ]
             if not a.no_save:
-                runs.append(one("save", lambda: save_check(["--no-dosbox-x", "--out", str(a.out / "save-86box")],
+                runs.append(one("save", lambda: save_check(["--no-dosbox-x", "--out", str(a.out / "save-86box")]
+                                                           + (["--profile86", a.profile86] if a.profile86 else []),
                                                            a.out / "86box-save.log", "86Box")))
             for t in runs:
                 t.join()

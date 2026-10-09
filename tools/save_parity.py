@@ -98,13 +98,14 @@ def route_86box(route, base):
     return ",".join(keys), ";".join(mouse)
 
 
-def run_86box(route, out, driver):
+def run_86box(route, out, driver, profile=None):
     keys, mouse = route_86box(route, ROSTER_FRAME)
     # SETUP's two answers, as the DOSBox-X run types them (N, then 2), long before START
     setup = "3000:1:31,3003:0:31,3300:1:03,3303:0:03"
     last = max(int(x.split(":")[0]) for x in (keys + "," + mouse.replace(";", ",")).split(",") if x)
     r = subprocess.run([sys.executable, str(HERE / "ref86box" / "sav86.py"), str(out), "--mouse-driver", str(driver),
-                        "--keys", setup + "," + keys, "--mouse", mouse, "--frames", str(last + 600)],
+                        "--keys", setup + "," + keys, "--mouse", mouse, "--frames", str(last + 600)]
+                       + (["--profile", profile] if profile else []),
                        capture_output=True, text=True)
     (out / "sav86.txt").write_text(r.stdout + r.stderr)
     return out
@@ -180,6 +181,7 @@ def main():
     ap.add_argument("--no-dosbox-x", action="store_true")
     ap.add_argument("--no-turbo", action="store_true", help="DOSBox-X at its own speed instead of fast-forward (about four times slower)")
     ap.add_argument("--no-86box", action="store_true")
+    ap.add_argument("--profile86", help="the 86Box profile (sav86.py's default otherwise)")
     a = ap.parse_args()
     events, last = route_events(a.route)
     seconds = a.seconds or int(3 * (150 + last / 1000 + 60))      # a ceiling: the run ends when the roster is written
@@ -190,7 +192,7 @@ def main():
         for name in SAVED:
             ok &= compare(name, ours, game, "DOSBox-X")
     if not a.no_86box:
-        box = run_86box(a.route, a.out / "86box", a.mouse_driver)
+        box = run_86box(a.route, a.out / "86box", a.mouse_driver, a.profile86)
         for name in SAVED:
             ok &= compare(name, ours, box, "86Box")
     return 0 if ok else 1

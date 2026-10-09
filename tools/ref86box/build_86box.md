@@ -38,7 +38,7 @@ variables drive it:
 |---|---|
 | `B86_TRACE=DIR` | `DIR/frames.csv`: every displayed frame with its emulated microseconds, size, hash and the instructions the guest has executed so far (the patch counts them in the 386 interpreter) |
 | `B86_KEYS="frame:down:scancode,..."` | key events at displayed-frame counts (set-1 scancodes, hex; an extended key is `e0xx`); up to 8,192 |
-| `B86_MOUSE="frame:m:x,y;frame:b:mask;..."` | pointer to guest pixel x,y of 320x200 (a slam into the corner, then the move 30 frames later, fed 60 counts a frame; a count moves the guest pointer 1.5 pixels) and the button mask. The pointer is not at x,y until well after the `m` frame, so a press goes 40 frames after it and the release 55 (as `save_parity.py` does); a press at the route's own spacing clicks mid-move and does nothing |
+| `B86_MOUSE="frame:m:x,y;frame:b:mask;..."` | pointer to guest pixel x,y of 320x200 (a slam into the corner, then the move 30 frames later, fed 60 counts a frame; `B86_MOUSE_KX/KY` counts a pixel, default 0.667: under CuteMouse a count moves the guest pointer 1.5 pixels, under MOUSE.COM see the MS-DOS VMs below) and the button mask. The pointer is not at x,y until well after the `m` frame, so a press goes 40 frames after it and the release 55 (as `save_parity.py` does); a press at the route's own spacing clicks mid-move and does nothing |
 | `B86_KEYS_FILE=FILE`, `B86_MOUSE_FILE=FILE` | the same schedules read from a file: a long route's inline string exceeds the Windows command-line and environment limits |
 | `B86_PPM=1`, `B86_PPM_AFTER=N` | each new picture saved as a PPM (about 0.9-1.5 MB each), from frame N on if given |
 | `B86_DUMP_FILE=FILE`, `B86_DUMP_AT=N` | conventional memory (0-0x9FFFF) written to FILE once at frame N |
@@ -199,10 +199,29 @@ builds vmt386's board with a new disk booting the owner's MS-DOS (4.01, 5.00 and
 6.22 are built: `vmt386dos401`, `vmt386dos500`, `vmt386dos622`): what `SYS C:` does,
 written by the script (the system disk's boot code, IO.SYS and MSDOS.SYS first and
 contiguous, COMMAND.COM), the MBR code of the FreeDOS VM's disk, a first boot that
-proves the disk boots, then the game and `FILES=20`, `BUFFERS=20`. The board's BIOS
-reports no extended memory, so there is no HIMEM. MS-DOS 5.00 is the 386 timing
-profile's reference ([timing386.md](timing386.md)). The VMs have no mouse
-(`mouse_type = none`, as vmt386).
+proves the disk boots, then the game and `FILES=20`, `BUFFERS=20`, and a boot that
+writes `MEM /C` into the profile's `MEM.TXT`. The board has 1 MB, so no extended
+memory and no HIMEM; `--mem-kb N --himem` gives it N KB (the first boot saves the
+size into the CMOS through the BIOS setup) and loads MS-DOS's HIMEM.SYS with
+`DOS=HIGH`. MS-DOS 5.00 is the 386 timing profile's reference
+([timing386.md](timing386.md)); `vmt386dos500` loads Microsoft MOUSE.COM 6.26
+(`--mouse`, `mouse_type = msserial`). Largest executable program under its
+AUTOEXEC.BAT: 577,728 bytes; `vmt386dos500h` (`--mem-kb 4096 --himem`, the same
+mouse) 625,584. Both load SPEECH.117 in flight; the FreeDOS bare boot does not.
+
+On an MS-DOS VM `probe86.bare_boot` keeps the boot files as built (its mouse
+driver, then F117), and `b86_cargo_pilot.py --profile`, `save_parity.py
+--profile86` and `pc_parity.py --profile86` run on it. MOUSE.COM moves the
+pointer one pixel a count (`B86_MOUSE_KX/KY` 1.0, against CuteMouse's 0.667) and
+stops 8 pixels short in x and 16 in y after a move from the corner (eight moves
+on START's roster screen, each exactly that short); `probe86.mouse_calibration`
+gives the harnesses both from the image. With it the cargo pilot reaches VGAME
+and the roster check saves a `ROSTER.FIL` byte-identical to ours on
+`vmt386dos500h`; without it the clicks land 8-16 pixels off and START never
+leaves the roster.
+`b86_cargo_pilot.py` answers SETUP with the front route's own two keys (every
+recorded route answers N and 2, AdLib; a route answering 1 flies with the speaker
+driver).
 
 ## The profile (`D:\86box\vmf`, the picture capture; the checks above use `vmt386`)
 

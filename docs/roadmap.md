@@ -135,24 +135,19 @@ make (Phase 4).
       identical, its audio envelope 0.87, spectral 0.92-0.93, level 0.95 (before:
       0.69, 0.54, 0.47); the radio call's 12,924 counts identical. Open: an
       audio reference for the speech (DOSBox-X ignores mode 0 counts written
-      without a control word and plays nothing) and the speaker's timing against
-      86Box. The AdLib speech against 86Box (9 Oct 2026, the cargo route's
-      takeoff call through `b86_cargo_pilot.py` with `B86_OPL`): 6,464
-      writes to register 43h on both, 7,938 and 7,936 a second, 0.814 s each,
-      so the timer pacing is the reference's. The values differ because the
-      86Box VM (MS-DOS 5.00 with MOUSE.COM) has too little free memory for
-      VGAME 0x0110 to load the 26,408-byte SPEECH.117: VGAME's `[0x008A]`
-      stays 0, request 0x28 is never sent and the driver plays the call's
-      offsets from segment 0. Here the file loads and the call is its bytes
-      15,654-22,117 through the driver's table. Under the speaker driver
-      (`B86_SPKLOG`, a new 86Box trace option in DOSBox-X's port-log format)
-      the VM's call polls counter 2 about 583,000 times and writes no sample
-      count, where this machine writes 13,046 counts over 864 ms. The VM's
-      board has no extended memory (no HIMEM or DOS=HIGH; FILES=20,
-      BUFFERS=20, MOUSE.COM resident), so the speech timing against 86Box
-      needs a VM with room for the file. Whether the reference should have
-      that room, or this machine the VM's free memory and no speech, is the
-      owner's call.
+      without a control word and plays nothing). The radio call against 86Box
+      (9 Oct 2026, the cargo route's takeoff call through `b86_cargo_pilot.py`
+      on the MS-DOS 5.00 VM with MOUSE.COM, `vmt386dos500`, and on its 4 MB
+      HIMEM/DOS=HIGH variant `vmt386dos500h`; both load the 26,408-byte
+      SPEECH.117, VGAME's `[0x008A]` 0x8C43 and 0x8094): with the AdLib
+      driver (`B86_OPL`) its 6,464 writes to register 43h are identical in
+      order and value, 7,938 and 7,936 a second, 0.814 s each; with the
+      speaker driver (`B86_SPKLOG`, 86Box's port log in DOSBox-X's format)
+      this machine's 13,046 counts are identical in order and value, 15.1 a
+      millisecond on both (86Box writes 17 and 5 more counts of 128 before
+      the first: 864.8 and 864.0 ms against 863.7 ms here). The FreeDOS VM `vmt386` (bare
+      boot, CuteMouse) does not load SPEECH.117 (`[0x008A]` stays 0, the
+      AdLib driver plays the call's offsets from segment 0).
 
 ### Settled (scope, 8 Oct 2026)
 

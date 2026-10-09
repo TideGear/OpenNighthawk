@@ -31,6 +31,8 @@ MIN_IDENTICAL_CHANNELS = 4          # measured 6 Oct 2026: channels 0, 1, 2, 5
 def load(path, per_second):
     out = []
     for line in open(path):
+        if len(line.split()) != 3:          # 86Box's log ends mid-line when B86_STOP exits with it unflushed
+            continue
         t, r, v = line.split()
         out.append((int(t) / per_second, int(r, 16), int(v, 16)))
     return out

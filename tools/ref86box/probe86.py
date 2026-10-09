@@ -48,11 +48,26 @@ def with_partition(image, fn, write=False):
 def bare_boot(fs, commands):
     """FDAUTO.BAT and FDCONFIG.SYS that leave the game nearly all of conventional memory: no
     environment variables, one buffer, few files, a small environment block (START stops with
-    "Not enough memory!" on the 386 board under the stock FreeDOS boot, or with a mouse driver)."""
+    "Not enough memory!" on the 386 board under the stock FreeDOS boot, or with a mouse driver).
+    An MS-DOS VM (build_msdos_vm.py: AUTOEXEC.BAT, no FDAUTO.BAT) keeps the boot files it was built
+    with, the reference PC's setup: its own mouse driver, then F117; `commands` are not used."""
+    if fs.exists("/AUTOEXEC.BAT") and not fs.exists("/FDAUTO.BAT"):
+        return
     fs.writetext("/FDAUTO.BAT", "\r\n".join(["@echo off", "cd \\F117A"] + list(commands)) + "\r\n")
     fs.writetext("/fdconfig.sys", ("LASTDRIVE=C\r\nBUFFERS=%s\r\nFILES=10\r\nSTACKS=0,0\r\n"
                  "SHELL=\\FREEDOS\\BIN\\COMMAND.COM \\FREEDOS\\BIN /E:128 /P=\\FDAUTO.BAT\r\n")
                  % os.environ.get("B86_BUFFERS", "1"))   # a test knob: DOS's sector buffers (1 leaves START its memory)
+
+
+def mouse_calibration(fs):
+    """(B86_MOUSE_KX, B86_MOUSE_KY, dx, dy) for the image's mouse driver: B86_MOUSE's counts per guest
+    pixel, and how far short of the asked position (pixels) the pointer stops, so a schedule asks for
+    x + dx, y + dy. CuteMouse 2.1 (loaded by the harness on FreeDOS): 0.667, no shortfall. Microsoft
+    MOUSE.COM 6.26 (the MS-DOS VMs' C:\\MOUSE): one count a pixel and 8, 16 short, measured on START's
+    roster screen over eight moves from the corner (each stopped exactly that far short)."""
+    if fs.exists("/MOUSE/MOUSE.COM") and not fs.exists("/FDAUTO.BAT"):
+        return 1.0, 1.0, 8, 16
+    return 0.667, 0.667, 0, 0
 
 
 def main():
