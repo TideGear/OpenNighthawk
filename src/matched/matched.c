@@ -10907,8 +10907,6 @@ static int sm3_open_stream(machine_t *m, uint16_t find_at, uint16_t open_at, int
 {
     cpu_t *c = &m->cpu;
     if (!room(c, 4)) return 0;
-    const int a0 = far ? 1 : 0;
-    const uint16_t a = arg(c, a0), b = arg(c, a0 + 1), d = arg(c, a0 + 2);
     const uint16_t find_ret = sm3_after_call(c, find_at), open_ret = sm3_after_call(c, open_at);
     cpu_push16(c, c->r[R_BP]);
     c->r[R_BP] = c->r[R_SP];
@@ -10924,9 +10922,9 @@ static int sm3_open_stream(machine_t *m, uint16_t find_at, uint16_t open_at, int
         c->icount += 5;
     } else {
         cpu_push16(c, si);
-        cpu_push16(c, d);
-        cpu_push16(c, b);
-        cpu_push16(c, a);
+        cpu_push16(c, bp_get(c, 8));                              /* the arguments, read after the call */
+        cpu_push16(c, bp_get(c, 6));
+        cpu_push16(c, bp_get(c, 4));
         c->icount += 7;
         if (!sm3_call(m, open_at)) return 1;
         if (!room(c, 5)) { c->ip = open_ret; return 1; }
@@ -18901,6 +18899,419 @@ out:                                                              /* 0x08005 */
     return 1;
 }
 
+/* START 0x08889 and END 0x04829, the picture decoder's start: the input's
+ * end ([end] = the buffer + 200h), the decoder's private stack pointer
+ * ([sp] = its top) and the run state ([run], [run+1]) set; with SI at or
+ * past the end, the refill hook ([hook]) is called and SI goes back to the
+ * buffer. The first word is the header: kept as the bit buffer ([bits]),
+ * 8 bits used ([used]), and its low byte gives the code width ([width]) -
+ * a negative one, negated, also clears the packed-pixel flag ([packed]).
+ * The LZW table is then reset (START 0x088D4, END 0x04874). */
+typedef struct { uint16_t entry, base, end, sp_top, sp, run, hook, bits, used, packed, width, reset; } st3_pic_start_t;
+
+static int st3_pic_start(machine_t *m, const st3_pic_start_t *s)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = s->entry;
+    if (!room(c, 19)) return 0;                                   /* to the reset's CALL */
+    c->r[R_AX] = (uint16_t)alu_add(c, s->base, 0x0200, 1, 0);
+    ds_put(c, s->end, c->r[R_AX]);
+    c->r[R_AX] = s->sp_top;
+    ds_put(c, s->sp, c->r[R_AX]);
+    ds_put8(c, s->run, 0);
+    ds_put8(c, (uint16_t)(s->run + 1), 0);
+    alu_sub(c, c->r[R_SI], ds_get(c, s->end), 1, 0);
+    c->icount += 9;
+    if (!(c->flags & F_CF)) {                                     /* the buffer is spent: refill it */
+        cpu_push16(c, c->r[R_BX]);
+        cpu_push16(c, c->r[R_CX]);
+        cpu_push16(c, c->r[R_DX]);
+        c->icount += 3;
+        if (!guest_call(m, ds_get(c, s->hook), AT(0x26))) return 1;
+        ST2_NEED(14, AT(0x26));
+        c->r[R_DX] = cpu_pop16(c);
+        c->r[R_CX] = cpu_pop16(c);
+        c->r[R_BX] = cpu_pop16(c);
+        c->r[R_SI] = s->base;
+        c->icount += 4;
+    }
+    x86_lods(c, 1, c->seg[S_DS]);                                 /* the header word */
+    ds_put(c, s->bits, c->r[R_AX]);
+    ds_put8(c, s->used, 8);
+    ds_put8(c, s->packed, 1);
+    alu_logic(c, get_r8(c, R_AL), 0);
+    c->icount += 6;
+    if (c->flags & F_SF) {
+        ds_put8(c, s->packed, (uint8_t)alu_dec(c, ds_get8(c, s->packed), 0));
+        set_r8(c, R_AL, (uint8_t)alu_sub(c, 0, get_r8(c, R_AL), 0, 0));   /* neg al */
+        c->icount += 2;
+    }
+    ds_put8(c, s->width, get_r8(c, R_AL));
+    c->icount += 1;
+    if (!guest_call(m, s->reset, AT(0x4A))) return 1;
+    ST2_NEED(1, AT(0x4A));
+    c->icount += 1;
+    near_ret(c);
+    return 1;
+}
+static const st3_pic_start_t ST3_PIC_START_START = { 0x8889, 0x6235, 0x8D6C, 0x8F81, 0x8D6E, 0x8D72, 0x8D6A, 0x8D7A, 0x8D7C, 0x8D7D, 0x8D75, 0x88D4 };
+static const st3_pic_start_t ST3_PIC_START_END = { 0x4829, 0x1C77, 0x3F82, 0x4197, 0x3F84, 0x3F88, 0x3F80, 0x3F90, 0x3F92, 0x3F93, 0x3F8B, 0x4874 };
+static int start_pic_start(machine_t *m) { return st3_pic_start(m, &ST3_PIC_START_START); }
+static int end_pic_start(machine_t *m) { return st3_pic_start(m, &ST3_PIC_START_END); }
+
+static int start_open_stream(machine_t *m) { return open_stream(m, 0xA1DC, 0x9219, 0x9A9C, 0x9231); }
+static int end_format_digits(machine_t *m) { return format_digits(m, 0x5B16); }
+
+/* START 0x09A9C, _openfile(name, mode, share, stream): the mode string's
+ * first letter picks the open flags and the stream's flags - "r" 0 and 1,
+ * "w" 301h and 2, "a" 109h and 2 (anything else: 0) - and the letters after
+ * it, up to the first not understood, add "+" (read and write: flags 2, the
+ * stream's 80h; not twice), "t" (4000h) or "b" (8000h; one of the two).
+ * The file is opened (0x0A59A, permissions 1A4h); a negative handle answers
+ * 0. Otherwise the open count [B156] is counted and the stream set up: its
+ * flags and handle, an empty buffer (next, count and buffer 0), and its
+ * second-table entry's flag byte and word +4 cleared; the answer is the
+ * stream. The letters are walked with a room check each turn. */
+static int start_openfile(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = 0x9A9C;
+    if (!room(c, 22)) return 0;                                   /* to the letters' loop, or the return */
+    frame_open(c, 8);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_SI]);
+    c->r[R_BX] = bp_get(c, 6);
+    set_r8(c, R_AL, ds_get8(c, c->r[R_BX]));
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);     /* cbw */
+    alu_sub(c, c->r[R_AX], 0x77, 1, 0);                           /* "w" */
+    c->icount += 10;
+    if (c->flags & F_ZF) {
+        c->r[R_SI] = 0x0301;
+        c->icount += 1;
+        goto stream_flags_2;
+    }
+    c->icount += 1;                                               /* ja */
+    if (!(c->flags & F_CF)) goto bad;
+    set_r8(c, R_AL, (uint8_t)alu_sub(c, get_r8(c, R_AL), 0x61, 0, 0));   /* "a" */
+    c->icount += 2;
+    if (c->flags & F_ZF) {
+        c->r[R_SI] = 0x0109;
+        c->icount += 2;                                           /* and the JMP */
+        goto stream_flags_2;
+    }
+    set_r8(c, R_AL, (uint8_t)alu_sub(c, get_r8(c, R_AL), 0x11, 0, 0));   /* "r" */
+    c->icount += 2;
+    if (!(c->flags & F_ZF)) goto bad;
+    c->r[R_SI] = (uint16_t)alu_sub(c, c->r[R_SI], c->r[R_SI], 1, 0);
+    bp_put8(c, -4, 1);
+    c->icount += 2;
+    goto more;
+stream_flags_2:                                                   /* 0x09AF7 */
+    bp_put8(c, -4, 2);
+    c->icount += 2;                                               /* and the JMP */
+more:                                                             /* 0x09AC4 */
+    bp_put(c, -2, 1);                                             /* still reading letters */
+    c->icount += 1;
+    for (;;) {                                                    /* 0x09AC9 */
+        ST2_NEED(19, AT(0x2D));                                   /* a letter, or the last and the open's CALL */
+        bp_put(c, 6, (uint16_t)alu_inc(c, bp_get(c, 6), 1));
+        c->r[R_BX] = bp_get(c, 6);
+        alu_sub(c, ds_get8(c, c->r[R_BX]), 0, 0, 0);
+        c->icount += 4;
+        if (c->flags & F_ZF) break;                               /* the end of the string */
+        alu_sub(c, bp_get(c, -2), 0, 1, 0);
+        c->icount += 2;
+        if (c->flags & F_ZF) break;                               /* a letter not understood */
+        set_r8(c, R_AL, ds_get8(c, c->r[R_BX]));
+        c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);
+        alu_sub(c, c->r[R_AX], 0x74, 1, 0);                       /* "t" */
+        c->icount += 4;
+        int bit = -1;                                             /* -1: not understood */
+        if (c->flags & F_ZF) bit = 0x4000;
+        else {
+            c->icount += 1;                                       /* ja */
+            if (c->flags & F_CF) {
+                set_r8(c, R_AL, (uint8_t)alu_sub(c, get_r8(c, R_AL), 0x2B, 0, 0));   /* "+" */
+                c->icount += 2;
+                if (c->flags & F_ZF) {
+                    alu_logic(c, c->r[R_SI] & 2, 1);
+                    c->icount += 2;
+                    if (c->flags & F_ZF) {                        /* not twice */
+                        c->r[R_SI] = (uint16_t)alu_logic(c, c->r[R_SI] | 2, 1);
+                        c->r[R_SI] = (uint16_t)alu_logic(c, c->r[R_SI] & 0xFFFE, 1);
+                        bp_put8(c, -4, 0x80);
+                        c->icount += 4;                           /* and the JMP */
+                        continue;
+                    }
+                    goto stop;
+                }
+                set_r8(c, R_AL, (uint8_t)alu_sub(c, get_r8(c, R_AL), 0x37, 0, 0));   /* "b" */
+                c->icount += 2;
+                if (c->flags & F_ZF) bit = 0x8000;
+            }
+        }
+        if (bit >= 0) {                                           /* "t" or "b": one of them */
+            alu_logic(c, c->r[R_SI] & 0xC000, 1);
+            c->icount += 2;
+            if (c->flags & F_ZF) {
+                c->r[R_SI] = (uint16_t)alu_logic(c, c->r[R_SI] | (uint16_t)bit, 1);
+                c->icount += 2;                                   /* and the JMP */
+                continue;
+            }
+        }
+stop:                                                             /* 0x09AEC */
+        bp_put(c, -2, 0);
+        c->icount += 2;                                           /* and the JMP */
+    }
+    c->r[R_AX] = 0x01A4;                                          /* 0x09B2E: open(name, flags, share, 1A4h) */
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, bp_get(c, 8));
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, bp_get(c, 4));
+    c->icount += 5;
+    if (!guest_call(m, 0xA59A, AT(0xA0))) return 1;
+    ST2_NEED(27, AT(0xA0));
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0);
+    bp_put(c, -6, c->r[R_AX]);                                    /* the handle */
+    alu_logic(c, c->r[R_AX], 1);
+    c->icount += 4;
+    if (x86_cond(c, 0xC)) { c->icount += 1; goto bad; }
+    ds_put(c, 0xB156, (uint16_t)alu_inc(c, ds_get(c, 0xB156), 1));
+    c->r[R_DI] = bp_get(c, 0x0A);                                 /* the stream */
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_DI], 0xAEA6, 1, 0);
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], 0xAF46, 1, 0);
+    bp_put(c, -8, c->r[R_AX]);                                    /* its second-table entry */
+    set_r8(c, R_AL, bp_get8(c, -4));
+    ds_put8(c, (uint16_t)(c->r[R_DI] + 6), get_r8(c, R_AL));
+    c->r[R_BX] = bp_get(c, -8);
+    ds_put8(c, c->r[R_BX], 0);
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+    ds_put(c, (uint16_t)(c->r[R_DI] + 2), 0);
+    ds_put(c, (uint16_t)(c->r[R_BX] + 4), 0);
+    ds_put(c, c->r[R_DI], 0);
+    ds_put(c, (uint16_t)(c->r[R_DI] + 4), 0);
+    set_r8(c, R_AL, bp_get8(c, -6));
+    ds_put8(c, (uint16_t)(c->r[R_DI] + 7), get_r8(c, R_AL));
+    c->r[R_AX] = c->r[R_DI];
+    c->icount += 18;
+    goto out;
+bad:                                                              /* 0x09AB9 */
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+    c->icount += 2;
+out:                                                              /* 0x09B7C */
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->icount += 2;
+    frame_close_ret(c);
+    c->icount += 3;
+    return 1;
+}
+
+/* START 0x07218, read the roster: Roster.Fil (fopen 0x0923A, "rb"; the
+ * stream kept at BP-2, not checked) gives the pilot count ([B39C], a word)
+ * and ten 50h-byte pilot records at D892 (fread 0x0924E), and is closed
+ * (fclose 0x09164). The records' loop checks the room each turn. */
+static int start_roster_read(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = 0x7218;
+    if (!room(c, 8)) return 0;
+    frame_open(c, 4);
+    c->r[R_AX] = 0x0EBC;                                          /* "rb" */
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0x0EBF;                                          /* "Roster.Fil" */
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 7;
+    if (!guest_call(m, 0x923A, AT(0x11))) return 1;
+    ST2_NEED(11, AT(0x11));
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    bp_put(c, -2, c->r[R_AX]);
+    cpu_push16(c, c->r[R_AX]);                                    /* fread(B39C, 2, 1, file) */
+    c->r[R_AX] = 1;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 2;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0xB39C;
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 10;
+    if (!guest_call(m, 0x924E, AT(0x26))) return 1;
+    ST2_NEED(2, AT(0x26));
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0);
+    bp_put(c, -4, 0);
+    c->icount += 2;
+    for (;;) {                                                    /* 0x07246: fread(D892 + i * 50h, 50h, 1, file) */
+        ST2_NEED(9, AT(0x2E));
+        cpu_push16(c, bp_get(c, -2));
+        c->r[R_AX] = 1;
+        cpu_push16(c, c->r[R_AX]);
+        c->r[R_AX] = 0x50;
+        cpu_push16(c, c->r[R_AX]);
+        x86_imul16(c, bp_get(c, -4));
+        c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], 0xD892, 1, 0);
+        cpu_push16(c, c->r[R_AX]);
+        c->icount += 8;
+        if (!guest_call(m, 0x924E, AT(0x43))) return 1;
+        ST2_NEED(6, AT(0x43));
+        c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0);
+        bp_put(c, -4, (uint16_t)alu_inc(c, bp_get(c, -4), 1));
+        alu_sub(c, bp_get(c, -4), 0x0A, 1, 0);
+        c->icount += 4;
+        if (!x86_cond(c, 0xC)) break;
+    }
+    cpu_push16(c, bp_get(c, -2));
+    c->icount += 1;
+    if (!guest_call(m, 0x9164, AT(0x55))) return 1;               /* fclose */
+    ST2_NEED(4, AT(0x55));
+    c->r[R_BX] = cpu_pop16(c);
+    c->icount += 1;
+    frame_close_ret(c);
+    c->icount += 3;
+    return 1;
+}
+
+/* START 0x0A836 and END 0x05E86, grow the near heap (descriptor at BX: flags
+ * +2, top +4, rover +8, terminator +0Ah) for a request of CX bytes. A heap
+ * that cannot grow (flag bit 0 clear) answers CF. Otherwise the last block
+ * (0x0A913, chain_last, into SI and DI) counts towards the request when it
+ * is free (low bit of its length), the request becomes the new top (2 more
+ * for its header; a top that wraps to exactly 0 asks for all of the segment,
+ * past it fails). The new top is rounded up to the allocation unit (the
+ * word [unit] in the stack segment: 2000h as it is, otherwise the largest
+ * power of two not above it, doubled, when at least 8; else 10h) and the
+ * data segment resized to it (0x0A8C2; CF on failure, retried once with a
+ * 10h unit). On success the space between the old and new top becomes a
+ * free block (its length low bit set by being odd: new - old - 1), the
+ * FFFEh terminator moves to the new top, and the rover points at the last
+ * block. CX and DI are kept. The unit's halving loop checks the room each
+ * turn. */
+typedef struct { uint16_t entry, unit, last_block, resize; } st3_heap_grow_t;
+
+static int st3_heap_grow(machine_t *m, const st3_heap_grow_t *s)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = s->entry;
+    if (!room(c, 9)) return 0;
+    cpu_push16(c, c->r[R_CX]);
+    cpu_push16(c, c->r[R_DI]);
+    alu_logic(c, ds_get8(c, (uint16_t)(c->r[R_BX] + 2)) & 1, 0);
+    c->icount += 4;
+    if (c->flags & F_ZF) goto fail;                               /* cannot grow */
+    if (!guest_call(m, s->last_block, AT(0x0B))) return 1;
+    ST2_NEED(27, AT(0x0B));
+    c->r[R_DI] = c->r[R_SI];
+    c->r[R_AX] = ds_get(c, c->r[R_SI]);
+    alu_logic(c, get_r8(c, R_AL) & 1, 0);
+    c->icount += 4;
+    if (!(c->flags & F_ZF)) {                                     /* the last block is free: it counts */
+        c->r[R_CX] = (uint16_t)alu_sub(c, c->r[R_CX], c->r[R_AX], 1, 0);
+        c->r[R_CX] = (uint16_t)alu_dec(c, c->r[R_CX], 1);
+        c->icount += 2;
+    }
+    c->r[R_CX] = (uint16_t)alu_inc(c, c->r[R_CX], 1);
+    c->r[R_CX] = (uint16_t)alu_inc(c, c->r[R_CX], 1);             /* its header */
+    c->r[R_SI] = ds_get(c, (uint16_t)(c->r[R_BX] + 4));
+    alu_logic(c, c->r[R_SI], 1);
+    c->icount += 5;
+    if (c->flags & F_ZF) goto fail;
+    c->r[R_CX] = (uint16_t)alu_add(c, c->r[R_CX], c->r[R_SI], 1, 0);   /* the new top */
+    c->icount += 2;
+    if (c->flags & F_CF) {
+        c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);
+        c->r[R_DX] = 0xFFF0;
+        c->icount += 3;
+        if (!c->r[R_CX]) goto resize;                             /* exactly 64K: all of it */
+        c->icount += 1;
+        goto fail;
+    }
+    cpu_push16(c, c->seg[S_SS]);
+    c->seg[S_ES] = cpu_pop16(c);
+    c->r[R_AX] = seg_read16(c, c->seg[S_ES], s->unit);            /* the allocation unit */
+    alu_sub(c, c->r[R_AX], 0x2000, 1, 0);
+    c->icount += 5;
+    if (c->flags & F_ZF) goto round;
+    c->r[R_DX] = 0x8000;
+    c->icount += 1;
+    for (;;) {                                                    /* 0x0A870: the largest power of two not above it */
+        ST2_NEED(16, AT(0x3A));
+        alu_sub(c, c->r[R_DX], c->r[R_AX], 1, 0);
+        c->icount += 2;
+        if (c->flags & F_CF) {
+            alu_sub(c, c->r[R_DX], 8, 1, 0);
+            c->icount += 2;
+            if (c->flags & F_CF) goto small;
+            c->r[R_DX] = x86_shift(c, 4, c->r[R_DX], 1, 1);
+            c->r[R_AX] = c->r[R_DX];
+            c->icount += 2;
+            goto round;
+        }
+        c->r[R_DX] = x86_shift(c, 5, c->r[R_DX], 1, 1);
+        c->icount += 2;
+        if (c->flags & F_ZF) { c->icount += 1; goto small; }
+    }
+small:                                                            /* 0x0A89C */
+    c->r[R_AX] = 0x0010;
+    c->icount += 2;                                               /* and the JMP */
+round:                                                            /* 0x0A883 */
+    c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1);
+    c->r[R_DX] = c->r[R_AX];
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], c->r[R_CX], 1, 0);
+    c->icount += 4;
+    if (c->flags & F_CF) { c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1); c->icount += 1; }
+    c->r[R_DX] = (uint16_t)~c->r[R_DX];
+    c->r[R_AX] = (uint16_t)alu_logic(c, c->r[R_AX] & c->r[R_DX], 1);
+    c->icount += 2;
+resize:                                                           /* 0x0A890 */
+    cpu_push16(c, c->r[R_DX]);
+    c->icount += 1;
+    if (!guest_call(m, s->resize, AT(0x5E))) return 1;
+    ST2_NEED(16, AT(0x5E));
+    c->r[R_DX] = cpu_pop16(c);
+    c->icount += 2;
+    if (c->flags & F_CF) {                                        /* refused */
+        alu_sub(c, c->r[R_DX], 0xFFF0, 1, 0);
+        c->icount += 2;
+        if (c->flags & F_ZF) goto fail;                           /* already the smallest unit */
+        c->r[R_AX] = 0x0010;
+        c->icount += 2;
+        c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1);         /* 0x0A883 again, then the CALL */
+        c->r[R_DX] = c->r[R_AX];
+        c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], c->r[R_CX], 1, 0);
+        c->icount += 4;
+        if (c->flags & F_CF) { c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1); c->icount += 1; }
+        c->r[R_DX] = (uint16_t)~c->r[R_DX];
+        c->r[R_AX] = (uint16_t)alu_logic(c, c->r[R_AX] & c->r[R_DX], 1);
+        c->icount += 2;
+        goto resize;
+    }
+    c->r[R_DX] = c->r[R_AX];                                      /* 0x0A8A4: the new space a free block */
+    c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], ds_get(c, (uint16_t)(c->r[R_BX] + 4)), 1, 0);
+    ds_put(c, (uint16_t)(c->r[R_BX] + 4), c->r[R_AX]);
+    ds_put(c, (uint16_t)(c->r[R_BX] + 8), c->r[R_DI]);
+    c->r[R_SI] = ds_get(c, (uint16_t)(c->r[R_BX] + 0x0A));
+    c->r[R_DX] = (uint16_t)alu_dec(c, c->r[R_DX], 1);
+    ds_put(c, c->r[R_SI], c->r[R_DX]);
+    c->r[R_DX] = (uint16_t)alu_inc(c, c->r[R_DX], 1);
+    c->r[R_SI] = (uint16_t)alu_add(c, c->r[R_SI], c->r[R_DX], 1, 0);
+    ds_put(c, c->r[R_SI], 0xFFFE);                                /* the terminator */
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x0A), c->r[R_SI]);
+    c->icount += 11;
+    goto out;
+fail:                                                             /* 0x0A8A1 */
+    set_flag(c, F_CF, 1);
+    c->icount += 2;                                               /* STC and the JMP */
+out:                                                              /* 0x0A8BF */
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_CX] = cpu_pop16(c);
+    c->icount += 3;
+    near_ret(c);
+    return 1;
+}
+static const st3_heap_grow_t ST3_HEAP_GROW_START = { 0xA836, 0xB16C, 0xA913, 0xA8C2 };
+static const st3_heap_grow_t ST3_HEAP_GROW_END = { 0x5E86, 0x5334, 0x5F63, 0x5F12 };
+static int start_heap_grow(machine_t *m) { return st3_heap_grow(m, &ST3_HEAP_GROW_START); }
+static int end_heap_grow(machine_t *m) { return st3_heap_grow(m, &ST3_HEAP_GROW_END); }
+
 /* ---- VGAME, second batch of matched routines (Phase 2) -------------------
  *
  * Most of these are the flight program's own glue: a routine that formats a
@@ -22772,6 +23183,14 @@ static const recomp_override MATCHED[] = {
     { "matched", "START.EXE", START_47304, 0x0000, 0x932E, start_fwrite, "write items to a stream", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x5466, start_theatre_load, "load a theatre's data", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x7E88, start_theatre_lists, "read the theatre's point lists", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x8889, start_pic_start, "start the picture decoder", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x4829, end_pic_start, "start the picture decoder", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x9212, start_open_stream, "open a stream", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x5B16, end_format_digits, "the formatter's digits", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x9A9C, start_openfile, "open a file on a stream", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x7218, start_roster_read, "read the roster", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0xA836, start_heap_grow, "grow the near heap", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x5E86, end_heap_grow, "grow the near heap", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x39C0, vgame_cockpit_number, "gauge number text", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x45E0, vgame_countermeasure_gauge, "countermeasure count gauge", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x4B03, vgame_cockpit_target_name, "describe a target", 1 },
