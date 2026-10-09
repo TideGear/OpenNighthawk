@@ -32,7 +32,7 @@ Status values:
 |---|---|---|---|---|
 | D1 | Confirmed | VGAME | Frame-rate controller oscillates above ~16-18 fps, degrading AI and guidance | `--fix D1` |
 | D2 | Confirmed | ASOUND.117 | Digitised speech busy-waits; can hang the game | `--fix D2` |
-| D3 | Reported | SETUP | Crash on the sound screen when keypad keys go undetected (GOG/DOSBox) | - |
+| D3 | Confirmed | SETUP | A keypad digit with NumLock off quits to DOS from the sound screen | `--fix D3` |
 | D4 | Confirmed | START + .WLD | Secret-airstrip missions disabled in Libya, North Cape, Middle East | `--fix D4` |
 | D5 | Confirmed | VGAME | Supply drops never award credit (despite the 473.04 note) | `--fix D5` |
 | D6 | Confirmed | world data + VGAME | "Stealth mountains": 20 terrain sectors where nothing can detect you | `--fix D6` |
@@ -124,16 +124,26 @@ Status values:
 
 - **What happens.** GOG support reported SETUP crashing on the sound
   selection screen when DOSBox does not detect keypad keys.
-- **Where.** Not traced to an instruction.
+- **Where.** SETUP reads the answer through MISC.EXE's `mov ah,1; int 21h;
+  retf` (DOS read with echo), which leaves AH 1, and keeps the whole word
+  (`0x00422`-`0x00427`). At `0x0042D` a word of 100h calls `exit(0)`
+  (`0x00434`-`0x00437`): it is the 0 that DOS returns first for an extended
+  key. With NumLock off a keypad digit is one (keypad 1 is End, 4F00h), so
+  SETUP ends and F117.COM returns to DOS; a main-row 1 reads as 0131h and
+  selects the driver. DOSBox may also report keypad keys without NumLock,
+  which is the GOG report.
 - **In this recompilation.** The keyboard is a set-1 scancode stream with a
-  real BIOS translation, so keypad keys reach SETUP as they would on a PC.
-  Measured on the sound prompt ("Select Sound Driver", recomp engine, 7 Oct
-  2026): with NumLock off, keypad 1 or 2 makes SETUP terminate with code 0,
-  and F117.COM then terminates to DOS, so the player is returned to DOS
-  rather than crashing; with NumLock on, keypad 1 selects the driver as
-  main-row 1 does; a main-row x is ignored. The routine that takes the exit
-  is not located yet, so no fix is offered; a fix would change what the
-  original does with a BIOS extended key, which is a policy decision.
+  real BIOS translation, and DOS's console holds an extended key's scan code
+  for the next read as DOS and DOSBox do, so keypad keys reach SETUP as they
+  would on a PC: keypad 1 with NumLock off quits 355 instructions after the
+  key; with NumLock on it selects the driver as main-row 1 does.
+- **Fix available: `--fix D3`.** At `0x0042D`, a word of 100h whose held
+  scan code is a keypad digit's (47h-52h, NumLock off) is replaced by the
+  word the main-row digit reads as, and the original compare runs on it: the
+  scan code is taken, so it is not read later. Keypad 1 then finishes SETUP
+  at the same clock and with the same exit code (36) as main-row 1, on both
+  engines; any other extended key still quits, and with the fix off keypad 1
+  quits as before.
 - **Detail.** Reimp catalogue:507-520.
 
 ### D4. Secret-airstrip missions are disabled outside the Gulf
@@ -321,6 +331,18 @@ Status values:
   routine that checks mountains for collisions and distance could corrupt the
   stack." The DOS engine shares the code and never got a fix; no DOS
   equivalent has been located yet.
+- **Searched here (9 October 2026).** The DOS contact test is in the model
+  renderer: model draws set the ground-contact flag `[0xC6B2]` at
+  `0x1223F` (`model_fill_stream`, `120A:00CF`, hand-written assembly), which
+  ends the flight through `[0x9F96]`. `tools/stack_balance.py` walks every
+  path of all 469 VGAME census functions, with callee-popped arguments
+  counted: no game routine returns with the stack moved. The five it flags
+  are C runtime code that moves SP by design (start-up, the exit family's
+  shared tail, the stack probe, a file write's error tail, an exit call that
+  never returns); in the renderer's segment the only uneven depth is the
+  depth-order walk's own work stack (`120A:0E5B`, balanced by its count in
+  BP). A corruption by a stray write into the stack, rather than a push/pop
+  imbalance, is not excluded.
 - **Detail.** Reimp catalogue:830-841.
 
 ### D11. Fragile saves

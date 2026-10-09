@@ -143,8 +143,9 @@ file calls. `src/machine/pc.c` holds the devices. Both were extended from
   it).
 - A keyboard controller delivering set-1 bytes one at a time, and a BIOS
   INT 9 translation for a US layout with the shift, lock and E0 states.
-- Blocking INT 16h and DOS console reads; INT 10h text services (SETUP draws
-  with them); INT 1Ah and DOS date and time.
+- Blocking INT 16h and DOS console reads (an extended key reads as 0 and its
+  scan code is held for the next read, as DOSBox's CON device does); INT 10h
+  text services (SETUP draws with them); INT 1Ah and DOS date and time.
 - The VGA: mode 13h, the DAC and the default BIOS palette, the retrace
   timing, text mode (below).
 - AdLib timers and status (the synthesis is the host's), the MPU-401 in UART

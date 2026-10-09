@@ -180,6 +180,7 @@ struct machine {
     uint64_t kbd_next;       /* earliest icount for the next byte */
     uint8_t  port60;
     int      kbd_obf;        /* a byte is waiting in port 60 */
+    uint8_t  con_cache;      /* CON: an extended key's scan code, held for the next read */
     uint8_t  port61;
 
     /* ---- VGA ------------------------------------------------------ */

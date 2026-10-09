@@ -19,6 +19,7 @@
 #define START_47304 0xC65ECC83823E4907ULL
 #define ASOUND_47304 0x9CD012D9D4A2CF30ULL
 #define END_47304   0xFA7167EE4E377EC1ULL
+#define SETUP_47304 0xEDD5021CF28E7FC4ULL
 
 /* D5. VGAME's impact gate at 0x06D1C admits weapon types 1Eh, 1Dh and 1Ch;
  * anything else reaches the jmp at 0x6D2E to the skip at 0x6EBB. A supply
@@ -369,6 +370,33 @@ static int fix_d6_cover(machine_t *m)
     return 1;
 }
 
+/* D3. SETUP's sound question reads a key through MISC.EXE's DOS read (INT 21h
+ * AH=01h, which leaves AH 1) and quits to DOS when the word is 100h
+ * (0x042D-0x0437): the 0 an extended key reads as first. With NumLock off a
+ * keypad digit is an extended key - keypad 1 is End, 4F00h - so it ends the
+ * game where the main-row digit selects a driver. The fix takes a keypad
+ * key's scan code, which CON holds for the next read, and stores the word
+ * the main-row digit reads as (0131h for 1); the original compare then runs
+ * on it. Any other extended key still quits. */
+static const uint8_t D3_KEYPAD[0x53] = {
+    [0x47] = '7', [0x48] = '8', [0x49] = '9', [0x4B] = '4', [0x4D] = '6',
+    [0x4F] = '1', [0x50] = '2', [0x51] = '3', [0x52] = '0' };
+static int d3_logged;
+static int fix_d3_keypad(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t at = (uint16_t)(c->r[R_BP] - 0x46);
+    const uint8_t scan = m->con_cache;
+    if (seg_read16(c, c->seg[S_SS], at) != 0x100 || scan >= sizeof D3_KEYPAD || !D3_KEYPAD[scan]) return 0;
+    m->con_cache = 0;
+    seg_write16(c, c->seg[S_SS], at, (uint16_t)(0x100 | D3_KEYPAD[scan]));
+    if (!d3_logged) {
+        d3_logged = 1;
+        dos_log(m, "[fix D3] keypad scan %02X read as '%c' @%llu\n", scan, D3_KEYPAD[scan], (unsigned long long)c->icount);
+    }
+    return 0;                        /* the original compare, on the digit */
+}
+
 static const recomp_override OVERRIDES[] = {
     { "D5", "VGAME.EXE", VGAME_47304, 0x0000, 0x6D2E, fix_d5, "the supply-drop impact gate" },
     { "D1", "VGAME.EXE", VGAME_47304, 0x0000, 0x441D, fix_d1_pace, "frames paced so S never reaches the unstable range" },
@@ -383,6 +411,7 @@ static const recomp_override OVERRIDES[] = {
     { "D12", "END.EXE", END_47304, 0x0000, 0x0450, fix_d12_total, "END's rating total, sign-extended" },
     { "D8", "VGAME.EXE", VGAME_47304, 0x0000, 0x6C0F, fix_d8_clamp, "the laser-guided bomb's pitch clamp, skipped" },
     { "D6", "VGAME.EXE", VGAME_47304, 0x0000, 0x55EB, fix_d6_cover, "detection: a sector cover of 0 reads as 4" },
+    { "D3", "SETUP.EXE", SETUP_47304, 0x0000, 0x042D, fix_d3_keypad, "the sound question: a keypad digit, not a quit" },
 };
 
 /* A byte corrected as it is read. */
@@ -413,6 +442,7 @@ static const struct { const char *id, *what; } FIXES[] = {
     { "D12", "END's best-rating and total tally treats ratings as signed" },
     { "D34", "the destroyed-object table keeps records past 30 without overwriting" },
     { "D8", "the laser-guided bomb's guidance can flatten its dive: the 11.25-degree pitch clamp is skipped" },
+    { "D3", "keypad digits answer SETUP's sound question with NumLock off, instead of quitting to DOS" },
     { "D6", "no terrain sector hides the player completely: a detection cover of 0 reads as the lowest nonzero cover" },
 };
 #define NFIXES (sizeof FIXES / sizeof FIXES[0])

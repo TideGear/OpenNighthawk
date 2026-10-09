@@ -151,7 +151,7 @@ more than once, what it costs, what was optimised). State as of the evening of
   room is now checked every turn and the route matches. The memory note on
   room claims has the general lesson; `F117R_SHADOW` diffs are not valid on
   this family (device and file positions are not snapshotted).
-- **Phase 3**: 9 of 14 catalogued bug fixes. Presentation Stage 2 (sub-pixel
+- **Phase 3**: 10 of 14 catalogued bug fixes. Presentation Stage 2 (sub-pixel
   re-projection, `tools/hires_subpixel.py`) and a Stage 3 study
   (`tools/interp_frame.py`) are merged (their crops and strips are in
   `D:\f117-gate\p3-stage2` and `p3-stage3`); see `docs/presentation.md`.

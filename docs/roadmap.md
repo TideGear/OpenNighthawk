@@ -207,10 +207,11 @@ not the recompilation:
       rating), D34 (destroyed-object table), D8 (the laser-guided bomb's pitch
       clamp; also what makes D7's training strike hard to complete), D6
       (a detection cover of 0 reads as 4; optional, since the cells are not
-      proven a defect). D7 is fixed by D8. Open: D3 (keypad digits with
-      NumLock off return to DOS from the sound prompt; the exit is not located),
+      proven a defect), D3 (keypad digits with NumLock off answer SETUP's
+      sound question instead of quitting to DOS). D7 is fixed by D8. Open:
       D10 (the mountain-collision stack corruption, DOS equivalent not
-      located), D35 (not reproduced here; no fix offered) and D36 (not
+      located; no VGAME routine returns with the stack moved,
+      `tools/stack_balance.py`), D35 (not reproduced here; no fix offered) and D36 (not
       reproduced: on 2.0x control ROMs Munt plays the engine 3.4 dB quieter,
       not silent; no fix offered). D96 is the Reimp's
       native-UI wait, not a patch for this translated START. A session recorded

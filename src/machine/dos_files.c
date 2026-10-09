@@ -340,6 +340,31 @@ uint8_t dos_bcd(unsigned v) { return (uint8_t)(((v / 10) << 4) | (v % 10)); }
 /* INT 21h                                                               */
 /* ===================================================================== */
 
+/* One byte from CON, as DOS's console device gives it (DOSBox's
+ * device_CON::Read): an extended key - ASCII 0, or E0 with a scan code -
+ * reads as 0 and its scan code is held for the next read. 0: no key. */
+static int con_read(machine_t *m, uint8_t *ch)
+{
+    uint16_t key;
+    if (m->con_cache) { *ch = m->con_cache; m->con_cache = 0; return 1; }
+    if (!dos_kbd_pop(m, &key, 1)) return 0;
+    *ch = (uint8_t)key;
+    if ((*ch == 0 || *ch == 0xE0) && (key >> 8)) { m->con_cache = (uint8_t)(key >> 8); *ch = 0; }
+    return 1;
+}
+
+/* Whether CON has a byte to read (DOSBox's GetInformation): a held scan code
+ * or a key in the BIOS buffer; an empty word there is dropped. */
+static int con_ready(machine_t *m)
+{
+    uint16_t key;
+    if (m->con_cache) return 1;
+    if (!dos_kbd_pop(m, &key, 0)) return 0;
+    if (key) return 1;
+    dos_kbd_pop(m, &key, 1);
+    return 0;
+}
+
 int dos_int21(machine_t *m)
 {
     cpu_t *c = &m->cpu;
@@ -363,9 +388,9 @@ int dos_int21(machine_t *m)
     case 0x01:     /* read char with echo */
     case 0x07:     /* direct read, no echo, no Ctrl-C */
     case 0x08: {   /* read, no echo */
-        uint16_t key;
-        if (!dos_kbd_pop(m, &key, 1)) return dos_bios_wait(c);
-        c->r[R_AX] = (uint16_t)((c->r[R_AX] & 0xFF00) | (key & 0xFF));
+        uint8_t key;
+        if (!con_read(m, &key)) return dos_bios_wait(c);
+        c->r[R_AX] = (uint16_t)((c->r[R_AX] & 0xFF00) | key);
         if (ah == 0x01) { char ch = (char)key; dos_console_text(m, &ch, 1); }
         return 1;
     }
@@ -378,10 +403,10 @@ int dos_int21(machine_t *m)
     }
 
     case 0x06: {   /* direct console I/O: DL=FF reads, else writes DL */
-        uint16_t key;
+        uint8_t key;
         if ((c->r[R_DX] & 0xFF) == 0xFF) {
-            if (dos_kbd_pop(m, &key, 1)) {
-                c->r[R_AX] = (uint16_t)((c->r[R_AX] & 0xFF00) | (key & 0xFF));
+            if (con_ready(m) && con_read(m, &key)) {
+                c->r[R_AX] = (uint16_t)((c->r[R_AX] & 0xFF00) | key);
                 c->flags = (uint16_t)(c->flags & (uint16_t)(0xFFFFu ^ F_ZF));
             } else {
                 c->r[R_AX] = (uint16_t)(c->r[R_AX] & 0xFF00);
@@ -407,20 +432,19 @@ int dos_int21(machine_t *m)
     }
 
     case 0x0B: {   /* stdin status: FF if a key is waiting */
-        uint16_t key;
-        c->r[R_AX] = (uint16_t)((c->r[R_AX] & 0xFF00) | (dos_kbd_pop(m, &key, 0) ? 0xFF : 0x00));
+        c->r[R_AX] = (uint16_t)((c->r[R_AX] & 0xFF00) | (con_ready(m) ? 0xFF : 0x00));
         return 1;
     }
 
     case 0x0C: {   /* flush input, then perform AL's function */
-        uint16_t key;
+        uint8_t key;
         if (al == 0x01 || al == 0x06 || al == 0x07 || al == 0x08 || al == 0x0A) {
             /* Flush only on the first entry: a wait re-enters this call. */
-            if (c->halted != 2) while (dos_kbd_pop(m, &key, 1)) {}
+            if (c->halted != 2) while (con_ready(m) && con_read(m, &key)) {}
             c->r[R_AX] = (uint16_t)((uint16_t)(al << 8) | al);
             return dos_int21(m);
         }
-        while (dos_kbd_pop(m, &key, 1)) {}
+        while (con_ready(m) && con_read(m, &key)) {}
         return 1;
     }
 
