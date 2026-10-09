@@ -199,15 +199,6 @@ static int compare(const char *mod, uint32_t off, uint16_t cs, uint16_t ip, int 
 }
 
 
-/* EXPERIMENT (not committed): F117_STUB_DRIVER=1 turns VGAME's graphics-driver slots (JMP FAR 0:0 in the file) into RETF, so a call through
- * one returns and the code after it is reached. */
-static void stub_driver(const char *module)
-{
-    if (!getenv("F117_STUB_DRIVER") || strcmp(module, "VGAME.EXE")) return;
-    for (uint32_t a = 0x1E420; a < 0x1E800; a++)
-        if (g_pristine[a] == 0xEA && !g_pristine[a + 1] && !g_pristine[a + 2] && !g_pristine[a + 3] && !g_pristine[a + 4]) g_pristine[a] = 0xCB;
-}
-
 static machine_t g_m;           /* side 1's CPU lives in a machine: matched code takes one */
 
 /* A matched routine's call into original code, run here by plain stepping:
@@ -261,12 +252,11 @@ static int step_runner(machine_t *mm)
 
 int main(int argc, char **argv)
 {
-    int states = 2000, from_ = 0;
+    int states = 2000;
     g_rng = 0x5EED0F117AULL;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--states") && i + 1 < argc) states = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--seed") && i + 1 < argc) g_rng = strtoull(argv[++i], NULL, 0) | 1;
-        else if (!strcmp(argv[i], "--from") && i + 1 < argc) from_ = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--verbose")) g_verbose = 1;
         else { fprintf(stderr, "usage: func_lockstep [--states N] [--seed S] [--verbose]\n"); return 2; }
     }
@@ -294,7 +284,6 @@ int main(int argc, char **argv)
     const uint16_t base = 0;
     unsigned long long compared = 0, skipped = 0, bad = 0;
     for (unsigned mi = 0; mi < matched_count(); mi++) {
-        if ((int)mi < from_) continue;
         const recomp_override *o = matched_entry(mi);
         const rc_module *m = NULL;
         for (unsigned k = 0; k < RC_NMODULES; k++)
@@ -303,7 +292,6 @@ int main(int argc, char **argv)
         for (uint32_t a = 0; a < MEM_SIZE; a += 8) { uint64_t v = rnd(); memcpy(g_pristine + a, &v, 8); }
         const uint32_t at = (uint32_t)base * 16u + m->origin;
         memcpy(g_pristine + at, m->image, m->size);
-        stub_driver(o->module);
         memcpy(g_mem[0], g_pristine, MEM_SIZE);
         memcpy(g_mem[1], g_pristine, MEM_SIZE);
         const uint16_t cs = (uint16_t)(base + o->seg), ip = o->ip;
@@ -316,7 +304,6 @@ int main(int argc, char **argv)
                 static const uint8_t pick[4] = { 0x00, 0xFF, 0x01, 0x00 };
                 for (uint32_t a = 0; a < MEM_SIZE; a++) g_pristine[a] = pick[rnd() & 3];
                 memcpy(g_pristine + at, m->image, m->size);
-                stub_driver(o->module);
                 memcpy(g_mem[0], g_pristine, MEM_SIZE);
                 memcpy(g_mem[1], g_pristine, MEM_SIZE);
             }
