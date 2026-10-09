@@ -8,13 +8,13 @@ and compiled natively. It runs on an emulated PC timed like the GOG
 release's DOSBox, and every instruction is checked against a reference
 interpreter validated on real silicon.
 
-**This is not a lazy, fire-and-forget project.** A person directs every
-step: what gets built, what counts as proof, which results to distrust and
-measure again, and what is accepted. Nothing is called done because it
-compiles or looks right; it is done when it matches the original under
-checks that are written down here and that you can re-run on your own copy.
-F-117A is near and dear to my heart, and I will keep supporting this game,
-well past the first playable build.
+**This is not a lazy, fire-and-forget project.** I decide what gets
+built, what counts as proof, which results to distrust and measure again,
+and what is accepted. Nothing is called done because it compiles or looks
+right; it is done when it matches the original under checks that are
+written down here and that you can re-run on your own copy. F-117A is
+near and dear to my heart, and I will keep supporting this game, well
+past the first playable build.
 
 **Why it matters.** The original DOS release is buggy and has not aged well.
 It needs an emulator to run at all today. Its frame-rate controller
@@ -39,7 +39,7 @@ options. Enhancements come after parity, never instead of it.
 > of their respective owners. **You must own a legal copy of the original
 > game to use this software.** It is [sold on
 > Steam](https://store.steampowered.com/app/328920/) and on
-> [GOG](https://www.gog.com/). Please buy it.
+> [GOG](https://www.gog.com/en/game/f117a_nighthawk_stealth_fighter_20). Please buy it.
 
 ## Status
 
