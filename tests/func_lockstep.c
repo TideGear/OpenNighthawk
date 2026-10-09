@@ -93,6 +93,21 @@ static uint64_t rnd(void)
     return g_rng;
 }
 
+/* Each routine draws from a stream of its own, from the run's seed and the
+ * routine's module and address (splitmix64 over an FNV-1a of the name): its
+ * states do not move when other routines are added, and shards of the table
+ * (--shard) can run apart and still test what one run would. */
+static uint64_t routine_seed(uint64_t seed, const recomp_override *o)
+{
+    uint64_t h = 0xCBF29CE484222325ULL;
+    for (const char *p = o->module; *p; p++) h = (h ^ (uint8_t)*p) * 0x100000001B3ULL;
+    uint64_t z = seed ^ h ^ ((uint64_t)o->seg << 16 | o->ip);
+    z += 0x9E3779B97F4A7C15ULL;
+    z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ULL;
+    z = (z ^ (z >> 27)) * 0x94D049BB133111EBULL;
+    return (z ^ (z >> 31)) | 1;
+}
+
 static uint8_t *g_pristine, *g_mem[2];
 static cpu_t g_cpu[2];
 
@@ -348,13 +363,15 @@ int main(int argc, char **argv)
 {
     int states = 2000;
     const char *only = NULL;        /* --only MODULE:IP[,MODULE:IP...]: just those routines (IP in hex), for quick runs */
-    g_rng = 0x5EED0F117AULL;
+    unsigned shard = 0, shards = 1; /* --shard K/N: every Nth routine from K (tools/func_lockstep_par.py) */
+    uint64_t seed = 0x5EED0F117AULL;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--states") && i + 1 < argc) states = atoi(argv[++i]);
-        else if (!strcmp(argv[i], "--seed") && i + 1 < argc) g_rng = strtoull(argv[++i], NULL, 0) | 1;
+        else if (!strcmp(argv[i], "--seed") && i + 1 < argc) seed = strtoull(argv[++i], NULL, 0);
         else if (!strcmp(argv[i], "--verbose")) g_verbose = 1;
         else if (!strcmp(argv[i], "--only") && i + 1 < argc) only = argv[++i];
-        else { fprintf(stderr, "usage: func_lockstep [--states N] [--seed S] [--verbose] [--only MODULE:IP,...]\n"); return 2; }
+        else if (!strcmp(argv[i], "--shard") && i + 1 < argc && sscanf(argv[++i], "%u/%u", &shard, &shards) == 2 && shard < shards) {}
+        else { fprintf(stderr, "usage: func_lockstep [--states N] [--seed S] [--verbose] [--only MODULE:IP,...] [--shard K/N]\n"); return 2; }
     }
     if (RC_NMODULES == 0) { fprintf(stderr, "no generated code linked in (build with F117R_GEN_DIR)\n"); return 2; }
 
@@ -381,6 +398,8 @@ int main(int argc, char **argv)
     unsigned long long compared = 0, skipped = 0, bad = 0;
     for (unsigned mi = 0; mi < matched_count(); mi++) {
         const recomp_override *o = matched_entry(mi);
+        if (mi % shards != shard) continue;
+        g_rng = routine_seed(seed, o);
         if (only) {
             char key[64];
             snprintf(key, sizeof key, "%s:%X", o->module, (unsigned)o->ip);
@@ -603,6 +622,7 @@ int main(int argc, char **argv)
             }
             if (mb) break;
         }
+        if (shards > 1) printf("@%u ", mi);                       /* the table index, for the merge */
         printf("%-10s %04X:%04X %-34s %6llu states compared, %4llu skipped, %s\n", o->module, o->seg, ip,
                o->what, mc, ms, mb ? "MISMATCH" : mc ? "equal" : "not testable here (routes only)");
         compared += mc; skipped += ms; bad += mb;
