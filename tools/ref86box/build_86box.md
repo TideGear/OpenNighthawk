@@ -29,7 +29,7 @@ intro, credits and sound menu on `ami286` (a 6 MHz 286).
 ## Traced runs: emulated time, scripted input (`86box-trace.patch`)
 
 `git apply tools/ref86box/86box-trace.patch` in the checkout (it edits
-`src/vnc.c`, `src/qt/qt_main.cpp`, `src/sound/snd_adlib.c`, `src/cpu/386.c` and `src/video/vid_vga.c`) before step 5.
+`src/io.c`, `src/vnc.c`, `src/qt/qt_main.cpp`, `src/sound/snd_adlib.c`, `src/cpu/386.c` and `src/video/vid_vga.c`) before step 5.
 A traced run needs no VNC client, so it is a function of the machine and its
 inputs, not of wall-clock polling. `trace_86box.ps1` starts it; environment
 variables drive it:
@@ -47,6 +47,7 @@ variables drive it:
 | `B86_PORTLOG=FILE` | every write to the debug port 0xE9: the cycle counter at the start of the OUT, the instructions executed and the value (`probe386.py`) |
 | `B86_STOP=N` | exit after N frames |
 | `B86_OPL=FILE` | every AdLib register write as `microseconds register value` |
+| `B86_SPKLOG=FILE` | every write to port 42h, 61h and a counter-2 command to 43h as `emulated-ms port value`, DOSBox-X's `DBX_SPEAKER_LOG` format (`speaker_parity.py`'s parser reads it) |
 | `B86_FAST=1` | fast-forward: `pc_run()` back to back instead of one quantum per host millisecond; emulated time is still the TSC. `sound86.py` and `sav86.py` set it unless `--realtime` |
 
 **Runs are deterministic** (8 Oct 2026). The harness's frame hook (key and mouse

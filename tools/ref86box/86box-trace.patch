@@ -20,10 +20,10 @@ index b605001..3ef80a9 100644
              cycdiff = oldcyc - cycles;
  
 diff --git a/src/io.c b/src/io.c
-index dbb3530..99138ed 100644
+index dbb3530..38cc128 100644
 --- a/src/io.c
 +++ b/src/io.c
-@@ -395,6 +395,27 @@ inb(uint16_t port)
+@@ -395,6 +395,48 @@ inb(uint16_t port)
      return ret;
  }
  
@@ -48,15 +48,37 @@ index dbb3530..99138ed 100644
 +    }
 +}
 +
++/* With B86_SPKLOG=FILE every write to PIT counter 2 (port 42h), a control word for it (43h, counter
++   bits 2) and port 61h is logged as "emulated-ms port value", the format of DOSBox-X's
++   DBX_SPEAKER_LOG (tools/speaker_parity.py), the milliseconds from the cycle counter. */
++extern double cpuclock;
++static void
++b86_speaker_log(uint16_t port, uint8_t val)
++{
++    static FILE *f;
++    static int   tried;
++    if (!tried) {
++        const char *path = getenv("B86_SPKLOG");
++        tried = 1;
++        if (path && *path)
++            f = fopen(path, "w");
++    }
++    if (f && (port == 0x42 || port == 0x61 || (port == 0x43 && (val >> 6) == 2))) {
++        fprintf(f, "%.6f %02X %02X\n", (double) tsc * 1000.0 / cpuclock, (unsigned) port, (unsigned) val);
++        fflush(f);
++    }
++}
++
  void
  outb(uint16_t port, uint8_t val)
  {
-@@ -404,6 +425,8 @@ outb(uint16_t port, uint8_t val)
+@@ -404,6 +446,9 @@ outb(uint16_t port, uint8_t val)
  #ifdef ENABLE_IO_LOG
      uint8_t qfound = 0;
  #endif
 +    if (port == 0xe9)
 +        b86_port_log(val);
++    b86_speaker_log(port, val);
  
      io_port = port;
      io_val  = val;

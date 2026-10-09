@@ -144,9 +144,15 @@ make (Phase 4).
       VGAME 0x0110 to load the 26,408-byte SPEECH.117: VGAME's `[0x008A]`
       stays 0, request 0x28 is never sent and the driver plays the call's
       offsets from segment 0. Here the file loads and the call is its bytes
-      15,654-22,117 through the driver's table. Whether the machine should
-      have the reference's free memory, and lose the speech, is the owner's
-      call.
+      15,654-22,117 through the driver's table. Under the speaker driver
+      (`B86_SPKLOG`, a new 86Box trace option in DOSBox-X's port-log format)
+      the VM's call polls counter 2 about 583,000 times and writes no sample
+      count, where this machine writes 13,046 counts over 864 ms. The VM's
+      board has no extended memory (no HIMEM or DOS=HIGH; FILES=20,
+      BUFFERS=20, MOUSE.COM resident), so the speech timing against 86Box
+      needs a VM with room for the file. Whether the reference should have
+      that room, or this machine the VM's free memory and no speech, is the
+      owner's call.
 
 ### Settled (scope, 8 Oct 2026)
 
