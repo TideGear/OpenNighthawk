@@ -320,8 +320,8 @@ current as of the last gate (see [../handoff.md](../handoff.md)).
    instruction through the machine's interpreter step and through the
    generated region entered there, comparing registers, segments, IP, flags,
    the clock, the interrupt shadow, every byte written, every port access
-   and every interrupt raised. 89,364 instruction starts at 64 states each:
-   5,718,784 comparisons, 0 mismatches (512 states are declined to the
+   and every interrupt raised. 89,366 instruction starts at 64 states each:
+   5,718,912 comparisons, 0 mismatches (512 states are declined to the
    interpreter: bytes the gap sweep took for code that are invalid 286
    opcodes). The reference is the machine's own step (`cpu_step` plus the TF
    trap), not bare `cpu_step`.
@@ -597,7 +597,7 @@ live game in a window (a diagnostic, not a gate: device state is not in the
 snapshot). `f117run --dump LINEAR:LENGTH` prints registers and memory at the
 end of a run for comparing two engines at a chosen clock.
 
-698 addresses are matched in all seven programs. The programs carry
+762 addresses are matched in all seven programs. The programs carry
 byte-identical copies of the C runtime helpers (string and block copies, the
 32-bit shifts, multiply and divide), so one matched routine serves several
 addresses. MPS_LOGO carries the same library built for a larger model: its
