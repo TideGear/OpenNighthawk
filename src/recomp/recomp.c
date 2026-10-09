@@ -27,7 +27,7 @@ uint8_t cpu_codebits[MEM_SIZE / 8];
 unsigned long long rc_mutant_hits;
 int rc_instruction_budget = -1;
 
-#define MAX_OVERRIDES 1024
+#define MAX_OVERRIDES 4096   /* matched routines, fixes and observer hooks: room for the whole census */
 #define MAX_PLACED MAX_OVERRIDES /* every registered override can share a module */
 
 typedef struct instance {
@@ -171,7 +171,13 @@ static void place_overrides(instance *in)
 
 int recomp_override_add(const recomp_override *o)
 {
-    if (g_nov >= MAX_OVERRIDES || !o || !o->id || !o->module || !o->fn) return -1;
+    if (!o || !o->id || !o->module || !o->fn) return -1;
+    if (g_nov >= MAX_OVERRIDES) {                                /* never silently: a dropped entry is a lost routine */
+        static int warned;
+        if (!warned++) fprintf(stderr, "recomp: the override registry is full (%d); %s %04X:%04X and later entries are not placed\n",
+                               MAX_OVERRIDES, o->module, o->seg, o->ip);
+        return -1;
+    }
     g_ov[g_nov] = *o;
     const char *off = getenv("F117R_NO_MATCHED");
     g_ov_on[g_nov] = o->matched && !(off && off[0] == '1');

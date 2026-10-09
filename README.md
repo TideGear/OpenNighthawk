@@ -50,16 +50,16 @@ options. Nine catalogued fixes are available now, all off by default.
   work: AdLib (music and digitised speech through an OPL emulator), the PC
   speaker, and Roland (Munt synthesis with your MT-32 ROMs, or Windows
   MIDI; live synthesis tested, exact rendered parity still open).
-- **Translated:** 89,303 instruction starts in the latest checked build,
+- **Translated:** 89,364 instruction starts in the latest checked build,
   across all 17 code files and the
   LZEXE decompressor: 96% of the bytes of the code areas, and no
   untranslated stretch left that decodes as code (`tools/census.py`; the
   rest is strings, tables and variables). On the scripted sessions no game
   instruction is interpreted under the default timing profile; only the
   emulated BIOS's own stubs are.
-- **Named and matched:** 651 routine addresses (647 census functions,
-  54,763 of 179,213 code bytes) have explained C equivalents checked against
-  their original bodies. Another 888 census functions remain. Under the
+- **Named and matched:** 698 routine addresses (693 census functions,
+  58,152 of 179,213 code bytes) have explained C equivalents checked against
+  their original bodies. Another 842 census functions remain. Under the
   386 profile, matched entries use their original translated bodies until
   their handwritten clocks gain cycle costs.
 - **Parity, measured:** thirty-five scripted sessions (boot to flight; a full
@@ -119,7 +119,7 @@ options. Nine catalogued fixes are available now, all off by default.
   `build\f117run.exe --timing 386 --engine recomp --data INSTALL_DIR`.
 - **Every translated instruction, not only the ones the sessions reach:**
   the sessions run about half the game's code (`tools/exercised.py`).
-  `tests/insn_lockstep.c` runs each of the 89,303 translated instruction starts
+  `tests/insn_lockstep.c` runs each of the 89,364 translated instruction starts
   from 64 random machine states through the generated code and the
   interpreter and compares everything it can change: 5.7 million
   comparisons per timing profile, 0 differences. The 386 check includes

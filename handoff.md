@@ -78,10 +78,9 @@ more than once, what it costs, what was optimised). State as of the evening of
   routine ran on some recompiled route (new 8 Oct: it dropped VGAME 0xF024),
   and **step 9**: no matched routine ran past its event limit on a route (new
   9 Oct; a `[matched] OVERRUN` line in a route's output names it).
-  Last green (9 Oct): 35 routes, 5,714,880 instruction states per timing
-  profile, 651 matched routines (2,122,027 states; 2,121,550 at seed
-  0xC0FFEE on the table before START's and END's stack-check rows were
-  dropped), no mismatches, no overruns.
+  Last green (9 Oct): 35 routes, 5,718,784 instruction states per timing
+  profile, 698 matched routines (2,231,646 states; 2,235,916 at seed
+  0xC0FFEE), no mismatches, no overruns.
   Do not edit `src/` or rebuild while a gate runs.
 - **PC parity**: `py tools/pc_parity.py --data D:/GOG/F-117A` (about 12
   minutes): all pass as of 8 Oct. The 86Box pictures must be exact in DAC
@@ -134,7 +133,7 @@ more than once, what it costs, what was optimised). State as of the evening of
   the 8254 does it (`src/host/speaker.c`, `tools/speaker_parity.py`); open:
   digitised speech has no audio reference, and the listening check is the
   owner's (Phase 4).
-- **Phase 2**: 651 addresses matched (647 census functions, 54,763 of 179,213
+- **Phase 2**: 698 addresses matched (693 census functions, 58,152 of 179,213
   bytes). Batches on branches `p2-vgame`, `p2-start`, `p2-small` (worktrees
   in D:\f117-wt), merged into master by the main session and gated there;
   each was checked at seeds 0x5EED0F117A and 0xC0FFEE (VGAME's 9 Oct batch
@@ -174,7 +173,7 @@ more than once, what it costs, what was optimised). State as of the evening of
    frame comparison does, or model a period disk; fast loads are the default
    standing choice). Handwritten matched routines can gain direct cycle costs
    later; their original bodies already run under the translated profile.
-3. Phase 2: 888 census routines (124,450 bytes) remain. Useful candidates
+3. Phase 2: 842 census routines (121,061 bytes) remain. Useful candidates
    are 100-500 byte routines the lockstep can exercise and shared C runtime
    copies. Refresh the census and the matched-address counts after each
    verified batch. The three rejected candidates above need correction

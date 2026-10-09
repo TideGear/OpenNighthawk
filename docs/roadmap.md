@@ -17,7 +17,7 @@ make (Phase 4).
 
 ### Done
 
-- **Translation.** All 17 code files and the LZEXE decompressor: 89,303
+- **Translation.** All 17 code files and the LZEXE decompressor: 89,364
   instruction starts, 96% of the code-area bytes (the rest is strings, tables
   and variables; `tools/census.py`). The coverage pass adds no further
   translated code; changed code and declined override entries can fall back
@@ -25,7 +25,7 @@ make (Phase 4).
 - **Engine parity.** 35 scripted routes are identical between the interpreter
   and the recompiled code at every 50-million-clock checkpoint and at the end;
   every translated instruction is held to the interpreter from random states
-  (5,714,880 comparisons, 0 differences); the interpreter and the translator are
+  (5,718,784 comparisons, 0 differences); the interpreter and the translator are
   held to 8088 and 80286 silicon vectors; 144 of 144 planted defects are
   caught; seeded random flights are identical. See
   [architecture.md](architecture.md#verification-why-11-is-a-claim-with-evidence).
@@ -194,10 +194,10 @@ not the recompilation:
       Reimp's mapping; matched functions replacing translations one at a time,
       each held to the same parity checks. `tools/reimp_names.py` joins the
       Reimp's census (1,535 functions) with this project's regions as a private
-      lead list. 651 addresses are matched (647 of the census functions, 54,763 of
+      lead list. 698 addresses are matched (693 of the census functions, 58,152 of
       179,213 bytes); the table is at the end of `src/matched/matched.c` and the
       method is in [architecture.md](architecture.md#matched-routines-phase-2).
-      The batches of 8-9 Oct add 37 + 34 VGAME, 34 + 40 + 45 START/END and 21 + 44
+      The batches of 8-9 Oct add 37 + 34 + 47 VGAME, 34 + 40 + 45 START/END and 21 + 44
       small-program routines, each checked at two 4,000-state seeds (the 9 Oct
       VGAME batch also at four more), and the picture decoder's
       RLE row and LZW step in VGAME and END (the step is routes-only: its

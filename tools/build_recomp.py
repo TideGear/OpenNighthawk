@@ -103,6 +103,27 @@ def build(gen):
         print(tail)
         sys.exit("build failed")
     print("  build OK")
+    unit_tests()
+
+
+def unit_tests():
+    """The ROM-free unit tests CI runs (ctest), but func_lockstep, which the matched-routine step runs itself: under a
+    second, and the gate missed a failing one (the override registry's capacity) that CI caught."""
+    cache = os.path.join(ROOT, "build", "CMakeCache.txt")
+    ctest = shutil.which("ctest")
+    if os.path.exists(cache):
+        for line in open(cache, errors="replace"):
+            if line.startswith("CMAKE_CTEST_COMMAND:"):
+                ctest = line.split("=", 1)[1].strip()
+    if not ctest:
+        sys.exit("ctest not found (no CMAKE_CTEST_COMMAND in build/CMakeCache.txt)")
+    r = run([ctest, "--test-dir", os.path.join(ROOT, "build"), "-E", "func_lockstep", "--output-on-failure"],
+            capture_output=True, text=True)
+    if r.returncode != 0:
+        print((r.stdout or "")[-3000:])
+        sys.exit("unit tests failed")
+    passed = re.search(r"\d+% tests passed, \d+ tests failed out of \d+", r.stdout or "")
+    print("  unit tests: " + (passed.group(0) if passed else "passed"))
 
 
 def headless(engine, data, work, name, args, extra, route):
