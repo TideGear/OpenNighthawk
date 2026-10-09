@@ -130,7 +130,8 @@ clock the same way (`F117R_PORTLOG`). A block's count includes its mark
 (`mov al,n` / `out 0E9h,al`), its setup and the three-instruction restore of
 DS and ES (the empty block: 29 cycles, 5 instructions). 86Box counts a REP
 instruction once per dispatch, so its instruction count there is the chunks,
-not the elements. Measured 8 Oct 2026 on `vmt386`:
+not the elements. Measured 8 Oct 2026 on `vmt386` (the instruction blocks are the same
+on `vmt386dos500`, 9 Oct 2026):
 
 | block | instructions timed | 86Box cycles | 86Box instructions counted |
 |---|---|---|---|
@@ -176,8 +177,8 @@ would make it 47), 32 extra a VGA byte and 64 a word.
 ## Frame comparison: `frames386.py`
 
 `tools/ref86box/frames386.py OUT` runs the intro on both machines and compares
-them picture by picture: 86Box traced (`trace_86box.ps1`, a copy of `vmt386`,
-`probe86.bare_boot`, fast-forward, a PPM per new picture) and this machine with
+them picture by picture: 86Box traced (`trace_86box.ps1`, a copy of `vmt386dos500`,
+the default since 9 Oct 2026, or of `--profile`; `probe86.bare_boot`, fast-forward, a PPM per new picture) and this machine with
 `f117run --timing 386 --engine interp --shots-vga --shots-changed --frame-log`
 (each VGA frame's scan-out clock, steps and screen-off bit; only changed
 pictures written). SETUP is answered the same way on both (n, then 2 300 frames
@@ -192,7 +193,7 @@ on the same frame. `--box DIR`/`--ours DIR` reuse a run (rerun only ours after a
 profile change: about 15 s); `--only box|ours` makes one run. Both runs are
 deterministic: two runs gave byte-identical `frames.csv` on each side.
 
-Result (8 Oct 2026, 139.8 s from the origin): **FAIL**. 1,238 of 1,275 86Box
+Result on the FreeDOS VM `vmt386` (8 Oct 2026, 139.8 s from the origin): **FAIL**. 1,238 of 1,275 86Box
 picture changes exact in order (992 of the 993 held two frames or more); the 37
 others are 36 single-frame pictures (mid-draw or mid-fade: 86Box scans line by
 line, this machine in four 100-line parts) and START's mode-set blank, which this
@@ -225,14 +226,16 @@ with `B86_VGA_FAST=1` scene 0 falls from +215 to +101 ms, which puts about
 114 ms of it on the mode set's video memory. The first step (24 reads of 512
 bytes, +130 ms with 1 buffer, +116 ms with 20) is about 5 ms a DOS read.
 
-On the MS-DOS 5.00 VMs with MOUSE.COM (`--profile`, ours `--ours-mouse`, 9 Oct
-2026), also FAIL on the same terms: `vmt386dos500` 1,238 of 1,277 exact in order,
-end drift +642.5 ms; `vmt386dos500h` (HIMEM, DOS=HIGH) 1,237 of 1,273, +728.1 ms.
+On the MS-DOS 5.00 VM with MOUSE.COM, the default since 9 Oct 2026 (ours keeps
+its INT 33h driver, as the VM loads one): **FAIL** on the same terms, 1,238 of
+1,277 picture changes exact in order (991 of the 992 held two frames or more),
+272 of them on the same frame, end drift +642.5 ms (+45 frames) in 15 steps of
+two frames or more; `vmt386dos500h` (HIMEM, DOS=HIGH) 1,237 of 1,273, +728.1 ms.
 START's `ROSTER.FIL` step is about +630 ms there (+886 ms under the FreeDOS bare
 boot's one buffer); the HIMEM VM falls 86 ms further behind at PLAYER's load
 (5.6-13.2 s) and holds it.
 
-The mouse: the VM loads no driver (the image's stock `FDAUTO.BAT` and
+The mouse on the FreeDOS VM: it loads no driver (the image's stock `FDAUTO.BAT` and
 `FDCONFIG.SYS` load none, `FREEDOS\BIN` has none, `86box.cfg` has
 `mouse_type = none`, and `bare_boot` replaces the boot files anyway), so INT
 33h reaches the BIOS's dummy handler. This machine always provided a driver;
@@ -258,7 +261,7 @@ first flight minutes on each machine (8 Oct 2026):
 |---|---|
 | this machine, DOSBox's model (9 M clocks a second) | 14, 15 |
 | DOSBox-X | 13, 15 |
-| 86Box 386DX/33 | 6, 7, 8, 9 |
+| 86Box 386DX/33, MS-DOS 5.00 and MOUSE.COM (9 Oct 2026; 6-9 on the FreeDOS VM) | 7, 8, 9 |
 | this machine, `--timing 386` | 5, 7, 8, 9 |
 
 So under the profile the game runs at the period PC's pace, not DOSBox's. A single

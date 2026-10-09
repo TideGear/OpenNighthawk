@@ -67,7 +67,8 @@ SCAN = dict(zip("abcdefghijklmnopqrstuvwxyz", [0x1E, 0x30, 0x2E, 0x20, 0x12, 0x2
 SCAN.update(zip("1234567890", range(2, 12)))
 SCAN.update(enter=0x1C, bs=0x0E, esc=0x01, space=0x39)
 SHIFT = 0x2A
-ROSTER_FRAME = 11_061               # displayed frame at which the roster first shows (386DX/33, bare boot)
+ROSTER_FRAME = 11_061               # displayed frame at which the roster first shows on the FreeDOS bare boot;
+                                    # 11,007 on the MS-DOS 5.00 VM, where starting later serves as well
 FPS = 70.086
 
 

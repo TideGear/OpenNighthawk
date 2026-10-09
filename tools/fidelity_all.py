@@ -10,7 +10,7 @@ devices, clocks and what operations cost in time) on this machine and on GOG's
 DOSBox 0.74, on DOSBox-X and in 86Box, and compares this machine with each.
 
 The machines legitimately differ in places (DOSBox-X lays DOS memory out its
-own way; 86Box is a 6 MHz 286 with a real BIOS), so the verdict is against a
+own way; 86Box is a 386DX/33 with a real BIOS and MS-DOS 5.00), so the verdict is against a
 stored baseline, tools/fidelity_baseline.json: per reference, the fields that
 are known to differ. The check fails when a field outside the baseline starts
 to differ (a regression) and reports, without failing, a known difference that

@@ -109,7 +109,7 @@ Machine and DOSBox-X flights miss, so they were not kept.
 **The stick as whole frames** (8 Oct 2026). The game reads the stick once a frame and moves the
 aircraft a frame's worth for each frame the key is down (`tools/stick_response.py`, isolated taps on
 each machine): on the Machine and DOSBox-X (S 13-15 in that climb) a 60 ms tap is always one frame and
-rolls the aircraft 596 units, 120 ms 1,192, 200 ms 2,384, identical on both; here (S 6-9) a 60 ms tap
+rolls the aircraft 596 units, 120 ms 1,192, 200 ms 2,384, identical on both; here (the FreeDOS VM, S 6-9) a 60 ms tap
 is one frame of about 1,000 or none (-992, +5, -649). The pilots' small corrections therefore arrived
 as random, oversized steps: the strike approach wandered 900 units off the bearing and the deck
 approach rocked the wings to 22 degrees. The adaptor now sends the stick as whole game frames
@@ -143,8 +143,8 @@ of the disk image), `sound86.py` with `compare_opl86.py` (the music) and
 `sav86.py` (a scripted START session and its saved `ROSTER.FIL`;
 `tools/save_parity.py` turns a route file into the schedule).
 
-**A mouse needs a DOS driver, and the game needs almost all of conventional
-memory.** `sav86.py` puts CuteMouse's `ctmouse.exe` (GPL; a built copy is in
+**A mouse needs a DOS driver, and on the FreeDOS VM the game needs almost all of
+conventional memory.** The default MS-DOS VM loads its own MOUSE.COM. On FreeDOS `sav86.py` puts CuteMouse's `ctmouse.exe` (GPL; a built copy is in
 github.com/davidebreso/ctmouse; not kept in this repository, default path
 `D:\f117-gate\ctm\CTMOUSE.EXE`) on the disk, sets `mouse_type = msserial` and
 boots a bare FreeDOS (no environment variables, `BUFFERS=1`, `FILES=10`,
@@ -171,8 +171,8 @@ panning pictures write the screen every frame; with `B86_VGA_FAST=1` (a test kno
 drift over the whole intro is 0.56 s, the title-picture step. The intro music lags by
 the same amounts, since the game loop advances it. So the drift is the reference PC's
 own disk and video speed, which this machine (and DOSBox) do not charge; it is not an
-error in this machine. The routine check keeps the stock card (a period PC). All traced runs use `probe86.bare_boot` (the game needs
-almost all of conventional memory under this BIOS).
+error in this machine. The routine check keeps the stock card (a period PC). All traced runs use `probe86.bare_boot` (on the FreeDOS
+VM the game needs almost all of conventional memory under this BIOS; an MS-DOS VM keeps its own boot files).
 
 **Instructions against this model's clocks** (`instr86.py`, from the same frames.csv and a
 `video_compare.py` run): between the intro's paired scenes the game's code runs at 6.28 MIPS
@@ -190,7 +190,7 @@ and channels 3 and 4 have the same number of key-ons (within 0.1%) but their
 pitch-bend writes fall in different places (the effect is paced by the
 loop, so by speed); the scripted session saves a `ROSTER.FIL` byte-identical
 to ours. Checked 8 Oct 2026: with `B86_VGA_FAST=1` channel 3's key-ons go from 8,986
-to 9,022 (ours 8,982) while channels 0, 1, 2 and 5 stay identical, so the busy channels'
+to 9,022 (ours 8,982; 9,022 on the MS-DOS 5.00 VM without it) while channels 0, 1, 2 and 5 stay identical, so the busy channels'
 writes follow the game loop's speed on the machine that runs it, not a fixed schedule;
 no single fixed PC speed reproduces them, and they are not a parity target.
 
@@ -205,7 +205,9 @@ memory and no HIMEM; `--mem-kb N --himem` gives it N KB (the first boot saves th
 size into the CMOS through the BIOS setup) and loads MS-DOS's HIMEM.SYS with
 `DOS=HIGH`. MS-DOS 5.00 is the 386 timing profile's reference
 ([timing386.md](timing386.md)); `vmt386dos500` loads Microsoft MOUSE.COM 6.26
-(`--mouse`, `mouse_type = msserial`). Largest executable program under its
+(`--mouse`, `mouse_type = msserial`) and is every 86Box tool's default
+(`probe86.REFERENCE`, 9 Oct 2026; FreeDOS `vmt386` by `--profile` or
+`--profile86`). Largest executable program under its
 AUTOEXEC.BAT: 577,728 bytes; `vmt386dos500h` (`--mem-kb 4096 --himem`, the same
 mouse) 625,584. Both load SPEECH.117 in flight; the FreeDOS bare boot does not.
 
@@ -223,7 +225,7 @@ leaves the roster.
 recorded route answers N and 2, AdLib; a route answering 1 flies with the speaker
 driver).
 
-## The profile (`D:\86box\vmf`, the picture capture; the checks above use `vmt386`)
+## The profile (`D:\86box\vmf`, the picture capture; the checks above use `vmt386dos500`)
 
 `86box.cfg.vnc` here is the working configuration: `ami286`, 640 KB,
 `hdc_1 = xtide_at`, VGA, AdLib, `vid_renderer = vnc`, `sound_muted = 1`, no
@@ -262,7 +264,11 @@ real-time capture below). Result: 88 distinct pictures, 87 compared, 4 exact,
 6-bit DAC values, since 86Box expands them as floor(v*255/63) and this machine
 as v<<2|v>>4: 86 exact, 1 close, the close one a single sample taken
 mid-draw); two runs gave the same 88 pictures at
-the same times; 48 s instead of about 3 min.
+the same times; 48 s instead of about 3 min. That was the FreeDOS VM. On the
+MS-DOS 5.00 VM, the default since 9 Oct 2026: 87 distinct pictures, 86 compared,
+85 exact and one unmatched, p085, START's roster screen sampled while 86Box is
+still loading the selected pilot's panel (this machine loads files at once and
+never shows that state; listed in `expected_misses86.txt`).
 
 First result (6 Oct 2026, the VNC capture):
 

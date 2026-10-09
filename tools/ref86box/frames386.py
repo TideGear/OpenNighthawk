@@ -10,17 +10,19 @@ The instrument for the 386DX/33 timing profile (timing386.md, "Frame comparison"
 goal is that every picture lands on the frame it lands on in 86Box. Both runs answer SETUP (n, then
 2 300 frames later) and capture every displayed picture change with its emulated time:
 
-  86Box     the traced build (trace_86box.ps1, build_86box.md) on a copy of D:\\86box\\vmt386, booted
-            with probe86.bare_boot in fast-forward (no mouse driver: the profile's mouse_type is
-            none; --mouse-driver CTMOUSE.EXE loads one); frames.csv (each displayed frame's TSC, hash
+  86Box     the traced build (trace_86box.ps1, build_86box.md) on a copy of D:\\86box\\vmt386dos500, booted
+            with probe86.bare_boot in fast-forward (the MS-DOS VM loads its MOUSE.COM; on the
+            FreeDOS --profile D:\\86box\\vmt386 no driver unless --mouse-driver
+            CTMOUSE.EXE); frames.csv (each displayed frame's TSC, hash
             and instructions) and a PPM of each new picture. Time is 86Box's TSC over 33,333,333.
             86Box posts no frame while the screen is off; a gap of more than 1.5 frame periods is
             read as a blank picture from the first missing frame.
   ours      f117run --timing 386 --engine interp on a copy of the install, sampled once per VGA
             frame (--shots-vga) keeping only changed pictures (--shots-changed), with --frame-log
             (every frame's scan-out clock, steps and screen-off bit) and --record; a picture's
-            time is the clock its scan-out completed at over 33,333,333. By default INT 33h answers
-            as with no driver (--no-mouse), as on the VM; --ours-mouse keeps the driver.
+            time is the clock its scan-out completed at over 33,333,333. Ours keeps its INT 33h
+            driver when 86Box's run had one; otherwise INT 33h answers as with no driver
+            (--no-mouse), as on that VM; --ours-mouse keeps the driver regardless.
 
 Both lists are reduced to mode-13h pictures in 6-bit DAC values (86Box expands the DAC as
 floor(v*255/63), this machine as v<<2|v>>4; v>>2 recovers v from both) plus blank periods, and
@@ -60,6 +62,7 @@ from PIL import Image
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, HERE)
+import probe86  # noqa: E402
 
 CLOCK = 33_333_333                       # both machines' cycles a second (MACHINE_386_IPS)
 FRAME = CLOCK * 359200 / 25175000        # mode 13h: 475,610 cycles, 70.086 Hz
@@ -72,7 +75,6 @@ HELD = 1.0                               # a scene's opening picture stays on sc
 
 def run_box(out, profile, seconds, mouse_driver=None):
     """The traced 86Box run: OUT/trace/frames.csv and a PPM per picture change from SETUP on."""
-    import probe86
     work = os.path.normpath(os.path.join(out, "profile"))
     shutil.rmtree(work, ignore_errors=True)
     os.makedirs(work)
@@ -92,7 +94,9 @@ def run_box(out, profile, seconds, mouse_driver=None):
             fs.writebytes("/F117A/CTMOUSE.EXE", open(mouse_driver, "rb").read())
             tail = ["CTMOUSE", "F117"]
         probe86.bare_boot(fs, tail)
-    probe86.with_partition(img, install, write=True)
+        # an MS-DOS VM loads its own driver (MOUSE.COM) from AUTOEXEC.BAT
+        return "MOUSE.COM" if fs.exists("/MOUSE/MOUSE.COM") and not fs.exists("/FDAUTO.BAT") else None
+    mouse_driver = probe86.with_partition(img, install, write=True) or mouse_driver
     trace = os.path.join(out, "trace")
     shutil.rmtree(trace, ignore_errors=True)
     env = dict(os.environ, B86_FAST="1", B86_PPM_AFTER=str(SETUP_FRAME - 100))
@@ -383,7 +387,7 @@ def main():
     ap.add_argument("--seconds", type=int, default=130, help="emulated seconds after SETUP's last key")
     ap.add_argument("--box", help="an earlier 86Box run (its OUT/box) instead of a new one")
     ap.add_argument("--ours", help="an earlier run of ours (its OUT/ours) instead of a new one")
-    ap.add_argument("--profile", default=r"D:\86box\vmt386", help="copied per run, never changed")
+    ap.add_argument("--profile", default=probe86.REFERENCE, help="copied per run, never changed")
     ap.add_argument("--data", default=r"D:\GOG\F-117A", help="the install, copied per run, never written")
     ap.add_argument("--exe", default=os.path.join(ROOT, "build", "f117run.exe"))
     ap.add_argument("--mouse-driver", help="86Box: put this CTMOUSE.EXE on the disk and load it (mouse_type msserial)")
