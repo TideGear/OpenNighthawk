@@ -19130,7 +19130,7 @@ static int vgame_view_caption(machine_t *m)
         cpu_push16(c, caption[k]);
         cpu_push16(c, 0x98A6);
         c->icount += n + (k ? 2 : 1) + 1;
-        VG3_NEAR(0xEB50, 0x837B, 3 + 15 + 1);                     /* strcpy */
+        VG3_NEAR(0xEB50, 0x837B, 3 + 14 + 1);                     /* strcpy */
         c->r[R_BX] = cpu_pop16(c);
         c->r[R_BX] = cpu_pop16(c);
         n = 3;
@@ -19147,7 +19147,7 @@ static int vgame_view_caption(machine_t *m)
     cpu_push16(c, 0xC5);
     cpu_push16(c, 0x98A6);
     cpu_push16(c, ds_get(c, 0x4010));
-    c->icount += n + 15;
+    c->icount += n + 14;
     VG3_NEAR(0x89C0, 0x83D3, 8);
     c->r[R_AX] = VG3_FRAME(-8);
     c->r[R_BX] = ds_get(c, 0x4010);
@@ -20192,12 +20192,13 @@ static int vgame_malloc(machine_t *m)
 }
 
 /* VGAME 0x0F2C6, flush(stream): the C runtime's flush of one stream - or,
- * for a null stream, of all of them (0x0F340 with 0). A stream open for
- * writing only (flag bits 0-1 = 2) whose buffer is its own (flag bit 3,
- * or bit 0 of the buffer record at stream - 92B8h + 9358h) and holds
- * bytes (ptr +0 beyond base +4) has them written (0x0F7AE on its handle
- * +7); a short write sets the error bit 20h and the result -1. The
- * pointer goes back to the base and the count +2 to 0. AX is 0 or -1. */
+ * for a null stream, of all of them (0x0F340 with 0; its RET 2 takes
+ * the argument). A stream open for writing only (flag bits 0-1 = 2)
+ * whose buffer is its own (flag bit 3, or bit 0 of the buffer record
+ * at stream - 92B8h + 9358h) and holds bytes (ptr +0 beyond base +4)
+ * has them written (0x0F7AE on its handle +7); a short write sets the
+ * error bit 20h and the result -1. The pointer goes back to the base
+ * and the count +2 to 0. AX is 0 or -1. */
 static int vgame_flush(machine_t *m)
 {
     cpu_t *c = &m->cpu;
@@ -20214,7 +20215,8 @@ static int vgame_flush(machine_t *m)
         c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
         cpu_push16(c, 0);
         c->icount += n + 2;
-        VG3_NEAR(0xF340, 0xF2DB, 6);
+        if (!guest_call_pop(m, 0xF340, 0xF2DB, 2)) return 1;      /* flush all: RET 2 takes the argument */
+        if (!room(c, 6)) { c->ip = 0xF2DB; return 1; }
         n = 1;                                                    /* jmp */
     } else {
         const uint16_t s = c->r[R_SI] = VG3_FRAME(4);
