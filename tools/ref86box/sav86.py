@@ -2,7 +2,7 @@
 """sav86.py - a scripted START session on 86Box, and the files it saved.
 
     py tools/ref86box/sav86.py OUT_DIR --mouse-driver CTMOUSE.EXE [--keys ...] [--mouse ...]
-                               [--frames 30000] [--ppm] [--profile D:\\86box\\vmt]
+                               [--frames 30000] [--ppm] [--profile D:\\86box\\vmt386dos500]
 
 Copies the profile (serial Microsoft mouse on COM1), puts CTMOUSE.EXE
 (CuteMouse 2.1, GPL; github.com/davidebreso/ctmouse ships a built ctmouse.exe)
@@ -26,7 +26,7 @@ import probe86  # noqa: E402
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("out")
-    ap.add_argument("--profile", default=r"D:\86box\vmt386")
+    ap.add_argument("--profile", default=probe86.REFERENCE)
     ap.add_argument("--mouse-driver", required=True)
     ap.add_argument("--keys", default="3000:1:31,3003:0:31,3300:1:03,3303:0:03")
     ap.add_argument("--mouse", default="")

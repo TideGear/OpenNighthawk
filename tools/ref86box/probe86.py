@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """probe86.py - run tools/fidelity.py's probe program inside 86Box and return its answers.
 
-    py tools/ref86box/probe86.py OUT_DIR [--profile D:\\86box\\vmt] [--frames 9000]
+    py tools/ref86box/probe86.py OUT_DIR [--profile D:\\86box\\vmt386dos500] [--frames 9000]
 
 The probe (F117.COM) and its EXEC'd child (CHILD.EXE) are written into a copy
 of the 86Box profile's disk image, replacing the game's F117.COM there, and the
-image's FDAUTO.BAT runs F117. 86Box (tools/ref86box/trace_86box.ps1, no window,
+image's AUTOEXEC.BAT (FDAUTO.BAT on the FreeDOS VM) runs F117. 86Box (tools/ref86box/trace_86box.ps1, no window,
 no sound) runs for --frames displayed frames, then the answer files OUT.BIN and
 CHILD.BIN are read back out of the image. The probe measures this machine, so
 fields that depend on CPU speed differ from a 9 MIPS PC by design; the
@@ -26,6 +26,9 @@ import fidelity  # noqa: E402
 from pyfatfs.PyFatFS import PyFatFS  # noqa: E402
 
 PART = 17 * 512                      # the FAT16 partition starts at LBA 17 (build_hdd.py)
+# The reference PC every 86Box tool runs by default: the 386DX/33 with MS-DOS 5.00 and Microsoft MOUSE.COM
+# 6.26 (build_msdos_vm.py). D:\86box\vmt386 (FreeDOS, booted bare by bare_boot) stays reachable by --profile.
+REFERENCE = r"D:\86box\vmt386dos500"
 
 
 def with_partition(image, fn, write=False):
@@ -73,7 +76,7 @@ def mouse_calibration(fs):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("out")
-    ap.add_argument("--profile", default=r"D:\86box\vmt386")
+    ap.add_argument("--profile", default=REFERENCE)
     ap.add_argument("--frames", type=int, default=9000)
     ap.add_argument("--timeout", type=int, default=900)
     a = ap.parse_args()
@@ -98,9 +101,10 @@ def main():
         for gone in ("/F117A/OUT.BIN", "/F117A/CHILD.BIN"):
             if fs.exists(gone):
                 fs.remove(gone)
-        bat = fs.readtext("/FDAUTO.BAT").replace("\r\n", "\n")
+        start = "/FDAUTO.BAT" if fs.exists("/FDAUTO.BAT") else "/AUTOEXEC.BAT"     # FreeDOS's or MS-DOS's
+        bat = fs.readtext(start).replace("\r\n", "\n")
         lines = [l for l in bat.split("\n") if l.strip() and l.strip().upper() != "F117"] + ["F117"]
-        fs.writetext("/FDAUTO.BAT", "\r\n".join(lines) + "\r\n")
+        fs.writetext(start, "\r\n".join(lines) + "\r\n")
     with_partition(img, install, write=True)
     trace = os.path.join(a.out, "trace")
     subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",

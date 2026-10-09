@@ -5,7 +5,7 @@
     py tools/ref86box/capture_intro.py OUT_DIR --vnc [--profile D:\\86box\\vmf]
 
 By default the traced 86Box (trace_86box.ps1, the 386 profile, fast-forward
-unless --realtime) boots F117 from FDAUTO.BAT, SETUP is answered by key
+unless --realtime) boots F117 from AUTOEXEC.BAT (FDAUTO.BAT on FreeDOS), SETUP is answered by key
 injection at displayed frames 3000 and 3300 (N, then 2, as sound86.py does),
 and the picture on screen is sampled once per emulated second from frame 3300
 for --seconds: the same check on emulated time, a function of the machine and
@@ -106,7 +106,7 @@ def picture(rfb):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("out")
-    ap.add_argument("--profile", help=r"default D:\86box\vmt386 traced, D:\86box\vmf with --vnc")
+    ap.add_argument("--profile", help=r"default D:\86box\vmt386dos500 traced, D:\86box\vmf with --vnc")
     ap.add_argument("--seconds", type=int, default=130)
     ap.add_argument("--boot-wait", type=int, default=55)
     ap.add_argument("--vnc", action="store_true", help="the older real-time capture over VNC")
@@ -114,7 +114,7 @@ def main():
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     if not a.vnc:
-        a.profile = a.profile or r"D:\86box\vmt386"
+        a.profile = a.profile or probe86.REFERENCE
         return traced(a)
     a.profile = a.profile or r"D:\86box\vmf"
     subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",

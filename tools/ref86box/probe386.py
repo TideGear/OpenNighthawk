@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """probe386.py - cycles per instruction block on 86Box's 386DX/33, against this machine.
 
-    py tools/ref86box/probe386.py OUT_DIR [--profile D:\\86box\\vmt386] [--no-86box] [--engine interp]
+    py tools/ref86box/probe386.py OUT_DIR [--profile D:\\86box\\vmt386dos500] [--no-86box] [--engine interp]
 
 A probe program (F117.COM) runs blocks of one instruction class each, with interrupts off, and
 writes the block's number to the debug port 0xE9 before each. 86Box (the trace patch's B86_PORTLOG)
@@ -290,7 +290,7 @@ def run_ours(out, probe, engine, timing=None):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("out")
-    ap.add_argument("--profile", default=r"D:\86box\vmt386")
+    ap.add_argument("--profile", default=probe86.REFERENCE)
     ap.add_argument("--no-86box", action="store_true", help="reuse OUT_DIR/86box-ports.log")
     ap.add_argument("--engine", default="interp", choices=("interp", "recomp"))
     ap.add_argument("--timing", choices=("386",), help="run this machine under the 386DX/33 profile")

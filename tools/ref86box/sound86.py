@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """sound86.py - the intro's AdLib register writes on 86Box, in emulated time.
 
-    py tools/ref86box/sound86.py OUT_DIR [--profile D:\\86box\\vmt] [--frames 12000]
+    py tools/ref86box/sound86.py OUT_DIR [--profile D:\\86box\\vmt386dos500] [--frames 12000]
                                  [--keys "3000:1:31,3003:0:31,3300:1:03,3303:0:03"]
 
 Runs the traced 86Box (trace_86box.ps1, no window, no sound) with B86_OPL set
-and F117 started from FDAUTO.BAT, SETUP answered by key injection at displayed-frame
+and F117 started from AUTOEXEC.BAT (FDAUTO.BAT on FreeDOS), SETUP answered by key injection at displayed-frame
 counts (N, then 2), and leaves OUT_DIR/opl86.log: "microseconds register value"
 for every write to the AdLib's ports, microseconds of the emulated 286's clock.
 sound_compare86.py compares it with this machine's log.
@@ -24,7 +24,7 @@ import probe86  # noqa: E402
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("out")
-    ap.add_argument("--profile", default=r"D:\86box\vmt386")
+    ap.add_argument("--profile", default=probe86.REFERENCE)
     ap.add_argument("--frames", type=int, default=12000)
     ap.add_argument("--keys", default="3000:1:31,3003:0:31,3300:1:03,3303:0:03")
     ap.add_argument("--timeout", type=int, default=1200)

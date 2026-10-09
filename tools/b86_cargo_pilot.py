@@ -49,7 +49,7 @@ sys.path.insert(0, str(HERE / "ref86box"))
 import probe86  # noqa: E402
 
 EXE = r"D:\86box-src\build\src\86Box.exe"
-PROFILE = r"D:\86box\vmt386"
+PROFILE = probe86.REFERENCE
 ROMS = r"D:\86box\app\roms"
 MOUSE_DRIVER = r"D:\f117-gate\ctm\CTMOUSE.EXE"
 TRACE_PS1 = HERE / "ref86box" / "trace_86box.ps1"
@@ -61,9 +61,10 @@ SETUP_CLOCK = 90000
 START_EXEC_CLOCK = [956881664]            # the route's own (--start-exec-clock); the strike front end is 956971536
 # 86Box's own frame rate at this video mode (tools/ref86box/sav86.py; independent of CPU speed).
 FPS = 70.086
-# The displayed frame at which START.EXE is first found in RAM on this profile (bare boot, no
-# route-specific input beyond SETUP's two answers), measured by binary search with the signature
-# below against 7 Oct 2026's build: between frames 10700 and 10850.
+# The displayed frame at which START.EXE is first found in RAM (no route-specific input beyond SETUP's
+# two answers), measured by binary search with the signature below on the FreeDOS bare boot against
+# 7 Oct 2026's build: between frames 10700 and 10850. On the MS-DOS 5.00 VM START's seed is staged 14
+# frames earlier (frame 10,855 against 10,869), within that margin; its flights use the same value.
 FRAME_START_EXEC = 10775
 # START's mission generator seed tick (tools/ref86box/build_dosbox_x.md's DBX_INT1A_TICK value):
 # the Machine's BIOS tick count at the moment START reads it for this route.

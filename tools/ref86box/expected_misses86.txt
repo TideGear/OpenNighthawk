@@ -1,7 +1,7 @@
 # The 86Box intro pictures (compare_intro.py, in 6-bit DAC values) that are known not to match any of
 # this machine's pictures exactly. pc_parity.py fails on any other picture that is not exact, and on
 # a listed picture whose content changed (its hash). One per line: file, the first 12 hex digits of the
-# picture's hash, what it is. "close" only: an "unmatched" or "no candidate" picture is never allowed.
+# picture's hash, what it is. "close" or "unmatched" (with the reason); "no candidate" is never allowed.
 # Review before adding a line; a line added to make a failure go away says why that picture is harmless.
-p038.png c5ba4f37b3db a single sample (one 1/70 s) taken in the middle of a fade: 27 of the picture's rows differ by one DAC step, between two of this machine's consecutive pictures
-p003.png b2214e57de33 a single sample (3.0 s) in the middle of an animated patch of the logo screen: 57 pixels in 4 rows differ (up to 21 DAC steps) from this machine's nearest picture, and fall between two of its consecutive pictures; a phase difference from 86Box's timeline, not a content difference
+# Measured on the MS-DOS 5.00 VM (vmt386dos500), 9 Oct 2026.
+p085.png 8da31eccba47 unmatched: a single sample (111 s) of START's roster screen with the list drawn and the selected pilot's panel and pointer not yet: 86Box is still loading the panel's files (rostsprt.pic) through DOS and the disk, which this machine loads at once, so it never shows that state; the next sample (p086) is exact
