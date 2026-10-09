@@ -2,7 +2,7 @@
  * log, as tools/interp_frame.py LOG --pairing --check --primitives reports
  * it: the same lines, so the two outputs diff.
  *
- *   test_interp LOG
+ *   test_interp LOG [--extrapolate]
  *
  * LOG is f117run --observe output taken with F117R_OBSERVE_PAGES=1. Its
  * phases are grouped into logic frames (split after each phase that
@@ -12,7 +12,13 @@
  * almost nothing) against the page dumps; and the in-between frames at 1/4,
  * 1/2 and 3/4: what moved and what was held, the provenance rule (every
  * record is one of the two frames' or a regenerated one) and how the picture
- * differs from the skeleton frame's. Exit 1 when an exactness check fails. */
+ * differs from the skeleton frame's. Exit 1 when an exactness check fails.
+ *
+ * --extrapolate measures the picture-age setting instead: for three frames
+ * A, B and C, the frame predicted from A and B a whole step past B (t = 2,
+ * drawn from B's start) against C as the original drew it, beside B held
+ * (what interpolation shows then, a step late), over the whole display and
+ * the 3-D window (its first 107 rows). */
 #include "interp.h"
 #include "drawlist.h"
 
@@ -155,9 +161,12 @@ static int diff_count(const uint8_t *a, const uint8_t *b, int n)
     return d;
 }
 
+static int extrapolate(const frame_t *frames, int nfr);
+
 int main(int argc, char **argv)
 {
-    if (argc != 2) { fprintf(stderr, "usage: test_interp LOG\n"); return 2; }
+    const int extrap = argc == 3 && !strcmp(argv[2], "--extrapolate");
+    if (argc != 2 && !extrap) { fprintf(stderr, "usage: test_interp LOG [--extrapolate]\n"); return 2; }
     FILE *f = fopen(argv[1], "r");
     if (!f) { fprintf(stderr, "cannot read %s\n", argv[1]); return 2; }
     char *buf = NULL;
@@ -235,6 +244,7 @@ int main(int argc, char **argv)
         start = k + 1;
     }
     printf("%d phases, %d logic frames\n", g_nph, nfr);
+    if (extrap) return extrapolate(frames, nfr);
 
     /* --pairing */
     {
@@ -363,4 +373,49 @@ int main(int argc, char **argv)
     res_print();
     interp_list_free(&list);
     return failed;
+}
+
+static int extrapolate(const frame_t *frames, int nfr)
+{
+    static uint8_t zc[65536], yc[64000], zb[65536], yb[64000], z[65536], y[64000];
+    interp_list list;
+    memset(&list, 0, sizeof list);
+    uint64_t st[IS_COUNT] = { 0 };
+    double sum_e[2] = { 0, 0 }, sum_h[2] = { 0, 0 }, worst_e[2] = { 0, 0 }, worst_h[2] = { 0, 0 };
+    int count = 0, better = 0, same = 0;
+    for (int n = 0; n + 3 < nfr; n++) {
+        const frame_t *A = &frames[n], *B = &frames[n + 1];
+        interp_pairing *P = interp_pair(A->f, B->f);
+        int sb;
+        interp_inbetween_ex(A->f, B->f, P, 2.0, INTERP_EXTRAPOLATE, &list, &sb, st);
+        render(sb ? B : A, list.rec, list.n, z, y);
+        end_state(frames, n + 2, zc, yc);              /* C as the original drew it */
+        end_state(frames, n + 1, zb, yb);              /* B held */
+        const int rows[2] = { 107, 200 };
+        for (int k = 0; k < 2; k++) {
+            const int px = 320 * rows[k];
+            const double e = (double)diff_count(y, yc, px) / px, h = (double)diff_count(yb, yc, px) / px;
+            sum_e[k] += e; sum_h[k] += h;
+            if (e > worst_e[k]) worst_e[k] = e;
+            if (h > worst_h[k]) worst_h[k] = h;
+        }
+        const int de = diff_count(y, yc, 64000), dh = diff_count(yb, yc, 64000);
+        better += de < dh;
+        same += de == dh;
+        count++;
+        interp_pairing_free(P);
+    }
+    printf("%d predictions (a step past the newer frame) against the next real frame\n", count);
+    if (count) {
+        for (int k = 0; k < 2; k++)
+            printf("  %s: extrapolated %.3f%% of pixels differ (worst %.3f%%); B held %.3f%% (worst %.3f%%)\n",
+                   k ? "whole display" : "3-D window", 100.0 * sum_e[k] / count, 100.0 * worst_e[k],
+                   100.0 * sum_h[k] / count, 100.0 * worst_h[k]);
+        printf("  the prediction is nearer than B held in %d, as near in %d, further in %d\n", better, same, count - better - same);
+        printf("  moved: %llu polygons, %llu span fills, %llu outline edges, %llu HUD lines\n",
+               (unsigned long long)st[IS_POLYS_MOVED], (unsigned long long)st[IS_SPANS_MOVED],
+               (unsigned long long)st[IS_OUTLINE_MOVED], (unsigned long long)st[IS_HUD_MOVED]);
+    }
+    interp_list_free(&list);
+    return 0;
 }

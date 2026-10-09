@@ -25622,6 +25622,7 @@ static int vgame_model_faces(machine_t *m)
 static int vgame_model_edge_spans(machine_t *m)
 {
     cpu_t *c = &m->cpu;
+    if (g_f117_observer) observe_poly_edge(m);                   /* this placement shadows the observer's own */
     if (!room(c, 15)) return 0;                                  /* a culled edge's side: 5 + 3 + 2 + 4 and the CALL */
     const uint16_t si = c->r[R_SI];
     c->r[R_AX] = ds_get(c, (uint16_t)(si + 2));
@@ -25690,6 +25691,7 @@ static int vgame_model_edge_spans(machine_t *m)
 static int vgame_model_poly_finish(machine_t *m)
 {
     cpu_t *c = &m->cpu;
+    if (g_f117_observer) observe_poly_fill(m);                   /* this placement shadows the observer's own */
     if (!room(c, 4 + 1)) return 0;
     x86_push_reg(c, R_BP);
     c->r[R_BP] = c->r[R_SP];

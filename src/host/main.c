@@ -4,7 +4,8 @@
  *   f117a [--data DIR] [--save DIR] [--engine recomp|interp] [--ips N] [--timing dosbox|386]
  *         [--scale N] [--fullscreen] [--no-aspect] [--midi N] [--log FILE]
  *         [--audio-queue-log FILE]
- *         [--audio-dump FILE] [--present scan|replay|interp] [--config FILE | --no-config]
+ *         [--audio-dump FILE] [--present scan|replay|interp] [--present-scale N]
+ *         [--present-age interp|extrapolate] [--present-log FILE] [--config FILE | --no-config]
  *
  * Every option can also be kept in f117a.ini beside the executable (or the
  * file --config names): see config.h. The command line overrides it.
@@ -20,7 +21,13 @@
  * the same picture at 320x200, each logic frame from its close, and the
  * scanned one wherever the replay does not hold the screen. --present interp
  * shows the in-between frames of the last two logic frames (Stage 3) at the
- * VGA's rate, a logic step behind.
+ * display's own rate: each is drawn just before the frame is presented (with
+ * vsync), at the machine's clock then, a logic step behind (--present-age
+ * extrapolate: predicted past the newer one instead, no step behind).
+ * --present-scale N draws the replayed picture N times finer (Stage 2): the
+ * model polygons from their vertices, the rest scaled. --present-log FILE
+ * writes, for each frame presented, the host clock, the machine's clock, the
+ * logic frames shown and t.
  *
  * Host keys (chosen not to collide with the game's own bindings):
  *   Alt+Enter          toggle fullscreen
@@ -76,6 +83,9 @@ static int g_replay;                  /* 1 replay, 2 interp */
 static drawfeed g_feed;
 static drawlive g_live;
 static uint64_t g_presented;          /* VGA frames shown from the replay */
+static int g_scale, g_age;            /* --present-scale, --present-age (1 extrapolate) */
+static const uint8_t *g_fine;         /* the finer picture to show, or NULL */
+static FILE *g_present_log;           /* --present-log */
 
 /* ---- machine hooks ------------------------------------------------------ */
 
@@ -104,10 +114,11 @@ static void on_vsync(void *u, uint64_t icount)
 {
     (void)u; (void)icount;
     present_capture(&H.m, &H.frame);
-    if (g_replay) {
+    if (g_replay == 1) {                  /* interp is drawn when the host presents */
         drawlive_update(&g_live, &g_feed);
         g_presented += (uint64_t)(g_replay == 2 ? drawlive_present_interp(&g_live, &H.m, &H.frame)
                                                 : drawlive_present(&g_live, &H.m, &H.frame));
+        g_fine = g_live.shown_hi;
     }
     H.have_frame = 1;
 }
@@ -363,6 +374,22 @@ int main(int argc, char **argv)
             g_replay = !strcmp(v, "replay") ? 1 : !strcmp(v, "interp") ? 2 : 0;
             i++;
         }
+        else if (!strcmp(a, "--present-log") && v) {
+            g_present_log = fopen(v, "w");
+            if (!g_present_log) { fprintf(stderr, "cannot write %s\n", v); return 2; }
+            fprintf(g_present_log, "host_ns icount older newer t replayed\n");
+            i++;
+        }
+        else if (!strcmp(a, "--present-scale") && v) {
+            g_scale = atoi(v);
+            if (g_scale < 1 || g_scale > 16) { fprintf(stderr, "--present-scale takes 1 to 16\n"); return 2; }
+            i++;
+        }
+        else if (!strcmp(a, "--present-age") && v) {
+            if (strcmp(v, "interp") && strcmp(v, "extrapolate")) { fprintf(stderr, "--present-age takes interp or extrapolate\n"); return 2; }
+            g_age = !strcmp(v, "extrapolate");
+            i++;
+        }
         else if (!strcmp(a, "--fullscreen")) fullscreen = 1;
         else if (!strcmp(a, "--no-aspect")) aspect = 0;
         else {
@@ -372,7 +399,8 @@ int main(int argc, char **argv)
                 "             [--record FILE | --no-record] [--replay FILE] [--time-us N]\n"
                 "             [--exit-after CLOCKS] [--opl dbopl|nuked] [--speaker realsound|pwm]\n"
                 "             [--audio-queue-log FILE]\n"
-                "             [--audio-dump FILE] [--present scan|replay|interp]\n"
+                "             [--audio-dump FILE] [--present scan|replay|interp] [--present-scale N]\n"
+                "             [--present-age interp|extrapolate] [--present-log FILE]\n"
                 "             [--roland munt|windows|off] [--mt32-roms DIR]\n"
                 "             [--mt32-control FILE --mt32-pcm FILE] [--fix ID|all]... [--list-fixes]\n"
                 "             [--config FILE | --no-config]   (default: f117a.ini beside f117a.exe)\n");
@@ -445,6 +473,14 @@ int main(int argc, char **argv)
     SDL_Texture *tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888,
                                          SDL_TEXTUREACCESS_STREAMING, 640, 400);
     SDL_SetTextureScaleMode(tex, SDL_SCALEMODE_NEAREST);
+    /* the finer picture (--present-scale) has a texture of its own size */
+    SDL_Texture *tex_fine = NULL;
+    uint32_t *fine_pixels = NULL;
+    if (g_replay && g_scale > 1) {
+        tex_fine = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, 320 * g_scale, 200 * g_scale);
+        fine_pixels = (uint32_t *)malloc(sizeof *fine_pixels * 320 * g_scale * 200 * g_scale);
+        if (tex_fine) SDL_SetTextureScaleMode(tex_fine, SDL_SCALEMODE_LINEAR);
+    }
     SDL_HideCursor();
 
     SDL_AudioSpec spec = { SDL_AUDIO_S16, 2, AUDIO_RATE };
@@ -510,6 +546,8 @@ int main(int argc, char **argv)
         drawfeed_init(&g_feed, H.mem);
         drawlive_init(&g_live);
         g_live.interp = g_replay == 2;
+        g_live.extrapolate = g_age;
+        if (g_scale) drawlive_set_scale(&g_live, g_scale);
         observe_set(&g_feed.obs);
     }
     /* A replay brings its own speed and boot time; a recording writes ours. */
@@ -722,18 +760,51 @@ int main(int argc, char **argv)
             if (H.audio_failed || (exit_after && H.m.cpu.icount >= exit_after)) running = 0;
         }
 
-        /* Show the last frame the VGA scanned out. */
+        /* Show the last frame the VGA scanned out, or with --present interp the
+         * in-between frame at the machine's clock now. */
         if (!H.have_frame) present_capture(&H.m, &H.frame);
+        int got = 0;
+        double t_shown = 0;
+        uint64_t older = 0, newer = 0;
+        if (g_replay == 2) {
+            present_capture(&H.m, &H.frame);
+            drawlive_update(&g_live, &g_feed);
+            got = drawlive_present_interp(&g_live, &H.m, &H.frame);
+            g_presented += (uint64_t)got;
+            g_fine = g_live.shown_hi;
+            const drawlive_step *a = &g_live.step[g_live.last ^ 1], *b = &g_live.step[g_live.last];
+            const double span = b->end > a->end ? (double)(b->end - a->end) : 0;
+            older = a->seq; newer = b->seq;
+            t_shown = span > 0 ? ((double)H.m.cpu.icount - (double)b->end) / span : 0.0;
+        }
         int w, h;
-        present_render(&H.frame, pixels, &w, &h, (int)((SDL_GetTicksNS() / 266666666ull) & 1));
-        SDL_Rect src = { 0, 0, w, h };
-        SDL_UpdateTexture(tex, &src, pixels, w * 4);
+        SDL_Texture *show = tex;
+        if (g_fine && tex_fine && !H.frame.text) {           /* the finer picture, with the frame's palette */
+            uint32_t pal[256];
+            for (int k = 0; k < 256; k++) {
+                const uint8_t *c = &H.frame.dac[3 * k];
+                pal[k] = 0xFF000000u | (uint32_t)((c[0] << 2) | (c[0] >> 4)) << 16 |
+                         (uint32_t)((c[1] << 2) | (c[1] >> 4)) << 8 | (uint32_t)((c[2] << 2) | (c[2] >> 4));
+            }
+            w = 320 * g_scale; h = 200 * g_scale;
+            for (int k = 0; k < w * h; k++) fine_pixels[k] = pal[g_fine[k]];
+            SDL_Rect src = { 0, 0, w, h };
+            SDL_UpdateTexture(tex_fine, &src, fine_pixels, w * 4);
+            show = tex_fine;
+        } else {
+            present_render(&H.frame, pixels, &w, &h, (int)((SDL_GetTicksNS() / 266666666ull) & 1));
+            SDL_Rect src = { 0, 0, w, h };
+            SDL_UpdateTexture(tex, &src, pixels, w * 4);
+        }
         SDL_FRect srcf = { 0, 0, (float)w, (float)h };
         SDL_FRect dst = output_rect(ren, aspect);
         SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
         SDL_RenderClear(ren);
-        SDL_RenderTexture(ren, tex, &srcf, &dst);
+        SDL_RenderTexture(ren, show, &srcf, &dst);
         SDL_RenderPresent(ren);
+        if (g_present_log)                                    /* when the frame went out, and what it showed */
+            fprintf(g_present_log, "%llu %llu %llu %llu %.6f %d\n", (unsigned long long)(SDL_GetTicksNS() - start_ns),
+                    (unsigned long long)H.m.cpu.icount, (unsigned long long)older, (unsigned long long)newer, t_shown, got);
         /* Roland chosen in the game with no MIDI output: say so once, rather
          * than play an unexplained silence. */
         if (H.roland_unheard == 1) {
@@ -747,6 +818,7 @@ int main(int argc, char **argv)
     }
 
     if (H.record) fclose(H.record);
+    if (g_present_log) fclose(g_present_log);
     inputlog_close(player);
     if (H.m.log) {
         /* The same summary line f117run prints, so a session can be

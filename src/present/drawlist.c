@@ -17,6 +17,41 @@ void drawlist_init(drawlist *d)
     d->colour = d->fill_colour = -1;
 }
 
+void drawlist_set_scale(drawlist *d, int n)
+{
+    d->n = n;
+}
+
+void drawlist_free(drawlist *d)
+{
+    for (int k = 0; k < DRAWLIST_PAGES; k++) free(d->page[k].hi);
+    const int n = d->n;
+    drawlist_init(d);
+    d->n = n;
+}
+
+void drawlist_reset(drawlist *d)
+{
+    const int logged = d->prefer_logged;
+    drawlist_free(d);
+    d->prefer_logged = logged;
+}
+
+void drawlist_copy(drawlist *dst, const drawlist *src)
+{
+    uint8_t *keep[DRAWLIST_PAGES];
+    for (int k = 0; k < DRAWLIST_PAGES; k++) keep[k] = dst->page[k].hi;
+    memcpy(dst, src, sizeof *dst);
+    for (int k = 0; k < DRAWLIST_PAGES; k++) {
+        const drawlist_page *s = &src->page[k];
+        drawlist_page *p = &dst->page[k];
+        if (!s->hi) { free(keep[k]); p->hi = NULL; continue; }
+        const size_t bytes = (size_t)320 * s->n * 200 * s->n;
+        p->hi = (uint8_t *)realloc(keep[k], bytes);
+        memcpy(p->hi, s->hi, bytes);
+    }
+}
+
 static drawlist_page *page_of(drawlist *d, uint16_t seg)
 {
     for (int k = 0; k < d->npages; k++)
@@ -27,6 +62,48 @@ static drawlist_page *page_of(drawlist *d, uint16_t seg)
 const drawlist_page *drawlist_get(const drawlist *d, uint16_t seg)
 {
     return page_of((drawlist *)d, seg);
+}
+
+drawlist_page *drawlist_page_of(drawlist *d, uint16_t seg)
+{
+    return page_of(d, seg);
+}
+
+/* A byte of the first 320x200 also written to the fine picture, as an N x N
+ * block (HiPage._mirror). */
+static void mirror(drawlist_page *p, uint32_t a, uint8_t v)
+{
+    if (!p->hi || p->suppress || a >= 64000) return;
+    const int n = p->n;
+    const size_t W = (size_t)320 * n;
+    uint8_t *q = p->hi + (size_t)(a / 320) * n * W + (size_t)(a % 320) * n;
+    for (int j = 0; j < n; j++, q += W) memset(q, v, (size_t)n);
+}
+
+static void wr(drawlist_page *p, uint32_t a, uint8_t v)
+{
+    p->b[a] = v;
+    mirror(p, a, v);
+}
+
+/* A copy from another held page: the fine rows come across with the coarse
+ * ones (HiPage.copy_hi_rect). */
+static void copy_hi_rect(drawlist_page *p, const drawlist_page *src, int32_t sx, int32_t sy, int32_t dx, int32_t dy,
+                         int32_t w, int32_t h)
+{
+    if (!p->hi || !src->hi || p->n != src->n) return;
+    const int n = p->n;
+    const size_t W = (size_t)320 * n;
+    for (int32_t y = 0; y < h; y++) {
+        if (sy + y < 0 || sy + y >= 200 || dy + y < 0 || dy + y >= 200) continue;
+        const int32_t x0 = sx > 0 ? sx : 0, x1 = sx + w < 320 ? sx + w : 320;
+        if (x1 <= x0 || dx + x0 - sx < 0 || dx + x1 - sx > 320) continue;
+        for (int j = 0; j < n; j++) {
+            const size_t s_at = ((size_t)(sy + y) * n + j) * W + (size_t)x0 * n;
+            const size_t d_at = ((size_t)(dy + y) * n + j) * W + (size_t)(dx + x0 - sx) * n;
+            memmove(p->hi + d_at, src->hi + s_at, (size_t)(x1 - x0) * n);
+        }
+    }
 }
 
 void drawlist_seed(drawlist *d, char kind, uint16_t seg, uint16_t origin, const uint8_t *bytes, unsigned size)
@@ -40,6 +117,19 @@ void drawlist_seed(drawlist *d, char kind, uint16_t seg, uint16_t origin, const 
     if (size > sizeof p->b) size = sizeof p->b;
     p->size = size;
     memcpy(p->b, bytes, size);
+    p->suppress = 0;
+    if (d->n > 0) {                                   /* the fine picture starts as the scaled copy */
+        const int n = d->n;
+        const size_t W = (size_t)320 * n;
+        if (!p->hi || p->n != n) { free(p->hi); p->hi = (uint8_t *)malloc(W * 200 * n); }
+        p->n = n;
+        for (int y = 0; y < 200; y++) {
+            uint8_t *row = p->hi + (size_t)y * n * W;
+            for (int x = 0; x < 320; x++)
+                memset(row + (size_t)x * n, (unsigned)(y * 320 + x) < size ? bytes[y * 320 + x] : 0, (size_t)n);
+            for (int j = 1; j < n; j++) memcpy(row + j * W, row, W);
+        }
+    }
     if (kind == 'Z') drawlist_phase(d, seg, origin);
 }
 
@@ -55,7 +145,7 @@ void drawlist_phase(drawlist *d, uint16_t seg, uint16_t origin)
 static void put(drawlist_page *p, uint32_t a, int v)
 {
     a &= 0xFFFF;
-    if (a < p->size) p->b[a] = (uint8_t)v;
+    if (a < p->size) wr(p, a, (uint8_t)v);
 }
 
 static void mark_copied(drawlist *d, uint16_t seg, uint32_t a)
@@ -442,7 +532,7 @@ void drawlist_record(drawlist *d, char kind, const int32_t *v, int n)
             }
             break;
         }
-        for (int32_t i = 0; i < len; i++) p->b[(at + i) & 0xFFFF] = row[i];
+        for (int32_t i = 0; i < len; i++) wr(p, (uint32_t)(at + i) & 0xFFFF, row[i]);
         break;
     }
     case 'a': {                                       /* a style with no rule yet: the original's bytes */
@@ -453,7 +543,7 @@ void drawlist_record(drawlist *d, char kind, const int32_t *v, int n)
             if (d->fill_rows[k].at == (uint16_t)at && d->fill_rows[k].n == len) break;
         if (k == d->nfill_rows) break;
         for (int32_t i = 0; i < len && 5 + i < n; i++) {
-            p->b[(at + i) & 0xFFFF] = (uint8_t)v[5 + i];
+            wr(p, (uint32_t)(at + i) & 0xFFFF, (uint8_t)v[5 + i]);
             mark_copied(d, p->seg, (uint32_t)(at + i));
         }
         break;
@@ -485,8 +575,8 @@ void drawlist_record(drawlist *d, char kind, const int32_t *v, int n)
                 const uint32_t a = (uint32_t)(320 * y + org + x) & 0xFFFF;
                 if (a >= p->size) continue;
                 const uint8_t b = p->b[a];
-                p->b[a] = (uint8_t)(mode == 0 ? colour : mode == 1 ? (b | colour) : mode == 2 ? (b & colour)
-                                                                     : (((b & 0x0E) >> 1) | 0x98));
+                wr(p, a, (uint8_t)(mode == 0 ? colour : mode == 1 ? (b | colour) : mode == 2 ? (b & colour)
+                                                                    : (((b & 0x0E) >> 1) | 0x98)));
             }
         }
         break;
@@ -508,6 +598,7 @@ void drawlist_record(drawlist *d, char kind, const int32_t *v, int n)
             for (int32_t k = 0; k < w * h; k++) buf[k] = (uint8_t)v[10 + k];
         for (int32_t y = 0; y < h; y++)
             for (int32_t x = 0; x < w; x++) put(p, (uint32_t)(320 * (dy + y) + dx + x), buf[y * w + x]);
+        if (src) copy_hi_rect(p, src, sx, sy, dx, dy, w, h);
         break;
     }
     case 'W':                                         /* entry 22, the scaled RLE sprite */
@@ -544,12 +635,18 @@ void drawlist_record(drawlist *d, char kind, const int32_t *v, int n)
         const int logged = n >= 5 + count;
         uint32_t len = (uint32_t)count;
         if (len > p->size) len = p->size;
+        int same = 0;                                 /* the source is the held page's own bytes */
         if (logged && (d->prefer_logged || !src)) {
-            for (uint32_t a = 0; a < len; a++) p->b[a] = (uint8_t)v[5 + a];
+            same = src != NULL;
+            for (uint32_t a = 0; a < len && same; a++) same = a < src->size && src->b[a] == (uint8_t)v[5 + a];
+            for (uint32_t a = 0; a < len; a++) wr(p, a, (uint8_t)v[5 + a]);
         } else if (src) {
             if (len > src->size) len = src->size;
             if (src != p) memmove(p->b, src->b, len);
+            for (uint32_t a = 0; a < len; a++) mirror(p, a, p->b[a]);
+            same = 1;
         } else d->copies_no_source++;
+        if (same) copy_hi_rect(p, src, 0, 0, 0, 0, 320, count / 320);
         break;
     }
     case 'H':
@@ -581,7 +678,7 @@ void drawlist_record(drawlist *d, char kind, const int32_t *v, int n)
             const uint32_t di = (uint32_t)(v[7] + 320 * r + v[1]);
             for (int32_t k = 0; k < (cols ? cols : 65536); k++) {
                 const uint32_t a = (di + (uint32_t)k) & 0xFFFF;
-                if (a < p->size && p->b[a] == (uint8_t)v[5]) p->b[a] = (uint8_t)v[6];
+                if (a < p->size && p->b[a] == (uint8_t)v[5]) wr(p, a, (uint8_t)v[6]);
             }
         }
         break;
@@ -596,7 +693,7 @@ void drawlist_record(drawlist *d, char kind, const int32_t *v, int n)
         for (int32_t j = 0; j < count && 4 + 3 * j < n; j++) {
             const uint32_t a = (uint32_t)v[3 + 3 * j];
             if (a < p->size) {
-                p->b[a] = (uint8_t)v[4 + 3 * j];
+                wr(p, a, (uint8_t)v[4 + 3 * j]);
                 mark_copied(d, seg, a);
             }
         }

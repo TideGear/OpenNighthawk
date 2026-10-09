@@ -68,6 +68,12 @@ void observe_vertex(machine_t *m, uint16_t di, uint16_t bx);
  * BX the two projected records less 0xD6B4. */
 void observe_edge_prepared(machine_t *m, uint16_t slot, uint16_t di, uint16_t bx);
 
+/* Called by the matched routines placed at 130D:004A and 130D:0116, at
+ * their entry: an override placed first at an address shadows any placed
+ * after it, so these give the observer's records ('E', 'F') there. */
+void observe_poly_edge(machine_t *m);
+void observe_poly_fill(machine_t *m);
+
 /* Register the hooks on the original's own entry points (once). */
 void observe_register(void);
 

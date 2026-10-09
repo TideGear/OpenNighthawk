@@ -7,6 +7,7 @@
  *           [--hash-every N] [--hash-from N] [--peek LINEAR] [--dump LINEAR:LENGTH] [--observe FILE:FROM:TO] [--trace FROM:TO:FILE]
  *           [--coverage FILE] [--screen FILE.ppm] [--shots EVERY:PREFIX | --shots-vga PREFIX] [--shots-start CLOCK] [--shot-meta FILE]
  *           [--shots-changed] [--frame-log FILE] [--no-mouse] [--present scan|replay|interp]
+ *           [--present-scale N] [--present-age interp|extrapolate]
  *           [--fix ID|all]... [--list-fixes]
  *           [--opl-log FILE] [--midi-log FILE] [--speaker-log FILE]
  *
@@ -32,7 +33,10 @@
  * at its close, and at every VGA frame the presented picture against the
  * scanned-out one ([present] at the end). The machine runs as without it.
  * --present interp shows the in-between frames of the last two logic frames
- * instead (Stage 3), and checks every pair drawn at its two ends.
+ * instead (Stage 3), and checks every pair drawn at its two ends;
+ * --present-age extrapolate predicts past the newer frame instead of trailing
+ * it. --present-scale N draws the presented picture N times finer (Stage 2):
+ * the shots and --screen are then 320N x 200N.
  */
 #include "machine.h"
 #include "keys.h"
@@ -226,6 +230,7 @@ static int shot_write_changed(const machine_t *m, const char *path)
  * presents a frame at its close, the first phase after its present), or the
  * scan caught the original drawing on the display: the next frame decides. */
 static int g_replay;                       /* 1 replay, 2 interp */
+static int g_scale, g_age;                 /* --present-scale, --present-age (1 extrapolate) */
 static drawfeed g_feed;
 static drawlive g_live;
 static struct {
@@ -247,9 +252,31 @@ static uint64_t picture_hash(const uint8_t *p)
 static int capture(const machine_t *m, present_frame *f)
 {
     present_capture(m, f);
+    g_live.shown_hi = NULL;
     if (!g_replay) return 0;
     drawlive_update(&g_live, &g_feed);
     return g_replay == 2 ? drawlive_present_interp(&g_live, m, f) : drawlive_present(&g_live, m, f);
+}
+
+/* A shot: the finer picture when one was presented, with the frame's palette. */
+static void write_shot(const machine_t *m, const char *path)
+{
+    static present_frame f;
+    capture(m, &f);
+    if (!g_live.shown_hi) { present_frame_write_ppm(&f, path); return; }
+    const int n = g_scale, w = 320 * n, h = 200 * n;
+    FILE *o = fopen(path, "wb");
+    if (!o) return;
+    fprintf(o, "P6\n%d %d\n255\n", w, h);
+    static uint8_t row[3 * 320 * 16];
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            const uint8_t *c = &f.dac[3 * g_live.shown_hi[(size_t)y * w + x]];
+            for (int k = 0; k < 3; k++) row[3 * x + k] = (uint8_t)((c[k] << 2) | (c[k] >> 4));
+        }
+        fwrite(row, 3, (size_t)w, o);
+    }
+    fclose(o);
 }
 
 static void on_vsync_check(void *user, uint64_t icount)
@@ -376,6 +403,16 @@ int main(int argc, char **argv)
             g_replay = !strcmp(v, "replay") ? 1 : !strcmp(v, "interp") ? 2 : 0;
             i++;
         }
+        else if (!strcmp(a, "--present-scale") && v) {
+            g_scale = atoi(v);
+            if (g_scale < 1 || g_scale > 16) { fprintf(stderr, "--present-scale takes 1 to 16\n"); return 2; }
+            i++;
+        }
+        else if (!strcmp(a, "--present-age") && v) {
+            if (strcmp(v, "interp") && strcmp(v, "extrapolate")) { fprintf(stderr, "--present-age takes interp or extrapolate\n"); return 2; }
+            g_age = !strcmp(v, "extrapolate");
+            i++;
+        }
         else if (!strcmp(a, "--shots-vga") && v) {
             shot_vga = 1; shot_every = 0;
             snprintf(shot_prefix, sizeof shot_prefix, "%s", v);
@@ -439,6 +476,8 @@ int main(int argc, char **argv)
         drawfeed_init(&g_feed, mem);
         drawlive_init(&g_live);
         g_live.interp = g_live.check = g_replay == 2;
+        g_live.extrapolate = g_age;
+        if (g_scale) drawlive_set_scale(&g_live, g_scale);
         observe_set(&g_feed.obs);
         hooks.vsync = on_vsync_check;
     }
@@ -555,11 +594,7 @@ int main(int argc, char **argv)
             }
             int written = 1;
             if (shots_changed) written = shot_write_changed(&m, path);
-            else {
-                static present_frame sf;
-                capture(&m, &sf);
-                present_frame_write_ppm(&sf, path);
-            }
+            else write_shot(&m, path);
             if (frame_log) {
                 static present_frame lf;
                 const int replayed = capture(&m, &lf);
@@ -616,15 +651,25 @@ int main(int argc, char **argv)
     recomp_report(&m, stdout);
     if (g_replay) {
         drawlive_update(&g_live, &g_feed);
+        if (g_scale)
+            printf("[present] scale %d: %llu model polygons, %llu refilled from their vertices; over the logic frames, "
+                   "%llu flat coarse pixels, %llu kept their value on all %d fine pixels, %llu restored by the guard\n",
+                   g_scale, (unsigned long long)g_live.hr->stats[HS_POLYGONS], (unsigned long long)g_live.hr->stats[HS_REFILLED],
+                   (unsigned long long)g_live.fine_flat, (unsigned long long)g_live.fine_agree, g_scale * g_scale,
+                   (unsigned long long)g_live.fine_restored);
         printf("[present] replay: %llu logic frames, %llu equal to the display at their close, %llu not, %llu before a seed; "
                "%llu dropped\n", (unsigned long long)g_live.frames, (unsigned long long)g_live.exact,
                (unsigned long long)g_live.inexact, (unsigned long long)g_live.unseeded, (unsigned long long)g_feed.dropped);
         if (g_replay == 2)
-            printf("[present] interp: %llu frame pairs, %llu exact at both ends (t = 1e-6 and 1 - 1e-6), %llu not; "
-                   "%llu VGA frames, %llu presented, %llu of them in-between frames\n",
+            printf("[present] interp: %llu frame pairs, %llu exact at both ends (t = e and 1 - e, e 1e-6, or 1e-9 with a scale), %llu not; "
+                   "%llu VGA frames, %llu presented, %llu of them in-between frames, which moved %llu polygons, "
+                   "%llu span fills, %llu outline edges and %llu HUD lines, and held %llu unpaired polygons\n",
                    (unsigned long long)g_live.pairs, (unsigned long long)g_live.pairs_exact,
                    (unsigned long long)g_live.pairs_inexact, (unsigned long long)g_pc.vsyncs,
-                   (unsigned long long)g_pc.presented, (unsigned long long)g_live.inbetweens);
+                   (unsigned long long)g_pc.presented, (unsigned long long)g_live.inbetweens,
+                   (unsigned long long)g_live.istats[IS_POLYS_MOVED], (unsigned long long)g_live.istats[IS_SPANS_MOVED],
+                   (unsigned long long)g_live.istats[IS_OUTLINE_MOVED], (unsigned long long)g_live.istats[IS_HUD_MOVED],
+                   (unsigned long long)g_live.istats[IS_HELD_UNPAIRED]);
         else
             printf("[present] %llu VGA frames, %llu presented from the replay: %llu equal to the scanned-out picture, "
                    "%llu the next logic frame already scanned out, %llu the original drawing on the display, %llu unsettled; "
@@ -641,11 +686,7 @@ int main(int argc, char **argv)
                g_samp[best].lin, (unsigned long long)g_samp[best].n);
         g_samp[best].n = 0;
     }
-    if (screen) {
-        static present_frame sf;
-        capture(&m, &sf);
-        present_frame_write_ppm(&sf, screen);
-    }
+    if (screen) write_shot(&m, screen);
     recomp_shutdown(&m);
     machine_shutdown(&m);
     return rc == RUN_FAULT ? 1 : 0;

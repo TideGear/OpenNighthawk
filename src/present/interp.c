@@ -77,6 +77,7 @@ struct interp_frame {
     int nrec;
     batch_t *b; int nb, cb;
     const int32_t **vert; int nvert, cvert;
+    int *vrec;                        /* each vertex's record index */
     gedge_t *g; int ng, cg;
     edge_t *e; int ne, ce;
     edge_t *j; int nj, cj;
@@ -119,7 +120,9 @@ interp_frame *interp_parse(const interp_rec *rec, int n)
                 f->b[f->nb++] = nb;
                 cur = f->nb - 1;
             }
+            if (f->nvert == f->cvert) f->vrec = realloc(f->vrec, sizeof(int) * (size_t)(f->cvert ? 2 * f->cvert : 64));
             GROW(f->vert, f->nvert, f->cvert);
+            f->vrec[f->nvert] = i;
             f->vert[f->nvert++] = v;
             f->b[cur].nv++;
             break;
@@ -231,7 +234,7 @@ interp_frame *interp_parse(const interp_rec *rec, int n)
 void interp_frame_free(interp_frame *f)
 {
     if (!f) return;
-    free(f->b); free(f->vert); free(f->g); free(f->e); free(f->j); free(f->p);
+    free(f->b); free(f->vert); free(f->vrec); free(f->g); free(f->e); free(f->j); free(f->p);
     free(f->bi); free(f->ai); free(f->li); free(f->pl); free(f->s); free(f->h);
     free(f);
 }
@@ -825,6 +828,12 @@ static int rowbase_of(const interp_frame *f)
 int interp_inbetween(const interp_frame *A, const interp_frame *B, const interp_pairing *P, double t,
                      interp_list *out, int *skel_b, uint64_t *stats)
 {
+    return interp_inbetween_ex(A, B, P, t, 0, out, skel_b, stats);
+}
+
+int interp_inbetween_ex(const interp_frame *A, const interp_frame *B, const interp_pairing *P, double t, int flags,
+                        interp_list *out, int *skel_b, uint64_t *stats)
+{
     static uint64_t scratch[IS_COUNT];
     uint64_t *st = stats ? stats : scratch;
     out->n = 0;
@@ -833,7 +842,7 @@ int interp_inbetween(const interp_frame *A, const interp_frame *B, const interp_
     const interp_frame *S = use_b ? B : A, *O = use_b ? A : B;
     const double w = use_b ? 1 - t : t;
     *skel_b = use_b;
-    if (t <= 0 || t >= 1) {
+    if (t <= 0 || (t >= 1 && !(flags & INTERP_EXTRAPOLATE)) || t == 1) {
         for (int i = 0; i < S->nrec; i++) out_rec(out, S->rec[i].kind, S->rec[i].icount, S->rec[i].v, S->rec[i].n, -1);
         return out->n;
     }
@@ -903,7 +912,11 @@ int interp_inbetween(const interp_frame *A, const interp_frame *B, const interp_
         if (j < 0) { st[IS_HELD_SPAN_NO_PAIR]++; continue; }
         const int32_t *va = S->rec[s->ri].v, *vb = O->rec[j].v;
         const int na = va[3], nb = vb[3];
-        const int64_t ya = rnd(lerp(va[0], vb[0], w)), yb = rnd(lerp(va[1], vb[1], w));
+        int64_t ya = rnd(lerp(va[0], vb[0], w)), yb = rnd(lerp(va[1], vb[1], w));
+        /* Between two fills every row lies between theirs; carried past them it
+         * can leave the screen by any amount, so a prediction keeps to it. */
+        const int clamp = (flags & INTERP_EXTRAPOLATE) && w < 0;
+        if (clamp) { if (ya < 0) ya = 0; if (yb > 199) yb = 199; }
         if (yb < ya || yb - ya + 1 > SPAN_N) { st[IS_HELD_SPAN]++; continue; }
         int n = 0;
         vals[n++] = (int32_t)ya; vals[n++] = (int32_t)yb; vals[n++] = va[2]; vals[n++] = (int32_t)(yb - ya + 1);
@@ -913,8 +926,10 @@ int interp_inbetween(const interp_frame *A, const interp_frame *B, const interp_
             if (ra > na - 1) ra = na - 1;
             if (rb < 0) rb = 0;
             if (rb > nb - 1) rb = nb - 1;
-            vals[n++] = (int32_t)rnd(lerp(va[4 + 2 * ra], vb[4 + 2 * rb], w));
-            vals[n++] = (int32_t)rnd(lerp(va[5 + 2 * ra], vb[5 + 2 * rb], w));
+            int64_t l = rnd(lerp(va[4 + 2 * ra], vb[4 + 2 * rb], w)), r = rnd(lerp(va[5 + 2 * ra], vb[5 + 2 * rb], w));
+            if (clamp) { l = l < 0 ? 0 : l > 319 ? 319 : l; r = r < 0 ? 0 : r > 319 ? 319 : r; }
+            vals[n++] = (int32_t)l;
+            vals[n++] = (int32_t)r;
         }
         for (int q = 4 + 2 * na; q < S->rec[s->ri].n; q++) vals[n++] = va[q];
         rep[s->ri] = made.n;
@@ -985,6 +1000,28 @@ int interp_inbetween(const interp_frame *A, const interp_frame *B, const interp_
             st[IS_REGENERATED]++;
         }
     }
+    /* the vertices of paired batches of equal size, for a finer grid */
+    if (flags & INTERP_VERTICES)
+        for (int bi = 0; bi < S->nb; bi++) {
+            const batch_t *b = &S->b[bi];
+            if (bmap[bi] < 0 || O->b[bmap[bi]].nv != b->nv) continue;
+            const batch_t *ob = &O->b[bmap[bi]];
+            for (int k = 0; k < b->nv; k++) {
+                const int i = S->vrec[b->v0 + k];
+                const int32_t *va = S->vert[b->v0 + k], *vb = O->vert[ob->v0 + k];
+                int64_t xf[3], px[2] = { 0, 0 };
+                for (int c = 0; c < 3; c++) xf[c] = rnd(lerp(va[c], vb[c], w));
+                if (xf[0] != (int32_t)xf[0] || xf[1] != (int32_t)xf[1] || xf[2] != (int32_t)xf[2]) continue;
+                const int zhi = s16(xf[2] >> 16);
+                const int range = zhi >= 0x100 ? 0 : zhi >= 1 ? 1 : 2;
+                if (range != 2 && !project(xf, px)) continue;
+                const int32_t nv[8] = { (int32_t)xf[0], (int32_t)xf[1], (int32_t)xf[2], (int32_t)px[0], (int32_t)px[1],
+                                        range, va[6], va[7] };
+                rep[i] = made.n;
+                repn[i] = 1;
+                out_pooled(&made, 'V', S->rec[i].icount, nv, 8);
+            }
+        }
     /* the present: the replay's own work page is the source, not bytes the original logged */
     for (int i = 0; i < S->nrec; i++) {
         const interp_rec *r = &S->rec[i];

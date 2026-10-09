@@ -141,6 +141,40 @@ void drawlive_init(drawlive *r)
     drawlist_init(&r->list);
 }
 
+void drawlive_set_scale(drawlive *r, int n)
+{
+    const size_t bytes = (size_t)320 * n * 200 * n;
+    r->scale = n;
+    drawlist_set_scale(&r->list, n);
+    r->hr = (hires *)malloc(sizeof *r->hr);
+    r->scratch_hr = (hires *)malloc(sizeof *r->scratch_hr);
+    hires_init(r->hr, n);
+    r->picture_hi = (uint8_t *)calloc(bytes, 1);
+    r->inter_hi = (uint8_t *)calloc(bytes, 1);
+    for (int k = 0; k < 2; k++) {
+        r->step[k].start_hires = (hires *)malloc(sizeof *r->hr);
+        r->step[k].picture_hi = (uint8_t *)calloc(bytes, 1);
+    }
+}
+
+/* One record into the replay, through the sub-pixel builder first when there is one. */
+static void feed(drawlist *d, hires *h, char kind, const int32_t *v, int n)
+{
+    if (h) hires_record(h, d, kind, v, n);
+    if (kind == 'Z' || kind == 'Y') {
+        static uint8_t bytes[65536];
+        for (int a = 0; a < n - 2; a++) bytes[a] = (uint8_t)v[2 + a];
+        drawlist_seed(d, kind, (uint16_t)v[0], (uint16_t)v[1], bytes, (unsigned)(n - 2));
+    } else drawlist_record(d, kind, v, n);
+}
+
+/* the fine picture of a display page, guarded, into out */
+static void take_fine(drawlive *r, const drawlist_page *disp, uint8_t *out)
+{
+    memcpy(out, disp->hi, (size_t)320 * r->scale * 200 * r->scale);
+    r->fine_restored += (uint64_t)hires_guard(disp->b, out, r->scale, &r->fine_flat, &r->fine_agree);
+}
+
 /* Keep a replayed frame's records for interpolation (P, Z, Y and J left out). */
 static void keep_step(drawlive_step *s, const drawfeed_frame *fr)
 {
@@ -170,14 +204,22 @@ static void keep_step(drawlive_step *s, const drawfeed_frame *fr)
     s->parsed = interp_parse(s->rec, s->nrec);
 }
 
-/* Draw the in-between list on a copy of the replay at the skeleton's start. */
+/* Draw the in-between list on a copy of the replay at the skeleton's start
+ * (with a scale, its fine picture goes to inter_hi). */
 static const uint8_t *draw_list(drawlive *r, const drawlive_step *skel)
 {
-    memcpy(&r->scratch, &skel->start, sizeof r->scratch);
-    for (int i = 0; i < r->ilist.n; i++)
-        drawlist_record(&r->scratch, r->ilist.rec[i].kind, r->ilist.rec[i].v, r->ilist.rec[i].n);
+    drawlist_copy(&r->scratch, &skel->start);
+    hires *h = NULL;
+    if (r->scale) { memcpy(r->scratch_hr, skel->start_hires, sizeof *r->scratch_hr); h = r->scratch_hr; }
+    for (int i = 0; i < r->ilist.n; i++) feed(&r->scratch, h, r->ilist.rec[i].kind, r->ilist.rec[i].v, r->ilist.rec[i].n);
     const drawlist_page *disp = drawlist_get(&r->scratch, 0xA000);
-    return disp && disp->size >= 64000 ? disp->b : NULL;
+    if (!disp || disp->size < 64000) return NULL;
+    if (r->scale) {
+        memcpy(r->inter_hi, disp->hi, (size_t)320 * r->scale * 200 * r->scale);
+        uint64_t flat = 0, agree = 0;
+        hires_guard(disp->b, r->inter_hi, r->scale, &flat, &agree);
+    }
+    return disp->b;
 }
 
 static void pair_steps(drawlive *r)
@@ -189,13 +231,20 @@ static void pair_steps(drawlive *r)
     r->pair = interp_pair(a->parsed, b->parsed);
     r->pairs++;
     if (!r->check) return;
+    /* t a hair from each end: every paired primitive regenerated and moved by
+     * almost nothing. With a scale the vertices move too, and 1e-6 of a step
+     * can still move a camera-space coordinate by a rounding unit, which shows
+     * on a finer grid: those ends are checked at 1e-9. */
     int sb, ok = 1;
-    interp_inbetween(a->parsed, b->parsed, r->pair, 1e-6, &r->ilist, &sb, NULL);
+    const int flags = r->scale ? INTERP_VERTICES : 0;
+    const double eps = r->scale ? 1e-9 : 1e-6;
+    const size_t fine = (size_t)320 * r->scale * 200 * r->scale;
+    interp_inbetween_ex(a->parsed, b->parsed, r->pair, eps, flags, &r->ilist, &sb, NULL);
     const uint8_t *p = draw_list(r, sb ? b : a);
-    ok &= p && !memcmp(p, a->picture, 64000);
-    interp_inbetween(a->parsed, b->parsed, r->pair, 1 - 1e-6, &r->ilist, &sb, NULL);
+    ok &= p && !memcmp(p, a->picture, 64000) && (!r->scale || !memcmp(r->inter_hi, a->picture_hi, fine));
+    interp_inbetween_ex(a->parsed, b->parsed, r->pair, 1 - eps, flags, &r->ilist, &sb, NULL);
     p = draw_list(r, sb ? b : a);
-    ok &= p && !memcmp(p, b->picture, 64000);
+    ok &= p && !memcmp(p, b->picture, 64000) && (!r->scale || !memcmp(r->inter_hi, b->picture_hi, fine));
     if (ok) r->pairs_exact++; else r->pairs_inexact++;
 }
 
@@ -204,22 +253,19 @@ int drawlive_update(drawlive *r, drawfeed *f)
     int taken = 0;
     const drawfeed_frame *fr;
     while ((fr = drawfeed_oldest(f))) {
-        if (fr->seq != r->next_seq) drawlist_init(&r->list);    /* a frame was dropped: wait for a seed */
+        if (fr->seq != r->next_seq) drawlist_reset(&r->list);   /* a frame was dropped: wait for a seed */
         r->next_seq = fr->seq + 1;
         drawlive_step *step = r->interp ? &r->step[r->last ^ 1] : NULL;
-        if (step) memcpy(&step->start, &r->list, sizeof step->start);
+        if (step) {
+            drawlist_copy(&step->start, &r->list);
+            if (r->scale) memcpy(step->start_hires, r->hr, sizeof *r->hr);
+        }
         size_t at = 0;
         char kind;
         uint64_t icount;
         const int32_t *v;
         int n;
-        while (drawfeed_next(fr, &at, &kind, &icount, &v, &n)) {
-            if (kind == 'Z' || kind == 'Y') {
-                static uint8_t bytes[65536];
-                for (int a = 0; a < n - 2; a++) bytes[a] = (uint8_t)v[2 + a];
-                drawlist_seed(&r->list, kind, (uint16_t)v[0], (uint16_t)v[1], bytes, (unsigned)(n - 2));
-            } else drawlist_record(&r->list, kind, v, n);
-        }
+        while (drawfeed_next(fr, &at, &kind, &icount, &v, &n)) feed(&r->list, r->scale ? r->hr : NULL, kind, v, n);
         r->frames++;
         const drawlist_page *disp = drawlist_get(&r->list, 0xA000);
         if (!r->list.have_seg || !disp || disp->size < 64000) r->unseeded++;
@@ -229,9 +275,11 @@ int drawlive_update(drawlive *r, drawfeed *f)
             r->shown = 1;
             r->picture_seq = fr->seq;
             r->picture_end = fr->end;
+            if (r->scale) take_fine(r, disp, r->picture_hi);
             if (step) {
                 keep_step(step, fr);
                 memcpy(step->picture, disp->b, 64000);
+                if (r->scale) memcpy(step->picture_hi, r->picture_hi, (size_t)320 * r->scale * 200 * r->scale);
                 step->seq = fr->seq;
                 step->end = fr->end;
                 step->ok = !fr->seeded && step->start.have_seg;
@@ -241,7 +289,8 @@ int drawlive_update(drawlive *r, drawfeed *f)
         } else {
             r->inexact++;
             r->shown = 0;
-            drawlist_init(&r->list);
+            drawlist_reset(&r->list);
+            if (r->scale) hires_init(r->hr, r->scale);
             drawfeed_reseed(f);
         }
         drawfeed_pop(f);
@@ -258,10 +307,12 @@ int drawlive_current(const drawlive *r, const machine_t *m)
            m->cpu.icount - r->picture_end < m->ips / 4;
 }
 
-int drawlive_present(const drawlive *r, const machine_t *m, present_frame *f)
+int drawlive_present(drawlive *r, const machine_t *m, present_frame *f)
 {
+    r->shown_hi = NULL;
     if (f->text || !drawlive_current(r, m)) return 0;
     memcpy(f->vram, r->picture, sizeof r->picture);
+    if (r->scale) r->shown_hi = r->picture_hi;
     return 1;
 }
 
@@ -270,14 +321,26 @@ int drawlive_present_interp(drawlive *r, const machine_t *m, present_frame *f)
     const drawlive_step *a = &r->step[r->last ^ 1], *b = &r->step[r->last];
     if (!r->pair || f->text || !drawlive_current(r, m) || r->picture_seq != b->seq || b->end <= a->end)
         return drawlive_present(r, m, f);
-    const double t = (double)(m->cpu.icount - b->end) / (double)(b->end - a->end);
-    if (t <= 0) { memcpy(f->vram, a->picture, 64000); return 1; }
-    if (t >= 1) { memcpy(f->vram, b->picture, 64000); return 1; }
+    double t = (double)(m->cpu.icount - b->end) / (double)(b->end - a->end);
+    if (r->extrapolate) t = t + 1 > 2 ? 2 : t + 1;
+    r->shown_hi = NULL;
+    if (t <= 0) {
+        memcpy(f->vram, a->picture, 64000);
+        if (r->scale) r->shown_hi = a->picture_hi;
+        return 1;
+    }
+    if (t == 1 || (t > 1 && !r->extrapolate)) {
+        memcpy(f->vram, b->picture, 64000);
+        if (r->scale) r->shown_hi = b->picture_hi;
+        return 1;
+    }
     int sb;
-    interp_inbetween(a->parsed, b->parsed, r->pair, t, &r->ilist, &sb, NULL);
+    interp_inbetween_ex(a->parsed, b->parsed, r->pair, t, (r->scale ? INTERP_VERTICES : 0) | (r->extrapolate ? INTERP_EXTRAPOLATE : 0),
+                        &r->ilist, &sb, r->istats);
     const uint8_t *p = draw_list(r, sb ? b : a);
     if (!p) return drawlive_present(r, m, f);
     memcpy(f->vram, p, 64000);
+    if (r->scale) r->shown_hi = r->inter_hi;
     r->inbetweens++;
     return 1;
 }

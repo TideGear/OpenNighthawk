@@ -15,6 +15,7 @@
 #include "observe.h"
 #include "drawlist.h"
 #include "interp.h"
+#include "hires.h"
 #include "present.h"
 
 #include <stddef.h>
@@ -65,7 +66,9 @@ typedef struct {
     int            nrec, crec;
     interp_frame  *parsed;
     drawlist       start;
+    hires         *start_hires;   /* the sub-pixel builder at its start (with a scale) */
     uint8_t        picture[64000];
+    uint8_t       *picture_hi;    /* and the fine picture it left */
     uint64_t       seq, end;
     int            ok;            /* exact, and no page dump inside */
 } drawlive_step;
@@ -82,16 +85,29 @@ typedef struct {
     uint64_t picture_seq, picture_end;
     uint64_t frames, exact, inexact, unseeded;
     /* interpolation */
-    int            interp, check;  /* check: draw each pair at t = 1e-6 and 1 - 1e-6 and compare */
+    int            interp, check;  /* check: draw each pair a hair from each end and compare */
     drawlive_step  step[2];
     int            last;           /* the newer step */
     interp_pairing *pair;          /* the two steps paired, or NULL */
     interp_list    ilist;
     drawlist       scratch;
     uint64_t       pairs, pairs_exact, pairs_inexact, inbetweens;
+    uint64_t       istats[IS_COUNT];  /* what the in-between frames shown moved and held (interp.h) */
+    int            extrapolate;    /* the picture's age: 0 a step behind (interpolate), 1 none (extrapolate) */
+    /* a picture scale times finer (Stage 2, hires.h); 0 none */
+    int            scale;
+    hires         *hr, *scratch_hr;
+    uint8_t       *picture_hi;     /* the fine picture after the last exact frame */
+    uint8_t       *inter_hi;       /* an in-between frame's */
+    const uint8_t *shown_hi;       /* what the last present put in place of the scan, or NULL */
+    uint64_t       fine_flat, fine_agree, fine_restored;
 } drawlive;
 
 void drawlive_init(drawlive *r);
+
+/* Draw a picture n times finer too (n >= 1): the model polygons refilled from
+ * their vertices, the rest scaled; presented in place of the 320x200 one. */
+void drawlive_set_scale(drawlive *r, int n);
 
 /* Replay every closed frame the feed holds and release it. A frame that
  * differs from the display at its close is not shown, and the replay is
@@ -107,13 +123,16 @@ int drawlive_current(const drawlive *r, const machine_t *m);
 
 /* Put the replayed picture in a captured frame (present.h) in place of the
  * scanned-out pixels, keeping its palette: 1 when it did. */
-int drawlive_present(const drawlive *r, const machine_t *m, present_frame *f);
+int drawlive_present(drawlive *r, const machine_t *m, present_frame *f);
 
 /* With interp: the in-between picture at the machine's clock now - one game
  * second is one real second (the mission clock's invariant), so the clock is
  * the time base - between the two frames last closed: the older at the newer
  * one's close, the newer one a step later, so the picture is a step behind.
- * Falls back to drawlive_present when no pair is held. */
+ * With extrapolate the newer is shown at its own close and the primitives move
+ * on as they moved from the older (t from 1 to 2), so the picture has no age
+ * added and is a prediction between closes. Falls back to drawlive_present
+ * when no pair is held. With a scale, shown_hi is the fine picture shown. */
 int drawlive_present_interp(drawlive *r, const machine_t *m, present_frame *f);
 
 #endif

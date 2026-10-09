@@ -7,7 +7,14 @@
  * The replay keeps its own copy of each page it was seeded with (the work
  * page 'Z' and the display 'Y', as the observer dumps them) and draws every
  * record on it in order. A record that names a page it does not hold draws
- * nothing. It never reads the machine: what it needs comes in the records. */
+ * nothing. It never reads the machine: what it needs comes in the records.
+ *
+ * With a scale N (drawlist_set_scale), each page also keeps its first 320x200
+ * bytes N times finer in each direction (tools/hires_frame.py's HiPage):
+ * every write is mirrored there as an N x N block, unless the page is
+ * suppressed while a polygon refilled on the finer grid (hires.h) paints its
+ * coarse rows, and a blit or page copy between two held pages carries the
+ * fine rows across. */
 #ifndef F117R_DRAWLIST_H
 #define F117R_DRAWLIST_H
 
@@ -19,11 +26,14 @@ typedef struct {
     uint16_t seg;
     unsigned size;                /* 65,536 for a work page, 64,000 for the display (as dumped) */
     uint8_t  b[65536];
+    uint8_t *hi;                  /* the finer picture, 320N x 200N, or NULL */
+    int      n, suppress;
 } drawlist_page;
 
 typedef struct {
     drawlist_page page[DRAWLIST_PAGES];
     int      npages;
+    int      n;                   /* the fine picture's scale, 0 for none */
     int      have_seg;            /* seeded with a work page: records before it are skipped */
     uint16_t seg, origin;         /* the work page and the library origin at the phase start */
     int      colour;              /* the library colour (entries 32/33, text), -1 not yet set */
@@ -42,6 +52,14 @@ typedef struct {
 
 void drawlist_init(drawlist *d);
 
+/* Keep a picture n times finer (1 or more; 0 none) on the pages seeded from
+ * now on; drawlist_free releases them, drawlist_reset forgets the pages but
+ * keeps the scale. A drawlist with fine pages is copied by drawlist_copy. */
+void drawlist_set_scale(drawlist *d, int n);
+void drawlist_free(drawlist *d);
+void drawlist_reset(drawlist *d);
+void drawlist_copy(drawlist *dst, const drawlist *src);
+
 /* Give the replay a page as it stands: 'Z' the work page at a phase's start
  * (its segment and the library origin then; it starts a phase), 'Y' the
  * display. size is the bytes given. */
@@ -56,5 +74,6 @@ void drawlist_record(drawlist *d, char kind, const int32_t *v, int n);
 
 /* The replay of a page, or NULL when it holds none at seg. */
 const drawlist_page *drawlist_get(const drawlist *d, uint16_t seg);
+drawlist_page *drawlist_page_of(drawlist *d, uint16_t seg);
 
 #endif
