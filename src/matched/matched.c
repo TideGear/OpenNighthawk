@@ -3257,9 +3257,11 @@ static int start_flag_call(machine_t *m)
     return 1;
 }
 
-/* START 0x03E84, set_pointer(x, y): the pair stored at [E08A]/[E08C]; when
- * bit 1 of byte 72h of the structure at far [E096] is set, 0x085A7 runs. */
-static int start_set_pointer(machine_t *m)
+/* START 0x03E84 and END 0x02049, set_pointer(x, y): the pair stored at
+ * [pos]/[pos+2] (START E08A, END 7214); when bit 1 of byte 72h of the
+ * structure at far [rec] (START E096, END 7222) is set, the pointer's
+ * redraw (START 0x085A7, END 0x0451B) runs. */
+static int st3_set_pointer(machine_t *m, uint16_t entry, uint16_t pos, uint16_t rec, uint16_t redraw)
 {
     cpu_t *c = &m->cpu;
     if (!room(c, 13)) return 0;
@@ -3267,23 +3269,26 @@ static int start_set_pointer(machine_t *m)
     cpu_push16(c, c->r[R_BP]);
     c->r[R_BP] = c->r[R_SP];
     c->r[R_AX] = x;
-    ds_put(c, 0xE08A, x);
+    ds_put(c, pos, x);
     c->r[R_AX] = y;
-    ds_put(c, 0xE08C, y);
-    const uint16_t bx = ds_get(c, 0xE096), es = ds_get(c, 0xE098);
+    ds_put(c, (uint16_t)(pos + 2), y);
+    const uint16_t bx = ds_get(c, rec), es = ds_get(c, (uint16_t)(rec + 2));
     c->r[R_BX] = bx;
     c->seg[S_ES] = es;
     alu_logic(c, mem_read8(c, phys(es, (uint16_t)(bx + 0x72))) & 2, 0);   /* test byte es:[bx+72h], 2 */
     c->icount += 9;
     if (!(c->flags & F_ZF)) {                                     /* je not taken */
-        if (!guest_call(m, 0x85A7, 0x3EA1)) return 1;
-        if (!room(c, 3)) { c->ip = 0x3EA1; return 1; }
+        const uint16_t back = (uint16_t)(entry + 0x1D);
+        if (!guest_call(m, redraw, back)) return 1;
+        if (!room(c, 3)) { c->ip = back; return 1; }
     }
     x86_leave(c);
     c->icount += 3;
     near_ret(c);
     return 1;
 }
+static int start_set_pointer(machine_t *m) { return st3_set_pointer(m, 0x3E84, 0xE08A, 0xE096, 0x85A7); }
+static int end_set_pointer(machine_t *m) { return st3_set_pointer(m, 0x2049, 0x7214, 0x7222, 0x451B); }
 
 /* PLAYER 0x00F32, one of two bytes picked by the low byte of the argument: the
  * byte at [19DA] when it is zero, otherwise the one at [19DB]; AH is 0.
@@ -7864,12 +7869,12 @@ static int format_digits(machine_t *m, uint16_t entry)
 static int start_format_digits(machine_t *m) { return format_digits(m, 0xA1A4); }
 static int player_format_digits(machine_t *m) { return format_digits(m, 0x1F1C); }
 
-/* START 0x0A141, the formatter's put-character into a string stream: AL
- * (made a word by CBW) is stored at the stream's next byte (the stream at the
+/* START 0x0A141 and END 0x05AB3, the formatter's put-character into a string stream:
+ * AL (made a word by CBW) is stored at the stream's next byte (the stream at the
  * caller's [BP+4]: next pointer +0, room +2) and AX = 0; when the room runs
- * out (the count goes negative) the stream's flush 0x09992 (char, stream) is
- * called instead and AX is 0 unless it answered FFFFh. DI preserved. */
-static int start_format_putc(machine_t *m)
+ * out (the count goes negative) the stream's flush (START 0x09992, END 0x054D8;
+ * char, stream) is called instead and AX is 0 unless it answered FFFFh. DI preserved. */
+static int st3_format_putc(machine_t *m, uint16_t entry, uint16_t flush)
 {
     cpu_t *c = &m->cpu;
     if (!room(c, 11)) return 0;
@@ -7892,8 +7897,9 @@ static int start_format_putc(machine_t *m)
         cpu_push16(c, c->r[R_BX]);
         cpu_push16(c, c->r[R_AX]);
         c->icount += 5;
-        if (!guest_call(m, 0x9992, 0xA15D)) return 1;
-        if (!room(c, 9)) { c->ip = 0xA15D; return 1; }
+        const uint16_t back = (uint16_t)(entry + 0x1C);           /* after the CALL */
+        if (!guest_call(m, flush, back)) return 1;
+        if (!room(c, 9)) { c->ip = back; return 1; }
         c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 4, 1, 0);
         c->r[R_DX] = cpu_pop16(c);
         c->r[R_CX] = cpu_pop16(c);
@@ -7909,6 +7915,8 @@ static int start_format_putc(machine_t *m)
     near_ret(c);
     return 1;
 }
+static int start_format_putc(machine_t *m) { return st3_format_putc(m, 0xA141, 0x9992); }
+static int end_format_putc(machine_t *m) { return st3_format_putc(m, 0x5AB3, 0x54D8); }
 
 /* VGAME 0x0C831, vcos(a, r): the routine at 0x0C818 with the angle turned a
  * quarter (AH + 40h). */
@@ -15841,14 +15849,16 @@ text:
     return 1;
 }
 
-/* START 0x031FA, draw_route_label(s, p, q, r): the name s beside a route leg on the
- * briefing map. The three map points p, q and r (records with the x at +2 and the y at
+/* START 0x031FA and END 0x01755, draw_route_label(s, p, q, r): the name s beside a
+ * route leg on the map. The three map points p, q and r (records with the x at +2 and the y at
  * +4, scaled to the screen by 92h and C3h) decide on which side of p the label goes:
  * (x, y) = (-5, -3), (+3, -3), (-2, -8), (-2, +3) from p's scaled position, or by the
  * sign of the area of the two legs (-4, +2) or (+3, -7) (the offsets are applied to
  * the scaled coordinates left in the frame); the string is drawn there in the window
- * DC18h (0x03567). */
-static int start_draw_route_label(machine_t *m)
+ * (START DC18h, by 0x03567; END 6DA2h, by 0x0188D). END's copy makes its first two
+ * tests the other way round (CMP DI, BX / JL for CMP BX, DI / JG): the same branch,
+ * other flags. */
+static int st3_draw_route_label(machine_t *m, uint16_t entry, int swapped, uint16_t window, uint16_t draw_text)
 {
     cpu_t *c = &m->cpu;
     if (!room(c, 49)) return 0;
@@ -15902,13 +15912,15 @@ static int start_draw_route_label(machine_t *m)
     x86_div16(c, c->r[R_CX]);    /* DX is 0: no fault */
     bp_put(c, -0xC, c->r[R_AX]);
     c->icount += 49;
-    ST2_NEED(9, 0x326F);
-    alu_sub(c, c->r[R_BX], c->r[R_DI], 1, 0);
+    ST2_NEED(9, AT(0x75));
+    if (swapped) alu_sub(c, c->r[R_DI], c->r[R_BX], 1, 0);       /* cmp di, bx / jl */
+    else alu_sub(c, c->r[R_BX], c->r[R_DI], 1, 0);                /* cmp bx, di / jg */
     c->icount += 2;
-    if (!x86_cond(c, 0xF)) {                                      /* jg not taken */
-        alu_sub(c, c->r[R_BX], bp_get(c, -0x0E), 1, 0);
+    if (!x86_cond(c, swapped ? 0xC : 0xF)) {                      /* not taken */
+        if (swapped) alu_sub(c, bp_get(c, -0x0E), c->r[R_BX], 1, 0);
+        else alu_sub(c, c->r[R_BX], bp_get(c, -0x0E), 1, 0);
         c->icount += 2;
-        if (!x86_cond(c, 0xF)) {
+        if (!x86_cond(c, swapped ? 0xC : 0xF)) {
             c->r[R_AX] = (uint16_t)(c->r[R_BX] - 5);
             bp_put(c, -2, c->r[R_AX]);
             c->r[R_AX] = (uint16_t)(c->r[R_SI] - 3);
@@ -15917,7 +15929,7 @@ static int start_draw_route_label(machine_t *m)
             goto place;
         }
     }
-    ST2_NEED(8, 0x3286);
+    ST2_NEED(8, AT(0x8C));
     c->r[R_AX] = c->r[R_BX];
     alu_sub(c, c->r[R_DI], c->r[R_AX], 1, 0);
     c->icount += 3;
@@ -15931,7 +15943,7 @@ static int start_draw_route_label(machine_t *m)
             goto place;
         }
     }
-    ST2_NEED(8, 0x329B);
+    ST2_NEED(8, AT(0xA1));
     c->r[R_AX] = c->r[R_SI];
     alu_sub(c, bp_get(c, -8), c->r[R_AX], 1, 0);
     c->icount += 3;
@@ -15945,7 +15957,7 @@ static int start_draw_route_label(machine_t *m)
             goto place;
         }
     }
-    ST2_NEED(7, 0x32B1);
+    ST2_NEED(7, AT(0xB7));
     alu_sub(c, bp_get(c, -8), c->r[R_AX], 1, 0);
     c->icount += 2;
     if (!x86_cond(c, 0xF)) {
@@ -15958,7 +15970,7 @@ static int start_draw_route_label(machine_t *m)
             goto place;
         }
     }
-    ST2_NEED(10, 0x32C5);                                         /* the legs cross: by the sign of the area */
+    ST2_NEED(10, AT(0xCB));                                     /* the legs cross: by the sign of the area */
     c->r[R_AX] = bp_get(c, -0x0C);
     c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], bp_get(c, -8), 1, 0);
     c->r[R_CX] = bp_get(c, -0x0A);
@@ -15975,16 +15987,16 @@ static int start_draw_route_label(machine_t *m)
         bp_put(c, -4, (uint16_t)alu_add(c, bp_get(c, -4), 2, 1, 0));
         c->icount += 3;
     }
-place:                                                            /* 0x032E8: draw_text(win DC18h, s, x, y) */
-    ST2_NEED(6, 0x32E8);
+place:                                                            /* 0x032E8: draw_text(window, s, x, y) */
+    ST2_NEED(6, AT(0xEE));
     cpu_push16(c, bp_get(c, -0x4));
     cpu_push16(c, bp_get(c, -0x2));
     cpu_push16(c, bp_get(c, 0x4));
-    c->r[R_AX] = 0xDC18;
+    c->r[R_AX] = window;
     cpu_push16(c, c->r[R_AX]);
     c->icount += 5;
-    if (!guest_call(m, 0x3567, 0x32F8)) return 1;
-    ST2_NEED(6, 0x32F8);
+    if (!guest_call(m, draw_text, AT(0xFE))) return 1;
+    ST2_NEED(6, AT(0xFE));
     c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x0008, 1, 0);
     c->r[R_SI] = cpu_pop16(c);
     c->r[R_DI] = cpu_pop16(c);
@@ -15992,6 +16004,8 @@ place:                                                            /* 0x032E8: dr
     frame_close_ret(c);
     return 1;
 }
+static int start_draw_route_label(machine_t *m) { return st3_draw_route_label(m, 0x31FA, 0, 0xDC18, 0x3567); }
+static int end_draw_route_label(machine_t *m) { return st3_draw_route_label(m, 0x1755, 1, 0x6DA2, 0x188D); }
 
 /* START 0x02901, cel_step(): one step of the Transfer Request's cel animation; returns
  * the steps left in AX. With steps left ([B2F4]) only every eighth call (the counter
@@ -16384,6 +16398,1870 @@ leave:                                                            /* 0x00D60 */
     ST2_NEED(4, 0x0D60);
     c->r[R_SI] = cpu_pop16(c);
     c->icount += 1;
+    frame_close_ret(c);
+    c->icount += 3;
+    return 1;
+}
+
+/* ---- START and END, third batch -------------------------------------------
+ * The two programs' copies of the C runtime's stream flush and formatter
+ * helpers, and their timer and joystick readers. Shared routines take their
+ * copy's entry (AT) and the addresses that differ between the two. */
+
+FFLUSH(start, 0x9C32, 0xAEA6, 0xAF46, 0x9CAC, 0xA31A)
+
+/* START 0x0A124 and END 0x05A96, the formatter's string argument: when the
+ * format's flags at the caller's [BP-4] have bit 5 (a far pointer) the next
+ * argument is a dword (next_dword) and becomes ES:DI; otherwise the next word
+ * (next_word) is DI with ES = DS, or ES = 0 when it is a null pointer. Flags:
+ * the TEST, or the OR of the near pointer. */
+static int st3_format_string_arg(machine_t *m, uint16_t entry, uint16_t next_word, uint16_t next_dword)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 3)) return 0;                                    /* test, je and the CALL */
+    alu_logic(c, bp_get8(c, -4) & 0x20, 0);                       /* test byte [bp-4], 20h */
+    c->icount += 2;
+    if (!(c->flags & F_ZF)) {                                     /* a far pointer */
+        if (!guest_call(m, next_dword, AT(0x09))) return 1;
+        ST2_NEED(3, AT(0x09));
+        c->seg[S_ES] = c->r[R_DX];
+        c->r[R_DI] = c->r[R_AX];
+        c->icount += 3;
+        near_ret(c);
+        return 1;
+    }
+    if (!guest_call(m, next_word, AT(0x11))) return 1;
+    ST2_NEED(6, AT(0x11));
+    c->r[R_DI] = c->r[R_AX];
+    alu_logic(c, c->r[R_AX], 1);                                  /* or ax, ax */
+    c->icount += 3;
+    if (c->flags & F_ZF) {                                        /* null: ES = 0 */
+        c->seg[S_ES] = c->r[R_AX];
+        c->icount += 2;
+    } else {
+        cpu_push16(c, c->seg[S_DS]);                              /* push ds / pop es */
+        c->seg[S_ES] = cpu_pop16(c);
+        c->icount += 3;
+    }
+    near_ret(c);
+    return 1;
+}
+static int start_format_string_arg(machine_t *m) { return st3_format_string_arg(m, 0xA124, 0xA110, 0xA118); }
+static int end_format_string_arg(machine_t *m) { return st3_format_string_arg(m, 0x5A96, 0x5A82, 0x5A8A); }
+
+/* START 0x0A188 / 0x0A16A and END 0x05AFA / 0x05ADC, the formatter's runs of
+ * output: CX characters through its put-character (START 0x0A141, END
+ * 0x05AB3), either DL repeated (the padding) or the bytes at ES:DI (a string,
+ * read by LODSB through SI). The count is added to the total at the caller's
+ * [BP-8], which becomes FFFFh when any put-character answered nonzero (the OR
+ * of the answers, kept in DI over the loop; DI is restored). A zero count
+ * returns at once. Each character is a call, so the loop parks at its head (or
+ * after a call) when the run loop must look at events. */
+static int st3_format_put_run(machine_t *m, uint16_t entry, uint16_t putc, int from_string)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t d = from_string ? 2 : 0;                       /* the string form's MOV SI, DI */
+    const uint16_t head = AT(0x08 + d), back = AT(0x0D + d);      /* the loop's first instruction; after its CALL */
+    if (!room(c, from_string ? 7 : 6)) return 0;                  /* to the first CALL, or JCXZ and RET */
+    c->icount += 1;                                               /* jcxz */
+    if (!c->r[R_CX]) { c->icount += 1; near_ret(c); return 1; }
+    if (from_string) { c->r[R_SI] = c->r[R_DI]; c->icount += 1; }
+    bp_put(c, -8, (uint16_t)alu_add(c, bp_get(c, -8), c->r[R_CX], 1, 0));   /* add [bp-8], cx */
+    cpu_push16(c, c->r[R_DI]);
+    c->r[R_DI] = (uint16_t)alu_logic(c, 0, 1);                    /* xor di, di */
+    c->icount += 3;
+    for (int first = 1;; first = 0) {
+        if (!first) ST2_NEED(2, head);                            /* the character and the CALL */
+        if (from_string) x86_lods(c, 0, c->seg[S_ES]);            /* lodsb es: */
+        else set_r8(c, R_AL, get_r8(c, R_DL));                    /* mov al, dl */
+        c->icount += 1;
+        if (!guest_call(m, putc, back)) return 1;
+        ST2_NEED(2, back);
+        c->r[R_DI] = (uint16_t)alu_logic(c, c->r[R_DI] | c->r[R_AX], 1);   /* or di, ax */
+        c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);                  /* loop */
+        c->icount += 2;
+        if (!c->r[R_CX]) break;
+    }
+    ST2_NEED(5, AT(0x11 + d));                                    /* or, pop, je, the MOV and RET */
+    alu_logic(c, c->r[R_DI], 1);                                  /* or di, di */
+    c->r[R_DI] = cpu_pop16(c);
+    c->icount += 3;
+    if (!(c->flags & F_ZF)) { bp_put(c, -8, 0xFFFF); c->icount += 1; }
+    c->icount += 1;
+    near_ret(c);
+    return 1;
+}
+static int start_format_pad(machine_t *m) { return st3_format_put_run(m, 0xA188, 0xA141, 0); }
+static int end_format_pad(machine_t *m) { return st3_format_put_run(m, 0x5AFA, 0x5AB3, 0); }
+static int start_format_put_string(machine_t *m) { return st3_format_put_run(m, 0xA16A, 0xA141, 1); }
+static int end_format_put_string(machine_t *m) { return st3_format_put_run(m, 0x5ADC, 0x5AB3, 1); }
+
+/* START 0x08EAD and END 0x04DA3, the timer's count at the start of a vertical
+ * retrace, for the refresh-rate measurement: with interrupts off (PUSHF, CLI)
+ * wait for bit 3 of the CRT status port 3DAh to clear, then to set, each wait
+ * giving up after FFFFh reads (BX counts down from 0: the result is then 0);
+ * then latch channel 0 of the PIT (0 to port 43h) and read its count, low
+ * byte then high, from port 40h into AX. The POPF that restores the flags can
+ * let an interrupt in, so the routine stops after it and the RET is the
+ * original's. Each wait checks the room every turn and parks at its head. */
+static int st3_retrace_timer(machine_t *m, uint16_t entry)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 4)) return 0;
+    x86_pushf(c);
+    x86_cli(c);
+    c->r[R_DX] = 0x03DA;
+    c->r[R_BX] = (uint16_t)alu_logic(c, 0, 1);                    /* xor bx, bx */
+    c->icount += 4;
+    for (int wait = 0; wait < 2; wait++) {                        /* for the retrace to end, then to begin */
+        const uint16_t head = AT(wait ? 0x11 : 0x07);
+        if (wait) {
+            ST2_NEED(1, AT(0x0F));
+            c->r[R_BX] = (uint16_t)alu_logic(c, 0, 1);
+            c->icount += 1;
+        }
+        for (;;) {
+            ST2_NEED(5, head);                                    /* dec, je, in, test, jcc (or dec, je, mov, popf) */
+            c->r[R_BX] = (uint16_t)alu_dec(c, c->r[R_BX], 1);
+            c->icount += 2;
+            if (c->flags & F_ZF) goto done;                       /* given up: AX = 0 */
+            x86_in(c, c->r[R_DX], 0);
+            c->icount += 1;
+            alu_logic(c, get_r8(c, R_AL) & 0x08, 0);              /* test al, 8 */
+            c->icount += 2;
+            if (wait ? !(c->flags & F_ZF) : (c->flags & F_ZF)) break;
+        }
+    }
+    ST2_NEED(11, AT(0x19));                                       /* the latch and two reads, MOV and POPF */
+    set_r8(c, R_AL, 0);
+    c->icount += 1;
+    x86_out(c, 0x43, 0);                                          /* latch channel 0 */
+    c->icount += 2;                                               /* the OUT and its delay JMP */
+    x86_in(c, 0x40, 0);
+    c->icount += 2;
+    set_r8(c, R_BL, get_r8(c, R_AL));
+    c->icount += 1;
+    x86_in(c, 0x40, 0);
+    c->icount += 2;
+    set_r8(c, R_BH, get_r8(c, R_AL));
+    c->icount += 1;
+done:                                                             /* 0x08ED8 */
+    c->r[R_AX] = c->r[R_BX];
+    c->icount += 1;
+    x86_popf(c);
+    c->icount += 1;
+    c->ip = AT(0x2E);                                             /* the RET: after POPF the run loop looks at interrupts */
+    return 1;
+}
+static int start_retrace_timer(machine_t *m) { return st3_retrace_timer(m, 0x8EAD); }
+static int end_retrace_timer(machine_t *m) { return st3_retrace_timer(m, 0x4DA3); }
+
+/* START 0x08469 and END 0x043D5, read the joystick: with interrupts off, a
+ * write to port 201h fires the one-shots and the port is read until both
+ * axis bits (0 and 1) have dropped, counting the reads with each bit still
+ * set in BP (x) and DI (y). After FFFFh... reads (LOOPNE from CX = 0) with a
+ * bit still set both counts become FFFFh. The routine goes as far as the STI;
+ * the counts' stores, the restoring POPs and the RET are the original's, since
+ * STI lets the run loop look at interrupts. All registers are pushed first. */
+static int st3_joystick_read(machine_t *m, uint16_t entry)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 16)) return 0;
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, c->r[R_BX]);
+    cpu_push16(c, c->r[R_CX]);
+    cpu_push16(c, c->r[R_DX]);
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = (uint16_t)alu_sub(c, c->r[R_BP], c->r[R_BP], 1, 0);
+    c->r[R_CX] = (uint16_t)alu_sub(c, c->r[R_CX], c->r[R_CX], 1, 0);
+    c->r[R_DI] = (uint16_t)alu_sub(c, c->r[R_DI], c->r[R_DI], 1, 0);
+    c->r[R_DX] = 0x0201;
+    c->r[R_BX] = 0x0003;
+    c->icount += 12;
+    x86_cli(c);
+    c->icount += 1;
+    x86_out(c, c->r[R_DX], 0);                                    /* fire the one-shots */
+    c->icount += 3;                                               /* the OUT and two delay JMPs */
+    for (;;) {                                                    /* 0x08483 */
+        ST2_NEED(10, AT(0x1A));
+        x86_in(c, c->r[R_DX], 0);
+        c->icount += 1;
+        c->r[R_AX] = (uint16_t)alu_logic(c, c->r[R_AX] & c->r[R_BX], 1);   /* and ax, bx */
+        c->r[R_SI] = c->r[R_AX];
+        set_r8(c, R_AL, (uint8_t)alu_logic(c, get_r8(c, R_AL) & 1, 0));
+        c->r[R_BP] = (uint16_t)alu_add(c, c->r[R_BP], c->r[R_AX], 1, 0);   /* x still high */
+        c->r[R_AX] = c->r[R_SI];
+        c->r[R_AX] = x86_shift(c, 5, c->r[R_AX], 1, 1);           /* shr ax, 1 */
+        c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], c->r[R_AX], 1, 0);   /* y still high */
+        alu_logic(c, c->r[R_SI], 1);                              /* or si, si */
+        c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);                  /* loopne */
+        c->icount += 9;
+        if (!c->r[R_CX] || (c->flags & F_ZF)) break;
+    }
+    ST2_NEED(6, AT(0x2D));                                        /* je, the four of a timeout, STI */
+    c->icount += 1;
+    if (!(c->flags & F_ZF)) {                                     /* a bit never dropped: both FFFFh */
+        c->r[R_BP] = (uint16_t)alu_sub(c, c->r[R_BP], c->r[R_BP], 1, 0);
+        c->r[R_BP] = (uint16_t)~c->r[R_BP];
+        c->r[R_DI] = (uint16_t)alu_sub(c, c->r[R_DI], c->r[R_DI], 1, 0);
+        c->r[R_DI] = (uint16_t)~c->r[R_DI];
+        c->icount += 4;
+    }
+    x86_sti(c);
+    c->icount += 1;
+    c->ip = AT(0x38);                                             /* the stores: STI lets the run loop look at interrupts */
+    return 1;
+}
+static int start_joystick_read(machine_t *m) { return st3_joystick_read(m, 0x8469); }
+static int end_joystick_read(machine_t *m) { return st3_joystick_read(m, 0x43D5); }
+
+/* START 0x09992 and END 0x054D8, _flsbuf(ch, stream): the C runtime's
+ * write of a character when a stream's buffer is full (or it has none).
+ * A stream (8 bytes: next +0, count +2, buffer +4, flags +6, handle +7)
+ * not open for writing, or a string stream (flag 40h), or one open for
+ * reading that is not at its end (flags 1 without 10h) fails: flag 20h
+ * (error) and FFFFh. Otherwise it is marked as writing and its count
+ * cleared. A stream with a buffer (flag 8, or 1 in its second-table entry)
+ * writes what is in it, puts ch first in the emptied buffer and sets the
+ * count to the buffer size less one; with nothing to write and the handle
+ * in append mode (20h in the handle flags) the file is first seeked to its
+ * end. A stream marked unbuffered (4), or standard output, error or printer
+ * on a device (40h), writes ch alone; any other stream first gets a buffer
+ * (getbuf), and goes either way by whether it got one. The result is ch,
+ * or FFFFh when the write was short. */
+typedef struct {
+    uint16_t entry;
+    uint16_t base, ext;                 /* the stream table; the second table's entry is stream - base + ext */
+    uint16_t out, err, prn;             /* the streams that write alone on a device */
+    uint16_t handle_flags;              /* a byte per handle */
+    uint16_t write, getbuf, lseek;      /* the low-level write, the buffer allocator, the seek */
+} st3_flsbuf_t;
+
+static int st3_flsbuf(machine_t *m, const st3_flsbuf_t *s)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = s->entry;
+    if (!room(c, 56)) return 0;                                   /* the longest way to a call or the return */
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->r[R_DI]);
+    c->r[R_SI] = bp_get(c, 6);
+    const uint16_t si = c->r[R_SI];
+    uint8_t fl = ds_get8(c, (uint16_t)(si + 6));
+    set_r8(c, R_AL, fl);
+    alu_logic(c, fl & 0x82, 0);
+    c->icount += 8;
+    if (c->flags & F_ZF) goto fail;                               /* not open for writing */
+    alu_logic(c, fl & 0x40, 0);
+    c->icount += 2;
+    if (!(c->flags & F_ZF)) goto fail;                            /* a string */
+    ds_put(c, (uint16_t)(si + 2), 0);
+    alu_logic(c, fl & 0x01, 0);
+    c->icount += 3;
+    if (!(c->flags & F_ZF)) {                                     /* open for reading too */
+        alu_logic(c, fl & 0x10, 0);
+        c->icount += 2;
+        if (c->flags & F_ZF) goto fail;                           /* and not at its end */
+        c->r[R_CX] = ds_get(c, (uint16_t)(si + 4));
+        ds_put(c, si, c->r[R_CX]);                                /* next back to the buffer */
+        fl = (uint8_t)alu_logic(c, fl & 0xFE, 0);
+        c->icount += 3;
+    }
+    fl = (uint8_t)alu_logic(c, fl | 0x02, 0);                     /* writing, */
+    fl = (uint8_t)alu_logic(c, fl & 0xEF, 0);                     /* not at the end */
+    set_r8(c, R_AL, fl);
+    ds_put8(c, (uint16_t)(si + 6), fl);
+    c->r[R_DI] = (uint16_t)alu_sub(c, si, s->base, 1, 0);
+    c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], s->ext, 1, 0);  /* the second table's entry */
+    c->r[R_BX] = (uint16_t)alu_logic(c, 0, 1);
+    set_r8(c, R_BL, ds_get8(c, (uint16_t)(si + 7)));              /* the handle */
+    alu_logic(c, fl & 0x08, 0);
+    c->icount += 10;
+    if (!(c->flags & F_ZF)) goto buffered;
+    alu_logic(c, fl & 0x04, 0);
+    c->icount += 2;
+    if (!(c->flags & F_ZF)) goto single;
+    alu_logic(c, ds_get8(c, c->r[R_DI]) & 0x01, 0);
+    c->icount += 2;
+    if (!(c->flags & F_ZF)) goto buffered;
+    alu_sub(c, si, s->out, 1, 0);
+    c->icount += 2;
+    if (!(c->flags & F_ZF)) {
+        alu_sub(c, si, s->err, 1, 0);
+        c->icount += 2;
+        if (!(c->flags & F_ZF)) {
+            alu_sub(c, si, s->prn, 1, 0);
+            c->icount += 2;
+            if (!(c->flags & F_ZF)) goto get_buffer;
+        }
+    }
+    alu_logic(c, ds_get8(c, (uint16_t)(c->r[R_BX] + s->handle_flags)) & 0x40, 0);   /* a device */
+    c->icount += 2;
+    if (c->flags & F_ZF) goto get_buffer;
+single:                                                           /* 0x099F5: write(handle, &ch, 1) */
+    c->r[R_CX] = 1;
+    cpu_push16(c, c->r[R_CX]);
+    c->r[R_DI] = (uint16_t)(c->r[R_BP] + 4);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_BX]);
+    c->icount += 5;
+    if (!guest_call(m, s->write, AT(0x6F))) return 1;
+    ST2_NEED(12, AT(0x6F));
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0);
+    c->r[R_CX] = 1;
+    c->icount += 3;
+    goto compare;
+get_buffer:                                                       /* 0x09A12 */
+    cpu_push16(c, c->r[R_BX]);
+    cpu_push16(c, c->r[R_SI]);
+    c->icount += 2;
+    if (!guest_call(m, s->getbuf, AT(0x85))) return 1;
+    ST2_NEED(28, AT(0x85));
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    alu_logic(c, ds_get8(c, (uint16_t)(c->r[R_SI] + 6)) & 0x08, 0);
+    c->icount += 4;
+    if (c->flags & F_ZF) goto single;                             /* no buffer to be had */
+buffered:                                                         /* 0x09A1F */
+    c->r[R_CX] = ds_get(c, c->r[R_SI]);
+    c->r[R_DX] = ds_get(c, (uint16_t)(c->r[R_SI] + 4));
+    c->r[R_CX] = (uint16_t)alu_sub(c, c->r[R_CX], c->r[R_DX], 1, 0);   /* what is in it */
+    c->r[R_DX] = (uint16_t)alu_inc(c, c->r[R_DX], 1);
+    ds_put(c, c->r[R_SI], c->r[R_DX]);
+    c->r[R_DX] = ds_get(c, (uint16_t)(c->r[R_DI] + 2));
+    c->r[R_DX] = (uint16_t)alu_dec(c, c->r[R_DX], 1);
+    ds_put(c, (uint16_t)(c->r[R_SI] + 2), c->r[R_DX]);
+    c->icount += 9;
+    if (!c->r[R_CX]) goto empty;
+    cpu_push16(c, c->r[R_CX]);
+    cpu_push16(c, c->r[R_CX]);
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_SI] + 4)));
+    cpu_push16(c, c->r[R_BX]);
+    c->icount += 4;
+    if (!guest_call(m, s->write, AT(0xA9))) return 1;
+    ST2_NEED(14, AT(0xA9));
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0);
+    c->r[R_CX] = cpu_pop16(c);
+    c->icount += 2;
+store:                                                            /* 0x09A3F: ch first in the buffer */
+    c->r[R_DI] = ds_get(c, (uint16_t)(c->r[R_SI] + 4));
+    c->r[R_DX] = bp_get(c, 4);
+    ds_put8(c, c->r[R_DI], get_r8(c, R_DL));
+    c->icount += 3;
+compare:                                                          /* 0x09A47: all written? */
+    alu_sub(c, c->r[R_AX], c->r[R_CX], 1, 0);
+    c->icount += 2;
+    if (!(c->flags & F_ZF)) goto fail;
+    c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);
+    set_r8(c, R_AL, bp_get8(c, 4));
+    c->icount += 3;
+    goto out;
+empty:                                                            /* 0x09A52 */
+    c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);
+    alu_logic(c, ds_get8(c, (uint16_t)(c->r[R_BX] + s->handle_flags)) & 0x20, 0);   /* append */
+    c->icount += 3;
+    if (c->flags & F_ZF) goto store;
+    c->r[R_CX] = 2;                                               /* lseek(handle, 0L, 2) */
+    cpu_push16(c, c->r[R_CX]);
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, c->r[R_BX]);
+    c->icount += 5;
+    if (!guest_call(m, s->lseek, AT(0xD3))) return 1;
+    ST2_NEED(16, AT(0xD3));
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0);
+    c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);
+    c->r[R_CX] = c->r[R_AX];
+    c->icount += 4;
+    goto store;
+fail:                                                             /* 0x09A09 */
+    c->r[R_AX] = 0xFFFF;
+    {
+        const uint16_t at = (uint16_t)(c->r[R_SI] + 6);
+        ds_put8(c, at, (uint8_t)alu_logic(c, ds_get8(c, at) | 0x20, 0));
+    }
+    c->icount += 3;
+out:                                                              /* 0x09A6E */
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 4;
+    near_ret(c);
+    return 1;
+}
+static const st3_flsbuf_t ST3_FLSBUF_START = { 0x9992, 0xAEA6, 0xAF46, 0xAEAE, 0xAEB6, 0xAEC6, 0xAE61, 0xA31A, 0xA4DE, 0xA520 };
+static const st3_flsbuf_t ST3_FLSBUF_END = { 0x54D8, 0x5172, 0x5212, 0x517A, 0x5182, 0x5192, 0x5131, 0x5C6C, 0x5B66, 0x5096 };
+static int start_flsbuf(machine_t *m) { return st3_flsbuf(m, &ST3_FLSBUF_START); }
+static int end_flsbuf(machine_t *m) { return st3_flsbuf(m, &ST3_FLSBUF_END); }
+
+/* START 0x0885F and END 0x047FF, one picture row: the input position
+ * [pos] (an offset into the input buffer at base) is made a pointer in
+ * SI, the buffer refilled first for the first row (DI 0 or 1, by SHR),
+ * and the row decoder (START 0x0890A, END 0x048AA) fills the 320-pixel
+ * line buffer from it (count [count] = 140h); the position is stored
+ * back. ES is DS meanwhile and restored; DF is cleared. */
+typedef struct { uint16_t entry, pos, base, refill, count, line, rle; } st3_pic_row_t;
+
+static int st3_pic_row(machine_t *m, const st3_pic_row_t *s)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = s->entry;
+    if (!room(c, 12)) return 0;                                   /* to the row decoder's CALL */
+    cpu_push16(c, c->seg[S_ES]);
+    cpu_push16(c, c->seg[S_DS]);
+    c->seg[S_ES] = cpu_pop16(c);
+    set_flag(c, F_DF, 0);
+    c->r[R_SI] = (uint16_t)alu_add(c, ds_get(c, s->pos), s->base, 1, 0);
+    c->r[R_DI] = x86_shift(c, 5, c->r[R_DI], 1, 1);               /* shr di, 1 */
+    c->icount += 8;
+    if (c->flags & F_ZF) {                                        /* the first row: fill the buffer */
+        if (!guest_call(m, s->refill, AT(0x13))) return 1;
+        ST2_NEED(4, AT(0x13));
+    }
+    c->r[R_CX] = 0x0140;
+    ds_put(c, s->count, c->r[R_CX]);
+    c->r[R_DI] = s->line;
+    c->icount += 3;
+    if (!guest_call(m, s->rle, AT(0x20))) return 1;
+    ST2_NEED(4, AT(0x20));
+    c->r[R_SI] = (uint16_t)alu_sub(c, c->r[R_SI], s->base, 1, 0);
+    ds_put(c, s->pos, c->r[R_SI]);
+    c->seg[S_ES] = cpu_pop16(c);
+    c->icount += 4;
+    near_ret(c);
+    return 1;
+}
+static const st3_pic_row_t ST3_PIC_ROW_START = { 0x885F, 0x649D, 0x6235, 0x8889, 0x8D70, 0x8C20, 0x890A };
+static const st3_pic_row_t ST3_PIC_ROW_END = { 0x47FF, 0x1EDF, 0x1C77, 0x4829, 0x3F86, 0x3E36, 0x48AA };
+static int start_pic_row(machine_t *m) { return st3_pic_row(m, &ST3_PIC_ROW_START); }
+static int end_pic_row(machine_t *m) { return st3_pic_row(m, &ST3_PIC_ROW_END); }
+
+/* START 0x08DA4 and END 0x04C88, the timer's reload, the end of its
+ * interrupt work: the divisor wanted ([want]) replaces the one in use
+ * ([cur]) when they differ, and channel 0 of the PIT is set to mode 3 with
+ * it (36h to port 43h, the low and high bytes to port 40h); [reloads] is
+ * counted, -CX stored at [neg] and, when not zero, [nonzero] counted. The
+ * routine stops after its STI (the run loop then looks at interrupts); the
+ * RET is the original's. */
+typedef struct { uint16_t entry, cur, want, reloads, neg, nonzero; } st3_timer_reload_t;
+
+static int st3_timer_reload(machine_t *m, const st3_timer_reload_t *s)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = s->entry;
+    if (!room(c, 19)) return 0;
+    c->r[R_DX] = ds_get(c, s->cur);
+    alu_sub(c, c->r[R_DX], ds_get(c, s->want), 1, 0);
+    c->icount += 3;
+    if (!(c->flags & F_ZF)) {
+        c->r[R_DX] = ds_get(c, s->want);
+        ds_put(c, s->cur, c->r[R_DX]);
+        c->icount += 2;
+    }
+    set_r8(c, R_AL, 0x36);
+    c->icount += 1;
+    x86_out(c, 0x43, 0);                                          /* channel 0, mode 3, low then high */
+    c->icount += 2;
+    set_r8(c, R_AL, get_r8(c, R_DL));
+    c->icount += 1;
+    x86_out(c, 0x40, 0);
+    c->icount += 2;
+    set_r8(c, R_AL, get_r8(c, R_DH));
+    c->icount += 1;
+    x86_out(c, 0x40, 0);
+    c->icount += 1;
+    ds_put(c, s->reloads, (uint16_t)alu_inc(c, ds_get(c, s->reloads), 1));
+    c->r[R_CX] = (uint16_t)alu_sub(c, 0, c->r[R_CX], 1, 0);       /* neg cx */
+    ds_put(c, s->neg, c->r[R_CX]);
+    c->icount += 4;
+    if (!(c->flags & F_ZF)) {
+        ds_put(c, s->nonzero, (uint16_t)alu_inc(c, ds_get(c, s->nonzero), 1));
+        c->icount += 1;
+    }
+    x86_sti(c);
+    c->icount += 1;
+    c->ip = AT(0x33);                                             /* the RET: STI lets the run loop look at interrupts */
+    return 1;
+}
+static const st3_timer_reload_t ST3_TIMER_RELOAD_START = { 0x8DA4, 0xAE03, 0xAE01, 0xAE05, 0xAE13, 0xAE11 };
+static const st3_timer_reload_t ST3_TIMER_RELOAD_END = { 0x4C88, 0x50D4, 0x50D2, 0x50D6, 0x50E4, 0x50E2 };
+static int start_timer_reload(machine_t *m) { return st3_timer_reload(m, &ST3_TIMER_RELOAD_START); }
+static int end_timer_reload(machine_t *m) { return st3_timer_reload(m, &ST3_TIMER_RELOAD_END); }
+
+/* END 0x0046E, widget_hover(): the menu's pointer callback. The hit test
+ * 0x01C3B over the [50B8] buttons at 50B9 gives the one under the pointer
+ * (0 for none); when it is not the one lit ([5B9E]), the lit one's colour
+ * (DAC index 100h - n) is queued back to normal (the RGB at 1324h) and the
+ * new one's to lit (131Eh), one colour each, by 0x0185C; the new one is
+ * stored. (The census splits the routine at 0x004AC; it runs whole here.) */
+static int end_widget_hover(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = 0x046E;
+    if (!room(c, 9)) return 0;
+    frame_open(c, 2);
+    set_r8(c, R_AL, ds_get8(c, 0x50B8));
+    set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0x50B9;
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 8;
+    if (!guest_call(m, 0x1C3B, AT(0x13))) return 1;
+    ST2_NEED(19, AT(0x13));
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    bp_put8(c, -2, get_r8(c, R_AL));                              /* the button under the pointer */
+    alu_sub(c, ds_get8(c, 0x5B9E), get_r8(c, R_AL), 0, 0);
+    c->icount += 5;
+    if (!(c->flags & F_ZF)) {                                     /* a change */
+        alu_sub(c, ds_get8(c, 0x5B9E), 0, 0, 0);
+        c->icount += 2;
+        if (!(c->flags & F_ZF)) {                                 /* the lit one back to normal */
+            c->r[R_AX] = 1;
+            cpu_push16(c, c->r[R_AX]);
+            c->r[R_AX] = 0x1324;
+            cpu_push16(c, c->r[R_AX]);
+            set_r8(c, R_AL, ds_get8(c, 0x5B9E));
+            set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
+            c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], 0x0100, 1, 0);
+            c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0);   /* neg ax */
+            cpu_push16(c, c->r[R_AX]);
+            c->icount += 9;
+            if (!guest_call(m, 0x185C, AT(0x3B))) return 1;
+            ST2_NEED(13, AT(0x3B));
+            c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0);
+            c->icount += 1;
+        }
+        alu_sub(c, bp_get8(c, -2), 0, 0, 0);                      /* 0x004AC */
+        c->icount += 2;
+        if (!(c->flags & F_ZF)) {                                 /* the new one lit */
+            c->r[R_AX] = 1;
+            cpu_push16(c, c->r[R_AX]);
+            c->r[R_AX] = 0x131E;
+            cpu_push16(c, c->r[R_AX]);
+            set_r8(c, R_AL, bp_get8(c, -2));
+            set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
+            c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], 0x0100, 1, 0);
+            c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0);
+            cpu_push16(c, c->r[R_AX]);
+            c->icount += 9;
+            if (!guest_call(m, 0x185C, AT(0x5A))) return 1;
+            ST2_NEED(5, AT(0x5A));
+        }
+    }
+    set_r8(c, R_AL, bp_get8(c, -2));                              /* 0x004C8 */
+    ds_put8(c, 0x5B9E, get_r8(c, R_AL));
+    c->icount += 2;
+    frame_close_ret(c);
+    c->icount += 3;
+    return 1;
+}
+
+/* END 0x03B41, the debriefing's text for a pilot lost: the two strings at
+ * 105Ah and 1096h joined in a 200-byte frame buffer (strcpy 0x05150, strcat
+ * 0x05110), the text window 6D8Ch given colours 4, FDh and FEh, and the
+ * text drawn word-wrapped (0x01A75) at C8h, 6Dh, 100 wide, 8 high, 1. */
+static int end_draw_lost_text(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = 0x3B41;
+    if (!room(c, 8)) return 0;
+    frame_open(c, 0xC8);
+    c->r[R_AX] = 0x105A;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)(c->r[R_BP] - 0xC8);
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 7;
+    if (!guest_call(m, 0x5150, AT(0x13))) return 1;
+    ST2_NEED(7, AT(0x13));
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_AX] = 0x1096;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)(c->r[R_BP] - 0xC8);
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 6;
+    if (!guest_call(m, 0x5110, AT(0x21))) return 1;
+    ST2_NEED(20, AT(0x21));
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    ds_put(c, 0x6D98, 0x0004);
+    ds_put(c, 0x6D90, 0x00FD);
+    ds_put(c, 0x6D92, 0x00FE);
+    static const uint16_t pushes[5] = { 0x0001, 0x0008, 0x0064, 0x006D, 0x00C8 };
+    for (int k = 0; k < 5; k++) {
+        c->r[R_AX] = pushes[k];
+        cpu_push16(c, c->r[R_AX]);
+    }
+    c->r[R_AX] = (uint16_t)(c->r[R_BP] - 0xC8);
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0x6D8C;
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 19;
+    if (!guest_call(m, 0x1A75, AT(0x55))) return 1;
+    ST2_NEED(3, AT(0x55));
+    frame_close_ret(c);
+    c->icount += 3;
+    return 1;
+}
+
+/* END 0x028ED, the shoulder badges for the pilot's rank (word +20h of the
+ * record at far [55DE]): the badge area (DBh, 4Fh; 50h by 70h) is put back
+ * from page 3 to page 1 by the driver's copy (5FA:24CC: source page, x, y,
+ * destination page, x, y, width, height), the badge for the rank copied in
+ * from page 3 (ranks 1-4 and 6: the strip at 11Eh, (rank - 1) * 1Dh, twice
+ * to F3h, 62h and 8Dh, 22h by 1Dh; rank 5: from 119h, 74h and F2h, 74h to
+ * F1h, 27h by 1Dh), and the area published from page 1 to page 0. */
+static int end_draw_rank_badges(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = 0x28ED;
+    if (!room(c, 22)) return 0;
+    frame_open(c, 4);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_SI]);
+    {
+        static const uint16_t args[8] = { 0x0070, 0x0050, 0x004F, 0x00DB, 0x0001, 0x0000, 0x00B4, 0x0003 };
+        for (int k = 0; k < 8; k++) {
+            if (k == 5) c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);   /* sub ax, ax */
+            else c->r[R_AX] = args[k];
+            cpu_push16(c, c->r[R_AX]);
+        }
+    }
+    c->icount += 21;
+    if (!guest_call_far(m, AT(0x27), AT(0x2C))) return 1;
+    ST2_NEED(34, AT(0x2C));
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x10, 1, 0);
+    c->r[R_BX] = ds_get(c, 0x55DE);
+    c->seg[S_ES] = ds_get(c, 0x55E0);
+    c->r[R_AX] = seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x20));   /* the rank */
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], 1, 1, 0);       /* 0x029C4: the switch */
+    c->icount += 6;
+    if (c->flags & F_CF) goto publish;                            /* rank 0 */
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], 3, 1, 0);
+    c->icount += 2;
+    if (!(c->flags & (F_CF | F_ZF))) {                            /* above 4 */
+        c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1);
+        c->icount += 2;
+        if (c->flags & F_ZF) goto rank5;
+        c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1);
+        c->icount += 2;
+        if (!(c->flags & F_ZF)) goto publish;                     /* above 6 */
+    }
+    c->icount += 1;                                               /* jmp to 0x02927 */
+    /* 0x02927: ranks 1-4 and 6, the strip at 11Eh, (rank - 1) * 1Dh */
+    c->r[R_BX] = ds_get(c, 0x55DE);
+    c->seg[S_ES] = ds_get(c, 0x55E0);
+    c->r[R_AX] = seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x20));
+    c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1);
+    c->r[R_CX] = 0x001D;
+    x86_mul16(c, c->r[R_CX]);
+    bp_put(c, -4, c->r[R_AX]);
+    cpu_push16(c, c->r[R_CX]);
+    c->r[R_DX] = 0x0022;
+    cpu_push16(c, c->r[R_DX]);
+    c->r[R_BX] = 0x0062;
+    cpu_push16(c, c->r[R_BX]);
+    c->r[R_BX] = 0x00F3;
+    cpu_push16(c, c->r[R_BX]);
+    c->r[R_SI] = 0x0001;
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0x011E;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0x0003;
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 20;
+    if (!guest_call_far(m, AT(0x65), AT(0x6A))) return 1;
+    ST2_NEED(16, AT(0x6A));
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x10, 1, 0);
+    {
+        static const uint16_t args[4] = { 0x001D, 0x0022, 0x008D, 0x00F3 };
+        for (int k = 0; k < 4; k++) { c->r[R_AX] = args[k]; cpu_push16(c, c->r[R_AX]); }
+    }
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, bp_get(c, -4));
+    c->r[R_AX] = 0x011E;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0x0003;
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 15;
+    goto second;
+rank5:                                                            /* 0x02980 */
+    c->r[R_AX] = 0x001D;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_CX] = 0x0027;
+    cpu_push16(c, c->r[R_CX]);
+    c->r[R_DX] = 0x0062;
+    cpu_push16(c, c->r[R_DX]);
+    c->r[R_DX] = 0x00F1;
+    cpu_push16(c, c->r[R_DX]);
+    c->r[R_BX] = 0x0001;
+    cpu_push16(c, c->r[R_BX]);
+    c->r[R_SI] = 0x0074;
+    cpu_push16(c, c->r[R_SI]);
+    c->r[R_DI] = 0x0119;
+    cpu_push16(c, c->r[R_DI]);
+    c->r[R_DI] = 0x0003;
+    cpu_push16(c, c->r[R_DI]);
+    c->icount += 16;
+    if (!guest_call_far(m, AT(0xB3), AT(0xB8))) return 1;
+    ST2_NEED(17, AT(0xB8));
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x10, 1, 0);
+    {
+        static const uint16_t args[5] = { 0x001D, 0x0027, 0x008D, 0x00F1, 0x0001 };
+        for (int k = 0; k < 5; k++) { c->r[R_AX] = args[k]; cpu_push16(c, c->r[R_AX]); }
+    }
+    cpu_push16(c, c->r[R_SI]);
+    c->r[R_AX] = 0x00F2;
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, c->r[R_DI]);
+    c->icount += 16;                                              /* to the JMP to 0x02976 */
+second:                                                           /* 0x02976 */
+    if (!guest_call_far(m, AT(0x89), AT(0x8E))) return 1;
+    ST2_NEED(17, AT(0x8E));
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x10, 1, 0);
+    c->icount += 2;                                               /* add and the JMP */
+publish:                                                          /* 0x029DA: page 1 to page 0 */
+    c->r[R_AX] = 0x0070;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0x0050;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0x004F;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_CX] = 0x00DB;
+    cpu_push16(c, c->r[R_CX]);
+    c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0);
+    cpu_push16(c, c->r[R_DX]);
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, c->r[R_CX]);
+    c->r[R_AX] = 0x0001;
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 14;
+    if (!guest_call_far(m, AT(0x106), AT(0x10B))) return 1;
+    ST2_NEED(6, AT(0x10B));
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x10, 1, 0);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->icount += 3;
+    frame_close_ret(c);
+    c->icount += 3;
+    return 1;
+}
+
+/* A run of calls to one routine, each with its arguments loaded and pushed
+ * exactly as the original does (the registers reach the callee as they
+ * are) and the arguments dropped by ADD SP after it. */
+typedef struct { uint8_t kind, reg; uint16_t v; } st3_push;
+#define ST3_NONE { 0, 0, 0 }
+#define ST3_IMM(r, v) { 1, r, v }        /* MOV reg, v / PUSH reg */
+#define ST3_REG(r) { 2, r, 0 }           /* PUSH reg */
+#define ST3_MEM(a) { 3, 0, a }           /* PUSH [a] */
+#define ST3_ZERO(r) { 4, r, 0 }          /* SUB reg, reg / PUSH reg */
+#define ST3_FRAME(d) { 5, 0, d }         /* PUSH [BP+d] */
+typedef struct { st3_push p[4]; uint16_t ret; } st3_call;
+
+/* The instructions from a call's first push to its CALL, inclusive. */
+static unsigned st3_call_len(const st3_call *k)
+{
+    unsigned n = 1;
+    for (int a = 0; a < 4; a++) n += k->p[a].kind == 1 || k->p[a].kind == 4 ? 2 : k->p[a].kind ? 1 : 0;
+    return n;
+}
+
+static void st3_pushes(cpu_t *c, const st3_call *k)
+{
+    for (int a = 0; a < 4; a++) {
+        const st3_push *p = &k->p[a];
+        switch (p->kind) {
+        case 0: continue;
+        case 1: c->r[p->reg] = p->v; cpu_push16(c, c->r[p->reg]); break;
+        case 2: cpu_push16(c, c->r[p->reg]); break;
+        case 3: cpu_push16(c, ds_get(c, p->v)); break;
+        case 4: c->r[p->reg] = (uint16_t)alu_sub(c, c->r[p->reg], c->r[p->reg], 1, 0); cpu_push16(c, c->r[p->reg]); break;
+        default: cpu_push16(c, bp_get(c, (int16_t)p->v)); break;
+        }
+    }
+}
+
+/* Make the n calls to callee, each followed by ADD SP, pops. The caller has
+ * made sure of room for the first call's pushes and CALL; after each call
+ * there must be room for the ADD and the next call, or for the ADD and
+ * `after` instructions after the last. 1 when they are made; 0 when the
+ * machine was left inside a call or after one (the routine returns 1). */
+static int st3_calls(machine_t *m, const st3_call *k, unsigned n, uint16_t callee, uint16_t pops, unsigned after)
+{
+    cpu_t *c = &m->cpu;
+    for (unsigned i = 0; i < n; i++) {
+        st3_pushes(c, &k[i]);
+        c->icount += st3_call_len(&k[i]) - 1;
+        if (!guest_call(m, callee, k[i].ret)) return 0;
+        const unsigned next = i + 1 < n ? st3_call_len(&k[i + 1]) : after;
+        if (!room(c, 1 + next)) { c->ip = k[i].ret; return 0; }
+        c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], pops, 1, 0);
+        c->icount += 1;
+    }
+    return 1;
+}
+
+/* START 0x054BB, world_read(path): the world file (fopen 0x0923A, mode "rb"
+ * at 0DA2h; the handle kept at [CAC8]) read by fread (0x0924E) in one fixed
+ * run - four header words, the [D33C] 16-byte target records, the slot
+ * count and its [D890] 36-byte slots, three 80h-byte tables, the 100h-byte
+ * sector grid and 2EEh bytes of NUL-separated names at DD70 - and closed
+ * (0x09164). The names are then indexed: [DC70] = DD70 and each NUL starts
+ * the next name, whose address goes to the word table at DC70 (at most
+ * 128). A file that will not open is left at that. */
+static const st3_call ST3_WORLD_READS[12] = {
+    { { ST3_REG(R_AX), ST3_IMM(R_AX, 1), ST3_IMM(R_CX, 2), ST3_IMM(R_DX, 0xD88C) }, 0x54E8 },
+    { { ST3_MEM(0xCAC8), ST3_IMM(R_AX, 1), ST3_IMM(R_CX, 2), ST3_IMM(R_DX, 0xD33C) }, 0x54FE },   /* the target count */
+    { { ST3_MEM(0xCAC8), ST3_IMM(R_AX, 1), ST3_IMM(R_CX, 2), ST3_IMM(R_DX, 0xCACE) }, 0x5514 },
+    { { ST3_MEM(0xCAC8), ST3_IMM(R_AX, 1), ST3_IMM(R_CX, 2), ST3_IMM(R_DX, 0xE084) }, 0x552A },
+    { { ST3_MEM(0xCAC8), ST3_MEM(0xD33C), ST3_IMM(R_AX, 0x10), ST3_IMM(R_AX, 0xCBDE) }, 0x5540 },   /* the targets */
+    { { ST3_MEM(0xCAC8), ST3_IMM(R_AX, 1), ST3_IMM(R_CX, 2), ST3_IMM(R_CX, 0xD890) }, 0x5556 },   /* the slot count */
+    { { ST3_MEM(0xCAC8), ST3_MEM(0xD890), ST3_IMM(R_AX, 0x24), ST3_IMM(R_AX, 0xD3BE) }, 0x556C },   /* the slots */
+    { { ST3_MEM(0xCAC8), ST3_IMM(R_AX, 1), ST3_IMM(R_CX, 0x80), ST3_IMM(R_DX, 0xD7F6) }, 0x5582 },
+    { { ST3_MEM(0xCAC8), ST3_IMM(R_AX, 1), ST3_IMM(R_CX, 0x80), ST3_IMM(R_DX, 0xD33E) }, 0x5598 },
+    { { ST3_MEM(0xCAC8), ST3_IMM(R_AX, 1), ST3_IMM(R_CX, 0x80), ST3_IMM(R_CX, 0xD2A6) }, 0x55AE },
+    { { ST3_MEM(0xCAC8), ST3_IMM(R_AX, 0x100), ST3_IMM(R_AX, 1), ST3_IMM(R_CX, 0xCAD8) }, 0x55C4 },   /* the sector grid */
+    { { ST3_MEM(0xCAC8), ST3_IMM(R_AX, 0x2EE), ST3_IMM(R_AX, 1), ST3_IMM(R_AX, 0xDD70) }, 0x55DA },   /* the names */
+};
+
+static int start_world_read(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = 0x54BB;
+    if (!room(c, 8)) return 0;
+    frame_open(c, 4);
+    cpu_push16(c, c->r[R_SI]);
+    c->r[R_AX] = 0x0DA2;                                          /* "rb" */
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, bp_get(c, 4));
+    c->icount += 7;
+    if (!guest_call(m, 0x923A, AT(0x11))) return 1;
+    ST2_NEED(13, AT(0x11));
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    ds_put(c, 0xCAC8, c->r[R_AX]);
+    alu_logic(c, c->r[R_AX], 1);
+    c->icount += 5;
+    if (c->flags & F_ZF) { c->icount += 1; goto out; }            /* no file */
+    if (!st3_calls(m, ST3_WORLD_READS, 12, 0x924E, 8, 2)) return 1;
+    cpu_push16(c, ds_get(c, 0xCAC8));
+    c->icount += 1;
+    if (!guest_call(m, 0x9164, AT(0x129))) return 1;              /* fclose */
+    ST2_NEED(4, AT(0x129));
+    c->r[R_BX] = cpu_pop16(c);
+    ds_put(c, 0xDC70, 0xDD70);
+    bp_put(c, -2, 1);                                             /* the next name's index */
+    bp_put(c, -4, 0);                                             /* the byte */
+    c->icount += 4;
+    for (;;) {                                                    /* 0x055F5 */
+        ST2_NEED(17, AT(0x13A));                                  /* a byte, or the last and the RET */
+        c->r[R_BX] = bp_get(c, -4);
+        alu_sub(c, ds_get8(c, (uint16_t)(c->r[R_BX] + 0xDD70)), 0, 0, 0);
+        c->icount += 3;
+        if (c->flags & F_ZF) {                                    /* a NUL */
+            alu_sub(c, bp_get(c, -2), 0x80, 1, 0);
+            c->icount += 2;
+            if (!x86_cond(c, 0xD)) {                              /* room in the table */
+                c->r[R_BX] = (uint16_t)alu_add(c, c->r[R_BX], 0xDD71, 1, 0);
+                c->r[R_SI] = x86_shift(c, 4, bp_get(c, -2), 1, 1);
+                ds_put(c, (uint16_t)(c->r[R_SI] + 0xDC70), c->r[R_BX]);
+                bp_put(c, -2, (uint16_t)alu_inc(c, bp_get(c, -2), 1));
+                c->icount += 5;
+            }
+        }
+        bp_put(c, -4, (uint16_t)alu_inc(c, bp_get(c, -4), 1));
+        alu_sub(c, bp_get(c, -4), 0x2EE, 1, 0);
+        c->icount += 3;
+        if (!x86_cond(c, 0xC)) break;
+    }
+out:                                                              /* 0x05620 */
+    c->r[R_SI] = cpu_pop16(c);
+    c->icount += 1;
+    frame_close_ret(c);
+    c->icount += 3;
+    return 1;
+}
+
+/* START 0x07D71, the terrain tables (the 3DG file): opened (fopen 0x0923A,
+ * mode at 1088h; the handle at [B39E]) and checked for its "22" mark (one
+ * fread of a word into [104C]); then fread fills the level-4 map (10h bytes
+ * at BAA0), the level-3 map (100h at B9A0) and three 200h-byte tables (B7A0,
+ * B5A0, B3A0), and the file is closed (0x09164). Without the file the
+ * level-4 map becomes 0-15 and the rest is cleared (memset 0x0963E); with a
+ * wrong mark the file is closed and nothing is read. AX is then 0, otherwise
+ * what fclose answered. */
+static const st3_call ST3_TERRAIN_CLEARS[4] = {
+    { { ST3_IMM(R_AX, 0x100), ST3_ZERO(R_AX), ST3_IMM(R_CX, 0xB9A0), ST3_NONE }, 0x7DAE },
+    { { ST3_IMM(R_AX, 0x200), ST3_ZERO(R_CX), ST3_IMM(R_DX, 0xB7A0), ST3_NONE }, 0x7DBF },
+    { { ST3_IMM(R_AX, 0x200), ST3_ZERO(R_CX), ST3_IMM(R_DX, 0xB5A0), ST3_NONE }, 0x7DD0 },
+    { { ST3_IMM(R_AX, 0x200), ST3_ZERO(R_AX), ST3_IMM(R_CX, 0xB3A0), ST3_NONE }, 0x7DE1 },
+};
+static const st3_call ST3_TERRAIN_MARK = { { ST3_REG(R_AX), ST3_IMM(R_AX, 1), ST3_IMM(R_AX, 2), ST3_IMM(R_AX, 0x104C) }, 0x7DF9 };
+static const st3_call ST3_TERRAIN_READS[5] = {
+    { { ST3_MEM(0xB39E), ST3_IMM(R_AX, 0x10), ST3_IMM(R_AX, 1), ST3_IMM(R_CX, 0xBAA0) }, 0x7E21 },
+    { { ST3_MEM(0xB39E), ST3_IMM(R_AX, 0x100), ST3_IMM(R_AX, 1), ST3_IMM(R_CX, 0xB9A0) }, 0x7E37 },
+    { { ST3_MEM(0xB39E), ST3_IMM(R_AX, 0x200), ST3_IMM(R_CX, 1), ST3_IMM(R_DX, 0xB7A0) }, 0x7E4D },
+    { { ST3_MEM(0xB39E), ST3_IMM(R_AX, 0x200), ST3_IMM(R_CX, 1), ST3_IMM(R_DX, 0xB5A0) }, 0x7E63 },
+    { { ST3_MEM(0xB39E), ST3_IMM(R_AX, 0x200), ST3_IMM(R_AX, 1), ST3_IMM(R_AX, 0xB3A0) }, 0x7E79 },
+};
+
+static int start_terrain_tables(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = 0x7D71;
+    if (!room(c, 7)) return 0;
+    frame_open(c, 6);
+    c->r[R_AX] = 0x1088;
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, bp_get(c, 4));
+    c->icount += 6;
+    if (!guest_call(m, 0x923A, AT(0x10))) return 1;
+    ST2_NEED(13, AT(0x10));
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    ds_put(c, 0xB39E, c->r[R_AX]);
+    alu_logic(c, c->r[R_AX], 1);
+    c->icount += 5;
+    if (c->flags & F_ZF) {                                        /* no file: a plain level-4 map */
+        bp_put(c, -2, c->r[R_AX]);
+        c->icount += 1;
+        for (;;) {                                                /* 0x07D8D */
+            ST2_NEED(13, AT(0x1C));                               /* a byte, or the last and the first clear's CALL */
+            set_r8(c, R_AL, bp_get8(c, -2));
+            c->r[R_BX] = bp_get(c, -2);
+            ds_put8(c, (uint16_t)(c->r[R_BX] + 0xBAA0), get_r8(c, R_AL));
+            bp_put(c, -2, (uint16_t)alu_inc(c, bp_get(c, -2), 1));
+            alu_sub(c, bp_get(c, -2), 0x10, 1, 0);
+            c->icount += 6;
+            if (!x86_cond(c, 0xC)) break;
+        }
+        if (!st3_calls(m, ST3_TERRAIN_CLEARS, 4, 0x963E, 6, 5)) return 1;
+        goto nothing;
+    }
+    if (!st3_calls(m, &ST3_TERRAIN_MARK, 1, 0x924E, 8, 10)) return 1;
+    alu_sub(c, ds_get(c, 0x104C), 0x3232, 1, 0);                  /* "22" */
+    c->icount += 2;
+    if (!(c->flags & F_ZF)) {                                     /* not the file: closed */
+        cpu_push16(c, ds_get(c, 0xB39E));
+        c->icount += 1;
+        if (!guest_call(m, 0x9164, AT(0x9A))) return 1;
+        ST2_NEED(7, AT(0x9A));
+        c->r[R_BX] = cpu_pop16(c);
+        c->icount += 2;                                           /* POP and the JMP */
+        goto nothing;
+    }
+    if (!st3_calls(m, ST3_TERRAIN_READS, 5, 0x924E, 8, 2)) return 1;
+    cpu_push16(c, ds_get(c, 0xB39E));
+    c->icount += 1;
+    if (!guest_call(m, 0x9164, AT(0x112))) return 1;
+    ST2_NEED(4, AT(0x112));
+    c->r[R_BX] = cpu_pop16(c);
+    c->icount += 1;
+    goto out;
+nothing:                                                          /* 0x07DE4 */
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+    c->icount += 2;
+out:                                                              /* 0x07E84 */
+    frame_close_ret(c);
+    c->icount += 3;
+    return 1;
+}
+
+/* END 0x00E82, put the icon's backdrop back: the 30h by 28h rectangle saved
+ * at (0, A0h) on page 2 is copied to the icon's place ([55AE], [55B0]) on
+ * page 1 and then on page 0, by the driver's copy (5FA:24CC: source page,
+ * x, y, destination page, x, y, width, height). SI is kept. */
+static int end_icon_restore(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = 0x0E82;
+    if (!room(c, 16)) return 0;
+    cpu_push16(c, c->r[R_SI]);
+    c->r[R_AX] = 0x0028;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_CX] = 0x0030;
+    cpu_push16(c, c->r[R_CX]);
+    cpu_push16(c, ds_get(c, 0x55B0));
+    cpu_push16(c, ds_get(c, 0x55AE));
+    c->r[R_DX] = 0x0001;                                          /* to page 1 */
+    cpu_push16(c, c->r[R_DX]);
+    c->r[R_DX] = 0x00A0;
+    cpu_push16(c, c->r[R_DX]);
+    c->r[R_BX] = (uint16_t)alu_sub(c, c->r[R_BX], c->r[R_BX], 1, 0);
+    cpu_push16(c, c->r[R_BX]);
+    c->r[R_SI] = 0x0002;                                          /* from page 2 */
+    cpu_push16(c, c->r[R_SI]);
+    c->icount += 15;
+    if (!guest_call_far(m, AT(0x20), AT(0x25))) return 1;
+    ST2_NEED(14, AT(0x25));
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x10, 1, 0);
+    c->r[R_AX] = 0x0028;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0x0030;
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, ds_get(c, 0x55B0));
+    cpu_push16(c, ds_get(c, 0x55AE));
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);   /* to page 0 */
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_CX] = 0x00A0;
+    cpu_push16(c, c->r[R_CX]);
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, c->r[R_SI]);
+    c->icount += 13;
+    if (!guest_call_far(m, AT(0x41), AT(0x46))) return 1;
+    ST2_NEED(3, AT(0x46));
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x10, 1, 0);
+    c->r[R_SI] = cpu_pop16(c);
+    c->icount += 3;
+    near_ret(c);
+    return 1;
+}
+
+/* START 0x098FE, _filbuf(stream): the C runtime's refill of a stream's
+ * buffer. A stream not open for reading (flags 83h clear), a string (40h)
+ * or one writing (2: then marked with the error flag 20h) answers FFFFh.
+ * Otherwise it is marked reading (1), given a buffer (getbuf 0x0A4DE) when
+ * it has none and is not unbuffered (flags 0Ch, or 1 in its second-table
+ * entry), and the buffer is read full from its handle (0x0A230, the size
+ * from the second table). Nothing read marks the end (10h), an error the
+ * error flag (20h): the count is cleared and the answer is FFFFh. Otherwise
+ * the count is what was read less one and the answer the first byte, the
+ * next pointer past it; a device open for reading and writing whose stream
+ * is not marks the second-table entry with 20h. */
+static int start_filbuf(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = 0x98FE;
+    if (!room(c, 29)) return 0;                                   /* the longest way to a call or the return */
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->r[R_DI]);
+    c->r[R_SI] = bp_get(c, 4);
+    const uint16_t si = c->r[R_SI];
+    uint8_t fl = ds_get8(c, (uint16_t)(si + 6));
+    set_r8(c, R_AL, fl);
+    alu_logic(c, fl & 0x83, 0);
+    c->icount += 8;
+    if (c->flags & F_ZF) goto none;                               /* not open */
+    alu_logic(c, fl & 0x40, 0);
+    c->icount += 2;
+    if (!(c->flags & F_ZF)) goto none;                            /* a string */
+    alu_logic(c, fl & 0x02, 0);
+    c->icount += 2;
+    if (!(c->flags & F_ZF)) {                                     /* writing: an error */
+        const uint16_t at = (uint16_t)(si + 6);
+        ds_put8(c, at, (uint8_t)alu_logic(c, ds_get8(c, at) | 0x20, 0));
+        c->icount += 2;
+        goto none;
+    }
+    fl = (uint8_t)alu_logic(c, fl | 0x01, 0);
+    set_r8(c, R_AL, fl);
+    ds_put8(c, (uint16_t)(si + 6), fl);
+    c->r[R_DI] = (uint16_t)alu_sub(c, si, 0xAEA6, 1, 0);
+    c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], 0xAF46, 1, 0);  /* the second table's entry */
+    alu_logic(c, fl & 0x0C, 0);
+    c->icount += 7;
+    if (c->flags & F_ZF) {
+        alu_logic(c, ds_get8(c, c->r[R_DI]) & 0x01, 0);
+        c->icount += 2;
+        if (c->flags & F_ZF) {                                    /* no buffer yet */
+            cpu_push16(c, c->r[R_SI]);
+            c->icount += 1;
+            if (!guest_call(m, 0xA4DE, AT(0x33))) return 1;
+            ST2_NEED(9, AT(0x33));
+            c->r[R_AX] = cpu_pop16(c);
+            c->icount += 1;
+        }
+    }
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_SI] + 4));           /* 0x09932: read the buffer full */
+    ds_put(c, c->r[R_SI], c->r[R_AX]);
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_DI] + 2)));
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_BX] = (uint16_t)alu_logic(c, 0, 1);
+    set_r8(c, R_BL, ds_get8(c, (uint16_t)(c->r[R_SI] + 7)));
+    cpu_push16(c, c->r[R_BX]);
+    c->icount += 7;
+    if (!guest_call(m, 0xA230, AT(0x46))) return 1;
+    ST2_NEED(24, AT(0x46));
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0);
+    alu_logic(c, c->r[R_AX], 1);
+    c->icount += 3;
+    {
+        const uint16_t at = (uint16_t)(c->r[R_SI] + 6);
+        if (c->flags & F_ZF) {                                    /* nothing: the end */
+            ds_put8(c, at, (uint8_t)alu_logic(c, ds_get8(c, at) | 0x10, 0));
+            c->icount += 1;
+            goto empty;
+        }
+        alu_sub(c, c->r[R_AX], 0xFFFF, 1, 0);
+        c->icount += 2;
+        if (c->flags & F_ZF) {                                    /* an error */
+            ds_put8(c, at, (uint8_t)alu_logic(c, ds_get8(c, at) | 0x20, 0));
+            c->icount += 2;
+            goto empty;
+        }
+    }
+    c->r[R_BX] = (uint16_t)((ds_get8(c, (uint16_t)(c->r[R_BX] + 0xAE61)) << 8) | (c->r[R_BX] & 0xFF));   /* mov bh, [bx+AE61] */
+    set_r8(c, R_BH, (uint8_t)alu_logic(c, get_r8(c, R_BH) & 0x82, 0));
+    alu_sub(c, get_r8(c, R_BH), 0x82, 0, 0);
+    c->icount += 4;
+    if (c->flags & F_ZF) {                                        /* a device open both ways */
+        set_r8(c, R_BH, ds_get8(c, (uint16_t)(c->r[R_SI] + 6)));
+        alu_logic(c, get_r8(c, R_BH) & 0x82, 0);
+        c->icount += 3;
+        if (c->flags & F_ZF) {
+            ds_put8(c, c->r[R_DI], (uint8_t)alu_logic(c, ds_get8(c, c->r[R_DI]) | 0x20, 0));
+            c->icount += 1;
+        }
+    }
+    c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1);             /* 0x09981 */
+    ds_put(c, (uint16_t)(c->r[R_SI] + 2), c->r[R_AX]);
+    c->r[R_BX] = ds_get(c, c->r[R_SI]);
+    c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);
+    set_r8(c, R_AL, ds_get8(c, c->r[R_BX]));
+    c->r[R_BX] = (uint16_t)alu_inc(c, c->r[R_BX], 1);
+    ds_put(c, c->r[R_SI], c->r[R_BX]);
+    c->icount += 7;
+    goto out;
+empty:                                                            /* 0x09960 */
+    ds_put(c, (uint16_t)(c->r[R_SI] + 2), 0);
+    c->icount += 1;
+none:                                                             /* 0x09965 */
+    c->r[R_AX] = 0xFFFF;
+    c->icount += 2;
+out:                                                              /* 0x0998E */
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 4;
+    near_ret(c);
+    return 1;
+}
+
+/* START 0x09164, fclose(stream): FFFFh for a string stream (40h) or one not
+ * open (83h); otherwise the stream is flushed (fflush 0x09C32, its answer
+ * the result), its buffer released (0x09A72) and its handle closed
+ * (0x0A210; a failure makes the result FFFFh). A temporary file (its number
+ * in the second table's word +4) is then removed (0x0A4B8; FFFFh when that
+ * fails): its name is the prefix at AE88, a "\" (AE8A) when the prefix does
+ * not start with one, and the number in decimal (itoa 0x094FA). The
+ * stream's flags are cleared. */
+static int start_fclose(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = 0x9164;
+    if (!room(c, 19)) return 0;
+    frame_open(c, 0x0E);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_SI]);
+    c->r[R_DI] = 0xFFFF;
+    c->r[R_SI] = bp_get(c, 4);
+    alu_logic(c, ds_get8(c, (uint16_t)(c->r[R_SI] + 6)) & 0x40, 0);
+    c->icount += 9;
+    if (!(c->flags & F_ZF)) { c->icount += 1; goto out; }         /* a string */
+    alu_logic(c, ds_get8(c, (uint16_t)(c->r[R_SI] + 6)) & 0x83, 0);
+    c->icount += 2;
+    if (c->flags & F_ZF) { c->icount += 1; goto out; }            /* not open */
+    cpu_push16(c, c->r[R_SI]);
+    c->icount += 1;
+    if (!guest_call(m, 0x9C32, AT(0x24))) return 1;               /* fflush */
+    ST2_NEED(8, AT(0x24));
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 2, 1, 0);
+    c->r[R_DI] = c->r[R_AX];
+    c->r[R_BX] = (uint16_t)alu_sub(c, c->r[R_SI], 0xAEA6, 1, 0);
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0xAF4A));      /* the temporary file's number */
+    bp_put(c, -4, c->r[R_AX]);
+    cpu_push16(c, c->r[R_SI]);
+    c->icount += 7;
+    if (!guest_call(m, 0x9A72, AT(0x3A))) return 1;               /* release the buffer */
+    ST2_NEED(5, AT(0x3A));
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 2, 1, 0);
+    set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_SI] + 7)));
+    set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 4;
+    if (!guest_call(m, 0xA210, AT(0x46))) return 1;               /* close the handle */
+    ST2_NEED(12, AT(0x46));
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 2, 1, 0);
+    alu_logic(c, c->r[R_AX], 1);
+    c->icount += 3;
+    if (x86_cond(c, 0xC)) goto failed;
+    alu_sub(c, bp_get(c, -4), 0, 1, 0);
+    c->icount += 2;
+    if (c->flags & F_ZF) goto out;                                /* not a temporary file */
+    c->r[R_AX] = 0xAE88;                                          /* the name: the prefix ... */
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)(c->r[R_BP] - 0x0E);
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 4;
+    if (!guest_call(m, 0x94AC, AT(0x5E))) return 1;               /* strcpy */
+    ST2_NEED(11, AT(0x5E));
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 4, 1, 0);
+    c->r[R_AX] = (uint16_t)(c->r[R_BP] - 0x0C);
+    bp_put(c, -2, c->r[R_AX]);                                    /* where the number goes */
+    alu_sub(c, bp_get8(c, -0x0E), 0x5C, 0, 0);
+    c->icount += 5;
+    if (!(c->flags & F_ZF)) {                                     /* ... a "\" when it has none ... */
+        c->r[R_AX] = 0xAE8A;
+        cpu_push16(c, c->r[R_AX]);
+        c->r[R_AX] = (uint16_t)(c->r[R_BP] - 0x0E);
+        cpu_push16(c, c->r[R_AX]);
+        c->icount += 4;
+        if (!guest_call(m, 0x946C, AT(0x78))) return 1;           /* strcat */
+        ST2_NEED(7, AT(0x78));
+        c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 4, 1, 0);
+        c->icount += 2;
+    } else {
+        bp_put(c, -2, (uint16_t)alu_dec(c, bp_get(c, -2), 1));
+        c->icount += 1;
+    }
+    c->r[R_AX] = 0x000A;                                          /* 0x091E5: ... and the number */
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, bp_get(c, -2));
+    cpu_push16(c, bp_get(c, -4));
+    c->icount += 4;
+    if (!guest_call(m, 0x94FA, AT(0x8E))) return 1;               /* itoa */
+    ST2_NEED(4, AT(0x8E));
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0);
+    c->r[R_AX] = (uint16_t)(c->r[R_BP] - 0x0E);
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 3;
+    if (!guest_call(m, 0xA4B8, AT(0x98))) return 1;               /* remove */
+    ST2_NEED(11, AT(0x98));
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 2, 1, 0);
+    alu_logic(c, c->r[R_AX], 1);
+    c->icount += 3;
+    if (c->flags & F_ZF) goto out;
+failed:                                                           /* 0x09203 */
+    c->r[R_DI] = 0xFFFF;
+    c->icount += 1;
+out:                                                              /* 0x09206 */
+    ds_put8(c, (uint16_t)(c->r[R_SI] + 6), 0);
+    c->r[R_AX] = c->r[R_DI];
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->icount += 4;
+    frame_close_ret(c);
+    c->icount += 3;
+    return 1;
+}
+
+/* START 0x0924E, fread(buf, size, n, stream): size * n bytes (the low word
+ * of the product; none: the answer is 0) into buf. While some are wanted:
+ * a stream with a buffer (flags 0Ch, or 1 in its second-table entry) that
+ * holds bytes gives them by memcpy (0x09612), as many as it holds or as are
+ * wanted; otherwise, with at least a buffer's size wanted (the second
+ * table's word +2, or 200h for a stream without one), whole buffers' worth
+ * are read straight from the handle (0x0A230; nothing read marks the end,
+ * 10h, an error the error flag, 20h, and the reading stops); with less, one
+ * byte comes from _filbuf (0x098FE), which fills the buffer (FFFFh stops).
+ * The answer is n when all came, otherwise the whole items that did. Each
+ * turn checks the room and parks at its head; a DIV that would fault (a
+ * buffer size of 0, or a size overwritten with 0 in the stack) is left to
+ * the original. */
+static int start_fread(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = 0x924E;
+    if (!room(c, 23)) return 0;                                   /* to the loop's head, or the return */
+    frame_open(c, 4);
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->r[R_DI]);
+    c->r[R_AX] = bp_get(c, 6);
+    x86_mul16(c, bp_get(c, 8));                                   /* size * n */
+    c->r[R_CX] = c->r[R_AX];
+    c->icount += 9;
+    if (!c->r[R_CX]) { c->icount += 1; goto out; }                /* jcxz, and the JMP on */
+    bp_put(c, -2, c->r[R_AX]);                                    /* the total */
+    c->r[R_BX] = bp_get(c, 4);                                    /* where the bytes go */
+    c->r[R_SI] = bp_get(c, 0x0A);
+    c->r[R_DI] = 0xAF46;
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_SI], 0xAEA6, 1, 0);
+    c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], c->r[R_AX], 1, 0);   /* the second table's entry */
+    alu_logic(c, ds_get8(c, (uint16_t)(c->r[R_SI] + 6)) & 0x0C, 0);
+    c->icount += 9;
+    {
+        int buffered = !(c->flags & F_ZF);
+        if (!buffered) {
+            alu_logic(c, ds_get8(c, c->r[R_DI]) & 0x01, 0);
+            c->icount += 2;
+            buffered = !(c->flags & F_ZF);
+        }
+        if (buffered) { c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_DI] + 2)); c->icount += 2; }
+        else { c->r[R_AX] = 0x0200; c->icount += 1; }
+    }
+    bp_put(c, -4, c->r[R_AX]);                                    /* the buffer's size */
+    c->icount += 1;
+    for (;;) {                                                    /* 0x09289 */
+        ST2_NEED(22, AT(0x3B));                                   /* to any of the three calls */
+        alu_logic(c, ds_get8(c, (uint16_t)(c->r[R_SI] + 6)) & 0x0C, 0);
+        c->icount += 2;
+        int has_buffer = !(c->flags & F_ZF);
+        if (!has_buffer) {
+            alu_logic(c, ds_get8(c, c->r[R_DI]) & 0x01, 0);
+            c->icount += 2;
+            has_buffer = !(c->flags & F_ZF);
+        }
+        int held = 0;
+        if (has_buffer) {
+            c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_SI] + 2));   /* what the buffer holds */
+            alu_logic(c, c->r[R_AX], 1);
+            c->icount += 3;
+            held = !(c->flags & F_ZF);
+        }
+        if (held) {                                               /* copy from the buffer */
+            alu_sub(c, c->r[R_AX], c->r[R_CX], 1, 0);
+            c->icount += 2;
+            if (!(c->flags & (F_CF | F_ZF))) { c->r[R_AX] = c->r[R_CX]; c->icount += 1; }
+            cpu_push16(c, c->r[R_AX]);
+            cpu_push16(c, c->r[R_BX]);
+            cpu_push16(c, c->r[R_CX]);
+            cpu_push16(c, c->r[R_AX]);
+            cpu_push16(c, ds_get(c, c->r[R_SI]));
+            cpu_push16(c, c->r[R_BX]);
+            c->icount += 6;
+            if (!guest_call(m, 0x9612, AT(0x5D))) return 1;       /* memcpy(buf, next, k) */
+            ST2_NEED(17, AT(0x5D));
+            c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0);
+            c->r[R_CX] = cpu_pop16(c);
+            c->r[R_BX] = cpu_pop16(c);
+            c->r[R_AX] = cpu_pop16(c);
+            c->r[R_CX] = (uint16_t)alu_sub(c, c->r[R_CX], c->r[R_AX], 1, 0);
+            {
+                const uint16_t cnt = (uint16_t)(c->r[R_SI] + 2);
+                ds_put(c, cnt, (uint16_t)alu_sub(c, ds_get(c, cnt), c->r[R_AX], 1, 0));
+            }
+            c->r[R_BX] = (uint16_t)alu_add(c, c->r[R_BX], c->r[R_AX], 1, 0);
+            ds_put(c, c->r[R_SI], (uint16_t)alu_add(c, ds_get(c, c->r[R_SI]), c->r[R_AX], 1, 0));
+            c->icount += 8;
+        } else {
+            alu_sub(c, c->r[R_CX], bp_get(c, -4), 1, 0);          /* 0x092C2 */
+            c->icount += 2;
+            if (!(c->flags & F_CF)) {                             /* a buffer's worth or more: straight from the file */
+                c->r[R_DX] = (uint16_t)alu_logic(c, 0, 1);
+                c->r[R_AX] = c->r[R_CX];
+                c->icount += 2;
+                if (!bp_get(c, -4)) { c->ip = AT(0x7D); return 1; }   /* the DIV faults */
+                x86_div16(c, bp_get(c, -4));
+                c->r[R_AX] = c->r[R_CX];
+                c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_DX], 1, 0);   /* whole buffers */
+                cpu_push16(c, c->r[R_BX]);
+                cpu_push16(c, c->r[R_CX]);
+                cpu_push16(c, c->r[R_AX]);
+                cpu_push16(c, c->r[R_BX]);
+                c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);
+                set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_SI] + 7)));
+                cpu_push16(c, c->r[R_AX]);
+                c->icount += 10;
+                if (!guest_call(m, 0xA230, AT(0x91))) return 1;   /* read(handle, buf, k) */
+                ST2_NEED(19, AT(0x91));
+                c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0);
+                c->r[R_CX] = cpu_pop16(c);
+                c->r[R_BX] = cpu_pop16(c);
+                alu_logic(c, c->r[R_AX], 1);
+                c->icount += 5;
+                const uint16_t fl = (uint16_t)(c->r[R_SI] + 6);
+                if (c->flags & F_ZF) {                            /* nothing: the end */
+                    ds_put8(c, fl, (uint8_t)alu_logic(c, ds_get8(c, fl) | 0x10, 0));
+                    c->icount += 2;
+                    goto done;
+                }
+                alu_sub(c, c->r[R_AX], 0xFFFF, 1, 0);
+                c->icount += 2;
+                if (c->flags & F_ZF) {                            /* an error */
+                    ds_put8(c, fl, (uint8_t)alu_logic(c, ds_get8(c, fl) | 0x20, 0));
+                    c->icount += 1;
+                    goto done;
+                }
+                c->r[R_CX] = (uint16_t)alu_sub(c, c->r[R_CX], c->r[R_AX], 1, 0);
+                c->r[R_BX] = (uint16_t)alu_add(c, c->r[R_BX], c->r[R_AX], 1, 0);
+                c->icount += 2;
+            } else {                                              /* less: a byte through _filbuf */
+                cpu_push16(c, c->r[R_BX]);
+                cpu_push16(c, c->r[R_CX]);
+                cpu_push16(c, c->r[R_SI]);
+                c->icount += 3;
+                if (!guest_call(m, 0x98FE, AT(0xAB))) return 1;
+                ST2_NEED(19, AT(0xAB));
+                c->r[R_CX] = cpu_pop16(c);
+                c->r[R_CX] = cpu_pop16(c);
+                c->r[R_BX] = cpu_pop16(c);
+                alu_sub(c, c->r[R_AX], 0xFFFF, 1, 0);
+                c->icount += 5;
+                if (c->flags & F_ZF) goto done;
+                ds_put8(c, c->r[R_BX], get_r8(c, R_AL));
+                c->r[R_BX] = (uint16_t)alu_inc(c, c->r[R_BX], 1);
+                c->r[R_CX] = (uint16_t)alu_dec(c, c->r[R_CX], 1);
+                c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_DI] + 2));
+                bp_put(c, -4, c->r[R_AX]);                        /* the buffer's size, now that there is one */
+                c->icount += 5;
+            }
+        }
+        c->icount += 2;                                           /* the JMP to 0x092BE, and its JCXZ */
+        if (!c->r[R_CX]) goto done;
+        c->icount += 1;                                           /* jmp to the head */
+    }
+done:                                                             /* 0x09317 */
+    c->icount += 1;                                               /* jcxz */
+    if (c->r[R_CX]) {                                             /* short: the whole items that came */
+        c->r[R_AX] = bp_get(c, -2);
+        c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_CX], 1, 0);
+        c->r[R_DX] = (uint16_t)alu_logic(c, 0, 1);
+        c->icount += 3;
+        if (!bp_get(c, 6)) { c->ip = AT(0xD2); return 1; }        /* the DIV faults */
+        x86_div16(c, bp_get(c, 6));
+        c->icount += 2;
+    } else {
+        c->r[R_AX] = bp_get(c, 8);                                /* all of them: n */
+        c->icount += 1;
+    }
+out:                                                              /* 0x09328 */
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->icount += 2;
+    frame_close_ret(c);
+    c->icount += 3;
+    return 1;
+}
+
+/* START 0x0932E, fwrite(buf, size, n, stream): size * n bytes (the low word
+ * of the product; none: the answer is 0) from buf. While some are left: a
+ * stream with a buffer (flag 8, or 1 in its second-table entry) that has
+ * room takes them by memcpy (0x09612), as many as there is room for or are
+ * left; otherwise, with at least a buffer's size left (the second table's
+ * word +2, or 200h for a stream without one), a buffered stream is flushed
+ * first (fflush 0x09C32; a failure stops) and whole buffers' worth are
+ * written straight to the handle (0x0A31A; a short write or FFFFh marks the
+ * error flag, 20h, and stops); with less, one byte goes through _flsbuf
+ * (0x09992; FFFFh stops), and the buffer size is re-read (at least 1). The
+ * answer is n when all went, otherwise the whole items that did. Each turn
+ * checks the room and parks at its head; a DIV that would fault is left to
+ * the original. */
+static int start_fwrite(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = 0x932E;
+    if (!room(c, 23)) return 0;                                   /* to the loop's head, or the return */
+    frame_open(c, 4);
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->r[R_DI]);
+    c->r[R_AX] = bp_get(c, 6);
+    x86_mul16(c, bp_get(c, 8));                                   /* size * n */
+    c->r[R_CX] = c->r[R_AX];
+    c->icount += 9;
+    if (!c->r[R_CX]) { c->icount += 1; goto out; }                /* jcxz, and the JMP on */
+    bp_put(c, -2, c->r[R_AX]);                                    /* the total */
+    c->r[R_BX] = bp_get(c, 4);                                    /* where the bytes come from */
+    c->r[R_SI] = bp_get(c, 0x0A);
+    c->r[R_DI] = 0xAF46;
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_SI], 0xAEA6, 1, 0);
+    c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], c->r[R_AX], 1, 0);   /* the second table's entry */
+    alu_logic(c, ds_get8(c, (uint16_t)(c->r[R_SI] + 6)) & 0x0C, 0);
+    c->icount += 9;
+    {
+        int buffered = !(c->flags & F_ZF);
+        if (!buffered) {
+            alu_logic(c, ds_get8(c, c->r[R_DI]) & 0x01, 0);
+            c->icount += 2;
+            buffered = !(c->flags & F_ZF);
+        }
+        if (buffered) { c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_DI] + 2)); c->icount += 2; }
+        else { c->r[R_AX] = 0x0200; c->icount += 1; }
+    }
+    bp_put(c, -4, c->r[R_AX]);                                    /* the buffer's size */
+    c->icount += 1;
+    for (;;) {                                                    /* 0x09369 */
+        ST2_NEED(27, AT(0x3B));                                   /* to any of the four calls */
+        alu_logic(c, ds_get8(c, (uint16_t)(c->r[R_SI] + 6)) & 0x08, 0);
+        c->icount += 2;
+        int has_buffer = !(c->flags & F_ZF);
+        if (!has_buffer) {
+            alu_logic(c, ds_get8(c, c->r[R_DI]) & 0x01, 0);
+            c->icount += 2;
+            has_buffer = !(c->flags & F_ZF);
+        }
+        int room_left = 0;
+        if (has_buffer) {
+            c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_SI] + 2));   /* the room in the buffer */
+            alu_logic(c, c->r[R_AX], 1);
+            c->icount += 3;
+            room_left = !(c->flags & F_ZF);
+        }
+        if (room_left) {                                          /* copy into the buffer */
+            alu_sub(c, c->r[R_AX], c->r[R_CX], 1, 0);
+            c->icount += 2;
+            if (!(c->flags & (F_CF | F_ZF))) { c->r[R_AX] = c->r[R_CX]; c->icount += 1; }
+            cpu_push16(c, c->r[R_AX]);
+            cpu_push16(c, c->r[R_BX]);
+            cpu_push16(c, c->r[R_CX]);
+            cpu_push16(c, c->r[R_AX]);
+            cpu_push16(c, c->r[R_BX]);
+            cpu_push16(c, ds_get(c, c->r[R_SI]));
+            c->icount += 6;
+            if (!guest_call(m, 0x9612, AT(0x5D))) return 1;       /* memcpy(next, buf, k) */
+            ST2_NEED(19, AT(0x5D));
+            c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0);
+            c->r[R_CX] = cpu_pop16(c);
+            c->r[R_BX] = cpu_pop16(c);
+            c->r[R_AX] = cpu_pop16(c);
+            c->r[R_CX] = (uint16_t)alu_sub(c, c->r[R_CX], c->r[R_AX], 1, 0);
+            {
+                const uint16_t cnt = (uint16_t)(c->r[R_SI] + 2);
+                ds_put(c, cnt, (uint16_t)alu_sub(c, ds_get(c, cnt), c->r[R_AX], 1, 0));
+            }
+            c->r[R_BX] = (uint16_t)alu_add(c, c->r[R_BX], c->r[R_AX], 1, 0);
+            ds_put(c, c->r[R_SI], (uint16_t)alu_add(c, ds_get(c, c->r[R_SI]), c->r[R_AX], 1, 0));
+            c->icount += 9;                                       /* with the JMP */
+        } else {
+            alu_sub(c, c->r[R_CX], bp_get(c, -4), 1, 0);          /* 0x093A5 */
+            c->icount += 2;
+            if (!(c->flags & F_CF)) {                             /* a buffer's worth or more: straight to the file */
+                alu_logic(c, ds_get8(c, (uint16_t)(c->r[R_SI] + 6)) & 0x08, 0);
+                c->icount += 2;
+                int flush = !(c->flags & F_ZF);
+                if (!flush) {
+                    alu_logic(c, ds_get8(c, c->r[R_DI]) & 0x01, 0);
+                    c->icount += 2;
+                    flush = !(c->flags & F_ZF);
+                }
+                if (flush) {                                      /* empty the buffer first */
+                    cpu_push16(c, c->r[R_BX]);
+                    cpu_push16(c, c->r[R_CX]);
+                    cpu_push16(c, c->r[R_SI]);
+                    c->icount += 3;
+                    if (!guest_call(m, 0x9C32, AT(0x8D))) return 1;
+                    ST2_NEED(19, AT(0x8D));
+                    c->r[R_DX] = cpu_pop16(c);
+                    c->r[R_CX] = cpu_pop16(c);
+                    c->r[R_BX] = cpu_pop16(c);
+                    alu_logic(c, c->r[R_AX], 1);
+                    c->icount += 5;
+                    if (!(c->flags & F_ZF)) goto done;            /* it failed */
+                }
+                c->r[R_DX] = (uint16_t)alu_logic(c, 0, 1);        /* 0x093C2 */
+                c->r[R_AX] = c->r[R_CX];
+                c->icount += 2;
+                if (!bp_get(c, -4)) { c->ip = AT(0x98); return 1; }   /* the DIV faults */
+                x86_div16(c, bp_get(c, -4));
+                c->r[R_AX] = c->r[R_CX];
+                c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_DX], 1, 0);   /* whole buffers */
+                cpu_push16(c, c->r[R_AX]);
+                cpu_push16(c, c->r[R_BX]);
+                cpu_push16(c, c->r[R_CX]);
+                cpu_push16(c, c->r[R_AX]);
+                cpu_push16(c, c->r[R_BX]);
+                c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);
+                set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_SI] + 7)));
+                cpu_push16(c, c->r[R_AX]);
+                c->icount += 11;
+                if (!guest_call(m, 0xA31A, AT(0xAD))) return 1;   /* write(handle, buf, k) */
+                ST2_NEED(21, AT(0xAD));
+                c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0);
+                c->r[R_CX] = cpu_pop16(c);
+                c->r[R_BX] = cpu_pop16(c);
+                c->r[R_DX] = cpu_pop16(c);
+                alu_sub(c, c->r[R_AX], 0xFFFF, 1, 0);
+                c->icount += 6;
+                if (c->flags & F_ZF) goto error;
+                c->r[R_CX] = (uint16_t)alu_sub(c, c->r[R_CX], c->r[R_AX], 1, 0);
+                alu_sub(c, c->r[R_AX], c->r[R_DX], 1, 0);
+                c->icount += 3;
+                if (!(c->flags & F_ZF)) goto error;               /* short */
+                c->r[R_BX] = (uint16_t)alu_add(c, c->r[R_BX], c->r[R_AX], 1, 0);
+                c->icount += 2;                                   /* with the JMP */
+            } else {                                              /* 0x093F0: less: a byte through _flsbuf */
+                c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);
+                set_r8(c, R_AL, ds_get8(c, c->r[R_BX]));
+                cpu_push16(c, c->r[R_BX]);
+                cpu_push16(c, c->r[R_CX]);
+                cpu_push16(c, c->r[R_SI]);
+                cpu_push16(c, c->r[R_AX]);
+                c->icount += 6;
+                if (!guest_call(m, 0x9992, AT(0xCD))) return 1;
+                ST2_NEED(23, AT(0xCD));
+                c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 4, 1, 0);
+                c->r[R_CX] = cpu_pop16(c);
+                c->r[R_BX] = cpu_pop16(c);
+                alu_sub(c, c->r[R_AX], 0xFFFF, 1, 0);
+                c->icount += 5;
+                if (c->flags & F_ZF) goto done;
+                c->r[R_BX] = (uint16_t)alu_inc(c, c->r[R_BX], 1);
+                c->r[R_CX] = (uint16_t)alu_dec(c, c->r[R_CX], 1);
+                c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_DI] + 2));
+                alu_logic(c, c->r[R_AX], 1);
+                c->icount += 5;
+                if (c->flags & F_ZF) { c->r[R_AX] = (uint16_t)alu_inc(c, c->r[R_AX], 1); c->icount += 1; }
+                bp_put(c, -4, c->r[R_AX]);                        /* the buffer's size, now that there is one */
+                c->icount += 2;                                   /* with the JMP */
+            }
+        }
+        alu_logic(c, c->r[R_CX], 1);                              /* 0x0939F: or cx, cx */
+        c->icount += 2;
+        if (c->flags & F_ZF) { c->icount += 1; goto done; }       /* all gone */
+    }
+error:                                                            /* 0x09414 */
+    {
+        const uint16_t fl = (uint16_t)(c->r[R_SI] + 6);
+        ds_put8(c, fl, (uint8_t)alu_logic(c, ds_get8(c, fl) | 0x20, 0));
+        c->icount += 1;
+    }
+done:                                                             /* 0x09418 */
+    c->icount += 1;                                               /* jcxz */
+    if (c->r[R_CX]) {                                             /* short: the whole items that went */
+        c->r[R_AX] = bp_get(c, -2);
+        c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_CX], 1, 0);
+        c->r[R_DX] = (uint16_t)alu_logic(c, 0, 1);
+        c->icount += 3;
+        if (!bp_get(c, 6)) { c->ip = AT(0xF3); return 1; }        /* the DIV faults */
+        x86_div16(c, bp_get(c, 6));
+        c->icount += 2;
+    } else {
+        c->r[R_AX] = bp_get(c, 8);                                /* all of them: n */
+        c->icount += 1;
+    }
+out:                                                              /* 0x09429 */
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->icount += 2;
+    frame_close_ret(c);
+    c->icount += 3;
+    return 1;
+}
+
+/* START 0x05466, load a theatre's data: the name (the argument; two
+ * letters) is copied to a frame buffer, each extension in turn is copied
+ * over its third byte on (strcpy 0x094AC: the strings at 0D93h, 0D98h and
+ * 0D9Dh), and the world file (0x054BB), the terrain tables (0x07D71) and
+ * the 0x07E88 file are read by that name. */
+static int start_theatre_load(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = 0x5466;
+    static const struct { uint16_t ext, ext_ret, loader, loader_ret; } step[3] = {
+        { 0x0D93, 0x5483, 0x54BB, 0x548C },
+        { 0x0D98, 0x5498, 0x7D71, 0x54A1 },
+        { 0x0D9D, 0x54AD, 0x7E88, 0x54B6 },
+    };
+    if (!room(c, 7)) return 0;
+    frame_open(c, 0x10);
+    cpu_push16(c, bp_get(c, 4));
+    c->r[R_AX] = (uint16_t)(c->r[R_BP] - 0x10);
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 6;
+    if (!guest_call(m, 0x94AC, AT(0x10))) return 1;               /* the name */
+    ST2_NEED(7, AT(0x10));
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    c->icount += 2;
+    for (int k = 0; k < 3; k++) {
+        c->r[R_AX] = step[k].ext;                                 /* (room checked before) */
+        cpu_push16(c, c->r[R_AX]);
+        c->r[R_AX] = (uint16_t)(c->r[R_BP] - 0x0E);
+        cpu_push16(c, c->r[R_AX]);
+        c->icount += 4;
+        if (!guest_call(m, 0x94AC, step[k].ext_ret)) return 1;
+        ST2_NEED(5, step[k].ext_ret);
+        c->r[R_BX] = cpu_pop16(c);
+        c->r[R_BX] = cpu_pop16(c);
+        c->r[R_AX] = (uint16_t)(c->r[R_BP] - 0x10);
+        cpu_push16(c, c->r[R_AX]);
+        c->icount += 4;
+        if (!guest_call(m, step[k].loader, step[k].loader_ret)) return 1;
+        ST2_NEED(k < 2 ? 6 : 4, step[k].loader_ret);
+        c->r[R_BX] = cpu_pop16(c);
+        c->icount += 1;
+    }
+    frame_close_ret(c);
+    c->icount += 3;
+    return 1;
+}
+
+/* START 0x07E88, the theatre's third file (fopen 0x0923A, mode at 108Bh; the
+ * handle at [B39E]): a "11" mark (a word into [104E]; anything else closes
+ * the file), five list sizes (words at F00, each at most 20h), then for each
+ * list i and entry j the number of its points (the words from F0A, 20h to a
+ * list), and for each point three words and a byte, read 7 bytes apart into
+ * the table at BAB0 (the byte through the frame at BP-2), the entry's first
+ * point's address recorded in the word table at C85C (by i * 20h + j). A
+ * size over 20h, or the table full (offset over 0DACh), gives up at once
+ * without closing the file; AX is then 0. The file is closed at the end
+ * (fclose 0x09164, whose answer is left in AX). Every loop checks the room
+ * each turn and parks at its head. */
+static void st3_push_handle_ax(cpu_t *c, uint16_t first)
+{
+    cpu_push16(c, ds_get(c, 0xB39E));
+    c->r[R_AX] = first;
+    cpu_push16(c, c->r[R_AX]);
+}
+
+static int start_theatre_lists(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = 0x7E88;
+    if (!room(c, 7)) return 0;
+    frame_open(c, 0x0A);
+    c->r[R_AX] = 0x108B;
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, bp_get(c, 4));
+    c->icount += 6;
+    if (!guest_call(m, 0x923A, AT(0x10))) return 1;               /* fopen */
+    ST2_NEED(13, AT(0x10));
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    ds_put(c, 0xB39E, c->r[R_AX]);
+    alu_logic(c, c->r[R_AX], 1);
+    c->icount += 5;
+    if (c->flags & F_ZF) goto fail;                               /* no file */
+    cpu_push16(c, c->r[R_AX]);                                    /* fread(104E, 2, 1, file): the mark */
+    c->r[R_AX] = 1;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 2;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0x104E;
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 7;
+    if (!guest_call(m, 0x924E, AT(0x2E))) return 1;
+    ST2_NEED(11, AT(0x2E));
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0);
+    alu_sub(c, ds_get(c, 0x104E), 0x3131, 1, 0);                  /* "11" */
+    c->icount += 3;
+    if (!(c->flags & F_ZF)) {                                     /* not the file: closed */
+        cpu_push16(c, ds_get(c, 0xB39E));
+        c->icount += 1;
+        if (!guest_call(m, 0x9164, AT(0x40))) return 1;
+        ST2_NEED(7, AT(0x40));
+        c->r[R_BX] = cpu_pop16(c);
+        c->icount += 2;                                           /* POP and the JMP */
+        goto fail;
+    }
+    st3_push_handle_ax(c, 5);                                     /* fread(F00, 2, 5, file): the list sizes */
+    c->r[R_AX] = 2;
+    cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0x0F00;
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 7;
+    if (!guest_call(m, 0x924E, AT(0x56))) return 1;
+    ST2_NEED(2, AT(0x56));
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0);
+    bp_put(c, -4, 0);
+    c->icount += 2;
+    for (;;) {                                                    /* 0x07EE6: each list's point counts */
+        ST2_NEED(16, AT(0x5E));
+        c->r[R_BX] = x86_shift(c, 4, bp_get(c, -4), 1, 1);
+        alu_sub(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x0F00)), 0x20, 1, 0);
+        c->icount += 4;
+        if (!(c->flags & (F_CF | F_ZF))) goto fail;               /* over 20h entries */
+        cpu_push16(c, ds_get(c, 0xB39E));
+        c->r[R_BX] = x86_shift(c, 4, bp_get(c, -4), 1, 1);
+        cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x0F00)));
+        c->r[R_AX] = 2;
+        cpu_push16(c, c->r[R_AX]);
+        set_r8(c, R_CL, 6);
+        c->r[R_AX] = x86_shift(c, 4, bp_get(c, -4), 6, 1);
+        c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], 0x0F0A, 1, 0);
+        cpu_push16(c, c->r[R_AX]);
+        c->icount += 11;
+        if (!guest_call(m, 0x924E, AT(0x89))) return 1;           /* fread(F0A + i * 40h, 2, size, file) */
+        ST2_NEED(8, AT(0x89));
+        c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0);
+        bp_put(c, -4, (uint16_t)alu_inc(c, bp_get(c, -4), 1));
+        alu_sub(c, bp_get(c, -4), 5, 1, 0);
+        c->icount += 4;
+        if (!x86_cond(c, 0xC)) break;
+    }
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+    bp_put(c, -6, c->r[R_AX]);                                    /* the offset into the point table */
+    bp_put(c, -4, c->r[R_AX]);                                    /* i */
+    c->icount += 4;
+    for (;;) {                                                    /* 0x07FF0: each list */
+        ST2_NEED(4, AT(0x168));
+        alu_sub(c, bp_get(c, -4), 5, 1, 0);
+        c->icount += 2;
+        if (x86_cond(c, 0xD)) break;
+        bp_put(c, -8, 0);                                         /* j */
+        c->icount += 2;
+        for (;;) {                                                /* 0x07FC2: each entry */
+            ST2_NEED(15, AT(0x13A));
+            c->r[R_AX] = bp_get(c, -8);
+            c->r[R_BX] = x86_shift(c, 4, bp_get(c, -4), 1, 1);
+            alu_sub(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x0F00)), c->r[R_AX], 1, 0);
+            c->icount += 5;
+            if (c->flags & (F_CF | F_ZF)) break;                  /* the list's entries done */
+            set_r8(c, R_CL, 5);
+            c->r[R_BX] = x86_shift(c, 4, bp_get(c, -4), 5, 1);
+            c->r[R_BX] = (uint16_t)alu_add(c, c->r[R_BX], c->r[R_AX], 1, 0);
+            c->r[R_BX] = x86_shift(c, 4, c->r[R_BX], 1, 1);
+            c->r[R_AX] = (uint16_t)alu_add(c, bp_get(c, -6), 0xBAB0, 1, 0);
+            ds_put(c, (uint16_t)(c->r[R_BX] + 0xC85C), c->r[R_AX]);   /* the entry's first point */
+            bp_put(c, -0x0A, 0);                                  /* k */
+            c->icount += 10;
+            for (;;) {                                            /* 0x07F2B: each point */
+                ST2_NEED(19, AT(0xA3));
+                c->r[R_AX] = bp_get(c, -0x0A);
+                set_r8(c, R_CL, 5);
+                c->r[R_BX] = x86_shift(c, 4, bp_get(c, -4), 5, 1);
+                c->r[R_BX] = (uint16_t)alu_add(c, c->r[R_BX], bp_get(c, -8), 1, 0);
+                c->r[R_BX] = x86_shift(c, 4, c->r[R_BX], 1, 1);
+                alu_sub(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x0F0A)), c->r[R_AX], 1, 0);
+                c->icount += 8;
+                if (c->flags & (F_CF | F_ZF)) break;              /* the entry's points done */
+                alu_sub(c, bp_get(c, -6), 0x0DAC, 1, 0);
+                c->icount += 2;
+                if (!x86_cond(c, 0xE)) { c->icount += 1; goto fail; }   /* the table is full */
+                static const uint16_t field[3] = { 0xBAB0, 0xBAB2, 0xBAB4 };
+                static const uint16_t back[3] = { 0xD9, 0xF3, 0x10D };
+                for (int f = 0; f < 3; f++) {                     /* three words */
+                    st3_push_handle_ax(c, 1);
+                    c->r[R_CX] = 2;
+                    cpu_push16(c, c->r[R_CX]);
+                    c->r[R_DX] = (uint16_t)alu_add(c, bp_get(c, -6), field[f], 1, 0);
+                    cpu_push16(c, c->r[R_DX]);
+                    c->icount += 8;
+                    if (!guest_call(m, 0x924E, AT(back[f]))) return 1;
+                    ST2_NEED(f < 2 ? 10 : 9, AT(back[f]));
+                    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0);
+                    c->icount += 1;
+                }
+                st3_push_handle_ax(c, 1);                         /* and a byte */
+                c->r[R_AX] = 2;
+                cpu_push16(c, c->r[R_AX]);
+                c->r[R_AX] = (uint16_t)(c->r[R_BP] - 2);
+                cpu_push16(c, c->r[R_AX]);
+                c->icount += 7;
+                if (!guest_call(m, 0x924E, AT(0x123))) return 1;
+                ST2_NEED(7, AT(0x123));
+                c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0);
+                set_r8(c, R_AL, bp_get8(c, -2));
+                c->r[R_BX] = bp_get(c, -6);
+                ds_put8(c, (uint16_t)(c->r[R_BX] + 0xBAB6), get_r8(c, R_AL));
+                bp_put(c, -6, (uint16_t)alu_add(c, bp_get(c, -6), 7, 1, 0));
+                bp_put(c, -0x0A, (uint16_t)alu_inc(c, bp_get(c, -0x0A), 1));   /* (the JMP to 0x07F28) */
+                c->icount += 7;
+            }
+            bp_put(c, -8, (uint16_t)alu_inc(c, bp_get(c, -8), 1));   /* 0x07FBF */
+            c->icount += 1;
+        }
+        bp_put(c, -4, (uint16_t)alu_inc(c, bp_get(c, -4), 1));    /* 0x07FED */
+        c->icount += 1;
+    }
+    cpu_push16(c, ds_get(c, 0xB39E));                             /* 0x07FFD */
+    c->icount += 1;
+    if (!guest_call(m, 0x9164, AT(0x17C))) return 1;              /* fclose */
+    ST2_NEED(4, AT(0x17C));
+    c->r[R_BX] = cpu_pop16(c);
+    c->icount += 1;
+    goto out;
+fail:                                                             /* 0x07EA1 */
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+    c->icount += 2;
+out:                                                              /* 0x08005 */
     frame_close_ret(c);
     c->icount += 3;
     return 1;
@@ -19465,6 +21343,39 @@ static const recomp_override MATCHED[] = {
     { "matched", "START.EXE", START_47304, 0x0000, 0x31FA, start_draw_route_label, "place a route label", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x2901, start_cel_step, "step the transfer request animation", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x0BD4, start_draw_stores_panel, "draw the stores description panel", 1 },
+    /* START and END, third batch */
+    { "matched", "END.EXE", END_47304, 0x0000, 0x5AB3, end_format_putc, "the formatter's put-character", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x2049, end_set_pointer, "store the pointer position", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x1755, end_draw_route_label, "place a route label", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x9C32, start_fflush, "flush a stream", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0xA124, start_format_string_arg, "the formatter's string argument", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x5A96, end_format_string_arg, "the formatter's string argument", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0xA188, start_format_pad, "the formatter's padding", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x5AFA, end_format_pad, "the formatter's padding", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0xA16A, start_format_put_string, "the formatter's string output", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x5ADC, end_format_put_string, "the formatter's string output", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x8EAD, start_retrace_timer, "timer count at a retrace", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x4DA3, end_retrace_timer, "timer count at a retrace", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x8469, start_joystick_read, "read the joystick", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x43D5, end_joystick_read, "read the joystick", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x9992, start_flsbuf, "write a character to a full stream", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x54D8, end_flsbuf, "write a character to a full stream", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x885F, start_pic_row, "decode a picture row", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x47FF, end_pic_row, "decode a picture row", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x8DA4, start_timer_reload, "reload the timer", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x4C88, end_timer_reload, "reload the timer", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x046E, end_widget_hover, "light the button under the pointer", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x3B41, end_draw_lost_text, "draw the text for a pilot lost", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x28ED, end_draw_rank_badges, "draw the rank badges", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x54BB, start_world_read, "read the world file", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x7D71, start_terrain_tables, "read the terrain tables", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x0E82, end_icon_restore, "put the icon's backdrop back", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x98FE, start_filbuf, "refill a stream's buffer", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x9164, start_fclose, "close a stream", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x924E, start_fread, "read items from a stream", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x932E, start_fwrite, "write items to a stream", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x5466, start_theatre_load, "load a theatre's data", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x7E88, start_theatre_lists, "read the theatre's point lists", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x39C0, vgame_cockpit_number, "gauge number text", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x45E0, vgame_countermeasure_gauge, "countermeasure count gauge", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x4B03, vgame_cockpit_target_name, "describe a target", 1 },
