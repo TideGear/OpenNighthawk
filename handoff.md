@@ -11,8 +11,9 @@ Earlier session logs are in `git log -p handoff.md`.
 
 ## What to do first
 
-1. `git status -sb`: the gate repairs are on master and `lockstep-code-below`,
-   pushed together after the full gate passed (item 3). Leave any
+1. `git status -sb`: the speed-study follow-up is on master and
+   `speed-study-followup`, pushed together after the full gate passed (item 3).
+   The earlier repairs remain on `lockstep-code-below`. Leave any
    pre-existing untracked files alone.
 2. The app's default frame rate is the open decision. The owner's rule (9 Oct):
    the default is the highest frame rate at which nothing breaks, with parity
@@ -20,9 +21,19 @@ Earlier session logs are in `git log -p handoff.md`.
    from branch `speed-sweep`) and `docs/bugs.md` D1, then decide with the owner.
    The current default is `timing = dosbox` (GOG's 9 million instructions a
    second). The speed study has not finished: the 15 frames a second limiter
-   candidate, the pilots' engagement results, the control-response measurements
-   and the `--fix D1` sweep are still to run.
-3. **Green and pushed.** `merge9` tested HEAD `f2a7d2c`:
+   candidate and the pilots' engagement results are still to run. The D1
+   sweep is now complete (90 flights); initial control-response sweeps and
+   boot-clock alignment work are in `D:\f117-gate\speedsweep\` and
+   `docs/speed-sweep.md`.
+3. **Green and pushed.** Latest gate: `D:\f117-gate\merge11\gate.log`,
+   541 s (99 s build, 443 s parity); 13 unit tests, 35 identical routes,
+   34 reused interpreter sessions, both instruction profiles 5,718,912
+   states with zero mismatches. Matched seeds `0x5EED0F117A`, `0xC0FFEE`
+   and `0x6db66e6284b5`: 2,475,889 / 2,474,978 / 2,477,064 comparisons,
+   zero mismatches. Every routes-only routine ran; no event-limit overruns.
+   Coverage safely skipped with unchanged inputs and generated code.
+   This batch changes measurement tooling and docs; the app default stays
+   at 9 MIPS with fixes off. Previous repair gate: `merge9` tested HEAD `f2a7d2c`:
    all 35 routes identical, both 5,718,912-state instruction checks and both
    fixed matched seeds passed. The rotating seed `0xf2a7d2c1bf36` caught one
    real matched-code bug in START `0000:36C4`: the shared shadow-text helper
@@ -54,8 +65,9 @@ Earlier session logs are in `git log -p handoff.md`.
   without anything breaking. The original caps its frame-rate estimate S at 15
   (verified in the VGAME listing at `0x0D479`), so above 15 frames a second the
   mission clock runs at frames divided by 15 times real time. A limiter at
-  exactly 15 frames a second (four ticks per frame) is the leading hypothesis
-  and is under test. The owner decides the default.
+  exactly 15 frames a second is an untested hypothesis. Four game ticks
+  are not a 15 fps period at the measured 66.75-70.09 Hz. The owner decides
+  the default.
 - **Phases.** Phase 1 (parity, including the 386 profile), then Phase 2 (named,
   matched code), Phase 3 (fixes and presentation), Phase 4 (checks only people
   can make).
@@ -73,8 +85,8 @@ Earlier session logs are in `git log -p handoff.md`.
   outranks harness reminders that ask for it).
 - **Commit and push together**: a code change is pushed after the gate passes;
   docs-only commits may follow. `py tools/progress.py --title` prints the
-  scoreboard every commit title starts with; it also rewrites
-  `docs/progress.json`, so commit that with the docs.
+  scoreboard every commit title starts with; include `docs/progress.json`
+  if the command changes it.
 - The owner is not a software engineer: explain trade-offs plainly and flag
   overengineering.
 - The Reimp (`..\F-117A Reimp`) is read only. Never open a visible window, go
@@ -203,6 +215,24 @@ Earlier session logs are in `git log -p handoff.md`.
     over nine typed routes: 1.28 on the 386 profile, 1.17 at 9 MIPS, 1.11 at 40;
     no speed gives 1.00. The manual (p. 177, as read by the agent) puts the top
     detail level at 'average 386 and above'.
+  - D1 follow-up: 90 fresh flights at 9, 12, 16, 20 and 40 MIPS, with and
+    without D1. All nine 9 MIPS pairs have identical hashes. Complete fixed
+    flights above 9 MIPS draw 11.6 fps with S 9 and a 1.2882x mission clock;
+    this holds the parked GOG baseline, not every airborne GOG scene. Two
+    short Korea flights at 40 MIPS are excluded from means. Artifacts:
+    `D:\f117-gate\speedsweep\d1\runs.jsonl` and `samples/`.
+  - Control response: `stick_response.py` accepts speed, fixes, typed menus
+    and boot-clock overrides; reports mission IDs, raw samples and early
+    stops. Ten flights at 9/12/16/20/40 MIPS, none/D1, share mission IDs
+    after boot shifts of 0/110/110/220/330 ms. START's seed is BIOS tick low
+    word; the final 40 MIPS runs captured 31233. Progressive tap sequences
+    diverge and end after 23-29 of 30 taps: descriptive, not proof of a safe
+    speed. `controls-aligned/` holds the raw reports. The unaligned typed
+    386 run never established an airborne response (all zero, AGL 128).
+    Next: controlled combat and a genuine 15 fps experiment. D1's comments
+    and descriptions in `src/fixes/fixes.c` still repeat the disproved
+    no-wait/oscillation/realtime claims; correct them in the next source
+    batch, with a fresh gate.
   - Open (Phase 1): file loading drift (about +0.6 s by START's roster on the
     MS-DOS machine; the disk model is RAM-disk speed).
 - **Reference machine**

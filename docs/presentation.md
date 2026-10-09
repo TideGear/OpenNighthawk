@@ -20,11 +20,12 @@ keep their meaning, and a presentation bug can only draw the wrong picture.
 - **The original runs at a low, speed-dependent rate.** The flight model
   steps once per drawn frame and divides every per-second rate by
   S = `[0x368E]`, which the frame-rate controller clamps to at most 15
-  ([bugs.md](bugs.md) D1). At the default 9 MIPS, S is 12-13 early in the
-  strike flight and 9 from about 5 billion instructions on: about 9 steps a
-  second (8.6 measured from the step routine's entries). A faster emulated
-  CPU raises it towards 15, which is why `--fix D1` paces frames at GOG's
-  rate. 60 fps cannot come from the original drawing faster; it must come
+  ([bugs.md](bugs.md) D1). Its pacing varies with scene and flight state:
+  the nine-route study averages 16.27 drawn frames a second at 9 MIPS,
+  with mean S 14.10. D1 limits faster CPUs to about 11.6 drawn frames a
+  second and S 9, reproducing the parked GOG baseline rather than every
+  airborne scene ([speed-sweep.md](speed-sweep.md)). 60 fps cannot come
+  from the original drawing faster; it must come
   from *interpolating between its states*, 4 to 7 times. Raising S is not an
   option: the flight model is 16-bit integer and rates smaller than S round to
   zero.

@@ -90,9 +90,9 @@ Status values:
   times real time (180 in 161.66 s at 16 MIPS: 1.11, as 16.7 / 15 predicts;
   209 in 161.66 s at GOG's 9 MIPS: 1.29, with S 9 against 11.6 frames a
   second). So no setting measured here keeps the clock real. Under test: a
-  limiter at exactly 15 frames a second (4 ticks), which would hold S at its
-  clamp with the clock real; the wait's own cap is not 15 and is not what
-  holds the game there.
+  limiter at exactly 15 frames a second. Whether it would hold S at 15 and
+  keep the clock real remains untested; four of the measured 66.75-70.09 Hz
+  ticks are not a 15 fps period. The wait's own cap is not 15.
 - **Speed study (9 Oct 2026, `docs/speed-sweep.md`).** Not reproduced in the original's own loop. The frame wait at `0x0409` runs in this build (traced at 40 MIPS), and in 199 flights at 3-40 MIPS and on the 386 profile S never fell from 15 to 3. The model that predicted the swing omitted the wait. At 13 MIPS and up the frame rate settles near 16.7 and S sits at 15, so the mission clock runs about 1.11 times real time. On boot_to_flight at GOG's 9 MIPS it runs 1.29 times real time (S 9 against 11.6 frames a second). Measured against GOG's own speed, 13-14 MIPS keeps the clock within 1% and 16 MIPS and up runs it 14% slower. No speed gives real time (1.00).
 - **AI and weapons.** The launch check at VGAME `0x5046` runs only when the
   accumulator `[0x3D8A]` changes, and that accumulator is updated in the
@@ -113,6 +113,13 @@ Status values:
   mission clock within 2 and frames a second within 0.2 of GOG's at 40
   MIPS, where both engines give identical hashes; the gate plays route
   `d1_fast_machine` (the same flight with the fix) under both engines.
+- **Broader D1 sweep (9 Oct).** Ninety fresh flights at 9, 12, 16, 20 and
+  40 MIPS, with and without the fix: no swings; all nine 9 MIPS pairs have
+  identical hashes. Above 9 MIPS, complete fixed flights draw about 11.6 fps,
+  S stays at 9 and the mission clock runs at 1.2882 per real second. Most
+  unfixed airborne scenes already draw about 16.7 fps at 9 MIPS, so the fix
+  preserves the parked-jet baseline rather than GOG's pacing in every scene.
+  Results and short-flight exclusions: [speed-sweep.md](speed-sweep.md#d1-follow-up-9-october-2026).
 - **Detail.** Reimp catalogue:330-449; Reimp `docs/re/01-timing-architecture.md`.
 
 ### D2. AdLib digitised speech can hang the game

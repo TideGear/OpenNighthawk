@@ -233,6 +233,15 @@ not the recompilation:
       not silent; no fix offered). D96 is the Reimp's
       native-UI wait, not a patch for this translated START. A session recorded
       with fixes on names them in its log and replays with them.
+      The [D1 follow-up](speed-sweep.md#d1-follow-up-9-october-2026) adds 90
+      flights: no oscillation, D1 inactive hash-for-hash at 9 MIPS, but its
+      fast-machine 11.6 fps cap gives a 1.2882x mission clock rather than
+      real time. Default-speed selection still needs controlled combat
+      measurements; control-response tooling now accepts speed, fixes,
+      program-relative menus and boot-clock overrides and retains early exits.
+      Ten control flights now share mission identifiers after boot-clock
+      alignment; their progressive input sequences still diverge, so they
+      do not establish a safe speed.
 - [ ] **60+ fps and 4K presentation**, design and status in
       [presentation.md](presentation.md). The owner chose to observe and replay
       the original's draw path. Stage 0 (the observer) and Stage 1 (draw lists
