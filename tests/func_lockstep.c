@@ -225,6 +225,12 @@ static void patch_image_for(uint8_t *pristine, const recomp_override *o)
             pristine[IMAGE_PATCHES[i].linear] = IMAGE_PATCHES[i].value;
 }
 
+/* Argument words a routine compares for exactly, planted in the first argument slots in some states (the
+ * small random arguments never reach them). */
+static const struct { const char *module; uint16_t ip; int arg; uint16_t v[2]; } ARG_PLANTS[] = {
+    { "START.EXE", 0x1B37, 0, { 0x0064, 0x0065 } },     /* the map caption's kinds 64h and 65h */
+};
+
 static machine_t g_m;           /* side 1's CPU lives in a machine: matched code takes one */
 
 /* A matched routine's call into original code, run here by plain stepping:
@@ -388,6 +394,9 @@ int main(int argc, char **argv)
             uint16_t small[4];
             for (int a = 0; a < 4; a++)
                 small[a] = (s & 4) ? (uint16_t)((int)(rnd() % 3) - 1) : (uint16_t)(rnd() % 32);
+            for (unsigned pk = 0; pk < sizeof ARG_PLANTS / sizeof ARG_PLANTS[0]; pk++)
+                if (!strcmp(ARG_PLANTS[pk].module, o->module) && ARG_PLANTS[pk].ip == o->ip && (rnd() & 1))
+                    small[ARG_PLANTS[pk].arg] = ARG_PLANTS[pk].v[rnd() & 1];
             for (int k = 0; k < 2; k++)
                 setup_side(k ? &g_m.cpu : &g_cpu[0], o, cs, ip, r, seg, flags, back, s, small);
             int steps = 0;
