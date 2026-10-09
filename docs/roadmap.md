@@ -187,7 +187,11 @@ not the recompilation:
       method is in [architecture.md](architecture.md#matched-routines-phase-2).
       The resumed batches add 37 VGAME, 34 START/END and 21 small-program
       routines, checked at two 4,000-state seeds. Three unequal candidates
-      were excluded: START 0x11DB, MPS_LOGO 0x1ADC and 0x1C82.
+      were excluded: START 0x11DB, MPS_LOGO 0x1ADC and 0x1C82. Open batch:
+      the VGAME/END picture-decoder family (11ED:00AE/0127, 0x48AA/0x4923):
+      the RLE rows are green at both seeds but the LZW step breaks routes
+      (state, not clocks; walk area suspect, see handoff), so the gate is
+      red until it is fixed.
 
 ## Phase 3 - fixes and enhancements (switchable)
 

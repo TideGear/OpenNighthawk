@@ -17928,6 +17928,314 @@ static int vgame_lzw_table_reset(machine_t *m)
     return 1;
 }
 
+/* VGAME 11ED:00AE and END 0x48AA, the picture decoder's RLE and pixel loop
+ * (the Reimp's rle_byte fused with pic_decode_pixels' count loop,
+ * src/core/pic.c): in nibble mode the count is halved first, since each
+ * turn stores two pixels. The private stack at [spsave] is swapped in and
+ * DX (the next table code) loaded from [nextsave]; each turn takes one RLE
+ * byte through the LZW step below - a run left in [run] replays [last],
+ * else a fresh byte with the 90h escape (90h 00 reads as a plain 90h, any
+ * other second byte sets the run) - then stores it to ES:DI, a byte or low
+ * nibble first with the high nibble in AH, until the count runs out. DX is
+ * written back and the caller's stack restored. The step runs as a C call
+ * with its return pushed: it pops that return and comes back with the
+ * stack dirty, so a machine-run call would never reach its stop trap. The
+ * stores are written out by hand: MSVC at /O2 never finishes a loop using
+ * x86_stos. */
+typedef struct pic_lzw pic_lzw;  /* below: the loop calls the step as C, not through the machine */
+typedef struct {
+    uint16_t nibble, count, spsave, nextsave, run, last;
+    uint16_t entry, loop, call1, ret1, store, call2, ret2;
+} pic_rle;
+
+static int pic_lzw_step(machine_t *m, const pic_lzw *s);
+static int pic_rle_row(machine_t *m, const pic_rle *s, const pic_lzw *lzw)
+{
+    cpu_t *c = &m->cpu;
+    uint16_t ds = c->seg[S_DS];
+    int word = 0;                                                 /* the nibble path jumps to the exit */
+    if (!room(c, 7)) return 0;
+    alu_sub(c, mem_read8(c, phys(ds, s->nibble)), 0, 0, 0);       /* cmp [nibble], 0 */
+    if (!(c->flags & F_ZF)) {                                     /* nibble mode: halve the count */
+        const uint16_t count = s->count;
+        seg_write16(c, ds, count, x86_shift(c, 5, seg_read16(c, ds, count), 1, 1));
+        c->icount += 3;                                           /* cmp, je, shr */
+    } else {
+        c->icount += 2;                                           /* cmp, je */
+    }
+    c->r[R_AX] = seg_read16(c, ds, s->spsave);                    /* swap in the private stack */
+    seg_write16(c, ds, s->spsave, c->r[R_SP]);
+    c->r[R_SP] = c->r[R_AX];
+    c->r[R_DX] = seg_read16(c, ds, s->nextsave);
+    c->icount += 4;
+    for (;;) {
+        uint16_t es;
+        if (!room(c, 4)) { c->ip = s->loop; return 1; }           /* cmp, jne, mov/dec/call */
+        alu_sub(c, mem_read8(c, phys(ds, s->run)), 0, 0, 0);      /* cmp [run], 0 */
+        if (!(c->flags & F_ZF)) {                                 /* jne taken: replay [last] */
+            c->icount += 2;                                       /* cmp, jne */
+            goto emit;
+        }
+        c->icount += 2;                                           /* cmp, jne */
+        /* The step pops its return address and returns with the stack dirty,
+         * so a machine-run call would never reach its stop trap; it runs
+         * here as C, with its return pushed as a call would push it. By the
+         * room check the step cannot decline; a stop inside it propagates. */
+        if (!room(c, 6)) { c->ip = s->call1; return 1; }          /* the call, and the step's entry */
+        cpu_push16(c, s->ret1);
+        c->icount += 1;
+        if (!pic_lzw_step(m, lzw)) {                              /* declined: nothing ran */
+            c->r[R_SP] = (uint16_t)(c->r[R_SP] + 2);
+            c->icount -= 1;
+            c->ip = s->call1;
+            return 1;
+        }
+        ds = c->seg[S_DS];
+        if (c->ip != s->ret1) return 1;                           /* stopped inside the step */
+        if (!room(c, 4)) { c->ip = s->ret1; return 1; }           /* cmp, je, mov/call */
+        alu_sub(c, get_r8(c, R_AL), 0x90, 0, 0);                  /* cmp al, 90h */
+        if (!(c->flags & F_ZF)) {                                 /* je not taken: plain byte */
+            mem_write8(c, phys(ds, s->last), get_r8(c, R_AL));    /* [last] = al */
+            c->icount += 2 + 2;                                   /* cmp, je, mov, jmp */
+            goto store;
+        }
+        c->icount += 2;                                           /* cmp, je */
+        if (!room(c, 6)) { c->ip = s->call2; return 1; }          /* the call, and the step's entry */
+        cpu_push16(c, s->ret2);
+        c->icount += 1;
+        if (!pic_lzw_step(m, lzw)) {                              /* declined: nothing ran */
+            c->r[R_SP] = (uint16_t)(c->r[R_SP] + 2);
+            c->icount -= 1;
+            c->ip = s->call2;
+            return 1;
+        }
+        ds = c->seg[S_DS];
+        if (c->ip != s->ret2) return 1;                           /* stopped inside the step */
+        if (!room(c, 6)) { c->ip = s->ret2; return 1; }           /* or, jne, then movs to emit/store */
+        alu_op(c, 1, get_r8(c, R_AL), get_r8(c, R_AL), 0);        /* or al, al */
+        if (!(c->flags & F_ZF)) {                                 /* jne taken: a run count */
+            uint8_t al = get_r8(c, R_AL);
+            set_r8(c, R_AL, (uint8_t)alu_dec(c, al, 0));          /* dec al */
+            mem_write8(c, phys(ds, s->run), get_r8(c, R_AL));     /* [run] = al - 1 */
+            c->icount += 2 + 2;                                   /* or, jne, dec, mov */
+        } else {
+            set_r8(c, R_AL, 0x90);                                /* mov al, 90h */
+            mem_write8(c, phys(ds, s->last), get_r8(c, R_AL));
+            c->icount += 2 + 3;                                   /* or, jne, mov, mov, jmp */
+            goto store;
+        }
+emit:
+        set_r8(c, R_AL, mem_read8(c, phys(ds, s->last)));         /* mov al, [last] */
+        { const uint16_t run = s->run; const uint16_t v = mem_read8(c, phys(ds, run));
+          mem_write8(c, phys(ds, run), (uint8_t)alu_dec(c, v, 0)); }   /* dec [run] */
+        c->icount += 2;                                           /* mov, dec */
+store:
+        if (!room(c, 17)) { c->ip = s->store; return 1; }
+        alu_sub(c, mem_read8(c, phys(ds, s->nibble)), 0, 0, 0);   /* cmp [nibble], 0 */
+        if (!(c->flags & F_ZF)) {                                 /* je not taken: two nibbles */
+            set_r8(c, R_AH, get_r8(c, R_AL));                     /* mov ah, al */
+            set_r8(c, R_AL, (uint8_t)alu_op(c, 4, get_r8(c, R_AL), 0x0F, 0));
+            set_r8(c, R_AH, (uint8_t)x86_shift(c, 5, get_r8(c, R_AH), 1, 0));
+            set_r8(c, R_AH, (uint8_t)x86_shift(c, 5, get_r8(c, R_AH), 1, 0));
+            set_r8(c, R_AH, (uint8_t)x86_shift(c, 5, get_r8(c, R_AH), 1, 0));
+            set_r8(c, R_AH, (uint8_t)x86_shift(c, 5, get_r8(c, R_AH), 1, 0));
+            es = c->seg[S_ES];                                    /* stosw, by hand */
+            seg_write16(c, es, c->r[R_DI], c->r[R_AX]);
+            c->r[R_DI] = (uint16_t)(c->r[R_DI] + ((c->flags & F_DF) ? -2 : 2));
+            c->icount += 2 + 6 + 1;                               /* cmp, je, mov, and, 4 shr, stos */
+            word = 1;
+        } else {
+            es = c->seg[S_ES];                                    /* stosb, by hand */
+            mem_write8(c, phys(es, c->r[R_DI]), get_r8(c, R_AL));
+            c->r[R_DI] = (uint16_t)(c->r[R_DI] + ((c->flags & F_DF) ? -1 : 1));
+            c->icount += 2 + 1;                                   /* cmp, je, stos */
+            word = 0;
+        }
+        { const uint16_t count = s->count;
+          const uint16_t v = seg_read16(c, ds, count);            /* dec [count] */
+          seg_write16(c, ds, count, (uint16_t)alu_dec(c, v, 1));
+          c->icount += 2;                                         /* dec, jne */
+          if (c->flags & F_ZF) break; }                           /* jne not taken: out of bytes */
+    }
+    ds_put(c, s->nextsave, c->r[R_DX]);                           /* save the next table code */
+    c->r[R_AX] = seg_read16(c, ds, s->spsave);                    /* the caller's stack back */
+    seg_write16(c, ds, s->spsave, c->r[R_SP]);
+    c->r[R_SP] = c->r[R_AX];
+    c->icount += (unsigned)word + 5;                              /* the jmp on the nibble path, then mov, mov, mov, mov, ret */
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 11ED:0127 and END 0x4923, the picture decoder's code and table step
+ * (the Reimp's next_code fused with lzw_byte, src/core/pic.c): when the
+ * private stack is not at its top a stacked string byte is popped and
+ * returned (the string stack lives on the private stack itself, pushed
+ * words below the caller's return address). Otherwise width bits are
+ * assembled from [buf] past [remaining], refilling whole words through the
+ * file reader - a far call in VGAME's overlay, the [reader] vector in END -
+ * and masked to the next code. A code already in the table walks its
+ * prefix chain pushing suffixes; a new one (the KwKwK case) is the previous
+ * string plus its first byte. The table at [table] gains the entry (prefix
+ * word, suffix byte at +2), the width and mask grow past the mask, and the
+ * table resets through [reset] past the maximum width; [prev] takes the
+ * code. Returns by popping the pushed root byte and jumping to the caller.
+ * The lodsw is written out with the stores, as above. */
+struct pic_lzw {
+    uint16_t len, width, maxw, mask, buf, rem, prev, first;
+    uint16_t table;              /* prefix words; suffix bytes at +2 */
+    uint16_t bufaddr;            /* the refill buffer (mov si, ...) */
+    uint16_t stacktop;           /* cmp sp, ...: the empty private stack */
+    uint16_t reader_at;          /* END: [reader_at] holds the near reader */
+    uint16_t reset, reset_ret;
+    uint16_t entry, main, refill, reader_ret, walk;
+    int far_reader;              /* VGAME: the reader is a far call */
+};
+
+static int pic_lzw_step(machine_t *m, const pic_lzw *s)
+{
+    cpu_t *c = &m->cpu;
+    uint16_t ds = c->seg[S_DS];
+    if (!room(c, 5)) return 0;
+    c->r[R_BP] = cpu_pop16(c);                                    /* pop bp */
+    alu_sub(c, c->r[R_SP], s->stacktop, 1, 0);                    /* cmp sp, top */
+    if (!x86_cond(c, 4)) {                                        /* je not taken: stacked byte */
+        c->r[R_AX] = cpu_pop16(c);                                /* pop ax */
+        c->ip = c->r[R_BP];                                       /* jmp bp */
+        c->icount += 5;                                           /* pop, cmp, je, pop, jmp */
+        return 1;
+    }
+    c->icount += 3;                                               /* pop, cmp, je */
+    if (!room(c, 6)) { c->ip = s->main; return 1; }
+    c->r[R_BX] = seg_read16(c, ds, s->buf);                       /* mov bx, [buf] */
+    set_r8(c, R_CL, 0x10);                                        /* mov cl, 10h */
+    set_r8(c, R_CH, mem_read8(c, phys(ds, s->rem)));              /* mov ch, [remaining] */
+    set_r8(c, R_CL, (uint8_t)alu_sub(c, get_r8(c, R_CL), get_r8(c, R_CH), 0, 0));
+    c->r[R_BX] = x86_shift(c, 5, c->r[R_BX], get_r8(c, R_CL), 1); /* shr bx, cl */
+    set_r8(c, R_CL, get_r8(c, R_CH));                             /* mov cl, ch */
+    c->icount += 6;
+refill:
+    if (!room(c, 13)) { c->ip = s->refill; return 1; }
+    alu_sub(c, get_r8(c, R_CL), mem_read8(c, phys(ds, s->width)), 0, 0);
+    if (x86_cond(c, 13)) { c->icount += 2; goto buffered; }       /* jge: enough bits */
+    alu_sub(c, c->r[R_SI], seg_read16(c, ds, s->len), 1, 0);      /* cmp si, [len] */
+    if (!x86_cond(c, 2)) {                                        /* jb not taken: refill */
+        cpu_push16(c, c->r[R_BX]);
+        cpu_push16(c, c->r[R_CX]);
+        cpu_push16(c, c->r[R_DX]);
+        c->icount += 2 + 2 + 3;                                   /* cmp, jge, cmp, jb, pushes */
+        int rrc;
+        if (s->far_reader) {
+            rrc = guest_call_far(m, (uint16_t)(s->entry + 0x29), s->reader_ret);
+            if (!rrc) return 1;
+        } else {
+            rrc = guest_call(m, ds_get(c, s->reader_at), s->reader_ret);
+            if (!rrc) return 1;
+        }
+        ds = c->seg[S_DS];
+        if (!room(c, 10)) { c->ip = s->reader_ret; return 1; }
+        c->r[R_DX] = cpu_pop16(c);
+        c->r[R_CX] = cpu_pop16(c);
+        c->r[R_BX] = cpu_pop16(c);
+        c->r[R_SI] = s->bufaddr;                                  /* mov si, buffer */
+        c->icount += 4;
+    } else {
+        c->icount += 2 + 2;                                       /* cmp, jge, cmp, jb */
+    }
+    c->r[R_AX] = seg_read16(c, ds, c->r[R_SI]);                   /* lodsw, by hand */
+    c->r[R_SI] = (uint16_t)(c->r[R_SI] + ((c->flags & F_DF) ? -2 : 2));
+    seg_write16(c, ds, s->buf, c->r[R_AX]);                       /* mov [buf], ax */
+    c->r[R_AX] = x86_shift(c, 4, c->r[R_AX], get_r8(c, R_CL), 1);/* shl ax, cl */
+    c->r[R_BX] = (uint16_t)alu_op(c, 1, c->r[R_BX], c->r[R_AX], 1);   /* or bx, ax */
+    set_r8(c, R_CL, (uint8_t)alu_add(c, get_r8(c, R_CL), 0x10, 0, 0)); /* add cl, 10h */
+    c->icount += 6;                                               /* lods, mov, shl, or, add, jmp */
+    goto refill;
+buffered:
+    set_r8(c, R_CL, (uint8_t)alu_sub(c, get_r8(c, R_CL), mem_read8(c, phys(ds, s->width)), 0, 0));
+    mem_write8(c, phys(ds, s->rem), get_r8(c, R_CL));             /* [remaining] = cl - width */
+    c->r[R_AX] = c->r[R_BX];                                      /* mov ax, bx */
+    c->r[R_AX] = (uint16_t)alu_op(c, 4, c->r[R_AX], seg_read16(c, ds, s->mask), 1);
+    c->r[R_CX] = c->r[R_AX];                                      /* mov cx, ax: the code */
+    alu_sub(c, c->r[R_AX], c->r[R_DX], 1, 0);                     /* cmp ax, dx */
+    c->icount += 6;                                               /* sub, mov, mov, and, mov, cmp */
+    if (!x86_cond(c, 12)) {                                       /* jl not taken: KwKwK */
+        c->r[R_CX] = c->r[R_DX];                                  /* mov cx, dx */
+        c->r[R_AX] = seg_read16(c, ds, s->prev);                 /* mov ax, [prev] */
+        set_r8(c, R_BL, mem_read8(c, phys(ds, s->first)));       /* mov bl, [first] */
+        cpu_push16(c, c->r[R_BX]);                                /* push bx */
+        c->icount += 1 + 4;                                       /* jl, mov, mov, mov, push */
+    } else {
+        c->icount += 1;                                           /* jl taken */
+    }
+walk:
+    if (!room(c, 28)) { c->ip = s->walk; return 1; }
+    for (;;) {
+        c->r[R_BX] = c->r[R_AX];                                  /* mov bx, ax */
+        c->r[R_BX] = (uint16_t)alu_add(c, c->r[R_BX], c->r[R_AX], 1, 0);
+        c->r[R_BX] = (uint16_t)alu_add(c, c->r[R_BX], c->r[R_AX], 1, 0);
+        c->r[R_AX] = seg_read16(c, ds, (uint16_t)(c->r[R_BX] + s->table));
+        c->r[R_AX] = (uint16_t)alu_inc(c, c->r[R_AX], 1);         /* inc ax */
+        c->icount += 6;                                           /* mov, add, add, mov, inc, je */
+        if (x86_cond(c, 4)) break;                                /* je: the prefix is FFFFh */
+        c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1);         /* dec ax */
+        set_r8(c, R_BL, mem_read8(c, phys(ds, (uint16_t)(c->r[R_BX] + s->table + 2))));
+        cpu_push16(c, c->r[R_BX]);                                /* push bx */
+        c->icount += 3 + 1;                                       /* dec, mov, push, jmp */
+    }
+    set_r8(c, R_AL, mem_read8(c, phys(ds, (uint16_t)(c->r[R_BX] + s->table + 2))));
+    mem_write8(c, phys(ds, s->first), get_r8(c, R_AL));           /* [first] = the root */
+    cpu_push16(c, c->r[R_AX]);                                    /* push ax */
+    c->r[R_BX] = c->r[R_DX];                                      /* the new entry at [next] */
+    c->r[R_BX] = (uint16_t)alu_add(c, c->r[R_BX], c->r[R_DX], 1, 0);
+    c->r[R_BX] = (uint16_t)alu_add(c, c->r[R_BX], c->r[R_DX], 1, 0);
+    mem_write8(c, phys(ds, (uint16_t)(c->r[R_BX] + s->table + 2)), get_r8(c, R_AL));
+    c->r[R_AX] = seg_read16(c, ds, s->prev);
+    seg_write16(c, ds, (uint16_t)(c->r[R_BX] + s->table), c->r[R_AX]);
+    c->r[R_DX] = (uint16_t)alu_inc(c, c->r[R_DX], 1);             /* inc dx */
+    alu_sub(c, c->r[R_DX], seg_read16(c, ds, s->mask), 1, 0);    /* cmp dx, [mask] */
+    c->icount += 11;                                              /* mov, mov, push, mov, add, add, mov, mov, mov, inc, cmp */
+    if (!x86_cond(c, 14)) {                                       /* jle not taken: widen */
+        const uint16_t mask = s->mask;
+        const uint16_t v = mem_read8(c, phys(ds, s->width));
+        mem_write8(c, phys(ds, s->width), (uint8_t)alu_inc(c, v, 0));   /* inc [width] */
+        set_flag(c, F_CF, 1);                                     /* stc */
+        seg_write16(c, ds, mask, x86_shift(c, 2, seg_read16(c, ds, mask), 1, 1));
+        c->icount += 1 + 3;                                       /* jle, inc, stc, rcl */
+    } else {
+        c->icount += 1;                                           /* jle taken */
+    }
+    set_r8(c, R_AL, mem_read8(c, phys(ds, s->width)));           /* mov al, [width] */
+    alu_sub(c, get_r8(c, R_AL), mem_read8(c, phys(ds, s->maxw)), 0, 0);
+    if (!x86_cond(c, 14)) {                                       /* jle not taken: reset */
+        c->icount += 3;                                           /* mov, cmp, jle */
+        if (!guest_call(m, s->reset, s->reset_ret)) return 1;
+        ds = c->seg[S_DS];
+        if (!room(c, 4)) { c->ip = s->reset_ret; return 1; }
+    } else {
+        c->icount += 3;                                           /* mov, cmp, jle */
+    }
+    seg_write16(c, ds, s->prev, c->r[R_CX]);                      /* mov [prev], cx */
+    c->r[R_AX] = cpu_pop16(c);                                    /* pop ax: the root byte */
+    c->ip = c->r[R_BP];                                           /* jmp bp */
+    c->icount += 4;                                               /* mov, jmp, pop, jmp */
+    return 1;
+}
+
+static const pic_lzw PIC_LZW_VGAME = { 0x9686, 0x968E, 0x968F, 0x9690, 0x9694, 0x9696,
+    0x9698, 0x969A, 0xC6B4, 0x43F8, 0x989B, 0, 0x0078, 0x01D0,
+    0x0127, 0x0131, 0x0141, 0x0155, 0x0186, 1 };
+static const pic_lzw PIC_LZW_END = { 0x3F82, 0x3F8A, 0x3F8B, 0x3F8C, 0x3F90, 0x3F92,
+    0x3F94, 0x3F96, 0x2636, 0x1C77, 0x4197, 0x3F80, 0x4874, 0x49CB,
+    0x4923, 0x492D, 0x493D, 0x4950, 0x4981, 0 };
+
+static const pic_rle PIC_RLE_VGAME = { 0x9697, 0x968A, 0x9688, 0x9692, 0x968C, 0x968D,
+    0x00AE, 0x00C6, 0x00CD, 0x00D0, 0x00F5, 0x00DA, 0x00DD };
+static const pic_rle PIC_RLE_END = { 0x3F93, 0x3F86, 0x3F84, 0x3F8E, 0x3F88, 0x3F89,
+    0x48AA, 0x48C2, 0x48C9, 0x48CC, 0x48F1, 0x48D6, 0x48D9 };
+static int vgame_pic_rle(machine_t *m) { return pic_rle_row(m, &PIC_RLE_VGAME, &PIC_LZW_VGAME); }
+static int end_pic_rle(machine_t *m) { return pic_rle_row(m, &PIC_RLE_END, &PIC_LZW_END); }
+static int vgame_pic_lzw(machine_t *m) { return pic_lzw_step(m, &PIC_LZW_VGAME); }
+static int end_pic_lzw(machine_t *m) { return pic_lzw_step(m, &PIC_LZW_END); }
+
 /* VGAME 0x078FD, scene_obstacle_probe(x, y, z): the world object at a map
  * position, by 0x01007 (which looks it up and replaces it), with the
  * coordinates widened to 32 bits and scaled by 32 through the runtime's
@@ -19213,6 +19521,10 @@ static const recomp_override MATCHED[] = {
     { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x130C, dswap_setenvp, "copy the environment", 1 },
     { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x1B44, setup_setenvp, "copy the environment", 1 },
     { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x0A5E, mps_logo_setenvp, "copy the environment", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x11ED, 0x00AE, vgame_pic_rle, "the picture decoder's row (RLE) step", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x11ED, 0x0127, vgame_pic_lzw, "the picture decoder's code and table step", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x48AA, end_pic_rle, "the picture decoder's row (RLE) step", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x4923, end_pic_lzw, "the picture decoder's code and table step", 1 },
 };
 
 void matched_register(void)

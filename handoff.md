@@ -140,6 +140,32 @@ more than once, what it costs, what was optimised). State as of the evening of
   Runtime placement capacity now equals the 1,024-entry override registry:
   VGAME's matched routines plus observer hooks exceed the former 256 slots.
   The 300-entry override regression failed before the fix and passes after it.
+- **Phase 2 picture-decoder batch (VGAME 11ED:00AE/0127, END 0x48AA/0x4923):
+  in progress, NOT green, committed as work in progress.** Shared
+  `pic_rle_row` + `pic_lzw_step` in `src/matched/matched.c` (4 MATCHED rows),
+  4 PLANTS in `tests/func_lockstep.c`. RLE rows are lockstep-green at both
+  seeds (1491/1660 states seed 1, similar seed 2, 0 mismatching); the LZW step
+  is routes-only (never lockstep-testable: random SP never equals the stack
+  top) and carries a state bug with correct clocks: full-on
+  `boot_to_flight` recomp ends `ebb269036c56e77e` vs interp
+  `48a10e901505e2a9`; `F117R_NO_MATCHED=1` and `F117R_MATCHED_LIMIT=484`
+  both return `48a1`, so the translator and the other 484 routines are
+  exonerated. Forced-park bisect (since removed): park-every-body at the
+  walk matches, park after the walk (grow-check) diverges, so the defect is
+  in the walk loop / prefix-walk pushes / post-walk table writes, before the
+  grow check; extract, KwKwK setup, grow, reset call and tail are
+  exonerated. Codes and walk roots match the Reimp `pic.py` reference for
+  ~1900 adv.pic bodies, so the walk reads are right and suspicion is on the
+  walk-area writes. Next step: re-add a park at walk-found
+  (`s->walk + 0x15`: VGAME 0x019B, END 0x4996) right after the walk loop
+  exits, rebuild, run `boot_to_flight`: match blames the post-walk writes,
+  diverge blames the walk loop. Do NOT trust `F117R_SHADOW` diffs on this
+  family (devices/file positions are not snapshotted, so reader-calling
+  checks corrupt their own route) or code-stream comparisons against
+  `pic.py` (bypassed stacked calls log nothing, so holes are expected).
+  Logs: `D:\f117-gate\p2-pic-*.log`, `rt-trace3.out` (valid non-shadow
+  trace), `rt-f-interp.out`/`rt-f-recomp.out` (first divergence in
+  (2628M, 2629M], same clocks both sides).
 - **Phase 3**: 9 of 14 catalogued bug fixes. Presentation Stage 2 (sub-pixel
   re-projection, `tools/hires_subpixel.py`) and a Stage 3 study
   (`tools/interp_frame.py`) are merged (their crops and strips are in

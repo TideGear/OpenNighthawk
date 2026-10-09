@@ -146,6 +146,10 @@ static const struct { uint16_t seg, ip; uint8_t reg; uint16_t disp; uint16_t val
     { 0x0000, 0x4E5F, PLANT_ABS, 0x9912, 0x0010 },
     { 0x0000, 0x4E5F, PLANT_ABS, 0x9912, 0x0040 },
     { 0x0000, 0x4E5F, PLANT_ABS, 0x43DC, 0x0000 },   /* ... with the cycle enabled */
+    { 0x0000, 0x48AA, PLANT_ABS, 0x3F84, 0x4197 },   /* pic_rle_row: the private stack live, ... */
+    { 0x0000, 0x48AA, PLANT_ABS, 0x3F86, 0x0002 },   /* ... so the LZW step runs its body, briefly */
+    { 0x11ED, 0x00AE, PLANT_ABS, 0x9688, 0x989B },   /* pic_rle_row, VGAME's copy */
+    { 0x11ED, 0x00AE, PLANT_ABS, 0x968A, 0x0002 },
 };
 
 static const char *g_ctx = "";   /* what the comparison in progress is: " (mid-run stop)" */
