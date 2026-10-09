@@ -14815,7 +14815,7 @@ static int st2_set_dac(machine_t *m, uint16_t entry)
     c->icount += 12;
     if (!(c->flags & F_ZF)) { c->ip = S(0x83D1); return 1; }      /* gray-scale: the original's other loop (it returns without
                                                                    * popping BP) carries on */
-vsync_wait:                                                       /* 0x0838E */
+    /* 0x0838E: wait for the retrace. */
     ST2_NEED(1, S(0x838E));
     c->r[R_DX] = 0x03DA;                                          /* the CRT status port */
     c->icount += 1;
@@ -14830,7 +14830,7 @@ vsync_wait:                                                       /* 0x0838E */
     ST2_NEED(2, S(0x8396));
     c->r[R_BP] = 0;                                               /* colours written since the retrace began */
     c->icount += 2;
-write_colour:                                                     /* 0x083A8: one colour, interrupts off */
+    /* 0x083A8: one colour, interrupts off. */
     ST2_NEED(17, S(0x83A8));
     x86_cli(c);
     c->icount += 1;
@@ -16004,217 +16004,6 @@ leave:                                                            /* 0x00D60 */
     return 1;
 }
 
-/* START 0x011DB, hover_map_menu(): the pointer over the briefing map's menu. The item
- * under it (0x0393D over the table at 6D22h, count [6D21]) is compared with [D096], the
- * item before; when they differ the caption for the new item is drawn (0x01B37). A
- * highlight is a palette write (0x03517): the old item's entry is put back (an
- * overlay row, above 8, from the saved colours at 64E3h after publishing with 0x03588
- * and only when the map data it names is present in the table at CBE4h; a plain item
- * from 11C4h, unless it is the one in [B2E8]) and the new item's is set (0x01C2F first
- * for an overlay row; the colours at 11AFh or 11BEh). [D096] ends as the new item. */
-static int start_hover_map_menu(machine_t *m)
-{
-    cpu_t *c = &m->cpu;
-    if (!room(c, 10)) return 0;
-    cpu_push16(c, c->r[R_BP]);
-    c->r[R_BP] = c->r[R_SP];
-    c->r[R_SP] = (uint16_t)alu_sub(c, c->r[R_SP], 0x0006, 1, 0);
-    cpu_push16(c, c->r[R_SI]);
-    set_r8(c, R_AL, ds_get8(c, 0x6D21));
-    set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
-    cpu_push16(c, c->r[R_AX]);
-    c->r[R_AX] = 0x6D22;
-    cpu_push16(c, c->r[R_AX]);
-    c->icount += 9;
-    if (!guest_call(m, 0x393D, 0x11EF)) return 1;
-    ST2_NEED(6, 0x11EF);
-    c->r[R_BX] = cpu_pop16(c);
-    c->r[R_BX] = cpu_pop16(c);
-    bp_put8(c, -0x4, get_r8(c, R_AL));
-    set_r8(c, R_AL, ds_get8(c, 0xD096));
-    alu_sub(c, bp_get8(c, -0x4), get_r8(c, R_AL), 0, 0);
-    /* 11FA jne 0x11ff */
-    c->icount += 6;
-    if (!(c->flags & F_ZF)) goto changed;
-    ST2_NEED(1, 0x11FC);
-    c->icount += 1;                                               /* jmp: the same item as before */
-    goto fin;
-changed:                                                          /* 0x011FF */
-    ST2_NEED(4, 0x11FF);
-    set_r8(c, R_AL, bp_get8(c, -0x4));
-    set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
-    cpu_push16(c, c->r[R_AX]);
-    c->icount += 3;
-    if (!guest_call(m, 0x1B37, 0x1208)) return 1;
-    ST2_NEED(1, 0x1208);
-    c->r[R_BX] = cpu_pop16(c);
-    c->icount += 1;
-    ST2_NEED(2, 0x1209);
-    alu_sub(c, ds_get8(c, 0xD096), 0, 0, 0);
-    c->icount += 2;
-    if (c->flags & F_ZF) goto new_item;
-    ST2_NEED(2, 0x1210);
-    alu_sub(c, ds_get8(c, 0xD096), 8, 0, 0);
-    c->icount += 2;
-    if (x86_cond(c, 0x6)) goto old_plain;                         /* jbe */
-    ST2_NEED(1, 0x1217);
-    c->icount += 0;
-    if (!guest_call(m, 0x3588, 0x121A)) return 1;
-    c->icount += 0;
-    ST2_NEED(11, 0x121A);
-    set_r8(c, R_BL, ds_get8(c, 0xD096));
-    set_r8(c, R_BH, (uint8_t)alu_sub(c, get_r8(c, R_BH), get_r8(c, R_BH), 0, 0));
-    c->r[R_BX] = (uint16_t)alu_sub(c, c->r[R_BX], 0x0009, 1, 0);
-    bp_put(c, -0x6, c->r[R_BX]);
-    c->r[R_BX] = x86_shift(c, 4, c->r[R_BX], 1, 1);
-    set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + 0xB286)));
-    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);
-    c->r[R_SI] = c->r[R_AX];
-    set_r8(c, R_CL, 0x04);
-    c->r[R_SI] = x86_shift(c, 4, c->r[R_SI], get_r8(c, R_CL), 1);
-    alu_sub(c, ds_get(c, (uint16_t)(c->r[R_SI] + 0xCBE4)), 0x0000, 1, 0);
-    c->icount += 11;
-    if (!(c->flags & F_ZF)) goto old_marked;
-    ST2_NEED(6, 0x123A);
-    set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + 0xB287)));
-    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);
-    c->r[R_BX] = c->r[R_AX];
-    c->r[R_BX] = x86_shift(c, 4, c->r[R_BX], get_r8(c, R_CL), 1);
-    alu_sub(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0xCBE4)), 0x0000, 1, 0);
-    /* 1248 je 0x1285 */
-    c->icount += 6;
-    if (c->flags & F_ZF) goto new_item;
-old_marked:
-    ST2_NEED(11, 0x124A);
-    c->r[R_AX] = 0x0001;
-    cpu_push16(c, c->r[R_AX]);
-    set_r8(c, R_AL, ds_get8(c, 0xD096));
-    set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
-    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], 0x00B7, 1, 0);
-    c->r[R_CX] = c->r[R_AX];
-    c->r[R_AX] = x86_shift(c, 4, c->r[R_AX], 1, 1);
-    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], c->r[R_CX], 1, 0);
-    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], 0x64E3, 1, 0);
-    cpu_push16(c, c->r[R_AX]);
-    /* 1260 jmp 0x127e */
-    c->icount += 11;
-    goto old_restore;
-old_plain:                                                        /* 0x01262 */
-    ST2_NEED(6, 0x1262);
-    set_r8(c, R_AL, ds_get8(c, 0xB2E8));
-    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);
-    set_r8(c, R_CL, ds_get8(c, 0xD096));
-    set_r8(c, R_CH, (uint8_t)alu_sub(c, get_r8(c, R_CH), get_r8(c, R_CH), 0, 0));
-    alu_sub(c, c->r[R_AX], c->r[R_CX], 1, 0);
-    /* 126E je 0x1285 */
-    c->icount += 6;
-    if (c->flags & F_ZF) goto new_item;
-    ST2_NEED(6, 0x1270);
-    c->r[R_AX] = 0x0001;
-    cpu_push16(c, c->r[R_AX]);
-    c->r[R_AX] = 0x11C4;
-    cpu_push16(c, c->r[R_AX]);
-    c->r[R_CX] = (uint16_t)alu_sub(c, c->r[R_CX], 0x0100, 1, 0);
-    c->r[R_CX] = (uint16_t)alu_sub(c, 0, c->r[R_CX], 1, 0);
-    c->icount += 6;
-old_restore:                                                      /* 0x0127E */
-    ST2_NEED(2, 0x127E);
-    cpu_push16(c, c->r[R_CX]);
-    c->icount += 1;
-    if (!guest_call(m, 0x3517, 0x1282)) return 1;
-    ST2_NEED(1, 0x1282);
-    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x0006, 1, 0);
-    c->icount += 1;
-new_item:                                                         /* 0x01285 */
-    ST2_NEED(4, 0x1285);
-    alu_sub(c, bp_get8(c, -4), 0, 0, 0);
-    c->icount += 2;
-    if (c->flags & F_ZF) goto fin;
-    alu_sub(c, bp_get8(c, -4), 8, 0, 0);
-    c->icount += 2;
-    if (x86_cond(c, 0x6)) goto new_plain;
-    ST2_NEED(6, 0x1291);
-    set_r8(c, R_AL, bp_get8(c, -0x4));
-    set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
-    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], 0x0009, 1, 0);
-    bp_put(c, -0x6, c->r[R_AX]);
-    cpu_push16(c, c->r[R_AX]);
-    c->icount += 5;
-    if (!guest_call(m, 0x1C2F, 0x12A0)) return 1;
-    ST2_NEED(1, 0x12A0);
-    c->r[R_BX] = cpu_pop16(c);
-    c->icount += 1;
-    ST2_NEED(9, 0x12A1);
-    c->r[R_BX] = bp_get(c, -0x6);
-    c->r[R_BX] = x86_shift(c, 4, c->r[R_BX], 1, 1);
-    set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + 0xB286)));
-    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);
-    c->r[R_SI] = c->r[R_AX];
-    set_r8(c, R_CL, 0x04);
-    c->r[R_SI] = x86_shift(c, 4, c->r[R_SI], get_r8(c, R_CL), 1);
-    alu_sub(c, ds_get(c, (uint16_t)(c->r[R_SI] + 0xCBE4)), 0x0000, 1, 0);
-    /* 12B6 jne 0x12c8 */
-    c->icount += 9;
-    if (!(c->flags & F_ZF)) goto new_marked;
-    ST2_NEED(6, 0x12B8);
-    set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + 0xB287)));
-    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);
-    c->r[R_BX] = c->r[R_AX];
-    c->r[R_BX] = x86_shift(c, 4, c->r[R_BX], get_r8(c, R_CL), 1);
-    alu_sub(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0xCBE4)), 0x0000, 1, 0);
-    /* 12C6 je 0x12fd */
-    c->icount += 6;
-    if (c->flags & F_ZF) goto fin;
-new_marked:
-    ST2_NEED(9, 0x12C8);
-    c->r[R_AX] = 0x0001;
-    cpu_push16(c, c->r[R_AX]);
-    c->r[R_AX] = 0x11AF;
-    cpu_push16(c, c->r[R_AX]);
-    set_r8(c, R_AL, bp_get8(c, -0x4));
-    set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
-    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], 0x00B7, 1, 0);
-    cpu_push16(c, c->r[R_AX]);
-    /* 12D9 jmp 0x12f7 */
-    c->icount += 9;
-    goto new_draw;
-new_plain:                                                        /* 0x012DB */
-    ST2_NEED(6, 0x12DB);
-    set_r8(c, R_AL, ds_get8(c, 0xB2E8));
-    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);
-    set_r8(c, R_CL, bp_get8(c, -0x4));
-    set_r8(c, R_CH, (uint8_t)alu_sub(c, get_r8(c, R_CH), get_r8(c, R_CH), 0, 0));
-    alu_sub(c, c->r[R_AX], c->r[R_CX], 1, 0);
-    /* 12E6 je 0x12fd */
-    c->icount += 6;
-    if (c->flags & F_ZF) goto fin;
-    ST2_NEED(7, 0x12E8);
-    c->r[R_AX] = 0x0001;
-    cpu_push16(c, c->r[R_AX]);
-    c->r[R_AX] = 0x11BE;
-    cpu_push16(c, c->r[R_AX]);
-    c->r[R_CX] = (uint16_t)alu_sub(c, c->r[R_CX], 0x0100, 1, 0);
-    c->r[R_CX] = (uint16_t)alu_sub(c, 0, c->r[R_CX], 1, 0);
-    cpu_push16(c, c->r[R_CX]);
-    c->icount += 7;
-new_draw:                                                         /* 0x012F7 */
-    ST2_NEED(1, 0x12F7);
-    c->icount += 0;
-    if (!guest_call(m, 0x3517, 0x12FA)) return 1;
-    ST2_NEED(1, 0x12FA);
-    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 0x0006, 1, 0);
-    c->icount += 1;
-fin:                                                              /* 0x012FD: remember the item */
-    ST2_NEED(6, 0x12FD);
-    set_r8(c, R_AL, bp_get8(c, -4));
-    ds_put8(c, 0xD096, get_r8(c, R_AL));
-    c->r[R_SI] = cpu_pop16(c);
-    c->icount += 3;
-    frame_close_ret(c);
-    c->icount += 3;
-    return 1;
-}
-
 static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x4958, vgame_free_fall, "free fall", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD50A, vgame_waypoint_from_target, "waypoint from target", 1 },
@@ -16644,7 +16433,6 @@ static const recomp_override MATCHED[] = {
     { "matched", "START.EXE", START_47304, 0x0000, 0x31FA, start_draw_route_label, "place a route label", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x2901, start_cel_step, "step the transfer request animation", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x0BD4, start_draw_stores_panel, "draw the stores description panel", 1 },
-    { "matched", "START.EXE", START_47304, 0x0000, 0x11DB, start_hover_map_menu, "highlight the briefing map's menu item", 1 },
 };
 
 void matched_register(void)
