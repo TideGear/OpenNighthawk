@@ -107,10 +107,11 @@ more than once, what it costs, what was optimised). State as of the evening of
   `t386-calibration.log` (saved reference from `pm626cal`), and the complete
   integrated gate `D:\f117-gate\t386-final-gate.log`.
 - Matched routines: `src/matched/matched.c`, held by `tests/func_lockstep.c`
-  (`build\func_lockstep.exe --states 4000 --verbose`, about 14 minutes beside
-  fresh parity; run at
-  more than one `--seed`: adding routines shifts every routine's random
-  states). `py tools/matched_draft.py --data D:/GOG/F-117A --module VGAME.EXE
+  (`py tools/func_lockstep_par.py --states 4000 --verbose [--seed S]`, 8
+  shards, about 3 minutes; `build\func_lockstep.exe` alone takes about 20).
+  Each routine has its own random stream, so adding routines does not move
+  another's states; the gate runs three seeds (0x5EED0F117A, 0xC0FFEE and one
+  from HEAD's hash, printed in step 7c). `py tools/matched_draft.py --data D:/GOG/F-117A --module VGAME.EXE
   --ip 0xNNNN` writes a correct starting draft (equal by construction, derived
   from the executable: written outside the repo, never committed as is).
   Census: `py tools/reimp_names.py --reimp "../F-117A Reimp" --gen

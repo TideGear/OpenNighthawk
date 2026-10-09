@@ -327,9 +327,23 @@ def parallel(jobs, items, work, cost=None):
     return [value for value, _ in results]
 
 
+def rotating_seed():
+    """A matched-lockstep seed that changes with every commit gated (from HEAD's hash), so successive
+    gates test new random states beside the two fixed seeds; it is printed, so a failure reproduces."""
+    try:
+        head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True).stdout.strip()
+        return "0x" + (head[:12] or "1234")
+    except OSError:
+        return "0x1234"
+
+
+# key, executable, states, extra arguments; func* run tools/func_lockstep_par.py, the matched lockstep in
+# parallel shards (each routine has its own random stream, so the shards test what one run would).
 LOCKSTEPS = (("insn", "insn_lockstep.exe", "64", ()),
              ("insn386", "insn_lockstep.exe", "64", ("--timing386",)),
-             ("func", "func_lockstep.exe", "4000", ("--verbose",)))
+             ("func", "func_lockstep.exe", "4000", ("--verbose",)),
+             ("func2", "func_lockstep.exe", "4000", ("--verbose", "--seed", "0xC0FFEE")),
+             ("func3", "func_lockstep.exe", "4000", ("--verbose", "--seed", rotating_seed())))
 
 
 def start_locksteps(work):
@@ -338,10 +352,13 @@ def start_locksteps(work):
     procs = {}
     for key, exe_name, states, extra in LOCKSTEPS:
         exe = os.path.join(ROOT, "build", exe_name)
-        print("  $ " + '"%s" --states %s %s (in the background)' % (exe, states, " ".join(extra)))
+        cmd = [exe, "--states", states] + list(extra)
+        if key.startswith("func"):
+            cmd = [sys.executable, os.path.join(HERE, "func_lockstep_par.py"), "--exe", exe, "--jobs", "8"] + cmd[1:]
+        print("  $ " + " ".join('"%s"' % c if " " in c else c for c in cmd) + " (in the background)")
         log = open(os.path.join(work, "%s_lockstep.log" % key), "w+")
         # func --verbose: its per-routine lines name the "routes only" routines step 8 checks
-        procs[key] = (subprocess.Popen([exe, "--states", states] + list(extra), stdout=log, stderr=subprocess.STDOUT, text=True), log)
+        procs[key] = (subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, text=True), log)
     return procs
 
 
@@ -526,7 +543,11 @@ def main():
                 ("6b", "insn386", "every translated instruction under the 386 timing profile",
                  "translated instructions differ under the 386 timing profile"),
                 (7, "func", "every matched routine against the original",
-                 "matched routines differ from the original")):
+                 "matched routines differ from the original"),
+                ("7b", "func2", "every matched routine at seed 0xC0FFEE",
+                 "matched routines differ from the original at seed 0xC0FFEE"),
+                ("7c", "func3", "every matched routine at this commit's seed %s" % LOCKSTEPS[4][3][2],
+                 "matched routines differ from the original at seed %s" % LOCKSTEPS[4][3][2])):
             print("%s. %s" % (number, what))
             proc, log = lockstep[key]
             proc.wait()
