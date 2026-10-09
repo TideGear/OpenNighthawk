@@ -213,8 +213,10 @@ more than once, what it costs, what was optimised). State as of the evening of
   timer tick).
 - Sub-agents hit the account's session limit and stop mid-work (twice on 8
   Oct); inspect their worktrees for uncommitted edits before resuming.
-- MSVC at /O2 never finished compiling a loop using `x86_stos` in a matched
-  routine; write that store out by hand. PLAYER's picture decompressor still
+- MSVC at /O2 never finished compiling a loop using `x86_stos` (also
+  `x86_lods`, `x86_cmps`) in a matched routine; write those out by hand
+  (`sm4_stosb`, `sm4_step`). matched.c takes about 4.5 minutes when it
+  compiles; past 7 the compiler has stalled. PLAYER's picture decompressor still
   stalls with those stores written out: only `player_unpack` disables MSVC
   optimisation. A stalled compiler can hold its zero-byte object file after
   the parent session ends; confirm its command line before stopping it.

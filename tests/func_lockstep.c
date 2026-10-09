@@ -69,6 +69,18 @@ static int int_h(cpu_t *c, uint8_t vec)
     for (int i = 0; i < 8; i++) s->io = mix(s->io, c->r[i]);
     for (int i = 0; i < 4; i++) s->io = mix(s->io, c->seg[i]);
     s->io = mix(s->io, ((uint64_t)c->ip << 16) | c->flags);
+    /* DOS (21h) and the BIOS keyboard (16h) answer here, as port reads do:
+     * AX from the call count (a small value one time in four), and a random
+     * carry and zero flag, so both outcomes of a call are reached. Through
+     * the vector table (the image's first bytes here) a routine's DOS call
+     * went off into the image and only the routes could check what follows. */
+    if (vec == 0x21 || vec == 0x16) {
+        s->nread++;
+        const uint64_t v = mix(0x4000000ull | vec, s->nread);
+        c->r[R_AX] = (v & 0x300) ? (uint16_t)(v >> 16) : (uint16_t)((v >> 16) & 3);
+        c->flags = (uint16_t)((c->flags & ~(F_CF | F_ZF)) | ((v & 0x400) ? F_CF : 0) | ((v & 0x800) ? F_ZF : 0));
+        return 1;
+    }
     return 0;                       /* not emulated: the CPU dispatches it */
 }
 
@@ -246,6 +258,22 @@ static const struct { const char *module; uint16_t ip; int arg; uint16_t v[2]; }
 
 static machine_t g_m;           /* side 1's CPU lives in a machine: matched code takes one */
 
+/* Code the C runtime's routines share and reach by a JMP, which can lie
+ * before the routine or past its 0x300 bytes: the endings of the DOS calls
+ * (sm4_dos_end in matched.c) and the number conversion itoa and ltoa end in
+ * (sm4_ntoa). A RET there, at the caller's level, is the routine's own. */
+static const struct { const char *module; uint16_t seg, lo, hi; } SHARED_ENDINGS[] = {
+    { "VGAME.EXE", 0x0000, 0xF0CC, 0xF0F4 },
+    { "PLAYER.EXE", 0x0000, 0x186E, 0x1896 },
+    { "MPS_LOGO.EXE", 0x0146, 0x0B3E, 0x0B66 },
+    { "DSWAP.EXE", 0x0000, 0x13EA, 0x1412 },
+    { "VGAME.EXE", 0x0000, 0xF542, 0xF5A2 },
+    { "PLAYER.EXE", 0x0000, 0x1F70, 0x1FD0 },
+    { "MPS_LOGO.EXE", 0x0146, 0x1A70, 0x1AD0 },
+};
+static uint16_t g_end_lo[4], g_end_hi[4];   /* the routine's module's shared code */
+static int g_nend;
+
 /* A matched routine's call into original code, run here by plain stepping:
  * the harness has no events to service. */
 /* Step until the routine's own RET (near, or far) taken with SP at entry_sp. */
@@ -260,8 +288,10 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int far, int *steps, uint16_t
     while (*steps < 100000) {
         if (g_trace) printf("      %04X:%04X clk %llu sp %04X\n", a->seg[S_CS], a->ip, (unsigned long long)a->icount, a->r[R_SP]);
         const uint16_t here = a->ip;
-        const int inside = a->seg[S_CS] == cs && (uint16_t)(here - ip) < 0x300;
-        if (inside && (uint16_t)(here - ip) > g_reach) g_reach = (uint16_t)(here - ip);
+        const int own = a->seg[S_CS] == cs && (uint16_t)(here - ip) < 0x300;
+        if (own && (uint16_t)(here - ip) > g_reach) g_reach = (uint16_t)(here - ip);
+        int inside = own;
+        for (int k = 0; k < g_nend && !inside; k++) inside = a->seg[S_CS] == cs && here >= g_end_lo[k] && here < g_end_hi[k];
         const uint8_t op = a->mem[phys(a->seg[S_CS], a->ip)];
         const uint16_t sp_before = a->r[R_SP];
         cpu_step(a);
@@ -269,6 +299,11 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int far, int *steps, uint16_t
         ++*steps;
         const int is_ret = far ? (op == 0xCB || op == 0xCA) : (op == 0xC3 || op == 0xC2);
         if (is_ret && sp_before == entry_sp) return inside;
+        /* The C runtime's near stackavail takes its return address off into
+         * CX and returns by JMP CX: that, with the address already popped. */
+        if (!far && op == 0xFF && a->mem[phys(a->seg[S_CS], (uint16_t)(here + 1))] == 0xE1 &&
+                sp_before == (uint16_t)(entry_sp + 2) && a->ip == a->r[R_CX])
+            return inside;
     }
     return 0;
 }
@@ -279,6 +314,11 @@ static int g_ncalls;           /* guest calls made by the routine under test */
 static int g_lost;              /* a call into original code never came back */
 static int g_stopped;           /* a call into original code was stopped by the event limit, as a run loop would */
 static int g_callover;          /* a call into original code was started with the clock already past the limit */
+/* The routine's own return: the caller's address with the stack back above
+ * it. A call into original code can end the routine itself (_write's flush
+ * leaves through _write's ending on a failed write); the run stops there, as
+ * the original side does. */
+static uint16_t g_back_cs, g_back_ip, g_back_sp;
 static int step_runner(machine_t *mm)
 {
     cpu_t *c = &mm->cpu;
@@ -286,6 +326,7 @@ static int step_runner(machine_t *mm)
     if (c->icount > c->stop_at) g_callover = 1;  /* the CALL itself ran at or after the limit */
     for (int i = 0; i < 200000; i++) {
         if (c->ip == mm->trap_ip && c->r[R_SP] == mm->trap_sp && c->seg[S_CS] == mm->trap_cs) return RUN_TRAP;
+        if (c->ip == g_back_ip && c->r[R_SP] == g_back_sp && c->seg[S_CS] == g_back_cs) return RUN_SLICE;
         if (c->icount >= c->stop_at) { g_stopped = 1; return RUN_SLICE; }
         if (g_trace) printf("      (callee) %04X:%04X clk %llu sp %04X\n", c->seg[S_CS], c->ip, (unsigned long long)c->icount, c->r[R_SP]);
         cpu_step(c);
@@ -350,6 +391,11 @@ int main(int argc, char **argv)
         memcpy(g_mem[0], g_pristine, MEM_SIZE);
         memcpy(g_mem[1], g_pristine, MEM_SIZE);
         const uint16_t cs = (uint16_t)(base + o->seg), ip = o->ip;
+        g_nend = 0;
+        for (unsigned k = 0; k < sizeof SHARED_ENDINGS / sizeof SHARED_ENDINGS[0] && g_nend < 4; k++)
+            if (!strcmp(SHARED_ENDINGS[k].module, o->module) && SHARED_ENDINGS[k].seg == o->seg) {
+                g_end_lo[g_nend] = SHARED_ENDINGS[k].lo; g_end_hi[g_nend++] = SHARED_ENDINGS[k].hi;
+            }
         unsigned long long mc = 0, ms = 0, mb = 0;
         for (int s = 0; s < states; s++) {
             if (s == states / 2) {
@@ -418,6 +464,7 @@ int main(int argc, char **argv)
              * one taken with the stack back at the caller's level - and
              * accept the state only when it returns to the pushed address. */
             const uint16_t entry_sp = (uint16_t)(r[R_SP] - (o->matched == 2 ? 4 : 2));
+            g_back_cs = cs; g_back_ip = back; g_back_sp = r[R_SP];
             g_reach = 0;
             const int returned = run_to_ret(a, entry_sp, o->matched == 2, &steps, cs, ip);
             const uint16_t reach = g_reach;
@@ -439,6 +486,14 @@ int main(int argc, char **argv)
             const uint32_t self = phys(cs, ip);
             const size_t window = reach + 8u > 0x300u ? (size_t)reach + 8u : 0x300u;
             if (memcmp(g_mem[0] + self, g_pristine + self, window)) { ms++; restore(); continue; }
+            {   /* and the shared code it reaches by a JMP */
+                int over = 0;
+                for (int k = 0; k < g_nend && !over; k++) {
+                    const uint32_t lo = phys(cs, g_end_lo[k]);
+                    over = memcmp(g_mem[0] + lo, g_pristine + lo, (size_t)(uint16_t)(g_end_hi[k] - g_end_lo[k])) != 0;
+                }
+                if (over) { ms++; restore(); continue; }
+            }
             /* The event limit: a routine told it has one instruction fewer than
              * the original takes must decline. Running anyway would carry the
              * clock past a checkpoint or a frame boundary - nothing in the
@@ -483,6 +538,7 @@ int main(int argc, char **argv)
                 if (g_verbose) {
                     /* Where do the two sides part? Re-run the state with every instruction printed. */
                     memcpy(g_mem[0], g_pristine, MEM_SIZE); memcpy(g_mem[1], g_pristine, MEM_SIZE);
+                    for (int k = 0; k < 2; k++) { g_side[k].io = 0; g_side[k].nread = 0; }   /* port and DOS answers as they were */
                     setup_side(&g_cpu[0], o, cs, ip, r, seg, flags, back, s, small);
                     setup_side(&g_m.cpu, o, cs, ip, r, seg, flags, back, s, small);
                     g_trace = 1;

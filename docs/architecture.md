@@ -557,6 +557,25 @@ caught real defects:
   room is not there the routine parks and the original runs the stretch.
   Ten routines do port I/O; three of them shifted a checkpoint by two
   clocks before the rule (9 Oct 2026).
+- DOS and BIOS calls: a matched routine runs its INT instruction as
+  original code (`sm4_int`: the machine at the INT, a return trap after
+  it), so the DOS services, their stubs and time and any interrupt taken
+  inside are the original's, and its own instructions before and after
+  are the C. A call that ends the program (DOS 4Ch) is left to the
+  original: the routine stops at the INT. In the harness INT 21h and 16h
+  answer as port reads do (AX from the call count, a random carry and
+  zero flag); through the vector table, which is the image's first bytes
+  there, a DOS call used to lose the state.
+- Shared code: the C runtime's DOS calls end with a JMP to endings the
+  routines share, and itoa and ltoa end in one conversion, outside the
+  routine's 0x300 bytes. `SHARED_ENDINGS` in the harness names those
+  ranges: a RET there at the caller's level is the routine's own, and a
+  state that writes into them is skipped as a write into the routine's
+  code is. The near stackavail returns by JMP CX with its address already
+  popped, and that counts as its return. A call into original code can end
+  the routine itself (_write's flush leaves through _write's ending when a
+  write fails): its run stops at the routine's return, as the original
+  side's does.
 
 `F117R_SHADOW=FROM:TO` re-runs matched routines against the original on the
 live game in a window (a diagnostic, not a gate: device state is not in the
