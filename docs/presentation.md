@@ -70,7 +70,7 @@ Each stage is judged by a check, as in the rest of the project.
 |---|---|---|---|
 | 0 | Observer: log every call to the drawing primitives per frame | the log is identical across runs; hashes unchanged with it on | done |
 | 1 | Draw lists: a frame's primitives as a list, replayed at 320x200 | the replay reproduces the original's work and display pages bit for bit, every phase of every route | done for the windows below, in Python and in C (`src/present/drawlist.c`); unexercised branches listed below |
-| 2 | Re-draw the list at N times the resolution | N = 1 is Stage 1 exactly; at N > 1 every N x N block agrees with the N = 1 pixel wherever no edge crosses it | model polygons re-drawn from their sub-pixel vertices (`hires_subpixel.py`): N = 1 exact, flat agreement 99.96-100% before a guard, 100% after; text, sprites, HUD and 3-4% of the polygons stay scaled |
+| 2 | Re-draw the list at N times the resolution | N = 1 is Stage 1 exactly; at N > 1 every N x N block agrees with the N = 1 pixel wherever no edge crosses it | model polygons re-drawn from their sub-pixel vertices (`hires_subpixel.py`, and in C `hires.c`, live with `--present-scale N`): N = 1 exact, flat agreement 99.96-100% before a guard, 100% after; text, sprites, HUD and 3-4% of the polygons stay scaled |
 | 3 | Interpolate between consecutive draw lists to the host display rate | at a logic frame the output is exactly that frame; no in-between primitive absent from both neighbours | 320x200 study done (`interp_frame.py`, below): exact at both ends on seven windows, no violations; live path built at 320x200 (below): the feed, the presentation from the replay, and the interpolation in C, exact at both ends of 9,843 live frame pairs |
 | 4 | Pacing, vsync, a picture-age setting, HUD handling, a switch to the original picture | - | not started |
 
@@ -311,6 +311,29 @@ At N = 1 every display page is the replay's own, seeded each phase and carried (
 "Carried" seeds the pages once, as the live replay does, instead of from each phase's dumps: the fine
 detail of what a phase does not redraw then stays, so more of the picture differs from the scaled
 copy, and the horizon residue the guard restores is counted over the carried picture.
+
+### Stage 2 live (9 October 2026)
+
+`--present-scale N` (`f117run`, `f117a`, `present-scale =` in `f117a.ini`; off by default) runs the
+sub-pixel builder beside the live replay and presents the N-times picture with the scan's palette
+(the shots and `--screen` are 320N x 200N). The study's guard is applied to every picture shown. With
+interpolation, an in-between frame moves the vertices of every paired batch of equal size too
+(`INTERP_VERTICES`: camera space, projected by the original's divide), so a moved polygon is
+refilled from moved geometry; the replay state carried for the in-between frames includes the
+builder's. Strike, the whole flight, `--present interp` (checked at t = 1e-6 and 1 - 1e-6 at N = 1;
+with a scale at 1e-9, since 1e-6 of a step can move a camera-space coordinate by a rounding unit,
+which a finer grid shows: 5 of the 9,843 pairs at N = 2, 50 at N = 9):
+
+| N | polygons refilled from vertices | flat coarse pixels kept on all N x N fine pixels (rule alone), over the 9,845 logic frames | pairs exact at both ends, coarse and fine |
+|---|---|---|---|
+| 1 | 378,961 of 435,826 | 100% (247,579,281) | 9,843 of 9,843 |
+| 2 | 378,961 | 99.998% (4,898 restored by the guard) | 9,843 of 9,843 |
+| 4 | 378,961 | 99.994% (15,765 restored) | 9,843 of 9,843 |
+| 9 | 378,961 | 99.990% (24,720 restored) | 9,843 of 9,843 |
+
+At N = 1 the presented picture is the replay's own; the hashes are unchanged at every scale
+(`boot_to_flight` and strike, 54 and 177 checkpoints). N = 9 is the choice for a 4K screen: the
+picture is 2880 x 1800, and shown 4:3 (each row 1.2 times as tall) it fills the 2,160 lines.
 
 ## Stage 3: interpolation, a 320x200 study (8 October 2026)
 

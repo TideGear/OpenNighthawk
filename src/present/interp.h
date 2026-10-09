@@ -62,6 +62,16 @@ typedef struct {
 } interp_list;
 int interp_inbetween(const interp_frame *a, const interp_frame *b, const interp_pairing *p, double t,
                      interp_list *out, int *skel_b, uint64_t *stats);
+
+/* The same with flags: INTERP_VERTICES also moves the vertices ('V') of every
+ * paired batch of equal size (camera space, projected by the original's
+ * divide), so a finer grid (hires.h) refills a moved polygon from moved
+ * geometry; INTERP_EXTRAPOLATE takes t up to 2, the paired primitives moved on
+ * past b as far again as they came from a (the skeleton is b). */
+#define INTERP_VERTICES 1
+#define INTERP_EXTRAPOLATE 2
+int interp_inbetween_ex(const interp_frame *a, const interp_frame *b, const interp_pairing *p, double t, int flags,
+                        interp_list *out, int *skel_b, uint64_t *stats);
 void interp_list_free(interp_list *l);
 
 /* For reports: polygons in both frames and how many paired, batches and how

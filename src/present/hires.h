@@ -65,4 +65,11 @@ void hires_init(hires *h, int n);
 /* One observer record, before drawlist_record gets it. */
 void hires_record(hires *h, drawlist *d, char kind, const int32_t *v, int n);
 
+/* The study's guard on a picture to be shown: a coarse pixel whose eight
+ * neighbours hold its value (a flat pixel, which no edge crosses) gets that
+ * value on all its fine pixels where the rule left any other (the horizon
+ * residue). Adds the flat pixels, those that agreed, and returns those it
+ * restored. */
+int hires_guard(const uint8_t *coarse, uint8_t *fine, int n, uint64_t *flat, uint64_t *agree);
+
 #endif

@@ -320,6 +320,29 @@ static void refill(hires *h, drawlist *d, drawlist_page *page)
     h->suppressed = (int)(page - d->page);
 }
 
+int hires_guard(const uint8_t *coarse, uint8_t *fine, int n, uint64_t *flat, uint64_t *agree)
+{
+    const size_t W = (size_t)320 * n;
+    int restored = 0;
+    for (int y = 1; y < 199; y++)
+        for (int x = 1; x < 319; x++) {
+            const uint8_t v = coarse[y * 320 + x];
+            int same = 1;
+            for (int dy = -1; dy <= 1 && same; dy++)
+                for (int dx = -1; dx <= 1 && same; dx++) same = coarse[(y + dy) * 320 + x + dx] == v;
+            if (!same) continue;
+            (*flat)++;
+            int ok = 1;
+            uint8_t *q = fine + (size_t)y * n * W + (size_t)x * n;
+            for (int j = 0; j < n && ok; j++)
+                for (int i = 0; i < n && ok; i++) ok = q[j * W + i] == v;
+            if (ok) { (*agree)++; continue; }
+            for (int j = 0; j < n; j++) memset(q + j * W, v, (size_t)n);
+            restored++;
+        }
+    return restored;
+}
+
 static void parse_edge(hires *h, const int32_t *v, hires_edge *e)
 {
     e->slot = v[0];
