@@ -95,7 +95,7 @@ or AND/OR/discard styles; `a` is dither/stipple), `B`/`L` outline polygon and
 its edges, `N` library line, `K` colour, `Q` span fill, `C` blit, `T` text
 (with its font, so the replay needs no game data), `S` sprite, `W` scaled RLE
 sprite, `H` tick scale, `D` page copies (44 present, 48 copy, 79 dissolve),
-`X` any other entry, `x` changed byte deltas, `J` the display palette (768 six-bit DAC
+`M` colour replace (entry 41), `X` any other entry, `x` changed byte deltas, `J` the display palette (768 six-bit DAC
 components, logged beside `Y` with `F117R_OBSERVE_PAGES=1`).
 
 `tools/drawlist_frame.py LOG` rebuilds each phase from the previous page dump
@@ -116,9 +116,12 @@ replay rules rest on:
   sprites (73 and 18; 71 and 19 clip first), tick scales (11), the scaled
   flippable RLE sprite (22, with Bresenham-style column and row stepping), the
   page switches (12-16, so lines and span fills carry the page and origin they
-  were drawn at) and the present (44). Entry 46 writes only the DAC and CRTC
-  start, so its byte deltas are the fill's own rows. Entries 24 and 26 set the
-  origin.
+  were drawn at), the present (44) and the colour replace (41, driver 1188: in a
+  rectangle x0..x1, y0..y1 of a page from the page table, every byte equal to one
+  colour becomes another; rows from the row table, no origin; the HUD and the
+  cockpit's displays use it on the display every phase). Entry 46 writes only
+  the DAC and CRTC start, so its byte deltas are the fill's own rows. Entries 24
+  and 26 set the origin.
 - **Capture traps found on the way:** a nested state setter can split a parent
   entry that resumes drawing, and an entry can write to A000 directly even when
   the active page points elsewhere, so both page snapshots restart after every
@@ -168,14 +171,13 @@ Python replay's in all three modes, and every phase is exact on both pages, carr
 once, the replay stays exact for the whole window, so what the original draws on the two pages
 in flight is all in the records. A log of 75 MB replays in under a second.
 
-Not everything in the records is replayed by a rule. The work page is (only the take-off window
-copies 225 bytes, drawn by graphics entry 41), but the display leans on the logged byte changes
-('x') of entry 41, which has no rule yet and draws on the display in every phase of the strike
-and air-to-air windows, and of writes that follow an entry 46 (8 phases of the 8.53B strike
-window): without the entry 41 records 0 of 69 (strike) and 1 of 57 (`airair_type5`) display
-phases are exact, without entry 46's 61 of 69. The changes of entries 42 and 44 on the display
-duplicate the replayed blit and present. So a live replay needs the byte changes, which cost a
-page snapshot at every graphics entry, until entry 41 is decoded.
+Everything in the records is replayed by a rule. Until graphics entry 41 (the colour replace)
+was decoded, the display leaned on its logged byte changes ('x'): it draws on the display in
+every phase of the strike and air-to-air windows, and without its records 0 of 69 (strike) and 1
+of 57 (`airair_type5`) display phases were exact. With its rule ('M'; 0 to 330 a window), the
+same eight windows, re-recorded, are exact on both pages in every phase, seeded each phase or
+carried, with every 'x' record removed from the logs, and the C and Python outputs are
+identical; dropping the 'M' records instead leaves 0 of 69 and 1 of 57 display phases exact.
 
 ## Stage 2: what the list holds and what it needs
 

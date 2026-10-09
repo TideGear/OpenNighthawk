@@ -573,11 +573,24 @@ void drawlist_record(drawlist *d, char kind, const int32_t *v, int n)
             }
         break;
     }
+    case 'M': {                                       /* entry 41: a colour replaced in a rectangle */
+        if (n < 9 || !(p = page_of(d, (uint16_t)v[0]))) break;
+        const int32_t rows = (v[4] - v[2] + 1) & 0xFFFF, cols = (v[3] - v[1] + 1) & 0xFFFF;
+        if (v[8] - v[7] != 320 || !rows || rows > 256) { d->recolour_no_rule++; break; }
+        for (int32_t r = 0; r < rows; r++) {
+            const uint32_t di = (uint32_t)(v[7] + 320 * r + v[1]);
+            for (int32_t k = 0; k < (cols ? cols : 65536); k++) {
+                const uint32_t a = (di + (uint32_t)k) & 0xFFFF;
+                if (a < p->size && p->b[a] == (uint8_t)v[5]) p->b[a] = (uint8_t)v[6];
+            }
+        }
+        break;
+    }
     case 'x': {                                       /* the byte changes of an entry no rule decodes */
         if (n < 3) break;
         const int32_t entry = v[0], count = v[2];
         const uint16_t seg = (uint16_t)v[1];
-        if ((entry >= 1 && entry <= 6) || entry == 11 || entry == 22 || entry == 73 || entry == 18 || entry == 71 ||
+        if ((entry >= 1 && entry <= 6) || entry == 11 || entry == 22 || entry == 41 || entry == 73 || entry == 18 || entry == 71 ||
             entry == 19 || ((entry == 46 || entry == 42) && seg != 0xA000) || !(p = page_of(d, seg)))
             break;
         for (int32_t j = 0; j < count && 4 + 3 * j < n; j++) {

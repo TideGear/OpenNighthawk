@@ -508,6 +508,35 @@ static int hook_lib_blit(machine_t *m)
     return 0;
 }
 
+/* Graphics entry 41 (1E42:01E7, driver 1188): one colour replaced by
+ * another in a rectangle. Far-call arguments after the return address: the
+ * block (an SS offset; its first word is the page, an index into the page
+ * table at cs:[0787]), x0, y0, x1 and y1 (inclusive), the colour to find
+ * (low byte) and the colour to put in its place (low byte). Row y is
+ * cs:[0004 + 2y] + x, no origin; the rows and the columns are LOOP counts.
+ * Logged ('M'): the page's segment, x0, y0, x1, y1, the two colours, and rows
+ * y0 and y0 + 1 of the row table. */
+static int hook_lib_recolour(machine_t *m)
+{
+    flush(m);
+    const f117_observer *o = g_f117_observer;
+    if (!o || !o->prim) return 0;
+    cpu_t *c = &m->cpu;
+    const uint16_t drv = slot_target_seg(m, c->ip), ss = c->seg[S_SS], sp = c->r[R_SP];
+    const uint16_t page = peek16(c, ss, peek16(c, ss, (uint16_t)(sp + 4)));
+    int32_t v[9];
+    v[0] = peek16(c, drv, (uint16_t)(0x0787 + (uint16_t)(2 * page)));
+    for (int k = 0; k < 4; k++) v[1 + k] = (int16_t)peek16(c, ss, (uint16_t)(sp + 6 + 2 * k));
+    v[5] = peek16(c, ss, (uint16_t)(sp + 0x0E)) & 0xFF;
+    v[6] = peek16(c, ss, (uint16_t)(sp + 0x10)) & 0xFF;
+    v[7] = peek16(c, drv, (uint16_t)(4 + 2 * v[2]));
+    v[8] = peek16(c, drv, (uint16_t)(4 + 2 * (v[2] + 1)));
+    o->prim(o->user, c->icount, 'M', v, 9);
+    /* a log keeps the bytes it changed too ('x'), to check the rule against */
+    if (log_pages()) any_begin(m, 41, (uint16_t)v[0]);
+    return 0;
+}
+
 /* Graphics entries 6, 5, 4, 3, 2 and 1 (1E42:0138, 0133, 012E, 0129, 0124, 011F): text. A
  * parameter block in SS - page, mode (1 opaque, else transparent),
  * foreground, background, x, y, font, the row clip (+0Eh, +10h) and the width
@@ -789,6 +818,7 @@ static const recomp_override OBSERVERS[] = {
     { "observe", "VGAME.EXE", VGAME_47304, 0x1377, 0x004C, hook_outline_begin, "fill or outline begin (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x01D3, hook_lib_spans, "library span fill (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x01EC, hook_lib_blit, "library blit (observer)", 1 },
+    { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x01E7, hook_lib_recolour, "library colour replace (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x01E2, hook_lib_spans, "library span fill, mode 0 (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x01F6, hook_lib_copy, "library present (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x020A, hook_lib_copy, "library page copy (observer)", 1 },

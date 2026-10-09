@@ -36,7 +36,8 @@ typedef struct {
     uint8_t  copied[65536 / 8];
     unsigned ncopied;
     /* what had no rule or no data */
-    unsigned long long outline_no_rule, blits_no_source, copies_no_source, sprites_no_source, text_no_font;
+    unsigned long long outline_no_rule, blits_no_source, copies_no_source, sprites_no_source, text_no_font,
+                       recolour_no_rule;
 } drawlist;
 
 void drawlist_init(drawlist *d);

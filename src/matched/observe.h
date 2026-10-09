@@ -10,7 +10,8 @@
 #include <stdint.h>
 #include "machine.h"
 
-/* The primitives the draw list is made of (observe_prim's `kind`):
+/* The primitives the draw list is made of (observe_prim's `kind`; the
+ * graphics library's are described at their hooks in observe.c):
  *   'G' an edge prepared (model_prepare_edge): slot, the two projected
  *       vertex records it was made from (DS offsets) - links edges to vertices
  *   'E' an edge of a filled polygon handed to the rasteriser (130D:004A):

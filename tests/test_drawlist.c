@@ -114,6 +114,7 @@ int main(int argc, char **argv)
     fclose(f);
     free(buf);
     if (d.blits_no_source) printf("blits without source bytes: %llu\n", d.blits_no_source);
+    if (d.recolour_no_rule) printf("colour replaces with no rule: %llu\n", d.recolour_no_rule);
     if (d.outline_no_rule) printf("outline edges with no rule: %llu\n", d.outline_no_rule);
     if (d.copies_no_source) printf("page copies without source bytes: %llu\n", d.copies_no_source);
     if (d.sprites_no_source) printf("sprites without source bytes: %llu\n", d.sprites_no_source);
