@@ -289,9 +289,38 @@ artifact, confirmed and added to `expected_misses86.txt` (the title screen's
 brightness ramp rises about 5,400 DAC-units a frame through that stretch, and
 our nearest frame already beats both its neighbours). One check still fails:
 the timing check's longest-scene duration difference is 0.37 s against a
-0.35 s limit (19 of 22 scenes paired, start drift 2.05 s, both within limits) -
-unchanged by the EXEC/overlay charge, so whatever drives that one scene's
-length is not a program load; not investigated further this session.
+0.35 s limit (19 of 22 scenes paired, start drift 2.05 s, both within limits).
+
+**PLAYER.EXE/DSWAP.EXE/START.EXE measured at their own real position (10 Oct
+2026).** The three sizes above are synthetic test files, inserted at whatever
+position the probe happened to leave free; they are not a stand-in for a real
+file's own seek distance (the finding above - EXEC's cost is seek-distance
+dominated, not size dominated - means a different file of the same size can
+cost a very different amount). `realexec.py` measures the three real files
+directly: open, read the whole file, close, by name, already in place on the
+image (warm): 935,592 (PLAYER.EXE), 1,435,010 (DSWAP.EXE), 3,566,636
+(START.EXE) cycles - all higher than the same-size synthetic children
+(735,408, 735,408, 2,465,831). `T386_EXEC_PLAYER/DSWAP/START` (`timing386.h`)
+charge these three named files their own measured cost; `t386_exec`
+(`dos_programs.c`) checks the upper-cased basename first and falls back to
+the synthetic-size tiers for any other load (the intro's overlays, and any
+other program).
+
+Result (`frames386.py`, same saved 86Box run):
+
+| | drift at the end | exact pictures |
+|---|---:|---:|
+| synthetic-size EXEC charge | +96.4 ms | 1,237 of 1,275 |
+| real-position EXEC charge | +39.3 ms | 1,237 of 1,275 |
+
+A further 59% fall, same exact-picture count. `pc_parity.py`'s "timing 86box"
+check still fails at the same 0.37 s: its failing scene (ours holding a
+picture 100.22-106.40 s, 86Box 150.33-156.88 s - the pairing's fourth-from-
+last row) sits in the same stretch of the intro as the measured loads but is
+a different metric (how long one held picture lasts, not when transitions
+land); this charge was not expected to move it and did not. Not investigated
+further this session - the next step is identifying what that specific held
+picture is and what, inside its span, the original spends 0.37 s longer on.
 
 - READ MULTIPLE 2,000 us before the first data, WRITE 2,000 us before the
   first DRQ then 96.08 us a sector; SEEK and recalibrate 1,000 us.

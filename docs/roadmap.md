@@ -127,17 +127,24 @@ make (Phase 4).
       (open, read, write, close, attributes, seek; timing386.md "File
       services"), fitted to the 1989 3500 rpm drive preset, the reference's
       period drive (9 Oct 2026; the RAM-disk preset's fit is recorded there too).
-      EXEC and overlay loads are now charged too (9 Oct 2026; by which of three
-      measured sizes - 1 KB, 9.5 KB (PLAYER.EXE's), 47 KB (START.EXE's) - a
-      load is closest to, not a per-byte formula: a fifteen-size follow-up
-      probe came back non-monotonic in size, confirming the cost is seek-
-      distance dominated like an ordinary read, not size dominated). On that
-      reference the intro's drift at the end falls from +0.43 s to +0.10 s,
-      the same 1,237 of 1,275 pictures exact. Reference parity: pictures,
-      music and the picture check now all pass (p037's one close picture is a
-      confirmed mid-fade capture-timing artifact, not a defect); one 86Box
-      check still fails, the longest scene 0.02 s over its 0.35 s limit,
-      unmoved by the EXEC/overlay charge. Both engines now charge the same profile: 5,713,152 instruction
+      EXEC and overlay loads are now charged too (9-10 Oct 2026). PLAYER.EXE,
+      DSWAP.EXE and START.EXE - the three loads that dominate the intro's
+      drift - are each measured and charged at their own real position on the
+      reference disk (`realexec.py`); any other load is charged by which of
+      three synthetic-file sizes it is closest to, not a per-byte formula (a
+      fifteen-size follow-up probe came back non-monotonic in size, confirming
+      the cost is seek-distance dominated like an ordinary read, not size
+      dominated, so a same-size synthetic file is a poor stand-in for a real
+      one's own position - borne out by the real files costing 27-45% more
+      than their same-size synthetic stand-ins). On that reference the intro's
+      drift at the end falls from +0.43 s (uncharged) to +0.10 s (synthetic
+      sizes) to +0.04 s (real positions), the same 1,237 of 1,275 pictures
+      exact throughout. Reference parity: pictures, music and the picture
+      check now all pass (p037's one close picture is a confirmed mid-fade
+      capture-timing artifact, not a defect); one 86Box check still fails, the
+      longest scene 0.02 s over its 0.35 s limit - a different held picture
+      than the measured loads, unmoved by either EXEC charge; identifying what
+      that picture is remains open. Both engines now charge the same profile: 5,713,152 instruction
       comparisons each in RAM and with code in VRAM, no differences; paired
       flight sessions have 574 identical state checkpoints and stick responses
       (`stick_response.py --machine machine386 --engine interp|recomp`).

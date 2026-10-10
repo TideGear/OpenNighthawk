@@ -91,14 +91,24 @@ typedef struct {
  * 1.7M for 6 KB, 4.4M for 40 KB): EXEC's cost is dominated by where the file lands relative to
  * the previous disk access, the same distance-dependent seek timing386.md's T386_FILE_READ_SEEK
  * already documents, not by its size. A flat per-byte or per-sector fit is therefore the wrong
- * shape here even more than for an ordinary read, so each real load is charged by which of the
- * three measured sizes it is closest to (small overlays, PLAYER/DSWAP-sized loads, START-sized
- * loads) instead of a formula. Overlay loads (smaller, no PSP/environment) are charged the same:
- * the measured cost is almost entirely the disk access both kinds of load share, and no overlay
- * load has been measured separately. */
-#define T386_EXEC_SMALL            710453     /* <= 1 KB: the 1,024-byte child */
-#define T386_EXEC_MEDIUM           735408     /* <= 9,506 bytes: the 9.5 KB child (PLAYER.EXE's size) */
-#define T386_EXEC_LARGE            2465831    /* above that: the 47 KB child (START.EXE's size) */
+ * shape here even more than for an ordinary read.
+ *
+ * PLAYER.EXE, DSWAP.EXE and START.EXE - the three loads that dominate the intro's drift - are
+ * each measured directly at their own real position on this disk image instead
+ * (D:/f117-gate/p1-dos-probe/realexec.py: open, read-whole, close, warm; a same-size synthetic
+ * file inserted elsewhere, as the three sizes above are, is not a stand-in for a real file's real
+ * seek distance, and in fact reads substantially less here: 935,592/1,435,010/3,566,636 measured
+ * against 735,408/735,408/2,465,831 for same-size synthetic children). Any other load (the
+ * intro's overlays, 0.7-15 KB, and any other program) is charged by which of the three synthetic
+ * sizes it is closest to - a worse approximation, but the best available for a file whose own
+ * position was not separately measured. Overlay loads are charged the same scale as EXEC: the
+ * measured cost is almost entirely the disk access both kinds of load share. */
+#define T386_EXEC_SMALL            710453     /* <= 1 KB: the 1,024-byte synthetic child */
+#define T386_EXEC_MEDIUM           735408     /* <= 9,506 bytes: the 9.5 KB synthetic child */
+#define T386_EXEC_LARGE            2465831    /* above that: the 47 KB synthetic child */
+#define T386_EXEC_PLAYER           935592     /* PLAYER.EXE, measured at its real position */
+#define T386_EXEC_DSWAP            1435010    /* DSWAP.EXE, measured at its real position */
+#define T386_EXEC_START            3566636    /* START.EXE, measured at its real position */
 
 /* The overhead stub's cost under the profile at a LOOP count of n: T386_DOS_LOOP_BASE +
  * T386_DOS_LOOP_EACH * n beyond the call's own INT (calibrated with probe386.py). */

@@ -10,10 +10,21 @@
 /* Program loading                                                       */
 /* ===================================================================== */
 
-/* The 386 profile's cost of an EXEC or overlay load (timing386.h): by which of the three
- * measured sizes a file is closest to, not a per-byte formula (see the constants' comment). */
-static void t386_exec(machine_t *m, long fsz)
+/* The 386 profile's cost of an EXEC or overlay load (timing386.h). PLAYER.EXE, DSWAP.EXE and
+ * START.EXE - the three files whose loads dominate the intro's drift - are charged their own
+ * measured real-position cost (T386_EXEC_PLAYER/DSWAP/START, realexec.py: open, read-whole,
+ * close, warm, at the file's real place on this disk image); any other file is charged by which
+ * of three synthetic-file sizes it is closest to, not a per-byte formula (see the constants'
+ * comment) - a worse approximation, but the best available for a file whose own position was
+ * not separately measured. */
+static void t386_exec(machine_t *m, const char *name, long fsz)
 {
+    char up[13];
+    snprintf(up, sizeof up, "%s", dos_basename(name));
+    for (char *p = up; *p; p++) *p = (char)toupper((unsigned char)*p);
+    if (!strcmp(up, "PLAYER.EXE")) { t386_file(m, T386_EXEC_PLAYER); return; }
+    if (!strcmp(up, "DSWAP.EXE"))  { t386_file(m, T386_EXEC_DSWAP); return; }
+    if (!strcmp(up, "START.EXE"))  { t386_file(m, T386_EXEC_START); return; }
     t386_file(m, fsz <= 1024 ? T386_EXEC_SMALL : fsz <= 9506 ? T386_EXEC_MEDIUM : T386_EXEC_LARGE);
 }
 
@@ -110,7 +121,7 @@ uint16_t dos_load_program(machine_t *m, const char *name, const exec_params *ep,
     uint8_t *raw = dos_read_whole(m, dos_basename(name), &fsz);
     if (!raw) return ERR_FILE_NOT_FOUND;
     if (fsz == 0) { free(raw); return ERR_ACCESS_DENIED; }
-    t386_exec(m, fsz);
+    t386_exec(m, name, fsz);
 
     int is_mz = (fsz >= 28 && ((raw[0] == 'M' && raw[1] == 'Z') || (raw[0] == 'Z' && raw[1] == 'M')));
     uint16_t hdr[14] = {0};
@@ -255,7 +266,7 @@ uint16_t dos_load_overlay(machine_t *m, const char *name, uint16_t load_seg,
     long fsz = 0;
     uint8_t *raw = dos_read_whole(m, dos_basename(name), &fsz);
     if (!raw) return ERR_FILE_NOT_FOUND;
-    t386_exec(m, fsz);
+    t386_exec(m, name, fsz);
 
     uint32_t body;
     unsigned nreloc = 0;
