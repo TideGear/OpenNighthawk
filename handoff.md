@@ -6,531 +6,298 @@ For the next conversation on this repository. Read this, then
 checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 [docs/presentation.md](docs/presentation.md) (60+ fps and 4K) and
 [docs/repeated-processes.md](docs/repeated-processes.md) (every process we run
-more than once, what it costs). State as of 9 October 2026.
+more than once, what it costs). State as of 10 October 2026.
 Earlier session logs are in `git log -p handoff.md`.
 
 ## What to do first
 
-**Latest batch (9 Oct): the app's default speed and the 386 reference drive,
-both owner decisions, now implemented, verified and pushed.** `f117a` runs at
-20 million instructions a second with no limiter; the 386 profile's reference
-is now the 1989 3500rpm drive preset, not RAM-disk speed. A self-caught error
-in two refitted timing constants was found and corrected before commit (see
-"Next priority" below for the full story) - the final numbers there are
-honest, including one that got *worse* after the correction. Gate for the
-commit: `D:/f117-gate/fastdefault/gate-final/gate.log` (14 unit tests, 0
-mismatches, 35 routes identical). The owner requested wrapping up for a new
-conversation, committing, pushing and stopping.
-**Read item 1 below before touching anything else: the working tree held
-uncommitted changes not written by this session when it ended, with a gate
-apparently running against them.**
+**This batch (9-10 Oct): four independent pieces of work, three committed and
+pushed, one left as an investigated-but-unwritten lead.** The owner asked for
+all four to be touched in one session (p037, EXEC/overlay charging, a
+controlled threat-profile measurement, and a Phase 2 routine), then mid-
+session set the goal to complete the roadmap, then changed it to wrap up for
+handoff. Three landed cleanly; the fourth (Phase 2) produced a well-verified
+*identification* of a routine worth matching next, not a committed match -
+writing one by hand carries real correctness risk (room-claim coverage,
+preserving every intermediate memory write across a possible mid-routine
+decline) that this session chose not to commit without a lockstep pass, given
+the time left. See item 4.
 
-1. **`git status -sb` first - the working tree is not clean.** This batch
-   (speed/drive) and `p037.png`'s listing (`66a664e`, not written by this
-   session - a good, properly-investigated entry, reviewed and left as is)
-   are on master and pushed. But as this session ended, the working tree
-   also held **uncommitted changes, not written by this session**, to
-   `src/cpu/timing386.h`, `src/machine/dos_files.c`, `src/machine/dos_internal.h`,
-   `src/machine/dos_programs.c`, and a new untracked `tools/threat_profile.py`
-   (295 lines) - implementing EXEC/overlay cost charging for the 386 profile
-   (item 2 below) and, it looks like, tooling for a controlled combat
-   measurement (also item 2). The diff reads as finished, not a fragment:
-   it shares `t386_file`'s accumulator between `dos_files.c` and
-   `dos_programs.c` cleanly, and its reasoning (EXEC cost is seek-distance-
-   dominated, confirmed by a non-monotonic-in-size follow-up probe,
-   `exec_sizes.py`, 15 more sizes beyond this session's three) matches what
-   this session had already found and documented about read/write seeks.
-   This session verified, without altering or committing it: the build
-   succeeded (`build/f117machine_api.dll` and `f117run.exe` both freshly
-   built, consistent timestamps 23:26:57/23:26:46 on 9 Oct, `error C` count 0
-   in `%TEMP%/f117r-build.log` - though that build was run directly rather
-   than through `build.cmd`, so it never printed `BUILD OK`), and that a gate
-   (`build_recomp.py`'s coverage step, by its exact route/`--coverage`
-   command-line pattern, e.g. `career_promotion_recomp`) was actively running
-   against this exact tree as this session ended, started about 23:29. Its
-   outcome was not seen. **Next session: check whether that gate finished
-   and passed before doing anything else with these files** - do not assume
-   they are safe to build on, and do not discard them without checking first
-   (`git stash` instead of `git checkout`/`reset` if they need to move aside).
-   Elsewhere: projectile motion and gunfire refill remain on `p2-projectiles`
-   (CI 38013133755 passed both jobs); the canopy remains on
-   `p2-cockpit-canopy` (CI 38011635681 passed both jobs); the weapon-lock
-   marker and gate build-setting repair remain on `p2-lock-marker`; the
-   15 FPS report remains on `speed15-study`. Leave other pre-existing
-   untracked files alone.
-2. Open for next time (some now partly addressed by the uncommitted work
-   above - check it first): a controlled threat-profile combat measurement
-   (the 214-flight matrix's typed routes are too combat-sparse to show a
-   change; `tools/threat_profile.py` above may already be this);
-   EXEC/overlay cost charging under the 386 profile (the dominant remaining
-   piece of the intro's drift; the uncommitted diff above may already be
-   this - verify its gate, then its own measured numbers against the
-   intro drift before trusting it); and whether a seek-distance-aware disk
-   model is worth building generally (a flat constant is the wrong shape,
-   as documented - the uncommitted diff takes a bucketed-by-size shortcut
-   for EXEC specifically rather than solving this in general).
-3. **Earlier batch, for reference:** speech-reference tooling/docs (P1 97.93%)
-   and a shift-destination repair (`shl32_at` uses live BX) were merged and
-   pushed as `p1-speech-reference` on 9 Oct, gate
-   `D:/f117-gate/p1-speech/gate-fixed.log` (1,269 s; 14 unit tests, 35
-   identical routes, 5,718,912 instruction states and 7,462,395 matched-routine
-   states across three seeds, all zero mismatches). Prior gate histories are
-   in `git log -p handoff.md`.
+1. **`git status -sb` first.** By the time this session ends, master should be
+   clean and pushed through the real-file EXEC calibration commit (below);
+   confirm that landed before doing anything else. If the working tree is
+   *not* clean, something interrupted the final commit - read what is staged
+   and finish it or roll it back deliberately, do not assume it is abandoned
+   work (this session itself found a previous session's uncommitted,
+   finished-looking diff sitting in the tree at start - investigated, found
+   sound, committed it. The reverse mistake, deleting someone's good work, is
+   worse than the delay of checking).
+
+2. **p037.png, investigated and closed** (`66a664e`). A single captured
+   instant in the title screen's fade-in: our nearest frame already beats
+   both frames next to it, so 86Box's capture simply lands between two of
+   ours. Added to `expected_misses86.txt` with that reasoning. Closed.
+
+3. **EXEC and overlay loads, charged under the 386 profile, in two steps**
+   (`05b453c`, then a further real-position calibration - confirm its commit
+   landed, see item 1). Both `dos_load_program` and `dos_load_overlay` read
+   the whole file through `dos_read_whole` with no charge at all before this.
+   - Step one (`05b453c`): three measured sizes (1 KB, 9.5 KB, 47 KB -
+     `exec1989.py`), charged by which a real load is closest to
+     (`T386_EXEC_SMALL/MEDIUM/LARGE`). A fifteen-size follow-up
+     (`exec_sizes.py`) came back non-monotonic in size (2 KB cost less than
+     1 KB; 40 KB cost almost double 47 KB): EXEC's cost is seek-distance
+     dominated, like an ordinary read, not size dominated - the same shape
+     problem `T386_FILE_READ_SEEK` already has. Intro end drift: +428.5 ms to
+     +96.4 ms, same 1,237 of 1,275 pictures exact. Gate:
+     `D:/f117-gate/gate-execfix.log`, 35 routes identical, 0 mismatches.
+   - Step two (real positions, 10 Oct): PLAYER.EXE, DSWAP.EXE and START.EXE -
+     the three loads that actually dominate the drift - measured directly at
+     their own position on the reference disk (`realexec.py`: open, read-
+     whole, close, by name, already in place), not as same-size synthetic
+     stand-ins. All three cost 27-45% more than their synthetic equivalents.
+     `T386_EXEC_PLAYER/DSWAP/START` charge these three named files their own
+     cost; any other load still uses the synthetic-size tiers. Drift: +96.4 ms
+     to +39.3 ms, same 1,237 of 1,275 exact. `pc_parity.py` now passes the
+     86Box picture check too (p037 above); one check still fails, the
+     longest-scene timing difference at 0.37 s against a 0.35 s limit - a
+     *different* held picture than the measured loads (ours 100.22-106.40 s,
+     86Box's counterpart 150.33-156.88 s), unmoved by either EXEC charge.
+     **Confirm the gate for this step passed and the commit landed**
+     (`D:/f117-gate/gate-realfiles.log`; it was mid-run - specifically its
+     verbose MISC.EXE coverage route, which writes one log line a clock while
+     genuinely computing, not hung - when this session had to stop watching
+     it). If it did not land, the diff is `src/cpu/timing386.h`,
+     `src/machine/dos_programs.c` (plus the two doc updates below) and is
+     safe to finish: the build already succeeded and `pc_parity.py` already
+     passed on it (`D:/f117-gate/pc-parity-realfiles.log`) before the gate was
+     started.
+   - Next step, not started: identify the held picture behind the 0.37 s
+     longest-scene gap (it is not a program load) and what inside its span
+     the original spends 0.37 s longer on.
+
+4. **Controlled threat-profile combat measurement, complete** (`77632c6`,
+   `da7409a`). The existing typed routes pass the primary target once and
+   hold a straight heading after, drawing about a quarter of a launch a
+   flight - too sparse to show a speed effect. `tools/threat_profile.py`
+   instead approaches and strikes the target as `strike_pilot.py` does, then
+   orbits the target's own coordinates (no enemy site position read or
+   assumed) for the rest of the flight. 144 flights (four ground-strike
+   theatres, three speeds, twelve boot-clock seeds), complete, no errors:
+   **a real fall in enemy launch rate from 9 to 16 to 20 MIPS** (9.08, 6.48,
+   3.81 launches a flight; bootstrap 95% intervals on the mean exclude zero
+   for both differences from 9 MIPS), surviving normalising for orbit
+   exposure time (so it is not just shorter flights from earlier bingo fuel
+   at higher speed). **Not yet explained.** This is a real consequence of the
+   9 Oct decision to default `f117a` to 20 MIPS with no limiter: at the
+   default speed, the player sees roughly 40% of the enemy fire rate a 9 MIPS
+   (GOG-paced) machine would. The owner has not yet been asked whether this
+   changes that decision; flag it to them. The next step is reading the
+   enemy launch-decision code in the listing to find the mechanism (a
+   candidate: AI launches and guidance run per drawn frame scaled by S,
+   per this document's own controller section, and S and the drawn frame
+   rate both differ by speed) - not another sweep; the rate difference
+   itself is already well established on 144 flights. Raw data:
+   `D:/f117-gate/threatmatrix/runs.jsonl` and `samples/`.
+
+5. **Phase 2 lead, investigated, not written: VGAME 0x01007.** The census
+   (`D:/f117-gate/census.tsv`) names this address `scene_world_replace`, but
+   that is wrong - cross-checking the disassembly's data addresses (0xC6B2,
+   0xBA42, 0x49AC/AE/B0, 0xE476, 0x8590, and the per-type tables at 0x0960 and
+   0x0511/0x0510) against the Reimp's source by *address*, not by the
+   census's name guess, finds an exact match to a different function:
+   `scene_obstacle_probe` (`../F-117A Reimp/src/core/scene.c:8`), the
+   terrain/object collision probe - the routine behind the `0xC6B2 -> 0x9F96
+   -> flight_end(2)` chain this project's own notes already reference. Fully
+   traced against the disassembly (`matched_draft.py --ip 0x1007`, kept at
+   `D:/f117-gate/drafts/vgame_lead_1007.c`, never commit the draft itself) and
+   confirmed instruction-by-instruction, including resolving what its three
+   callees are: `0x0810` is **already matched** as `vgame_scale_by_level`
+   (`scene_cell_scale`), `0x0871` is **already matched** as
+   `vgame_scene_cell_index`, and `0xF018` is the runtime's shared unsigned
+   32-bit shift (referenced in `vgame_scale_by_level`'s own comment) - DX
+   carries through unmodified between a `scale_by_level` call and the
+   following `0xF018` call, which is why the routine never touches DX
+   explicitly despite shifting a 32-bit value. `0xEE0C` (abs16, one word
+   argument) is not yet matched but is trivial (8 instructions, drafted at
+   `D:/f117-gate/drafts/vgame_lead_ee0c.c`) and is a good small first step
+   next time. A full idiomatic rewrite of 0x1007 itself was drafted
+   (not committed - it lives only in this transcript and a scratch file,
+   `.../scratchpad/scene_obstacle_probe.c`, not in the repository) but never
+   built or lockstep-checked, and should not be trusted without that: the
+   room-claim at each of its ~12 call/loop boundaries was counted by hand
+   from the instruction draft and has not been verified, and getting a room
+   claim wrong is the kind of bug that stays silent until a route runs out of
+   budget exactly inside this routine (see `f117r-room-claim-must-cover-
+   longest-path` in the project's memory). Before trusting or committing it:
+   rebuild, run `func_lockstep` targeted at this address with a few seeds,
+   and only then fold it into `src/matched/matched.c` near
+   `vgame_scene_cell_index` (both are in the same `NEAR_THEN`/`FRAME` macro
+   scope, matched.c lines ~13430-16091) and the gate.
 
 ## Goal and standing decisions
 
-- **Next priority: the remaining P1 timing evidence.** Owner asked what prevents P1
-  reaching 100% (9 Oct); the remaining points are the 386 timing profile.
-  Speech has an independent rendered reference (above).
-  **File services, both owner decisions made this batch (9 Oct).** The
-  reference drive is now `hdd_01_speed = 1989_3500rpm` (both VMs in `D:/86box`;
-  the RAM-disk configs kept as `.ramdisk.bak` in `D:/f117-gate/fastdefault`),
-  since RAM-disk speed isn't a period machine's disk. The file-service model
-  (open, read, write, close, attributes, seek; `timing386.md` "File services";
-  `T386_FILE_*` in `src/cpu/timing386.h`; charged in `src/machine/dos_files.c`)
-  is refitted to it. **Self-caught error, fixed before commit:** two of the
-  refitted constants (`T386_FILE_OPEN_FIRST`, `T386_FILE_READ_SEEK`) did not
-  match any measurement when audited against the raw probe logs after the
-  first full gate passed; both were re-derived honestly from
-  `D:/f117-gate/p1-dos-probe/roster1989.log` and `seq1989.log` and the docs/
-  code updated, then re-verified (a second full gate, a fresh `frames386.py`
-  and `pc_parity.py` run) before committing. The corrected, honestly-derived
-  `READ_SEEK` makes the intro's end drift *worse* (+428.5 ms vs an earlier,
-  wrong 328.6 ms) — reported as found, not reverted to the more convenient
-  number. Final measured result on the MS-DOS 5.00 reference: end drift
-  +428.5 ms, 1,237 of 1,275 pictures exact (FAIL). `pc_parity.py`'s own two
-  86Box failures (picture check, timing check) are numerically unchanged by
-  the correction, since that check's granularity doesn't resolve it.
-  `expected_misses86.txt`'s stale p085 entry (now exact on this drive) is
-  removed; p037 (now "close", diff 0.028) is deliberately left unlisted since
-  its cause isn't confirmed (the file's own rule: don't add an unexplained
-  pass). That edit has not been re-verified with a fresh `pc_parity` run.
-  Still open, biggest remaining piece: EXEC and overlay costs are not charged
-  at all (measured: EXEC of a 1-47 KB program costs 0.71-2.47 M cycles on this
-  drive, `D:/f117-gate/p1-dos-probe/exec1989.py`; these are the dominant
-  remaining positive steps in the intro, +214 ms at MPS_LOGO's exit and +248 ms
-  at PLAYER's exit). A second limitation found and documented rather than
-  hidden: the read/write seek cost is genuinely seek-distance-dependent (three
-  clean measurements ranged 261k-530k cycles), so a single flat constant is
-  the wrong shape for it; a future session could track approximate head
-  position instead of a flat per-access charge.
-  **App default speed, also decided this batch.** `f117a` now runs at 20
-  million instructions a second (`MACHINE_APP_IPS` in `src/machine/machine.h`;
-  `f117run` and every recorded route stay at GOG's 9 million, so no route hash
-  changed). No frame limiter: above ~13 MIPS the game's own clamp holds S at
-  15 with no help. A 214-flight matrix (nine routes, eight independent
-  boot-clock seeds via `speed_sweep.py --offsets-ms`, speeds 9/16/20 MIPS, no
-  fixes, `D:/f117-gate/fastdefault/matrix/runs.jsonl`, analysed with the new
-  `tools/speed_compare.py`) found no S swings at 16 or 20 and no detectable
-  change in enemy launches, bursts or player hits versus 9 MIPS - but the
-  power is low (about a quarter of a launch per flight; only 1-2 of ~70
-  flights per speed were ever hit), so this shows "no large change", not
-  "unchanged". A controlled threat-profile test (missions that reliably
-  engage the player, many flights per speed) is the natural next step if that
-  matters more precisely. Full tables: `docs/speed-sweep.md`, "Fast-machine
-  default". The earlier 15 fps limiter experiment is *not* shipped (settles at
-  S 12, 1.25x clock, worse than the unlimited default's 1.12x).
-  **Gate for this commit:** `D:/f117-gate/fastdefault/gate-final/gate.log` (14
-  unit tests, 0 mismatches across all instruction/matched-routine checks, 35
-  routes identical) - run on the truly-final tree, after the constant fix.
-  Tools: `F117R_TRACE_FILES=1` logs every file call to a run's `run.log`;
-  `D:/f117-gate/p1-dos-probe/roster.py`/`seq.py`/`exec1989.py OUT [PROFILE]`
-  are the file-cost probes; `write.py`, `fcb.py` and `explore.py` are older,
-  RAM-disk-era probes. `D:/f117-gate/frames-1989-fixed/` and
-  `D:/f117-gate/pc_parity-1989-fixed.log` are this batch's final, corrected
-  verification runs.
-
-- **Usage cutoff (owner, 9 Oct).** When the 5-hour Codex allowance is 15% or
-  less, wrap up, update this handoff, commit, push, and stop. The available
-  goal tools do not expose that allowance; do not confuse goal token usage
-  with the account allowance. The owner showed the Status meter on screen.
-  Computer-use can read it from VS Code's accessibility tree with
-  `sky.get_window_state({window, include_screenshot:false, include_text:true})`;
-  find `5h limit:` and its following percentage. Screen capture timed out,
-  but accessibility worked. Select the current returned window first.
-  Latest reading in this batch: 52% left. Act on that meter or the owner's notice.
-- **Parity first.** The recompilation is what the original did on the hardware
-  of its time (owner, 8 Oct 2026). Where the developers' intent can be
-  established, it guides the defaults (owner, 9 Oct: "1:1 parity with the
-  original DOS version is our priority, but where we can figure out the
-  developers' intent, that is important too"). Work that only measures a
-  reference emulator or the test pilots is settled, not extended.
-- **Frame rate.** The owner wants the highest frame rate the game runs at
-  without anything breaking. The original caps its frame-rate estimate S at 15
-  (verified in the VGAME listing at `0x0D479`), so above 15 frames a second the
-  mission clock runs at frames divided by 15 times real time. A limiter at
-  exactly 15 frames a second was tested: S becomes 12 and the clock still
-  runs about 1.25x real time. Four game ticks
-  are not a 15 fps period at the measured 66.75-70.09 Hz. The owner decides
-  the default.
-- **Phases.** Phase 1 (parity, including the 386 profile), then Phase 2 (named,
-  matched code), Phase 3 (fixes and presentation), Phase 4 (checks only people
-  can make).
-- **Fixes** (`docs/bugs.md`) are switchable, off unless `--fix ID`. A switched-on
-  fix takes the place of the parity routine at its address, in both engines.
-- **Reference machine.** The 86Box tools default to the MS-DOS 5.00 machine
-  `vmt386dos500` (MS-DOS 5.00 with MOUSE.COM 6.26; owner, 9 Oct). FreeDOS
-  `vmt386` is reached with `--profile` / `--profile86`.
-- **Matched lockstep.** Each routine draws its states from its own random
-  stream, so shards test exactly what one run does (owner approved, 9 Oct: the
-  same number and kind of states, not the old ones).
+- **Combat rate falls with speed - flag to the owner.** See item 4. This was
+  not known when the 20 MIPS default was chosen (9 Oct); it is a real,
+  measured, unexplained property of that choice.
+- **Next priority, Phase 1: the last 86Box timing check.** One check remains
+  failing in `pc_parity.py`: the longest-scene duration difference, 0.37 s
+  against a 0.35 s limit, in a held picture from 100.22 s to 106.40 s (ours)
+  that is not the program-load stretch already fixed. See item 3's last
+  bullet.
+- **Phases.** Phase 1 (parity, including the 386 profile) is close:
+  `pc_parity.py` has one failing check left (above); the 386 profile's
+  roadmap checkbox should be closed once that is resolved or understood.
+  Phase 2 (named, matched code): 765 of 1,535 census functions matched; see
+  item 5 for the next lead. Phase 3 (fixes and presentation): open items are
+  owner decisions (the HUD/text at 4K) or need a real display (Phase 4
+  overlap). Phase 4 (checked by people): untouched, and most of it - a person
+  playing it, a listening check - cannot be done by an agent at all; that is
+  not a gap to close, it is the phase's own definition.
 - **Public repo, code only.** No game data, no generated C. Never commit
   `references/` (git-ignored).
 - **No AI attribution** in commits or PRs (the owner's global CLAUDE.md
   outranks harness reminders that ask for it).
-- **Commit and push together**: a code change is pushed after the gate passes;
-  docs-only commits may follow. `py tools/progress.py --title` prints the
-  scoreboard every commit title starts with; include `docs/progress.json`
-  if the command changes it.
+- **Commit and push together**: a code change is pushed after the gate
+  passes; docs-only commits may follow. `py tools/progress.py --title` prints
+  the scoreboard every commit title starts with.
 - The owner is not a software engineer: explain trade-offs plainly and flag
   overengineering.
-- The Reimp (`..\F-117A Reimp`) is read only. Never open a visible window, go
-  fullscreen or make sound on the owner's desktop. Check for orphan emulator
-  processes after killed runs.
+- **Check system resources before stacking parallel jobs.** This session ran
+  a 24-job combat sweep, the full gate, and `pc_parity.py`'s three emulators
+  at once; CPU pinned at 99% and the owner's own typing lagged before they
+  noticed. Check `Get-CimInstance Win32_Processor | Measure-Object
+  LoadPercentage -Average` before adding a second heavy job, and know that
+  stopping a background task running a Python `multiprocessing.Pool` (as
+  `threat_profile.py` and `speed_sweep.py` use) does not kill the pool's
+  workers - they are children of the script's own process, invisible to the
+  task-stop mechanism, and must be found and killed as a process tree
+  (`Get-CimInstance Win32_Process -Filter "ParentProcessId=..."`,
+  recursively). See `f117-check-resources-before-parallel-jobs` in the
+  session's saved notes for the full account.
 
 ## Where things are
 
 - Game: `D:\GOG\F-117A` (never mounted or written by a tool; copy per run).
 - Generated C: `C:\Users\Tideg\f117-recomp-local\gen` (never committed);
   coverage in `...\coverage`; route runs in `...\runs`.
-- Scratch and logs on D: (`D:\f117-gate\...`). The current gate's log is
-  `D:\f117-gate\merge14\gate.log`; earlier gates are in `merge3` to `merge13`.
+- This session's artifacts (all on D:, private, not committed):
+  `D:/f117-gate/p1-dos-probe/exec_sizes.py` and `realexec.py` (the EXEC-size
+  and real-file probes, with their `sizes1`/`realexec1` outputs);
+  `D:/f117-gate/frames-execfix`, `frames-realfiles` (the two `frames386.py`
+  before/after runs, against the saved `D:/f117-gate/frames-1989/box`
+  86Box capture); `D:/f117-gate/pc-parity-execfix`, `pc-parity-realfiles`
+  (the two `pc_parity.py` runs); `D:/f117-gate/gate-execfix.log`,
+  `gate-realfiles.log` (the two gates); `D:/f117-gate/threatmatrix/` (the
+  144-flight combat sweep, `runs.jsonl` and `samples/`);
+  `D:/f117-gate/drafts/vgame_lead_1007.c` and `vgame_lead_ee0c.c` (Phase 2
+  drafts, never commit).
 - Research (read only): `D:\f117-gate\macresearch\` (Mac 2.1, 2.3.1 and 2.3.2
   listings, the Amiga listing, `dos_ctl_sim.py`). The archives are in the
   Reimp's `reference\` folder.
-- 86Box (`D:\86box`): `vmt386dos500` (the default reference; 1 MB),
-  `vmt386dos500h` (4 MB, HIMEM.SYS, DOS=HIGH; built, not the reference),
-  `vmt386` (FreeDOS), `vmt386dos401`, `vmt386dos622`. They are built by
-  `tools/ref86box/build_msdos_vm.py` (`--mem-kb`, `--himem`) from the owner's
-  copies in `references/`. The patched 86Box with the trace options (`B86_OPL`,
-  `B86_SPKLOG`, ...) is `D:\86box-src\build\src\86Box.exe`.
+- 86Box (`D:\86box`): `vmt386dos500` (the default reference; 1 MB, the 1989
+  3500 rpm drive preset), `vmt386dos500h` (4 MB, HIMEM.SYS, DOS=HIGH; not the
+  reference), `vmt386` (FreeDOS), `vmt386dos401`, `vmt386dos622`. Built by
+  `tools/ref86box/build_msdos_vm.py` from the owner's copies in `references/`.
 - Worktrees (`D:\f117-wt`): every Phase 2 and live-path branch is merged into
-  master: `p2-vgame`, `p2-start`, `p2-small`, `p3-live`, `ref-vm`,
-  `lockstep-par`, `sound-speech`, `t386-frames`. `speed-sweep` holds the speed
-  study is merged: `tools/speed_sweep.py`, `tools/d1_check.py --route`, the write-up `docs/speed-sweep.md`, and the 199 raw flights in `D:\f117-gate\speedsweep\main\runs.jsonl` (with `table.txt`). `p3-stage2` and
-  `p3-stage3` are old. Remove merged worktrees when convenient
-  (`git worktree remove`).
-- Private experiment: `D:\f117-wt\speed15-experiment` is detached at
-  `28f2a50`, with only `D1_FPS_X10` changed from 116 to 150. Keep that change
-  out of production. Its DLL and source provenance are recorded in
-  `D:\f117-gate\speed15\experiment.json`; the main checkout still uses 116.
+  master. Remove merged worktrees when convenient (`git worktree remove`).
+  **Something else was working in this same checkout concurrently with this
+  session** (a handoff commit, `65435f2`, appeared mid-session describing
+  this session's own then-uncommitted work as if ending a separate session) -
+  if a parallel-agents workflow is in use, confirm it is using its own
+  worktree (`D:\f117-wt\...`), not this main checkout, to avoid two sessions
+  racing on the same working tree.
 
 ## Build and check
 
-- **Build** (PowerShell, from the repo):
-  `cmd.exe /c ".\build.cmd -DF117R_BUILD_APP=OFF"` builds the core, `f117run`
-  and the tests; `-DF117R_BUILD_APP=ON` adds the SDL app `f117a`. A new
-  worktree needs `-DF117R_GEN_DIR=C:/Users/Tideg/f117-recomp-local/gen`. Check
-  for `BUILD OK` in `%TEMP%\f117r-build.log`; parallel builds need a private
-  TEMP.
+- **Build** (PowerShell, not Git Bash's `cmd /c` - that rewrites paths and
+  can silently no-op; see "Traps" below): `cd` to the repo in PowerShell,
+  then `.\build.cmd -DF117R_BUILD_APP=OFF` (core, `f117run`, tests) or
+  `-DF117R_BUILD_APP=ON` (adds the SDL app `f117a`). Look for `BUILD OK`.
 - **Gate**: `py tools/build_recomp.py --data D:/GOG/F-117A --seed-coverage
-  C:/Users/Tideg/f117-recomp-local/coverage`, about 20 minutes, run in the
-  background. Do not edit `src/` or rebuild while it runs. Read the tally, not
-  the exit code:
-  The build explicitly enables the app to include all five host tests even
-  if the preceding manual build used `F117R_BUILD_APP=OFF`.
-  - after the build, the unit tests (`ctest -E func_lockstep`, 13 tests with
-    generated code, including the shadow-text stack-alias regression);
-  - steps 6 and 6b: every translated instruction (89,366 starts, 5,718,912
-    states per timing profile) against the interpreter, 0 mismatching;
-  - steps 7, 7b and 7c: every matched routine at three seeds (0x5EED0F117A,
-    0xC0FFEE, and one from HEAD's hash), run as eight shards, 0 mismatching;
-  - step 8: every routes-only routine ran on some route; step 9: no
-    `[matched] OVERRUN` line on any route;
-  - the 35 routes identical between the engines (end hash and every
-    checkpoint).
-- **Quick route checks** (reference end hashes):
-  `tools/routes/boot_to_flight.args` `48a10e901505e2a9` (also with `--fix D34`);
-  `strike.args` `aa8fca6ac6f373f0`; `career_serge.args` `6ea4f6612f4775da`;
-  `frontend_dialogs.args` `20ab75f97ab041c8`. Run with
-  `py tools/run_route.py ROUTE.args --data D:/GOG/F-117A --engine recomp --out DIR`.
-- **CI**: `.github/workflows/windows.yml` runs ctest on each push. This machine
-  has no `gh`; read the run list with the public API:
-  `curl https://api.github.com/repos/TideGear/OpenNighthawk/actions/runs?per_page=5`.
-  The job logs need sign-in, so reproduce a failure locally with ctest. The
-  preceding push, `c1dc065`, was green; this batch's push, `37962a5`, was still
-  running when this session ended - check its run first.
-- **PC parity**: `py tools/pc_parity.py --data D:/GOG/F-117A` (about 12 minutes).
-  All checks pass on the MS-DOS 5.00 reference (9 Oct). The 86Box pictures must
-  be exact except the one listed by hash in
-  `tools/ref86box/expected_misses86.txt` (p085, START's roster while 86Box is
-  still loading files). The DOSBox-X roster check runs without fast-forward
-  (`save_parity.py --no-turbo`).
-- **Matched lockstep**: `py tools/func_lockstep_par.py --states 4000 --verbose
-  [--seed S]` (eight shards, about 3 minutes; `build\func_lockstep.exe` alone
-  takes about 20). A routine's DOS and keyboard calls get deterministic answers
-  (AX from the call count). `DOS_STUBS`, `SHARED_ENDINGS`, `SPANS` and
-  `CODE_BELOW` in `tests/func_lockstep.c` give the ranges and the listed
-  routines' stubs. New routines start from `py tools/matched_draft.py --data
-  D:/GOG/F-117A --module VGAME.EXE --ip 0xNNNN`; drafts are never committed as
-  they are.
-- **Room and call claims**: the rules are in `docs/architecture.md` ("Room on
-  the routes", "Port accesses": each port access in a stretch claims
-  `IO_SLACK(k)`). `tools/stack_balance.py` checks stack balance across a
-  module's census.
+  C:/Users/Tideg/f117-recomp-local/coverage`, about 20-30 minutes, run in the
+  background, nothing else heavy at the same time (see "Check system
+  resources" above). Read the tally, not the exit code: unit tests (14, 0
+  failed), steps 6/6b (every instruction against the interpreter, both
+  timing profiles, 0 mismatching), 7/7b/7c (every matched routine at three
+  seeds, 0 mismatching), 8 (every routes-only routine ran), 9 (no OVERRUN),
+  and the count of routes reported `IDENTICAL` (35, going in).
+- **PC parity**: `py tools/pc_parity.py --data D:/GOG/F-117A` (about 12-15
+  minutes, runs three emulators at once - its own internal parallelism is
+  fine, just do not add a second heavy job alongside it). All checks pass
+  except the 86Box timing check (above).
+- **Matched lockstep**: `py tools/func_lockstep_par.py --states 4000
+  --verbose [--seed S]` (eight shards, about 3 minutes). New routines start
+  from `py tools/matched_draft.py --data D:/GOG/F-117A --module VGAME.EXE
+  --ip 0xNNNN`; drafts are never committed.
 - **Census**: `py tools/reimp_names.py --reimp "../F-117A Reimp" --gen
   C:/Users/Tideg/f117-recomp-local/gen --out D:/f117-gate/census.tsv`, then
-  `py tools/progress.py --census D:/f117-gate/census.tsv`.
-- **Speed study**: `py tools/d1_check.py --data D:/GOG/F-117A --ips N --no-fix
-  [--route R.args]` (boot_to_flight by default; busier missions with `--route`).
-- **The app's options**: `f117a --timing dosbox|386`, or `timing = ` in
-  `f117a.ini` (default `dosbox`). `--present replay|interp`,
-  `--present-scale N`, `--present-age interp|extrapolate` and `--present-log
-  FILE` are off by default.
-- **386 profile**: `insn_lockstep --timing386 --states 64`;
-  `tools/ref86box/probe386.py` (90 of 93 blocks equal to the MS-DOS reference);
-  `frames386.py` (a known end-drift failure: +228.7 ms on the MS-DOS VM with the
-  file charges, +642.5 ms without);
-  `stick_response.py --machine machine386`.
+  `py tools/progress.py --census D:/f117-gate/census.tsv`. **The census's
+  name guess can be wrong** (item 5 found one): verify a lead by cross-
+  referencing the disassembly's actual data addresses against the Reimp's
+  source, not by trusting the name alone.
+- **Threat-profile sweep**: `py tools/threat_profile.py --data D:/GOG/F-117A
+  --out DIR --routes R... --speeds 9 16 20 --seconds 600 --offsets-ms
+  0 2500 ... --jobs N` (N sized to leave headroom for anything else running;
+  resumable - unfinished tags are simply absent from `runs.jsonl`).
 
 ## Current state
 
-- **Scoreboard** (including the speech-reference batch): P1 97.93%, P2 38.88%, P3 67.00%,
-  P4 42.90%, All 70.63%.
-- **Phase 1 (parity)**
-  - Translation: 89,366 instruction starts (96% of the code bytes). 35 routes
-    identical between the engines. The interpreter and the translator are
-    checked against silicon vectors and planted defects (`docs/roadmap.md`).
-  - 386 profile: cycle-accurate against 86Box's 386DX/33 on the MS-DOS 5.00
-    reference (probe 90 of 93 blocks exact; the other three are mode-set
-    spreads).
-  - Sound: the AdLib takeoff call on the MS-DOS machine matches this build in
-    order and value (6,464 register-43h writes, the same rate). The speaker's
-    counter writes match exactly (13,046 counts, 15.1 a millisecond on both).
-    The independent waveform reference is now captured silently from 86Box's
-    mixer (`86box-audio.patch`, `speech_audio.py`). The non-silence call has
-    12,924 identical counts over 855.626 ms; 300-3400 Hz correlation -0.991565,
-    envelope 0.999516, zero lag, ours/reference RMS 3.16856. Opposite polarity
-    and gain follow the two speaker amplitude formulas, documented in
-    `tools/ref86box/build_86box.md`. Capture off/on preserves all 4,500 frame
-    records, 1,621 AdLib writes and the speaker-port log byte for byte.
-    Private captures, report and binary/input/config hashes are under
-    `D:/f117-gate/p1-speech/`; `compared/report.json` repeats byte-identically.
-    An altered count stream is rejected. Listening remains Phase 4.
-  - **The original's frame controller** (verified in the VGAME listing):
-    - S is clamped to [4 - accel, 15] (`0x0D479`).
-    - A per-frame wait at `0x0409` calls `0x04C7`, which waits `[0x43E8]` ticks.
-    - `0x0D441` sets `[0x43E8]` to (9 + (-120 / S)) / 2, rounded down, limited to
-      1 to 4, when the measured S is above 15, and to 0 otherwise.
-    - So the wait's frame cap is 60/N frames a second: 60 for measured S 16-23,
-      30 for 24-35, 20 for 40 and up. It does not cap at 15.
-    - Above 15 frames a second the mission clock runs at frames divided by 15
-      times real time: 1.11 measured at 16 MIPS (16.7 / 15 predicts it); 1.29 at
-      9 MIPS (S 9 against 11.6 frames a second).
-    - No 15-to-3 swing appeared in any run here. The earlier D1 text said it
-      would; `docs/bugs.md` D1 is corrected.
-  - Speed study (`docs/speed-sweep.md`): the original's wait runs in this build
-    (traced at 40 MIPS); 199 flights at 3-40 MIPS and on the 386 profile never
-    swung. Game ticks: 70.08 a second at 7-8.5 MIPS, 67.9-68.2 at 9-10, 66.75
-    from 11 MIPS up (one tick lost in 21 frames), 69.2 on the 386 profile. The
-    controller assumes 60 ticks a second. The mission clock per emulated second,
-    over nine typed routes: 1.28 on the 386 profile, 1.17 at 9 MIPS, 1.11 at 40;
-    no speed gives 1.00. The manual (p. 177, as read by the agent) puts the top
-    detail level at 'average 386 and above'.
-  - D1 follow-up: 90 fresh flights at 9, 12, 16, 20 and 40 MIPS, with and
-    without D1. All nine 9 MIPS pairs have identical hashes. Complete fixed
-    flights above 9 MIPS draw 11.6 fps with S 9 and a 1.2882x mission clock;
-    this holds the parked GOG baseline, not every airborne GOG scene. Two
-    short Korea flights at 40 MIPS are excluded from means. Artifacts:
-    `D:\f117-gate\speedsweep\d1\runs.jsonl` and `samples/`.
-  - Control response: `stick_response.py` accepts speed, fixes, typed menus
-    and boot-clock overrides; reports mission IDs, raw samples and early
-    stops. Ten flights at 9/12/16/20/40 MIPS, none/D1, share mission IDs
-    after boot shifts of 0/110/110/220/330 ms. START's seed is BIOS tick low
-    word; the final 40 MIPS runs captured 31233. Progressive tap sequences
-    diverge and end after 23-29 of 30 taps: descriptive, not proof of a safe
-    speed. `controls-aligned/` holds the raw reports. The unaligned typed
-    386 run never established an airborne response (all zero, AGL 128).
-    Next: controlled combat on matching missions. D1's comments and help
-    descriptions are now corrected, with a fresh full gate.
-  - Actual 15 FPS experiment: 45 new flights, nine routes at each of
-    9/12/16/20/40 MIPS; 45 retained unfixed baselines are not new flights.
-    All nine inactive-cap 9 MIPS hashes match. At 16 MIPS and above complete
-    flights hold 15 FPS, S = 12 and about 1.25 mission seconds per emulated
-    second. Korea at 40 MIPS exits after 41.50 sampled flight seconds and is
-    excluded from means. No oscillations or errors. Interpreter checks of
-    boot_to_flight and middle_east_strike at 40 MIPS match all 30,000 raw
-    observation rows each and final hashes. Artifacts: `D:\f117-gate\speed15\`.
-    The real-time-clock hypothesis is rejected; combat equivalence remains
-    unmeasured. No default or production limiter constant changed.
-  - Open (Phase 1): the 386 profile's file-service costs (open, read, write,
-    close, attributes, seek) are charged and fitted to the reference's 1989
-    3500rpm drive (9 Oct, this batch; `timing386.md` "File services"); the
-    intro's end drift on the MS-DOS reference is now +428.5 ms, 1,237 of 1,275
-    pictures exact (was +642.5 ms uncharged). EXEC and overlay costs are not
-    charged at all and are the larger part of what remains (measured: 0.71-2.47
-    M cycles for a 1-47 KB program on this drive).
-- **Reference machine**
-  - All 86Box tools default to `vmt386dos500`, now on the 1989 3500rpm drive
-    preset (9 Oct, owner decision; RAM-disk configs kept as `.ramdisk.bak`).
-    `pc_parity` fails two 86Box checks on this drive (one close picture,
-    p037; the longest scene 0.37 s against a 0.35 s limit) - everything else
-    (GOG, DOSBox-X, music, sound, the roster save) passes.
-    `expected_misses86.txt`'s stale p085 entry is removed; p037 is left
-    unlisted pending investigation (see "Next priority").
-  - Six register differences between the VM and our DOS (AX after INT 21h 3Eh
-    and 49h, an EXEC child's AX/BX/DX, the entry FLAGS) are recorded in
-    `tools/fidelity_baseline.json`. They are not copied; copy them only if a
-    route is shown to read one.
-  - `vmt386dos500h` is built and reproducible; DOS=HIGH makes INT 21h 0Bh and
-    2Ch cost more, so it is not the reference.
-- **Phase 2 (named, matched code)**
-  - 765 addresses matched (760 of 1,535 census functions, 63,917 of 179,213
-    bytes). 775 functions (115,296 bytes) remain.
-  - Latest routine: VGAME 0x04777, projectile motion and gunfire refill.
-    Preserves the signed slot loop and remainder, wrapping writes, each
-    stack-local read, ammunition clamp, sound and trigonometric launch
-    velocity. Checks room each loop iteration; a zero divisor changed by
-    aliasing resumes the original at IDIV. Random checks plant bounded
-    counts and firing values, and use returning driver thunks on both sides;
-    actual drivers remain in the routes. Targeted 4,000-state seeds
-    0x5EED0F117A / 0xC0FFEE / 0x96deed2ad096 compare 2,823 / 2,886 / 2,891
-    states (1,666 / 1,612 / 1,595 skipped), zero mismatches. Without the new
-    plants/thunks: 2,392 / 2,336 / 2,390 comparisons. A private harness
-    observer counts 18 full refills among successful fixed-seed comparisons;
-    source hashes and its change are in `D:/f117-gate/projectiles/observer-provenance.json`
-    and `observed_lockstep.c`. Artifacts: `D:/f117-gate/projectiles/`.
-  - Batches this session, each merged after a gate: VGAME (34 and 47), START/END
-    (40 and 45), the small programs (21 and 44), and the C runtime's DOS layer
-    (64; the lockstep now answers INT 21h and 16h for every routine).
-  - Defects the merged gate caught that the branches' locksteps could not:
-    `vgame_model_poly_finish` claimed 21 and 19 where its longest paths are 23
-    and 21; `vgame_view_caption` was one clock late on a rare path; port bus
-    delays crossing an event limit (`IO_SLACK`). The picture decoder's prefix walk
-    checked room once for any depth (fixed; boot_to_flight matches again).
-  - Ready leads, triaged equal and not yet written: VGAME 0x01007, 0x00D14, 0x05046 and 130D:033F. Identical copies across
-    programs were listed in the batches' commit messages; check the table before
-    adding a row.
-  - Open: START 0x11DB (a one-clock error, not retried); MPS_LOGO 0x1ADC and
-    0x1C82; routes-only candidates (see the commit messages). The stack checks
-    START 0xA4C6 and END 0x5B4E run only inline in the formatter scans.
-  - Owner suggested REA: https://github.com/morluto/rea. Worth a small trial
-    for difficult routines using Ghidra pseudocode/xrefs, retaining our parity
-    gates. Its DOS MZ/COM guide verifies Linux/macOS; the Windows adapter is
-    experimental and admits PE only. Linux/possibly WSL and unpacked copies
-    would be needed. Nothing installed. See `docs/ghidra-dos.md` and
-    `docs/windows-ghidra-p0.md` in that repository.
-- **Phase 3 (presentation and fixes)**
-  - Fixes with a switch: 10 of 14 catalogued defects (D1, D2, D3, D4, D5, D6,
-    D8, D11, D12, D34; D7 is fixed by D8). D3 was fixed on 9 Oct: keypad digits
-    answer SETUP's sound question instead of quitting to DOS. Open: D10 (not
-    located; no VGAME routine returns with the stack moved), D35 (not
-    reproduced here), D36 (not reproduced: Munt's 2.0x ROMs play the engine
-    3.4 dB quieter, not silent).
-  - Live path (merged, off by default). `--present replay` redraws each frame
-    from the original's draw records: exact on 447 phases, with graphics entry 41
-    decoded as a colour replace and no page snapshots. `--present interp` shows
-    in-between frames at vsync (headless: at most one missed refresh in 23,336
-    frames). `--present-scale N` draws polygons at N times resolution (N = 9 is
-    2880 x 1800 for 4K). `--present-age extrapolate` is an option that mispredicts
-    where interp does not; interp stays the default.
-  - Open: the HUD and text at 4K (the owner's call; the options and their costs
-    are in `docs/presentation.md`); Stage 4 steadiness at 60 and 144 Hz on a
-    real display (the owner's eyes).
-- **Phase 4**: untouched (a person playing it; Roland by ear).
-
-## Open items, in order
-
-1. **The app's default frame rate: decided (9 Oct).** 20 million instructions a
-   second, no limiter (`docs/speed-sweep.md`, "Fast-machine default"; this
-   batch). The clock still runs faster than real time (about 1.12x at this
-   speed) - no setting is real time as the game stands, by the controller's
-   own design (see the tick question below), not a defect of this choice.
-   Still open: a controlled threat-profile combat measurement (many flights
-   per speed with missions built to engage the player, not the typed routes'
-   sparse combat) would sharpen the "no detectable change" finding into a
-   real bound.
-   The tick question, unresolved and probably moot now the speed is picked:
-   the controller assumes 60 ticks a second, while the game's timer is
-   calibrated to the 70 Hz VGA retrace (`0x1D01`, reload 17024). If the
-   original's timer is 70 Hz on a real VGA, its world runs about 70/60 = 1.17
-   times real time by design, even with a perfect frame controller. This is
-   the speed study's reading of the listing, not measured on hardware (none
-   is available here); recorded for anyone who later wants to understand why
-   no speed gives exactly real time.
-2. **Fixes under `--timing 386`**: a fix counts instructions, not 386 cycles,
-   when it runs under the 386 profile (matched routines are run as the original
-   body there; fixes are not). Decide: refuse fixes with `--timing 386`, or
-   charge them cycles. The default is `dosbox`, so this is not reached by
-   default.
-3. **Mac and Amiga research** (`D:\f117-gate\macresearch\`): the Mac 2.1 port keeps
-   the DOS controller with the cap raised to 60, so its TickDelay is effectively
-   0; Mac 2.3 adds Quick, Fast and Warp modes that break real time, and its
-   mission clock ticks every 8 frames (unknown whether that was deliberate); the
-   Amiga caps frames at about 10.7 with a 6-tick floor and keeps S. No port keeps
-   a fixed simulation step separate from drawing. The default is now decided
-   (item 1); this research is still not recorded in `docs/roadmap.md` or
-   `docs/bugs.md` and should be, next time. The Mac 2.0 version is not in the
-   archives.
-4. **Phase 2**: continue from the ready leads with the sharded lockstep. Keep
-   the gate's routes-only and OVERRUN checks green. After each batch, refresh the
-   census and every count in README, roadmap, handoff and architecture.
-5. **Phase 3**: the owner's decisions (the HUD and text at 4K; the Stage 4 display
-   check). D10 and D35 remain unlocated or unreproduced.
-   The roadmap/progress evidence now reflects the already-built fine-grid
-   interpolation and pacing; completion estimates are unchanged. A stale
-   header in `src/present/drawfeed.h` claiming one game second is real time
-   is now corrected: presentation follows the machine clock, independently
-   of the faster mission clock.
-6. **Reference machine**: keep `vmt386dos500`. Decide with the owner whether to
-   copy the six DOS register differences.
-7. **Checks still to tighten**: DOSBox-X's and GOG's picture comparisons count
-   misses that move between captures, so a name list does not hold there. The
-   lockstep's DOS answers are deterministic rather than the real DOS; the routes
-   check the real one.
+- **Scoreboard**: P1 97.93%, P2 38.88%, P3 67.00%, P4 42.90%, All 70.63%
+  (unchanged this session: nothing new was matched or named, only timing and
+  measurement work).
+- **Phase 1**: see items 3-4 above. The 386 profile is close to done; one
+  86Box timing check remains.
+- **Phase 2**: 765 of 1,535 census functions matched (63,917 of 179,213
+  bytes). See item 5 for the next lead (`vgame_scene_obstacle_probe`,
+  VGAME 0x1007) and `vgame_abs16` (VGAME 0xEE0C, trivial, drafted) as an
+  even smaller first step.
+- **Phase 3**: unchanged. Fixes: 10 of 14 catalogued defects switchable.
+  Open: D10, D35, D36 (see `docs/bugs.md`). Presentation: the owner's open
+  decisions (HUD/text at 4K) and a real-display check remain.
+- **Phase 4**: untouched; most of it requires a person.
 
 ## Traps that cost time
 
-- **Shell and Python escapes**: inline Python heredocs turn `\n`, `\f`, `\a` and
-  `\d` into real characters (a `\f` in a path became a form feed; `"\aq"` became
-  a bell). Use the Edit or Write tool for strings with escapes, or a script file.
-- **Stale binaries**: a usage message that lacks a new option means the build
-  predates the edit. Rebuild before testing. The old mutation-check binary
-  was replaced by the merge9 gate and the shadow-text fix build.
-- **Git Bash and cmd**: `cmd /c` in Git Bash is rewritten as a path and starts an
-  interactive shell. Use `MSYS_NO_PATHCONV=1 cmd /c "C:\...\build.cmd"
-  "-DF117R_GEN_DIR=C:/Users/Tideg/f117-recomp-local/gen"` with the absolute path,
-  because `cmd` does not start in Bash's directory.
-- **Merge conflicts**: `git checkout --theirs <file>` replaces the whole file,
-  not the conflict. To recreate a conflict, use `git checkout -m <file>` and
-  resolve the hunks. Check for duplicate matched rows with
-  `grep -oE '\{ "matched", ...' | sort | uniq -d`.
-- **Registration order** no longer decides which override runs: a switched-on
-  fix runs first at its address. Observers return 0, so the original
-  instruction runs after them. Observers at a matched routine's address run
-  under the interpreter as well.
-- **Unit tests in the gate**: the gate runs them after the build now, as CI
-  does. CI caught an override-registry capacity failure the local gate had
-  missed (the registry is 4,096 entries and warns when full).
-- **Code below an entry**: the lockstep watches a routine's own code from its
-  entry and accepts its RET only inside that span; `CODE_BELOW` widens the span.
-  A routine whose RET or code lies below its entry is skipped silently unless
-  listed, and a random DS can put a table over that code unseen. A low count of
-  states compared is the tell: VGAME 1377:00F3 compared 341 states before its row.
-- **The MS-DOS result was misattributed**: `b86_cargo_pilot.py` defaulted to
-  FreeDOS `vmt386`. Check which profile a tool actually runs before blaming a
-  machine.
-- `d1_check.py` flies `boot_to_flight` by default: a parked jet, not a fight.
-  Use `--route` for busy missions.
-- `progress.py --title` only prints the title prefix; it does not refresh
-  `docs/progress.json`. Update evidence/counts explicitly when appropriate.
-- **Engagement results across speeds need the same mission.** The front end's
-  timing seeds the mission generator, so below 9 MIPS and on some routes above
-  it the missions differ. `tools/speed_sweep.py` flags runs whose mission differs
-  from the 9 MIPS run; compare hits and launches only on matching missions.
-- **Background work**: a killed run can leave `86Box.exe` or `f117run.exe`
-  holding files; look with `tasklist` before and after. Run long jobs in the
-  background; never sleep in the foreground.
-- The probe (`probe386.py`) masks every IRQ, because the BIOS and DOS enable
-  interrupts inside their calls. Microsoft MOUSE.COM 9.01 hangs on the 386 board.
-- MSVC at /O2 stalls on `x86_stos`, `x86_lods` and `x86_cmps` in matched
-  routines: write those out by hand (`sm4_stosb`, `sm4_step`). A normal
-  matched.c compile takes about 4.5 minutes.
-- VGAME exiting 129 with parent result 2 mid-flight is the original's
-  render-detected terrain collision, not an engine fault.
+- **PowerShell, not Git Bash, for `build.cmd`.** `cmd /c ".\build.cmd ..."`
+  from the Bash tool gets its path rewritten and can print only the `cmd.exe`
+  banner with no actual build - the log then looks like a trivial no-op
+  relink (a handful of "Re-checking globbed directories" / "Linking" lines)
+  and is easy to mistake for "nothing changed." Confirmed this session: the
+  fix is to run `build.cmd` from the PowerShell tool directly, not wrapped in
+  `cmd /c` from Bash.
+- **A background job can look stalled when it is not.** `build_recomp.py`'s
+  coverage step over a route that touches MISC.EXE's self-modifying code
+  writes one log line a clock tick - tens of thousands of lines, the same
+  few bytes repeated - and a `tail` taken mid-burst looks identical call to
+  call. Check CPU delta on the actual process
+  (`Get-Process -Name f117run | Select Id,CPU`, twice, a few seconds apart)
+  before assuming a hang.
+- **Shell and Python escapes**: inline Python heredocs turn `\n`, `\f`, `\a`
+  and `\d` into real characters. Use the Edit or Write tool for strings with
+  escapes, or a script file.
+- **Git Bash and cmd**: see above; `MSYS_NO_PATHCONV=1 cmd /c "C:\...\
+  build.cmd" "-DF117R_GEN_DIR=..."` with the absolute path also works from
+  Bash if PowerShell is not available, but PowerShell is simpler and was
+  what this session used after discovering the problem.
+- **Room claim must cover the longest path** (see item 5): a wrong `room(c,
+  N)` in a hand-written matched routine hides until a route happens to run
+  out of its instruction budget exactly inside that routine, which can be
+  billions of instructions in. Count every segment between calls/loop edges
+  from the tool-generated draft, not from a mental re-derivation, and when
+  in doubt over-claim (always safe) rather than under-claim.
+- **A synthetic same-size file is not a stand-in for a real file's EXEC
+  cost** (item 3): EXEC's cost is dominated by where the file lands on disk
+  relative to the previous access, not by its size. Measure the real file at
+  its real position when the file's identity is known (`realexec.py`'s
+  approach), rather than inserting a differently-positioned same-size copy.
+- **Background work**: a killed run can leave emulator processes holding
+  files; check with `tasklist`/`Get-Process` before and after. Run long jobs
+  in the background; never sleep in the foreground; use `Monitor` or
+  background-task notifications to wait, not chained `sleep`.
 - Game keys (Key Control Card): 0 brakes, 6 gear, 8 bay, Space select weapon,
   Enter fire, Backspace cannon, B select target, Shift+F10 eject. `f117run`
   input: Space is `\s` in route files; at most 4096 inputs.
-- DOSBox 0.74 sees posted keys only with `SDL_VIDEODRIVER=windib`; DOSBox-X does
-  not take posted keys; the release 86Box cannot be typed into (use the VNC
-  build, `tools/ref86box/build_86box.md`).
+- DOSBox 0.74 sees posted keys only with `SDL_VIDEODRIVER=windib`; DOSBox-X
+  does not take posted keys; the release 86Box cannot be typed into (use the
+  VNC build, `tools/ref86box/build_86box.md`).
