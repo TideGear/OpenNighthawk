@@ -263,5 +263,8 @@ if(F117R_BUILD_TESTS)
     # This seed aliases the shadow-text source with PUSH SS's stack write.
     add_test(NAME matched_shadow_stack_alias COMMAND func_lockstep --states 4000
       --seed 0xf2a7d2c1bf36 --only START.EXE:36C4,END.EXE:19C3,END.EXE:112A)
+    # A stack overlapping the shift helper changes BX before the in-place stores.
+    add_test(NAME matched_shift_stack_alias COMMAND func_lockstep --states 4000
+      --seed 0x2cb230b9369f --only VGAME.EXE:EF80,START.EXE:97D8)
   endif()
 endif()

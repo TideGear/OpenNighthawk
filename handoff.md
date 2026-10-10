@@ -11,8 +11,23 @@ Earlier session logs are in `git log -p handoff.md`.
 
 ## What to do first
 
-1. `git status -sb`: projectile motion and gunfire refill are on master and `p2-projectiles`,
-   pushed together after the full gate passed (item 3). The canopy remains
+**Latest batch:** `p1-speech-reference`, based on `2cb230b9369f`, merged by
+fast-forward into master and pushed together. The owner requested wrapping
+up for a new conversation, committing, pushing and stopping (9 Oct).
+Speech-reference tooling/docs close the audio item (P1 now
+97.93%). The initial gate (`D:/f117-gate/p1-speech/gate.log`, 595 s) found an
+existing in-place shift mismatch at rotating seed `0x2cb230b9369f`: a stack
+overlaps the original helper, which returns with changed BX; the C stores
+used an earlier saved pointer. `shl32_at` now uses live BX, as the original
+does. Targeted VGAME:EF80 / START:97D8 checks compare 9,594 states, zero
+mismatches; CMake retains `matched_shift_stack_alias` at that seed.
+The replacement full gate passed (item 3). No runtime timing/default changes
+were made. Private DOS probes are finished and preserved below; reuse them
+when continuing the P1 timing investigation. No experiment remains running.
+
+1. `git status -sb`: speech-reference tooling and the shift repair are on master
+   and `p1-speech-reference`. Projectile motion and gunfire refill remain on
+   `p2-projectiles` (CI 38013133755 passed both jobs). The canopy remains
    on `p2-cockpit-canopy` (CI 38011635681 passed both jobs). The weapon-lock
    marker and gate build-setting repair remain on `p2-lock-marker`; the
    15 FPS report remains on `speed15-study`. Leave pre-existing untracked files alone.
@@ -27,33 +42,71 @@ Earlier session logs are in `git log -p handoff.md`.
    sweep is now complete (90 flights); initial control-response sweeps and
    boot-clock alignment work are in `D:\f117-gate\speedsweep\` and
    `docs/speed-sweep.md`.
-3. **Green and pushed.** Latest gate: `D:\f117-gate\projectiles\gate.log`,
-   845 s (78 s translation/build, 476 s coverage, 8 s second translation,
-   283 s parity); 13 unit tests, 35 identical routes, 34 reused interpreter
-   sessions. Coverage added nothing; second translation was byte-identical.
+3. **Green and pushed.** Latest gate: `D:/f117-gate/p1-speech/gate-fixed.log`,
+   1,269 s (14 s translation/build, 522 s coverage, 9 s second translation,
+   724 s parity); 14 unit tests, 35 identical routes, 34 fresh interpreter
+   sessions (two routes share one replay). Coverage added nothing; second
+   translation was byte-identical.
    Both instruction profiles compared 5,718,912 states, zero mismatches.
-   Matched seeds `0x5EED0F117A`, `0xC0FFEE`, `0x96deed2ad096` compared
-   2,488,060 / 2,487,211 / 2,485,778 states, zero mismatches. Every routes-only
+   Matched seeds `0x5EED0F117A`, `0xC0FFEE`, `0x2cb230b9369f` compared
+   2,488,060 / 2,487,211 / 2,487,124 states, zero mismatches. Every routes-only
    routine ran and no route overran an event limit. The gate explicitly sets
    `F117R_BUILD_APP=ON`, so a prior core-only build cannot omit host tests.
-   Latest change names VGAME's projectile motion and gunfire refill;
-   the app default stays at 9 MIPS with fixes off. Prior gate histories are
+   Latest changes add the independent speech reference and repair the live
+   shift destination; the app default stays at 9 MIPS with fixes off. Prior gate histories are
    in `git log -p handoff.md` and `D:\f117-gate\merge14\gate.log`.
 
 ## Goal and standing decisions
 
-- **Next priority: the remaining P1 evidence.** Owner asked what prevents P1
-  reaching 100% (9 Oct); 2.07 points are the 386 timing profile and 0.22 points
-  speech audio. Finish the in-flight projectile batch, then investigate DOS
-  file-service costs and mid-draw frame differences, and obtain a rendered
-  speech reference. The current reference cfg explicitly sets
+- **Next priority: the remaining P1 timing evidence.** Owner asked what prevents P1
+  reaching 100% (9 Oct); the remaining 2.07 points are the 386 timing profile.
+  Speech now has an independent rendered reference (details below).
+  Investigate DOS file-service costs and mid-draw frame differences.
+  The current reference cfg explicitly sets
   `hdd_01_speed = ramdisk`; 86Box offers `1989_3500rpm` for a private period-drive
   experiment. `timing386.md`'s MS-DOS 5.00 comparison reports +642.5 ms,
   1,238/1,277 pictures exact in order; do not treat cycle probes as proof of
   frame-exact completion. `dos.c:t386_service_cycles` currently charges only
-  AH=0Bh/2Ch for DOS, no reads/writes/EXEC/overlay. The saved 86Box speaker
-  and AdLib speech traces prove port data, not rendered sound. A silent audio
-  capture hook at 86Box's mixer would provide an independent waveform.
+  AH=0Bh/2Ch for DOS, no reads/writes/EXEC/overlay.
+  A private exploratory COM probe is in `D:/f117-gate/p1-dos-probe/`:
+  `explore.py` generates eight open/seek/read/close trials on VGAME.EXE;
+  `analyze.log` and `preliminary.json` compare 86Box with our 386 interpreter.
+  All read byte counts agree and CF is clear. Reference warm open 50,145
+  cycles (1.50 ms), first open 509,082 (15.27 ms); seek 1,114, close 1,800;
+  reads 512/4096/16384/32768 bytes cost about 79,595/109,972/217,180/361,095
+  cycles (2.39/3.30/6.52/10.83 ms). Includes marker/setup overhead and
+  unmasked IRQs; no runtime calibration inferred yet. A cold/warm cache
+  distinction matters. Two independent boots have byte-identical port logs
+  (SHA-256 `9ccd002e32da2a5c574dcde3e641a4c4d691279631283f52a077ad31cfe82188`).
+  All 80 operations and 3,000 frames completed in both; the first 86Box
+  reported a nonzero exit during shutdown, the second exited 0. Treat these
+  as exploratory measurements, not proof of the eventual timing model.
+  `fcb.py` / `fcb1.log` also probe the extended FCB volume-label search seen
+  beside START's roster step: 21,300-21,604 cycles (~0.65 ms), AL=FF (no
+  label), clean exit. Its own cost cannot explain the ~630 ms step. Our
+  DOSBox-style `dos_files.c` instead supplies C_DRIVE/AL=0. Reading START's
+  DGROUP (0A95) confirms its FCB at 6187 matches the probe's wildcard header;
+  its expected name at 617E is F117A-SF. The 804E helper and 7285 branch
+  therefore choose the roster-write path for both no label and C_DRIVE.
+  This source evidence rules out a different branch caused by those labels.
+  No DOS semantics were changed in this batch.
+  `write.py` / `write1.log` create, write and close a private TIMING.BIN
+  eight times (802 bytes, the roster's size). First write costs 10,055,261
+  cycles (301.66 ms), later writes 19,582 (0.587 ms); all return 802, CF clear.
+  First create 610,313 cycles, second 858,306, later 93,949; first close
+  123,432, later 47,424. This makes initial allocation/cache work a promising
+  explanation for the roster drift. Check START's exact file-operation
+  sequence; do not turn these exploratory costs into one fixed write delay.
+  The second independent write-probe boot (`write2`) exited cleanly and has
+  a byte-identical port log (SHA-256
+  `c8d34efe880d720e254b41c9570c2f9fef69058f431c2f2fd97101aaf3fd8452`).
+  A split 512+290-byte variant (`write-chunks1.log`, clean exit) costs
+  10,052,946 cycles for the first 512 and 5,251 for the following 290;
+  later 512-byte writes cost 17,267. It does not double the cold-write cost.
+  The FAT16 reference has four sectors per cluster. Next conversation:
+  trace START's exact create/write/close sequence and any DOS cache/allocation
+  costs before implementing a 386-only file-service timing model; preserve
+  the DOSBox default and fixes-off parity.
 
 - **Usage cutoff (owner, 9 Oct).** When the 5-hour Codex allowance is 15% or
   less, wrap up, update this handoff, commit, push, and stop. The available
@@ -63,7 +116,7 @@ Earlier session logs are in `git log -p handoff.md`.
   `sky.get_window_state({window, include_screenshot:false, include_text:true})`;
   find `5h limit:` and its following percentage. Screen capture timed out,
   but accessibility worked. Select the current returned window first.
-  Latest reading in this batch: 54% left. Act on that meter or the owner's notice.
+  Latest reading in this batch: 52% left. Act on that meter or the owner's notice.
 - **Parity first.** The recompilation is what the original did on the hardware
   of its time (owner, 8 Oct 2026). Where the developers' intent can be
   established, it guides the defaults (owner, 9 Oct: "1:1 parity with the
@@ -198,8 +251,8 @@ Earlier session logs are in `git log -p handoff.md`.
 
 ## Current state
 
-- **Scoreboard** (the last pushed title): P1 97.71%, P2 38.54%, P3 67.00%,
-  P4 42.90%, All 70.44%.
+- **Scoreboard** (including the speech-reference batch): P1 97.93%, P2 38.88%, P3 67.00%,
+  P4 42.90%, All 70.63%.
 - **Phase 1 (parity)**
   - Translation: 89,366 instruction starts (96% of the code bytes). 35 routes
     identical between the engines. The interpreter and the translator are
@@ -210,7 +263,16 @@ Earlier session logs are in `git log -p handoff.md`.
   - Sound: the AdLib takeoff call on the MS-DOS machine matches this build in
     order and value (6,464 register-43h writes, the same rate). The speaker's
     counter writes match exactly (13,046 counts, 15.1 a millisecond on both).
-    Open: a reference audio for the speech (DOSBox-X plays none of it).
+    The independent waveform reference is now captured silently from 86Box's
+    mixer (`86box-audio.patch`, `speech_audio.py`). The non-silence call has
+    12,924 identical counts over 855.626 ms; 300-3400 Hz correlation -0.991565,
+    envelope 0.999516, zero lag, ours/reference RMS 3.16856. Opposite polarity
+    and gain follow the two speaker amplitude formulas, documented in
+    `tools/ref86box/build_86box.md`. Capture off/on preserves all 4,500 frame
+    records, 1,621 AdLib writes and the speaker-port log byte for byte.
+    Private captures, report and binary/input/config hashes are under
+    `D:/f117-gate/p1-speech/`; `compared/report.json` repeats byte-identically.
+    An altered count stream is rejected. Listening remains Phase 4.
   - **The original's frame controller** (verified in the VGAME listing):
     - S is clamped to [4 - accel, 15] (`0x0D479`).
     - A per-frame wait at `0x0409` calls `0x04C7`, which waits `[0x43E8]` ticks.

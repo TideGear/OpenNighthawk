@@ -5,6 +5,9 @@
 *.bat text eol=crlf
 *.cmd text eol=crlf
 
+# Unified patches require a space on blank context lines.
+*.patch whitespace=-blank-at-eol
+
 # Assets must not undergo newline conversion.
 *.png binary
 *.jpg binary

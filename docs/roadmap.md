@@ -80,6 +80,21 @@ make (Phase 4).
   [repeated-processes.md](repeated-processes.md).
   The gate explicitly enables the app build so its host tests are included
   even after a core-only build.
+  A retained rotating-seed regression checks the in-place 32-bit shift's
+  stores through live BX after the original helper returns, including a
+  stack overlapping that helper's code (`matched_shift_stack_alias`).
+
+- **Rendered speaker and speech audio.** PIT counter 2 follows the 8254 model;
+  speaker music matches the DOSBox-X reference (envelope 0.87, spectral
+  0.92-0.93, level 0.95). The missing speech waveform reference is now captured
+  silently from 86Box's mixer on MS-DOS 5.00/MOUSE.COM 6.26 (9 Oct): the
+  takeoff call's 12,924 non-silence counts are identical, over 855.626 ms;
+  in 300-3400 Hz waveform correlation is -0.9916, envelope 0.9995, zero lag.
+  Opposite polarity and 3.17x level follow the independent speaker models'
+  amplitude formulas; no renderer/default change was needed. Capture leaves
+  all 4,500 frame records and port writes byte-identical. Commands and limits:
+  [build_86box.md](../tools/ref86box/build_86box.md#silent-speech-waveform-reference).
+  Listening remains Phase 4; OPL mixer sample equality remains out of scope.
 
 ### Open
 
@@ -121,36 +136,6 @@ make (Phase 4).
       when it costs zero cycles; four regressions failed before the fix and
       pass after it. Regions are capped at 1,024 instructions to bound MSVC's
       optimisation work (generated rebuild 479 s to 120 s).
-- [ ] **Rendered sound:** the register stream is exact (every AdLib write of
-      the intro in order and value, above), which is what the original sends to
-      its chip. How the OPL waveform is synthesised is the emulator's, not the
-      game's, so matching DOSBox's mixer sample for sample is not pursued.
-      The speaker: the host runs PIT counter 2 itself from the machine's writes,
-      clock by clock, as the 8254 data sheet has it (`src/host/speaker.c`), and
-      integrates the cone's input over each sample. The speaker driver's music
-      rewrites counter 2's count every 3.3 ms; taken at once, as before, that
-      restarted the wave and mostly held the cone high. Speech under the speaker
-      and Roland drivers is pulse-width modulation (counter 2 mode 0, a count of
-      1-72 every 79 clocks, 15.1 kHz); `speaker = realsound` (the default, the
-      owner's choice on 8 Oct 2026) averages each carrier period, `pwm` keeps the
-      carrier. `tools/speaker_parity.py`
-      against DOSBox-X: the intro's 736 gate changes and 440 control words
-      identical, its audio envelope 0.87, spectral 0.92-0.93, level 0.95 (before:
-      0.69, 0.54, 0.47); the radio call's 12,924 counts identical. Open: an
-      audio reference for the speech (DOSBox-X ignores mode 0 counts written
-      without a control word and plays nothing). The radio call against 86Box
-      (9 Oct 2026, the cargo route's takeoff call through `b86_cargo_pilot.py`
-      on the MS-DOS 5.00 VM with MOUSE.COM, `vmt386dos500`, and on its 4 MB
-      HIMEM/DOS=HIGH variant `vmt386dos500h`; both load the 26,408-byte
-      SPEECH.117, VGAME's `[0x008A]` 0x8C43 and 0x8094): with the AdLib
-      driver (`B86_OPL`) its 6,464 writes to register 43h are identical in
-      order and value, 7,938 and 7,936 a second, 0.814 s each; with the
-      speaker driver (`B86_SPKLOG`, 86Box's port log in DOSBox-X's format)
-      this machine's 13,046 counts are identical in order and value, 15.1 a
-      millisecond on both (86Box writes 17 and 5 more counts of 128 before
-      the first: 864.8 and 864.0 ms against 863.7 ms here). The FreeDOS VM `vmt386` (bare
-      boot, CuteMouse) does not load SPEECH.117 (`[0x008A]` stays 0, the
-      AdLib driver plays the call's offsets from segment 0).
 
 ### Settled (scope, 8 Oct 2026)
 

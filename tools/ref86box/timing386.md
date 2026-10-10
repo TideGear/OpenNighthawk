@@ -118,6 +118,48 @@ flushes, data-dependent costs and the source line), read from a preprocessed
 - READ SECTORS: 96.08 us to the first DRQ and between sectors (hdc_ide.c:
   1876-1884, 2076-2079), plus the host's transfer loop (REP INSW: 17 cycles a
   word, 4,352 a sector, slower when run from unshadowed ROM).
+
+### Preliminary DOS file-service measurements (9 Oct 2026)
+
+A private COM probe on the MS-DOS 5.00/MOUSE.COM reference opens VGAME.EXE,
+seeks to zero before each read, reads into conventional memory, then closes;
+eight trials, IRQs unmasked. Debug-port markers bracket each service, including
+the marking OUT, MOV AX and result-saving overhead. Both boots returned the
+requested byte counts with CF clear. Their complete 400-record port logs were
+byte-identical; the second run exited cleanly, the first failed at shutdown
+after all measurements and 3,000 frames. These are exploratory measurements,
+not service constants installed in the runtime.
+
+| Operation | Typical cycles | Milliseconds at 33.333 MHz |
+|---|---:|---:|
+| Warm open | 50,145 | 1.50 |
+| First open | 509,082 | 15.27 |
+| Seek to zero | 1,114 | 0.033 |
+| Read 512 bytes | 79,595 | 2.39 |
+| Read 4,096 bytes | 109,972 | 3.30 |
+| Read 16,384 bytes | 217,180 | 6.52 |
+| Read 32,768 bytes | 361,095 | 10.83 |
+| Close | 1,800 | 0.054 |
+
+The cold/warm distinction needs a model, rather than one delay per open. Our
+386 profile still has no file-service charge. The private probe, raw logs,
+and local comparison are under `D:/f117-gate/p1-dos-probe/`; see handoff.md.
+An extended wildcard FCB volume-label search measured 21,300-21,604 cycles
+(about 0.65 ms), returning AL=FF (no label). Its direct cost is small; our
+DOSBox-style model instead supplies C_DRIVE/AL=0. START's expected name is
+F117A-SF (DGROUP:617E); its helper at 804E and branch at 7285 select the
+roster-write path for both results, so the label difference does not explain
+that step by changing this branch.
+Creating, writing and closing a private 802-byte TIMING.BIN (the roster's
+size) shows a larger cold cost: first write 10,055,261 cycles (301.66 ms),
+later writes 19,582 (0.587 ms), all returning 802 with CF clear. First create
+610,313 cycles, second 858,306, then 93,949; first close 123,432, then 47,424.
+Initial allocation and DOS caching deserve checking against START's exact
+file-operation sequence; a constant per-write delay would miss this pattern.
+A 512+290-byte split gives 10,052,946 cycles for the first 512, 5,251 for
+the following 290; later 512-byte writes cost 17,267 (clean exit). Splitting
+the write does not double its cold cost. This FAT16 disk has four sectors
+per cluster. The exact START workload remains to be traced.
 - READ MULTIPLE 2,000 us before the first data, WRITE 2,000 us before the
   first DRQ then 96.08 us a sector; SEEK and recalibrate 1,000 us.
 

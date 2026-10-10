@@ -34,7 +34,8 @@ an event limit.
 
 The gate explicitly sets `F117R_BUILD_APP=ON` (9 Oct), so a previous
 core-only build cannot silently omit the five host tests. With generated
-code, the unit step runs all 13 tests; the matched lockstep is checked
+code, the unit step now runs all 14 tests, including the retained shift
+stack-alias regression; the matched lockstep is checked
 separately at three 4,000-state seeds.
 
 The 763-address gate with this setting (`D:/f117-gate/merge14/gate.log`)
@@ -54,6 +55,14 @@ The 765-address projectile gate (`D:/f117-gate/projectiles/gate.log`) took
 translation 8 s, parity 283 s. It reused 34 interpreter sessions; all 13
 unit tests, 35 route pairs, both instruction profiles and three matched
 seeds passed, with no event-limit overruns. Coverage added nothing.
+
+The speech-reference/shift-repair gate (`D:/f117-gate/p1-speech/gate-fixed.log`)
+took 1,269 s: translation/build 14 s, coverage 522 s, byte-identical second
+translation 9 s, parity 724 s. All 14 unit tests, 35 route pairs, both
+5,718,912-state instruction profiles and three matched seeds passed, with no
+event-limit overruns. It ran 34 fresh interpreter sessions; coverage added
+nothing. The initial 595 s gate caught the shift regression at the rotating
+seed; that seed is now retained as a unit regression.
 
 Stage times, earlier run: translate and build 457 s, coverage 173 s, second
 build 2 s (skipped), parity 503 s, lockstep tail 229 s.
@@ -96,6 +105,19 @@ by name; today: `recon_career` and `recon_return`.
 | 86Box closed-loop flight (`b86_cargo_pilot.py`) | per pilot change | about 200 s wall in fast-forward (`B86_FAST`) | run beside the machine's and DOSBox-X's flights; runs are deterministic (same `flight.csv` twice), so one flight is a verdict |
 | Machine-behaviour probe (`fidelity_all.py`) | after a machine-model change | about 2 min with a saved 86Box sheet; 86Box adds a 4-minute run (`--86box-run`) | the 86Box sheet only changes with the model, so the saved sheet is reused |
 | 86Box boot attempts | per BIOS or config change | 2-5 min per capture series | a boot-sector test (`hello_floppy.py`) answers "does the BIOS boot" in one run, before any larger image |
+
+## Silent 86Box speech waveform reference
+
+`tools/ref86box/86box-audio.patch` records the mixer buffers before host
+playback, enabled only by `B86_AUDIO=PREFIX`: signed 32-bit little-endian
+stereo `PREFIX.sound.pcm` at 48,000 Hz and `PREFIX.music.pcm` at 49,716 Hz.
+The reference runner retains offscreen video and null/dummy host audio.
+Before using a capture, run the same input with capture disabled and enabled
+and require identical frame and port traces. Measured on 9 Oct: incremental
+86Box build 23 s, two intro runs concurrently 28 s, short takeoff-call flight
+94 s, our interpreter replay 50 s, WAV render 1.6 s, comparison about 0.6 s.
+Reuse captures when the recorded binary, input and configuration hashes agree.
+Generated audio and game data stay outside the repository.
 
 ## What the gate is checked against
 

@@ -10752,8 +10752,10 @@ static int shl32_at(machine_t *m, uint16_t shift, uint16_t ret)
     c->icount += 7;
     if (!guest_call(m, shift, ret)) return 1;
     if (!room(c, 5)) { c->ip = ret; return 1; }
-    ds_put(c, p, c->r[R_AX]);
-    ds_put(c, (uint16_t)(p + 2), c->r[R_DX]);
+    /* The stores use the live BX, including when an aliased stack changed
+     * the original callee's instructions and it returned with another BX. */
+    ds_put(c, c->r[R_BX], c->r[R_AX]);
+    ds_put(c, (uint16_t)(c->r[R_BX] + 2), c->r[R_DX]);
     c->r[R_BX] = cpu_pop16(c);
     c->r[R_BP] = cpu_pop16(c);
     c->ip = cpu_pop16(c);

@@ -286,3 +286,70 @@ display once a second for 150 s; `compare_intro.py OUT SHOTS` matches each
   6 MHz 286 lands on a different frame of the same scene than ours does.
   So the scenes, their order and the colours agree; frame-exact timing
   does not and cannot until the VM runs at the modelled speed.
+
+## Silent speech waveform reference
+
+Apply `86box-audio.patch` in addition to `86box-trace.patch`, then rebuild.
+`B86_AUDIO=PREFIX` records the existing emulation-thread mixer buffers before
+host gain/playback. It creates `PREFIX.sound.pcm` (48,000 Hz) and
+`PREFIX.music.pcm` (49,716 Hz): interleaved stereo, signed little-endian int32
+containers **in signed-16-bit amplitude units**. A raw s32le decoder needs a
+65536 gain to recover those units; otherwise a converted int16 file is silent.
+The hook never changes a buffer, timer or guest state. It flushes each block
+so a deliberately stopped run retains all completed blocks. Keep the runner's
+`offscreen`, OpenAL `null` and SDL `dummy` settings; nothing plays aloud.
+
+Before using a capture, run identical input with `B86_AUDIO` unset and set.
+The 9 Oct check used `sound86.py OUT --frames 4500`: all 4,500 frame records,
+1,621 AdLib writes and the speaker-port log were byte-identical. The incremental
+86Box build took 23 seconds; the two 64-second guest runs finished in about
+28 seconds together. Set `B86_SPKLOG=OUT/speaker.log` for both runs.
+
+For the speech capture, copy `tools/routes/cargo_pilot.input` privately and
+change SETUP's second answer from scancode 03/83 (2) to 02/82 (1). Run
+`b86_cargo_pilot.py --data GAME --front PRIVATE_INPUT --out OUT --seconds 30`
+with `B86_AUDIO=OUT/reference` and `B86_SPKLOG=OUT/speaker.log`. It captures
+the takeoff call; the short flight's supply-drop verdict is expected to fail
+because no delivery was attempted. It is not mission-completion evidence.
+The reference is the MS-DOS 5.00 VM with MOUSE.COM 6.26, IBM speaker selected.
+This capture took 94 seconds of wall time; our interpreter replay took
+50 seconds and the WAV render took 1.6 seconds.
+
+Run our interpreter with that private input, `--steps 4000000000`, its recorded
+`--time-us`, `--speaker-log` and `--opl-log`, using a private save directory.
+Render those logs with `audio_render OPL_LOG OURS_WAV 9000000 4000000000
+--speaker-log SPEAKER_LOG --speaker-model realsound`. Then compare:
+
+```powershell
+py tools/ref86box/speech_audio.py `
+  --reference-pcm OUT/reference.sound.pcm --reference-ports OUT/speaker.log `
+  --ours-wav OURS_WAV --ours-ports SPEAKER_LOG --out COMPARED `
+  --capture-off OFF_DIR --capture-on ON_DIR
+```
+
+The tool selects the longest continuous count-write run, strips leading 128
+silence and requires identical counts before comparing audio. It extracts
+250 ms of pre/post-roll, resamples both to 44,100 Hz mono, compares two bands
+and excludes only the call's first/last 20 ms switching transient. It reports
+signed waveform correlation, envelope correlation, alignment and RMS level;
+no passing PCM-equality or listening verdict is inferred from those metrics.
+The output includes two clipped WAVs, input SHA-256 hashes and `report.json`.
+A changed count stream is rejected; repeated reports are byte-identical.
+
+Measured 9 Oct 2026 (`D:/f117-gate/p1-speech/compared/report.json`): 12,924
+non-silence counts identical, 855.625500 ms on 86Box and 855.625556 ms here.
+
+| Band | Waveform correlation | Envelope correlation | Lag | Ours/reference RMS |
+|---|---:|---:|---:|---:|
+| 300-3400 Hz | -0.991565 | 0.999516 | 0 ms | 3.16856 |
+| 100-8000 Hz | -0.988890 | 0.999437 | 0 ms | 3.15896 |
+
+The sign and level are explained by the independent models. 86Box's
+`snd_speaker.c:speaker_update` maps count to `(count/256)*10240 - 5120`;
+our mode-0 PIT stays low for count clocks, so its average over the measured
+79-clock carrier falls as count rises, with a 10,000-unit swing
+(`src/host/audio.c`, `speaker.c`). The expected magnitude ratio is
+`10000*256/(79*10240) = 3.16456`, between the two band measurements.
+The residual reflects sampling, carrier averaging and the DC blocker.
+This provides the independent speech waveform reference for Phase 1;
+physical-speaker listening remains Phase 4. Defaults and runtime are unchanged.

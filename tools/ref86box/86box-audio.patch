@@ -1,0 +1,55 @@
+diff --git a/src/sound/sound.c b/src/sound/sound.c
+index afdab37..32bdb8e 100644
+--- a/src/sound/sound.c
++++ b/src/sound/sound.c
+@@ -605,6 +605,32 @@ sound_set_pc_speaker_filter(void (*filter)(int channel, double *buffer, void *pr
+     }
+ }
+ 
++/* Optional reference capture, before host gain or playback. It observes the
++ * existing emulation-thread buffers; no guest state or timers are changed.
++ * B86_AUDIO is a filename prefix. Streams are native little-endian int32
++ * stereo: sound at SOUND_FREQ, music at MUSIC_FREQ. */
++static void
++b86_audio_capture(const int32_t *buffer, size_t samples, int music)
++{
++    static FILE *stream[2];
++    static int tried[2];
++    const unsigned channel = music != 0;
++    if (!tried[channel]) {
++        tried[channel] = 1;
++        const char *prefix = getenv("B86_AUDIO");
++        if (prefix && *prefix) {
++            char path[4096];
++            snprintf(path, sizeof(path), "%s.%s.pcm", prefix, music ? "music" : "sound");
++            stream[channel] = fopen(path, "wb");
++            if (!stream[channel]) fprintf(stderr, "B86_AUDIO cannot open %s\n", path);
++        }
++    }
++    if (stream[channel]) {
++        fwrite(buffer, sizeof(*buffer), samples, stream[channel]);
++        fflush(stream[channel]);
++    }
++}
++
+ void
+ sound_poll(UNUSED(void *priv))
+ {
+@@ -622,6 +648,8 @@ sound_poll(UNUSED(void *priv))
+             if (sound_handlers[c].get_buffer != NULL)
+                 sound_handlers[c].get_buffer(outbuffer, SOUNDBUFLEN, sound_handlers[c].priv);
+ 
++        b86_audio_capture(outbuffer, SOUNDBUFLEN * 2, 0);
++
+         for (uint32_t c = 0; c < SOUNDBUFLEN * 2; c++) {
+             if (sound_is_float)
+                 outbuffer_ex[c] = ((float) outbuffer[c]) / (float) 32768.0;
+@@ -674,6 +702,8 @@ music_poll(UNUSED(void *priv))
+             if (music_handlers[c].get_buffer != NULL)
+                 music_handlers[c].get_buffer(outbuffer_m, MUSICBUFLEN, music_handlers[c].priv);
+ 
++        b86_audio_capture(outbuffer_m, MUSICBUFLEN * 2, 1);
++
+         for (uint32_t c = 0; c < MUSICBUFLEN * 2; c++) {
+             if (sound_is_float)
+                 outbuffer_m_ex[c] = ((float) outbuffer_m[c]) / (float) 32768.0;
