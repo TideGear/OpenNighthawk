@@ -529,7 +529,7 @@ caught real defects:
   changed the record it copied. The seed `0xf2a7d2c1bf36` catches this;
   `matched_shadow_stack_alias` keeps that regression in the unit-test step.
 - START and END's uninitialised graphics-driver thunks, and VGAME's when
-  checking the weapon-lock marker at `0xB171`, are replaced with
+  checking the weapon-lock marker at `0xB171` and canopy at `0xD6DD`, are replaced with
   RETF on both sides of the check, so drawing wrappers can return and their
   surrounding work is compared. The marker checks rise from 358 to 4,857
   comparisons per 4,000-state fixed-seed run, including partial-run checks;
@@ -618,7 +618,7 @@ live game in a window (a diagnostic, not a gate: device state is not in the
 snapshot). `f117run --dump LINEAR:LENGTH` prints registers and memory at the
 end of a run for comparing two engines at a chosen clock.
 
-763 addresses are matched in all seven programs. The programs carry
+764 addresses are matched in all seven programs. The programs carry
 byte-identical copies of the C runtime helpers (string and block copies, the
 32-bit shifts, multiply and divide), so one matched routine serves several
 addresses. MPS_LOGO carries the same library built for a larger model: its

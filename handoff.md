@@ -11,11 +11,10 @@ Earlier session logs are in `git log -p handoff.md`.
 
 ## What to do first
 
-1. `git status -sb`: the named weapon-lock marker and gate build-setting
-   repair are on master and `p2-lock-marker`, pushed together after the full
-   gate passed (item 3). The 15 FPS report remains on `speed15-study`.
-   The earlier repairs remain on `lockstep-code-below`. Leave any
-   pre-existing untracked files alone.
+1. `git status -sb`: the cockpit canopy is on master and `p2-cockpit-canopy`,
+   pushed together after the full gate passed (item 3). The weapon-lock
+   marker and gate build-setting repair remain on `p2-lock-marker`; the
+   15 FPS report remains on `speed15-study`. Leave pre-existing untracked files alone.
 2. The app's default frame rate is the open decision. The owner's rule (9 Oct):
    the default is the highest frame rate at which nothing breaks, with parity
    first and the developers' intent second. Read `docs/speed-sweep.md` (merged
@@ -27,48 +26,30 @@ Earlier session logs are in `git log -p handoff.md`.
    sweep is now complete (90 flights); initial control-response sweeps and
    boot-clock alignment work are in `D:\f117-gate\speedsweep\` and
    `docs/speed-sweep.md`.
-3. **Green and pushed.** Latest gate: `D:\f117-gate\merge14\gate.log`,
-   555 s (14 s build, 541 s parity); 13 unit tests, 35 identical routes,
-   34 reused interpreter sessions,
-   both instruction profiles 5,718,912
-   states with zero mismatches. Matched seeds `0x5EED0F117A`, `0xC0FFEE`
-   and `0x271fd8b2c7aa`: 2,480,746 / 2,479,843 / 2,479,865 comparisons,
-   zero mismatches. Every routes-only routine ran; no event-limit overruns.
-   Coverage safely skipped with unchanged inputs and generated code. The
-   preceding fresh pass, `merge13`, took 1,304 s (72 s build, 448 s coverage,
-   7 s second translation, 777 s parity): 35 identical routes, 34 fresh
-   interpreter sessions, no added translation, the same lockstep tallies.
-   That pass inherited APP=OFF and ran only eight unit tests. The gate now
-   explicitly sets `F117R_BUILD_APP=ON`; merge14 verifies all 13, so a prior
-   core-only build cannot silently omit the five host tests again.
-   This batch names VGAME's weapon-lock marker, strengthens its driver-thunk
-   check and corrects the presentation time-base comment; the app default stays
-   at 9 MIPS with fixes off. Previous repair gate: `merge9` tested HEAD `f2a7d2c`:
-   all 35 routes identical, both 5,718,912-state instruction checks and both
-   fixed matched seeds passed. The rotating seed `0xf2a7d2c1bf36` caught one
-   real matched-code bug in START `0000:36C4`: the shared shadow-text helper
-   replaced PUSH SS / POP ES with an assignment. Its source record can alias
-   the temporary stack write through the 20-bit wrap, changing the copied
-   shadow colour. Restoring the push/pop passes that seed on START 36C4 and
-   END 19C3/112A (14,752 comparisons). CTest now retains it as
-   `matched_shadow_stack_alias` (13 tests in the gate's unit step).
-   The full rerun, `D:\f117-gate\merge10\gate.log`, passed in 1,157 s:
-   13 unit tests; 35 identical routes (34 fresh interpreter sessions); both
-   instruction profiles 5,718,912 states, zero mismatches; matched seeds
-   `0x5EED0F117A`, `0xC0FFEE`, `0xf2a7d2c1bf36` compared 2,475,889,
-   2,474,978 and 2,474,931 states, zero mismatches. Every routes-only routine
-   ran and no route reported an event-limit overrun. Coverage added nothing.
-   The preceding `CODE_BELOW` fix for VGAME `1377:00F3` remains:
-   its 640-wide loop and RET lie below its entry (`00C2` and `00F2`), and the
-   harness now compares about 3,990 states instead of 341. It passed the old
-   failing seed `0x303c384910a7` and both fixed seeds; a one-step mutant fails.
+3. **Green and pushed.** Latest gate: `D:\f117-gate\canopy\gate.log`,
+   887 s (84 s translation/build, 490 s coverage, 7 s second translation,
+   306 s parity); 13 unit tests, 35 identical routes, 34 reused interpreter
+   sessions. Coverage added nothing; second translation was byte-identical.
+   Both instruction profiles compared 5,718,912 states, zero mismatches.
+   Matched seeds `0x5EED0F117A`, `0xC0FFEE`, `0x842d1259f36c` compared
+   2,485,237 / 2,484,325 / 2,486,098 states, zero mismatches. Every routes-only
+   routine ran and no route overran an event limit. The gate explicitly sets
+   `F117R_BUILD_APP=ON`, so a prior core-only build cannot omit host tests.
+   Latest change names VGAME's cockpit canopy posts and landing cue;
+   the app default stays at 9 MIPS with fixes off. Prior gate histories are
+   in `git log -p handoff.md` and `D:\f117-gate\merge14\gate.log`.
 
 ## Goal and standing decisions
 
 - **Usage cutoff (owner, 9 Oct).** When the 5-hour Codex allowance is 15% or
   less, wrap up, update this handoff, commit, push, and stop. The available
-  tools do not expose that allowance; do not confuse goal token usage with
-  the account allowance. Act on a visible meter or the owner's notice.
+  goal tools do not expose that allowance; do not confuse goal token usage
+  with the account allowance. The owner showed the Status meter on screen.
+  Computer-use can read it from VS Code's accessibility tree with
+  `sky.get_window_state({window, include_screenshot:false, include_text:true})`;
+  find `5h limit:` and its following percentage. Screen capture timed out,
+  but accessibility worked. Select the current returned window first.
+  Latest reading in this batch: 78% left. Act on that meter or the owner's notice.
 - **Parity first.** The recompilation is what the original did on the hardware
   of its time (owner, 8 Oct 2026). Where the developers' intent can be
   established, it guides the defaults (owner, 9 Oct: "1:1 parity with the
@@ -275,16 +256,17 @@ Earlier session logs are in `git log -p handoff.md`.
   - `vmt386dos500h` is built and reproducible; DOS=HIGH makes INT 21h 0Bh and
     2Ch cost more, so it is not the reference.
 - **Phase 2 (named, matched code)**
-  - 763 addresses matched (758 of 1,535 census functions, 63,268 of 179,213
-    bytes). 777 functions (115,945 bytes) remain.
-  - Latest routine: VGAME 0x0B171, the searching box and locked hexagon.
-    Preserves small-HUD size halving in the caller's argument and re-reads
-    stack coordinates for every line. The harness enables returning driver
-    thunks only for this VGAME entry, so the active drawing branches return;
-    the actual driver is checked by the routes. Targeted 4,000-state seeds
-    0x5EED0F117A / 0xC0FFEE / 0x271fd8b2c7aa compare 4,857 / 4,865 / 4,868
-    states, zero mismatches. Before the thunk substitution only 358 compared
-    at the fixed seed. Artifacts: `D:\f117-gate\p2-lock-marker\`.
+  - 764 addresses matched (759 of 1,535 census functions, 63,596 of 179,213
+    bytes). 776 functions (115,617 bytes) remain.
+  - Latest routine: VGAME 0x0D6DD, cockpit canopy posts and landing cue.
+    Preserves the compact side frames, all stack-local reads and graphics
+    arguments, and clearing the old cue before painting the new one. The
+    harness enables returning driver thunks for this entry and 0x0B171;
+    the routes check the actual driver. Targeted 4,000-state seeds
+    0x5EED0F117A / 0xC0FFEE / 0x842d1259f36c compare 4,491 / 4,482 / 4,476
+    states (15 / 9 / 7 skipped), zero mismatches. The first draft double-counted
+    CALLs; the helper counts them, so stretches exclude them from icount but
+    include them in room bounds. Artifacts: `D:\f117-gate\canopy\`.
   - Batches this session, each merged after a gate: VGAME (34 and 47), START/END
     (40 and 45), the small programs (21 and 44), and the C runtime's DOS layer
     (64; the lockstep now answers INT 21h and 16h for every routine).
@@ -293,8 +275,10 @@ Earlier session logs are in `git log -p handoff.md`.
     and 21; `vgame_view_caption` was one clock late on a rare path; port bus
     delays crossing an event limit (`IO_SLACK`). The picture decoder's prefix walk
     checked room once for any depth (fixed; boot_to_flight matches again).
-  - Ready leads, triaged equal and not yet written: VGAME 0x0D6DD,
-    0x04777, 0x01007, 0x00D14, 0x05046 and 130D:033F. Identical copies across
+  - Next lead: VGAME 0x04777, projectile motion and gunfire refill (112 original
+    instructions). Private draft: `D:/f117-gate/drafts-next/vgame_frame_projectiles.c/vgame_frame_projectiles.c`.
+    Reimp reading: `src/core/frame.c` frame_projectiles; verify against the original.
+  - Ready leads, triaged equal and not yet written: VGAME 0x04777, 0x01007, 0x00D14, 0x05046 and 130D:033F. Identical copies across
     programs were listed in the batches' commit messages; check the table before
     adding a row.
   - Open: START 0x11DB (a one-clock error, not retried); MPS_LOGO 0x1ADC and

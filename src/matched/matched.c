@@ -22107,6 +22107,122 @@ quit:
     return 1;
 }
 
+/* VGAME 0x0D6DD, cockpit_canopy(page): copy the shaded canopy posts from
+ * page 2 and recolour the landing-approach cue there when its index changes.
+ * Compact HUD mode also draws the two masked side frames. Locals describe
+ * the destination posts and cue; keep them in SS and read each pushed word
+ * afresh, since the graphics calls and the argument stack can alias them.
+ * Cue records at 46F6 are (y, height, colour), six bytes each. Clearing the
+ * old cue swaps its colour back to 30; painting the new one reverses that
+ * swap. Index arithmetic deliberately wraps as in the original. */
+static int vgame_cockpit_canopy(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 20)) return 0;
+    x86_enter(c, 12, 0);
+    alu_sub(c, ds_get(c, 0x466E), 0, 1, 0);
+    unsigned n = 3;                                               /* enter, cmp, jne */
+    if (c->flags & F_ZF) { n++; goto quit; }
+    alu_sub(c, VG2_DS8(0x294B), 0, 0, 0);
+    n += 2;
+    if (!(c->flags & F_ZF)) {
+        /* The two transparent side frames: height, width, source y/x,
+         * destination y/x. The leading zero is the original last argument. */
+        cpu_push16(c, 0); cpu_push16(c, 91); cpu_push16(c, 54);
+        cpu_push16(c, 0); cpu_push16(c, 141); cpu_push16(c, 0); cpu_push16(c, 33);
+        c->icount += n + 7;
+        VG2_FAR(0xD701, 9);
+        c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 14, 1, 0);
+        cpu_push16(c, 0); cpu_push16(c, 91); cpu_push16(c, 54);
+        cpu_push16(c, 0); cpu_push16(c, 196); cpu_push16(c, 0); cpu_push16(c, 233);
+        c->icount += 8;
+        VG2_FAR(0xD719, 16);
+        c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 14, 1, 0);
+        VG2_SETFRAME(-4, 95); VG2_SETFRAME(-2, 43);
+        VG2_SETFRAME(-10, 219); VG2_SETFRAME(-6, 48); VG2_SETFRAME(-8, 85);
+        n = 7;                                                   /* release, five stores, jmp */
+    } else {
+        VG2_SETFRAME(-4, 43); VG2_SETFRAME(-10, 272); VG2_SETFRAME(-6, 58);
+        c->r[R_AX] = 33;
+        VG2_SETFRAME(-2, c->r[R_AX]); VG2_SETFRAME(-8, c->r[R_AX]);
+        n += 6;
+    }
+    /* Left and right opaque posts: source rectangles (264/271, 33, 6, h). */
+    cpu_push16(c, VG2_FRAME(-6)); cpu_push16(c, 6);
+    cpu_push16(c, VG2_FRAME(-2)); cpu_push16(c, VG2_FRAME(-4));
+    cpu_push16(c, VG2_FRAME(4)); cpu_push16(c, 33);
+    cpu_push16(c, 264); cpu_push16(c, 2);
+    c->icount += n + 8;
+    VG2_FAR(0xD769, 10);
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 16, 1, 0);
+    cpu_push16(c, VG2_FRAME(-6)); cpu_push16(c, 6);
+    cpu_push16(c, VG2_FRAME(-2)); cpu_push16(c, VG2_FRAME(-10));
+    cpu_push16(c, VG2_FRAME(4)); cpu_push16(c, 33);
+    cpu_push16(c, 271); cpu_push16(c, 2);
+    c->icount += 9;
+    VG2_FAR(0xD786, 25);
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 16, 1, 0);
+    c->r[R_AX] = ds_get(c, 0x46F2);
+    alu_sub(c, ds_get(c, 0x46F4), c->r[R_AX], 1, 0);
+    n = 4;
+    if (!(c->flags & F_ZF)) {
+        c->r[R_AX] = ds_get(c, 0x46F4);
+        alu_logic(c, c->r[R_AX], 1);
+        n += 3;
+        if (!(c->flags & F_ZF)) {
+            cpu_push16(c, 30);
+            c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1);
+            c->r[R_BX] = x86_imul3(c, c->r[R_AX], 6);
+            cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x46FA)));
+            c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0x46F8));
+            c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], ds_get(c, (uint16_t)(c->r[R_BX] + 0x46F6)), 1, 0);
+            c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], 3, 1, 0);
+            cpu_push16(c, c->r[R_AX]); cpu_push16(c, 259);
+            c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0x46F6));
+            c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], 3, 1, 0);
+            cpu_push16(c, c->r[R_AX]); cpu_push16(c, 252); cpu_push16(c, ds_get(c, 0x4040));
+            c->icount += n + 14;
+            VG2_FAR(0xD7C6, 19);
+            c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 14, 1, 0);
+            n = 1;
+        }
+        c->r[R_AX] = ds_get(c, 0x46F2);
+        alu_logic(c, c->r[R_AX], 1);
+        n += 3;
+        if (!(c->flags & F_ZF)) {
+            c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1);
+            c->r[R_BX] = x86_imul3(c, c->r[R_AX], 6);
+            cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x46FA))); cpu_push16(c, 30);
+            c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0x46F8));
+            c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], ds_get(c, (uint16_t)(c->r[R_BX] + 0x46F6)), 1, 0);
+            c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], 3, 1, 0);
+            cpu_push16(c, c->r[R_AX]); cpu_push16(c, 259);
+            c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0x46F6));
+            c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], 3, 1, 0);
+            cpu_push16(c, c->r[R_AX]); cpu_push16(c, 252); cpu_push16(c, ds_get(c, 0x4040));
+            c->icount += n + 14;
+            VG2_FAR(0xD7FD, 12);
+            c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 14, 1, 0);
+            n = 1;
+        }
+        c->r[R_AX] = ds_get(c, 0x46F2);
+        ds_put(c, 0x46F4, c->r[R_AX]);
+        n += 2;
+    }
+    /* Landing cue rectangle, copied after any recolouring of page 2. */
+    cpu_push16(c, 21); cpu_push16(c, 10); cpu_push16(c, 70);
+    cpu_push16(c, VG2_FRAME(-8)); cpu_push16(c, VG2_FRAME(4));
+    cpu_push16(c, 67); cpu_push16(c, 251); cpu_push16(c, 2);
+    c->icount += n + 8;
+    VG2_FAR(0xD81E, 2);
+    n = 0;
+quit:
+    x86_leave(c);
+    c->icount += n + 2;
+    near_ret(c);
+    return 1;
+}
+
 /* VGAME 0x0B4F5, panel_marker_label(text, pen, margin): the label of the
  * marker at the projected point ([4A10], [4A18]; [4A10] = -1 is none).
  * When the point is further than `margin` from the edges of the 320 x 92
@@ -30613,6 +30729,7 @@ static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x8719, vgame_map_overlay_arc, "warning arc on the map", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x971A, vgame_panel_ils, "instrument landing needles", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xB171, vgame_weapon_lock_marker, "weapon-lock box and hexagon", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD6DD, vgame_cockpit_canopy, "cockpit canopy posts and landing cue", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xB4F5, vgame_panel_marker_label, "label of a projected marker", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD9A2, vgame_compose_camera, "the frame's camera matrices", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x889B, vgame_cockpit_lamp, "set a cockpit lamp", 1 },
