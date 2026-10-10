@@ -297,10 +297,26 @@ static const struct { const char *module; uint16_t ip; int arg; uint16_t v[2]; }
     { "START.EXE", 0x1B37, 0, { 0x0064, 0x0065 } },     /* the map caption's kinds 64h and 65h */
 };
 
-/* Routines whose own RET lies outside the 0x300 bytes from their entry (a long routine entered at
- * its first piece, or one that ends in a shared tail placed before it): where their code starts and
- * how far it reaches. */
+/* Exact code ranges when the default 0x300-byte window is unsuitable:
+ * long/shared tails, or small walkers whose unrelated callees are nearby. */
 static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
+    /* A random initializer can consume the walker's return address and
+     * RET to the outer caller. Its RET is not the walker's own return even
+     * when it lies within 0x300 bytes (SETUP 1886, seed 0x66A860898896).
+     * Near walkers end at +0Eh; far-pointer walkers at +12h. */
+    { "VGAME.EXE", 0xE924, 0xE924, 0x000F },
+    { "START.EXE", 0x9142, 0x9142, 0x000F },
+    { "END.EXE", 0x5038, 0x5038, 0x000F },
+    { "PLAYER.EXE", 0x12FC, 0x12FC, 0x000F },
+    { "DSWAP.EXE", 0x0EE4, 0x0EE4, 0x000F },
+    { "SETUP.EXE", 0x177C, 0x177C, 0x000F },
+    { "VGAME.EXE", 0xE933, 0xE933, 0x0013 },
+    { "START.EXE", 0x9151, 0x9151, 0x0013 },
+    { "END.EXE", 0x5047, 0x5047, 0x0013 },
+    { "PLAYER.EXE", 0x130B, 0x130B, 0x0013 },
+    { "MPS_LOGO.EXE", 0x0283, 0x0283, 0x0013 },
+    { "DSWAP.EXE", 0x0EF3, 0x0EF3, 0x0013 },
+    { "SETUP.EXE", 0x178B, 0x178B, 0x0013 },
     { "END.EXE", 0x3021, 0x3021, 0x0700 },      /* the scorer: its RET is at 0x03680 */
     { "START.EXE", 0x9D06, 0x9D06, 0x0500 },    /* the formatter: its exit is at entry + 4CFh */
     { "END.EXE", 0x5678, 0x5678, 0x0500 },

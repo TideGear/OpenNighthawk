@@ -32,8 +32,10 @@ Status values:
 |---|---|---|---|---|
 | D1 | Confirmed | VGAME | Frame-rate estimate and 15 clamp make world speed depend on machine speed; reported oscillation not reproduced | `--fix D1` |
 | D1TTL | Recomp | VGAME | SA-5 lifetime crosses the signed boundary at S >= 14, suppressing proximity damage | `--fix D1TTL` |
+| D1REAL | Timing option | VGAME | Original simulation clock varies with CPU speed | `--fix D1REAL` |
 | D1SLOT | Recomp | VGAME | Seeker-cleared life underflows to FFFF, keeping the launcher's slot occupied | `--fix D1SLOT` |
-| D1PROX | Balance option | VGAME | Incoming proximity hit distance shrinks as S rises | `--fix D1PROX` |
+| D1ACCEL | Recomp | VGAME | Incoming missile acceleration is per frame rather than per simulated second | `--fix D1ACCEL` |
+| D1PROX | Balance option | VGAME | Proximity hit distance and movement sampling depend on S | `--fix D1PROX` |
 | D2 | Confirmed | ASOUND.117 | Digitised speech busy-waits; can hang the game | `--fix D2` |
 | D3 | Confirmed | SETUP | A keypad digit with NumLock off quits to DOS from the sound screen | `--fix D3` |
 | D4 | Confirmed | START + .WLD | Secret-airstrip missions disabled in Libya, North Cape, Middle East | `--fix D4` |
@@ -110,9 +112,9 @@ Status values:
   `[0xB080]` is the active-air-unit budget compared against difficulty
   `[0x3686]`, not theatre tension (which is `[0x3688]`).
 - **Incoming acceleration (10 Oct independent check).** Ground missiles
-  start at speed1 (`0x54ED`), air missiles at terminal speed (`0x662A`).
+  start at speed 1 (`0x54ED`), air missiles at terminal speed (`0x662A`).
   `0x7209`-`0x722B` adds one speed unit on odd frames, without dividing by
-  S. A staged SA-5 reaches speed9/16 after two simulated seconds at S8/15,
+  S. A staged SA-5 reaches speed 9/16 after two simulated seconds at S8/15,
   with both engines identical. High S accelerates faster; this separate
   timing defect does not by itself explain weaker high-speed combat.
   [Probe and limits](speed-sweep.md#cancelled-slot-repair-and-remaining-distance-defect-10-oct).
@@ -136,6 +138,33 @@ Status values:
   preserves the parked-jet baseline rather than GOG's pacing in every scene.
   Results and short-flight exclusions: [speed-sweep.md](speed-sweep.md#d1-follow-up-9-october-2026).
 - **Detail.** Reimp catalogue:330-449; Reimp `docs/re/01-timing-architecture.md`.
+
+### D1REAL. Real-time simulation cadence
+
+- **Optional timing change: `--fix D1REAL`.** Pin the simulation divisor
+  to8 and admit eight frames per machine second. With original 2x time
+  compression, S becomes4 at the same frame cadence. The original D441
+  code derives all dependent rates. The4359 frame counter waits at event
+  boundaries, so timer interrupts continue normally. Fractional clocks
+  are retained; overruns catch up without losing time,
+  and entering the original pause or quit dialog clears the deadline. State belongs to
+  each machine and resets at program changes. This intentionally replaces
+  the original adaptive cadence; it is off by default. Eight is below the
+  slowest prior 9 MIPS cohort orbit average (8.663 fps), with less display
+  delay than Reimp's initial five-step cadence. Use `--present interp`
+  to display interpolated frames at the host refresh rate. At8 Hz, that
+  presentation adds about125ms of picture delay. CPUs unable to execute
+  eight simulation frames per second can still fall behind.
+- **Normal-input source checks.** `tools/d1real_check.py` passes at9/20/40
+  MIPS in both engines, every case hash matching within each speed. Each
+  gives240frames/30mission seconds in30seconds; compression gives80/20
+  in10seconds, restored rate80/10, pause0/0 over3seconds and resume24/3.
+  Quit-dialog waiting and cancellation also preserve0/0 and24/3.
+  The independent pacer test covers fractional clocks, event-boundary waits,
+  lossless catch-up, program/speed changes and dialog reset. Corrected natural combat
+  measurements remain pending: the first airborne batch exposed lost time
+  from a long-gap reset; catch-up now retains that time. The full gate passed all35 route pairs, both instruction profiles and
+  three matched seeds; corrected airborne combat validation remains open.
 
 ### D1TTL. Long-lived SA-5 missiles cannot cause proximity damage
 
@@ -188,15 +217,41 @@ Status values:
   admit a hit when that unsigned reach exceeds slant. This allowance for
   movement between frames also acts as a hit radius, so near misses that
   damage the aircraft at low S can miss at high S.
-- **Optional balance change: `--fix D1PROX`.** Give incoming weapons an S=9
-  reach floor, retaining the original larger reach when S <= 9. The parked
-  GOG reference supplies 9; it is an explicit balance choice, not a recovered
-  warhead radius. Player weapons, guidance, motion and frame pacing are
-  unchanged. D1TTL remains a separate fix for signed lifetime.
-- **Check.** `tools/d1prox_check.py` stages the same nearby positive-life
-  SA-12 at S=8/9/15. Both engines agree: S=8/9 controls are unchanged, the
-  S=15 near hit is restored, and farther/FFFF cases remain harmless.
-  Natural-flight comparisons and limitations: [speed-sweep.md](speed-sweep.md#independent-combat-investigation-10-october-2026).
+- **Optional balance change: `--fix D1PROX` (v2).** Use a continuous swept
+  octagonal slant band, calibrated to terminal weapon speed*8/9. The S=9
+  reference is an explicit balance choice, not a recovered warhead radius.
+  Relative movement includes the player's previous/current position when
+  the same live missile persists across consecutive frames. Fresh launches
+  and program changes reset history. Guidance, movement, frame pacing,
+  player weapons and lifetime/damage guards retain their original code.
+  This supersedes the earlier S9 floor, which still admitted a wider band
+  below S9 and could miss between samples even at S9.
+- **Check.** `tests/test_weapon_sweep.c` compares 20,000 paths against
+  independent half-space clipping and checks strict boundaries, reversal,
+  subdivision and wrapped deltas. `tools/d1physics_check.py` checks complete
+  frozen-speed/heading passes at S4/8/9/15. All 21 staged cases pass in
+  both engines, including slot 7 and an S change during flight; both S9/player
+  control hashes are unchanged. The earlier five-case proximity check also
+  passes, with unchanged S8/9 control hashes.
+  Earlier floor-cohort evidence is historical, not evidence for v2:
+  [speed-sweep.md](speed-sweep.md#independent-combat-investigation-10-october-2026).
+
+### D1ACCEL. Incoming missile acceleration depends on S
+
+- **Where.** VGAME `0x7221` tests frame parity; `0x722B` increments speed
+  on odd frames. Ground missiles start at speed 1, air missiles at terminal
+  speed. A normal SA-5 reaches speed 9/16 after two simulated seconds at
+  S8/15. Both engines reproduce this; it favors high-S acceleration and
+  does not by itself explain weaker high-speed combat.
+- **Optional timing repair: `--fix D1ACCEL`.** Integrate 9/2 speed units
+  per simulated second, the original S9 rate, with exact integer fractions
+  for every allowed S. Initial parity preserves the S9 increment pattern.
+  State is per machine and resets on a new program, launch or frame gap.
+  Terminal speed is retained. Player weapons use their original path.
+- **Check.** `tools/d1physics_check.py` measures equal simulated time and
+  keeps S9/player controls before behavior-changing cases. Both engines
+  agree in all 21 cases, with unchanged control hashes. Natural combat is
+  being measured separately.
 
 ### D2. AdLib digitised speech can hang the game
 

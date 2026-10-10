@@ -32,7 +32,7 @@ this project treats it as one.
 **1:1 parity with the original is the first priority.** The game does
 exactly what the DOS original does, including its bugs, which are tracked in
 [docs/bugs.md](docs/bugs.md) so they can be fixed later as switchable
-options. Thirteen catalogued fixes and balance options are available now, all off by default.
+options. Fifteen catalogued fixes and balance options are available now, all off by default.
 
 > **Not affiliated with anyone.** This is an unofficial, fan-made project. It
 > is not affiliated with, authorized by, endorsed by, or associated with
@@ -232,6 +232,12 @@ build\f117a.exe --data "C:\GOG Games\F-117A"
 | `--scale N`, `--fullscreen`, `--no-aspect` | window size; fullscreen; square pixels instead of 4:3 |
 | `--config FILE`, `--no-config` | read settings from FILE instead of `f117a.ini` beside the executable; or read none |
 | `--fix ID`, `--list-fixes` | switch on a fix for one of the original's bugs (`all` for every one); every fix is off unless named, so the default is the original, bugs included |
+
+`--fix D1REAL --present interp` uses eight simulation steps per real second
+with interpolated display. It replaces the original adaptive simulation
+cadence; see [the timing option](docs/bugs.md#d1real-real-time-simulation-cadence).
+The separate `D1TTL`, `D1SLOT`, `D1PROX` and `D1ACCEL` options repair incoming
+missile lifetime, slot reuse, proximity sampling and acceleration.
 
 Every option can also be kept in a settings file: copy `f117a.example.ini`
 (written beside `f117a.exe` by the build) to `f117a.ini` in the same folder

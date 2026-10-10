@@ -606,3 +606,110 @@ Thus every-other-frame acceleration is not invariant per simulated second.
 Its direction benefits high-S acceleration, so it cannot alone explain
 weaker high-speed combat. Normalizing it is a separate physical timing
 repair, not grounds for inflating high-speed hit probability.
+
+
+## Swept proximity and simulated-time acceleration (10 Oct)
+
+D1PROX v2 uses a continuous sweep of the original octagonal horizontal
+metric plus altitude/32, with band = terminal weapon speed*8/9. This is an
+explicit S9 balance reference, not a recovered warhead constant. Endpoints
+and five piecewise-linear breakpoints give an exact rational minimum.
+Consecutive live weapon records track relative player movement; new launches,
+changed position/type, frame gaps and process epochs reset continuity.
+Original guidance, movement, lifetime/damage guards and player weapons remain.
+The independent C oracle clips16 half-spaces and checks20,000 paths,
+reversal, subdivision, wrapped coordinates and strict boundaries.
+
+D1ACCEL integrates incoming acceleration at9/2 speed units per simulated
+second using exact integer fractions for S1..15, retaining the original
+S9 odd-frame pattern and terminal-speed clamp. Both options are off by default.
+`tools/d1physics_check.py` passes all21 staged cases in both engines +/-
+options, with unchanged first S9/player control hashes. After two simulated
+seconds, initial1/terminal28 speed is originally5/9/10/16 at S4/8/9/15;
+fixed speed is10 throughout, including a mid-flight S8-to-S15 change.
+Frozen SA-12 straight passes lateral20 hit at all four S; lateral22/28
+miss at all four S. Original outcomes vary, including a point-sampling
+miss at S9. Incoming slot7 is covered. Staged cases isolate physics,
+not natural combat balance. The legacy five-case proximity check passes too.
+
+Natural Middle East20 offset2720 matches both engines: hash
+`3893586487063407`, every CSV byte and launch record,16 launches,9 bursts,
+20 total damage selections and early exit at152.2 orbit seconds. Native9
+at offset2500 has hash`9087c775185e262f`,17 launches,11 bursts,24 total
+damage selections and138.6 orbit seconds. Orbit-clock rates are1.1038
+and1.241 respectively. Regenerated native sentinels reproduce every hash,
+launch record and CSV byte. Artifacts: `D:/f117-gate/physics-final-*.json`,
+`d1prox-v2-*.json`, `physics-sentinel-*.{json,csv}`.
+
+The72-flight cohort took23.7 minutes with eight workers sharing the gate's
+24-CPU affinity mask. All24 original mission pairs match; fresh families
+22500/25000 add eight matching pairs. All four27500 pairs generated different
+missions and are excluded from paired comparisons:32 matching pairs, not36.
+
+| Physics v2 arm | Flights | Early exits | Launches/flight | Bursts/flight | Damage selections/flight | Orbit seconds |
+|---|---|---|---|---|---|---|
+| 9 + TTL + PROX + SLOT + ACCEL | 36 | 22 | 12.1389 | 7.0000 | 14.0000 | 5437.2 |
+| 20 + TTL + PROX + SLOT + ACCEL | 36 | 17 | 10.5000 | 5.5556 | 11.1111 | 5441.8 |
+
+Across32 matching missions,20-minus-9 differences are launches-1.4688
+(95% paired bootstrap-3.1562..+0.0625), bursts-1.5312
+(-2.6250..-0.5312), damage selections-3.0625(-5.2500..-1.0625).
+Original24 pairs give bursts-1.3333(-2.6250..-0.1667); eight matching
+fresh pairs give-2.1250(-4.3750..-0.5000). Physics consistency alone
+has not closed CPU-dependent combat. Against prior PROX(v1)+SLOT on the
+original24 missions, v2+ACCEL changes bursts by+0.1250 at9 and-0.2500
+at20; the20 interval is-0.8750..+0.2083. These repairs follow isolated
+defects rather than tuning cohort means.
+
+Full sampled mission-clock weighted rates are1.2327 (9) and1.1239 (20):
+20,536/19,658 world seconds over16,659.4/17,491.2 machine seconds. These
+include startup and pre-orbit samples; some early exits never reach orbit.
+Survival, trajectory and exposure differ, so counts per flight or pooled
+counts per world minute are descriptive rather than impact probabilities.
+
+Artifacts: `D:/f117-gate/threat-physics-v2/`, reports
+`threat-physics-v2-{original,heldout,all}-summary.txt`. Reproduce original
+seed families0..12500 plus22500/25000/27500 at9 MIPS and+220ms at20,
+four routes,600 seconds, TTL+PROX+SLOT+ACCEL; use the public comparator.
+Reproduce staged checks with `py tools/d1physics_check.py --data DIR
+--engine ENGINE`, then repeat with `--fix D1PROX --fix D1ACCEL`.
+
+
+## Optional real-time cadence (10 Oct; airborne validation open)
+
+D1REAL pins S=8 normally and S=4 under original 2x compression, admitting
+eight simulation frames per machine second. Original D441 derives dependent
+rates. The existing interpolated presentation can display at host refresh;
+at8Hz it adds about125ms of picture delay. Original default20MIPS and all
+fixes-off behavior remain unchanged. CPUs unable to execute eight frames
+per second can still fall behind.
+
+A first airborne batch exposed lost simulation time from a two-period
+resynchronization rule: one9MIPS orbit averaged7.9534fps. That batch/gate
+were stopped; artifacts are saved as `*discarding-v1*`. The corrected pacer
+retains elapsed time through overruns, while original pause and quit-dialog
+entry explicitly reset its deadline. Fractional clocks and per-machine
+program/speed resets have an independent unit check.
+
+The corrected `d1real_check.py` passes seven normal-input cases at9/20/40
+MIPS under both engines, every case hash identical within each CPU speed.
+Normal30seconds gives240frames/30mission seconds; compressed10seconds
+80/20; restored10seconds80/10; pause3seconds0/0 and resume3seconds24/3;
+quit-dialog3seconds0/0 and cancellation3seconds24/3. Six parallel boots
+took about3.8minutes. Artifacts `D:/f117-gate/realtime-checks/`.
+
+Corrected natural combat remains unvalidated: the owner's85% usage threshold
+was reached before a fresh cohort could start. Next run the24-flight
+`threat_realtime.py` batch (four routes, seeds2500/22500/25000,9/20MIPS,
+TTL+PROX+SLOT+ACCEL+REAL), retaining early exits and verifying all12 mission
+identities. Compare clock rates and combat against physicsv2 on the same
+seeds. Then compare interpreter/native MiddleEastseed2500 hashes, launch
+records and every CSVbyte using `realtime_sentinel.py`. Do not declare
+CPU-independent enemy effectiveness from the parked checks alone.
+
+
+Final source gate PASS:24.1minutes (1447seconds),17selected tests,35identical
+route pairs, both5,718,912-state instruction profiles, all three765-address
+matched seeds, all routes-only evidence and no event-limit overruns.
+`D:/f117-gate/gate-physics-realtime.log`. This verifies parity and the staged
+checks; corrected natural combat remains the next required investigation.

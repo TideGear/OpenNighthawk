@@ -12,6 +12,7 @@
 #include "fixes.h"
 #include "recomp_rt.h"
 #include "x86_sem.h"
+#include "weapon_sweep.h"
 
 #include <string.h>
 
@@ -86,29 +87,178 @@ static int fix_d1slot_countdown(machine_t *m)
     return 1;
 }
 
-/* D1PROX. The incoming proximity reach is (speed << 3) / S, twice one
- * movement step. It also acts as a hit radius: increasing S from 8 to 15
- * nearly halves the set of near misses admitted, even with valid life.
- * This is an explicit balance option, not a recovered original constant:
- * retain the original tunnelling allowance and give incoming weapons a
- * floor equal to their reach at S=9 (the parked GOG reference). Lower S,
- * player weapons, guidance, movement and frame pacing are untouched.
- * Override JA after CMP, preserving its flags and the original quotient;
- * the next instruction on the admitted path compares the guidance flag.
- * D1TTL is separate because a larger reach must not hide signed-life bugs. */
+static uint64_t weapon_epoch(const machine_t *m)
+{
+    return m->nproc ? m->procs[m->nproc - 1].start_icount : 0;
+}
+
+/* D1REAL: canonical eight-step simulation with an actual real-time clock.
+ * Enter at D441 rather than inside it so the whole-routine matched override
+ * cannot bypass this correction. The original code derives every S rate.
+ * Original 2x time compression halves S to four at the same frame cadence.
+ */
+static int fix_d1real_rates(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t S = seg_read16(c, c->seg[S_DS], 0x3DA8) == 2 ? 4 : 8;
+    seg_write16(c, c->seg[S_DS], 0x368E, S);
+    alu_sub(c, S, 15, 1, 0);
+    c->op_cs = c->seg[S_CS]; c->op_ip = c->ip;
+    c->ip = 0xD446; c->icount++;
+    return 1;
+}
+
+static int fix_d1real_frame(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint64_t wait = frame_pacer_wait(&m->fix_real_pacer, c->icount,
+                                           m->ips, weapon_epoch(m));
+    if (wait) {
+        c->icount = wait < c->stop_at ? wait : c->stop_at;
+        return 1;                   /* service events without retiring INC */
+    }
+    const uint16_t frame = seg_read16(c, c->seg[S_DS], 0x3D8E);
+    seg_write16(c, c->seg[S_DS], 0x3D8E, (uint16_t)alu_inc(c, frame, 1));
+    c->op_cs = c->seg[S_CS]; c->op_ip = c->ip;
+    c->ip = 0x435D; c->icount++;
+    return 1;
+}
+
+static int fix_d1real_pause(machine_t *m)
+{
+    m->fix_real_pacer.next = 0;
+    m->fix_real_pacer.remainder = 0;
+    return 0;                       /* original pause runs unchanged */
+}
+
+/* D1PROX v2. Capture before movement without replacing an instruction.
+ * Sweep relative to the player's previous/current positions when this is
+ * the same live weapon on consecutive frames. A fresh launch, staged move
+ * or new program starts against the current player position instead.
+ */
+static int fix_d1prox_start(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t ds = c->seg[S_DS];
+    const int16_t slot = (int16_t)seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x1E));
+    if (slot < 0 || slot >= 8) return 0;
+    machine_weapon_sweep *s = &m->fix_weapon_sweep[slot];
+    const uint16_t w = (uint16_t)(0x3C3A + slot * 28);
+    const uint16_t life = seg_read16(c, ds, (uint16_t)(w + 14));
+    const uint16_t type = seg_read16(c, ds, (uint16_t)(w + 16));
+    const uint16_t frame = seg_read16(c, ds, 0x3D8E);
+    const uint64_t epoch = weapon_epoch(m);
+    if (!life || life > 36000 || type > 0x26) {
+        s->valid = s->captured = 0;
+        return 0;
+    }
+    uint16_t p[3], target[3];
+    const uint16_t player[3] = { 0xC0D0, 0xC0DE, 0x2DF4 };
+    int continuous = s->valid && s->epoch == epoch && s->ds == ds
+        && (uint16_t)(s->frame + 1) == frame && s->life == life && s->type == type;
+    for (int j = 0; j < 3; j++) {
+        p[j] = seg_read16(c, ds, (uint16_t)(w + j * 2));
+        target[j] = seg_read16(c, ds, player[j]);
+        if (s->end[j] != p[j]) continuous = 0;
+    }
+    for (int j = 0; j < 3; j++) {
+        const uint16_t old_target = continuous ? s->target[j] : target[j];
+        s->a[j] = weapon_delta16(p[j], old_target);
+        s->target_delta[j] = weapon_delta16(target[j], old_target);
+        s->start[j] = p[j];
+        s->target[j] = target[j];
+    }
+    s->epoch = epoch; s->ds = ds; s->frame = frame; s->life = life; s->type = type;
+    s->valid = 0; s->captured = 1;
+    return 0;                       /* all guest state is untouched */
+}
+
+/* A physical band calibrated to terminal-speed reach at S=9, separately
+ * from movement sampling. This is an explicit balance reference, not a
+ * recovered warhead constant. Guidance, lifetime/damage guards and player
+ * weapons still use their original code. JA's flags and quotient survive.
+ */
 static int fix_d1prox_hit(machine_t *m)
 {
     cpu_t *c = &m->cpu;
     const uint16_t ds = c->seg[S_DS];
     const int16_t slot = (int16_t)seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x1E));
-    if (slot < 0 || slot >= 8 || (int16_t)seg_read16(c, ds, 0x368E) <= 9) return 0;
-    const uint16_t speed = seg_read16(c, ds, (uint16_t)(c->r[R_SI] + 0x3C40));
-    const uint16_t reference = (uint16_t)((int16_t)(uint16_t)(speed << 3) / 9);
-    const int hit = !(c->flags & (F_CF | F_ZF)) || reference > c->r[R_CX];
+    if (slot < 0 || slot >= 8) return 0;
+    machine_weapon_sweep *s = &m->fix_weapon_sweep[slot];
+    if (!s->captured || s->ds != ds || s->epoch != weapon_epoch(m)
+        || s->frame != seg_read16(c, ds, 0x3D8E)) return 0;
+    const uint16_t w = (uint16_t)(0x3C3A + slot * 28);
+    const uint16_t life = seg_read16(c, ds, (uint16_t)(w + 14));
+    int32_t b[3];
+    for (int j = 0; j < 3; j++) {
+        s->end[j] = seg_read16(c, ds, (uint16_t)(w + j * 2));
+        b[j] = s->a[j] + weapon_delta16(s->end[j], s->start[j]) - s->target_delta[j];
+    }
+    s->life = life; s->valid = life && life <= 36000; s->captured = 0;
+    const int terminal = (int16_t)seg_read16(c, ds, (uint16_t)(0x339E + s->type * 18)) / 64;
+    if (terminal <= 0) return 0;
+    const weapon_point a = { s->a[0], s->a[1], s->a[2] }, end = { b[0], b[1], b[2] };
+    const int hit = weapon_sweep_hits(a, end, terminal * 8 / 9);
     c->op_cs = c->seg[S_CS];
     c->op_ip = c->ip;
     c->ip = hit ? 0x6F00 : 0x6EFD;
     c->icount++;
+    return 1;
+}
+
+/* D1ACCEL. The original TEST at 7221 admits an increment on odd frames.
+ * Integrate 9/2 speed units per simulated second (the S=9 reference), using
+ * LCM(2,4,...,30) so every allowed S contributes an exact integer fraction.
+ * Initial parity preserves the original increment pattern at S=9. State
+ * belongs to the machine and resets for a new launch, program or gap.
+ */
+#define WEAPON_ACCEL_UNIT 720720u
+static int fix_d1accel_test(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t ds = c->seg[S_DS];
+    const int16_t slot = (int16_t)seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x1E));
+    const int S = (int16_t)seg_read16(c, ds, 0x368E);
+    if (slot < 0 || slot >= 8 || S < 1 || S > 15) return 0;
+    const uint16_t w = (uint16_t)(0x3C3A + slot * 28), frame = seg_read16(c, ds, 0x3D8E);
+    const uint16_t life = seg_read16(c, ds, (uint16_t)(w + 14));
+    const uint16_t type = seg_read16(c, ds, (uint16_t)(w + 16));
+    const uint16_t speed = seg_read16(c, ds, (uint16_t)(w + 6));
+    machine_weapon_accel *s = &m->fix_weapon_accel[slot];
+    if (!life || life > 36000 || type > 0x26 || (int16_t)speed < 0) {
+        s->valid = 0;
+        return 0;
+    }
+    const uint64_t epoch = weapon_epoch(m);
+    if (!s->valid || s->epoch != epoch || s->ds != ds || s->type != type
+        || (uint16_t)(s->frame + 1) != frame || (uint16_t)(s->life - 1) != life || s->speed != speed)
+        s->phase = (frame & 1) ? WEAPON_ACCEL_UNIT / 2 : 0;
+    s->phase += 9 * WEAPON_ACCEL_UNIT / (2 * S);
+    s->pending = s->phase / WEAPON_ACCEL_UNIT;
+    s->phase %= WEAPON_ACCEL_UNIT;
+    s->epoch = epoch; s->ds = ds; s->frame = frame; s->life = life; s->type = type;
+    s->speed = speed; s->valid = 1;
+    alu_logic(c, s->pending != 0, 0);
+    c->op_cs = c->seg[S_CS]; c->op_ip = c->ip;
+    c->ip = 0x7226; c->icount++;
+    return 1;
+}
+
+static int fix_d1accel_increment(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const int16_t slot = (int16_t)seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x1E));
+    if (slot < 0 || slot >= 8) return 0;
+    machine_weapon_accel *s = &m->fix_weapon_accel[slot];
+    if (!s->valid || s->ds != c->seg[S_DS] || s->epoch != weapon_epoch(m)
+        || s->frame != seg_read16(c, c->seg[S_DS], 0x3D8E) || !s->pending) return 0;
+    uint16_t speed = seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] + 0x3C40));
+    const uint16_t want = c->r[R_AX];
+    while (s->pending && speed < want) { speed = (uint16_t)alu_inc(c, speed, 1); s->pending--; }
+    s->pending = 0; s->speed = speed;
+    seg_write16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] + 0x3C40), speed);
+    c->op_cs = c->seg[S_CS]; c->op_ip = c->ip;
+    c->ip = 0x722F; c->icount++;
     return 1;
 }
 
@@ -473,9 +623,16 @@ static int fix_d3_keypad(machine_t *m)
 static const recomp_override OVERRIDES[] = {
     { "D5", "VGAME.EXE", VGAME_47304, 0x0000, 0x6D2E, fix_d5, "the supply-drop impact gate" },
     { "D1", "VGAME.EXE", VGAME_47304, 0x0000, 0x441D, fix_d1_pace, "frames paced at the parked GOG baseline" },
+    { "D1REAL", "VGAME.EXE", VGAME_47304, 0x0000, 0xD441, fix_d1real_rates, "canonical simulation rates" },
+    { "D1REAL", "VGAME.EXE", VGAME_47304, 0x0000, 0x4359, fix_d1real_frame, "eight simulation steps per real second" },
+    { "D1REAL", "VGAME.EXE", VGAME_47304, 0x0000, 0x3A4E, fix_d1real_pause, "pause resets simulation deadline" },
+    { "D1REAL", "VGAME.EXE", VGAME_47304, 0x0000, 0x2071, fix_d1real_pause, "quit dialog resets simulation deadline" },
     { "D1TTL", "VGAME.EXE", VGAME_47304, 0x0000, 0x6F19, fix_d1ttl_hit, "incoming weapon lifetime compared unsigned" },
     { "D1SLOT", "VGAME.EXE", VGAME_47304, 0x0000, 0x6CA6, fix_d1slot_countdown, "cancelled incoming weapon life stays zero" },
-    { "D1PROX", "VGAME.EXE", VGAME_47304, 0x0000, 0x6EFB, fix_d1prox_hit, "incoming proximity reach has an S=9 floor" },
+    { "D1PROX", "VGAME.EXE", VGAME_47304, 0x0000, 0x6C50, fix_d1prox_start, "incoming weapon movement captured for proximity sweep" },
+    { "D1PROX", "VGAME.EXE", VGAME_47304, 0x0000, 0x6EFB, fix_d1prox_hit, "incoming proximity uses a swept physical band" },
+    { "D1ACCEL", "VGAME.EXE", VGAME_47304, 0x0000, 0x7221, fix_d1accel_test, "incoming acceleration integrated per simulated second" },
+    { "D1ACCEL", "VGAME.EXE", VGAME_47304, 0x0000, 0x722B, fix_d1accel_increment, "incoming acceleration fractional increment" },
     { "D4", "START.EXE", START_47304, 0x0000, 0x8EDC, fix_d4_table, "START's entry: airstrip mission masks" },
     { "D34", "VGAME.EXE", VGAME_47304, 0x0000, 0xE6BE, fix_d34_start, "VGAME's entry: empty extension" },
     { "D34", "VGAME.EXE", VGAME_47304, 0x0000, 0x0F97, fix_d34_append, "destroyed-object append" },
@@ -513,7 +670,9 @@ static const struct { const char *id, *what; } FIXES[] = {
     { "D1", "frames are capped at 11.6 fps above 9 MIPS, matching the parked GOG baseline" },
     { "D1TTL", "long-lived incoming missiles can hit when their lifetime exceeds 32767 frames" },
     { "D1SLOT", "cancelled incoming missiles release their launcher slots instead of underflowing life to FFFF" },
-    { "D1PROX", "incoming proximity hit distance stops shrinking above S=9, without limiting frames" },
+    { "D1PROX", "incoming proximity uses a swept band calibrated to terminal speed at S=9" },
+    { "D1REAL", "real-time simulation at eight steps per second (use --present interp for smooth display)" },
+    { "D1ACCEL", "incoming missile acceleration uses the S=9 rate per simulated second" },
     { "D2", "AdLib speech plays without stopping the game or risking its busy-wait hang" },
     { "D11", "saves are written to a temporary file and renamed into place, so an interrupted save keeps the old roster" },
     { "D4", "secret-airstrip missions in Libya, North Cape and the Middle East" },

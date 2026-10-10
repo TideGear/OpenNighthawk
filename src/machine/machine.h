@@ -29,6 +29,7 @@
 #define F117R_MACHINE_H
 
 #include "cpu.h"
+#include "../fixes/frame_pacer.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -134,10 +135,33 @@ typedef struct {
     uint64_t epoch_clk;      /* PIT clock at which the current count began */
 } pit_counter;
 
+/* Private state for optional weapon fixes. Cleared with the machine at boot;
+ * each track also identifies the executing program's epoch and weapon life,
+ * so a new flight/launch cannot inherit an old sweep or acceleration phase.
+ */
+typedef struct {
+    uint64_t epoch;
+    uint16_t ds, frame, life, type;
+    uint16_t start[3], end[3], target[3];
+    int32_t a[3], target_delta[3];
+    int valid, captured;
+} machine_weapon_sweep;
+
+typedef struct {
+    uint64_t epoch;
+    uint16_t ds, frame, life, type, speed;
+    uint32_t phase, pending;
+    int valid;
+} machine_weapon_accel;
+
 struct machine {
     cpu_t    cpu;
     uint8_t *mem;
     uint64_t ips;            /* instructions per emulated second */
+
+    machine_weapon_sweep fix_weapon_sweep[8];
+    machine_weapon_accel fix_weapon_accel[8];
+    frame_pacer fix_real_pacer;
 
     machine_hooks hooks;
     FILE    *log;            /* diagnostics; NULL for none */

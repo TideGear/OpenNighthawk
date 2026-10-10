@@ -196,6 +196,12 @@ if(F117R_BUILD_TESTS)
   # Hand tests of the 80186/80286 instructions the flight engine uses, and
   # of the corners where those parts differ from the 8086 (the Reimp's).
   enable_testing()
+  add_executable(test_weapon_sweep tests/test_weapon_sweep.c)
+  target_include_directories(test_weapon_sweep PRIVATE src/fixes)
+  add_test(NAME weapon_proximity_sweep COMMAND test_weapon_sweep)
+  add_executable(test_frame_pacer tests/test_frame_pacer.c)
+  target_include_directories(test_frame_pacer PRIVATE src/fixes)
+  add_test(NAME real_time_frame_pacer COMMAND test_frame_pacer)
   add_executable(test_host_clock tests/test_host_clock.c)
   target_include_directories(test_host_clock PRIVATE src/host)
   add_test(NAME host_wall_clock COMMAND test_host_clock)
@@ -260,6 +266,8 @@ if(F117R_BUILD_TESTS)
     add_executable(func_lockstep tests/func_lockstep.c)
     target_link_libraries(func_lockstep PRIVATE f117recomp)
     add_test(NAME func_lockstep COMMAND func_lockstep --states 2000)
+    add_test(NAME matched_initializer_bounds COMMAND func_lockstep --states 4000
+      --seed 0x66A860898896 --only SETUP.EXE:177C)
     # This seed aliases the shadow-text source with PUSH SS's stack write.
     add_test(NAME matched_shadow_stack_alias COMMAND func_lockstep --states 4000
       --seed 0xf2a7d2c1bf36 --only START.EXE:36C4,END.EXE:19C3,END.EXE:112A)

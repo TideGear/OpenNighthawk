@@ -104,6 +104,15 @@ build 2 s (skipped), parity 503 s, lockstep tail 229 s.
 Same-session routes (executable lines identical) are found by content, not
 by name; today: `recon_career` and `recon_return`.
 
+The physics/real-time gate (`D:/f117-gate/gate-physics-realtime.log`,10Oct)
+took24.1minutes (1447seconds),16workers with verified24-CPU affinity:
+build and17tests20seconds, coverage508, byte-identical regeneration12,
+parity907. All35pairs, both5,718,912-state profiles and all three765-address
+matched seeds passed; every routes-only routine ran and none overran.
+Earlier physics gate failed on the initializer-range harness error; the
+first real-time gate was interrupted after an airborne pacing defect.
+These are recorded separately and are not passing gates.
+
 ## Other repeated processes
 
 | Process | Trigger | Measured cost | Redundancy and status |
@@ -118,7 +127,11 @@ by name; today: `recon_career` and `recon_return`.
 | Raw missile-slot trace | investigate seeker lifetime underflow | 219 s for a parallel 9/20 MIPS pair (10 Oct) | Read-only private wrapper around current pilot; both cohort hashes reproduced. Two processes share affinity mask 0x0F000000 while the gate uses 0x00FFFFFF, leaving four desktop CPUs. Compare common observation windows; slot occupancy is not a count of blocked launches |
 | Held-out combat cohort | validate options without changing calibration | 9.9 min for 24 flights, eight workers (10 Oct) | Four routes, three new seed families, 9 unmodified versus 20+D1TTL+D1PROX; all 12 mission identities match. Shares the gate's 24-CPU affinity limit; three early exits per arm retained |
 | Staged seeker-underflow reproduction | establish the next countdown regression | About 120 s for two boots in parallel (10 Oct) | Private `slot_underflow_probe.py`, interpreter/recomp, S=8/15; positive life becomes FFFF after lost lock, case hashes identical. First exact-rear setup failed its staging expectation; off-axis setup reproduces the defect |
+| Staged weapon physics regression | after changing D1PROX/D1ACCEL or dispatch | about 2 min for four boots (10 Oct) | `d1physics_check.py`, both engines +/- options; 21 cases: S=9/player controls, equal-time and changing-S acceleration, frozen straight passes; incoming slots 0/7; every case hash agrees across engines, both control hashes unchanged |
+| Real-time simulation regression | after changing D1REAL or dispatch | 3.8 min for six parallel boots (10 Oct) | `d1real_check.py`, 9/20/40 MIPS in both engines, normal inputs only; normal clock, 2x compression, restored rate, pause/resume and quit/cancel; compare case hashes per speed |
+| Initializer walker bounds regression | each gate | included in the17-test unit selection | `ctest -R matched_initializer_bounds`, retained seed0x66A860898896; exact walker code spans prevent an unrelated callee return from being mistaken for the walker's own RET |
 | Staged slot-reclamation regression | after changing D1SLOT or dispatch | about 2 min for four parallel boots (10 Oct) | `d1slot_check.py`, both engines +/- D1SLOT; S=8/15, zero/one/signed/unsigned controls before lost-lock cases; all 15 case hashes agree across engines and all eleven control hashes are unchanged; includes incoming slot 7 and player slot 8 |
+| Swept-band/acceleration cohort | measure current physics changes at both CPU speeds, including held-out seeds | 23.7 min, eight workers beside parity (10 Oct) | Four routes x nine seed families x 9/20 MIPS, all four combat options, early exits retained; fresh seeds22500..27500 held out;32 matching pairs, four27500 pairs excluded; check regenerated native 9/20 sentinels against pre-gate/interpreter references |
 | Slot-repair combat cohort | assess D1SLOT separately from earlier hit mitigations | 10.4 min for 72 new flights, 12 workers (10 Oct) | Four routes x six seed families x (9 with TTL+PROX, 9/20 with TTL+PROX+SLOT), reuse prior 20 TTL+PROX arm after unchanged-flight hash check; all 24 mission identities match across all four arms, early exits retained |
 | Isolated 15 FPS cap experiment | test whether a cap alone keeps S at 15 and the mission clock real | about 18 min for 45 flights, eight workers beside a full gate (9 Oct); isolated generated build about 3 min | one source change in a detached checkout at 28f2a50: D1_FPS_X10 116 to 150; 45 unfixed baseline rows retained from the preceding sweep; separate output and DLL hash in `D:/f117-gate/speed15/experiment.json`; compare two 40 MIPS flights under the interpreter too; no default or production D1 change |
 | Speed and D1 sweep (`speed_sweep.py`) | evidence for the default-speed decision | about 12 min for 90 flights, 16 workers beside control research (9 Oct): nine routes, 300 guest seconds each, at five speeds with and without D1 | each route's unfixed 9 MIPS baseline runs first to anchor input times; results resume by tag in `runs.jsonl`; compare engagements only on matching missions; keep fresh results separate from the earlier mixed-version launch counts |

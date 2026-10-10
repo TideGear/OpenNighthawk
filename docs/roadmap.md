@@ -244,8 +244,13 @@ not the recompilation:
       missile lifetimes restore SA-5 proximity damage at S >= 14 without
       limiting frames; `tools/d1ttl_check.py`), D1SLOT (seeker-cancelled incoming
       life stays zero, releasing its launcher slot; `tools/d1slot_check.py`),
-      plus D1PROX (an explicit S=9
-      incoming proximity-distance floor; `tools/d1prox_check.py`). D7 is fixed by D8. Open:
+      plus D1PROX (a swept incoming proximity band using an explicit S9
+      terminal-speed reference) and D1ACCEL (incoming acceleration per
+      simulated second; `tools/d1physics_check.py`). All 21 staged physics cases pass under both engines,
+      with unchanged S9/player controls. The72-flight cohort retains a burst gap
+      across32 matching missions; optional D1REAL passes seven normal-input clock/dialog cases at9/20/40
+      MIPS in both engines; corrected airborne combat validation remains open.
+      CPU/combat remains the priority until that evidence is reviewed. D7 is fixed by D8. Open:
       D10 (the mountain-collision stack corruption, DOS equivalent not
       located; no VGAME routine returns with the stack moved,
       `tools/stack_balance.py`), D35 (not reproduced here; no fix offered) and D36 (not

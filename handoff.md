@@ -9,7 +9,79 @@ checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 more than once, what it costs). State as of 10 October 2026.
 Earlier session logs are in `git log -p handoff.md`.
 
-## Current work after allowance reset (10 Oct, 07:00 PDT)
+## Verified physics/clock checkpoint (10 Oct, 09:47 PDT)
+
+Owner's 85% usage threshold was reached at09:22. Work stopped for wrap-up;
+the already-running REQUIRED gate completed PASS at09:47 in1447.2seconds
+(24.1minutes). All35 route pairs IDENTICAL, both5,718,912-state instruction
+profiles zero mismatches, all three765-address matched seeds zero, every
+routes-only routine ran and none overran.17selected CTests passed.
+Stages: build/tests20sec, coverage508sec, byte-identical regeneration12sec,
+parity907sec. Logs D:/f117-gate/gate-physics-realtime.log and result.txt
+(the exact result filename is gate-physics-realtime-result.txt).
+This source/documentation checkpoint is committed and pushed together.
+No experiments or gate processes remain active. Resume only when the owner
+resets usage. CPU/combat remains first, before the broader roadmap.
+
+D1SLOT66a8608 is committed/pushed. This checkpoint adds:
+D1PROX v2 exact rational continuous octagonal-slant sweep, terminal-speed
+band*8/9 (explicit S9 balance choice, not recovered warhead constant).
+D1ACCEL integrates9/2 incoming speed units per simulated second, exact
+fractions S1..15 with original S9 pattern. Both use per-machine tracks
+with epoch/weapon continuity resets. d1physics_check.py: all21 staged cases
+both engines +/-options pass, first S9/player hashes unchanged. Legacy
+five-case proximity checks pass;20,000-path independent C clipping oracle.
+
+Completed72 natural physics flights,23.7min/8workers. Original24 pairs
+match, fresh22500/25000 add8, all four27500 pairs differ and are excluded.
+Across32 matching pairs,20-minus-9 bursts-1.5312 (95%CI-2.6250..-0.5312).
+Weighted full sampled world-clock rates9=1.2327,20=1.1239. Physics alone
+has NOT fixed CPU-dependent combat. Details/reproduction docs/speed-sweep.md
+final section; artifacts threat-physics-v2/ and summary files. Natural20
+MiddleEastoffset2720 interpreter/native hash3893586487063407 and everyCSVbyte/
+launchrecord match; native9offset2500 hash9087c775185e262f. Regenerated
+sentinels match pre-gate references exactly. Early exits retained.
+
+New optional D1REAL pins S8 (S4 at2x) at D441 entry so matched override cannot
+bypass; original derives all rates.4359 admits eight frames per machine
+second, waiting at event boundaries, exact fractional clocks. Lossless
+catch-up preserves elapsed time; pause3A4E and quit-dialog2071 explicitly
+clear deadline. Per-machine state resets at program/speed changes. Default
+off; use --present interp for smooth display (about125ms picture delay).
+CPUs unable to execute8frames/sec can still lag. Normal-input public
+ d1real_check.py passes all SEVEN cases at9/20/40 MIPS both engines, every
+case hash identical:240frames/30world sec normal,80/20 compressed,80/10
+restored,0/0paused,24/3resumed,0/0quit-dialog,24/3cancelled. Artifactdir
+realtime-checks/, private run_realtime_checks.py. Latest build/tests PASS
+154sec,17 selected CTests (build-physics-realtime-v2.log).
+
+IMPORTANT D1REAL airborne validation is still OPEN. First v1 cohort exposed
+lost time from >=2period resync (9MIPS orbit7.9534fps). Its gate/cohort were
+stopped09:15; logs/data renamed *discarding-v1*. Source now has lossless
+catch-up, but fresh natural flights were NOT started because usage hit85%.
+Do not claim the overall CPU/enemy issue closed. Next session: first check
+final gate/commit below; then run private threat_realtime.py (24flights,
+8workers, four routes x seeds2500/22500/25000 x9/20, all five combat options).
+Output threat-realtime/ (new, currently empty), metadataREALv2. Verify all12
+mission identities; compare baseline physicsv2 same seeds and both CPU arms,
+world-clock rates, early exits. Then private realtime_sentinel.py interp9/20
+compares natural MiddleEastseed2500 hash/launchrecords/CSV with native cohort.
+No builds while DLL probes active. Keep CPU/combat ahead of broader roadmap.
+
+First physics gate FAILED1860.7sec despite35 identical routes and both
+5,718,912-state profiles passing: rotating seed66A860898896 falsely counted
+SETUP callee1886 RET as walker177C's own return under default300h code range.
+Exact near/far walker SPANS and retained matched_initializer_bounds CTest
+correct the harness; runtime matched code unchanged. Interrupted v1 REAL
+gate already had all three765-address matched seeds zero after correction.
+The final gate independently passed every verdict (above).
+
+Reimp HEAD remains9e0716dc502cd64501b0d52030ebef041825f907: separates render
+and simulation cadence, initialS5, but signedTTL and lifetime underflow remain.
+No agents authorized. Original app default20MIPS/no limiter unchanged.
+Private experiments D:/f117-gate; generated/game data never committed.
+
+## Verified D1SLOT checkpoint 66a8608 (10 Oct, 07:00-07:51 PDT)
 
 Clean starting checkpoint `0174a2c`; the owner resumed after the usage reset.
 Current code is uncommitted: optional D1SLOT at VGAME 6CA6 prevents a
