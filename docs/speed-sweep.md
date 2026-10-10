@@ -318,6 +318,30 @@ Differences from 9 MIPS: launches −0.08 (−0.28 to +0.11) at 16, +0.04 (−0.
 
 ## Controlled threat-profile combat measurement (9-10 Oct 2026)
 
+**Superseded observer, corrected 10 Oct.** The figures in this historical
+section do not establish the claimed size or cause of a combat gap. The
+observer discarded lifetimes above 32767, hiding fresh SA-5 launches at
+S >= 14, and detected bursts only when sampled life equalled exactly `2*S`,
+missing more at higher frame rates. It also discarded damage counters on
+early exits. The latest tools use the game's official launch counter,
+observe valid unsigned lifetimes, exclude seeker-abandoned FFFF slots,
+recognise the burst reset across samples, and retain the last damage counter
+on exit. `damage_hits` is a legacy field name for damage selections, not
+missile impacts: one impact can increment it difficulty+1 times, and other
+damage sources can increment it too. The adaptive pilot also scheduled its
+initial throttle/rotation/observation at fixed instruction counts, rotating
+at 8.5 seconds at 20 MIPS versus 18.9 at 9 MIPS; matched missions exposed
+pre-engagement crashes. These startup times now preserve their authored
+9 MIPS seconds at every speed. Older combat tables throughout this document
+share the observer limitations; the threat matrix additionally has this
+takeoff confound. Timing and position samples remain valid observations of
+the flights actually flown, rather than equivalent input schedules.
+The old orbit controller also mishandled negative word differences and
+steered outward when outside its requested radius. Both are corrected;
+`tests/test_threat_profile.py` checks wrapping and radial correction in
+eight directions. Similar mean radii in the old matrix did not establish
+equivalent controlled exposure.
+
 The matrix above flies a fixed scripted path that passes the primary target once and
 then holds a straight heading; it draws about a quarter of a launch a flight, too
 sparse to say anything about combat. `tools/threat_profile.py` instead drives VGAME
@@ -378,3 +402,135 @@ different seeds (the standing caveat across every sweep in this document), so th
 measures "launch rate on this generator's mix of missions at this speed," not a single
 matched mission's rate at three speeds. Raw data: `D:/f117-gate/threatmatrix/runs.jsonl`
 and `samples/`.
+
+## Independent combat investigation (10 October 2026)
+
+The Reimp (`9e0716dc502cd64501b0d52030ebef041825f907`) separates
+simulation and rendering, paces simulation from S, and starts S at 5
+(`vginit.c`). Its default game timer is 60 Hz; original-world-speed mode
+uses 70.086 Hz with a corresponding step-rate adjustment (`main.c`). Its
+simulation-clock tests check tick counts across display rates, not combat.
+`frame_weapons.c` still uses signed lifetime in the proximity guard.
+Its low-S default avoids that overflow; this is not a direct lifetime fix.
+
+Independent listing and staged-machine checks found two mechanisms:
+
+- SA-5 initial life is `150*S*16`: 33,600/36,000 at S=14/15, but VGAME
+  `6F19` uses signed JLE after comparing life with `4*S`. Active life is
+  tested against zero at `708D`. `D1TTL` corrects valid unsigned lifetimes,
+  preserving suppression of seeker-abandoned FFFF slots. Seven staged
+  lifetime cases pass under both engines with and without the fix; engine
+  hashes match at every case. A natural 600-second Middle East flight at
+  20 MIPS, clock offset 2720 ms, restores an SA-5 burst at 293.32 seconds.
+  Its fixed interpreter/recomp hash is `0559ff3b220737ef`; launch records
+  and all telemetry rows match exactly.
+- Proximity reach is `(speed<<3)/S` at `6EF5`, compared unsigned with slant
+  at `6EF9`/`6EFB`. This is both a tunnelling allowance and the admitted
+  near-miss radius, which shrinks as S rises. A staged positive-life SA-12
+  at equal starting geometry damages the aircraft at S=8 but misses at
+  S=15. The separate experimental `D1PROX` option puts an S=9 floor under
+  incoming reach, retaining the original larger allowance below S=9.
+  S=9 is an explicit balance reference, not an original warhead constant.
+
+The corrected pilot/observer flew four theatres, six seed families
+(0..12500 ms, step 2500), and four arms: 9/16/20 MIPS and 20+D1TTL.
+All 96 flights have usable observations and all 24 groups have identical
+recorded mission identities. START clock shifts of +110/+220 ms at 16/20
+MIPS align the seed families. No guest memory is staged in these flights.
+Early exits stay in the results. Damage below subtracts the first observed
+counter from the last and counts damage selections, not missile impacts.
+
+| Arm | Flights | Early exits | Launches/flight | Bursts/flight | Damage selections/flight | Orbit seconds |
+|---|---|---|---|---|---|---|
+| 9 | 24 | 9 | 8.5417 | 4.1250 | 8.2500 | 4734.8 |
+| 16 | 24 | 5 | 8.4583 | 3.5000 | 7.0000 | 5023.6 |
+| 20 | 24 | 6 | 7.7500 | 2.7500 | 5.5000 | 5305.2 |
+| 20 + D1TTL | 24 | 6 | 7.7083 | 2.8333 | 5.6667 | 5296.4 |
+
+Paired bootstrap (5,000 resamples, seed 12345), 20 minus 9 MIPS:
+launches -0.7917 (95% -2.0417 to +0.4583), bursts -1.3750 (-2.1667
+to -0.6250), damage selections -2.7500 (-4.3333 to -1.2500).
+The corrected evidence does not establish the earlier large upstream
+launch deficit. A burst/damage deficit remains, and D1TTL alone does not
+close it: its burst difference from 9 is -1.2917 (-2.0417 to -0.5833).
+The proximity-distance option was then tested on the same 24 seed families
+at 20 MIPS, with both D1TTL and D1PROX enabled: 7 early exits, 7.3333
+launches, 3.3750 bursts and 6.7500 damage selections per flight, with 4669.8
+orbit seconds. Compared with D1TTL alone, bursts increase +0.5417
+(95% paired CI +0.2083 to +0.8750) and damage selections +1.0833
+(+0.4167 to +1.7500). The gap from 9 MIPS is reduced, **not eliminated**:
+bursts -0.7500 (-1.4167 to -0.1667), damage selections -1.5000
+(-2.8333 to -0.3333). This option is useful partial mitigation, not a claim
+that combat is CPU-independent. Extra damage changes later trajectories
+and survival time, so per-flight counts and post-damage orbit exposure
+must not be mistaken for unchanged encounters.
+
+Both engines also replay the combined natural Middle East flight at offset
+2720 identically: hash `7b5cc08d65027187`, 10 launches, 6 bursts, 14 total
+damage selections; every CSV row and launch record matches. All five staged
+proximity cases agree between engines, with unchanged S=8/9 control hashes.
+The 9 MIPS cohort's burst-time S distribution is 7:23, 8:46, 9:11, 10:7,
+11:3, 12:1, 13:2, 14:3, 15:3 (mean 8.6465); its launch-time mean is 8.9561.
+Thus a parked S=9 reference is not the whole low-speed combat distribution.
+Further calibration should use held-out missions, rather than tune until
+this cohort's mean matches. A difference interval including zero is not
+proof of combat equivalence; trajectories and the original's clocks vary.
+
+A read-only follow-up traced raw lifetimes for the Middle East seed family
+2500 at 9/20 MIPS (`D:/f117-gate/ghost_trace.py`, outputs `ghost-trace/`).
+Both replay hashes match the cohort exactly: `2ae3a7380acfa83d` and
+`99bf21292c32d48d`. Seeker-abandoned slots accumulate 1104.8/1894.0
+slot-seconds above 36000, but the 9 MIPS flight exits at 472.9 seconds;
+over that common window the totals are 1104.8/1295.2. These values measure
+occupancy, not suppressed launches. Ground launch `54B4` and air launch
+`65C3` require their chosen `(unit_index & 7)` slot to have zero lifetime,
+so even one abandoned slot can block a particular launcher. Both flights
+still record 11 launches. This is a confirmed lifetime-underflow defect,
+also retained in Reimp, and a candidate for a separate saturating-countdown
+fix; one trajectory-diverged pair does not establish its contribution to
+the CPU-speed deficit. D1TTL currently guards damage from these slots but
+does not reclaim them.
+
+The separate staged reproduction `D:/f117-gate/slot_underflow_probe.py`
+confirms positive SA-5 life 1000 becoming FFFF after a lost-lock seeker
+check at both S=8 and S=15. Both engines agree, including case hashes
+`76d07a07e0d330d9` / `7828a2d70478e5a1`, with no damage. This proves the
+underflow mechanism independently of the natural-flight trace; it does
+not measure the effect of repairing it. A future repair should preserve
+zero at the countdown, with positive-life controls and same-option-set
+9/20 MIPS cohorts. Current D1TTL's bound cannot distinguish a sufficiently
+old abandoned counter once it decays below 36000.
+
+Held-out check (no calibration changes): four routes x seeds
+15000/17500/20000 x (9 unmodified, 20+D1TTL+D1PROX), 600 seconds, eight
+workers. All 24 flights completed without tool errors; all 12 mission
+pairs match. Each arm has three early exits. At 9/20 MIPS the means are
+9.8333/8.5833 launches, 4.5000/4.0000 bursts and 9.0000/8.0000 damage
+selections, with 2579.2/2257.4 orbit seconds. Paired 20-minus-9 intervals:
+launches -1.2500 (-2.6667 to 0), bursts -0.5000 (-1.7500 to +0.6667),
+damage -1.0000 (-3.5000 to +1.3333). This small check does not demonstrate
+equivalence. Pooling the original and held-out 36 pairs gives burst
+difference -0.6667 (95% -1.2500 to -0.0833), still partial mitigation.
+Artifacts: `D:/f117-gate/threat-heldout/`, private driver `threat_heldout.py`,
+report `threat-heldout-summary.txt`; measured wall time 9.9 minutes.
+
+Artifacts: `D:/f117-gate/threat-aligned-v5/{runs.jsonl,*.csv}` and
+`threat-aligned-v5-summary.txt`. Public reproduction uses
+`threat_profile.py` four times into one OUT directory: 9 MIPS with offsets
+0..12500; 16 with 110..12610; 20 with 220..12720; then the same 20 offsets
+with `--fix D1TTL`. Use all four default routes and `--seconds 600`.
+Analyse with:
+
+```
+py tools/threat_compare.py OUT/runs.jsonl --shift-ms 16=110 20=220
+```
+
+The combined follow-up is in `D:/f117-gate/threat-proximity/`, with summary
+`D:/f117-gate/threat-proximity-summary.txt`. Reproduce with the same 20 MIPS
+offsets and both `--fix D1TTL --fix D1PROX`, then pass both cohort files to
+the comparator. These options add no frame limiter; both remain off by
+default, as do the other original-game fixes.
+
+The comparator rejects old telemetry, pairs only identical mission fields,
+and retains early exits; its pairing/interval rules and the pilot's orbit
+geometry have unit regressions.

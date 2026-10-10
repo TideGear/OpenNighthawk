@@ -240,7 +240,10 @@ not the recompilation:
       clamp; also what makes D7's training strike hard to complete), D6
       (a detection cover of 0 reads as 4; optional, since the cells are not
       proven a defect), D3 (keypad digits with NumLock off answer SETUP's
-      sound question instead of quitting to DOS). D7 is fixed by D8. Open:
+      sound question instead of quitting to DOS), D1TTL (unsigned valid
+      missile lifetimes restore SA-5 proximity damage at S >= 14 without
+      limiting frames; `tools/d1ttl_check.py`), plus D1PROX (an explicit S=9
+      incoming proximity-distance floor; `tools/d1prox_check.py`). D7 is fixed by D8. Open:
       D10 (the mountain-collision stack corruption, DOS equivalent not
       located; no VGAME routine returns with the stack moved,
       `tools/stack_balance.py`), D35 (not reproduced here; no fix offered) and D36 (not
@@ -257,11 +260,21 @@ not the recompilation:
       swings in 214 flights. A follow-up controlled threat-profile measurement
       (10 Oct 2026, [speed-sweep.md](speed-sweep.md#controlled-threat-profile-combat-measurement-9-10-oct-2026)),
       orbiting each flight's primary target instead of flying past it once,
-      found a real fall in the enemy launch rate from 9 to 16 to 20 MIPS (9.08,
-      6.48, 3.81 launches a flight; bootstrap 95% intervals exclude zero for
-      both differences), surviving normalisation for exposure time. Not yet
-      explained - the mechanism in the game's listing is the open item, not a
-      further sweep. Control-response tooling now accepts speed, fixes,
+      used an observer that hid SA-5 launches above signed life 32767 and
+      missed burst resets between polls; its earlier gap estimates are
+      superseded. The tools now retain unsigned valid life, the official
+      launch counter, burst crossings, timing/detection inputs and damage
+      counters on early exit. The game's signed hit guard independently
+      suppresses SA-5 damage at S >= 14 (D1TTL). A corrected 96-flight,
+      24-mission paired cohort and 24 combined-fix follow-ups show that
+      D1TTL+D1PROX increase 20 MIPS bursts from 2.75 to 3.375 per flight,
+      but a deficit against 9 MIPS (4.125) remains. The CPU/combat issue
+      is still open. A further 24 held-out flights (12 matching mission
+      pairs) retain a -0.5 burst/flight difference with a wide interval;
+      pooled 36-pair difference -0.6667 (95% -1.25..-0.0833). Seeker-cleared
+      lifetime underflows to FFFF and can occupy the launcher's chosen
+      slot; prevent that underflow before further balance calibration.
+      Control-response tooling now accepts speed, fixes,
       program-relative menus and boot-clock overrides and retains early exits.
       Ten control flights now share mission identifiers after boot-clock
       alignment; their progressive input sequences still diverge, so they

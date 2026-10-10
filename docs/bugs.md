@@ -9,8 +9,8 @@ recompiled code is the original's machine code translated instruction for
 instruction, so it does what the original did, defects included. That is
 what 1:1 parity means. Fixes are switchable patches layered on top (see
 [How a fix will attach](#how-a-fix-will-attach)), each off unless named with
-`--fix ID`, and parity stays the default reference. D1, D2, D4, D5, D11, D12
-and D34 have fixes; `--list-fixes` prints what is available.
+`--fix ID`, and parity stays the default reference. `--list-fixes` prints
+the available fixes, including D1TTL for the long-lived missile hit guard.
 
 Most entries were established by the F-117A Reimp project. They are restated
 here with the Reimp's evidence; the detail lives in its
@@ -31,6 +31,8 @@ Status values:
 | ID | Status | Program | Defect | Fix |
 |---|---|---|---|---|
 | D1 | Confirmed | VGAME | Frame-rate estimate and 15 clamp make world speed depend on machine speed; reported oscillation not reproduced | `--fix D1` |
+| D1TTL | Recomp | VGAME | SA-5 lifetime crosses the signed boundary at S >= 14, suppressing proximity damage | `--fix D1TTL` |
+| D1PROX | Balance option | VGAME | Incoming proximity hit distance shrinks as S rises | `--fix D1PROX` |
 | D2 | Confirmed | ASOUND.117 | Digitised speech busy-waits; can hang the game | `--fix D2` |
 | D3 | Confirmed | SETUP | A keypad digit with NumLock off quits to DOS from the sound screen | `--fix D3` |
 | D4 | Confirmed | START + .WLD | Secret-airstrip missions disabled in Libya, North Cape, Middle East | `--fix D4` |
@@ -58,7 +60,7 @@ Status values:
   tested speed keeps the mission clock at real time. The earlier claim that
   S swings between 15 and 3 above about 16-18 fps came from a model that
   omitted the original's frame wait; it was not reproduced in 199 flights.
-  Enemy effectiveness across speeds remains unmeasured.
+  Combat measurements and observer corrections are in [speed-sweep.md](speed-sweep.md).
 - **Where.** VGAME `0x441D` (the controller, tail of `0x3ADA`); clamp at
   `0x0D441`; the unsigned divide at `0x4435`; floor at `0x4451`; `imul
   ax,[0x368E],0x3C0` at `0x446C`; S initialised at `0x3B79`. A latent divide
@@ -95,13 +97,17 @@ Status values:
   Four of the measured 66.75-70.09 Hz ticks are not a 15 fps period.
   The original wait's own cap is not 15.
 - **Speed study (9 Oct 2026, `docs/speed-sweep.md`).** Not reproduced in the original's own loop. The frame wait at `0x0409` runs in this build (traced at 40 MIPS), and in 199 flights at 3-40 MIPS and on the 386 profile S never fell from 15 to 3. The model that predicted the swing omitted the wait. At 13 MIPS and up the frame rate settles near 16.7 and S sits at 15, so the mission clock runs about 1.11 times real time. On boot_to_flight at GOG's 9 MIPS it runs 1.29 times real time (S 9 against 11.6 frames a second). Measured against GOG's own speed, 13-14 MIPS keeps the clock within 1% and 16 MIPS and up runs it 14% slower. No speed gives real time (1.00).
-- **AI and weapons.** The launch check at VGAME `0x5046` runs only when the
-  accumulator `[0x3D8A]` changes, and that accumulator is updated in the
-  per-frame code beside the frame counter (`0x4552`-`0x45BE`, next to
-  `0x4423`). AI, launches and guidance (`0x683E`) run per drawn frame, scaled
-  by S, as recorded in [speed-sweep.md](speed-sweep.md). No enemy hit rate
-  has been measured; that needs matching missions and a controlled threat
-  profile.
+- **AI and weapons (listing correction, 10 Oct).** Ground launch routine
+  `0x5046` runs every frame. The visibility guard at `0x5050`-`0x5059`
+  skips only the cockpit bar repaint, branching to the site loop at `0x50CA`.
+  Aircraft AI also runs every frame, but its firing decisions at
+  `0x6275`-`0x629D` are staggered: frame modulo `16*S` must equal that
+  aircraft's index-derived phase times S. With stable S, each aircraft is
+  checked once per `16*S` frames, not every frame. Awareness changes per
+  firing check. `detect_evaluate` (`0x5582`) has no direct S input; it uses
+  range, terrain, difficulty, heading aspect, airspeed, altitude and realism.
+  `[0xB080]` is the active-air-unit budget compared against difficulty
+  `[0x3686]`, not theatre tension (which is `[0x3688]`).
 - **Fix available: `--fix D1`,** a frame limiter. An override at VGAME
   `0x441D`, the controller's entry, which every frame passes once, holds
   a frame that arrives before its slot (time passes and interrupts are
@@ -122,6 +128,46 @@ Status values:
   preserves the parked-jet baseline rather than GOG's pacing in every scene.
   Results and short-flight exclusions: [speed-sweep.md](speed-sweep.md#d1-follow-up-9-october-2026).
 - **Detail.** Reimp catalogue:330-449; Reimp `docs/re/01-timing-architecture.md`.
+
+### D1TTL. Long-lived SA-5 missiles cannot cause proximity damage
+
+- **What happens.** A ground SA-5 (weapon type 2, range 150) starts with
+  `150*S*16` frames of life: 31,200 at S=13, 33,600 at S=14 and 36,000 at
+  S=15. Its slot remains active when this word is nonzero, but the hit guard
+  compares it with `4*S` as a signed word. At S=15 it cannot proximity-hit
+  until 3,233 frames have passed, about 194 seconds at the measured frame
+  rate. This defect exists in the shipped game and in the Reimp's
+  `frame_weapons.c`; the Reimp's starting S=5 avoids this boundary.
+- **Where.** VGAME `0x708D` tests active life against zero; `0x6F15`
+  compares life with `4*S`; signed `JLE` at `0x6F19` skips damage.
+- **Fix available: `--fix D1TTL`.** Use unsigned comparison for valid
+  shipped lifetimes (up to 36,000). Preserve the original signed branch
+  above that limit: seeker `0x72A5` can clear life before movement `0x6CA6`
+  decrements it to FFFF; values above 36,000 remain suppressed. This is not
+  slot reclamation: a sufficiently old abandoned counter could decay into
+  the admitted range. Preventing the zero-to-FFFF underflow remains open.
+  The fix retains motion, guidance, clocks and suppression
+  during the final `4*S` frames. It adds no frame limiter.
+- **Check.** `tools/d1ttl_check.py` explicitly stages a nearby missile after
+  normal boot at 20 MIPS. Positive-lifetime controls, the final `4*S` window,
+  lifetimes across 32768, and the abandoned-slot sentinel are tested under
+  both engines. This is a hit-boundary regression, not a natural combat flight.
+
+### D1PROX. Incoming proximity distance shrinks with S
+
+- **Where.** VGAME `0x6EF5` divides `speed<<3` by S, then `0x6EF9`/`0x6EFB`
+  admit a hit when that unsigned reach exceeds slant. This allowance for
+  movement between frames also acts as a hit radius, so near misses that
+  damage the aircraft at low S can miss at high S.
+- **Optional balance change: `--fix D1PROX`.** Give incoming weapons an S=9
+  reach floor, retaining the original larger reach when S <= 9. The parked
+  GOG reference supplies 9; it is an explicit balance choice, not a recovered
+  warhead radius. Player weapons, guidance, motion and frame pacing are
+  unchanged. D1TTL remains a separate fix for signed lifetime.
+- **Check.** `tools/d1prox_check.py` stages the same nearby positive-life
+  SA-12 at S=8/9/15. Both engines agree: S=8/9 controls are unchanged, the
+  S=15 near hit is restored, and farther/FFFF cases remain harmless.
+  Natural-flight comparisons and limitations: [speed-sweep.md](speed-sweep.md#independent-combat-investigation-10-october-2026).
 
 ### D2. AdLib digitised speech can hang the game
 

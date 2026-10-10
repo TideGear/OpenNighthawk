@@ -37,6 +37,60 @@ static int fix_d5(machine_t *m)
     return 1;
 }
 
+/* D1TTL. A ground SA-5 starts with range(150) * S * 16 frames of life:
+ * 33,600 at S=14, 36,000 at S=15. Slots are active until this WORD is zero
+ * (0x708D), but the proximity hit guard at 0x6F19 uses signed JLE after
+ * comparing it with 4*S. Thus a newly launched SA-5 cannot hit until its
+ * lifetime falls below 32,768, about three minutes later at S=15.
+ * Use unsigned JBE for valid lifetimes at this one branch. A seeker can
+ * clear life at 0x72A5 before the move decrements it to FFFF; do not turn
+ * FFFF-range abandoned missiles into new damage sources. This bound cannot
+ * identify an old abandoned counter after it decays into the valid range;
+ * preventing lifetime underflow is a separate, still-open repair.
+ * No shipped weapon
+ * starts above range(150) * maxS(15) * 16 = 36,000 frames.
+ * The countdown, motion, guidance,
+ * clocks and the intentional final 4*S-frame hit suppression are retained.
+ * With the fix off the shipped signed comparison still runs. */
+static int fix_d1ttl_hit(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t life = seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_SI] + 0x3C48));
+    const int skip = life <= 36000 ? (c->flags & (F_CF | F_ZF)) != 0
+        : (c->flags & F_ZF) != 0 || ((c->flags & F_SF) != 0) != ((c->flags & F_OF) != 0);
+    c->op_cs = c->seg[S_CS];
+    c->op_ip = c->ip;
+    c->ip = skip ? 0x6F72 : 0x6F1B;
+    c->icount++;
+    return 1;
+}
+
+/* D1PROX. The incoming proximity reach is (speed << 3) / S, twice one
+ * movement step. It also acts as a hit radius: increasing S from 8 to 15
+ * nearly halves the set of near misses admitted, even with valid life.
+ * This is an explicit balance option, not a recovered original constant:
+ * retain the original tunnelling allowance and give incoming weapons a
+ * floor equal to their reach at S=9 (the parked GOG reference). Lower S,
+ * player weapons, guidance, movement and frame pacing are untouched.
+ * Override JA after CMP, preserving its flags and the original quotient;
+ * the next instruction on the admitted path compares the guidance flag.
+ * D1TTL is separate because a larger reach must not hide signed-life bugs. */
+static int fix_d1prox_hit(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t ds = c->seg[S_DS];
+    const int16_t slot = (int16_t)seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x1E));
+    if (slot < 0 || slot >= 8 || (int16_t)seg_read16(c, ds, 0x368E) <= 9) return 0;
+    const uint16_t speed = seg_read16(c, ds, (uint16_t)(c->r[R_SI] + 0x3C40));
+    const uint16_t reference = (uint16_t)((int16_t)(uint16_t)(speed << 3) / 9);
+    const int hit = !(c->flags & (F_CF | F_ZF)) || reference > c->r[R_CX];
+    c->op_cs = c->seg[S_CS];
+    c->op_ip = c->ip;
+    c->ip = hit ? 0x6F00 : 0x6EFD;
+    c->icount++;
+    return 1;
+}
+
 /* D12. END's tally after a survived mission (0x042C-0x045E): the rating comes
  * back in AX, and ES:BX is the pilot's record, whose word at +2Eh is the best
  * rating and whose dword at +32h is the running total. 0x0443 compares the
@@ -398,6 +452,8 @@ static int fix_d3_keypad(machine_t *m)
 static const recomp_override OVERRIDES[] = {
     { "D5", "VGAME.EXE", VGAME_47304, 0x0000, 0x6D2E, fix_d5, "the supply-drop impact gate" },
     { "D1", "VGAME.EXE", VGAME_47304, 0x0000, 0x441D, fix_d1_pace, "frames paced at the parked GOG baseline" },
+    { "D1TTL", "VGAME.EXE", VGAME_47304, 0x0000, 0x6F19, fix_d1ttl_hit, "incoming weapon lifetime compared unsigned" },
+    { "D1PROX", "VGAME.EXE", VGAME_47304, 0x0000, 0x6EFB, fix_d1prox_hit, "incoming proximity reach has an S=9 floor" },
     { "D4", "START.EXE", START_47304, 0x0000, 0x8EDC, fix_d4_table, "START's entry: airstrip mission masks" },
     { "D34", "VGAME.EXE", VGAME_47304, 0x0000, 0xE6BE, fix_d34_start, "VGAME's entry: empty extension" },
     { "D34", "VGAME.EXE", VGAME_47304, 0x0000, 0x0F97, fix_d34_append, "destroyed-object append" },
@@ -433,6 +489,8 @@ static const data_fix DATA[] = {
 
 static const struct { const char *id, *what; } FIXES[] = {
     { "D1", "frames are capped at 11.6 fps above 9 MIPS, matching the parked GOG baseline" },
+    { "D1TTL", "long-lived incoming missiles can hit when their lifetime exceeds 32767 frames" },
+    { "D1PROX", "incoming proximity hit distance stops shrinking above S=9, without limiting frames" },
     { "D2", "AdLib speech plays without stopping the game or risking its busy-wait hang" },
     { "D11", "saves are written to a temporary file and renamed into place, so an interrupted save keeps the old roster" },
     { "D4", "secret-airstrip missions in Libya, North Cape and the Middle East" },

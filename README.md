@@ -19,7 +19,8 @@ past the first playable build.
 
 **Why it matters.** The original DOS release is buggy and has not aged well.
 It needs an emulator to run at all today. Its frame-rate controller
-misbehaves on fast machines, degrading enemy AI and weapon guidance; its
+changes world speed with machine speed, and long-lived SA-5 missiles can
+lose proximity damage at high frame estimates; its
 digitised speech can hang the game; supply drops never earn credit;
 secret-airstrip missions are disabled outside the Persian Gulf; and long
 missions can overrun an unbounded table and corrupt the game's state. The
@@ -31,7 +32,7 @@ this project treats it as one.
 **1:1 parity with the original is the first priority.** The game does
 exactly what the DOS original does, including its bugs, which are tracked in
 [docs/bugs.md](docs/bugs.md) so they can be fixed later as switchable
-options. Ten catalogued fixes are available now, all off by default.
+options. Twelve catalogued fixes and balance options are available now, all off by default.
 
 > **Not affiliated with anyone.** This is an unofficial, fan-made project. It
 > is not affiliated with, authorized by, endorsed by, or associated with

@@ -141,8 +141,15 @@ def fly(data, route, speed, fixes=(), seconds=166, engine="recomp", samples_path
             px, py, pz = r(ds + 0xC0D0), r(ds + 0xC0DE), r(ds + 0x2DF4)
             for slot in range(8):
                 w = ds + 0x3C3A + slot * 0x1C
-                ttl = max(0, sgn(r(w + 0x0E)))       # a free slot reads 0 or below
+                ttl = r(w + 0x0E)                 # 0x708D: only zero is free, even above 32767
+                if ttl > 36000:                  # seeker clears life, then move decrements to FFFF
+                    ttl = 0                     # maximum shipped launch life: 150 * 15 * 16
                 rec = live.get(slot)
+                if rec is not None and ttl > rec["prev"]:
+                    rec["outcome"] = rec["outcome"] or "miss"
+                    rec["end_t"] = round(t / ips, 2)
+                    del live[slot]
+                    rec = None
                 if ttl and rec is None:
                     rec = live[slot] = dict(t=round(t / ips, 2), slot=slot, type=r(w + 0x10),
                                             owner=sgn(r(w + 0x16)), S=S, ttl0=ttl, min_slant=None,
@@ -155,7 +162,7 @@ def fly(data, route, speed, fixes=(), seconds=166, engine="recomp", samples_path
                     slant = max(dx, dy) + min(dx, dy) // 2 + (abs(sgn((pz - r(w + 4)) & 0xFFFF)) >> 5)
                     if rec["min_slant"] is None or slant < rec["min_slant"]:
                         rec["min_slant"] = slant
-                    if rec["outcome"] is None and ttl == 2 * S and rec["prev"] > 4 * S:
+                    if rec["outcome"] is None and ttl <= 2 * S and rec["prev"] > 4 * S:
                         rec["outcome"] = "decoyed" if r(ds + 0x39E0) else "burst"
                         rec["burst_t"] = round(t / ips, 2)
                     rec["prev"] = ttl
@@ -215,7 +222,8 @@ def fly(data, route, speed, fixes=(), seconds=166, engine="recomp", samples_path
         damage_mask=samples[-1][6], damage_hits=samples[-1][7],
         damage_first=next((round(s[0] / ips, 1) for s in samples
                            if s[6] != samples[0][6] or s[7] != samples[0][7]), None),
-        enemy_launches=len(launches), enemy_bursts=outcomes["burst"], enemy_decoyed=outcomes["decoyed"],
+        enemy_launches=final["launched_at_player"], enemy_observed_launches=len(launches),
+        enemy_bursts=outcomes["burst"], enemy_decoyed=outcomes["decoyed"], telemetry_version=3,
         enemy_misses=outcomes["miss"], launch_list=launches,
         events=dict(collections.Counter(f"{k:02x}" for k, _ in events)), event_list=events)
     return result
@@ -289,7 +297,8 @@ def main():
 
     def todo(route, speed, fixes, off=0):
         r = done.get(tag_of(route, speed, fixes, off))
-        return not a.table_only and (a.redo or r is None or "error" in r)
+        return not a.table_only and (a.redo or r is None or "error" in r
+                                     or r.get("telemetry_version") != 3)
 
     def run(jobs):
         if not jobs:

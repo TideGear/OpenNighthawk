@@ -23,80 +23,138 @@ preserving every intermediate memory write across a possible mid-routine
 decline) that this session chose not to commit without a lockstep pass, given
 the time left. See item 4.
 
-## Current top priority: why does combat fall with speed, and can it be fixed without losing speed?
+## Current top priority: CPU speed and enemy effectiveness (10 Oct investigation)
 
-Set by the owner at the end of this session, ranking above everything in the
-numbered list below. The threat-profile matrix (item 4) found that **the
-whole enemy-fire pipeline scales down together with CPU speed**: not just
-launches (9.08/6.48/3.81 a flight at 9/16/20 MIPS) but misses (6.40/4.96/
-2.85), proximity bursts (2.10/1.10/0.58) and player hits taken (5.09/3.27/
-3.07, 95% CI 3.77-6.51 / 2.06-4.67 / 1.93-4.40) all fall by roughly the same
-proportion. That shape - everything shrinking together, not one stage
-shifting relative to another - is itself a clue: it points at something
-upstream of the whole chain, not at targeting or guidance specifically.
+The owner wants this resolved before continuing the roadmap goal, and asked
+for both a Reimp check and an independent investigation. This checkpoint
+adds two optional mitigations and corrected measurements; do not mistake
+the earlier matrix for sound combat evidence.
 
-**Ruled out this session:** the orbit itself is not the confound. The actual
-flown radius from the target is essentially the same at all three speeds
-(mean 5,939 / 6,255 / 6,222 map units, from the sample trajectories already
-in `D:/f117-gate/threatmatrix/samples/`) - the controlled-exposure design is
-not the explanation; something in the game's own AI or timing model is.
+- The Reimp at `9e0716dc502cd64501b0d52030ebef041825f907` decouples simulation
+  from rendering, paces simulation from S, starts S at 5, and uses a 60 Hz
+  real-time game clock by default. Its `frame_weapons.c` still compares
+  incoming lifetime signed. Its simulation-clock tests check display-rate
+  independence, not combat. Older catalogue claims about S oscillation are
+  not a demonstrated cause in the original's full loop.
+- Independently confirmed signed-life bug: ground SA-5 life is `150*S*16`,
+  crossing 32767 at S >= 14. VGAME 708D treats nonzero life as active, while
+  6F19's signed JLE suppresses damage. Optional `D1TTL` admits valid unsigned
+  life through 36000, retaining suppression of abandoned FFFF slots. All
+  seven staged cases pass in both engines, fixed/unfixed, with identical
+  engine hashes. Natural 600-second fixed Middle East flight at 20 MIPS,
+  offset 2720: SA-5 bursts at 293.32 seconds instead of missing; interpreter
+  and recomp hash `0559ff3b220737ef`, CSV and launch records identical.
+- The old observer hid negative SA-5 lifetimes, missed burst resets between
+  polls, and lost damage counters on exit. Seeker 72A5 can clear life before
+  move 6CA6 decrements it to FFFF; these abandoned slots are not new launches.
+  Current tools read the official launch count and valid unsigned life,
+  detect burst crossings, retain early-exit damage, and record S/counters/
+  detection inputs. Damage counts selections, not missile impacts.
+- The old adaptive pilot rotated at fixed instruction deadlines (8.5 s at
+  20 MIPS versus 18.9 s at 9), causing matched fast missions to crash before
+  engagement. Startup now keeps authored 9 MIPS seconds. Its orbit also had
+  incorrect negative wrapping and outward radius correction; both fixed and
+  checked in eight directions. Historical combat conclusions are superseded
+  in `docs/speed-sweep.md`.
+- Aircraft fire checks are staggered once per 16*S frames at stable S, not
+  per frame; ground 5046 runs every frame (visibility skips only repaint).
+  Detection has no direct S input. Corrected in `docs/bugs.md`.
+- A second mechanism remains: proximity reach `(speed<<3)/S` shrinks with S.
+  A staged SA-12 hits at S=8 but misses at S=15 with positive life and equal
+  starting geometry. Experimental optional `D1PROX` gives incoming reach an
+  S=9 floor, without changing movement/guidance/clocks or limiting frames.
+  This is an explicit balance choice, not a recovered original radius.
+  Built successfully (108 s). All five staged cases pass under both engines
+  +/- D1PROX; engine hashes match and the S=8/9 control hashes are unchanged.
 
-**Found, not yet connected to the effect:** the fire decision
-(`ai_fire`, VGAME 0x63F2, Reimp `src/core/ai.c:659`) is called once a drawn
-frame per detected unit from `ai_step` (VGAME 0x5852, Reimp `ai.c:142`),
-itself called unconditionally once a frame from the main loop
-(`frameloop.c:727`, no gating visible). Each unit carries an "engagement
-level" (`U(i, 0x22)`) that climbs by a **fixed per-call amount**
-(`ai.c:726-731`, independent of S) while detection quality is above
-threshold, and **decays** when it is not (`ai.c:717-721`) - a unit must stay
-detected for several consecutive frames to reach the firing threshold
-(0xC0), and any lost detection resets progress. Beyond that threshold,
-launching also needs an empty weapon slot, a boresight/bearing window, a
-range window, and a per-theatre "heat" budget (`0x3686` vs `0xB080`/`0x9522`,
-`frame.c:118`'s own comment: "the theatre is not hot enough yet"). None of
-this reads S directly - but `V_S` (the controller's own frame-rate estimate,
-[0x368E] in the listing) is used **pervasively** elsewhere as a divisor to
-convert "per frame" quantities into "per real second" ones: ammunition decay
-(`frame.c:775`, `-40/S`), weapon lifetime (`ai.c:775`, "scaled by S so it is
-the same in real time"), turn and guidance rates (`frame_weapons.c:1484,
-1506, 1510, 1518, 1527`, all `/S`), and a detection-related inverse-square-
-root of S (`effects.c:89`). **This is the standing hypothesis**: if the
-reported S does not track true elapsed real time identically at every CPU
-speed, every one of these S-normalised formulas shifts together - which
-would explain why launches, bursts, misses and hits all moved by about the
-same proportion rather than any one stage changing relative to the others.
-Raw drawn frame rate is *not* the obvious culprit by itself: the existing
-(pre-this-session) matrix already found drawn fps similar across 9/16/20
-MIPS once airborne and settled (~15-16.7 fps, S clamped near 15) - so if S's
-*value* is the cause, it is not simply "fewer frames per second," it is some
-more specific way the controller's estimate is computed or consumed.
+Running private cohort: `D:/f117-gate/threat_aligned_v5.py`, 96 flights,
+4 routes x 6 seed families x (9, 16, 20, 20+D1TTL), 600 seconds, 12 workers.
+Offsets 110/220 ms at 16/20 align START seed families; verify mission fields
+rather than assume alignment. Output `D:/f117-gate/threat-aligned-v5`, console
+`threat-aligned-v5-console.log`. All 96 are complete; all 24 mission identities match across arms.
+Official launches/flight: 8.5417 / 8.4583 / 7.7500 / 7.7083; bursts:
+4.1250 / 3.5000 / 2.7500 / 2.8333. 20-minus-9 launch CI includes zero,
+but burst CI is -2.1667..-0.6250. Full report is appended to speed-sweep.md.
+Public comparator output: `D:/f117-gate/threat-aligned-v5-summary.txt`. Earlier
+v3/v4 experiments are diagnostic history, not the final cohort. Final staged
+TTL outputs: `D:/f117-gate/d1ttl-final-{engine}-{False|True}.json`.
 
-**Not done, and the actual next steps:**
-1. `tools/threat_profile.py` does not currently record S or the tick/frame
-   counters during its flights - only position. Add them (the same DS fields
-   `speed_sweep.py` already reads: `[0x368E]` S, `[0x3D8E]` frame counter,
-   `[0x2648]` game ticks) and compare S's distribution across speeds
-   *during the actual orbit flights*, not inferred from the unrelated
-   typed-route sweeps. This is the single most informative missing
-   measurement - it was not added because the orbit tool was already working
-   by the time this hypothesis formed.
-2. Read `detect.c`'s `detect_evaluate` (the quality calculation `ai_fire`
-   gates on) for any S-dependence not yet found.
-3. If S's reported value does differ systematically by CPU speed during
-   combat specifically, the fix question is genuinely open either way: it
-   may be that the *original* S controller already tracks real time
-   correctly on real hardware regardless of CPU speed (in which case this is
-   a real property worth preserving, and the "fix" is understanding it, not
-   patching it away) - or it may be an artifact of running this far outside
-   any period machine's range, in which case a fix could mean re-examining
-   the 9 Oct frame-limiter decision (D1, and the rejected 15 fps experiment)
-   with this specific finding in hand, which the owner explicitly did not
-   have when that default was chosen.
-4. Whatever the mechanism, re-run (a subset of) the threat-profile matrix
-   after any change to confirm the launch-rate gap actually closes, using
-   the same bootstrap-CI method already in `docs/speed-sweep.md` - the
-   effect is well-established enough now (144 flights, CIs excluding zero)
-   that a fix should be judged against closing it, not just plausible.
+Both cohorts are now complete: 96 baseline/TTL flights and 24 combined
+D1TTL+D1PROX flights, every mission pair matching. Combined 20 MIPS:
+7 early exits, 7.3333 launches, 3.375 bursts, 6.75 damage selections per
+flight, 4669.8 orbit seconds. Against 20+D1TTL, burst gain +0.5417
+(95% paired CI +0.2083..+0.8750). Against 9, a deficit remains: -0.75
+bursts (-1.4167..-0.1667). The options are partial mitigation, NOT a
+completed CPU/combat fix. Full report and artifact paths are in
+`docs/speed-sweep.md`; comparison tool is `tools/threat_compare.py`.
+Combined natural interpreter/recomp flight (Middle East, 20 MIPS,
+offset 2720) is identical: hash `7b5cc08d65027187`, all CSV rows and launch
+records equal. D1PROX staged five-case checks agree in both engines +/-
+option, S=8/9 control hashes unchanged. All 14 C and 97 Python tests pass
+(one Python test skipped).
+
+Full required gate PASSED (1,499 seconds):
+`py tools/build_recomp.py --data D:/GOG/F-117A --seed-coverage C:/Users/Tideg/f117-recomp-local/coverage --jobs 16`
+Log `D:/f117-gate/gate-combat.log`. All 35 routes identical, both
+5,718,912-state instruction profiles and all three 765-routine seeds zero
+mismatches; 14 C tests passed, every routes-only routine ran, no overruns.
+Coverage added no code; 34 fresh interpreter sessions. The gate launches
+three eight-shard matched seeds concurrently,
+so 16 route workers still oversubscribed 32 threads; restricted the gate
+parent and its 49 descendants to affinity mask 0x00FFFFFF (24 logical CPUs),
+leaving eight for the desktop. Future children inherit that mask. This is
+process-local and ends with the gate, not a persistent machine setting.
+
+This checkpoint includes four new files (`d1ttl_check.py`,
+`d1prox_check.py`, `threat_compare.py`, `tests/test_threat_profile.py`).
+Do not call the CPU/combat issue solved. Investigate the residual before
+moving to the rest of the roadmap. The 9 MIPS cohort has burst-time S mostly
+7/8 (23/46 of 99 bursts; mean 8.6465), versus the parked S=9 floor chosen by
+D1PROX. Any different calibration should be tested on new seeds, not tuned
+until this cohort matches. Continuous swept collision with an explicit
+reference radius is another possible design direction; not implemented.
+Seeker-abandoned life can still occupy a slot (72A5 clears before 6CA6
+underflows); D1TTL guards those FFFF values from damage but does not repair
+that separate slot-reclamation defect.
+
+Raw-slot follow-up is complete: `D:/f117-gate/ghost_trace.py`, outputs
+`ghost-trace/{9,20}-2500.json`. Middle East hashes reproduce the baseline
+cohort exactly. Abandoned slot occupancy over the common first 472.9 s is
+1104.8/1295.2 slot-seconds at 9/20 MIPS; whole 20 flight is 1894.0. Both
+still launch 11 times. Ground 54B4/air 65C3 select slot index & 7 and require
+zero life, so global saturation is unnecessary to block a given launcher.
+This defect also remains in Reimp. Test a separate saturating-countdown
+option rather than silently changing the already-measured D1TTL behavior.
+
+Held-out cohort complete: `D:/f117-gate/threat_heldout.py`,
+console `threat-heldout-console.log`, output `threat-heldout/`. Four routes
+x new seeds 15000/17500/20000 x (9 unmodified, 20+D1TTL+D1PROX), 600 s,
+eight workers, parent/children affinity 0x00FFFFFF shared with gate; CPU was
+49% before launch. Took 9.9 min, no tool errors, all 12 mission pairs match,
+three early exits per arm. Bursts 4.5 at 9 versus 4.0 at 20; paired difference
+-0.5 (95% -1.75..+0.6667). Pooled with the earlier 24 pairs: -0.6667
+(-1.25..-0.0833), so CPU/combat remains open. No calibration changes were
+made. See `threat-heldout-summary.txt` and the appended speed-sweep report.
+
+Staged underflow reproduction now passes in both engines:
+`D:/f117-gate/slot_underflow_probe.py`, `slot-underflow-{interp,recomp}.json`.
+SA-5 class 1, off-axis behind the weapon, positive life 1000 -> FFFF at
+both S=8 and 15, no damage, identical per-case engine hashes
+`76d07a07e0d330d9` / `7828a2d70478e5a1`. The initial exact-180-degree setup
+did not cancel (signed abs edge); corrected to an off-axis bearing.
+Next implementation candidate: a separate optional hook at VGAME 6CA6
+that keeps incoming life zero when the seeker has cleared it, while
+retaining DEC flags and leaving every positive-life countdown untouched.
+Test zero/one/positive-life controls, both engines and S values, then natural
+flights. Compare 9 and 20 with the SAME option set as well as the original
+9 MIPS balance reference. Do not silently change D1TTL: earlier cohort
+numbers measure its signed-guard repair alone. A counter bound is not a
+permanent identity check; an old abandoned value could decay below 36000.
+
+The active goal remains roadmap completion, with the user's condition to
+wrap/commit/push/stop at <=15% five-hour allowance remaining. Local session
+rate-limit telemetry last reported 83% used (17% remaining), near the wrap
+threshold. Check fresh telemetry before starting another code/build cycle.
 
 ## What to do first
 
@@ -323,7 +381,9 @@ more specific way the controller's estimate is computed or consumed.
   bytes). See item 5 for the next lead (`vgame_scene_obstacle_probe`,
   VGAME 0x1007) and `vgame_abs16` (VGAME 0xEE0C, trivial, drafted) as an
   even smaller first step.
-- **Phase 3**: unchanged. Fixes: 10 of 14 catalogued defects switchable.
+- **Phase 3**: 12 switches including D1TTL and the D1PROX balance option;
+  10 of 14 top-level catalogued defects have a switchable fix. CPU/combat
+  remains open; signed life and proximity distance are partial mitigations.
   Open: D10, D35, D36 (see `docs/bugs.md`). Presentation: the owner's open
   decisions (HUD/text at 4K) and a real-display check remain.
 - **Phase 4**: untouched; most of it requires a person.
