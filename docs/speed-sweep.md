@@ -814,3 +814,82 @@ route pairs, both5,718,912-state instruction profiles, all three765-address
 matched seeds, all routes-only evidence and no event-limit overruns.
 `D:/f117-gate/gate-physics-realtime.log`. This verifies parity and the staged
 checks; the later airborne evidence above uses the same game source.
+
+## A candidate root cause: S's own self-calibration (10 Oct, static audit, NOT YET CONFIRMED)
+
+Prompted by the owner asking whether CPU speed affects anything besides
+combat, a static audit (not a staged two-engine test) swept every VGAME
+place that multiplies the frame-rate variable S (`[0x368E]`), using the
+recompiler's own decoder (`recompiler/x86dec.py`) rather than grep, walked
+recursively from all 523 census-known VGAME entries (24,297 reachable
+instructions). Script: `D:/f117-gate/audit-s-calibration/audit_s_scaling.py`.
+
+Most hits are safe: small timer conversions (seconds-to-frames, by design),
+and four places that correctly carry the full 32-bit product through the
+shared 32-bit shift helper (`0xEF68`). One candidate (`0x446C`, `×960`) is
+protected by an explicit `sub dx,dx` before its division, giving a real
+unsigned-truncation threshold of S>=69 - above anything measured so far.
+
+One finding is substantially more significant and traces into **the
+routine that measures and corrects S itself** (inside the large,
+multi-role function at entry `0x3ADA`, census-cited as
+`frame_compass_caption;frame_mission;game_init_mode;game_input;
+game_tick;hud_ladder_tail`):
+
+- At `0x443C`-`0x4488`: a value derived from the existing rate-derivation
+  routine (`[0x43E8]`, itself only nonzero when S>15, already discussed
+  above) goes negative in two's complement once S>15, and is fed into a
+  genuine **unsigned** `MUL [0x368E]` at `0x4447` (confirmed by opcode,
+  not just my reading - capstone agrees: `mul word ptr [0x368e]`, not
+  `imul`). The high word of the product is silently discarded by the
+  following `shl ax,1`.
+- That (corrupted) value is clamped to a floor of 4, fed through a second
+  multiply/divide chain at `0x446C` (`imul ax,[368E],0x3C0` then an
+  unsigned divide with DX explicitly zeroed), and the quotient is clamped
+  to `[1,255]` by the already-matched `vgame_clamp3` (`0x0C67A`).
+- That clamped value is compared against `S*4`; if the absolute difference
+  exceeds 3, the routine computes `(clamped+2)>>2` (arithmetic) and
+  **writes the result directly back into `[0x368E]` - S itself** - then
+  calls the rate-derivation routine (`0xD441`) to propagate the new S
+  everywhere.
+
+A bit-exact Python re-implementation of this chain (not hand arithmetic;
+`D:/f117-gate/audit-s-calibration/trace_s_calib.py`, results saved
+alongside) was run for every starting S from 16 to 40: **every single one
+drives the computed quotient to 0, and the recalibration writes S = 0.**
+The mechanism is consistent across all seven tested values, not an edge
+case. This would, if actually reached in play, be upstream of every other
+S-dependent system investigated in this document - not a parallel
+instance of the same bug class, but potentially feeding a corrupted frame
+rate into all of them simultaneously.
+
+**What is confirmed:** the arithmetic, bit-exact, in isolation.
+**What is NOT yet confirmed, and must be before this is treated as more
+than a static-analysis lead:**
+- Whether this code path is actually reached during ordinary flight. It
+  sits behind two gates: an outer one requiring a loop-local `[bp-0xE]`
+  (confirmed to be a 0..4 loop counter over what looks like five per-slot
+  records, reused by at least four other `imul bx,[bp-0xE],0x12` sites in
+  the same large function) to be >=2, and an inner periodic timer firing
+  roughly once every four real seconds (`[0x3DA6]` reaching `S*4`). The
+  loop-index gate strongly suggests the path is reached on most or all
+  passes (3 of 5 slot indices satisfy >=2), but this has not been traced
+  to its callers to confirm it runs during normal in-flight play rather
+  than some other mode sharing this address range.
+- What happens next if S really does become 0. Whether `0xD441` (the
+  propagation call) has its own guard, or a divide-by-zero / frozen/broken
+  state follows, has not been traced.
+- Whether this reproduces under the project's actual two-engine lockstep
+  harness, the standard this project requires before calling anything an
+  established defect (see `f117a-predict-then-measure` - a careful reading
+  has produced wrong predictions before; this finding is exactly the kind
+  that needs `func_lockstep`/a staged probe, not just a hand or Python
+  trace, before it is trusted enough to fix).
+
+Do not implement a fix for this without first staging it the way every
+other finding in this document was staged (a controlled two-engine
+reproduction at a known S, confirming the actual resulting S and
+behavior, not just the isolated arithmetic). Next session: trace `0x3ADA`'s
+callers and the loop's actual slot semantics to settle reachability first;
+only then design and verify a fix, with the same lockstep + full-gate
+discipline as every matched routine in this project.

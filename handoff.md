@@ -38,6 +38,76 @@ above. Single-measurement margins, not variance-backed; if a future clean
 run fails one of these for reasons unrelated to the engine, that's the first
 thing to suspect.
 
+## CPU/combat: a candidate root cause found, NOT yet confirmed (10 Oct, 16:25 PDT)
+
+The owner redirected priority mid-session from Phase 2 to "perfectly fix"
+the CPU-speed/combat issue, then asked whether anything besides combat is
+affected by speed - which turned into a proper static audit (see
+`docs/speed-sweep.md`'s new final section, "A candidate root cause: S's
+own self-calibration", for full detail; this is a summary). Using the
+recompiler's own decoder (not grep), every VGAME multiply-by-S was swept
+and classified. Most are safe. One is a serious, NOT YET CONFIRMED
+candidate: the routine that *measures and corrects S itself* (inside the
+large multi-role function at VGAME `0x3ADA`) has a negative-value-into-
+unsigned-MUL bug at `0x4447` whose consequence, traced bit-exactly in
+Python (not hand math - `D:/f117-gate/audit-s-calibration/
+trace_s_calib.py`), sets **S to exactly 0** for every tested starting S
+from 16 to 40. If real, this would be upstream of every other S-dependent
+system already investigated (missile lifetime, proximity, etc.) - a
+single root cause rather than a parallel symptom.
+
+**This is explicitly not confirmed.** Two things remain unresolved and
+MUST be settled before any fix is attempted: (1) whether this code path
+is actually reached during normal in-flight play - it sits behind a
+loop-index gate (`[bp-0xE] >= 2`, a 0..4 loop counter shared with at
+least four other per-slot accesses in the same function) and a ~4-real-
+second periodic timer, and tracing strongly suggests it's reached on most
+passes, but this has NOT been confirmed by tracing `0x3ADA`'s actual
+callers; (2) what happens after S is set to 0 - whether `0xD441` (called
+immediately after to propagate the new S) has its own guard, or whether a
+divide-by-zero/frozen-state follows, has not been traced. No staged
+two-engine reproduction has been run - this is pure static/arithmetic
+analysis, the first step of this project's own methodology, not the last.
+Per `f117a-predict-then-measure` in project memory: careful reading has
+produced wrong predictions before, and this is exactly the shape of
+finding that needs `func_lockstep` or a staged probe before being trusted.
+
+**Next session, in order:** (1) trace `0x3ADA`'s callers to settle
+reachability during normal flight; (2) if reached, trace what a real S=0
+actually does downstream; (3) only then design a fix, with the same
+lockstep + full-gate discipline that just caught a real bug in the
+`vgame_release_count` extension below (random-state fuzzing alone did not
+catch it - the full gate's real routes did). Do not skip straight to
+writing a fix from the arithmetic alone.
+
+Separately, two of the three P1 threshold-tightening and three doubtable-
+investigation asks from earlier this session are already committed (see
+below); the audit above was read-only, no code changed for it.
+
+## Phase 2 lead attempted and reverted: VGAME 0x4657 (10 Oct, 16:00 PDT)
+
+Extended the already-matched `vgame_release_count` (0x462E) to cover its
+declined continuation at 0x4657 (countermeasure dispensing - the census
+holds this as a separate "function," but it's really the original's
+`jg`-taken continuation of the same routine, reusing its frame; see the
+existing comment at 0x462E). Fixed a forward-reference build error, then
+three seeds and the full 771-routine suite passed clean (up to 35,212
+states at one seed, 0 mismatching). **The full required gate still
+failed: 7 routes DIFFERENT.** Random-state fuzzing did not exercise the
+actual bug; real gameplay routes did. The change was reverted
+(`git checkout -- src/matched/matched.c`) rather than left half-fixed, and
+the tree rebuilt clean against the last good commit (`6840bc7`). The
+lesson generalizes: this routine's weapon-lock/dispense branches require
+specific state combinations (a type argument correlated with specific
+table fields) that pure random fuzzing essentially never hits, same as
+`vgame_target_damage` earlier this session - the full gate's real routes
+are the only check that actually exercises them. 0x4657 remains
+unmatched; next attempt should add targeted PLANTS entries for the
+countermeasure-type/slot-state correlation (same technique used for
+`vgame_target_damage`'s weapon-lock match) before trusting lockstep
+alone, and should re-run the full gate before considering it done, not
+just the matched-routine suite.
+
 ## Phase 2 target-scoring checkpoint (10 Oct, 15:41 PDT)
 
 VGAME 0x073C8 (`vgame_target_damage`, "score and alert a target hit") is
