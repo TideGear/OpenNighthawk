@@ -11,8 +11,9 @@ Earlier session logs are in `git log -p handoff.md`.
 
 ## What to do first
 
-1. `git status -sb`: the cockpit canopy is on master and `p2-cockpit-canopy`,
-   pushed together after the full gate passed (item 3). The weapon-lock
+1. `git status -sb`: projectile motion and gunfire refill are on master and `p2-projectiles`,
+   pushed together after the full gate passed (item 3). The canopy remains
+   on `p2-cockpit-canopy` (CI 38011635681 passed both jobs). The weapon-lock
    marker and gate build-setting repair remain on `p2-lock-marker`; the
    15 FPS report remains on `speed15-study`. Leave pre-existing untracked files alone.
 2. The app's default frame rate is the open decision. The owner's rule (9 Oct):
@@ -26,20 +27,33 @@ Earlier session logs are in `git log -p handoff.md`.
    sweep is now complete (90 flights); initial control-response sweeps and
    boot-clock alignment work are in `D:\f117-gate\speedsweep\` and
    `docs/speed-sweep.md`.
-3. **Green and pushed.** Latest gate: `D:\f117-gate\canopy\gate.log`,
-   887 s (84 s translation/build, 490 s coverage, 7 s second translation,
-   306 s parity); 13 unit tests, 35 identical routes, 34 reused interpreter
+3. **Green and pushed.** Latest gate: `D:\f117-gate\projectiles\gate.log`,
+   845 s (78 s translation/build, 476 s coverage, 8 s second translation,
+   283 s parity); 13 unit tests, 35 identical routes, 34 reused interpreter
    sessions. Coverage added nothing; second translation was byte-identical.
    Both instruction profiles compared 5,718,912 states, zero mismatches.
-   Matched seeds `0x5EED0F117A`, `0xC0FFEE`, `0x842d1259f36c` compared
-   2,485,237 / 2,484,325 / 2,486,098 states, zero mismatches. Every routes-only
+   Matched seeds `0x5EED0F117A`, `0xC0FFEE`, `0x96deed2ad096` compared
+   2,488,060 / 2,487,211 / 2,485,778 states, zero mismatches. Every routes-only
    routine ran and no route overran an event limit. The gate explicitly sets
    `F117R_BUILD_APP=ON`, so a prior core-only build cannot omit host tests.
-   Latest change names VGAME's cockpit canopy posts and landing cue;
+   Latest change names VGAME's projectile motion and gunfire refill;
    the app default stays at 9 MIPS with fixes off. Prior gate histories are
    in `git log -p handoff.md` and `D:\f117-gate\merge14\gate.log`.
 
 ## Goal and standing decisions
+
+- **Next priority: the remaining P1 evidence.** Owner asked what prevents P1
+  reaching 100% (9 Oct); 2.07 points are the 386 timing profile and 0.22 points
+  speech audio. Finish the in-flight projectile batch, then investigate DOS
+  file-service costs and mid-draw frame differences, and obtain a rendered
+  speech reference. The current reference cfg explicitly sets
+  `hdd_01_speed = ramdisk`; 86Box offers `1989_3500rpm` for a private period-drive
+  experiment. `timing386.md`'s MS-DOS 5.00 comparison reports +642.5 ms,
+  1,238/1,277 pictures exact in order; do not treat cycle probes as proof of
+  frame-exact completion. `dos.c:t386_service_cycles` currently charges only
+  AH=0Bh/2Ch for DOS, no reads/writes/EXEC/overlay. The saved 86Box speaker
+  and AdLib speech traces prove port data, not rendered sound. A silent audio
+  capture hook at 86Box's mixer would provide an independent waveform.
 
 - **Usage cutoff (owner, 9 Oct).** When the 5-hour Codex allowance is 15% or
   less, wrap up, update this handoff, commit, push, and stop. The available
@@ -49,7 +63,7 @@ Earlier session logs are in `git log -p handoff.md`.
   `sky.get_window_state({window, include_screenshot:false, include_text:true})`;
   find `5h limit:` and its following percentage. Screen capture timed out,
   but accessibility worked. Select the current returned window first.
-  Latest reading in this batch: 78% left. Act on that meter or the owner's notice.
+  Latest reading in this batch: 54% left. Act on that meter or the owner's notice.
 - **Parity first.** The recompilation is what the original did on the hardware
   of its time (owner, 8 Oct 2026). Where the developers' intent can be
   established, it guides the defaults (owner, 9 Oct: "1:1 parity with the
@@ -256,17 +270,21 @@ Earlier session logs are in `git log -p handoff.md`.
   - `vmt386dos500h` is built and reproducible; DOS=HIGH makes INT 21h 0Bh and
     2Ch cost more, so it is not the reference.
 - **Phase 2 (named, matched code)**
-  - 764 addresses matched (759 of 1,535 census functions, 63,596 of 179,213
-    bytes). 776 functions (115,617 bytes) remain.
-  - Latest routine: VGAME 0x0D6DD, cockpit canopy posts and landing cue.
-    Preserves the compact side frames, all stack-local reads and graphics
-    arguments, and clearing the old cue before painting the new one. The
-    harness enables returning driver thunks for this entry and 0x0B171;
-    the routes check the actual driver. Targeted 4,000-state seeds
-    0x5EED0F117A / 0xC0FFEE / 0x842d1259f36c compare 4,491 / 4,482 / 4,476
-    states (15 / 9 / 7 skipped), zero mismatches. The first draft double-counted
-    CALLs; the helper counts them, so stretches exclude them from icount but
-    include them in room bounds. Artifacts: `D:\f117-gate\canopy\`.
+  - 765 addresses matched (760 of 1,535 census functions, 63,917 of 179,213
+    bytes). 775 functions (115,296 bytes) remain.
+  - Latest routine: VGAME 0x04777, projectile motion and gunfire refill.
+    Preserves the signed slot loop and remainder, wrapping writes, each
+    stack-local read, ammunition clamp, sound and trigonometric launch
+    velocity. Checks room each loop iteration; a zero divisor changed by
+    aliasing resumes the original at IDIV. Random checks plant bounded
+    counts and firing values, and use returning driver thunks on both sides;
+    actual drivers remain in the routes. Targeted 4,000-state seeds
+    0x5EED0F117A / 0xC0FFEE / 0x96deed2ad096 compare 2,823 / 2,886 / 2,891
+    states (1,666 / 1,612 / 1,595 skipped), zero mismatches. Without the new
+    plants/thunks: 2,392 / 2,336 / 2,390 comparisons. A private harness
+    observer counts 18 full refills among successful fixed-seed comparisons;
+    source hashes and its change are in `D:/f117-gate/projectiles/observer-provenance.json`
+    and `observed_lockstep.c`. Artifacts: `D:/f117-gate/projectiles/`.
   - Batches this session, each merged after a gate: VGAME (34 and 47), START/END
     (40 and 45), the small programs (21 and 44), and the C runtime's DOS layer
     (64; the lockstep now answers INT 21h and 16h for every routine).
@@ -275,10 +293,7 @@ Earlier session logs are in `git log -p handoff.md`.
     and 21; `vgame_view_caption` was one clock late on a rare path; port bus
     delays crossing an event limit (`IO_SLACK`). The picture decoder's prefix walk
     checked room once for any depth (fixed; boot_to_flight matches again).
-  - Next lead: VGAME 0x04777, projectile motion and gunfire refill (112 original
-    instructions). Private draft: `D:/f117-gate/drafts-next/vgame_frame_projectiles.c/vgame_frame_projectiles.c`.
-    Reimp reading: `src/core/frame.c` frame_projectiles; verify against the original.
-  - Ready leads, triaged equal and not yet written: VGAME 0x04777, 0x01007, 0x00D14, 0x05046 and 130D:033F. Identical copies across
+  - Ready leads, triaged equal and not yet written: VGAME 0x01007, 0x00D14, 0x05046 and 130D:033F. Identical copies across
     programs were listed in the batches' commit messages; check the table before
     adding a row.
   - Open: START 0x11DB (a one-clock error, not retried); MPS_LOGO 0x1ADC and

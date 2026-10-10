@@ -22107,6 +22107,153 @@ quit:
     return 1;
 }
 
+/* VGAME 0x04777, frame_projectiles(): advance the twelve-byte gunfire slots
+ * (x, y, altitude, vx, vy, vz) at E47A. The first word doubles as the live
+ * flag. B198 sets the slot rate from the frame-rate estimate; on odd frames
+ * (frame >> 1) % B198 is refilled while the trigger is held, ammunition is
+ * positive and C09A is clear. Realism settings disable refill, not movement.
+ * The ammunition cost is -40/S; velocity is 112/S along the aircraft's axis.
+ * Preserve every stack local and signed/wrapping operation. Slots can alias
+ * the loop bound, counter or frame, so neither the bound nor slot contents
+ * are cached across iterations. Room is checked for each iteration. */
+static int vgame_frame_projectiles(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 8)) return 0;
+    x86_enter(c, 10, 0);
+    cpu_push16(c, c->r[R_SI]);
+    alu_sub(c, ds_get(c, 0xB198), 0, 1, 0);
+    unsigned n = 4;
+    if (c->flags & F_ZF) { n++; goto quit; }
+    VG2_SETFRAME(-6, 0);
+    c->icount += 6;                                               /* through JMP to the loop test */
+    for (;;) {
+        if (!room(c, 4)) { c->ip = 0x47B3; return 1; }
+        c->r[R_AX] = ds_get(c, 0xB198);
+        c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], 4, 1, 0);
+        alu_sub(c, c->r[R_AX], VG2_FRAME(-6), 1, 0);
+        c->icount += 4;
+        if (!x86_cond(c, 0xF)) break;                             /* signed count > index */
+        if (!room(c, 10)) { c->ip = 0x478D; return 1; }
+        c->r[R_BX] = x86_imul3(c, VG2_FRAME(-6), 12);
+        alu_sub(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0xE47A)), 0, 1, 0);
+        n = 3;
+        if (!(c->flags & F_ZF)) {
+            for (unsigned axis = 0; axis < 3; axis++) {
+                const uint16_t pos = (uint16_t)(c->r[R_BX] + 0xE47A + 2 * axis);
+                c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0xE480 + 2 * axis));
+                ds_put(c, pos, (uint16_t)alu_add(c, ds_get(c, pos), c->r[R_AX], 1, 0));
+            }
+            n += 6;
+        }
+        VG2_SETFRAME(-6, (uint16_t)alu_inc(c, VG2_FRAME(-6), 1));
+        c->icount += n + 1;
+    }
+    if (!room(c, 12)) { c->ip = 0x47BE; return 1; }
+    alu_logic(c, VG2_DS8(0x3D8E) & 1, 0);
+    n = 2;
+    if (c->flags & F_ZF) { n++; goto quit; }
+    c->r[R_BX] = ds_get(c, 0x9924);
+    c->seg[S_ES] = ds_get(c, 0x9926);
+    alu_sub(c, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x42)), 0, 1, 0);
+    n += 3;
+    if (!(c->flags & F_ZF)) { n++; goto quit; }
+    c->r[R_AX] = ds_get(c, 0x3D8E);
+    c->r[R_AX] = x86_shift(c, 7, c->r[R_AX], 1, 1);
+    cwd(c);
+    if (!ds_get(c, 0xB198)) {                                    /* an aliased slot may have cleared it */
+        c->icount += n + 3; c->ip = 0x47DC; return 1;
+    }
+    x86_idiv16(c, ds_get(c, 0xB198), 0);                          /* SAR made the quotient fit */
+    VG2_SETFRAME(-10, c->r[R_DX]);
+    cpu_push16(c, 0);
+    c->icount += n + 6;
+    VG2_NEAR(0xC89C, 0x47E8, 15);                               /* trigger button */
+    c->r[R_BX] = cpu_pop16(c);
+    alu_logic(c, c->r[R_AX], 1);
+    n = 3;
+    if (c->flags & F_ZF) { n++; goto no_fire; }
+    alu_sub(c, ds_get(c, 0x3682), 0, 1, 0);
+    n += 2;
+    if (x86_cond(c, 0xE)) { n++; goto no_fire; }
+    alu_sub(c, ds_get(c, 0xC09A), 0, 1, 0);
+    n += 2;
+    if (!(c->flags & F_ZF)) { n++; goto no_fire; }
+    cpu_push16(c, 1000); cpu_push16(c, 0);
+    c->r[R_AX] = (uint16_t)-40;
+    cwd(c);
+    if (!ds_get(c, 0x368E)) {
+        c->icount += n + 4; c->ip = 0x480A; return 1;
+    }
+    x86_idiv16(c, ds_get(c, 0x368E), 0);
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], ds_get(c, 0x3682), 1, 0);
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += n + 7;
+    VG2_NEAR(0xC67A, 0x4816, 5);                                /* clamp ammunition to 0..1000 */
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0);
+    ds_put(c, 0x3682, c->r[R_AX]);
+    cpu_push16(c, 2); cpu_push16(c, 6);
+    c->icount += 4;
+    VG2_NEAR(0xD3F9, 0x4823, 9);                                /* gun sound */
+    VG2_POP2();
+    c->r[R_AX] = 112;
+    cwd(c);
+    if (!ds_get(c, 0x368E)) {
+        c->icount += 4; c->ip = 0x4829; return 1;
+    }
+    x86_idiv16(c, ds_get(c, 0x368E), 0);
+    VG2_SETFRAME(-8, c->r[R_AX]);
+    cpu_push16(c, c->r[R_AX]); cpu_push16(c, ds_get(c, 0x2DF0));
+    c->icount += 8;
+    VG2_NEAR(0xC818, 0x4838, 9);                                /* vertical velocity = sin(pitch) * speed */
+    VG2_POP2();
+    c->r[R_AX] = x86_shift(c, 4, c->r[R_AX], 5, 1);
+    c->r[R_BX] = x86_imul3(c, VG2_FRAME(-10), 12);
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0xE484), c->r[R_AX]);
+    cpu_push16(c, VG2_FRAME(-8)); cpu_push16(c, ds_get(c, 0x2DF0));
+    c->r[R_SI] = c->r[R_BX];
+    c->icount += 8;
+    VG2_NEAR(0xC831, 0x4851, 6);                                /* horizontal speed = cos(pitch) * speed */
+    VG2_POP2();
+    VG2_SETFRAME(-8, c->r[R_AX]);
+    cpu_push16(c, c->r[R_AX]); cpu_push16(c, ds_get(c, 0x2DEE));
+    c->icount += 5;
+    VG2_NEAR(0xC818, 0x485E, 6);                                /* x velocity */
+    VG2_POP2();
+    ds_put(c, (uint16_t)(c->r[R_SI] + 0xE480), c->r[R_AX]);
+    cpu_push16(c, VG2_FRAME(-8)); cpu_push16(c, ds_get(c, 0x2DEE));
+    c->icount += 5;
+    VG2_NEAR(0xC831, 0x486E, 19);                               /* negative cosine gives y velocity */
+    VG2_POP2();
+    c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0);
+    ds_put(c, (uint16_t)(c->r[R_SI] + 0xE482), c->r[R_AX]);
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_SI] + 0xE480));
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], ds_get(c, 0xC0D0), 1, 0);
+    ds_put(c, (uint16_t)(c->r[R_SI] + 0xE47A), c->r[R_AX]);
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_SI] + 0xE482));
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], ds_get(c, 0xC0DE), 1, 0);
+    ds_put(c, (uint16_t)(c->r[R_SI] + 0xE47C), c->r[R_AX]);
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_SI] + 0xE484));
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], ds_get(c, 0x2DF4), 1, 0);
+    c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1);
+    c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1);
+    ds_put(c, (uint16_t)(c->r[R_SI] + 0xE47E), c->r[R_AX]);
+    ds_put(c, 0x991A, 1);
+    n = 16;
+    goto quit;
+no_fire:
+    c->r[R_BX] = x86_imul3(c, VG2_FRAME(-10), 12);
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0xE47A), 0);
+    ds_put(c, 0x991A, 0);
+    n += 3;
+quit:
+    c->r[R_SI] = cpu_pop16(c);
+    x86_leave(c);
+    c->icount += n + 3;
+    near_ret(c);
+    return 1;
+}
+
 /* VGAME 0x0D6DD, cockpit_canopy(page): copy the shaded canopy posts from
  * page 2 and recolour the landing-approach cue there when its index changes.
  * Compact HUD mode also draws the two masked side frames. Locals describe
@@ -30730,6 +30877,7 @@ static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x971A, vgame_panel_ils, "instrument landing needles", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xB171, vgame_weapon_lock_marker, "weapon-lock box and hexagon", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD6DD, vgame_cockpit_canopy, "cockpit canopy posts and landing cue", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x4777, vgame_frame_projectiles, "gunfire slot motion and refill", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xB4F5, vgame_panel_marker_label, "label of a projected marker", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD9A2, vgame_compose_camera, "the frame's camera matrices", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x889B, vgame_cockpit_lamp, "set a cockpit lamp", 1 },

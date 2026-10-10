@@ -175,6 +175,13 @@ static unsigned long long g_overrun;    /* routines that ran past the event limi
 /* Sentinel words to plant, by routine (segment, IP): at DS:[reg + disp], or at DS:disp when reg is PLANT_ABS. */
 #define PLANT_ABS 8
 static const struct { uint16_t seg, ip; uint8_t reg; uint16_t disp; uint16_t val; } PLANTS[] = {
+    { 0x0000, 0x4777, PLANT_ABS, 0xB198, 0x0001 },   /* projectile slots: bounded walks and odd-frame refill */
+    { 0x0000, 0x4777, PLANT_ABS, 0xB198, 0x0004 },
+    { 0x0000, 0x4777, PLANT_ABS, 0x368E, 0x000F },   /* frame-rate estimate S */
+    { 0x0000, 0x4777, PLANT_ABS, 0x3D8E, 0x0001 },
+    { 0x0000, 0x4777, PLANT_ABS, 0x43EE, 0x0001 },   /* keyboard trigger held */
+    { 0x0000, 0x4777, PLANT_ABS, 0x3682, 0x03E8 },   /* ammunition available */
+    { 0x0000, 0x4777, PLANT_ABS, 0xC09A, 0x0000 },
     { 0x120A, 0x0B3B, R_DI, 0xD6B6, 0x8000 },     /* model_prepare_edge: a vertex behind the eye (x high word 8000h) */
     { 0x120A, 0x0B3B, R_BX, 0xD6B6, 0x8000 },
     { 0x0000, 0xDB3C, PLANT_ABS, 0x49F4, 0x0032 },   /* scene_defer_object: a full list of 50 */
@@ -248,7 +255,7 @@ static int compare(const char *mod, uint32_t off, uint16_t cs, uint16_t ip, int 
 }
 
 
-/* START and END, and VGAME's weapon-lock marker and canopy, call the graphics driver through 5-byte thunks in
+/* START and END, and VGAME's weapon-lock marker, canopy and projectiles, call drivers through 5-byte thunks in
  * their data segment. In the file each is JMP FAR 0:0 (the game fills them in
  * after loading), so a far call through one runs the program's first bytes
  * from a random state and the state is lost: every routine whose path reaches
@@ -260,7 +267,7 @@ static int compare(const char *mod, uint32_t off, uint16_t cs, uint16_t ip, int 
 static void stub_driver_thunks(uint8_t *pristine, uint32_t at, const rc_module *m, const recomp_override *o)
 {
     if (strcmp(m->name, "START.EXE") && strcmp(m->name, "END.EXE") &&
-        (strcmp(m->name, "VGAME.EXE") || (o->ip != 0xB171 && o->ip != 0xD6DD) || o->seg != 0)) return;
+        (strcmp(m->name, "VGAME.EXE") || (o->ip != 0xB171 && o->ip != 0xD6DD && o->ip != 0x4777) || o->seg != 0)) return;
     for (uint32_t i = 0; i + 5 <= m->size; i++) {
         if (m->image[i] != 0x9A) continue;
         const uint32_t lin = (uint32_t)(m->image[i + 3] | m->image[i + 4] << 8) * 16u + (uint32_t)(m->image[i + 1] | m->image[i + 2] << 8);

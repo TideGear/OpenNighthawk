@@ -13,7 +13,7 @@
         "weight": 60.04,
         "done": 1.0,
         "kind": "estimate",
-        "evidence": "All 17 code files translated (89,276 instructions); instruction lockstep 0 mismatches over 5.7M states; 27 routes identical across engines; fidelity.py 1,210/1,210; housekeeping done."
+        "evidence": "All 17 code files translated (89,366 instructions); instruction lockstep 0 mismatches over 5.7M states; 35 routes identical across engines; fidelity.py 1,210/1,210; housekeeping done."
       },
       {
         "item": "86Box and DOSBox-X as routine checks",
@@ -160,7 +160,7 @@
     "_about": "From the Reimp's census (tools/reimp_names.py output); refreshed by tools/progress.py --census FILE.",
     "functions": 1535,
     "bytes": 179213,
-    "matched_functions": 759,
-    "matched_bytes": 63596
+    "matched_functions": 760,
+    "matched_bytes": 63917
   }
 }

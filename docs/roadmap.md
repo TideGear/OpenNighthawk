@@ -196,7 +196,7 @@ not the recompilation:
       Reimp's mapping; matched functions replacing translations one at a time,
       each held to the same parity checks. `tools/reimp_names.py` joins the
       Reimp's census (1,535 functions) with this project's regions as a private
-      lead list. 764 addresses are matched (759 of the census functions, 63,596 of
+      lead list. 765 addresses are matched (760 of the census functions, 63,917 of
       179,213 bytes); the table is at the end of `src/matched/matched.c` and the
       method is in [architecture.md](architecture.md#matched-routines-phase-2).
       The batches of 8-9 Oct add 37 + 34 + 47 VGAME, 34 + 40 + 45 START/END and 21 + 44 + 64
@@ -218,6 +218,9 @@ not the recompilation:
       The cockpit canopy (`0x0D6DD`) now names the compact side frames, shaded
       posts and landing-approach cue, including clearing the old cue before
       painting the new one and preserving the original page-copy arguments.
+      Projectile motion and gunfire refill (`0x04777`) now names the twelve-byte
+      slots, their frame-rate-dependent walk, signed round-robin shot selection,
+      ammunition cost and launch velocity; every loop iteration checks event room.
 
 ## Phase 3 - fixes and enhancements (switchable)
 

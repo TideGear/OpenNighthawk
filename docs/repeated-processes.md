@@ -49,6 +49,12 @@ translation 7 s, parity 306 s. It reused 34 interpreter sessions; all 13
 unit tests, 35 route pairs, both 5,718,912-state instruction profiles and
 three matched seeds passed. Coverage added nothing; no event-limit overruns.
 
+The 765-address projectile gate (`D:/f117-gate/projectiles/gate.log`) took
+845 s: translation/build 78 s, fresh coverage 476 s, byte-identical second
+translation 8 s, parity 283 s. It reused 34 interpreter sessions; all 13
+unit tests, 35 route pairs, both instruction profiles and three matched
+seeds passed, with no event-limit overruns. Coverage added nothing.
+
 Stage times, earlier run: translate and build 457 s, coverage 173 s, second
 build 2 s (skipped), parity 503 s, lockstep tail 229 s.
 
@@ -70,6 +76,7 @@ by name; today: `recon_career` and `recon_return`.
 |---|---|---|---|
 | Targeted weapon-lock marker lockstep | check the named box/hexagon geometry before the full gate | about 0.5 s per 4,000-state run at the two follow-up seeds (9 Oct); 4.2 s before returning driver thunks were enabled | `func_lockstep --only VGAME.EXE:B171 --states 4000 --verbose`; the existing thunk substitution is enabled for this VGAME routine too, increasing the fixed-seed comparisons from 358 to 4,857 (17 skipped); this changes test inputs to reach drawing branches, rather than being an optimisation with identical inputs; full routes retain the actual driver |
 | Targeted cockpit-canopy lockstep | check canopy posts, compact side frames and landing cue before the full gate | 0.7 s per 4,000-state run, three seeds concurrently (9 Oct) | `func_lockstep --only VGAME.EXE:D6DD --states 4000 --verbose`; returning thunks on both sides allow graphics calls to return; 4,491 / 4,482 / 4,476 comparisons, 15 / 9 / 7 skipped, zero mismatches; full routes retain the actual driver |
+| Targeted projectile lockstep | check slot motion and gunfire refill before the full gate | 1.0-1.2 s per 4,000-state seed, two concurrently (9 Oct) | `func_lockstep --only VGAME.EXE:4777 --states 4000 --verbose`; small-count/firing plants and returning driver thunks reach more active states: 2,823 / 2,886 / 2,891 comparisons, zero mismatches. A private observer confirms 18 full refills among the fixed-seed comparisons. Full routes retain the actual drivers |
 | Isolated 15 FPS cap experiment | test whether a cap alone keeps S at 15 and the mission clock real | about 18 min for 45 flights, eight workers beside a full gate (9 Oct); isolated generated build about 3 min | one source change in a detached checkout at 28f2a50: D1_FPS_X10 116 to 150; 45 unfixed baseline rows retained from the preceding sweep; separate output and DLL hash in `D:/f117-gate/speed15/experiment.json`; compare two 40 MIPS flights under the interpreter too; no default or production D1 change |
 | Speed and D1 sweep (`speed_sweep.py`) | evidence for the default-speed decision | about 12 min for 90 flights, 16 workers beside control research (9 Oct): nine routes, 300 guest seconds each, at five speeds with and without D1 | each route's unfixed 9 MIPS baseline runs first to anchor input times; results resume by tag in `runs.jsonl`; compare engagements only on matching missions; keep fresh results separate from the earlier mixed-version launch counts |
 | Control-response speed sweep (`stick_response.py --ips N [--fix D1]`) | compare controls before choosing a default speed | roughly 43-220 s per flight under concurrent load (9 Oct); ten aligned DOSBox-profile flights, four workers | repeat the same 30 timed taps; retain mission identifiers, raw pitch/roll samples and early stops, so incomplete flights and differing missions cannot pass for equal responses; absolute and common-clock exploration runs also include the 386 profile |
