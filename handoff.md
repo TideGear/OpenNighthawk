@@ -20,21 +20,55 @@ in two refitted timing constants was found and corrected before commit (see
 honest, including one that got *worse* after the correction. Gate for the
 commit: `D:/f117-gate/fastdefault/gate-final/gate.log` (14 unit tests, 0
 mismatches, 35 routes identical). The owner requested wrapping up for a new
-conversation, committing, pushing and stopping. No experiment remains
-running.
+conversation, committing, pushing and stopping.
+**Read item 1 below before touching anything else: the working tree held
+uncommitted changes not written by this session when it ended, with a gate
+apparently running against them.**
 
-1. `git status -sb`: this batch is on master and pushed. Projectile motion and
-   gunfire refill remain on `p2-projectiles` (CI 38013133755 passed both
-   jobs). The canopy remains on `p2-cockpit-canopy` (CI 38011635681 passed
-   both jobs). The weapon-lock marker and gate build-setting repair remain on
-   `p2-lock-marker`; the 15 FPS report remains on `speed15-study`. Leave
-   pre-existing untracked files alone.
-2. Open for next time: a controlled threat-profile combat measurement (the
-   214-flight matrix's typed routes are too combat-sparse to show a change);
+1. **`git status -sb` first - the working tree is not clean.** This batch
+   (speed/drive) and `p037.png`'s listing (`66a664e`, not written by this
+   session - a good, properly-investigated entry, reviewed and left as is)
+   are on master and pushed. But as this session ended, the working tree
+   also held **uncommitted changes, not written by this session**, to
+   `src/cpu/timing386.h`, `src/machine/dos_files.c`, `src/machine/dos_internal.h`,
+   `src/machine/dos_programs.c`, and a new untracked `tools/threat_profile.py`
+   (295 lines) - implementing EXEC/overlay cost charging for the 386 profile
+   (item 2 below) and, it looks like, tooling for a controlled combat
+   measurement (also item 2). The diff reads as finished, not a fragment:
+   it shares `t386_file`'s accumulator between `dos_files.c` and
+   `dos_programs.c` cleanly, and its reasoning (EXEC cost is seek-distance-
+   dominated, confirmed by a non-monotonic-in-size follow-up probe,
+   `exec_sizes.py`, 15 more sizes beyond this session's three) matches what
+   this session had already found and documented about read/write seeks.
+   This session verified, without altering or committing it: the build
+   succeeded (`build/f117machine_api.dll` and `f117run.exe` both freshly
+   built, consistent timestamps 23:26:57/23:26:46 on 9 Oct, `error C` count 0
+   in `%TEMP%/f117r-build.log` - though that build was run directly rather
+   than through `build.cmd`, so it never printed `BUILD OK`), and that a gate
+   (`build_recomp.py`'s coverage step, by its exact route/`--coverage`
+   command-line pattern, e.g. `career_promotion_recomp`) was actively running
+   against this exact tree as this session ended, started about 23:29. Its
+   outcome was not seen. **Next session: check whether that gate finished
+   and passed before doing anything else with these files** - do not assume
+   they are safe to build on, and do not discard them without checking first
+   (`git stash` instead of `git checkout`/`reset` if they need to move aside).
+   Elsewhere: projectile motion and gunfire refill remain on `p2-projectiles`
+   (CI 38013133755 passed both jobs); the canopy remains on
+   `p2-cockpit-canopy` (CI 38011635681 passed both jobs); the weapon-lock
+   marker and gate build-setting repair remain on `p2-lock-marker`; the
+   15 FPS report remains on `speed15-study`. Leave other pre-existing
+   untracked files alone.
+2. Open for next time (some now partly addressed by the uncommitted work
+   above - check it first): a controlled threat-profile combat measurement
+   (the 214-flight matrix's typed routes are too combat-sparse to show a
+   change; `tools/threat_profile.py` above may already be this);
    EXEC/overlay cost charging under the 386 profile (the dominant remaining
-   piece of the intro's drift); whether to investigate and list `p037.png` in
-   `expected_misses86.txt`; and whether a seek-distance-aware disk model is
-   worth building (a flat constant is the wrong shape, as documented).
+   piece of the intro's drift; the uncommitted diff above may already be
+   this - verify its gate, then its own measured numbers against the
+   intro drift before trusting it); and whether a seek-distance-aware disk
+   model is worth building generally (a flat constant is the wrong shape,
+   as documented - the uncommitted diff takes a bucketed-by-size shortcut
+   for EXEC specifically rather than solving this in general).
 3. **Earlier batch, for reference:** speech-reference tooling/docs (P1 97.93%)
    and a shift-destination repair (`shl32_at` uses live BX) were merged and
    pushed as `p1-speech-reference` on 9 Oct, gate
