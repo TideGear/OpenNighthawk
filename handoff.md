@@ -56,16 +56,42 @@ judgment call never cross-checked with a second independent capture; (3) the
 EXEC file-load timing model is a real file's measured cost for only three
 named files (PLAYER.EXE/DSWAP.EXE/START.EXE), a coarse 3-bucket synthetic-size
 model for every other load, even though the same investigation proved
-size-based costing is wrong in general. The owner asked me to tackle these
-"when you can." Priority order: the AdLib 2-channel gap first (most
-actionable - needs root-causing, not just re-asserting "4 of 6"), then one
-more independent capture each for the 3-picture and 1-picture residuals to
-see if the same frames keep landing on the same side (evidence instead of
-assumption). Not started this session (the gate above took the remaining
-heavy-job window); pick up here first next session, using `tools/ref86box/`
-and the AdLib/picture comparison tools already in `tools/pc_parity.py` and
-`tools/video_compare.py`. Don't stack this alongside another heavy job (past
-sessions pinned the CPU running the gate plus three emulators at once).
+size-based costing is wrong in general. The owner asked me to tackle these "when you can." Investigated all three
+(read-only; no new captures run) once the gate above freed the heavy-job
+window, and all three check out as already properly handled - this was the
+right outcome of actually tracing the evidence instead of trusting a terse
+roadmap line:
+- **AdLib channels 3/4**: `tools/ref86box/build_86box.md` (lines 187-195)
+  already has a controlled experiment, not a guess - changing 86Box's own
+  VGA speed (`B86_VGA_FAST=1`) shifts the reference's own channel-3 key-on
+  count by about the same margin as the ours-vs-86Box gap (8,986 to 9,022 on
+  the same reference, against our 8,982), showing the two busy pitch-bend
+  channels are paced by the game loop's real-time speed and will not agree
+  between any two differently-paced machines. Explicitly marked "not a
+  parity target," correctly.
+- **Picture residuals**: the 3-of-1,332 DOSBox misses already have the
+  repeat-capture check I was going to propose - a second independent
+  capture matches 1,321 with a *different* 11 unmatched, proving the
+  specific misses are capture-phase noise, not a fixed defect
+  (`docs/architecture.md:411`). The 1-of-86 86Box miss (`p085`) has a
+  specific, falsifiable mechanism on record: 86Box's capture catches
+  START's roster screen mid-load because this machine's file reads finish
+  before the first paint while 86Box's don't; tracked explicitly in
+  `expected_misses86.txt`, not hand-waved.
+- **EXEC synthetic-size bucket**: confirmed it does reach the measured intro
+  window (MGRAPHIC.EXE/MISC.EXE/ASOUND.117 load at 5.65-7.56s, inside the
+  checked span) rather than being safely out of scope as I'd guessed - but
+  `timing386.md` (lines 309-323) shows its net effect is already folded into
+  the measured +39.3 ms end-to-end drift, which passes `pc_parity.py`'s
+  limit; the one check that still fails (the 0.37 s longest-scene-duration
+  gap) is a different metric, already shown unrelated to any load.
+
+No code or doc change was needed for any of the three; this paragraph is the
+record so the next session doesn't re-investigate the same ground. The
+standing, unfixable-by-agent item remains: parity is proven only against
+emulators (GOG DOSBox, DOSBox-X, 86Box), never real period hardware - already
+correctly scoped in standing project guidance as "86Box is the second
+reference, real hardware is the target," and not actionable here.
 
 ## Phase 2 collision/sound/scene checkpoint (10 Oct, 13:37 PDT)
 
