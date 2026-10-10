@@ -929,9 +929,25 @@ where `[0x43E8]` first goes nonzero) are values the game's own
 continuous calibration ever actually reaches and sustains, rather than a
 static Python trace fed hypothetical inputs. **Treat the "sets S to
 exactly 0" conclusion above as an unconfirmed hypothesis contradicted by
-existing data, not a finding.** The one way to settle this properly is to
-instrument an actual interpreter run at high uncapped MIPS (no D1) and
-watch `[0x368E]` and `[0x43E8]` over real flight time, the same
-`F117_WATCH`-style technique already used elsewhere in this project,
-rather than continue extending a static trace that existing evidence has
-already called into question.
+existing data, not a finding.**
+
+**Settled, 10 Oct, same session: `py tools/d1_check.py --data DIR --ips
+40000000 --engine interp --no-fix`** (already-existing tooling, not new
+instrumentation) measured S directly over a full 161.66 s flight at 40
+MIPS with every fix off: **S=15 for all 71,852 samples - never once
+above 15**, even at more than 4x the raw speed where the traced MUL
+bug's precondition (S>15) would first engage. This closes the question
+by direct measurement, not inference: whatever this self-calibration
+routine actually does with real game state, it holds S at exactly 15 and
+does not run away to 0 or anything else. Either the suspect branch never
+actually fires with the inputs real play produces (most likely, given the
+loop-index and periodic-timer gates this entry already flagged as
+unverified), or it fires and this routine is in fact a working negative-
+feedback governor that happens to look alarming in an isolated arithmetic
+trace fed hypothetical inputs chosen to probe the S>15 boundary, not
+values the game itself ever produces there. Either way: **no fix is
+warranted here.** This candidate is closed. The audit's other candidate
+(`0x2BFE` inside `game_input`, a terrain-distance value truncated after a
+signed IMUL) was never pursued this far and remains an open, unweighted
+lead if anyone wants to continue this kind of audit later - it does not
+inherit this conclusion.

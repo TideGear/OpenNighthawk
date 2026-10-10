@@ -38,7 +38,7 @@ above. Single-measurement margins, not variance-backed; if a future clean
 run fails one of these for reasons unrelated to the engine, that's the first
 thing to suspect.
 
-## CPU/combat: a candidate root cause found, NOT yet confirmed (10 Oct, 16:25 PDT)
+## CPU/combat: a candidate root cause, investigated and closed (10 Oct, 16:25-16:38 PDT)
 
 The owner redirected priority mid-session from Phase 2 to "perfectly fix"
 the CPU-speed/combat issue, then asked whether anything besides combat is
@@ -80,19 +80,32 @@ in place to flag this as an unconfirmed hypothesis contradicted by
 existing data, not a finding** - do not carry forward the earlier,
 stronger framing from this same session's first pass.
 
-**Next session, in order:** (1) instrument an actual interpreter run at
-high uncapped MIPS (no D1) and watch `[0x368E]`/`[0x43E8]` over real
-flight time to see what S actually does, rather than extend the static
-trace further; (2) only once that's grounded in a real run, decide
-whether there is anything left to fix here at all, versus this being
-dead/unreachable-in-practice code or an already-adequately-covered case;
-(3) if a real fix is warranted, use the same lockstep + full-gate
-discipline that just caught a real bug in the `vgame_release_count`
-extension below (random-state fuzzing alone did not catch it - the full
-gate's real routes did). Do not skip straight to writing a fix from
-arithmetic alone - this session's own experience (twice: this finding,
-and the release_count revert) is the argument for that discipline, not
-just the project's stated policy.
+**Settled the same session, by direct measurement, not further
+inference:** `py tools/d1_check.py --data DIR --ips 40000000 --engine
+interp --no-fix` (already-existing tooling) measured S directly over a
+full 161.66 s flight at 40 MIPS with every fix off: **S=15 for all
+71,852 samples - never once above 15**, more than 4x past the raw speed
+where the traced bug's precondition (S>15) would first engage. **This
+candidate is closed: no fix is warranted.** Whatever this routine's real
+behavior is with actual game state, it holds S at a stable ceiling of 15,
+not a runaway to 0. The static arithmetic trace was real as an isolated
+computation but fed inputs (S=16-40) the game apparently never produces
+at this point in its own logic; this is a case of the project's own
+`f117a-predict-then-measure` lesson playing out directly - a careful
+static reading produced a wrong prediction, and five minutes with existing
+tooling settled it where further hand-tracing would not have.
+
+The audit's *other* candidate (`0x2BFE` inside `game_input`, a
+terrain-distance value truncated after a signed IMUL - see
+`docs/speed-sweep.md`'s audit section) was never pursued this far and
+remains open and unweighted if this kind of audit continues later; it
+does not inherit this closure.
+
+This investigation, start to finish, is also the clearest argument this
+session produced for the project's lockstep + full-gate discipline:
+twice today (this finding, and the `vgame_release_count` revert below)
+reasoning that looked solid on paper did not survive contact with
+real measurement. Keep defaulting to measurement over prediction.
 
 Separately, two of the three P1 threshold-tightening and three doubtable-
 investigation asks from earlier this session are already committed (see
