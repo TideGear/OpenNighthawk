@@ -249,8 +249,13 @@ not the recompilation:
       simulated second; `tools/d1physics_check.py`). All 21 staged physics cases pass under both engines,
       with unchanged S9/player controls. The72-flight cohort retains a burst gap
       across32 matching missions; optional D1REAL passes seven normal-input clock/dialog cases at9/20/40
-      MIPS in both engines; corrected airborne combat validation remains open.
-      CPU/combat remains the priority until that evidence is reviewed. D7 is fixed by D8. Open:
+      MIPS in both engines. Corrected airborne clocks run at real time;
+      all 12 seed- and step-aligned mission pairs have identical launch
+      counts, 11 match burst/damage counts, and the remaining pair takes
+      more damage at 20 MIPS after input-phase divergence. The identified
+      CPU/enemy defects are repaired in the optional corrected mode;
+      original key-poll timing still limits exact whole-flight determinism.
+      [Evidence](speed-sweep.md#optional-real-time-cadence-10-oct-controlled-airborne-checks-complete). D7 is fixed by D8. Open:
       D10 (the mountain-collision stack corruption, DOS equivalent not
       located; no VGAME routine returns with the stack moved,
       `tools/stack_balance.py`), D35 (not reproduced here; no fix offered) and D36 (not
@@ -275,8 +280,9 @@ not the recompilation:
       suppresses SA-5 damage at S >= 14 (D1TTL). A corrected 96-flight,
       24-mission paired cohort and 24 combined-fix follow-ups show that
       D1TTL+D1PROX increase 20 MIPS bursts from 2.75 to 3.375 per flight,
-      but a deficit against 9 MIPS (4.125) remains. The CPU/combat issue
-      is still open. A further 24 held-out flights (12 matching mission
+      but a deficit against 9 MIPS (4.125) remained at that checkpoint.
+      The later five-option, seed- and step-aligned checks above supersede
+      that result for the corrected mode. A further 24 held-out flights (12 matching mission
       pairs) retain a -0.5 burst/flight difference with a wide interval;
       pooled 36-pair difference -0.6667 (95% -1.25..-0.0833). Seeker-cleared
       lifetime underflows to FFFF and can occupy the launcher's chosen

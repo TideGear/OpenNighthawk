@@ -161,10 +161,19 @@ Status values:
   in10seconds, restored rate80/10, pause0/0 over3seconds and resume24/3.
   Quit-dialog waiting and cancellation also preserve0/0 and24/3.
   The independent pacer test covers fractional clocks, event-boundary waits,
-  lossless catch-up, program/speed changes and dialog reset. Corrected natural combat
-  measurements remain pending: the first airborne batch exposed lost time
-  from a long-gap reset; catch-up now retains that time. The full gate passed all35 route pairs, both instruction profiles and
-  three matched seeds; corrected airborne combat validation remains open.
+  lossless catch-up, program/speed changes and dialog reset. The corrected
+  24-flight cohort holds S8 and an active mission clock near 1.000 at both
+  9/20 MIPS; interpreter/native natural replays match every sample. The
+  earlier launch/burst gap was confounded by VGAME's separate BIOS-tick RNG
+  seed and the pilot sampling different portions of each 125 ms step.
+  With both aligned, all 12 pairs have identical launch counts; 11 also
+  match burst/damage counts and orbit duration. The remaining pair takes
+  more damage at 20 MIPS after an input-phase divergence. The cohort shows
+  no high-speed enemy weakness, while exact whole-flight CPU determinism
+  remains limited by original input polling and slow frames.
+  [Measurements and reproduction](speed-sweep.md#optional-real-time-cadence-10-oct-controlled-airborne-checks-complete).
+  The source gate passed all 35 route pairs, both instruction profiles and
+  three matched seeds.
 
 ### D1TTL. Long-lived SA-5 missiles cannot cause proximity damage
 

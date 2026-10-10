@@ -9,6 +9,82 @@ checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 more than once, what it costs). State as of 10 October 2026.
 Earlier session logs are in `git log -p handoff.md`.
 
+## Controlled CPU/combat checkpoint (10 Oct, 13:07 PDT; full gate PASS)
+
+The owner reset usage and resumed. HEAD remains 30f463d, previously pushed
+with the full 24.1-minute PASS gate. This checkpoint adds Python pilot/
+comparator regressions and documentation; game/fix source is unchanged.
+The required full gate PASS in594seconds (9.9min):17selected CTests,
+35 IDENTICAL route pairs, both5,718,912-state instruction profiles zero,
+all three765-address matched seeds zero, every routes-only routine ran,
+none overran. Translation/build21sec, parity573sec; coverage/regeneration
+reused the verified unchanged-input/generated-code cache. Logs
+D:/f117-gate/gate-combat-alignment.log and result.txt (exact filename
+ gate-combat-alignment-result.txt), exit0. No probes/gate processes remain.
+Commit and push this checkpoint together before continuing source work.
+
+CPU/enemy investigation now validates the identified optional repairs:
+TTL+SLOT+PROX(v2)+ACCEL+REAL(v2). The corrected natural cohort completed
+24 flights in 263.2 seconds, all 12 mission identities matching. Active
+clock rates are 1.000065/1.000292 at 9/20 MIPS after a diagnostic three-second
+terminal exclusion on exited flights; retain all rows/counts for combat.
+Every sampled S is 8. Raw full rates include frozen death sequences.
+Interpreter/native natural seed2500 hashes, launch lists and every CSV byte
+match at both speeds (793c45a47070b53d / 8729c698e4bed4e5).
+
+The residual v5 cohort gap was confounded: START mission alignment does not
+align VGAME's later BIOS-tick RNG seed (C880 -> EE1A; stored DS:9540).
+Flight seeds differ by 25-33 ticks. Initialization also takes different real
+time, and the old 200 ms pilot samples different parts of each 125 ms step.
+Normal hangar-delay inputs align the later seed; step-aligned whole-frame
+holds remove most feedback timing differences. No guest memory staged.
+
+Final controlled 12-pair result: every launch count identical, 11 pairs also
+match burst counts, damage counters and orbit duration exactly. Korea22500
+has 7/9 bursts, 16/20 total damage selections and a pilot input divergence
+after a partial-frame sample at 288.112 seconds. A mapped 9-input replay at
+20 follows the same initial path but crashes before combat: original input
+poll timing still matters during slow frames. No high-speed enemy weakness
+in this cohort; this is not a proof of universal statistical equivalence or
+exact whole-flight CPU determinism. Identified weapon/clock defects are
+repaired in the optional corrected mode. Default parity mode stays original.
+CPU investigation may now yield to the broader roadmap. Read-only work has
+identified the remaining "386" held-picture failure as a harness mix-up:
+pc_parity.py passes its default9MIPS DOSBox capture to compare_timing86.py,
+not the actual386 run. The picture is the final stationary hangar.
+Private held_scene_fast.py matches the saved true386 capture's held pictures
+by content (6-bit DAC -> 86Box's RGB/FNV64, alphaFF), not duration:21of21ours
+match21of23reference in order, maxdurationdiff.214022sec<.35, maxstartdrift
+1.112912sec<2.2. Hangar ours6.472724 vs86Box6.491997sec, difference19.273ms.
+Infer screen-off gaps as blanks; raw posted-frame holds count missing scanout
+and overstate the reference hold by57ms. Artifacts held-scene-fast.{json,log},
+held_scene_fast.py. Source captures frames-realfiles/ours (settings confirms
+--timing386) and pc-parity-realfiles/86box-sound/trace/frames.csv. Next retain
+this content/profile-aware check, make pc_parity use a separate386 capture
+for86Box while DOSBox comparisons keeptheir9MIPSprofile, and rerun the
+references/gate. Don't alter CPU cycle charges to fit a mixed-profile test. Do not tune balance to cohort means.
+
+Retained tools: threat_profile.py telemetry v6 records flight_seed, supports
+--launch-delay-ms and --align-steps (requires D1REAL). Step pilot is a different
+control policy than v5, so don't interpret its means as a before/after fix
+comparison. Comparator --match-flight-seed requires the additional matching
+seed; +step arms/cache tags prevent silently mixing pilot policies. Nine
+unit cases pass. Public MiddleEast seed2500 native/interp replays at both
+speeds match the private phase experiment: d4abd70c56500017 (9),
+2619b559a5c10b3b (20), every launch record and CSV byte. Four boots146.5sec.
+
+Artifacts D:/f117-gate: threat-realtime/, threat-realtime-summary.txt,
+threat-phase-corrected.jsonl and summary.txt, flight-seed-*-600-phase.*,
+flight-inputs-*.log, public-phase-*.{json,csv}, replay-korea_strike-22500-20.*.
+Initial threat-phase.jsonl has unequal Kuwait seeds: don't use it as final.
+Final20 launch delays by family2500/22500/25000: MiddleEast1813/1483/1483,
+Korea1813/1813/1813, Kuwait1345/1345/1345, NorthCape1758/1813/1758ms.
+Controlled cohort269.9sec/8workers plus three corrected Kuwait repeats.
+All task processes use verified 0x00FFFFFF affinity (leave8logicalCPUs).
+No agents authorized. Continue until roadmap complete or 5h remaining<=15%;
+at that threshold wrap handoff, commit+push and stop. Usage was10% at12:33;
+read only rate_limits events from this thread's rollout for current usage.
+
 ## Verified physics/clock checkpoint (10 Oct, 09:47 PDT)
 
 Owner's 85% usage threshold was reached at09:22. Work stopped for wrap-up;

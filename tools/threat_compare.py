@@ -18,10 +18,11 @@ import statistics
 
 
 def arm(row):
-    return row["speed"] + ("+" + "+".join(sorted(row.get("fixes", []))) if row.get("fixes") else "")
+    return (row["speed"] + ("+" + "+".join(sorted(row.get("fixes", []))) if row.get("fixes") else "")
+            + ("+step" if row.get("pilot_step_aligned") else ""))
 
 
-def paired(rows, left, right, shifts):
+def paired(rows, left, right, shifts, match_flight_seed=False):
     groups = collections.defaultdict(dict)
     for row in rows:
         if "error" not in row:
@@ -29,7 +30,9 @@ def paired(rows, left, right, shifts):
             groups[key][arm(row)] = row
     return [(g[left], g[right]) for g in groups.values()
             if left in g and right in g and g[left].get("mission")
-            and g[left]["mission"] == g[right].get("mission")]
+            and g[left]["mission"] == g[right].get("mission")
+            and (not match_flight_seed or (g[left].get("flight_seed") is not None
+                 and g[left]["flight_seed"] == g[right].get("flight_seed")))]
 
 
 def interval(differences):
@@ -43,6 +46,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("files", nargs="+")
     parser.add_argument("--shift-ms", nargs="*", default=[])
+    parser.add_argument("--match-flight-seed", action="store_true",
+                        help="also require identical VGAME combat seeds, separately from START missions")
     args = parser.parse_args()
     shifts = {speed: int(ms) for speed, ms in (s.split("=", 1) for s in args.shift_ms)}
     latest = {}
@@ -52,6 +57,8 @@ def main():
                 row = json.loads(line)
                 latest[row["tag"]] = row
     rows = list(latest.values())
+    if args.match_flight_seed and any(r.get("flight_seed") is None for r in rows if "error" not in r):
+        parser.error("flight seeds missing; rerun with threat_profile.py telemetry version 6")
     if any(r.get("telemetry_version", 0) < 5 for r in rows if "error" not in r):
         parser.error("rerun with the corrected pilot/observer (telemetry version >= 5)")
     by_arm = collections.defaultdict(list)
@@ -70,7 +77,7 @@ def main():
               *(round(statistics.mean(r[k] for r in cohort), 4) for k in metrics),
               round(sum(r["orbit_seconds"] for r in cohort), 1))
     for left, right in itertools.combinations(sorted(by_arm), 2):
-        pairs = paired(rows, left, right, shifts)
+        pairs = paired(rows, left, right, shifts, args.match_flight_seed)
         print(f"{left} minus {right}: {len(pairs)} matching mission pairs")
         for metric in metrics if pairs else ():
             differences = [a[metric] - b[metric] for a, b in pairs]

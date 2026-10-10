@@ -675,7 +675,7 @@ Reproduce staged checks with `py tools/d1physics_check.py --data DIR
 --engine ENGINE`, then repeat with `--fix D1PROX --fix D1ACCEL`.
 
 
-## Optional real-time cadence (10 Oct; airborne validation open)
+## Optional real-time cadence (10 Oct; controlled airborne checks complete)
 
 D1REAL pins S=8 normally and S=4 under original 2x compression, admitting
 eight simulation frames per machine second. Original D441 derives dependent
@@ -698,18 +698,119 @@ Normal30seconds gives240frames/30mission seconds; compressed10seconds
 quit-dialog3seconds0/0 and cancellation3seconds24/3. Six parallel boots
 took about3.8minutes. Artifacts `D:/f117-gate/realtime-checks/`.
 
-Corrected natural combat remains unvalidated: the owner's85% usage threshold
-was reached before a fresh cohort could start. Next run the24-flight
-`threat_realtime.py` batch (four routes, seeds2500/22500/25000,9/20MIPS,
-TTL+PROX+SLOT+ACCEL+REAL), retaining early exits and verifying all12 mission
-identities. Compare clock rates and combat against physicsv2 on the same
-seeds. Then compare interpreter/native MiddleEastseed2500 hashes, launch
-records and every CSVbyte using `realtime_sentinel.py`. Do not declare
-CPU-independent enemy effectiveness from the parked checks alone.
+The corrected 24-flight cohort completed in 263.2 seconds with eight workers
+on the shared 24-CPU affinity mask. All 12 mission identities match. Each
+arm uses TTL+PROX(v2)+SLOT+ACCEL+REAL(v2); no guest memory is staged.
+
+| MIPS | Flights | Early exits | Launches/flight | Bursts/flight | Damage selections/flight | Orbit seconds |
+|---|---|---|---|---|---|---|
+| 9 | 12 | 6 | 12.1667 | 7.1667 | 14.5000 | 1826.2 |
+| 20 | 12 | 5 | 10.0000 | 5.9167 | 11.8333 | 1802.6 |
+
+20-minus-9 paired differences: launches -2.1667 (95% bootstrap
+-4.0833..-0.4167), bursts -1.2500 (-2.6667..+0.1667), damage selections
+-2.6667 (-5.5000..+0.1667). On these same 12 missions without REAL, the
+burst difference was -2.0000 (-3.5000..-0.9167). REAL changes bursts by
+-0.7500 at 9 and 0 at 20; neither within-speed interval excludes zero.
+This does not establish combat equivalence.
+
+S is 8 in every sampled row. Full sampled clock rates are 0.998452 at 9
+and 0.999159 at 20, including frozen death/exit sequences. Removing the
+last three seconds of exited flights only gives pooled active rates
+1.000065 and 1.000292, with frame rates 8.001003 and 7.999416. Individual
+active frame rates are 7.998466..8.001964. Integer mission-second endpoints
+limit precision. This supports lossless pacing during flight; the endpoint
+exclusion is diagnostic and is not applied to combat counts.
+
+Natural Middle East seed-family 2500 matches interpreter/native at both
+speeds: hashes `793c45a47070b53d` (9) and `8729c698e4bed4e5` (20), every
+launch record and CSV byte identical. Artifacts: `D:/f117-gate/threat-realtime/`,
+`threat-realtime-summary.txt`, `realtime-sentinel-*-interp.{json,csv}`.
+
+Independent source inspection found an additional comparison confound.
+VGAME C880 reads INT 1Ah's BIOS tick, stores it at DS:9540 and seeds its
+32-bit RNG at EE1A. Initialization 497D..4987 draws the initial frame
+counter from that RNG. Aligning START's mission generation does not align
+this later combat seed: all 12 pairs have different flight seeds, by 25-33
+BIOS ticks. The Middle East pair starts at 39037 versus 39004. Delaying
+only the final hangar confirmation at 20 MIPS by 1813 ms makes both 39037,
+without changing the mission or staging memory. Nine of twelve computed
+delays match immediately; the three Kuwait delays overshoot by one tick.
+
+Input timing adds another confound: VGAME's initialization takes different
+amounts of real time, while the pilot schedules controls from program load.
+Anchoring to the first mission second aligns frame counters, but the 200 ms
+observer still samples different portions of a 125 ms simulation step.
+An aligned pair has identical initial position, altitude, heading and speed,
+then differs in the following sample because one CPU has completed more
+work inside the frame. Short arrow-key holds also interact with this phase.
+A follow-up pilot samples once per step and schedules whole-step holds
+while the guest is waiting. This is a different pilot from the earlier
+5 Hz cohort, so its means are not a before/after balance comparison.
+
+The 24-flight follow-up completed in 269.9 seconds with eight workers.
+Three Kuwait flights were then repeated at the corrected delay: the
+hangar's polling phase makes 1318/1373 ms straddle the desired seed;
+1345 ms matches it. All 12 final pairs have identical START mission
+identities and VGAME combat seeds. No guest memory is staged.
+
+| Step-aligned arm | Flights | Early exits | Launches/flight | Bursts/flight | Damage selections/flight | Orbit seconds |
+|---|---|---|---|---|---|---|
+| 9 + five options | 12 | 6 | 11.0000 | 6.3333 | 12.6667 | 1711.3 |
+| 20 + five options | 12 | 7 | 11.0000 | 6.5000 | 13.0000 | 1657.2 |
+
+All 12 pairs have identical launch counts; 11 also have identical burst
+counts, damage counters and orbit durations. Korea family 22500 has 7/9
+bursts and 16/20 total damage selections at 9/20 MIPS. Its aircraft states
+match through 2136 samples; a partial-frame sample at 288.112 seconds then
+changes the feedback pilot's subsequent commands. A mapped replay of the
+9 MIPS input sequence at 20 MIPS follows the same initial path but crashes
+before combat. CPU execution time still affects which frame reads a key.
+Lossless pacing preserves time through a slow frame, but cannot make every
+original input poll instantaneous. This is a limit of whole-flight
+cross-CPU determinism, distinct from the repaired weapon calculations.
+
+The final paired 20-minus-9 launch difference is exactly zero in every
+flight. Bursts average +0.1667 (95% paired bootstrap 0..+0.5000), damage
+selections +0.3333 (0..+1.0000). This cohort shows no high-speed enemy
+weakness. It is not a statistical proof of universal combat equivalence.
+Together with the isolated unsigned-lifetime, slot, swept-distance and
+acceleration checks, it validates the identified repairs and real-time
+cadence at the tested speeds. Default original behavior remains available;
+CPU/input phase and random startup can still change an individual battle.
+
+Public reproduction now records `flight_seed` (telemetry v6) separately
+from the mission. Use the same five options, `--align-steps`, seed families
+2500/22500/25000 at 9 MIPS and +220 ms boot offsets at 20. Delays apply only
+to the final START action after mission generation:
+
+| Route | 20 MIPS launch delays (ms), families 2500 / 22500 / 25000 |
+|---|---|
+| Middle East | 1813 / 1483 / 1483 |
+| Korea | 1813 / 1813 / 1813 |
+| Kuwait | 1345 / 1345 / 1345 |
+| North Cape | 1758 / 1813 / 1758 |
+
+For example, run the Middle East pair into separate output directories:
+
+```
+py tools/threat_profile.py --data DIR --out OUT9 --routes middle_east_strike --speeds 9 --offsets-ms 2500 --seconds 600 --align-steps --fix D1TTL --fix D1SLOT --fix D1PROX --fix D1ACCEL --fix D1REAL
+py tools/threat_profile.py --data DIR --out OUT20 --routes middle_east_strike --speeds 20 --offsets-ms 2720 --launch-delay-ms 1813 --seconds 600 --align-steps --fix D1TTL --fix D1SLOT --fix D1PROX --fix D1ACCEL --fix D1REAL
+py tools/threat_compare.py OUT9/runs.jsonl OUT20/runs.jsonl --shift-ms 20=220 --match-flight-seed
+```
+
+The comparator keeps step-aligned and earlier pilots in separate arms,
+and the optional flight-seed requirement rejects absent or unequal seeds.
+Nine unit checks cover pairing, input phase, launch delay, cache identity
+and existing orbit geometry. Artifacts: `D:/f117-gate/threat-phase-corrected.jsonl`,
+`flight-seed-*-600-phase.{json,csv}`, `flight-inputs-*.log`,
+`replay-korea_strike-22500-20.{json,csv}`. The initial phase cohort's Kuwait
+records have unequal seeds; use the corrected JSONL, not `threat-phase.jsonl`.
+
 
 
 Final source gate PASS:24.1minutes (1447seconds),17selected tests,35identical
 route pairs, both5,718,912-state instruction profiles, all three765-address
 matched seeds, all routes-only evidence and no event-limit overruns.
 `D:/f117-gate/gate-physics-realtime.log`. This verifies parity and the staged
-checks; corrected natural combat remains the next required investigation.
+checks; the later airborne evidence above uses the same game source.

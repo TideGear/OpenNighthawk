@@ -30,6 +30,12 @@ all speeds; raw instruction deadlines otherwise rotate a fast jet too early.
 `enemy_launches` is the game's official counter; launch_list is sampled and
 can miss a short-lived slot. `damage_hits` counts damage selections, not impacts.
 `--fix D1TTL` tests unsigned missile life without adding the D1 frame limiter.
+Telemetry v6 records VGAME's later BIOS-tick combat seed separately from START's
+mission identity. `--launch-delay-ms` delays only the final START action to align
+that seed. With D1REAL, `--align-steps` anchors time to the first mission second,
+samples at eight steps/s and queues whole-step key holds during the waiting phase.
+Slow frames can still overlap a sample; identical seeds do not guarantee identical
+feedback-driven inputs. Keep early exits and inspect individual paired flights.
 """
 from __future__ import annotations
 
@@ -73,6 +79,28 @@ def route_args(route):
 
 def signed(v):
     return (v + 32768) % 65536 - 32768
+
+
+def delay_launch(pending, ips, delay_ms):
+    """Delay the last START action, after it has generated the mission."""
+    if delay_ms < 0:
+        raise ValueError("launch delay must be nonnegative")
+    result = list(pending)
+    if delay_ms:
+        candidates = [(p[1], i) for i, p in enumerate(result) if p[0] == "START.EXE"]
+        if not candidates:
+            raise ValueError("launch delay needs a START input")
+        _, i = max(candidates)
+        program, at, option, content = result[i]
+        result[i] = (program, at + ips * delay_ms // 1000, option, content)
+    return result
+
+
+def step_input(at, hold_ms, phase, ips):
+    """Queue a whole-step hold during D1REAL's waiting portion of a frame."""
+    index = ((at - phase) * 8 + ips - 1) // ips
+    at = phase + (index * ips + 7) // 8
+    return at, max(125, ((hold_ms + 124) // 125) * 125)
 
 
 def timing_summary(samples, ips):
@@ -131,7 +159,9 @@ def orbit_control(machine, state, tick, target_x, target_y, radius=ORBIT_RADIUS,
 
 
 def fly(data, route, speed, seconds=600, offset_ms=0, radius=ORBIT_RADIUS, cruise=ORBIT_CRUISE,
-        samples_path=None, engine="recomp", fixes=()):
+        samples_path=None, engine="recomp", fixes=(), launch_delay_ms=0, align_steps=False):
+    if align_steps and not ("D1REAL" in fixes or "all" in fixes):
+        raise ValueError("step-aligned inputs require D1REAL")
     if speed == "386" and fixes:
         raise ValueError("fix overrides are validated with instruction timing only")
     if speed == "386":
@@ -149,16 +179,26 @@ def fly(data, route, speed, seconds=600, offset_ms=0, radius=ORBIT_RADIUS, cruis
     inputs = RouteInputs(route_args(route))
     inputs.pending = [(p, int(at * front_scale(speed)), o, c) for p, at, o, c in inputs.pending
                       if p != "VGAME.EXE"]
+    inputs.pending = delay_launch(inputs.pending, ips, launch_delay_ms)
     samples, live, launches = [], {}, []
     mission, launched_at_player, last_hits = {}, None, None
     began = time.time()
     exited, flight_start, initialized, orbiting, target_xy = None, None, False, False, None
-    orbit_start = None
+    orbit_start, flight_seed, flight_phase = None, None, None
     tick = 0
     with tempfile.TemporaryDirectory() as save, \
             Machine(data, save, ips=ips, engine=engine, fixes=tuple(fixes),
                     time_us=BOOT_US + offset_ms * 1000) as m:
-        step = 90_000
+        original_type = m.type
+
+        def type_aligned(at, keys, hold_ms=60, gap_ms=60):
+            if flight_phase is not None:
+                at, hold_ms = step_input(at, hold_ms, flight_phase, ips)
+            return original_type(at, keys, hold_ms=hold_ms, gap_ms=gap_ms)
+
+        if align_steps:
+            m.type = type_aligned
+        step = ips // 100 if align_steps else 90_000
         while True:
             inputs.poll(m)
             status = m.run_until(m.clock + step)
@@ -171,7 +211,17 @@ def fly(data, route, speed, seconds=600, offset_ms=0, radius=ORBIT_RADIUS, cruis
                     break
                 continue
             if flight_start is None:
-                flight_start = m.start
+                if align_steps:
+                    step = ips // 1000
+                    ds0 = (m.psp + 0x10 + 0x1E42) << 4
+                    if m.read16(ds0 + 0x9912) != 1 or m.read16(ds0 + 0x368E) != 8:
+                        if m.clock - m.start > 30 * ips:
+                            raise RuntimeError("first D1REAL mission second not observed")
+                        continue
+                    flight_start = m.clock - ips
+                    flight_phase = flight_start + ips * 11 // 100
+                else:
+                    flight_start = m.start
             elapsed = m.clock - flight_start
             if elapsed > seconds * ips:
                 break
@@ -192,6 +242,7 @@ def fly(data, route, speed, seconds=600, offset_ms=0, radius=ORBIT_RADIUS, cruis
                                                      "secondary_type", "secondary_target")}
                     mission.update(difficulty=r(ds + 0x3686), tension=r(ds + 0x3688),
                                    home=r(ds + 0xE00C))
+                    flight_seed = r(ds + 0x9540)
                 if not orbiting and (state["target_range"] < ORBIT_RANGE or state["flags"] & 0x4000):
                     orbiting = True
                     orbit_start = elapsed
@@ -199,7 +250,7 @@ def fly(data, route, speed, seconds=600, offset_ms=0, radius=ORBIT_RADIUS, cruis
                     orbit_control(m, state, tick, *target_xy, radius=radius, cruise=cruise)
                 else:
                     strike_control(m, state, tick)
-                step = ips // 5
+                step = ips // (8 if align_steps else 5)
                 tick += 1
                 S = r(ds + 0x368E)
                 fb = (r(ds + 0xE576) << 4) + r(ds + 0xE574)
@@ -275,7 +326,8 @@ def fly(data, route, speed, seconds=600, offset_ms=0, radius=ORBIT_RADIUS, cruis
     result = dict(route=route, speed=str(speed), ips=ips, seconds_asked=seconds, offset_ms=offset_ms,
                   radius=radius, cruise=cruise, exited=exited, hash=final_hash,
                   wall=round(time.time() - began, 1), target_xy=target_xy, mission=mission,
-                  fixes=list(fixes), telemetry_version=5,
+                  fixes=list(fixes), telemetry_version=6, flight_seed=flight_seed,
+                  launch_delay_ms=launch_delay_ms, pilot_step_aligned=align_steps,
                   orbit_start_seconds=round(orbit_start / ips, 3) if orbit_start is not None else None,
                   orbit_seconds=round((samples[-1][0] - orbit_start) / ips, 1)
                   if orbit_start is not None and samples else 0,
@@ -292,15 +344,17 @@ def fly(data, route, speed, seconds=600, offset_ms=0, radius=ORBIT_RADIUS, cruis
     return result
 
 
-def tag_of(route, speed, offset_ms, fixes=()):
-    return f"{route}@{speed}{'+' + '+'.join(fixes) if fixes else ''}~t{offset_ms}"
+def tag_of(route, speed, offset_ms, fixes=(), launch_delay_ms=0, align_steps=False):
+    suffix = (f"~launch{launch_delay_ms}" if launch_delay_ms else "") + ("~step" if align_steps else "")
+    return f"{route}@{speed}{'+' + '+'.join(fixes) if fixes else ''}{suffix}~t{offset_ms}"
 
 
 def _job(args):
-    data, route, speed, seconds, offset_ms, fixes, radius, cruise, out = args
-    tag = tag_of(route, speed, offset_ms, fixes)
+    data, route, speed, seconds, offset_ms, fixes, radius, cruise, out, delay, aligned = args
+    tag = tag_of(route, speed, offset_ms, fixes, delay, aligned)
     try:
         r = fly(data, route, speed, seconds, offset_ms, radius=radius, cruise=cruise, fixes=fixes,
+                launch_delay_ms=delay, align_steps=aligned,
                 samples_path=os.path.join(out, "samples", tag.replace("@", "_").replace("~", "_") + ".csv"))
     except Exception as e:  # noqa: BLE001 - one failed flight must not stop the sweep
         r = dict(route=route, speed=str(speed), offset_ms=offset_ms, error=repr(e))
@@ -344,10 +398,18 @@ def main():
     ap.add_argument("--offsets-ms", nargs="+", type=int, default=[0])
     ap.add_argument("--radius", type=int, default=ORBIT_RADIUS)
     ap.add_argument("--cruise", type=int, default=ORBIT_CRUISE)
+    ap.add_argument("--launch-delay-ms", type=int, default=0,
+                    help="delay only the final START action to align the later VGAME BIOS-tick seed")
+    ap.add_argument("--align-steps", action="store_true",
+                    help="with D1REAL, anchor flight time to its first second and align inputs to eight steps/s")
     ap.add_argument("--jobs", type=int, default=max(1, (os.cpu_count() or 8) - 8))
     ap.add_argument("--redo", action="store_true")
     ap.add_argument("--table-only", action="store_true")
     a = ap.parse_args()
+    if a.launch_delay_ms < 0:
+        ap.error("--launch-delay-ms must be nonnegative")
+    if a.align_steps and not ("D1REAL" in a.fix or "all" in a.fix):
+        ap.error("--align-steps requires --fix D1REAL")
     os.makedirs(os.path.join(a.out, "samples"), exist_ok=True)
     store = os.path.join(a.out, "runs.jsonl")
     done = {}
@@ -356,12 +418,13 @@ def main():
             r = json.loads(line)
             done[r["tag"]] = r
     fixes = tuple(a.fix)
-    wanted = [(route, speed, off, fixes) for route in a.routes for speed in a.speeds for off in a.offsets_ms]
-    jobs = [(a.data, route, speed, a.seconds, off, fixes, a.radius, a.cruise, a.out)
-            for route, speed, off, fixes in wanted
-            if not a.table_only and (a.redo or tag_of(route, speed, off, fixes) not in done
-                                     or "error" in done[tag_of(route, speed, off, fixes)]
-                                     or done[tag_of(route, speed, off, fixes)].get("telemetry_version") != 5)]
+    wanted = [(route, speed, off, fixes, a.launch_delay_ms, a.align_steps)
+              for route in a.routes for speed in a.speeds for off in a.offsets_ms]
+    jobs = [(a.data, route, speed, a.seconds, off, fixes, a.radius, a.cruise, a.out, delay, aligned)
+            for route, speed, off, fixes, delay, aligned in wanted
+            if not a.table_only and (a.redo or tag_of(route, speed, off, fixes, delay, aligned) not in done
+                                     or "error" in done[tag_of(route, speed, off, fixes, delay, aligned)]
+                                     or done[tag_of(route, speed, off, fixes, delay, aligned)].get("telemetry_version") != 6)]
     if jobs:
         ctx = mp.get_context("spawn")
         with ctx.Pool(min(a.jobs, len(jobs)), maxtasksperchild=1) as pool, open(store, "a") as f:

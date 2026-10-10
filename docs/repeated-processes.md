@@ -129,6 +129,7 @@ These are recorded separately and are not passing gates.
 | Staged seeker-underflow reproduction | establish the next countdown regression | About 120 s for two boots in parallel (10 Oct) | Private `slot_underflow_probe.py`, interpreter/recomp, S=8/15; positive life becomes FFFF after lost lock, case hashes identical. First exact-rear setup failed its staging expectation; off-axis setup reproduces the defect |
 | Staged weapon physics regression | after changing D1PROX/D1ACCEL or dispatch | about 2 min for four boots (10 Oct) | `d1physics_check.py`, both engines +/- options; 21 cases: S=9/player controls, equal-time and changing-S acceleration, frozen straight passes; incoming slots 0/7; every case hash agrees across engines, both control hashes unchanged |
 | Real-time simulation regression | after changing D1REAL or dispatch | 3.8 min for six parallel boots (10 Oct) | `d1real_check.py`, 9/20/40 MIPS in both engines, normal inputs only; normal clock, 2x compression, restored rate, pause/resume and quit/cancel; compare case hashes per speed |
+| Corrected real-time airborne cohort | validate D1REAL during combat | 4.4 min for 24 flights with eight workers (10 Oct); two interpreter replays run alongside | four routes x seeds 2500/22500/25000 x 9/20 MIPS, TTL+PROX(v2)+SLOT+ACCEL+REAL(v2); verify missions, full telemetry and replay hashes. START seed matching does not align VGAME's later BIOS-tick RNG seed; align the final hangar input separately for controlled combat, and sample at completed simulation steps |
 | Initializer walker bounds regression | each gate | included in the17-test unit selection | `ctest -R matched_initializer_bounds`, retained seed0x66A860898896; exact walker code spans prevent an unrelated callee return from being mistaken for the walker's own RET |
 | Staged slot-reclamation regression | after changing D1SLOT or dispatch | about 2 min for four parallel boots (10 Oct) | `d1slot_check.py`, both engines +/- D1SLOT; S=8/15, zero/one/signed/unsigned controls before lost-lock cases; all 15 case hashes agree across engines and all eleven control hashes are unchanged; includes incoming slot 7 and player slot 8 |
 | Swept-band/acceleration cohort | measure current physics changes at both CPU speeds, including held-out seeds | 23.7 min, eight workers beside parity (10 Oct) | Four routes x nine seed families x 9/20 MIPS, all four combat options, early exits retained; fresh seeds22500..27500 held out;32 matching pairs, four27500 pairs excluded; check regenerated native 9/20 sentinels against pre-gate/interpreter references |
@@ -165,6 +166,12 @@ and require identical frame and port traces. Measured on 9 Oct: incremental
 94 s, our interpreter replay 50 s, WAV render 1.6 s, comparison about 0.6 s.
 Reuse captures when the recorded binary, input and configuration hashes agree.
 Generated audio and game data stay outside the repository.
+
+The combat-alignment tooling gate (10 Oct, `gate-combat-alignment.log`)
+took 9.9 minutes (594 seconds): translation/build/tests 21 seconds,
+parity 573; unchanged game source, inputs and generated code reused the
+verified coverage/regeneration cache. All 17 selected CTests, 35 routes,
+both instruction profiles and three matched seeds passed.
 
 ## What the gate is checked against
 
