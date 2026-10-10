@@ -904,8 +904,34 @@ flight - this is not an init-only or rare-mode path.
 **Still open:** what a real S=0 does immediately afterward. Spot-checked
 one guard: `0xD441` itself (called right after S is overwritten) takes the
 S<=15 branch for S=0 and sets `[0x43E8]=0` directly, without dividing by
-S - so this one specific step does not fault. Whether anything *else*
-downstream (movement/physics stepping, other rate derivations) divides by
-S without a guard, and so would fault or visibly break on a real S=0, has
-not been traced. That is the one remaining question before this can be
-staged as a controlled two-engine reproduction and, if confirmed, fixed.
+S - so this one specific step does not fault. A short distance later in
+the same caller, `0x3ADA`'s own earlier block (`0x4435`, `div [0x368E]`,
+reached on the *next* firing of the same periodic gate) would divide by a
+persisted S=0 - an unguarded real divide fault, not silent corruption, if
+S really stays at 0.
+
+**CORRECTION - this severity claim is very likely wrong somewhere, and
+should not be trusted without a staged reproduction.** `docs/bugs.md`'s
+existing D1 writeup independently confirms `0x441D` ("the controller's
+entry") is "every frame passes once" - consistent with the reachability
+finding above, from a source written before this audit. But the same
+entry also records a **90-flight sweep at 9/12/16/20/40 MIPS, with and
+without the D1 fix** (i.e. including unprotected runs at 40 MIPS), with
+no reported crashes or anomalies ("D1 sweep (9 Oct)"). If the S->0->
+divide-fault cascade traced above were accurate as written, that sweep's
+unfixed 40 MIPS flights should have faulted repeatedly and been
+impossible to miss. They did not. That is strong, already-existing
+empirical evidence that something in the arithmetic trace above has a
+wrong precondition - most likely the assumption that the loop-index gate
+(`[bp-0xE] >= 2`) is actually satisfied during ordinary play, or that the
+starting S values tried (16-40, chosen arbitrarily to span the range
+where `[0x43E8]` first goes nonzero) are values the game's own
+continuous calibration ever actually reaches and sustains, rather than a
+static Python trace fed hypothetical inputs. **Treat the "sets S to
+exactly 0" conclusion above as an unconfirmed hypothesis contradicted by
+existing data, not a finding.** The one way to settle this properly is to
+instrument an actual interpreter run at high uncapped MIPS (no D1) and
+watch `[0x368E]` and `[0x43E8]` over real flight time, the same
+`F117_WATCH`-style technique already used elsewhere in this project,
+rather than continue extending a static trace that existing evidence has
+already called into question.

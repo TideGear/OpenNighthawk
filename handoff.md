@@ -56,29 +56,43 @@ from 16 to 40. If real, this would be upstream of every other S-dependent
 system already investigated (missile lifetime, proximity, etc.) - a
 single root cause rather than a parallel symptom.
 
-**This is explicitly not confirmed.** Two things remain unresolved and
-MUST be settled before any fix is attempted: (1) whether this code path
-is actually reached during normal in-flight play - it sits behind a
-loop-index gate (`[bp-0xE] >= 2`, a 0..4 loop counter shared with at
-least four other per-slot accesses in the same function) and a ~4-real-
-second periodic timer, and tracing strongly suggests it's reached on most
-passes, but this has NOT been confirmed by tracing `0x3ADA`'s actual
-callers; (2) what happens after S is set to 0 - whether `0xD441` (called
-immediately after to propagate the new S) has its own guard, or whether a
-divide-by-zero/frozen-state follows, has not been traced. No staged
-two-engine reproduction has been run - this is pure static/arithmetic
-analysis, the first step of this project's own methodology, not the last.
-Per `f117a-predict-then-measure` in project memory: careful reading has
-produced wrong predictions before, and this is exactly the shape of
-finding that needs `func_lockstep` or a staged probe before being trusted.
+**Follow-up this same session found the reachability answer, and then a
+correction to the severity claim.** Traced `0x3ADA`'s one caller in the
+reachable graph: VGAME `0x1BCE`, the literal main flight loop (canopy
+draw, `game_input`, `0x3ADA`, check the END.EXE hand-off flag, loop while
+flying) - this code runs every frame of normal flight, not some rare
+mode. `docs/bugs.md`'s existing (pre-dating this audit) D1 writeup
+independently corroborates this: `0x441D` is "the controller's entry,
+which every frame passes once."
 
-**Next session, in order:** (1) trace `0x3ADA`'s callers to settle
-reachability during normal flight; (2) if reached, trace what a real S=0
-actually does downstream; (3) only then design a fix, with the same
-lockstep + full-gate discipline that just caught a real bug in the
-`vgame_release_count` extension below (random-state fuzzing alone did not
-catch it - the full gate's real routes did). Do not skip straight to
-writing a fix from the arithmetic alone.
+**But that same D1 writeup also records a 90-flight sweep at
+9/12/16/20/40 MIPS, with and without the D1 fix - including unprotected
+runs at 40 MIPS - with no reported crashes.** If the traced S->0->
+divide-fault cascade were accurate as written, those unfixed 40 MIPS
+flights should have faulted repeatedly. They did not. This is strong,
+already-existing evidence that the "sets S to exactly 0" arithmetic trace
+has a wrong precondition somewhere - most likely that the loop-index gate
+is actually satisfied in ordinary play, or that the starting-S values fed
+to the Python trace (16-40, chosen to span where `[0x43E8]` turns
+nonzero) are values the game's own continuous calibration ever actually
+reaches. **Both `docs/speed-sweep.md` and this entry have been corrected
+in place to flag this as an unconfirmed hypothesis contradicted by
+existing data, not a finding** - do not carry forward the earlier,
+stronger framing from this same session's first pass.
+
+**Next session, in order:** (1) instrument an actual interpreter run at
+high uncapped MIPS (no D1) and watch `[0x368E]`/`[0x43E8]` over real
+flight time to see what S actually does, rather than extend the static
+trace further; (2) only once that's grounded in a real run, decide
+whether there is anything left to fix here at all, versus this being
+dead/unreachable-in-practice code or an already-adequately-covered case;
+(3) if a real fix is warranted, use the same lockstep + full-gate
+discipline that just caught a real bug in the `vgame_release_count`
+extension below (random-state fuzzing alone did not catch it - the full
+gate's real routes did). Do not skip straight to writing a fix from
+arithmetic alone - this session's own experience (twice: this finding,
+and the release_count revert) is the argument for that discipline, not
+just the project's stated policy.
 
 Separately, two of the three P1 threshold-tightening and three doubtable-
 investigation asks from earlier this session are already committed (see
