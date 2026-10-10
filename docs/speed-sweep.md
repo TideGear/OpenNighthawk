@@ -534,3 +534,75 @@ default, as do the other original-game fixes.
 The comparator rejects old telemetry, pairs only identical mission fields,
 and retains early exits; its pairing/interval rules and the pilot's orbit
 geometry have unit regressions.
+
+## Cancelled-slot repair and remaining distance defect (10 Oct)
+
+The optional D1SLOT now prevents zero-to-FFFF underflow at VGAME 6CA6.
+It preserves DEC flags/count and declines positive life and player slots.
+All 15 staged cases agree across interpreter/recomp with and without the
+option; all eleven control hashes are unchanged. Incoming slots 0 and 7
+stay zero after lost lock with the option, versus FFFF without it. This
+prevents new abandoned slots; enabling it mid-flight does not reclaim old ones.
+
+A new 72-flight cohort completes four routes x six seed families x three
+arms, reusing the prior 24-flight 20+TTL+PROX arm only after reproducing
+its Middle East control hash exactly. All 24 mission identities match
+across all four arms. No guest memory is staged; early exits are retained.
+
+| Arm | Flights | Early exits | Launches/flight | Bursts/flight | Damage selections/flight | Orbit seconds |
+|---|---|---|---|---|---|---|
+| 9 + TTL + PROX | 24 | 9 | 8.3750 | 4.1250 | 8.2500 | 4596.2 |
+| 20 + TTL + PROX | 24 | 7 | 7.3333 | 3.3750 | 6.7500 | 4669.8 |
+| 9 + TTL + PROX + SLOT | 24 | 15 | 12.4167 | 6.5000 | 13.0000 | 3588.0 |
+| 20 + TTL + PROX + SLOT | 24 | 11 | 11.5833 | 5.5417 | 11.0833 | 3717.4 |
+
+Adding SLOT increases bursts at 20 MIPS by +2.1667 (95% paired bootstrap
++1.1667..+3.2083) and at 9 MIPS by +2.3750 (+1.2917..+3.5000).
+With identical options, 20-minus-9 differences are launches -0.8333
+(-3.0833..+1.4167), bursts -0.9583 (-2.2083..+0.2500), damage selections
+-1.9167 (-4.4167..+0.5000). Intervals include zero but do not establish
+equivalence. Added damage changes survival and trajectories; counts per
+flight cannot be treated as equal-exposure impact probabilities.
+
+The fixed natural Middle East 20 MIPS offset2720 replay is identical in
+both engines: hash `1f85212a6ffbf801`, every CSV byte and launch record,
+16 launches, 9 bursts, 20 total damage selections, early exit. Raw fixed
+9/20 MIPS seed2500 traces have zero abandoned-slot episodes and zero
+slot-seconds above 36000; their hashes are `17725de70b98ba07` and
+`1f85212a6ffbf801`. These traces establish reclamation, not CPU equivalence.
+
+A separate staged straight-pass probe freezes an SA-12's speed at 28 and
+turn agility at zero, starts it 22 lateral units, 70 longitudinal units
+and 100 altitude units away, and compares S=8/15 with TTL+PROX+SLOT.
+S=8 damages the aircraft (two selections), S=15 does not. Both engines
+match exactly, case hashes `f2a3a1eb93590c5a` / `a3d3b2e93b8afe35`.
+This removes acceleration and steering as explanations for this test:
+the original reach is 28 at S=8, while the PROX S=9 floor is only 24.
+Thus the floor is still a speed-dependent hit band, not a physical
+frame-independent collision test. CPU/combat remains open. A repair must
+separate movement sampling from a constant physical collision band rather
+than merely tune this cohort's mean. Guidance/acceleration and integer
+rounding also require independent review.
+
+Artifacts: `D:/f117-gate/threat-slot/`, `threat-slot-summary.txt`,
+`ghost-slot/`, `d1slot-final-*.json`, `proximity-pass-*.json`; private drivers
+`threat_slot.py`, `ghost_trace_slot.py`, `proximity_pass_probe.py`.
+The 72-flight batch took 10.4 minutes on 12 workers. Its attempted ctypes
+affinity call was later found ineffective; use the pointer-width signatures
+and verify the resulting mask for future runs.
+Reproduce using `threat_profile.py` at 9 MIPS offsets 0..12500 and 20 MIPS
+offsets 220..12720, all four routes, 600 seconds, TTL+PROX with and without
+SLOT. Compare the JSONL files with `threat_compare.py --shift-ms 20=220`.
+
+A second controlled probe checks the unscaled incoming acceleration at
+7209..722B. An SA-5 starts at its normal ground-launch speed1, with its
+original terminal speed28; only steering is disabled and it is kept far
+from the aircraft. After two simulated seconds (16 steps at S8, 30 at S15),
+its speed is 9 versus 16. Both engines match case hashes
+`c48afd58d9ae6ea2` / `fc9ee748c9424f67`. Artifacts:
+`D:/f117-gate/acceleration-{interp,recomp}.json`, `acceleration_probe.py`.
+Ground launch 54ED sets speed1; air launch 662A starts at terminal speed.
+Thus every-other-frame acceleration is not invariant per simulated second.
+Its direction benefits high-S acceleration, so it cannot alone explain
+weaker high-speed combat. Normalizing it is a separate physical timing
+repair, not grounds for inflating high-speed hit probability.

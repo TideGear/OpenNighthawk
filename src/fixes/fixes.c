@@ -11,6 +11,7 @@
  */
 #include "fixes.h"
 #include "recomp_rt.h"
+#include "x86_sem.h"
 
 #include <string.h>
 
@@ -46,7 +47,7 @@ static int fix_d5(machine_t *m)
  * clear life at 0x72A5 before the move decrements it to FFFF; do not turn
  * FFFF-range abandoned missiles into new damage sources. This bound cannot
  * identify an old abandoned counter after it decays into the valid range;
- * preventing lifetime underflow is a separate, still-open repair.
+ * preventing lifetime underflow is the separate D1SLOT repair.
  * No shipped weapon
  * starts above range(150) * maxS(15) * 16 = 36,000 frames.
  * The countdown, motion, guidance,
@@ -61,6 +62,26 @@ static int fix_d1ttl_hit(machine_t *m)
     c->op_cs = c->seg[S_CS];
     c->op_ip = c->ip;
     c->ip = skip ? 0x6F72 : 0x6F1B;
+    c->icount++;
+    return 1;
+}
+
+/* D1SLOT. An incoming seeker can cancel its missile by clearing life at
+ * 72A5, but the common movement path still reaches DEC at 6CA6. Zero then
+ * becomes FFFF, occupying the launcher's (index & 7) slot again. Keep the
+ * cancelled life zero at this boundary. Retain the original DEC flags and
+ * instruction count; all positive lifetimes and player slots decline to
+ * the original instruction. This is separate from D1TTL's hit guard. */
+static int fix_d1slot_countdown(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const int16_t slot = (int16_t)seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x1E));
+    if (slot < 0 || slot >= 8 ||
+        seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_SI] + 0x3C48)) != 0) return 0;
+    (void)alu_dec(c, 0, 1);            /* the replaced DEC, including preserved CF */
+    c->op_cs = c->seg[S_CS];
+    c->op_ip = c->ip;
+    c->ip = 0x6CAA;
     c->icount++;
     return 1;
 }
@@ -453,6 +474,7 @@ static const recomp_override OVERRIDES[] = {
     { "D5", "VGAME.EXE", VGAME_47304, 0x0000, 0x6D2E, fix_d5, "the supply-drop impact gate" },
     { "D1", "VGAME.EXE", VGAME_47304, 0x0000, 0x441D, fix_d1_pace, "frames paced at the parked GOG baseline" },
     { "D1TTL", "VGAME.EXE", VGAME_47304, 0x0000, 0x6F19, fix_d1ttl_hit, "incoming weapon lifetime compared unsigned" },
+    { "D1SLOT", "VGAME.EXE", VGAME_47304, 0x0000, 0x6CA6, fix_d1slot_countdown, "cancelled incoming weapon life stays zero" },
     { "D1PROX", "VGAME.EXE", VGAME_47304, 0x0000, 0x6EFB, fix_d1prox_hit, "incoming proximity reach has an S=9 floor" },
     { "D4", "START.EXE", START_47304, 0x0000, 0x8EDC, fix_d4_table, "START's entry: airstrip mission masks" },
     { "D34", "VGAME.EXE", VGAME_47304, 0x0000, 0xE6BE, fix_d34_start, "VGAME's entry: empty extension" },
@@ -490,6 +512,7 @@ static const data_fix DATA[] = {
 static const struct { const char *id, *what; } FIXES[] = {
     { "D1", "frames are capped at 11.6 fps above 9 MIPS, matching the parked GOG baseline" },
     { "D1TTL", "long-lived incoming missiles can hit when their lifetime exceeds 32767 frames" },
+    { "D1SLOT", "cancelled incoming missiles release their launcher slots instead of underflowing life to FFFF" },
     { "D1PROX", "incoming proximity hit distance stops shrinking above S=9, without limiting frames" },
     { "D2", "AdLib speech plays without stopping the game or risking its busy-wait hang" },
     { "D11", "saves are written to a temporary file and renamed into place, so an interrupted save keeps the old roster" },

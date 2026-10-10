@@ -9,6 +9,74 @@ checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 more than once, what it costs). State as of 10 October 2026.
 Earlier session logs are in `git log -p handoff.md`.
 
+## Current work after allowance reset (10 Oct, 07:00 PDT)
+
+Clean starting checkpoint `0174a2c`; the owner resumed after the usage reset.
+Current code is uncommitted: optional D1SLOT at VGAME 6CA6 prevents a
+seeker-cleared incoming lifetime from underflowing. It uses the shared DEC
+semantics for flags, preserves instruction count and declines every
+positive-life/player-slot case. Earlier D1TTL/D1PROX behavior is unchanged.
+New `tools/d1slot_check.py`: all 15 staged cases pass in both engines +/-
+option, all eleven control hashes unchanged (about two minutes, four boots).
+Incoming slots 0/7 and player slot 8 are covered. Full CTest also passed all
+15 tests (573 s, including its expensive serial 2,000-state matched check).
+Use the gate's normal 14-test selection rather than repeating that serial
+check unnecessarily.
+
+All 72 natural flights are complete (10.4 min, 12 workers):
+`D:/f117-gate/threat_slot.py`, `threat-slot-console.log`, `threat-slot/`.
+Four routes x six seed families x (9 TTL+PROX, 9/20 TTL+PROX+SLOT), reusing
+the earlier 20 TTL+PROX arm after its control reproduced `7b5cc08d65027187`.
+All 24 mission identities match across all four arms. Adding SLOT increases
+bursts/flight by 2.1667 at 20 MIPS and 2.375 at 9. With the same three options,
+20-minus-9 bursts are -0.9583 (95% paired CI -2.2083..+0.25): not evidence
+of equivalence. More damage changes survival/exposure; retain early exits.
+Full figures and reproduction are appended to `docs/speed-sweep.md`.
+
+Fixed interpreter/native Middle East 20 MIPS offset2720 matches hash
+`1f85212a6ffbf801`, CSV bytes and all missile records: 16 launches, 9 bursts,
+20 total damage selections, early exit. Raw fixed 9/20 traces (`ghost-slot/`)
+have zero abandoned-slot episodes/slot-seconds and match cohort hashes
+`17725de70b98ba07` / `1f85212a6ffbf801`.
+
+Independent constant-speed/heading SA-12 pass (`proximity_pass_probe.py`,
+`proximity-pass-{interp,recomp}.json`) still hits at S=8 and misses at S=15
+with TTL+PROX+SLOT. Both engines match, hashes `f2a3a1eb93590c5a` /
+`a3d3b2e93b8afe35`. Speed28, zero agility, terminal speed frozen28,
+lateral22/longitudinal70/altitude100. The PROX S9 floor24 is below closest
+slant25.125, while original S8 reach28 hits. First probe allowed acceleration
+and both hit; do not confuse it with the corrected frozen-speed result.
+
+REQUIRED FULL GATE PASSED: `D:/f117-gate/gate-d1slot.log`, result
+`gate-d1slot-result.txt`, exit 0, 1588.4 s. All 14 CTests, 35 identical route
+pairs, both 5,718,912-state instruction profiles and three 765-address
+matched seeds passed; every routes-only routine ran and none overran.
+Coverage added no code. The attempted ctypes affinity wrapper failed;
+corrected parent/descendants early in coverage and verified 0x00FFFFFF.
+`affinity_launch.py` now uses pointer-width ctypes signatures, checks native
+return values and reads the resulting mask. The earlier cohort's affinity
+attempt was likewise ineffective (only 12 workers, so still limited jobs).
+Actual Processor % Processor Time was 52% during parity while WMI incorrectly
+reported 96%. Prefer the former for load checks.
+
+This checkpoint has passed the required gate and is ready to commit/push.
+Then repair remaining proximity
+sampling with a physical band plus swept path, rather than raising a floor
+to match cohort means. Private `swept_design_check.py` checks exact octagonal
+slant minima at piecewise-linear breakpoints: 2,000 random paths, reversal
+and subdivision invariant and <=202,000 sampled distances. This is only a
+geometry design check, not a game fix. Guidance acceleration increments one
+unit on odd frames (7209..722B), with no S normalization; independently
+confirmed by `acceleration_probe.py`: normal SA-5 initial1/terminal28,
+steering disabled, after two simulated seconds speed9 at S8 versus16 at
+S15, both engines hash `c48afd58d9ae6ea2` / `fc9ee748c9424f67`. This
+favors high-S acceleration and cannot alone explain weaker combat.
+The regenerated native fixed flight (`d1slot-regenerated-native.*`)
+retains the pre-regeneration hash, every launch record and every CSV byte.
+No probe or gate process is still running.
+No claim CPU/combat is solved; do not move to the rest
+of the roadmap yet. The Reimp HEAD remains `9e0716dc502cd64501b0d52030ebef041825f907`.
+
 ## Previous session checkpoint
 
 **This batch (9-10 Oct): four independent pieces of work, three committed and

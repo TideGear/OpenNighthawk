@@ -50,6 +50,19 @@ traces and the held-out cohort shared the machine near the end; this is a
 measured shared-load cost, not an isolated performance comparison. The
 process-local limit leaves eight CPUs available to the desktop.
 
+The D1SLOT gate (`D:/f117-gate/gate-d1slot.log`, 10 Oct) took **26.5
+minutes** (1,588 s): translation/build and 14 tests 80 s, coverage 581 s,
+byte-identical second translation 11 s, fresh parity 917 s. All 35 route
+pairs, both 5,718,912-state instruction profiles and all three 765-address
+matched seeds passed; every routes-only routine ran and none overran.
+The attempted ctypes affinity wrapper failed silently. Corrected the parent
+and all live descendants to 0x00FFFFFF early in coverage, verified the masks;
+future native calls must use pointer-width signatures and check the result.
+A later two-worker acceleration probe and one natural replay shared parity.
+`D:/f117-gate/affinity_launch.py` now checks both setting and reading the mask.
+Use Processor % Processor Time (about 52% during parity) for actual CPU load;
+WMI LoadPercentage reported 96% at the same time.
+
 The 763-address gate with this setting (`D:/f117-gate/merge14/gate.log`)
 took 555 s: build and 13 unit tests 14 s, parity 541 s with 34 unchanged
 interpreter sessions reused. All 35 routes were identical, both instruction
@@ -105,6 +118,8 @@ by name; today: `recon_career` and `recon_return`.
 | Raw missile-slot trace | investigate seeker lifetime underflow | 219 s for a parallel 9/20 MIPS pair (10 Oct) | Read-only private wrapper around current pilot; both cohort hashes reproduced. Two processes share affinity mask 0x0F000000 while the gate uses 0x00FFFFFF, leaving four desktop CPUs. Compare common observation windows; slot occupancy is not a count of blocked launches |
 | Held-out combat cohort | validate options without changing calibration | 9.9 min for 24 flights, eight workers (10 Oct) | Four routes, three new seed families, 9 unmodified versus 20+D1TTL+D1PROX; all 12 mission identities match. Shares the gate's 24-CPU affinity limit; three early exits per arm retained |
 | Staged seeker-underflow reproduction | establish the next countdown regression | About 120 s for two boots in parallel (10 Oct) | Private `slot_underflow_probe.py`, interpreter/recomp, S=8/15; positive life becomes FFFF after lost lock, case hashes identical. First exact-rear setup failed its staging expectation; off-axis setup reproduces the defect |
+| Staged slot-reclamation regression | after changing D1SLOT or dispatch | about 2 min for four parallel boots (10 Oct) | `d1slot_check.py`, both engines +/- D1SLOT; S=8/15, zero/one/signed/unsigned controls before lost-lock cases; all 15 case hashes agree across engines and all eleven control hashes are unchanged; includes incoming slot 7 and player slot 8 |
+| Slot-repair combat cohort | assess D1SLOT separately from earlier hit mitigations | 10.4 min for 72 new flights, 12 workers (10 Oct) | Four routes x six seed families x (9 with TTL+PROX, 9/20 with TTL+PROX+SLOT), reuse prior 20 TTL+PROX arm after unchanged-flight hash check; all 24 mission identities match across all four arms, early exits retained |
 | Isolated 15 FPS cap experiment | test whether a cap alone keeps S at 15 and the mission clock real | about 18 min for 45 flights, eight workers beside a full gate (9 Oct); isolated generated build about 3 min | one source change in a detached checkout at 28f2a50: D1_FPS_X10 116 to 150; 45 unfixed baseline rows retained from the preceding sweep; separate output and DLL hash in `D:/f117-gate/speed15/experiment.json`; compare two 40 MIPS flights under the interpreter too; no default or production D1 change |
 | Speed and D1 sweep (`speed_sweep.py`) | evidence for the default-speed decision | about 12 min for 90 flights, 16 workers beside control research (9 Oct): nine routes, 300 guest seconds each, at five speeds with and without D1 | each route's unfixed 9 MIPS baseline runs first to anchor input times; results resume by tag in `runs.jsonl`; compare engagements only on matching missions; keep fresh results separate from the earlier mixed-version launch counts |
 | Control-response speed sweep (`stick_response.py --ips N [--fix D1]`) | compare controls before choosing a default speed | roughly 43-220 s per flight under concurrent load (9 Oct); ten aligned DOSBox-profile flights, four workers | repeat the same 30 timed taps; retain mission identifiers, raw pitch/roll samples and early stops, so incomplete flights and differing missions cannot pass for equal responses; absolute and common-clock exploration runs also include the 386 profile |

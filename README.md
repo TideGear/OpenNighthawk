@@ -32,7 +32,7 @@ this project treats it as one.
 **1:1 parity with the original is the first priority.** The game does
 exactly what the DOS original does, including its bugs, which are tracked in
 [docs/bugs.md](docs/bugs.md) so they can be fixed later as switchable
-options. Twelve catalogued fixes and balance options are available now, all off by default.
+options. Thirteen catalogued fixes and balance options are available now, all off by default.
 
 > **Not affiliated with anyone.** This is an unofficial, fan-made project. It
 > is not affiliated with, authorized by, endorsed by, or associated with

@@ -242,7 +242,9 @@ not the recompilation:
       proven a defect), D3 (keypad digits with NumLock off answer SETUP's
       sound question instead of quitting to DOS), D1TTL (unsigned valid
       missile lifetimes restore SA-5 proximity damage at S >= 14 without
-      limiting frames; `tools/d1ttl_check.py`), plus D1PROX (an explicit S=9
+      limiting frames; `tools/d1ttl_check.py`), D1SLOT (seeker-cancelled incoming
+      life stays zero, releasing its launcher slot; `tools/d1slot_check.py`),
+      plus D1PROX (an explicit S=9
       incoming proximity-distance floor; `tools/d1prox_check.py`). D7 is fixed by D8. Open:
       D10 (the mountain-collision stack corruption, DOS equivalent not
       located; no VGAME routine returns with the stack moved,
@@ -273,7 +275,15 @@ not the recompilation:
       pairs) retain a -0.5 burst/flight difference with a wide interval;
       pooled 36-pair difference -0.6667 (95% -1.25..-0.0833). Seeker-cleared
       lifetime underflows to FFFF and can occupy the launcher's chosen
-      slot; prevent that underflow before further balance calibration.
+      slot; the new optional D1SLOT prevents that underflow. Staged S=8/15
+      cancellation and eleven countdown controls pass in both engines, with
+      unchanged control hashes. A 24-pair same-option-set cohort gives
+      20-minus-9 bursts -0.9583 (95% -2.2083..+0.25); this does not prove
+      equivalence. A constant-speed, straight-pass probe still hits at S=8
+      and misses at S=15 with TTL+PROX+SLOT, independently confirming
+      residual proximity-distance dependence. A separate two-simulated-second
+      SA-5 probe reaches speed9/16 at S8/15: acceleration is also unscaled
+      (this effect favors high-S acceleration, not weaker combat).
       Control-response tooling now accepts speed, fixes,
       program-relative menus and boot-clock overrides and retains early exits.
       Ten control flights now share mission identifiers after boot-clock

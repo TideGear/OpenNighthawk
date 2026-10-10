@@ -32,6 +32,7 @@ Status values:
 |---|---|---|---|---|
 | D1 | Confirmed | VGAME | Frame-rate estimate and 15 clamp make world speed depend on machine speed; reported oscillation not reproduced | `--fix D1` |
 | D1TTL | Recomp | VGAME | SA-5 lifetime crosses the signed boundary at S >= 14, suppressing proximity damage | `--fix D1TTL` |
+| D1SLOT | Recomp | VGAME | Seeker-cleared life underflows to FFFF, keeping the launcher's slot occupied | `--fix D1SLOT` |
 | D1PROX | Balance option | VGAME | Incoming proximity hit distance shrinks as S rises | `--fix D1PROX` |
 | D2 | Confirmed | ASOUND.117 | Digitised speech busy-waits; can hang the game | `--fix D2` |
 | D3 | Confirmed | SETUP | A keypad digit with NumLock off quits to DOS from the sound screen | `--fix D3` |
@@ -108,6 +109,13 @@ Status values:
   range, terrain, difficulty, heading aspect, airspeed, altitude and realism.
   `[0xB080]` is the active-air-unit budget compared against difficulty
   `[0x3686]`, not theatre tension (which is `[0x3688]`).
+- **Incoming acceleration (10 Oct independent check).** Ground missiles
+  start at speed1 (`0x54ED`), air missiles at terminal speed (`0x662A`).
+  `0x7209`-`0x722B` adds one speed unit on odd frames, without dividing by
+  S. A staged SA-5 reaches speed9/16 after two simulated seconds at S8/15,
+  with both engines identical. High S accelerates faster; this separate
+  timing defect does not by itself explain weaker high-speed combat.
+  [Probe and limits](speed-sweep.md#cancelled-slot-repair-and-remaining-distance-defect-10-oct).
 - **Fix available: `--fix D1`,** a frame limiter. An override at VGAME
   `0x441D`, the controller's entry, which every frame passes once, holds
   a frame that arrives before its slot (time passes and interrupts are
@@ -145,13 +153,34 @@ Status values:
   above that limit: seeker `0x72A5` can clear life before movement `0x6CA6`
   decrements it to FFFF; values above 36,000 remain suppressed. This is not
   slot reclamation: a sufficiently old abandoned counter could decay into
-  the admitted range. Preventing the zero-to-FFFF underflow remains open.
+  the admitted range. D1SLOT separately prevents the zero-to-FFFF underflow.
   The fix retains motion, guidance, clocks and suppression
   during the final `4*S` frames. It adds no frame limiter.
 - **Check.** `tools/d1ttl_check.py` explicitly stages a nearby missile after
   normal boot at 20 MIPS. Positive-lifetime controls, the final `4*S` window,
   lifetimes across 32768, and the abandoned-slot sentinel are tested under
   both engines. This is a hit-boundary regression, not a natural combat flight.
+
+### D1SLOT. Cancelled incoming missiles keep their launcher's slot occupied
+
+- **What happens.** Seeker `0x72A5` clears an incoming missile's lifetime
+  when the target is well behind its nose, but the common movement path
+  still decrements it at `0x6CA6`. Zero becomes FFFF. Ground launch `0x54B4`
+  and aircraft launch `0x65C3` require their `(unit_index & 7)` slot to have
+  zero life, so the abandoned missile can block that launcher. This also
+  happens at low S and remains in the Reimp.
+- **Fix available: `--fix D1SLOT`.** Keep a cancelled incoming lifetime at
+  zero when the countdown is reached. Retain DEC's flags and instruction
+  count; positive lifetimes and player-weapon slots use the original DEC.
+  This prevents new underflows; it does not reclaim pre-existing abandoned
+  slots if enabled partway through a flight. D1TTL's hit guard is separate.
+- **Check.** `tools/d1slot_check.py` stages S=8/15, zero/one/positive signed
+  and unsigned lifetime controls, incoming slots 0/7 and player slot 8. All
+  15 cases agree across engines, with all 11 control hashes unchanged;
+  cancellation leaves zero with the fix and FFFF without it. In 24 matched
+  missions per arm, it increases bursts by 2.1667/2.375 per flight at 20/9
+  MIPS. Both fixed raw-slot traces have zero abandoned-slot episodes. Combat
+  still depends on S; see [speed-sweep.md](speed-sweep.md).
 
 ### D1PROX. Incoming proximity distance shrinks with S
 
