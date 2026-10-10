@@ -16598,6 +16598,259 @@ announce:
     return 1;
 }
 
+/* VGAME 0x073C8, target_damage(target): the per-target 16-byte record at
+ * target<<4 (base B2D0) holds a flags word (B2D6, bit 0x80 "already
+ * notified", bit 0x10 a budget flag), a threshold (B2D2), a base value
+ * (B2D0), a link (B2D4) and a stored value (B2DC). A target already
+ * notified (B2D6 bit 0x80) skips straight to the shared sound/marker tail.
+ * Otherwise: optionally debit a global budget (0xDEFE); compute a 32-bit
+ * difference and ratio through the runtime's shift (0xEF68) and an
+ * unmatched helper (0x0D14), keeping its result at 0x9F40. A real target
+ * (nonzero) clears B2D4 and bit 0x80 was just set, then scans the two
+ * fixed weapon-lock slots at 0xE304 (18 bytes each) for one of type 2
+ * locked on this target, marking it (0x7594) and this target's result word
+ * with 0x80 (slot 0) or 0x40 (slot 1), alerting through the sound gate
+ * (0xD3F9) and refreshing a per-slot timestamp (0xDF04 or 0x9D3A) from the
+ * frame rate S, then scores the hit (0x4ABA) and an unmatched follow-up
+ * (0xB991). Target zero is a distinct case (an unmatched gate at 0x792E;
+ * if it reports nothing, the routine returns immediately with no further
+ * work at all): otherwise it scores a nearby record, reads an unmatched
+ * table (0xC436) and a type-indexed flag byte, and stores either a direct
+ * field or the result of a further unmatched helper (0xB9F6) back to B2DC.
+ * Either way the routine then optionally relays an informational call
+ * (0x0F3D) before the always-run tail: mark the current target (0x3D96),
+ * alert the sound gate again (0xD3F9), flag a UI marker (0x9D3E) when this
+ * is the briefed primary target, relay a camera call (0x8462) once, and a
+ * log call (0x56BB) while under a small counter - preserving every stack
+ * local exactly where the original keeps it, since callers may read it. */
+static int vgame_target_damage(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 6)) return 0;
+    x86_enter(c, 0x0C, 0);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, FRAME(4));
+    c->icount += 4;
+    NEAR_THEN(0x4B03, 0x73D4, 0, 10);
+    c->r[R_BX] = cpu_pop16(c);
+    SETFRAME(-2, 1);
+    c->r[R_BX] = FRAME(4);
+    c->r[R_BX] = x86_shift(c, 4, c->r[R_BX], 4, 1);
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0xB2D6));
+    c->r[R_CX] = c->r[R_AX];
+    alu_logic(c, get_r8(c, R_AL) & 0x80, 0);
+    c->icount += 8;                                            /* through the test, including it */
+    if (c->flags & F_ZF) {                                     /* bit clear: process the target */
+        if (!room(c, 25)) { c->ip = 0x73ED; return 1; }
+        alu_logic(c, get_r8(c, R_CH) & 0x10, 0);
+        unsigned n = 2;
+        if (!(c->flags & F_ZF)) { ds_put(c, 0xDEFE, (uint16_t)alu_dec(c, ds_get(c, 0xDEFE), 1)); n++; }
+        c->r[R_AX] = 0x8000;
+        c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0);
+        c->r[R_BX] = FRAME(4);
+        c->r[R_BX] = x86_shift(c, 4, c->r[R_BX], 4, 1);
+        c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], ds_get(c, (uint16_t)(c->r[R_BX] + 0xB2D2)), 1, 0);
+        c->r[R_DX] = (uint16_t)alu_op(c, 3, c->r[R_DX], c->r[R_DX], 1);
+        set_r8(c, R_CL, 5);
+        c->r[R_SI] = c->r[R_BX];
+        n += 8;
+        c->icount += n;
+        NEAR_THEN(0xEF68, 0x740E, 0, 8);
+        cpu_push16(c, c->r[R_DX]);
+        cpu_push16(c, c->r[R_AX]);
+        c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_SI] + 0xB2D0));
+        c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0);
+        set_r8(c, R_CL, 5);
+        c->icount += 5;
+        NEAR_THEN(0xEF68, 0x741B, 0, 5);
+        cpu_push16(c, c->r[R_DX]);
+        cpu_push16(c, c->r[R_AX]);
+        c->icount += 2;
+        NEAR_THEN(0x0D14, 0x7420, 0, 10);
+        c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0);
+        ds_put(c, 0x9F40, c->r[R_AX]);
+        alu_sub(c, FRAME(4), 0, 1, 0);
+        c->icount += 4;                                        /* the compare and its branch */
+        if (FRAME(4) != 0) {                                    /* a real target */
+            if (!room(c, 15)) { c->ip = 0x742F; return 1; }
+            c->r[R_SI] = FRAME(4);
+            c->r[R_SI] = x86_shift(c, 4, c->r[R_SI], 4, 1);
+            alu_sub(c, ds_get(c, (uint16_t)(c->r[R_SI] + 0xB2D4)), 0, 1, 0);
+            unsigned n2 = 2;
+            if (c->flags & F_ZF) { SETFRAME(-2, 0x0C); n2++; }
+            c->r[R_BX] = FRAME(4);
+            c->r[R_BX] = x86_shift(c, 4, c->r[R_BX], 4, 1);
+            ds_put8(c, (uint16_t)(c->r[R_BX] + 0xB2D6),
+                    (uint8_t)alu_op(c, 1, ds_get8(c, (uint16_t)(c->r[R_BX] + 0xB2D6)), 0x80, 0));
+            c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+            ds_put(c, (uint16_t)(c->r[R_BX] + 0xB2D4), c->r[R_AX]);
+            SETFRAME(-6, c->r[R_AX]);                           /* the slot-scan index, 0 */
+            n2 += 6;
+            c->icount += n2;
+            for (unsigned i = 0; i < 2; i++) {                  /* the two fixed weapon-lock slots */
+                if (!room(c, 12)) { c->ip = 0x7463; return 1; }
+                const uint16_t sbx = (uint16_t)(i * 0x12);
+                alu_sub(c, ds_get(c, (uint16_t)(sbx + 0xE304)), 2, 1, 0);
+                unsigned n3 = 2;                                /* the compare and its branch */
+                if (c->flags & F_ZF) {
+                    c->r[R_AX] = FRAME(4);
+                    alu_sub(c, ds_get(c, (uint16_t)(sbx + 0xE306)), c->r[R_AX], 1, 0);
+                    n3 += 3;                                     /* the read, compare and branch */
+                    if (c->flags & F_ZF) {                      /* this slot is locked on our target */
+                        cpu_push16(c, (uint16_t)i);
+                        c->icount += n3 + 1;
+                        NEAR_THEN(0x7594, 0x747D, 0, 12);
+                        c->r[R_BX] = cpu_pop16(c);
+                        c->r[R_AX] = i == 0 ? 0x80 : 0x40;        /* cmp/sbb/and/add, by slot index */
+                        SETFRAME(-2, (uint16_t)alu_op(c, 1, FRAME(-2), c->r[R_AX], 1));
+                        cpu_push16(c, 2);
+                        cpu_push16(c, 4);
+                        c->icount += 8;                          /* pop, the 4-instruction mask build, or, two pushes */
+                        NEAR_THEN(0xD3F9, 0x7494, 0, 6);
+                        c->r[R_BX] = cpu_pop16(c);
+                        c->r[R_BX] = cpu_pop16(c);
+                        c->r[R_AX] = ds_get(c, 0x368E);
+                        c->r[R_AX] = x86_shift(c, 4, c->r[R_AX], 2, 1);
+                        ds_put(c, i == 0 ? 0xDF04 : 0x9D3A, c->r[R_AX]);
+                        c->icount += (i == 0) ? 8 : 7;            /* two pops, the compare/branch, then the store (plus the jmp for slot 0) */
+                    } else c->icount += n3;
+                } else c->icount += n3;
+                SETFRAME(-6, (uint16_t)(i + 1));
+            }
+            if (!room(c, 12)) { c->ip = 0x74A7; return 1; }
+            cpu_push16(c, FRAME(4));
+            cpu_push16(c, FRAME(-2));
+            c->icount += 2;
+            NEAR_THEN(0x4ABA, 0x74B0, 0, 4);
+            c->r[R_BX] = cpu_pop16(c);
+            c->r[R_BX] = cpu_pop16(c);
+            cpu_push16(c, FRAME(4));
+            c->icount += 3;
+            NEAR_THEN(0xB991, 0x74B8, 0, 4);
+            c->r[R_BX] = cpu_pop16(c);
+            SETFRAME(-0xC, c->r[R_AX]);
+            c->icount += 2;
+        } else {                                                /* target zero: a distinct gate */
+            c->icount++;                                        /* the jmp to 0x74BE */
+            if (!room(c, 6)) { c->ip = 0x74BE; return 1; }
+            cpu_push16(c, FRAME(4));
+            c->icount += 1;
+            NEAR_THEN(0x792E, 0x74C4, 0, 3);
+            c->r[R_BX] = cpu_pop16(c);
+            alu_logic(c, (uint32_t)c->r[R_AX] | c->r[R_AX], 0);
+            c->icount += 3;                                     /* pop, or, its branch */
+            if (c->flags & F_ZF) { c->icount++; c->ip = 0x7590; return 1; }  /* nothing to report (the extra jmp): stop here */
+            if (!room(c, 45)) { c->ip = 0x74CC; return 1; }
+            c->r[R_BX] = ds_get(c, 0x9F40);
+            c->r[R_SI] = ds_get(c, c->r[R_BX]);
+            ds_put8(c, (uint16_t)(c->r[R_SI] + 0xC0E6),
+                    (uint8_t)alu_inc(c, ds_get8(c, (uint16_t)(c->r[R_SI] + 0xC0E6)), 0));
+            cpu_push16(c, ds_get(c, c->r[R_BX]));
+            cpu_push16(c, 2);
+            c->icount += 5;
+            NEAR_THEN(0x4ABA, 0x74DD, 0, 2);
+            c->r[R_BX] = cpu_pop16(c);
+            c->r[R_BX] = cpu_pop16(c);
+            c->r[R_BX] = FRAME(4);
+            c->r[R_BX] = x86_shift(c, 4, c->r[R_BX], 4, 1);
+            cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0xB2DC)));
+            c->r[R_SI] = c->r[R_BX];
+            c->icount += 5;
+            NEAR_THEN(0xC436, 0x74EE, 0, 10);
+            c->r[R_BX] = cpu_pop16(c);
+            SETFRAME(-0xA, c->r[R_AX]);
+            c->r[R_BX] = c->r[R_AX];
+            set_r8(c, R_CL, 8);
+            c->r[R_BX] = x86_shift(c, 7, c->r[R_BX], get_r8(c, R_CL), 1);
+            c->r[R_BX] = x86_shift(c, 4, c->r[R_BX], 1, 1);
+            c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0x0A60));
+            c->r[R_BX] = c->r[R_AX];
+            c->r[R_DI] = FRAME(-0xA);
+            c->r[R_DI] = (uint16_t)alu_op(c, 4, c->r[R_DI], 0xFF, 1);
+            set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + c->r[R_DI])));
+            alu_logic(c, get_r8(c, R_AL) & 0x20, 0);
+            c->icount += 10;                                    /* through the test and its branch */
+            if (!(c->flags & F_ZF)) {
+                c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_SI] + 0xB2DC));
+            } else {
+                if (!room(c, 15)) { c->ip = 0x7513; return 1; }
+                cpu_push16(c, FRAME(4));
+                c->icount += 1;
+                NEAR_THEN(0xB9F6, 0x7519, 0, 3);
+                c->r[R_BX] = cpu_pop16(c);
+                alu_logic(c, (uint32_t)c->r[R_AX] | c->r[R_AX], 0);
+                c->icount += 3;                                 /* pop, or, its branch */
+                if (c->flags & F_ZF) { set_r8(c, R_AL, ds_get8(c, 0xDED0)); c->icount++; }
+                else { set_r8(c, R_AL, ds_get8(c, 0xC0D8)); c->icount += 2; }  /* the extra jmp when not taken */
+                c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);
+                c->icount++;
+            }
+            SETFRAME(-0xC, c->r[R_AX]);
+            bp_put8(c, -0x0B, (uint8_t)alu_op(c, 1, bp_get8(c, -0x0B), 1, 0));
+            c->r[R_AX] = FRAME(-0xC);
+            c->r[R_BX] = FRAME(4);
+            c->r[R_BX] = x86_shift(c, 4, c->r[R_BX], 4, 1);
+            ds_put(c, (uint16_t)(c->r[R_BX] + 0xB2DC), c->r[R_AX]);
+            c->icount += 5;
+        }
+        if (!room(c, 10)) { c->ip = 0x753B; return 1; }
+        alu_sub(c, ds_get(c, 0x9F40), 0, 1, 0);
+        c->icount += 2;                                         /* the compare and its branch */
+        if (!(c->flags & F_ZF)) {
+            cpu_push16(c, FRAME(-0xC));
+            cpu_push16(c, ds_get(c, 0x9F40));
+            c->icount += 2;
+            NEAR_THEN(0x0F3D, 0x754C, 0, 3);
+            c->r[R_BX] = cpu_pop16(c);
+            c->r[R_BX] = cpu_pop16(c);
+            c->icount += 2;
+        }
+    } else c->icount += 1;                                      /* just the jmp: the test was already counted above */
+    if (!room(c, 6)) { c->ip = 0x754E; return 1; }
+    c->r[R_AX] = FRAME(4);
+    ds_put(c, 0x3D96, c->r[R_AX]);
+    cpu_push16(c, 2);
+    cpu_push16(c, 5);
+    c->icount += 4;
+    NEAR_THEN(0xD3F9, 0x755B, 0, 12);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    alu_sub(c, ds_get(c, 0xE32A), 2, 1, 0);
+    unsigned n4 = 4;                                            /* the two pops, the compare and its branch */
+    if (c->flags & F_ZF) {
+        c->r[R_AX] = ds_get(c, 0x3D94);
+        alu_sub(c, FRAME(4), c->r[R_AX], 1, 0);
+        n4 += 3;
+        if (c->flags & F_ZF) { ds_put(c, 0x9D3E, 1); n4++; }
+    }
+    alu_sub(c, ds_get(c, 0xDF06), 0, 1, 0);
+    n4 += 2;
+    c->icount += n4;
+    if (c->flags & F_ZF) {
+        if (!room(c, 8)) { c->ip = 0x7579; return 1; }
+        cpu_push16(c, ds_get(c, 0xC0DE));
+        cpu_push16(c, ds_get(c, 0xC0D0));
+        c->icount += 2;
+        NEAR_THEN(0x8462, 0x7584, 0, 4);
+        c->r[R_BX] = cpu_pop16(c);
+        c->r[R_BX] = cpu_pop16(c);
+        c->icount += 2;
+    }
+    alu_sub(c, ds_get(c, 0x3686), 2, 1, 0);
+    c->icount += 2;
+    if (!x86_cond(c, 0xD)) {                                    /* signed: not >= 2 */
+        if (!room(c, 3)) { c->ip = 0x758D; return 1; }
+        NEAR_THEN(0x56BB, 0x7590, 0, 3);
+    }
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    x86_leave(c);
+    c->icount += 4;
+    near_ret(c);
+    return 1;
+}
+
 #undef FAR_THEN
 #undef NEAR_THEN
 #undef FRAME
@@ -31632,6 +31885,7 @@ static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD87C, vgame_scene_finish_walk, "finish terrain drawing and retain view matrix", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x66F8, vgame_ai_activate, "activate an aircraft slot at a target", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x72D8, vgame_ai_destroy, "mark an aircraft destroyed", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x73C8, vgame_target_damage, "score and alert a target hit", 1 },
 };
 
 void matched_register(void)

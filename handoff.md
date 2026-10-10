@@ -9,6 +9,62 @@ checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 more than once, what it costs). State as of 10 October 2026.
 Earlier session logs are in `git log -p handoff.md`.
 
+## Phase 2 target-scoring checkpoint (10 Oct, 15:41 PDT)
+
+VGAME 0x073C8 (`vgame_target_damage`, "score and alert a target hit") is
+matched, verified and committed/pushed - the densest routine hand-matched
+this session (174 original instructions, many branches, calls to both
+matched and unmatched helpers). A freshly regenerated `matched_draft.py`
+instruction listing was cross-checked opcode-by-opcode and branch-by-branch
+before transcribing, which caught no logic errors - but random-state
+lockstep testing caught **four separate instruction-clock accounting
+bugs** the draft cross-check could not (a missed Jcc instruction's own
+clock in three places, and two pop instructions never counted at all), each
+found by an exact clock-value mismatch (e.g. "clock 1853 vs 1851") that the
+harness's `--verbose` instruction-by-instruction retrace pinpointed
+precisely. This is the clearest evidence this session for why the project
+requires lockstep verification rather than trusting a careful manual
+transcription: dense branchy code is exactly where a careful reread still
+misses things. Added two PLANTS/ARG_PLANTS entries to
+`tests/func_lockstep.c` targeting the routine's weapon-lock match condition
+(E304/E306 fields); confirmed via temporary debug instrumentation (removed
+before commit) that most of this routine's incomparable random states are
+the *original* interpreter side failing to complete cleanly through its own
+many unmatched callees (0x0D14, 0x792E, 0xC436, 0xB9F6, 0xB991, 0x0F3D,
+0x8462, 0x56BB) before matched code is even invoked - not a flaw in the
+matched C. Three seeds pass clean; the full 771-routine suite passes
+(2,505,085 states, 0 mismatching). Required full gate PASSED
+(`D:/f117-gate/gate-target-damage.log`, exit 0): 17/17 unit tests, 35/35
+routes IDENTICAL, both instruction profiles and all three matched-routine
+seeds zero mismatches. Scoreboard: 771 addresses matched, 766 of 1,535
+census functions, 65,448 of 179,213 bytes; P2 39.69%, All 71.74%.
+
+The owner asked three follow-up questions about Phase 1 this session,
+answered in full in the conversation transcript (not repeated here in
+detail, but the findings matter for the next session): (1) what P1=100%
+means (parity against emulators, not real hardware - already correctly
+scoped); (2) are GOG DOSBox/DOSBox-X/86Box checked equally (no - 86Box is
+strictly the most scrutinized: it alone gets the 386-profile cycle-accurate
+timing check and register-level AdLib comparison; GOG DOSBox is checked
+only via a frozen capture, no live save-roster check; DOSBox-X sits in
+between); (3) are any P1 thresholds arguably too loose (yes - the
+timing/drift limits in particular have 2-3x headroom over the measured
+baseline, while the exact-picture-count checks have none). Concretely:
+`tools/ref86box/compare_timing86.py`'s `max_drift=2.2` (measured 1.113, i.e.
+room for the measured value to literally double and still pass) and
+`tools/pc_parity.py`'s `gog-music.max_timing_ms=40` (measured -14..+1ms,
+~3x headroom) were flagged as the two worth tightening, with
+`max_duration_diff=0.35` (measured 0.214) and DOSBox-X's `max_drift_ms=350`
+(measured 143-200ms, but explicitly justified by the comment as absorbing
+DOSBox-X's own real-time capture noise, not engine slack) as secondary
+candidates. The owner asked to try tightening them; in progress as of this
+handoff - see whether `compare_timing86.py` and `pc_parity.py` show edits
+beyond this point, and if so whether they were re-verified against the
+*existing* saved captures (`D:/f117-gate/pc-parity-profile-aware/`:
+`86box-sound/trace/frames.csv`, `machine386/ours/frames.csv`,
+`86box-timing.json`) rather than a fresh emulator run, to avoid re-running
+86Box/DOSBox-X unnecessarily while the gate above was still finishing.
+
 ## Phase 2 aircraft activate/destroy checkpoint (10 Oct, 14:30 PDT)
 
 The two Phase 2 candidates this handoff left prepared-but-untested

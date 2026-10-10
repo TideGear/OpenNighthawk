@@ -201,7 +201,7 @@ not the recompilation:
       Reimp's mapping; matched functions replacing translations one at a time,
       each held to the same parity checks. `tools/reimp_names.py` joins the
       Reimp's census (1,535 functions) with this project's regions as a private
-      lead list. 770 addresses are matched (765 of the census functions, 64,988 of
+      lead list. 771 addresses are matched (766 of the census functions, 65,448 of
       179,213 bytes); the table is at the end of `src/matched/matched.c` and the
       method is in [architecture.md](architecture.md#matched-routines-phase-2).
       The batches of 8-9 Oct add 37 + 34 + 47 VGAME, 34 + 40 + 45 START/END and 21 + 44 + 64
@@ -252,6 +252,27 @@ not the recompilation:
       4,000-state seeds pass both routines with zero mismatches (about 9,200
       comparable states a seed); the full 770-routine suite passes at
       2,505,075 comparisons, zero mismatching.
+
+      Target scoring (`0x073C8`, `vgame_target_damage`) is now matched: scores
+      and alerts a hit on the per-target 16-byte record (base `target<<4`),
+      skipping straight to the shared sound/marker tail when already notified;
+      otherwise computes a 32-bit ratio through the runtime's shift and an
+      unmatched helper, scans the two fixed weapon-lock slots for one of type
+      2 on this target (marking it and alerting the sound gate), scores the
+      hit and a follow-up, then always alerts the sound gate again and
+      refreshes a UI marker. A distinct target-zero gate reads further
+      unmatched helpers and a type-indexed table. At 174 original instructions
+      this is the densest routine matched by hand this session; a freshly
+      regenerated instruction-by-instruction draft confirmed every opcode and
+      branch direction before transcription, and random-state lockstep testing
+      (not the draft check) caught and fixed four separate instruction-clock
+      accounting slips - each a missed Jcc or pop in the dense branchy middle,
+      the kind of mistake this routine's density makes easy and the testing
+      exists to catch. Three seeds and the full 771-routine suite pass with
+      zero mismatches (the routine's own compound branch conditions make most
+      random states incomparable - the routes' real gameplay inputs are the
+      stronger check here, via the full gate below). Planted test values added
+      for the weapon-lock match condition (`tests/func_lockstep.c`).
 
 ## Phase 3 - fixes and enhancements (switchable)
 

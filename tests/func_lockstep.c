@@ -182,6 +182,10 @@ static const struct { uint16_t seg, ip; uint8_t reg; uint16_t disp; uint16_t val
     { 0x0000, 0x4777, PLANT_ABS, 0x43EE, 0x0001 },   /* keyboard trigger held */
     { 0x0000, 0x4777, PLANT_ABS, 0x3682, 0x03E8 },   /* ammunition available */
     { 0x0000, 0x4777, PLANT_ABS, 0xC09A, 0x0000 },
+    { 0x0000, 0x73C8, PLANT_ABS, 0xE304, 0x0002 },   /* target_damage: the weapon-lock slot scan finding a match */
+    { 0x0000, 0x73C8, PLANT_ABS, 0xE306, 0x0001 },
+    { 0x0000, 0x73C8, PLANT_ABS, 0xE316, 0x0002 },
+    { 0x0000, 0x73C8, PLANT_ABS, 0xE318, 0x0002 },
     { 0x120A, 0x0B3B, R_DI, 0xD6B6, 0x8000 },     /* model_prepare_edge: a vertex behind the eye (x high word 8000h) */
     { 0x120A, 0x0B3B, R_BX, 0xD6B6, 0x8000 },
     { 0x0000, 0xDB3C, PLANT_ABS, 0x49F4, 0x0032 },   /* scene_defer_object: a full list of 50 */
@@ -296,6 +300,7 @@ static void patch_image_for(uint8_t *pristine, const recomp_override *o)
  * small random arguments never reach them). */
 static const struct { const char *module; uint16_t ip; int arg; uint16_t v[2]; } ARG_PLANTS[] = {
     { "START.EXE", 0x1B37, 0, { 0x0064, 0x0065 } },     /* the map caption's kinds 64h and 65h */
+    { "VGAME.EXE", 0x73C8, 0, { 0x0001, 0x0002 } },      /* target_damage: a target matching a planted weapon-lock slot */
 };
 
 /* Exact code ranges when the default 0x300-byte window is unsuitable:
