@@ -247,9 +247,14 @@ not the recompilation:
       real time. The default speed is now 20 million instructions a second
       with no limiter (9 Oct 2026; [speed-sweep.md](speed-sweep.md#fast-machine-default-9-october-2026)):
       the game's own clamp holds S at 15 and the drawn rate near 16.7, with no
-      swings in 214 flights. Combat was measured on a sample too small to show
-      a change (about a quarter of a launch per flight); a threat-profile test is
-      still open. Control-response tooling now accepts speed, fixes,
+      swings in 214 flights. A follow-up controlled threat-profile measurement
+      (10 Oct 2026, [speed-sweep.md](speed-sweep.md#controlled-threat-profile-combat-measurement-9-10-oct-2026)),
+      orbiting each flight's primary target instead of flying past it once,
+      found a real fall in the enemy launch rate from 9 to 16 to 20 MIPS (9.08,
+      6.48, 3.81 launches a flight; bootstrap 95% intervals exclude zero for
+      both differences), surviving normalisation for exposure time. Not yet
+      explained - the mechanism in the game's listing is the open item, not a
+      further sweep. Control-response tooling now accepts speed, fixes,
       program-relative menus and boot-clock overrides and retains early exits.
       Ten control flights now share mission identifiers after boot-clock
       alignment; their progressive input sequences still diverge, so they

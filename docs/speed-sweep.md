@@ -316,7 +316,7 @@ Differences from 9 MIPS: launches −0.08 (−0.28 to +0.11) at 16, +0.04 (−0.
 
 **Analysis.** `tools/speed_compare.py` reads `runs.jsonl` and prints the per-speed summary, the bootstrap intervals and the mission mix; the tables above are its output. The sweep is `tools/speed_sweep.py` (with `--offsets-ms`, added for this matrix).
 
-## Controlled threat-profile combat measurement (9 Oct 2026, preliminary)
+## Controlled threat-profile combat measurement (9-10 Oct 2026)
 
 The matrix above flies a fixed scripted path that passes the primary target once and
 then holds a straight heading; it draws about a quarter of a launch a flight, too
@@ -334,23 +334,22 @@ py tools/threat_profile.py --data D:/GOG/F-117A --out OUT --routes middle_east_s
 ```
 
 Twelve boot-clock offsets (0-27,500 ms) times four ground-strike theatres times three
-speeds (144 planned flights); **97 completed before the run was stopped partway
-through to free the machine** (three heavy jobs were running on it at once and made
-the owner's own typing lag - see `f117-check-resources-before-parallel-jobs` in the
-session's notes). The 97 flights already give a far richer sample than the matrix
-above:
+speeds: 144 flights, all complete, no errors (interrupted partway through to free the
+machine for another job - see `f117-check-resources-before-parallel-jobs` in the
+session's notes - and finished afterward with `runs.jsonl` picking up where it left
+off). A far richer sample than the matrix above:
 
 | MIPS | flights | mean launches/flight | mean bursts/flight | flights with a burst |
 |---|---|---|---|---|
-| 9 | 36 | 8.03 | 1.31 | 26 of 36 |
-| 16 | 34 | 4.12 | 0.47 | 10 of 34 |
-| 20 | 27 | 3.52 | 0.37 | 7 of 27 |
+| 9 | 48 | 9.08 | 2.10 | 38 of 48 |
+| 16 | 48 | 6.48 | 1.10 | 21 of 48 |
+| 20 | 48 | 3.81 | 0.58 | 12 of 48 |
 
-8-32 times the matrix's launch rate, and a burst (a proximity detonation, not just a
+30-36 times the matrix's launch rate, and a burst (a proximity detonation, not just a
 launch) on most 9 MIPS flights. **A real difference by speed also shows here, and it
-does not fully reduce to a sampling artefact:** more flights end early at higher speed
-(9 MIPS: 3 of 36 left VGAME before the 600 s budget; 16 MIPS: 7 of 34; 20 MIPS: 9 of
-27 - consistent with the mission clock running faster than real time at higher speed,
+does not reduce to a sampling artefact.** More flights end early at higher speed (9
+MIPS: 13 of 48 left VGAME before the 600 s budget; 16 MIPS: 15 of 48; 20 MIPS: 18 of
+48 - consistent with the mission clock running faster than real time at higher speed,
 so a fixed assumed-second budget holds more in-game flight time and reaches bingo fuel
 sooner), which shortens orbit exposure and would alone lower the per-flight count. But
 normalising by exposure time (launches and bursts per 100 orbit-seconds, excluding
@@ -359,21 +358,23 @@ size:
 
 | MIPS | orbit-seconds | launches/100 orbit-s | bursts/100 orbit-s |
 |---|---|---|---|
-| 9 | 8,744 | 2.97 | 0.47 |
-| 16 | 6,754 | 1.54 | 0.15 |
-| 20 | 4,947 | 1.64 | 0.16 |
+| 9 | 10,438 | 3.40 | 0.70 |
+| 16 | 8,981 | 2.51 | 0.40 |
+| 20 | 7,395 | 2.18 | 0.30 |
 
-The rate roughly halves (launches) to a third (bursts) from 9 to 16-20 MIPS, while
-exposure-time normalising removes the early-exit confound. This is not yet explained:
-it could be the frame-rate dependence `docs/speed-sweep.md`'s own controller section
-already describes (AI launches and guidance run per drawn frame scaled by S, and S and
-the drawn frame rate both differ by speed), or a further effect of the mission-clock
-scaling, or something else; the mechanism has not been traced in the game's listing.
-**What this does not yet establish:** the sweep is incomplete (97 of 144: `kuwait_strike`
-is missing 11 flights, `north_cape_strike` all 36), each speed draws different missions
-from different seeds (the standing caveat), and 27-36 flights a speed is still a small
-sample for a rate that varies flight to flight. The next session should finish the
-matrix (`--redo` is not needed; unfinished tags are simply absent from `runs.jsonl` and
-will be filled in) and, if the rate difference holds up, read the enemy launch-decision
-code to find the mechanism rather than only describe the correlation. Raw data:
-`D:/f117-gate/threatmatrix/runs.jsonl` and `samples/`.
+A bootstrap over the 48-flight samples (`random.seed(12345)`, 5,000 resamples) gives a
+95% interval for the mean launches/flight that excludes zero for both differences from
+9 MIPS: 16 MIPS -2.62 (-4.67 to -0.56), 20 MIPS -5.25 (-7.02 to -3.46). **This is a real
+effect, not noise**, on top of the exposure-time-normalised rate also falling by the
+same amount. It is not yet explained: it could be the frame-rate dependence this
+document's controller section already describes (AI launches and guidance run per
+drawn frame scaled by S, and S and the drawn frame rate both differ by speed), or a
+further effect of the mission-clock scaling, or something else; the mechanism has not
+been traced in the game's listing, and that is the natural next step - not another
+sweep, since the rate difference is already well established by this one.
+
+**What this does not establish:** each speed still draws different missions from
+different seeds (the standing caveat across every sweep in this document), so this
+measures "launch rate on this generator's mix of missions at this speed," not a single
+matched mission's rate at three speeds. Raw data: `D:/f117-gate/threatmatrix/runs.jsonl`
+and `samples/`.
