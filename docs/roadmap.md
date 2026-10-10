@@ -127,13 +127,17 @@ make (Phase 4).
       (open, read, write, close, attributes, seek; timing386.md "File
       services"), fitted to the 1989 3500 rpm drive preset, the reference's
       period drive (9 Oct 2026; the RAM-disk preset's fit is recorded there too).
-      On that reference the intro's drift at the end is +0.43 s, 1,237 of 1,275
-      pictures exact (verdict FAIL). The rest is in the program loads: EXEC and
-      overlay costs are not charged yet (+0.21 s at MPS_LOGO's exit, +0.25 s at
-      PLAYER's exit, measured on this reference as EXEC of 1 to 47 KB programs at
-      0.7 to 2.5 M cycles). Reference parity: pictures and music pass, but two
-      86Box checks fail on the new drive (one close picture not on the expected
-      list; the longest scene 0.02 s over its limit). Both engines now charge the same profile: 5,713,152 instruction
+      EXEC and overlay loads are now charged too (9 Oct 2026; by which of three
+      measured sizes - 1 KB, 9.5 KB (PLAYER.EXE's), 47 KB (START.EXE's) - a
+      load is closest to, not a per-byte formula: a fifteen-size follow-up
+      probe came back non-monotonic in size, confirming the cost is seek-
+      distance dominated like an ordinary read, not size dominated). On that
+      reference the intro's drift at the end falls from +0.43 s to +0.10 s,
+      the same 1,237 of 1,275 pictures exact. Reference parity: pictures,
+      music and the picture check now all pass (p037's one close picture is a
+      confirmed mid-fade capture-timing artifact, not a defect); one 86Box
+      check still fails, the longest scene 0.02 s over its 0.35 s limit,
+      unmoved by the EXEC/overlay charge. Both engines now charge the same profile: 5,713,152 instruction
       comparisons each in RAM and with code in VRAM, no differences; paired
       flight sessions have 574 identical state checkpoints and stick responses
       (`stick_response.py --machine machine386 --engine interp|recomp`).

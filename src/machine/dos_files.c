@@ -201,8 +201,9 @@ static void transfer_cost(machine_t *m, uint32_t bytes)
 }
 
 /* The 386 profile's cost of a file service (timing386.h, "File services"), charged at the call
- * with interrupts held, as the video services are. Nothing is charged with the profile off. */
-static void t386_file(machine_t *m, uint32_t cycles)
+ * with interrupts held, as the video services are. Nothing is charged with the profile off.
+ * Shared with dos_programs.c (EXEC and overlay loads use the same device-cycle accumulator). */
+void t386_file(machine_t *m, uint32_t cycles)
 {
     if (m->cpu.t386) m->cpu.t386_dev += cycles;
 }

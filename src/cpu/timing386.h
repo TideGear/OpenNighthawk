@@ -83,6 +83,23 @@ typedef struct {
 #define T386_FILE_TRUNC            4249
 #define T386_FILE_BYTE_HUND        876
 
+/* EXEC (INT 21h/4B00h) and overlay loads (4B03h), charged once the whole file is read
+ * (dos_load_program/dos_load_overlay, dos_programs.c), as a file open+read+close would be.
+ * Measured on the 1989 drive preset by EXEC-ing minimal children of known size
+ * (D:/f117-gate/p1-dos-probe/exec1989.py: warm, 1 KB/9.5 KB/47 KB). A follow-up probe across
+ * fifteen more sizes (exec_sizes.py) came back non-monotonic in size (164,590 cycles for 2 KB,
+ * 1.7M for 6 KB, 4.4M for 40 KB): EXEC's cost is dominated by where the file lands relative to
+ * the previous disk access, the same distance-dependent seek timing386.md's T386_FILE_READ_SEEK
+ * already documents, not by its size. A flat per-byte or per-sector fit is therefore the wrong
+ * shape here even more than for an ordinary read, so each real load is charged by which of the
+ * three measured sizes it is closest to (small overlays, PLAYER/DSWAP-sized loads, START-sized
+ * loads) instead of a formula. Overlay loads (smaller, no PSP/environment) are charged the same:
+ * the measured cost is almost entirely the disk access both kinds of load share, and no overlay
+ * load has been measured separately. */
+#define T386_EXEC_SMALL            710453     /* <= 1 KB: the 1,024-byte child */
+#define T386_EXEC_MEDIUM           735408     /* <= 9,506 bytes: the 9.5 KB child (PLAYER.EXE's size) */
+#define T386_EXEC_LARGE            2465831    /* above that: the 47 KB child (START.EXE's size) */
+
 /* The overhead stub's cost under the profile at a LOOP count of n: T386_DOS_LOOP_BASE +
  * T386_DOS_LOOP_EACH * n beyond the call's own INT (calibrated with probe386.py). */
 #define T386_DOS_LOOP_BASE         6

@@ -3,12 +3,19 @@
 #include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
+#include "timing386.h"
 #include "x86_sem.h"
 
 /* ===================================================================== */
 /* Program loading                                                       */
 /* ===================================================================== */
 
+/* The 386 profile's cost of an EXEC or overlay load (timing386.h): by which of the three
+ * measured sizes a file is closest to, not a per-byte formula (see the constants' comment). */
+static void t386_exec(machine_t *m, long fsz)
+{
+    t386_file(m, fsz <= 1024 ? T386_EXEC_SMALL : fsz <= 9506 ? T386_EXEC_MEDIUM : T386_EXEC_LARGE);
+}
 
 /* A new PSP, as DOSBox's DOS_PSP::MakeNew and SetupPSP build one: the
  * INT 20h and the far call to DOS, the top of the block, the parent, the
@@ -103,6 +110,7 @@ uint16_t dos_load_program(machine_t *m, const char *name, const exec_params *ep,
     uint8_t *raw = dos_read_whole(m, dos_basename(name), &fsz);
     if (!raw) return ERR_FILE_NOT_FOUND;
     if (fsz == 0) { free(raw); return ERR_ACCESS_DENIED; }
+    t386_exec(m, fsz);
 
     int is_mz = (fsz >= 28 && ((raw[0] == 'M' && raw[1] == 'Z') || (raw[0] == 'Z' && raw[1] == 'M')));
     uint16_t hdr[14] = {0};
@@ -247,6 +255,7 @@ uint16_t dos_load_overlay(machine_t *m, const char *name, uint16_t load_seg,
     long fsz = 0;
     uint8_t *raw = dos_read_whole(m, dos_basename(name), &fsz);
     if (!raw) return ERR_FILE_NOT_FOUND;
+    t386_exec(m, fsz);
 
     uint32_t body;
     unsigned nreloc = 0;

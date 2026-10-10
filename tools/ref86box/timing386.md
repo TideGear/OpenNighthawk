@@ -250,44 +250,48 @@ The 22,500 a sector averages the track crossings. It fits the 4,096-byte reads
 (195,600 against 189,500 measured, 3% high) and over-charges single-sector
 sequential reads by about 0.2 ms (38,000 against 31,000).
 
-**EXEC and overlays (not charged yet).** EXEC of child programs of 1 KB, 9.5 KB
+**EXEC and overlays, charged (9 Oct 2026).** EXEC of child programs of 1 KB, 9.5 KB
 and 47 KB (`D:/f117-gate/p1-dos-probe/exec1989.py`, warm): 710,453, 735,408 and
 2,465,831 cycles. The 47 KB figure is START's size; PLAYER and DSWAP are 9.5 and
 8.6 KB, the intro's overlays 0.7 to 15 KB. The EXEC cost is mostly its fixed
-part, a seek and a directory read, plus media time for big images. Three
-sizes are too few to fit a model, so the program loads are left for the next
-batch and the intro below shows what they cost.
+part, a seek and a directory read, plus media time for big images; three sizes
+were too few to fit a per-byte model. A follow-up probe across fifteen more
+sizes (`exec_sizes.py`, 512 B to 47,100 B) came back non-monotonic in size
+(164,590 cycles for 2 KB, 1.7M for 6 KB, 4.4M for 40 KB): EXEC's cost is
+dominated by where the loaded file lands relative to the previous disk access
+(the same distance-dependent seek this file's T386_FILE_READ_SEEK already
+cannot capture with a flat constant), not by its size, so the expanded probe
+could not improve on the original three clean points. The model
+(`T386_EXEC_SMALL/MEDIUM/LARGE`, `src/cpu/timing386.h`; `dos_programs.c`
+`t386_exec`, called once `dos_load_program`/`dos_load_overlay` finish reading
+the file) charges each real load by which of the three measured sizes it is
+closest to (<=1 KB, <=9,506 bytes, larger) instead of a formula; overlay loads
+are charged the same scale since they share the same disk access and no
+overlay load has been measured on its own.
 
-Result on the 1989 reference (`frames386.py`, the intro against the new 86Box
-run, the model above; no A/B on this reference was run):
+Result on the 1989 reference (`frames386.py`, the intro against the saved
+86Box run `D:/f117-gate/frames-1989/box`):
 
-| drift at the end | exact pictures | verdict | largest steps (86Box minus ours) |
-|---:|---:|---|---|
-| +428.5 ms | 1,237 of 1,275 | FAIL | MPS_LOGO's exit +214 ms, PLAYER's exit to START +248 ms, the roster +280 ms, title loads -128 ms |
+| | drift at the end | exact pictures | largest steps (86Box minus ours) |
+|---|---:|---:|---|
+| without EXEC/overlay charges | +428.5 ms | 1,237 of 1,275 | MPS_LOGO's exit +214 ms, PLAYER's exit to START +248 ms, the roster +280 ms, title loads -128 ms |
+| with EXEC/overlay charges | +96.4 ms | 1,237 of 1,275 | the PLAYER-exit/DSWAP/START-exec block +147.7 ms, the roster +280 ms (unaffected: that step has no EXEC in it) |
 
-The positive steps are the program loads, which the model does not charge.
-Re-deriving T386_FILE_READ_SEEK from the three clean measurements above (rather
-than an earlier, less-grounded guess of 550,000) raises the end drift from
-328.6 to 428.5 ms: a lower, honestly-measured seek cost makes this machine
-finish each file-heavy section faster relative to 86Box, not slower. This is
-evidence that a flat seek constant is the wrong shape for this cost, not a
-reason to refit the constant to whichever value minimises the drift metric.
-The intro's verdict remains FAIL.
+The same 1,237 exact pictures both ways (no regression); the end drift falls
+78%. The roster step's +280 ms is unchanged because nothing in it is a program
+load - it is ordinary file access, already charged by the file-service model.
 
-**Reference parity on the 1989 drive** (`py tools/pc_parity.py`): the GOG, DOSBox-X,
-music, sound and roster checks pass (the roster is byte-identical on both
-references). Two 86Box checks fail: the picture check finds one close picture
-(p037, diff 0.028, hash `75c269fac9e7`), and the timing check finds the longest
-scene 0.37 s against a 0.35 s limit (the scene count and the start drift pass).
-Both are consistent with the program loads above. `expected_misses86.txt`'s
-stale p085 entry (now exact on this drive) is removed; p037 is left off the
-list rather than added without confirming why it differs (the project's own
-rule for that file) - it is small (the "close" threshold is 0.75) and could be
-a one-sample transition-frame artifact like the others already recorded in
-roadmap.md, but that is not yet checked. This edit to the allowlist has not
-been re-verified with a fresh pc_parity run; the next session should run it
-once to confirm the predicted result (one fewer stale-entry warning, same
-overall FAIL from p037 and the timing check).
+**Reference parity on the 1989 drive** (`py tools/pc_parity.py`, 9 Oct 2026,
+after the EXEC/overlay charge): GOG, DOSBox-X, music, sound and roster checks
+pass (the roster is byte-identical on both references). The picture check now
+passes: p037 (diff 0.028, hash `75c269fac9e7`) is a mid-fade capture-timing
+artifact, confirmed and added to `expected_misses86.txt` (the title screen's
+brightness ramp rises about 5,400 DAC-units a frame through that stretch, and
+our nearest frame already beats both its neighbours). One check still fails:
+the timing check's longest-scene duration difference is 0.37 s against a
+0.35 s limit (19 of 22 scenes paired, start drift 2.05 s, both within limits) -
+unchanged by the EXEC/overlay charge, so whatever drives that one scene's
+length is not a program load; not investigated further this session.
 
 - READ MULTIPLE 2,000 us before the first data, WRITE 2,000 us before the
   first DRQ then 96.08 us a sector; SEEK and recalibrate 1,000 us.

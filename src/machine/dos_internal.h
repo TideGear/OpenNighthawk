@@ -82,5 +82,6 @@ int dos_bios_wait(cpu_t *c);
 const char *dos_basename(const char *p);
 FILE *dos_open_read(machine_t *m, const char *name, char *found, size_t fn);
 uint8_t *dos_read_whole(machine_t *m, const char *name, long *out_size);
+void t386_file(machine_t *m, uint32_t cycles);
 
 #endif
