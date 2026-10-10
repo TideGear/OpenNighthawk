@@ -214,7 +214,8 @@ running.
   has no `gh`; read the run list with the public API:
   `curl https://api.github.com/repos/TideGear/OpenNighthawk/actions/runs?per_page=5`.
   The job logs need sign-in, so reproduce a failure locally with ctest. The
-  preceding push, `271fd8b` (run 38005410929), was green; check the latest run.
+  preceding push, `c1dc065`, was green; this batch's push, `37962a5`, was still
+  running when this session ended - check its run first.
 - **PC parity**: `py tools/pc_parity.py --data D:/GOG/F-117A` (about 12 minutes).
   All checks pass on the MS-DOS 5.00 reference (9 Oct). The 86Box pictures must
   be exact except the one listed by hash in
