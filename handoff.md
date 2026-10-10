@@ -23,6 +23,83 @@ preserving every intermediate memory write across a possible mid-routine
 decline) that this session chose not to commit without a lockstep pass, given
 the time left. See item 4.
 
+## Current top priority: why does combat fall with speed, and can it be fixed without losing speed?
+
+Set by the owner at the end of this session, ranking above everything in the
+numbered list below. The threat-profile matrix (item 4) found that **the
+whole enemy-fire pipeline scales down together with CPU speed**: not just
+launches (9.08/6.48/3.81 a flight at 9/16/20 MIPS) but misses (6.40/4.96/
+2.85), proximity bursts (2.10/1.10/0.58) and player hits taken (5.09/3.27/
+3.07, 95% CI 3.77-6.51 / 2.06-4.67 / 1.93-4.40) all fall by roughly the same
+proportion. That shape - everything shrinking together, not one stage
+shifting relative to another - is itself a clue: it points at something
+upstream of the whole chain, not at targeting or guidance specifically.
+
+**Ruled out this session:** the orbit itself is not the confound. The actual
+flown radius from the target is essentially the same at all three speeds
+(mean 5,939 / 6,255 / 6,222 map units, from the sample trajectories already
+in `D:/f117-gate/threatmatrix/samples/`) - the controlled-exposure design is
+not the explanation; something in the game's own AI or timing model is.
+
+**Found, not yet connected to the effect:** the fire decision
+(`ai_fire`, VGAME 0x63F2, Reimp `src/core/ai.c:659`) is called once a drawn
+frame per detected unit from `ai_step` (VGAME 0x5852, Reimp `ai.c:142`),
+itself called unconditionally once a frame from the main loop
+(`frameloop.c:727`, no gating visible). Each unit carries an "engagement
+level" (`U(i, 0x22)`) that climbs by a **fixed per-call amount**
+(`ai.c:726-731`, independent of S) while detection quality is above
+threshold, and **decays** when it is not (`ai.c:717-721`) - a unit must stay
+detected for several consecutive frames to reach the firing threshold
+(0xC0), and any lost detection resets progress. Beyond that threshold,
+launching also needs an empty weapon slot, a boresight/bearing window, a
+range window, and a per-theatre "heat" budget (`0x3686` vs `0xB080`/`0x9522`,
+`frame.c:118`'s own comment: "the theatre is not hot enough yet"). None of
+this reads S directly - but `V_S` (the controller's own frame-rate estimate,
+[0x368E] in the listing) is used **pervasively** elsewhere as a divisor to
+convert "per frame" quantities into "per real second" ones: ammunition decay
+(`frame.c:775`, `-40/S`), weapon lifetime (`ai.c:775`, "scaled by S so it is
+the same in real time"), turn and guidance rates (`frame_weapons.c:1484,
+1506, 1510, 1518, 1527`, all `/S`), and a detection-related inverse-square-
+root of S (`effects.c:89`). **This is the standing hypothesis**: if the
+reported S does not track true elapsed real time identically at every CPU
+speed, every one of these S-normalised formulas shifts together - which
+would explain why launches, bursts, misses and hits all moved by about the
+same proportion rather than any one stage changing relative to the others.
+Raw drawn frame rate is *not* the obvious culprit by itself: the existing
+(pre-this-session) matrix already found drawn fps similar across 9/16/20
+MIPS once airborne and settled (~15-16.7 fps, S clamped near 15) - so if S's
+*value* is the cause, it is not simply "fewer frames per second," it is some
+more specific way the controller's estimate is computed or consumed.
+
+**Not done, and the actual next steps:**
+1. `tools/threat_profile.py` does not currently record S or the tick/frame
+   counters during its flights - only position. Add them (the same DS fields
+   `speed_sweep.py` already reads: `[0x368E]` S, `[0x3D8E]` frame counter,
+   `[0x2648]` game ticks) and compare S's distribution across speeds
+   *during the actual orbit flights*, not inferred from the unrelated
+   typed-route sweeps. This is the single most informative missing
+   measurement - it was not added because the orbit tool was already working
+   by the time this hypothesis formed.
+2. Read `detect.c`'s `detect_evaluate` (the quality calculation `ai_fire`
+   gates on) for any S-dependence not yet found.
+3. If S's reported value does differ systematically by CPU speed during
+   combat specifically, the fix question is genuinely open either way: it
+   may be that the *original* S controller already tracks real time
+   correctly on real hardware regardless of CPU speed (in which case this is
+   a real property worth preserving, and the "fix" is understanding it, not
+   patching it away) - or it may be an artifact of running this far outside
+   any period machine's range, in which case a fix could mean re-examining
+   the 9 Oct frame-limiter decision (D1, and the rejected 15 fps experiment)
+   with this specific finding in hand, which the owner explicitly did not
+   have when that default was chosen.
+4. Whatever the mechanism, re-run (a subset of) the threat-profile matrix
+   after any change to confirm the launch-rate gap actually closes, using
+   the same bootstrap-CI method already in `docs/speed-sweep.md` - the
+   effect is well-established enough now (144 flights, CIs excluding zero)
+   that a fix should be judged against closing it, not just plausible.
+
+## What to do first
+
 1. **`git status -sb` first.** By the time this session ends, master should be
    clean and pushed through the real-file EXEC calibration commit (below);
    confirm that landed before doing anything else. If the working tree is
@@ -88,17 +165,11 @@ the time left. See item 4.
    3.81 launches a flight; bootstrap 95% intervals on the mean exclude zero
    for both differences from 9 MIPS), surviving normalising for orbit
    exposure time (so it is not just shorter flights from earlier bingo fuel
-   at higher speed). **Not yet explained.** This is a real consequence of the
-   9 Oct decision to default `f117a` to 20 MIPS with no limiter: at the
-   default speed, the player sees roughly 40% of the enemy fire rate a 9 MIPS
-   (GOG-paced) machine would. The owner has not yet been asked whether this
-   changes that decision; flag it to them. The next step is reading the
-   enemy launch-decision code in the listing to find the mechanism (a
-   candidate: AI launches and guidance run per drawn frame scaled by S,
-   per this document's own controller section, and S and the drawn frame
-   rate both differ by speed) - not another sweep; the rate difference
-   itself is already well established on 144 flights. Raw data:
-   `D:/f117-gate/threatmatrix/runs.jsonl` and `samples/`.
+   at higher speed). Misses, bursts and player hits taken all fall by about
+   the same proportion too. **This is now the current top priority** - see
+   "Current top priority" above for what has been found about the mechanism
+   and the concrete next steps. Raw data: `D:/f117-gate/threatmatrix/
+   runs.jsonl` and `samples/`.
 
 5. **Phase 2 lead, investigated, not written: VGAME 0x01007.** The census
    (`D:/f117-gate/census.tsv`) names this address `scene_world_replace`, but
@@ -137,10 +208,10 @@ the time left. See item 4.
 
 ## Goal and standing decisions
 
-- **Combat rate falls with speed - flag to the owner.** See item 4. This was
-  not known when the 20 MIPS default was chosen (9 Oct); it is a real,
-  measured, unexplained property of that choice.
-- **Next priority, Phase 1: the last 86Box timing check.** One check remains
+- **Combat rate falls with speed.** Now the session's top priority - see
+  "Current top priority" at the top of this document. Owner-flagged, not yet
+  known when the 20 MIPS default was chosen (9 Oct).
+- **Phase 1's remaining item: the last 86Box timing check.** One check remains
   failing in `pc_parity.py`: the longest-scene duration difference, 0.37 s
   against a 0.35 s limit, in a held picture from 100.22 s to 106.40 s (ours)
   that is not the program-load stretch already fixed. See item 3's last
