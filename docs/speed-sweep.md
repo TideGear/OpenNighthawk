@@ -889,7 +889,23 @@ than a static-analysis lead:**
 Do not implement a fix for this without first staging it the way every
 other finding in this document was staged (a controlled two-engine
 reproduction at a known S, confirming the actual resulting S and
-behavior, not just the isolated arithmetic). Next session: trace `0x3ADA`'s
-callers and the loop's actual slot semantics to settle reachability first;
-only then design and verify a fix, with the same lockstep + full-gate
-discipline as every matched routine in this project.
+behavior, not just the isolated arithmetic).
+
+**Reachability is now confirmed (same session, follow-up).** `0x3ADA` has
+exactly one caller in the reachable call graph, at VGAME `0x1BCE` -
+*the literal main flight loop*. Disassembled directly: the loop calls the
+cockpit canopy draw, then `game_input` (0x1EB0 - the other audit
+candidate, `0x2BFE`, lives inside this same function), then `0x3ADA`
+unconditionally, then checks `[0xE57E]` (the documented END.EXE
+hand-off flag) and loops back to the top while still flying. So `0x3ADA`,
+and the S-recalibration code inside it, runs every single frame of normal
+flight - this is not an init-only or rare-mode path.
+
+**Still open:** what a real S=0 does immediately afterward. Spot-checked
+one guard: `0xD441` itself (called right after S is overwritten) takes the
+S<=15 branch for S=0 and sets `[0x43E8]=0` directly, without dividing by
+S - so this one specific step does not fault. Whether anything *else*
+downstream (movement/physics stepping, other rate derivations) divides by
+S without a guard, and so would fault or visibly break on a real S=0, has
+not been traced. That is the one remaining question before this can be
+staged as a controlled two-engine reproduction and, if confirmed, fixed.
