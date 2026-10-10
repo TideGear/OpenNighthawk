@@ -9,6 +9,35 @@ checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 more than once, what it costs). State as of 10 October 2026.
 Earlier session logs are in `git log -p handoff.md`.
 
+## Phase 1 threshold tightening (10 Oct, 15:50 PDT)
+
+Followed up on the owner's "are any P1 checks too loose" question: tightened
+three numeric thresholds that had 1.75-3x headroom over their single
+measured run, down to ~1.4x (`tools/pc_parity.py`'s `gog.max_drift_ms`
+100->80 and `gog-music.max_timing_ms` 40->20; `tools/ref86box/
+compare_timing86.py`'s `max_duration_diff` 0.35->0.30 and `max_drift`
+2.2->1.5). Deliberately left DOSBox-X's `max_drift_ms=350` alone - its
+looseness has a stated, specific reason (the comment: "real-time captures
+varied; fast-forward ones are identical," i.e. DOSBox-X's own reference
+capture isn't perfectly reproducible run-to-run), unlike the other four
+which were just round numbers roughly double the measured value with no
+recorded justification. Re-verified all three edited checks: the two
+`pc_parity.py` ones on a fresh live run (GOG-only, no emulator needed -
+`--no-86box --no-dosbox-x --no-save`), `compare_timing86.py`'s on the
+existing saved `D:/f117-gate/pc-parity-profile-aware/` capture (reusing it
+rather than re-running 86Box, since only the Python constant changed, not
+the engine). All eight `tests/test_reference_timing.py` regressions still
+pass (they read the module's `LIMITS` dynamically, not a hardcoded copy).
+Updated the two doc passages that cited the old numbers literally
+(`docs/roadmap.md`, `tools/ref86box/timing386.md`); left the 9 Oct historical
+entry in `timing386.md` (the one describing a since-superseded 0.37s FAIL
+against the then-current 0.35 limit) untouched, since it's a dated progress
+record, not a current claim. This was a values-only change to test tooling,
+not engine code - no full gate needed, just the targeted re-verification
+above. Single-measurement margins, not variance-backed; if a future clean
+run fails one of these for reasons unrelated to the engine, that's the first
+thing to suspect.
+
 ## Phase 2 target-scoring checkpoint (10 Oct, 15:41 PDT)
 
 VGAME 0x073C8 (`vgame_target_damage`, "score and alert a target hit") is

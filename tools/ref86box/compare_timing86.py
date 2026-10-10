@@ -18,8 +18,12 @@ from PIL import Image
 
 CLOCK = 33_333_333
 FRAME_SECONDS = 359200 / 25175000
-# Retain the existing reference limits; correct the profile and matching.
-LIMITS = dict(min_paired=17, max_duration_diff=0.35, max_drift=2.2)
+# Tightened 10 Oct 2026 from the original 0.35/2.2 (roughly 1.6x/2.0x the
+# measured 0.214/1.113), which left room for the measured value to nearly
+# double before the check would notice. ~1.4x/1.35x margin, from a single
+# measured run (no repeat-capture variance data yet); loosen again if a
+# clean run fails here for a reason unrelated to the engine.
+LIMITS = dict(min_paired=17, max_duration_diff=0.30, max_drift=1.5)
 
 
 def picture_hash(path):

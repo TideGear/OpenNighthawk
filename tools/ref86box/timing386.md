@@ -528,13 +528,16 @@ keep their own profile. `compare_timing86.py` requires recorded 386 settings,
 matches held pictures by their 86Box pixel hash in order, and requires every
 local held picture to match. Missing reference scanouts delimit screen-off
 gaps; the final unclosed reference picture is censored by the capture stop.
-Neither duration nor drift limits have been loosened.
+Neither duration nor drift limits have been loosened (tightened 10 Oct 2026,
+see below).
 
 Fresh full references in `D:/f117-gate/pc-parity-profile-aware` pass: 85 exact
 and one close 86Box picture, sound, both 802-byte roster saves, and all 21
 local held pictures matched among 22 reference holds. Maximum duration
-difference is 0.214022 s (limit 0.35), start drift 1.112912 s (limit 2.2).
-The final stationary PLAYER hangar lasts 6.472724 s locally and 6.491997 s
+difference is 0.214022 s (limit 0.30, tightened from 0.35), start drift
+1.112912 s (limit 1.5, tightened from 2.2) - both re-verified against this
+same saved capture after tightening. The final stationary PLAYER hangar
+lasts 6.472724 s locally and 6.491997 s
 on 86Box: 19.273 ms apart. The old reference duration included 57 ms with
 the screen off. Eight tests in `tests/test_reference_timing.py` guard profile
 identity, content/order matching, pixel hashing, duplicate frames, screen-off

@@ -143,8 +143,9 @@ make (Phase 4).
       error: it compared the default 9 MIPS capture with 86Box. The retained
       check now requires a separate recorded 386 capture and pairs held
       pictures by content. Fresh references pass all checks: 21 of 21 held
-      pictures match, maximum duration difference 0.214 s (limit 0.35), start
-      drift 1.113 s (limit 2.2). The final hangar differs by 19 ms after
+      pictures match, maximum duration difference 0.214 s (limit 0.30, tightened
+      10 Oct from 0.35), start drift 1.113 s (limit 1.5, tightened from 2.2).
+      The final hangar differs by 19 ms after
       excluding reference screen-off gaps. Eight regressions reject wrong
       profiles, wrong pictures, missing holds and excessive duration/drift.
       Both engines now charge the same profile: 5,713,152 instruction

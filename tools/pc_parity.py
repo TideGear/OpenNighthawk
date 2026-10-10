@@ -41,7 +41,9 @@ DEFAULT_GOG_MUSIC = Path.home() / "f117-recomp-local" / "video" / "gog-music" / 
 LIMITS = {
     # exact pictures in order; unmatched pictures lasting more than one sample;
     # largest timing drift in ms
-    "gog": dict(min_exact=1300, max_multi_unmatched=0, max_drift_ms=100),   # measured 1329, 0, 57 ms
+    # max_drift_ms tightened 10 Oct 2026 from 100 (measured 57 ms, ~1.75x
+    # headroom) to 80 (~1.4x); single measured run, no variance data yet.
+    "gog": dict(min_exact=1300, max_multi_unmatched=0, max_drift_ms=80),   # measured 1329, 0, 57 ms
     "dosbox-x": dict(min_exact=1200, max_multi_unmatched=3, max_drift_ms=350),   # measured 1237, 3, 143-200 ms (real-time captures varied; fast-forward ones are identical)
     # 86Box: every graphics picture matches ours exactly in 6-bit DAC values, in order, except the
     # ones named in ref86box/expected_misses86.txt (each tied to its picture's hash). Measured 9 Oct 2026
@@ -49,7 +51,9 @@ LIMITS = {
     # drawn while its files load. min_total guards against a comparison that found nothing to compare.
     "86box": dict(min_total=80),
     # GOG's raw OPL capture: every write, from this machine started 275 ms in (dosbox_compare.GOG_BOOT_MS); measured 22,840, -14..+1 ms
-    "gog-music": dict(min_writes=22800, max_timing_ms=40),
+    # max_timing_ms tightened 10 Oct 2026 from 40 (measured max abs 14 ms,
+    # ~2.9x headroom) to 20 (~1.4x); single measured run, no variance data yet.
+    "gog-music": dict(min_writes=22800, max_timing_ms=20),
 }
 
 
