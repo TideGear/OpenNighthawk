@@ -61,6 +61,23 @@ typedef struct {
 #define T386_SVC_DOS_STDIN_STATUS  3416    /* MS-DOS 5.00 (6.22 the same) */
 #define T386_SVC_DOS_GET_TIME      1885    /* MS-DOS 5.00 (6.22 the same; it varies by 4 between runs) */
 
+/* File services on the reference VM's disk (XT-IDE, RAM-disk preset; timing386.md, "File
+ * services"), charged at the call with interrupts held, as the video services are. A read costs
+ * a call's base plus the IDE word transfer, T386_FILE_BYTE_HUND/100 cycles a byte (512, 4,096,
+ * 16,384 and 32,768 bytes fit). The first open and the first write after boot cost more; a
+ * zero-length write (the truncate in START's roster save) costs T386_FILE_TRUNC. */
+#define T386_FILE_OPEN             50145
+#define T386_FILE_OPEN_FIRST       460000
+#define T386_FILE_ATTR             44402
+#define T386_FILE_SEEK             1114
+#define T386_FILE_CLOSE_READ       1800
+#define T386_FILE_CLOSE_WRITE      60000
+#define T386_FILE_READ_CALL        74090
+#define T386_FILE_WRITE_CALL       12000
+#define T386_FILE_WRITE_FIRST      9800000
+#define T386_FILE_TRUNC            4249
+#define T386_FILE_BYTE_HUND        876
+
 /* The overhead stub's cost under the profile at a LOOP count of n: T386_DOS_LOOP_BASE +
  * T386_DOS_LOOP_EACH * n beyond the call's own INT (calibrated with probe386.py). */
 #define T386_DOS_LOOP_BASE         6

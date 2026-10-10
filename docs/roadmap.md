@@ -123,11 +123,15 @@ make (Phase 4).
       7-9 on 86Box, against 14-15 on DOSBox's model, so the same inputs now fly
       at the period PC's pace (`stick_response.py --machine machine386`); over
       the intro's animation the scenes hold 86Box's pace to a frame
-      (`frames386.py`, timing386.md). The drift left (+0.64 s at START's roster
-      screen) is in the loads: DOS file reads and writes, program starts and
-      overlays. Open: file loading (the VM's disk is a RAM-disk-speed model, so
-      its load times are not period ones; the frame comparison re-aligns at
-      loads). Both engines now charge the same profile: 5,713,152 instruction
+      (`frames386.py`, timing386.md). DOS file services are now charged
+      (open, read, write, close, attributes, seek; timing386.md "File
+      services"): the intro's drift at the end falls from +0.64 s to +0.23 s on
+      the MS-DOS reference, exact pictures unchanged. Open: the rest is START's
+      roster step (+0.30 s) and the program loads (EXEC and overlays, +0.04 s
+      each), not yet charged; the intro's verdict is still FAIL. The reference's
+      disk is a RAM-disk-speed model, so its load times are not period ones;
+      which drive the owner's machine had is unknown (a period-drive preset
+      costs more on every call). Both engines now charge the same profile: 5,713,152 instruction
       comparisons each in RAM and with code in VRAM, no differences; paired
       flight sessions have 574 identical state checkpoints and stick responses
       (`stick_response.py --machine machine386 --engine interp|recomp`).

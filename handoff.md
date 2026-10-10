@@ -11,7 +11,12 @@ Earlier session logs are in `git log -p handoff.md`.
 
 ## What to do first
 
-**Latest batch:** `p1-speech-reference`, based on `2cb230b9369f`, merged by
+**This batch (9 Oct, after the speech batch):** the 386 profile now charges DOS
+file services; the intro's drift on the MS-DOS reference falls from +642.5 to
++228.7 ms (verdict still FAIL). Details under "Next priority" below. The
+gate for it is `D:/f117-gate/p1-file-model2/gate.log` (14 unit tests, 0 mismatches, 35 routes identical).
+
+**Speech batch:** `p1-speech-reference`, based on `2cb230b9369f`, merged by
 fast-forward into master and pushed together. The owner requested wrapping
 up for a new conversation, committing, pushing and stopping (9 Oct).
 Speech-reference tooling/docs close the audio item (P1 now
@@ -60,53 +65,30 @@ when continuing the P1 timing investigation. No experiment remains running.
 
 - **Next priority: the remaining P1 timing evidence.** Owner asked what prevents P1
   reaching 100% (9 Oct); the remaining 2.07 points are the 386 timing profile.
-  Speech now has an independent rendered reference (details below).
-  Investigate DOS file-service costs and mid-draw frame differences.
-  The current reference cfg explicitly sets
-  `hdd_01_speed = ramdisk`; 86Box offers `1989_3500rpm` for a private period-drive
-  experiment. `timing386.md`'s MS-DOS 5.00 comparison reports +642.5 ms,
-  1,238/1,277 pictures exact in order; do not treat cycle probes as proof of
-  frame-exact completion. `dos.c:t386_service_cycles` currently charges only
-  AH=0Bh/2Ch for DOS, no reads/writes/EXEC/overlay.
-  A private exploratory COM probe is in `D:/f117-gate/p1-dos-probe/`:
-  `explore.py` generates eight open/seek/read/close trials on VGAME.EXE;
-  `analyze.log` and `preliminary.json` compare 86Box with our 386 interpreter.
-  All read byte counts agree and CF is clear. Reference warm open 50,145
-  cycles (1.50 ms), first open 509,082 (15.27 ms); seek 1,114, close 1,800;
-  reads 512/4096/16384/32768 bytes cost about 79,595/109,972/217,180/361,095
-  cycles (2.39/3.30/6.52/10.83 ms). Includes marker/setup overhead and
-  unmasked IRQs; no runtime calibration inferred yet. A cold/warm cache
-  distinction matters. Two independent boots have byte-identical port logs
-  (SHA-256 `9ccd002e32da2a5c574dcde3e641a4c4d691279631283f52a077ad31cfe82188`).
-  All 80 operations and 3,000 frames completed in both; the first 86Box
-  reported a nonzero exit during shutdown, the second exited 0. Treat these
-  as exploratory measurements, not proof of the eventual timing model.
-  `fcb.py` / `fcb1.log` also probe the extended FCB volume-label search seen
-  beside START's roster step: 21,300-21,604 cycles (~0.65 ms), AL=FF (no
-  label), clean exit. Its own cost cannot explain the ~630 ms step. Our
-  DOSBox-style `dos_files.c` instead supplies C_DRIVE/AL=0. Reading START's
-  DGROUP (0A95) confirms its FCB at 6187 matches the probe's wildcard header;
-  its expected name at 617E is F117A-SF. The 804E helper and 7285 branch
-  therefore choose the roster-write path for both no label and C_DRIVE.
-  This source evidence rules out a different branch caused by those labels.
-  No DOS semantics were changed in this batch.
-  `write.py` / `write1.log` create, write and close a private TIMING.BIN
-  eight times (802 bytes, the roster's size). First write costs 10,055,261
-  cycles (301.66 ms), later writes 19,582 (0.587 ms); all return 802, CF clear.
-  First create 610,313 cycles, second 858,306, later 93,949; first close
-  123,432, later 47,424. This makes initial allocation/cache work a promising
-  explanation for the roster drift. Check START's exact file-operation
-  sequence; do not turn these exploratory costs into one fixed write delay.
-  The second independent write-probe boot (`write2`) exited cleanly and has
-  a byte-identical port log (SHA-256
-  `c8d34efe880d720e254b41c9570c2f9fef69058f431c2f2fd97101aaf3fd8452`).
-  A split 512+290-byte variant (`write-chunks1.log`, clean exit) costs
-  10,052,946 cycles for the first 512 and 5,251 for the following 290;
-  later 512-byte writes cost 17,267. It does not double the cold-write cost.
-  The FAT16 reference has four sectors per cluster. Next conversation:
-  trace START's exact create/write/close sequence and any DOS cache/allocation
-  costs before implementing a 386-only file-service timing model; preserve
-  the DOSBox default and fixes-off parity.
+  Speech has an independent rendered reference (above).
+  **File services (9 Oct, this batch).** The profile now charges DOS open, read,
+  write, close, attributes and seek from measurements (`timing386.md`, "File
+  services"; constants `T386_FILE_*`; charged in `src/machine/dos_files.c`).
+  On the MS-DOS 5.00 reference the intro's end drift falls from +642.5 ms to
+  +228.7 ms (A/B against the same 86Box run); exact pictures stay 1,238 of
+  1,277; the verdict is still FAIL. The DOSBox default is unchanged (the
+  `boot_to_flight` end hash is still `48a10e901505e2a9`).
+  Still open: START's roster step (+295 ms; the palette and requestr reads and
+  the ROSTER.FIL save, one cold write being ~296 ms) and EXEC/overlay loads
+  (+43 and +48 ms steps), which are not charged. Next: time an EXEC and an
+  overlay load of a known size on the reference the same way (a probe like
+  `roster.py`); then replay the palette and requestr reads to find the roster
+  residual. The cold first write (9.8 M cycles) is the same on both drive
+  presets, and its mechanism is not located.
+  Decision for the owner: which drive the period machine had. The reference is
+  `hdd_01_speed = ramdisk`; `1989_3500rpm` costs more on every call (warm open
+  3.56 M cycles, warm read 512 1.10 M, close after write 5.08 M) and is a
+  private experiment only.
+  Tools: `F117R_TRACE_FILES=1` logs every file call to a run's `run.log`;
+  `D:/f117-gate/p1-dos-probe/roster.py OUT [PROFILE]` runs START's roster
+  sequence twice on 86Box (cold, then warm); `write.py`, `fcb.py` and `explore.py`
+  are the older probes. The A/B frame runs are `D:/f117-gate/frames-msdos` (with
+  the model) and `frames-msdos-base` (the same 86Box run, without it).
 
 - **Usage cutoff (owner, 9 Oct).** When the 5-hour Codex allowance is 15% or
   less, wrap up, update this handoff, commit, push, and stop. The available
@@ -246,7 +228,8 @@ when continuing the P1 timing investigation. No experiment remains running.
   FILE` are off by default.
 - **386 profile**: `insn_lockstep --timing386 --states 64`;
   `tools/ref86box/probe386.py` (90 of 93 blocks equal to the MS-DOS reference);
-  `frames386.py` (a known end-drift failure, +642.5 ms on the MS-DOS VM);
+  `frames386.py` (a known end-drift failure: +228.7 ms on the MS-DOS VM with the
+  file charges, +642.5 ms without);
   `stick_response.py --machine machine386`.
 
 ## Current state

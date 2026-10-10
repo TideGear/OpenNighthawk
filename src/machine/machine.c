@@ -43,6 +43,7 @@ int machine_boot(machine_t *m, uint8_t *mem, const char *data_dir,
         }
     }
 
+    m->t386_cold_open = m->t386_cold_write = 1;
     pc_reset(m);
     return dos_boot(m, program);
 }

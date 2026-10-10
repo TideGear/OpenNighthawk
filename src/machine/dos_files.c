@@ -1,5 +1,6 @@
 /* dos_files.c - extracted DOS/BIOS services; see dos.c for provenance. */
 #include "dos_internal.h"
+#include "timing386.h"
 #include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
@@ -199,6 +200,18 @@ static void transfer_cost(machine_t *m, uint32_t bytes)
     c->charged += cost;
 }
 
+/* The 386 profile's cost of a file service (timing386.h, "File services"), charged at the call
+ * with interrupts held, as the video services are. Nothing is charged with the profile off. */
+static void t386_file(machine_t *m, uint32_t cycles)
+{
+    if (m->cpu.t386) m->cpu.t386_dev += cycles;
+}
+
+static uint32_t t386_bytes(uint32_t bytes)
+{
+    return bytes * T386_FILE_BYTE_HUND / 100;
+}
+
 void dos_close_files_of(machine_t *m, uint16_t owner)
 {
     for (int i = 5; i < DOS_MAX_FILES; i++)
@@ -379,6 +392,10 @@ int dos_int21(machine_t *m)
         mem_write16(c, phys(me, 0x2E), (uint16_t)(c->r[R_SP] - 24));
         mem_write16(c, phys(me, 0x30), c->seg[S_SS]);
     }
+
+    if (m->log && getenv("F117R_TRACE_FILES") && (ah == 0x3E || ah == 0x3F || ah == 0x40 || ah == 0x41 || ah == 0x42 || ah == 0x43 || ah == 0x56 || ah == 0x57))
+        dos_log(m, "[dosfile] AH=%02X AL=%02X BX=%04X CX=%04X DX=%04X @%llu (%s)\n", ah, al, c->r[R_BX], c->r[R_CX], c->r[R_DX],
+                (unsigned long long)c->icount, dos_current_program(m));
 
     switch (ah) {
 
@@ -618,6 +635,9 @@ int dos_int21(machine_t *m)
         jft_set(m, me, (unsigned)h, m->files[h].sft);
         snprintf(m->files[h].path, sizeof(m->files[h].path), "%s", hp);
         snprintf(m->files[h].temp, sizeof(m->files[h].temp), "%s", tp);
+        m->files[h].t386_wrote = 0;
+        t386_file(m, T386_FILE_OPEN + (m->t386_cold_open ? T386_FILE_OPEN_FIRST : 0));
+        m->t386_cold_open = 0;
         dos_log(m, "[file] %s '%s' -> %d @%llu %s\n", ah == 0x3C ? "create" : "open",
                 dp, h, (unsigned long long)c->icount, dos_current_program(m));
         c->r[R_AX] = (uint16_t)h;
@@ -629,6 +649,7 @@ int dos_int21(machine_t *m)
         uint16_t h = c->r[R_BX];
         if (h < 5) { dos_ok(c); return 1; }
         if (h >= DOS_MAX_FILES || !m->files[h].in_use) { dos_fail(c, ERR_BAD_HANDLE); return 1; }
+        t386_file(m, m->files[h].t386_wrote ? T386_FILE_CLOSE_WRITE : T386_FILE_CLOSE_READ);
         close_handle(m, h);
         dos_ok(c);
         return 1;
@@ -654,6 +675,7 @@ int dos_int21(machine_t *m)
         free(tmp);
         c->r[R_AX] = (uint16_t)got;
         transfer_cost(m, (uint32_t)got);
+        t386_file(m, T386_FILE_READ_CALL + t386_bytes((uint32_t)got));
         dos_ok(c);
         return 1;
     }
@@ -691,6 +713,14 @@ int dos_int21(machine_t *m)
         free(tmp);
         c->r[R_AX] = (uint16_t)put;
         transfer_cost(m, (uint32_t)put);
+        m->files[h].t386_wrote = 1;
+        if (n) {
+            /* The first data write after boot pays the reference VM's cold disk cost; a truncate does not. */
+            t386_file(m, (m->t386_cold_write ? T386_FILE_WRITE_FIRST : 0) + T386_FILE_WRITE_CALL + t386_bytes((uint32_t)put));
+            m->t386_cold_write = 0;
+        } else {
+            t386_file(m, T386_FILE_TRUNC);
+        }
         dos_ok(c);
         return 1;
     }
@@ -712,6 +742,7 @@ int dos_int21(machine_t *m)
         long off = (long)(int32_t)(((uint32_t)c->r[R_CX] << 16) | c->r[R_DX]);
         int whence = (al == 1) ? SEEK_CUR : (al == 2) ? SEEK_END : SEEK_SET;
         if (fseek(m->files[h].fp, off, whence) != 0) { dos_fail(c, ERR_BAD_FUNCTION); return 1; }
+        t386_file(m, T386_FILE_SEEK);
         long pos = ftell(m->files[h].fp);
         c->r[R_AX] = (uint16_t)(pos & 0xFFFF);
         c->r[R_DX] = (uint16_t)((pos >> 16) & 0xFFFF);
@@ -725,6 +756,7 @@ int dos_int21(machine_t *m)
         FILE *f = dos_open_read(m, dos_basename(dp), NULL, 0);
         if (!f) { dos_fail(c, ERR_FILE_NOT_FOUND); return 1; }
         fclose(f);
+        t386_file(m, T386_FILE_ATTR);
         if (al == 0) c->r[R_CX] = c->r[R_AX] = 0x20;   /* archive; AX too (DOSBox) */
         else c->r[R_AX] = 0x0202;                      /* set: AX destroyed (DOSBox) */
         dos_ok(c);

@@ -48,6 +48,7 @@ typedef struct {
     uint16_t owner;          /* PSP of the process that opened it */
     uint8_t  sft;            /* its system file table entry: what the PSP's handle table holds */
     char     temp[540];      /* fix D11: written here, renamed over path on close ("" = direct) */
+    int      t386_wrote;     /* a write went to it: its close costs the 386 profile's flush */
 } dos_file;
 
 /* Fix D11: a file the program creates in the save directory is written to
@@ -248,6 +249,10 @@ struct machine {
     uint8_t  mouse_back_pixels[256];
     uint32_t mouse_back_address;
     uint16_t mouse_back_text, mouse_text_and, mouse_text_xor;
+
+    /* ---- the 386 profile's disk state (timing386.h, "File services") -- */
+    int      t386_cold_open;             /* the next open is the first since boot */
+    int      t386_cold_write;            /* the next write is the first since boot */
 
     /* ---- pending input, by time ------------------------------------- */
     machine_input in_q[4096];

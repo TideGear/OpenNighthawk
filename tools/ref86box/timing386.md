@@ -141,9 +141,8 @@ not service constants installed in the runtime.
 | Read 32,768 bytes | 361,095 | 10.83 |
 | Close | 1,800 | 0.054 |
 
-The cold/warm distinction needs a model, rather than one delay per open. Our
-386 profile still has no file-service charge. The private probe, raw logs,
-and local comparison are under `D:/f117-gate/p1-dos-probe/`; see handoff.md.
+The cold/warm distinction is modelled as described under "File services" below.
+The private probes, raw logs and comparison are under `D:/f117-gate/p1-dos-probe/`.
 An extended wildcard FCB volume-label search measured 21,300-21,604 cycles
 (about 0.65 ms), returning AL=FF (no label). Its direct cost is small; our
 DOSBox-style model instead supplies C_DRIVE/AL=0. START's expected name is
@@ -154,12 +153,77 @@ Creating, writing and closing a private 802-byte TIMING.BIN (the roster's
 size) shows a larger cold cost: first write 10,055,261 cycles (301.66 ms),
 later writes 19,582 (0.587 ms), all returning 802 with CF clear. First create
 610,313 cycles, second 858,306, then 93,949; first close 123,432, then 47,424.
-Initial allocation and DOS caching deserve checking against START's exact
-file-operation sequence; a constant per-write delay would miss this pattern.
 A 512+290-byte split gives 10,052,946 cycles for the first 512, 5,251 for
 the following 290; later 512-byte writes cost 17,267 (clean exit). Splitting
 the write does not double its cold cost. This FAT16 disk has four sectors
-per cluster. The exact START workload remains to be traced.
+per cluster.
+
+### File services in the 386 profile (9 Oct 2026)
+
+The profile charges each file call at the call, with interrupts held, as the
+video services are (`src/machine/dos_files.c` `t386_file`; constants
+`T386_FILE_*` in `src/cpu/timing386.h`). Nothing is charged with the profile
+off. Each cost below is in cycles at 33.333 MHz.
+
+START's ROSTER.FIL sequence, from the `roster_edit` route with
+`F117R_TRACE_FILES=1`: the read phase is open read-only, get attributes, read
+512, read 512, close; the save is open read-write, get attributes, a zero-length
+write (the truncate), write 512, write 290, close. The probe
+(`D:/f117-gate/p1-dos-probe/roster.py`) runs that sequence on the reference VM
+twice in one boot:
+
+| call | cold (first pass) | warm (second) |
+|---|---:|---:|
+| open read-only | 429,202 | 657,617 |
+| get attributes | 44,402 | 44,402 |
+| read 512 | 155,974 | 79,605 |
+| read 290 (second 512 read) | 80,471 | 4,159 |
+| close read-only | 1,800 | 1,800 |
+| open read-write | 46,425 | 46,425 |
+| zero-length write | 4,249 | 4,249 |
+| write 512 | 9,863,479 | 224,577 |
+| write 290 | 5,251 | 5,251 |
+| close written | 123,428 | 66,642 |
+
+The cold write is the first data write after boot: 9.86 M cycles (296 ms),
+the same as the create probe's 10.06 M. Its mechanism is not located (it is
+the same on the 1989 drive preset, 9.47 M, so it is not the drive's seek
+model). The 1989_3500rpm preset (`hdd_01_speed`), run on the same sequence,
+costs more on every call: warm open 3.56 M, warm read 512 1.10 M, close
+written 5.08 M (the flush). It is a period-drive experiment, not the reference;
+which drive the owner's machine had is unknown.
+
+The model, fitted to those measurements (reads checked at 512, 4,096, 16,384
+and 32,768 bytes; writes at 290 and 512 bytes):
+
+| call | charge |
+|---|---|
+| open (AH=3Dh, 3Ch) | 50,145, plus 460,000 for the first open after boot |
+| get attributes (AH=43h) | 44,402 |
+| seek (AH=42h) | 1,114 |
+| read (AH=3Fh) | 74,090 + 8.76 cycles a byte transferred |
+| write (AH=40h), n > 0 | 12,000 + 8.76 cycles a byte, plus 9,800,000 for the first one after boot |
+| zero-length write | 4,249 |
+| close, read only | 1,800 |
+| close, written | 60,000 |
+
+A second read of a sector the DOS buffer still holds costs about 4,000 cycles
+in the probe; the model does not track DOS's buffers, so it charges the full
+read call there (about 2.3 ms each). The cold write is charged once per boot.
+
+Result on the MS-DOS 5.00 reference (`frames386.py`, the intro against the same
+86Box run, A/B with the model's charge switched off):
+
+| | drift at the end | exact pictures | roster step | verdict |
+|---|---:|---:|---:|---|
+| without file charges | +642.5 ms | 1,238 of 1,277 | +623 ms | FAIL |
+| with file charges | +228.7 ms | 1,238 of 1,277 | +295 ms | FAIL |
+
+The remaining drift is in two places. The roster step still runs +295 ms
+(this is about one cold write; the palette and requestr reads that precede it
+are charged, and the cause is not yet separated), and the program loads
+(EXEC of PLAYER and DSWAP and the overlays) are not charged yet: +43 ms at
+MPS_LOGO's exit and +48 ms at PLAYER's exit. The intro's verdict remains FAIL.
 - READ MULTIPLE 2,000 us before the first data, WRITE 2,000 us before the
   first DRQ then 96.08 us a sector; SEEK and recalibrate 1,000 us.
 
@@ -271,7 +335,7 @@ bytes, +130 ms with 1 buffer, +116 ms with 20) is about 5 ms a DOS read.
 On the MS-DOS 5.00 VM with MOUSE.COM, the default since 9 Oct 2026 (ours keeps
 its INT 33h driver, as the VM loads one): **FAIL** on the same terms, 1,238 of
 1,277 picture changes exact in order (991 of the 992 held two frames or more),
-272 of them on the same frame, end drift +642.5 ms (+45 frames) in 15 steps of
+272 of them on the same frame, end drift +642.5 ms (+45 frames, before the file charges; with them +228.7 ms, "File services") in 15 steps of
 two frames or more; `vmt386dos500h` (HIMEM, DOS=HIGH) 1,237 of 1,273, +728.1 ms.
 START's `ROSTER.FIL` step is about +630 ms there (+886 ms under the FreeDOS bare
 boot's one buffer); the HIMEM VM falls 86 ms further behind at PLAYER's load
