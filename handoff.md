@@ -9,6 +9,64 @@ checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 more than once, what it costs). State as of 10 October 2026.
 Earlier session logs are in `git log -p handoff.md`.
 
+## Phase 2 aircraft activate/destroy checkpoint (10 Oct, 14:30 PDT)
+
+The two Phase 2 candidates this handoff left prepared-but-untested
+(`ai_activation_candidate.c` at VGAME 0x066F8, `ai_destroy_candidate.c` at
+0x072D8) are now matched, verified and committed/pushed. Both were
+independently cross-checked instruction-by-instruction against a freshly
+regenerated `matched_draft.py` draft before trusting them (every opcode,
+operand and branch direction agreed); activate's callees are all
+already-matched, driver-free routines (cockpit message, target name, string
+copy/concat), so it needed no harness change. Destroy calls the sound-priority
+gate (`0xD3F9`) as a callee, and that routine's own far call to the
+uninitialised driver thunk at `0xD414` is only stubbed to RETF when
+`0xD3F9` itself is the routine under test, not when it is reached as a
+callee from elsewhere - so every one of 4,000 random states ran off into the
+thunk and 0 were comparable until `0x072D8` was added to
+`stub_driver_thunks`'s VGAME ip-list in `tests/func_lockstep.c` (this matches
+what the prior handoff had already anticipated: "they need returning driver
+thunks in func_lockstep for 66F8/72D8 too"; in fact only destroy needed it).
+After the fix: three seeds (default, 0xC0FFEE, 0xDEADBEEF) each pass both
+routines cleanly (about 9,200-9,250 comparable states a seed, 0 mismatching),
+and the full 770-routine suite passes (2,505,075 states compared, 0
+mismatching). Required full gate PASSED (`D:/f117-gate/gate-ai-slots.log`,
+exit 0): 17/17 unit tests, 35/35 routes IDENTICAL, both 5,718,912-state
+instruction profiles zero mismatches, all three matched-routine seeds zero
+mismatches, every routes-only routine ran, none overran. Scoreboard refreshed
+(770 addresses matched, 765 of 1,535 census functions, 64,988 of 179,213
+bytes; P2 39.45%, All 71.67%). `docs/architecture.md` and `docs/roadmap.md`
+updated in the same commit. No further Phase 2 candidates are staged; next
+session should pick a fresh lead the same way (`matched_draft.py`, cross-check
+against the Reimp's data addresses, lockstep at 2-3 seeds, full gate).
+
+The owner then asked what Phase 1 reaching 100% means, and separately asked
+me to think hard about what in Phase 1 is doubtable and how to tackle it. My
+answer (reproduced here so it isn't lost): parity is proven only against
+emulators (GOG DOSBox, DOSBox-X, 86Box), never real period hardware - the
+single biggest standing gap, not independently fixable by an agent, already
+correctly scoped as "second reference, not the target" in standing project
+guidance. Concrete, addressable residuals: (1) only 4 of 6 AdLib channels are
+confirmed matching 86Box's captured audio in `docs/roadmap.md`'s own text -
+the other two are never mentioned as matching or mismatching, which reads
+like a quietly unresolved question rather than a closed one; (2) 3 of 1,332
+DOSBox picture comparisons and 1 of 86 86Box picture comparisons are
+unmatched and explained as capture-phase/mid-load timing artifacts, a
+judgment call never cross-checked with a second independent capture; (3) the
+EXEC file-load timing model is a real file's measured cost for only three
+named files (PLAYER.EXE/DSWAP.EXE/START.EXE), a coarse 3-bucket synthetic-size
+model for every other load, even though the same investigation proved
+size-based costing is wrong in general. The owner asked me to tackle these
+"when you can." Priority order: the AdLib 2-channel gap first (most
+actionable - needs root-causing, not just re-asserting "4 of 6"), then one
+more independent capture each for the 3-picture and 1-picture residuals to
+see if the same frames keep landing on the same side (evidence instead of
+assumption). Not started this session (the gate above took the remaining
+heavy-job window); pick up here first next session, using `tools/ref86box/`
+and the AdLib/picture comparison tools already in `tools/pc_parity.py` and
+`tools/video_compare.py`. Don't stack this alongside another heavy job (past
+sessions pinned the CPU running the gate plus three emulators at once).
+
 ## Phase 2 collision/sound/scene checkpoint (10 Oct, 13:37 PDT)
 
 Code checkpoint a18b771 is committed and pushed; origin/master and local

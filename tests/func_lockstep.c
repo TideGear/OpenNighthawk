@@ -268,7 +268,7 @@ static void stub_driver_thunks(uint8_t *pristine, uint32_t at, const rc_module *
 {
     if (strcmp(m->name, "START.EXE") && strcmp(m->name, "END.EXE") &&
         (strcmp(m->name, "VGAME.EXE") || (o->ip != 0xB171 && o->ip != 0xD6DD && o->ip != 0x4777 &&
-                                       o->ip != 0xD3F9 && o->ip != 0xD87C) || o->seg != 0)) return;
+                                       o->ip != 0xD3F9 && o->ip != 0xD87C && o->ip != 0x72D8) || o->seg != 0)) return;
     for (uint32_t i = 0; i + 5 <= m->size; i++) {
         if (m->image[i] != 0x9A) continue;
         const uint32_t lin = (uint32_t)(m->image[i + 3] | m->image[i + 4] << 8) * 16u + (uint32_t)(m->image[i + 1] | m->image[i + 2] << 8);

@@ -531,11 +531,17 @@ caught real defects:
   `matched_shadow_stack_alias` keeps that regression in the unit-test step.
 - START and END's uninitialised graphics-driver thunks, and VGAME's when
   checking the marker at `0xB171`, canopy at `0xD6DD`, projectiles at `0x4777`,
-  sound gate at `0xD3F9` and scene finish at `0xD87C`, are replaced with
-  RETF on both sides of the check, so drawing wrappers can return and their
-  surrounding work is compared. The marker checks rise from 358 to 4,857
-  comparisons per 4,000-state fixed-seed run, including partial-run checks;
-  17 states are skipped. The routes still check the real driver.
+  sound gate at `0xD3F9`, scene finish at `0xD87C` and destroy at `0x72D8`, are
+  replaced with RETF on both sides of the check, so drawing wrappers can
+  return and their surrounding work is compared. The marker checks rise from
+  358 to 4,857 comparisons per 4,000-state fixed-seed run, including
+  partial-run checks; 17 states are skipped. The routes still check the real
+  driver. `vgame_ai_destroy` (`0x72D8`) calls into the sound gate's own
+  far-called driver thunk (`0xD414`) as a callee, not as the routine under
+  test, so it needed its own entry here too: without it every random state
+  ran off into the uninitialised thunk and 0 of 4,000 were comparable;
+  `vgame_ai_activate` (`0x66F8`) calls only already-matched, driver-free
+  callees and needed no entry.
   END's DAC-loader states clear the BIOS gray-scale flag that overlaps the
   module image at segment 0; some START map-caption states plant the exact
   argument kinds 64h and 65h. `--only MODULE:IP,...` selects routines for

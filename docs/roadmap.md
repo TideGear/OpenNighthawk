@@ -201,7 +201,7 @@ not the recompilation:
       Reimp's mapping; matched functions replacing translations one at a time,
       each held to the same parity checks. `tools/reimp_names.py` joins the
       Reimp's census (1,535 functions) with this project's regions as a private
-      lead list. 768 addresses are matched (763 of the census functions, 64,423 of
+      lead list. 770 addresses are matched (765 of the census functions, 64,988 of
       179,213 bytes); the table is at the end of `src/matched/matched.c` and the
       method is in [architecture.md](architecture.md#matched-routines-phase-2).
       The batches of 8-9 Oct add 37 + 34 + 47 VGAME, 34 + 40 + 45 START/END and 21 + 44 + 64
@@ -236,6 +236,22 @@ not the recompilation:
       view matrix. Two 4,000-state seeds compare 7,763/7,777 states with zero
       mismatches, including partial-run checks. Driver thunks return on both
       sides in the random-state checks; routes retain the real drivers.
+      Aircraft activation (`0x066F8`) and destruction (`0x072D8`) are now
+      matched: activate places a 36-byte slot at its target (a high close
+      approach for runways, a low approach otherwise), zero-extending map
+      coordinates, scaling the countdown by S, and announcing the scramble
+      except for reserve slots; destroy marks a slot destroyed once, updates
+      the type's kill tally and active-unit count, clears a matching lock,
+      queues the blast/score event, masks a zero-endurance slot's flags to
+      01C1h, and always announces (even an already-marked slot). Destroy
+      calls the sound-priority gate as a callee, which reaches its own
+      uninitialised driver thunk (`0xD414`) even though sound priority itself
+      is not the routine under test; the random-state harness needed its own
+      entry for `0x072D8`, without which every one of 4,000 states ran off
+      into the thunk and none were comparable (`architecture.md`). Three
+      4,000-state seeds pass both routines with zero mismatches (about 9,200
+      comparable states a seed); the full 770-routine suite passes at
+      2,505,075 comparisons, zero mismatching.
 
 ## Phase 3 - fixes and enhancements (switchable)
 
