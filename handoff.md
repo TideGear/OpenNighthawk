@@ -11,6 +11,10 @@ Earlier session logs are in `git log -p handoff.md`.
 
 ## Phase 2 collision/sound/scene checkpoint (10 Oct, 13:37 PDT)
 
+Code checkpoint a18b771 is committed and pushed; origin/master and local
+master agree. Final verification found a clean tree and no gate, probe or
+reference-emulator processes. This handoff update follows the passing gate.
+
 Profile-aware references checkpoint bbb6337 is committed and pushed; full
 gate PASS596sec, all35routes, bothinstructionprofiles, all3matchedseeds,
 17selected CTests, routes-only coverage and event limits. Phase1 complete.
