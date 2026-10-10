@@ -9,7 +9,7 @@ checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 more than once, what it costs). State as of 10 October 2026.
 Earlier session logs are in `git log -p handoff.md`.
 
-## What to do first
+## Previous session checkpoint
 
 **This batch (9-10 Oct): four independent pieces of work, three committed and
 pushed, one left as an investigated-but-unwritten lead.** The owner asked for
@@ -24,6 +24,12 @@ decline) that this session chose not to commit without a lockstep pass, given
 the time left. See item 4.
 
 ## Current top priority: CPU speed and enemy effectiveness (10 Oct investigation)
+
+Latest code checkpoint: `5fcdd04`, committed and pushed to `origin/master`.
+The full gate and all private cohorts/probes below are complete; no driver
+is still running. Continue with the underflow repair below before the
+broader roadmap. All generated code, game files and experiment output
+remain outside this repository.
 
 The owner wants this resolved before continuing the roadmap goal, and asked
 for both a Reimp check and an independent investigation. This checkpoint
@@ -153,7 +159,7 @@ permanent identity check; an old abandoned value could decay below 36000.
 
 The active goal remains roadmap completion, with the user's condition to
 wrap/commit/push/stop at <=15% five-hour allowance remaining. Local session
-rate-limit telemetry last reported 83% used (17% remaining), near the wrap
+rate-limit telemetry last reported 84% used (16% remaining), near the wrap
 threshold. Check fresh telemetry before starting another code/build cycle.
 
 ## What to do first
