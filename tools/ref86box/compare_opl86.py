@@ -3,9 +3,9 @@
 
     py tools/ref86box/compare_opl86.py OURS_opl.log OPL86_log
 
-OURS is an f117run --opl-log (guest clocks at 9 MIPS), the other the 86Box
-log (emulated microseconds). The 86Box board is a 6 MHz 286, slower than the
-model, so absolute times drift (the game's loops, not the PIT, pace parts of
+OURS is an f117run --opl-log (specify --ips for the recorded profile), the
+other the 86Box log (emulated microseconds). The reference is a 386DX/33;
+the legacy DOSBox profile can still differ in timing because game loops pace parts of
 the music) and the writes of the channel that carries pitch bends interleave
 differently. What must hold, and is judged:
 
@@ -43,8 +43,9 @@ def main():
     ap.add_argument("ours")
     ap.add_argument("box")
     ap.add_argument("--prefix", type=int, default=2000)
+    ap.add_argument("--ips", type=int, default=IPS, help="ours' recorded clocks per second (386: 33333333)")
     a = ap.parse_args()
-    ours, box = load(a.ours, IPS), load(a.box, 1_000_000)
+    ours, box = load(a.ours, a.ips), load(a.box, 1_000_000)
     pairs = lambda x: [(r, v) for _, r, v in x]
     n = min(a.prefix, len(ours), len(box))
     prefix_ok = pairs(ours)[:n] == pairs(box)[:n]

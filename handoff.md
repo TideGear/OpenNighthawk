@@ -9,6 +9,39 @@ checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 more than once, what it costs). State as of 10 October 2026.
 Earlier session logs are in `git log -p handoff.md`.
 
+## Profile-aware references checkpoint (10 Oct, 13:20 PDT)
+
+CPU/combat checkpoint 05bdd27 is committed and pushed. Investigation of the
+remaining Phase 1 item found a reference harness error, not a CPU charge
+defect: pc_parity fed its default 9 MIPS capture into the 386 held-picture
+test. Separate recorded 386 capture now supplies 86Box pictures, AdLib and
+timing. Held pictures pair by exact pixel hash in order; all local holds
+must match. Screen-off gaps and the final censored reference hold are
+handled explicitly. Limits unchanged. Eight new regression tests pass,
+alongside nine threat-profile tests and six parity-diagnostic tests; CI
+runs the new reference tests and the threat tests.
+
+Fresh full references PASS, exit0, D:/f117-gate/pc-parity-profile-aware:
+GOG1329 exact, no multi-sample misses, 57ms drift; DOSBox-X1237 exact,
+three multi-sample misses,143ms drift; both sound checks pass. GOG22840
+identical AdLib writes, -14..+1ms. 86Box85 exact/one close/no unmatched,
+first2000 AdLib writes and four channels identical. All21 local held
+pictures match21of22reference, maxduration.214022sec/startdrift1.112912sec.
+Both roster saves802bytes/zero differences. Finalhangar6.472724vs6.491997sec
+(19.273ms), instead of the mixed-profile .371sec discrepancy. Phase1 item
+complete; progress updated, broaderroadmap remains active. No runtime changes.
+
+Required full gate PASS (gate-profile-aware.log/result.txt; exact result
+gate-profile-aware-result.txt):17selected CTests,35IDENTICAL route pairs,
+both5,718,912-state instruction profiles zero, all three765-address matched
+seeds zero; every routes-only routine ran, none overran. Coverage reused its
+verified unchanged-input cache;34interpreter sessions reused. Commit and
+push this checkpoint together, then continue Phase2 understood code. Keep
+0x00FFFFFF affinity, no agents authorized, monitor this thread's rate_limits;
+wrap and commit+push when 5h usage reaches85%. Last observed50% at13:18PDT.
+Full references log pc-parity-profile-aware-console.log/result.txt (exact
+result name pc-parity-profile-aware-result.txt), report86box-timing.json.
+
 ## Controlled CPU/combat checkpoint (10 Oct, 13:07 PDT; full gate PASS)
 
 The owner reset usage and resumed. HEAD remains 30f463d, previously pushed

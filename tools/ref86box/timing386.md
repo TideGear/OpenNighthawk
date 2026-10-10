@@ -515,5 +515,27 @@ enables them inside INT 21h. Charged at the INT, the intro's 689,000 AH=0Bh
 polls held the music driver's interrupts back and its scenes ran up to 140 ms
 long; through the loop they hold 86Box's pace to a frame. The DAC block's
 split between a fixed part and a part per colour is estimated (one size
-measured). Open: the mouse driver (86Box's VM loads none), file reads and
-writes, program starts and overlay loads.
+measured). The earlier open mouse and file-service work is covered by the
+measurements above, including EXEC and overlay loads.
+
+## Corrected reference harness (10 October 2026)
+
+The remaining 0.371-second held-picture discrepancy was measured against
+the default 9 MIPS DOSBox-profile capture, not `--timing 386`. It is not
+evidence of a 386 cycle-charge defect. `pc_parity.py` now captures the 386
+profile separately for 86Box pictures, AdLib and scene timing; DOSBox checks
+keep their own profile. `compare_timing86.py` requires recorded 386 settings,
+matches held pictures by their 86Box pixel hash in order, and requires every
+local held picture to match. Missing reference scanouts delimit screen-off
+gaps; the final unclosed reference picture is censored by the capture stop.
+Neither duration nor drift limits have been loosened.
+
+Fresh full references in `D:/f117-gate/pc-parity-profile-aware` pass: 85 exact
+and one close 86Box picture, sound, both 802-byte roster saves, and all 21
+local held pictures matched among 22 reference holds. Maximum duration
+difference is 0.214022 s (limit 0.35), start drift 1.112912 s (limit 2.2).
+The final stationary PLAYER hangar lasts 6.472724 s locally and 6.491997 s
+on 86Box: 19.273 ms apart. The old reference duration included 57 ms with
+the screen off. Eight tests in `tests/test_reference_timing.py` guard profile
+identity, content/order matching, pixel hashing, duplicate frames, screen-off
+gaps, censored endpoints, missing scenes and timing limits.

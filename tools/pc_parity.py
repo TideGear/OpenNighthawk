@@ -140,6 +140,13 @@ def main():
     if not a.no_gog:
         job("gog", lambda: video_compare(a, a.out / "gog.log", ["--against", str(a.gog_reference)]))
     if not a.no_86box:
+        def machine386():
+            out = a.out / "machine386"
+            rc = run([PY, str(HERE / "ref86box" / "frames386.py"), str(out), "--only", "ours",
+                      "--ours-mouse", "--opl", "--data", a.data, "--seconds", str(a.seconds)],
+                     a.out / "machine386.log")
+            return dict(rc=rc, run=str(out / "ours"))
+        job("machine386", machine386)
         def box():
             cap = a.out / "86box"
             # three independent 86Box runs at once: each starts and stops only its own process (its
@@ -217,17 +224,16 @@ def main():
             failures.append("gog music")
     if "86box" in results:
         r = results["86box"]
-        shots = None
-        if "dosbox-x" in results and results["dosbox-x"].get("run"):
-            shots = Path(results["dosbox-x"]["run"]) / "shots"
-        elif "gog" in results and results["gog"].get("run"):
-            shots = Path(results["gog"]["run"]) / "shots"
+        measured386 = results.get("machine386", {})
+        ours386 = Path(measured386["run"]) if measured386.get("rc") == 0 else None
+        shots = ours386 / "shots" if ours386 else None
         if "error" in r or r["rc"] != 0 or shots is None:
             failures.append("86box")
             print("  86box     ERROR capture or comparison pictures missing (%s)" % (r.get("error") or r.get("rc")))
         else:
             log = a.out / "86box-compare.log"
-            rc = run([PY, str(HERE / "ref86box" / "compare_intro.py"), r["cap"], str(shots)], log)
+            rc = run([PY, str(HERE / "ref86box" / "compare_intro.py"), r["cap"], str(shots),
+                      "--ips", "33333333"], log)
             text = Path(log).read_text(errors="replace")
             m = re.search(r"graphics pictures (\d+): exact (\d+), close (\d+), unmatched (\d+); backwards matches (\d+)", text)
             if not m:
@@ -242,25 +248,28 @@ def main():
                     print("            listed but now exact (remove from expected_misses86.txt): %s" % ", ".join(stale))
                 if not ok:
                     failures.append("86box")
-        ours_log = next((Path(results[n]["run"]) / "opl.log" for n in ("dosbox-x", "gog")
-                         if n in results and results[n].get("run")), None)
+        ours_log = ours386 / "opl.log" if ours386 else None
         if r.get("sound_rc") != 0 or ours_log is None or not Path(r["opl"]).exists():
             failures.append("86box sound")
             print("  sound 86box    ERROR no AdLib log (sound86.py rc %s, see %s)" % (r.get("sound_rc"), a.out / "86box-sound-run.log"))
         else:
             slog = a.out / "86box-sound.log"
-            src = run([PY, str(HERE / "ref86box" / "compare_opl86.py"), str(ours_log), r["opl"]], slog)
+            src = run([PY, str(HERE / "ref86box" / "compare_opl86.py"), str(ours_log), r["opl"],
+                       "--ips", "33333333"], slog)
             print("  " + (Path(slog).read_text(errors="replace").strip() or "sound 86box ERROR"))
             if src != 0:
                 failures.append("86box sound")
-        ours_run = next((Path(results[n]["run"]) for n in ("dosbox-x", "gog") if n in results and results[n].get("run")), None)
-        if ours_run is not None and (a.out / "86box-sound" / "trace" / "frames.csv").exists():
+        if ours386 is not None and (a.out / "86box-sound" / "trace" / "frames.csv").exists():
             tlog = a.out / "86box-timing.log"
-            trc = run([PY, str(HERE / "ref86box" / "compare_timing86.py"), str(ours_run / "comparison.json"),
-                       str(a.out / "86box-sound" / "trace" / "frames.csv")], tlog)
+            trc = run([PY, str(HERE / "ref86box" / "compare_timing86.py"), str(ours386),
+                       str(a.out / "86box-sound" / "trace" / "frames.csv"),
+                       "--json", str(a.out / "86box-timing.json")], tlog)
             print("  " + (Path(tlog).read_text(errors="replace").strip() or "timing 86box ERROR"))
             if trc != 0:
                 failures.append("86box timing")
+        else:
+            print("  timing 86box ERROR missing 386 capture or reference frame trace")
+            failures.append("86box timing")
     saves = [("save-dbx", results.get("save-dbx")), ("86box save", results.get("86box", {}).get("save"))]
     for name, r in saves:
         if not r:

@@ -1,73 +1,141 @@
 #!/usr/bin/env python3
-"""compare_timing86.py - when the intro's scenes change, this machine against 86Box.
+"""Compare held pictures from an actual 386 capture with 86Box's trace.
 
-    py tools/ref86box/compare_timing86.py OURS_comparison.json 86BOX_frames.csv
+    py tools/ref86box/compare_timing86.py OURS_386_RUN 86BOX_frames.csv [--json REPORT]
 
-OURS is the comparison.json of a video_compare.py run (a picture list with
-times), the other the frames.csv of a traced 86Box run (trace_86box.ps1; every
-displayed frame with its emulated microseconds and a hash). Both are reduced to
-the pictures that stay on screen for a second or more (the logo and title
-cards, the credits' pages) with their start times; 86Box's list starts at its
-first mode-13h frame, ours at the first picture, so the first pair fixes the
-offset. Pairs are matched in order by duration; judged: how many are paired,
-the largest difference in a scene's duration, and the largest drift of a
-start time against the first pair. Exit 0 when within the limits.
+OURS is frames386.py's ours directory (settings, frame log and changed PPMs).
+Its command must select --timing 386. Pair held pictures by content, never
+by duration. Missing reference scanouts are screen-off gaps, not hold time.
 """
+import argparse
 import csv
+import hashlib
 import json
-import sys
+from pathlib import Path
 
-# Measured 7 Oct 2026 on the 386DX/33: 19 paired, 0.23 s, 1.80 s. The drift is made in the loading phases
-# (+0.57 s at the title pictures, +0.80 s in the credits' panning): the IBM VGA's 8-bit bus makes the
-# second step and the disk path 0.24 s (build_86box.md). The 6 MHz 286 drifted 8.35 s, a 25 MHz 286 2.45 s.
+import numpy as np
+from PIL import Image
+
+CLOCK = 33_333_333
+FRAME_SECONDS = 359200 / 25175000
+# Retain the existing reference limits; correct the profile and matching.
 LIMITS = dict(min_paired=17, max_duration_diff=0.35, max_drift=2.2)
 
 
-def ours_scenes(path):
-    d = json.load(open(path))
-    return [(s["time"], s["end"] - s["time"]) for s in d["ours"] if s["end"] - s["time"] >= 1.0]
+def picture_hash(path):
+    """86box-trace.patch's FNV64 over doubled BGRX pixels (X=FF).
+
+    Recover the original six DAC bits, expand as 86Box does, and reconstruct
+    two equal pixels per uint64 and two scanlines per source row.
+    """
+    with Image.open(path) as image:
+        if image.size != (320, 200):
+            raise ValueError(f"not a mode-13h picture: {path}")
+        rgb = np.asarray(image.convert("RGB"), dtype=np.uint32) >> 2
+    rgb = rgb * 255 // 63
+    pixels = (rgb[:, :, 0] << 16) | (rgb[:, :, 1] << 8) | rgb[:, :, 2] | np.uint32(0xFF000000)
+    value = 1469598103934665603
+    for row in pixels:
+        for _ in range(2):
+            for pixel in row:
+                p = int(pixel)
+                value = ((value ^ (p | (p << 32))) * 1099511628211) & 0xFFFFFFFFFFFFFFFF
+    return f"{value:016x}"
+
+
+def ours_scenes(run):
+    run = Path(run)
+    if not run.is_dir():
+        raise ValueError("a frames386.py capture directory is required; DOSBox comparison.json is a different profile")
+    command = json.loads((run / "settings.json").read_text(encoding="utf-8")).get("command", [])
+    if "--timing" not in command or command[command.index("--timing") + 1:][:1] != ["386"]:
+        raise ValueError("capture did not record --timing 386")
+    if "--ips" in command and command[command.index("--ips") + 1:][:1] != [str(CLOCK)]:
+        raise ValueError("capture uses a different 386 clock")
+    keys = [line.split() for line in (run / "input.log").read_text(encoding="utf-8").splitlines()]
+    key = next((int(p[1]) / CLOCK for p in keys if len(p) == 3 and p[0] == "K" and p[2] == "03"), None)
+    if key is None:
+        raise ValueError("SETUP's final key is missing from the capture")
+    changes, current, token = [], None, None
+    with (run / "frames.csv").open(encoding="utf-8", newline="") as source:
+        for row in csv.DictReader(source):
+            t = int(row["frame_icount"]) / CLOCK
+            if row["written"] == "1" and row["video_mode"] == "19":
+                path = run / "shots" / ("shot_%011d.ppm" % int(row["icount"]))
+                current = (hashlib.sha256(path.read_bytes()).hexdigest(), str(path))
+            new = ("blank", None) if row["blank"] == "1" else current if row["video_mode"] == "19" else ("text", None)
+            if t >= key and (new[0] if new else None) != token:
+                changes.append(dict(time=t, image=new[1] if new else None))
+                token = new[0] if new else None
+    return [dict(time=a["time"], duration=b["time"] - a["time"], image=a["image"], hash=picture_hash(a["image"]))
+            for a, b in zip(changes, changes[1:]) if a["image"] and b["time"] - a["time"] >= 1]
 
 
 def box_scenes(path):
-    out, prev, start, width = [], None, 0.0, ""
-    for frame, _tsc, us, w, _h, h, *_ in csv.reader(open(path)):
-        t = int(us) / 1e6
-        if h != prev:
-            if prev is not None and t - start >= 1.0 and width == "640":
-                out.append((start, t - start))
-            prev, start, width = h, t, w
-    return out
+    groups, previous = [], None
+    with open(path, encoding="utf-8", newline="") as source:
+        for row in csv.reader(source):
+            t = int(row[2]) / 1_000_000
+            digest = row[5] if row[3:5] == ["640", "400"] else "text"
+            if groups and t - groups[-1]["last"] > 1.5 * FRAME_SECONDS:
+                groups[-1]["end"] = groups[-1]["last"] + FRAME_SECONDS
+                previous = None
+            if digest != previous:
+                if groups and "end" not in groups[-1]:
+                    groups[-1]["end"] = t
+                groups.append(dict(time=t, last=t, hash=digest))
+                previous = digest
+            else:
+                groups[-1]["last"] = t
+    # The final open picture is censored by the capture's stop.
+    return [dict(time=g["time"], duration=g["end"] - g["time"], hash=g["hash"])
+            for g in groups if "end" in g and g["end"] - g["time"] >= 1 and g["hash"] != "text"]
 
 
 def pair(ours, box):
-    """Greedy in-order pairs whose durations agree within a quarter second plus 15%."""
-    pairs, j = [], 0
-    off = None
-    for s, d in box:
-        for k in range(j, min(j + 3, len(ours))):
-            if abs(ours[k][1] - d) <= 0.25 + 0.15 * d:
-                if off is None:
-                    off = s - ours[k][0]
-                pairs.append((ours[k], (s, d)))
-                j = k + 1
-                break
-    return pairs, off
+    pairs, next_box = [], 0
+    for scene in ours:
+        match = next((i for i in range(next_box, len(box)) if box[i]["hash"] == scene["hash"]), None)
+        if match is not None:
+            pairs.append((scene, box[match]))
+            next_box = match + 1
+    return pairs
+
+
+def judge(ours, box):
+    pairs = pair(ours, box)
+    duration = drift = None
+    if pairs:
+        offset = pairs[0][1]["time"] - pairs[0][0]["time"]
+        duration = max(abs(o["duration"] - b["duration"]) for o, b in pairs)
+        drift = max(abs((b["time"] - o["time"]) - offset) for o, b in pairs)
+    ok = (len(pairs) == len(ours) and len(pairs) >= LIMITS["min_paired"]
+          and duration <= LIMITS["max_duration_diff"] and drift <= LIMITS["max_drift"])
+    return dict(pass_=ok, paired=len(pairs), ours=len(ours), reference=len(box),
+                max_duration_diff=duration, max_start_drift=drift, pairs=pairs)
 
 
 def main():
-    ours, box = ours_scenes(sys.argv[1]), box_scenes(sys.argv[2])
-    pairs, off = pair(ours, box)
-    if not pairs:
-        print("timing 86box   FAIL  no scenes paired (ours %d, 86Box %d)" % (len(ours), len(box)))
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("ours")
+    parser.add_argument("box")
+    parser.add_argument("--json", dest="report")
+    args = parser.parse_args()
+    try:
+        result = judge(ours_scenes(args.ours), box_scenes(args.box))
+    except (OSError, ValueError, KeyError) as error:
+        print(f"timing 86box 386 FAIL  {error}")
         return 1
-    dur = max(abs(o[1] - b[1]) for o, b in pairs)
-    drift = max(abs((b[0] - o[0]) - off) for o, b in pairs)
-    ok = len(pairs) >= LIMITS["min_paired"] and dur <= LIMITS["max_duration_diff"] and drift <= LIMITS["max_drift"]
-    print("timing 86box   %s  %d of %d scenes (ours %d) paired (need %d), longest-scene duration difference %.2f s (max %.2f), "
-          "start drift %.2f s (max %.1f)" % ("PASS" if ok else "FAIL", len(pairs), len(box), len(ours), LIMITS["min_paired"],
-                                           dur, LIMITS["max_duration_diff"], drift, LIMITS["max_drift"]))
-    return 0 if ok else 1
+    if args.report:
+        Path(args.report).write_text(json.dumps(result, indent=1), encoding="utf-8")
+    duration = "%.3f" % result["max_duration_diff"] if result["paired"] else "unknown"
+    drift = "%.3f" % result["max_start_drift"] if result["paired"] else "unknown"
+    print("timing 86box 386 %s  %d of %d held pictures paired by content (ours %d, need %d); "
+          "duration difference %s s (max %.2f), start drift %s s (max %.1f)" % (
+              "PASS" if result["pass_"] else "FAIL", result["paired"], result["reference"], result["ours"],
+              LIMITS["min_paired"], duration, LIMITS["max_duration_diff"], drift, LIMITS["max_drift"]))
+    return 0 if result["pass_"] else 1
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())

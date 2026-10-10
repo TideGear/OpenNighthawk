@@ -96,9 +96,7 @@ make (Phase 4).
   [build_86box.md](../tools/ref86box/build_86box.md#silent-speech-waveform-reference).
   Listening remains Phase 4; OPL mixer sample equality remains out of scope.
 
-### Open
-
-- [ ] **A 386DX/33 timing profile** (decided 8 Oct 2026). The game steps its
+- **A 386DX/33 timing profile** (completed 10 Oct 2026). The game steps its
       flight model by its own frame rate ([0x368E]) and reads the stick once a
       frame, so the same inputs play out a little differently on a faster or
       slower PC: this is what makes the recompilation play like the original on
@@ -141,10 +139,15 @@ make (Phase 4).
       sizes) to +0.04 s (real positions), the same 1,237 of 1,275 pictures
       exact throughout. Reference parity: pictures, music and the picture
       check now all pass (p037's one close picture is a confirmed mid-fade
-      capture-timing artifact, not a defect); one 86Box check still fails, the
-      longest scene 0.02 s over its 0.35 s limit - a different held picture
-      than the measured loads, unmoved by either EXEC charge; identifying what
-      that picture is remains open. Both engines now charge the same profile: 5,713,152 instruction
+      capture-timing artifact). The last alleged timing failure was a harness
+      error: it compared the default 9 MIPS capture with 86Box. The retained
+      check now requires a separate recorded 386 capture and pairs held
+      pictures by content. Fresh references pass all checks: 21 of 21 held
+      pictures match, maximum duration difference 0.214 s (limit 0.35), start
+      drift 1.113 s (limit 2.2). The final hangar differs by 19 ms after
+      excluding reference screen-off gaps. Eight regressions reject wrong
+      profiles, wrong pictures, missing holds and excessive duration/drift.
+      Both engines now charge the same profile: 5,713,152 instruction
       comparisons each in RAM and with code in VRAM, no differences; paired
       flight sessions have 574 identical state checkpoints and stick responses
       (`stick_response.py --machine machine386 --engine interp|recomp`).

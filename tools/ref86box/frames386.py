@@ -108,8 +108,12 @@ def run_box(out, profile, seconds, mouse_driver=None):
               open(os.path.join(out, "settings.json"), "w"), indent=1)
 
 
-def run_ours(out, data, exe, seconds, no_mouse=False):
+def run_ours(out, data, exe, seconds, no_mouse=False, opl=False):
     """f117run --timing 386: OUT/shots (changed pictures), OUT/frames.csv, OUT/input.log."""
+    root = os.path.realpath(out)
+    for name in ("game", "shots", "save"):
+        if os.path.dirname(os.path.realpath(os.path.join(out, name))) != root:
+            raise ValueError("capture cleanup target leaves its output directory")
     game = os.path.join(out, "game")
     shutil.rmtree(game, ignore_errors=True)
     os.makedirs(game)
@@ -132,6 +136,8 @@ def run_ours(out, data, exe, seconds, no_mouse=False):
            "--record", os.path.join(out, "input.log"),
            "--shots-vga", os.path.join(shots, "shot"), "--shots-changed",
            "--frame-log", os.path.join(out, "frames.csv")] + (["--no-mouse"] if no_mouse else [])
+    if opl:
+        cmd += ["--opl-log", os.path.join(out, "opl.log")]
     r = subprocess.run(cmd, capture_output=True, text=True)
     open(os.path.join(out, "runner.txt"), "w").write(" ".join(cmd) + "\n" + r.stdout + r.stderr)
     if r.returncode:
@@ -392,6 +398,7 @@ def main():
     ap.add_argument("--exe", default=os.path.join(ROOT, "build", "f117run.exe"))
     ap.add_argument("--mouse-driver", help="86Box: put this CTMOUSE.EXE on the disk and load it (mouse_type msserial)")
     ap.add_argument("--only", choices=("box", "ours"), help="make that run only (two can go side by side), no comparison")
+    ap.add_argument("--opl", action="store_true", help="also record ours/opl.log for reference sound checks")
     ap.add_argument("--ours-mouse", action="store_true",
                     help="ours keeps its INT 33h driver although 86Box's run had none (by default ours matches 86Box's run)")
     a = ap.parse_args()
@@ -407,7 +414,8 @@ def main():
         box_mouse = os.path.exists(box_set) and json.load(open(box_set)).get("mouse_driver")
         # the VM loads no mouse driver unless asked (mouse_type none, probe86.bare_boot): INT 33h then reaches
         # the BIOS's dummy handler, which f117run --no-mouse answers as
-        run_ours(ours_dir, a.data, os.path.abspath(a.exe), a.seconds, no_mouse=not (box_mouse or a.ours_mouse))
+        run_ours(ours_dir, a.data, os.path.abspath(a.exe), a.seconds,
+                 no_mouse=not (box_mouse or a.ours_mouse), opl=a.opl)
     if a.only:
         return 0
     box, box_key, box_end = box_pictures(os.path.join(box_dir, "trace"))

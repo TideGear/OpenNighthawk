@@ -98,6 +98,10 @@ jobs:
         run: python tests/test_career_checks.py
       - name: Reference observer and audio verdict regressions
         run: python tests/test_parity_diagnostics.py
+      - name: Reference timing profile and picture identity regressions
+        run: python tests/test_reference_timing.py
+      - name: Threat pilot and combat pairing regressions
+        run: python tests/test_threat_profile.py
       - name: Recompiler override-site regressions
         run: python tests/test_recompiler_overrides.py
       - name: Run-slicing invariance regressions

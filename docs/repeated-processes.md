@@ -10,6 +10,14 @@ identical, and the proof is the same verdicts before and after.
 
 ## The gate (`tools/build_recomp.py`)
 
+The profile-aware reference run (10 Oct, `pc-parity-profile-aware`) adds one
+independent local 386 capture alongside the existing DOSBox captures. Fresh
+GOG/DOSBox-X/86Box pictures, sound, timing and both saves pass. Held-picture
+hashing decodes only stationary scenes, taking about one second on the saved
+capture instead of decoding every changing frame. Eight regression tests
+take 0.13 seconds. Captures and gate builds must remain sequential because
+the running Windows executable locks build outputs.
+
 Run before every commit that changes code. Before the changes below it took
 30, 38 and 32 minutes (three runs on 6 Oct 2026, some alongside other work).
 After them, the same code (231 matched routines, 32 routes) took **22.8
