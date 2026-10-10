@@ -315,3 +315,65 @@ Differences from 9 MIPS: launches −0.08 (−0.28 to +0.11) at 16, +0.04 (−0.
 **Real-time headroom.** A single recompiled run of `boot_to_flight` at 9 MIPS (the gate's route check, run while other work shared the machine) reported 68.7 million instructions a second on this machine. 20 million is about 3.4 times real time there.
 
 **Analysis.** `tools/speed_compare.py` reads `runs.jsonl` and prints the per-speed summary, the bootstrap intervals and the mission mix; the tables above are its output. The sweep is `tools/speed_sweep.py` (with `--offsets-ms`, added for this matrix).
+
+## Controlled threat-profile combat measurement (9 Oct 2026, preliminary)
+
+The matrix above flies a fixed scripted path that passes the primary target once and
+then holds a straight heading; it draws about a quarter of a launch a flight, too
+sparse to say anything about combat. `tools/threat_profile.py` instead drives VGAME
+with live telemetry: it approaches and strikes the primary target as `strike_pilot.py`
+does, then - once within 6,000 units of it or on primary credit - orbits the target's
+own coordinates at a fixed radius and altitude for the rest of the flight, so repeated
+passes through whatever defends the target give many more chances for an enemy launch
+than one pass-through. No enemy site's position is read or assumed; the orbit is
+centred on the same point the scripted routes also fly toward. The weapons-at-player
+telemetry (slots 0-7 of the table at 0x3C3A) is the same reading `speed_sweep.py` uses.
+
+```
+py tools/threat_profile.py --data D:/GOG/F-117A --out OUT --routes middle_east_strike korea_strike kuwait_strike north_cape_strike --speeds 9 16 20 --seconds 600 --offsets-ms 0 2500 5000 ... 27500 --jobs 24
+```
+
+Twelve boot-clock offsets (0-27,500 ms) times four ground-strike theatres times three
+speeds (144 planned flights); **97 completed before the run was stopped partway
+through to free the machine** (three heavy jobs were running on it at once and made
+the owner's own typing lag - see `f117-check-resources-before-parallel-jobs` in the
+session's notes). The 97 flights already give a far richer sample than the matrix
+above:
+
+| MIPS | flights | mean launches/flight | mean bursts/flight | flights with a burst |
+|---|---|---|---|---|
+| 9 | 36 | 8.03 | 1.31 | 26 of 36 |
+| 16 | 34 | 4.12 | 0.47 | 10 of 34 |
+| 20 | 27 | 3.52 | 0.37 | 7 of 27 |
+
+8-32 times the matrix's launch rate, and a burst (a proximity detonation, not just a
+launch) on most 9 MIPS flights. **A real difference by speed also shows here, and it
+does not fully reduce to a sampling artefact:** more flights end early at higher speed
+(9 MIPS: 3 of 36 left VGAME before the 600 s budget; 16 MIPS: 7 of 34; 20 MIPS: 9 of
+27 - consistent with the mission clock running faster than real time at higher speed,
+so a fixed assumed-second budget holds more in-game flight time and reaches bingo fuel
+sooner), which shortens orbit exposure and would alone lower the per-flight count. But
+normalising by exposure time (launches and bursts per 100 orbit-seconds, excluding
+flights that never reached the orbit) still shows the same direction and a similar
+size:
+
+| MIPS | orbit-seconds | launches/100 orbit-s | bursts/100 orbit-s |
+|---|---|---|---|
+| 9 | 8,744 | 2.97 | 0.47 |
+| 16 | 6,754 | 1.54 | 0.15 |
+| 20 | 4,947 | 1.64 | 0.16 |
+
+The rate roughly halves (launches) to a third (bursts) from 9 to 16-20 MIPS, while
+exposure-time normalising removes the early-exit confound. This is not yet explained:
+it could be the frame-rate dependence `docs/speed-sweep.md`'s own controller section
+already describes (AI launches and guidance run per drawn frame scaled by S, and S and
+the drawn frame rate both differ by speed), or a further effect of the mission-clock
+scaling, or something else; the mechanism has not been traced in the game's listing.
+**What this does not yet establish:** the sweep is incomplete (97 of 144: `kuwait_strike`
+is missing 11 flights, `north_cape_strike` all 36), each speed draws different missions
+from different seeds (the standing caveat), and 27-36 flights a speed is still a small
+sample for a rate that varies flight to flight. The next session should finish the
+matrix (`--redo` is not needed; unfinished tags are simply absent from `runs.jsonl` and
+will be filled in) and, if the rate difference holds up, read the enemy launch-decision
+code to find the mechanism rather than only describe the correlation. Raw data:
+`D:/f117-gate/threatmatrix/runs.jsonl` and `samples/`.
