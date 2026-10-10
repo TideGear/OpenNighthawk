@@ -7,5 +7,4 @@
 # p085.png (unmatched, START's roster screen mid-load) is no longer listed: since the
 # reference moved to the 1989 3500rpm drive preset (9 Oct 2026) it compares exact, because
 # the disk now takes long enough that the capture never lands in that in-between state.
-# Open: p037.png now compares "close" (diff 0.028, hash 75c269fac9e7) on the 1989 preset
-# and is not yet investigated or added here; see docs/roadmap.md and tools/ref86box/timing386.md.
+p037.png 75c269fac9e7 close: a single sample taken in the middle of the title screen's fade-in: 1,770 pixels in 27 rows (the F-117A title text, rows 38-64) differ by one DAC step, between two of this machine's consecutive pictures (diff 0.0277, against 0.029 and 0.084 on the pictures either side, each one frame away) - a phase difference from 86Box's capture timeline, not a content difference. The region's DAC sum rises by about 5,400 a frame across this stretch, so no frame of ours can land exactly on 86Box's sample instant. Investigated 9 Oct 2026.
