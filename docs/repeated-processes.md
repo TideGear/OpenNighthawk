@@ -10,6 +10,21 @@ identical, and the proof is the same verdicts before and after.
 
 ## The gate (`tools/build_recomp.py`)
 
+The collision/sound/scene full gate PASS (10 Oct, `gate-scene-sound.log`)
+took 883 seconds: translation/build/tests 92, fresh coverage 495,
+byte-identical regeneration 11, parity 284. All 35 routes were identical,
+both instruction profiles and all three 768-address matched seeds had zero
+mismatches; every routes-only routine ran and none overran. Interpreter
+results reused 34 verified cached sessions. The locksteps finished during
+coverage, leaving no tail. Affinity remained 0x00FFFFFF throughout.
+
+The 10 Oct collision/sound/scene batch's two targeted 4,000-state seeds ran
+concurrently in 9.7 seconds (two workers, affinity 0x00FFFFFF), comparing
+7,763 and 7,777 states without differences. Rebuilding the large matched.c
+translation unit took roughly 2.5 minutes per edit, including both libraries
+and linking; the unchanged-source profile-aware gate took 596 seconds, with
+34 interpreter sessions and coverage legitimately reused from verified caches.
+
 The profile-aware reference run (10 Oct, `pc-parity-profile-aware`) adds one
 independent local 386 capture alongside the existing DOSBox captures. Fresh
 GOG/DOSBox-X/86Box pictures, sound, timing and both saves pass. Held-picture

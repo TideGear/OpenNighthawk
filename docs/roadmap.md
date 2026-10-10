@@ -201,7 +201,7 @@ not the recompilation:
       Reimp's mapping; matched functions replacing translations one at a time,
       each held to the same parity checks. `tools/reimp_names.py` joins the
       Reimp's census (1,535 functions) with this project's regions as a private
-      lead list. 765 addresses are matched (760 of the census functions, 63,917 of
+      lead list. 768 addresses are matched (763 of the census functions, 64,423 of
       179,213 bytes); the table is at the end of `src/matched/matched.c` and the
       method is in [architecture.md](architecture.md#matched-routines-phase-2).
       The batches of 8-9 Oct add 37 + 34 + 47 VGAME, 34 + 40 + 45 START/END and 21 + 44 + 64
@@ -226,6 +226,16 @@ not the recompilation:
       Projectile motion and gunfire refill (`0x04777`) now names the twelve-byte
       slots, their frame-rate-dependent walk, signed round-robin shot selection,
       ammunition cost and launch velocity; every loop iteration checks event room.
+      The terrain collision probe (`0x01007`) now names its level-four cell
+      scaling, nearest eligible obstacle and model probe, preserving stack
+      locals, signed Manhattan distance and original calls. The census's
+      replacement-operation name was misleading; original data addresses
+      confirm the collision reading. Sound priority (`0x0D3F9`) retains engine
+      reassertion even when a request is rejected; scene finish (`0x0D87C`)
+      retains deferred drawing, driver-origin reset, work counters and the
+      view matrix. Two 4,000-state seeds compare 7,763/7,777 states with zero
+      mismatches, including partial-run checks. Driver thunks return on both
+      sides in the random-state checks; routes retain the real drivers.
 
 ## Phase 3 - fixes and enhancements (switchable)
 

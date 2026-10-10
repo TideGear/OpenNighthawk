@@ -255,7 +255,7 @@ static int compare(const char *mod, uint32_t off, uint16_t cs, uint16_t ip, int 
 }
 
 
-/* START and END, and VGAME's weapon-lock marker, canopy and projectiles, call drivers through 5-byte thunks in
+/* START and END, and VGAME's marker, canopy, projectiles, sound gate and scene finish, call drivers through 5-byte thunks in
  * their data segment. In the file each is JMP FAR 0:0 (the game fills them in
  * after loading), so a far call through one runs the program's first bytes
  * from a random state and the state is lost: every routine whose path reaches
@@ -267,7 +267,8 @@ static int compare(const char *mod, uint32_t off, uint16_t cs, uint16_t ip, int 
 static void stub_driver_thunks(uint8_t *pristine, uint32_t at, const rc_module *m, const recomp_override *o)
 {
     if (strcmp(m->name, "START.EXE") && strcmp(m->name, "END.EXE") &&
-        (strcmp(m->name, "VGAME.EXE") || (o->ip != 0xB171 && o->ip != 0xD6DD && o->ip != 0x4777) || o->seg != 0)) return;
+        (strcmp(m->name, "VGAME.EXE") || (o->ip != 0xB171 && o->ip != 0xD6DD && o->ip != 0x4777 &&
+                                       o->ip != 0xD3F9 && o->ip != 0xD87C) || o->seg != 0)) return;
     for (uint32_t i = 0; i + 5 <= m->size; i++) {
         if (m->image[i] != 0x9A) continue;
         const uint32_t lin = (uint32_t)(m->image[i + 3] | m->image[i + 4] << 8) * 16u + (uint32_t)(m->image[i + 1] | m->image[i + 2] << 8);

@@ -16087,6 +16087,267 @@ static int clock_text(machine_t *m, uint16_t start, uint16_t sep, int seconds)
 static int vgame_nav_time(machine_t *m) { return clock_text(m, 0x4139, 0x413A, 0); }
 static int vgame_panel_deadline(machine_t *m) { return clock_text(m, 0x413C, 0x413D, 1); }
 
+/* VGAME 0x01007: probe the nearest collision-capable obstacle in a terrain
+ * cell. Inputs are three 32-bit coordinates; level four scales them to the
+ * cell grid. Keep the original frame locals and reread the cell records on
+ * every iteration: guest data may alias the stack or the record tables.
+ * The final model probe sets C6B2. No collision response is changed here. */
+static int vgame_scene_cell_obstacle(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 11)) return 0;
+    x86_enter(c, 0x1A, 0);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_SI]);
+    ds_put(c, 0xC6B2, 0);
+    ds_put(c, 0xBA42, 0x7FFF);
+    cpu_push16(c, FRAME(6));
+    cpu_push16(c, FRAME(4));
+    c->r[R_AX] = 4;
+    SETFRAME(-6, c->r[R_AX]);
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 10;
+    NEAR_THEN(0x0810, 0x1029, 0, 5);
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0);
+    SETFRAME(-0x16, c->r[R_AX]);
+    set_r8(c, R_CL, 12);
+    c->icount += 3;
+    NEAR_THEN(0xF018, 0x1034, 0, 8);                           /* x cell and fractional x */
+    SETFRAME(-0x0E, c->r[R_AX]);
+    c->r[R_AX] = FRAME(-0x16);
+    set_r8(c, R_AH, (uint8_t)alu_op(c, 4, get_r8(c, R_AH), 15, 0));
+    SETFRAME(-4, c->r[R_AX]);
+    cpu_push16(c, FRAME(0x0A));
+    cpu_push16(c, FRAME(8));
+    cpu_push16(c, 4);
+    c->icount += 7;
+    NEAR_THEN(0x0810, 0x104B, 0, 5);
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0);
+    SETFRAME(-0x16, c->r[R_AX]);
+    set_r8(c, R_CL, 12);
+    c->icount += 3;
+    NEAR_THEN(0xF018, 0x1056, 0, 8);                           /* y cell and fractional y */
+    c->r[R_CX] = FRAME(-0x16);
+    set_r8(c, R_CH, (uint8_t)alu_op(c, 4, get_r8(c, R_CH), 15, 0));
+    cpu_push16(c, FRAME(0x0E));
+    cpu_push16(c, FRAME(0x0C));
+    cpu_push16(c, 4);
+    c->r[R_SI] = c->r[R_AX];
+    c->r[R_DI] = c->r[R_CX];
+    c->icount += 7;
+    NEAR_THEN(0x0810, 0x106B, 0, 18);                          /* scaled altitude */
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0);
+    ds_put(c, 0x49B0, c->r[R_AX]);
+    c->r[R_AX] = 0x800;
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], FRAME(-4), 1, 0);
+    SETFRAME(-0x1A, c->r[R_AX]);
+    c->r[R_AX] = c->r[R_DI];
+    c->r[R_DI] = (uint16_t)alu_sub(c, c->r[R_DI], 0x800, 1, 0);
+    c->r[R_DI] = (uint16_t)alu_sub(c, 0, c->r[R_DI], 1, 0);
+    SETFRAME(-2, c->r[R_DI]);
+    c->r[R_CX] = FRAME(-4);
+    c->r[R_CX] = (uint16_t)alu_sub(c, c->r[R_CX], 0x800, 1, 0);
+    ds_put(c, 0x49AC, c->r[R_CX]);
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], 0x800, 1, 0);
+    ds_put(c, 0x49AE, c->r[R_AX]);
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, FRAME(-0x0E));
+    cpu_push16(c, 4);
+    c->icount += 17;
+    NEAR_THEN(0x0871, 0x109F, 0, 10);
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0);
+    SETFRAME(-0x18, c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)alu_inc(c, c->r[R_AX], 1);
+    c->icount += 4;
+    if (c->flags & F_ZF) goto nearest;
+    c->r[R_BX] = FRAME(-0x18);
+    c->r[R_BX] = x86_shift(c, 4, c->r[R_BX], 1, 1);
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0xE430));
+    ds_put(c, 0xE476, c->r[R_AX]);
+    SETFRAME(-0x0A, 1);
+    c->icount += 6;
+    for (;;) {
+        if (!room(c, 7)) { c->ip = 0x110E; return 1; }
+        c->r[R_AX] = FRAME(-0x0A);
+        c->r[R_BX] = FRAME(-6);
+        c->r[R_BX] = x86_shift(c, 4, c->r[R_BX], 5, 1);
+        c->r[R_BX] = (uint16_t)alu_add(c, c->r[R_BX], FRAME(-0x18), 1, 0);
+        c->r[R_BX] = x86_shift(c, 4, c->r[R_BX], 1, 1);
+        alu_sub(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x061E)), c->r[R_AX], 1, 0);
+        c->icount += 7;
+        if (!x86_cond(c, 7)) break;
+        if (!room(c, 15)) { c->ip = 0x10BB; return 1; }
+        c->r[R_BX] = ds_get(c, 0xE476);
+        alu_logic(c, ds_get8(c, (uint16_t)(c->r[R_BX] + 6)) & 0x50, 0);
+        unsigned n = 3;
+        int eligible = !(c->flags & F_ZF) ? 0 : 1;
+        if (eligible) {
+            set_r8(c, R_BL, ds_get8(c, (uint16_t)(c->r[R_BX] + 6)));
+            set_r8(c, R_BH, (uint8_t)alu_sub(c, get_r8(c, R_BH), get_r8(c, R_BH), 0, 0));
+            alu_logic(c, ds_get8(c, (uint16_t)(c->r[R_BX] + 0x0960)) & 0x10, 0);
+            n += 4;
+            eligible = !(c->flags & F_ZF);
+        }
+        c->icount += n;
+        if (eligible) {
+            c->r[R_BX] = ds_get(c, 0xE476);
+            c->r[R_AX] = ds_get(c, c->r[R_BX]);
+            c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], FRAME(-0x1A), 1, 0);
+            c->r[R_CX] = ds_get(c, (uint16_t)(c->r[R_BX] + 2));
+            c->r[R_CX] = (uint16_t)alu_add(c, c->r[R_CX], FRAME(-2), 1, 0);
+            cpu_push16(c, c->r[R_CX]);
+            c->r[R_SI] = c->r[R_AX];
+            c->icount += 7;
+            NEAR_THEN(0xEE0C, 0x10E6, 0, 4);
+            c->r[R_BX] = cpu_pop16(c);
+            cpu_push16(c, c->r[R_SI]);
+            c->r[R_SI] = c->r[R_AX];
+            c->icount += 3;
+            NEAR_THEN(0xEE0C, 0x10ED, 0, 12);
+            c->r[R_BX] = cpu_pop16(c);
+            c->r[R_SI] = (uint16_t)alu_add(c, c->r[R_SI], c->r[R_AX], 1, 0);
+            ds_put(c, 0x49A8, c->r[R_SI]);
+            c->r[R_AX] = ds_get(c, 0xBA42);
+            alu_sub(c, c->r[R_SI], c->r[R_AX], 1, 0);
+            c->icount += 6;
+            if (!x86_cond(c, 0xD)) {                            /* nearer signed Manhattan distance */
+                c->r[R_AX] = ds_get(c, 0xE476);
+                ds_put(c, 0xBA4C, c->r[R_AX]);
+                c->r[R_AX] = c->r[R_SI];
+                ds_put(c, 0xBA42, c->r[R_AX]);
+                c->icount += 4;
+            }
+        } else if (!room(c, 2)) { c->ip = 0x1106; return 1; }
+        ds_put(c, 0xE476, (uint16_t)alu_add(c, ds_get(c, 0xE476), 7, 1, 0));
+        SETFRAME(-0x0A, (uint16_t)alu_inc(c, FRAME(-0x0A), 1));
+        c->icount += 2;
+    }
+nearest:
+    if (!room(c, 27)) { c->ip = 0x1122; return 1; }
+    alu_sub(c, ds_get(c, 0xBA42), 0x7FFF, 1, 0);
+    c->icount += 2;
+    if (c->flags & F_ZF) goto done;
+    c->r[R_BX] = ds_get(c, 0xBA4C);
+    ds_put(c, 0xE476, c->r[R_BX]);
+    for (unsigned axis = 0; axis < 3; axis++) {
+        c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 2 * axis));
+        c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], ds_get(c, (uint16_t)(0x49AC + 2 * axis)), 1, 0);
+        ds_put(c, (uint16_t)(0x4994 + 2 * axis), c->r[R_AX]);
+    }
+    set_r8(c, R_BL, ds_get8(c, (uint16_t)(c->r[R_BX] + 6)));
+    set_r8(c, R_BH, (uint8_t)alu_sub(c, get_r8(c, R_BH), get_r8(c, R_BH), 0, 0));
+    c->r[R_BX] = x86_shift(c, 4, c->r[R_BX], 1, 1);
+    set_r8(c, R_BL, ds_get8(c, (uint16_t)(c->r[R_BX] + 0x0511)));
+    set_r8(c, R_BH, (uint8_t)alu_sub(c, get_r8(c, R_BH), get_r8(c, R_BH), 0, 0));
+    c->r[R_BX] = x86_shift(c, 4, c->r[R_BX], 1, 1);
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0xB78A));
+    ds_put(c, 0x8590, c->r[R_AX]);
+    cpu_push16(c, 0x49D0);
+    cpu_push16(c, 0);
+    cpu_push16(c, 0);
+    cpu_push16(c, 0);
+    c->icount += 23;
+    if (!guest_call_far(m, 0x116E, 0x1173)) return 1;           /* zero-angle camera orientation */
+    if (!room(c, 2)) { c->ip = 0x1173; return 1; }
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0);
+    c->icount++;
+    NEAR_THEN(0xE289, 0x1179, 0, 14);
+    cpu_push16(c, 0x49D0);
+    c->r[R_AX] = ds_get(c, 0x4996);
+    c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0);
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, ds_get(c, 0x4998));
+    cpu_push16(c, ds_get(c, 0x4994));
+    c->r[R_BX] = ds_get(c, 0xE476);
+    set_r8(c, R_BL, ds_get8(c, (uint16_t)(c->r[R_BX] + 6)));
+    set_r8(c, R_BH, (uint8_t)alu_sub(c, get_r8(c, R_BH), get_r8(c, R_BH), 0, 0));
+    c->r[R_BX] = x86_shift(c, 4, c->r[R_BX], 1, 1);
+    set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + 0x0510)));
+    set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 13;
+    if (!guest_call_far(m, 0x119C, 0x11A1)) return 1;           /* model collision probe */
+    if (!room(c, 5)) { c->ip = 0x11A1; return 1; }
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 10, 1, 0);
+    c->icount++;
+done:
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    x86_leave(c);
+    c->icount += 4;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x0D3F9: admit a sound by signed priority (43F2); while C09A
+ * suppresses normal play, only priorities above one reach the driver.
+ * Even a rejected request reasserts the engine sound through D41F. */
+static int vgame_sound_request(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 11)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_AX] = ds_get(c, 0x43F2);
+    alu_sub(c, FRAME(6), c->r[R_AX], 1, 0);
+    unsigned n = 5;
+    int admit = !x86_cond(c, 0xC);
+    if (admit) {
+        alu_sub(c, ds_get(c, 0xC09A), 0, 1, 0);
+        n += 2;
+        if (!(c->flags & F_ZF)) {
+            alu_sub(c, FRAME(6), 1, 1, 0);
+            n += 2;
+            admit = !x86_cond(c, 0xE);
+        }
+    }
+    c->icount += n;
+    if (admit) {
+        cpu_push16(c, FRAME(4));
+        c->icount++;
+        if (!guest_call_far(m, 0xD414, 0xD419)) return 1;
+        if (!room(c, 2)) { c->ip = 0xD419; return 1; }
+        c->r[R_BX] = cpu_pop16(c);
+        c->icount++;
+    }
+    NEAR_THEN(0xD41F, 0xD41D, 0, 2);
+    x86_leave(c);
+    c->icount += 2;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0x0D87C: finish the terrain walk by drawing deferred objects and
+ * resetting the graphics origin. Add the frame's 1024/1152-weighted work
+ * counters, then retain the 18-byte view matrix for subsequent drawing.
+ * Keep the three one-bit shifts: their flags differ from a single shift. */
+static int vgame_scene_finish_walk(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 2)) return 0;
+    x86_enter(c, 6, 0);
+    c->icount++;
+    NEAR_THEN(0xDC46, 0xD883, 0, 1);
+    if (!guest_call_far(m, 0xD883, 0xD888)) return 1;
+    if (!room(c, 13)) { c->ip = 0xD888; return 1; }
+    c->r[R_AX] = ds_get(c, 0x4ED0);
+    c->r[R_AX] = x86_shift(c, 4, c->r[R_AX], 7, 1);
+    SETFRAME(-6, c->r[R_AX]);
+    for (unsigned i = 0; i < 3; i++) c->r[R_AX] = x86_shift(c, 4, c->r[R_AX], 1, 1);
+    ds_put(c, 0xC07A, (uint16_t)alu_add(c, ds_get(c, 0xC07A), c->r[R_AX], 1, 0));
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], FRAME(-6), 1, 0);
+    ds_put(c, 0xC078, (uint16_t)alu_add(c, ds_get(c, 0xC078), c->r[R_AX], 1, 0));
+    cpu_push16(c, 0x12);
+    cpu_push16(c, 0x49BE);
+    cpu_push16(c, 0x49E2);
+    c->icount += 12;
+    NEAR_THEN(0xEDE0, 0xD8AD, 0, 2);
+    x86_leave(c);
+    c->icount += 2;
+    near_ret(c);
+    return 1;
+}
+
 #undef FAR_THEN
 #undef NEAR_THEN
 #undef FRAME
@@ -24812,7 +25073,7 @@ static int st4_end_score_panel(machine_t *m)
 /* ST4-END */
 
 /* VGAME 0x078FD, scene_obstacle_probe(x, y, z): the world object at a map
- * position, by 0x01007 (which looks it up and replaces it), with the
+ * position, by 0x01007 (which probes the nearest eligible model), with the
  * coordinates widened to 32 bits and scaled by 32 through the runtime's
  * shift 0x0EF68: (x << 5, (8000h - y) << 5, z). */
 static int vgame_scene_obstacle_probe(machine_t *m)
@@ -31116,6 +31377,9 @@ static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x11ED, 0x0127, vgame_pic_lzw, "the picture decoder's code and table step", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x48AA, end_pic_rle, "the picture decoder's row (RLE) step", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x4923, end_pic_lzw, "the picture decoder's code and table step", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x1007, vgame_scene_cell_obstacle, "nearest terrain obstacle collision probe", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD3F9, vgame_sound_request, "sound priority gate and engine reassertion", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD87C, vgame_scene_finish_walk, "finish terrain drawing and retain view matrix", 1 },
 };
 
 void matched_register(void)

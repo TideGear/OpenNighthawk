@@ -87,12 +87,13 @@ and the inputs with the clock counts at which they arrived.
   interpreter to 86Box block by block; both engines charge these costs and
   instruction lockstep checks them. Matched routines use the original body
   under this profile. Recorded routes run on the default DOSBox profile.
-- **The default speed is 9,000,000 a second**, GOG DOSBox's `cycles=9000`
-  for this game. The game's behaviour depends on machine speed (bug D1);
-  this is the speed GOG players have, and `--ips` changes it.
+- **The headless reference default is 9,000,000 a second**, GOG DOSBox's
+  `cycles=9000` for this game; the app defaults to 20,000,000. `--ips`
+  changes either. The game's behaviour depends on speed (bug D1); optional
+  corrected combat and real-time pacing are documented in [speed-sweep.md](speed-sweep.md).
 - **ISA I/O delay.** With `cycles = floor(ips/1000)`, a port read costs
   `floor(cycles/1024)` extra clocks and a write `floor(cycles/1365)`:
-  eight and six at the default speed. DOSBox suppresses that delay when
+  eight and six at the 9 MIPS reference speed. DOSBox suppresses that delay when
   fewer than three delays remain in the CPU slice; the slice model, shared
   with DOS file-transfer costs, considers millisecond, PIT and VGA events.
   Without bus delay the logo's AdLib driver fails its card detection, which
@@ -529,8 +530,8 @@ caught real defects:
   changed the record it copied. The seed `0xf2a7d2c1bf36` catches this;
   `matched_shadow_stack_alias` keeps that regression in the unit-test step.
 - START and END's uninitialised graphics-driver thunks, and VGAME's when
-  checking the weapon-lock marker at `0xB171`, canopy at `0xD6DD` and
-  projectiles at `0x4777`, are replaced with
+  checking the marker at `0xB171`, canopy at `0xD6DD`, projectiles at `0x4777`,
+  sound gate at `0xD3F9` and scene finish at `0xD87C`, are replaced with
   RETF on both sides of the check, so drawing wrappers can return and their
   surrounding work is compared. The marker checks rise from 358 to 4,857
   comparisons per 4,000-state fixed-seed run, including partial-run checks;

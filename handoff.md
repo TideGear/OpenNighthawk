@@ -9,6 +9,54 @@ checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 more than once, what it costs). State as of 10 October 2026.
 Earlier session logs are in `git log -p handoff.md`.
 
+## Phase 2 collision/sound/scene checkpoint (10 Oct, 13:37 PDT)
+
+Profile-aware references checkpoint bbb6337 is committed and pushed; full
+gate PASS596sec, all35routes, bothinstructionprofiles, all3matchedseeds,
+17selected CTests, routes-only coverage and event limits. Phase1 complete.
+
+Current additions: VGAME1007 vgame_scene_cell_obstacle (nearest eligible
+terrain obstacle, signed Manhattan metric, original model probe), D3F9
+sound priority gate with unconditional engine reassertion, D87C finish
+terrain drawing/reset driver origin/work counters/retain view matrix.
+Original instructions independently reread. Census1007 replacement-name
+lead was wrong; existing78FD wrapper comment corrected too. All preserve
+stack locals, call state, registers, flags and instruction counts; room is
+checked at calls and loop boundaries. Returning driver thunks on both sides
+make sound/scene random-state checks exercise their post-call paths.
+
+First256-state check caught a missing RET clock in the new code; corrected
+all3returns. Corrected256:492comparisons/zero differences. Two4000-state
+seeds(default5EED0F117A,C0FFEE) PASS7763/7777comparisons, including partial
+stops; 9.7sec concurrently,2workers. Logs scene-target-{256,4000,c0ffee}.log
+and result.txt; build-scene-candidates.log,17selectedCTestsPASS. No target
+processes remain. Refresh census now768addresses/763censusfunctions,
+64423/179213bytes; P239.15%,All71.58%. Private candidates/drafts stay private.
+
+REQUIRED full gate PASS883sec, gate-scene-sound.log and
+gate-scene-sound-result.txt(exit0):17selectedCTests,35IDENTICAL route pairs,
+both5,718,912-state instruction profiles zero, all three768-address matched
+seeds zero; every routes-only routine ran and none overran. Stages92sec
+translate/build/tests,495freshcoverage,11byte-identicalregeneration,
+284parity;34interpreter sessions legitimately cached. All task processes
+kept0x00FFFFFFaffinity. No gate/probe processes remain. Commit+push together.
+
+Usage83% at13:52PDT; wrapping at the owner's85% threshold. Original broad
+roadmap goal remains active. Next Phase2 candidates prepared PRIVATELY,
+NOT built/tested/installed: D:/f117-gate/ai_activation_candidate.c (66F8)
+and ai_destroy_candidate.c (72D8), instruction drafts drafts-next/*.c.
+Both independently reread; activation's original coordinates are ZERO
+extended before the 32-bit shift (Reimp sign-extends; preserve original).
+Destroy masks zero-endurance flags to01C1; don't claim all repeated calls
+unconditionally retain the dead bit. Verify every clock/room count before
+trusting either candidate; add only after targeted checks and a full gate.
+They need returning driver thunks in func_lockstep for66F8/72D8 too; consider
+exact SPANS66F8..683D and72D8..73C8 to exclude nearby callees' RETs.
+
+An optional HUD/text style question was sent during this turn; no answer
+received as of13:52. No preference implemented. Keep this owner decision
+open. Other roadmap work remains; don't mark the broad goal complete.
+
 ## Profile-aware references checkpoint (10 Oct, 13:20 PDT)
 
 CPU/combat checkpoint 05bdd27 is committed and pushed. Investigation of the
