@@ -256,7 +256,7 @@ int main(int argc, char **argv)
     const char *data = NULL, *save = NULL, *log_path = NULL;
     const char *audio_queue_log_path = NULL;
     const char *audio_dump_path = NULL;
-    uint64_t ips = MACHINE_DEFAULT_IPS;
+    uint64_t ips = MACHINE_APP_IPS;
     int scale = 3, fullscreen = 0, aspect = 1, midi_dev = -2;
     int engine = ENGINE_RECOMP;
     const char *coverage = NULL, *record = NULL, *replay = NULL;
@@ -345,9 +345,10 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--audio-dump") && v) { audio_dump_path = v; i++; }
         else if (!strcmp(a, "--ips") && v) { ips = strtoull(v, NULL, 0); i++; }
         else if (!strcmp(a, "--timing") && v) {
-            /* dosbox (the default): GOG DOSBox's 9 million instructions a second, at which the game
-             * already draws its most frames a second in flight (docs/bugs.md D1); 386: the 386DX/33
-             * profile, the pace of a 1991 PC (src/cpu/timing386.h) */
+            /* dosbox (the default): this machine's instruction model, run by the app at 20 million
+             * instructions a second (--ips); GOG DOSBox ran 9 million (--ips 9000000), at which a
+             * parked jet draws 11.6 frames a second (docs/bugs.md D1). 386: the 386DX/33 profile,
+             * the pace of a 1991 PC (src/cpu/timing386.h) */
             if (!strcmp(v, "386")) { _putenv_s("F117R_TIMING", "386"); ips = MACHINE_386_IPS; }
             else if (strcmp(v, "dosbox")) { fprintf(stderr, "--timing takes dosbox or 386\n"); return 2; }
             i++;

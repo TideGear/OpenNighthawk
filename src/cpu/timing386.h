@@ -61,20 +61,25 @@ typedef struct {
 #define T386_SVC_DOS_STDIN_STATUS  3416    /* MS-DOS 5.00 (6.22 the same) */
 #define T386_SVC_DOS_GET_TIME      1885    /* MS-DOS 5.00 (6.22 the same; it varies by 4 between runs) */
 
-/* File services on the reference VM's disk (XT-IDE, RAM-disk preset; timing386.md, "File
- * services"), charged at the call with interrupts held, as the video services are. A read costs
- * a call's base plus the IDE word transfer, T386_FILE_BYTE_HUND/100 cycles a byte (512, 4,096,
- * 16,384 and 32,768 bytes fit). The first open and the first write after boot cost more; a
- * zero-length write (the truncate in START's roster save) costs T386_FILE_TRUNC. */
+/* File services on the reference VM's disk (XT-IDE, 1989 3500 rpm preset: 35 sectors a track;
+ * timing386.md, "File services"), charged at the call with interrupts held, as the video services
+ * are. A read or write that does not follow the previous one on its handle pays a seek. Sequential
+ * reads cost a sector each (T386_FILE_SECTOR, the media rate, with the average track crossing);
+ * sequential writes cost the IDE word transfer, T386_FILE_BYTE_HUND/100 cycles a byte. Closing a
+ * written file flushes the drive's write-behind cache. The first open after boot and the first
+ * data write after boot cost the reference's cold start. A zero-length write (the truncate in
+ * START's roster save) costs T386_FILE_TRUNC. */
 #define T386_FILE_OPEN             50145
-#define T386_FILE_OPEN_FIRST       460000
+#define T386_FILE_OPEN_FIRST       2128293    /* average of two measured first opens, 1.84M/2.42M */
 #define T386_FILE_ATTR             44402
 #define T386_FILE_SEEK             1114
 #define T386_FILE_CLOSE_READ       1800
-#define T386_FILE_CLOSE_WRITE      60000
-#define T386_FILE_READ_CALL        74090
-#define T386_FILE_WRITE_CALL       12000
-#define T386_FILE_WRITE_FIRST      9800000
+#define T386_FILE_CLOSE_WRITE      4800000
+#define T386_FILE_READ_CALL        15565
+#define T386_FILE_READ_SEEK        440493    /* average of 3 measured seeks, 261k-530k (see timing386.md) */
+#define T386_FILE_SECTOR           22500
+#define T386_FILE_WRITE_SEEK       1200000
+#define T386_FILE_WRITE_FIRST      9470000    /* the whole first data write after boot */
 #define T386_FILE_TRUNC            4249
 #define T386_FILE_BYTE_HUND        876
 

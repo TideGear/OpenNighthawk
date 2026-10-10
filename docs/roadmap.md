@@ -125,13 +125,15 @@ make (Phase 4).
       the intro's animation the scenes hold 86Box's pace to a frame
       (`frames386.py`, timing386.md). DOS file services are now charged
       (open, read, write, close, attributes, seek; timing386.md "File
-      services"): the intro's drift at the end falls from +0.64 s to +0.23 s on
-      the MS-DOS reference, exact pictures unchanged. Open: the rest is START's
-      roster step (+0.30 s) and the program loads (EXEC and overlays, +0.04 s
-      each), not yet charged; the intro's verdict is still FAIL. The reference's
-      disk is a RAM-disk-speed model, so its load times are not period ones;
-      which drive the owner's machine had is unknown (a period-drive preset
-      costs more on every call). Both engines now charge the same profile: 5,713,152 instruction
+      services"), fitted to the 1989 3500 rpm drive preset, the reference's
+      period drive (9 Oct 2026; the RAM-disk preset's fit is recorded there too).
+      On that reference the intro's drift at the end is +0.43 s, 1,237 of 1,275
+      pictures exact (verdict FAIL). The rest is in the program loads: EXEC and
+      overlay costs are not charged yet (+0.21 s at MPS_LOGO's exit, +0.25 s at
+      PLAYER's exit, measured on this reference as EXEC of 1 to 47 KB programs at
+      0.7 to 2.5 M cycles). Reference parity: pictures and music pass, but two
+      86Box checks fail on the new drive (one close picture not on the expected
+      list; the longest scene 0.02 s over its limit). Both engines now charge the same profile: 5,713,152 instruction
       comparisons each in RAM and with code in VRAM, no differences; paired
       flight sessions have 574 identical state checkpoints and stick responses
       (`stick_response.py --machine machine386 --engine interp|recomp`).
@@ -238,15 +240,20 @@ not the recompilation:
       The [D1 follow-up](speed-sweep.md#d1-follow-up-9-october-2026) adds 90
       flights: no oscillation, D1 inactive hash-for-hash at 9 MIPS, but its
       fast-machine 11.6 fps cap gives a 1.2882x mission clock rather than
-      real time. Default-speed selection still needs controlled combat
-      measurements; control-response tooling now accepts speed, fixes,
+      real time. The default speed is now 20 million instructions a second
+      with no limiter (9 Oct 2026; [speed-sweep.md](speed-sweep.md#fast-machine-default-9-october-2026)):
+      the game's own clamp holds S at 15 and the drawn rate near 16.7, with no
+      swings in 214 flights. Combat was measured on a sample too small to show
+      a change (about a quarter of a launch per flight); a threat-profile test is
+      still open. Control-response tooling now accepts speed, fixes,
       program-relative menus and boot-clock overrides and retains early exits.
       Ten control flights now share mission identifiers after boot-clock
       alignment; their progressive input sequences still diverge, so they
       do not establish a safe speed.
       An [isolated 15 FPS experiment](speed-sweep.md#actual-15-fps-limiter-experiment-9-october-2026)
       settles at S 12 with a 1.25x mission clock: the proposed cap does not
-      restore real-time pacing. Production D1 and the default are unchanged.
+      restore real-time pacing. Production D1 is unchanged, and no limiter is
+      shipped: the default is the game's own cap at 20 MIPS (above).
 - [ ] **60+ fps and 4K presentation**, design and status in
       [presentation.md](presentation.md). The owner chose to observe and replay
       the original's draw path. Stage 0 (the observer) and Stage 1 (draw lists

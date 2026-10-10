@@ -627,7 +627,8 @@ a 9 x 9 block at N = 9). The sources they could come from instead, with what eac
   pixels; that is a finding that says what else to record, not a failure of
   method.
 - **Time base.** Interpolation and host pacing use the machine clock. The
-  original's faster mission clock is a separate default-speed decision.
+  original's faster mission clock is set by the speed: the default (20 million a second)
+  puts the world at about 1.12 times real time (`docs/speed-sweep.md`).
 - **Is sub-pixel "4K" worth its cost** against the cheaper scaled picture? For the 3-D scene the polygon stage is
   cheap and verified (above); what remains is whether the HUD, text and sprites also need a finer source than their
   scaled copies, and the near-clipped polygons (3-4% of the polygons, no sub-pixel rule yet).

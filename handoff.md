@@ -11,84 +11,100 @@ Earlier session logs are in `git log -p handoff.md`.
 
 ## What to do first
 
-**This batch (9 Oct, after the speech batch):** the 386 profile now charges DOS
-file services; the intro's drift on the MS-DOS reference falls from +642.5 to
-+228.7 ms (verdict still FAIL). Details under "Next priority" below. The
-gate for it is `D:/f117-gate/p1-file-model2/gate.log` (14 unit tests, 0 mismatches, 35 routes identical).
+**Latest batch (9 Oct): the app's default speed and the 386 reference drive,
+both owner decisions, now implemented, verified and pushed.** `f117a` runs at
+20 million instructions a second with no limiter; the 386 profile's reference
+is now the 1989 3500rpm drive preset, not RAM-disk speed. A self-caught error
+in two refitted timing constants was found and corrected before commit (see
+"Next priority" below for the full story) - the final numbers there are
+honest, including one that got *worse* after the correction. Gate for the
+commit: `D:/f117-gate/fastdefault/gate-final/gate.log` (14 unit tests, 0
+mismatches, 35 routes identical). The owner requested wrapping up for a new
+conversation, committing, pushing and stopping. No experiment remains
+running.
 
-**Speech batch:** `p1-speech-reference`, based on `2cb230b9369f`, merged by
-fast-forward into master and pushed together. The owner requested wrapping
-up for a new conversation, committing, pushing and stopping (9 Oct).
-Speech-reference tooling/docs close the audio item (P1 now
-97.93%). The initial gate (`D:/f117-gate/p1-speech/gate.log`, 595 s) found an
-existing in-place shift mismatch at rotating seed `0x2cb230b9369f`: a stack
-overlaps the original helper, which returns with changed BX; the C stores
-used an earlier saved pointer. `shl32_at` now uses live BX, as the original
-does. Targeted VGAME:EF80 / START:97D8 checks compare 9,594 states, zero
-mismatches; CMake retains `matched_shift_stack_alias` at that seed.
-The replacement full gate passed (item 3). No runtime timing/default changes
-were made. Private DOS probes are finished and preserved below; reuse them
-when continuing the P1 timing investigation. No experiment remains running.
-
-1. `git status -sb`: speech-reference tooling and the shift repair are on master
-   and `p1-speech-reference`. Projectile motion and gunfire refill remain on
-   `p2-projectiles` (CI 38013133755 passed both jobs). The canopy remains
-   on `p2-cockpit-canopy` (CI 38011635681 passed both jobs). The weapon-lock
-   marker and gate build-setting repair remain on `p2-lock-marker`; the
-   15 FPS report remains on `speed15-study`. Leave pre-existing untracked files alone.
-2. The app's default frame rate is the open decision. The owner's rule (9 Oct):
-   the default is the highest frame rate at which nothing breaks, with parity
-   first and the developers' intent second. Read `docs/speed-sweep.md` (merged
-   from branch `speed-sweep`) and `docs/bugs.md` D1, then decide with the owner.
-   The current default is `timing = dosbox` (GOG's 9 million instructions a
-   second). The 15 frames a second limiter experiment is complete: S settles
-   at 12 and the mission clock runs about 1.25x real time. The pilots'
-   controlled engagement results remain to run. The D1
-   sweep is now complete (90 flights); initial control-response sweeps and
-   boot-clock alignment work are in `D:\f117-gate\speedsweep\` and
-   `docs/speed-sweep.md`.
-3. **Green and pushed.** Latest gate: `D:/f117-gate/p1-speech/gate-fixed.log`,
-   1,269 s (14 s translation/build, 522 s coverage, 9 s second translation,
-   724 s parity); 14 unit tests, 35 identical routes, 34 fresh interpreter
-   sessions (two routes share one replay). Coverage added nothing; second
-   translation was byte-identical.
-   Both instruction profiles compared 5,718,912 states, zero mismatches.
-   Matched seeds `0x5EED0F117A`, `0xC0FFEE`, `0x2cb230b9369f` compared
-   2,488,060 / 2,487,211 / 2,487,124 states, zero mismatches. Every routes-only
-   routine ran and no route overran an event limit. The gate explicitly sets
-   `F117R_BUILD_APP=ON`, so a prior core-only build cannot omit host tests.
-   Latest changes add the independent speech reference and repair the live
-   shift destination; the app default stays at 9 MIPS with fixes off. Prior gate histories are
-   in `git log -p handoff.md` and `D:\f117-gate\merge14\gate.log`.
+1. `git status -sb`: this batch is on master and pushed. Projectile motion and
+   gunfire refill remain on `p2-projectiles` (CI 38013133755 passed both
+   jobs). The canopy remains on `p2-cockpit-canopy` (CI 38011635681 passed
+   both jobs). The weapon-lock marker and gate build-setting repair remain on
+   `p2-lock-marker`; the 15 FPS report remains on `speed15-study`. Leave
+   pre-existing untracked files alone.
+2. Open for next time: a controlled threat-profile combat measurement (the
+   214-flight matrix's typed routes are too combat-sparse to show a change);
+   EXEC/overlay cost charging under the 386 profile (the dominant remaining
+   piece of the intro's drift); whether to investigate and list `p037.png` in
+   `expected_misses86.txt`; and whether a seek-distance-aware disk model is
+   worth building (a flat constant is the wrong shape, as documented).
+3. **Earlier batch, for reference:** speech-reference tooling/docs (P1 97.93%)
+   and a shift-destination repair (`shl32_at` uses live BX) were merged and
+   pushed as `p1-speech-reference` on 9 Oct, gate
+   `D:/f117-gate/p1-speech/gate-fixed.log` (1,269 s; 14 unit tests, 35
+   identical routes, 5,718,912 instruction states and 7,462,395 matched-routine
+   states across three seeds, all zero mismatches). Prior gate histories are
+   in `git log -p handoff.md`.
 
 ## Goal and standing decisions
 
 - **Next priority: the remaining P1 timing evidence.** Owner asked what prevents P1
-  reaching 100% (9 Oct); the remaining 2.07 points are the 386 timing profile.
+  reaching 100% (9 Oct); the remaining points are the 386 timing profile.
   Speech has an independent rendered reference (above).
-  **File services (9 Oct, this batch).** The profile now charges DOS open, read,
-  write, close, attributes and seek from measurements (`timing386.md`, "File
-  services"; constants `T386_FILE_*`; charged in `src/machine/dos_files.c`).
-  On the MS-DOS 5.00 reference the intro's end drift falls from +642.5 ms to
-  +228.7 ms (A/B against the same 86Box run); exact pictures stay 1,238 of
-  1,277; the verdict is still FAIL. The DOSBox default is unchanged (the
-  `boot_to_flight` end hash is still `48a10e901505e2a9`).
-  Still open: START's roster step (+295 ms; the palette and requestr reads and
-  the ROSTER.FIL save, one cold write being ~296 ms) and EXEC/overlay loads
-  (+43 and +48 ms steps), which are not charged. Next: time an EXEC and an
-  overlay load of a known size on the reference the same way (a probe like
-  `roster.py`); then replay the palette and requestr reads to find the roster
-  residual. The cold first write (9.8 M cycles) is the same on both drive
-  presets, and its mechanism is not located.
-  Decision for the owner: which drive the period machine had. The reference is
-  `hdd_01_speed = ramdisk`; `1989_3500rpm` costs more on every call (warm open
-  3.56 M cycles, warm read 512 1.10 M, close after write 5.08 M) and is a
-  private experiment only.
+  **File services, both owner decisions made this batch (9 Oct).** The
+  reference drive is now `hdd_01_speed = 1989_3500rpm` (both VMs in `D:/86box`;
+  the RAM-disk configs kept as `.ramdisk.bak` in `D:/f117-gate/fastdefault`),
+  since RAM-disk speed isn't a period machine's disk. The file-service model
+  (open, read, write, close, attributes, seek; `timing386.md` "File services";
+  `T386_FILE_*` in `src/cpu/timing386.h`; charged in `src/machine/dos_files.c`)
+  is refitted to it. **Self-caught error, fixed before commit:** two of the
+  refitted constants (`T386_FILE_OPEN_FIRST`, `T386_FILE_READ_SEEK`) did not
+  match any measurement when audited against the raw probe logs after the
+  first full gate passed; both were re-derived honestly from
+  `D:/f117-gate/p1-dos-probe/roster1989.log` and `seq1989.log` and the docs/
+  code updated, then re-verified (a second full gate, a fresh `frames386.py`
+  and `pc_parity.py` run) before committing. The corrected, honestly-derived
+  `READ_SEEK` makes the intro's end drift *worse* (+428.5 ms vs an earlier,
+  wrong 328.6 ms) — reported as found, not reverted to the more convenient
+  number. Final measured result on the MS-DOS 5.00 reference: end drift
+  +428.5 ms, 1,237 of 1,275 pictures exact (FAIL). `pc_parity.py`'s own two
+  86Box failures (picture check, timing check) are numerically unchanged by
+  the correction, since that check's granularity doesn't resolve it.
+  `expected_misses86.txt`'s stale p085 entry (now exact on this drive) is
+  removed; p037 (now "close", diff 0.028) is deliberately left unlisted since
+  its cause isn't confirmed (the file's own rule: don't add an unexplained
+  pass). That edit has not been re-verified with a fresh `pc_parity` run.
+  Still open, biggest remaining piece: EXEC and overlay costs are not charged
+  at all (measured: EXEC of a 1-47 KB program costs 0.71-2.47 M cycles on this
+  drive, `D:/f117-gate/p1-dos-probe/exec1989.py`; these are the dominant
+  remaining positive steps in the intro, +214 ms at MPS_LOGO's exit and +248 ms
+  at PLAYER's exit). A second limitation found and documented rather than
+  hidden: the read/write seek cost is genuinely seek-distance-dependent (three
+  clean measurements ranged 261k-530k cycles), so a single flat constant is
+  the wrong shape for it; a future session could track approximate head
+  position instead of a flat per-access charge.
+  **App default speed, also decided this batch.** `f117a` now runs at 20
+  million instructions a second (`MACHINE_APP_IPS` in `src/machine/machine.h`;
+  `f117run` and every recorded route stay at GOG's 9 million, so no route hash
+  changed). No frame limiter: above ~13 MIPS the game's own clamp holds S at
+  15 with no help. A 214-flight matrix (nine routes, eight independent
+  boot-clock seeds via `speed_sweep.py --offsets-ms`, speeds 9/16/20 MIPS, no
+  fixes, `D:/f117-gate/fastdefault/matrix/runs.jsonl`, analysed with the new
+  `tools/speed_compare.py`) found no S swings at 16 or 20 and no detectable
+  change in enemy launches, bursts or player hits versus 9 MIPS - but the
+  power is low (about a quarter of a launch per flight; only 1-2 of ~70
+  flights per speed were ever hit), so this shows "no large change", not
+  "unchanged". A controlled threat-profile test (missions that reliably
+  engage the player, many flights per speed) is the natural next step if that
+  matters more precisely. Full tables: `docs/speed-sweep.md`, "Fast-machine
+  default". The earlier 15 fps limiter experiment is *not* shipped (settles at
+  S 12, 1.25x clock, worse than the unlimited default's 1.12x).
+  **Gate for this commit:** `D:/f117-gate/fastdefault/gate-final/gate.log` (14
+  unit tests, 0 mismatches across all instruction/matched-routine checks, 35
+  routes identical) - run on the truly-final tree, after the constant fix.
   Tools: `F117R_TRACE_FILES=1` logs every file call to a run's `run.log`;
-  `D:/f117-gate/p1-dos-probe/roster.py OUT [PROFILE]` runs START's roster
-  sequence twice on 86Box (cold, then warm); `write.py`, `fcb.py` and `explore.py`
-  are the older probes. The A/B frame runs are `D:/f117-gate/frames-msdos` (with
-  the model) and `frames-msdos-base` (the same 86Box run, without it).
+  `D:/f117-gate/p1-dos-probe/roster.py`/`seq.py`/`exec1989.py OUT [PROFILE]`
+  are the file-cost probes; `write.py`, `fcb.py` and `explore.py` are older,
+  RAM-disk-era probes. `D:/f117-gate/frames-1989-fixed/` and
+  `D:/f117-gate/pc_parity-1989-fixed.log` are this batch's final, corrected
+  verification runs.
 
 - **Usage cutoff (owner, 9 Oct).** When the 5-hour Codex allowance is 15% or
   less, wrap up, update this handoff, commit, push, and stop. The available
@@ -302,12 +318,21 @@ when continuing the P1 timing investigation. No experiment remains running.
     observation rows each and final hashes. Artifacts: `D:\f117-gate\speed15\`.
     The real-time-clock hypothesis is rejected; combat equivalence remains
     unmeasured. No default or production limiter constant changed.
-  - Open (Phase 1): file loading drift (about +0.6 s by START's roster on the
-    MS-DOS machine; the disk model is RAM-disk speed).
+  - Open (Phase 1): the 386 profile's file-service costs (open, read, write,
+    close, attributes, seek) are charged and fitted to the reference's 1989
+    3500rpm drive (9 Oct, this batch; `timing386.md` "File services"); the
+    intro's end drift on the MS-DOS reference is now +428.5 ms, 1,237 of 1,275
+    pictures exact (was +642.5 ms uncharged). EXEC and overlay costs are not
+    charged at all and are the larger part of what remains (measured: 0.71-2.47
+    M cycles for a 1-47 KB program on this drive).
 - **Reference machine**
-  - All 86Box tools default to `vmt386dos500`. Re-baselined: `pc_parity` all
-    pass; the pictures are 85 exact plus p085 listed by hash; music, timing and
-    the roster hold.
+  - All 86Box tools default to `vmt386dos500`, now on the 1989 3500rpm drive
+    preset (9 Oct, owner decision; RAM-disk configs kept as `.ramdisk.bak`).
+    `pc_parity` fails two 86Box checks on this drive (one close picture,
+    p037; the longest scene 0.37 s against a 0.35 s limit) - everything else
+    (GOG, DOSBox-X, music, sound, the roster save) passes.
+    `expected_misses86.txt`'s stale p085 entry is removed; p037 is left
+    unlisted pending investigation (see "Next priority").
   - Six register differences between the VM and our DOS (AX after INT 21h 3Eh
     and 49h, an EXEC child's AX/BX/DX, the entry FLAGS) are recorded in
     `tools/fidelity_baseline.json`. They are not copied; copy them only if a
@@ -371,22 +396,23 @@ when continuing the P1 timing investigation. No experiment remains running.
 
 ## Open items, in order
 
-1. **The default frame rate** (the owner's decision). The clock runs faster than
-   real time at every speed measured, so no setting is real time as the game
-   stands. Candidates: GOG's DOSBox pace (the current default), the 386 profile
-   (the hardware the manual names). The private 15 FPS limiter did not keep
-   the clock real (S = 12, clock about 1.25x); it is not shipped. Before choosing,
-   measure what speed does to the enemy: launches and hits on the player, our
-   hits, and control response, over many missions at each speed with the same
-   mission (fixed seeds: the front end's timing changes the mission below 9
-   MIPS and on some routes above it).
-   The tick question, which the owner's decision depends on: the controller
-   assumes 60 ticks a second, while the game's timer is calibrated to the 70 Hz
-   VGA retrace (`0x1D01`, reload 17024). If the original's timer is 70 Hz on a
-   real VGA, its world runs about 70/60 = 1.17 times real time by design, even
-   with a perfect frame controller. This is the speed study's reading of the
-   listing, not measured on hardware (none is available here); settle it with
-   the owner, since it decides whether parity means that speed too.
+1. **The app's default frame rate: decided (9 Oct).** 20 million instructions a
+   second, no limiter (`docs/speed-sweep.md`, "Fast-machine default"; this
+   batch). The clock still runs faster than real time (about 1.12x at this
+   speed) - no setting is real time as the game stands, by the controller's
+   own design (see the tick question below), not a defect of this choice.
+   Still open: a controlled threat-profile combat measurement (many flights
+   per speed with missions built to engage the player, not the typed routes'
+   sparse combat) would sharpen the "no detectable change" finding into a
+   real bound.
+   The tick question, unresolved and probably moot now the speed is picked:
+   the controller assumes 60 ticks a second, while the game's timer is
+   calibrated to the 70 Hz VGA retrace (`0x1D01`, reload 17024). If the
+   original's timer is 70 Hz on a real VGA, its world runs about 70/60 = 1.17
+   times real time by design, even with a perfect frame controller. This is
+   the speed study's reading of the listing, not measured on hardware (none
+   is available here); recorded for anyone who later wants to understand why
+   no speed gives exactly real time.
 2. **Fixes under `--timing 386`**: a fix counts instructions, not 386 cycles,
    when it runs under the 386 profile (matched routines are run as the original
    body there; fixes are not). Decide: refuse fixes with `--timing 386`, or
@@ -397,9 +423,10 @@ when continuing the P1 timing investigation. No experiment remains running.
    0; Mac 2.3 adds Quick, Fast and Warp modes that break real time, and its
    mission clock ticks every 8 frames (unknown whether that was deliberate); the
    Amiga caps frames at about 10.7 with a 6-tick floor and keeps S. No port keeps
-   a fixed simulation step separate from drawing. Record this in
-   `docs/roadmap.md` and `docs/bugs.md` once the default is decided. The Mac 2.0
-   version is not in the archives.
+   a fixed simulation step separate from drawing. The default is now decided
+   (item 1); this research is still not recorded in `docs/roadmap.md` or
+   `docs/bugs.md` and should be, next time. The Mac 2.0 version is not in the
+   archives.
 4. **Phase 2**: continue from the ready leads with the sharded lockstep. Keep
    the gate's routes-only and OVERRUN checks green. After each batch, refresh the
    census and every count in README, roadmap, handoff and architecture.

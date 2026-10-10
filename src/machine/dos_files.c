@@ -212,6 +212,11 @@ static uint32_t t386_bytes(uint32_t bytes)
     return bytes * T386_FILE_BYTE_HUND / 100;
 }
 
+static uint32_t t386_sectors(uint32_t bytes)
+{
+    return (bytes + 511) / 512;
+}
+
 void dos_close_files_of(machine_t *m, uint16_t owner)
 {
     for (int i = 5; i < DOS_MAX_FILES; i++)
@@ -636,6 +641,7 @@ int dos_int21(machine_t *m)
         snprintf(m->files[h].path, sizeof(m->files[h].path), "%s", hp);
         snprintf(m->files[h].temp, sizeof(m->files[h].temp), "%s", tp);
         m->files[h].t386_wrote = 0;
+        m->files[h].t386_next = -1;
         t386_file(m, T386_FILE_OPEN + (m->t386_cold_open ? T386_FILE_OPEN_FIRST : 0));
         m->t386_cold_open = 0;
         dos_log(m, "[file] %s '%s' -> %d @%llu %s\n", ah == 0x3C ? "create" : "open",
@@ -661,6 +667,7 @@ int dos_int21(machine_t *m)
         if (h >= DOS_MAX_FILES || !m->files[h].in_use) { dos_fail(c, ERR_BAD_HANDLE); return 1; }
         uint8_t *tmp = (uint8_t *)malloc(n ? n : 1);
         const long pos = m->hooks.file_data ? ftell(m->files[h].fp) : 0;
+        const long at = ftell(m->files[h].fp);
         size_t got = n ? fread(tmp, 1, n, m->files[h].fp) : 0;
         if (m->hooks.file_data && got) {
             FILE *fp = m->files[h].fp;
@@ -675,7 +682,9 @@ int dos_int21(machine_t *m)
         free(tmp);
         c->r[R_AX] = (uint16_t)got;
         transfer_cost(m, (uint32_t)got);
-        t386_file(m, T386_FILE_READ_CALL + t386_bytes((uint32_t)got));
+        t386_file(m, T386_FILE_READ_CALL + t386_sectors((uint32_t)got) * T386_FILE_SECTOR
+                         + (at != m->files[h].t386_next ? T386_FILE_READ_SEEK : 0));
+        m->files[h].t386_next = at + (long)got;
         dos_ok(c);
         return 1;
     }
@@ -696,6 +705,7 @@ int dos_int21(machine_t *m)
         uint8_t *tmp = (uint8_t *)malloc(n ? n : 1);
         for (uint16_t i = 0; i < n; i++)
             tmp[i] = mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_DX] + i)));
+        const long at = ftell(m->files[h].fp);
         size_t put;
         for (uint16_t i = 0; i < n; i++) machine_io_note(m, 0x400000000ull | tmp[i], (uint64_t)h << 16 | i);
         if (n) put = fwrite(tmp, 1, n, m->files[h].fp);
@@ -715,9 +725,12 @@ int dos_int21(machine_t *m)
         transfer_cost(m, (uint32_t)put);
         m->files[h].t386_wrote = 1;
         if (n) {
-            /* The first data write after boot pays the reference VM's cold disk cost; a truncate does not. */
-            t386_file(m, (m->t386_cold_write ? T386_FILE_WRITE_FIRST : 0) + T386_FILE_WRITE_CALL + t386_bytes((uint32_t)put));
+            /* The first data write after boot is the reference VM's cold disk write, seek included;
+             * a truncate is not a data write. */
+            if (m->t386_cold_write) t386_file(m, T386_FILE_WRITE_FIRST);
+            else t386_file(m, t386_bytes((uint32_t)put) + (at != m->files[h].t386_next ? T386_FILE_WRITE_SEEK : 0));
             m->t386_cold_write = 0;
+            m->files[h].t386_next = at + (long)put;
         } else {
             t386_file(m, T386_FILE_TRUNC);
         }

@@ -50,6 +50,7 @@ SETTLE = 5
 FLIGHT_ROUTES = ("boot_to_flight", "middle_east_strike", "central_europe_airair", "korea_strike",
                  "kuwait_strike", "north_cape_strike", "central_america_ground_training",
                  "persian_gulf_air_training", "vietnam_airair")
+BOOT_US = 700_000_000_000_000   # the machine API's default boot clock; --offsets-ms moves it
 FRONT_LIMIT = 12_000_000_000    # front-end clocks (at 9 MIPS) allowed to reach the first frame
 
 
@@ -76,7 +77,8 @@ def sgn(v):
     return v - 0x10000 if v & 0x8000 else v
 
 
-def fly(data, route, speed, fixes=(), seconds=166, engine="recomp", samples_path=None, first9=None):
+def fly(data, route, speed, fixes=(), seconds=166, engine="recomp", samples_path=None, first9=None,
+        offset_ms=0):
     """One flight; returns its figures. Opens the machine in this process (one per process).
     `first9` is the first frame's clock offset from VGAME's start in this route's 9 MIPS run (None
     in that run itself)."""
@@ -96,7 +98,8 @@ def fly(data, route, speed, fixes=(), seconds=166, engine="recomp", samples_path
     began = time.time()
     exited, first_frame, frame0 = None, None, None
     with tempfile.TemporaryDirectory() as save, \
-            Machine(data, save, ips=ips, engine=engine, fixes=tuple(fixes)) as m:
+            Machine(data, save, ips=ips, engine=engine, fixes=tuple(fixes),
+                    time_us=BOOT_US + offset_ms * 1000) as m:
         while m.clock < FRONT_LIMIT * front_scale(speed) + seconds * ips:
             inputs.poll(m)
             status = m.run_until(m.clock + step)
@@ -218,19 +221,21 @@ def fly(data, route, speed, fixes=(), seconds=166, engine="recomp", samples_path
     return result
 
 
-def tag_of(route, speed, fixes):
-    return f"{route}@{speed}{'+' + '+'.join(fixes) if fixes else ''}"
+def tag_of(route, speed, fixes, offset_ms=0):
+    return f"{route}@{speed}{'+' + '+'.join(fixes) if fixes else ''}" + (f"~t{offset_ms}" if offset_ms else "")
 
 
 def _job(args):
-    data, route, speed, fixes, seconds, engine, out, first9 = args
-    tag = tag_of(route, speed, fixes)
+    data, route, speed, fixes, seconds, engine, out, first9, offset_ms = args
+    tag = tag_of(route, speed, fixes, offset_ms)
     try:
         r = fly(data, route, speed, fixes, seconds, engine,
-                os.path.join(out, "samples", tag.replace("@", "_") + ".csv"), first9)
+                os.path.join(out, "samples", tag.replace("@", "_").replace("~", "_") + ".csv"), first9,
+                offset_ms)
     except Exception as e:  # noqa: BLE001 - one failed run must not stop the sweep
         r = dict(route=route, speed=str(speed), fixes=list(fixes), error=repr(e))
     r["tag"] = tag
+    r["offset_ms"] = offset_ms
     print(f"done {tag}: fps {r.get('fps')} S {r.get('S_hist')} clock/s {r.get('clock_per_s')} "
           f"enemy {r.get('enemy_launches')}/{r.get('enemy_bursts')} wall {r.get('wall')} "
           f"{r.get('error') or r.get('exited') or ''}", flush=True)
@@ -240,13 +245,13 @@ def _job(args):
 def table(rows):
     print(f"{'route':<32}{'speed':>6}{'fix':>4}{'fps':>7}{'S':>4}{'Smean':>6}{'swg':>4}{'chg':>4}"
           f"{'clk/s':>7}{'fps/S':>7}{'tick/s':>7}{'vs9':>6} {'L/B/D/M':>11} dmg  mission")
-    ref = {r["route"]: r for r in rows if r.get("speed") == "9" and not r.get("fixes") and "fps" in r}
+    ref = {(r["route"], r.get("offset_ms", 0)): r for r in rows if r.get("speed") == "9" and not r.get("fixes") and "fps" in r}
     for r in sorted(rows, key=lambda r: (r["route"], tuple(r.get("fixes", ())),
                                         1 if r["speed"] == "386" else speed_ips(r["speed"]))):
         if "fps" not in r:
             print(f"{r['route']:<32}{r['speed']:>6} ERROR {r.get('error')}")
             continue
-        base = ref.get(r["route"])
+        base = ref.get((r["route"], r.get("offset_ms", 0)))
         ratio = r["clock_per_s"] / base["clock_per_s"] if base else float("nan")
         same = "" if not base or (base.get("objective"), base.get("target_xy")) == \
             (r.get("objective"), r.get("target_xy")) else "DIFFERENT MISSION "
@@ -267,6 +272,8 @@ def main():
     ap.add_argument("--seconds", type=int, default=166)
     ap.add_argument("--engine", default="recomp", choices=("recomp", "interp"))
     ap.add_argument("--jobs", type=int, default=max(1, (os.cpu_count() or 8) - 8))
+    ap.add_argument("--offsets-ms", nargs="+", type=int, default=[0],
+                    help="boot-clock offsets: each moves START's seed, so each draws its own missions")
     ap.add_argument("--redo", action="store_true")
     ap.add_argument("--table-only", action="store_true")
     a = ap.parse_args()
@@ -277,11 +284,11 @@ def main():
         for line in open(store):
             r = json.loads(line)
             done[r["tag"]] = r
-    wanted = [(route, speed, () if fs == "none" else tuple(fs.split("+")))
-              for route in a.routes for speed in a.speeds for fs in a.fix]
+    wanted = [(route, speed, () if fs == "none" else tuple(fs.split("+")), off)
+              for route in a.routes for off in a.offsets_ms for speed in a.speeds for fs in a.fix]
 
-    def todo(route, speed, fixes):
-        r = done.get(tag_of(route, speed, fixes))
+    def todo(route, speed, fixes, off=0):
+        r = done.get(tag_of(route, speed, fixes, off))
         return not a.table_only and (a.redo or r is None or "error" in r)
 
     def run(jobs):
@@ -294,13 +301,14 @@ def main():
                 f.write(json.dumps(r) + "\n")
                 f.flush()
 
-    # Each route's 9 MIPS flight first: the others time their flight keys from its first frame.
-    run([(a.data, route, "9", (), a.seconds, a.engine, a.out, None)
-         for route in a.routes if todo(route, "9", ())])
-    first9 = {route: done.get(tag_of(route, "9", ()), {}).get("first_frame") for route in a.routes}
-    run([(a.data, route, speed, fixes, a.seconds, a.engine, a.out, first9[route])
-         for route, speed, fixes in wanted if (speed, fixes) != ("9", ()) and todo(route, speed, fixes)
-         and first9[route] is not None])
+    # Each route's 9 MIPS flight first (per offset): the others time their flight keys from its first frame.
+    run([(a.data, route, "9", (), a.seconds, a.engine, a.out, None, off)
+         for route in a.routes for off in a.offsets_ms if todo(route, "9", (), off)])
+    first9 = {(route, off): done.get(tag_of(route, "9", (), off), {}).get("first_frame")
+              for route in a.routes for off in a.offsets_ms}
+    run([(a.data, route, speed, fixes, a.seconds, a.engine, a.out, first9[(route, off)], off)
+         for route, speed, fixes, off in wanted if (speed, fixes) != ("9", ()) and todo(route, speed, fixes, off)
+         and first9[(route, off)] is not None])
     table([done[tag_of(*w)] for w in wanted if tag_of(*w) in done])
     return 0
 

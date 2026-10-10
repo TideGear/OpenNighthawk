@@ -1,7 +1,8 @@
 # Emulated CPU speed and VGAME's frame-rate controller: measurements
 
 Partial results of a sweep of the emulated machine's speed (9 October 2026), for choosing the
-app's default speed or a frame limiter. Nothing here changes the app's default. Reproduce with
+app's default speed or a frame limiter. The default was decided on 9 October 2026 (the section at
+the end). Reproduce with
 `py tools/speed_sweep.py --data D:/GOG/F-117A --out DIR --speeds 3 ... 40 386 --seconds 300`
 (each route's 9 MIPS run first, then the others; `--table-only` reprints).
 
@@ -269,3 +270,48 @@ machine hashes are identical to recompilation: `05a9b3747a918a85` and
 `compare_pairs.py`. The two interpreter flights took 318 and 407 s beside
 the full gate. These checks verify this timing observation in both engines;
 they do not establish combat equivalence at different speeds.
+
+## Fast-machine default (9 October 2026)
+
+**Decision.** The app (`f117a`) now runs its instruction model at 20 million instructions a second (`MACHINE_APP_IPS`, `--ips` and `ips =` override it). `f117run` and every recorded route keep GOG DOSBox's 9 million, so no route hash changes. The fix D1 stays off. No limiter is added: above about 13 MIPS the game's own clamp holds its frame estimate S at 15, and the drawn rate settles near 16.7 frames a second.
+
+**Correction to the earlier 15 fps note.** The experiment above (a 15 fps limiter on top of the fast machine) is not the shipped behaviour and is worse: S settles at 12 and the mission clock runs about 1.25 times real time. "The 15 cap" in the default is the game's own clamp, reached without any limiter; at 20 MIPS it gives a clock of about 1.12.
+
+**Matrix.** Nine typed routes, eight boot-clock offsets (0, 3, 7, 11, 15, 19, 23 and 27 seconds, each a different mission seed), and speeds 9, 16 and 20 MIPS: 214 flights of 300 guest seconds, no fixes, recomp engine. Command:
+
+```
+py tools/speed_sweep.py --data D:/GOG/F-117A --out D:/f117-gate/fastdefault/matrix --speeds 9 16 20 --offsets-ms 0 3000 7000 11000 15000 19000 23000 27000 --seconds 300 --jobs 24
+py tools/speed_compare.py D:/f117-gate/fastdefault/matrix/runs.jsonl
+```
+
+`--offsets-ms` moves the boot clock, which moves START's seed, so each offset draws its own missions. Missions cannot be paired across speeds (a change of speed also changes the seed), so each speed is a sample of missions from the same generator and is compared as a distribution.
+
+| MIPS | complete flights | drawn FPS | S mean | swings | mission clock per second |
+|---|---|---|---|---|---|
+| 9 (GOG pace) | 70 | 15.27 | 12.95 | 0 | 1.202 |
+| 16 | 68 | 16.77 | 14.88 | 0 | 1.129 |
+| 20 (default) | 70 | 16.77 | 14.98 | 0 | 1.120 |
+
+The 9 MIPS mean includes the parked jet (11.6 frames a second); the 16 and 20 MIPS figures hold the parked jet at 16.7.
+
+Combat, complete flights, with 95% bootstrap intervals:
+
+| MIPS | launches per flight | bursts per flight | misses per flight | player hits per flight | flights with a hit |
+|---|---|---|---|---|---|
+| 9 | 0.26 (0.11 to 0.43) | 0.04 | 0.17 | 0.057 | 2 of 70 |
+| 16 | 0.18 (0.07 to 0.29) | 0.03 | 0.10 | 0.029 | 1 of 68 |
+| 20 | 0.30 (0.14 to 0.49) | 0.03 | 0.20 | 0.029 | 1 of 70 |
+
+Differences from 9 MIPS: launches −0.08 (−0.28 to +0.11) at 16, +0.04 (−0.19 to +0.29) at 20; player hits −0.03 at both (−0.14 to +0.06). No difference is detected.
+
+**What this does not establish.** The power is very low. These routes give about a quarter of a launch per flight and rarely hit the player, so a halving or doubling of combat would not show here. The matrix supports "no large change in combat rate or in hits". It does not support "combat is unchanged". A controlled threat profile (missions that engage the player on purpose, many flights per speed) is still needed for that claim.
+
+**Errors and early exits.** Every error and every early exit is in Korea's route, at a seed where the scripted front end does not reach VGAME (one error at 9 MIPS, one at 16 MIPS) or where the mission ends near 40 seconds (one at 9, two at 16, one at 20 MIPS). Both kinds appear at 9 MIPS as well, so they are not speed effects. Two Korea flights at seed 23 seconds were not run at 16 or 20 MIPS, because their 9 MIPS baseline never reaches VGAME.
+
+**Mission mix.** Objective 1 appears in 9 of 70 flights at 9 MIPS, 9 of 68 at 16 and 14 of 70 at 20. Mission generation depends on the seed, so this is a sample difference, not a speed effect that has been tested. It is recorded here so it is not forgotten.
+
+**Control response.** The aligned tap measurements in the control-response table above (middle_east_strike, 9 to 40 MIPS, no fix) show pitch and roll responses within the same spread at 9, 16, 20 and 40 MIPS. The sample is 23 to 29 taps per speed, with the usual divergence along the sequence.
+
+**Real-time headroom.** A single recompiled run of `boot_to_flight` at 9 MIPS (the gate's route check, run while other work shared the machine) reported 68.7 million instructions a second on this machine. 20 million is about 3.4 times real time there.
+
+**Analysis.** `tools/speed_compare.py` reads `runs.jsonl` and prints the per-speed summary, the bootstrap intervals and the mission mix; the tables above are its output. The sweep is `tools/speed_sweep.py` (with `--offsets-ms`, added for this matrix).

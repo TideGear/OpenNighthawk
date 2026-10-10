@@ -37,6 +37,9 @@
 #define DOS_MAX_PROCS  8
 
 #define MACHINE_DEFAULT_IPS 9000000ull
+/* The app's default (f117a): the game's own frame cap of 15 holds in flight, so a parked jet draws
+ * 16.7 frames a second instead of 11.6 at GOG's pace (docs/speed-sweep.md). */
+#define MACHINE_APP_IPS 20000000ull
 
 typedef struct machine machine_t;
 
@@ -49,6 +52,7 @@ typedef struct {
     uint8_t  sft;            /* its system file table entry: what the PSP's handle table holds */
     char     temp[540];      /* fix D11: written here, renamed over path on close ("" = direct) */
     int      t386_wrote;     /* a write went to it: its close costs the 386 profile's flush */
+    long     t386_next;      /* the offset the next call must start at to be sequential */
 } dos_file;
 
 /* Fix D11: a file the program creates in the save directory is written to

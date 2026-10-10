@@ -4,4 +4,8 @@
 # picture's hash, what it is. "close" or "unmatched" (with the reason); "no candidate" is never allowed.
 # Review before adding a line; a line added to make a failure go away says why that picture is harmless.
 # Measured on the MS-DOS 5.00 VM (vmt386dos500), 9 Oct 2026.
-p085.png 8da31eccba47 unmatched: a single sample (111 s) of START's roster screen with the list drawn and the selected pilot's panel and pointer not yet: 86Box is still loading the panel's files (rostsprt.pic) through DOS and the disk, which this machine loads at once, so it never shows that state; the next sample (p086) is exact
+# p085.png (unmatched, START's roster screen mid-load) is no longer listed: since the
+# reference moved to the 1989 3500rpm drive preset (9 Oct 2026) it compares exact, because
+# the disk now takes long enough that the capture never lands in that in-between state.
+# Open: p037.png now compares "close" (diff 0.028, hash 75c269fac9e7) on the 1989 preset
+# and is not yet investigated or added here; see docs/roadmap.md and tools/ref86box/timing386.md.

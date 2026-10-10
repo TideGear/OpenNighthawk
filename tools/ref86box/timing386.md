@@ -193,8 +193,8 @@ costs more on every call: warm open 3.56 M, warm read 512 1.10 M, close
 written 5.08 M (the flush). It is a period-drive experiment, not the reference;
 which drive the owner's machine had is unknown.
 
-The model, fitted to those measurements (reads checked at 512, 4,096, 16,384
-and 32,768 bytes; writes at 290 and 512 bytes):
+The RAM-disk fit, recorded for comparison (the reference's preset was
+`ramdisk` until 9 Oct 2026):
 
 | call | charge |
 |---|---|
@@ -207,23 +207,88 @@ and 32,768 bytes; writes at 290 and 512 bytes):
 | close, read only | 1,800 |
 | close, written | 60,000 |
 
-A second read of a sector the DOS buffer still holds costs about 4,000 cycles
-in the probe; the model does not track DOS's buffers, so it charges the full
-read call there (about 2.3 ms each). The cold write is charged once per boot.
-
-Result on the MS-DOS 5.00 reference (`frames386.py`, the intro against the same
-86Box run, A/B with the model's charge switched off):
+Result on the MS-DOS 5.00 reference with the RAM-disk preset (`frames386.py`,
+the intro against the same 86Box run, A/B with the charges switched off):
 
 | | drift at the end | exact pictures | roster step | verdict |
 |---|---:|---:|---:|---|
 | without file charges | +642.5 ms | 1,238 of 1,277 | +623 ms | FAIL |
 | with file charges | +228.7 ms | 1,238 of 1,277 | +295 ms | FAIL |
 
-The remaining drift is in two places. The roster step still runs +295 ms
-(this is about one cold write; the palette and requestr reads that precede it
-are charged, and the cause is not yet separated), and the program loads
-(EXEC of PLAYER and DSWAP and the overlays) are not charged yet: +43 ms at
-MPS_LOGO's exit and +48 ms at PLAYER's exit. The intro's verdict remains FAIL.
+**The reference is now the 1989 3500 rpm preset (9 Oct 2026).** Its sequential
+reads behave differently from the RAM-disk preset, so the fit changed. The
+sequence probe (`D:/f117-gate/p1-dos-probe/seq.py`, VGAME.EXE, sixteen 4,096-byte
+and sixteen 512-byte sequential reads, cold then warm) gives, for the warm pass:
+
+- 4,096-byte reads: 138,319 cycles each, with a spike to about 390,000 to 405,000
+  about every fourth read, where the read crosses a 35-sector track (average
+  189,523 over the fifteen reads after the first);
+- 512-byte reads: 30,909 each (average 31,009), a sector at media speed;
+- the first read after the open: about 0.57 M (512 bytes) to 1.26 M (4,096).
+
+So a sequential read costs about 15,400 cycles a sector (the media rate, 0.46 ms
+at 3500 rpm) plus the call, and a read that does not follow the previous one on
+its handle pays a seek of about 0.55 M. Closing a written file costs about 4.8 M
+(the drive's write-behind flush: 4.49 M cold, 5.08 M warm). The cold first data
+write after boot is 9.47 M, the same on either preset. A warm first write after a
+seek costs about 1.27 M.
+
+The model, fitted to the 1989 probes (`src/cpu/timing386.h`, `T386_FILE_*`):
+
+| call | charge |
+|---|---|
+| open (AH=3Dh, 3Ch) | 50,145, plus 2,128,293 for the first open after boot (the average of two measured first opens on different files, 1,839,141 and 2,417,445: the cost depends on the file's directory and FAT position, not only on being first) |
+| get attributes (AH=43h) | 44,402 |
+| seek (AH=42h) | 1,114 |
+| read (AH=3Fh) | 15,565 + 22,500 a sector (rounded up), plus 440,493 if the read does not start where the previous read on the handle ended (the average of three measured seeks, 261,244 to 530,173: a flat constant cannot capture the real, distance-dependent seek cost, so this is a rough approximation) |
+| write (AH=40h), n > 0 | 8.76 cycles a byte, plus 1,200,000 if the write does not start where the previous one ended; the first data write after boot is 9,470,000 in all |
+| zero-length write | 4,249 |
+| close, read only | 1,800 |
+| close, written | 4,800,000 (the flush) |
+
+The 22,500 a sector averages the track crossings. It fits the 4,096-byte reads
+(195,600 against 189,500 measured, 3% high) and over-charges single-sector
+sequential reads by about 0.2 ms (38,000 against 31,000).
+
+**EXEC and overlays (not charged yet).** EXEC of child programs of 1 KB, 9.5 KB
+and 47 KB (`D:/f117-gate/p1-dos-probe/exec1989.py`, warm): 710,453, 735,408 and
+2,465,831 cycles. The 47 KB figure is START's size; PLAYER and DSWAP are 9.5 and
+8.6 KB, the intro's overlays 0.7 to 15 KB. The EXEC cost is mostly its fixed
+part, a seek and a directory read, plus media time for big images. Three
+sizes are too few to fit a model, so the program loads are left for the next
+batch and the intro below shows what they cost.
+
+Result on the 1989 reference (`frames386.py`, the intro against the new 86Box
+run, the model above; no A/B on this reference was run):
+
+| drift at the end | exact pictures | verdict | largest steps (86Box minus ours) |
+|---:|---:|---|---|
+| +428.5 ms | 1,237 of 1,275 | FAIL | MPS_LOGO's exit +214 ms, PLAYER's exit to START +248 ms, the roster +280 ms, title loads -128 ms |
+
+The positive steps are the program loads, which the model does not charge.
+Re-deriving T386_FILE_READ_SEEK from the three clean measurements above (rather
+than an earlier, less-grounded guess of 550,000) raises the end drift from
+328.6 to 428.5 ms: a lower, honestly-measured seek cost makes this machine
+finish each file-heavy section faster relative to 86Box, not slower. This is
+evidence that a flat seek constant is the wrong shape for this cost, not a
+reason to refit the constant to whichever value minimises the drift metric.
+The intro's verdict remains FAIL.
+
+**Reference parity on the 1989 drive** (`py tools/pc_parity.py`): the GOG, DOSBox-X,
+music, sound and roster checks pass (the roster is byte-identical on both
+references). Two 86Box checks fail: the picture check finds one close picture
+(p037, diff 0.028, hash `75c269fac9e7`), and the timing check finds the longest
+scene 0.37 s against a 0.35 s limit (the scene count and the start drift pass).
+Both are consistent with the program loads above. `expected_misses86.txt`'s
+stale p085 entry (now exact on this drive) is removed; p037 is left off the
+list rather than added without confirming why it differs (the project's own
+rule for that file) - it is small (the "close" threshold is 0.75) and could be
+a one-sample transition-frame artifact like the others already recorded in
+roadmap.md, but that is not yet checked. This edit to the allowlist has not
+been re-verified with a fresh pc_parity run; the next session should run it
+once to confirm the predicted result (one fewer stale-entry warning, same
+overall FAIL from p037 and the timing check).
+
 - READ MULTIPLE 2,000 us before the first data, WRITE 2,000 us before the
   first DRQ then 96.08 us a sector; SEEK and recalibrate 1,000 us.
 

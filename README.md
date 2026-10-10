@@ -221,7 +221,7 @@ build\f117a.exe --data "C:\GOG Games\F-117A"
 | `--data DIR` | the game's folder (found automatically for common GOG/Steam paths) |
 | `--save DIR` | where the game's own saves go (default: your user profile); the install is never written |
 | `--engine recomp\|interp` | recompiled code (default) or the reference interpreter only |
-| `--ips N` | emulated CPU speed, instructions per second (default 9,000,000: GOG DOSBox's `cycles=9000`) |
+| `--ips N` | emulated CPU speed, instructions per second (default 20,000,000 in `f117a`, which plays at 16.7 frames a second in flight; 9,000,000 in `f117run` and the route checks, GOG DOSBox's `cycles=9000`) |
 | `--roland munt\|windows\|off` | where Roland music goes: Munt's MT-32 emulation (needs `--mt32-roms`), the Windows MIDI synthesizer, or nowhere |
 | `--mt32-roms DIR` | the folder holding your MT-32 control and PCM ROMs, recognised by content whatever they are called (see [MT-32 ROMs](#mt-32-roms)); on its own it means `--roland munt` |
 | `--midi N` | send Roland MIDI to Windows MIDI device N instead of the mapper |
