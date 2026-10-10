@@ -6,13 +6,14 @@ For the next conversation on this repository. Read this, then
 checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 [docs/presentation.md](docs/presentation.md) (60+ fps and 4K) and
 [docs/repeated-processes.md](docs/repeated-processes.md) (every process we run
-more than once, what it costs). State as of the afternoon of 9 October 2026.
+more than once, what it costs). State as of 9 October 2026.
 Earlier session logs are in `git log -p handoff.md`.
 
 ## What to do first
 
-1. `git status -sb`: the 15 FPS experiment report is on master and
-   `speed15-study`, pushed together after the full gate passed (item 3).
+1. `git status -sb`: the named weapon-lock marker and gate build-setting
+   repair are on master and `p2-lock-marker`, pushed together after the full
+   gate passed (item 3). The 15 FPS report remains on `speed15-study`.
    The earlier repairs remain on `lockstep-code-below`. Leave any
    pre-existing untracked files alone.
 2. The app's default frame rate is the open decision. The owner's rule (9 Oct):
@@ -26,16 +27,22 @@ Earlier session logs are in `git log -p handoff.md`.
    sweep is now complete (90 flights); initial control-response sweeps and
    boot-clock alignment work are in `D:\f117-gate\speedsweep\` and
    `docs/speed-sweep.md`.
-3. **Green and pushed.** Latest gate: `D:\f117-gate\merge12\gate.log`,
-   1,313 s (13 s build, 491 s coverage, 7 s second build, 801 s parity);
-   13 unit tests, 35 identical routes, 34 fresh interpreter sessions,
+3. **Green and pushed.** Latest gate: `D:\f117-gate\merge14\gate.log`,
+   555 s (14 s build, 541 s parity); 13 unit tests, 35 identical routes,
+   34 reused interpreter sessions,
    both instruction profiles 5,718,912
    states with zero mismatches. Matched seeds `0x5EED0F117A`, `0xC0FFEE`
-   and `0x28f2a50a608e`: 2,475,889 / 2,474,978 / 2,475,567 comparisons,
+   and `0x271fd8b2c7aa`: 2,480,746 / 2,479,843 / 2,479,865 comparisons,
    zero mismatches. Every routes-only routine ran; no event-limit overruns.
-   Coverage added nothing; the second translation was byte-identical.
-   This batch corrects D1 comments/help and documents the private 15 FPS
-   experiment and existing presentation work; the app default stays
+   Coverage safely skipped with unchanged inputs and generated code. The
+   preceding fresh pass, `merge13`, took 1,304 s (72 s build, 448 s coverage,
+   7 s second translation, 777 s parity): 35 identical routes, 34 fresh
+   interpreter sessions, no added translation, the same lockstep tallies.
+   That pass inherited APP=OFF and ran only eight unit tests. The gate now
+   explicitly sets `F117R_BUILD_APP=ON`; merge14 verifies all 13, so a prior
+   core-only build cannot silently omit the five host tests again.
+   This batch names VGAME's weapon-lock marker, strengthens its driver-thunk
+   check and corrects the presentation time-base comment; the app default stays
    at 9 MIPS with fixes off. Previous repair gate: `merge9` tested HEAD `f2a7d2c`:
    all 35 routes identical, both 5,718,912-state instruction checks and both
    fixed matched seeds passed. The rotating seed `0xf2a7d2c1bf36` caught one
@@ -107,7 +114,7 @@ Earlier session logs are in `git log -p handoff.md`.
 - Generated C: `C:\Users\Tideg\f117-recomp-local\gen` (never committed);
   coverage in `...\coverage`; route runs in `...\runs`.
 - Scratch and logs on D: (`D:\f117-gate\...`). The current gate's log is
-  `D:\f117-gate\merge12\gate.log`; earlier gates are in `merge3` to `merge11`.
+  `D:\f117-gate\merge14\gate.log`; earlier gates are in `merge3` to `merge13`.
 - Research (read only): `D:\f117-gate\macresearch\` (Mac 2.1, 2.3.1 and 2.3.2
   listings, the Amiga listing, `dos_ctl_sim.py`). The archives are in the
   Reimp's `reference\` folder.
@@ -140,6 +147,8 @@ Earlier session logs are in `git log -p handoff.md`.
   C:/Users/Tideg/f117-recomp-local/coverage`, about 20 minutes, run in the
   background. Do not edit `src/` or rebuild while it runs. Read the tally, not
   the exit code:
+  The build explicitly enables the app to include all five host tests even
+  if the preceding manual build used `F117R_BUILD_APP=OFF`.
   - after the build, the unit tests (`ctest -E func_lockstep`, 13 tests with
     generated code, including the shadow-text stack-alias regression);
   - steps 6 and 6b: every translated instruction (89,366 starts, 5,718,912
@@ -159,7 +168,7 @@ Earlier session logs are in `git log -p handoff.md`.
   has no `gh`; read the run list with the public API:
   `curl https://api.github.com/repos/TideGear/OpenNighthawk/actions/runs?per_page=5`.
   The job logs need sign-in, so reproduce a failure locally with ctest. The
-  last three pushes were green.
+  preceding push, `271fd8b` (run 38005410929), was green; check the latest run.
 - **PC parity**: `py tools/pc_parity.py --data D:/GOG/F-117A` (about 12 minutes).
   All checks pass on the MS-DOS 5.00 reference (9 Oct). The 86Box pictures must
   be exact except the one listed by hash in
@@ -194,8 +203,8 @@ Earlier session logs are in `git log -p handoff.md`.
 
 ## Current state
 
-- **Scoreboard** (the last pushed title): P1 97.71%, P2 38.40%, P3 67.00%,
-  P4 42.90%, All 70.40%.
+- **Scoreboard** (the last pushed title): P1 97.71%, P2 38.54%, P3 67.00%,
+  P4 42.90%, All 70.44%.
 - **Phase 1 (parity)**
   - Translation: 89,366 instruction starts (96% of the code bytes). 35 routes
     identical between the engines. The interpreter and the translator are
@@ -266,8 +275,16 @@ Earlier session logs are in `git log -p handoff.md`.
   - `vmt386dos500h` is built and reproducible; DOS=HIGH makes INT 21h 0Bh and
     2Ch cost more, so it is not the reference.
 - **Phase 2 (named, matched code)**
-  - 762 addresses matched (757 of 1,535 census functions, 62,999 of 179,213
-    bytes). 778 functions (116,214 bytes) remain.
+  - 763 addresses matched (758 of 1,535 census functions, 63,268 of 179,213
+    bytes). 777 functions (115,945 bytes) remain.
+  - Latest routine: VGAME 0x0B171, the searching box and locked hexagon.
+    Preserves small-HUD size halving in the caller's argument and re-reads
+    stack coordinates for every line. The harness enables returning driver
+    thunks only for this VGAME entry, so the active drawing branches return;
+    the actual driver is checked by the routes. Targeted 4,000-state seeds
+    0x5EED0F117A / 0xC0FFEE / 0x271fd8b2c7aa compare 4,857 / 4,865 / 4,868
+    states, zero mismatches. Before the thunk substitution only 358 compared
+    at the fixed seed. Artifacts: `D:\f117-gate\p2-lock-marker\`.
   - Batches this session, each merged after a gate: VGAME (34 and 47), START/END
     (40 and 45), the small programs (21 and 44), and the C runtime's DOS layer
     (64; the lockstep now answers INT 21h and 16h for every routine).
@@ -276,7 +293,7 @@ Earlier session logs are in `git log -p handoff.md`.
     and 21; `vgame_view_caption` was one clock late on a rare path; port bus
     delays crossing an event limit (`IO_SLACK`). The picture decoder's prefix walk
     checked room once for any depth (fixed; boot_to_flight matches again).
-  - Ready leads, triaged equal and not yet written: VGAME 0x0B171, 0x0D6DD,
+  - Ready leads, triaged equal and not yet written: VGAME 0x0D6DD,
     0x04777, 0x01007, 0x00D14, 0x05046 and 130D:033F. Identical copies across
     programs were listed in the batches' commit messages; check the table before
     adding a row.
@@ -346,8 +363,9 @@ Earlier session logs are in `git log -p handoff.md`.
    check). D10 and D35 remain unlocated or unreproduced.
    The roadmap/progress evidence now reflects the already-built fine-grid
    interpolation and pacing; completion estimates are unchanged. A stale
-   header in `src/present/drawfeed.h` still claims one game second is real
-   time; correct it in the next source batch with its normal gate.
+   header in `src/present/drawfeed.h` claiming one game second is real time
+   is now corrected: presentation follows the machine clock, independently
+   of the faster mission clock.
 6. **Reference machine**: keep `vmt386dos500`. Decide with the owner whether to
    copy the six DOS register differences.
 7. **Checks still to tighten**: DOSBox-X's and GOG's picture comparisons count

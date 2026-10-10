@@ -21983,6 +21983,130 @@ quit:                                                             /* 09839 */
     return 1;
 }
 
+/* VGAME 0x0B171, weapon_lock_marker(x, y, size, locked, pen): four sides
+ * while searching, six when locked. Small-HUD mode halves size in the
+ * caller's argument slot. The half-height is size - (size >> 2); the
+ * hexagon's two shoulders use half of that height. SS locals hold right,
+ * left, half-height, bottom and top at -8, -4, -2, -10 and -6, respectively.
+ * Keep those writes and re-read each coordinate as it is pushed: the line
+ * calls may alias the frame, so a host-side array of captured vertices
+ * would not preserve the original's memory accesses. */
+static int vgame_weapon_lock_marker(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 26)) return 0;                                  /* through the pen CALL */
+    x86_enter(c, 10, 0);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_SI]);
+    alu_sub(c, ds_get(c, 0x368C), 0, 1, 0);
+    unsigned n = 5;
+    if (c->flags & F_ZF) { n++; goto quit; }                     /* disabled: JMP to the exit */
+    alu_sub(c, VG2_DS8(0x294B), 0, 0, 0);
+    n += 2;
+    if (!(c->flags & F_ZF)) {
+        VG2_SETFRAME(8, x86_shift(c, 7, VG2_FRAME(8), 1, 1));
+        n++;
+    }
+    c->r[R_AX] = VG2_FRAME(8);
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], VG2_FRAME(4), 1, 0);
+    VG2_SETFRAME(-8, c->r[R_AX]);                                 /* right = x + size */
+    c->r[R_CX] = VG2_FRAME(4);
+    c->r[R_CX] = (uint16_t)alu_sub(c, c->r[R_CX], VG2_FRAME(8), 1, 0);
+    VG2_SETFRAME(-4, c->r[R_CX]);                                 /* left = x - size */
+    c->r[R_DX] = VG2_FRAME(8);
+    c->r[R_DX] = x86_shift(c, 7, c->r[R_DX], 2, 1);
+    c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], VG2_FRAME(8), 1, 0);
+    c->r[R_DX] = (uint16_t)alu_sub(c, 0, c->r[R_DX], 1, 0);
+    VG2_SETFRAME(-2, c->r[R_DX]);                                 /* half-height */
+    c->r[R_DX] = (uint16_t)alu_add(c, c->r[R_DX], VG2_FRAME(6), 1, 0);
+    VG2_SETFRAME(-10, c->r[R_DX]);                                /* bottom */
+    c->r[R_BX] = VG2_FRAME(6);
+    c->r[R_BX] = (uint16_t)alu_sub(c, c->r[R_BX], VG2_FRAME(-2), 1, 0);
+    VG2_SETFRAME(-6, c->r[R_BX]);                                 /* top */
+    cpu_push16(c, VG2_FRAME(12));
+    c->icount += n + 17;
+    VG2_NEAR(0x886A, 0xB1C0, 15);                                /* select pen */
+    c->r[R_BX] = cpu_pop16(c);
+    alu_sub(c, VG2_FRAME(10), 0, 1, 0);
+    n = 3;
+    if (c->flags & F_ZF) {
+        /* Each row is the four frame offsets pushed for one box edge,
+         * in original stack order: y1, x1, y0, x0. */
+        static const int edge[4][4] = {
+            { -10, -4, -6, -4 }, { -10, -8, -10, -4 },
+            { -6, -8, -10, -8 }, { -6, -4, -6, -8 }
+        };
+        static const uint16_t after[4] = { 0xB1D6, 0xB1E8, 0xB1FA, 0xB277 };
+        for (unsigned side = 0; side < 4; side++) {
+            for (unsigned coord = 0; coord < 4; coord++)
+                cpu_push16(c, VG2_FRAME(edge[side][coord]));
+            c->icount += n + 4 + (side == 3);                    /* last edge jumps to the shared CALL */
+            VG2_NEAR(0x881F, after[side], side == 3 ? 5 : 7);
+            c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0);
+            n = 1;
+        }
+    } else {
+        c->r[R_AX] = VG2_FRAME(-2);
+        c->r[R_AX] = x86_shift(c, 7, c->r[R_AX], 1, 1);
+        c->r[R_CX] = c->r[R_AX];
+        c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], VG2_FRAME(6), 1, 0);
+        c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0);
+        cpu_push16(c, c->r[R_AX]);                               /* upper shoulder y */
+        cpu_push16(c, VG2_FRAME(-8));
+        cpu_push16(c, VG2_FRAME(-6));
+        cpu_push16(c, VG2_FRAME(4));
+        c->r[R_SI] = c->r[R_AX];
+        c->r[R_DI] = c->r[R_CX];
+        c->icount += n + 11;
+        VG2_NEAR(0x881F, 0xB228, 7);                             /* top vertex to right upper shoulder */
+        c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0);
+        c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], VG2_FRAME(6), 1, 0);
+        cpu_push16(c, c->r[R_DI]);                               /* lower shoulder y */
+        cpu_push16(c, VG2_FRAME(-8));
+        cpu_push16(c, c->r[R_SI]);
+        cpu_push16(c, VG2_FRAME(-8));
+        c->icount += 6;
+        VG2_NEAR(0x881F, 0xB239, 6);                             /* right vertical side */
+        c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0);
+        cpu_push16(c, VG2_FRAME(-10));
+        cpu_push16(c, VG2_FRAME(4));
+        cpu_push16(c, c->r[R_DI]);
+        cpu_push16(c, VG2_FRAME(-8));
+        c->icount += 5;
+        VG2_NEAR(0x881F, 0xB249, 6);                             /* right shoulder to bottom vertex */
+        c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0);
+        cpu_push16(c, c->r[R_DI]);
+        cpu_push16(c, VG2_FRAME(-4));
+        cpu_push16(c, VG2_FRAME(-10));
+        cpu_push16(c, VG2_FRAME(4));
+        c->icount += 5;
+        VG2_NEAR(0x881F, 0xB259, 6);                             /* bottom vertex to left shoulder */
+        c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0);
+        cpu_push16(c, c->r[R_SI]);
+        cpu_push16(c, VG2_FRAME(-4));
+        cpu_push16(c, c->r[R_DI]);
+        cpu_push16(c, VG2_FRAME(-4));
+        c->icount += 5;
+        VG2_NEAR(0x881F, 0xB267, 6);                             /* left vertical side */
+        c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0);
+        cpu_push16(c, VG2_FRAME(-6));
+        cpu_push16(c, VG2_FRAME(4));
+        cpu_push16(c, c->r[R_SI]);
+        cpu_push16(c, VG2_FRAME(-4));
+        c->icount += 5;
+        VG2_NEAR(0x881F, 0xB277, 5);                             /* left shoulder to top vertex */
+        c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0);
+        n = 1;
+    }
+quit:
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    x86_leave(c);
+    c->icount += n + 4;
+    near_ret(c);
+    return 1;
+}
+
 /* VGAME 0x0B4F5, panel_marker_label(text, pen, margin): the label of the
  * marker at the projected point ([4A10], [4A18]; [4A10] = -1 is none).
  * When the point is further than `margin` from the edges of the 320 x 92
@@ -30488,6 +30612,7 @@ static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x9216, vgame_map_overlay_route, "route on the navigation display", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x8719, vgame_map_overlay_arc, "warning arc on the map", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x971A, vgame_panel_ils, "instrument landing needles", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xB171, vgame_weapon_lock_marker, "weapon-lock box and hexagon", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xB4F5, vgame_panel_marker_label, "label of a projected marker", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD9A2, vgame_compose_camera, "the frame's camera matrices", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x889B, vgame_cockpit_lamp, "set a cockpit lamp", 1 },

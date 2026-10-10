@@ -5,7 +5,7 @@
 
 1. Translate every code file of the install (recompiler/recomp.py), seeded
    with any coverage already gathered.
-2. Build with the translation (build.cmd -DF117R_GEN_DIR=...).
+2. Build the app and core with the translation, then run the unit tests.
 3. Play the scripted routes in tools/routes/ headless and record every
    instruction the build still had to interpret inside a known module.
 4. Translate again with that coverage, and rebuild.
@@ -96,7 +96,9 @@ def recompile(data, gen, coverage_files):
 
 
 def build(gen):
-    r = run(["cmd", "/c", os.path.join(ROOT, "build.cmd"), "-DF117R_GEN_DIR=" + gen.replace("\\", "/")],
+    # A prior core-only build must not silently omit the five host tests.
+    r = run(["cmd", "/c", os.path.join(ROOT, "build.cmd"), "-DF117R_BUILD_APP=ON",
+             "-DF117R_GEN_DIR=" + gen.replace("\\", "/")],
             capture_output=True, text=True)
     tail = (r.stdout or "")[-1500:]
     if r.returncode != 0 or "BUILD OK" not in tail:

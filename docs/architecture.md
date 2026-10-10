@@ -528,9 +528,12 @@ caught real defects:
   through the 20-bit wrap; replacing PUSH SS / POP ES with an assignment
   changed the record it copied. The seed `0xf2a7d2c1bf36` catches this;
   `matched_shadow_stack_alias` keeps that regression in the unit-test step.
-- START and END's uninitialised graphics-driver thunks are replaced with
+- START and END's uninitialised graphics-driver thunks, and VGAME's when
+  checking the weapon-lock marker at `0xB171`, are replaced with
   RETF on both sides of the check, so drawing wrappers can return and their
-  surrounding work is compared. The routes still check the real driver.
+  surrounding work is compared. The marker checks rise from 358 to 4,857
+  comparisons per 4,000-state fixed-seed run, including partial-run checks;
+  17 states are skipped. The routes still check the real driver.
   END's DAC-loader states clear the BIOS gray-scale flag that overlaps the
   module image at segment 0; some START map-caption states plant the exact
   argument kinds 64h and 65h. `--only MODULE:IP,...` selects routines for
@@ -615,7 +618,7 @@ live game in a window (a diagnostic, not a gate: device state is not in the
 snapshot). `f117run --dump LINEAR:LENGTH` prints registers and memory at the
 end of a run for comparing two engines at a chosen clock.
 
-762 addresses are matched in all seven programs. The programs carry
+763 addresses are matched in all seven programs. The programs carry
 byte-identical copies of the C runtime helpers (string and block copies, the
 32-bit shifts, multiply and divide), so one matched routine serves several
 addresses. MPS_LOGO carries the same library built for a larger model: its

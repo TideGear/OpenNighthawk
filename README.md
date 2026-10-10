@@ -31,7 +31,7 @@ this project treats it as one.
 **1:1 parity with the original is the first priority.** The game does
 exactly what the DOS original does, including its bugs, which are tracked in
 [docs/bugs.md](docs/bugs.md) so they can be fixed later as switchable
-options. Nine catalogued fixes are available now, all off by default.
+options. Ten catalogued fixes are available now, all off by default.
 
 > **Not affiliated with anyone.** This is an unofficial, fan-made project. It
 > is not affiliated with, authorized by, endorsed by, or associated with
@@ -57,9 +57,9 @@ options. Nine catalogued fixes are available now, all off by default.
   rest is strings, tables and variables). On the scripted sessions no game
   instruction is interpreted under the default timing profile; only the
   emulated BIOS's own stubs are.
-- **Named and matched:** 762 routine addresses (757 census functions,
-  62,999 of 179,213 code bytes) have explained C equivalents checked against
-  their original bodies. Another 778 census functions remain. Under the
+- **Named and matched:** 763 routine addresses (758 census functions,
+  63,268 of 179,213 code bytes) have explained C equivalents checked against
+  their original bodies. Another 777 census functions remain. Under the
   386 profile, matched entries use their original translated bodies until
   their handwritten clocks gain cycle costs.
 - **Parity, measured:** thirty-five scripted sessions (boot to flight; a full

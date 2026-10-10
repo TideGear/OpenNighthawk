@@ -78,6 +78,8 @@ make (Phase 4).
   engines on every route, instruction and matched-routine lockstep; about 7
   minutes after a `matched.c`-only change. Repeated processes and what was optimised:
   [repeated-processes.md](repeated-processes.md).
+  The gate explicitly enables the app build so its host tests are included
+  even after a core-only build.
 
 ### Open
 
@@ -194,7 +196,7 @@ not the recompilation:
       Reimp's mapping; matched functions replacing translations one at a time,
       each held to the same parity checks. `tools/reimp_names.py` joins the
       Reimp's census (1,535 functions) with this project's regions as a private
-      lead list. 762 addresses are matched (757 of the census functions, 62,999 of
+      lead list. 763 addresses are matched (758 of the census functions, 63,268 of
       179,213 bytes); the table is at the end of `src/matched/matched.c` and the
       method is in [architecture.md](architecture.md#matched-routines-phase-2).
       The batches of 8-9 Oct add 37 + 34 + 47 VGAME, 34 + 40 + 45 START/END and 21 + 44 + 64
@@ -208,6 +210,11 @@ not the recompilation:
       1377:00F3's loop and RET below its entry; START/END's shadow-text
       helper preserves PUSH SS's memory write when its source aliases the
       stack, with seed `0xf2a7d2c1bf36` retained as a CTest regression.
+      VGAME's weapon-lock marker (`0x0B171`) now names the searching box and
+      locked hexagon geometry, preserving the small-HUD argument write and
+      the original stack reads for every line call. Its random-state check
+      substitutes returning driver thunks on both sides, so the active
+      drawing branches return too; the routes use the real driver.
 
 ## Phase 3 - fixes and enhancements (switchable)
 

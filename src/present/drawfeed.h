@@ -125,9 +125,9 @@ int drawlive_current(const drawlive *r, const machine_t *m);
  * scanned-out pixels, keeping its palette: 1 when it did. */
 int drawlive_present(drawlive *r, const machine_t *m, present_frame *f);
 
-/* With interp: the in-between picture at the machine's clock now - one game
- * second is one real second (the mission clock's invariant), so the clock is
- * the time base - between the two frames last closed: the older at the newer
+/* With interp: the in-between picture at the machine's clock now, paced
+ * against wall time independently of the game's faster mission clock,
+ * between the two frames last closed: the older at the newer
  * one's close, the newer one a step later, so the picture is a step behind.
  * With extrapolate the newer is shown at its own close and the primitives move
  * on as they moved from the older (t from 1 to 2), so the picture has no age
