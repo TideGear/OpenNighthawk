@@ -13731,6 +13731,89 @@ static int vgame_panel_init(machine_t *m)
     return 1;
 }
 
+/* VGAME 114A:03AD, a 7x7 navigation symbol from an eight-pixel sheet
+ * grid. Source (column*8+1, row*8+41), destination centred at (x,y),
+ * and the selected display page form the graphics driver's blit record.
+ * Frame reads stay live as each record store can overlap the stack. */
+static int vgame_panel_symbol(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 27)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_AX] = ds_get(c, 0xE584);
+    ds_put(c, 0x4072, c->r[R_AX]);
+    c->r[R_AX] = x86_shift(c, 4, FRAME(6), 3, 1);
+    c->r[R_AX] = (uint16_t)alu_inc(c, c->r[R_AX], 1);
+    ds_put(c, 0x4074, c->r[R_AX]);
+    c->r[R_AX] = x86_shift(c, 4, FRAME(8), 3, 1);
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], 41, 1, 0);
+    ds_put(c, 0x4076, c->r[R_AX]);
+    alu_sub(c, mem_read8(c, phys(c->seg[S_DS], 0x40B6)), 1, 0, 0);
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, !!(c->flags & F_CF));
+    c->r[R_AX] = (uint16_t)alu_inc(c, c->r[R_AX], 1);
+    ds_put(c, 0x4078, c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)alu_sub(c, FRAME(10), 3, 1, 0);
+    ds_put(c, 0x407A, c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)alu_sub(c, FRAME(12), 3, 1, 0);
+    ds_put(c, 0x407C, c->r[R_AX]);
+    c->r[R_AX] = 7;
+    ds_put(c, 0x407E, c->r[R_AX]);
+    ds_put(c, 0x4080, c->r[R_AX]);
+    cpu_push16(c, 0x4072);
+    c->icount += 26;
+    if (!guest_call_far(m, 0x03F5, 0x03FA)) return 1;
+    if (!room(c, 3)) { c->ip = 0x03FA; return 1; }
+    c->r[R_BX] = cpu_pop16(c);
+    x86_leave(c);
+    c->ip = cpu_pop16(c);
+    c->seg[S_CS] = cpu_pop16(c);
+    c->icount += 3;
+    return 1;
+}
+
+/* VGAME 114A:03FD, construct a sprite rectangle record. A nonzero flag
+ * selects the colour/mask blit (mode 1), zero the ordinary copy (mode 10h).
+ * The flag's low byte is stored before its live full-word branch test. */
+static int vgame_panel_blit(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 27)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_AX] = ds_get(c, 0xE584);
+    ds_put(c, 0x4090, c->r[R_AX]);
+    c->r[R_AX] = FRAME(10);
+    ds_put(c, 0x4092, c->r[R_AX]);
+    c->r[R_AX] = FRAME(12);
+    ds_put(c, 0x4094, c->r[R_AX]);
+    alu_sub(c, mem_read8(c, phys(c->seg[S_DS], 0x40B6)), 1, 0, 0);
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, !!(c->flags & F_CF));
+    c->r[R_AX] = (uint16_t)alu_inc(c, c->r[R_AX], 1);
+    ds_put(c, 0x4096, c->r[R_AX]);
+    static const int args[] = { 6, 8, 14, 16 };
+    for (unsigned i = 0; i < 4; i++) {
+        c->r[R_AX] = FRAME(args[i]);
+        ds_put(c, (uint16_t)(0x4098 + 2 * i), c->r[R_AX]);
+    }
+    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] + 18))));
+    mem_write8(c, phys(c->seg[S_DS], 0x40A9), get_r8(c, R_AL));
+    alu_sub(c, FRAME(18), 0, 1, 0);
+    const int mask = !(c->flags & F_ZF);
+    mem_write8(c, phys(c->seg[S_DS], 0x40A8), mask ? 1 : 0x10);
+    cpu_push16(c, 0x4090);
+    c->icount += 26;
+    const uint16_t after = mask ? 0x044E : 0x045E;
+    if (!guest_call_far(m, mask ? 0x0449 : 0x0459, after)) return 1;
+    if (!room(c, 3)) { c->ip = after; return 1; }
+    c->r[R_BX] = cpu_pop16(c);
+    x86_leave(c);
+    c->ip = cpu_pop16(c);
+    c->seg[S_CS] = cpu_pop16(c);
+    c->icount += 3;
+    return 1;
+}
+
 /* VGAME 0000:8A18, right-aligned unsigned number: format the zero-extended
  * word into C604, measure the string, then draw at x - 4 * length.
  * Keep the stack local and live argument reads: formatting and the pushes
@@ -31808,6 +31891,8 @@ static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x895E, vgame_panel_text, "panel text", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x114A, 0x0280, vgame_panel_display_fill, "fill a cockpit display and set its pens", 2 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x796E, vgame_panel_init, "initialise displays and select objectives", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x114A, 0x03AD, vgame_panel_symbol, "blit a centred navigation symbol", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x114A, 0x03FD, vgame_panel_blit, "blit a sprite rectangle", 2 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x8A18, vgame_panel_number_right, "right-aligned unsigned panel number", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x881F, vgame_panel_hud_line, "line clipped to the current HUD box", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x898F, vgame_panel_text2, "panel text, second entry", 1 },

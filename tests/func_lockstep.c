@@ -275,7 +275,7 @@ static void stub_driver_thunks(uint8_t *pristine, uint32_t at, const rc_module *
         ((o->seg == 0 && (o->ip == 0xB171 || o->ip == 0xD6DD || o->ip == 0x4777 ||
                          o->ip == 0xD3F9 || o->ip == 0xD87C || o->ip == 0x72D8 ||
                          o->ip == 0x8A18 || o->ip == 0x881F || o->ip == 0x796E)) ||
-         (o->seg == 0x114A && o->ip == 0x0280));
+         (o->seg == 0x114A && (o->ip == 0x0280 || o->ip == 0x03AD || o->ip == 0x03FD)));
     if (strcmp(m->name, "START.EXE") && strcmp(m->name, "END.EXE") && !vgame_draw) return;
     for (uint32_t i = 0; i + 5 <= m->size; i++) {
         if (m->image[i] != 0x9A) continue;

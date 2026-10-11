@@ -9,6 +9,79 @@ checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 more than once, what it costs). State as of 11 October 2026.
 Earlier session logs are in `git log -p handoff.md`.
 
+## Cockpit sprite helpers checkpoint (11 Oct 2026)
+
+Continued the full roadmap after the HUD commit `10257f5`. Integrated ONLY
+`vgame_panel_symbol` (`114A:03AD`) and `vgame_panel_blit` (`114A:03FD`)
+from the owned worktree, preserving main's display fill and initialiser.
+The first constructs a centred 7x7 navigation-symbol sheet blit; the second
+constructs a sprite rectangle with live full-word mask/copy selection.
+Both preserve the original frame reads, writes, flags, calls and clocks.
+Driver-thunk allowances preserve all existing cockpit helpers.
+
+Three fresh targeted main-build seeds (default, 12345678, C0FFEE) compare
+8,246/8,270/8,259 states, 24,775 total, no differences. Logs:
+`D:/f117-gate/main-panel-blits-{0,1,2}.log`. The `--only` filter uses
+un-padded IP hex (`VGAME.EXE:3AD,VGAME.EXE:3FD`); padded `03AD` silently
+selects zero routines, so check nonzero comparison counts.
+Census now 783 addresses, 778 functions and 66,263 of 179,213 bytes;
+P2 40.13%, All 73.25%. **Full gate passed:**
+`D:/f117-gate/gate-panel-blits.log`, all 35 routes identical, 18 tests,
+both 5,718,912-state instruction profiles and three 783-entry matched
+seeds (2,532,630/2,531,689/2,533,435 comparable states), reachability and
+event limits checked. Terminal exit 0, no remaining gate/build processes.
+34 fresh interpreter sessions, 0 reused (host comments changed after the
+HUD gate). Raw elapsed 16,480 s includes the owner's 15,015 s allowance
+suspension; about 1,465 s active (148 build/tests, 550 coverage, 18 second
+translation, 749 parity, rounded). The navigation symbol runs 2,723 times
+on central_europe_airair; sprite rectangle 31,059 on strike_training.
+
+Owner's ongoing allowance rule: read live on-screen 5h remaining every
+five minutes above 20%; at or below 20% suspend owned jobs and roadmap
+work, then check every thirty minutes until it exceeds 20%. The owner
+requested resume at 04:00 Pacific; this thread next continued at 04:32,
+verified 100% on-screen and resumed all 38 saved process identities
+without restarting either job. Latest check 04:46 Pacific: 87% remaining,
+reset 09:32. Sky screenshot capture timed out; supported text-only
+`get_window_state` reads the visible VS Code Status panel successfully.
+The private process identity record is `D:/f117-gate/allowance-paused-jobs.json`;
+all entries there have already been resumed, so do not resume them again.
+
+Next candidates are isolated in `C:/Users/Tideg/f117-recomp-local/wt`:
+`vgame_panel_readout_outline` (`114A:014F`) and
+`vgame_raster_line_block` (`114A:0006`) and the nine-by-seven target box
+`vgame_panel_box` (`114A:01DB`). Their original drafts are in
+`D:/f117-gate/drafts/`. The worktree's matched.c and func_lockstep.c now
+include current main's startup and sprite helpers as well as those three new
+candidates; other worktree files remain based on `01f4dbd` plus the HUD.
+Builds: `D:/f117-gate/build-wt-panel-lines.log` and
+`build-wt-panel-box.log`, both BUILD OK, two workers and private TEMP.
+Three seeds pass 29,593 comparable states for readout/block-line and 14,805
+for the box, 44,398 total, no differences. Logs: `target-panel-lines-{0,1,2}.log`
+and `target-panel-box-{0,1,2}.log`. The IP-only filter for `VGAME.EXE:6`
+also selects sine and picture-row aliases; those extra states are excluded
+from the candidate tally. No full gate for these three candidates yet.
+Use `sm3_call` for PUSH CS / near CALL returning far, so the stack trap
+includes the extra segment pop. Never copy the worktree wholesale.
+
+### Near-plane presentation lead (investigation only)
+
+`D:/f117-gate/near-clip-study.py` and its output `near-clip-study.json`
+inspect the eight corrected flight windows. They count 1,831 near-clipped
+polygon records and 3,662 near edges: 3,650 have reconstructible vertex
+pairs (midpoint convergence within ten turns), ten have ambiguous behind
+markers and two lack a pair. Only 522 visible endpoints permit an origin
+inference; none has a wholly unclipped near crossing for a direct endpoint
+check. This is metadata evidence, NOT proof of a rendering rule.
+The original `120A:098C` halves 32-bit endpoint sums rounded toward positive
+until the midpoint z high word is unsigned 0 or 1; its crossing projection
+uses `(coordinate >> 8) * 2`, not an ordinary perspective divide. A fine
+rule must retain that rounding and the closing near edge. The current `G`
+record has only slot/projected vertex IDs, before edge preparation; consider
+recording actual endpoint camera coordinates/origin and the computed
+crossing to avoid stale vertex identities. Keep the current nearest copy
+until replay, N=1, fine endpoints and captured clipped geometry are proved.
+
 ## Reimp-style HUD checkpoint (11 Oct 2026)
 
 The owner explicitly instructed **"Do the HUD like the Reimp."** Implemented

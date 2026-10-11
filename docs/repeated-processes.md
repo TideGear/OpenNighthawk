@@ -10,6 +10,20 @@ identical, and the proof is the same verdicts before and after.
 
 ## The gate (`tools/build_recomp.py`)
 
+The cockpit sprite gate (11 Oct, `gate-panel-blits.log`) passes all 35
+routes, 18 tests, both 5,718,912-state instruction profiles and three
+783-entry matched seeds (2,532,630/2,531,689/2,533,435 comparisons), with
+reachability and event limits checked. Raw wall time 16,480 s includes
+15,015 s suspended at the owner's allowance threshold: about 1,465 s
+active, split 148 build/tests, 550 coverage, 18 byte-identical regeneration
+and 749 parity (rounded). All 34 interpreter sessions ran fresh: final
+host-comment changes after the HUD gate changed the cache key. Affinity
+0x00FFFFFF, 16 route workers; a two-worker isolated build shared the run.
+Three fresh targeted main seeds compare 24,775 sprite-helper states in
+about 4.6 s concurrently. The next isolated readout/block-line helpers
+compare 29,593 states in about 5.2 s concurrently, and the target box
+14,805 in about 0.9 s; no differences, no full gate for those three yet.
+
 The Reimp-style HUD gate (11 Oct, `gate-hud-reimp.log`) took 1,444 seconds:
 translation/build and 18 tests 27, fresh coverage 487, byte-identical
 regeneration 24, parity 906 (rounded stages). Host/presentation/CMake
