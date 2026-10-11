@@ -72,8 +72,24 @@ void observe_edge_prepared(machine_t *m, uint16_t slot, uint16_t di, uint16_t bx
     flush(m);
     const f117_observer *o = g_f117_observer;
     if (!o || !o->prim) return;
-    const int32_t v[3] = { slot, (uint16_t)(di + 0xD6B4), (uint16_t)(bx + 0xD6B4) };
-    o->prim(o->user, m->cpu.icount, 'G', v, 3);
+    cpu_t *c = &m->cpu;
+    /* Snapshot the records the edge actually uses. Vertex IDs alone can
+     * refer to an earlier projection when the same storage is reused. Keep
+     * the original first three fields for old replay readers. */
+    int32_t v[17] = { slot, (uint16_t)(di + 0xD6B4), (uint16_t)(bx + 0xD6B4),
+        peek16(c, c->seg[S_DS], 0x8602),
+        peek16(c, c->seg[S_DS], 0x8604) };
+    const uint16_t index[2] = { di, bx };
+    for (int e = 0; e < 2; e++) {
+        const uint16_t camera = (uint16_t)(2u * index[e] + 0xC6B4u);
+        const uint16_t projected = (uint16_t)v[1 + e];
+        const int at = 5 + 6 * e;
+        for (int k = 0; k < 3; k++) v[at + k] = ds_dword(c, (uint16_t)(camera + 4 * k));
+        for (int k = 0; k < 2; k++) v[at + 3 + k] = ds_dword(c, (uint16_t)(projected + 4 * k));
+        /* This exact sentinel, rather than camera z, chooses the clip arm. */
+        v[at + 5] = peek16(c, c->seg[S_DS], (uint16_t)(projected + 2)) == 0x8000;
+    }
+    o->prim(o->user, c->icount, 'G', v, 17);
 }
 
 /* The pixels a fill is about to paint: the R hook records each row's span,

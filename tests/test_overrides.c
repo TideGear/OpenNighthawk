@@ -122,6 +122,68 @@ static void check_observer(void)
     observe_set(NULL);
 }
 
+static int edge_calls, edge_n;
+static uint64_t edge_clock;
+static int32_t edge_values[17];
+static void obs_edge_seen(void *u, uint64_t at, char kind, const int32_t *v, int n)
+{
+    (void)u;
+    CHECK(kind == 'G' && n == 17);
+    edge_calls++; edge_n = n; edge_clock = at;
+    if (n == 17) memcpy(edge_values, v, sizeof edge_values);
+}
+static void observer_put(uint16_t at, uint32_t value, int bytes)
+{
+    for (int k = 0; k < bytes; k++)
+        m.mem[phys(m.cpu.seg[S_DS], (uint16_t)(at + k))] = (uint8_t)(value >> (8 * k));
+}
+static void check_edge_snapshot(void)
+{
+    static const f117_observer o = { 0, 0, 0, obs_edge_seen };
+    const cpu_t saved = m.cpu;
+    const uint16_t segments[] = { 0x2000, 0xA000, 0xFFFF };
+    /* The first camera record and second projection cross offset FFFF;
+     * the last segment also crosses the physical one-megabyte wrap. */
+    const int32_t values[2][6] = {
+        { -2, 0x12345678, (int32_t)0xFFFFABCDu, -99, 200, 0 },
+        { 123, -456, 0x01001234, (int32_t)0x80001234u, -300, 1 }
+    };
+    for (int s = 0; s < 3; s++) {
+        /* Exercise camera and projection wraps separately: using both
+         * FFFE and FFFF at once would deliberately overlap the records. */
+        const uint16_t index[2] = { s == 0 ? 0x1CA5 : 0, s == 0 ? 8 : 0x294B };
+        m.cpu.seg[S_DS] = segments[s];
+        m.cpu.t386 = 1; m.cpu.t386_vga_lo = 0xA0000;
+        m.cpu.t386_vga_size = 0x10000; m.cpu.t386_vga_byte = 32;
+        m.cpu.t386_dev = 17; m.cpu.icount = 1234567;
+        observer_put(0x8602, 0xFF9D, 2); observer_put(0x8604, 52, 2);
+        int32_t expected[17] = { 0x5EEA, (uint16_t)(index[0] + 0xD6B4),
+            (uint16_t)(index[1] + 0xD6B4), 0xFF9D, 52 };
+        for (int e = 0; e < 2; e++) {
+            const uint16_t camera = (uint16_t)(2u * index[e] + 0xC6B4u);
+            const uint16_t projected = (uint16_t)expected[1 + e];
+            for (int k = 0; k < 3; k++) observer_put((uint16_t)(camera + 4 * k), (uint32_t)values[e][k], 4);
+            for (int k = 0; k < 2; k++) observer_put((uint16_t)(projected + 4 * k), (uint32_t)values[e][3 + k], 4);
+            memcpy(expected + 5 + 6 * e, values[e], sizeof values[e]);
+        }
+        const cpu_t before = m.cpu;
+        const uint64_t memory = fnv1a64(m.mem, MEM_SIZE);
+        const int calls_before = edge_calls;
+        observe_set(NULL);
+        observe_edge_prepared(&m, 0x5EEA, index[0], index[1]);
+        CHECK(edge_calls == calls_before);
+        observe_set(&o);
+        observe_edge_prepared(&m, 0x5EEA, index[0], index[1]);
+        CHECK(edge_calls == calls_before + 1 && edge_n == 17);
+        CHECK(edge_clock == before.icount);
+        CHECK(memcmp(edge_values, expected, sizeof expected) == 0);
+        CHECK(memcmp(&m.cpu, &before, sizeof before) == 0);
+        CHECK(fnv1a64(m.mem, MEM_SIZE) == memory);
+    }
+    observe_set(NULL);
+    m.cpu = saved;
+}
+
 /* A switched-on fix takes the place of the parity routine at its address, whichever of the two was
  * registered first: the parity routine is registered first here, as recomp_init does, and once the fix
  * is on only the fix runs there (recomp_override_step). */
@@ -323,6 +385,7 @@ int main(void)
     machine_shutdown(&m);
 
     check_observer();
+    check_edge_snapshot();
     check_override_capacity();
     /* No two of the real tables' entries share a place, except where the matched routine calls the
      * observer itself (vgame_model_edge_spans and vgame_model_poly_finish): at one address only the

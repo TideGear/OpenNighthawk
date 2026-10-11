@@ -511,15 +511,17 @@ not the recompilation:
       Live N = 4/9 sentinels pass all 368 logic frames and 366 interpolation
       pairs, with 54 checkpoints/final hash equal to both fresh scan engines.
       Full gate passes 18 tests, all 35 routes and both instruction profiles.
-      Isolated near-plane prototype (11 Oct): exact camera snapshots and retained
+      Near-plane rendering (11 Oct; integrated and gated): exact camera snapshots and retained
       crossings reconstruct clipped polygons and move together between frames.
       C/Python geometry counts and footprint totals agree across fresh strike,
       landing and air-to-air windows; 5,014 original crossings match. Fine
-      endpoint and live N=4/9 checks pass. A new shared-edge test exposes six
-      interior holes at N=9 where per-face coarse footprints disagree with the
-      fine boundary; C and Python reproduce them. Geometry-aware seam repair
-      and the main full gate remain before integration (details in handoff.md).
-      Open: near-clipped polygons still scaled, and a real-display check of refresh pacing,
+      endpoint and live N=4/9 checks pass. Geometry-aware seam repair closes six
+      synthetic N=9 interior holes while preserving outer detail and original
+      colour footprints. C/Python repair counts agree across all three scenes;
+      copies, reseeds, black fills, HUD layering and passive diagnostics are tested.
+      Final isolated unit run passes 20 tests; main full gate passes 21 tests,
+      all 35 routes, both instruction profiles and three matched seeds.
+      Open: difficult horizon slivers retain safe scaling, and a real-display check of refresh pacing,
       motion and 4K output (Phase 4).
 
 ## Phase 4 - checked by people and independent references

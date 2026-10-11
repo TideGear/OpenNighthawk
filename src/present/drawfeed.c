@@ -217,6 +217,7 @@ static const uint8_t *draw_list(drawlive *r, const drawlive_step *skel)
     hires *h = NULL;
     if (r->scale) { memcpy(r->scratch_hr, skel->start_hires, sizeof *r->scratch_hr); h = r->scratch_hr; }
     for (int i = 0; i < r->ilist.n; i++) feed(&r->scratch, h, r->ilist.rec[i].kind, r->ilist.rec[i].v, r->ilist.rec[i].n);
+    drawlist_finish_models(&r->scratch);
     const drawlist_page *disp = drawlist_get(&r->scratch, 0xA000);
     if (!disp || disp->size < 64000) return NULL;
     if (r->scale) {
@@ -272,6 +273,7 @@ int drawlive_update(drawlive *r, drawfeed *f)
         int n;
         while (drawfeed_next(fr, &at, &kind, &icount, &v, &n)) feed(&r->list, r->scale ? r->hr : NULL, kind, v, n);
         r->frames++;
+        drawlist_finish_models(&r->list);
         const drawlist_page *disp = drawlist_get(&r->list, 0xA000);
         if (!r->list.have_seg || !disp || disp->size < 64000) r->unseeded++;
         else if (!memcmp(disp->b, fr->display, 64000)) {

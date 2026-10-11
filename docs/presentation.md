@@ -73,7 +73,7 @@ Each stage is judged by a check, as in the rest of the project.
 |---|---|---|---|
 | 0 | Observer: log every call to the drawing primitives per frame | the log is identical across runs; hashes unchanged with it on | done |
 | 1 | Draw lists: a frame's primitives as a list, replayed at 320x200 | the replay reproduces the original's work and display pages bit for bit, every phase of every route | done for the windows below, in Python and in C (`src/present/drawlist.c`); unexercised branches listed below |
-| 2 | Re-draw the list at N times the resolution | N = 1 is Stage 1 exactly; at N > 1 every N x N block agrees with the N = 1 pixel wherever no edge crosses it | model polygons re-drawn from their sub-pixel vertices (`hires_subpixel.py`, and in C `hires.c`, live with `--present-scale N`); HUD lines/ticks redraw on the fine grid with scale-proportional or chosen thickness; original bitmap text/artwork stay scaled by the owner's choice; near-clipped polygons still scaled |
+| 2 | Re-draw the list at N times the resolution | N = 1 is Stage 1 exactly; at N > 1 every N x N block agrees with the N = 1 pixel wherever no edge crosses it | model polygons re-drawn from their sub-pixel vertices (`hires_subpixel.py`, and in C `hires.c`, live with `--present-scale N`); HUD lines/ticks redraw on the fine grid with scale-proportional or chosen thickness; original bitmap text/artwork stay scaled by the owner's choice; verified near-plane crossings now refined, incompatible geometry safely scaled |
 | 3 | Interpolate between consecutive draw lists to the host display rate | at a logic frame the output is exactly that frame; no in-between primitive absent from both neighbours | 320x200 study done (`interp_frame.py`, below): exact at both ends on seven windows, no violations; live path built at 320x200 (below): the feed, the presentation from the replay, and the interpolation in C, exact at both ends of 9,843 live frame pairs |
 | 4 | Pacing, vsync, a picture-age setting, HUD handling, a switch to the original picture | pictures at the display's refresh with t on the mission clock; the age setting measured | pacing at the host's vsync, age setting and Reimp-style HUD handling built (below); `--present scan` is the switch; real-display checks remain |
 
@@ -81,6 +81,49 @@ Interpolation shows the picture one logic step behind (about 110 ms at 9
 steps a second, 67 ms at the clamp of 15), the standard price. Stage 1 needs
 the drawing path understood, which is what the matched routines in Phase 2
 supply, so the two phases are not independent.
+
+## Camera-plane reconstruction and shared seams (11 October 2026)
+
+The current C and Python renderers also refine near-clipped convex polygons.
+G records carry both endpoints' camera coordinates, projected coordinates,
+vertex identities, behind markers and projection origin. Legacy short G records
+keep their existing fallback. `nearclip.c` repeats the original wrapped
+ADD/ADC-plus-one midpoint and signed shift, including DEC DX's sign test,
+then keeps x/128 and y/128 before the original discards precision. Each
+crossing must reproduce the original retained coarse crossing exactly; a
+mismatch or unsupported shape keeps the scaled picture. Two valid cuts close
+the visible polygon. Observer-on/off controls preserve all guest hashes;
+5,014 crossings across strike, landing and air-to-air match the original.
+
+Interpolation binds each E to its preceding G within its batch, because slots
+are reused with different vertex identities. Camera snapshots and retained
+crossings move together only when the paired polygon moves and every snapshot
+is compatible; changed origins, markers, identities or topology hold the
+skeleton's records. Fine endpoint checks at N=4 and N=9 compare against each
+neighbour's own fine rendering: 444 strike, 62 landing and 54 air-to-air
+endpoints per scale, plus three intermediate pictures per pair, all pass.
+
+Individual coarse footprints can disagree with the shared fine boundary.
+Two adjacent clipped triangles exposed six interior holes at N=9, independently
+reproduced in Python. Each page now tracks true fine geometry, actual model
+paint (including black), and coarse model footprint unions. An unpainted fine
+pixel inside both unions retains its original coarse owner's colour. Existing
+paint and outer-edge detail survive, and no pixel is added outside the original
+footprint union. The synthetic fixture restores exactly those six pixels;
+N=4 needs none. HUD masks are respected. Page copies deep-copy coverage,
+replacing primitives finalize and clear it, and reseeding resets it. Passive
+observer diagnostics do not end a model layer. Finalization for viewing is
+idempotent and keeps coverage available for a subsequent adjacent face.
+
+Independent C/Python N=4 repair counts agree: strike 10,010, landing 1,534,
+air-to-air 2,941. These compare geometry and repair counters; the older Python
+HUD path does not establish whole-picture equality with the C fine HUD.
+Final isolated tests pass 20/20. Live repaired N=4/9 sentinels both preserve
+368 logic frames, 366 exact endpoint pairs, all 54 checkpoints and final hash
+`48a10e901505e2a9`. Main integration's full gate passes 21 tests, all 35 routes, both instruction
+profiles and three matched seeds, with reachability/event-limit checks. Difficult horizon
+slivers and incompatible clipping retain scaling; real-display checks remain.
+The following sections retain the earlier measurements and their limitations.
 
 ## Stage 0 and 1: the observer and the draw list
 

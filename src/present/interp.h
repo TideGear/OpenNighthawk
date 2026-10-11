@@ -66,7 +66,9 @@ int interp_inbetween(const interp_frame *a, const interp_frame *b, const interp_
 /* The same with flags: INTERP_VERTICES also moves the vertices ('V') of every
  * paired batch of equal size (camera space, projected by the original's
  * divide), so a finer grid (hires.h) refills a moved polygon from moved
- * geometry; INTERP_EXTRAPOLATE takes t up to 2, the paired primitives moved on
+ * geometry. Exact G snapshots and their retained E crossings move together
+ * when origins, vertex identities and clipping markers agree.
+ * INTERP_EXTRAPOLATE takes t up to 2, the paired primitives moved on
  * past b as far again as they came from a (the skeleton is b). */
 #define INTERP_VERTICES 1
 #define INTERP_EXTRAPOLATE 2

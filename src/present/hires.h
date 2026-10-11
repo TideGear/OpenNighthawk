@@ -9,12 +9,15 @@
  * with the remainder it threw away; a fine pixel takes the fill when its
  * centre lies inside the true polygon (top-left rule) within the polygon's own
  * overshoot (measured at N = 1, so N = 1 is the original's picture) and inside
- * the original's own footprint. Near-clipped polygons, ones with a vertex
- * behind the eye or a footprint more than 3 pixels from their geometry, and
+ * the original's own footprint. Exact camera snapshots also reconstruct
+ * verified near-plane crossings. Missing snapshots, unrelated behind vertices
+ * or a footprint more than 3 pixels from the geometry, and
  * fill styles with no rule keep the scaled copy, as do text, sprites,
  * and blits. HUD lines and ticks are drawn on the fine grid by drawlist.c,
  * retaining the original glyph and artwork pixels. The state is plain data:
- * a copy (memcpy) carries on. */
+ * a copy (memcpy) carries on. drawlist_finish_models completes uncovered
+ * internal seams from the original coarse owner before a picture is read;
+ * drawlist_record closes that coverage layer before other painters. */
 #ifndef F117R_HIRES_H
 #define F117R_HIRES_H
 
@@ -26,11 +29,19 @@
 #define HIRES_EDGES 512               /* edges a polygon may have */
 
 typedef struct { int ok; int32_t x, y, z, px, py, range; } hires_vertex;
+typedef struct {
+    int valid, behind;
+    int32_t origin[2];
+    hires_vertex a, b;
+} hires_snapshot;
 
 typedef struct {
     int32_t slot, x0, y0, x1, y1, st;
     int have_g;                       /* its slot was prepared ('G') */
     hires_vertex a, b;                /* the two vertices the 'G' record named */
+    hires_snapshot snap;             /* exact records at edge preparation, when logged */
+    int have_crossing;
+    int32_t crossing[2];
 } hires_edge;
 
 /* the counters hires_subpixel.py prints, by name (hires_stat_name) */
@@ -45,7 +56,7 @@ const char *hires_stat_name(int k);
 typedef struct {
     int n;
     struct { uint16_t key; uint8_t used; hires_vertex v; } vert[HIRES_MAP];
-    struct { uint16_t key; uint8_t used; hires_vertex a, b; } slot[HIRES_MAP];
+    struct { uint16_t key; uint8_t used; hires_vertex a, b; hires_snapshot snap; } slot[HIRES_MAP];
     hires_edge pending[HIRES_EDGES];
     int npending;
     struct {

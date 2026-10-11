@@ -1,6 +1,7 @@
 /* interp.c - see interp.h. The functions follow tools/interp_frame.py's
  * one for one, under the same names where there is one. */
 #include "interp.h"
+#include "nearclip.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -54,8 +55,8 @@ static double lerp(int64_t a, int64_t b, double w) { return (double)a + (double)
 
 /* ---- a frame: batches and polygons ------------------------------------- */
 
-typedef struct { int32_t slot, x0, y0, x1, y1, st, y0hi, y1hi; } edge_t;
-typedef struct { int32_t slot, k0, k1; } gedge_t;
+typedef struct { int32_t slot, x0, y0, x1, y1, st, y0hi, y1hi; int ri, gi; } edge_t;
+typedef struct { int32_t slot, k0, k1; int ri; } gedge_t;
 
 typedef struct {
     int e0, ne, j0, nj;               /* the edges before the fill, the near-clip join */
@@ -90,10 +91,10 @@ struct interp_frame {
     hud_t *h; int nh, ch;
 };
 
-static edge_t parse_edge(const int32_t *v)
+static edge_t parse_edge(const int32_t *v, int ri)
 {
     edge_t e = { v[0], v[1] & 0xFFFF, v[2] & 0xFFFF, v[3] & 0xFFFF, v[4] & 0xFFFF, v[5] & 0xFFFF,
-                 s16((int64_t)v[2] >> 16), s16((int64_t)v[4] >> 16) };
+                 s16((int64_t)v[2] >> 16), s16((int64_t)v[4] >> 16), ri, -1 };
     return e;
 }
 
@@ -129,7 +130,7 @@ interp_frame *interp_parse(const interp_rec *rec, int n)
         case 'G':
             if (cur >= 0 && r->n >= 3) {
                 GROW(f->g, f->ng, f->cg);
-                gedge_t g = { v[0], (int32_t)floordiv(v[1] - 0xD6B4, 8), (int32_t)floordiv(v[2] - 0xD6B4, 8) };
+                gedge_t g = { v[0], (int32_t)floordiv(v[1] - 0xD6B4, 8), (int32_t)floordiv(v[2] - 0xD6B4, 8), i };
                 f->g[f->ng++] = g;
                 f->b[cur].ng++;
             }
@@ -146,11 +147,13 @@ interp_frame *interp_parse(const interp_rec *rec, int n)
             if (poly >= 0 && poly_nclip == 2 && !f->p[poly].nj) {
                 GROW(f->j, f->nj, f->cj);
                 f->p[poly].j0 = f->nj;
-                f->j[f->nj++] = parse_edge(v);
+                f->j[f->nj++] = parse_edge(v,i);
                 f->p[poly].nj = 1;
             } else {
                 GROW(f->e, f->ne, f->ce);
-                f->e[f->ne++] = parse_edge(v);
+                f->e[f->ne++] = parse_edge(v,i);
+                if (cur >= 0) for (int k=f->ng-1;k>=f->b[cur].g0;k--)
+                    if (f->g[k].slot==v[0]) { f->e[f->ne-1].gi=k; break; }
             }
             break;
         case 'F':
@@ -1020,6 +1023,72 @@ int interp_inbetween_ex(const interp_frame *A, const interp_frame *B, const inte
                 rep[i] = made.n;
                 repn[i] = 1;
                 out_pooled(&made, 'V', S->rec[i].icount, nv, 8);
+            }
+        }
+    /* Exact edge snapshots move with their camera geometry. Older three-field
+     * G records keep the V-based path. The retained crossing in E must move
+     * too: the fine builder validates it before discarding any low bits. */
+    if (flags & INTERP_VERTICES)
+        for (int bi = 0; bi < S->nb; bi++) {
+            const batch_t *b = &S->b[bi];
+            if (bmap[bi] < 0 || O->b[bmap[bi]].nv != b->nv) continue;
+            for (int q = 0; q < b->np; q++) {
+                const int pi=BATCH_PI(S,b,q), pr=of[pi];
+                const poly_t *p=&S->p[pi];
+                /* Geometry holds with a held polygon. Bind snapshots at the E
+                 * record, since one batch can reuse a slot for another face. */
+                if (pr<0 || p->ri<0 || rep[p->ri]<0 || p->ne>512) continue;
+                const int oi=P->ppair[4*pr+(use_b?0:1)];
+                const poly_t *op=&O->p[oi];
+                if (p->ne!=op->ne) continue;
+                int32_t snapshots[512][17], crossings[512][8];
+                int ok=1;
+                for (int k=0;k<p->ne && ok;k++) {
+                    const edge_t *e=&S->e[p->e0+k], *oe=&O->e[op->e0+k];
+                    if (e->gi<0 || oe->gi<0) { ok=0; break; }
+                    const gedge_t *ga=&S->g[e->gi], *gb=&O->g[oe->gi];
+                    const interp_rec *ra=&S->rec[ga->ri], *rb=&O->rec[gb->ri];
+                    if (ga->slot!=gb->slot || ga->k0!=gb->k0 || ga->k1!=gb->k1 || ra->n!=17 || rb->n!=17) { ok=0; break; }
+                    const int32_t *a=ra->v,*bv=rb->v;
+                    if (a[3]!=bv[3] || a[4]!=bv[4] || a[10]!=bv[10] || a[16]!=bv[16]) { ok=0; break; }
+                    int32_t *v=snapshots[k];memcpy(v,a,17*sizeof *v);
+                    for (int end=0;end<2 && ok;end++) {
+                        const int at=5+6*end;
+                        int64_t xf[3],px[2];
+                        for (int c=0;c<3;c++) {
+                            xf[c]=rnd(lerp(a[at+c],bv[at+c],w));
+                            if (xf[c]<INT32_MIN || xf[c]>INT32_MAX) { ok=0; break; }
+                            v[at+c]=(int32_t)xf[c];
+                        }
+                        if (!ok) break;
+                        if (!a[at+5]) {
+                            if (!project(xf,px)) { ok=0; break; }
+                            v[at+3]=(int32_t)px[0];v[at+4]=(int32_t)px[1];
+                        }
+                    }
+                    if (ok && (e->st & 0x40)) {
+                        const interp_rec *r=&S->rec[e->ri];
+                        if (r->n!=8 || !!v[10]==!!v[16]) { ok=0; break; }
+                        const int32_t *front=v+(v[10]?11:5),*behind=v+(v[10]?5:11);
+                        int32_t coarse[2];double fine[2];
+                        if (!present_near_crossing(front,behind,coarse,fine)) { ok=0; break; }
+                        memcpy(crossings[k],r->v,8*sizeof(int32_t));
+                        crossings[k][6]=coarse[0]+v[3];crossings[k][7]=coarse[1]+v[4];
+                    }
+                }
+                if (!ok) continue;
+                for (int k=0;k<p->ne;k++) {
+                    const edge_t *e=&S->e[p->e0+k];
+                    const int gi=S->g[e->gi].ri;
+                    rep[gi]=made.n;repn[gi]=1;
+                    out_pooled(&made,'G',S->rec[gi].icount,snapshots[k],17);
+                    st[IS_REGENERATED]++;
+                    if (e->st & 0x40) {
+                        rep[e->ri]=made.n;repn[e->ri]=1;
+                        out_pooled(&made,'E',S->rec[e->ri].icount,crossings[k],8);
+                        st[IS_REGENERATED]++;
+                    }
+                }
             }
         }
     /* the present: the replay's own work page is the source, not bytes the original logged */

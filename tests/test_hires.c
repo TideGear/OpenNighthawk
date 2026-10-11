@@ -139,6 +139,7 @@ int main(int argc, char **argv)
             for (int i = 0; i < 768; i++) g_palette[i] = (uint8_t)((v[i]*255+31)/63);
         hires_record(&h, &d, k, v, nv);
         if (k == 'Z' || k == 'Y') {
+            drawlist_finish_models(&d);
             const uint16_t seg = (uint16_t)v[0];
             const drawlist_page *rep = drawlist_get(&d, seg);
             if (k == 'Y' && rep && rep->hi) phase_check(rep, n);
@@ -159,6 +160,7 @@ int main(int argc, char **argv)
             if (strcmp(hires_stat_name(order[b]), hires_stat_name(order[a])) < 0) { int t = order[a]; order[a] = order[b]; order[b] = t; }
     for (int k = 0; k < HS_COUNT; k++)
         if (h.stats[order[k]]) printf("%-46s %llu\n", hires_stat_name(order[k]), (unsigned long long)h.stats[order[k]]);
+    printf("%-46s %llu\n","model seam fine pixels restored",(unsigned long long)d.seam_restored);
     printf("%-46s %llu\n%-46s %llu\n%-46s %llu\n%-46s %llu\n%-46s %llu\n%-46s %llu\n%-46s %llu\n",
            "display phases", g_phases, "flat coarse pixels", g_flat, "flat pixels that agree", g_agree,
            "flat pixels disagreeing", g_bad, "fine pixels in disagreeing flat pixels", g_bad_fine, "fine pixels", g_fine,

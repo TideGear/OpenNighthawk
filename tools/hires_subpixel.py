@@ -8,6 +8,7 @@ re-walking the original's integer edges:
 
 * the polygon's edges come from the 'E' records, each tied by its slot to the 'G' record that prepared it and
   that to the two 'V' records of its vertices (camera-space x, y, z and the pixel the original made of each);
+  extended G captures also preserve exact camera endpoints and origin for near-plane crossings;
 * a vertex's position is rebuilt from the projection's own divide (0x129A2: x >> 8 over the high word of z, or
   x >> 1 over (z >> 8) >> 1 when that word is below 0x100), keeping the remainder the divide threw away, so the
   vertex lies inside the pixel the original chose (the divide truncates toward zero, so a negative quotient is
@@ -23,8 +24,9 @@ the leftmost to the rightmost pixel the edge touches, and both end pixels count)
 N = 1 as the least distance, in pixels, at which the true shape covers the whole footprint (0, 0.5, 1, 1.5, 2 or
 3), and kept at that many pixels of the grid being drawn, so at N = 1 the footprint is exactly the original's
 and at N > 1 the edge lies within that many fine pixels of the true one. A polygon whose footprint lies further
-than 3 pixels from its geometry (the edge-on slivers at the horizon, clipped borders), one with a near-clipped
-edge or a vertex behind the eye, one whose edges cannot all be tied to a vertex, and a fill style with no rule
+than 3 pixels from its geometry (the edge-on slivers at the horizon, clipped borders), one whose near crossing
+cannot be verified against retained E coordinates, one with an unrelated vertex behind the eye, one whose
+edges cannot all be tied to a vertex, and a fill style with no rule
 (dither, stipple) keep the nearest-neighbour fill; these are counted. Text, sprites, lines, blits and the HUD
 stay nearest-neighbour copies (Stage 2 handles the model polygons).
 
@@ -60,6 +62,31 @@ def vertex_fraction(v):
     if den <= 0:
         return None
     return px + (nx % den) / den, py + (ny % den) / den
+
+
+def near_crossing(front, behind):
+    """Original 120A:098C midpoint search, retaining its discarded low byte.
+
+    Addition wraps before the signed shift. The branch tests DEC DX's sign,
+    including its wrap at 8000h; it does not simply test the depth's sign.
+    """
+    for _ in range(64):
+        mid = tuple((((a + b + 1 + (1 << 31)) % (1 << 32)) - (1 << 31)) // 2
+                    for a, b in zip(front, behind))
+        high = (mid[2] >> 16) & 0xFFFF
+        if high in (0, 1):
+            return tuple((c >> 8) * 2 for c in mid[:2]), tuple(c / 128 for c in mid[:2])
+        if (high - 1) & 0x8000:
+            behind = mid
+        else:
+            front = mid
+    return None
+
+
+def snapshot_vertex(g, at):
+    zhi = s16(g[at + 2] >> 16)
+    rng = 0 if zhi >= 0x100 else 1 if zhi >= 1 else 2
+    return (0,) + g[at:at + 5] + (rng,)
 
 
 class Extents:
@@ -175,13 +202,108 @@ class SubBuilder(Builder):
         self.grow = grow            # a fixed overshoot, or None: each polygon's own, from the original's grid
         self.vertices = {}          # px_at -> the latest 'V' record
         self.slots = {}             # edge slot -> the two vertex records its 'G' record named
+        self.snapshots = {}         # exact camera records, when the capture supplies them
         self.palette = None
         self.origin = [159, 52]
+        self.coverage = {}          # page identity -> page, geometry, paint, coarse footprint
+
+    def finish_models(self, pages, clear=False):
+        """Repair only model geometry left uncovered inside original footprints.
+        Keep coverage on a read, and close it before the next drawing layer.
+        """
+        for key, (page, geometry, painted, foot) in list(self.coverage.items()):
+            if not any(page is held for held in pages.values()):
+                del self.coverage[key]
+                continue
+            coarse = np.frombuffer(page, np.uint8, count=WIDTH*HEIGHT).reshape(HEIGHT, WIDTH)
+            fine = np.frombuffer(page.hi, np.uint8).reshape(HEIGHT*self.n, WIDTH*self.n)
+            scaled = np.repeat(np.repeat(coarse, self.n, axis=0), self.n, axis=1)
+            allowed = np.repeat(np.repeat(foot, self.n, axis=0), self.n, axis=1)
+            repair = geometry & ~painted & allowed & (fine != scaled)
+            self.stats['model seam fine pixels restored'] += int(repair.sum())
+            fine[repair] = scaled[repair]
+            if clear:
+                del self.coverage[key]
+
+    def track_model(self, page, rows, edges, cover, viewport):
+        if self.n == 1 or self.fill_colour >> 8 == 0xFB:
+            return
+        shape = HEIGHT*self.n, WIDTH*self.n
+        key = id(page)
+        if key not in self.coverage:
+            self.coverage[key] = (page, np.zeros(shape, bool), np.zeros(shape, bool),
+                                  np.zeros((HEIGHT, WIDTH), bool))
+        _, geometry, painted, foot = self.coverage[key]
+        for y, (l, r) in rows.items():
+            if 0 <= y < HEIGHT:
+                foot[y, max(0,l):min(WIDTH,r+1)] = True
+        for y, spans in cover.items():
+            if 0 <= y < shape[0]:
+                for l, r in spans:
+                    painted[y, max(0,l):min(shape[1],r+1)] = True
+        ext = Extents(edges)
+        if not ext.edges:
+            return
+        xmin, ymin, xmax, ymax = viewport
+        lo_y = max(0, ymin*self.n, math.ceil(min(e[1] for e in ext.edges)-0.5))
+        hi_y = min(shape[0], (ymax+1)*self.n, math.ceil(max(e[3] for e in ext.edges)-0.5))
+        for y in range(lo_y, hi_y):
+            lo, hi = ext.at(y+0.5)
+            if lo == math.inf:
+                continue
+            l = max(0, xmin*self.n, math.ceil(lo-0.5))
+            r = min(shape[1], (xmax+1)*self.n, math.ceil(hi-0.5))
+            if l < r:
+                geometry[y, l:r] = True
+
+    def near_edges(self, poly):
+        if poly["nclip"] != 2 or len(poly["edges"]) >= 512:
+            return None
+        origin, cuts, out = None, [], []
+        for edge in poly["edges"]:
+            g = edge.get("snapshot")
+            if g is None:
+                return None
+            if origin is None:
+                origin = g[3:5]
+            elif origin != g[3:5]:
+                return None
+            ba, bb = bool(g[10]), bool(g[16])
+            if ba and bb:
+                if not edge["st"] & 0x80:
+                    return None
+                continue
+            if ba or bb:
+                if not edge["st"] & 0x40 or "crossing" not in edge or len(cuts) == 2:
+                    return None
+                front, behind = (11, 5) if ba else (5, 11)
+                crossing = near_crossing(g[front:front + 3], g[behind:behind + 3])
+                visible = vertex_fraction(snapshot_vertex(g, front))
+                if crossing is None or visible is None:
+                    return None
+                coarse, fine = crossing
+                if tuple(c + o for c, o in zip(coarse, origin)) != edge["crossing"]:
+                    return None
+                cuts.append(tuple(c + o for c, o in zip(fine, origin)))
+                a, b = (fine, visible) if ba else (visible, fine)
+            else:
+                if edge["st"] & 0x40:
+                    return None
+                a, b = vertex_fraction(snapshot_vertex(g, 5)), vertex_fraction(snapshot_vertex(g, 11))
+                if a is None or b is None:
+                    return None
+            out.append(tuple(c + o for point in (a, b) for c, o in zip(point, origin)))
+        if len(cuts) != 2 or len(out) < 2:
+            return None
+        return out + [cuts[0] + cuts[1]]
 
     def polygon_edges(self, poly):
         """The true edges in coarse-pixel coordinates (the origin added), or None (the reason counted) when the
         polygon cannot be rebuilt from its vertices."""
         if poly["nclip"]:
+            edges = self.near_edges(poly)
+            if edges is not None:
+                return edges
             self.stats["skipped: near-clipped"] += 1
             return None
         edges = poly["edges"]
@@ -232,6 +354,10 @@ class SubBuilder(Builder):
 
     def hook(self, f, pages):
         k = f[0]
+        if k in 'LNQCTDHSMW' or (k == 'a' and self.fill_colour is not None and self.fill_colour >> 8 not in (0xFF,0xFE,0xFD,0xFB)):
+            self.finish_models(pages, clear=True)
+        elif k in ('Z', 'Y'):
+            self.finish_models(pages)
         if self.suppressed is not None and k not in ("b", "a"):
             self.suppressed.suppress = False
             self.suppressed = None
@@ -240,11 +366,15 @@ class SubBuilder(Builder):
         elif k == "G":
             slot, a, b = (int(t) for t in f[2:5])
             self.slots[slot] = (self.vertices.get(a), self.vertices.get(b))
+            self.snapshots[slot] = tuple(map(int, f[2:19])) if len(f) >= 19 else None
         elif k == "J":
             self.palette = [int(t) for t in f[2:770]]
         elif k == "E":
             e = parse_edge(f)
             e["g"] = self.slots.get(int(f[2]))
+            e["snapshot"] = self.snapshots.get(int(f[2]))
+            if len(f) >= 10:
+                e["crossing"] = tuple(map(int, f[8:10]))
             if self.poly is not None and self.poly["nclip"] == 2 and not self.poly["join"]:
                 self.poly["join"].append(e)
             else:
@@ -272,19 +402,23 @@ class SubBuilder(Builder):
             base = self.polygon_edges(self.poly)
             if base is None:
                 self.stats["polygons left nearest"] += 1
+                self.finish_models(pages, clear=True)
                 return
             rows = footprint_rows(self.poly)
             grow = self.grow if self.grow is not None else choose_grow(rows, base)
             if grow is None:
                 self.stats["skipped: footprint beyond %g px of its geometry" % GROWS[-1]] += 1
                 self.stats["polygons left nearest"] += 1
+                self.finish_models(pages, clear=True)
                 return
             self.stats["overshoot %g" % grow] += 1
             n = self.n
             cover = fine_cover(rows, [tuple(c * n for c in e) for e in base], n, grow)
             if not self.lay_spans(page, cover, self.fill_colour):
                 self.stats["polygons left nearest"] += 1
+                self.finish_models(pages, clear=True)
                 return
+            self.track_model(page, rows, [tuple(c*n for c in e) for e in base], cover, self.poly['vp'])
             self.stats["footprint pixels"] += sum(r - l + 1 for l, r in rows.values())
             self.stats["footprint fine pixels painted"] += sum(b - a + 1 for spans in cover.values() for a, b in spans)
             self.stats["polygons refilled from vertices"] += 1

@@ -21,6 +21,7 @@
  * the 3-D window (its first 107 rows). */
 #include "interp.h"
 #include "drawlist.h"
+#include "hires.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -58,22 +59,38 @@ static interp_rec *g_rec;
 static int g_nrec, g_crec;
 static phase_t *g_ph;
 static int g_nph, g_cph;
+static int g_scale=1;
+static uint8_t *g_fine;
+static uint64_t g_refilled,g_nearest;
+static uint64_t g_seams;
 
 static void render(const frame_t *fr, const interp_rec *rec, int n, uint8_t *work, uint8_t *disp)
 {
     static drawlist d;
     static uint8_t bytes[65536];
     drawlist_init(&d);
+    static hires h;
+    if(g_scale>1) {drawlist_set_scale(&d,g_scale);hires_init(&h,g_scale);}
     d.prefer_logged = 1;
     const phase_t *ph = &g_ph[fr->p0];
     for (int a = 0; a < ph->nz - 2; a++) bytes[a] = (uint8_t)ph->z[2 + a];
     drawlist_seed(&d, 'Z', (uint16_t)ph->z[0], (uint16_t)ph->z[1], bytes, (unsigned)(ph->nz - 2));
     for (int a = 0; a < ph->ny - 2; a++) bytes[a] = (uint8_t)ph->y[2 + a];
     drawlist_seed(&d, 'Y', (uint16_t)ph->y[0], (uint16_t)ph->y[1], bytes, (unsigned)(ph->ny - 2));
-    for (int i = 0; i < n; i++) drawlist_record(&d, rec[i].kind, rec[i].v, rec[i].n);
+    for (int i = 0; i < n; i++) {
+        if(g_scale>1) hires_record(&h,&d,rec[i].kind,rec[i].v,rec[i].n);
+        drawlist_record(&d, rec[i].kind, rec[i].v, rec[i].n);
+    }
+    drawlist_finish_models(&d);
+    g_seams=d.seam_restored;
     const drawlist_page *w = drawlist_get(&d, (uint16_t)ph->z[0]), *y = drawlist_get(&d, 0xA000);
     memcpy(work, w->b, 65536);
     memcpy(disp, y->b, 64000);
+    if(g_fine) memcpy(g_fine,g_scale>1?y->hi:y->b,(size_t)64000*g_scale*g_scale);
+    if(g_scale>1) {
+        g_refilled+=h.stats[HS_REFILLED];g_nearest+=h.stats[HS_NEAR_CLIPPED];
+    }
+    drawlist_free(&d);
 }
 
 /* the dumps that open frame k + 1: the pages after frame k */
@@ -162,11 +179,14 @@ static int diff_count(const uint8_t *a, const uint8_t *b, int n)
 }
 
 static int extrapolate(const frame_t *frames, int nfr);
+static int fine_check(const frame_t *frames,int nfr);
 
 int main(int argc, char **argv)
 {
     const int extrap = argc == 3 && !strcmp(argv[2], "--extrapolate");
-    if (argc != 2 && !extrap) { fprintf(stderr, "usage: test_interp LOG [--extrapolate]\n"); return 2; }
+    const int fine=argc==4 && !strcmp(argv[2],"--fine");
+    if(fine) g_scale=atoi(argv[3]);
+    if ((argc != 2 && !extrap && !fine) || g_scale<1 || g_scale>12) { fprintf(stderr, "usage: test_interp LOG [--extrapolate | --fine N]\n"); return 2; }
     FILE *f = fopen(argv[1], "r");
     if (!f) { fprintf(stderr, "cannot read %s\n", argv[1]); return 2; }
     char *buf = NULL;
@@ -244,6 +264,7 @@ int main(int argc, char **argv)
         start = k + 1;
     }
     printf("%d phases, %d logic frames\n", g_nph, nfr);
+    if(fine) return fine_check(frames,nfr);
     if (extrap) return extrapolate(frames, nfr);
 
     /* --pairing */
@@ -373,6 +394,54 @@ int main(int argc, char **argv)
     res_print();
     interp_list_free(&list);
     return failed;
+}
+
+/* Compare fine endpoints to each neighbour's own fine rendering, rather than
+ * its scaled coarse dump. Midpoints exercise the same metadata path. */
+static int fine_check(const frame_t *frames,int nfr)
+{
+    const size_t bytes=(size_t)64000*g_scale*g_scale;
+    uint8_t *expected=malloc(bytes);
+    g_fine=malloc(bytes);
+    static uint8_t work[65536],display[64000];
+    interp_list list={0};int failed=0,checked=0,midpoints=0;
+    uint64_t regenerated=0;
+    for(int n=0;n+1<nfr;n++) {
+        const frame_t *a=&frames[n],*b=&frames[n+1];
+        interp_pairing *pair=interp_pair(a->f,b->f);
+        for(int end=0;end<2;end++) {
+            const frame_t *frame=end?b:a;
+            render(frame,frame->rec,frame->nrec,work,display);
+            const uint64_t original_seams=g_seams;
+            memcpy(expected,g_fine,bytes);
+            int skeleton;
+            const double t=end?1-1e-9:1e-9;
+            interp_inbetween_ex(a->f,b->f,pair,t,INTERP_VERTICES,&list,&skeleton,NULL);
+            render(frame,list.rec,list.n,work,display);
+            int diff=0;for(size_t k=0;k<bytes;k++) diff+=g_fine[k]!=expected[k];
+            if(diff) {
+                fprintf(stderr,"pair %d endpoint %d: %d fine bytes differ (repairs %llu/%llu)\n",n,end,diff,
+                    (unsigned long long)original_seams,(unsigned long long)g_seams);
+                if(failed<2) for(size_t k=0,shown=0;k<bytes && shown<4;k++) if(g_fine[k]!=expected[k]) {
+                    fprintf(stderr,"  pixel %zu,%zu: %u/%u\n",k%(320*g_scale),k/(320*g_scale),expected[k],g_fine[k]);shown++;
+                }
+                failed++;
+            }
+            checked++;
+        }
+        for(int step=1;step<=3;step++) {
+            int skeleton;uint64_t stats[IS_COUNT]={0};
+            interp_inbetween_ex(a->f,b->f,pair,step*0.25,INTERP_VERTICES,&list,&skeleton,stats);
+            render(skeleton?b:a,list.rec,list.n,work,display);
+            regenerated+=stats[IS_REGENERATED];midpoints++;
+        }
+        interp_pairing_free(pair);
+    }
+    printf("N=%d: %d fine endpoints checked, %d failed; %d intermediate pictures, %llu regenerated records\n",
+        g_scale,checked,failed,midpoints,(unsigned long long)regenerated);
+    printf("polygons refilled %llu; near polygons held %llu\n",(unsigned long long)g_refilled,(unsigned long long)g_nearest);
+    interp_list_free(&list);free(g_fine);free(expected);
+    return failed?1:0;
 }
 
 static int extrapolate(const frame_t *frames, int nfr)

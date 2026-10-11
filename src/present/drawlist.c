@@ -29,7 +29,7 @@ void drawlist_set_line_width(drawlist *d, int width)
 
 void drawlist_free(drawlist *d)
 {
-    for (int k = 0; k < DRAWLIST_PAGES; k++) free(d->page[k].hi);
+    for (int k = 0; k < DRAWLIST_PAGES; k++) { free(d->page[k].hi);free(d->page[k].model); }
     const int n = d->n, line_width = d->line_width;
     drawlist_init(d);
     d->n = n;
@@ -45,16 +45,54 @@ void drawlist_reset(drawlist *d)
 
 void drawlist_copy(drawlist *dst, const drawlist *src)
 {
-    uint8_t *keep[DRAWLIST_PAGES];
-    for (int k = 0; k < DRAWLIST_PAGES; k++) keep[k] = dst->page[k].hi;
+    uint8_t *keep[DRAWLIST_PAGES],*models[DRAWLIST_PAGES];
+    for (int k = 0; k < DRAWLIST_PAGES; k++) {keep[k] = dst->page[k].hi;models[k]=dst->page[k].model;}
     memcpy(dst, src, sizeof *dst);
     for (int k = 0; k < DRAWLIST_PAGES; k++) {
         const drawlist_page *s = &src->page[k];
         drawlist_page *p = &dst->page[k];
-        if (!s->hi) { free(keep[k]); p->hi = NULL; continue; }
+        if (!s->hi) { free(keep[k]);free(models[k]);p->hi = NULL;p->model=NULL;continue; }
         const size_t bytes = (size_t)320 * s->n * 200 * s->n;
         p->hi = (uint8_t *)realloc(keep[k], bytes);
         memcpy(p->hi, s->hi, bytes);
+        if(s->model) {
+            const size_t mask_bytes=2*((bytes+7)/8);
+            p->model=(uint8_t *)realloc(models[k],mask_bytes);memcpy(p->model,s->model,mask_bytes);
+        } else {free(models[k]);p->model=NULL;}
+    }
+}
+
+uint64_t drawlist_finish_models(drawlist *d)
+{
+    uint64_t restored=0;
+    for(int page=0;page<d->npages;page++) {
+        drawlist_page *p=&d->page[page];
+        if(!p->model_active || !p->model || !p->hi) continue;
+        const int n=p->n,W=320*n;
+        const size_t bits=((size_t)64000*n*n+7)/8;
+        const uint8_t *painted=p->model+bits;
+        for(unsigned a=0;a<64000;a++) {
+            if(!((p->model_foot[a>>3]>>(a&7))&1) || ((p->strokes[a>>3]>>(a&7))&1)) continue;
+            for(int j=0;j<n;j++) for(int i=0;i<n;i++) {
+                const size_t at=((size_t)(a/320)*n+j)*W+(a%320)*n+i;
+                if(((p->model[at>>3]>>(at&7))&1) && !((painted[at>>3]>>(at&7))&1) && p->hi[at]!=p->b[a]) {
+                    p->hi[at]=p->b[a];restored++;
+                }
+            }
+        }
+    }
+    d->seam_restored+=restored;
+    return restored;
+}
+
+static void flush_models(drawlist *d)
+{
+    drawlist_finish_models(d);
+    for(int k=0;k<d->npages;k++) {
+        drawlist_page *p=&d->page[k];
+        if(!p->model_active) continue;
+        const size_t bits=((size_t)64000*p->n*p->n+7)/8;
+        memset(p->model,0,2*bits);memset(p->model_foot,0,sizeof p->model_foot);p->model_active=0;
     }
 }
 
@@ -131,11 +169,13 @@ void drawlist_seed(drawlist *d, char kind, uint16_t seg, uint16_t origin, const 
     memcpy(p->b, bytes, size);
     p->suppress = 0;
     memset(p->strokes, 0, sizeof p->strokes);
+    memset(p->model_foot,0,sizeof p->model_foot);p->model_active=0;
     if (d->n > 0) {                                   /* the fine picture starts as the scaled copy */
         const int n = d->n;
         const size_t W = (size_t)320 * n;
         if (!p->hi || p->n != n) { free(p->hi); p->hi = (uint8_t *)malloc(W * 200 * n); }
         p->n = n;
+        if(p->model) {free(p->model);p->model=NULL;}
         for (int y = 0; y < 200; y++) {
             uint8_t *row = p->hi + (size_t)y * n * W;
             for (int x = 0; x < 320; x++)
@@ -599,6 +639,9 @@ static int sprite_clip(const int32_t *blk, int32_t *dx, int32_t *dy, int32_t *w,
 void drawlist_record(drawlist *d, char kind, const int32_t *v, int n)
 {
     if (!d->have_seg) return;
+    /* Model fills accumulate together; a different painter starts a new
+     * layer. Finalise first so copies, text, sprites and HUD see closed seams. */
+    if(strchr("LNQCTDHSMW",kind)) flush_models(d);
     drawlist_page *p;
     switch (kind) {
     case 'X':                                         /* the library's origin: 24 resets it, 26 sets it */
@@ -613,6 +656,7 @@ void drawlist_record(drawlist *d, char kind, const int32_t *v, int n)
         break;
     case 'b': {                                       /* a fill row, painted from the replay's own bytes */
         if (n < 5 || d->fill_colour < 0 || !(p = page_of(d, (uint16_t)v[3]))) break;
+        if(!p->suppress) flush_models(d);
         const int32_t len = v[2], at = v[4];
         uint8_t row[65536];
         for (int32_t i = 0; i < len; i++) row[i] = p->b[(at + i) & 0xFFFF];
@@ -633,6 +677,7 @@ void drawlist_record(drawlist *d, char kind, const int32_t *v, int n)
         for (k = 0; k < d->nfill_rows; k++)
             if (d->fill_rows[k].at == (uint16_t)at && d->fill_rows[k].n == len) break;
         if (k == d->nfill_rows) break;
+        flush_models(d);
         for (int32_t i = 0; i < len && 5 + i < n; i++) {
             wr(p, (uint32_t)(at + i) & 0xFFFF, (uint8_t)v[5 + i]);
             mark_copied(d, p->seg, (uint32_t)(at + i));

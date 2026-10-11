@@ -48,7 +48,7 @@ target_link_libraries(f117machine PUBLIC f117cpu)
 
 # ---- Presentation shared by the window and the headless runner -----------
 add_library(f117present STATIC src/host/present.c src/host/keys.c src/host/inputlog.c
-  src/present/drawlist.c src/present/drawfeed.c src/present/interp.c src/present/hires.c)
+  src/present/drawlist.c src/present/drawfeed.c src/present/interp.c src/present/hires.c src/present/nearclip.c)
 target_include_directories(f117present PUBLIC src/host src/present src/matched)
 target_link_libraries(f117present PUBLIC f117machine)
 
@@ -252,6 +252,12 @@ if(F117R_BUILD_TESTS)
   add_executable(test_present_lines tests/test_present_lines.c)
   target_link_libraries(test_present_lines PRIVATE f117present)
   add_test(NAME presentation_hud_lines COMMAND test_present_lines)
+  add_executable(test_nearclip tests/test_nearclip.c)
+  target_link_libraries(test_nearclip PRIVATE f117present)
+  add_test(NAME presentation_near_crossing COMMAND test_nearclip)
+  add_executable(test_near_polygons tests/test_near_polygons.c)
+  target_link_libraries(test_near_polygons PRIVATE f117present)
+  add_test(NAME presentation_near_polygons COMMAND test_near_polygons)
 
   add_executable(test_overrides tests/test_overrides.c)
   target_link_libraries(test_overrides PRIVATE f117present f117recomp_none)

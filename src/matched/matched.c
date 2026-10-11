@@ -10503,6 +10503,10 @@ static int edge_arm_tail(machine_t *m, int clipped_second)
 static int vgame_model_prepare_edge(machine_t *m)
 {
     cpu_t *c = &m->cpu;
+    /* The original entry still executes when event room makes this matched
+     * body decline. Observe before that decision so the slot never inherits
+     * a previous model's vertex snapshot at an event boundary. */
+    if (g_f117_observer) observe_edge_prepared(m, c->r[R_BP], c->r[R_DI], c->r[R_BX]);
     if (!room(c, 11)) return 0;
     const uint16_t di0 = c->r[R_DI], bx0 = c->r[R_BX];
     const uint16_t p0 = ds_get(c, (uint16_t)(di0 - 0x294A)), p1 = ds_get(c, (uint16_t)(bx0 - 0x294A));
@@ -10510,7 +10514,6 @@ static int vgame_model_prepare_edge(machine_t *m)
                                                                     : (p1 == 0x8000 ? P1_BEHIND : FRONT);
     const unsigned pre = arm == FRONT || arm == P1_BEHIND ? 34 : arm == P0_BEHIND ? 33 : 11;
     if (!room(c, pre + 1)) return 0;
-    if (g_f117_observer) observe_edge_prepared(m, c->r[R_BP], di0, bx0);
     const uint16_t si = c->r[R_BP];
     c->r[R_SI] = si;
     c->r[R_AX] = p0; c->r[R_DX] = p1;

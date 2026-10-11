@@ -9,7 +9,53 @@ checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 more than once, what it costs). State as of 11 October 2026.
 Earlier session logs are in `git log -p handoff.md`.
 
-## Shared-edge test exposes a seam limitation (11 Oct, 06:18 Pacific)
+## Camera-plane rendering and seam repair gated (11 Oct, 12:50 Pacific)
+
+Continued the roadmap. Main now contains the isolated camera snapshots,
+exact near-plane reconstruction, atomic interpolation metadata, and geometry-aware
+seam repair. The full gate passes on fixed main sources in
+`D:/f117-gate/gate-near-seams.log`, terminal exit 0: 21 tests, all 35 route
+pairs identical, both 5,718,912-state instruction profiles and three matched
+seeds (2,547,415/2,546,484/2,546,742 comparisons), zero differences, with
+reachability and event-room checks. 1,411 s total: build/tests 107, coverage
+513, byte-identical regeneration 17, parity 775 (rounded stages). All 34
+interpreter sessions ran fresh. Gate session 2166 is closed; no jobs remain.
+Main's transient code-alias harness and CTest are preserved. Stage 2 estimate
+advances from 0.70 to 0.85 for verified clipped geometry and seam handling;
+unsupported geometry and visual polish remain. P3 75.20%, All 73.89%.
+
+The shared-edge fixture below now passes without removing its missing-pixel
+assertions: exactly six N=9 holes are restored to their original coarse owner's
+colour, zero at N=4. Coverage tracks true geometry, actual painted fine pixels
+(including black), and coarse footprint unions. Repair only fills unpainted
+pixels inside both unions, respecting HUD masks. Coverage is deep-copied,
+finalized before replacing primitives/blits, and reset on reseed. Reading a
+picture is idempotent and retains coverage for subsequent adjacent faces.
+Passive `a`/`x` observer diagnostics must not close the model layer: doing so
+caused recorded/interpolated endpoint differences and was fixed with a fixture.
+
+Final isolated unit run: 20/20, 5.98 s (`test-wt-seam-final-unit.log`). Strike,
+landing and air-to-air fine checks pass at N=4 and 9: respectively 444/62/54
+endpoints and 666/93/81 intermediate pictures per scale
+(`seam-interp-*-fixed.log`). C/Python N=4 repair counts agree exactly:
+10,010 strike, 1,534 landing, 2,941 air-to-air (`seam-c-*`/`seam-python-*`).
+Earlier 5,014 original crossing checks and N=1 identity evidence still apply.
+Frozen repaired binary `near-seam-bin` live N=4/9 checks both pass:
+368/368 logic frames, 366/366 exact fine endpoint pairs, all 54 checkpoints
+and final hash `48a10e901505e2a9` at clock 2,727,068,014
+(`seam-live-{4,9}.log`; 53.2/73.7 s host time).
+
+Latest visible allowance: 94% at 12:46:40 Pacific, reset 17:01; seven-day 70%.
+Continue five-minute reads while above 20%, otherwise suspend owned work and
+check every 30 minutes until above 20%. No subagents are authorized.
+
+Next Phase 2 leads: private drafts in `D:/f117-gate/next-drafts`: VGAME
+`0000:3A4E` pause begin (19 instructions, polling loop; confirm route reach),
+`1058:09D8` HUD colour setup (219 instructions across its branches, despite
+the census's 84-byte entry). No new matched implementation or verification.
+Main retains 786 addresses, 781/1,535 census functions, 66,674/179,213 bytes.
+
+## Shared-edge test exposed a seam limitation (11 Oct, 06:18 Pacific; repaired above)
 
 Previous goal turn was progress (interpolation binding, oracle and scene/live
 checks). Current turn adds shared-edge tests to isolated

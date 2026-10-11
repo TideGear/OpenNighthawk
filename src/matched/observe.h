@@ -13,7 +13,10 @@
 /* The primitives the draw list is made of (observe_prim's `kind`; the
  * graphics library's are described at their hooks in observe.c):
  *   'G' an edge prepared (model_prepare_edge): slot, the two projected
- *       vertex records it was made from (DS offsets) - links edges to vertices
+ *       vertex records it was made from (DS offsets) - links edges to vertices;
+ *       then raw screen-origin words x/y, and for each endpoint camera x/y/z,
+ *       projected x/y and the exact behind-eye marker (x high word 8000h).
+ *       Older logs have only the first three fields.
  *   'E' an edge of a filled polygon handed to the rasteriser (130D:004A):
  *       slot, x0, y0, x1, y1 (screen, 32-bit), the slot's status word, and
  *       the near-plane crossing kept at slot + 10h (x, y)

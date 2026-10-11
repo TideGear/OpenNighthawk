@@ -127,9 +127,9 @@
       {
         "item": "Stage 2: high-resolution re-draw",
         "weight": 16,
-        "done": 0.7,
+        "done": 0.85,
         "kind": "estimate",
-        "evidence": "Model polygons re-projected from camera-space vertices and filled on a fine grid (hires_subpixel.py and src/present/hires.c). Owner chose the Reimp HUD treatment: fine-grid lines/ticks with scale-proportional or selected width, original bitmap text/artwork. 360 reference strokes byte-identical to the local Reimp at N=2/4/9 and five widths; eight carried recorded windows pass N=1/4/9. Stroke masks preserve legitimate HUD detail through the flat-pixel guard, colour operations and page copies. Live N=9 sentinel: all 368 logic frames exact, all 366 pairs exact at coarse and fine endpoints. Open: near-clipped polygons and geometry outside the supported projection rule remain scaled."
+        "evidence": "Model polygons re-projected from camera-space vertices and filled on a fine grid (hires_subpixel.py and src/present/hires.c). Owner chose the Reimp HUD treatment: fine-grid lines/ticks with scale-proportional or selected width, original bitmap text/artwork. 360 reference strokes byte-identical to the local Reimp at N=2/4/9 and five widths; eight carried recorded windows pass N=1/4/9. Stroke masks preserve legitimate HUD detail through the flat-pixel guard, colour operations and page copies. Live N=9 sentinel: all 368 logic frames exact, all 366 pairs exact at coarse and fine endpoints. 11 Oct: camera snapshots reconstruct near-clipped polygons after exact verification against 5,014 original crossings. Compatible metadata moves atomically; fine endpoints pass across strike/landing/air-to-air at N=4/9. Geometry-aware seam repair closes six synthetic N=9 holes while preserving original colour footprints and outer detail; C/Python repair counts agree in all three scenes. Live N=4/9 retains 368 exact logic frames, 366 endpoint pairs and 54 checkpoint/final hashes. Main full gate passes 21 tests, 35 routes, both instruction profiles and three matched seeds. Estimate rises from 0.70 to 0.85 for these verified additions. Open: unsupported geometry/horizon slivers retain scaling; visual polish and real-display checks remain."
       },
       {
         "item": "Stage 3 and 4: interpolation to 60+ fps, pacing and polish",

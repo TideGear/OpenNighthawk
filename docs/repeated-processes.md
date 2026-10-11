@@ -10,6 +10,18 @@ identical, and the proof is the same verdicts before and after.
 
 ## The gate (`tools/build_recomp.py`)
 
+Camera-plane/seam integration (11 Oct) reuses the existing observer captures:
+the final isolated 20-test run takes 5.98 s. Fine endpoints at N=4/9 pass
+for strike (444), landing (62), and air-to-air (54); three intermediate
+pictures per pair are exercised too. Independent C/Python repair counts
+match at N=4 (10,010/1,534/2,941 respectively). Frozen-binary live N=4/9
+sentinels take 53.2/73.7 s concurrently, each preserving 368 logic frames,
+366 endpoint pairs and 54 checkpoints/final hash. Main full gate passes
+in `gate-near-seams.log`: 21 tests, all 35 routes, both instruction profiles,
+three matched seeds, reachability and event limits. Total 1,411 s: build/tests
+107, coverage 513, byte-identical regeneration 17, parity 775 (rounded).
+All 34 interpreter sessions run fresh; affinity 0x00FFFFFF, 16 route workers.
+
 The first cockpit drawing-helper gate (11 Oct, `gate-panel-drawing.log`)
 takes 1,059 s: build/tests 127, coverage 603, byte-identical regeneration 17,
 parity 312. All 35 route pairs and both instruction profiles pass, with 34

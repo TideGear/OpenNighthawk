@@ -1,5 +1,6 @@
 /* hires.c - see hires.h. The functions follow tools/hires_subpixel.py's. */
 #include "hires.h"
+#include "nearclip.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -234,10 +235,99 @@ static void paint_run(uint8_t *row, int n, int colour)
     else if (hi == 0xFD) for (int i = 0; i < n; i++) row[i] |= lo;
 }
 
-/* the true edges in coarse pixels (the origin added); 0 with the reason counted */
+static void model_span(uint8_t *mask,size_t first,size_t last)
+{
+    for(size_t at=first;at<=last;at++) mask[at>>3]|=(uint8_t)(1u<<(at&7));
+}
+
+/* Track unclamped true geometry separately from the polygon's painted fine
+ * spans. Their unions distinguish internal footprint seams from outer edges. */
+static void model_geometry(drawlist_page *page,const footprint *f,const extents *x,const int32_t vp[4])
+{
+    const int n=page->n,W=320*n,H=200*n;
+    const size_t bits=((size_t)W*H+7)/8;
+    if(!page->model) page->model=(uint8_t *)calloc(2*bits,1);
+    if(!page->model) return;
+    for(int k=0;k<f->n;k++) if(f->has[k] && f->y0+k>=0 && f->y0+k<200) {
+        int l=f->l[k]<0?0:f->l[k],r=f->r[k]>319?319:f->r[k];
+        if(l<=r) model_span(page->model_foot,(size_t)(f->y0+k)*320+l,(size_t)(f->y0+k)*320+r);
+    }
+    double top=H,bottom=0;
+    for(int k=0;k<x->n;k++) {if(x->e[k].ay<top) top=x->e[k].ay;if(x->e[k].by>bottom) bottom=x->e[k].by;}
+    int y0=top<=0?0:top>=H?H:(int)ceil(top-0.5);
+    int y1=bottom>=H?H-1:bottom<=0?-1:(int)ceil(bottom-0.5)-1;
+    if(vp[1]>0 && vp[1]<200 && y0<vp[1]*n) y0=vp[1]*n;
+    if(vp[3]>=0 && vp[3]<199 && y1>=(vp[3]+1)*n) y1=(vp[3]+1)*n-1;
+    if(vp[1]>=200 || vp[3]<0 || vp[0]>=320 || vp[2]<0) return;
+    const int xmin=vp[0]>0?vp[0]*n:0,xmax=vp[2]<319?(vp[2]+1)*n-1:W-1;
+    for(int y=y0;y<=y1;y++) {
+        double lo,hi;extents_at(x,y+0.5,&lo,&hi);
+        if(lo==INFINITY || hi<=0 || lo>=W) continue;
+        int l=lo<=0?0:(int)ceil(lo-0.5),r=hi>=W?W-1:(int)ceil(hi-0.5)-1;
+        if(l<xmin) l=xmin;if(r>xmax) r=xmax;
+        if(l<=r) model_span(page->model,(size_t)y*W+l,(size_t)y*W+r);
+    }
+    page->model_active=1;
+}
+
+/* The camera cut's two crossings close the visible part of a convex model
+ * polygon. Verify each against the crossing retained by the original before
+ * using the precision discarded there. Legacy logs retain their old fill. */
+static int near_polygon_edges(hires *h, double (*out)[4])
+{
+    const int ne = h->poly.nedges;
+    if (h->poly.nclip != 2 || ne >= HIRES_EDGES) return 0;
+    int count = 0, cuts = 0;
+    double crossing[2][2];
+    int32_t origin[2] = { 0, 0 };
+    for (int k = 0; k < ne; k++) {
+        const hires_edge *e = &h->poly.edges[k];
+        const hires_snapshot *s = &e->snap;
+        if (!s->valid) return 0;
+        if (!k) { origin[0] = s->origin[0]; origin[1] = s->origin[1]; }
+        else if (origin[0] != s->origin[0] || origin[1] != s->origin[1]) return 0;
+        if (s->behind == 3) {
+            if (!(e->st & 0x80)) return 0;
+            continue;
+        }
+        double a[2], b[2];
+        if (s->behind) {
+            if (!(e->st & 0x40) || !e->have_crossing || cuts == 2) return 0;
+            const hires_vertex *front = s->behind == 1 ? &s->b : &s->a;
+            const hires_vertex *behind = s->behind == 1 ? &s->a : &s->b;
+            const int32_t f[3] = { front->x, front->y, front->z };
+            const int32_t z[3] = { behind->x, behind->y, behind->z };
+            int32_t coarse[2];
+            double fine[2], visible[2];
+            if (!present_near_crossing(f,z,coarse,fine) || !vertex_fraction(front,&visible[0],&visible[1])) return 0;
+            for (int c = 0; c < 2; c++) {
+                if (coarse[c] + origin[c] != e->crossing[c]) return 0;
+                crossing[cuts][c] = fine[c] + origin[c];
+                a[c] = (s->behind == 1 ? fine[c] : visible[c]) + origin[c];
+                b[c] = (s->behind == 1 ? visible[c] : fine[c]) + origin[c];
+            }
+            cuts++;
+        } else {
+            if (e->st & 0x40 || !vertex_fraction(&s->a,&a[0],&a[1]) || !vertex_fraction(&s->b,&b[0],&b[1])) return 0;
+            for (int c = 0; c < 2; c++) { a[c] += origin[c]; b[c] += origin[c]; }
+        }
+        out[count][0] = a[0]; out[count][1] = a[1]; out[count][2] = b[0]; out[count][3] = b[1];
+        count++;
+    }
+    if (cuts != 2 || count < 2) return 0;
+    out[count][0] = crossing[0][0]; out[count][1] = crossing[0][1];
+    out[count][2] = crossing[1][0]; out[count][3] = crossing[1][1];
+    return count + 1;
+}
+
+/* True edges in coarse pixels (origin added); zero with the reason counted. */
 static int polygon_edges(hires *h, double (*out)[4])
 {
-    if (h->poly.nclip) { h->stats[HS_NEAR_CLIPPED]++; return 0; }
+    if (h->poly.nclip) {
+        const int ne = near_polygon_edges(h,out);
+        if (!ne) h->stats[HS_NEAR_CLIPPED]++;
+        return ne;
+    }
     const int ne = h->poly.nedges;
     if (ne < 3) { h->stats[HS_FEW_EDGES]++; return 0; }
     for (int k = 0; k < ne; k++) {
@@ -273,14 +363,15 @@ static int polygon_edges(hires *h, double (*out)[4])
         out[k][0] = ax + h->origin[0]; out[k][1] = ay + h->origin[1];
         out[k][2] = bx + h->origin[0]; out[k][3] = by + h->origin[1];
     }
-    return 1;
+    return ne;
 }
 
 static void refill(hires *h, drawlist *d, drawlist_page *page)
 {
     h->stats[HS_POLYGONS]++;
     static double base[HIRES_EDGES][4], fine[HIRES_EDGES][4];
-    if (!polygon_edges(h, base)) { h->stats[HS_LEFT_NEAREST]++; return; }
+    const int ne = polygon_edges(h, base);
+    if (!ne) { h->stats[HS_LEFT_NEAREST]++; return; }
     static footprint f;
     footprint_rows(h, &f);
     static extents x;
@@ -288,7 +379,7 @@ static void refill(hires *h, drawlist *d, drawlist_page *page)
     /* the least overshoot with which the true edges cover the whole footprint at N = 1 */
     int64_t want = 0;
     for (int k = 0; k < f.n; k++) if (f.has[k]) want += f.r[k] - f.l[k] + 1;
-    extents_init(&x, (const double (*)[4])base, h->poly.nedges);
+    extents_init(&x, (const double (*)[4])base, ne);
     int g;
     for (g = 0; g < 6; g++) {
         const int c = fine_cover(&f, &x, 1, GROWS[g], spans);
@@ -298,12 +389,14 @@ static void refill(hires *h, drawlist *d, drawlist_page *page)
     h->stats[HS_GROW0 + g]++;
     const int n = h->n;
     if (n > 64) return;
-    for (int k = 0; k < h->poly.nedges; k++)
+    for (int k = 0; k < ne; k++)
         for (int c = 0; c < 4; c++) fine[k][c] = base[k][c] * n;
-    extents_init(&x, (const double (*)[4])fine, h->poly.nedges);
+    extents_init(&x, (const double (*)[4])fine, ne);
     const int count = fine_cover(&f, &x, n, GROWS[g], spans);
     if (!paint_ok(h->fill_colour)) { h->stats[HS_STYLE]++; h->stats[HS_LEFT_NEAREST]++; return; }
     const int W = 320 * n;
+    const int tracking=n>1 && (h->fill_colour&0xFF00)!=0xFB00;
+    if(tracking) model_geometry(page,&f,&x,h->poly.vp);
     for (int k = 0; k < count; k++) {
         const int32_t hy = spans[3 * k];
         int32_t l = spans[3 * k + 1], r = spans[3 * k + 2];
@@ -312,6 +405,10 @@ static void refill(hires *h, drawlist *d, drawlist_page *page)
         if (r > W - 1) r = W - 1;
         if (r < l) continue;
         paint_run(page->hi + (size_t)hy * W + l, r - l + 1, h->fill_colour);
+        if(tracking && page->model) {
+            const size_t bits=((size_t)64000*n*n+7)/8;
+            model_span(page->model+bits,(size_t)hy*W+l,(size_t)hy*W+r);
+        }
     }
     h->stats[HS_FOOT_PIXELS] += (uint64_t)want;
     h->stats[HS_FOOT_FINE] += (uint64_t)cover_total(spans, count);
@@ -351,14 +448,16 @@ int hires_guard_masked(const uint8_t *coarse, uint8_t *fine, int n, const uint8_
     return restored;
 }
 
-static void parse_edge(hires *h, const int32_t *v, hires_edge *e)
+static void parse_edge(hires *h, const int32_t *v, int n, hires_edge *e)
 {
+    memset(e,0,sizeof *e);
     e->slot = v[0];
     e->x0 = v[1] & 0xFFFF; e->y0 = v[2] & 0xFFFF; e->x1 = v[3] & 0xFFFF; e->y1 = v[4] & 0xFFFF;
     e->st = v[5] & 0xFFFF;
     const int k = slot_find(h, (uint16_t)v[0], 0);
     e->have_g = k >= 0;
-    if (k >= 0) { e->a = h->slot[k].a; e->b = h->slot[k].b; }
+    if (k >= 0) { e->a = h->slot[k].a; e->b = h->slot[k].b; e->snap = h->slot[k].snap; }
+    if (n >= 8) { e->have_crossing = 1; e->crossing[0] = v[6]; e->crossing[1] = v[7]; }
 }
 
 void hires_record(hires *h, drawlist *d, char kind, const int32_t *v, int n)
@@ -383,6 +482,18 @@ void hires_record(hires *h, drawlist *d, char kind, const int32_t *v, int n)
         memset(&h->slot[k].b, 0, sizeof h->slot[k].b);
         if (a) h->slot[k].a = *a;
         if (b) h->slot[k].b = *b;
+        hires_snapshot *s = &h->slot[k].snap;
+        memset(s,0,sizeof *s);
+        if (n >= 17) {
+            s->valid = 1; s->origin[0] = v[3]; s->origin[1] = v[4];
+            hires_vertex *ends[2] = { &s->a, &s->b };
+            for (int end = 0; end < 2; end++) {
+                const int at = 5 + 6 * end;
+                const int zhi = s16(v[at+2] >> 16);
+                *ends[end] = (hires_vertex){ 1,v[at],v[at+1],v[at+2],v[at+3],v[at+4],zhi >= 0x100 ? 0 : zhi >= 1 ? 1 : 2 };
+                if (v[at+5]) s->behind |= 1 << end;
+            }
+        }
         break;
     }
     case 'E':
@@ -391,7 +502,7 @@ void hires_record(hires *h, drawlist *d, char kind, const int32_t *v, int n)
             h->poly.njoin = 1;                        /* the join is not one of the polygon's own edges */
             break;
         }
-        if (h->npending < HIRES_EDGES) parse_edge(h, v, &h->pending[h->npending++]);
+        if (h->npending < HIRES_EDGES) parse_edge(h, v, n, &h->pending[h->npending++]);
         break;
     case 'F':
         if (n < 12) break;
