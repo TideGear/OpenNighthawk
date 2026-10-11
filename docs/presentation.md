@@ -616,6 +616,15 @@ a 9 x 9 block at N = 9). The sources they could come from instead, with what eac
 
 ## Open questions and risks
 
+The local Reimp provides a reference for the HUD choice: `src/game.c`'s
+`draw_hud_line_scaled` redraws lines on the output grid through `hires_line`.
+Stroke width defaults to the integer render scale and can be overridden.
+`src/core/hudtext.c`'s `hud_text_draw_scaled` enlarges each original glyph bit
+to an N x N block; bitmap blits do the same for sprites and cockpit art.
+This is the fine-grid line option above combined with scaled original text
+and artwork, without a pixel-art upscaler. It describes the Reimp's existing
+path; the owner's choice for this project's optional path remains open.
+
 - **Pairing for interpolation.** Done for 86-99% of painted polygons by batch alignment
   (Stage 3 above); what is left is chunks whose vertex count changes by more than a tenth or
   that are split differently between steps.

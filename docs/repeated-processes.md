@@ -10,6 +10,18 @@ identical, and the proof is the same verdicts before and after.
 
 ## The gate (`tools/build_recomp.py`)
 
+The two-panel-helper gate (10 Oct, `gate-panel-helpers.log`) took 1,010
+seconds: translation/build and 17 unit tests 91, fresh coverage 559,
+byte-identical regeneration 17, parity 342 (rounded stages). All 35 routes,
+both instruction profiles and three 779-entry matched seeds passed, with
+2,519,363/2,518,465/2,522,480 routine comparisons and no differences.
+Reachability and event-room checks passed; 34 interpreter sessions were
+reused. Affinity 0x00FFFFFF, 16 route workers. A two-worker build in the
+separate worktree overlapped final parity. Targeted panel checks compared
+29,522 states over three concurrent seeds in about a second per seed;
+the next display-fill candidate compared 6,281 states in about three
+seconds per seed concurrently, without differences (not yet fully gated).
+
 The clipping-entry registration gate (10 Oct, `gate-outcode-bank.log`)
 took 959 seconds: translation/build and 17 unit tests 125, fresh coverage
 547, byte-identical regeneration 15, parity 272. All 35 routes, both

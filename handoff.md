@@ -9,6 +9,44 @@ checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 more than once, what it costs). State as of 10 October 2026.
 Earlier session logs are in `git log -p handoff.md`.
 
+## Panel helper checkpoint (10 Oct 2026)
+
+Continued from `a91d716`. Added `vgame_panel_number_right` (`0000:8A18`)
+and `vgame_panel_hud_line` (`0000:881F`): unsigned decimal formatting with
+four-pixel character alignment, and compact/full HUD clipping bounds.
+Their random-state checks use the existing symmetric returning-driver-thunk
+mechanism; routes still use the real graphics driver. The scoreboard is
+779 addresses, 774 census functions, 65,925 bytes, P2 39.95%, All 71.81%.
+
+Three targeted seeds compare 9,843/9,850/9,829 states, zero differences.
+Full gate `D:/f117-gate/gate-panel-helpers.log` passed in 1,010 seconds:
+17 unit tests, 35 identical routes, both 5,718,912-state instruction
+profiles, three matched seeds (2,519,363/2,518,465/2,522,480 comparisons),
+routes-only reachability and event-room checks. Affinity 0x00FFFFFF,
+16 route workers; no remaining gate or build processes.
+
+**Next candidate prepared, not merged or fully gated:** the detached
+`C:/Users/Tideg/f117-recomp-local/wt` worktree is based on `a91d716` and
+contains `vgame_panel_display_fill` (`114A:0280`, 27 instructions/78 bytes)
+plus its driver-stub harness allowance. It sets both pen colours and fills
+the left/right cockpit display rectangle. Worktree build passed; three
+targeted seeds compare 2,109/2,069/2,103 states without differences
+(`D:/f117-gate/target-panel-fill-{0,1,2}.log`). No full gate yet. Combine
+its harness allowance with the main tree's new 8A18/881F allowances when
+bringing it forward; do not replace the main harness wholesale. The
+two-worker worktree build had to rebuild 36 targets against the refreshed
+shared generated code and ran alongside final parity. Its log is
+`D:/f117-gate/build-wt-panel-fill.log`, with separate TEMP at
+`D:/f117-gate/wt-temp`; BUILD OK is authoritative despite PowerShell's
+stderr wrapper returning 1. No translator ran in that worktree.
+
+**Presentation choice remains open.** In response to the optional HUD
+question the owner asked how the Reimp does it. The local code confirms
+fine-grid HUD lines with scale-proportional, configurable stroke width;
+original text glyphs, sprites and cockpit art enlarged in N x N pixel
+blocks. Explained this and recorded the reference in presentation.md.
+This was a question, not a selection of a new presentation mode.
+
 ## Clipping-entry registration checkpoint (10 Oct 2026)
 
 Continued from `ab1d517`. Corrected the existing `vgame_outcode`

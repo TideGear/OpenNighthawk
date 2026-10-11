@@ -540,7 +540,8 @@ caught real defects:
   `matched_shadow_stack_alias` keeps that regression in the unit-test step.
 - START and END's uninitialised graphics-driver thunks, and VGAME's when
   checking the marker at `0xB171`, canopy at `0xD6DD`, projectiles at `0x4777`,
-  sound gate at `0xD3F9`, scene finish at `0xD87C` and destroy at `0x72D8`, are
+  sound gate at `0xD3F9`, scene finish at `0xD87C`, destroy at `0x72D8`,
+  right-aligned number at `0x8A18` and HUD line at `0x881F`, are
   replaced with RETF on both sides of the check, so drawing wrappers can
   return and their surrounding work is compared. The marker checks rise from
   358 to 4,857 comparisons per 4,000-state fixed-seed run, including

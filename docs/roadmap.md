@@ -202,7 +202,7 @@ not the recompilation:
       Reimp's mapping; matched functions replacing translations one at a time,
       each held to the same parity checks. `tools/reimp_names.py` joins the
       Reimp's census (1,535 functions) with this project's regions as a private
-      lead list. 777 addresses are matched (772 of the census functions, 65,795 of
+      lead list. 779 addresses are matched (774 of the census functions, 65,925 of
       179,213 bytes); the table is at the end of `src/matched/matched.c` and the
       method is in [architecture.md](architecture.md#matched-routines-phase-2).
       The batches of 8-9 Oct add 37 + 34 + 47 VGAME, 34 + 40 + 45 START/END and 21 + 44 + 64
@@ -221,6 +221,12 @@ not the recompilation:
       the original stack reads for every line call. Its random-state check
       substitutes returning driver thunks on both sides, so the active
       drawing branches return too; the routes use the real driver.
+      The right-aligned number (`0000:8A18`) and HUD line (`0000:881F`)
+      helpers name number formatting and four-pixel character alignment, and
+      the compact/full HUD clip bounds. Three targeted seeds compare 29,522
+      states without differences, using the same returning driver thunks.
+      Full gate passes all 35 routes, both instruction profiles and three
+      779-address matched seeds; reachability and event-room checks pass.
       The cockpit canopy (`0x0D6DD`) now names the compact side frames, shaded
       posts and landing-approach cue, including clearing the old cue before
       painting the new one and preserving the original page-copy arguments.

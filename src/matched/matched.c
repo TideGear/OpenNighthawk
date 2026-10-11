@@ -13660,6 +13660,70 @@ static int vgame_orientation_build(machine_t *m)
 #define FRAME(o) seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + (o)))
 #define SETFRAME(o, v) seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + (o)), (v))
 
+/* VGAME 0000:8A18, right-aligned unsigned number: format the zero-extended
+ * word into C604, measure the string, then draw at x - 4 * length.
+ * Keep the stack local and live argument reads: formatting and the pushes
+ * can alias the caller's frame or the shared text buffer. */
+static int vgame_panel_number_right(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 6)) return 0;
+    x86_enter(c, 2, 0);
+    cpu_push16(c, 10);
+    cpu_push16(c, 0xC604);
+    cpu_push16(c, 0);
+    cpu_push16(c, FRAME(4));
+    c->icount += 5;
+    NEAR_THEN(0xEBBA, 0x8A29, 0, 3);
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0);
+    cpu_push16(c, 0xC604);
+    c->icount += 2;
+    NEAR_THEN(0xEB82, 0x8A32, 0, 10);
+    c->r[R_BX] = cpu_pop16(c);
+    SETFRAME(-2, c->r[R_AX]);
+    cpu_push16(c, FRAME(10));
+    cpu_push16(c, FRAME(8));
+    c->r[R_AX] = FRAME(6);
+    SETFRAME(-2, x86_shift(c, 4, FRAME(-2), 2, 1));
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], FRAME(-2), 1, 0);
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, 0xC604);
+    c->icount += 9;
+    NEAR_THEN(0x895E, 0x8A4D, 0, 2);
+    x86_leave(c);
+    c->icount += 2;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0000:881F, line inside the HUD's current clip box. Compact mode
+ * uses (99,30)-(220,90), full mode (48,15)-(271,90). The graphics library
+ * receives page 0, clip bounds and the four caller-supplied endpoints. */
+static int vgame_panel_hud_line(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 17)) return 0;
+    x86_enter(c, 6, 0);
+    alu_sub(c, mem_read8(c, phys(c->seg[S_DS], 0x294B)), 0, 0, 0);
+    const int compact = !(c->flags & F_ZF);
+    SETFRAME(-6, compact ? 99 : 48);
+    SETFRAME(-4, compact ? 220 : 271);
+    SETFRAME(-2, compact ? 30 : 15);
+    cpu_push16(c, 0);
+    cpu_push16(c, 90);
+    cpu_push16(c, FRAME(-2));
+    cpu_push16(c, FRAME(-4));
+    cpu_push16(c, FRAME(-6));
+    for (int o = 10; o >= 4; o -= 2) cpu_push16(c, FRAME(o));
+    c->icount += compact ? 16 : 15;
+    if (!guest_call_far(m, 0x8863, 0x8868)) return 1;
+    if (!room(c, 2)) { c->ip = 0x8868; return 1; }
+    x86_leave(c);
+    c->icount += 2;
+    near_ret(c);
+    return 1;
+}
+
 /* VGAME 0x0C702, bearing(x, y): the angle of (x, y) as a word, a full turn
  * 10000h, 0 along +y and 4000h along +x. The axes are answered at once
  * (y = 0: 4000h or C000h by the sign of x; x = 0: 0 or 8000h by y). Off
@@ -31671,6 +31735,8 @@ static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x3A0D, vgame_panel_mode_3, "panel mode 3", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x8435, vgame_cockpit_layout, "cockpit layout", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x895E, vgame_panel_text, "panel text", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x8A18, vgame_panel_number_right, "right-aligned unsigned panel number", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x881F, vgame_panel_hud_line, "line clipped to the current HUD box", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x898F, vgame_panel_text2, "panel text, second entry", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x89C0, vgame_text_record, "fill a text record", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x2C87, vgame_attitude_step, "attitude step", 1 },
