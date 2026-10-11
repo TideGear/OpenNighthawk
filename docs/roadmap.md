@@ -202,7 +202,7 @@ not the recompilation:
       Reimp's mapping; matched functions replacing translations one at a time,
       each held to the same parity checks. `tools/reimp_names.py` joins the
       Reimp's census (1,535 functions) with this project's regions as a private
-      lead list. 776 addresses are matched (771 of the census functions, 65,751 of
+      lead list. 777 addresses are matched (772 of the census functions, 65,795 of
       179,213 bytes); the table is at the end of `src/matched/matched.c` and the
       method is in [architecture.md](architecture.md#matched-routines-phase-2).
       The batches of 8-9 Oct add 37 + 34 + 47 VGAME, 34 + 40 + 45 START/END and 21 + 44 + 64
@@ -350,6 +350,18 @@ not the recompilation:
       check yet failed the gate's actual route-coverage check. Verified
       by a clean 776-routine suite and the full gate (every route
       IDENTICAL, every check, step 8 confirms it ran).
+
+      A score-ribbon draw (`END 0x0100D`, `end_ribbons_draw`) is now
+      matched: forwards its three arguments through two unmatched
+      drawing helpers (`0x400F`, `0x4648`) and saves the first's return
+      value as a third call's (`0x40BD`) argument - a thin per-call
+      dispatcher with no hardware or driver state of its own. Produces
+      real comparable random-fuzz states at two of three seeds (33 and 1,
+      zero mismatching; the third seed found none to compare) rather than
+      "routes only," and is called from nine sites across END.EXE's
+      report/ribbon code. Full gate passes clean (every route IDENTICAL,
+      both instruction profiles and all three 777-address matched seeds
+      zero mismatching, every routes-only routine ran).
 
 ## Phase 3 - fixes and enhancements (switchable)
 

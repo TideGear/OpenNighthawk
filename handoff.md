@@ -9,6 +9,79 @@ checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 more than once, what it costs). State as of 10 October 2026.
 Earlier session logs are in `git log -p handoff.md`.
 
+## Session end-of-shift handoff (10 Oct, 22:31 PDT)
+
+**Scoreboard at session end**: 777 addresses matched (772 of 1,535 census
+functions, 65,795 of 179,213 bytes). `(P1 100.00%, P2 39.88%, P3 67.00%,
+P4 42.90%, All 71.79%)`. `git status` clean, `master` pushed, no leftover
+gate/build processes in the main tree or the `wt` worktree.
+
+**Matched and committed this session** (in order; see each commit for
+detail): `vgame_init_models`, `vgame_frame_mission_start`, `vgame_free`
+(plus a missed-Jcc bug found and fixed), a standalone fix for a
+pre-existing aliasing bug in `vgame_eventlog_add` (surfaced by an
+unrelated gate's per-commit seed, not introduced this session),
+`vgame_panel_navigation`, `end_ribbons_draw`.
+
+**Reverted this session, each cleanly, with no trace left in `matched.c`**:
+`vgame_sky_low_detail`, `vgame_cold_start_init`, `vgame_camimage_background_raster`
+(all three: clean lockstep, but the full gate's step 8 found no route
+actually reaches them - "routes only" is necessary, not sufficient,
+evidence), `vgame_joystick_save`/`vgame_joystick_load` (near-miss: both
+addresses were already matched under different names before any build
+cost - the bug was in my own lead-vetting, not the game: the census's
+flat `entry` column isn't a usable address for banks beyond 0xFFFF, only
+`our_region`'s `R_<BIN>_EXE_<bank>_<offset>` is), `pic_decode_screen_last`
+(abandoned before the gate - hung 90+ seconds under fuzzing, likely an
+infinite loop reachable only through its ~800 nested calls into
+genuinely unverified driver/decoder code), and `start_pit_restore_unhook`
+(clean lockstep at thousands of states, but failed **all 35 routes** in
+the full gate - a real correctness bug in PIT/interrupt-vector-touching
+code, whose blast radius a per-call fuzz check cannot see; not yet
+root-caused, do not re-attempt without more time budgeted).
+
+**The accumulated lesson, read these four reverts together**: a clean
+lockstep pass answers only "is this one call, by itself, correct" - it
+does not answer "does any route reach this," "does an unmatched nested
+callee misbehave under truly random input," or "does this change
+anything outside its own call frame." Four different failure shapes this
+session, from four different gaps in what lockstep alone can see. Keep
+checking route-coverage via static call-site tracing (`x86dec`, bank from
+`our_region`, not the raw census address) before investing in a full
+build+gate cycle, and treat PIT/interrupt-vector and heavily-nested-call
+candidates as their own higher-risk categories regardless of how clean
+the lockstep looks.
+
+**Workflow change adopted and still in effect**: the `C:\Users\Tideg\f117-recomp-local\wt`
+worktree (detached HEAD) is reused for drafting the next Phase 2
+candidate while the main tree's gate runs, per `[[f117r-worktree-while-gate-runs]]`.
+A fresh worktree build needs `build.cmd -DF117R_GEN_DIR=C:/Users/Tideg/f117-recomp-local/gen -DF117R_BUILD_APP=ON`
+or `func_lockstep`/`insn_lockstep` silently don't get built (`tests/CMakeLists.txt`
+gates them on `F117R_GEN_DIR`) while `build.cmd` still reports `BUILD OK`.
+Batching 2 verified candidates per gate run was tried once (one survived,
+one didn't - see the "First batch-of-2 result" entry below); worth
+continuing, but check which of the batch actually failed via the
+MISMATCH/NOT-RUN line before assuming it's the newest addition (the
+`eventlog_add` incident was an UNRELATED pre-existing bug surfaced by an
+otherwise-unrelated gate run).
+
+**Loose end**: a disposable branch `p2-wt-batch` is still pushed to
+origin, containing only the now-abandoned `camimage_background_raster`
+commit. It was never merged into `master` (the function was reverted
+from the main tree directly instead). Safe to delete whenever convenient;
+not referenced by anything else.
+
+**Next steps for Phase 2**: pick the next lead from the bank-corrected
+unmatched list (see the Python snippet used throughout this session's
+transcript - parses `MATCHED[]`'s own bank/offset triples and cross-
+references against `census.tsv`'s `our_region` column, not raw `entry`).
+Prefer candidates that show real comparable fuzz states over "routes
+only" ones, and when a "routes only" candidate is otherwise attractive,
+require multiple call sites inside functions already proven to run every
+frame (like `game_input`/`0x3ADA`) before investing in the build/gate
+cycle - one call site inside a plausible-sounding function name was wrong
+three times this session.
+
 ## Reverted: start_pit_restore_unhook (START 0x08CE6) - correct fuzz signal, wrong blast-radius read (10 Oct, 22:00 PDT)
 
 Picked this one deliberately to avoid the "routes only, unreachable" trap:

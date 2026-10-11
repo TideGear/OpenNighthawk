@@ -12335,6 +12335,49 @@ static int vgame_panel_navigation(machine_t *m)
     return 1;
 }
 
+/* END 0x0100D, endreport_ribbons_draw(a, b, c): forwards (c, b, 0, a)
+ * to an unmatched helper (0x400F) whose own RET cleans two of those
+ * four words, keeping its AX return value in a local; passes that same
+ * value to a second helper (0x4648, caller-cleaned), then calls a third
+ * helper (0x40BD) with the saved local. */
+static int end_ribbons_draw(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 8)) return 0;
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_SP] = (uint16_t)alu_op(c, 5, c->r[R_SP], 2, 1);
+    cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 8)));
+    cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 6)));
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_AX], 1);
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 4)));
+    c->icount += 8;
+    if (!guest_call(m, 0x400F, 0x1022)) return 1;
+
+    if (!room(c, 4)) { c->ip = 0x1022; return 1; }
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 2), c->r[R_AX]);
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 4;
+    if (!guest_call(m, 0x4648, 0x102B)) return 1;
+
+    if (!room(c, 2)) { c->ip = 0x102B; return 1; }
+    c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 6, 1);
+    cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 2)));
+    c->icount += 2;
+    if (!guest_call(m, 0x40BD, 0x1034)) return 1;
+
+    if (!room(c, 4)) { c->ip = 0x1034; return 1; }
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 4;
+    near_ret(c);
+    return 1;
+}
+
 /* VGAME 0x0EBC4, kbhit(): a character pushed back ([ungot], high byte 0)
  * answers FFh at once; otherwise the console hook at [hook] is called with
  * BX = FFFFh when [hook - 2] holds its signature D6D6h, and DOS function 0Bh
@@ -31388,6 +31431,7 @@ static const recomp_override MATCHED[] = {
     { "matched", "START.EXE", START_47304, 0x0000, 0x88D4, start_lzw_reset, "reset the LZW table", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x28CE, start_cel_start, "start a cel animation", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x1C3B, end_widget_hit, "widget hit test", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x100D, end_ribbons_draw, "draw a score ribbon", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x185C, end_queue_dac, "queue a DAC request", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x452C, end_distance, "octagonal distance", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x539C, vgame_lmul, "32-bit multiply", 1 },
