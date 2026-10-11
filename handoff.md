@@ -30,12 +30,20 @@ cohorts in the same document show a real, solid effect (bursts -1.3 to
 was fixed, not just the game's physics, the effect was no longer
 distinguishable from zero. Read `docs/speed-sweep.md` end to end (not just
 grep for a conclusion) before citing this investigation's status to
-anyone - this session got it wrong twice in a row by answering from an
-earlier section without reaching the final, superseding one. **This
-correction has not yet been propagated into the stale "Goal and standing
-decisions" bullet below, docs/roadmap.md, or docs/bugs.md's top-level
-framing** - that propagation is worth doing before anyone reads those as
-current status.
+anyone - this session got it wrong three times in a row in conversation,
+each time by answering from an earlier section without reaching the
+final, superseding one.
+
+**Correction to the correction:** `docs/roadmap.md` (lines ~305-320) and
+`docs/bugs.md` (lines ~167-173, the D1REAL entry) were checked directly
+and are ALREADY accurate - both already state the corrected, final
+conclusion (11 of 12 seed/step-aligned pairs matching, no high-speed
+weakness). Only the "Goal and standing decisions" bullet immediately
+below in this same file was actually stale (dated 9 Oct, written before
+this correction existed), and it has already been fixed in place. No
+further doc propagation is needed. The lesson here is really about
+answering from a full re-read rather than a partial one, in conversation,
+not about the project's own documentation being out of date - it wasn't.
 
 ## Phase 1 threshold tightening (10 Oct, 15:50 PDT)
 
