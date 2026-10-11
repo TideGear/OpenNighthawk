@@ -84,11 +84,16 @@ restores 70 cells, fine-versus-scaled share 1.086% (baseline 1.060%). Logs
 `near-metadata-entry/near-hires-{1,4}.log`. New synthetic
 `test_near_polygons.c` checks the sloped closing edge, entirely behind edge,
 N=1, footprint containment, fine detail and legacy/mismatched-crossing
-fallback. Both new CTests pass. Builds: `build-wt-near-crossing[-2].log`,
+fallback, including both clipping orientations. All 20 isolated tests pass
+in 6.11 s (`test-wt-near-all.log`). N=9 also passes, with 1.106% fine versus
+scaled change and 140 flat cells restored by the guard
+(`near-metadata-entry/near-hires-9.log`). Builds: `build-wt-near-crossing[-2].log`,
 `build-wt-near-polygons.log`, `build-wt-near-polygon-test.log`, all BUILD OK.
 Before integration: finish interpolation metadata/crossings, update the Python
-oracle, test more scenes and N=9/fine endpoints, add cases for both clipping
-orientations and shared-edge tiling. Worktree CMake/harness remain older than
+oracle, test more scenes and fine endpoints, add shared-edge tiling cases.
+`build-wt-near-final.log` reports BUILD OK with the fixture warning removed.
+Main cockpit batch is committed and pushed as `638e2d6`; main sources remain
+unchanged by this presentation prototype. Worktree CMake/harness remain older than
 main's new code-alias regression; copy only intentional presentation changes.
 
 `D:/f117-gate/near-crossing-check.py` improves the earlier study: compare
