@@ -9,6 +9,44 @@ checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 more than once, what it costs). State as of 10 October 2026.
 Earlier session logs are in `git log -p handoff.md`.
 
+## Reverted: start_pit_restore_unhook (START 0x08CE6) - correct fuzz signal, wrong blast-radius read (10 Oct, 22:00 PDT)
+
+Picked this one deliberately to avoid the "routes only, unreachable" trap:
+small (15 instructions), no far calls into unmatched driver code, and it
+produced thousands of real comparable random-fuzz states cleanly at all
+three seeds (64,233/4,262/4,285, zero mismatching). That instinct - prefer
+candidates likely to show real comparable states - was right as far as it
+went. But the full gate found **all 35 routes DIFFERENT**, not one edge
+case: a correctness bug, not a rare interaction (clock counts matched
+exactly per route; only the state hashes diverged, so timing/icount was
+right and some actual value or address was wrong).
+
+The routine reprograms the 8253 PIT (channel 0 back to its default BIOS
+rate) and reinstalls interrupt vector 8 (the IRQ0 timer tick) via DOS
+AH=25h, reading the far pointer to restore from a fixed CS-relative
+address. Checked before reverting: AH=25h *is* properly host-serviced
+(`src/machine/dos_files.c:541`, writes the real IVT slot correctly), and
+the far-pointer read matches the exact pattern an already-passing routine
+(`vgame_isrclock_init`) uses successfully. The bug is real and somewhere
+in this code, just not found yet given the time already spent - reverted
+rather than debug further at cost, per standing policy.
+
+**The real lesson, sharper than "prefer comparable states"**: a routine
+that reprograms hardware timer state or an interrupt vector has a blast
+radius that spans the entire rest of every route after it runs, because
+every route's timing and every later interrupt delivery depends on this
+state being exactly right - unlike a routine that only reads/writes its
+own data structure, where a bug stays local to whatever uses that
+structure. Comparable-fuzz-state verification checks per-call register/
+memory correctness; it says nothing about downstream systemic effects of
+installing wrong timer/interrupt state, because the fuzz harness's random
+single-call check can't see "what happens to every subsequent frame of
+every route." **Treat PIT/interrupt-vector-touching candidates as a
+distinct, higher-risk class regardless of how clean their lockstep looks**,
+on par with the nested-unverified-call risk already noted for
+`pic_decode_screen_last` below - both are classes where a clean lockstep
+pass is necessary but not sufficient, for different reasons.
+
 ## First batch-of-2 result: one survived, one didn't (10 Oct, 21:07 PDT)
 
 The new batched workflow's first real test. Merged two lockstep-verified
