@@ -511,6 +511,12 @@ not the recompilation:
       Live N = 4/9 sentinels pass all 368 logic frames and 366 interpolation
       pairs, with 54 checkpoints/final hash equal to both fresh scan engines.
       Full gate passes 18 tests, all 35 routes and both instruction profiles.
+      Isolated near-plane prototype (11 Oct): exact camera snapshots and retained
+      crossings reconstruct clipped polygons and move together between frames.
+      C/Python geometry counts and footprint totals agree across fresh strike,
+      landing and air-to-air windows; 5,014 original crossings match. Fine
+      endpoint and live N=4/9 checks pass; shared-edge tiling and the main full
+      gate remain before integration (details in handoff.md).
       Open: near-clipped polygons still scaled, and a real-display check of refresh pacing,
       motion and 4K output (Phase 4).
 

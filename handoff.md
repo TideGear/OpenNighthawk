@@ -9,6 +9,61 @@ checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 more than once, what it costs). State as of 11 October 2026.
 Earlier session logs are in `git log -p handoff.md`.
 
+## Camera-plane interpolation verified in isolation (11 Oct, 06:06 Pacific)
+
+The previous goal turn made progress: implemented interpolation metadata and
+added synthetic endpoint tests. This turn found 3,466 reused G slots in the
+strike capture, 959 with changed vertex identities. Worktree `interp.c` now
+binds each E to its preceding G within the batch, pairs those bindings through
+the paired polygon, and updates all of a polygon's snapshots/crossings together
+only when its coarse polygon moved and every snapshot is compatible. Reused-slot
+and changed-origin/marker/identity/legacy regressions pass. `test_interp --fine N`
+compares fine endpoints to each neighbour's own fine rendering and exercises
+three intermediate pictures; its default coarse report is unchanged. It also
+frees each rendered drawlist, avoiding the old per-render allocation leak.
+
+Strike (`near-metadata-entry/w_strike.log`): 444 exact fine endpoints at both
+N=4 and N=9, 666 intermediate pictures each, 648,695 regenerated records.
+Default coarse replay/endpoints are exact for 221 pairs, zero provenance
+violations. Logs `interp-near-fine-{4,9}.log`, `interp-near-coarse.log`.
+The isolated Python `tools/hires_subpixel.py` now independently rebuilds the
+camera-plane midpoint and closing edge, preserving legacy fallback. It matches
+all 4,124 retained crossings and C's exact polygon counts, per-overshoot counts
+and painted footprint totals on this window (`near-python-hires-4.log`). Its
+whole-picture statistics differ because Python still uses the old scaled HUD.
+
+Fresh frozen-binary normal-input landing 9.70..9.73b and type-5 air-to-air
+6.793..6.823b windows are under `D:/f117-gate/near-scenes/{landing,air5}`.
+Observer on/off hashes agree at 194/136 checkpoints and finals
+`d6fb96881fd7f84a`/`61593284e035ebbd`; all 272/618 additional retained crossings
+pass in Python and C, no ambiguous/missing/mismatched pairs. The initial wrappers
+exit 1 only because full-route debrief milestones are inapplicable to these
+partial windows. `verify-near-scenes.py` checks the original inputs/world
+milestones, exact stop clocks, all checkpoints and these specific wrapper errors
+without rerunning flights; `near-scenes/result.json` records the limitation.
+Private partial route files preserve normal inputs and world checks. Both
+windows pass static N=1/4/9 and 62/54 fine N=4 endpoints plus 93/81 intermediate
+pictures. C/Python polygon counts, overshoot counts and footprint totals match
+exactly for both (`hires-4.out`, `python-hires-4.out`). Three footprint slivers
+remain nearest in landing; air5 has 219 slivers and four unrelated behind cases.
+
+Live frozen binary `near-live-{4,9}.log`: each 368 exact logic frames, 366 exact
+interpolation pairs, 48,828/48,856 refilled model polygons and two guard-restored
+flat cells; same 54 checkpoints/final `48a10e901505e2a9` at clock 2,727,068,014.
+Full isolated CTest session 59604 finished exit 0, 21/21 in 634.92 s, including
+the 629.33 s full function sweep (`test-wt-near-interp-all.log`). After the
+presentation binding/checker changes, all 20 unit tests excluding that sweep
+pass in 5.54 s (`test-wt-near-final-unit.log`). Latest isolated build is BUILD OK
+(`build-wt-near-binding-final.log`). All capture/test sessions are closed;
+no owned jobs remain. No phase-3 source changes are in main yet.
+
+Next: shared-edge tiling cases, then integrate only nearclip, hires, interp,
+observer snapshot/hook and their tests/Python oracle into current main. Preserve
+main's newer transient-code harness regression. Run the full gate on fixed
+main sources before any code commit. Phase-3 progress is not yet advanced.
+Allowance text still reads 85% at 06:05:43; Windows input remains unavailable,
+so freshness is unconfirmed. Next five-minute read due 06:10:43 Pacific.
+
 ## Cockpit drawing helpers verified (11 Oct 2026)
 
 Integrated only `vgame_panel_readout_outline` (`114A:014F`),
@@ -92,6 +147,24 @@ scaled change and 140 flat cells restored by the guard
 Before integration: finish interpolation metadata/crossings, update the Python
 oracle, test more scenes and fine endpoints, add shared-edge tiling cases.
 `build-wt-near-final.log` reports BUILD OK with the fixture warning removed.
+At 05:51 Pacific, isolated `interp.c/.h` also moves compatible seventeen-field
+G camera snapshots and regenerates their retained E crossings under
+INTERP_VERTICES; coarse-only and legacy modes retain their prior behavior.
+`test_near_polygons.c` now includes a moving clipped triangle with two pixels
+of endpoint translation, both clipping orientations, five fractional times,
+quantized crossing assertions, fine refill and byte-exact N=4 pictures near
+both endpoints. Changed origins, markers, identities and legacy records hold
+their skeleton snapshot. BUILD OK (`build-wt-near-interp-test-6.log`), all
+20 isolated unit tests excluding the full function sweep pass in 5.29 s
+(`test-wt-near-interp-unit.log`); the 4,124 original retained-crossing cases
+still pass. The first synthetic fixture omitted the R destination segment
+and used incorrect border spans; those fixture errors were corrected.
+Full isolated CTest is separately running in session 59604, log
+`test-wt-near-interp-all.log`, currently in `func_lockstep --states 2000`
+(PID 47512, creation 05:49:38). Check completion before launching another.
+Do not merge yet: inspect whole-polygon holding when only some G records
+change topology, repeated edge slots within batches and fine endpoints on
+recorded scenes; Python oracle, scene diversity and shared-edge tests remain.
 Main cockpit batch is committed and pushed as `638e2d6`; main sources remain
 unchanged by this presentation prototype. Worktree CMake/harness remain older than
 main's new code-alias regression; copy only intentional presentation changes.
