@@ -22,7 +22,7 @@ make (Phase 4).
   and variables; `tools/census.py`). The coverage pass adds no further
   translated code; changed code and declined override entries can fall back
   to the interpreter.
-- **Engine parity.** 37 scripted routes are identical between the interpreter
+- **Engine parity.** 38 scripted routes are identical between the interpreter
   and the recompiled code at every 50-million-clock checkpoint and at the end;
   every translated instruction is held to the interpreter from random states
   (5,718,912 comparisons, 0 differences); the interpreter and the translator are
@@ -198,6 +198,16 @@ not the recompilation:
 
 ## Phase 2 - understood code
 
+Camera darkening (`VGAME 0000:C45C`) is integrated and gated. It sets the
+caller's camera origin, builds the 77x61 inset boundary and fills in mode 3,
+then restores the origin. Three targeted seeds compare 8,873 states exactly;
+real-driver reconnaissance with F6 enabled calls it 1,608 times and preserves
+all 150 checkpoints/final hash. `recon_darken` and `matched_camera_darken`
+retain coverage. The full gate passes 25 tests, all 38 routes, both instruction
+profiles, three 790-address matched seeds and reachability/event checks.
+The projected-point diamond candidate remains isolated:
+random states pass, but the strike probe does not reach it.
+
 Pause handler (`VGAME 0000:3A4E`, `vgame_pause`) integrated and gated:
 engine note off, timer saved in the guest stack, empty-input/repeated-Alt+P
 polling, then sound and timer restored after another key. Three targeted
@@ -220,7 +230,7 @@ instruction profiles and three 789-address matched seeds (2,561,209,
       Reimp's mapping; matched functions replacing translations one at a time,
       each held to the same parity checks. `tools/reimp_names.py` joins the
       Reimp's census (1,535 functions) with this project's regions as a private
-      lead list. 789 addresses are matched (784 of the census functions, 67,369 of
+      lead list. 790 addresses are matched (785 of the census functions, 67,463 of
       179,213 bytes); the table is at the end of `src/matched/matched.c` and the
       method is in [architecture.md](architecture.md#matched-routines-phase-2).
       The batches of 8-9 Oct add 37 + 34 + 47 VGAME, 34 + 40 + 45 START/END and 21 + 44 + 64

@@ -14081,6 +14081,52 @@ static int vgame_hud_colours_init(machine_t *m)
     return 1;
 }
 
+/* VGAME 0000:C45C: darken the 77x61 camera inset. Set its origin from
+ * the caller, build the span boundary with two vertical boxed edges, then
+ * fill in mode 3 (darken, not colour 3). Restore the graphics origin to zero.
+ * Keep all library calls and guest-frame reads in their original order. */
+static int vgame_camimage_darken(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 5)) return 0;
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, FRAME(6));
+    cpu_push16(c, FRAME(4));
+    c->icount += 4;
+    FAR_THEN(0xC465, 4);
+    c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c);
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 3;
+    FAR_THEN(0xC46D, 2);
+    c->r[R_BX] = cpu_pop16(c);
+    c->icount++;
+    FAR_THEN(0xC473, 6);
+    c->r[R_AX] = (uint16_t)alu_sub(c,c->r[R_AX],c->r[R_AX],1,0);
+    ds_put(c,0x2299,c->r[R_AX]); ds_put(c,0x229D,c->r[R_AX]);
+    ds_put(c,0x229B,c->r[R_AX]); ds_put(c,0x229F,60);
+    c->icount += 5;
+    FAR_THEN(0xC489, 6);
+    ds_put(c,0x229D,0);
+    c->r[R_AX] = 76;
+    ds_put(c,0x2299,c->r[R_AX]); ds_put(c,0x229B,c->r[R_AX]);
+    ds_put(c,0x229F,60);
+    c->icount += 5;
+    FAR_THEN(0xC4A3, 2);
+    cpu_push16(c,3);
+    c->icount++;
+    FAR_THEN(0xC4AA, 3);
+    c->r[R_BX] = cpu_pop16(c);
+    cpu_push16(c,0);
+    c->icount += 2;
+    FAR_THEN(0xC4B2, 3);
+    c->r[R_BX] = cpu_pop16(c);
+    x86_leave(c);
+    near_ret(c);
+    c->icount += 3;
+    return 1;
+}
+
 /* VGAME 0000:3A4E, pause with the engine note off. Keep the timer counter
  * in the guest's stack local while polling: interrupt ticks continue during
  * the wait, but must not affect the next frame's speed measurement. Alt+P
@@ -32204,6 +32250,7 @@ static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x114A, 0x03FD, vgame_panel_blit, "blit a sprite rectangle", 2 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x1058, 0x09D8, vgame_hud_colours_init, "HUD display colours and layout", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x1058, 0x0A2C, vgame_hud_layout_apply, "small or full HUD layout", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xC45C, vgame_camimage_darken, "darken the camera inset", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x3A4E, vgame_pause, "pause while preserving the frame timer", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x8A18, vgame_panel_number_right, "right-aligned unsigned panel number", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x881F, vgame_panel_hud_line, "line clipped to the current HUD box", 1 },

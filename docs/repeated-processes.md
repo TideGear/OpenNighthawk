@@ -10,6 +10,29 @@ identical, and the proof is the same verdicts before and after.
 
 ## The gate (`tools/build_recomp.py`)
 
+Next isolated runtime batch (11 Oct): five Ctrl+Break installers share an
+18-instruction original body in VGAME, START, END, DSWAP and SETUP. Byte
+comparison confirms only the saved-vector and handler addresses differ;
+all configuration fields are checked against the original. Two DSWAP DOS
+memory wrappers have byte-identical bodies to the already matched START/END
+helpers, so reuse those helpers at DSWAP's entries. Returning DOS fixtures
+cover these seven entries. Implementation is private; build and random-state
+verification waited until camera gate regeneration finished. Initial three
+seeds passed 98,171 states, but the full-cycle real-driver probe differs from
+the original starting at 2.35B: the installers' MOV AX,segment immediate is
+relocated, not a constant zero. A new nonzero-image fixture catches all five
+broken installers (64-state request, five immediate mismatches). The fix
+reads the loaded operand; `build-wt-break-relocation-fixed.log` passes.
+Repeated seeds with the relocation fixture compare 32,723/32,696/32,752
+states exactly; the 27-test unit subset passes in 7.46 s. A fresh full-cycle
+probe takes 30.2 s, preserving all 66 checkpoints/final hash; SETUP, VGAME
+and END installers each run once. These candidates are still isolated,
+awaiting integration and their own full gate.
+The initial broad CTest run passes 27 tests but its full 2,000-state matched
+test is terminated after this known defect, so that run is not a suite pass.
+Use the gate's unit exclusion for broad locksteps in the repeat; targeted
+seeds already cover the changed routines and the full gate checks all later.
+
 Next isolated drawing helpers (11 Oct): projected-point diamond B0C2 and
 camera inset darkening C45C are rewritten privately while main stays fixed
 under the combined pause/HUD gate. The two-worker build waits until main
@@ -21,8 +44,17 @@ states exactly in about 5.7 s concurrently; driver thunks return on both
 sides. The isolated suite passes all 24 tests in 11.95 s. A private
 F5/F6/F6 probe preserves all 54 hashes but reaches neither helper (F5
 selects armament, not the camera), so it is not proof of these entries.
-A reconnaissance replay with F6 darkening enabled is now running against
-the original and isolated builds; normal-driver reach remains unverified.
+A reconnaissance replay with F6 darkening enabled passes all 150 hashes
+and final state, 123.3/71.4 s original/isolated, C45C called 1,608 times.
+The isolated strike replay takes 81.6 s against the combined gate's fresh
+232.3 s interpreter control: all 177 hashes/final match, but B0C2 never
+runs. Keep that candidate isolated. Camera darkening alone is integrated
+under `gate-camera-darken.log`, 25 tests, 38 routes, 790 matched addresses;
+Full verification passes: 25 unit tests, all 38 routes, both instruction
+profiles, three matched seeds and reachability/event checks. The gate takes
+1,420 s (build 137, coverage 494, identical regeneration 18, parity 771),
+37 fresh interpreter runs, no cache reuse. New `recon_darken` retains the successful
+real-driver path rather than the non-reaching F5/F6 probe.
 
 Combined pause/HUD gate (11 Oct) passes in `gate-pause-hud-2.log`:
 24 unit tests, 37 routes, 789 matched addresses, affinity 0x00FFFFFF,

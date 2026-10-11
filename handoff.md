@@ -9,7 +9,112 @@ checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 more than once, what it costs). State as of 11 October 2026.
 Earlier session logs are in `git log -p handoff.md`.
 
-## Pause/HUD gate passed; next drawing helpers isolated (11 Oct, 13:56 Pacific)
+## Camera gate passed; runtime candidates verified privately (11 Oct, 14:22 Pacific)
+
+Main camera gate `D:/f117-gate/gate-camera-darken.log` passes, session 37707
+closed exit 0. All 25 unit tests, 38 routes, both instruction profiles,
+three 790-address matched seeds and reachability/event checks pass. Duration
+1,420 s: 137 build, 494 coverage, 18 identical regeneration, 771 parity;
+37 fresh interpreter runs, zero cache reuse. Census refreshed to 785/1,535
+functions, 67,463/179,213 bytes, P2 40.76%, All 74.01%. Ready to commit.
+
+Runtime repair is verified privately. `build-wt-break-relocation-fixed.log`
+passes, session 6777 closed (wrapper exit 1, actual BUILD OK). Three targeted
+seeds with relocated-operand fixtures pass 32,723/32,696/32,752 states, zero
+mismatches (`break-memory-fixed-lockstep-{0,1,2}.log`); 27 unit tests pass in
+7.46 s (`test-wt-break-memory-fixed-unit.log`, excludes only full func_lockstep).
+Fresh full-cycle probe 55346 closed exit 0, 30.2 s: all 66 checkpoints and
+final `6b61d89b95e7b562` equal the copied interpreter control. SETUP, VGAME,
+END installers each run once. Earlier mismatching probe and aborted broad
+unit run remain failures, superseded only by these fixed checks.
+Next, after committing main camera, integrate ONLY seven runtime candidates
+and their DOS/relocation fixtures plus two focused CTests from the isolated
+worktree. Keep B0C2 diamond out: all three normal probes fail to reach it.
+Run a full gate before committing runtime code. Main 790 becomes 797
+addresses; private 798 still includes diamond. Do not copy the worktree whole.
+
+## Camera gate and runtime preparation (superseded by verified results above)
+
+Latest follow-up (14:19 Pacific): main gate 37707 is live in parity; coverage
+passes in 494 s, second regeneration is byte-identical (18 s), total 649 s
+before parity. Both 5,718,912-state instruction profiles and three 790-address
+seeds pass (2,564,223 / 2,563,206 / 2,561,119 states). Routes remain pending.
+
+Isolated runtime build `build-wt-break-memory.log` passes (40641 closed).
+Initial targeted seeds pass 32,723 / 32,696 / 32,752 states, but these
+**do not prove correctness**: normal `full_cycle` differs at 2.35B and final
+`913853da6bd71abf`, versus original `6b61d89b95e7b562`. The shared installer
+mistakenly used constant zero for a MOV AX,segment immediate the loader
+relocates. It now reads CS:[entry+12h]. `IMAGE_PATCHES` plants nonzero
+segment 197Ah at each installer's operand on both sides; before the fix this
+catches all five entries (`break-relocation-before.log`). No main changes.
+Fixed rebuild `build-wt-break-relocation-fixed.log` session 6777 is live;
+poll and require BUILD OK, then repeat three 4,000-state seeds and normal
+full_cycle in a NEW output/save directory. Original completed control is
+`D:/f117-gate/break-memory-cycle-control.txt`; compare every checkpoint.
+The first private CTest run 88052 is not a pass: 27 tests pass, but the broad
+2,000-state func_lockstep is deliberately terminated after the normal-driver
+defect is found (PID 44148 command verified). For repeat unit run use
+`-E ^func_lockstep$`, as the main gate does, retaining the quick instruction
+test and all focused regressions. Isolated source
+currently registers 28 tests, so the repeat unit subset has 27.
+
+Air-to-air diamond probe 3616 closed exit 0: all 234 checkpoints/final
+`896858d151aebc76` equal the last gate's interpreter control (copied to
+`diamond-airair-control.txt`), but B0C2 never runs. Keep diamond isolated.
+Latest visible allowance 32% at 14:19:18, reset 17:01, seven-day 60%; next
+read by 14:24:18. Suspend owned jobs/work at <=20% per the standing rule.
+
+Current follow-up adds seven candidates ONLY to the isolated worktree:
+An additional isolated air-to-air type-5 replay is live, session 3616,
+`D:/f117-gate/diamond-airair-matched.log`, output directory
+`D:/f117-gate/diamond-airair-matched`. It uses the existing private binary
+(791 addresses), aiming to exercise B0C2 after strike failed to reach it.
+Wait for this runner to exit before relinking the private build. Compare
+all hashes to the main gate's fresh airair_type5 interpreter when available;
+require an actual B0C2 counter before claiming normal-driver proof.
+
+Ctrl+Break installers VGAME 1B73 / START 85B8 / END 4557 / DSWAP 0523 /
+SETUP 0C35, with one named shared body and per-program saved-vector/handler
+configuration. Original byte checks prove those are the only differences.
+DSWAP 04E0/0506 reuse the existing DOS allocate/free helpers after full
+body byte comparisons. Their DOS fixture entries are added privately.
+Isolated build now has 798 addresses (includes main's camera and the
+unreached diamond). No build/lockstep claim yet. Wait until main enters
+parity after second regeneration before rebuilding the private worktree;
+use two workers and affinity launcher, then three 4,000-state seeds with
+`--only VGAME.EXE:1B73,START.EXE:85B8,END.EXE:4557,DSWAP.EXE:523,SETUP.EXE:C35,DSWAP.EXE:4E0,DSWAP.EXE:506`.
+All original instruction drafts stay private in `D:/f117-gate/next-drafts`.
+The camera gate has passed all 25 tests (unit log ends 14:00 Pacific) and
+is collecting coverage. Session 37707 confirmed live at 14:02:51.
+Latest visible allowance 74% at 14:01:31, next read by 14:06:31.
+
+Previous batch is committed and pushed as `9bec607`; local HEAD equals
+origin/master and the working tree was clean before this batch.
+Camera darkening alone (`VGAME 0000:C45C`) is now integrated in main, with
+returning-driver lockstep fixtures, `matched_camera_darken` CTest and
+`tools/routes/recon_darken.args`. Fixed main has 790 addresses, 25 tests and
+38 routes. New full gate `D:/f117-gate/gate-camera-darken.log`, session 37707,
+is running its build. Poll that handle; do not restart or change main source.
+Code remains uncommitted until the full gate passes; census/scoreboard stay
+at verified `9bec607` values (784 functions, 67,369 bytes, All 74.00%).
+
+Private reconnaissance darkening probes are finished, exit 0, sessions
+18121/76646 closed. All 150 checkpoints and final `2aa0648449d98887`
+at 7,549,654,902 match, 123.3/71.4 s; C45C ran 1,608 times through the real
+graphics driver. Its three seeded comparisons total 8,873 states exactly.
+Private strike session 52070 is also closed exit 0, 81.6 s: all 177
+checkpoints and final `aa8fca6ac6f373f0` match the main gate's fresh control,
+but B0C2 never ran. Diamond remains ONLY in the isolated worktree, not main.
+Next find normal controls selecting class 1D/1E stores with a projected
+target (Maverick strike did not reach the marker), or choose another census
+candidate. Do not conflate camera's proven reach with diamond's missing one.
+Shared generation must remain untouched by the private worktree.
+
+Latest visible allowance 74% at 13:57:48 Pacific, reset 17:01; seven-day 67%.
+Next visible read due by 14:02:48. Human Phase 4 question is still pending.
+
+## Pause/HUD gate passed; next drawing helpers isolated (11 Oct, 13:56 Pacific; superseded above)
 
 Full gate `D:/f117-gate/gate-pause-hud-2.log` has finished, exit 0;
 session 33892 is closed. All 24 unit tests, 37 route comparisons, both

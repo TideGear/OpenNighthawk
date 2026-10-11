@@ -1,0 +1,12 @@
+# Normal reconnaissance controls with F6 camera darkening enabled.
+# Replays the same photo mission as recon; no completed-return claim.
+# expect-world LB
+# expect-open ordnance.pic VGAME.EXE 1
+--replay
+recon.input
+--type
+VGAME.EXE+100000000:\6
+--steps
+7549654902
+--time-us
+700000000000000

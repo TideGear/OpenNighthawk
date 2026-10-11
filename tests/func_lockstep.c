@@ -276,7 +276,7 @@ static void stub_driver_thunks(uint8_t *pristine, uint32_t at, const rc_module *
     const int vgame_draw = !strcmp(m->name, "VGAME.EXE") &&
         ((o->seg == 0 && (o->ip == 0xB171 || o->ip == 0xD6DD || o->ip == 0x4777 ||
                          o->ip == 0xD3F9 || o->ip == 0xD87C || o->ip == 0x72D8 ||
-                           o->ip == 0x8A18 || o->ip == 0x881F || o->ip == 0x796E || o->ip == 0x3A4E)) ||
+                           o->ip == 0x8A18 || o->ip == 0x881F || o->ip == 0x796E || o->ip == 0x3A4E || o->ip == 0xC45C)) ||
            (o->seg == 0x114A && (o->ip == 0x0280 || o->ip == 0x03AD || o->ip == 0x03FD || o->ip == 0x014F || o->ip == 0x0006 || o->ip == 0x01DB)) ||
            (o->seg == 0x1058 && (o->ip == 0x09D8 || o->ip == 0x0A2C)));
     if (strcmp(m->name, "START.EXE") && strcmp(m->name, "END.EXE") && !vgame_draw) return;

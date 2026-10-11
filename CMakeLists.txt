@@ -293,5 +293,7 @@ if(F117R_BUILD_TESTS)
       --seed 0x5361129204e7 --only PLAYER.EXE:1E90,VGAME.EXE:577)
     add_test(NAME matched_hud_layouts COMMAND func_lockstep --states 4000
       --only VGAME.EXE:9D8,VGAME.EXE:A2C)
+    add_test(NAME matched_camera_darken COMMAND func_lockstep --states 4000
+      --only VGAME.EXE:C45C)
   endif()
 endif()
