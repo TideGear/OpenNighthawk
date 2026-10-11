@@ -9,6 +9,34 @@ checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 more than once, what it costs). State as of 10 October 2026.
 Earlier session logs are in `git log -p handoff.md`.
 
+## IMPORTANT CORRECTION: the combat/speed finding further down is stale
+
+The "Combat rate falls with speed" line in "Goal and standing decisions"
+below, and most of `docs/speed-sweep.md`'s middle sections, describe a
+real effect measured *before* two measurement confounds were found and
+corrected (RNG seed drift between CPU speeds; input-poll timing against
+the simulation step). **The document's own final, most-corrected cohort
+(the "Step-aligned arm" table, `docs/speed-sweep.md`, late in the file)
+already found no statistically significant combat difference between 9
+and 20 MIPS** once those confounds were fixed on top of the physics
+repairs (D1TTL+D1SLOT+D1PROX+D1ACCEL+D1REAL): burst difference +0.1667
+(95% CI 0..+0.5), damage selections +0.3333 (95% CI 0..+1.0) - zero
+included, point estimate if anything slightly favoring the higher speed.
+Quoted verbatim: *"This cohort shows no high-speed enemy weakness."*
+
+This is not a claim that the issue never existed - earlier, less-corrected
+cohorts in the same document show a real, solid effect (bursts -1.3 to
+-1.5, CI excluding zero). It is a claim that once the *measurement itself*
+was fixed, not just the game's physics, the effect was no longer
+distinguishable from zero. Read `docs/speed-sweep.md` end to end (not just
+grep for a conclusion) before citing this investigation's status to
+anyone - this session got it wrong twice in a row by answering from an
+earlier section without reaching the final, superseding one. **This
+correction has not yet been propagated into the stale "Goal and standing
+decisions" bullet below, docs/roadmap.md, or docs/bugs.md's top-level
+framing** - that propagation is worth doing before anyone reads those as
+current status.
+
 ## Phase 1 threshold tightening (10 Oct, 15:50 PDT)
 
 Followed up on the owner's "are any P1 checks too loose" question: tightened
@@ -861,9 +889,13 @@ threshold. Check fresh telemetry before starting another code/build cycle.
 
 ## Goal and standing decisions
 
-- **Combat rate falls with speed.** Now the session's top priority - see
-  "Current top priority" at the top of this document. Owner-flagged, not yet
-  known when the 20 MIPS default was chosen (9 Oct).
+- **Combat rate falls with speed - STALE, see the correction at the very
+  top of this document.** This was real in early, less-corrected cohorts;
+  the investigation's own final, most-corrected cohort (after fixing two
+  measurement confounds, not just the game's physics) found no
+  statistically significant difference. Read the top-of-file correction
+  and `docs/speed-sweep.md` end to end before treating this bullet as
+  current.
 - **Phase 1's remaining item: the last 86Box timing check.** One check remains
   failing in `pc_parity.py`: the longest-scene duration difference, 0.37 s
   against a 0.35 s limit, in a held picture from 100.22 s to 106.40 s (ours)
