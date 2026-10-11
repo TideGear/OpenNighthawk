@@ -12300,6 +12300,41 @@ static int vgame_frame_mission_start(machine_t *m)
     return 1;
 }
 
+/* VGAME 114A:02CE, panel_navigation(a, b, c, d): draws two navigation
+ * panel elements, the far helper at FB2:0246 called once per element
+ * with the same four stack arguments and a different trailing word
+ * (DS:0x4010, then DS:0x4028). */
+static int vgame_panel_navigation(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 7)) return 0;
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 0x0C)));
+    cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 0x0A)));
+    cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 0x08)));
+    cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 0x06)));
+    cpu_push16(c, ds_get(c, 0x4010));
+    c->icount += 7;
+    if (!guest_call_far(m, 0x02E1, 0x02E6)) return 1;
+
+    if (!room(c, 6)) { c->ip = 0x02E6; return 1; }
+    c->r[R_SP] = c->r[R_BP];
+    cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 0x0C)));
+    cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 0x0A)));
+    cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 0x08)));
+    cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 0x06)));
+    cpu_push16(c, ds_get(c, 0x4028));
+    c->icount += 6;
+    if (!guest_call_far(m, 0x02F8, 0x02FD)) return 1;
+
+    if (!room(c, 2)) { c->ip = 0x02FD; return 1; }
+    x86_leave(c);
+    c->icount += 2;                                               /* leave, retf */
+    far_ret(c);
+    return 1;
+}
+
 /* VGAME 0x0EBC4, kbhit(): a character pushed back ([ungot], high byte 0)
  * answers FFh at once; otherwise the console hook at [hook] is called with
  * BX = FFFFh when [hook - 2] holds its signature D6D6h, and DOS function 0Bh
@@ -31930,6 +31965,7 @@ static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x1C0E, vgame_isrclock_init, "hook the timer tick vector", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xBAA2, vgame_init_models, "copy a model-type's byte table", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x1E72, vgame_frame_mission_start, "sample the BIOS tick count's low word", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x114A, 0x02CE, vgame_panel_navigation, "draw two navigation panel elements", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x1039, 0x0000, vgame_palette_build, "build the view's palette", 2 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x120A, 0x0E5B, vgame_model_depth_order, "a model's faces in depth order", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x1058, 0x0CC1, vgame_joystick_port, "time both joystick axes", 1 },

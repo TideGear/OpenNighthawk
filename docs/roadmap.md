@@ -202,7 +202,7 @@ not the recompilation:
       Reimp's mapping; matched functions replacing translations one at a time,
       each held to the same parity checks. `tools/reimp_names.py` joins the
       Reimp's census (1,535 functions) with this project's regions as a private
-      lead list. 775 addresses are matched (770 of the census functions, 65,702 of
+      lead list. 776 addresses are matched (771 of the census functions, 65,751 of
       179,213 bytes); the table is at the end of `src/matched/matched.c` and the
       method is in [architecture.md](architecture.md#matched-routines-phase-2).
       The batches of 8-9 Oct add 37 + 34 + 47 VGAME, 34 + 40 + 45 START/END and 21 + 44 + 64
@@ -337,6 +337,19 @@ not the recompilation:
       both arguments at the same point in program order as the original
       instead of hoisting them. No new address matched; this fixes an
       existing one.
+
+      A HUD draw (`0x114A:0x02CE`, `vgame_panel_navigation`) is now
+      matched: draws two navigation panel elements, calling the same far
+      helper (`FB2:0246`) once per element with four shared stack
+      arguments and a different trailing word (`DS:0x4010`, then
+      `DS:0x4028`). Routes only - confirmed reachable beforehand via a
+      bank-corrected call-site trace (three call sites, two inside
+      `game_input` and `0x3ADA`, both proven to run every frame of
+      normal flight) before investing in the build/gate cycle, after two
+      earlier "routes only" leads this session passed every lockstep
+      check yet failed the gate's actual route-coverage check. Verified
+      by a clean 776-routine suite and the full gate (every route
+      IDENTICAL, every check, step 8 confirms it ran).
 
 ## Phase 3 - fixes and enhancements (switchable)
 

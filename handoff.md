@@ -9,6 +9,94 @@ checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 more than once, what it costs). State as of 10 October 2026.
 Earlier session logs are in `git log -p handoff.md`.
 
+## First batch-of-2 result: one survived, one didn't (10 Oct, 21:07 PDT)
+
+The new batched workflow's first real test. Merged two lockstep-verified
+candidates (`vgame_panel_navigation` from the main tree,
+`vgame_camimage_background_raster` drafted in the `wt` worktree) and ran
+one combined gate. Result: **`panel_navigation` passed everything clean**
+(including step 8 - it does run on a route); **`camimage_background_raster`
+failed step 8 again** - same "routes only, lockstep-clean, but no route
+actually reaches it" trap as the two solo attempts earlier tonight,
+despite a call-site trace this time too (one call site, inside the
+`camimage_background_raster` census-named region - evidently that
+region's own reachability was the wrong thing to check; a single call
+site is weaker evidence than panel_navigation's three, and this session
+has now seen three "routes only" leads fail step 8 against one that
+passed). Reverted just that one function + its registration line from
+the main tree (clean diff, no entanglement with `panel_navigation`);
+rebuilt, reconfirmed 776/776 routines clean, and - since this exact
+post-revert state was byte-identical to `panel_navigation`'s own earlier
+*standalone* gate pass - committed directly without re-running the gate
+a third time on unchanged code.
+
+**Running tally on "routes only" leads this session: 1 kept (`panel_navigation`,
+3 call sites in proven every-frame functions), 3 reverted (`sky_low_detail`,
+`cold_start_init`, `camimage_background_raster`, 1 call site each).** A
+single call site inside a plausibly-per-frame-sounding function name is
+not strong enough evidence on its own; multiple call sites inside
+functions *already proven* to run every frame (by their own call-graph
+position, like `game_input`/`0x3ADA`) is what worked. Default to that
+higher bar before investing in the build+lockstep+gate cycle for the
+next "routes only" candidate, or just prefer candidates that produce
+real comparable fuzz states and skip this whole class of risk.
+
+Also abandoned without even reaching the gate: `pic_decode_screen_last`
+(VGAME 11D8:000A) - lockstep-tested in the worktree and hung for 90+
+seconds with zero output (a real hang, not the sync-lock false alarm
+from earlier - confirmed by near-zero CPU after the fact was NOT the
+signature here; this one simply never returned). Likely cause: the
+routine loops 200 times, each iteration making up to four nested
+`guest_call_far`/`guest_call` calls into *completely unmatched, unverified*
+driver/decoder code, under genuinely random fuzzed memory - 800 nested
+interpreted calls into logic that has never been exercised by real
+game data has much higher odds of hitting a real infinite loop or
+unbounded path in that unmatched code than the simpler 1-3-external-call
+routines matched earlier tonight. Reverted before any build/gate cost.
+Lesson: scale caution with the number of *nested, unverified* calls a
+candidate makes under fuzzing, not just its own static instruction count.
+
+## Parallel Phase 2 workflow adopted (10 Oct, 20:13 PDT onward)
+
+Owner asked for safe optimizations/parallelization for Phase 2. Adopted two
+changes, both matching patterns already in project memory
+([[f117r-worktree-while-gate-runs]], [[f117-parallel-agents-workflow]]):
+
+1. **Draft the next candidate in the worktree while the main tree's gate
+   runs.** The existing `C:\Users\Tideg\f117-recomp-local\wt` worktree
+   (detached HEAD, stale at an unrelated old commit) is the one to reuse -
+   `git fetch && git reset --hard origin/master` there first. Commit the
+   verified candidate to a disposable branch (e.g. `p2-wt-batch`) and
+   `git push origin HEAD:refs/heads/<name>`, then in the main tree
+   `git diff origin/master origin/<branch> -- src/matched/matched.c` and
+   apply it (a raw `git apply` of that diff can fail on context drift if
+   the main tree already has its own uncommitted addition nearby; apply
+   by hand with Edit in that case - it is always a small, isolated
+   function-plus-registration-line diff).
+
+2. **Batch 2 verified candidates per full gate run** instead of one each,
+   roughly halving the number of ~15-20 minute gate runs for the same
+   progress. Tradeoff, confirmed: a batched gate failure needs the
+   MISMATCH line checked to isolate which candidate (or neither) caused
+   it, same discipline as the `eventlog_add` incident below.
+
+**Worktree build trap hit setting this up**: a fresh `build.cmd` in the
+worktree reported `BUILD OK` but silently produced no `func_lockstep.exe`
+and no error - `tests/CMakeLists.txt` only defines that target
+`if(F117R_GEN_DIR)`, which a bare `build.cmd` with no arguments never
+sets. Fix: `build.cmd -DF117R_GEN_DIR=C:/Users/Tideg/f117-recomp-local/gen
+-DF117R_BUILD_APP=ON` (the shared `gen/` directory every worktree should
+point at, per [[f117-parallel-agents-workflow]] - never run the
+translator in a worktree, it would regenerate the shared directory other
+sessions rely on). Also hit: the reused worktree's old build directory
+(a junction to `f117-recomp-local/build-<hash>`, keyed by the worktree's
+own path so it persists across `git reset --hard`) had a stale ninja log
+from Oct 6 that reported "no work to do" even for a target file I had
+just deleted by hand; wiping that build directory and letting `build.cmd`
+recreate it fixed it. If a worktree's build looks suspiciously fast or a
+expected binary is simply missing after "BUILD OK", check both of these
+before trusting the build.
+
 ## Route-coverage trap, hit twice in a row (10 Oct, 19:30-20:02 PDT)
 
 Two "routes only" VGAME leads in a row (`0x0FB20` sky-detail setter,
