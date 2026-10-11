@@ -515,8 +515,10 @@ not the recompilation:
       crossings reconstruct clipped polygons and move together between frames.
       C/Python geometry counts and footprint totals agree across fresh strike,
       landing and air-to-air windows; 5,014 original crossings match. Fine
-      endpoint and live N=4/9 checks pass; shared-edge tiling and the main full
-      gate remain before integration (details in handoff.md).
+      endpoint and live N=4/9 checks pass. A new shared-edge test exposes six
+      interior holes at N=9 where per-face coarse footprints disagree with the
+      fine boundary; C and Python reproduce them. Geometry-aware seam repair
+      and the main full gate remain before integration (details in handoff.md).
       Open: near-clipped polygons still scaled, and a real-display check of refresh pacing,
       motion and 4K output (Phase 4).
 

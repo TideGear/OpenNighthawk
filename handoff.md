@@ -9,6 +9,51 @@ checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 more than once, what it costs). State as of 11 October 2026.
 Earlier session logs are in `git log -p handoff.md`.
 
+## Shared-edge test exposes a seam limitation (11 Oct, 06:18 Pacific)
+
+Previous goal turn was progress (interpolation binding, oracle and scene/live
+checks). Current turn adds shared-edge tests to isolated
+`tests/test_near_polygons.c`; **the new test currently fails**. Do not integrate
+or run the main gate yet. Main remains source-clean at `6d3abaa` before these
+documentation updates; no owned jobs run. Isolated build reports BUILD OK
+(`build-wt-near-shared-4.log`), but six N=9 seam assertions fail. Earlier green
+unit results predate this new fixture and do not prove shared-edge tiling.
+
+Fixture: two adjacent camera-clipped triangles, front `(20,20)`, shared
+crossing `(24,26)`, outer crossings `(16,26)`/`(32,26)`, colours 7/9. Camera
+front `(0,0,0x20000)`; behind endpoints `x=-1024/1024/3072`, y=1536,
+z=-0x10000; origin `(20,20)`. Original edge-walk span rows are in
+`shared_spans`. Both faces choose overshoot 0.5. Reversed edge endpoints
+produce identical individual pictures; reversing face order preserves the
+union and changes only the expected border overlap (at most 1.667/N from
+the shared edge). Nothing appears outside the union of original footprints.
+N=4 has no interior holes. N=9 has exactly six, at fine indices
+`(187,189),(188,189),(188,190),(205,216),(206,216),(206,217)`.
+Private independent Python `shared-seam-study.py` reproduces these exact
+coordinates using `fine_cover`/`choose_grow` on the known geometry and spans.
+This is a limitation of the existing per-polygon footprint rule, not different
+C/Python clipping math: those coarse cells belong only to the left face,
+while their true fine geometry belongs to the right; neither face paints them.
+The flat-colour guard cannot in general repair differently coloured neighbours.
+The first fixture assertion mistakenly included pixels outside both original
+footprints; correcting that still leaves these six genuine interior holes.
+
+Next action: implement a geometry-aware seam repair without loosening the
+original footprint union, erasing outer-edge detail, or returning all clipped
+polygons to nearest scaling. A promising precise rule is to track per-page
+fine geometry coverage, actual model paint coverage, and the union of coarse
+model footprints; an unpainted fine pixel inside both unions can retain its
+coarse owner's colour. This preserves each original colour's footprint while
+closing internal gaps. This is a design lead, not implemented or verified.
+Any coverage state must survive drawlist copies/blits, be cleared by replacing
+primitives, respect fine HUD masks, avoid stale scene/page metadata, and keep
+the existing N=1 identity and fine endpoint checks. Do not substitute a general
+3x3 palette guard: it misses the holes near the shared apex and can erase
+legitimate outer detail. Add a passing seam test before claiming integration
+ready; retain original missing-pixel assertions rather than weakening them.
+Then repeat the recorded-scene/live checks and full gate on fixed main sources.
+Allowance still visibly 85% at 06:17:20; freshness unconfirmed; next read 06:22:20.
+
 ## Camera-plane interpolation verified in isolation (11 Oct, 06:06 Pacific)
 
 The previous goal turn made progress: implemented interpolation metadata and
