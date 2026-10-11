@@ -58,9 +58,9 @@ options. Fifteen catalogued fixes and balance options are available now, all off
   rest is strings, tables and variables). On the scripted sessions no game
   instruction is interpreted under the default timing profile; only the
   emulated BIOS's own stubs are.
-- **Named and matched:** 765 routine addresses (760 census functions,
-  63,917 of 179,213 code bytes) have explained C equivalents checked against
-  their original bodies. Another 775 census functions remain. Under the
+- **Named and matched:** 781 routine addresses (776 census functions,
+  66,083 of 179,213 code bytes) have explained C equivalents checked against
+  their original bodies. Another 759 census functions remain. Under the
   386 profile, matched entries use their original translated bodies until
   their handwritten clocks gain cycle costs.
 - **Parity, measured:** thirty-five scripted sessions (boot to flight; a full
@@ -131,8 +131,12 @@ options. Fifteen catalogued fixes and balance options are available now, all off
   differences.
 - **Steam's release works too:** its game files are byte-identical to GOG's
   (`tools/verify_install.py`), and the app finds its install.
-- **Not yet done:** the remaining named C routines; live 60+ fps and 4K
-  presentation (offline studies exist); full frame parity; remaining bug
+- **Optional presentation:** live interpolation and finer polygon geometry,
+  with Reimp-style HUD strokes and original bitmap text and artwork. Use
+  `--present interp --present-scale 9` for a 4K display; `--present-line-width 1`
+  selects thin HUD strokes. The scanned original picture remains the default.
+- **Not yet done:** the remaining named C routines; near-clipped polygons
+  at high resolution and real-display refresh/motion checks; full frame parity; remaining bug
   fixes; play by a person at the keyboard; rendered Roland output against
   an independent reference and listening checks.
 
@@ -230,6 +234,9 @@ build\f117a.exe --data "C:\GOG Games\F-117A"
 | `--opl dbopl\|nuked` | GOG DOSBox's OPL2 synthesizer (default), or Nuked OPL3 in OPL2 mode; both output at 44,100 Hz |
 | `--speaker realsound\|pwm` | smoothed digitised speaker speech (default), or the original PWM carrier |
 | `--scale N`, `--fullscreen`, `--no-aspect` | window size; fullscreen; square pixels instead of 4:3 |
+| `--present scan\|replay\|interp`, `--present-scale N` | original scanned picture (default), replay, or interpolation; optional fine rendering at scale 1–16 |
+| `--present-line-width N` | fine HUD stroke width in output pixels, 1–20; 0 (default) scales with resolution; text and artwork retain original pixels |
+| `--present-age interp\|extrapolate` | interpolate one logic step behind (default), or predict beyond the latest frame |
 | `--config FILE`, `--no-config` | read settings from FILE instead of `f117a.ini` beside the executable; or read none |
 | `--fix ID`, `--list-fixes` | switch on a fix for one of the original's bugs (`all` for every one); every fix is off unless named, so the default is the original, bugs included |
 

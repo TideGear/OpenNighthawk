@@ -10,6 +10,16 @@ identical, and the proof is the same verdicts before and after.
 
 ## The gate (`tools/build_recomp.py`)
 
+The Reimp-style HUD gate (11 Oct, `gate-hud-reimp.log`) took 1,444 seconds:
+translation/build and 18 tests 27, fresh coverage 487, byte-identical
+regeneration 24, parity 906 (rounded stages). Host/presentation/CMake
+changes invalidated interpreter cache keys: 34 fresh sessions, 0 reused.
+All 35 routes, both 5,718,912-state instruction profiles and three
+781-entry matched seeds pass (2,524,384/2,523,430/2,525,667 comparisons,
+no differences), with reachability and event limits checked. Affinity
+0x00FFFFFF, 16 route workers. Separate live N=4/9 sentinels also match all
+54 checkpoints and final hashes of both freshly checked scan engines.
+
 The cockpit startup gate (10 Oct, `gate-panel-init.log`) took 898 seconds:
 translation/build and 17 tests 86, fresh coverage 506, byte-identical
 regeneration 16, parity 290. All 35 routes, both instruction profiles and
@@ -201,6 +211,8 @@ These are recorded separately and are not passing gates.
 | Census refresh (`reimp_names.py`, then `progress.py --census`) | after each batch of matched routines | about a minute | the lead list only changes when the Reimp does; regenerate it then, refresh the census each batch |
 | Route recording (adaptive pilots) | after a timing change moves a flight | 10-20 min per flight; try several parameters in parallel | recorded inputs replace them in the gate; a timing change invalidates all of them at once (see `airair_type5-8`, `strike`, `cargo`, `recon`) |
 | Draw-list capture windows | per presentation stage | 3-4 min per window, four at a time | windows are independent and already run in parallel |
+| Fine HUD recorded-scene checks | after HUD/replay changes | about 10-15 s for eight corrected windows at N=1/4/9, three workers (10 Oct) | reuse `p3-live/logs41/w_*.log`; run carried `test_drawlist` and `test_hires`; older strike/air captures omit colour-replace records and fail the unchanged baseline too. `test_hires --dump PREFIX` renders the last checked frame, about a second per 69-phase N=4 window |
+| Fine HUD live sentinel | after presentation changes | 146.9/112.8 s at N=4/9, two workers beside the gate (10 Oct) | `run_route.py boot_to_flight.args -- --present interp --present-scale N --hash-every 50000000`; 368 exact logic frames and 366 exact pairs per scale, 54 matching guest checkpoints and final hash; separate outputs and inherited 24-CPU affinity. These concurrent runs do not measure isolated performance |
 | MSVC matched-code compilation | every matched-code build | PLAYER decompressor stalled for more than 18 min at /O2; about 30 s for the file with the workaround (8 Oct) | only `player_unpack` disables MSVC optimisation; the rest of the file keeps the build's flags. It runs during picture loading. Stop an orphan compiler only after checking its source/output paths; otherwise its object stays locked |
 | Worktree build and generated code | per worktree | 8 min first, then incremental | give each tree its own TEMP (build.cmd shares one log); do not share a generated directory between concurrent builds |
 | PC-parity run (`pc_parity.py`: pictures, music, saved roster on three references) | before a release; after a machine-model change | about 2 min wall expected (96 s for DOSBox-X and 86Box together; 3.8 min before 86Box's picture capture was traced, 5 min before fast-forward, 12 min before 7 Oct, when 86Box's runs went one after another) | the three references run at once, and 86Box's three runs (picture capture, music and timing, saved roster) run at once too: each stops only its own 86Box (by profile), the traced ones open no VNC port and run on emulated time; ours is replayed per reference, not shared. The DOSBox-X save run ends when the roster's content changes (its inputs run on emulated time, so a wall-clock limit failed under load); the picture capture waits for its VNC port instead of a fixed 6 s. Fast-forward (7 Oct): DOSBox-X's picture capture 11 s instead of 130 s and the same report (two fast-forward captures byte-identical; two real-time ones differ in 3,826 frames, since AUTOTYPE and the pacing ran on host time); its save run 54 s instead of 227 s on an idle machine, which failed under load (8 Oct: the scripted clicks missed, 61 bytes of ROSTER.FIL off), so the check now runs at DOSBox-X's own speed, 4 min; 86Box's save run 95 s instead of 277 s and its music run 49 s instead of 178 s, the saved roster identical and the AdLib writes identical in order, their timing within 86Box's own run-to-run spread. 86Box's picture capture is traced too (48 s instead of about 3 min, two runs identical) |

@@ -13,8 +13,10 @@
  * bytes N times finer in each direction (tools/hires_frame.py's HiPage):
  * every write is mirrored there as an N x N block, unless the page is
  * suppressed while a polygon refilled on the finer grid (hires.h) paints its
- * coarse rows, and a blit or page copy between two held pages carries the
- * fine rows across. */
+ * coarse rows. HUD lines and ticks are redrawn on the fine grid with
+ * scale-proportional or chosen stroke width; colour operations preserve
+ * those fine pixels. A blit or page copy between two held pages carries
+ * the fine rows across. */
 #ifndef F117R_DRAWLIST_H
 #define F117R_DRAWLIST_H
 
@@ -28,12 +30,14 @@ typedef struct {
     uint8_t  b[65536];
     uint8_t *hi;                  /* the finer picture, 320N x 200N, or NULL */
     int      n, suppress;
+    uint8_t  strokes[64000 / 8];  /* coarse cells touched by fine HUD strokes, for the flat guard */
 } drawlist_page;
 
 typedef struct {
     drawlist_page page[DRAWLIST_PAGES];
     int      npages;
     int      n;                   /* the fine picture's scale, 0 for none */
+    int      line_width;          /* fine HUD strokes: 0 uses the scale, else output pixels */
     int      have_seg;            /* seeded with a work page: records before it are skipped */
     uint16_t seg, origin;         /* the work page and the library origin at the phase start */
     int      colour;              /* the library colour (entries 32/33, text), -1 not yet set */
@@ -56,6 +60,7 @@ void drawlist_init(drawlist *d);
  * now on; drawlist_free releases them, drawlist_reset forgets the pages but
  * keeps the scale. A drawlist with fine pages is copied by drawlist_copy. */
 void drawlist_set_scale(drawlist *d, int n);
+void drawlist_set_line_width(drawlist *d, int width);
 void drawlist_free(drawlist *d);
 void drawlist_reset(drawlist *d);
 void drawlist_copy(drawlist *dst, const drawlist *src);

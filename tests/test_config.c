@@ -43,6 +43,9 @@ int main(void)
     n = config_merge("roland = munt\nmt32-roms = roms\n", "C:\\Games\\", 1, argv, &v, err, sizeof err);
     const char *const want3[] = { "f117a", "--roland", "munt", "--mt32-roms", "C:\\Games\\roms", CONFIG_CLI_MARK, NULL };
     CHECK(n == 6 && same(v, n, want3));
+    n = config_merge("present-line-width = 2\n", NULL, 1, argv, &v, err, sizeof err);
+    const char *const want_width[] = { "f117a", "--present-line-width", "2", CONFIG_CLI_MARK, NULL };
+    CHECK(n == 4 && same(v, n, want_width));
     /* errors name the line */
     CHECK(config_merge("data = x\nvolume = 11\n", NULL, 1, argv, &v, err, sizeof err) < 0);
     CHECK(strstr(err, "line 2") && strstr(err, "volume"));

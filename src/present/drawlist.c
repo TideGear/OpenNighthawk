@@ -22,12 +22,18 @@ void drawlist_set_scale(drawlist *d, int n)
     d->n = n;
 }
 
+void drawlist_set_line_width(drawlist *d, int width)
+{
+    d->line_width = width >= 0 && width <= 20 ? width : 0;
+}
+
 void drawlist_free(drawlist *d)
 {
     for (int k = 0; k < DRAWLIST_PAGES; k++) free(d->page[k].hi);
-    const int n = d->n;
+    const int n = d->n, line_width = d->line_width;
     drawlist_init(d);
     d->n = n;
+    d->line_width = line_width;
 }
 
 void drawlist_reset(drawlist *d)
@@ -74,6 +80,7 @@ drawlist_page *drawlist_page_of(drawlist *d, uint16_t seg)
 static void mirror(drawlist_page *p, uint32_t a, uint8_t v)
 {
     if (!p->hi || p->suppress || a >= 64000) return;
+    p->strokes[a >> 3] &= (uint8_t)~(1u << (a & 7));
     const int n = p->n;
     const size_t W = (size_t)320 * n;
     uint8_t *q = p->hi + (size_t)(a / 320) * n * W + (size_t)(a % 320) * n;
@@ -103,6 +110,11 @@ static void copy_hi_rect(drawlist_page *p, const drawlist_page *src, int32_t sx,
             const size_t d_at = ((size_t)(dy + y) * n + j) * W + (size_t)(dx + x0 - sx) * n;
             memmove(p->hi + d_at, src->hi + s_at, (size_t)(x1 - x0) * n);
         }
+        for (int32_t x = x0; x < x1; x++) {
+            const unsigned sa = (unsigned)((sy + y) * 320 + x), da = (unsigned)((dy + y) * 320 + dx + x - sx);
+            const int stroke = (src->strokes[sa >> 3] >> (sa & 7)) & 1;
+            p->strokes[da >> 3] = (uint8_t)((p->strokes[da >> 3] & ~(1u << (da & 7))) | (stroke << (da & 7)));
+        }
     }
 }
 
@@ -118,6 +130,7 @@ void drawlist_seed(drawlist *d, char kind, uint16_t seg, uint16_t origin, const 
     p->size = size;
     memcpy(p->b, bytes, size);
     p->suppress = 0;
+    memset(p->strokes, 0, sizeof p->strokes);
     if (d->n > 0) {                                   /* the fine picture starts as the scaled copy */
         const int n = d->n;
         const size_t W = (size_t)320 * n;
@@ -234,6 +247,78 @@ static void lib_line(drawlist_page *p, int32_t x0, int32_t y0, int32_t x1, int32
         err = s16(err - major);
         di += bp;
     }
+}
+
+/* Reimp-style presentation stroke: a Bresenham centre line on the output
+ * grid, with a square nib clipped to the segment's perpendicular end planes.
+ * Canonical endpoints make even widths and raster ties direction independent.
+ * Coordinates have already been clipped by the original graphics driver. */
+static void fine_line(drawlist_page *p, int x0, int y0, int x1, int y1, int width, int col)
+{
+    const int n = p->n, w = 320 * n, h = 200 * n;
+    int ax = x0 * n, ay = y0 * n, bx = x1 * n, by = y1 * n;
+    if (ax > bx || (ax == bx && ay > by)) {
+        int t = ax; ax = bx; bx = t; t = ay; ay = by; by = t;
+    }
+    const int64_t vx = (int64_t)bx - ax, vy = (int64_t)by - ay;
+    const int64_t length2 = vx * vx + vy * vy;
+    const int dx = abs(bx - ax), dy = abs(by - ay);
+    const int sx = bx < ax ? -1 : 1, sy = by < ay ? -1 : 1;
+    int x = ax, y = ay, error = (dx >= dy ? dx : dy) / 2;
+    const int steps = dx >= dy ? dx : dy;
+    for (int k = 0; k <= steps; k++) {
+        const int low = width / 2, high = width - 1 - low;
+        int l = x - low, r = x + high, top = y - low, bottom = y + high;
+        if (l < 0) l = 0;
+        if (r >= w) r = w - 1;
+        if (top < 0) top = 0;
+        if (bottom >= h) bottom = h - 1;
+        for (int yy = top; yy <= bottom; yy++) {
+            int64_t projection = ((int64_t)l - ax) * vx + ((int64_t)yy - ay) * vy;
+            for (int xx = l; xx <= r; xx++, projection += vx)
+                if (!length2 || (projection >= 0 && projection <= length2)) {
+                    p->hi[(size_t)yy * w + xx] = (uint8_t)col;
+                    const unsigned a = (unsigned)((yy / n) * 320 + xx / n);
+                    p->strokes[a >> 3] |= (uint8_t)(1u << (a & 7));
+                }
+        }
+        if (dx >= dy) { error -= dy; if (error < 0) { y += sy; error += dx; } x += sx; }
+        else { error -= dx; if (error < 0) { x += sx; error += dy; } y += sy; }
+    }
+}
+
+/* Keep the exact coarse rule, replacing only its fine-grid mirror. Unusual
+ * wrapped/off-screen addresses retain the original scaled rule. */
+static void hud_line(drawlist_page *p, int32_t x0, int32_t y0, int32_t x1, int32_t y1,
+                     int32_t origin, int col, int width)
+{
+    const int ox = origin % 320, oy = origin / 320;
+    const int fine = p->hi && p->n > 1 && !p->suppress && origin >= 0 && origin < 64000 &&
+        x0 + ox >= 0 && x0 + ox < 320 && x1 + ox >= 0 && x1 + ox < 320 &&
+        y0 + oy >= 0 && y0 + oy < 200 && y1 + oy >= 0 && y1 + oy < 200;
+    const int suppressed = p->suppress;
+    if (fine) p->suppress = 1;
+    lib_line(p, x0, y0, x1, y1, origin, col);
+    p->suppress = suppressed;
+    if (fine) fine_line(p, x0 + ox, y0 + oy, x1 + ox, y1 + oy, width ? width : p->n, col);
+}
+
+/* Boolean span operations and recolouring work on the fine pixels already
+ * present, rather than replacing a refined stroke with its coarse block. */
+static void fine_colour(drawlist_page *p, uint32_t a, int mode, int colour, int from)
+{
+    if (!p->hi || p->n <= 1 || p->suppress || a >= 64000) return;
+    const int n = p->n;
+    const size_t w = (size_t)320 * n;
+    uint8_t *row = p->hi + (size_t)(a / 320) * n * w + (size_t)(a % 320) * n;
+    for (int y = 0; y < n; y++, row += w)
+        for (int x = 0; x < n; x++) {
+            const uint8_t b = row[x];
+            if (mode == 1) row[x] = (uint8_t)(b | colour);
+            else if (mode == 2) row[x] = (uint8_t)(b & colour);
+            else if (mode == 3) row[x] = (uint8_t)(((b & 0x0E) >> 1) | 0x98);
+            else if (b == (uint8_t)from) row[x] = (uint8_t)colour;
+        }
 }
 
 /* Graphics entries 1-6, the library's text (driver 0x3E8 sets up, 0x31D cuts
@@ -459,7 +544,7 @@ static void scaled_sprite(drawlist_page *p, const int32_t *v, int n)
  * when DL >= 1, +1 more when CL is set) upward two rows at a time while not
  * below the low limit: a tick at x, leftward when SI is 0, 3 pixels every
  * tenth (2 with CL), 2 every fifth, else 1, skipped above the high limit. */
-static void ticks(drawlist_page *p, const int32_t *v)
+static void ticks(drawlist_page *p, const int32_t *v, int width)
 {
     const int32_t si0 = v[0], bx = v[1], dl = v[2], cl = v[3], col = v[4], x = v[5], lo = v[6], hi = v[7];
     const int32_t step = si0 == 0 ? -1 : 1;
@@ -468,7 +553,13 @@ static void ticks(drawlist_page *p, const int32_t *v)
     while (row >= lo) {
         if (row <= hi) {
             const int n = ch == 5 ? 2 : ch == 10 ? (cl ? 2 : 3) : 1;
+            const int fine = p->hi && p->n > 1 && !p->suppress && row >= 0 && row < 200 &&
+                x >= 0 && x < 320 && x + step * (n - 1) >= 0 && x + step * (n - 1) < 320;
+            const int suppressed = p->suppress;
+            if (fine) p->suppress = 1;
             for (int k = 0; k < n; k++) put(p, (uint32_t)(320 * row + x + step * k), col);
+            p->suppress = suppressed;
+            if (fine) fine_line(p, x, row, x + step * (n - 1), row, width ? width : p->n, col);
         }
         row = (row - 2) & 0xFFFF;
         if (row > 0xFFF0) break;
@@ -557,7 +648,7 @@ void drawlist_record(drawlist *d, char kind, const int32_t *v, int n)
         if (n < 4 || d->colour < 0) break;
         const uint16_t seg = n >= 7 ? (uint16_t)v[5] : d->seg;
         const int32_t org = n >= 7 ? v[6] : d->origin;
-        if ((p = page_of(d, seg))) lib_line(p, v[0], v[1], v[2], v[3], org, d->colour);
+        if ((p = page_of(d, seg))) hud_line(p, v[0], v[1], v[2], v[3], org, d->colour, d->line_width);
         break;
     }
     case 'Q': {                                       /* entries 37 and 40: span rows by mode */
@@ -575,8 +666,10 @@ void drawlist_record(drawlist *d, char kind, const int32_t *v, int n)
                 const uint32_t a = (uint32_t)(320 * y + org + x) & 0xFFFF;
                 if (a >= p->size) continue;
                 const uint8_t b = p->b[a];
-                wr(p, a, (uint8_t)(mode == 0 ? colour : mode == 1 ? (b | colour) : mode == 2 ? (b & colour)
-                                                                    : (((b & 0x0E) >> 1) | 0x98)));
+                const uint8_t value = (uint8_t)(mode == 0 ? colour : mode == 1 ? (b | colour) : mode == 2 ? (b & colour)
+                                                                    : (((b & 0x0E) >> 1) | 0x98));
+                if (mode && p->hi && p->n > 1) { fine_colour(p, a, mode <= 2 ? mode : 3, colour, 0); p->b[a] = value; }
+                else wr(p, a, value);
             }
         }
         break;
@@ -596,9 +689,20 @@ void drawlist_record(drawlist *d, char kind, const int32_t *v, int n)
                 }
         } else
             for (int32_t k = 0; k < w * h; k++) buf[k] = (uint8_t)v[10 + k];
+        /* An overlapping self-blit needs the fine source before coarse
+         * writes mirror over it, just as buf already holds the coarse source. */
+        static drawlist_page saved;
+        uint8_t *saved_hi = NULL;
+        if (src == p && p->hi && sx < dx + w && dx < sx + w && sy < dy + h && dy < sy + h) {
+            saved = *src;
+            const size_t bytes = (size_t)320 * p->n * 200 * p->n;
+            saved_hi = (uint8_t *)malloc(bytes);
+            if (saved_hi) { memcpy(saved_hi, src->hi, bytes); saved.hi = saved_hi; src = &saved; }
+        }
         for (int32_t y = 0; y < h; y++)
             for (int32_t x = 0; x < w; x++) put(p, (uint32_t)(320 * (dy + y) + dx + x), buf[y * w + x]);
         if (src) copy_hi_rect(p, src, sx, sy, dx, dy, w, h);
+        free(saved_hi);
         break;
     }
     case 'W':                                         /* entry 22, the scaled RLE sprite */
@@ -639,18 +743,19 @@ void drawlist_record(drawlist *d, char kind, const int32_t *v, int n)
         if (logged && (d->prefer_logged || !src)) {
             same = src != NULL;
             for (uint32_t a = 0; a < len && same; a++) same = a < src->size && src->b[a] == (uint8_t)v[5 + a];
-            for (uint32_t a = 0; a < len; a++) wr(p, a, (uint8_t)v[5 + a]);
+            if (!(same && src == p))
+                for (uint32_t a = 0; a < len; a++) wr(p, a, (uint8_t)v[5 + a]);
         } else if (src) {
             if (len > src->size) len = src->size;
             if (src != p) memmove(p->b, src->b, len);
-            for (uint32_t a = 0; a < len; a++) mirror(p, a, p->b[a]);
+            if (src != p) for (uint32_t a = 0; a < len; a++) mirror(p, a, p->b[a]);
             same = 1;
         } else d->copies_no_source++;
         if (same) copy_hi_rect(p, src, 0, 0, 0, 0, 320, count / 320);
         break;
     }
     case 'H':
-        if (n >= 8 && (p = page_of(d, n > 8 ? (uint16_t)v[8] : d->seg))) ticks(p, v);
+        if (n >= 8 && (p = page_of(d, n > 8 ? (uint16_t)v[8] : d->seg))) ticks(p, v, d->line_width);
         break;
     case 'S': {                                       /* entries 73, 18 (71, 19 clip first): colour 0 transparent */
         if (n < 14) break;
@@ -678,7 +783,11 @@ void drawlist_record(drawlist *d, char kind, const int32_t *v, int n)
             const uint32_t di = (uint32_t)(v[7] + 320 * r + v[1]);
             for (int32_t k = 0; k < (cols ? cols : 65536); k++) {
                 const uint32_t a = (di + (uint32_t)k) & 0xFFFF;
-                if (a < p->size && p->b[a] == (uint8_t)v[5]) wr(p, a, (uint8_t)v[6]);
+                if (a >= p->size) continue;
+                if (p->hi && p->n > 1) {
+                    fine_colour(p, a, 4, v[6], v[5]);
+                    if (p->b[a] == (uint8_t)v[5]) p->b[a] = (uint8_t)v[6];
+                } else if (p->b[a] == (uint8_t)v[5]) wr(p, a, (uint8_t)v[6]);
             }
         }
         break;

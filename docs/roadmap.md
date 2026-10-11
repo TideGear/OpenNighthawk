@@ -488,8 +488,14 @@ not the recompilation:
       with guest hashes unchanged. Stage 4 host pacing, vsync, picture-age
       selection and the original-picture switch are built; dummy-driver
       measurements are in [presentation.md](presentation.md#stage-4-pacing-and-the-pictures-age-9-october-2026).
-      Open: the HUD/text source at 4K (the owner's call), near-clipped
-      polygons still scaled, and a real-display check of refresh pacing,
+      The owner chose the Reimp's HUD treatment: fine-grid lines and ticks,
+      scale-proportional or chosen stroke width (`--present-line-width`),
+      original bitmap text/artwork. The line rule matches 360 Reimp reference
+      strokes exactly; eight recorded windows pass at N = 1/4/9.
+      Live N = 4/9 sentinels pass all 368 logic frames and 366 interpolation
+      pairs, with 54 checkpoints/final hash equal to both fresh scan engines.
+      Full gate passes 18 tests, all 35 routes and both instruction profiles.
+      Open: near-clipped polygons still scaled, and a real-display check of refresh pacing,
       motion and 4K output (Phase 4).
 
 ## Phase 4 - checked by people and independent references

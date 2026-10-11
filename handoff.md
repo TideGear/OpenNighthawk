@@ -6,8 +6,62 @@ For the next conversation on this repository. Read this, then
 checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 [docs/presentation.md](docs/presentation.md) (60+ fps and 4K) and
 [docs/repeated-processes.md](docs/repeated-processes.md) (every process we run
-more than once, what it costs). State as of 10 October 2026.
+more than once, what it costs). State as of 11 October 2026.
 Earlier session logs are in `git log -p handoff.md`.
+
+## Reimp-style HUD checkpoint (11 Oct 2026)
+
+The owner explicitly instructed **"Do the HUD like the Reimp."** Implemented
+in the main tree after `3fd77e9`: fine-grid HUD lines/ticks with the Reimp's
+square nib and clipped end planes; scale-proportional width by default,
+`--present-line-width 1..20` to choose output pixels (0 restores default).
+Original bitmap text, sprites and cockpit art stay enlarged pixel blocks.
+N=1 retains the exact original replay. Colour operations preserve fine
+pixels; whole-page, rectangle and overlapping self-copies carry the stroke
+mask, and the flat-pixel guard excludes deliberately painted HUD cells.
+CLI, config, example INI and presentation docs updated. No guest writes or
+timing changes. P3 estimate 72.80%, All 73.23%; P2 unchanged at 781 entries,
+776 census functions and 66,083 bytes.
+
+Verification: all 18 unit tests pass; `presentation_hud_lines` covers
+coarse identity, octants, reversal, dots, width, origins, guard, colour
+operations, artwork and copies. Eight corrected `p3-live/logs41/w_*.log`
+windows pass carried replay and N=1/4/9 checks: 447 exact work phases and
+447 exact display phases. N=4/9 live `boot_to_flight` sentinels each pass
+368 logic frames and 366 pairs at coarse/fine endpoints; their 54 guest
+checkpoints and final hash `48a10e901505e2a9` match. Times 146.9/112.8 s
+alongside the gate, not isolated performance measurements. Both hosts'
+width parsers pass seven boundary/malformed-value cases each; use
+Start-Process -Wait for the GUI executable's exit status (PowerShell's
+direct GUI invocation leaves LASTEXITCODE unchanged).
+
+Private direct comparison against the Reimp's actual `hires.c` finds 360
+strokes byte-identical at N=2/4/9, widths 0/1/2/5/20. Reproduction files:
+`D:/f117-gate/hud-reimp-oracle.c`, `build-hud-oracle.cmd`,
+`hud-oracle/oracle.exe`. Inspected previews: `hud-default-fine.png`,
+`hud-thin-fine.png`, `hud-wide-fine.png`, and `hud-comparison.png` on D:.
+The test harness can render them with `test_hires LOG N --carry
+--line-width WIDTH --dump PREFIX` (coarse/fine PPMs with captured palette).
+
+**Full gate passed:** `D:/f117-gate/gate-hud-reimp.log`, 1,444 seconds,
+affinity 0x00FFFFFF, 16 route workers. All 18 tests, 35 identical routes,
+both 5,718,912-state instruction profiles and three matched seeds
+(2,524,384/2,523,430/2,525,667 comparisons) pass, with routes-only
+reachability and event-room checks. Host/presentation/CMake changes
+invalidated interpreter caches: 34 fresh interpreter sessions, 0 reused;
+parity took 906 s. The N=4/9 sentinels' 54 checkpoints and final hashes
+also match BOTH fresh scan engines after gate completion. No remaining
+gate/build processes. The gate overwrites mutable `runs/*/runner.txt`
+during coverage/parity: wait for completion before comparing against it.
+
+**Next Phase 2 candidates remain isolated:** the `wt` worktree is still
+based on `01f4dbd`, with the same HUD code plus symbol `114A:03AD` and
+sprite blit `114A:03FD`. Three targeted seeds pass 24,775 comparable
+states, no full gate for those two yet. It lacks main's display-fill and
+startup helpers: bring ONLY the two named functions/registrations and
+combine their harness allowances, never copy its whole matched.c or
+func_lockstep.c over main. Keep the full roadmap goal active: near-clipped
+fine polygons, remaining Phase 2 code and human/reference checks remain.
 
 ## Cockpit startup checkpoint (10 Oct 2026)
 

@@ -11,8 +11,10 @@
  * overshoot (measured at N = 1, so N = 1 is the original's picture) and inside
  * the original's own footprint. Near-clipped polygons, ones with a vertex
  * behind the eye or a footprint more than 3 pixels from their geometry, and
- * fill styles with no rule keep the scaled copy, as do text, sprites, lines,
- * blits and the HUD. The state is plain data: a copy (memcpy) carries on. */
+ * fill styles with no rule keep the scaled copy, as do text, sprites,
+ * and blits. HUD lines and ticks are drawn on the fine grid by drawlist.c,
+ * retaining the original glyph and artwork pixels. The state is plain data:
+ * a copy (memcpy) carries on. */
 #ifndef F117R_HIRES_H
 #define F117R_HIRES_H
 
@@ -71,5 +73,9 @@ void hires_record(hires *h, drawlist *d, char kind, const int32_t *v, int n);
  * residue). Adds the flat pixels, those that agreed, and returns those it
  * restored. */
 int hires_guard(const uint8_t *coarse, uint8_t *fine, int n, uint64_t *flat, uint64_t *agree);
+/* Explicit fine HUD strokes cross cells that look flat at coarse resolution.
+ * Exclude their bit mask (drawlist_page.strokes) from the polygon guard. */
+int hires_guard_masked(const uint8_t *coarse, uint8_t *fine, int n, const uint8_t *strokes,
+                       uint64_t *flat, uint64_t *agree);
 
 #endif

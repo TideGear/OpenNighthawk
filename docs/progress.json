@@ -127,16 +127,16 @@
       {
         "item": "Stage 2: high-resolution re-draw",
         "weight": 16,
-        "done": 0.5,
+        "done": 0.7,
         "kind": "estimate",
-        "evidence": "Model polygons re-projected from camera-space vertices and filled on a fine grid (hires_subpixel.py and src/present/hires.c; docs/presentation.md). Live --present-scale N built: all 9,845 strike logic frames equal the display at close; N=1/2/4/9 keep guest hashes unchanged. The flat-pixel guard restores the remaining 0.002-0.010% of flat blocks at N=2/4/9. Open: text, sprites, HUD and cockpit art remain scaled copies; near-clipped polygons and geometry outside the supported projection rule also remain scaled. Completion estimate unchanged pending those requirements."
+        "evidence": "Model polygons re-projected from camera-space vertices and filled on a fine grid (hires_subpixel.py and src/present/hires.c). Owner chose the Reimp HUD treatment: fine-grid lines/ticks with scale-proportional or selected width, original bitmap text/artwork. 360 reference strokes byte-identical to the local Reimp at N=2/4/9 and five widths; eight carried recorded windows pass N=1/4/9. Stroke masks preserve legitimate HUD detail through the flat-pixel guard, colour operations and page copies. Live N=9 sentinel: all 368 logic frames exact, all 366 pairs exact at coarse and fine endpoints. Open: near-clipped polygons and geometry outside the supported projection rule remain scaled."
       },
       {
         "item": "Stage 3 and 4: interpolation to 60+ fps, pacing and polish",
         "weight": 26,
-        "done": 0.45,
+        "done": 0.55,
         "kind": "estimate",
-        "evidence": "Live draw feed and interpolation built (src/present/drawfeed.c, interp.c). All 9,843 strike frame pairs exact at coarse and fine endpoints at N=1/2/4/9; guest hashes unchanged. Host presents at vsync with machine-clock t; dummy-driver 60 Hz runs measured, with original-picture switch (--present scan) and picture-age selection (--present-age interp|extrapolate). Extrapolation predicts worse than holding the old frame in 191 of 265 measured steps, so interpolation remains the presentation mode default when enabled. See docs/presentation.md for cost and frame intervals. Open: HUD/text source at 4K, real-display refresh/motion/4K checks and polish. Completion estimate unchanged pending those requirements."
+        "evidence": "Live draw feed and interpolation built (src/present/drawfeed.c, interp.c). All 9,843 strike frame pairs exact at coarse and fine endpoints at N=1/2/4/9; guest hashes unchanged. Reimp-style HUD chosen and built, with original bitmap lettering/artwork and --present-line-width. Live N=9 sentinel retains 368 exact logic frames and 366 exact pairs. Host presents at vsync with machine-clock t; dummy-driver 60 Hz runs measured, with original-picture switch (--present scan) and picture-age selection (--present-age interp|extrapolate). Extrapolation predicts worse than holding the old frame in 191 of 265 measured steps, so interpolation remains the presentation mode default when enabled. Open: real-display refresh/motion/4K checks and polish."
       }
     ],
     "P4": [

@@ -5,7 +5,7 @@
  *         [--scale N] [--fullscreen] [--no-aspect] [--midi N] [--log FILE]
  *         [--audio-queue-log FILE]
  *         [--audio-dump FILE] [--present scan|replay|interp] [--present-scale N]
- *         [--present-age interp|extrapolate] [--present-log FILE] [--config FILE | --no-config]
+ *         [--present-line-width N] [--present-age interp|extrapolate] [--present-log FILE] [--config FILE | --no-config]
  *
  * Every option can also be kept in f117a.ini beside the executable (or the
  * file --config names): see config.h. The command line overrides it.
@@ -25,7 +25,7 @@
  * vsync), at the machine's clock then, a logic step behind (--present-age
  * extrapolate: predicted past the newer one instead, no step behind).
  * --present-scale N draws the replayed picture N times finer (Stage 2): the
- * model polygons from their vertices, the rest scaled. --present-log FILE
+ * model polygons from their vertices, fine HUD strokes, pixel text/art. --present-log FILE
  * writes, for each frame presented, the host clock, the machine's clock, the
  * logic frames shown and t.
  *
@@ -83,7 +83,7 @@ static int g_replay;                  /* 1 replay, 2 interp */
 static drawfeed g_feed;
 static drawlive g_live;
 static uint64_t g_presented;          /* VGA frames shown from the replay */
-static int g_scale, g_age;            /* --present-scale, --present-age (1 extrapolate) */
+static int g_scale, g_age, g_line_width; /* optional presentation settings */
 static const uint8_t *g_fine;         /* the finer picture to show, or NULL */
 static FILE *g_present_log;           /* --present-log */
 
@@ -386,6 +386,13 @@ int main(int argc, char **argv)
             if (g_scale < 1 || g_scale > 16) { fprintf(stderr, "--present-scale takes 1 to 16\n"); return 2; }
             i++;
         }
+        else if (!strcmp(a, "--present-line-width") && v) {
+            char *end;
+            const long width = strtol(v, &end, 10);
+            if (!*v || *end || width < 0 || width > 20) { fprintf(stderr, "--present-line-width takes 0 to 20 (0 scales with resolution)\n"); return 2; }
+            g_line_width = (int)width;
+            i++;
+        }
         else if (!strcmp(a, "--present-age") && v) {
             if (strcmp(v, "interp") && strcmp(v, "extrapolate")) { fprintf(stderr, "--present-age takes interp or extrapolate\n"); return 2; }
             g_age = !strcmp(v, "extrapolate");
@@ -401,7 +408,7 @@ int main(int argc, char **argv)
                 "             [--exit-after CLOCKS] [--opl dbopl|nuked] [--speaker realsound|pwm]\n"
                 "             [--audio-queue-log FILE]\n"
                 "             [--audio-dump FILE] [--present scan|replay|interp] [--present-scale N]\n"
-                "             [--present-age interp|extrapolate] [--present-log FILE]\n"
+                "             [--present-line-width 0..20] [--present-age interp|extrapolate] [--present-log FILE]\n"
                 "             [--roland munt|windows|off] [--mt32-roms DIR]\n"
                 "             [--mt32-control FILE --mt32-pcm FILE] [--fix ID|all]... [--list-fixes]\n"
                 "             [--config FILE | --no-config]   (default: f117a.ini beside f117a.exe)\n");
@@ -549,6 +556,7 @@ int main(int argc, char **argv)
         g_live.interp = g_replay == 2;
         g_live.extrapolate = g_age;
         if (g_scale) drawlive_set_scale(&g_live, g_scale);
+        drawlive_set_line_width(&g_live, g_line_width);
         observe_set(&g_feed.obs);
     }
     /* A replay brings its own speed and boot time; a recording writes ours. */

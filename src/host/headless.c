@@ -7,7 +7,7 @@
  *           [--hash-every N] [--hash-from N] [--peek LINEAR] [--dump LINEAR:LENGTH] [--observe FILE:FROM:TO] [--trace FROM:TO:FILE]
  *           [--coverage FILE] [--screen FILE.ppm] [--shots EVERY:PREFIX | --shots-vga PREFIX] [--shots-start CLOCK] [--shot-meta FILE]
  *           [--shots-changed] [--frame-log FILE] [--no-mouse] [--present scan|replay|interp]
- *           [--present-scale N] [--present-age interp|extrapolate]
+ *           [--present-scale N] [--present-line-width N] [--present-age interp|extrapolate]
  *           [--fix ID|all]... [--list-fixes]
  *           [--opl-log FILE] [--midi-log FILE] [--speaker-log FILE]
  *
@@ -230,7 +230,7 @@ static int shot_write_changed(const machine_t *m, const char *path)
  * presents a frame at its close, the first phase after its present), or the
  * scan caught the original drawing on the display: the next frame decides. */
 static int g_replay;                       /* 1 replay, 2 interp */
-static int g_scale, g_age;                 /* --present-scale, --present-age (1 extrapolate) */
+static int g_scale, g_age, g_line_width;    /* optional presentation settings */
 static drawfeed g_feed;
 static drawlive g_live;
 static struct {
@@ -408,6 +408,13 @@ int main(int argc, char **argv)
             if (g_scale < 1 || g_scale > 16) { fprintf(stderr, "--present-scale takes 1 to 16\n"); return 2; }
             i++;
         }
+        else if (!strcmp(a, "--present-line-width") && v) {
+            char *end;
+            const long width = strtol(v, &end, 10);
+            if (!*v || *end || width < 0 || width > 20) { fprintf(stderr, "--present-line-width takes 0 to 20 (0 scales with resolution)\n"); return 2; }
+            g_line_width = (int)width;
+            i++;
+        }
         else if (!strcmp(a, "--present-age") && v) {
             if (strcmp(v, "interp") && strcmp(v, "extrapolate")) { fprintf(stderr, "--present-age takes interp or extrapolate\n"); return 2; }
             g_age = !strcmp(v, "extrapolate");
@@ -478,6 +485,7 @@ int main(int argc, char **argv)
         g_live.interp = g_live.check = g_replay == 2;
         g_live.extrapolate = g_age;
         if (g_scale) drawlive_set_scale(&g_live, g_scale);
+        drawlive_set_line_width(&g_live, g_line_width);
         observe_set(&g_feed.obs);
         hooks.vsync = on_vsync_check;
     }

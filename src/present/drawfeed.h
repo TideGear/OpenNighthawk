@@ -108,6 +108,7 @@ void drawlive_init(drawlive *r);
 /* Draw a picture n times finer too (n >= 1): the model polygons refilled from
  * their vertices, the rest scaled; presented in place of the 320x200 one. */
 void drawlive_set_scale(drawlive *r, int n);
+void drawlive_set_line_width(drawlive *r, int width);
 
 /* Replay every closed frame the feed holds and release it. A frame that
  * differs from the display at its close is not shown, and the replay is

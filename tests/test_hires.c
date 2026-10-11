@@ -35,6 +35,8 @@ static char *read_line(FILE *f, char **buf, size_t *cap)
 }
 
 static unsigned long long g_flat, g_agree, g_bad, g_bad_fine, g_fine, g_unlike, g_phases, g_n1_equal;
+static const char *g_dump;
+static uint8_t *g_picture, g_coarse[64000], g_palette[768], g_picture_palette[768];
 
 static void phase_check(const drawlist_page *p, int n)
 {
@@ -48,6 +50,8 @@ static void phase_check(const drawlist_page *p, int n)
             for (int j = 0; j < n; j++)
                 for (int i = 0; i < n; i++) block += f[((size_t)y * n + j) * W + (size_t)x * n + i] != v;
             int flat = y > 0 && y < 199 && x > 0 && x < 319;
+            const unsigned a = (unsigned)(y * 320 + x);
+            if ((p->strokes[a >> 3] >> (a & 7)) & 1) flat = 0;
             for (int dy = -1; dy <= 1 && flat; dy++)
                 for (int dx = -1; dx <= 1 && flat; dx++) flat = c[(y + dy) * 320 + x + dx] == v;
             if (flat) {
@@ -61,23 +65,52 @@ static void phase_check(const drawlist_page *p, int n)
     g_unlike += unlike;
     g_phases++;
     if (n == 1) g_n1_equal += !unlike;
+    if (g_dump) {
+        memcpy(g_picture,p->hi,(size_t)320*n*200*n);
+        memcpy(g_coarse,p->b,sizeof g_coarse);
+        memcpy(g_picture_palette,g_palette,sizeof g_palette);
+        uint64_t flat = 0, agree = 0;
+        hires_guard_masked(p->b,g_picture,n,p->strokes,&flat,&agree);
+    }
+}
+
+static int dump_picture(const char *suffix, const uint8_t *pixels, int w, int h)
+{
+    char path[1024];
+    snprintf(path,sizeof path,"%s-%s.ppm",g_dump,suffix);
+    FILE *out = fopen(path,"wb");
+    if (!out) return 0;
+    fprintf(out,"P6\n%d %d\n255\n",w,h);
+    for (size_t i = 0; i < (size_t)w*h; i++)
+        if (fwrite(g_picture_palette+3*pixels[i],1,3,out) != 3) { fclose(out); return 0; }
+    return fclose(out) == 0;
 }
 
 int main(int argc, char **argv)
 {
     const char *path = NULL;
-    int n = 2, carry = 0;
+    int n = 2, carry = 0, width = 0;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--carry")) carry = 1;
+        else if (!strcmp(argv[i], "--line-width") && i+1 < argc) width = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--dump") && i+1 < argc) g_dump = argv[++i];
         else if (!path) path = argv[i];
         else n = atoi(argv[i]);
     }
-    if (!path || n < 1 || n > 16) { fprintf(stderr, "usage: test_hires LOG [N] [--carry]\n"); return 2; }
+    if (!path || n < 1 || n > 16 || width < 0 || width > 20) {
+        fprintf(stderr, "usage: test_hires LOG [N] [--carry] [--line-width 0..20] [--dump PREFIX]\n"); return 2;
+    }
+    for (int i = 0; i < 256; i++) for (int k = 0; k < 3; k++) g_palette[3*i+k] = (uint8_t)i;
+    if (g_dump) {
+        g_picture = (uint8_t *)malloc((size_t)320*n*200*n);
+        if (!g_picture) return 2;
+    }
     FILE *f = fopen(path, "r");
     if (!f) { fprintf(stderr, "cannot read %s\n", path); return 2; }
     static drawlist d;
     drawlist_init(&d);
     drawlist_set_scale(&d, n);
+    drawlist_set_line_width(&d,width);
     d.prefer_logged = 1;                              /* the page copies as drawlist_frame.py makes them */
     static hires h;
     hires_init(&h, n);
@@ -102,6 +135,8 @@ int main(int argc, char **argv)
                 v[nv++] = (int32_t)x;
                 p = e;
             }
+        if (k == 'J' && nv >= 768)
+            for (int i = 0; i < 768; i++) g_palette[i] = (uint8_t)((v[i]*255+31)/63);
         hires_record(&h, &d, k, v, nv);
         if (k == 'Z' || k == 'Y') {
             const uint16_t seg = (uint16_t)v[0];
@@ -135,5 +170,10 @@ int main(int argc, char **argv)
                n, 100.0 * (double)g_agree / (double)g_flat, n * n, g_bad,
                100.0 * (double)g_unlike / (double)(g_fine ? g_fine : 1));
     drawlist_free(&d);
+    if (g_dump && (!g_phases || !dump_picture("coarse",g_coarse,320,200) ||
+                   !dump_picture("fine",g_picture,320*n,200*n))) {
+        fprintf(stderr,"could not dump a display picture\n"); free(g_picture); return 2;
+    }
+    free(g_picture);
     return n == 1 && g_n1_equal != g_phases ? 1 : 0;
 }

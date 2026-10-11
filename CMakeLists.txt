@@ -249,6 +249,9 @@ if(F117R_BUILD_TESTS)
   # Stage 2's sub-pixel polygons against the same log (test_hires LOG N).
   add_executable(test_hires tests/test_hires.c)
   target_link_libraries(test_hires PRIVATE f117present)
+  add_executable(test_present_lines tests/test_present_lines.c)
+  target_link_libraries(test_present_lines PRIVATE f117present)
+  add_test(NAME presentation_hud_lines COMMAND test_present_lines)
 
   add_executable(test_overrides tests/test_overrides.c)
   target_link_libraries(test_overrides PRIVATE f117present f117recomp_none)

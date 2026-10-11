@@ -73,9 +73,9 @@ Each stage is judged by a check, as in the rest of the project.
 |---|---|---|---|
 | 0 | Observer: log every call to the drawing primitives per frame | the log is identical across runs; hashes unchanged with it on | done |
 | 1 | Draw lists: a frame's primitives as a list, replayed at 320x200 | the replay reproduces the original's work and display pages bit for bit, every phase of every route | done for the windows below, in Python and in C (`src/present/drawlist.c`); unexercised branches listed below |
-| 2 | Re-draw the list at N times the resolution | N = 1 is Stage 1 exactly; at N > 1 every N x N block agrees with the N = 1 pixel wherever no edge crosses it | model polygons re-drawn from their sub-pixel vertices (`hires_subpixel.py`, and in C `hires.c`, live with `--present-scale N`): N = 1 exact, flat agreement 99.96-100% before a guard, 100% after; text, sprites, HUD and 3-4% of the polygons stay scaled |
+| 2 | Re-draw the list at N times the resolution | N = 1 is Stage 1 exactly; at N > 1 every N x N block agrees with the N = 1 pixel wherever no edge crosses it | model polygons re-drawn from their sub-pixel vertices (`hires_subpixel.py`, and in C `hires.c`, live with `--present-scale N`); HUD lines/ticks redraw on the fine grid with scale-proportional or chosen thickness; original bitmap text/artwork stay scaled by the owner's choice; near-clipped polygons still scaled |
 | 3 | Interpolate between consecutive draw lists to the host display rate | at a logic frame the output is exactly that frame; no in-between primitive absent from both neighbours | 320x200 study done (`interp_frame.py`, below): exact at both ends on seven windows, no violations; live path built at 320x200 (below): the feed, the presentation from the replay, and the interpolation in C, exact at both ends of 9,843 live frame pairs |
-| 4 | Pacing, vsync, a picture-age setting, HUD handling, a switch to the original picture | pictures at the display's refresh with t on the mission clock; the age setting measured | pacing at the host's vsync and the age setting built (below); HUD handling is the owner's choice (options below); `--present scan` is the switch |
+| 4 | Pacing, vsync, a picture-age setting, HUD handling, a switch to the original picture | pictures at the display's refresh with t on the mission clock; the age setting measured | pacing at the host's vsync, age setting and Reimp-style HUD handling built (below); `--present scan` is the switch; real-display checks remain |
 
 Interpolation shows the picture one logic step behind (about 110 ms at 9
 steps a second, 67 ms at the clamp of 15), the standard price. Stage 1 needs
@@ -603,27 +603,43 @@ run draws, one costs about 1.6 ms more at N = 2 than at N = 1, 2.9 ms at N = 4 a
 palette and up to the GPU each frame, which with the in-between frame is on the edge of a 60 Hz frame
 on one thread.
 
-**The HUD, text and sprites at 4K: the owner's call.** They stay scaled copies (each original pixel
-a 9 x 9 block at N = 9). The sources they could come from instead, with what each costs:
+**The HUD, text and sprites at 4K (owner's choice, 10 October 2026): like the Reimp.**
+HUD lines and tick marks are rasterised on the output grid; text glyphs, sprites and
+cockpit artwork keep their original N x N pixel blocks. `--present-line-width N`
+(`present-line-width =` in f117a.ini) selects 1–20 output pixels; 0, the default,
+uses the render scale. At N = 1 the original replay is used exactly, including
+its line quirks, regardless of the width setting. `--present scan` retains the
+original picture at every scale.
 
-| source | what changes | cost |
-|---|---|---|
-| scaled copies (now) | nothing: the original's pixels, large | none |
-| the library's line, tick, span and colour-replace records redrawn on the fine grid | the HUD ladder, tapes, boxes and markers become thin and sharp at the same places; a line one original pixel wide becomes one fine pixel, unless drawn N wide (a choice of look) | a few hundred lines of C beside the existing rules, held by the N = 1 identity and the flat-pixel check; little run time |
-| a pixel-art upscaler (Scale2x/EPX, xBR) on text glyphs and sprites | the original's shapes, smoothed diagonals; deterministic | small for glyphs (cached per glyph); for sprites and the cockpit art per draw, or cached per source image |
-| an upscaler on the whole non-polygon layer | one step for everything not refilled | needs the layers kept apart; tens of ms a frame at 4K on one thread, so a GPU shader or threads |
-| new high-resolution fonts and art | the look of a remaster, not the original's pixels | artwork and licensing; outside this project's own sources |
+The line rule follows the Reimp's `src/core/hires.c`: canonical endpoint order,
+Bresenham on the output grid, and a square nib clipped to perpendicular end planes.
+A private direct comparison against that source finds 360 strokes byte-identical
+at scales 2/4/9 and widths 0/1/2/5/20, including dots, horizontal/vertical lines
+and random directions. No Reimp code or asset is required at runtime. The graphics
+driver's already-clipped endpoints and page origin come from the draw records;
+the observer never changes guest state or timing.
+
+Colour replacement, OR/AND/shaded spans and page copies operate on the fine
+pixels already drawn. A small bit mask carries the cells crossed by fine strokes
+through copies, so the polygon flat-pixel guard preserves deliberate HUD detail,
+including wide strokes. Overlapping self-blits snapshot their fine source before
+the coarse writes mirror over it. Bitmap text and sprite painting retain the
+original per-pixel rules. `presentation_hud_lines` tests the coarse identity,
+octants, reversal, dots, width, origins, guard, colour operations, artwork and copies.
+The eight corrected `p3-live/logs41/w_*.log` flight windows pass carried replay
+and N = 1/4/9 checks: 447 exact work phases and 447 exact display phases.
+The live `boot_to_flight` sentinels at N = 4/9 each retain 368 exact logic
+frames and 366 exact interpolation pairs, including fine endpoints; all 54
+guest checkpoints match both fresh scan engines and each other, with final
+hash `48a10e901505e2a9`. The full gate passes all 35 routes, 18 unit tests,
+both instruction profiles, three matched seeds and event/reachability checks.
+They took 146.9/112.8 seconds while sharing the machine with the gate; these
+are correctness runs, not isolated rendering-performance measurements.
+Both hosts accept widths 0/1/20 and reject -1/21/non-numbers/trailing letters.
+`test_hires --line-width N --dump PREFIX` also renders
+the last checked frame as coarse and fine PPMs using the recorded palette.
 
 ## Open questions and risks
-
-The local Reimp provides a reference for the HUD choice: `src/game.c`'s
-`draw_hud_line_scaled` redraws lines on the output grid through `hires_line`.
-Stroke width defaults to the integer render scale and can be overridden.
-`src/core/hudtext.c`'s `hud_text_draw_scaled` enlarges each original glyph bit
-to an N x N block; bitmap blits do the same for sprites and cockpit art.
-This is the fine-grid line option above combined with scaled original text
-and artwork, without a pixel-art upscaler. It describes the Reimp's existing
-path; the owner's choice for this project's optional path remains open.
 
 - **Pairing for interpolation.** Done for 86-99% of painted polygons by batch alignment
   (Stage 3 above); what is left is chunks whose vertex count changes by more than a tenth or
@@ -638,6 +654,5 @@ path; the owner's choice for this project's optional path remains open.
 - **Time base.** Interpolation and host pacing use the machine clock. The
   original's faster mission clock is set by the speed: the default (20 million a second)
   puts the world at about 1.12 times real time (`docs/speed-sweep.md`).
-- **Is sub-pixel "4K" worth its cost** against the cheaper scaled picture? For the 3-D scene the polygon stage is
-  cheap and verified (above); what remains is whether the HUD, text and sprites also need a finer source than their
-  scaled copies, and the near-clipped polygons (3-4% of the polygons, no sub-pixel rule yet).
+- **Near-clipped polygons** (3-4% of the polygons) retain their scaled copy;
+  there is no sub-pixel rule for them yet. The chosen HUD/text presentation is built.

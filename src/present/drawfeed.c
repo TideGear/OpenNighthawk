@@ -157,6 +157,11 @@ void drawlive_set_scale(drawlive *r, int n)
     }
 }
 
+void drawlive_set_line_width(drawlive *r, int width)
+{
+    drawlist_set_line_width(&r->list, width);
+}
+
 /* One record into the replay, through the sub-pixel builder first when there is one. */
 static void feed(drawlist *d, hires *h, char kind, const int32_t *v, int n)
 {
@@ -172,7 +177,7 @@ static void feed(drawlist *d, hires *h, char kind, const int32_t *v, int n)
 static void take_fine(drawlive *r, const drawlist_page *disp, uint8_t *out)
 {
     memcpy(out, disp->hi, (size_t)320 * r->scale * 200 * r->scale);
-    r->fine_restored += (uint64_t)hires_guard(disp->b, out, r->scale, &r->fine_flat, &r->fine_agree);
+    r->fine_restored += (uint64_t)hires_guard_masked(disp->b, out, r->scale, disp->strokes, &r->fine_flat, &r->fine_agree);
 }
 
 /* Keep a replayed frame's records for interpolation (P, Z, Y and J left out). */
@@ -217,7 +222,7 @@ static const uint8_t *draw_list(drawlive *r, const drawlive_step *skel)
     if (r->scale) {
         memcpy(r->inter_hi, disp->hi, (size_t)320 * r->scale * 200 * r->scale);
         uint64_t flat = 0, agree = 0;
-        hires_guard(disp->b, r->inter_hi, r->scale, &flat, &agree);
+        hires_guard_masked(disp->b, r->inter_hi, r->scale, disp->strokes, &flat, &agree);
     }
     return disp->b;
 }
