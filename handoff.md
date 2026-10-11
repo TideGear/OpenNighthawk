@@ -9,6 +9,43 @@ checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 more than once, what it costs). State as of 10 October 2026.
 Earlier session logs are in `git log -p handoff.md`.
 
+## Clipping-entry registration checkpoint (10 Oct 2026)
+
+Continued from `ab1d517`. Corrected the existing `vgame_outcode`
+registration from `0000:FFDC` to `0FB2:04BC` (same image address). The
+runtime also requires matching CS, so the old registration missed the
+rasterizer's actual near calls (confirmed at `0FB2:0729` and `0733`).
+The final strike parity run now calls it 4,361,362 times. No new routine
+or census bytes: the scoreboard remains 777 entries, 772 census functions,
+65,795 bytes, P2 39.88%, All 71.79%.
+
+Verification: targeted seeds default/0x12345678/0xC0FFEE compare
+3,990/3,999/3,998 states, zero differences. Full gate
+`D:/f117-gate/gate-outcode-bank.log` passes all 17 unit tests, 35 identical
+routes, both 5,718,912-state instruction profiles, three matched seeds
+(2,509,520/2,508,636/2,509,145 comparisons), routes-only reachability and
+event-room checks. Measured 959 seconds, affinity 0x00FFFFFF, 16 route
+workers. No gate processes remain.
+
+**Lead-vetting correction:** compare BOTH bank/offset and linear image
+address against MATCHED. Bank-corrected census matching alone can list an
+already-implemented routine registered under an alias, as happened here.
+I initially wrote a duplicate, then removed it and reused the original
+implementation before the final gate. The interrupted
+`gate-raster-outcode.log` is not a passing gate.
+
+Seven further alias-only census mappings were found, **not yet verified
+as registration bugs**: VGAME `0FB2:0320` (registered `0000:FE40`),
+`1132:0002/0052` (`1058:0DA2/0DF2`), `14C2:00B7` (`1452:07B7`);
+PLAYER `026B:0307` (`0000:29B7`); SETUP `0237:003A/00A4`
+(`0000:23AA/2414`). Trace actual call sites before changing any of these.
+Ordinary unmatched lead: VGAME `0000:8A18`, right-aligned number display,
+21 instructions, calls EBBA (format), EB82 (length), 895E (draw).
+Private instruction draft: `D:/f117-gate/drafts/vgame_panel_number_right.c`;
+no implementation or verification yet. The two smallest banked leads
+(`120A:0971`, `0FB2:084E`) are divide-fault handlers, not ordinary
+division functions; treat them accordingly.
+
 ## Session end-of-shift handoff (10 Oct, 22:31 PDT)
 
 **Scoreboard at session end**: 777 addresses matched (772 of 1,535 census

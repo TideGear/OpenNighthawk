@@ -10,6 +10,17 @@ identical, and the proof is the same verdicts before and after.
 
 ## The gate (`tools/build_recomp.py`)
 
+The clipping-entry registration gate (10 Oct, `gate-outcode-bank.log`)
+took 959 seconds: translation/build and 17 unit tests 125, fresh coverage
+547, byte-identical regeneration 15, parity 272. All 35 routes, both
+5,718,912-state instruction profiles and three 777-entry matched seeds
+passed; every routes-only routine ran and no routine overran. It used
+16 route workers with verified inherited affinity 0x00FFFFFF. Three
+targeted 4,000-state seeds took about 0.4 seconds each concurrently,
+comparing 3,990/3,999/3,998 states without differences. An earlier
+duplicate-implementation gate was deliberately interrupted during unit
+tests after discovering the existing routine; it is not a passing run.
+
 The collision/sound/scene full gate PASS (10 Oct, `gate-scene-sound.log`)
 took 883 seconds: translation/build/tests 92, fresh coverage 495,
 byte-identical regeneration 11, parity 284. All 35 routes were identical,

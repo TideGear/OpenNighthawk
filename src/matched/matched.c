@@ -413,7 +413,7 @@ static int table_sine(machine_t *m, uint16_t table)
 static int vgame_sine(machine_t *m) { return table_sine(m, 0x2084); }
 static int start_sine(machine_t *m) { return table_sine(m, 0xABF8); }
 
-/* VGAME 0x0FFDC, outcode(BX = x, BP = y): the clipping outcode in AL, bit
+/* VGAME 0FB2:04BC (image 0x0FFDC), outcode(BX = x, BP = y): the clipping outcode in AL, bit
  * 3 left (x < 0), 0 right (x > [2293]), 2 above (y < 0), 1 below
  * (y > [2295]), signed; flags from the final OR AL, AL. */
 static int vgame_outcode(machine_t *m)
@@ -31387,7 +31387,7 @@ static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xF018, vgame_shr32, "32-bit logical shift right", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xC67A, vgame_clamp3, "clamp a bar value", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x104E, 0x008A, vgame_sine, "sine by table", 1 },
-    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xFFDC, vgame_outcode, "clipping outcode", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0FB2, 0x04BC, vgame_outcode, "clipping outcode", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xEE1A, vgame_set_mission_clock, "start the mission clock", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD9E7, vgame_set_scene_origin, "set the scene origin", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x4E4B, vgame_deadline_from_clock, "deadline from the clock", 1 },

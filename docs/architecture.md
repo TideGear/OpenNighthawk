@@ -489,6 +489,15 @@ the two engines compares the matched C with the original instructions.
 `F117R_NO_MATCHED=1` leaves them all out; `F117R_MATCHED_LIMIT=N` turns on only
 the first N (bisecting a divergence to one routine).
 
+Registration must use the original code segment and instruction offset,
+not just an equivalent linear image address: dispatch checks CS as well.
+VGAME's clipping outcode, for example, is called at `0FB2:04BC`; registering
+it at `0000:FFDC` passes isolated lockstep at those bytes but misses the
+actual calls. When vetting census leads, compare both the bank/offset in
+`our_region` and the linear image address against the existing table. An
+alias can identify an existing implementation whose registration needs
+investigation, rather than a new routine to rewrite.
+
 A routine's arithmetic uses the interpreter's own semantics, so flags cannot
 drift. A routine runs whole, so it declines (and the original instructions
 run) when it would cross the run loop's next look at events; an interrupt due

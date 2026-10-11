@@ -363,6 +363,15 @@ not the recompilation:
       both instruction profiles and all three 777-address matched seeds
       zero mismatching, every routes-only routine ran).
 
+      The existing clipping outcode (`vgame_outcode`, image `0x0FFDC`)
+      now registers at its actual `0FB2:04BC` call entry instead of
+      `0000:FFDC`. Dispatch checks CS, so the old equivalent linear
+      address missed normal rasterizer calls. The strike route now runs
+      it 4,361,362 times; three targeted seeds and the full gate pass
+      (35 identical routes, both instruction profiles, three matched
+      seeds, no event overruns). Counts are unchanged: this activates
+      an existing implementation.
+
 ## Phase 3 - fixes and enhancements (switchable)
 
 - [x] **Code overrides** attach fixes: hand-written C registered for a module
