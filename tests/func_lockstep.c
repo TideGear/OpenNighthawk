@@ -175,6 +175,8 @@ static unsigned long long g_overrun;    /* routines that ran past the event limi
 /* Sentinel words to plant, by routine (segment, IP): at DS:[reg + disp], or at DS:disp when reg is PLANT_ABS. */
 #define PLANT_ABS 8
 static const struct { uint16_t seg, ip; uint8_t reg; uint16_t disp; uint16_t val; } PLANTS[] = {
+    { 0x1058, 0x09D8, PLANT_ABS, 0x294B, 0x0001 }, /* HUD's compact layout */
+    { 0x1058, 0x0A2C, PLANT_ABS, 0x294B, 0x0001 },
     { 0x0000, 0x4777, PLANT_ABS, 0xB198, 0x0001 },   /* projectile slots: bounded walks and odd-frame refill */
     { 0x0000, 0x4777, PLANT_ABS, 0xB198, 0x0004 },
     { 0x0000, 0x4777, PLANT_ABS, 0x368E, 0x000F },   /* frame-rate estimate S */
@@ -274,8 +276,9 @@ static void stub_driver_thunks(uint8_t *pristine, uint32_t at, const rc_module *
     const int vgame_draw = !strcmp(m->name, "VGAME.EXE") &&
         ((o->seg == 0 && (o->ip == 0xB171 || o->ip == 0xD6DD || o->ip == 0x4777 ||
                          o->ip == 0xD3F9 || o->ip == 0xD87C || o->ip == 0x72D8 ||
-                         o->ip == 0x8A18 || o->ip == 0x881F || o->ip == 0x796E)) ||
-         (o->seg == 0x114A && (o->ip == 0x0280 || o->ip == 0x03AD || o->ip == 0x03FD || o->ip == 0x014F || o->ip == 0x0006 || o->ip == 0x01DB)));
+                           o->ip == 0x8A18 || o->ip == 0x881F || o->ip == 0x796E || o->ip == 0x3A4E)) ||
+           (o->seg == 0x114A && (o->ip == 0x0280 || o->ip == 0x03AD || o->ip == 0x03FD || o->ip == 0x014F || o->ip == 0x0006 || o->ip == 0x01DB)) ||
+           (o->seg == 0x1058 && (o->ip == 0x09D8 || o->ip == 0x0A2C)));
     if (strcmp(m->name, "START.EXE") && strcmp(m->name, "END.EXE") && !vgame_draw) return;
     for (uint32_t i = 0; i + 5 <= m->size; i++) {
         if (m->image[i] != 0x9A) continue;
@@ -358,9 +361,10 @@ static const struct { const char *module; uint16_t ip; } DOS_STUBS[] = {
     { "START.EXE", 0x9115 }, { "END.EXE", 0x500B },     /* the vectors put back */
 };
 
-/* Entry points inside a longer routine whose RET lies before the entry (a second entry that jumps back to
- * a shared exit): the routine's own code starts `below` bytes under the entry, and a RET there is its own. */
+/* Entry points reaching shared code below the entry: watch that code too,
+ * and recognize a RET there when the routine jumps back to a shared exit. */
 static const struct { const char *module; uint16_t seg, ip, below; } CODE_BELOW[] = {
+    { "VGAME.EXE", 0x130D, 0x0577, 0x0018 },     /* bisection's equal-word midpoint cases at 055F/056B */
     { "VGAME.EXE", 0x1377, 0x0968, 0x00CC },     /* model fill: the jump to the common exit 089C */
     { "VGAME.EXE", 0x1377, 0x099F, 0x0007 },     /* stipple fill, exit at 0998 */
     { "VGAME.EXE", 0x1377, 0x0A1C, 0x0007 },     /* AND fill from a row, exit at 0A15 */
@@ -527,10 +531,12 @@ int main(int argc, char **argv)
         g_below = code_below(o);
         /* The pair swap can overwrite its own epilogue, fall through into
          * the adjacent opposite-order helper, then restore the code bytes.
-         * End-state memory alone cannot identify that self-modifying input. */
+         * PLAYER's format reader can similarly overwrite its RET through
+         * an aliased frame slot. Final memory misses these changed-code inputs. */
         g_watch_transient = o->seg == 0 &&
             ((!strcmp(o->module, "START.EXE") && (o->ip == 0x39B3 || o->ip == 0x39D5)) ||
-             (!strcmp(o->module, "END.EXE") && (o->ip == 0x1CB1 || o->ip == 0x1CD3)));
+             (!strcmp(o->module, "END.EXE") && (o->ip == 0x1CB1 || o->ip == 0x1CD3)) ||
+             (!strcmp(o->module, "PLAYER.EXE") && o->ip == 0x1E90));
         for (uint32_t a = 0; a < MEM_SIZE; a += 8) { uint64_t v = rnd(); memcpy(g_pristine + a, &v, 8); }
         const uint32_t at = (uint32_t)base * 16u + m->origin;
         memcpy(g_pristine + at, m->image, m->size);

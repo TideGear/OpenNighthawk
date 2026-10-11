@@ -22,7 +22,7 @@ make (Phase 4).
   and variables; `tools/census.py`). The coverage pass adds no further
   translated code; changed code and declined override entries can fall back
   to the interpreter.
-- **Engine parity.** 35 scripted routes are identical between the interpreter
+- **Engine parity.** 37 scripted routes are identical between the interpreter
   and the recompiled code at every 50-million-clock checkpoint and at the end;
   every translated instruction is held to the interpreter from random states
   (5,718,912 comparisons, 0 differences); the interpreter and the translator are
@@ -198,11 +198,29 @@ not the recompilation:
 
 ## Phase 2 - understood code
 
+Pause handler (`VGAME 0000:3A4E`, `vgame_pause`) integrated and gated:
+engine note off, timer saved in the guest stack, empty-input/repeated-Alt+P
+polling, then sound and timer restored after another key. Three targeted
+seeds compare 14,879 states exactly with returning sound-driver thunks and
+the existing BIOS/DOS answers. A real-input Alt+P/repeated-Alt+P/Space/quit
+probe runs the handler once; all 54 checkpoints/final hash match the original.
+Focused `matched_pause_wait` CTest and `pause_resume` route retain coverage.
+HUD colour setup (`1058:09D8`) and small/full layout (`1058:0A2C`) are also
+integrated and gated. Three planted seeds compare 26,500 states exactly;
+real-driver C/C toggles preserve 54 checkpoints/final hash. The full-layout
+window origin comes from the original graphics call. `matched_hud_layouts`
+CTest and `hud_layout_toggle` route retain coverage. The first pause gate's
+rotating seed found two changed-code fuzz inputs; an extended code watch
+passes 8,944 states at that seed, retained as `matched_frame_code_alias`.
+The combined full gate passes 24 tests, all 37 routes, both 5,718,912-state
+instruction profiles and three 789-address matched seeds (2,561,209,
+2,560,263 and 2,560,055 comparisons), with reachability/event checks.
+
 - [ ] Name the translated routines and data, with explanations, drawing on the
       Reimp's mapping; matched functions replacing translations one at a time,
       each held to the same parity checks. `tools/reimp_names.py` joins the
       Reimp's census (1,535 functions) with this project's regions as a private
-      lead list. 786 addresses are matched (781 of the census functions, 66,674 of
+      lead list. 789 addresses are matched (784 of the census functions, 67,369 of
       179,213 bytes); the table is at the end of `src/matched/matched.c` and the
       method is in [architecture.md](architecture.md#matched-routines-phase-2).
       The batches of 8-9 Oct add 37 + 34 + 47 VGAME, 34 + 40 + 45 START/END and 21 + 44 + 64

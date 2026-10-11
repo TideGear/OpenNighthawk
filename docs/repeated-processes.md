@@ -10,6 +10,55 @@ identical, and the proof is the same verdicts before and after.
 
 ## The gate (`tools/build_recomp.py`)
 
+Next isolated drawing helpers (11 Oct): projected-point diamond B0C2 and
+camera inset darkening C45C are rewritten privately while main stays fixed
+under the combined pause/HUD gate. The two-worker build waits until main
+regeneration ends and parity starts, avoiding shared generated-file writes
+during compilation. No verification/integration claim yet; drafts and build
+log remain outside the repository (`build-wt-diamond-camera.log`). The build
+passes after regeneration. Three targeted seeds compare 7,981/7,894/7,932
+states exactly in about 5.7 s concurrently; driver thunks return on both
+sides. The isolated suite passes all 24 tests in 11.95 s. A private
+F5/F6/F6 probe preserves all 54 hashes but reaches neither helper (F5
+selects armament, not the camera), so it is not proof of these entries.
+A reconnaissance replay with F6 darkening enabled is now running against
+the original and isolated builds; normal-driver reach remains unverified.
+
+Combined pause/HUD gate (11 Oct) passes in `gate-pause-hud-2.log`:
+24 unit tests, 37 routes, 789 matched addresses, affinity 0x00FFFFFF,
+16 route workers. Total 1,453 s: build 130, coverage 537, identical
+regeneration 18, parity 768. All 37 routes are identical (36 fresh
+interpreter runs, zero cache reuse); both instruction profiles, all three
+matched seeds and reachability/event checks pass. First `gate-pause.log` passes 22 unit tests and both
+instruction profiles but is aborted after its rotating seed finds two
+changed-code inputs: PLAYER's stack aliases/restores its RET, and VGAME's
+edge midpoint code lies below the watched entry. The repaired per-step
+watch/range passes that exact seed (8,944 comparisons, about one second),
+retained as `matched_frame_code_alias`. This is not a passing first gate.
+HUD real-driver C/C probes take 58.7/55.2 s concurrently, preserving all 54
+checkpoints and final hash; colour/layout handlers run once/twice.
+
+Isolated HUD colour/layout candidates (11 Oct) use two census entries:
+1058:09D8 falls through to 1058:0A2C. Three compact-mode-planted seeds
+compare 8,828/8,845/8,827 states exactly, about one second each concurrently;
+21 unit tests pass in 9.20 s. Normal-input C/C layout toggles are prepared
+in private `hud-layout.args` for interpreter/matched real-driver probes.
+These candidates are now integrated in the combined gate above; their
+earlier isolated checks do not replace that gate. `--only` takes an unpadded hexadecimal
+IP, not segment:offset; an incorrect filter silently compares no routines.
+Always inspect the per-routine comparison counts.
+
+Pause-handler matching (11 Oct) first probes Alt+P, repeated Alt+P, Space,
+then quit through normal input, using the original interpreter and isolated
+matched binary: 38.9/40.0 s concurrently with a two-worker build. All 54
+checkpoints and final hash agree; the matched handler runs once. Without
+returning sound-driver thunks the random harness skips every state. Enabling
+its existing driver fixture for the pause lets the existing DOS/BIOS answers
+exercise polling too: three targeted seeds compare 4,966/4,959/4,954 states,
+zero differences, about 0.4 s each. No keyboard code is patched. The focused
+CTest and normal-input `pause_resume` route retain this coverage. Main gate
+is pending in `gate-pause.log`, affinity 0x00FFFFFF, 16 route workers.
+
 Camera-plane/seam integration (11 Oct) reuses the existing observer captures:
 the final isolated 20-test run takes 5.98 s. Fine endpoints at N=4/9 pass
 for strike (444), landing (62), and air-to-air (54); three intermediate

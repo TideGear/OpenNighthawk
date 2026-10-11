@@ -286,5 +286,12 @@ if(F117R_BUILD_TESTS)
     # A random pair swap temporarily overwrites and then restores its own epilogue.
     add_test(NAME matched_order_code_alias COMMAND func_lockstep --states 4000
       --seed 0xc5ce5129a4d9 --only START.EXE:39B3,START.EXE:39D5,END.EXE:1CB1,END.EXE:1CD3)
+    add_test(NAME matched_pause_wait COMMAND func_lockstep --states 4000
+      --only VGAME.EXE:3A4E)
+    # Aliased data temporarily changes a format-reader RET and lower clip code.
+    add_test(NAME matched_frame_code_alias COMMAND func_lockstep --states 4000
+      --seed 0x5361129204e7 --only PLAYER.EXE:1E90,VGAME.EXE:577)
+    add_test(NAME matched_hud_layouts COMMAND func_lockstep --states 4000
+      --only VGAME.EXE:9D8,VGAME.EXE:A2C)
   endif()
 endif()

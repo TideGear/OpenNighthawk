@@ -13989,6 +13989,137 @@ static int vgame_panel_blit(machine_t *m)
     return 1;
 }
 
+/* HUD layout settings in original write order. Tape geometry includes its
+ * top, label-to-tape offset, label spacing/shift and label column; the rest
+ * places the compass, ladder window and text blocks. Byte settings preserve
+ * AH, as the original MOV AL does. No flags change while applying settings. */
+typedef struct { uint16_t at, small, full; uint8_t byte; } hud_setting;
+static void hud_settings(cpu_t *c, const hud_setting *settings, unsigned count, int small)
+{
+    for (unsigned i = 0; i < count; i++) {
+        const hud_setting *s = &settings[i];
+        const uint16_t value = small ? s->small : s->full;
+        if (s->byte) {
+            set_r8(c, R_AL, (uint8_t)value);
+            mem_write8(c, phys(c->seg[S_DS], s->at), get_r8(c, R_AL));
+        } else {
+            c->r[R_AX] = value;
+            ds_put(c, s->at, c->r[R_AX]);
+        }
+        c->icount += 2;
+    }
+}
+
+/* VGAME 1058:0A2C: small HUD when [294B] is exactly one, full otherwise.
+ * Full mode gets its ladder-window origin from the graphics library; keep
+ * that call rather than assuming a screen stride or driver return value. */
+static int vgame_hud_layout_apply(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 97)) return 0;
+    alu_sub(c, mem_read8(c, phys(c->seg[S_DS], 0x294B)), 1, 0, 0);
+    const int small = !!(c->flags & F_ZF);
+    c->icount += small ? 2 : 3;
+    static const hud_setting geometry[] = {
+        {0x291D,78,90,0}, {0x291F,8,17,1}, {0x2920,10,20,0}, {0x2922,0,1,1},
+        {0x2923,102,49,0}, {0x2925,204,255,0}, {0x291C,136,109,1},
+        {0x2927,18,45,0}, {0x2929,175,248,0}, {0x292B,4,10,0}, {0x292D,2,5,0},
+        {0x292F,0xFFE9,0xFFCE,0}, {0x2931,0xFFF8,0xFFF4,0},
+        {0x2933,9,13,0}, {0x2935,23,50,0}, {0x2937,26,52,0}, {0x2939,52,104,1},
+        {0x293A,31,79,0}, {0x293C,32,36,0}, {0x293E,60,52,0}, {0x2940,159,159,0}
+    };
+    hud_settings(c, geometry, sizeof geometry / sizeof geometry[0], small);
+    if (small) { c->r[R_AX] = 0x2380; c->icount++; }
+    else FAR_THEN(0x0BC4, 51);
+    ds_put(c, 0x2942, c->r[R_AX]);
+    c->icount++;
+    static const hud_setting window[] = {
+        {0x2944,66,160,0}, {0x2946,60,68,0}, {0x2948,108,60,0},
+        {0x285A,34,22,0}, {0x285C,74,82,0}
+    };
+    hud_settings(c, window, sizeof window / sizeof window[0], small);
+    /* Font 2 for small text, font 0 for full: one load and four stores. */
+    c->r[R_AX] = small ? 2 : 0;
+    ds_put(c, 0x2858, c->r[R_AX]); ds_put(c, 0x286E, c->r[R_AX]);
+    ds_put(c, 0x2884, c->r[R_AX]); ds_put(c, 0x289A, c->r[R_AX]);
+    c->icount += 5;
+    static const hud_setting text[] = {
+        {0x286C,20,6,0}, {0x2874,130,90,0}, {0x2876,188,230,0},
+        {0x28C4,54,69,0}, {0x28C6,76,73,0}, {0x28CA,153,147,0},
+        {0x28CC,55,44,0}, {0x28CE,13,25,0}, {0x28D0,9,15,0},
+        {0x28AC,130,90,0}, {0x28AE,25,12,0}, {0x28B0,59,141,0}, {0x28B2,2,3,0},
+        {0x2886,28,20,0}, {0x288A,126,78,0}, {0x288C,195,241,0}, {0x2898,22,16,0}
+    };
+    hud_settings(c, text, sizeof text / sizeof text[0], small);
+    near_ret(c);
+    c->icount++;
+    return 1;
+}
+
+/* VGAME 1058:09D8: share the label text pointer, choose the display's HUD
+ * colours (green or monochrome), then fall through to the layout selector. */
+static int vgame_hud_colours_init(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 18)) return 0;
+    c->r[R_AX] = ds_get(c, 0xE584);
+    ds_put(c, 0x28A4, c->r[R_AX]); ds_put(c, 0x28C2, c->r[R_AX]);
+    ds_put(c, 0x28E0, c->r[R_AX]); ds_put(c, 0x28FE, c->r[R_AX]);
+    alu_sub(c, ds_get(c, 0x43DE), 0, 1, 0);
+    const int colour = !(c->flags & F_ZF);
+    c->r[R_AX] = colour ? 10 : 15;
+    ds_put(c, 0x2850, c->r[R_AX]); ds_put(c, 0x2866, c->r[R_AX]);
+    ds_put(c, 0x2892, c->r[R_AX]);
+    mem_write8(c, phys(c->seg[S_DS], 0x28BD), get_r8(c, R_AL));
+    mem_write8(c, phys(c->seg[S_DS], 0x28DB), get_r8(c, R_AL));
+    mem_write8(c, phys(c->seg[S_DS], 0x2CA0), get_r8(c, R_AL));
+    c->r[R_AX] = colour ? 47 : 7;
+    ds_put(c, 0x287C, c->r[R_AX]);
+    mem_write8(c, phys(c->seg[S_DS], 0x2CA1), get_r8(c, R_AL));
+    c->icount += colour ? 18 : 17;
+    if (!vgame_hud_layout_apply(m)) c->ip = 0x0A2C;
+    return 1;
+}
+
+/* VGAME 0000:3A4E, pause with the engine note off. Keep the timer counter
+ * in the guest's stack local while polling: interrupt ticks continue during
+ * the wait, but must not affect the next frame's speed measurement. Alt+P
+ * itself is ignored; any other queued key ends the pause and restarts sound.
+ * Calls and each polling turn retain an event boundary. */
+static int vgame_pause(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 3)) return 0;
+    x86_enter(c, 2, 0);
+    cpu_push16(c, 0x19);
+    c->icount += 2;
+    FAR_THEN(0x3A54, 4);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_AX] = ds_get(c, 0x2646);
+    SETFRAME(-2, c->r[R_AX]);
+    c->icount += 3;
+    for (;;) {
+        NEAR_THEN(0xEBC4, 0x3A63, 0, 4);
+        c->r[R_AX] = (uint16_t)alu_op(c, 1, c->r[R_AX], c->r[R_AX], 1);
+        c->icount += 2;
+        if (c->flags & F_ZF) continue;
+        cpu_push16(c, 0);
+        c->icount++;
+        NEAR_THEN(0xEE6A, 0x3A6C, 0, 4);
+        c->r[R_BX] = cpu_pop16(c);
+        alu_sub(c, c->r[R_AX], 0x1900, 1, 0);
+        c->icount += 3;
+        if (!(c->flags & F_ZF)) break;
+    }
+    NEAR_THEN(0xD41F, 0x3A75, 0, 4);
+    c->r[R_AX] = FRAME(-2);
+    ds_put(c, 0x2646, c->r[R_AX]);
+    x86_leave(c);
+    near_ret(c);
+    c->icount += 4;
+    return 1;
+}
+
 /* VGAME 0000:8A18, right-aligned unsigned number: format the zero-extended
  * word into C604, measure the string, then draw at x - 4 * length.
  * Keep the stack local and live argument reads: formatting and the pushes
@@ -32071,6 +32202,9 @@ static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x114A, 0x0006, vgame_raster_line_block, "line clipped to the active text block", 2 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x114A, 0x03AD, vgame_panel_symbol, "blit a centred navigation symbol", 2 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x114A, 0x03FD, vgame_panel_blit, "blit a sprite rectangle", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1058, 0x09D8, vgame_hud_colours_init, "HUD display colours and layout", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1058, 0x0A2C, vgame_hud_layout_apply, "small or full HUD layout", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x3A4E, vgame_pause, "pause while preserving the frame timer", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x8A18, vgame_panel_number_right, "right-aligned unsigned panel number", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x881F, vgame_panel_hud_line, "line clipped to the current HUD box", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x898F, vgame_panel_text2, "panel text, second entry", 1 },

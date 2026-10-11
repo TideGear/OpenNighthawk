@@ -27,6 +27,15 @@ objectives or establish successful landing.
 | `kuwait_strike` | Kuwait / KU | Conventional War | Strike Missions |
 
 Libya / LB is the default theatre in `boot_to_flight` and `full_cycle`.
+`pause_resume` uses the same boot and default Libya mission, then presses
+Alt+P, Alt+P again, Space, and finally Alt+Q/Y. The repeated pause key stays
+inside the wait; Space releases it. The isolated matched handler ran once,
+with all 54 checkpoints and the final hash equal to the original interpreter.
+World-open and minimum exit-time milestones reject an early exit.
+`hud_layout_toggle` presses C twice during the same default flight to select
+the small then full HUD. Real-driver interpreter/matched probes match all
+54 checkpoints and the final hash; colour setup runs once and the separately
+callable layout selector twice. It also checks world-open and exit time.
 The speaker and Roland routes cover the other sound drivers and program
 load addresses. Together the routes select all nine worlds, three tension
 levels and four mission categories. Many individual objective types within a

@@ -9,6 +9,123 @@ checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 more than once, what it costs). State as of 11 October 2026.
 Earlier session logs are in `git log -p handoff.md`.
 
+## Pause/HUD gate passed; next drawing helpers isolated (11 Oct, 13:56 Pacific)
+
+Full gate `D:/f117-gate/gate-pause-hud-2.log` has finished, exit 0;
+session 33892 is closed. All 24 unit tests, 37 route comparisons, both
+5,718,912-state instruction profiles, all three 789-address matched seeds
+(2,561,209 / 2,560,263 / 2,560,055 comparisons), reachability and event-room
+checks pass. Duration 1,453 s: build 130, coverage 537, identical regeneration
+18, parity 768. There are 36 fresh interpreter runs and no cache reuse.
+The pause/HUD batch is ready to commit. Census refreshed: 784/1,535 functions,
+67,369/179,213 bytes; P2 40.71%, All 74.00%. Earlier pending notes below
+describe preparation and are superseded by this result.
+
+Next work is ONLY in `C:/Users/Tideg/f117-recomp-local/wt`: projected-point
+diamond `VGAME 0000:B0C2` (122 bytes) and camera darkening `0000:C45C`
+(94 bytes). Main remains at 789 addresses; isolated build has 791.
+Build `build-wt-diamond-camera.log` passes, targeted three seeds compare
+7,981 / 7,894 / 7,932 states exactly, and 24 unit tests pass in 11.95 s.
+Logs `diamond-camera-lockstep-{0,1,2}.log` and
+`test-wt-diamond-camera-unit.log` are private in `D:/f117-gate`.
+The initial F5/F6/F6 probe preserves all 54 hashes but reaches neither
+new helper; F5 selects armament, not camera. Do not claim that as proof.
+Recon replay plus F6 at 100M reaches C45C 1,608 times in isolated recomp,
+final `2aa0648449d98887` at 7,549,654,902 (71.4 s); interpreter session
+18121 is still running, recomp 76646 closed exit 0. Compare all hashes before
+accepting. Logs `recon-darken-{original,matched}.log`, output directories
+of the same names. Isolated strike replay session 52070 is live in
+`diamond-strike-matched.log`; compare with the main gate's fresh
+`C:/Users/Tideg/f117-recomp-local/runs/strike_interp` result, and require
+the B0C2 execution counter. No main integration/full-gate claim for these two.
+
+Latest visible allowance 74% at 13:54 Pacific, reset 17:01; seven-day 67%.
+Continue five-minute visible reads while above 20%, suspend owned work at
+or below 20% and check every thirty minutes until above 20%. Human Phase 4
+playtest question remains unanswered; keep those items open.
+
+## Combined pause/HUD gate preparation (11 Oct, 13:32 Pacific; passed above)
+
+Current turn is progress: HUD candidates pass random/real-driver checks and
+are now integrated with pause; repaired two invalid self-modifying fuzz cases.
+Main fixed sources are under fresh full gate `D:/f117-gate/gate-pause-hud-2.log`,
+session 33892. Poll this exact handle; do not restart on observation timeout.
+Code is uncommitted until full gate passes. Main unit log passes 24/24 at 13:33:50;
+coverage is live with 16 workers at 13:34. Main now has 789 addresses,
+24 unit CTests and 37 routes, with `hud_layout_toggle` added beside pause.
+Scoreboard/census remain at the last committed values until verification.
+
+The first pause gate `gate-pause.log` is **not a pass**: both instruction
+profiles and the first two matched seeds pass, but rotating seed
+`0x5361129204e7` exposes PLAYER 0000:1E90 and VGAME 130D:0577 mismatches.
+Preserved raw traces: `D:/f117-gate/pause-failure/func3_lockstep.log`.
+PLAYER SS:F38B + BP:E5E3 + 8 wraps to code 1E9B, replacing its RET; the
+original enters adjacent instructions, recurses and restores the bytes.
+VGAME DI:0561 aliases the bisection midpoint code below entry 0577;
+the original later executes 055F/056B. Its watch window omitted those bytes.
+The harness now watches PLAYER's reader per step and extends VGAME's range
+down 0x18 bytes. Retained CTest `matched_frame_code_alias` runs this seed.
+Targeted repaired proof: 8,944 states, zero mismatches, 23 invalid states
+skipped (`code-alias-fixed.log`). No matched implementation was changed by
+this harness repair. First gate's exact process tree was terminated after
+preserving evidence; session 76816 is closed, exit 1, not restarted.
+
+HUD real-driver C/C probes both pass world/exit milestones, all 54 hashes,
+final `89dfc62167b7ae04` at clock 2,727,067,963
+(`hud-layout-{original,matched}.log`, 58.7/55.2 s). Matched colour setup runs
+once, layout selector twice. Probe sessions 20907/30476 are closed, exit 0.
+Copies of the intentional matched/harness deltas are integrated; main's
+newer regressions preserved. The code below describes prior preparation.
+Latest visible allowance 74% at 13:33:58 Pacific, reset 17:01; seven-day 67%.
+
+## Isolated HUD colour/layout candidates (11 Oct, 13:28 Pacific; integrated above)
+
+Current turn makes progress while the pause gate runs: implements two new
+functions ONLY in `C:/Users/Tideg/f117-recomp-local/wt/src/matched/matched.c`.
+`vgame_hud_colours_init` 1058:09D8 (84 census bytes) falls through to
+`vgame_hud_layout_apply` 1058:0A2C (564). Both compact/full settings are named
+data; byte writes preserve AH, common font stores use one AX load, full
+layout calls the actual graphics helper at BC4 for its window origin.
+Do not replace that return with the Reimp's fixed 5200 assumption. Matched
+counts now 789 isolated only; main still 787 under its pause gate.
+
+Isolated build passes `build-wt-hud-layout-plants.log`; harness adds these
+entries to returning driver fixtures and plants DS:294B=1 to exercise compact
+mode. Three targeted seeds compare 8,828/8,845/8,827 states, zero mismatches,
+including mid-run boundaries (`hud-layout-lockstep-{0,1,2}.log`). First two
+filter syntaxes selected zero routines; those were not proof. Correct syntax
+is `--only VGAME.EXE:9D8,VGAME.EXE:A2C`, unpadded IP, no segment. Check the
+per-routine lines. Unit run `test-wt-hud-layout-unit.log` passes 21 tests in
+9.20 s. Private C/C toggle route real-driver probes are next; no integration
+or full-gate claim. Main sources stay fixed for pause gate session 76816.
+Asked owner asynchronously for controls/save/feel playtest results; no answer
+yet, so Phase 4 stays open. Latest allowance 79% at 13:23:49 Pacific.
+
+## Pause-handler integration under gate (11 Oct, 13:16 Pacific)
+
+Previous goal turn made progress: camera-plane/seam rendering committed and
+pushed as `5361129`, main clean before this batch. Current turn adds
+`vgame_pause` at VGAME `0000:3A4E`: sound off, save DS:2646 in guest frame,
+poll input while empty or Alt+P, restore sound and the saved timer. Calls,
+stack aliasing and instruction/event boundaries are preserved. Main sources
+are fixed for `D:/f117-gate/gate-pause.log`, session 76816; do not restart
+or commit code until the gate passes. Main unit log shows 22/22 passed;
+coverage is live with 16 workers as of 13:17 Pacific. Adds `matched_pause_wait` CTest and
+normal-input `tools/routes/pause_resume.args` (36 routes total).
+
+Isolated build passes (`build-wt-pause.log`/`build-wt-pause-thunks.log`).
+Without sound thunks, 4,000 random states all skip. Enabling the existing
+returning driver fixture for this handler allows the harness's normal
+DOS/BIOS answers to reach its polling/return paths; no keyboard code is
+patched. Targeted three seeds compare 4,966/4,959/4,954 states, zero
+mismatches, including mid-run limits (`pause-lockstep-thunk-{0,1,2}.log`).
+Real-input original/matched probes (`pause-{original,matched}.log`) both
+pass world/exit milestones, all 54 hashes and final `cdca1b902f63d18b` at
+2,727,068,014 clocks. Matched handler runs once. Host time 38.9/40.0 s.
+No full-gate claim yet; census/scoreboard not advanced before verification.
+Remaining Phase 2 lead: HUD colour setup private draft in `next-drafts`.
+Latest visible allowance 86% at 13:13:29 Pacific, reset 17:01; 7-day 69%.
+
 ## Camera-plane rendering and seam repair gated (11 Oct, 12:50 Pacific)
 
 Continued the roadmap. Main now contains the isolated camera snapshots,
