@@ -960,12 +960,16 @@ static int setup_axis_spread(machine_t *m) { return axis_spread(m, 0x0E1C, 0x0E0
 
 /* VGAME 0x04ABA, eventlog_add(kind, target): while the log at B9F0 (6-byte
  * records, count [951A]) has fewer than 255, append (mission time [9912],
- * x >> 7, y >> 7, kind, target) and zero the next record's kind byte. */
+ * x >> 7, y >> 7, kind, target) and zero the next record's kind byte. kind
+ * and target are read from the stack late, the same point the original
+ * reads [bp+4]/[bp+6] (after the first three fields are written) rather
+ * than up front: the earlier writes can land on that same stack slot when
+ * DS and SS alias in a fuzzed state, and the original's own late read
+ * would see its own write, which an early, cached read would miss. */
 static int vgame_eventlog_add(machine_t *m)
 {
     cpu_t *c = &m->cpu;
     if (!room(c, 22)) return 0;
-    const uint16_t kind = arg(c, 0), target = arg(c, 1);
     cpu_push16(c, c->r[R_BP]);
     c->r[R_BP] = c->r[R_SP];
     alu_sub(c, ds_get(c, 0x951A), 0xFF, 1, 0);                    /* cmp [951A], 255 */
@@ -979,9 +983,11 @@ static int vgame_eventlog_add(machine_t *m)
         mem_write8(c, phys(ds, (uint16_t)(bx - 0x45A8)), (uint8_t)ax);
         ax = x86_shift(c, 5, ds_get(c, 0xC0DE), 7, 1);
         mem_write8(c, phys(ds, (uint16_t)(bx - 0x45A7)), (uint8_t)ax);
-        mem_write8(c, phys(ds, (uint16_t)(bx - 0x45A6)), (uint8_t)kind);
-        mem_write8(c, phys(ds, (uint16_t)(bx - 0x45A5)), (uint8_t)target);
-        c->r[R_AX] = (uint16_t)((ax & 0xFF00) | (target & 0xFF));
+        const uint8_t kind = mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] + 4)));
+        mem_write8(c, phys(ds, (uint16_t)(bx - 0x45A6)), kind);
+        const uint8_t target = mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] + 6)));
+        mem_write8(c, phys(ds, (uint16_t)(bx - 0x45A5)), target);
+        c->r[R_AX] = (uint16_t)((ax & 0xFF00) | target);
         ds_put(c, 0x951A, (uint16_t)alu_inc(c, ds_get(c, 0x951A), 1));
         bx = x86_imul3(c, ds_get(c, 0x951A), 6);
         mem_write8(c, phys(ds, (uint16_t)(bx - 0x45A6)), 0);

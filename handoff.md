@@ -147,6 +147,56 @@ Separately, two of the three P1 threshold-tightening and three doubtable-
 investigation asks from earlier this session are already committed (see
 below); the audit above was read-only, no code changed for it.
 
+## Bug fix in an already-matched routine: vgame_eventlog_add (10 Oct, 19:35 PDT)
+
+Attempted a new routine, `vgame_sky_low_detail` (VGAME 0x0FB20, far-called,
+sets the sky's low-detail flag then calls an unmatched redraw helper).
+It passed every lockstep check at every seed (0 comparable states,
+correctly classified "routes only" like `vgame_isrclock_init`), but the
+full gate's step 8 ("every routes-only routine runs on a route") failed:
+**none of the ~34 scripted routes ever call it** - no evidence it's
+correct beyond static reading. Reverted; not committed. Lesson: "routes
+only" from the lockstep is not sufficient on its own - the gate's own
+route-coverage check is the real bar for an unfuzzable routine, and it's
+worth confirming informally (e.g. grepping the routes' recorded inputs
+for whatever toggles the relevant setting) before investing in a
+candidate that may end up with zero coverage.
+
+While the gate was re-running for that attempt, its seed-7c check (this
+commit's own derived seed) found a genuine, pre-existing bug in an
+**already-matched, already-committed** routine from an earlier session:
+`vgame_eventlog_add` (VGAME 0x04ABA). It cached its two stack arguments
+(`kind`, `target`) via `arg()` at the top of the function, but the real
+original reads them late - `mov al,[bp+4]` and `mov al,[bp+6]`, after
+three prior writes to the event-log record. In this fuzzed state DS and
+SS happened to alias such that one of those writes landed on the stack
+slot holding `target`, and the original's late read observes its own
+write while the matched code's early, cached read didn't. Confirmed by
+full verbose trace (`AX 00FE vs 0001`, all other registers identical) and
+by hand-checking `arg()`'s own doc comment ("whose BP frame is not yet
+built") against the point it was actually being called - after the frame
+was already built elsewhere in the same function made this easy to miss
+on a skim. Fixed by reading both arguments at their correct point in
+program order (via `c->r[R_BP]+4`/`+6` directly, not `arg()`, since the
+frame is built by then) instead of hoisting them. Reverified on the
+exact failing seed (0x4c357fd31ed6: 3,986 states, 0 mismatching), the
+default seed (59,911 states) and 0xC0FFEE/0xDEADBEEF (clean), the full
+775-routine suite (0 mismatching), and the full gate (0 DIFFERENT routes,
+every check clean, exit 0). Committed/pushed. Scoreboard unchanged
+(770/1,535 functions, P2 39.83%, All 71.78%) - this fixes an existing
+match, it doesn't add one.
+
+**Why this matters beyond the one routine**: this is the second time this
+session a gate failure traced back to something *other* than the change
+being verified (the first was the stall misdiagnosis, which turned out
+to be environmental, not code). Full gate reruns compare against a
+*new* per-commit seed every time (`this commit's seed 0x...`, derived
+from HEAD), so previously-matched, previously-passing routines are not
+permanently proven - each new commit's seed re-rolls the dice on every
+one of them. A failure in the full gate always needs its MISMATCH line
+checked for which routine actually failed before assuming it's the one
+just added.
+
 ## Phase 2 checkpoint: vgame_free (10 Oct, 18:38 PDT)
 
 VGAME 0x0F8EC (`vgame_free`) is matched, verified and committed/pushed:

@@ -324,6 +324,20 @@ not the recompilation:
       (66,505/4,411/4,436 comparable states) and the full 775-routine
       suite (2,509,526 comparisons, zero mismatching).
 
+      A latent aliasing bug was found and fixed in an already-matched
+      routine, `vgame_eventlog_add` (`0x04ABA`): it cached its two stack
+      arguments up front, but the original reads them late - after three
+      prior writes to the event-log record - and in a fuzzed state where
+      DS and SS alias, one of those writes can land on the stack slot
+      holding an argument the original hasn't read yet. The original's
+      late read sees its own write; the matched code's early, cached read
+      did not. Found by a new commit's per-run seed in the full gate's
+      seed 7c check (step 7a/7b at the same commit were clean - this is
+      a low-probability state, not a systematic one). Fixed by reading
+      both arguments at the same point in program order as the original
+      instead of hoisting them. No new address matched; this fixes an
+      existing one.
+
 ## Phase 3 - fixes and enhancements (switchable)
 
 - [x] **Code overrides** attach fixes: hand-written C registered for a module
