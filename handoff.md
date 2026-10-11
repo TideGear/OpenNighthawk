@@ -111,6 +111,28 @@ Separately, two of the three P1 threshold-tightening and three doubtable-
 investigation asks from earlier this session are already committed (see
 below); the audit above was read-only, no code changed for it.
 
+## Phase 2 checkpoint: isrclock_init (10 Oct, 17:00 PDT)
+
+VGAME 0x01C0E (`vgame_isrclock_init`, hooks the timer tick vector) is
+matched, verified and committed/pushed. Small (18 instructions), entirely
+linear, used the project's established `sm4_int`/`SM4_AT`/`SM4_NEED`
+DOS-interrupt helpers (same family as `vgame_restore_vectors`) rather
+than a literal instruction transcription. Unfuzzable by random-state
+lockstep (0 states comparable at any seed - "routes only," confirmed by
+the full gate's own routes-only check that it actually ran). Full gate
+PASSED clean: 17/17 unit tests, 35/35 routes IDENTICAL, both instruction
+profiles and all three matched-routine seeds zero mismatches. Scoreboard:
+772 addresses matched, 767 of 1,535 census functions, 65,585 of 179,213
+bytes; P2 39.77%, All 71.76%.
+
+Also confirmed (useful for next time): the census's "implemented_by"
+column is unreliable as a lead-filter - at least three addresses this
+session (`0xEE0C`, `0x4D5D`, and others checked in passing: `0xE3BF`,
+`0xDB3C`, `0x4E5F`) showed as unmatched in a fresh `census.tsv` regen but
+were already matched and registered. Always grep `src/matched/matched.c`
+directly for `VGAME_47304, 0x0000, 0xNNNN,` before spending time drafting
+a "fresh" lead.
+
 ## Phase 2 lead attempted and reverted: VGAME 0x4657 (10 Oct, 16:00 PDT)
 
 Extended the already-matched `vgame_release_count` (0x462E) to cover its

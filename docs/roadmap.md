@@ -202,7 +202,7 @@ not the recompilation:
       Reimp's mapping; matched functions replacing translations one at a time,
       each held to the same parity checks. `tools/reimp_names.py` joins the
       Reimp's census (1,535 functions) with this project's regions as a private
-      lead list. 771 addresses are matched (766 of the census functions, 65,448 of
+      lead list. 772 addresses are matched (767 of the census functions, 65,585 of
       179,213 bytes); the table is at the end of `src/matched/matched.c` and the
       method is in [architecture.md](architecture.md#matched-routines-phase-2).
       The batches of 8-9 Oct add 37 + 34 + 47 VGAME, 34 + 40 + 45 START/END and 21 + 44 + 64
@@ -274,6 +274,17 @@ not the recompilation:
       random states incomparable - the routes' real gameplay inputs are the
       stronger check here, via the full gate below). Planted test values added
       for the weapon-lock match condition (`tests/func_lockstep.c`).
+
+      The timer tick vector hook (`0x01C0E`, `vgame_isrclock_init`) is now
+      matched: four run-time counters reset, the timer rate calibrated
+      (already-matched `0x01D88`), then INT 8's old vector saved and the
+      new one installed from a fixed far pointer, using the project's
+      established `sm4_int`/`SM4_AT` DOS-interrupt helpers rather than a
+      literal transcription. Entirely linear, no branches. Unfuzzable by
+      random-state lockstep (DOS interrupt-vector installation doesn't
+      produce a comparable state from random inputs - "routes only," like
+      the picture decoder's steps); verified instead by the full gate,
+      which confirmed it actually ran on a route and passed clean.
 
 ## Phase 3 - fixes and enhancements (switchable)
 

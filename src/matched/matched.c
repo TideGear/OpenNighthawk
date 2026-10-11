@@ -12153,6 +12153,44 @@ static int mps_logo_restore_vectors(machine_t *m) { return sm4_restore_vectors(m
 static int dswap_restore_vectors(machine_t *m) { return sm4_restore_vectors(m, &SM4_VECTORS_DSWAP); }
 static int setup_restore_vectors(machine_t *m) { return sm4_restore_vectors(m, &SM4_VECTORS_SETUP); }
 
+/* VGAME 0x01C0E, isrclock_init: four run-time counters reset, a far
+ * helper called, then the timer tick vector (INT 8) is hooked - the old
+ * one saved at CS:[0x1CFD]/[0x1CFF], the new one read from the fixed far
+ * pointer at CS:[0x1C97] and installed - and a ready flag set. */
+static int vgame_isrclock_init(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = 0x1C0E;
+    if (!room(c, 5)) return 0;
+    ds_put(c, 0x2636, 1);
+    ds_put(c, 0x2640, 1);
+    ds_put(c, 0x262C, 0);
+    ds_put(c, 0x262E, 0);
+    c->icount += 4;
+    if (!guest_call(m, 0x1D88, SM4_AT(0x1B))) return 1;
+    SM4_NEED(3, SM4_AT(0x1B));
+    set_r8(c, R_AH, 0x35);
+    set_r8(c, R_AL, 0x08);
+    c->icount += 2;
+    if (!sm4_int(m, SM4_AT(0x1F))) return 1;
+    SM4_NEED(7, SM4_AT(0x21));
+    seg_write16(c, c->seg[S_CS], 0x1CFD, c->r[R_BX]);
+    seg_write16(c, c->seg[S_CS], 0x1CFF, c->seg[S_ES]);
+    cpu_push16(c, c->seg[S_DS]);
+    set_r8(c, R_AH, 0x25);
+    set_r8(c, R_AL, 0x08);
+    c->r[R_DX] = seg_read16(c, c->seg[S_CS], 0x1C97);
+    c->seg[S_DS] = seg_read16(c, c->seg[S_CS], 0x1C99);
+    c->icount += 6;
+    if (!sm4_int(m, SM4_AT(0x35))) return 1;
+    SM4_NEED(4, SM4_AT(0x37));
+    c->seg[S_DS] = cpu_pop16(c);
+    ds_put8(c, 0x262B, 1);
+    c->icount += 3;
+    near_ret(c);
+    return 1;
+}
+
 /* VGAME 0x0EBC4, kbhit(): a character pushed back ([ungot], high byte 0)
  * answers FFh at once; otherwise the console hook at [hook] is called with
  * BX = FFFFh when [hook - 2] holds its signature D6D6h, and DOS function 0Bh
@@ -31740,6 +31778,7 @@ static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x1452, 0x07B7, vgame_read_dac, "read the whole DAC", 2 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x1E1D, vgame_retrace_timer, "timer count at a retrace", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x1D88, vgame_timer_calibrate, "set the timer rate from the refresh", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x1C0E, vgame_isrclock_init, "hook the timer tick vector", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x1039, 0x0000, vgame_palette_build, "build the view's palette", 2 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x120A, 0x0E5B, vgame_model_depth_order, "a model's faces in depth order", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x1058, 0x0CC1, vgame_joystick_port, "time both joystick axes", 1 },
