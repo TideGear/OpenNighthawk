@@ -12300,6 +12300,34 @@ static int vgame_frame_mission_start(machine_t *m)
     return 1;
 }
 
+/* VGAME 0FB2:04FE, camimage_background_raster(row): sets up a fixed
+ * raster-table pointer (BX=0x22A1) and origin (AX/CX from DS:0x2615/
+ * 0x2617) for a caller-supplied row/band argument (DX, [bp+6]), then
+ * calls the driver raster service at 1E42:01D3. */
+static int vgame_camimage_background_raster(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 8)) return 0;
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    x86_push_reg(c, R_DI);
+    x86_push_reg(c, R_SI);
+    c->r[R_AX] = ds_get(c, 0x2615);
+    c->r[R_CX] = ds_get(c, 0x2617);
+    c->r[R_BX] = 0x22A1;
+    c->r[R_DX] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 6));
+    c->icount += 8;
+    if (!guest_call_far(m, 0x0510, 0x0515)) return 1;
+
+    if (!room(c, 4)) { c->ip = 0x0515; return 1; }
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 4;
+    far_ret(c);
+    return 1;
+}
+
 /* VGAME 0x0EBC4, kbhit(): a character pushed back ([ungot], high byte 0)
  * answers FFh at once; otherwise the console hook at [hook] is called with
  * BX = FFFFh when [hook - 2] holds its signature D6D6h, and DOS function 0Bh
@@ -31930,6 +31958,7 @@ static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x1C0E, vgame_isrclock_init, "hook the timer tick vector", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xBAA2, vgame_init_models, "copy a model-type's byte table", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x1E72, vgame_frame_mission_start, "sample the BIOS tick count's low word", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0FB2, 0x04FE, vgame_camimage_background_raster, "set up the background raster for a row", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x1039, 0x0000, vgame_palette_build, "build the view's palette", 2 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x120A, 0x0E5B, vgame_model_depth_order, "a model's faces in depth order", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x1058, 0x0CC1, vgame_joystick_port, "time both joystick axes", 1 },
