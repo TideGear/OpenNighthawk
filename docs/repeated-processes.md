@@ -10,6 +10,15 @@ identical, and the proof is the same verdicts before and after.
 
 ## The gate (`tools/build_recomp.py`)
 
+The cockpit startup gate (10 Oct, `gate-panel-init.log`) took 898 seconds:
+translation/build and 17 tests 86, fresh coverage 506, byte-identical
+regeneration 16, parity 290. All 35 routes, both instruction profiles and
+three 781-entry matched seeds pass (2,524,384/2,523,430/2,525,425 routine
+comparisons, no differences), with reachability and event limits checked.
+34 interpreter sessions were reused, affinity 0x00FFFFFF, 16 route workers.
+Three targeted seeds compare 14,971 states in about 6.7 seconds per seed
+concurrently. A two-worker worktree build overlapped coverage and parity.
+
 The two-panel-helper gate (10 Oct, `gate-panel-helpers.log`) took 1,010
 seconds: translation/build and 17 unit tests 91, fresh coverage 559,
 byte-identical regeneration 17, parity 342 (rounded stages). All 35 routes,

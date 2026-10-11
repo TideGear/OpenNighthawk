@@ -9,6 +9,36 @@ checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 more than once, what it costs). State as of 10 October 2026.
 Earlier session logs are in `git log -p handoff.md`.
 
+## Cockpit startup checkpoint (10 Oct 2026)
+
+Continued from `01f4dbd`. Matched display fill `114A:0280` and cockpit
+initialisation `0000:796E`: both pen colours, display bounds and active
+page, four startup elements, invalidated legend cache and objectives-page
+selection. 781 addresses, 776 census functions, 66,083 bytes; P2 40.03%,
+All 71.83%. Three targeted seeds compare 5,021/4,985/4,965 states without
+differences. Full gate `D:/f117-gate/gate-panel-init.log` passes in 898 s:
+17 tests, 35 identical routes, both 5,718,912-state instruction profiles,
+three matched seeds (2,524,384/2,523,430/2,525,425 comparisons),
+reachability and event-room checks. No main-tree gate remains.
+
+**Latest owner instruction: "Do the HUD like the Reimp."** Implementing
+in `C:/Users/Tideg/f117-recomp-local/wt`: fine-grid HUD lines and ticks,
+scale-proportional width with `--present-line-width 0..20`, original pixel
+text/artwork. Colour operations preserve fine pixels; page copies carry
+the stroke mask so the flat-pixel guard retains intentionally wide strokes.
+New `test_present_lines` passes; corrected recorded-flight scene checks
+are in progress. Presentation changes are not yet in the main tree.
+The old `p3-stage3/strike1.log` and air logs lack colour-replace records
+and fail on the unchanged baseline too; use `p3-live/logs41/w_*.log`.
+
+The same worktree also contains the NEXT Phase 2 candidates, symbol blit
+`114A:03AD` and sprite rectangle blit `114A:03FD`, **not merged or fully
+gated**. Three targeted seeds pass 8,246/8,270/8,259 comparable states
+(`D:/f117-gate/target-panel-blits-{0,1,2}.log`). Do not copy its whole
+matched.c/harness over the main tree: that worktree is based on `01f4dbd`
+and lacks this checkpoint's two startup helpers. Bring presentation files
+forward separately after this checkpoint, then run its full gate.
+
 ## Panel helper checkpoint (10 Oct 2026)
 
 Continued from `a91d716`. Added `vgame_panel_number_right` (`0000:8A18`)

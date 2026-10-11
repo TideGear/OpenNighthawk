@@ -13660,6 +13660,77 @@ static int vgame_orientation_build(machine_t *m)
 #define FRAME(o) seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + (o)))
 #define SETFRAME(o, v) seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + (o)), (v))
 
+/* VGAME 114A:0280, fill one cockpit display after setting both text
+ * records' pen colours. Display 1 uses x=74..150, the other x=169..245;
+ * both use y=110..169. The active page selects the record passed to the
+ * rectangle helper. Reads stay in order because records may alias them. */
+static int vgame_panel_display_fill(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 18)) return 0;
+    x86_enter(c, 2, 0);
+    c->r[R_AX] = FRAME(8);
+    c->r[R_BX] = ds_get(c, 0x4010);
+    ds_put(c, (uint16_t)(c->r[R_BX] + 4), c->r[R_AX]);
+    c->r[R_BX] = ds_get(c, 0x4028);
+    ds_put(c, (uint16_t)(c->r[R_BX] + 4), c->r[R_AX]);
+    alu_sub(c, FRAME(6), 1, 1, 0);
+    const int left = (c->flags & F_ZF) != 0;
+    cpu_push16(c, 169);
+    cpu_push16(c, left ? 150 : 245);
+    cpu_push16(c, 110);
+    cpu_push16(c, left ? 74 : 169);
+    alu_sub(c, mem_read8(c, phys(c->seg[S_DS], 0x40B6)), 0, 0, 0);
+    const int second = (c->flags & F_ZF) == 0;
+    c->r[R_AX] = ds_get(c, second ? 0x4028 : 0x4010);
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += second ? 17 : 16;
+    if (!guest_call_far(m, 0x02C7, 0x02CC)) return 1;
+    if (!room(c, 2)) { c->ip = 0x02CC; return 1; }
+    x86_leave(c);
+    c->ip = cpu_pop16(c);
+    c->seg[S_CS] = cpu_pop16(c);
+    c->icount += 2;
+    return 1;
+}
+
+/* VGAME 0000:796E, initialise the cockpit's displays: clear the right
+ * aperture, paint elements 16h/1Dh/0 on the first record and 0 on the
+ * second, invalidate the legend cache, and select the objectives page.
+ * Each record pointer is read after the preceding draw has returned. */
+static int vgame_panel_init(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 3)) return 0;
+    cpu_push16(c, 0);
+    cpu_push16(c, 2);
+    c->icount += 2;
+    if (!guest_call_far(m, 0x7972, 0x7977)) return 1;
+    if (!room(c, 6)) { c->ip = 0x7977; return 1; }
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    c->icount += 2;
+    static const uint16_t elements[] = { 0x16, 0x1D, 0, 0 };
+    static const uint16_t returns[] = { 0x7984, 0x7992, 0x79A0, 0x79AE };
+    for (unsigned i = 0; i < 4; i++) {
+        if (i) {
+            c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0);
+            c->icount++;
+        }
+        cpu_push16(c, 1);
+        cpu_push16(c, elements[i]);
+        cpu_push16(c, ds_get(c, i == 3 ? 0x4040 : 0x4010));
+        c->icount += 3;
+        NEAR_THEN(0xD578, returns[i], 0, i == 3 ? 4 : 5);
+    }
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0);
+    ds_put(c, 0x40CA, 0);
+    ds_put(c, 0xE008, 0x18);
+    c->icount += 4;
+    near_ret(c);
+    return 1;
+}
+
 /* VGAME 0000:8A18, right-aligned unsigned number: format the zero-extended
  * word into C604, measure the string, then draw at x - 4 * length.
  * Keep the stack local and live argument reads: formatting and the pushes
@@ -31735,6 +31806,8 @@ static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x3A0D, vgame_panel_mode_3, "panel mode 3", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x8435, vgame_cockpit_layout, "cockpit layout", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x895E, vgame_panel_text, "panel text", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x114A, 0x0280, vgame_panel_display_fill, "fill a cockpit display and set its pens", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x796E, vgame_panel_init, "initialise displays and select objectives", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x8A18, vgame_panel_number_right, "right-aligned unsigned panel number", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x881F, vgame_panel_hud_line, "line clipped to the current HUD box", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x898F, vgame_panel_text2, "panel text, second entry", 1 },
