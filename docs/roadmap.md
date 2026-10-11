@@ -202,7 +202,7 @@ not the recompilation:
       Reimp's mapping; matched functions replacing translations one at a time,
       each held to the same parity checks. `tools/reimp_names.py` joins the
       Reimp's census (1,535 functions) with this project's regions as a private
-      lead list. 773 addresses are matched (768 of the census functions, 65,692 of
+      lead list. 774 addresses are matched (769 of the census functions, 65,699 of
       179,213 bytes); the table is at the end of `src/matched/matched.c` and the
       method is in [architecture.md](architecture.md#matched-routines-phase-2).
       The batches of 8-9 Oct add 37 + 34 + 47 VGAME, 34 + 40 + 45 START/END and 21 + 44 + 64
@@ -300,6 +300,16 @@ not the recompilation:
       two more seeds, all zero mismatches; the full 773-routine suite
       passes at 2,505,089 comparisons, zero mismatching, and the full gate
       (every route IDENTICAL, every check) confirms it clean.
+
+      A clock sample (`0x01E72`, `vgame_frame_mission_start`) is now matched:
+      zeroes AH, reads the BIOS tick count (INT 1Ah), and returns its low
+      word (DX) in AX - a frame or mission's start timestamp. Four
+      instructions, the interrupt handled by the project's generic
+      `sm4_int` rather than a literal int-dispatch transcription (the same
+      helper used for DOS calls; it does not care which vector). Routes
+      only, like the timer-vector hook above - 0 states comparable at any
+      seed - verified by the full gate's routes-only check and a clean
+      774-routine suite (2,505,089 comparisons, zero mismatching).
 
 ## Phase 3 - fixes and enhancements (switchable)
 

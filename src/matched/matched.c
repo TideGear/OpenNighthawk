@@ -12276,6 +12276,24 @@ static int vgame_init_models(machine_t *m)
     return 1;
 }
 
+/* VGAME 0x01E72, frame_mission_start(): the BIOS tick count's low word
+ * (INT 1Ah, AH=0 at entry returns CX:DX; the caller only wants DX), used
+ * to sample the clock at the start of a frame or mission. */
+static int vgame_frame_mission_start(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = 0x1E72;
+    if (!room(c, 1)) return 0;
+    set_r8(c, R_AH, (uint8_t)alu_op(c, 6, get_r8(c, R_AH), get_r8(c, R_AH), 0));
+    c->icount += 1;
+    if (!sm4_int(m, SM4_AT(0x02))) return 1;                      /* int 0x1A */
+    SM4_NEED(2, SM4_AT(0x04));
+    c->r[R_AX] = c->r[R_DX];
+    c->icount += 2;                                               /* mov, ret */
+    near_ret(c);
+    return 1;
+}
+
 /* VGAME 0x0EBC4, kbhit(): a character pushed back ([ungot], high byte 0)
  * answers FFh at once; otherwise the console hook at [hook] is called with
  * BX = FFFFh when [hook - 2] holds its signature D6D6h, and DOS function 0Bh
@@ -31865,6 +31883,7 @@ static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x1D88, vgame_timer_calibrate, "set the timer rate from the refresh", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x1C0E, vgame_isrclock_init, "hook the timer tick vector", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xBAA2, vgame_init_models, "copy a model-type's byte table", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x1E72, vgame_frame_mission_start, "sample the BIOS tick count's low word", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x1039, 0x0000, vgame_palette_build, "build the view's palette", 2 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x120A, 0x0E5B, vgame_model_depth_order, "a model's faces in depth order", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x1058, 0x0CC1, vgame_joystick_port, "time both joystick axes", 1 },

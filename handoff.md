@@ -147,6 +147,48 @@ Separately, two of the three P1 threshold-tightening and three doubtable-
 investigation asks from earlier this session are already committed (see
 below); the audit above was read-only, no code changed for it.
 
+## Phase 2 checkpoint: frame_mission_start (10 Oct, 18:08 PDT)
+
+VGAME 0x01E72 (`vgame_frame_mission_start`, samples the BIOS tick count's
+low word) is matched, verified and committed/pushed. Four instructions:
+zero AH, INT 1Ah (BIOS get-time), `mov ax,dx`, ret. Used the project's
+generic `sm4_int` helper (it only cares about the INT instruction's
+address and the original SP/return address, not which vector or whether
+the service is host-synthesized or real guest code) rather than writing a
+one-off dispatch. Routes only - 0 comparable states at any seed, same as
+`vgame_isrclock_init`. Full gate PASSED clean (0 DIFFERENT routes, both
+instruction profiles and all three matched-routine seeds zero mismatches,
+every routes-only routine ran, exit 0). Scoreboard: 774 addresses matched,
+769 of 1,535 census functions, 65,699 of 179,213 bytes; P2 39.83%, All
+71.77%.
+
+**Trap hit and recovered while picking this lead**: grepped `matched.c`
+for the census's `0x00986` (5 hex digits, as the census prints it) and
+found nothing, concluded it was unmatched, wrote and registered a full
+duplicate `vgame_init_mode` there. The targeted lockstep immediately
+showed two entries at the same address ("graphics mode setup" and mine) -
+`matched.c`'s own table spells the same address `0x0986` (4 digits, no
+leading zero), so the literal-string grep silently missed the existing
+entry. Reverted cleanly before any build/gate cost. **Fix for next time**:
+cross-reference by parsed/normalized address (int value), never by
+grepping the hex string in either direction - a short Python pass that
+parses `MATCHED[]`'s own `(binary, bank, offset)` triples and compares
+them as integers against the census rows is in this session's history;
+worth turning into a real tool (`tools/addrmap.py` is referenced in older
+memory notes but does not exist in this checkout - it should be written,
+not assumed).
+
+**Also hit and resolved**: the first lockstep run (60,000 states,
+background) stalled for ~34 minutes at ~10s of CPU time - not a code bug.
+Rerunning the identical command (same binary, same states, same seed)
+foreground completed in seconds with a clean result, so it was an
+environment glitch (most likely the sync client locking the freshly
+linked `func_lockstep.exe` on first launch; this repo's working copy
+lives in a synced folder, see `build.cmd`'s own comment on this). If a
+lockstep run seems to hang with near-zero CPU use, check `Get-Process`
+CPU time against wall time before assuming the new routine is at fault -
+a genuine infinite loop in guest code would burn CPU, not sit idle.
+
 ## Phase 2 checkpoint: init_models (10 Oct, 17:33 PDT)
 
 VGAME 0x0BAA2 (`vgame_init_models`, copies a model-type's byte table) is
