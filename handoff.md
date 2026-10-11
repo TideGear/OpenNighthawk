@@ -9,6 +9,38 @@ checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 more than once, what it costs). State as of 10 October 2026.
 Earlier session logs are in `git log -p handoff.md`.
 
+## Route-coverage trap, hit twice in a row (10 Oct, 19:30-20:02 PDT)
+
+Two "routes only" VGAME leads in a row (`0x0FB20` sky-detail setter,
+then `0x01B9` a cold-start init/sound sequence) passed every lockstep
+check at every seed cleanly, then failed the full gate's step 8 ("every
+routes-only routine runs on a route") - no scripted route actually
+reaches either one. Both reverted after the fact, each costing a full
+~16-minute gate run to find out.
+
+For the second one, before building, I traced its single call site
+statically (`x86dec`, instruction-aligned, not a byte-scan) to a key-
+dispatch branch gated on AX == 0x0B00 (scan code 0x0B, a "0" keypress),
+then confirmed a route's recorded input script does send a literal "0"
+during VGAME. That still was not reached. **The lesson: a route sending
+the right-looking key somewhere is not evidence the exact code path
+executes** - the key could be consumed by a different, earlier dispatch
+entry, a different game mode/screen than the route is in when it sends
+it, or my read of the AX encoding could simply be wrong. Static call-
+graph tracing answers "is there a path," not "does any route's actual
+play reach it." **The only check that actually answers the real
+question is the full gate's own step 8** - there is no cheaper
+substitute in this repo (no `callers.py`/`addrmap.py`/`F117_WATCH`
+despite older memory notes suggesting otherwise; checked, none exist).
+
+Going forward: prefer candidates that produce **comparable random-fuzz
+states** at all (not "routes only") - those get a real verification
+signal immediately from targeted lockstep, with no full-gate gamble on
+reachability. Save "routes only" leads (DOS interrupt installs, fixed
+init sequences gated on rare conditions) for when a route is already
+known via other evidence to hit them, or accept the cost of checking
+step 8 specifically before writing the next one.
+
 ## IMPORTANT CORRECTION: the combat/speed finding further down is stale
 
 The "Combat rate falls with speed" line in "Goal and standing decisions"
