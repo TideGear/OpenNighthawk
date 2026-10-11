@@ -9,6 +9,112 @@ checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 more than once, what it costs). State as of 11 October 2026.
 Earlier session logs are in `git log -p handoff.md`.
 
+## Cockpit drawing helpers verified (11 Oct 2026)
+
+Integrated only `vgame_panel_readout_outline` (`114A:014F`),
+`vgame_raster_line_block` (`114A:0006`) and `vgame_panel_box` (`114A:01DB`)
+from the owned worktree into main after `c5ce512`. The main matched source
+and driver-thunk harness are fixed during the running full gate:
+`D:/f117-gate/gate-panel-drawing.log`. Its 18 tests pass; coverage takes
+603 s, second translation 17 s and adds no code; initial build/tests 127 s.
+All 35 route pairs and both instruction profiles pass; parity takes 312 s,
+34 interpreter sessions reused, none fresh. Two matched seeds pass
+2,547,415/2,546,484 comparisons. The commit seed finds one END 1CB1 mismatch:
+the random pair swap temporarily overwrites its own epilogue, falls into
+the adjacent ascending helper and restores the code before the final memory
+check. This is a self-modifying fuzz input, not ordinary guest behavior.
+Extended the existing per-step self-code watcher to the four START/END
+pair-order routines and retained seed `0xc5ce5129a4d9` in CTest
+`matched_order_code_alias`. Targeted 15,984 comparisons pass, 16 skipped,
+including the invalid transient-code state. BUILD OK; no sorting implementation
+change. The complete second gate **passes**, terminal exit 0, in
+`D:/f117-gate/gate-panel-drawing-2.log`: 19 unit tests, all 35 route pairs,
+both 5,718,912-state instruction profiles and three matched seeds
+(2,547,415/2,546,484/2,547,057 comparisons), zero mismatches, every routes-only
+routine reached and no event overruns. Main sources were fixed throughout.
+Initial build/tests 26 s, coverage 574 s, second translation 17 s; byte
+identical generated code. Parity takes 810 s, total 1,426 s (rounding stages).
+CMakeLists.txt participates in the interpreter cache key, so the new
+regression invalidates all reference results: 34 fresh interpreter flights,
+zero reused. Both gate sessions are closed (80357 exit 1, 59127 exit 0).
+No owned build/capture/test jobs remain running.
+Census 786 addresses, 781 functions, 66,674 bytes;
+P2 40.34%, All 73.32%. Targeted evidence remains 44,398 states, no differences.
+README, roadmap and progress counts have been refreshed.
+
+Phase 3 investigation remains isolated: worktree `src/matched/observe.c/.h`
+extend `G` from three to seventeen values, retaining the first three and
+adding raw origin words and each endpoint's camera xyz, projected xy and
+exact x-high-word-8000 behind marker. Existing readers ignore the extra
+fields. `tests/test_overrides.c` checks snapshots, independent camera and
+projection offset wraps, physical wrap, VGA timing and full CPU/memory
+immutability. Both builds report BUILD OK (`build-wt-edge-snapshot[-2].log`);
+all 18 isolated unit tests pass in 6.82 s. The first draft test accidentally
+overlapped two wrapped records; separate cases fixed the fixture. No main
+observer or rendering changes yet. A frozen isolated binary is recording
+`D:/f117-gate/near-metadata/w_strike.log` over 8.53..8.73 billion clocks;
+`record-near-metadata.py` compares observer on/off flights at every 50M
+checkpoint and final hash. Both match all 174 checkpoints and final
+`0ef657e8aa7a7fb4` at 8,730,000,000 clocks. All 4,120 reconstructible near
+crossings match exactly; four ambiguous edges remain. Carried drawlist replay
+is exact for all 447 work and display phases, and N=1/4/9 checks pass.
+
+The four ambiguous records appear stale when model_prepare_edge declines
+for event room before emitting G. Worktree matched.c now emits G at entry
+before either room decision (read-only, original instructions still run).
+`build-wt-edge-entry.log` reports BUILD OK. A fresh observer-on/off pair with
+this change in `D:/f117-gate/near-metadata-entry`, console log
+`record-near-metadata-entry.log`, matches all 174 checkpoints and the same
+final hash. All 4,124 near crossings now match exactly, no ambiguous or
+missing pairs. Carried replay is exact for 447 work and display phases;
+N=1/4/9 checks pass (`replay.log`, `hires-{1,4,9}.log`). The frozen binary and first capture
+in `near-metadata` are preserved. No phase-3 edits were merged into main.
+
+Further isolated work (not ready to merge): `src/present/nearclip.c/.h`
+preserve wrapped midpoint rounding, DEC-DX sign and the original projection,
+retaining the discarded low byte. `test_nearclip` checks boundary cases and
+accepts a private eight-column camera/original-crossing TSV; all 4,124
+captured cases pass (`near-metadata-entry/crossing-cases.tsv`). The isolated
+hires builder now keeps exact G snapshots separately from its legacy V map,
+verifies retained crossings, drops wholly behind edges and adds the closing
+edge; N=1 remains exact for 447 display phases. At N=4, all 1,061 previously
+nearest near polygons refill; total refilled 16,979/17,058, 69 footprint
+slivers and ten unrelated behind-vertex cases still nearest. Flat guard
+restores 70 cells, fine-versus-scaled share 1.086% (baseline 1.060%). Logs
+`near-metadata-entry/near-hires-{1,4}.log`. New synthetic
+`test_near_polygons.c` checks the sloped closing edge, entirely behind edge,
+N=1, footprint containment, fine detail and legacy/mismatched-crossing
+fallback. Both new CTests pass. Builds: `build-wt-near-crossing[-2].log`,
+`build-wt-near-polygons.log`, `build-wt-near-polygon-test.log`, all BUILD OK.
+Before integration: finish interpolation metadata/crossings, update the Python
+oracle, test more scenes and N=9/fine endpoints, add cases for both clipping
+orientations and shared-edge tiling. Worktree CMake/harness remain older than
+main's new code-alias regression; copy only intentional presentation changes.
+
+`D:/f117-gate/near-crossing-check.py` improves the earlier study: compare
+the reconstructed midpoint against the retained E crossing at slot+10/14,
+even when the visible edge was viewport-clipped. In legacy logs, 522 of
+3,662 near edges have enough origin information: 520 exact, two mismatches
+(strike windows 853 and 870), ten ambiguous markers and two missing pairs.
+Do not enable fine near polygons on this evidence alone. Use the richer
+snapshot to resolve these cases and check every retained crossing. Preserve
+the guest's DEC-DX sign test (including high word 8000), midpoint wrap and
+projection rounding. Before consuming extended G in hires, update interpolated
+G snapshots too: `interp.c` currently moves V records but copies G unchanged.
+Keep legacy three-field G fallback, N=1 identity, footprint/flat guards,
+fine endpoints and the closing near edge tests.
+
+Latest on-screen allowance read 05:26 Pacific: 85%, reset 09:32. The Status
+panel has kept that value since 04:51 and may be stale. At 05:16..05:20,
+attempts to close/reopen it via supported Sky mouse and keyboard APIs both
+fail with `GetCursorPos failed: Access is denied (0x80070005)`. Text-only
+reads still work. Asked the owner asynchronously for a freshly opened Status
+reading; no answer yet. Do not present the unchanged panel as confirmed fresh.
+Continue checking
+every five minutes; at <=20 suspend all owned job trees, including any new
+recording job, until a live reading exceeds 20. The older paused-job identity
+file has already been resumed and must not be reused.
+
 ## Cockpit sprite helpers checkpoint (11 Oct 2026)
 
 Continued the full roadmap after the HUD commit `10257f5`. Integrated ONLY

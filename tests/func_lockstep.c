@@ -275,7 +275,7 @@ static void stub_driver_thunks(uint8_t *pristine, uint32_t at, const rc_module *
         ((o->seg == 0 && (o->ip == 0xB171 || o->ip == 0xD6DD || o->ip == 0x4777 ||
                          o->ip == 0xD3F9 || o->ip == 0xD87C || o->ip == 0x72D8 ||
                          o->ip == 0x8A18 || o->ip == 0x881F || o->ip == 0x796E)) ||
-         (o->seg == 0x114A && (o->ip == 0x0280 || o->ip == 0x03AD || o->ip == 0x03FD)));
+         (o->seg == 0x114A && (o->ip == 0x0280 || o->ip == 0x03AD || o->ip == 0x03FD || o->ip == 0x014F || o->ip == 0x0006 || o->ip == 0x01DB)));
     if (strcmp(m->name, "START.EXE") && strcmp(m->name, "END.EXE") && !vgame_draw) return;
     for (uint32_t i = 0; i + 5 <= m->size; i++) {
         if (m->image[i] != 0x9A) continue;
@@ -416,11 +416,11 @@ static uint16_t g_below;                /* how far the routine's code reaches be
 /* For those routines the original's code is watched after every step: a write that lands in it and is
  * written back later (a row table over the code when DS = CS) runs changed instructions and leaves no
  * trace in the end state. */
-static int g_self_written;
+static int g_self_written, g_watch_transient;
 static int run_to_ret(cpu_t *a, uint16_t entry_sp, int far, int *steps, uint16_t cs, uint16_t ip)
 {
     const uint32_t watch = phys(cs, (uint16_t)(ip - g_below));
-    const int watching = g_below && a->mem == g_mem[0];
+    const int watching = (g_below || g_watch_transient) && a->mem == g_mem[0];
     while (*steps < 100000) {
         if (watching && !g_self_written && memcmp(a->mem + watch, g_pristine + watch, 0x300u + g_below)) g_self_written = 1;
         if (g_trace) printf("      %04X:%04X clk %llu sp %04X\n", a->seg[S_CS], a->ip, (unsigned long long)a->icount, a->r[R_SP]);
@@ -525,6 +525,12 @@ int main(int argc, char **argv)
             if (!strcmp(RC_MODULES[k]->name, o->module) && RC_MODULES[k]->file_hash == o->file_hash) m = RC_MODULES[k];
         if (!m) { printf("%s %04X:%04X: module not in the generated code\n", o->module, o->seg, o->ip); bad++; continue; }
         g_below = code_below(o);
+        /* The pair swap can overwrite its own epilogue, fall through into
+         * the adjacent opposite-order helper, then restore the code bytes.
+         * End-state memory alone cannot identify that self-modifying input. */
+        g_watch_transient = o->seg == 0 &&
+            ((!strcmp(o->module, "START.EXE") && (o->ip == 0x39B3 || o->ip == 0x39D5)) ||
+             (!strcmp(o->module, "END.EXE") && (o->ip == 0x1CB1 || o->ip == 0x1CD3)));
         for (uint32_t a = 0; a < MEM_SIZE; a += 8) { uint64_t v = rnd(); memcpy(g_pristine + a, &v, 8); }
         const uint32_t at = (uint32_t)base * 16u + m->origin;
         memcpy(g_pristine + at, m->image, m->size);

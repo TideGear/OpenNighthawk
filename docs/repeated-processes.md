@@ -10,6 +10,32 @@ identical, and the proof is the same verdicts before and after.
 
 ## The gate (`tools/build_recomp.py`)
 
+The first cockpit drawing-helper gate (11 Oct, `gate-panel-drawing.log`)
+takes 1,059 s: build/tests 127, coverage 603, byte-identical regeneration 17,
+parity 312. All 35 route pairs and both instruction profiles pass, with 34
+interpreter cache hits and none fresh. Its third matched seed exposes a
+transient self-modifying fuzz state in END's pair swap: code is overwritten
+and restored before the final memory comparison. The existing per-step code
+watch now covers all four pair-order helpers too. Retained CTest
+`matched_order_code_alias` runs the failing seed in about 1.3 s and compares
+15,984 states, zero mismatches, skipping the invalid code-alias state.
+The complete second gate (`gate-panel-drawing-2.log`) passes all 35 routes,
+19 tests, both 5,718,912-state instruction profiles and three 786-entry
+matched seeds (2,547,415/2,546,484/2,547,057 comparisons), zero differences,
+with reachability and event-room checks. Total 1,426 s: build/tests 26,
+coverage 574, byte-identical regeneration 17, parity 810 (rounded stages).
+The CMake regression changes the interpreter cache key: 34 fresh sessions,
+none reused. Affinity 0x00FFFFFF, 16 route workers; isolated presentation
+builds and two two-flight observer probes share the machine.
+
+The isolated near-plane metadata probe records a 200M-clock strike window
+and a same-binary observer-off control (`record-near-metadata.py`), preserving
+all 174 checkpoints and final hash. `near-crossing-check.py` checks 4,120
+crossings exactly; four ambiguous records motivate an entry-observer repair.
+Carried replay and N=1/4/9 checks cover 447 work/display phases and take
+about 4.5 s concurrently. Initial isolated 18-test run takes 6.82 s. These
+are investigation runs; no production near-plane rendering rule is enabled.
+
 The cockpit sprite gate (11 Oct, `gate-panel-blits.log`) passes all 35
 routes, 18 tests, both 5,718,912-state instruction profiles and three
 783-entry matched seeds (2,532,630/2,531,689/2,533,435 comparisons), with

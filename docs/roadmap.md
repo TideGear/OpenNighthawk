@@ -202,7 +202,7 @@ not the recompilation:
       Reimp's mapping; matched functions replacing translations one at a time,
       each held to the same parity checks. `tools/reimp_names.py` joins the
       Reimp's census (1,535 functions) with this project's regions as a private
-      lead list. 783 addresses are matched (778 of the census functions, 66,263 of
+      lead list. 786 addresses are matched (781 of the census functions, 66,674 of
       179,213 bytes); the table is at the end of `src/matched/matched.c` and the
       method is in [architecture.md](architecture.md#matched-routines-phase-2).
       The batches of 8-9 Oct add 37 + 34 + 47 VGAME, 34 + 40 + 45 START/END and 21 + 44 + 64
@@ -238,6 +238,16 @@ not the recompilation:
       differences; the driver runs normally in the full routes. Full gate
       passes 35 routes, 18 tests, both instruction profiles, three 783-address
       matched seeds, reachability and event-room checks.
+      The readout outline (`114A:014F`), active-block line (`114A:0006`)
+      and nine-by-seven target box (`114A:01DB`) name their bounds, origin,
+      pen selection and four-edge walks. Three targeted 4,000-state seeds
+      compare 44,398 states without differences, preserving live frame reads,
+      flags, stack cleanup, call order and instruction clocks.
+      Full gate passes 35 routes, 19 tests, both instruction profiles, three
+      786-address matched seeds, reachability and event-room checks. The
+      commit seed exposed a self-modifying fuzz input in END's pair swap;
+      its temporary code overwrite is now watched per instruction, with the
+      seed retained in `matched_order_code_alias` (15,984 comparable states).
       The cockpit canopy (`0x0D6DD`) now names the compact side frames, shaded
       posts and landing-approach cue, including clearing the old cue before
       painting the new one and preserving the original page-copy arguments.

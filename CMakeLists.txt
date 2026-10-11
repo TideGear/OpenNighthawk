@@ -277,5 +277,8 @@ if(F117R_BUILD_TESTS)
     # A stack overlapping the shift helper changes BX before the in-place stores.
     add_test(NAME matched_shift_stack_alias COMMAND func_lockstep --states 4000
       --seed 0x2cb230b9369f --only VGAME.EXE:EF80,START.EXE:97D8)
+    # A random pair swap temporarily overwrites and then restores its own epilogue.
+    add_test(NAME matched_order_code_alias COMMAND func_lockstep --states 4000
+      --seed 0xc5ce5129a4d9 --only START.EXE:39B3,START.EXE:39D5,END.EXE:1CB1,END.EXE:1CD3)
   endif()
 endif()
