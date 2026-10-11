@@ -27628,6 +27628,45 @@ static int vgame_malloc(machine_t *m)
     return 1;
 }
 
+/* VGAME 0x0F8EC, free(ptr): the near-heap counterpart to malloc (0x0F91A,
+ * descriptor at 922E). Given a pointer at [bp+4], steps back two bytes to
+ * its block header and sets the header's low bit (the free flag); when
+ * that header reaches past the descriptor's free-search hint at [922E+6],
+ * the hint at [922E+8] is advanced to it, so the next malloc's search
+ * (0x0F968) starts from the newly freed block instead of before it. */
+static int vgame_free(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 8)) return 0;
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    x86_push_reg(c, R_SI);
+    c->r[R_BX] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 4));
+    c->r[R_SI] = 0x922E;
+    alu_op(c, 7, ds_get(c, (uint16_t)(c->r[R_SI] + 6)), c->r[R_BX], 1);
+    c->icount += 8;                                 /* jmp, push bp, mov bp, push si, mov bx, mov si, cmp, jae */
+    if (!x86_cond(c, 3)) {                          /* not jae: bx is past the hint */
+        if (!room(c, 6)) { c->ip = 0xF92D; return 1; }
+        c->r[R_BX] = (uint16_t)alu_dec(c, c->r[R_BX], 1);
+        c->r[R_BX] = (uint16_t)alu_dec(c, c->r[R_BX], 1);
+        ds_put8(c, c->r[R_BX], (uint8_t)alu_op(c, 1, ds_get8(c, c->r[R_BX]), 1, 0));
+        alu_op(c, 7, ds_get(c, (uint16_t)(c->r[R_SI] + 8)), c->r[R_BX], 1);
+        c->icount += 5;                             /* dec, dec, or, cmp, jbe */
+        if (!x86_cond(c, 6)) {                      /* not jbe: advance the hint */
+            if (!room(c, 2)) { c->ip = 0xF937; return 1; }
+            ds_put(c, (uint16_t)(c->r[R_SI] + 8), c->r[R_BX]);
+            c->icount += 1;
+        }
+    }
+    if (!room(c, 4)) { c->ip = 0xF93A; return 1; }
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 4;                                 /* pop si, mov sp bp, pop bp, ret */
+    near_ret(c);
+    return 1;
+}
+
 /* VGAME 0x0F2C6, flush(stream): the C runtime's flush of one stream - or,
  * for a null stream, of all of them (0x0F340 with 0; its RET 2 takes
  * the argument). A stream open for writing only (flag bits 0-1 = 2)
@@ -31828,6 +31867,7 @@ static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x13F1, vgame_map_object, "one object of the map view", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xEC90, vgame_filelength, "length of an open file", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xF91A, vgame_malloc, "allocate from the near heap", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xF8EC, vgame_free, "free a near-heap block", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xF2C6, vgame_flush, "flush a stream", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xF122, vgame_filbuf, "refill a stream buffer", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xF1E0, vgame_openfile, "open a stream", 1 },

@@ -202,7 +202,7 @@ not the recompilation:
       Reimp's mapping; matched functions replacing translations one at a time,
       each held to the same parity checks. `tools/reimp_names.py` joins the
       Reimp's census (1,535 functions) with this project's regions as a private
-      lead list. 774 addresses are matched (769 of the census functions, 65,699 of
+      lead list. 775 addresses are matched (770 of the census functions, 65,702 of
       179,213 bytes); the table is at the end of `src/matched/matched.c` and the
       method is in [architecture.md](architecture.md#matched-routines-phase-2).
       The batches of 8-9 Oct add 37 + 34 + 47 VGAME, 34 + 40 + 45 START/END and 21 + 44 + 64
@@ -310,6 +310,19 @@ not the recompilation:
       only, like the timer-vector hook above - 0 states comparable at any
       seed - verified by the full gate's routes-only check and a clean
       774-routine suite (2,505,089 comparisons, zero mismatching).
+
+      `free()`'s near-heap counterpart (`0x0F8EC`, `vgame_free`) is now
+      matched, alongside the already-matched `malloc` (`0x0F91A`,
+      `vgame_malloc`): both operate on the same heap descriptor at 922E,
+      confirmed by a verified call site (`0xF1CB`) pushing a pointer before
+      the call. Steps a pointer back to its block header, sets the
+      header's free bit, and advances the descriptor's free-search hint
+      past the freed block when it reaches further than the hint already
+      does. Lockstep caught a missed-Jcc icount bug on the first attempt
+      (both conditional jumps' own instruction counts were left out of
+      their blocks); fixed and reverified clean across three seeds
+      (66,505/4,411/4,436 comparable states) and the full 775-routine
+      suite (2,509,526 comparisons, zero mismatching).
 
 ## Phase 3 - fixes and enhancements (switchable)
 

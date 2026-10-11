@@ -147,6 +147,41 @@ Separately, two of the three P1 threshold-tightening and three doubtable-
 investigation asks from earlier this session are already committed (see
 below); the audit above was read-only, no code changed for it.
 
+## Phase 2 checkpoint: vgame_free (10 Oct, 18:38 PDT)
+
+VGAME 0x0F8EC (`vgame_free`) is matched, verified and committed/pushed:
+the near-heap `free(ptr)` counterpart to the already-matched `malloc`
+(0x0F91A, `vgame_malloc`) - both operate on the same heap descriptor at
+DS:922E. Identified (not just guessed) by reading `vgame_malloc`'s own
+comment, which names 922E as the heap descriptor, then confirming a real
+call site at 0xF1CB (decoded instruction-aligned, not a byte-scan
+false-positive) pushes a pointer immediately before calling 0xF8EC. Steps
+the pointer back two bytes to its block header, sets the header's low
+("free") bit, and advances the descriptor's free-search hint at [922E+8]
+past the freed block when it reaches further than the hint already does.
+
+Lockstep caught a bug on the first attempt: both of the routine's two
+conditional jumps (`jae`, `jbe`) had their *own* instruction counted as
+part of the icount total - I added the manual counts for the instructions
+before each Jcc but left the Jcc itself out, undercounting the clock by 1
+on whichever path exited early. Textbook missed-Jcc, exactly the trap
+flagged in this project's own history. Fixed (folded each Jcc into the
+preceding block's count) and reverified clean: 66,505/4,411/4,436
+comparable states across three seeds, zero mismatches; full 775-routine
+suite 2,509,526 comparisons, zero mismatching. Full gate PASSED clean (0
+DIFFERENT routes, both instruction profiles and all three matched-routine
+seeds zero mismatches, every routes-only routine ran, exit 0). Scoreboard:
+775 addresses matched, 770 of 1,535 census functions, 65,702 of 179,213
+bytes; P2 39.83%, All 71.78%.
+
+**Lead-selection trap found along the way**: the census's `size` column
+is NOT the function's real instruction/byte length - it's some other
+distance metric (a 6-byte census entry turned out to be a 72-instruction
+routine; a 7-byte entry was 336 instructions). Sorting unmatched leads by
+census size to find "small, quick" routines is not a valid strategy.
+Draft each candidate with `tools/matched_draft.py` first and judge size
+from its own reported instruction count, not the census row.
+
 ## Phase 2 checkpoint: frame_mission_start (10 Oct, 18:08 PDT)
 
 VGAME 0x01E72 (`vgame_frame_mission_start`, samples the BIOS tick count's
