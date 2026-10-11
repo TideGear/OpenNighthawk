@@ -202,7 +202,7 @@ not the recompilation:
       Reimp's mapping; matched functions replacing translations one at a time,
       each held to the same parity checks. `tools/reimp_names.py` joins the
       Reimp's census (1,535 functions) with this project's regions as a private
-      lead list. 772 addresses are matched (767 of the census functions, 65,585 of
+      lead list. 773 addresses are matched (768 of the census functions, 65,692 of
       179,213 bytes); the table is at the end of `src/matched/matched.c` and the
       method is in [architecture.md](architecture.md#matched-routines-phase-2).
       The batches of 8-9 Oct add 37 + 34 + 47 VGAME, 34 + 40 + 45 START/END and 21 + 44 + 64
@@ -285,6 +285,21 @@ not the recompilation:
       produce a comparable state from random inputs - "routes only," like
       the picture decoder's steps); verified instead by the full gate,
       which confirmed it actually ran on a route and passed clean.
+
+      A model-type byte-table copy (`0x0BAA2`, `vgame_init_models`) is now
+      matched: looks up a model-type block by a fixed key, and on a miss
+      falls through to an unmatched allocator; on a hit it records the
+      block, then walks its entry count copying each entry's one-byte
+      field into two parallel tables (one holding the raw byte, the other
+      a fixed stride marker) before restoring the frame. Lockstep caught
+      two bugs beyond the draft check: a missed `je` left the clock one
+      instruction short on the no-block path, and the loop's exit
+      comparison read a local copy of the loop index instead of the real
+      `mov ax,[bp-6]` side effect, so AX read stale coming out of the loop.
+      Both fixed and reverified: 17 states at the default seed, 0 and 1 at
+      two more seeds, all zero mismatches; the full 773-routine suite
+      passes at 2,505,089 comparisons, zero mismatching, and the full gate
+      (every route IDENTICAL, every check) confirms it clean.
 
 ## Phase 3 - fixes and enhancements (switchable)
 

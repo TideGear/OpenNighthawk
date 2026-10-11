@@ -147,6 +147,23 @@ Separately, two of the three P1 threshold-tightening and three doubtable-
 investigation asks from earlier this session are already committed (see
 below); the audit above was read-only, no code changed for it.
 
+## Phase 2 checkpoint: init_models (10 Oct, 17:33 PDT)
+
+VGAME 0x0BAA2 (`vgame_init_models`, copies a model-type's byte table) is
+matched, verified and committed/pushed. 40 original instructions, one
+data-dependent loop, a found/not-found branch. Lockstep found two real
+bugs the draft check missed: a missed `je` on the no-block path left the
+clock one instruction short, and the loop's exit test compared a local
+C copy of the loop index instead of writing the real `mov ax,[bp-6]`
+side effect back to `c->r[R_AX]` first, so AX read stale after the loop
+ended. Both fixed; reverified clean at three seeds (17, 0, 1 comparable
+states respectively, zero mismatching). Full gate PASSED clean: 35/35
+routes IDENTICAL, both instruction profiles and all three matched-routine
+seeds (773 routines, 2,505,089/2,504,224/2,505,038 states) zero
+mismatches, every routes-only routine ran, no overruns, exit 0. Scoreboard:
+773 addresses matched, 768 of 1,535 census functions, 65,692 of 179,213
+bytes; P2 39.82%, All 71.77%.
+
 ## Phase 2 checkpoint: isrclock_init (10 Oct, 17:00 PDT)
 
 VGAME 0x01C0E (`vgame_isrclock_init`, hooks the timer tick vector) is

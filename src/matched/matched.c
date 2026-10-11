@@ -12191,6 +12191,91 @@ static int vgame_isrclock_init(machine_t *m)
     return 1;
 }
 
+/* VGAME 0x0BAA2, vg_init_models: 0x0E586(0x4346) locates a model-type
+ * block; when none is found, 0x010CDD is called with 0x4350 and the
+ * routine returns. Otherwise the block's first word is a byte count, kept
+ * at [bp-8]; the bytes right after it are copied in order into a
+ * per-index table at 0x0760, each index also getting a constant 6 in the
+ * parallel table at 0x09E0. 0x010CDD is not called on this path. */
+static int vgame_init_models(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 6)) return 0;
+    x86_enter(c, 0x0E, 0);
+    const uint16_t bp = c->r[R_BP];
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, 0x4346);
+    c->icount += 3;
+    if (!guest_call(m, 0xE586, 0xBAAD)) return 1;
+    if (!room(c, 4)) { c->ip = 0xBAAD; return 1; }
+    c->r[R_BX] = cpu_pop16(c);
+    alu_logic(c, (uint32_t)c->r[R_AX] | c->r[R_AX], 0);
+    c->icount += 3;                                            /* pop, or, its branch */
+    if (c->flags & F_ZF) {                                     /* no model-type block found */
+        if (!room(c, 4)) { c->ip = 0xBB03; return 1; }
+        cpu_push16(c, 0x4350);
+        c->icount += 1;
+        if (!guest_call(m, 0x0CDD, 0xBB09)) return 1;
+        if (!room(c, 6)) { c->ip = 0xBB09; return 1; }
+        c->r[R_BX] = cpu_pop16(c);
+        c->icount += 1;
+    } else {                                                   /* a block was found */
+        if (!room(c, 20)) { c->ip = 0xBAB2; return 1; }
+        ds_put(c, 0xB78A, c->r[R_AX]);
+        seg_write16(c, c->seg[S_SS], (uint16_t)(bp - 0xA), c->r[R_AX]);
+        seg_write16(c, c->seg[S_SS], (uint16_t)(bp - 0xC), 0);
+        c->r[R_BX] = seg_read16(c, c->seg[S_SS], (uint16_t)(bp - 0xC));
+        c->seg[S_ES] = seg_read16(c, c->seg[S_SS], (uint16_t)(bp - 0xA));
+        seg_write16(c, c->seg[S_SS], (uint16_t)(bp - 0xC),
+                    (uint16_t)alu_add(c, seg_read16(c, c->seg[S_SS], (uint16_t)(bp - 0xC)), 2, 1, 0));
+        c->r[R_AX] = seg_read16(c, c->seg[S_ES], c->r[R_BX]);
+        seg_write16(c, c->seg[S_SS], (uint16_t)(bp - 8), c->r[R_AX]);
+        c->r[R_AX] = (uint16_t)alu_inc(c, c->r[R_AX], 1);
+        c->r[R_AX] = x86_shift(c, 4, c->r[R_AX], 1, 1);
+        seg_write16(c, c->seg[S_SS], (uint16_t)(bp - 0xC),
+                    (uint16_t)alu_add(c, seg_read16(c, c->seg[S_SS], (uint16_t)(bp - 0xC)), c->r[R_AX], 1, 0));
+        c->r[R_AX] = seg_read16(c, c->seg[S_SS], (uint16_t)(bp - 0xC));
+        c->r[R_DX] = c->seg[S_ES];
+        seg_write16(c, c->seg[S_SS], (uint16_t)(bp - 4), c->r[R_AX]);
+        seg_write16(c, c->seg[S_SS], (uint16_t)(bp - 2), c->r[R_DX]);
+        seg_write16(c, c->seg[S_SS], (uint16_t)(bp - 6), 0);
+        c->icount += 16;
+        int first = 1;
+        for (;;) {
+            if (!room(c, 12)) { c->ip = first ? 0xBAE5 : 0xBAE2; return 1; }
+            unsigned n = 0;
+            if (!first) {
+                const uint16_t idxw = (uint16_t)alu_inc(c, seg_read16(c, c->seg[S_SS], (uint16_t)(bp - 6)), 1);
+                seg_write16(c, c->seg[S_SS], (uint16_t)(bp - 6), idxw);
+                n += 1;
+            }
+            first = 0;
+            const uint16_t idx = seg_read16(c, c->seg[S_SS], (uint16_t)(bp - 6));
+            c->r[R_AX] = idx;                                  /* mov ax, [bp-6] */
+            const uint16_t cnt = seg_read16(c, c->seg[S_SS], (uint16_t)(bp - 8));
+            alu_sub(c, cnt, idx, 1, 0);
+            n += 3;                                            /* mov ax, cmp, jle */
+            if (x86_cond(c, 14)) { c->icount += n; break; }     /* jle: no more entries */
+            c->r[R_BX] = idx;
+            c->r[R_SI] = seg_read16(c, c->seg[S_SS], (uint16_t)(bp - 4));
+            c->seg[S_ES] = seg_read16(c, c->seg[S_SS], (uint16_t)(bp - 2));
+            seg_write16(c, c->seg[S_SS], (uint16_t)(bp - 4),
+                        (uint16_t)alu_inc(c, seg_read16(c, c->seg[S_SS], (uint16_t)(bp - 4)), 1));
+            set_r8(c, R_CL, mem_read8(c, phys(c->seg[S_ES], c->r[R_SI])));
+            ds_put8(c, (uint16_t)(c->r[R_BX] + 0x0760), get_r8(c, R_CL));
+            ds_put8(c, (uint16_t)(c->r[R_BX] + 0x09E0), 6);
+            n += 7;
+            c->icount += n;
+        }
+    }
+    if (!room(c, 4)) { c->ip = 0xBB0A; return 1; }
+    c->r[R_SI] = cpu_pop16(c);
+    x86_leave(c);
+    c->icount += 3;
+    near_ret(c);
+    return 1;
+}
+
 /* VGAME 0x0EBC4, kbhit(): a character pushed back ([ungot], high byte 0)
  * answers FFh at once; otherwise the console hook at [hook] is called with
  * BX = FFFFh when [hook - 2] holds its signature D6D6h, and DOS function 0Bh
@@ -31779,6 +31864,7 @@ static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x1E1D, vgame_retrace_timer, "timer count at a retrace", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x1D88, vgame_timer_calibrate, "set the timer rate from the refresh", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x1C0E, vgame_isrclock_init, "hook the timer tick vector", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xBAA2, vgame_init_models, "copy a model-type's byte table", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x1039, 0x0000, vgame_palette_build, "build the view's palette", 2 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x120A, 0x0E5B, vgame_model_depth_order, "a model's faces in depth order", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x1058, 0x0CC1, vgame_joystick_port, "time both joystick axes", 1 },
