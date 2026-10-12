@@ -32407,7 +32407,249 @@ static int vgame_polygon_fill(machine_t *m)
     return 1;
 }
 
+/* VGAME 0FB2:06A6: clip an edge from DS:2299/229D to DS:229B/229F,
+ * contributing boundary columns before tail-jumping to the shared emitter.
+ * Intersections use the original signed division, remainder rounding and
+ * temporary INT 0 saturation handler. Endpoint and scratch words stay live:
+ * they may alias the stack or the saved interrupt vector in arbitrary states.
+ * This routine owns the clipper; 05A4/05B3 are shared emitter entries. */
+static int vgame_span_edge_clipped(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 10)) return 0;
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+    c->seg[S_ES] = c->r[R_AX];
+    cpu_push16(c, seg_read16(c, c->seg[S_ES], 0));
+    cpu_push16(c, seg_read16(c, c->seg[S_ES], 2));
+    c->r[R_AX] = 0x084E;
+    seg_write16(c, c->seg[S_ES], 0, c->r[R_AX]);
+    seg_write16(c, c->seg[S_ES], 2, seg_read16(c, c->seg[S_CS], 0x06C1));
+    cpu_push16(c, c->seg[S_DS]);
+    c->seg[S_ES] = cpu_pop16(c);
+    c->icount += 10;
+    SM4_NEED(7, 0x0715);
+    c->r[R_CX] = ds_get(c, 0x2299);
+    c->r[R_DX] = ds_get(c, 0x229D);
+    c->r[R_SI] = ds_get(c, 0x229B);
+    c->r[R_DI] = ds_get(c, 0x229F);
+    c->r[R_BX] = c->r[R_CX];
+    c->r[R_BP] = c->r[R_DX];
+    c->icount += 6;
+    if (!guest_call(m, 0x04BC, 0x072C)) return 1;
+    SM4_NEED(4, 0x072C);
+    ds_put8(c, 0x261A, get_r8(c, R_AL));
+    c->r[R_BX] = c->r[R_SI];
+    c->r[R_BP] = c->r[R_DI];
+    c->icount += 3;
+    if (!guest_call(m, 0x04BC, 0x0736)) return 1;
+    SM4_NEED(9, 0x0736);
+    c->icount++;                                                /* second endpoint inside? */
+    if (c->flags & F_ZF) {
+        alu_sub(c, ds_get8(c, 0x261A), 0, 0, 0);
+        c->icount += 2;
+        if (c->flags & F_ZF) {
+            c->icount++;                                        /* 06E6: accepted, no clipping */
+            goto emit_edge;
+        }
+        uint16_t t = c->r[R_SI]; c->r[R_SI] = c->r[R_CX]; c->r[R_CX] = t;
+        t = c->r[R_DI]; c->r[R_DI] = c->r[R_DX]; c->r[R_DX] = t;
+        const uint8_t code = ds_get8(c, 0x261A);
+        ds_put8(c, 0x261A, get_r8(c, R_AL));
+        set_r8(c, R_AL, code);
+        ds_put(c, 0x2299, c->r[R_CX]);
+        ds_put(c, 0x229D, c->r[R_DX]);
+        c->icount += 5;
+    }
+    SM4_NEED(8, 0x074F);
+    c->r[R_BP] = c->r[R_DX];
+    alu_logic(c, get_r8(c, R_AL) & ds_get8(c, 0x261A), 0);
+    c->icount += 3;
+    if (!(c->flags & F_ZF)) {
+        set_r8(c, R_AL, alu_logic(c, get_r8(c, R_AL) & ds_get8(c, 0x261A), 0));
+        alu_logic(c, get_r8(c, R_AL) & 6, 0);
+        c->icount += 3;
+        if (!(c->flags & F_ZF)) goto reject;
+        c->r[R_BX] = c->r[R_CX];
+        c->icount += 2;
+        goto boundary_only;
+    }
+    SM4_NEED(18, 0x0757);
+    c->r[R_DX] = c->r[R_SI];
+    c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_CX], 1, 0);
+    c->icount += 3;
+    if (c->flags & F_OF) {                                      /* halve both axes after overflow */
+        set_flag(c, F_CF, !(c->flags & F_CF));
+        c->r[R_DX] = x86_shift(c, 3, c->r[R_DX], 1, 1);
+        ds_put(c, 0x261B, c->r[R_DX]);
+        c->r[R_DX] = x86_shift(c, 7, c->r[R_DX], 1, 1);
+        ds_put(c, 0x261F, c->r[R_DX]);
+        c->r[R_DX] = c->r[R_DI];
+        c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_BP], 1, 0);
+        c->icount += 8;
+        if (c->flags & F_OF) {
+            set_flag(c, F_CF, !(c->flags & F_CF));
+            c->r[R_DX] = x86_shift(c, 3, c->r[R_DX], 1, 1);
+            c->icount += 3;
+        } else {
+            c->r[R_DX] = x86_shift(c, 7, c->r[R_DX], 1, 1);
+            c->icount += 2;
+        }
+    } else {
+        ds_put(c, 0x261B, c->r[R_DX]);
+        c->r[R_DX] = x86_shift(c, 7, c->r[R_DX], 1, 1);
+        ds_put(c, 0x261F, c->r[R_DX]);
+        c->r[R_DX] = c->r[R_DI];
+        c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_BP], 1, 0);
+        c->icount += 6;
+        if (c->flags & F_OF) {
+            set_flag(c, F_CF, !(c->flags & F_CF));
+            c->r[R_DX] = x86_shift(c, 3, c->r[R_DX], 1, 1);
+            ds_put(c, 0x261B, x86_shift(c, 7, ds_get(c, 0x261B), 1, 1));
+            ds_put(c, 0x261F, x86_shift(c, 7, ds_get(c, 0x261F), 1, 1));
+            c->icount += 5;
+        }
+    }
+    SM4_NEED(3, 0x076D);
+    ds_put(c, 0x261D, c->r[R_DX]);
+    c->r[R_DX] = x86_shift(c, 7, c->r[R_DX], 1, 1);
+    ds_put(c, 0x2621, c->r[R_DX]);
+    c->icount += 3;
+intersect:
+    SM4_NEED(12, 0x0777);
+    alu_logic(c, get_r8(c, R_AL) & 9, 0);
+    c->icount += 2;
+    if (c->flags & F_ZF) goto horizontal;
+    c->r[R_BX] = (uint16_t)alu_sub(c, c->r[R_BX], c->r[R_BX], 1, 0);
+    alu_logic(c, c->r[R_SI], 1);
+    c->icount += 3;
+    if (!(c->flags & F_SF)) { c->r[R_BX] = ds_get(c, 0x2293); c->icount++; }
+    c->r[R_AX] = c->r[R_BX];
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_CX], 1, 0);
+    x86_imul16(c, ds_get(c, 0x261D));
+    cpu_push16(c, c->r[R_BX]);
+    c->r[R_BX] = c->r[R_DX];
+    c->icount += 5;
+    SM4_NEED(1, 0x0790);
+    c->op_cs = c->seg[S_CS]; c->op_ip = 0x0790; c->ip = 0x0794;
+    const int x_divided = x86_idiv16(c, ds_get(c, 0x261B), 0);
+    c->icount++;
+    if (!x_divided) return 1;
+    SM4_NEED(15, 0x0794);
+    set_r8(c, R_BL, get_r8(c, R_BH));
+    set_r8(c, R_BL, alu_logic(c, get_r8(c, R_BL) ^ ds_get8(c, 0x261C), 0));
+    c->icount += 3;
+    if (c->flags & F_SF) {
+        c->r[R_DX] = (uint16_t)alu_sub(c, 0, c->r[R_DX], 1, 0);
+        c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1);
+        c->icount += 2;
+    }
+    c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], ds_get(c, 0x261F), 1, 0);
+    set_r8(c, R_DH, alu_logic(c, get_r8(c, R_DH) ^ get_r8(c, R_BH), 0));
+    c->icount += 3;
+    if (!(c->flags & F_SF)) { c->r[R_AX] = (uint16_t)alu_inc(c, c->r[R_AX], 1); c->icount++; }
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], c->r[R_BP], 1, 0);
+    c->icount += 3;
+    if (c->flags & F_SF) goto top;
+    alu_sub(c, c->r[R_AX], ds_get(c, 0x2295), 1, 0);
+    c->icount += 2;
+    if (x86_cond(c, 0xE)) goto record_column;
+horizontal:
+    SM4_NEED(3, 0x07B3);
+    c->r[R_BX] = ds_get(c, 0x2295);
+    alu_sub(c, c->r[R_DI], c->r[R_BX], 1, 0);
+    c->icount += 3;
+    if (x86_cond(c, 0xF)) goto horizontal_divide;
+top:
+    SM4_NEED(1, 0x07BB);
+    c->r[R_BX] = (uint16_t)alu_sub(c, c->r[R_BX], c->r[R_BX], 1, 0);
+    c->icount++;
+horizontal_divide:
+    SM4_NEED(6, 0x07BD);
+    c->r[R_AX] = c->r[R_BX];
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_BP], 1, 0);
+    x86_imul16(c, ds_get(c, 0x261B));
+    cpu_push16(c, c->r[R_BX]);
+    c->r[R_BX] = c->r[R_DX];
+    c->icount += 5;
+    c->op_cs = c->seg[S_CS]; c->op_ip = 0x07C8; c->ip = 0x07CC;
+    const int y_divided = x86_idiv16(c, ds_get(c, 0x261D), 0);
+    c->icount++;
+    if (!y_divided) return 1;
+    SM4_NEED(16, 0x07CC);
+    set_r8(c, R_BL, get_r8(c, R_BH));
+    set_r8(c, R_BL, alu_logic(c, get_r8(c, R_BL) ^ ds_get8(c, 0x261E), 0));
+    c->icount += 3;
+    if (c->flags & F_SF) {
+        c->r[R_DX] = (uint16_t)alu_sub(c, 0, c->r[R_DX], 1, 0);
+        c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1);
+        c->icount += 2;
+    }
+    c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], ds_get(c, 0x2621), 1, 0);
+    set_r8(c, R_DH, alu_logic(c, get_r8(c, R_DH) ^ get_r8(c, R_BH), 0));
+    c->icount += 3;
+    if (!(c->flags & F_SF)) { c->r[R_AX] = (uint16_t)alu_inc(c, c->r[R_AX], 1); c->icount++; }
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], c->r[R_CX], 1, 0);
+    const uint16_t x = c->r[R_BX]; c->r[R_BX] = c->r[R_AX]; c->r[R_AX] = x;
+    c->icount += 4;
+    if (c->flags & F_SF) goto boundary_only;
+    alu_sub(c, c->r[R_BX], ds_get(c, 0x2293), 1, 0);
+    c->icount += 2;
+    if (x86_cond(c, 0xF)) goto boundary_only;
+record_column:
+    SM4_NEED(9, 0x07EC);
+    cpu_push16(c, c->r[R_AX]); cpu_push16(c, c->r[R_BX]);
+    cpu_push16(c, c->r[R_CX]); cpu_push16(c, c->r[R_SI]); cpu_push16(c, c->r[R_DI]);
+    c->r[R_DX] = c->r[R_DI]; c->r[R_DI] = c->r[R_AX]; c->r[R_SI] = c->r[R_BX];
+    c->icount += 8;
+    if (!guest_call(m, 0x0555, 0x07FA)) return 1;
+    SM4_NEED(14, 0x07FA);
+    c->r[R_DI] = cpu_pop16(c); c->r[R_SI] = cpu_pop16(c);
+    c->r[R_CX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); c->r[R_AX] = cpu_pop16(c);
+    alu_sub(c, ds_get8(c, 0x261A), 0, 0, 0);
+    c->icount += 7;
+    if (c->flags & F_ZF) {
+        ds_put(c, 0x229F, c->r[R_AX]); ds_put(c, 0x229B, c->r[R_BX]);
+        c->icount += 3;
+        goto emit_edge;
+    }
+    ds_put(c, 0x229D, c->r[R_AX]); ds_put(c, 0x2299, c->r[R_BX]);
+    uint16_t t = c->r[R_SI]; c->r[R_SI] = c->r[R_CX]; c->r[R_CX] = t;
+    t = c->r[R_DI]; c->r[R_DI] = c->r[R_BP]; c->r[R_BP] = t;
+    set_r8(c, R_AL, ds_get8(c, 0x261A)); ds_put8(c, 0x261A, 0);
+    c->icount += 7;
+    goto intersect;
+boundary_only:
+    SM4_NEED(1, 0x0810);
+    c->r[R_DX] = c->r[R_BP]; c->icount++;
+    SM4_NEED(7, 0x0812);
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+    c->seg[S_ES] = c->r[R_AX];
+    seg_write16(c, c->seg[S_ES], 2, cpu_pop16(c));
+    seg_write16(c, c->seg[S_ES], 0, cpu_pop16(c));
+    cpu_push16(c, c->seg[S_DS]); c->seg[S_ES] = cpu_pop16(c);
+    c->icount += 7; c->ip = 0x05A4; return 1;
+emit_edge:
+    SM4_NEED(7, 0x083B);
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+    c->seg[S_ES] = c->r[R_AX];
+    seg_write16(c, c->seg[S_ES], 2, cpu_pop16(c));
+    seg_write16(c, c->seg[S_ES], 0, cpu_pop16(c));
+    cpu_push16(c, c->seg[S_DS]); c->seg[S_ES] = cpu_pop16(c);
+    c->icount += 7; c->ip = 0x05B3; return 1;
+reject:
+    SM4_NEED(7, 0x06C8);
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+    c->seg[S_ES] = c->r[R_AX];
+    seg_write16(c, c->seg[S_ES], 2, cpu_pop16(c));
+    seg_write16(c, c->seg[S_ES], 0, cpu_pop16(c));
+    cpu_push16(c, c->seg[S_DS]); c->seg[S_ES] = cpu_pop16(c);
+    c->icount += 7; near_ret(c); return 1;
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0FB2, 0x06A6, vgame_span_edge_clipped, "clip a polygon edge into the span tables", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0FB2, 0x01E6, vgame_polygon_fill, "fill a closed polygon through the span rasterizer", 2 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0FB2, 0x084E, vgame_span_divide_fault, "span divide-error saturation", 3 },
     { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x006D, 0x0678, mps_logo_sprite_run, "sprite repeat or transparent run", 1 },

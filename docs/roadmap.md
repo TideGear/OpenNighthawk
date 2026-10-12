@@ -207,6 +207,14 @@ shared-flow span-edge candidate demonstrates why walk size is not census
 ownership. Synthetic checks run in Windows CI. Details and limits:
 [repeated-processes.md](repeated-processes.md#phase-2-candidate-reading).
 
+VGAME's clipped span edge (`0FB2:06A6`) is integrated pending its fresh
+full gate. The named routine preserves the temporary INT 0 vector, signed
+intersection rounding, overflow halving, boundary columns, live endpoints
+and tail jumps into shared emitters. Three private seeds compare 14,461
+states with zero mismatches; 37 isolated unit tests pass. The real camera
+replay executes it 1,529,189 times with all 234 checkpoints/final identical.
+Its census extent is 419 bytes; shared tails are not counted again.
+
 VGAME's closed polygon fill (`0FB2:01E6`) is integrated and fully gated. It names the live vertex walk, stack-saved endpoints, closing edge,
 span reset and driver fill, preserving DF, count wraparound and event stops.
 Three returning-rasterizer/driver caller fixtures compare 6,600 states with
@@ -341,7 +349,7 @@ instruction profiles and three 789-address matched seeds (2,561,209,
       Reimp's mapping; matched functions replacing translations one at a time,
       each held to the same parity checks. `tools/reimp_names.py` joins the
       Reimp's census (1,535 functions) with this project's regions as a private
-      lead list. 811 addresses are matched (805 of the census functions, 68,608 of
+      lead list. 812 addresses are matched (806 of the census functions, 69,027 of
       179,213 bytes); the table is at the end of `src/matched/matched.c` and the
       method is in [architecture.md](architecture.md#matched-routines-phase-2).
       The batches of 8-9 Oct add 37 + 34 + 47 VGAME, 34 + 40 + 45 START/END and 21 + 44 + 64

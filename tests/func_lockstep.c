@@ -451,6 +451,7 @@ static const struct { const char *module; uint16_t ip; } DOS_STUBS[] = {
 /* Entry points reaching shared code below the entry: watch that code too,
  * and recognize a RET there when the routine jumps back to a shared exit. */
 static const struct { const char *module; uint16_t seg, ip, below; } CODE_BELOW[] = {
+    { "VGAME.EXE", 0x0FB2, 0x06A6, 0x0151 },     /* clipped edge: shared column/emitter flow from 0555 */
     { "VGAME.EXE", 0x130D, 0x0577, 0x0018 },     /* bisection's equal-word midpoint cases at 055F/056B */
     { "VGAME.EXE", 0x1377, 0x0968, 0x00CC },     /* model fill: the jump to the common exit 089C */
     { "VGAME.EXE", 0x1377, 0x099F, 0x0007 },     /* stipple fill, exit at 0998 */

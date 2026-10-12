@@ -15,7 +15,7 @@ standing practice, not a session-by-session log. Earlier sessions' detail
 
 ## Current state
 
-Current runtime baseline: VGAME `0FB2:01E6` closed polygon fill,
+Last fully gated runtime baseline: VGAME `0FB2:01E6` closed polygon fill,
 commit `723c46a`, 811 matched addresses. Full gate
 `D:/f117-gate/gate-polygon-fill.log` passes: 36 unit tests, all 39 routes
 IDENTICAL (38 fresh interpreter sessions), both 5,718,976-state instruction
@@ -62,7 +62,10 @@ Phase 2 work" below).
   seeds and 37 unit tests. Its camera replay executes it 1,529,189 times,
   with 234 checkpoints/final identical (`route-verdict.json`). Selective
   patch: `D:/f117-gate/span-edge/integrate.patch`.
-  Not integrated; apply the selective patch and run its own full gate next.
+  Integrated selectively on master, 812 addresses / 806 census functions /
+  69,027 bytes (P2 41.59%, overall 74.25%). Fresh full gate pending in
+  `D:/f117-gate/gate-span-edge.log`; do not push until it passes.
+  Previous pushed HEAD `0c9a47e` has passing Windows and munt CI.
 - 04DD above, if a real route to it is ever found.
 
 ## How this project verifies Phase 2 work (read before matching a new routine)

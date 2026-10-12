@@ -25,7 +25,7 @@ The next span-edge candidate's walk reaches 743 bytes across eight ranges,
 larger than its 419-byte census extent because of shared flow: do not treat
 the walk's byte count as progress or exclusive function ownership.
 
-Private clipped span edge (`0FB2:06A6`, 12 Oct): the named clipper preserves
+Clipped span edge (`0FB2:06A6`, 12 Oct): the named clipper preserves
 the temporary INT 0 vector, overflow halving, signed intersections and
 remainder rounding, boundary-column calls, live endpoints and tail jumps to
 shared emitters `05A4`/`05B3`. The harness watches shared flow from `0555`.
@@ -36,7 +36,8 @@ checkpoints/final identical to the saved fresh interpreter result. Private
 proof: `D:/f117-gate/span-edge/route-verdict.json`. The initial reachability
 checker accidentally read the old polygon output; correcting its path and
 checking the saved runner, milestones and hashes passes without rerunning.
-Not integrated or full-gate validated yet.
+Integrated; its fresh full gate is pending in
+`D:/f117-gate/gate-span-edge.log`.
 
 ## The gate (`tools/build_recomp.py`)
 
