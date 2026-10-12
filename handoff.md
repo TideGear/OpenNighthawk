@@ -15,15 +15,16 @@ standing practice, not a session-by-session log. Earlier sessions' detail
 
 ## Current state
 
-Last fully gated runtime baseline: VGAME `0FB2:01E6` closed polygon fill,
-commit `723c46a`, 811 matched addresses. Full gate
-`D:/f117-gate/gate-polygon-fill.log` passes: 36 unit tests, all 39 routes
+Current runtime baseline: VGAME `0FB2:06A6` clipped span edge,
+commit `1a26b2c`, 812 matched addresses. Full gate
+`D:/f117-gate/gate-span-edge.log` passes: 37 unit tests, all 39 routes
 IDENTICAL (38 fresh interpreter sessions), both 5,718,976-state instruction
-profiles and three matched seeds with zero mismatches, plus reachability
-and event-limit checks. Total 1,770 s; private work ran alongside this gate,
-so it is not a scheduling benchmark. The refreshed census is 805 functions /
-68,608 bytes; P2 41.37%, overall 74.19%. The real camera replay calls the
-polygon entry 382,365 times with all 234 checkpoints/final unchanged.
+profiles and three matched seeds (2,659,030 / 2,657,868 / 2,657,992
+comparisons; third seed `0x1a26b2c7fed2`) with zero mismatches, plus
+reachability and event-limit checks. Total 1,787 s. The refreshed census is
+806 functions / 69,027 bytes; P2 41.59%, overall 74.25%. The real camera
+replay calls the clipped edge 1,529,189 times with all 234 checkpoints/final
+unchanged. Previous pushed HEAD `0c9a47e` has passing Windows and munt CI.
 
 A sibling handler, **VGAME 0FB2:04DD** (the line clipper's own divide-error
 handler), is matched and fixture-proven but deliberately **not integrated**:
@@ -54,18 +55,12 @@ Phase 2 work" below).
   the private lead list; current progress is in `docs/roadmap.md`.
   `matched_draft.py --dossier` also writes private static evidence beside a
   draft; its five synthetic regressions pass and the polygon draft is
-  byte-identical. Next candidate: VGAME `0FB2:06A6` clipped span edge;
-  draft/dossier in `D:/f117-gate/span-edge`. Its walk includes shared tails
-  (743 bytes, eight ranges versus 419 census bytes), and it installs/restores
-  INT 0 around intersections. Private implementation (`clipped.c`, also in
-  the `D:/f117-wt/polygon-fill` worktree) passes 14,461 comparisons at three
-  seeds and 37 unit tests. Its camera replay executes it 1,529,189 times,
-  with 234 checkpoints/final identical (`route-verdict.json`). Selective
-  patch: `D:/f117-gate/span-edge/integrate.patch`.
-  Integrated selectively on master, 812 addresses / 806 census functions /
-  69,027 bytes (P2 41.59%, overall 74.25%). Fresh full gate pending in
-  `D:/f117-gate/gate-span-edge.log`; do not push until it passes.
-  Previous pushed HEAD `0c9a47e` has passing Windows and munt CI.
+  byte-identical. The clipped span edge is integrated and fully gated above;
+  its private source/proof remain in `D:/f117-gate/span-edge`.
+  Next candidate: shared span emitter entries `0FB2:05A4`/`05B3`;
+  private drafts/dossiers in `D:/f117-gate/span-emit`, no implementation yet.
+  These sit inside the already-counted 324-byte `0555` census region:
+  adding entry points must not count the same bytes again.
 - 04DD above, if a real route to it is ever found.
 
 ## How this project verifies Phase 2 work (read before matching a new routine)

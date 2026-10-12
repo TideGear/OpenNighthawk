@@ -207,13 +207,16 @@ shared-flow span-edge candidate demonstrates why walk size is not census
 ownership. Synthetic checks run in Windows CI. Details and limits:
 [repeated-processes.md](repeated-processes.md#phase-2-candidate-reading).
 
-VGAME's clipped span edge (`0FB2:06A6`) is integrated pending its fresh
-full gate. The named routine preserves the temporary INT 0 vector, signed
+VGAME's clipped span edge (`0FB2:06A6`) is integrated and fully gated. The named routine preserves the temporary INT 0 vector, signed
 intersection rounding, overflow halving, boundary columns, live endpoints
 and tail jumps into shared emitters. Three private seeds compare 14,461
 states with zero mismatches; 37 isolated unit tests pass. The real camera
 replay executes it 1,529,189 times with all 234 checkpoints/final identical.
 Its census extent is 419 bytes; shared tails are not counted again.
+The full gate at `1a26b2c` passes all 39 routes, 37 unit tests, both
+5,718,976-state instruction profiles and three matched seeds (2,659,030 /
+2,657,868 / 2,657,992 comparisons), including `0x1a26b2c7fed2`, with zero
+mismatches and passing reachability/event checks.
 
 VGAME's closed polygon fill (`0FB2:01E6`) is integrated and fully gated. It names the live vertex walk, stack-saved endpoints, closing edge,
 span reset and driver fill, preserving DF, count wraparound and event stops.

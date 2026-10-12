@@ -36,8 +36,14 @@ checkpoints/final identical to the saved fresh interpreter result. Private
 proof: `D:/f117-gate/span-edge/route-verdict.json`. The initial reachability
 checker accidentally read the old polygon output; correcting its path and
 checking the saved runner, milestones and hashes passes without rerunning.
-Integrated; its fresh full gate is pending in
-`D:/f117-gate/gate-span-edge.log`.
+Full gate at `1a26b2c` passes in `D:/f117-gate/gate-span-edge.log`:
+37 unit tests, all 39 routes IDENTICAL, both 5,718,976-state instruction
+profiles and three matched seeds (2,659,030 / 2,657,868 / 2,657,992
+comparisons, third seed `0x1a26b2c7fed2`), zero mismatches, passing
+reachability/event checks. All 38 interpreter sessions were run fresh.
+Total 1,787 s: build/tests 198, coverage 629, identical regeneration 22,
+parity 938. No additional heavy candidate work ran alongside this gate;
+these different-source timings do not establish a speedup.
 
 ## The gate (`tools/build_recomp.py`)
 
