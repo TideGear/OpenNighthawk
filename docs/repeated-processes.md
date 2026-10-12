@@ -177,7 +177,7 @@ have no unresolved successors; dossiers remain under
 `D:/f117-gate/next-candidates/panel-frame` and `navgrid`. A normal-input F3
 probe reaches original `8A90` and matches both engines at all 57 checkpoints
 and final `2877054444/5ea6b18cd60f6608`. Proof:
-`D:/f117-gate/navgrid/probe-verdict.json`. Panel frame remains unimplemented.
+`D:/f117-gate/navgrid/probe-verdict.json`. Panel frame was initially unimplemented.
 Preserve high-byte-only grid arithmetic and the order of projection stores
 versus the panel's ILS.
 
@@ -196,8 +196,38 @@ These overlapping workloads are not a controlled speed comparison. After
 pushing the validated armament baseline (`7651db5`), the selective grid patch
 is integrated with the retained `tools/routes/navigation_grid.args` input.
 Census: 810 functions / 70,332 bytes, P2 42.28%, overall 74.45%, 818 matched
-addresses. Fresh full gate pending in `D:/f117-gate/gate-navigation-grid.log`;
-do not push this runtime change until it passes.
+addresses. Fresh full gate at `f1ecb55` passes in
+`D:/f117-gate/gate-navigation-grid.log`: 42 tests, all 41 routes at every
+checkpoint/final (40 fresh interpreter sessions), both 5,718,976-state
+instruction profiles and three matched seeds (2,677,711 / 2,676,098 / 2,677,743
+comparisons; rotating seed `0xf1ecb55f79bf`), zero mismatches and passing
+reachability/event checks. Total 1,600 s. Audited verdict/log hash:
+`D:/f117-gate/navgrid/full-gate-verdict.json`. Private panel-frame build,
+fixtures and replay overlapped after matched shards finished; these timings
+do not establish a speedup.
+
+Cockpit panel frame (`VGAME 0000:79BE`) is proven privately at base `f1ecb55`.
+The named implementation preserves all 80 call sites, accepted-page flag,
+unsigned altitude rounding, mode-change erases, warning copies, shared text
+buffers, byte-only HUD masks, waypoint advance, message countdown and the
+left-altitude inset. Navigation projection still precedes ILS projection.
+The initial fixture caught a missing RET count; corrected three-seed tests
+compare 4,906 / 4,909 / 4,914 states including partial stops, zero mismatches,
+all 32 tracked paths. Graphics/string/navigation helpers return in these
+fixtures; original trig/distance/bearing/clamp helpers execute. Code-write
+watch covers all 2,090 bytes. All 43 isolated tests pass in 80.52 s.
+Real F3 replay uses the actual drivers/helpers, takes 67.8 s, calls the named
+entry 550 times and matches all 57 checkpoints/final without event overruns.
+Audited artifacts and selective patch: `D:/f117-gate/panel-frame/targeted-verdict.json`
+and `integrate.patch`; tested source is snapshotted there. Patch preflight
+passes on main; integration waits for the validated grid baseline push.
+Its saved interpreter reference also matches all 57 checkpoints/final in the
+fresh grid gate (`panel-frame/fresh-reference-crosscheck.json`).
+Private build uses two workers after matched shards finish. These overlapped
+timings do not establish a speedup. Next HUD pass `1058:0016` has a private
+dossier under `next-candidates/hud-pass`: 806 instructions / 2,488 bytes,
+45 call sites, no unresolved successors; not implemented. Its DIV-by-byte
+overflow paths need the original fault semantics, not host division.
 
 ## The gate (`tools/build_recomp.py`)
 
