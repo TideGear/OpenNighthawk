@@ -207,6 +207,16 @@ shared-flow span-edge candidate demonstrates why walk size is not census
 ownership. Synthetic checks run in Windows CI. Details and limits:
 [repeated-processes.md](repeated-processes.md#phase-2-candidate-reading).
 
+HUD pass (`VGAME 1058:0016`) is integrated, pending its fresh full gate:
+14,750 targeted comparisons including 905 divide faults, all 32 tracked
+paths and four fault sites per seed, zero mismatches; 44 isolated tests pass.
+Actual-driver F3 replay invokes it 550 times with all 57 checkpoints/final
+identical. Preserve byte-DIV fault frames, single-bit shifts, overlapping
+vertex-index stores, live reads and guest stack pushes during rotation,
+and an event guard at every far call. Its 2,488-byte census extent brings
+the census to 812 functions / 74,910 bytes, P2 44.71%, overall 75.16%
+(820 matched addresses).
+
 Cockpit panel frame (`VGAME 0000:79BE`) is integrated and fully gated at
 `ae4b50f`: 14,729 targeted comparisons,
 all 32 tracked paths, zero mismatches; 43 isolated tests pass. Real F3 replay

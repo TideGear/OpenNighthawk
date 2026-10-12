@@ -33980,7 +33980,495 @@ frame_return:
     x86_leave(c); c->icount += 4; near_ret(c); return 1;
 }
 
+/* The HUD assembly swaps the two bytes of AX without changing flags. */
+static void hud_swap_ax_bytes(cpu_t *c)
+{
+    c->r[R_AX] = (uint16_t)((c->r[R_AX] << 8) | (c->r[R_AX] >> 8));
+}
+
+/* VGAME 1058:0016: HUD tapes, heading strip, frame and pitch ladder.
+ * BP names a live graphics parameter block, not a C stack frame. Preserve
+ * byte/word distinctions in tape positions and counters, wrapping table
+ * indexes and each driver call. Byte DIV can fault for out-of-range states;
+ * dispatch the original divide error at the original segmented address. */
+static int vgame_hud_pass(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 1)) return 0;
+    SM4_NEED(1, 0x0016); VG3_FAR(0x0016, 11);
+    set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
+    ds_put(c, 0x284C, c->r[R_AX]); ds_put(c, 0x2862, c->r[R_AX]);
+    ds_put(c, 0x2878, c->r[R_AX]); ds_put(c, 0x288E, c->r[R_AX]);
+    ds_put(c, 0x28C8, c->r[R_AX]); ds_put(c, 0x28AA, c->r[R_AX]);
+    ds_put(c, 0x2904, c->r[R_AX]); ds_put(c, 0x28E6, c->r[R_AX]);
+    alu_sub(c, ds_get8(c, 0x294A), 0, 0, 0); c->icount += 11;
+    if (!(c->flags & F_ZF)) {
+        SM4_NEED(3, 0x003C); alu_sub(c, ds_get8(c, 0x294A), 1, 0, 0); c->icount += 3;
+        if (c->flags & F_ZF) goto fixed_ticks;
+        goto hud_frame;
+    }
+    /* Airspeed: quotient selects a 50-knot band; remainder places its tape. */
+    SM4_NEED(4, 0x0049); c->r[R_BP] = 0x284C; c->r[R_AX] = ds_get(c, 0xB194); set_r8(c, R_DH, 50); c->icount += 3;
+    c->op_cs = c->seg[S_CS]; c->op_ip = 0x0051; c->ip = 0x0053;
+    if (!x86_div8(c, get_r8(c, R_DH))) { c->icount++; return 1; } c->icount++;
+    SM4_NEED(8, 0x0053); set_r8(c, R_DL, get_r8(c, R_AL));
+    set_r8(c, R_DL, (uint8_t)alu_dec(c, get_r8(c, R_DL), 0)); set_r8(c, R_CL, ds_get8(c, 0x2922));
+    hud_swap_ax_bytes(c); set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
+    c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], get_r8(c, R_CL), 1); set_r8(c, R_DH, 5); c->icount += 7;
+    c->op_cs = c->seg[S_CS]; c->op_ip = 0x0063; c->ip = 0x0065;
+    if (!x86_div8(c, get_r8(c, R_DH))) { c->icount++; return 1; } c->icount++;
+    SM4_NEED(9, 0x0065); set_r8(c, R_AL, (uint8_t)alu_add(c, get_r8(c, R_AL), ds_get8(c, 0x291D), 0, 0));
+    ds_put8(c, 0x2856, get_r8(c, R_AL)); ds_put8(c, 0x2971, get_r8(c, R_DL));
+    set_r8(c, R_AL, (uint8_t)alu_sub(c, get_r8(c, R_AL), ds_get8(c, 0x291F), 0, 0)); ds_put8(c, 0x2952, get_r8(c, R_AL));
+    set_r8(c, R_DL, (uint8_t)x86_shift(c, 4, get_r8(c, R_DL), 1, 0));
+    set_r8(c, R_DH, (uint8_t)alu_sub(c, get_r8(c, R_DH), get_r8(c, R_DH), 0, 0));
+    c->r[R_DI] = c->r[R_DX]; ds_put8(c, 0x2955, 5); c->icount += 9;
+airspeed_label:
+    SM4_NEED(6, 0x0082); set_r8(c, R_AL, ds_get8(c, 0x2920));
+    ds_put8(c, 0x2856, (uint8_t)alu_sub(c, ds_get8(c, 0x2856), get_r8(c, R_AL), 0, 0));
+    c->r[R_AX] = ds_get(c, 0x2923); ds_put(c, 0x2854, c->r[R_AX]); alu_sub(c, c->r[R_DI], 0x28, 1, 0); c->icount += 6;
+    if (!(c->flags & F_CF)) {
+        SM4_NEED(3, 0x0094); c->r[R_DI] = (uint16_t)alu_sub(c, c->r[R_DI], c->r[R_DI], 1, 0);
+        ds_put8(c, 0x2955, (uint8_t)alu_dec(c, ds_get8(c, 0x2955), 0)); c->icount += 3;
+        if (c->flags & F_ZF) goto airspeed_tape;
+        SM4_NEED(3, 0x009C); c->r[R_AX] = ds_get(c, 0x2920);
+        ds_put(c, 0x2952, (uint16_t)alu_sub(c, ds_get(c, 0x2952), c->r[R_AX], 1, 0)); c->icount += 3; goto airspeed_label;
+    }
+    SM4_NEED(7, 0x00A5); c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_DI] + 0x297E)); ds_put(c, 0x296C, c->r[R_AX]);
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_DI] + 0x29CE)); ds_put(c, 0x296E, c->r[R_AX]);
+    c->r[R_BX] = 0x296C; cpu_push16(c, c->r[R_DI]); c->icount += 6;
+    SM4_NEED(1, 0x00B7); VG3_FAR(0x00B7, 5); c->r[R_DI] = cpu_pop16(c);
+    c->r[R_DI] = (uint16_t)alu_inc(c, c->r[R_DI], 1); c->r[R_DI] = (uint16_t)alu_inc(c, c->r[R_DI], 1);
+    ds_put8(c, 0x2955, (uint8_t)alu_dec(c, ds_get8(c, 0x2955), 0)); c->icount += 5;
+    if (!(c->flags & F_ZF)) goto airspeed_label;
+airspeed_tape:
+    SM4_NEED(5, 0x00C5); c->r[R_SI] = 0; c->r[R_BX] = ds_get(c, 0x2952);
+    set_r8(c, R_CL, ds_get8(c, 0x294B)); set_r8(c, R_DL, ds_get8(c, 0x2971)); c->icount += 4;
+    SM4_NEED(1, 0x00D4); VG3_FAR(0x00D4, 0);
+fixed_ticks:
+    SM4_NEED(2, 0x00D9); set_r8(c, R_AH, ds_get8(c, 0x2CA0)); c->icount++;
+    SM4_NEED(1, 0x00DD); VG3_FAR(0x00DD, 2); alu_sub(c, ds_get8(c, 0x294B), 0, 0, 0); c->icount += 2;
+    if (c->flags & F_ZF) goto full_ticks;
+    SM4_NEED(2, 0x00E9); alu_sub(c, ds_get8(c, 0x294A), 0, 0, 0); c->icount += 2;
+    if (c->flags & F_ZF) {
+        SM4_NEED(5, 0x00F0); c->r[R_AX] = 0x7A; c->r[R_CX] = 0x7C; c->r[R_BX] = 0x3C; c->r[R_DX] = 0x3C; c->icount += 4;
+        SM4_NEED(1, 0x00FC); VG3_FAR(0x00FC, 5); c->r[R_AX] = 0xC4; c->r[R_CX] = 0xC6; c->r[R_BX] = 0x3C; c->r[R_DX] = 0x3C; c->icount += 4;
+        SM4_NEED(1, 0x010D); VG3_FAR(0x010D, 0);
+    }
+    SM4_NEED(5, 0x0112); c->r[R_AX] = 0x9F; c->r[R_CX] = 0x9F; c->r[R_BX] = 0x1D; c->r[R_DX] = 0x1E; c->icount += 4;
+    SM4_NEED(1, 0x011E); VG3_FAR(0x011E, 1); c->icount++; goto altitude_mode;
+full_ticks:
+    SM4_NEED(2, 0x0126); alu_sub(c, ds_get8(c, 0x294A), 0, 0, 0); c->icount += 2;
+    if (c->flags & F_ZF) {
+        SM4_NEED(5, 0x012D); c->r[R_AX] = 0x49; c->r[R_CX] = 0x4C; c->r[R_BX] = 0x34; c->r[R_DX] = 0x34; c->icount += 4;
+        SM4_NEED(1, 0x0139); VG3_FAR(0x0139, 5); c->r[R_AX] = 0xF3; c->r[R_CX] = 0xF6; c->r[R_BX] = 0x34; c->r[R_DX] = 0x34; c->icount += 4;
+        SM4_NEED(1, 0x014A); VG3_FAR(0x014A, 0);
+    }
+    SM4_NEED(5, 0x014F); c->r[R_AX] = 0x9F; c->r[R_CX] = 0x9F; c->r[R_BX] = 0x10; c->r[R_DX] = 0x12; c->icount += 4;
+    SM4_NEED(1, 0x015B); VG3_FAR(0x015B, 0);
+altitude_mode:
+    SM4_NEED(2, 0x0160); alu_sub(c, ds_get8(c, 0x294A), 0, 0, 0); c->icount += 2;
+    if (!(c->flags & F_ZF)) {
+        SM4_NEED(3, 0x0167); alu_sub(c, ds_get8(c, 0x294A), 1, 0, 0); c->icount += 3;
+        if (c->flags & F_ZF) goto heading_strip;
+        goto hud_frame;
+    }
+    /* Altitude divides by 1000 in words. Below the first band it uses
+     * byte subdivisions before joining the ordinary table-label loop. */
+    SM4_NEED(19, 0x0174); c->r[R_AX] = ds_get(c, 0x2DF6);
+    c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0); c->r[R_CX] = 1000;
+    c->op_cs = c->seg[S_CS]; c->op_ip = 0x017C; c->ip = 0x017E; c->icount += 3;
+    if (!x86_div16(c, c->r[R_CX])) { c->icount++; return 1; }
+    c->r[R_BX] = c->r[R_AX]; c->r[R_BX] = (uint16_t)alu_dec(c, c->r[R_BX], 1); c->r[R_AX] = c->r[R_DX];
+    ds_put(c, 0x294C, c->r[R_DX]); c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0);
+    set_r8(c, R_CL, ds_get8(c, 0x2922)); c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], get_r8(c, R_CL), 1);
+    c->r[R_CX] = 100; c->icount += 9; c->op_ip = 0x0192; c->ip = 0x0194;
+    if (!x86_div16(c, c->r[R_CX])) { c->icount++; return 1; }
+    c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 1, 1); c->r[R_DI] = c->r[R_BX];
+    c->r[R_BP] = 0x284C; ds_put8(c, 0x2955, 5); alu_sub(c, c->r[R_DI], 0, 1, 0); c->icount += 7;
+    if (x86_cond(c, 0xD)) goto altitude_high;
+    SM4_NEED(3, 0x01A5); c->r[R_AX] = ds_get(c, 0x294C); set_r8(c, R_DH, 100); c->icount += 2;
+    c->op_cs = c->seg[S_CS]; c->op_ip = 0x01AA; c->ip = 0x01AC;
+    if (!x86_div8(c, get_r8(c, R_DH))) { c->icount++; return 1; } c->icount++;
+    SM4_NEED(8, 0x01AC); set_r8(c, R_DL, get_r8(c, R_AL)); set_r8(c, R_DL, (uint8_t)alu_dec(c, get_r8(c, R_DL), 0));
+    set_r8(c, R_CL, ds_get8(c, 0x2922)); hud_swap_ax_bytes(c);
+    set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
+    c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], get_r8(c, R_CL), 1); set_r8(c, R_DH, 10); c->icount += 7;
+    c->op_cs = c->seg[S_CS]; c->op_ip = 0x01BC; c->ip = 0x01BE;
+    if (!x86_div8(c, get_r8(c, R_DH))) { c->icount++; return 1; } c->icount++;
+    SM4_NEED(8, 0x01BE); set_r8(c, R_AL, (uint8_t)alu_add(c, get_r8(c, R_AL), ds_get8(c, 0x291D), 0, 0));
+    ds_put8(c, 0x2856, get_r8(c, R_AL)); ds_put8(c, 0x2971, get_r8(c, R_DL));
+    set_r8(c, R_AL, (uint8_t)alu_sub(c, get_r8(c, R_AL), ds_get8(c, 0x291F), 0, 0)); ds_put8(c, 0x2952, get_r8(c, R_AL));
+    set_r8(c, R_DL, (uint8_t)x86_shift(c, 4, get_r8(c, R_DL), 1, 0));
+    set_r8(c, R_DH, (uint8_t)alu_sub(c, get_r8(c, R_DH), get_r8(c, R_DH), 0, 0)); c->r[R_DI] = c->r[R_DX]; c->icount += 8;
+altitude_sub_label:
+    SM4_NEED(6, 0x01D6); set_r8(c, R_AL, ds_get8(c, 0x2920));
+    ds_put8(c, 0x2856, (uint8_t)alu_sub(c, ds_get8(c, 0x2856), get_r8(c, R_AL), 0, 0));
+    c->r[R_AX] = ds_get(c, 0x2925); ds_put(c, 0x2854, c->r[R_AX]); alu_sub(c, c->r[R_DI], 0x28, 1, 0); c->icount += 6;
+    if (!(c->flags & F_CF)) {
+        SM4_NEED(5, 0x01E8); c->r[R_DI] = (uint16_t)alu_sub(c, c->r[R_DI], c->r[R_DI], 1, 0);
+        ds_put8(c, 0x2955, (uint8_t)alu_dec(c, ds_get8(c, 0x2955), 0)); c->r[R_AX] = ds_get(c, 0x2920);
+        ds_put(c, 0x2952, (uint16_t)alu_sub(c, ds_get(c, 0x2952), c->r[R_AX], 1, 0)); c->icount += 5; goto altitude_sub_label;
+    }
+    SM4_NEED(5, 0x01F7); set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_DI] + 0x2A1F)));
+    ds_put8(c, 0x2976, get_r8(c, R_AL)); c->r[R_BX] = 0x2976; cpu_push16(c, c->r[R_DI]); c->icount += 4;
+    SM4_NEED(1, 0x0202); VG3_FAR(0x0202, 5); c->r[R_DI] = cpu_pop16(c); c->r[R_DI] = (uint16_t)alu_inc(c, c->r[R_DI], 1);
+    c->r[R_DI] = (uint16_t)alu_inc(c, c->r[R_DI], 1); ds_put8(c, 0x2955, (uint8_t)alu_dec(c, ds_get8(c, 0x2955), 0)); c->icount += 5;
+    if (c->flags & F_ZF) goto altitude_tape;
+    SM4_NEED(2, 0x0210); alu_sub(c, c->r[R_DI], 0x14, 1, 0); c->icount += 2;
+    if (c->flags & F_CF) goto altitude_sub_label;
+    SM4_NEED(2, 0x0215); c->r[R_DI] = 2; c->icount += 2; goto altitude_label;
+altitude_high:
+    SM4_NEED(5, 0x021B); c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], ds_get(c, 0x291D), 1, 0);
+    ds_put(c, 0x2856, c->r[R_AX]); ds_put8(c, 0x2971, 2);
+    set_r8(c, R_AL, (uint8_t)alu_sub(c, get_r8(c, R_AL), ds_get8(c, 0x291F), 0, 0)); ds_put8(c, 0x2952, get_r8(c, R_AL)); c->icount += 5;
+altitude_label:
+    SM4_NEED(6, 0x022E); set_r8(c, R_AL, ds_get8(c, 0x2920));
+    ds_put8(c, 0x2856, (uint8_t)alu_sub(c, ds_get8(c, 0x2856), get_r8(c, R_AL), 0, 0));
+    c->r[R_AX] = ds_get(c, 0x2925); ds_put(c, 0x2854, c->r[R_AX]); alu_sub(c, c->r[R_DI], 0, 1, 0); c->icount += 6;
+    if (c->flags & F_ZF) { SM4_NEED(2, 0x0240); c->r[R_BX] = 0x297A; c->icount += 2; }
+    else {
+        SM4_NEED(3, 0x0246); c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_DI] + 0x2A1E));
+        ds_put(c, 0x2972, c->r[R_AX]); c->r[R_BX] = 0x2972; c->icount += 3;
+    }
+    SM4_NEED(2, 0x0250); cpu_push16(c, c->r[R_DI]); c->icount++;
+    SM4_NEED(1, 0x0251); VG3_FAR(0x0251, 5); c->r[R_DI] = cpu_pop16(c); c->r[R_DI] = (uint16_t)alu_inc(c, c->r[R_DI], 1);
+    c->r[R_DI] = (uint16_t)alu_inc(c, c->r[R_DI], 1); ds_put8(c, 0x2955, (uint8_t)alu_dec(c, ds_get8(c, 0x2955), 0)); c->icount += 5;
+    if (!(c->flags & F_ZF)) goto altitude_label;
+altitude_tape:
+    SM4_NEED(5, 0x025F); c->r[R_SI] = 2; c->r[R_BX] = ds_get(c, 0x2952);
+    set_r8(c, R_CL, ds_get8(c, 0x294B)); set_r8(c, R_DL, ds_get8(c, 0x2971)); c->icount += 4;
+    SM4_NEED(1, 0x026E); VG3_FAR(0x026E, 0);
+heading_strip:
+    SM4_NEED(30, 0x0273); c->r[R_AX] = ds_get(c, 0x2DEE);
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], 0x2000, 1, 0); set_r8(c, R_DL, get_r8(c, R_AH));
+    c->r[R_AX] = (uint16_t)alu_logic(c, c->r[R_AX] & 0x1F80, 1);
+    c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], 1, 1); hud_swap_ax_bytes(c);
+    set_r8(c, R_DH, ds_get8(c, 0x2927)); x86_mul8(c, get_r8(c, R_DH));
+    for (unsigned bit = 0; bit < 6; bit++) c->r[R_AX] = (uint16_t)x86_shift(c, 5, c->r[R_AX], 1, 1);
+    ds_put8(c, 0x2954, get_r8(c, R_AL)); hud_swap_ax_bytes(c); set_r8(c, R_AL, ds_get8(c, 0x291C));
+    set_r8(c, R_AL, (uint8_t)alu_sub(c, get_r8(c, R_AL), get_r8(c, R_AH), 0, 0));
+    set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
+    ds_put(c, 0x2950, c->r[R_AX]); ds_put(c, 0x286A, c->r[R_AX]);
+    set_r8(c, R_DH, (uint8_t)alu_sub(c, get_r8(c, R_DH), get_r8(c, R_DH), 0, 0));
+    c->r[R_DX] = (uint16_t)x86_shift(c, 5, c->r[R_DX], 1, 1); c->r[R_DX] = (uint16_t)x86_shift(c, 5, c->r[R_DX], 1, 1);
+    c->r[R_DX] = (uint16_t)alu_logic(c, c->r[R_DX] & 0x38, 1); ds_put(c, 0x294E, c->r[R_DX]);
+    c->r[R_BX] = 0x2AAA; c->r[R_BX] = (uint16_t)alu_add(c, c->r[R_BX], c->r[R_DX], 1, 0); c->r[R_BP] = 0x2862; c->icount += 29;
+    SM4_NEED(1, 0x02BB); SM4_NEED(1, 0x02BB); VG3_FAR(0x02BB, 9);
+    c->r[R_BX] = 0x2AAA; ds_put(c, 0x294E, (uint16_t)alu_add(c, ds_get(c, 0x294E), 8, 1, 0));
+    ds_put(c, 0x294E, (uint16_t)alu_logic(c, ds_get(c, 0x294E) & 0x3F, 1));
+    c->r[R_BX] = (uint16_t)alu_add(c, c->r[R_BX], ds_get(c, 0x294E), 1, 0); c->r[R_AX] = ds_get(c, 0x2950);
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], ds_get(c, 0x2927), 1, 0); ds_put(c, 0x2950, c->r[R_AX]); ds_put(c, 0x286A, c->r[R_AX]); c->icount += 8;
+    SM4_NEED(1, 0x02DE); VG3_FAR(0x02DE, 9);
+    c->r[R_BX] = 0x2AAA; ds_put(c, 0x294E, (uint16_t)alu_add(c, ds_get(c, 0x294E), 8, 1, 0));
+    ds_put(c, 0x294E, (uint16_t)alu_logic(c, ds_get(c, 0x294E) & 0x3F, 1));
+    c->r[R_BX] = (uint16_t)alu_add(c, c->r[R_BX], ds_get(c, 0x294E), 1, 0); c->r[R_AX] = ds_get(c, 0x2950);
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], ds_get(c, 0x2927), 1, 0); ds_put(c, 0x2950, c->r[R_AX]); ds_put(c, 0x286A, c->r[R_AX]); c->icount += 8;
+    SM4_NEED(1, 0x0301); VG3_FAR(0x0301, 3); c->r[R_AX] = ds_get(c, 0x2929); alu_sub(c, ds_get(c, 0x2950), c->r[R_AX], 1, 0); c->icount += 3;
+    if (!(c->flags & F_CF)) goto hud_frame;
+    SM4_NEED(14, 0x030F); c->r[R_BX] = 0x2AAA;
+    ds_put(c, 0x294E, (uint16_t)alu_add(c, ds_get(c, 0x294E), 8, 1, 0));
+    ds_put(c, 0x294E, (uint16_t)alu_logic(c, ds_get(c, 0x294E) & 0x3F, 1));
+    c->r[R_BX] = (uint16_t)alu_add(c, c->r[R_BX], ds_get(c, 0x294E), 1, 0);
+    c->r[R_AX] = ds_get(c, c->r[R_BX]); ds_put(c, (uint16_t)(c->r[R_BX] + 4), c->r[R_AX]);
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 2)); ds_put(c, (uint16_t)(c->r[R_BX] + 6), c->r[R_AX]);
+    c->r[R_BX] = (uint16_t)alu_add(c, c->r[R_BX], 4, 1, 0); c->r[R_AX] = ds_get(c, 0x2950);
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], ds_get(c, 0x2927), 1, 0); ds_put(c, 0x2950, c->r[R_AX]); ds_put(c, 0x286A, c->r[R_AX]); c->icount += 13;
+    SM4_NEED(1, 0x033B); VG3_FAR(0x033B, 4); set_r8(c, R_AL, ds_get8(c, 0x2954));
+    set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0)); set_r8(c, R_DL, ds_get8(c, 0x292B)); c->icount += 3;
+    c->op_cs = c->seg[S_CS]; c->op_ip = 0x0349; c->ip = 0x034B;
+    if (!x86_div8(c, get_r8(c, R_DL))) { c->icount++; return 1; } c->icount++;
+    SM4_NEED(4, 0x034B); hud_swap_ax_bytes(c);
+    set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0)); alu_logic(c, ds_get(c, 0x2DEE) & 0x2000, 1); c->icount += 4;
+    if (!(c->flags & F_ZF)) { SM4_NEED(1, 0x0357); c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], ds_get(c, 0x292D), 1, 0); c->icount++; }
+    SM4_NEED(2, 0x035B); alu_sub(c, c->r[R_AX], ds_get(c, 0x292B), 1, 0); c->icount += 2;
+    if (!x86_cond(c, 0xC)) { SM4_NEED(1, 0x0361); c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], ds_get(c, 0x292B), 1, 0); c->icount++; }
+    SM4_NEED(4, 0x0365); c->r[R_DI] = c->r[R_AX]; c->r[R_DI] = (uint16_t)x86_shift(c, 4, c->r[R_DI], 1, 1);
+    alu_sub(c, ds_get8(c, 0x294B), 1, 0, 0); c->icount += 4;
+    if (c->flags & F_ZF) { SM4_NEED(2, 0x0370); c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_DI] + 0x2AFE)); c->icount += 2; }
+    else { SM4_NEED(1, 0x0377); c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_DI] + 0x2AEA)); c->icount++; }
+    SM4_NEED(3, 0x037B); ds_put(c, 0x28A8, c->r[R_AX]); c->r[R_BP] = 0x28A4; c->icount += 2;
+    SM4_NEED(1, 0x0381); VG3_FAR(0x0381, 0);
+hud_frame:
+    SM4_NEED(2, 0x0386); set_r8(c, R_AH, 15); c->icount++;
+    SM4_NEED(1, 0x0388); VG3_FAR(0x0388, 2); alu_sub(c, ds_get8(c, 0x294B), 0, 0, 0); c->icount += 2;
+    const int compact_frame = !(c->flags & F_ZF);
+    if (compact_frame) { SM4_NEED(1, 0x0394); c->icount++; }
+    /* Seven fixed strokes per layout; the pen changes after the first two.
+     * A host table loop adds no guest instructions and keeps each original
+     * far-call address and resume point explicit. */
+    static const struct { uint16_t x0, x1, y0, y1, call; } frame_lines[2][7] = {
+        { { 0x2E, 0x2E, 0x5A, 0x0E, 0x03A3 }, { 0x112, 0x112, 0x5A, 0x0E, 0x03B4 },
+          { 0x2D, 0x2D, 0x5A, 0x0E, 0x03CC }, { 0x113, 0x113, 0x5A, 0x0E, 0x03DD },
+          { 0x113, 0xE8, 0x0E, 2, 0x03EE }, { 0xE8, 0x5A, 2, 2, 0x03FF },
+          { 0x2D, 0x59, 0x0E, 2, 0x0410 } },
+        { { 0x62, 0x62, 0x5A, 0x1E, 0x0424 }, { 0xDD, 0xDD, 0x5A, 0x1E, 0x0435 },
+          { 0x61, 0x61, 0x5A, 0x1E, 0x044D }, { 0xDE, 0xDE, 0x5A, 0x1E, 0x045E },
+          { 0xDE, 0xD1, 0x1E, 0x11, 0x046F }, { 0xD1, 0x6E, 0x11, 0x11, 0x0480 },
+          { 0x6E, 0x61, 0x11, 0x1E, 0x0491 } }
+    };
+    for (unsigned stroke = 0; stroke < 7; stroke++) {
+        if (stroke == 2) {
+            const uint16_t pen_call = compact_frame ? 0x043C : 0x03BB;
+            SM4_NEED(2, (uint16_t)(pen_call - 2)); set_r8(c, R_AH, 8); c->icount++;
+            SM4_NEED(1, pen_call); VG3_FAR(pen_call, 0);
+        }
+        SM4_NEED(5, (uint16_t)(frame_lines[compact_frame][stroke].call - 12));
+        c->r[R_AX] = frame_lines[compact_frame][stroke].x0; c->r[R_CX] = frame_lines[compact_frame][stroke].x1;
+        c->r[R_BX] = frame_lines[compact_frame][stroke].y0; c->r[R_DX] = frame_lines[compact_frame][stroke].y1; c->icount += 4;
+        SM4_NEED(1, frame_lines[compact_frame][stroke].call); VG3_FAR(frame_lines[compact_frame][stroke].call, 0);
+    }
+    if (!compact_frame) { SM4_NEED(1, 0x0415); c->icount++; }
+    SM4_NEED(2, 0x0496); alu_sub(c, ds_get8(c, 0x2956), 0, 0, 0); c->icount += 2;
+    if (!(c->flags & F_ZF)) {
+        SM4_NEED(2, 0x049D); c->r[R_BP] = 0x28C2; c->icount++;
+        SM4_NEED(1, 0x04A0); VG3_FAR(0x04A0, 0);
+    }
+    SM4_NEED(5, 0x04A5); c->r[R_BX] = 0x9900; c->r[R_BP] = 0x288E;
+    c->r[R_AX] = ds_get(c, 0x2948); ds_put(c, 0x2896, c->r[R_AX]); c->icount += 4;
+    SM4_NEED(1, 0x04B1); VG3_FAR(0x04B1, 0);
+    /* Split pitch into whole bands and a sub-band position. These shifts
+     * are repeated single-bit operations, retaining their final flags. */
+    SM4_NEED(3, 0x04B6); c->r[R_AX] = ds_get(c, 0x2DF0); alu_sub(c, c->r[R_AX], 0, 1, 0); c->icount += 3;
+    if (!x86_cond(c, 0xD)) { SM4_NEED(1, 0x04BE); c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0); c->icount++; }
+    SM4_NEED(12, 0x04C0);
+    for (unsigned bit = 0; bit < 6; bit++) c->r[R_AX] = (uint16_t)x86_shift(c, 5, c->r[R_AX], 1, 1);
+    c->r[R_BX] = 0x168; x86_mul16(c, c->r[R_BX]); set_r8(c, R_AL, get_r8(c, R_AH));
+    set_r8(c, R_AH, get_r8(c, R_DL)); set_r8(c, R_BL, 40); c->icount += 11;
+    c->op_cs = c->seg[S_CS]; c->op_ip = 0x04D7; c->ip = 0x04D9;
+    if (!x86_div8(c, get_r8(c, R_BL))) { c->icount++; return 1; } c->icount++;
+    SM4_NEED(10, 0x04D9); set_r8(c, R_CH, get_r8(c, R_AL)); set_r8(c, R_AL, get_r8(c, R_AH));
+    set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
+    set_r8(c, R_BH, ds_get8(c, 0x2937)); x86_mul8(c, get_r8(c, R_BH)); c->r[R_BX] = 40; c->r[R_DX] = 0; c->icount += 7;
+    c->op_cs = c->seg[S_CS]; c->op_ip = 0x04EB; c->ip = 0x04ED;
+    if (!x86_div16(c, c->r[R_BX])) { c->icount++; return 1; }
+    alu_sub(c, ds_get(c, 0x2DF0), 0, 1, 0); c->icount += 3;
+    if (!x86_cond(c, 0xD)) {
+        SM4_NEED(3, 0x04F4); set_r8(c, R_AH, ds_get8(c, 0x2937));
+        set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AL), 0, 0)); hud_swap_ax_bytes(c); c->icount += 3;
+    }
+    SM4_NEED(5, 0x04FC); set_r8(c, R_AL, (uint8_t)alu_add(c, get_r8(c, R_AL), ds_get8(c, 0x2939), 0, 0));
+    set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0)); c->r[R_BX] = c->r[R_AX];
+    alu_sub(c, ds_get(c, 0x2DF0), 0, 1, 0); c->icount += 5;
+    if (!x86_cond(c, 0xD)) {
+        SM4_NEED(2, 0x050B); set_r8(c, R_CH, (uint8_t)alu_sub(c, 0, get_r8(c, R_CH), 0, 0));
+        set_r8(c, R_CH, (uint8_t)alu_dec(c, get_r8(c, R_CH), 0)); c->icount += 2;
+    }
+    SM4_NEED(9, 0x050F); set_r8(c, R_AL, get_r8(c, R_CH)); c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], 2, 1, 0); ds_put(c, 0x2C2C, c->r[R_AX]); c->r[R_DX] = c->r[R_AX];
+    set_r8(c, R_CL, 5); c->r[R_DI] = 0; c->r[R_SI] = c->r[R_DI]; set_r8(c, R_CH, 0); c->icount += 9;
+    int pitch_beyond_limit;
+pitch_band:
+    /* Five bands select two-, four- or six-vertex strokes. The original's
+     * overlapping word stores in the byte index table are intentional. */
+    SM4_NEED(10, 0x0523); alu_sub(c, get_r8(c, R_DL), 9, 0, 0); c->icount += 2;
+    if (c->flags & F_ZF) { c->icount++; goto pitch_top; }
+    c->icount++;
+    if (x86_cond(c, 0xF)) { c->icount++; pitch_beyond_limit = 1; goto pitch_cap; }
+    alu_sub(c, get_r8(c, R_DL), 0xF7, 0, 0); c->icount += 2;
+    if (c->flags & F_ZF) goto pitch_level;
+    c->icount++;
+    if (x86_cond(c, 0xC)) { c->icount++; pitch_beyond_limit = 1; goto pitch_negative; }
+    alu_sub(c, get_r8(c, R_DL), 0, 0, 0); c->icount += 2;
+    if (c->flags & F_ZF) goto pitch_level;
+    c->icount++;
+    if (x86_cond(c, 0xF)) { pitch_beyond_limit = 0; goto pitch_cap; }
+    c->icount++; pitch_beyond_limit = 0; goto pitch_negative;
+pitch_level:
+    SM4_NEED(25, 0x0544);
+    c->r[R_AX] = ds_get(c, 0x292F); ds_put(c, (uint16_t)(c->r[R_DI] + 0x2B12), c->r[R_AX]);
+    c->r[R_AX] = ds_get(c, 0x2931); ds_put(c, (uint16_t)(c->r[R_DI] + 0x2B14), c->r[R_AX]);
+    c->r[R_AX] = ds_get(c, 0x2933); ds_put(c, (uint16_t)(c->r[R_DI] + 0x2B16), c->r[R_AX]);
+    c->r[R_AX] = ds_get(c, 0x2935); ds_put(c, (uint16_t)(c->r[R_DI] + 0x2B18), c->r[R_AX]);
+    ds_put(c, (uint16_t)(c->r[R_DI] + 0x2B82), c->r[R_BX]); ds_put(c, (uint16_t)(c->r[R_DI] + 0x2B84), c->r[R_BX]);
+    ds_put(c, (uint16_t)(c->r[R_DI] + 0x2B86), c->r[R_BX]); ds_put(c, (uint16_t)(c->r[R_DI] + 0x2B88), c->r[R_BX]);
+    ds_put8(c, (uint16_t)(c->r[R_SI] + 0x2BF2), 1); ds_put8(c, (uint16_t)(c->r[R_SI] + 0x2BF3), 1);
+    ds_put(c, (uint16_t)(c->r[R_SI] + 0x2C0E), c->r[R_DI]); c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], 6, 1, 0);
+    ds_put(c, (uint16_t)(c->r[R_SI] + 0x2C0F), c->r[R_DI]); c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], 2, 1, 0);
+    c->r[R_SI] = (uint16_t)alu_add(c, c->r[R_SI], 2, 1, 0); c->r[R_BX] = (uint16_t)alu_sub(c, c->r[R_BX], ds_get(c, 0x2937), 1, 0);
+    set_r8(c, R_CH, (uint8_t)alu_add(c, get_r8(c, R_CH), 2, 0, 0)); set_r8(c, R_DL, (uint8_t)alu_inc(c, get_r8(c, R_DL), 0));
+    set_r8(c, R_CL, (uint8_t)alu_dec(c, get_r8(c, R_CL), 0)); c->icount += 24;
+    if (!(c->flags & F_ZF)) goto pitch_band;
+    c->icount++; goto rotate_ladder;
+pitch_cap:
+    SM4_NEED(26, pitch_beyond_limit ? 0x05F7 : 0x059B);
+    c->r[R_AX] = ds_get(c, 0x292F); ds_put(c, (uint16_t)(c->r[R_DI] + 0x2B12), c->r[R_AX]); ds_put(c, (uint16_t)(c->r[R_DI] + 0x2B14), c->r[R_AX]);
+    c->r[R_AX] = ds_get(c, 0x2935); ds_put(c, (uint16_t)(c->r[R_DI] + 0x2B16), c->r[R_AX]); ds_put(c, (uint16_t)(c->r[R_DI] + 0x2B18), c->r[R_AX]);
+    ds_put(c, (uint16_t)(c->r[R_DI] + 0x2B84), c->r[R_BX]); ds_put(c, (uint16_t)(c->r[R_DI] + 0x2B86), c->r[R_BX]); c->r[R_AX] = c->r[R_BX];
+    c->r[R_AX] = (uint16_t)(pitch_beyond_limit ? alu_sub(c, c->r[R_AX], 5, 1, 0) : alu_add(c, c->r[R_AX], 5, 1, 0));
+    ds_put(c, (uint16_t)(c->r[R_DI] + 0x2B82), c->r[R_AX]); ds_put(c, (uint16_t)(c->r[R_DI] + 0x2B88), c->r[R_AX]);
+    ds_put8(c, (uint16_t)(c->r[R_SI] + 0x2BF2), 3); ds_put8(c, (uint16_t)(c->r[R_SI] + 0x2BF3), 0);
+    c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], 2, 1, 0); ds_put(c, (uint16_t)(c->r[R_SI] + 0x2C0E), c->r[R_DI]);
+    c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], 2, 1, 0); ds_put(c, (uint16_t)(c->r[R_SI] + 0x2C0F), c->r[R_DI]);
+    c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], 4, 1, 0); c->r[R_SI] = (uint16_t)alu_add(c, c->r[R_SI], 2, 1, 0);
+    c->r[R_BX] = (uint16_t)alu_sub(c, c->r[R_BX], ds_get(c, 0x2937), 1, 0);
+    set_r8(c, R_CH, (uint8_t)alu_add(c, get_r8(c, R_CH), 3, 0, 0)); set_r8(c, R_DL, (uint8_t)alu_inc(c, get_r8(c, R_DL), 0));
+    set_r8(c, R_CL, (uint8_t)alu_dec(c, get_r8(c, R_CL), 0)); c->icount += 26;
+    if (c->flags & F_ZF) goto rotate_ladder;
+    goto pitch_band;
+pitch_top:
+    SM4_NEED(19, 0x0653); c->r[R_AX] = ds_get(c, 0x292F); ds_put(c, (uint16_t)(c->r[R_DI] + 0x2B12), c->r[R_AX]);
+    c->r[R_AX] = ds_get(c, 0x2935); ds_put(c, (uint16_t)(c->r[R_DI] + 0x2B14), c->r[R_AX]);
+    ds_put(c, (uint16_t)(c->r[R_DI] + 0x2B82), c->r[R_BX]); ds_put(c, (uint16_t)(c->r[R_DI] + 0x2B84), c->r[R_BX]);
+    ds_put8(c, (uint16_t)(c->r[R_SI] + 0x2BF2), 1); ds_put8(c, (uint16_t)(c->r[R_SI] + 0x2BF3), 0);
+    ds_put(c, (uint16_t)(c->r[R_SI] + 0x2C0E), c->r[R_DI]); c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], 2, 1, 0);
+    ds_put(c, (uint16_t)(c->r[R_SI] + 0x2C0F), c->r[R_DI]); c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], 2, 1, 0);
+    c->r[R_SI] = (uint16_t)alu_add(c, c->r[R_SI], 2, 1, 0); c->r[R_BX] = (uint16_t)alu_sub(c, c->r[R_BX], ds_get(c, 0x2937), 1, 0);
+    set_r8(c, R_CH, (uint8_t)alu_add(c, get_r8(c, R_CH), 1, 0, 0)); set_r8(c, R_DL, (uint8_t)alu_inc(c, get_r8(c, R_DL), 0));
+    set_r8(c, R_CL, (uint8_t)alu_dec(c, get_r8(c, R_CL), 0)); c->icount += 19;
+    if (c->flags & F_ZF) goto rotate_ladder;
+    goto pitch_band;
+pitch_negative:
+    SM4_NEED(32, pitch_beyond_limit ? 0x0697 : 0x0709);
+    c->r[R_AX] = ds_get(c, 0x292F); ds_put(c, (uint16_t)(c->r[R_DI] + 0x2B12), c->r[R_AX]); ds_put(c, (uint16_t)(c->r[R_DI] + 0x2B14), c->r[R_AX]);
+    c->r[R_AX] = ds_get(c, 0x2931); ds_put(c, (uint16_t)(c->r[R_DI] + 0x2B16), c->r[R_AX]);
+    c->r[R_AX] = ds_get(c, 0x2933); ds_put(c, (uint16_t)(c->r[R_DI] + 0x2B18), c->r[R_AX]);
+    c->r[R_AX] = ds_get(c, 0x2935); ds_put(c, (uint16_t)(c->r[R_DI] + 0x2B1A), c->r[R_AX]); ds_put(c, (uint16_t)(c->r[R_DI] + 0x2B1C), c->r[R_AX]);
+    ds_put(c, (uint16_t)(c->r[R_DI] + 0x2B84), c->r[R_BX]); ds_put(c, (uint16_t)(c->r[R_DI] + 0x2B86), c->r[R_BX]);
+    ds_put(c, (uint16_t)(c->r[R_DI] + 0x2B88), c->r[R_BX]); ds_put(c, (uint16_t)(c->r[R_DI] + 0x2B8A), c->r[R_BX]); c->r[R_AX] = c->r[R_BX];
+    c->r[R_AX] = (uint16_t)(pitch_beyond_limit ? alu_add(c, c->r[R_AX], 5, 1, 0) : alu_sub(c, c->r[R_AX], 5, 1, 0));
+    ds_put(c, (uint16_t)(c->r[R_DI] + 0x2B82), c->r[R_AX]); ds_put(c, (uint16_t)(c->r[R_DI] + 0x2B8C), c->r[R_AX]);
+    ds_put8(c, (uint16_t)(c->r[R_SI] + 0x2BF2), 2); ds_put8(c, (uint16_t)(c->r[R_SI] + 0x2BF3), 2);
+    c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], 2, 1, 0); ds_put(c, (uint16_t)(c->r[R_SI] + 0x2C0E), c->r[R_DI]);
+    c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], 6, 1, 0); ds_put(c, (uint16_t)(c->r[R_SI] + 0x2C0F), c->r[R_DI]);
+    c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], 4, 1, 0); c->r[R_SI] = (uint16_t)alu_add(c, c->r[R_SI], 2, 1, 0);
+    c->r[R_BX] = (uint16_t)alu_sub(c, c->r[R_BX], ds_get(c, 0x2937), 1, 0);
+    set_r8(c, R_CH, (uint8_t)alu_add(c, get_r8(c, R_CH), 4, 0, 0)); set_r8(c, R_DL, (uint8_t)alu_inc(c, get_r8(c, R_DL), 0));
+    set_r8(c, R_CL, (uint8_t)alu_dec(c, get_r8(c, R_CL), 0)); c->icount += 31;
+    if (pitch_beyond_limit || !(c->flags & F_ZF)) c->icount++;
+    if (c->flags & F_ZF) goto rotate_ladder;
+    goto pitch_band;
+rotate_ladder:
+    /* Rotate each vertex in guest order. The temporary pushes matter when
+     * stack storage aliases the live coordinate arrays. */
+    SM4_NEED(5, 0x0778); ds_put8(c, 0x2C2B, get_r8(c, R_CH));
+    c->r[R_DI] = (uint16_t)alu_sub(c, c->r[R_DI], 2, 1, 0);
+    c->r[R_BX] = ds_get(c, 0x2DF2); c->r[R_BX] = (uint16_t)alu_sub(c, 0, c->r[R_BX], 1, 0);
+    c->r[R_BX] = (uint16_t)alu_add(c, c->r[R_BX], 0x4000, 1, 0); c->icount += 5;
+    SM4_NEED(1, 0x0789); VG3_FAR(0x0789, 3); c->r[R_BP] = c->r[R_BX]; c->r[R_BX] = ds_get(c, 0x2DF2);
+    c->r[R_BX] = (uint16_t)alu_sub(c, 0, c->r[R_BX], 1, 0); c->icount += 3;
+    SM4_NEED(1, 0x0796); VG3_FAR(0x0796, 0);
+rotate_vertex:
+    SM4_NEED(42, 0x079B);
+    c->r[R_AX] = c->r[R_BP]; x86_imul16(c, ds_get(c, (uint16_t)(c->r[R_DI] + 0x2B12)));
+    c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], 1, 1);
+    c->r[R_DX] = (uint16_t)x86_shift(c, 2, c->r[R_DX], 1, 1); c->r[R_SI] = c->r[R_DX];
+    c->r[R_AX] = c->r[R_BP]; x86_imul16(c, ds_get(c, (uint16_t)(c->r[R_DI] + 0x2B82)));
+    cpu_push16(c, c->r[R_BX]); cpu_push16(c, c->r[R_CX]); c->r[R_BX] = c->r[R_AX]; c->r[R_CX] = c->r[R_DX];
+    c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], 1, 1);
+    c->r[R_DX] = (uint16_t)x86_shift(c, 2, c->r[R_DX], 1, 1);
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], c->r[R_BX], 1, 0);
+    c->r[R_DX] = (uint16_t)alu_add(c, c->r[R_DX], c->r[R_CX], 1, !!(c->flags & F_CF));
+    c->r[R_DX] = (uint16_t)x86_shift(c, 7, c->r[R_DX], 1, 1);
+    c->r[R_CX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); c->r[R_CX] = c->r[R_DX];
+    c->r[R_AX] = c->r[R_BX]; x86_imul16(c, ds_get(c, (uint16_t)(c->r[R_DI] + 0x2B82)));
+    c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], 1, 1);
+    c->r[R_DX] = (uint16_t)x86_shift(c, 2, c->r[R_DX], 1, 1);
+    c->r[R_SI] = (uint16_t)alu_sub(c, c->r[R_SI], c->r[R_DX], 1, 0);
+    c->r[R_AX] = c->r[R_BX]; x86_imul16(c, ds_get(c, (uint16_t)(c->r[R_DI] + 0x2B12)));
+    cpu_push16(c, c->r[R_BX]); cpu_push16(c, c->r[R_CX]); c->r[R_BX] = c->r[R_AX]; c->r[R_CX] = c->r[R_DX];
+    c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], 1, 1);
+    c->r[R_DX] = (uint16_t)x86_shift(c, 2, c->r[R_DX], 1, 1);
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], c->r[R_BX], 1, 0);
+    c->r[R_DX] = (uint16_t)alu_add(c, c->r[R_DX], c->r[R_CX], 1, !!(c->flags & F_CF));
+    c->r[R_DX] = (uint16_t)x86_shift(c, 7, c->r[R_DX], 1, 1);
+    c->r[R_CX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c);
+    c->r[R_CX] = (uint16_t)alu_add(c, c->r[R_CX], c->r[R_DX], 1, 0);
+    ds_put(c, (uint16_t)(c->r[R_DI] + 0x2B12), c->r[R_SI]);
+    ds_put(c, (uint16_t)(c->r[R_DI] + 0x2B82), c->r[R_CX]);
+    c->r[R_DI] = (uint16_t)alu_sub(c, c->r[R_DI], 2, 1, 0); c->icount += 42;
+    if (!(c->flags & F_SF)) goto rotate_vertex;
+    SM4_NEED(5, 0x07F4); cpu_push16(c, ds_get(c, 0x2293)); cpu_push16(c, ds_get(c, 0x2295));
+    alu_sub(c, ds_get8(c, 0xE56E), 0, 0, 0); c->icount += 4;
+    if (c->flags & F_ZF) { c->icount++; goto restore_origin; }
+    SM4_NEED(1, 0x0806); set_r8(c, R_AH, ds_get8(c, 0x2CA1)); c->icount++;
+    SM4_NEED(1, 0x080A); VG3_FAR(0x080A, 1); c->r[R_AX] = ds_get(c, 0x2942); c->icount++;
+    SM4_NEED(1, 0x0812); VG3_FAR(0x0812, 7);
+    c->r[R_AX] = ds_get(c, 0x2944); ds_put(c, 0x2293, c->r[R_AX]);
+    c->r[R_AX] = ds_get(c, 0x2946); ds_put(c, 0x2295, c->r[R_AX]);
+    c->r[R_DI] = 0; c->r[R_SI] = c->r[R_DI]; ds_put8(c, 0x2C2A, 0); c->icount += 7;
+draw_segment:
+    SM4_NEED(14, 0x082D);
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_DI] + 0x2B12));
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], ds_get(c, 0x293A), 1, 0); ds_put(c, 0x2299, c->r[R_AX]);
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_DI] + 0x2B82));
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], ds_get(c, 0x293C), 1, 0); ds_put(c, 0x229D, c->r[R_AX]);
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_DI] + 0x2B14));
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], ds_get(c, 0x293A), 1, 0); ds_put(c, 0x229B, c->r[R_AX]);
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_DI] + 0x2B84));
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], ds_get(c, 0x293C), 1, 0); ds_put(c, 0x229F, c->r[R_AX]);
+    cpu_push16(c, c->r[R_DI]); cpu_push16(c, c->r[R_SI]); c->icount += 14;
+    SM4_NEED(1, 0x085B); VG3_FAR(0x085B, 6);
+    c->r[R_SI] = cpu_pop16(c); c->r[R_DI] = cpu_pop16(c);
+    c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], 2, 1, 0);
+    ds_put8(c, 0x2C2A, (uint8_t)alu_inc(c, ds_get8(c, 0x2C2A), 0));
+    ds_put8(c, (uint16_t)(c->r[R_SI] + 0x2BF2), (uint8_t)alu_dec(c, ds_get8(c, (uint16_t)(c->r[R_SI] + 0x2BF2)), 0)); c->icount += 6;
+    if (!(c->flags & F_ZF)) goto draw_segment;
+    SM4_NEED(8, 0x086F); c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], 2, 1, 0);
+    c->r[R_SI] = (uint16_t)alu_inc(c, c->r[R_SI], 1);
+    alu_sub(c, ds_get8(c, (uint16_t)(c->r[R_SI] + 0x2BF2)), 0, 0, 0); c->icount += 4;
+    if (c->flags & F_ZF) { c->r[R_SI] = (uint16_t)alu_inc(c, c->r[R_SI], 1); c->icount++; }
+    set_r8(c, R_BL, ds_get8(c, 0x2C2B)); alu_sub(c, ds_get8(c, 0x2C2A), get_r8(c, R_BL), 0, 0); c->icount += 3;
+    if (x86_cond(c, 0xC)) goto draw_segment;
+    /* Roll selects two sets of label offsets. Keep the one-bit shifts
+     * separate: their flag behaviour differs from a two-bit shift. */
+    SM4_NEED(39, 0x0885);
+    ds_put(c, 0x2C2C, (uint16_t)alu_add(c, ds_get(c, 0x2C2C), 11, 1, 0));
+    c->r[R_SI] = 0; ds_put(c, 0x2C2E, 5); c->r[R_BP] = 0x2878;
+    for (int side = 0; side < 2; side++) {
+        c->r[R_AX] = ds_get(c, 0x2DF2);
+        if (side) set_r8(c, R_AH, (uint8_t)alu_add(c, get_r8(c, R_AH), 0x80, 0, 0));
+        set_r8(c, R_AH, (uint8_t)x86_shift(c, 5, get_r8(c, R_AH), 1, 0));
+        set_r8(c, R_AH, (uint8_t)x86_shift(c, 5, get_r8(c, R_AH), 1, 0)); hud_swap_ax_bytes(c);
+        set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
+        c->r[R_DI] = c->r[R_AX]; c->r[R_DI] = (uint16_t)x86_shift(c, 4, c->r[R_DI], 1, 1);
+        for (int axis = 0; axis < 4; axis++) {
+            const uint16_t table = (uint16_t)(0x264C + axis * 0x80);
+            const uint16_t target = (uint16_t)((side ? 0x2C90 : 0x2C98) + axis * 2);
+            c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_DI] + table));
+            if (!(axis & 1)) c->r[R_AX] = (uint16_t)(side ? alu_sub(c, c->r[R_AX], 1, 1, 0) : alu_add(c, c->r[R_AX], 2, 1, 0));
+            ds_put(c, target, c->r[R_AX]);
+        }
+    }
+    c->icount += 39;
+label_pair:
+    /* Each side uses the same band text but a different vertex. X compares
+     * the text-table index in BX; Y compares the vertex index in DI. */
+    for (int side = 0; side < 2; side++) {
+        const uint16_t entry = side ? 0x095C : 0x08FB;
+        SM4_NEED(27, entry);
+        c->r[R_DI] = ds_get(c, 0x2C2C);
+        c->r[R_DI] = (uint16_t)x86_shift(c, 4, c->r[R_DI], 1, 1);
+        c->r[R_DI] = (uint16_t)x86_shift(c, 4, c->r[R_DI], 1, 1);
+        c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_DI] + 0x2C30)); ds_put(c, 0x2C8C, c->r[R_AX]);
+        c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_DI] + 0x2C32)); ds_put(c, 0x2C8E, c->r[R_AX]);
+        c->r[R_BX] = c->r[R_DI]; c->r[R_DI] = ds_get(c, (uint16_t)(c->r[R_SI] + 0x2C0E));
+        c->r[R_DI] = (uint16_t)alu_logic(c, c->r[R_DI] & 0xFF, 1);
+        c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_DI] + 0x2B12));
+        alu_sub(c, c->r[R_BX], 0x2C, 1, 0); c->icount += 13;
+        if (x86_cond(c, 0xD)) { c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], ds_get(c, side ? 0x2C98 : 0x2C90), 1, 0); c->icount++; }
+        else { c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], ds_get(c, side ? 0x2C9C : 0x2C94), 1, 0); c->icount += 2; }
+        c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], ds_get(c, 0x2940), 1, 0); ds_put(c, 0x2880, c->r[R_AX]);
+        c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_DI] + 0x2B82)); alu_sub(c, c->r[R_DI], 0x2C, 1, 0); c->icount += 5;
+        if (x86_cond(c, 0xD)) { c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], ds_get(c, side ? 0x2C9A : 0x2C92), 1, 0); c->icount++; }
+        else { c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], ds_get(c, side ? 0x2C9E : 0x2C96), 1, 0); c->icount += 2; }
+        c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], ds_get(c, 0x293E), 1, 0); ds_put(c, 0x2882, c->r[R_AX]);
+        c->r[R_BX] = 0x2C8C; cpu_push16(c, c->r[R_SI]); c->icount += 4;
+        if (side) { SM4_NEED(1, 0x09B6); VG3_FAR(0x09B6, 2); }
+        else { SM4_NEED(1, 0x0955); VG3_FAR(0x0955, 2); }
+        c->r[R_SI] = cpu_pop16(c); c->r[R_SI] = (uint16_t)alu_inc(c, c->r[R_SI], 1); c->icount += 2;
+    }
+    SM4_NEED(4, 0x09BD); ds_put(c, 0x2C2C, (uint16_t)alu_inc(c, ds_get(c, 0x2C2C), 1));
+    ds_put(c, 0x2C2E, (uint16_t)alu_dec(c, ds_get(c, 0x2C2E), 1)); c->icount += 3;
+    if (!(c->flags & F_ZF)) { c->icount++; goto label_pair; }
+restore_origin:
+    SM4_NEED(2, 0x09CA); { uint16_t value = cpu_pop16(c); ds_put(c, 0x2295, value); }
+    { uint16_t value = cpu_pop16(c); ds_put(c, 0x2293, value); } c->icount += 2;
+    SM4_NEED(1, 0x09D2); VG3_FAR(0x09D2, 1); near_ret(c); c->icount++; return 1;
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "VGAME.EXE", VGAME_47304, 0x1058, 0x0016, vgame_hud_pass, "HUD tapes, frame and pitch ladder", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x79BE, vgame_panel_frame, "cockpit panel frame and HUD dispatch", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x8A90, vgame_navigation_grid, "navigation grid and world markers", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x07EE, start_armament_screen, "prepare weapon rows, stations and stores panel", 1 },

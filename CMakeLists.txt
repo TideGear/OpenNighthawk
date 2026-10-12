@@ -318,6 +318,8 @@ if(F117R_BUILD_TESTS)
     # the states save the faulting IDIV's own IP, which picks the denominator.
     add_test(NAME matched_divide_interrupts COMMAND func_lockstep --states 4000
       --only VGAME.EXE:84E)
+    add_test(NAME matched_hud_pass COMMAND func_lockstep --states 4000
+      --only VGAME.EXE:16)
     add_test(NAME matched_panel_frame COMMAND func_lockstep --states 4000
       --only VGAME.EXE:79BE)
     add_test(NAME matched_navigation_grid COMMAND func_lockstep --states 4000

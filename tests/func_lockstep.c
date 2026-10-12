@@ -313,7 +313,7 @@ static void stub_driver_thunks(uint8_t *pristine, uint32_t at, const rc_module *
                            o->ip == 0x8A18 || o->ip == 0x881F || o->ip == 0x796E || o->ip == 0x3A4E ||
                            o->ip == 0xB0C2 || o->ip == 0xC45C)) ||
            (o->seg == 0x114A && (o->ip == 0x0280 || o->ip == 0x03AD || o->ip == 0x03FD || o->ip == 0x014F || o->ip == 0x0006 || o->ip == 0x01DB)) ||
-           (o->seg == 0x1058 && (o->ip == 0x09D8 || o->ip == 0x0A2C)) ||
+           (o->seg == 0x1058 && (o->ip == 0x0016 || o->ip == 0x09D8 || o->ip == 0x0A2C)) ||
            (o->seg == 0x0FB2 && o->ip == 0x01E6));
     const int checked_alloc = !strcmp(m->name, "DSWAP.EXE") && o->seg == 0 && o->ip == 0x0494;
     if (strcmp(m->name, "START.EXE") && strcmp(m->name, "END.EXE") && !vgame_draw && !checked_alloc) return;
@@ -350,6 +350,8 @@ static const struct { const char *module; uint16_t ip; uint32_t linear; uint8_t 
     { "VGAME.EXE", 0x79BE, 0x089F7, 0xC3 },
     { "VGAME.EXE", 0x79BE, 0x08A18, 0xC3 },
     { "VGAME.EXE", 0x79BE, 0x0889B, 0xC3 },
+    /* HUD caller: returning clipped line; preserve real rotation math. */
+    { "VGAME.EXE", 0x0016, 0x0FE40, 0xCB },
     /* Navigation-grid caller: returning far rectangle fill. */
     { "VGAME.EXE", 0x8A90, 0x0FD66, 0xCB },
     /* Arming caller: returning picture loader; actual driver on routes. */
@@ -412,6 +414,7 @@ static const struct { const char *module; uint16_t ip; int arg; uint16_t v[2]; }
 /* Exact code ranges when the default 0x300-byte window is unsuitable:
  * long/shared tails, or small walkers whose unrelated callees are nearby. */
 static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
+    { "VGAME.EXE", 0x0016, 0x0016, 0x09C2 }, /* HUD pass through RET */
     { "VGAME.EXE", 0x79BE, 0x79BE, 0x082A }, /* whole cockpit pass through RET */
     { "VGAME.EXE", 0x8A90, 0x8A90, 0x0446 }, /* entire grid through RET at 8ED5 */
     /* A random initializer can consume the walker's return address and
@@ -537,6 +540,8 @@ static uint16_t g_below;                /* how far the routine's code reaches be
  * written back later (a row table over the code when DS = CS) runs changed instructions and leaves no
  * trace in the end state. */
 static int g_self_written, g_watch_transient;
+static int g_hud_fixture;
+static uint64_t g_hud_seen;
 static uint64_t g_cockpit_seen;
 static unsigned g_nav_seen;
 static unsigned g_panel_seen;           /* original branches in the current panel fixture */
@@ -546,7 +551,7 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
     const uint32_t watch = phys(cs, (uint16_t)(ip - g_below));
     const int watching = (g_below || g_watch_transient) && a->mem == g_mem[0];
     while (*steps < 100000) {
-        const unsigned watch_bytes = (ip == 0x79BE || ip == 0x8A90) ? g_span : 0x300u + g_below;
+        const unsigned watch_bytes = (ip == 0x0016 || ip == 0x79BE || ip == 0x8A90) ? g_span : 0x300u + g_below;
         if (watching && !g_self_written && memcmp(a->mem + watch, g_pristine + watch, watch_bytes)) g_self_written = 1;
         if (g_trace) printf("      %04X:%04X clk %llu sp %04X\n", a->seg[S_CS], a->ip, (unsigned long long)a->icount, a->r[R_SP]);
         const uint16_t here = a->ip;
@@ -557,6 +562,15 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
                 if (here == branch[k]) g_arms_seen |= 1u << k;
             if (here == 0x0820 && x86_cond(a, 7)) g_arms_seen |= 1u << 5;
             if (here == 0x08E8 && !(a->flags & F_ZF)) g_arms_seen |= 1u << 6;
+        }
+        if (ip == 0x0016 && own && a->mem == g_mem[0]) {
+            static const uint16_t branch[] = { 0x0049, 0x00D9, 0x01D6, 0x022E,
+                0x0262, 0x030F, 0x0370, 0x0377, 0x0397, 0x0418, 0x04A0,
+                0x0544, 0x059B, 0x05F7, 0x0653, 0x0697, 0x0709, 0x079B,
+                0x0803, 0x0806, 0x082D, 0x087A, 0x08FB, 0x0924, 0x092B,
+                0x093F, 0x0946, 0x0985, 0x098C, 0x09A0, 0x09A7, 0x09CA };
+            for (unsigned k = 0; k < sizeof branch / sizeof branch[0]; k++)
+                if (here == branch[k]) g_hud_seen |= UINT64_C(1) << k;
         }
         if (ip == 0x79BE && own && a->mem == g_mem[0]) {
             static const uint16_t branch[] = { 0x79D3, 0x79E2, 0x7A06, 0x7A2E,
@@ -591,6 +605,10 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
         cpu_step(a);
         if (a->flags & F_TF) cpu_interrupt(a, 1);
         ++*steps;
+        /* A HUD divide fault is a comparable boundary even though it cannot
+         * return normally. Stop before interpreting the random vector target. */
+        if (g_hud_fixture && own && a->int_depth &&
+            (here == 0x0051 || here == 0x0063 || here == 0x01BC || here == 0x0349)) return 2;
         /* The routine's own return: near RET (kind 1), far RETF (2), IRET (3). */
         const int is_ret = kind == 3 ? op == 0xCF : kind == 2 ? (op == 0xCB || op == 0xCA) : (op == 0xC3 || op == 0xC2);
         if (is_ret && sp_before == entry_sp) return inside;
@@ -687,11 +705,13 @@ int main(int argc, char **argv)
          * the adjacent opposite-order helper, then restore the code bytes.
          * PLAYER's format reader can similarly overwrite its RET through
          * an aliased frame slot. Final memory misses these changed-code inputs. */
-        g_watch_transient = o->seg == 0 &&
+        g_hud_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0x1058 && o->ip == 0x0016;
+        g_watch_transient = (!strcmp(o->module, "VGAME.EXE") && o->seg == 0x1058 && o->ip == 0x0016) ||
+            (o->seg == 0 &&
             ((!strcmp(o->module, "VGAME.EXE") && (o->ip == 0x79BE || o->ip == 0x8A90)) ||
              (!strcmp(o->module, "START.EXE") && (o->ip == 0x39B3 || o->ip == 0x39D5)) ||
              (!strcmp(o->module, "END.EXE") && (o->ip == 0x1CB1 || o->ip == 0x1CD3)) ||
-             (!strcmp(o->module, "PLAYER.EXE") && o->ip == 0x1E90));
+             (!strcmp(o->module, "PLAYER.EXE") && o->ip == 0x1E90)));
         for (uint32_t a = 0; a < MEM_SIZE; a += 8) { uint64_t v = rnd(); memcpy(g_pristine + a, &v, 8); }
         const uint32_t at = (uint32_t)base * 16u + m->origin;
         memcpy(g_pristine + at, m->image, m->size);
@@ -713,6 +733,9 @@ int main(int argc, char **argv)
         const int sprite_run = !strcmp(o->module, "MPS_LOGO.EXE") && o->seg == 0x006D && o->ip == 0x0678;
         const int camera_gradients = !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && (o->ip == 0x1974 || o->ip == 0x19FD);
         const int objectives_panel = !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0x9515;
+        unsigned hud_fault_mask = 0;
+        unsigned long long hud_faults = 0;
+        uint64_t hud_branches = 0;
         uint64_t cockpit_branches = 0;
         unsigned nav_branches = 0;
         unsigned panel_branches = 0;
@@ -811,6 +834,47 @@ int main(int argc, char **argv)
                     small[0] = o->ip == 0x1974 ? 169 : 110;
                     small[1] = (uint16_t)((s >> 3) & 1);
                 }
+            }
+            /* HUD worlds: both layouts and all three modes, tape boundary
+             * values, signed pitch bands and roll quadrants. Graphics thunks
+             * return, while the original fixed-point trig remains live. */
+            if (!strcmp(o->module, "VGAME.EXE") && o->seg == 0x1058 && o->ip == 0x0016 &&
+                ((s & 7) == 1 || (s & 7) == 2)) {
+                const unsigned v = (unsigned)s >> 3;
+                const int half = (v / 3) & 1;
+                const int fault = (s & 7) == 2 && v % 11 == 0 ? (int)((v / 11) % 4) : -1;
+                static const uint16_t speed[] = { 0, 49, 50, 51, 12749, 12799 };
+                static const uint16_t height[] = { 0, 99, 100, 999, 1000, 65535 };
+                static const uint16_t pitch[] = { 0, 1, 0xFFFF, 0x1000, 0xF000, 0x4000, 0xC000, 0x7FFF, 0x8000 };
+                const struct { uint16_t at, value; } words[] = {
+                    { 0x294A, (uint16_t)((fault >= 0 ? (fault == 2 ? 1 : 0) : v % 3) | (half << 8)) },
+                    { 0xB194, (uint16_t)(fault == 0 ? 12800 : fault == 1 ? 49 : fault == 3 ? 100 : speed[(v / 6) % 6]) }, { 0x2DF6, (uint16_t)(fault == 3 ? 999 : height[(v / 7) % 6]) },
+                    { 0x2DF0, pitch[(v / 5) % 9] }, { 0x2DF2, (uint16_t)(v * 0x1379) },
+                    { 0x2DEE, (uint16_t)(v * 0x2173) }, { 0xE56E, (uint16_t)(v & 1) },
+                    { 0x291D, (uint16_t)(half ? 78 : 90) }, { 0x291F, 17 },
+                    { 0x2920, (uint16_t)(half ? 10 : 20) }, { 0x2922, (uint16_t)((fault == 1 || fault == 3) ? 8 : !half) },
+                    { 0x2923, (uint16_t)(half ? 102 : 49) }, { 0x2925, (uint16_t)(half ? 204 : 255) },
+                    { 0x2927, (uint16_t)(half ? 18 : 45) }, { 0x2929, (uint16_t)(fault == 2 ? 65535 : half ? 175 : 248) },
+                    { 0x292B, (uint16_t)(fault == 2 ? 0 : half ? 4 : 10) }, { 0x292D, (uint16_t)(half ? 2 : 5) },
+                    { 0x292F, (uint16_t)(half ? -23 : -50) }, { 0x2931, (uint16_t)(half ? -8 : -12) },
+                    { 0x2933, (uint16_t)(half ? 9 : 13) }, { 0x2935, (uint16_t)(half ? 23 : 50) },
+                    { 0x2937, (uint16_t)(half ? 26 : 52) }, { 0x2939, (uint16_t)(half ? 52 : 104) },
+                    { 0x293A, (uint16_t)(half ? 31 : 79) }, { 0x293C, (uint16_t)(half ? 32 : 36) },
+                    { 0x293E, (uint16_t)(half ? 60 : 52) }, { 0x2940, 159 },
+                    { 0x2942, 5200 }, { 0x2944, 160 }, { 0x2946, 68 }
+                };
+                int safe = 1;
+                for (unsigned j = 0; j < sizeof words / sizeof words[0]; j++)
+                    for (unsigned byte = 0; byte < 2; byte++) {
+                        const uint32_t address = phys(seg[S_DS], (uint16_t)(words[j].at + byte));
+                        if (address >= at && address < at + m->size + 2) safe = 0;
+                    }
+                if (safe) for (unsigned j = 0; j < sizeof words / sizeof words[0]; j++)
+                    for (unsigned byte = 0; byte < 2; byte++) {
+                        const uint32_t address = phys(seg[S_DS], (uint16_t)(words[j].at + byte));
+                        g_pristine[address] = g_mem[0][address] = g_mem[1][address] =
+                            (uint8_t)(words[j].value >> (8 * byte));
+                    }
             }
             /* Valid panel worlds exercise full/compact/external views, mode
              * changes, warning lamps, waypoint advance, message countdown and
@@ -997,9 +1061,23 @@ int main(int argc, char **argv)
              * accept the state only when it returns to the pushed address. */
             const uint16_t entry_sp = (uint16_t)(r[R_SP] - (o->matched == 3 ? 6 : o->matched == 2 ? 4 : 2));
             g_back_cs = cs; g_back_ip = back; g_back_sp = r[R_SP];
-            g_reach = 0; g_cockpit_seen = 0; g_nav_seen = 0; g_panel_seen = 0; g_arms_seen = 0;
+            g_reach = 0; g_hud_seen = 0; g_cockpit_seen = 0; g_nav_seen = 0; g_panel_seen = 0; g_arms_seen = 0;
             g_self_written = 0;
             const int returned = run_to_ret(a, entry_sp, o->matched, &steps, cs, ip);
+            if (returned == 2 && !g_self_written) {
+                g_side[0].overflow = g_side[1].overflow = 1;
+                g_lost = 0; g_ncalls = 0; g_callover = 0;
+                const int ran = o->fn(&g_m);
+                if (!ran || g_lost || !g_m.cpu.int_depth) { ms++; restore(); continue; }
+                g_cpu[1] = g_m.cpu; mc++; hud_faults++;
+                if (a->op_ip == 0x0051) hud_fault_mask |= 1;
+                if (a->op_ip == 0x0063) hud_fault_mask |= 2;
+                if (a->op_ip == 0x01BC) hud_fault_mask |= 4;
+                if (a->op_ip == 0x0349) hud_fault_mask |= 8;
+                g_ctx = " (HUD divide fault)";
+                mb += compare(o->module, ((uint32_t)o->seg << 4) + ip, cs, ip, 0);
+                g_ctx = ""; restore(); continue;
+            }
             const uint16_t reach = g_reach;
             if (!returned || a->seg[S_CS] != cs || a->ip != back || g_self_written) steps = 100000;
             g_side[0].overflow = g_side[1].overflow = 1;      /* compare all memory */
@@ -1073,6 +1151,7 @@ int main(int argc, char **argv)
                 g_finished++;
             }
             mc++;
+            if (!strcmp(o->module, "VGAME.EXE") && o->seg == 0x1058 && o->ip == 0x0016) hud_branches |= g_hud_seen;
             if (!strcmp(o->module, "VGAME.EXE") && o->ip == 0x79BE) cockpit_branches |= g_cockpit_seen;
             if (!strcmp(o->module, "VGAME.EXE") && o->ip == 0x8A90) nav_branches |= g_nav_seen;
             if (objectives_panel) panel_branches |= g_panel_seen;
@@ -1165,6 +1244,16 @@ int main(int argc, char **argv)
                o->what, mc, ms, mb ? "MISMATCH" : mc ? "equal" : "not testable here (routes only)");
         if (g_checked_alloc) printf("  completed allocation-error states: %llu\n", g_alloc_errors);
         if (camera_gradients) printf("  completed 16-band states: %llu\n", g_gradient_full);
+        if (!strcmp(o->module, "VGAME.EXE") && o->seg == 0x1058 && o->ip == 0x0016) {
+            printf("  completed HUD branch mask: %08llX (required FFFFFFFF)\n", (unsigned long long)hud_branches);
+            printf("  HUD divide fault states: %llu; mask %X (required F)\n", hud_faults, hud_fault_mask);
+            if (states >= 4000 && hud_fault_mask != 15) {
+                fprintf(stderr, "HUD fixtures missed required divide faults\n"); mb++;
+            }
+            if (states >= 4000 && hud_branches != UINT64_C(0xFFFFFFFF)) {
+                fprintf(stderr, "HUD fixtures missed required branches\n"); mb++;
+            }
+        }
         if (!strcmp(o->module, "VGAME.EXE") && o->ip == 0x79BE) {
             printf("  completed cockpit branch mask: %08llX (required FFFFFFFF)\n", (unsigned long long)cockpit_branches);
             if (states >= 4000 && cockpit_branches != UINT64_C(0xFFFFFFFF)) {

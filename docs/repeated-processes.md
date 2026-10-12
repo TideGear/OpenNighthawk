@@ -236,7 +236,11 @@ timings do not establish a speedup. Next HUD pass `1058:0016` has a private
 dossier under `next-candidates/hud-pass`: 806 instructions / 2,488 bytes,
 45 call sites, no unresolved successors. Its complete handwritten draft
 is inserted in the private worktree, backed up as
-`D:/f117-gate/hud-pass/named-hud-pass.c`; main has no HUD changes yet.
+`D:/f117-gate/hud-pass/named-hud-pass.c`. After pushing the validated
+panel baseline/evidence (`cb50ccf`), integrated the selective patch on main;
+all three runtime/fixture/CMake texts match the tested snapshots. Census
+812 / 74,910, P2 44.71%, overall 75.16%, 820 matched addresses. Fresh full
+gate pending in `D:/f117-gate/gate-hud-pass.log`; do not push until it passes.
 Final three seeds compare 4,916 / 4,922 / 4,912 states including 303 / 298 /
 304 divide faults, zero mismatches. Each reaches all 32 tracked paths and
 four fault sites; all 44 isolated tests pass (62.41 s). Actual-driver F3

@@ -70,7 +70,10 @@ Phase 2 work" below).
   Next HUD pass `1058:0016`: dossier `next-candidates/hud-pass`, 806
   instructions / 2,488 bytes, 45 calls, no unresolved successors. Complete
   handwritten draft `D:/f117-gate/hud-pass/named-hud-pass.c` is inserted
-  privately in `D:/f117-wt/span-emitter`; main has no HUD changes yet.
+  in `D:/f117-wt/span-emitter` and integrated selectively on main.
+  Census: 812 / 74,910, P2 44.71%, overall 75.16%, 820 addresses.
+  Fresh full gate pending in `D:/f117-gate/gate-hud-pass.log`; do not
+  push this runtime change until it passes.
   Three final seeds compare 4,916 / 4,922 / 4,912 states, including
   303 / 298 / 304 divide faults, zero mismatches; all 32 tracked paths and
   four fault sites are required per seed. All 44 isolated tests pass.
@@ -81,8 +84,8 @@ Phase 2 work" below).
   Preserve byte-DIV faults, repeated one-bit shifts, live array reads and
   guest stack pushes during rotation. Route wrapper `route-proof.py` uses
   the immutable F3 reference, crosschecked against this fresh panel gate in
-  `fresh-reference-crosscheck.json`. Integration follows this panel
-  baseline push and requires another full gate. The next moving-object
+  `fresh-reference-crosscheck.json`. Panel baseline/evidence is pushed
+  as `cb50ccf`. Main source matches the privately tested snapshots. The next moving-object
   dossier is prepared under `next-candidates/moving-objects`: VGAME
   `0000:983E`, 564 instructions / 1,724 bytes / 38 calls; no implementation.
 - 04DD above, if a real route to it is ever found.
