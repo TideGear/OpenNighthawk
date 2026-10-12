@@ -1,4 +1,4 @@
-# F-117A Recomp
+# OpenNighthawk (F-117A Recompilation)
 
 > **Not affiliated with anyone.** This is an unofficial, fan-made project. It
 > is not affiliated with, authorized by, endorsed by, or associated with
