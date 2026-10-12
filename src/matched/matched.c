@@ -32151,7 +32151,91 @@ static int start_load_screen(machine_t *m)
     return 1;
 }
 
+/* VGAME 1974/19FD: fill camera sky/ground strips across x=169..245.
+ * Sky subtracts the gradient offsets and stops at y=110; ground adds them
+ * and stops at y=169. Build each four-point polygon in the guest frame and
+ * call the original fill routine. Loop index, bounds, row and done flag
+ * remain live across calls, including stack/data aliases. */
+static int vgame_camera_bands(machine_t *m, int sky)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t loop = sky ? 0x199D : 0x1A38;
+    const uint16_t body = sky ? 0x19A3 : 0x1A3E;
+    const uint16_t after = sky ? 0x19F2 : 0x1A8D;
+    const uint16_t bump = sky ? 0x199A : 0x1A35;
+    const uint16_t done = sky ? 0x19FB : 0x1A96;
+    const int y = sky ? -6 : -8;
+    const int base = sky ? -22 : -24;
+    if (!room(c, sky ? 13 : 16)) return 0;
+    x86_enter(c, sky ? 22 : 24, 0);
+    if (sky) {
+        c->r[R_AX] = bp_get(c, 4); bp_put(c, -6, c->r[R_AX]);
+        c->r[R_AX] = 169; bp_put(c, -10, c->r[R_AX]); bp_put(c, -22, c->r[R_AX]);
+        c->r[R_AX] = 245; bp_put(c, -14, c->r[R_AX]); bp_put(c, -18, c->r[R_AX]);
+        c->r[R_AX] = (uint16_t)alu_sub(c,c->r[R_AX],c->r[R_AX],1,0);
+        bp_put(c, -2, c->r[R_AX]); bp_put(c, -4, c->r[R_AX]); c->icount += 13;
+    } else {
+        bp_put(c, -6, 0x70); bp_put(c, -2, 0);
+        alu_sub(c, bp_get(c, 6), 1, 1, 0); c->icount += 5;
+        if (c->flags & F_ZF) { bp_put(c, -6, 0xF0); c->icount++; }
+        c->r[R_AX] = bp_get(c, 4); bp_put(c, -8, c->r[R_AX]);
+        c->r[R_AX] = 169; bp_put(c, -12, c->r[R_AX]); bp_put(c, -24, c->r[R_AX]);
+        c->r[R_AX] = 245; bp_put(c, -16, c->r[R_AX]); bp_put(c, -20, c->r[R_AX]);
+        bp_put(c, -4, 0); c->icount += 10;
+    }
+    for (;;) {
+        if (!room(c, 2)) { c->ip = loop; return 1; }
+        alu_sub(c, bp_get(c, -4), 16, 1, 0); c->icount += 2;
+        if (x86_cond(c, 0xD)) break; /* signed band >= 16 */
+        if (!room(c, 26)) { c->ip = body; return 1; }
+        if (sky) {
+            c->r[R_AX] = bp_get(c, 4); c->r[R_BX] = bp_get(c, -4);
+            c->r[R_BX] = x86_shift(c,4,c->r[R_BX],1,1);
+            c->r[R_AX] = (uint16_t)alu_sub(c,c->r[R_AX],ds_get(c,(uint16_t)(c->r[R_BX]+0x0D24)),1,0);
+        } else {
+            c->r[R_BX] = bp_get(c, -4); c->r[R_BX] = x86_shift(c,4,c->r[R_BX],1,1);
+            c->r[R_AX] = ds_get(c,(uint16_t)(c->r[R_BX]+0x0D24));
+            c->r[R_AX] = (uint16_t)alu_add(c,c->r[R_AX],bp_get(c,4),1,0);
+        }
+        bp_put(c, y, c->r[R_AX]);
+        alu_sub(c,c->r[R_AX],sky ? 110 : 169,1,0); c->icount += 7;
+        if (!(sky ? x86_cond(c,0xF) : x86_cond(c,0xC))) {
+            bp_put(c,y,sky ? 110 : 169); bp_put(c,-2,1); c->icount += 2;
+        }
+        c->r[R_AX] = bp_get(c,y);
+        bp_put(c,base+6,c->r[R_AX]); bp_put(c,base+2,c->r[R_AX]);
+        if (sky) {
+            c->r[R_AX] = bp_get(c,4); c->r[R_BX] = bp_get(c,-4);
+            c->r[R_BX] = x86_shift(c,4,c->r[R_BX],1,1);
+            c->r[R_AX] = (uint16_t)alu_sub(c,c->r[R_AX],ds_get(c,(uint16_t)(c->r[R_BX]+0x0D22)),1,0);
+        } else {
+            c->r[R_BX] = bp_get(c,-4); c->r[R_BX] = x86_shift(c,4,c->r[R_BX],1,1);
+            c->r[R_AX] = ds_get(c,(uint16_t)(c->r[R_BX]+0x0D22));
+            c->r[R_AX] = (uint16_t)alu_add(c,c->r[R_AX],bp_get(c,4),1,0);
+        }
+        bp_put(c,base+14,c->r[R_AX]); bp_put(c,base+10,c->r[R_AX]);
+        c->r[R_AX] = bp_get(c,sky ? -4 : -6);
+        c->r[R_AX] = (uint16_t)alu_add(c,c->r[R_AX],sky ? 0x80 : bp_get(c,-4),1,0);
+        cpu_push16(c,c->r[R_AX]);
+        c->r[R_AX] = (uint16_t)(c->r[R_BP]+base); cpu_push16(c,c->r[R_AX]);
+        cpu_push16(c,4); cpu_push16(c,ds_get(c,0x0D1C)); c->icount += 16;
+        if (!guest_call_far(m,sky ? 0x19ED : 0x1A88,after)) return 1;
+        if (!room(c,3)) { c->ip = after; return 1; }
+        c->r[R_SP] = (uint16_t)alu_add(c,c->r[R_SP],8,1,0);
+        alu_sub(c,bp_get(c,-2),0,1,0); c->icount += 3;
+        if (!(c->flags & F_ZF)) break;
+        if (!room(c,1)) { c->ip = bump; return 1; }
+        bp_put(c,-4,(uint16_t)alu_inc(c,bp_get(c,-4),1)); c->icount++;
+    }
+    if (!room(c,2)) { c->ip = done; return 1; }
+    x86_leave(c); near_ret(c); c->icount += 2; return 1;
+}
+static int vgame_camera_sky_bands(machine_t *m) { return vgame_camera_bands(m,1); }
+static int vgame_camera_ground_bands(machine_t *m) { return vgame_camera_bands(m,0); }
+
 static const recomp_override MATCHED[] = {
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x1974, vgame_camera_sky_bands, "camera sky gradient strips", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x19FD, vgame_camera_ground_bands, "camera ground gradient strips", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xB0C2, vgame_panel_projected_diamond, "diamond around a projected HUD point", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x3641, start_load_screen, "load and fade in a picture with optional overlay", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x1B96, vgame_restore_control_break, "restore the Ctrl+Break vector", 1 },

@@ -1,0 +1,12 @@
+# Camera-gradient rendering probe using airair_type5 inputs and Alt+W; the changed drawing path alters this flight and it ends before landing.
+# Rendering coverage only; no air-to-air completion or landing claim.
+# expect-world VN
+# expect-exit VGAME.EXE 129 7000000000
+--replay
+airair_type5.input
+--steps
+11740000000
+--time-us
+700000000000000
+--type
+VGAME.EXE+100000000:\aw

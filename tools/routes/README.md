@@ -41,6 +41,14 @@ enabling camera darkening. Original/isolated probes preserve all 150
 checkpoints and final hash; the darkening helper runs 1,608 times through
 the actual graphics driver. This is an airborne photo route, without a
 completed-return claim.
+`camera_gradients` replays the Vietnam type-5 inputs with Alt+W at 100 million
+VGAME clocks, selecting gradient camera rendering. The isolated matched
+probe reaches sky 7,851 times and ground 1,108 times through the real
+graphics driver; all 234 checkpoints and final state match the interpreter.
+Changing drawing cost changes this recorded flight: VGAME exits after
+7,385,839,082 clocks, before the base route's landing sequence. This route
+checks rendering, world loading and a minimum 7B-clock exit, without an
+objective-completion or landing claim.
 The speaker and Roland routes cover the other sound drivers and program
 load addresses. Together the routes select all nine worlds, three tension
 levels and four mission categories. Many individual objective types within a

@@ -22,7 +22,7 @@ make (Phase 4).
   and variables; `tools/census.py`). The coverage pass adds no further
   translated code; changed code and declined override entries can fall back
   to the interpreter.
-- **Engine parity.** 38 scripted routes are identical between the interpreter
+- **Engine parity.** 39 scripted routes are identical between the interpreter
   and the recompiled code at every 50-million-clock checkpoint and at the end;
   every translated instruction is held to the interpreter from random states
   (5,718,976 comparisons, 0 differences); the interpreter and the translator are
@@ -198,6 +198,18 @@ not the recompilation:
 
 ## Phase 2 - understood code
 
+Camera sky/ground strips (VGAME 1974/19FD) are integrated and gated.
+Returning-fill caller fixtures compare 28,726 states at three seeds,
+including 2,279 complete sixteen-band walks. Real-driver `camera_gradients`
+replay reaches both helpers (7,851 sky / 1,108 ground calls), with all 234
+checkpoints and final state identical to the interpreter. Alt+W changes
+drawing cost and this recorded flight ends before landing; the route checks
+rendering and makes no mission-completion claim. One focused regression
+retains both caller fixtures. The full gate passes 32 unit tests, all 39
+routes, both instruction profiles, three 807-address matched seeds
+(2,638,463 / 2,637,344 / 2,634,993 comparisons), and reachability/event
+checks, with zero differences.
+
 Two further entries are integrated and gated: VGAME's projected
 HUD diamond and START's screen loader with optional overlay callback.
 Three-seed comparisons pass 14,933 diamond states and 4,839 screen-loader
@@ -263,7 +275,7 @@ instruction profiles and three 789-address matched seeds (2,561,209,
       Reimp's mapping; matched functions replacing translations one at a time,
       each held to the same parity checks. `tools/reimp_names.py` joins the
       Reimp's census (1,535 functions) with this project's regions as a private
-      lead list. 805 addresses are matched (799 of the census functions, 68,002 of
+      lead list. 807 addresses are matched (801 of the census functions, 68,294 of
       179,213 bytes); the table is at the end of `src/matched/matched.c` and the
       method is in [architecture.md](architecture.md#matched-routines-phase-2).
       The batches of 8-9 Oct add 37 + 34 + 47 VGAME, 34 + 40 + 45 START/END and 21 + 44 + 64

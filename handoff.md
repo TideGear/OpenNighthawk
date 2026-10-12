@@ -9,6 +9,52 @@ checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 more than once, what it costs). State as of 11 October 2026.
 Earlier session logs are in `git log -p handoff.md`.
 
+## Camera gradients gate passed; private follow-up (11 Oct, 20:40 Pacific)
+
+Current main: 807 matched addresses, 32 unit tests, 39 routes. Gate handle
+46915 closed exit 0 in `D:/f117-gate/gate-camera-gradients.log`: every unit,
+route, both 5,718,976-state instruction profiles, three matched seeds
+(2,638,463 / 2,637,344 / 2,634,993 states), reachability and event limits
+pass with zero differences. 89,367 instruction starts; rotating seed
+0x4b4eaf9ffa44. Duration 1,497 s: build 149, coverage 538, identical
+regeneration 19, parity 791. 38 fresh interpreter runs, zero reuse.
+Census refreshed: 801/1,535 functions, 68,294/179,213 bytes;
+P2 41.20%, All 74.14%. Commit/push this batch before further integration.
+Root 16052 is exited. There are NO live owned jobs or suspension records.
+
+Private follow-up is now verified: 809 addresses in the detached worktree
+include main's 807 plus MPS_LOGO 006D:0678 sprite run and VGAME 0000:11A8
+moving-map scene wrapper. Three seeds compare 28,613 states, zero
+differences, including 1,172 opaque zero-count sprite cases and 595
+transparent cases. Full-cycle replay calls sprite-run 1,570 times and map
+once in 44.7 s. Main's FRESH original capture at 20:34:51 takes 56.1 s and
+matches every one of the 66 checkpoints/final 6b61d89b95e7b562 at 3.3B.
+Comparison was executed with a fresh-file timestamp assertion; no duplicate
+original run was needed. All private jobs are exited.
+
+A separate private gate-log fix is also ready: current main
+`tools/build_recomp.py`, `tools/run_route.py` and `tests/test_build_recomp.py`
+were copied to the worktree for isolation. The current gate's combined
+console log shows mixed-in data under concurrent command printing, while
+independent route files/final tallies are intact. A yielding-stdout regression
+fails before the fix (`D:/f117-gate/command-log-red.log`); a lock around only
+command printing fixes complete records while preserving subprocess inputs
+and results. All 12 gate-helper tests pass (`command-log-green.log`). Keep
+the main running gate unchanged; it has now completed. Selectively integrate
+only the two named helpers/registry rows, their sprite/map fixtures, one
+focused CTest, and the logging fix/test after the camera batch is pushed.
+Do not copy the worktree wholesale or regenerate from it. Then run a fresh
+full gate and verify the console log has complete records, without NULs or
+mixed-in data. Census/progress and commit title follow that gate.
+
+Latest visible allowance 47% at 20:36:22 Pacific, reset 22:57, seven-day 47%.
+Next read by 20:41:22. Keep the five-minute guard; <=20% suspends every owned
+job, then check every 30 minutes and resume exact identities above 20%.
+For the next gate, record its own root/creation/command and use fresh pause
+record paths. Goal remains incomplete; Phase 4 human checks remain open.
+
+The entries below are historical details; current status above takes priority.
+
 ## Diamond/screen gate passed; private gradients (11 Oct, 20:04 Pacific)
 
 Main has selectively integrated VGAME 0000:B0C2 projected HUD diamond and
@@ -50,21 +96,30 @@ rasterizer proof. Short pitch-up probe 50859 closes exit 0 in 41.6 s at
 4.5B, hash 1b80c8812d3ce54a, but reaches NEITHER helper; no proof from it.
 Old recon/toggle roots 35896/38916/26612 are exited; never suspend them.
 
-Only live owned job: private air-to-air camera probe handle 15627, log
+Private air-to-air camera probe handle 15627 closed: both gradients run
+(sky 7,851 / ground 1,108), final bb1c0cffd145907a at 11.74B, 105.8 s.
+Its inherited mission-completion milestone fails: Alt+W changes drawing
+cost and the flight exits VGAME after 7,385,839,082 clocks rather than the
+original route's required 8.7B. This is rendering coverage, not a completed
+air-to-air mission. Private args now say so and require a 7B minimum exit.
+Only live owned job: fresh interpreter handle 28869, log
+`D:/f117-gate/camera-gradient-airair-original.log`, root PowerShell 48288,
+creation 1791774505.5830364. Compare all 234 checkpoints and final state
+against the finished private recomp run before integrating either helper.
+Original private recomp log:
 `D:/f117-gate/camera-gradient-airair-matched.log`. Private args
 `camera-gradient-airair.args` use existing airair_type5 inputs with Alt+W
 at VGAME+100M, 11.74B clock budget. Aircraft target-camera pitch can show
 sky, unlike the ground view. Require 1974 execution count before matching
 an interpreter run; do not claim proof merely because hashes exist.
-Root PowerShell 39116, creation 1791774263.807454, expected command
-`camera-gradient-airair-matched.log`. No private build/test is live.
+Old root PowerShell 39116 has exited. No private build/test is live.
 After BOTH gradients have real replay proof, integrate only these two and
 intentional fixtures plus a retained normal-input route, run a fresh full
 gate, then commit/push. Main source should remain fixed until its verified
 batch is committed/pushed.
 
-Latest visible allowance 58% at 20:01 Pacific (reset 22:57), seven-day 48%;
-next visible read by 20:06:40. Check every five minutes above 20%. At <=20%
+Latest visible allowance 53% at 20:07 Pacific (reset 22:57), seven-day 48%;
+next visible read by 20:12:42. Check every five minutes above 20%. At <=20%
 suspend all owned work, then check every 30 minutes until above 20%,
 resuming exact recorded identities. Private helper
 D:/f117-gate/allowance_gate_tree.py verifies root command/creation and saves

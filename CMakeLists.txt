@@ -307,5 +307,7 @@ if(F117R_BUILD_TESTS)
       --only VGAME.EXE:B0C2)
     add_test(NAME matched_screen_loader COMMAND func_lockstep --states 4000
       --only START.EXE:3641)
+    add_test(NAME matched_camera_gradients COMMAND func_lockstep --states 4000
+      --only VGAME.EXE:1974,VGAME.EXE:19FD)
   endif()
 endif()

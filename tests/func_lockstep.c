@@ -64,6 +64,7 @@ static uint32_t io_r(cpu_t *c, uint16_t port, int width)
 
 static int g_checked_alloc;
 static unsigned long long g_alloc_errors;
+static unsigned long long g_gradient_full;
 static int g_dos;                  /* the routine under test is in DOS_STUBS: INT 21h is answered here */
 
 static int int_h(cpu_t *c, uint8_t vec)
@@ -300,6 +301,9 @@ static void stub_driver_thunks(uint8_t *pristine, uint32_t at, const rc_module *
  * gray-scale flag END's DAC loader tests) lies inside END's image here, where it is a code byte that happens
  * to have the flag set, so the routine's normal path was never reached. Set in both sides' memory. */
 static const struct { const char *module; uint16_t ip; uint32_t linear; uint8_t value; } IMAGE_PATCHES[] = {
+    /* Camera-gradient caller fixture: returning polygon fill. */
+    { "VGAME.EXE", 0x1974, 0x0FD06, 0xCB },
+    { "VGAME.EXE", 0x19FD, 0x0FD06, 0xCB },
     /* Screen-loader caller fixture: returning fade/load/palette helpers. */
     { "START.EXE", 0x3641, 0x3088, 0xC3 },
     { "START.EXE", 0x3641, 0x35FC, 0xC3 },
@@ -333,6 +337,9 @@ static void patch_image_for(uint8_t *pristine, const recomp_override *o)
 /* Argument words a routine compares for exactly, planted in the first argument slots in some states (the
  * small random arguments never reach them). */
 static const struct { const char *module; uint16_t ip; int arg; uint16_t v[2]; } ARG_PLANTS[] = {
+    { "VGAME.EXE", 0x1974, 0, { 110, 169 } },
+    { "VGAME.EXE", 0x19FD, 0, { 110, 169 } },
+    { "VGAME.EXE", 0x19FD, 1, { 0, 1 } },
     { "START.EXE", 0x3641, 1, { 0x0000, 0x3693 } }, /* no overlay or a returning overlay */
     { "START.EXE", 0x1B37, 0, { 0x0064, 0x0065 } },     /* the map caption's kinds 64h and 65h */
     { "VGAME.EXE", 0x73C8, 0, { 0x0001, 0x0002 } },      /* target_damage: a target matching a planted weapon-lock slot */
@@ -591,6 +598,8 @@ int main(int argc, char **argv)
         if (g_below) { g_from = (uint16_t)(ip - g_below); g_span = (uint16_t)(0x300u + g_below); }   /* CODE_BELOW as a range */
         g_checked_alloc = !strcmp(o->module, "DSWAP.EXE") && o->seg == 0 && o->ip == 0x0494;
         g_alloc_errors = 0;
+        g_gradient_full = 0;
+        const int camera_gradients = !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && (o->ip == 0x1974 || o->ip == 0x19FD);
         g_dos = 0;
         for (unsigned k = 0; k < sizeof DOS_STUBS / sizeof DOS_STUBS[0]; k++)
             if (!strcmp(DOS_STUBS[k].module, o->module) && DOS_STUBS[k].ip == o->ip) g_dos = 1;
@@ -659,6 +668,23 @@ int main(int argc, char **argv)
             for (unsigned pk = 0; pk < sizeof ARG_PLANTS / sizeof ARG_PLANTS[0]; pk++)
                 if (!strcmp(ARG_PLANTS[pk].module, o->module) && ARG_PLANTS[pk].ip == o->ip && (rnd() & 1))
                     small[ARG_PLANTS[pk].arg] = ARG_PLANTS[pk].v[rnd() & 1];
+            /* Equal gradient offsets exercise the complete sixteen-strip walk.
+             * Leave other states random and never plant into the code image. */
+            if (camera_gradients && (s & 7) == 2) {
+                int safe = 1;
+                for (unsigned j = 0; j < 34; j++) {
+                    const uint32_t a = phys(seg[S_DS], (uint16_t)(0x0D22 + j));
+                    if (a >= at && a < at + m->size + 2) safe = 0;
+                }
+                if (safe) {
+                    for (unsigned j = 0; j < 34; j++) {
+                        const uint32_t a = phys(seg[S_DS], (uint16_t)(0x0D22 + j));
+                        g_pristine[a] = g_mem[0][a] = g_mem[1][a] = 0;
+                    }
+                    small[0] = o->ip == 0x1974 ? 169 : 110;
+                    small[1] = (uint16_t)((s >> 3) & 1);
+                }
+            }
             for (int k = 0; k < 2; k++)
                 setup_side(k ? &g_m.cpu : &g_cpu[0], o, cs, ip, r, seg, flags, back, s, small);
             int steps = 0;
@@ -737,6 +763,7 @@ int main(int argc, char **argv)
             }
             mc++;
             if (g_checked_alloc && g_cpu[0].r[R_AX] == 8) g_alloc_errors++;
+            if (camera_gradients && seg_read16(&g_cpu[0], g_cpu[0].seg[S_SS], (uint16_t)(entry_sp - 6)) == 16) g_gradient_full++;
             g_cpu[1] = g_m.cpu;                /* compare() reads g_cpu[1] */
             if (compare(o->module, ((uint32_t)o->seg << 4) + ip, cs, ip, 0)) {
                 mb++;
@@ -813,6 +840,7 @@ int main(int argc, char **argv)
         printf("%-10s %04X:%04X %-34s %6llu states compared, %4llu skipped, %s\n", o->module, o->seg, ip,
                o->what, mc, ms, mb ? "MISMATCH" : mc ? "equal" : "not testable here (routes only)");
         if (g_checked_alloc) printf("  completed allocation-error states: %llu\n", g_alloc_errors);
+        if (camera_gradients) printf("  completed 16-band states: %llu\n", g_gradient_full);
         compared += mc; skipped += ms; bad += mb;
     }
     printf("matched routines: %u, %llu states compared (%llu finished by the original code), %llu skipped, %llu mismatching\n",

@@ -10,12 +10,11 @@ identical, and the proof is the same verdicts before and after.
 
 ## The gate (`tools/build_recomp.py`)
 
-Next private camera gradients: original VGAME 1974 and 19FD build four-point
+Camera gradients: original VGAME 1974 and 19FD build four-point
 sky/ground strips at x=169..245, subtracting/adding a table of horizon
 offsets and stopping at y=110/169 or 16 bands. A shared named helper retains
 the guest frame, original fill calls, signed clipping, live loop reads and
-event stops. Source is private at 807 addresses while main stays at 805
-under its full gate. After verified main regeneration, the two-worker build
+event stops. After verified main regeneration, the private two-worker build
 passes (`build-wt-camera-gradients.log`), recompiling 31 generated files
 whose discovery boundaries changed. Returning-fill fixtures and selected
 zero-offset tables compare 9,576/9,559/9,591 states exactly, including 2,279
@@ -23,10 +22,49 @@ completed 16-band walks. These prove caller behavior with a returning fill.
 The private unit subset passes all 27 tests in 19.28 s. Real-rasterizer
 reconnaissance finishes in 96.2 s with all 150 hashes/final unchanged, but
 reaches neither helper: the default camera takes a nested terrain walk.
-Normal Alt+W selects the gradient path. Paired original/private runs now
-use `camera-gradient-toggle.args` with that input; require both execution
-counts and every checkpoint before claiming real-rasterizer verification.
-Drafts and source remain private until main's existing batch is gated.
+Normal Alt+W selects the gradient path. Paired recon probes match all 150
+checkpoints/final but reach ground only (2,074 calls). An air-to-air rendering
+probe reaches sky 7,851 times and ground 1,108 times: recomp 105.8 s,
+fresh interpreter 220.4 s, all 234 checkpoints/final bb1c0cffd145907a equal.
+Its changed drawing cost ends the recorded flight before landing; the retained
+`camera_gradients` route checks rendering, without mission-completion credit.
+Main now selectively integrates the two helpers and fixtures, one focused
+regression and that replay: 807 addresses, 32 unit tests, 39 routes. Fresh full
+gate `D:/f117-gate/gate-camera-gradients.log` passes under affinity
+0x00FFFFFF with 16 workers and fresh interpreter-cache verification.
+Coverage passes in 538 s and regeneration adds no code; three 807-entry
+matched seeds compare 2,638,463 / 2,637,344 / 2,634,993 states with zero
+differences. Both instruction profiles compare 5,718,976 states, no
+mismatches. All 32 unit tests and 39 routes pass, as do reachability/event
+checks. Total 1,497 s: first translate/build 149, coverage 538, identical
+regeneration 19, parity 791. 38 fresh interpreter runs, zero reused.
+Census: 801 functions, 68,294 bytes. The combined command log contains a
+corrupted section; independent route results and the final gate tallies
+remain intact. The private logging regression/fix below addresses that.
+
+Private next batch: the logo's 006D:0678 sprite pair repeats a colour or
+skips transparent pixels; opaque count zero wraps to 256 writes. Explicit
+AX boundary cases retain that asset-unreached behavior. VGAME 11A8 wraps
+the downward scene frame used by the moving map. Returning-call fixtures
+isolate its live argument setup; normal-driver replay is still required.
+The two-worker private build starts only after main's regeneration is
+verified finished; `D:/f117-gate/build-wt-sprite-map.log`. Main source stays
+fixed while its gate runs. Build passes (25 steps). Targeted smoke compares
+152 states, zero differences; three seeds compare 9,529 / 9,544 / 9,540
+states, including 1,172 opaque zero-count and 595 transparent sprite runs.
+Full-cycle replay calls map once and sprite-run 1,570 times in 44.7 s; all
+66 checkpoints/final 6b61d89b95e7b562 match the prior interpreter capture.
+Main's fresh full-cycle interpreter capture (20:34:51) now also matches all
+66 checkpoints and final state, completing real-driver replay proof without
+duplicating the original run already required by the gate. Neither addition
+is in main yet.
+
+The running gate's combined console log showed mixed-in data during parallel
+command printing; independent per-route results remain separate. A private
+regression with yielding stdout reproduces interleaved command records.
+Serializing only command printing fixes it while retaining child arguments,
+options and results; all 12 gate-helper tests pass. This logging fix stays
+private until the current main gate finishes, then joins a fresh gated batch.
 
 Diamond and screen-loader integration (11 Oct, 19:37 Pacific): the two
 privately verified entries and their intentional fixtures are now in main,
