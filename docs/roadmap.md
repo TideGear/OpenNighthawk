@@ -207,14 +207,17 @@ shared-flow span-edge candidate demonstrates why walk size is not census
 ownership. Synthetic checks run in Windows CI. Details and limits:
 [repeated-processes.md](repeated-processes.md#phase-2-candidate-reading).
 
-Moving-object pass (`VGAME 0000:983E`) is integrated, pending a fresh full
-gate: 8,071 targeted comparisons across three seeds, all 32 tracked paths,
+Moving-object pass (`VGAME 0000:983E`) is integrated and fully gated at
+`b811414`: 8,071 targeted comparisons across three seeds, all 32 tracked paths,
 45 isolated tests, and 550 actual-driver F3 calls with all 57 checkpoints/
 final identical. Named C preserves target cycling before drawing, live
 guest frame slots, detail reduction, shadows, projectiles and exterior
 player ordering. All 38 original calls remain. Its 1,724-byte census extent
 brings the census to 813 functions / 76,634 bytes, P2 45.62%, overall 75.42%
 (821 matched addresses). Private evidence: `D:/f117-gate/moving-objects`.
+The fresh gate passes 45 tests, all 41 routes (40 fresh interpreter
+sessions), both instruction profiles, three matched seeds and
+reachability/event checks, with zero mismatches.
 
 HUD pass (`VGAME 1058:0016`) is integrated and fully gated at `de1189e`:
 14,750 targeted comparisons including 905 divide faults, all 32 tracked

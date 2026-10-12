@@ -276,8 +276,34 @@ final in 51.0 s. Audited artifacts, patch and tested snapshots:
 reference matches the fresh HUD gate (`fresh-reference-crosscheck.json`).
 After pushing HUD baseline/evidence as `7fb10be`, integrated the selective
 patch; all three main texts match the tested snapshots. Census: 813 /
-76,634, P2 45.62%, overall 75.42%, 821 addresses. Fresh full gate pending
-in `D:/f117-gate/gate-moving-objects.log`; do not push until it passes.
+76,634, P2 45.62%, overall 75.42%, 821 addresses. Fresh full gate at
+`b811414` passes in `D:/f117-gate/gate-moving-objects.log`: 45 tests,
+all 41 routes at every checkpoint/final (40 fresh interpreter sessions),
+both 5,718,976-state instruction profiles and three matched seeds
+(2,690,243 / 2,688,636 / 2,689,943 comparisons; rotating seed `0xb8114142076c`),
+zero mismatches and passing reachability/event checks. Total 1,799 s.
+Audited verdict/log hash: `D:/f117-gate/moving-objects/full-gate-verdict.json`.
+A two-worker private camera build and replay ran alongside this gate;
+these timings do not establish a controlled speed difference.
+
+Camera-image pass (`VGAME 0000:BCEF`) is proven privately at `b811414`:
+658 instructions / 1,863 bytes, all 49 original calls retained. Named C
+preserves pitch folding, two-word height clamping, flat/gradient background
+order, target models, nested terrain state, blast overlays, F6 darkening/
+lamp changes, labels and zoom/compact-HUD restoration. Render/string
+helpers return in fixtures while original range, trig and bearing execute.
+A controlled helper-return subset forces FFFF to prove the caller's own
+IDIV fault frame; it does not establish a normal-play fault. Whole-body
+code-write watch remains. Three seeds compare 4,907 / 4,902 / 4,926 states,
+including 145 faults, zero mismatches and all 32 tracked paths per seed.
+All 46 isolated checks pass: 41 core tests, then five rebuilt host targets
+under the restored app configuration. Actual camera-gradient replay invokes
+the named pass 7,880 times and matches all 234 checkpoints/final in 190.6 s.
+Audited artifacts, selective patch and tested snapshots:
+`D:/f117-gate/camimage/targeted-verdict.json`. The immutable interpreter
+reference matches the fresh moving-object gate (`fresh-reference-crosscheck.json`).
+Main has no camera-image changes yet; integrate after the moving-object
+baseline push and require a fresh full gate.
 
 ## The gate (`tools/build_recomp.py`)
 
