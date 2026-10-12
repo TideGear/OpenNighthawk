@@ -33049,7 +33049,153 @@ objective_test:
     x86_leave(c); c->icount += 5; near_ret(c); return 1;
 }
 
+/* START 0000:07EE: prepare the arming screen from the live mission/settings
+ * pointers. Mark unavailable stations empty, normalize the sixteen weapon
+ * hit boxes and gray disabled rows, load three sheets, draw live stations,
+ * then format the remaining stores count and publish the panel.
+ * The two three-byte palette moves obey DF and retain PUSH DS/POP ES writes.
+ * Do not clamp the original's unsigned station bound for malformed settings;
+ * each loop checks its instruction budget and can resume original code. */
+static int start_armament_screen(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 10)) return 0;
+    cpu_push16(c, c->r[R_BP]); c->r[R_BP] = c->r[R_SP];
+    c->r[R_SP] = (uint16_t)alu_sub(c, c->r[R_SP], 0x16, 1, 0);
+    x86_push_reg(c, R_DI); x86_push_reg(c, R_SI);
+    les_bx(c, 0xCACA);
+    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x42))));
+    ds_put8(c, 0xD879, get_r8(c, R_AL)); ds_put8(c, 0xD878, get_r8(c, R_AL));
+    bp_put(c, -0x16, 0); c->icount += 10;
+    for (;;) {
+        SM4_NEED(15, 0x0809);
+        alu_sub(c, ds_get8(c, 0xD2A2), 0, 0, 0);
+        unsigned n = 2;
+        int empty = !!(c->flags & F_ZF);
+        if (!empty) {
+            c->r[R_AX] = 2; les_bx(c, 0xCACA);
+            c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x42)), 1, 0);
+            c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], 1, 1);
+            alu_sub(c, c->r[R_AX], bp_get(c, -0x16), 1, 0);
+            empty = !x86_cond(c, 7); n += 6;
+        }
+        if (empty) {
+            c->r[R_SI] = bp_get(c, -0x16);
+            c->r[R_SI] = (uint16_t)x86_shift(c, 4, c->r[R_SI], 1, 1);
+            les_bx(c, 0xE096);
+            seg_write16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + c->r[R_SI] + 0x38), 0x13);
+            n += 4;
+        }
+        bp_put(c, -0x16, (uint16_t)alu_inc(c, bp_get(c, -0x16), 1));
+        alu_sub(c, bp_get(c, -0x16), 4, 1, 0); c->icount += n + 3;
+        if (!x86_cond(c, 0xC)) break;
+    }
+    SM4_NEED(2, 0x083A); bp_put(c, -0x16, 0); c->icount += 2;
+weapon_test:
+    SM4_NEED(2, 0x0852);
+    alu_sub(c, bp_get(c, -0x16), 16, 1, 0); c->icount += 2;
+    if (x86_cond(c, 0xD)) goto load_sheets;
+    SM4_NEED(3, 0x0858);
+    c->r[R_BX] = bp_get(c, -0x16);
+    alu_sub(c, ds_get8(c, (uint16_t)(c->r[R_BX] + 0xD878)), 0, 0, 0); c->icount += 3;
+    if (c->flags & F_ZF) {
+        SM4_NEED(6, 0x0841);
+        set_r8(c, R_CL, 3); c->r[R_AX] = c->r[R_BX];
+        c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], get_r8(c, R_CL), 1);
+        c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], 0x6C5E, 1, 0);
+        cpu_push16(c, c->r[R_AX]); c->icount += 5;
+        VG3_NEAR(0x39D5, 0x084E, 2);
+    } else {
+        SM4_NEED(16, 0x0862);
+        c->r[R_AX] = c->r[R_BX];
+        c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 1, 1);
+        c->r[R_BX] = (uint16_t)alu_add(c, c->r[R_BX], c->r[R_AX], 1, 0);
+        c->r[R_BX] = (uint16_t)alu_sub(c, c->r[R_BX], 0x67E0, 1, 0);
+        c->r[R_BX] = (uint16_t)alu_sub(c, 0, c->r[R_BX], 1, 0);
+        c->r[R_DI] = c->r[R_BX]; c->r[R_SI] = 0x11CA;
+        cpu_push16(c, c->seg[S_DS]); c->seg[S_ES] = cpu_pop16(c);
+        x86_movs(c, 1, c->seg[S_DS]); x86_movs(c, 0, c->seg[S_DS]);
+        set_r8(c, R_CL, 3);
+        c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], get_r8(c, R_CL), 1);
+        c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], 0x6C5E, 1, 0);
+        cpu_push16(c, c->r[R_AX]); c->icount += 15;
+        VG3_NEAR(0x39B3, 0x0882, 1); c->icount++;
+    }
+    SM4_NEED(2, 0x084E);
+    c->r[R_BX] = cpu_pop16(c);
+    bp_put(c, -0x16, (uint16_t)alu_inc(c, bp_get(c, -0x16), 1)); c->icount += 2;
+    goto weapon_test;
+load_sheets:
+    SM4_NEED(6, 0x0884);
+    ds_put8(c, 0xD096, 0); c->r[R_AX] = 2; cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 15; cpu_push16(c, c->r[R_AX]); c->icount += 5;
+    VG3_NEAR(0x35FC, 0x0894, 7);
+    c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c);
+    c->r[R_AX] = 3; cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 13; cpu_push16(c, c->r[R_AX]); c->icount += 6;
+    VG3_NEAR(0x35FC, 0x08A1, 7);
+    c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c);
+    c->r[R_AX] = 4; cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 14; cpu_push16(c, c->r[R_AX]); c->icount += 6;
+    VG3_NEAR(0x35FC, 0x08AE, 4);
+    c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c);
+    bp_put(c, -0x16, 0); c->icount += 4;
+station_test:
+    SM4_NEED(6, 0x08D1);
+    c->r[R_AX] = 2; les_bx(c, 0xCACA);
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x42)), 1, 0);
+    c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], 1, 1);
+    alu_sub(c, c->r[R_AX], bp_get(c, -0x16), 1, 0); c->icount += 6;
+    if (x86_cond(c, 7)) {
+        SM4_NEED(7, 0x08B7);
+        c->r[R_SI] = bp_get(c, -0x16);
+        c->r[R_SI] = (uint16_t)x86_shift(c, 4, c->r[R_SI], 1, 1);
+        les_bx(c, 0xE096); c->r[R_BX] = (uint16_t)alu_add(c, c->r[R_BX], 0x38, 1, 0);
+        cpu_push16(c, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + c->r[R_SI])));
+        cpu_push16(c, bp_get(c, -0x16)); c->icount += 6;
+        VG3_NEAR(0x0D65, 0x08CC, 3);
+        c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c);
+        bp_put(c, -0x16, (uint16_t)alu_inc(c, bp_get(c, -0x16), 1)); c->icount += 3;
+        goto station_test;
+    }
+    SM4_NEED(13, 0x08E3);
+    alu_sub(c, ds_get8(c, 0xD2A2), 0, 0, 0);
+    unsigned n = 2;
+    if (c->flags & F_ZF) {
+        les_bx(c, 0xE096); seg_write16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x2E), 0); n += 2;
+    }
+    ds_put(c, 0xDC1C, 15); ds_put(c, 0xDC24, 3);
+    les_bx(c, 0xE096); cpu_push16(c, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x2E)));
+    c->r[R_AX] = 0x01BC; cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)(c->r[R_BP] - 0x14); cpu_push16(c, c->r[R_AX]); c->icount += n + 8;
+    VG3_NEAR(0x959E, 0x0913, 9);
+    VG3_DROP(6); c->r[R_AX] = 0x39; cpu_push16(c, c->r[R_AX]);
+    c->r[R_CX] = 0x76; cpu_push16(c, c->r[R_CX]);
+    c->r[R_DX] = (uint16_t)(c->r[R_BP] - 0x14); cpu_push16(c, c->r[R_DX]);
+    c->r[R_DX] = 0xDC18; cpu_push16(c, c->r[R_DX]); c->icount += 9;
+    SM4_NEED(1, 0x0926);
+    VG3_NEAR(0x3567, 0x0929, 15);
+    VG3_DROP(8); c->r[R_AX] = 5; cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0x2C; cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0x39; cpu_push16(c, c->r[R_AX]);
+    c->r[R_CX] = 0x76; cpu_push16(c, c->r[R_CX]);
+    c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0);
+    cpu_push16(c, c->r[R_DX]); cpu_push16(c, c->r[R_AX]); cpu_push16(c, c->r[R_CX]);
+    c->r[R_AX] = 1; cpu_push16(c, c->r[R_AX]); c->icount += 15;
+    SM4_NEED(1, 0x0945);
+    VG3_FAR(0x0945, 2); VG3_DROP(16); c->icount++;
+    VG3_NEAR(0x0E96, 0x0950, 5);
+    c->r[R_AX] = 0x94; cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0x010F; cpu_push16(c, c->r[R_AX]); c->icount += 4;
+    VG3_NEAR(0x3E84, 0x095B, 8);
+    c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c); c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP]; c->r[R_BP] = cpu_pop16(c);
+    c->icount += 7; near_ret(c); return 1;
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "START.EXE", START_47304, 0x0000, 0x07EE, start_armament_screen, "prepare weapon rows, stations and stores panel", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x9515, vgame_objectives_panel, "mission objectives and landing panel", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x1E79, vgame_timer_tick, "timer counters and driver rate request", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0FB2, 0x05A4, vgame_span_edge_boundary, "edge outside horizontal span bounds", 1 },

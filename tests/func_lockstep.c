@@ -330,6 +330,8 @@ static void stub_driver_thunks(uint8_t *pristine, uint32_t at, const rc_module *
  * gray-scale flag END's DAC loader tests) lies inside END's image here, where it is a code byte that happens
  * to have the flag set, so the routine's normal path was never reached. Set in both sides' memory. */
 static const struct { const char *module; uint16_t ip; uint32_t linear; uint8_t value; } IMAGE_PATCHES[] = {
+    /* Arming caller: returning picture loader; actual driver on routes. */
+    { "START.EXE", 0x07EE, 0x35FC, 0xC3 },
     /* Polygon caller fixture: returning span reset and clipped edge. The
      * actual rasterizer and graphics driver are retained on real routes. */
     { "VGAME.EXE", 0x01E6, 0x1003F, 0xC3 },
@@ -512,6 +514,7 @@ static uint16_t g_below;                /* how far the routine's code reaches be
  * trace in the end state. */
 static int g_self_written, g_watch_transient;
 static unsigned g_panel_seen;           /* original branches in the current panel fixture */
+static unsigned g_arms_seen;            /* original arming setup branches in this fixture */
 static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_t cs, uint16_t ip)
 {
     const uint32_t watch = phys(cs, (uint16_t)(ip - g_below));
@@ -521,6 +524,13 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
         if (g_trace) printf("      %04X:%04X clk %llu sp %04X\n", a->seg[S_CS], a->ip, (unsigned long long)a->icount, a->r[R_SP]);
         const uint16_t here = a->ip;
         const int own = a->seg[S_CS] == cs && (uint16_t)(here - g_from) < g_span;
+        if (ip == 0x07EE && own && a->mem == g_mem[0]) {
+            static const uint16_t branch[] = { 0x0822, 0x0841, 0x0862, 0x08B7, 0x08EA };
+            for (unsigned k = 0; k < sizeof branch / sizeof branch[0]; k++)
+                if (here == branch[k]) g_arms_seen |= 1u << k;
+            if (here == 0x0820 && x86_cond(a, 7)) g_arms_seen |= 1u << 5;
+            if (here == 0x08E8 && !(a->flags & F_ZF)) g_arms_seen |= 1u << 6;
+        }
         if (ip == 0x9515 && own && a->mem == g_mem[0]) {
             static const uint16_t branch[] = { 0x9570, 0x957D, 0x9582, 0x9587,
                 0x958C, 0x9591, 0x9596, 0x959B, 0x9532, 0x96DD,
@@ -659,6 +669,9 @@ int main(int argc, char **argv)
         const int camera_gradients = !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && (o->ip == 0x1974 || o->ip == 0x19FD);
         const int objectives_panel = !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0x9515;
         unsigned panel_branches = 0;
+        const int armament_screen = !strcmp(o->module, "START.EXE") && o->seg == 0 && o->ip == 0x07EE;
+        unsigned arms_branches = 0;
+        unsigned long long arms_returning = 0, arms_actual = 0;
         g_dos = 0;
         for (unsigned k = 0; k < sizeof DOS_STUBS / sizeof DOS_STUBS[0]; k++)
             if (!strcmp(DOS_STUBS[k].module, o->module) && DOS_STUBS[k].ip == o->ip) g_dos = 1;
@@ -752,6 +765,47 @@ int main(int argc, char **argv)
                     small[1] = (uint16_t)((s >> 3) & 1);
                 }
             }
+            /* Half the arming states isolate the caller with returning drawing,
+             * formatting and mouse helpers. The other half retain those actual
+             * helpers (only the picture loader is always replaced here).
+             * Restore the original first byte when switching back. */
+            const int returning_arms = armament_screen && (s & 8);
+            if (armament_screen) {
+                static const uint16_t calls[] = { 0x0D65, 0x959E, 0x3567, 0x0E96, 0x3E84 };
+                for (unsigned j = 0; j < sizeof calls / sizeof calls[0]; j++) {
+                    const uint32_t address = at + calls[j];
+                    g_pristine[address] = g_mem[0][address] = g_mem[1][address] =
+                        returning_arms ? 0xC3 : m->image[calls[j]];
+                }
+            }
+            /* Valid settings/mission far pointers reach the arming caller's
+             * four/two/zero-station and enabled/disabled weapon paths. */
+            if (armament_screen && (returning_arms || (s & 7) == 1 || (s & 7) == 2)) {
+                const unsigned variant = (unsigned)s >> 3;
+                const struct { uint16_t at, value; } words[] = {
+                    { 0xCACA, 0x1000 }, { 0xCACC, seg[S_DS] },
+                    { 0xE096, 0x1200 }, { 0xE098, seg[S_DS] },
+                    { 0x1042, (uint16_t)(variant % 3) },
+                    { 0xD2A2, (uint16_t)(variant & 1) },
+                    { 0x1238, 0 }, { 0x123A, 6 }, { 0x123C, 12 }, { 0x123E, 18 },
+                    { 0x122E, (uint16_t)((variant & 2) ? 0 : 100) },
+                    { 0xD878, 0x0100 }, { 0xD87A, 0x0001 }, { 0xD87C, 0x0100 },
+                    { 0xD87E, 0x0001 }, { 0xD880, 0x0100 }, { 0xD882, 0x0001 },
+                    { 0xD884, 0x0100 }, { 0xD886, 0x0001 }
+                };
+                int safe = 1;
+                for (unsigned j = 0; j < sizeof words / sizeof words[0]; j++)
+                    for (unsigned byte = 0; byte < 2; byte++) {
+                        const uint32_t address = phys(seg[S_DS], (uint16_t)(words[j].at + byte));
+                        if (address >= at && address < at + m->size + 2) safe = 0;
+                    }
+                if (safe) for (unsigned j = 0; j < sizeof words / sizeof words[0]; j++)
+                    for (unsigned byte = 0; byte < 2; byte++) {
+                        const uint32_t address = phys(seg[S_DS], (uint16_t)(words[j].at + byte));
+                        g_pristine[address] = g_mem[0][address] = g_mem[1][address] =
+                            (uint8_t)(words[j].value >> (8 * byte));
+                    }
+            }
             /* Small objective records expose all eight phrase targets, invalid
              * kinds, completed flags, deadlines and empty/nonempty places.
              * Leave three quarters random, and never plant into loaded code.
@@ -796,7 +850,7 @@ int main(int argc, char **argv)
              * accept the state only when it returns to the pushed address. */
             const uint16_t entry_sp = (uint16_t)(r[R_SP] - (o->matched == 3 ? 6 : o->matched == 2 ? 4 : 2));
             g_back_cs = cs; g_back_ip = back; g_back_sp = r[R_SP];
-            g_reach = 0; g_panel_seen = 0;
+            g_reach = 0; g_panel_seen = 0; g_arms_seen = 0;
             g_self_written = 0;
             const int returned = run_to_ret(a, entry_sp, o->matched, &steps, cs, ip);
             const uint16_t reach = g_reach;
@@ -873,6 +927,10 @@ int main(int argc, char **argv)
             }
             mc++;
             if (objectives_panel) panel_branches |= g_panel_seen;
+            if (armament_screen) {
+                arms_branches |= g_arms_seen;
+                if (returning_arms) arms_returning++; else arms_actual++;
+            }
             if (o->matched == 3) {
                 g_iret_full++;
                 if (irq_frame && back == (uint16_t)(irq_frame->fault + irq_frame->advance)) g_iret_special++;
@@ -962,6 +1020,13 @@ int main(int argc, char **argv)
             printf("  completed panel branch mask: %04X (required 7FFF)\n", panel_branches);
             if (states >= 4000 && panel_branches != 0x7FFF) {
                 fprintf(stderr, "objectives panel fixture missed required branches\n"); mb++;
+            }
+        }
+        if (armament_screen) {
+            printf("  completed arming branch mask: %02X (required 7F); returning/actual-helper states: %llu/%llu\n",
+                   arms_branches, arms_returning, arms_actual);
+            if (states >= 4000 && (arms_branches != 0x7F || !arms_returning || !arms_actual)) {
+                fprintf(stderr, "arming fixture missed required branches or helper modes\n"); mb++;
             }
         }
         if (sprite_run) printf("  completed sprite zero/transparent states: %llu/%llu\n", g_sprite_zero, g_sprite_skip);

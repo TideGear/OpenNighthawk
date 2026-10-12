@@ -158,7 +158,10 @@ fresh timer gate, no event overruns. Source/executable/input/runner/reference
 hashes: `D:/f117-gate/armament-screen/named-proof/route-verdict.json`; selective
 patch `D:/f117-gate/armament-screen/integrate.patch`. Generation takes 25.2 s
 from frozen complete coverage lines; build uses two workers and its own TEMP.
-The 373-byte walk earns only 67 census bytes. Not integrated yet.
+The 373-byte walk earns only 67 census bytes. The reference also matches the
+latest fresh objectives-panel gate. Integrated selectively: 817 addresses,
+census 809 / 69,238 (P2 41.70%, overall 74.29%). Fresh full gate pending in
+`D:/f117-gate/gate-armament-screen.log`.
 
 Larger next candidates: panel frame `VGAME 0000:79BE`, 798 instructions /
 2,090 bytes, and navigation grid `0000:8A90`, 374 / 1,094. Their static walks

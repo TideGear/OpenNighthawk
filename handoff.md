@@ -65,17 +65,19 @@ Phase 2 work" below).
   interpreted instructions only: absence in recompiled coverage cannot prove
   an entry was missed. The tested objectives source was preserved before
   resetting the private worktree to `ae57d1b` for the next candidate.
-  Next: integrate START `0000:07EE` armament screen from private worktree
+  Integrated START `0000:07EE` armament screen from private worktree
   `D:/f117-wt/span-emitter`. Three seeds compare 6,459 states, all required
   branches (`7F`), zero mismatches; all 41 isolated tests pass. Real
   `full_cycle` invokes it once with all 66 checkpoints/final identical.
   Proof `D:/f117-gate/armament-screen/named-proof/route-verdict.json`;
-  selective patch `D:/f117-gate/armament-screen/integrate.patch`. It is NOT
-  integrated yet; after integration run a fresh full gate before pushing.
+  selective patch `D:/f117-gate/armament-screen/integrate.patch`. Its saved
+  reference also matches the latest fresh objectives gate. Census 809 /
+  69,238, P2 41.70%, overall 74.29%, 817 addresses. Fresh full gate pending
+  in `D:/f117-gate/gate-armament-screen.log`; do not push until it passes.
   The 373-byte walk earns only 67 census bytes. Preserve byte/word realism
   reads, unsigned bounds, live far pointers and DF-sensitive palette moves.
   Private generated directory remains `D:/f117-gate/span-emit/gen`.
-  Navigation grid `8A90` is the larger next candidate: dossier under
+  Next: navigation grid `8A90`, dossier under
   `D:/f117-gate/next-candidates/navgrid` (374 instructions / 1,094 bytes).
   Normal F3 probe `next-candidates/navgrid-panel.args` reaches the original
   and matches all 57 checkpoints/final `2877054444/5ea6b18cd60f6608`.
