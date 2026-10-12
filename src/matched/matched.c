@@ -34819,7 +34819,343 @@ moving_return:
     SM4_NEED(3, 0x9EF7); c->r[R_SI] = cpu_pop16(c); x86_leave(c); near_ret(c); c->icount += 3; return 1;
 }
 
+/* VGAME 0000:BCEF: reconnaissance MFD image. Resolve the model before
+ * selecting its range class, then preserve the mode-specific viewport and
+ * camera setup. Stack arguments and byte fields stay live across calls. */
+static int vgame_camera_image(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 6)) return 0;
+    x86_enter(c, 0x42, 0); x86_push_reg(c, R_DI); x86_push_reg(c, R_SI);
+    ds_put(c, 0x9D38, 1); cpu_push16(c, VG3_FRAME(4)); c->icount += 5;
+    SM4_NEED(1, 0xBCFE); VG3_NEAR(0xC436, 0xBD01, 7); c->r[R_BX] = cpu_pop16(c); VG3_SETFRAME(0xFFE8, c->r[R_AX]);
+    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] + 4))));
+    c->r[R_AX] = (uint16_t)alu_logic(c, c->r[R_AX] & 0x7F, 1); ds_put(c, 0x4390, c->r[R_AX]);
+    alu_logic(c, mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] + 5))) & 1, 0); c->icount += 7;
+    if (!(c->flags & F_ZF)) {
+        SM4_NEED(3, 0xBD14); c->r[R_BX] = c->r[R_AX]; set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + 0x0960))); c->icount += 3;
+    } else {
+        SM4_NEED(2, 0xBD1C); c->r[R_BX] = c->r[R_AX]; set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + 0x09E0))); c->icount += 2;
+    }
+    /* A model's low three attribute bits select its nominal camera range.
+     * The low bytes of X and Y jointly select the doubled-range variant. */
+    SM4_NEED(14, 0xBD22); set_r8(c, R_AL, (uint8_t)alu_logic(c, get_r8(c, R_AL) & 7, 0));
+    mem_write8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 30)), get_r8(c, R_AL));
+    set_r8(c, R_BL, get_r8(c, R_AL)); set_r8(c, R_BH, (uint8_t)alu_sub(c, get_r8(c, R_BH), get_r8(c, R_BH), 0, 0));
+    c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 1, 1); c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0x436E)); VG3_SETFRAME(0xFFE0, c->r[R_AX]);
+    set_r8(c, R_CL, 0x38); set_r8(c, R_CL, (uint8_t)alu_sub(c, get_r8(c, R_CL), mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 30))), 0, 0));
+    ds_put8(c, 0x436A, get_r8(c, R_CL)); set_r8(c, R_CL, mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] + 8))));
+    set_r8(c, R_CL, (uint8_t)alu_logic(c, get_r8(c, R_CL) | mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] + 6))), 0)); alu_logic(c, get_r8(c, R_CL), 0); c->icount += 14;
+    if (c->flags & F_ZF) { SM4_NEED(2, 0xBD48); c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], 1, 1); VG3_SETFRAME(0xFFE0, c->r[R_AX]); c->icount += 2; }
+    SM4_NEED(2, 0xBD4D); alu_sub(c, VG3_FRAME(0x12), 1, 1, 0); c->icount += 2;
+    if (c->flags & F_ZF) {
+        SM4_NEED(2, 0xBD53); alu_sub(c, VG3_FRAME(0x14), 1, 1, 0); c->icount += 2;
+        if (c->flags & F_ZF) { SM4_NEED(1, 0xBD59); VG3_SETFRAME(0xFFE0, (uint16_t)x86_shift(c, 7, VG3_FRAME(0xFFE0), 1, 1)); c->icount++; }
+    }
+    SM4_NEED(2, 0xBD5C); alu_sub(c, ds_get8(c, 0x40B6), 0, 0, 0); c->icount += 2;
+    if (c->flags & F_ZF) { SM4_NEED(3, 0xBD63); c->r[R_BX] = ds_get(c, 0x4070); ds_put(c, c->r[R_BX], 0); c->icount += 3; }
+    else { SM4_NEED(2, 0xBD6D); c->r[R_BX] = ds_get(c, 0x4070); ds_put(c, c->r[R_BX], 1); c->icount += 2; }
+    SM4_NEED(4, 0xBD75); c->r[R_AX] = VG3_FRAME(0x12); ds_put(c, 0xE580, c->r[R_AX]); alu_sub(c, c->r[R_AX], 4, 1, 0); c->icount += 4;
+    if (!(c->flags & F_ZF)) goto image_camera_mode;
+    /* Weapon camera takes its pose from a 28-byte projectile record and
+     * skips the horizon/offset locals used by the other camera modes. */
+    SM4_NEED(9, 0xBD80); c->r[R_BX] = x86_imul3(c, ds_get(c, 0xB07C), 28);
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0x3C42)); ds_put(c, 0xDF00, c->r[R_AX]);
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0x3C44)); ds_put(c, 0x953C, c->r[R_AX]);
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0x3C3A)); c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0); set_r8(c, R_CL, 5); c->r[R_SI] = c->r[R_BX]; c->icount += 9;
+    SM4_NEED(1, 0xBD9D); VG3_NEAR(0xEF68, 0xBDA0, 5); ds_put(c, 0xB792, c->r[R_AX]); ds_put(c, 0xB794, c->r[R_DX]);
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_SI] + 0x3C3C)); c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0); set_r8(c, R_CL, 5); c->icount += 5;
+    SM4_NEED(1, 0xBDAF); VG3_NEAR(0xEF68, 0xBDB2, 7); c->r[R_CX] = (uint16_t)alu_sub(c, c->r[R_CX], c->r[R_CX], 1, 0); c->r[R_BX] = 16;
+    c->r[R_CX] = (uint16_t)alu_sub(c, c->r[R_CX], c->r[R_AX], 1, 0); c->r[R_BX] = (uint16_t)alu_sub(c, c->r[R_BX], c->r[R_DX], 1, !!(c->flags & F_CF));
+    ds_put(c, 0xB796, c->r[R_CX]); ds_put(c, 0xB798, c->r[R_BX]); c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_SI] + 0x3C3E));
+    c->icount += 7; goto image_height_commit;
+image_camera_mode:
+    SM4_NEED(3, 0xBDD2); alu_sub(c, c->r[R_AX], 2, 1, 0); c->icount += 2;
+    if (!x86_cond(c, 0xC)) { c->icount++; goto image_forward_mode; }
+    SM4_NEED(14, 0xBDDA); ds_put(c, 0x953E, 0); c->r[R_AX] = VG3_FRAME(6); c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], ds_get(c, 0xC0D0), 1, 0); VG3_SETFRAME(0xFFD4, c->r[R_AX]);
+    c->r[R_CX] = VG3_FRAME(8); c->r[R_CX] = (uint16_t)alu_sub(c, c->r[R_CX], ds_get(c, 0xC0DE), 1, 0); VG3_SETFRAME(0xFFD0, c->r[R_CX]);
+    c->r[R_DX] = VG3_FRAME(10); c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], ds_get(c, 0x2DF4), 1, 0);
+    c->r[R_DX] = (uint16_t)x86_shift(c, 7, c->r[R_DX], 5, 1); VG3_SETFRAME(0xFFCA, c->r[R_DX]);
+    c->r[R_CX] = (uint16_t)alu_sub(c, 0, c->r[R_CX], 1, 0); cpu_push16(c, c->r[R_CX]); cpu_push16(c, c->r[R_AX]); c->icount += 14;
+    SM4_NEED(1, 0xBE05); VG3_NEAR(0xC702, 0xBE08, 5); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); VG3_SETFRAME(0xFFF0, c->r[R_AX]);
+    cpu_push16(c, VG3_FRAME(0xFFD0)); cpu_push16(c, VG3_FRAME(0xFFD4)); c->icount += 5;
+    SM4_NEED(1, 0xBE13); VG3_NEAR(0xC6B3, 0xBE16, 4); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); cpu_push16(c, c->r[R_AX]); cpu_push16(c, VG3_FRAME(0xFFCA)); c->icount += 4;
+    SM4_NEED(1, 0xBE1C); VG3_NEAR(0xC702, 0xBE1F, 5); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); VG3_SETFRAME(0xFFE4, c->r[R_AX]);
+    cpu_push16(c, VG3_FRAME(0xFFD0)); cpu_push16(c, VG3_FRAME(0xFFD4)); c->icount += 5;
+    SM4_NEED(1, 0xBE2A); VG3_NEAR(0xC6B3, 0xBE2D, 4); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); cpu_push16(c, c->r[R_AX]); cpu_push16(c, VG3_FRAME(0xFFCA)); c->icount += 4;
+    SM4_NEED(1, 0xBE33); VG3_NEAR(0xC6B3, 0xBE36, 14);
+    c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); VG3_SETFRAME(0xFFEC, c->r[R_AX]); ds_put(c, 0xC5A2, c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)x86_shift(c, 7, c->r[R_AX], 4, 1); c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], 400, 1, 0); ds_put(c, 0x9538, c->r[R_AX]);
+    c->r[R_CX] = VG3_FRAME(0xFFEC); c->r[R_CX] = (uint16_t)alu_inc(c, c->r[R_CX], 1); c->r[R_DX] = c->r[R_AX];
+    c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], 5, 1); c->r[R_BX] = c->r[R_DX]; c->r[R_DX] = (uint16_t)((int16_t)c->r[R_AX] < 0 ? 0xFFFF : 0); c->icount += 13;
+    c->op_cs = c->seg[S_CS]; c->op_ip = 0xBE53; c->ip = 0xBE55;
+    if (!x86_idiv16(c, c->r[R_CX], 0)) { c->icount++; return 1; } c->icount++;
+    SM4_NEED(9, 0xBE55); ds_put(c, 0x953A, c->r[R_AX]); c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 2, 1); VG3_SETFRAME(0xFFEC, c->r[R_BX]);
+    c->r[R_AX] = VG3_FRAME(0xFFF0); ds_put(c, 0xDF00, c->r[R_AX]); c->r[R_AX] = VG3_FRAME(0xFFE4); ds_put(c, 0x953C, c->r[R_AX]);
+    cpu_push16(c, c->r[R_BX]); cpu_push16(c, c->r[R_AX]); c->icount += 9;
+    SM4_NEED(1, 0xBE6C); VG3_NEAR(0xC831, 0xBE6F, 6); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); VG3_SETFRAME(0xFFD8, c->r[R_AX]);
+    ds_put8(c, 0x4368, 0); alu_sub(c, VG3_FRAME(0x14), 0, 1, 0); c->icount += 6;
+    if (!x86_cond(c, 0xD)) {
+        SM4_NEED(4, 0xBE7F); set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] + 0x14))));
+        set_r8(c, R_AL, (uint8_t)alu_add(c, get_r8(c, R_AL), 2, 0, 0)); ds_put8(c, 0x4368, get_r8(c, R_AL)); VG3_SETFRAME(0x14, 0); c->icount += 4;
+    }
+    /* Zoom is the original CL-sized SAR count. Negative zoom also changes
+     * the presentation byte and the caller's argument word on the stack. */
+    SM4_NEED(2, 0xBE8C); cpu_push16(c, VG3_FRAME(0xFFD8)); cpu_push16(c, VG3_FRAME(0xFFF0)); c->icount += 2;
+    SM4_NEED(1, 0xBE92); VG3_NEAR(0xC818, 0xBE95, 7); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c);
+    set_r8(c, R_CL, mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] + 0x14))));
+    c->r[R_AX] = (uint16_t)x86_shift(c, 7, c->r[R_AX], get_r8(c, R_CL), 1); VG3_SETFRAME(0xFFD4, c->r[R_AX]);
+    cpu_push16(c, VG3_FRAME(0xFFD8)); cpu_push16(c, VG3_FRAME(0xFFF0)); c->icount += 7;
+    SM4_NEED(1, 0xBEA5); VG3_NEAR(0xC831, 0xBEA8, 8); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c);
+    c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0); set_r8(c, R_CL, mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] + 0x14))));
+    c->r[R_AX] = (uint16_t)x86_shift(c, 7, c->r[R_AX], get_r8(c, R_CL), 1); VG3_SETFRAME(0xFFD0, c->r[R_AX]);
+    cpu_push16(c, VG3_FRAME(0xFFEC)); cpu_push16(c, VG3_FRAME(0xFFE4)); c->icount += 8;
+    SM4_NEED(1, 0xBEBA); VG3_NEAR(0xC818, 0xBEBD, 6); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c);
+    set_r8(c, R_CL, mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] + 0x14))));
+    c->r[R_AX] = (uint16_t)x86_shift(c, 7, c->r[R_AX], get_r8(c, R_CL), 1); VG3_SETFRAME(0xFFCA, c->r[R_AX]); c->icount += 6; goto image_horizon;
+image_forward_mode:
+    SM4_NEED(20, 0xBEC9); c->r[R_AX] = VG3_FRAME(6); c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], ds_get(c, 0xC0D0), 1, 0);
+    c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], 4, 1); VG3_SETFRAME(0xFFD4, c->r[R_AX]);
+    c->r[R_AX] = VG3_FRAME(8); c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], ds_get(c, 0xC0DE), 1, 0);
+    c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], 4, 1); VG3_SETFRAME(0xFFD0, c->r[R_AX]);
+    c->r[R_AX] = VG3_FRAME(10); c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], ds_get(c, 0x2DF4), 1, 0);
+    c->r[R_AX] = (uint16_t)x86_shift(c, 7, c->r[R_AX], 1, 1); VG3_SETFRAME(0xFFCA, c->r[R_AX]);
+    c->r[R_AX] = ds_get(c, 0x2DEE); ds_put(c, 0xDF00, c->r[R_AX]); c->r[R_AX] = ds_get(c, 0x98FE); ds_put(c, 0x953C, c->r[R_AX]);
+    c->r[R_AX] = ds_get(c, 0x2DF2); ds_put(c, 0x953E, c->r[R_AX]); ds_put(c, 0x953A, 32); ds_put8(c, 0x4368, 2); c->icount += 20;
+image_horizon:
+    /* The two horizon clamps each have two independent ways to reach them:
+     * a projected row bound or an extreme signed camera pitch. */
+    SM4_NEED(4, 0xBF0C); c->r[R_AX] = ds_get(c, 0x953C); c->r[R_AX] = (uint16_t)x86_shift(c, 7, c->r[R_AX], 2, 1);
+    x86_imul16(c, ds_get(c, 0x953A)); set_r8(c, R_CL, 5); c->icount += 4;
+    SM4_NEED(1, 0xBF18); VG3_NEAR(0xEF74, 0xBF1B, 4); c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], 0x8B, 1, 0);
+    VG3_SETFRAME(0xFFF2, c->r[R_AX]); alu_sub(c, c->r[R_AX], 0x6E, 1, 0); c->icount += 4;
+    if (x86_cond(c, 0xC)) goto image_horizon_top;
+    SM4_NEED(2, 0xBF26); alu_sub(c, ds_get(c, 0x953C), 0xE800, 1, 0); c->icount += 2;
+    if (x86_cond(c, 0xD)) goto image_horizon_bottom_test;
+image_horizon_top:
+    SM4_NEED(1, 0xBF2E); VG3_SETFRAME(0xFFF2, 0x6E); c->icount++;
+image_horizon_bottom_test:
+    SM4_NEED(2, 0xBF33); alu_sub(c, VG3_FRAME(0xFFF2), 0xA9, 1, 0); c->icount += 2;
+    if (x86_cond(c, 0xF)) goto image_horizon_bottom;
+    SM4_NEED(2, 0xBF3A); alu_sub(c, ds_get(c, 0x953C), 0x1800, 1, 0); c->icount += 2;
+    if (x86_cond(c, 0xE)) goto image_ground_colour;
+image_horizon_bottom:
+    SM4_NEED(1, 0xBF42); VG3_SETFRAME(0xFFF2, 0xA9); c->icount++;
+image_ground_colour:
+    SM4_NEED(8, 0xBF47); VG3_SETFRAME(0xFFDA, 0x78); set_r8(c, R_BL, mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] + 4))));
+    c->r[R_BX] = (uint16_t)alu_logic(c, c->r[R_BX] & 0x7F, 1); set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + 0xC630)));
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL); VG3_SETFRAME(0xFFE6, c->r[R_AX]); alu_logic(c, get_r8(c, R_AL) & 0x10, 0); c->icount += 8;
+    if (!(c->flags & F_ZF)) { SM4_NEED(1, 0xBF5E); VG3_SETFRAME(0xFFDA, 8); c->icount++; }
+    SM4_NEED(4, 0xBF63); set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 26))));
+    c->r[R_AX] = (uint16_t)alu_logic(c, c->r[R_AX] & 15, 1); alu_sub(c, c->r[R_AX], 12, 1, 0); c->icount += 4; if (c->flags & F_ZF) goto image_special_ground;
+    SM4_NEED(2, 0xBF6E); alu_sub(c, c->r[R_AX], 13, 1, 0); c->icount += 2; if (c->flags & F_ZF) goto image_special_ground;
+    SM4_NEED(2, 0xBF73); alu_sub(c, c->r[R_AX], 9, 1, 0); c->icount += 2; if (c->flags & F_ZF) goto image_special_ground;
+    SM4_NEED(2, 0xBF78); alu_sub(c, c->r[R_AX], 11, 1, 0); c->icount += 2; if (!(c->flags & F_ZF)) goto image_position;
+image_special_ground:
+    SM4_NEED(1, 0xBF7D); VG3_SETFRAME(0xFFDA, 0xFC); c->icount++;
+image_position:
+    SM4_NEED(3, 0xBF82); c->r[R_AX] = ds_get(c, 0xC5A2); alu_sub(c, VG3_FRAME(0xFFE0), c->r[R_AX], 1, 0); c->icount += 3;
+    if (x86_cond(c, 7)) goto image_player_position;
+    SM4_NEED(2, 0xBF8A); alu_sub(c, VG3_FRAME(0x12), 3, 1, 0); c->icount += 2; if (!(c->flags & F_ZF)) goto image_target_position;
+image_player_position:
+    SM4_NEED(10, 0xBF90); c->r[R_AX] = ds_get(c, 0xB2B4); c->r[R_DX] = ds_get(c, 0xB2B6); ds_put(c, 0xB792, c->r[R_AX]); ds_put(c, 0xB794, c->r[R_DX]);
+    c->r[R_AX] = ds_get(c, 0xB77E); c->r[R_DX] = ds_get(c, 0xB780); ds_put(c, 0xB796, c->r[R_AX]); ds_put(c, 0xB798, c->r[R_DX]);
+    c->r[R_AX] = ds_get(c, 0xB788); c->icount += 10; goto image_height_commit;
+image_target_position:
+    /* Camera offsets use the original signed trig results widened by CWD,
+     * then two-word subtracts. Read the saved halves back from guest SS. */
+    SM4_NEED(3, 0xBFB2); c->r[R_AX] = VG3_FRAME(8); c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0); set_r8(c, R_CL, 5); c->icount += 3;
+    SM4_NEED(1, 0xBFB9); VG3_NEAR(0xEF68, 0xBFBC, 8); c->r[R_CX] = VG3_FRAME(0xFFE0); c->r[R_CX] = (uint16_t)x86_shift(c, 4, c->r[R_CX], 5, 1);
+    cpu_push16(c, c->r[R_CX]); cpu_push16(c, ds_get(c, 0x953C)); c->r[R_SI] = c->r[R_AX]; c->r[R_DI] = c->r[R_CX];
+    VG3_SETFRAME(0xFFC2, c->r[R_SI]); VG3_SETFRAME(0xFFC4, c->r[R_DX]); c->icount += 8;
+    SM4_NEED(1, 0xBFD1); VG3_NEAR(0xC831, 0xBFD4, 5); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); VG3_SETFRAME(0xFFEE, c->r[R_AX]);
+    cpu_push16(c, c->r[R_AX]); cpu_push16(c, ds_get(c, 0xDF00)); c->icount += 5;
+    SM4_NEED(1, 0xBFDE); VG3_NEAR(0xC818, 0xBFE1, 11); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); c->r[R_DX] = (uint16_t)((int16_t)c->r[R_AX] < 0 ? 0xFFFF : 0);
+    c->r[R_CX] = c->r[R_AX]; c->r[R_AX] = VG3_FRAME(6); c->r[R_BX] = c->r[R_DX]; c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0);
+    c->r[R_SI] = c->r[R_CX]; set_r8(c, R_CL, 5); VG3_SETFRAME(0xFFBE, c->r[R_SI]); VG3_SETFRAME(0xFFC0, c->r[R_BX]); c->icount += 11;
+    SM4_NEED(1, 0xBFF7); VG3_NEAR(0xEF68, 0xBFFA, 6);
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], VG3_FRAME(0xFFBE), 1, 0); c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], VG3_FRAME(0xFFC0), 1, !!(c->flags & F_CF));
+    ds_put(c, 0xB792, c->r[R_AX]); ds_put(c, 0xB794, c->r[R_DX]); cpu_push16(c, VG3_FRAME(0xFFEE)); cpu_push16(c, ds_get(c, 0xDF00)); c->icount += 6;
+    SM4_NEED(1, 0xC00E); VG3_NEAR(0xC831, 0xC011, 13); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); c->r[R_DX] = (uint16_t)((int16_t)c->r[R_AX] < 0 ? 0xFFFF : 0);
+    c->r[R_CX] = (uint16_t)alu_sub(c, c->r[R_CX], c->r[R_CX], 1, 0); c->r[R_BX] = 16;
+    c->r[R_CX] = (uint16_t)alu_sub(c, c->r[R_CX], c->r[R_AX], 1, 0); c->r[R_BX] = (uint16_t)alu_sub(c, c->r[R_BX], c->r[R_DX], 1, !!(c->flags & F_CF));
+    c->r[R_CX] = (uint16_t)alu_sub(c, c->r[R_CX], VG3_FRAME(0xFFC2), 1, 0); c->r[R_BX] = (uint16_t)alu_sub(c, c->r[R_BX], VG3_FRAME(0xFFC4), 1, !!(c->flags & F_CF));
+    ds_put(c, 0xB796, c->r[R_CX]); ds_put(c, 0xB798, c->r[R_BX]); cpu_push16(c, c->r[R_DI]); cpu_push16(c, ds_get(c, 0x953C)); c->icount += 13;
+    SM4_NEED(1, 0xC030); VG3_NEAR(0xC818, 0xC033, 6); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c);
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], VG3_FRAME(10), 1, 0); c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0);
+    ds_put(c, 0xB834, c->r[R_AX]); ds_put(c, 0xB836, 0); c->icount += 6; goto image_viewport;
+image_height_commit:
+    SM4_NEED(4, 0xBDC7); c->r[R_DX] = (uint16_t)((int16_t)c->r[R_AX] < 0 ? 0xFFFF : 0);
+    ds_put(c, 0xB834, c->r[R_AX]); ds_put(c, 0xB836, c->r[R_DX]); c->icount += 4;
+image_viewport:
+    /* Fold pitch around the back hemisphere, retaining the byte-only
+     * heading adjustment. Clamp the signed two-word camera height before
+     * saving the compact-HUD flag and selecting the viewport row table. */
+    SM4_NEED(1, 0xC043); cpu_push16(c, ds_get(c, 0x953C)); c->icount++;
+    SM4_NEED(1, 0xC047); VG3_NEAR(0xEE0C, 0xC04A, 3); c->r[R_BX] = cpu_pop16(c); alu_sub(c, c->r[R_AX], 0x4000, 1, 0); c->icount += 3;
+    if (x86_cond(c, 15)) goto image_fold_pitch;
+    SM4_NEED(2, 0xC050); alu_sub(c, ds_get(c, 0x953C), 0x8000, 1, 0); c->icount += 2;
+    if (!(c->flags & F_ZF)) goto image_clamp_height;
+image_fold_pitch:
+    SM4_NEED(4, 0xC058); c->r[R_AX] = 0x8000; c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], ds_get(c, 0x953C), 1, 0);
+    ds_put(c, 0x953C, c->r[R_AX]); ds_put8(c, 0xDF01, (uint8_t)alu_add(c, ds_get8(c, 0xDF01), 0x80, 0, 0)); c->icount += 4;
+image_clamp_height:
+    SM4_NEED(4, 0xC067); c->r[R_AX] = ds_get(c, 0xB834); c->r[R_DX] = ds_get(c, 0xB836); alu_logic(c, c->r[R_DX], 1); c->icount += 4;
+    if (x86_cond(c, 15)) goto image_save_height;
+    SM4_NEED(1, 0xC072); c->icount++; if (x86_cond(c, 12)) goto image_min_height;
+    SM4_NEED(2, 0xC074); alu_sub(c, c->r[R_AX], 16, 1, 0); c->icount += 2; if (!(c->flags & F_CF)) goto image_save_height;
+image_min_height:
+    SM4_NEED(2, 0xC079); c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0); c->r[R_AX] = 16; c->icount += 2;
+image_save_height:
+    SM4_NEED(7, 0xC07E); ds_put(c, 0xB834, c->r[R_AX]); ds_put(c, 0xB836, c->r[R_DX]); set_r8(c, R_AL, ds_get8(c, 0x294B));
+    mem_write8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x22)), get_r8(c, R_AL)); ds_put8(c, 0x294B, 0);
+    alu_sub(c, ds_get(c, 0x43E0), 0, 1, 0); c->icount += 7;
+    if (!(c->flags & F_ZF)) { SM4_NEED(2, 0xC097); ds_put(c, 0x7D80, 0x8190); c->icount += 2; }
+    else { SM4_NEED(1, 0xC09F); ds_put(c, 0x7D80, 0x7F90); c->icount++; }
+    SM4_NEED(2, 0xC0A5); alu_sub(c, ds_get(c, 0x990E), 3, 1, 0); c->icount += 2;
+    if (x86_cond(c, 13)) goto image_background_mode;
+    SM4_NEED(8, 0xC0AC); ds_put(c, 0x7D80, 0x8390); c->r[R_BX] = ds_get(c, 0x4070); ds_put(c, (uint16_t)(c->r[R_BX] + 4), 0x88);
+    cpu_push16(c, 0xA9); cpu_push16(c, 0xF5); cpu_push16(c, 0x6E); cpu_push16(c, 0xA9); cpu_push16(c, ds_get(c, 0x4070)); c->icount += 8;
+    SM4_NEED(1, 0xC0CA); VG3_FAR(0xC0CA, 1); c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 10, 1, 0); c->icount++;
+image_background_mode:
+    SM4_NEED(2, 0xC0D2); alu_sub(c, ds_get(c, 0x034A), 0, 1, 0); c->icount += 2;
+    if (!(c->flags & F_ZF)) { SM4_NEED(1, 0xC0D9); c->icount++; goto image_terrain_view; }
+    SM4_NEED(2, 0xC0DC); alu_sub(c, VG3_FRAME(0x12), 4, 1, 0); c->icount += 2;
+    if (c->flags & F_ZF) { SM4_NEED(1, 0xC0E2); c->icount++; goto image_terrain_view; }
+    SM4_NEED(2, 0xC0E5); alu_sub(c, VG3_FRAME(0x12), 0, 1, 0); c->icount += 2; if (c->flags & F_ZF) goto image_model_view;
+    /* The flat/gradient background runs before the model. Every fill
+     * rereads its page and horizon after any preceding guest helper. */
+    SM4_NEED(4, 0xC0EB); c->r[R_BX] = ds_get(c, 0x4070); ds_put(c, (uint16_t)(c->r[R_BX] + 4), 0x88); alu_sub(c, VG3_FRAME(0xFFF2), 0x6E, 1, 0); c->icount += 4;
+    if (c->flags & F_ZF) goto image_ground_background;
+    SM4_NEED(2, 0xC0FA); alu_sub(c, ds_get(c, 0x990E), 3, 1, 0); c->icount += 2;
+    if (!(c->flags & F_ZF)) goto image_flat_sky;
+    SM4_NEED(1, 0xC101); cpu_push16(c, VG3_FRAME(0xFFF2)); c->icount++;
+    SM4_NEED(1, 0xC104); VG3_NEAR(0x1974, 0xC107, 2); c->r[R_BX] = cpu_pop16(c); c->icount += 2; goto image_ground_background;
+image_flat_sky:
+    SM4_NEED(5, 0xC10A); cpu_push16(c, VG3_FRAME(0xFFF2)); cpu_push16(c, 0xF5); cpu_push16(c, 0x6E); cpu_push16(c, 0xA9); cpu_push16(c, ds_get(c, 0x4070)); c->icount += 5;
+    SM4_NEED(1, 0xC119); VG3_FAR(0xC119, 1); c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 10, 1, 0); c->icount++;
+image_ground_background:
+    SM4_NEED(5, 0xC121); c->r[R_AX] = VG3_FRAME(0xFFDA); c->r[R_BX] = ds_get(c, 0x4070); ds_put(c, (uint16_t)(c->r[R_BX] + 4), c->r[R_AX]);
+    alu_sub(c, VG3_FRAME(0xFFF2), 0xA9, 1, 0); c->icount += 5; if (c->flags & F_ZF) goto image_model_view;
+    SM4_NEED(2, 0xC132); alu_sub(c, ds_get(c, 0x990E), 3, 1, 0); c->icount += 2; if (!(c->flags & F_ZF)) goto image_flat_ground;
+    SM4_NEED(2, 0xC139); alu_sub(c, c->r[R_AX], 8, 1, 0); c->icount += 2; if (c->flags & F_ZF) goto image_flat_ground;
+    SM4_NEED(2, 0xC13E); alu_sub(c, ds_get(c, 0x368A), 0, 1, 0); c->icount += 2; if (!(c->flags & F_ZF)) goto image_flat_ground;
+    SM4_NEED(2, 0xC145); cpu_push16(c, c->r[R_AX]); cpu_push16(c, VG3_FRAME(0xFFF2)); c->icount += 2;
+    SM4_NEED(1, 0xC149); VG3_NEAR(0x19FD, 0xC14C, 3); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); c->icount += 3; goto image_model_view;
+image_flat_ground:
+    SM4_NEED(5, 0xC150); cpu_push16(c, 0xA9); cpu_push16(c, 0xF5); cpu_push16(c, VG3_FRAME(0xFFF2)); cpu_push16(c, 0xA9); cpu_push16(c, ds_get(c, 0x4070)); c->icount += 5;
+    SM4_NEED(1, 0xC160); VG3_FAR(0xC160, 1); c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 10, 1, 0); c->icount++;
+image_model_view:
+    SM4_NEED(14, 0xC168); set_r8(c, R_CL, ds_get8(c, 0x4368)); c->r[R_AX] = 0x100; c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], get_r8(c, R_CL), 1);
+    cpu_push16(c, c->r[R_AX]); cpu_push16(c, 0); cpu_push16(c, 0); cpu_push16(c, 0); cpu_push16(c, 0);
+    cpu_push16(c, ds_get(c, 0x953E)); cpu_push16(c, ds_get(c, 0x953C)); c->r[R_AX] = ds_get(c, 0xDF00); c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0);
+    cpu_push16(c, c->r[R_AX]); cpu_push16(c, ds_get(c, 0x4070)); c->icount += 14;
+    SM4_NEED(1, 0xC18C); VG3_NEAR(0xD826, 0xC18F, 5); c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 18, 1, 0);
+    c->r[R_BX] = ds_get(c, 0x3D94); c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 4, 1); alu_logic(c, ds_get8(c, (uint16_t)(c->r[R_BX] + 0xB2D6)) & 0x80, 0); c->icount += 5;
+    if (c->flags & F_ZF) goto image_draw_model;
+    SM4_NEED(4, 0xC1A0); set_r8(c, R_AL, ds_get8(c, 0xC0D8)); c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);
+    alu_sub(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0xB2DC)), c->r[R_AX], 1, 0); c->icount += 4; if (c->flags & F_ZF) goto image_draw_model;
+    SM4_NEED(4, 0xC1AA); set_r8(c, R_AL, ds_get8(c, 0xDED0)); c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);
+    alu_sub(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0xB2DC)), c->r[R_AX], 1, 0); c->icount += 4; if (c->flags & F_ZF) goto image_draw_model;
+    SM4_NEED(1, 0xC1B4); { const uint16_t at = (uint16_t)(c->r[R_BP] - 0x17); mem_write8(c, phys(c->seg[S_SS], at), (uint8_t)alu_logic(c, mem_read8(c, phys(c->seg[S_SS], at)) | 0x80, 0)); } c->icount++;
+image_draw_model:
+    SM4_NEED(11, 0xC1B8); cpu_push16(c, VG3_FRAME(0xFFCA)); c->r[R_AX] = VG3_FRAME(0xFFD0); c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0);
+    cpu_push16(c, c->r[R_AX]); cpu_push16(c, VG3_FRAME(0xFFD4)); cpu_push16(c, VG3_FRAME(0x10)); cpu_push16(c, VG3_FRAME(0x0E)); c->r[R_AX] = VG3_FRAME(0x0C);
+    c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0); cpu_push16(c, c->r[R_AX]); cpu_push16(c, VG3_FRAME(0xFFE8)); c->icount += 11;
+    SM4_NEED(1, 0xC1D3); VG3_NEAR(0xE2B6, 0xC1D6, 2); c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 14, 1, 0); c->icount += 2; goto image_finish;
+image_terrain_view:
+    /* Nested terrain temporarily owns the render globals. Save and restore
+     * through the guest frame so helper writes and aliases remain visible. */
+    SM4_NEED(24, 0xC1DC); c->r[R_AX] = ds_get(c, 0x9928); VG3_SETFRAME(0xFFFC, c->r[R_AX]); c->r[R_AX] = ds_get(c, 0x9F42); VG3_SETFRAME(0xFFFE, c->r[R_AX]);
+    c->r[R_AX] = ds_get(c, 0x98F8); VG3_SETFRAME(0xFFF4, c->r[R_AX]); c->r[R_AX] = ds_get(c, 0x9914); VG3_SETFRAME(0xFFF6, c->r[R_AX]);
+    set_r8(c, R_CL, ds_get8(c, 0x4368)); c->r[R_AX] = 0x100; c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], get_r8(c, R_CL), 1); cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 1; ds_put(c, 0x438E, c->r[R_AX]); cpu_push16(c, c->r[R_AX]); cpu_push16(c, ds_get(c, 0xB788)); cpu_push16(c, 0); cpu_push16(c, 0); cpu_push16(c, 0);
+    cpu_push16(c, ds_get(c, 0x953C)); c->r[R_AX] = ds_get(c, 0xDF00); c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0);
+    cpu_push16(c, c->r[R_AX]); cpu_push16(c, ds_get(c, 0x4070)); c->icount += 24;
+    SM4_NEED(1, 0xC21D); VG3_NEAR(0xD826, 0xC220, 14); c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 18, 1, 0);
+    c->r[R_AX] = ds_get(c, 0x0348); VG3_SETFRAME(0xFFFA, c->r[R_AX]); ds_put(c, 0x0348, 1);
+    cpu_push16(c, ds_get(c, 0xB836)); cpu_push16(c, ds_get(c, 0xB834)); cpu_push16(c, ds_get(c, 0xB798)); cpu_push16(c, ds_get(c, 0xB796));
+    cpu_push16(c, ds_get(c, 0xB794)); cpu_push16(c, ds_get(c, 0xB792)); cpu_push16(c, ds_get(c, 0x953C)); c->r[R_AX] = ds_get(c, 0xDF00);
+    c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0); cpu_push16(c, c->r[R_AX]); c->icount += 14;
+    SM4_NEED(1, 0xC251); VG3_NEAR(0x04E6, 0xC254, 3); c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 16, 1, 0); alu_sub(c, VG3_FRAME(0x12), 1, 1, 0); c->icount += 3;
+    if (!(c->flags & F_ZF)) { SM4_NEED(1, 0xC25D); c->icount++; goto image_terrain_marker; }
+    SM4_NEED(2, 0xC260); alu_sub(c, VG3_FRAME(0x14), 0, 1, 0); c->icount += 2; if (c->flags & F_ZF) goto image_terrain_marker;
+    SM4_NEED(1, 0xC266); VG3_NEAR(0xD87C, 0xC269, 14);
+    set_r8(c, R_BL, mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x1E)))); set_r8(c, R_BH, (uint8_t)alu_sub(c, get_r8(c, R_BH), get_r8(c, R_BH), 0, 0));
+    c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 1, 1); cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x437E)));
+    cpu_push16(c, 0); cpu_push16(c, 0); cpu_push16(c, 0); cpu_push16(c, 0); cpu_push16(c, ds_get(c, 0x953E)); cpu_push16(c, ds_get(c, 0x953C));
+    c->r[R_AX] = ds_get(c, 0xDF00); c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0); cpu_push16(c, c->r[R_AX]); cpu_push16(c, ds_get(c, 0x4070)); c->icount += 14;
+    SM4_NEED(1, 0xC28E); VG3_NEAR(0xD826, 0xC291, 14); c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 18, 1, 0);
+    cpu_push16(c, VG3_FRAME(0xFFCA)); c->r[R_AX] = VG3_FRAME(0xFFD0); c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0);
+    cpu_push16(c, c->r[R_AX]); cpu_push16(c, VG3_FRAME(0xFFD4)); cpu_push16(c, VG3_FRAME(0x10)); cpu_push16(c, VG3_FRAME(0x0E));
+    c->r[R_CX] = VG3_FRAME(0x0C); c->r[R_CX] = (uint16_t)alu_sub(c, 0, c->r[R_CX], 1, 0); cpu_push16(c, c->r[R_CX]); cpu_push16(c, VG3_FRAME(0xFFE8));
+    c->r[R_SI] = c->r[R_AX]; c->r[R_DI] = c->r[R_CX]; c->icount += 14;
+    SM4_NEED(1, 0xC2B3); VG3_NEAR(0xE2B6, 0xC2B6, 4); c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 14, 1, 0);
+    c->r[R_BX] = x86_imul3(c, ds_get(c, 0x3D92), 36); alu_logic(c, ds_get8(c, (uint16_t)(c->r[R_BX] + 0xC182)) & 0x20, 0); c->icount += 4;
+    if (c->flags & F_ZF) goto image_restore_terrain;
+    SM4_NEED(1, 0xC2C5); VG3_NEAR(0xDC46, 0xC2C8, 7); ds_put(c, 0x49F4, 0); cpu_push16(c, VG3_FRAME(0xFFCA)); cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, VG3_FRAME(0xFFD4)); cpu_push16(c, VG3_FRAME(0x10)); cpu_push16(c, VG3_FRAME(0x0E)); cpu_push16(c, c->r[R_DI]); c->icount += 7;
+    SM4_NEED(1, 0xC2DC); VG3_NEAR(0xC4BA, 0xC2DF, 2); c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 12, 1, 0); c->icount += 2; goto image_restore_terrain;
+image_terrain_marker:
+    SM4_NEED(4, 0xC2E4); cpu_push16(c, ds_get(c, 0xB834)); c->r[R_AX] = ds_get(c, 0xB796); c->r[R_DX] = ds_get(c, 0xB798); set_r8(c, R_CL, 5); c->icount += 4;
+    SM4_NEED(1, 0xC2F1); VG3_NEAR(0xEF74, 0xC2F4, 6); c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], 0x8000, 1, 0); c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0);
+    cpu_push16(c, c->r[R_AX]); c->r[R_AX] = ds_get(c, 0xB792); c->r[R_DX] = ds_get(c, 0xB794); set_r8(c, R_CL, 5); c->icount += 6;
+    SM4_NEED(1, 0xC303); VG3_NEAR(0xEF74, 0xC306, 1); cpu_push16(c, c->r[R_AX]); c->icount++;
+    SM4_NEED(1, 0xC307); VG3_NEAR(0xC5B2, 0xC30A, 1); c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0); c->icount++;
+image_restore_terrain:
+    SM4_NEED(10, 0xC30D); c->r[R_AX] = VG3_FRAME(0xFFFA); ds_put(c, 0x0348, c->r[R_AX]); c->r[R_AX] = VG3_FRAME(0xFFFC); ds_put(c, 0x9928, c->r[R_AX]);
+    c->r[R_AX] = VG3_FRAME(0xFFFE); ds_put(c, 0x9F42, c->r[R_AX]); c->r[R_AX] = VG3_FRAME(0xFFF4); ds_put(c, 0x98F8, c->r[R_AX]);
+    c->r[R_AX] = VG3_FRAME(0xFFF6); ds_put(c, 0x9914, c->r[R_AX]); c->icount += 10;
+image_finish:
+    SM4_NEED(1, 0xC32B); VG3_NEAR(0xD87C, 0xC32E, 4); ds_put(c, 0x438E, 0); ds_put(c, 0x7D80, 0x7D90);
+    alu_sub(c, ds_get(c, 0x9D3C), 0, 1, 0); c->icount += 4; if (c->flags & F_ZF) goto image_darken;
+    SM4_NEED(2, 0xC341); alu_sub(c, ds_get(c, 0x9D3E), 0, 1, 0); c->icount += 2; if (c->flags & F_ZF) goto image_darken;
+    SM4_NEED(1, 0xC348); cpu_push16(c, ds_get(c, 0x9D3C)); c->icount++;
+    SM4_NEED(1, 0xC34C); VG3_NEAR(0xEE0C, 0xC34F, 11); c->r[R_BX] = cpu_pop16(c); c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], 2, 1);
+    c->r[R_BX] = 0x91F8; c->r[R_BX] = (uint16_t)alu_sub(c, c->r[R_BX], c->r[R_AX], 1, 0);
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 2))); cpu_push16(c, ds_get(c, c->r[R_BX])); cpu_push16(c, 0x28); cpu_push16(c, 0x32);
+    cpu_push16(c, 10); cpu_push16(c, 13); cpu_push16(c, ds_get(c, 0x4070)); c->icount += 11;
+    SM4_NEED(1, 0xC369); VG3_FAR(0xC369, 1); c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 14, 1, 0); c->icount++;
+image_darken:
+    /* Synchronize the F6 lamp only when its cached state differs; preserve
+     * the frame overlay before darkening and the labels afterwards. */
+    SM4_NEED(2, 0xC371); alu_sub(c, ds_get(c, 0x43E0), 0, 1, 0); c->icount += 2; if (c->flags & F_ZF) goto image_lamp_off;
+    SM4_NEED(2, 0xC378); cpu_push16(c, 0x6E); cpu_push16(c, 0xA9); c->icount += 2;
+    SM4_NEED(1, 0xC37D); VG3_NEAR(0xC45C, 0xC380, 4); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c);
+    alu_sub(c, ds_get(c, 0x483E), 0, 1, 0); c->icount += 4; if (!(c->flags & F_ZF)) goto image_clear_spans;
+    SM4_NEED(2, 0xC389); cpu_push16(c, 1); c->icount += 2; goto image_set_lamp;
+image_lamp_off:
+    SM4_NEED(2, 0xC38D); alu_sub(c, ds_get(c, 0x483E), 0, 1, 0); c->icount += 2; if (c->flags & F_ZF) goto image_clear_spans;
+    SM4_NEED(1, 0xC394); cpu_push16(c, 0); c->icount++;
+image_set_lamp:
+    SM4_NEED(2, 0xC396); cpu_push16(c, 0x19); cpu_push16(c, ds_get(c, 0x4010)); c->icount += 2;
+    SM4_NEED(1, 0xC39C); VG3_NEAR(0xD578, 0xC39F, 1); c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0); c->icount++;
+image_clear_spans:
+    SM4_NEED(1, 0xC3A2); VG3_FAR(0xC3A2, 2); alu_sub(c, VG3_FRAME(0x12), 1, 1, 0); c->icount += 2; if (!(c->flags & F_ZF)) goto image_return;
+    SM4_NEED(2, 0xC3AD); cpu_push16(c, 0x4392); cpu_push16(c, 0x98A6); c->icount += 2;
+    SM4_NEED(1, 0xC3B3); VG3_NEAR(0xEB50, 0xC3B6, 9); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); cpu_push16(c, 10); cpu_push16(c, 0xDED6);
+    c->r[R_AX] = ds_get(c, 0xDF00); c->r[R_CX] = 0xB6; c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0);
+    /* DX is zero and the divisor is a fixed nonzero word. */
+    x86_div16(c, c->r[R_CX]); cpu_push16(c, c->r[R_AX]); c->icount += 9;
+    SM4_NEED(1, 0xC3C8); VG3_NEAR(0xEB9E, 0xC3CB, 3); c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0); cpu_push16(c, c->r[R_AX]); cpu_push16(c, 0x98A6); c->icount += 3;
+    SM4_NEED(1, 0xC3D2); VG3_NEAR(0xEB10, 0xC3D5, 4); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); alu_sub(c, ds_get(c, 0x43E0), 0, 1, 0); c->icount += 4;
+    if (!(c->flags & F_ZF)) { SM4_NEED(2, 0xC3DE); c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0); c->icount += 2; }
+    else { SM4_NEED(2, 0xC3E2); set_r8(c, R_AL, ds_get8(c, 0x2CA0)); c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL); c->icount += 2; }
+    SM4_NEED(4, 0xC3E6); cpu_push16(c, c->r[R_AX]); cpu_push16(c, 0xA1); cpu_push16(c, 0xB9); cpu_push16(c, 0x98A6); c->icount += 4;
+    SM4_NEED(1, 0xC3F0); VG3_NEAR(0x898F, 0xC3F3, 3); c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0); alu_sub(c, ds_get(c, 0x034A), 0, 1, 0); c->icount += 3; if (c->flags & F_ZF) goto image_return;
+    SM4_NEED(2, 0xC3FD); cpu_push16(c, 0x436A); cpu_push16(c, 0x98A6); c->icount += 2;
+    SM4_NEED(1, 0xC403); VG3_NEAR(0xEB50, 0xC406, 4); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); alu_sub(c, ds_get(c, 0x43E0), 0, 1, 0); c->icount += 4;
+    if (!(c->flags & F_ZF)) { SM4_NEED(2, 0xC40F); c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0); c->icount += 2; }
+    else { SM4_NEED(2, 0xC413); set_r8(c, R_AL, ds_get8(c, 0x2CA0)); c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL); c->icount += 2; }
+    SM4_NEED(4, 0xC417); cpu_push16(c, c->r[R_AX]); cpu_push16(c, 0xA3); cpu_push16(c, 0xEC); cpu_push16(c, 0x98A6); c->icount += 4;
+    SM4_NEED(1, 0xC421); VG3_NEAR(0x898F, 0xC424, 1); c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0); c->icount++;
+image_return:
+    SM4_NEED(7, 0xC427); ds_put8(c, 0x4368, 0); set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x22))));
+    ds_put8(c, 0x294B, get_r8(c, R_AL)); c->r[R_SI] = cpu_pop16(c); c->r[R_DI] = cpu_pop16(c); x86_leave(c); near_ret(c); c->icount += 7; return 1;
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xBCEF, vgame_camera_image, "reconnaissance camera image", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x983E, vgame_moving_objects, "moving objects and target selection", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x1058, 0x0016, vgame_hud_pass, "HUD tapes, frame and pitch ladder", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x79BE, vgame_panel_frame, "cockpit panel frame and HUD dispatch", 1 },

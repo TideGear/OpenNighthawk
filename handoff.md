@@ -81,8 +81,11 @@ Phase 2 work" below).
   Actual camera-gradient replay invokes the named pass 7,880 times with
   all 234 checkpoints/final identical. The saved interpreter reference
   matches the fresh moving-object gate (`fresh-reference-crosscheck.json`).
-  Integrate only after pushing this moving-object baseline, refresh census
-  and require another full gate. Preserve backgrounds before model/terrain,
+  Moving-object baseline/evidence is pushed as `e9aa11a`. Camera patch is
+  integrated on main and matches all three tested snapshots. Census is
+  814 functions / 78,497 bytes, P2 46.61%, overall 75.71%, 822 addresses.
+  Fresh full gate pending: `D:/f117-gate/gate-camimage.log`; do not push
+  this runtime change until it passes. Preserve backgrounds before model/terrain,
   live guest locals, nested render-global restoration and call guards.
   Next dossier: `next-candidates/flight-input`, VGAME `0000:1EB0`,
   1,274 instructions / 3,543 bytes / 121 calls. Partial external named

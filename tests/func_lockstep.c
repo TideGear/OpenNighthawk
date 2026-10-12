@@ -308,7 +308,7 @@ static int compare(const char *mod, uint32_t off, uint16_t cs, uint16_t ip, int 
 static void stub_driver_thunks(uint8_t *pristine, uint32_t at, const rc_module *m, const recomp_override *o)
 {
     const int vgame_draw = !strcmp(m->name, "VGAME.EXE") &&
-        ((o->seg == 0 && (o->ip == 0x983E || o->ip == 0x79BE || o->ip == 0x8A90 || o->ip == 0x9515 || o->ip == 0x1E79 || o->ip == 0xB171 || o->ip == 0xD6DD || o->ip == 0x4777 ||
+        ((o->seg == 0 && (o->ip == 0xBCEF || o->ip == 0x983E || o->ip == 0x79BE || o->ip == 0x8A90 || o->ip == 0x9515 || o->ip == 0x1E79 || o->ip == 0xB171 || o->ip == 0xD6DD || o->ip == 0x4777 ||
                          o->ip == 0xD3F9 || o->ip == 0xD87C || o->ip == 0x72D8 ||
                            o->ip == 0x8A18 || o->ip == 0x881F || o->ip == 0x796E || o->ip == 0x3A4E ||
                            o->ip == 0xB0C2 || o->ip == 0xC45C)) ||
@@ -350,6 +350,26 @@ static const struct { const char *module; uint16_t ip; uint32_t linear; uint8_t 
     { "VGAME.EXE", 0x79BE, 0x089F7, 0xC3 },
     { "VGAME.EXE", 0x79BE, 0x08A18, 0xC3 },
     { "VGAME.EXE", 0x79BE, 0x0889B, 0xC3 },
+    /* Camera caller: returning render/string helpers; original math runs. */
+    { "VGAME.EXE", 0xBCEF, 0x0FD66, 0xCB },
+    { "VGAME.EXE", 0xBCEF, 0x10039, 0xCB },
+    { "VGAME.EXE", 0xBCEF, 0x1E5A8, 0xCB },
+    { "VGAME.EXE", 0xBCEF, 0x0C436, 0xC3 },
+    { "VGAME.EXE", 0xBCEF, 0x0D826, 0xC3 },
+    { "VGAME.EXE", 0xBCEF, 0x0E2B6, 0xC3 },
+    { "VGAME.EXE", 0xBCEF, 0x004E6, 0xC3 },
+    { "VGAME.EXE", 0xBCEF, 0x0C4BA, 0xC3 },
+    { "VGAME.EXE", 0xBCEF, 0x0C5B2, 0xC3 },
+    { "VGAME.EXE", 0xBCEF, 0x0D87C, 0xC3 },
+    { "VGAME.EXE", 0xBCEF, 0x0DC46, 0xC3 },
+    { "VGAME.EXE", 0xBCEF, 0x0C45C, 0xC3 },
+    { "VGAME.EXE", 0xBCEF, 0x0D578, 0xC3 },
+    { "VGAME.EXE", 0xBCEF, 0x0898F, 0xC3 },
+    { "VGAME.EXE", 0xBCEF, 0x0EB50, 0xC3 },
+    { "VGAME.EXE", 0xBCEF, 0x0EB9E, 0xC3 },
+    { "VGAME.EXE", 0xBCEF, 0x0EB10, 0xC3 },
+    { "VGAME.EXE", 0xBCEF, 0x01974, 0xC3 },
+    { "VGAME.EXE", 0xBCEF, 0x019FD, 0xC3 },
     /* Moving-object caller: returning projection/drawing helpers.
      * Real range, bearing, absolute value, scaling and trail-size math runs. */
     { "VGAME.EXE", 0x983E, 0x0B5DC, 0xC3 },
@@ -421,6 +441,7 @@ static const struct { const char *module; uint16_t ip; int arg; uint16_t v[2]; }
 /* Exact code ranges when the default 0x300-byte window is unsuitable:
  * long/shared tails, or small walkers whose unrelated callees are nearby. */
 static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
+    { "VGAME.EXE", 0xBCEF, 0xBCEF, 0x0747 }, /* complete camera image */
     { "VGAME.EXE", 0x983E, 0x983E, 0x06BC }, /* entire moving-object pass */
     { "VGAME.EXE", 0x0016, 0x0016, 0x09C2 }, /* HUD pass through RET */
     { "VGAME.EXE", 0x79BE, 0x79BE, 0x082A }, /* whole cockpit pass through RET */
@@ -548,7 +569,9 @@ static uint16_t g_below;                /* how far the routine's code reaches be
  * written back later (a row table over the code when DS = CS) runs changed instructions and leaves no
  * trace in the end state. */
 static int g_self_written, g_watch_transient;
+static uint64_t g_camera_seen;
 static uint64_t g_moving_seen;
+static int g_camera_fixture;
 static int g_hud_fixture;
 static uint64_t g_hud_seen;
 static uint64_t g_cockpit_seen;
@@ -560,7 +583,7 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
     const uint32_t watch = phys(cs, (uint16_t)(ip - g_below));
     const int watching = (g_below || g_watch_transient) && a->mem == g_mem[0];
     while (*steps < 100000) {
-        const unsigned watch_bytes = (ip == 0x983E || ip == 0x0016 || ip == 0x79BE || ip == 0x8A90) ? g_span : 0x300u + g_below;
+        const unsigned watch_bytes = (ip == 0xBCEF || ip == 0x983E || ip == 0x0016 || ip == 0x79BE || ip == 0x8A90) ? g_span : 0x300u + g_below;
         if (watching && !g_self_written && memcmp(a->mem + watch, g_pristine + watch, watch_bytes)) g_self_written = 1;
         if (g_trace) printf("      %04X:%04X clk %llu sp %04X\n", a->seg[S_CS], a->ip, (unsigned long long)a->icount, a->r[R_SP]);
         const uint16_t here = a->ip;
@@ -571,6 +594,15 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
                 if (here == branch[k]) g_arms_seen |= 1u << k;
             if (here == 0x0820 && x86_cond(a, 7)) g_arms_seen |= 1u << 5;
             if (here == 0x08E8 && !(a->flags & F_ZF)) g_arms_seen |= 1u << 6;
+        }
+        if (g_camera_fixture && own && a->mem == g_mem[0]) {
+            static const uint16_t branch[] = { 0xBD14, 0xBD1C, 0xBD48, 0xBD59,
+                0xBD63, 0xBD6D, 0xBD80, 0xBDDA, 0xBEC9, 0xBE7F, 0xBF2E,
+                0xBF42, 0xBF5E, 0xBF7D, 0xBF90, 0xBFB2, 0xC058, 0xC079,
+                0xC0AC, 0xC101, 0xC10A, 0xC145, 0xC150, 0xC168, 0xC1DC,
+                0xC266, 0xC2C5, 0xC2E4, 0xC348, 0xC378, 0xC3AD, 0xC3FD };
+            for (unsigned k = 0; k < sizeof branch / sizeof branch[0]; k++)
+                if (here == branch[k]) g_camera_seen |= UINT64_C(1) << k;
         }
         if (ip == 0x983E && own && a->mem == g_mem[0]) {
             static const uint16_t branch[] = { 0x984B, 0x98D5, 0x98EF, 0x9916,
@@ -626,6 +658,7 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
         ++*steps;
         /* A HUD divide fault is a comparable boundary even though it cannot
          * return normally. Stop before interpreting the random vector target. */
+        if (g_camera_fixture && own && a->int_depth && here == 0xBE53) return 2;
         if (g_hud_fixture && own && a->int_depth &&
             (here == 0x0051 || here == 0x0063 || here == 0x01BC || here == 0x0349)) return 2;
         /* The routine's own return: near RET (kind 1), far RETF (2), IRET (3). */
@@ -724,10 +757,11 @@ int main(int argc, char **argv)
          * the adjacent opposite-order helper, then restore the code bytes.
          * PLAYER's format reader can similarly overwrite its RET through
          * an aliased frame slot. Final memory misses these changed-code inputs. */
+        g_camera_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0xBCEF;
         g_hud_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0x1058 && o->ip == 0x0016;
         g_watch_transient = (!strcmp(o->module, "VGAME.EXE") && o->seg == 0x1058 && o->ip == 0x0016) ||
             (o->seg == 0 &&
-            ((!strcmp(o->module, "VGAME.EXE") && (o->ip == 0x983E || o->ip == 0x79BE || o->ip == 0x8A90)) ||
+            ((!strcmp(o->module, "VGAME.EXE") && (o->ip == 0xBCEF || o->ip == 0x983E || o->ip == 0x79BE || o->ip == 0x8A90)) ||
              (!strcmp(o->module, "START.EXE") && (o->ip == 0x39B3 || o->ip == 0x39D5)) ||
              (!strcmp(o->module, "END.EXE") && (o->ip == 0x1CB1 || o->ip == 0x1CD3)) ||
              (!strcmp(o->module, "PLAYER.EXE") && o->ip == 0x1E90)));
@@ -752,6 +786,8 @@ int main(int argc, char **argv)
         const int sprite_run = !strcmp(o->module, "MPS_LOGO.EXE") && o->seg == 0x006D && o->ip == 0x0678;
         const int camera_gradients = !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && (o->ip == 0x1974 || o->ip == 0x19FD);
         const int objectives_panel = !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0x9515;
+        uint64_t camera_branches = 0;
+        unsigned long long camera_faults = 0;
         uint64_t moving_branches = 0;
         unsigned hud_fault_mask = 0;
         unsigned long long hud_faults = 0;
@@ -853,6 +889,67 @@ int main(int argc, char **argv)
                     }
                     small[0] = o->ip == 0x1974 ? 169 : 110;
                     small[1] = (uint16_t)((s >> 3) & 1);
+                }
+            }
+            /* A controlled helper result reaches the caller's own IDIV
+             * fault frame. Other states execute the real range helper. */
+            if (g_camera_fixture) {
+                static const uint8_t forced_range[] = { 0xB8, 0xFF, 0xFF, 0xC3 };
+                const int force_range = (s & 7) == 2 && ((s >> 3) % 5) == 0;
+                for (unsigned j = 0; j < 4; j++) {
+                    const uint32_t address = at + 0xC6B3 + j;
+                    g_pristine[address] = g_mem[0][address] = g_mem[1][address] =
+                        force_range ? forced_range[j] : m->image[0xC6B3 + j];
+                }
+            }
+            /* Small camera worlds exercise all view modes and zoom signs;
+             * retain random states alongside them and exclude loaded code. */
+            if (g_camera_fixture && ((s & 7) == 1 || (s & 7) == 2)) {
+                const unsigned v = (unsigned)s >> 3;
+                static const uint16_t modes[] = { 0, 1, 2, 3, 4, 0xFFFF };
+                static const uint16_t zooms[] = { 0, 1, 2, 0xFFFF, 0xFFFE, 31 };
+                static const uint16_t heights[] = { 0, 15, 16, 1000, 0xFFFF };
+                struct { uint16_t at, value; } words[96]; unsigned n = 0;
+#define CAMERA_WORD(a_, v_) do { words[n].at = (uint16_t)(a_); words[n++].value = (uint16_t)(v_); } while (0)
+                CAMERA_WORD(0x4070, 0x2100); CAMERA_WORD(0x4010, 0x2000);
+                CAMERA_WORD(0x990E, (v & 1) ? 3 : 1); CAMERA_WORD(0x034A, (v / 7) & 1);
+                CAMERA_WORD(0x43E0, (v / 5) & 1); CAMERA_WORD(0x483E, (v / 11) & 1);
+                CAMERA_WORD(0x40B6, (v / 13) & 1); CAMERA_WORD(0x294A, (v & 1) ? 0xFF00 : 0);
+                CAMERA_WORD(0xC0D0, 1000); CAMERA_WORD(0xC0DE, 1000); CAMERA_WORD(0x2DF4, heights[v % 5]);
+                CAMERA_WORD(0x2DEE, v * 0x1237); CAMERA_WORD(0x2DF0, v * 0x0321); CAMERA_WORD(0x2DF2, v * 0x0111);
+                CAMERA_WORD(0xB2B4, 32000); CAMERA_WORD(0xB2B6, 0); CAMERA_WORD(0xB77E, 32000); CAMERA_WORD(0xB780, 16); CAMERA_WORD(0xB788, heights[(v / 3) % 5]);
+                CAMERA_WORD(0x3D94, 0); CAMERA_WORD(0x3D92, 0); CAMERA_WORD(0xB2D6, (v & 2) ? 0x80 : 0);
+                CAMERA_WORD(0xB2DC, v % 4); CAMERA_WORD(0xC0D8, v % 3); CAMERA_WORD(0xDED0, (v + 1) % 3);
+                CAMERA_WORD(0xC182, (v & 4) ? 0x20 : 0); CAMERA_WORD(0x368A, (v / 17) & 1);
+                CAMERA_WORD(0x9D3C, (v & 8) ? v % 16 : 0); CAMERA_WORD(0x9D3E, (v / 19) & 1);
+                for (unsigned j = 0; j < 8; j++) {
+                    CAMERA_WORD(0x436E + 2 * j, j == 0 ? 0 : 100 + 25 * j);
+                    CAMERA_WORD(0x437E + 2 * j, 0x100 + 32 * j);
+                }
+                for (unsigned j = 0; j < 4; j++) { CAMERA_WORD(0x0960 + 2 * j, (j * 2) | ((j * 2 + 1) << 8)); CAMERA_WORD(0x09E0 + 2 * j, 0x0707); }
+                for (unsigned j = 0; j < 14; j++) CAMERA_WORD(0x3C3A + 2 * j, j < 2 ? 1000 : j == 2 ? 100 : j == 4 ? 0x4000 : 0);
+#undef CAMERA_WORD
+                const uint16_t args[] = { (uint16_t)(v % 8), (uint16_t)(1000 + 100 * (v % 7)), (uint16_t)(1000 - 50 * (v % 7)), heights[(v / 2) % 5],
+                    (uint16_t)(v * 0x0137), (uint16_t)(v * 0x0311), (uint16_t)(v * 0x0123), modes[(v / 3) % 6], zooms[(v / 18) % 6] };
+                int safe = 1;
+                for (unsigned j = 0; j < n; j++) for (unsigned byte = 0; byte < 2; byte++) {
+                    const uint32_t address = phys(seg[S_DS], (uint16_t)(words[j].at + byte));
+                    if (address >= at && address < at + m->size + 2) safe = 0;
+                }
+                for (unsigned j = 0; j < 9; j++) for (unsigned byte = 0; byte < 2; byte++) {
+                    const uint32_t address = phys(seg[S_SS], (uint16_t)(r[R_SP] + 2*j + byte));
+                    if (address >= at && address < at + m->size + 2) safe = 0;
+                }
+                if (safe) {
+                    for (unsigned j = 0; j < n; j++) for (unsigned byte = 0; byte < 2; byte++) {
+                        const uint32_t address = phys(seg[S_DS], (uint16_t)(words[j].at + byte));
+                        g_pristine[address] = g_mem[0][address] = g_mem[1][address] = (uint8_t)(words[j].value >> (8 * byte));
+                    }
+                    for (unsigned j = 0; j < 9; j++) for (unsigned byte = 0; byte < 2; byte++) {
+                        const uint32_t address = phys(seg[S_SS], (uint16_t)(r[R_SP] + 2*j + byte));
+                        g_pristine[address] = g_mem[0][address] = g_mem[1][address] = (uint8_t)(args[j] >> (8 * byte));
+                    }
+                    for (unsigned j = 0; j < 4; j++) small[j] = args[j];
                 }
             }
             /* Small moving-object worlds separate target cycling, shadow
@@ -1146,7 +1243,7 @@ int main(int argc, char **argv)
              * accept the state only when it returns to the pushed address. */
             const uint16_t entry_sp = (uint16_t)(r[R_SP] - (o->matched == 3 ? 6 : o->matched == 2 ? 4 : 2));
             g_back_cs = cs; g_back_ip = back; g_back_sp = r[R_SP];
-            g_reach = 0; g_moving_seen = 0; g_hud_seen = 0; g_cockpit_seen = 0; g_nav_seen = 0; g_panel_seen = 0; g_arms_seen = 0;
+            g_reach = 0; g_camera_seen = 0; g_moving_seen = 0; g_hud_seen = 0; g_cockpit_seen = 0; g_nav_seen = 0; g_panel_seen = 0; g_arms_seen = 0;
             g_self_written = 0;
             const int returned = run_to_ret(a, entry_sp, o->matched, &steps, cs, ip);
             if (returned == 2 && !g_self_written) {
@@ -1154,12 +1251,12 @@ int main(int argc, char **argv)
                 g_lost = 0; g_ncalls = 0; g_callover = 0;
                 const int ran = o->fn(&g_m);
                 if (!ran || g_lost || !g_m.cpu.int_depth) { ms++; restore(); continue; }
-                g_cpu[1] = g_m.cpu; mc++; hud_faults++;
+                g_cpu[1] = g_m.cpu; mc++; if (g_camera_fixture) camera_faults++; else hud_faults++;
                 if (a->op_ip == 0x0051) hud_fault_mask |= 1;
                 if (a->op_ip == 0x0063) hud_fault_mask |= 2;
                 if (a->op_ip == 0x01BC) hud_fault_mask |= 4;
                 if (a->op_ip == 0x0349) hud_fault_mask |= 8;
-                g_ctx = " (HUD divide fault)";
+                g_ctx = g_camera_fixture ? " (camera divide fault)" : " (HUD divide fault)";
                 mb += compare(o->module, ((uint32_t)o->seg << 4) + ip, cs, ip, 0);
                 g_ctx = ""; restore(); continue;
             }
@@ -1236,6 +1333,7 @@ int main(int argc, char **argv)
                 g_finished++;
             }
             mc++;
+            if (g_camera_fixture) camera_branches |= g_camera_seen;
             if (!strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0x983E) moving_branches |= g_moving_seen;
             if (!strcmp(o->module, "VGAME.EXE") && o->seg == 0x1058 && o->ip == 0x0016) hud_branches |= g_hud_seen;
             if (!strcmp(o->module, "VGAME.EXE") && o->ip == 0x79BE) cockpit_branches |= g_cockpit_seen;
@@ -1330,6 +1428,14 @@ int main(int argc, char **argv)
                o->what, mc, ms, mb ? "MISMATCH" : mc ? "equal" : "not testable here (routes only)");
         if (g_checked_alloc) printf("  completed allocation-error states: %llu\n", g_alloc_errors);
         if (camera_gradients) printf("  completed 16-band states: %llu\n", g_gradient_full);
+        if (g_camera_fixture) {
+            printf("  completed camera branch mask: %08llX (required FFFFFFFF)\n", (unsigned long long)camera_branches);
+            printf("  camera divide fault states: %llu\n", camera_faults);
+            if (states >= 4000 && !camera_faults) { fprintf(stderr, "camera fixtures missed divide fault boundary\n"); mb++; }
+            if (states >= 4000 && camera_branches != UINT64_C(0xFFFFFFFF)) {
+                fprintf(stderr, "camera fixtures missed required branches\n"); mb++;
+            }
+        }
         if (!strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0x983E) {
             printf("  completed moving-object branch mask: %08llX (required FFFFFFFF)\n", (unsigned long long)moving_branches);
             if (states >= 4000 && moving_branches != UINT64_C(0xFFFFFFFF)) {

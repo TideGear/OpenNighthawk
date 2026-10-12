@@ -302,8 +302,10 @@ the named pass 7,880 times and matches all 234 checkpoints/final in 190.6 s.
 Audited artifacts, selective patch and tested snapshots:
 `D:/f117-gate/camimage/targeted-verdict.json`. The immutable interpreter
 reference matches the fresh moving-object gate (`fresh-reference-crosscheck.json`).
-Main has no camera-image changes yet; integrate after the moving-object
-baseline push and require a fresh full gate.
+After pushing moving-object baseline/evidence as `e9aa11a`, integrated
+the selective patch; all three main texts match the tested snapshots.
+Census: 814 / 78,497, P2 46.61%, overall 75.71%, 822 addresses. Fresh full
+gate pending in `D:/f117-gate/gate-camimage.log`; do not push until it passes.
 
 ## The gate (`tools/build_recomp.py`)
 

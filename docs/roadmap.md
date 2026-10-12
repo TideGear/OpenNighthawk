@@ -207,6 +207,16 @@ shared-flow span-edge candidate demonstrates why walk size is not census
 ownership. Synthetic checks run in Windows CI. Details and limits:
 [repeated-processes.md](repeated-processes.md#phase-2-candidate-reading).
 
+Camera-image pass (`VGAME 0000:BCEF`) is integrated, pending a fresh full
+gate: 14,735 targeted comparisons including 145 controlled helper-return
+divide faults, all 32 tracked paths per seed and 46 isolated tests pass.
+Actual camera-gradient replay invokes it 7,880 times with all 234 checkpoints/
+final identical. Named C retains all 49 calls, background/model/terrain
+ordering, nested render-global restoration, pitch folding, overlays,
+labels and zoom/compact-HUD restoration. Its 1,863-byte census extent brings
+the census to 814 functions / 78,497 bytes, P2 46.61%, overall 75.71%
+(822 matched addresses). Private evidence: `D:/f117-gate/camimage`.
+
 Moving-object pass (`VGAME 0000:983E`) is integrated and fully gated at
 `b811414`: 8,071 targeted comparisons across three seeds, all 32 tracked paths,
 45 isolated tests, and 550 actual-driver F3 calls with all 57 checkpoints/
