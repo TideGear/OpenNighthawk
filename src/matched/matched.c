@@ -32849,7 +32849,208 @@ static int vgame_timer_tick(machine_t *m)
     c->icount += 3; near_ret(c); return 1;
 }
 
+/* VGAME 0000:9515: draw the two mission objectives and the landing site.
+ * The guest frame holds the line number (-1C), objective index (-1A), and
+ * deadline text (-18). Keep those live: the string helpers and display
+ * calls can observe stack aliases. Objective phrases come through the
+ * original CS table; an unfamiliar live target resumes original code.
+ * In particular, the overdue branch rewrites the shared text buffer AFTER
+ * copying it into the local deadline line. Preserve that original order. */
+static int vgame_objectives_panel(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 8)) return 0;
+    x86_enter(c, 0x22, 0);
+    x86_push_reg(c, R_DI); x86_push_reg(c, R_SI);
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+    VG3_SETFRAME(-0x1C, c->r[R_AX]);
+    cpu_push16(c, c->r[R_AX]); cpu_push16(c, 2);
+    c->icount += 7;
+    VG3_FAR(0x9523, 4);
+    c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c);
+    VG3_SETFRAME(-0x1A, 0);
+    c->icount += 4;                                             /* includes jump */
+    goto objective_test;
+
+completed:
+    SM4_NEED(3, 0x96D4);
+    alu_sub(c, VG3_FRAME(-0x1A), 0, 1, 0);
+    c->icount += 2;
+    if (c->flags & F_ZF) {
+        SM4_NEED(1, 0x96DA); c->icount++;
+        SM4_NEED(1, 0x9532); c->r[R_AX] = 0x4150; c->icount++;
+    } else {
+        SM4_NEED(2, 0x96DD); c->r[R_AX] = 0x4146; c->icount += 2;
+    }
+    SM4_NEED(3, 0x9535);
+    cpu_push16(c, c->r[R_AX]); cpu_push16(c, 0x98A6); c->icount += 2;
+    VG3_NEAR(0xEB50, 0x953C, 5);
+    c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c);
+    cpu_push16(c, 0x4158); cpu_push16(c, 0x98A6); c->icount += 4;
+    VG3_NEAR(0xEB10, 0x9547, 8);
+    c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c);
+    cpu_push16(c, 15); cpu_push16(c, 0x98A6);
+    cpu_push16(c, VG3_FRAME(-0x1C));
+    VG3_SETFRAME(-0x1C, (uint16_t)alu_inc(c, VG3_FRAME(-0x1C), 1));
+    cpu_push16(c, 1); cpu_push16(c, 2); c->icount += 8;
+    SM4_NEED(1, 0x9558);
+    VG3_NEAR(0x890E, 0x955B, 4);
+    VG3_DROP(10); cpu_push16(c, 15); cpu_push16(c, 0x4161);
+    c->icount += 4;                                             /* second done line */
+    goto line_tail;
+
+active_objective:
+    SM4_NEED(6, 0x9566);
+    c->r[R_BX] = x86_imul3(c, VG3_FRAME(-0x1A), 18);
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0xE304));
+    c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1);
+    alu_sub(c, c->r[R_AX], 7, 1, 0);
+    c->icount += 6;                                             /* includes both branches */
+    if (!x86_cond(c, 7)) {
+        SM4_NEED(3, 0x95A6);
+        c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], 1, 1);
+        const uint16_t old_bx = c->r[R_BX]; c->r[R_BX] = c->r[R_AX]; c->r[R_AX] = old_bx;
+        const uint16_t target = seg_read16(c, c->seg[S_CS], (uint16_t)(c->r[R_BX] + 0x95AE));
+        c->icount += 3;
+        uint16_t phrase;
+        switch (target) {
+        case 0x9570: phrase = 0x416B; break;
+        case 0x957D: phrase = 0x417C; break;
+        case 0x9582: phrase = 0x418D; break;
+        case 0x9587: phrase = 0x41A0; break;
+        case 0x958C: phrase = 0x41AE; break;
+        case 0x9591: phrase = 0x41C1; break;
+        case 0x9596: phrase = 0x41D2; break;
+        case 0x959B: phrase = 0x41E5; break;
+        default: c->ip = target; return 1;
+        }
+        SM4_NEED(2, target);
+        cpu_push16(c, phrase); c->icount += target == 0x9570 ? 1 : 2;
+        SM4_NEED(2, 0x9573);
+        cpu_push16(c, 0x98A6); c->icount++;
+        VG3_NEAR(0xEB50, 0x9579, 3);
+        c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); c->icount += 3;
+    }
+    SM4_NEED(12, 0x95BE);
+    alu_sub(c, VG3_FRAME(-0x1A), 1, 1, 0);
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, !!(c->flags & F_CF));
+    set_r8(c, R_AL, (uint8_t)alu_logic(c, get_r8(c, R_AL) & 0xE8, 0));
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], 0x29, 1, 0);
+    cpu_push16(c, c->r[R_AX]); cpu_push16(c, 0x98A6);
+    cpu_push16(c, VG3_FRAME(-0x1C));
+    VG3_SETFRAME(-0x1C, (uint16_t)alu_inc(c, VG3_FRAME(-0x1C), 1));
+    cpu_push16(c, 1); cpu_push16(c, 2); c->r[R_SI] = c->r[R_AX];
+    c->icount += 11;
+    VG3_NEAR(0x890E, 0x95DC, 12);
+    VG3_DROP(10);
+    c->r[R_BX] = x86_imul3(c, VG3_FRAME(-0x1A), 18);
+    c->r[R_DI] = ds_get(c, (uint16_t)(c->r[R_BX] + 0xE306));
+    c->r[R_DI] = (uint16_t)x86_shift(c, 4, c->r[R_DI], 4, 1);
+    c->r[R_AX] = c->r[R_BX];
+    set_r8(c, R_BL, ds_get8(c, (uint16_t)(c->r[R_DI] + 0xB2DC)));
+    c->r[R_BX] = (uint16_t)alu_logic(c, c->r[R_BX] & 0x7F, 1);
+    c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 1, 1);
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0xDF08)));
+    cpu_push16(c, 0x98A6); c->r[R_DI] = c->r[R_AX]; c->icount += 11;
+    VG3_NEAR(0xEB50, 0x9601, 8);
+    c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = ds_get(c, (uint16_t)(c->r[R_DI] + 0xE306));
+    c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 4, 1);
+    c->r[R_BX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0xB2CE));
+    c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 1, 1);
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0xDF08))); c->icount += 7;
+    VG3_NEAR(0xEB82, 0x9617, 3);
+    c->r[R_BX] = cpu_pop16(c); alu_logic(c, c->r[R_AX], 1); c->icount += 3;
+    if (!(c->flags & F_ZF)) {
+        SM4_NEED(3, 0x961C);
+        cpu_push16(c, 0x41F8); cpu_push16(c, 0x98A6); c->icount += 2;
+        VG3_NEAR(0xEB10, 0x9625, 9);
+        c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c);
+        cpu_push16(c, c->r[R_SI]); cpu_push16(c, 0x98A6);
+        cpu_push16(c, VG3_FRAME(-0x1C));
+        VG3_SETFRAME(-0x1C, (uint16_t)alu_inc(c, VG3_FRAME(-0x1C), 1));
+        cpu_push16(c, 1); cpu_push16(c, 2); c->icount += 8;
+        VG3_NEAR(0x890E, 0x9638, 3);
+        VG3_DROP(10); cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_DI] + 0xE306))); c->icount += 2;
+        VG3_NEAR(0x4B8F, 0x9642, 3);
+        c->r[R_BX] = cpu_pop16(c); cpu_push16(c, c->r[R_SI]); c->icount += 3;
+    } else {
+        SM4_NEED(5, 0x9646);
+        alu_sub(c, VG3_FRAME(-0x1A), 1, 1, 0);
+        c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, !!(c->flags & F_CF));
+        set_r8(c, R_AL, (uint8_t)alu_logic(c, get_r8(c, R_AL) & 0xE8, 0));
+        c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], 0x29, 1, 0);
+        cpu_push16(c, c->r[R_AX]); c->icount += 5;
+    }
+    SM4_NEED(7, 0x9652);
+    cpu_push16(c, 0x98A6); cpu_push16(c, VG3_FRAME(-0x1C));
+    VG3_SETFRAME(-0x1C, (uint16_t)alu_inc(c, VG3_FRAME(-0x1C), 1));
+    cpu_push16(c, 1); cpu_push16(c, 2); c->icount += 5;
+    VG3_NEAR(0x890E, 0x9662, 4);
+    VG3_DROP(10); c->r[R_BX] = x86_imul3(c, VG3_FRAME(-0x1A), 18);
+    alu_logic(c, ds_get8(c, (uint16_t)(c->r[R_BX] + 0xE30A)) & 2, 0); c->icount += 4;
+    if (c->flags & F_ZF) goto next_objective;
+    SM4_NEED(2, 0x9670);
+    cpu_push16(c, ds_get(c, 0xDEB4)); c->icount++;
+    VG3_NEAR(0x9335, 0x9677, 5);
+    c->r[R_BX] = cpu_pop16(c); cpu_push16(c, 0x41FD);
+    c->r[R_AX] = (uint16_t)(c->r[R_BP] - 0x18); cpu_push16(c, c->r[R_AX]); c->icount += 4;
+    VG3_NEAR(0xEB50, 0x9682, 6);
+    c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c);
+    cpu_push16(c, 0x98A6); c->r[R_AX] = (uint16_t)(c->r[R_BP] - 0x18);
+    cpu_push16(c, c->r[R_AX]); c->icount += 5;
+    VG3_NEAR(0xEB10, 0x968E, 5);
+    c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c);
+    c->r[R_AX] = ds_get(c, 0xDEB4); alu_sub(c, ds_get(c, 0x9912), c->r[R_AX], 1, 0); c->icount += 5;
+    if (!x86_cond(c, 0xE)) {
+        SM4_NEED(3, 0x9699);
+        cpu_push16(c, 0x4205); cpu_push16(c, 0x98A6); c->icount += 2;
+        VG3_NEAR(0xEB50, 0x96A2, 2);
+        c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); c->icount += 2;
+    }
+    SM4_NEED(3, 0x96A4);
+    cpu_push16(c, 7); c->r[R_AX] = (uint16_t)(c->r[R_BP] - 0x18);
+    cpu_push16(c, c->r[R_AX]); c->icount += 3;
+line_tail:
+    SM4_NEED(5, 0x96AA);
+    cpu_push16(c, VG3_FRAME(-0x1C));
+    VG3_SETFRAME(-0x1C, (uint16_t)alu_inc(c, VG3_FRAME(-0x1C), 1));
+    cpu_push16(c, 1); cpu_push16(c, 2); c->icount += 4;
+    VG3_NEAR(0x890E, 0x96B7, 1);
+    VG3_DROP(10); c->icount++;
+next_objective:
+    SM4_NEED(1, 0x96BA);
+    VG3_SETFRAME(-0x1A, (uint16_t)alu_inc(c, VG3_FRAME(-0x1A), 1)); c->icount++;
+objective_test:
+    SM4_NEED(2, 0x96BD);
+    alu_sub(c, VG3_FRAME(-0x1A), 2, 1, 0); c->icount += 2;
+    if (!x86_cond(c, 0xD)) {
+        SM4_NEED(5, 0x96C3);
+        set_r8(c, R_CL, (uint8_t)VG3_FRAME(-0x1A)); c->r[R_AX] = 0x4000;
+        c->r[R_AX] = (uint16_t)x86_shift(c, 7, c->r[R_AX], get_r8(c, R_CL), 1);
+        alu_logic(c, ds_get(c, 0x9B34) & c->r[R_AX], 1); c->icount += 5;
+        if (!(c->flags & F_ZF)) goto completed;
+        SM4_NEED(1, 0x96D1); c->icount++; goto active_objective;
+    }
+    /* The last two lines describe the landing site. */
+    SM4_NEED(7, 0x96E3);
+    cpu_push16(c, 10); cpu_push16(c, 0x4212); cpu_push16(c, VG3_FRAME(-0x1C));
+    VG3_SETFRAME(-0x1C, (uint16_t)alu_inc(c, VG3_FRAME(-0x1C), 1));
+    cpu_push16(c, 1); cpu_push16(c, 2); c->icount += 6;
+    VG3_NEAR(0x890E, 0x96F5, 3);
+    VG3_DROP(10); cpu_push16(c, ds_get(c, 0xE31A)); c->icount += 2;
+    VG3_NEAR(0x4B8F, 0x96FF, 8);
+    c->r[R_BX] = cpu_pop16(c); cpu_push16(c, 10); cpu_push16(c, 0x98A6);
+    cpu_push16(c, VG3_FRAME(-0x1C));
+    VG3_SETFRAME(-0x1C, (uint16_t)alu_inc(c, VG3_FRAME(-0x1C), 1));
+    cpu_push16(c, 1); cpu_push16(c, 2); c->icount += 7;
+    VG3_NEAR(0x890E, 0x9712, 5);
+    VG3_DROP(10); c->r[R_SI] = cpu_pop16(c); c->r[R_DI] = cpu_pop16(c);
+    x86_leave(c); c->icount += 5; near_ret(c); return 1;
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x9515, vgame_objectives_panel, "mission objectives and landing panel", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x1E79, vgame_timer_tick, "timer counters and driver rate request", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0FB2, 0x05A4, vgame_span_edge_boundary, "edge outside horizontal span bounds", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0FB2, 0x05B3, vgame_span_edge_emit, "rasterize an edge into polygon span tables", 1 },

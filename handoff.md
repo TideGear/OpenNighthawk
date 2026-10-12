@@ -71,16 +71,24 @@ Phase 2 work" below).
   The private generated directory remains `D:/f117-gate/span-emit/gen`;
   old emitter source is snapshotted beside its proof; the timer draft/dossier
   remain in `D:/f117-gate/next-candidates`.
-  Next: objectives panel `9515`, not yet implemented. Its manually resolved
+  Objectives panel `9515` is integrated, pending a fresh full gate. Its resolved
   eight-way table gives a 200-instruction / 500-byte walk, versus 91 census
   bytes. Private F10 route `next-candidates/objectives-panel.args` reaches
   the original entry and matches both engines at all 57 checkpoints/final
   `2877054667/c465c5fd46862b46`. Proof:
   `D:/f117-gate/objectives-panel/probe-verdict.json`. Coverage records only
   interpreted instructions; absence in recompiled coverage cannot prove an
-  entry was missed. A named implementation still needs positive invocation
-  proof. Preserve the deadline-buffer copy order and live dispatch table.
-  START armament menu `07EE` also has a static dossier; not implemented.
+  entry was missed. Named implementation passes 8,439 comparisons over three
+  seeds, each with all required branches (mask `7FFF`), and 40 isolated tests.
+  Real F10 replay invokes it four times with all 57 checkpoints/final identical;
+  proof `D:/f117-gate/objectives-panel/named-proof/route-verdict.json`.
+  Inputs are retained as `tools/routes/objectives_panel.args` (40 gate routes).
+  Selective patch `D:/f117-gate/objectives-panel/integrate.patch`; private tree
+  base `2a7c842`. Census 808 / 69,171, P2 41.67%, overall 74.28%.
+  Fresh full gate pending in `D:/f117-gate/gate-objectives-panel.log`; do not
+  push runtime changes until it passes. Preserve the deadline-buffer copy
+  order and live dispatch table. Next: START armament menu `07EE` has a
+  static dossier; not implemented.
 - 04DD above, if a real route to it is ever found.
 
 ## How this project verifies Phase 2 work (read before matching a new routine)
@@ -127,7 +135,7 @@ actual tally in the log, not just the exit code.
   history, not on disk.
 - Other, unproven private drafts mentioned in earlier sessions (VGAME
   `120A:0971`, a different divide-handling routine with recursive-fault
-  risk; START `07EE`; VGAME `9515`; END `0A98`): none
+  risk; START `07EE`; END `0A98`): none
   implemented or proven. Don't conflate them with the routines above.
 
 ## Standing practice

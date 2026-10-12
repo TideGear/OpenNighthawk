@@ -308,7 +308,7 @@ static int compare(const char *mod, uint32_t off, uint16_t cs, uint16_t ip, int 
 static void stub_driver_thunks(uint8_t *pristine, uint32_t at, const rc_module *m, const recomp_override *o)
 {
     const int vgame_draw = !strcmp(m->name, "VGAME.EXE") &&
-        ((o->seg == 0 && (o->ip == 0x1E79 || o->ip == 0xB171 || o->ip == 0xD6DD || o->ip == 0x4777 ||
+        ((o->seg == 0 && (o->ip == 0x9515 || o->ip == 0x1E79 || o->ip == 0xB171 || o->ip == 0xD6DD || o->ip == 0x4777 ||
                          o->ip == 0xD3F9 || o->ip == 0xD87C || o->ip == 0x72D8 ||
                            o->ip == 0x8A18 || o->ip == 0x881F || o->ip == 0x796E || o->ip == 0x3A4E ||
                            o->ip == 0xB0C2 || o->ip == 0xC45C)) ||
@@ -511,6 +511,7 @@ static uint16_t g_below;                /* how far the routine's code reaches be
  * written back later (a row table over the code when DS = CS) runs changed instructions and leaves no
  * trace in the end state. */
 static int g_self_written, g_watch_transient;
+static unsigned g_panel_seen;           /* original branches in the current panel fixture */
 static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_t cs, uint16_t ip)
 {
     const uint32_t watch = phys(cs, (uint16_t)(ip - g_below));
@@ -520,6 +521,14 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
         if (g_trace) printf("      %04X:%04X clk %llu sp %04X\n", a->seg[S_CS], a->ip, (unsigned long long)a->icount, a->r[R_SP]);
         const uint16_t here = a->ip;
         const int own = a->seg[S_CS] == cs && (uint16_t)(here - g_from) < g_span;
+        if (ip == 0x9515 && own && a->mem == g_mem[0]) {
+            static const uint16_t branch[] = { 0x9570, 0x957D, 0x9582, 0x9587,
+                0x958C, 0x9591, 0x9596, 0x959B, 0x9532, 0x96DD,
+                0x9670, 0x9699, 0x961C, 0x9646 };
+            for (unsigned k = 0; k < sizeof branch / sizeof branch[0]; k++)
+                if (here == branch[k]) g_panel_seen |= 1u << k;
+            if (here == 0x95A4 && x86_cond(a, 7)) g_panel_seen |= 1u << 14;
+        }
         if (own && (uint16_t)(here - g_from) > g_reach) g_reach = (uint16_t)(here - g_from);
         int inside = own;
         for (int k = 0; k < g_nend && !inside; k++) inside = a->seg[S_CS] == cs && here >= g_end_lo[k] && here < g_end_hi[k];
@@ -648,6 +657,8 @@ int main(int argc, char **argv)
         const interrupt_frame_fixture *irq_frame = interrupt_frame(o);
         const int sprite_run = !strcmp(o->module, "MPS_LOGO.EXE") && o->seg == 0x006D && o->ip == 0x0678;
         const int camera_gradients = !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && (o->ip == 0x1974 || o->ip == 0x19FD);
+        const int objectives_panel = !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0x9515;
+        unsigned panel_branches = 0;
         g_dos = 0;
         for (unsigned k = 0; k < sizeof DOS_STUBS / sizeof DOS_STUBS[0]; k++)
             if (!strcmp(DOS_STUBS[k].module, o->module) && DOS_STUBS[k].ip == o->ip) g_dos = 1;
@@ -741,6 +752,41 @@ int main(int argc, char **argv)
                     small[1] = (uint16_t)((s >> 3) & 1);
                 }
             }
+            /* Small objective records expose all eight phrase targets, invalid
+             * kinds, completed flags, deadlines and empty/nonempty places.
+             * Leave three quarters random, and never plant into loaded code.
+             * Actual string/format/display helpers still run on both sides. */
+            if (objectives_panel && ((s & 7) == 1 || (s & 7) == 2)) {
+                /* Include states 1 mod 4: the harness also probes an exact
+                 * instruction-budget stop inside those planted paths. */
+                const unsigned variant = (unsigned)s >> 3;
+                const uint16_t kind = (uint16_t)(variant % 10);
+                const uint16_t done = (uint16_t)(((variant / 10) & 3) << 13);
+                const uint16_t place = (uint16_t)((variant / 40) & 1);
+                const struct { uint16_t at, value; } words[] = {
+                    { 0xE304, kind }, { 0xE316, (uint16_t)(9 - kind) },
+                    { 0xE306, 0 }, { 0xE318, 1 },
+                    { 0xE30A, 2 }, { 0xE31C, 2 }, { 0xE31A, 0 },
+                    { 0x9B34, done }, { 0xDEB4, 100 },
+                    { 0x9912, (uint16_t)((variant & 1) ? 101 : 99) },
+                    { 0xB2DC, 1 }, { 0xB2EC, 1 },
+                    { 0xB2CE, place }, { 0xB2DE, place },
+                    { 0xDF08, 0x2C00 }, { 0xDF0A, 0x2C10 },
+                    { 0x2C00, 0 }, { 0x2C10, 0x0058 }
+                };
+                int safe = 1;
+                for (unsigned j = 0; j < sizeof words / sizeof words[0]; j++)
+                    for (unsigned byte = 0; byte < 2; byte++) {
+                        const uint32_t address = phys(seg[S_DS], (uint16_t)(words[j].at + byte));
+                        if (address >= at && address < at + m->size + 2) safe = 0;
+                    }
+                if (safe) for (unsigned j = 0; j < sizeof words / sizeof words[0]; j++)
+                    for (unsigned byte = 0; byte < 2; byte++) {
+                        const uint32_t address = phys(seg[S_DS], (uint16_t)(words[j].at + byte));
+                        g_pristine[address] = g_mem[0][address] = g_mem[1][address] =
+                            (uint8_t)(words[j].value >> (8 * byte));
+                    }
+            }
             for (int k = 0; k < 2; k++)
                 setup_side(k ? &g_m.cpu : &g_cpu[0], o, cs, ip, r, seg, flags, back, s, small);
             int steps = 0;
@@ -750,7 +796,7 @@ int main(int argc, char **argv)
              * accept the state only when it returns to the pushed address. */
             const uint16_t entry_sp = (uint16_t)(r[R_SP] - (o->matched == 3 ? 6 : o->matched == 2 ? 4 : 2));
             g_back_cs = cs; g_back_ip = back; g_back_sp = r[R_SP];
-            g_reach = 0;
+            g_reach = 0; g_panel_seen = 0;
             g_self_written = 0;
             const int returned = run_to_ret(a, entry_sp, o->matched, &steps, cs, ip);
             const uint16_t reach = g_reach;
@@ -826,6 +872,7 @@ int main(int argc, char **argv)
                 g_finished++;
             }
             mc++;
+            if (objectives_panel) panel_branches |= g_panel_seen;
             if (o->matched == 3) {
                 g_iret_full++;
                 if (irq_frame && back == (uint16_t)(irq_frame->fault + irq_frame->advance)) g_iret_special++;
@@ -911,6 +958,12 @@ int main(int argc, char **argv)
                o->what, mc, ms, mb ? "MISMATCH" : mc ? "equal" : "not testable here (routes only)");
         if (g_checked_alloc) printf("  completed allocation-error states: %llu\n", g_alloc_errors);
         if (camera_gradients) printf("  completed 16-band states: %llu\n", g_gradient_full);
+        if (objectives_panel) {
+            printf("  completed panel branch mask: %04X (required 7FFF)\n", panel_branches);
+            if (states >= 4000 && panel_branches != 0x7FFF) {
+                fprintf(stderr, "objectives panel fixture missed required branches\n"); mb++;
+            }
+        }
         if (sprite_run) printf("  completed sprite zero/transparent states: %llu/%llu\n", g_sprite_zero, g_sprite_skip);
         if (o->matched == 3) printf("  completed interrupt/special-site states: %llu/%llu\n", g_iret_full, g_iret_special);
         compared += mc; skipped += ms; bad += mb;

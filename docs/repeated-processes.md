@@ -113,8 +113,27 @@ and final `2877054667/c465c5fd46862b46`. Saved proof:
 incorrectly required the entry in both coverage files: coverage records only
 interpreted instructions, excluding generated and matched execution. The
 corrected verifier checks saved raw results and original-entry coverage;
-positive matched invocation proof remains pending implementation. Preserve
-the original deadline-buffer copy order and read the dispatch table live.
+positive matched invocation proof was still needed at this stage.
+
+Named panel implementation (12 Oct): 200 lines of explained C preserve the
+live guest frame, shared buffer and call arguments, instruction counts,
+resume positions and live CS phrase table. Unknown table targets resume the
+original code. Returning driver thunks enable randomized fixtures; actual
+string/format/display helpers still execute. A quarter of states plant small
+objective records, including mid-run-stop states; original branch reporting
+requires all eight phrase targets, both completed objectives, deadline and
+overdue paths, empty/nonempty places and an invalid kind (mask `7FFF`).
+Three seeds (default, `0xC0FFEE`, `0x2a7c842ff547`) compare 2,885 / 2,737 /
+2,817 states with zero mismatches, each with the full branch mask. All 40
+isolated tests pass in 39.92 s. The real F10 replay takes 39.2 s and executes
+the named entry four times, all 57 checkpoints/final identical, no event
+overruns. Source/executable/input/runner/reference hashes are retained in
+`D:/f117-gate/objectives-panel/named-proof/route-verdict.json`; selective
+patch `D:/f117-gate/objectives-panel/integrate.patch`. The input is now
+retained publicly as `tools/routes/objectives_panel.args`, giving 40 gate
+routes. Generation takes 21.9 s; build uses two workers and its own TEMP.
+Integrated with census 808 / 69,171 (P2 41.67%, overall 74.28%); fresh full
+gate pending in `D:/f117-gate/gate-objectives-panel.log`.
 
 ## The gate (`tools/build_recomp.py`)
 

@@ -36,6 +36,13 @@ World-open and minimum exit-time milestones reject an early exit.
 the small then full HUD. Real-driver interpreter/matched probes match all
 54 checkpoints and the final hash; colour setup runs once and the separately
 callable layout selector twice. It also checks world-open and exit time.
+`objectives_panel` opens F10, switches HUD layout with C, and opens F10
+again in each layout before quitting normally. The isolated named panel
+runs four times through the real drivers; all 57 checkpoints and final
+`2877054667/c465c5fd46862b46` match the fresh interpreter replay. World-open
+and minimum exit-time milestones reject an early exit. Random-state fixtures
+separately cover all eight objective phrases, invalid kinds, completed
+objectives, deadlines and empty/nonempty place names.
 `recon_darken` replays `recon` with F6 pressed at 100 million VGAME clocks,
 enabling camera darkening. Original/isolated probes preserve all 150
 checkpoints and final hash; the darkening helper runs 1,608 times through

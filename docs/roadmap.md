@@ -207,6 +207,15 @@ shared-flow span-edge candidate demonstrates why walk size is not census
 ownership. Synthetic checks run in Windows CI. Details and limits:
 [repeated-processes.md](repeated-processes.md#phase-2-candidate-reading).
 
+The objectives panel (`VGAME 0000:9515`) is integrated, pending its fresh
+full gate. It preserves live phrase dispatch, objective colours, target/place
+names, completed flags and the original deadline-buffer copy order. Three
+seeds pass 8,439 comparisons, including partial stops, and reach every
+required fixture branch. All 40 isolated tests pass. The retained
+`objectives_panel` F10 route executes it four times and matches all 57
+checkpoints/final. Its 500-byte shared walk earns only its 91-byte census
+extent: 808 functions / 69,171 bytes, P2 41.67%.
+
 The timer tick (`VGAME 0000:1E79`) is integrated and fully gated at
 `b253f3a`: counters, driver cadence and shared rate-
 request tails. Three seeds pass 13,776 comparisons, 39 isolated tests pass,
