@@ -318,5 +318,7 @@ if(F117R_BUILD_TESTS)
     # the states save the faulting IDIV's own IP, which picks the denominator.
     add_test(NAME matched_divide_interrupts COMMAND func_lockstep --states 4000
       --only VGAME.EXE:84E)
+    add_test(NAME matched_polygon_fill COMMAND func_lockstep --states 4000
+      --only VGAME.EXE:1E6)
   endif()
 endif()

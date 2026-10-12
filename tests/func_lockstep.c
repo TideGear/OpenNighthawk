@@ -313,7 +313,8 @@ static void stub_driver_thunks(uint8_t *pristine, uint32_t at, const rc_module *
                            o->ip == 0x8A18 || o->ip == 0x881F || o->ip == 0x796E || o->ip == 0x3A4E ||
                            o->ip == 0xB0C2 || o->ip == 0xC45C)) ||
            (o->seg == 0x114A && (o->ip == 0x0280 || o->ip == 0x03AD || o->ip == 0x03FD || o->ip == 0x014F || o->ip == 0x0006 || o->ip == 0x01DB)) ||
-           (o->seg == 0x1058 && (o->ip == 0x09D8 || o->ip == 0x0A2C)));
+           (o->seg == 0x1058 && (o->ip == 0x09D8 || o->ip == 0x0A2C)) ||
+           (o->seg == 0x0FB2 && o->ip == 0x01E6));
     const int checked_alloc = !strcmp(m->name, "DSWAP.EXE") && o->seg == 0 && o->ip == 0x0494;
     if (strcmp(m->name, "START.EXE") && strcmp(m->name, "END.EXE") && !vgame_draw && !checked_alloc) return;
     for (uint32_t i = 0; i + 5 <= m->size; i++) {
@@ -329,6 +330,10 @@ static void stub_driver_thunks(uint8_t *pristine, uint32_t at, const rc_module *
  * gray-scale flag END's DAC loader tests) lies inside END's image here, where it is a code byte that happens
  * to have the flag set, so the routine's normal path was never reached. Set in both sides' memory. */
 static const struct { const char *module; uint16_t ip; uint32_t linear; uint8_t value; } IMAGE_PATCHES[] = {
+    /* Polygon caller fixture: returning span reset and clipped edge. The
+     * actual rasterizer and graphics driver are retained on real routes. */
+    { "VGAME.EXE", 0x01E6, 0x1003F, 0xC3 },
+    { "VGAME.EXE", 0x01E6, 0x101C6, 0xC3 },
     /* Moving-map caller fixture: returning scene/projection/walk helpers. */
     { "VGAME.EXE", 0x11A8, 0x0D826, 0xC3 },
     { "VGAME.EXE", 0x11A8, 0x1E670, 0xCB },
@@ -371,6 +376,7 @@ static void patch_image_for(uint8_t *pristine, const recomp_override *o)
 /* Argument words a routine compares for exactly, planted in the first argument slots in some states (the
  * small random arguments never reach them). */
 static const struct { const char *module; uint16_t ip; int arg; uint16_t v[2]; } ARG_PLANTS[] = {
+    { "VGAME.EXE", 0x01E6, 1, { 2, 4 } }, /* far frame: vertex count at BP+8 */
     { "VGAME.EXE", 0x1974, 0, { 110, 169 } },
     { "VGAME.EXE", 0x19FD, 0, { 110, 169 } },
     { "VGAME.EXE", 0x19FD, 1, { 0, 1 } },

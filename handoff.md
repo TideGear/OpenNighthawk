@@ -15,6 +15,13 @@ standing practice, not a session-by-session log. Earlier sessions' detail
 
 ## Current state
 
+Current integration: VGAME `0FB2:01E6` closed polygon fill, 811 addresses,
+pending full gate `D:/f117-gate/gate-polygon-fill.log` before push. Three
+targeted seeds compare 6,600 caller states exactly; the real camera-gradient
+route calls it 382,365 times with all 234 checkpoints/final unchanged.
+Isolated tests pass 36/36. The refreshed census is 805 functions / 68,608
+bytes, including three previous entries missing from the earlier census.
+
 Last fully gate-validated and pushed baseline before this session: `35459ae`
 (809 matched addresses, 801 census functions, 68,294 of 179,213 bytes;
 P1 100%, P2 41.20%, P3 75.20%, P4 42.90%, All 74.14%).

@@ -198,6 +198,18 @@ not the recompilation:
 
 ## Phase 2 - understood code
 
+VGAME's closed polygon fill (`0FB2:01E6`) is integrated pending its full
+gate. It names the live vertex walk, stack-saved endpoints, closing edge,
+span reset and driver fill, preserving DF, count wraparound and event stops.
+Three returning-rasterizer/driver caller fixtures compare 6,600 states with
+zero mismatches; the real `camera_gradients` replay executes it 382,365 times
+with all 234 checkpoints and final hash identical to the saved fresh
+interpreter capture. `matched_polygon_fill` retains the caller check;
+the isolated unit selection passes 36/36. Full gate required before push.
+The census refresh also includes three already-integrated entries omitted
+from the last refresh (map wrapper, logo sprite run, span divide handler):
+804 functions / 68,512 bytes before this change, 805 / 68,608 after it.
+
 VGAME's span-table divide-error (INT 0) handler, 0FB2:084E, is matched as
 an interrupt entry (kind 3, ending in IRET) for the line into the span
 tables (0FB2:06A6). The saved fault IP picks the live denominator, the sign
@@ -318,7 +330,7 @@ instruction profiles and three 789-address matched seeds (2,561,209,
       Reimp's mapping; matched functions replacing translations one at a time,
       each held to the same parity checks. `tools/reimp_names.py` joins the
       Reimp's census (1,535 functions) with this project's regions as a private
-      lead list. 807 addresses are matched (801 of the census functions, 68,294 of
+      lead list. 811 addresses are matched (805 of the census functions, 68,608 of
       179,213 bytes); the table is at the end of `src/matched/matched.c` and the
       method is in [architecture.md](architecture.md#matched-routines-phase-2).
       The batches of 8-9 Oct add 37 + 34 + 47 VGAME, 34 + 40 + 45 START/END and 21 + 44 + 64

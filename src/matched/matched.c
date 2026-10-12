@@ -32331,7 +32331,84 @@ static int vgame_raster_divide_fault(machine_t *m, int spans)
 }
 static int vgame_span_divide_fault(machine_t *m) { return vgame_raster_divide_fault(m, 1); }
 
+/* VGAME 0FB2:01E6, fill_polygon: read the first vertex, accumulate each
+ * following edge, close back to the first vertex, then draw the span table.
+ * The far-call frame supplies the vertex count at BP+8, the DS list at
+ * BP+0Ah and colour at BP+0Ch. Endpoints are saved on the guest stack:
+ * rasterization may change registers, data or aliased vertex-list bytes.
+ * LOOP deliberately wraps a count of one through 65,536 following edges;
+ * a zero count takes 65,535. Neither is treated as an empty polygon. */
+static int vgame_polygon_fill(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 8)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->seg[S_ES]);
+    cpu_push16(c, c->seg[S_DS]);
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->r[R_DI]);
+    set_r8(c, R_AH, bp_get8(c, 0x0C));
+    c->icount += 7;
+    if (!guest_call_far(m, 0x01F0, 0x01F5)) return 1;              /* pen colour */
+    SM4_NEED(1, 0x01F5);
+    if (!guest_call(m, 0x051F, 0x01F8)) return 1;                  /* reset spans */
+    SM4_NEED(9, 0x01F8);
+    c->r[R_SI] = bp_get(c, 0x0A);
+    c->r[R_CX] = bp_get(c, 8);
+    c->r[R_CX] = (uint16_t)alu_dec(c, c->r[R_CX], 1);
+    x86_lods(c, 1, c->seg[S_DS]);
+    ds_put(c, 0x2299, c->r[R_AX]);                                /* first x */
+    cpu_push16(c, c->r[R_AX]);
+    x86_lods(c, 1, c->seg[S_DS]);
+    ds_put(c, 0x229D, c->r[R_AX]);                                /* first y */
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 9;
+    do {
+        SM4_NEED(9, 0x0209);
+        cpu_push16(c, c->r[R_CX]);
+        x86_lods(c, 1, c->seg[S_DS]);
+        ds_put(c, 0x229B, c->r[R_AX]);                            /* next x */
+        cpu_push16(c, c->r[R_AX]);
+        x86_lods(c, 1, c->seg[S_DS]);
+        ds_put(c, 0x229F, c->r[R_AX]);                            /* next y */
+        cpu_push16(c, c->r[R_AX]);
+        cpu_push16(c, c->r[R_SI]);
+        c->icount += 8;
+        if (!guest_call(m, 0x06A6, 0x0218)) return 1;              /* clipped edge */
+        SM4_NEED(5, 0x0218);
+        c->r[R_SI] = cpu_pop16(c);
+        ds_put(c, 0x229D, cpu_pop16(c));                          /* advance start */
+        ds_put(c, 0x2299, cpu_pop16(c));
+        c->r[R_CX] = cpu_pop16(c);
+        c->r[R_CX]--;                                           /* LOOP leaves flags */
+        c->icount += 5;
+    } while (c->r[R_CX]);
+    SM4_NEED(3, 0x0224);
+    ds_put(c, 0x229F, cpu_pop16(c));                              /* close to first y/x */
+    ds_put(c, 0x229B, cpu_pop16(c));
+    c->icount += 2;
+    if (!guest_call(m, 0x06A6, 0x022F)) return 1;
+    SM4_NEED(5, 0x022F);
+    c->r[R_AX] = ds_get(c, 0x2615);                              /* first/last span row */
+    c->r[R_CX] = ds_get(c, 0x2617);
+    c->r[R_BX] = 0x22A1;
+    c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0);
+    c->icount += 4;
+    if (!guest_call_far(m, 0x023B, 0x0240)) return 1;              /* fill spans */
+    SM4_NEED(6, 0x0240);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->seg[S_DS] = cpu_pop16(c);
+    c->seg[S_ES] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    sm4_ret(c, 1);
+    c->icount += 6;
+    return 1;
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0FB2, 0x01E6, vgame_polygon_fill, "fill a closed polygon through the span rasterizer", 2 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0FB2, 0x084E, vgame_span_divide_fault, "span divide-error saturation", 3 },
     { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x006D, 0x0678, mps_logo_sprite_run, "sprite repeat or transparent run", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x11A8, vgame_map_draw_frame, "moving map through the downward scene frame", 1 },

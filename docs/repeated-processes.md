@@ -10,6 +10,16 @@ identical, and the proof is the same verdicts before and after.
 
 ## The gate (`tools/build_recomp.py`)
 
+Polygon caller (12 Oct): isolated current-main worktree, separate generated
+directory and two build workers; initial build about six minutes, all 36
+unit tests 29.72 s. Three 4,000-state seeds compare 2,214 / 2,172 / 2,214
+states, zero mismatches (about 2.5 s per seed while concurrent). Returning
+span-reset, clipped-edge and driver fixtures prove the caller; the real
+`camera_gradients` replay takes 116.0 s, executes `0FB2:01E6` 382,365 times,
+and matches all 234 checkpoints/final `bb1c0cffd145907a` against the existing
+fresh interpreter capture. Sources are selectively integrated for full gate
+`D:/f117-gate/gate-polygon-fill.log`; no full-gate verdict yet.
+
 **24-worker experiment (12 Oct): correct, no route speedup; retain 16.**
 `D:/f117-gate/gate-jobs24.log`, HEAD `7df74bf`, has the same executable,
 translator, harness and route sources as the 810-address `117201c` baseline.
