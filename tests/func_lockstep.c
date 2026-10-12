@@ -308,7 +308,7 @@ static int compare(const char *mod, uint32_t off, uint16_t cs, uint16_t ip, int 
 static void stub_driver_thunks(uint8_t *pristine, uint32_t at, const rc_module *m, const recomp_override *o)
 {
     const int vgame_draw = !strcmp(m->name, "VGAME.EXE") &&
-        ((o->seg == 0 && (o->ip == 0xB171 || o->ip == 0xD6DD || o->ip == 0x4777 ||
+        ((o->seg == 0 && (o->ip == 0x1E79 || o->ip == 0xB171 || o->ip == 0xD6DD || o->ip == 0x4777 ||
                          o->ip == 0xD3F9 || o->ip == 0xD87C || o->ip == 0x72D8 ||
                            o->ip == 0x8A18 || o->ip == 0x881F || o->ip == 0x796E || o->ip == 0x3A4E ||
                            o->ip == 0xB0C2 || o->ip == 0xC45C)) ||
@@ -451,6 +451,7 @@ static const struct { const char *module; uint16_t ip; } DOS_STUBS[] = {
 /* Entry points reaching shared code below the entry: watch that code too,
  * and recognize a RET there when the routine jumps back to a shared exit. */
 static const struct { const char *module; uint16_t seg, ip, below; } CODE_BELOW[] = {
+    { "VGAME.EXE", 0x0000, 0x1E79, 0x020C }, /* timer tick: shared rate-control tails from 1C6D */
     { "VGAME.EXE", 0x0FB2, 0x05A4, 0x004F }, /* boundary edge tail-jumps into column store */
     { "VGAME.EXE", 0x0FB2, 0x06A6, 0x0151 },     /* clipped edge: shared column/emitter flow from 0555 */
     { "VGAME.EXE", 0x130D, 0x0577, 0x0018 },     /* bisection's equal-word midpoint cases at 055F/056B */

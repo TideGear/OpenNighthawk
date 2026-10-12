@@ -15,7 +15,7 @@ standing practice, not a session-by-session log. Earlier sessions' detail
 
 ## Current state
 
-Current runtime baseline: VGAME `0FB2:05A4` / `05B3` shared span emitters,
+Last fully gated runtime baseline: VGAME `0FB2:05A4` / `05B3` shared span emitters,
 commit `eda53ee`, 814 matched addresses. Full gate
 `D:/f117-gate/gate-span-emit.log` passes: 38 unit tests, all 39 routes at
 every checkpoint/final (38 fresh interpreter sessions), both 5,718,976-state
@@ -67,11 +67,12 @@ Phase 2 work" below).
   camera replay calls it 53,226 times with all 234 checkpoints/final identical
   to the latest fresh interpreter capture, without event overruns. Proof:
   `D:/f117-gate/timer-tick/route-verdict.json`; selective patch `integrate.patch`
-  in the same directory. Apply selectively, refresh census (807 / 69,080;
-  P2 41.62%, overall 74.26%), and run a fresh full gate before pushing.
+  in the same directory. Integrated selectively: 815 addresses, census
+  807 / 69,080 (P2 41.62%, overall 74.26%). Fresh full gate pending in
+  `D:/f117-gate/gate-timer-tick.log`; do not push until it passes.
   The private generated directory remains `D:/f117-gate/span-emit/gen`;
-  old emitter source is snapshotted beside its proof. The timer is not yet
-  integrated; draft/dossier remain in `D:/f117-gate/next-candidates`.
+  old emitter source is snapshotted beside its proof; the timer draft/dossier
+  remain in `D:/f117-gate/next-candidates`.
   Objectives panel `9515` and START armament menu `07EE` have static dossiers
   there too; their walks extend beyond the census entries, not implemented.
 - 04DD above, if a real route to it is ever found.

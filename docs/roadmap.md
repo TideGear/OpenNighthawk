@@ -207,8 +207,8 @@ shared-flow span-edge candidate demonstrates why walk size is not census
 ownership. Synthetic checks run in Windows CI. Details and limits:
 [repeated-processes.md](repeated-processes.md#phase-2-candidate-reading).
 
-The timer tick (`VGAME 0000:1E79`) has a private named implementation,
-pending integration/full gate: counters, driver cadence and shared rate-
+The timer tick (`VGAME 0000:1E79`) is integrated, pending its fresh full
+gate: counters, driver cadence and shared rate-
 request tails. Three seeds pass 13,776 comparisons, 39 isolated tests pass,
 and a real camera replay calls it 53,226 times with all 234 checkpoints/final
 identical. Its census extent is 53 bytes; the shared walk is 95 bytes.
@@ -368,7 +368,7 @@ instruction profiles and three 789-address matched seeds (2,561,209,
       Reimp's mapping; matched functions replacing translations one at a time,
       each held to the same parity checks. `tools/reimp_names.py` joins the
       Reimp's census (1,535 functions) with this project's regions as a private
-      lead list. 814 addresses are matched (806 of the census functions, 69,027 of
+      lead list. 815 addresses are matched (807 of the census functions, 69,080 of
       179,213 bytes); the table is at the end of `src/matched/matched.c` and the
       method is in [architecture.md](architecture.md#matched-routines-phase-2).
       The batches of 8-9 Oct add 37 + 34 + 47 VGAME, 34 + 40 + 45 START/END and 21 + 44 + 64

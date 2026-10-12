@@ -75,7 +75,7 @@ before the worktree and merged local branch were removed.
 Both entries lie in the already-counted 324-byte `0555` census region, so
 integration must add no census functions or bytes.
 
-Timer tick (`VGAME 0000:1E79`, 12 Oct), private proof only: the named
+Timer tick (`VGAME 0000:1E79`, 12 Oct), targeted proof: the named
 implementation preserves the three counters, graphics driver call, seven-
 phase poll, and positive/negative/zero rate-request branches into the shared
 `1C6D` / `1C85` tails. Returning driver thunks on both fixture sides expose
@@ -92,7 +92,8 @@ Selective patch: `D:/f117-gate/timer-tick/integrate.patch`; active worktree
 verified on main and the full tested source snapshotted in
 `D:/f117-gate/span-emit/tested-matched.c`. Generation reuses this worktree's
 own private generated directory and takes 22.3 s; build uses two workers.
-Not integrated or full-gate validated yet. Its census extent is 53 bytes;
+Integrated; fresh full gate pending in `D:/f117-gate/gate-timer-tick.log`.
+Its census extent is 53 bytes;
 the 95-byte static walk includes shared tails and is not exclusive credit.
 
 ## The gate (`tools/build_recomp.py`)

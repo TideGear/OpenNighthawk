@@ -32794,7 +32794,63 @@ steep_row:
     goto steep_row;
 }
 
+/* VGAME 0000:1E79: advance the three timer counters in the original order,
+ * service the driver, and poll its rate request on six of every seven ticks.
+ * A positive AX restores the calibrated divisor; a negative AX selects 1;
+ * zero leaves the rate alone. The rate tails are shared with other callers.
+ * Counter wrap, flags, live relocated far operands and guest writes remain
+ * observable; this is a near subroutine called by the interrupt path. */
+static int vgame_timer_tick(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 4)) return 0;
+    ds_put(c, 0x2646, (uint16_t)alu_inc(c, ds_get(c, 0x2646), 1));
+    ds_put8(c, 0x264A, (uint8_t)alu_inc(c, ds_get8(c, 0x264A), 0));
+    ds_put(c, 0x2648, (uint16_t)alu_inc(c, ds_get(c, 0x2648), 1));
+    c->icount += 3;
+    if (!guest_call_far(m, 0x1E85, 0x1E8A)) return 1;
+    SM4_NEED(6, 0x1E8A);
+    ds_put8(c, 0x264B, (uint8_t)alu_inc(c, ds_get8(c, 0x264B), 0));
+    alu_sub(c, ds_get8(c, 0x264B), 7, 0, 0);
+    c->icount += 3;
+    if (c->flags & F_CF) {
+        if (!guest_call_far(m, 0x1E9D, 0x1EA2)) return 1;
+    } else {
+        c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);
+        ds_put8(c, 0x264B, get_r8(c, R_AL));
+        c->icount += 3;
+    }
+    SM4_NEED(4, 0x1EA2);
+    alu_logic(c, c->r[R_AX], 1);
+    c->icount += 2;
+    if (c->flags & F_ZF) { c->icount++; near_ret(c); return 1; }
+    const int unit_divisor = !!(c->flags & F_SF);
+    c->icount += 2;
+    if (unit_divisor) {
+        SM4_NEED(4, 0x1C85);
+        ds_put(c, 0x2636, 1);
+        c->r[R_AX] = ds_get(c, 0x263B);
+        ds_put(c, 0x2630, c->r[R_AX]);
+        ds_put8(c, 0x2638, 1);
+        c->icount += 4;
+        SM4_NEED(1, 0x1C96);
+        c->icount++; near_ret(c); return 1;
+    }
+    SM4_NEED(8, 0x1C6D);
+    c->r[R_BX] = ds_get(c, 0x2639);
+    ds_put(c, 0x2636, c->r[R_BX]);
+    c->r[R_AX] = ds_get(c, 0x263B);
+    c->r[R_DX] = (uint16_t)alu_logic(c, 0, 1);
+    c->icount += 4;
+    VG4_DIV16_OR_STOP(c->r[R_BX], 0x1C7A);
+    c->icount++;
+    ds_put(c, 0x2630, c->r[R_AX]);
+    ds_put8(c, 0x2638, 1);
+    c->icount += 3; near_ret(c); return 1;
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x1E79, vgame_timer_tick, "timer counters and driver rate request", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0FB2, 0x05A4, vgame_span_edge_boundary, "edge outside horizontal span bounds", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0FB2, 0x05B3, vgame_span_edge_emit, "rasterize an edge into polygon span tables", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0FB2, 0x06A6, vgame_span_edge_clipped, "clip a polygon edge into the span tables", 1 },
