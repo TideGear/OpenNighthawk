@@ -207,13 +207,22 @@ shared-flow span-edge candidate demonstrates why walk size is not census
 ownership. Synthetic checks run in Windows CI. Details and limits:
 [repeated-processes.md](repeated-processes.md#phase-2-candidate-reading).
 
-The armament screen (`START 0000:07EE`) is integrated, pending its fresh full
-gate. It preserves live settings/mission pointers, unavailable stations,
+Navigation grid (`VGAME 0000:8A90`) is proven in the isolated worktree,
+pending integration after pushing the armament baseline: 6,206 targeted comparisons,
+all 19 tracked paths, zero mismatches; 42 isolated tests pass. Real F3 replay
+executes it 314 times with all 57 checkpoints/final identical. Preserve byte
+arithmetic, live projection stores and the full-body code-write watch.
+
+The armament screen (`START 0000:07EE`) is integrated and fully gated at
+`fc98297`. It preserves live settings/mission pointers, unavailable stations,
 weapon hit boxes and DF-sensitive palette copies, sheet loads and stores
 text. Three seeds pass 6,459 comparisons with all required fixture branches;
 41 isolated tests pass. Real `full_cycle` invokes it once and matches all 66
 checkpoints/final. Its 373-byte walk earns 67 census bytes: 809 functions /
 69,238 bytes, P2 41.70%.
+The fresh full gate passes 41 tests, all 40 routes (39 fresh interpreter
+sessions), both instruction profiles, three matched seeds and reachability/
+event checks, with zero mismatches.
 
 The objectives panel (`VGAME 0000:9515`) is integrated and fully gated at
 `ae57d1b`. It preserves live phrase dispatch, objective colours, target/place

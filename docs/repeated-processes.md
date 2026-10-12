@@ -160,8 +160,16 @@ patch `D:/f117-gate/armament-screen/integrate.patch`. Generation takes 25.2 s
 from frozen complete coverage lines; build uses two workers and its own TEMP.
 The 373-byte walk earns only 67 census bytes. The reference also matches the
 latest fresh objectives-panel gate. Integrated selectively: 817 addresses,
-census 809 / 69,238 (P2 41.70%, overall 74.29%). Fresh full gate pending in
-`D:/f117-gate/gate-armament-screen.log`.
+census 809 / 69,238 (P2 41.70%, overall 74.29%). Fresh full gate at `fc98297`
+passes in
+`D:/f117-gate/gate-armament-screen.log`: 41 tests, all 40 routes at every
+checkpoint/final (39 fresh interpreter sessions), both 5,718,976-state
+instruction profiles and three matched seeds (2,675,656 / 2,674,018 / 2,674,510
+comparisons; rotating seed `0xfc9829737559`), zero mismatches and passing
+reachability/event checks. Total 1,617 s. Audited verdict/log hash:
+`D:/f117-gate/armament-screen/full-gate-verdict.json`. Private navigation-grid
+generation/build, fixtures and F3 replay overlapped after matched shards
+finished; this is not a controlled speed comparison.
 
 Larger next candidates: panel frame `VGAME 0000:79BE`, 798 instructions /
 2,090 bytes, and navigation grid `0000:8A90`, 374 / 1,094. Their static walks
@@ -169,9 +177,24 @@ have no unresolved successors; dossiers remain under
 `D:/f117-gate/next-candidates/panel-frame` and `navgrid`. A normal-input F3
 probe reaches original `8A90` and matches both engines at all 57 checkpoints
 and final `2877054444/5ea6b18cd60f6608`. Proof:
-`D:/f117-gate/navgrid/probe-verdict.json`. Neither candidate is implemented;
-positive matched invocation proof remains necessary. Preserve high-byte-only
-grid arithmetic and the order of projection stores versus the panel's ILS.
+`D:/f117-gate/navgrid/probe-verdict.json`. Panel frame remains unimplemented.
+Preserve high-byte-only grid arithmetic and the order of projection stores
+versus the panel's ILS.
+
+Navigation grid named implementation is proven privately at base `fc98297`:
+three 4,000-state seeds compare 2,055 / 2,080 / 2,071 states including partial
+stops, zero mismatches, all 19 tracked paths. Fixtures plant small worlds,
+zoom settings, marker types and target highlights; projection/trig helpers
+remain original, graphics calls return. A transient code-write watch covers
+the entire 1,094-byte body. All 42 isolated tests pass in 77.31 s. Real F3
+replay takes 66.6 s, invokes the named entry 314 times and matches all 57
+checkpoints/final, without event overruns. Audited source/executable/input/
+runner/reference and fixture hashes: `D:/f117-gate/navgrid/targeted-verdict.json`;
+selective patch `integrate.patch`. Generation takes 30.7 s from frozen
+coverage; private build uses two workers after main's matched shards finish.
+These overlapping workloads are not a controlled speed comparison. After
+pushing the validated armament baseline, integrate the grid, retain its F3
+route, and run a fresh full gate.
 
 ## The gate (`tools/build_recomp.py`)
 

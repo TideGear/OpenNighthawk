@@ -15,18 +15,16 @@ standing practice, not a session-by-session log. Earlier sessions' detail
 
 ## Current state
 
-Last fully gated runtime baseline: VGAME `0000:9515` objectives panel,
-commit `ae57d1b`, 816 matched addresses. Full gate
-`D:/f117-gate/gate-objectives-panel.log` passes: 40 unit tests, all 40 routes at
+Last fully gated runtime baseline: START `0000:07EE` armament screen,
+commit `fc98297`, 817 matched addresses. Full gate
+`D:/f117-gate/gate-armament-screen.log` passes: 41 unit tests, all 40 routes at
 every checkpoint/final (39 fresh interpreter sessions), both 5,718,976-state
-instruction profiles and three matched seeds (2,673,236 / 2,671,995 /
-2,673,680 comparisons; third seed `0xae57d1b53870`), zero mismatches, plus
-reachability/event checks. Total 1,595 s. Census is 808 functions /
-69,171 bytes (P2 41.67%, overall 74.28%). Real F10 replay calls the panel
-four times with all 57 checkpoints/final unchanged; input is retained in
-`tools/routes/objectives_panel.args`. Prior pushed `2a7c842` has passing
-Windows and munt CI. Retired polygon worktree/build cleanup is recorded in
-[repeated-processes.md](docs/repeated-processes.md#phase-2-candidate-reading).
+instruction profiles and three matched seeds (2,675,656 / 2,674,018 / 2,674,510
+comparisons; third seed `0xfc9829737559`), zero mismatches, plus
+reachability/event checks. Total 1,617 s. Census is 809 functions /
+69,238 bytes (P2 41.70%, overall 74.29%). Real `full_cycle` replay calls the
+armament screen once with all 66 checkpoints/final unchanged. Pushed
+objectives baseline `942a3e7` has passing Windows and munt CI.
 
 A sibling handler, **VGAME 0FB2:04DD** (the line clipper's own divide-error
 handler), is matched and fixture-proven but deliberately **not integrated**:
@@ -72,8 +70,8 @@ Phase 2 work" below).
   Proof `D:/f117-gate/armament-screen/named-proof/route-verdict.json`;
   selective patch `D:/f117-gate/armament-screen/integrate.patch`. Its saved
   reference also matches the latest fresh objectives gate. Census 809 /
-  69,238, P2 41.70%, overall 74.29%, 817 addresses. Fresh full gate pending
-  in `D:/f117-gate/gate-armament-screen.log`; do not push until it passes.
+  69,238, P2 41.70%, overall 74.29%, 817 addresses. Fresh full gate passes
+  as above; audited verdict `D:/f117-gate/armament-screen/full-gate-verdict.json`.
   The 373-byte walk earns only 67 census bytes. Preserve byte/word realism
   reads, unsigned bounds, live far pointers and DF-sensitive palette moves.
   Private generated directory remains `D:/f117-gate/span-emit/gen`.
@@ -81,8 +79,17 @@ Phase 2 work" below).
   `D:/f117-gate/next-candidates/navgrid` (374 instructions / 1,094 bytes).
   Normal F3 probe `next-candidates/navgrid-panel.args` reaches the original
   and matches all 57 checkpoints/final `2877054444/5ea6b18cd60f6608`.
-  Proof `D:/f117-gate/navgrid/probe-verdict.json`; named implementation and
-  matched invocation proof still needed. Keep high-byte arithmetic exact.
+  Named implementation is now proven privately against base `fc98297`:
+  three seeds compare 2,055 / 2,080 / 2,071 states, zero mismatches, all 19
+  tracked paths; 42 isolated tests pass. Real F3 replay invokes it 314 times
+  with all 57 checkpoints/final identical. Proof and selective patch:
+  `D:/f117-gate/navgrid/targeted-verdict.json` and `integrate.patch`.
+  Private worktree holds those three source changes. Once the validated
+  armament baseline and evidence are pushed, integrate the selective patch,
+  retain the F3 input as `tools/routes/navigation_grid.args`, then run a fresh
+  full gate. Keep high-byte arithmetic exact; transient code-write watch
+  covers its full 1,094-byte body. Tested source is preserved in the proof
+  directory; private generated directory is unchanged.
   Panel frame `79BE` also has a dossier under `next-candidates/panel-frame`
   (798 instructions / 2,090 bytes); not implemented. Its projection writes
   must precede ILS writes. Full details: repeated-processes.md.
