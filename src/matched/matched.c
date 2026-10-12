@@ -32303,7 +32303,36 @@ static int vgame_map_draw_frame(machine_t *m)
     return 1;
 }
 
+/* VGAME 0FB2:084E (and 04DD): the clipper's INT 0 saturation handlers.
+ * The saved fault IP selects which denominator was live. Its sign XOR
+ * the dividend high word chooses +/-7F00h; remainder becomes zero and
+ * the interrupt frame skips the four-byte faulting operation. The run
+ * loop takes the single-step trap a restored TF asks for (override_at),
+ * as it does after every matched routine. */
+static int vgame_raster_divide_fault(machine_t *m, int spans)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 14)) return 0;
+    cpu_push16(c, c->r[R_BP]); c->r[R_BP] = c->r[R_SP];
+    alu_sub(c, bp_get(c, 2), spans ? 0x07C8 : 0x046E, 1, 0);
+    c->r[R_AX] = ds_get(c, spans ? 0x261D : 0x228D);
+    unsigned n = 5;
+    if (!(c->flags & F_ZF)) {
+        c->r[R_AX] = ds_get(c, spans ? 0x261B : 0x228B); n++;
+    }
+    c->r[R_DX] ^= c->r[R_AX]; alu_logic(c, c->r[R_DX], 1);
+    c->r[R_AX] = 0x7F00; n += 3;
+    if (c->flags & F_SF) { c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0); n++; }
+    bp_put(c, 2, (uint16_t)alu_add(c, bp_get(c, 2), 4, 1, 0));
+    c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0);
+    c->r[R_BP] = cpu_pop16(c); c->icount += n + 3;
+    x86_iret(c); c->icount++;
+    return 1;
+}
+static int vgame_span_divide_fault(machine_t *m) { return vgame_raster_divide_fault(m, 1); }
+
 static const recomp_override MATCHED[] = {
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0FB2, 0x084E, vgame_span_divide_fault, "span divide-error saturation", 3 },
     { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x006D, 0x0678, mps_logo_sprite_run, "sprite repeat or transparent run", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x11A8, vgame_map_draw_frame, "moving map through the downward scene frame", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x1974, vgame_camera_sky_bands, "camera sky gradient strips", 1 },

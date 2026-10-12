@@ -198,6 +198,18 @@ not the recompilation:
 
 ## Phase 2 - understood code
 
+VGAME's span-table divide-error (INT 0) handler, 0FB2:084E, is matched as
+an interrupt entry (kind 3, ending in IRET) for the line into the span
+tables (0FB2:06A6). The saved fault IP picks the live denominator, the sign
+picks +/-7F00h, DX becomes 0 and the frame skips the four-byte IDIV. The
+lockstep plants the interrupt frame (IF and TF cleared, depth 1 or 2), stops
+at the handler's IRET, compares the interrupt depth for every entry and
+counts a kind-3 return to any other address as a difference; half the
+states save the faulting IDIV's own IP. Real-driver: 084E runs in 28 of the
+39 routes; eight of them (81,235 runs) are identical to a fresh interpreter
+capture at all 1,236 checkpoints and the end, and a sign-flipped handler
+changes `vietnam_airair` from the 3,200,000,000 checkpoint on.
+
 A rotating matched seed exposed a 12-instruction shortfall in existing
 VGAME target scoring (73C8). The private fix restores the live slot walk,
 flags and original loop/join instructions; all three targeted seeds pass.

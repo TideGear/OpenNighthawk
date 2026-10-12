@@ -66,6 +66,7 @@ static int g_checked_alloc;
 static unsigned long long g_alloc_errors;
 static unsigned long long g_gradient_full;
 static unsigned long long g_sprite_zero, g_sprite_skip;
+static unsigned long long g_iret_full, g_iret_special;
 static int g_dos;                  /* the routine under test is in DOS_STUBS: INT 21h is answered here */
 
 static int int_h(cpu_t *c, uint8_t vec)
@@ -157,20 +158,45 @@ static void set_state(cpu_t *c, uint16_t cs, uint16_t ip, const uint16_t *r, con
     c->int_depth = 0;
 }
 
-/* The routine's entry state: registers, and the stack as a caller leaves it. */
+/* Interrupt handlers (kind 3) that advance the saved IP before IRET: the
+ * frame holds back - advance, so a state that resumes at `back` returned
+ * through the handler. Half the states save the faulting instruction's IP
+ * (fault), the one value that selects the handler's other denominator. */
+typedef struct { uint16_t seg, ip, advance, fault; } interrupt_frame_fixture;
+static const interrupt_frame_fixture INTERRUPT_FRAMES[] = {
+    { 0x0FB2, 0x084E, 4, 0x07C8 },        /* span divide error: idiv [261D] */
+};
+static const interrupt_frame_fixture *interrupt_frame(const recomp_override *o)
+{
+    if (o->matched != 3 || strcmp(o->module, "VGAME.EXE")) return NULL;
+    for (unsigned k = 0; k < sizeof INTERRUPT_FRAMES / sizeof INTERRUPT_FRAMES[0]; k++)
+        if (o->seg == INTERRUPT_FRAMES[k].seg && o->ip == INTERRUPT_FRAMES[k].ip)
+            return &INTERRUPT_FRAMES[k];
+    return NULL;
+}
+
+/* The routine's entry state: registers, and the stack as a caller leaves it
+ * (for an interrupt handler, as the CPU's interrupt entry leaves it). */
 static void setup_side(cpu_t *c, const recomp_override *o, uint16_t cs, uint16_t ip, const uint16_t *r,
                        const uint16_t *seg, uint16_t flags, uint16_t back, int s, const uint16_t *small)
 {
     set_state(c, cs, ip, r, seg, flags);
+    const interrupt_frame_fixture *frame = interrupt_frame(o);
+    if (o->matched == 3) {                                     /* FLAGS, CS, IP; IF and TF cleared */
+        c->r[R_SP] = (uint16_t)(c->r[R_SP] - 2);
+        seg_write16(c, c->seg[S_SS], c->r[R_SP], flags);
+        c->flags = (uint16_t)(c->flags & (0xFFFFu ^ (F_IF | F_TF)));
+        c->int_depth = 1 + ((s >> 3) & 1);                     /* IRET's depth step, nested or not */
+    }
     c->r[R_SP] = (uint16_t)(c->r[R_SP] - 2);
-    if (o->matched == 2) {                                     /* a far routine: CS too */
+    if (o->matched >= 2) {                                     /* far or interrupt: CS too */
         seg_write16(c, c->seg[S_SS], c->r[R_SP], cs);
         c->r[R_SP] = (uint16_t)(c->r[R_SP] - 2);
     }
-    seg_write16(c, c->seg[S_SS], c->r[R_SP], back);            /* the caller's return address */
+    seg_write16(c, c->seg[S_SS], c->r[R_SP], (uint16_t)(back - (frame ? frame->advance : 0)));
     /* Half the states put small arguments above it: random words
      * almost never reach a routine's edge cases (zero, -1, 1). */
-    const uint16_t args = o->matched == 2 ? 4 : 2;             /* above IP, and CS when far */
+    const uint16_t args = o->matched == 3 ? 6 : o->matched == 2 ? 4 : 2;   /* above IP, CS, FLAGS */
     for (int a = 0; a < 4 && (s & 2); a++)
         seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_SP] + args + 2 * a), small[a]);
     c->stop_at = c->icount + 100000;
@@ -238,6 +264,7 @@ static int compare(const char *mod, uint32_t off, uint16_t cs, uint16_t ip, int 
                                               (unsigned long long)a->icount, (unsigned long long)b->icount);
     else if (a->halted != b->halted) snprintf(why, sizeof why, "halted %d vs %d", a->halted, b->halted);
     else if (a->inhibit_at != b->inhibit_at) snprintf(why, sizeof why, "interrupt shadow");
+    else if (a->int_depth != b->int_depth) snprintf(why, sizeof why, "interrupt depth %d vs %d", a->int_depth, b->int_depth);
     else if (g_side[0].io != g_side[1].io) snprintf(why, sizeof why, "ports or interrupts");
     else if (g_side[0].overflow != g_side[1].overflow) snprintf(why, sizeof why, "write volume");
     else {
@@ -475,7 +502,7 @@ static uint16_t g_below;                /* how far the routine's code reaches be
  * written back later (a row table over the code when DS = CS) runs changed instructions and leaves no
  * trace in the end state. */
 static int g_self_written, g_watch_transient;
-static int run_to_ret(cpu_t *a, uint16_t entry_sp, int far, int *steps, uint16_t cs, uint16_t ip)
+static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_t cs, uint16_t ip)
 {
     const uint32_t watch = phys(cs, (uint16_t)(ip - g_below));
     const int watching = (g_below || g_watch_transient) && a->mem == g_mem[0];
@@ -492,11 +519,12 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int far, int *steps, uint16_t
         cpu_step(a);
         if (a->flags & F_TF) cpu_interrupt(a, 1);
         ++*steps;
-        const int is_ret = far ? (op == 0xCB || op == 0xCA) : (op == 0xC3 || op == 0xC2);
+        /* The routine's own return: near RET (kind 1), far RETF (2), IRET (3). */
+        const int is_ret = kind == 3 ? op == 0xCF : kind == 2 ? (op == 0xCB || op == 0xCA) : (op == 0xC3 || op == 0xC2);
         if (is_ret && sp_before == entry_sp) return inside;
         /* The C runtime's near stackavail takes its return address off into
          * CX and returns by JMP CX: that, with the address already popped. */
-        if (!far && op == 0xFF && a->mem[phys(a->seg[S_CS], (uint16_t)(here + 1))] == 0xE1 &&
+        if (kind == 1 && op == 0xFF && a->mem[phys(a->seg[S_CS], (uint16_t)(here + 1))] == 0xE1 &&
                 sp_before == (uint16_t)(entry_sp + 2) && a->ip == a->r[R_CX])
             return inside;
     }
@@ -607,6 +635,8 @@ int main(int argc, char **argv)
         g_alloc_errors = 0;
         g_gradient_full = 0;
         g_sprite_zero = g_sprite_skip = 0;
+        g_iret_full = g_iret_special = 0;
+        const interrupt_frame_fixture *irq_frame = interrupt_frame(o);
         const int sprite_run = !strcmp(o->module, "MPS_LOGO.EXE") && o->seg == 0x006D && o->ip == 0x0678;
         const int camera_gradients = !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && (o->ip == 0x1974 || o->ip == 0x19FD);
         g_dos = 0;
@@ -676,7 +706,8 @@ int main(int argc, char **argv)
                 }
             }
             r[R_SP] = (uint16_t)((r[R_SP] | 0x0100) & 0xFFFE);
-            const uint16_t back = (uint16_t)(ip + 0x8000);
+            const uint16_t back = irq_frame && (s & 1) ? (uint16_t)(irq_frame->fault + irq_frame->advance)
+                                                       : (uint16_t)(ip + 0x8000);
             const uint16_t flags = (uint16_t)((rnd() & 0x0ED5u) | 0x0002u);
             uint16_t small[4];
             for (int a = 0; a < 4; a++)
@@ -708,11 +739,11 @@ int main(int argc, char **argv)
             /* Run the original until the routine's own near RET - the first
              * one taken with the stack back at the caller's level - and
              * accept the state only when it returns to the pushed address. */
-            const uint16_t entry_sp = (uint16_t)(r[R_SP] - (o->matched == 2 ? 4 : 2));
+            const uint16_t entry_sp = (uint16_t)(r[R_SP] - (o->matched == 3 ? 6 : o->matched == 2 ? 4 : 2));
             g_back_cs = cs; g_back_ip = back; g_back_sp = r[R_SP];
             g_reach = 0;
             g_self_written = 0;
-            const int returned = run_to_ret(a, entry_sp, o->matched == 2, &steps, cs, ip);
+            const int returned = run_to_ret(a, entry_sp, o->matched, &steps, cs, ip);
             const uint16_t reach = g_reach;
             if (!returned || a->seg[S_CS] != cs || a->ip != back || g_self_written) steps = 100000;
             g_side[0].overflow = g_side[1].overflow = 1;      /* compare all memory */
@@ -769,15 +800,27 @@ int main(int argc, char **argv)
              * through a slot only the running game fills) returned on the
              * original side by accident, not through the routine. */
             { const int fr = o->fn(&g_m); if (getenv("FLWHY") && o->ip == 0x0815) printf("why2 s=%d fn=%d lost=%d ip=%04X\n", s, fr, g_lost, g_m.cpu.ip); if (!fr || g_lost) { ms++; restore(); continue; } }
+            /* An interrupt handler runs whole or declines: it has no partway
+             * return, so resuming anywhere but the original's address is a
+             * difference, not a state to finish and skip. */
+            if (o->matched == 3 && (g_m.cpu.seg[S_CS] != cs || g_m.cpu.ip != back)) {
+                printf("  MISMATCH %s+%05X (%04X:%04X): IRET resumed at %04X:%04X, the original at %04X:%04X\n",
+                       o->module, ((uint32_t)o->seg << 4) + ip, o->seg, ip, g_m.cpu.seg[S_CS], g_m.cpu.ip, cs, back);
+                mc++; mb++; restore(); break;
+            }
             /* A routine that ran out of room after a call returns with the
              * machine partway through it, as the original would be; the run
              * loop then finishes it with the original code, and so does this. */
             if (g_m.cpu.seg[S_CS] != cs || g_m.cpu.ip != back) {
                 int more = 0;
-                if (!run_to_ret(&g_m.cpu, entry_sp, o->matched == 2, &more, cs, ip)) { ms++; restore(); continue; }
+                if (!run_to_ret(&g_m.cpu, entry_sp, o->matched, &more, cs, ip)) { ms++; restore(); continue; }
                 g_finished++;
             }
             mc++;
+            if (o->matched == 3) {
+                g_iret_full++;
+                if (irq_frame && back == (uint16_t)(irq_frame->fault + irq_frame->advance)) g_iret_special++;
+            }
             if (sprite_run && (r[R_AX] & 0xFF00) == 0xFC00) g_sprite_skip++;
             if (sprite_run && (r[R_AX] & 0xFF) == 0 && (r[R_AX] & 0xFF00) != 0xFC00) g_sprite_zero++;
             if (g_checked_alloc && g_cpu[0].r[R_AX] == 8) g_alloc_errors++;
@@ -794,13 +837,13 @@ int main(int argc, char **argv)
                     g_trace = 1;
                     printf("    original, instruction by instruction:\n");
                     int st2 = 0;
-                    run_to_ret(&g_cpu[0], entry_sp, o->matched == 2, &st2, cs, ip);
+                    run_to_ret(&g_cpu[0], entry_sp, o->matched, &st2, cs, ip);
                     printf("    matched, then the original from where it stopped:\n");
                     g_lost = 0; g_stopped = 0;
                     o->fn(&g_m);
                     printf("      matched returned at %04X:%04X clk %llu\n", g_m.cpu.seg[S_CS], g_m.cpu.ip, (unsigned long long)g_m.cpu.icount);
                     int st3 = 0;
-                    if (g_m.cpu.ip != back) run_to_ret(&g_m.cpu, entry_sp, o->matched == 2, &st3, cs, ip);
+                    if (g_m.cpu.ip != back) run_to_ret(&g_m.cpu, entry_sp, o->matched, &st3, cs, ip);
                     g_trace = 0;
                     printf("    state: AX %04X CX %04X DX %04X BX %04X SP %04X BP %04X SI %04X DI %04X"
                            " DS %04X ES %04X SS %04X flags %04X, %d steps\n",
@@ -860,6 +903,7 @@ int main(int argc, char **argv)
         if (g_checked_alloc) printf("  completed allocation-error states: %llu\n", g_alloc_errors);
         if (camera_gradients) printf("  completed 16-band states: %llu\n", g_gradient_full);
         if (sprite_run) printf("  completed sprite zero/transparent states: %llu/%llu\n", g_sprite_zero, g_sprite_skip);
+        if (o->matched == 3) printf("  completed interrupt/special-site states: %llu/%llu\n", g_iret_full, g_iret_special);
         compared += mc; skipped += ms; bad += mb;
     }
     printf("matched routines: %u, %llu states compared (%llu finished by the original code), %llu skipped, %llu mismatching\n",

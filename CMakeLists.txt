@@ -314,5 +314,9 @@ if(F117R_BUILD_TESTS)
     # The target-slot walk must count its loop and join instructions.
     add_test(NAME matched_target_damage_loop COMMAND func_lockstep --states 4000
       --seed 0x049040951e8d --only VGAME.EXE:73C8)
+    # Divide-error handlers entered through a planted interrupt frame; half
+    # the states save the faulting IDIV's own IP, which picks the denominator.
+    add_test(NAME matched_divide_interrupts COMMAND func_lockstep --states 4000
+      --only VGAME.EXE:84E)
   endif()
 endif()
