@@ -17,7 +17,7 @@ make (Phase 4).
 
 ### Done
 
-- **Translation.** All 17 code files and the LZEXE decompressor: 89,366
+- **Translation.** All 17 code files and the LZEXE decompressor: 89,367
   instruction starts, 96% of the code-area bytes (the rest is strings, tables
   and variables; `tools/census.py`). The coverage pass adds no further
   translated code; changed code and declined override entries can fall back
@@ -25,7 +25,7 @@ make (Phase 4).
 - **Engine parity.** 38 scripted routes are identical between the interpreter
   and the recompiled code at every 50-million-clock checkpoint and at the end;
   every translated instruction is held to the interpreter from random states
-  (5,718,912 comparisons, 0 differences); the interpreter and the translator are
+  (5,718,976 comparisons, 0 differences); the interpreter and the translator are
   held to 8088 and 80286 silicon vectors; 144 of 144 planted defects are
   caught; seeded random flights are identical. See
   [architecture.md](architecture.md#verification-why-11-is-a-claim-with-evidence).
@@ -198,6 +198,16 @@ not the recompilation:
 
 ## Phase 2 - understood code
 
+Seven runtime entries are integrated and gated: five Ctrl+Break installers
+(VGAME, START, END, DSWAP, SETUP) and DSWAP's DOS allocate/free wrappers.
+The installers read the loader-relocated segment operand; a nonzero-image
+fixture catches all five earlier constant-zero mistakes. Three fixed seeds
+compare 98,171 states exactly; 27 unit tests and a full-cycle real-driver
+probe pass (66 checkpoints/final hash). The full gate passes 27 unit tests,
+all 38 routes, both 5,718,976-state instruction profiles and three
+797-address matched seeds, with zero differences and passing reachability
+and event checks.
+
 Camera darkening (`VGAME 0000:C45C`) is integrated and gated. It sets the
 caller's camera origin, builds the 77x61 inset boundary and fills in mode 3,
 then restores the origin. Three targeted seeds compare 8,873 states exactly;
@@ -230,7 +240,7 @@ instruction profiles and three 789-address matched seeds (2,561,209,
       Reimp's mapping; matched functions replacing translations one at a time,
       each held to the same parity checks. `tools/reimp_names.py` joins the
       Reimp's census (1,535 functions) with this project's regions as a private
-      lead list. 790 addresses are matched (785 of the census functions, 67,463 of
+      lead list. 797 addresses are matched (791 of the census functions, 67,670 of
       179,213 bytes); the table is at the end of `src/matched/matched.c` and the
       method is in [architecture.md](architecture.md#matched-routines-phase-2).
       The batches of 8-9 Oct add 37 + 34 + 47 VGAME, 34 + 40 + 45 START/END and 21 + 44 + 64

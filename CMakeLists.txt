@@ -295,5 +295,9 @@ if(F117R_BUILD_TESTS)
       --only VGAME.EXE:9D8,VGAME.EXE:A2C)
     add_test(NAME matched_camera_darken COMMAND func_lockstep --states 4000
       --only VGAME.EXE:C45C)
+    add_test(NAME matched_control_break COMMAND func_lockstep --states 4000
+      --only VGAME.EXE:1B73,START.EXE:85B8,END.EXE:4557,DSWAP.EXE:523,SETUP.EXE:C35)
+    add_test(NAME matched_dswap_memory COMMAND func_lockstep --states 4000
+      --only DSWAP.EXE:4E0,DSWAP.EXE:506)
   endif()
 endif()

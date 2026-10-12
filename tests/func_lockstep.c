@@ -294,6 +294,17 @@ static void stub_driver_thunks(uint8_t *pristine, uint32_t at, const rc_module *
  * to have the flag set, so the routine's normal path was never reached. Set in both sides' memory. */
 static const struct { const char *module; uint16_t ip; uint32_t linear; uint8_t value; } IMAGE_PATCHES[] = {
     { "END.EXE", 0x42E4, 0x0489, 0x00 },
+    /* The loader relocates each installer's MOV AX,segment operand. */
+    { "VGAME.EXE", 0x1B73, 0x1B85, 0x7A },
+    { "VGAME.EXE", 0x1B73, 0x1B86, 0x19 },
+    { "START.EXE", 0x85B8, 0x85CA, 0x7A },
+    { "START.EXE", 0x85B8, 0x85CB, 0x19 },
+    { "END.EXE", 0x4557, 0x4569, 0x7A },
+    { "END.EXE", 0x4557, 0x456A, 0x19 },
+    { "DSWAP.EXE", 0x0523, 0x0535, 0x7A },
+    { "DSWAP.EXE", 0x0523, 0x0536, 0x19 },
+    { "SETUP.EXE", 0x0C35, 0x0C47, 0x7A },
+    { "SETUP.EXE", 0x0C35, 0x0C48, 0x19 },
 };
 
 static void patch_image_for(uint8_t *pristine, const recomp_override *o)
@@ -346,6 +357,13 @@ static uint16_t g_from, g_span = 0x300; /* the routine under test's code: from g
  * from the same hash as port reads, CF set one time in four) instead of running through a vector that
  * the loaded image's bytes make up, which seldom comes back. Both sides get the same answers. */
 static const struct { const char *module; uint16_t ip; } DOS_STUBS[] = {
+    { "VGAME.EXE", 0x1B73 },
+    { "START.EXE", 0x85B8 },
+    { "END.EXE", 0x4557 },
+    { "DSWAP.EXE", 0x0523 },
+    { "SETUP.EXE", 0x0C35 },
+    { "DSWAP.EXE", 0x04E0 },
+    { "DSWAP.EXE", 0x0506 },
     { "START.EXE", 0xA210 },            /* close */
     { "START.EXE", 0xA4B8 },            /* unlink */
     { "START.EXE", 0xA520 },            /* lseek */

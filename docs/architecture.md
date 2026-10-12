@@ -522,6 +522,15 @@ after the call and returns, and the original code finishes the routine.
 `guest_call_far` does the same for a far `CALL ptr16:16` (the target is read
 from the loaded instruction, so relocation is already in it).
 
+Relocated immediate words must also come from the loaded instruction, even
+when the unpacked executable shows zero. For example, each Ctrl+Break
+installer loads its handler segment from a relocated MOV AX operand. A
+constant zero passes the segment-zero harness but diverges in normal flight.
+The retained installer fixtures plant a nonzero segment on both sides;
+they caught all five constant-zero implementations before the repaired
+functions passed the full-cycle probe. Keep `CODE16` operands from a private
+draft as loaded-word reads when rewriting its logic.
+
 **The harness** (`tests/func_lockstep.c`, needs the generated code): for each
 routine it places the module image in memory (at segment 0, where the
 unrelocated image is also the relocated one), sets random registers, flags and

@@ -25439,6 +25439,7 @@ static int st4_dos_alloc(machine_t *m, uint16_t entry)
 }
 static int st4_start_dos_alloc(machine_t *m) { return st4_dos_alloc(m, 0x800A); }
 static int st4_end_dos_alloc(machine_t *m) { return st4_dos_alloc(m, 0x3FA4); }
+static int dswap_dos_alloc(machine_t *m) { return st4_dos_alloc(m, 0x04E0); }
 
 /* START 0x08030 and END 0x03FCA, release(segment): DOS frees the block
  * (49h, ES = the segment); AX is 0 when it did, DOS's error when not. */
@@ -25460,6 +25461,7 @@ static int st4_dos_free(machine_t *m, uint16_t entry)
 }
 static int st4_start_dos_free(machine_t *m) { return st4_dos_free(m, 0x8030); }
 static int st4_end_dos_free(machine_t *m) { return st4_dos_free(m, 0x3FCA); }
+static int dswap_dos_free(machine_t *m) { return st4_dos_free(m, 0x0506); }
 
 /* START 0x08123 and END 0x040BD, close the handle (3Eh). */
 static int st4_dos_close(machine_t *m, uint16_t entry, uint16_t msg, uint16_t fatal)
@@ -31944,7 +31946,58 @@ static int vgame_timer_resync(machine_t *m)
 }
 /* VG4-END */
 
+/* The front ends install INT 1Bh (Ctrl+Break) with a no-op handler.
+ * Read IVT entry 6Ch through the original helper, retain the previous
+ * offset/segment for teardown, and ask DOS to install the handler using
+ * the segment operand relocated by the loader. Keep saved registers in the guest stack and check events at
+ * both calls; aliases and DOS transfers must behave like the original. */
+typedef struct { uint16_t entry, saved, handler; } break_install_config;
+static int install_control_break(machine_t *m, const break_install_config *cfg)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = cfg->entry;
+    if (!room(c, 6)) return 0;
+    cpu_push16(c, c->r[R_SI]); cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_DX]); cpu_push16(c, c->seg[S_DS]);
+    c->r[R_SI] = 0x6C;
+    c->icount += 5;
+    if (!guest_call(m, (uint16_t)(entry + 0x34), (uint16_t)(entry + 0x0A))) return 1;
+    if (!room(c, 7)) { c->ip = (uint16_t)(entry + 0x0A); return 1; }
+    ds_put(c, (uint16_t)(cfg->saved + 2), c->r[R_BX]);
+    ds_put(c, cfg->saved, c->r[R_AX]);
+    c->r[R_AX] = seg_read16(c, c->seg[S_CS], (uint16_t)(entry + 0x12));
+    c->r[R_DX] = cfg->handler;
+    c->seg[S_DS] = c->r[R_AX];
+    c->r[R_AX] = 0x251B;
+    c->icount += 6;
+    if (!st4_int21(m, (uint16_t)(entry + 0x1C))) return 1;
+    if (!room(c, 5)) { c->ip = (uint16_t)(entry + 0x1E); return 1; }
+    c->seg[S_DS] = cpu_pop16(c);
+    c->r[R_DX] = cpu_pop16(c); c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    near_ret(c);
+    c->icount += 5;
+    return 1;
+}
+static const break_install_config BREAK_VGAME = {0x1B73,0x2625,0x1BB3};
+static const break_install_config BREAK_START = {0x85B8,0x73F3,0x85F8};
+static const break_install_config BREAK_END = {0x4557,0x2609,0x4597};
+static const break_install_config BREAK_DSWAP = {0x0523,0x00C9,0x0563};
+static const break_install_config BREAK_SETUP = {0x0C35,0x0AC9,0x0C75};
+static int vgame_install_control_break(machine_t *m) { return install_control_break(m, &BREAK_VGAME); }
+static int start_install_control_break(machine_t *m) { return install_control_break(m, &BREAK_START); }
+static int end_install_control_break(machine_t *m) { return install_control_break(m, &BREAK_END); }
+static int dswap_install_control_break(machine_t *m) { return install_control_break(m, &BREAK_DSWAP); }
+static int setup_install_control_break(machine_t *m) { return install_control_break(m, &BREAK_SETUP); }
+
 static const recomp_override MATCHED[] = {
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x04E0, dswap_dos_alloc, "allocate memory", 1 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x0506, dswap_dos_free, "release memory", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x0C35, setup_install_control_break, "save and install the Ctrl+Break vector", 1 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x0523, dswap_install_control_break, "save and install the Ctrl+Break vector", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x4557, end_install_control_break, "save and install the Ctrl+Break vector", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x85B8, start_install_control_break, "save and install the Ctrl+Break vector", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x1B73, vgame_install_control_break, "save and install the Ctrl+Break vector", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x4958, vgame_free_fall, "free fall", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD50A, vgame_waypoint_from_target, "waypoint from target", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xE289, vgame_transpose_matrix, "transpose the orientation matrix", 1 },

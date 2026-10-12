@@ -10,6 +10,27 @@ identical, and the proof is the same verdicts before and after.
 
 ## The gate (`tools/build_recomp.py`)
 
+Next isolated DSWAP wrapper (11 Oct): checked byte allocation at 0494 keeps
+the DOS result in the guest frame, compares it against segment 10h, reports
+an error through formatted output, and invokes the original failure path.
+The implementation preserves calls, flags, live frame reads and event stops.
+Build `build-wt-dswap-checked.log` waits until the runtime gate's second
+regeneration finishes; the two-worker build is now live and recompiles
+shared generated units changed by the seven runtime entries. No build or
+random-state verification was claimed while that build ran. The first build
+fails because frame/call macros were out of scope; the corrected build uses
+the available helpers and passes in `build-wt-dswap-checked-restore.log`.
+The private batch now also contains five matching Ctrl+Break restore entries;
+their original bodies differ only in verified saved-vector addresses. Three
+seeds compare 78,713 states exactly, 27 tests pass in 10.66 s, and a 46.1 s
+full-cycle replay preserves all 66 hashes, with VGAME/SETUP restore calls.
+The replay does not reach the checked allocator. A controlled fixture supplies
+low/error allocation replies, returning graphics thunks and failure cleanup,
+checking the caller when cleanup returns. Three seeds then compare 76,014
+states exactly, including 3,709 completed error results; 27 tests pass in
+9.61 s. This does not prove real out-of-memory termination. Logs are
+`checked-restore-error-lockstep-{0,1,2}.log`. Main stays fixed at 797 entries.
+
 Next isolated runtime batch (11 Oct): five Ctrl+Break installers share an
 18-instruction original body in VGAME, START, END, DSWAP and SETUP. Byte
 comparison confirms only the saved-vector and handler addresses differ;
@@ -26,8 +47,15 @@ reads the loaded operand; `build-wt-break-relocation-fixed.log` passes.
 Repeated seeds with the relocation fixture compare 32,723/32,696/32,752
 states exactly; the 27-test unit subset passes in 7.46 s. A fresh full-cycle
 probe takes 30.2 s, preserving all 66 checkpoints/final hash; SETUP, VGAME
-and END installers each run once. These candidates are still isolated,
-awaiting integration and their own full gate.
+and END installers each run once. These seven candidates are now integrated
+under `gate-break-memory.log`: 797 addresses, 27 unit tests and 38 routes,
+16 workers under affinity 0x00FFFFFF. The first translation now has 89,367
+instruction starts (one additional static entry). The full gate passes: 172 s
+build, 522 s coverage, 18 s identical regeneration and 778 s parity, 1,490 s
+total. Both instruction profiles compare 5,718,976 states; three matched seeds
+compare 2,596,946 / 2,595,902 / 2,593,952 states, all without differences.
+All 38 routes and reachability/event checks pass; 37 interpreter runs are
+fresh, with zero reuse. Census: 791 functions and 67,670 bytes.
 The initial broad CTest run passes 27 tests but its full 2,000-state matched
 test is terminated after this known defect, so that run is not a suite pass.
 Use the gate's unit exclusion for broad locksteps in the repeat; targeted
