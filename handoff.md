@@ -15,16 +15,16 @@ standing practice, not a session-by-session log. Earlier sessions' detail
 
 ## Current state
 
-Last fully gated runtime baseline: VGAME `0000:79BE` cockpit panel frame,
-commit `ae4b50f`, 819 matched addresses. Full gate
-`D:/f117-gate/gate-panel-frame.log` passes: 43 unit tests, all 41 routes at
+Last fully gated runtime baseline: VGAME `1058:0016` HUD pass,
+commit `de1189e`, 820 matched addresses. Full gate
+`D:/f117-gate/gate-hud-pass.log` passes: 44 unit tests, all 41 routes at
 every checkpoint/final (40 fresh interpreter sessions), both 5,718,976-state
-instruction profiles and three matched seeds (2,682,617 / 2,681,007 / 2,683,132
-comparisons; third seed `0xae4b50f791f6`), zero mismatches, plus
-reachability/event checks. Total 1,560 s. Census is 811 functions /
-72,422 bytes (P2 43.39%, overall 74.78%). Real F3 replay calls the named panel
+instruction profiles and three matched seeds (2,687,533 / 2,685,929 / 2,685,258
+comparisons; third seed `0xde1189e2aeae`), zero mismatches, plus
+reachability/event checks. Total 1,596 s. Census is 812 functions /
+74,910 bytes (P2 44.71%, overall 75.16%). Real F3 replay calls the named HUD
 550 times with all 57 checkpoints/final unchanged. Retained input:
-`tools/routes/navigation_grid.args`. Pushed grid baseline `c8f262b`
+`tools/routes/navigation_grid.args`. Pushed panel baseline `cb50ccf`
 has passing Windows and munt CI.
 
 A sibling handler, **VGAME 0FB2:04DD** (the line clipper's own divide-error
@@ -59,35 +59,31 @@ Phase 2 work" below).
   byte-identical. The clipped edge and shared emitters are integrated and
   fully gated; private proofs/patches remain in `D:/f117-gate/span-edge` and
   `D:/f117-gate/span-emit`.
-  Timer/objectives/armament/grid/panel proofs are preserved under
-  `D:/f117-gate/`; earlier implementation history is in
-  [docs/repeated-processes.md](docs/repeated-processes.md).
-  The cockpit panel is integrated and fully gated as above. Preserve its
-  full-body transient code-write watch and grid-before-ILS ordering.
-  Tested source, targeted verdict, selective patch and full-gate audit are
-  in `D:/f117-gate/panel-frame`. The private worktree was verified identical
-  to the tested panel snapshot, then reset to `ae4b50f` for HUD work.
-  Next HUD pass `1058:0016`: dossier `next-candidates/hud-pass`, 806
-  instructions / 2,488 bytes, 45 calls, no unresolved successors. Complete
-  handwritten draft `D:/f117-gate/hud-pass/named-hud-pass.c` is inserted
-  in `D:/f117-wt/span-emitter` and integrated selectively on main.
-  Census: 812 / 74,910, P2 44.71%, overall 75.16%, 820 addresses.
-  Fresh full gate pending in `D:/f117-gate/gate-hud-pass.log`; do not
-  push this runtime change until it passes.
-  Three final seeds compare 4,916 / 4,922 / 4,912 states, including
-  303 / 298 / 304 divide faults, zero mismatches; all 32 tracked paths and
-  four fault sites are required per seed. All 44 isolated tests pass.
-  Real F3 replay invokes it 550 times with all 57 checkpoints/final equal.
-  Audited verdict, selective patch and tested snapshots are in
-  `D:/f117-gate/hud-pass`. The broad run first caught a far call at an
-  exhausted event limit; every far call now has an explicit guard.
-  Preserve byte-DIV faults, repeated one-bit shifts, live array reads and
-  guest stack pushes during rotation. Route wrapper `route-proof.py` uses
-  the immutable F3 reference, crosschecked against this fresh panel gate in
-  `fresh-reference-crosscheck.json`. Panel baseline/evidence is pushed
-  as `cb50ccf`. Main source matches the privately tested snapshots. The next moving-object
-  dossier is prepared under `next-candidates/moving-objects`: VGAME
-  `0000:983E`, 564 instructions / 1,724 bytes / 38 calls; no implementation.
+  Earlier proofs and tested source snapshots remain under `D:/f117-gate/`;
+  history is in [docs/repeated-processes.md](docs/repeated-processes.md).
+  HUD is integrated and fully gated as above. Preserve its original
+  byte-DIV fault frames, repeated single-bit shifts and call event guards.
+  Next moving-object pass `0000:983E`: dossier under
+  `next-candidates/moving-objects`, 564 instructions / 1,724 bytes, 38 calls.
+  The private worktree `D:/f117-wt/span-emitter` was reset to `de1189e`
+  after all three tested HUD snapshots were verified and preserved.
+  It now holds three moving-object changes, backed up in
+  `D:/f117-gate/moving-objects`: named source, tested snapshots, selective
+  patch, scripts and `targeted-verdict.json`. Three seeds compare 2,710 / 2,707 / 2,654
+  states, zero mismatches; all 32 tracked paths and 45 isolated tests pass.
+  Actual-driver F3 replay invokes the named pass 550 times with
+  all 57 checkpoints/final equal. The immutable interpreter reference also
+  matches the fresh HUD gate (`fresh-reference-crosscheck.json`).
+  Integrate only after pushing this HUD baseline, refresh census and run
+  another full gate. Preserve target cycling before drawing, live guest
+  frame slots, signed comparisons, byte flag updates and all 38 calls.
+  Next camera-image dossier: `next-candidates/camimage`, VGAME `BCEF`,
+  658 instructions / 1,863 bytes / 49 calls. Partial handwritten source
+  `D:/f117-gate/camimage/named-camera-image.c` is outside the worktree and
+  untested; it covers entry/class/page setup, weapon pose, range/trig,
+  forward-camera setup, horizon/ground-class selection and world-position
+  selection through `C043`. Viewport/rendering remains an explicit
+  placeholder; complete before insertion.
 - 04DD above, if a real route to it is ever found.
 
 ## How this project verifies Phase 2 work (read before matching a new routine)

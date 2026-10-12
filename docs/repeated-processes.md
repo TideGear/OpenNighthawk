@@ -240,7 +240,12 @@ is inserted in the private worktree, backed up as
 panel baseline/evidence (`cb50ccf`), integrated the selective patch on main;
 all three runtime/fixture/CMake texts match the tested snapshots. Census
 812 / 74,910, P2 44.71%, overall 75.16%, 820 matched addresses. Fresh full
-gate pending in `D:/f117-gate/gate-hud-pass.log`; do not push until it passes.
+gate at `de1189e` passes in `D:/f117-gate/gate-hud-pass.log`: 44 tests,
+all 41 routes at every checkpoint/final (40 fresh interpreter sessions),
+both 5,718,976-state instruction profiles and three matched seeds
+(2,687,533 / 2,685,929 / 2,685,258 comparisons; rotating seed `0xde1189e2aeae`),
+zero mismatches and passing reachability/event checks. Total 1,596 s.
+Audited verdict/log hash: `D:/f117-gate/hud-pass/full-gate-verdict.json`.
 Final three seeds compare 4,916 / 4,922 / 4,912 states including 303 / 298 /
 304 divide faults, zero mismatches. Each reaches all 32 tracked paths and
 four fault sites; all 44 isolated tests pass (62.41 s). Actual-driver F3
@@ -254,6 +259,23 @@ Preserve byte-DIV fault addresses and flags, separate one-bit shifts,
 live coordinate reads and guest stack pushes during fixed-point rotation.
 The saved F3 reference matches all checkpoints/final of the fresh panel
 gate (`hud-pass/fresh-reference-crosscheck.json`).
+
+Moving-object pass (`VGAME 0000:983E`) is proven privately at `de1189e`:
+564 instructions / 1,724 bytes, all 38 calls retained. Named C preserves
+target cycling before drawing, detail reduction, shadows, distant dots,
+projectile slots, flare scales and exterior-player placement. Guest frame
+slots and helper scratch remain live across calls; byte flag updates and
+signed/unsigned comparisons retain the original order. Fixtures return
+projection/drawing helpers with controlled depth while original range,
+bearing, absolute-value, scaling and trail-size math executes. Code-write
+watch covers the whole body. Three seeds compare 2,710 / 2,707 / 2,654 states,
+zero mismatches, all 32 tracked paths; all 45 isolated tests pass. Actual
+F3 replay invokes the named pass 550 times and matches all 57 checkpoints/
+final in 51.0 s. Audited artifacts, patch and tested snapshots:
+`D:/f117-gate/moving-objects/targeted-verdict.json`. Its saved interpreter
+reference matches the fresh HUD gate (`fresh-reference-crosscheck.json`).
+Main has no moving-object changes yet; integrate after the HUD baseline
+push and require a fresh full gate.
 
 ## The gate (`tools/build_recomp.py`)
 
