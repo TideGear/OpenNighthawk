@@ -193,11 +193,24 @@ def tree_digest(root, skip=()):
     return h.hexdigest()
 
 
+ADD_TEST = re.compile(r"add_test\((?:[^()]|\([^()]*\))*\)")
+
+
+def build_digest(path):
+    """The build file without its add_test registrations, whole-line comments and blank lines: a test
+    entry builds nothing and changes no program a route runs, but every Phase 2 pass adds one (with a
+    comment), which made each gate redo the coverage pass and every interpreter run."""
+    with open(path, encoding="utf-8") as f:
+        lines = ADD_TEST.sub("", f.read()).splitlines()
+    kept = [l.rstrip() for l in lines if l.strip() and not l.lstrip().startswith("#")]
+    return hashlib.sha256("\n".join(kept).encode()).hexdigest()
+
+
 def interpreter_key(data):
     """What every interpreter result depends on, apart from the route itself."""
     h = hashlib.sha256()
     h.update(tree_digest(os.path.join(ROOT, "src"), {os.path.relpath(os.path.join(ROOT, s), os.path.join(ROOT, "src")) for s in INTERP_INDEPENDENT}).encode())
-    h.update(file_digest(os.path.join(ROOT, "CMakeLists.txt")).encode())
+    h.update(build_digest(os.path.join(ROOT, "CMakeLists.txt")).encode())
     h.update(tree_digest(data).encode())
     return h.hexdigest()
 

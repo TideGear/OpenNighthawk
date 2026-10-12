@@ -35164,7 +35164,686 @@ image_return:
     ds_put8(c, 0x294B, get_r8(c, R_AL)); c->r[R_SI] = cpu_pop16(c); c->r[R_DI] = cpu_pop16(c); x86_leave(c); near_ret(c); c->icount += 7; return 1;
 }
 
+/* VGAME 0000:1EB0: the player's flight step. On the first call it resets
+ * the flight pose; every call it takes one key command, reads the stick,
+ * applies the autopilot holds and trim, flies the ejected pilot, spools the
+ * engine, integrates speed, attitude, height and position, tests touchdown,
+ * and records the pose in the 16-frame history ring. */
+/* The runtime's 32-bit divide and remainder (EE9C, EF36) remove their two
+ * long arguments themselves (RET 8). */
+#define FLIGHT_NEAR_POP8(target_, ret_, next_) do {                                   \
+        if (!guest_call_pop(m, (target_), (ret_), 8)) return 1;                      \
+        if (!room(c, (next_))) { c->ip = (ret_); return 1; }                          \
+    } while (0)
+static int vgame_flight_input(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 4)) return 0;
+    x86_enter(c, 0x30, 0); x86_push_reg(c, R_SI);
+    alu_sub(c, ds_get(c, 0xC0DA), 0, 1, 0); c->icount += 4;
+    if (!(c->flags & F_ZF)) goto flight_collect_key;
+    /* Reset the initial flight state in store order. The mission's base
+     * direction selects 0 or 8000h; the departure object's byte flag adds
+     * 04h to the heading's high byte. */
+    SM4_NEED(13, 0x1EBC); c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+    ds_put(c, 0xB07E, c->r[R_AX]); ds_put(c, 0x2DF6, c->r[R_AX]); ds_put(c, 0x2DF4, c->r[R_AX]); ds_put(c, 0xB19C, c->r[R_AX]);
+    ds_put(c, 0x2E0A, c->r[R_AX]); ds_put(c, 0x2DF2, c->r[R_AX]); ds_put(c, 0x2DF0, c->r[R_AX]);
+    { const uint16_t offset = ds_get(c, 0x9924); const uint16_t segment = ds_get(c, 0x9926); c->r[R_BX] = offset; c->seg[S_ES] = segment; }
+    c->r[R_BX] = seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x38)); c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 1, 1);
+    alu_sub(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x3DAA)), c->r[R_AX], 1, 0); c->icount += 13;
+    if (!x86_cond(c, 15)) { SM4_NEED(1, 0x1EE3); c->r[R_AX] = 0x8000; c->icount++; }
+    SM4_NEED(5, 0x1EE6); ds_put(c, 0x2DEE, c->r[R_AX]); c->r[R_BX] = ds_get(c, 0xE308); c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 4, 1);
+    alu_logic(c, ds_get8(c, (uint16_t)(c->r[R_BX] + 0xB2D7)) & 2, 0); c->icount += 5;
+    if (!(c->flags & F_ZF)) { SM4_NEED(1, 0x1EF7); ds_put8(c, 0x2DEF, (uint8_t)alu_add(c, ds_get8(c, 0x2DEF), 4, 0, 0)); c->icount++; }
+    SM4_NEED(1, 0x1EFC); VG3_NEAR(0x2E5E, 0x1EFF, 0);
+    SM4_NEED(1, 0x1EFF); VG3_NEAR(0x3A3B, 0x1F02, 1); ds_put(c, 0xC0DA, 1); c->icount++;
+flight_collect_key:
+    /* Retain the first pending key, then drain later keys. Each poll and
+     * read is an original guest call, with an event guard on every turn. */
+    SM4_NEED(1, 0x1F08); ds_put(c, 0xDEBC, 0); c->icount++;
+    SM4_NEED(1, 0x1F0E); VG3_NEAR(0xEBC4, 0x1F11, 2); alu_logic(c, c->r[R_AX], 1); c->icount += 2;
+    if (c->flags & F_ZF) goto flight_drain_poll;
+    SM4_NEED(1, 0x1F15); cpu_push16(c, 0); c->icount++;
+    SM4_NEED(1, 0x1F17); VG3_NEAR(0xEE6A, 0x1F1A, 3); c->r[R_BX] = cpu_pop16(c); ds_put(c, 0xDEBC, c->r[R_AX]); c->icount += 3; goto flight_drain_poll;
+flight_drain_key:
+    SM4_NEED(1, 0x1F20); cpu_push16(c, 0); c->icount++;
+    SM4_NEED(1, 0x1F22); VG3_NEAR(0xEE6A, 0x1F25, 1); c->r[R_BX] = cpu_pop16(c); c->icount++;
+flight_drain_poll:
+    SM4_NEED(1, 0x1F26); VG3_NEAR(0xEBC4, 0x1F29, 2); alu_logic(c, c->r[R_AX], 1); c->icount += 2;
+    if (!(c->flags & F_ZF)) goto flight_drain_key;
+    /* Preserve the original subtract ladder, including AX/flags on every
+     * unsuccessful key test and the extra near JMP on long taken paths. */
+    SM4_NEED(1, 0x1F2D); c->r[R_AX] = ds_get(c, 0xDEBC); c->icount++;
+    {
+        static const struct { uint16_t ip, delta, jump; } commands[] = {
+            { 0x1F30, 0x011B, 0x1F35 }, { 0x1F38, 0x0A15, 0x1F3D },
+            { 0x1F40, 0x00FD, 0 }, { 0x1F45, 0x0032, 0x1F4A },
+            { 0x1F4D, 0x00CC, 0x1F52 }, { 0x1F55, 0x0012, 0 },
+            { 0x1F5A, 0x02C3, 0x1F5F }, { 0x1F62, 0x0900, 0x1F67 },
+            { 0x1F6A, 0x0600, 0x1F6F }, { 0x1F72, 0x0F63, 0x1F77 },
+            { 0x1F7A, 0x019D, 0x1F7F }
+        };
+        for (unsigned k = 0; k < sizeof commands / sizeof commands[0]; k++) {
+            SM4_NEED(2, commands[k].ip); c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], commands[k].delta, 1, 0); c->icount += 2;
+            if (!(c->flags & F_ZF)) continue;
+            if (commands[k].jump) { SM4_NEED(1, commands[k].jump); c->icount++; }
+            switch (k) {
+                case 0: goto flight_escape; case 1: goto flight_brakes;
+                case 2: goto flight_throttle_down; case 3: goto flight_idle;
+                case 4: goto flight_full_throttle; case 5: goto flight_throttle_up;
+                case 6: goto flight_quit_dialog; case 7: goto flight_pause;
+                case 8: goto flight_recentre; case 9: goto flight_toggle_hud;
+                default: goto flight_blank_view;
+            }
+        }
+    }
+    SM4_NEED(1, 0x1F82); c->icount++; goto flight_key_housekeeping;
+flight_throttle_down:
+    SM4_NEED(4, 0x1F84); cpu_push16(c, 100); cpu_push16(c, 0); c->r[R_AX] = ds_get(c, 0x2E0A); c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], 10, 1, 0); c->icount += 4;
+flight_clamp_throttle:
+    SM4_NEED(1, 0x1F8E); cpu_push16(c, c->r[R_AX]); c->icount++;
+    SM4_NEED(1, 0x1F8F); VG3_NEAR(0xC67A, 0x1F92, 2); c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0); ds_put(c, 0x2E0A, c->r[R_AX]); c->icount += 2;
+flight_show_throttle:
+    SM4_NEED(1, 0x1F98); VG3_NEAR(0x3A3B, 0x1F9B, 0); goto flight_key_housekeeping;
+flight_throttle_up:
+    SM4_NEED(4, 0x1FD3); cpu_push16(c, 100); cpu_push16(c, 0); alu_sub(c, ds_get(c, 0x2E0A), 10, 1, 0); c->icount += 4;
+    if (x86_cond(c, 12)) { SM4_NEED(1, 0x1FE3); c->r[R_AX] = 5; c->icount++; }
+    else { SM4_NEED(2, 0x1FDE); c->r[R_AX] = 10; c->icount += 2; }
+    SM4_NEED(2, 0x1FE6); c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], ds_get(c, 0x2E0A), 1, 0); c->icount += 2; goto flight_clamp_throttle;
+flight_full_throttle:
+    SM4_NEED(2, 0x1FEC); ds_put(c, 0x2E0A, 100); c->icount += 2; goto flight_show_throttle;
+flight_idle:
+    SM4_NEED(4, 0x1FF4); c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0); ds_put(c, 0x2E0A, c->r[R_AX]); cpu_push16(c, c->r[R_AX]); cpu_push16(c, 12); c->icount += 4;
+    SM4_NEED(1, 0x1FFC); VG3_NEAR(0xD3F9, 0x1FFF, 3); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); c->icount += 3; goto flight_show_throttle;
+flight_brakes:
+    SM4_NEED(6, 0x2003); ds_put8(c, 0x9B34, (uint8_t)alu_logic(c, ds_get8(c, 0x9B34) ^ 8, 0)); set_r8(c, R_AL, ds_get8(c, 0x9B34));
+    c->r[R_AX] = (uint16_t)alu_logic(c, c->r[R_AX] & 8, 1); cpu_push16(c, c->r[R_AX]); cpu_push16(c, 0x23); cpu_push16(c, ds_get(c, 0x4010)); c->icount += 6;
+    SM4_NEED(1, 0x2015); VG3_NEAR(0xD578, 0x2018, 3); c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0); alu_logic(c, ds_get8(c, 0x9B34) & 8, 0); c->icount += 3;
+    if (!(c->flags & F_ZF)) { SM4_NEED(1, 0x2022); c->icount++; goto flight_key_housekeeping; }
+    SM4_NEED(2, 0x2025); alu_sub(c, ds_get(c, 0xC0CE), 0, 1, 0); c->icount += 2; if (c->flags & F_ZF) goto flight_key_done_jump;
+    SM4_NEED(2, 0x202C); alu_sub(c, ds_get(c, 0x2E0A), 100, 1, 0); c->icount += 2; if (!(c->flags & F_ZF)) goto flight_key_done_jump;
+    /* Full throttle with released brakes on the ground starts the catapult. */
+    SM4_NEED(3, 0x2033); ds_put(c, 0xB07E, 0x0546); cpu_push16(c, 2); cpu_push16(c, 0x11); c->icount += 3;
+    SM4_NEED(1, 0x203D); VG3_NEAR(0xD3F9, 0x2040, 3); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); c->icount += 3; goto flight_key_housekeeping;
+flight_toggle_hud:
+    SM4_NEED(4, 0x2045); alu_sub(c, ds_get8(c, 0x294B), 1, 0, 0); set_r8(c, R_AL, (uint8_t)alu_sub(c, get_r8(c, R_AL), get_r8(c, R_AL), 0, !!(c->flags & F_CF)));
+    set_r8(c, R_AL, (uint8_t)alu_sub(c, 0, get_r8(c, R_AL), 0, 0)); ds_put8(c, 0x294B, get_r8(c, R_AL)); c->icount += 4;
+    SM4_NEED(1, 0x2051); VG3_FAR(0x2051, 1); c->icount++; goto flight_key_housekeeping;
+flight_recentre:
+    SM4_NEED(2, 0x2059); alu_sub(c, ds_get(c, 0x2E0E), 0, 1, 0); c->icount += 2; if (!(c->flags & F_ZF)) goto flight_key_done_jump;
+    SM4_NEED(1, 0x2063); VG3_FAR(0x2063, 2); ds_put(c, 0x2E0E, 0x28); c->icount += 2; goto flight_key_housekeeping;
+flight_key_done_jump:
+    SM4_NEED(1, 0x2060); c->icount++; goto flight_key_housekeeping;
+flight_escape:
+    SM4_NEED(2, 0x210F); alu_sub(c, ds_get(c, 0xC09A), 0, 1, 0); c->icount += 2;
+    if (c->flags & F_ZF) { SM4_NEED(1, 0x2116); c->icount++; }
+    else { SM4_NEED(2, 0x2119); ds_put(c, 0xDEF6, 0); c->icount += 2; }
+    goto flight_key_housekeeping;
+flight_pause:
+    SM4_NEED(1, 0x2183); VG3_NEAR(0x3A4E, 0x2186, 1); c->icount++; goto flight_key_housekeeping;
+flight_key_housekeeping:
+    SM4_NEED(2, 0x1F9B); alu_sub(c, ds_get(c, 0x2E0E), 0, 1, 0); c->icount += 2;
+    if (!(c->flags & F_ZF)) { SM4_NEED(1, 0x1FA2); ds_put(c, 0x2E0E, (uint16_t)alu_dec(c, ds_get(c, 0x2E0E), 1)); c->icount++; }
+    SM4_NEED(2, 0x1FA6); alu_sub(c, ds_get(c, 0x2E0A), 0, 1, 0); c->icount += 2; if (c->flags & F_ZF) goto flight_stick_mode;
+    SM4_NEED(2, 0x1FAD); alu_sub(c, ds_get(c, 0xB19C), 0, 1, 0); c->icount += 2; if (!(c->flags & F_ZF)) goto flight_stick_mode;
+    SM4_NEED(2, 0x1FB4); cpu_push16(c, 2); cpu_push16(c, 11); c->icount += 2;
+    SM4_NEED(1, 0x1FB8); VG3_NEAR(0xD3F9, 0x1FBB, 2); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); c->icount += 2;
+flight_stick_mode:
+    SM4_NEED(3, 0x1FBD); { const uint16_t offset = ds_get(c, 0xE574); const uint16_t segment = ds_get(c, 0xE576); c->r[R_BX] = offset; c->seg[S_ES] = segment; }
+    alu_logic(c, mem_read8(c, phys(c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x72))) & 1, 0); c->icount += 3;
+    if (c->flags & F_ZF) { SM4_NEED(1, 0x1FC8); c->icount++; goto flight_raw_stick; }
+    SM4_NEED(1, 0x1FCB); VG3_FAR(0x1FCB, 1); c->icount++; goto flight_controls;
+flight_quit_dialog:
+    /* Save the game's tick measurement across the modal quit prompt. Page
+     * saves, sounds, keyboard polling and restore all use original calls. */
+    SM4_NEED(2, 0x2071); c->r[R_AX] = ds_get(c, 0x2646); VG3_SETFRAME(0xFFE2, c->r[R_AX]); c->icount += 2;
+    SM4_NEED(1, 0x2077); VG3_FAR(0x2077, 0);
+    SM4_NEED(1, 0x207C); VG3_FAR(0x207C, 8); cpu_push16(c, 0xC8); cpu_push16(c, 0x140); cpu_push16(c, 0); cpu_push16(c, 0);
+    cpu_push16(c, 1); cpu_push16(c, 0); cpu_push16(c, 0); cpu_push16(c, 0); c->icount += 8;
+    SM4_NEED(1, 0x2093); VG3_FAR(0x2093, 1); c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 16, 1, 0); c->icount++;
+    SM4_NEED(1, 0x209B); VG3_FAR(0x209B, 2); cpu_push16(c, 0); cpu_push16(c, 0x2D08); c->icount += 2;
+    SM4_NEED(1, 0x20A5); VG3_NEAR(0xD52E, 0x20A8, 2); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); c->icount += 2;
+    SM4_NEED(1, 0x20AA); VG3_FAR(0x20AA, 1); cpu_push16(c, 0x19); c->icount++;
+    SM4_NEED(1, 0x20B1); VG3_FAR(0x20B1, 1); c->r[R_BX] = cpu_pop16(c); c->icount++;
+flight_quit_poll:
+    SM4_NEED(1, 0x20B7); VG3_FAR(0x20B7, 2); alu_logic(c, c->r[R_AX], 1); c->icount += 2;
+    if (!(c->flags & F_ZF)) goto flight_quit_poll;
+    SM4_NEED(1, 0x20C0); VG3_FAR(0x20C0, 3); c->r[R_AX] = (uint16_t)alu_logic(c, c->r[R_AX] & 0x5F, 1); alu_sub(c, c->r[R_AX], 0x59, 1, 0); c->icount += 3;
+    if (!(c->flags & F_ZF)) goto flight_quit_refused;
+    SM4_NEED(1, 0x20CD); cpu_push16(c, 7); c->icount++;
+    SM4_NEED(1, 0x20CF); VG3_NEAR(0x4A42, 0x20D2, 3); c->r[R_BX] = cpu_pop16(c); ds_put8(c, 0x008D, 0); c->icount += 3; goto flight_quit_cleanup;
+flight_quit_refused:
+    SM4_NEED(1, 0x20DA); VG3_FAR(0x20DA, 8); cpu_push16(c, 0xC8); cpu_push16(c, 0x140); cpu_push16(c, 0); cpu_push16(c, 0);
+    cpu_push16(c, 0); cpu_push16(c, 0); cpu_push16(c, 0); cpu_push16(c, 1); c->icount += 8;
+    SM4_NEED(1, 0x20F1); VG3_FAR(0x20F1, 1); c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 16, 1, 0); c->icount++;
+    SM4_NEED(1, 0x20F9); VG3_FAR(0x20F9, 0);
+    SM4_NEED(1, 0x20FE); VG3_FAR(0x20FE, 0);
+flight_quit_cleanup:
+    SM4_NEED(1, 0x2103); VG3_NEAR(0xD41F, 0x2106, 3); c->r[R_AX] = VG3_FRAME(0xFFE2); ds_put(c, 0x2646, c->r[R_AX]); c->icount += 3; goto flight_key_housekeeping;
+flight_blank_view:
+    /* The blank-screen pause saves cockpit rows on page two, clears the
+     * viewport, waits through the original pause, then restores the rows. */
+    SM4_NEED(2, 0x2122); alu_sub(c, ds_get(c, 0x368C), 0, 1, 0); c->icount += 2; if (c->flags & F_ZF) goto flight_blank_clear;
+    SM4_NEED(10, 0x2129); cpu_push16(c, 0x6D); cpu_push16(c, 0x140); cpu_push16(c, 0x5B); cpu_push16(c, 0);
+    c->r[R_BX] = ds_get(c, 0x4040); cpu_push16(c, ds_get(c, c->r[R_BX])); cpu_push16(c, 0x5B); cpu_push16(c, 0);
+    c->r[R_BX] = ds_get(c, 0x4010); cpu_push16(c, ds_get(c, c->r[R_BX])); c->icount += 10;
+    SM4_NEED(1, 0x2142); VG3_FAR(0x2142, 1); c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 16, 1, 0); c->icount++;
+flight_blank_clear:
+    SM4_NEED(1, 0x214A); cpu_push16(c, 0); c->icount++;
+    SM4_NEED(1, 0x214C); VG3_NEAR(0x886A, 0x214F, 5); c->r[R_BX] = cpu_pop16(c); cpu_push16(c, 0xC7); cpu_push16(c, 0x13F); cpu_push16(c, 0); cpu_push16(c, 0); c->icount += 5;
+    SM4_NEED(1, 0x215A); VG3_FAR(0x215A, 1); c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0); c->icount++;
+    SM4_NEED(1, 0x2162); VG3_NEAR(0x3A4E, 0x2165, 2); alu_sub(c, ds_get(c, 0x368C), 0, 1, 0); c->icount += 2;
+    if (c->flags & F_ZF) { SM4_NEED(1, 0x216C); c->icount++; goto flight_key_housekeeping; }
+    SM4_NEED(4, 0x216F); cpu_push16(c, 0x6D); cpu_push16(c, 0x140); cpu_push16(c, 0x5B); cpu_push16(c, 0); c->icount += 4;
+    SM4_NEED(1, 0x2178); VG3_FAR(0x2178, 2); c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 8, 1, 0); c->icount += 2; goto flight_show_throttle;
+flight_raw_stick:
+    /* Preserve the two 16-bit IMUL results and subsequent CWD: the high
+     * multiply half is intentionally discarded before signed division. */
+    SM4_NEED(19, 0x2189); c->r[R_CX] = ds_get(c, 0x43EA); c->r[R_CX] = (uint16_t)alu_inc(c, c->r[R_CX], 1);
+    set_r8(c, R_AL, ds_get8(c, 0x2CD6)); set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], 0x80, 1, 0); x86_imul16(c, c->r[R_CX]); c->r[R_BX] = 3; c->r[R_DX] = (uint16_t)((int16_t)c->r[R_AX] < 0 ? 0xFFFF : 0);
+    x86_idiv16(c, c->r[R_BX], 0); set_r8(c, R_AL, (uint8_t)alu_add(c, get_r8(c, R_AL), 0x80, 0, 0)); ds_put8(c, 0x2CD2, get_r8(c, R_AL));
+    set_r8(c, R_AL, ds_get8(c, 0x2CD7)); set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], 0x80, 1, 0); x86_imul16(c, c->r[R_CX]); c->r[R_DX] = (uint16_t)((int16_t)c->r[R_AX] < 0 ? 0xFFFF : 0);
+    x86_idiv16(c, c->r[R_BX], 0); set_r8(c, R_AL, (uint8_t)alu_add(c, get_r8(c, R_AL), 0x80, 0, 0)); ds_put8(c, 0x2CD3, get_r8(c, R_AL)); c->icount += 19;
+flight_controls:
+    /* Convert the upper input nibbles to signed pitch/roll controls, with
+     * the original one-unit negative-side dead zone and nonlinear roll. */
+    SM4_NEED(12, 0x21B5); set_r8(c, R_AL, ds_get8(c, 0x2CD3)); set_r8(c, R_AL, (uint8_t)x86_shift(c, 5, get_r8(c, R_AL), 4, 0));
+    set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0)); c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], 8, 1, 0); ds_put(c, 0xE472, c->r[R_AX]);
+    set_r8(c, R_AL, ds_get8(c, 0x2CD2)); set_r8(c, R_AL, (uint8_t)x86_shift(c, 5, get_r8(c, R_AL), 4, 0));
+    set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0)); c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], 8, 1, 0);
+    ds_put(c, 0xDEB6, c->r[R_AX]); alu_logic(c, c->r[R_AX], 1); c->icount += 12;
+    if (x86_cond(c, 12)) { SM4_NEED(2, 0x21D5); c->r[R_AX] = (uint16_t)alu_inc(c, c->r[R_AX], 1); ds_put(c, 0xDEB6, c->r[R_AX]); c->icount += 2; }
+    SM4_NEED(2, 0x21D9); alu_sub(c, ds_get(c, 0xE472), 0, 1, 0); c->icount += 2;
+    if (x86_cond(c, 12)) { SM4_NEED(1, 0x21E0); ds_put(c, 0xE472, (uint16_t)alu_inc(c, ds_get(c, 0xE472), 1)); c->icount++; }
+    SM4_NEED(1, 0x21E4); cpu_push16(c, c->r[R_AX]); c->icount++;
+    SM4_NEED(1, 0x21E5); VG3_NEAR(0xEE0C, 0x21E8, 11); c->r[R_BX] = cpu_pop16(c); c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], 0xFFFE, 1, 0);
+    c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0); x86_imul16(c, ds_get(c, 0xDEB6)); c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], 1, 1); ds_put(c, 0xDEB6, c->r[R_AX]);
+    c->r[R_AX] = 6; x86_imul16(c, ds_get(c, 0xE472)); ds_put(c, 0xE472, c->r[R_AX]); alu_logic(c, c->r[R_AX], 1); c->icount += 11;
+    if (x86_cond(c, 12)) { SM4_NEED(4, 0x2205); c->r[R_DX] = (uint16_t)((int16_t)c->r[R_AX] < 0 ? 0xFFFF : 0); c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_DX], 1, 0);
+        c->r[R_AX] = (uint16_t)x86_shift(c, 7, c->r[R_AX], 1, 1); ds_put(c, 0xE472, c->r[R_AX]); c->icount += 4; }
+    /* Suppress downward pitch while level on the ground. Any manual input
+     * cancels the altitude hold before its lamp and corrections are drawn. */
+    SM4_NEED(3, 0x220D); c->r[R_AX] = ds_get(c, 0xC0CE); alu_sub(c, ds_get(c, 0x2DF4), c->r[R_AX], 1, 0); c->icount += 3; if (!(c->flags & F_ZF)) goto flight_hold_cancel;
+    SM4_NEED(2, 0x2216); alu_sub(c, ds_get(c, 0xE472), 0, 1, 0); c->icount += 2; if (x86_cond(c, 13)) goto flight_hold_cancel;
+    SM4_NEED(2, 0x221D); alu_sub(c, ds_get(c, 0x2DF0), 0, 1, 0); c->icount += 2; if (x86_cond(c, 15)) goto flight_hold_cancel;
+    SM4_NEED(1, 0x2224); ds_put(c, 0xE472, 0); c->icount++;
+flight_hold_cancel:
+    SM4_NEED(2, 0x222A); alu_sub(c, ds_get(c, 0xDEB6), 0, 1, 0); c->icount += 2; if (!(c->flags & F_ZF)) goto flight_hold_off;
+    SM4_NEED(2, 0x2231); alu_sub(c, ds_get(c, 0xE472), 0, 1, 0); c->icount += 2; if (c->flags & F_ZF) goto flight_hold_lamp;
+flight_hold_off:
+    SM4_NEED(1, 0x2238); ds_put(c, 0x3684, 0); c->icount++;
+flight_hold_lamp:
+    SM4_NEED(6, 0x223E); alu_sub(c, ds_get(c, 0x3684), 1, 1, 0); c->flags ^= F_CF; c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, !!(c->flags & F_CF));
+    c->r[R_AX] = (uint16_t)alu_logic(c, c->r[R_AX] & 15, 1); cpu_push16(c, c->r[R_AX]); cpu_push16(c, 4); c->icount += 6;
+    SM4_NEED(1, 0x224C); VG3_NEAR(0x889B, 0x224F, 4); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); alu_sub(c, ds_get(c, 0x3684), 0, 1, 0); c->icount += 4; if (c->flags & F_ZF) goto flight_trim;
+    /* Heading and altitude hold each call the original wrapping/clamping
+     * helpers; frame locals retain their intermediate wrapped differences. */
+    SM4_NEED(5, 0x2258); cpu_push16(c, 0x1400); cpu_push16(c, 0xEC00); c->r[R_AX] = ds_get(c, 0xC0A4); c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], ds_get(c, 0x2DEE), 1, 0); cpu_push16(c, c->r[R_AX]); c->icount += 5;
+    SM4_NEED(1, 0x2266); VG3_NEAR(0xC699, 0x2269, 8); c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0); c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], 1, 1);
+    VG3_SETFRAME(0xFFD8, c->r[R_AX]); cpu_push16(c, 24); cpu_push16(c, 0xFFE8); c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], ds_get(c, 0x2DF2), 1, 0); c->r[R_AX] = (uint16_t)x86_shift(c, 7, c->r[R_AX], 6, 1); cpu_push16(c, c->r[R_AX]); c->icount += 8;
+    SM4_NEED(1, 0x227D); VG3_NEAR(0xC67A, 0x2280, 10); c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0); c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0); ds_put(c, 0xDEB6, c->r[R_AX]);
+    cpu_push16(c, 0x0C00); cpu_push16(c, 0xEC00); c->r[R_AX] = ds_get(c, 0x3684); c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], ds_get(c, 0x2DF4), 1, 0);
+    c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], 4, 1); c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], ds_get(c, 0x98F6), 1, 0); cpu_push16(c, c->r[R_AX]); c->icount += 10;
+    SM4_NEED(1, 0x229D); VG3_NEAR(0xC699, 0x22A0, 7); c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0); VG3_SETFRAME(0xFFF0, c->r[R_AX]);
+    cpu_push16(c, 8); cpu_push16(c, 0xFFF8); c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], ds_get(c, 0x2DF0), 1, 0); c->r[R_AX] = (uint16_t)x86_shift(c, 7, c->r[R_AX], 7, 1); cpu_push16(c, c->r[R_AX]); c->icount += 7;
+    SM4_NEED(1, 0x22B2); VG3_NEAR(0xC67A, 0x22B5, 2); c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0); ds_put(c, 0xE472, c->r[R_AX]); c->icount += 2;
+flight_trim:
+    SM4_NEED(3, 0x22BB); { const uint16_t offset = ds_get(c, 0x9924); const uint16_t segment = ds_get(c, 0x9926); c->r[R_BX] = offset; c->seg[S_ES] = segment; }
+    alu_sub(c, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x40)), 0, 1, 0); c->icount += 3; if (c->flags & F_ZF) goto flight_no_altitude_trim;
+    SM4_NEED(4, 0x22C6); c->r[R_AX] = 500; c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], ds_get(c, 0x2DF4), 1, 0); x86_imul16(c, ds_get(c, 0xB194)); set_r8(c, R_CL, 13); c->icount += 4;
+    SM4_NEED(1, 0x22D3); VG3_NEAR(0xEF74, 0x22D6, 2); VG3_SETFRAME(0xFFDC, c->r[R_AX]); c->icount += 2; goto flight_speed_trim;
+flight_no_altitude_trim:
+    SM4_NEED(1, 0x22DB); VG3_SETFRAME(0xFFDC, 0); c->icount++;
+flight_speed_trim:
+    SM4_NEED(2, 0x22E0); alu_logic(c, ds_get8(c, 0x9B34) & 1, 0); c->icount += 2; if (!(c->flags & F_ZF)) goto flight_half_trim;
+    SM4_NEED(6, 0x22E7); cpu_push16(c, 32); cpu_push16(c, 0); c->r[R_AX] = ds_get(c, 0xB194); c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], 200, 1, 0);
+    c->r[R_AX] = (uint16_t)x86_shift(c, 7, c->r[R_AX], 4, 1); cpu_push16(c, c->r[R_AX]); c->icount += 6;
+    SM4_NEED(1, 0x22F5); VG3_NEAR(0xC67A, 0x22F8, 2); c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0); VG3_SETFRAME(0xFFDC, (uint16_t)alu_add(c, VG3_FRAME(0xFFDC), c->r[R_AX], 1, 0)); c->icount += 2;
+flight_half_trim:
+    SM4_NEED(2, 0x22FE); alu_logic(c, ds_get8(c, 0x9B34) & 2, 0); c->icount += 2;
+    if (!(c->flags & F_ZF)) { SM4_NEED(1, 0x2305); VG3_SETFRAME(0xFFDC, (uint16_t)x86_shift(c, 7, VG3_FRAME(0xFFDC), 1, 1)); c->icount++; }
+    SM4_NEED(2, 0x2308); alu_logic(c, ds_get8(c, 0x3664) & 4, 0); c->icount += 2; if (c->flags & F_ZF) goto flight_apply_trim;
+    SM4_NEED(5, 0x230F); cpu_push16(c, 32); cpu_push16(c, 0); c->r[R_AX] = ds_get(c, 0xC5F4); c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], 2, 1); cpu_push16(c, c->r[R_AX]); c->icount += 5;
+    SM4_NEED(1, 0x231A); VG3_NEAR(0xC67A, 0x231D, 2); c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0); VG3_SETFRAME(0xFFDC, (uint16_t)alu_add(c, VG3_FRAME(0xFFDC), c->r[R_AX], 1, 0)); c->icount += 2;
+flight_apply_trim:
+    /* Positive trim above the ground adds separately sampled random terms
+     * to roll and pitch. Preserve both calls and the saved half-trim in SI. */
+    SM4_NEED(2, 0x2323); alu_sub(c, VG3_FRAME(0xFFDC), 0, 1, 0); c->icount += 2; if (x86_cond(c, 14)) goto flight_stall_check;
+    SM4_NEED(3, 0x2329); c->r[R_AX] = ds_get(c, 0xC0CE); alu_sub(c, ds_get(c, 0x2DF4), c->r[R_AX], 1, 0); c->icount += 3; if (x86_cond(c, 6)) goto flight_stall_check;
+    SM4_NEED(1, 0x2332); cpu_push16(c, VG3_FRAME(0xFFDC)); c->icount++;
+    SM4_NEED(1, 0x2335); VG3_NEAR(0xC88C, 0x2338, 7); c->r[R_BX] = cpu_pop16(c); c->r[R_CX] = VG3_FRAME(0xFFDC); c->r[R_CX] = (uint16_t)x86_shift(c, 7, c->r[R_CX], 1, 1);
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_CX], 1, 0); ds_put(c, 0xDEB6, (uint16_t)alu_add(c, ds_get(c, 0xDEB6), c->r[R_AX], 1, 0));
+    cpu_push16(c, VG3_FRAME(0xFFDC)); c->r[R_SI] = c->r[R_CX]; c->icount += 7;
+    SM4_NEED(1, 0x2349); VG3_NEAR(0xC88C, 0x234C, 4); c->r[R_BX] = cpu_pop16(c); c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_SI], 1, 0);
+    c->r[R_AX] = (uint16_t)x86_shift(c, 7, c->r[R_AX], 1, 1); ds_put(c, 0xE472, (uint16_t)alu_add(c, ds_get(c, 0xE472), c->r[R_AX], 1, 0)); c->icount += 4;
+flight_stall_check:
+    /* The low-speed recovery has six gates, including the mission setting,
+     * bank magnitude and its cooldown. Each failed gate retains its flags. */
+    SM4_NEED(2, 0x2355); alu_logic(c, ds_get8(c, 0x9B34) & 1, 0); c->icount += 2; if (c->flags & F_ZF) goto flight_airborne;
+    SM4_NEED(2, 0x235C); alu_sub(c, ds_get(c, 0xE472), 0, 1, 0); c->icount += 2; if (x86_cond(c, 15)) goto flight_airborne;
+    SM4_NEED(3, 0x2363); c->r[R_AX] = ds_get(c, 0xB07E); alu_sub(c, ds_get(c, 0xB03A), c->r[R_AX], 1, 0); c->icount += 3; if (!(c->flags & F_CF)) goto flight_airborne;
+    SM4_NEED(3, 0x236C); { const uint16_t offset = ds_get(c, 0x9924); const uint16_t segment = ds_get(c, 0x9926); c->r[R_BX] = offset; c->seg[S_ES] = segment; }
+    alu_sub(c, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x40)), 2, 1, 0); c->icount += 3; if (!(c->flags & F_CF)) goto flight_airborne;
+    SM4_NEED(1, 0x2377); cpu_push16(c, ds_get(c, 0x2DF2)); c->icount++;
+    SM4_NEED(1, 0x237B); VG3_NEAR(0xEE0C, 0x237E, 3); c->r[R_BX] = cpu_pop16(c); alu_sub(c, c->r[R_AX], 0x3000, 1, 0); c->icount += 3; if (x86_cond(c, 13)) goto flight_airborne;
+    SM4_NEED(2, 0x2384); alu_sub(c, ds_get(c, 0x991A), 0, 1, 0); c->icount += 2; if (!(c->flags & F_ZF)) goto flight_airborne;
+    SM4_NEED(9, 0x238B); c->r[R_AX] = ds_get(c, 0x98F6); c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], ds_get(c, 0x2DF0), 1, 0);
+    c->r[R_AX] = (uint16_t)x86_shift(c, 7, c->r[R_AX], 3, 1); c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], ds_get(c, 0x2DF4), 1, 0);
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], 200, 1, 0); c->r[R_AX] = (uint16_t)x86_shift(c, 7, c->r[R_AX], 3, 1); VG3_SETFRAME(0xFFF0, c->r[R_AX]); alu_logic(c, c->r[R_AX], 1); c->icount += 9;
+    if (x86_cond(c, 14)) goto flight_airborne;
+    SM4_NEED(3, 0x23A6); cpu_push16(c, 32); cpu_push16(c, 0); cpu_push16(c, c->r[R_AX]); c->icount += 3;
+    SM4_NEED(1, 0x23AB); VG3_NEAR(0xC67A, 0x23AE, 2); c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0); ds_put(c, 0xE472, c->r[R_AX]); c->icount += 2;
+flight_airborne:
+    SM4_NEED(2, 0x23B4); alu_sub(c, ds_get(c, 0xC09A), 0, 1, 0); c->icount += 2;
+    if (c->flags & F_ZF) { SM4_NEED(1, 0x23BB); c->icount++; goto flight_throttle_limit; }
+    /* After ejection, fixed roll and bank-dependent pitch replace the
+     * pilot controls. Frame-rate divisions keep their original fault IPs. */
+    SM4_NEED(2, 0x23BE); ds_put(c, 0xDEB6, 0x40); cpu_push16(c, ds_get(c, 0x2DF2)); c->icount += 2;
+    SM4_NEED(1, 0x23C8); VG3_NEAR(0xEE0C, 0x23CB, 3); c->r[R_BX] = cpu_pop16(c); alu_sub(c, c->r[R_AX], 0x4000, 1, 0); c->icount += 3;
+    if (x86_cond(c, 14)) { SM4_NEED(1, 0x23D6); c->r[R_AX] = 0xFFF8; c->icount++; }
+    else { SM4_NEED(2, 0x23D1); c->r[R_AX] = 16; c->icount += 2; }
+    SM4_NEED(4, 0x23D9); ds_put(c, 0xE472, c->r[R_AX]); c->r[R_AX] = 0x80; c->r[R_DX] = (uint16_t)((int16_t)c->r[R_AX] < 0 ? 0xFFFF : 0); c->icount += 3;
+    c->op_cs = c->seg[S_CS]; c->op_ip = 0x23E0; c->ip = 0x23E4;
+    if (!x86_idiv16(c, ds_get(c, 0x368E), 0)) { c->icount++; return 1; } c->icount++;
+    SM4_NEED(4, 0x23E4); cpu_push16(c, c->r[R_AX]); c->r[R_AX] = 0xFFA0; c->r[R_DX] = (uint16_t)((int16_t)c->r[R_AX] < 0 ? 0xFFFF : 0); c->icount += 3;
+    c->op_cs = c->seg[S_CS]; c->op_ip = 0x23E9; c->ip = 0x23ED;
+    if (!x86_idiv16(c, ds_get(c, 0x368E), 0)) { c->icount++; return 1; } c->icount++;
+    SM4_NEED(5, 0x23ED); cpu_push16(c, c->r[R_AX]); c->r[R_AX] = 32; ds_put(c, 0xC09A, (uint16_t)alu_inc(c, ds_get(c, 0xC09A), 1));
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], ds_get(c, 0xC09A), 1, 0); cpu_push16(c, c->r[R_AX]); c->icount += 5;
+    SM4_NEED(1, 0x23FA); VG3_NEAR(0xC67A, 0x23FD, 3); c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0);
+    ds_put(c, 0xDEF6, (uint16_t)alu_add(c, ds_get(c, 0xDEF6), c->r[R_AX], 1, 0)); c->icount += 3; if (!(c->flags & F_SF)) goto flight_ejection_ground;
+    SM4_NEED(3, 0x2406); ds_put(c, 0xDEF6, 0); alu_logic(c, ds_get8(c, 0x9912) & 7, 0); c->icount += 3; if (!(c->flags & F_ZF)) goto flight_ejection_ground;
+    SM4_NEED(1, 0x2413); cpu_push16(c, 0); c->icount++;
+    SM4_NEED(1, 0x2415); VG3_NEAR(0x4A42, 0x2418, 1); c->r[R_BX] = cpu_pop16(c); c->icount++;
+flight_ejection_ground:
+    SM4_NEED(2, 0x2419); alu_sub(c, ds_get(c, 0x2DF4), 0, 1, 0); c->icount += 2; if (!(c->flags & F_ZF)) goto flight_ejection_trail;
+    SM4_NEED(2, 0x2420); alu_sub(c, ds_get(c, 0x3D96), 0xFFFF, 1, 0); c->icount += 2; if (!(c->flags & F_ZF)) goto flight_ejection_trail;
+    SM4_NEED(14, 0x2427); ds_put(c, 0xB07E, 0); c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0); ds_put(c, 0x2E0A, c->r[R_AX]); ds_put(c, 0xC0DC, c->r[R_AX]); ds_put(c, 0x3D96, c->r[R_AX]);
+    c->r[R_AX] = ds_get(c, 0xC0D0); ds_put(c, 0xC0CC, c->r[R_AX]); ds_put(c, 0xB2D0, c->r[R_AX]); c->r[R_AX] = ds_get(c, 0xC0DE);
+    ds_put(c, 0xC0D6, c->r[R_AX]); ds_put(c, 0xB2D2, c->r[R_AX]); ds_put(c, 0x9D3C, 0xFFF0); cpu_push16(c, 2); cpu_push16(c, 5); c->icount += 14;
+    SM4_NEED(1, 0x2454); VG3_NEAR(0xD3F9, 0x2457, 2); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); c->icount += 2;
+flight_ejection_trail:
+    /* AND AL,FC is byte-sized: upper ejection-counter bits survive and
+     * prevent the 10h trigger from repeating at 110h, 210h and beyond. */
+    SM4_NEED(4, 0x2459); c->r[R_AX] = ds_get(c, 0xC09A); set_r8(c, R_AL, (uint8_t)alu_logic(c, get_r8(c, R_AL) & 0xFC, 0)); alu_sub(c, c->r[R_AX], 16, 1, 0); c->icount += 4; if (!(c->flags & F_ZF)) goto flight_throttle_limit;
+    SM4_NEED(4, 0x2463); set_r8(c, R_AL, ds_get8(c, 0x3D8E)); set_r8(c, R_AL, (uint8_t)alu_logic(c, get_r8(c, R_AL) & 3, 0)); alu_sub(c, get_r8(c, R_AL), 1, 0, 0); c->icount += 4; if (!(c->flags & F_ZF)) goto flight_throttle_limit;
+    SM4_NEED(19, 0x246C); ds_put(c, 0x3D96, 0xFFFF); set_r8(c, R_AL, ds_get8(c, 0x3D8E)); c->r[R_AX] = (uint16_t)alu_logic(c, c->r[R_AX] & 15, 1);
+    ds_put(c, 0x3A88, c->r[R_AX]); VG3_SETFRAME(0xFFD2, c->r[R_AX]); c->r[R_CX] = ds_get(c, 0xC0D0); ds_put(c, 0xC0CC, c->r[R_CX]);
+    c->r[R_BX] = c->r[R_AX]; c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 3, 1); ds_put(c, (uint16_t)(c->r[R_BX] + 0x3A08), c->r[R_CX]);
+    c->r[R_AX] = ds_get(c, 0xC0DE); ds_put(c, 0xC0D6, c->r[R_AX]); ds_put(c, (uint16_t)(c->r[R_BX] + 0x3A0A), c->r[R_AX]);
+    c->r[R_AX] = ds_get(c, 0x2DF4); ds_put(c, 0xC0DC, c->r[R_AX]); ds_put(c, (uint16_t)(c->r[R_BX] + 0x3A0C), c->r[R_AX]); ds_put(c, 0x9D3C, 0xFFF0); cpu_push16(c, 2); cpu_push16(c, 4); c->icount += 19;
+    SM4_NEED(1, 0x24AD); VG3_NEAR(0xD3F9, 0x24B0, 4); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); ds_put(c, 0x2DF0, 0xC000); ds_put8(c, 0x2DFB, 1); c->icount += 4;
+flight_throttle_limit:
+    SM4_NEED(2, 0x24BD); alu_logic(c, ds_get8(c, 0x3664) & 2, 0); c->icount += 2; if (c->flags & F_ZF) goto flight_thrust;
+    SM4_NEED(5, 0x24C4); c->r[R_AX] = 25; c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], ds_get(c, 0xC5F4), 1, 0); c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], 2, 1);
+    alu_sub(c, c->r[R_AX], ds_get(c, 0x2E0A), 1, 0); c->icount += 5; if (x86_cond(c, 13)) goto flight_thrust;
+    SM4_NEED(3, 0x24D4); ds_put(c, 0x2E0A, c->r[R_AX]); alu_logic(c, c->r[R_AX], 1); c->icount += 3;
+    if (x86_cond(c, 12)) { SM4_NEED(1, 0x24DB); ds_put(c, 0x2E0A, 0); c->icount++; }
+    SM4_NEED(1, 0x24E1); VG3_NEAR(0x3A3B, 0x24E4, 0);
+flight_thrust:
+    /* Thrust approaches throttle in two signed divisions. The first has
+     * fixed divisor four; the live frame-rate divisor can fault. */
+    SM4_NEED(7, 0x24E4); c->r[R_AX] = ds_get(c, 0x2E0A); c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], ds_get(c, 0xB19C), 1, 0); c->r[R_CX] = 4;
+    c->r[R_DX] = (uint16_t)((int16_t)c->r[R_AX] < 0 ? 0xFFFF : 0); x86_idiv16(c, c->r[R_CX], 0); c->r[R_DX] = (uint16_t)((int16_t)c->r[R_AX] < 0 ? 0xFFFF : 0); c->icount += 6;
+    c->op_cs = c->seg[S_CS]; c->op_ip = 0x24F2; c->ip = 0x24F6;
+    if (!x86_idiv16(c, ds_get(c, 0x368E), 0)) { c->icount++; return 1; } c->icount++;
+    SM4_NEED(4, 0x24F6); ds_put(c, 0xB19C, (uint16_t)alu_add(c, ds_get(c, 0xB19C), c->r[R_AX], 1, 0)); c->r[R_AX] = ds_get(c, 0x2E0A); alu_sub(c, ds_get(c, 0xB19C), c->r[R_AX], 1, 0); c->icount += 4;
+    if (x86_cond(c, 12)) { SM4_NEED(3, 0x2503); c->r[R_AX] = ds_get(c, 0xB19C); c->r[R_AX] = (uint16_t)alu_inc(c, c->r[R_AX], 1); ds_put(c, 0xB19C, c->r[R_AX]); c->icount += 3; }
+    SM4_NEED(3, 0x250A); c->r[R_AX] = ds_get(c, 0xB19C); alu_sub(c, ds_get(c, 0x2E0A), c->r[R_AX], 1, 0); c->icount += 3;
+    if (x86_cond(c, 12)) { SM4_NEED(2, 0x2513); c->r[R_AX] = ds_get(c, 0x2E0A); ds_put(c, 0xB19C, c->r[R_AX]); c->icount += 2; }
+    /* Fuel burns only on the original frame-counter remainder boundary.
+     * Preserve the wrapped square and CWD before division by -1000. */
+    SM4_NEED(5, 0x2519); c->r[R_AX] = ds_get(c, 0x3D8E); c->r[R_CX] = ds_get(c, 0x368E); c->r[R_CX] = (uint16_t)x86_shift(c, 4, c->r[R_CX], 1, 1);
+    c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0); c->icount += 4; c->op_cs = c->seg[S_CS]; c->op_ip = 0x2524; c->ip = 0x2526;
+    if (!x86_div16(c, c->r[R_CX])) { c->icount++; return 1; } c->icount++;
+    SM4_NEED(2, 0x2526); alu_logic(c, c->r[R_DX], 1); c->icount += 2; if (!(c->flags & F_ZF)) goto flight_fuel_empty;
+    SM4_NEED(2, 0x252A); alu_sub(c, ds_get(c, 0x2E0A), c->r[R_DX], 1, 0); c->icount += 2; if (c->flags & F_ZF) goto flight_fuel_empty;
+    SM4_NEED(2, 0x2530); alu_logic(c, ds_get8(c, 0x3664) & 0x20, 0); c->icount += 2;
+    if (!(c->flags & F_ZF)) { SM4_NEED(2, 0x2537); c->r[R_AX] = ds_get(c, 0xC5F4); c->icount += 2; }
+    else { SM4_NEED(1, 0x253C); c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0); c->icount++; }
+    SM4_NEED(11, 0x253E); c->r[R_CX] = c->r[R_AX]; c->r[R_AX] = ds_get(c, 0x2E0A); c->r[R_BX] = c->r[R_AX]; x86_imul16(c, c->r[R_BX]); c->r[R_BX] = 0xFC18;
+    c->r[R_DX] = (uint16_t)((int16_t)c->r[R_AX] < 0 ? 0xFFFF : 0); x86_idiv16(c, c->r[R_BX], 0); c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_CX], 1, 0);
+    c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1); c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1); ds_put(c, 0x3666, (uint16_t)alu_add(c, ds_get(c, 0x3666), c->r[R_AX], 1, 0)); c->icount += 11;
+flight_fuel_empty:
+    SM4_NEED(2, 0x2555); alu_sub(c, ds_get(c, 0x3666), 0, 1, 0); c->icount += 2;
+    if (x86_cond(c, 14)) { SM4_NEED(3, 0x255C); c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0); ds_put(c, 0xB19C, c->r[R_AX]); ds_put(c, 0x3666, c->r[R_AX]); c->icount += 3; }
+    /* Bank selects the load-factor table byte. Positive pitch above ground
+     * adds to it; the 128 ceiling also limits the pitch control itself. */
+    SM4_NEED(1, 0x2564); cpu_push16(c, ds_get(c, 0x2DF2)); c->icount++;
+    SM4_NEED(1, 0x2568); VG3_NEAR(0xEE0C, 0x256B, 11); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = c->r[R_AX]; c->r[R_BX] = (uint16_t)alu_logic(c, c->r[R_BX] & 0x7F00, 1); set_r8(c, R_CL, 8);
+    c->r[R_BX] = (uint16_t)x86_shift(c, 7, c->r[R_BX], get_r8(c, R_CL), 1); set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + 0x2D14)));
+    set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0)); ds_put(c, 0x990C, c->r[R_AX]); c->r[R_AX] = ds_get(c, 0xC0CE); alu_sub(c, ds_get(c, 0x2DF4), c->r[R_AX], 1, 0); c->icount += 11;
+    if (!x86_cond(c, 6)) { SM4_NEED(2, 0x2588); c->r[R_AX] = ds_get(c, 0xE472); ds_put(c, 0x990C, (uint16_t)alu_add(c, ds_get(c, 0x990C), c->r[R_AX], 1, 0)); c->icount += 2; }
+    SM4_NEED(2, 0x258F); alu_sub(c, ds_get(c, 0x990C), 128, 1, 0); c->icount += 2; if (x86_cond(c, 14)) goto flight_load_caption;
+    SM4_NEED(4, 0x2597); ds_put(c, 0x990C, 128); cpu_push16(c, ds_get(c, 0xE472)); cpu_push16(c, 0); cpu_push16(c, ds_get(c, 0x2DF2)); c->icount += 4;
+    SM4_NEED(1, 0x25A7); VG3_NEAR(0xEE0C, 0x25AA, 10); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = c->r[R_AX]; c->r[R_BX] = (uint16_t)alu_logic(c, c->r[R_BX] & 0x7F00, 1); set_r8(c, R_CL, 8);
+    c->r[R_BX] = (uint16_t)x86_shift(c, 7, c->r[R_BX], get_r8(c, R_CL), 1); set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + 0x2D14))); set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], 128, 1, 0); c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0); cpu_push16(c, c->r[R_AX]); c->icount += 10;
+    SM4_NEED(1, 0x25C1); VG3_NEAR(0xC67A, 0x25C4, 2); c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0); ds_put(c, 0xE472, c->r[R_AX]); c->icount += 2;
+flight_load_caption:
+    /* Format the load-factor caption through the original integer/string
+     * helpers. Preserve each guest argument and its original cleanup. */
+    SM4_NEED(7, 0x25CA); cpu_push16(c, 10); cpu_push16(c, 0x98A6); c->r[R_AX] = ds_get(c, 0x990C); c->r[R_CX] = 16;
+    c->r[R_DX] = (uint16_t)((int16_t)c->r[R_AX] < 0 ? 0xFFFF : 0); x86_idiv16(c, c->r[R_CX], 0); cpu_push16(c, c->r[R_AX]); c->icount += 7;
+    SM4_NEED(1, 0x25D9); VG3_NEAR(0xEB9E, 0x25DC, 3); c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0); cpu_push16(c, c->r[R_AX]); cpu_push16(c, 0x9900); c->icount += 3;
+    SM4_NEED(1, 0x25E3); VG3_NEAR(0xEB50, 0x25E6, 4); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); cpu_push16(c, 0x2D10); cpu_push16(c, 0x9900); c->icount += 4;
+    SM4_NEED(1, 0x25EE); VG3_NEAR(0xEB10, 0x25F1, 5); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); cpu_push16(c, 10); cpu_push16(c, 0x98A6); cpu_push16(c, ds_get(c, 0x990C)); c->icount += 5;
+    SM4_NEED(1, 0x25FC); VG3_NEAR(0xEE0C, 0x25FF, 4); c->r[R_BX] = cpu_pop16(c); c->r[R_AX] = (uint16_t)alu_logic(c, c->r[R_AX] & 14, 1);
+    c->r[R_AX] = (uint16_t)x86_shift(c, 7, c->r[R_AX], 1, 1); cpu_push16(c, c->r[R_AX]); c->icount += 4;
+    SM4_NEED(1, 0x2606); VG3_NEAR(0xEB9E, 0x2609, 3); c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0); cpu_push16(c, c->r[R_AX]); cpu_push16(c, 0x9900); c->icount += 3;
+    SM4_NEED(1, 0x2610); VG3_NEAR(0xEB10, 0x2613, 4); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); cpu_push16(c, 0x2D12); cpu_push16(c, 0x9900); c->icount += 4;
+    SM4_NEED(1, 0x261B); VG3_NEAR(0xEB10, 0x261E, 6); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); cpu_push16(c, 0); cpu_push16(c, 100); cpu_push16(c, 120); cpu_push16(c, ds_get(c, 0x2DF0)); c->icount += 6;
+    /* Pitch, altitude and fuel shape acceleration and the speed limit.
+     * Keep the original low-word shifts and ADD AH operations; replacing
+     * them with wider mathematical formulas would change wrapped states. */
+    SM4_NEED(1, 0x262A); VG3_NEAR(0xC818, 0x262D, 8); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], ds_get(c, 0xB19C), 1, 0);
+    c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0); c->r[R_CX] = 0x2D0; x86_imul16(c, c->r[R_CX]); cpu_push16(c, c->r[R_DX]); cpu_push16(c, c->r[R_AX]); c->icount += 8;
+    SM4_NEED(1, 0x263C); FLIGHT_NEAR_POP8(0xEE9C, 0x263F, 8); VG3_SETFRAME(0xFFD4, c->r[R_AX]); ds_put(c, 0xE474, 120); c->r[R_AX] = ds_get(c, 0x2DF6);
+    c->r[R_AX] = (uint16_t)x86_shift(c, 5, c->r[R_AX], 6, 1); set_r8(c, R_AH, (uint8_t)alu_add(c, get_r8(c, R_AH), 4, 0, 0)); c->r[R_CX] = 120; x86_mul16(c, c->r[R_CX]); set_r8(c, R_CL, 10); c->icount += 8;
+    SM4_NEED(1, 0x2658); VG3_NEAR(0xEF74, 0x265B, 14); ds_put(c, 0xE474, c->r[R_AX]); cpu_push16(c, 0); cpu_push16(c, 90); c->r[R_CX] = c->r[R_AX]; c->r[R_AX] = VG3_FRAME(0xFFD4);
+    c->r[R_DX] = (uint16_t)((int16_t)c->r[R_AX] < 0 ? 0xFFFF : 0); cpu_push16(c, c->r[R_DX]); cpu_push16(c, c->r[R_AX]); c->r[R_AX] = ds_get(c, 0x2DF4);
+    c->r[R_AX] = (uint16_t)x86_shift(c, 5, c->r[R_AX], 7, 1); set_r8(c, R_AH, (uint8_t)alu_add(c, get_r8(c, R_AH), 4, 0, 0)); cpu_push16(c, 0); cpu_push16(c, c->r[R_AX]); c->r[R_SI] = c->r[R_CX]; c->icount += 14;
+    SM4_NEED(1, 0x2678); FLIGHT_NEAR_POP8(0xEF36, 0x267B, 1); set_r8(c, R_CL, 10); c->icount++;
+    SM4_NEED(1, 0x267D); VG3_NEAR(0xEF74, 0x2680, 7); c->r[R_CX] = 100; c->r[R_DX] = ds_get(c, 0x3666); c->r[R_DX] = (uint16_t)x86_shift(c, 7, c->r[R_DX], 9, 1);
+    c->r[R_CX] = (uint16_t)alu_sub(c, c->r[R_CX], c->r[R_DX], 1, 0); x86_imul16(c, c->r[R_CX]); cpu_push16(c, c->r[R_DX]); cpu_push16(c, c->r[R_AX]); c->icount += 7;
+    SM4_NEED(1, 0x2690); FLIGHT_NEAR_POP8(0xEE9C, 0x2693, 4); c->r[R_CX] = 128; c->r[R_CX] = (uint16_t)alu_sub(c, c->r[R_CX], ds_get(c, 0x990C), 1, 0); x86_imul16(c, c->r[R_CX]); set_r8(c, R_CL, 7); c->icount += 4;
+    SM4_NEED(1, 0x269E); VG3_NEAR(0xEF74, 0x26A1, 4); VG3_SETFRAME(0xFFD4, c->r[R_AX]); c->r[R_AX] = ds_get(c, 0x990C); c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], 2, 1); cpu_push16(c, c->r[R_AX]); c->icount += 4;
+    SM4_NEED(1, 0x26AB); VG3_NEAR(0x2F5B, 0x26AE, 5); c->r[R_BX] = cpu_pop16(c); c->r[R_CX] = c->r[R_AX]; c->r[R_AX] = c->r[R_SI]; x86_imul16(c, c->r[R_CX]); set_r8(c, R_CL, 3); c->icount += 5;
+    SM4_NEED(1, 0x26B7); VG3_NEAR(0xEF74, 0x26BA, 2); ds_put(c, 0xE474, c->r[R_AX]); cpu_push16(c, c->r[R_AX]); c->icount += 2;
+    SM4_NEED(1, 0x26BE); VG3_NEAR(0xEE0C, 0x26C1, 4); c->r[R_BX] = cpu_pop16(c); ds_put(c, 0xE474, c->r[R_AX]); alu_logic(c, ds_get8(c, 0x9B34) & 2, 0); c->icount += 4;
+    if (!(c->flags & F_ZF)) {
+        SM4_NEED(5, 0x26CC); c->r[R_AX] = (uint16_t)x86_shift(c, 7, c->r[R_AX], 2, 1); ds_put(c, 0xE474, (uint16_t)alu_sub(c, ds_get(c, 0xE474), c->r[R_AX], 1, 0));
+        c->r[R_AX] = VG3_FRAME(0xFFD4); c->r[R_AX] = (uint16_t)x86_shift(c, 7, c->r[R_AX], 4, 1); VG3_SETFRAME(0xFFD4, (uint16_t)alu_sub(c, VG3_FRAME(0xFFD4), c->r[R_AX], 1, 0)); c->icount += 5;
+    }
+    SM4_NEED(2, 0x26DC); alu_logic(c, ds_get8(c, 0x9B34) & 1, 0); c->icount += 2;
+    if (c->flags & F_ZF) { SM4_NEED(3, 0x26E3); c->r[R_AX] = VG3_FRAME(0xFFD4); c->r[R_AX] = (uint16_t)x86_shift(c, 7, c->r[R_AX], 3, 1); VG3_SETFRAME(0xFFD4, (uint16_t)alu_sub(c, VG3_FRAME(0xFFD4), c->r[R_AX], 1, 0)); c->icount += 3; }
+    SM4_NEED(5, 0x26EC); c->r[R_AX] = x86_imul3(c, ds_get(c, 0xE474), 27); ds_put(c, 0xB03A, c->r[R_AX]); cpu_push16(c, 0x0383); cpu_push16(c, 0); cpu_push16(c, VG3_FRAME(0xFFD4)); c->icount += 5;
+    SM4_NEED(1, 0x26FC); VG3_NEAR(0xC67A, 0x26FF, 0);
+    /* Integrate speed through the original 32-bit quotient helpers. Saved
+     * acceleration and velocity halves stay in guest locals/stack slots. */
+    SM4_NEED(21, 0x26FF); c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0); c->r[R_AX] = x86_imul3(c, c->r[R_AX], 27); VG3_SETFRAME(0xFFE8, c->r[R_AX]);
+    cpu_push16(c, ds_get(c, 0xB03A)); cpu_push16(c, 0); c->r[R_AX] = ds_get(c, 0x368E); c->r[R_DX] = (uint16_t)((int16_t)c->r[R_AX] < 0 ? 0xFFFF : 0); cpu_push16(c, c->r[R_DX]); cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, 0); cpu_push16(c, 16); c->r[R_AX] = ds_get(c, 0xB07E); c->r[R_DX] = (uint16_t)((int16_t)c->r[R_AX] < 0 ? 0xFFFF : 0); c->r[R_CX] = c->r[R_AX]; c->r[R_AX] = VG3_FRAME(0xFFE8);
+    c->r[R_BX] = c->r[R_DX]; c->r[R_DX] = (uint16_t)((int16_t)c->r[R_AX] < 0 ? 0xFFFF : 0); c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_CX], 1, 0);
+    c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_BX], 1, !!(c->flags & F_CF)); cpu_push16(c, c->r[R_DX]); cpu_push16(c, c->r[R_AX]); c->icount += 21;
+    SM4_NEED(1, 0x272A); FLIGHT_NEAR_POP8(0xEE9C, 0x272D, 2); cpu_push16(c, c->r[R_DX]); cpu_push16(c, c->r[R_AX]); c->icount += 2;
+    SM4_NEED(1, 0x272F); FLIGHT_NEAR_POP8(0xEE9C, 0x2732, 5); ds_put(c, 0xB07E, (uint16_t)alu_add(c, ds_get(c, 0xB07E), c->r[R_AX], 1, 0)); c->r[R_AX] = VG3_FRAME(0xFFE8);
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], ds_get(c, 0xB07E), 1, 0); c->r[R_AX] = (uint16_t)x86_shift(c, 7, c->r[R_AX], 2, 1); cpu_push16(c, c->r[R_AX]); c->icount += 5;
+    SM4_NEED(1, 0x2741); VG3_NEAR(0xC67A, 0x2744, 3); c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0); VG3_SETFRAME(0xFFEA, c->r[R_AX]); cpu_push16(c, ds_get(c, 0xB07E)); c->icount += 3;
+    SM4_NEED(1, 0x274E); VG3_NEAR(0xEE0C, 0x2751, 11); c->r[R_BX] = cpu_pop16(c); c->r[R_AX] = (uint16_t)alu_inc(c, c->r[R_AX], 1); c->r[R_DX] = (uint16_t)((int16_t)c->r[R_AX] < 0 ? 0xFFFF : 0);
+    cpu_push16(c, c->r[R_DX]); cpu_push16(c, c->r[R_AX]); c->r[R_AX] = ds_get(c, 0xB03A); c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], VG3_FRAME(0xFFEA), 1, 0);
+    c->r[R_CX] = 0x0C00; x86_imul16(c, c->r[R_CX]); cpu_push16(c, c->r[R_DX]); cpu_push16(c, c->r[R_AX]); c->icount += 11;
+    SM4_NEED(1, 0x2763); FLIGHT_NEAR_POP8(0xEE9C, 0x2766, 3); ds_put(c, 0xB784, c->r[R_AX]); alu_sub(c, c->r[R_AX], 0x2000, 1, 0); c->icount += 3;
+    if (!x86_cond(c, 6)) { SM4_NEED(1, 0x276E); ds_put(c, 0xB784, 0x2000); c->icount++; }
+    SM4_NEED(4, 0x2774); c->r[R_AX] = ds_get(c, 0xB784); c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], 0x0200, 1, 0); cpu_push16(c, c->r[R_AX]); cpu_push16(c, ds_get(c, 0x2DF2)); c->icount += 4;
+    SM4_NEED(1, 0x277F); VG3_NEAR(0xC831, 0x2782, 5); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); ds_put(c, 0x98F6, c->r[R_AX]); alu_logic(c, ds_get8(c, 0x9B34) & 8, 0); c->icount += 5; if (c->flags & F_ZF) goto flight_speed_bound;
+    /* Brakes use separate ground and airborne deceleration. Both divide
+     * by the live frame-rate word and preserve their own fault frames. */
+    SM4_NEED(3, 0x278E); c->r[R_AX] = ds_get(c, 0xC0CE); alu_sub(c, ds_get(c, 0x2DF4), c->r[R_AX], 1, 0); c->icount += 3; if (!(c->flags & F_ZF)) goto flight_air_brake;
+    SM4_NEED(6, 0x2797); c->r[R_CX] = 4; { const uint16_t offset = ds_get(c, 0x9924); const uint16_t segment = ds_get(c, 0x9926); c->r[R_BX] = offset; c->seg[S_ES] = segment; }
+    c->r[R_CX] = (uint16_t)alu_sub(c, c->r[R_CX], seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x40)), 1, 0); c->r[R_AX] = x86_imul3(c, c->r[R_CX], 0xD8);
+    c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0); c->icount += 5; c->op_cs = c->seg[S_CS]; c->op_ip = 0x27A8; c->ip = 0x27AC;
+    if (!x86_div16(c, ds_get(c, 0x368E))) { c->icount++; return 1; } c->icount++;
+    SM4_NEED(3, 0x27AC); ds_put(c, 0xB07E, (uint16_t)alu_sub(c, ds_get(c, 0xB07E), c->r[R_AX], 1, 0)); alu_sub(c, ds_get(c, 0xC0CE), 0, 1, 0); c->icount += 3; if (c->flags & F_ZF) goto flight_speed_bound;
+    SM4_NEED(2, 0x27B7); alu_sub(c, ds_get(c, 0xB07E), 0x1B0, 1, 0); c->icount += 2; if (!(c->flags & F_CF)) goto flight_speed_bound;
+    SM4_NEED(2, 0x27BF); ds_put(c, 0xB07E, 0); c->icount += 2; goto flight_speed_bound;
+flight_air_brake:
+    SM4_NEED(4, 0x27C7); c->r[R_AX] = ds_get(c, 0xB07E); c->r[R_AX] = (uint16_t)x86_shift(c, 5, c->r[R_AX], 4, 1); c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0);
+    c->icount += 3; c->op_cs = c->seg[S_CS]; c->op_ip = 0x27CF; c->ip = 0x27D3;
+    if (!x86_div16(c, ds_get(c, 0x368E))) { c->icount++; return 1; } c->icount++;
+    SM4_NEED(1, 0x27D3); ds_put(c, 0xB07E, (uint16_t)alu_sub(c, ds_get(c, 0xB07E), c->r[R_AX], 1, 0)); c->icount++;
+flight_speed_bound:
+    SM4_NEED(2, 0x27D7); alu_sub(c, ds_get(c, 0xB07E), 0xAFC8, 1, 0); c->icount += 2;
+    if (!x86_cond(c, 6)) { SM4_NEED(1, 0x27DF); ds_put(c, 0xB07E, 0); c->icount++; }
+    SM4_NEED(2, 0x27E5); cpu_push16(c, ds_get(c, 0xB07E)); cpu_push16(c, ds_get(c, 0x2DF0)); c->icount += 2;
+    SM4_NEED(1, 0x27ED); VG3_NEAR(0xC831, 0x27F0, 10); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); VG3_SETFRAME(0xFFDE, c->r[R_AX]); c->r[R_AX] = ds_get(c, 0xB07E); c->r[R_CX] = 27;
+    c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0); x86_div16(c, c->r[R_CX]); ds_put(c, 0xB194, c->r[R_AX]); cpu_push16(c, c->r[R_AX]); cpu_push16(c, 23); c->icount += 10;
+    SM4_NEED(1, 0x2805); VG3_FAR(0x2805, 12); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); set_r8(c, R_AL, ds_get8(c, 0xB07F));
+    set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0)); c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], 32, 1, 0);
+    c->r[R_DX] = (uint16_t)((int16_t)c->r[R_AX] < 0 ? 0xFFFF : 0); cpu_push16(c, c->r[R_DX]); cpu_push16(c, c->r[R_AX]); c->r[R_AX] = ds_get(c, 0x990C);
+    c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], 4, 1); cpu_push16(c, c->r[R_AX]); cpu_push16(c, ds_get(c, 0x2DF2)); c->icount += 12;
+    SM4_NEED(1, 0x2822); VG3_NEAR(0xC818, 0x2825, 4); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); c->r[R_DX] = (uint16_t)((int16_t)c->r[R_AX] < 0 ? 0xFFFF : 0); set_r8(c, R_CL, 7); c->icount += 4;
+    SM4_NEED(1, 0x282A); VG3_NEAR(0xEF68, 0x282D, 2); cpu_push16(c, c->r[R_DX]); cpu_push16(c, c->r[R_AX]); c->icount += 2;
+    SM4_NEED(1, 0x282F); FLIGHT_NEAR_POP8(0xEE9C, 0x2832, 2); cpu_push16(c, c->r[R_AX]); cpu_push16(c, ds_get(c, 0x2DF0)); c->icount += 2;
+    SM4_NEED(1, 0x2837); VG3_NEAR(0xC831, 0x283A, 6); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); VG3_SETFRAME(0xFFEC, c->r[R_AX]); c->r[R_AX] = ds_get(c, 0xC0CE); alu_sub(c, ds_get(c, 0x2DF4), c->r[R_AX], 1, 0); c->icount += 6;
+    if (!(c->flags & F_ZF)) goto flight_forced_pitch;
+    SM4_NEED(8, 0x2848); c->r[R_AX] = ds_get(c, 0xDEB6); c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], 6, 1); c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0);
+    VG3_SETFRAME(0xFFEC, c->r[R_AX]); ds_put(c, 0xDEB6, 0); c->r[R_AX] = ds_get(c, 0xE474); alu_sub(c, ds_get(c, 0xB194), c->r[R_AX], 1, 0); c->icount += 8;
+    if (x86_cond(c, 12)) { SM4_NEED(1, 0x2862); ds_put(c, 0xE472, 0); c->icount++; }
+flight_forced_pitch:
+    SM4_NEED(2, 0x2868); alu_sub(c, ds_get(c, 0x9910), 0, 1, 0); c->icount += 2;
+    if (!(c->flags & F_ZF)) { SM4_NEED(5, 0x286F); c->r[R_AX] = 0xFC00; c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], ds_get(c, 0x2DF0), 1, 0); ds_put(c, 0xE472, c->r[R_AX]); ds_put(c, 0xB07E, 0); ds_put(c, 0x2E0A, 0); c->icount += 5; }
+    SM4_NEED(7, 0x2885); c->r[R_AX] = ds_get(c, 0x368E); c->r[R_DX] = (uint16_t)((int16_t)c->r[R_AX] < 0 ? 0xFFFF : 0); cpu_push16(c, c->r[R_DX]); cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = ds_get(c, 0xDEB6); c->r[R_DX] = (uint16_t)((int16_t)c->r[R_AX] < 0 ? 0xFFFF : 0); set_r8(c, R_CL, 7); c->icount += 7;
+    SM4_NEED(1, 0x2891); VG3_NEAR(0xEF68, 0x2894, 2); cpu_push16(c, c->r[R_DX]); cpu_push16(c, c->r[R_AX]); c->icount += 2;
+    SM4_NEED(1, 0x2896); FLIGHT_NEAR_POP8(0xEE9C, 0x2899, 3); VG3_SETFRAME(0xFFDA, c->r[R_AX]); alu_logic(c, c->r[R_AX], 1); c->icount += 3; if (c->flags & F_ZF) goto flight_pitch_rotation;
+    /* Nonzero roll delta updates the original sine/cosine matrix slots
+     * before composing them with the live aircraft orientation matrix. */
+    SM4_NEED(1, 0x28A0); cpu_push16(c, c->r[R_AX]); c->icount++;
+    SM4_NEED(1, 0x28A1); VG3_FAR(0x28A1, 4); c->r[R_BX] = cpu_pop16(c); ds_put(c, 0x2DD2, c->r[R_AX]); ds_put(c, 0x2DCA, c->r[R_AX]); cpu_push16(c, VG3_FRAME(0xFFDA)); c->icount += 4;
+    SM4_NEED(1, 0x28B0); VG3_FAR(0x28B0, 6); c->r[R_BX] = cpu_pop16(c); ds_put(c, 0x2DCC, c->r[R_AX]); c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0); ds_put(c, 0x2DD0, c->r[R_AX]); cpu_push16(c, 0x2DCA); cpu_push16(c, 0x2D94); c->icount += 6;
+    SM4_NEED(1, 0x28C4); VG3_NEAR(0x2C87, 0x28C7, 2); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); c->icount += 2;
+flight_pitch_rotation:
+    SM4_NEED(4, 0x28C9); c->r[R_AX] = ds_get(c, 0xE472); c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], 7, 1); c->r[R_DX] = (uint16_t)((int16_t)c->r[R_AX] < 0 ? 0xFFFF : 0);
+    c->icount += 3; c->op_cs = c->seg[S_CS]; c->op_ip = 0x28D0; c->ip = 0x28D4;
+    if (!x86_idiv16(c, ds_get(c, 0x368E), 0)) { c->icount++; return 1; } c->icount++;
+    SM4_NEED(3, 0x28D4); VG3_SETFRAME(0xFFE0, c->r[R_AX]); alu_logic(c, c->r[R_AX], 1); c->icount += 3; if (c->flags & F_ZF) goto flight_yaw_rotation;
+    SM4_NEED(1, 0x28DB); cpu_push16(c, c->r[R_AX]); c->icount++;
+    SM4_NEED(1, 0x28DC); VG3_FAR(0x28DC, 4); c->r[R_BX] = cpu_pop16(c); ds_put(c, 0x2DC8, c->r[R_AX]); ds_put(c, 0x2DC0, c->r[R_AX]); cpu_push16(c, VG3_FRAME(0xFFE0)); c->icount += 4;
+    SM4_NEED(1, 0x28EB); VG3_FAR(0x28EB, 6); c->r[R_BX] = cpu_pop16(c); ds_put(c, 0x2DC6, c->r[R_AX]); c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0); ds_put(c, 0x2DC2, c->r[R_AX]); cpu_push16(c, 0x2DB8); cpu_push16(c, 0x2D94); c->icount += 6;
+    SM4_NEED(1, 0x28FF); VG3_NEAR(0x2C87, 0x2902, 2); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); c->icount += 2;
+flight_yaw_rotation:
+    SM4_NEED(3, 0x2904); c->r[R_AX] = VG3_FRAME(0xFFEC); c->r[R_DX] = (uint16_t)((int16_t)c->r[R_AX] < 0 ? 0xFFFF : 0); c->icount += 2;
+    c->op_cs = c->seg[S_CS]; c->op_ip = 0x2908; c->ip = 0x290C;
+    if (!x86_idiv16(c, ds_get(c, 0x368E), 0)) { c->icount++; return 1; } c->icount++;
+    SM4_NEED(3, 0x290C); VG3_SETFRAME(0xFFEE, c->r[R_AX]); alu_logic(c, c->r[R_AX], 1); c->icount += 3; if (c->flags & F_ZF) goto flight_extract_angles;
+    SM4_NEED(1, 0x2913); cpu_push16(c, c->r[R_AX]); c->icount++;
+    SM4_NEED(1, 0x2914); VG3_FAR(0x2914, 4); c->r[R_BX] = cpu_pop16(c); ds_put(c, 0x2DB6, c->r[R_AX]); ds_put(c, 0x2DA6, c->r[R_AX]); cpu_push16(c, VG3_FRAME(0xFFEE)); c->icount += 4;
+    SM4_NEED(1, 0x2923); VG3_FAR(0x2923, 6); c->r[R_BX] = cpu_pop16(c); ds_put(c, 0x2DAA, c->r[R_AX]); c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0); ds_put(c, 0x2DB2, c->r[R_AX]); cpu_push16(c, 0x2D94); cpu_push16(c, 0x2DA6); c->icount += 6;
+    SM4_NEED(1, 0x2937); VG3_NEAR(0x2C87, 0x293A, 2); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); c->icount += 2;
+flight_extract_angles:
+    /* Recover angles after all three matrix compositions. Below the
+     * minimum flying speed, mission settings select the nose-drop shift. */
+    SM4_NEED(1, 0x293C); VG3_NEAR(0x2CB9, 0x293F, 3); c->r[R_AX] = ds_get(c, 0xB07E); alu_sub(c, ds_get(c, 0xB03A), c->r[R_AX], 1, 0); c->icount += 3; if (x86_cond(c, 6)) goto flight_ground_attitude;
+    SM4_NEED(3, 0x2948); c->r[R_AX] = ds_get(c, 0xC0CE); alu_sub(c, ds_get(c, 0x2DF4), c->r[R_AX], 1, 0); c->icount += 3; if (x86_cond(c, 6)) goto flight_ground_attitude;
+    SM4_NEED(3, 0x2951); { const uint16_t offset = ds_get(c, 0x9924); const uint16_t segment = ds_get(c, 0x9926); c->r[R_BX] = offset; c->seg[S_ES] = segment; }
+    alu_sub(c, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x40)), 2, 1, 0); c->icount += 3; if (c->flags & F_ZF) goto flight_fast_sink;
+    SM4_NEED(2, 0x295C); alu_sub(c, ds_get(c, 0xC5F4), 8, 1, 0); c->icount += 2; if (x86_cond(c, 14)) goto flight_slow_sink;
+flight_fast_sink:
+    SM4_NEED(2, 0x2963); VG3_SETFRAME(0xFFD0, 1); c->icount += 2; goto flight_sink;
+flight_slow_sink:
+    SM4_NEED(1, 0x296A); VG3_SETFRAME(0xFFD0, 2); c->icount++;
+flight_sink:
+    SM4_NEED(7, 0x296F); ds_put8(c, 0x2DFB, 1); set_r8(c, R_CL, mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x30))));
+    c->r[R_AX] = ds_get(c, 0xB03A); c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], ds_get(c, 0xB07E), 1, 0); c->r[R_AX] = (uint16_t)x86_shift(c, 5, c->r[R_AX], get_r8(c, R_CL), 1);
+    ds_put(c, 0x2DF0, (uint16_t)alu_sub(c, ds_get(c, 0x2DF0), c->r[R_AX], 1, 0)); c->icount += 7; if (c->flags & F_SF) goto flight_sink_warning;
+    SM4_NEED(2, 0x2986); alu_sub(c, ds_get(c, 0x2DF4), 200, 1, 0); c->icount += 2; if (!(c->flags & F_CF)) goto flight_ground_attitude;
+flight_sink_warning:
+    SM4_NEED(2, 0x298E); cpu_push16(c, 1); cpu_push16(c, 14); c->icount += 2;
+    SM4_NEED(1, 0x2992); VG3_NEAR(0xD3F9, 0x2995, 2); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); c->icount += 2;
+flight_ground_attitude:
+    SM4_NEED(3, 0x2997); c->r[R_AX] = ds_get(c, 0xC0CE); alu_sub(c, ds_get(c, 0x2DF4), c->r[R_AX], 1, 0); c->icount += 3; if (!(c->flags & F_ZF)) goto flight_attitude_flag;
+    SM4_NEED(2, 0x29A0); alu_sub(c, ds_get(c, 0x2DF2), 0, 1, 0); c->icount += 2;
+    if (!(c->flags & F_ZF)) { SM4_NEED(2, 0x29A7); ds_put(c, 0x2DF2, 0); ds_put8(c, 0x2DFB, 1); c->icount += 2; }
+    SM4_NEED(2, 0x29B2); alu_sub(c, ds_get(c, 0x2DF0), 0, 1, 0); c->icount += 2; if (x86_cond(c, 12)) goto flight_ground_pitch;
+    SM4_NEED(1, 0x29B9); c->icount++; if (x86_cond(c, 14)) goto flight_attitude_flag;
+    SM4_NEED(3, 0x29BB); c->r[R_AX] = ds_get(c, 0xE474); alu_sub(c, ds_get(c, 0xB194), c->r[R_AX], 1, 0); c->icount += 3; if (x86_cond(c, 13)) goto flight_attitude_flag;
+flight_ground_pitch:
+    SM4_NEED(2, 0x29C4); alu_sub(c, ds_get(c, 0x9910), 0, 1, 0); c->icount += 2;
+    if (c->flags & F_ZF) { SM4_NEED(1, 0x29CB); ds_put(c, 0x2DF0, 0); c->icount++; }
+    SM4_NEED(1, 0x29D1); ds_put8(c, 0x2DFB, 1); c->icount++;
+flight_attitude_flag:
+    SM4_NEED(3, 0x29D6); ds_put(c, 0x9910, 0); alu_sub(c, ds_get(c, 0xE32A), 0, 1, 0); c->icount += 3; if (c->flags & F_ZF) goto flight_attitude_changed;
+    SM4_NEED(1, 0x29E3); cpu_push16(c, ds_get(c, 0x2DF2)); c->icount++;
+    SM4_NEED(1, 0x29E7); VG3_NEAR(0xEE0C, 0x29EA, 6); c->r[R_BX] = cpu_pop16(c); c->r[R_DX] = (uint16_t)((int16_t)c->r[R_AX] < 0 ? 0xFFFF : 0);
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_DX], 1, 0); c->r[R_AX] = (uint16_t)x86_shift(c, 7, c->r[R_AX], 1, 1); cpu_push16(c, ds_get(c, 0x2DF0)); c->r[R_SI] = c->r[R_AX]; c->icount += 6;
+    SM4_NEED(1, 0x29F6); VG3_NEAR(0xEE0C, 0x29F9, 4); c->r[R_BX] = cpu_pop16(c); c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_SI], 1, 0); alu_sub(c, c->r[R_AX], 0x1000, 1, 0); c->icount += 4; if (x86_cond(c, 14)) goto flight_attitude_steady;
+flight_attitude_changed:
+    SM4_NEED(2, 0x2A01); ds_put8(c, 0xE56E, 1); c->icount += 2; goto flight_rebuild_matrix;
+flight_attitude_steady:
+    SM4_NEED(1, 0x2A08); ds_put8(c, 0xE56E, 0); c->icount++;
+flight_rebuild_matrix:
+    SM4_NEED(2, 0x2A0D); alu_sub(c, ds_get8(c, 0x2DFB), 0, 0, 0); c->icount += 2;
+    if (!(c->flags & F_ZF)) { SM4_NEED(1, 0x2A14); VG3_NEAR(0x2E5E, 0x2A17, 0); }
+    /* Integrate the climb: the pitch less the reference pitch [98F6] (the
+     * same difference vgame_approach_cue calls "the pitch") goes through the
+     * far sine and a fixed multiply by speed/16. The product is the climb
+     * shown at [E586]; divided by the frame rate it moves the fine height
+     * [2DF6]. The height before this frame stays at [bp-0Ch] for the
+     * touchdown test below. */
+    SM4_NEED(5, 0x2A17); c->r[R_AX] = ds_get(c, 0x2DF6); VG3_SETFRAME(0xFFF4, c->r[R_AX]);
+    c->r[R_AX] = ds_get(c, 0x2DF0); c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], ds_get(c, 0x98F6), 1, 0); cpu_push16(c, c->r[R_AX]); c->icount += 5;
+    SM4_NEED(1, 0x2A25); VG3_FAR(0x2A25, 5); c->r[R_BX] = cpu_pop16(c); cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)x86_shift(c, 5, ds_get(c, 0xB07E), 4, 1); cpu_push16(c, c->r[R_AX]); c->icount += 5;
+    SM4_NEED(1, 0x2A33); VG3_FAR(0x2A33, 5); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); ds_put(c, 0xE586, c->r[R_AX]);
+    c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0; c->icount += 4;
+    /* The frame rate can be any word here: a divide fault keeps the
+     * original's faulting instruction and resume address. */
+    c->op_cs = c->seg[S_CS]; c->op_ip = 0x2A3E; c->ip = 0x2A42;
+    if (!x86_idiv16(c, ds_get(c, 0x368E), 0)) { c->icount++; return 1; } c->icount++;
+    /* Move the 32-bit X/Y position [BA3C:BA3E]/[C056:C058] by the
+     * horizontal speed [bp-22h] turned by the heading's sine and cosine,
+     * scaled by 1/16 and divided by the frame rate. */
+    SM4_NEED(2, 0x2A42); ds_put(c, 0x2DF6, (uint16_t)alu_add(c, ds_get(c, 0x2DF6), c->r[R_AX], 1, 0)); cpu_push16(c, ds_get(c, 0x2DEE)); c->icount += 2;
+    SM4_NEED(1, 0x2A4A); VG3_FAR(0x2A4A, 3); c->r[R_BX] = cpu_pop16(c); cpu_push16(c, c->r[R_AX]); cpu_push16(c, VG3_FRAME(0xFFDE)); c->icount += 3;
+    SM4_NEED(1, 0x2A54); VG3_FAR(0x2A54, 11); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); c->r[R_CX] = 0x10;
+    c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0; c->icount += 4;
+    c->op_cs = c->seg[S_CS]; c->op_ip = 0x2A5F; c->ip = 0x2A61;
+    if (!x86_idiv16(c, c->r[R_CX], 0)) { c->icount++; return 1; } c->icount++;
+    c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0; c->icount++;
+    c->op_cs = c->seg[S_CS]; c->op_ip = 0x2A62; c->ip = 0x2A66;
+    if (!x86_idiv16(c, ds_get(c, 0x368E), 0)) { c->icount++; return 1; } c->icount++;
+    c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0;
+    ds_put(c, 0xBA3C, (uint16_t)alu_add(c, ds_get(c, 0xBA3C), c->r[R_AX], 1, 0));
+    ds_put(c, 0xBA3E, (uint16_t)alu_add(c, ds_get(c, 0xBA3E), c->r[R_DX], 1, !!(c->flags & F_CF)));
+    cpu_push16(c, ds_get(c, 0x2DEE)); c->icount += 4;
+    SM4_NEED(1, 0x2A73); VG3_FAR(0x2A73, 3); c->r[R_BX] = cpu_pop16(c); cpu_push16(c, c->r[R_AX]); cpu_push16(c, VG3_FRAME(0xFFDE)); c->icount += 3;
+    SM4_NEED(1, 0x2A7D); VG3_FAR(0x2A7D, 10); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); c->r[R_CX] = 0x10;
+    c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0; c->icount += 4;
+    c->op_cs = c->seg[S_CS]; c->op_ip = 0x2A88; c->ip = 0x2A8A;
+    if (!x86_idiv16(c, c->r[R_CX], 0)) { c->icount++; return 1; } c->icount++;
+    c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0; c->icount++;
+    c->op_cs = c->seg[S_CS]; c->op_ip = 0x2A8B; c->ip = 0x2A8F;
+    if (!x86_idiv16(c, ds_get(c, 0x368E), 0)) { c->icount++; return 1; } c->icount++;
+    c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0;
+    ds_put(c, 0xC056, (uint16_t)alu_add(c, ds_get(c, 0xC056), c->r[R_AX], 1, 0));
+    ds_put(c, 0xC058, (uint16_t)alu_add(c, ds_get(c, 0xC058), c->r[R_DX], 1, !!(c->flags & F_CF))); c->icount += 3;
+    /* Keep the fine height on or above the ground: a wrapped (above F230h)
+     * or lower value takes the ground level [C0CE]; then cap it at EA60h.
+     * The displayed height [2DF4] compresses it: unchanged below 2000h,
+     * halved from there to 4000h, quartered above. */
+    SM4_NEED(2, 0x2A98); alu_sub(c, ds_get(c, 0x2DF6), 0xF230, 1, 0); c->icount += 2; if (x86_cond(c, 7)) goto flight_height_to_ground;
+    SM4_NEED(3, 0x2AA0); c->r[R_AX] = ds_get(c, 0xC0CE); alu_sub(c, ds_get(c, 0x2DF6), c->r[R_AX], 1, 0); c->icount += 3; if (x86_cond(c, 3)) goto flight_height_cap;
+flight_height_to_ground:
+    SM4_NEED(2, 0x2AA9); c->r[R_AX] = ds_get(c, 0xC0CE); ds_put(c, 0x2DF6, c->r[R_AX]); c->icount += 2;
+flight_height_cap:
+    SM4_NEED(2, 0x2AAF); alu_sub(c, ds_get(c, 0x2DF6), 0xEA60, 1, 0); c->icount += 2;
+    if (!x86_cond(c, 6)) { SM4_NEED(1, 0x2AB7); ds_put(c, 0x2DF6, 0xEA60); c->icount++; }
+    SM4_NEED(2, 0x2ABD); alu_sub(c, ds_get(c, 0x2DF6), 0x2000, 1, 0); c->icount += 2;
+    if (!x86_cond(c, 3)) { SM4_NEED(2, 0x2AC5); c->r[R_AX] = ds_get(c, 0x2DF6); c->icount += 2; goto flight_height_store; }
+    SM4_NEED(2, 0x2ACA); alu_sub(c, ds_get(c, 0x2DF6), 0x4000, 1, 0); c->icount += 2;
+    if (!x86_cond(c, 3)) {
+        SM4_NEED(5, 0x2AD2); c->r[R_AX] = (uint16_t)alu_sub(c, ds_get(c, 0x2DF6), 0x2000, 1, 0); c->r[R_AX] = (uint16_t)x86_shift(c, 5, c->r[R_AX], 1, 1);
+        set_r8(c, R_AH, (uint8_t)alu_add(c, get_r8(c, R_AH), 0x20, 0, 0)); c->icount += 5; goto flight_height_store;
+    }
+    SM4_NEED(4, 0x2ADF); c->r[R_AX] = (uint16_t)alu_sub(c, ds_get(c, 0x2DF6), 0x4000, 1, 0); c->r[R_AX] = (uint16_t)x86_shift(c, 5, c->r[R_AX], 2, 1);
+    set_r8(c, R_AH, (uint8_t)alu_add(c, get_r8(c, R_AH), 0x30, 0, 0)); c->icount += 4;
+flight_height_store:
+    /* Touchdown: the height has reached the ground level this frame from
+     * above it. With the ground-contact flag [3DA2] set, a sink rate the
+     * undercarriage cannot take, or a bank too steep for the gear when the
+     * landing assist ([9B34] bit 0) is off, is a crash. */
+    SM4_NEED(4, 0x2AEB); ds_put(c, 0x2DF4, c->r[R_AX]); c->r[R_AX] = ds_get(c, 0xC0CE); alu_sub(c, ds_get(c, 0x2DF4), c->r[R_AX], 1, 0); c->icount += 4;
+    if (!(c->flags & F_ZF)) { SM4_NEED(1, 0x2AF7); c->icount++; goto flight_history; }
+    SM4_NEED(2, 0x2AFA); alu_sub(c, c->r[R_AX], VG3_FRAME(0xFFF4), 1, 0); c->icount += 2;
+    if (!x86_cond(c, 12)) { SM4_NEED(1, 0x2AFF); c->icount++; goto flight_clear_climb; }
+    SM4_NEED(2, 0x2B02); alu_sub(c, ds_get(c, 0x3DA2), 0, 1, 0); c->icount += 2; if (c->flags & F_ZF) goto flight_clear_climb;
+    SM4_NEED(2, 0x2B09); alu_sub(c, ds_get(c, 0xC09A), 0, 1, 0); c->icount += 2;
+    if (c->flags & F_ZF) {
+        SM4_NEED(2, 0x2B10); cpu_push16(c, 2); cpu_push16(c, 10); c->icount += 2;
+        SM4_NEED(1, 0x2B14); VG3_NEAR(0xD3F9, 0x2B17, 2); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); c->icount += 2;
+    }
+    /* The allowed sink: 100h, 180h with bit 9 of the terrain type's flags
+     * (the type [E00C]'s byte at B2D7h), against the climb [E586] times the
+     * aircraft record's gear weight (+40h). MUL leaves DX's low byte for the
+     * SBB mask; only DH is reloaded. */
+    SM4_NEED(15, 0x2B19); { const uint16_t offset = ds_get(c, 0x9924); const uint16_t segment = ds_get(c, 0x9926); c->r[R_BX] = offset; c->seg[S_ES] = segment; }
+    c->r[R_AX] = seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x40)); c->r[R_CX] = c->r[R_AX];
+    x86_mul16(c, ds_get(c, 0xE586)); c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0);
+    c->r[R_BX] = (uint16_t)x86_shift(c, 4, ds_get(c, 0xE00C), 4, 1); set_r8(c, R_DH, ds_get8(c, (uint16_t)(c->r[R_BX] + 0xB2D7)));
+    c->r[R_DX] = (uint16_t)alu_logic(c, c->r[R_DX] & 0x0200, 1); alu_sub(c, c->r[R_DX], 1, 1, 0);
+    c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, !!(c->flags & F_CF));
+    set_r8(c, R_DL, (uint8_t)alu_logic(c, get_r8(c, R_DL) & 0x80, 0)); set_r8(c, R_DH, (uint8_t)alu_add(c, get_r8(c, R_DH), 1, 0, 0));
+    alu_sub(c, c->r[R_DX], c->r[R_AX], 1, 0); c->icount += 15; if (x86_cond(c, 2)) goto flight_crash;
+    SM4_NEED(2, 0x2B47); alu_logic(c, c->r[R_CX], 1); c->icount += 2; if (c->flags & F_ZF) goto flight_clear_climb;
+    SM4_NEED(2, 0x2B4B); alu_logic(c, ds_get8(c, 0x9B34) & 1, 0); c->icount += 2; if (!(c->flags & F_ZF)) goto flight_crash;
+    SM4_NEED(2, 0x2B52); cpu_push16(c, ds_get(c, 0x2DF2)); c->r[R_SI] = c->r[R_CX]; c->icount += 2;
+    /* |roll| against 18h/weight in the high byte: SI is the nonzero
+     * weight and the quotient is at most 18h, so the DIV cannot fault. */
+    SM4_NEED(1, 0x2B58); VG3_NEAR(0xEE0C, 0x2B5B, 9); c->r[R_BX] = cpu_pop16(c); c->r[R_CX] = c->r[R_AX]; c->r[R_AX] = 0x18;
+    c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0); x86_div16(c, c->r[R_SI]);
+    set_r8(c, R_AH, get_r8(c, R_AL)); set_r8(c, R_AL, (uint8_t)alu_sub(c, get_r8(c, R_AL), get_r8(c, R_AL), 0, 0));
+    alu_sub(c, c->r[R_AX], c->r[R_CX], 1, 0); c->icount += 9; if (x86_cond(c, 3)) goto flight_clear_climb;
+flight_crash:
+    /* Crash: the sound, a pause of 60 ticks, then the flight's end (5). */
+    SM4_NEED(2, 0x2B6D); cpu_push16(c, 2); cpu_push16(c, 4); c->icount += 2;
+    SM4_NEED(1, 0x2B71); VG3_NEAR(0xD3F9, 0x2B74, 3); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); cpu_push16(c, 0x3C); c->icount += 3;
+    SM4_NEED(1, 0x2B78); VG3_NEAR(0x04C7, 0x2B7B, 2); c->r[R_BX] = cpu_pop16(c); cpu_push16(c, 5); c->icount += 2;
+    SM4_NEED(1, 0x2B7E); VG3_NEAR(0x4A42, 0x2B81, 1); c->r[R_BX] = cpu_pop16(c); c->icount++;
+flight_clear_climb:
+    SM4_NEED(1, 0x2B82); ds_put(c, 0xE586, 0); c->icount++;
+flight_history:
+    /* Record this frame's pose in the 16-entry ring at B094h (16 bytes per
+     * frame: X, Y, height, heading, pitch, roll), indexed by the frame
+     * counter [3D8E]'s low nibble, in the original's store order. */
+    SM4_NEED(22, 0x2B88); c->r[R_AX] = ds_get(c, 0x2DEE); set_r8(c, R_BL, ds_get8(c, 0x3D8E));
+    c->r[R_BX] = (uint16_t)alu_logic(c, c->r[R_BX] & 0x0F, 1); VG3_SETFRAME(0xFFD2, c->r[R_BX]); c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 4, 1);
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0xB09E), c->r[R_AX]); c->r[R_AX] = ds_get(c, 0x2DF0); ds_put(c, (uint16_t)(c->r[R_BX] + 0xB0A0), c->r[R_AX]);
+    c->r[R_AX] = ds_get(c, 0x2DF2); ds_put(c, (uint16_t)(c->r[R_BX] + 0xB0A2), c->r[R_AX]);
+    c->r[R_AX] = ds_get(c, 0xBA3C); c->r[R_DX] = ds_get(c, 0xBA3E); ds_put(c, (uint16_t)(c->r[R_BX] + 0xB094), c->r[R_AX]); ds_put(c, (uint16_t)(c->r[R_BX] + 0xB096), c->r[R_DX]);
+    c->r[R_AX] = ds_get(c, 0xC056); c->r[R_DX] = ds_get(c, 0xC058); ds_put(c, (uint16_t)(c->r[R_BX] + 0xB098), c->r[R_AX]); ds_put(c, (uint16_t)(c->r[R_BX] + 0xB09A), c->r[R_DX]);
+    c->r[R_AX] = ds_get(c, 0x2DF4); ds_put(c, (uint16_t)(c->r[R_BX] + 0xB09C), c->r[R_AX]);
+    alu_sub(c, ds_get(c, 0xE32A), 1, 1, 0); c->icount += 22;
+    if (!(c->flags & F_ZF)) { SM4_NEED(1, 0x2BD6); c->icount++; goto flight_return; }
+    /* In view mode 1, turn rates for the view: the heading and pitch change
+     * since a frame some way back in the ring - toward the tracked object
+     * [3D92] (its bearing over 128, times the frame rate, limited to 0-12),
+     * or one second back - resolved through the roll into [E572]/[E57C]. */
+    SM4_NEED(2, 0x2BD9); alu_sub(c, ds_get(c, 0x3D92), 0, 1, 0); c->icount += 2;
+    if (!x86_cond(c, 12)) {
+        SM4_NEED(9, 0x2BE0); cpu_push16(c, 12); cpu_push16(c, 0); c->r[R_AX] = ds_get(c, 0xC0DE); c->r[R_BX] = x86_imul3(c, ds_get(c, 0x3D92), 0x24);
+        c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], ds_get(c, (uint16_t)(c->r[R_BX] + 0xC16E)), 1, 0); cpu_push16(c, c->r[R_AX]);
+        c->r[R_AX] = ds_get(c, 0xC0D0); c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], ds_get(c, (uint16_t)(c->r[R_BX] + 0xC16C)), 1, 0); cpu_push16(c, c->r[R_AX]); c->icount += 9;
+        SM4_NEED(1, 0x2BF9); VG3_NEAR(0xC6B3, 0x2BFC, 5); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); x86_imul16(c, ds_get(c, 0x368E));
+        c->r[R_AX] = (uint16_t)x86_shift(c, 7, c->r[R_AX], 7, 1); cpu_push16(c, c->r[R_AX]); c->icount += 5;
+        SM4_NEED(1, 0x2C06); VG3_NEAR(0xC67A, 0x2C09, 2); VG3_DROP(6); c->icount += 2;
+    } else {
+        SM4_NEED(2, 0x2C0E); c->r[R_AX] = (uint16_t)alu_dec(c, ds_get(c, 0x368E), 1); c->icount += 2;
+    }
+    SM4_NEED(16, 0x2C12); VG3_SETFRAME(0xFFD2, c->r[R_AX]); c->r[R_AX] = ds_get(c, 0x2DEE); set_r8(c, R_BL, ds_get8(c, 0x3D8E));
+    set_r8(c, R_BL, (uint8_t)alu_sub(c, get_r8(c, R_BL), mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] + 0xFFD2))), 0, 0));
+    c->r[R_BX] = (uint16_t)alu_logic(c, c->r[R_BX] & 0x0F, 1); c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 4, 1);
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], ds_get(c, (uint16_t)(c->r[R_BX] + 0xB09E)), 1, 0); VG3_SETFRAME(0xFFD8, c->r[R_AX]);
+    c->r[R_CX] = ds_get(c, 0x2DF0); c->r[R_CX] = (uint16_t)alu_sub(c, c->r[R_CX], ds_get(c, (uint16_t)(c->r[R_BX] + 0xB0A0)), 1, 0); VG3_SETFRAME(0xFFF0, c->r[R_CX]);
+    c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0); c->r[R_AX] = (uint16_t)x86_shift(c, 7, c->r[R_AX], 2, 1); cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, ds_get(c, 0x2DF2)); c->r[R_SI] = c->r[R_CX]; c->icount += 16;
+    SM4_NEED(1, 0x2C43); VG3_NEAR(0xC831, 0x2C46, 6); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); c->r[R_SI] = (uint16_t)x86_shift(c, 7, c->r[R_SI], 2, 1);
+    cpu_push16(c, c->r[R_SI]); cpu_push16(c, ds_get(c, 0x2DF2)); c->r[R_SI] = c->r[R_AX]; c->icount += 6;
+    SM4_NEED(1, 0x2C52); VG3_NEAR(0xC818, 0x2C55, 8); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); c->r[R_SI] = (uint16_t)alu_add(c, c->r[R_SI], c->r[R_AX], 1, 0);
+    ds_put(c, 0xE572, c->r[R_SI]); c->r[R_AX] = (uint16_t)x86_shift(c, 7, VG3_FRAME(0xFFD8), 2, 1); cpu_push16(c, c->r[R_AX]); cpu_push16(c, ds_get(c, 0x2DF2)); c->icount += 8;
+    SM4_NEED(1, 0x2C68); VG3_NEAR(0xC818, 0x2C6B, 7); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); c->r[R_CX] = (uint16_t)x86_shift(c, 7, VG3_FRAME(0xFFF0), 1, 1);
+    cpu_push16(c, c->r[R_CX]); cpu_push16(c, ds_get(c, 0x2DF2)); c->r[R_SI] = c->r[R_AX]; c->icount += 7;
+    SM4_NEED(1, 0x2C79); VG3_NEAR(0xC831, 0x2C7C, 4); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); c->r[R_SI] = (uint16_t)alu_add(c, c->r[R_SI], c->r[R_AX], 1, 0);
+    ds_put(c, 0xE57C, c->r[R_SI]); c->icount += 4;
+flight_return:
+    SM4_NEED(3, 0x2C84); c->r[R_SI] = cpu_pop16(c); x86_leave(c); near_ret(c); c->icount += 3; return 1;
+}
+#undef FLIGHT_NEAR_POP8
+
 static const recomp_override MATCHED[] = {
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x1EB0, vgame_flight_input, "flight controls and integration", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xBCEF, vgame_camera_image, "reconnaissance camera image", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x983E, vgame_moving_objects, "moving objects and target selection", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x1058, 0x0016, vgame_hud_pass, "HUD tapes, frame and pitch ladder", 1 },

@@ -308,7 +308,7 @@ static int compare(const char *mod, uint32_t off, uint16_t cs, uint16_t ip, int 
 static void stub_driver_thunks(uint8_t *pristine, uint32_t at, const rc_module *m, const recomp_override *o)
 {
     const int vgame_draw = !strcmp(m->name, "VGAME.EXE") &&
-        ((o->seg == 0 && (o->ip == 0xBCEF || o->ip == 0x983E || o->ip == 0x79BE || o->ip == 0x8A90 || o->ip == 0x9515 || o->ip == 0x1E79 || o->ip == 0xB171 || o->ip == 0xD6DD || o->ip == 0x4777 ||
+        ((o->seg == 0 && (o->ip == 0x1EB0 || o->ip == 0xBCEF || o->ip == 0x983E || o->ip == 0x79BE || o->ip == 0x8A90 || o->ip == 0x9515 || o->ip == 0x1E79 || o->ip == 0xB171 || o->ip == 0xD6DD || o->ip == 0x4777 ||
                          o->ip == 0xD3F9 || o->ip == 0xD87C || o->ip == 0x72D8 ||
                            o->ip == 0x8A18 || o->ip == 0x881F || o->ip == 0x796E || o->ip == 0x3A4E ||
                            o->ip == 0xB0C2 || o->ip == 0xC45C)) ||
@@ -441,6 +441,7 @@ static const struct { const char *module; uint16_t ip; int arg; uint16_t v[2]; }
 /* Exact code ranges when the default 0x300-byte window is unsuitable:
  * long/shared tails, or small walkers whose unrelated callees are nearby. */
 static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
+    { "VGAME.EXE", 0x1EB0, 0x1EB0, 0x0DD7 }, /* flight input through RET */
     { "VGAME.EXE", 0xBCEF, 0xBCEF, 0x0747 }, /* complete camera image */
     { "VGAME.EXE", 0x983E, 0x983E, 0x06BC }, /* entire moving-object pass */
     { "VGAME.EXE", 0x0016, 0x0016, 0x09C2 }, /* HUD pass through RET */
@@ -570,6 +571,27 @@ static uint16_t g_below;                /* how far the routine's code reaches be
  * trace in the end state. */
 static int g_self_written, g_watch_transient;
 static uint64_t g_camera_seen;
+/* Flight input (VGAME 0000:1EB0): which of its instruction starts the
+ * original ran in this state, and over compared states (all, and those
+ * the named routine finished itself). */
+static int g_flight_fixture, g_flight_state;
+static unsigned long long g_flight_escapes;
+static uint8_t g_flight_seen[0x0DD7], g_flight_cover[0x0DD7], g_flight_whole[0x0DD7];
+/* The stack depths the original had at each instruction (up to four;
+ * five means more): a callee return the original reached at the call's
+ * depth, or up to 16 bytes above it (what the callee's RET n removed),
+ * must be reached by the named code too. */
+static uint16_t g_flight_sp[0x0DD7][4];
+static uint8_t g_flight_nsp[0x0DD7];
+
+static int flight_reached(uint16_t ip, uint16_t lo, uint16_t span)
+{
+    const unsigned k = (uint16_t)(ip - 0x1EB0);
+    if (k >= sizeof g_flight_nsp) return 0;
+    if (g_flight_nsp[k] > 4) return 1;
+    for (unsigned j = 0; j < g_flight_nsp[k]; j++) if ((uint16_t)(g_flight_sp[k][j] - lo) <= span) return 1;
+    return 0;
+}
 static uint64_t g_moving_seen;
 static int g_camera_fixture;
 static int g_hud_fixture;
@@ -583,7 +605,7 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
     const uint32_t watch = phys(cs, (uint16_t)(ip - g_below));
     const int watching = (g_below || g_watch_transient) && a->mem == g_mem[0];
     while (*steps < 100000) {
-        const unsigned watch_bytes = (ip == 0xBCEF || ip == 0x983E || ip == 0x0016 || ip == 0x79BE || ip == 0x8A90) ? g_span : 0x300u + g_below;
+        const unsigned watch_bytes = (ip == 0x1EB0 || ip == 0xBCEF || ip == 0x983E || ip == 0x0016 || ip == 0x79BE || ip == 0x8A90) ? g_span : 0x300u + g_below;
         if (watching && !g_self_written && memcmp(a->mem + watch, g_pristine + watch, watch_bytes)) g_self_written = 1;
         if (g_trace) printf("      %04X:%04X clk %llu sp %04X\n", a->seg[S_CS], a->ip, (unsigned long long)a->icount, a->r[R_SP]);
         const uint16_t here = a->ip;
@@ -648,6 +670,15 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
                 if (here == branch[k]) g_panel_seen |= 1u << k;
             if (here == 0x95A4 && x86_cond(a, 7)) g_panel_seen |= 1u << 14;
         }
+        if (g_flight_fixture && own && a->mem == g_mem[0] && (uint16_t)(here - 0x1EB0) < sizeof g_flight_seen)
+        {
+            const unsigned k = (uint16_t)(here - 0x1EB0);
+            g_flight_seen[k] = 1;
+            if (!flight_reached(here, a->r[R_SP], 0)) {
+                if (g_flight_nsp[k] < 4) g_flight_sp[k][g_flight_nsp[k]] = a->r[R_SP];
+                if (g_flight_nsp[k] < 5) g_flight_nsp[k]++;
+            }
+        }
         if (own && (uint16_t)(here - g_from) > g_reach) g_reach = (uint16_t)(here - g_from);
         int inside = own;
         for (int k = 0; k < g_nend && !inside; k++) inside = a->seg[S_CS] == cs && here >= g_end_lo[k] && here < g_end_hi[k];
@@ -687,11 +718,26 @@ static uint16_t g_back_cs, g_back_ip, g_back_sp;
 static int step_runner(machine_t *mm)
 {
     cpu_t *c = &mm->cpu;
+    const uint16_t call_sp = (uint16_t)(c->r[R_SP] + (mm->trap_cs == c->seg[S_CS] ? 2 : 4));  /* before the CALL pushed */
     g_ncalls++;
     if (c->icount > c->stop_at) g_callover = 1;  /* the CALL itself ran at or after the limit */
     for (int i = 0; i < 200000; i++) {
         if (c->ip == mm->trap_ip && c->r[R_SP] == mm->trap_sp && c->seg[S_CS] == mm->trap_cs) return RUN_TRAP;
-        if (c->ip == g_back_ip && c->r[R_SP] == g_back_sp && c->seg[S_CS] == g_back_cs) return RUN_SLICE;
+        if (c->ip == g_back_ip && c->r[R_SP] == g_back_sp && c->seg[S_CS] == g_back_cs) {
+            /* A flight-input call whose return was never caught although
+             * the original did come back there from this call's depth: the
+             * original then finished
+             * the routine and the state would compare equal without testing
+             * the named code after it. (A callee that wanders off in both
+             * engines - random code bytes, a random stack - never returns
+             * in the original either.) */
+            if (g_flight_fixture && mm->trap_cs == g_back_cs && flight_reached(mm->trap_ip, call_sp, 16)) {
+                g_flight_escapes++;
+                printf("  ESCAPED CALL (state %d): trap %04X:%04X sp %04X, at %04X:%04X sp %04X flags %04X\n", g_flight_state,
+                       mm->trap_cs, mm->trap_ip, mm->trap_sp, c->seg[S_CS], c->ip, c->r[R_SP], c->flags);
+            }
+            return RUN_SLICE;
+        }
         if (c->icount >= c->stop_at) { g_stopped = 1; return RUN_SLICE; }
         if (g_trace) printf("      (callee) %04X:%04X clk %llu sp %04X\n", c->seg[S_CS], c->ip, (unsigned long long)c->icount, c->r[R_SP]);
         cpu_step(c);
@@ -758,10 +804,12 @@ int main(int argc, char **argv)
          * PLAYER's format reader can similarly overwrite its RET through
          * an aliased frame slot. Final memory misses these changed-code inputs. */
         g_camera_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0xBCEF;
+        g_flight_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0x1EB0;
+        if (g_flight_fixture) { memset(g_flight_cover, 0, sizeof g_flight_cover); memset(g_flight_whole, 0, sizeof g_flight_whole); }
         g_hud_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0x1058 && o->ip == 0x0016;
         g_watch_transient = (!strcmp(o->module, "VGAME.EXE") && o->seg == 0x1058 && o->ip == 0x0016) ||
             (o->seg == 0 &&
-            ((!strcmp(o->module, "VGAME.EXE") && (o->ip == 0xBCEF || o->ip == 0x983E || o->ip == 0x79BE || o->ip == 0x8A90)) ||
+            ((!strcmp(o->module, "VGAME.EXE") && (o->ip == 0x1EB0 || o->ip == 0xBCEF || o->ip == 0x983E || o->ip == 0x79BE || o->ip == 0x8A90)) ||
              (!strcmp(o->module, "START.EXE") && (o->ip == 0x39B3 || o->ip == 0x39D5)) ||
              (!strcmp(o->module, "END.EXE") && (o->ip == 0x1CB1 || o->ip == 0x1CD3)) ||
              (!strcmp(o->module, "PLAYER.EXE") && o->ip == 0x1E90)));
@@ -950,6 +998,128 @@ int main(int argc, char **argv)
                         g_pristine[address] = g_mem[0][address] = g_mem[1][address] = (uint8_t)(args[j] >> (8 * byte));
                     }
                     for (unsigned j = 0; j < 4; j++) small[j] = args[j];
+                }
+            }
+            /* Flight input: in some states the key poll (EBC4) reports the
+             * pushed-back word [929C] and counts it down, and the BIOS read
+             * (EE6A) returns a chosen key once and an ordinary key after, so
+             * every command arm runs and the pause waits end; the quit
+             * prompt's driver poll reports a key and its read answers Y or N.
+             * Other classes plant small worlds for post-ejection, low-speed
+             * pitch recovery, ground braking and touchdown. Everything else
+             * stays random. */
+            g_flight_state = s;
+            if (g_flight_fixture) {
+                static const uint8_t poll[] = { 0xA1, 0x9C, 0x92, 0xFF, 0x0E, 0x9C, 0x92, 0xC3 };
+                static const uint16_t deltas[] = { 0x011B, 0x0A15, 0x00FD, 0x0032, 0x00CC, 0x0012, 0x02C3, 0x0900, 0x0600, 0x0F63, 0x019D };
+                const unsigned v = (unsigned)s >> 3;
+                const int keyed = (s & 7) == 1;
+                uint16_t key = 0;
+                for (unsigned j = 0; j <= v % 13 && j < 11; j++) key = (uint16_t)(key + deltas[j]);
+                if (v % 13 == 11) key = 0x1E61;
+                if (v % 13 == 12) key = 0;
+                const uint32_t h = (uint32_t)v * 0x9E3779B1u;
+                static const uint8_t read[] = { 0xA1, 0x9E, 0x92, 0xC7, 0x06, 0x9E, 0x92, 0x61, 0x1E, 0xC3 };
+                const uint8_t prompt[] = { 0x31, 0xC0, 0xCB, 0, 0, 0xB8, (h >> 20) & 1 ? 0x79 : 0x6E, 0x00, 0xCB };
+                for (unsigned j = 0; j < sizeof poll; j++) {
+                    const uint32_t address = at + 0xEBC4 + j;
+                    g_pristine[address] = g_mem[0][address] = g_mem[1][address] = keyed ? poll[j] : m->image[0xEBC4 + j];
+                }
+                for (unsigned j = 0; j < sizeof read; j++) {
+                    const uint32_t address = at + 0xEE6A + j;
+                    g_pristine[address] = g_mem[0][address] = g_mem[1][address] = keyed ? read[j] : m->image[0xEE6A + j];
+                }
+                /* The quit prompt's page saves/restores (1039:00D1/00E8/0101)
+                 * and its message (D52E) return at once in keyed states:
+                 * whole-page copies and text drawing outrun the step limit. */
+                static const struct { uint32_t at; uint8_t op; } quick[] = {
+                    { 0x10461, 0xCB }, { 0x10478, 0xCB }, { 0x10491, 0xCB }, { 0x0D52E, 0xC3 } };
+                for (unsigned j = 0; j < sizeof quick / sizeof quick[0]; j++) {
+                    const uint32_t address = at + quick[j].at;
+                    g_pristine[address] = g_mem[0][address] = g_mem[1][address] = keyed ? quick[j].op : m->image[quick[j].at];
+                }
+                /* The crash pause (04C7) waits for timer ticks no state
+                 * delivers; the joystick read and re-centre (1058:0CB2,
+                 * 1058:0C91) poll the game port with interrupts off. In half
+                 * of the fixture states they return at once. */
+                const int quick_io = (s & 7) != 0 && (v & 1);
+                static const struct { uint32_t at; uint8_t op; } io[] = { { 0x004C7, 0xC3 }, { 0x11232, 0xCB }, { 0x11211, 0xCB } };
+                for (unsigned j = 0; j < sizeof io / sizeof io[0]; j++) {
+                    const uint32_t address = at + io[j].at;
+                    g_pristine[address] = g_mem[0][address] = g_mem[1][address] =
+                        quick_io || (j == 0 && ((s & 7) == 4 || (s & 7) >= 6)) ? io[j].op : m->image[io[j].at];
+                }
+                for (unsigned j = 0; j < sizeof prompt; j++) {          /* thunks 1E42:02DC, 1E42:02E1 */
+                    const uint32_t address = at + 0x1E6FC + j;
+                    if (keyed && (j < 3 || j >= 5)) g_pristine[address] = g_mem[0][address] = g_mem[1][address] = prompt[j];
+                    else if (!keyed) g_pristine[address] = g_mem[0][address] = g_mem[1][address] = m->image[0x1E6FC + j] == 0xEA ? 0xCB : m->image[0x1E6FC + j];
+                }
+                struct { uint16_t at, value; } words[48]; unsigned n = 0;
+#define FLIGHT_WORD(a_, v_) do { words[n].at = (uint16_t)(a_); words[n++].value = (uint16_t)(v_); } while (0)
+                static const uint16_t rates[] = { 1, 2, 3, 5, 8, 15, 30 };
+                if ((s & 7) != 0) FLIGHT_WORD(0x368E, rates[v % 7]);
+                if (keyed) {
+                    FLIGHT_WORD(0x929C, key ? 1 : 0); FLIGHT_WORD(0x929E, key);
+                    FLIGHT_WORD(0x2E0A, (h >> 24) % 3 == 0 ? 100 : (h >> 24) % 3 == 1 ? 0 : 7);
+                    FLIGHT_WORD(0x2E0E, (h >> 16) & 1); FLIGHT_WORD(0xC09A, (h >> 17) & 1);
+                    FLIGHT_WORD(0xC0CE, (h >> 18) & 1 ? 0 : 50); FLIGHT_WORD(0x9B34, (h >> 19) & 1 ? 8 : 0);
+                    FLIGHT_WORD(0x368C, (h >> 21) & 1);
+                    if (v % 13 == 1 && (h >> 22) & 1) {    /* released brakes at full throttle on the ground */
+                        FLIGHT_WORD(0x9B34, 8); FLIGHT_WORD(0xC0CE, 50); FLIGHT_WORD(0x2E0A, 100);
+                    }
+                }
+                if ((s & 7) == 2) {                  /* low-speed pitch recovery */
+                    FLIGHT_WORD(0x9B34, 1 | ((v & 1) << 3)); FLIGHT_WORD(0xE472, (v / 2) & 1 ? 0 : 0xFFF0);
+                    FLIGHT_WORD(0xB03A, 0); FLIGHT_WORD(0xB07E, 0x0200 + 0x40 * (v % 5));
+                    FLIGHT_WORD(0x2DF2, (v / 4) & 1 ? 0x0800 : 0x3800); FLIGHT_WORD(0x991A, (v / 8) % 4 == 0);
+                    FLIGHT_WORD(0x98F6, 0x0400); FLIGHT_WORD(0x2DF0, (v / 16) & 1 ? 0x0200 : 0x0600);
+                    FLIGHT_WORD(0x2DF4, 20 * ((v / 32) % 4)); FLIGHT_WORD(0x2DF6, 20 * ((v / 32) % 4));
+                    FLIGHT_WORD(0xC0CE, 0); FLIGHT_WORD(0xC09A, 0); FLIGHT_WORD(0x3664, 0);
+                }
+                if ((s & 7) == 3) {                  /* after ejection */
+                    static const uint16_t counts[] = { 1, 0x0F, 0x10, 0x13, 0x1F, 0x40 };
+                    FLIGHT_WORD(0xC09A, counts[v % 6]); FLIGHT_WORD(0x3D8E, (v / 6) % 4 ? 0x21 : 0x22);
+                    FLIGHT_WORD(0x2DF4, (v / 24) & 1 ? 0 : 300); FLIGHT_WORD(0x2DF6, (v / 24) & 1 ? 0 : 300);
+                    FLIGHT_WORD(0xC0CE, 0); FLIGHT_WORD(0x3D96, (v / 48) & 1 ? 0xFFFF : 0);
+                    FLIGHT_WORD(0x9912, (v / 96) & 1 ? 8 : 1); FLIGHT_WORD(0xDEF6, (v / 192) & 1 ? 0x100 : 0);
+                }
+                if ((s & 7) == 4 || (s & 7) >= 6) {  /* descending onto the ground */
+                    static const uint16_t grounds[] = { 0, 40, 0x1000, 0x1F00 };
+                    const uint16_t ground = grounds[v % 4];
+                    FLIGHT_WORD(0xC0CE, ground); FLIGHT_WORD(0x2DF6, ground + 1 + (v / 4) % 3);
+                    FLIGHT_WORD(0x2DF4, ground + 1); FLIGHT_WORD(0x2DF0, 0xC000); FLIGHT_WORD(0x98F6, 0);
+                    FLIGHT_WORD(0xB07E, (v / 12) & 1 ? 0x3000 : 0x1000); FLIGHT_WORD(0x3DA2, (v / 24) % 5 != 0); FLIGHT_WORD(0x368E, 1);
+                    FLIGHT_WORD(0xC09A, (v / 36) & 1); FLIGHT_WORD(0x9B34, (v / 72) & 1);
+                    FLIGHT_WORD(0xE00C, (v / 144) % 4); FLIGHT_WORD(0x2DF2, (v / 288) & 1 ? 0x2000 : 0);
+                    FLIGHT_WORD(0x9910, 0); FLIGHT_WORD(0x2E0A, 100); FLIGHT_WORD(0xB19C, 100);
+                }
+                if ((s & 7) == 5) {                  /* braking on the ground */
+                    static const uint16_t speeds[] = { 0, 0x100, 0x1B0, 0x400, 0x2000 };
+                    FLIGHT_WORD(0x9B34, 8); FLIGHT_WORD(0xC0CE, (v / 5) % 3 ? 50 : 0);
+                    FLIGHT_WORD(0x2DF4, (v / 15) % 3 ? 50 : 60); FLIGHT_WORD(0x2DF6, 50); FLIGHT_WORD(0xB07E, speeds[v % 5]);
+                }
+#undef FLIGHT_WORD
+                int safe = 1;
+                for (unsigned j = 0; j < n; j++) for (unsigned byte = 0; byte < 2; byte++) {
+                    const uint32_t address = phys(seg[S_DS], (uint16_t)(words[j].at + byte));
+                    if (address >= at && address < at + m->size + 2) safe = 0;
+                }
+                if (safe) for (unsigned j = 0; j < n; j++) for (unsigned byte = 0; byte < 2; byte++) {
+                    const uint32_t address = phys(seg[S_DS], (uint16_t)(words[j].at + byte));
+                    g_pristine[address] = g_mem[0][address] = g_mem[1][address] = (uint8_t)(words[j].value >> (8 * byte));
+                }
+                /* The aircraft record's word +40h (read through [9924]) weighs
+                 * the touchdown test and the ground brake; captured states
+                 * hold zero there. */
+                if (safe && ((s & 7) == 2 || (s & 7) == 4 || (s & 7) >= 5)) {
+                    const uint16_t record = g_mem[0][phys(seg[S_DS], 0x9924)] | g_mem[0][phys(seg[S_DS], 0x9925)] << 8;
+                    const uint16_t record_seg = g_mem[0][phys(seg[S_DS], 0x9926)] | g_mem[0][phys(seg[S_DS], 0x9927)] << 8;
+                    const uint16_t value = (uint16_t)(v % 5);
+                    for (unsigned byte = 0; byte < 2; byte++) {
+                        const uint32_t address = phys(record_seg, (uint16_t)(record + 0x40 + byte));
+                        if (address >= at && address < at + m->size + 2) continue;
+                        g_pristine[address] = g_mem[0][address] = g_mem[1][address] = (uint8_t)(value >> (8 * byte));
+                    }
                 }
             }
             /* Small moving-object worlds separate target cycling, shadow
@@ -1245,6 +1415,7 @@ int main(int argc, char **argv)
             g_back_cs = cs; g_back_ip = back; g_back_sp = r[R_SP];
             g_reach = 0; g_camera_seen = 0; g_moving_seen = 0; g_hud_seen = 0; g_cockpit_seen = 0; g_nav_seen = 0; g_panel_seen = 0; g_arms_seen = 0;
             g_self_written = 0;
+            if (g_flight_fixture) { memset(g_flight_seen, 0, sizeof g_flight_seen); memset(g_flight_nsp, 0, sizeof g_flight_nsp); }
             const int returned = run_to_ret(a, entry_sp, o->matched, &steps, cs, ip);
             if (returned == 2 && !g_self_written) {
                 g_side[0].overflow = g_side[1].overflow = 1;
@@ -1327,12 +1498,16 @@ int main(int argc, char **argv)
             /* A routine that ran out of room after a call returns with the
              * machine partway through it, as the original would be; the run
              * loop then finishes it with the original code, and so does this. */
+            const int whole = g_m.cpu.seg[S_CS] == cs && g_m.cpu.ip == back;
             if (g_m.cpu.seg[S_CS] != cs || g_m.cpu.ip != back) {
                 int more = 0;
                 if (!run_to_ret(&g_m.cpu, entry_sp, o->matched, &more, cs, ip)) { ms++; restore(); continue; }
                 g_finished++;
             }
             mc++;
+            if (g_flight_fixture) for (unsigned k = 0; k < sizeof g_flight_seen; k++) {
+                g_flight_cover[k] |= g_flight_seen[k]; if (whole) g_flight_whole[k] |= g_flight_seen[k];
+            }
             if (g_camera_fixture) camera_branches |= g_camera_seen;
             if (!strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0x983E) moving_branches |= g_moving_seen;
             if (!strcmp(o->module, "VGAME.EXE") && o->seg == 0x1058 && o->ip == 0x0016) hud_branches |= g_hud_seen;
@@ -1428,6 +1603,22 @@ int main(int argc, char **argv)
                o->what, mc, ms, mb ? "MISMATCH" : mc ? "equal" : "not testable here (routes only)");
         if (g_checked_alloc) printf("  completed allocation-error states: %llu\n", g_alloc_errors);
         if (camera_gradients) printf("  completed 16-band states: %llu\n", g_gradient_full);
+        if (g_flight_fixture) {
+            unsigned all = 0, whole = 0;
+            for (unsigned k = 0; k < sizeof g_flight_cover; k++) { all += g_flight_cover[k]; whole += g_flight_whole[k]; }
+            if (g_flight_escapes) { fprintf(stderr, "flight input: %llu calls escaped their return\n", g_flight_escapes); mb++; }
+            printf("  flight instructions run by compared states: %u, by states the named routine finished: %u (of 1274)\n", all, whole);
+            /* Seeds reach 1,260-1,274; fewer means the fixtures stopped
+             * reaching whole arms (keys, ejection, touchdown, crash). */
+            if (states >= 4000 && whole < 1250) { fprintf(stderr, "flight fixtures reached too little of the routine\n"); mb++; }
+            const char *cover_path = getenv("F117_FLIGHT_COVER");
+            FILE *cover = cover_path ? fopen(cover_path, "w") : NULL;
+            if (cover) {
+                for (unsigned k = 0; k < sizeof g_flight_cover; k++)
+                    if (g_flight_cover[k]) fprintf(cover, "%04X %d\n", 0x1EB0 + k, g_flight_whole[k]);
+                fclose(cover);
+            }
+        }
         if (g_camera_fixture) {
             printf("  completed camera branch mask: %08llX (required FFFFFFFF)\n", (unsigned long long)camera_branches);
             printf("  camera divide fault states: %llu\n", camera_faults);

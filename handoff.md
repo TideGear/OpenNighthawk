@@ -15,25 +15,22 @@ standing practice, not a session-by-session log. Earlier sessions' detail
 
 ## Current state
 
-Last fully gated runtime baseline: VGAME `0000:BCEF` camera-image pass,
-commit `2fa6695`, 822 matched addresses. Full gate
-`D:/f117-gate/gate-camimage.log` passes: 47 unit tests, all 40 routes (40
-fresh interpreter sessions), both instruction profiles and three matched
-seeds, with reachability/event checks, 1,480 s. Census is 814 functions /
-78,497 bytes (P2 46.61%, overall 75.71%). Prior moving-object baseline/
-evidence is pushed as `e9aa11a`.
-
-A rotating matched seed at this same gate run (`0x2fa6695118ca`) exposed a
-stack-aliasing bug in the already-matched map projection (`VGAME 0000:13B9`,
-`vgame_map_project`, not the new camera code): it cached its `y`/`py` stack
-arguments up front where the original reads them late, after a store that
-can land on either argument's own stack slot when DS and SS alias in a
-fuzzed state - the same bug class as `vgame_eventlog_add`. Fixed by
-declining whenever the store could overlap either slot; regression
-`matched_map_project_stack_alias` retains the seed. Re-gated clean:
+Last fully gated runtime baseline: `cc2bddc` (camera-image pass plus the
+map-projection stack-alias fix), 822 matched addresses; gate
 `D:/f117-gate/gate-map-project-fix.log`, 47 tests, all 40 routes, both
-instruction profiles and three matched seeds, 1,480 s (build 94, coverage
-584, regeneration 25, parity 777).
+instruction profiles and three matched seeds, 1,480 s.
+
+Flight input (VGAME `0000:1EB0`, `vgame_flight_input`, the player's flight
+step) is integrated on top of it: 823 matched addresses, census 815
+functions / 82,040 bytes (P2 48.49%, overall 76.25%). Proof: three seeds
+zero mismatches with every instruction reached, 49 isolated tests, actual
+camera-gradient replay 8,464 calls identical at all 234 checkpoints
+([docs/roadmap.md](docs/roadmap.md), private evidence
+`D:/f117-gate/flight-input`). Its full gate log is
+`D:/f117-gate/gate-flight-input.log`; check its tally before relying on it.
+The harness now fails a callee return the named code misses (see
+[docs/repeated-processes.md](docs/repeated-processes.md)): a missed `RET 8`
+had made the first named run pass without testing anything after the call.
 
 A sibling handler, **VGAME 0FB2:04DD** (the line clipper's own divide-error
 handler), is matched and fixture-proven but deliberately **not integrated**:
@@ -63,28 +60,19 @@ Phase 2 work" below).
 - Continue Phase 2 (naming/matching routines) — `tools/reimp_names.py` has
   the private lead list; current progress is in `docs/roadmap.md`, which
   has the full history of integrated-and-gated passes (span-edge/emit, HUD,
-  moving objects, camera-image). Earlier proofs and tested source snapshots
-  remain under `D:/f117-gate/`; history is in
+  moving objects, camera-image, flight input). Earlier proofs and tested
+  source snapshots remain under `D:/f117-gate/`; history is in
   [docs/repeated-processes.md](docs/repeated-processes.md).
-  Next dossier: `D:/f117-gate/flight-input`, VGAME `0000:1EB0`
-  (`vgame_flight_input`), 1,274 instructions / 3,543 bytes / 121 calls.
-  Partial external named draft `named-flight-input.c` (parts 1-10) covers
-  initialization, keyboard collection, command dispatch, modal quit/blank
-  pauses, raw axis scaling, nonlinear controls, altitude hold, trim and
-  low-speed recovery **through `2A17`** (not `23B4` — that was this
-  routine's state two sessions ago; it has since grown past ejection
-  dynamics, thrust and position/rotation integration). Uninserted and
-  untested. `semantics-notes.md` in the same folder records variable
-  identities cross-referenced from already-matched code (heading `2DEE`,
-  pitch `2DF0`, roll `2DF2`, throttle `2E0A`, thrust `B19C`, speed `B07E`,
-  height `2DF4`, ground level `C0CE`, position accumulators
-  `BA3C:BA3E`/`C056:C058`, far sin/cos/fixmul at `104E:76`/`66`/`0`) —
-  read it before continuing so that work isn't repeated. Remaining:
-  the `2A17`-`2C86` segment (position integration, landing/crash checks,
-  history) needs hand-naming, then the whole routine wired in as a
-  candidate and run through both verification tiers before it can be
-  called matched — semantic plausibility alone is not enough (this
-  session's map_project fix above is a reminder why).
+  Next candidate: VGAME `0000:3ADA` (2,608 census bytes, part of the
+  per-frame loop, so routes reach it). Largest other unmatched census
+  entries: START `0x04239` (3,035), VGAME `0x05852` (2,976), DSWAP
+  `0x03DF3` (2,924), VGAME `0x02F9D` (2,595), `0x0683E` (2,565).
+  Method that worked for flight input (repeated-processes.md): transcript
+  first to validate the harness, per-instruction coverage, fixtures to
+  full coverage, then the named body; check every callee's RET form.
+  Private worktree `D:/f117-wt/span-emitter` (branch `flight-input`) has
+  the build used for the proofs; `D:/f117-gate/flight-input/swap_body.py`
+  swaps a body into it.
 - 04DD above, if a real route to it is ever found.
 
 ## How this project verifies Phase 2 work (read before matching a new routine)

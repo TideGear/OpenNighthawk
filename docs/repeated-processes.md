@@ -319,6 +319,31 @@ either slot. Re-gate `D:/f117-gate/gate-map-project-fix.log` passed clean:
 regeneration 25, parity 777). Regression `matched_map_project_stack_alias`
 retains the seed.
 
+Flight input (`VGAME 0000:1EB0`, 12 Oct), proven privately at `cc2bddc`.
+Method that worked for a 1,274-instruction routine: insert the
+`matched_draft.py` transcript first to validate the harness (equal on every
+compared state), add per-instruction coverage of the original's run, plant
+fixtures until every instruction is reached, then swap in the named body -
+a partial body that hands back to the original at a fixed IP can be tested
+the same way. The first named run passed vacuously: two callees (EE9C,
+EF36) end in `RET 8`, the draft called them as plain near calls, so the
+return was never trapped and the original finished every state. The harness
+now counts such escapes as failures, but only where the original came back
+to that address from the call's stack depth (up to 16 bytes above it): in
+the 2,000-state suite run a random state recursed in both engines and
+reached the address only deeper, a false alarm under an address-only test.
+Break test: restoring one plain call fails at 2,000 and 4,000 states. Fixture
+classes: planted key poll/read stubs (each command, Y/N quit answers),
+post-ejection counters, low-speed recovery, braking on the ground,
+touchdown (frame rate 1, contact flag, aircraft record +40h) and crash;
+the game-port reads, the crash pause and the quit prompt's page/text
+helpers return at once where they would outrun the 100,000-step limit.
+Three seeds compare 2,112 / 2,718 / 2,292 states, zero mismatches, about
+four seconds each; the default seed runs all 1,274 instructions inside
+the named code, the others 1,260. 49 isolated tests pass. Real
+camera-gradient replay: 143.4 s, 8,464 calls, all 234 checkpoints/final
+identical. Audited verdict: `D:/f117-gate/flight-input/named-proof/route-verdict.json`.
+
 ## The gate (`tools/build_recomp.py`)
 
 Polygon caller (12 Oct): isolated current-main worktree, separate generated
@@ -829,7 +854,7 @@ build 2 s (skipped), parity 503 s, lockstep tail 229 s.
 | Stage | Measured | Duplicates / redundancy | Status |
 |---|---|---|---|
 | 1-2 translate, build | 7-8 min fresh, 6 s reused | a fresh work directory builds everything | **fixed by practice**: reuse the previous run's work directory (`sync_tree` rewrites only changed files, so the build recompiles `matched.c` and relinks); the output is a function of the sources either way |
-| 3 coverage | 3-4 min, or skipped | runs every route once only to find untranslated code | **skipped when provably empty** (7 Oct): a record (`~/f117-recomp-local/coverage-verified.json`) holds the key of a pass that added nothing - translator, sources other than `matched.c`, game files, routes - and the digest of the generated code it ended on; the same key and digest skip the pass. A matched routine only replaces original instructions that already ran, so it cannot add code to cover; a wrong one fails parity or lockstep. Verified: the full verdicts (32 routes with hashes, lockstep tallies) are identical with and without the skip; 995 s became 422 s |
+| 3 coverage | 3-4 min, or skipped | runs every route once only to find untranslated code | **skipped when provably empty** (7 Oct): a record (`~/f117-recomp-local/coverage-verified.json`) holds the key of a pass that added nothing - translator, sources other than `matched.c`, game files, routes - and the digest of the generated code it ended on; the same key and digest skip the pass. A matched routine only replaces original instructions that already ran, so it cannot add code to cover; a wrong one fails parity or lockstep. Verified: the full verdicts (32 routes with hashes, lockstep tallies) are identical with and without the skip; 995 s became 422 s. **It had stopped working** (12 Oct): `CMakeLists.txt` was hashed whole, and each of the last 15 matched passes added an `add_test` entry, so every gate reran coverage (about 580 s) and, by the same key, missed the interpreter cache. The key now hashes the build file without `add_test` entries, whole-line comments and blank lines (`build_digest`): equal across the last four passes' build files, different for a changed build setting |
 | 4 translate, build again | 7-8 min | regenerated every file and rebuilt all of it though coverage usually adds nothing | **fixed**: only files whose bytes changed are rewritten; the rebuild is skipped when none did; `--seed-coverage DIR` starts from an earlier run's coverage so step 1 is already complete |
 | 5 parity | 8-14 min | 64 runs on 12 slots, started alphabetically; two routes that are one session ran twice per engine | **fixed**: up to 24 slots, longest first, identical sessions run once and every route's milestones are checked on the shared run |
 | 5b interpreter half of parity | 5-6 min of the parity stage | an interpreter run is a pure function of the game files, the route and the interpreter's own code, yet reran every gate | **fixed**: results cached by a key over `src/` except `matched.c`, `CMakeLists.txt`, the game files and the route (text, replay files, seed chain); entries expire after 14 days; `--verify-interp-cache` reruns and requires equality. Measured: parity 522 s to 174 s with 31 of 31 results reused and every route verdict identical to the fresh run |

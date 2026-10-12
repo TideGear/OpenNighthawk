@@ -207,6 +207,23 @@ shared-flow span-edge candidate demonstrates why walk size is not census
 ownership. Synthetic checks run in Windows CI. Details and limits:
 [repeated-processes.md](repeated-processes.md#phase-2-candidate-reading).
 
+Flight input (`VGAME 0000:1EB0`, the player's flight step) is integrated,
+pending a fresh full gate: 1,274 instructions / 3,543 bytes, all 121 calls
+kept. Named C covers the first-call pose reset, the key commands (throttle,
+brakes and catapult, HUD, re-centre, quit prompt, pause, blank view), stick
+scaling, altitude/heading hold, trim, low-speed recovery, the ejected
+pilot, engine spool, speed, attitude, height compression, X/Y position,
+touchdown and crash tests and the 16-frame pose history. Three seeds
+compare 2,112 / 2,718 / 2,292 states, zero mismatches; fixtures plant keys,
+quit answers, ejection, braking, touchdown and crash states, and the named
+code itself runs all 1,274 instructions at the default seed. The harness
+now fails any callee return the named code misses while the original
+reaches it - a missed `RET 8` on the long divide had let the original
+finish every state unseen (break-tested). 49 isolated tests pass. Actual
+camera-gradient replay invokes it 8,464 times with all 234 checkpoints/
+final identical. Census 815 functions / 82,040 bytes, P2 48.49%, overall
+76.25% (823 matched addresses). Private evidence: `D:/f117-gate/flight-input`.
+
 Camera-image pass (`VGAME 0000:BCEF`) is integrated and fully gated:
 14,735 targeted comparisons including 145 controlled helper-return
 divide faults, all 32 tracked paths per seed and 46 isolated tests pass.

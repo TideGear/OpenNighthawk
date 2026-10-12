@@ -321,6 +321,10 @@ if(F117R_BUILD_TESTS)
     # the states save the faulting IDIV's own IP, which picks the denominator.
     add_test(NAME matched_divide_interrupts COMMAND func_lockstep --states 4000
       --only VGAME.EXE:84E)
+    # Planted keys, quit-prompt answers, ejection, touchdown and crash states;
+    # an escaped callee return or thin coverage fails the test.
+    add_test(NAME matched_flight_input COMMAND func_lockstep --states 4000
+      --only VGAME.EXE:1EB0)
     add_test(NAME matched_camera_image COMMAND func_lockstep --states 4000
       --only VGAME.EXE:BCEF)
     add_test(NAME matched_moving_objects COMMAND func_lockstep --states 4000
