@@ -45,6 +45,24 @@ Total 1,787 s: build/tests 198, coverage 629, identical regeneration 22,
 parity 938. No additional heavy candidate work ran alongside this gate;
 these different-source timings do not establish a speedup.
 
+Shared span emitters (`0FB2:05A4` / `05B3`, 12 Oct), private proof only:
+151-line selective patch adds named boundary contribution and shallow/steep
+raster loops, preserving live endpoint/table reads, unsigned bounds, signed
+half-step errors, instruction counts and event resume positions. The harness
+watches the boundary entry's tail jump into the existing `0555` column store.
+Three 4,000-state seeds (default, `0xC0FFEE`, `0x831e74036ce2`) compare
+6,756 / 6,789 / 6,780 states, zero mismatches (11,030 finish in original
+code; remaining comparable states include partial stops). Isolated 38-test
+suite passes in 39.54 s. Real camera replay takes 104.1 s, executes the two
+entries 507,745 / 591,404 times and matches all 234 checkpoints/final hash
+against the fresh interpreter output from the `1a26b2c` full gate, without
+event overruns. Private proof/patch: `D:/f117-gate/span-emit/route-verdict.json`
+and `integrate.patch`; implementation worktree `D:/f117-wt/span-emitter`.
+Initial build caught an undefined NEG helper; the tested implementation uses
+the existing subtraction helper. Not integrated or full-gate validated yet.
+Both entries lie in the already-counted 324-byte `0555` census region, so
+integration must add no census functions or bytes.
+
 ## The gate (`tools/build_recomp.py`)
 
 Polygon caller (12 Oct): isolated current-main worktree, separate generated

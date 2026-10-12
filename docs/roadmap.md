@@ -207,6 +207,13 @@ shared-flow span-edge candidate demonstrates why walk size is not census
 ownership. Synthetic checks run in Windows CI. Details and limits:
 [repeated-processes.md](repeated-processes.md#phase-2-candidate-reading).
 
+Shared span-emitter entries (`0FB2:05A4` / `05B3`) have private named
+implementations, pending integration/full gate. Three seeds compare 20,325
+states without mismatches; 38 isolated tests pass. A real camera replay
+executes the entries 507,745 / 591,404 times with all 234 checkpoints/final
+identical to the latest fresh interpreter capture. These complete shared
+flow within the already-counted `0555` census region, adding no byte credit.
+
 VGAME's clipped span edge (`0FB2:06A6`) is integrated and fully gated. The named routine preserves the temporary INT 0 vector, signed
 intersection rounding, overflow halving, boundary columns, live endpoints
 and tail jumps into shared emitters. Three private seeds compare 14,461

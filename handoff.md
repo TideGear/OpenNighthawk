@@ -24,7 +24,7 @@ comparisons; third seed `0x1a26b2c7fed2`) with zero mismatches, plus
 reachability and event-limit checks. Total 1,787 s. The refreshed census is
 806 functions / 69,027 bytes; P2 41.59%, overall 74.25%. The real camera
 replay calls the clipped edge 1,529,189 times with all 234 checkpoints/final
-unchanged. Previous pushed HEAD `0c9a47e` has passing Windows and munt CI.
+unchanged. Pushed HEAD `831e740` has passing Windows and munt CI.
 
 A sibling handler, **VGAME 0FB2:04DD** (the line clipper's own divide-error
 handler), is matched and fixture-proven but deliberately **not integrated**:
@@ -58,7 +58,13 @@ Phase 2 work" below).
   byte-identical. The clipped span edge is integrated and fully gated above;
   its private source/proof remain in `D:/f117-gate/span-edge`.
   Next candidate: shared span emitter entries `0FB2:05A4`/`05B3`;
-  private drafts/dossiers in `D:/f117-gate/span-emit`, no implementation yet.
+  named private implementations/dossiers in `D:/f117-gate/span-emit`.
+  Three seeds pass 20,325 comparisons, 38 isolated tests pass, and the real
+  camera replay calls them 507,745 / 591,404 times with 234 checkpoints/final
+  identical to the latest fresh interpreter output, without event overruns.
+  Selective patch `D:/f117-gate/span-emit/integrate.patch`, worktree
+  `D:/f117-wt/span-emitter`. Apply selectively and run a fresh full gate
+  before pushing; nothing from this candidate is integrated yet.
   These sit inside the already-counted 324-byte `0555` census region:
   adding entry points must not count the same bytes again.
 - 04DD above, if a real route to it is ever found.
