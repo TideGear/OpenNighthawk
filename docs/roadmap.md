@@ -207,8 +207,27 @@ shared-flow span-edge candidate demonstrates why walk size is not census
 ownership. Synthetic checks run in Windows CI. Details and limits:
 [repeated-processes.md](repeated-processes.md#phase-2-candidate-reading).
 
-Flight input (`VGAME 0000:1EB0`, the player's flight step) is integrated,
-pending a fresh full gate: 1,274 instructions / 3,543 bytes, all 121 calls
+Frame update (`VGAME 0000:3ADA`, the per-frame world update) is
+integrated, pending a fresh full gate: 848 instructions / 2,608 bytes, all
+71 calls kept. Named C covers the map cell from the 32-bit position and its
+clamp, first-frame mission set-up, map markers, the sub-pass calls, timers,
+the nearest landing field and its traffic, the tower call, field contact
+(carrier wire, landing objectives, parked end of mission), ground crash,
+wreck strikes, carrier deck motion, the frame counter and per-second work,
+the frame-rate measure and the standing-target count. Three seeds compare
+2,931 / 2,914 / 2,912 states, zero mismatches; airfield fixtures and
+returning sub-passes let the named code run all 848 instructions (827 at
+one seed). The camera-gradient replay first reported one event overrun:
+four divides sat outside their room claims, which the lockstep's
+one-short probe could not see. Fixed; `room_audit.py` (private) checks
+every claim against the instructions counted. The replay then invokes it
+8,462 times with all 234 checkpoints/final identical and no overrun; 49
+isolated tests pass. Census 816 functions /
+84,648 bytes, P2 49.87%, overall 76.66% (824 matched addresses). Private
+evidence: `D:/f117-gate/frame-3ada`.
+
+Flight input (`VGAME 0000:1EB0`, the player's flight step) is integrated and
+fully gated at `1337acf`: 1,274 instructions / 3,543 bytes, all 121 calls
 kept. Named C covers the first-call pose reset, the key commands (throttle,
 brakes and catapult, HUD, re-centre, quit prompt, pause, blank view), stick
 scaling, altitude/heading hold, trim, low-speed recovery, the ejected
@@ -223,6 +242,9 @@ finish every state unseen (break-tested). 49 isolated tests pass. Actual
 camera-gradient replay invokes it 8,464 times with all 234 checkpoints/
 final identical. Census 815 functions / 82,040 bytes, P2 48.49%, overall
 76.25% (823 matched addresses). Private evidence: `D:/f117-gate/flight-input`.
+The fresh gate passes 48 tests, all 40 routes (40 fresh interpreter
+sessions), both instruction profiles, three matched seeds and the
+reachability/event checks, 1,745 s.
 
 Camera-image pass (`VGAME 0000:BCEF`) is integrated and fully gated:
 14,735 targeted comparisons including 145 controlled helper-return

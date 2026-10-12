@@ -15,22 +15,21 @@ standing practice, not a session-by-session log. Earlier sessions' detail
 
 ## Current state
 
-Last fully gated runtime baseline: `cc2bddc` (camera-image pass plus the
-map-projection stack-alias fix), 822 matched addresses; gate
-`D:/f117-gate/gate-map-project-fix.log`, 47 tests, all 40 routes, both
-instruction profiles and three matched seeds, 1,480 s.
+Last fully gated runtime baseline: `1337acf`, flight input (VGAME
+`0000:1EB0`), 823 matched addresses, census 815 / 82,040 bytes. Gate
+`D:/f117-gate/gate-flight-input.log`: 48 tests, all 40 routes, both
+instruction profiles and three matched seeds, 1,745 s.
 
-Flight input (VGAME `0000:1EB0`, `vgame_flight_input`, the player's flight
-step) is integrated on top of it: 823 matched addresses, census 815
-functions / 82,040 bytes (P2 48.49%, overall 76.25%). Proof: three seeds
-zero mismatches with every instruction reached, 49 isolated tests, actual
-camera-gradient replay 8,464 calls identical at all 234 checkpoints
+Frame update (VGAME `0000:3ADA`, `vgame_frame_update`) is integrated on top
+of it: 824 matched addresses, census 816 functions / 84,648 bytes (P2
+49.87%, overall 76.66%). Proof: three seeds zero mismatches with every
+instruction reached, isolated tests, actual camera-gradient replay
+identical at all 234 checkpoints with no overrun after a room-claim fix
 ([docs/roadmap.md](docs/roadmap.md), private evidence
-`D:/f117-gate/flight-input`). Its full gate log is
-`D:/f117-gate/gate-flight-input.log`; check its tally before relying on it.
-The harness now fails a callee return the named code misses (see
-[docs/repeated-processes.md](docs/repeated-processes.md)): a missed `RET 8`
-had made the first named run pass without testing anything after the call.
+`D:/f117-gate/frame-3ada`). Its full gate log is
+`D:/f117-gate/gate-frame-update.log`; check its tally before relying on it.
+Its coverage pass should be skipped (the key no longer changes with test
+entries); if it runs, the skip has broken again.
 
 A sibling handler, **VGAME 0FB2:04DD** (the line clipper's own divide-error
 handler), is matched and fixture-proven but deliberately **not integrated**:
@@ -60,19 +59,21 @@ Phase 2 work" below).
 - Continue Phase 2 (naming/matching routines) — `tools/reimp_names.py` has
   the private lead list; current progress is in `docs/roadmap.md`, which
   has the full history of integrated-and-gated passes (span-edge/emit, HUD,
-  moving objects, camera-image, flight input). Earlier proofs and tested
-  source snapshots remain under `D:/f117-gate/`; history is in
+  moving objects, camera-image, flight input, frame update). Earlier proofs
+  and tested source snapshots remain under `D:/f117-gate/`; history is in
   [docs/repeated-processes.md](docs/repeated-processes.md).
-  Next candidate: VGAME `0000:3ADA` (2,608 census bytes, part of the
-  per-frame loop, so routes reach it). Largest other unmatched census
-  entries: START `0x04239` (3,035), VGAME `0x05852` (2,976), DSWAP
-  `0x03DF3` (2,924), VGAME `0x02F9D` (2,595), `0x0683E` (2,565).
-  Method that worked for flight input (repeated-processes.md): transcript
-  first to validate the harness, per-instruction coverage, fixtures to
-  full coverage, then the named body; check every callee's RET form.
-  Private worktree `D:/f117-wt/span-emitter` (branch `flight-input`) has
-  the build used for the proofs; `D:/f117-gate/flight-input/swap_body.py`
-  swaps a body into it.
+  Next candidates, all reached every flight frame from 3ADA: VGAME
+  `0x05852` (2,976 bytes), `0x0683E` (2,565, warnings/lamp timers),
+  `0x05046` (583, navigation display); also VGAME `0x02F9D` (2,595, frame
+  compose), START `0x04239` (3,035), DSWAP `0x03DF3` (2,924).
+  Method (repeated-processes.md): transcript first to validate the harness,
+  add the routine to `COVERED`, fixtures until every instruction is
+  reached (the skip tally says why states drop), then the named body,
+  tested in sections that hand back to the original; check every callee's
+  RET form; run `D:/f117-gate/frame-3ada/room_audit.py` on the body; then
+  the real route (`route-proof.py`), which is what caught the room-claim
+  defect. Private worktree `D:/f117-wt/span-emitter` has the proof build;
+  `D:/f117-gate/frame-3ada/swap_body.py` swaps a body into it.
 - 04DD above, if a real route to it is ever found.
 
 ## How this project verifies Phase 2 work (read before matching a new routine)

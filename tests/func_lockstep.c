@@ -308,7 +308,7 @@ static int compare(const char *mod, uint32_t off, uint16_t cs, uint16_t ip, int 
 static void stub_driver_thunks(uint8_t *pristine, uint32_t at, const rc_module *m, const recomp_override *o)
 {
     const int vgame_draw = !strcmp(m->name, "VGAME.EXE") &&
-        ((o->seg == 0 && (o->ip == 0x1EB0 || o->ip == 0xBCEF || o->ip == 0x983E || o->ip == 0x79BE || o->ip == 0x8A90 || o->ip == 0x9515 || o->ip == 0x1E79 || o->ip == 0xB171 || o->ip == 0xD6DD || o->ip == 0x4777 ||
+        ((o->seg == 0 && (o->ip == 0x3ADA || o->ip == 0x1EB0 || o->ip == 0xBCEF || o->ip == 0x983E || o->ip == 0x79BE || o->ip == 0x8A90 || o->ip == 0x9515 || o->ip == 0x1E79 || o->ip == 0xB171 || o->ip == 0xD6DD || o->ip == 0x4777 ||
                          o->ip == 0xD3F9 || o->ip == 0xD87C || o->ip == 0x72D8 ||
                            o->ip == 0x8A18 || o->ip == 0x881F || o->ip == 0x796E || o->ip == 0x3A4E ||
                            o->ip == 0xB0C2 || o->ip == 0xC45C)) ||
@@ -350,6 +350,40 @@ static const struct { const char *module; uint16_t ip; uint32_t linear; uint8_t 
     { "VGAME.EXE", 0x79BE, 0x089F7, 0xC3 },
     { "VGAME.EXE", 0x79BE, 0x08A18, 0xC3 },
     { "VGAME.EXE", 0x79BE, 0x0889B, 0xC3 },
+    /* Frame-update caller: its per-frame sub-passes, drawing and mission
+     * set-up return at once; distance, clamp, shift and divide helpers run. */
+    { "VGAME.EXE", 0x3ADA, 0x04C73, 0xC3 },
+    { "VGAME.EXE", 0x3ADA, 0x04973, 0xC3 },
+    { "VGAME.EXE", 0x3ADA, 0x08435, 0xC3 },
+    { "VGAME.EXE", 0x3ADA, 0x09515, 0xC3 },
+    { "VGAME.EXE", 0x3ADA, 0x08462, 0xC3 },
+    { "VGAME.EXE", 0x3ADA, 0x09216, 0xC3 },
+    { "VGAME.EXE", 0x3ADA, 0x094E1, 0xC3 },
+    { "VGAME.EXE", 0x3ADA, 0x05046, 0xC3 },
+    { "VGAME.EXE", 0x3ADA, 0x05852, 0xC3 },
+    { "VGAME.EXE", 0x3ADA, 0x0683E, 0xC3 },
+    { "VGAME.EXE", 0x3ADA, 0x04738, 0xC3 },
+    { "VGAME.EXE", 0x3ADA, 0x04777, 0xC3 },
+    { "VGAME.EXE", 0x3ADA, 0x048B8, 0xC3 },
+    { "VGAME.EXE", 0x3ADA, 0x04958, 0xC3 },
+    { "VGAME.EXE", 0x3ADA, 0x04F2B, 0xC3 },
+    { "VGAME.EXE", 0x3ADA, 0x04FD8, 0xC3 },
+    { "VGAME.EXE", 0x3ADA, 0x03A0D, 0xC3 },
+    { "VGAME.EXE", 0x3ADA, 0x066F8, 0xC3 },
+    { "VGAME.EXE", 0x3ADA, 0x07594, 0xC3 },
+    { "VGAME.EXE", 0x3ADA, 0x04E5F, 0xC3 },
+    { "VGAME.EXE", 0x3ADA, 0x00D14, 0xC3 },
+    { "VGAME.EXE", 0x3ADA, 0x00F3D, 0xC3 },
+    { "VGAME.EXE", 0x3ADA, 0x0450A, 0xC3 },
+    { "VGAME.EXE", 0x3ADA, 0x0D4A5, 0xC3 },
+    { "VGAME.EXE", 0x3ADA, 0x0D441, 0xC3 },
+    { "VGAME.EXE", 0x3ADA, 0x0D578, 0xC3 },
+    { "VGAME.EXE", 0x3ADA, 0x0889B, 0xC3 },
+    { "VGAME.EXE", 0x3ADA, 0x0886A, 0xC3 },
+    { "VGAME.EXE", 0x3ADA, 0x08A4F, 0xC3 },
+    { "VGAME.EXE", 0x3ADA, 0x004C7, 0xC3 },
+    { "VGAME.EXE", 0x3ADA, 0x1189D, 0xCB },
+    { "VGAME.EXE", 0x3ADA, 0x1176E, 0xCB },
     /* Camera caller: returning render/string helpers; original math runs. */
     { "VGAME.EXE", 0xBCEF, 0x0FD66, 0xCB },
     { "VGAME.EXE", 0xBCEF, 0x10039, 0xCB },
@@ -441,6 +475,7 @@ static const struct { const char *module; uint16_t ip; int arg; uint16_t v[2]; }
 /* Exact code ranges when the default 0x300-byte window is unsuitable:
  * long/shared tails, or small walkers whose unrelated callees are nearby. */
 static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
+    { "VGAME.EXE", 0x3ADA, 0x3ADA, 0x0A30 }, /* frame update through RET */
     { "VGAME.EXE", 0x1EB0, 0x1EB0, 0x0DD7 }, /* flight input through RET */
     { "VGAME.EXE", 0xBCEF, 0xBCEF, 0x0747 }, /* complete camera image */
     { "VGAME.EXE", 0x983E, 0x983E, 0x06BC }, /* entire moving-object pass */
@@ -571,25 +606,33 @@ static uint16_t g_below;                /* how far the routine's code reaches be
  * trace in the end state. */
 static int g_self_written, g_watch_transient;
 static uint64_t g_camera_seen;
-/* Flight input (VGAME 0000:1EB0): which of its instruction starts the
- * original ran in this state, and over compared states (all, and those
- * the named routine finished itself). */
-static int g_flight_fixture, g_flight_state;
-static unsigned long long g_flight_escapes;
-static uint8_t g_flight_seen[0x0DD7], g_flight_cover[0x0DD7], g_flight_whole[0x0DD7];
+/* Large named routines whose instruction coverage is tracked: which of
+ * their instruction starts the original ran in this state, and over
+ * compared states (all, and those the named routine finished itself). A
+ * floor fails a 4,000-state run whose fixtures stopped reaching the arms. */
+static const struct { const char *module; uint16_t seg, ip, len; unsigned insns, floor; const char *what; } COVERED[] = {
+    { "VGAME.EXE", 0, 0x1EB0, 0x0DD7, 1274, 1250, "flight input" },
+    { "VGAME.EXE", 0, 0x3ADA, 0x0A30, 848, 820, "frame update" },
+};
+static int g_flight_fixture, g_frame_fixture, g_state_index;   /* flight-input fixtures; the state being compared */
+static int g_cov = -1;                  /* the COVERED entry under test, or -1 */
+static uint16_t g_cov_ip;
+static unsigned long long g_cov_escapes;
+static unsigned long long g_cov_skips[6];   /* fault, long run, bad return, code written, declined, unfinished */
+static uint8_t g_cov_seen[0x1000], g_cov_cover[0x1000], g_cov_whole[0x1000];
 /* The stack depths the original had at each instruction (up to four;
  * five means more): a callee return the original reached at the call's
  * depth, or up to 16 bytes above it (what the callee's RET n removed),
  * must be reached by the named code too. */
-static uint16_t g_flight_sp[0x0DD7][4];
-static uint8_t g_flight_nsp[0x0DD7];
+static uint16_t g_cov_sp[0x1000][4];
+static uint8_t g_cov_nsp[0x1000];
 
-static int flight_reached(uint16_t ip, uint16_t lo, uint16_t span)
+static int cov_reached(uint16_t ip, uint16_t lo, uint16_t span)
 {
-    const unsigned k = (uint16_t)(ip - 0x1EB0);
-    if (k >= sizeof g_flight_nsp) return 0;
-    if (g_flight_nsp[k] > 4) return 1;
-    for (unsigned j = 0; j < g_flight_nsp[k]; j++) if ((uint16_t)(g_flight_sp[k][j] - lo) <= span) return 1;
+    const unsigned k = (uint16_t)(ip - g_cov_ip);
+    if (g_cov < 0 || k >= COVERED[g_cov].len) return 0;
+    if (g_cov_nsp[k] > 4) return 1;
+    for (unsigned j = 0; j < g_cov_nsp[k]; j++) if ((uint16_t)(g_cov_sp[k][j] - lo) <= span) return 1;
     return 0;
 }
 static uint64_t g_moving_seen;
@@ -605,7 +648,7 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
     const uint32_t watch = phys(cs, (uint16_t)(ip - g_below));
     const int watching = (g_below || g_watch_transient) && a->mem == g_mem[0];
     while (*steps < 100000) {
-        const unsigned watch_bytes = (ip == 0x1EB0 || ip == 0xBCEF || ip == 0x983E || ip == 0x0016 || ip == 0x79BE || ip == 0x8A90) ? g_span : 0x300u + g_below;
+        const unsigned watch_bytes = (ip == 0x3ADA || ip == 0x1EB0 || ip == 0xBCEF || ip == 0x983E || ip == 0x0016 || ip == 0x79BE || ip == 0x8A90) ? g_span : 0x300u + g_below;
         if (watching && !g_self_written && memcmp(a->mem + watch, g_pristine + watch, watch_bytes)) g_self_written = 1;
         if (g_trace) printf("      %04X:%04X clk %llu sp %04X\n", a->seg[S_CS], a->ip, (unsigned long long)a->icount, a->r[R_SP]);
         const uint16_t here = a->ip;
@@ -670,13 +713,12 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
                 if (here == branch[k]) g_panel_seen |= 1u << k;
             if (here == 0x95A4 && x86_cond(a, 7)) g_panel_seen |= 1u << 14;
         }
-        if (g_flight_fixture && own && a->mem == g_mem[0] && (uint16_t)(here - 0x1EB0) < sizeof g_flight_seen)
-        {
-            const unsigned k = (uint16_t)(here - 0x1EB0);
-            g_flight_seen[k] = 1;
-            if (!flight_reached(here, a->r[R_SP], 0)) {
-                if (g_flight_nsp[k] < 4) g_flight_sp[k][g_flight_nsp[k]] = a->r[R_SP];
-                if (g_flight_nsp[k] < 5) g_flight_nsp[k]++;
+        if (g_cov >= 0 && own && a->mem == g_mem[0] && (uint16_t)(here - g_cov_ip) < COVERED[g_cov].len) {
+            const unsigned k = (uint16_t)(here - g_cov_ip);
+            g_cov_seen[k] = 1;
+            if (!cov_reached(here, a->r[R_SP], 0)) {
+                if (g_cov_nsp[k] < 4) g_cov_sp[k][g_cov_nsp[k]] = a->r[R_SP];
+                if (g_cov_nsp[k] < 5) g_cov_nsp[k]++;
             }
         }
         if (own && (uint16_t)(here - g_from) > g_reach) g_reach = (uint16_t)(here - g_from);
@@ -724,16 +766,16 @@ static int step_runner(machine_t *mm)
     for (int i = 0; i < 200000; i++) {
         if (c->ip == mm->trap_ip && c->r[R_SP] == mm->trap_sp && c->seg[S_CS] == mm->trap_cs) return RUN_TRAP;
         if (c->ip == g_back_ip && c->r[R_SP] == g_back_sp && c->seg[S_CS] == g_back_cs) {
-            /* A flight-input call whose return was never caught although
+            /* A tracked routine's call whose return was never caught although
              * the original did come back there from this call's depth: the
              * original then finished
              * the routine and the state would compare equal without testing
              * the named code after it. (A callee that wanders off in both
              * engines - random code bytes, a random stack - never returns
              * in the original either.) */
-            if (g_flight_fixture && mm->trap_cs == g_back_cs && flight_reached(mm->trap_ip, call_sp, 16)) {
-                g_flight_escapes++;
-                printf("  ESCAPED CALL (state %d): trap %04X:%04X sp %04X, at %04X:%04X sp %04X flags %04X\n", g_flight_state,
+            if (g_cov >= 0 && mm->trap_cs == g_back_cs && cov_reached(mm->trap_ip, call_sp, 16)) {
+                g_cov_escapes++;
+                printf("  ESCAPED CALL (state %d): trap %04X:%04X sp %04X, at %04X:%04X sp %04X flags %04X\n", g_state_index,
                        mm->trap_cs, mm->trap_ip, mm->trap_sp, c->seg[S_CS], c->ip, c->r[R_SP], c->flags);
             }
             return RUN_SLICE;
@@ -805,11 +847,15 @@ int main(int argc, char **argv)
          * an aliased frame slot. Final memory misses these changed-code inputs. */
         g_camera_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0xBCEF;
         g_flight_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0x1EB0;
-        if (g_flight_fixture) { memset(g_flight_cover, 0, sizeof g_flight_cover); memset(g_flight_whole, 0, sizeof g_flight_whole); }
+        g_frame_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0x3ADA;
+        g_cov = -1;
+        for (unsigned k = 0; k < sizeof COVERED / sizeof COVERED[0]; k++)
+            if (!strcmp(o->module, COVERED[k].module) && o->seg == COVERED[k].seg && o->ip == COVERED[k].ip) g_cov = (int)k;
+        if (g_cov >= 0) { g_cov_ip = COVERED[g_cov].ip; g_cov_escapes = 0; memset(g_cov_skips, 0, sizeof g_cov_skips); memset(g_cov_cover, 0, sizeof g_cov_cover); memset(g_cov_whole, 0, sizeof g_cov_whole); }
         g_hud_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0x1058 && o->ip == 0x0016;
         g_watch_transient = (!strcmp(o->module, "VGAME.EXE") && o->seg == 0x1058 && o->ip == 0x0016) ||
             (o->seg == 0 &&
-            ((!strcmp(o->module, "VGAME.EXE") && (o->ip == 0x1EB0 || o->ip == 0xBCEF || o->ip == 0x983E || o->ip == 0x79BE || o->ip == 0x8A90)) ||
+            ((!strcmp(o->module, "VGAME.EXE") && (o->ip == 0x3ADA || o->ip == 0x1EB0 || o->ip == 0xBCEF || o->ip == 0x983E || o->ip == 0x79BE || o->ip == 0x8A90)) ||
              (!strcmp(o->module, "START.EXE") && (o->ip == 0x39B3 || o->ip == 0x39D5)) ||
              (!strcmp(o->module, "END.EXE") && (o->ip == 0x1CB1 || o->ip == 0x1CD3)) ||
              (!strcmp(o->module, "PLAYER.EXE") && o->ip == 0x1E90)));
@@ -1008,7 +1054,7 @@ int main(int argc, char **argv)
              * Other classes plant small worlds for post-ejection, low-speed
              * pitch recovery, ground braking and touchdown. Everything else
              * stays random. */
-            g_flight_state = s;
+            g_state_index = s;
             if (g_flight_fixture) {
                 static const uint8_t poll[] = { 0xA1, 0x9C, 0x92, 0xFF, 0x0E, 0x9C, 0x92, 0xC3 };
                 static const uint16_t deltas[] = { 0x011B, 0x0A15, 0x00FD, 0x0032, 0x00CC, 0x0012, 0x02C3, 0x0900, 0x0600, 0x0F63, 0x019D };
@@ -1120,6 +1166,57 @@ int main(int argc, char **argv)
                         if (address >= at && address < at + m->size + 2) continue;
                         g_pristine[address] = g_mem[0][address] = g_mem[1][address] = (uint8_t)(value >> (8 * byte));
                     }
+                }
+            }
+            /* Frame update: small airfield worlds. The field type [E00C]
+             * indexes 16-byte records at B2D0h (X, Y, flags); the player
+             * sits on or near one, low and slow, so the carrier wire and
+             * catapult, field contact, landing objectives (18-byte records
+             * at E304h) and the tower message arms run. */
+            if (g_frame_fixture && (s & 7) != 0) {
+                const unsigned v = (unsigned)s >> 3;
+                const uint32_t h = (uint32_t)v * 0x9E3779B1u;
+                const uint16_t t = (uint16_t)(v % 4), rec = (uint16_t)(0xB2D0 + 16 * t);
+                const uint16_t fx = (uint16_t)(0x1000 + 0x40 * (v % 7)), fy = (uint16_t)(0x2000 + 0x30 * (v % 5));
+                struct { uint16_t at, value; } words[48]; unsigned n = 0;
+#define FRAME_WORD(a_, v_) do { words[n].at = (uint16_t)(a_); words[n++].value = (uint16_t)(v_); } while (0)
+                static const uint16_t rates[] = { 1, 2, 4, 8, 15 };
+                FRAME_WORD(0x368E, rates[(v / 7) % 5]); FRAME_WORD(0xE00C, t); FRAME_WORD(0xC0E0, t + 1);
+                FRAME_WORD(rec, fx); FRAME_WORD(rec + 2, fy);
+                for (unsigned j = 0; j < t; j++) FRAME_WORD(0xB2D6 + 16 * j, 0);   /* not eligible */
+                /* The map cell comes from the 32-bit position: X = (P+10h)>>5,
+                 * Y = 8000h - ((P+10h)>>5). */
+                const uint16_t px = (uint16_t)(fx + ((s & 7) == 1 ? 0 : (h >> 17) & 1 ? 0 : 0x40));
+                const uint16_t py = (uint16_t)((s & 7) == 1 ? fy + 0x10 + (v % 6) : fy + ((h >> 18) & 1 ? 0 : 0x30));
+                const uint16_t qy = (uint16_t)(0x8000 - py);
+                FRAME_WORD(0xBA3C, px << 5); FRAME_WORD(0xBA3E, px >> 11); FRAME_WORD(0xC056, qy << 5); FRAME_WORD(0xC058, qy >> 11);
+                FRAME_WORD(0x9922, (h >> 16) & 1 ? 0 : 0x300);
+                if ((s & 7) == 1) {                  /* carrier: wire and catapult */
+                    FRAME_WORD(rec + 6, 0x0300 | ((h >> 21) & 1 ? 0x0800 : 0));
+                    FRAME_WORD(0x2DF4, 0x80); FRAME_WORD(0xC0CE, 0x80); FRAME_WORD(0xB194, (h >> 22) & 1 ? 0x60 : 0x40);
+                    FRAME_WORD(0xB19A, 1 + ((h >> 19) & 1)); FRAME_WORD(0x2DEE, (h >> 20) & 1 ? 0x0100 : 0x3000);
+                } else {                             /* a field: contact, objectives, tower */
+                    static const uint16_t flags[] = { 0x0101, 0x0401, 0x0501, 0x0D01, 0x0201 };
+                    FRAME_WORD(rec + 6, flags[v % 5]); FRAME_WORD(0x2DF4, (h >> 19) & 1 ? 0 : 0x20);
+                    FRAME_WORD(0xC0CE, 0); FRAME_WORD(0xB194, (h >> 20) & 1); static const uint16_t ticks[] = { 0x10, 0x13, 0x80, 0x00 };
+                    FRAME_WORD(0x3D8E, ticks[(h >> 21) & 3]);
+                    for (unsigned j = 0; j < 2; j++) {
+                        FRAME_WORD(0xE304 + 18 * j, (h >> (22 + j)) & 1 ? 4 : 3); FRAME_WORD(0xE306 + 18 * j, j == ((h >> 24) & 1) ? t : 9);
+                    }
+                    FRAME_WORD(0x9912, 1); FRAME_WORD(0xDEB4, (h >> 25) & 1 ? 5 : 0);
+                    FRAME_WORD(0x3DC8, (v / 5) % 4); FRAME_WORD(0x3DC2, (h >> 26) & 1);
+                    FRAME_WORD(0xE31A, (h >> 27) & 1 ? t : 7); FRAME_WORD(0x3666, (h >> 28) & 1 ? 0x1000 : 0x2000);
+                    FRAME_WORD(0x46F2, (h >> 29) & 1 ? 2 : 1); FRAME_WORD(0xE008, (h >> 30) & 1 ? 0x14 : 0x13);
+                }
+#undef FRAME_WORD
+                int safe = 1;
+                for (unsigned j = 0; j < n; j++) for (unsigned byte = 0; byte < 2; byte++) {
+                    const uint32_t address = phys(seg[S_DS], (uint16_t)(words[j].at + byte));
+                    if (address >= at && address < at + m->size + 2) safe = 0;
+                }
+                if (safe) for (unsigned j = 0; j < n; j++) for (unsigned byte = 0; byte < 2; byte++) {
+                    const uint32_t address = phys(seg[S_DS], (uint16_t)(words[j].at + byte));
+                    g_pristine[address] = g_mem[0][address] = g_mem[1][address] = (uint8_t)(words[j].value >> (8 * byte));
                 }
             }
             /* Small moving-object worlds separate target cycling, shadow
@@ -1415,13 +1512,13 @@ int main(int argc, char **argv)
             g_back_cs = cs; g_back_ip = back; g_back_sp = r[R_SP];
             g_reach = 0; g_camera_seen = 0; g_moving_seen = 0; g_hud_seen = 0; g_cockpit_seen = 0; g_nav_seen = 0; g_panel_seen = 0; g_arms_seen = 0;
             g_self_written = 0;
-            if (g_flight_fixture) { memset(g_flight_seen, 0, sizeof g_flight_seen); memset(g_flight_nsp, 0, sizeof g_flight_nsp); }
+            if (g_cov >= 0) { memset(g_cov_seen, 0, sizeof g_cov_seen); memset(g_cov_nsp, 0, sizeof g_cov_nsp); }
             const int returned = run_to_ret(a, entry_sp, o->matched, &steps, cs, ip);
             if (returned == 2 && !g_self_written) {
                 g_side[0].overflow = g_side[1].overflow = 1;
                 g_lost = 0; g_ncalls = 0; g_callover = 0;
                 const int ran = o->fn(&g_m);
-                if (!ran || g_lost || !g_m.cpu.int_depth) { ms++; restore(); continue; }
+                if (!ran || g_lost || !g_m.cpu.int_depth) { if (g_cov >= 0) g_cov_skips[0]++; ms++; restore(); continue; }
                 g_cpu[1] = g_m.cpu; mc++; if (g_camera_fixture) camera_faults++; else hud_faults++;
                 if (a->op_ip == 0x0051) hud_fault_mask |= 1;
                 if (a->op_ip == 0x0063) hud_fault_mask |= 2;
@@ -1438,7 +1535,7 @@ int main(int argc, char **argv)
              * pops at most a few words); a wild jump that happens to reach
              * the return address - a slide through zeroed memory - does not. */
             const uint16_t popped = (uint16_t)(a->r[R_SP] - entry_sp);
-            if (steps >= 100000 || popped < 2 || popped > 18) { if (getenv("FLWHY") && o->ip == 0x0815) printf("why1 s=%d steps=%d popped=%u\n", s, steps, popped); ms++; restore(); continue; }
+            if (steps >= 100000 || popped < 2 || popped > 18) { if (getenv("FLWHY") && o->ip == 0x0815) printf("why1 s=%d steps=%d popped=%u\n", s, steps, popped); if (g_cov >= 0) g_cov_skips[steps >= 100000 ? 1 : 2]++; ms++; restore(); continue; }
             /* A random state that makes the original write over its own code
              * (a copy aimed at the routine) runs instructions it was not; the
              * game never does, and no equivalent can follow it. The window is
@@ -1449,14 +1546,14 @@ int main(int argc, char **argv)
              * write landing past +0x100 went unseen at one seed. */
             const uint32_t self = phys(cs, g_from);
             const size_t window = reach + 8u > g_span ? (size_t)reach + 8u : g_span;
-            if (memcmp(g_mem[0] + self, g_pristine + self, window)) { ms++; restore(); continue; }
+            if (memcmp(g_mem[0] + self, g_pristine + self, window)) { if (g_cov >= 0) g_cov_skips[3]++; ms++; restore(); continue; }
             {   /* and the shared code it reaches by a JMP */
                 int over = 0;
                 for (int k = 0; k < g_nend && !over; k++) {
                     const uint32_t lo = phys(cs, g_end_lo[k]);
                     over = memcmp(g_mem[0] + lo, g_pristine + lo, (size_t)(uint16_t)(g_end_hi[k] - g_end_lo[k])) != 0;
                 }
-                if (over) { ms++; restore(); continue; }
+                if (over) { if (g_cov >= 0) g_cov_skips[3]++; ms++; restore(); continue; }
             }
             /* The event limit: a routine told it has one instruction fewer than
              * the original takes must decline. Running anyway would carry the
@@ -1486,7 +1583,7 @@ int main(int argc, char **argv)
             /* A state whose call into original code wanders off (a far call
              * through a slot only the running game fills) returned on the
              * original side by accident, not through the routine. */
-            { const int fr = o->fn(&g_m); if (getenv("FLWHY") && o->ip == 0x0815) printf("why2 s=%d fn=%d lost=%d ip=%04X\n", s, fr, g_lost, g_m.cpu.ip); if (!fr || g_lost) { ms++; restore(); continue; } }
+            { const int fr = o->fn(&g_m); if (getenv("FLWHY") && o->ip == 0x0815) printf("why2 s=%d fn=%d lost=%d ip=%04X\n", s, fr, g_lost, g_m.cpu.ip); if (!fr || g_lost) { if (g_cov >= 0) g_cov_skips[4]++; ms++; restore(); continue; } }
             /* An interrupt handler runs whole or declines: it has no partway
              * return, so resuming anywhere but the original's address is a
              * difference, not a state to finish and skip. */
@@ -1501,12 +1598,12 @@ int main(int argc, char **argv)
             const int whole = g_m.cpu.seg[S_CS] == cs && g_m.cpu.ip == back;
             if (g_m.cpu.seg[S_CS] != cs || g_m.cpu.ip != back) {
                 int more = 0;
-                if (!run_to_ret(&g_m.cpu, entry_sp, o->matched, &more, cs, ip)) { ms++; restore(); continue; }
+                if (!run_to_ret(&g_m.cpu, entry_sp, o->matched, &more, cs, ip)) { if (g_cov >= 0) g_cov_skips[5]++; ms++; restore(); continue; }
                 g_finished++;
             }
             mc++;
-            if (g_flight_fixture) for (unsigned k = 0; k < sizeof g_flight_seen; k++) {
-                g_flight_cover[k] |= g_flight_seen[k]; if (whole) g_flight_whole[k] |= g_flight_seen[k];
+            if (g_cov >= 0) for (unsigned k = 0; k < COVERED[g_cov].len; k++) {
+                g_cov_cover[k] |= g_cov_seen[k]; if (whole) g_cov_whole[k] |= g_cov_seen[k];
             }
             if (g_camera_fixture) camera_branches |= g_camera_seen;
             if (!strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0x983E) moving_branches |= g_moving_seen;
@@ -1603,19 +1700,22 @@ int main(int argc, char **argv)
                o->what, mc, ms, mb ? "MISMATCH" : mc ? "equal" : "not testable here (routes only)");
         if (g_checked_alloc) printf("  completed allocation-error states: %llu\n", g_alloc_errors);
         if (camera_gradients) printf("  completed 16-band states: %llu\n", g_gradient_full);
-        if (g_flight_fixture) {
+        if (g_cov >= 0) {
             unsigned all = 0, whole = 0;
-            for (unsigned k = 0; k < sizeof g_flight_cover; k++) { all += g_flight_cover[k]; whole += g_flight_whole[k]; }
-            if (g_flight_escapes) { fprintf(stderr, "flight input: %llu calls escaped their return\n", g_flight_escapes); mb++; }
-            printf("  flight instructions run by compared states: %u, by states the named routine finished: %u (of 1274)\n", all, whole);
-            /* Seeds reach 1,260-1,274; fewer means the fixtures stopped
-             * reaching whole arms (keys, ejection, touchdown, crash). */
-            if (states >= 4000 && whole < 1250) { fprintf(stderr, "flight fixtures reached too little of the routine\n"); mb++; }
-            const char *cover_path = getenv("F117_FLIGHT_COVER");
+            for (unsigned k = 0; k < COVERED[g_cov].len; k++) { all += g_cov_cover[k]; whole += g_cov_whole[k]; }
+            if (g_cov_escapes) { fprintf(stderr, "%s: %llu calls escaped their return\n", COVERED[g_cov].what, g_cov_escapes); mb++; }
+            printf("  %s instructions run by compared states: %u, by states the named routine finished: %u (of %u)\n",
+                   COVERED[g_cov].what, all, whole, COVERED[g_cov].insns);
+            printf("  skipped: %llu fault, %llu long run, %llu bad return, %llu code written, %llu declined, %llu unfinished\n",
+                   g_cov_skips[0], g_cov_skips[1], g_cov_skips[2], g_cov_skips[3], g_cov_skips[4], g_cov_skips[5]);
+            /* Seeds reach flight input 1,260-1,274 and the frame update
+             * 827-848; fewer means the fixtures stopped reaching whole arms. */
+            if (states >= 4000 && whole < COVERED[g_cov].floor) { fprintf(stderr, "%s fixtures reached too little of the routine\n", COVERED[g_cov].what); mb++; }
+            const char *cover_path = getenv("F117_COVER");
             FILE *cover = cover_path ? fopen(cover_path, "w") : NULL;
             if (cover) {
-                for (unsigned k = 0; k < sizeof g_flight_cover; k++)
-                    if (g_flight_cover[k]) fprintf(cover, "%04X %d\n", 0x1EB0 + k, g_flight_whole[k]);
+                for (unsigned k = 0; k < COVERED[g_cov].len; k++)
+                    if (g_cov_cover[k]) fprintf(cover, "%04X %d\n", g_cov_ip + k, g_cov_whole[k]);
                 fclose(cover);
             }
         }

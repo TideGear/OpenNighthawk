@@ -343,6 +343,29 @@ four seconds each; the default seed runs all 1,274 instructions inside
 the named code, the others 1,260. 49 isolated tests pass. Real
 camera-gradient replay: 143.4 s, 8,464 calls, all 234 checkpoints/final
 identical. Audited verdict: `D:/f117-gate/flight-input/named-proof/route-verdict.json`.
+Full gate at `1337acf` (`D:/f117-gate/gate-flight-input.log`): 48 tests,
+all 40 routes, both instruction profiles, three matched seeds, 1,745 s
+(build 241, coverage 620, regeneration 24, parity 860 with 40 fresh
+interpreter runs). Its coverage pass recorded the new key.
+
+Frame update (`VGAME 0000:3ADA`, 12 Oct), same method. The coverage and
+escape tracking now serve a table of routines (`COVERED` in
+`tests/func_lockstep.c`) with a per-routine floor, and a skip-reason tally
+(fault, long run, bad return, code written, declined, unfinished) shows
+why states are dropped: here every skip was a long run, ended inside the
+frame's sub-passes (5852, 683E, scene, AI, palette), which now return at
+once in this routine's fixtures. The routine picks the nearest field and
+derives the map cell itself, so airfield fixtures plant the 32-bit position
+and flagged field records, not the cell. Transcript and named body both
+equal at three seeds (2,931 / 2,914 / 2,912 states); two planted constant
+errors fail at once. The real replay showed one event overrun by one
+instruction in 8,462 calls: four divides after their setup were outside the
+room claim. The lockstep's limit probe tests only the limit at the very
+end, so a mid-routine claim can be short and still pass every seed; the
+route found it. `D:/f117-gate/frame-3ada/room_audit.py` walks a named body
+and checks each claim against the instructions counted after it (it found
+all four in the unfixed text; two flags it raises are if/else and
+table-claim artifacts, checked by reading).
 
 ## The gate (`tools/build_recomp.py`)
 
