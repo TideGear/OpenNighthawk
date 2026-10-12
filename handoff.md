@@ -15,15 +15,16 @@ standing practice, not a session-by-session log. Earlier sessions' detail
 
 ## Current state
 
-Last fully gated runtime baseline: VGAME `0000:1E79` timer tick,
-commit `b253f3a`, 815 matched addresses. Full gate
-`D:/f117-gate/gate-timer-tick.log` passes: 39 unit tests, all 39 routes at
-every checkpoint/final (38 fresh interpreter sessions), both 5,718,976-state
-instruction profiles and three matched seeds (2,670,351 / 2,669,258 /
-2,671,209 comparisons; third seed `0xb253f3af283f`), zero mismatches, plus
-reachability/event checks. Total 1,872 s. Census is 807 functions /
-69,080 bytes (P2 41.62%, overall 74.26%). Real camera replay calls the timer
-53,226 times with all 234 checkpoints/final unchanged. Prior pushed `e7b7c81` has passing
+Last fully gated runtime baseline: VGAME `0000:9515` objectives panel,
+commit `ae57d1b`, 816 matched addresses. Full gate
+`D:/f117-gate/gate-objectives-panel.log` passes: 40 unit tests, all 40 routes at
+every checkpoint/final (39 fresh interpreter sessions), both 5,718,976-state
+instruction profiles and three matched seeds (2,673,236 / 2,671,995 /
+2,673,680 comparisons; third seed `0xae57d1b53870`), zero mismatches, plus
+reachability/event checks. Total 1,595 s. Census is 808 functions /
+69,171 bytes (P2 41.67%, overall 74.28%). Real F10 replay calls the panel
+four times with all 57 checkpoints/final unchanged; input is retained in
+`tools/routes/objectives_panel.args`. Prior pushed `2a7c842` has passing
 Windows and munt CI. Retired polygon worktree/build cleanup is recorded in
 [repeated-processes.md](docs/repeated-processes.md#phase-2-candidate-reading).
 
@@ -59,36 +60,30 @@ Phase 2 work" below).
   byte-identical. The clipped edge and shared emitters are integrated and
   fully gated; private proofs/patches remain in `D:/f117-gate/span-edge` and
   `D:/f117-gate/span-emit`.
-  Integrated VGAME `0000:1E79` timer tick, 53 census bytes; the static
-  walk includes shared rate-control tails (`1C6D` / `1C85`), 95 bytes total.
-  Named implementation in `D:/f117-wt/span-emitter` (base `52d67e5`) passes
-  13,776 comparisons at three seeds and all 39 isolated unit tests. Its real
-  camera replay calls it 53,226 times with all 234 checkpoints/final identical
-  to the latest fresh interpreter capture, without event overruns. Proof:
-  `D:/f117-gate/timer-tick/route-verdict.json`; selective patch `integrate.patch`
-  in the same directory. Integrated selectively: 815 addresses, census
-  807 / 69,080 (P2 41.62%, overall 74.26%). Fresh full gate passes as above.
-  The private generated directory remains `D:/f117-gate/span-emit/gen`;
-  old emitter source is snapshotted beside its proof; the timer draft/dossier
-  remain in `D:/f117-gate/next-candidates`.
-  Objectives panel `9515` is integrated, pending a fresh full gate. Its resolved
-  eight-way table gives a 200-instruction / 500-byte walk, versus 91 census
-  bytes. Private F10 route `next-candidates/objectives-panel.args` reaches
-  the original entry and matches both engines at all 57 checkpoints/final
-  `2877054667/c465c5fd46862b46`. Proof:
-  `D:/f117-gate/objectives-panel/probe-verdict.json`. Coverage records only
-  interpreted instructions; absence in recompiled coverage cannot prove an
-  entry was missed. Named implementation passes 8,439 comparisons over three
-  seeds, each with all required branches (mask `7FFF`), and 40 isolated tests.
-  Real F10 replay invokes it four times with all 57 checkpoints/final identical;
-  proof `D:/f117-gate/objectives-panel/named-proof/route-verdict.json`.
-  Inputs are retained as `tools/routes/objectives_panel.args` (40 gate routes).
-  Selective patch `D:/f117-gate/objectives-panel/integrate.patch`; private tree
-  base `2a7c842`. Census 808 / 69,171, P2 41.67%, overall 74.28%.
-  Fresh full gate pending in `D:/f117-gate/gate-objectives-panel.log`; do not
-  push runtime changes until it passes. Preserve the deadline-buffer copy
-  order and live dispatch table. Next: START armament menu `07EE` has a
-  static dossier; not implemented.
+  Timer and objectives proofs remain under `D:/f117-gate/timer-tick` and
+  `objectives-panel`; the latter is fully gated as above. Coverage records
+  interpreted instructions only: absence in recompiled coverage cannot prove
+  an entry was missed. The tested objectives source was preserved before
+  resetting the private worktree to `ae57d1b` for the next candidate.
+  Next: integrate START `0000:07EE` armament screen from private worktree
+  `D:/f117-wt/span-emitter`. Three seeds compare 6,459 states, all required
+  branches (`7F`), zero mismatches; all 41 isolated tests pass. Real
+  `full_cycle` invokes it once with all 66 checkpoints/final identical.
+  Proof `D:/f117-gate/armament-screen/named-proof/route-verdict.json`;
+  selective patch `D:/f117-gate/armament-screen/integrate.patch`. It is NOT
+  integrated yet; after integration run a fresh full gate before pushing.
+  The 373-byte walk earns only 67 census bytes. Preserve byte/word realism
+  reads, unsigned bounds, live far pointers and DF-sensitive palette moves.
+  Private generated directory remains `D:/f117-gate/span-emit/gen`.
+  Navigation grid `8A90` is the larger next candidate: dossier under
+  `D:/f117-gate/next-candidates/navgrid` (374 instructions / 1,094 bytes).
+  Normal F3 probe `next-candidates/navgrid-panel.args` reaches the original
+  and matches all 57 checkpoints/final `2877054444/5ea6b18cd60f6608`.
+  Proof `D:/f117-gate/navgrid/probe-verdict.json`; named implementation and
+  matched invocation proof still needed. Keep high-byte arithmetic exact.
+  Panel frame `79BE` also has a dossier under `next-candidates/panel-frame`
+  (798 instructions / 2,090 bytes); not implemented. Its projection writes
+  must precede ILS writes. Full details: repeated-processes.md.
 - 04DD above, if a real route to it is ever found.
 
 ## How this project verifies Phase 2 work (read before matching a new routine)
@@ -98,7 +93,7 @@ A routine only counts as matched once it passes BOTH:
    hand-written C against the original's own bytes from randomized (and for
    routines with real argument/driver dependencies, returning-driver-thunk)
    entry states. Zero mismatches required.
-2. **Real-driver proof**: an actual scripted route (`tools/routes/*.input`)
+2. **Real-driver proof**: an actual scripted route (`tools/routes/*.args`, sometimes replaying `.input`)
    must execute the routine with a positive count, with every checkpoint and
    the final hash identical between engines. Fixture proof alone is not
    enough — this project has repeatedly found routines that pass every
@@ -135,7 +130,7 @@ actual tally in the log, not just the exit code.
   history, not on disk.
 - Other, unproven private drafts mentioned in earlier sessions (VGAME
   `120A:0971`, a different divide-handling routine with recursive-fault
-  risk; START `07EE`; END `0A98`): none
+  risk; END `0A98`): none
   implemented or proven. Don't conflate them with the routines above.
 
 ## Standing practice

@@ -132,8 +132,43 @@ overruns. Source/executable/input/runner/reference hashes are retained in
 patch `D:/f117-gate/objectives-panel/integrate.patch`. The input is now
 retained publicly as `tools/routes/objectives_panel.args`, giving 40 gate
 routes. Generation takes 21.9 s; build uses two workers and its own TEMP.
-Integrated with census 808 / 69,171 (P2 41.67%, overall 74.28%); fresh full
-gate pending in `D:/f117-gate/gate-objectives-panel.log`.
+Integrated with census 808 / 69,171 (P2 41.67%, overall 74.28%). Full gate
+at `ae57d1b` passes in `D:/f117-gate/gate-objectives-panel.log`: all 40 tests,
+40 routes at every checkpoint/final, 39 fresh interpreter sessions, both
+5,718,976-state profiles and three matched seeds (2,673,236 / 2,671,995 /
+2,673,680 comparisons, third seed `0xae57d1b53870`), zero mismatches, passing
+reachability/event checks. Total 1,595 s: build/tests 183, coverage 542,
+identical regeneration 25, parity 846. Private armament build, fixtures and
+replays overlapped after matched shards finished; this different-source
+duration is not a controlled speed comparison. Audited verdict and log hash:
+`D:/f117-gate/objectives-panel/full-gate-verdict.json`.
+
+Armament screen (`START 0000:07EE`), private candidate at base `ae57d1b`:
+the 145-line named implementation preserves settings/mission far pointers,
+unavailable stations, sixteen hit boxes, DF-sensitive gray palette copies,
+picture-load arguments, station icons and stores text. The initial 200-state
+run compared only one state, so fixtures now plant valid pointers and small
+settings. Half use returning drawing/format/mouse helpers, half retain actual
+helpers; the picture loader returns in both. Three seeds compare 2,420 /
+2,023 / 2,016 states including partial stops, zero mismatches, all required
+branches (`7F`); 220 full states retain actual helpers. All 41 isolated tests
+pass in 61.98 s. Real `full_cycle` replay takes 45.4 s, invokes the entry once
+and matches all 66 checkpoints/final against an immutable snapshot from the
+fresh timer gate, no event overruns. Source/executable/input/runner/reference
+hashes: `D:/f117-gate/armament-screen/named-proof/route-verdict.json`; selective
+patch `D:/f117-gate/armament-screen/integrate.patch`. Generation takes 25.2 s
+from frozen complete coverage lines; build uses two workers and its own TEMP.
+The 373-byte walk earns only 67 census bytes. Not integrated yet.
+
+Larger next candidates: panel frame `VGAME 0000:79BE`, 798 instructions /
+2,090 bytes, and navigation grid `0000:8A90`, 374 / 1,094. Their static walks
+have no unresolved successors; dossiers remain under
+`D:/f117-gate/next-candidates/panel-frame` and `navgrid`. A normal-input F3
+probe reaches original `8A90` and matches both engines at all 57 checkpoints
+and final `2877054444/5ea6b18cd60f6608`. Proof:
+`D:/f117-gate/navgrid/probe-verdict.json`. Neither candidate is implemented;
+positive matched invocation proof remains necessary. Preserve high-byte-only
+grid arithmetic and the order of projection stores versus the panel's ILS.
 
 ## The gate (`tools/build_recomp.py`)
 
