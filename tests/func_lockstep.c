@@ -308,7 +308,7 @@ static int compare(const char *mod, uint32_t off, uint16_t cs, uint16_t ip, int 
 static void stub_driver_thunks(uint8_t *pristine, uint32_t at, const rc_module *m, const recomp_override *o)
 {
     const int vgame_draw = !strcmp(m->name, "VGAME.EXE") &&
-        ((o->seg == 0 && (o->ip == 0x79BE || o->ip == 0x8A90 || o->ip == 0x9515 || o->ip == 0x1E79 || o->ip == 0xB171 || o->ip == 0xD6DD || o->ip == 0x4777 ||
+        ((o->seg == 0 && (o->ip == 0x983E || o->ip == 0x79BE || o->ip == 0x8A90 || o->ip == 0x9515 || o->ip == 0x1E79 || o->ip == 0xB171 || o->ip == 0xD6DD || o->ip == 0x4777 ||
                          o->ip == 0xD3F9 || o->ip == 0xD87C || o->ip == 0x72D8 ||
                            o->ip == 0x8A18 || o->ip == 0x881F || o->ip == 0x796E || o->ip == 0x3A4E ||
                            o->ip == 0xB0C2 || o->ip == 0xC45C)) ||
@@ -350,6 +350,13 @@ static const struct { const char *module; uint16_t ip; uint32_t linear; uint8_t 
     { "VGAME.EXE", 0x79BE, 0x089F7, 0xC3 },
     { "VGAME.EXE", 0x79BE, 0x08A18, 0xC3 },
     { "VGAME.EXE", 0x79BE, 0x0889B, 0xC3 },
+    /* Moving-object caller: returning projection/drawing helpers.
+     * Real range, bearing, absolute value, scaling and trail-size math runs. */
+    { "VGAME.EXE", 0x983E, 0x0B5DC, 0xC3 },
+    { "VGAME.EXE", 0x983E, 0x0BB0D, 0xC3 },
+    { "VGAME.EXE", 0x983E, 0x0D9FE, 0xC3 },
+    { "VGAME.EXE", 0x983E, 0x0BA56, 0xC3 },
+    { "VGAME.EXE", 0x983E, 0x114A6, 0xCB },
     /* HUD caller: returning clipped line; preserve real rotation math. */
     { "VGAME.EXE", 0x0016, 0x0FE40, 0xCB },
     /* Navigation-grid caller: returning far rectangle fill. */
@@ -414,6 +421,7 @@ static const struct { const char *module; uint16_t ip; int arg; uint16_t v[2]; }
 /* Exact code ranges when the default 0x300-byte window is unsuitable:
  * long/shared tails, or small walkers whose unrelated callees are nearby. */
 static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
+    { "VGAME.EXE", 0x983E, 0x983E, 0x06BC }, /* entire moving-object pass */
     { "VGAME.EXE", 0x0016, 0x0016, 0x09C2 }, /* HUD pass through RET */
     { "VGAME.EXE", 0x79BE, 0x79BE, 0x082A }, /* whole cockpit pass through RET */
     { "VGAME.EXE", 0x8A90, 0x8A90, 0x0446 }, /* entire grid through RET at 8ED5 */
@@ -540,6 +548,7 @@ static uint16_t g_below;                /* how far the routine's code reaches be
  * written back later (a row table over the code when DS = CS) runs changed instructions and leaves no
  * trace in the end state. */
 static int g_self_written, g_watch_transient;
+static uint64_t g_moving_seen;
 static int g_hud_fixture;
 static uint64_t g_hud_seen;
 static uint64_t g_cockpit_seen;
@@ -551,7 +560,7 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
     const uint32_t watch = phys(cs, (uint16_t)(ip - g_below));
     const int watching = (g_below || g_watch_transient) && a->mem == g_mem[0];
     while (*steps < 100000) {
-        const unsigned watch_bytes = (ip == 0x0016 || ip == 0x79BE || ip == 0x8A90) ? g_span : 0x300u + g_below;
+        const unsigned watch_bytes = (ip == 0x983E || ip == 0x0016 || ip == 0x79BE || ip == 0x8A90) ? g_span : 0x300u + g_below;
         if (watching && !g_self_written && memcmp(a->mem + watch, g_pristine + watch, watch_bytes)) g_self_written = 1;
         if (g_trace) printf("      %04X:%04X clk %llu sp %04X\n", a->seg[S_CS], a->ip, (unsigned long long)a->icount, a->r[R_SP]);
         const uint16_t here = a->ip;
@@ -562,6 +571,16 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
                 if (here == branch[k]) g_arms_seen |= 1u << k;
             if (here == 0x0820 && x86_cond(a, 7)) g_arms_seen |= 1u << 5;
             if (here == 0x08E8 && !(a->flags & F_ZF)) g_arms_seen |= 1u << 6;
+        }
+        if (ip == 0x983E && own && a->mem == g_mem[0]) {
+            static const uint16_t branch[] = { 0x984B, 0x98D5, 0x98EF, 0x9916,
+                0x9923, 0x994A, 0x9988, 0x99A3, 0x99CB, 0x99D3, 0x99DB,
+                0x99F3, 0x9A1D, 0x9A7C, 0x9A9D, 0x9AB7, 0x9B42,
+                0x9B99, 0x9BCA, 0x9C19, 0x9C63, 0x9C77, 0x9CBD,
+                0x9D0E, 0x9AFC, 0x9B16, 0x9D39, 0x9D9A, 0x9E1B,
+                0x9E16, 0x9E6C, 0x9ECA };
+            for (unsigned k = 0; k < sizeof branch / sizeof branch[0]; k++)
+                if (here == branch[k]) g_moving_seen |= UINT64_C(1) << k;
         }
         if (ip == 0x0016 && own && a->mem == g_mem[0]) {
             static const uint16_t branch[] = { 0x0049, 0x00D9, 0x01D6, 0x022E,
@@ -708,7 +727,7 @@ int main(int argc, char **argv)
         g_hud_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0x1058 && o->ip == 0x0016;
         g_watch_transient = (!strcmp(o->module, "VGAME.EXE") && o->seg == 0x1058 && o->ip == 0x0016) ||
             (o->seg == 0 &&
-            ((!strcmp(o->module, "VGAME.EXE") && (o->ip == 0x79BE || o->ip == 0x8A90)) ||
+            ((!strcmp(o->module, "VGAME.EXE") && (o->ip == 0x983E || o->ip == 0x79BE || o->ip == 0x8A90)) ||
              (!strcmp(o->module, "START.EXE") && (o->ip == 0x39B3 || o->ip == 0x39D5)) ||
              (!strcmp(o->module, "END.EXE") && (o->ip == 0x1CB1 || o->ip == 0x1CD3)) ||
              (!strcmp(o->module, "PLAYER.EXE") && o->ip == 0x1E90)));
@@ -733,6 +752,7 @@ int main(int argc, char **argv)
         const int sprite_run = !strcmp(o->module, "MPS_LOGO.EXE") && o->seg == 0x006D && o->ip == 0x0678;
         const int camera_gradients = !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && (o->ip == 0x1974 || o->ip == 0x19FD);
         const int objectives_panel = !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0x9515;
+        uint64_t moving_branches = 0;
         unsigned hud_fault_mask = 0;
         unsigned long long hud_faults = 0;
         uint64_t hud_branches = 0;
@@ -833,6 +853,71 @@ int main(int argc, char **argv)
                     }
                     small[0] = o->ip == 0x1974 ? 169 : 110;
                     small[1] = (uint16_t)((s >> 3) & 1);
+                }
+            }
+            /* Small moving-object worlds separate target cycling, shadow
+             * height, detail reduction, distant dots and exterior rendering.
+             * Returning projection supplies controlled depth; real range and
+             * bearing math still executes against these coordinates. */
+            if (!strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0x983E &&
+                ((s & 7) == 1 || (s & 7) == 2)) {
+                const unsigned v = (unsigned)s >> 3;
+                static const uint16_t views[] = { 0, 0x8B, 0x80, 0x81 };
+                static const uint16_t heights[] = { 0, 128, 999, 1500, 1600, 65535 };
+                static const uint16_t depths[] = { 0xFFFF, 0xFFF0, 0xFFEF, 0xFFE1, 0xFFE0, 0xFF01, 0xFF00, 0, 1 };
+                struct { uint16_t at, value; } words[512];
+                unsigned n = 0;
+#define MOVING_PLANT(a_, v_) do { words[n].at = (uint16_t)(a_); words[n++].value = (uint16_t)(v_); } while (0)
+                MOVING_PLANT(0xC0A6, views[v % 4]); MOVING_PLANT(0x2DF4, heights[(v / 4) % 6]);
+                MOVING_PLANT(0x368A, (v / 7) % 2); MOVING_PLANT(0x368C, (v / 5) % 2); MOVING_PLANT(0x9922, (v & 2) ? 100 : 0);
+                MOVING_PLANT(0xC0D0, 1000); MOVING_PLANT(0xC0DE, 1000); MOVING_PLANT(0xE582, 0);
+                MOVING_PLANT(0x2DEE, (v / 3) * 0x2137); MOVING_PLANT(0x2DF0, 0); MOVING_PLANT(0x2DF2, 0);
+                MOVING_PLANT(0x3D94, v % 3 == 0 ? 0xFFFF : v % 3 == 1 ? 0x80 : 0);
+                MOVING_PLANT(0xB2BA, (v / 11) % 3); MOVING_PLANT(0xE008, v % 3 == 0 ? 0x13 : v % 3 == 1 ? 0x19 : 0);
+                MOVING_PLANT(0xE32A, (v / 9) % 3); MOVING_PLANT(0xC0E0, v % 7 == 0 ? 0 : 3);
+                MOVING_PLANT(0x3D92, (v / 5) % 3 == 0 ? 0xFFFF : (v / 5) % 3 == 1 ? 0x80 : 0);
+                MOVING_PLANT(0xDEFC, v % 13 == 0 ? 0 : 4); MOVING_PLANT(0xE00C, 0);
+                MOVING_PLANT(0x9930, 3200); MOVING_PLANT(0x9B36, 3200);
+                MOVING_PLANT(0x4A10, v % 17 == 0 ? 0xFFFF : 100); MOVING_PLANT(0x4A18, 80); MOVING_PLANT(0xDEBE, depths[(v / 2) % 9]);
+                MOVING_PLANT(0x4010, 0x2000); MOVING_PLANT(0x4028, 0x2040); MOVING_PLANT(0x4040, 0x2080);
+                MOVING_PLANT(0xC62E, (v & 1) ? 0 : 100); MOVING_PLANT(0xC0D2, 1000); MOVING_PLANT(0xC0E4, 1000);
+                MOVING_PLANT(0xB782, (v & 4) ? 1 : 0); MOVING_PLANT(0xC09A, (v & 8) ? 1 : 0); MOVING_PLANT(0xC0CE, 100);
+                for (unsigned j = 0; j < 3; j++) {
+                    const uint16_t object_at = (uint16_t)(0xB2D0 + 16 * j);
+                    MOVING_PLANT(object_at, 1000 + 20 * j); MOVING_PLANT(object_at + 2, 1000 - 20 * j);
+                    MOVING_PLANT(object_at + 6, (v & 8) ? 0x80 : 0x701); MOVING_PLANT(object_at + 12, 1);
+                }
+                for (unsigned j = 0; j < 4; j++) {
+                    const uint16_t object_at = (uint16_t)(0xC16C + 36 * j);
+                    for (unsigned k = 0; k < 18; k++) {
+                        const uint16_t value = k == 0 ? (uint16_t)(1000 + 10 * j) : k == 1 ? (uint16_t)(1000 - 10 * j) :
+                            k == 2 ? (uint16_t)((v & 16) ? 1000 : 100) : k == 3 || k == 5 ? 32000 :
+                            k == 7 ? 0x4000 : k == 10 ? (uint16_t)j : k == 11 ? (uint16_t)((v & 32) ? 0 : ((j & 1) ? 0x22 : 2)) :
+                            k == 12 ? (uint16_t)((v & 64) ? 0 : 1) : 0;
+                        MOVING_PLANT(object_at + 2 * k, value);
+                    }
+                }
+                for (unsigned j = 0; j < 16; j++) {
+                    const uint16_t object_at = (uint16_t)(0x3A08 + 8 * j);
+                    MOVING_PLANT(object_at, ((v + j) & 3) ? 1000 : 0); MOVING_PLANT(object_at + 2, 1000); MOVING_PLANT(object_at + 4, 100); MOVING_PLANT(object_at + 6, (v + j) % 5);
+                }
+                for (unsigned j = 0; j < 12; j++) {
+                    const uint16_t object_at = (uint16_t)(0x3C3A + 28 * j);
+                    for (unsigned k = 0; k < 14; k++) {
+                        const uint16_t value = k < 2 ? 1000 : k == 2 ? 100 : k == 4 ? 0x4000 : k == 6 ? 0xF000 :
+                            k == 7 ? (uint16_t)(((v + j) & 1) ? 1 : 0) : k == 8 ? (uint16_t)(j % 4) : 0;
+                        MOVING_PLANT(object_at + 2 * k, value);
+                    }
+                }
+#undef MOVING_PLANT
+                int safe = 1;
+                for (unsigned j = 0; j < n; j++) for (unsigned byte = 0; byte < 2; byte++) {
+                    const uint32_t address = phys(seg[S_DS], (uint16_t)(words[j].at + byte));
+                    if (address >= at && address < at + m->size + 2) safe = 0;
+                }
+                if (safe) for (unsigned j = 0; j < n; j++) for (unsigned byte = 0; byte < 2; byte++) {
+                    const uint32_t address = phys(seg[S_DS], (uint16_t)(words[j].at + byte));
+                    g_pristine[address] = g_mem[0][address] = g_mem[1][address] = (uint8_t)(words[j].value >> (8 * byte));
                 }
             }
             /* HUD worlds: both layouts and all three modes, tape boundary
@@ -1061,7 +1146,7 @@ int main(int argc, char **argv)
              * accept the state only when it returns to the pushed address. */
             const uint16_t entry_sp = (uint16_t)(r[R_SP] - (o->matched == 3 ? 6 : o->matched == 2 ? 4 : 2));
             g_back_cs = cs; g_back_ip = back; g_back_sp = r[R_SP];
-            g_reach = 0; g_hud_seen = 0; g_cockpit_seen = 0; g_nav_seen = 0; g_panel_seen = 0; g_arms_seen = 0;
+            g_reach = 0; g_moving_seen = 0; g_hud_seen = 0; g_cockpit_seen = 0; g_nav_seen = 0; g_panel_seen = 0; g_arms_seen = 0;
             g_self_written = 0;
             const int returned = run_to_ret(a, entry_sp, o->matched, &steps, cs, ip);
             if (returned == 2 && !g_self_written) {
@@ -1151,6 +1236,7 @@ int main(int argc, char **argv)
                 g_finished++;
             }
             mc++;
+            if (!strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0x983E) moving_branches |= g_moving_seen;
             if (!strcmp(o->module, "VGAME.EXE") && o->seg == 0x1058 && o->ip == 0x0016) hud_branches |= g_hud_seen;
             if (!strcmp(o->module, "VGAME.EXE") && o->ip == 0x79BE) cockpit_branches |= g_cockpit_seen;
             if (!strcmp(o->module, "VGAME.EXE") && o->ip == 0x8A90) nav_branches |= g_nav_seen;
@@ -1244,6 +1330,12 @@ int main(int argc, char **argv)
                o->what, mc, ms, mb ? "MISMATCH" : mc ? "equal" : "not testable here (routes only)");
         if (g_checked_alloc) printf("  completed allocation-error states: %llu\n", g_alloc_errors);
         if (camera_gradients) printf("  completed 16-band states: %llu\n", g_gradient_full);
+        if (!strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0x983E) {
+            printf("  completed moving-object branch mask: %08llX (required FFFFFFFF)\n", (unsigned long long)moving_branches);
+            if (states >= 4000 && moving_branches != UINT64_C(0xFFFFFFFF)) {
+                fprintf(stderr, "moving-object fixtures missed required branches\n"); mb++;
+            }
+        }
         if (!strcmp(o->module, "VGAME.EXE") && o->seg == 0x1058 && o->ip == 0x0016) {
             printf("  completed HUD branch mask: %08llX (required FFFFFFFF)\n", (unsigned long long)hud_branches);
             printf("  HUD divide fault states: %llu; mask %X (required F)\n", hud_faults, hud_fault_mask);

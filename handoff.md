@@ -74,8 +74,11 @@ Phase 2 work" below).
   Actual-driver F3 replay invokes the named pass 550 times with
   all 57 checkpoints/final equal. The immutable interpreter reference also
   matches the fresh HUD gate (`fresh-reference-crosscheck.json`).
-  Integrate only after pushing this HUD baseline, refresh census and run
-  another full gate. Preserve target cycling before drawing, live guest
+  HUD baseline/evidence is pushed as `7fb10be`. Moving-object patch is
+  integrated on main and matches all three tested snapshots. Census is
+  813 functions / 76,634 bytes, P2 45.62%, overall 75.42%, 821 addresses.
+  Fresh full gate pending: `D:/f117-gate/gate-moving-objects.log`;
+  do not push this runtime change until it passes. Preserve target cycling before drawing, live guest
   frame slots, signed comparisons, byte flag updates and all 38 calls.
   Next camera-image dossier: `next-candidates/camimage`, VGAME `BCEF`,
   658 instructions / 1,863 bytes / 49 calls. Partial handwritten source

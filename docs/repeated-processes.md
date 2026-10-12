@@ -274,8 +274,10 @@ F3 replay invokes the named pass 550 times and matches all 57 checkpoints/
 final in 51.0 s. Audited artifacts, patch and tested snapshots:
 `D:/f117-gate/moving-objects/targeted-verdict.json`. Its saved interpreter
 reference matches the fresh HUD gate (`fresh-reference-crosscheck.json`).
-Main has no moving-object changes yet; integrate after the HUD baseline
-push and require a fresh full gate.
+After pushing HUD baseline/evidence as `7fb10be`, integrated the selective
+patch; all three main texts match the tested snapshots. Census: 813 /
+76,634, P2 45.62%, overall 75.42%, 821 addresses. Fresh full gate pending
+in `D:/f117-gate/gate-moving-objects.log`; do not push until it passes.
 
 ## The gate (`tools/build_recomp.py`)
 
