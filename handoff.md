@@ -15,16 +15,16 @@ standing practice, not a session-by-session log. Earlier sessions' detail
 
 ## Current state
 
-Last fully gated runtime baseline: VGAME `0000:8A90` navigation grid,
-commit `f1ecb55`, 818 matched addresses. Full gate
-`D:/f117-gate/gate-navigation-grid.log` passes: 42 unit tests, all 41 routes at
+Last fully gated runtime baseline: VGAME `0000:79BE` cockpit panel frame,
+commit `ae4b50f`, 819 matched addresses. Full gate
+`D:/f117-gate/gate-panel-frame.log` passes: 43 unit tests, all 41 routes at
 every checkpoint/final (40 fresh interpreter sessions), both 5,718,976-state
-instruction profiles and three matched seeds (2,677,711 / 2,676,098 / 2,677,743
-comparisons; third seed `0xf1ecb55f79bf`), zero mismatches, plus
-reachability/event checks. Total 1,600 s. Census is 810 functions /
-70,332 bytes (P2 42.28%, overall 74.45%). Real F3 replay calls the named grid
-314 times with all 57 checkpoints/final unchanged. Retained input:
-`tools/routes/navigation_grid.args`. Pushed armament baseline `7651db5`
+instruction profiles and three matched seeds (2,682,617 / 2,681,007 / 2,683,132
+comparisons; third seed `0xae4b50f791f6`), zero mismatches, plus
+reachability/event checks. Total 1,560 s. Census is 811 functions /
+72,422 bytes (P2 43.39%, overall 74.78%). Real F3 replay calls the named panel
+550 times with all 57 checkpoints/final unchanged. Retained input:
+`tools/routes/navigation_grid.args`. Pushed grid baseline `c8f262b`
 has passing Windows and munt CI.
 
 A sibling handler, **VGAME 0FB2:04DD** (the line clipper's own divide-error
@@ -59,63 +59,32 @@ Phase 2 work" below).
   byte-identical. The clipped edge and shared emitters are integrated and
   fully gated; private proofs/patches remain in `D:/f117-gate/span-edge` and
   `D:/f117-gate/span-emit`.
-  Timer and objectives proofs remain under `D:/f117-gate/timer-tick` and
-  `objectives-panel`; the latter is fully gated as above. Coverage records
-  interpreted instructions only: absence in recompiled coverage cannot prove
-  an entry was missed. The tested objectives source was preserved before
-  resetting the private worktree to `ae57d1b` for the next candidate.
-  Integrated START `0000:07EE` armament screen from private worktree
-  `D:/f117-wt/span-emitter`. Three seeds compare 6,459 states, all required
-  branches (`7F`), zero mismatches; all 41 isolated tests pass. Real
-  `full_cycle` invokes it once with all 66 checkpoints/final identical.
-  Proof `D:/f117-gate/armament-screen/named-proof/route-verdict.json`;
-  selective patch `D:/f117-gate/armament-screen/integrate.patch`. Its saved
-  reference also matches the latest fresh objectives gate. Census 809 /
-  69,238, P2 41.70%, overall 74.29%, 817 addresses. Fresh full gate passes
-  as above; audited verdict `D:/f117-gate/armament-screen/full-gate-verdict.json`.
-  The 373-byte walk earns only 67 census bytes. Preserve byte/word realism
-  reads, unsigned bounds, live far pointers and DF-sensitive palette moves.
-  Private generated directory remains `D:/f117-gate/span-emit/gen`.
-  Next: navigation grid `8A90`, dossier under
-  `D:/f117-gate/next-candidates/navgrid` (374 instructions / 1,094 bytes).
-  Normal F3 probe `next-candidates/navgrid-panel.args` reaches the original
-  and matches all 57 checkpoints/final `2877054444/5ea6b18cd60f6608`.
-  Named implementation is now proven privately against base `fc98297`:
-  three seeds compare 2,055 / 2,080 / 2,071 states, zero mismatches, all 19
-  tracked paths; 42 isolated tests pass. Real F3 replay invokes it 314 times
-  with all 57 checkpoints/final identical. Proof and selective patch:
-  `D:/f117-gate/navgrid/targeted-verdict.json` and `integrate.patch`.
-  The validated armament baseline/evidence is pushed as `7651db5`. The grid
-  patch is integrated and its F3 input retained as
-  `tools/routes/navigation_grid.args`. Census: 810 / 70,332, P2 42.28%,
-  overall 74.45%, 818 addresses. Fresh full gate passes as above; audited
-  verdict `D:/f117-gate/navgrid/full-gate-verdict.json`.
-  Keep high-byte arithmetic exact; transient code-write watch
-  covers its full 1,094-byte body. Tested source is preserved in the proof
-  directory; private generated directory is unchanged.
-  Panel frame `79BE` is now proven privately at base `f1ecb55`: three seeds
-  compare 4,906 / 4,909 / 4,914 states, zero mismatches, all 32 tracked paths;
-  all 43 isolated tests pass. Real F3 replay calls it 550 times with all 57
-  checkpoints/final identical. Proof/patch in `D:/f117-gate/panel-frame`
-  (`targeted-verdict.json`, `integrate.patch`, `tested-matched.c`); patch
-  applies cleanly to main. The private worktree holds its three source
-  changes, identical to main and backed up. Grid baseline/evidence is pushed
-  as `c8f262b`. The panel patch is now integrated: census 811 / 72,422,
-  P2 43.39%, overall 74.78%, 819 addresses. Fresh full gate pending in
-  `D:/f117-gate/gate-panel-frame.log`; do not push until it passes.
-  The immutable interpreter
-  reference also matches every checkpoint/final in the fresh grid gate. The first check caught a missing RET
-  count, now fixed; retain full-body code-write watch and grid-before-ILS
-  ordering. Static walk/census extent: 798 instructions / 2,090 bytes.
+  Timer/objectives/armament/grid/panel proofs are preserved under
+  `D:/f117-gate/`; earlier implementation history is in
+  [docs/repeated-processes.md](docs/repeated-processes.md).
+  The cockpit panel is integrated and fully gated as above. Preserve its
+  full-body transient code-write watch and grid-before-ILS ordering.
+  Tested source, targeted verdict, selective patch and full-gate audit are
+  in `D:/f117-gate/panel-frame`. The private worktree was verified identical
+  to the tested panel snapshot, then reset to `ae4b50f` for HUD work.
   Next HUD pass `1058:0016`: dossier `next-candidates/hud-pass`, 806
-  instructions / 2,488 bytes, no unresolved successors. Partial handwritten
-  draft `D:/f117-gate/hud-pass/named-hud-pass.c` is outside the worktree:
-  airspeed, fixed ticks and altitude paths written but untested; heading,
-  frame and ladder still explicit placeholders. Complete and prove before
-  insertion; do not mistake it for a finished implementation.
-  Reference HUD semantics are split across airspeed/altitude/heading/frame/
-  ladder helpers; preserve byte DIV overflow paths. Full details:
-  repeated-processes.md.
+  instructions / 2,488 bytes, 45 calls, no unresolved successors. Complete
+  handwritten draft `D:/f117-gate/hud-pass/named-hud-pass.c` is inserted
+  privately in `D:/f117-wt/span-emitter`; main has no HUD changes yet.
+  Three final seeds compare 4,916 / 4,922 / 4,912 states, including
+  303 / 298 / 304 divide faults, zero mismatches; all 32 tracked paths and
+  four fault sites are required per seed. All 44 isolated tests pass.
+  Real F3 replay invokes it 550 times with all 57 checkpoints/final equal.
+  Audited verdict, selective patch and tested snapshots are in
+  `D:/f117-gate/hud-pass`. The broad run first caught a far call at an
+  exhausted event limit; every far call now has an explicit guard.
+  Preserve byte-DIV faults, repeated one-bit shifts, live array reads and
+  guest stack pushes during rotation. Route wrapper `route-proof.py` uses
+  the immutable F3 reference, crosschecked against this fresh panel gate in
+  `fresh-reference-crosscheck.json`. Integration follows this panel
+  baseline push and requires another full gate. The next moving-object
+  dossier is prepared under `next-candidates/moving-objects`: VGAME
+  `0000:983E`, 564 instructions / 1,724 bytes / 38 calls; no implementation.
 - 04DD above, if a real route to it is ever found.
 
 ## How this project verifies Phase 2 work (read before matching a new routine)

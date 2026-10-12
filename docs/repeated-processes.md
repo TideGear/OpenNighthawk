@@ -222,19 +222,34 @@ Audited artifacts and selective patch: `D:/f117-gate/panel-frame/targeted-verdic
 and `integrate.patch`; tested source is snapshotted there. Patch preflight
 passes on main. After pushing the validated grid baseline (`c8f262b`), the
 panel patch is integrated: census 811 / 72,422, P2 43.39%, overall 74.78%,
-819 matched addresses. Fresh full gate pending in
-`D:/f117-gate/gate-panel-frame.log`; do not push until it passes.
+819 matched addresses. Fresh full gate at `ae4b50f` passes in
+`D:/f117-gate/gate-panel-frame.log`: 43 tests, all 41 routes at every
+checkpoint/final (40 fresh interpreter sessions), both 5,718,976-state
+instruction profiles and three matched seeds (2,682,617 / 2,681,007 / 2,683,132
+comparisons; rotating seed `0xae4b50f791f6`), zero mismatches and passing
+reachability/event checks. Total 1,560 s. Audited verdict/log hash:
+`D:/f117-gate/panel-frame/full-gate-verdict.json`.
 Its saved interpreter reference also matches all 57 checkpoints/final in the
 fresh grid gate (`panel-frame/fresh-reference-crosscheck.json`).
 Private build uses two workers after matched shards finish. These overlapped
 timings do not establish a speedup. Next HUD pass `1058:0016` has a private
 dossier under `next-candidates/hud-pass`: 806 instructions / 2,488 bytes,
-45 call sites, no unresolved successors; not implemented. Its DIV-by-byte
-overflow paths need the original fault semantics, not host division. A
-partial handwritten draft is in `D:/f117-gate/hud-pass/named-hud-pass.c`:
-airspeed/fixed ticks and altitude paths are written but untested; heading,
-frame and ladder remain explicit placeholders. It is outside the worktree
-and must be completed and proven before integration.
+45 call sites, no unresolved successors. Its complete handwritten draft
+is inserted in the private worktree, backed up as
+`D:/f117-gate/hud-pass/named-hud-pass.c`; main has no HUD changes yet.
+Final three seeds compare 4,916 / 4,922 / 4,912 states including 303 / 298 /
+304 divide faults, zero mismatches. Each reaches all 32 tracked paths and
+four fault sites; all 44 isolated tests pass (62.41 s). Actual-driver F3
+replay invokes the HUD 550 times, with all 57 checkpoints/final identical
+in 50.5 s. Audited verdict, selective patch and tested snapshots:
+`D:/f117-gate/hud-pass/targeted-verdict.json`. The initial broad run caught
+a call starting at an exhausted event limit; explicit guards now precede
+every far call. Fault fixtures compare CPU and memory immediately after
+original DIV dispatch, before interpreting a random vector target.
+Preserve byte-DIV fault addresses and flags, separate one-bit shifts,
+live coordinate reads and guest stack pushes during fixed-point rotation.
+The saved F3 reference matches all checkpoints/final of the fresh panel
+gate (`hud-pass/fresh-reference-crosscheck.json`).
 
 ## The gate (`tools/build_recomp.py`)
 
