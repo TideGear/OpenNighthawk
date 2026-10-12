@@ -9,109 +9,68 @@ checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 more than once, what it costs). State as of 11 October 2026.
 Earlier session logs are in `git log -p handoff.md`.
 
-## Runtime gate passed (11 Oct, 17:57 Pacific)
+## Allocation and Ctrl+Break restore gate passed (11 Oct, 18:24 Pacific)
 
-Gate 26448 has closed exit 0. `D:/f117-gate/gate-break-memory.log` passes
-27 unit tests, all 38 routes, both instruction profiles (5,718,976 states
-at 89,367 instruction starts), three 797-address matched seeds
-(2,596,946 / 2,595,902 / 2,593,952 states), reachability and event checks.
-Duration 1,490 s: build 172, coverage 522, identical regeneration 18,
-parity 778; 37 fresh interpreter runs, zero reuse.
-Census refreshed: 791/1,535 functions, 67,670/179,213 bytes;
-P2 40.87%, All 74.05%. No owned build/probe/gate job remains live.
+Main now has 803 matched addresses. The preceding seven-entry runtime batch
+and census were committed/pushed as `74cf133` and `41e52fe`. This batch adds
+DSWAP's checked allocator (0494) and five Ctrl+Break restore helpers
+(VGAME 1B96, START 85DB, END 457A, DSWAP 0546, SETUP 0C58), plus deliberate
+caller error fixtures and two focused regressions.
 
-Visible allowance at 17:57 Pacific is 100% five-hour, reset 22:57,
-seven-day 55%. Continue the standing five-minute checks; suspend owned
-work at <=20% and check every 30 minutes until >20% before resuming.
-The old gate PID/handle instructions below are historical; do not suspend
-or resume those exited processes.
+Full gate `D:/f117-gate/gate-checked-restore.log`, handle 50489, closed exit 0:
+29 unit tests, all 38 routes, both instruction profiles (5,718,976 states,
+89,367 instruction starts), three 803-address matched seeds
+(2,622,305 / 2,621,217 / 2,618,194 states), reachability and event checks pass.
+Third seed is 0x41e52febb077. Duration 1,524 s: build 178, coverage 540,
+identical regeneration 19, parity 787. 37 interpreter runs fresh, zero reuse.
+Census refreshed: 797/1,535 functions, 67,798/179,213 bytes;
+P2 40.94%, All 74.07%. Commit and push the verified batch with this prefix.
 
-Next: commit/push this verified seven-entry batch, then integrate ONLY the
-six privately verified allocation/restore entries and their deliberate
-harness fixtures. Exclude the unreached diamond. Run a fresh full gate
-before committing that batch. Private verification is recorded below.
+The checked-allocation fixture forces low/error and valid allocation results,
+plants an empty error format, and uses returning graphics/failure cleanup.
+It checks the caller when cleanup returns, not real out-of-memory termination.
+Full seeds include 1,263/1,247/1,283 completed error cases, all equal.
 
-## Runtime helpers integrated; full gate running (historical)
+Next two candidates are PRIVATE in `C:/Users/Tideg/f117-recomp-local/wt`:
+- VGAME 0000:B0C2 projected-point diamond. Fresh targeted seeds compare
+  4,967/4,989/4,977 states exactly (`diamond-final-lockstep-{0,1,2}.log`).
+  Laser-guided training reaches it 1,051 times: all 133 checkpoints and final
+  hash 954d1c8fa7a7df36 at 6.66B match the interpreter. Probe log
+  `diamond-training-matched.log`, handle 97701 closed exit 0, 76.6 s.
+  Plain strike uses weapon 5/model 1Bh, outside the 1Ch/1Dh/1Eh drawing arms.
+  Read-only probe `observe-diamond-strike.log` matches that strike's final
+  aa8fca6ac6f373f0; the inline-parent hypothesis was disproved.
+- START 0000:3641 load/fade-in screen with optional near overlay callback.
+  Build `build-wt-start-screen.log` and caller-fixture build
+  `build-wt-start-screen-fixture.log` both BUILD OK (wrapper exit 1 is
+  vswhere stderr, not compile failure). Raw 64-state fuzz compares zero
+  states; controlled returning near fade/load/palette helpers and optional
+  callback ARG_PLANTS 0/3693 compare 1,615/1,579/1,645 states, zero differences.
+  These fixtures check caller behavior, not the actual callee implementations.
+  `start-screen-cycle.log`, handle 81063 closed exit 0, 46.7 s: five actual
+  calls and all 66 hashes/final 6b61d89b95e7b562 at 3.3B match copied
+  `break-memory-cycle-control.txt`. Training calls it six times too.
 
-Latest next-batch proof (14:47): isolated checked allocator plus FIVE
-Ctrl+Break restore entries (VGAME 1B96, START 85DB, END 457A, DSWAP 0546,
-SETUP 0C58) bring private count to 804 (main 797 + these six + diamond).
-The first private build 94554 fails: FRAME/SETFRAME/NEAR_THEN macros were
-out of scope. Corrected allocator uses bp_get/bp_put and explicit guest_call
-stops. `build-wt-dswap-checked-restore.log` passes, session 99809 closed.
-Three raw seeds pass 26,274/26,187/26,252 states; 27 unit tests pass in 10.66 s.
-Probe 40215 closed exit 0, 46.1 s: all 66 hashes/final match the copied
-full-cycle interpreter control; VGAME and SETUP restore each run once.
-The checked allocator does not run on that replay.
+Private count is 805 (main 803 + these two). Unit subset 50499 closes exit 0:
+27 tests pass in 19.68 s, `test-wt-start-screen-diamond-unit.log`.
+After committing this main batch, integrate ONLY these two and their
+intentional fixtures, add focused regressions, and run a fresh full gate
+before their code commit. Never copy the detached worktree wholesale; it
+contains unrelated old presentation changes. Never regenerate from it.
+Private drafts in `D:/f117-gate/next-drafts/` stay private.
 
-Extra private error fixture (`build-wt-checked-error-fixture.log` BUILD OK):
-DSWAP 0494 gets low/error allocation replies, planted empty error format,
-returning graphics thunks and a returning failure-exit stub at 0E36.
-This tests caller behavior after cleanup returns, not real OOM termination.
-Three seeded comparisons pass 25,359/25,315/25,340 states, including
-1,263/1,247/1,199 completed error results; 27 tests pass in 9.61 s.
-Logs `checked-restore-error-lockstep-{0,1,2}.log` and
-`test-wt-checked-restore-error-unit.log`. All private build/probe/test handles
-are closed; only main gate 26448 remains live. Do not suspend the old
-already-exited private-build root 6632. Main source remains unchanged.
+No owned build, gate, probe or test remains live. Earlier PID/handle pause
+instructions below are historical: never suspend/resume their exited PIDs.
+Latest visible allowance read at 18:21 Pacific: five-hour 88% (reset 22:57),
+seven-day 53%. Continue five-minute visible reads while above 20%; at <=20%
+suspend all owned work, then check every 30 minutes until above 20%, resuming
+exact recorded process identities. Private helper
+`D:/f117-gate/allowance_gate_tree.py` verifies root command/creation identity
+and records descendants for reverse-order resume. No pause record was
+created for either completed gate in this turn. Human Phase 4 playtest
+question remains unanswered; keep human/display/listening checks open.
 
-Latest turn (14:38): runtime gate 26448 is live in parity. Coverage passes
-in 522 s (694 s since start); a live interpreter route confirms regeneration
-has finished even when the parent log is buffered. Both instruction profiles
-pass 5,718,976 states at 89,367 instruction starts; three 797-address matched
-seeds pass 2,596,946 / 2,595,902 / 2,593,952 states, zero mismatches.
-
-Next isolated candidate is DSWAP 0000:0494, `dswap_alloc_checked` (43 census
-bytes), wrapping existing 04E0 with error reporting and original failure path.
-Private source/harness now has 799 addresses (main 797, diamond, checked
-allocator); `DOS_STUBS` adds DSWAP 0494. Build session 94554 is live in
-`D:/f117-gate/build-wt-dswap-checked.log`, two workers, private TEMP and
-affinity 0x00FFFFFF. It recompiles updated generated files (42 steps). No
-build/test claim yet. Once BUILD OK, run three 4,000-state seeds with
-`--only DSWAP.EXE:494`; inspect real comparison counts and failure-path
-coverage before accepting, then a normal full-cycle probe if useful.
-The original instruction draft is private `next-drafts/dswap_timer_install.c`
-(old provisional name; do not copy or commit that draft).
-
-Latest visible allowance 22% at 14:38:10, next read by 14:43:10 (planned
-14:42:45). At <=20% suspend BOTH live owned trees: gate root 35048 and
-private-build PowerShell root 6632 (created 14:36:24; revalidate before use).
-Use separate new identity records with the prepared helper and appropriate
-`--expected` log names. No suspension has yet occurred in this batch.
-
-Current gate 26448 is confirmed live; all 27 unit tests pass (LastTest ends
-14:26), with coverage/locksteps running. Previous goal turn made progress:
-camera commit plus repaired runtime integration. Current turn adds the
-relocated-operand rule to `docs/architecture.md` and verifies this exact job.
-
-Latest visible allowance 22% at 14:30:25 Pacific, reset 17:01, seven-day 59%.
-Next read planned 14:35:10 (no later than 14:35:25). At <=20%, suspend the
-owned tree before doing further roadmap work. Prepared private helper:
-`py D:/f117-gate/allowance_gate_tree.py suspend --root 35048 --created 1791753820.200343 --record D:/f117-gate/allowance-paused-20261011-runtime.json`.
-It verifies root command/creation identity, suspends parents before children,
-and records each process's creation time and command hash. This record has
-not been created yet; no suspension has occurred as of 14:28.
-After an actual suspension, read allowance every 30 minutes until >20%.
-Resume with the same helper's `resume --record` mode, then poll gate 26448;
-never use the older already-resumed record or restart the gate.
-
-Camera darkening is committed and pushed as `15d6c05`; HEAD equals
-origin/master. Seven runtime candidates and their relocation/DOS fixtures
-are now integrated in main, with two focused CTests. Main has 797 matched
-addresses, 27 unit tests and the existing 38 routes. Main is fixed under
-`D:/f117-gate/gate-break-memory.log`, session 26448; initial translation
-reports 89,367 instruction starts, one additional static entry. Poll this
-handle without restarting or editing source; no code commit until full gate
-passes. Census/scoreboard remain at camera's verified values, All 74.01%.
-Private worktree 798 includes the unreached diamond; never copy it whole.
-
-Latest allowance 26% at 14:23:57 Pacific, reset 17:01, seven-day 59%; next
-visible read by 14:28:57. At <=20% suspend owned jobs/work, then check every
-30 minutes until >20%. Current owned gate wrapper process is PowerShell
-35048, launcher py 26204 -> Python 6276 -> py 49552 -> gate Python 2364
-(identities confirmed 14:24). Revalidate command/creation identities before
-suspending its tree. Do not reuse the older already-resumed pause record.
-There are no other live private probe/build/test jobs from this turn.
+Older checkpoint entries below are historical; current status is above.
 
 ## Camera gate passed; runtime candidates verified privately (11 Oct, 14:22 Pacific)
 

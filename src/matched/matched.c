@@ -31946,6 +31946,47 @@ static int vgame_timer_resync(machine_t *m)
 }
 /* VG4-END */
 
+/* DSWAP 0494: allocate the requested bytes and keep the result in the
+ * guest frame. DOS error codes below segment 10h report the message at
+ * DS:0088, then invoke the program's failure path with zero. Retain the
+ * original calls and live frame reads even if that path returns. */
+static int dswap_alloc_checked(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 5)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_SP] = (uint16_t)alu_sub(c, c->r[R_SP], 2, 1, 0);
+    cpu_push16(c, bp_get(c, 4));
+    c->icount += 4;
+    if (!guest_call(m, 0x04E0, 0x04A0)) return 1;
+    if (!room(c, 8)) { c->ip = 0x04A0; return 1; }
+    c->r[R_BX] = cpu_pop16(c);
+    bp_put(c, -2, c->r[R_AX]);
+    alu_sub(c, c->r[R_AX], 0x10, 1, 0);
+    c->icount += 4;
+    if (c->flags & F_CF) {
+        c->r[R_AX] = 0x0088;
+        cpu_push16(c, c->r[R_AX]);
+        c->icount += 2;
+        if (!guest_call(m, 0x0F42, 0x04B0)) return 1;
+        if (!room(c, 4)) { c->ip = 0x04B0; return 1; }
+        c->r[R_BX] = cpu_pop16(c);
+        c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+        cpu_push16(c, c->r[R_AX]);
+        c->icount += 3;
+        if (!guest_call(m, 0x0219, 0x04B7)) return 1;
+        if (!room(c, 5)) { c->ip = 0x04B7; return 1; }
+        c->r[R_BX] = cpu_pop16(c);
+        c->icount++;
+    }
+    c->r[R_AX] = bp_get(c, -2);
+    x86_leave(c);
+    near_ret(c);
+    c->icount += 4;
+    return 1;
+}
+
 /* The front ends install INT 1Bh (Ctrl+Break) with a no-op handler.
  * Read IVT entry 6Ch through the original helper, retain the previous
  * offset/segment for teardown, and ask DOS to install the handler using
@@ -31990,7 +32031,41 @@ static int end_install_control_break(machine_t *m) { return install_control_brea
 static int dswap_install_control_break(machine_t *m) { return install_control_break(m, &BREAK_DSWAP); }
 static int setup_install_control_break(machine_t *m) { return install_control_break(m, &BREAK_SETUP); }
 
+/* The matching Ctrl+Break teardown restores the saved segment:offset
+ * through DOS INT 21h/25h. Read both words after PUSH DS, since the stack
+ * can alias either word, and keep DS around the interrupt transfer. */
+static int restore_control_break(machine_t *m, const break_install_config *cfg)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = (uint16_t)(cfg->entry + 0x23);
+    if (!room(c, 6)) return 0;
+    cpu_push16(c, c->seg[S_DS]);
+    c->r[R_AX] = ds_get(c, cfg->saved);
+    c->r[R_DX] = ds_get(c, (uint16_t)(cfg->saved + 2));
+    c->seg[S_DS] = c->r[R_AX];
+    c->r[R_AX] = 0x251B;
+    c->icount += 5;
+    if (!st4_int21(m, (uint16_t)(entry + 0x0D))) return 1;
+    if (!room(c, 2)) { c->ip = (uint16_t)(entry + 0x0F); return 1; }
+    c->seg[S_DS] = cpu_pop16(c);
+    near_ret(c);
+    c->icount += 2;
+    return 1;
+}
+static int vgame_restore_control_break(machine_t *m) { return restore_control_break(m, &BREAK_VGAME); }
+static int start_restore_control_break(machine_t *m) { return restore_control_break(m, &BREAK_START); }
+static int end_restore_control_break(machine_t *m) { return restore_control_break(m, &BREAK_END); }
+static int dswap_restore_control_break(machine_t *m) { return restore_control_break(m, &BREAK_DSWAP); }
+static int setup_restore_control_break(machine_t *m) { return restore_control_break(m, &BREAK_SETUP); }
+
 static const recomp_override MATCHED[] = {
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x1B96, vgame_restore_control_break, "restore the Ctrl+Break vector", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x85DB, start_restore_control_break, "restore the Ctrl+Break vector", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x457A, end_restore_control_break, "restore the Ctrl+Break vector", 1 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x0546, dswap_restore_control_break, "restore the Ctrl+Break vector", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x0C58, setup_restore_control_break, "restore the Ctrl+Break vector", 1 },
+    { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x0494, dswap_alloc_checked, "allocate bytes with an error report", 1 },
+
     { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x04E0, dswap_dos_alloc, "allocate memory", 1 },
     { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x0506, dswap_dos_free, "release memory", 1 },
     { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x0C35, setup_install_control_break, "save and install the Ctrl+Break vector", 1 },

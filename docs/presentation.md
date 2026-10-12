@@ -697,5 +697,9 @@ the last checked frame as coarse and fine PPMs using the recorded palette.
 - **Time base.** Interpolation and host pacing use the machine clock. The
   original's faster mission clock is set by the speed: the default (20 million a second)
   puts the world at about 1.12 times real time (`docs/speed-sweep.md`).
-- **Near-clipped polygons** (3-4% of the polygons) retain their scaled copy;
-  there is no sub-pixel rule for them yet. The chosen HUD/text presentation is built.
+- **Remaining geometry fallbacks.** Verified near-plane crossings now refine
+  on the fine grid and interpolate with retained camera-space geometry
+  (see the reconstruction results above). Difficult horizon slivers and
+  incompatible geometry retain safe scaling. The chosen HUD/text
+  presentation is built; refresh pacing, motion and 4K output still need
+  the real-display check.

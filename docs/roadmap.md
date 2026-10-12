@@ -198,6 +198,16 @@ not the recompilation:
 
 ## Phase 2 - understood code
 
+Six further entries are integrated and gated: DSWAP's checked
+allocator and five Ctrl+Break restore helpers. Private tests compare 76,014
+states across three seeds, including 3,709 completed allocation-error
+results under returning cleanup fixtures; this checks the caller when
+cleanup returns, not real out-of-memory termination. A full-cycle probe
+matches all 66 hashes and reaches VGAME/SETUP restore. Focused regressions
+retain the error fixture and all five restore entries. The full gate passes
+29 unit tests, all 38 routes, both instruction profiles, three 803-address
+matched seeds and reachability/event checks, with zero differences.
+
 Seven runtime entries are integrated and gated: five Ctrl+Break installers
 (VGAME, START, END, DSWAP, SETUP) and DSWAP's DOS allocate/free wrappers.
 The installers read the loader-relocated segment operand; a nonzero-image
@@ -215,8 +225,10 @@ real-driver reconnaissance with F6 enabled calls it 1,608 times and preserves
 all 150 checkpoints/final hash. `recon_darken` and `matched_camera_darken`
 retain coverage. The full gate passes 25 tests, all 38 routes, both instruction
 profiles, three 790-address matched seeds and reachability/event checks.
-The projected-point diamond candidate remains isolated:
-random states pass, but the strike probe does not reach it.
+The projected-point diamond candidate remains isolated pending integration:
+fresh three-seed tests compare 14,933 states exactly. The laser-guided
+training route calls it 1,051 times and preserves all 133 checkpoints/final
+hash. The plain strike's weapon model 1Bh does not enter its drawing arms.
 
 Pause handler (`VGAME 0000:3A4E`, `vgame_pause`) integrated and gated:
 engine note off, timer saved in the guest stack, empty-input/repeated-Alt+P
@@ -240,7 +252,7 @@ instruction profiles and three 789-address matched seeds (2,561,209,
       Reimp's mapping; matched functions replacing translations one at a time,
       each held to the same parity checks. `tools/reimp_names.py` joins the
       Reimp's census (1,535 functions) with this project's regions as a private
-      lead list. 797 addresses are matched (791 of the census functions, 67,670 of
+      lead list. 803 addresses are matched (797 of the census functions, 67,798 of
       179,213 bytes); the table is at the end of `src/matched/matched.c` and the
       method is in [architecture.md](architecture.md#matched-routines-phase-2).
       The batches of 8-9 Oct add 37 + 34 + 47 VGAME, 34 + 40 + 45 START/END and 21 + 44 + 64

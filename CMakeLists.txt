@@ -299,5 +299,9 @@ if(F117R_BUILD_TESTS)
       --only VGAME.EXE:1B73,START.EXE:85B8,END.EXE:4557,DSWAP.EXE:523,SETUP.EXE:C35)
     add_test(NAME matched_dswap_memory COMMAND func_lockstep --states 4000
       --only DSWAP.EXE:4E0,DSWAP.EXE:506)
+    add_test(NAME matched_control_break_restore COMMAND func_lockstep --states 4000
+      --only VGAME.EXE:1B96,START.EXE:85DB,END.EXE:457A,DSWAP.EXE:546,SETUP.EXE:C58)
+    add_test(NAME matched_dswap_allocation_error COMMAND func_lockstep --states 4000
+      --only DSWAP.EXE:494)
   endif()
 endif()

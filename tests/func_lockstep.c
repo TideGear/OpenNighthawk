@@ -62,6 +62,8 @@ static uint32_t io_r(cpu_t *c, uint16_t port, int width)
     return width == 1 ? (uint32_t)(v & 0xFF) : (uint32_t)(v & 0xFFFF);
 }
 
+static int g_checked_alloc;
+static unsigned long long g_alloc_errors;
 static int g_dos;                  /* the routine under test is in DOS_STUBS: INT 21h is answered here */
 
 static int int_h(cpu_t *c, uint8_t vec)
@@ -74,9 +76,11 @@ static int int_h(cpu_t *c, uint8_t vec)
     if (g_dos && vec == 0x21) {     /* a DOS that answers: AX (and DX), and CF one time in four */
         s->nread++;
         const uint64_t v = mix(s->io, s->nread);   /* (the record so far is the same on both sides) */
+        const int alloc = g_checked_alloc && get_r8(c, R_AH) == 0x48;
         const int wide = get_r8(c, R_AH) == 0x42 || ((v >> 56) & 3) == 1;
         c->r[R_AX] = (uint16_t)(v >> 16);
         if (((v >> 58) & 3) == 0) set_r8(c, R_AL, 0);  /* AL 0 (success, found) one time in four */
+        if (alloc) c->r[R_AX] = (v & 1) ? 8 : 0x197A;
         if (wide) c->r[R_DX] = (uint16_t)(v >> 32);
         set_flag(c, F_CF, ((v >> 60) & 3) == 0);
         return 1;
@@ -175,6 +179,7 @@ static unsigned long long g_overrun;    /* routines that ran past the event limi
 /* Sentinel words to plant, by routine (segment, IP): at DS:[reg + disp], or at DS:disp when reg is PLANT_ABS. */
 #define PLANT_ABS 8
 static const struct { uint16_t seg, ip; uint8_t reg; uint16_t disp; uint16_t val; } PLANTS[] = {
+    { 0x0000, 0x0494, PLANT_ABS, 0x0088, 0x0000 }, /* checked allocator: empty error format in planted states */
     { 0x1058, 0x09D8, PLANT_ABS, 0x294B, 0x0001 }, /* HUD's compact layout */
     { 0x1058, 0x0A2C, PLANT_ABS, 0x294B, 0x0001 },
     { 0x0000, 0x4777, PLANT_ABS, 0xB198, 0x0001 },   /* projectile slots: bounded walks and odd-frame refill */
@@ -276,10 +281,12 @@ static void stub_driver_thunks(uint8_t *pristine, uint32_t at, const rc_module *
     const int vgame_draw = !strcmp(m->name, "VGAME.EXE") &&
         ((o->seg == 0 && (o->ip == 0xB171 || o->ip == 0xD6DD || o->ip == 0x4777 ||
                          o->ip == 0xD3F9 || o->ip == 0xD87C || o->ip == 0x72D8 ||
-                           o->ip == 0x8A18 || o->ip == 0x881F || o->ip == 0x796E || o->ip == 0x3A4E || o->ip == 0xC45C)) ||
+                           o->ip == 0x8A18 || o->ip == 0x881F || o->ip == 0x796E || o->ip == 0x3A4E ||
+                           o->ip == 0xC45C)) ||
            (o->seg == 0x114A && (o->ip == 0x0280 || o->ip == 0x03AD || o->ip == 0x03FD || o->ip == 0x014F || o->ip == 0x0006 || o->ip == 0x01DB)) ||
            (o->seg == 0x1058 && (o->ip == 0x09D8 || o->ip == 0x0A2C)));
-    if (strcmp(m->name, "START.EXE") && strcmp(m->name, "END.EXE") && !vgame_draw) return;
+    const int checked_alloc = !strcmp(m->name, "DSWAP.EXE") && o->seg == 0 && o->ip == 0x0494;
+    if (strcmp(m->name, "START.EXE") && strcmp(m->name, "END.EXE") && !vgame_draw && !checked_alloc) return;
     for (uint32_t i = 0; i + 5 <= m->size; i++) {
         if (m->image[i] != 0x9A) continue;
         const uint32_t lin = (uint32_t)(m->image[i + 3] | m->image[i + 4] << 8) * 16u + (uint32_t)(m->image[i + 1] | m->image[i + 2] << 8);
@@ -294,6 +301,8 @@ static void stub_driver_thunks(uint8_t *pristine, uint32_t at, const rc_module *
  * to have the flag set, so the routine's normal path was never reached. Set in both sides' memory. */
 static const struct { const char *module; uint16_t ip; uint32_t linear; uint8_t value; } IMAGE_PATCHES[] = {
     { "END.EXE", 0x42E4, 0x0489, 0x00 },
+    /* Returning failure cleanup tests the caller after its normally terminal exit. */
+    { "DSWAP.EXE", 0x0494, 0x0E36, 0xC3 },
     /* The loader relocates each installer's MOV AX,segment operand. */
     { "VGAME.EXE", 0x1B73, 0x1B85, 0x7A },
     { "VGAME.EXE", 0x1B73, 0x1B86, 0x19 },
@@ -357,13 +366,18 @@ static uint16_t g_from, g_span = 0x300; /* the routine under test's code: from g
  * from the same hash as port reads, CF set one time in four) instead of running through a vector that
  * the loaded image's bytes make up, which seldom comes back. Both sides get the same answers. */
 static const struct { const char *module; uint16_t ip; } DOS_STUBS[] = {
+    { "VGAME.EXE", 0x1B96 },
+    { "START.EXE", 0x85DB },
+    { "END.EXE", 0x457A },
+    { "DSWAP.EXE", 0x0546 },
+    { "SETUP.EXE", 0x0C58 },
+    { "DSWAP.EXE", 0x0494 },
+    { "DSWAP.EXE", 0x04E0 }, { "DSWAP.EXE", 0x0506 },
     { "VGAME.EXE", 0x1B73 },
     { "START.EXE", 0x85B8 },
     { "END.EXE", 0x4557 },
     { "DSWAP.EXE", 0x0523 },
     { "SETUP.EXE", 0x0C35 },
-    { "DSWAP.EXE", 0x04E0 },
-    { "DSWAP.EXE", 0x0506 },
     { "START.EXE", 0xA210 },            /* close */
     { "START.EXE", 0xA4B8 },            /* unlink */
     { "START.EXE", 0xA520 },            /* lseek */
@@ -567,6 +581,8 @@ int main(int argc, char **argv)
         for (unsigned k = 0; k < sizeof SPANS / sizeof SPANS[0]; k++)
             if (!strcmp(SPANS[k].module, o->module) && SPANS[k].ip == o->ip) { g_from = SPANS[k].from; g_span = SPANS[k].span; }
         if (g_below) { g_from = (uint16_t)(ip - g_below); g_span = (uint16_t)(0x300u + g_below); }   /* CODE_BELOW as a range */
+        g_checked_alloc = !strcmp(o->module, "DSWAP.EXE") && o->seg == 0 && o->ip == 0x0494;
+        g_alloc_errors = 0;
         g_dos = 0;
         for (unsigned k = 0; k < sizeof DOS_STUBS / sizeof DOS_STUBS[0]; k++)
             if (!strcmp(DOS_STUBS[k].module, o->module) && DOS_STUBS[k].ip == o->ip) g_dos = 1;
@@ -712,6 +728,7 @@ int main(int argc, char **argv)
                 g_finished++;
             }
             mc++;
+            if (g_checked_alloc && g_cpu[0].r[R_AX] == 8) g_alloc_errors++;
             g_cpu[1] = g_m.cpu;                /* compare() reads g_cpu[1] */
             if (compare(o->module, ((uint32_t)o->seg << 4) + ip, cs, ip, 0)) {
                 mb++;
@@ -787,6 +804,7 @@ int main(int argc, char **argv)
         if (shards > 1) printf("@%u ", mi);                       /* the table index, for the merge */
         printf("%-10s %04X:%04X %-34s %6llu states compared, %4llu skipped, %s\n", o->module, o->seg, ip,
                o->what, mc, ms, mb ? "MISMATCH" : mc ? "equal" : "not testable here (routes only)");
+        if (g_checked_alloc) printf("  completed allocation-error states: %llu\n", g_alloc_errors);
         compared += mc; skipped += ms; bad += mb;
     }
     printf("matched routines: %u, %llu states compared (%llu finished by the original code), %llu skipped, %llu mismatching\n",

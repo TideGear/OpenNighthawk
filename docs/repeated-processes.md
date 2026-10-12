@@ -10,6 +10,33 @@ identical, and the proof is the same verdicts before and after.
 
 ## The gate (`tools/build_recomp.py`)
 
+Private follow-up (11 Oct): START 3641 wraps fade-out, picture/palette load,
+full-page copy, optional overlay callback, fade-in and present. Initial raw
+64-state test compares zero states (callee completion limits); do not count
+that as parity evidence. Returning fade/load/palette and optional-overlay
+fixtures compare 1,615/1,579/1,645 caller states across three seeds, no
+differences. Normal full-cycle replay calls the helper five times and
+preserves 66 checkpoints/final hash in 46.7 s. The previously unreached
+diamond is reached by laser-guided `strike_training`: 1,051 calls, all 133
+checkpoints/final hash identical in 76.6 s. The plain strike uses model 1Bh,
+outside the diamond's 1Ch/1Dh/1Eh branches. Private build logs are
+`build-wt-start-screen{,-fixture}.log`; implementation remains private while
+main's allocation/restore gate runs. The private unit subset passes all 27
+tests in 19.68 s while sharing CPU with the gate. Fresh diamond comparisons
+pass 4,967/4,989/4,977 states with zero differences; all private jobs are closed.
+
+The checked allocator and five restore entries are now integrated in main
+(803 addresses), with two focused regressions (29 gate unit tests).
+The diamond stays private pending integration. Full verification passes in
+`D:/f117-gate/gate-checked-restore.log`, 16 workers under affinity
+0x00FFFFFF: 178 s build, 540 s coverage, 19 s identical regeneration,
+787 s parity, 1,524 s total. Both instruction profiles compare 5,718,976
+states; three 803-address seeds compare 2,622,305 / 2,621,217 / 2,618,194
+states, with zero differences. All 38 routes and reachability/event checks
+pass; 37 fresh interpreter runs, zero reuse. Census: 797 functions,
+67,798 bytes. The harness records 1,263/1,247/1,283 completed allocation-error
+cases across the full seeds, all equal.
+
 Next isolated DSWAP wrapper (11 Oct): checked byte allocation at 0494 keeps
 the DOS result in the guest frame, compares it against segment 10h, reports
 an error through formatted output, and invokes the original failure path.
