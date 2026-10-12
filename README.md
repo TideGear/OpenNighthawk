@@ -1,4 +1,4 @@
-# F-117A Recomp
+# OpenNighthawk (F-117A Recompilation)
 
 This is a fully **human-driven**, AI-powered recompilation **AND**
 lockstep-verified matching decompilation of the PC DOS classic *F-117A
