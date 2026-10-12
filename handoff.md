@@ -15,17 +15,25 @@ standing practice, not a session-by-session log. Earlier sessions' detail
 
 ## Current state
 
-Last fully gated runtime baseline: VGAME `0000:983E` moving-object pass,
-commit `b811414`, 821 matched addresses. Full gate
-`D:/f117-gate/gate-moving-objects.log` passes: 45 unit tests, all 41 routes at
-every checkpoint/final (40 fresh interpreter sessions), both 5,718,976-state
-instruction profiles and three matched seeds (2,690,243 / 2,688,636 / 2,689,943
-comparisons; third seed `0xb8114142076c`), zero mismatches, plus
-reachability/event checks. Total 1,799 s. Census is 813 functions /
-76,634 bytes (P2 45.62%, overall 75.42%). Real F3 replay calls the named pass
-550 times with all 57 checkpoints/final unchanged. Retained input:
-`tools/routes/navigation_grid.args`. Prior HUD baseline/evidence is pushed
-as `7fb10be`.
+Last fully gated runtime baseline: VGAME `0000:BCEF` camera-image pass,
+commit `2fa6695`, 822 matched addresses. Full gate
+`D:/f117-gate/gate-camimage.log` passes: 47 unit tests, all 40 routes (40
+fresh interpreter sessions), both instruction profiles and three matched
+seeds, with reachability/event checks, 1,480 s. Census is 814 functions /
+78,497 bytes (P2 46.61%, overall 75.71%). Prior moving-object baseline/
+evidence is pushed as `e9aa11a`.
+
+A rotating matched seed at this same gate run (`0x2fa6695118ca`) exposed a
+stack-aliasing bug in the already-matched map projection (`VGAME 0000:13B9`,
+`vgame_map_project`, not the new camera code): it cached its `y`/`py` stack
+arguments up front where the original reads them late, after a store that
+can land on either argument's own stack slot when DS and SS alias in a
+fuzzed state - the same bug class as `vgame_eventlog_add`. Fixed by
+declining whenever the store could overlap either slot; regression
+`matched_map_project_stack_alias` retains the seed. Re-gated clean:
+`D:/f117-gate/gate-map-project-fix.log`, 47 tests, all 40 routes, both
+instruction profiles and three matched seeds, 1,480 s (build 94, coverage
+584, regeneration 25, parity 777).
 
 A sibling handler, **VGAME 0FB2:04DD** (the line clipper's own divide-error
 handler), is matched and fixture-proven but deliberately **not integrated**:
@@ -53,47 +61,30 @@ Phase 2 work" below).
   `D:/f117-gate/affinity_launch.py` now sets and verifies `BelowNormal`
   priority as well as affinity; workers were verified to inherit both.
 - Continue Phase 2 (naming/matching routines) — `tools/reimp_names.py` has
-  the private lead list; current progress is in `docs/roadmap.md`.
-  `matched_draft.py --dossier` also writes private static evidence beside a
-  draft; its five synthetic regressions pass and the polygon draft is
-  byte-identical. The clipped edge and shared emitters are integrated and
-  fully gated; private proofs/patches remain in `D:/f117-gate/span-edge` and
-  `D:/f117-gate/span-emit`.
-  Earlier proofs and tested source snapshots remain under `D:/f117-gate/`;
-  history is in [docs/repeated-processes.md](docs/repeated-processes.md).
-  HUD is integrated and fully gated. Preserve its original
-  byte-DIV fault frames, repeated single-bit shifts and call event guards.
-  Moving objects are integrated and fully gated as above. Preserve target
-  cycling before drawing, live frame slots, signed comparisons, byte flag
-  updates and all 38 calls. Tested snapshots and verdicts remain in
-  `D:/f117-gate/moving-objects`.
-  Next camera-image pass `0000:BCEF`: 658 instructions / 1,863 bytes,
-  49 calls. The private worktree `D:/f117-wt/span-emitter` was reset to
-  `b811414` only after all three moving-object snapshots were verified
-  against private and main sources. It now holds three camera changes,
-  backed up in `D:/f117-gate/camimage`: complete named source, tested
-  snapshots, selective patch, scripts and `targeted-verdict.json`.
-  Three seeds compare 4,907 / 4,902 / 4,926 states, zero mismatches; all 32 tracked
-  paths per seed and 46 isolated tests pass (41 core plus five host tests).
-  145 divide-fault comparisons deliberately force a helper return of
-  FFFF on both sides; other states execute real range/trig math. This proves
-  the caller's fault frame, not a normal-game fault claim.
-  Actual camera-gradient replay invokes the named pass 7,880 times with
-  all 234 checkpoints/final identical. The saved interpreter reference
-  matches the fresh moving-object gate (`fresh-reference-crosscheck.json`).
-  Moving-object baseline/evidence is pushed as `e9aa11a`. Camera patch is
-  integrated on main and matches all three tested snapshots. Census is
-  814 functions / 78,497 bytes, P2 46.61%, overall 75.71%, 822 addresses.
-  Fresh full gate pending: `D:/f117-gate/gate-camimage.log`; do not push
-  this runtime change until it passes. Preserve backgrounds before model/terrain,
-  live guest locals, nested render-global restoration and call guards.
-  Next dossier: `next-candidates/flight-input`, VGAME `0000:1EB0`,
-  1,274 instructions / 3,543 bytes / 121 calls. Partial external named
-  draft `D:/f117-gate/flight-input/named-flight-input.c` covers initialization
-  and keyboard collection, command dispatch, modal quit/blank pauses and raw
-  axis scaling, nonlinear controls, altitude hold, trim and low-speed recovery
-  through `23B4`; uninserted and untested. Ejection dynamics, thrust and
-  movement remain.
+  the private lead list; current progress is in `docs/roadmap.md`, which
+  has the full history of integrated-and-gated passes (span-edge/emit, HUD,
+  moving objects, camera-image). Earlier proofs and tested source snapshots
+  remain under `D:/f117-gate/`; history is in
+  [docs/repeated-processes.md](docs/repeated-processes.md).
+  Next dossier: `D:/f117-gate/flight-input`, VGAME `0000:1EB0`
+  (`vgame_flight_input`), 1,274 instructions / 3,543 bytes / 121 calls.
+  Partial external named draft `named-flight-input.c` (parts 1-10) covers
+  initialization, keyboard collection, command dispatch, modal quit/blank
+  pauses, raw axis scaling, nonlinear controls, altitude hold, trim and
+  low-speed recovery **through `2A17`** (not `23B4` — that was this
+  routine's state two sessions ago; it has since grown past ejection
+  dynamics, thrust and position/rotation integration). Uninserted and
+  untested. `semantics-notes.md` in the same folder records variable
+  identities cross-referenced from already-matched code (heading `2DEE`,
+  pitch `2DF0`, roll `2DF2`, throttle `2E0A`, thrust `B19C`, speed `B07E`,
+  height `2DF4`, ground level `C0CE`, position accumulators
+  `BA3C:BA3E`/`C056:C058`, far sin/cos/fixmul at `104E:76`/`66`/`0`) —
+  read it before continuing so that work isn't repeated. Remaining:
+  the `2A17`-`2C86` segment (position integration, landing/crash checks,
+  history) needs hand-naming, then the whole routine wired in as a
+  candidate and run through both verification tiers before it can be
+  called matched — semantic plausibility alone is not enough (this
+  session's map_project fix above is a reminder why).
 - 04DD above, if a real route to it is ever found.
 
 ## How this project verifies Phase 2 work (read before matching a new routine)

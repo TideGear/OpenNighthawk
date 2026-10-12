@@ -305,7 +305,19 @@ reference matches the fresh moving-object gate (`fresh-reference-crosscheck.json
 After pushing moving-object baseline/evidence as `e9aa11a`, integrated
 the selective patch; all three main texts match the tested snapshots.
 Census: 814 / 78,497, P2 46.61%, overall 75.71%, 822 addresses. Fresh full
-gate pending in `D:/f117-gate/gate-camimage.log`; do not push until it passes.
+gate `D:/f117-gate/gate-camimage.log` passed: 47 tests, all 40 routes, both
+instruction profiles, three matched seeds, 1,480 s.
+
+That gate's own rotating seed (`0x2fa6695118ca`) caught a stack-aliasing
+bug in the unrelated, already-matched `vgame_map_project` (`VGAME 0000:13B9`):
+cached `y`/`py` stack arguments where the original reads both late, after a
+store that can land on either slot when DS and SS alias - the same bug class
+as `vgame_eventlog_add`. Fixed by declining whenever the store could overlap
+either slot. Re-gate `D:/f117-gate/gate-map-project-fix.log` passed clean:
+47 tests, all 40 routes, both instruction profiles, three matched seeds
+(including the same commit seed), 1,480 s (build 94, coverage 584,
+regeneration 25, parity 777). Regression `matched_map_project_stack_alias`
+retains the seed.
 
 ## The gate (`tools/build_recomp.py`)
 

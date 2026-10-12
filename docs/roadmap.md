@@ -207,8 +207,8 @@ shared-flow span-edge candidate demonstrates why walk size is not census
 ownership. Synthetic checks run in Windows CI. Details and limits:
 [repeated-processes.md](repeated-processes.md#phase-2-candidate-reading).
 
-Camera-image pass (`VGAME 0000:BCEF`) is integrated, pending a fresh full
-gate: 14,735 targeted comparisons including 145 controlled helper-return
+Camera-image pass (`VGAME 0000:BCEF`) is integrated and fully gated:
+14,735 targeted comparisons including 145 controlled helper-return
 divide faults, all 32 tracked paths per seed and 46 isolated tests pass.
 Actual camera-gradient replay invokes it 7,880 times with all 234 checkpoints/
 final identical. Named C retains all 49 calls, background/model/terrain
@@ -216,6 +216,23 @@ ordering, nested render-global restoration, pitch folding, overlays,
 labels and zoom/compact-HUD restoration. Its 1,863-byte census extent brings
 the census to 814 functions / 78,497 bytes, P2 46.61%, overall 75.71%
 (822 matched addresses). Private evidence: `D:/f117-gate/camimage`.
+The fresh full gate passes 47 tests, all 40 routes (40 fresh interpreter
+sessions), both instruction profiles and three matched seeds, with
+reachability/event checks, 1,480 s (build 94, coverage 584, regeneration 25,
+parity 777).
+
+A rotating matched seed (this commit's own, `0x2fa6695118ca`) exposed a
+stack-aliasing bug in the already-matched map projection (`VGAME 0000:13B9`,
+`vgame_map_project`): it cached its `y` and `py` stack arguments up front,
+but the original reads both late - at `[bp+6]`/`[bp+0xa]`, after the first
+result is stored through `px` - and in a fuzzed state where DS and SS alias,
+that store can land on either argument's own stack slot, which the original's
+late read would see and the matched code's early, cached read would miss (the
+same bug class as `vgame_eventlog_add` above). Fixed by declining, before
+touching anything, whenever the `px` store could physically overlap either
+slot, alongside the existing decline for the three data addresses the second
+half reads. Regression: `matched_map_project_stack_alias`, retaining the
+failing seed. No new address matched; this fixes an existing one.
 
 Moving-object pass (`VGAME 0000:983E`) is integrated and fully gated at
 `b811414`: 8,071 targeted comparisons across three seeds, all 32 tracked paths,

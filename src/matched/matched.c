@@ -11562,12 +11562,22 @@ static int vgame_panel_bar_b(machine_t *m) { return panel_bar(m, 1, 0x950E); }
 /* VGAME 0x013B9, map_project(x, y, px, py): the map position to the screen
  * at the current zoom - *px = (x - [0D1E] + [9512]) / [950E] and
  * *py = ((y - [0D20]) * 4 / 3 + [9514]) / [950E]. Declines, before touching
- * anything, when a divide would trap. Flags from the last add. */
+ * anything, when a divide would trap, or when the store through px could
+ * land on the stack slot still holding y or py: the original reads both of
+ * those late, at [bp+6]/[bp+0xa] after that store, so a fuzzed state where
+ * DS and SS alias could change what it sees there, which the cached y/py
+ * read here would miss (the same class of bug fixed in eventlog_add
+ * above). Flags from the last add. */
 static int vgame_map_project(machine_t *m)
 {
     cpu_t *c = &m->cpu;
     if (!room(c, 22)) return 0;
     const uint16_t x = arg(c, 0), y = arg(c, 1), px = arg(c, 2), py = arg(c, 3);
+    const uint16_t bp_after = (uint16_t)(c->r[R_SP] - 2);
+    const uint32_t px_write = phys(c->seg[S_DS], px);
+    if (words_overlap(px_write, phys(c->seg[S_SS], (uint16_t)(bp_after + 6))) ||
+        words_overlap(px_write, phys(c->seg[S_SS], (uint16_t)(bp_after + 0xA))))
+        return 0;
     const int16_t scale = (int16_t)ds_get(c, 0x950E);
     const int16_t ax1 = (int16_t)(uint16_t)(x - ds_get(c, 0x0D1E) + ds_get(c, 0x9512));
     const int16_t ay1 = (int16_t)(uint16_t)((uint16_t)((uint16_t)(y - ds_get(c, 0x0D20)) << 2));
