@@ -309,5 +309,10 @@ if(F117R_BUILD_TESTS)
       --only START.EXE:3641)
     add_test(NAME matched_camera_gradients COMMAND func_lockstep --states 4000
       --only VGAME.EXE:1974,VGAME.EXE:19FD)
+    add_test(NAME matched_sprite_map COMMAND func_lockstep --states 4000
+      --only MPS_LOGO.EXE:678,VGAME.EXE:11A8)
+    # The target-slot walk must count its loop and join instructions.
+    add_test(NAME matched_target_damage_loop COMMAND func_lockstep --states 4000
+      --seed 0x049040951e8d --only VGAME.EXE:73C8)
   endif()
 endif()

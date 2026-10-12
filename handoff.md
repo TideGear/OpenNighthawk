@@ -9,6 +9,129 @@ checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 more than once, what it costs). State as of 11 October 2026.
 Earlier session logs are in `git log -p handoff.md`.
 
+## Final handoff (11 Oct 2026, 21:15 Pacific)
+
+The user changed the active goal to: "wrap up for handoff to a new
+conversation, then commit, push, and stop." This checkpoint deliberately
+records work with full validation PENDING. Do not describe it as a gated
+release. Last fully gated and pushed baseline: 0490409 (807 addresses).
+The current checkpoint includes 809 addresses, 34 C gate tests, 39 routes.
+The scoreboard remains the last fully verified census (801 functions,
+68,294 bytes; P2 41.20%, All 74.14%); refresh it after a successful gate.
+
+### What is in this checkpoint
+
+- MPS_LOGO 006D:0678 sprite repeat/transparent run, including opaque zero
+  count wrapping to 256 writes. VGAME 0000:11A8 moving-map frame wrapper.
+  Explicit sprite boundary states and returning-callee map fixtures, plus
+  matched_sprite_map regression. Three private seeds compare 28,613 states
+  with zero differences (1,172 opaque-zero, 595 transparent cases).
+  Normal full cycle reaches sprite 1,570 times and map once; every one of
+  66 checkpoints and final 6b61d89b95e7b562 equals a fresh original.
+- Gate command printing is serialized without changing child commands,
+  options or results. Yielding-stdout regression failed before the lock;
+  all 12 Python gate-helper tests pass after it. The completed gate console
+  strictly decodes as UTF-16 with no NUL or non-ASCII contamination.
+- Existing VGAME 0000:73C8 target scoring now preserves the original live
+  slot-index loop, flags, event stops, prefix jump and final join jump.
+  The full sprite/map gate found a 12-instruction shortfall in the prior
+  implementation at seed 049040951e8d. Private reproduction fails before
+  the fix; all three targeted seeds pass afterward (30 returning cases).
+  matched_target_damage_loop retains that exact seed with 4,000 states,
+  without new returning-callee fixtures for this routine.
+
+### Validation that MUST come next
+
+D:/f117-gate/gate-sprite-map.log FAILED in existing target scoring:
+2,647,992 / 2,646,888 states equal for default/C0FFEE; rotating seed
+2,651,451 states with one mismatch (clock 16533 original, 16521 matched).
+All 33 then-present tests, all replay comparisons and both 5,718,976-state
+instruction profiles pass. 38 fresh interpreter runs, zero reuse.
+Total 1,438 s: build 149, coverage 488, parity 782. The gate exited at
+matched step 7c; later reachability/event gates were NOT completed.
+Failure detail: D:/f117-gate/target-hit-049040951e8d-failure.log (private).
+
+The corrected full gate, D:/f117-gate/gate-sprite-map-target-fix.log,
+was stopped during initial build for handoff. Translation finished with
+89,367 instruction starts; no complete corrected full-gate verdict exists.
+Run a NEW full gate from the next conversation (the new HEAD also changes
+its rotating seed; the original failing seed remains in CTest):
+
+```powershell
+$env:TEMP='D:/f117-gate/main-temp'
+$env:TMP=$env:TEMP
+$env:CMAKE_BUILD_PARALLEL_LEVEL='16'
+py D:/f117-gate/affinity_launch.py py tools/build_recomp.py --data D:/GOG/F-117A --seed-coverage C:/Users/Tideg/f117-recomp-local/coverage --jobs 16 --verify-interp-cache
+```
+
+Use a new log filename. Require all tests/routes, both instruction profiles,
+three matched seeds, reachability/event checks and intact command logging.
+Then refresh census/progress, update roadmap/timings, commit and push.
+Do not include generated C, game assets, Reimp census or raw drafts.
+
+### Job and allowance state
+
+NO owned jobs remain live or suspended. At 21:12 the visible five-hour
+allowance fell to 9% (resets 22:57 Pacific; seven-day 41%). Both trees were
+suspended per the standing rule, then TERMINATED after the user's new
+handoff/stop request. Do not resume their records or old tool sessions.
+Stopped identities: main root 37356 (handle 50594, 50 processes), private
+strike replay root 27852 (handle 15752, seven processes). Their private
+allowance-paused-*.json records now mark termination and suspended=false.
+The private strike replay has NO completed verdict.
+
+For future roadmap work, read the ACTUAL visible allowance every five
+minutes when above 20%; at <=20% suspend ALL verified owned job trees,
+check every 30 minutes and resume exact identities only after >20%.
+Do not infer quota from elapsed time. No further work is scheduled here.
+
+### Private next batch (not committed)
+
+Detached worktree C:/Users/Tideg/f117-recomp-local/wt contains 811 entries,
+including INT 0 handlers VGAME 0FB2:04DD and 084E. It also contains unrelated
+older presentation edits: NEVER copy the whole worktree. Shared generated
+code is C:/Users/Tideg/f117-recomp-local/gen; do not build/translate private
+sources while the main gate regenerates it. Main build is a junction into
+external local storage. Heavy jobs use affinity 0x00FFFFFF, leaving eight
+hardware threads available; private builds use two workers.
+
+Named source: D:/f117-gate/next-drafts/vgame_raster_divide_fault_named.c.
+Saved fault IP selects DS denominator 228D/228B or 261D/261B; sign XOR
+high dividend selects +/-7F00h, DX=0, saved IP+=4, IRET restores CS/flags
+and interrupt depth. Registry matched kind 3 identifies IRET entries;
+runtime already accepts any nonzero matched kind, header comment only.
+Private harness plants a six-byte interrupt frame, clears entry IF/TF,
+uses depth 1 or 2, checks IRET at entry SP and compares interrupt depth
+for ALL entries. Keep this stronger comparison. Half the IRQ states select
+special saved IP 046E or 07C8. Three seeds compare 23,978 IRQ states,
+including 11,985 special selections, zero differences. Full 811-entry
+64-state baseline compares 42,391 states, zero differences.
+Logs: target-hit-irq-lockstep-{0,1,2}.log and
+interrupt-harness-baseline64.log under D:/f117-gate. Both private builds
+finished successfully (build-wt-divide-interrupts.log,
+build-wt-target-hit-fix.log); all their processes exited.
+
+Normal private full cycle finishes in 33.5 s, all 66 checkpoints/final
+identical to the fresh original at 21:02:01. It reaches NEITHER IRQ handler
+nor target scoring: NO real-driver proof for those entries. Private replay
+log: D:/f117-gate/irq-full-cycle.log. Next probe was strike_training, but it
+was stopped. Require positive counts for BOTH IRQ handlers and unchanged
+checkpoints/final before integrating them. Keep IRQ additions private until
+the current main checkpoint completes its full gate.
+
+Other private drafts: VGAME 120A:0971 is a DIFFERENT INT 0 handler retrying
+lower precision, with recursive faults possible; do not saturate it or treat
+it as an ordinary divide. VGAME 1E79 is a NEAR-return tick wrapper despite
+its ISR-related naming lead; do not register it as IRET. Raw drafts also
+exist for START 07EE, VGAME 9515 and END 0A98; none is implemented/proven.
+
+User presentation choice remains "Do the HUD like the Reimp": fine-grid,
+square-nib strokes with original bitmap text and cockpit art. It was
+implemented earlier; do not ask again. Human Phase 4 checks remain open.
+The roadmap is NOT complete; only this handoff/commit/push/stop goal ends.
+
+## Historical notes (superseded by the final handoff above)
+
 ## Camera gradients gate passed; private follow-up (11 Oct, 20:40 Pacific)
 
 Current main: 807 matched addresses, 32 unit tests, 39 routes. Gate handle

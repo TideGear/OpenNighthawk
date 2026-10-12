@@ -17516,8 +17516,6 @@ static int vgame_target_damage(machine_t *m)
         c->icount += 4;                                        /* the compare and its branch */
         if (FRAME(4) != 0) {                                    /* a real target */
             if (!room(c, 15)) { c->ip = 0x742F; return 1; }
-            c->r[R_SI] = FRAME(4);
-            c->r[R_SI] = x86_shift(c, 4, c->r[R_SI], 4, 1);
             alu_sub(c, ds_get(c, (uint16_t)(c->r[R_SI] + 0xB2D4)), 0, 1, 0);
             unsigned n2 = 2;
             if (c->flags & F_ZF) { SETFRAME(-2, 0x0C); n2++; }
@@ -17528,37 +17526,44 @@ static int vgame_target_damage(machine_t *m)
             c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
             ds_put(c, (uint16_t)(c->r[R_BX] + 0xB2D4), c->r[R_AX]);
             SETFRAME(-6, c->r[R_AX]);                           /* the slot-scan index, 0 */
-            n2 += 6;
+            n2 += 7; /* record setup and jump to the live slot-index test */
             c->icount += n2;
-            for (unsigned i = 0; i < 2; i++) {                  /* the two fixed weapon-lock slots */
-                if (!room(c, 12)) { c->ip = 0x7463; return 1; }
-                const uint16_t sbx = (uint16_t)(i * 0x12);
-                alu_sub(c, ds_get(c, (uint16_t)(sbx + 0xE304)), 2, 1, 0);
-                unsigned n3 = 2;                                /* the compare and its branch */
+            for (;;) { /* Callees can change the guest slot index. */
+                if (!room(c, 2)) { c->ip = 0x745D; return 1; }
+                alu_sub(c, FRAME(-6), 2, 1, 0); c->icount += 2;
+                if (x86_cond(c, 0xD)) break;
+                if (!room(c, 3)) { c->ip = 0x7463; return 1; }
+                c->r[R_BX] = x86_imul3(c, FRAME(-6), 0x12);
+                alu_sub(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0xE304)), 2, 1, 0);
+                c->icount += 3;
                 if (c->flags & F_ZF) {
+                    if (!room(c, 3)) { c->ip = 0x746E; return 1; }
                     c->r[R_AX] = FRAME(4);
-                    alu_sub(c, ds_get(c, (uint16_t)(sbx + 0xE306)), c->r[R_AX], 1, 0);
-                    n3 += 3;                                     /* the read, compare and branch */
-                    if (c->flags & F_ZF) {                      /* this slot is locked on our target */
-                        cpu_push16(c, (uint16_t)i);
-                        c->icount += n3 + 1;
+                    alu_sub(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0xE306)), c->r[R_AX], 1, 0);
+                    c->icount += 3;
+                    if (c->flags & F_ZF) {
+                        if (!room(c, 2)) { c->ip = 0x7477; return 1; }
+                        cpu_push16(c, FRAME(-6)); c->icount++;
                         NEAR_THEN(0x7594, 0x747D, 0, 12);
                         c->r[R_BX] = cpu_pop16(c);
-                        c->r[R_AX] = i == 0 ? 0x80 : 0x40;        /* cmp/sbb/and/add, by slot index */
+                        alu_sub(c, FRAME(-6), 1, 1, 0);
+                        c->r[R_AX] = (uint16_t)alu_op(c, 3, c->r[R_AX], c->r[R_AX], 1);
+                        c->r[R_AX] = (uint16_t)alu_op(c, 4, c->r[R_AX], 0x40, 1);
+                        c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], 0x40, 1, 0);
                         SETFRAME(-2, (uint16_t)alu_op(c, 1, FRAME(-2), c->r[R_AX], 1));
-                        cpu_push16(c, 2);
-                        cpu_push16(c, 4);
-                        c->icount += 8;                          /* pop, the 4-instruction mask build, or, two pushes */
-                        NEAR_THEN(0xD3F9, 0x7494, 0, 6);
-                        c->r[R_BX] = cpu_pop16(c);
-                        c->r[R_BX] = cpu_pop16(c);
+                        cpu_push16(c, 2); cpu_push16(c, 4); c->icount += 8;
+                        NEAR_THEN(0xD3F9, 0x7494, 0, 8);
+                        c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c);
+                        alu_sub(c, FRAME(-6), 0, 1, 0);
+                        const int first_slot = (c->flags & F_ZF) != 0;
                         c->r[R_AX] = ds_get(c, 0x368E);
                         c->r[R_AX] = x86_shift(c, 4, c->r[R_AX], 2, 1);
-                        ds_put(c, i == 0 ? 0xDF04 : 0x9D3A, c->r[R_AX]);
-                        c->icount += (i == 0) ? 8 : 7;            /* two pops, the compare/branch, then the store (plus the jmp for slot 0) */
-                    } else c->icount += n3;
-                } else c->icount += n3;
-                SETFRAME(-6, (uint16_t)(i + 1));
+                        ds_put(c, first_slot ? 0xDF04 : 0x9D3A, c->r[R_AX]);
+                        c->icount += first_slot ? 8 : 7;
+                    }
+                }
+                if (!room(c, 1)) { c->ip = 0x745A; return 1; }
+                SETFRAME(-6, (uint16_t)alu_inc(c, FRAME(-6), 1)); c->icount++;
             }
             if (!room(c, 12)) { c->ip = 0x74A7; return 1; }
             cpu_push16(c, FRAME(4));
@@ -17572,7 +17577,7 @@ static int vgame_target_damage(machine_t *m)
             NEAR_THEN(0xB991, 0x74B8, 0, 4);
             c->r[R_BX] = cpu_pop16(c);
             SETFRAME(-0xC, c->r[R_AX]);
-            c->icount += 2;
+            c->icount += 3; /* pop, result store, and jump over target-zero handling */
         } else {                                                /* target zero: a distinct gate */
             c->icount++;                                        /* the jmp to 0x74BE */
             if (!room(c, 6)) { c->ip = 0x74BE; return 1; }
@@ -32233,7 +32238,74 @@ static int vgame_camera_bands(machine_t *m, int sky)
 static int vgame_camera_sky_bands(machine_t *m) { return vgame_camera_bands(m,1); }
 static int vgame_camera_ground_bands(machine_t *m) { return vgame_camera_bands(m,0); }
 
+/* MPS_LOGO 006D:0678: one sprite (count, colour) pair. Colour FCh skips
+ * count pixels; other colours repeat, with zero count wrapping to 256.
+ * Preserve bytewise stores and the original compare/inc/dec flags. */
+static int mps_logo_sprite_run(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 6)) return 0;
+    for (;;) {
+        if (!room(c, 6)) { c->ip = 0x0678; return 1; }
+        alu_sub(c, get_r8(c, R_AH), 0xFC, 0, 0); c->icount += 2;
+        if (c->flags & F_ZF) {
+            set_r8(c, R_AH, 0);
+            c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], c->r[R_AX], 1, 0);
+            near_ret(c); c->icount += 3; return 1;
+        }
+        mem_write8(c, phys(c->seg[S_ES], c->r[R_DI]), get_r8(c, R_AH));
+        c->r[R_DI] = (uint16_t)alu_inc(c, c->r[R_DI], 1);
+        set_r8(c, R_AL, (uint8_t)alu_dec(c, get_r8(c, R_AL), 0));
+        c->icount += 4;
+        if (c->flags & F_ZF) {
+            if (!room(c, 1)) { c->ip = 0x068A; return 1; }
+            near_ret(c); c->icount++; return 1;
+        }
+    }
+}
+
+/* VGAME 11A8: draw the moving map with a downward-facing scene frame.
+ * Use the original projection/viewport helpers, terrain walk and draw-list
+ * finish; the map is the existing 3-D pipeline with pitch C000h, eye height
+ * 2000h and scale 100h. Keep the guest frame and live argument reads. */
+static int vgame_map_draw_frame(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 12)) return 0;
+    x86_enter(c, 4, 0);
+    mem_write8(c, phys(c->seg[S_DS], 0x48C4), 0);
+    cpu_push16(c, 0x100); cpu_push16(c, 1); cpu_push16(c, 0x2000);
+    cpu_push16(c, 0); cpu_push16(c, 0); cpu_push16(c, 0);
+    cpu_push16(c, 0xC000); cpu_push16(c, 0); cpu_push16(c, bp_get(c, 4));
+    c->icount += 11;
+    if (!guest_call(m, 0xD826, 0x11CA)) return 1;
+    if (!room(c, 5)) { c->ip = 0x11CA; return 1; }
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 18, 1, 0);
+    c->r[R_BX] = bp_get(c, 4);
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 14)));
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 18)));
+    c->icount += 4;
+    if (!guest_call_far(m, 0x11D6, 0x11DB)) return 1;
+    if (!room(c, 4)) { c->ip = 0x11DB; return 1; }
+    c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c);
+    cpu_push16(c, c->r[R_AX]); c->icount += 3;
+    if (!guest_call_far(m, 0x11DE, 0x11E3)) return 1;
+    if (!room(c, 5)) { c->ip = 0x11E3; return 1; }
+    c->r[R_BX] = cpu_pop16(c);
+    cpu_push16(c, bp_get(c, 10)); cpu_push16(c, bp_get(c, 8));
+    cpu_push16(c, bp_get(c, 6)); c->icount += 4;
+    if (!guest_call(m, 0x11FE, 0x11F0)) return 1;
+    if (!room(c, 2)) { c->ip = 0x11F0; return 1; }
+    c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], 6, 1, 0); c->icount++;
+    if (!guest_call(m, 0xD87C, 0x11F6)) return 1;
+    if (!room(c, 3)) { c->ip = 0x11F6; return 1; }
+    ds_put(c, 0x7D8E, 0); x86_leave(c); near_ret(c); c->icount += 3;
+    return 1;
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x006D, 0x0678, mps_logo_sprite_run, "sprite repeat or transparent run", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x11A8, vgame_map_draw_frame, "moving map through the downward scene frame", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x1974, vgame_camera_sky_bands, "camera sky gradient strips", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x19FD, vgame_camera_ground_bands, "camera ground gradient strips", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xB0C2, vgame_panel_projected_diamond, "diamond around a projected HUD point", 1 },

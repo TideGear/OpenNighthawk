@@ -3,12 +3,15 @@
 start order, results returned in item order, and the sync that rewrites only
 generated files whose bytes changed."""
 import glob
+import contextlib
+import io
 import os
 import sys
 import tempfile
 import threading
 import time
 import unittest
+from unittest.mock import patch
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
@@ -62,6 +65,32 @@ class Scheduling(unittest.TestCase):
     def test_interpreter_costs_more_than_recomp(self):
         route = os.path.join(ROOT, "tools", "routes", "strike.args")
         self.assertEqual(3 * gate.expected_cost(route), gate.expected_cost(route, "interp"))
+
+
+class CommandLogging(unittest.TestCase):
+    def test_parallel_commands_keep_complete_records_and_results(self):
+        class YieldingOutput(io.StringIO):
+            def write(self, value):
+                size = super().write(value)
+                time.sleep(0.001)  # A file or pipe can release the GIL here.
+                return size
+
+        output, together = YieldingOutput(), threading.Barrier(8)
+
+        def work(item):
+            together.wait(timeout=5)
+            return gate.run(["tool", "argument with spaces", str(item)],
+                            capture_output=True, text=True)
+
+        def child(cmd, **kwargs):
+            return tuple(cmd), kwargs
+
+        with contextlib.redirect_stdout(output), patch.object(gate.subprocess, "run", side_effect=child):
+            results = gate.parallel(8, list(range(32)), work)
+        self.assertCountEqual(output.getvalue().splitlines(),
+            ['  $ tool "argument with spaces" %d' % i for i in range(32)])
+        self.assertEqual(results, [(("tool", "argument with spaces", str(i)),
+            {"capture_output": True, "text": True}) for i in range(32)])
 
 
 class SyncTree(unittest.TestCase):

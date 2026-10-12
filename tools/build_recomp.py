@@ -33,6 +33,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 
 from run_route import check_route, route_args, prepare_roster, roster_seed
@@ -43,6 +44,7 @@ ROOT = os.path.dirname(HERE)
 
 _T0 = time.time()
 _LAST = [time.time()]
+_COMMAND_LOG_LOCK = threading.Lock()
 
 
 def lap(label):
@@ -53,7 +55,10 @@ def lap(label):
 
 
 def run(cmd, **kw):
-    print("  $ " + " ".join(('"%s"' % c) if " " in c else c for c in cmd))
+    # Parallel route workers share stdout; TextIOWrapper writes are not a
+    # thread-safe record boundary. Keep each command and its newline together.
+    with _COMMAND_LOG_LOCK:
+        print("  $ " + " ".join(('"%s"' % c) if " " in c else c for c in cmd))
     return subprocess.run(cmd, **kw)
 
 

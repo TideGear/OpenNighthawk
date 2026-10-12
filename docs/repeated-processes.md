@@ -10,6 +10,27 @@ identical, and the proof is the same verdicts before and after.
 
 ## The gate (`tools/build_recomp.py`)
 
+Sprite/map gate outcome (11 Oct, 21:07 Pacific): full gate FAILED at the
+third matched seed: existing target scoring VGAME 73C8 missed 12 original
+instructions. Default/C0FFEE seeds pass 2,647,992 / 2,646,888 states; the
+rotating seed compares 2,651,451 with one difference. All 33 unit tests,
+39 replay routes and both 5,718,976-state instruction profiles pass.
+Duration 1,438 s: initial build 149, coverage 488, parity 782; 38 fresh
+interpreter runs. The console strictly decodes with no NUL/non-ASCII data.
+The private fix restores live loop reads, flags and every loop/join count;
+all three targeted seeds pass, including the original failing case. Main
+selectively integrates it and a retained-seed regression (34 unit tests).
+A fresh full gate remains required. The user requested a handoff checkpoint
+commit before that gate completes. The corrected run was stopped during
+initial build, and the private strike probe was stopped without a verdict;
+all owned processes were terminated for handoff. Do not treat the checkpoint
+as fully validated.
+
+Private IRET harness baseline across 811 entries compares 42,391 states
+without differences. Three targeted seeds compare 23,978 interrupt states,
+including 11,985 special-site selections. These are fixture proofs;
+normal-driver replay reaching both handlers remains outstanding.
+
 Camera gradients: original VGAME 1974 and 19FD build four-point
 sky/ground strips at x=169..245, subtracting/adding a table of horizon
 offsets and stopping at y=110/169 or 16 bands. A shared named helper retains
@@ -42,11 +63,11 @@ Census: 801 functions, 68,294 bytes. The combined command log contains a
 corrupted section; independent route results and the final gate tallies
 remain intact. The private logging regression/fix below addresses that.
 
-Private next batch: the logo's 006D:0678 sprite pair repeats a colour or
+Sprite/map follow-up: the logo's 006D:0678 sprite pair repeats a colour or
 skips transparent pixels; opaque count zero wraps to 256 writes. Explicit
 AX boundary cases retain that asset-unreached behavior. VGAME 11A8 wraps
 the downward scene frame used by the moving map. Returning-call fixtures
-isolate its live argument setup; normal-driver replay is still required.
+isolate its live argument setup; normal-driver replay checks the full path.
 The two-worker private build starts only after main's regeneration is
 verified finished; `D:/f117-gate/build-wt-sprite-map.log`. Main source stays
 fixed while its gate runs. Build passes (25 steps). Targeted smoke compares
@@ -56,15 +77,19 @@ Full-cycle replay calls map once and sprite-run 1,570 times in 44.7 s; all
 66 checkpoints/final 6b61d89b95e7b562 match the prior interpreter capture.
 Main's fresh full-cycle interpreter capture (20:34:51) now also matches all
 66 checkpoints and final state, completing real-driver replay proof without
-duplicating the original run already required by the gate. Neither addition
-is in main yet.
+duplicating the original run already required by the gate. Both additions
+are selectively integrated in main, with one focused regression: 809
+addresses, 33 unit tests, 39 routes. Full gate
+`D:/f117-gate/gate-sprite-map.log` runs with 16 workers under affinity
+0x00FFFFFF, requiring fresh interpreter comparisons.
 
 The running gate's combined console log showed mixed-in data during parallel
 command printing; independent per-route results remain separate. A private
 regression with yielding stdout reproduces interleaved command records.
 Serializing only command printing fixes it while retaining child arguments,
-options and results; all 12 gate-helper tests pass. This logging fix stays
-private until the current main gate finishes, then joins a fresh gated batch.
+options and results; all 12 gate-helper tests pass, including after integration
+in main. The running sprite/map gate also retains this logging fix; verify
+its finished console stream has complete command records and no mixed-in data.
 
 Diamond and screen-loader integration (11 Oct, 19:37 Pacific): the two
 privately verified entries and their intentional fixtures are now in main,

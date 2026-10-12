@@ -198,6 +198,22 @@ not the recompilation:
 
 ## Phase 2 - understood code
 
+A rotating matched seed exposed a 12-instruction shortfall in existing
+VGAME target scoring (73C8). The private fix restores the live slot walk,
+flags and original loop/join instructions; all three targeted seeds pass.
+Main includes the fix and a regression retaining the failing seed; the
+sprite/map batch is saved as a handoff checkpoint at the user's request.
+Its fresh full gate was stopped during initial build and remains required;
+the checkpoint is not a fully validated release.
+
+The logo sprite repeat/transparent run (006D:0678) and moving-map downward
+scene frame (VGAME 11A8) are integrated, awaiting the full gate. Three-seed
+caller comparisons pass 28,613 states, including 1,172 opaque zero-count
+sprite runs (256 writes) and 595 transparent runs. Full cycle reaches both
+helpers through real drivers and matches all 66 checkpoints/final state
+against a fresh original capture. A focused regression retains the boundary
+cases and returning-call map fixtures. Main now has 809 matched addresses.
+
 Camera sky/ground strips (VGAME 1974/19FD) are integrated and gated.
 Returning-fill caller fixtures compare 28,726 states at three seeds,
 including 2,279 complete sixteen-band walks. Real-driver `camera_gradients`

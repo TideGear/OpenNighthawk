@@ -65,6 +65,7 @@ static uint32_t io_r(cpu_t *c, uint16_t port, int width)
 static int g_checked_alloc;
 static unsigned long long g_alloc_errors;
 static unsigned long long g_gradient_full;
+static unsigned long long g_sprite_zero, g_sprite_skip;
 static int g_dos;                  /* the routine under test is in DOS_STUBS: INT 21h is answered here */
 
 static int int_h(cpu_t *c, uint8_t vec)
@@ -301,6 +302,12 @@ static void stub_driver_thunks(uint8_t *pristine, uint32_t at, const rc_module *
  * gray-scale flag END's DAC loader tests) lies inside END's image here, where it is a code byte that happens
  * to have the flag set, so the routine's normal path was never reached. Set in both sides' memory. */
 static const struct { const char *module; uint16_t ip; uint32_t linear; uint8_t value; } IMAGE_PATCHES[] = {
+    /* Moving-map caller fixture: returning scene/projection/walk helpers. */
+    { "VGAME.EXE", 0x11A8, 0x0D826, 0xC3 },
+    { "VGAME.EXE", 0x11A8, 0x1E670, 0xCB },
+    { "VGAME.EXE", 0x11A8, 0x1E5BC, 0xCB },
+    { "VGAME.EXE", 0x11A8, 0x011FE, 0xC3 },
+    { "VGAME.EXE", 0x11A8, 0x0D87C, 0xC3 },
     /* Camera-gradient caller fixture: returning polygon fill. */
     { "VGAME.EXE", 0x1974, 0x0FD06, 0xCB },
     { "VGAME.EXE", 0x19FD, 0x0FD06, 0xCB },
@@ -599,6 +606,8 @@ int main(int argc, char **argv)
         g_checked_alloc = !strcmp(o->module, "DSWAP.EXE") && o->seg == 0 && o->ip == 0x0494;
         g_alloc_errors = 0;
         g_gradient_full = 0;
+        g_sprite_zero = g_sprite_skip = 0;
+        const int sprite_run = !strcmp(o->module, "MPS_LOGO.EXE") && o->seg == 0x006D && o->ip == 0x0678;
         const int camera_gradients = !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && (o->ip == 0x1974 || o->ip == 0x19FD);
         g_dos = 0;
         for (unsigned k = 0; k < sizeof DOS_STUBS / sizeof DOS_STUBS[0]; k++)
@@ -645,6 +654,13 @@ int main(int argc, char **argv)
             if ((s & 0x0C) == 0x0C) {
                 static const uint16_t tiny[8] = { 0, 1, 2, 3, 0xFFFF, 0xFFFE, 0, 1 };
                 r[R_AX] = tiny[rnd() & 7]; r[R_CX] = tiny[rnd() & 7]; r[R_DX] = tiny[rnd() & 7];
+            }
+            /* Explicit transparent and zero-length sprite pairs; zero repeats
+             * 256 pixels, a case absent from the shipped logo asset. */
+            if (sprite_run && (s & 7) == 0) {
+                static const uint16_t pairs[8] = { 0xFC00, 0xFC01, 0xFCFF, 0x0000,
+                    0x7F00, 0xFF01, 0xFFFE, 0x00FF };
+                r[R_AX] = pairs[(s >> 3) & 7];
             }
             /* One state in seven plants a part-switch escape (8000h-800Fh) and,
              * after it, an ordinary small word at ES:SI: routines that read a
@@ -762,6 +778,8 @@ int main(int argc, char **argv)
                 g_finished++;
             }
             mc++;
+            if (sprite_run && (r[R_AX] & 0xFF00) == 0xFC00) g_sprite_skip++;
+            if (sprite_run && (r[R_AX] & 0xFF) == 0 && (r[R_AX] & 0xFF00) != 0xFC00) g_sprite_zero++;
             if (g_checked_alloc && g_cpu[0].r[R_AX] == 8) g_alloc_errors++;
             if (camera_gradients && seg_read16(&g_cpu[0], g_cpu[0].seg[S_SS], (uint16_t)(entry_sp - 6)) == 16) g_gradient_full++;
             g_cpu[1] = g_m.cpu;                /* compare() reads g_cpu[1] */
@@ -841,6 +859,7 @@ int main(int argc, char **argv)
                o->what, mc, ms, mb ? "MISMATCH" : mc ? "equal" : "not testable here (routes only)");
         if (g_checked_alloc) printf("  completed allocation-error states: %llu\n", g_alloc_errors);
         if (camera_gradients) printf("  completed 16-band states: %llu\n", g_gradient_full);
+        if (sprite_run) printf("  completed sprite zero/transparent states: %llu/%llu\n", g_sprite_zero, g_sprite_skip);
         compared += mc; skipped += ms; bad += mb;
     }
     printf("matched routines: %u, %llu states compared (%llu finished by the original code), %llu skipped, %llu mismatching\n",

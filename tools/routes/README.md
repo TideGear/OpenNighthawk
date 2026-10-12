@@ -49,6 +49,11 @@ Changing drawing cost changes this recorded flight: VGAME exits after
 7,385,839,082 clocks, before the base route's landing sequence. This route
 checks rendering, world loading and a minimum 7B-clock exit, without an
 objective-completion or landing claim.
+`full_cycle` also covers the logo sprite-run helper and moving-map frame
+wrapper through real drivers (1,570 calls and one call in the isolated
+probe). All 66 checkpoints/final state match a fresh interpreter capture.
+Explicit random-state fixtures separately retain the sprite's opaque
+zero-count wrap to 256 writes, which the shipped logo never uses.
 The speaker and Roland routes cover the other sound drivers and program
 load addresses. Together the routes select all nine worlds, three tension
 levels and four mission categories. Many individual objective types within a
