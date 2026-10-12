@@ -1,7 +1,7 @@
 # F-117A Recomp
 
-This is a fully **human-driven**, AI-coded recompilation (**not a
-reimplementation or a decompilation**) of the PC DOS classic *F-117A
+This is a fully **human-driven**, AI-powered recompilation **AND**
+lockstep-verified matching decompilation of the PC DOS classic *F-117A
 Nighthawk Stealth Fighter 2.0* (MicroProse, 1991) for Windows. The
 original's machine code is translated, instruction by instruction, into C
 and compiled natively. Its emulated PC supports the GOG release's DOSBox
