@@ -45,7 +45,7 @@ Total 1,787 s: build/tests 198, coverage 629, identical regeneration 22,
 parity 938. No additional heavy candidate work ran alongside this gate;
 these different-source timings do not establish a speedup.
 
-Shared span emitters (`0FB2:05A4` / `05B3`, 12 Oct), private proof only:
+Shared span emitters (`0FB2:05A4` / `05B3`, 12 Oct), targeted proof:
 151-line selective patch adds named boundary contribution and shallow/steep
 raster loops, preserving live endpoint/table reads, unsigned bounds, signed
 half-step errors, instruction counts and event resume positions. The harness
@@ -59,7 +59,8 @@ against the fresh interpreter output from the `1a26b2c` full gate, without
 event overruns. Private proof/patch: `D:/f117-gate/span-emit/route-verdict.json`
 and `integrate.patch`; implementation worktree `D:/f117-wt/span-emitter`.
 Initial build caught an undefined NEG helper; the tested implementation uses
-the existing subtraction helper. Not integrated or full-gate validated yet.
+the existing subtraction helper. Integrated; fresh full gate pending in
+`D:/f117-gate/gate-span-emit.log`.
 Both entries lie in the already-counted 324-byte `0555` census region, so
 integration must add no census functions or bytes.
 

@@ -32648,7 +32648,155 @@ reject:
     c->icount += 7; near_ret(c); return 1;
 }
 
+/* VGAME 0FB2:05A4: an edge wholly beyond the horizontal clip boundary.
+ * Contribute a boundary column only when BX lies outside [0, width].
+ * The transfer to 0555 is a tail jump, preserving the caller's return. */
+static int vgame_span_edge_boundary(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 7)) return 0;
+    c->r[R_SI] = (uint16_t)alu_sub(c, c->r[R_SI], c->r[R_SI], 1, 0);
+    alu_logic(c, c->r[R_BX], 1);
+    c->icount += 3;
+    if (c->flags & F_SF) { c->ip = 0x0555; return 1; }
+    c->r[R_SI] = ds_get(c, 0x2293);
+    alu_sub(c, c->r[R_BX], c->r[R_SI], 1, 0);
+    c->icount += 3;
+    if (x86_cond(c, 0xF)) { c->ip = 0x0555; return 1; }
+    c->icount++;
+    near_ret(c);
+    return 1;
+}
+
+/* VGAME 0FB2:05B3: rasterize a clipped polygon edge into the span tables.
+ * Order endpoints by unsigned X, then walk the major axis with the original
+ * signed half-step error. DS:22A1 and DS:2459 retain the left/right X extent
+ * for each row; DS:2615/2617 bound touched rows. All endpoints and table
+ * reads stay live, including when arbitrary fixture states alias the stack.
+ * Each short loop block checks event room and preserves its resume IP. */
+static int vgame_span_edge_emit(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 31)) return 0;
+    c->r[R_AX] = ds_get(c, 0x229B);
+    alu_sub(c, c->r[R_AX], ds_get(c, 0x2299), 1, 0);
+    unsigned n = 3;
+    if (c->flags & F_CF) {
+        c->r[R_BX] = ds_get(c, 0x2299);
+        ds_put(c, 0x229B, c->r[R_BX]);
+        ds_put(c, 0x2299, c->r[R_AX]);
+        c->r[R_AX] = ds_get(c, 0x229F);
+        c->r[R_BX] = ds_get(c, 0x229D);
+        ds_put(c, 0x229F, c->r[R_BX]);
+        ds_put(c, 0x229D, c->r[R_AX]);
+        n += 7;
+    }
+    c->r[R_BX] = ds_get(c, 0x229B);
+    c->r[R_BX] = (uint16_t)alu_sub(c, c->r[R_BX], ds_get(c, 0x2299), 1, 0);
+    ds_put(c, 0x2611, c->r[R_BX]);                         /* absolute X delta */
+    c->r[R_AX] = ds_get(c, 0x229F);
+    c->r[R_DX] = c->r[R_AX];
+    c->r[R_CX] = ds_get(c, 0x229D);
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_CX], 1, 0);
+    c->r[R_BP] = 2;                                     /* next row's word offset */
+    n += 9;
+    if (c->flags & F_SF) {
+        const uint16_t t = c->r[R_DX]; c->r[R_DX] = c->r[R_CX]; c->r[R_CX] = t;
+        c->r[R_BP] = (uint16_t)alu_sub(c, 0, c->r[R_BP], 1, 0);
+        c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0);
+        n += 3;
+    }
+    ds_put(c, 0x2613, c->r[R_AX]);                         /* absolute Y delta */
+    alu_sub(c, c->r[R_DX], ds_get(c, 0x2617), 1, 0);
+    n += 3;
+    if (!x86_cond(c, 6)) { ds_put(c, 0x2617, c->r[R_DX]); n++; }
+    alu_sub(c, c->r[R_CX], ds_get(c, 0x2615), 1, 0);
+    n += 2;
+    if (c->flags & F_CF) { ds_put(c, 0x2615, c->r[R_CX]); n++; }
+    alu_sub(c, c->r[R_AX], c->r[R_BX], 1, 0);
+    c->icount += n + 2;
+    if (!(c->flags & F_CF)) goto steep;
+
+    SM4_NEED(12, 0x0612);
+    c->r[R_DI] = ds_get(c, 0x229D);
+    c->r[R_DI] = (uint16_t)x86_shift(c, 4, c->r[R_DI], 1, 1);
+    c->r[R_AX] = ds_get(c, 0x2299);
+    c->r[R_DX] = ds_get(c, 0x2611);
+    c->r[R_CX] = c->r[R_DX]; c->r[R_BX] = c->r[R_CX];
+    c->r[R_BX] = (uint16_t)alu_inc(c, c->r[R_BX], 1);
+    c->r[R_BX] = (uint16_t)x86_shift(c, 5, c->r[R_BX], 1, 1);
+    c->r[R_BX] = (uint16_t)alu_sub(c, 0, c->r[R_BX], 1, 0);
+    c->r[R_SI] = ds_get(c, 0x2613);
+    c->icount += 11;
+    goto shallow_left;
+shallow_row:
+    SM4_NEED(6, 0x062F);
+    alu_sub(c, c->r[R_AX], ds_get(c, (uint16_t)(c->r[R_DI] + 0x2459)), 1, 0);
+    n = 2;
+    if (!x86_cond(c, 6)) { ds_put(c, (uint16_t)(c->r[R_DI] + 0x2459), c->r[R_AX]); n++; }
+    c->r[R_AX] = (uint16_t)alu_inc(c, c->r[R_AX], 1);
+    c->r[R_BX] = (uint16_t)alu_sub(c, c->r[R_BX], c->r[R_DX], 1, 0);
+    c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], c->r[R_BP], 1, 0);
+    c->icount += n + 3;
+shallow_left:
+    SM4_NEED(3, 0x063E);
+    alu_sub(c, c->r[R_AX], ds_get(c, (uint16_t)(c->r[R_DI] + 0x22A1)), 1, 0);
+    c->icount += 2;
+    if (c->flags & F_CF) { ds_put(c, (uint16_t)(c->r[R_DI] + 0x22A1), c->r[R_AX]); c->icount++; }
+shallow_step:
+    SM4_NEED(7, 0x0648);
+    c->r[R_CX] = (uint16_t)alu_dec(c, c->r[R_CX], 1);
+    c->icount += 2;
+    if (c->flags & F_SF) {
+        alu_sub(c, c->r[R_AX], ds_get(c, (uint16_t)(c->r[R_DI] + 0x2459)), 1, 0);
+        c->icount += 2;
+        if (!x86_cond(c, 6)) { ds_put(c, (uint16_t)(c->r[R_DI] + 0x2459), c->r[R_AX]); c->icount++; }
+        c->icount++; near_ret(c); return 1;
+    }
+    c->r[R_BX] = (uint16_t)alu_add(c, c->r[R_BX], c->r[R_SI], 1, 0);
+    c->icount += 2;
+    if (!(c->flags & F_SF)) goto shallow_row;
+    c->r[R_AX] = (uint16_t)alu_inc(c, c->r[R_AX], 1);
+    c->icount += 2;
+    goto shallow_step;
+
+steep:
+    SM4_NEED(10, 0x065D);
+    c->r[R_DI] = ds_get(c, 0x229D);
+    c->r[R_DI] = (uint16_t)x86_shift(c, 4, c->r[R_DI], 1, 1);
+    c->r[R_AX] = ds_get(c, 0x2299);
+    c->r[R_DX] = ds_get(c, 0x2613);
+    c->r[R_CX] = c->r[R_DX]; c->r[R_BX] = c->r[R_CX];
+    c->r[R_BX] = (uint16_t)alu_inc(c, c->r[R_BX], 1);
+    c->r[R_BX] = (uint16_t)x86_shift(c, 5, c->r[R_BX], 1, 1);
+    c->r[R_BX] = (uint16_t)alu_sub(c, 0, c->r[R_BX], 1, 0);
+    c->r[R_SI] = ds_get(c, 0x2611);
+    c->icount += 10;
+steep_row:
+    SM4_NEED(6, 0x0677);
+    alu_sub(c, c->r[R_AX], ds_get(c, (uint16_t)(c->r[R_DI] + 0x22A1)), 1, 0);
+    c->icount += 2;
+    if (c->flags & F_CF) { ds_put(c, (uint16_t)(c->r[R_DI] + 0x22A1), c->r[R_AX]); c->icount++; }
+    alu_sub(c, c->r[R_AX], ds_get(c, (uint16_t)(c->r[R_DI] + 0x2459)), 1, 0);
+    c->icount += 2;
+    if (!x86_cond(c, 6)) { ds_put(c, (uint16_t)(c->r[R_DI] + 0x2459), c->r[R_AX]); c->icount++; }
+    SM4_NEED(8, 0x068B);
+    c->r[R_CX] = (uint16_t)alu_dec(c, c->r[R_CX], 1);
+    c->icount += 2;
+    if (c->flags & F_SF) { c->icount++; near_ret(c); return 1; }
+    c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], c->r[R_BP], 1, 0);
+    c->r[R_BX] = (uint16_t)alu_add(c, c->r[R_BX], c->r[R_SI], 1, 0);
+    c->icount += 3;
+    if (c->flags & F_SF) goto steep_row;
+    c->r[R_BX] = (uint16_t)alu_sub(c, c->r[R_BX], c->r[R_DX], 1, 0);
+    c->r[R_AX] = (uint16_t)alu_inc(c, c->r[R_AX], 1);
+    c->icount += 3;
+    goto steep_row;
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0FB2, 0x05A4, vgame_span_edge_boundary, "edge outside horizontal span bounds", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0FB2, 0x05B3, vgame_span_edge_emit, "rasterize an edge into polygon span tables", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0FB2, 0x06A6, vgame_span_edge_clipped, "clip a polygon edge into the span tables", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0FB2, 0x01E6, vgame_polygon_fill, "fill a closed polygon through the span rasterizer", 2 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0FB2, 0x084E, vgame_span_divide_fault, "span divide-error saturation", 3 },

@@ -15,7 +15,7 @@ standing practice, not a session-by-session log. Earlier sessions' detail
 
 ## Current state
 
-Current runtime baseline: VGAME `0FB2:06A6` clipped span edge,
+Last fully gated runtime baseline: VGAME `0FB2:06A6` clipped span edge,
 commit `1a26b2c`, 812 matched addresses. Full gate
 `D:/f117-gate/gate-span-edge.log` passes: 37 unit tests, all 39 routes
 IDENTICAL (38 fresh interpreter sessions), both 5,718,976-state instruction
@@ -63,8 +63,9 @@ Phase 2 work" below).
   camera replay calls them 507,745 / 591,404 times with 234 checkpoints/final
   identical to the latest fresh interpreter output, without event overruns.
   Selective patch `D:/f117-gate/span-emit/integrate.patch`, worktree
-  `D:/f117-wt/span-emitter`. Apply selectively and run a fresh full gate
-  before pushing; nothing from this candidate is integrated yet.
+  `D:/f117-wt/span-emitter`. Integrated selectively, 814 matched addresses.
+  Fresh full gate pending in `D:/f117-gate/gate-span-emit.log`; do not push
+  until it passes. Census bytes/functions and progress percentages unchanged.
   These sit inside the already-counted 324-byte `0555` census region:
   adding entry points must not count the same bytes again.
 - 04DD above, if a real route to it is ever found.

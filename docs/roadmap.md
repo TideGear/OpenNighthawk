@@ -207,8 +207,8 @@ shared-flow span-edge candidate demonstrates why walk size is not census
 ownership. Synthetic checks run in Windows CI. Details and limits:
 [repeated-processes.md](repeated-processes.md#phase-2-candidate-reading).
 
-Shared span-emitter entries (`0FB2:05A4` / `05B3`) have private named
-implementations, pending integration/full gate. Three seeds compare 20,325
+Shared span-emitter entries (`0FB2:05A4` / `05B3`) are integrated, pending
+their fresh full gate. Three seeds compare 20,325
 states without mismatches; 38 isolated tests pass. A real camera replay
 executes the entries 507,745 / 591,404 times with all 234 checkpoints/final
 identical to the latest fresh interpreter capture. These complete shared
@@ -359,7 +359,7 @@ instruction profiles and three 789-address matched seeds (2,561,209,
       Reimp's mapping; matched functions replacing translations one at a time,
       each held to the same parity checks. `tools/reimp_names.py` joins the
       Reimp's census (1,535 functions) with this project's regions as a private
-      lead list. 812 addresses are matched (806 of the census functions, 69,027 of
+      lead list. 814 addresses are matched (806 of the census functions, 69,027 of
       179,213 bytes); the table is at the end of `src/matched/matched.c` and the
       method is in [architecture.md](architecture.md#matched-routines-phase-2).
       The batches of 8-9 Oct add 37 + 34 + 47 VGAME, 34 + 40 + 45 START/END and 21 + 44 + 64
