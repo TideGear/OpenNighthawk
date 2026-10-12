@@ -3,33 +3,32 @@
 Where the code in this repository came from, so a change upstream can be
 traced and a licence question answered.
 
-## From the F-117A Reimp project (OpenF-117A)
+## From an earlier private project by the same author
 
-The same owner's GPL-3.0 reimplementation, at
-`C:\Users\Tideg\My Drive\Development\F-117A Reimp`. Everything below was
-copied at **Reimp commit `cfb8cec9`** (3 October 2026; its working tree also
-had uncommitted edits, none of which were copied). The Reimp is under active
-development; nothing here builds against its tree.
+Some of this repository's core CPU and DOS modules began as a port from an
+earlier, unpublished reverse-engineering project of the author's own (also
+GPL-3.0; nothing here builds against its tree, and it is not public).
 
-| Here | Reimp source | Changes |
-|---|---|---|
-| `src/cpu/cpu.c`, `cpu.h` | `tools/x86oracle/cpu.c`, `cpu.h` | Semantics moved to `x86_sem.h`; STI/MOV SS interrupt shadow; write tracking of translated bytes; `stop_at`; memory watch and tracing removed; faults leave IP at the instruction |
-| `src/cpu/x86_sem.h` | the helpers inside `cpu.c` | Moved, not changed; `IDIV` of `0x80000000` by -1 now traps instead of faulting the host |
-| `src/machine/dos*.c`, `pc.c` | `tools/x86oracle/dos.c` | Split into DOS/BIOS and devices; extended for play (see architecture.md); DOS/BIOS later split by service (`dos.c` dispatch, `dos_memory.c`, `dos_programs.c`, `dos_files.c`, `dos_keyboard.c`, `dos_video.c`) |
-| `tests/sstest.py`, `sst286.py`, `test186.c` | `tools/x86oracle/` | Paths made configurable |
-| `tests/cpu_api.c` | `tools/x86oracle/oracle_api.c` | Supplies the two machine hooks itself |
-| `tools/unpack.py` | `tools/x86oracle/unpack.py` | DLL path |
-| `src/host/midistream.c`, `.h` | `src/core/midistream.c`, `.h` | Include guard |
-| `src/host/main.c` (`pc_scancode`) | `src/platform/platform_sdl3.c` | The SDL-to-set-1 table |
+| Here | Changes from the ported source |
+|---|---|
+| `src/cpu/cpu.c`, `cpu.h` | Semantics moved to `x86_sem.h`; STI/MOV SS interrupt shadow; write tracking of translated bytes; `stop_at`; memory watch and tracing removed; faults leave IP at the instruction |
+| `src/cpu/x86_sem.h` | Moved out of `cpu.c`, not changed; `IDIV` of `0x80000000` by -1 now traps instead of faulting the host |
+| `src/machine/dos*.c`, `pc.c` | Split into DOS/BIOS and devices; extended for play (see architecture.md); DOS/BIOS later split by service (`dos.c` dispatch, `dos_memory.c`, `dos_programs.c`, `dos_files.c`, `dos_keyboard.c`, `dos_video.c`) |
+| `tests/sstest.py`, `sst286.py`, `test186.c` | Paths made configurable |
+| `tests/cpu_api.c` | Supplies the two machine hooks itself |
+| `tools/unpack.py` | DLL path |
+| `src/host/midistream.c`, `.h` | Include guard |
+| `src/host/main.c` (`pc_scancode`) | The SDL-to-set-1 table |
 
-The bug tracker ([bugs.md](bugs.md)) restates the Reimp's
-`docs/bugs/catalogue.md` with citations to it.
+`tools/fade_calibration.py` uses calibration routine locations and probe
+design from that earlier project's own ISR probe. It assembles its own
+wrapper using this repository's assembler and extracts the routines from the
+user's installation; it has no dependency on the other project's files and
+commits no original game bytes.
 
-`tools/fade_calibration.py` uses the calibration routine locations and
-probe design from `tools/f117/dosbox_isr_probe.py` at Reimp `9e0716dc`.
-It assembles its own wrapper using this repository's assembler and extracts
-the routines from the user's installation; it has no dependency on Reimp
-files and commits no original game bytes.
+The bug tracker ([bugs.md](bugs.md)) restates that earlier project's own bug
+catalogue, with citations to it under the name "Reimp" (the author's private
+shorthand for it, not a published project).
 
 ## From DOSBox 0.74-2.1
 

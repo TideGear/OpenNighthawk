@@ -10,6 +10,15 @@ identical, and the proof is the same verdicts before and after.
 
 ## The gate (`tools/build_recomp.py`)
 
+Span divide-fault gate (12 Oct, 00:25 Pacific) **passes**:
+`D:/f117-gate/gate-divide-fault-084e.log`, commit `117201c` (VGAME 0FB2:084E,
+810 addresses). 35 unit tests, both instruction profiles (0 mismatching) and
+three matched seeds all pass with 0 mismatching, including this commit's own
+rotating seed `0x117201ca17d6` (2,651,991 / 2,650,881 / 2,649,857 states
+compared). All 39 routes IDENTICAL, 38 fresh interpreter runs (0 reused),
+every routes-only routine reached, no event-limit overruns. Duration 1,546 s:
+build/tests 166, coverage 538, identical regeneration 19, parity 822.
+
 Sprite/map retry gate (11 Oct, 21:42 Pacific) **passes**:
 `D:/f117-gate/gate-sprite-map-retry.log`, commit `ae9fbca` (809 addresses).
 34 unit tests, both 5,718,976-state instruction profiles (0 mismatching) and

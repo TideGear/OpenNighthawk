@@ -1,5 +1,14 @@
 # F-117A Recomp
 
+> **Not affiliated with anyone.** This is an unofficial, fan-made project. It
+> is not affiliated with, authorized by, endorsed by, or associated with
+> Atari Interactive, Inc., MicroProse, or any other rights holder.
+> *F-117A Nighthawk Stealth Fighter* and all related marks are the property
+> of their respective owners. **You must own a legal copy of the original
+> game to use this software.** It is sold on
+> [Steam](https://store.steampowered.com/app/328920/) and on
+> [GOG](https://www.gog.com/en/game/f117a_nighthawk_stealth_fighter_20). Please buy it.
+
 This is a fully **human-driven**, AI-powered recompilation **AND**
 lockstep-verified matching decompilation of the PC DOS classic *F-117A
 Nighthawk Stealth Fighter 2.0* (MicroProse, 1991) for Windows. The
@@ -34,15 +43,6 @@ exactly what the DOS original does, including its bugs, which are tracked in
 [docs/bugs.md](docs/bugs.md) so they can be fixed later as switchable
 options. Fifteen catalogued fixes and balance options are available now, all off by default.
 
-> **Not affiliated with anyone.** This is an unofficial, fan-made project. It
-> is not affiliated with, authorized by, endorsed by, or associated with
-> Atari Interactive, Inc., MicroProse, or any other rights holder.
-> *F-117A Nighthawk Stealth Fighter* and all related marks are the property
-> of their respective owners. **You must own a legal copy of the original
-> game to use this software.** It is sold on
-> [Steam](https://store.steampowered.com/app/328920/) and on
-> [GOG](https://www.gog.com/en/game/f117a_nighthawk_stealth_fighter_20). Please buy it.
-
 ## Status
 
 - **The whole game loop runs**: SETUP, the MicroProse logo, the intro, the
@@ -51,19 +51,19 @@ options. Fifteen catalogued fixes and balance options are available now, all off
   work: AdLib (music and digitised speech through an OPL emulator), the PC
   speaker, and Roland (Munt synthesis with your MT-32 ROMs, or Windows
   MIDI; live synthesis tested, exact rendered parity still open).
-- **Translated:** 89,366 instruction starts in the latest checked build,
+- **Translated:** 89,367 instruction starts in the latest checked build,
   across all 17 code files and the
   LZEXE decompressor: 96% of the bytes of the code areas, and no
   untranslated stretch left that decodes as code (`tools/census.py`; the
   rest is strings, tables and variables). On the scripted sessions no game
   instruction is interpreted under the default timing profile; only the
   emulated BIOS's own stubs are.
-- **Named and matched:** 786 routine addresses (781 census functions,
-  66,674 of 179,213 code bytes) have explained C equivalents checked against
-  their original bodies. Another 754 census functions remain. Under the
+- **Named and matched:** 810 routine addresses (801 census functions,
+  68,294 of 179,213 code bytes) have explained C equivalents checked against
+  their original bodies. Another 734 census functions remain. Under the
   386 profile, matched entries use their original translated bodies until
   their handwritten clocks gain cycle costs.
-- **Parity, measured:** thirty-five scripted sessions (boot to flight; a full
+- **Parity, measured:** thirty-nine scripted sessions (boot to flight; a full
   sortie through the debriefing and back; boots under the speaker and Roland
   drivers, where the programs load at other addresses; transfer and flight
   routes across all nine theatres and all four mission categories; pilot
@@ -425,7 +425,7 @@ read-only acceptance check.
 | `recompiler/` | the translator (Python) |
 | `tools/` | the build pipeline, unpacker, scripted routes |
 | `tests/` | silicon-vector harnesses for the interpreter and for generated code |
-| `docs/` | [architecture](docs/architecture.md), [original-game bugs](docs/bugs.md), [provenance](docs/provenance.md) |
+| `docs/` | [architecture](docs/architecture.md), [roadmap](docs/roadmap.md), [original-game bugs](docs/bugs.md), [presentation](docs/presentation.md), [provenance](docs/provenance.md) |
 
 ## Licence
 
@@ -462,9 +462,6 @@ closed. Buy it; it is inexpensive and still available.
 
 ## Acknowledgements
 
-- **The F-117A Reimp (OpenF-117A)**, the same owner's oracle-verified
-  reimplementation, whose interpreter, DOS model, unpacker and two months of
-  reverse engineering this project is built on.
 - **SingleStepTests**, for the 8088 and 80286 hardware vectors.
 - **Nuked OPL3** (nukeykt), for the AdLib's chip.
 - **DOSBox DBOPL** (The DOSBox Team), for the reference OPL2 synthesizer.

@@ -208,7 +208,20 @@ counts a kind-3 return to any other address as a difference; half the
 states save the faulting IDIV's own IP. Real-driver: 084E runs in 28 of the
 39 routes; eight of them (81,235 runs) are identical to a fresh interpreter
 capture at all 1,236 checkpoints and the end, and a sign-flipped handler
-changes `vietnam_airair` from the 3,200,000,000 checkpoint on.
+changes `vietnam_airair` from the 3,200,000,000 checkpoint on. The full gate
+passes: 35 unit tests, all 39 routes, both instruction profiles and three
+810-address matched seeds (including this commit's own rotating seed), with
+zero differences and passing reachability/event checks. See
+[repeated-processes.md](repeated-processes.md) for the timing breakdown.
+
+The line clipper's own divide-error handler, 0FB2:04DD, is matched and
+fixture-proven the same way but **not integrated**: an exhaustive search
+(all 39 routes, three staged flight scripts, an instrumented probe over
+146,153 real clip divisions across 14 routes) found no input that overflows
+it, since every caller's line length stays well under the 32,767-unit
+threshold that would trigger it. Preserved on local branch
+`irq-divide-fault` and as a patch file, not in `master`, until a real route
+is found that reaches it.
 
 A rotating matched seed exposed a 12-instruction shortfall in existing
 VGAME target scoring (73C8). The private fix restores the live slot walk,
