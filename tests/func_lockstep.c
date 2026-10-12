@@ -308,7 +308,7 @@ static int compare(const char *mod, uint32_t off, uint16_t cs, uint16_t ip, int 
 static void stub_driver_thunks(uint8_t *pristine, uint32_t at, const rc_module *m, const recomp_override *o)
 {
     const int vgame_draw = !strcmp(m->name, "VGAME.EXE") &&
-        ((o->seg == 0 && (o->ip == 0x8A90 || o->ip == 0x9515 || o->ip == 0x1E79 || o->ip == 0xB171 || o->ip == 0xD6DD || o->ip == 0x4777 ||
+        ((o->seg == 0 && (o->ip == 0x79BE || o->ip == 0x8A90 || o->ip == 0x9515 || o->ip == 0x1E79 || o->ip == 0xB171 || o->ip == 0xD6DD || o->ip == 0x4777 ||
                          o->ip == 0xD3F9 || o->ip == 0xD87C || o->ip == 0x72D8 ||
                            o->ip == 0x8A18 || o->ip == 0x881F || o->ip == 0x796E || o->ip == 0x3A4E ||
                            o->ip == 0xB0C2 || o->ip == 0xC45C)) ||
@@ -330,6 +330,26 @@ static void stub_driver_thunks(uint8_t *pristine, uint32_t at, const rc_module *
  * gray-scale flag END's DAC loader tests) lies inside END's image here, where it is a code byte that happens
  * to have the flag set, so the routine's normal path was never reached. Set in both sides' memory. */
 static const struct { const char *module; uint16_t ip; uint32_t linear; uint8_t value; } IMAGE_PATCHES[] = {
+    /* Panel-frame caller fixture: returning drawing/string/navigation helpers;
+     * real trig, distance, bearing and clamp helpers remain executable. */
+    { "VGAME.EXE", 0x79BE, 0x1176E, 0xCB },
+    { "VGAME.EXE", 0x79BE, 0x1189D, 0xCB },
+    { "VGAME.EXE", 0x79BE, 0x114A6, 0xCB },
+    { "VGAME.EXE", 0x79BE, 0x115EF, 0xCB },
+    { "VGAME.EXE", 0x79BE, 0x0D578, 0xC3 },
+    { "VGAME.EXE", 0x79BE, 0x0EB50, 0xC3 },
+    { "VGAME.EXE", 0x79BE, 0x0EB9E, 0xC3 },
+    { "VGAME.EXE", 0x79BE, 0x0EB10, 0xC3 },
+    { "VGAME.EXE", 0x79BE, 0x0EB82, 0xC3 },
+    { "VGAME.EXE", 0x79BE, 0x0EBBA, 0xC3 },
+    { "VGAME.EXE", 0x79BE, 0x0895E, 0xC3 },
+    { "VGAME.EXE", 0x79BE, 0x0898F, 0xC3 },
+    { "VGAME.EXE", 0x79BE, 0x08A4F, 0xC3 },
+    { "VGAME.EXE", 0x79BE, 0x08A90, 0xC3 },
+    { "VGAME.EXE", 0x79BE, 0x0971A, 0xC3 },
+    { "VGAME.EXE", 0x79BE, 0x089F7, 0xC3 },
+    { "VGAME.EXE", 0x79BE, 0x08A18, 0xC3 },
+    { "VGAME.EXE", 0x79BE, 0x0889B, 0xC3 },
     /* Navigation-grid caller: returning far rectangle fill. */
     { "VGAME.EXE", 0x8A90, 0x0FD66, 0xCB },
     /* Arming caller: returning picture loader; actual driver on routes. */
@@ -392,6 +412,7 @@ static const struct { const char *module; uint16_t ip; int arg; uint16_t v[2]; }
 /* Exact code ranges when the default 0x300-byte window is unsuitable:
  * long/shared tails, or small walkers whose unrelated callees are nearby. */
 static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
+    { "VGAME.EXE", 0x79BE, 0x79BE, 0x082A }, /* whole cockpit pass through RET */
     { "VGAME.EXE", 0x8A90, 0x8A90, 0x0446 }, /* entire grid through RET at 8ED5 */
     /* A random initializer can consume the walker's return address and
      * RET to the outer caller. Its RET is not the walker's own return even
@@ -516,6 +537,7 @@ static uint16_t g_below;                /* how far the routine's code reaches be
  * written back later (a row table over the code when DS = CS) runs changed instructions and leaves no
  * trace in the end state. */
 static int g_self_written, g_watch_transient;
+static uint64_t g_cockpit_seen;
 static unsigned g_nav_seen;
 static unsigned g_panel_seen;           /* original branches in the current panel fixture */
 static unsigned g_arms_seen;            /* original arming setup branches in this fixture */
@@ -524,7 +546,7 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
     const uint32_t watch = phys(cs, (uint16_t)(ip - g_below));
     const int watching = (g_below || g_watch_transient) && a->mem == g_mem[0];
     while (*steps < 100000) {
-        const unsigned watch_bytes = ip == 0x8A90 ? g_span : 0x300u + g_below;
+        const unsigned watch_bytes = (ip == 0x79BE || ip == 0x8A90) ? g_span : 0x300u + g_below;
         if (watching && !g_self_written && memcmp(a->mem + watch, g_pristine + watch, watch_bytes)) g_self_written = 1;
         if (g_trace) printf("      %04X:%04X clk %llu sp %04X\n", a->seg[S_CS], a->ip, (unsigned long long)a->icount, a->r[R_SP]);
         const uint16_t here = a->ip;
@@ -535,6 +557,15 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
                 if (here == branch[k]) g_arms_seen |= 1u << k;
             if (here == 0x0820 && x86_cond(a, 7)) g_arms_seen |= 1u << 5;
             if (here == 0x08E8 && !(a->flags & F_ZF)) g_arms_seen |= 1u << 6;
+        }
+        if (ip == 0x79BE && own && a->mem == g_mem[0]) {
+            static const uint16_t branch[] = { 0x79D3, 0x79E2, 0x7A06, 0x7A2E,
+                0x7A6D, 0x7A97, 0x7AAC, 0x7AE2, 0x7B81, 0x7C02, 0x7C4D,
+                0x7C66, 0x7C96, 0x7CCD, 0x7D59, 0x7DBE, 0x7DF9, 0x7E39,
+                0x7E67, 0x7EDA, 0x7F0C, 0x7F3F, 0x7F58, 0x7FA5, 0x801B,
+                0x803D, 0x8080, 0x80F8, 0x8125, 0x8155, 0x8181, 0x81E4 };
+            for (unsigned k = 0; k < sizeof branch / sizeof branch[0]; k++)
+                if (here == branch[k]) g_cockpit_seen |= UINT64_C(1) << k;
         }
         if (ip == 0x8A90 && own && a->mem == g_mem[0]) {
             static const uint16_t branch[] = { 0x8ADC, 0x8B55, 0x8BB8,
@@ -657,7 +688,7 @@ int main(int argc, char **argv)
          * PLAYER's format reader can similarly overwrite its RET through
          * an aliased frame slot. Final memory misses these changed-code inputs. */
         g_watch_transient = o->seg == 0 &&
-            ((!strcmp(o->module, "VGAME.EXE") && o->ip == 0x8A90) ||
+            ((!strcmp(o->module, "VGAME.EXE") && (o->ip == 0x79BE || o->ip == 0x8A90)) ||
              (!strcmp(o->module, "START.EXE") && (o->ip == 0x39B3 || o->ip == 0x39D5)) ||
              (!strcmp(o->module, "END.EXE") && (o->ip == 0x1CB1 || o->ip == 0x1CD3)) ||
              (!strcmp(o->module, "PLAYER.EXE") && o->ip == 0x1E90));
@@ -682,6 +713,7 @@ int main(int argc, char **argv)
         const int sprite_run = !strcmp(o->module, "MPS_LOGO.EXE") && o->seg == 0x006D && o->ip == 0x0678;
         const int camera_gradients = !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && (o->ip == 0x1974 || o->ip == 0x19FD);
         const int objectives_panel = !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0x9515;
+        uint64_t cockpit_branches = 0;
         unsigned nav_branches = 0;
         unsigned panel_branches = 0;
         const int armament_screen = !strcmp(o->module, "START.EXE") && o->seg == 0 && o->ip == 0x07EE;
@@ -779,6 +811,53 @@ int main(int argc, char **argv)
                     small[0] = o->ip == 0x1974 ? 169 : 110;
                     small[1] = (uint16_t)((s >> 3) & 1);
                 }
+            }
+            /* Valid panel worlds exercise full/compact/external views, mode
+             * changes, warning lamps, waypoint advance, message countdown and
+             * the left-altitude inset. Keep some random and budget-stop states. */
+            if (!strcmp(o->module, "VGAME.EXE") && o->ip == 0x79BE &&
+                ((s & 7) == 1 || (s & 7) == 2)) {
+                const unsigned v = (unsigned)s >> 3;
+                static const uint16_t views[] = { 0, 0, 0, 0x42, 0x80 };
+                static const uint16_t heights[] = { 99, 100, 101, 0xFFFF };
+                const struct { uint16_t at, value; } words[] = {
+                    { 0x368C, (uint16_t)((v & 32) ? 0 : 1) },
+                    { 0x2DF6, heights[v & 3] }, { 0x991E, (uint16_t)(v & 1) },
+                    { 0xC0A6, views[v % 5] }, { 0x294A, (uint16_t)((v / 5) % 3) },
+                    { 0x294B, (uint16_t)((v / 15) % 3) },
+                    { 0xE32A, (uint16_t)(v % 3) }, { 0x40CA, (uint16_t)((v + 1) % 3) },
+                    { 0x2E08, (uint16_t)(v & 1) }, { 0xE474, 200 }, { 0xB194, 100 },
+                    { 0xC0CE, 1000 }, { 0x2DF4, (uint16_t)((v & 4) ? 1000 : 1001) },
+                    { 0x3D8E, (uint16_t)((v & 8) ? 0 : 1) }, { 0x4742, 1 },
+                    { 0x4010, 0x2000 }, { 0x4028, 0x2040 }, { 0x4040, 0x2080 },
+                    { 0x3680, 0 }, { 0x3670, 0 }, { 0x3672, 4 }, { 0x3682, 100 },
+                    { 0x9924, 0x1000 }, { 0x9926, seg[S_DS] },
+                    { 0x1040, (uint16_t)((v & 2) ? 0 : 1) }, { 0x1042, (uint16_t)(v & 1) },
+                    { 0x2CA0, 0x0605 }, { 0x98F6, 0 }, { 0xC0D0, 0xFC00 }, { 0xC0DE, 0xFD00 },
+                    { 0xE31A, 0 }, { 0xB2D0, 0xFC00 }, { 0xB2D2, 0xFD00 },
+                    { 0xB2D6, (uint16_t)((v & 1) ? 0x200 : 0) }, { 0x3666, 0xFFFF },
+                    { 0xDF06, 1 }, { 0x9B34, (uint16_t)((v & 2) ? 0x1601 : 0x1600) },
+                    { 0xB2B8, (uint16_t)(v & 1) }, { 0x368A, (uint16_t)(v & 1) },
+                    { 0xE586, (uint16_t)((v & 16) ? 16 : 0xFFF0) }, { 0xE00C, 0 },
+                    { 0xE57C, 0 }, { 0xE572, 0 }, { 0x36A6, 0 }, { 0x33A0, 7 },
+                    { 0x3DA8, (uint16_t)(v % 3) }, { 0x3664, (uint16_t)((v & 4) ? 8 : 0) },
+                    { 0x2EAE, (uint16_t)((v & 1) ? 0 : 3) },
+                    { 0x2E9E, 0xFC00 }, { 0x2EA0, 0xFD00 },
+                    { 0x2EAA, 0xF000 }, { 0x2EAC, 0xF000 },
+                    { 0x2DEE, 0 }, { 0x40CC, 1 }
+                };
+                int safe = 1;
+                for (unsigned j = 0; j < sizeof words / sizeof words[0]; j++)
+                    for (unsigned byte = 0; byte < 2; byte++) {
+                        const uint32_t address = phys(seg[S_DS], (uint16_t)(words[j].at + byte));
+                        if (address >= at && address < at + m->size + 2) safe = 0;
+                    }
+                if (safe) for (unsigned j = 0; j < sizeof words / sizeof words[0]; j++)
+                    for (unsigned byte = 0; byte < 2; byte++) {
+                        const uint32_t address = phys(seg[S_DS], (uint16_t)(words[j].at + byte));
+                        g_pristine[address] = g_mem[0][address] = g_mem[1][address] =
+                            (uint8_t)(words[j].value >> (8 * byte));
+                    }
             }
             /* Small navigation worlds expose marker kinds and highlights while
              * keeping the real projection/trig helpers. Include budget-stop
@@ -918,7 +997,7 @@ int main(int argc, char **argv)
              * accept the state only when it returns to the pushed address. */
             const uint16_t entry_sp = (uint16_t)(r[R_SP] - (o->matched == 3 ? 6 : o->matched == 2 ? 4 : 2));
             g_back_cs = cs; g_back_ip = back; g_back_sp = r[R_SP];
-            g_reach = 0; g_nav_seen = 0; g_panel_seen = 0; g_arms_seen = 0;
+            g_reach = 0; g_cockpit_seen = 0; g_nav_seen = 0; g_panel_seen = 0; g_arms_seen = 0;
             g_self_written = 0;
             const int returned = run_to_ret(a, entry_sp, o->matched, &steps, cs, ip);
             const uint16_t reach = g_reach;
@@ -994,6 +1073,7 @@ int main(int argc, char **argv)
                 g_finished++;
             }
             mc++;
+            if (!strcmp(o->module, "VGAME.EXE") && o->ip == 0x79BE) cockpit_branches |= g_cockpit_seen;
             if (!strcmp(o->module, "VGAME.EXE") && o->ip == 0x8A90) nav_branches |= g_nav_seen;
             if (objectives_panel) panel_branches |= g_panel_seen;
             if (armament_screen) {
@@ -1085,6 +1165,12 @@ int main(int argc, char **argv)
                o->what, mc, ms, mb ? "MISMATCH" : mc ? "equal" : "not testable here (routes only)");
         if (g_checked_alloc) printf("  completed allocation-error states: %llu\n", g_alloc_errors);
         if (camera_gradients) printf("  completed 16-band states: %llu\n", g_gradient_full);
+        if (!strcmp(o->module, "VGAME.EXE") && o->ip == 0x79BE) {
+            printf("  completed cockpit branch mask: %08llX (required FFFFFFFF)\n", (unsigned long long)cockpit_branches);
+            if (states >= 4000 && cockpit_branches != UINT64_C(0xFFFFFFFF)) {
+                fprintf(stderr, "cockpit fixture missed required branches\n"); mb++;
+            }
+        }
         if (!strcmp(o->module, "VGAME.EXE") && o->ip == 0x8A90) {
             printf("  completed navigation branch mask: %05X (required 7FFFF)\n", nav_branches);
             if (states >= 4000 && nav_branches != 0x7FFFF) {

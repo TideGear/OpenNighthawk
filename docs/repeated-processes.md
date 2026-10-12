@@ -220,14 +220,21 @@ Real F3 replay uses the actual drivers/helpers, takes 67.8 s, calls the named
 entry 550 times and matches all 57 checkpoints/final without event overruns.
 Audited artifacts and selective patch: `D:/f117-gate/panel-frame/targeted-verdict.json`
 and `integrate.patch`; tested source is snapshotted there. Patch preflight
-passes on main; integration waits for the validated grid baseline push.
+passes on main. After pushing the validated grid baseline (`c8f262b`), the
+panel patch is integrated: census 811 / 72,422, P2 43.39%, overall 74.78%,
+819 matched addresses. Fresh full gate pending in
+`D:/f117-gate/gate-panel-frame.log`; do not push until it passes.
 Its saved interpreter reference also matches all 57 checkpoints/final in the
 fresh grid gate (`panel-frame/fresh-reference-crosscheck.json`).
 Private build uses two workers after matched shards finish. These overlapped
 timings do not establish a speedup. Next HUD pass `1058:0016` has a private
 dossier under `next-candidates/hud-pass`: 806 instructions / 2,488 bytes,
 45 call sites, no unresolved successors; not implemented. Its DIV-by-byte
-overflow paths need the original fault semantics, not host division.
+overflow paths need the original fault semantics, not host division. A
+partial handwritten draft is in `D:/f117-gate/hud-pass/named-hud-pass.c`:
+airspeed/fixed ticks and altitude paths are written but untested; heading,
+frame and ladder remain explicit placeholders. It is outside the worktree
+and must be completed and proven before integration.
 
 ## The gate (`tools/build_recomp.py`)
 

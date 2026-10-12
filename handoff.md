@@ -99,13 +99,20 @@ Phase 2 work" below).
   checkpoints/final identical. Proof/patch in `D:/f117-gate/panel-frame`
   (`targeted-verdict.json`, `integrate.patch`, `tested-matched.c`); patch
   applies cleanly to main. The private worktree holds its three source
-  changes. Once the validated grid baseline/evidence is pushed, integrate
-  its selective patch and run another full gate. The immutable interpreter
+  changes, identical to main and backed up. Grid baseline/evidence is pushed
+  as `c8f262b`. The panel patch is now integrated: census 811 / 72,422,
+  P2 43.39%, overall 74.78%, 819 addresses. Fresh full gate pending in
+  `D:/f117-gate/gate-panel-frame.log`; do not push until it passes.
+  The immutable interpreter
   reference also matches every checkpoint/final in the fresh grid gate. The first check caught a missing RET
   count, now fixed; retain full-body code-write watch and grid-before-ILS
   ordering. Static walk/census extent: 798 instructions / 2,090 bytes.
   Next HUD pass `1058:0016`: dossier `next-candidates/hud-pass`, 806
-  instructions / 2,488 bytes, no unresolved successors, not implemented.
+  instructions / 2,488 bytes, no unresolved successors. Partial handwritten
+  draft `D:/f117-gate/hud-pass/named-hud-pass.c` is outside the worktree:
+  airspeed, fixed ticks and altitude paths written but untested; heading,
+  frame and ladder still explicit placeholders. Complete and prove before
+  insertion; do not mistake it for a finished implementation.
   Reference HUD semantics are split across airspeed/altitude/heading/frame/
   ladder helpers; preserve byte DIV overflow paths. Full details:
   repeated-processes.md.

@@ -207,12 +207,14 @@ shared-flow span-edge candidate demonstrates why walk size is not census
 ownership. Synthetic checks run in Windows CI. Details and limits:
 [repeated-processes.md](repeated-processes.md#phase-2-candidate-reading).
 
-Cockpit panel frame (`VGAME 0000:79BE`) is proven privately, pending
-integration after pushing the navigation-grid baseline: 14,729 targeted comparisons,
+Cockpit panel frame (`VGAME 0000:79BE`) is integrated, pending its fresh full
+gate: 14,729 targeted comparisons,
 all 32 tracked paths, zero mismatches; 43 isolated tests pass. Real F3 replay
 executes it 550 times with all 57 checkpoints/final identical. Preserve
 shared text buffers, byte-only HUD coordinates, waypoint/message stores,
 accepted-page flag and navigation projection before ILS projection.
+Its 2,090-byte census extent brings the census to 811 functions / 72,422
+bytes, P2 43.39%, overall 74.78% (819 matched addresses).
 
 Navigation grid (`VGAME 0000:8A90`) is integrated and fully gated at
 `f1ecb55`: 6,206 targeted comparisons,
