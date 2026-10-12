@@ -43,6 +43,13 @@ runs four times through the real drivers; all 57 checkpoints and final
 and minimum exit-time milestones reject an early exit. Random-state fixtures
 separately cover all eight objective phrases, invalid kinds, completed
 objectives, deadlines and empty/nonempty place names.
+`navigation_grid` opens F3 repeatedly and switches HUD layout with C before
+quitting normally. The isolated named grid runs 314 times through the real
+drivers; all 57 checkpoints and final `2877054444/5ea6b18cd60f6608` match the
+interpreter replay. World-open and minimum exit-time milestones reject an
+early exit. Fixtures separately cover zoom settings, aircraft markers,
+weapon trails, ground-object types and countermeasures, including partial
+instruction-budget stops and transient writes across the whole code body.
 `recon_darken` replays `recon` with F6 pressed at 100 million VGAME clocks,
 enabling camera darkening. Original/isolated probes preserve all 150
 checkpoints and final hash; the darkening helper runs 1,608 times through

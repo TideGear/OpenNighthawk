@@ -84,10 +84,12 @@ Phase 2 work" below).
   tracked paths; 42 isolated tests pass. Real F3 replay invokes it 314 times
   with all 57 checkpoints/final identical. Proof and selective patch:
   `D:/f117-gate/navgrid/targeted-verdict.json` and `integrate.patch`.
-  Private worktree holds those three source changes. Once the validated
-  armament baseline and evidence are pushed, integrate the selective patch,
-  retain the F3 input as `tools/routes/navigation_grid.args`, then run a fresh
-  full gate. Keep high-byte arithmetic exact; transient code-write watch
+  The validated armament baseline/evidence is pushed as `7651db5`. The grid
+  patch is integrated and its F3 input retained as
+  `tools/routes/navigation_grid.args`. Census: 810 / 70,332, P2 42.28%,
+  overall 74.45%, 818 addresses. Fresh full gate pending in
+  `D:/f117-gate/gate-navigation-grid.log`; do not push until it passes.
+  Keep high-byte arithmetic exact; transient code-write watch
   covers its full 1,094-byte body. Tested source is preserved in the proof
   directory; private generated directory is unchanged.
   Panel frame `79BE` also has a dossier under `next-candidates/panel-frame`

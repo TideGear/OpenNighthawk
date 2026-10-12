@@ -193,8 +193,11 @@ runner/reference and fixture hashes: `D:/f117-gate/navgrid/targeted-verdict.json
 selective patch `integrate.patch`. Generation takes 30.7 s from frozen
 coverage; private build uses two workers after main's matched shards finish.
 These overlapping workloads are not a controlled speed comparison. After
-pushing the validated armament baseline, integrate the grid, retain its F3
-route, and run a fresh full gate.
+pushing the validated armament baseline (`7651db5`), the selective grid patch
+is integrated with the retained `tools/routes/navigation_grid.args` input.
+Census: 810 functions / 70,332 bytes, P2 42.28%, overall 74.45%, 818 matched
+addresses. Fresh full gate pending in `D:/f117-gate/gate-navigation-grid.log`;
+do not push this runtime change until it passes.
 
 ## The gate (`tools/build_recomp.py`)
 

@@ -33194,7 +33194,305 @@ station_test:
     c->icount += 7; near_ret(c); return 1;
 }
 
+/* The navigation grid clips each world line to its own inset rectangle.
+ * These are nine guest PUSHes, including live endpoints after projection;
+ * callers claim room and count them before the relocated far call. */
+static void navgrid_line_args(cpu_t *c)
+{
+    cpu_push16(c, 0); cpu_push16(c, 0xA9); cpu_push16(c, 0x6E);
+    cpu_push16(c, 0x96); cpu_push16(c, 0x4A);
+    cpu_push16(c, ds_get(c, 0x4A18)); cpu_push16(c, ds_get(c, 0x4A10));
+    cpu_push16(c, bp_get(c, -6)); cpu_push16(c, bp_get(c, -2));
+}
+
+/* VGAME 0000:8A90: the F3 navigation grid. Draw both grid axes, air units,
+ * weapon trails, world objects, ownship and countermeasures in that order.
+ * All projected positions/visibility and frame locals remain guest state.
+ * ADD CH,14h and ADD AH,8 are byte operations, including their flags; the
+ * original's signed loop bounds, zoom shifts and live table reads remain.
+ * Every call and loop can stop at an original instruction boundary. */
+static int vgame_navigation_grid(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 7)) return 0;
+    x86_enter(c, 0x18, 0); x86_push_reg(c, R_SI);
+    c->r[R_AX] = ds_get(c, 0x40B0); c->r[R_AX] = (uint16_t)alu_inc(c, c->r[R_AX], 1);
+    bp_put(c, -0x12, c->r[R_AX]); cpu_push16(c, 0); c->icount += 6;
+    VG3_NEAR(0x886A, 0x8AA1, 10);
+    c->r[R_BX] = cpu_pop16(c);
+    cpu_push16(c, 0xAA); cpu_push16(c, 0x97); cpu_push16(c, 0x6D); cpu_push16(c, 0x49);
+    alu_sub(c, bp_get8(c, 4), 0, 0, 0);
+    unsigned n = 7;
+    if (c->flags & F_ZF) { c->r[R_AX] = ds_get(c, 0x4010); n++; }
+    else { c->r[R_AX] = ds_get(c, 0x4028); n += 2; }
+    cpu_push16(c, c->r[R_AX]); c->icount += n + 1;
+    SM4_NEED(1, 0x8ABB);
+    VG3_FAR(0x8ABB, 3); VG3_DROP(10); cpu_push16(c, 8); c->icount += 2;
+    VG3_NEAR(0x886A, 0x8AC8, 4);
+    c->r[R_BX] = cpu_pop16(c); bp_put(c, -0x16, 1);
+    alu_sub(c, ds_get(c, 0x40B0), 2, 1, 0); c->icount += 4;
+    if (!x86_cond(c, 0xD)) {
+        SM4_NEED(2, 0x8AD5);
+        alu_sub(c, ds_get(c, 0x990E), 0, 1, 0); c->icount += 2;
+        if (!(c->flags & F_ZF)) {
+            SM4_NEED(6, 0x8ADC);
+            set_r8(c, R_CL, 2);
+            set_r8(c, R_CL, (uint8_t)alu_sub(c, get_r8(c, R_CL), ds_get8(c, 0x40B0), 0, 0));
+            c->r[R_AX] = 1; c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], get_r8(c, R_CL), 1);
+            c->r[R_AX] = (uint16_t)alu_inc(c, c->r[R_AX], 1); bp_put(c, -0x16, c->r[R_AX]); c->icount += 6;
+        }
+    }
+    SM4_NEED(11, 0x8AEB);
+    set_r8(c, R_AH, ds_get8(c, 0xC0D1)); c->r[R_AX] = (uint16_t)alu_logic(c, c->r[R_AX] & 0xFC00, 1);
+    bp_put(c, -0xC, c->r[R_AX]);
+    set_r8(c, R_AH, ds_get8(c, 0xC0DF)); c->r[R_AX] = (uint16_t)alu_logic(c, c->r[R_AX] & 0xFC00, 1);
+    bp_put(c, -0x10, c->r[R_AX]); c->r[R_AX] = 1;
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], bp_get(c, -0x16), 1, 0);
+    bp_put(c, -0x14, c->r[R_AX]); bp_put(c, -0xE, c->r[R_AX]); c->icount += 11;
+axis_x_test:
+    SM4_NEED(3, 0x8B60);
+    c->r[R_AX] = bp_get(c, -0xE); alu_sub(c, bp_get(c, -0x16), c->r[R_AX], 1, 0); c->icount += 3;
+    if (!x86_cond(c, 0xD)) goto axis_y_start;
+    SM4_NEED(8, 0x8B0D);
+    c->r[R_CX] = bp_get(c, -0x10);
+    set_r8(c, R_CH, (uint8_t)alu_add(c, get_r8(c, R_CH), 0x14, 0, 0)); cpu_push16(c, c->r[R_CX]);
+    c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], 10, 1);
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], bp_get(c, -0xC), 1, 0);
+    cpu_push16(c, c->r[R_AX]); c->r[R_SI] = c->r[R_AX]; c->icount += 7;
+    VG3_NEAR(0x8ED6, 0x8B20, 10);
+    c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c);
+    c->r[R_AX] = ds_get(c, 0x4A10); bp_put(c, -2, c->r[R_AX]);
+    c->r[R_AX] = ds_get(c, 0x4A18); bp_put(c, -6, c->r[R_AX]);
+    c->r[R_AX] = bp_get(c, -0x10); c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], 0x1000, 1, 0);
+    cpu_push16(c, c->r[R_AX]); cpu_push16(c, c->r[R_SI]); c->icount += 10;
+    SM4_NEED(1, 0x8B36);
+    VG3_NEAR(0x8ED6, 0x8B39, 12);
+    c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); navgrid_line_args(c); c->icount += 11;
+    VG3_FAR(0x8B55, 2); VG3_DROP(18);
+    bp_put(c, -0xE, (uint16_t)alu_inc(c, bp_get(c, -0xE), 1)); c->icount += 2; goto axis_x_test;
+axis_y_start:
+    SM4_NEED(3, 0x8B68); c->r[R_AX] = bp_get(c, -0x14); bp_put(c, -0xE, c->r[R_AX]); c->icount += 3;
+axis_y_test:
+    SM4_NEED(3, 0x8BC3);
+    c->r[R_AX] = bp_get(c, -0xE); alu_sub(c, bp_get(c, -0x16), c->r[R_AX], 1, 0); c->icount += 3;
+    if (!x86_cond(c, 0xD)) goto air_start;
+    SM4_NEED(8, 0x8B70);
+    c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], 10, 1);
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], bp_get(c, -0x10), 1, 0); cpu_push16(c, c->r[R_AX]);
+    c->r[R_CX] = bp_get(c, -0xC);
+    set_r8(c, R_CH, (uint8_t)alu_add(c, get_r8(c, R_CH), 0x14, 0, 0)); cpu_push16(c, c->r[R_CX]);
+    c->r[R_SI] = c->r[R_AX]; c->icount += 7;
+    VG3_NEAR(0x8ED6, 0x8B83, 11);
+    c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c);
+    c->r[R_AX] = ds_get(c, 0x4A10); bp_put(c, -2, c->r[R_AX]);
+    c->r[R_AX] = ds_get(c, 0x4A18); bp_put(c, -6, c->r[R_AX]);
+    cpu_push16(c, c->r[R_SI]); c->r[R_AX] = bp_get(c, -0xC);
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], 0x1000, 1, 0); cpu_push16(c, c->r[R_AX]); c->icount += 10;
+    VG3_NEAR(0x8ED6, 0x8B9C, 12);
+    c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); navgrid_line_args(c); c->icount += 11;
+    VG3_FAR(0x8BB8, 2); VG3_DROP(18);
+    bp_put(c, -0xE, (uint16_t)alu_inc(c, bp_get(c, -0xE), 1)); c->icount += 2; goto axis_y_test;
+air_start:
+    SM4_NEED(2, 0x8BCB); bp_put(c, -0xE, 0); c->icount += 2;
+air_test:
+    SM4_NEED(4, 0x8C9A);
+    c->r[R_AX] = bp_get(c, -0xE); alu_sub(c, ds_get(c, 0xDEFC), c->r[R_AX], 1, 0); c->icount += 3;
+    if (x86_cond(c, 0xE)) goto weapon_start;
+    c->icount++;
+    SM4_NEED(4, 0x8BD3);
+    c->r[R_BX] = x86_imul3(c, c->r[R_AX], 0x24);
+    alu_logic(c, ds_get8(c, (uint16_t)(c->r[R_BX] + 0xC182)) & 2, 0); c->icount += 3;
+    if (c->flags & F_ZF) { c->icount++; goto air_next; }
+    SM4_NEED(2, 0x8BE0);
+    alu_sub(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0xC184)), 0, 1, 0); c->icount += 2;
+    if (c->flags & F_ZF) goto air_invisible;
+    SM4_NEED(3, 0x8BE7);
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0xC16E)));
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0xC16C))); c->icount += 2;
+    VG3_NEAR(0x8ED6, 0x8BF2, 4);
+    c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); alu_sub(c, ds_get(c, 0xDEBE), 0xFFFF, 1, 0); c->icount += 4;
+    if (c->flags & F_ZF) goto air_invisible;
+    SM4_NEED(2, 0x8BFE);
+    alu_sub(c, ds_get(c, 0xE32A), 1, 1, 0); c->icount += 2;
+    if (c->flags & F_ZF) {
+        SM4_NEED(3, 0x8C05); c->r[R_AX] = bp_get(c, -0xE); alu_sub(c, ds_get(c, 0x3D92), c->r[R_AX], 1, 0); c->icount += 3;
+        if (c->flags & F_ZF) {
+            SM4_NEED(4, 0x8C0E); cpu_push16(c, 7); cpu_push16(c, ds_get(c, 0x4A18)); cpu_push16(c, ds_get(c, 0x4A10)); c->icount += 3;
+            VG3_FAR(0x8C18, 1); VG3_DROP(6); c->icount++;
+        }
+    }
+    SM4_NEED(2, 0x8C20); alu_sub(c, ds_get(c, 0x3D98), 0, 1, 0); c->icount += 2;
+    if (!x86_cond(c, 0xE)) {
+        SM4_NEED(4, 0x8C27); c->r[R_AX] = 0xFFFF;
+        c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], ds_get(c, 0xC0AA), 1, 0);
+        alu_sub(c, c->r[R_AX], bp_get(c, -0xE), 1, 0); c->icount += 4;
+        if (c->flags & F_ZF) {
+            SM4_NEED(4, 0x8C33); cpu_push16(c, ds_get(c, 0x98A2)); cpu_push16(c, ds_get(c, 0x4A18)); cpu_push16(c, ds_get(c, 0x4A10)); c->icount += 3;
+            VG3_FAR(0x8C3F, 1); VG3_DROP(6); c->icount++;
+        }
+    }
+    SM4_NEED(11, 0x8C47);
+    c->r[R_BX] = x86_imul3(c, bp_get(c, -0xE), 0x24);
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0xC17A));
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], ds_get(c, 0x2DEE), 1, 0);
+    set_r8(c, R_AH, (uint8_t)alu_add(c, get_r8(c, R_AH), 8, 0, 0)); bp_put(c, -4, c->r[R_AX]);
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0xC170));
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], ds_get(c, 0x2DF4), 1, 0); bp_put(c, -8, 0);
+    alu_sub(c, c->r[R_AX], 0xFC18, 1, 0); c->icount += 10;
+    if (!x86_cond(c, 0xD)) { bp_put(c, -8, 1); c->icount++; }
+    SM4_NEED(3, 0x8C70); alu_sub(c, c->r[R_AX], 1000, 1, 0); c->icount += 2;
+    if (!x86_cond(c, 0xE)) { bp_put(c, -8, 2); c->icount++; }
+    SM4_NEED(8, 0x8C7A);
+    cpu_push16(c, ds_get(c, 0x4A18)); cpu_push16(c, ds_get(c, 0x4A10)); cpu_push16(c, bp_get(c, -8));
+    c->r[R_AX] = bp_get(c, -4); c->r[R_AX] = (uint16_t)x86_shift(c, 7, c->r[R_AX], 12, 1);
+    c->r[R_AX] = (uint16_t)alu_logic(c, c->r[R_AX] & 15, 1); cpu_push16(c, c->r[R_AX]); c->icount += 7;
+    VG3_FAR(0x8C8F, 1); VG3_DROP(8); c->icount++;
+air_next:
+    SM4_NEED(1, 0x8C97); bp_put(c, -0xE, (uint16_t)alu_inc(c, bp_get(c, -0xE), 1)); c->icount++; goto air_test;
+air_invisible:
+    SM4_NEED(1, 0x8BFB); c->icount++; goto air_next;
+weapon_start:
+    SM4_NEED(2, 0x8CA6); bp_put(c, -0xE, 0); c->icount += 2;
+weapon_test:
+    SM4_NEED(2, 0x8D0F); alu_sub(c, bp_get(c, -0xE), 12, 1, 0); c->icount += 2;
+    if (x86_cond(c, 0xD)) goto object_start;
+    SM4_NEED(3, 0x8D15); c->r[R_BX] = x86_imul3(c, bp_get(c, -0xE), 0x1C);
+    alu_sub(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x3C48)), 0, 1, 0); c->icount += 3;
+    if (c->flags & F_ZF) goto weapon_next;
+    SM4_NEED(4, 0x8D20); cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x3C3C)));
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x3C3A))); c->r[R_SI] = c->r[R_BX]; c->icount += 3;
+    VG3_NEAR(0x8ED6, 0x8D2D, 4);
+    c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); alu_sub(c, ds_get(c, 0xDEBE), 0xFFFF, 1, 0); c->icount += 4;
+    if (c->flags & F_ZF) goto weapon_next;
+    SM4_NEED(4, 0x8D36);
+    c->r[R_BX] = x86_imul3(c, ds_get(c, (uint16_t)(c->r[R_SI] + 0x3C4A)), 18);
+    alu_sub(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x33A0)), 0, 1, 0); c->icount += 3;
+    const int positive_type = x86_cond(c, 0xF);
+    if (positive_type) { SM4_NEED(2, 0x8D45); c->r[R_AX] = 0x11; c->icount += 2; }
+    else { c->icount++; SM4_NEED(1, 0x8CAD); c->r[R_AX] = 0x29; c->icount++; }
+    SM4_NEED(2, 0x8CB0); cpu_push16(c, c->r[R_AX]); c->icount++;
+    VG3_NEAR(0x886A, 0x8CB4, 3); c->r[R_BX] = cpu_pop16(c);
+    alu_sub(c, bp_get(c, -0xE), 8, 1, 0); c->icount += 3;
+    if (!x86_cond(c, 0xC)) {
+        SM4_NEED(2, 0x8CBB); cpu_push16(c, 15); c->icount++;
+        VG3_NEAR(0x886A, 0x8CC0, 1); c->r[R_BX] = cpu_pop16(c); c->icount++;
+    }
+    SM4_NEED(13, 0x8CC1);
+    c->r[R_BX] = x86_imul3(c, bp_get(c, -0xE), 0x1C);
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0x3C42));
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], ds_get(c, 0x2DEE), 1, 0); bp_put(c, -4, c->r[R_AX]);
+    cpu_push16(c, 0); cpu_push16(c, 0xA9); cpu_push16(c, 0x6E); cpu_push16(c, 0x96); cpu_push16(c, 0x4A);
+    cpu_push16(c, bp_get(c, -0x12)); cpu_push16(c, c->r[R_AX]); c->r[R_SI] = c->r[R_AX]; c->icount += 12;
+    VG3_NEAR(0xC831, 0x8CE5, 7);
+    c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c);
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], ds_get(c, 0x4A18), 1, 0); cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, bp_get(c, -0x12)); cpu_push16(c, c->r[R_SI]); c->icount += 6;
+    VG3_NEAR(0xC818, 0x8CF3, 8);
+    c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c);
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], ds_get(c, 0x4A10), 1, 0);
+    c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0); cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, ds_get(c, 0x4A18)); cpu_push16(c, ds_get(c, 0x4A10)); c->icount += 7;
+    VG3_FAR(0x8D04, 1); VG3_DROP(18); c->icount++;
+weapon_next:
+    SM4_NEED(1, 0x8D0C); bp_put(c, -0xE, (uint16_t)alu_inc(c, bp_get(c, -0xE), 1)); c->icount++; goto weapon_test;
+object_start:
+    SM4_NEED(2, 0x8D4B); bp_put(c, -0xE, 0); c->icount += 2;
+object_test:
+    SM4_NEED(4, 0x8E2F); c->r[R_AX] = bp_get(c, -0xE); alu_sub(c, ds_get(c, 0xC0E0), c->r[R_AX], 1, 0); c->icount += 3;
+    if (x86_cond(c, 0xE)) goto ownship;
+    c->icount++;
+    SM4_NEED(6, 0x8D53); c->r[R_BX] = c->r[R_AX]; c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 4, 1);
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0xB2D6)); c->r[R_CX] = c->r[R_AX];
+    alu_logic(c, get_r8(c, R_AL) & 0x80, 0); c->icount += 6;
+    if (!(c->flags & F_ZF)) {
+        SM4_NEED(3, 0x8D62); alu_logic(c, get_r8(c, R_CH) & 2, 0); c->icount += 2;
+        if (c->flags & F_ZF) { c->icount++; goto object_next; }
+    }
+    SM4_NEED(5, 0x8D6A);
+    c->r[R_BX] = bp_get(c, -0xE); c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 4, 1);
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0xB2D2))); cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0xB2D0))); c->icount += 4;
+    VG3_NEAR(0x8ED6, 0x8D7B, 5);
+    c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); alu_sub(c, ds_get(c, 0xDEBE), 0xFFFF, 1, 0); c->icount += 4;
+    if (c->flags & F_ZF) { c->icount++; goto object_next; }
+    SM4_NEED(2, 0x8D87); alu_sub(c, ds_get(c, 0xE32A), 2, 1, 0); c->icount += 2;
+    if (c->flags & F_ZF) {
+        SM4_NEED(3, 0x8D8E); c->r[R_AX] = bp_get(c, -0xE); alu_sub(c, ds_get(c, 0x3D94), c->r[R_AX], 1, 0); c->icount += 3;
+        if (c->flags & F_ZF) {
+            SM4_NEED(4, 0x8D97); cpu_push16(c, 7); cpu_push16(c, ds_get(c, 0x4A18)); cpu_push16(c, ds_get(c, 0x4A10)); c->icount += 3;
+            VG3_FAR(0x8DA1, 1); VG3_DROP(6); c->icount++;
+        }
+    }
+    SM4_NEED(2, 0x8DA9); alu_sub(c, ds_get(c, 0x3D98), 0, 1, 0); c->icount += 2;
+    if (!x86_cond(c, 0xE)) {
+        SM4_NEED(3, 0x8DB0); c->r[R_AX] = bp_get(c, -0xE); alu_sub(c, ds_get(c, 0xC0AA), c->r[R_AX], 1, 0); c->icount += 3;
+        if (c->flags & F_ZF) {
+            SM4_NEED(4, 0x8DB9); cpu_push16(c, ds_get(c, 0x98A2)); cpu_push16(c, ds_get(c, 0x4A18)); cpu_push16(c, ds_get(c, 0x4A10)); c->icount += 3;
+            VG3_FAR(0x8DC5, 1); VG3_DROP(6); c->icount++;
+        }
+    }
+    SM4_NEED(11, 0x8DCD); bp_put(c, -4, 5); c->r[R_BX] = bp_get(c, -0xE);
+    c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 4, 1);
+    alu_logic(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0xB2D6)) & 0x201, 1); c->icount += 5;
+    if (!(c->flags & F_ZF)) {
+        c->r[R_AX] = 0x1000; c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], ds_get(c, 0x2DEE), 1, 0);
+        c->r[R_AX] = (uint16_t)alu_logic(c, c->r[R_AX] & 0x6000, 1);
+        c->r[R_AX] = (uint16_t)x86_shift(c, 7, c->r[R_AX], 13, 1);
+        c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], 8, 1, 0); bp_put(c, -4, c->r[R_AX]); c->icount += 6;
+    }
+    SM4_NEED(5, 0x8DF3); c->r[R_BX] = bp_get(c, -0xE); c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 4, 1);
+    alu_sub(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0xB2D4)), 0, 1, 0); c->icount += 4;
+    if (!(c->flags & F_ZF)) { bp_put(c, -4, 1); c->icount++; }
+    SM4_NEED(5, 0x8E05); c->r[R_BX] = bp_get(c, -0xE); c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 4, 1);
+    alu_logic(c, ds_get8(c, (uint16_t)(c->r[R_BX] + 0xB2D6)) & 8, 0); c->icount += 4;
+    if (!(c->flags & F_ZF)) { bp_put(c, -4, 7); c->icount++; }
+    SM4_NEED(5, 0x8E17); cpu_push16(c, ds_get(c, 0x4A18)); cpu_push16(c, ds_get(c, 0x4A10));
+    cpu_push16(c, 3); cpu_push16(c, bp_get(c, -4)); c->icount += 4;
+    VG3_FAR(0x8E24, 1); VG3_DROP(8); c->icount++;
+object_next:
+    SM4_NEED(1, 0x8E2C); bp_put(c, -0xE, (uint16_t)alu_inc(c, bp_get(c, -0xE), 1)); c->icount++; goto object_test;
+ownship:
+    SM4_NEED(3, 0x8E3B); cpu_push16(c, ds_get(c, 0xC0DE)); cpu_push16(c, ds_get(c, 0xC0D0)); c->icount += 2;
+    VG3_NEAR(0x8ED6, 0x8E46, 4);
+    c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); alu_sub(c, ds_get(c, 0xDEBE), 0xFFFF, 1, 0); c->icount += 4;
+    if (!(c->flags & F_ZF)) {
+        SM4_NEED(5, 0x8E4F); cpu_push16(c, ds_get(c, 0x4A18)); cpu_push16(c, ds_get(c, 0x4A10)); cpu_push16(c, 3); cpu_push16(c, 0); c->icount += 4;
+        VG3_FAR(0x8E5B, 1); VG3_DROP(8); c->icount++;
+    }
+    SM4_NEED(2, 0x8E63); bp_put(c, -0xE, 0); c->icount += 2;
+decoy_test:
+    SM4_NEED(2, 0x8E81); alu_sub(c, bp_get(c, -0xE), 4, 1, 0); c->icount += 2;
+    if (x86_cond(c, 0xD)) {
+        SM4_NEED(3, 0x8ED3); c->r[R_SI] = cpu_pop16(c); x86_leave(c); c->icount += 3; near_ret(c); return 1;
+    }
+    SM4_NEED(3, 0x8E87); c->r[R_BX] = x86_imul3(c, bp_get(c, -0xE), 12);
+    alu_sub(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x39E0)), 0, 1, 0); c->icount += 3;
+    if (c->flags & F_ZF) goto decoy_next;
+    SM4_NEED(4, 0x8E92); cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x39DA)));
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x39D8))); c->r[R_SI] = c->r[R_BX]; c->icount += 3;
+    VG3_NEAR(0x8ED6, 0x8E9F, 4);
+    c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); alu_sub(c, ds_get(c, 0xDEBE), 0xFFFF, 1, 0); c->icount += 4;
+    if (c->flags & F_ZF) goto decoy_next;
+    SM4_NEED(3, 0x8EA8); c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_SI] + 0x39DE));
+    c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1); c->icount += 3;
+    if (c->flags & F_ZF) {
+        SM4_NEED(4, 0x8E6A); cpu_push16(c, ds_get(c, 0x4A18)); cpu_push16(c, ds_get(c, 0x4A10)); cpu_push16(c, 3); cpu_push16(c, 2); c->icount += 4;
+    } else {
+        SM4_NEED(2, 0x8EAF); c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1); c->icount += 2;
+        if (c->flags & F_ZF) {
+            SM4_NEED(5, 0x8EB7); cpu_push16(c, ds_get(c, 0x4A18)); cpu_push16(c, ds_get(c, 0x4A10)); cpu_push16(c, 3); cpu_push16(c, 3); c->icount += 5;
+        } else {
+            SM4_NEED(3, 0x8EB2); c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1); c->icount += 2;
+            if (!(c->flags & F_ZF)) { c->icount++; goto decoy_next; }
+            SM4_NEED(5, 0x8EC5); cpu_push16(c, ds_get(c, 0x4A18)); cpu_push16(c, ds_get(c, 0x4A10)); cpu_push16(c, 3); cpu_push16(c, 6); c->icount += 5;
+        }
+    }
+    SM4_NEED(1, 0x8E76); VG3_FAR(0x8E76, 1); VG3_DROP(8); c->icount++;
+decoy_next:
+    SM4_NEED(1, 0x8E7E); bp_put(c, -0xE, (uint16_t)alu_inc(c, bp_get(c, -0xE), 1)); c->icount++; goto decoy_test;
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x8A90, vgame_navigation_grid, "navigation grid and world markers", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x07EE, start_armament_screen, "prepare weapon rows, stations and stores panel", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x9515, vgame_objectives_panel, "mission objectives and landing panel", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x1E79, vgame_timer_tick, "timer counters and driver rate request", 1 },
