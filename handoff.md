@@ -15,16 +15,18 @@ standing practice, not a session-by-session log. Earlier sessions' detail
 
 ## Current state
 
-Last fully gated runtime baseline: VGAME `0FB2:06A6` clipped span edge,
-commit `1a26b2c`, 812 matched addresses. Full gate
-`D:/f117-gate/gate-span-edge.log` passes: 37 unit tests, all 39 routes
-IDENTICAL (38 fresh interpreter sessions), both 5,718,976-state instruction
-profiles and three matched seeds (2,659,030 / 2,657,868 / 2,657,992
-comparisons; third seed `0x1a26b2c7fed2`) with zero mismatches, plus
-reachability and event-limit checks. Total 1,787 s. The refreshed census is
-806 functions / 69,027 bytes; P2 41.59%, overall 74.25%. The real camera
-replay calls the clipped edge 1,529,189 times with all 234 checkpoints/final
-unchanged. Pushed HEAD `831e740` has passing Windows and munt CI.
+Current runtime baseline: VGAME `0FB2:05A4` / `05B3` shared span emitters,
+commit `eda53ee`, 814 matched addresses. Full gate
+`D:/f117-gate/gate-span-emit.log` passes: 38 unit tests, all 39 routes at
+every checkpoint/final (38 fresh interpreter sessions), both 5,718,976-state
+instruction profiles and three matched seeds (2,665,786 / 2,664,657 /
+2,663,454 comparisons; third seed `0xeda53ee148d7`), zero mismatches, plus
+reachability/event checks. Total 1,709 s. Census stays 806 functions /
+69,027 bytes (P2 41.59%, overall 74.25%): the emitters share the already-
+counted `0555` region. Real camera replay calls them 507,745 / 591,404 times,
+with all 234 checkpoints/final unchanged. Pushed `b35f8e0` has passing
+Windows and munt CI. Retired polygon worktree/build cleanup is recorded in
+[repeated-processes.md](docs/repeated-processes.md#phase-2-candidate-reading).
 
 A sibling handler, **VGAME 0FB2:04DD** (the line clipper's own divide-error
 handler), is matched and fixture-proven but deliberately **not integrated**:
@@ -55,19 +57,19 @@ Phase 2 work" below).
   the private lead list; current progress is in `docs/roadmap.md`.
   `matched_draft.py --dossier` also writes private static evidence beside a
   draft; its five synthetic regressions pass and the polygon draft is
-  byte-identical. The clipped span edge is integrated and fully gated above;
-  its private source/proof remain in `D:/f117-gate/span-edge`.
-  Next candidate: shared span emitter entries `0FB2:05A4`/`05B3`;
-  named private implementations/dossiers in `D:/f117-gate/span-emit`.
-  Three seeds pass 20,325 comparisons, 38 isolated tests pass, and the real
-  camera replay calls them 507,745 / 591,404 times with 234 checkpoints/final
-  identical to the latest fresh interpreter output, without event overruns.
-  Selective patch `D:/f117-gate/span-emit/integrate.patch`, worktree
-  `D:/f117-wt/span-emitter`. Integrated selectively, 814 matched addresses.
-  Fresh full gate pending in `D:/f117-gate/gate-span-emit.log`; do not push
-  until it passes. Census bytes/functions and progress percentages unchanged.
-  These sit inside the already-counted 324-byte `0555` census region:
-  adding entry points must not count the same bytes again.
+  byte-identical. The clipped edge and shared emitters are integrated and
+  fully gated; private proofs/patches remain in `D:/f117-gate/span-edge` and
+  `D:/f117-gate/span-emit`. Active worktree `D:/f117-wt/span-emitter` still
+  holds the tested emitter changes (base `831e740`, selective patch retained).
+  Next candidate: VGAME `0000:1E79` timer tick, 53 census bytes; static walk
+  includes shared rate-control tails (`1C6D` / `1C85`), 95 bytes total.
+  Draft/dossier and an untested named implementation are in
+  `D:/f117-gate/next-candidates`. Reuse the active isolated worktree after
+  verifying/resetting its already-committed emitter changes to current main.
+  Enable returning driver thunks for `1E79`, add CODE_BELOW `0x020C`, then
+  regenerate/build and prove three seeds plus a real replay before integration.
+  Objectives panel `9515` and START armament menu `07EE` have static dossiers
+  there too; their walks extend beyond the census entries, not implemented.
 - 04DD above, if a real route to it is ever found.
 
 ## How this project verifies Phase 2 work (read before matching a new routine)

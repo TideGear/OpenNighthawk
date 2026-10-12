@@ -59,8 +59,19 @@ against the fresh interpreter output from the `1a26b2c` full gate, without
 event overruns. Private proof/patch: `D:/f117-gate/span-emit/route-verdict.json`
 and `integrate.patch`; implementation worktree `D:/f117-wt/span-emitter`.
 Initial build caught an undefined NEG helper; the tested implementation uses
-the existing subtraction helper. Integrated; fresh full gate pending in
-`D:/f117-gate/gate-span-emit.log`.
+the existing subtraction helper. Integrated and fully gated at `eda53ee`:
+`D:/f117-gate/gate-span-emit.log` passes 38 tests, all 39 routes IDENTICAL
+at every checkpoint/final (38 fresh interpreter sessions, no cache reuse),
+both 5,718,976-state instruction profiles and three matched seeds with zero
+mismatches (2,665,786 / 2,664,657 / 2,663,454 comparisons; commit seed
+`0xeda53ee148d7`). Routes-only reachability and event-limit checks pass.
+Total 1,709 s: build/tests 205, coverage 598, identical regeneration 23,
+parity 882. Light candidate reading and a retired-build archive move ran
+alongside; this different-source timing is not a controlled speedup result.
+The retired polygon worktree's three source changes were verified against
+`1a26b2c` and backed up as `D:/f117-gate/polygon-fill/preserved-worktree.patch`;
+its build moved to `D:/F117A-Scratch-Files/worktree-builds/polygon-fill-1a26b2c`
+before the worktree and merged local branch were removed.
 Both entries lie in the already-counted 324-byte `0555` census region, so
 integration must add no census functions or bytes.
 
