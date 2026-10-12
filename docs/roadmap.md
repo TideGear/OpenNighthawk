@@ -76,7 +76,9 @@ make (Phase 4).
   update; Steam's release is byte-identical (`tools/verify_install.py`).
 - **The gate** (`tools/build_recomp.py`): translate, build, coverage, both
   engines on every route, instruction and matched-routine lockstep; about 7
-  minutes after a `matched.c`-only change. Repeated processes and what was optimised:
+  minutes after a `matched.c`-only change with cached interpreter results;
+  about 25–30 minutes when verifying every interpreter route fresh.
+  Repeated processes and what was optimised:
   [repeated-processes.md](repeated-processes.md).
   The gate explicitly enables the app build so its host tests are included
   even after a core-only build.
@@ -198,14 +200,23 @@ not the recompilation:
 
 ## Phase 2 - understood code
 
-VGAME's closed polygon fill (`0FB2:01E6`) is integrated pending its full
-gate. It names the live vertex walk, stack-saved endpoints, closing edge,
+Candidate drafts can retain private static dossiers (`matched_draft.py
+--dossier`): image/tool identities, segmented coordinates, disjoint ranges,
+calls and unresolved flow. The polygon draft remains byte-identical; the
+shared-flow span-edge candidate demonstrates why walk size is not census
+ownership. Synthetic checks run in Windows CI. Details and limits:
+[repeated-processes.md](repeated-processes.md#phase-2-candidate-reading).
+
+VGAME's closed polygon fill (`0FB2:01E6`) is integrated and fully gated. It names the live vertex walk, stack-saved endpoints, closing edge,
 span reset and driver fill, preserving DF, count wraparound and event stops.
 Three returning-rasterizer/driver caller fixtures compare 6,600 states with
 zero mismatches; the real `camera_gradients` replay executes it 382,365 times
 with all 234 checkpoints and final hash identical to the saved fresh
 interpreter capture. `matched_polygon_fill` retains the caller check;
-the isolated unit selection passes 36/36. Full gate required before push.
+the full gate passes 36 unit tests, all 39 routes, both 5,718,976-state
+instruction profiles and three matched seeds (2,654,205 / 2,653,053 /
+2,653,554 comparisons), including commit seed `0x723c46a9db96`, with zero
+mismatches and passing reachability/event checks.
 The census refresh also includes three already-integrated entries omitted
 from the last refresh (map wrapper, logo sprite run, span divide handler):
 804 functions / 68,512 bytes before this change, 805 / 68,608 after it.

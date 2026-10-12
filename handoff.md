@@ -15,27 +15,15 @@ standing practice, not a session-by-session log. Earlier sessions' detail
 
 ## Current state
 
-Current integration: VGAME `0FB2:01E6` closed polygon fill, 811 addresses,
-pending full gate `D:/f117-gate/gate-polygon-fill.log` before push. Three
-targeted seeds compare 6,600 caller states exactly; the real camera-gradient
-route calls it 382,365 times with all 234 checkpoints/final unchanged.
-Isolated tests pass 36/36. The refreshed census is 805 functions / 68,608
-bytes, including three previous entries missing from the earlier census.
-
-Last fully gate-validated and pushed baseline before this session: `35459ae`
-(809 matched addresses, 801 census functions, 68,294 of 179,213 bytes;
-P1 100%, P2 41.20%, P3 75.20%, P4 42.90%, All 74.14%).
-
-This session additionally matched **VGAME 0FB2:084E**, the span clipper's
-divide-error (INT 0) handler — commit `117201c`, now 810 matched addresses.
-Full gate `D:/f117-gate/gate-divide-fault-084e.log` **passed**: 35 unit
-tests; both instruction profiles at 0 mismatching; three matched-routine
-seeds at 0 mismatching (including this commit's own rotating seed); all 39
-routes IDENTICAL; every routes-only routine reached; no event-limit
-overruns. Real-driver proof: the handler ran 81,235 times across 8 routes,
-all 1,236 checkpoints and final hashes identical to fresh interpreter
-captures; a sign-flipped handler changes `vietnam_airair`'s outcome,
-confirming the check is sensitive to it. Pushed.
+Current runtime baseline: VGAME `0FB2:01E6` closed polygon fill,
+commit `723c46a`, 811 matched addresses. Full gate
+`D:/f117-gate/gate-polygon-fill.log` passes: 36 unit tests, all 39 routes
+IDENTICAL (38 fresh interpreter sessions), both 5,718,976-state instruction
+profiles and three matched seeds with zero mismatches, plus reachability
+and event-limit checks. Total 1,770 s; private work ran alongside this gate,
+so it is not a scheduling benchmark. The refreshed census is 805 functions /
+68,608 bytes; P2 41.37%, overall 74.19%. The real camera replay calls the
+polygon entry 382,365 times with all 234 checkpoints/final unchanged.
 
 A sibling handler, **VGAME 0FB2:04DD** (the line clipper's own divide-error
 handler), is matched and fixture-proven but deliberately **not integrated**:
@@ -64,6 +52,17 @@ Phase 2 work" below).
   priority as well as affinity; workers were verified to inherit both.
 - Continue Phase 2 (naming/matching routines) — `tools/reimp_names.py` has
   the private lead list; current progress is in `docs/roadmap.md`.
+  `matched_draft.py --dossier` also writes private static evidence beside a
+  draft; its five synthetic regressions pass and the polygon draft is
+  byte-identical. Next candidate: VGAME `0FB2:06A6` clipped span edge;
+  draft/dossier in `D:/f117-gate/span-edge`. Its walk includes shared tails
+  (743 bytes, eight ranges versus 419 census bytes), and it installs/restores
+  INT 0 around intersections. Private implementation (`clipped.c`, also in
+  the `D:/f117-wt/polygon-fill` worktree) passes 14,461 comparisons at three
+  seeds and 37 unit tests. Its camera replay executes it 1,529,189 times,
+  with 234 checkpoints/final identical (`route-verdict.json`). Selective
+  patch: `D:/f117-gate/span-edge/integrate.patch`.
+  Not integrated; apply the selective patch and run its own full gate next.
 - 04DD above, if a real route to it is ever found.
 
 ## How this project verifies Phase 2 work (read before matching a new routine)

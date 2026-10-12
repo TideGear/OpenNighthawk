@@ -8,6 +8,36 @@ whether they were measured or estimated. The rule behind the page: an
 optimisation must leave every check's inputs, outputs and verdicts
 identical, and the proof is the same verdicts before and after.
 
+## Phase 2 candidate reading
+
+`tools/matched_draft.py --dossier` writes a private JSON beside the draft,
+using the same instruction walk rather than decoding twice. It records the
+module image and tool hashes, segmented entry and image offset, disjoint
+byte ranges (exclusive ends), encoded call targets, exits and unwalked
+successors. Calls are not followed; indirect targets and caller inventory
+remain unresolved. This is reusable static evidence, not a parity verdict
+or a cache that skips verification. Keep both outputs outside the repo.
+On the polygon caller, generation takes under one second, produces the
+same 46-instruction / 96-byte draft byte for byte, and exposes its five
+call sites. Synthetic regressions cover disjoint ranges, relocation,
+bounded walks, indirect exits and COM segment aliases; Windows CI runs them.
+The next span-edge candidate's walk reaches 743 bytes across eight ranges,
+larger than its 419-byte census extent because of shared flow: do not treat
+the walk's byte count as progress or exclusive function ownership.
+
+Private clipped span edge (`0FB2:06A6`, 12 Oct): the named clipper preserves
+the temporary INT 0 vector, overflow halving, signed intersections and
+remainder rounding, boundary-column calls, live endpoints and tail jumps to
+shared emitters `05A4`/`05B3`. The harness watches shared flow from `0555`.
+Three 4,000-state seeds compare 4,825 / 4,815 / 4,821 states (including
+partial stops), zero mismatches; all 37 isolated tests pass in 42.12 s.
+The real camera replay executes the new entry 1,529,189 times with all 234
+checkpoints/final identical to the saved fresh interpreter result. Private
+proof: `D:/f117-gate/span-edge/route-verdict.json`. The initial reachability
+checker accidentally read the old polygon output; correcting its path and
+checking the saved runner, milestones and hashes passes without rerunning.
+Not integrated or full-gate validated yet.
+
 ## The gate (`tools/build_recomp.py`)
 
 Polygon caller (12 Oct): isolated current-main worktree, separate generated
@@ -17,8 +47,14 @@ states, zero mismatches (about 2.5 s per seed while concurrent). Returning
 span-reset, clipped-edge and driver fixtures prove the caller; the real
 `camera_gradients` replay takes 116.0 s, executes `0FB2:01E6` 382,365 times,
 and matches all 234 checkpoints/final `bb1c0cffd145907a` against the existing
-fresh interpreter capture. Sources are selectively integrated for full gate
-`D:/f117-gate/gate-polygon-fill.log`; no full-gate verdict yet.
+fresh interpreter capture. Full gate `D:/f117-gate/gate-polygon-fill.log`
+passes at commit `723c46a`: 36 tests, all 39 routes IDENTICAL, both
+5,718,976-state instruction profiles and three matched seeds with zero
+mismatches (2,654,205 / 2,653,053 / 2,653,554 comparisons; third seed
+`0x723c46a9db96`), passing reachability/event checks. All 38 interpreter
+sessions are fresh. Total 1,770 s: build/tests 189, coverage 604, identical
+regeneration 22, parity 955. Private clipping builds, tests and a replay ran
+alongside it; this duration is not a controlled performance comparison.
 
 **24-worker experiment (12 Oct): correct, no route speedup; retain 16.**
 `D:/f117-gate/gate-jobs24.log`, HEAD `7df74bf`, has the same executable,

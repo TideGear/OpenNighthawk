@@ -108,3 +108,5 @@ jobs:
         run: python tests/test_run_slicing.py
       - name: Gate scheduling and generation helpers
         run: python tests/test_build_recomp.py
+      - name: Phase 2 static dossier regressions
+        run: python tests/test_matched_draft.py
