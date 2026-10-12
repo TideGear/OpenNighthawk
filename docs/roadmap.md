@@ -666,3 +666,7 @@ this project did not build.
 - [x] Docs kept as reference, not diaries: session history lives in git, one
       place per fact ([repeated-processes.md](repeated-processes.md) tracks
       every repeated process).
+- [x] Tested 24 gate workers against the same-code 16-worker baseline:
+      identical verdicts/checkpoints, no coverage/parity speedup. Retain 16;
+      the local launcher now verifies inherited BelowNormal priority too.
+      Measurements and proof: [repeated-processes.md](repeated-processes.md).

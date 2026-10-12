@@ -10,6 +10,49 @@ identical, and the proof is the same verdicts before and after.
 
 ## The gate (`tools/build_recomp.py`)
 
+**24-worker experiment (12 Oct): correct, no route speedup; retain 16.**
+`D:/f117-gate/gate-jobs24.log`, HEAD `7df74bf`, has the same executable,
+translator, harness and route sources as the 810-address `117201c` baseline.
+The private comparison wrapper retains that baseline's third seed
+`0x117201ca17d6` deliberately; this is a scheduling comparison, not a new
+commit-seed claim. Coverage is forced with `--coverage-record=` and every
+interpreter session runs fresh with `--verify-interp-cache`.
+
+| Stage | 16 workers, latest same-code baseline | 24 workers, BelowNormal |
+|---|---:|---:|
+| Translation, incremental build, 35 tests | 166 s | 46 s |
+| Coverage | 538 s | 557 s |
+| Byte-identical regeneration | 19 s | 21 s |
+| Fresh parity | 822 s | 830 s |
+| Total (rounded laps) | 1,546 s | 1,455 s |
+
+The apparent total saving is build time: coverage and parity together are
+27 s slower. One run does not establish a small regression, but gives no
+evidence for adopting more workers. The older 1,466 s sprite/map run has
+809 addresses and is not the direct comparator. All 87 verdict/tally lines
+are identical: 35 tests, 39 routes, both 5,718,976-state instruction profiles,
+three matched seeds, reachability and event-limit checks. A pre-run snapshot
+also confirms identical final clocks/hashes, 10,612 checkpoints and 18,202
+matched execution reports across 72 completed engine results, including all
+38 recompiled sessions (one serves two routes). Four interpreter snapshots
+were unavailable after an interrupted prior run; their fresh results are
+held to the corresponding recompiled session and the baseline's final hash.
+Stale non-leader session files are excluded. Private proof:
+`D:/f117-gate/jobs24-proof/comparison.json` and `compare.py`.
+
+The local affinity launcher now sets and reads back both mask `0x00FFFFFF`
+and `BELOW_NORMAL_PRIORITY_CLASS`; all 48 active route/lockstep workers
+were observed inheriting both. Parity used about 76% of total CPU, but higher
+utilization did not shorten the phase. Retain the lower priority for desktop
+responsiveness; subjective typing latency was not measured.
+
+The GitHub Windows job at `7df74bf` initially failed its wall-clock pacing
+check (normal/stalled runs 4.688/4.797 s, difference 0.109 s, required
+0.45–1.2 s; both exited normally). The unchanged local check passes at
+0.687 s added time; rerunning only the failed GitHub job makes both jobs
+green, [run 38217956592](https://github.com/TideGear/OpenNighthawk/actions/runs/38217956592).
+This is evidence of timing variability, not proof the pacing test is robust.
+
 Span divide-fault gate (12 Oct, 00:25 Pacific) **passes**:
 `D:/f117-gate/gate-divide-fault-084e.log`, commit `117201c` (VGAME 0FB2:084E,
 810 addresses). 35 unit tests, both instruction profiles (0 mismatching) and

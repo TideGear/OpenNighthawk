@@ -46,26 +46,15 @@ Phase 2 work" below).
 
 ## Next up
 
-- **Test a gate speedup, with proof.** `tools/build_recomp.py`'s coverage
-  and parity phases both share one `--jobs` worker pool (lines ~480, 523),
-  but every session's gate command hardcodes `--jobs 16` while the tool's
-  own default is `min(24, cpu_count*3/4)` = 24 on this 32-thread machine —
-  the same CPU-affinity budget (`0x00FFFFFF`, 24 of 32 logical CPUs) already
-  used throughout this project's history. Live-measured during this
-  session's gate: parity's 16 workers used only ~53% of that already-allowed
-  24-CPU budget, consistent with this project's own prior finding ("about
-  52% during parity" — already recorded below). That suggests routes are
-  queuing in waves below the actual CPU ceiling, so raising `--jobs` to 24
-  should shrink both phases' wall time. Caveat: `D:/f117-gate/affinity_launch.py`
-  sets CPU affinity but not process priority, and there's a documented prior
-  incident of this gate causing desktop typing lag at high concurrency — add
-  a `BelowNormal` priority step alongside the worker-count bump. Required
-  before adopting it: run a full gate at `--jobs 24` and compare wall time
-  against this session's ~1,466 s baseline (build/tests 49 s, coverage 559 s,
-  identical regen 19 s, parity 839 s) with **identical verdicts** (same tally,
-  same checkpoints/hashes) — this project's rule is that an optimisation must
-  leave every check's inputs, outputs and verdicts unchanged, proven by
-  comparing them, not assumed.
+- **Gate speed experiment completed; retain `--jobs 16`.** The full
+  24-worker gate at `7df74bf` passes with identical inputs and verdicts,
+  but coverage/parity take 557/830 s against the latest same-code
+  16-worker baseline's 538/822 s. Its 1,455 s total versus 1,546 s comes
+  from the faster incremental build, not faster routes. The earlier
+  1,466 s baseline had 809 addresses; it is not the direct comparator.
+  Proof and limits: [docs/repeated-processes.md](docs/repeated-processes.md).
+  `D:/f117-gate/affinity_launch.py` now sets and verifies `BelowNormal`
+  priority as well as affinity; workers were verified to inherit both.
 - Continue Phase 2 (naming/matching routines) — `tools/reimp_names.py` has
   the private lead list; current progress is in `docs/roadmap.md`.
 - 04DD above, if a real route to it is ever found.
