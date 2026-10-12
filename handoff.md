@@ -9,6 +9,30 @@ checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 more than once, what it costs). State as of 11 October 2026.
 Earlier session logs are in `git log -p handoff.md`.
 
+## Sprite/map checkpoint validated (11 Oct 2026, 22:05 Pacific)
+
+The checkpoint committed as `ae9fbca` (handed off below with validation
+PENDING) is now fully validated. Full gate
+`D:/f117-gate/gate-sprite-map-retry.log` passes, exit 0: 34 unit tests, all
+39 routes IDENTICAL, both 5,718,976-state instruction profiles and three
+809-address matched seeds (including this commit's own rotating seed
+`0xae9fbca4da0b`) pass with zero mismatching states (2,647,992 / 2,646,888 /
+2,648,997 compared), reachability and event-limit checks pass, 38 fresh
+interpreter runs (0 reused). Duration 1,466 s: build/tests 49, coverage 559,
+identical regeneration 19, parity 839. Census/progress is unchanged (801 of
+1,535 functions, 68,294 of 179,213 bytes; P2 41.20%, All 74.14%) — this
+checkpoint's two additions and the target-scoring fix don't change the
+named-function count. `docs/roadmap.md` and `docs/repeated-processes.md` are
+updated to record the pass; this commit carries no code changes.
+
+Next: the "Private next batch" section below (IRQ 0 handlers, divide-fault
+interrupt handling in the detached worktree
+`C:/Users/Tideg/f117-recomp-local/wt`) was held back specifically until this
+checkpoint's gate passed. That gate has now passed, so that batch is
+unblocked for integration — follow its stated requirements (positive
+execution counts for both IRQ handlers, unchanged checkpoints/final state)
+before touching main, and never copy the worktree wholesale.
+
 ## Final handoff (11 Oct 2026, 21:15 Pacific)
 
 The user changed the active goal to: "wrap up for handoff to a new

@@ -201,13 +201,15 @@ not the recompilation:
 A rotating matched seed exposed a 12-instruction shortfall in existing
 VGAME target scoring (73C8). The private fix restores the live slot walk,
 flags and original loop/join instructions; all three targeted seeds pass.
-Main includes the fix and a regression retaining the failing seed; the
-sprite/map batch is saved as a handoff checkpoint at the user's request.
-Its fresh full gate was stopped during initial build and remains required;
-the checkpoint is not a fully validated release.
+Main includes the fix and a regression retaining the failing seed. The full
+gate now passes: `D:/f117-gate/gate-sprite-map-retry.log`, 34 unit tests,
+all 39 routes, both instruction profiles and three 809-address matched
+seeds (including this commit's own rotating seed), with zero differences
+and passing reachability/event checks. See
+[repeated-processes.md](repeated-processes.md) for the timing breakdown.
 
 The logo sprite repeat/transparent run (006D:0678) and moving-map downward
-scene frame (VGAME 11A8) are integrated, awaiting the full gate. Three-seed
+scene frame (VGAME 11A8) are integrated and gated. Three-seed
 caller comparisons pass 28,613 states, including 1,172 opaque zero-count
 sprite runs (256 writes) and 595 transparent runs. Full cycle reaches both
 helpers through real drivers and matches all 66 checkpoints/final state

@@ -10,6 +10,16 @@ identical, and the proof is the same verdicts before and after.
 
 ## The gate (`tools/build_recomp.py`)
 
+Sprite/map retry gate (11 Oct, 21:42 Pacific) **passes**:
+`D:/f117-gate/gate-sprite-map-retry.log`, commit `ae9fbca` (809 addresses).
+34 unit tests, both 5,718,976-state instruction profiles (0 mismatching) and
+three matched seeds all pass with 0 mismatching, including this commit's own
+rotating seed `0xae9fbca4da0b` (2,647,992 / 2,646,888 / 2,648,997 states
+compared). All 39 routes IDENTICAL, 38 fresh interpreter runs (0 reused),
+every routes-only routine reached, no event-limit overruns. Duration 1,466 s:
+build/tests 49, coverage 559, identical regeneration 19, parity 839. The
+earlier FAILED run below is superseded; the checkpoint is now fully validated.
+
 Sprite/map gate outcome (11 Oct, 21:07 Pacific): full gate FAILED at the
 third matched seed: existing target scoring VGAME 73C8 missed 12 original
 instructions. Default/C0FFEE seeds pass 2,647,992 / 2,646,888 states; the
