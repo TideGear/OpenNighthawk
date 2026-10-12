@@ -24,7 +24,7 @@ instruction profiles and three matched seeds (2,665,786 / 2,664,657 /
 reachability/event checks. Total 1,709 s. Census stays 806 functions /
 69,027 bytes (P2 41.59%, overall 74.25%): the emitters share the already-
 counted `0555` region. Real camera replay calls them 507,745 / 591,404 times,
-with all 234 checkpoints/final unchanged. Pushed `b35f8e0` has passing
+with all 234 checkpoints/final unchanged. Pushed `52d67e5` has passing
 Windows and munt CI. Retired polygon worktree/build cleanup is recorded in
 [repeated-processes.md](docs/repeated-processes.md#phase-2-candidate-reading).
 
@@ -59,15 +59,19 @@ Phase 2 work" below).
   draft; its five synthetic regressions pass and the polygon draft is
   byte-identical. The clipped edge and shared emitters are integrated and
   fully gated; private proofs/patches remain in `D:/f117-gate/span-edge` and
-  `D:/f117-gate/span-emit`. Active worktree `D:/f117-wt/span-emitter` still
-  holds the tested emitter changes (base `831e740`, selective patch retained).
-  Next candidate: VGAME `0000:1E79` timer tick, 53 census bytes; static walk
-  includes shared rate-control tails (`1C6D` / `1C85`), 95 bytes total.
-  Draft/dossier and an untested named implementation are in
-  `D:/f117-gate/next-candidates`. Reuse the active isolated worktree after
-  verifying/resetting its already-committed emitter changes to current main.
-  Enable returning driver thunks for `1E79`, add CODE_BELOW `0x020C`, then
-  regenerate/build and prove three seeds plus a real replay before integration.
+  `D:/f117-gate/span-emit`.
+  Next: integrate VGAME `0000:1E79` timer tick, 53 census bytes; the static
+  walk includes shared rate-control tails (`1C6D` / `1C85`), 95 bytes total.
+  Named implementation in `D:/f117-wt/span-emitter` (base `52d67e5`) passes
+  13,776 comparisons at three seeds and all 39 isolated unit tests. Its real
+  camera replay calls it 53,226 times with all 234 checkpoints/final identical
+  to the latest fresh interpreter capture, without event overruns. Proof:
+  `D:/f117-gate/timer-tick/route-verdict.json`; selective patch `integrate.patch`
+  in the same directory. Apply selectively, refresh census (807 / 69,080;
+  P2 41.62%, overall 74.26%), and run a fresh full gate before pushing.
+  The private generated directory remains `D:/f117-gate/span-emit/gen`;
+  old emitter source is snapshotted beside its proof. The timer is not yet
+  integrated; draft/dossier remain in `D:/f117-gate/next-candidates`.
   Objectives panel `9515` and START armament menu `07EE` have static dossiers
   there too; their walks extend beyond the census entries, not implemented.
 - 04DD above, if a real route to it is ever found.

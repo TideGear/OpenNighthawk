@@ -75,6 +75,26 @@ before the worktree and merged local branch were removed.
 Both entries lie in the already-counted 324-byte `0555` census region, so
 integration must add no census functions or bytes.
 
+Timer tick (`VGAME 0000:1E79`, 12 Oct), private proof only: the named
+implementation preserves the three counters, graphics driver call, seven-
+phase poll, and positive/negative/zero rate-request branches into the shared
+`1C6D` / `1C85` tails. Returning driver thunks on both fixture sides expose
+its own work around the calls; CODE_BELOW includes the shared rate code.
+Three 4,000-state seeds (default, `0xC0FFEE`, `0x52d67e50d9d4`) compare
+4,565 / 4,601 / 4,610 states, including partial stops, zero mismatches.
+All 39 isolated unit tests pass in 40.86 s. The real camera replay takes
+117.4 s, executes it 53,226 times and matches all 234 checkpoints/final
+against the fresh interpreter capture from the `eda53ee` full gate, without
+event overruns. Private proof records source, executable, replay input,
+runner and reference hashes: `D:/f117-gate/timer-tick/route-verdict.json`.
+Selective patch: `D:/f117-gate/timer-tick/integrate.patch`; active worktree
+`D:/f117-wt/span-emitter`, reset to `52d67e5` after its emitter changes were
+verified on main and the full tested source snapshotted in
+`D:/f117-gate/span-emit/tested-matched.c`. Generation reuses this worktree's
+own private generated directory and takes 22.3 s; build uses two workers.
+Not integrated or full-gate validated yet. Its census extent is 53 bytes;
+the 95-byte static walk includes shared tails and is not exclusive credit.
+
 ## The gate (`tools/build_recomp.py`)
 
 Polygon caller (12 Oct): isolated current-main worktree, separate generated
