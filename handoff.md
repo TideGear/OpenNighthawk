@@ -15,16 +15,15 @@ standing practice, not a session-by-session log. Earlier sessions' detail
 
 ## Current state
 
-Last fully gated runtime baseline: VGAME `0FB2:05A4` / `05B3` shared span emitters,
-commit `eda53ee`, 814 matched addresses. Full gate
-`D:/f117-gate/gate-span-emit.log` passes: 38 unit tests, all 39 routes at
+Last fully gated runtime baseline: VGAME `0000:1E79` timer tick,
+commit `b253f3a`, 815 matched addresses. Full gate
+`D:/f117-gate/gate-timer-tick.log` passes: 39 unit tests, all 39 routes at
 every checkpoint/final (38 fresh interpreter sessions), both 5,718,976-state
-instruction profiles and three matched seeds (2,665,786 / 2,664,657 /
-2,663,454 comparisons; third seed `0xeda53ee148d7`), zero mismatches, plus
-reachability/event checks. Total 1,709 s. Census stays 806 functions /
-69,027 bytes (P2 41.59%, overall 74.25%): the emitters share the already-
-counted `0555` region. Real camera replay calls them 507,745 / 591,404 times,
-with all 234 checkpoints/final unchanged. Pushed `52d67e5` has passing
+instruction profiles and three matched seeds (2,670,351 / 2,669,258 /
+2,671,209 comparisons; third seed `0xb253f3af283f`), zero mismatches, plus
+reachability/event checks. Total 1,872 s. Census is 807 functions /
+69,080 bytes (P2 41.62%, overall 74.26%). Real camera replay calls the timer
+53,226 times with all 234 checkpoints/final unchanged. Prior pushed `e7b7c81` has passing
 Windows and munt CI. Retired polygon worktree/build cleanup is recorded in
 [repeated-processes.md](docs/repeated-processes.md#phase-2-candidate-reading).
 
@@ -60,7 +59,7 @@ Phase 2 work" below).
   byte-identical. The clipped edge and shared emitters are integrated and
   fully gated; private proofs/patches remain in `D:/f117-gate/span-edge` and
   `D:/f117-gate/span-emit`.
-  Next: integrate VGAME `0000:1E79` timer tick, 53 census bytes; the static
+  Integrated VGAME `0000:1E79` timer tick, 53 census bytes; the static
   walk includes shared rate-control tails (`1C6D` / `1C85`), 95 bytes total.
   Named implementation in `D:/f117-wt/span-emitter` (base `52d67e5`) passes
   13,776 comparisons at three seeds and all 39 isolated unit tests. Its real
@@ -68,13 +67,20 @@ Phase 2 work" below).
   to the latest fresh interpreter capture, without event overruns. Proof:
   `D:/f117-gate/timer-tick/route-verdict.json`; selective patch `integrate.patch`
   in the same directory. Integrated selectively: 815 addresses, census
-  807 / 69,080 (P2 41.62%, overall 74.26%). Fresh full gate pending in
-  `D:/f117-gate/gate-timer-tick.log`; do not push until it passes.
+  807 / 69,080 (P2 41.62%, overall 74.26%). Fresh full gate passes as above.
   The private generated directory remains `D:/f117-gate/span-emit/gen`;
   old emitter source is snapshotted beside its proof; the timer draft/dossier
   remain in `D:/f117-gate/next-candidates`.
-  Objectives panel `9515` and START armament menu `07EE` have static dossiers
-  there too; their walks extend beyond the census entries, not implemented.
+  Next: objectives panel `9515`, not yet implemented. Its manually resolved
+  eight-way table gives a 200-instruction / 500-byte walk, versus 91 census
+  bytes. Private F10 route `next-candidates/objectives-panel.args` reaches
+  the original entry and matches both engines at all 57 checkpoints/final
+  `2877054667/c465c5fd46862b46`. Proof:
+  `D:/f117-gate/objectives-panel/probe-verdict.json`. Coverage records only
+  interpreted instructions; absence in recompiled coverage cannot prove an
+  entry was missed. A named implementation still needs positive invocation
+  proof. Preserve the deadline-buffer copy order and live dispatch table.
+  START armament menu `07EE` also has a static dossier; not implemented.
 - 04DD above, if a real route to it is ever found.
 
 ## How this project verifies Phase 2 work (read before matching a new routine)
@@ -121,8 +127,7 @@ actual tally in the log, not just the exit code.
   history, not on disk.
 - Other, unproven private drafts mentioned in earlier sessions (VGAME
   `120A:0971`, a different divide-handling routine with recursive-fault
-  risk; VGAME `1E79`, a near-return tick wrapper, NOT an interrupt handler
-  despite its ISR-like naming; START `07EE`; VGAME `9515`; END `0A98`): none
+  risk; START `07EE`; VGAME `9515`; END `0A98`): none
   implemented or proven. Don't conflate them with the routines above.
 
 ## Standing practice

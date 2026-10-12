@@ -92,9 +92,29 @@ Selective patch: `D:/f117-gate/timer-tick/integrate.patch`; active worktree
 verified on main and the full tested source snapshotted in
 `D:/f117-gate/span-emit/tested-matched.c`. Generation reuses this worktree's
 own private generated directory and takes 22.3 s; build uses two workers.
-Integrated; fresh full gate pending in `D:/f117-gate/gate-timer-tick.log`.
+Integrated and fully gated at `b253f3a` in
+`D:/f117-gate/gate-timer-tick.log`: 39 unit tests, all 39 routes IDENTICAL
+at every checkpoint/final, 38 fresh interpreter sessions, both
+5,718,976-state instruction profiles and all three matched seeds, zero
+mismatches. Matched comparisons: 2,670,351 / 2,669,258 / 2,671,209;
+third seed `0xb253f3af283f`. Reachability/event checks pass. Total 1,872 s:
+build/tests 207, coverage 663, identical regeneration 23, parity 979.
+Two private objectives-panel probe replays overlapped parity after matched
+shards finished; this is not a controlled speed comparison.
 Its census extent is 53 bytes;
 the 95-byte static walk includes shared tails and is not exclusive credit.
+
+Objectives panel (`VGAME 0000:9515`), candidate only: manually resolving the
+bounded eight-way table at `95AE` extends the static walk to 200 instructions
+/ 500 bytes; census extent is only 91 bytes. A private normal-input F10 route
+reaches the original entry and matches both engines at all 57 checkpoints
+and final `2877054667/c465c5fd46862b46`. Saved proof:
+`D:/f117-gate/objectives-panel/probe-verdict.json`. The initial verifier
+incorrectly required the entry in both coverage files: coverage records only
+interpreted instructions, excluding generated and matched execution. The
+corrected verifier checks saved raw results and original-entry coverage;
+positive matched invocation proof remains pending implementation. Preserve
+the original deadline-buffer copy order and read the dispatch table live.
 
 ## The gate (`tools/build_recomp.py`)
 

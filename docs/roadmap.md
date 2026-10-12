@@ -207,11 +207,14 @@ shared-flow span-edge candidate demonstrates why walk size is not census
 ownership. Synthetic checks run in Windows CI. Details and limits:
 [repeated-processes.md](repeated-processes.md#phase-2-candidate-reading).
 
-The timer tick (`VGAME 0000:1E79`) is integrated, pending its fresh full
-gate: counters, driver cadence and shared rate-
+The timer tick (`VGAME 0000:1E79`) is integrated and fully gated at
+`b253f3a`: counters, driver cadence and shared rate-
 request tails. Three seeds pass 13,776 comparisons, 39 isolated tests pass,
 and a real camera replay calls it 53,226 times with all 234 checkpoints/final
 identical. Its census extent is 53 bytes; the shared walk is 95 bytes.
+The fresh full gate passes 39 tests, all 39 routes at every checkpoint/final,
+both instruction profiles and three matched seeds, with reachability/event
+checks. Census: 807 functions / 69,080 bytes, P2 41.62%.
 
 Shared span-emitter entries (`0FB2:05A4` / `05B3`) are integrated and fully
 gated at `eda53ee`. Three seeds compare 20,325
