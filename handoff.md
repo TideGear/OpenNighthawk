@@ -9,7 +9,71 @@ checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 more than once, what it costs). State as of 11 October 2026.
 Earlier session logs are in `git log -p handoff.md`.
 
-## Allocation and Ctrl+Break restore gate passed (11 Oct, 18:24 Pacific)
+## Diamond/screen gate passed; private gradients (11 Oct, 20:04 Pacific)
+
+Main has selectively integrated VGAME 0000:B0C2 projected HUD diamond and
+START 0000:3641 screen loader, their intentional caller fixtures and two
+focused regressions. Main has 805 addresses, 31 gate unit tests, 38 routes.
+`D:/f117-gate/gate-diamond-screen.log`, handle 62462, closed exit 0: all
+31 tests, all 38 routes, both 5,718,976-state instruction profiles,
+three 805-entry seeds (2,628,887/2,627,785/2,628,392 states), reachability
+and event checks pass. 89,367 instruction starts; third seed 0x0cb6c5224a5e.
+Duration 1,560 s: build 163, coverage 525, identical regeneration 19,
+parity 852 (rounded stages); 37 fresh interpreter runs, zero reuse.
+Census refreshed: 799/1,535 functions, 68,002/179,213 bytes;
+P2 41.05%, All 74.10%. Prior pushed checkpoint was `0cb6c52`; use git
+status/log to verify the new checkpoint before further integration.
+Main gate root 49612 has exited. Do not suspend or resume it.
+
+ONLY in private worktree `C:/Users/Tideg/f117-recomp-local/wt`:
+VGAME 1974/19FD camera sky/ground gradient strips (137/155 census bytes).
+Shared `vgame_camera_bands` retains guest-stack quad data, signed clipping,
+live row/index/done reads, original far fill calls and event stops. Private
+count 807 (main 805 + these two). Draft in D:/f117-gate/next-drafts stays
+private. Never copy the detached worktree wholesale or regenerate from it.
+Build 97913 closes BUILD OK in `build-wt-camera-gradients.log` (wrapper
+exit 1 is vswhere stderr). 31 generated files recompile after entry roots
+change region boundaries. Old build root 46056 is exited.
+
+Returning-fill fixtures at image 0FD06, boundary arguments and selected
+zero gradient offsets compare 9,576/9,559/9,591 states exactly, including
+2,279 completed 16-band walks. Logs `camera-gradients-lockstep-{0,1,2}.log`.
+This proves caller behavior with a returning fill. Unit 32459 closes exit
+0: 27 tests pass in 19.28 s (`test-wt-camera-gradients-unit.log`).
+Initial normal recon 51309 closes exit 0 in 96.2 s: all 150 hashes/final
+2aa0648449d98887 match, but NEITHER gradient runs. Default [034A]=1 uses
+nested terrain. Alt+W selects gradients (original keys 1100). Paired
+Alt+W probes 71661/38564 both close exit 0: 150 checkpoints/final
+101d2e5180159c18 at 7,549,654,902 match, 99.5 s recomp / 195.1 s interp.
+Ground 19FD runs 2,074 times, SKY 1974 does not. This is ground-only real
+rasterizer proof. Short pitch-up probe 50859 closes exit 0 in 41.6 s at
+4.5B, hash 1b80c8812d3ce54a, but reaches NEITHER helper; no proof from it.
+Old recon/toggle roots 35896/38916/26612 are exited; never suspend them.
+
+Only live owned job: private air-to-air camera probe handle 15627, log
+`D:/f117-gate/camera-gradient-airair-matched.log`. Private args
+`camera-gradient-airair.args` use existing airair_type5 inputs with Alt+W
+at VGAME+100M, 11.74B clock budget. Aircraft target-camera pitch can show
+sky, unlike the ground view. Require 1974 execution count before matching
+an interpreter run; do not claim proof merely because hashes exist.
+Root PowerShell 39116, creation 1791774263.807454, expected command
+`camera-gradient-airair-matched.log`. No private build/test is live.
+After BOTH gradients have real replay proof, integrate only these two and
+intentional fixtures plus a retained normal-input route, run a fresh full
+gate, then commit/push. Main source should remain fixed until its verified
+batch is committed/pushed.
+
+Latest visible allowance 58% at 20:01 Pacific (reset 22:57), seven-day 48%;
+next visible read by 20:06:40. Check every five minutes above 20%. At <=20%
+suspend all owned work, then check every 30 minutes until above 20%,
+resuming exact recorded identities. Private helper
+D:/f117-gate/allowance_gate_tree.py verifies root command/creation and saves
+its process tree; use --expected and a new --record for the actual live
+job. No pause record has been created this batch. Older PID/handle notes
+below are historical. Human Phase 4 playtest question remains unanswered;
+human/display/listening checks stay open. Goal remains incomplete.
+
+## Allocation and Ctrl+Break restore gate passed (historical checkpoint)
 
 Main now has 803 matched addresses. The preceding seven-entry runtime batch
 and census were committed/pushed as `74cf133` and `41e52fe`. This batch adds

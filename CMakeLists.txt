@@ -303,5 +303,9 @@ if(F117R_BUILD_TESTS)
       --only VGAME.EXE:1B96,START.EXE:85DB,END.EXE:457A,DSWAP.EXE:546,SETUP.EXE:C58)
     add_test(NAME matched_dswap_allocation_error COMMAND func_lockstep --states 4000
       --only DSWAP.EXE:494)
+    add_test(NAME matched_projected_diamond COMMAND func_lockstep --states 4000
+      --only VGAME.EXE:B0C2)
+    add_test(NAME matched_screen_loader COMMAND func_lockstep --states 4000
+      --only START.EXE:3641)
   endif()
 endif()

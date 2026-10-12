@@ -14081,6 +14081,53 @@ static int vgame_hud_colours_init(machine_t *m)
     return 1;
 }
 
+/* VGAME 0000:B0C2: the projected point (4A10,4A18) surrounded by a
+ * four-pixel diamond, in the HUD's tape colour. Each edge reads its inputs
+ * live, including between pushes, because the stack or driver can alias
+ * those words. Traverse left/top/right/bottom in the original order. */
+static int vgame_panel_projected_diamond(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 4)) return 0;
+    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_DS], 0x2CA0)));
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);
+    cpu_push16(c, c->r[R_AX]);
+    c->icount += 3;
+    NEAR_THEN(0x886A, 0xB0CA, 0, 10);
+    c->r[R_BX] = cpu_pop16(c);
+    c->icount++;
+    static const uint16_t after_edge[4] = {0xB0E4,0xB100,0xB11C,0xB138};
+    for (int edge = 0; edge < 4; edge++) {
+        const int positive = edge >= 2;
+        if (!(edge & 1)) {
+            c->r[R_AX] = ds_get(c, 0x4A18);
+            c->r[R_AX] = (uint16_t)(positive ? alu_add(c,c->r[R_AX],4,1,0) : alu_sub(c,c->r[R_AX],4,1,0));
+            cpu_push16(c, c->r[R_AX]);
+            cpu_push16(c, ds_get(c, 0x4A10));
+            cpu_push16(c, ds_get(c, 0x4A18));
+            c->r[R_AX] = ds_get(c, 0x4A10);
+            c->r[R_AX] = (uint16_t)(positive ? alu_add(c,c->r[R_AX],4,1,0) : alu_sub(c,c->r[R_AX],4,1,0));
+            cpu_push16(c, c->r[R_AX]);
+        } else {
+            cpu_push16(c, ds_get(c, 0x4A18));
+            c->r[R_AX] = ds_get(c, 0x4A10);
+            c->r[R_AX] = (uint16_t)(positive ? alu_sub(c,c->r[R_AX],4,1,0) : alu_add(c,c->r[R_AX],4,1,0));
+            cpu_push16(c, c->r[R_AX]);
+            c->r[R_AX] = ds_get(c, 0x4A18);
+            c->r[R_AX] = (uint16_t)(positive ? alu_add(c,c->r[R_AX],4,1,0) : alu_sub(c,c->r[R_AX],4,1,0));
+            cpu_push16(c, c->r[R_AX]);
+            cpu_push16(c, ds_get(c, 0x4A10));
+        }
+        c->icount += 8;
+        NEAR_THEN(0x881F, after_edge[edge], 0, edge == 3 ? 2 : 10);
+        c->r[R_SP] = (uint16_t)alu_add(c,c->r[R_SP],8,1,0);
+        c->icount++;
+    }
+    near_ret(c);
+    c->icount++;
+    return 1;
+}
+
 /* VGAME 0000:C45C: darken the 77x61 camera inset. Set its origin from
  * the caller, build the span boundary with two vertical boxed edges, then
  * fill in mode 3 (darken, not colour 3). Restore the graphics origin to zero.
@@ -32058,7 +32105,55 @@ static int end_restore_control_break(machine_t *m) { return restore_control_brea
 static int dswap_restore_control_break(machine_t *m) { return restore_control_break(m, &BREAK_DSWAP); }
 static int setup_restore_control_break(machine_t *m) { return restore_control_break(m, &BREAK_SETUP); }
 
+/* START 3641: fade out, load a picture and its palette, copy its full
+ * 320x200 page to the visible page, invoke the optional near callback,
+ * fade in, then present. Keep arguments in the guest frame: picture load
+ * and graphics calls can change both the frame and the callback word. */
+static int start_load_screen(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 5)) return 0;
+    cpu_push16(c, c->r[R_BP]); c->r[R_BP] = c->r[R_SP];
+    c->r[R_AX] = 1; cpu_push16(c, c->r[R_AX]); c->icount += 4;
+    if (!guest_call(m, 0x3088, 0x364B)) return 1;
+    if (!room(c, 5)) { c->ip = 0x364B; return 1; }
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_AX] = 1; cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, bp_get(c, 4)); c->icount += 4;
+    if (!guest_call(m, 0x35FC, 0x3656)) return 1;
+    if (!room(c, 4)) { c->ip = 0x3656; return 1; }
+    c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c);
+    cpu_push16(c, bp_get(c, 4)); c->icount += 3;
+    if (!guest_call(m, 0x826C, 0x365E)) return 1;
+    if (!room(c, 14)) { c->ip = 0x365E; return 1; }
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_AX] = 200; cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 320; cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)alu_sub(c,c->r[R_AX],c->r[R_AX],1,0);
+    for (int i = 0; i < 5; i++) cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 1; cpu_push16(c, c->r[R_AX]); c->icount += 13;
+    if (!guest_call_far(m, 0x3672, 0x3677)) return 1;
+    if (!room(c, 4)) { c->ip = 0x3677; return 1; }
+    c->r[R_SP] = c->r[R_BP];
+    alu_sub(c, bp_get(c, 6), 0, 1, 0); c->icount += 3;
+    if (!(c->flags & F_ZF)) {
+        if (!guest_call(m, bp_get(c, 6), 0x3682)) return 1;
+    }
+    if (!room(c, 3)) { c->ip = 0x3682; return 1; }
+    c->r[R_AX] = 1; cpu_push16(c, c->r[R_AX]); c->icount += 2;
+    if (!guest_call(m, 0x3070, 0x3689)) return 1;
+    if (!room(c, 2)) { c->ip = 0x3689; return 1; }
+    c->r[R_BX] = cpu_pop16(c); c->icount++;
+    if (!guest_call_far(m, 0x368A, 0x368F)) return 1;
+    if (!room(c, 3)) { c->ip = 0x368F; return 1; }
+    c->r[R_SP] = c->r[R_BP]; c->r[R_BP] = cpu_pop16(c);
+    near_ret(c); c->icount += 3;
+    return 1;
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xB0C2, vgame_panel_projected_diamond, "diamond around a projected HUD point", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x3641, start_load_screen, "load and fade in a picture with optional overlay", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x1B96, vgame_restore_control_break, "restore the Ctrl+Break vector", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x85DB, start_restore_control_break, "restore the Ctrl+Break vector", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x457A, end_restore_control_break, "restore the Ctrl+Break vector", 1 },

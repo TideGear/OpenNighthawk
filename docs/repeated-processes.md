@@ -10,6 +10,35 @@ identical, and the proof is the same verdicts before and after.
 
 ## The gate (`tools/build_recomp.py`)
 
+Next private camera gradients: original VGAME 1974 and 19FD build four-point
+sky/ground strips at x=169..245, subtracting/adding a table of horizon
+offsets and stopping at y=110/169 or 16 bands. A shared named helper retains
+the guest frame, original fill calls, signed clipping, live loop reads and
+event stops. Source is private at 807 addresses while main stays at 805
+under its full gate. After verified main regeneration, the two-worker build
+passes (`build-wt-camera-gradients.log`), recompiling 31 generated files
+whose discovery boundaries changed. Returning-fill fixtures and selected
+zero-offset tables compare 9,576/9,559/9,591 states exactly, including 2,279
+completed 16-band walks. These prove caller behavior with a returning fill.
+The private unit subset passes all 27 tests in 19.28 s. Real-rasterizer
+reconnaissance finishes in 96.2 s with all 150 hashes/final unchanged, but
+reaches neither helper: the default camera takes a nested terrain walk.
+Normal Alt+W selects the gradient path. Paired original/private runs now
+use `camera-gradient-toggle.args` with that input; require both execution
+counts and every checkpoint before claiming real-rasterizer verification.
+Drafts and source remain private until main's existing batch is gated.
+
+Diamond and screen-loader integration (11 Oct, 19:37 Pacific): the two
+privately verified entries and their intentional fixtures are now in main,
+with two focused regressions. Main has 805 addresses, 31 gate unit tests
+and 38 routes. Full gate log `D:/f117-gate/gate-diamond-screen.log`, 16
+workers under affinity 0x00FFFFFF. The full gate passes all 38 routes,
+31 tests, both instruction profiles (5,718,976 states) and three 805-entry
+seeds (2,628,887 / 2,627,785 / 2,628,392 states), reachability and event
+checks. Duration 1,560 s: build 163, coverage 525, identical regeneration
+19, parity 852 (rounded stage times). 37 fresh interpreter runs, zero reuse.
+Census: 799 functions, 68,002 bytes.
+
 Private follow-up (11 Oct): START 3641 wraps fade-out, picture/palette load,
 full-page copy, optional overlay callback, fade-in and present. Initial raw
 64-state test compares zero states (callee completion limits); do not count

@@ -282,7 +282,7 @@ static void stub_driver_thunks(uint8_t *pristine, uint32_t at, const rc_module *
         ((o->seg == 0 && (o->ip == 0xB171 || o->ip == 0xD6DD || o->ip == 0x4777 ||
                          o->ip == 0xD3F9 || o->ip == 0xD87C || o->ip == 0x72D8 ||
                            o->ip == 0x8A18 || o->ip == 0x881F || o->ip == 0x796E || o->ip == 0x3A4E ||
-                           o->ip == 0xC45C)) ||
+                           o->ip == 0xB0C2 || o->ip == 0xC45C)) ||
            (o->seg == 0x114A && (o->ip == 0x0280 || o->ip == 0x03AD || o->ip == 0x03FD || o->ip == 0x014F || o->ip == 0x0006 || o->ip == 0x01DB)) ||
            (o->seg == 0x1058 && (o->ip == 0x09D8 || o->ip == 0x0A2C)));
     const int checked_alloc = !strcmp(m->name, "DSWAP.EXE") && o->seg == 0 && o->ip == 0x0494;
@@ -300,6 +300,13 @@ static void stub_driver_thunks(uint8_t *pristine, uint32_t at, const rc_module *
  * gray-scale flag END's DAC loader tests) lies inside END's image here, where it is a code byte that happens
  * to have the flag set, so the routine's normal path was never reached. Set in both sides' memory. */
 static const struct { const char *module; uint16_t ip; uint32_t linear; uint8_t value; } IMAGE_PATCHES[] = {
+    /* Screen-loader caller fixture: returning fade/load/palette helpers. */
+    { "START.EXE", 0x3641, 0x3088, 0xC3 },
+    { "START.EXE", 0x3641, 0x35FC, 0xC3 },
+    { "START.EXE", 0x3641, 0x826C, 0xC3 },
+    { "START.EXE", 0x3641, 0x3070, 0xC3 },
+    { "START.EXE", 0x3641, 0x3693, 0xC3 },
+
     { "END.EXE", 0x42E4, 0x0489, 0x00 },
     /* Returning failure cleanup tests the caller after its normally terminal exit. */
     { "DSWAP.EXE", 0x0494, 0x0E36, 0xC3 },
@@ -326,6 +333,7 @@ static void patch_image_for(uint8_t *pristine, const recomp_override *o)
 /* Argument words a routine compares for exactly, planted in the first argument slots in some states (the
  * small random arguments never reach them). */
 static const struct { const char *module; uint16_t ip; int arg; uint16_t v[2]; } ARG_PLANTS[] = {
+    { "START.EXE", 0x3641, 1, { 0x0000, 0x3693 } }, /* no overlay or a returning overlay */
     { "START.EXE", 0x1B37, 0, { 0x0064, 0x0065 } },     /* the map caption's kinds 64h and 65h */
     { "VGAME.EXE", 0x73C8, 0, { 0x0001, 0x0002 } },      /* target_damage: a target matching a planted weapon-lock slot */
 };
