@@ -2,8 +2,8 @@
  * work (docs/presentation.md). An observer only reads: it is called from
  * matched routines and from hooks on the original's own entry points, never
  * changes guest memory, registers or the clock, and a run with one installed
- * has the same hashes as a run without. It works in the recompiled engine,
- * where the matched routines are placed. */
+ * has the same hashes as a run without. It works in both engines and timing profiles; matched bodies emit the
+ * same records as the hooks on the original paths. */
 #ifndef F117R_OBSERVE_H
 #define F117R_OBSERVE_H
 
@@ -16,7 +16,8 @@
  *       vertex records it was made from (DS offsets) - links edges to vertices;
  *       then raw screen-origin words x/y, and for each endpoint camera x/y/z,
  *       projected x/y and the exact behind-eye marker (x high word 8000h).
- *       Older logs have only the first three fields.
+ *       Field 18 is the projection mode (0 perspective, otherwise shift).
+ *       Older logs have only the first three or 17 fields.
  *   'E' an edge of a filled polygon handed to the rasteriser (130D:004A):
  *       slot, x0, y0, x1, y1 (screen, 32-bit), the slot's status word, and
  *       the near-plane crossing kept at slot + 10h (x, y)
@@ -40,7 +41,7 @@ typedef struct f117_observer {
     /* A model vertex was projected: the camera-space coordinates (three
      * 32-bit values, the only place sub-pixel precision exists), the pixels
      * the original made of them, which depth range it took (0 near, 1 mid,
-     * 2 behind the eye, where px[] is not written), and where both records
+     * 2 behind the eye, where px[] is not written; 3 orthographic), and where both records
      * are in DS (the projected record is what an edge refers to). */
     void (*vertex)(void *user, uint64_t icount, const int32_t xf[3], const int32_t px[2], int range,
                    uint16_t xf_at, uint16_t px_at);

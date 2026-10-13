@@ -113,9 +113,9 @@
       {
         "item": "Stage 0: measure what draws, and an observer that logs the drawing primitives per frame",
         "weight": 6.5,
-        "done": 0.9,
+        "done": 1.0,
         "kind": "estimate",
-        "evidence": "Measured and written up (docs/presentation.md) and the observer is built: hooks on game_draw, the matched projection, VGAME's fill and outline paths and every graphics library entry (lines, span fills, blits decoded; the rest logged with their page changes), f117run --observe, hashes unchanged with it on, ROM-free unit test. Not yet: a vertex observer on the original's own (non-matched) projection path."
+        "evidence": "Observer built on game_draw, every graphics-library entry and matched/original projection and edge-preparation paths. Original-return hooks cover far, mid, behind-eye and orthographic projection; passive dispatch works under both engines and profiles, including shared matched addresses. Default paired capture: 217,022 V / 300,637 G payloads identical, all 54 checkpoint/final hashes match baseline. Under 386, entire 751,862,587-byte logs agree (446,978 V / 618,966 G, 80 checkpoints/final). Shared-address and timing-bookkeeping regressions pass. Live N=4/9 preserves all 48,856 refined polygons, 368 exact logic frames and 366 exact endpoint pairs. Full gate: 53 tests, 41 routes, 40 fresh interpreter sessions, both instruction profiles and three matched seeds, zero mismatches, passing reachability/event checks (1,661 s). Stage 1 coverage and real-display checks remain separate."
       },
       {
         "item": "Stage 1: draw lists replayed bit-exact at 320x200",

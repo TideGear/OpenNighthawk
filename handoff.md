@@ -13,11 +13,53 @@ standing practice, not a session-by-session log. Earlier sessions' detail
 (what was tried, what failed, exact investigation narratives) is in
 `git log -p handoff.md` — it does not need to live here to stay available.
 
+## Next candidate in an isolated worktree
+
+Phase 2's next candidate is START 4239, the mission generator (the draft's
+old `start_hangar` name was provisional and wrong). The resolved switch at
+4E39/4E3E has targets 4E14/4E24/4E50: 1,332 instructions / 3,811 walked bytes;
+census remains 3,035. Private dossier/listings: `D:/f117-gate/start-4239`.
+The isolated worktree `D:/f117-wt/mission-generation-4239`, branch
+`wip-mission-generation-4239`, holds a TRANSCRIPT, not a named implementation.
+Its initial 32-state baseline compares zero states: all original runs exceed
+the harness budget. This is not a parity pass. Next: coherent world/callee
+fixtures to bound the rejection loops, full instruction and return coverage,
+then a named rewrite, room audits, real route, census and a fresh full gate.
+Do not count this routine as matched or copy the private tree wholesale.
+
+That tree also holds a separate repair for `matched_draft.py`: its old IC()
+macro does not accept the emitter's opcode argument, and TIMING is a
+translated-region vocabulary absent from matched.c. The repaired tool accepts
+IC(op_) and omits TIMING records. Six tests pass, including a synthetic C
+compile regression that fails with C4002 on the old tool. Extract only the
+two-file patch `D:/f117-gate/start-4239/draft-tool-repair.patch` after observer
+integration, rerun those tests here, and commit/push it separately.
+
+The first private build used unbounded Ninja jobs and caused severe shell
+latency. It was interrupted; no compiler children remained. The replacement
+completed with `CMAKE_BUILD_PARALLEL_LEVEL=2`, private TEMP/TMP (build.cmd
+otherwise shares one temporary log), affinity on four spare CPUs and
+BelowNormal priority. Two matched.c compilers can each use nearly 4 GB;
+check free memory as well as CPU load before overlapping builds.
+
 ## Current state
+
+Observer Stage 0 is complete (13 October): original projection returns and
+edge preparation now capture alongside matched paths in both engines and
+profiles. Shared-entry bypasses still visit the observer; reads leave timing
+bookkeeping unchanged. Orthographic V range 3 retains valid Z=0 pixels;
+G metadata supplies its shift. Default payloads: 217,022 V / 300,637 G
+identical; all 54 checkpoint/final hashes match baseline. 386: complete
+751,862,587-byte logs identical, 446,978 V / 618,966 G, 80 checkpoints/final.
+Live N=4/9: all 48,856 polygons refined, 368 exact logic frames, 366 exact
+endpoint pairs. Fresh full gate passes 53 tests, 41 routes, 40 fresh
+interpreter sessions, both instruction profiles and three matched seeds,
+zero mismatches, reachability/event checks pass (1,661 s).
+Proof: `D:/f117-gate/observer-original/final-gate-verdict.json`.
 
 Fully gated runtime: view composition (`VGAME 0000:2F9D`,
 `vgame_frame_compose`), 828 matched addresses, census 820 functions /
-93,367 bytes (P2 54.49%, P3 84.87%, overall 80.32%). Three targeted seeds
+93,367 bytes (P2 54.49%, P3 85.52%, overall 80.47%). Three targeted seeds
 compare 3,199 / 3,216 / 3,200 states, zero mismatches; all 938 canonical
 instruction starts reached.
 Room audit: 208 claims, 938 instructions, 66 calls. Actual camera replay:

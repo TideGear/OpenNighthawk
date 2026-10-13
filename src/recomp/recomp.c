@@ -180,12 +180,12 @@ int recomp_override_add(const recomp_override *o)
     }
     g_ov[g_nov] = *o;
     const char *off = getenv("F117R_NO_MATCHED");
-    g_ov_on[g_nov] = o->matched && !(off && off[0] == '1');
+    g_ov_on[g_nov] = o->matched && (!strcmp(o->id, "observe") || !(off && off[0] == '1'));
     /* F117R_MATCHED_LIMIT=N: only the first N matched routines, in table
      * order - for bisecting a divergence between the engines. */
     static int limit = -2, seen;
     if (limit == -2) { const char *l = getenv("F117R_MATCHED_LIMIT"); limit = l && *l ? atoi(l) : -1; }
-    if (o->matched && limit >= 0 && seen++ >= limit) g_ov_on[g_nov] = 0;
+    if (o->matched && strcmp(o->id, "observe") && limit >= 0 && seen++ >= limit) g_ov_on[g_nov] = 0;
     return g_nov++;
 }
 
@@ -379,14 +379,21 @@ int recomp_override_step(machine_t *m)
         if (fix >= 0 && k != fix) continue;
         const recomp_override *o = &g_ov[in->ov_index[k]];
         if (in->ov_lin[k] != lin || (uint16_t)(in->base + o->seg) != cs) continue;
-        if (o->matched && m->engine != ENGINE_RECOMP) continue;   /* an observer placed there still runs */
+        if (is_parity(o) && m->engine != ENGINE_RECOMP) continue;   /* an observer placed there still runs */
+        /* Observers always leave the original instruction to the caller.
+         * Do not reset timing bookkeeping or run shadow/room accounting for
+         * a passive read; this also works when matched bodies are bypassed. */
+        if (!strcmp(o->id, "observe")) {
+            o->fn(m);
+            return -1;
+        }
         /* Their hand-written clocks count instructions, not 386 cycles.
          * Interpret the entry, then resume the translated original body. */
-        if (o->matched && c->t386) return -1;
-        if (o->matched && g_shadow_off) return 0;
+        if (is_parity(o) && c->t386) continue; /* a shared observer still reads the original path */
+        if (is_parity(o) && g_shadow_off) return 0;
         const uint64_t limit = c->stop_at, charged = c->charged;
         c->io_cross = 0;
-        if (o->matched && g_shadow_on && c->icount >= g_shadow_lo && c->icount < g_shadow_hi) {
+        if (is_parity(o) && g_shadow_on && c->icount >= g_shadow_lo && c->icount < g_shadow_hi) {
             if (!shadow_run(m, o)) return -1;
         } else if (!o->fn(m)) return -1;
         /* A matched routine claims room before it runs, so its instructions

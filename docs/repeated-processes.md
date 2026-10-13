@@ -8,6 +8,33 @@ whether they were measured or estimated. The rule behind the page: an
 optimisation must leave every check's inputs, outputs and verdicts
 identical, and the proof is the same verdicts before and after.
 
+## Observer path comparison (13 October 2026)
+
+Use the existing draw-list capture process with both engines, not just the
+matched path. Compare ordered V and G payloads (all values and record IDs),
+record counts, guest checkpoints and final hashes. Perspective V timestamps
+can differ by the RET instruction: the matched body records after charging
+RET, the original hook reads immediately before RET. This is a capture
+boundary difference, not changed guest time. Under the 386 profile both
+engines execute the original projection, so the complete logs can be compared
+byte for byte. Keep raw captures and private comparison scripts outside git.
+
+The default boot capture repeats 54 checkpoints and final hash from the
+prior live baseline, with 217,022 V and 300,637 G payloads identical across
+engines (interpreter 52.0 s on four spare CPUs while the gate runs).
+A staged 386 menu script uses normal inputs, skips the intros with Enter,
+and captures through clock 8,000,000,000. Its first comparison found a
+shared-address observer bypass: matching guest hashes alone did not catch
+missing G/E/F records. The corrected dispatch passes its shared-address
+regression and produces a byte-identical 751,862,587-byte log: 446,978 V,
+618,966 G, 80 checkpoints and final hash equal to the retained interpreter
+run. The final full gate passes in 1,661 s: build/tests 146, coverage 588,
+identical regeneration 40, fresh parity 887. All 53 tests and 41 routes pass
+with 40 fresh interpreter sessions, both instruction profiles, three matched
+seeds and reachability/event checks. Retain the earlier failing evidence.
+An isolated build overlapped this run, so its timing is not a speed comparison. Local bundle:
+`D:/f117-gate/observer-original`.
+
 ## Phase 2 candidate reading
 
 `tools/matched_draft.py --dossier` writes a private JSON beside the draft,

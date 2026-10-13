@@ -99,6 +99,7 @@ static void check_observer(void)
     const uint32_t px[2] = { 0xFFFFFF9Du, 0x000000C8u };           /* -99, 200 */
     for (int k = 0; k < 2; k++)
         for (int b = 0; b < 4; b++) m.mem[0x20040 + 4 * k + b] = (uint8_t)(px[k] >> (8 * b));
+    m.mem[0x27D8E] = 0;
     const uint64_t before = fnv1a64(m.mem + 0x20000, 0x100);
     const uint16_t sp = m.cpu.r[R_SP];
     observe_vertex(&m, 0x0010, 0x0040);                              /* no observer: nothing */
@@ -119,6 +120,14 @@ static void check_observer(void)
     m.mem[0x20010 + 0x0A] = (uint8_t)(xf[2] >> 16); m.mem[0x20010 + 0x0B] = (uint8_t)(xf[2] >> 24);
     CHECK(fnv1a64(m.mem + 0x20000, 0x100) == before);                /* it read, and wrote nothing */
     CHECK(m.cpu.r[R_SP] == sp);
+    m.mem[0x27D8E] = 21;
+    m.mem[0x2001A] = m.mem[0x2001B] = 0; /* Z=0 is valid for a map object. */
+    const cpu_t saved = m.cpu;
+    const uint64_t all_memory = fnv1a64(m.mem, MEM_SIZE);
+    observe_vertex(&m, 0x0010, 0x0040);
+    CHECK(obs_range == 3 && obs_px[0] == -99 && obs_px[1] == 200);
+    CHECK(!memcmp(&m.cpu, &saved, sizeof saved));
+    CHECK(fnv1a64(m.mem, MEM_SIZE) == all_memory);
     observe_set(NULL);
 }
 
@@ -220,6 +229,54 @@ static void check_fix_takes_place(void)
     CHECK(step_at(SEG, IP) == 1 && parity_calls == 1 && fix_calls == 1);   /* on: the fix alone */
     CHECK(recomp_override_enable("FIXTEST", 0) == 1);
     CHECK(step_at(SEG, IP) == 1 && parity_calls == 2 && fix_calls == 1);   /* off again */
+}
+
+/* Passive hooks must run when the original body runs: interpreter and 386
+ * bypass matched bodies. A hook declines after reading, so the caller then
+ * executes the original instruction exactly once. */
+static int passive_calls;
+static int passive_seen(machine_t *mm) { (void)mm; passive_calls++; return 0; }
+static void check_original_observer(void)
+{
+    enum { SEG = 0x6800, IP = 0x0020 };
+    static uint8_t image[0x100];
+    const recomp_override o = { "observe", "ORIGOBS.OVL", 0, 0, IP, passive_seen, "original observer (test)", 1 };
+    CHECK(recomp_override_add(&o) >= 0);
+    const recomp_override parity = { "PARITYOBS", "ORIGOBS.OVL", 0, 0, IP + 2, parity_routine, "shared parity entry (test)", 1 };
+    const recomp_override shared = { "observe", "ORIGOBS.OVL", 0, 0, IP + 2, passive_seen, "shared observer (test)", 1 };
+    CHECK(recomp_override_add(&parity) >= 0);
+    CHECK(recomp_override_add(&shared) >= 0);
+    recomp_module_load(NULL, &m, "ORIGOBS.OVL", image, sizeof image, MODLOAD_OVERLAY, SEG, SEG);
+    for (int engine = 0; engine < 2; engine++) for (int profile = 0; profile < 2; profile++) {
+        m.engine = engine ? ENGINE_RECOMP : ENGINE_INTERP;
+        m.cpu.t386 = profile;
+        m.cpu.io_cross = 17;
+        m.cpu.seg[S_CS] = SEG; m.cpu.ip = IP;
+        const cpu_t before = m.cpu;
+        const uint64_t memory = fnv1a64(m.mem, MEM_SIZE);
+        const int n = passive_calls;
+        CHECK(recomp_override_step(&m) == -1 && passive_calls == n + 1);
+        CHECK(!memcmp(&m.cpu, &before, sizeof before));
+        CHECK(fnv1a64(m.mem, MEM_SIZE) == memory);
+    }
+    /* A profile bypass of a parity body must still visit an observer later
+     * in the placement list. The default recomp path uses the body itself. */
+    for (int engine = 0; engine < 2; engine++) for (int profile = 0; profile < 2; profile++) {
+        m.engine = engine ? ENGINE_RECOMP : ENGINE_INTERP;
+        m.cpu.t386 = profile; m.cpu.io_cross = 17;
+        m.cpu.seg[S_CS] = SEG; m.cpu.ip = IP + 2;
+        const cpu_t before = m.cpu;
+        const int n = passive_calls, pn = parity_calls;
+        const int result = recomp_override_step(&m);
+        if (!engine || profile) {
+            CHECK(result == -1 && passive_calls == n + 1 && parity_calls == pn);
+            CHECK(!memcmp(&m.cpu, &before, sizeof before));
+        } else {
+            CHECK(result == 1 && passive_calls == n && parity_calls == pn + 1);
+        }
+    }
+    m.cpu.t386 = 0;
+    m.cpu.io_cross = 0;
 }
 
 int main(void)
@@ -392,11 +449,12 @@ int main(void)
     /* No two of the real tables' entries share a place, except where the matched routine calls the
      * observer itself (vgame_model_edge_spans and vgame_model_poly_finish): at one address only the
      * first that applies runs, and a merge once left two observer hooks idle this way. */
-    static const char *const deliberate[] = { "VGAME.EXE 130D:004A", "VGAME.EXE 130D:0116", NULL };
+    static const char *const deliberate[] = { "VGAME.EXE 130D:004A", "VGAME.EXE 130D:0116", "VGAME.EXE 120A:0B3B", NULL };
     observe_register();
     fixes_register();
     CHECK(recomp_override_duplicates(stdout, deliberate) == 0);
     check_fix_takes_place();
+    check_original_observer();
     recomp_shutdown(&m);
     if (failures) { fprintf(stderr, "%d failures\n", failures); return 1; }
     printf("code overrides: all checks passed\n");

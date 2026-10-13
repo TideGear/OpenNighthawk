@@ -59,6 +59,8 @@ def vertex_fraction(v, ortho=0):
         if projected is None or projected[0] != (px, py):
             return None
         return projected[1]
+    if rng not in (0, 1):
+        return None  # orthographic needs G mode metadata
     zu = z & 0xFFFFFFFF
     if rng == 0:
         den, nx, ny = zu >> 16, x >> 8, y >> 8

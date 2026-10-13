@@ -484,7 +484,7 @@ def interp_edge(ea, eb, w, bat_a, bat_b, viewport, space, stats):
     if space == "camera" and lo == 0:
         va0, va1 = vertex_of(bat_a, ea["slot"], 0), vertex_of(bat_a, ea["slot"], 1)
         vb0, vb1 = vertex_of(bat_b, eb["slot"], 0), vertex_of(bat_b, eb["slot"], 1)
-        if va0 and va1 and vb0 and vb1 and 2 not in (va0[5], va1[5], vb0[5], vb1[5]) and                 bat_a.edges[ea["slot"]] == bat_b.edges[eb["slot"]]:
+        if va0 and va1 and vb0 and vb1 and all(r < 2 for r in (va0[5], va1[5], vb0[5], vb1[5])) and                 bat_a.edges[ea["slot"]] == bat_b.edges[eb["slot"]]:
             ox, oy = s16(ea["x0"]) - s16(va0[3]), s16(ea["y0"]) - s16(va0[4])
             ox2, oy2 = s16(eb["x0"]) - s16(vb0[3]), s16(eb["y0"]) - s16(vb0[4])
             if (ox, oy) == (ox2, oy2) and s16(ea["x1"]) - s16(va1[3]) == ox and s16(ea["y1"]) - s16(va1[4]) == oy and \

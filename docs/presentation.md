@@ -189,11 +189,36 @@ The following sections retain the earlier measurements and their limitations.
 ## Stage 0 and 1: the observer and the draw list
 
 `src/matched/observe.c` hooks `game_draw`'s entry, VGAME's fill and outline
-paths, the matched projection and every graphics-library entry. It is a pure
+paths, matched/original projections and every graphics-library entry. It is a pure
 reader: with it on, every checkpoint and final hash is unchanged.
 `f117run --observe FILE:FROM:TO` writes the log; with `F117R_OBSERVE_PAGES=1`
 it also dumps the library's whole page segment (`Z`, work page) and the
 display (`Y`, A000) at each `game_draw`.
+
+Original-path observer extension (13 October, integrated and gated): all five
+projection return paths now emit V, and the original edge-preparation entry
+emits G. Passive observers run in both engines and under the 386 profile,
+including at addresses shared with matched bodies. They do not reset timing
+bookkeeping. Orthographic V records use range 3, read the actual projected
+pixels even at Z=0 and leave projection-mode reconstruction to G metadata.
+The legacy perspective path rejects those records rather than inventing a
+divisor; V-only interpolation holds them while compatible G snapshots move.
+
+The default paired boot captures have all 217,022 V and 300,637 G payloads
+identical, including far/mid/behind-eye/orthographic cases. All 54 checkpoints
+and final hash match the previous baseline. Matched V timestamps charge RET
+before recording; the original hook records just before RET, so this payload
+comparison excludes their clocks. Under 386 both engines execute the original
+projection: the complete 751,862,587-byte logs are byte-identical, including
+446,978 V, 618,966 G, 80 checkpoints and final hash. The first 386 comparison
+exposed a missing shared-address observer even though guest hashes matched;
+the retained regression now checks that dispatch explicitly. Live N=4/9
+rechecks preserve all 48,856 refined polygons, 368 exact logic frames and
+366 exact endpoint pairs. These are automated checks; real-display assessment
+remains Phase 4. The fresh full gate passes 53 tests, all 41 routes with 40 fresh interpreter
+sessions, both instruction profiles and three matched seeds, zero mismatches
+and passing reachability/event checks (1,661 s). Private audited verdict:
+`D:/f117-gate/observer-original/final-gate-verdict.json`.
 
 Record kinds: `P` phase, `V` projected vertex (camera-space x, y, z and the
 pixels the original made of it), `G` edge prepared, `E` edge of a filled

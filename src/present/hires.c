@@ -68,6 +68,7 @@ static int slot_find(hires *h, uint16_t key, int make)
  * share the projection's divide threw away. 0 when the divisor is not positive. */
 static int vertex_fraction(const hires_vertex *v, double *x, double *y)
 {
+    if (v->range < 0 || v->range > 1) return 0; /* orthographic needs G mode metadata */
     const uint32_t zu = (uint32_t)v->z;
     int64_t den, nx, ny;
     if (v->range == 0) { den = zu >> 16; nx = (int64_t)v->x >> 8; ny = (int64_t)v->y >> 8; }

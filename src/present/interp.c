@@ -752,7 +752,7 @@ static edge_t interp_edge(const edge_t *ea, const edge_t *eb, double w, const in
         const int32_t *va0 = vertex_of(fa, ba, ea->slot, 0), *va1 = vertex_of(fa, ba, ea->slot, 1);
         const int32_t *vb0 = vertex_of(fb, bb, eb->slot, 0), *vb1 = vertex_of(fb, bb, eb->slot, 1);
         const gedge_t *ga = gedge_of(fa, ba, ea->slot), *gb = gedge_of(fb, bb, eb->slot);
-        if (va0 && va1 && vb0 && vb1 && va0[5] != 2 && va1[5] != 2 && vb0[5] != 2 && vb1[5] != 2 &&
+        if (va0 && va1 && vb0 && vb1 && va0[5] < 2 && va1[5] < 2 && vb0[5] < 2 && vb1[5] < 2 &&
             ga->k0 == gb->k0 && ga->k1 == gb->k1) {
             const int ox = s16(ea->x0) - s16(va0[3]), oy = s16(ea->y0) - s16(va0[4]);
             const int ox2 = s16(eb->x0) - s16(vb0[3]), oy2 = s16(eb->y0) - s16(vb0[4]);
@@ -1021,6 +1021,7 @@ int interp_inbetween_ex(const interp_frame *A, const interp_frame *B, const inte
             for (int k = 0; k < b->nv; k++) {
                 const int i = S->vrec[b->v0 + k];
                 const int32_t *va = S->vert[b->v0 + k], *vb = O->vert[ob->v0 + k];
+                if (va[5] == 3 || vb[5] == 3) continue; /* G snapshots carry the orthographic shift. */
                 int64_t xf[3], px[2] = { 0, 0 };
                 for (int c = 0; c < 3; c++) xf[c] = rnd(lerp(va[c], vb[c], w));
                 if (xf[0] != (int32_t)xf[0] || xf[1] != (int32_t)xf[1] || xf[2] != (int32_t)xf[2]) continue;

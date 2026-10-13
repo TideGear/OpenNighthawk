@@ -61,7 +61,7 @@ void observe_vertex(machine_t *m, uint16_t di, uint16_t bx)
     int32_t xf[3], px[2] = { 0, 0 };
     for (int k = 0; k < 3; k++) xf[k] = ds_dword(c, (uint16_t)(di + 4 * k));
     const int16_t zhi = (int16_t)peek16(c, c->seg[S_DS], (uint16_t)(di + 0x0A));
-    const int range = zhi >= 0x100 ? 0 : zhi >= 1 ? 1 : 2;
+    const int range = peek8(c, c->seg[S_DS], 0x7D8E) ? 3 : zhi >= 0x100 ? 0 : zhi >= 1 ? 1 : 2;
     if (range != 2)
         for (int k = 0; k < 2; k++) px[k] = ds_dword(c, (uint16_t)(bx + 4 * k));
     o->vertex(o->user, c->icount, xf, px, range, di, bx);
@@ -134,6 +134,24 @@ static void flush(machine_t *m)
 
 /* The hooks below are told to the observer and then left alone - each
  * returns 0, so the original instruction runs. */
+
+/* The original projection preserves DI/BX through every return. A matched
+ * projection emits V itself and skips these addresses; a declined projection
+ * (including orthographic, divide-handler and 386 paths) reaches a return
+ * here. Read the completed result, then let RET execute normally. */
+static int hook_vertex_return(machine_t *m)
+{
+    observe_vertex(m, m->cpu.r[R_DI], m->cpu.r[R_BX]);
+    return 0;
+}
+
+/* The matched edge preparer emits G before deciding whether to decline.
+ * This entry hook supplies the same snapshot when that body is bypassed. */
+static int hook_edge_prepared(machine_t *m)
+{
+    observe_edge_prepared(m, m->cpu.r[R_BP], m->cpu.r[R_DI], m->cpu.r[R_BX]);
+    return 0;
+}
 
 /* VGAME 0x01450, game_draw. */
 static int hook_game_draw(machine_t *m)
@@ -836,6 +854,12 @@ static void any_begin_display(machine_t *m, int entry, uint16_t page)
 }
 
 static const recomp_override OBSERVERS[] = {
+    { "observe", "VGAME.EXE", VGAME_47304, 0x120A, 0x08D5, hook_vertex_return, "orthographic left-shift projection return (observer)", 1 },
+    { "observe", "VGAME.EXE", VGAME_47304, 0x120A, 0x0901, hook_vertex_return, "orthographic rounded projection return (observer)", 1 },
+    { "observe", "VGAME.EXE", VGAME_47304, 0x120A, 0x0937, hook_vertex_return, "far perspective projection return (observer)", 1 },
+    { "observe", "VGAME.EXE", VGAME_47304, 0x120A, 0x096A, hook_vertex_return, "mid perspective projection return (observer)", 1 },
+    { "observe", "VGAME.EXE", VGAME_47304, 0x120A, 0x0970, hook_vertex_return, "behind-eye projection return (observer)", 1 },
+    { "observe", "VGAME.EXE", VGAME_47304, 0x120A, 0x0B3B, hook_edge_prepared, "model edge preparation (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x0000, 0x1450, hook_game_draw, "per-frame draw routine (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x130D, 0x004A, hook_poly_edge, "filled polygon edge (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x130D, 0x0116, hook_poly_fill, "filled polygon fill (observer)", 1 },

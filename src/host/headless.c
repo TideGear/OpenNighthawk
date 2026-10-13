@@ -135,8 +135,8 @@ static void on_load(void *user, machine_t *m, const char *name, const uint8_t *f
  * music against a DOSBox raw OPL capture (tools/dosbox_compare.py). */
 /* --observe FILE:FROM:TO: log what the original draws (matched/observe.c) for
  * the instructions in [FROM, TO): "P icount" for each phase of a picture and
- * "V icount x y z px py range" for each projected vertex. Recompiled engine
- * only; it reads and changes nothing. */
+ * "V icount x y z px py range" for each projected vertex. Both engines
+ * and timing profiles; it reads and changes nothing. */
 static FILE *g_obs_file;
 static uint64_t g_obs_from, g_obs_to;
 static void obs_phase(void *u, uint64_t icount)

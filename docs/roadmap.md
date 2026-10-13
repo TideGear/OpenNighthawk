@@ -876,7 +876,14 @@ instruction profiles and three 789-address matched seeds (2,561,209,
       [presentation.md](presentation.md). The owner chose to observe and replay
       the original's draw path. Stage 0 (the observer) and Stage 1 (draw lists
       that rebuild every phase of the windows tried bit for bit, 0 bytes copied)
-      are built. Stage 2 (8 Oct 2026, `tools/hires_subpixel.py`): the model
+      are built. The observer now also captures original projection and edge
+      paths under both engines and timing profiles (13 Oct). Paired default
+      captures agree on all 217,022 vertices and 300,637 edge snapshots;
+      386 draw logs are byte-identical, with 80 matching checkpoints/final.
+      Stage 0 is complete; remaining replay-branch coverage is Stage 1.
+      Its fresh full gate passes 53 tests and all 41 routes with 40 fresh
+      interpreter sessions, both profiles and three matched seeds, zero
+      mismatches and passing reachability/event checks. Stage 2 (8 Oct 2026, `tools/hires_subpixel.py`): the model
       polygons re-projected from their camera-space vertices and filled with a
       tiling rule are equal to Stage 1 at N=1, agree on 99.96-100% of flat
       pixels at N=2 and 4 and show 1.5-5.4 times the nearest-neighbour floor's
