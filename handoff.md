@@ -29,8 +29,9 @@ identical at all 234 checkpoints with no overrun after a room-claim fix
 `D:/f117-gate/frame-3ada`). Its first gate (`gate-frame-update.log`)
 failed `d1_fast_machine`: a fix inside a matched body never ran. Matched
 routines with a fix site after their entry now decline while that fix is
-on (`fix_inside` in matched.c); the re-gate log is
-`D:/f117-gate/gate-fix-inside.log` - check its tally before relying on it.
+on (`fix_inside` in matched.c). Re-gate `D:/f117-gate/gate-fix-inside.log`
+(1,746 s): 49 unit tests pass, all 40 routes IDENTICAL (d1_fast_machine
+included), 824 matched routines at three seeds, 0 mismatching.
 When matching a routine, check `src/fixes/fixes.c` for sites inside it.
 The coverage pass still runs for every commit that adds a matched routine:
 the translator isolates each matched entry, so the generated code changes
