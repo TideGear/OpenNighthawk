@@ -13,7 +13,31 @@ standing practice, not a session-by-session log. Earlier sessions' detail
 (what was tried, what failed, exact investigation narratives) is in
 `git log -p handoff.md` — it does not need to live here to stay available.
 
-## Latest integration: logo sprite-set loader (13 October)
+## Owner priority (13 October)
+
+Prioritize Phase 3 to completion, targeting **4K at 60 Hz** (16.67 ms per
+host frame). Phase 2's private routine batch is parked while presentation
+coverage, performance and the remaining display checks are finished.
+
+## Latest Phase 3 integration: fill styles and replay coverage (13 October)
+
+All model fill styles replay by rule; dither/stipple refine and interpolate
+with original-sized cells, without copying post-fill output. Staged original
+instruction fixtures pass 2,619 fill and 3,953 driver cases; Python matches
+2,187 original rows. All 45 complete routes pass at N=1: 259,240 exact logic
+frames / 259,166 exact endpoint pairs, unchanged guest checkpoints/finals,
+zero dropped/unseeded frames. Live boot N=4/9 and all 66 retained-window
+checks pass. Stage 1 complete; Stage 2 95%; P3 **86.49%**, overall **81.55%**.
+
+Fresh full gate: 58 tests, 45 routes / 44 fresh interpreter sessions, both
+5,718,848-state instruction profiles, three 831-address matched seeds
+(2,725,058 / 2,723,998 / 2,725,465), zero mismatches; reachability/event checks
+pass (1,969 s). Proof: `D:/f117-gate/p3-styles`. Main runtime source matches
+the frozen runner SHA256 `b1b99911ed22476aa1e83d925a2e0411a5f27124d8ef1e02933442bdc82862d3`.
+`tools/presentation_check.py` retains the full-route checker; use fresh
+baseline scan runs, canonical aliases and a fresh output save for each run.
+
+## Latest Phase 2 integration: logo sprite-set loader (13 October)
 
 MPS_LOGO 006D:0112 (`logo_sprite_set_load`) is fully gated: 434 instructions /
 1,164 bytes, 78 room claims, 35 calls (33 far, two near calls to RETF helpers via
@@ -132,6 +156,17 @@ proof is not sufficient for this project (see "How this project verifies
 Phase 2 work" below).
 
 ## Next up
+
+- **Phase 3 first, 4K/60 target (owner, 13 Oct).** Finish presentation
+  coverage and performance before returning to routine matching. Keep
+  physical refresh/motion verdicts separate from hidden-window throughput.
+  Private throughput prototype and flat-guard draft:
+  `D:/f117-gate/p3-styles/bench` (`profile` versus `profile_guard`). Full fine
+  checksums and all repair/guard tallies agree across strike/landing/air-to-air
+  at N=9 and landing N=4. Not integrated or measured in isolation; the gate
+  and route matrix were competing for CPU. `F117_BENCH_HASH=1` enables the
+  full frame checksum, adding work outside the per-frame timers. A grouped
+  seam-repair draft (`profile_fast`) barely helped and is deferred.
 
 - **Branch housekeeping (12 Oct).** 24 local branches are fully merged into
   `master` and safe to delete; `flight-input` (older draft of aircraft

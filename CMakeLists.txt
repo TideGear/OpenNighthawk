@@ -269,6 +269,12 @@ if(F117R_BUILD_TESTS)
     # Only the generated objects and the core are pulled from the static
     # libraries: the test supplies the machine hooks itself.
     add_executable(insn_lockstep tests/insn_lockstep.c)
+    add_executable(test_present_fills tests/test_present_fills.c)
+    target_link_libraries(test_present_fills PRIVATE f117present f117recomp)
+    add_test(NAME presentation_fill_styles COMMAND test_present_fills)
+    add_executable(test_present_driver tests/test_present_driver.c)
+    target_link_libraries(test_present_driver PRIVATE f117present f117recomp)
+    add_test(NAME presentation_driver_branches COMMAND test_present_driver)
     target_link_libraries(insn_lockstep PRIVATE f117recomp)
     add_test(NAME insn_lockstep COMMAND insn_lockstep --states 4)
     # Phase 2: every matched routine against the original from random states.

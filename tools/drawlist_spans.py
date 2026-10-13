@@ -148,7 +148,7 @@ class Spans:
             self.side(lo & 8, s16(y1), e["y1hi"])
 
 
-def paint(colour, y, x0, before):
+def paint(colour, y, x0, before, scale=1):
     """A fill row in the original's style (VGAME 0x14279 dispatches on the
     colour word's high byte): FF solid, FE AND, FD OR, FB discard (the rows
     are cleared and nothing is painted), FC stipple, else a dither of the
@@ -162,7 +162,9 @@ def paint(colour, y, x0, before):
         return [b | lo for b in before]
     if hi == 0xFB:
         return list(before)
-    return None                                       # stipple and dither: not replayed yet
+    if hi == 0xFC:
+        return [lo if ((x0 + i) // scale + y // scale) & 1 else b for i, b in enumerate(before)]
+    return [hi if ((x0 + i) // scale + y // scale) & 1 else lo for i in range(len(before))]
 
 
 def line_pixels(x0, y0, x1, y1):

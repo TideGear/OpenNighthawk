@@ -208,16 +208,21 @@ static void mark_copied(drawlist *d, uint16_t seg, uint32_t a)
     if (!(d->copied[a >> 3] & (1u << (a & 7)))) { d->copied[a >> 3] |= (uint8_t)(1u << (a & 7)); d->ncopied++; }
 }
 
-/* A fill row in the original's style (VGAME 0x14279 dispatches on the colour
- * word's high byte): FF solid, FE AND, FD OR, FB discard. 0: no rule (stipple
- * FC and the dithers), the original's bytes follow in the row's 'a'. */
-static int paint(int colour, uint8_t *row, int n)
+/* VGAME 1377:0B09 selects a solid/logic fill, a checkerboard stipple, or
+ * two alternating colours. Pattern parity uses the clipped column and the
+ * span's logical row, independent of the page origin and word alignment. */
+static void paint(int colour, int y, int x, uint8_t *row, int n)
 {
     const uint8_t lo = (uint8_t)colour, hi = (uint8_t)(colour >> 8);
-    if (hi == 0xFF) { for (int i = 0; i < n; i++) row[i] = lo; return 1; }
-    if (hi == 0xFE) { for (int i = 0; i < n; i++) row[i] &= lo; return 1; }
-    if (hi == 0xFD) { for (int i = 0; i < n; i++) row[i] |= lo; return 1; }
-    return hi == 0xFB;
+    if (hi == 0xFF) { for (int i = 0; i < n; i++) row[i] = lo; return; }
+    if (hi == 0xFE) { for (int i = 0; i < n; i++) row[i] &= lo; return; }
+    if (hi == 0xFD) { for (int i = 0; i < n; i++) row[i] |= lo; return; }
+    if (hi == 0xFB) return;
+    for (int i = 0; i < n; i++) {
+        const int odd = (x + i + y) & 1;
+        if (hi == 0xFC) { if (odd) row[i] = lo; }
+        else row[i] = odd ? hi : lo;
+    }
 }
 
 /* An outline polygon's edge (VGAME 1377:046F): the major axis is x unless
@@ -652,7 +657,6 @@ void drawlist_record(drawlist *d, char kind, const int32_t *v, int n)
         break;
     case 'R':                                         /* the colour the fill really uses, after its fade */
         if (n >= 3 && 3 + 2 * v[2] < n) d->fill_colour = v[3 + 2 * v[2]] & 0xFFFF;
-        d->nfill_rows = 0;
         break;
     case 'b': {                                       /* a fill row, painted from the replay's own bytes */
         if (n < 5 || d->fill_colour < 0 || !(p = page_of(d, (uint16_t)v[3]))) break;
@@ -660,30 +664,12 @@ void drawlist_record(drawlist *d, char kind, const int32_t *v, int n)
         const int32_t len = v[2], at = v[4];
         uint8_t row[65536];
         for (int32_t i = 0; i < len; i++) row[i] = p->b[(at + i) & 0xFFFF];
-        if (!paint(d->fill_colour, row, len)) {
-            if (d->nfill_rows < 256) {
-                d->fill_rows[d->nfill_rows].at = (uint16_t)at;
-                d->fill_rows[d->nfill_rows++].n = (uint16_t)len;
-            }
-            break;
-        }
+        paint(d->fill_colour, v[0], v[1], row, len);
         for (int32_t i = 0; i < len; i++) wr(p, (uint32_t)(at + i) & 0xFFFF, row[i]);
         break;
     }
-    case 'a': {                                       /* a style with no rule yet: the original's bytes */
-        if (n < 5 || !d->nfill_rows || !(p = page_of(d, (uint16_t)v[3]))) break;
-        const int32_t len = v[2], at = v[4];
-        int k;
-        for (k = 0; k < d->nfill_rows; k++)
-            if (d->fill_rows[k].at == (uint16_t)at && d->fill_rows[k].n == len) break;
-        if (k == d->nfill_rows) break;
-        flush_models(d);
-        for (int32_t i = 0; i < len && 5 + i < n; i++) {
-            wr(p, (uint32_t)(at + i) & 0xFFFF, (uint8_t)v[5 + i]);
-            mark_copied(d, p->seg, (uint32_t)(at + i));
-        }
+    case 'a':                                        /* post-fill evidence; every style has a rule */
         break;
-    }
     case 'L':                                         /* an outline edge, by VGAME's own line routine */
         if (n < 10) break;
         if (v[9] != 0x046F || v[8] - v[7] != 320) { d->outline_no_rule++; break; }

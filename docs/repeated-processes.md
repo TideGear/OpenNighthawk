@@ -8,6 +8,57 @@ whether they were measured or estimated. The rule behind the page: an
 optimisation must leave every check's inputs, outputs and verdicts
 identical, and the proof is the same verdicts before and after.
 
+## Presentation styles and full-route replay checks (13 October 2026)
+
+`test_present_fills` compares replay rules with the original VGAME fill
+selector on synthetic pages: 2,619 staged cases, including all style classes,
+clipping, logical row/column parity and odd page alignment. Optional `--rows`
+exports synthetic before/after rows for `tests/test_present_styles.py
+--original build/test_present_fills.exe`: 2,187 Python rows agree too.
+`test_present_driver` compares 3,953 staged cases with the original resident
+graphics driver: opaque/transparent text, row/left/width/all-side clips,
+variable/fixed fonts, transparent clipped sprites, scaled RLE clipping and
+both flips, and both tick-scale variants. Together these take under a second
+on an idle machine. They need generated modules from the owner's install;
+no original bytes are committed. The near-polygon regression separately
+checks fine pattern cells at N=1/4/9 and interpolation endpoints. Python
+pattern and verdict-parser regressions run in ROM-free CI.
+
+`tools/presentation_check.py --data DIR --baseline-runs DIR/runs --out DIR`
+replays gate routes at N=4/9 by default (`--routes STEM...`, `--scales N...`,
+`--jobs N`). First run the full gate for fresh scan baselines. The checker
+requires matching guest checkpoints/final hashes and route milestones,
+every logic frame and interpolation endpoint exact, no unseeded or dropped
+frames, and positive presentation pairs on routes that enter flight. A
+short SETUP-only route may have no 50M-clock checkpoint and no flight frames;
+its final state and milestones still count. Raw output stays outside git.
+These concurrent runs check correctness, not refresh-rate performance.
+
+13 October result: all 45 routes at N=1 pass, with 259,240 exact closed
+logic frames, 259,166 exact interpolation pairs and matching guest hashes
+(1,489.86 s, eight workers beside the gate). Live boot N=4/9 and 66 checks
+across 11 retained windows pass too. The full gate takes 1,969 s: initial
+translation/build/tests 174, coverage 715, identical regeneration 39 and
+fresh parity 1,041. All 58 tests, 45 routes, both instruction profiles,
+three matched seeds and reachability/event checks pass; 44 interpreter
+sessions run fresh, none reused. Evidence: `D:/f117-gate/p3-styles`.
+
+Private 4K throughput investigation: a hidden Direct3D 11 target verifies
+3840x2160 output using the carried replay and five intermediate pictures per
+pair. Profiling separates regeneration/raster, palette conversion, upload
+and GPU submission. Runs beside the gate are exploratory: they include
+driver stalls and are not isolated 60 Hz acceptance evidence. A byte-group
+flat-guard draft preserves full fine-frame checksums, seam-repair tallies
+and flat/agree/restored counts across strike/landing/air-to-air, but is not
+integrated. Keep it separate from the fill-style validation; measure it
+without competing jobs before claiming a speed gain. Isolated N=9 strike
+throughput subsequently measures 84.36 fps / 15.120 ms p99 with current
+code, and 90.58 fps / 13.803 ms p99 with the draft; both have an occasional
+roughly 100 ms upload stall. Short landing and air-to-air runs also exceed
+60 fps on average but their p99 includes upload stalls. This does not pass
+the steady-refresh check. Private sources and
+logs: `D:/f117-gate/p3-styles/bench` and `guard-before/after-*`.
+
 ## Observer path comparison (13 October 2026)
 
 Use the existing draw-list capture process with both engines, not just the

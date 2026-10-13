@@ -24,10 +24,9 @@ every primitive the observer captured, and compared with the dump at its end:
   colour replaces ('M', graphics entry 41)  one colour put for another in a
                                             rectangle
 
-What has no replay rule yet is applied from what the original wrote and
-counted apart, so the share still copied rather than replayed is visible:
-fill rows in a dither or stipple style ('a'), and the graphics entries no hook
-decodes ('x').
+Graphics entries without a replay rule can apply their logged byte changes
+('x'); these are counted separately. All polygon fill styles have rules;
+the post-fill 'a' bytes are evidence, never a source for those fills.
 """
 import sys
 from collections import Counter
@@ -377,7 +376,6 @@ def main(path=None, page_factory=bytearray, hook=None, on_phase=None):
     totals = Counter()
     colour = None            # the library's current colour (entries 32/33)
     fill_colour = None       # the polygon fill's colour word ('R')
-    fill_rows = []           # the rows of the fill under way ('b'), to pair with their 'a'
     blit = None
     copied = set()           # offsets written from the original's own result this phase
     pages = {}                # segment -> the replay of that page (the work page 'Z', the display 'Y')
@@ -430,7 +428,6 @@ def main(path=None, page_factory=bytearray, hook=None, on_phase=None):
             # colour the fill really uses ([8606], after its fade)
             v = [int(x) for x in f[2:]]
             fill_colour = v[3 + 2 * v[2]] & 0xFFFF
-            fill_rows = []
         elif k == "b":
             # y, x0, len, segment, offset, then the bytes before (unused: the replay has its own)
             y, x0, n, es, at = (int(x) for x in f[2:7])
@@ -438,18 +435,8 @@ def main(path=None, page_factory=bytearray, hook=None, on_phase=None):
             if page is None:
                 continue
             got = paint(fill_colour, y, x0, [page[(at + i) & 0xFFFF] for i in range(n)])
-            if got is None:
-                fill_rows.append((at, n))
-                continue
             for i, b in enumerate(got):
                 page[(at + i) & 0xFFFF] = b
-        elif k == "a" and fill_rows:
-            y, x0, n, es, at = (int(x) for x in f[2:7])
-            page = pages.get(es)
-            if page is not None and (at, n) in fill_rows:    # a style with no rule yet: the original's bytes
-                for i in range(n):
-                    page[(at + i) & 0xFFFF] = int(f[7 + i])
-                    copied.add((at + i) & 0xFFFF)
         elif k == "L":
             v = [int(x) for x in f[2:]]
             if len(v) < 10:

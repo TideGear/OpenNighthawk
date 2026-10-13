@@ -45,8 +45,6 @@ typedef struct {
     uint16_t seg, origin;         /* the work page and the library origin at the phase start */
     int      colour;              /* the library colour (entries 32/33, text), -1 not yet set */
     int      fill_colour;         /* the colour word the model fill uses ([8606]), -1 none */
-    int      nfill_rows;          /* the fill's rows in a style with no rule, for their 'a' */
-    struct { uint16_t at, n; } fill_rows[256];
     int      prefer_logged;       /* a page copy takes its logged source bytes even when the
                                      source page is held (as drawlist_frame.py does) */
     /* offsets of the work page written from the original's bytes this phase */

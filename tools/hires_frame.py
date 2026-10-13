@@ -224,7 +224,7 @@ class Builder:
             if r < l:
                 continue
             at = hy * W + l
-            got = paint(colour, hy, l, list(page.hi[at:at + r - l + 1]))
+            got = paint(colour, hy, l, list(page.hi[at:at + r - l + 1]), n)
             if got is None:
                 self.stats["polygons in a style with no rule"] += 1
                 return False

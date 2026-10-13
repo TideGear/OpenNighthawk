@@ -512,9 +512,6 @@ def interp_edge(ea, eb, w, bat_a, bat_b, viewport, space, stats):
 def interp_poly(pa, pb, bat_a, bat_b, w, space, stats):
     """Rebuild polygon pa (the skeleton's) a fraction w of the way to its pair pb: the new span
     rows as (top, rows), or None with the cause counted in stats."""
-    if pa.colour & 0xFF00 not in (0xFF00, 0xFE00, 0xFD00, 0xFB00):
-        stats["held: fill style with no rule"] += 1
-        return None
     if [e["st"] for e in pa.edges] != [e["st"] for e in pb.edges] or \
             [(e["slot"], e["st"]) for e in pa.join] != [(e["slot"], e["st"]) for e in pb.join]:
         stats["held: clip status differs"] += 1
@@ -532,7 +529,7 @@ def interp_poly(pa, pb, bat_a, bat_b, w, space, stats):
 def poly_lines(p, top, rows, rowbase, icount):
     """The 'R' record and the 'b' records for polygon p painted with rows: what the observer
     would have logged, in the original's order (the 'a' records are not needed by the replay for
-    the solid, AND, OR and discard styles)."""
+    every fill style)."""
     r = p.r
     n = r[2]
     out = ["R %d %d %d %d %s %d %d\n" % (icount, r[0], top, len(rows), " ".join("%d %d" % lr for lr in rows),

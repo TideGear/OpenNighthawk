@@ -68,6 +68,10 @@ jobs:
         run: ctest --test-dir build --build-config Release --output-on-failure
       - name: Application stall and resume pacing
         run: python tools/host_timing.py --out "$env:RUNNER_TEMP/host-timing"
+      - name: Presentation fill patterns
+        run: python tests/test_present_styles.py
+      - name: Presentation verdict regressions
+        run: python tests/test_presentation_check.py
       - name: Preserve pacing diagnostics on failure
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

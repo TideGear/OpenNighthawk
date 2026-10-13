@@ -26,8 +26,9 @@ N = 1 as the least distance, in pixels, at which the true shape covers the whole
 and at N > 1 the edge lies within that many fine pixels of the true one. A polygon whose footprint lies further
 than 3 pixels from its geometry (the edge-on slivers at the horizon, clipped borders), one whose near crossing
 cannot be verified against retained E coordinates, one with an unrelated vertex behind the eye, one whose
-edges cannot all be tied to a vertex, and a fill style with no rule
-(dither, stipple) keep the nearest-neighbour fill; these are counted. Text, sprites, lines, blits and the HUD
+edges cannot all be tied to a vertex keep the nearest-neighbour fill; these are counted.
+All fill styles have rules; dither and stipple retain coarse-sized pattern cells
+inside the refined boundary. Text, sprites, lines, blits and the HUD
 stay nearest-neighbour copies (Stage 2 handles the model polygons).
 
 The checks from the stage list, per phase at the display page: N = 1 is the replay's own picture; the flat-pixel
@@ -388,12 +389,12 @@ class SubBuilder(Builder):
                 if r < l:
                     continue
                 at = hy * W + l
-                page.hi[at:at + r - l + 1] = bytes(paint(colour, hy, l, list(page.hi[at:at + r - l + 1])))
+                page.hi[at:at + r - l + 1] = bytes(paint(colour, hy, l, list(page.hi[at:at + r - l + 1]), n))
         return True
 
     def hook(self, f, pages):
         k = f[0]
-        if k in 'LNQCTDHSMW' or (k == 'a' and self.fill_colour is not None and self.fill_colour >> 8 not in (0xFF,0xFE,0xFD,0xFB)):
+        if k in 'LNQCTDHSMW':
             self.finish_models(pages, clear=True)
         elif k in ('Z', 'Y'):
             self.finish_models(pages)

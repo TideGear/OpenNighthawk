@@ -232,18 +232,21 @@ static int64_t cover_total(const int32_t *spans, int count)
 
 /* ---- the builder ---- */
 
-static int paint_ok(int colour)
-{
-    const int hi = (colour >> 8) & 0xFF;
-    return hi == 0xFF || hi == 0xFE || hi == 0xFD || hi == 0xFB;
-}
-
-static void paint_run(uint8_t *row, int n, int colour)
+/* Keep the original checkerboard's pixel-sized cells while refining the
+ * polygon boundary. Changing its frequency with scale would change the
+ * texture rather than just the geometry. Transparent stipple cells retain
+ * the fine background already drawn. */
+static void paint_run(uint8_t *row, int n, int colour, int x, int y, int scale)
 {
     const uint8_t lo = (uint8_t)colour, hi = (uint8_t)(colour >> 8);
     if (hi == 0xFF) memset(row, lo, (size_t)n);
     else if (hi == 0xFE) for (int i = 0; i < n; i++) row[i] &= lo;
     else if (hi == 0xFD) for (int i = 0; i < n; i++) row[i] |= lo;
+    else if (hi != 0xFB) for (int i = 0; i < n; i++) {
+        const int odd = ((x + i) / scale + y / scale) & 1;
+        if (hi == 0xFC) { if (odd) row[i] = lo; }
+        else row[i] = odd ? hi : lo;
+    }
 }
 
 static void model_span(uint8_t *mask,size_t first,size_t last)
@@ -427,7 +430,6 @@ static void refill(hires *h, drawlist *d, drawlist_page *page)
         for (int c = 0; c < 4; c++) fine[k][c] = base[k][c] * n;
     extents_init(&x, (const double (*)[4])fine, ne);
     const int count = fine_cover(&f, &x, n, GROWS[g], spans);
-    if (!paint_ok(h->fill_colour)) { h->stats[HS_STYLE]++; h->stats[HS_LEFT_NEAREST]++; return; }
     const int W = 320 * n;
     const int tracking=n>1 && (h->fill_colour&0xFF00)!=0xFB00;
     if(tracking) model_geometry(page,&f,&x,h->poly.vp);
@@ -438,7 +440,7 @@ static void refill(hires *h, drawlist *d, drawlist_page *page)
         if (l < 0) l = 0;
         if (r > W - 1) r = W - 1;
         if (r < l) continue;
-        paint_run(page->hi + (size_t)hy * W + l, r - l + 1, h->fill_colour);
+        paint_run(page->hi + (size_t)hy * W + l, r - l + 1, h->fill_colour, l, hy, n);
         if(tracking && page->model) {
             const size_t bits=((size_t)64000*n*n+7)/8;
             model_span(page->model+bits,(size_t)hy*W+l,(size_t)hy*W+r);

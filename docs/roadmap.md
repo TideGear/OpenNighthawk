@@ -992,6 +992,18 @@ instruction profiles and three 789-address matched seeds (2,561,209,
       bitmap artwork remains by choice. Real-display refresh pacing, motion
       and 4K checks remain Phase 4.
 
+  Presentation branch coverage (13 Oct) now closes Stage 1: all 45
+  complete N=1 routes preserve 259,240 logic frames, 259,166 interpolation
+  pairs and every guest hash, with zero dropped/unseeded frames. The
+  original executable matches 2,619 fill-style and 3,953 graphics-driver
+  fixtures, including opaque/clipped text, sprite clipping/scaling/flips
+  and both tick variants; Python matches 2,187 original fill rows. Dither
+  and stipple now replay, refine and interpolate by rule, with coarse-sized
+  pattern cells and transparent backgrounds. All 66 checks across 11
+  retained windows and live N=4/9 boot sentinels pass. The owner set the
+  remaining performance/display target to 4K at 60 Hz (16.67 ms); private
+  hardware-renderer profiling is a lead, not a physical-refresh verdict.
+
 ## Phase 4 - checked by people and independent references
 
 What a machine cannot judge by itself: it needs a person, or a reference that

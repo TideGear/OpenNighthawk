@@ -89,6 +89,7 @@ static void append(fixture *f, char kind, const int32_t *v, int n)
 /* These camera displacements translate the visible triangle two pixels:
  * the front projects at 1/512; each clipping midpoint projects at 1/128. */
 static int g_snapshot_fields = 17;
+static int g_fill_colour = 0xFF07;
 static void moving_triangle(fixture *f, int shift, int reuse)
 {
     const int32_t camera[3][3]={{1024*shift,0,0x20000},
@@ -96,7 +97,7 @@ static void moving_triangle(fixture *f, int shift, int reuse)
     const int pair[3][2]={{0,1},{1,2},{2,0}};
     const int32_t edges[3][8]={{0,20,20,24,26,0x40,24,26},
         {24,0,0,0,0,0x80,0,0},{48,16,24,20,20,0x40,16,24}};
-    const int32_t fill[12]={0xFF07,0,0,319,199,0,0,0,0,0,0,2};
+    const int32_t fill[12]={g_fill_colour,0,0,319,199,0,0,0,0,0,0,2};
     memset(f,0,sizeof *f);
     for(int k=0;k<3;k++) {
         int32_t v[8]={camera[k][0],camera[k][1],camera[k][2],k?0:2*shift,0,
@@ -118,6 +119,7 @@ static void moving_triangle(fixture *f, int shift, int reuse)
     append(f,'F',fill,12);
     const int32_t join[8]={72,24+2*shift,26,16+2*shift,24,0,0,0};append(f,'E',join,8);
     int32_t rows[19]={0xFF07,20,7,20,20,19,21,18,21,17,22,16,23,18,23,22,24,0xFF07,0xA000};
+    rows[0]=rows[17]=g_fill_colour;
     for(int k=3;k<17;k++) rows[k]+=2*shift;
     append(f,'R',rows,19);
     for(int y=20;y<=26;y++) {
@@ -206,6 +208,44 @@ static void interpolation(int reuse)
     }
     interp_frame_free(fa);
     free(actual);free(expected);
+}
+
+/* Pattern cells keep their 320x200 size while geometry gains subpixels.
+ * Compare with an independently rendered solid coverage mask, including
+ * transparent stipple cells over an existing background. */
+static void pattern_picture(int scale, uint8_t *out)
+{
+    static uint8_t background[65536];
+    memset(background,0x2B,sizeof background);
+    fixture f;moving_triangle(&f,0,0);
+    drawlist_init(&d);drawlist_set_scale(&d,scale);hires_init(&h,scale);
+    drawlist_seed(&d,'Z',0xA000,0,background,sizeof background);
+    for(int k=0;k<f.n;k++) record(f.rec[k].kind,f.rec[k].v,f.rec[k].n);
+    drawlist_finish_models(&d);
+    const drawlist_page *p=drawlist_page_of(&d,0xA000);
+    CHECK(h.stats[HS_REFILLED]==1 && !h.stats[HS_STYLE]);
+    memcpy(out,p->hi,(size_t)64000*scale*scale);
+    drawlist_free(&d);
+}
+
+static void patterned_fills(int scale)
+{
+    const size_t size=(size_t)64000*scale*scale;
+    uint8_t *mask=malloc(size),*actual=malloc(size);
+    g_fill_colour=0xFF07;pattern_picture(scale,mask);
+    const int styles[]={0xFC07,0x1907,0xFA07,0x0007,0x0707,0xFB07};
+    for(unsigned k=0;k<sizeof styles/sizeof *styles;k++) {
+        g_fill_colour=styles[k];pattern_picture(scale,actual);
+        for(int y=0;y<200*scale;y++) for(int x=0;x<320*scale;x++) {
+            const size_t at=(size_t)y*320*scale+x;
+            const int odd=(x/scale+y/scale)&1,hi=styles[k]>>8;
+            const int want=mask[at]!=7 || hi==0xFB ? 0x2B :
+                hi==0xFC ? (odd?7:0x2B) : (odd?hi:7);
+            CHECK(actual[at]==want);
+        }
+    }
+    g_fill_colour=0xFF07;
+    free(mask);free(actual);
 }
 
 static const int32_t shared_spans[2][14]={{20,20,19,21,19,21,18,22,17,23,17,23,16,24},
@@ -414,6 +454,10 @@ int main(void)
     triangle(4,1,0);triangle(4,0,1);
     interpolation(0);interpolation(1);
     g_snapshot_fields=18;interpolation(0);interpolation(1);
+    patterned_fills(1);patterned_fills(4);patterned_fills(9);
+    g_fill_colour=0xFC07;interpolation(0);interpolation(1);
+    g_fill_colour=0x1907;interpolation(0);interpolation(1);
+    g_fill_colour=0xFF07;
     shared_edges(4);shared_edges(9);
     seam_lifetime();
     clipped_origin(1,0,0);clipped_origin(4,0,0);clipped_origin(9,0,0);clipped_origin(4,1,0);

@@ -72,7 +72,7 @@ Each stage is judged by a check, as in the rest of the project.
 | Stage | What | Check | Status |
 |---|---|---|---|
 | 0 | Observer: log every call to the drawing primitives per frame | the log is identical across runs; hashes unchanged with it on | done |
-| 1 | Draw lists: a frame's primitives as a list, replayed at 320x200 | the replay reproduces the original's work and display pages bit for bit, every phase of every route | done for the windows below, in Python and in C (`src/present/drawlist.c`); unexercised branches listed below |
+| 1 | Draw lists: a frame's primitives as a list, replayed at 320x200 | the replay reproduces the original's work and display pages bit for bit, every phase of every route | done: all 45 complete routes and staged original-instruction fixtures for rare branches; C and Python fill rules agree |
 | 2 | Re-draw the list at N times the resolution | N = 1 is Stage 1 exactly; at N > 1 every N x N block agrees with the N = 1 pixel wherever no edge crosses it | model polygons re-drawn from their sub-pixel vertices (`hires_subpixel.py`, and in C `hires.c`, live with `--present-scale N`); HUD lines/ticks redraw on the fine grid with scale-proportional or chosen thickness; original bitmap text/artwork stay scaled by the owner's choice; verified near-plane crossings now refined, incompatible geometry safely scaled |
 | 3 | Interpolate between consecutive draw lists to the host display rate | at a logic frame the output is exactly that frame; no in-between primitive absent from both neighbours | 320x200 study done (`interp_frame.py`, below): exact at both ends on seven windows, no violations; live path built at 320x200 (below): the feed, the presentation from the replay, and the interpolation in C, exact at both ends of 9,843 live frame pairs |
 | 4 | Pacing, vsync, a picture-age setting, HUD handling, a switch to the original picture | pictures at the display's refresh with t on the mission clock; the age setting measured | pacing at the host's vsync, age setting and Reimp-style HUD handling built (below); `--present scan` is the switch; real-display checks remain |
@@ -81,6 +81,53 @@ Interpolation shows the picture one logic step behind (about 110 ms at 9
 steps a second, 67 ms at the clamp of 15), the standard price. Stage 1 needs
 the drawing path understood, which is what the matched routines in Phase 2
 supply, so the two phases are not independent.
+
+## Fill styles and rare driver branches (13 October 2026)
+
+All model fill styles now replay by rule. Dither alternates the colour
+word's bytes by logical row/column parity; stipple paints the opposite-parity
+cells and preserves the background in the others. The clipped column, not
+the destination's byte alignment, determines the pattern. Post-fill `a`
+records are evidence only. The fine renderer keeps each pattern cell the
+size of an original pixel and refines the polygon's boundary; interpolation
+can move these polygons too. C and Python use the same rules.
+
+`test_present_fills` compares 2,619 staged cases with the original VGAME
+instructions, including all fill style classes, clipped spans, odd page
+alignment and N=1/4/9 mirrored output. Python also matches 2,187 exported
+original rows. `test_present_driver` matches 3,953 staged cases against the
+original resident driver: opaque/transparent text, variable/fixed fonts and
+all text clips; transparent sprite clips; scaled RLE clipping, leading and
+internal transparency, empty rows and both flips; both tick-scale variants.
+These close the previously unexercised branch list below. They are synthetic
+drawing fixtures, separate from normal-play route evidence.
+
+The camera-plane polygon regression checks coarse-sized pattern cells over
+an existing background at N=1/4/9, including transparent stipple, equal
+colours and discard. It also checks moving dither/stipple polygons at both
+interpolation endpoints and three intermediate times, with reused edge
+slots. All 66 replay/fine/interpolation checks across 11 retained windows
+pass; live boot N=4/9 each has 368 exact logic frames, 366 exact endpoint
+pairs, unchanged guest checkpoints/final hash and zero dropped frames.
+
+`tools/presentation_check.py` compares complete presentation routes with the
+full gate's saved interpreter scan baselines. It checks every guest hash,
+route milestone, closed logic frame and interpolation endpoint, rejects
+dropped/unseeded frames, and requires positive pairs on flight routes.
+The owner's target is **4K at 60 Hz**, a 16.67 ms host-frame budget. These
+correctness checks do not establish physical refresh or motion quality.
+Commands and retained evidence: [repeated-processes.md](repeated-processes.md).
+
+Complete-route N=1 validation passes all 45 routes: 259,240 closed logic
+frames and 259,166 interpolation pairs exact, all guest checkpoints/final
+hashes equal to the interpreter scan baseline, and no dropped or unseeded
+frames. This completes Stage 1's replay coverage. Stage 2's fill-style gap is
+also closed; 4K/60 performance and display polish remain open.
+
+The fresh full gate passes 58 tests, all 45 routes (44 fresh interpreter
+sessions), both 5,718,848-state instruction profiles and three 831-address
+matched seeds, with zero mismatches and passing reachability/event checks
+(1,969 seconds). Private evidence: `D:/f117-gate/p3-styles`.
 
 ## Fully clipped views, reused vertices and orthographic maps (12-13 October 2026)
 
@@ -279,10 +326,11 @@ Command per route: `F117R_OBSERVE_PAGES=1 py tools/run_route.py
 tools/routes/NAME.args --data DIR --out OUT -- --observe LOG:FROM:TO`, with
 FROM just after the flight's `ordnance.pic` open, then `drawlist_frame.py LOG`.
 
-**Not yet exercised:** dithered and stipple fills (no window used one), the
-opaque text branch and the width clip, sprite clip edge cases, the tick scale's
-CL variant, and windows in the rest of each flight (weapon release on other
-weapons, the cockpit's other displays).
+The original windows did not exercise dither/stipple, opaque/width-clipped
+text, sprite clip edge cases or the tick scale's CL variant. The staged
+original-driver checks above now cover those branches. Complete-route live
+replay checks cover the rest of each scripted flight separately from these
+phase-by-phase capture windows.
 
 ### The replay in C
 

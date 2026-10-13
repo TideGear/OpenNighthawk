@@ -794,8 +794,6 @@ static edge_t interp_edge(const edge_t *ea, const edge_t *eb, double w, const in
 static int interp_poly(const interp_frame *fa, const poly_t *pa, const batch_t *ba, const interp_frame *fb,
                        const poly_t *pb, const batch_t *bb, double w, spans_t *sp, int *top, int *rows, uint64_t *st)
 {
-    const int style = pa->colour & 0xFF00;
-    if (style != 0xFF00 && style != 0xFE00 && style != 0xFD00 && style != 0xFB00) { st[IS_HELD_STYLE]++; return -1; }
     int same = pa->ne == pb->ne && pa->nj == pb->nj;
     for (int k = 0; same && k < pa->ne; k++) same = fa->e[pa->e0 + k].st == fb->e[pb->e0 + k].st;
     for (int k = 0; same && k < pa->nj; k++)
