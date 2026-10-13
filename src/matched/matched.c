@@ -40405,7 +40405,635 @@ L50E9:
 }
 
 
+/* SETUP 0000:0010: the setup questions and joystick calibration.
+ * Read the shared handover segment from BIOS 0000:04F0, load MISC's exports,
+ * open the text console, ask about joystick/sound, calibrate the stick and
+ * select driver names. The settings record survives this program's exit.
+ * Keep the live frame and all original calls: several helpers can terminate
+ * the process instead of returning. Keyboard/button thunks are patched by
+ * copy_table, so far targets must come from the relocated live operands.
+ * D3 lives at 042D; decline while that fix is placed, so it gets its turn.
+ * Frame -46 holds a key, -3E is question-pending, -56 is sound-question-needed,
+ * -68/-54 are driver-name buffers. No caller/helper state is cached.
+ */
+static int setup_questions(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+    int started=0;
+    enum {
+        SQ_SETTINGS=0x0FD6, SQ_SETTINGS_SEG=0x0FD8,
+        SQ_VIDEO_BLOCK=0x0FD0, SQ_VIDEO_SEG=0x0FD2,
+        SQ_MISC_SEGMENT=0x0FBE, SQ_VIDEO_REQUEST=0x0FC0,
+        SQ_JOYSTICK=0x0FD4, SQ_VIDEO_MODE=0x0776, SQ_CLEAR_LINE=0x0780
+    };
+    if (fix_inside(c,0x0010,0x0503)) return 0;
+#define SQ_NEED(n_, ip_) do { if (!room(c,(n_))) { c->ip=(ip_); return started; } started=1; } while (0)
+/* Nested keyboard waits must stop at this event boundary, even when the
+ * outer host slice extends further. Restore its budget after the call. */
+#define SQ_RUN(call_) do { const uint64_t until_=m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until=c->stop_at; \
+    const int returned_=(call_); m->run_until=until_; \
+    if (!returned_) return 1; } while (0)
+#define SQ_CALL(at_,ret_) SQ_RUN(guest_call(m,(at_),(ret_)))
+#define SQ_FAR(at_,ret_) SQ_RUN(guest_call_far(m,(at_),(ret_)))
+
+
+setup_begin: /* Read the shared configuration and publish MISC calls. */
+    SQ_NEED(14, 0x0010);
+    /*0010*/ cpu_push16(c, c->r[R_BP]); /*0011*/ c->r[R_BP] = (uint16_t)(c->r[R_SP]); /*0013*/ c->r[R_SP] = (uint16_t)(alu_sub(c, c->r[R_SP], 0x6E, 1, 0));
+    /*0016*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x40), 0x0); /*001B*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x42), 0x4F0);
+    /*0020*/ { const uint16_t at_=(uint16_t)(c->r[R_BP] - 0x42), lo_=seg_read16(c,c->seg[S_SS],at_), hi_=seg_read16(c,c->seg[S_SS],(uint16_t)(at_+2)); c->r[R_BX] = (uint16_t)(lo_); c->seg[S_ES]=hi_; }
+    /*0023*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX]))); /*0026*/ seg_write16(c, c->seg[S_DS], (uint16_t)(SQ_SETTINGS_SEG), c->r[R_AX]);
+    /*0029*/ seg_write16(c, c->seg[S_DS], (uint16_t)(SQ_SETTINGS), 0x0); /*002F*/ seg_write16(c, c->seg[S_DS], (uint16_t)(SQ_VIDEO_SEG), c->r[R_AX]);
+    /*0032*/ seg_write16(c, c->seg[S_DS], (uint16_t)(SQ_VIDEO_BLOCK), 0x120E); /*0038*/ c->r[R_AX] = (uint16_t)(0xBF); /*003B*/ cpu_push16(c, c->r[R_AX]);
+    /*003C*/ c->icount += 13; SQ_CALL(0x0A9F,0x003F);
+L003F:
+    SQ_NEED(4, 0x003F);
+    /*003F*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*0040*/ seg_write16(c, c->seg[S_DS], (uint16_t)(SQ_MISC_SEGMENT), c->r[R_AX]); /*0043*/ cpu_push16(c, c->r[R_AX]);
+    /*0044*/ c->icount += 3; SQ_CALL(0x0BA2,0x0047);
+L0047:
+    SQ_NEED(2, 0x0047);
+    /*0047*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c));
+    /*0048*/ c->icount += 1; SQ_CALL(0x0C35,0x004B);
+
+setup_console: /* Open text mode and draw the setup notices. */
+    SQ_NEED(7, 0x004B);
+    /*004B*/ seg_write16(c, c->seg[S_DS], (uint16_t)(SQ_VIDEO_REQUEST), 0x3); /*0051*/ c->r[R_AX] = (uint16_t)(0xFC0); /*0054*/ cpu_push16(c, c->r[R_AX]);
+    /*0055*/ cpu_push16(c, c->r[R_AX]); /*0056*/ c->r[R_AX] = (uint16_t)(0x10); /*0059*/ cpu_push16(c, c->r[R_AX]);
+    /*005A*/ c->icount += 6; SQ_CALL(0x1387,0x005D);
+L005D:
+    SQ_NEED(7, 0x005D);
+    /*005D*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x6, 1, 0)); /*0060*/ c->r[R_AX] = (uint16_t)(0xC8); /*0063*/ cpu_push16(c, c->r[R_AX]);
+    /*0064*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0)); /*0066*/ cpu_push16(c, c->r[R_AX]); /*0067*/ cpu_push16(c, c->r[R_AX]);
+    /*0068*/ c->icount += 6; SQ_CALL(0x14BE,0x006B);
+L006B:
+    SQ_NEED(8, 0x006B);
+    /*006B*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x6, 1, 0)); /*006E*/ c->r[R_AX] = (uint16_t)(0xCB); /*0071*/ cpu_push16(c, c->r[R_AX]);
+    /*0072*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0)); /*0074*/ cpu_push16(c, c->r[R_AX]); /*0075*/ c->r[R_CX] = (uint16_t)(0x1);
+    /*0078*/ cpu_push16(c, c->r[R_CX]);
+    /*0079*/ c->icount += 7; SQ_CALL(0x14BE,0x007C);
+L007C:
+    SQ_NEED(8, 0x007C);
+    /*007C*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x6, 1, 0)); /*007F*/ c->r[R_AX] = (uint16_t)(0x11C); /*0082*/ cpu_push16(c, c->r[R_AX]);
+    /*0083*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0)); /*0085*/ cpu_push16(c, c->r[R_AX]); /*0086*/ c->r[R_CX] = (uint16_t)(0x2);
+    /*0089*/ cpu_push16(c, c->r[R_CX]);
+    /*008A*/ c->icount += 7; SQ_CALL(0x14BE,0x008D);
+L008D:
+    SQ_NEED(8, 0x008D);
+    /*008D*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x6, 1, 0)); /*0090*/ c->r[R_AX] = (uint16_t)(0x16D); /*0093*/ cpu_push16(c, c->r[R_AX]);
+    /*0094*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0)); /*0096*/ cpu_push16(c, c->r[R_AX]); /*0097*/ c->r[R_CX] = (uint16_t)(0x3);
+    /*009A*/ cpu_push16(c, c->r[R_CX]);
+    /*009B*/ c->icount += 7; SQ_CALL(0x14BE,0x009E);
+L009E:
+    SQ_NEED(8, 0x009E);
+    /*009E*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x6, 1, 0)); /*00A1*/ c->r[R_AX] = (uint16_t)(0x1BE); /*00A4*/ cpu_push16(c, c->r[R_AX]);
+    /*00A5*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0)); /*00A7*/ cpu_push16(c, c->r[R_AX]); /*00A8*/ c->r[R_CX] = (uint16_t)(0x4);
+    /*00AB*/ cpu_push16(c, c->r[R_CX]);
+    /*00AC*/ c->icount += 7; SQ_CALL(0x14BE,0x00AF);
+L00AF:
+    SQ_NEED(8, 0x00AF);
+    /*00AF*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x6, 1, 0)); /*00B2*/ c->r[R_AX] = (uint16_t)(0x20F); /*00B5*/ cpu_push16(c, c->r[R_AX]);
+    /*00B6*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0)); /*00B8*/ cpu_push16(c, c->r[R_AX]); /*00B9*/ c->r[R_CX] = (uint16_t)(0x5);
+    /*00BC*/ cpu_push16(c, c->r[R_CX]);
+    /*00BD*/ c->icount += 7; SQ_CALL(0x14BE,0x00C0);
+L00C0:
+    SQ_NEED(8, 0x00C0);
+    /*00C0*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x6, 1, 0)); /*00C3*/ c->r[R_AX] = (uint16_t)(0x260); /*00C6*/ cpu_push16(c, c->r[R_AX]);
+    /*00C7*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0)); /*00C9*/ cpu_push16(c, c->r[R_AX]); /*00CA*/ c->r[R_CX] = (uint16_t)(0x6);
+    /*00CD*/ cpu_push16(c, c->r[R_CX]);
+    /*00CE*/ c->icount += 7; SQ_CALL(0x14BE,0x00D1);
+L00D1:
+    SQ_NEED(8, 0x00D1);
+    /*00D1*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x6, 1, 0)); /*00D4*/ c->r[R_AX] = (uint16_t)(0x2B1); /*00D7*/ cpu_push16(c, c->r[R_AX]);
+    /*00D8*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0)); /*00DA*/ cpu_push16(c, c->r[R_AX]); /*00DB*/ c->r[R_CX] = (uint16_t)(0x7);
+    /*00DE*/ cpu_push16(c, c->r[R_CX]);
+    /*00DF*/ c->icount += 7; SQ_CALL(0x14BE,0x00E2);
+L00E2:
+    SQ_NEED(8, 0x00E2);
+    /*00E2*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x6, 1, 0)); /*00E5*/ c->r[R_AX] = (uint16_t)(0x302); /*00E8*/ cpu_push16(c, c->r[R_AX]);
+    /*00E9*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0)); /*00EB*/ cpu_push16(c, c->r[R_AX]); /*00EC*/ c->r[R_CX] = (uint16_t)(0x8);
+    /*00EF*/ cpu_push16(c, c->r[R_CX]);
+    /*00F0*/ c->icount += 7; SQ_CALL(0x14BE,0x00F3);
+L00F3:
+    SQ_NEED(8, 0x00F3);
+    /*00F3*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x6, 1, 0)); /*00F6*/ c->r[R_AX] = (uint16_t)(0x353); /*00F9*/ cpu_push16(c, c->r[R_AX]);
+    /*00FA*/ c->r[R_AX] = (uint16_t)(0x20); /*00FD*/ cpu_push16(c, c->r[R_AX]); /*00FE*/ c->r[R_AX] = (uint16_t)(0xA); /*0101*/ cpu_push16(c, c->r[R_AX]);
+    /*0102*/ c->icount += 7; SQ_CALL(0x14BE,0x0105);
+L0105:
+    SQ_NEED(8, 0x0105);
+    /*0105*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x6, 1, 0)); /*0108*/ c->r[R_AX] = (uint16_t)(0x362); /*010B*/ cpu_push16(c, c->r[R_AX]);
+    /*010C*/ c->r[R_AX] = (uint16_t)(0x12); /*010F*/ cpu_push16(c, c->r[R_AX]); /*0110*/ c->r[R_CX] = (uint16_t)(0xC); /*0113*/ cpu_push16(c, c->r[R_CX]);
+    /*0114*/ c->icount += 7; SQ_CALL(0x14BE,0x0117);
+L0117:
+    SQ_NEED(8, 0x0117);
+    /*0117*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x6, 1, 0)); /*011A*/ c->r[R_AX] = (uint16_t)(0x38F); /*011D*/ cpu_push16(c, c->r[R_AX]);
+    /*011E*/ c->r[R_AX] = (uint16_t)(0x15); /*0121*/ cpu_push16(c, c->r[R_AX]); /*0122*/ c->r[R_CX] = (uint16_t)(0xE); /*0125*/ cpu_push16(c, c->r[R_CX]);
+    /*0126*/ c->icount += 7; SQ_CALL(0x14BE,0x0129);
+L0129:
+    SQ_NEED(8, 0x0129);
+    /*0129*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x6, 1, 0)); /*012C*/ c->r[R_AX] = (uint16_t)(0x3B6); /*012F*/ cpu_push16(c, c->r[R_AX]);
+    /*0130*/ c->r[R_AX] = (uint16_t)(0x15); /*0133*/ cpu_push16(c, c->r[R_AX]); /*0134*/ c->r[R_AX] = (uint16_t)(0xF); /*0137*/ cpu_push16(c, c->r[R_AX]);
+    /*0138*/ c->icount += 7; SQ_CALL(0x14BE,0x013B);
+L013B:
+    SQ_NEED(8, 0x013B);
+    /*013B*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x6, 1, 0)); /*013E*/ c->r[R_AX] = (uint16_t)(0x3DD); /*0141*/ cpu_push16(c, c->r[R_AX]);
+    /*0142*/ c->r[R_AX] = (uint16_t)(0xF); /*0145*/ cpu_push16(c, c->r[R_AX]); /*0146*/ c->r[R_AX] = (uint16_t)(0x11); /*0149*/ cpu_push16(c, c->r[R_AX]);
+    /*014A*/ c->icount += 7; SQ_CALL(0x14BE,0x014D);
+L014D:
+    SQ_NEED(7, 0x014D);
+    /*014D*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x6, 1, 0)); /*0150*/ c->r[R_AX] = (uint16_t)(0x410); /*0153*/ cpu_push16(c, c->r[R_AX]);
+    /*0154*/ c->r[R_AX] = (uint16_t)(0x12); /*0157*/ cpu_push16(c, c->r[R_AX]); /*0158*/ cpu_push16(c, c->r[R_AX]);
+    /*0159*/ c->icount += 6; SQ_CALL(0x14BE,0x015C);
+L015C:
+    SQ_NEED(8, 0x015C);
+    /*015C*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x6, 1, 0)); /*015F*/ c->r[R_AX] = (uint16_t)(0x43C); /*0162*/ cpu_push16(c, c->r[R_AX]);
+    /*0163*/ c->r[R_AX] = (uint16_t)(0x2); /*0166*/ cpu_push16(c, c->r[R_AX]); /*0167*/ c->r[R_AX] = (uint16_t)(0x14); /*016A*/ cpu_push16(c, c->r[R_AX]);
+    /*016B*/ c->icount += 7; SQ_CALL(0x14BE,0x016E);
+L016E:
+    SQ_NEED(2, 0x016E);
+    /*016E*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x6, 1, 0));
+    /*0171*/ c->icount += 1; SQ_CALL(0x0C84,0x0174);
+L0174:
+    SQ_NEED(2, 0x0174);
+    /*0174*/ c->r[R_AX] = (uint16_t)(alu_logic(c, c->r[R_AX] | c->r[R_AX], 1));
+    /*0176*/ c->icount += 2; if (x86_cond(c,4)) goto setup_defaults;
+L0178:
+    SQ_NEED(7, 0x0178);
+    /*0178*/ c->r[R_AX] = (uint16_t)(0x489); /*017B*/ cpu_push16(c, c->r[R_AX]); /*017C*/ c->r[R_AX] = (uint16_t)(0x10); /*017F*/ cpu_push16(c, c->r[R_AX]);
+    /*0180*/ c->r[R_AX] = (uint16_t)(0x16); /*0183*/ cpu_push16(c, c->r[R_AX]);
+    /*0184*/ c->icount += 6; SQ_CALL(0x14BE,0x0187);
+L0187:
+    SQ_NEED(4, 0x0187);
+    /*0187*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x6, 1, 0)); /*018A*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0));
+    /*018C*/ cpu_push16(c, c->r[R_AX]);
+    /*018D*/ c->icount += 3; SQ_CALL(0x053B,0x0190);
+L0190:
+    SQ_NEED(1, 0x0190);
+    /*0190*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c));
+    c->icount += 1;
+
+setup_defaults: /* Set defaults in the shared record and initialise both questions. */
+    SQ_NEED(12, 0x0191);
+    /*0191*/ { const uint16_t at_=(uint16_t)(SQ_SETTINGS), lo_=seg_read16(c,c->seg[S_DS],at_), hi_=seg_read16(c,c->seg[S_DS],(uint16_t)(at_+2)); c->r[R_BX] = (uint16_t)(lo_); c->seg[S_ES]=hi_; }
+    /*0195*/ seg_write16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x22), 0x1); /*019B*/ mem_write8(c, phys(c->seg[S_DS], (uint16_t)(SQ_JOYSTICK)), 0x0);
+    /*01A0*/ seg_write16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x24), 0x0); /*01A6*/ seg_write16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x70), 0x0);
+    /*01AC*/ seg_write16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x32), 0xFFFF); /*01B2*/ seg_write16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x2a), 0x0);
+    /*01B8*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0)); /*01BA*/ cpu_push16(c, c->r[R_AX]); /*01BB*/ c->r[R_CX] = (uint16_t)(0x16);
+    /*01BE*/ cpu_push16(c, c->r[R_CX]);
+    /*01BF*/ c->icount += 11; SQ_CALL(0x0512,0x01C2);
+L01C2:
+    SQ_NEED(9, 0x01C2);
+    /*01C2*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*01C3*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*01C4*/ c->r[R_AX] = (uint16_t)(0x4BA);
+    /*01C7*/ cpu_push16(c, c->r[R_AX]); /*01C8*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0)); /*01CA*/ cpu_push16(c, c->r[R_AX]);
+    /*01CB*/ c->r[R_AX] = (uint16_t)(0x16); /*01CE*/ cpu_push16(c, c->r[R_AX]);
+    /*01CF*/ c->icount += 8; SQ_CALL(0x14BE,0x01D2);
+L01D2:
+    SQ_NEED(9, 0x01D2);
+    /*01D2*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x6, 1, 0)); /*01D5*/ set_r8(c, R_AL, (uint8_t)(0x1));
+    /*01D7*/ mem_write8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x56)), get_r8(c, R_AL));
+    /*01DA*/ mem_write8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 4)), get_r8(c, R_AL));
+    /*01DD*/ mem_write8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x6e)), get_r8(c, R_AL));
+    /*01E0*/ mem_write8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x6a)), get_r8(c, R_AL));
+    /*01E3*/ mem_write8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 6)), get_r8(c, R_AL));
+    /*01E6*/ mem_write8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x3e)), get_r8(c, R_AL));
+    /*01E9*/ c->icount += 9; goto L023A;
+
+setup_joystick_question: /* Read Y/N; extended keys request the original abort path. */
+    SQ_NEED(1, 0x01EB);
+    /*01EB*/ c->icount += 0; SQ_FAR(0x01EB,0x01F0);
+L01F0:
+    SQ_NEED(2, 0x01F0);
+    /*01F0*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x46), c->r[R_AX]);
+    /*01F3*/ c->icount += 1; SQ_CALL(0x0503,0x01F6);
+L01F6:
+    SQ_NEED(2, 0x01F6);
+    /*01F6*/ alu_sub(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x46)), 0x100, 1, 0);
+    /*01FB*/ c->icount += 2; if (x86_cond(c,5)) goto L0204;
+L01FD:
+    SQ_NEED(3, 0x01FD);
+    /*01FD*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0)); /*01FF*/ cpu_push16(c, c->r[R_AX]);
+    /*0200*/ c->icount += 2; SQ_CALL(0x053B,0x0203);
+L0203:
+    SQ_NEED(1, 0x0203);
+    /*0203*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c));
+    c->icount += 1;
+L0204:
+    SQ_NEED(3, 0x0204);
+    /*0204*/ mem_write8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x45)), 0x0);
+    /*0208*/ alu_sub(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x46)), 0x59, 1, 0);
+    /*020C*/ c->icount += 3; if (x86_cond(c,4)) goto L0214;
+L020E:
+    SQ_NEED(2, 0x020E);
+    /*020E*/ alu_sub(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x46)), 0x79, 1, 0);
+    /*0212*/ c->icount += 2; if (x86_cond(c,5)) goto L0220;
+L0214:
+    SQ_NEED(3, 0x0214);
+    /*0214*/ { const uint16_t at_=(uint16_t)(SQ_SETTINGS), lo_=seg_read16(c,c->seg[S_DS],at_), hi_=seg_read16(c,c->seg[S_DS],(uint16_t)(at_+2)); c->r[R_BX] = (uint16_t)(lo_); c->seg[S_ES]=hi_; }
+    /*0218*/ seg_write16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x72), 0x1);
+    /*021E*/ c->icount += 3; goto L0236;
+L0220:
+    SQ_NEED(2, 0x0220);
+    /*0220*/ alu_sub(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x46)), 0x4E, 1, 0);
+    /*0224*/ c->icount += 2; if (x86_cond(c,4)) goto L022C;
+L0226:
+    SQ_NEED(2, 0x0226);
+    /*0226*/ alu_sub(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x46)), 0x6E, 1, 0);
+    /*022A*/ c->icount += 2; if (x86_cond(c,5)) goto L023A;
+L022C:
+    SQ_NEED(2, 0x022C);
+    /*022C*/ { const uint16_t at_=(uint16_t)(SQ_SETTINGS), lo_=seg_read16(c,c->seg[S_DS],at_), hi_=seg_read16(c,c->seg[S_DS],(uint16_t)(at_+2)); c->r[R_BX] = (uint16_t)(lo_); c->seg[S_ES]=hi_; }
+    /*0230*/ seg_write16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x72), 0x0);
+    c->icount += 2;
+L0236:
+    SQ_NEED(1, 0x0236);
+    /*0236*/ mem_write8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x3e)), 0x0);
+    c->icount += 1;
+L023A:
+    SQ_NEED(2, 0x023A);
+    /*023A*/ alu_sub(c, mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x3e))), 0x0, 0, 0);
+    /*023E*/ c->icount += 2; if (x86_cond(c,5)) goto setup_joystick_question;
+
+setup_calibrate: /* When requested, measure button transitions and stick position. */
+    SQ_NEED(3, 0x0240);
+    /*0240*/ { const uint16_t at_=(uint16_t)(SQ_SETTINGS), lo_=seg_read16(c,c->seg[S_DS],at_), hi_=seg_read16(c,c->seg[S_DS],(uint16_t)(at_+2)); c->r[R_BX] = (uint16_t)(lo_); c->seg[S_ES]=hi_; }
+    /*0244*/ alu_logic(c, mem_read8(c, phys(c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x72))) & 0x1, 0);
+    /*0249*/ c->icount += 3; if (x86_cond(c,5)) goto L024E;
+L024B:
+    SQ_NEED(1, 0x024B);
+    /*024B*/ c->icount += 1; goto setup_driver_names;
+L024E:
+    SQ_NEED(2, 0x024E);
+    /*024E*/ mem_write8(c, phys(c->seg[S_DS], (uint16_t)(SQ_JOYSTICK)), 0x1);
+    /*0253*/ c->icount += 1; SQ_CALL(0x0FC0,0x0256);
+L0256:
+    SQ_NEED(7, 0x0256);
+    /*0256*/ c->r[R_AX] = (uint16_t)(0x4F6); /*0259*/ cpu_push16(c, c->r[R_AX]); /*025A*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0));
+    /*025C*/ cpu_push16(c, c->r[R_AX]); /*025D*/ c->r[R_AX] = (uint16_t)(0x16); /*0260*/ cpu_push16(c, c->r[R_AX]);
+    /*0261*/ c->icount += 6; SQ_CALL(0x14BE,0x0264);
+L0264:
+    SQ_NEED(2, 0x0264);
+    /*0264*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x6, 1, 0));
+    /*0267*/ c->icount += 2; goto L026C;
+
+setup_press_wait: /* Wait for the first press. */
+    SQ_NEED(1, 0x0269);
+    /*0269*/ c->icount += 0; SQ_CALL(0x0503,0x026C);
+L026C:
+    SQ_NEED(3, 0x026C);
+    /*026C*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0)); /*026E*/ cpu_push16(c, c->r[R_AX]);
+    /*026F*/ c->icount += 2; SQ_FAR(0x026F,0x0274);
+L0274:
+    SQ_NEED(3, 0x0274);
+    /*0274*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*0275*/ c->r[R_AX] = (uint16_t)(alu_logic(c, c->r[R_AX] | c->r[R_AX], 1));
+    /*0277*/ c->icount += 3; if (x86_cond(c,4)) goto setup_press_wait;
+L0279:
+    SQ_NEED(1, 0x0279);
+    /*0279*/ c->icount += 0; SQ_FAR(0x0279,0x027E);
+L027E:
+    SQ_NEED(1, 0x027E);
+    /*027E*/ c->icount += 0; SQ_CALL(0x0FFE,0x0281);
+L0281:
+    SQ_NEED(3, 0x0281);
+    /*0281*/ c->r[R_AX] = (uint16_t)(0x2); /*0284*/ cpu_push16(c, c->r[R_AX]);
+    /*0285*/ c->icount += 2; SQ_CALL(0x0A4B,0x0288);
+L0288:
+    SQ_NEED(2, 0x0288);
+    /*0288*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c));
+    /*0289*/ c->icount += 2; goto L028E;
+
+setup_release_wait: /* Wait for button release. */
+    SQ_NEED(1, 0x028B);
+    /*028B*/ c->icount += 0; SQ_CALL(0x0503,0x028E);
+L028E:
+    SQ_NEED(3, 0x028E);
+    /*028E*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0)); /*0290*/ cpu_push16(c, c->r[R_AX]);
+    /*0291*/ c->icount += 2; SQ_FAR(0x0291,0x0296);
+L0296:
+    SQ_NEED(3, 0x0296);
+    /*0296*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*0297*/ c->r[R_AX] = (uint16_t)(alu_logic(c, c->r[R_AX] | c->r[R_AX], 1));
+    /*0299*/ c->icount += 3; if (x86_cond(c,5)) goto setup_release_wait;
+L029B:
+    SQ_NEED(7, 0x029B);
+    /*029B*/ c->r[R_AX] = (uint16_t)(0x536); /*029E*/ cpu_push16(c, c->r[R_AX]); /*029F*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0));
+    /*02A1*/ cpu_push16(c, c->r[R_AX]); /*02A2*/ c->r[R_AX] = (uint16_t)(0x16); /*02A5*/ cpu_push16(c, c->r[R_AX]);
+    /*02A6*/ c->icount += 6; SQ_CALL(0x14BE,0x02A9);
+L02A9:
+    SQ_NEED(2, 0x02A9);
+    /*02A9*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x6, 1, 0));
+    /*02AC*/ c->icount += 1; SQ_FAR(0x02AC,0x02B1);
+L02B1:
+    SQ_NEED(1, 0x02B1);
+    /*02B1*/ c->icount += 1; goto L02BB;
+
+setup_centre_wait: /* Measure the centred stick until the next press. */
+    SQ_NEED(1, 0x02B3);
+    /*02B3*/ c->icount += 0; SQ_FAR(0x02B3,0x02B8);
+L02B8:
+    SQ_NEED(1, 0x02B8);
+    /*02B8*/ c->icount += 0; SQ_CALL(0x0503,0x02BB);
+L02BB:
+    SQ_NEED(3, 0x02BB);
+    /*02BB*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0)); /*02BD*/ cpu_push16(c, c->r[R_AX]);
+    /*02BE*/ c->icount += 2; SQ_FAR(0x02BE,0x02C3);
+L02C3:
+    SQ_NEED(3, 0x02C3);
+    /*02C3*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*02C4*/ c->r[R_AX] = (uint16_t)(alu_logic(c, c->r[R_AX] | c->r[R_AX], 1));
+    /*02C6*/ c->icount += 3; if (x86_cond(c,4)) goto setup_centre_wait;
+L02C8:
+    SQ_NEED(7, 0x02C8);
+    /*02C8*/ c->r[R_AX] = (uint16_t)(0x57D); /*02CB*/ cpu_push16(c, c->r[R_AX]); /*02CC*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0));
+    /*02CE*/ cpu_push16(c, c->r[R_AX]); /*02CF*/ c->r[R_AX] = (uint16_t)(0x16); /*02D2*/ cpu_push16(c, c->r[R_AX]);
+    /*02D3*/ c->icount += 6; SQ_CALL(0x14BE,0x02D6);
+L02D6:
+    SQ_NEED(2, 0x02D6);
+    /*02D6*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x6, 1, 0));
+    /*02D9*/ c->icount += 1; SQ_FAR(0x02D9,0x02DE);
+L02DE:
+    SQ_NEED(1, 0x02DE);
+    /*02DE*/ c->icount += 1; goto L02E8;
+
+setup_corner_wait: /* Measure the second stick position until confirmation. */
+    SQ_NEED(1, 0x02E0);
+    /*02E0*/ c->icount += 0; SQ_FAR(0x02E0,0x02E5);
+L02E5:
+    SQ_NEED(1, 0x02E5);
+    /*02E5*/ c->icount += 0; SQ_CALL(0x0503,0x02E8);
+L02E8:
+    SQ_NEED(3, 0x02E8);
+    /*02E8*/ c->r[R_AX] = (uint16_t)(0x1); /*02EB*/ cpu_push16(c, c->r[R_AX]);
+    /*02EC*/ c->icount += 2; SQ_FAR(0x02EC,0x02F1);
+L02F1:
+    SQ_NEED(3, 0x02F1);
+    /*02F1*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*02F2*/ c->r[R_AX] = (uint16_t)(alu_logic(c, c->r[R_AX] | c->r[R_AX], 1));
+    /*02F4*/ c->icount += 3; if (x86_cond(c,4)) goto setup_corner_wait;
+L02F6:
+    SQ_NEED(7, 0x02F6);
+    /*02F6*/ { const uint16_t at_=(uint16_t)(SQ_SETTINGS), lo_=seg_read16(c,c->seg[S_DS],at_), hi_=seg_read16(c,c->seg[S_DS],(uint16_t)(at_+2)); c->r[R_BX] = (uint16_t)(lo_); c->seg[S_ES]=hi_; }
+    /*02FA*/ set_r8(c, R_AL, (uint8_t)(mem_read8(c, phys(c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x24)))));
+    /*02FE*/ mem_write8(c, phys(c->seg[S_DS], (uint16_t)(SQ_JOYSTICK)), get_r8(c, R_AL)); /*0301*/ c->r[R_AX] = (uint16_t)((uint16_t)(c->r[R_BX] + 0x48));
+    /*0304*/ cpu_push16(c, c->seg[S_ES]); /*0305*/ cpu_push16(c, c->r[R_AX]);
+    /*0306*/ c->icount += 6; SQ_FAR(0x0306,0x030B);
+L030B:
+    SQ_NEED(2, 0x030B);
+    /*030B*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*030C*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c));
+    c->icount += 2;
+
+setup_driver_names: /* Detect the interface and copy the machine driver name. */
+    SQ_NEED(4, 0x030D);
+    /*030D*/ set_r8(c, R_AL, (uint8_t)(0x80)); /*030F*/ mem_write8(c, phys(c->seg[S_DS], (uint16_t)(0xe25)), get_r8(c, R_AL));
+    /*0312*/ mem_write8(c, phys(c->seg[S_DS], (uint16_t)(0xe24)), get_r8(c, R_AL));
+    /*0315*/ c->icount += 3; SQ_FAR(0x0315,0x031A);
+L031A:
+    SQ_NEED(2, 0x031A);
+    /*031A*/ c->r[R_AX] = (uint16_t)(alu_logic(c, c->r[R_AX] | c->r[R_AX], 1));
+    /*031C*/ c->icount += 2; if (x86_cond(c,4)) goto L0327;
+L031E:
+    SQ_NEED(2, 0x031E);
+    /*031E*/ { const uint16_t at_=(uint16_t)(SQ_SETTINGS), lo_=seg_read16(c,c->seg[S_DS],at_), hi_=seg_read16(c,c->seg[S_DS],(uint16_t)(at_+2)); c->r[R_BX] = (uint16_t)(lo_); c->seg[S_ES]=hi_; }
+    /*0322*/ mem_write8(c, phys(c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x72)), alu_logic(c, mem_read8(c, phys(c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x72))) | 0x2, 0));
+    c->icount += 2;
+L0327:
+    SQ_NEED(5, 0x0327);
+    /*0327*/ c->r[R_AX] = (uint16_t)(0x5C7); /*032A*/ cpu_push16(c, c->r[R_AX]); /*032B*/ c->r[R_AX] = (uint16_t)((uint16_t)(c->r[R_BP] - 0x68));
+    /*032E*/ cpu_push16(c, c->r[R_AX]);
+    /*032F*/ c->icount += 4; SQ_CALL(0x1244,0x0332);
+L0332:
+    SQ_NEED(7, 0x0332);
+    /*0332*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*0333*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c));
+    /*0334*/ c->r[R_AX] = (uint16_t)((uint16_t)(c->r[R_BP] - 0x68)); /*0337*/ cpu_push16(c, c->r[R_AX]);
+    /*0338*/ cpu_push16(c, seg_read16(c, c->seg[S_DS], (uint16_t)(SQ_SETTINGS_SEG))); /*033C*/ cpu_push16(c, seg_read16(c, c->seg[S_DS], (uint16_t)(SQ_SETTINGS)));
+    /*0340*/ c->icount += 6; SQ_CALL(0x125F,0x0343);
+L0343:
+    SQ_NEED(6, 0x0343);
+    /*0343*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x6, 1, 0)); /*0346*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0));
+    /*0348*/ cpu_push16(c, c->r[R_AX]); /*0349*/ c->r[R_AX] = (uint16_t)(0x9); /*034C*/ cpu_push16(c, c->r[R_AX]);
+    /*034D*/ c->icount += 5; SQ_CALL(0x0512,0x0350);
+L0350:
+    SQ_NEED(3, 0x0350);
+    /*0350*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*0351*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c));
+    /*0352*/ mem_write8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44)), 0x1);
+    c->icount += 3;
+
+setup_clear_lines: /* Clear the old joystick prompt. */
+    SQ_NEED(2, 0x0356);
+    /*0356*/ cpu_push16(c, seg_read16(c, c->seg[S_DS], (uint16_t)(SQ_CLEAR_LINE)));
+    /*035A*/ c->icount += 1; SQ_CALL(0x1509,0x035D);
+L035D:
+    SQ_NEED(4, 0x035D);
+    /*035D*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c));
+    /*035E*/ mem_write8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44)), alu_inc(c, mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44))), 0));
+    /*0361*/ alu_sub(c, mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44))), 0xE, 0, 0);
+    /*0365*/ c->icount += 4; if (x86_cond(c,6)) goto setup_clear_lines;
+L0367:
+    SQ_NEED(2, 0x0367);
+    /*0367*/ alu_sub(c, mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x56))), 0x0, 0, 0);
+    /*036B*/ c->icount += 2; if (x86_cond(c,5)) goto setup_sound_prompt;
+L036D:
+    SQ_NEED(1, 0x036D);
+    /*036D*/ c->icount += 1; goto setup_publish;
+
+setup_sound_prompt: /* Draw the four sound choices if required. */
+    SQ_NEED(5, 0x0370);
+    /*0370*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0)); /*0372*/ cpu_push16(c, c->r[R_AX]); /*0373*/ c->r[R_CX] = (uint16_t)(0x9);
+    /*0376*/ cpu_push16(c, c->r[R_CX]);
+    /*0377*/ c->icount += 4; SQ_CALL(0x0512,0x037A);
+L037A:
+    SQ_NEED(4, 0x037A);
+    /*037A*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*037B*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c));
+    /*037C*/ cpu_push16(c, seg_read16(c, c->seg[S_DS], (uint16_t)(SQ_CLEAR_LINE)));
+    /*0380*/ c->icount += 3; SQ_CALL(0x1509,0x0383);
+L0383:
+    SQ_NEED(3, 0x0383);
+    /*0383*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*0384*/ cpu_push16(c, seg_read16(c, c->seg[S_DS], (uint16_t)(SQ_CLEAR_LINE)));
+    /*0388*/ c->icount += 2; SQ_CALL(0x1509,0x038B);
+L038B:
+    SQ_NEED(3, 0x038B);
+    /*038B*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*038C*/ cpu_push16(c, seg_read16(c, c->seg[S_DS], (uint16_t)(SQ_CLEAR_LINE)));
+    /*0390*/ c->icount += 2; SQ_CALL(0x1509,0x0393);
+L0393:
+    SQ_NEED(3, 0x0393);
+    /*0393*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*0394*/ cpu_push16(c, seg_read16(c, c->seg[S_DS], (uint16_t)(SQ_CLEAR_LINE)));
+    /*0398*/ c->icount += 2; SQ_CALL(0x1509,0x039B);
+L039B:
+    SQ_NEED(8, 0x039B);
+    /*039B*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*039C*/ c->r[R_AX] = (uint16_t)(0x5D4); /*039F*/ cpu_push16(c, c->r[R_AX]);
+    /*03A0*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0)); /*03A2*/ cpu_push16(c, c->r[R_AX]); /*03A3*/ c->r[R_CX] = (uint16_t)(0xD);
+    /*03A6*/ cpu_push16(c, c->r[R_CX]);
+    /*03A7*/ c->icount += 7; SQ_CALL(0x14BE,0x03AA);
+L03AA:
+    SQ_NEED(3, 0x03AA);
+    /*03AA*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x6, 1, 0)); /*03AD*/ cpu_push16(c, seg_read16(c, c->seg[S_DS], (uint16_t)(SQ_CLEAR_LINE)));
+    /*03B1*/ c->icount += 2; SQ_CALL(0x1509,0x03B4);
+L03B4:
+    SQ_NEED(8, 0x03B4);
+    /*03B4*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*03B5*/ c->r[R_AX] = (uint16_t)(0x624); /*03B8*/ cpu_push16(c, c->r[R_AX]);
+    /*03B9*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0)); /*03BB*/ cpu_push16(c, c->r[R_AX]); /*03BC*/ c->r[R_CX] = (uint16_t)(0xF);
+    /*03BF*/ cpu_push16(c, c->r[R_CX]);
+    /*03C0*/ c->icount += 7; SQ_CALL(0x14BE,0x03C3);
+L03C3:
+    SQ_NEED(8, 0x03C3);
+    /*03C3*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x6, 1, 0)); /*03C6*/ c->r[R_AX] = (uint16_t)(0x673); /*03C9*/ cpu_push16(c, c->r[R_AX]);
+    /*03CA*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0)); /*03CC*/ cpu_push16(c, c->r[R_AX]); /*03CD*/ c->r[R_CX] = (uint16_t)(0x10);
+    /*03D0*/ cpu_push16(c, c->r[R_CX]);
+    /*03D1*/ c->icount += 7; SQ_CALL(0x14BE,0x03D4);
+L03D4:
+    SQ_NEED(8, 0x03D4);
+    /*03D4*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x6, 1, 0)); /*03D7*/ c->r[R_AX] = (uint16_t)(0x6C2); /*03DA*/ cpu_push16(c, c->r[R_AX]);
+    /*03DB*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0)); /*03DD*/ cpu_push16(c, c->r[R_AX]); /*03DE*/ c->r[R_CX] = (uint16_t)(0x11);
+    /*03E1*/ cpu_push16(c, c->r[R_CX]);
+    /*03E2*/ c->icount += 7; SQ_CALL(0x14BE,0x03E5);
+L03E5:
+    SQ_NEED(8, 0x03E5);
+    /*03E5*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x6, 1, 0)); /*03E8*/ c->r[R_AX] = (uint16_t)(0x711); /*03EB*/ cpu_push16(c, c->r[R_AX]);
+    /*03EC*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0)); /*03EE*/ cpu_push16(c, c->r[R_AX]); /*03EF*/ c->r[R_AX] = (uint16_t)(0x12);
+    /*03F2*/ cpu_push16(c, c->r[R_AX]);
+    /*03F3*/ c->icount += 7; SQ_CALL(0x14BE,0x03F6);
+L03F6:
+    SQ_NEED(3, 0x03F6);
+    /*03F6*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x6, 1, 0)); /*03F9*/ cpu_push16(c, seg_read16(c, c->seg[S_DS], (uint16_t)(SQ_CLEAR_LINE)));
+    /*03FD*/ c->icount += 2; SQ_CALL(0x1509,0x0400);
+L0400:
+    SQ_NEED(3, 0x0400);
+    /*0400*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*0401*/ cpu_push16(c, seg_read16(c, c->seg[S_DS], (uint16_t)(SQ_CLEAR_LINE)));
+    /*0405*/ c->icount += 2; SQ_CALL(0x1509,0x0408);
+L0408:
+    SQ_NEED(3, 0x0408);
+    /*0408*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*0409*/ cpu_push16(c, seg_read16(c, c->seg[S_DS], (uint16_t)(SQ_CLEAR_LINE)));
+    /*040D*/ c->icount += 2; SQ_CALL(0x1509,0x0410);
+L0410:
+    SQ_NEED(2, 0x0410);
+    /*0410*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*0411*/ mem_write8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x3e)), 0x1);
+    c->icount += 2;
+
+setup_sound_question: /* Select 1..4; the D3 keypad hook is inside this question. */
+    SQ_NEED(5, 0x0415);
+    /*0415*/ c->r[R_AX] = (uint16_t)(0x31); /*0418*/ cpu_push16(c, c->r[R_AX]); /*0419*/ c->r[R_AX] = (uint16_t)(0xD); /*041C*/ cpu_push16(c, c->r[R_AX]);
+    /*041D*/ c->icount += 4; SQ_CALL(0x0512,0x0420);
+L0420:
+    SQ_NEED(3, 0x0420);
+    /*0420*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*0421*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c));
+    /*0422*/ c->icount += 2; SQ_FAR(0x0422,0x0427);
+L0427:
+    SQ_NEED(2, 0x0427);
+    /*0427*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x46), c->r[R_AX]);
+    /*042A*/ c->icount += 1; SQ_CALL(0x0503,0x042D);
+L042D:
+    SQ_NEED(2, 0x042D);
+    /*042D*/ alu_sub(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x46)), 0x100, 1, 0);
+    /*0432*/ c->icount += 2; if (x86_cond(c,5)) goto L043B;
+L0434:
+    SQ_NEED(3, 0x0434);
+    /*0434*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0)); /*0436*/ cpu_push16(c, c->r[R_AX]);
+    /*0437*/ c->icount += 2; SQ_CALL(0x053B,0x043A);
+L043A:
+    SQ_NEED(1, 0x043A);
+    /*043A*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c));
+    c->icount += 1;
+L043B:
+    SQ_NEED(3, 0x043B);
+    /*043B*/ mem_write8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x45)), 0x0);
+    /*043F*/ alu_sub(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x46)), 0x31, 1, 0);
+    /*0443*/ c->icount += 3; if (x86_cond(c,2)) goto L0477;
+L0445:
+    SQ_NEED(2, 0x0445);
+    /*0445*/ alu_sub(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x46)), 0x34, 1, 0);
+    /*0449*/ c->icount += 2; if (x86_cond(c,7)) goto L0477;
+L044B:
+    SQ_NEED(6, 0x044B);
+    /*044B*/ c->r[R_BX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x46)));
+    /*044E*/ c->r[R_BX] = (uint16_t)(x86_shift(c, 4, c->r[R_BX], 0x1, 1)); /*0450*/ cpu_push16(c, seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] + 0x716)));
+    /*0454*/ c->r[R_AX] = (uint16_t)((uint16_t)(c->r[R_BP] - 0x54)); /*0457*/ cpu_push16(c, c->r[R_AX]);
+    /*0458*/ c->icount += 5; SQ_CALL(0x1244,0x045B);
+L045B:
+    SQ_NEED(10, 0x045B);
+    /*045B*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*045C*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c));
+    /*045D*/ c->r[R_AX] = (uint16_t)((uint16_t)(c->r[R_BP] - 0x54)); /*0460*/ cpu_push16(c, c->r[R_AX]);
+    /*0461*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(SQ_SETTINGS)));
+    /*0464*/ c->r[R_DX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(SQ_SETTINGS_SEG))); /*0468*/ c->r[R_AX] = (uint16_t)(alu_add(c, c->r[R_AX], 0xD, 1, 0));
+    /*046B*/ cpu_push16(c, c->r[R_DX]); /*046C*/ cpu_push16(c, c->r[R_AX]);
+    /*046D*/ c->icount += 9; SQ_CALL(0x125F,0x0470);
+L0470:
+    SQ_NEED(2, 0x0470);
+    /*0470*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x6, 1, 0)); /*0473*/ mem_write8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x3e)), 0x0);
+    c->icount += 2;
+L0477:
+    SQ_NEED(2, 0x0477);
+    /*0477*/ alu_sub(c, mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x3e))), 0x0, 0, 0);
+    /*047B*/ c->icount += 2; if (x86_cond(c,5)) goto setup_sound_question;
+
+setup_publish: /* Publish the selected driver and joystick state. */
+    SQ_NEED(5, 0x047D);
+    /*047D*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0)); /*047F*/ cpu_push16(c, c->r[R_AX]); /*0480*/ c->r[R_AX] = (uint16_t)(0xD);
+    /*0483*/ cpu_push16(c, c->r[R_AX]);
+    /*0484*/ c->icount += 4; SQ_CALL(0x0512,0x0487);
+L0487:
+    SQ_NEED(3, 0x0487);
+    /*0487*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*0488*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c));
+    /*0489*/ mem_write8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44)), 0x1);
+    c->icount += 3;
+L048D:
+    SQ_NEED(2, 0x048D);
+    /*048D*/ cpu_push16(c, seg_read16(c, c->seg[S_DS], (uint16_t)(SQ_CLEAR_LINE)));
+    /*0491*/ c->icount += 1; SQ_CALL(0x1509,0x0494);
+L0494:
+    SQ_NEED(4, 0x0494);
+    /*0494*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c));
+    /*0495*/ mem_write8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44)), alu_inc(c, mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44))), 0));
+    /*0498*/ alu_sub(c, mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44))), 0x7, 0, 0);
+    /*049C*/ c->icount += 4; if (x86_cond(c,6)) goto L048D;
+L049E:
+    SQ_NEED(7, 0x049E);
+    /*049E*/ c->r[R_AX] = (uint16_t)(0x760); /*04A1*/ cpu_push16(c, c->r[R_AX]); /*04A2*/ c->r[R_AX] = (uint16_t)(0x1D); /*04A5*/ cpu_push16(c, c->r[R_AX]);
+    /*04A6*/ c->r[R_AX] = (uint16_t)(0x10); /*04A9*/ cpu_push16(c, c->r[R_AX]);
+    /*04AA*/ c->icount += 6; SQ_CALL(0x14BE,0x04AD);
+L04AD:
+    SQ_NEED(13, 0x04AD);
+    /*04AD*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x6, 1, 0)); /*04B0*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(SQ_VIDEO_MODE)));
+    /*04B3*/ { const uint16_t at_=(uint16_t)(SQ_SETTINGS), lo_=seg_read16(c,c->seg[S_DS],at_), hi_=seg_read16(c,c->seg[S_DS],(uint16_t)(at_+2)); c->r[R_BX] = (uint16_t)(lo_); c->seg[S_ES]=hi_; }
+    /*04B7*/ seg_write16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x2a), c->r[R_AX]);
+    /*04BB*/ { const uint16_t at_=(uint16_t)(SQ_SETTINGS), lo_=seg_read16(c,c->seg[S_DS],at_), hi_=seg_read16(c,c->seg[S_DS],(uint16_t)(at_+2)); c->r[R_BX] = (uint16_t)(lo_); c->seg[S_ES]=hi_; }
+    /*04BF*/ seg_write16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x26), 0x1);
+    /*04C5*/ set_r8(c, R_AL, (uint8_t)(mem_read8(c, phys(c->seg[S_DS], (uint16_t)(SQ_JOYSTICK)))));
+    /*04C8*/ set_r8(c, R_AH, (uint8_t)(alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0)));
+    /*04CA*/ { const uint16_t at_=(uint16_t)(SQ_SETTINGS), lo_=seg_read16(c,c->seg[S_DS],at_), hi_=seg_read16(c,c->seg[S_DS],(uint16_t)(at_+2)); c->r[R_BX] = (uint16_t)(lo_); c->seg[S_ES]=hi_; }
+    /*04CE*/ seg_write16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x30), c->r[R_AX]);
+    /*04D2*/ { const uint16_t at_=(uint16_t)(SQ_SETTINGS), lo_=seg_read16(c,c->seg[S_DS],at_), hi_=seg_read16(c,c->seg[S_DS],(uint16_t)(at_+2)); c->r[R_BX] = (uint16_t)(lo_); c->seg[S_ES]=hi_; }
+    /*04D6*/ alu_sub(c, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x32)), 0xFFFF, 1, 0);
+    /*04DB*/ c->icount += 13; if (x86_cond(c,5)) goto setup_exit;
+
+setup_machine_type: /* Classify M/m machine names only when the type is unset. */
+    SQ_NEED(2, 0x04DD);
+    /*04DD*/ alu_sub(c, mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x68))), 0x4D, 0, 0);
+    /*04E1*/ c->icount += 2; if (x86_cond(c,4)) goto L04E9;
+L04E3:
+    SQ_NEED(2, 0x04E3);
+    /*04E3*/ alu_sub(c, mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x68))), 0x6D, 0, 0);
+    /*04E7*/ c->icount += 2; if (x86_cond(c,5)) goto L04F1;
+L04E9:
+    SQ_NEED(2, 0x04E9);
+    /*04E9*/ seg_write16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x32), 0x3);
+    /*04EF*/ c->icount += 2; goto setup_exit;
+L04F1:
+    SQ_NEED(1, 0x04F1);
+    /*04F1*/ seg_write16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x32), 0x2);
+    c->icount += 1;
+
+setup_exit: /* Leave through the original exit helper. */
+    SQ_NEED(3, 0x04F7);
+    /*04F7*/ c->r[R_AX] = (uint16_t)(0x24); /*04FA*/ cpu_push16(c, c->r[R_AX]);
+    /*04FB*/ c->icount += 2; SQ_CALL(0x053B,0x04FE);
+L04FE:
+    SQ_NEED(4, 0x04FE);
+    /*04FE*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*04FF*/ c->r[R_SP] = (uint16_t)(c->r[R_BP]); /*0501*/ c->r[R_BP] = (uint16_t)(cpu_pop16(c));
+    /*0502*/ c->icount += 4; near_ret(c); return 1;
+#undef SQ_NEED
+#undef SQ_CALL
+#undef SQ_FAR
+#undef SQ_RUN
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x0010, setup_questions, "setup questions and joystick calibration", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x4239, start_mission_generate, "generate objectives, bases and mission handover", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x2F9D, vgame_frame_compose, "view set-up, 3D scene and view-change redraw", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x683E, vgame_projectiles, "weapons in flight", 1 },

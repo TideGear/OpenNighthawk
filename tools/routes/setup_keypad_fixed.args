@@ -1,0 +1,8 @@
+# D3 accepts keypad 1 and the original setup completes.
+# expect-exit SETUP.EXE 36 1000000
+--replay
+setup_keypad.input
+--steps
+2100000
+--fix
+D3

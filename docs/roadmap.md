@@ -200,6 +200,25 @@ not the recompilation:
 
 ## Phase 2 - understood code
 
+SETUP questions and calibration (`0000:0010`, `setup_questions`) are matched:
+505 instructions / 1,267 bytes, with named stages for the shared handover,
+joystick question/calibration, driver names, sound choices and exit. All 122
+budgets and 77 calls (13 far) audit exactly. Live relocated operands preserve
+MISC's keyboard/button calls; the D3 interior-fix guard keeps keypad handling
+reachable. Three optimized final-build seeds compare 4,484 / 4,484 / 4,489 states, all 505
+instructions reached,
+zero mismatches. Eight actual startup cases match 320 checkpoints/final states:
+all four sound choices, completed calibration, original keypad quit, D3 accepting
+a keypad digit and D3 preserving another extended key's quit. Four startup
+regression routes retain the calibration and key cases; their exit milestones
+prevent matching early failures from passing. Synthetic fixtures stage devices
+and returning exits; real routes retain every original helper.
+The fresh full gate passes 55 tests, 45 routes (44 fresh interpreter sessions),
+both 5,718,848-state instruction profiles and three 830-address matched seeds
+(2,721,330 / 2,720,260 / 2,719,536), zero mismatches and passing reachability/event checks,
+1,608 s. Census: 822 functions / 97,669 bytes, P2 56.77%, overall 81.13%.
+Private proof: `D:/f117-gate/setup-0010/final-gate-verdict.json`.
+
 Mission generation (`START 0000:4239`, `start_mission_generate`) is matched:
 objectives, bases, special air units, map window, variants and flight handover
 now have named stages and live data aliases. Resolving the nine-entry switch
@@ -619,7 +638,7 @@ instruction profiles and three 789-address matched seeds (2,561,209,
       Reimp's mapping; matched functions replacing translations one at a time,
       each held to the same parity checks. `tools/reimp_names.py` joins the
       Reimp's census (1,535 functions) with this project's regions as a private
-      lead list. 829 addresses are matched (821 of the census functions, 96,402 of
+      lead list. 830 addresses are matched (822 of the census functions, 97,669 of
       179,213 bytes); the table is at the end of `src/matched/matched.c` and the
       method is in [architecture.md](architecture.md#matched-routines-phase-2).
       The batches of 8-9 Oct add 37 + 34 + 47 VGAME, 34 + 40 + 45 START/END and 21 + 44 + 64

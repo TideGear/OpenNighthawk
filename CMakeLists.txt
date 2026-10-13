@@ -332,9 +332,13 @@ if(F117R_BUILD_TESTS)
     # Formation, pursuit, patrol, landing and obstacle-probe traffic worlds.
     add_test(NAME matched_air_traffic COMMAND func_lockstep --states 4000
       --only VGAME.EXE:5852)
-    # View compose: every view mode, cockpit/outside switches, tracked objects.
+    # Mission generation: objectives, bases, route retries and divide faults.
     add_test(NAME matched_mission_generation COMMAND func_lockstep --states 4000
       --only START.EXE:4239)
+    # Setup: questions, driver names, calibration and extended-key handling.
+    add_test(NAME matched_setup_questions COMMAND func_lockstep --states 4000
+      --only SETUP.EXE:10)
+    # View compose: every view mode, cockpit/outside switches, tracked objects.
     add_test(NAME matched_view_compose COMMAND func_lockstep --states 4000
       --only VGAME.EXE:2F9D)
     # Incoming/player weapons, complete branch coverage and divide-error frames.

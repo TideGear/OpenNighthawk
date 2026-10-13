@@ -1,0 +1,8 @@
+# D3 still lets other extended keys take the original quit path.
+# expect-exit SETUP.EXE 0 1000000
+--replay
+setup_extended.input
+--steps
+2100000
+--fix
+D3

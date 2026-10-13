@@ -13,35 +13,54 @@ standing practice, not a session-by-session log. Earlier sessions' detail
 (what was tried, what failed, exact investigation narratives) is in
 `git log -p handoff.md` — it does not need to live here to stay available.
 
-## Latest integration: mission generation (13 October)
+## Latest integration: SETUP questions (13 October)
 
-START 0000:4239 (`start_mission_generate`) is fully gated: named stages cover
-objectives, bases, special air units, map window, variants and handover.
-The resolved nine-entry switch has three targets, 4E14/4E24/4E50: 1,332
-instructions / 3,811 code bytes; census ownership is 3,035 bytes.
-339 room claims and all 60 calls audit exactly. Three development seeds
-compare 3,858 / 3,859 / 3,858 states; two optimized targeted seeds compare
-3,859 / 3,858. Every canonical instruction reached, zero mismatches; each
-includes 95 divide-fault frames at both possible sites (499D, 4A7C).
-Fixtures use synthetic worlds and staged returning helpers; mode 7 changes
-secondary timing after an earlier guard, proving code rather than normal play.
-Coherent fixtures use DS=SS and clear DF; random controls retain other states.
-Production retains all actual helpers and original rejection loops.
+SETUP 0000:0010 (`setup_questions`) is fully gated: 505 instructions / 1,267
+bytes, 122 room claims, 77 calls (13 far). Its interior D3 guard declines while
+the fix is placed. Three optimized final-build seeds compare 4,484 / 4,484 / 4,489 states,
+all 505 canonical starts reached, zero mismatches. Eight real startup cases match 320 checkpoints/final
+states, including all sound choices, calibration and both D3 outcomes. Four
+input-only regression routes retain those calibration/key cases.
+Fresh full gate: 55 tests, 45 routes, 44 fresh interpreter sessions, both
+5,718,848-state instruction profiles, three 830-address matched seeds
+(2,721,330 / 2,720,260 / 2,719,536), zero mismatches, reachability/event checks pass (1,608 s).
+Calibration replaces heuristic starts: final translation 89,365 instructions.
+Census: 822 functions / 97,669 bytes; P2 56.77%, P3 85.52%, overall 81.13%.
+Proof: `D:/f117-gate/setup-0010/final-gate-verdict.json` and adjacent source,
+room, targeted and actual-startup audits. Main uses normal /O2. Private
+`D:/f117-wt/setup-main-0010` / `wip-setup-main-0010` retains a PRIVATE /Od
+override; do not copy or merge it wholesale. Published predecessor `945a0eb`
+passed GitHub CI run 38439104647; check CI for this integration.
 
-Fresh full gate passes 54 tests, 41 routes, 40 fresh interpreter sessions,
-both 5,718,976-state instruction profiles and three 829-address matched seeds
-(2,716,846 / 2,715,774 / 2,715,365 comparisons), zero mismatches, reachability/
-event checks pass (1,832 s). The fresh optimized boot route executes the new
-routine once, all 54 checkpoints/final identical (`48a10e901505e2a9`).
-Census: 821 functions / 96,402 bytes; P2 56.10%, P3 85.52%, overall 80.94%.
-Proof: `D:/f117-gate/start-4239/final-gate-verdict.json` and adjacent audits.
+## Next candidate (private)
 
-`D:/f117-wt/mission-generation-4239`, branch `wip-mission-generation-4239`,
-retains development work and a PRIVATE /Od CMake override. Do not merge or
-copy it wholesale; main uses /O2. Large proof builds use one compiler job
-and private TEMP/TMP. Check BUILD OK as well as exit status: a failed Windows
-build has returned zero with an old executable. Published predecessor
-`04c9668` passed GitHub CI run 38421875283; check CI for the new integration.
+Next candidate is now development-proven, still entirely PRIVATE:
+MPS_LOGO image 07E2 = 006D:0112, `logo_sprite_set_load`. Named body and
+fixture harness are in `D:/f117-gate/logo-07e2/project`, not a git worktree.
+Its SS sprite-set loader has 434 instructions / 1,164 code/census bytes,
+three padding bytes inside a 1,167-byte span. 78 room claims and 35 calls
+(33 far, two PUSH CS / near calls to RETF helpers) audit exactly. All 15
+callees have plain RETF; the two near traps use guest_call_pop(...,2).
+Three development seeds compare 3,728 / 4,979 / 3,729 states, all 434 reached
+by named code, zero mismatches. Fixture failures are authored streams/heap
+records; real copies and pointer normalisation remain. Mode 10 adds format-1
+with zero frames, reaching 047F (the first baseline's only missed instruction).
+An actual logo-loading route reaches it once and matches 100 checkpoints/final
+`8d48b98a42d48f70` at 10M clocks; no fixture helpers in that runner.
+Proof: `development-verdict.json`, `room-audit.json`, `callee-returns.json`,
+`named-prefix-verdict.json`, logs/covers and frozen source snapshots.
+
+The mini project links its direct matched object BEFORE frozen libraries from
+`D:/f117-wt/setup-main-0010/build`; the archive's matched object is not selected.
+Library hashes are in `library-provenance.json`. A SETUP control reproduces
+36 comparisons / 504 instructions at 32 states. First mini build 9.9 s,
+body/harness edits 2.6-3.6 s, without recompiling generated modules. This is
+fixture development only; production still requires the normal /O2 full gate.
+After SETUP is audited/committed/pushed, selectively integrate `named.c` and
+only the MPS harness additions. Do not copy its whole `matched.c`: that file
+is a private snapshot with a custom table. Add a focused CMake test, recheck
+optimized seeds and actual route, then a fresh full gate. Public main remains
+SETUP-only; its runtime/harness/CMake/routes stay frozen until its gate passes.
 
 ## Current state
 
@@ -58,23 +77,10 @@ interpreter sessions, both instruction profiles and three matched seeds,
 zero mismatches, reachability/event checks pass (1,661 s).
 Proof: `D:/f117-gate/observer-original/final-gate-verdict.json`.
 
-Prior view-composition proof (`VGAME 0000:2F9D`,
-`vgame_frame_compose`), 828 matched addresses, census 820 functions /
-93,367 bytes (P2 54.49%, P3 85.52%, overall 80.47%). Three targeted seeds
-compare 3,199 / 3,216 / 3,200 states, zero mismatches; all 938 canonical
-instruction starts reached.
-Room audit: 208 claims, 938 instructions, 66 calls. Actual camera replay:
-8,456 calls, all 234 checkpoints and final identical, no event overrun.
-Private proof: `D:/f117-gate/frame-2f9d`.
-
-Fresh full gate `D:/f117-gate/gate-view-compose-render.log`: 53 tests,
-41 routes, 40 fresh interpreter sessions, both 5,718,976-state instruction
-profiles and three 828-address matched seeds, zero mismatches; reachability
-and event checks pass (1,768 s). After observer/presentation refinements,
-`gate-orthographic-final.log` repeats build/tests and fresh route parity,
-with unchanged translation/matched coverage reused (1,271 s). Audits:
-`frame-2f9d/current-full-gate-verdict.json` and
-`render-fallbacks/final-gate-verdict.json` under `D:/f117-gate`.
+Earlier flight/view/mission proofs remain in the roadmap and `D:/f117-gate`;
+mission generation is published in `945a0eb` (821 functions / 96,402 bytes).
+Its private worktree `D:/f117-wt/mission-generation-4239` also has a PRIVATE
+/Od override. Do not merge private trees wholesale.
 
 Presentation now uses exact per-polygon camera snapshots and projection
 mode metadata, fixing fully clipped horizons, reused vertex storage and
@@ -152,9 +158,7 @@ Phase 2 work" below).
   aircraft traffic, weapons in flight, view composition and mission generation). Earlier proofs and tested source
   snapshots remain under `D:/f117-gate/`; history is in
   [docs/repeated-processes.md](docs/repeated-processes.md).
-  Next: SETUP `0000:0010` (1,267 census bytes); private static dossier
-  `D:/f117-gate/setup-0010` resolves 505 instructions with near/far calls.
-  Its real-driver entry proof is still needed. DSWAP `0x03DF3` is deferred:
+  Next: the development-proven sprite-set loader above. DSWAP `0x03DF3` is deferred:
   2,791 initial zero bytes, no generated entry; the static draft decodes data.
   Require an actual caller or execution before matching, and keep the census
   unchanged meanwhile. Evidence: `D:/f117-gate/dswap-3df3/candidate-review.json`.

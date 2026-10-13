@@ -1,0 +1,6 @@
+# Complete joystick calibration, including both buttons, then choose AdLib.
+# expect-exit SETUP.EXE 36 100000000
+--replay
+setup_calibration.input
+--steps
+150000000

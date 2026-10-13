@@ -86,9 +86,8 @@ speed comparison. Local proof: `D:/f117-gate/start-4239`.
 Next-candidate review: DSWAP 03DF3's census lead begins with 2,791 zero bytes
 and has no generated entry. Its linear static draft decodes data as operations;
 require a real caller or executed address before treating it as code. No
-census adjustment or matched credit is taken. SETUP 0010 has a clean 505-
-instruction / 1,267-byte walk with near and relocated far calls, but still
-needs fixture and real-driver proofs. Private dossiers: `D:/f117-gate/dswap-3df3`
+census adjustment or matched credit is taken. SETUP 0010 has a 505-instruction / 1,267-byte walk; its integrated proof is
+described below. Private dossiers: `D:/f117-gate/dswap-3df3`
 and `D:/f117-gate/setup-0010`.
 
 For fixture development only, /Od avoided a very large transcript optimizer
@@ -97,6 +96,45 @@ compiler job and use a private TEMP/TMP, since build.cmd otherwise shares a
 temporary log. Check the success marker and the compiler log as well as the
 exit code; a failed Windows build has returned zero while leaving an old
 executable. No transcript or development build flag is committed.
+
+SETUP proof (13 October): the coverage pass records only interpreted misses,
+so a fully translated entry can be absent from its files. A fresh interpreter
+prefix confirms SETUP 0000:0010 and dumps its patched keyboard/button targets:
+MISC base +7 paragraphs, both RETF with no argument pops. Synthetic fixtures
+use DS=SS, real string copies, returning device/exit helpers and a staged
+sound-question skip. At image base zero, BIOS 04F0 aliases the original code;
+use its existing word as the synthetic settings segment without patching an
+instruction. The 122-budget / 77-call room audit and all 505 instruction starts
+pass three development seeds and two optimized seeds. Eight real startup cases
+pass 320 paired checkpoints plus final hashes in 3.9 s on four spare CPUs.
+Calibration needs enough time for the original PIT measurement between button
+transitions; the early 6M-clock script stopped inside measurement, before setup
+finished. The retained 150M-clock route completes both-button calibration.
+The D3 guard is verified with keypad accepted and another extended key still
+quitting. These input-only regression routes join the full gate.
+The full gate passes 55 tests, 45 routes, 44 fresh interpreter sessions, both
+5,718,848-state instruction profiles and three 830-address matched seeds,
+zero mismatches and passing reachability/event checks (1,608 s). Build/tests
+344 s, coverage 585 s, second translation/build 220 s; use the log's final
+parity timing. Calibration contributes 97 observed SETUP starts, displacing
+99 heuristic starts; the final translation has 89,365 instructions. The rebuild
+restarts the locksteps, so results before it do not stand for the final build.
+The first gate failed step 9: the named routine's nested keyboard waits ran to
+the host slice (62,168 instructions past an event limit, on every route),
+which the lockstep cannot see. A wait inside a matched routine must stop at
+`c->stop_at` (`SQ_RUN`); the seeds, startup cases and gate were rerun after it.
+Private source-frozen proof: `D:/f117-gate/setup-0010`.
+
+Private sprite-loader fixture iteration now links a direct candidate matched
+object before frozen generated/core libraries. The archive's old matched object
+is not selected. This avoids recompiling generated sources for each body or
+fixture edit: initial mini build 9.9 s, edits 2.6-3.6 s. A SETUP control repeats
+its 36 comparisons / 504 reached instructions at 32 states, and the sprite
+loader's real route matches 100 checkpoints. Library hashes are retained with
+the private project (`D:/f117-gate/logo-07e2/library-provenance.json`). This is
+/Od development evidence only; integration still needs a normal /O2 build,
+optimized checks and a fresh full gate. Never copy private development flags
+or generated sources into the public tree.
 
 Clipped span edge (`0FB2:06A6`, 12 Oct): the named clipper preserves
 the temporary INT 0 vector, overflow halving, signed intersections and

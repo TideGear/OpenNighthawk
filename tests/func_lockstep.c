@@ -524,6 +524,7 @@ static const struct { const char *module; uint16_t ip; int arg; uint16_t v[2]; }
 /* Exact code ranges when the default 0x300-byte window is unsuitable:
  * long/shared tails, or small walkers whose unrelated callees are nearby. */
 static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
+    { "SETUP.EXE", 0x0010, 0x0010, 0x04F3 },
     { "START.EXE", 0x4239, 0x4239, 0x0EF5 },
     { "VGAME.EXE", 0x2F9D, 0x2F9D, 0x0A23 }, /* view compose through RET */
     { "VGAME.EXE", 0x683E, 0x683E, 0x0A05 }, /* projectiles through RET */
@@ -664,6 +665,7 @@ static uint64_t g_camera_seen;
  * compared states (all, and those the named routine finished itself). A
  * floor fails a 4,000-state run whose fixtures stopped reaching the arms. */
 static const struct { const char *module; uint16_t seg, ip, len; unsigned insns, floor; const char *what; } COVERED[] = {
+    { "SETUP.EXE", 0, 0x0010, 0x04F3, 505, 505, "setup main" },
     { "START.EXE", 0, 0x4239, 0x0EF5, 1332, 1332, "mission generator" },
     { "VGAME.EXE", 0, 0x2F9D, 0x0A23, 938, 938, "view compose" },
     { "VGAME.EXE", 0, 0x683E, 0x0A05, 886, 886, "projectiles" },
@@ -711,7 +713,7 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
     const uint32_t watch = phys(cs, (uint16_t)(ip - g_below));
     const int watching = (g_below || g_watch_transient) && a->mem == g_mem[0];
     while (*steps < 100000) {
-        const unsigned watch_bytes = (ip == 0x4239 || ip == 0x2F9D || ip == 0x683E || ip == 0x5852 || ip == 0x3ADA || ip == 0x1EB0 || ip == 0xBCEF || ip == 0x983E || ip == 0x0016 || ip == 0x79BE || ip == 0x8A90) ? g_span : 0x300u + g_below;
+        const unsigned watch_bytes = (ip == 0x0010 || ip == 0x4239 || ip == 0x2F9D || ip == 0x683E || ip == 0x5852 || ip == 0x3ADA || ip == 0x1EB0 || ip == 0xBCEF || ip == 0x983E || ip == 0x0016 || ip == 0x79BE || ip == 0x8A90) ? g_span : 0x300u + g_below;
         if (watching && !g_self_written && memcmp(a->mem + watch, g_pristine + watch, watch_bytes)) g_self_written = 1;
         if (g_trace) printf("      %04X:%04X clk %llu sp %04X\n", a->seg[S_CS], a->ip, (unsigned long long)a->icount, a->r[R_SP]);
         const uint16_t here = a->ip;
@@ -941,7 +943,8 @@ int main(int argc, char **argv)
             ((!strcmp(o->module, "VGAME.EXE") && (o->ip == 0x2F9D || o->ip == 0x683E || o->ip == 0x5046 || o->ip == 0x5852 || o->ip == 0x3ADA || o->ip == 0x1EB0 || o->ip == 0xBCEF || o->ip == 0x983E || o->ip == 0x79BE || o->ip == 0x8A90)) ||
              (!strcmp(o->module, "START.EXE") && (o->ip == 0x4239 || o->ip == 0x39B3 || o->ip == 0x39D5)) ||
              (!strcmp(o->module, "END.EXE") && (o->ip == 0x1CB1 || o->ip == 0x1CD3)) ||
-             (!strcmp(o->module, "PLAYER.EXE") && o->ip == 0x1E90)));
+             (!strcmp(o->module, "PLAYER.EXE") && o->ip == 0x1E90) ||
+             (!strcmp(o->module, "SETUP.EXE") && o->ip == 0x0010)));
         for (uint32_t a = 0; a < MEM_SIZE; a += 8) { uint64_t v = rnd(); memcpy(g_pristine + a, &v, 8); }
         const uint32_t at = (uint32_t)base * 16u + m->origin;
         memcpy(g_pristine + at, m->image, m->size);
@@ -1953,6 +1956,98 @@ int main(int argc, char **argv)
                     g_pristine[helpers[j].at+b]=g_mem[0][helpers[j].at+b]=g_mem[1][helpers[j].at+b]=helpers[j].code[b];
 #undef MW8
 #undef MW16
+            }
+
+            /* Synthetic setup worlds with returning video, keyboard and joystick
+             * stand-ins. The copies remain real. The abort/exit helper returns
+             * deliberately, to compare code after otherwise terminating arms.
+             * Mode 6 clears the sound-question flag in a helper: staged coverage.
+             * At load base zero the BIOS 0000:04F0 pointer aliases this routine's
+             * code. Use its existing word as the settings segment without changing
+             * code; real routes use the actual BIOS pointer and all actual helpers. */
+            if (!strcmp(o->module,"SETUP.EXE") && o->seg==0 && o->ip==0x0010 && (s&7)) {
+                seg[S_DS]=seg[S_SS]=0x024C; r[R_SP]=0xFF00;
+                flags=(uint16_t)(flags & (0xFFFFu ^ F_DF));
+#define SW8(a_,v_) do { const uint32_t sa_=phys(seg[S_DS],(uint16_t)(a_)); \
+    g_pristine[sa_]=g_mem[0][sa_]=g_mem[1][sa_]=(uint8_t)(v_); } while(0)
+#define SW16(a_,v_) do { SW8(a_,(uint16_t)(v_)); SW8((a_)+1,(uint16_t)(v_)>>8); } while(0)
+                const unsigned mode=((unsigned)s>>3)%12;
+                SW16(0x2000,mode);SW16(0x2002,0);SW16(0x2004,0);SW16(0x2010,0);
+                for(unsigned j=0;j<64;j++)SW8(0x2100+j,0);
+                static const uint16_t initial_keys[]={0x100,0,0x59,0x79,0x4E,0x6E,0,0x100,0x40,0x59,0x79,0x4E};
+                SW16(0x2008,initial_keys[mode]);SW16(0x200A,mode&1?'N':'Y');
+                SW16(0x200C,mode%3==0?0x100:mode%3==1?0x20:0x35);
+                SW16(0x200E,0x31+(mode%4));SW16(0x2012,mode&1);SW16(0x2014,mode&1);
+                static const uint8_t machine_types[]={'M','m','C','E'};
+                SW8(0x05C7,machine_types[mode%4]);SW8(0x05C8,0);
+                for(unsigned j=0;j<4;j++) {
+                    SW16(0x0778+2*j,0x2200+4*j);
+                    SW8(0x2200+4*j,'A'+j);SW8(0x2201+4*j,0);
+                }
+                const uint16_t settings_seg=(uint16_t)(g_pristine[0x04F0]|((uint16_t)g_pristine[0x04F1]<<8));
+                const uint32_t settings_at=phys(settings_seg,0);
+                for(unsigned j=0;j<256;j++)g_pristine[settings_at+j]=g_mem[0][settings_at+j]=g_mem[1][settings_at+j]=0;
+                static const uint8_t setup_return_near[]={0xC3};
+                static const uint8_t setup_return_far[]={0xCB};
+                static const uint8_t setup_keyboard_jump[]={
+                    0xE9,0x8B,0xDD,
+                };
+                static const uint8_t setup_keyboard_read[]={
+                    0x53,0x89,0xE3,0x36,0x81,0x7F,0x02,0xF0,0x01,0x75,0x15,0xFF,
+                    0x06,0x02,0x20,0x83,0x3E,0x02,0x20,0x01,0x75,0x05,0xA1,0x08,
+                    0x20,0xEB,0x18,0xA1,0x0A,0x20,0xEB,0x13,0xFF,0x06,0x04,0x20,
+                    0x83,0x3E,0x04,0x20,0x01,0x75,0x05,0xA1,0x0C,0x20,0xEB,0x03,
+                    0xA1,0x0E,0x20,0x5B,0xCB,
+                };
+                static const uint8_t setup_button_jump[]={
+                    0xE9,0x86,0xDE,
+                };
+                static const uint8_t setup_button_poll[]={
+                    0x53,0x89,0xE3,0x36,0x8B,0x5F,0x02,0x81,0xFB,0x96,0x02,0x75,
+                    0x15,0xFF,0x06,0x10,0x20,0x83,0x3E,0x10,0x20,0x01,0x75,0x05,
+                    0xB8,0x01,0x00,0xEB,0x1E,0xB8,0x00,0x00,0xEB,0x19,0xD1,0xE3,
+                    0x81,0xE3,0x3E,0x00,0xFF,0x87,0x00,0x21,0x83,0xBF,0x00,0x21,
+                    0x01,0x75,0x05,0xB8,0x00,0x00,0xEB,0x03,0xB8,0x01,0x00,0x5B,
+                    0xCB,
+                };
+                static const uint8_t setup_detect_jump[]={
+                    0xE9,0xF9,0xE5,
+                };
+                static const uint8_t setup_interface_detect[]={
+                    0x83,0x3E,0x00,0x20,0x06,0x75,0x05,0x36,0xC6,0x46,0xAA,0x00,
+                    0xA1,0x12,0x20,0xCB,
+                };
+                static const uint8_t setup_drive_check[]={
+                    0xA1,0x14,0x20,0xC3,
+                };
+                static const struct { unsigned at; const uint8_t *code; unsigned len; } setup_helpers[]={
+                    {0x2f32,setup_keyboard_jump,sizeof setup_keyboard_jump},
+                    {0x10cc0,setup_keyboard_read,sizeof setup_keyboard_read},
+                    {0x2f37,setup_button_jump,sizeof setup_button_jump},
+                    {0x10dc0,setup_button_poll,sizeof setup_button_poll},
+                    {0x2374,setup_detect_jump,sizeof setup_detect_jump},
+                    {0x10970,setup_interface_detect,sizeof setup_interface_detect},
+                    {0x503,setup_return_near,sizeof setup_return_near},
+                    {0x512,setup_return_near,sizeof setup_return_near},
+                    {0x53b,setup_return_near,sizeof setup_return_near},
+                    {0xa4b,setup_return_near,sizeof setup_return_near},
+                    {0xa9f,setup_return_near,sizeof setup_return_near},
+                    {0xba2,setup_return_near,sizeof setup_return_near},
+                    {0xc35,setup_return_near,sizeof setup_return_near},
+                    {0xfc0,setup_return_near,sizeof setup_return_near},
+                    {0xffe,setup_return_near,sizeof setup_return_near},
+                    {0x1387,setup_return_near,sizeof setup_return_near},
+                    {0x14be,setup_return_near,sizeof setup_return_near},
+                    {0x1509,setup_return_near,sizeof setup_return_near},
+                    {0xc84,setup_drive_check,sizeof setup_drive_check},
+                    {0x239c,setup_return_far,sizeof setup_return_far},
+                    {0x23bd,setup_return_far,sizeof setup_return_far},
+                    {0x2485,setup_return_far,sizeof setup_return_far},
+                };
+                for(unsigned j=0;j<sizeof setup_helpers/sizeof setup_helpers[0];j++)for(unsigned b=0;b<setup_helpers[j].len;b++)
+                    g_pristine[setup_helpers[j].at+b]=g_mem[0][setup_helpers[j].at+b]=g_mem[1][setup_helpers[j].at+b]=setup_helpers[j].code[b];
+#undef SW8
+#undef SW16
             }
             for (int k = 0; k < 2; k++)
                 setup_side(k ? &g_m.cpu : &g_cpu[0], o, cs, ip, r, seg, flags, back, s, small);
