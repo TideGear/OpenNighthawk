@@ -15,28 +15,29 @@ standing practice, not a session-by-session log. Earlier sessions' detail
 
 ## Current state
 
-Last fully gated runtime baseline: `1337acf`, flight input (VGAME
-`0000:1EB0`), 823 matched addresses, census 815 / 82,040 bytes. Gate
-`D:/f117-gate/gate-flight-input.log`: 48 tests, all 40 routes, both
-instruction profiles and three matched seeds, 1,745 s.
+Fully gated runtime: ground defences (`VGAME 0000:5046`,
+`vgame_ground_defences`), 825 matched addresses, census 817 functions /
+85,231 bytes (P2 50.18%, overall 76.75%). Full gate
+`D:/f117-gate/gate-ground-defences.log`: 50 unit tests, all 41 routes
+(40 fresh interpreter sessions; one shared reconnaissance replay), both
+instruction profiles and three matched
+seeds, zero mismatches, passing reachability/event checks, 1,834 s.
+Audited verdict: `D:/f117-gate/nav5046/full-gate-verdict.json`.
 
-Frame update (VGAME `0000:3ADA`, `vgame_frame_update`) is integrated on top
-of it: 824 matched addresses, census 816 functions / 84,648 bytes (P2
-49.87%, overall 76.66%). Proof: three seeds zero mismatches with every
-instruction reached, isolated tests, actual camera-gradient replay
-identical at all 234 checkpoints with no overrun after a room-claim fix
-([docs/roadmap.md](docs/roadmap.md), private evidence
-`D:/f117-gate/frame-3ada`). Its first gate (`gate-frame-update.log`)
-failed `d1_fast_machine`: a fix inside a matched body never ran. Matched
-routines with a fix site after their entry now decline while that fix is
-on (`fix_inside` in matched.c). Re-gate `D:/f117-gate/gate-fix-inside.log`
-(1,746 s): 49 unit tests pass, all 40 routes IDENTICAL (d1_fast_machine
-included), 824 matched routines at three seeds, 0 mismatching.
-When matching a routine, check `src/fixes/fixes.c` for sites inside it.
-The coverage pass still runs for every commit that adds a matched routine:
-the translator isolates each matched entry, so the generated code changes
-and the skip's generated-code guard declines (the test-entry key fix only
-helps commits that add none).
+Targeted proof: three 4,000-state seeds, all 195 instructions reached inside
+the named routine; staged zero-divisor/overflow reloads compare the original
+divide-error frame after hand-back at `5122`, and removing the hand-back
+fails at state 1. Camera-gradient replay: 8,465 calls, all 234 checkpoints /
+final identical, no overrun. Private evidence: `D:/f117-gate/nav5046`.
+
+Frame update (`3ADA`) and flight input (`1EB0`) are integrated and fully
+gated too. Matched routines with a switchable fix site after their entry
+decline while that fix is enabled (`fix_inside` in matched.c); this keeps
+D1/D1REAL and the other internal fixes reachable. When matching a routine,
+check `src/fixes/fixes.c` for sites inside it. The coverage pass still runs
+for every commit that adds a matched routine: the translator isolates each
+matched entry, changing generated code and invalidating the skip guard
+(the test-entry key fix only helps commits that add none).
 
 A sibling handler, **VGAME 0FB2:04DD** (the line clipper's own divide-error
 handler), is matched and fixture-proven but deliberately **not integrated**:
@@ -66,13 +67,13 @@ Phase 2 work" below).
 - Continue Phase 2 (naming/matching routines) — `tools/reimp_names.py` has
   the private lead list; current progress is in `docs/roadmap.md`, which
   has the full history of integrated-and-gated passes (span-edge/emit, HUD,
-  moving objects, camera-image, flight input, frame update). Earlier proofs
+  moving objects, camera-image, flight input, frame update, ground defences). Earlier proofs
   and tested source snapshots remain under `D:/f117-gate/`; history is in
   [docs/repeated-processes.md](docs/repeated-processes.md).
   Next candidates, all reached every flight frame from 3ADA: VGAME
-  `0x05852` (2,976 bytes), `0x0683E` (2,565, warnings/lamp timers),
-  `0x05046` (583, navigation display); also VGAME `0x02F9D` (2,595, frame
-  compose), START `0x04239` (3,035), DSWAP `0x03DF3` (2,924).
+  `0x05852` (2,976 bytes), `0x0683E` (2,565, warnings/lamp timers); also
+  VGAME `0x02F9D` (2,595, frame compose), START `0x04239` (3,035),
+  DSWAP `0x03DF3` (2,924).
   Method (repeated-processes.md): transcript first to validate the harness,
   add the routine to `COVERED`, fixtures until every instruction is
   reached (the skip tally says why states drop), then the named body,

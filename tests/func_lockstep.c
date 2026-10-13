@@ -220,15 +220,6 @@ static const struct { uint16_t seg, ip; uint8_t reg; uint16_t disp; uint16_t val
     { 0x0000, 0x5046, PLANT_ABS, 0xE008, 0x0014 },   /* ground defences: display 14h up, no warning countdown, no override */
     { 0x0000, 0x5046, PLANT_ABS, 0x3D98, 0x0000 },
     { 0x0000, 0x5046, PLANT_ABS, 0xDF06, 0x0000 },
-    { 0x0000, 0x5046, PLANT_ABS, 0x992C, 0x0001 },   /* one live, served site whose timer expires: its reload divisor is zero */
-    { 0x0000, 0x5046, PLANT_ABS, 0xB2D4, 0x0001 },   /* (defence FFC0h) or minus one (FFBCh, with S at 80h: a quotient that overflows) */
-    { 0x0000, 0x5046, PLANT_ABS, 0xB2D6, 0x0000 },
-    { 0x0000, 0x5046, PLANT_ABS, 0xB2D8, 0xFFC0 },
-    { 0x0000, 0x5046, PLANT_ABS, 0xB2D8, 0xFFBC },
-    { 0x0000, 0x5046, PLANT_ABS, 0xB2DA, 0x0001 },
-    { 0x0000, 0x5046, PLANT_ABS, 0x368E, 0x0080 },
-
-
     { 0x0000, 0x73C8, PLANT_ABS, 0xE304, 0x0002 },   /* target_damage: the weapon-lock slot scan finding a match */
     { 0x0000, 0x73C8, PLANT_ABS, 0xE306, 0x0001 },
     { 0x0000, 0x73C8, PLANT_ABS, 0xE316, 0x0002 },
@@ -659,6 +650,7 @@ static int cov_reached(uint16_t ip, uint16_t lo, uint16_t span)
 static uint64_t g_moving_seen;
 static int g_camera_fixture;
 static int g_hud_fixture;
+static int g_ground_fixture;
 static uint64_t g_hud_seen;
 static uint64_t g_cockpit_seen;
 static unsigned g_nav_seen;
@@ -747,12 +739,15 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
         for (int k = 0; k < g_nend && !inside; k++) inside = a->seg[S_CS] == cs && here >= g_end_lo[k] && here < g_end_hi[k];
         const uint8_t op = a->mem[phys(a->seg[S_CS], a->ip)];
         const uint16_t sp_before = a->r[R_SP];
+        const int depth_before = a->int_depth;
         cpu_step(a);
         if (a->flags & F_TF) cpu_interrupt(a, 1);
         ++*steps;
         /* A HUD divide fault is a comparable boundary even though it cannot
          * return normally. Stop before interpreting the random vector target. */
         if (g_camera_fixture && own && a->int_depth && here == 0xBE53) return 2;
+        if (g_ground_fixture && a->int_depth > depth_before)
+            return own && here == 0x5122 ? 2 : 0;
         if (g_hud_fixture && own && a->int_depth &&
             (here == 0x0051 || here == 0x0063 || here == 0x01BC || here == 0x0349)) return 2;
         /* The routine's own return: near RET (kind 1), far RETF (2), IRET (3). */
@@ -874,9 +869,10 @@ int main(int argc, char **argv)
             if (!strcmp(o->module, COVERED[k].module) && o->seg == COVERED[k].seg && o->ip == COVERED[k].ip) g_cov = (int)k;
         if (g_cov >= 0) { g_cov_ip = COVERED[g_cov].ip; g_cov_escapes = 0; memset(g_cov_skips, 0, sizeof g_cov_skips); memset(g_cov_cover, 0, sizeof g_cov_cover); memset(g_cov_whole, 0, sizeof g_cov_whole); }
         g_hud_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0x1058 && o->ip == 0x0016;
+        g_ground_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0x5046;
         g_watch_transient = (!strcmp(o->module, "VGAME.EXE") && o->seg == 0x1058 && o->ip == 0x0016) ||
             (o->seg == 0 &&
-            ((!strcmp(o->module, "VGAME.EXE") && (o->ip == 0x3ADA || o->ip == 0x1EB0 || o->ip == 0xBCEF || o->ip == 0x983E || o->ip == 0x79BE || o->ip == 0x8A90)) ||
+            ((!strcmp(o->module, "VGAME.EXE") && (o->ip == 0x5046 || o->ip == 0x3ADA || o->ip == 0x1EB0 || o->ip == 0xBCEF || o->ip == 0x983E || o->ip == 0x79BE || o->ip == 0x8A90)) ||
              (!strcmp(o->module, "START.EXE") && (o->ip == 0x39B3 || o->ip == 0x39D5)) ||
              (!strcmp(o->module, "END.EXE") && (o->ip == 0x1CB1 || o->ip == 0x1CD3)) ||
              (!strcmp(o->module, "PLAYER.EXE") && o->ip == 0x1E90)));
@@ -906,6 +902,8 @@ int main(int argc, char **argv)
         uint64_t moving_branches = 0;
         unsigned hud_fault_mask = 0;
         unsigned long long hud_faults = 0;
+        unsigned ground_fault_mask = 0;
+        unsigned long long ground_faults = 0;
         uint64_t hud_branches = 0;
         uint64_t cockpit_branches = 0;
         unsigned nav_branches = 0;
@@ -1522,6 +1520,30 @@ int main(int argc, char **argv)
                             (uint8_t)(words[j].value >> (8 * byte));
                     }
             }
+            /* Correlated, explicitly staged reload faults. Independent PLANTS
+             * do not guarantee that a live, unsuppressed site has an expired
+             * timer and the intended divisor together. Index zero is served
+             * with this positive budget; skip bars so no callee is involved. */
+            if (g_ground_fixture && ((s & 7) == 1 || (s & 7) == 2)) {
+                const struct { uint16_t at, value; } words[] = {
+                    { 0x368C, 0 }, { 0x992C, 1 }, { 0x3688, 1 },
+                    { 0xB2D4, 1 }, { 0xB2D6, 0 }, { 0xB2DA, 1 },
+                    { 0xB2D8, (uint16_t)((s & 7) == 1 ? 0xFFC0 : 0xFFBC) },
+                    { 0x368E, 0x80 }
+                };
+                int safe = 1;
+                for (unsigned j = 0; j < sizeof words / sizeof words[0]; j++)
+                    for (unsigned byte = 0; byte < 2; byte++) {
+                        const uint32_t address = phys(seg[S_DS], (uint16_t)(words[j].at + byte));
+                        if (address >= at && address < at + m->size + 2) safe = 0;
+                    }
+                if (safe) for (unsigned j = 0; j < sizeof words / sizeof words[0]; j++)
+                    for (unsigned byte = 0; byte < 2; byte++) {
+                        const uint32_t address = phys(seg[S_DS], (uint16_t)(words[j].at + byte));
+                        g_pristine[address] = g_mem[0][address] = g_mem[1][address] =
+                            (uint8_t)(words[j].value >> (8 * byte));
+                    }
+            }
             for (int k = 0; k < 2; k++)
                 setup_side(k ? &g_m.cpu : &g_cpu[0], o, cs, ip, r, seg, flags, back, s, small);
             int steps = 0;
@@ -1539,6 +1561,23 @@ int main(int argc, char **argv)
                 g_side[0].overflow = g_side[1].overflow = 1;
                 g_lost = 0; g_ncalls = 0; g_callover = 0;
                 const int ran = o->fn(&g_m);
+                if (g_ground_fixture) {
+                    /* Require the named code to yield BEFORE IDIV; only then
+                     * let the interpreter take the fault and compare its full
+                     * interrupt frame, registers, memory, flags and clock. */
+                    if (!ran || g_lost || g_m.cpu.seg[S_CS] != cs || g_m.cpu.ip != 0x5122 || g_m.cpu.int_depth) {
+                        fprintf(stderr, "ground reload fault did not hand back at 5122 (state %d)\n", s);
+                        mc++; mb++; restore(); continue;
+                    }
+                    ground_fault_mask |= a->r[R_CX] == 0 ? 1 : 2;
+                    ground_faults++;
+                    cpu_step(&g_m.cpu);
+                    if (g_m.cpu.flags & F_TF) cpu_interrupt(&g_m.cpu, 1);
+                    g_cpu[1] = g_m.cpu; mc++;
+                    g_ctx = " (ground reload divide fault)";
+                    mb += compare(o->module, ip, cs, ip, 0);
+                    g_ctx = ""; restore(); continue;
+                }
                 if (!ran || g_lost || !g_m.cpu.int_depth) { if (g_cov >= 0) g_cov_skips[0]++; ms++; restore(); continue; }
                 g_cpu[1] = g_m.cpu; mc++; if (g_camera_fixture) camera_faults++; else hud_faults++;
                 if (a->op_ip == 0x0051) hud_fault_mask |= 1;
@@ -1739,6 +1778,10 @@ int main(int argc, char **argv)
                     if (g_cov_cover[k]) fprintf(cover, "%04X %d\n", g_cov_ip + k, g_cov_whole[k]);
                 fclose(cover);
             }
+        }
+        if (g_ground_fixture) {
+            printf("  ground reload divide fault states: %llu; mask %X (required 3)\n", ground_faults, ground_fault_mask);
+            if (states >= 4000 && ground_fault_mask != 3) { fprintf(stderr, "ground fixtures missed required divide faults\n"); mb++; }
         }
         if (g_camera_fixture) {
             printf("  completed camera branch mask: %08llX (required FFFFFFFF)\n", (unsigned long long)camera_branches);

@@ -325,6 +325,10 @@ if(F117R_BUILD_TESTS)
     # frame's sub-passes return at once.
     add_test(NAME matched_frame_update COMMAND func_lockstep --states 4000
       --only VGAME.EXE:3ADA)
+    # Includes zero-divisor and overflowing reloads, checked at the original
+    # divide-error frame after the named code hands back at IDIV.
+    add_test(NAME matched_ground_defences COMMAND func_lockstep --states 4000
+      --only VGAME.EXE:5046)
     # Planted keys, quit-prompt answers, ejection, touchdown and crash states;
     # an escaped callee return or thin coverage fails the test.
     add_test(NAME matched_flight_input COMMAND func_lockstep --states 4000

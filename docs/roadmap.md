@@ -207,8 +207,28 @@ shared-flow span-edge candidate demonstrates why walk size is not census
 ownership. Synthetic checks run in Windows CI. Details and limits:
 [repeated-processes.md](repeated-processes.md#phase-2-candidate-reading).
 
+Ground defences (`VGAME 0000:5046`) is integrated and fully gated:
+195 instructions / 583 bytes. Named C preserves the
+cockpit damage/stealth bars, staggered site reload timers and engagement,
+incoming ground/air marker and bearing arc, and warning countdown. Drawing
+and engagement callees return in fixtures; the clamp and long divide run
+for real. Three 4,000-state seeds compare 2,696 / 2,679 / 2,685 states with
+zero mismatches, each reaching all 195 instructions in the named code.
+The reload's zero-divisor and overflow cases now compare the full original
+divide-error frame after requiring hand-back at `5122` (1,006 / 996 / 1,039
+faults); removing that hand-back fails immediately. These are deliberately
+staged faults, not normal-play evidence. `matched_ground_defences` retains
+the regression. Actual camera-gradient replay: 8,465 calls, all 234 checkpoints
+and final identical, no event overrun (117.1 s). Census: 817 functions /
+85,231 bytes, P2 50.18%, overall 76.75% (825 addresses).
+Private evidence: `D:/f117-gate/nav5046`.
+The fresh full gate (`gate-ground-defences.log`) passes 50 unit tests, all
+41 routes (40 fresh interpreter sessions; reconnaissance career/return share
+one replay), both instruction profiles and three matched seeds with zero
+mismatches and passing reachability/event checks, 1,834 s.
+
 Frame update (`VGAME 0000:3ADA`, the per-frame world update) is
-integrated, pending a fresh full gate: 848 instructions / 2,608 bytes, all
+integrated and fully gated: 848 instructions / 2,608 bytes, all
 71 calls kept. Named C covers the map cell from the 32-bit position and its
 clamp, first-frame mission set-up, map markers, the sub-pass calls, timers,
 the nearest landing field and its traffic, the tower call, field contact
@@ -234,7 +254,9 @@ with D6); each now declines while an enabled fix is placed in its body
 (`recomp_fix_placed_in`), and the original runs. Checked: the D1 route
 matches again; strike with D1REAL matches between engines and differs
 without the decline; D34 and D6 do not trigger on that route, so no route
-yet shows them.
+yet shows them. The fresh re-gate (`gate-fix-inside.log`) passes 49 unit
+tests, all 41 routes, both instruction profiles and three matched seeds,
+zero mismatches, in 1,746 s.
 
 Flight input (`VGAME 0000:1EB0`, the player's flight step) is integrated and
 fully gated at `1337acf`: 1,274 instructions / 3,543 bytes, all 121 calls

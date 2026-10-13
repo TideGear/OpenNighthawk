@@ -367,6 +367,29 @@ and checks each claim against the instructions counted after it (it found
 all four in the unfixed text; two flags it raises are if/else and
 table-claim artifacts, checked by reading).
 
+Ground-defence update (`VGAME 0000:5046`, 12 Oct): 195 instructions / 583
+bytes. Returning draw/engagement fixtures retain the real clamp and long
+divide. Independent sentinel plants had not proven reload faults: the
+harness waited for a normal RET and discarded the fault states. Correlated,
+explicitly staged one-site worlds now force zero divisors (defence FFC0h)
+and quotient overflow (FFBCh, S=80h). Require the named routine to hand back
+at `5122`, step the original IDIV once, and compare the entire interrupt
+frame, registers, flags, clock and memory before following its random vector.
+Both fault kinds must appear. Removing hand-back fails at state 1; a
+transient code-write watch excludes random site loops that overwrite their
+own instructions. Three seeds compare 2,696 / 2,679 / 2,685 states, zero
+mismatches, with 1,006 / 996 / 1,039 faults and all 195 instructions reached
+inside the named routine at each seed (about five seconds per seed).
+`matched_ground_defences` retains the check. Room audit has one reviewed
+scope artifact: the unconditional RET-8 call block claims three instructions
+at `51D2`; the parser loses that claim on leaving its braces. Actual camera
+replay: 117.1 s, 8,465 calls, all 234 checkpoints/final identical and no
+event overrun. Private evidence: `D:/f117-gate/nav5046`.
+Fresh full gate (`gate-ground-defences.log`): 50 tests, all 41 routes
+(40 fresh interpreter sessions; one shared reconnaissance replay), both
+instruction profiles, three matched seeds and reachability/event checks
+pass, 1,834 s. Audited verdict: `nav5046/full-gate-verdict.json`.
+
 ## The gate (`tools/build_recomp.py`)
 
 Polygon caller (12 Oct): isolated current-main worktree, separate generated
