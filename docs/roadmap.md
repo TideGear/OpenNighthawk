@@ -207,6 +207,27 @@ shared-flow span-edge candidate demonstrates why walk size is not census
 ownership. Synthetic checks run in Windows CI. Details and limits:
 [repeated-processes.md](repeated-processes.md#phase-2-candidate-reading).
 
+Weapons in flight (`VGAME 0000:683E`) is integrated and fully gated:
+886 instructions / 2,565 bytes covering incoming/player target selection,
+seeker indications, steering, gravity, movement, terrain contact, blast,
+supply objectives, proximity damage and map markers. Four 4,000-state seeds
+compare 4,844 / 4,851 / 4,862 / 4,852 states, zero mismatches, all 886
+instructions reached inside the named routine at each seed. Divide-error
+frames compare too (291 / 271 / 264 / 274 faults); a wrong return address
+is caught. The transcript, room audit and all 25 callee-return checks pass.
+Fixtures retain real math helpers; one returning label fixture deliberately
+retypes a weapon to reach the supply arm normally bypassed by D5. This is
+staged coverage, not normal renderer behaviour. The entry guard preserves
+D5, D8, D1TTL, D1SLOT, D1PROX and D1ACCEL hooks.
+Actual camera-gradient replay: 8,459 calls, all 234 checkpoints/final
+identical, no event overrun (105.8 s). Census: 819 functions /
+90,772 bytes, P2 53.12%, overall 77.60% (827 addresses).
+Fresh full gate (`D:/f117-gate/gate-projectiles.log`): 52 unit tests,
+all 41 routes (40 fresh interpreter sessions), both 5,718,976-comparison
+instruction profiles and three matched seeds, zero mismatches, passing
+reachability/event checks. Total: 1,772 s.
+Private evidence: `D:/f117-gate/frame-683e/current-full-gate-verdict.json`.
+
 Aircraft traffic (`VGAME 0000:5852`) is integrated and fully gated:
 998 instructions / 2,976 bytes of named C covering formation, pursuit,
 patrol, steering, movement, landing,
@@ -559,7 +580,7 @@ instruction profiles and three 789-address matched seeds (2,561,209,
       Reimp's mapping; matched functions replacing translations one at a time,
       each held to the same parity checks. `tools/reimp_names.py` joins the
       Reimp's census (1,535 functions) with this project's regions as a private
-      lead list. 815 addresses are matched (807 of the census functions, 69,080 of
+      lead list. 827 addresses are matched (819 of the census functions, 90,772 of
       179,213 bytes); the table is at the end of `src/matched/matched.c` and the
       method is in [architecture.md](architecture.md#matched-routines-phase-2).
       The batches of 8-9 Oct add 37 + 34 + 47 VGAME, 34 + 40 + 45 START/END and 21 + 44 + 64

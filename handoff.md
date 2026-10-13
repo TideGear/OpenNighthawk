@@ -15,22 +15,25 @@ standing practice, not a session-by-session log. Earlier sessions' detail
 
 ## Current state
 
-Fully gated runtime: aircraft traffic (`VGAME 0000:5852`,
-`vgame_air_traffic`), 826 matched addresses, census 818 functions /
-88,207 bytes (P2 51.76%, overall 77.20%). Fresh full gate
-`D:/f117-gate/gate-air-traffic.log`: 51 unit tests, all 41 routes
+Fully gated runtime: weapons in flight (`VGAME 0000:683E`,
+`vgame_projectiles`), 827 matched addresses, census 819 functions /
+90,772 bytes (P2 53.12%, overall 77.60%). Fresh full gate
+`D:/f117-gate/gate-projectiles.log`: 52 unit tests, all 41 routes
 (40 fresh interpreter sessions; one shared reconnaissance replay), both
 instruction profiles and three matched seeds, zero mismatches, passing
-reachability/event checks, 1,963 s. Audited verdict:
-`D:/f117-gate/frame-5852/current-full-gate-verdict.json`.
+reachability/event checks. Total: 1,772 s. Audited verdict:
+`D:/f117-gate/frame-683e/current-full-gate-verdict.json`.
 
-Targeted proof: three 4,000-state seeds compare 2,056 / 2,017 / 2,078
-states, all 998 instructions reached inside the named routine, zero
-mismatches. Divide-error states at four sites compare the interrupt frame;
-changing a fault return address is caught. Instruction transcript and
-callee-return/room audits pass. Camera replay: 8,464 calls, all 234
-checkpoints/final identical, no event overrun. Private evidence:
-`D:/f117-gate/frame-5852` (`current-*` files; older proofs also retained).
+Four 4,000-state seeds compare 4,844 / 4,851 / 4,862 / 4,852 states,
+all 886 instructions reached inside the named routine, zero mismatches.
+Divide-error frames compare too; a wrong return address is caught. Transcript,
+callee-return/room audits and all six internal fix guards pass. One label
+fixture deliberately retypes a weapon to cover the D5-bypassed supply arm;
+this is staged, not normal renderer behaviour. Actual camera replay: 8,459
+calls, all 234 checkpoints/final identical, no event overrun.
+Private evidence: `D:/f117-gate/frame-683e` (`current-*` and canonical files).
+Aircraft traffic (`5852`) is integrated and fully gated too;
+proof: `D:/f117-gate/frame-5852`.
 
 Ground defences (`5046`) is integrated and fully gated too; its retained
 test requires zero-divisor and overflow faults and hand-back at `5122`.
@@ -74,12 +77,11 @@ Phase 2 work" below).
   the private lead list; current progress is in `docs/roadmap.md`, which
   has the full history of integrated-and-gated passes (span-edge/emit, HUD,
   moving objects, camera-image, flight input, frame update, ground defences,
-  aircraft traffic). Earlier proofs and tested source snapshots remain
-  under `D:/f117-gate/`; history is in
+  aircraft traffic, weapons in flight). Earlier proofs and tested source
+  snapshots remain under `D:/f117-gate/`; history is in
   [docs/repeated-processes.md](docs/repeated-processes.md).
-  Next candidates, all reached every flight frame from 3ADA: VGAME
-  `0x0683E` (2,565, projectiles); also
-  VGAME `0x02F9D` (2,595, frame compose), START `0x04239` (3,035),
+  Next candidates: VGAME
+  `0x02F9D` (2,595, frame compose), START `0x04239` (3,035),
   DSWAP `0x03DF3` (2,924).
   Method (repeated-processes.md): transcript first to validate the harness,
   add the routine to `COVERED`, fixtures until every instruction is
@@ -89,10 +91,10 @@ Phase 2 work" below).
   the real route (`route-proof.py`), which is what caught the room-claim
   defect. Private worktree `D:/f117-wt/span-emitter` has the proof build;
   `D:/f117-gate/frame-3ada/swap_body.py` swaps a body into it.
-  The `683E` draft is partial: `D:/f117-gate/frame-683e/named-12.c`
-  hands back at `6A32`, leaving guidance/movement/hit resolution unnamed.
-  Its old `vgame_warnings` name is misleading. It needs the existing
-  `fix_inside(c, 0x683F, 0x7243)` guard for D1TTL/D1PROX sites.
+  A fresh static transcript/dossier for `2F9D` is preserved in
+  `D:/f117-gate/next-drafts/vgame_frame_compose_2f9d.c/`: 938 instructions,
+  2,595 bytes, one contiguous range, 66 calls (30 distinct targets), ten
+  far targets and two DIV sites. No fixture or named-body proof yet.
 - 04DD above, if a real route to it is ever found.
 
 ## How this project verifies Phase 2 work (read before matching a new routine)
@@ -114,7 +116,7 @@ A routine only counts as matched once it passes BOTH:
 Every change to `src/matched/matched.c` needs a fresh full gate
 (`py tools/build_recomp.py --data D:/GOG/F-117A --seed-coverage
 C:/Users/Tideg/f117-recomp-local/coverage --jobs 16 --verify-interp-cache`,
-via `D:/f117-gate/affinity_launch.py`, ~24 min) before it's pushed. Read the
+via `D:/f117-gate/affinity_launch.py`, ~30 min) before it's pushed. Read the
 actual tally in the log, not just the exit code.
 
 ## Where things are

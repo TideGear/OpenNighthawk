@@ -332,6 +332,9 @@ if(F117R_BUILD_TESTS)
     # Formation, pursuit, patrol, landing and obstacle-probe traffic worlds.
     add_test(NAME matched_air_traffic COMMAND func_lockstep --states 4000
       --only VGAME.EXE:5852)
+    # Incoming/player weapons, complete branch coverage and divide-error frames.
+    add_test(NAME matched_projectiles COMMAND func_lockstep --states 4000
+      --only VGAME.EXE:683E)
     # Planted keys, quit-prompt answers, ejection, touchdown and crash states;
     # an escaped callee return or thin coverage fails the test.
     add_test(NAME matched_flight_input COMMAND func_lockstep --states 4000

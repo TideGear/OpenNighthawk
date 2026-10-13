@@ -416,6 +416,31 @@ Matched comparisons: 2,704,945 / 2,703,866 / 2,704,280;
 third seed `0x06c1dfe9140d`. Stage seconds (build/tests, coverage,
 regeneration, parity): 253 / 634 / 27 / 1048.
 
+Weapons in flight (`VGAME 0000:683E`, 12 Oct): complete the preserved
+partial draft through guidance, motion and impacts. Correct its slot ownership,
+scratch-target explanation and a one-instruction suffix count after `717F`.
+The old fixture needed up to 240 words in a 200-word array; use 256 with a
+capacity check before collecting fresh proof. `matched_projectiles` requires
+all 886 instructions at 4,000 states. Four seeds (default, `0xC0FFEE`,
+`0x683Ea11`, `0xb41ec9c960e4`) compare 4,844 / 4,851 / 4,862 / 4,852
+states and 291 / 271 / 264 / 274 divide-error frames, no mismatches.
+Fault masks `3D` / `3D` / `BD` / `BD` cover five or six of the eight divides;
+the others execute normally but are not proven to fault. The transcript
+passes the same harness; changing `6C94`'s fault return address is caught.
+The supply arm uses an explicitly staged retyping label fixture because the
+original dispatch normally skips it (D5). All 25 callees return with plain
+near RET; room audit passes. Actual placement tests show all six internal
+fix options decline without changing CPU/memory and are removed when disabled.
+Fresh camera replay: 8,459 calls, all 234 checkpoints/final identical,
+no event overrun, 105.8 s. Full gate: 52 tests, all 41 routes
+(40 fresh interpreter sessions), both 5,718,976-comparison profiles and
+three matched seeds, zero mismatches, passing reachability/event checks.
+Total: 1,772 s. Private evidence: `D:/f117-gate/frame-683e`.
+Matched tallies: 2,709,789 / 2,708,717 / 2,708,223.
+Stage seconds (build/tests, coverage, regeneration, parity):
+254 / 639 / 26 / 853. No heavy candidate work ran alongside this gate;
+these different-source timings do not establish a speedup.
+
 ## The gate (`tools/build_recomp.py`)
 
 Polygon caller (12 Oct): isolated current-main worktree, separate generated

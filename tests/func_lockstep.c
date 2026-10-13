@@ -311,7 +311,7 @@ static int compare(const char *mod, uint32_t off, uint16_t cs, uint16_t ip, int 
 static void stub_driver_thunks(uint8_t *pristine, uint32_t at, const rc_module *m, const recomp_override *o)
 {
     const int vgame_draw = !strcmp(m->name, "VGAME.EXE") &&
-        ((o->seg == 0 && (o->ip == 0x5852 || o->ip == 0x3ADA || o->ip == 0x1EB0 || o->ip == 0xBCEF || o->ip == 0x983E || o->ip == 0x79BE || o->ip == 0x8A90 || o->ip == 0x9515 || o->ip == 0x1E79 || o->ip == 0xB171 || o->ip == 0xD6DD || o->ip == 0x4777 ||
+        ((o->seg == 0 && (o->ip == 0x683E || o->ip == 0x5852 || o->ip == 0x3ADA || o->ip == 0x1EB0 || o->ip == 0xBCEF || o->ip == 0x983E || o->ip == 0x79BE || o->ip == 0x8A90 || o->ip == 0x9515 || o->ip == 0x1E79 || o->ip == 0xB171 || o->ip == 0xD6DD || o->ip == 0x4777 ||
                          o->ip == 0xD3F9 || o->ip == 0xD87C || o->ip == 0x72D8 ||
                            o->ip == 0x8A18 || o->ip == 0x881F || o->ip == 0x796E || o->ip == 0x3A4E ||
                            o->ip == 0xB0C2 || o->ip == 0xC45C)) ||
@@ -353,6 +353,25 @@ static const struct { const char *module; uint16_t ip; uint32_t linear; uint8_t 
     { "VGAME.EXE", 0x79BE, 0x089F7, 0xC3 },
     { "VGAME.EXE", 0x79BE, 0x08A18, 0xC3 },
     { "VGAME.EXE", 0x79BE, 0x0889B, 0xC3 },
+    /* Projectile caller: impact, damage, scene look-ups, objectives,
+     * drawing, sounds and strings return at once; distance, angle,
+     * clamp and shift helpers run. */
+    { "VGAME.EXE", 0x683E, 0x04ABA, 0xC3 },
+    { "VGAME.EXE", 0x683E, 0x07243, 0xC3 },
+    { "VGAME.EXE", 0x683E, 0x072D8, 0xC3 },
+    { "VGAME.EXE", 0x683E, 0x073C8, 0xC3 },
+    { "VGAME.EXE", 0x683E, 0x07594, 0xC3 },
+    { "VGAME.EXE", 0x683E, 0x0761A, 0xC3 },
+    { "VGAME.EXE", 0x683E, 0x078FD, 0xC3 },
+    { "VGAME.EXE", 0x683E, 0x08342, 0xC3 },
+    { "VGAME.EXE", 0x683E, 0x08625, 0xC3 },
+    { "VGAME.EXE", 0x683E, 0x0889B, 0xC3 },
+    { "VGAME.EXE", 0x683E, 0x08A4F, 0xC3 },
+    { "VGAME.EXE", 0x683E, 0x08A67, 0xC3 },
+    { "VGAME.EXE", 0x683E, 0x0B850, 0xC3 },
+    { "VGAME.EXE", 0x683E, 0x0D3F9, 0xC3 },
+    { "VGAME.EXE", 0x683E, 0x0EB10, 0xC3 },
+    { "VGAME.EXE", 0x683E, 0x0EB50, 0xC3 },
     /* Frame-update caller: its per-frame sub-passes, drawing and mission
      * set-up return at once; distance, clamp, shift and divide helpers run. */
     { "VGAME.EXE", 0x3ADA, 0x04C73, 0xC3 },
@@ -486,6 +505,7 @@ static const struct { const char *module; uint16_t ip; int arg; uint16_t v[2]; }
 /* Exact code ranges when the default 0x300-byte window is unsuitable:
  * long/shared tails, or small walkers whose unrelated callees are nearby. */
 static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
+    { "VGAME.EXE", 0x683E, 0x683E, 0x0A05 }, /* projectiles through RET */
     { "VGAME.EXE", 0x5852, 0x5852, 0x0BA0 }, /* aircraft traffic through RET */
     { "VGAME.EXE", 0x3ADA, 0x3ADA, 0x0A30 }, /* frame update through RET */
     { "VGAME.EXE", 0x1EB0, 0x1EB0, 0x0DD7 }, /* flight input through RET */
@@ -623,12 +643,13 @@ static uint64_t g_camera_seen;
  * compared states (all, and those the named routine finished itself). A
  * floor fails a 4,000-state run whose fixtures stopped reaching the arms. */
 static const struct { const char *module; uint16_t seg, ip, len; unsigned insns, floor; const char *what; } COVERED[] = {
+    { "VGAME.EXE", 0, 0x683E, 0x0A05, 886, 886, "projectiles" },
     { "VGAME.EXE", 0, 0x5852, 0x0BA0, 998, 990, "aircraft traffic" },
     { "VGAME.EXE", 0, 0x1EB0, 0x0DD7, 1274, 1250, "flight input" },
     { "VGAME.EXE", 0, 0x3ADA, 0x0A30, 848, 820, "frame update" },
     { "VGAME.EXE", 0, 0x5046, 0x0247, 195, 190, "ground defences" },
 };
-static int g_flight_fixture, g_frame_fixture, g_traffic_fixture, g_state_index;   /* flight-input fixtures; the state being compared */
+static int g_flight_fixture, g_frame_fixture, g_traffic_fixture, g_projectile_fixture, g_state_index;   /* flight-input fixtures; the state being compared */
 static int g_cov = -1;                  /* the COVERED entry under test, or -1 */
 static uint16_t g_cov_ip;
 static unsigned long long g_cov_escapes;
@@ -653,6 +674,7 @@ static uint64_t g_moving_seen;
 static int g_camera_fixture;
 static int g_hud_fixture;
 static int g_ground_fixture;
+static const uint16_t PROJECTILE_DIVIDES[] = { 0x6B0C, 0x6BD0, 0x6BFD, 0x6C32, 0x6C67, 0x6C94, 0x6DCC, 0x6EF5 };
 static const uint16_t TRAFFIC_DIVIDES[] = {
     0x5B99, 0x5E0D, 0x5E89, 0x5E9D, 0x5F67, 0x5FF0, 0x6179, 0x6280
 };
@@ -666,7 +688,7 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
     const uint32_t watch = phys(cs, (uint16_t)(ip - g_below));
     const int watching = (g_below || g_watch_transient) && a->mem == g_mem[0];
     while (*steps < 100000) {
-        const unsigned watch_bytes = (ip == 0x5852 || ip == 0x3ADA || ip == 0x1EB0 || ip == 0xBCEF || ip == 0x983E || ip == 0x0016 || ip == 0x79BE || ip == 0x8A90) ? g_span : 0x300u + g_below;
+        const unsigned watch_bytes = (ip == 0x683E || ip == 0x5852 || ip == 0x3ADA || ip == 0x1EB0 || ip == 0xBCEF || ip == 0x983E || ip == 0x0016 || ip == 0x79BE || ip == 0x8A90) ? g_span : 0x300u + g_below;
         if (watching && !g_self_written && memcmp(a->mem + watch, g_pristine + watch, watch_bytes)) g_self_written = 1;
         if (g_trace) printf("      %04X:%04X clk %llu sp %04X\n", a->seg[S_CS], a->ip, (unsigned long long)a->icount, a->r[R_SP]);
         const uint16_t here = a->ip;
@@ -753,6 +775,11 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
         if (g_camera_fixture && own && a->int_depth && here == 0xBE53) return 2;
         if (g_ground_fixture && a->int_depth > depth_before)
             return own && here == 0x5122 ? 2 : 0;
+        if (g_projectile_fixture && a->int_depth > depth_before) {
+            for (unsigned k = 0; own && k < sizeof PROJECTILE_DIVIDES / sizeof PROJECTILE_DIVIDES[0]; k++)
+                if (here == PROJECTILE_DIVIDES[k]) return 2;
+            return 0;
+        }
         if (g_traffic_fixture && a->int_depth > depth_before) {
             for (unsigned k = 0; own && k < sizeof TRAFFIC_DIVIDES / sizeof TRAFFIC_DIVIDES[0]; k++)
                 if (here == TRAFFIC_DIVIDES[k]) return 2;
@@ -875,6 +902,7 @@ int main(int argc, char **argv)
         g_flight_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0x1EB0;
         g_frame_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0x3ADA;
         g_traffic_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0x5852;
+        g_projectile_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0x683E;
         g_cov = -1;
         for (unsigned k = 0; k < sizeof COVERED / sizeof COVERED[0]; k++)
             if (!strcmp(o->module, COVERED[k].module) && o->seg == COVERED[k].seg && o->ip == COVERED[k].ip) g_cov = (int)k;
@@ -883,7 +911,7 @@ int main(int argc, char **argv)
         g_ground_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0x5046;
         g_watch_transient = (!strcmp(o->module, "VGAME.EXE") && o->seg == 0x1058 && o->ip == 0x0016) ||
             (o->seg == 0 &&
-            ((!strcmp(o->module, "VGAME.EXE") && (o->ip == 0x5046 || o->ip == 0x5852 || o->ip == 0x3ADA || o->ip == 0x1EB0 || o->ip == 0xBCEF || o->ip == 0x983E || o->ip == 0x79BE || o->ip == 0x8A90)) ||
+            ((!strcmp(o->module, "VGAME.EXE") && (o->ip == 0x683E || o->ip == 0x5046 || o->ip == 0x5852 || o->ip == 0x3ADA || o->ip == 0x1EB0 || o->ip == 0xBCEF || o->ip == 0x983E || o->ip == 0x79BE || o->ip == 0x8A90)) ||
              (!strcmp(o->module, "START.EXE") && (o->ip == 0x39B3 || o->ip == 0x39D5)) ||
              (!strcmp(o->module, "END.EXE") && (o->ip == 0x1CB1 || o->ip == 0x1CD3)) ||
              (!strcmp(o->module, "PLAYER.EXE") && o->ip == 0x1E90)));
@@ -915,6 +943,8 @@ int main(int argc, char **argv)
         unsigned long long hud_faults = 0;
         unsigned ground_fault_mask = 0;
         unsigned long long ground_faults = 0;
+        unsigned projectile_fault_mask = 0;
+        unsigned long long projectile_faults = 0;
         unsigned traffic_fault_mask = 0;
         unsigned long long traffic_faults = 0;
         uint64_t hud_branches = 0;
@@ -1332,6 +1362,83 @@ int main(int argc, char **argv)
                     g_pristine[address] = g_mem[0][address] = g_mem[1][address] = (s & 7) == 6 ? hit[j] : m->image[0x78FD + j];
                 }
             }
+            /* Projectiles: twelve 1Ch-byte records at 3C3Ah (X, Y, height,
+             * speed, heading, pitch, roll, life, type, warhead, locked
+             * target, owner, aim point); slots 0-7 are incoming weapons,
+             * 8-11 the player's own. Types 1Ch-23h with the
+             * weapon table's guidance kind (+0Ch of 12h-byte records at
+             * 3394h) spread over -1..7; a few traffic slots and fields. */
+            if (g_projectile_fixture && (s & 7) != 0) {
+                const unsigned v = (unsigned)s >> 3;
+                const uint32_t h = (uint32_t)v * 0x9E3779B1u;
+                /* At most 240 words, including all twelve weapon records. */
+                struct { uint16_t at, value; } words[256]; unsigned n = 0;
+#define SHOT_WORD(a_, v_) do { if (n >= sizeof words / sizeof words[0]) { fprintf(stderr, "projectile fixture capacity exceeded\n"); return 1; } words[n].at = (uint16_t)(a_); words[n++].value = (uint16_t)(v_); } while (0)
+                static const uint16_t kinds[] = { 0xFFFF, 0, 1, 2, 3, 4, 5, 6, 7 };
+                const uint16_t px = (uint16_t)(0x2000 + 0x10 * (v % 7)), py = (uint16_t)(0x3000 + 0x10 * (v % 5));
+                const uint16_t slots = (uint16_t)(1 + v % 5);
+                SHOT_WORD(0xDEFC, slots); SHOT_WORD(0xC0D0, px); SHOT_WORD(0xC0DE, py); SHOT_WORD(0x2DF4, 0x200);
+                SHOT_WORD(0x39E0, (h >> 16) & 1); SHOT_WORD(0x39D8, px + 0x20); SHOT_WORD(0x39DA, py + 0x20);
+                SHOT_WORD(0x3D94, (h >> 17) & 1 ? 0xFFFF : 1); SHOT_WORD(0x3664, (h >> 18) & 1);
+                SHOT_WORD(0x3D90, (h >> 19) & 1 ? 5 : 0); SHOT_WORD(0x9F94, 2); SHOT_WORD(0x9B34, (h >> 20) & 3 ? 0 : 0x30);
+                SHOT_WORD(0x9912, 1); SHOT_WORD(0xDEB4, (h >> 21) & 1 ? 5 : 0); SHOT_WORD(0x3686, (h >> 22) & 3);
+                for (unsigned t = 0; t < 8; t++) {
+                    const uint16_t rec = (uint16_t)(0x3394 + 0x12 * (0x1C + t));
+                    SHOT_WORD(rec + 0x0A, 0x800 + 0x100 * t);                     /* 339Eh: top speed */
+                    SHOT_WORD(rec + 0x0C, kinds[(v + t) % 9]);                    /* 33A0h: guidance */
+                    SHOT_WORD(rec + 0x0E, 0x10 + t);                              /* 33A2h: turn */
+                }
+                for (unsigned k = 0; k < 12; k++) {
+                    const uint16_t rec = (uint16_t)(0x3C3A + 0x1C * k);
+                    const uint32_t hk = h ^ (k * 0x85EBCA6Bu);
+                    SHOT_WORD(rec + 0x00, px + 0x20 * k - 0x80); SHOT_WORD(rec + 0x02, py + 0x18 * k - 0x60);
+                    SHOT_WORD(rec + 0x04, (hk >> 8) & 3 ? 0x100 + 0x20 * k : 0xFFC0);    /* height, some below ground */
+                    SHOT_WORD(rec + 0x06, 0x10 + (hk >> 10) % 0x30);                    /* 3C40h speed */
+                    SHOT_WORD(rec + 0x08, (uint16_t)(hk >> 4)); SHOT_WORD(rec + 0x0A, (hk >> 12) & 1 ? 0xF000 : 0x0400);
+                    SHOT_WORD(rec + 0x0E, (hk >> 13) % 4 ? 1 + (hk >> 15) % 40 : 0);   /* 3C48h life, some empty */
+                    SHOT_WORD(rec + 0x10, (hk >> 14) % 5 == 0 ? 0x26 : 0x1C + (k + v) % 8);   /* 3C4Ah type */
+                    SHOT_WORD(rec + 0x12, (hk >> 17) % 3);                              /* 3C4Ch warhead */
+                    SHOT_WORD(rec + 0x14, (hk >> 19) % 3 == 0 ? 0xFFFF : (hk >> 20) & 1);   /* 3C4Eh locked target */
+                    SHOT_WORD(rec + 0x16, (hk >> 21) % 4 == 0 ? 0 : (hk >> 22) & 1 ? 3 : 0xFFFF);   /* 3C50h owner */
+                    SHOT_WORD(rec + 0x18, px + ((hk >> 23) & 1 ? 0x10 : 0)); SHOT_WORD(rec + 0x1A, py);   /* 3C52h aim */
+                }
+                for (unsigned j = 0; j < slots; j++) {
+                    const uint16_t rec = (uint16_t)(0xC16A + 0x24 * j);
+                    SHOT_WORD(rec + 0x18, (h >> (j + 3)) & 1 ? 0x0003 : 0x000B); SHOT_WORD(rec + 0x1A, 0x100);
+                    SHOT_WORD(rec + 0x02, px + 0x10 * j); SHOT_WORD(rec + 0x04, py - 0x10 * j); SHOT_WORD(rec + 0x06, 0x180);
+                }
+                for (unsigned j = 0; j < 4; j++) {
+                    SHOT_WORD(0xB2D0 + 16 * j, px + 0x30 * j); SHOT_WORD(0xB2D2 + 16 * j, py);
+                    SHOT_WORD(0xB2D6 + 16 * j, (h >> (j + 8)) & 1 ? 0x0010 : 0x0090);
+                    SHOT_WORD(0xE304 + 18 * (j & 1), 3); SHOT_WORD(0xE306 + 18 * (j & 1), j & 1);
+                }
+#undef SHOT_WORD
+                int safe = 1;
+                for (unsigned j = 0; j < n; j++) for (unsigned byte = 0; byte < 2; byte++) {
+                    const uint32_t address = phys(seg[S_DS], (uint16_t)(words[j].at + byte));
+                    if (address >= at && address < at + m->size + 2) safe = 0;
+                }
+                if (safe) for (unsigned j = 0; j < n; j++) for (unsigned byte = 0; byte < 2; byte++) {
+                    const uint32_t address = phys(seg[S_DS], (uint16_t)(words[j].at + byte));
+                    g_pristine[address] = g_mem[0][address] = g_mem[1][address] = (uint8_t)(words[j].value >> (8 * byte));
+                }
+            }
+            /* Returning stand-ins: one label fixture deliberately retypes
+             * the live record (26h, by SI) to reach the supply arm; this is
+             * staged coverage, not normal renderer behaviour. Other classes
+             * answer "no field" from B850 or effectiveness 10 from 8A67. */
+            if (g_projectile_fixture) {
+                static const struct { uint32_t at; uint8_t code[7]; unsigned len; int cls; } answer[] = {
+                    { 0x08342, { 0xC7, 0x84, 0x4A, 0x3C, 0x26, 0x00, 0xC3 }, 7, 3 },
+                    { 0x0B850, { 0xB8, 0xFF, 0xFF, 0xC3 }, 4, 4 },
+                    { 0x08A67, { 0xB8, 0x0A, 0x00, 0xC3 }, 4, 5 } };
+                for (unsigned k = 0; k < sizeof answer / sizeof answer[0]; k++)
+                    for (unsigned j = 0; j < answer[k].len; j++) {
+                        const uint32_t address = at + answer[k].at + j;
+                        g_pristine[address] = g_mem[0][address] = g_mem[1][address] =
+                            (s & 7) == answer[k].cls ? answer[k].code[j] : j == 0 ? 0xC3 : m->image[answer[k].at + j];
+                    }
+            }
             /* Small moving-object worlds separate target cycling, shadow
              * height, detail reduction, distant dots and exterior rendering.
              * Returning projection supplies controlled depth; real range and
@@ -1655,6 +1762,19 @@ int main(int argc, char **argv)
                 g_side[0].overflow = g_side[1].overflow = 1;
                 g_lost = 0; g_ncalls = 0; g_callover = 0;
                 const int ran = o->fn(&g_m);
+                if (g_projectile_fixture) {
+                    if (!ran || g_lost || !g_m.cpu.int_depth) {
+                        fprintf(stderr, "projectile update missed divide fault (state %d, original %04X, named %04X:%04X, depth %d, lost %d)\n",
+                                s, a->op_ip, g_m.cpu.seg[S_CS], g_m.cpu.ip, g_m.cpu.int_depth, g_lost);
+                        mc++; mb++; restore(); continue;
+                    }
+                    for (unsigned k = 0; k < sizeof PROJECTILE_DIVIDES / sizeof PROJECTILE_DIVIDES[0]; k++)
+                        if (a->op_ip == PROJECTILE_DIVIDES[k]) projectile_fault_mask |= 1u << k;
+                    projectile_faults++; g_cpu[1] = g_m.cpu; mc++;
+                    g_ctx = " (projectile divide fault)";
+                    mb += compare(o->module, ip, cs, ip, 0);
+                    g_ctx = ""; restore(); continue;
+                }
                 if (g_traffic_fixture) {
                     if (!ran || g_lost || !g_m.cpu.int_depth) {
                         fprintf(stderr, "aircraft traffic missed divide fault (state %d)\n", s);
@@ -1888,6 +2008,10 @@ int main(int argc, char **argv)
         if (g_ground_fixture) {
             printf("  ground reload divide fault states: %llu; mask %X (required 3)\n", ground_faults, ground_fault_mask);
             if (states >= 4000 && ground_fault_mask != 3) { fprintf(stderr, "ground fixtures missed required divide faults\n"); mb++; }
+        }
+        if (g_projectile_fixture) {
+            printf("  projectile divide fault states: %llu; sites %02X\n", projectile_faults, projectile_fault_mask);
+            if (states >= 4000 && !projectile_faults) { fprintf(stderr, "projectile fixtures missed divide faults\n"); mb++; }
         }
         if (g_traffic_fixture) {
             printf("  aircraft traffic divide fault states: %llu; sites %02X\n", traffic_faults, traffic_fault_mask);
