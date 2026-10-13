@@ -199,6 +199,17 @@ int recomp_override_enable(const char *id, int on)
     return n;
 }
 
+int recomp_fix_placed_in(uint32_t lo, uint32_t hi)
+{
+    for (int i = 0; i < MAX_INST; i++) {
+        const instance *in = &g_rt.inst[i];
+        if (!in->live) continue;
+        for (int k = 0; k < in->nov; k++)
+            if (!g_ov[in->ov_index[k]].matched && in->ov_lin[k] >= lo && in->ov_lin[k] < hi) return 1;
+    }
+    return 0;
+}
+
 void recomp_override_ids(char *out, size_t n)
 {
     size_t used = 0;

@@ -225,6 +225,16 @@ every claim against the instructions counted. The replay then invokes it
 isolated tests pass. Census 816 functions /
 84,648 bytes, P2 49.87%, overall 76.66% (824 matched addresses). Private
 evidence: `D:/f117-gate/frame-3ada`.
+Its first full gate failed one route, `d1_fast_machine`: the D1 fix sits at
+`0x441D`, inside this routine, and the named body ran through it, so the fix
+never got its turn in the recompiled engine. Five matched routines contain
+a fix site after their entry (this one with D1 and D1REAL, flight input
+with D1REAL, `vgame_scene_set_override` with D34, `vgame_detect_evaluate`
+with D6); each now declines while an enabled fix is placed in its body
+(`recomp_fix_placed_in`), and the original runs. Checked: the D1 route
+matches again; strike with D1REAL matches between engines and differs
+without the decline; D34 and D6 do not trigger on that route, so no route
+yet shows them.
 
 Flight input (`VGAME 0000:1EB0`, the player's flight step) is integrated and
 fully gated at `1337acf`: 1,274 instructions / 3,543 bytes, all 121 calls

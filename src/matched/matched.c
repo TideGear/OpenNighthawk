@@ -106,6 +106,15 @@ static int room(const cpu_t *c, unsigned n)
     return c->icount + n <= c->stop_at;
 }
 
+/* A switchable fix placed inside a matched routine's body (after its
+ * entry) would never get its turn there, so the routine declines while
+ * one is on and the original runs; a fix at the entry itself already runs
+ * first (recomp_override_step). */
+static int fix_inside(const cpu_t *c, uint16_t from, uint16_t to)
+{
+    return recomp_fix_placed_in(phys(c->seg[S_CS], from), phys(c->seg[S_CS], to));
+}
+
 static void near_ret(cpu_t *c)
 {
     c->ip = cpu_pop16(c);
@@ -15962,6 +15971,7 @@ static int vgame_scene_set_override(machine_t *m)
 {
     cpu_t *c = &m->cpu;
     if (!room(c, 14)) return 0;
+    if (fix_inside(c, 0x0F3E, 0x0FBD)) return 0;
     const uint16_t ds = c->seg[S_DS];
     x86_enter(c, 2, 0);
 #define BYTE_AT(o) mem_read8(c, phys(c->seg[S_DS], (uint16_t)(o)))
@@ -16346,6 +16356,7 @@ static int vgame_detect_evaluate(machine_t *m)
 {
     cpu_t *c = &m->cpu;
     if (!room(c, 16)) return 0;
+    if (fix_inside(c, 0x5583, 0x56A9)) return 0;
     x86_enter(c, 0x0E, 0);
     cpu_push16(c, c->r[R_DI]);
     cpu_push16(c, c->r[R_SI]);
@@ -35179,6 +35190,7 @@ static int vgame_flight_input(machine_t *m)
 {
     cpu_t *c = &m->cpu;
     if (!room(c, 4)) return 0;
+    if (fix_inside(c, 0x1EB1, 0x2C87)) return 0;
     x86_enter(c, 0x30, 0); x86_push_reg(c, R_SI);
     alu_sub(c, ds_get(c, 0xC0DA), 0, 1, 0); c->icount += 4;
     if (!(c->flags & F_ZF)) goto flight_collect_key;
@@ -35853,6 +35865,7 @@ static int vgame_frame_update(machine_t *m)
 {
     cpu_t *c = &m->cpu;
     if (!room(c, 8)) return 0;
+    if (fix_inside(c, 0x3ADB, 0x450A)) return 0;
     /* Map cell X = (X position + 10h) >> 5; Y = 8000h - ((Y + 10h) >> 5). */
     x86_enter(c, 0x12, 0); x86_push_reg(c, R_DI); x86_push_reg(c, R_SI);
     c->r[R_AX] = ds_get(c, 0xBA3C); c->r[R_DX] = ds_get(c, 0xBA3E);

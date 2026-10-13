@@ -26,10 +26,16 @@ of it: 824 matched addresses, census 816 functions / 84,648 bytes (P2
 instruction reached, isolated tests, actual camera-gradient replay
 identical at all 234 checkpoints with no overrun after a room-claim fix
 ([docs/roadmap.md](docs/roadmap.md), private evidence
-`D:/f117-gate/frame-3ada`). Its full gate log is
-`D:/f117-gate/gate-frame-update.log`; check its tally before relying on it.
-Its coverage pass should be skipped (the key no longer changes with test
-entries); if it runs, the skip has broken again.
+`D:/f117-gate/frame-3ada`). Its first gate (`gate-frame-update.log`)
+failed `d1_fast_machine`: a fix inside a matched body never ran. Matched
+routines with a fix site after their entry now decline while that fix is
+on (`fix_inside` in matched.c); the re-gate log is
+`D:/f117-gate/gate-fix-inside.log` - check its tally before relying on it.
+When matching a routine, check `src/fixes/fixes.c` for sites inside it.
+The coverage pass still runs for every commit that adds a matched routine:
+the translator isolates each matched entry, so the generated code changes
+and the skip's generated-code guard declines (the test-entry key fix only
+helps commits that add none).
 
 A sibling handler, **VGAME 0FB2:04DD** (the line clipper's own divide-error
 handler), is matched and fixture-proven but deliberately **not integrated**:

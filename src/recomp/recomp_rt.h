@@ -67,6 +67,10 @@ int  recomp_override_enable(const char *id, int on);
 void recomp_override_list(FILE *f);
 /* Overrides sharing a place, printed; the count of those not in `allowed` ("MODULE SEG:OFF"). */
 int recomp_override_duplicates(FILE *f, const char *const *allowed);
+/* 1 when an enabled fix (not a matched routine) is placed at a linear
+ * address in [lo, hi): a matched routine spanning it declines, so the
+ * original runs and the fix gets its turn. */
+int  recomp_fix_placed_in(uint32_t lo, uint32_t hi);
 /* The enabled overrides' ids, space-separated, each once ("" for none). */
 void recomp_override_ids(char *out, size_t n);
 /* Enabled overrides now placed in loaded modules. */
