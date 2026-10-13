@@ -6,7 +6,7 @@ For the next conversation on this repository. Read this, then
 checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 [docs/presentation.md](docs/presentation.md) (60+ fps and 4K) and
 [docs/repeated-processes.md](docs/repeated-processes.md) (every process we run
-more than once, what it costs). State as of 12 October 2026.
+more than once, what it costs). State as of 13 October 2026.
 
 This file is kept short on purpose: it holds only the current state and
 standing practice, not a session-by-session log. Earlier sessions' detail
@@ -15,25 +15,46 @@ standing practice, not a session-by-session log. Earlier sessions' detail
 
 ## Current state
 
-Fully gated runtime: weapons in flight (`VGAME 0000:683E`,
-`vgame_projectiles`), 827 matched addresses, census 819 functions /
-90,772 bytes (P2 53.12%, overall 77.60%). Fresh full gate
-`D:/f117-gate/gate-projectiles.log`: 52 unit tests, all 41 routes
-(40 fresh interpreter sessions; one shared reconnaissance replay), both
-instruction profiles and three matched seeds, zero mismatches, passing
-reachability/event checks. Total: 1,772 s. Audited verdict:
-`D:/f117-gate/frame-683e/current-full-gate-verdict.json`.
+Fully gated runtime: view composition (`VGAME 0000:2F9D`,
+`vgame_frame_compose`), 828 matched addresses, census 820 functions /
+93,367 bytes (P2 54.49%). Three targeted seeds compare 3,199 / 3,216 /
+3,200 states, zero mismatches; all 938 canonical instruction starts reached.
+Room audit: 208 claims, 938 instructions, 66 calls. Actual camera replay:
+8,456 calls, all 234 checkpoints and final identical, no event overrun.
+Private proof: `D:/f117-gate/frame-2f9d`.
 
-Four 4,000-state seeds compare 4,844 / 4,851 / 4,862 / 4,852 states,
-all 886 instructions reached inside the named routine, zero mismatches.
-Divide-error frames compare too; a wrong return address is caught. Transcript,
-callee-return/room audits and all six internal fix guards pass. One label
-fixture deliberately retypes a weapon to cover the D5-bypassed supply arm;
-this is staged, not normal renderer behaviour. Actual camera replay: 8,459
-calls, all 234 checkpoints/final identical, no event overrun.
-Private evidence: `D:/f117-gate/frame-683e` (`current-*` and canonical files).
-Aircraft traffic (`5852`) is integrated and fully gated too;
-proof: `D:/f117-gate/frame-5852`.
+Fresh full gate `D:/f117-gate/gate-view-compose-render.log`: 53 tests,
+41 routes, 40 fresh interpreter sessions, both 5,718,976-state instruction
+profiles and three 828-address matched seeds, zero mismatches; reachability
+and event checks pass (1,768 s). After observer/presentation refinements,
+`gate-orthographic-final.log` repeats build/tests and fresh route parity,
+with unchanged translation/matched coverage reused (1,271 s). Audits:
+`frame-2f9d/current-full-gate-verdict.json` and
+`render-fallbacks/final-gate-verdict.json` under `D:/f117-gate`.
+
+Presentation now uses exact per-polygon camera snapshots and projection
+mode metadata, fixing fully clipped horizons, reused vertex storage and
+Z=0 orthographic map objects. Live N=4/9: all 48,856 model polygons refined,
+368 exact logic frames, 366 exact endpoint pairs, 54 checkpoint/final hashes
+unchanged. Retained windows pass N=1/4/9; interpolation passes N=4/9.
+One extreme original integer-clipping overflow artifact in air-to-air stays
+scaled to preserve its original silhouette; incomplete legacy metadata also
+falls back safely. Original bitmap lettering/artwork remains the owner's
+choice. Real-display refresh/motion/4K checks remain. Details:
+[docs/presentation.md](docs/presentation.md); private evidence
+`D:/f117-gate/render-fallbacks`.
+
+D10/D35/D36 were investigated deeply and closed as not established for DOS
+or not reproduced, with evidence and reopening criteria in
+[docs/legacy-reports.md](docs/legacy-reports.md) and bugs.md. D10's recovered
+MicroProse release notes establish a Macintosh defect. D35 passes all 18
+speed/engine/sound probes; D36's engine plays on all seven available MT-32
+control ROMs. These closures are not new patches. Phase 3 still includes
+presentation coverage and real-display polish; human play/listening checks
+remain Phase 4.
+
+Weapons in flight (`683E`) and aircraft traffic (`5852`) remain integrated
+and fully gated; retained proofs: `D:/f117-gate/frame-683e` and `frame-5852`.
 
 Ground defences (`5046`) is integrated and fully gated too; its retained
 test requires zero-divisor and overflow faults and hand-back at `5122`.
@@ -64,35 +85,6 @@ Phase 2 work" below).
 
 ## Next up
 
-- **VGAME `2F9D` (view compose, 938 instructions / 2,595 bytes) is written and
-  lockstep-proven but NOT gated and NOT on master.** It lives on branch
-  `wip-view-compose-2f9d` (matched.c routine `vgame_frame_compose`, registered
-  in `MATCHED`; `tests/func_lockstep.c` fixture `g_view_fixture`, image
-  patches, SPANS, COVERED; CMake test `matched_view_compose`). At 4,000
-  states: 3,199 compared, zero mismatches, all 938 instructions reached by
-  states the named routine finished. The body was generated mechanically
-  (private converter `conv.py`, listing `2f9d.lst` and `mutate.py` in
-  `D:/f117-gate/next-drafts/vgame_frame_compose_2f9d.c/`) and carries
-  address comments, but has **no naming/explanatory comments yet**. Still to
-  do, in order: (1) done: three seeds (default, 1, 2) all 0 mismatches, and
-  `mutate.py` catches 5 of 7 mutants (the survivors: `3590` is an equivalent
-  mutant, `3923` changes an argument to a stubbed callee whose stack slot is
-  overwritten by the next call, which this harness cannot see; `mutate.py` now
-  backs the source up, but never kill it mid-run: an interrupted run once left
-  a mutant in matched.c and the next run saved it as the original); (2) skip;
-  (3) room audit of the `FC_NEED` claims (each block's count must equal
-  its instructions including the ending CALL); (4) rewrite the comments:
-  modes of `[C0A6]` (0/44h forward; 41h-43h side looks; 84h preset table at
-  B094; 85h behind; 87h ahead; 88h/89h/8Bh tracked object `[DED4]`; 8Ch
-  fixed; others keep last frame's angles), `[368C]` = cockpit flag,
-  `[2E7A]` = last mode, result `[2E66]`; (5) real route: build
-  `f117run`, run `camera_gradients` against `D:/f117-gate/span-emit/reference.json`
-  (copy `D:/f117-gate/frame-3ada/route-proof.py`, point it at this tree) and
-  require a positive `ran N times` for `2F9D`; (6) census, docs, full gate,
-  then merge. No fix site lies inside `2F9D`..`39BF`, so no `fix_inside`.
-  A callee list for new fixtures: 3CE, 1C1, 3A3B, 3A7D, 8462, 895E, 89F7,
-  D52E, EB82, EBBA and far 114A:0280/02FF/03FD, 0FB2:01E6, 1039:009D/00B7
-  return at once; clamp, abs, copy, shifts, trig, matrix run.
 - **Branch housekeeping (12 Oct).** 24 local branches are fully merged into
   `master` and safe to delete; `flight-input` (older draft of aircraft
   traffic, superseded by `b41ec9c`, its worktree `D:/f117-wt/span-emitter`
@@ -116,7 +108,7 @@ Phase 2 work" below).
   snapshots remain under `D:/f117-gate/`; history is in
   [docs/repeated-processes.md](docs/repeated-processes.md).
   Next candidates: VGAME
-  `0x02F9D` (2,595, frame compose), START `0x04239` (3,035),
+  START `0x04239` (3,035),
   DSWAP `0x03DF3` (2,924).
   Method (repeated-processes.md): transcript first to validate the harness,
   add the routine to `COVERED`, fixtures until every instruction is
@@ -126,10 +118,6 @@ Phase 2 work" below).
   the real route (`route-proof.py`), which is what caught the room-claim
   defect. Private worktree `D:/f117-wt/span-emitter` has the proof build;
   `D:/f117-gate/frame-3ada/swap_body.py` swaps a body into it.
-  A fresh static transcript/dossier for `2F9D` is preserved in
-  `D:/f117-gate/next-drafts/vgame_frame_compose_2f9d.c/`: 938 instructions,
-  2,595 bytes, one contiguous range, 66 calls (30 distinct targets), ten
-  far targets and two DIV sites. No fixture or named-body proof yet.
 - 04DD above, if a real route to it is ever found.
 
 ## How this project verifies Phase 2 work (read before matching a new routine)

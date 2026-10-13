@@ -311,7 +311,7 @@ static int compare(const char *mod, uint32_t off, uint16_t cs, uint16_t ip, int 
 static void stub_driver_thunks(uint8_t *pristine, uint32_t at, const rc_module *m, const recomp_override *o)
 {
     const int vgame_draw = !strcmp(m->name, "VGAME.EXE") &&
-        ((o->seg == 0 && (o->ip == 0x683E || o->ip == 0x5852 || o->ip == 0x3ADA || o->ip == 0x1EB0 || o->ip == 0xBCEF || o->ip == 0x983E || o->ip == 0x79BE || o->ip == 0x8A90 || o->ip == 0x9515 || o->ip == 0x1E79 || o->ip == 0xB171 || o->ip == 0xD6DD || o->ip == 0x4777 ||
+        ((o->seg == 0 && (o->ip == 0x2F9D || o->ip == 0x683E || o->ip == 0x5852 || o->ip == 0x3ADA || o->ip == 0x1EB0 || o->ip == 0xBCEF || o->ip == 0x983E || o->ip == 0x79BE || o->ip == 0x8A90 || o->ip == 0x9515 || o->ip == 0x1E79 || o->ip == 0xB171 || o->ip == 0xD6DD || o->ip == 0x4777 ||
                          o->ip == 0xD3F9 || o->ip == 0xD87C || o->ip == 0x72D8 ||
                            o->ip == 0x8A18 || o->ip == 0x881F || o->ip == 0x796E || o->ip == 0x3A4E ||
                            o->ip == 0xB0C2 || o->ip == 0xC45C)) ||
@@ -372,6 +372,25 @@ static const struct { const char *module; uint16_t ip; uint32_t linear; uint8_t 
     { "VGAME.EXE", 0x683E, 0x0D3F9, 0xC3 },
     { "VGAME.EXE", 0x683E, 0x0EB10, 0xC3 },
     { "VGAME.EXE", 0x683E, 0x0EB50, 0xC3 },
+    /* View compose: the 3D scene, panel redraws, text and the driver's
+     * far routines return at once; the clamp, abs, copy, shift, matrix, trig
+     * and bearing helpers run. */
+    { "VGAME.EXE", 0x2F9D, 0x003CE, 0xC3 },
+    { "VGAME.EXE", 0x2F9D, 0x001C1, 0xC3 },
+    { "VGAME.EXE", 0x2F9D, 0x03A3B, 0xC3 },
+    { "VGAME.EXE", 0x2F9D, 0x03A7D, 0xC3 },
+    { "VGAME.EXE", 0x2F9D, 0x08462, 0xC3 },
+    { "VGAME.EXE", 0x2F9D, 0x0895E, 0xC3 },
+    { "VGAME.EXE", 0x2F9D, 0x089F7, 0xC3 },
+    { "VGAME.EXE", 0x2F9D, 0x0D52E, 0xC3 },
+    { "VGAME.EXE", 0x2F9D, 0x0EB82, 0xC3 },
+    { "VGAME.EXE", 0x2F9D, 0x0EBBA, 0xC3 },
+    { "VGAME.EXE", 0x2F9D, 0x11720, 0xCB },       /* 114A:0280 */
+    { "VGAME.EXE", 0x2F9D, 0x11799, 0xCB },       /* 114A:02FF */
+    { "VGAME.EXE", 0x2F9D, 0x1189D, 0xCB },       /* 114A:03FD */
+    { "VGAME.EXE", 0x2F9D, 0x0FD06, 0xCB },       /* 0FB2:01E6 */
+    { "VGAME.EXE", 0x2F9D, 0x1042D, 0xCB },       /* 1039:009D */
+    { "VGAME.EXE", 0x2F9D, 0x10447, 0xCB },       /* 1039:00B7 */
     /* Frame-update caller: its per-frame sub-passes, drawing and mission
      * set-up return at once; distance, clamp, shift and divide helpers run. */
     { "VGAME.EXE", 0x3ADA, 0x04C73, 0xC3 },
@@ -505,6 +524,7 @@ static const struct { const char *module; uint16_t ip; int arg; uint16_t v[2]; }
 /* Exact code ranges when the default 0x300-byte window is unsuitable:
  * long/shared tails, or small walkers whose unrelated callees are nearby. */
 static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
+    { "VGAME.EXE", 0x2F9D, 0x2F9D, 0x0A23 }, /* view compose through RET */
     { "VGAME.EXE", 0x683E, 0x683E, 0x0A05 }, /* projectiles through RET */
     { "VGAME.EXE", 0x5852, 0x5852, 0x0BA0 }, /* aircraft traffic through RET */
     { "VGAME.EXE", 0x3ADA, 0x3ADA, 0x0A30 }, /* frame update through RET */
@@ -643,13 +663,14 @@ static uint64_t g_camera_seen;
  * compared states (all, and those the named routine finished itself). A
  * floor fails a 4,000-state run whose fixtures stopped reaching the arms. */
 static const struct { const char *module; uint16_t seg, ip, len; unsigned insns, floor; const char *what; } COVERED[] = {
+    { "VGAME.EXE", 0, 0x2F9D, 0x0A23, 938, 938, "view compose" },
     { "VGAME.EXE", 0, 0x683E, 0x0A05, 886, 886, "projectiles" },
     { "VGAME.EXE", 0, 0x5852, 0x0BA0, 998, 990, "aircraft traffic" },
     { "VGAME.EXE", 0, 0x1EB0, 0x0DD7, 1274, 1250, "flight input" },
     { "VGAME.EXE", 0, 0x3ADA, 0x0A30, 848, 820, "frame update" },
     { "VGAME.EXE", 0, 0x5046, 0x0247, 195, 190, "ground defences" },
 };
-static int g_flight_fixture, g_frame_fixture, g_traffic_fixture, g_projectile_fixture, g_state_index;   /* flight-input fixtures; the state being compared */
+static int g_flight_fixture, g_frame_fixture, g_traffic_fixture, g_projectile_fixture, g_view_fixture, g_state_index;   /* flight-input fixtures; the state being compared */
 static int g_cov = -1;                  /* the COVERED entry under test, or -1 */
 static uint16_t g_cov_ip;
 static unsigned long long g_cov_escapes;
@@ -688,7 +709,7 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
     const uint32_t watch = phys(cs, (uint16_t)(ip - g_below));
     const int watching = (g_below || g_watch_transient) && a->mem == g_mem[0];
     while (*steps < 100000) {
-        const unsigned watch_bytes = (ip == 0x683E || ip == 0x5852 || ip == 0x3ADA || ip == 0x1EB0 || ip == 0xBCEF || ip == 0x983E || ip == 0x0016 || ip == 0x79BE || ip == 0x8A90) ? g_span : 0x300u + g_below;
+        const unsigned watch_bytes = (ip == 0x2F9D || ip == 0x683E || ip == 0x5852 || ip == 0x3ADA || ip == 0x1EB0 || ip == 0xBCEF || ip == 0x983E || ip == 0x0016 || ip == 0x79BE || ip == 0x8A90) ? g_span : 0x300u + g_below;
         if (watching && !g_self_written && memcmp(a->mem + watch, g_pristine + watch, watch_bytes)) g_self_written = 1;
         if (g_trace) printf("      %04X:%04X clk %llu sp %04X\n", a->seg[S_CS], a->ip, (unsigned long long)a->icount, a->r[R_SP]);
         const uint16_t here = a->ip;
@@ -903,6 +924,7 @@ int main(int argc, char **argv)
         g_frame_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0x3ADA;
         g_traffic_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0x5852;
         g_projectile_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0x683E;
+        g_view_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0x2F9D;
         g_cov = -1;
         for (unsigned k = 0; k < sizeof COVERED / sizeof COVERED[0]; k++)
             if (!strcmp(o->module, COVERED[k].module) && o->seg == COVERED[k].seg && o->ip == COVERED[k].ip) g_cov = (int)k;
@@ -911,7 +933,7 @@ int main(int argc, char **argv)
         g_ground_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0x5046;
         g_watch_transient = (!strcmp(o->module, "VGAME.EXE") && o->seg == 0x1058 && o->ip == 0x0016) ||
             (o->seg == 0 &&
-            ((!strcmp(o->module, "VGAME.EXE") && (o->ip == 0x683E || o->ip == 0x5046 || o->ip == 0x5852 || o->ip == 0x3ADA || o->ip == 0x1EB0 || o->ip == 0xBCEF || o->ip == 0x983E || o->ip == 0x79BE || o->ip == 0x8A90)) ||
+            ((!strcmp(o->module, "VGAME.EXE") && (o->ip == 0x2F9D || o->ip == 0x683E || o->ip == 0x5046 || o->ip == 0x5852 || o->ip == 0x3ADA || o->ip == 0x1EB0 || o->ip == 0xBCEF || o->ip == 0x983E || o->ip == 0x79BE || o->ip == 0x8A90)) ||
              (!strcmp(o->module, "START.EXE") && (o->ip == 0x39B3 || o->ip == 0x39D5)) ||
              (!strcmp(o->module, "END.EXE") && (o->ip == 0x1CB1 || o->ip == 0x1CD3)) ||
              (!strcmp(o->module, "PLAYER.EXE") && o->ip == 0x1E90)));
@@ -1413,6 +1435,58 @@ int main(int argc, char **argv)
                     SHOT_WORD(0xE304 + 18 * (j & 1), 3); SHOT_WORD(0xE306 + 18 * (j & 1), j & 1);
                 }
 #undef SHOT_WORD
+                int safe = 1;
+                for (unsigned j = 0; j < n; j++) for (unsigned byte = 0; byte < 2; byte++) {
+                    const uint32_t address = phys(seg[S_DS], (uint16_t)(words[j].at + byte));
+                    if (address >= at && address < at + m->size + 2) safe = 0;
+                }
+                if (safe) for (unsigned j = 0; j < n; j++) for (unsigned byte = 0; byte < 2; byte++) {
+                    const uint32_t address = phys(seg[S_DS], (uint16_t)(words[j].at + byte));
+                    g_pristine[address] = g_mem[0][address] = g_mem[1][address] = (uint8_t)(words[j].value >> (8 * byte));
+                }
+            }
+            /* View compose: the view mode [C0A6] runs through every value the
+             * routine tells apart (cockpit, the three side looks, the
+             * fixed-point, behind, ahead and tracked-object looks, and modes
+             * it leaves to the previous frame's angles), with the previous
+             * mode and cockpit flag differing from it in both directions,
+             * the camera pitch around the vertical, low and normal altitude,
+             * the tracked-object id in every record kind (world slot,
+             * ground target, airfield) and the caption, countdown and
+             * panel words each on and off. */
+            if (g_view_fixture && (s & 7) != 0) {
+                const unsigned v = (unsigned)s >> 3;
+                uint64_t z = (uint64_t)v * 0x9E3779B97F4A7C15ull;
+                z ^= z >> 30; z *= 0xBF58476D1CE4E5B9ull; z ^= z >> 27; z *= 0x94D049BB133111EBull; z ^= z >> 31;
+#define VB(shift_, bits_) ((unsigned)((z >> (shift_)) & ((1u << (bits_)) - 1u)))
+                static const uint16_t modes[] = { 0, 0x41, 0x42, 0x43, 0x44, 0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8A, 0x8B, 0x8C,
+                                                  0x8D, 0x40, 0x50, 0x20, 0x84, 0x88, 0x89, 0x8B };
+                static const uint16_t pitches[] = { 0x0200, 0x5000, 0x8000, 0xB000, 0x3FFF, 0xFC00 };
+                static const uint16_t objects[] = { 3, 0x83, 0x103, 0x183, 7, 0x85, 0x105 };
+                const unsigned nmodes = sizeof modes / sizeof modes[0];
+                const uint16_t mode = modes[v % nmodes];
+                struct { uint16_t at, value; } words[256]; unsigned n = 0;
+#define VIEW_WORD(a_, v_) do { if (n >= sizeof words / sizeof words[0]) { fprintf(stderr, "view fixture capacity exceeded\n"); return 1; } words[n].at = (uint16_t)(a_); words[n++].value = (uint16_t)(v_); } while (0)
+                VIEW_WORD(0xC0A6, mode);
+                VIEW_WORD(0x2E7A, VB(0, 2) == 0 ? mode : modes[VB(2, 5) % nmodes]);
+                VIEW_WORD(0x368C, VB(8, 1));
+                VIEW_WORD(0x2DEE, v * 0x1237 + VB(60, 3)); VIEW_WORD(0x2DF0, pitches[VB(9, 3) % 6]); VIEW_WORD(0x2DF2, v * 0x0555 + 0x0100);
+                VIEW_WORD(0x2DF4, VB(12, 2) == 0 ? 0xFFF0 : VB(12, 2) == 1 ? 0 : 0x0300);
+                VIEW_WORD(0x3D9E, ((const uint16_t[]){ 0, 1, 2, 3, 5, 9, 0xFFFF, 4 })[VB(14, 3)]);
+                VIEW_WORD(0xDF06, VB(17, 1) ? 0 : 5); VIEW_WORD(0xE008, VB(18, 2) == 0 ? 0x13 : 0);
+                VIEW_WORD(0xBA3A, VB(20, 1)); VIEW_WORD(0x2E08, VB(21, 1)); VIEW_WORD(0x2E0C, VB(22, 1) ? 0 : 2);
+                VIEW_WORD(0x43E4, VB(23, 1)); VIEW_WORD(0x2DF6, ((const uint16_t[]){ 50, 0x64, 0xC8 })[VB(24, 2) % 3]);
+                VIEW_WORD(0x40CC, VB(26, 1)); VIEW_WORD(0x9D3C, VB(27, 1)); VIEW_WORD(0xE32A, VB(28, 1) ? 1 : 2);
+                VIEW_WORD(0x3D92, ((const uint16_t[]){ 0x80, 0x10, 0x90, 0 })[VB(29, 2)]);
+                VIEW_WORD(0x3D94, ((const uint16_t[]){ 0x80, 0x20, 0xA0, 1 })[VB(31, 2)]);
+                VIEW_WORD(0xDED4, objects[VB(33, 3) % 7]); VIEW_WORD(0xB07C, objects[VB(36, 3) % 7]);
+                for (unsigned k = 0; k < 12; k++) {         /* weapon records: life [+0Eh] and height [+04h] */
+                    const uint16_t rec = (uint16_t)(0x3C3A + 0x1C * k);
+                    const uint64_t zk = (z >> (k % 32)) * (2 * k + 1);
+                    VIEW_WORD(rec + 0x0E, (zk >> 3) & 1 ? 5 : 0); VIEW_WORD(rec + 0x04, (zk >> 5) & 1 ? 0x300 : 0x40);
+                }
+#undef VIEW_WORD
+#undef VB
                 int safe = 1;
                 for (unsigned j = 0; j < n; j++) for (unsigned byte = 0; byte < 2; byte++) {
                     const uint32_t address = phys(seg[S_DS], (uint16_t)(words[j].at + byte));

@@ -8,11 +8,11 @@ re-walking the original's integer edges:
 
 * the polygon's edges come from the 'E' records, each tied by its slot to the 'G' record that prepared it and
   that to the two 'V' records of its vertices (camera-space x, y, z and the pixel the original made of each);
-  extended G captures also preserve exact camera endpoints and origin for near-plane crossings;
+  extended G captures preserve exact camera endpoints and origin for all polygons;
 * a vertex's position is rebuilt from the projection's own divide (0x129A2: x >> 8 over the high word of z, or
   x >> 1 over (z >> 8) >> 1 when that word is below 0x100), keeping the remainder the divide threw away, so the
   vertex lies inside the pixel the original chose (the divide truncates toward zero, so a negative quotient is
-  moved to the pixel above it); the origin ([8602], [8604]) is read from the polygon's unclipped edges;
+  moved to the pixel above it); the origin ([8602], [8604]) comes from G snapshots, or unclipped edges in legacy logs;
 * a fine pixel takes the polygon's fill when its centre lies inside that true polygon (left and top edges
   inclusive, right and bottom exclusive: the top-left rule, so two polygons that share a vertex pair tile without
   a crack or an overdraw), within the polygon's own overshoot, and
@@ -50,10 +50,15 @@ from drawlist_spans import paint, parse_edge, s16
 from hires_frame import Builder, HiPage, WIDTH, HEIGHT
 
 
-def vertex_fraction(v):
+def vertex_fraction(v, ortho=0):
     """The position of a vertex in coarse pixels from a 'V' record (icount, x, y, z, px, py, range, xf_at, px_at):
     the pixel the original made plus the share the projection's divide threw away."""
     _, x, y, z, px, py, rng = v[:7]
+    if ortho:
+        projected = ortho_project((x, y, z), ortho)
+        if projected is None or projected[0] != (px, py):
+            return None
+        return projected[1]
     zu = z & 0xFFFFFFFF
     if rng == 0:
         den, nx, ny = zu >> 16, x >> 8, y >> 8
@@ -62,6 +67,21 @@ def vertex_fraction(v):
     if den <= 0:
         return None
     return px + (nx % den) / den, py + (ny % den) / den
+
+
+def ortho_project(camera, shift):
+    """120A:08E1: rounded signed high-word shift, with full fine precision."""
+    if not 1 <= shift <= 31:
+        return None
+    if shift < 16:
+        coarse = tuple(s16(s16(value >> 16) << (16 - shift)) for value in camera[:2])
+        return coarse, coarse
+    bits = shift - 16
+    coarse = []
+    for value in camera[:2]:
+        hi = s16(value >> 16)
+        coarse.append((hi >> bits) + (bool(hi & (1 << (bits - 1))) if bits else 0))
+    return tuple(coarse), tuple(value / (1 << shift) for value in camera[:2])
 
 
 def near_crossing(front, behind):
@@ -264,6 +284,8 @@ class SubBuilder(Builder):
             g = edge.get("snapshot")
             if g is None:
                 return None
+            if len(g) >= 18 and g[17]:
+                return None
             if origin is None:
                 origin = g[3:5]
             elif origin != g[3:5]:
@@ -310,6 +332,21 @@ class SubBuilder(Builder):
         if len(edges) < 3:
             self.stats["skipped: fewer than three edges"] += 1
             return None
+        # Exact preparation snapshots carry the origin even when every edge
+        # is clipped, and do not depend on the latest V for reused storage.
+        snapshots = [e.get("snapshot") for e in edges]
+        mode = lambda g: g[17] if len(g) >= 18 else 0
+        if all(g is not None and not g[10] and not g[16] and g[3:5] == snapshots[0][3:5]
+               and mode(g) == mode(snapshots[0])
+               for g in snapshots):
+            out = []
+            for g in snapshots:
+                a, b = vertex_fraction(snapshot_vertex(g, 5), mode(g)), vertex_fraction(snapshot_vertex(g, 11), mode(g))
+                if a is None or b is None:
+                    self.stats["skipped: vertex without a divisor"] += 1
+                    return None
+                out.append(tuple(c + o for point in (a, b) for c, o in zip(point, g[3:5])))
+            return out
         pairs = []
         for e in edges:
             g = e["g"]
@@ -366,7 +403,7 @@ class SubBuilder(Builder):
         elif k == "G":
             slot, a, b = (int(t) for t in f[2:5])
             self.slots[slot] = (self.vertices.get(a), self.vertices.get(b))
-            self.snapshots[slot] = tuple(map(int, f[2:19])) if len(f) >= 19 else None
+            self.snapshots[slot] = tuple(map(int, f[2:20])) if len(f) >= 19 else None
         elif k == "J":
             self.palette = [int(t) for t in f[2:770]]
         elif k == "E":

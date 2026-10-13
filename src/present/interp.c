@@ -459,6 +459,15 @@ static int project(const int64_t xf[3], int64_t out[2])
     return 0;
 }
 
+static int project_snapshot(const int64_t xf[3], int ortho, int64_t out[2])
+{
+    if (!ortho) return project(xf, out);
+    const int32_t camera[3] = { (int32_t)xf[0], (int32_t)xf[1], (int32_t)xf[2] };
+    int32_t coarse[2]; double fine[2];
+    if (!present_ortho_project(camera, ortho, coarse, fine)) return 0;
+    out[0] = coarse[0]; out[1] = coarse[1]; return 1;
+}
+
 static int vertex_distance(const int32_t *va, const int32_t *vb)
 {
     if (va[5] == 2 || vb[5] == 2) return -1;
@@ -1041,17 +1050,20 @@ int interp_inbetween_ex(const interp_frame *A, const interp_frame *B, const inte
                 const int oi=P->ppair[4*pr+(use_b?0:1)];
                 const poly_t *op=&O->p[oi];
                 if (p->ne!=op->ne) continue;
-                int32_t snapshots[512][17], crossings[512][8];
+                int32_t snapshots[512][18], crossings[512][8];
                 int ok=1;
                 for (int k=0;k<p->ne && ok;k++) {
                     const edge_t *e=&S->e[p->e0+k], *oe=&O->e[op->e0+k];
                     if (e->gi<0 || oe->gi<0) { ok=0; break; }
                     const gedge_t *ga=&S->g[e->gi], *gb=&O->g[oe->gi];
                     const interp_rec *ra=&S->rec[ga->ri], *rb=&O->rec[gb->ri];
-                    if (ga->slot!=gb->slot || ga->k0!=gb->k0 || ga->k1!=gb->k1 || ra->n!=17 || rb->n!=17) { ok=0; break; }
+                    if (ga->slot!=gb->slot || ga->k0!=gb->k0 || ga->k1!=gb->k1 ||
+                        ra->n!=rb->n || (ra->n!=17 && ra->n!=18)) { ok=0; break; }
                     const int32_t *a=ra->v,*bv=rb->v;
-                    if (a[3]!=bv[3] || a[4]!=bv[4] || a[10]!=bv[10] || a[16]!=bv[16]) { ok=0; break; }
-                    int32_t *v=snapshots[k];memcpy(v,a,17*sizeof *v);
+                    const int ortho=ra->n==18?a[17]:0;
+                    if (a[3]!=bv[3] || a[4]!=bv[4] || a[10]!=bv[10] || a[16]!=bv[16] ||
+                        (ra->n==18 && a[17]!=bv[17])) { ok=0; break; }
+                    int32_t *v=snapshots[k];memcpy(v,a,(size_t)ra->n*sizeof *v);
                     for (int end=0;end<2 && ok;end++) {
                         const int at=5+6*end;
                         int64_t xf[3],px[2];
@@ -1062,7 +1074,7 @@ int interp_inbetween_ex(const interp_frame *A, const interp_frame *B, const inte
                         }
                         if (!ok) break;
                         if (!a[at+5]) {
-                            if (!project(xf,px)) { ok=0; break; }
+                            if (!project_snapshot(xf,ortho,px)) { ok=0; break; }
                             v[at+3]=(int32_t)px[0];v[at+4]=(int32_t)px[1];
                         }
                     }
@@ -1081,7 +1093,7 @@ int interp_inbetween_ex(const interp_frame *A, const interp_frame *B, const inte
                     const edge_t *e=&S->e[p->e0+k];
                     const int gi=S->g[e->gi].ri;
                     rep[gi]=made.n;repn[gi]=1;
-                    out_pooled(&made,'G',S->rec[gi].icount,snapshots[k],17);
+                    out_pooled(&made,'G',S->rec[gi].icount,snapshots[k],S->rec[gi].n);
                     st[IS_REGENERATED]++;
                     if (e->st & 0x40) {
                         rep[e->ri]=made.n;repn[e->ri]=1;

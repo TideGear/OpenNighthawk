@@ -88,6 +88,7 @@ static void append(fixture *f, char kind, const int32_t *v, int n)
 
 /* These camera displacements translate the visible triangle two pixels:
  * the front projects at 1/512; each clipping midpoint projects at 1/128. */
+static int g_snapshot_fields = 17;
 static void moving_triangle(fixture *f, int shift, int reuse)
 {
     const int32_t camera[3][3]={{1024*shift,0,0x20000},
@@ -103,13 +104,13 @@ static void moving_triangle(fixture *f, int shift, int reuse)
     }
     append(f,'F',fill,12);
     for(int k=0;k<3;k++) {
-        int32_t g[17]={24*k,0xD6B4+8*pair[k][0],0xD6B4+8*pair[k][1],20,20};
+        int32_t g[18]={24*k,0xD6B4+8*pair[k][0],0xD6B4+8*pair[k][1],20,20};
         for(int end=0;end<2;end++) {
             const int vertex=pair[k][end],at=5+6*end;
             memcpy(g+at,camera[vertex],sizeof camera[vertex]);
             g[at+3]=vertex?INT32_MIN:2*shift;g[at+5]=vertex!=0;
         }
-        append(f,'G',g,17);
+        append(f,'G',g,g_snapshot_fields);
         int32_t e[8];memcpy(e,edges[k],sizeof e);
         if(k!=1) {e[1]+=2*shift;e[3]+=2*shift;e[6]+=2*shift;}
         append(f,'E',e,8);
@@ -125,9 +126,9 @@ static void moving_triangle(fixture *f, int shift, int reuse)
     }
     append(f,'B',fill,1);
     if(reuse) for(int k=0;k<3;k++) {
-        int32_t g[17];memcpy(g,f->values[4+2*k],sizeof g);
+        int32_t g[18]={0};memcpy(g,f->values[4+2*k],(size_t)g_snapshot_fields*sizeof *g);
         g[1]+=32;g[2]+=32;g[5]+=4096;g[11]+=4096;
-        append(f,'G',g,17);
+        append(f,'G',g,g_snapshot_fields);
     }
 }
 
@@ -160,7 +161,7 @@ static void interpolation(int reuse)
         for(int k=0;k<out.n;k++) {
             const interp_rec *r=&out.rec[k];
             if(r->kind=='G') {
-                CHECK(r->n==17);ng++;
+                CHECK(r->n==g_snapshot_fields);ng++;
                 if(ng>3) continue; /* later faces reuse slots with other vertices */
                 for(int end=0;end<2;end++) {
                     const int vertex=(r->v[1+end]-0xD6B4)/8,at=5+6*end;
@@ -186,17 +187,18 @@ static void interpolation(int reuse)
     interp_pairing_free(pair);interp_frame_free(fb);
     /* Unsupported snapshots remain exactly the skeleton's record. This also
      * covers legacy captures and the coarse-only interpolation mode. */
-    for(int mode=0;mode<5;mode++) {
+    for(int mode=0;mode<6;mode++) {
         moving_triangle(&b,1,reuse);
         if(mode==0) b.values[4][3]++;
         if(mode==1) b.values[4][10]=1;
         if(mode==2) b.values[4][1]+=8;
         if(mode==3) b.rec[4].n=3;
+        if(mode==5) { b.rec[4].n=18;b.values[4][17]=21; }
         fb=interp_parse(b.rec,b.n);pair=interp_pair(fa,fb);
         interp_list out={0};int skeleton=0,found=0;
         interp_inbetween_ex(fa,fb,pair,0.25,mode==4?0:INTERP_VERTICES,&out,&skeleton,NULL);
         for(int k=0;k<out.n;k++) if(out.rec[k].kind=='G' && found<3) {
-            CHECK(out.rec[k].n==17 && !memcmp(out.rec[k].v,a.values[4+2*found],17*sizeof(int32_t)));
+            CHECK(out.rec[k].n==g_snapshot_fields && !memcmp(out.rec[k].v,a.values[4+2*found],(size_t)g_snapshot_fields*sizeof(int32_t)));
             found++;
         }
         CHECK(found==3);interp_list_free(&out);
@@ -349,13 +351,74 @@ static void seam_lifetime(void)
     drawlist_free(&copy);drawlist_free(&d);
 }
 
+/* Every edge crosses the viewport; no unclipped edge can identify its origin.
+ * V deliberately belongs to an older projection, while G retains this view. */
+static void clipped_origin(int scale, int legacy, int ortho)
+{
+    static const uint8_t blank[65536]={0};
+    const int xy[4][2]={{-30,0},{0,-30},{30,0},{0,30}};
+    const int32_t fill[12]={0xFF07,79,79,121,121,0,0,0,0,0,0,0};
+    drawlist_init(&d);drawlist_set_scale(&d,scale);hires_init(&h,scale);
+    drawlist_seed(&d,'Z',0xA000,0,blank,sizeof blank);
+    record('F',fill,12);
+    for(int k=0;k<4;k++) {
+        const int32_t stale[8]={0,0,-0x10000,0,0,2,0,0xD6B4+8*k};
+        record('V',stale,8);
+    }
+    for(int k=0;k<4;k++) {
+        int32_t g[18]={24*k,0xD6B4+8*k,0xD6B4+8*((k+1)%4),100,100};
+        for(int end=0;end<2;end++) {
+            const int vertex=(k+end)%4,at=5+6*end;
+            g[at]=xy[vertex][0]*(ortho?2097152:512)+(ortho?524288:128);
+            g[at+1]=xy[vertex][1]*(ortho?2097152:512)+(ortho?524288:128);
+            g[at+2]=ortho?0:0x20000;g[at+3]=xy[vertex][0];g[at+4]=xy[vertex][1];
+        }
+        g[17]=ortho==3?32:ortho?21:0;
+        if(ortho==2 && k==0)g[8]++;
+        record('G',g,legacy?3:ortho?18:17);
+        const int32_t e[6]={24*k,79,79,121,121,0x0505};record('E',e,6);
+    }
+    record('F',fill,12);
+    int32_t rows[3+86+1]={0xFF07,79,43};
+    for(int k=0;k<43;k++) {
+        const int radius=30-abs(k+79-100);
+        rows[3+2*k]=100-radius;rows[4+2*k]=100+radius;
+    }
+    rows[89]=0xFF07;record('R',rows,90);
+    for(int y=79;y<=121;y++) {
+        int l=rows[3+2*(y-79)],r=rows[4+2*(y-79)];
+        if(l<79)l=79;if(r>121)r=121;
+        const int32_t b[5]={y,l,r-l+1,0xA000,y*320+l};record('b',b,5);
+    }
+    const drawlist_page *p=drawlist_page_of(&d,0xA000);
+    const int fallback=legacy || ortho>1;
+    CHECK(h.stats[HS_REFILLED]==(fallback?0:1));
+    int detail=0;
+    for(int y=0;y<200;y++)for(int x=0;x<320;x++) {
+        const int radius=30-abs(y-100);
+        const int painted=y>=79 && y<=121 && x>=79 && x<=121 && abs(x-100)<=radius;
+        CHECK(p->b[y*320+x]==(painted?7:0));
+        for(int j=0;j<scale;j++)for(int i=0;i<scale;i++) {
+            const int v=p->hi[(y*scale+j)*320*scale+x*scale+i];
+            if(!painted)CHECK(v==0);
+            detail+=v!=p->b[y*320+x];
+        }
+    }
+    CHECK((scale==1 || fallback) ? !detail : detail>0);
+    drawlist_free(&d);
+}
+
 int main(void)
 {
     triangle(1,0,0);triangle(4,0,0);
     triangle(4,1,0);triangle(4,0,1);
     interpolation(0);interpolation(1);
+    g_snapshot_fields=18;interpolation(0);interpolation(1);
     shared_edges(4);shared_edges(9);
     seam_lifetime();
+    clipped_origin(1,0,0);clipped_origin(4,0,0);clipped_origin(9,0,0);clipped_origin(4,1,0);
+    clipped_origin(1,0,1);clipped_origin(4,0,1);clipped_origin(9,0,1);
+    clipped_origin(4,1,1);clipped_origin(4,0,2);clipped_origin(4,0,3);
     if (!failed) puts("camera-plane polygons: all checks passed");
     return failed ? 1 : 0;
 }

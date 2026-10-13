@@ -10,4 +10,10 @@
  * only and outputs are written only when a crossing has been found. */
 int present_near_crossing(const int32_t front[3], const int32_t behind[3],
                           int32_t coarse[2], double fine[2]);
+/* Orthographic 120A:08E1: shift the signed high word, round from the last
+ * shifted bit, and sign-extend. Retain full fixed-point precision for fine
+ * drawing for shifts 16..31. Shifts 1..15 retain the original wrapped,
+ * integer high-word projection; their edges can still draw on a finer grid. */
+int present_ortho_project(const int32_t camera[3], int shift,
+                          int32_t coarse[2], double fine[2]);
 #endif

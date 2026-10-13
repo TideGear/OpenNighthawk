@@ -9,8 +9,9 @@
  * with the remainder it threw away; a fine pixel takes the fill when its
  * centre lies inside the true polygon (top-left rule) within the polygon's own
  * overshoot (measured at N = 1, so N = 1 is the original's picture) and inside
- * the original's own footprint. Exact camera snapshots also reconstruct
- * verified near-plane crossings. Missing snapshots, unrelated behind vertices
+ * the original's own footprint. Exact camera snapshots supply the origin even when every edge is
+ * viewport-clipped, avoid reused V storage, and reconstruct verified
+ * near-plane crossings. Missing snapshots, unrelated behind vertices
  * or a footprint more than 3 pixels from the geometry, and
  * fill styles with no rule keep the scaled copy, as do text, sprites,
  * and blits. HUD lines and ticks are drawn on the fine grid by drawlist.c,
@@ -30,7 +31,7 @@
 
 typedef struct { int ok; int32_t x, y, z, px, py, range; } hires_vertex;
 typedef struct {
-    int valid, behind;
+    int valid, behind, ortho;
     int32_t origin[2];
     hires_vertex a, b;
 } hires_snapshot;

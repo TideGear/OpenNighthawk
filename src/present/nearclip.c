@@ -1,6 +1,28 @@
 #include "nearclip.h"
 #include <string.h>
 
+int present_ortho_project(const int32_t camera[3], int shift,
+                          int32_t coarse[2], double fine[2])
+{
+    if (shift < 1 || shift > 31) return 0;
+    for (int k = 0; k < 2; k++) {
+        const int hi = (int16_t)((uint32_t)camera[k] >> 16);
+        /* The low-shift arm scales only the high word and wraps at 16 bits.
+         * Keep those integer vertices rather than inventing low-word detail. */
+        if (shift < 16) {
+            coarse[k] = (int16_t)((uint16_t)hi << (16 - shift));
+            fine[k] = coarse[k];
+            continue;
+        }
+        const int bits = shift - 16, den = 1 << bits;
+        int q = hi >= 0 ? hi / den : -((-hi + den - 1) / den);
+        if (bits && ((uint16_t)hi & (1u << (bits - 1)))) q++;
+        coarse[k] = q;
+        fine[k] = camera[k] / (double)(1u << shift);
+    }
+    return 1;
+}
+
 /* Wrap the guest's ADD/ADC plus one, then arithmetic-shift the 32-bit sum. */
 static int32_t midpoint(int32_t a, int32_t b)
 {

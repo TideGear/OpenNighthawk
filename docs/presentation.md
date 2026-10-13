@@ -82,6 +82,67 @@ steps a second, 67 ms at the clamp of 15), the standard price. Stage 1 needs
 the drawing path understood, which is what the matched routines in Phase 2
 supply, so the two phases are not independent.
 
+## Fully clipped views, reused vertices and orthographic maps (12-13 October 2026)
+
+The remaining horizon fallbacks in the corrected strike capture were not
+missing geometry. The fine renderer inferred the origin from unclipped
+edges, retaining the previous view's origin when every edge was clipped.
+The recorded G snapshots already supplied the correct camera endpoints
+and origin. Both C and Python now use those snapshots for ordinary polygons
+too, avoiding stale V records when vertex storage is reused. Legacy short
+records retain the existing path; near crossings still require exact
+verification against the original.
+
+The retained synthetic diamond crosses the viewport on every edge and
+deliberately supplies stale, behind-eye V records. At N=1/4/9 the correct G
+snapshots reconstruct it; the N=1 picture is exact, finer edges stay within
+the original footprint, and legacy records retain scaling.
+
+Recorded strike, landing and air-to-air windows pass at N=1/4/9. Strike now
+refines all 17,058 evaluated polygons (previously 79 fallbacks); landing
+refines all 4,916. Air-to-air refines 4,110 of 4,111. All 560 interpolation
+endpoints and 840 intermediate pictures pass at each of N=4 and N=9.
+Some intermediate polygons hold when their metadata or topology cannot
+move together; these endpoint checks do not replace a visual motion check.
+
+A full boot-to-flight capture found 27 further fallbacks: orthographic map
+objects legitimately have Z=0, but G did not record the projection mode.
+G now appends the byte at `[7D8E]` as field 18: zero for perspective,
+otherwise the orthographic shift. Fields 1-17 remain unchanged. C and
+Python reproduce the original high-word shift and rounding and require
+both coarse coordinates to match the capture before using fine positions.
+Shifts 16-31 retain full fixed-point precision; shifts 1-15 preserve the
+original wrapped integer vertices and draw their edges on the fine grid.
+Unknown modes and inconsistent coordinates retain scaling. Interpolation
+preserves 17- and 18-field records and moves projection metadata only when
+its mode agrees across the pair; a changed mode holds the snapshot.
+
+All 196 orthographic endpoint projections in the fresh boot capture match
+the original. Both live N=4/9 sentinels now refine all 48,856 model polygons,
+preserve 368 exact logic frames and 366 exact endpoint pairs, and retain all
+54 checkpoints and the final guest hash. Recorded boot replay also passes
+at N=1/4/9. The observer regression checks field contents with ordinary,
+VGA and wrapped memory placements while requiring unchanged CPU state,
+instruction clock and memory. Synthetic tests cover signed rounding,
+zero depth, low-shift wrapping, incompatible modes and corrupt projections.
+
+The remaining air-to-air case has verified near crossings with extremely
+large coordinates: one x=229,549 becomes signed -32,595 when the original
+line clipper uses its low word. Its coarse silhouette differs substantially
+from the full camera geometry. Keeping the original scaled polygon preserves
+that arithmetic artifact; removing the compatibility check would change
+what the original draws. Missing metadata in older or partial captures also
+retains scaling. Text and cockpit artwork remain original by choice.
+Real-display refresh, motion and 4K checks remain Phase 4 work.
+
+Final integration checks (13 October): the earlier full gate passes 53 tests,
+41 routes and both instruction profiles. The final observer revision repeats
+all 53 tests and all 41 routes with 40 fresh interpreter sessions, zero
+mismatches, passing reachability/event checks, in 1,271 s; unchanged
+translation/matched coverage is reused from the earlier full gate.
+Independent C/Python replay of the orthographic prefix agrees on all 45
+polygons, 40,467 footprint pixels and 619,517 fine-grid paint pixels at N=4.
+
 ## Camera-plane reconstruction and shared seams (11 October 2026)
 
 The current C and Python renderers also refine near-clipped convex polygons.
@@ -649,7 +710,7 @@ on one thread.
 **The HUD, text and sprites at 4K (owner's choice, 10 October 2026): like the Reimp.**
 HUD lines and tick marks are rasterised on the output grid; text glyphs, sprites and
 cockpit artwork keep their original N x N pixel blocks. `--present-line-width N`
-(`present-line-width =` in f117a.ini) selects 1–20 output pixels; 0, the default,
+(`present-line-width =` in f117a.ini) selects 1â€“20 output pixels; 0, the default,
 uses the render scale. At N = 1 the original replay is used exactly, including
 its line quirks, regardless of the width setting. `--present scan` retains the
 original picture at every scale.
@@ -699,7 +760,9 @@ the last checked frame as coarse and fine PPMs using the recorded palette.
   puts the world at about 1.12 times real time (`docs/speed-sweep.md`).
 - **Remaining geometry fallbacks.** Verified near-plane crossings now refine
   on the fine grid and interpolate with retained camera-space geometry
-  (see the reconstruction results above). Difficult horizon slivers and
-  incompatible geometry retain safe scaling. The chosen HUD/text
+  (see the reconstruction results above). Exact snapshots now also resolve
+  fully clipped view origins and stale vertex records. The retained windows
+  leave one extreme original clipping-arithmetic artifact scaled; missing
+  metadata also retains scaling. The chosen HUD/text
   presentation is built; refresh pacing, motion and 4K output still need
   the real-display check.

@@ -200,6 +200,23 @@ not the recompilation:
 
 ## Phase 2 - understood code
 
+View composition (`VGAME 0000:2F9D`) is matched: 938 instructions /
+2,595 bytes covering forward/side, preset, chase, tracked-object and fixed
+views; camera angles and position; cockpit/view-change redraw; the scene
+call, overlays and external readouts. Named labels and comments explain
+the modes while preserving live stack reads and all 66 calls. All 208
+instruction budgets match their blocks. Three 4,000-state seeds compare
+3,199 / 3,216 / 3,200 states with zero mismatches and all 938 original
+instruction starts reached. One seed also visits a nonstandard address
+inside the span; an audit against the listing excludes it from that claim.
+The camera-gradient replay executes the named routine 8,456 times, with all
+234 checkpoints and the final identical and no event overrun. Census:
+820 functions / 93,367 bytes, 828 addresses, P2 54.49%.
+The fresh full gate (`gate-view-compose-render.log`) passes 53 unit tests,
+all 41 routes (40 fresh interpreter sessions), both instruction profiles
+and three matched seeds, with zero mismatches and passing reachability and
+event checks, 1,768 s. Private proof: `D:/f117-gate/frame-2f9d`.
+
 Candidate drafts can retain private static dossiers (`matched_draft.py
 --dossier`): image/tool identities, segmented coordinates, disjoint ranges,
 calls and unresolved flow. The polygon draft remains byte-identical; the
@@ -580,7 +597,7 @@ instruction profiles and three 789-address matched seeds (2,561,209,
       Reimp's mapping; matched functions replacing translations one at a time,
       each held to the same parity checks. `tools/reimp_names.py` joins the
       Reimp's census (1,535 functions) with this project's regions as a private
-      lead list. 827 addresses are matched (819 of the census functions, 90,772 of
+      lead list. 828 addresses are matched (820 of the census functions, 93,367 of
       179,213 bytes); the table is at the end of `src/matched/matched.c` and the
       method is in [architecture.md](architecture.md#matched-routines-phase-2).
       The batches of 8-9 Oct add 37 + 34 + 47 VGAME, 34 + 40 + 45 START/END and 21 + 44 + 64
@@ -899,8 +916,18 @@ instruction profiles and three 789-address matched seeds (2,561,209,
       copies, reseeds, black fills, HUD layering and passive diagnostics are tested.
       Final isolated unit run passes 20 tests; main full gate passes 21 tests,
       all 35 routes, both instruction profiles and three matched seeds.
-      Open: difficult horizon slivers retain safe scaling, and a real-display check of refresh pacing,
-      motion and 4K output (Phase 4).
+      The 12-13 October follow-up uses exact camera snapshots for ordinary
+      polygons too, fixing fully clipped view origins and reused vertices.
+      Strike refines all 17,058 evaluated polygons and landing all 4,916;
+      air-to-air refines 4,110/4,111, retaining one extreme original integer
+      clipping artifact. A fresh live boot also exposed 27 orthographic
+      map polygons with Z=0: G now records the projection shift, the fine
+      renderer verifies its original rounded coordinates, and interpolation
+      preserves compatible projection metadata. Both live N=4/9 runs refine
+      all 48,856 polygons and retain 368 exact logic frames, 366 exact
+      interpolation pairs and all 54 checkpoint/final hashes. Original
+      bitmap artwork remains by choice. Real-display refresh pacing, motion
+      and 4K checks remain Phase 4.
 
 ## Phase 4 - checked by people and independent references
 

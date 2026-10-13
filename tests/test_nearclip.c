@@ -39,6 +39,27 @@ int main(int argc, char **argv)
     const double saved_fine[2] = { fine[0], fine[1] };
     CHECK(present_near_crossing(invalid,invalid,coarse,fine)==0);
     CHECK(!memcmp(saved,coarse,sizeof saved) && !memcmp(saved_fine,fine,sizeof saved_fine));
+    /* Orthographic icons can have Z=0. SAR rounds from the last high-word
+     * bit toward positive infinity, including negative half-way values. */
+    const int32_t ortho[3] = { 5*65536+32768, -5*65536+32768, 0 };
+    CHECK(present_ortho_project(ortho,17,coarse,fine));
+    CHECK(coarse[0]==3 && coarse[1]==-2 && fine[0]==2.75 && fine[1]==-2.25);
+    CHECK(present_ortho_project(ortho,16,coarse,fine));
+    CHECK(coarse[0]==5 && coarse[1]==-5 && fine[0]==5.5 && fine[1]==-4.5);
+    const int32_t icon[3] = { -25*2097152+524288, 25*2097152+524288, 0 };
+    CHECK(present_ortho_project(icon,21,coarse,fine));
+    CHECK(coarse[0]==-25 && coarse[1]==25 && fine[0]==-24.75 && fine[1]==25.25);
+    CHECK(present_ortho_project(icon,31,coarse,fine));
+    CHECK(coarse[0]==0 && coarse[1]==0);
+    for(int shift=1;shift<16;shift++) {
+        CHECK(present_ortho_project(icon,shift,coarse,fine));
+        for(int k=0;k<2;k++) {
+            const int32_t expected=(int16_t)((uint16_t)((uint32_t)icon[k]>>16)<<(16-shift));
+            CHECK(coarse[k]==expected && fine[k]==expected);
+        }
+    }
+    CHECK(!present_ortho_project(icon,0,coarse,fine));
+    CHECK(!present_ortho_project(icon,32,coarse,fine));
     if (argc > 1) {
         FILE *cases = fopen(argv[1],"r");
         if (!cases) { fprintf(stderr,"cannot read %s\n",argv[1]);return 2; }

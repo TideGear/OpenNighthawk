@@ -37954,7 +37954,819 @@ shots_return:
     SM4_NEED(4, 0x723F); c->r[R_SI] = cpu_pop16(c); c->r[R_DI] = cpu_pop16(c); x86_leave(c); near_ret(c); c->icount += 4; return 1;
 }
 
+/* VGAME 0000:2F9D: compose the frame's picture.
+ * DS:C0A6 selects the view: 0/44h forward, 41h-43h side looks,
+ * 84h a preset camera from B094, 85h behind, 87h ahead, 88h/89h/8Bh
+ * a tracked object (DED4), and 8Ch fixed. Other modes keep the previous
+ * angles. E478/C0A8/B79C hold view angles; B2B4/B77E/B788 the camera
+ * position. 368C is the cockpit flag; 2E7A remembers the previous mode.
+ * Keep the original live stack/data reads and call order: the graphics
+ * helpers share state, and randomized inputs can alias it with the stack.
+ */
+#define FC_FRAME(o) seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + (o)))
+#define FC_SETFRAME(o, v) seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + (o)), (uint16_t)(v))
+#define FC_FRAME8(o) mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] + (o))))
+#define FC_SETFRAME8(o, v) mem_write8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] + (o))), (uint8_t)(v))
+#define FC_PUT8(a, v) mem_write8(c, phys(c->seg[S_DS], (uint16_t)(a)), (uint8_t)(v))
+#define FC_CARRY ((c->flags & F_CF) ? 1u : 0u)
+#define FC_DROP(k) (c->r[R_SP] = (uint16_t)alu_add(c, c->r[R_SP], (k), 1, 0))
+#define FC_NEED(n, at) SM4_NEED(n, at)
+#define FC_CALL(t, r) do { if (!guest_call(m, (t), (r))) return 1; } while (0)
+#define FC_FAR(ip) do { if (!guest_call_far(m, (ip), (uint16_t)((ip) + 5))) return 1; } while (0)
+#define FC_DIV(v) x86_div16(c, (v))
+static int vgame_frame_compose(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 28)) return 0;
+    /*2F9D*/ x86_enter(c, 0x0018, 0); /*2FA1*/ cpu_push16(c, c->r[R_SI]); /*2FA2*/ FC_SETFRAME(-2, 0x5B);
+    /*2FA7*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0xBA3C)); /*2FAA*/ c->r[R_DX] = (uint16_t)(ds_get(c, 0xBA3E)); /*2FAE*/ ds_put(c, 0xDEC4, c->r[R_AX]);
+    /*2FB1*/ ds_put(c, 0xDEC6, c->r[R_DX]); /*2FB5*/ ds_put(c, 0xB2B4, c->r[R_AX]); /*2FB8*/ ds_put(c, 0xB2B6, c->r[R_DX]);
+    /*2FBC*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0xC056)); /*2FBF*/ c->r[R_DX] = (uint16_t)(ds_get(c, 0xC058)); /*2FC3*/ ds_put(c, 0xB77E, c->r[R_AX]);
+    /*2FC6*/ ds_put(c, 0xB780, c->r[R_DX]); /*2FCA*/ c->r[R_CX] = (uint16_t)(alu_sub(c, c->r[R_CX], c->r[R_CX], 1, 0));
+    /*2FCC*/ c->r[R_BX] = (uint16_t)(0x10); /*2FCF*/ c->r[R_CX] = (uint16_t)(alu_sub(c, c->r[R_CX], c->r[R_AX], 1, 0));
+    /*2FD1*/ c->r[R_BX] = (uint16_t)(alu_sub(c, c->r[R_BX], c->r[R_DX], 1, FC_CARRY)); /*2FD3*/ ds_put(c, 0xDECA, c->r[R_CX]);
+    /*2FD7*/ ds_put(c, 0xDECC, c->r[R_BX]); /*2FDB*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0x2DF4));
+    /*2FDE*/ c->r[R_AX] = (uint16_t)(alu_add(c, c->r[R_AX], 0x18, 1, 0)); /*2FE1*/ ds_put(c, 0xB788, c->r[R_AX]);
+    /*2FE4*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0x2DF4)); /*2FE7*/ ds_put(c, 0xDED2, c->r[R_AX]); /*2FEA*/ cpu_push16(c, 0x8);
+    /*2FEC*/ cpu_push16(c, 0x2); /*2FEE*/ cpu_push16(c, ds_get(c, 0x3D9E)); /*2FF2*/ c->icount += 27; FC_CALL(0xC67A, 0x2FF5);
+    FC_NEED(6, 0x2FF5);
+    /*2FF5*/ FC_DROP(6); /*2FF8*/ ds_put(c, 0x3D9E, c->r[R_AX]); /*2FFB*/ FC_SETFRAME(-4, c->r[R_AX]);
+    /*2FFE*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0xC0A6)); /*3001*/ c->r[R_AX] = (uint16_t)(alu_logic(c, c->r[R_AX] | c->r[R_AX], 1));
+    /*3003*/ c->icount += 6; if (x86_cond(c, 4)) goto compose_forward;
+    FC_NEED(2, 0x3005);
+    /*3005*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], 0x41, 1, 0)); /*3008*/ c->icount += 2; if (x86_cond(c, 5)) goto L300D;
+    FC_NEED(1, 0x300A);
+    /*300A*/ c->icount += 1; goto compose_look_back;
+L300D:
+    FC_NEED(2, 0x300D);
+    /*300D*/ c->r[R_AX] = (uint16_t)(alu_dec(c, c->r[R_AX], 1)); /*300E*/ c->icount += 2; if (x86_cond(c, 5)) goto L3013;
+    FC_NEED(1, 0x3010);
+    /*3010*/ c->icount += 1; goto compose_look_left;
+L3013:
+    FC_NEED(2, 0x3013);
+    /*3013*/ c->r[R_AX] = (uint16_t)(alu_dec(c, c->r[R_AX], 1)); /*3014*/ c->icount += 2; if (x86_cond(c, 5)) goto L3019;
+    FC_NEED(1, 0x3016);
+    /*3016*/ c->icount += 1; goto compose_look_right;
+L3019:
+    FC_NEED(2, 0x3019);
+    /*3019*/ c->r[R_AX] = (uint16_t)(alu_dec(c, c->r[R_AX], 1)); /*301A*/ c->icount += 2; if (x86_cond(c, 4)) goto compose_forward;
+    FC_NEED(2, 0x301C);
+    /*301C*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], 0x40, 1, 0)); /*301F*/ c->icount += 2; if (x86_cond(c, 5)) goto L3024;
+    FC_NEED(1, 0x3021);
+    /*3021*/ c->icount += 1; goto compose_preset;
+L3024:
+    FC_NEED(2, 0x3024);
+    /*3024*/ c->r[R_AX] = (uint16_t)(alu_dec(c, c->r[R_AX], 1)); /*3025*/ c->icount += 2; if (x86_cond(c, 5)) goto L302A;
+    FC_NEED(1, 0x3027);
+    /*3027*/ c->icount += 1; goto compose_behind;
+L302A:
+    FC_NEED(3, 0x302A);
+    /*302A*/ c->r[R_AX] = (uint16_t)(alu_dec(c, c->r[R_AX], 1)); /*302B*/ c->r[R_AX] = (uint16_t)(alu_dec(c, c->r[R_AX], 1));
+    /*302C*/ c->icount += 3; if (x86_cond(c, 5)) goto L3031;
+    FC_NEED(1, 0x302E);
+    /*302E*/ c->icount += 1; goto compose_ahead;
+L3031:
+    FC_NEED(2, 0x3031);
+    /*3031*/ c->r[R_AX] = (uint16_t)(alu_dec(c, c->r[R_AX], 1)); /*3032*/ c->icount += 2; if (x86_cond(c, 12)) goto compose_normalize_angles;
+    FC_NEED(2, 0x3034);
+    /*3034*/ c->r[R_AX] = (uint16_t)(alu_dec(c, c->r[R_AX], 1)); /*3035*/ c->icount += 2; if (x86_cond(c, 15)) goto L303A;
+    FC_NEED(1, 0x3037);
+    /*3037*/ c->icount += 1; goto compose_track_select;
+L303A:
+    FC_NEED(3, 0x303A);
+    /*303A*/ c->r[R_AX] = (uint16_t)(alu_dec(c, c->r[R_AX], 1)); /*303B*/ c->r[R_AX] = (uint16_t)(alu_dec(c, c->r[R_AX], 1));
+    /*303C*/ c->icount += 3; if (x86_cond(c, 5)) goto L3041;
+    FC_NEED(1, 0x303E);
+    /*303E*/ c->icount += 1; goto compose_track_select;
+L3041:
+    FC_NEED(2, 0x3041);
+    /*3041*/ c->r[R_AX] = (uint16_t)(alu_dec(c, c->r[R_AX], 1)); /*3042*/ c->icount += 2; if (x86_cond(c, 5)) goto L3047;
+    FC_NEED(1, 0x3044);
+    /*3044*/ c->icount += 1; goto compose_fixed;
+L3047:
+    FC_NEED(1, 0x3047);
+    /*3047*/ c->icount += 1; goto compose_normalize_angles;
+/* Forward view starts from the aircraft heading, pitch and roll. */
+compose_forward:
+    FC_NEED(5, 0x3049);
+    /*3049*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0x2DEE)); /*304C*/ ds_put(c, 0xE478, c->r[R_AX]); /*304F*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0x2DF0));
+    /*3052*/ ds_put(c, 0xC0A8, c->r[R_AX]); /*3055*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0x2DF2)); c->icount += 5;
+L3058:
+    FC_NEED(1, 0x3058);
+    /*3058*/ ds_put(c, 0xB79C, c->r[R_AX]); c->icount += 1;
+/* Fold pitch through the poles, turning heading and roll with it. */
+compose_normalize_angles:
+    FC_NEED(2, 0x305B);
+    /*305B*/ cpu_push16(c, ds_get(c, 0xC0A8)); /*305F*/ c->icount += 1; FC_CALL(0xEE0C, 0x3062);
+    FC_NEED(3, 0x3062);
+    /*3062*/ c->r[R_BX] = cpu_pop16(c); /*3063*/ alu_sub(c, c->r[R_AX], 0x4000, 1, 0); /*3066*/ c->icount += 3; if (x86_cond(c, 15)) goto L3070;
+    FC_NEED(2, 0x3068);
+    /*3068*/ alu_sub(c, ds_get(c, 0xC0A8), 0x8000, 1, 0); /*306E*/ c->icount += 2; if (x86_cond(c, 5)) goto L3089;
+L3070:
+    FC_NEED(7, 0x3070);
+    /*3070*/ c->r[R_AX] = (uint16_t)(0x8000); /*3073*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], ds_get(c, 0xC0A8), 1, 0));
+    /*3077*/ ds_put(c, 0xC0A8, c->r[R_AX]); /*307A*/ FC_PUT8(0xE479, alu_add(c, ds_get8(c, 0xE479), 0x80, 0, 0));
+    /*307F*/ c->r[R_AX] = (uint16_t)(0x8000); /*3082*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], ds_get(c, 0xB79C), 1, 0));
+    /*3086*/ ds_put(c, 0xB79C, c->r[R_AX]); c->icount += 7;
+L3089:
+    FC_NEED(2, 0x3089);
+    /*3089*/ alu_sub(c, ds_get(c, 0xC0A6), 0x0, 1, 0); /*308E*/ c->icount += 2; if (x86_cond(c, 4)) goto L3093;
+    FC_NEED(1, 0x3090);
+    /*3090*/ c->icount += 1; goto compose_matrix;
+L3093:
+    FC_NEED(4, 0x3093);
+    /*3093*/ cpu_push16(c, 0x12); /*3095*/ cpu_push16(c, 0x2D94); /*3098*/ cpu_push16(c, 0xB082); /*309B*/ c->icount += 3; FC_CALL(0xEDE0, 0x309E);
+    FC_NEED(2, 0x309E);
+    /*309E*/ FC_DROP(6); /*30A1*/ c->icount += 2; goto compose_cockpit_flag;
+/* Mode 41h reverses heading and pitch for the rear look. */
+compose_look_back:
+    FC_NEED(8, 0x30A4);
+    /*30A4*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0x2DEE)); /*30A7*/ set_r8(c, R_AH, (uint8_t)(alu_add(c, get_r8(c, R_AH), 0x80, 0, 0)));
+    /*30AA*/ ds_put(c, 0xE478, c->r[R_AX]); /*30AD*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0x2DF0));
+    /*30B0*/ c->r[R_AX] = (uint16_t)(alu_sub(c, 0, c->r[R_AX], 1, 0)); /*30B2*/ ds_put(c, 0xC0A8, c->r[R_AX]);
+    /*30B5*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0x2DF2)); /*30B8*/ c->icount += 8; goto L30E2;
+/* Mode 43h turns a quarter circle and exchanges pitch/roll. */
+compose_look_right:
+    FC_NEED(8, 0x30BA);
+    /*30BA*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0x2DEE)); /*30BD*/ set_r8(c, R_AH, (uint8_t)(alu_add(c, get_r8(c, R_AH), 0x40, 0, 0)));
+    /*30C0*/ ds_put(c, 0xE478, c->r[R_AX]); /*30C3*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0x2DF2));
+    /*30C6*/ c->r[R_AX] = (uint16_t)(alu_sub(c, 0, c->r[R_AX], 1, 0)); /*30C8*/ ds_put(c, 0xC0A8, c->r[R_AX]);
+    /*30CB*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0x2DF0)); /*30CE*/ c->icount += 8; goto L3058;
+/* Mode 42h turns the other quarter circle. */
+compose_look_left:
+    FC_NEED(6, 0x30D0);
+    /*30D0*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0x2DEE)); /*30D3*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], 0x4000, 1, 0));
+    /*30D6*/ ds_put(c, 0xE478, c->r[R_AX]); /*30D9*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0x2DF2)); /*30DC*/ ds_put(c, 0xC0A8, c->r[R_AX]);
+    /*30DF*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0x2DF0)); c->icount += 6;
+L30E2:
+    FC_NEED(2, 0x30E2);
+    /*30E2*/ c->r[R_AX] = (uint16_t)(alu_sub(c, 0, c->r[R_AX], 1, 0)); /*30E4*/ c->icount += 2; goto L3058;
+/* Mode 84h chooses one of sixteen 16-byte camera presets at B094. */
+compose_preset:
+    FC_NEED(20, 0x30E7);
+    /*30E7*/ set_r8(c, R_BL, (uint8_t)(ds_get8(c, 0x3D8E)));
+    /*30EB*/ set_r8(c, R_BL, (uint8_t)(alu_sub(c, get_r8(c, R_BL), ds_get8(c, 0x368E), 0, 0)));
+    /*30EF*/ c->r[R_BX] = (uint16_t)(alu_logic(c, c->r[R_BX] & 0xF, 1)); /*30F2*/ FC_SETFRAME(-22, c->r[R_BX]);
+    /*30F5*/ c->r[R_BX] = (uint16_t)(x86_shift(c, 4, c->r[R_BX], 0x04, 1));
+    /*30F8*/ c->r[R_AX] = (uint16_t)(ds_get(c, (uint16_t)(c->r[R_BX] - 0x4F62))); /*30FC*/ ds_put(c, 0xE478, c->r[R_AX]);
+    /*30FF*/ c->r[R_AX] = (uint16_t)(ds_get(c, (uint16_t)(c->r[R_BX] - 0x4F60))); /*3103*/ ds_put(c, 0xC0A8, c->r[R_AX]);
+    /*3106*/ c->r[R_AX] = (uint16_t)(ds_get(c, (uint16_t)(c->r[R_BX] - 0x4F5E))); /*310A*/ ds_put(c, 0xB79C, c->r[R_AX]);
+    /*310D*/ c->r[R_AX] = (uint16_t)(ds_get(c, (uint16_t)(c->r[R_BX] - 0x4F6C)));
+    /*3111*/ c->r[R_DX] = (uint16_t)(ds_get(c, (uint16_t)(c->r[R_BX] - 0x4F6A))); /*3115*/ ds_put(c, 0xB2B4, c->r[R_AX]);
+    /*3118*/ ds_put(c, 0xB2B6, c->r[R_DX]); /*311C*/ c->r[R_AX] = (uint16_t)(ds_get(c, (uint16_t)(c->r[R_BX] - 0x4F68)));
+    /*3120*/ c->r[R_DX] = (uint16_t)(ds_get(c, (uint16_t)(c->r[R_BX] - 0x4F66))); /*3124*/ ds_put(c, 0xB77E, c->r[R_AX]);
+    /*3127*/ ds_put(c, 0xB780, c->r[R_DX]); /*312B*/ c->r[R_AX] = (uint16_t)(ds_get(c, (uint16_t)(c->r[R_BX] - 0x4F64))); c->icount += 20;
+L312F:
+    FC_NEED(2, 0x312F);
+    /*312F*/ ds_put(c, 0xB788, c->r[R_AX]); /*3132*/ c->icount += 2; goto compose_normalize_angles;
+/* Mode 85h places a level camera behind the aircraft at the zoom distance. */
+compose_behind:
+    FC_NEED(15, 0x3135);
+    /*3135*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0x2DEE)); /*3138*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], 0x4000, 1, 0));
+    /*313B*/ ds_put(c, 0xE478, c->r[R_AX]); /*313E*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0));
+    /*3140*/ ds_put(c, 0xC0A8, c->r[R_AX]); /*3143*/ ds_put(c, 0xB79C, c->r[R_AX]); /*3146*/ set_r8(c, R_CL, (uint8_t)(FC_FRAME8(-4)));
+    /*3149*/ c->r[R_AX] = (uint16_t)(0x18); /*314C*/ c->r[R_AX] = (uint16_t)(x86_shift(c, 4, c->r[R_AX], get_r8(c, R_CL), 1));
+    /*314E*/ cpu_push16(c, c->r[R_AX]); /*314F*/ c->r[R_CX] = (uint16_t)(ds_get(c, 0x2DEE));
+    /*3153*/ set_r8(c, R_CH, (uint8_t)(alu_add(c, get_r8(c, R_CH), 0x40, 0, 0))); /*3156*/ cpu_push16(c, c->r[R_CX]);
+    /*3157*/ c->r[R_SI] = (uint16_t)(c->r[R_AX]); /*3159*/ c->icount += 14; FC_CALL(0xC818, 0x315C);
+    FC_NEED(12, 0x315C);
+    /*315C*/ c->r[R_BX] = cpu_pop16(c); /*315D*/ c->r[R_BX] = cpu_pop16(c); /*315E*/ c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0x0000;
+    /*315F*/ c->r[R_AX] = (uint16_t)(alu_add(c, c->r[R_AX], ds_get(c, 0xBA3C), 1, 0));
+    /*3163*/ c->r[R_DX] = (uint16_t)(alu_add(c, c->r[R_DX], ds_get(c, 0xBA3E), 1, FC_CARRY)); /*3167*/ ds_put(c, 0xB2B4, c->r[R_AX]);
+    /*316A*/ ds_put(c, 0xB2B6, c->r[R_DX]); /*316E*/ cpu_push16(c, c->r[R_SI]); /*316F*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0x2DEE));
+    /*3172*/ set_r8(c, R_AH, (uint8_t)(alu_add(c, get_r8(c, R_AH), 0x40, 0, 0))); /*3175*/ cpu_push16(c, c->r[R_AX]); /*3176*/ c->icount += 11;
+    FC_CALL(0xC831, 0x3179);
+    FC_NEED(8, 0x3179);
+    /*3179*/ c->r[R_BX] = cpu_pop16(c); /*317A*/ c->r[R_BX] = cpu_pop16(c); /*317B*/ c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0x0000;
+    /*317C*/ c->r[R_AX] = (uint16_t)(alu_add(c, c->r[R_AX], ds_get(c, 0xC056), 1, 0));
+    /*3180*/ c->r[R_DX] = (uint16_t)(alu_add(c, c->r[R_DX], ds_get(c, 0xC058), 1, FC_CARRY)); /*3184*/ ds_put(c, 0xB77E, c->r[R_AX]);
+    /*3187*/ ds_put(c, 0xB780, c->r[R_DX]); /*318B*/ c->icount += 8; goto compose_normalize_angles;
+/* Mode 87h places the camera ahead and raises it with the zoom distance. */
+compose_ahead:
+    FC_NEED(13, 0x318E);
+    /*318E*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0x2DEE)); /*3191*/ ds_put(c, 0xE478, c->r[R_AX]);
+    /*3194*/ c->r[R_CX] = (uint16_t)(alu_sub(c, c->r[R_CX], c->r[R_CX], 1, 0)); /*3196*/ ds_put(c, 0xC0A8, c->r[R_CX]);
+    /*319A*/ ds_put(c, 0xB79C, c->r[R_CX]); /*319E*/ set_r8(c, R_CL, (uint8_t)(FC_FRAME8(-4))); /*31A1*/ c->r[R_DX] = (uint16_t)(0x18);
+    /*31A4*/ c->r[R_DX] = (uint16_t)(x86_shift(c, 4, c->r[R_DX], get_r8(c, R_CL), 1)); /*31A6*/ cpu_push16(c, c->r[R_DX]);
+    /*31A7*/ set_r8(c, R_AH, (uint8_t)(alu_add(c, get_r8(c, R_AH), 0x80, 0, 0))); /*31AA*/ cpu_push16(c, c->r[R_AX]);
+    /*31AB*/ c->r[R_SI] = (uint16_t)(c->r[R_DX]); /*31AD*/ c->icount += 12; FC_CALL(0xC818, 0x31B0);
+    FC_NEED(12, 0x31B0);
+    /*31B0*/ c->r[R_BX] = cpu_pop16(c); /*31B1*/ c->r[R_BX] = cpu_pop16(c); /*31B2*/ c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0x0000;
+    /*31B3*/ c->r[R_AX] = (uint16_t)(alu_add(c, c->r[R_AX], ds_get(c, 0xBA3C), 1, 0));
+    /*31B7*/ c->r[R_DX] = (uint16_t)(alu_add(c, c->r[R_DX], ds_get(c, 0xBA3E), 1, FC_CARRY)); /*31BB*/ ds_put(c, 0xB2B4, c->r[R_AX]);
+    /*31BE*/ ds_put(c, 0xB2B6, c->r[R_DX]); /*31C2*/ cpu_push16(c, c->r[R_SI]); /*31C3*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0x2DEE));
+    /*31C6*/ set_r8(c, R_AH, (uint8_t)(alu_add(c, get_r8(c, R_AH), 0x80, 0, 0))); /*31C9*/ cpu_push16(c, c->r[R_AX]); /*31CA*/ c->icount += 11;
+    FC_CALL(0xC831, 0x31CD);
+    FC_NEED(12, 0x31CD);
+    /*31CD*/ c->r[R_BX] = cpu_pop16(c); /*31CE*/ c->r[R_BX] = cpu_pop16(c); /*31CF*/ c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0x0000;
+    /*31D0*/ c->r[R_AX] = (uint16_t)(alu_add(c, c->r[R_AX], ds_get(c, 0xC056), 1, 0));
+    /*31D4*/ c->r[R_DX] = (uint16_t)(alu_add(c, c->r[R_DX], ds_get(c, 0xC058), 1, FC_CARRY)); /*31D8*/ ds_put(c, 0xB77E, c->r[R_AX]);
+    /*31DB*/ ds_put(c, 0xB780, c->r[R_DX]); /*31DF*/ set_r8(c, R_CL, (uint8_t)(FC_FRAME8(-4))); /*31E2*/ c->r[R_AX] = (uint16_t)(0x4);
+    /*31E5*/ c->r[R_AX] = (uint16_t)(x86_shift(c, 4, c->r[R_AX], get_r8(c, R_CL), 1));
+    /*31E7*/ c->r[R_AX] = (uint16_t)(alu_add(c, c->r[R_AX], ds_get(c, 0x2DF4), 1, 0)); /*31EB*/ c->icount += 12; goto L312F;
+/* Modes 88h/89h/8Bh select the tracked object, retaining a valid selection. */
+compose_track_select:
+    FC_NEED(2, 0x31EE);
+    /*31EE*/ alu_sub(c, ds_get(c, 0xC0A6), 0x89, 1, 0); /*31F4*/ c->icount += 2; if (x86_cond(c, 4)) goto L321B;
+    FC_NEED(2, 0x31F6);
+    /*31F6*/ alu_sub(c, ds_get(c, 0xE32A), 0x1, 1, 0); /*31FB*/ c->icount += 2; if (x86_cond(c, 5)) goto L320C;
+    FC_NEED(2, 0x31FD);
+    /*31FD*/ alu_logic(c, ds_get8(c, 0x3D92) & 0x80, 0); /*3202*/ c->icount += 2; if (x86_cond(c, 5)) goto L3221;
+    FC_NEED(3, 0x3204);
+    /*3204*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0x3D92)); /*3207*/ c->r[R_AX] = (uint16_t)(alu_add(c, c->r[R_AX], 0x80, 1, 0));
+    /*320A*/ c->icount += 3; goto L321E;
+L320C:
+    FC_NEED(2, 0x320C);
+    /*320C*/ alu_logic(c, ds_get8(c, 0x3D94) & 0x80, 0); /*3211*/ c->icount += 2; if (x86_cond(c, 5)) goto L3221;
+    FC_NEED(3, 0x3213);
+    /*3213*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0x3D94)); /*3216*/ set_r8(c, R_AH, (uint8_t)(alu_add(c, get_r8(c, R_AH), 0x1, 0, 0)));
+    /*3219*/ c->icount += 3; goto L321E;
+L321B:
+    FC_NEED(1, 0x321B);
+    /*321B*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0xB07C)); c->icount += 1;
+L321E:
+    FC_NEED(1, 0x321E);
+    /*321E*/ ds_put(c, 0xDED4, c->r[R_AX]); c->icount += 1;
+L3221:
+    FC_NEED(4, 0x3221);
+    /*3221*/ c->r[R_AX] = (uint16_t)(FC_FRAME(-4)); /*3224*/ FC_SETFRAME(-6, c->r[R_AX]); /*3227*/ alu_logic(c, ds_get8(c, 0xDED5) & 0x1, 0);
+    /*322C*/ c->icount += 4; if (x86_cond(c, 4)) goto L3231;
+    FC_NEED(1, 0x322E);
+    /*322E*/ c->icount += 1; goto compose_track_ground;
+L3231:
+    FC_NEED(2, 0x3231);
+    /*3231*/ alu_logic(c, ds_get8(c, 0xDED4) & 0x80, 0); /*3236*/ c->icount += 2; if (x86_cond(c, 4)) goto compose_track_weapon;
+    FC_NEED(1, 0x3238);
+    /*3238*/ c->icount += 1; goto compose_track_aircraft;
+/* An untagged selection addresses a 28-byte weapon slot; retain its last position when low. */
+compose_track_weapon:
+    FC_NEED(3, 0x323B);
+    /*323B*/ c->r[R_BX] = (uint16_t)(x86_imul3(c, ds_get(c, 0xDED4), 0x1C));
+    /*3240*/ alu_sub(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x3C48)), 0x0, 1, 0); /*3245*/ c->icount += 3; if (x86_cond(c, 4)) goto L32B5;
+    FC_NEED(2, 0x3247);
+    /*3247*/ alu_sub(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x3C3E)), 0xC8, 1, 0); /*324D*/ c->icount += 2; if (x86_cond(c, 14)) goto L3294;
+    FC_NEED(5, 0x324F);
+    /*324F*/ c->r[R_AX] = (uint16_t)(ds_get(c, (uint16_t)(c->r[R_BX] + 0x3C3A)));
+    /*3253*/ c->r[R_DX] = (uint16_t)(alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0)); /*3255*/ set_r8(c, R_CL, (uint8_t)(0x5));
+    /*3257*/ c->r[R_SI] = (uint16_t)(c->r[R_BX]); /*3259*/ c->icount += 4; FC_CALL(0xEF68, 0x325C);
+    FC_NEED(8, 0x325C);
+    /*325C*/ ds_put(c, 0x2DFC, c->r[R_AX]); /*325F*/ ds_put(c, 0x2DFE, c->r[R_DX]); /*3263*/ ds_put(c, 0xDEC4, c->r[R_AX]);
+    /*3266*/ ds_put(c, 0xDEC6, c->r[R_DX]); /*326A*/ c->r[R_AX] = (uint16_t)(ds_get(c, (uint16_t)(c->r[R_SI] + 0x3C3C)));
+    /*326E*/ c->r[R_DX] = (uint16_t)(alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0)); /*3270*/ set_r8(c, R_CL, (uint8_t)(0x5)); /*3272*/ c->icount += 7;
+    FC_CALL(0xEF68, 0x3275);
+    FC_NEED(8, 0x3275);
+    /*3275*/ ds_put(c, 0x2E00, c->r[R_AX]); /*3278*/ ds_put(c, 0x2E02, c->r[R_DX]); /*327C*/ ds_put(c, 0xDECA, c->r[R_AX]);
+    /*327F*/ ds_put(c, 0xDECC, c->r[R_DX]); /*3283*/ c->r[R_AX] = (uint16_t)(ds_get(c, (uint16_t)(c->r[R_SI] + 0x3C3E)));
+    /*3287*/ c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0x0000; /*3288*/ ds_put(c, 0x2E04, c->r[R_AX]); /*328B*/ ds_put(c, 0x2E06, c->r[R_DX]);
+    c->icount += 8;
+L328F:
+    FC_NEED(2, 0x328F);
+    /*328F*/ ds_put(c, 0xDED2, c->r[R_AX]); /*3292*/ c->icount += 2; goto L32CF;
+L3294:
+    FC_NEED(10, 0x3294);
+    /*3294*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0x2DFC)); /*3297*/ c->r[R_DX] = (uint16_t)(ds_get(c, 0x2DFE)); /*329B*/ ds_put(c, 0xDEC4, c->r[R_AX]);
+    /*329E*/ ds_put(c, 0xDEC6, c->r[R_DX]); /*32A2*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0x2E00)); /*32A5*/ c->r[R_DX] = (uint16_t)(ds_get(c, 0x2E02));
+    /*32A9*/ ds_put(c, 0xDECA, c->r[R_AX]); /*32AC*/ ds_put(c, 0xDECC, c->r[R_DX]); /*32B0*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0x2E04));
+    /*32B3*/ c->icount += 10; goto L328F;
+L32B5:
+    FC_NEED(2, 0x32B5);
+    /*32B5*/ alu_sub(c, ds_get(c, 0x9D3C), 0x0, 1, 0); /*32BA*/ c->icount += 2; if (x86_cond(c, 5)) goto L3294;
+    FC_NEED(5, 0x32BC);
+    /*32BC*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0x2DEE)); /*32BF*/ c->r[R_BX] = (uint16_t)(x86_imul3(c, ds_get(c, 0xDED4), 0x1C));
+    /*32C4*/ ds_put(c, (uint16_t)(c->r[R_BX] + 0x3C42), c->r[R_AX]); /*32C8*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0x2DF0));
+    /*32CB*/ ds_put(c, (uint16_t)(c->r[R_BX] + 0x3C44), c->r[R_AX]); c->icount += 5;
+L32CF:
+    FC_NEED(2, 0x32CF);
+    /*32CF*/ FC_SETFRAME(-4, 0x3); /*32D4*/ c->icount += 2; goto compose_track_bearing;
+/* Bit 7 selects a 36-byte aircraft record. */
+compose_track_aircraft:
+    FC_NEED(15, 0x32D6);
+    /*32D6*/ set_r8(c, R_AL, (uint8_t)(ds_get8(c, 0xDED4))); /*32D9*/ c->r[R_AX] = (uint16_t)(alu_logic(c, c->r[R_AX] & 0x7F, 1));
+    /*32DC*/ c->r[R_BX] = (uint16_t)(x86_imul3(c, c->r[R_AX], 0x24)); /*32DF*/ c->r[R_AX] = (uint16_t)(ds_get(c, (uint16_t)(c->r[R_BX] - 0x3E8E)));
+    /*32E3*/ c->r[R_DX] = (uint16_t)(ds_get(c, (uint16_t)(c->r[R_BX] - 0x3E8C))); /*32E7*/ ds_put(c, 0xDEC4, c->r[R_AX]);
+    /*32EA*/ ds_put(c, 0xDEC6, c->r[R_DX]); /*32EE*/ c->r[R_AX] = (uint16_t)(ds_get(c, (uint16_t)(c->r[R_BX] - 0x3E8A)));
+    /*32F2*/ c->r[R_DX] = (uint16_t)(ds_get(c, (uint16_t)(c->r[R_BX] - 0x3E88))); /*32F6*/ ds_put(c, 0xDECA, c->r[R_AX]);
+    /*32F9*/ ds_put(c, 0xDECC, c->r[R_DX]); /*32FD*/ c->r[R_AX] = (uint16_t)(ds_get(c, (uint16_t)(c->r[R_BX] - 0x3E90)));
+    /*3301*/ ds_put(c, 0xDED2, c->r[R_AX]); /*3304*/ FC_SETFRAME(-4, 0x5); /*3309*/ c->icount += 15; goto compose_track_bearing;
+/* Bit 8 selects a 16-byte ground-object record, with height 50. */
+compose_track_ground:
+    FC_NEED(8, 0x330B);
+    /*330B*/ set_r8(c, R_BL, (uint8_t)(ds_get8(c, 0xDED4))); /*330F*/ c->r[R_BX] = (uint16_t)(alu_logic(c, c->r[R_BX] & 0x7F, 1));
+    /*3312*/ c->r[R_BX] = (uint16_t)(x86_shift(c, 4, c->r[R_BX], 0x04, 1));
+    /*3315*/ c->r[R_AX] = (uint16_t)(ds_get(c, (uint16_t)(c->r[R_BX] - 0x4D30)));
+    /*3319*/ c->r[R_DX] = (uint16_t)(alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0)); /*331B*/ set_r8(c, R_CL, (uint8_t)(0x5));
+    /*331D*/ c->r[R_SI] = (uint16_t)(c->r[R_BX]); /*331F*/ c->icount += 7; FC_CALL(0xEF68, 0x3322);
+    FC_NEED(6, 0x3322);
+    /*3322*/ ds_put(c, 0xDEC4, c->r[R_AX]); /*3325*/ ds_put(c, 0xDEC6, c->r[R_DX]);
+    /*3329*/ c->r[R_AX] = (uint16_t)(ds_get(c, (uint16_t)(c->r[R_SI] - 0x4D2E)));
+    /*332D*/ c->r[R_DX] = (uint16_t)(alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0)); /*332F*/ set_r8(c, R_CL, (uint8_t)(0x5)); /*3331*/ c->icount += 5;
+    FC_CALL(0xEF68, 0x3334);
+    FC_NEED(4, 0x3334);
+    /*3334*/ ds_put(c, 0xDECA, c->r[R_AX]); /*3337*/ ds_put(c, 0xDECC, c->r[R_DX]); /*333B*/ ds_put(c, 0xDED2, 0x32); /*3341*/ FC_SETFRAME(-4, 0x7);
+    c->icount += 4;
+/* Compute bearing, range and elevation from aircraft to tracked position. */
+compose_track_bearing:
+    FC_NEED(4, 0x3346);
+    /*3346*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0xDEC4)); /*3349*/ c->r[R_DX] = (uint16_t)(ds_get(c, 0xDEC6));
+    /*334D*/ set_r8(c, R_CL, (uint8_t)(0x5)); /*334F*/ c->icount += 3; FC_CALL(0xEF74, 0x3352);
+    FC_NEED(8, 0x3352);
+    /*3352*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], ds_get(c, 0xC0D0), 1, 0)); /*3356*/ FC_SETFRAME(-14, c->r[R_AX]);
+    /*3359*/ set_r8(c, R_CL, (uint8_t)(0x5)); /*335B*/ c->r[R_BX] = (uint16_t)(c->r[R_AX]); /*335D*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0xDECA));
+    /*3360*/ c->r[R_DX] = (uint16_t)(ds_get(c, 0xDECC)); /*3364*/ c->r[R_SI] = (uint16_t)(c->r[R_BX]); /*3366*/ c->icount += 7;
+    FC_CALL(0xEF74, 0x3369);
+    FC_NEED(5, 0x3369);
+    /*3369*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], ds_get(c, 0xC0DE), 1, 0)); /*336D*/ FC_SETFRAME(-20, c->r[R_AX]);
+    /*3370*/ cpu_push16(c, c->r[R_AX]); /*3371*/ cpu_push16(c, c->r[R_SI]); /*3372*/ c->icount += 4; FC_CALL(0xC6B3, 0x3375);
+    FC_NEED(8, 0x3375);
+    /*3375*/ c->r[R_BX] = cpu_pop16(c); /*3376*/ c->r[R_BX] = cpu_pop16(c); /*3377*/ FC_SETFRAME(-8, c->r[R_AX]);
+    /*337A*/ c->r[R_AX] = (uint16_t)(FC_FRAME(-20)); /*337D*/ c->r[R_AX] = (uint16_t)(alu_sub(c, 0, c->r[R_AX], 1, 0));
+    /*337F*/ cpu_push16(c, c->r[R_AX]); /*3380*/ cpu_push16(c, FC_FRAME(-14)); /*3383*/ c->icount += 7; FC_CALL(0xC702, 0x3386);
+    FC_NEED(9, 0x3386);
+    /*3386*/ c->r[R_BX] = cpu_pop16(c); /*3387*/ c->r[R_BX] = cpu_pop16(c); /*3388*/ ds_put(c, 0xE478, c->r[R_AX]);
+    /*338B*/ cpu_push16(c, FC_FRAME(-8)); /*338E*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0xDED2));
+    /*3391*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], ds_get(c, 0x2DF4), 1, 0));
+    /*3395*/ c->r[R_AX] = (uint16_t)(x86_shift(c, 7, c->r[R_AX], 0x05, 1)); /*3398*/ cpu_push16(c, c->r[R_AX]); /*3399*/ c->icount += 8;
+    FC_CALL(0xC702, 0x339C);
+    FC_NEED(14, 0x339C);
+    /*339C*/ c->r[R_BX] = cpu_pop16(c); /*339D*/ c->r[R_BX] = cpu_pop16(c); /*339E*/ c->r[R_AX] = (uint16_t)(alu_sub(c, 0, c->r[R_AX], 1, 0));
+    /*33A0*/ ds_put(c, 0xC0A8, c->r[R_AX]); /*33A3*/ ds_put(c, 0xB79C, 0x0); /*33A9*/ c->r[R_CX] = (uint16_t)(FC_FRAME(-6));
+    /*33AC*/ FC_SETFRAME(-4, c->r[R_CX]); /*33AF*/ c->r[R_AX] = (uint16_t)(0x18);
+    /*33B2*/ c->r[R_AX] = (uint16_t)(x86_shift(c, 4, c->r[R_AX], get_r8(c, R_CL), 1)); /*33B4*/ cpu_push16(c, c->r[R_AX]);
+    /*33B5*/ cpu_push16(c, ds_get(c, 0xC0A8)); /*33B9*/ c->r[R_SI] = (uint16_t)(c->r[R_AX]); /*33BB*/ FC_SETFRAME(-24, c->r[R_CX]);
+    /*33BE*/ c->icount += 13; FC_CALL(0xC831, 0x33C1);
+    FC_NEED(5, 0x33C1);
+    /*33C1*/ c->r[R_BX] = cpu_pop16(c); /*33C2*/ c->r[R_BX] = cpu_pop16(c); /*33C3*/ FC_SETFRAME(-10, c->r[R_AX]);
+    /*33C6*/ alu_logic(c, ds_get(c, 0xDED4) & 0x180, 1); /*33CC*/ c->icount += 5; if (x86_cond(c, 5)) goto L33D1;
+    FC_NEED(1, 0x33CE);
+    /*33CE*/ c->icount += 1; goto compose_weapon_camera;
+L33D1:
+    FC_NEED(2, 0x33D1);
+    /*33D1*/ alu_sub(c, ds_get(c, 0xC0A6), 0x88, 1, 0); /*33D7*/ c->icount += 2; if (x86_cond(c, 5)) goto L3438;
+    FC_NEED(5, 0x33D9);
+    /*33D9*/ cpu_push16(c, c->r[R_AX]); /*33DA*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0xE478));
+    /*33DD*/ set_r8(c, R_AH, (uint8_t)(alu_add(c, get_r8(c, R_AH), 0x80, 0, 0))); /*33E0*/ cpu_push16(c, c->r[R_AX]); /*33E1*/ c->icount += 4;
+    FC_CALL(0xC818, 0x33E4);
+    FC_NEED(12, 0x33E4);
+    /*33E4*/ c->r[R_BX] = cpu_pop16(c); /*33E5*/ c->r[R_BX] = cpu_pop16(c); /*33E6*/ c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0x0000;
+    /*33E7*/ c->r[R_AX] = (uint16_t)(alu_add(c, c->r[R_AX], ds_get(c, 0xBA3C), 1, 0));
+    /*33EB*/ c->r[R_DX] = (uint16_t)(alu_add(c, c->r[R_DX], ds_get(c, 0xBA3E), 1, FC_CARRY)); /*33EF*/ ds_put(c, 0xB2B4, c->r[R_AX]);
+    /*33F2*/ ds_put(c, 0xB2B6, c->r[R_DX]); /*33F6*/ cpu_push16(c, FC_FRAME(-10)); /*33F9*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0xE478));
+    /*33FC*/ set_r8(c, R_AH, (uint8_t)(alu_add(c, get_r8(c, R_AH), 0x80, 0, 0))); /*33FF*/ cpu_push16(c, c->r[R_AX]); /*3400*/ c->icount += 11;
+    FC_CALL(0xC831, 0x3403);
+    FC_NEED(10, 0x3403);
+    /*3403*/ c->r[R_BX] = cpu_pop16(c); /*3404*/ c->r[R_BX] = cpu_pop16(c); /*3405*/ c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0x0000;
+    /*3406*/ c->r[R_AX] = (uint16_t)(alu_add(c, c->r[R_AX], ds_get(c, 0xC056), 1, 0));
+    /*340A*/ c->r[R_DX] = (uint16_t)(alu_add(c, c->r[R_DX], ds_get(c, 0xC058), 1, FC_CARRY)); /*340E*/ ds_put(c, 0xB77E, c->r[R_AX]);
+    /*3411*/ ds_put(c, 0xB780, c->r[R_DX]); /*3415*/ cpu_push16(c, c->r[R_SI]); /*3416*/ cpu_push16(c, ds_get(c, 0xC0A8)); /*341A*/ c->icount += 9;
+    FC_CALL(0xC818, 0x341D);
+    FC_NEED(10, 0x341D);
+    /*341D*/ c->r[R_BX] = cpu_pop16(c); /*341E*/ c->r[R_BX] = cpu_pop16(c); /*341F*/ set_r8(c, R_CL, (uint8_t)(FC_FRAME8(-24)));
+    /*3422*/ c->r[R_DX] = (uint16_t)(0x4); /*3425*/ c->r[R_DX] = (uint16_t)(x86_shift(c, 4, c->r[R_DX], get_r8(c, R_CL), 1));
+    /*3427*/ c->r[R_DX] = (uint16_t)(alu_add(c, c->r[R_DX], c->r[R_AX], 1, 0));
+    /*3429*/ c->r[R_DX] = (uint16_t)(alu_add(c, c->r[R_DX], ds_get(c, 0x2DF4), 1, 0)); /*342D*/ ds_put(c, 0xB788, c->r[R_DX]);
+    /*3431*/ ds_put(c, 0xC0A8, (uint16_t)alu_sub(c, 0, ds_get(c, 0xC0A8), 1, 0)); /*3435*/ c->icount += 10; goto compose_normalize_angles;
+L3438:
+    FC_NEED(3, 0x3438);
+    /*3438*/ cpu_push16(c, c->r[R_AX]); /*3439*/ cpu_push16(c, ds_get(c, 0xE478)); /*343D*/ c->icount += 2; FC_CALL(0xC818, 0x3440);
+    FC_NEED(10, 0x3440);
+    /*3440*/ c->r[R_BX] = cpu_pop16(c); /*3441*/ c->r[R_BX] = cpu_pop16(c); /*3442*/ c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0x0000;
+    /*3443*/ c->r[R_AX] = (uint16_t)(alu_add(c, c->r[R_AX], ds_get(c, 0xDEC4), 1, 0));
+    /*3447*/ c->r[R_DX] = (uint16_t)(alu_add(c, c->r[R_DX], ds_get(c, 0xDEC6), 1, FC_CARRY)); /*344B*/ ds_put(c, 0xB2B4, c->r[R_AX]);
+    /*344E*/ ds_put(c, 0xB2B6, c->r[R_DX]); /*3452*/ cpu_push16(c, FC_FRAME(-10)); /*3455*/ cpu_push16(c, ds_get(c, 0xE478));
+    /*3459*/ c->icount += 9; FC_CALL(0xC831, 0x345C);
+    FC_NEED(15, 0x345C);
+    /*345C*/ c->r[R_BX] = cpu_pop16(c); /*345D*/ c->r[R_BX] = cpu_pop16(c); /*345E*/ c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0x0000;
+    /*345F*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], ds_get(c, 0xDECA), 1, 0));
+    /*3463*/ c->r[R_DX] = (uint16_t)(alu_sub(c, c->r[R_DX], ds_get(c, 0xDECC), 1, FC_CARRY));
+    /*3467*/ c->r[R_AX] = (uint16_t)(alu_add(c, c->r[R_AX], 0x0, 1, 0)); /*346A*/ c->r[R_DX] = (uint16_t)(alu_add(c, c->r[R_DX], 0x10, 1, FC_CARRY));
+    /*346D*/ ds_put(c, 0xB77E, c->r[R_AX]); /*3470*/ ds_put(c, 0xB780, c->r[R_DX]); /*3474*/ set_r8(c, R_CL, (uint8_t)(FC_FRAME8(-4)));
+    /*3477*/ c->r[R_AX] = (uint16_t)(0x18); /*347A*/ c->r[R_AX] = (uint16_t)(x86_shift(c, 4, c->r[R_AX], get_r8(c, R_CL), 1));
+    /*347C*/ cpu_push16(c, c->r[R_AX]); /*347D*/ cpu_push16(c, ds_get(c, 0xC0A8)); /*3481*/ c->icount += 14; FC_CALL(0xC818, 0x3484);
+    FC_NEED(10, 0x3484);
+    /*3484*/ c->r[R_BX] = cpu_pop16(c); /*3485*/ c->r[R_BX] = cpu_pop16(c); /*3486*/ c->r[R_DX] = (uint16_t)(0x4);
+    /*3489*/ set_r8(c, R_CL, (uint8_t)(FC_FRAME8(-4))); /*348C*/ c->r[R_DX] = (uint16_t)(x86_shift(c, 4, c->r[R_DX], get_r8(c, R_CL), 1));
+    /*348E*/ c->r[R_DX] = (uint16_t)(alu_sub(c, c->r[R_DX], c->r[R_AX], 1, 0));
+    /*3490*/ c->r[R_DX] = (uint16_t)(alu_add(c, c->r[R_DX], ds_get(c, 0xDED2), 1, 0)); /*3494*/ ds_put(c, 0xB788, c->r[R_DX]);
+    /*3498*/ FC_PUT8(0xE479, alu_add(c, ds_get8(c, 0xE479), 0x80, 0, 0)); /*349D*/ c->icount += 10; goto compose_normalize_angles;
+/* A weapon camera uses its stored heading and pitch with a zoomed offset. */
+compose_weapon_camera:
+    FC_NEED(13, 0x34A0);
+    /*34A0*/ c->r[R_BX] = (uint16_t)(x86_imul3(c, ds_get(c, 0xDED4), 0x1C));
+    /*34A5*/ c->r[R_AX] = (uint16_t)(ds_get(c, (uint16_t)(c->r[R_BX] + 0x3C42))); /*34A9*/ ds_put(c, 0xE478, c->r[R_AX]);
+    /*34AC*/ c->r[R_AX] = (uint16_t)(ds_get(c, (uint16_t)(c->r[R_BX] + 0x3C44)));
+    /*34B0*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], 0x400, 1, 0)); /*34B3*/ ds_put(c, 0xC0A8, c->r[R_AX]);
+    /*34B6*/ set_r8(c, R_CL, (uint8_t)(FC_FRAME8(-4))); /*34B9*/ c->r[R_DX] = (uint16_t)(0x10);
+    /*34BC*/ c->r[R_DX] = (uint16_t)(x86_shift(c, 4, c->r[R_DX], get_r8(c, R_CL), 1)); /*34BE*/ cpu_push16(c, c->r[R_DX]);
+    /*34BF*/ cpu_push16(c, c->r[R_AX]); /*34C0*/ c->r[R_SI] = (uint16_t)(c->r[R_DX]); /*34C2*/ c->icount += 12; FC_CALL(0xC831, 0x34C5);
+    FC_NEED(6, 0x34C5);
+    /*34C5*/ c->r[R_BX] = cpu_pop16(c); /*34C6*/ c->r[R_BX] = cpu_pop16(c); /*34C7*/ FC_SETFRAME(-10, c->r[R_AX]);
+    /*34CA*/ cpu_push16(c, c->r[R_AX]); /*34CB*/ cpu_push16(c, ds_get(c, 0xE478)); /*34CF*/ c->icount += 5; FC_CALL(0xC818, 0x34D2);
+    FC_NEED(12, 0x34D2);
+    /*34D2*/ c->r[R_BX] = cpu_pop16(c); /*34D3*/ c->r[R_BX] = cpu_pop16(c); /*34D4*/ c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0x0000;
+    /*34D5*/ c->r[R_CX] = (uint16_t)(ds_get(c, 0xDEC4)); /*34D9*/ c->r[R_BX] = (uint16_t)(ds_get(c, 0xDEC6));
+    /*34DD*/ c->r[R_CX] = (uint16_t)(alu_sub(c, c->r[R_CX], c->r[R_AX], 1, 0));
+    /*34DF*/ c->r[R_BX] = (uint16_t)(alu_sub(c, c->r[R_BX], c->r[R_DX], 1, FC_CARRY)); /*34E1*/ ds_put(c, 0xB2B4, c->r[R_CX]);
+    /*34E5*/ ds_put(c, 0xB2B6, c->r[R_BX]); /*34E9*/ cpu_push16(c, FC_FRAME(-10)); /*34EC*/ cpu_push16(c, ds_get(c, 0xE478));
+    /*34F0*/ c->icount += 11; FC_CALL(0xC831, 0x34F3);
+    FC_NEED(14, 0x34F3);
+    /*34F3*/ c->r[R_BX] = cpu_pop16(c); /*34F4*/ c->r[R_BX] = cpu_pop16(c); /*34F5*/ c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0x0000;
+    /*34F6*/ c->r[R_CX] = (uint16_t)(alu_sub(c, c->r[R_CX], c->r[R_CX], 1, 0)); /*34F8*/ c->r[R_BX] = (uint16_t)(0x10);
+    /*34FB*/ c->r[R_CX] = (uint16_t)(alu_sub(c, c->r[R_CX], c->r[R_AX], 1, 0));
+    /*34FD*/ c->r[R_BX] = (uint16_t)(alu_sub(c, c->r[R_BX], c->r[R_DX], 1, FC_CARRY));
+    /*34FF*/ c->r[R_CX] = (uint16_t)(alu_sub(c, c->r[R_CX], ds_get(c, 0xDECA), 1, 0));
+    /*3503*/ c->r[R_BX] = (uint16_t)(alu_sub(c, c->r[R_BX], ds_get(c, 0xDECC), 1, FC_CARRY)); /*3507*/ ds_put(c, 0xB77E, c->r[R_CX]);
+    /*350B*/ ds_put(c, 0xB780, c->r[R_BX]); /*350F*/ cpu_push16(c, c->r[R_SI]); /*3510*/ cpu_push16(c, ds_get(c, 0xC0A8)); /*3514*/ c->icount += 13;
+    FC_CALL(0xC818, 0x3517);
+    FC_NEED(5, 0x3517);
+    /*3517*/ c->r[R_BX] = cpu_pop16(c); /*3518*/ c->r[R_BX] = cpu_pop16(c);
+    /*3519*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], ds_get(c, 0xDED2), 1, 0));
+    /*351D*/ c->r[R_AX] = (uint16_t)(alu_sub(c, 0, c->r[R_AX], 1, 0)); /*351F*/ c->icount += 5; goto L312F;
+/* Mode 8Ch uses the fixed coordinates and a downward pitch. */
+compose_fixed:
+    FC_NEED(6, 0x3522);
+    /*3522*/ ds_put(c, 0xC0A8, 0xF400); /*3528*/ ds_put(c, 0xB79C, 0x0); /*352E*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0xDECE));
+    /*3531*/ c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0x0000; /*3532*/ set_r8(c, R_CL, (uint8_t)(0x5)); /*3534*/ c->icount += 5;
+    FC_CALL(0xEF68, 0x3537);
+    FC_NEED(12, 0x3537);
+    /*3537*/ ds_put(c, 0xB2B4, c->r[R_AX]); /*353A*/ ds_put(c, 0xB2B6, c->r[R_DX]); /*353E*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0xDEF2));
+    /*3541*/ c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0x0000; /*3542*/ c->r[R_CX] = (uint16_t)(c->r[R_AX]);
+    /*3544*/ c->r[R_BX] = (uint16_t)(c->r[R_DX]); /*3546*/ c->r[R_AX] = (uint16_t)(0x8000);
+    /*3549*/ c->r[R_DX] = (uint16_t)(alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0));
+    /*354B*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], c->r[R_CX], 1, 0));
+    /*354D*/ c->r[R_DX] = (uint16_t)(alu_sub(c, c->r[R_DX], c->r[R_BX], 1, FC_CARRY)); /*354F*/ set_r8(c, R_CL, (uint8_t)(0x5));
+    /*3551*/ c->icount += 11; FC_CALL(0xEF68, 0x3554);
+    FC_NEED(4, 0x3554);
+    /*3554*/ ds_put(c, 0xB77E, c->r[R_AX]); /*3557*/ ds_put(c, 0xB780, c->r[R_DX]); /*355B*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0xDEF6));
+    /*355E*/ c->icount += 4; goto L312F;
+/* Build the view matrix for modes other than the direct forward copy. */
+compose_matrix:
+    FC_NEED(5, 0x3561);
+    /*3561*/ cpu_push16(c, ds_get(c, 0xB79C)); /*3565*/ cpu_push16(c, ds_get(c, 0xC0A8)); /*3569*/ cpu_push16(c, ds_get(c, 0xE478));
+    /*356D*/ cpu_push16(c, 0xB082); /*3570*/ c->icount += 4; FC_CALL(0xDFA9, 0x3573);
+    FC_NEED(1, 0x3573);
+    /*3573*/ FC_DROP(8); c->icount += 1;
+/* Clamp camera height to 16 and derive cockpit visibility from the view mode. */
+compose_cockpit_flag:
+    FC_NEED(3, 0x3576);
+    /*3576*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0xB788)); /*3579*/ alu_sub(c, c->r[R_AX], 0x10, 1, 0); /*357C*/ c->icount += 3;
+    if (x86_cond(c, 13)) goto L3581;
+    FC_NEED(1, 0x357E);
+    /*357E*/ c->r[R_AX] = (uint16_t)(0x10); c->icount += 1;
+L3581:
+    FC_NEED(11, 0x3581);
+    /*3581*/ ds_put(c, 0xB788, c->r[R_AX]); /*3584*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0x368C)); /*3587*/ FC_SETFRAME(-22, c->r[R_AX]);
+    /*358A*/ set_r8(c, R_AL, (uint8_t)(ds_get8(c, 0xC0A6))); /*358D*/ c->r[R_AX] = (uint16_t)(alu_logic(c, c->r[R_AX] & 0xC0, 1));
+    /*3590*/ alu_sub(c, c->r[R_AX], 0x1, 1, 0); /*3593*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], c->r[R_AX], 1, FC_CARRY));
+    /*3595*/ c->r[R_AX] = (uint16_t)(alu_sub(c, 0, c->r[R_AX], 1, 0)); /*3597*/ ds_put(c, 0x368C, c->r[R_AX]);
+    /*359A*/ alu_sub(c, c->r[R_AX], FC_FRAME(-22), 1, 0); /*359D*/ c->icount += 11; if (x86_cond(c, 5)) goto compose_cockpit_change;
+    FC_NEED(1, 0x359F);
+    /*359F*/ c->icount += 1; goto compose_mode_change;
+/* Cockpit visibility changed: resize display bounds and fill or copy the exposed area. */
+compose_cockpit_change:
+    FC_NEED(13, 0x35A2);
+    /*35A2*/ alu_sub(c, c->r[R_AX], 0x1, 1, 0); /*35A5*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], c->r[R_AX], 1, FC_CARRY));
+    /*35A7*/ c->r[R_AX] = (uint16_t)(alu_logic(c, c->r[R_AX] & 0x6D, 1)); /*35AA*/ c->r[R_AX] = (uint16_t)(alu_add(c, c->r[R_AX], 0x5A, 1, 0));
+    /*35AD*/ c->r[R_BX] = (uint16_t)(ds_get(c, 0x4010)); /*35B1*/ ds_put(c, (uint16_t)(c->r[R_BX] + 0x0010), c->r[R_AX]);
+    /*35B4*/ alu_sub(c, ds_get(c, 0x368C), 0x1, 1, 0); /*35B9*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], c->r[R_AX], 1, FC_CARRY));
+    /*35BB*/ c->r[R_AX] = (uint16_t)(alu_logic(c, c->r[R_AX] & 0x6D, 1)); /*35BE*/ c->r[R_AX] = (uint16_t)(alu_add(c, c->r[R_AX], 0x5A, 1, 0));
+    /*35C1*/ c->r[R_BX] = (uint16_t)(ds_get(c, 0x4028)); /*35C5*/ ds_put(c, (uint16_t)(c->r[R_BX] + 0x0010), c->r[R_AX]); /*35C8*/ c->icount += 12;
+    FC_FAR(0x35C8);
+    FC_NEED(2, 0x35CD);
+    /*35CD*/ alu_sub(c, ds_get(c, 0x368C), 0x0, 1, 0); /*35D2*/ c->icount += 2; if (x86_cond(c, 4)) goto L3620;
+    FC_NEED(5, 0x35D4);
+    /*35D4*/ cpu_push16(c, 0x6D); /*35D6*/ cpu_push16(c, 0x140); /*35D9*/ cpu_push16(c, 0x5B); /*35DB*/ cpu_push16(c, 0x0); /*35DD*/ c->icount += 4;
+    FC_FAR(0x35DD);
+    FC_NEED(2, 0x35E2);
+    /*35E2*/ FC_DROP(8); /*35E5*/ c->icount += 1; FC_CALL(0x3A3B, 0x35E8);
+    FC_NEED(2, 0x35E8);
+    /*35E8*/ alu_sub(c, ds_get(c, 0xDF06), 0x0, 1, 0); /*35ED*/ c->icount += 2; if (x86_cond(c, 5)) goto L35FC;
+    FC_NEED(3, 0x35EF);
+    /*35EF*/ cpu_push16(c, ds_get(c, 0xC0DE)); /*35F3*/ cpu_push16(c, ds_get(c, 0xC0D0)); /*35F7*/ c->icount += 2; FC_CALL(0x8462, 0x35FA);
+    FC_NEED(2, 0x35FA);
+    /*35FA*/ c->r[R_BX] = cpu_pop16(c); /*35FB*/ c->r[R_BX] = cpu_pop16(c); c->icount += 2;
+L35FC:
+    FC_NEED(2, 0x35FC);
+    /*35FC*/ alu_sub(c, ds_get(c, 0xE008), 0x13, 1, 0); /*3601*/ c->icount += 2; if (x86_cond(c, 5)) goto L3663;
+    FC_NEED(6, 0x3603);
+    /*3603*/ c->r[R_AX] = (uint16_t)(0xFFFF); /*3606*/ ds_put(c, 0x3D92, c->r[R_AX]); /*3609*/ ds_put(c, 0x3D94, c->r[R_AX]);
+    /*360C*/ cpu_push16(c, 0x9F); /*360F*/ cpu_push16(c, 0x2); /*3611*/ c->icount += 5; FC_FAR(0x3611);
+    FC_NEED(4, 0x3616);
+    /*3616*/ c->r[R_BX] = cpu_pop16(c); /*3617*/ c->r[R_BX] = cpu_pop16(c); /*3618*/ ds_put(c, 0x9D3E, 0x0); /*361E*/ c->icount += 4; goto L3663;
+L3620:
+    FC_NEED(11, 0x3620);
+    /*3620*/ cpu_push16(c, 0x32); /*3622*/ cpu_push16(c, 0x21); /*3624*/ cpu_push16(c, 0x96); /*3627*/ cpu_push16(c, 0x0);
+    /*3629*/ c->r[R_BX] = (uint16_t)(ds_get(c, 0x4010)); /*362D*/ cpu_push16(c, ds_get(c, c->r[R_BX])); /*362F*/ cpu_push16(c, 0x96);
+    /*3632*/ cpu_push16(c, 0x0); /*3634*/ c->r[R_BX] = (uint16_t)(ds_get(c, 0x4040)); /*3638*/ cpu_push16(c, ds_get(c, c->r[R_BX]));
+    /*363A*/ c->icount += 10; FC_FAR(0x363A);
+    FC_NEED(12, 0x363F);
+    /*363F*/ FC_DROP(16); /*3642*/ cpu_push16(c, 0x6D); /*3644*/ cpu_push16(c, 0x140); /*3647*/ cpu_push16(c, 0x5B); /*3649*/ cpu_push16(c, 0x0);
+    /*364B*/ c->r[R_BX] = (uint16_t)(ds_get(c, 0x4040)); /*364F*/ cpu_push16(c, ds_get(c, c->r[R_BX])); /*3651*/ cpu_push16(c, 0x5B);
+    /*3653*/ cpu_push16(c, 0x0); /*3655*/ c->r[R_BX] = (uint16_t)(ds_get(c, 0x4010)); /*3659*/ cpu_push16(c, ds_get(c, c->r[R_BX]));
+    /*365B*/ c->icount += 11; FC_FAR(0x365B);
+    FC_NEED(1, 0x3660);
+    /*3660*/ FC_DROP(16); c->icount += 1;
+L3663:
+    FC_NEED(1, 0x3663);
+    /*3663*/ c->icount += 0; FC_FAR(0x3663);
+/* Redraw the view-specific artwork only when C0A6 differs from last mode 2E7A. */
+compose_mode_change:
+    FC_NEED(3, 0x3668);
+    /*3668*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0xC0A6)); /*366B*/ alu_sub(c, ds_get(c, 0x2E7A), c->r[R_AX], 1, 0); /*366F*/ c->icount += 3;
+    if (x86_cond(c, 5)) goto L3674;
+    FC_NEED(1, 0x3671);
+    /*3671*/ c->icount += 1; goto compose_viewport;
+L3674:
+    FC_NEED(1, 0x3674);
+    /*3674*/ c->icount += 0; FC_FAR(0x3674);
+    FC_NEED(3, 0x3679);
+    /*3679*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0xC0A6)); /*367C*/ alu_sub(c, c->r[R_AX], 0x43, 1, 0); /*367F*/ c->icount += 3;
+    if (x86_cond(c, 5)) goto L3684;
+    FC_NEED(1, 0x3681);
+    /*3681*/ c->icount += 1; goto L3740;
+L3684:
+    FC_NEED(1, 0x3684);
+    /*3684*/ c->icount += 1; if (x86_cond(c, 7)) goto L3698;
+    FC_NEED(2, 0x3686);
+    /*3686*/ set_r8(c, R_AL, (uint8_t)(alu_logic(c, get_r8(c, R_AL) | get_r8(c, R_AL), 0))); /*3688*/ c->icount += 2; if (x86_cond(c, 4)) goto L369F;
+    FC_NEED(2, 0x368A);
+    /*368A*/ set_r8(c, R_AL, (uint8_t)(alu_sub(c, get_r8(c, R_AL), 0x41, 0, 0))); /*368C*/ c->icount += 2; if (x86_cond(c, 5)) goto L3691;
+    FC_NEED(1, 0x368E);
+    /*368E*/ c->icount += 1; goto L3747;
+L3691:
+    FC_NEED(2, 0x3691);
+    /*3691*/ set_r8(c, R_AL, (uint8_t)(alu_dec(c, get_r8(c, R_AL), 0))); /*3693*/ c->icount += 2; if (x86_cond(c, 5)) goto L3698;
+    FC_NEED(1, 0x3695);
+    /*3695*/ c->icount += 1; goto L371A;
+L3698:
+    FC_NEED(1, 0x3698);
+    /*3698*/ c->icount += 0; FC_FAR(0x3698);
+    FC_NEED(1, 0x369D);
+    /*369D*/ c->icount += 1; goto compose_remember_mode;
+L369F:
+    FC_NEED(3, 0x369F);
+    /*369F*/ cpu_push16(c, 0x2); /*36A1*/ cpu_push16(c, 0x2E10); /*36A4*/ c->icount += 2; FC_CALL(0xD52E, 0x36A7);
+    FC_NEED(7, 0x36A7);
+    /*36A7*/ c->r[R_BX] = cpu_pop16(c); /*36A8*/ c->r[R_BX] = cpu_pop16(c); /*36A9*/ cpu_push16(c, 0x6D); /*36AB*/ cpu_push16(c, 0x140);
+    /*36AE*/ cpu_push16(c, 0x5B); /*36B0*/ cpu_push16(c, 0x0); /*36B2*/ c->icount += 6; FC_FAR(0x36B2);
+    FC_NEED(4, 0x36B7);
+    /*36B7*/ FC_DROP(8); /*36BA*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0xBA3A));
+    /*36BD*/ c->r[R_AX] = (uint16_t)(alu_logic(c, c->r[R_AX] | c->r[R_AX], 1)); /*36BF*/ c->icount += 4; if (x86_cond(c, 4)) goto L36DF;
+    FC_NEED(9, 0x36C1);
+    /*36C1*/ FC_SETFRAME(-18, 0x0); /*36C6*/ cpu_push16(c, c->r[R_AX]); /*36C7*/ cpu_push16(c, FC_FRAME(-18)); /*36CA*/ cpu_push16(c, 0x3C);
+    /*36CC*/ cpu_push16(c, 0x4D); /*36CE*/ cpu_push16(c, 0x6E); /*36D0*/ cpu_push16(c, 0xA9); /*36D3*/ cpu_push16(c, ds_get(c, 0x4040));
+    /*36D7*/ c->icount += 8; FC_FAR(0x36D7);
+    FC_NEED(1, 0x36DC);
+    /*36DC*/ FC_DROP(14); c->icount += 1;
+L36DF:
+    FC_NEED(1, 0x36DF);
+    /*36DF*/ c->icount += 0; FC_CALL(0x3A7D, 0x36E2);
+    FC_NEED(1, 0x36E2);
+    /*36E2*/ c->icount += 0; FC_CALL(0x01C1, 0x36E5);
+    FC_NEED(1, 0x36E5);
+    /*36E5*/ c->icount += 0; FC_FAR(0x36E5);
+    FC_NEED(1, 0x36EA);
+    /*36EA*/ ds_put(c, 0x46F2, 0x0); c->icount += 1;
+/* Finish the redraw and remember the selected mode. */
+compose_remember_mode:
+    FC_NEED(1, 0x36F0);
+    /*36F0*/ c->icount += 0; FC_FAR(0x36F0);
+    FC_NEED(2, 0x36F5);
+    /*36F5*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0xC0A6)); /*36F8*/ ds_put(c, 0x2E7A, c->r[R_AX]); c->icount += 2;
+/* Choose the scene height: forward cockpit 91/107, side 157/161, outside 200. */
+compose_viewport:
+    FC_NEED(3, 0x36FB);
+    /*36FB*/ FC_PUT8(0xC6B2, 0x0); /*3700*/ alu_sub(c, ds_get(c, 0x368C), 0x0, 1, 0); /*3705*/ c->icount += 3; if (x86_cond(c, 4)) goto L374E;
+    FC_NEED(3, 0x3707);
+    /*3707*/ FC_SETFRAME(-2, 0x5B); /*370C*/ alu_sub(c, ds_get(c, 0x2E08), 0x0, 1, 0); /*3711*/ c->icount += 3; if (x86_cond(c, 4)) goto compose_scene_prepare;
+    FC_NEED(2, 0x3713);
+    /*3713*/ FC_SETFRAME(-2, 0x6B); /*3718*/ c->icount += 2; goto compose_scene_prepare;
+L371A:
+    FC_NEED(2, 0x371A);
+    /*371A*/ cpu_push16(c, 0x2); /*371C*/ cpu_push16(c, 0x2E1B); c->icount += 2;
+L371F:
+    FC_NEED(1, 0x371F);
+    /*371F*/ c->icount += 0; FC_CALL(0xD52E, 0x3722);
+    FC_NEED(11, 0x3722);
+    /*3722*/ c->r[R_BX] = cpu_pop16(c); /*3723*/ c->r[R_BX] = cpu_pop16(c); /*3724*/ cpu_push16(c, 0xC8); /*3727*/ cpu_push16(c, 0x140);
+    /*372A*/ cpu_push16(c, 0x0); /*372C*/ cpu_push16(c, 0x0); /*372E*/ cpu_push16(c, 0x0); /*3730*/ cpu_push16(c, 0x0); /*3732*/ cpu_push16(c, 0x0);
+    /*3734*/ cpu_push16(c, 0x2); /*3736*/ c->icount += 10; FC_FAR(0x3736);
+    FC_NEED(2, 0x373B);
+    /*373B*/ FC_DROP(16); /*373E*/ c->icount += 2; goto compose_remember_mode;
+L3740:
+    FC_NEED(3, 0x3740);
+    /*3740*/ cpu_push16(c, 0x2); /*3742*/ cpu_push16(c, 0x2E27); /*3745*/ c->icount += 3; goto L371F;
+L3747:
+    FC_NEED(3, 0x3747);
+    /*3747*/ cpu_push16(c, 0x2); /*3749*/ cpu_push16(c, 0x2E34); /*374C*/ c->icount += 3; goto L371F;
+L374E:
+    FC_NEED(2, 0x374E);
+    /*374E*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], 0x41, 1, 0)); /*3751*/ c->icount += 2; if (x86_cond(c, 4)) goto L37BD;
+    FC_NEED(2, 0x3753);
+    /*3753*/ c->r[R_AX] = (uint16_t)(alu_dec(c, c->r[R_AX], 1)); /*3754*/ c->icount += 2; if (x86_cond(c, 12)) goto L3759;
+    FC_NEED(2, 0x3756);
+    /*3756*/ c->r[R_AX] = (uint16_t)(alu_dec(c, c->r[R_AX], 1)); /*3757*/ c->icount += 2; if (x86_cond(c, 14)) goto L3760;
+L3759:
+    FC_NEED(2, 0x3759);
+    /*3759*/ FC_SETFRAME(-2, 0xC8); /*375E*/ c->icount += 2; goto compose_scene_prepare;
+L3760:
+    FC_NEED(1, 0x3760);
+    /*3760*/ FC_SETFRAME(-2, 0xA1); c->icount += 1;
+/* Save the forward-only drawing flag; suppress it for other views. */
+compose_scene_prepare:
+    FC_NEED(4, 0x3765);
+    /*3765*/ set_r8(c, R_AL, (uint8_t)(ds_get8(c, 0x294B))); /*3768*/ FC_SETFRAME8(-12, get_r8(c, R_AL));
+    /*376B*/ alu_sub(c, ds_get(c, 0xC0A6), 0x0, 1, 0); /*3770*/ c->icount += 4; if (x86_cond(c, 4)) goto compose_scene;
+    FC_NEED(1, 0x3772);
+    /*3772*/ FC_PUT8(0x294B, 0x0); c->icount += 1;
+/* Pass the original camera, angles and viewport to the 3D scene routine. */
+compose_scene:
+    FC_NEED(18, 0x3777);
+    /*3777*/ cpu_push16(c, FC_FRAME(-2)); /*377A*/ cpu_push16(c, 0x140); /*377D*/ cpu_push16(c, 0x0); /*377F*/ cpu_push16(c, 0x0);
+    /*3781*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0xB788)); /*3784*/ c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0x0000;
+    /*3785*/ cpu_push16(c, c->r[R_DX]); /*3786*/ cpu_push16(c, c->r[R_AX]); /*3787*/ cpu_push16(c, ds_get(c, 0xB780));
+    /*378B*/ cpu_push16(c, ds_get(c, 0xB77E)); /*378F*/ cpu_push16(c, ds_get(c, 0xB2B6)); /*3793*/ cpu_push16(c, ds_get(c, 0xB2B4));
+    /*3797*/ cpu_push16(c, ds_get(c, 0xB79C)); /*379B*/ cpu_push16(c, ds_get(c, 0xC0A8)); /*379F*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0xE478));
+    /*37A2*/ c->r[R_AX] = (uint16_t)(alu_sub(c, 0, c->r[R_AX], 1, 0)); /*37A4*/ cpu_push16(c, c->r[R_AX]); /*37A5*/ c->icount += 17;
+    FC_CALL(0x03CE, 0x37A8);
+    FC_NEED(4, 0x37A8);
+    /*37A8*/ FC_DROP(26); /*37AB*/ FC_PUT8(0x4368, 0x0); /*37B0*/ alu_sub(c, ds_get(c, 0x2E0C), 0x0, 1, 0); /*37B5*/ c->icount += 4;
+    if (x86_cond(c, 4)) goto L37C4;
+    FC_NEED(2, 0x37B7);
+    /*37B7*/ ds_put(c, 0x2E0C, (uint16_t)alu_dec(c, ds_get(c, 0x2E0C), 1)); /*37BB*/ c->icount += 2; goto compose_overlays;
+L37BD:
+    FC_NEED(2, 0x37BD);
+    /*37BD*/ FC_SETFRAME(-2, 0x9D); /*37C2*/ c->icount += 2; goto compose_scene_prepare;
+L37C4:
+    FC_NEED(2, 0x37C4);
+    /*37C4*/ set_r8(c, R_AL, (uint8_t)(ds_get8(c, 0xC6B2))); /*37C7*/ FC_PUT8(0x9F96, get_r8(c, R_AL)); c->icount += 2;
+/* Restore the drawing flag, then copy cockpit overlays if visible. */
+compose_overlays:
+    FC_NEED(4, 0x37CA);
+    /*37CA*/ set_r8(c, R_AL, (uint8_t)(FC_FRAME8(-12))); /*37CD*/ FC_PUT8(0x294B, get_r8(c, R_AL));
+    /*37D0*/ alu_sub(c, ds_get(c, 0x368C), 0x0, 1, 0); /*37D5*/ c->icount += 4; if (x86_cond(c, 5)) goto L37DA;
+    FC_NEED(1, 0x37D7);
+    /*37D7*/ c->icount += 1; goto compose_view_overlay;
+L37DA:
+    FC_NEED(14, 0x37DA);
+    /*37DA*/ cpu_push16(c, 0x3C); /*37DC*/ cpu_push16(c, 0x4D); /*37DE*/ cpu_push16(c, 0x6E); /*37E0*/ cpu_push16(c, 0x4A);
+    /*37E2*/ set_r8(c, R_AL, (uint8_t)(ds_get8(c, 0x40B6))); /*37E5*/ c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);
+    /*37E6*/ c->r[R_CX] = (uint16_t)(c->r[R_AX]); /*37E8*/ c->r[R_AX] = (uint16_t)(alu_dec(c, c->r[R_AX], 1));
+    /*37E9*/ c->r[R_AX] = (uint16_t)(alu_sub(c, 0, c->r[R_AX], 1, 0)); /*37EB*/ cpu_push16(c, c->r[R_AX]); /*37EC*/ cpu_push16(c, 0x6E);
+    /*37EE*/ cpu_push16(c, 0x4A); /*37F0*/ cpu_push16(c, c->r[R_CX]); /*37F1*/ c->icount += 13; FC_FAR(0x37F1);
+    FC_NEED(15, 0x37F6);
+    /*37F6*/ FC_DROP(16); /*37F9*/ cpu_push16(c, 0x3C); /*37FB*/ cpu_push16(c, 0x4D); /*37FD*/ cpu_push16(c, 0x6E); /*37FF*/ cpu_push16(c, 0xA9);
+    /*3802*/ set_r8(c, R_AL, (uint8_t)(ds_get8(c, 0x40B6))); /*3805*/ c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);
+    /*3806*/ c->r[R_CX] = (uint16_t)(c->r[R_AX]); /*3808*/ c->r[R_AX] = (uint16_t)(alu_dec(c, c->r[R_AX], 1));
+    /*3809*/ c->r[R_AX] = (uint16_t)(alu_sub(c, 0, c->r[R_AX], 1, 0)); /*380B*/ cpu_push16(c, c->r[R_AX]); /*380C*/ cpu_push16(c, 0x6E);
+    /*380E*/ cpu_push16(c, 0xA9); /*3811*/ cpu_push16(c, c->r[R_CX]); /*3812*/ c->icount += 14; FC_FAR(0x3812);
+    FC_NEED(3, 0x3817);
+    /*3817*/ FC_DROP(16); /*381A*/ alu_sub(c, ds_get(c, 0x2E08), 0x0, 1, 0); /*381F*/ c->icount += 3; if (x86_cond(c, 4)) goto compose_view_overlay;
+    FC_NEED(11, 0x3821);
+    /*3821*/ cpu_push16(c, 0x10); /*3823*/ cpu_push16(c, 0x100); /*3826*/ cpu_push16(c, 0x5B); /*3828*/ cpu_push16(c, 0x20);
+    /*382A*/ set_r8(c, R_AL, (uint8_t)(ds_get8(c, 0x40B6))); /*382D*/ c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);
+    /*382E*/ cpu_push16(c, c->r[R_AX]); /*382F*/ cpu_push16(c, 0x5B); /*3831*/ cpu_push16(c, 0x20); /*3833*/ cpu_push16(c, 0x2);
+    /*3835*/ c->icount += 10; FC_FAR(0x3835);
+    FC_NEED(9, 0x383A);
+    /*383A*/ FC_DROP(16); /*383D*/ cpu_push16(c, 0x0); /*383F*/ cpu_push16(c, 0x10); /*3841*/ cpu_push16(c, 0x20); /*3843*/ cpu_push16(c, 0x4A);
+    /*3845*/ cpu_push16(c, 0x0); /*3847*/ cpu_push16(c, 0x5B); /*3849*/ cpu_push16(c, 0x0); /*384B*/ c->icount += 8; FC_FAR(0x384B);
+    FC_NEED(9, 0x3850);
+    /*3850*/ FC_DROP(14); /*3853*/ cpu_push16(c, 0x0); /*3855*/ cpu_push16(c, 0x10); /*3857*/ cpu_push16(c, 0x20); /*3859*/ cpu_push16(c, 0x4A);
+    /*385B*/ cpu_push16(c, 0x120); /*385E*/ cpu_push16(c, 0x5B); /*3860*/ cpu_push16(c, 0x120); /*3863*/ c->icount += 8; FC_FAR(0x3863);
+    FC_NEED(1, 0x3868);
+    /*3868*/ FC_DROP(14); c->icount += 1;
+/* Apply side-view artwork or the optional external-view heading/speed readouts. */
+compose_view_overlay:
+    FC_NEED(3, 0x386B);
+    /*386B*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0xC0A6)); /*386E*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], 0x41, 1, 0));
+    /*3871*/ c->icount += 3; if (x86_cond(c, 4)) goto L38B5;
+    FC_NEED(2, 0x3873);
+    /*3873*/ c->r[R_AX] = (uint16_t)(alu_dec(c, c->r[R_AX], 1)); /*3874*/ c->icount += 2; if (x86_cond(c, 13)) goto L3879;
+    FC_NEED(1, 0x3876);
+    /*3876*/ c->icount += 1; goto compose_return;
+L3879:
+    FC_NEED(2, 0x3879);
+    /*3879*/ c->r[R_AX] = (uint16_t)(alu_dec(c, c->r[R_AX], 1)); /*387A*/ c->icount += 2; if (x86_cond(c, 15)) goto L387F;
+    FC_NEED(1, 0x387C);
+    /*387C*/ c->icount += 1; goto L3905;
+L387F:
+    FC_NEED(2, 0x387F);
+    /*387F*/ c->r[R_AX] = (uint16_t)(alu_dec(c, c->r[R_AX], 1)); /*3880*/ c->icount += 2; if (x86_cond(c, 4)) goto L38A2;
+    FC_NEED(2, 0x3882);
+    /*3882*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], 0x40, 1, 0)); /*3885*/ c->icount += 2; if (x86_cond(c, 13)) goto L388A;
+    FC_NEED(1, 0x3887);
+    /*3887*/ c->icount += 1; goto compose_return;
+L388A:
+    FC_NEED(2, 0x388A);
+    /*388A*/ c->r[R_AX] = (uint16_t)(alu_dec(c, c->r[R_AX], 1)); /*388B*/ c->icount += 2; if (x86_cond(c, 15)) goto L3890;
+    FC_NEED(1, 0x388D);
+    /*388D*/ c->icount += 1; goto compose_external_readouts;
+L3890:
+    FC_NEED(3, 0x3890);
+    /*3890*/ c->r[R_AX] = (uint16_t)(alu_dec(c, c->r[R_AX], 1)); /*3891*/ c->r[R_AX] = (uint16_t)(alu_dec(c, c->r[R_AX], 1));
+    /*3892*/ c->icount += 3; if (x86_cond(c, 13)) goto L3897;
+    FC_NEED(1, 0x3894);
+    /*3894*/ c->icount += 1; goto compose_return;
+L3897:
+    FC_NEED(3, 0x3897);
+    /*3897*/ c->r[R_AX] = (uint16_t)(alu_dec(c, c->r[R_AX], 1)); /*3898*/ c->r[R_AX] = (uint16_t)(alu_dec(c, c->r[R_AX], 1));
+    /*3899*/ c->icount += 3; if (x86_cond(c, 14)) goto compose_external_readouts;
+    FC_NEED(3, 0x389B);
+    /*389B*/ c->r[R_AX] = (uint16_t)(alu_dec(c, c->r[R_AX], 1)); /*389C*/ c->r[R_AX] = (uint16_t)(alu_dec(c, c->r[R_AX], 1));
+    /*389D*/ c->icount += 3; if (x86_cond(c, 4)) goto compose_external_readouts;
+    FC_NEED(1, 0x389F);
+    /*389F*/ c->icount += 1; goto compose_return;
+L38A2:
+    FC_NEED(5, 0x38A2);
+    /*38A2*/ cpu_push16(c, 0x5); /*38A4*/ cpu_push16(c, 0x2E6A); /*38A7*/ cpu_push16(c, 0x4); /*38A9*/ cpu_push16(c, ds_get(c, 0x0344));
+    /*38AD*/ c->icount += 4; FC_FAR(0x38AD);
+    FC_NEED(1, 0x38B2);
+    /*38B2*/ c->icount += 1; goto L39B4;
+L38B5:
+    FC_NEED(11, 0x38B5);
+    /*38B5*/ cpu_push16(c, 0x9D); /*38B8*/ cpu_push16(c, 0x8A); /*38BB*/ cpu_push16(c, 0x0); /*38BD*/ cpu_push16(c, 0x5B);
+    /*38BF*/ set_r8(c, R_AL, (uint8_t)(ds_get8(c, 0x40B6))); /*38C2*/ c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);
+    /*38C3*/ cpu_push16(c, c->r[R_AX]); /*38C4*/ cpu_push16(c, 0x0); /*38C6*/ cpu_push16(c, 0x5B); /*38C8*/ cpu_push16(c, 0x2);
+    /*38CA*/ c->icount += 10; FC_FAR(0x38CA);
+    FC_NEED(9, 0x38CF);
+    /*38CF*/ FC_DROP(16); /*38D2*/ cpu_push16(c, 0x0); /*38D4*/ cpu_push16(c, 0x9D); /*38D7*/ cpu_push16(c, 0x5B); /*38D9*/ cpu_push16(c, 0x0);
+    /*38DB*/ cpu_push16(c, 0x0); /*38DD*/ cpu_push16(c, 0x0); /*38DF*/ cpu_push16(c, 0x0); /*38E1*/ c->icount += 8; FC_FAR(0x38E1);
+    FC_NEED(8, 0x38E6);
+    /*38E6*/ FC_DROP(14); /*38E9*/ cpu_push16(c, 0x0); /*38EB*/ cpu_push16(c, 0x9D); /*38EE*/ cpu_push16(c, 0x5B); /*38F0*/ cpu_push16(c, 0x0);
+    /*38F2*/ cpu_push16(c, 0xE5); /*38F5*/ cpu_push16(c, 0x0); /*38F7*/ cpu_push16(c, 0xE5); c->icount += 8;
+L38FA:
+    FC_NEED(1, 0x38FA);
+    /*38FA*/ c->icount += 0; FC_FAR(0x38FA);
+    FC_NEED(2, 0x38FF);
+    /*38FF*/ FC_DROP(14); /*3902*/ c->icount += 2; goto compose_return;
+L3905:
+    FC_NEED(8, 0x3905);
+    /*3905*/ cpu_push16(c, 0x0); /*3907*/ cpu_push16(c, 0xA1); /*390A*/ cpu_push16(c, 0x140); /*390D*/ cpu_push16(c, 0x0);
+    /*390F*/ cpu_push16(c, 0x0); /*3911*/ cpu_push16(c, 0x0); /*3913*/ cpu_push16(c, 0x0); /*3915*/ c->icount += 8; goto L38FA;
+/* External readouts are conditional on 43E4; preserve the original integer rounding. */
+compose_external_readouts:
+    FC_NEED(2, 0x3917);
+    /*3917*/ alu_sub(c, ds_get(c, 0x43E4), 0x0, 1, 0); /*391C*/ c->icount += 2; if (x86_cond(c, 5)) goto L3921;
+    FC_NEED(1, 0x391E);
+    /*391E*/ c->icount += 1; goto compose_return;
+L3921:
+    FC_NEED(5, 0x3921);
+    /*3921*/ cpu_push16(c, 0xF); /*3923*/ cpu_push16(c, 0xBE); /*3926*/ cpu_push16(c, 0x50); /*3928*/ cpu_push16(c, 0x2E40); /*392B*/ c->icount += 4;
+    FC_CALL(0x895E, 0x392E);
+    FC_NEED(10, 0x392E);
+    /*392E*/ FC_DROP(8); /*3931*/ cpu_push16(c, 0xF); /*3933*/ cpu_push16(c, 0xBE); /*3936*/ cpu_push16(c, 0x70);
+    /*3938*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0x2DEE)); /*393B*/ c->r[R_CX] = (uint16_t)(0xB6);
+    /*393E*/ c->r[R_DX] = (uint16_t)(alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0)); /*3940*/ FC_DIV(c->r[R_CX]); /*3942*/ cpu_push16(c, c->r[R_AX]);
+    /*3943*/ c->icount += 9; FC_CALL(0x89F7, 0x3946);
+    FC_NEED(6, 0x3946);
+    /*3946*/ FC_DROP(8); /*3949*/ cpu_push16(c, 0xF); /*394B*/ cpu_push16(c, 0xBE); /*394E*/ cpu_push16(c, 0xA8);
+    /*3951*/ cpu_push16(c, ds_get(c, 0xB194)); /*3955*/ c->icount += 5; FC_CALL(0x89F7, 0x3958);
+    FC_NEED(5, 0x3958);
+    /*3958*/ FC_DROP(8); /*395B*/ cpu_push16(c, 0xA); /*395D*/ cpu_push16(c, 0xC604); /*3960*/ alu_sub(c, ds_get(c, 0x2DF6), 0x64, 1, 0);
+    /*3965*/ c->icount += 5; if (x86_cond(c, 2)) goto L3976;
+    FC_NEED(6, 0x3967);
+    /*3967*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0x2DF6)); /*396A*/ c->r[R_CX] = (uint16_t)(0x5);
+    /*396D*/ c->r[R_DX] = (uint16_t)(alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0)); /*396F*/ FC_DIV(c->r[R_CX]);
+    /*3971*/ c->r[R_AX] = (uint16_t)(x86_imul3(c, c->r[R_AX], 0x5)); /*3974*/ c->icount += 6; goto L3979;
+L3976:
+    FC_NEED(1, 0x3976);
+    /*3976*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0x2DF6)); c->icount += 1;
+L3979:
+    FC_NEED(3, 0x3979);
+    /*3979*/ cpu_push16(c, 0x0); /*397B*/ cpu_push16(c, c->r[R_AX]); /*397C*/ c->icount += 2; FC_CALL(0xEBBA, 0x397F);
+    FC_NEED(6, 0x397F);
+    /*397F*/ FC_DROP(8); /*3982*/ cpu_push16(c, 0xF); /*3984*/ cpu_push16(c, 0xBE); /*3987*/ cpu_push16(c, 0xE4); /*398A*/ cpu_push16(c, 0xC604);
+    /*398D*/ c->icount += 5; FC_CALL(0x895E, 0x3990);
+    FC_NEED(3, 0x3990);
+    /*3990*/ FC_DROP(8); /*3993*/ alu_sub(c, ds_get(c, 0x40CC), 0x0, 1, 0); /*3998*/ c->icount += 3; if (x86_cond(c, 4)) goto compose_return;
+    FC_NEED(4, 0x399A);
+    /*399A*/ cpu_push16(c, 0xF); /*399C*/ cpu_push16(c, 0xB4); /*399F*/ cpu_push16(c, 0xC5A4); /*39A2*/ c->icount += 3; FC_CALL(0xEB82, 0x39A5);
+    FC_NEED(7, 0x39A5);
+    /*39A5*/ c->r[R_BX] = cpu_pop16(c); /*39A6*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], 0x50, 1, 0));
+    /*39A9*/ c->r[R_AX] = (uint16_t)(alu_sub(c, 0, c->r[R_AX], 1, 0)); /*39AB*/ c->r[R_AX] = (uint16_t)(x86_shift(c, 4, c->r[R_AX], 0x01, 1));
+    /*39AD*/ cpu_push16(c, c->r[R_AX]); /*39AE*/ cpu_push16(c, 0xC5A4); /*39B1*/ c->icount += 6; FC_CALL(0x895E, 0x39B4);
+L39B4:
+    FC_NEED(1, 0x39B4);
+    /*39B4*/ FC_DROP(8); c->icount += 1;
+/* Publish the scene height at 2E66 and return it in AX. */
+compose_return:
+    FC_NEED(5, 0x39B7);
+    /*39B7*/ c->r[R_AX] = (uint16_t)(FC_FRAME(-2)); /*39BA*/ ds_put(c, 0x2E66, c->r[R_AX]); /*39BD*/ c->r[R_SI] = cpu_pop16(c);
+    /*39BE*/ x86_leave(c); /*39BF*/ c->icount += 5; near_ret(c); return 1;
+}
+#undef FC_FRAME
+#undef FC_SETFRAME
+#undef FC_FRAME8
+#undef FC_SETFRAME8
+#undef FC_PUT8
+#undef FC_CARRY
+#undef FC_DROP
+#undef FC_NEED
+#undef FC_CALL
+#undef FC_FAR
+#undef FC_DIV
+
 static const recomp_override MATCHED[] = {
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x2F9D, vgame_frame_compose, "view set-up, 3D scene and view-change redraw", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x683E, vgame_projectiles, "weapons in flight", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x5852, vgame_air_traffic, "computer-flown aircraft", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x5046, vgame_ground_defences, "ground threat timers, damage bars and incoming warning", 1 },

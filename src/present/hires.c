@@ -79,6 +79,16 @@ static int vertex_fraction(const hires_vertex *v, double *x, double *y)
     return 1;
 }
 
+static int snapshot_fraction(const hires_snapshot *s, const hires_vertex *v, double *x, double *y)
+{
+    if (!s->ortho) return vertex_fraction(v, x, y);
+    const int32_t camera[3] = { v->x, v->y, v->z };
+    int32_t coarse[2]; double fine[2];
+    if (!present_ortho_project(camera, s->ortho, coarse, fine) ||
+        coarse[0] != v->px || coarse[1] != v->py) return 0;
+    *x = fine[0]; *y = fine[1]; return 1;
+}
+
 typedef struct { double ax, ay, bx, by, k; } xedge;
 
 typedef struct { xedge e[HIRES_EDGES]; int n; } extents;
@@ -283,7 +293,7 @@ static int near_polygon_edges(hires *h, double (*out)[4])
     for (int k = 0; k < ne; k++) {
         const hires_edge *e = &h->poly.edges[k];
         const hires_snapshot *s = &e->snap;
-        if (!s->valid) return 0;
+        if (!s->valid || s->ortho) return 0;
         if (!k) { origin[0] = s->origin[0]; origin[1] = s->origin[1]; }
         else if (origin[0] != s->origin[0] || origin[1] != s->origin[1]) return 0;
         if (s->behind == 3) {
@@ -330,6 +340,29 @@ static int polygon_edges(hires *h, double (*out)[4])
     }
     const int ne = h->poly.nedges;
     if (ne < 3) { h->stats[HS_FEW_EDGES]++; return 0; }
+    /* Modern records retain the camera and origin at edge preparation.
+     * A polygon clipped on every edge has no unclipped endpoint to vote for
+     * its origin; using the previous view's origin loses valid fine geometry.
+     * The snapshots also avoid stale V records when vertex storage is reused. */
+    int snapshots = 1;
+    for (int k = 0; k < ne; k++) {
+        const hires_snapshot *s = &h->poly.edges[k].snap;
+        if (!s->valid || s->behind || s->origin[0] != h->poly.edges[0].snap.origin[0] ||
+            s->origin[1] != h->poly.edges[0].snap.origin[1] ||
+            s->ortho != h->poly.edges[0].snap.ortho) { snapshots = 0; break; }
+    }
+    if (snapshots) {
+        for (int k = 0; k < ne; k++) {
+            const hires_snapshot *s = &h->poly.edges[k].snap;
+            double ax, ay, bx, by;
+            if (!snapshot_fraction(s, &s->a, &ax, &ay) || !snapshot_fraction(s, &s->b, &bx, &by)) {
+                h->stats[HS_NO_DIVISOR]++; return 0;
+            }
+            out[k][0] = ax + s->origin[0]; out[k][1] = ay + s->origin[1];
+            out[k][2] = bx + s->origin[0]; out[k][3] = by + s->origin[1];
+        }
+        return ne;
+    }
     for (int k = 0; k < ne; k++) {
         const hires_edge *e = &h->poly.edges[k];
         if (!e->have_g || !e->a.ok || !e->b.ok) { h->stats[HS_NO_VERTICES]++; return 0; }
@@ -486,6 +519,7 @@ void hires_record(hires *h, drawlist *d, char kind, const int32_t *v, int n)
         memset(s,0,sizeof *s);
         if (n >= 17) {
             s->valid = 1; s->origin[0] = v[3]; s->origin[1] = v[4];
+            s->ortho = n >= 18 ? v[17] : 0;
             hires_vertex *ends[2] = { &s->a, &s->b };
             for (int end = 0; end < 2; end++) {
                 const int at = 5 + 6 * end;

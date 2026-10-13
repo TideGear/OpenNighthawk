@@ -124,13 +124,13 @@ static void check_observer(void)
 
 static int edge_calls, edge_n;
 static uint64_t edge_clock;
-static int32_t edge_values[17];
+static int32_t edge_values[18];
 static void obs_edge_seen(void *u, uint64_t at, char kind, const int32_t *v, int n)
 {
     (void)u;
-    CHECK(kind == 'G' && n == 17);
+    CHECK(kind == 'G' && n == 18);
     edge_calls++; edge_n = n; edge_clock = at;
-    if (n == 17) memcpy(edge_values, v, sizeof edge_values);
+    if (n == 18) memcpy(edge_values, v, sizeof edge_values);
 }
 static void observer_put(uint16_t at, uint32_t value, int bytes)
 {
@@ -156,8 +156,9 @@ static void check_edge_snapshot(void)
         m.cpu.t386 = 1; m.cpu.t386_vga_lo = 0xA0000;
         m.cpu.t386_vga_size = 0x10000; m.cpu.t386_vga_byte = 32;
         m.cpu.t386_dev = 17; m.cpu.icount = 1234567;
+        observer_put(0x7D8E, s ? 21 : 0, 1);
         observer_put(0x8602, 0xFF9D, 2); observer_put(0x8604, 52, 2);
-        int32_t expected[17] = { 0x5EEA, (uint16_t)(index[0] + 0xD6B4),
+        int32_t expected[18] = { 0x5EEA, (uint16_t)(index[0] + 0xD6B4),
             (uint16_t)(index[1] + 0xD6B4), 0xFF9D, 52 };
         for (int e = 0; e < 2; e++) {
             const uint16_t camera = (uint16_t)(2u * index[e] + 0xC6B4u);
@@ -166,6 +167,7 @@ static void check_edge_snapshot(void)
             for (int k = 0; k < 2; k++) observer_put((uint16_t)(projected + 4 * k), (uint32_t)values[e][3 + k], 4);
             memcpy(expected + 5 + 6 * e, values[e], sizeof values[e]);
         }
+        expected[17] = s ? 21 : 0;
         const cpu_t before = m.cpu;
         const uint64_t memory = fnv1a64(m.mem, MEM_SIZE);
         const int calls_before = edge_calls;
@@ -174,7 +176,7 @@ static void check_edge_snapshot(void)
         CHECK(edge_calls == calls_before);
         observe_set(&o);
         observe_edge_prepared(&m, 0x5EEA, index[0], index[1]);
-        CHECK(edge_calls == calls_before + 1 && edge_n == 17);
+        CHECK(edge_calls == calls_before + 1 && edge_n == 18);
         CHECK(edge_clock == before.icount);
         CHECK(memcmp(edge_values, expected, sizeof expected) == 0);
         CHECK(memcmp(&m.cpu, &before, sizeof before) == 0);

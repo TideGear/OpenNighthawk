@@ -76,7 +76,7 @@ void observe_edge_prepared(machine_t *m, uint16_t slot, uint16_t di, uint16_t bx
     /* Snapshot the records the edge actually uses. Vertex IDs alone can
      * refer to an earlier projection when the same storage is reused. Keep
      * the original first three fields for old replay readers. */
-    int32_t v[17] = { slot, (uint16_t)(di + 0xD6B4), (uint16_t)(bx + 0xD6B4),
+    int32_t v[18] = { slot, (uint16_t)(di + 0xD6B4), (uint16_t)(bx + 0xD6B4),
         peek16(c, c->seg[S_DS], 0x8602),
         peek16(c, c->seg[S_DS], 0x8604) };
     const uint16_t index[2] = { di, bx };
@@ -89,7 +89,11 @@ void observe_edge_prepared(machine_t *m, uint16_t slot, uint16_t di, uint16_t bx
         /* This exact sentinel, rather than camera z, chooses the clip arm. */
         v[at + 5] = peek16(c, c->seg[S_DS], (uint16_t)(projected + 2)) == 0x8000;
     }
-    o->prim(o->user, c->icount, 'G', v, 17);
+    /* Zero means perspective; otherwise this is the orthographic shift.
+     * Z can legitimately be zero in that mode, so a depth-derived divisor
+     * cannot identify its projection. Keep the existing first 17 fields. */
+    v[17] = peek8(c, c->seg[S_DS], 0x7D8E);
+    o->prim(o->user, c->icount, 'G', v, 18);
 }
 
 /* The pixels a fill is about to paint: the R hook records each row's span,
