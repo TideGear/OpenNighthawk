@@ -62,6 +62,42 @@ the check uses the installed Windows compiler environment without logging it.
 This compiles a synthetic fixture, not original game bytes; no link or game
 install is needed. Windows CI runs the same test file.
 
+Mission-generator proof (13 October): resolve the
+indirect jump at START 4E39 before writing its fixtures. The nine entries at
+CS:4E3E lead to 4E14/4E24/4E50, expanding the static walk to 1,332 instructions
+and 3,811 code bytes; its census extent is 3,035. Synthetic coherent worlds
+and returning helpers bound searches while retaining the original caller's
+registers, flags, memory and clocks. Retry/timing cases are explicitly staged;
+normal routes keep all actual helpers. DS=SS and clear DF are part of the
+coherent C caller; unconstrained controls keep other states. Both main divide
+faults are compared before following a random vector; the final divisor 150
+cannot fault. All 339 budgets and 60 calls audit exactly. Three development
+seeds reach all 1,332 starts, with 95 fault frames each and no mismatches;
+two optimized main-tree seeds repeat that coverage in 23.3 s each while
+sharing four spare CPUs. A development boot replay reaches the routine and
+matches 54 checkpoints/final in 42.4 s. The optimized full gate passes all
+54 tests, 41 routes (40 fresh interpreter sessions), both instruction profiles
+and three 829-address matched seeds, zero mismatches and passing reachability/
+event checks. Its fresh boot route invokes the routine once. Total 1,832 s:
+build 326, coverage 658, second build 25, parity 823. These timings include
+single-job compilation and overlapping targeted probes; they are not a gate
+speed comparison. Local proof: `D:/f117-gate/start-4239`.
+
+Next-candidate review: DSWAP 03DF3's census lead begins with 2,791 zero bytes
+and has no generated entry. Its linear static draft decodes data as operations;
+require a real caller or executed address before treating it as code. No
+census adjustment or matched credit is taken. SETUP 0010 has a clean 505-
+instruction / 1,267-byte walk with near and relocated far calls, but still
+needs fixture and real-driver proofs. Private dossiers: `D:/f117-gate/dswap-3df3`
+and `D:/f117-gate/setup-0010`.
+
+For fixture development only, /Od avoided a very large transcript optimizer
+peak. Production validation restores /O2. Limit large proof builds to one
+compiler job and use a private TEMP/TMP, since build.cmd otherwise shares a
+temporary log. Check the success marker and the compiler log as well as the
+exit code; a failed Windows build has returned zero while leaving an old
+executable. No transcript or development build flag is committed.
+
 Clipped span edge (`0FB2:06A6`, 12 Oct): the named clipper preserves
 the temporary INT 0 vector, overflow halving, signed intersections and
 remainder rounding, boundary-column calls, live endpoints and tail jumps to

@@ -13,32 +13,35 @@ standing practice, not a session-by-session log. Earlier sessions' detail
 (what was tried, what failed, exact investigation narratives) is in
 `git log -p handoff.md` — it does not need to live here to stay available.
 
-## Next candidate in an isolated worktree
+## Latest integration: mission generation (13 October)
 
-Phase 2's next candidate is START 4239, the mission generator (the draft's
-old `start_hangar` name was provisional and wrong). The resolved switch at
-4E39/4E3E has targets 4E14/4E24/4E50: 1,332 instructions / 3,811 walked bytes;
-census remains 3,035. Private dossier/listings: `D:/f117-gate/start-4239`.
-The isolated worktree `D:/f117-wt/mission-generation-4239`, branch
-`wip-mission-generation-4239`, holds a TRANSCRIPT, not a named implementation.
-Its initial 32-state baseline compares zero states: all original runs exceed
-the harness budget. This is not a parity pass. Next: coherent world/callee
-fixtures to bound the rejection loops, full instruction and return coverage,
-then a named rewrite, room audits, real route, census and a fresh full gate.
-Do not count this routine as matched or copy the private tree wholesale.
+START 0000:4239 (`start_mission_generate`) is fully gated: named stages cover
+objectives, bases, special air units, map window, variants and handover.
+The resolved nine-entry switch has three targets, 4E14/4E24/4E50: 1,332
+instructions / 3,811 code bytes; census ownership is 3,035 bytes.
+339 room claims and all 60 calls audit exactly. Three development seeds
+compare 3,858 / 3,859 / 3,858 states; two optimized targeted seeds compare
+3,859 / 3,858. Every canonical instruction reached, zero mismatches; each
+includes 95 divide-fault frames at both possible sites (499D, 4A7C).
+Fixtures use synthetic worlds and staged returning helpers; mode 7 changes
+secondary timing after an earlier guard, proving code rather than normal play.
+Coherent fixtures use DS=SS and clear DF; random controls retain other states.
+Production retains all actual helpers and original rejection loops.
 
-The public draft tool now accepts the emitter's IC(op_) vocabulary and
-omits translated-region TIMING records. Six tests pass, including a synthetic
-C compile regression that fails with C4002 on the old tool. The private
-candidate's transcript used the equivalent local workaround before the tool
-repair; regenerate it from the repaired tool if its transcript is replaced.
+Fresh full gate passes 54 tests, 41 routes, 40 fresh interpreter sessions,
+both 5,718,976-state instruction profiles and three 829-address matched seeds
+(2,716,846 / 2,715,774 / 2,715,365 comparisons), zero mismatches, reachability/
+event checks pass (1,832 s). The fresh optimized boot route executes the new
+routine once, all 54 checkpoints/final identical (`48a10e901505e2a9`).
+Census: 821 functions / 96,402 bytes; P2 56.10%, P3 85.52%, overall 80.94%.
+Proof: `D:/f117-gate/start-4239/final-gate-verdict.json` and adjacent audits.
 
-The first private build used unbounded Ninja jobs and caused severe shell
-latency. It was interrupted; no compiler children remained. The replacement
-completed with `CMAKE_BUILD_PARALLEL_LEVEL=2`, private TEMP/TMP (build.cmd
-otherwise shares one temporary log), affinity on four spare CPUs and
-BelowNormal priority. Two matched.c compilers can each use nearly 4 GB;
-check free memory as well as CPU load before overlapping builds.
+`D:/f117-wt/mission-generation-4239`, branch `wip-mission-generation-4239`,
+retains development work and a PRIVATE /Od CMake override. Do not merge or
+copy it wholesale; main uses /O2. Large proof builds use one compiler job
+and private TEMP/TMP. Check BUILD OK as well as exit status: a failed Windows
+build has returned zero with an old executable. Published predecessor
+`04c9668` passed GitHub CI run 38421875283; check CI for the new integration.
 
 ## Current state
 
@@ -55,7 +58,7 @@ interpreter sessions, both instruction profiles and three matched seeds,
 zero mismatches, reachability/event checks pass (1,661 s).
 Proof: `D:/f117-gate/observer-original/final-gate-verdict.json`.
 
-Fully gated runtime: view composition (`VGAME 0000:2F9D`,
+Prior view-composition proof (`VGAME 0000:2F9D`,
 `vgame_frame_compose`), 828 matched addresses, census 820 functions /
 93,367 bytes (P2 54.49%, P3 85.52%, overall 80.47%). Three targeted seeds
 compare 3,199 / 3,216 / 3,200 states, zero mismatches; all 938 canonical
@@ -146,12 +149,15 @@ Phase 2 work" below).
   the private lead list; current progress is in `docs/roadmap.md`, which
   has the full history of integrated-and-gated passes (span-edge/emit, HUD,
   moving objects, camera-image, flight input, frame update, ground defences,
-  aircraft traffic, weapons in flight). Earlier proofs and tested source
+  aircraft traffic, weapons in flight, view composition and mission generation). Earlier proofs and tested source
   snapshots remain under `D:/f117-gate/`; history is in
   [docs/repeated-processes.md](docs/repeated-processes.md).
-  Next candidates: VGAME
-  START `0x04239` (3,035),
-  DSWAP `0x03DF3` (2,924).
+  Next: SETUP `0000:0010` (1,267 census bytes); private static dossier
+  `D:/f117-gate/setup-0010` resolves 505 instructions with near/far calls.
+  Its real-driver entry proof is still needed. DSWAP `0x03DF3` is deferred:
+  2,791 initial zero bytes, no generated entry; the static draft decodes data.
+  Require an actual caller or execution before matching, and keep the census
+  unchanged meanwhile. Evidence: `D:/f117-gate/dswap-3df3/candidate-review.json`.
   Method (repeated-processes.md): transcript first to validate the harness,
   add the routine to `COVERED`, fixtures until every instruction is
   reached (the skip tally says why states drop), then the named body,

@@ -38765,7 +38765,1648 @@ compose_return:
 #undef FC_FAR
 #undef FC_DIV
 
+/* START 0000:4239: generate the two objectives, bases, supporting air
+ * units, map window and flight handover. The generator shares MSC rand()
+ * with later mission setup; keep its rejection loops and call order.
+ *
+ * CACA is the far settings block (theatre/tension/mission/quality/realism);
+ * CABE is quality and B38E theatre. CBDE holds 16-byte targets, D2A6 the
+ * object-class pool, D33C the target count and E084 the regular-target count.
+ * E05E/E070 are the 18-byte objective blocks. D3BE holds 36-byte air units,
+ * D890 includes four reserved slots; E096 points to the flight handover.
+ * D876 is mission time in two-second units; 15B2..15C0 is the map window.
+ *
+ * Frame offsets below are hex and live, sometimes reused: -2 retry count, -34 minimum route,
+ * -24 maximum route, -3E/-3C base distances, -CC loop index, -C8 object pool,
+ * -CE selection pass, -CA match count, -22 chosen match, -44 target/unit index.
+ * Do not cache them across calls: the original reads them again.
+ */
+static int start_mission_generate(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+    int started=0;
+    enum {
+        MG_SETTINGS=0xCACA, MG_QUALITY=0xCABE, MG_TARGETS=0xCBDE,
+        MG_TARGET_COUNT=0xD33C, MG_REGULAR_TARGETS=0xE084, MG_AIR_COUNT=0xD890,
+        MG_AIR_UNITS=0xD3BE, MG_PRIMARY=0xE05E, MG_SECONDARY=0xE070,
+        MG_HANDOVER=0xE096, MG_TIME=0xD876, MG_SPECIAL_SLOT=0xCABC,
+        MG_SPECIAL_TARGET=0xCBDC,
+    };
+#define MG_NEED(n_, ip_) do { if (!room(c,(n_))) { c->ip=(ip_); return started; } started=1; } while (0)
+#define MG_CALL(at_, ret_) do { if (!guest_call(m,(at_),(ret_))) return 1; } while (0)
+
+
+    /* Set up the retry window and object pool. */
+    MG_NEED(10, 0x4239);
+    /*4239*/ cpu_push16(c, c->r[R_BP]); /*423A*/ c->r[R_BP] = (uint16_t)(c->r[R_SP]); /*423C*/ c->r[R_SP] = (uint16_t)(alu_sub(c, c->r[R_SP], 0xD0, 1, 0));
+    /*4240*/ cpu_push16(c, c->r[R_DI]); /*4241*/ cpu_push16(c, c->r[R_SI]); /*4242*/ seg_write16(c, c->seg[S_DS], (uint16_t)(MG_TIME), 0x0);
+    /*4248*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x34), 0x1C2); /*424D*/ c->r[R_AX] = (uint16_t)(0x384);
+    /*4250*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 2), c->r[R_AX]);
+    /*4253*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x24), c->r[R_AX]);
+    c->icount += 10;
+
+mission_retry: /* After 50 failed attempts, pick a new non-15h object class. */
+    MG_NEED(3, 0x4256);
+    /*4256*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 2), alu_inc(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 2)), 1));
+    /*4259*/ alu_sub(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 2)), 0x32, 1, 0);
+    /*425D*/ c->icount += 3; if (x86_cond(c,14)) goto mission_primary;
+    MG_NEED(5, 0x425F);
+    /*425F*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0));
+    /*4261*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xcc), c->r[R_AX]);
+    /*4265*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 2), c->r[R_AX]);
+    /*4268*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44), c->r[R_AX]);
+    /*426B*/ c->icount += 5; goto L4286;
+L426D:
+    MG_NEED(3, 0x426D);
+    /*426D*/ c->r[R_BX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44)));
+    /*4270*/ alu_sub(c, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] - 0x2d5a))), 0x0, 0, 0);
+    /*4275*/ c->icount += 3; if (x86_cond(c,4)) goto L4283;
+    MG_NEED(3, 0x4277);
+    /*4277*/ c->r[R_SI] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xcc)));
+    /*427B*/ mem_write8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] + c->r[R_SI] - 0xc8)), get_r8(c, R_BL));
+    /*427F*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xcc), alu_inc(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xcc)), 1));
+    c->icount += 3;
+L4283:
+    MG_NEED(1, 0x4283);
+    /*4283*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44), alu_inc(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44)), 1));
+    c->icount += 1;
+L4286:
+    MG_NEED(2, 0x4286);
+    /*4286*/ alu_sub(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44)), 0x80, 1, 0);
+    /*428B*/ c->icount += 2; if (x86_cond(c,12)) goto L426D;
+L428D:
+    MG_NEED(2, 0x428D);
+    /*428D*/ cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xcc)));
+    /*4291*/ c->icount += 1; MG_CALL(0x76C0,0x4294);
+    MG_NEED(8, 0x4294);
+    /*4294*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*4295*/ c->r[R_SI] = (uint16_t)(c->r[R_AX]);
+    /*4297*/ set_r8(c, R_AL, (uint8_t)(mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] + c->r[R_SI] - 0xc8)))));
+    /*429B*/ mem_write8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x32)), get_r8(c, R_AL)); /*429E*/ c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c,R_AL);
+    /*429F*/ c->r[R_BX] = (uint16_t)(c->r[R_AX]); /*42A1*/ alu_sub(c, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] - 0x2d5a))), 0x15, 0, 0);
+    /*42A6*/ c->icount += 8; if (x86_cond(c,4)) goto L428D;
+
+mission_primary: /* Choose a named target for air missions or an object of the selected class for strike. */
+    MG_NEED(3, 0x42A8);
+    /*42A8*/ { const uint16_t at_=(uint16_t)(MG_SETTINGS), lo_=seg_read16(c,c->seg[S_DS],at_), hi_=seg_read16(c,c->seg[S_DS],(uint16_t)(at_+2)); c->r[R_BX] = (uint16_t)(lo_); c->seg[S_ES]=hi_; }
+    /*42AC*/ alu_logic(c, mem_read8(c, phys(c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x3c))) & 0x1, 0);
+    /*42B1*/ c->icount += 3; if (x86_cond(c,5)) goto L42DC;
+L42B3:
+    MG_NEED(4, 0x42B3);
+    /*42B3*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(MG_REGULAR_TARGETS))); /*42B6*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], 0x3, 1, 0));
+    /*42B9*/ cpu_push16(c, c->r[R_AX]);
+    /*42BA*/ c->icount += 3; MG_CALL(0x76C0,0x42BD);
+    MG_NEED(10, 0x42BD);
+    /*42BD*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*42BE*/ c->r[R_AX] = (uint16_t)(alu_add(c, c->r[R_AX], 0x3, 1, 0));
+    /*42C1*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x38), c->r[R_AX]); /*42C4*/ set_r8(c, R_CL, (uint8_t)(0x4));
+    /*42C6*/ c->r[R_BX] = (uint16_t)(c->r[R_AX]); /*42C8*/ c->r[R_BX] = (uint16_t)(x86_shift(c, 4, c->r[R_BX], get_r8(c, R_CL), 1));
+    /*42CA*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] - 0x341a)));
+    /*42CE*/ c->r[R_AX] = (uint16_t)(alu_logic(c, c->r[R_AX] & 0xD01, 1)); /*42D1*/ c->r[R_AX] = (uint16_t)(alu_dec(c, c->r[R_AX], 1));
+    /*42D2*/ c->icount += 10; if (x86_cond(c,5)) goto L42B3;
+    MG_NEED(3, 0x42D4);
+    /*42D4*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x38)));
+    /*42D7*/ seg_write16(c, c->seg[S_DS], (uint16_t)(0xe060), c->r[R_AX]);
+    /*42DA*/ c->icount += 3; goto mission_secondary;
+L42DC:
+    MG_NEED(1, 0x42DC);
+    /*42DC*/ mem_write8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x2a)), 0x0);
+    c->icount += 1;
+L42E0:
+    MG_NEED(6, 0x42E0);
+    /*42E0*/ set_r8(c, R_AL, (uint8_t)(mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x32)))));
+    /*42E3*/ c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c,R_AL); /*42E4*/ cpu_push16(c, c->r[R_AX]); /*42E5*/ c->r[R_AX] = (uint16_t)(0x1);
+    /*42E8*/ cpu_push16(c, c->r[R_AX]);
+    /*42E9*/ c->icount += 5; MG_CALL(0x51E8,0x42EC);
+    MG_NEED(5, 0x42EC);
+    /*42EC*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*42ED*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c));
+    /*42EE*/ seg_write16(c, c->seg[S_DS], (uint16_t)(0xe060), c->r[R_AX]); /*42F1*/ alu_sub(c, c->r[R_AX], 0xFFFF, 1, 0);
+    /*42F4*/ c->icount += 5; if (x86_cond(c,5)) goto L42FE;
+L42F6:
+    MG_NEED(2, 0x42F6);
+    /*42F6*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 2), 0x384);
+    /*42FB*/ c->icount += 2; goto mission_retry;
+L42FE:
+    MG_NEED(7, 0x42FE);
+    /*42FE*/ set_r8(c, R_CL, (uint8_t)(0x4)); /*4300*/ c->r[R_BX] = (uint16_t)(c->r[R_AX]);
+    /*4302*/ c->r[R_BX] = (uint16_t)(x86_shift(c, 4, c->r[R_BX], get_r8(c, R_CL), 1));
+    /*4304*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] - 0x341a)));
+    /*4308*/ c->r[R_AX] = (uint16_t)(alu_logic(c, c->r[R_AX] & 0x801, 1)); /*430B*/ c->r[R_AX] = (uint16_t)(alu_dec(c, c->r[R_AX], 1));
+    /*430C*/ c->icount += 7; if (x86_cond(c,5)) goto L4314;
+L430E:
+    MG_NEED(2, 0x430E);
+    /*430E*/ mem_write8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x2a)), 0x0);
+    /*4312*/ c->icount += 2; goto L432B;
+L4314:
+    MG_NEED(7, 0x4314);
+    /*4314*/ set_r8(c, R_CL, (uint8_t)(0x4)); /*4316*/ c->r[R_BX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(0xe060)));
+    /*431A*/ c->r[R_BX] = (uint16_t)(x86_shift(c, 4, c->r[R_BX], get_r8(c, R_CL), 1));
+    /*431C*/ set_r8(c, R_AL, (uint8_t)(mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] - 0x3414)))));
+    /*4320*/ set_r8(c, R_AL, (uint8_t)(alu_logic(c, get_r8(c, R_AL) & 0x7F, 0)));
+    /*4322*/ alu_sub(c, get_r8(c, R_AL), mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x32))), 0, 0);
+    /*4325*/ c->icount += 7; if (x86_cond(c,5)) goto L430E;
+    MG_NEED(1, 0x4327);
+    /*4327*/ mem_write8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x2a)), 0x1);
+    c->icount += 1;
+L432B:
+    MG_NEED(2, 0x432B);
+    /*432B*/ alu_sub(c, mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x2a))), 0x0, 0, 0);
+    /*432F*/ c->icount += 2; if (x86_cond(c,4)) goto L42E0;
+
+mission_secondary: /* Sample a nearby non-water cell, then reject a duplicate or overlong target pair. */
+    MG_NEED(6, 0x4331);
+    /*4331*/ set_r8(c, R_CL, (uint8_t)(0x4)); /*4333*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(0xe060)));
+    /*4336*/ c->r[R_AX] = (uint16_t)(x86_shift(c, 4, c->r[R_AX], get_r8(c, R_CL), 1)); /*4338*/ c->r[R_AX] = (uint16_t)(alu_add(c, c->r[R_AX], MG_TARGETS, 1, 0));
+    /*433B*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x2c), c->r[R_AX]); /*433E*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44), 0x0);
+    c->icount += 6;
+L4343:
+    MG_NEED(3, 0x4343);
+    /*4343*/ c->r[R_AX] = (uint16_t)(0x3200); /*4346*/ cpu_push16(c, c->r[R_AX]);
+    /*4347*/ c->icount += 2; MG_CALL(0x76C0,0x434A);
+    MG_NEED(8, 0x434A);
+    /*434A*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*434B*/ c->r[R_BX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x2c)));
+    /*434E*/ c->r[R_AX] = (uint16_t)(alu_add(c, c->r[R_AX], seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] + 2)), 1, 0));
+    /*4351*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], 0x1900, 1, 0)); /*4354*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x38), c->r[R_AX]);
+    /*4357*/ c->r[R_AX] = (uint16_t)(0x3200); /*435A*/ cpu_push16(c, c->r[R_AX]);
+    /*435B*/ c->icount += 7; MG_CALL(0x76C0,0x435E);
+    MG_NEED(7, 0x435E);
+    /*435E*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*435F*/ c->r[R_BX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x2c)));
+    /*4362*/ c->r[R_AX] = (uint16_t)(alu_add(c, c->r[R_AX], seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] + 4)), 1, 0));
+    /*4365*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], 0x1900, 1, 0)); /*4368*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x42), c->r[R_AX]);
+    /*436B*/ alu_sub(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x38)), 0x840, 1, 0);
+    /*4370*/ c->icount += 7; if (x86_cond(c,13)) goto L4379;
+    MG_NEED(2, 0x4372);
+    /*4372*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x38), 0x840);
+    /*4377*/ c->icount += 2; goto L4385;
+L4379:
+    MG_NEED(2, 0x4379);
+    /*4379*/ alu_sub(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x38)), 0x77BF, 1, 0);
+    /*437E*/ c->icount += 2; if (x86_cond(c,14)) goto L4385;
+    MG_NEED(1, 0x4380);
+    /*4380*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x38), 0x77BF);
+    c->icount += 1;
+L4385:
+    MG_NEED(2, 0x4385);
+    /*4385*/ alu_sub(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x42)), 0x840, 1, 0);
+    /*438A*/ c->icount += 2; if (x86_cond(c,13)) goto L4393;
+    MG_NEED(2, 0x438C);
+    /*438C*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x42), 0x840);
+    /*4391*/ c->icount += 2; goto L439F;
+L4393:
+    MG_NEED(2, 0x4393);
+    /*4393*/ alu_sub(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x42)), 0x77BF, 1, 0);
+    /*4398*/ c->icount += 2; if (x86_cond(c,14)) goto L439F;
+    MG_NEED(1, 0x439A);
+    /*439A*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x42), 0x77BF);
+    c->icount += 1;
+L439F:
+    MG_NEED(10, 0x439F);
+    /*439F*/ set_r8(c, R_CL, (uint8_t)(0xB)); /*43A1*/ c->r[R_SI] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x42)));
+    /*43A4*/ c->r[R_SI] = (uint16_t)(x86_shift(c, 7, c->r[R_SI], get_r8(c, R_CL), 1)); /*43A6*/ set_r8(c, R_CL, (uint8_t)(0x4));
+    /*43A8*/ c->r[R_SI] = (uint16_t)(x86_shift(c, 4, c->r[R_SI], get_r8(c, R_CL), 1));
+    /*43AA*/ c->r[R_BX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x38))); /*43AD*/ set_r8(c, R_CL, (uint8_t)(0xB));
+    /*43AF*/ c->r[R_BX] = (uint16_t)(x86_shift(c, 7, c->r[R_BX], get_r8(c, R_CL), 1));
+    /*43B1*/ alu_logic(c, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] + c->r[R_SI] - 0x3528))) & 0x3, 0);
+    /*43B6*/ c->icount += 10; if (x86_cond(c,5)) goto L4343;
+    MG_NEED(5, 0x43B8);
+    /*43B8*/ c->r[R_AX] = (uint16_t)(0x2); /*43BB*/ cpu_push16(c, c->r[R_AX]);
+    /*43BC*/ cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x42)));
+    /*43BF*/ cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x38)));
+    /*43C2*/ c->icount += 4; MG_CALL(0x512E,0x43C5);
+    MG_NEED(8, 0x43C5);
+    /*43C5*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x6, 1, 0)); /*43C8*/ seg_write16(c, c->seg[S_DS], (uint16_t)(0xe072), c->r[R_AX]);
+    /*43CB*/ set_r8(c, R_CL, (uint8_t)(0x4)); /*43CD*/ c->r[R_AX] = (uint16_t)(x86_shift(c, 4, c->r[R_AX], get_r8(c, R_CL), 1));
+    /*43CF*/ c->r[R_AX] = (uint16_t)(alu_add(c, c->r[R_AX], MG_TARGETS, 1, 0)); /*43D2*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x46), c->r[R_AX]);
+    /*43D5*/ alu_sub(c, seg_read16(c, c->seg[S_DS], (uint16_t)(0xe072)), 0xFFFF, 1, 0);
+    /*43DA*/ c->icount += 8; if (x86_cond(c,5)) goto L43E2;
+L43DC:
+    MG_NEED(2, 0x43DC);
+    /*43DC*/ mem_write8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x2a)), 0x0);
+    /*43E0*/ c->icount += 2; goto L4403;
+L43E2:
+    MG_NEED(3, 0x43E2);
+    /*43E2*/ { const uint16_t at_=(uint16_t)(MG_SETTINGS), lo_=seg_read16(c,c->seg[S_DS],at_), hi_=seg_read16(c,c->seg[S_DS],(uint16_t)(at_+2)); c->r[R_BX] = (uint16_t)(lo_); c->seg[S_ES]=hi_; }
+    /*43E6*/ alu_logic(c, mem_read8(c, phys(c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x3c))) & 0x1, 0);
+    /*43EB*/ c->icount += 3; if (x86_cond(c,4)) goto L43FF;
+    MG_NEED(7, 0x43ED);
+    /*43ED*/ set_r8(c, R_CL, (uint8_t)(0x4)); /*43EF*/ c->r[R_BX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(0xe072)));
+    /*43F3*/ c->r[R_BX] = (uint16_t)(x86_shift(c, 4, c->r[R_BX], get_r8(c, R_CL), 1));
+    /*43F5*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] - 0x341a)));
+    /*43F9*/ c->r[R_AX] = (uint16_t)(alu_logic(c, c->r[R_AX] & 0x801, 1)); /*43FC*/ c->r[R_AX] = (uint16_t)(alu_dec(c, c->r[R_AX], 1));
+    /*43FD*/ c->icount += 7; if (x86_cond(c,4)) goto L43DC;
+L43FF:
+    MG_NEED(1, 0x43FF);
+    /*43FF*/ mem_write8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x2a)), 0x1);
+    c->icount += 1;
+L4403:
+    MG_NEED(3, 0x4403);
+    /*4403*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44), alu_inc(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44)), 1));
+    /*4406*/ alu_sub(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44)), 0x64, 1, 0);
+    /*440A*/ c->icount += 3; if (x86_cond(c,14)) goto L440F;
+    MG_NEED(1, 0x440C);
+    /*440C*/ c->icount += 1; goto mission_retry;
+L440F:
+    MG_NEED(2, 0x440F);
+    /*440F*/ alu_sub(c, mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x2a))), 0x0, 0, 0);
+    /*4413*/ c->icount += 2; if (x86_cond(c,5)) goto L4418;
+    MG_NEED(1, 0x4415);
+    /*4415*/ c->icount += 1; goto L4343;
+L4418:
+    MG_NEED(5, 0x4418);
+    /*4418*/ c->r[R_BX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x46)));
+    /*441B*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] + 2)));
+    /*441E*/ c->r[R_SI] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x2c)));
+    /*4421*/ alu_sub(c, seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_SI] + 2)), c->r[R_AX], 1, 0);
+    /*4424*/ c->icount += 5; if (x86_cond(c,5)) goto L4434;
+    MG_NEED(3, 0x4426);
+    /*4426*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] + 4)));
+    /*4429*/ alu_sub(c, seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_SI] + 4)), c->r[R_AX], 1, 0);
+    /*442C*/ c->icount += 3; if (x86_cond(c,5)) goto L4434;
+L442E:
+    MG_NEED(2, 0x442E);
+    /*442E*/ mem_write8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x2e)), 0x0);
+    /*4432*/ c->icount += 2; goto L444C;
+L4434:
+    MG_NEED(3, 0x4434);
+    /*4434*/ cpu_push16(c, seg_read16(c, c->seg[S_DS], (uint16_t)(0xe072))); /*4438*/ cpu_push16(c, seg_read16(c, c->seg[S_DS], (uint16_t)(0xe060)));
+    /*443C*/ c->icount += 2; MG_CALL(0x532A,0x443F);
+    MG_NEED(5, 0x443F);
+    /*443F*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*4440*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c));
+    /*4441*/ set_r8(c, R_AL, (uint8_t)(alu_logic(c, get_r8(c, R_AL) & 0xC0, 0))); /*4443*/ alu_sub(c, c->r[R_AX], 0x6400, 1, 0);
+    /*4446*/ c->icount += 5; if (x86_cond(c,15)) goto L442E;
+    MG_NEED(1, 0x4448);
+    /*4448*/ mem_write8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x2e)), 0x1);
+    c->icount += 1;
+L444C:
+    MG_NEED(2, 0x444C);
+    /*444C*/ alu_sub(c, mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x2e))), 0x0, 0, 0);
+    /*4450*/ c->icount += 2; if (x86_cond(c,5)) goto mission_bases;
+    MG_NEED(1, 0x4452);
+    /*4452*/ c->icount += 1; goto mission_primary;
+
+mission_bases: /* Rank eligible departure/landing bases by distance and the original random bonuses. */
+    MG_NEED(2, 0x4455);
+    /*4455*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xcc), 0x0);
+    /*445B*/ c->icount += 2; goto L458C;
+L445E:
+    MG_NEED(1, 0x445E);
+    /*445E*/ mem_write8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x48)), 0x0);
+    c->icount += 1;
+L4462:
+    MG_NEED(3, 0x4462);
+    /*4462*/ { const uint16_t at_=(uint16_t)(MG_SETTINGS), lo_=seg_read16(c,c->seg[S_DS],at_), hi_=seg_read16(c,c->seg[S_DS],(uint16_t)(at_+2)); c->r[R_BX] = (uint16_t)(lo_); c->seg[S_ES]=hi_; }
+    /*4466*/ alu_sub(c, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x38)), 0x7, 1, 0);
+    /*446B*/ c->icount += 3; if (x86_cond(c,5)) goto L4479;
+    MG_NEED(3, 0x446D);
+    /*446D*/ c->r[R_BX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x2c)));
+    /*4470*/ alu_sub(c, seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX])), 0x11, 1, 0);
+    /*4473*/ c->icount += 3; if (x86_cond(c,5)) goto L4479;
+    MG_NEED(1, 0x4475);
+    /*4475*/ mem_write8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x48)), 0x0);
+    c->icount += 1;
+L4479:
+    MG_NEED(3, 0x4479);
+    /*4479*/ c->r[R_BX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(MG_SETTINGS)));
+    /*447D*/ alu_sub(c, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x42)), 0x0, 1, 0);
+    /*4482*/ c->icount += 3; if (x86_cond(c,4)) goto L4491;
+    MG_NEED(3, 0x4484);
+    /*4484*/ c->r[R_BX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x2c)));
+    /*4487*/ alu_logic(c, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] + 9))) & 0x2, 0);
+    /*448B*/ c->icount += 3; if (x86_cond(c,4)) goto L4491;
+    MG_NEED(1, 0x448D);
+    /*448D*/ mem_write8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x48)), 0x0);
+    c->icount += 1;
+L4491:
+    MG_NEED(2, 0x4491);
+    /*4491*/ alu_sub(c, mem_read8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x48))), 0x0, 0, 0);
+    /*4495*/ c->icount += 2; if (x86_cond(c,5)) goto L449A;
+    MG_NEED(1, 0x4497);
+    /*4497*/ c->icount += 1; goto L455B;
+L449A:
+    MG_NEED(2, 0x449A);
+    /*449A*/ alu_sub(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xcc)), 0x0, 1, 0);
+    /*449F*/ c->icount += 2; if (x86_cond(c,5)) goto L44CE;
+    MG_NEED(6, 0x44A1);
+    /*44A1*/ cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44))); /*44A4*/ c->r[R_AX] = (uint16_t)(0x12);
+    /*44A7*/ x86_imul16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xcc))); /*44AB*/ c->r[R_BX] = (uint16_t)(c->r[R_AX]);
+    /*44AD*/ cpu_push16(c, seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] - 0x1fa0)));
+    /*44B1*/ c->icount += 5; MG_CALL(0x532A,0x44B4);
+    MG_NEED(6, 0x44B4);
+    /*44B4*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*44B5*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*44B6*/ c->r[R_CX] = (uint16_t)(0x96);
+    /*44B9*/ cpu_push16(c, c->r[R_CX]); /*44BA*/ c->r[R_SI] = (uint16_t)(c->r[R_AX]);
+    /*44BC*/ c->icount += 5; MG_CALL(0x76C0,0x44BF);
+    MG_NEED(7, 0x44BF);
+    /*44BF*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*44C0*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], 0x4B, 1, 0));
+    /*44C3*/ set_r8(c, R_CL, (uint8_t)(0x6)); /*44C5*/ c->r[R_AX] = (uint16_t)(x86_shift(c, 4, c->r[R_AX], get_r8(c, R_CL), 1));
+    /*44C7*/ c->r[R_SI] = (uint16_t)(alu_add(c, c->r[R_SI], c->r[R_AX], 1, 0));
+    /*44C9*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x3a), c->r[R_SI]);
+    /*44CC*/ c->icount += 7; goto L44E6;
+L44CE:
+    MG_NEED(6, 0x44CE);
+    /*44CE*/ cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44))); /*44D1*/ c->r[R_AX] = (uint16_t)(0x12);
+    /*44D4*/ x86_imul16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xcc))); /*44D8*/ c->r[R_BX] = (uint16_t)(c->r[R_AX]);
+    /*44DA*/ cpu_push16(c, seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] - 0x1fa0)));
+    /*44DE*/ c->icount += 5; MG_CALL(0x532A,0x44E1);
+    MG_NEED(3, 0x44E1);
+    /*44E1*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*44E2*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c));
+    /*44E3*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x3a), c->r[R_AX]);
+    c->icount += 3;
+L44E6:
+    MG_NEED(3, 0x44E6);
+    /*44E6*/ c->r[R_BX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x2c)));
+    /*44E9*/ alu_logic(c, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] + 9))) & 0x1, 0);
+    /*44ED*/ c->icount += 3; if (x86_cond(c,4)) goto L4501;
+    MG_NEED(3, 0x44EF);
+    /*44EF*/ c->r[R_AX] = (uint16_t)(0x64); /*44F2*/ cpu_push16(c, c->r[R_AX]);
+    /*44F3*/ c->icount += 2; MG_CALL(0x76C0,0x44F6);
+    MG_NEED(5, 0x44F6);
+    /*44F6*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*44F7*/ c->r[R_AX] = (uint16_t)(alu_add(c, c->r[R_AX], 0x32, 1, 0));
+    /*44FA*/ set_r8(c, R_CL, (uint8_t)(0x6)); /*44FC*/ c->r[R_AX] = (uint16_t)(x86_shift(c, 4, c->r[R_AX], get_r8(c, R_CL), 1));
+    /*44FE*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x3a), alu_add(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x3a)), c->r[R_AX], 1, 0));
+    c->icount += 5;
+L4501:
+    MG_NEED(6, 0x4501);
+    /*4501*/ c->r[R_AX] = (uint16_t)(0x7FFF); /*4504*/ cpu_push16(c, c->r[R_AX]); /*4505*/ c->r[R_CX] = (uint16_t)(alu_sub(c, c->r[R_CX], c->r[R_CX], 1, 0));
+    /*4507*/ cpu_push16(c, c->r[R_CX]); /*4508*/ cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x3a)));
+    /*450B*/ c->icount += 5; MG_CALL(0x59D8,0x450E);
+    MG_NEED(4, 0x450E);
+    /*450E*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x6, 1, 0)); /*4511*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x3a), c->r[R_AX]);
+    /*4514*/ alu_sub(c, c->r[R_AX], 0x7FFF, 1, 0);
+    /*4517*/ c->icount += 4; if (x86_cond(c,13)) goto L455B;
+    MG_NEED(3, 0x4519);
+    /*4519*/ c->r[R_CX] = (uint16_t)(0x500); /*451C*/ cpu_push16(c, c->r[R_CX]);
+    /*451D*/ c->icount += 2; MG_CALL(0x76C0,0x4520);
+    MG_NEED(14, 0x4520);
+    /*4520*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c));
+    /*4521*/ c->r[R_AX] = (uint16_t)(alu_add(c, c->r[R_AX], seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x3a)), 1, 0));
+    /*4524*/ c->r[R_BX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x2c)));
+    /*4527*/ set_r8(c, R_CH, (uint8_t)(mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] + 9)))));
+    /*452A*/ c->r[R_CX] = (uint16_t)(alu_logic(c, c->r[R_CX] & 0x200, 1)); /*452E*/ alu_sub(c, c->r[R_CX], 0x1, 1, 0); /*4531*/ c->flags ^= F_CF;
+    /*4532*/ c->r[R_CX] = (uint16_t)(alu_sub(c, c->r[R_CX], c->r[R_CX], 1, ((c->flags & F_CF) != 0)));
+    /*4534*/ c->r[R_CX] = (uint16_t)(alu_logic(c, c->r[R_CX] & 0xC80, 1));
+    /*4538*/ c->r[R_SI] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xcc)));
+    /*453C*/ c->r[R_SI] = (uint16_t)(x86_shift(c, 4, c->r[R_SI], 0x1, 1));
+    /*453E*/ c->r[R_CX] = (uint16_t)(alu_add(c, c->r[R_CX], seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + c->r[R_SI] - 0x3e)), 1, 0));
+    /*4541*/ alu_sub(c, c->r[R_CX], c->r[R_AX], 1, 0);
+    /*4543*/ c->icount += 14; if (x86_cond(c,14)) goto L455B;
+    MG_NEED(7, 0x4545);
+    /*4545*/ c->r[R_AX] = (uint16_t)(0x12); /*4548*/ x86_imul16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xcc)));
+    /*454C*/ c->r[R_BX] = (uint16_t)(c->r[R_AX]); /*454E*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44)));
+    /*4551*/ seg_write16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] - 0x1f9e), c->r[R_AX]);
+    /*4555*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x3a)));
+    /*4558*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + c->r[R_SI] - 0x3e), c->r[R_AX]);
+    c->icount += 7;
+L455B:
+    MG_NEED(2, 0x455B);
+    /*455B*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44), alu_inc(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44)), 1));
+    /*455E*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x2c), alu_add(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x2c)), 0x10, 1, 0));
+    c->icount += 2;
+L4562:
+    MG_NEED(3, 0x4562);
+    /*4562*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44)));
+    /*4565*/ alu_sub(c, seg_read16(c, c->seg[S_DS], (uint16_t)(MG_TARGET_COUNT)), c->r[R_AX], 1, 0);
+    /*4569*/ c->icount += 3; if (x86_cond(c,14)) goto L4588;
+    MG_NEED(5, 0x456B);
+    /*456B*/ c->r[R_BX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x2c)));
+    /*456E*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] + 8))); /*4571*/ c->r[R_CX] = (uint16_t)(c->r[R_AX]);
+    /*4573*/ alu_logic(c, get_r8(c, R_AH) & 0x5, 0);
+    /*4576*/ c->icount += 5; if (x86_cond(c,4)) goto L457E;
+    MG_NEED(2, 0x4578);
+    /*4578*/ alu_logic(c, c->r[R_CX] & 0x201, 1);
+    /*457C*/ c->icount += 2; if (x86_cond(c,5)) goto L4581;
+L457E:
+    MG_NEED(1, 0x457E);
+    /*457E*/ c->icount += 1; goto L445E;
+L4581:
+    MG_NEED(2, 0x4581);
+    /*4581*/ mem_write8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x48)), 0x1);
+    /*4585*/ c->icount += 2; goto L4462;
+L4588:
+    MG_NEED(1, 0x4588);
+    /*4588*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xcc), alu_inc(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xcc)), 1));
+    c->icount += 1;
+L458C:
+    MG_NEED(2, 0x458C);
+    /*458C*/ alu_sub(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xcc)), 0x2, 1, 0);
+    /*4591*/ c->icount += 2; if (x86_cond(c,13)) goto mission_training_targets;
+    MG_NEED(11, 0x4593);
+    /*4593*/ c->r[R_SI] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xcc)));
+    /*4597*/ c->r[R_SI] = (uint16_t)(x86_shift(c, 4, c->r[R_SI], 0x1, 1));
+    /*4599*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + c->r[R_SI] - 0x3e), 0x7FFF); /*459E*/ set_r8(c, R_CL, (uint8_t)(0x4));
+    /*45A0*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(MG_REGULAR_TARGETS)));
+    /*45A3*/ c->r[R_AX] = (uint16_t)(x86_shift(c, 4, c->r[R_AX], get_r8(c, R_CL), 1)); /*45A5*/ c->r[R_AX] = (uint16_t)(alu_add(c, c->r[R_AX], MG_TARGETS, 1, 0));
+    /*45A8*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x2c), c->r[R_AX]);
+    /*45AB*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(MG_REGULAR_TARGETS)));
+    /*45AE*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44), c->r[R_AX]);
+    /*45B1*/ c->icount += 11; goto L4562;
+
+mission_training_targets: /* Libya training replaces the targets and bases with fixed assignments. */
+    MG_NEED(5, 0x45B3);
+    /*45B3*/ { const uint16_t at_=(uint16_t)(MG_SETTINGS), lo_=seg_read16(c,c->seg[S_DS],at_), hi_=seg_read16(c,c->seg[S_DS],(uint16_t)(at_+2)); c->r[R_BX] = (uint16_t)(lo_); c->seg[S_ES]=hi_; }
+    /*45B7*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x3c))); /*45BB*/ c->r[R_CX] = (uint16_t)(c->r[R_AX]);
+    /*45BD*/ alu_logic(c, get_r8(c, R_AL) & 0x2, 0);
+    /*45BF*/ c->icount += 5; if (x86_cond(c,4)) goto mission_route_window;
+    MG_NEED(2, 0x45C1);
+    /*45C1*/ alu_sub(c, seg_read16(c, c->seg[S_DS], (uint16_t)(0xb38e)), 0x0, 1, 0);
+    /*45C6*/ c->icount += 2; if (x86_cond(c,5)) goto mission_route_window;
+    MG_NEED(2, 0x45C8);
+    /*45C8*/ alu_logic(c, get_r8(c, R_CL) & 0x1, 0);
+    /*45CB*/ c->icount += 2; if (x86_cond(c,4)) goto L45E7;
+    MG_NEED(5, 0x45CD);
+    /*45CD*/ seg_write16(c, c->seg[S_DS], (uint16_t)(0xe060), 0x3); /*45D3*/ seg_write16(c, c->seg[S_DS], (uint16_t)(0xe072), 0xF);
+    /*45D9*/ seg_write16(c, c->seg[S_DS], (uint16_t)(0xe062), 0x22); /*45DF*/ seg_write16(c, c->seg[S_DS], (uint16_t)(0xe074), 0x21);
+    /*45E5*/ c->icount += 5; goto L45FF;
+L45E7:
+    MG_NEED(4, 0x45E7);
+    /*45E7*/ seg_write16(c, c->seg[S_DS], (uint16_t)(0xe060), 0x16); /*45ED*/ seg_write16(c, c->seg[S_DS], (uint16_t)(0xe072), 0x8);
+    /*45F3*/ seg_write16(c, c->seg[S_DS], (uint16_t)(0xe062), 0x22); /*45F9*/ seg_write16(c, c->seg[S_DS], (uint16_t)(0xe074), 0x23);
+    c->icount += 4;
+L45FF:
+    MG_NEED(3, 0x45FF);
+    /*45FF*/ cpu_push16(c, seg_read16(c, c->seg[S_DS], (uint16_t)(0xe062))); /*4603*/ cpu_push16(c, seg_read16(c, c->seg[S_DS], (uint16_t)(0xe060)));
+    /*4607*/ c->icount += 2; MG_CALL(0x532A,0x460A);
+    MG_NEED(6, 0x460A);
+    /*460A*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*460B*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c));
+    /*460C*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x3e), c->r[R_AX]); /*460F*/ cpu_push16(c, seg_read16(c, c->seg[S_DS], (uint16_t)(0xe074)));
+    /*4613*/ cpu_push16(c, seg_read16(c, c->seg[S_DS], (uint16_t)(0xe072)));
+    /*4617*/ c->icount += 5; MG_CALL(0x532A,0x461A);
+    MG_NEED(3, 0x461A);
+    /*461A*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*461B*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c));
+    /*461C*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x3c), c->r[R_AX]);
+    c->icount += 3;
+
+mission_route_window: /* Reject routes outside the retry-adjusted distance window. */
+    MG_NEED(3, 0x461F);
+    /*461F*/ cpu_push16(c, seg_read16(c, c->seg[S_DS], (uint16_t)(0xe072))); /*4623*/ cpu_push16(c, seg_read16(c, c->seg[S_DS], (uint16_t)(0xe060)));
+    /*4627*/ c->icount += 2; MG_CALL(0x532A,0x462A);
+    MG_NEED(15, 0x462A);
+    /*462A*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*462B*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*462C*/ set_r8(c, R_CL, (uint8_t)(0x6));
+    /*462E*/ c->r[R_AX] = (uint16_t)(x86_shift(c, 7, c->r[R_AX], get_r8(c, R_CL), 1));
+    /*4630*/ c->r[R_DX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x3c)));
+    /*4633*/ c->r[R_DX] = (uint16_t)(x86_shift(c, 7, c->r[R_DX], get_r8(c, R_CL), 1));
+    /*4635*/ c->r[R_DX] = (uint16_t)(alu_add(c, c->r[R_DX], c->r[R_AX], 1, 0));
+    /*4637*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x3e)));
+    /*463A*/ c->r[R_AX] = (uint16_t)(x86_shift(c, 7, c->r[R_AX], get_r8(c, R_CL), 1));
+    /*463C*/ c->r[R_DX] = (uint16_t)(alu_add(c, c->r[R_DX], c->r[R_AX], 1, 0)); /*463E*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 4), c->r[R_DX]);
+    /*4641*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x24)));
+    /*4644*/ c->r[R_AX] = (uint16_t)(alu_add(c, c->r[R_AX], seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 2)), 1, 0));
+    /*4647*/ alu_sub(c, c->r[R_DX], c->r[R_AX], 1, 0);
+    /*4649*/ c->icount += 15; if (x86_cond(c,15)) goto L4650;
+    MG_NEED(2, 0x464B);
+    /*464B*/ alu_sub(c, c->r[R_DX], seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x34)), 1, 0);
+    /*464E*/ c->icount += 2; if (x86_cond(c,13)) goto mission_objective_entries;
+L4650:
+    MG_NEED(4, 0x4650);
+    /*4650*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(MG_QUALITY))); /*4653*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], 0x5, 1, 0));
+    /*4656*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x34), alu_add(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x34)), c->r[R_AX], 1, 0));
+    /*4659*/ c->icount += 4; goto mission_retry;
+
+mission_objective_entries: /* Two-pass counting/selection over theatre, tension and object-class masks. */
+    MG_NEED(2, 0x465C);
+    /*465C*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44), 0x0);
+    /*4661*/ c->icount += 2; goto L475E;
+L4664:
+    MG_NEED(9, 0x4664);
+    /*4664*/ c->r[R_AX] = (uint16_t)(0xC); /*4667*/ x86_imul16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xcc)));
+    /*466B*/ c->r[R_BX] = (uint16_t)(c->r[R_AX]);
+    /*466D*/ { const uint16_t at_=(uint16_t)(MG_SETTINGS), lo_=seg_read16(c,c->seg[S_DS],at_), hi_=seg_read16(c,c->seg[S_DS],(uint16_t)(at_+2)); c->r[R_SI] = (uint16_t)(lo_); c->seg[S_ES]=hi_; }
+    /*4671*/ set_r8(c, R_CL, (uint8_t)(mem_read8(c, phys(c->seg[S_ES], (uint16_t)(c->r[R_SI] + 0x38))))); /*4675*/ c->r[R_AX] = (uint16_t)(0x1);
+    /*4678*/ c->r[R_AX] = (uint16_t)(x86_shift(c, 4, c->r[R_AX], get_r8(c, R_CL), 1));
+    /*467A*/ alu_logic(c, seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] + 0x11da)) & c->r[R_AX], 1);
+    /*467E*/ c->icount += 9; if (x86_cond(c,5)) goto L4683;
+    MG_NEED(1, 0x4680);
+    /*4680*/ c->icount += 1; goto L471D;
+L4683:
+    MG_NEED(5, 0x4683);
+    /*4683*/ set_r8(c, R_CL, (uint8_t)(mem_read8(c, phys(c->seg[S_ES], (uint16_t)(c->r[R_SI] + 0x3a))))); /*4687*/ c->r[R_AX] = (uint16_t)(0x1);
+    /*468A*/ c->r[R_AX] = (uint16_t)(x86_shift(c, 4, c->r[R_AX], get_r8(c, R_CL), 1));
+    /*468C*/ alu_logic(c, seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] + 0x11dc)) & c->r[R_AX], 1);
+    /*4690*/ c->icount += 5; if (x86_cond(c,5)) goto L4695;
+    MG_NEED(1, 0x4692);
+    /*4692*/ c->icount += 1; goto L471D;
+L4695:
+    MG_NEED(14, 0x4695);
+    /*4695*/ c->r[R_AX] = (uint16_t)(0x12); /*4698*/ x86_imul16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44)));
+    /*469B*/ c->r[R_SI] = (uint16_t)(c->r[R_AX]); /*469D*/ c->r[R_SI] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_SI] - 0x1fa0)));
+    /*46A1*/ set_r8(c, R_CL, (uint8_t)(0x4)); /*46A3*/ c->r[R_SI] = (uint16_t)(x86_shift(c, 4, c->r[R_SI], get_r8(c, R_CL), 1));
+    /*46A5*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] + 0x11e0)));
+    /*46A9*/ set_r8(c, R_BL, (uint8_t)(mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_SI] - 0x3414)))));
+    /*46AD*/ c->r[R_BX] = (uint16_t)(alu_logic(c, c->r[R_BX] & 0x7F, 1)); /*46B0*/ c->r[R_CX] = (uint16_t)(c->r[R_AX]);
+    /*46B2*/ set_r8(c, R_AL, (uint8_t)(mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] - 0x2d5a)))));
+    /*46B6*/ c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c,R_AL); /*46B7*/ alu_sub(c, c->r[R_AX], c->r[R_CX], 1, 0);
+    /*46B9*/ c->icount += 14; if (x86_cond(c,5)) goto L471D;
+    MG_NEED(2, 0x46BB);
+    /*46BB*/ alu_sub(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44)), 0x0, 1, 0);
+    /*46BF*/ c->icount += 2; if (x86_cond(c,4)) goto L46CB;
+    MG_NEED(3, 0x46C1);
+    /*46C1*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xcc)));
+    /*46C5*/ alu_sub(c, seg_read16(c, c->seg[S_DS], (uint16_t)(0xe066)), c->r[R_AX], 1, 0);
+    /*46C9*/ c->icount += 3; if (x86_cond(c,4)) goto L471D;
+L46CB:
+    MG_NEED(2, 0x46CB);
+    /*46CB*/ alu_sub(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xce)), 0x0, 1, 0);
+    /*46D0*/ c->icount += 2; if (x86_cond(c,4)) goto L4719;
+    MG_NEED(3, 0x46D2);
+    /*46D2*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xca)));
+    /*46D6*/ alu_sub(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x22)), c->r[R_AX], 1, 0);
+    /*46D9*/ c->icount += 3; if (x86_cond(c,5)) goto L4719;
+    MG_NEED(15, 0x46DB);
+    /*46DB*/ c->r[R_AX] = (uint16_t)(0xC); /*46DE*/ x86_imul16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xcc)));
+    /*46E2*/ c->r[R_BX] = (uint16_t)(c->r[R_AX]); /*46E4*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] + 0x11de)));
+    /*46E8*/ c->r[R_CX] = (uint16_t)(c->r[R_AX]); /*46EA*/ c->r[R_AX] = (uint16_t)(0x12);
+    /*46ED*/ x86_imul16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44))); /*46F0*/ c->r[R_SI] = (uint16_t)(c->r[R_AX]);
+    /*46F2*/ seg_write16(c, c->seg[S_DS], (uint16_t)(c->r[R_SI] - 0x1fa2), c->r[R_CX]);
+    /*46F6*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xcc)));
+    /*46FA*/ seg_write16(c, c->seg[S_DS], (uint16_t)(c->r[R_SI] - 0x1f9a), c->r[R_AX]);
+    /*46FE*/ c->r[R_CX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] + 0x11e2)));
+    /*4702*/ seg_write16(c, c->seg[S_DS], (uint16_t)(c->r[R_SI] - 0x1f9c), c->r[R_CX]);
+    /*4706*/ alu_sub(c, seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] + 0x11e4)), 0x0, 1, 0);
+    /*470B*/ c->icount += 15; if (x86_cond(c,14)) goto L4719;
+    MG_NEED(4, 0x470D);
+    /*470D*/ set_r8(c, R_DH, (uint8_t)(mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] + 0x11e4)))));
+    /*4711*/ set_r8(c, R_DL, (uint8_t)(alu_sub(c, get_r8(c, R_DL), get_r8(c, R_DL), 0, 0)));
+    /*4713*/ c->r[R_CX] = (uint16_t)(alu_add(c, c->r[R_CX], c->r[R_DX], 1, 0));
+    /*4715*/ seg_write16(c, c->seg[S_DS], (uint16_t)(c->r[R_SI] - 0x1f9c), c->r[R_CX]);
+    c->icount += 4;
+L4719:
+    MG_NEED(1, 0x4719);
+    /*4719*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xca), alu_inc(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xca)), 1));
+    c->icount += 1;
+L471D:
+    MG_NEED(1, 0x471D);
+    /*471D*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xcc), alu_inc(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xcc)), 1));
+    c->icount += 1;
+L4721:
+    MG_NEED(2, 0x4721);
+    /*4721*/ alu_sub(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xcc)), 0x52, 1, 0);
+    /*4726*/ c->icount += 2; if (x86_cond(c,13)) goto L472B;
+    MG_NEED(1, 0x4728);
+    /*4728*/ c->icount += 1; goto L4664;
+L472B:
+    MG_NEED(2, 0x472B);
+    /*472B*/ alu_sub(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xca)), 0x0, 1, 0);
+    /*4730*/ c->icount += 2; if (x86_cond(c,4)) goto L473F;
+    MG_NEED(2, 0x4732);
+    /*4732*/ cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xca)));
+    /*4736*/ c->icount += 1; MG_CALL(0x76C0,0x4739);
+    MG_NEED(3, 0x4739);
+    /*4739*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*473A*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x22), c->r[R_AX]);
+    /*473D*/ c->icount += 3; goto L4744;
+L473F:
+    MG_NEED(1, 0x473F);
+    /*473F*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x22), 0x0);
+    c->icount += 1;
+L4744:
+    MG_NEED(1, 0x4744);
+    /*4744*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xce), alu_inc(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xce)), 1));
+    c->icount += 1;
+L4748:
+    MG_NEED(2, 0x4748);
+    /*4748*/ alu_sub(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xce)), 0x2, 1, 0);
+    /*474D*/ c->icount += 2; if (x86_cond(c,13)) goto L475B;
+    MG_NEED(4, 0x474F);
+    /*474F*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0));
+    /*4751*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xca), c->r[R_AX]);
+    /*4755*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xcc), c->r[R_AX]);
+    /*4759*/ c->icount += 4; goto L4721;
+L475B:
+    MG_NEED(1, 0x475B);
+    /*475B*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44), alu_inc(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44)), 1));
+    c->icount += 1;
+L475E:
+    MG_NEED(2, 0x475E);
+    /*475E*/ alu_sub(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44)), 0x2, 1, 0);
+    /*4762*/ c->icount += 2; if (x86_cond(c,13)) goto mission_training_entry;
+    MG_NEED(7, 0x4764);
+    /*4764*/ c->r[R_AX] = (uint16_t)(0x12); /*4767*/ x86_imul16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44)));
+    /*476A*/ c->r[R_BX] = (uint16_t)(c->r[R_AX]); /*476C*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0));
+    /*476E*/ seg_write16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] - 0x1fa2), c->r[R_AX]);
+    /*4772*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xce), c->r[R_AX]);
+    /*4776*/ c->icount += 7; goto L4748;
+
+mission_training_entry: /* Training also replaces the primary objective entry. */
+    MG_NEED(5, 0x4778);
+    /*4778*/ { const uint16_t at_=(uint16_t)(MG_SETTINGS), lo_=seg_read16(c,c->seg[S_DS],at_), hi_=seg_read16(c,c->seg[S_DS],(uint16_t)(at_+2)); c->r[R_BX] = (uint16_t)(lo_); c->seg[S_ES]=hi_; }
+    /*477C*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x3c))); /*4780*/ c->r[R_CX] = (uint16_t)(c->r[R_AX]);
+    /*4782*/ alu_logic(c, get_r8(c, R_AL) & 0x2, 0);
+    /*4784*/ c->icount += 5; if (x86_cond(c,4)) goto mission_validate;
+    MG_NEED(2, 0x4786);
+    /*4786*/ alu_sub(c, seg_read16(c, c->seg[S_DS], (uint16_t)(0xb38e)), 0x0, 1, 0);
+    /*478B*/ c->icount += 2; if (x86_cond(c,5)) goto mission_validate;
+    MG_NEED(17, 0x478D);
+    /*478D*/ c->r[R_CX] = (uint16_t)(alu_logic(c, c->r[R_CX] & 0x1, 1)); /*4790*/ alu_sub(c, c->r[R_CX], 0x1, 1, 0);
+    /*4793*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], c->r[R_AX], 1, ((c->flags & F_CF) != 0)));
+    /*4795*/ c->r[R_AX] = (uint16_t)(alu_logic(c, c->r[R_AX] & 0x32, 1)); /*4798*/ c->r[R_AX] = (uint16_t)(alu_add(c, c->r[R_AX], 0x5, 1, 0));
+    /*479B*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xcc), c->r[R_AX]); /*479F*/ c->r[R_CX] = (uint16_t)(0xC); /*47A2*/ x86_imul16(c, c->r[R_CX]);
+    /*47A4*/ c->r[R_BX] = (uint16_t)(c->r[R_AX]); /*47A6*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] + 0x11de)));
+    /*47AA*/ seg_write16(c, c->seg[S_DS], (uint16_t)(MG_PRIMARY), c->r[R_AX]);
+    /*47AD*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xcc)));
+    /*47B1*/ seg_write16(c, c->seg[S_DS], (uint16_t)(0xe066), c->r[R_AX]); /*47B4*/ x86_imul16(c, c->r[R_CX]); /*47B6*/ c->r[R_BX] = (uint16_t)(c->r[R_AX]);
+    /*47B8*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] + 0x11e2)));
+    /*47BC*/ seg_write16(c, c->seg[S_DS], (uint16_t)(0xe064), c->r[R_AX]);
+    c->icount += 17;
+
+mission_validate: /* Reject unusable or incompatible objective pairs; optionally swap their order. */
+    MG_NEED(3, 0x47BF);
+    /*47BF*/ c->r[R_BX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(MG_SETTINGS)));
+    /*47C3*/ alu_logic(c, mem_read8(c, phys(c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x3c))) & 0x1, 0);
+    /*47C8*/ c->icount += 3; if (x86_cond(c,4)) goto L47D8;
+    MG_NEED(2, 0x47CA);
+    /*47CA*/ alu_sub(c, seg_read16(c, c->seg[S_DS], (uint16_t)(MG_PRIMARY)), 0x5, 1, 0);
+    /*47CF*/ c->icount += 2; if (x86_cond(c,13)) goto L47E6;
+    MG_NEED(2, 0x47D1);
+    /*47D1*/ alu_sub(c, seg_read16(c, c->seg[S_DS], (uint16_t)(MG_SECONDARY)), 0x5, 1, 0);
+    /*47D6*/ c->icount += 2; if (x86_cond(c,13)) goto L47E6;
+L47D8:
+    MG_NEED(2, 0x47D8);
+    /*47D8*/ alu_sub(c, seg_read16(c, c->seg[S_DS], (uint16_t)(MG_PRIMARY)), 0x0, 1, 0);
+    /*47DD*/ c->icount += 2; if (x86_cond(c,4)) goto L47E6;
+    MG_NEED(2, 0x47DF);
+    /*47DF*/ alu_sub(c, seg_read16(c, c->seg[S_DS], (uint16_t)(MG_SECONDARY)), 0x0, 1, 0);
+    /*47E4*/ c->icount += 2; if (x86_cond(c,5)) goto L47E9;
+L47E6:
+    MG_NEED(1, 0x47E6);
+    /*47E6*/ c->icount += 1; goto L42F6;
+L47E9:
+    MG_NEED(3, 0x47E9);
+    /*47E9*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(0xe078)));
+    /*47EC*/ alu_sub(c, seg_read16(c, c->seg[S_DS], (uint16_t)(0xe066)), c->r[R_AX], 1, 0);
+    /*47F0*/ c->icount += 3; if (x86_cond(c,5)) goto L47F5;
+    MG_NEED(1, 0x47F2);
+    /*47F2*/ c->icount += 1; goto mission_retry;
+L47F5:
+    MG_NEED(3, 0x47F5);
+    /*47F5*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x3e)));
+    /*47F8*/ alu_sub(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x3c)), c->r[R_AX], 1, 0);
+    /*47FB*/ c->icount += 3; if (x86_cond(c,14)) goto L483C;
+    MG_NEED(2, 0x47FD);
+    /*47FD*/ alu_logic(c, mem_read8(c, phys(c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x3c))) & 0x2, 0);
+    /*4802*/ c->icount += 2; if (x86_cond(c,5)) goto L483C;
+    MG_NEED(5, 0x4804);
+    /*4804*/ c->r[R_DI] = (uint16_t)((uint16_t)(c->r[R_BP] - 0x20)); /*4807*/ c->r[R_SI] = (uint16_t)(MG_PRIMARY); /*480A*/ cpu_push16(c, c->seg[S_SS]);
+    /*480B*/ c->seg[S_ES] = (uint16_t)(cpu_pop16(c)); /*480C*/ c->r[R_CX] = (uint16_t)(0x9);
+    c->icount += 5;
+    MG_NEED(c->r[R_CX] ? c->r[R_CX] : 1, 0x480F);
+    /*480F*/ c->icount += rep_string(c, STR_MOVS, 1, c->seg[S_DS], 0);
+    MG_NEED(6, 0x4811);
+    /*4811*/ c->r[R_DX] = (uint16_t)(MG_PRIMARY); /*4814*/ c->r[R_DI] = (uint16_t)(c->r[R_DX]); /*4816*/ c->r[R_SI] = (uint16_t)(MG_SECONDARY);
+    /*4819*/ cpu_push16(c, c->seg[S_DS]); /*481A*/ c->seg[S_ES] = (uint16_t)(cpu_pop16(c)); /*481B*/ c->r[R_CX] = (uint16_t)(0x9);
+    c->icount += 6;
+    MG_NEED(c->r[R_CX] ? c->r[R_CX] : 1, 0x481E);
+    /*481E*/ c->icount += rep_string(c, STR_MOVS, 1, c->seg[S_DS], 0);
+    MG_NEED(4, 0x4820);
+    /*4820*/ c->r[R_DX] = (uint16_t)(MG_SECONDARY); /*4823*/ c->r[R_DI] = (uint16_t)(c->r[R_DX]); /*4825*/ c->r[R_SI] = (uint16_t)((uint16_t)(c->r[R_BP] - 0x20));
+    /*4828*/ c->r[R_CX] = (uint16_t)(0x9);
+    c->icount += 4;
+    MG_NEED(c->r[R_CX] ? c->r[R_CX] : 1, 0x482B);
+    /*482B*/ c->icount += rep_string(c, STR_MOVS, 1, c->seg[S_DS], 0);
+    MG_NEED(5, 0x482D);
+    /*482D*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x26), c->r[R_AX]);
+    /*4830*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x3c)));
+    /*4833*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x3e), c->r[R_AX]);
+    /*4836*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x26)));
+    /*4839*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x3c), c->r[R_AX]);
+    c->icount += 5;
+L483C:
+    MG_NEED(3, 0x483C);
+    /*483C*/ set_r8(c, R_AL, (uint8_t)(mem_read8(c, phys(c->seg[S_DS], (uint16_t)(0xe076)))));
+    /*483F*/ c->r[R_AX] = (uint16_t)(alu_logic(c, c->r[R_AX] & 0x2, 1));
+    /*4842*/ c->icount += 3; if (x86_cond(c,4)) goto L484B;
+    MG_NEED(2, 0x4844);
+    /*4844*/ c->r[R_AX] = (uint16_t)(alu_logic(c, c->r[R_AX] | c->r[R_AX], 1));
+    /*4846*/ c->icount += 2; if (x86_cond(c,4)) goto L484B;
+    MG_NEED(1, 0x4848);
+    /*4848*/ c->icount += 1; goto mission_retry;
+L484B:
+    MG_NEED(3, 0x484B);
+    /*484B*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(MG_SECONDARY))); /*484E*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], 0x5, 1, 0));
+    /*4851*/ c->icount += 3; if (x86_cond(c,12)) goto L485B;
+    MG_NEED(2, 0x4853);
+    /*4853*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], 0x3, 1, 0));
+    /*4856*/ c->icount += 2; if (x86_cond(c,15)) goto L485B;
+    MG_NEED(1, 0x4858);
+    /*4858*/ c->icount += 1; goto mission_retry;
+L485B:
+    MG_NEED(2, 0x485B);
+    /*485B*/ alu_sub(c, seg_read16(c, c->seg[S_DS], (uint16_t)(MG_PRIMARY)), 0x4, 1, 0);
+    /*4860*/ c->icount += 2; if (x86_cond(c,5)) goto L486C;
+    MG_NEED(2, 0x4862);
+    /*4862*/ alu_sub(c, seg_read16(c, c->seg[S_DS], (uint16_t)(MG_QUALITY)), 0x0, 1, 0);
+    /*4867*/ c->icount += 2; if (x86_cond(c,5)) goto L486C;
+    MG_NEED(1, 0x4869);
+    /*4869*/ c->icount += 1; goto mission_retry;
+L486C:
+    MG_NEED(2, 0x486C);
+    /*486C*/ alu_logic(c, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(0xe064))) & 0x8, 0);
+    /*4871*/ c->icount += 2; if (x86_cond(c,4)) goto mission_accepted;
+    MG_NEED(2, 0x4873);
+    /*4873*/ alu_logic(c, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(0xe076))) & 0x8, 0);
+    /*4878*/ c->icount += 2; if (x86_cond(c,4)) goto mission_accepted;
+    MG_NEED(1, 0x487A);
+    /*487A*/ c->icount += 1; goto mission_retry;
+
+mission_accepted: /* Compute explicit timing and prepare the special air mission. */
+    MG_NEED(2, 0x487D);
+    /*487D*/ alu_logic(c, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(0xe064))) & 0x2, 0);
+    /*4882*/ c->icount += 2; if (x86_cond(c,4)) goto L489B;
+    MG_NEED(3, 0x4884);
+    /*4884*/ cpu_push16(c, seg_read16(c, c->seg[S_DS], (uint16_t)(0xe060))); /*4888*/ cpu_push16(c, seg_read16(c, c->seg[S_DS], (uint16_t)(0xe062)));
+    /*488C*/ c->icount += 2; MG_CALL(0x532A,0x488F);
+    MG_NEED(6, 0x488F);
+    /*488F*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*4890*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*4891*/ set_r8(c, R_CL, (uint8_t)(0x4));
+    /*4893*/ c->r[R_AX] = (uint16_t)(x86_shift(c, 7, c->r[R_AX], get_r8(c, R_CL), 1)); /*4895*/ c->r[R_AX] = (uint16_t)(alu_add(c, c->r[R_AX], 0x1C2, 1, 0));
+    /*4898*/ seg_write16(c, c->seg[S_DS], (uint16_t)(MG_TIME), c->r[R_AX]);
+    c->icount += 6;
+L489B:
+    MG_NEED(2, 0x489B);
+    /*489B*/ alu_logic(c, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(0xe076))) & 0x2, 0);
+    /*48A0*/ c->icount += 2; if (x86_cond(c,4)) goto L48B9;
+    MG_NEED(3, 0x48A2);
+    /*48A2*/ cpu_push16(c, seg_read16(c, c->seg[S_DS], (uint16_t)(0xe072))); /*48A6*/ cpu_push16(c, seg_read16(c, c->seg[S_DS], (uint16_t)(0xe062)));
+    /*48AA*/ c->icount += 2; MG_CALL(0x532A,0x48AD);
+    MG_NEED(6, 0x48AD);
+    /*48AD*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*48AE*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*48AF*/ set_r8(c, R_CL, (uint8_t)(0x4));
+    /*48B1*/ c->r[R_AX] = (uint16_t)(x86_shift(c, 7, c->r[R_AX], get_r8(c, R_CL), 1)); /*48B3*/ c->r[R_AX] = (uint16_t)(alu_add(c, c->r[R_AX], 0x1C2, 1, 0));
+    /*48B6*/ seg_write16(c, c->seg[S_DS], (uint16_t)(MG_TIME), c->r[R_AX]);
+    c->icount += 6;
+L48B9:
+    MG_NEED(6, 0x48B9);
+    /*48B9*/ seg_write16(c, c->seg[S_DS], (uint16_t)(MG_SPECIAL_SLOT), 0xFFFF); /*48BF*/ c->r[R_AX] = (uint16_t)(0xC);
+    /*48C2*/ x86_imul16(c, seg_read16(c, c->seg[S_DS], (uint16_t)(0xe066))); /*48C6*/ c->r[R_BX] = (uint16_t)(c->r[R_AX]);
+    /*48C8*/ alu_sub(c, seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] + 0x11e4)), 0x0, 1, 0);
+    /*48CD*/ c->icount += 6; if (x86_cond(c,13)) goto L48D8;
+    MG_NEED(3, 0x48CF);
+    /*48CF*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] + 0x11e4)));
+    /*48D3*/ c->r[R_AX] = (uint16_t)(alu_sub(c, 0, c->r[R_AX], 1, 0)); /*48D5*/ seg_write16(c, c->seg[S_DS], (uint16_t)(0xd3d4), c->r[R_AX]);
+    c->icount += 3;
+L48D8:
+    MG_NEED(2, 0x48D8);
+    /*48D8*/ alu_sub(c, seg_read16(c, c->seg[S_DS], (uint16_t)(MG_PRIMARY)), 0x5, 1, 0);
+    /*48DD*/ c->icount += 2; if (x86_cond(c,4)) goto mission_air5;
+    MG_NEED(1, 0x48DF);
+    /*48DF*/ c->icount += 1; goto L49A2;
+
+mission_air5: /* Locate the friendly target nearest the primary route distance. */
+    MG_NEED(4, 0x48E2);
+    /*48E2*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x26), 0x7FFF); /*48E7*/ seg_write16(c, c->seg[S_DS], (uint16_t)(MG_SPECIAL_TARGET), 0xFFFF);
+    /*48ED*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44), 0x0);
+    /*48F2*/ c->icount += 4; goto L4932;
+L48F4:
+    MG_NEED(3, 0x48F4);
+    /*48F4*/ cpu_push16(c, c->r[R_AX]); /*48F5*/ cpu_push16(c, seg_read16(c, c->seg[S_DS], (uint16_t)(0xe060)));
+    /*48F9*/ c->icount += 2; MG_CALL(0x532A,0x48FC);
+    MG_NEED(5, 0x48FC);
+    /*48FC*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*48FD*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c));
+    /*48FE*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x3e)), 1, 0));
+    /*4901*/ cpu_push16(c, c->r[R_AX]);
+    /*4902*/ c->icount += 4; MG_CALL(0x96AE,0x4905);
+    MG_NEED(4, 0x4905);
+    /*4905*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*4906*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x3a), c->r[R_AX]);
+    /*4909*/ alu_sub(c, c->r[R_AX], seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x26)), 1, 0);
+    /*490C*/ c->icount += 4; if (x86_cond(c,13)) goto L492F;
+    MG_NEED(7, 0x490E);
+    /*490E*/ set_r8(c, R_CL, (uint8_t)(0x4)); /*4910*/ c->r[R_BX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44)));
+    /*4913*/ c->r[R_BX] = (uint16_t)(x86_shift(c, 4, c->r[R_BX], get_r8(c, R_CL), 1));
+    /*4915*/ c->r[R_CX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] - 0x341a))); /*4919*/ c->r[R_DX] = (uint16_t)(c->r[R_CX]);
+    /*491B*/ alu_logic(c, get_r8(c, R_CL) & 0x1, 0);
+    /*491E*/ c->icount += 7; if (x86_cond(c,4)) goto L492F;
+    MG_NEED(2, 0x4920);
+    /*4920*/ alu_logic(c, get_r8(c, R_DH) & 0x1, 0);
+    /*4923*/ c->icount += 2; if (x86_cond(c,5)) goto L492F;
+    MG_NEED(3, 0x4925);
+    /*4925*/ c->r[R_CX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44)));
+    /*4928*/ seg_write16(c, c->seg[S_DS], (uint16_t)(MG_SPECIAL_TARGET), c->r[R_CX]); /*492C*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x26), c->r[R_AX]);
+    c->icount += 3;
+L492F:
+    MG_NEED(1, 0x492F);
+    /*492F*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44), alu_inc(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44)), 1));
+    c->icount += 1;
+L4932:
+    MG_NEED(3, 0x4932);
+    /*4932*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44)));
+    /*4935*/ alu_sub(c, seg_read16(c, c->seg[S_DS], (uint16_t)(MG_REGULAR_TARGETS)), c->r[R_AX], 1, 0);
+    /*4939*/ c->icount += 3; if (x86_cond(c,15)) goto L48F4;
+    MG_NEED(2, 0x493B);
+    /*493B*/ alu_sub(c, seg_read16(c, c->seg[S_DS], (uint16_t)(MG_SPECIAL_TARGET)), 0xFFFF, 1, 0);
+    /*4940*/ c->icount += 2; if (x86_cond(c,5)) goto L4945;
+    MG_NEED(1, 0x4942);
+    /*4942*/ c->icount += 1; goto mission_retry;
+L4945:
+    MG_NEED(4, 0x4945);
+    /*4945*/ cpu_push16(c, seg_read16(c, c->seg[S_DS], (uint16_t)(MG_SPECIAL_TARGET))); /*4949*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0));
+    /*494B*/ cpu_push16(c, c->r[R_AX]);
+    /*494C*/ c->icount += 3; MG_CALL(0x5356,0x494F);
+    MG_NEED(8, 0x494F);
+    /*494F*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*4950*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c));
+    /*4951*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(0xe060))); /*4954*/ seg_write16(c, c->seg[S_DS], (uint16_t)(MG_AIR_UNITS), c->r[R_AX]);
+    /*4957*/ mem_write8(c, phys(c->seg[S_DS], (uint16_t)(0xd3d6)), alu_logic(c, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(0xd3d6))) | 0x4, 0));
+    /*495C*/ seg_write16(c, c->seg[S_DS], (uint16_t)(MG_SPECIAL_SLOT), 0x0); /*4962*/ cpu_push16(c, seg_read16(c, c->seg[S_DS], (uint16_t)(MG_SPECIAL_TARGET)));
+    /*4966*/ c->icount += 7; MG_CALL(0x58BE,0x4969);
+    MG_NEED(5, 0x4969);
+    /*4969*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*496A*/ cpu_push16(c, c->r[R_AX]); /*496B*/ c->r[R_AX] = (uint16_t)(0xD8E);
+    /*496E*/ cpu_push16(c, c->r[R_AX]);
+    /*496F*/ c->icount += 4; MG_CALL(0x94AC,0x4972);
+    MG_NEED(5, 0x4972);
+    /*4972*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*4973*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c));
+    /*4974*/ cpu_push16(c, seg_read16(c, c->seg[S_DS], (uint16_t)(0xe060))); /*4978*/ cpu_push16(c, seg_read16(c, c->seg[S_DS], (uint16_t)(MG_SPECIAL_TARGET)));
+    /*497C*/ c->icount += 4; MG_CALL(0x532A,0x497F);
+    MG_NEED(14, 0x497F);
+    /*497F*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*4980*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*4981*/ c->r[R_CX] = (uint16_t)(c->r[R_AX]);
+    /*4983*/ c->r[R_AX] = (uint16_t)(0x24); /*4986*/ x86_imul16(c, seg_read16(c, c->seg[S_DS], (uint16_t)(MG_SPECIAL_SLOT)));
+    /*498A*/ c->r[R_BX] = (uint16_t)(c->r[R_AX]); /*498C*/ c->r[R_BX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] - 0x2c28)));
+    /*4990*/ c->r[R_AX] = (uint16_t)(c->r[R_CX]); /*4992*/ set_r8(c, R_CL, (uint8_t)(0x6));
+    /*4994*/ c->r[R_BX] = (uint16_t)(x86_shift(c, 7, c->r[R_BX], get_r8(c, R_CL), 1)); /*4996*/ c->r[R_CX] = (uint16_t)(c->r[R_BX]);
+    /*4998*/ c->r[R_BX] = (uint16_t)(x86_shift(c, 4, c->r[R_BX], 0x1, 1)); /*499A*/ c->r[R_BX] = (uint16_t)(alu_add(c, c->r[R_BX], c->r[R_CX], 1, 0));
+    /*499C*/ c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0;
+    c->icount += 14;
+    MG_NEED(1, 0x499D);
+    /*499D*/ c->op_cs=c->seg[S_CS]; c->op_ip=0x499D; c->ip=0x499F;
+    { const int ok_=x86_idiv16(c,c->r[R_BX],0); c->icount++; if (!ok_) return 1; }
+    MG_NEED(1, 0x499F);
+    /*499F*/ seg_write16(c, c->seg[S_DS], (uint16_t)(MG_TIME), c->r[R_AX]);
+    c->icount += 1;
+L49A2:
+    MG_NEED(2, 0x49A2);
+    /*49A2*/ alu_sub(c, seg_read16(c, c->seg[S_DS], (uint16_t)(MG_PRIMARY)), 0x7, 1, 0);
+    /*49A7*/ c->icount += 2; if (x86_cond(c,4)) goto mission_air67;
+    MG_NEED(2, 0x49A9);
+    /*49A9*/ alu_sub(c, seg_read16(c, c->seg[S_DS], (uint16_t)(MG_PRIMARY)), 0x6, 1, 0);
+    /*49AE*/ c->icount += 2; if (x86_cond(c,4)) goto mission_air67;
+    MG_NEED(1, 0x49B0);
+    /*49B0*/ c->icount += 1; goto L4A81;
+mission_air67: /* Select the related target and configure the type-6/7 special unit. */
+    MG_NEED(3, 0x49B3);
+    /*49B3*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x26), 0x7FFF); /*49B8*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44), 0x3);
+    /*49BD*/ c->icount += 3; goto L4A02;
+L49BF:
+    MG_NEED(7, 0x49BF);
+    /*49BF*/ c->r[R_BX] = (uint16_t)(c->r[R_AX]); /*49C1*/ set_r8(c, R_CL, (uint8_t)(0x4));
+    /*49C3*/ c->r[R_BX] = (uint16_t)(x86_shift(c, 4, c->r[R_BX], get_r8(c, R_CL), 1));
+    /*49C5*/ c->r[R_CX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] - 0x341a))); /*49C9*/ c->r[R_DX] = (uint16_t)(c->r[R_CX]);
+    /*49CB*/ alu_logic(c, get_r8(c, R_CH) & 0x5, 0);
+    /*49CE*/ c->icount += 7; if (x86_cond(c,4)) goto L49FF;
+    MG_NEED(2, 0x49D0);
+    /*49D0*/ alu_logic(c, get_r8(c, R_DH) & 0xA, 0);
+    /*49D3*/ c->icount += 2; if (x86_cond(c,5)) goto L49FF;
+    MG_NEED(3, 0x49D5);
+    /*49D5*/ cpu_push16(c, c->r[R_AX]); /*49D6*/ cpu_push16(c, seg_read16(c, c->seg[S_DS], (uint16_t)(0xe060)));
+    /*49DA*/ c->icount += 2; MG_CALL(0x532A,0x49DD);
+    MG_NEED(5, 0x49DD);
+    /*49DD*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*49DE*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c));
+    /*49DF*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x3e)), 1, 0));
+    /*49E2*/ cpu_push16(c, c->r[R_AX]);
+    /*49E3*/ c->icount += 4; MG_CALL(0x96AE,0x49E6);
+    MG_NEED(4, 0x49E6);
+    /*49E6*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*49E7*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x3a), c->r[R_AX]);
+    /*49EA*/ alu_sub(c, c->r[R_AX], seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x26)), 1, 0);
+    /*49ED*/ c->icount += 4; if (x86_cond(c,13)) goto L49FF;
+    MG_NEED(3, 0x49EF);
+    /*49EF*/ c->r[R_CX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44)));
+    /*49F2*/ alu_sub(c, seg_read16(c, c->seg[S_DS], (uint16_t)(0xe062)), c->r[R_CX], 1, 0);
+    /*49F6*/ c->icount += 3; if (x86_cond(c,4)) goto L49FF;
+    MG_NEED(2, 0x49F8);
+    /*49F8*/ seg_write16(c, c->seg[S_DS], (uint16_t)(MG_SPECIAL_TARGET), c->r[R_CX]); /*49FC*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x26), c->r[R_AX]);
+    c->icount += 2;
+L49FF:
+    MG_NEED(1, 0x49FF);
+    /*49FF*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44), alu_inc(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44)), 1));
+    c->icount += 1;
+L4A02:
+    MG_NEED(3, 0x4A02);
+    /*4A02*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44)));
+    /*4A05*/ alu_sub(c, seg_read16(c, c->seg[S_DS], (uint16_t)(MG_TARGET_COUNT)), c->r[R_AX], 1, 0);
+    /*4A09*/ c->icount += 3; if (x86_cond(c,15)) goto L49BF;
+    MG_NEED(2, 0x4A0B);
+    /*4A0B*/ cpu_push16(c, seg_read16(c, c->seg[S_DS], (uint16_t)(MG_SPECIAL_TARGET)));
+    /*4A0F*/ c->icount += 1; MG_CALL(0x58BE,0x4A12);
+    MG_NEED(5, 0x4A12);
+    /*4A12*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*4A13*/ cpu_push16(c, c->r[R_AX]); /*4A14*/ c->r[R_AX] = (uint16_t)(0xD8E);
+    /*4A17*/ cpu_push16(c, c->r[R_AX]);
+    /*4A18*/ c->icount += 4; MG_CALL(0x94AC,0x4A1B);
+    MG_NEED(4, 0x4A1B);
+    /*4A1B*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*4A1C*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c));
+    /*4A1D*/ alu_sub(c, seg_read16(c, c->seg[S_DS], (uint16_t)(MG_PRIMARY)), 0x7, 1, 0);
+    /*4A22*/ c->icount += 4; if (x86_cond(c,5)) goto L4A49;
+    MG_NEED(4, 0x4A24);
+    /*4A24*/ cpu_push16(c, seg_read16(c, c->seg[S_DS], (uint16_t)(0xe060))); /*4A28*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0));
+    /*4A2A*/ cpu_push16(c, c->r[R_AX]);
+    /*4A2B*/ c->icount += 3; MG_CALL(0x5356,0x4A2E);
+    MG_NEED(9, 0x4A2E);
+    /*4A2E*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*4A2F*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c));
+    /*4A30*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(MG_SPECIAL_TARGET))); /*4A33*/ seg_write16(c, c->seg[S_DS], (uint16_t)(MG_AIR_UNITS), c->r[R_AX]);
+    /*4A36*/ mem_write8(c, phys(c->seg[S_DS], (uint16_t)(0xd3d6)), alu_logic(c, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(0xd3d6))) | 0x4, 0));
+    /*4A3B*/ seg_write16(c, c->seg[S_DS], (uint16_t)(MG_SPECIAL_SLOT), 0x0); /*4A41*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(0xe060)));
+    /*4A44*/ seg_write16(c, c->seg[S_DS], (uint16_t)(MG_SPECIAL_TARGET), c->r[R_AX]);
+    /*4A47*/ c->icount += 9; goto L4A81;
+L4A49:
+    MG_NEED(4, 0x4A49);
+    /*4A49*/ cpu_push16(c, seg_read16(c, c->seg[S_DS], (uint16_t)(MG_SPECIAL_TARGET))); /*4A4D*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0));
+    /*4A4F*/ cpu_push16(c, c->r[R_AX]);
+    /*4A50*/ c->icount += 3; MG_CALL(0x5356,0x4A53);
+    MG_NEED(9, 0x4A53);
+    /*4A53*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*4A54*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c));
+    /*4A55*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(0xe060))); /*4A58*/ seg_write16(c, c->seg[S_DS], (uint16_t)(MG_AIR_UNITS), c->r[R_AX]);
+    /*4A5B*/ mem_write8(c, phys(c->seg[S_DS], (uint16_t)(0xd3d6)), alu_logic(c, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(0xd3d6))) | 0x4, 0));
+    /*4A60*/ seg_write16(c, c->seg[S_DS], (uint16_t)(MG_SPECIAL_SLOT), 0x0); /*4A66*/ cpu_push16(c, c->r[R_AX]);
+    /*4A67*/ cpu_push16(c, seg_read16(c, c->seg[S_DS], (uint16_t)(MG_SPECIAL_TARGET)));
+    /*4A6B*/ c->icount += 8; MG_CALL(0x532A,0x4A6E);
+    MG_NEED(7, 0x4A6E);
+    /*4A6E*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*4A6F*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*4A70*/ set_r8(c, R_CL, (uint8_t)(0x5));
+    /*4A72*/ c->r[R_BX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(0xd3d8)));
+    /*4A76*/ set_r8(c, R_BL, (uint8_t)(alu_logic(c, get_r8(c, R_BL) & 0xDF, 0)));
+    /*4A79*/ c->r[R_BX] = (uint16_t)(x86_shift(c, 7, c->r[R_BX], get_r8(c, R_CL), 1)); /*4A7B*/ c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0;
+    c->icount += 7;
+    MG_NEED(1, 0x4A7C);
+    /*4A7C*/ c->op_cs=c->seg[S_CS]; c->op_ip=0x4A7C; c->ip=0x4A7E;
+    { const int ok_=x86_idiv16(c,c->r[R_BX],0); c->icount++; if (!ok_) return 1; }
+    MG_NEED(1, 0x4A7E);
+    /*4A7E*/ seg_write16(c, c->seg[S_DS], (uint16_t)(MG_TIME), c->r[R_AX]);
+    c->icount += 1;
+L4A81:
+    MG_NEED(2, 0x4A81);
+    /*4A81*/ alu_sub(c, seg_read16(c, c->seg[S_DS], (uint16_t)(MG_PRIMARY)), 0x8, 1, 0);
+    /*4A86*/ c->icount += 2; if (x86_cond(c,5)) goto L4ABC;
+    MG_NEED(4, 0x4A88);
+    /*4A88*/ cpu_push16(c, seg_read16(c, c->seg[S_DS], (uint16_t)(0xe060))); /*4A8C*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0));
+    /*4A8E*/ cpu_push16(c, c->r[R_AX]);
+    /*4A8F*/ c->icount += 3; MG_CALL(0x5356,0x4A92);
+    MG_NEED(4, 0x4A92);
+    /*4A92*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*4A93*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c));
+    /*4A94*/ alu_sub(c, seg_read16(c, c->seg[S_DS], (uint16_t)(0xd3d4)), 0x2, 1, 0);
+    /*4A99*/ c->icount += 4; if (x86_cond(c,5)) goto L4AA8;
+    MG_NEED(2, 0x4A9B);
+    /*4A9B*/ alu_sub(c, seg_read16(c, c->seg[S_DS], (uint16_t)(0xb38e)), 0x1, 1, 0);
+    /*4AA0*/ c->icount += 2; if (x86_cond(c,5)) goto L4AA8;
+    MG_NEED(1, 0x4AA2);
+    /*4AA2*/ seg_write16(c, c->seg[S_DS], (uint16_t)(0xd3d4), 0xC);
+    c->icount += 1;
+L4AA8:
+    MG_NEED(5, 0x4AA8);
+    /*4AA8*/ mem_write8(c, phys(c->seg[S_DS], (uint16_t)(0xd3d6)), alu_logic(c, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(0xd3d6))) | 0x40, 0));
+    /*4AAD*/ seg_write16(c, c->seg[S_DS], (uint16_t)(MG_SPECIAL_SLOT), 0x0); /*4AB3*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(0xe060)));
+    /*4AB6*/ seg_write16(c, c->seg[S_DS], (uint16_t)(MG_AIR_UNITS), c->r[R_AX]); /*4AB9*/ seg_write16(c, c->seg[S_DS], (uint16_t)(MG_SPECIAL_TARGET), c->r[R_AX]);
+    c->icount += 5;
+L4ABC:
+    MG_NEED(2, 0x4ABC);
+    /*4ABC*/ alu_sub(c, seg_read16(c, c->seg[S_DS], (uint16_t)(MG_SPECIAL_SLOT)), 0x0, 1, 0);
+    /*4AC1*/ c->icount += 2; if (x86_cond(c,5)) goto L4AC9;
+    MG_NEED(1, 0x4AC3);
+    /*4AC3*/ seg_write16(c, c->seg[S_DS], (uint16_t)(0xd3da), 0x4E1F);
+    c->icount += 1;
+L4AC9:
+    MG_NEED(2, 0x4AC9);
+    /*4AC9*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44), 0x0);
+    /*4ACE*/ c->icount += 2; goto L4B31;
+L4AD0:
+    MG_NEED(5, 0x4AD0);
+    /*4AD0*/ c->r[R_BX] = (uint16_t)(c->r[R_AX]); /*4AD2*/ set_r8(c, R_CL, (uint8_t)(0x4));
+    /*4AD4*/ c->r[R_BX] = (uint16_t)(x86_shift(c, 4, c->r[R_BX], get_r8(c, R_CL), 1));
+    /*4AD6*/ alu_logic(c, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] - 0x3419))) & 0x5, 0);
+    /*4ADB*/ c->icount += 5; if (x86_cond(c,5)) goto L4B20;
+    MG_NEED(7, 0x4ADD);
+    /*4ADD*/ c->r[R_AX] = (uint16_t)(0x12); /*4AE0*/ x86_imul16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44)));
+    /*4AE3*/ c->r[R_SI] = (uint16_t)(c->r[R_AX]); /*4AE5*/ cpu_push16(c, seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_SI] - 0x1fa0)));
+    /*4AE9*/ cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xcc))); /*4AED*/ c->r[R_DI] = (uint16_t)(c->r[R_BX]);
+    /*4AEF*/ c->icount += 6; MG_CALL(0x532A,0x4AF2);
+    MG_NEED(4, 0x4AF2);
+    /*4AF2*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*4AF3*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c));
+    /*4AF4*/ alu_sub(c, c->r[R_AX], seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x26)), 1, 0);
+    /*4AF7*/ c->icount += 4; if (x86_cond(c,13)) goto L4B20;
+    MG_NEED(2, 0x4AF9);
+    /*4AF9*/ alu_sub(c, seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_DI] - 0x3422)), 0x0, 1, 0);
+    /*4AFE*/ c->icount += 2; if (x86_cond(c,4)) goto L4B20;
+    MG_NEED(3, 0x4B00);
+    /*4B00*/ cpu_push16(c, seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_SI] - 0x1fa0)));
+    /*4B04*/ cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xcc)));
+    /*4B08*/ c->icount += 2; MG_CALL(0x532A,0x4B0B);
+    MG_NEED(8, 0x4B0B);
+    /*4B0B*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*4B0C*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c));
+    /*4B0D*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x26), c->r[R_AX]);
+    /*4B10*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_DI] - 0x3422))); /*4B14*/ set_r8(c, R_CL, (uint8_t)(0x4));
+    /*4B16*/ c->r[R_BX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_SI] - 0x1fa0)));
+    /*4B1A*/ c->r[R_BX] = (uint16_t)(x86_shift(c, 4, c->r[R_BX], get_r8(c, R_CL), 1));
+    /*4B1C*/ seg_write16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] - 0x3422), c->r[R_AX]);
+    c->icount += 8;
+L4B20:
+    MG_NEED(1, 0x4B20);
+    /*4B20*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xcc), alu_inc(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xcc)), 1));
+    c->icount += 1;
+L4B24:
+    MG_NEED(3, 0x4B24);
+    /*4B24*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xcc)));
+    /*4B28*/ alu_sub(c, seg_read16(c, c->seg[S_DS], (uint16_t)(MG_TARGET_COUNT)), c->r[R_AX], 1, 0);
+    /*4B2C*/ c->icount += 3; if (x86_cond(c,15)) goto L4AD0;
+L4B2E:
+    MG_NEED(1, 0x4B2E);
+    /*4B2E*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44), alu_inc(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44)), 1));
+    c->icount += 1;
+L4B31:
+    MG_NEED(2, 0x4B31);
+    /*4B31*/ alu_sub(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44)), 0x2, 1, 0);
+    /*4B35*/ c->icount += 2; if (x86_cond(c,13)) goto mission_map;
+    MG_NEED(6, 0x4B37);
+    /*4B37*/ c->r[R_AX] = (uint16_t)(0x12); /*4B3A*/ x86_imul16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44)));
+    /*4B3D*/ c->r[R_BX] = (uint16_t)(c->r[R_AX]); /*4B3F*/ cpu_push16(c, seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] - 0x1fa0)));
+    /*4B43*/ c->r[R_SI] = (uint16_t)(c->r[R_AX]);
+    /*4B45*/ c->icount += 5; MG_CALL(0x58BE,0x4B48);
+    MG_NEED(7, 0x4B48);
+    /*4B48*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*4B49*/ cpu_push16(c, c->r[R_AX]); /*4B4A*/ c->r[R_AX] = (uint16_t)(c->r[R_SI]);
+    /*4B4C*/ c->r[R_SI] = (uint16_t)(alu_add(c, c->r[R_SI], 0xE068, 1, 0)); /*4B50*/ cpu_push16(c, c->r[R_SI]); /*4B51*/ c->r[R_SI] = (uint16_t)(c->r[R_AX]);
+    /*4B53*/ c->icount += 6; MG_CALL(0x94AC,0x4B56);
+    MG_NEED(4, 0x4B56);
+    /*4B56*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*4B57*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c));
+    /*4B58*/ alu_sub(c, seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_SI] - 0x1fa0)), 0x3, 1, 0);
+    /*4B5D*/ c->icount += 4; if (x86_cond(c,13)) goto L4B2E;
+    MG_NEED(3, 0x4B5F);
+    /*4B5F*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x26), 0x7FFF); /*4B64*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xcc), 0x3);
+    /*4B6A*/ c->icount += 3; goto L4B24;
+
+mission_map: /* Convert the departure base to flight coordinates and build the map window. */
+    MG_NEED(12, 0x4B6C);
+    /*4B6C*/ set_r8(c, R_CL, (uint8_t)(0x4)); /*4B6E*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(MG_TIME)));
+    /*4B71*/ c->r[R_AX] = (uint16_t)(x86_shift(c, 7, c->r[R_AX], get_r8(c, R_CL), 1)); /*4B73*/ seg_write16(c, c->seg[S_DS], (uint16_t)(0xe06e), c->r[R_AX]);
+    /*4B76*/ c->r[R_BX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(0xe062)));
+    /*4B7A*/ c->r[R_BX] = (uint16_t)(x86_shift(c, 4, c->r[R_BX], get_r8(c, R_CL), 1));
+    /*4B7C*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] - 0x3420))); /*4B80*/ c->r[R_SI] = (uint16_t)(c->r[R_AX]);
+    /*4B82*/ c->r[R_DX] = (uint16_t)(alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0)); /*4B84*/ set_r8(c, R_CL, (uint8_t)(0x5));
+    /*4B86*/ c->r[R_DI] = (uint16_t)(c->r[R_BX]);
+    /*4B88*/ c->icount += 11; MG_CALL(0x97C0,0x4B8B);
+    MG_NEED(8, 0x4B8B);
+    /*4B8B*/ seg_write16(c, c->seg[S_DS], (uint16_t)(0xd29a), c->r[R_AX]); /*4B8E*/ seg_write16(c, c->seg[S_DS], (uint16_t)(0xd29c), c->r[R_DX]);
+    /*4B92*/ c->r[R_AX] = (uint16_t)(0x8000); /*4B95*/ c->r[R_DX] = (uint16_t)(alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0));
+    /*4B97*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_DI] - 0x341e)), 1, 0));
+    /*4B9B*/ c->r[R_DX] = (uint16_t)(alu_sub(c, c->r[R_DX], c->r[R_DX], 1, ((c->flags & F_CF) != 0))); /*4B9D*/ set_r8(c, R_CL, (uint8_t)(0x5));
+    /*4B9F*/ c->icount += 7; MG_CALL(0x97C0,0x4BA2);
+    MG_NEED(44, 0x4BA2);
+    /*4BA2*/ set_r8(c, R_CH, (uint8_t)(mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_DI] - 0x3419)))));
+    /*4BA6*/ c->r[R_CX] = (uint16_t)(alu_logic(c, c->r[R_CX] & 0x200, 1)); /*4BAA*/ c->r[R_BX] = (uint16_t)(c->r[R_AX]);
+    /*4BAC*/ alu_sub(c, c->r[R_CX], 0x1, 1, 0); /*4BAF*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], c->r[R_AX], 1, ((c->flags & F_CF) != 0)));
+    /*4BB1*/ c->r[R_AX] = (uint16_t)(alu_logic(c, c->r[R_AX] & 0x708, 1)); /*4BB4*/ c->r[R_CX] = (uint16_t)(c->r[R_DX]);
+    /*4BB6*/ c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0; /*4BB7*/ c->r[R_BX] = (uint16_t)(alu_sub(c, c->r[R_BX], c->r[R_AX], 1, 0));
+    /*4BB9*/ c->r[R_CX] = (uint16_t)(alu_sub(c, c->r[R_CX], c->r[R_DX], 1, ((c->flags & F_CF) != 0)));
+    /*4BBB*/ seg_write16(c, c->seg[S_DS], (uint16_t)(0xd326), c->r[R_BX]); /*4BBF*/ seg_write16(c, c->seg[S_DS], (uint16_t)(0xd328), c->r[R_CX]);
+    /*4BC3*/ set_r8(c, R_CL, (uint8_t)(0x4)); /*4BC5*/ c->r[R_BX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(0xe060)));
+    /*4BC9*/ c->r[R_BX] = (uint16_t)(x86_shift(c, 4, c->r[R_BX], get_r8(c, R_CL), 1));
+    /*4BCB*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] - 0x3420)));
+    /*4BCF*/ seg_write16(c, c->seg[S_DS], (uint16_t)(0x15b6), c->r[R_AX]);
+    /*4BD2*/ c->r[R_DX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] - 0x341e)));
+    /*4BD6*/ seg_write16(c, c->seg[S_DS], (uint16_t)(0x15b8), c->r[R_DX]); /*4BDA*/ c->r[R_BX] = (uint16_t)(c->r[R_AX]);
+    /*4BDC*/ c->r[R_AX] = (uint16_t)(x86_shift(c, 5, c->r[R_AX], 0x1, 1)); /*4BDE*/ c->r[R_SI] = (uint16_t)(x86_shift(c, 5, c->r[R_SI], 0x1, 1));
+    /*4BE0*/ c->r[R_SI] = (uint16_t)(alu_add(c, c->r[R_SI], c->r[R_AX], 1, 0)); /*4BE2*/ seg_write16(c, c->seg[S_DS], (uint16_t)(0x15b2), c->r[R_SI]);
+    /*4BE6*/ c->r[R_AX] = (uint16_t)(c->r[R_DX]); /*4BE8*/ c->r[R_DX] = (uint16_t)(x86_shift(c, 5, c->r[R_DX], 0x1, 1));
+    /*4BEA*/ c->r[R_SI] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_DI] - 0x341e)));
+    /*4BEE*/ c->r[R_SI] = (uint16_t)(x86_shift(c, 5, c->r[R_SI], 0x1, 1)); /*4BF0*/ c->r[R_SI] = (uint16_t)(alu_add(c, c->r[R_SI], c->r[R_DX], 1, 0));
+    /*4BF2*/ seg_write16(c, c->seg[S_DS], (uint16_t)(0x15b4), c->r[R_SI]); /*4BF6*/ c->r[R_SI] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(0xe074)));
+    /*4BFA*/ c->r[R_SI] = (uint16_t)(x86_shift(c, 4, c->r[R_SI], get_r8(c, R_CL), 1));
+    /*4BFC*/ c->r[R_DX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_SI] - 0x3420)));
+    /*4C00*/ seg_write16(c, c->seg[S_DS], (uint16_t)(0x15be), c->r[R_DX]);
+    /*4C04*/ c->r[R_DX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_SI] - 0x341e)));
+    /*4C08*/ seg_write16(c, c->seg[S_DS], (uint16_t)(0x15c0), c->r[R_DX]); /*4C0C*/ c->r[R_SI] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(0xe072)));
+    /*4C10*/ c->r[R_SI] = (uint16_t)(x86_shift(c, 4, c->r[R_SI], get_r8(c, R_CL), 1));
+    /*4C12*/ c->r[R_CX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_SI] - 0x3420)));
+    /*4C16*/ seg_write16(c, c->seg[S_DS], (uint16_t)(0x15ba), c->r[R_CX]);
+    /*4C1A*/ c->r[R_CX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_SI] - 0x341e)));
+    /*4C1E*/ seg_write16(c, c->seg[S_DS], (uint16_t)(0x15bc), c->r[R_CX]);
+    /*4C22*/ alu_logic(c, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(0xe064))) & 0x10, 0);
+    /*4C27*/ c->icount += 44; if (x86_cond(c,4)) goto mission_air_units;
+    MG_NEED(6, 0x4C29);
+    /*4C29*/ c->r[R_BX] = (uint16_t)(alu_logic(c, c->r[R_BX] & 0xFC00, 1)); /*4C2D*/ set_r8(c, R_BH, (uint8_t)(alu_add(c, get_r8(c, R_BH), 0x2, 0, 0)));
+    /*4C30*/ seg_write16(c, c->seg[S_DS], (uint16_t)(0x15b6), c->r[R_BX]); /*4C34*/ c->r[R_AX] = (uint16_t)(alu_logic(c, c->r[R_AX] & 0xFC00, 1));
+    /*4C37*/ set_r8(c, R_AH, (uint8_t)(alu_add(c, get_r8(c, R_AH), 0x2, 0, 0))); /*4C3A*/ seg_write16(c, c->seg[S_DS], (uint16_t)(0x15b8), c->r[R_AX]);
+    c->icount += 6;
+
+mission_air_units: /* Assign contacts/headings and optional targets to the active air units. */
+    MG_NEED(2, 0x4C3D);
+    /*4C3D*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44), 0x0);
+    /*4C42*/ c->icount += 2; goto L4D3D;
+L4C45:
+    MG_NEED(1, 0x4C45);
+    /*4C45*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xcc), alu_inc(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xcc)), 1));
+    c->icount += 1;
+L4C49:
+    MG_NEED(2, 0x4C49);
+    /*4C49*/ alu_sub(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xcc)), 0x8, 1, 0);
+    /*4C4E*/ c->icount += 2; if (x86_cond(c,13)) goto L4CAB;
+    MG_NEED(2, 0x4C50);
+    /*4C50*/ cpu_push16(c, seg_read16(c, c->seg[S_DS], (uint16_t)(MG_REGULAR_TARGETS)));
+    /*4C54*/ c->icount += 1; MG_CALL(0x76C0,0x4C57);
+    MG_NEED(8, 0x4C57);
+    /*4C57*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*4C58*/ c->r[R_BX] = (uint16_t)(c->r[R_AX]); /*4C5A*/ c->r[R_BX] = (uint16_t)(alu_inc(c, c->r[R_BX], 1));
+    /*4C5B*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xc), c->r[R_BX]); /*4C5E*/ set_r8(c, R_CL, (uint8_t)(0x4));
+    /*4C60*/ c->r[R_BX] = (uint16_t)(x86_shift(c, 4, c->r[R_BX], get_r8(c, R_CL), 1));
+    /*4C62*/ alu_logic(c, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] - 0x3419))) & 0x4, 0);
+    /*4C67*/ c->icount += 8; if (x86_cond(c,5)) goto L4C45;
+    MG_NEED(10, 0x4C69);
+    /*4C69*/ c->r[R_AX] = (uint16_t)(0x24); /*4C6C*/ x86_imul16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44)));
+    /*4C6F*/ c->r[R_SI] = (uint16_t)(c->r[R_AX]); /*4C71*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_SI] - 0x2c3e)));
+    /*4C75*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] - 0x341e)), 1, 0));
+    /*4C79*/ cpu_push16(c, c->r[R_AX]); /*4C7A*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] - 0x3420)));
+    /*4C7E*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_SI] - 0x2c40)), 1, 0));
+    /*4C82*/ cpu_push16(c, c->r[R_AX]);
+    /*4C83*/ c->icount += 9; MG_CALL(0x5743,0x4C86);
+    MG_NEED(8, 0x4C86);
+    /*4C86*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*4C87*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c));
+    /*4C88*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 6), c->r[R_AX]);
+    /*4C8B*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xe)), 1, 0));
+    /*4C8E*/ c->r[R_AX] = (uint16_t)(alu_sub(c, 0, c->r[R_AX], 1, 0)); /*4C90*/ cpu_push16(c, c->r[R_AX]); /*4C91*/ c->r[R_DI] = (uint16_t)(c->r[R_AX]);
+    /*4C93*/ c->icount += 7; MG_CALL(0x96AE,0x4C96);
+    MG_NEED(3, 0x4C96);
+    /*4C96*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*4C97*/ alu_sub(c, c->r[R_AX], seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x28)), 1, 0);
+    /*4C9A*/ c->icount += 3; if (x86_cond(c,13)) goto L4C45;
+    MG_NEED(2, 0x4C9C);
+    /*4C9C*/ cpu_push16(c, c->r[R_DI]);
+    /*4C9D*/ c->icount += 1; MG_CALL(0x96AE,0x4CA0);
+    MG_NEED(4, 0x4CA0);
+    /*4CA0*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*4CA1*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x28), c->r[R_AX]);
+    /*4CA4*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xc)));
+    /*4CA7*/ seg_write16(c, c->seg[S_DS], (uint16_t)(c->r[R_SI] - 0x2c42), c->r[R_AX]);
+    c->icount += 4;
+L4CAB:
+    MG_NEED(5, 0x4CAB);
+    /*4CAB*/ c->r[R_AX] = (uint16_t)(0x24); /*4CAE*/ x86_imul16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44)));
+    /*4CB1*/ c->r[R_BX] = (uint16_t)(c->r[R_AX]); /*4CB3*/ alu_logic(c, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] - 0x2c29))) & 0x1, 0);
+    /*4CB8*/ c->icount += 5; if (x86_cond(c,4)) goto L4CD5;
+    MG_NEED(2, 0x4CBA);
+    /*4CBA*/ alu_sub(c, seg_read16(c, c->seg[S_DS], (uint16_t)(MG_SPECIAL_SLOT)), 0xFFFF, 1, 0);
+    /*4CBF*/ c->icount += 2; if (x86_cond(c,4)) goto L4CD5;
+    MG_NEED(4, 0x4CC1);
+    /*4CC1*/ cpu_push16(c, seg_read16(c, c->seg[S_DS], (uint16_t)(MG_SPECIAL_TARGET))); /*4CC5*/ cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44)));
+    /*4CC8*/ c->r[R_SI] = (uint16_t)(c->r[R_AX]);
+    /*4CCA*/ c->icount += 3; MG_CALL(0x5356,0x4CCD);
+    MG_NEED(3, 0x4CCD);
+    /*4CCD*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*4CCE*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c));
+    /*4CCF*/ seg_write16(c, c->seg[S_DS], (uint16_t)(c->r[R_SI] - 0x2c26), 0x4E1F);
+    c->icount += 3;
+L4CD5:
+    MG_NEED(2, 0x4CD5);
+    /*4CD5*/ alu_sub(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44)), 0x0, 1, 0);
+    /*4CD9*/ c->icount += 2; if (x86_cond(c,4)) goto L4D3A;
+    MG_NEED(1, 0x4CDB);
+    /*4CDB*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x3a), 0x0);
+    c->icount += 1;
+L4CE0:
+    MG_NEED(4, 0x4CE0);
+    /*4CE0*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(MG_REGULAR_TARGETS))); /*4CE3*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], 0x3, 1, 0));
+    /*4CE6*/ cpu_push16(c, c->r[R_AX]);
+    /*4CE7*/ c->icount += 3; MG_CALL(0x76C0,0x4CEA);
+    MG_NEED(10, 0x4CEA);
+    /*4CEA*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*4CEB*/ c->r[R_AX] = (uint16_t)(alu_add(c, c->r[R_AX], 0x3, 1, 0));
+    /*4CEE*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xc), c->r[R_AX]); /*4CF1*/ set_r8(c, R_CL, (uint8_t)(0x4));
+    /*4CF3*/ c->r[R_BX] = (uint16_t)(c->r[R_AX]); /*4CF5*/ c->r[R_BX] = (uint16_t)(x86_shift(c, 4, c->r[R_BX], get_r8(c, R_CL), 1));
+    /*4CF7*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] - 0x341a)));
+    /*4CFB*/ c->r[R_AX] = (uint16_t)(alu_logic(c, c->r[R_AX] & 0x801, 1)); /*4CFE*/ c->r[R_AX] = (uint16_t)(alu_dec(c, c->r[R_AX], 1));
+    /*4CFF*/ c->icount += 10; if (x86_cond(c,5)) goto L4D08;
+    MG_NEED(2, 0x4D01);
+    /*4D01*/ alu_sub(c, seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] - 0x3416)), 0x0, 1, 0);
+    /*4D06*/ c->icount += 2; if (x86_cond(c,4)) goto L4D13;
+L4D08:
+    MG_NEED(4, 0x4D08);
+    /*4D08*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x3a)));
+    /*4D0B*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x3a), alu_inc(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x3a)), 1));
+    /*4D0E*/ alu_sub(c, c->r[R_AX], 0x14, 1, 0);
+    /*4D11*/ c->icount += 4; if (x86_cond(c,12)) goto L4CE0;
+L4D13:
+    MG_NEED(13, 0x4D13);
+    /*4D13*/ c->r[R_AX] = (uint16_t)(0x24); /*4D16*/ x86_imul16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44)));
+    /*4D19*/ c->r[R_BX] = (uint16_t)(c->r[R_AX]); /*4D1B*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] - 0x2c2c)));
+    /*4D1F*/ set_r8(c, R_CL, (uint8_t)(0x4)); /*4D21*/ c->r[R_BX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xc)));
+    /*4D24*/ c->r[R_BX] = (uint16_t)(x86_shift(c, 4, c->r[R_BX], get_r8(c, R_CL), 1));
+    /*4D26*/ seg_write16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] - 0x3418), c->r[R_AX]);
+    /*4D2A*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(0xb38e))); /*4D2D*/ c->r[R_AX] = (uint16_t)(alu_inc(c, c->r[R_AX], 1));
+    /*4D2E*/ cpu_push16(c, c->r[R_AX]); /*4D2F*/ c->r[R_SI] = (uint16_t)(c->r[R_BX]);
+    /*4D31*/ c->icount += 12; MG_CALL(0x76C0,0x4D34);
+    MG_NEED(3, 0x4D34);
+    /*4D34*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*4D35*/ c->r[R_AX] = (uint16_t)(alu_inc(c, c->r[R_AX], 1));
+    /*4D36*/ seg_write16(c, c->seg[S_DS], (uint16_t)(c->r[R_SI] - 0x3416), c->r[R_AX]);
+    c->icount += 3;
+L4D3A:
+    MG_NEED(1, 0x4D3A);
+    /*4D3A*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44), alu_inc(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44)), 1));
+    c->icount += 1;
+L4D3D:
+    MG_NEED(4, 0x4D3D);
+    /*4D3D*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(MG_AIR_COUNT))); /*4D40*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], 0x4, 1, 0));
+    /*4D43*/ alu_sub(c, c->r[R_AX], seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44)), 1, 0);
+    /*4D46*/ c->icount += 4; if (x86_cond(c,15)) goto L4D4B;
+    MG_NEED(1, 0x4D48);
+    /*4D48*/ c->icount += 1; goto mission_variants;
+L4D4B:
+    MG_NEED(7, 0x4D4B);
+    /*4D4B*/ c->r[R_AX] = (uint16_t)(0x24); /*4D4E*/ x86_imul16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44)));
+    /*4D51*/ c->r[R_BX] = (uint16_t)(c->r[R_AX]); /*4D53*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] - 0x2c2a)));
+    /*4D57*/ c->r[R_CX] = (uint16_t)(c->r[R_AX]); /*4D59*/ alu_logic(c, get_r8(c, R_AL) & 0x80, 0);
+    /*4D5B*/ c->icount += 7; if (x86_cond(c,5)) goto L4D60;
+    MG_NEED(1, 0x4D5D);
+    /*4D5D*/ c->icount += 1; goto L4CAB;
+L4D60:
+    MG_NEED(16, 0x4D60);
+    /*4D60*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x3e))); /*4D63*/ c->r[R_BX] = (uint16_t)(c->r[R_CX]);
+    /*4D65*/ c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0; /*4D66*/ c->r[R_AX] = (uint16_t)(alu_logic(c, c->r[R_AX] ^ c->r[R_DX], 1));
+    /*4D68*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], c->r[R_DX], 1, 0)); /*4D6A*/ c->r[R_CX] = (uint16_t)(0x2);
+    /*4D6D*/ c->r[R_AX] = (uint16_t)(x86_shift(c, 7, c->r[R_AX], get_r8(c, R_CL), 1));
+    /*4D6F*/ c->r[R_AX] = (uint16_t)(alu_logic(c, c->r[R_AX] ^ c->r[R_DX], 1)); /*4D71*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], c->r[R_DX], 1, 0));
+    /*4D73*/ c->r[R_CX] = (uint16_t)(c->r[R_AX]); /*4D75*/ c->r[R_AX] = (uint16_t)(0x4);
+    /*4D78*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], seg_read16(c, c->seg[S_DS], (uint16_t)(MG_QUALITY)), 1, 0)); /*4D7C*/ x86_imul16(c, c->r[R_CX]);
+    /*4D7E*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x28), c->r[R_AX]); /*4D81*/ alu_logic(c, get_r8(c, R_BL) & 0x40, 0);
+    /*4D84*/ c->icount += 16; if (x86_cond(c,4)) goto L4D8E;
+    MG_NEED(3, 0x4D86);
+    /*4D86*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x3e)));
+    /*4D89*/ c->r[R_AX] = (uint16_t)(x86_shift(c, 4, c->r[R_AX], 0x1, 1)); /*4D8B*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x28), c->r[R_AX]);
+    c->icount += 3;
+L4D8E:
+    MG_NEED(4, 0x4D8E);
+    /*4D8E*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(MG_REGULAR_TARGETS))); /*4D91*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], 0x3, 1, 0));
+    /*4D94*/ cpu_push16(c, c->r[R_AX]);
+    /*4D95*/ c->icount += 3; MG_CALL(0x76C0,0x4D98);
+    MG_NEED(8, 0x4D98);
+    /*4D98*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*4D99*/ c->r[R_AX] = (uint16_t)(alu_add(c, c->r[R_AX], 0x3, 1, 0));
+    /*4D9C*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x3a), c->r[R_AX]); /*4D9F*/ set_r8(c, R_CL, (uint8_t)(0x4));
+    /*4DA1*/ c->r[R_BX] = (uint16_t)(c->r[R_AX]); /*4DA3*/ c->r[R_BX] = (uint16_t)(x86_shift(c, 4, c->r[R_BX], get_r8(c, R_CL), 1));
+    /*4DA5*/ alu_logic(c, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] - 0x3419))) & 0x1, 0);
+    /*4DAA*/ c->icount += 8; if (x86_cond(c,5)) goto L4D8E;
+    MG_NEED(7, 0x4DAC);
+    /*4DAC*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(0x15b4)));
+    /*4DAF*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] - 0x341e)), 1, 0));
+    /*4DB3*/ cpu_push16(c, c->r[R_AX]); /*4DB4*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(0x15b2)));
+    /*4DB7*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] - 0x3420)), 1, 0));
+    /*4DBB*/ cpu_push16(c, c->r[R_AX]);
+    /*4DBC*/ c->icount += 6; MG_CALL(0x5413,0x4DBF);
+    MG_NEED(5, 0x4DBF);
+    /*4DBF*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*4DC0*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c));
+    /*4DC1*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x28), alu_add(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x28)), 0x10, 1, 0));
+    /*4DC5*/ alu_sub(c, c->r[R_AX], seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x28)), 1, 0);
+    /*4DC8*/ c->icount += 5; if (x86_cond(c,15)) goto L4D8E;
+    MG_NEED(3, 0x4DCA);
+    /*4DCA*/ cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x3a)));
+    /*4DCD*/ cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44)));
+    /*4DD0*/ c->icount += 2; MG_CALL(0x5356,0x4DD3);
+    MG_NEED(16, 0x4DD3);
+    /*4DD3*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*4DD4*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c));
+    /*4DD5*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x28), 0x3000); /*4DDA*/ c->r[R_AX] = (uint16_t)(0x24);
+    /*4DDD*/ x86_imul16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44))); /*4DE0*/ c->r[R_BX] = (uint16_t)(c->r[R_AX]);
+    /*4DE2*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] - 0x2c3e))); /*4DE6*/ set_r8(c, R_CL, (uint8_t)(0x4));
+    /*4DE8*/ c->r[R_SI] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(0xe062)));
+    /*4DEC*/ c->r[R_SI] = (uint16_t)(x86_shift(c, 4, c->r[R_SI], get_r8(c, R_CL), 1));
+    /*4DEE*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_SI] - 0x341e)), 1, 0));
+    /*4DF2*/ cpu_push16(c, c->r[R_AX]); /*4DF3*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_SI] - 0x3420)));
+    /*4DF7*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] - 0x2c40)), 1, 0));
+    /*4DFB*/ cpu_push16(c, c->r[R_AX]);
+    /*4DFC*/ c->icount += 15; MG_CALL(0x5743,0x4DFF);
+    MG_NEED(5, 0x4DFF);
+    /*4DFF*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*4E00*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c));
+    /*4E01*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xe), c->r[R_AX]); /*4E04*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xcc), 0x0);
+    /*4E0A*/ c->icount += 5; goto L4C49;
+
+mission_variants: /* Shift site variants through the original live nine-entry jump table. */
+    MG_NEED(2, 0x4E0D);
+    /*4E0D*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44), 0x0);
+    /*4E12*/ c->icount += 2; goto L4E8A;
+L4E14:
+    MG_NEED(4, 0x4E14);
+    /*4E14*/ c->r[R_BX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x36)));
+    /*4E17*/ c->r[R_BX] = (uint16_t)(x86_shift(c, 4, c->r[R_BX], 0x1, 1)); /*4E19*/ c->r[R_BX] = (uint16_t)(x86_shift(c, 4, c->r[R_BX], 0x1, 1));
+    /*4E1B*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] + 0x1ee6)));
+    c->icount += 4;
+L4E1F:
+    MG_NEED(2, 0x4E1F);
+    /*4E1F*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x36), c->r[R_AX]);
+    /*4E22*/ c->icount += 2; goto L4E50;
+L4E24:
+    MG_NEED(5, 0x4E24);
+    /*4E24*/ c->r[R_BX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x36)));
+    /*4E27*/ c->r[R_BX] = (uint16_t)(x86_shift(c, 4, c->r[R_BX], 0x1, 1)); /*4E29*/ c->r[R_BX] = (uint16_t)(x86_shift(c, 4, c->r[R_BX], 0x1, 1));
+    /*4E2B*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] + 0x1ee4)));
+    /*4E2F*/ c->icount += 5; goto L4E1F;
+L4E31:
+    MG_NEED(2, 0x4E31);
+    /*4E31*/ alu_sub(c, c->r[R_AX], 0x8, 1, 0);
+    /*4E34*/ c->icount += 2; if (x86_cond(c,7)) goto L4E50;
+    MG_NEED(3, 0x4E36);
+    /*4E36*/ c->r[R_AX] = (uint16_t)(x86_shift(c, 4, c->r[R_AX], 0x1, 1));
+    /*4E38*/ { const uint16_t temp_=c->r[R_BX]; c->r[R_BX] = (uint16_t)(c->r[R_AX]); c->r[R_AX] = (uint16_t)(temp_); }
+    /*4E39*/ c->ip=seg_read16(c,c->seg[S_CS],(uint16_t)(c->r[R_BX]+0x4E3E)); c->icount += 3;
+    switch(c->ip) { case 0x4E14: goto L4E14; case 0x4E24: goto L4E24; case 0x4E50: goto L4E50; default: return 1; }
+L4E50:
+    MG_NEED(7, 0x4E50);
+    /*4E50*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x36))); /*4E53*/ set_r8(c, R_CL, (uint8_t)(0x4));
+    /*4E55*/ c->r[R_BX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44)));
+    /*4E58*/ c->r[R_BX] = (uint16_t)(x86_shift(c, 4, c->r[R_BX], get_r8(c, R_CL), 1));
+    /*4E5A*/ seg_write16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] - 0x341c), c->r[R_AX]);
+    /*4E5E*/ alu_logic(c, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] - 0x341a))) & 0x8, 0);
+    /*4E63*/ c->icount += 7; if (x86_cond(c,4)) goto L4E87;
+    MG_NEED(4, 0x4E65);
+    /*4E65*/ c->r[R_AX] = (uint16_t)(0xA); /*4E68*/ cpu_push16(c, c->r[R_AX]); /*4E69*/ c->r[R_SI] = (uint16_t)(c->r[R_BX]);
+    /*4E6B*/ c->icount += 3; MG_CALL(0x76C0,0x4E6E);
+    MG_NEED(8, 0x4E6E);
+    /*4E6E*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c));
+    /*4E6F*/ { const uint16_t at_=(uint16_t)(MG_SETTINGS), lo_=seg_read16(c,c->seg[S_DS],at_), hi_=seg_read16(c,c->seg[S_DS],(uint16_t)(at_+2)); c->r[R_BX] = (uint16_t)(lo_); c->seg[S_ES]=hi_; }
+    /*4E73*/ c->r[R_CX] = (uint16_t)(seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x3a)));
+    /*4E77*/ c->r[R_CX] = (uint16_t)(alu_add(c, c->r[R_CX], seg_read16(c, c->seg[S_DS], (uint16_t)(MG_QUALITY)), 1, 0));
+    /*4E7B*/ c->r[R_CX] = (uint16_t)(alu_inc(c, c->r[R_CX], 1)); /*4E7C*/ c->r[R_CX] = (uint16_t)(alu_inc(c, c->r[R_CX], 1));
+    /*4E7D*/ alu_sub(c, c->r[R_CX], c->r[R_AX], 1, 0);
+    /*4E7F*/ c->icount += 8; if (x86_cond(c,13)) goto L4E87;
+    MG_NEED(1, 0x4E81);
+    /*4E81*/ seg_write16(c, c->seg[S_DS], (uint16_t)(c->r[R_SI] - 0x341c), 0x0);
+    c->icount += 1;
+L4E87:
+    MG_NEED(1, 0x4E87);
+    /*4E87*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44), alu_inc(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44)), 1));
+    c->icount += 1;
+L4E8A:
+    MG_NEED(3, 0x4E8A);
+    /*4E8A*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44)));
+    /*4E8D*/ alu_sub(c, seg_read16(c, c->seg[S_DS], (uint16_t)(0xcace)), c->r[R_AX], 1, 0);
+    /*4E91*/ c->icount += 3; if (x86_cond(c,14)) goto mission_grid;
+    MG_NEED(7, 0x4E93);
+    /*4E93*/ c->r[R_BX] = (uint16_t)(c->r[R_AX]); /*4E95*/ set_r8(c, R_CL, (uint8_t)(0x4));
+    /*4E97*/ c->r[R_BX] = (uint16_t)(x86_shift(c, 4, c->r[R_BX], get_r8(c, R_CL), 1));
+    /*4E99*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] - 0x341c)));
+    /*4E9D*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x36), c->r[R_AX]);
+    /*4EA0*/ c->r[R_AX] = (uint16_t)(alu_logic(c, c->r[R_AX] | c->r[R_AX], 1));
+    /*4EA2*/ c->icount += 7; if (x86_cond(c,4)) goto L4E87;
+    MG_NEED(2, 0x4EA4);
+    /*4EA4*/ alu_sub(c, c->r[R_AX], 0x15, 1, 0);
+    /*4EA7*/ c->icount += 2; if (x86_cond(c,4)) goto L4E87;
+    MG_NEED(3, 0x4EA9);
+    /*4EA9*/ c->r[R_AX] = (uint16_t)(0x5); /*4EAC*/ cpu_push16(c, c->r[R_AX]);
+    /*4EAD*/ c->icount += 2; MG_CALL(0x76C0,0x4EB0);
+    MG_NEED(8, 0x4EB0);
+    /*4EB0*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c));
+    /*4EB1*/ { const uint16_t at_=(uint16_t)(MG_SETTINGS), lo_=seg_read16(c,c->seg[S_DS],at_), hi_=seg_read16(c,c->seg[S_DS],(uint16_t)(at_+2)); c->r[R_BX] = (uint16_t)(lo_); c->seg[S_ES]=hi_; }
+    /*4EB5*/ alu_sub(c, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x3a)), 0x1, 1, 0);
+    /*4EBA*/ c->r[R_CX] = (uint16_t)(alu_sub(c, c->r[R_CX], c->r[R_CX], 1, ((c->flags & F_CF) != 0)));
+    /*4EBC*/ c->r[R_CX] = (uint16_t)(alu_inc(c, c->r[R_CX], 1)); /*4EBD*/ c->r[R_AX] = (uint16_t)(alu_add(c, c->r[R_AX], c->r[R_CX], 1, 0));
+    /*4EBF*/ c->r[R_AX] = (uint16_t)(alu_add(c, c->r[R_AX], seg_read16(c, c->seg[S_DS], (uint16_t)(MG_QUALITY)), 1, 0));
+    /*4EC3*/ c->icount += 8; goto L4E31;
+
+mission_grid: /* Remove selected bit-4 map markers according to quality. */
+    MG_NEED(2, 0x4EC6);
+    /*4EC6*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x38), 0x0);
+    /*4ECB*/ c->icount += 2; goto L4F02;
+L4ECD:
+    MG_NEED(1, 0x4ECD);
+    /*4ECD*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x42), alu_inc(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x42)), 1));
+    c->icount += 1;
+L4ED0:
+    MG_NEED(2, 0x4ED0);
+    /*4ED0*/ alu_sub(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x42)), 0x10, 1, 0);
+    /*4ED4*/ c->icount += 2; if (x86_cond(c,13)) goto L4EFF;
+    MG_NEED(6, 0x4ED6);
+    /*4ED6*/ set_r8(c, R_CL, (uint8_t)(0x4)); /*4ED8*/ c->r[R_SI] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x42)));
+    /*4EDB*/ c->r[R_SI] = (uint16_t)(x86_shift(c, 4, c->r[R_SI], get_r8(c, R_CL), 1));
+    /*4EDD*/ c->r[R_BX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x38)));
+    /*4EE0*/ alu_logic(c, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] + c->r[R_SI] - 0x3528))) & 0x10, 0);
+    /*4EE5*/ c->icount += 6; if (x86_cond(c,4)) goto L4ECD;
+    MG_NEED(3, 0x4EE7);
+    /*4EE7*/ c->r[R_AX] = (uint16_t)(0x5); /*4EEA*/ cpu_push16(c, c->r[R_AX]);
+    /*4EEB*/ c->icount += 2; MG_CALL(0x76C0,0x4EEE);
+    MG_NEED(3, 0x4EEE);
+    /*4EEE*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*4EEF*/ alu_sub(c, c->r[R_AX], seg_read16(c, c->seg[S_DS], (uint16_t)(MG_QUALITY)), 1, 0);
+    /*4EF3*/ c->icount += 3; if (x86_cond(c,12)) goto L4ECD;
+    MG_NEED(3, 0x4EF5);
+    /*4EF5*/ c->r[R_BX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x38)));
+    /*4EF8*/ mem_write8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] + c->r[R_SI] - 0x3528)), alu_logic(c, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] + c->r[R_SI] - 0x3528))) & 0xEF, 0));
+    /*4EFD*/ c->icount += 3; goto L4ECD;
+L4EFF:
+    MG_NEED(1, 0x4EFF);
+    /*4EFF*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x38), alu_inc(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x38)), 1));
+    c->icount += 1;
+L4F02:
+    MG_NEED(2, 0x4F02);
+    /*4F02*/ alu_sub(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x38)), 0x10, 1, 0);
+    /*4F06*/ c->icount += 2; if (x86_cond(c,13)) goto mission_flight;
+    MG_NEED(2, 0x4F08);
+    /*4F08*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x42), 0x0);
+    /*4F0D*/ c->icount += 2; goto L4ED0;
+
+mission_flight: /* Write weapon choices, mission duration and flight-handling defaults. */
+    MG_NEED(5, 0x4F0F);
+    /*4F0F*/ { const uint16_t at_=(uint16_t)(MG_HANDOVER), lo_=seg_read16(c,c->seg[S_DS],at_), hi_=seg_read16(c,c->seg[S_DS],(uint16_t)(at_+2)); c->r[R_BX] = (uint16_t)(lo_); c->seg[S_ES]=hi_; }
+    /*4F13*/ seg_write16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x38), 0x1); /*4F19*/ c->r[R_AX] = (uint16_t)(0x2); /*4F1C*/ cpu_push16(c, c->r[R_AX]);
+    /*4F1D*/ c->icount += 4; MG_CALL(0x76C0,0x4F20);
+    MG_NEED(17, 0x4F20);
+    /*4F20*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*4F21*/ alu_sub(c, c->r[R_AX], 0x1, 1, 0);
+    /*4F24*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], c->r[R_AX], 1, ((c->flags & F_CF) != 0)));
+    /*4F26*/ set_r8(c, R_AL, (uint8_t)(alu_logic(c, get_r8(c, R_AL) & 0xFC, 0))); /*4F28*/ c->r[R_AX] = (uint16_t)(alu_add(c, c->r[R_AX], 0x9, 1, 0));
+    /*4F2B*/ { const uint16_t at_=(uint16_t)(MG_HANDOVER), lo_=seg_read16(c,c->seg[S_DS],at_), hi_=seg_read16(c,c->seg[S_DS],(uint16_t)(at_+2)); c->r[R_BX] = (uint16_t)(lo_); c->seg[S_ES]=hi_; }
+    /*4F2F*/ seg_write16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x3c), c->r[R_AX]);
+    /*4F33*/ { const uint16_t at_=(uint16_t)(MG_HANDOVER), lo_=seg_read16(c,c->seg[S_DS],at_), hi_=seg_read16(c,c->seg[S_DS],(uint16_t)(at_+2)); c->r[R_BX] = (uint16_t)(lo_); c->seg[S_ES]=hi_; }
+    /*4F37*/ seg_write16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x3e), 0x0);
+    /*4F3D*/ { const uint16_t at_=(uint16_t)(MG_HANDOVER), lo_=seg_read16(c,c->seg[S_DS],at_), hi_=seg_read16(c,c->seg[S_DS],(uint16_t)(at_+2)); c->r[R_BX] = (uint16_t)(lo_); c->seg[S_ES]=hi_; }
+    /*4F41*/ seg_write16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x3a), 0x2); /*4F47*/ c->r[R_AX] = (uint16_t)(0xC);
+    /*4F4A*/ x86_imul16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 4)));
+    /*4F4D*/ { const uint16_t at_=(uint16_t)(MG_HANDOVER), lo_=seg_read16(c,c->seg[S_DS],at_), hi_=seg_read16(c,c->seg[S_DS],(uint16_t)(at_+2)); c->r[R_BX] = (uint16_t)(lo_); c->seg[S_ES]=hi_; }
+    /*4F51*/ seg_write16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x2e), c->r[R_AX]); /*4F55*/ alu_sub(c, c->r[R_AX], 0x2710, 1, 0);
+    /*4F58*/ c->icount += 17; if (x86_cond(c,14)) goto L4F64;
+    MG_NEED(2, 0x4F5A);
+    /*4F5A*/ { const uint16_t at_=(uint16_t)(MG_HANDOVER), lo_=seg_read16(c,c->seg[S_DS],at_), hi_=seg_read16(c,c->seg[S_DS],(uint16_t)(at_+2)); c->r[R_BX] = (uint16_t)(lo_); c->seg[S_ES]=hi_; }
+    /*4F5E*/ seg_write16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x3c), 0x11);
+    c->icount += 2;
+L4F64:
+    MG_NEED(4, 0x4F64);
+    /*4F64*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0)); /*4F66*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xa), c->r[R_AX]);
+    /*4F69*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44), c->r[R_AX]);
+    /*4F6C*/ c->icount += 4; goto L4FF4;
+L4F6F:
+    MG_NEED(6, 0x4F6F);
+    /*4F6F*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x40), 0xFFFF); /*4F74*/ c->r[R_AX] = (uint16_t)(0x12);
+    /*4F77*/ x86_imul16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44))); /*4F7A*/ c->r[R_BX] = (uint16_t)(c->r[R_AX]);
+    /*4F7C*/ alu_sub(c, seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] - 0x1fa2)), 0x1, 1, 0);
+    /*4F81*/ c->icount += 6; if (x86_cond(c,5)) goto L4F93;
+    MG_NEED(2, 0x4F83);
+    /*4F83*/ alu_sub(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xa)), 0x0, 1, 0);
+    /*4F87*/ c->icount += 2; if (x86_cond(c,5)) goto L4F93;
+    MG_NEED(2, 0x4F89);
+    /*4F89*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x40), 0x10); /*4F8E*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xa), 0x1);
+    c->icount += 2;
+L4F93:
+    MG_NEED(5, 0x4F93);
+    /*4F93*/ c->r[R_AX] = (uint16_t)(0x12); /*4F96*/ x86_imul16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44)));
+    /*4F99*/ c->r[R_BX] = (uint16_t)(c->r[R_AX]); /*4F9B*/ alu_sub(c, seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] - 0x1fa2)), 0x4, 1, 0);
+    /*4FA0*/ c->icount += 5; if (x86_cond(c,4)) goto L4FA9;
+    MG_NEED(2, 0x4FA2);
+    /*4FA2*/ alu_sub(c, seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] - 0x1fa2)), 0x3, 1, 0);
+    /*4FA7*/ c->icount += 2; if (x86_cond(c,5)) goto L4FAE;
+L4FA9:
+    MG_NEED(1, 0x4FA9);
+    /*4FA9*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x40), 0x12);
+    c->icount += 1;
+L4FAE:
+    MG_NEED(5, 0x4FAE);
+    /*4FAE*/ c->r[R_AX] = (uint16_t)(0x12); /*4FB1*/ x86_imul16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44)));
+    /*4FB4*/ c->r[R_BX] = (uint16_t)(c->r[R_AX]); /*4FB6*/ alu_sub(c, seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] - 0x1fa2)), 0x2, 1, 0);
+    /*4FBB*/ c->icount += 5; if (x86_cond(c,5)) goto L4FDB;
+    MG_NEED(9, 0x4FBD);
+    /*4FBD*/ set_r8(c, R_CL, (uint8_t)(0x4)); /*4FBF*/ c->r[R_BX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(c->r[R_BX] - 0x1fa0)));
+    /*4FC3*/ c->r[R_BX] = (uint16_t)(x86_shift(c, 4, c->r[R_BX], get_r8(c, R_CL), 1));
+    /*4FC5*/ set_r8(c, R_BL, (uint8_t)(mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] - 0x3414)))));
+    /*4FC9*/ c->r[R_BX] = (uint16_t)(alu_logic(c, c->r[R_BX] & 0x7F, 1));
+    /*4FCC*/ set_r8(c, R_AL, (uint8_t)(mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] - 0x280a)))));
+    /*4FD0*/ c->r[R_AX] = (uint16_t)(alu_logic(c, c->r[R_AX] & 0xF, 1)); /*4FD3*/ cpu_push16(c, c->r[R_AX]);
+    /*4FD4*/ c->icount += 8; MG_CALL(0x5282,0x4FD7);
+    MG_NEED(2, 0x4FD7);
+    /*4FD7*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*4FD8*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x40), c->r[R_AX]);
+    c->icount += 2;
+L4FDB:
+    MG_NEED(2, 0x4FDB);
+    /*4FDB*/ alu_sub(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x40)), 0xFFFF, 1, 0);
+    /*4FDF*/ c->icount += 2; if (x86_cond(c,4)) goto L4FF1;
+    MG_NEED(5, 0x4FE1);
+    /*4FE1*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x40)));
+    /*4FE4*/ c->r[R_SI] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44)));
+    /*4FE7*/ c->r[R_SI] = (uint16_t)(x86_shift(c, 4, c->r[R_SI], 0x1, 1));
+    /*4FE9*/ { const uint16_t at_=(uint16_t)(MG_HANDOVER), lo_=seg_read16(c,c->seg[S_DS],at_), hi_=seg_read16(c,c->seg[S_DS],(uint16_t)(at_+2)); c->r[R_BX] = (uint16_t)(lo_); c->seg[S_ES]=hi_; }
+    /*4FED*/ seg_write16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + c->r[R_SI] + 0x38), c->r[R_AX]);
+    c->icount += 5;
+L4FF1:
+    MG_NEED(1, 0x4FF1);
+    /*4FF1*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44), alu_inc(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44)), 1));
+    c->icount += 1;
+L4FF4:
+    MG_NEED(2, 0x4FF4);
+    /*4FF4*/ alu_sub(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44)), 0x2, 1, 0);
+    /*4FF8*/ c->icount += 2; if (x86_cond(c,13)) goto mission_training_weapons;
+    MG_NEED(1, 0x4FFA);
+    /*4FFA*/ c->icount += 1; goto L4F6F;
+
+mission_training_weapons: /* Training weapon overrides and the overlong-flight option. */
+    MG_NEED(5, 0x4FFD);
+    /*4FFD*/ { const uint16_t at_=(uint16_t)(MG_SETTINGS), lo_=seg_read16(c,c->seg[S_DS],at_), hi_=seg_read16(c,c->seg[S_DS],(uint16_t)(at_+2)); c->r[R_BX] = (uint16_t)(lo_); c->seg[S_ES]=hi_; }
+    /*5001*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x3c))); /*5005*/ c->r[R_CX] = (uint16_t)(c->r[R_AX]);
+    /*5007*/ alu_logic(c, get_r8(c, R_AL) & 0x2, 0);
+    /*5009*/ c->icount += 5; if (x86_cond(c,4)) goto L5060;
+    MG_NEED(2, 0x500B);
+    /*500B*/ alu_sub(c, seg_read16(c, c->seg[S_DS], (uint16_t)(0xb38e)), 0x0, 1, 0);
+    /*5010*/ c->icount += 2; if (x86_cond(c,5)) goto L5060;
+    MG_NEED(2, 0x5012);
+    /*5012*/ alu_logic(c, get_r8(c, R_CL) & 0x1, 0);
+    /*5015*/ c->icount += 2; if (x86_cond(c,4)) goto L502D;
+    MG_NEED(5, 0x5017);
+    /*5017*/ { const uint16_t at_=(uint16_t)(MG_HANDOVER), lo_=seg_read16(c,c->seg[S_DS],at_), hi_=seg_read16(c,c->seg[S_DS],(uint16_t)(at_+2)); c->r[R_BX] = (uint16_t)(lo_); c->seg[S_ES]=hi_; }
+    /*501B*/ seg_write16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x38), 0x5);
+    /*5021*/ { const uint16_t at_=(uint16_t)(MG_HANDOVER), lo_=seg_read16(c,c->seg[S_DS],at_), hi_=seg_read16(c,c->seg[S_DS],(uint16_t)(at_+2)); c->r[R_BX] = (uint16_t)(lo_); c->seg[S_ES]=hi_; }
+    /*5025*/ seg_write16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x3c), 0x1);
+    /*502B*/ c->icount += 5; goto L5041;
+L502D:
+    MG_NEED(4, 0x502D);
+    /*502D*/ { const uint16_t at_=(uint16_t)(MG_HANDOVER), lo_=seg_read16(c,c->seg[S_DS],at_), hi_=seg_read16(c,c->seg[S_DS],(uint16_t)(at_+2)); c->r[R_BX] = (uint16_t)(lo_); c->seg[S_ES]=hi_; }
+    /*5031*/ seg_write16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x38), 0x1);
+    /*5037*/ { const uint16_t at_=(uint16_t)(MG_HANDOVER), lo_=seg_read16(c,c->seg[S_DS],at_), hi_=seg_read16(c,c->seg[S_DS],(uint16_t)(at_+2)); c->r[R_BX] = (uint16_t)(lo_); c->seg[S_ES]=hi_; }
+    /*503B*/ seg_write16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x3c), 0x5);
+    c->icount += 4;
+L5041:
+    MG_NEED(6, 0x5041);
+    /*5041*/ { const uint16_t at_=(uint16_t)(MG_HANDOVER), lo_=seg_read16(c,c->seg[S_DS],at_), hi_=seg_read16(c,c->seg[S_DS],(uint16_t)(at_+2)); c->r[R_BX] = (uint16_t)(lo_); c->seg[S_ES]=hi_; }
+    /*5045*/ seg_write16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x3e), 0x0); /*504B*/ c->r[R_AX] = (uint16_t)(0xC);
+    /*504E*/ x86_imul16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 4))); /*5051*/ alu_sub(c, c->r[R_AX], 0x2710, 1, 0);
+    /*5054*/ c->icount += 6; if (x86_cond(c,14)) goto L5060;
+    MG_NEED(2, 0x5056);
+    /*5056*/ { const uint16_t at_=(uint16_t)(MG_HANDOVER), lo_=seg_read16(c,c->seg[S_DS],at_), hi_=seg_read16(c,c->seg[S_DS],(uint16_t)(at_+2)); c->r[R_BX] = (uint16_t)(lo_); c->seg[S_ES]=hi_; }
+    /*505A*/ seg_write16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x3e), 0x11);
+    c->icount += 2;
+L5060:
+    MG_NEED(1, 0x5060);
+    /*5060*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44), 0x0);
+    c->icount += 1;
+L5065:
+    MG_NEED(12, 0x5065);
+    /*5065*/ c->r[R_SI] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44)));
+    /*5068*/ c->r[R_SI] = (uint16_t)(x86_shift(c, 4, c->r[R_SI], 0x1, 1));
+    /*506A*/ { const uint16_t at_=(uint16_t)(MG_HANDOVER), lo_=seg_read16(c,c->seg[S_DS],at_), hi_=seg_read16(c,c->seg[S_DS],(uint16_t)(at_+2)); c->r[R_BX] = (uint16_t)(lo_); c->seg[S_ES]=hi_; }
+    /*506E*/ c->r[R_BX] = (uint16_t)((uint16_t)(c->r[R_BX] + 0x38));
+    /*5071*/ c->r[R_BX] = (uint16_t)(seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + c->r[R_SI])));
+    /*5074*/ set_r8(c, R_AL, (uint8_t)(mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] + 0x1ec6)))));
+    /*5078*/ set_r8(c, R_AH, (uint8_t)(alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0)));
+    /*507A*/ c->r[R_BX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(MG_HANDOVER)));
+    /*507E*/ seg_write16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + c->r[R_SI] + 0x40), c->r[R_AX]);
+    /*5082*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44), alu_inc(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44)), 1));
+    /*5085*/ alu_sub(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x44)), 0x4, 1, 0);
+    /*5089*/ c->icount += 12; if (x86_cond(c,12)) goto L5065;
+
+    /* Choose the original time-of-day offset and write the three time strings. */
+    MG_NEED(6, 0x508B);
+    /*508B*/ set_r8(c, R_AH, (uint8_t)(mem_read8(c, phys(c->seg[S_DS], (uint16_t)(0xe078)))));
+    /*508F*/ set_r8(c, R_AH, (uint8_t)(alu_add(c, get_r8(c, R_AH), mem_read8(c, phys(c->seg[S_DS], (uint16_t)(0xe066))), 0, 0)));
+    /*5093*/ c->r[R_AX] = (uint16_t)(alu_logic(c, c->r[R_AX] & 0xF00, 1)); /*5096*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 8), c->r[R_AX]);
+    /*5099*/ alu_sub(c, seg_read16(c, c->seg[S_DS], (uint16_t)(MG_PRIMARY)), 0x4, 1, 0);
+    /*509E*/ c->icount += 6; if (x86_cond(c,4)) goto L50A7;
+    MG_NEED(2, 0x50A0);
+    /*50A0*/ alu_sub(c, seg_read16(c, c->seg[S_DS], (uint16_t)(MG_SECONDARY)), 0x4, 1, 0);
+    /*50A5*/ c->icount += 2; if (x86_cond(c,5)) goto L50B2;
+L50A7:
+    MG_NEED(3, 0x50A7);
+    /*50A7*/ { const uint16_t at_=(uint16_t)(MG_HANDOVER), lo_=seg_read16(c,c->seg[S_DS],at_), hi_=seg_read16(c,c->seg[S_DS],(uint16_t)(at_+2)); c->r[R_BX] = (uint16_t)(lo_); c->seg[S_ES]=hi_; }
+    /*50AB*/ mem_write8(c, phys(c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x33)), 0x1);
+    /*50B0*/ c->icount += 3; goto L50E9;
+L50B2:
+    MG_NEED(3, 0x50B2);
+    /*50B2*/ { const uint16_t at_=(uint16_t)(MG_SETTINGS), lo_=seg_read16(c,c->seg[S_DS],at_), hi_=seg_read16(c,c->seg[S_DS],(uint16_t)(at_+2)); c->r[R_BX] = (uint16_t)(lo_); c->seg[S_ES]=hi_; }
+    /*50B6*/ alu_sub(c, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x42)), 0x0, 1, 0);
+    /*50BB*/ c->icount += 3; if (x86_cond(c,4)) goto L50CE;
+    MG_NEED(3, 0x50BD);
+    /*50BD*/ c->r[R_AX] = (uint16_t)(0xA); /*50C0*/ cpu_push16(c, c->r[R_AX]);
+    /*50C1*/ c->icount += 2; MG_CALL(0x76C0,0x50C4);
+    MG_NEED(5, 0x50C4);
+    /*50C4*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*50C5*/ alu_sub(c, c->r[R_AX], 0x1, 1, 0);
+    /*50C8*/ set_r8(c, R_AL, (uint8_t)(alu_sub(c, get_r8(c, R_AL), get_r8(c, R_AL), 0, ((c->flags & F_CF) != 0))));
+    /*50CA*/ set_r8(c, R_AL, (uint8_t)(alu_inc(c, get_r8(c, R_AL), 0)));
+    /*50CC*/ c->icount += 5; goto L50E1;
+L50CE:
+    MG_NEED(3, 0x50CE);
+    /*50CE*/ c->r[R_AX] = (uint16_t)(0xA); /*50D1*/ cpu_push16(c, c->r[R_AX]);
+    /*50D2*/ c->icount += 2; MG_CALL(0x76C0,0x50D5);
+    MG_NEED(3, 0x50D5);
+    /*50D5*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*50D6*/ alu_sub(c, c->r[R_AX], 0x2, 1, 0);
+    /*50D9*/ c->icount += 3; if (x86_cond(c,14)) goto L50DF;
+    MG_NEED(2, 0x50DB);
+    /*50DB*/ set_r8(c, R_AL, (uint8_t)(0x1));
+    /*50DD*/ c->icount += 2; goto L50E1;
+L50DF:
+    MG_NEED(1, 0x50DF);
+    /*50DF*/ set_r8(c, R_AL, (uint8_t)(alu_sub(c, get_r8(c, R_AL), get_r8(c, R_AL), 0, 0)));
+    c->icount += 1;
+L50E1:
+    MG_NEED(2, 0x50E1);
+    /*50E1*/ { const uint16_t at_=(uint16_t)(MG_HANDOVER), lo_=seg_read16(c,c->seg[S_DS],at_), hi_=seg_read16(c,c->seg[S_DS],(uint16_t)(at_+2)); c->r[R_BX] = (uint16_t)(lo_); c->seg[S_ES]=hi_; }
+    /*50E5*/ mem_write8(c, phys(c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x33)), get_r8(c, R_AL));
+    c->icount += 2;
+L50E9:
+    MG_NEED(4, 0x50E9);
+    /*50E9*/ cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 8))); /*50EC*/ c->r[R_AX] = (uint16_t)(0xD88);
+    /*50EF*/ cpu_push16(c, c->r[R_AX]);
+    /*50F0*/ c->icount += 3; MG_CALL(0x59FE,0x50F3);
+    MG_NEED(8, 0x50F3);
+    /*50F3*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*50F4*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c));
+    /*50F5*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(MG_TIME)));
+    /*50F8*/ c->r[R_AX] = (uint16_t)(alu_add(c, c->r[R_AX], seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 8)), 1, 0)); /*50FB*/ cpu_push16(c, c->r[R_AX]);
+    /*50FC*/ c->r[R_AX] = (uint16_t)(0xD7C); /*50FF*/ cpu_push16(c, c->r[R_AX]);
+    /*5100*/ c->icount += 7; MG_CALL(0x59FE,0x5103);
+    MG_NEED(9, 0x5103);
+    /*5103*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*5104*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c));
+    /*5105*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(MG_TIME)));
+    /*5108*/ c->r[R_AX] = (uint16_t)(alu_add(c, c->r[R_AX], seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 8)), 1, 0));
+    /*510B*/ c->r[R_AX] = (uint16_t)(alu_add(c, c->r[R_AX], 0x1C2, 1, 0)); /*510E*/ cpu_push16(c, c->r[R_AX]); /*510F*/ c->r[R_AX] = (uint16_t)(0xD82);
+    /*5112*/ cpu_push16(c, c->r[R_AX]);
+    /*5113*/ c->icount += 8; MG_CALL(0x59FE,0x5116);
+    MG_NEED(6, 0x5116);
+    /*5116*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c)); /*5117*/ c->r[R_BX] = (uint16_t)(cpu_pop16(c));
+    /*5118*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_DS], (uint16_t)(MG_TIME)));
+    /*511B*/ c->r[R_AX] = (uint16_t)(alu_add(c, c->r[R_AX], seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 8)), 1, 0));
+    /*511E*/ c->r[R_CX] = (uint16_t)(0x96); /*5121*/ c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0;
+    c->icount += 6;
+    MG_NEED(1, 0x5122);
+    /*5122*/ c->op_cs=c->seg[S_CS]; c->op_ip=0x5122; c->ip=0x5124;
+    { const int ok_=x86_idiv16(c,c->r[R_CX],0); c->icount++; if (!ok_) return 1; }
+    MG_NEED(6, 0x5124);
+    /*5124*/ seg_write16(c, c->seg[S_DS], (uint16_t)(MG_TIME), alu_sub(c, seg_read16(c, c->seg[S_DS], (uint16_t)(MG_TIME)), c->r[R_DX], 1, 0));
+    /*5128*/ c->r[R_SI] = (uint16_t)(cpu_pop16(c)); /*5129*/ c->r[R_DI] = (uint16_t)(cpu_pop16(c)); /*512A*/ c->r[R_SP] = (uint16_t)(c->r[R_BP]);
+    /*512C*/ c->r[R_BP] = (uint16_t)(cpu_pop16(c));
+    /*512D*/ c->icount += 6; near_ret(c); return 1;
+#undef MG_NEED
+#undef MG_CALL
+}
+
+
 static const recomp_override MATCHED[] = {
+    { "matched", "START.EXE", START_47304, 0x0000, 0x4239, start_mission_generate, "generate objectives, bases and mission handover", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x2F9D, vgame_frame_compose, "view set-up, 3D scene and view-change redraw", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x683E, vgame_projectiles, "weapons in flight", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x5852, vgame_air_traffic, "computer-flown aircraft", 1 },

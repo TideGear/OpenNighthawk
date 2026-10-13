@@ -524,6 +524,7 @@ static const struct { const char *module; uint16_t ip; int arg; uint16_t v[2]; }
 /* Exact code ranges when the default 0x300-byte window is unsuitable:
  * long/shared tails, or small walkers whose unrelated callees are nearby. */
 static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
+    { "START.EXE", 0x4239, 0x4239, 0x0EF5 },
     { "VGAME.EXE", 0x2F9D, 0x2F9D, 0x0A23 }, /* view compose through RET */
     { "VGAME.EXE", 0x683E, 0x683E, 0x0A05 }, /* projectiles through RET */
     { "VGAME.EXE", 0x5852, 0x5852, 0x0BA0 }, /* aircraft traffic through RET */
@@ -663,6 +664,7 @@ static uint64_t g_camera_seen;
  * compared states (all, and those the named routine finished itself). A
  * floor fails a 4,000-state run whose fixtures stopped reaching the arms. */
 static const struct { const char *module; uint16_t seg, ip, len; unsigned insns, floor; const char *what; } COVERED[] = {
+    { "START.EXE", 0, 0x4239, 0x0EF5, 1332, 1332, "mission generator" },
     { "VGAME.EXE", 0, 0x2F9D, 0x0A23, 938, 938, "view compose" },
     { "VGAME.EXE", 0, 0x683E, 0x0A05, 886, 886, "projectiles" },
     { "VGAME.EXE", 0, 0x5852, 0x0BA0, 998, 990, "aircraft traffic" },
@@ -670,7 +672,7 @@ static const struct { const char *module; uint16_t seg, ip, len; unsigned insns,
     { "VGAME.EXE", 0, 0x3ADA, 0x0A30, 848, 820, "frame update" },
     { "VGAME.EXE", 0, 0x5046, 0x0247, 195, 190, "ground defences" },
 };
-static int g_flight_fixture, g_frame_fixture, g_traffic_fixture, g_projectile_fixture, g_view_fixture, g_state_index;   /* flight-input fixtures; the state being compared */
+static int g_flight_fixture, g_frame_fixture, g_traffic_fixture, g_projectile_fixture, g_view_fixture, g_mission_fixture, g_state_index;   /* flight-input fixtures; the state being compared */
 static int g_cov = -1;                  /* the COVERED entry under test, or -1 */
 static uint16_t g_cov_ip;
 static unsigned long long g_cov_escapes;
@@ -709,7 +711,7 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
     const uint32_t watch = phys(cs, (uint16_t)(ip - g_below));
     const int watching = (g_below || g_watch_transient) && a->mem == g_mem[0];
     while (*steps < 100000) {
-        const unsigned watch_bytes = (ip == 0x2F9D || ip == 0x683E || ip == 0x5852 || ip == 0x3ADA || ip == 0x1EB0 || ip == 0xBCEF || ip == 0x983E || ip == 0x0016 || ip == 0x79BE || ip == 0x8A90) ? g_span : 0x300u + g_below;
+        const unsigned watch_bytes = (ip == 0x4239 || ip == 0x2F9D || ip == 0x683E || ip == 0x5852 || ip == 0x3ADA || ip == 0x1EB0 || ip == 0xBCEF || ip == 0x983E || ip == 0x0016 || ip == 0x79BE || ip == 0x8A90) ? g_span : 0x300u + g_below;
         if (watching && !g_self_written && memcmp(a->mem + watch, g_pristine + watch, watch_bytes)) g_self_written = 1;
         if (g_trace) printf("      %04X:%04X clk %llu sp %04X\n", a->seg[S_CS], a->ip, (unsigned long long)a->icount, a->r[R_SP]);
         const uint16_t here = a->ip;
@@ -794,6 +796,8 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
         /* A HUD divide fault is a comparable boundary even though it cannot
          * return normally. Stop before interpreting the random vector target. */
         if (g_camera_fixture && own && a->int_depth && here == 0xBE53) return 2;
+        if (g_mission_fixture && a->int_depth > depth_before)
+            return own && (here==0x499D || here==0x4A7C) ? 2 : 0;
         if (g_ground_fixture && a->int_depth > depth_before)
             return own && here == 0x5122 ? 2 : 0;
         if (g_projectile_fixture && a->int_depth > depth_before) {
@@ -925,6 +929,7 @@ int main(int argc, char **argv)
         g_traffic_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0x5852;
         g_projectile_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0x683E;
         g_view_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0x2F9D;
+        g_mission_fixture = !strcmp(o->module, "START.EXE") && o->seg == 0 && o->ip == 0x4239;
         g_cov = -1;
         for (unsigned k = 0; k < sizeof COVERED / sizeof COVERED[0]; k++)
             if (!strcmp(o->module, COVERED[k].module) && o->seg == COVERED[k].seg && o->ip == COVERED[k].ip) g_cov = (int)k;
@@ -934,7 +939,7 @@ int main(int argc, char **argv)
         g_watch_transient = (!strcmp(o->module, "VGAME.EXE") && o->seg == 0x1058 && o->ip == 0x0016) ||
             (o->seg == 0 &&
             ((!strcmp(o->module, "VGAME.EXE") && (o->ip == 0x2F9D || o->ip == 0x683E || o->ip == 0x5046 || o->ip == 0x5852 || o->ip == 0x3ADA || o->ip == 0x1EB0 || o->ip == 0xBCEF || o->ip == 0x983E || o->ip == 0x79BE || o->ip == 0x8A90)) ||
-             (!strcmp(o->module, "START.EXE") && (o->ip == 0x39B3 || o->ip == 0x39D5)) ||
+             (!strcmp(o->module, "START.EXE") && (o->ip == 0x4239 || o->ip == 0x39B3 || o->ip == 0x39D5)) ||
              (!strcmp(o->module, "END.EXE") && (o->ip == 0x1CB1 || o->ip == 0x1CD3)) ||
              (!strcmp(o->module, "PLAYER.EXE") && o->ip == 0x1E90)));
         for (uint32_t a = 0; a < MEM_SIZE; a += 8) { uint64_t v = rnd(); memcpy(g_pristine + a, &v, 8); }
@@ -967,6 +972,7 @@ int main(int argc, char **argv)
         unsigned long long ground_faults = 0;
         unsigned projectile_fault_mask = 0;
         unsigned long long projectile_faults = 0;
+        unsigned mission_fault_mask = 0; unsigned long long mission_faults = 0;
         unsigned traffic_fault_mask = 0;
         unsigned long long traffic_faults = 0;
         uint64_t hud_branches = 0;
@@ -1045,7 +1051,7 @@ int main(int argc, char **argv)
             r[R_SP] = (uint16_t)((r[R_SP] | 0x0100) & 0xFFFE);
             const uint16_t back = irq_frame && (s & 1) ? (uint16_t)(irq_frame->fault + irq_frame->advance)
                                                        : (uint16_t)(ip + 0x8000);
-            const uint16_t flags = (uint16_t)((rnd() & 0x0ED5u) | 0x0002u);
+            uint16_t flags = (uint16_t)((rnd() & 0x0ED5u) | 0x0002u);
             uint16_t small[4];
             for (int a = 0; a < 4; a++)
                 small[a] = (s & 4) ? (uint16_t)((int)(rnd() % 3) - 1) : (uint16_t)(rnd() % 32);
@@ -1819,6 +1825,135 @@ int main(int argc, char **argv)
                             (uint8_t)(words[j].value >> (8 * byte));
                     }
             }
+            /* Mission-generator fixtures: coherent synthetic targets, settings,
+             * objective tables and returning search/math/weapon helpers.
+             * One eighth remain unconstrained random controls. rand(), clamps,
+             * shifts, bearing and formatting are real. Normal routes retain
+             * every actual helper and world file.
+             *
+             * Modes 1/2 reject 101/one nearby searches before succeeding;
+             * 3 fixes a temporarily unsuitable primary; 4 rejects short routes;
+             * 5 has no matching mission entry on the first attempt; 6 rejects
+             * a pair with both bit-3 codes; 7 changes secondary timing at the
+             * accepted primary-time call (a deliberately staged, otherwise
+             * unreachable arm); 8 rejects one no-contact scan; 9 uses quality
+             * zero; 10 reaches long-flight options; 11 reaches upper clamps.
+             * Mode 0 includes both zero-divisor boundaries. */
+            if (!strcmp(o->module, "START.EXE") && o->ip == 0x4239 && (s & 7)) {
+                seg[S_DS] = seg[S_SS] = 0x0A95; /* small-model near pointers include frame copies */
+                flags = (uint16_t)(flags & (0xFFFFu ^ F_DF)); /* C caller contract; random controls retain both directions. */
+                r[R_SP] = 0xFF00;
+#define MW8(a_, v_) do { const uint32_t ma_ = phys(seg[S_DS], (uint16_t)(a_)); \
+    g_pristine[ma_] = g_mem[0][ma_] = g_mem[1][ma_] = (uint8_t)((v_)&0xFFu); } while (0)
+#define MW16(a_, v_) do { MW8(a_, (uint16_t)(v_)); MW8((a_)+1, (uint16_t)(v_)>>8); } while (0)
+                const unsigned mv=(unsigned)s>>3, mf=(unsigned)s&7;
+                const unsigned mt=mf==3 || mf==4 ? 0 : 1+mv/8%8;
+                const unsigned mm=mf==2?1:mf==3?2:mf==4?3:0;
+                const unsigned reg=mt==0?32:8, max=mt==0?40:12;
+                const unsigned mode=(mv/8)%12;
+                for(unsigned j=0;j<36;j++)MW8(0xE05E + j,0);
+                MW16(0xE0A0,mode); MW16(0xE0A2,0); MW16(0xE0A4,0); MW16(0xE0A6,0); MW16(0xE0A8,0);
+                MW16(0xE0AA, mode==3?3:(mv/32&1)?1:3); MW16(0xE0AE,(mv/32&1)?2:4);
+                MW16(0xE0AC, mode==10?0x4800:0x2800);
+                MW16(0xCACA, 0); MW16(0xCACC, 0x5000);
+                MW16(0xE096, 0); MW16(0xE098, 0x5200);
+                MW16(0xCACE, max); MW16(0xD33C, max); MW16(0xE084, reg);
+                MW16(0xCABE, mode==9?0:1+mv%3); MW16(0xAE8C, 117+s); MW16(0xAE8E, 0);
+                MW16(0xD890, 6); MW16(0xB38E, mt);
+                for(unsigned j=0;j<2;j++) {
+                    const uint16_t rec=(uint16_t)(0xD3BE + 36*j);
+                    for(unsigned b=0;b<36;b++)MW8(rec+b,0);
+                    MW16(rec+2, 0x3000 + 0x100*j); MW16(rec+4,0x4000);
+                    MW16(rec+0x16, 2); MW16(rec+0x1A, j==0 && mode==0?0:0x40);
+                    MW16(rec+0x18, ((mv&4)||mode==10?0:0x80)|((mv&1)?0x40:0)|((mv&2)?0x100:0));
+                }
+                for (unsigned j=0;j<256;j++) MW8(0xCAD8 + j, (mv&1)?0x10:0);
+                for (unsigned j=0;j<128;j++) MW8(0xD2A6 + j, j==0?2:0);
+                for (unsigned j=0;j<82*12;j++) MW8(0x11DA + j, 0);
+                for (unsigned j=0;j<2;j++) {
+                    MW16(0x11DA + 12*j, 0x1FF); MW16(0x11DC + 12*j, 7);
+                    MW16(0x11DE + 12*j, j?1:1+mv%((mm&1)?4:8)); MW16(0x11E0 + 12*j, 2);
+                    MW16(0x11E2 + 12*j, mode==6?8:(!j && (mode==7 || mode==10))?2:!j && mode==11?0x10:0);
+                    MW16(0x11E4 + 12*j, j?0:(mv/8%3==0?0:mv/8%3==1?1:0xFFFE));
+                }
+                for(unsigned j=0;j<2;j++) {
+                    const unsigned ent=j?55:5;
+                    MW16(0x11DA + 12*ent, 1); MW16(0x11DC + 12*ent, 7);
+                    MW16(0x11DE + 12*ent, j?5:2); MW16(0x11E0 + 12*ent, 2); MW16(0x11E2 + 12*ent, 2);
+                }
+                MW16(0x11DA + 24,0x1FF); /* eligible theatre, impossible tension: scan rejection */
+                for (unsigned j=0;j<max;j++) {
+                    const uint16_t rec=(uint16_t)(0xCBDE + 16*j);
+                    for(unsigned b=0;b<16;b++)MW8(rec+b,0);
+                    MW16(rec, mt==7 && j==reg?0x11:j); MW16(rec+2, mode==11?0x7000 + 16*j:0x2400 + 0x100*j);
+                    MW16(rec+4, mode==11?0x7000 + 16*j:0x4000 + 0x80*j); MW16(rec+6, j%4==0?0:j%4==1?1:j%4==2?0x15:2);
+                    MW16(rec+8, (j<reg?((mm&1) && j<=4?0x801:1):j==reg+1?1:j==reg+2?0x301:0x101)|((mv&2)?8:0));
+                }
+                for(unsigned j=0;j<0x100;j++) {
+                    const uint32_t ma_=0x50000 + j;
+                    g_pristine[ma_]=g_mem[0][ma_]=g_mem[1][ma_]=0;
+                }
+                g_pristine[0x50038]=g_mem[0][0x50038]=g_mem[1][0x50038]=(uint8_t)mt;
+                g_pristine[0x5003A]=g_mem[0][0x5003A]=g_mem[1][0x5003A]=(uint8_t)(mv/8%3);
+                g_pristine[0x50042]=g_mem[0][0x50042]=g_mem[1][0x50042]=(uint8_t)(mv&1);
+                g_pristine[0x5003C]=g_mem[0][0x5003C]=g_mem[1][0x5003C]=(uint8_t)mm;
+                g_pristine[0x5003E]=g_mem[0][0x5003E]=g_mem[1][0x5003E]=(uint8_t)(mode==9?0:1+mv%3);
+                static const uint8_t mission_near_stub[]={
+                    0x83,0x3E,0xA0,0xE0,0x01,0x75,0x0F,0xFF,0x06,0xA2,0xE0,0x83,
+                    0x3E,0xA2,0xE0,0x65,0x7F,0x78,0xB8,0xFF,0xFF,0xC3,0x83,0x3E,
+                    0xA0,0xE0,0x02,0x75,0x0F,0xFF,0x06,0xA2,0xE0,0x83,0x3E,0xA2,
+                    0xE0,0x01,0x75,0x62,0xB8,0xFF,0xFF,0xC3,0x83,0x3E,0xA0,0xE0,
+                    0x05,0x75,0x3F,0xFF,0x06,0xA2,0xE0,0x83,0x3E,0xA2,0xE0,0x01,
+                    0x75,0x1A,0xC7,0x06,0xDA,0x11,0x00,0x00,0xC7,0x06,0xE6,0x11,
+                    0x00,0x00,0xC7,0x06,0x16,0x12,0x00,0x00,0xC7,0x06,0x6E,0x14,
+                    0x00,0x00,0xEB,0x32,0xC7,0x06,0xDA,0x11,0xFF,0x01,0xC7,0x06,
+                    0xE6,0x11,0xFF,0x01,0xC7,0x06,0x16,0x12,0x01,0x00,0xC7,0x06,
+                    0x6E,0x14,0x01,0x00,0xEB,0x18,0x83,0x3E,0xA0,0xE0,0x06,0x75,
+                    0x11,0xFF,0x06,0xA2,0xE0,0x83,0x3E,0xA2,0xE0,0x01,0x74,0x06,
+                    0xC7,0x06,0xEE,0x11,0x00,0x00,0xA1,0xAE,0xE0,0xC3,
+                };
+                static const uint8_t mission_type_stub[]={
+                    0x83,0x3E,0xA0,0xE0,0x03,0x75,0x1F,0xFF,0x06,0xA4,0xE0,0x83,
+                    0x3E,0xA4,0xE0,0x01,0x75,0x0A,0xC7,0x06,0x16,0xCC,0x01,0x00,
+                    0xB8,0x03,0x00,0xC3,0xC7,0x06,0x16,0xCC,0x01,0x08,0xB8,0x03,
+                    0x00,0xC3,0xA1,0xAA,0xE0,0xC3,
+                };
+                static const uint8_t mission_distance_entry[]={
+                    0xE9,0xD3,0x94,
+                };
+                static const uint8_t mission_distance_stub[]={
+                    0x53,0x83,0x3E,0xA0,0xE0,0x04,0x75,0x10,0xFF,0x06,0xA6,0xE0,
+                    0x83,0x3E,0xA6,0xE0,0x14,0x7F,0x05,0xB8,0x00,0x00,0xEB,0x42,
+                    0x83,0x3E,0xA0,0xE0,0x07,0x75,0x12,0x89,0xE3,0x36,0x81,0x7F,
+                    0x02,0x8F,0x48,0x75,0x2E,0xC7,0x06,0x76,0xE0,0x02,0x00,0xEB,
+                    0x26,0x83,0x3E,0xA0,0xE0,0x08,0x75,0x1F,0x89,0xE3,0x36,0x81,
+                    0x7F,0x02,0xFC,0x48,0x75,0x15,0xFF,0x06,0xA8,0xE0,0xA1,0xA8,
+                    0xE0,0x3B,0x06,0x84,0xE0,0x77,0x08,0x8B,0x46,0xC2,0x2D,0xFF,
+                    0x7F,0xEB,0x03,0xA1,0xAC,0xE0,0x5B,0xC3,
+                };
+                static const uint8_t mission_unit_stub[]={
+                    0xC3,
+                };
+                static const uint8_t mission_point_distance_stub[]={
+                    0xB8,0x00,0x10,0xC3,
+                };
+                static const uint8_t mission_weapon_stub[]={
+                    0xB8,0x01,0x00,0xC3,
+                };
+                static const struct { unsigned at; const uint8_t *code; unsigned len; } helpers[]={
+                    {0x512e,mission_near_stub,sizeof mission_near_stub},
+                    {0x51e8,mission_type_stub,sizeof mission_type_stub},
+                    {0x532a,mission_distance_entry,sizeof mission_distance_entry},
+                    {0xe800,mission_distance_stub,sizeof mission_distance_stub},
+                    {0x5356,mission_unit_stub,sizeof mission_unit_stub},
+                    {0x5413,mission_point_distance_stub,sizeof mission_point_distance_stub},
+                    {0x5282,mission_weapon_stub,sizeof mission_weapon_stub},
+                };
+                for(unsigned j=0;j<sizeof helpers/sizeof helpers[0];j++)for(unsigned b=0;b<helpers[j].len;b++)
+                    g_pristine[helpers[j].at+b]=g_mem[0][helpers[j].at+b]=g_mem[1][helpers[j].at+b]=helpers[j].code[b];
+#undef MW8
+#undef MW16
+            }
             for (int k = 0; k < 2; k++)
                 setup_side(k ? &g_m.cpu : &g_cpu[0], o, cs, ip, r, seg, flags, back, s, small);
             int steps = 0;
@@ -1836,6 +1971,17 @@ int main(int argc, char **argv)
                 g_side[0].overflow = g_side[1].overflow = 1;
                 g_lost = 0; g_ncalls = 0; g_callover = 0;
                 const int ran = o->fn(&g_m);
+                if (g_mission_fixture) {
+                    if (!ran || g_lost || !g_m.cpu.int_depth) {
+                        fprintf(stderr, "mission generator missed divide fault (state %d)\n",s);
+                        mc++; mb++; restore(); continue;
+                    }
+                    mission_fault_mask |= a->op_ip==0x499D ? 1 : 2;
+                    mission_faults++; g_cpu[1]=g_m.cpu; mc++;
+                    g_ctx=" (mission generator divide fault)";
+                    mb += compare(o->module, ip, cs, ip, 0);
+                    g_ctx=""; restore(); continue;
+                }
                 if (g_projectile_fixture) {
                     if (!ran || g_lost || !g_m.cpu.int_depth) {
                         fprintf(stderr, "projectile update missed divide fault (state %d, original %04X, named %04X:%04X, depth %d, lost %d)\n",
@@ -2078,6 +2224,10 @@ int main(int argc, char **argv)
                     if (g_cov_cover[k]) fprintf(cover, "%04X %d\n", g_cov_ip + k, g_cov_whole[k]);
                 fclose(cover);
             }
+        }
+        if (g_mission_fixture) {
+            printf("  mission generator divide faults: %llu; sites %X (required 3)\n",mission_faults,mission_fault_mask);
+            if (states>=4000 && mission_fault_mask!=3) {fprintf(stderr,"mission fixture missed divide faults\n");mb++;}
         }
         if (g_ground_fixture) {
             printf("  ground reload divide fault states: %llu; mask %X (required 3)\n", ground_faults, ground_fault_mask);
