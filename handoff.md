@@ -37,6 +37,23 @@ Main uses normal /O2. Private worktrees `D:/f117-wt/setup-main-0010` and
 `D:/f117-wt/mission-generation-4239` retain PRIVATE /Od overrides; do not copy or
 merge them wholesale. Check GitHub CI for the new commits.
 
+## Batch of call-free leaf routines (private, started 13 October)
+
+`D:/f117-gate/batch-a/project` is a fast fixture loop (direct candidate object
+linked before frozen libs copied from the main build; /Od; build with
+`build-proof.cmd`, TEMP/TMP set to `D:117-gateatch-a	mp`). `matched.c` there is the
+main file plus 47 unreviewed DRAFT bodies (`draft_<mod>_<seg>_<ip>`, from
+`matched_draft.py`, instruction-transcript style) and table rows; `rows.txt` lists
+them: call-free, plain-RET, 15-160 instructions, from VGAME/START/END/PLAYER/
+MPS_LOGO/DSWAP/SETUP. Drafts are not yet named or explained, and no reach proof
+exists. Only PLAYER `0D0C` (palette set, port I/O) has been run: 137 states
+compared, 90 skipped, equal. Run the rest with
+`func_lockstep.exe --only MOD.EXE:HEX --states 4000 --verbose`; the IP must have NO
+leading zeros (`D0C`, not `0D0C`, or it silently compares 0 states). A passing draft
+still needs a real route that runs it (the gate's step 8 reports the ones that
+never run: drop those), a named and explained body, and one full gate for the
+whole batch. Nothing of this is in the repository.
+
 ## Current state
 
 Observer Stage 0 is complete (13 October): original projection returns and
