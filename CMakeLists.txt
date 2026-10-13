@@ -332,6 +332,9 @@ if(F117R_BUILD_TESTS)
     # Formation, pursuit, patrol, landing and obstacle-probe traffic worlds.
     add_test(NAME matched_air_traffic COMMAND func_lockstep --states 4000
       --only VGAME.EXE:5852)
+    # View compose: every view mode, cockpit/outside switches, tracked objects.
+    add_test(NAME matched_view_compose COMMAND func_lockstep --states 4000
+      --only VGAME.EXE:2F9D)
     # Incoming/player weapons, complete branch coverage and divide-error frames.
     add_test(NAME matched_projectiles COMMAND func_lockstep --states 4000
       --only VGAME.EXE:683E)

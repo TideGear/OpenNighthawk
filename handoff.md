@@ -64,6 +64,41 @@ Phase 2 work" below).
 
 ## Next up
 
+- **VGAME `2F9D` (view compose, 938 instructions / 2,595 bytes) is written and
+  lockstep-proven but NOT gated and NOT on master.** It lives on branch
+  `wip-view-compose-2f9d` (matched.c routine `vgame_frame_compose`, registered
+  in `MATCHED`; `tests/func_lockstep.c` fixture `g_view_fixture`, image
+  patches, SPANS, COVERED; CMake test `matched_view_compose`). At 4,000
+  states: 3,199 compared, zero mismatches, all 938 instructions reached by
+  states the named routine finished. The body was generated mechanically
+  (private converter `conv.py`, listing `2f9d.lst` and `mutate.py` in
+  `D:/f117-gate/next-drafts/vgame_frame_compose_2f9d.c/`) and carries
+  address comments, but has **no naming/explanatory comments yet**. Still to
+  do, in order: (1) done: three seeds (default, 1, 2) all 0 mismatches, and
+  `mutate.py` catches 5 of 7 mutants (the survivors: `3590` is an equivalent
+  mutant, `3923` changes an argument to a stubbed callee whose stack slot is
+  overwritten by the next call, which this harness cannot see; `mutate.py` now
+  backs the source up, but never kill it mid-run: an interrupted run once left
+  a mutant in matched.c and the next run saved it as the original); (2) skip;
+  (3) room audit of the `FC_NEED` claims (each block's count must equal
+  its instructions including the ending CALL); (4) rewrite the comments:
+  modes of `[C0A6]` (0/44h forward; 41h-43h side looks; 84h preset table at
+  B094; 85h behind; 87h ahead; 88h/89h/8Bh tracked object `[DED4]`; 8Ch
+  fixed; others keep last frame's angles), `[368C]` = cockpit flag,
+  `[2E7A]` = last mode, result `[2E66]`; (5) real route: build
+  `f117run`, run `camera_gradients` against `D:/f117-gate/span-emit/reference.json`
+  (copy `D:/f117-gate/frame-3ada/route-proof.py`, point it at this tree) and
+  require a positive `ran N times` for `2F9D`; (6) census, docs, full gate,
+  then merge. No fix site lies inside `2F9D`..`39BF`, so no `fix_inside`.
+  A callee list for new fixtures: 3CE, 1C1, 3A3B, 3A7D, 8462, 895E, 89F7,
+  D52E, EB82, EBBA and far 114A:0280/02FF/03FD, 0FB2:01E6, 1039:009D/00B7
+  return at once; clamp, abs, copy, shifts, trig, matrix run.
+- **Branch housekeeping (12 Oct).** 24 local branches are fully merged into
+  `master` and safe to delete; `flight-input` (older draft of aircraft
+  traffic, superseded by `b41ec9c`, its worktree `D:/f117-wt/span-emitter`
+  has uncommitted edits) and `irq-divide-fault` (kept on purpose, see below)
+  are not merged. Nothing has been deleted yet: ask the owner first.
+
 - **Gate speed experiment completed; retain `--jobs 16`.** The full
   24-worker gate at `7df74bf` passes with identical inputs and verdicts,
   but coverage/parity take 557/830 s against the latest same-code
