@@ -207,6 +207,25 @@ shared-flow span-edge candidate demonstrates why walk size is not census
 ownership. Synthetic checks run in Windows CI. Details and limits:
 [repeated-processes.md](repeated-processes.md#phase-2-candidate-reading).
 
+Aircraft traffic (`VGAME 0000:5852`) is integrated and fully gated:
+998 instructions / 2,976 bytes of named C covering formation, pursuit,
+patrol, steering, movement, landing,
+smoke, map markers and staggered firing decisions. Three 4,000-state seeds
+compare 2,056 / 2,017 / 2,078 states, zero mismatches, all 998 instructions
+reached inside the named routine at each seed. The harness also compares
+226 / 208 / 223 divide-error states at four sites, before following the
+fault vector; a wrong fault return address is caught. Returning driver and
+terrain-probe fixtures retain real math helpers; the private instruction
+transcript validates the harness. Room audit passes. Actual camera-gradient
+replay: 8,464 calls, all 234 checkpoints/final identical, no event overrun
+(130.7 s). Census: 818 functions / 88,207 bytes, P2 51.76%, overall 77.20%
+(826 addresses). Private evidence: `D:/f117-gate/frame-5852`.
+The fresh full gate (`gate-air-traffic.log`) passes 51 unit tests, all
+41 routes (40 fresh interpreter sessions; one shared reconnaissance
+replay), both instruction profiles and three matched seeds with zero
+mismatches and passing reachability/event checks, 1,963 s.
+Audited verdict: `frame-5852/current-full-gate-verdict.json`.
+
 Ground defences (`VGAME 0000:5046`) is integrated and fully gated:
 195 instructions / 583 bytes. Named C preserves the
 cockpit damage/stealth bars, staggered site reload timers and engagement,

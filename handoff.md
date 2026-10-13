@@ -15,20 +15,26 @@ standing practice, not a session-by-session log. Earlier sessions' detail
 
 ## Current state
 
-Fully gated runtime: ground defences (`VGAME 0000:5046`,
-`vgame_ground_defences`), 825 matched addresses, census 817 functions /
-85,231 bytes (P2 50.18%, overall 76.75%). Full gate
-`D:/f117-gate/gate-ground-defences.log`: 50 unit tests, all 41 routes
+Fully gated runtime: aircraft traffic (`VGAME 0000:5852`,
+`vgame_air_traffic`), 826 matched addresses, census 818 functions /
+88,207 bytes (P2 51.76%, overall 77.20%). Fresh full gate
+`D:/f117-gate/gate-air-traffic.log`: 51 unit tests, all 41 routes
 (40 fresh interpreter sessions; one shared reconnaissance replay), both
-instruction profiles and three matched
-seeds, zero mismatches, passing reachability/event checks, 1,834 s.
-Audited verdict: `D:/f117-gate/nav5046/full-gate-verdict.json`.
+instruction profiles and three matched seeds, zero mismatches, passing
+reachability/event checks, 1,963 s. Audited verdict:
+`D:/f117-gate/frame-5852/current-full-gate-verdict.json`.
 
-Targeted proof: three 4,000-state seeds, all 195 instructions reached inside
-the named routine; staged zero-divisor/overflow reloads compare the original
-divide-error frame after hand-back at `5122`, and removing the hand-back
-fails at state 1. Camera-gradient replay: 8,465 calls, all 234 checkpoints /
-final identical, no overrun. Private evidence: `D:/f117-gate/nav5046`.
+Targeted proof: three 4,000-state seeds compare 2,056 / 2,017 / 2,078
+states, all 998 instructions reached inside the named routine, zero
+mismatches. Divide-error states at four sites compare the interrupt frame;
+changing a fault return address is caught. Instruction transcript and
+callee-return/room audits pass. Camera replay: 8,464 calls, all 234
+checkpoints/final identical, no event overrun. Private evidence:
+`D:/f117-gate/frame-5852` (`current-*` files; older proofs also retained).
+
+Ground defences (`5046`) is integrated and fully gated too; its retained
+test requires zero-divisor and overflow faults and hand-back at `5122`.
+Proof: `D:/f117-gate/nav5046`; details are in the roadmap.
 
 Frame update (`3ADA`) and flight input (`1EB0`) are integrated and fully
 gated too. Matched routines with a switchable fix site after their entry
@@ -67,11 +73,12 @@ Phase 2 work" below).
 - Continue Phase 2 (naming/matching routines) — `tools/reimp_names.py` has
   the private lead list; current progress is in `docs/roadmap.md`, which
   has the full history of integrated-and-gated passes (span-edge/emit, HUD,
-  moving objects, camera-image, flight input, frame update, ground defences). Earlier proofs
-  and tested source snapshots remain under `D:/f117-gate/`; history is in
+  moving objects, camera-image, flight input, frame update, ground defences,
+  aircraft traffic). Earlier proofs and tested source snapshots remain
+  under `D:/f117-gate/`; history is in
   [docs/repeated-processes.md](docs/repeated-processes.md).
   Next candidates, all reached every flight frame from 3ADA: VGAME
-  `0x05852` (2,976 bytes), `0x0683E` (2,565, warnings/lamp timers); also
+  `0x0683E` (2,565, projectiles); also
   VGAME `0x02F9D` (2,595, frame compose), START `0x04239` (3,035),
   DSWAP `0x03DF3` (2,924).
   Method (repeated-processes.md): transcript first to validate the harness,
@@ -82,6 +89,10 @@ Phase 2 work" below).
   the real route (`route-proof.py`), which is what caught the room-claim
   defect. Private worktree `D:/f117-wt/span-emitter` has the proof build;
   `D:/f117-gate/frame-3ada/swap_body.py` swaps a body into it.
+  The `683E` draft is partial: `D:/f117-gate/frame-683e/named-12.c`
+  hands back at `6A32`, leaving guidance/movement/hit resolution unnamed.
+  Its old `vgame_warnings` name is misleading. It needs the existing
+  `fix_inside(c, 0x683F, 0x7243)` guard for D1TTL/D1PROX sites.
 - 04DD above, if a real route to it is ever found.
 
 ## How this project verifies Phase 2 work (read before matching a new routine)

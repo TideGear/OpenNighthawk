@@ -311,7 +311,7 @@ static int compare(const char *mod, uint32_t off, uint16_t cs, uint16_t ip, int 
 static void stub_driver_thunks(uint8_t *pristine, uint32_t at, const rc_module *m, const recomp_override *o)
 {
     const int vgame_draw = !strcmp(m->name, "VGAME.EXE") &&
-        ((o->seg == 0 && (o->ip == 0x3ADA || o->ip == 0x1EB0 || o->ip == 0xBCEF || o->ip == 0x983E || o->ip == 0x79BE || o->ip == 0x8A90 || o->ip == 0x9515 || o->ip == 0x1E79 || o->ip == 0xB171 || o->ip == 0xD6DD || o->ip == 0x4777 ||
+        ((o->seg == 0 && (o->ip == 0x5852 || o->ip == 0x3ADA || o->ip == 0x1EB0 || o->ip == 0xBCEF || o->ip == 0x983E || o->ip == 0x79BE || o->ip == 0x8A90 || o->ip == 0x9515 || o->ip == 0x1E79 || o->ip == 0xB171 || o->ip == 0xD6DD || o->ip == 0x4777 ||
                          o->ip == 0xD3F9 || o->ip == 0xD87C || o->ip == 0x72D8 ||
                            o->ip == 0x8A18 || o->ip == 0x881F || o->ip == 0x796E || o->ip == 0x3A4E ||
                            o->ip == 0xB0C2 || o->ip == 0xC45C)) ||
@@ -486,6 +486,7 @@ static const struct { const char *module; uint16_t ip; int arg; uint16_t v[2]; }
 /* Exact code ranges when the default 0x300-byte window is unsuitable:
  * long/shared tails, or small walkers whose unrelated callees are nearby. */
 static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
+    { "VGAME.EXE", 0x5852, 0x5852, 0x0BA0 }, /* aircraft traffic through RET */
     { "VGAME.EXE", 0x3ADA, 0x3ADA, 0x0A30 }, /* frame update through RET */
     { "VGAME.EXE", 0x1EB0, 0x1EB0, 0x0DD7 }, /* flight input through RET */
     { "VGAME.EXE", 0xBCEF, 0xBCEF, 0x0747 }, /* complete camera image */
@@ -622,11 +623,12 @@ static uint64_t g_camera_seen;
  * compared states (all, and those the named routine finished itself). A
  * floor fails a 4,000-state run whose fixtures stopped reaching the arms. */
 static const struct { const char *module; uint16_t seg, ip, len; unsigned insns, floor; const char *what; } COVERED[] = {
+    { "VGAME.EXE", 0, 0x5852, 0x0BA0, 998, 990, "aircraft traffic" },
     { "VGAME.EXE", 0, 0x1EB0, 0x0DD7, 1274, 1250, "flight input" },
     { "VGAME.EXE", 0, 0x3ADA, 0x0A30, 848, 820, "frame update" },
     { "VGAME.EXE", 0, 0x5046, 0x0247, 195, 190, "ground defences" },
 };
-static int g_flight_fixture, g_frame_fixture, g_state_index;   /* flight-input fixtures; the state being compared */
+static int g_flight_fixture, g_frame_fixture, g_traffic_fixture, g_state_index;   /* flight-input fixtures; the state being compared */
 static int g_cov = -1;                  /* the COVERED entry under test, or -1 */
 static uint16_t g_cov_ip;
 static unsigned long long g_cov_escapes;
@@ -651,6 +653,9 @@ static uint64_t g_moving_seen;
 static int g_camera_fixture;
 static int g_hud_fixture;
 static int g_ground_fixture;
+static const uint16_t TRAFFIC_DIVIDES[] = {
+    0x5B99, 0x5E0D, 0x5E89, 0x5E9D, 0x5F67, 0x5FF0, 0x6179, 0x6280
+};
 static uint64_t g_hud_seen;
 static uint64_t g_cockpit_seen;
 static unsigned g_nav_seen;
@@ -661,7 +666,7 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
     const uint32_t watch = phys(cs, (uint16_t)(ip - g_below));
     const int watching = (g_below || g_watch_transient) && a->mem == g_mem[0];
     while (*steps < 100000) {
-        const unsigned watch_bytes = (ip == 0x3ADA || ip == 0x1EB0 || ip == 0xBCEF || ip == 0x983E || ip == 0x0016 || ip == 0x79BE || ip == 0x8A90) ? g_span : 0x300u + g_below;
+        const unsigned watch_bytes = (ip == 0x5852 || ip == 0x3ADA || ip == 0x1EB0 || ip == 0xBCEF || ip == 0x983E || ip == 0x0016 || ip == 0x79BE || ip == 0x8A90) ? g_span : 0x300u + g_below;
         if (watching && !g_self_written && memcmp(a->mem + watch, g_pristine + watch, watch_bytes)) g_self_written = 1;
         if (g_trace) printf("      %04X:%04X clk %llu sp %04X\n", a->seg[S_CS], a->ip, (unsigned long long)a->icount, a->r[R_SP]);
         const uint16_t here = a->ip;
@@ -748,6 +753,11 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
         if (g_camera_fixture && own && a->int_depth && here == 0xBE53) return 2;
         if (g_ground_fixture && a->int_depth > depth_before)
             return own && here == 0x5122 ? 2 : 0;
+        if (g_traffic_fixture && a->int_depth > depth_before) {
+            for (unsigned k = 0; own && k < sizeof TRAFFIC_DIVIDES / sizeof TRAFFIC_DIVIDES[0]; k++)
+                if (here == TRAFFIC_DIVIDES[k]) return 2;
+            return 0;   /* do not follow a random callee's fault vector */
+        }
         if (g_hud_fixture && own && a->int_depth &&
             (here == 0x0051 || here == 0x0063 || here == 0x01BC || here == 0x0349)) return 2;
         /* The routine's own return: near RET (kind 1), far RETF (2), IRET (3). */
@@ -864,6 +874,7 @@ int main(int argc, char **argv)
         g_camera_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0xBCEF;
         g_flight_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0x1EB0;
         g_frame_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0x3ADA;
+        g_traffic_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0x5852;
         g_cov = -1;
         for (unsigned k = 0; k < sizeof COVERED / sizeof COVERED[0]; k++)
             if (!strcmp(o->module, COVERED[k].module) && o->seg == COVERED[k].seg && o->ip == COVERED[k].ip) g_cov = (int)k;
@@ -872,7 +883,7 @@ int main(int argc, char **argv)
         g_ground_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0x5046;
         g_watch_transient = (!strcmp(o->module, "VGAME.EXE") && o->seg == 0x1058 && o->ip == 0x0016) ||
             (o->seg == 0 &&
-            ((!strcmp(o->module, "VGAME.EXE") && (o->ip == 0x5046 || o->ip == 0x3ADA || o->ip == 0x1EB0 || o->ip == 0xBCEF || o->ip == 0x983E || o->ip == 0x79BE || o->ip == 0x8A90)) ||
+            ((!strcmp(o->module, "VGAME.EXE") && (o->ip == 0x5046 || o->ip == 0x5852 || o->ip == 0x3ADA || o->ip == 0x1EB0 || o->ip == 0xBCEF || o->ip == 0x983E || o->ip == 0x79BE || o->ip == 0x8A90)) ||
              (!strcmp(o->module, "START.EXE") && (o->ip == 0x39B3 || o->ip == 0x39D5)) ||
              (!strcmp(o->module, "END.EXE") && (o->ip == 0x1CB1 || o->ip == 0x1CD3)) ||
              (!strcmp(o->module, "PLAYER.EXE") && o->ip == 0x1E90)));
@@ -904,6 +915,8 @@ int main(int argc, char **argv)
         unsigned long long hud_faults = 0;
         unsigned ground_fault_mask = 0;
         unsigned long long ground_faults = 0;
+        unsigned traffic_fault_mask = 0;
+        unsigned long long traffic_faults = 0;
         uint64_t hud_branches = 0;
         uint64_t cockpit_branches = 0;
         unsigned nav_branches = 0;
@@ -1238,6 +1251,87 @@ int main(int argc, char **argv)
                     g_pristine[address] = g_mem[0][address] = g_mem[1][address] = (uint8_t)(words[j].value >> (8 * byte));
                 }
             }
+            /* Aircraft traffic: a few slots ([DEFC] 1-8, 24h-byte records
+             * at C16Ah) and field records ([E56C] 3-8) instead of random
+             * counts of thousands, so the loops finish; the records' own
+             * words stay random. */
+            if (g_traffic_fixture && (s & 7) != 0) {
+                const unsigned v = (unsigned)s >> 3;
+                const uint32_t h = (uint32_t)v * 0x9E3779B1u;
+                struct { uint16_t at, value; } words[160]; unsigned n = 0;
+#define TRAFFIC_WORD(a_, v_) do { words[n].at = (uint16_t)(a_); words[n++].value = (uint16_t)(v_); } while (0)
+                const uint16_t slots = (uint16_t)((s & 7) >= 4 ? 6 + v % 3 : 1 + v % 6);
+                TRAFFIC_WORD(0xDEFC, slots);
+                TRAFFIC_WORD(0x3D9C, (h >> 16) & 1 ? 0xFFFF : (h >> 17) % slots);
+                TRAFFIC_WORD(0xC0E0, 1 + (h >> 20) % 4);
+                TRAFFIC_WORD(0xE56C, 3 + (h >> 22) % 6);           /* field records searched */
+                if ((s & 7) >= 2) {
+                    /* A traffic world near the player (B2CC/B786/B79A): each
+                     * slot active, airborne or parked, hunting, returning to
+                     * a field, in formation or patrolling; fields of type 5
+                     * with flag 1 for the patrol's random pick. */
+                    static const uint16_t flags[] = { 0x0003, 0x0007, 0x0103, 0x0001, 0x0083, 0x0143, 0x0043, 0x0203 };
+                    const uint16_t px = (uint16_t)(0x2000 + 0x20 * (v % 5)), py = (uint16_t)(0x3000 + 0x18 * (v % 7));
+                    TRAFFIC_WORD(0xB2CC, px); TRAFFIC_WORD(0xB786, py); TRAFFIC_WORD(0xB79A, 0x200);
+                    TRAFFIC_WORD(0xC0D0, px); TRAFFIC_WORD(0xC0DE, py); TRAFFIC_WORD(0x2DF4, 0x200);
+                    TRAFFIC_WORD(0x3D90, (h >> 25) & 1 ? 5 : 0); TRAFFIC_WORD(0x9F94, (h >> 26) & 1 ? 0 : 10);
+                    TRAFFIC_WORD(0x39E0, (h >> 27) & 1); TRAFFIC_WORD(0x39D8, px + 0x40); TRAFFIC_WORD(0x39DA, py + 0x40);
+                    TRAFFIC_WORD(0x3688, 0); TRAFFIC_WORD(0x3D9C, (h >> 28) & 1 ? 0xFFFF : 0);
+                    const uint16_t patrol = (uint16_t)(1 + (v / 3) % (slots >= 6 ? slots - 5 : 1));
+                    TRAFFIC_WORD(0x9912, (s & 7) == 3 ? ((h >> 29) & 1 ? 0x40 : 0x38) : (uint16_t)(patrol << 4));
+                    for (unsigned j = 0; j < slots; j++) {
+                        const uint16_t rec = (uint16_t)(0xC16A + 0x24 * j);
+                        const uint32_t hj = h ^ (j * 0x85EBCA6Bu);
+                        TRAFFIC_WORD(rec + 0x18, flags[(hj >> 8) & 7]);                   /* C182: state */
+                        TRAFFIC_WORD(rec + 0x1A, (hj >> 11) & 1 ? 0x100 : 0);             /* C184 */
+                        TRAFFIC_WORD(rec + 0x1C, 1 + ((hj >> 12) & 3));                   /* C186: timer */
+                        TRAFFIC_WORD(rec + 0x02, px + 0x30 * (j + 1) - 0x60);             /* C16C: X */
+                        TRAFFIC_WORD(rec + 0x04, py + 0x28 * (j + 1) - 0x50);             /* C16E: Y */
+                        TRAFFIC_WORD(rec + 0x06, 0x180 + 0x40 * (j & 3));                 /* C170: height */
+                        TRAFFIC_WORD(rec + 0x16, 5);                                      /* C180: type */
+                        TRAFFIC_WORD(rec + 0x00, j % 3);                                  /* C16A: home field */
+                        if ((s & 7) == 3 && j == 1 && (hj >> 14) & 1) {                   /* far away */
+                            TRAFFIC_WORD(rec + 0x02, px + 0x6000); TRAFFIC_WORD(rec + 0x18, 0x0003);
+                        }
+                        if ((s & 7) == 2 && j == 0) {                                     /* lined up on the player */
+                            /* Cross both shooting-range thresholds (200h/400h). */
+                            const uint16_t range = (v & 1) ? 0x280 : 0x100;
+                            TRAFFIC_WORD(rec + 0x02, px); TRAFFIC_WORD(rec + 0x04, (hj >> 15) & 1 ? py - range : py + range);
+                            TRAFFIC_WORD(rec + 0x06, 0x200); TRAFFIC_WORD(rec + 0x18, 0x0003); TRAFFIC_WORD(rec + 0x1A, 0x100);
+                            TRAFFIC_WORD(rec + 0x10, (hj >> 16) & 1 ? 0 : 0x8000); TRAFFIC_WORD(rec + 0x12, 0);
+                        }
+                    }
+                    if ((s & 7) == 2) { TRAFFIC_WORD(0x3D90, 5); TRAFFIC_WORD(0x9F94, 0); TRAFFIC_WORD(0x39E0, 0); TRAFFIC_WORD(0x3D8E, (h >> 17) & 1 ? 0 : 4); }
+                    for (unsigned j = 0; j < 8; j++) {
+                        TRAFFIC_WORD(0xB2D6 + 16 * j, (h >> (j + 1)) & 1 ? 0x0001 : 0x0201);
+                        TRAFFIC_WORD(0xB2D8 + 16 * j, 5);
+                    }
+                }
+#undef TRAFFIC_WORD
+                int safe = 1;
+                for (unsigned j = 0; j < n; j++) for (unsigned byte = 0; byte < 2; byte++) {
+                    const uint32_t address = phys(seg[S_DS], (uint16_t)(words[j].at + byte));
+                    if (address >= at && address < at + m->size + 2) safe = 0;
+                }
+                if (safe) for (unsigned j = 0; j < n; j++) for (unsigned byte = 0; byte < 2; byte++) {
+                    const uint32_t address = phys(seg[S_DS], (uint16_t)(words[j].at + byte));
+                    g_pristine[address] = g_mem[0][address] = g_mem[1][address] = (uint8_t)(words[j].value >> (8 * byte));
+                }
+                if (safe && (s & 7) == 5) for (unsigned j = 0; j < 0x400; j++) {
+                    const uint32_t address = phys(seg[S_DS], (uint16_t)(0x3ABA + j));
+                    if (address < at || address >= at + m->size + 2)
+                        g_pristine[address] = g_mem[0][address] = g_mem[1][address] = (j & 1) ? 0x02 : 0x00;
+                }
+            }
+            if (g_traffic_fixture) {
+                /* A returning terrain probe sets the obstacle marker in one
+                 * fixture class; all other classes execute the real probe. */
+                static const uint8_t hit[] = { 0xC6, 0x06, 0xB2, 0xC6, 0x01, 0xC3 };
+                for (unsigned j = 0; j < sizeof hit; j++) {
+                    const uint32_t address = at + 0x78FD + j;
+                    g_pristine[address] = g_mem[0][address] = g_mem[1][address] = (s & 7) == 6 ? hit[j] : m->image[0x78FD + j];
+                }
+            }
             /* Small moving-object worlds separate target cycling, shadow
              * height, detail reduction, distant dots and exterior rendering.
              * Returning projection supplies controlled depth; real range and
@@ -1561,6 +1655,18 @@ int main(int argc, char **argv)
                 g_side[0].overflow = g_side[1].overflow = 1;
                 g_lost = 0; g_ncalls = 0; g_callover = 0;
                 const int ran = o->fn(&g_m);
+                if (g_traffic_fixture) {
+                    if (!ran || g_lost || !g_m.cpu.int_depth) {
+                        fprintf(stderr, "aircraft traffic missed divide fault (state %d)\n", s);
+                        mc++; mb++; restore(); continue;
+                    }
+                    for (unsigned k = 0; k < sizeof TRAFFIC_DIVIDES / sizeof TRAFFIC_DIVIDES[0]; k++)
+                        if (a->op_ip == TRAFFIC_DIVIDES[k]) traffic_fault_mask |= 1u << k;
+                    traffic_faults++; g_cpu[1] = g_m.cpu; mc++;
+                    g_ctx = " (aircraft traffic divide fault)";
+                    mb += compare(o->module, ip, cs, ip, 0);
+                    g_ctx = ""; restore(); continue;
+                }
                 if (g_ground_fixture) {
                     /* Require the named code to yield BEFORE IDIV; only then
                      * let the interpreter take the fault and compare its full
@@ -1782,6 +1888,10 @@ int main(int argc, char **argv)
         if (g_ground_fixture) {
             printf("  ground reload divide fault states: %llu; mask %X (required 3)\n", ground_faults, ground_fault_mask);
             if (states >= 4000 && ground_fault_mask != 3) { fprintf(stderr, "ground fixtures missed required divide faults\n"); mb++; }
+        }
+        if (g_traffic_fixture) {
+            printf("  aircraft traffic divide fault states: %llu; sites %02X\n", traffic_faults, traffic_fault_mask);
+            if (states >= 4000 && !traffic_faults) { fprintf(stderr, "traffic fixtures missed divide faults\n"); mb++; }
         }
         if (g_camera_fixture) {
             printf("  completed camera branch mask: %08llX (required FFFFFFFF)\n", (unsigned long long)camera_branches);

@@ -329,6 +329,9 @@ if(F117R_BUILD_TESTS)
     # divide-error frame after the named code hands back at IDIV.
     add_test(NAME matched_ground_defences COMMAND func_lockstep --states 4000
       --only VGAME.EXE:5046)
+    # Formation, pursuit, patrol, landing and obstacle-probe traffic worlds.
+    add_test(NAME matched_air_traffic COMMAND func_lockstep --states 4000
+      --only VGAME.EXE:5852)
     # Planted keys, quit-prompt answers, ejection, touchdown and crash states;
     # an escaped callee return or thin coverage fails the test.
     add_test(NAME matched_flight_input COMMAND func_lockstep --states 4000

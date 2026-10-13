@@ -390,6 +390,32 @@ Fresh full gate (`gate-ground-defences.log`): 50 tests, all 41 routes
 instruction profiles, three matched seeds and reachability/event checks
 pass, 1,834 s. Audited verdict: `nav5046/full-gate-verdict.json`.
 
+Aircraft traffic (`VGAME 0000:5852`, 12 Oct): 998 instructions / 2,976
+bytes. Rebuild the preserved named draft against current main; correct its
+map-marker and mission-clock explanations. Bounded traffic/field records,
+returning driver thunks and one obstacle-probe fixture class reach all 998
+instructions at three seeds (2,056 / 2,017 / 2,078 comparisons, no mismatches).
+Vary the staged pursuit range across 200h to exercise the shooting decision
+consistently. Fault-aware execution compares 226 / 208 / 223 divide-error
+states at `5B99`, `5E0D`, `5E89` and `6280`, including the interrupt frame;
+the other four divides are reached normally, not proven to fault. The private
+instruction transcript passes the same harness (2,079 comparisons at the
+default seed). Changing the fault return address at `6280` is caught.
+`matched_air_traffic` retains the fixture and coverage checks. Room claims
+pass the static audit without exceptions. All 16 callees' return forms
+are checked: only `EF36` pops arguments (RET 8), handled explicitly.
+The real camera replay takes 130.7 s: 8,464 calls, all 234 checkpoints/final
+identical, no event overrun.
+Private evidence: `D:/f117-gate/frame-5852`.
+The fresh full gate (`gate-air-traffic.log`) passes 51 unit tests, all
+41 routes (40 fresh interpreter sessions; one shared reconnaissance
+replay), both instruction profiles and three matched seeds with zero
+mismatches and passing reachability/event checks, 1,963 s.
+Audited verdict: `frame-5852/current-full-gate-verdict.json`.
+Matched comparisons: 2,704,945 / 2,703,866 / 2,704,280;
+third seed `0x06c1dfe9140d`. Stage seconds (build/tests, coverage,
+regeneration, parity): 253 / 634 / 27 / 1048.
+
 ## The gate (`tools/build_recomp.py`)
 
 Polygon caller (12 Oct): isolated current-main worktree, separate generated
