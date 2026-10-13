@@ -221,7 +221,10 @@ Candidate drafts can retain private static dossiers (`matched_draft.py
 --dossier`): image/tool identities, segmented coordinates, disjoint ranges,
 calls and unresolved flow. The polygon draft remains byte-identical; the
 shared-flow span-edge candidate demonstrates why walk size is not census
-ownership. Synthetic checks run in Windows CI. Details and limits:
+ownership. Synthetic checks run in Windows CI, including a C compile check
+that protects the draft tool from shared-emitter vocabulary changes (13 Oct:
+IC now accepts the opcode; translated-region TIMING records are omitted).
+Details and limits:
 [repeated-processes.md](repeated-processes.md#phase-2-candidate-reading).
 
 Weapons in flight (`VGAME 0000:683E`) is integrated and fully gated:

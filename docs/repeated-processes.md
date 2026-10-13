@@ -52,6 +52,16 @@ The next span-edge candidate's walk reaches 743 bytes across eight ranges,
 larger than its 419-byte census extent because of shared flow: do not treat
 the walk's byte count as progress or exclusive function ownership.
 
+Draft vocabulary check (13 October): `py tests/test_matched_draft.py` now
+also compiles a synthetic MOV/ADD/branch/CALL/RET draft against the matched
+headers in a temporary CMake project. The previous tool's IC() macro rejects
+the emitter's opcode argument (MSVC C4002); TIMING records also belong to
+translated regions and are omitted from these instruction-clock drafts.
+All six tests pass in 2.3 s. CTest/Python need not inherit a developer shell;
+the check uses the installed Windows compiler environment without logging it.
+This compiles a synthetic fixture, not original game bytes; no link or game
+install is needed. Windows CI runs the same test file.
+
 Clipped span edge (`0FB2:06A6`, 12 Oct): the named clipper preserves
 the temporary INT 0 vector, overflow halving, signed intersections and
 remainder rounding, boundary-column calls, live endpoints and tail jumps to

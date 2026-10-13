@@ -3,6 +3,10 @@ import sys
 import unittest
 import contextlib
 import io
+import shutil
+import subprocess
+import tempfile
+import os
 from pathlib import Path
 from unittest.mock import patch
 
@@ -29,6 +33,49 @@ class DossierTests(unittest.TestCase):
         self.assertEqual(result["unwalked_successors"], [])
         self.assertEqual(result["exits"], [{"ip": 12, "kind": "ret"}])
         self.assertEqual(draft(mod, 0, 0, "fixture"), draft(mod, 0, 0, "fixture", insns))
+
+    @unittest.skipUnless(shutil.which("cmake"), "CMake is needed for the draft compile check")
+    def test_draft_compiles_in_matched_context(self):
+        # MOV, ADD, branch, CALL and RET are synthetic, not game bytes.
+        mod = Module("FIXTURE.EXE", 0, "exe",
+                     bytes.fromhex("b8030083c0017503e80100c3c3"), set())
+        body, _ = draft(mod, 0, 0, "fixture")
+        root = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory(prefix="f117-draft-compile-") as folder:
+            tmp = Path(folder)
+            (tmp / "fixture.c").write_text(
+                '#include "machine.h"\n#include "x86_sem.h"\n'
+                'static int room(cpu_t *c, unsigned n) { return c->icount + n <= c->stop_at; }\n'
+                'static int guest_call(machine_t *m, uint16_t at, uint16_t ret) { return 0; }\n'
+                + body, encoding="utf-8")
+            includes = " ".join('"' + (root / "src" / d).as_posix() + '"'
+                                for d in ("cpu", "machine", "recomp"))
+            (tmp / "CMakeLists.txt").write_text(
+                'cmake_minimum_required(VERSION 3.20)\nproject(DraftCompile C)\n'
+                'add_library(draft_compile OBJECT fixture.c)\n'
+                'set_property(TARGET draft_compile PROPERTY C_STANDARD 11)\n'
+                'target_include_directories(draft_compile PRIVATE ' + includes + ')\n'
+                'if(MSVC)\n target_compile_options(draft_compile PRIVATE /WX)\n'
+                'else()\n target_compile_options(draft_compile PRIVATE -Werror=implicit-function-declaration)\n'
+                'endif()\n', encoding="utf-8")
+            env = dict(os.environ)
+            # CTest need not inherit a developer shell (build.cmd is setlocal).
+            # Ask the installed toolchain for its environment without logging it.
+            vswhere = Path(os.environ.get("ProgramFiles(x86)", "")) / "Microsoft Visual Studio/Installer/vswhere.exe"
+            if os.name == "nt" and not shutil.which("cl") and vswhere.is_file():
+                install = subprocess.check_output([str(vswhere), "-latest", "-products", "*",
+                    "-requires", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+                    "-property", "installationPath"], text=True).strip()
+                setup = Path(install) / "VC/Auxiliary/Build/vcvars64.bat"
+                env_script = tmp / "compiler-env.cmd"
+                env_script.write_text('@echo off\ncall "' + str(setup) + '" >nul\nif errorlevel 1 exit /b 1\nset\n', encoding="mbcs")
+                output = subprocess.check_output(["cmd", "/d", "/c", str(env_script)], text=True,
+                    env=dict(env, PATH=str(vswhere.parent) + os.pathsep + env.get("PATH", "")))
+                env.update(line.split("=", 1) for line in output.splitlines() if "=" in line and not line.startswith("="))
+            for command in (["cmake", "-S", str(tmp), "-B", str(tmp / "build")],
+                            ["cmake", "--build", str(tmp / "build"), "--config", "Release", "--parallel", "1"]):
+                result = subprocess.run(command, capture_output=True, text=True, env=env)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_limited_walk_retains_frontier(self):
         mod = Module("FIXTURE.EXE", 0, "exe", b"\x75\x01\xc3\xc3", set())

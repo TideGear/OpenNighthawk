@@ -135,7 +135,7 @@ def draft(mod, seg, entry, name, insns=None):
            "    int started_ = 0;           /* before the first instruction runs, a stop is a decline */",
            "#define CHECK(ip_) do { if (!room(c, 1)) { c->ip = (ip_); return started_; } "
            "c->op_ip = (ip_); started_ = 1; } while (0)",
-           "#define IC() (c->icount++)",
+           "#define IC(op_) (c->icount++)",
            "#define EXIT(ip_) do { c->ip = (uint16_t)(ip_); return 1; } while (0)",
            "#define INTERP(ip_) do { c->ip = (uint16_t)(ip_); return 1; } while (0)",
            "#define CODE8(o_) mem_read8(c, phys(c->seg[S_CS], (uint16_t)(o_)))",
@@ -163,7 +163,10 @@ def draft(mod, seg, entry, name, insns=None):
             lines = emit(ins, Ctx(inside, live))
             if ins.kind not in (K_RET, K_JMP, K_JMPIND, K_JMPFAR, K_HLT, K_INVALID) and nxt != ins.next_ip:
                 lines.append("goto L_%04X;" % ins.next_ip if inside(ins.next_ip) else "EXIT(0x%04X);" % ins.next_ip)
-        out += ["    " + l for l in lines]
+        # Handwritten matched routines use instruction clocks; the runtime
+        # bypasses them under the 386 timing profile. The shared emitter's
+        # TIMING vocabulary belongs to translated regions, not this context.
+        out += ["    " + l for l in lines if not l.lstrip().startswith("TIMING(")]
     out += ["#undef CHECK", "#undef IC", "#undef EXIT", "#undef INTERP", "#undef CODE8", "#undef CODE16", "}"]
     # Keep only the labels something jumps to.
     used = set(re.findall(r"goto (L_[0-9A-F]{4});", "\n".join(out)))

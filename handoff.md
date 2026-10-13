@@ -27,13 +27,11 @@ fixtures to bound the rejection loops, full instruction and return coverage,
 then a named rewrite, room audits, real route, census and a fresh full gate.
 Do not count this routine as matched or copy the private tree wholesale.
 
-That tree also holds a separate repair for `matched_draft.py`: its old IC()
-macro does not accept the emitter's opcode argument, and TIMING is a
-translated-region vocabulary absent from matched.c. The repaired tool accepts
-IC(op_) and omits TIMING records. Six tests pass, including a synthetic C
-compile regression that fails with C4002 on the old tool. Extract only the
-two-file patch `D:/f117-gate/start-4239/draft-tool-repair.patch` after observer
-integration, rerun those tests here, and commit/push it separately.
+The public draft tool now accepts the emitter's IC(op_) vocabulary and
+omits translated-region TIMING records. Six tests pass, including a synthetic
+C compile regression that fails with C4002 on the old tool. The private
+candidate's transcript used the equivalent local workaround before the tool
+repair; regenerate it from the repaired tool if its transcript is replaced.
 
 The first private build used unbounded Ninja jobs and caused severe shell
 latency. It was interrupted; no compiler children remained. The replacement
