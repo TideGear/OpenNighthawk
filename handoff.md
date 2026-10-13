@@ -52,6 +52,32 @@ non-normal-play input) is found that actually reaches it — fixture-only
 proof is not sufficient for this project (see "How this project verifies
 Phase 2 work" below).
 
+## In progress: VGAME 0x5046 (branch `wip-ground-defences-5046`, `e27c270`)
+
+Not in `master`: ungated, so it must not be pushed there until the gate passes.
+Named C `vgame_ground_defences` (ground threat reload timers, the two cockpit
+damage/stealth bars, the incoming-weapon marker and arc; 583 bytes, 195
+instructions, read against the Reimp's `frame_ground_defences` in
+`src/core/frame.c`). Lockstep at three seeds (default, `0xC0FFEE`, `0x5046a11`),
+4,000 states: zero mismatches, all 195 instructions reached by states the named
+routine finished itself (`COVERED` entry, floor 190). Fixtures stub the five
+callees that draw or engage (`0x528D`, `0x8F71`, `0x8625`, `0x8719`, far
+`114A:033C`); the clamp (`C67A`) and 32-bit divide (`EE9C`) run for real. No
+switchable fix lies inside its range. Private draft/dossier:
+`D:/f117-gate/nav5046`.
+
+Open before it can merge:
+- **The divide-fault hand-back is untested.** The reload `idiv cx` at `0x5122`
+  can fault (defence value FFC0h gives a zero divisor; FFBCh with S = 80h
+  overflows); the routine stops there and lets the original take it. A break test
+  (hand-back removed) still passes lockstep, even with plants for both cases, so
+  no fixture reaches it. Find out why (the plants may be overwritten, or the
+  served-site gate / timer test not met) and make a state that reaches it, then
+  confirm the break test fails.
+- Real-driver proof: a route must run it with a positive count (the strike and
+  camera routes call it every frame via `3ADA`), all checkpoints identical.
+- The full gate (command below), then merge, update roadmap.md and the census.
+
 ## Next up
 
 - **Gate speed experiment completed; retain `--jobs 16`.** The full
