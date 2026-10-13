@@ -338,6 +338,9 @@ if(F117R_BUILD_TESTS)
     # Setup: questions, driver names, calibration and extended-key handling.
     add_test(NAME matched_setup_questions COMMAND func_lockstep --states 4000
       --only SETUP.EXE:10)
+    # Logo sprite-set loader: streams, allocation/format failures and frame fixups.
+    add_test(NAME matched_logo_sprite_set COMMAND func_lockstep --states 4000
+      --only MPS_LOGO.EXE:112)
     # View compose: every view mode, cockpit/outside switches, tracked objects.
     add_test(NAME matched_view_compose COMMAND func_lockstep --states 4000
       --only VGAME.EXE:2F9D)

@@ -200,6 +200,23 @@ not the recompilation:
 
 ## Phase 2 - understood code
 
+Logo sprite-set loader (`MPS_LOGO 006D:0112`, `logo_sprite_set_load`) is matched:
+434 instructions / 1,164 bytes covering the stream open and signature check,
+record allocation, name and format validation, frame-pointer fix-up and palette
+preparation, with open/signature/allocation/name/format failures recorded in
+`DS:0C74`. All 78 room claims and 35 calls (33 far, two PUSH CS / near calls to
+RETF helpers, popped with `guest_call_pop`) audit exactly. Three optimized seeds
+compare 3,728 / 3,733 / 3,728 states, all 434 instructions reached by the named
+code, zero mismatches; authored streams and heap records stage the failure and
+signed-frame-count arms, while string copies and pointer normalisation stay real.
+The boot route's real logo load runs it once; the 10M-clock prefix matches all
+100 checkpoints and the final hash on both engines. The fresh full gate passes
+56 tests, 45 routes (44 fresh interpreter sessions), both 5,718,848-state
+instruction profiles and three 831-address matched seeds (2,725,058 / 2,723,998 /
+2,723,885 comparisons), zero mismatches and passing reachability/event checks,
+1,687 s. Census: 823 functions / 98,833 bytes, P2 57.39%, overall 81.31%.
+Private proof: `D:/f117-gate/logo-07e2`.
+
 SETUP questions and calibration (`0000:0010`, `setup_questions`) are matched:
 505 instructions / 1,267 bytes, with named stages for the shared handover,
 joystick question/calibration, driver names, sound choices and exit. All 122
@@ -638,7 +655,7 @@ instruction profiles and three 789-address matched seeds (2,561,209,
       Reimp's mapping; matched functions replacing translations one at a time,
       each held to the same parity checks. `tools/reimp_names.py` joins the
       Reimp's census (1,535 functions) with this project's regions as a private
-      lead list. 830 addresses are matched (822 of the census functions, 97,669 of
+      lead list. 831 addresses are matched (823 of the census functions, 98,833 of
       179,213 bytes); the table is at the end of `src/matched/matched.c` and the
       method is in [architecture.md](architecture.md#matched-routines-phase-2).
       The batches of 8-9 Oct add 37 + 34 + 47 VGAME, 34 + 40 + 45 START/END and 21 + 44 + 64

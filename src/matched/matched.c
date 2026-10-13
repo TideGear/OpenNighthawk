@@ -41032,7 +41032,504 @@ L04FE:
 #undef SQ_RUN
 }
 
+
+/* MPS_LOGO 006D:0112 (image 07E2): load an SS sprite set, fix up its
+ * frame pointers and prepare its palette. Inputs are a near name at BP+6,
+ * palette policy at BP+8 and RGB destination at BP+0A. DX:AX returns the
+ * allocated set or zero. DS:0C74 records open/signature/allocation/name/format
+ * errors (1/2/3/5/7); a name warning does not abort the load.
+ *
+ * The loaded record has a ten-byte name, format byte +0A (1..5), signed
+ * frame count +10, palette count +12 and palette shift +13. Its frame
+ * descriptors start at +22, fourteen bytes each, with a far data pointer.
+ * Frame -12/-10 holds the record, -28/-26 the normalised data base, -18
+ * the stream, -6 the loop index and -2 the palette cursor. Keep these live
+ * across calls, including allocation, streaming and frame conversion.
+ *
+ * Both same-segment calls are PUSH CS / CALL with far-returning callees;
+ * their trap must allow the extra CS pop. Relocated far operands stay live.
+ */
+static int logo_sprite_set_load(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+    int started=0;
+    enum { LS_STATUS=0x0C74, LS_RGB=0x0674, LS_SHIFT_TABLE=0x004A };
+#define LS_NEED(n_, ip_) do { if (!room(c,(n_))) { c->ip=(ip_); return started; } started=1; } while (0)
+#define LS_FAR(at_,ret_) do { if (!guest_call_far(m,(at_),(ret_))) return 1; } while (0)
+#define LS_SAME(at_,ret_) do { if (!guest_call_pop(m,(at_),(ret_),2)) return 1; } while (0)
+
+
+sprite_begin: /* Prepare the filename and open the stream. */
+    LS_NEED(9, 0x0112);
+    /*0112*/ x86_enter(c, 0x60, 0x0); /*0116*/ cpu_push16(c, c->r[R_DI]); /*0117*/ cpu_push16(c, c->r[R_SI]);
+    /*0118*/ c->r[R_DI] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 6))); /*011B*/ seg_write16(c, c->seg[S_DS], (uint16_t)(LS_STATUS), 0x0);
+    /*0121*/ cpu_push16(c, c->r[R_DI]); /*0122*/ c->r[R_AX] = (uint16_t)((uint16_t)(c->r[R_BP] - 0x38)); /*0125*/ cpu_push16(c, c->r[R_AX]);
+    /*0126*/ c->icount += 8; LS_FAR(0x0126,0x012B);
+L012B:
+    LS_NEED(5, 0x012B);
+    /*012B*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x4, 1, 0)); /*012E*/ c->r[R_AX] = (uint16_t)((uint16_t)(c->r[R_BP] - 0x38));
+    /*0131*/ cpu_push16(c, c->r[R_AX]); /*0132*/ cpu_push16(c, 0x50);
+    /*0135*/ c->icount += 4; LS_FAR(0x0135,0x013A);
+L013A:
+    LS_NEED(3, 0x013A);
+    /*013A*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x4, 1, 0)); /*013D*/ c->r[R_AX] = (uint16_t)(alu_logic(c, c->r[R_AX] | c->r[R_AX], 1));
+    /*013F*/ c->icount += 3; if (x86_cond(c,5)) goto L0150;
+L0141:
+    LS_NEED(4, 0x0141);
+    /*0141*/ cpu_push16(c, 0x52); /*0144*/ c->r[R_AX] = (uint16_t)((uint16_t)(c->r[R_BP] - 0x38)); /*0147*/ cpu_push16(c, c->r[R_AX]);
+    /*0148*/ c->icount += 3; LS_FAR(0x0148,0x014D);
+L014D:
+    LS_NEED(1, 0x014D);
+    /*014D*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x4, 1, 0));
+    c->icount += 1;
+L0150:
+    LS_NEED(4, 0x0150);
+    /*0150*/ cpu_push16(c, 0x56); /*0153*/ c->r[R_AX] = (uint16_t)((uint16_t)(c->r[R_BP] - 0x38)); /*0156*/ cpu_push16(c, c->r[R_AX]);
+    /*0157*/ c->icount += 3; LS_FAR(0x0157,0x015C);
+L015C:
+    LS_NEED(4, 0x015C);
+    /*015C*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x4, 1, 0)); /*015F*/ c->r[R_SI] = (uint16_t)(c->r[R_AX]);
+    /*0161*/ c->r[R_SI] = (uint16_t)(alu_logic(c, c->r[R_SI] | c->r[R_SI], 1));
+    /*0163*/ c->icount += 4; if (x86_cond(c,5)) goto sprite_signature;
+L0165:
+    LS_NEED(2, 0x0165);
+    /*0165*/ cpu_push16(c, c->r[R_SI]);
+    /*0166*/ c->icount += 1; LS_FAR(0x0166,0x016B);
+L016B:
+    LS_NEED(3, 0x016B);
+    /*016B*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x2, 1, 0)); /*016E*/ seg_write16(c, c->seg[S_DS], (uint16_t)(LS_STATUS), 0x1);
+    /*0174*/ c->icount += 3; goto sprite_failure;
+
+sprite_signature: /* Read the signature and recorded name. */
+    LS_NEED(6, 0x0178);
+    /*0178*/ cpu_push16(c, c->r[R_SI]); /*0179*/ cpu_push16(c, 0x7); /*017B*/ cpu_push16(c, 0x1);
+    /*017D*/ c->r[R_AX] = (uint16_t)((uint16_t)(c->r[R_BP] - 0x4c)); /*0180*/ cpu_push16(c, c->r[R_AX]);
+    /*0181*/ c->icount += 5; LS_FAR(0x0181,0x0186);
+L0186:
+    LS_NEED(6, 0x0186);
+    /*0186*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x8, 1, 0)); /*0189*/ mem_write8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x46)), 0x0);
+    /*018D*/ cpu_push16(c, 0x59); /*0190*/ c->r[R_AX] = (uint16_t)((uint16_t)(c->r[R_BP] - 0x4c)); /*0193*/ cpu_push16(c, c->r[R_AX]);
+    /*0194*/ c->icount += 5; LS_FAR(0x0194,0x0199);
+L0199:
+    LS_NEED(3, 0x0199);
+    /*0199*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x4, 1, 0)); /*019C*/ c->r[R_AX] = (uint16_t)(alu_logic(c, c->r[R_AX] | c->r[R_AX], 1));
+    /*019E*/ c->icount += 3; if (x86_cond(c,4)) goto L01B2;
+L01A0:
+    LS_NEED(2, 0x01A0);
+    /*01A0*/ cpu_push16(c, c->r[R_SI]);
+    /*01A1*/ c->icount += 1; LS_FAR(0x01A1,0x01A6);
+L01A6:
+    LS_NEED(3, 0x01A6);
+    /*01A6*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x2, 1, 0)); /*01A9*/ seg_write16(c, c->seg[S_DS], (uint16_t)(LS_STATUS), 0x2);
+    /*01AF*/ c->icount += 3; goto sprite_failure;
+L01B2:
+    LS_NEED(6, 0x01B2);
+    /*01B2*/ cpu_push16(c, c->r[R_SI]); /*01B3*/ cpu_push16(c, 0x9); /*01B5*/ cpu_push16(c, 0x1);
+    /*01B7*/ c->r[R_AX] = (uint16_t)((uint16_t)(c->r[R_BP] - 0x4c)); /*01BA*/ cpu_push16(c, c->r[R_AX]);
+    /*01BB*/ c->icount += 5; LS_FAR(0x01BB,0x01C0);
+L01C0:
+    LS_NEED(5, 0x01C0);
+    /*01C0*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x8, 1, 0)); /*01C3*/ cpu_push16(c, c->r[R_DI]);
+    /*01C4*/ c->r[R_AX] = (uint16_t)((uint16_t)(c->r[R_BP] - 0x4c)); /*01C7*/ cpu_push16(c, c->r[R_AX]);
+    /*01C8*/ c->icount += 4; LS_FAR(0x01C8,0x01CD);
+L01CD:
+    LS_NEED(3, 0x01CD);
+    /*01CD*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x4, 1, 0)); /*01D0*/ c->r[R_AX] = (uint16_t)(alu_logic(c, c->r[R_AX] | c->r[R_AX], 1));
+    /*01D2*/ c->icount += 3; if (x86_cond(c,4)) goto sprite_allocate;
+L01D4:
+    LS_NEED(1, 0x01D4);
+    /*01D4*/ seg_write16(c, c->seg[S_DS], (uint16_t)(LS_STATUS), 0x5);
+    c->icount += 1;
+
+sprite_allocate: /* Read the total size and allocate the set. */
+    LS_NEED(6, 0x01DA);
+    /*01DA*/ cpu_push16(c, c->r[R_SI]); /*01DB*/ cpu_push16(c, 0x4); /*01DD*/ cpu_push16(c, 0x1);
+    /*01DF*/ c->r[R_AX] = (uint16_t)((uint16_t)(c->r[R_BP] - 0x1c)); /*01E2*/ cpu_push16(c, c->r[R_AX]);
+    /*01E3*/ c->icount += 5; LS_FAR(0x01E3,0x01E8);
+L01E8:
+    LS_NEED(4, 0x01E8);
+    /*01E8*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x8, 1, 0)); /*01EB*/ cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x1a)));
+    /*01EE*/ cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x1c)));
+    /*01F1*/ c->icount += 3; LS_FAR(0x01F1,0x01F6);
+L01F6:
+    LS_NEED(5, 0x01F6);
+    /*01F6*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x4, 1, 0)); /*01F9*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x12), c->r[R_AX]);
+    /*01FC*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x10), c->r[R_DX]);
+    /*01FF*/ c->r[R_DX] = (uint16_t)(alu_logic(c, c->r[R_DX] | c->r[R_AX], 1));
+    /*0201*/ c->icount += 5; if (x86_cond(c,5)) goto sprite_header;
+L0203:
+    LS_NEED(2, 0x0203);
+    /*0203*/ cpu_push16(c, c->r[R_SI]);
+    /*0204*/ c->icount += 1; LS_FAR(0x0204,0x0209);
+L0209:
+    LS_NEED(3, 0x0209);
+    /*0209*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x2, 1, 0)); /*020C*/ seg_write16(c, c->seg[S_DS], (uint16_t)(LS_STATUS), 0x3);
+    /*0212*/ c->icount += 3; goto sprite_failure;
+
+sprite_header: /* Copy the name and read the fixed header fields. */
+    LS_NEED(6, 0x0216);
+    /*0216*/ c->r[R_DI] = (uint16_t)(c->r[R_AX]); /*0218*/ c->r[R_CX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 6)));
+    /*021B*/ cpu_push16(c, c->r[R_CX]); /*021C*/ cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x10))); /*021F*/ cpu_push16(c, c->r[R_DI]);
+    /*0220*/ c->icount += 5; LS_FAR(0x0220,0x0225);
+L0225:
+    LS_NEED(16, 0x0225);
+    /*0225*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x6, 1, 0)); /*0228*/ cpu_push16(c, c->r[R_SI]); /*0229*/ cpu_push16(c, 0x0);
+    /*022B*/ cpu_push16(c, 0x2); /*022D*/ cpu_push16(c, 0x0); /*022F*/ cpu_push16(c, 0x1); /*0231*/ c->r[R_AX] = (uint16_t)(c->r[R_DI]);
+    /*0233*/ c->r[R_DX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x10))); /*0236*/ c->r[R_CX] = (uint16_t)(c->r[R_AX]);
+    /*0238*/ c->r[R_BX] = (uint16_t)(c->r[R_DX]); /*023A*/ c->r[R_AX] = (uint16_t)(alu_add(c, c->r[R_AX], 0x10, 1, 0)); /*023D*/ cpu_push16(c, c->r[R_DX]);
+    /*023E*/ cpu_push16(c, c->r[R_AX]); /*023F*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x50), c->r[R_CX]);
+    /*0242*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x4e), c->r[R_BX]);
+    /*0245*/ c->icount += 15; LS_FAR(0x0245,0x024A);
+L024A:
+    LS_NEED(7, 0x024A);
+    /*024A*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0xE, 1, 0)); /*024D*/ cpu_push16(c, c->r[R_SI]); /*024E*/ cpu_push16(c, 0x4);
+    /*0250*/ cpu_push16(c, 0x1); /*0252*/ c->r[R_AX] = (uint16_t)((uint16_t)(c->r[R_BP] - 0x20)); /*0255*/ cpu_push16(c, c->r[R_AX]);
+    /*0256*/ c->icount += 6; LS_FAR(0x0256,0x025B);
+L025B:
+    LS_NEED(12, 0x025B);
+    /*025B*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x8, 1, 0)); /*025E*/ cpu_push16(c, c->r[R_SI]); /*025F*/ cpu_push16(c, 0x0);
+    /*0261*/ cpu_push16(c, 0x2); /*0263*/ cpu_push16(c, 0x0); /*0265*/ cpu_push16(c, 0x1);
+    /*0267*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x50)));
+    /*026A*/ c->r[R_DX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x4e)));
+    /*026D*/ c->r[R_AX] = (uint16_t)(alu_add(c, c->r[R_AX], 0xC, 1, 0)); /*0270*/ cpu_push16(c, c->r[R_DX]); /*0271*/ cpu_push16(c, c->r[R_AX]);
+    /*0272*/ c->icount += 11; LS_FAR(0x0272,0x0277);
+L0277:
+    LS_NEED(12, 0x0277);
+    /*0277*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0xE, 1, 0)); /*027A*/ cpu_push16(c, c->r[R_SI]); /*027B*/ cpu_push16(c, 0x0);
+    /*027D*/ cpu_push16(c, 0x2); /*027F*/ cpu_push16(c, 0x0); /*0281*/ cpu_push16(c, 0x1);
+    /*0283*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x50)));
+    /*0286*/ c->r[R_DX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x4e)));
+    /*0289*/ c->r[R_AX] = (uint16_t)(alu_add(c, c->r[R_AX], 0xE, 1, 0)); /*028C*/ cpu_push16(c, c->r[R_DX]); /*028D*/ cpu_push16(c, c->r[R_AX]);
+    /*028E*/ c->icount += 11; LS_FAR(0x028E,0x0293);
+L0293:
+    LS_NEED(14, 0x0293);
+    /*0293*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0xE, 1, 0)); /*0296*/ cpu_push16(c, c->r[R_SI]); /*0297*/ cpu_push16(c, 0x0);
+    /*0299*/ cpu_push16(c, 0x1); /*029B*/ cpu_push16(c, 0x0); /*029D*/ cpu_push16(c, 0x1);
+    /*029F*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x50)));
+    /*02A2*/ c->r[R_DX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x4e)));
+    /*02A5*/ c->r[R_AX] = (uint16_t)(alu_add(c, c->r[R_AX], 0xA, 1, 0)); /*02A8*/ cpu_push16(c, c->r[R_DX]); /*02A9*/ cpu_push16(c, c->r[R_AX]);
+    /*02AA*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x54), c->r[R_AX]);
+    /*02AD*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x52), c->r[R_DX]);
+    /*02B0*/ c->icount += 13; LS_FAR(0x02B0,0x02B5);
+L02B5:
+    LS_NEED(6, 0x02B5);
+    /*02B5*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0xE, 1, 0));
+    /*02B8*/ { const uint16_t at_=(uint16_t)(c->r[R_BP] - 0x50), lo_=seg_read16(c,c->seg[S_SS],at_), hi_=seg_read16(c,c->seg[S_SS],(uint16_t)(at_+2)); c->r[R_BX] = (uint16_t)(lo_); c->seg[S_ES]=hi_; }
+    /*02BB*/ mem_write8(c, phys(c->seg[S_ES], (uint16_t)(c->r[R_BX] + 9)), 0x0);
+    /*02C0*/ { const uint16_t at_=(uint16_t)(c->r[R_BP] - 0x54), lo_=seg_read16(c,c->seg[S_SS],at_), hi_=seg_read16(c,c->seg[S_SS],(uint16_t)(at_+2)); c->r[R_BX] = (uint16_t)(lo_); c->seg[S_ES]=hi_; }
+    /*02C3*/ alu_sub(c, mem_read8(c, phys(c->seg[S_ES], (uint16_t)(c->r[R_BX]))), 0x1, 0, 0);
+    /*02C7*/ c->icount += 6; if (x86_cond(c,3)) goto sprite_validate;
+L02C9:
+    LS_NEED(1, 0x02C9);
+    /*02C9*/ c->icount += 1; goto sprite_invalid;
+
+sprite_validate: /* Require format 1..5 before normalising the data pointer. */
+    LS_NEED(3, 0x02CC);
+    /*02CC*/ c->seg[S_ES] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x10)));
+    /*02CF*/ alu_sub(c, mem_read8(c, phys(c->seg[S_ES], (uint16_t)(c->r[R_DI] + 0xa))), 0x5, 0, 0);
+    /*02D4*/ c->icount += 3; if (x86_cond(c,6)) goto L02D9;
+L02D6:
+    LS_NEED(1, 0x02D6);
+    /*02D6*/ c->icount += 1; goto sprite_invalid;
+L02D9:
+    LS_NEED(15, 0x02D9);
+    /*02D9*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_DI] + 0x10))); /*02DD*/ c->r[R_CX] = (uint16_t)(c->r[R_AX]);
+    /*02DF*/ c->r[R_AX] = (uint16_t)(x86_shift(c, 4, c->r[R_AX], 0x1, 1)); /*02E1*/ c->r[R_AX] = (uint16_t)(alu_add(c, c->r[R_AX], c->r[R_CX], 1, 0));
+    /*02E3*/ c->r[R_AX] = (uint16_t)(x86_shift(c, 4, c->r[R_AX], 0x1, 1)); /*02E5*/ c->r[R_AX] = (uint16_t)(alu_add(c, c->r[R_AX], c->r[R_CX], 1, 0));
+    /*02E7*/ c->r[R_AX] = (uint16_t)(x86_shift(c, 4, c->r[R_AX], 0x1, 1)); /*02E9*/ c->r[R_AX] = (uint16_t)(alu_add(c, c->r[R_AX], c->r[R_DI], 1, 0));
+    /*02EB*/ c->r[R_DX] = (uint16_t)(c->seg[S_ES]); /*02ED*/ c->r[R_AX] = (uint16_t)(alu_add(c, c->r[R_AX], 0x22, 1, 0)); /*02F0*/ cpu_push16(c, c->r[R_DX]);
+    /*02F1*/ cpu_push16(c, c->r[R_AX]); /*02F2*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x58), c->r[R_DI]);
+    /*02F5*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x56), c->seg[S_ES]);
+    /*02F8*/ c->icount += 14; LS_FAR(0x02F8,0x02FD);
+L02FD:
+    LS_NEED(8, 0x02FD);
+    /*02FD*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x4, 1, 0)); /*0300*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x28), c->r[R_AX]);
+    /*0303*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x26), c->r[R_DX]); /*0306*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 6), 0x1);
+    /*030B*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x18), c->r[R_SI]);
+    /*030E*/ { const uint16_t at_=(uint16_t)(c->r[R_BP] - 0x58), lo_=seg_read16(c,c->seg[S_SS],at_), hi_=seg_read16(c,c->seg[S_SS],(uint16_t)(at_+2)); c->r[R_BX] = (uint16_t)(lo_); c->seg[S_ES]=hi_; }
+    /*0311*/ alu_sub(c, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x10)), 0x1, 1, 0);
+    /*0316*/ c->icount += 8; if (x86_cond(c,13)) goto L031B;
+L0318:
+    LS_NEED(1, 0x0318);
+    /*0318*/ c->icount += 1; goto sprite_palette;
+L031B:
+    LS_NEED(8, 0x031B);
+    /*031B*/ c->r[R_AX] = (uint16_t)((uint16_t)(c->r[R_DI] + 0x22));
+    /*031E*/ c->r[R_DX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x10))); /*0321*/ c->r[R_CX] = (uint16_t)(c->r[R_AX]);
+    /*0323*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 8), c->r[R_DX]);
+    /*0326*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0xa), c->r[R_CX]);
+    /*0329*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x18), c->r[R_SI]); /*032C*/ c->r[R_SI] = (uint16_t)(c->r[R_AX]);
+    /*032E*/ c->r[R_DI] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x18)));
+    c->icount += 8;
+
+sprite_frame_read: /* Stream a frame offset, then its five metadata words. */
+    LS_NEED(6, 0x0331);
+    /*0331*/ cpu_push16(c, c->r[R_DI]); /*0332*/ cpu_push16(c, 0x4); /*0334*/ cpu_push16(c, 0x1);
+    /*0336*/ c->r[R_AX] = (uint16_t)((uint16_t)(c->r[R_BP] - 0x24)); /*0339*/ cpu_push16(c, c->r[R_AX]);
+    /*033A*/ c->icount += 5; LS_FAR(0x033A,0x033F);
+L033F:
+    LS_NEED(11, 0x033F);
+    /*033F*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x8, 1, 0));
+    /*0342*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x24)));
+    /*0345*/ c->r[R_DX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x22)));
+    /*0348*/ c->r[R_AX] = (uint16_t)(alu_add(c, c->r[R_AX], seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x28)), 1, 0));
+    /*034B*/ c->r[R_DX] = (uint16_t)(alu_add(c, c->r[R_DX], 0x0, 1, ((c->flags & F_CF) != 0))); /*034E*/ c->r[R_CX] = (uint16_t)(0xC);
+    /*0351*/ c->r[R_DX] = (uint16_t)(x86_shift(c, 4, c->r[R_DX], get_r8(c, R_CL), 1));
+    /*0353*/ c->r[R_DX] = (uint16_t)(alu_add(c, c->r[R_DX], seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x26)), 1, 0));
+    /*0356*/ cpu_push16(c, c->r[R_DX]); /*0357*/ cpu_push16(c, c->r[R_AX]);
+    /*0358*/ c->icount += 10; LS_FAR(0x0358,0x035D);
+L035D:
+    LS_NEED(13, 0x035D);
+    /*035D*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x4, 1, 0));
+    /*0360*/ c->seg[S_ES] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 8)));
+    /*0363*/ seg_write16(c, c->seg[S_ES], (uint16_t)(c->r[R_SI]), c->r[R_AX]); /*0366*/ seg_write16(c, c->seg[S_ES], (uint16_t)(c->r[R_SI] + 2), c->r[R_DX]);
+    /*036A*/ cpu_push16(c, c->r[R_DI]); /*036B*/ cpu_push16(c, 0x0); /*036D*/ cpu_push16(c, 0x2); /*036F*/ cpu_push16(c, 0x0); /*0371*/ cpu_push16(c, 0x1);
+    /*0373*/ c->r[R_AX] = (uint16_t)((uint16_t)(c->r[R_SI] + 4)); /*0376*/ cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 8)));
+    /*0379*/ cpu_push16(c, c->r[R_AX]);
+    /*037A*/ c->icount += 12; LS_FAR(0x037A,0x037F);
+L037F:
+    LS_NEED(10, 0x037F);
+    /*037F*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0xE, 1, 0)); /*0382*/ cpu_push16(c, c->r[R_DI]); /*0383*/ cpu_push16(c, 0x0);
+    /*0385*/ cpu_push16(c, 0x2); /*0387*/ cpu_push16(c, 0x0); /*0389*/ cpu_push16(c, 0x1); /*038B*/ c->r[R_AX] = (uint16_t)((uint16_t)(c->r[R_SI] + 6));
+    /*038E*/ cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 8))); /*0391*/ cpu_push16(c, c->r[R_AX]);
+    /*0392*/ c->icount += 9; LS_FAR(0x0392,0x0397);
+L0397:
+    LS_NEED(10, 0x0397);
+    /*0397*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0xE, 1, 0)); /*039A*/ cpu_push16(c, c->r[R_DI]); /*039B*/ cpu_push16(c, 0x0);
+    /*039D*/ cpu_push16(c, 0x2); /*039F*/ cpu_push16(c, 0x0); /*03A1*/ cpu_push16(c, 0x1); /*03A3*/ c->r[R_AX] = (uint16_t)((uint16_t)(c->r[R_SI] + 8));
+    /*03A6*/ cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 8))); /*03A9*/ cpu_push16(c, c->r[R_AX]);
+    /*03AA*/ c->icount += 9; LS_FAR(0x03AA,0x03AF);
+L03AF:
+    LS_NEED(10, 0x03AF);
+    /*03AF*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0xE, 1, 0)); /*03B2*/ cpu_push16(c, c->r[R_DI]); /*03B3*/ cpu_push16(c, 0x0);
+    /*03B5*/ cpu_push16(c, 0x2); /*03B7*/ cpu_push16(c, 0x0); /*03B9*/ cpu_push16(c, 0x1); /*03BB*/ c->r[R_AX] = (uint16_t)((uint16_t)(c->r[R_SI] + 0xa));
+    /*03BE*/ cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 8))); /*03C1*/ cpu_push16(c, c->r[R_AX]);
+    /*03C2*/ c->icount += 9; LS_FAR(0x03C2,0x03C7);
+L03C7:
+    LS_NEED(10, 0x03C7);
+    /*03C7*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0xE, 1, 0)); /*03CA*/ cpu_push16(c, c->r[R_DI]); /*03CB*/ cpu_push16(c, 0x0);
+    /*03CD*/ cpu_push16(c, 0x2); /*03CF*/ cpu_push16(c, 0x0); /*03D1*/ cpu_push16(c, 0x1); /*03D3*/ c->r[R_AX] = (uint16_t)((uint16_t)(c->r[R_SI] + 0xc));
+    /*03D6*/ cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 8))); /*03D9*/ cpu_push16(c, c->r[R_AX]);
+    /*03DA*/ c->icount += 9; LS_FAR(0x03DA,0x03DF);
+L03DF:
+    LS_NEED(7, 0x03DF);
+    /*03DF*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0xE, 1, 0)); /*03E2*/ c->r[R_SI] = (uint16_t)(alu_add(c, c->r[R_SI], 0xE, 1, 0));
+    /*03E5*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 6), alu_inc(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 6)), 1));
+    /*03E8*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 6)));
+    /*03EB*/ { const uint16_t at_=(uint16_t)(c->r[R_BP] - 0x12), lo_=seg_read16(c,c->seg[S_SS],at_), hi_=seg_read16(c,c->seg[S_SS],(uint16_t)(at_+2)); c->r[R_BX] = (uint16_t)(lo_); c->seg[S_ES]=hi_; }
+    /*03EE*/ alu_sub(c, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x10)), c->r[R_AX], 1, 0);
+    /*03F2*/ c->icount += 7; if (x86_cond(c,12)) goto L03F7;
+L03F4:
+    LS_NEED(1, 0x03F4);
+    /*03F4*/ c->icount += 1; goto sprite_frame_read;
+L03F7:
+    LS_NEED(1, 0x03F7);
+    /*03F7*/ c->r[R_DI] = (uint16_t)(c->r[R_BX]);
+    c->icount += 1;
+
+sprite_palette: /* Read the palette count and four-byte RGB entries. */
+    LS_NEED(14, 0x03F9);
+    /*03F9*/ cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x18))); /*03FC*/ cpu_push16(c, 0x0); /*03FE*/ cpu_push16(c, 0x1);
+    /*0400*/ cpu_push16(c, 0x0); /*0402*/ cpu_push16(c, 0x1); /*0404*/ c->r[R_AX] = (uint16_t)(c->r[R_DI]);
+    /*0406*/ c->r[R_DX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x10)));
+    /*0409*/ c->r[R_AX] = (uint16_t)(alu_add(c, c->r[R_AX], 0x12, 1, 0)); /*040C*/ cpu_push16(c, c->r[R_DX]); /*040D*/ cpu_push16(c, c->r[R_AX]);
+    /*040E*/ c->r[R_SI] = (uint16_t)(c->r[R_AX]); /*0410*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x5c), c->r[R_SI]);
+    /*0413*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x5a), c->r[R_DX]);
+    /*0416*/ c->icount += 13; LS_FAR(0x0416,0x041B);
+L041B:
+    LS_NEED(5, 0x041B);
+    /*041B*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0xE, 1, 0)); /*041E*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 6), 0x1);
+    /*0423*/ { const uint16_t at_=(uint16_t)(c->r[R_BP] - 0x5c), lo_=seg_read16(c,c->seg[S_SS],at_), hi_=seg_read16(c,c->seg[S_SS],(uint16_t)(at_+2)); c->r[R_BX] = (uint16_t)(lo_); c->seg[S_ES]=hi_; }
+    /*0426*/ alu_sub(c, mem_read8(c, phys(c->seg[S_ES], (uint16_t)(c->r[R_BX]))), 0x1, 0, 0);
+    /*042A*/ c->icount += 5; if (x86_cond(c,2)) goto sprite_pixels;
+L042C:
+    LS_NEED(2, 0x042C);
+    /*042C*/ c->r[R_SI] = (uint16_t)(LS_RGB); /*042F*/ c->r[R_DI] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 6)));
+    c->icount += 2;
+
+sprite_colour_read: /* Preserve the original colour order. */
+    LS_NEED(5, 0x0432);
+    /*0432*/ cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x18))); /*0435*/ cpu_push16(c, 0x4); /*0437*/ cpu_push16(c, 0x1);
+    /*0439*/ cpu_push16(c, c->r[R_SI]);
+    /*043A*/ c->icount += 4; LS_FAR(0x043A,0x043F);
+L043F:
+    LS_NEED(8, 0x043F);
+    /*043F*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x8, 1, 0)); /*0442*/ c->r[R_SI] = (uint16_t)(alu_add(c, c->r[R_SI], 0x4, 1, 0));
+    /*0445*/ { const uint16_t at_=(uint16_t)(c->r[R_BP] - 0x12), lo_=seg_read16(c,c->seg[S_SS],at_), hi_=seg_read16(c,c->seg[S_SS],(uint16_t)(at_+2)); c->r[R_BX] = (uint16_t)(lo_); c->seg[S_ES]=hi_; }
+    /*0448*/ set_r8(c, R_AL, (uint8_t)(mem_read8(c, phys(c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x12)))));
+    /*044C*/ set_r8(c, R_AH, (uint8_t)(alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0))); /*044E*/ c->r[R_DI] = (uint16_t)(alu_inc(c, c->r[R_DI], 1));
+    /*044F*/ alu_sub(c, c->r[R_AX], c->r[R_DI], 1, 0);
+    /*0451*/ c->icount += 8; if (x86_cond(c,13)) goto sprite_colour_read;
+L0453:
+    LS_NEED(1, 0x0453);
+    /*0453*/ c->r[R_DI] = (uint16_t)(c->r[R_BX]);
+    c->icount += 1;
+
+sprite_pixels: /* Read the data block and select the format conversion. */
+    LS_NEED(6, 0x0455);
+    /*0455*/ cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x1e)));
+    /*0458*/ cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x20)));
+    /*045B*/ cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x26)));
+    /*045E*/ cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x28)));
+    /*0461*/ cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x18)));
+    /*0464*/ c->icount += 5; LS_FAR(0x0464,0x0469);
+L0469:
+    LS_NEED(4, 0x0469);
+    /*0469*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0xA, 1, 0));
+    /*046C*/ c->seg[S_ES] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x10)));
+    /*046F*/ alu_sub(c, mem_read8(c, phys(c->seg[S_ES], (uint16_t)(c->r[R_DI] + 0xa))), 0x1, 0, 0);
+    /*0474*/ c->icount += 4; if (x86_cond(c,5)) goto sprite_palette_shift;
+L0476:
+    LS_NEED(3, 0x0476);
+    /*0476*/ c->r[R_CX] = (uint16_t)(0x1); /*0479*/ alu_sub(c, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_DI] + 0x10)), c->r[R_CX], 1, 0);
+    /*047D*/ c->icount += 3; if (x86_cond(c,13)) goto sprite_format_one;
+L047F:
+    LS_NEED(1, 0x047F);
+    /*047F*/ c->icount += 1; goto sprite_success;
+
+sprite_format_one: /* Convert each format-1 frame through the original far helper. */
+    LS_NEED(6, 0x0482);
+    /*0482*/ c->r[R_AX] = (uint16_t)((uint16_t)(c->r[R_DI] + 0x22)); /*0485*/ c->r[R_DX] = (uint16_t)(c->seg[S_ES]);
+    /*0487*/ c->r[R_SI] = (uint16_t)(c->r[R_AX]); /*0489*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 8), c->r[R_DX]);
+    /*048C*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 6), c->r[R_CX]); /*048F*/ c->r[R_DI] = (uint16_t)(c->r[R_CX]);
+    c->icount += 6;
+L0491:
+    LS_NEED(5, 0x0491);
+    /*0491*/ c->seg[S_ES] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 8)));
+    /*0494*/ cpu_push16(c, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_SI] + 2)));
+    /*0498*/ cpu_push16(c, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_SI]))); /*049B*/ cpu_push16(c, c->seg[S_CS]);
+    /*049C*/ c->icount += 4; LS_SAME(0x0084,0x049F);
+L049F:
+    LS_NEED(7, 0x049F);
+    /*049F*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x4, 1, 0)); /*04A2*/ c->r[R_SI] = (uint16_t)(alu_add(c, c->r[R_SI], 0xE, 1, 0));
+    /*04A5*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 8))); /*04A8*/ c->r[R_DI] = (uint16_t)(alu_inc(c, c->r[R_DI], 1));
+    /*04A9*/ { const uint16_t at_=(uint16_t)(c->r[R_BP] - 0x12), lo_=seg_read16(c,c->seg[S_SS],at_), hi_=seg_read16(c,c->seg[S_SS],(uint16_t)(at_+2)); c->r[R_BX] = (uint16_t)(lo_); c->seg[S_ES]=hi_; }
+    /*04AC*/ alu_sub(c, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x10)), c->r[R_DI], 1, 0);
+    /*04B0*/ c->icount += 7; if (x86_cond(c,13)) goto L0491;
+L04B2:
+    LS_NEED(1, 0x04B2);
+    /*04B2*/ c->icount += 1; goto sprite_success;
+
+sprite_palette_shift: /* Choose the original palette start and copy RGB triplets. */
+    LS_NEED(2, 0x04B6);
+    /*04B6*/ alu_sub(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 8)), 0x2, 1, 0);
+    /*04BA*/ c->icount += 2; if (x86_cond(c,5)) goto L04C4;
+L04BC:
+    LS_NEED(3, 0x04BC);
+    /*04BC*/ set_r8(c, R_AL, (uint8_t)(0xF8));
+    /*04BE*/ set_r8(c, R_AL, (uint8_t)(alu_sub(c, get_r8(c, R_AL), mem_read8(c, phys(c->seg[S_ES], (uint16_t)(c->r[R_DI] + 0x12))), 0, 0)));
+    /*04C2*/ c->icount += 3; goto L04CE;
+L04C4:
+    LS_NEED(3, 0x04C4);
+    /*04C4*/ set_r8(c, R_BL, (uint8_t)(mem_read8(c, phys(c->seg[S_ES], (uint16_t)(c->r[R_DI] + 0xa)))));
+    /*04C8*/ set_r8(c, R_BH, (uint8_t)(alu_sub(c, get_r8(c, R_BH), get_r8(c, R_BH), 0, 0)));
+    /*04CA*/ set_r8(c, R_AL, (uint8_t)(mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] + LS_SHIFT_TABLE)))));
+    c->icount += 3;
+L04CE:
+    LS_NEED(4, 0x04CE);
+    /*04CE*/ mem_write8(c, phys(c->seg[S_ES], (uint16_t)(c->r[R_DI] + 0x13)), get_r8(c, R_AL));
+    /*04D2*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 6), 0x1);
+    /*04D7*/ alu_sub(c, mem_read8(c, phys(c->seg[S_ES], (uint16_t)(c->r[R_DI] + 0x12))), 0x1, 0, 0);
+    /*04DC*/ c->icount += 4; if (x86_cond(c,2)) goto sprite_convert;
+L04DE:
+    LS_NEED(1, 0x04DE);
+    /*04DE*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 2), 0x674);
+    c->icount += 1;
+
+sprite_colour_copy: /* Copy three bytes from each four-byte palette entry. */
+    LS_NEED(23, 0x04E3);
+    /*04E3*/ { const uint16_t at_=(uint16_t)(c->r[R_BP] - 0x12), lo_=seg_read16(c,c->seg[S_SS],at_), hi_=seg_read16(c,c->seg[S_SS],(uint16_t)(at_+2)); c->r[R_BX] = (uint16_t)(lo_); c->seg[S_ES]=hi_; }
+    /*04E6*/ set_r8(c, R_AL, (uint8_t)(mem_read8(c, phys(c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x13)))));
+    /*04EA*/ set_r8(c, R_AH, (uint8_t)(alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0))); /*04EC*/ c->r[R_SI] = (uint16_t)(c->r[R_AX]);
+    /*04EE*/ c->r[R_SI] = (uint16_t)(alu_add(c, c->r[R_SI], seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 6)), 1, 0));
+    /*04F1*/ c->r[R_AX] = (uint16_t)(c->r[R_SI]); /*04F3*/ c->r[R_SI] = (uint16_t)(x86_shift(c, 4, c->r[R_SI], 0x1, 1));
+    /*04F5*/ c->r[R_SI] = (uint16_t)(alu_add(c, c->r[R_SI], c->r[R_AX], 1, 0));
+    /*04F7*/ c->r[R_BX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 0xa)));
+    /*04FA*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 2)));
+    /*04FD*/ c->r[R_DI] = (uint16_t)((uint16_t)(c->r[R_BX] + c->r[R_SI] - 3)); /*0500*/ c->r[R_SI] = (uint16_t)(c->r[R_AX]);
+    /*0502*/ cpu_push16(c, c->seg[S_DS]); /*0503*/ c->seg[S_ES] = (uint16_t)(cpu_pop16(c)); /*0504*/ x86_movs(c, 1, c->seg[S_DS]);
+    /*0505*/ x86_movs(c, 0, c->seg[S_DS]);
+    /*0506*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 2), alu_add(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 2)), 0x4, 1, 0));
+    /*050A*/ { const uint16_t at_=(uint16_t)(c->r[R_BP] - 0x12), lo_=seg_read16(c,c->seg[S_SS],at_), hi_=seg_read16(c,c->seg[S_SS],(uint16_t)(at_+2)); c->r[R_BX] = (uint16_t)(lo_); c->seg[S_ES]=hi_; }
+    /*050D*/ set_r8(c, R_AL, (uint8_t)(mem_read8(c, phys(c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x12)))));
+    /*0511*/ set_r8(c, R_AH, (uint8_t)(alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0)));
+    /*0513*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 6), alu_inc(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 6)), 1));
+    /*0516*/ alu_sub(c, c->r[R_AX], seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 6)), 1, 0);
+    /*0519*/ c->icount += 23; if (x86_cond(c,13)) goto sprite_colour_copy;
+L051B:
+    LS_NEED(1, 0x051B);
+    /*051B*/ c->r[R_DI] = (uint16_t)(c->r[R_BX]);
+    c->icount += 1;
+
+sprite_convert: /* Convert remaining formats with the recorded palette shift. */
+    LS_NEED(4, 0x051D);
+    /*051D*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 6), 0x1);
+    /*0522*/ c->seg[S_ES] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x10)));
+    /*0525*/ alu_sub(c, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_DI] + 0x10)), 0x1, 1, 0);
+    /*052A*/ c->icount += 4; if (x86_cond(c,12)) goto sprite_success;
+L052C:
+    LS_NEED(4, 0x052C);
+    /*052C*/ c->r[R_AX] = (uint16_t)((uint16_t)(c->r[R_DI] + 0x22)); /*052F*/ c->r[R_CX] = (uint16_t)(c->seg[S_ES]);
+    /*0531*/ c->r[R_SI] = (uint16_t)(c->r[R_AX]); /*0533*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 8), c->r[R_CX]);
+    c->icount += 4;
+
+sprite_frame_convert: /* Keep the descriptor, format and call order live. */
+    LS_NEED(11, 0x0536);
+    /*0536*/ c->seg[S_ES] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x10)));
+    /*0539*/ set_r8(c, R_AL, (uint8_t)(mem_read8(c, phys(c->seg[S_ES], (uint16_t)(c->r[R_DI] + 0x13))))); /*053D*/ cpu_push16(c, c->r[R_AX]);
+    /*053E*/ c->r[R_AX] = (uint16_t)(c->seg[S_ES]); /*0540*/ c->seg[S_ES] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 8)));
+    /*0543*/ cpu_push16(c, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_SI] + 2)));
+    /*0547*/ cpu_push16(c, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_SI])));
+    /*054A*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x60), c->r[R_DI]);
+    /*054D*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x5e), c->r[R_AX]); /*0550*/ cpu_push16(c, c->seg[S_CS]);
+    /*0551*/ c->icount += 10; LS_SAME(0x0002,0x0554);
+L0554:
+    LS_NEED(7, 0x0554);
+    /*0554*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x6, 1, 0)); /*0557*/ c->r[R_SI] = (uint16_t)(alu_add(c, c->r[R_SI], 0xE, 1, 0));
+    /*055A*/ seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 6), alu_inc(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 6)), 1));
+    /*055D*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 6)));
+    /*0560*/ { const uint16_t at_=(uint16_t)(c->r[R_BP] - 0x60), lo_=seg_read16(c,c->seg[S_SS],at_), hi_=seg_read16(c,c->seg[S_SS],(uint16_t)(at_+2)); c->r[R_BX] = (uint16_t)(lo_); c->seg[S_ES]=hi_; }
+    /*0563*/ alu_sub(c, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x10)), c->r[R_AX], 1, 0);
+    /*0567*/ c->icount += 7; if (x86_cond(c,13)) goto sprite_frame_convert;
+
+sprite_success: /* Close the stream and return the allocated far pointer. */
+    LS_NEED(2, 0x0569);
+    /*0569*/ cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x18)));
+    /*056C*/ c->icount += 1; LS_FAR(0x056C,0x0571);
+L0571:
+    LS_NEED(7, 0x0571);
+    /*0571*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x2, 1, 0));
+    /*0574*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x12)));
+    /*0577*/ c->r[R_DX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x10))); /*057A*/ c->r[R_SI] = (uint16_t)(cpu_pop16(c));
+    /*057B*/ c->r[R_DI] = (uint16_t)(cpu_pop16(c)); /*057C*/ x86_leave(c);
+    /*057D*/ c->icount += 7; c->ip=cpu_pop16(c); c->seg[S_CS]=cpu_pop16(c); return 1;
+
+sprite_invalid: /* Free the record and close an invalid set. */
+    LS_NEED(4, 0x057E);
+    /*057E*/ c->r[R_AX] = (uint16_t)(seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] - 0x10))); /*0581*/ cpu_push16(c, c->r[R_AX]);
+    /*0582*/ cpu_push16(c, c->r[R_DI]);
+    /*0583*/ c->icount += 3; LS_FAR(0x0583,0x0588);
+L0588:
+    LS_NEED(3, 0x0588);
+    /*0588*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x4, 1, 0)); /*058B*/ cpu_push16(c, c->r[R_SI]);
+    /*058C*/ c->icount += 2; LS_FAR(0x058C,0x0591);
+L0591:
+    LS_NEED(2, 0x0591);
+    /*0591*/ c->r[R_SP] = (uint16_t)(alu_add(c, c->r[R_SP], 0x2, 1, 0)); /*0594*/ seg_write16(c, c->seg[S_DS], (uint16_t)(LS_STATUS), 0x7);
+    c->icount += 2;
+
+sprite_failure: /* Return a null far pointer after a recorded failure. */
+    LS_NEED(6, 0x059A);
+    /*059A*/ c->r[R_AX] = (uint16_t)(alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0)); /*059C*/ c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0;
+    /*059D*/ c->r[R_SI] = (uint16_t)(cpu_pop16(c)); /*059E*/ c->r[R_DI] = (uint16_t)(cpu_pop16(c)); /*059F*/ x86_leave(c);
+    /*05A0*/ c->icount += 6; c->ip=cpu_pop16(c); c->seg[S_CS]=cpu_pop16(c); return 1;
+#undef LS_NEED
+#undef LS_SAME
+#undef LS_FAR
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x006D, 0x0112, logo_sprite_set_load, "load a sprite set and fix frame pointers", 2 },
     { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x0010, setup_questions, "setup questions and joystick calibration", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x4239, start_mission_generate, "generate objectives, bases and mission handover", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x2F9D, vgame_frame_compose, "view set-up, 3D scene and view-change redraw", 1 },

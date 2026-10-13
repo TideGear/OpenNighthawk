@@ -125,6 +125,15 @@ which the lockstep cannot see. A wait inside a matched routine must stop at
 `c->stop_at` (`SQ_RUN`); the seeds, startup cases and gate were rerun after it.
 Private source-frozen proof: `D:/f117-gate/setup-0010`.
 
+Logo sprite-set loader (13 October): the mini-project loop (direct candidate
+object linked before frozen libraries, 2.6-3.6 s per edit) proved the body; the
+integration was then three mechanical steps: append the named body and table
+row, apply only the harness additions, add one CTest. Optimized seeds, the
+real logo-load prefix (one call, 100 checkpoints/final identical on both
+engines) and a fresh full gate (56 tests, 45 routes, 1,687 s) followed.
+No event overrun this time: the routine has no unbounded waits. Proof:
+`D:/f117-gate/logo-07e2`.
+
 Private sprite-loader fixture iteration now links a direct candidate matched
 object before frozen generated/core libraries. The archive's old matched object
 is not selected. This avoids recompiling generated sources for each body or

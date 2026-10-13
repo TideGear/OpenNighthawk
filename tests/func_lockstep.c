@@ -524,6 +524,7 @@ static const struct { const char *module; uint16_t ip; int arg; uint16_t v[2]; }
 /* Exact code ranges when the default 0x300-byte window is unsuitable:
  * long/shared tails, or small walkers whose unrelated callees are nearby. */
 static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
+    { "MPS_LOGO.EXE", 0x0112, 0x0112, 0x048F },
     { "SETUP.EXE", 0x0010, 0x0010, 0x04F3 },
     { "START.EXE", 0x4239, 0x4239, 0x0EF5 },
     { "VGAME.EXE", 0x2F9D, 0x2F9D, 0x0A23 }, /* view compose through RET */
@@ -665,6 +666,7 @@ static uint64_t g_camera_seen;
  * compared states (all, and those the named routine finished itself). A
  * floor fails a 4,000-state run whose fixtures stopped reaching the arms. */
 static const struct { const char *module; uint16_t seg, ip, len; unsigned insns, floor; const char *what; } COVERED[] = {
+    { "MPS_LOGO.EXE", 0x006D, 0x0112, 0x048F, 434, 434, "sprite-set loader" },
     { "SETUP.EXE", 0, 0x0010, 0x04F3, 505, 505, "setup main" },
     { "START.EXE", 0, 0x4239, 0x0EF5, 1332, 1332, "mission generator" },
     { "VGAME.EXE", 0, 0x2F9D, 0x0A23, 938, 938, "view compose" },
@@ -713,7 +715,7 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
     const uint32_t watch = phys(cs, (uint16_t)(ip - g_below));
     const int watching = (g_below || g_watch_transient) && a->mem == g_mem[0];
     while (*steps < 100000) {
-        const unsigned watch_bytes = (ip == 0x0010 || ip == 0x4239 || ip == 0x2F9D || ip == 0x683E || ip == 0x5852 || ip == 0x3ADA || ip == 0x1EB0 || ip == 0xBCEF || ip == 0x983E || ip == 0x0016 || ip == 0x79BE || ip == 0x8A90) ? g_span : 0x300u + g_below;
+        const unsigned watch_bytes = (ip == 0x0112 || ip == 0x0010 || ip == 0x4239 || ip == 0x2F9D || ip == 0x683E || ip == 0x5852 || ip == 0x3ADA || ip == 0x1EB0 || ip == 0xBCEF || ip == 0x983E || ip == 0x0016 || ip == 0x79BE || ip == 0x8A90) ? g_span : 0x300u + g_below;
         if (watching && !g_self_written && memcmp(a->mem + watch, g_pristine + watch, watch_bytes)) g_self_written = 1;
         if (g_trace) printf("      %04X:%04X clk %llu sp %04X\n", a->seg[S_CS], a->ip, (unsigned long long)a->icount, a->r[R_SP]);
         const uint16_t here = a->ip;
@@ -938,7 +940,7 @@ int main(int argc, char **argv)
         if (g_cov >= 0) { g_cov_ip = COVERED[g_cov].ip; g_cov_escapes = 0; memset(g_cov_skips, 0, sizeof g_cov_skips); memset(g_cov_cover, 0, sizeof g_cov_cover); memset(g_cov_whole, 0, sizeof g_cov_whole); }
         g_hud_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0x1058 && o->ip == 0x0016;
         g_ground_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0x5046;
-        g_watch_transient = (!strcmp(o->module, "VGAME.EXE") && o->seg == 0x1058 && o->ip == 0x0016) ||
+        g_watch_transient = (!strcmp(o->module, "MPS_LOGO.EXE") && o->seg == 0x006D && o->ip == 0x0112) || (!strcmp(o->module, "VGAME.EXE") && o->seg == 0x1058 && o->ip == 0x0016) ||
             (o->seg == 0 &&
             ((!strcmp(o->module, "VGAME.EXE") && (o->ip == 0x2F9D || o->ip == 0x683E || o->ip == 0x5046 || o->ip == 0x5852 || o->ip == 0x3ADA || o->ip == 0x1EB0 || o->ip == 0xBCEF || o->ip == 0x983E || o->ip == 0x79BE || o->ip == 0x8A90)) ||
              (!strcmp(o->module, "START.EXE") && (o->ip == 0x4239 || o->ip == 0x39B3 || o->ip == 0x39D5)) ||
@@ -2048,6 +2050,66 @@ int main(int argc, char **argv)
                     g_pristine[setup_helpers[j].at+b]=g_mem[0][setup_helpers[j].at+b]=g_mem[1][setup_helpers[j].at+b]=setup_helpers[j].code[b];
 #undef SW8
 #undef SW16
+            }
+
+            /* Authored sprite streams and heap records; no game assets. File,
+             * allocation, streaming and decoder stand-ins return; real near/far
+             * string copies and pointer normalisation remain. Modes stage open,
+             * signature, allocation, name and format failures, signed frame
+             * counts and palette variants. Unconstrained controls remain. */
+            if (!strcmp(o->module,"MPS_LOGO.EXE") && o->seg==0x006D && o->ip==0x0112 && (s&7)) {
+                seg[S_DS]=seg[S_SS]=0x3000;r[R_SP]=0xFF00;flags=(uint16_t)(flags & (0xFFFFu ^ F_DF));
+                const unsigned mode=((unsigned)s>>3)%24;
+                const unsigned type=mode==5?0:mode==6?6:1+mode%5;
+                const unsigned frames=(mode==7 || mode==10)?0:mode==8?0xFFFF:1+mode%3;
+                const unsigned colours=mode==9?0:1+mode%3;
+                small[0]=0x4000;small[1]=(mode&1)?2:0;small[2]=0x5000;small[3]=0;
+#define LW8(a_,v_) do { const uint32_t la_=phys(seg[S_DS],(uint16_t)(a_)); \
+    g_pristine[la_]=g_mem[0][la_]=g_mem[1][la_]=(uint8_t)(v_); } while(0)
+#define LW16(a_,v_) do { LW8(a_,(uint16_t)(v_));LW8((a_)+1,(uint16_t)(v_)>>8); } while(0)
+                static const uint8_t magic[]={'F','X','H','D','R','0',0};
+                static const uint8_t filename[]={'s','h','a','p','e','.','s','s',0};
+                static const uint8_t suffix[]={'.','s','s',0};
+                for(unsigned j=0;j<sizeof magic;j++)LW8(0x0059+j,magic[j]);
+                for(unsigned j=0;j<sizeof filename;j++)LW8(0x4000+j,filename[j]);
+                for(unsigned j=0;j<sizeof suffix;j++)LW8(0x0052+j,suffix[j]);
+                for(unsigned j=0;j<6;j++)LW8(0x004A+j,3+j);
+                LW16(0x6000,mode);LW16(0x6002,0x7000);LW16(0x6004,mode&1);
+                for(unsigned j=0;j<512;j++)LW8(0x7000+j,0);
+                for(unsigned j=0;j<sizeof magic;j++)LW8(0x7000+j,mode==2 && j==0?'X':magic[j]);
+                for(unsigned j=0;j<sizeof filename;j++)LW8(0x7007+j,mode==4 && j==0?'X':filename[j]);
+                LW16(0x7010,0x100);LW16(0x7012,0);LW16(0x7014,0x100);LW16(0x7016,0);
+                unsigned stream=0x7018;
+                for(unsigned j=0;j<(frames<10?frames:0);j++) {LW16(stream,32*j);LW16(stream+2,0);stream+=4;}
+                for(unsigned j=0;j<colours;j++) {LW8(stream,10+j);LW8(stream+1,20+j);LW8(stream+2,30+j);LW8(stream+3,0);stream+=4;}
+                for(unsigned j=0;j<1024;j++)g_pristine[0x50000+j]=g_mem[0][0x50000+j]=g_mem[1][0x50000+j]=0;
+                for(unsigned j=0;j<1024;j++)LW8(0x5000+j,0);
+#define LH8(a_,v_) do {const uint32_t lh_=0x50000+(a_);g_pristine[lh_]=g_mem[0][lh_]=g_mem[1][lh_]=(uint8_t)(v_);}while(0)
+#define LH16(a_,v_) do {LH8(a_,(uint16_t)(v_));LH8((a_)+1,(uint16_t)(v_)>>8);}while(0)
+                LH8(0x0A,type);LH16(0x10,frames);LH8(0x12,colours);
+                for(unsigned j=0;j<(frames<10?frames:0);j++)for(unsigned k=4;k<14;k+=2)LH16(0x22+14*j+k,4+k);
+                static const uint8_t logo_helper0[]={0xE9,0x47,0xE4};
+                static const uint8_t logo_helper1[]={0x56,0x57,0x51,0x06,0x53,0x89,0xE3,0x36,0x8B,0x7F,0x0E,0x36,0x8B,0x4F,0x12,0x8B,0x36,0x02,0x60,0x1E,0x07,0xFC,0xF3,0xA4,0x89,0x36,0x02,0x60,0xB8,0x01,0x00,0x5B,0x07,0x59,0x5F,0x5E,0xCB};
+                static const uint8_t logo_helper2[]={0xE9,0x41,0xE8};
+                static const uint8_t logo_helper3[]={0x83,0x3E,0x00,0x60,0x03,0x75,0x05,0x31,0xC0,0x31,0xD2,0xCB,0xB8,0x00,0x00,0xBA,0x00,0x50,0xCB};
+                static const uint8_t logo_helper4[]={0xE9,0x5D,0xE6};
+                static const uint8_t logo_helper5[]={0x83,0x3E,0x00,0x60,0x01,0x75,0x04,0xB8,0x00,0x00,0xCB,0xB8,0x01,0x00,0xCB};
+                static const uint8_t logo_helper6[]={0xE9,0xC3,0xEA};
+                static const uint8_t logo_helper7[]={0xA1,0x04,0x60,0xCB};
+                static const uint8_t logo_helper8[]={0xCB};
+                static const uint8_t logo_helper9[]={0xCB};
+                static const uint8_t logo_helper10[]={0xCB};
+                static const uint8_t logo_helper11[]={0xCB};
+                static const uint8_t logo_helper12[]={0xCB};
+                static const uint8_t logo_helper13[]={0xCB};
+                static const struct { unsigned at; const uint8_t *code; unsigned len; } logo_helpers[]={{0x01816,logo_helper0,sizeof logo_helper0},{0x0FC60,logo_helper1,sizeof logo_helper1},{0x0050C,logo_helper2,sizeof logo_helper2},{0x0ED50,logo_helper3,sizeof logo_helper3},{0x01800,logo_helper4,sizeof logo_helper4},{0x0FE60,logo_helper5,sizeof logo_helper5},{0x0048A,logo_helper6,sizeof logo_helper6},{0x0EF50,logo_helper7,sizeof logo_helper7},{0x00566,logo_helper8,sizeof logo_helper8},{0x00552,logo_helper9,sizeof logo_helper9},{0x0171A,logo_helper10,sizeof logo_helper10},{0x00030,logo_helper11,sizeof logo_helper11},{0x00754,logo_helper12,sizeof logo_helper12},{0x006D2,logo_helper13,sizeof logo_helper13}};
+                for(unsigned j=0;j<sizeof logo_helpers/sizeof logo_helpers[0];j++)for(unsigned b=0;b<logo_helpers[j].len;b++)
+                    g_pristine[logo_helpers[j].at+b]=g_mem[0][logo_helpers[j].at+b]=g_mem[1][logo_helpers[j].at+b]=logo_helpers[j].code[b];
+
+#undef LW8
+#undef LW16
+#undef LH8
+#undef LH16
             }
             for (int k = 0; k < 2; k++)
                 setup_side(k ? &g_m.cpu : &g_cpu[0], o, cs, ip, r, seg, flags, back, s, small);
