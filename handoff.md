@@ -41,18 +41,23 @@ merge them wholesale. Check GitHub CI for the new commits.
 
 `D:/f117-gate/batch-a/project` is a fast fixture loop (direct candidate object
 linked before frozen libs copied from the main build; /Od; build with
-`build-proof.cmd`, TEMP/TMP set to `D:117-gateatch-a	mp`). `matched.c` there is the
-main file plus 47 unreviewed DRAFT bodies (`draft_<mod>_<seg>_<ip>`, from
-`matched_draft.py`, instruction-transcript style) and table rows; `rows.txt` lists
-them: call-free, plain-RET, 15-160 instructions, from VGAME/START/END/PLAYER/
-MPS_LOGO/DSWAP/SETUP. Drafts are not yet named or explained, and no reach proof
-exists. Only PLAYER `0D0C` (palette set, port I/O) has been run: 137 states
-compared, 90 skipped, equal. Run the rest with
+`build-proof.cmd`, setting TEMP and TMP to `D:/f117-gate/batch-a/tmp` first).
+`matched.c` there is the main file plus 47 unreviewed DRAFT bodies
+(`draft_<mod>_<seg>_<ip>`, from `matched_draft.py`, instruction-transcript style)
+and table rows; `rows.txt` lists them: call-free, plain-RET, 15-160 instructions,
+from VGAME/START/END/PLAYER/MPS_LOGO/DSWAP/SETUP. Drafts are not yet named or
+explained, and no reach proof exists. All 47 ran at 4,000 states (logs in
+`batch-a/ls`): 32 compare equal on thousands of states; four compare equal on few
+(SETUP `0A9F` 1, SETUP `14BE` 127, END `45AD` 319, MPS_LOGO `00DA:0491` 603), so
+they need fixtures before they count; eleven report "not testable here (routes
+only)" (DSWAP `0FF8`, `10F4`; END `4393`, `44B9`, `44E7`; MPS_LOGO `00DA:0602`;
+PLAYER `0F47`; START `8427`, `8545`, `8573`; VGAME `120A:0971`), so only a real
+route can prove them. Run any with
 `func_lockstep.exe --only MOD.EXE:HEX --states 4000 --verbose`; the IP must have NO
-leading zeros (`D0C`, not `0D0C`, or it silently compares 0 states). A passing draft
-still needs a real route that runs it (the gate's step 8 reports the ones that
-never run: drop those), a named and explained body, and one full gate for the
-whole batch. Nothing of this is in the repository.
+leading zeros (`D0C`, not `0D0C`, or it silently compares 0 states). A passing
+draft still needs a real route that runs it (the gate's step 8 reports the ones
+that never run: drop those), a named and explained body, and one full gate for
+the whole batch. Nothing of this is in the repository.
 
 ## Current state
 
