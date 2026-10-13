@@ -217,6 +217,18 @@ static const struct { uint16_t seg, ip; uint8_t reg; uint16_t disp; uint16_t val
     { 0x0000, 0x4777, PLANT_ABS, 0x43EE, 0x0001 },   /* keyboard trigger held */
     { 0x0000, 0x4777, PLANT_ABS, 0x3682, 0x03E8 },   /* ammunition available */
     { 0x0000, 0x4777, PLANT_ABS, 0xC09A, 0x0000 },
+    { 0x0000, 0x5046, PLANT_ABS, 0xE008, 0x0014 },   /* ground defences: display 14h up, no warning countdown, no override */
+    { 0x0000, 0x5046, PLANT_ABS, 0x3D98, 0x0000 },
+    { 0x0000, 0x5046, PLANT_ABS, 0xDF06, 0x0000 },
+    { 0x0000, 0x5046, PLANT_ABS, 0x992C, 0x0001 },   /* one live, served site whose timer expires: its reload divisor is zero */
+    { 0x0000, 0x5046, PLANT_ABS, 0xB2D4, 0x0001 },   /* (defence FFC0h) or minus one (FFBCh, with S at 80h: a quotient that overflows) */
+    { 0x0000, 0x5046, PLANT_ABS, 0xB2D6, 0x0000 },
+    { 0x0000, 0x5046, PLANT_ABS, 0xB2D8, 0xFFC0 },
+    { 0x0000, 0x5046, PLANT_ABS, 0xB2D8, 0xFFBC },
+    { 0x0000, 0x5046, PLANT_ABS, 0xB2DA, 0x0001 },
+    { 0x0000, 0x5046, PLANT_ABS, 0x368E, 0x0080 },
+
+
     { 0x0000, 0x73C8, PLANT_ABS, 0xE304, 0x0002 },   /* target_damage: the weapon-lock slot scan finding a match */
     { 0x0000, 0x73C8, PLANT_ABS, 0xE306, 0x0001 },
     { 0x0000, 0x73C8, PLANT_ABS, 0xE316, 0x0002 },
@@ -384,6 +396,14 @@ static const struct { const char *module; uint16_t ip; uint32_t linear; uint8_t 
     { "VGAME.EXE", 0x3ADA, 0x004C7, 0xC3 },
     { "VGAME.EXE", 0x3ADA, 0x1189D, 0xCB },
     { "VGAME.EXE", 0x3ADA, 0x1176E, 0xCB },
+    /* Ground-defences caller: the engagement, the navigation refresh, the map marker and arc and the
+     * panel bar return at once; the clamp and the 32-bit divide run. */
+    { "VGAME.EXE", 0x5046, 0x0528D, 0xC3 },
+    { "VGAME.EXE", 0x5046, 0x08F71, 0xC3 },
+    { "VGAME.EXE", 0x5046, 0x08625, 0xC3 },
+    { "VGAME.EXE", 0x5046, 0x08719, 0xC3 },
+    { "VGAME.EXE", 0x5046, 0x117DC, 0xCB },
+
     /* Camera caller: returning render/string helpers; original math runs. */
     { "VGAME.EXE", 0xBCEF, 0x0FD66, 0xCB },
     { "VGAME.EXE", 0xBCEF, 0x10039, 0xCB },
@@ -613,6 +633,7 @@ static uint64_t g_camera_seen;
 static const struct { const char *module; uint16_t seg, ip, len; unsigned insns, floor; const char *what; } COVERED[] = {
     { "VGAME.EXE", 0, 0x1EB0, 0x0DD7, 1274, 1250, "flight input" },
     { "VGAME.EXE", 0, 0x3ADA, 0x0A30, 848, 820, "frame update" },
+    { "VGAME.EXE", 0, 0x5046, 0x0247, 195, 190, "ground defences" },
 };
 static int g_flight_fixture, g_frame_fixture, g_state_index;   /* flight-input fixtures; the state being compared */
 static int g_cov = -1;                  /* the COVERED entry under test, or -1 */

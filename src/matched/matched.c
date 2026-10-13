@@ -36470,7 +36470,221 @@ frame_return:
     c->r[R_SI] = cpu_pop16(c); c->r[R_DI] = cpu_pop16(c); x86_leave(c); near_ret(c); c->icount += 4; return 1;
 }
 
+/* VGAME 0000:5046: the ground threats' per-frame work. In order:
+ *
+ *   the damage and stealth bars   in the cockpit, when the player's damage
+ *                  [3D8A] has changed since the bars were last drawn (or no
+ *                  warning countdown [3D98] is running): the first bar from
+ *                  the complement of the damage, clamped to 0..99, the second
+ *                  from the damage itself, negated; and, with no warning and
+ *                  display 14h up, the navigation display is refreshed.
+ *   the site timers   every ground site record (16 bytes from B2CE, count
+ *                  [992C]) with a defence value, not suppressed (flag 80h),
+ *                  counts its reload timer down. A frame-rate-dependent gate
+ *                  staggers which sites are served each frame. An expired
+ *                  timer reloads from the frame rate over the site's defence
+ *                  (a stronger site fires faster); a timer that passes
+ *                  through exactly 4 while the warning countdown is negative
+ *                  sends the site into its engagement (0528D) and marks it
+ *                  firing (flag 02h). A site left out of service loses the
+ *                  firing flag.
+ *   the incoming-weapon warning   with no map override, a running warning
+ *                  countdown, the cockpit up and [C09C] above 1: the warning
+ *                  value in [bp-4], and the threatening record's position
+ *                  drawn as a map marker blinking on the countdown's low bit
+ *                  and as a bearing arc (08625, 08719). The record is a
+ *                  ground site (B2CE + k*16) or an aircraft slot
+ *                  (C16A + (-k-1)*36) by the sign of [C0AA].
+ *   finally the warning countdown steps down.
+ *
+ * The 32-bit division (EE9C) and the signed divide of the reload are left to
+ * the original when they would fault: the routine stops at the faulting
+ * instruction. */
+#define GD_FRAME_I 0xFFF6                                          /* [bp-0Ah]: the site index */
+#define GD_FRAME_WARN 0xFFFC                                       /* [bp-04h]: the warning value */
+static int vgame_ground_defences(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    uint16_t bx;
+    if (!room(c, 4)) return 0;
+    x86_enter(c, 0x0E, 0); x86_push_reg(c, R_SI);
+    alu_sub(c, ds_get(c, 0x3D98), 0, 1, 0); c->icount += 4;
+    if (c->flags & F_ZF) goto bars;
+    SM4_NEED(3, 0x5052); c->r[R_AX] = ds_get(c, 0x3D8A); alu_sub(c, ds_get(c, 0xDEF4), c->r[R_AX], 1, 0); c->icount += 3;
+    if (c->flags & F_ZF) goto sites;
+bars:
+    SM4_NEED(2, 0x505B); alu_sub(c, ds_get(c, 0x368C), 0, 1, 0); c->icount += 2;
+    if (c->flags & F_ZF) goto sites;
+    /* The bar from 100 - damage, clamped to 0..99 (C67A: value, low, high). */
+    SM4_NEED(10, 0x5062);
+    cpu_push16(c, 0x0A); cpu_push16(c, 0); cpu_push16(c, 1); cpu_push16(c, 0x63); cpu_push16(c, 0);
+    c->r[R_AX] = ds_get(c, 0x3D8A); ds_put(c, 0xDEF4, c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], 0x64, 1, 0);
+    c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0);
+    cpu_push16(c, c->r[R_AX]); c->icount += 10;
+    SM4_NEED(1, 0x5078); VG3_NEAR(0xC67A, 0x507B, 2); VG3_DROP(6); cpu_push16(c, c->r[R_AX]); c->icount += 2;
+    SM4_NEED(1, 0x507F); VG3_FAR(0x507F, 7); VG3_DROP(8);
+    /* The second bar from the damage itself, negated. */
+    cpu_push16(c, 0x0A); cpu_push16(c, 0); cpu_push16(c, 0x2A); cpu_push16(c, 0x63); cpu_push16(c, 0);
+    cpu_push16(c, ds_get(c, 0x3D8A)); c->icount += 7;
+    SM4_NEED(1, 0x5095); VG3_NEAR(0xC67A, 0x5098, 3); VG3_DROP(6);
+    c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0); cpu_push16(c, c->r[R_AX]); c->icount += 3;
+    SM4_NEED(1, 0x509E); VG3_FAR(0x509E, 3); VG3_DROP(8);
+    alu_sub(c, ds_get(c, 0x3D98), 0, 1, 0); c->icount += 3;
+    if (!(c->flags & F_ZF)) goto sites;
+    SM4_NEED(2, 0x50AD); alu_sub(c, ds_get(c, 0xDF06), 0, 1, 0); c->icount += 2;
+    if (!(c->flags & F_ZF)) goto sites;
+    SM4_NEED(2, 0x50B4); alu_sub(c, ds_get(c, 0xE008), 0x14, 1, 0); c->icount += 2;
+    if (!(c->flags & F_ZF)) goto bars_done;
+    SM4_NEED(1, 0x50BB); VG3_NEAR(0x8F71, 0x50BE, 0);                /* the navigation display */
+bars_done:
+    SM4_NEED(2, 0x50BE); ds_put(c, 0xC166, 0); ds_put(c, 0xC168, 0x0100); c->icount += 2;
+sites:
+    SM4_NEED(2, 0x50CA); VG3_SETFRAME(GD_FRAME_I, 0); c->icount += 2;
+    goto site_test;
+site_budget_low:
+    /* The sites served this frame: 2*[3688]+1 (+3 with the player close, [C62C] at 80h or more). */
+    SM4_NEED(4, 0x5181); c->icount++;
+    c->r[R_AX] = ds_get(c, 0x3688); c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], 1, 1);
+    c->r[R_AX] = (uint16_t)alu_inc(c, c->r[R_AX], 1); c->icount += 3;
+    goto site_gate;
+site_budget_high:
+    SM4_NEED(4, 0x5184); c->r[R_AX] = ds_get(c, 0x3688); c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], 1, 1);
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], 3, 1, 0); c->icount += 4;
+site_gate:
+    /* Served when the budget is at least (-((frame >> 10) * index)) & 7. */
+    SM4_NEED(8, 0x50D8); c->r[R_CX] = c->r[R_AX];
+    c->r[R_AX] = ds_get(c, 0x3D8E); c->r[R_AX] = (uint16_t)x86_shift(c, 7, c->r[R_AX], 10, 1);
+    x86_imul16(c, VG3_FRAME(GD_FRAME_I));
+    c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0);
+    c->r[R_AX] = (uint16_t)alu_logic(c, c->r[R_AX] & 7, 1);
+    alu_sub(c, c->r[R_CX], c->r[R_AX], 1, 0); c->icount += 8;
+    if (x86_cond(c, 13)) goto site_timer;
+    SM4_NEED(4, 0x50EC); bx = VG3_FRAME(GD_FRAME_I); c->r[R_BX] = bx; c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 4, 1);
+    alu_sub(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0xB2D8)), 0, 1, 0); c->icount += 4;
+    if (!(c->flags & F_ZF)) goto site_timer;
+    SM4_NEED(2, 0x50F9); alu_logic(c, ds_get8(c, (uint16_t)(c->r[R_BX] + 0xB2D7)) & 1, 0); c->icount += 2;
+    if (c->flags & F_ZF) goto site_idle;
+site_timer:
+    /* Count the reload timer down; an expired one reloads from S over the defence. */
+    SM4_NEED(5, 0x5100); c->r[R_BX] = VG3_FRAME(GD_FRAME_I); c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 4, 1);
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0xB2DA), (uint16_t)alu_dec(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0xB2DA)), 1));
+    alu_sub(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0xB2DA)), 0, 1, 0); c->icount += 5;
+    if (x86_cond(c, 15)) goto site_shot;
+    SM4_NEED(9, 0x5111);
+    set_r8(c, R_AH, ds_get8(c, 0x368E)); set_r8(c, R_AL, (uint8_t)alu_sub(c, get_r8(c, R_AL), get_r8(c, R_AL), 0, 0));
+    c->r[R_CX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0xB2D8)); c->r[R_CX] = (uint16_t)x86_shift(c, 7, c->r[R_CX], 2, 1);
+    c->r[R_CX] = (uint16_t)alu_add(c, c->r[R_CX], 0x10, 1, 0);
+    c->r[R_DX] = (uint16_t)((c->r[R_AX] & 0x8000) ? 0xFFFF : 0);
+    if (!idiv_fits((int32_t)(((uint32_t)c->r[R_DX] << 16) | c->r[R_AX]), (int16_t)c->r[R_CX]) ||
+        (c->model == CPU_8086 && (int32_t)(((uint32_t)c->r[R_DX] << 16) | c->r[R_AX]) / (int16_t)c->r[R_CX] == -32768)) {
+        c->icount += 6; c->ip = 0x5122; return 1;                    /* the original takes the divide error */
+    }
+    x86_idiv16(c, c->r[R_CX], 0);
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], VG3_FRAME(GD_FRAME_I), 1, 0);
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0xB2DA), c->r[R_AX]); c->icount += 9;
+site_shot:
+    /* A timer through exactly 4 with the warning countdown negative: the site engages the player. */
+    SM4_NEED(4, 0x512B); c->r[R_BX] = VG3_FRAME(GD_FRAME_I); c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 4, 1);
+    alu_sub(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0xB2DA)), 4, 1, 0); c->icount += 4;
+    if (!(c->flags & F_ZF)) goto site_next;
+    SM4_NEED(2, 0x5138); alu_sub(c, ds_get(c, 0x3D98), 0, 1, 0); c->icount += 2;
+    if (x86_cond(c, 13)) goto site_next;
+    SM4_NEED(2, 0x513F); cpu_push16(c, VG3_FRAME(GD_FRAME_I)); c->r[R_SI] = c->r[R_BX]; c->icount += 2;
+    SM4_NEED(1, 0x5144); VG3_NEAR(0x528D, 0x5147, 3);
+    c->r[R_BX] = cpu_pop16(c);
+    { const uint16_t at = (uint16_t)(c->r[R_SI] + 0xB2D6);
+      mem_write8(c, phys(c->seg[S_DS], at), (uint8_t)alu_logic(c, ds_get8(c, at) | 2, 0)); }
+    c->icount += 3;
+    goto site_next;
+site_idle:
+    SM4_NEED(3, 0x514F); c->r[R_BX] = VG3_FRAME(GD_FRAME_I); c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 4, 1);
+    { const uint16_t at = (uint16_t)(c->r[R_BX] + 0xB2D6);
+      mem_write8(c, phys(c->seg[S_DS], at), (uint8_t)alu_logic(c, ds_get8(c, at) & 0xFD, 0)); }
+    c->icount += 3;
+site_next:
+    SM4_NEED(1, 0x515A); VG3_SETFRAME(GD_FRAME_I, (uint16_t)alu_inc(c, VG3_FRAME(GD_FRAME_I), 1)); c->icount++;
+site_test:
+    SM4_NEED(3, 0x515D); c->r[R_AX] = ds_get(c, 0x992C); alu_sub(c, VG3_FRAME(GD_FRAME_I), c->r[R_AX], 1, 0); c->icount += 3;
+    if (x86_cond(c, 13)) goto warning;
+    SM4_NEED(4, 0x5165); c->r[R_BX] = VG3_FRAME(GD_FRAME_I); c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 4, 1);
+    alu_sub(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0xB2D4)), 0, 1, 0); c->icount += 4;
+    if (c->flags & F_ZF) goto site_idle;
+    SM4_NEED(2, 0x5172); alu_logic(c, ds_get8(c, (uint16_t)(c->r[R_BX] + 0xB2D6)) & 0x80, 0); c->icount += 2;
+    if (!(c->flags & F_ZF)) goto site_idle;
+    SM4_NEED(2, 0x5179); alu_sub(c, ds_get(c, 0xC62C), 0x80, 1, 0); c->icount += 2;
+    if (x86_cond(c, 13)) goto site_budget_high;
+    goto site_budget_low;
+warning:
+    SM4_NEED(2, 0x518F); alu_sub(c, ds_get(c, 0xDF06), 0, 1, 0); c->icount += 2;
+    if (!(c->flags & F_ZF)) goto warning_skip;
+    SM4_NEED(2, 0x5196); alu_sub(c, ds_get(c, 0x3D98), 0, 1, 0); c->icount += 2;
+    if (x86_cond(c, 14)) goto warning_skip;
+    SM4_NEED(2, 0x519D); alu_sub(c, ds_get(c, 0x368C), 0, 1, 0); c->icount += 2;
+    if (c->flags & F_ZF) goto warning_skip;
+    SM4_NEED(2, 0x51A4); alu_sub(c, ds_get(c, 0xC09C), 1, 1, 0); c->icount += 2;
+    if (x86_cond(c, 15)) goto warning_body;
+warning_skip:
+    SM4_NEED(1, 0x51AB); c->icount++; goto countdown;
+warning_body:
+    SM4_NEED(2, 0x51AE); alu_sub(c, ds_get(c, 0x990E), 0, 1, 0); c->icount += 2;
+    if (c->flags & F_ZF) goto warning_raw;
+    /* The warning value: [C09C] times the share of S left after the countdown, over S, shifted up six. */
+    SM4_NEED(8, 0x51B5); c->r[R_AX] = ds_get(c, 0x368E); c->r[R_DX] = (uint16_t)((c->r[R_AX] & 0x8000) ? 0xFFFF : 0);
+    cpu_push16(c, c->r[R_DX]); cpu_push16(c, c->r[R_AX]); cpu_push16(c, c->r[R_AX]); cpu_push16(c, 1);
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], ds_get(c, 0x3D98), 1, 0); cpu_push16(c, c->r[R_AX]); c->icount += 8;
+    SM4_NEED(1, 0x51C3); VG3_NEAR(0xC67A, 0x51C6, 4); VG3_DROP(6);
+    x86_imul16(c, ds_get(c, 0xC09C)); cpu_push16(c, c->r[R_DX]); cpu_push16(c, c->r[R_AX]); c->icount += 4;
+    {   /* the 32-bit divide takes its two long arguments off (RET 8) */
+        SM4_NEED(1, 0x51CF);
+        if (!guest_call_pop(m, 0xEE9C, 0x51D2, 8)) return 1;
+        if (!room(c, 3)) { c->ip = 0x51D2; return 1; }
+    }
+    c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], 6, 1); VG3_SETFRAME(GD_FRAME_WARN, c->r[R_AX]); c->icount += 3;
+    goto warning_marker;
+warning_raw:
+    SM4_NEED(4, 0x51DA); c->r[R_AX] = ds_get(c, 0xC09C); c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], 6, 1);
+    VG3_SETFRAME(GD_FRAME_WARN, c->r[R_AX]); ds_put(c, 0xC09C, 0); c->icount += 4;
+warning_marker:
+    /* The marker's colour: 0Fh on odd countdown frames, 0 on even (cmp/cmc/sbb widens the low bit). */
+    SM4_NEED(2, 0x51E9); alu_sub(c, ds_get(c, 0xC0AA), 0, 1, 0); c->icount += 2;
+    if (x86_cond(c, 12)) goto warning_air;
+    SM4_NEED(12, 0x51F0); cpu_push16(c, 1);
+    set_r8(c, R_AL, ds_get8(c, 0x3D98)); c->r[R_AX] = (uint16_t)alu_logic(c, c->r[R_AX] & 1, 1);
+    alu_sub(c, c->r[R_AX], 1, 1, 0); c->flags ^= F_CF; c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, !!(c->flags & F_CF));
+    c->r[R_AX] = (uint16_t)alu_logic(c, c->r[R_AX] & 0x0F, 1); cpu_push16(c, c->r[R_AX]);
+    c->r[R_BX] = ds_get(c, 0xC0AA); c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 4, 1);
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0xB2D2))); cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0xB2D0))); c->icount += 12;
+    SM4_NEED(1, 0x5211); VG3_NEAR(0x8625, 0x5214, 11); VG3_DROP(8);
+    cpu_push16(c, ds_get(c, 0xC168)); cpu_push16(c, ds_get(c, 0xC166)); cpu_push16(c, ds_get(c, 0xE578)); cpu_push16(c, ds_get(c, 0x98A2));
+    cpu_push16(c, VG3_FRAME(GD_FRAME_WARN));
+    c->r[R_BX] = ds_get(c, 0xC0AA); c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 4, 1);
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0xB2D2))); cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0xB2D0))); c->icount += 11;
+    goto warning_arc;
+warning_air:
+    SM4_NEED(11, 0x523B); cpu_push16(c, 1);
+    set_r8(c, R_AL, ds_get8(c, 0x3D98)); c->r[R_AX] = (uint16_t)alu_logic(c, c->r[R_AX] & 1, 1);
+    alu_sub(c, c->r[R_AX], 1, 1, 0); c->flags ^= F_CF; c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, !!(c->flags & F_CF));
+    c->r[R_AX] = (uint16_t)alu_logic(c, c->r[R_AX] & 0x0F, 1); cpu_push16(c, c->r[R_AX]);
+    c->r[R_BX] = x86_imul3(c, ds_get(c, 0xC0AA), 0xFFDC);
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0xC14A))); cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0xC148))); c->icount += 11;
+    SM4_NEED(1, 0x525A); VG3_NEAR(0x8625, 0x525D, 9); VG3_DROP(8);
+    cpu_push16(c, ds_get(c, 0xC168)); cpu_push16(c, ds_get(c, 0xC166)); cpu_push16(c, ds_get(c, 0xE578)); cpu_push16(c, ds_get(c, 0x98A2));
+    cpu_push16(c, VG3_FRAME(GD_FRAME_WARN));
+    c->r[R_BX] = x86_imul3(c, ds_get(c, 0xC0AA), 0xFFDC);
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0xC14A))); cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0xC148))); c->icount += 9;
+warning_arc:
+    SM4_NEED(1, 0x5280); VG3_NEAR(0x8719, 0x5283, 1); VG3_DROP(0x0E); c->icount++;
+countdown:
+    SM4_NEED(4, 0x5286); ds_put(c, 0x3D98, (uint16_t)alu_dec(c, ds_get(c, 0x3D98), 1));
+    c->r[R_SI] = cpu_pop16(c); x86_leave(c); near_ret(c); c->icount += 4;
+    return 1;
+}
+#undef GD_FRAME_I
+#undef GD_FRAME_WARN
+
 static const recomp_override MATCHED[] = {
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x5046, vgame_ground_defences, "ground threat timers, damage bars and incoming warning", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x3ADA, vgame_frame_update, "per-frame world and mission update", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x1EB0, vgame_flight_input, "flight controls and integration", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xBCEF, vgame_camera_image, "reconnaissance camera image", 1 },
