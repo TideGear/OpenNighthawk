@@ -800,7 +800,7 @@ instruction profiles and three 789-address matched seeds (2,561,209,
       address, pinned to the shipped file by hash, off unless switched on
       (`--fix ID`, `--list-fixes`). Inert when off. Details:
       [architecture.md](architecture.md#the-run-time).
-- [ ] **Fixes for the original's bugs** ([bugs.md](bugs.md)), each on a switch.
+- [x] **Fixes for the original's bugs** ([bugs.md](bugs.md)), each on a switch.
       Done: D1 (a frame limiter at VGAME 0x441D holds a fast machine to GOG's
       11.6 frames a second; `tools/d1_check.py`, route `d1_fast_machine`), D2
       (speech played from the machine's schedule instead of a busy-wait), D4
@@ -825,12 +825,10 @@ instruction profiles and three 789-address matched seeds (2,561,209,
       more damage at 20 MIPS after input-phase divergence. The identified
       CPU/enemy defects are repaired in the optional corrected mode;
       original key-poll timing still limits exact whole-flight determinism.
-      [Evidence](speed-sweep.md#optional-real-time-cadence-10-oct-controlled-airborne-checks-complete). D7 is fixed by D8. Open:
-      D10 (the mountain-collision stack corruption, DOS equivalent not
-      located; no VGAME routine returns with the stack moved,
-      `tools/stack_balance.py`), D35 (not reproduced here; no fix offered) and D36 (not
-      reproduced: on 2.0x control ROMs Munt plays the engine 3.4 dB quieter,
-      not silent; no fix offered). D96 is the Reimp's
+      [Evidence](speed-sweep.md#optional-real-time-cadence-10-oct-controlled-airborne-checks-complete). D7 is fixed by D8. D10, D35 and D36 are
+      closed after review as not established for DOS or not reproduced,
+      with evidence, limits and reopening criteria in
+      [legacy-reports.md](legacy-reports.md). No speculative fix is offered. D96 is the Reimp's
       native-UI wait, not a patch for this translated START. A session recorded
       with fixes on names them in its log and replays with them.
       The [D1 follow-up](speed-sweep.md#d1-follow-up-9-october-2026) adds 90

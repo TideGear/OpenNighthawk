@@ -710,7 +710,7 @@ on one thread.
 **The HUD, text and sprites at 4K (owner's choice, 10 October 2026): like the Reimp.**
 HUD lines and tick marks are rasterised on the output grid; text glyphs, sprites and
 cockpit artwork keep their original N x N pixel blocks. `--present-line-width N`
-(`present-line-width =` in f117a.ini) selects 1â€“20 output pixels; 0, the default,
+(`present-line-width =` in f117a.ini) selects 1–20 output pixels; 0, the default,
 uses the render scale. At N = 1 the original replay is used exactly, including
 its line quirks, regardless of the width setting. `--present scan` retains the
 original picture at every scale.

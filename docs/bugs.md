@@ -4,7 +4,7 @@ This is the tracker for defects in the original DOS release of *F-117A
 Nighthawk Stealth Fighter 2.0* (473.03 with the 473.04 VGAME update, which is
 what GOG ships). It is for anyone deciding which bugs to fix later and how.
 
-**Every bug listed here is present in the recompilation, deliberately.** The
+**Confirmed defects in the shipped DOS code are preserved deliberately.** The
 recompiled code is the original's machine code translated instruction for
 instruction, so it does what the original did, defects included. That is
 what 1:1 parity means. Fixes are switchable patches layered on top (see
@@ -25,6 +25,8 @@ Status values:
 - **Confirmed**: traced to instructions in the shipped binaries.
 - **Reported**: known from players, vendors or MicroProse, not yet located.
 - **Recomp**: found or confirmed by this project.
+- **Closed**: investigated historical reports, not established for DOS or
+  not reproduced in this machine; evidence and reopening criteria are retained.
 
 ## Summary
 
@@ -43,12 +45,12 @@ Status values:
 | D6 | Confirmed | world data + VGAME | "Stealth mountains": 20 terrain sectors where nothing can detect you | `--fix D6` |
 | D7 | Explained | VGAME (via D8) | Strike training mission does not complete correctly: the bomb only hits from a 80-150 unit release | `--fix D8` |
 | D8 | Confirmed | VGAME | Laser-guided bomb pitch clamped at -11.25 degrees | `--fix D8` |
-| D10 | Reported | VGAME (shared code) | Mountain-collision routine stack corruption (fixed only on Mac 2.3.0) | - |
+| D10 | Closed: Mac only | Macintosh | Mountain-collision stack corruption; no DOS equivalent established | - |
 | D11 | Reported | START | Fragile saves: ROSTER.FIL truncated in place | `--fix D11` |
 | D12 | Confirmed | END | Signed/unsigned mix in the hidden campaign rating tally | `--fix D12` |
 | D34 | Confirmed | VGAME | Destroyed-object table has no bound; long missions corrupt state | `--fix D34` |
-| D35 | Reported | ASOUND.LOG and others | Fast machines stop after the intro (delay-loop calibration) | - |
-| D36 | Reported | RSOUND.117 | Later MT-32/MT-100 models play no engine sound (not reproduced on 2.0x ROMs) | - |
+| D35 | Closed: not reproduced | DOS startup | Historical fast-machine startup failure; cause unconfirmed | - |
+| D36 | Closed: not reproduced | RSOUND.117 / Roland | Historical missing engine sound; not reproduced on available MT-32 ROMs | - |
 | Q2-Q13 | Confirmed | VGAME, START | Smaller latent defects (below) | - |
 | R1 | Recomp | - | Open questions from this project (below) | - |
 
@@ -436,6 +438,8 @@ Status values:
 
 ### D7. Strike training does not complete (reported)
 
+- **Fixed by:** D8.
+
 - **What happens.** Players report the training mission not completing
   ("Strike Training vs Strike Mission"); a community workaround exists. Not
   located, and may not exist in this build.
@@ -498,12 +502,14 @@ Status values:
   other route is unchanged.
 - **Detail.** Reimp catalogue:731-808; Reimp `docs/re/21-bomb-guidance.md`.
 
-### D10. Mountain-collision stack corruption (Mac fix, DOS unknown)
+### D10. Mountain-collision stack corruption (Macintosh)
 
-- **What happens.** Macintosh 2.3.0's notes: "An error in an assembler
+- **Disposition.** Closed: not established for DOS. MicroProse's original
+  Macintosh release notes, version 2.3.0 (22 July 1994), recovered from
+  `F117a_Update_2.3.1.sit`, say: "An error in an assembler
   routine that checks mountains for collisions and distance could corrupt the
-  stack." The DOS engine shares the code and never got a fix; no DOS
-  equivalent has been located yet.
+  stack." They establish a Macintosh defect. The earlier assertion that
+  DOS shared it and never received the fix was an inference, and is withdrawn.
 - **Searched here (9 October 2026).** The DOS contact test is in the model
   renderer: model draws set the ground-contact flag `[0xC6B2]` at
   `0x1223F` (`model_fill_stream`, `120A:00CF`, hand-written assembly), which
@@ -517,6 +523,13 @@ Status values:
   BP). A corruption by a stray write into the stack, rather than a push/pop
   imbalance, is not excluded.
 - **Detail.** Reimp catalogue:830-841.
+- **Repeat (12 October 2026).** The current census walks 490 VGAME entries;
+  the same five intentional C runtime paths are flagged, with no additional
+  finding. Successful collision routes cannot establish that every possible
+  collision is safe.
+- **Reopen when:** a reproducible DOS collision corrupts the stack, or a
+  specific DOS instruction path demonstrates an invalid stack write.
+- **Evidence and commands:** [legacy-reports.md](legacy-reports.md).
 
 ### D11. Fragile saves
 
@@ -591,15 +604,17 @@ Status values:
 
 ### D35. Fast machines stop after the intro (reported)
 
+- **Disposition.** Closed: not reproduced in this machine. The community
+  report remains historical evidence, not a demonstrated MicroProse diagnosis.
 - **What happens.** Reported (DOS Days): the game hangs after the intro on
   anything faster than a 486SX-25 unless caches are disabled. Suspects: the
   retrace calibrations in START and PLAYER, and the AdLib logo driver's
   delay-loop calibration (ASOUND.LOG `0x00FE`), which averages sixteen PIT
   deltas across `loop 0x100` and divides `0x5140` by the result. At a high
   enough speed the delta is 0: integer divide by zero, "R6003".
-- **In this recompilation.** The speed is a setting, so this is
-  reproducible: raise `--ips` far enough and the calibration's measured
-  delta reaches zero, as on a fast machine. The same driver's AdLib detection
+- **In this recompilation.** A zero measured interval would fault, but the
+  earlier claim that raising `--ips` necessarily reproduces it is withdrawn.
+  The same driver's AdLib detection
   (`0x0140`: start OPL timer 1, poll the status port 200 times, expect
   `0xC0`) is why this project models ISA I/O timing at all (see
   [architecture.md](architecture.md#time)).
@@ -609,11 +624,24 @@ Status values:
   modelled ISA I/O delays keep the calibration's measured PIT delta above
   zero. No fix is offered for a failure this machine does not show.
 - **Detail.** Reimp catalogue:1408-1426.
+- **Repeat (12 October 2026).** All 18 fresh startup probes reach START:
+  200/1,000/5,000 MIPS, interpreter/recompiler and speaker/AdLib/Roland.
+  These use normal Enter inputs to skip the intros; they verify driver
+  initialization and the transition to START, not complete movie playback
+  at every speed. No speculative calibration fix or speed cap is added.
+- **Reopen when:** an identified DOS version and machine configuration
+  reproduce the failure, with a trace identifying the failed wait or
+  calibration. A reference-hardware reproduction may expose a machine-model
+  gap even if our engines agree.
+- **Evidence and commands:** [legacy-reports.md](legacy-reports.md).
 
 ### D36. Later MT-32s play no engine sound (reported)
 
-- **What happens.** RSOUND.117 depends on first-generation MT-32 sample
-  addresses; later models and the MT-100 play no engine sound.
+- **Disposition.** Closed: not reproduced on available MT-32 ROMs.
+  [DOS Days](https://www.dosdays.co.uk/topics/Games/game_f117.php) reports
+  silence while flying on newer MT-32s and the MT-100. Its moved-sample-address
+  explanation is unconfirmed for these MT-32 ROMs; it is not an established
+  defect in RSOUND.117. Physical units and MT-100/CM-32L PCM ROMs were not tested.
 - **How the engine is made.** VGAME sends sound request 0x17 every frame
   with the airspeed in knots (`[0xB07E]` / 27, `0x02802`). RSOUND's entry
   `0x124C` turns it into channel 8's pitch bend (`0x1F40` + 5 x knots) and
@@ -632,6 +660,17 @@ Status values:
   firmware's tables, not all of its code, so a real 2.0x unit can still
   differ; no fix is offered for a failure this machine does not show.
 - **Detail.** Reimp catalogue:1430-1439.
+- **Repeat (12 October 2026).** A staged replay retains the captured engine
+  initialization and first active note, then holds it for 20 seconds. All
+  seven available control versions (1.04/1.05/1.06/1.07/2.04/2.06/2.07)
+  produce sound. Last-ten-second RMS is 342.49 for 1.0x and 292.40 for 2.0x;
+  those fixed-note levels are not the earlier moving-flight measurement.
+  This extends Munt evidence, not proof of every physical firmware's behavior.
+- **Reopen when:** a flying recording on an identified physical MT-32/MT-100
+  or matching independent emulator reproduces silence with its ROM identities
+  and MIDI stream, or an incompatible mapping is demonstrated on an untested
+  model. No speculative timbre replacement is offered.
+- **Evidence and commands:** [legacy-reports.md](legacy-reports.md).
 
 ## Smaller confirmed defects (Q-series and quirks)
 

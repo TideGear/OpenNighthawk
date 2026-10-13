@@ -35,8 +35,17 @@ def fixes_share():
     table = fixes[fixes.index("FIXES[] = {"):]
     available = set(re.findall(r'\{\s*"(D\d+)",', table[:table.index("};")]))
     bugs = open(os.path.join(ROOT, "docs", "bugs.md"), encoding="utf-8").read()
-    catalogued = set(re.findall(r"^###\s+(D\d+)\.", bugs, re.M))
-    return len(available & catalogued) / max(len(catalogued), 1), len(available & catalogued), len(catalogued)
+    sections = dict(re.findall(r"^###\s+(D\d+)\.[^\n]*\n(.*?)(?=^### |\Z)", bugs, re.M | re.S))
+    closed = {key for key, body in sections.items()
+              if re.search(r"^- \*\*Disposition\.\*\* Closed:", body, re.M)}
+    actionable = set(sections) - closed
+    fixed = available & actionable
+    for key in actionable:
+        alias = re.search(r"^- \*\*Fixed by:\*\* (D\d+)\.", sections[key], re.M)
+        if alias and alias[1] in available:
+            fixed.add(key)
+    return len(fixed) / max(len(actionable), 1), len(fixed), len(actionable), len(closed)
+
 
 
 def refresh_census(data, path):
@@ -52,7 +61,7 @@ def refresh_census(data, path):
 
 def compute(data):
     c = data["census"]
-    share, fixed, catalogued = fixes_share()
+    share, fixed, catalogued, closed = fixes_share()
     measures = {
         "census_matched_bytes": c["matched_bytes"] / c["bytes"],
         "fixes_share": share,
@@ -69,7 +78,7 @@ def compute(data):
         out[phase] = 100.0 * got / total
     w = data["phase_weights"]
     out["All"] = sum(out[p] * w[p] for p in w) / sum(w.values())
-    return out, rows, (fixed, catalogued)
+    return out, rows, (fixed, catalogued, closed)
 
 
 def title(pct):
@@ -87,15 +96,15 @@ def main():
         with open(DATA, "w", encoding="utf-8", newline="\n") as f:
             json.dump(data, f, indent=2)
             f.write("\n")
-    pct, rows, (fixed, catalogued) = compute(data)
+    pct, rows, (fixed, catalogued, closed) = compute(data)
     if a.title:
         print(title(pct))
         return
     for phase, item, weight, done, kind in rows:
-        print("%-3s %5.1f%% of weight %3d  %-9s %s" % (phase, 100 * done, weight, kind, item))
+        print("%-3s %5.1f%% of weight %5.1f  %-9s %s" % (phase, 100 * done, weight, kind, item))
     c = data["census"]
-    print("census: %d of %d functions matched, %d of %d bytes; fixes %d of %d catalogued defects"
-          % (c["matched_functions"], c["functions"], c["matched_bytes"], c["bytes"], fixed, catalogued))
+    print("census: %d of %d functions matched, %d of %d bytes; fixes %d of %d actionable reports; %d historical reports closed without fixes"
+          % (c["matched_functions"], c["functions"], c["matched_bytes"], c["bytes"], fixed, catalogued, closed))
     print(title(pct))
 
 

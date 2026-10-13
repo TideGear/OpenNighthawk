@@ -40,7 +40,16 @@ automated phases can reach 100% without pretending to have settled it.
   they are checked and used. Refresh the census figures with
   `py tools/progress.py --census <reimp_names.py output>`.
 - **Phase 3, fixes:** fixes available in `src/fixes/fixes.c` over the
-  defects catalogued as `### Dn.` in `docs/bugs.md`.
+  actionable reports catalogued as `### Dn.` in `docs/bugs.md`. An explicit
+  `Disposition. Closed:` excludes an unestablished historical report;
+  `Fixed by:` credits a report addressed by another available fix (D7 by D8).
+  Closed reports are printed separately and never counted as patches.
+
+On 13 October 2026, review closed D10/D35/D36 without DOS fixes. The bug
+item's former weight of 35 was reduced to 27.5 (11/14 of 35), then Phase 3's
+weights were normalized to 100 and rounded to one decimal. The separate
+scope commit makes this change visible. The resulting 11/11 also corrects
+D7's previously omitted D8 credit; it does not mean three new fixes shipped.
 
 ## What is estimated, and how to be honest about it
 

@@ -17,8 +17,9 @@ standing practice, not a session-by-session log. Earlier sessions' detail
 
 Fully gated runtime: view composition (`VGAME 0000:2F9D`,
 `vgame_frame_compose`), 828 matched addresses, census 820 functions /
-93,367 bytes (P2 54.49%). Three targeted seeds compare 3,199 / 3,216 /
-3,200 states, zero mismatches; all 938 canonical instruction starts reached.
+93,367 bytes (P2 54.49%, P3 84.87%, overall 80.32%). Three targeted seeds
+compare 3,199 / 3,216 / 3,200 states, zero mismatches; all 938 canonical
+instruction starts reached.
 Room audit: 208 claims, 938 instructions, 66 calls. Actual camera replay:
 8,456 calls, all 234 checkpoints and final identical, no event overrun.
 Private proof: `D:/f117-gate/frame-2f9d`.
@@ -49,7 +50,8 @@ or not reproduced, with evidence and reopening criteria in
 [docs/legacy-reports.md](docs/legacy-reports.md) and bugs.md. D10's recovered
 MicroProse release notes establish a Macintosh defect. D35 passes all 18
 speed/engine/sound probes; D36's engine plays on all seven available MT-32
-control ROMs. These closures are not new patches. Phase 3 still includes
+control ROMs. These closures are not new patches; the separate scope/progress
+commit reduces their weight and credits D7 through D8. Phase 3 still includes
 presentation coverage and real-display polish; human play/listening checks
 remain Phase 4.
 
