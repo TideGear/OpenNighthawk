@@ -133,7 +133,13 @@ Phase 2 work" below).
   aircraft traffic, weapons in flight, view composition and mission generation). Earlier proofs and tested source
   snapshots remain under `D:/f117-gate/`; history is in
   [docs/repeated-processes.md](docs/repeated-processes.md).
-  Next: pick from `tools/reimp_names.py`. DSWAP `0x03DF3` is deferred:
+  Next: 492 census entries with a translated region (56.7 KB) remain; census
+  rows with no region are data (SETUP `0x027AE` is strings), so filter them out.
+  Screen with `tools/matched_draft.py --dossier` (module/seg/ip from the
+  region name): 324 walk to a plain RET, 137 end in a far jump. Leads: the MISC
+  overlay loader pair (SETUP `0A9F`, MPS_LOGO `00DA:0352`; INT 21h 48h/4B03h/4Ah)
+  and the logo main (MPS_LOGO `0006:0072`; polling loops need SETUP's `SQ_RUN`
+  clamp). Batch several routines per gate. DSWAP `0x03DF3` is deferred:
   2,791 initial zero bytes, no generated entry; the static draft decodes data.
   Require an actual caller or execution before matching, and keep the census
   unchanged meanwhile. Evidence: `D:/f117-gate/dswap-3df3/candidate-review.json`.
