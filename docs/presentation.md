@@ -816,6 +816,35 @@ Both hosts accept widths 0/1/20 and reject -1/21/non-numbers/trailing letters.
 `test_hires --line-width N --dump PREFIX` also renders
 the last checked frame as coarse and fine PPMs using the recorded palette.
 
+## Fullscreen 4K/60 timing (13 October 2026)
+
+The flat-cell guard now checks safe unaligned 8/4-byte groups and tails.
+A scalar regression preserves every output byte and all repair counters
+at N=1..16; all 66 retained-window checks still pass. This supplies measured
+headroom without changing drawing rules or guest execution.
+
+An isolated fullscreen strike replay runs 389.84 seconds on the available
+virtual display: Direct3D 11, 3840x2160 output, reported 59.990002 Hz,
+vsync enabled, N=9. All 2,062 logic frames replay exactly; final guest hash
+`bc8e3ae5a872405d` equals the fresh interpreter run at 3.5B instructions.
+The 7,702 flight pictures have a 16.6676 ms median interval, 24.3045 ms p99
+and 30.9452 ms maximum. Twenty-five intervals exceed 25 ms (0.325%);
+accumulated guest drift is -11.23 ms, with 5,642 interpolation advances.
+The retained checker **rejects** the p99, which exceeds its 20.833 ms limit.
+This is not completion of steady 60 Hz pacing or a physical-panel verdict.
+The owner cannot assess motion now, so that check remains open.
+
+`tools/presentation_timing.py` checks the logged display settings, intervals,
+interpolation and guest drift; malformed or incomplete captures fail.
+`f117a.4k.ini` is an optional ready-to-run fullscreen preset. Commands and
+limits are in [repeated-processes.md](repeated-processes.md).
+
+The next performance hypothesis is to consume drawing records as the
+machine produces them, spreading fine replay across host slices. A private
+streaming draft passes a synthetic comparison of closed pictures, cached
+starts, endpoints, drops and reseeds, but has no route or timing verdict.
+It is parked outside the repository for the next conversation.
+
 ## Open questions and risks
 
 - **Pairing for interpolation.** Done for 86-99% of painted polygons by batch alignment

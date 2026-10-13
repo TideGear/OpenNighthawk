@@ -1002,7 +1002,11 @@ instruction profiles and three 789-address matched seeds (2,561,209,
   pattern cells and transparent backgrounds. All 66 checks across 11
   retained windows and live N=4/9 boot sentinels pass. The owner set the
   remaining performance/display target to 4K at 60 Hz (16.67 ms); private
-  hardware-renderer profiling is a lead, not a physical-refresh verdict.
+  fullscreen GPU timing now verifies 4K/59.99Hz/vsync output and exact guest
+  state, but p99 24.3045 ms fails the steady-refresh check. The guard
+  optimization is integrated; an incremental replay draft is parked
+  privately without route/timing proof. Physical motion review is unavailable
+  now; P3 remains 86.49%. See presentation.md for the retained result.
 
 ## Phase 4 - checked by people and independent references
 

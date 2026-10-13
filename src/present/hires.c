@@ -475,8 +475,23 @@ int hires_guard_masked(const uint8_t *coarse, uint8_t *fine, int n, const uint8_
             (*flat)++;
             int ok = 1;
             uint8_t *q = fine + (size_t)y * n * W + (size_t)x * n;
-            for (int j = 0; j < n && ok; j++)
-                for (int i = 0; i < n && ok; i++) ok = q[j * W + i] == v;
+            /* Read complete groups within this cell only. memcpy permits
+             * unaligned rows without aliasing or alignment assumptions. */
+            const uint64_t eight = (uint64_t)v * UINT64_C(0x0101010101010101);
+            const uint32_t four = (uint32_t)v * UINT32_C(0x01010101);
+            for (int j = 0; j < n && ok; j++) {
+                const uint8_t *row = q + j * W;
+                int i = 0;
+                for (; i + 8 <= n && ok; i += 8) {
+                    uint64_t got; memcpy(&got, row + i, sizeof got);
+                    ok = got == eight;
+                }
+                if (ok && i + 4 <= n) {
+                    uint32_t got; memcpy(&got, row + i, sizeof got);
+                    ok = got == four; i += 4;
+                }
+                for (; i < n && ok; i++) ok = row[i] == v;
+            }
             if (ok) { (*agree)++; continue; }
             for (int j = 0; j < n; j++) memset(q + j * W, v, (size_t)n);
             restored++;

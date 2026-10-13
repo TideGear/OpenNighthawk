@@ -159,6 +159,8 @@ if(F117R_BUILD_APP)
   # the commented settings file, beside the executable to copy as f117a.ini
   add_custom_command(TARGET f117a POST_BUILD COMMAND ${CMAKE_COMMAND} -E
     copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/f117a.example.ini $<TARGET_FILE_DIR:f117a>)
+  add_custom_command(TARGET f117a POST_BUILD COMMAND ${CMAKE_COMMAND} -E
+    copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/f117a.4k.ini $<TARGET_FILE_DIR:f117a>)
   if(F117R_GEN_DIR)
     target_link_libraries(f117a PRIVATE f117recomp)
   else()
@@ -196,6 +198,9 @@ if(F117R_BUILD_TESTS)
   # Hand tests of the 80186/80286 instructions the flight engine uses, and
   # of the corners where those parts differ from the 8086 (the Reimp's).
   enable_testing()
+  add_executable(test_present_guard tests/test_present_guard.c)
+  target_link_libraries(test_present_guard PRIVATE f117present)
+  add_test(NAME presentation_flat_guard COMMAND test_present_guard)
   add_executable(test_weapon_sweep tests/test_weapon_sweep.c)
   target_include_directories(test_weapon_sweep PRIVATE src/fixes)
   add_test(NAME weapon_proximity_sweep COMMAND test_weapon_sweep)

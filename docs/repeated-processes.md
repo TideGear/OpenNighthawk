@@ -49,15 +49,56 @@ pair. Profiling separates regeneration/raster, palette conversion, upload
 and GPU submission. Runs beside the gate are exploratory: they include
 driver stalls and are not isolated 60 Hz acceptance evidence. A byte-group
 flat-guard draft preserves full fine-frame checksums, seam-repair tallies
-and flat/agree/restored counts across strike/landing/air-to-air, but is not
-integrated. Keep it separate from the fill-style validation; measure it
-without competing jobs before claiming a speed gain. Isolated N=9 strike
+and flat/agree/restored counts across strike/landing/air-to-air. It was
+subsequently integrated with the scalar regression below. Keep its
+evidence separate from the fill-style milestone. Isolated N=9 strike
 throughput subsequently measures 84.36 fps / 15.120 ms p99 with current
 code, and 90.58 fps / 13.803 ms p99 with the draft; both have an occasional
 roughly 100 ms upload stall. Short landing and air-to-air runs also exceed
 60 fps on average but their p99 includes upload stalls. This does not pass
 the steady-refresh check. Private sources and
 logs: `D:/f117-gate/p3-styles/bench` and `guard-before/after-*`.
+
+## GPU refresh and 4K presentation timing (13 October 2026)
+
+Capture an isolated application replay with a fresh save directory, using
+`f117a --no-config --data DIR --save NEW-DIR --no-record --replay
+tools/routes/strike.input --exit-after 3500000000 --present interp
+--present-scale 9 --fullscreen --present-log FILE --log MACHINE-LOG`.
+The replay sets its recorded 9 MIPS clock. This takes about 389 seconds of
+wall time, including menus and over two minutes of flight; keep other heavy
+jobs stopped. The timing log includes the actual GPU renderer, output size,
+refresh rate, vsync and fine scale. Compare the final guest hash with an
+isolated headless run using the same input, fresh save and stop count.
+
+`py tools/presentation_timing.py FILE --out VERDICT.json` checks 3840x2160
+at 60 Hz by default (`--resolution W H`, `--refresh HZ`, `--ips N`). It
+requires a GPU, vsync, sufficient fine resolution and at least 600 flight
+pictures; median interval within 10% of the refresh period, p99 within
+125%, no more than 1% of intervals above 150%, consistent interpolation
+time and no more than 100 ms accumulated guest drift. Malformed, incomplete
+or wrong-target captures fail. Synthetic verdict regressions run in CI.
+This measures submitted pictures on the available display, which may be
+virtual. Physical-panel tearing and perceived motion require the owner's
+eyes. Keep raw timing and game logs private.
+
+The flat-cell guard now compares safe unaligned 8/4-byte groups and tails.
+Its scalar regression checks complete output bytes and all counters at
+N=1..16, including modified tails, non-flat boundaries and protected HUD
+cells (0.22 s). All 66 retained-window checks pass after the optimization.
+The final guard-only build passes 59 CTests in 142.83 s (excluding the
+unchanged full func_lockstep already covered by the preceding gate), seven
+Python verdict regressions and a ROM-free preset/metadata smoke check.
+
+The isolated fullscreen strike capture takes 389.84 s on a virtual display:
+Direct3D11, 3840x2160, 59.990002 Hz, vsync enabled, N=9. Its 2,062 closed
+logic frames are exact and final hash bc8e3ae5a872405d equals a fresh
+interpreter run. For 7,702 flight pictures: median 16.6676, p99 24.3045,
+maximum 30.9452 ms; 25 intervals exceed 25 ms (0.325%), guest drift
+-11.23 ms. The checker FAILS p99, so pacing remains open. Owner motion
+review is unavailable. Evidence: `D:/f117-gate/p3-styles/display`. A private
+open-frame streaming experiment has only synthetic proof and is parked at
+`p3-styles/stream-draft`; no route/timing verdict or completion credit.
 
 ## Observer path comparison (13 October 2026)
 

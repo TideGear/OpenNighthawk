@@ -490,6 +490,7 @@ int main(int argc, char **argv)
         if (tex_fine) SDL_SetTextureScaleMode(tex_fine, SDL_SCALEMODE_LINEAR);
     }
     SDL_HideCursor();
+    int display_logged = 0;
 
     SDL_AudioSpec spec = { SDL_AUDIO_S16, 2, AUDIO_RATE };
     SDL_AudioStream *stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, NULL, NULL);
@@ -652,6 +653,11 @@ int main(int argc, char **argv)
         while (SDL_PollEvent(&ev)) {
             switch (ev.type) {
             case SDL_EVENT_QUIT: running = 0; break;
+            case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+            case SDL_EVENT_WINDOW_DISPLAY_CHANGED:
+            case SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED:
+                display_logged = 0;
+                break;
             case SDL_EVENT_KEY_DOWN: case SDL_EVENT_KEY_UP: {
                 const int down = ev.type == SDL_EVENT_KEY_DOWN;
                 const SDL_Keymod mod = ev.key.mod;
@@ -811,6 +817,15 @@ int main(int argc, char **argv)
         SDL_RenderClear(ren);
         SDL_RenderTexture(ren, show, &srcf, &dst);
         SDL_RenderPresent(ren);
+        if (g_present_log && !display_logged) {
+            int width = 0, height = 0, vsync = 0;
+            const SDL_DisplayMode *mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(win));
+            SDL_GetCurrentRenderOutputSize(ren, &width, &height);
+            SDL_GetRenderVSync(ren, &vsync);
+            fprintf(g_present_log, "# display renderer=%s output=%dx%d refresh=%.6f vsync=%d scale=%d\n",
+                    SDL_GetRendererName(ren), width, height, mode ? mode->refresh_rate : 0.0, vsync, g_scale);
+            display_logged = 1;
+        }
         if (g_present_log)                                    /* when the frame went out, and what it showed */
             fprintf(g_present_log, "%llu %llu %llu %llu %.6f %d\n", (unsigned long long)(SDL_GetTicksNS() - start_ns),
                     (unsigned long long)H.m.cpu.icount, (unsigned long long)older, (unsigned long long)newer, t_shown, got);

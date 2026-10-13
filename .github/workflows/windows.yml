@@ -72,6 +72,8 @@ jobs:
         run: python tests/test_present_styles.py
       - name: Presentation verdict regressions
         run: python tests/test_presentation_check.py
+      - name: Presentation pacing verdict regressions
+        run: python tests/test_presentation_timing.py
       - name: Preserve pacing diagnostics on failure
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

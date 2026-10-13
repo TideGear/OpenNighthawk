@@ -135,9 +135,10 @@ options. Fifteen catalogued fixes and balance options are available now, all off
   with Reimp-style HUD strokes and original bitmap text and artwork. Use
   `--present interp --present-scale 9` for a 4K display; `--present-line-width 1`
   selects thin HUD strokes. The scanned original picture remains the default.
-- **Not yet done:** the remaining named C routines; near-clipped polygons
-  at high resolution and real-display refresh/motion checks; full frame parity; remaining bug
-  fixes; play by a person at the keyboard; rendered Roland output against
+  The optional [4K preset](f117a.4k.ini) also selects fullscreen and interpolation
+  age: `build\f117a.exe --config f117a.4k.ini --data INSTALL_DIR`.
+- **Not yet done:** the remaining named C routines; steady 4K/60 pacing and physical-display motion
+  checks; play by a person at the keyboard; rendered Roland output against
   an independent reference and listening checks.
 
 How the parity claim is built and checked: [docs/architecture.md](docs/architecture.md).

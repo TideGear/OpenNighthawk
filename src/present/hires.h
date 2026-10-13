@@ -12,8 +12,8 @@
  * the original's own footprint. Exact camera snapshots supply the origin even when every edge is
  * viewport-clipped, avoid reused V storage, and reconstruct verified
  * near-plane crossings. Missing snapshots, unrelated behind vertices
- * or a footprint more than 3 pixels from the geometry, and
- * fill styles with no rule keep the scaled copy, as do text, sprites,
+ * or a footprint more than 3 pixels from the geometry keep the scaled copy,
+ * as do text, sprites,
  * and blits. HUD lines and ticks are drawn on the fine grid by drawlist.c,
  * retaining the original glyph and artwork pixels. The state is plain data:
  * a copy (memcpy) carries on. drawlist_finish_models completes uncovered

@@ -32,10 +32,40 @@ checks pass. Stage 1 complete; Stage 2 95%; P3 **86.49%**, overall **81.55%**.
 Fresh full gate: 58 tests, 45 routes / 44 fresh interpreter sessions, both
 5,718,848-state instruction profiles, three 831-address matched seeds
 (2,725,058 / 2,723,998 / 2,725,465), zero mismatches; reachability/event checks
-pass (1,969 s). Proof: `D:/f117-gate/p3-styles`. Main runtime source matches
-the frozen runner SHA256 `b1b99911ed22476aa1e83d925a2e0411a5f27124d8ef1e02933442bdc82862d3`.
+pass (1,969 s). Proof: `D:/f117-gate/p3-styles`. The fill-style milestone
+(`571a490`) used frozen runner SHA256 `b1b99911ed22476aa1e83d925a2e0411a5f27124d8ef1e02933442bdc82862d3`.
 `tools/presentation_check.py` retains the full-route checker; use fresh
 baseline scan runs, canonical aliases and a fresh output save for each run.
+
+Follow-up: safe 8/4-byte flat-guard comparisons are integrated; scalar byte/
+counter equivalence passes at N=1..16 and all 66 windows still pass. Isolated
+fullscreen N=9 strike (389.84 s): Direct3D11, 3840x2160, 59.990002 Hz, vsync1;
+2,062 exact logic frames, original final hash `bc8e3ae5a872405d` at 3.5B.
+7,702 flight pictures: median16.6676 / p99 **24.3045** / max30.9452 ms;
+25 intervals above25 ms (0.325%), guest drift -11.23 ms. The new
+`tools/presentation_timing.py` correctly FAILS p99 (>20.833 ms). P3 stays
+86.49%; do not call 4K/60 complete. Owner cannot assess motion now.
+Optional preset: `f117a.4k.ini`. Evidence: `p3-styles/display`.
+Final guard-only rebuild passes 59 CTests (142.83 s; excludes the unchanged
+full func_lockstep already covered by the gate), seven Python verdict
+regressions and the ROM-free preset/metadata smoke. Source manifest:
+`p3-styles/guard-source-manifest.json`. Check the latest GitHub CI next time.
+
+Streaming replay experiment is PARKED at `D:/f117-gate/p3-styles/stream-draft`:
+source files, tracked patch and synthetic test. It consumes open-frame
+records, holds the pending start separately from both completed interpolation
+starts, then swaps page ownership on close; SDL calls it after each 1 ms
+machine slice. Synthetic closed-frame/cache/endpoint/drop/reseed comparison
+passes. No route or timing verdict: CTest was stopped at the unchanged slow
+func_lockstep when the owner requested handoff; the route matrix never ran.
+Public runtime was restored to guard-only and rebuilt. Do not merge the
+draft wholesale; its main/CMake files include the already-public guard/log
+work. Next: profile close-time spikes, validate streaming against real
+routes and fine endpoints, then repeat the isolated fullscreen timing.
+The actual SDL log also reports one SETUP `0000:0010` event-limit overrun
+of two instructions under its 1 ms slices; the headless full gate has none
+and the SDL final guest hash is exact. Retain and inspect this separately
+before claiming host-slice event bounds are fully covered.
 
 ## Latest Phase 2 integration: logo sprite-set loader (13 October)
 
@@ -160,11 +190,11 @@ Phase 2 work" below).
 - **Phase 3 first, 4K/60 target (owner, 13 Oct).** Finish presentation
   coverage and performance before returning to routine matching. Keep
   physical refresh/motion verdicts separate from hidden-window throughput.
-  Private throughput prototype and flat-guard draft:
+  Private throughput prototype:
   `D:/f117-gate/p3-styles/bench` (`profile` versus `profile_guard`). Full fine
   checksums and all repair/guard tallies agree across strike/landing/air-to-air
-  at N=9 and landing N=4. Not integrated or measured in isolation; the gate
-  and route matrix were competing for CPU. `F117_BENCH_HASH=1` enables the
+  at N=9 and landing N=4. Guard is now integrated; the isolated actual-app
+  p99 still fails (see latest integration). `F117_BENCH_HASH=1` enables the
   full frame checksum, adding work outside the per-frame timers. A grouped
   seam-repair draft (`profile_fast`) barely helped and is deferred.
 
