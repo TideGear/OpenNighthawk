@@ -536,6 +536,7 @@ static const struct { const char *module; uint16_t ip; int arg; uint16_t v[2]; }
  * long/shared tails, or small walkers whose unrelated callees are nearby. */
 static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
     { "END.EXE", 0x2BEC, 0x2BEC, 0x0435 },
+    { "START.EXE", 0x6DB8, 0x6DB8, 0x03F5 },
     { "MPS_LOGO.EXE", 0x0112, 0x0112, 0x048F },
     { "SETUP.EXE", 0x0010, 0x0010, 0x04F3 },
     { "START.EXE", 0x4239, 0x4239, 0x0EF5 },
@@ -684,6 +685,7 @@ static uint64_t g_camera_seen;
  * code must not satisfy its coverage floor. */
 static const struct { const char *module; uint16_t seg, ip, len; unsigned insns, floor; const char *what; uint16_t boundary; unsigned clocks; } COVERED[] = {
     { "END.EXE", 0, 0x2BEC, 0x0435, 444, 444, "debrief narrative and measured layout" },
+    { "START.EXE", 0, 0x6DB8, 0x03F5, 399, 399, "pilot options dialog" },
     { "MPS_LOGO.EXE", 0x006D, 2, 0x0081, 63, 63, "sprite colour shift" },
     { "VGAME.EXE", 0x0FAE, 0x0002, 61, 27, 27, "segment entry binding" },
     { "START.EXE", 0, 0x9D67, 20, 8, 8, "formatter conversion state", 0x9D19, 8 },
@@ -737,7 +739,7 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
     const uint32_t watch = phys(cs, (uint16_t)(ip - g_below));
     const int watching = (g_below || g_watch_transient) && a->mem == g_mem[0];
     while ((unsigned)*steps < g_step_cap) {
-        const unsigned watch_bytes = (ip == 0x2BEC || ip == 0x0112 || ip == 0x0010 || ip == 0x4239 || ip == 0x2F9D || ip == 0x683E || ip == 0x5852 || ip == 0x3ADA || ip == 0x1EB0 || ip == 0xBCEF || ip == 0x983E || ip == 0x0016 || ip == 0x79BE || ip == 0x8A90) ? g_span : 0x300u + g_below;
+        const unsigned watch_bytes = (ip == 0x6DB8 || ip == 0x2BEC || ip == 0x0112 || ip == 0x0010 || ip == 0x4239 || ip == 0x2F9D || ip == 0x683E || ip == 0x5852 || ip == 0x3ADA || ip == 0x1EB0 || ip == 0xBCEF || ip == 0x983E || ip == 0x0016 || ip == 0x79BE || ip == 0x8A90) ? g_span : 0x300u + g_below;
         if (watching && !g_self_written && memcmp(a->mem + watch, g_pristine + watch, watch_bytes)) g_self_written = 1;
         if (g_trace) printf("      %04X:%04X clk %llu sp %04X\n", a->seg[S_CS], a->ip, (unsigned long long)a->icount, a->r[R_SP]);
         const uint16_t here = a->ip;
@@ -962,7 +964,7 @@ int main(int argc, char **argv)
         if (g_cov >= 0) { g_cov_ip = COVERED[g_cov].ip; g_cov_escapes = 0; memset(g_cov_skips, 0, sizeof g_cov_skips); memset(g_cov_cover, 0, sizeof g_cov_cover); memset(g_cov_whole, 0, sizeof g_cov_whole); }
         g_hud_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0x1058 && o->ip == 0x0016;
         g_ground_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0x5046;
-        g_watch_transient = (!strcmp(o->module, "END.EXE") && o->seg == 0 && o->ip == 0x2BEC) || (!strcmp(o->module, "VGAME.EXE") && o->seg == 0x0FAE && o->ip == 2) ||
+        g_watch_transient = (!strcmp(o->module, "START.EXE") && o->seg == 0 && o->ip == 0x6DB8) || (!strcmp(o->module, "END.EXE") && o->seg == 0 && o->ip == 0x2BEC) || (!strcmp(o->module, "VGAME.EXE") && o->seg == 0x0FAE && o->ip == 2) ||
             (!strcmp(o->module, "MPS_LOGO.EXE") && o->seg == 0x006D && o->ip == 2) || (!strcmp(o->module, "MPS_LOGO.EXE") && o->seg == 0x006D && o->ip == 0x0112) || (!strcmp(o->module, "VGAME.EXE") && o->seg == 0x1058 && o->ip == 0x0016) ||
             (o->seg == 0 &&
             ((!strcmp(o->module, "VGAME.EXE") && (o->ip == 0x2F9D || o->ip == 0x683E || o->ip == 0x5046 || o->ip == 0x5852 || o->ip == 0x3ADA || o->ip == 0x1EB0 || o->ip == 0xBCEF || o->ip == 0x983E || o->ip == 0x79BE || o->ip == 0x8A90)) ||
@@ -2140,6 +2142,83 @@ int main(int argc, char **argv)
 #undef LW16
 #undef LH8
 #undef LH16
+            }
+            if (!strcmp(o->module, "START.EXE") && o->seg == 0 && o->ip == 0x6DB8) {
+                seg[S_DS] = seg[S_SS] = 0x0A95; r[R_SP] = 0xFF00;
+                flags = (uint16_t)(flags & (0xFFFFu ^ F_DF));
+#define NW8(seg_,off_,value_) do { uint32_t a_=phys((seg_),(uint16_t)(off_)); g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(value_); } while(0)
+#define NW16(seg_,off_,value_) do { uint16_t v_=(uint16_t)(value_); NW8(seg_,off_,v_);NW8(seg_,(uint16_t)((off_)+1),v_>>8); } while(0)
+                uint32_t x_=(uint32_t)s*2654435761u+12345u;
+#define NEXT() (x_=x_*1103515245u+12345u, (x_>>16))
+                for(unsigned j=0;j<0x200;j++) NW8(0x0A95,0xFD00+j,0);
+                /* Scratch: stub code at F000, key script at F410, checksum cells at F500. */
+                for(unsigned j=0;j<0x600;j++) NW8(0x0A95,0xF000+j,0);
+                for(unsigned j=0;j<0x40;j++) { NW8(0x0A95,0xDC00+j,NEXT()); NW8(0x0A95,0xDC18+j,NEXT()); }
+                /* Far drawing slots become jumps to argument-logging stubs: each folds its
+                 * stack words into one checksum cell, so a wrong argument is a difference. */
+                static const struct { uint16_t slot, code, cell, args; } far_stubs[]={
+                    {0x6A8A,0xF000,0xF500,8},{0x6A26,0xF080,0xF502,7},{0x6BB1,0xF100,0xF504,1},{0x69D1,0xF140,0xF506,2}};
+                for(unsigned j=0;j<sizeof far_stubs/sizeof far_stubs[0];j++) {
+                    const uint16_t code=far_stubs[j].code;
+                    NW8(0x0A95,far_stubs[j].slot,0xEA); NW16(0x0A95,far_stubs[j].slot+1,code); NW16(0x0A95,far_stubs[j].slot+3,0x0A95);
+                    unsigned at=code;
+#define EMIT(b_) NW8(0x0A95,at++,(b_))
+                    EMIT(0x55);EMIT(0x8B);EMIT(0xEC);EMIT(0x50);EMIT(0x53);
+                    for(unsigned k=0;k<far_stubs[j].args;k++) {
+                        EMIT(0x8B);EMIT(0x46);EMIT(6+2*k);                           /* mov ax,[bp+6+2k] */
+                        EMIT(0x8B);EMIT(0x1E);EMIT(far_stubs[j].cell);EMIT(far_stubs[j].cell>>8);   /* mov bx,[cell] */
+                        EMIT(0xD1);EMIT(0xC3);EMIT(0x33);EMIT(0xD8);                 /* rol bx,1 / xor bx,ax */
+                        EMIT(0x89);EMIT(0x1E);EMIT(far_stubs[j].cell);EMIT(far_stubs[j].cell>>8);   /* mov [cell],bx */
+                    }
+                    EMIT(0x5B);EMIT(0x58);EMIT(0x5D);EMIT(0xCB);
+                }
+                /* Character width: 1 + ((char ^ [F510]) & 7). */
+                NW8(0x0A95,0x6AA3,0xEA); NW16(0x0A95,0x6AA4,0xF180); NW16(0x0A95,0x6AA6,0x0A95);
+                {   unsigned at=0xF180;
+                    EMIT(0x55);EMIT(0x8B);EMIT(0xEC);EMIT(0x8B);EMIT(0x46);EMIT(0x06);
+                    EMIT(0x33);EMIT(0x06);EMIT(0x10);EMIT(0xF5);EMIT(0x25);EMIT(0x07);EMIT(0x00);
+                    EMIT(0x05);EMIT(0x01);EMIT(0x00);EMIT(0x5D);EMIT(0xCB); }
+                NW16(0x0A95,0xF510,NEXT());
+                /* The hit poll (38AC) returns scripted keys, then cancels. */
+                static const uint16_t keymap[16]={0,1,2,3,4,5,6,7,8,9,10,0x63,0x64,11,0x100,3};
+                const unsigned keycount=1+(NEXT()%15);
+                for(unsigned j=0;j<keycount;j++) NW16(0x0A95,0xF410+2*j,keymap[NEXT()&15]);
+                for(unsigned j=keycount;j<16;j++) NW16(0x0A95,0xF410+2*j,0x63);
+                NW16(0x0A95,0xF400,0);
+                {   static const uint8_t poll[]={0x8B,0x1E,0x00,0xF4,0x83,0x06,0x00,0xF4,0x02,0x8B,0x87,0x10,0xF4,0xC3};
+                    for(unsigned j=0;j<sizeof poll;j++) NW8(0,0x38AC+j,poll[j]); }
+                                NW8(0,0x8427,0xC3);
+                /* Record at 3000:1000, fields in range; backup slots at D892 + 50h * slot. */
+                const unsigned slot=NEXT()&3;
+                const unsigned alias=(s&31)==31;
+                const uint16_t rec_seg=0x3000, rec_off=0x1000;
+                for(unsigned j=0;j<0x80;j++) NW8(rec_seg,rec_off+j,NEXT());
+                NW16(rec_seg,rec_off+0,slot);
+                NW16(rec_seg,rec_off+0x20,NEXT()%7);
+                NW16(rec_seg,rec_off+0x3C,NEXT()&3);
+                NW16(rec_seg,rec_off+0x3E,NEXT()%3);
+                NW16(rec_seg,rec_off+0x40,NEXT()%3);
+                NW16(rec_seg,rec_off+0x42,NEXT()&1);
+                NW16(0x0A95,0xCACA,rec_off); NW16(0x0A95,0xCACC,rec_seg);
+                NW16(0x0A95,0xCABA,NEXT());
+                for(unsigned j=0;j<0x140;j++) NW8(0x0A95,0xD892+j,NEXT());
+                {   /* a name: words of letters, the surname possibly empty or alone */
+                    const unsigned words=1+(NEXT()%3);
+                    unsigned at=0xD892+0x50*slot+2;
+                    for(unsigned w=0;w<words;w++) {
+                        const unsigned len=(w==words-1)?(NEXT()%38):(1+NEXT()%8);
+                        for(unsigned j=0;j<len;j++) NW8(0x0A95,at++,'A'+(NEXT()%26));
+                        if(w!=words-1) NW8(0x0A95,at++,' ');
+                    }
+                    NW8(0x0A95,at,0);
+                }
+                NW16(0x0A95,0xE08A,NEXT()); NW16(0x0A95,0xE08C,NEXT()); NW8(0x0A95,0xD096,NEXT());
+                NW8(0x0A95,0x64E2,0);
+                (void)alias;
+#undef EMIT
+#undef NEXT
+#undef NW8
+#undef NW16
             }
             if (!strcmp(o->module, "END.EXE") && o->seg == 0 && o->ip == 0x2BEC) {
                 seg[S_DS] = seg[S_SS] = 0x05FA; r[R_SP] = 0xFF00;

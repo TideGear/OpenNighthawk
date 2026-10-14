@@ -200,6 +200,23 @@ not the recompilation:
 
 ## Phase 2 - understood code
 
+START's pilot options dialog (`0000:6DB8`, 399 instructions / 1,013 bytes) is
+matched and named. It types the pilot's rank and surname with a click per
+letter, then polls the dialog's hit table until the pilot confirms (key 10) or
+cancels (63); keys 1-4, 5-7 and 8-9 choose in three option groups, each choice
+erasing the old mark and drawing the new one. Cancel restores the 80-byte
+record from its backup copy, confirm saves it there and moves the pointer.
+Fixtures stub the far drawing slots with code that folds each call's stack
+words into a checksum, script the poll's keys from the seed, and vary the slot,
+rank, name length, option values and key sequences; all 399 instructions are
+reached at three seeds (4,998-5,000 states) with zero differences. Eighteen
+deliberately broken bodies fail. `full_cycle` runs the dialog once with all 66
+checkpoints/final state exact. Fresh full gate passes 68 tests, all 45 routes /
+44 fresh interpreter sessions, both 5,718,848-state profiles, three 842-address
+seeds (2,770,608 / 2,769,525 / 2,768,736), zero mismatches, reachability/event
+checks pass (1,990 s). Census: 834 functions / 101,311 bytes, P2 58.70%,
+overall 84.16%. Private proof: `D:/f117-gate/pilot-options`.
+
 The END debrief narrative builder (`0000:2BEC`, 444 instructions / 1,077 bytes)
 is matched and named: it scores the sortie, then writes the outcome, rating,
 air and ground kill counts, rules-of-engagement losses and friendly-loss
@@ -717,7 +734,7 @@ instruction profiles and three 789-address matched seeds (2,561,209,
       Reimp's mapping; matched functions replacing translations one at a time,
       each held to the same parity checks. `tools/reimp_names.py` joins the
       Reimp's census (1,535 functions) with this project's regions as a private
-      lead list. 841 addresses are matched (833 of the census functions, 100,298 of
+      lead list. 842 addresses are matched (834 of the census functions, 101,311 of
       179,213 bytes); the table is at the end of `src/matched/matched.c` and the
       method is in [architecture.md](architecture.md#matched-routines-phase-2).
       The earlier "72 reached / 411 never run" inventory was incomplete:
@@ -728,8 +745,7 @@ instruction profiles and three 789-address matched seeds (2,561,209,
       match the plain replay. `tools/census_reach.py` now distinguishes missing
       evidence from unreachability. The private 47-routine draft batch has 37
       positively reached entries (two already matched), so review/proof can
-      resume there. Larger reached leads include START `6DB8` and
-      `149C`, and VGAME `1450`, `DC46` and `04E6`. New routes remain useful for
+      resume there. Larger reached leads include START `149C`, and VGAME `1450`, `DC46` and `04E6`. New routes remain useful for
       code without positive evidence. Private inventory: `D:/f117-gate/format-init`.
       Five of them were matched (the front ends' retrace re-sync, PLAYER's two
       tick-rate setters, VGAME's low-detail sky entry). The timer interrupt itself

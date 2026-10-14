@@ -398,6 +398,8 @@ if(F117R_BUILD_TESTS)
       --only MPS_LOGO.EXE:2)
     add_test(NAME matched_debrief_narrative COMMAND func_lockstep --states 4000
       --only END.EXE:2BEC)
+    add_test(NAME matched_pilot_options COMMAND func_lockstep --states 4000
+      --only START.EXE:6DB8)
     add_test(NAME matched_timer_tick COMMAND func_lockstep --states 4000
       --only VGAME.EXE:1E79)
     add_test(NAME matched_span_emit COMMAND func_lockstep --states 4000

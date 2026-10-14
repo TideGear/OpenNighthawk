@@ -15,17 +15,20 @@ standing practice, not a session-by-session log. Earlier sessions' detail
 
 ## Current state (14 October, later)
 
-END `2BEC` (debrief narrative) is matched, named and fully gated; END `206A`
-is renamed to the continue prompt it is. Census 833 functions / 100,298 bytes,
-P2 58.17%, overall 84.00%. Proof: `D:/f117-gate/debrief-narrative`; the
-private ten-mutation runner is `D:/f117-gate/end-narrative/mut/run_mutants.py`.
+END `2BEC` (debrief narrative) and START `6DB8` (pilot options dialog) are
+matched, named and fully gated; END `206A` is renamed to the continue prompt it
+is. Census 834 functions / 101,311 bytes, P2 58.70%, overall 84.16%. Proof:
+`D:/f117-gate/debrief-narrative` and `D:/f117-gate/pilot-options`; the private
+mutation runners are `end-narrative/mut/run_mutants.py` and
+`start-6db8/mut/run_mutants.py`, and `start-6db8/apply_start.py` applies a
+candidate to a tree.
 Only the owner's `f117a.example.ini` edit and untracked `4k60.bat` remain
 outside commits. Do not overwrite or stage them.
 
-Next P2 candidates (all reached by `full_cycle`): START `6DB8` (399
-instructions, a menu dialog with a typed-text effect and an input-wait loop;
-draft and dossier in `D:/f117-gate/start-6db8`, not yet reviewed), START
-`149C`, VGAME `1450`, `DC46`, `04E6`. A wait inside the body must clamp
+Next P2 candidates (all reached by `full_cycle`): START `149C` (365
+instructions: the flight-plan display, "Depart from %s at %s hours" / "Land at
+%s", four route legs with key waits through `405F` and `2F4C`), VGAME `1450`,
+`DC46`, `04E6`. A wait inside the body must clamp
 `m->run_until` to `c->stop_at` (see END `2BEC`'s `DN_RUN`).
 
 What keeps P3 below 100%: only Stage 3/4 (85%): the owner's panel motion

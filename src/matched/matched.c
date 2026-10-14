@@ -42265,7 +42265,303 @@ measure_and_draw:
 #undef DN_FAR
 }
 
+/* START 6DB8: a pilot's options dialog. It types the pilot's rank and surname
+ * letter by letter (a click for each), then polls the dialog's hit table at
+ * 6FFA until the pilot confirms (10) or cancels (63). Keys 1-4, 5-7 and 8-9
+ * choose in the record's three option groups (fields 3E, 40 and 42); each
+ * choice erases the old mark and draws the new one. Cancel restores the 80-byte
+ * record from its backup copy at D892 + 50h * slot; confirm saves it there.
+ * The original drawing, text, sound, random and delay routines stay in the
+ * guest; waits hand back at the current event boundary. */
+static int start_pilot_options_dialog(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { SAVED_MARK=-2, SAVED_CURSOR_X=-4, SAVED_CURSOR_Y=-6, KEY=-8, DONE=-0xA,
+           NAME=-0x3C, MARK_Y=-0x3E, MARK_X=-0x40, CHAR_INDEX=-0x42, PREFIX=-0x74,
+           OLD_CHOICE=-0x76 };
+#define PO_ADDR(o_) ((uint16_t)(c->r[R_BP]+(o_)))
+#define PO_REC(o_) seg_read16(c,c->seg[S_ES],(uint16_t)(c->r[R_BX]+(o_)))
+#define PO_LES() do { c->r[R_BX]=ds_get(c,0xCACA); c->seg[S_ES]=ds_get(c,0xCACC); } while(0)
+#define PO_PUSH(r_) cpu_push16(c,c->r[r_])
+#define PO_POP() (c->r[R_BX]=cpu_pop16(c))
+#define PO_SP(n_) (c->r[R_SP]=(uint16_t)alu_add(c,c->r[R_SP],(n_),1,0))
+#define PO_AH0() set_r8(c,R_AH,(uint8_t)alu_sub(c,get_r8(c,R_AH),get_r8(c,R_AH),0,0))
+#define PO_RUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at) m->run_until=c->stop_at; \
+    const int returned_=(call_); m->run_until=until_; if(!returned_) return 1; } while(0)
+#define PO_NEAR(at_,ret_,next_) do { PO_RUN(guest_call(m,(at_),(ret_))); SM4_NEED((next_),(ret_)); } while(0)
+#define PO_FAR(at_,next_) do { PO_RUN(guest_call_far(m,(at_),(uint16_t)((at_)+5))); SM4_NEED((next_),(uint16_t)((at_)+5)); } while(0)
+    if (!room(c,6)) return 0;
+    frame_open(c,0x76);
+    PO_PUSH(R_DI); PO_PUSH(R_SI); c->icount+=5;
+    PO_NEAR(0x3989,0x6DC3,17);                    /* clear the picture */
+
+    /* Remember the mark byte and the pointer hot spot; park the pointer. */
+    set_r8(c,R_AL,ds_get8(c,0xD096)); PO_AH0();
+    bp_put(c,SAVED_MARK,c->r[R_AX]);
+    ds_put8(c,0xD096,get_r8(c,R_AH));
+    c->r[R_AX]=ds_get(c,0xE08A); bp_put(c,SAVED_CURSOR_X,c->r[R_AX]);
+    c->r[R_AX]=ds_get(c,0xE08C); bp_put(c,SAVED_CURSOR_Y,c->r[R_AX]);
+    ds_put(c,0xE08A,0x103); ds_put(c,0xE08C,0xB4);
+    c->r[R_AX]=0x0A; PO_PUSH(R_AX); c->r[R_AX]=0x67A4; PO_PUSH(R_AX);
+    c->r[R_AX]=0xEB; PO_PUSH(R_AX); c->icount+=16;
+    PO_NEAR(0x3517,0x6DF6,17);                    /* queue a drawing record */
+
+    /* Copy the dialog's panel between the two pages (two blits), then draw
+     * the current mark of each option group. */
+    PO_SP(6);
+    c->r[R_AX]=0x98; PO_PUSH(R_AX); c->r[R_CX]=0x6F; PO_PUSH(R_CX);
+    c->r[R_DX]=(uint16_t)alu_sub(c,c->r[R_DX],c->r[R_DX],1,0); PO_PUSH(R_DX); PO_PUSH(R_CX);
+    c->r[R_BX]=4; PO_PUSH(R_BX); c->r[R_SI]=0x28; PO_PUSH(R_SI);
+    c->r[R_DI]=0xC0; PO_PUSH(R_DI); c->r[R_AX]=1; PO_PUSH(R_AX); c->icount+=16;
+    PO_FAR(0x6E15,15);
+    PO_SP(0x10);
+    c->r[R_AX]=0x98; PO_PUSH(R_AX); c->r[R_CX]=0x6F; PO_PUSH(R_CX);
+    PO_PUSH(R_SI); PO_PUSH(R_DI); c->r[R_DX]=1; PO_PUSH(R_DX);
+    c->r[R_BX]=(uint16_t)alu_sub(c,c->r[R_BX],c->r[R_BX],1,0); PO_PUSH(R_BX); PO_PUSH(R_BX);
+    c->r[R_AX]=4; PO_PUSH(R_AX); c->icount+=14;
+    PO_FAR(0x6E33,14);
+    PO_SP(0x10);
+    cpu_push16(c,ds_get(c,0xCABA)); PO_LES(); c->r[R_BX]=PO_REC(0x3E);
+    set_r8(c,R_AL,ds_get8(c,(uint16_t)(c->r[R_BX]+0x0EB3))); PO_AH0();
+    c->r[R_SI]=(uint16_t)alu_add(c,c->r[R_SI],c->r[R_AX],1,0); PO_PUSH(R_SI);
+    set_r8(c,R_AL,ds_get8(c,(uint16_t)(c->r[R_BX]+0x0EA9)));
+    c->r[R_DI]=(uint16_t)alu_add(c,c->r[R_DI],c->r[R_AX],1,0); PO_PUSH(R_DI);
+    c->r[R_AX]=0xDC18; PO_PUSH(R_AX); c->icount+=13;
+    PO_NEAR(0x3693,0x6E5E,15);                    /* draw group 1's mark */
+    PO_SP(8);
+    cpu_push16(c,ds_get(c,0xCABA)); PO_LES(); c->r[R_BX]=PO_REC(0x40);
+    set_r8(c,R_AL,ds_get8(c,(uint16_t)(c->r[R_BX]+0x0EB7))); PO_AH0();
+    c->r[R_AX]=(uint16_t)alu_add(c,c->r[R_AX],0x28,1,0); PO_PUSH(R_AX);
+    set_r8(c,R_AL,ds_get8(c,(uint16_t)(c->r[R_BX]+0x0EAD))); PO_AH0();
+    c->r[R_AX]=(uint16_t)alu_add(c,c->r[R_AX],0xC0,1,0); PO_PUSH(R_AX);
+    c->r[R_AX]=0xDC18; PO_PUSH(R_AX); c->icount+=14;
+    PO_NEAR(0x3693,0x6E88,15);                    /* group 2's mark */
+    PO_SP(8);
+    cpu_push16(c,ds_get(c,0xCABA)); PO_LES(); c->r[R_BX]=PO_REC(0x42);
+    set_r8(c,R_AL,ds_get8(c,(uint16_t)(c->r[R_BX]+0x0EBA))); PO_AH0();
+    c->r[R_AX]=(uint16_t)alu_add(c,c->r[R_AX],0x28,1,0); PO_PUSH(R_AX);
+    set_r8(c,R_AL,ds_get8(c,(uint16_t)(c->r[R_BX]+0x0EB0))); PO_AH0();
+    c->r[R_AX]=(uint16_t)alu_add(c,c->r[R_AX],0xC0,1,0); PO_PUSH(R_AX);
+    c->r[R_AX]=0xDC18; PO_PUSH(R_AX); c->icount+=14;
+    PO_NEAR(0x3693,0x6EB2,16);                    /* group 3's mark */
+    PO_SP(8);
+    c->r[R_AX]=0x98; PO_PUSH(R_AX); c->r[R_AX]=0x6F; PO_PUSH(R_AX);
+    c->r[R_AX]=0x28; PO_PUSH(R_AX); c->r[R_CX]=0xC0; PO_PUSH(R_CX);
+    c->r[R_DX]=(uint16_t)alu_sub(c,c->r[R_DX],c->r[R_DX],1,0); PO_PUSH(R_DX);
+    PO_PUSH(R_AX); PO_PUSH(R_CX); c->r[R_AX]=1; PO_PUSH(R_AX); c->icount+=15;
+    PO_FAR(0x6ECE,7);
+
+    /* "<rank><surname>" from the record's rank index and the slot's name. */
+    PO_SP(0x10);
+    c->r[R_AX]=0x50; PO_LES(); x86_mul16(c,PO_REC(0));
+    c->r[R_AX]=(uint16_t)alu_add(c,c->r[R_AX],0xD894,1,0); PO_PUSH(R_AX); c->icount+=6;
+    PO_NEAR(0x6A7C,0x6EE7,11);                    /* the last word of the name */
+    PO_POP(); PO_PUSH(R_AX); PO_LES(); c->r[R_BX]=PO_REC(0x20);
+    c->r[R_BX]=x86_shift(c,4,c->r[R_BX],1,1);
+    cpu_push16(c,ds_get(c,(uint16_t)(c->r[R_BX]+0x1D78)));
+    c->r[R_AX]=0x0EA2; PO_PUSH(R_AX);
+    c->r[R_AX]=PO_ADDR(NAME); PO_PUSH(R_AX); c->icount+=10;
+    PO_NEAR(0x959E,0x6F02,9);                     /* format "%s%s" */
+    PO_SP(8);
+    c->r[R_AX]=3; ds_put(c,0xDC24,c->r[R_AX]); ds_put(c,0xDC0E,c->r[R_AX]);
+    c->r[R_AX]=0x1C; ds_put(c,0xDC1C,c->r[R_AX]); ds_put(c,0xDC06,c->r[R_AX]);
+    bp_put(c,CHAR_INDEX,0); c->icount+=9;
+
+    /* Type up to 50 letters while the text fits in 82 pixels. */
+type_loop:
+    SM4_NEED(5,0x6F73);
+    alu_sub(c,bp_get(c,CHAR_INDEX),0x32,1,0);
+    if(x86_cond(c,0xD)) { c->icount+=2; goto typed; }
+    c->r[R_AX]=6; PO_PUSH(R_AX); c->icount+=4;
+    PO_NEAR(0x76C0,0x6F80,4);                     /* random 0..5 */
+    PO_POP(); c->r[R_AX]=(uint16_t)alu_add(c,c->r[R_AX],6,1,0); PO_PUSH(R_AX); c->icount+=3;
+    PO_NEAR(0x2B06,0x6F88,12);                    /* pause 6..11 ticks */
+    PO_POP(); c->r[R_SI]=bp_get(c,CHAR_INDEX);
+    alu_sub(c,mem_read8(c,phys(c->seg[S_SS],(uint16_t)(c->r[R_BP]+c->r[R_SI]-0x3C))),0,0,0);
+    c->icount+=4;
+    if(c->flags&F_ZF) goto typed;
+    set_r8(c,R_AL,mem_read8(c,phys(c->seg[S_SS],(uint16_t)(c->r[R_BP]+c->r[R_SI]-0x3C))));
+    mem_write8(c,phys(c->seg[S_SS],(uint16_t)(c->r[R_BP]+c->r[R_SI]-0x74)),get_r8(c,R_AL));
+    mem_write8(c,phys(c->seg[S_SS],(uint16_t)(c->r[R_BP]+c->r[R_SI]-0x73)),0);
+    c->r[R_AX]=PO_ADDR(PREFIX); PO_PUSH(R_AX); c->r[R_AX]=0xDC02; PO_PUSH(R_AX); c->icount+=7;
+    PO_NEAR(0x373C,0x6F33,7);                     /* width of the text so far */
+    PO_POP(); PO_POP();
+    alu_sub(c,c->r[R_AX],0x52,1,0); c->icount+=4;
+    if(x86_cond(c,0xF)) goto typed;
+    c->r[R_AX]=0x21; PO_PUSH(R_AX); c->icount+=2;
+    PO_FAR(0x6F3E,10);                            /* typing click */
+    PO_POP(); c->r[R_AX]=0x37; PO_PUSH(R_AX); c->r[R_CX]=0xD9; PO_PUSH(R_CX);
+    c->r[R_DX]=PO_ADDR(PREFIX); PO_PUSH(R_DX); c->r[R_BX]=0xDC02; PO_PUSH(R_BX); c->icount+=9;
+    PO_NEAR(0x3567,0x6F57,10);                    /* draw the text on the screen */
+    PO_SP(8);
+    c->r[R_AX]=0x37; PO_PUSH(R_AX); c->r[R_AX]=0xD9; PO_PUSH(R_AX);
+    c->r[R_AX]=PO_ADDR(PREFIX); PO_PUSH(R_AX); c->r[R_AX]=0xDC18; PO_PUSH(R_AX); c->icount+=9;
+    PO_NEAR(0x3567,0x6F6D,2);                     /* and on the back page */
+    PO_SP(8);
+    bp_put(c,CHAR_INDEX,(uint16_t)alu_inc(c,bp_get(c,CHAR_INDEX),1)); c->icount+=2;
+    goto type_loop;
+typed:
+    SM4_NEED(1,0x6F92);
+    bp_put8(c,DONE,0); c->icount++;
+
+    /* Poll the hit table until confirm or cancel. */
+menu_loop:
+    SM4_NEED(5,0x6F96);
+    alu_sub(c,bp_get8(c,DONE),0,0,0); c->icount+=2;
+    if(!(c->flags&F_ZF)) { c->icount++; goto finish; }
+    c->r[R_AX]=0x6FFA; PO_PUSH(R_AX); c->icount+=2;
+    PO_NEAR(0x38AC,0x6FA6,14);                    /* the key or button hit */
+    PO_POP(); bp_put(c,KEY,c->r[R_AX]);
+    alu_sub(c,c->r[R_AX],0x63,1,0); c->icount+=4;
+    if(c->flags&F_ZF) { bp_put8(c,DONE,1); c->icount+=3; goto refresh; }
+    c->icount++;
+    if(x86_cond(c,7)) goto refresh;
+    set_r8(c,R_AL,(uint8_t)alu_dec(c,get_r8(c,R_AL),0)); c->icount+=2;
+    if(x86_cond(c,0xC)) goto refresh;
+    set_r8(c,R_AL,(uint8_t)alu_sub(c,get_r8(c,R_AL),3,0,0)); c->icount+=2;
+    if(x86_cond(c,0xE)) goto group_one;
+    set_r8(c,R_AL,(uint8_t)alu_dec(c,get_r8(c,R_AL),0)); c->icount+=2;
+    if(x86_cond(c,0xC)) goto refresh;
+    set_r8(c,R_AL,(uint8_t)alu_sub(c,get_r8(c,R_AL),2,0,0)); c->icount+=2;
+    if(x86_cond(c,0xF)) goto keys_above_seven;
+    c->icount++; goto group_two;
+keys_above_seven:
+    SM4_NEED(9,0x6FC7);
+    set_r8(c,R_AL,(uint8_t)alu_dec(c,get_r8(c,R_AL),0)); c->icount+=2;
+    if(x86_cond(c,0xC)) goto refresh;
+    set_r8(c,R_AL,(uint8_t)alu_dec(c,get_r8(c,R_AL),0)); c->icount+=2;
+    if(!x86_cond(c,0xF)) { c->icount++; goto group_three; }
+    set_r8(c,R_AL,(uint8_t)alu_dec(c,get_r8(c,R_AL),0)); c->icount+=2;
+    if(!(c->flags&F_ZF)) { c->icount++; goto refresh; }
+    bp_put8(c,DONE,1); c->icount+=3; goto refresh;   /* key 10 confirms too */
+
+group_one:                                          /* keys 1-4 -> field 3E */
+    SM4_NEED(7,0x6FDB);
+    PO_LES(); c->r[R_AX]=PO_REC(0x3E);
+    c->r[R_AX]=(uint16_t)alu_inc(c,c->r[R_AX],1); bp_put(c,OLD_CHOICE,c->r[R_AX]);
+    c->r[R_AX]=bp_get(c,KEY); c->r[R_AX]=(uint16_t)alu_dec(c,c->r[R_AX],1);
+    seg_write16(c,c->seg[S_ES],(uint16_t)(c->r[R_BX]+0x3E),c->r[R_AX]); c->icount+=7;
+    goto refresh;
+group_two:                                          /* keys 5-7 -> field 40 */
+    SM4_NEED(8,0x70AB);
+    PO_LES(); c->r[R_AX]=PO_REC(0x40);
+    c->r[R_AX]=(uint16_t)alu_add(c,c->r[R_AX],5,1,0); bp_put(c,OLD_CHOICE,c->r[R_AX]);
+    c->r[R_AX]=bp_get(c,KEY); c->r[R_AX]=(uint16_t)alu_sub(c,c->r[R_AX],5,1,0);
+    seg_write16(c,c->seg[S_ES],(uint16_t)(c->r[R_BX]+0x40),c->r[R_AX]); c->icount+=8;
+    goto refresh;
+group_three:                                        /* keys 8-9 -> field 42 */
+    SM4_NEED(16,0x70C6);
+    PO_LES(); c->r[R_AX]=PO_REC(0x42);
+    c->r[R_AX]=(uint16_t)alu_add(c,c->r[R_AX],8,1,0); bp_put(c,OLD_CHOICE,c->r[R_AX]);
+    c->r[R_AX]=bp_get(c,KEY); c->r[R_AX]=(uint16_t)alu_sub(c,c->r[R_AX],8,1,0);
+    seg_write16(c,c->seg[S_ES],(uint16_t)(c->r[R_BX]+0x42),c->r[R_AX]); c->icount+=7;
+    PO_LES();
+    alu_sub(c,PO_REC(0x42),0,1,0); c->icount+=3;
+    if(c->flags&F_ZF) { c->icount++; goto refresh; }
+    alu_sub(c,PO_REC(0x3C),0,1,0); c->icount+=2;
+    if(!(c->flags&F_ZF)) {
+        alu_sub(c,PO_REC(0x3C),2,1,0); c->icount+=2;
+        if(!(c->flags&F_ZF)) { c->icount++; goto refresh; }
+    }
+    seg_write16(c,c->seg[S_ES],(uint16_t)(c->r[R_BX]+0x3C),
+                (uint16_t)alu_inc(c,PO_REC(0x3C),1));
+    c->icount+=2; goto refresh;
+
+    /* Erase the old mark and draw the new one when a group 1-9 key was hit. */
+refresh:
+    SM4_NEED(25,0x6FEF);
+    alu_sub(c,bp_get(c,KEY),0x0A,1,0); c->icount+=2;
+    if(x86_cond(c,0xD)) goto menu_loop;
+    c->r[R_BX]=bp_get(c,OLD_CHOICE);
+    set_r8(c,R_AL,ds_get8(c,(uint16_t)(c->r[R_BX]+0x0EB2))); PO_AH0();
+    bp_put(c,MARK_X,c->r[R_AX]);
+    c->r[R_CX]=8; PO_PUSH(R_CX); c->r[R_DX]=0x0C; PO_PUSH(R_DX); c->r[R_SI]=c->r[R_AX];
+    c->r[R_AX]=(uint16_t)alu_add(c,c->r[R_AX],0x28,1,0); PO_PUSH(R_AX);
+    set_r8(c,R_AL,ds_get8(c,(uint16_t)(c->r[R_BX]+0x0EA8))); PO_AH0();
+    bp_put(c,MARK_Y,c->r[R_AX]);
+    c->r[R_AX]=(uint16_t)alu_add(c,c->r[R_AX],0xC0,1,0); PO_PUSH(R_AX);
+    c->r[R_AX]=1; PO_PUSH(R_AX); PO_PUSH(R_SI); cpu_push16(c,bp_get(c,MARK_Y));
+    c->r[R_AX]=4; PO_PUSH(R_AX); c->icount+=22;
+    PO_FAR(0x7028,18);                              /* restore the old mark's background */
+    PO_SP(0x10);
+    c->r[R_AX]=8; PO_PUSH(R_AX); c->r[R_AX]=0x0C; PO_PUSH(R_AX);
+    c->r[R_AX]=(uint16_t)alu_add(c,bp_get(c,MARK_X),0x28,1,0); PO_PUSH(R_AX);
+    c->r[R_AX]=(uint16_t)alu_add(c,bp_get(c,MARK_Y),0xC0,1,0); PO_PUSH(R_AX);
+    c->r[R_AX]=(uint16_t)alu_sub(c,c->r[R_AX],c->r[R_AX],1,0); PO_PUSH(R_AX);
+    cpu_push16(c,bp_get(c,MARK_X)); cpu_push16(c,bp_get(c,MARK_Y));
+    c->r[R_AX]=4; PO_PUSH(R_AX); c->icount+=17;
+    PO_FAR(0x7053,13);                              /* and the back page's */
+    PO_SP(0x10);
+    c->r[R_BX]=bp_get(c,KEY);
+    set_r8(c,R_AL,ds_get8(c,(uint16_t)(c->r[R_BX]+0x0EA8))); PO_AH0();
+    c->r[R_AX]=(uint16_t)alu_add(c,c->r[R_AX],0xC0,1,0); bp_put(c,MARK_Y,c->r[R_AX]);
+    set_r8(c,R_AL,ds_get8(c,(uint16_t)(c->r[R_BX]+0x0EB2))); PO_AH0();
+    c->r[R_AX]=(uint16_t)alu_add(c,c->r[R_AX],0x28,1,0); bp_put(c,MARK_X,c->r[R_AX]);
+    c->r[R_AX]=0x1B; PO_PUSH(R_AX); c->icount+=12;
+    PO_FAR(0x707A,7);                               /* selection click */
+    PO_POP(); cpu_push16(c,ds_get(c,0xCABA)); cpu_push16(c,bp_get(c,MARK_X));
+    cpu_push16(c,bp_get(c,MARK_Y)); c->r[R_AX]=0xDC18; PO_PUSH(R_AX); c->icount+=6;
+    PO_NEAR(0x3693,0x7091,7);                       /* draw the new mark */
+    PO_SP(8);
+    cpu_push16(c,ds_get(c,0xCABA)); cpu_push16(c,bp_get(c,MARK_X));
+    cpu_push16(c,bp_get(c,MARK_Y)); c->r[R_AX]=0xDC02; PO_PUSH(R_AX); c->icount+=6;
+    PO_NEAR(0x3693,0x70A5,2);
+    PO_SP(8); c->icount+=2;
+    goto menu_loop;
+
+    /* Leave: blit both pages, restore the mark byte, then either undo (cancel)
+     * or save (confirm) the record, and put the pointer where it belongs. */
+finish:
+    SM4_NEED(16,0x710B);
+    c->r[R_AX]=0x98; PO_PUSH(R_AX); c->r[R_CX]=0x6F; PO_PUSH(R_CX);
+    c->r[R_DX]=0x28; PO_PUSH(R_DX); c->r[R_BX]=0xC0; PO_PUSH(R_BX);
+    c->r[R_SI]=1; PO_PUSH(R_SI); c->r[R_SI]=(uint16_t)alu_sub(c,c->r[R_SI],c->r[R_SI],1,0);
+    PO_PUSH(R_SI); PO_PUSH(R_CX); c->r[R_DI]=4; PO_PUSH(R_DI); c->icount+=15;
+    PO_FAR(0x7127,14);
+    PO_SP(0x10);
+    c->r[R_AX]=0x98; PO_PUSH(R_AX); c->r[R_AX]=0x6F; PO_PUSH(R_AX);
+    c->r[R_CX]=0x28; PO_PUSH(R_CX); c->r[R_CX]=0xC0; PO_PUSH(R_CX);
+    PO_PUSH(R_SI); PO_PUSH(R_SI); PO_PUSH(R_AX); PO_PUSH(R_DI); c->icount+=13;
+    PO_FAR(0x7143,65);
+    PO_SP(0x10);
+    set_r8(c,R_AL,bp_get8(c,SAVED_MARK)); ds_put8(c,0xD096,get_r8(c,R_AL));
+    alu_sub(c,bp_get(c,KEY),0x63,1,0); c->icount+=5;
+    if(c->flags&F_ZF) {
+        c->r[R_AX]=0x50; PO_LES(); x86_mul16(c,PO_REC(0));
+        c->r[R_SI]=c->r[R_AX]; c->r[R_DI]=c->r[R_BX];
+        c->r[R_SI]=(uint16_t)(c->r[R_SI]-0x276E); c->r[R_CX]=0x28; c->icount+=7;
+        c->icount+=rep_string(c,STR_MOVS,1,c->seg[S_DS],0);   /* record <- backup */
+        c->r[R_AX]=bp_get(c,SAVED_CURSOR_X); ds_put(c,0xE08A,c->r[R_AX]);
+        c->r[R_AX]=bp_get(c,SAVED_CURSOR_Y); ds_put(c,0xE08C,c->r[R_AX]);
+        c->icount+=5;
+    } else {
+        c->r[R_AX]=0x50; PO_LES(); x86_mul16(c,PO_REC(0));
+        c->r[R_SI]=c->r[R_AX]; c->r[R_AX]=c->seg[S_ES]; cpu_push16(c,c->seg[S_DS]);
+        c->r[R_DI]=(uint16_t)(c->r[R_SI]-0x276E); c->r[R_SI]=c->r[R_BX];
+        cpu_push16(c,c->seg[S_DS]); c->seg[S_ES]=cpu_pop16(c); c->seg[S_DS]=c->r[R_AX];
+        c->r[R_CX]=0x28; c->icount+=12;
+        c->icount+=rep_string(c,STR_MOVS,1,c->seg[S_DS],0);   /* backup <- record */
+        c->seg[S_DS]=cpu_pop16(c);
+        ds_put(c,0xE08A,0x129); ds_put(c,0xE08C,0xB6); c->icount+=3;
+    }
+    c->r[R_SI]=cpu_pop16(c); c->r[R_DI]=cpu_pop16(c);
+    c->r[R_SP]=c->r[R_BP]; c->r[R_BP]=cpu_pop16(c); near_ret(c); c->icount+=5;
+    return 1;
+#undef PO_ADDR
+#undef PO_REC
+#undef PO_LES
+#undef PO_PUSH
+#undef PO_POP
+#undef PO_SP
+#undef PO_AH0
+#undef PO_RUN
+#undef PO_NEAR
+#undef PO_FAR
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "START.EXE", START_47304, 0x0000, 0x6DB8, start_pilot_options_dialog, "pilot options dialog", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x2BEC, end_debrief_narrative, "debrief narrative and measured layout", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0FAE, 0x0002, vgame_bind_segment_entries, "bind segment entry slots", 2 },
     { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x006D, 0x0002, logo_sprite_recolour, "shift encoded sprite colours", 2 },

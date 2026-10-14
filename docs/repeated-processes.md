@@ -141,6 +141,24 @@ frames exact and guest hash equal to the fresh 36.8 s headless prefix. SDL
 writes its final hash to the machine log, not stdout. Screenshots and timing
 logs stay outside git in `D:/f117-gate/map-refill`.
 
+## Pilot options dialog proof (14 October 2026)
+
+START `6DB8` calls the drawing library through five far slots in the data
+segment, which START binds at run time and which hold `jmp 0000:0000` in the
+shipped image. The fixture points each slot at stub code that folds the call's
+stack words into a checksum cell (rotate, xor), so a wrong pushed argument is a
+memory difference rather than a silent one; the width helper returns a seed-
+dependent width, the hit poll (`38AC`) returns a seeded key script ending in
+cancel, and the timer wait (`8427`) returns at once. The pilot record sits in a
+different segment from the data, so a swapped-segment copy is visible. Eighteen
+mutations (arguments, table offsets, condition codes, the copy offset and
+direction, clocks, the confirm and cancel results) all fail; the first lockstep
+run was already equal, which is why the mutations were run before trusting it.
+The room claims were computed from the listing (`claims.py`-style longest path
+between resume points, a `rep movsw` weighted by its 40 iterations) rather than
+counted by hand; claims at labels reached by `goto` are explicit. Gate: 68
+tests, 45 routes, both profiles, three seeds, 1,990 s.
+
 ## Debrief narrative proof (14 October 2026)
 
 END `2BEC` was proven in the order that has worked for the larger routines: an
