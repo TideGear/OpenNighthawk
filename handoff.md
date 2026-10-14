@@ -13,51 +13,35 @@ standing practice, not a session-by-session log. Earlier sessions' detail
 (what was tried, what failed, exact investigation narratives) is in
 `git log -p handoff.md` — it does not need to live here to stay available.
 
-## Current state (14 October, menu-input pair)
+## Current state (14 October, horizon and world-record pair)
 
-START `39F7` and END `1CF5` are now matched and named menu-input /
-pointer-update bodies, with a grouped CTest and 265 / 267 instruction floors.
-Five seeds pass with no skipped states; all 16 private mutations are caught.
-The private full-cycle route runs them 7,015 / 487 times, matches the final
-state, and reports no overruns. Census: 859 functions / 104,856 bytes,
-P2 60.58%, overall 84.70%. Fresh full gate passed (1,627 s): 76 tests, all
-45 routes / 44 fresh interpreter sessions, both 5,718,848-state instruction
-profiles, three 867-address seeds (2,893,246 / 2,891,591 / 2,892,499), zero
-mismatches; reachability and event-limit audits pass. Proof:
-`D:/f117-gate/p2-next/final-gate-verdict.json`. Its session `35331` exited 0.
-The owner's two files below remain untouched.
+VGAME `1450` (`vgame_horizon_bands`) and START `7904`
+(`start_choose_world_record`) are matched, named and gated. Census: 861
+functions / 106,493 bytes, P2 61.45%, overall 84.95%. Fresh full gate (1,418 s):
+77 tests, all 45 routes / 44 fresh interpreter sessions, both 5,718,848-state
+profiles, three 869-address seeds (2,902,931 / 2,901,261 / 2,900,231), zero
+mismatches; reachability and event audits pass; `presentation_check.py
+--scales 1` reports all 45 routes exact. Proof: `D:/f117-gate/p2-pair`
+(`gate.log`; the first attempt, `gate-observer-shadow-failed.log`, failed
+`code_overrides`).
 
-Next private body: `D:/f117-gate/p2-horizon/vgame_horizon.c` names VGAME
-`1450` (868 bytes / 301 instructions), sky and ground band projection/fill.
-Five seeds reach every instruction with no skipped states or mismatches;
-all 11 mutations are caught. The private full cycle runs it 276 times,
-matches the final state and has no overruns. A separate replay matches all
-66 checkpoints and the final state, passes route milestones, and has no
-overruns (`p2-horizon/checkpoint-proof-final/checkpoint-verdict.json`). The
-consolidated proof is `p2-horizon/private-verdict.json`. This body is not integrated;
-its scaffold snapshots the current menu pair and freezes current build libs.
-The first transcript exposed a callee-cleanup detail: EE9C removes eight
-argument bytes; the named body uses `guest_call_pop(...,8)` and bounds all
-nested calls. The final fixtures also overlap the stack point arrays with
-the live band table. A guard hands a possible aliased-frame divide fault at
-1651 back to the original. Name the integrated function `vgame_horizon_bands`
-(the private body still uses the temporary address name). Do not copy the
-private whole matched file over the main file.
+Trap found: `1450` is also the presentation observer's frame-phase hook. At
+one address only the first override runs, so a matched body there must call
+the observer itself (`observe_game_draw`, like `observe_poly_edge` at 130D:004A)
+and the address goes on `deliberate` in `tests/test_overrides.c`. Before
+matching any address, grep `src/matched/observe.c` for it.
 
-Also private: `D:/f117-gate/p2-target/start_target.c`, START `7904` world-record
-selection (769 bytes / 272 instructions). Five seeds reach all instructions
-with no skips or mismatches. Full cycle runs it twice and matches all 66
-checkpoints and the final state, with no overruns; see `checkpoint-proof`.
-Sixteen mutations are currently running under terminal session `16930`;
-inspect `mutations.log` and the final verdict before integration. Fixtures
-mainly use the small 16x16 scan, with sparse 256x256 / step-four cases;
-the per-routine step cap is 2,000,000. An output buffer at DS:CA8C aliases the
-result fields and reaches the final default-level branch. The original
-in-place shifts at 97D8 remove four argument bytes. The first named draft
-read the pointer segment through an already-replaced BX; the fixed helper
-caches the original address before either load. Integrate with a descriptive
-function name and retain that mutation. Batch this with the horizon body if
-both private proofs pass, then run a fresh full gate for the pair.
+The menu-input pair (START `39F7`, END `1CF5`) landed just before (gate
+1,627 s, proof `D:/f117-gate/p2-next`). Gate speed: `parallel()` now prints
+per-stage wall time and longest jobs; see
+[docs/repeated-processes.md](docs/repeated-processes.md) before changing
+workers. The owner's `f117a.example.ini` edit and untracked `4k60.bat` stay
+untouched.
+
+Next P2 candidates (all reached by `full_cycle`): VGAME `DC46`, `04E6`; CRT
+routines with data-dependent `rep` counts (MPS `0146:067C` strstr, `0822`)
+need a prescan for their room claim. A wait inside a body must clamp
+`m->run_until` to `c->stop_at` (see END `2BEC`'s `DN_RUN`).
 
 The 22-routine support batch is integrated and fully gated. Proof:
 `D:/f117-gate/leaf-batch/final-gate-verdict.json`. Fresh full gate: 75 tests,
@@ -95,12 +79,6 @@ missed their planted defects, and lockstep cannot run their waits. The two
 delay that applies them. Run every new body at four or five seeds, not one.
 Only the owner's `f117a.example.ini` edit and untracked `4k60.bat` remain
 outside the task's files; do not overwrite or stage them.
-
-Next P2 candidates after the private horizon body (all reached by `full_cycle`):
-VGAME `DC46`, `04E6`, START `7904`; CRT routines with data-dependent `rep`
-counts (MPS `0146:067C` strstr, `0822`) need a prescan for their room claim as
-the committed strlen/strcpy have. A wait inside the body must clamp
-`m->run_until` to `c->stop_at` (see END `2BEC`'s `DN_RUN`).
 
 What keeps P3 below 100%: only Stage 3/4 (85%): the owner's panel motion
 verdict, long cargo/career flight timing and weaker CPU/GPU checks.

@@ -326,22 +326,36 @@ def expected_cost(route, engine=None):
     return steps * (3 if engine == "interp" else 1)
 
 
-def parallel(jobs, items, work, cost=None):
+def parallel(jobs, items, work, cost=None, name=None):
     """Run work(item) for every item on `jobs` threads (each is a child process,
     on its own virtual clock, so the results do not depend on the load) and
     return the results in item order; the first failure is raised after the
-    others finish. With `cost`, the most expensive items are started first."""
+    others finish. With `cost`, the most expensive items are started first. With `name`, the wall
+    time of the longest items is printed afterwards: when the longest alone is close to the whole
+    stage, more workers cannot shorten it."""
+    spans = {}
+    started = time.time()
+
     def guarded(item):
+        t0 = time.time()
         try:
             return work(item), None
         except SystemExit as e:
             return None, e
+        finally:
+            spans[name(item) if name else None] = time.time() - t0
     order = sorted(range(len(items)), key=lambda i: -cost(items[i])) if cost else range(len(items))
     results = [None] * len(items)
     with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, jobs)) as pool:
         futures = {i: pool.submit(guarded, items[i]) for i in order}
         for i, f in futures.items():
             results[i] = f.result()
+    if name:
+        wall = time.time() - started
+        longest = sorted(spans.items(), key=lambda kv: -kv[1])[:4]
+        print("  [%d jobs on %d workers: %.0f s wall, %.0f s of work, lower bound %.0f s; longest %s]" % (
+            len(items), jobs, wall, sum(spans.values()), max(max(spans.values(), default=0), sum(spans.values()) / max(1, jobs)),
+            ", ".join("%s %.0f s" % kv for kv in longest)))
     for _, error in results:
         if error is not None:
             raise error
@@ -493,7 +507,8 @@ def main():
             cov = os.path.join(covdir, name + ".cov")
             icount, h, interp, *_ = headless("recomp", a.data, a.work, name, route_args(r), ["--coverage", cov], r)
             return name, icount, interp
-        for name, icount, interp in parallel(a.jobs, [g[0] for g in groups], cover, cost=expected_cost):
+        for name, icount, interp in parallel(a.jobs, [g[0] for g in groups], cover, cost=expected_cost,
+                                             name=lambda r: os.path.splitext(os.path.basename(r))[0]):
             print("  %-20s %d clocks, %d interpreted" % (name, icount, interp))
         lap("coverage")
         print("4. translate again, build again")
@@ -536,7 +551,8 @@ def main():
             return headless(engine, a.data, a.work, name, route_args(r), ["--hash-every", "50000000"], r)
         leads = [g[0] for g in groups]
         jobs = [(r, e) for r in leads for e in ("interp", "recomp")]
-        done = parallel(a.jobs, jobs, replay, cost=lambda j: expected_cost(j[0], j[1]))
+        done = parallel(a.jobs, jobs, replay, cost=lambda j: expected_cost(j[0], j[1]),
+                        name=lambda j: "%s/%s" % (os.path.splitext(os.path.basename(j[0]))[0], j[1]))
         by_lead = {r: (done[2 * k], done[2 * k + 1]) for k, r in enumerate(leads)}
         for g in groups:
             ri, rr = by_lead[g[0]]

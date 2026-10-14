@@ -44228,7 +44228,405 @@ return_key:
 #undef MI_FAR
 }
 
+/* VGAME 1450: draw the sky and ground around the horizon. Low detail delegates
+ * to the line renderer with the view's colour. Higher detail projects 17 pairs
+ * of endpoints, fills the 16 intervening sky quadrilaterals, then repeats for
+ * height-dependent ground bands. The auxiliary view's illumination mode uses
+ * uniform colours instead of the gradients (438E and 43E0 both nonzero).
+ * Preserve the original DS accesses through BP-derived point-array offsets. */
+static int vgame_horizon_bands(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+    enum { HORIZON=-2, BAND=-4, RIGHT_X=-0x26, FLAT_COLOUR=-0x28,
+           RIGHT_Y=-0x4A, LEFT_X=-0x6C, LEFT_Y=-0x8E,
+           QUAD=-0x9E, BAND_OFFSET=-0xA0, INDEX_BYTES=-0xA2 };
+#define HB(n_,at_) do { SM4_NEED((n_),(at_));c->icount+=(n_); } while(0)
+#define HP(r_) cpu_push16(c,c->r[r_])
+#define HPOP() (c->r[R_BX]=cpu_pop16(c))
+#define HADDR(n_) ((uint16_t)(c->r[R_BP]+(n_)))
+#define HADD(a_,b_) ((uint16_t)alu_add(c,(a_),(b_),1,0))
+#define HSUB(a_,b_) ((uint16_t)alu_sub(c,(a_),(b_),1,0))
+#define HCMP(a_,b_) alu_sub(c,(a_),(b_),1,0)
+#define HSP(n_) (c->r[R_SP]=HADD(c->r[R_SP],(n_)))
+#define HCWD() (c->r[R_DX]=(c->r[R_AX]&0x8000)?0xFFFF:0)
+#define HSH(r_,op_,n_) (c->r[r_]=(uint16_t)x86_shift(c,(op_),c->r[r_],(n_),1))
+#define HRUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call_);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define HFAR(at_,ret_) do { SM4_NEED(1,(at_)); HRUN(guest_call_far(m,(at_),(ret_))); } while(0)
+#define HNEAR(at_,target_,ret_,pop_) do { SM4_NEED(1,(at_)); HRUN(guest_call_pop(m,(target_),(ret_),(pop_))); } while(0)
+    if (g_f117_observer) observe_game_draw(m);                   /* this placement shadows the observer's own */
+    if(!room(c,16))return 0;
+    HB(15,0x1450);
+    x86_enter(c,0xA2,0);HP(R_DI);HP(R_SI);bp_put(c,FLAT_COLOUR,0);
+    c->r[R_AX]=ds_get(c,0x49BA);c->r[R_AX]=HSUB(0,c->r[R_AX]);ds_put(c,0x98F8,c->r[R_AX]);
+    c->r[R_AX]=ds_get(c,0x49BC);ds_put(c,0x9914,c->r[R_AX]);
+    c->r[R_AX]=ds_get(c,0x49B6);ds_put(c,0x9928,c->r[R_AX]);
+    c->r[R_AX]=ds_get(c,0x49B8);ds_put(c,0x9F42,c->r[R_AX]);
+    alu_sub(c,ds_get8(c,0x990E),3,0,0);if(x86_cond(c,13))goto detailed_sky;
+    HB(2,0x147C);c->r[R_BX]=bp_get(c,4);cpu_push16(c,ds_get(c,(uint16_t)(c->r[R_BX]+4)));
+    HFAR(0x1482,0x1487);
+    HB(2,0x1487);HPOP();goto done;
+detailed_sky:
+    HB(2,0x148B);HCMP(ds_get(c,0x438E),0);if(x86_cond(c,4))goto sky_table;
+    HB(2,0x1492);HCMP(ds_get(c,0x43E0),0);if(x86_cond(c,4))goto sky_table;
+    HB(1,0x1499);bp_put(c,FLAT_COLOUR,1);
+sky_table:
+    HB(1,0x149E);bp_put(c,BAND,0);
+copy_sky_offsets:
+    HB(7,0x14A3);
+    c->r[R_BX]=bp_get(c,BAND);HSH(R_BX,4,1);c->r[R_AX]=ds_get(c,(uint16_t)(c->r[R_BX]+0x0D22));
+    ds_put(c,(uint16_t)(c->r[R_BX]+0xC0AC),c->r[R_AX]);
+    bp_put(c,BAND,(uint16_t)alu_inc(c,bp_get(c,BAND),1));HCMP(bp_get(c,BAND),16);
+    if(x86_cond(c,12))goto copy_sky_offsets;
+    /* Signed horizon ratio, with a minimum denominator of 512. The original
+     * long divide removes its own eight argument bytes. */
+    HB(3,0x14B9);c->r[R_AX]=ds_get(c,0x49B8);HCMP(c->r[R_AX],512);
+    if(x86_cond(c,13))goto horizon_ratio;
+    HB(1,0x14C1);c->r[R_AX]=512;
+horizon_ratio:
+    HB(6,0x14C4);HCWD();HP(R_DX);HP(R_AX);c->r[R_AX]=ds_get(c,0x49B6);HCWD();set_r8(c,R_CL,8);
+    HNEAR(0x14CD,0xEF68,0x14D0,0);
+    HB(2,0x14D0);HP(R_DX);HP(R_AX);
+    HNEAR(0x14D2,0xEE9C,0x14D5,8);
+    HB(3,0x14D5);bp_put(c,HORIZON,c->r[R_AX]);alu_sub(c,ds_get8(c,0x4368),0,0,0);
+    if(x86_cond(c,4))goto half_height;
+    HB(3,0x14DF);set_r8(c,R_CL,ds_get8(c,0x4368));HSH(R_AX,4,get_r8(c,R_CL));bp_put(c,HORIZON,c->r[R_AX]);
+half_height:
+    HB(2,0x14E8);alu_sub(c,ds_get8(c,0x294B),0,0,0);if(x86_cond(c,4))goto sky_points_begin;
+    HB(1,0x14EF);bp_put(c,HORIZON,(uint16_t)x86_shift(c,7,bp_get(c,HORIZON),1,1));
+sky_points_begin:
+    HB(2,0x14F2);bp_put(c,BAND,0);goto sky_point_test;
+sky_last_point:
+    HB(1,0x14FA);bp_put(c,BAND_OFFSET,0x5848);
+sky_point:
+    HB(2,0x1500);cpu_push16(c,ds_get(c,0x49BC));cpu_push16(c,0xA7B8);
+    HFAR(0x1507,0x150C);
+    HB(5,0x150C);HPOP();HPOP();c->r[R_SI]=c->r[R_AX];cpu_push16(c,ds_get(c,0x98F8));cpu_push16(c,bp_get(c,BAND_OFFSET));
+    HFAR(0x1518,0x151D);
+    HB(20,0x151D);
+    HPOP();HPOP();c->r[R_DI]=c->r[R_AX];c->r[R_AX]=ds_get(c,0x0D1E);
+    c->r[R_AX]=HSUB(c->r[R_AX],c->r[R_DI]);c->r[R_CX]=c->r[R_AX];c->r[R_AX]=HADD(c->r[R_AX],c->r[R_SI]);
+    c->r[R_BX]=bp_get(c,BAND);HSH(R_BX,4,1);c->r[R_DX]=HADDR(RIGHT_X);bp_put(c,INDEX_BYTES,c->r[R_BX]);
+    c->r[R_BX]=HADD(c->r[R_BX],c->r[R_DX]);ds_put(c,c->r[R_BX],c->r[R_AX]);
+    c->r[R_CX]=HSUB(c->r[R_CX],c->r[R_SI]);c->r[R_BX]=bp_get(c,INDEX_BYTES);c->r[R_AX]=HADDR(LEFT_X);
+    c->r[R_BX]=HADD(c->r[R_BX],c->r[R_AX]);ds_put(c,c->r[R_BX],c->r[R_CX]);
+    cpu_push16(c,ds_get(c,0x49BC));cpu_push16(c,bp_get(c,BAND_OFFSET));
+    HFAR(0x154F,0x1554);
+    HB(5,0x1554);HPOP();HPOP();c->r[R_SI]=c->r[R_AX];cpu_push16(c,ds_get(c,0x98F8));cpu_push16(c,0xA7B8);
+    HFAR(0x155F,0x1564);
+    HB(23,0x1564);
+    HPOP();HPOP();c->r[R_DI]=c->r[R_AX];c->r[R_AX]=HADD(c->r[R_AX],c->r[R_SI]);HSH(R_AX,7,2);
+    c->r[R_AX]=HSUB(c->r[R_AX],c->r[R_DI]);c->r[R_AX]=HSUB(c->r[R_AX],c->r[R_SI]);c->r[R_AX]=HADD(c->r[R_AX],ds_get(c,0x0D20));
+    c->r[R_BX]=bp_get(c,INDEX_BYTES);c->r[R_CX]=HADDR(RIGHT_Y);c->r[R_BX]=HADD(c->r[R_BX],c->r[R_CX]);ds_put(c,c->r[R_BX],c->r[R_AX]);
+    c->r[R_AX]=c->r[R_SI];c->r[R_AX]=HSUB(c->r[R_AX],c->r[R_DI]);HSH(R_AX,7,2);c->r[R_AX]=HSUB(c->r[R_AX],c->r[R_SI]);
+    c->r[R_AX]=HADD(c->r[R_AX],ds_get(c,0x0D20));c->r[R_AX]=HADD(c->r[R_AX],c->r[R_DI]);
+    c->r[R_BX]=bp_get(c,INDEX_BYTES);c->r[R_CX]=HADDR(LEFT_Y);c->r[R_BX]=HADD(c->r[R_BX],c->r[R_CX]);ds_put(c,c->r[R_BX],c->r[R_AX]);
+    bp_put(c,BAND,(uint16_t)alu_inc(c,bp_get(c,BAND),1));
+sky_point_test:
+    HB(2,0x159E);HCMP(bp_get(c,BAND),17);if(x86_cond(c,13))goto sky_quads_begin;
+    HB(2,0x15A4);HCMP(bp_get(c,BAND),16);
+    if(!x86_cond(c,12)) { HB(1,0x15AA);goto sky_last_point; }
+    HB(6,0x15AD);
+    c->r[R_BX]=bp_get(c,BAND);HSH(R_BX,4,1);c->r[R_AX]=ds_get(c,(uint16_t)(c->r[R_BX]+0xC0AC));
+    c->r[R_AX]=HADD(c->r[R_AX],bp_get(c,HORIZON));bp_put(c,BAND_OFFSET,c->r[R_AX]);goto sky_point;
+sky_quads_begin:
+    HB(2,0x15C0);bp_put(c,BAND,0);goto sky_quad_test;
+sky_band_colour:
+    HB(2,0x15C7);c->r[R_AX]=bp_get(c,BAND);c->r[R_AX]=HADD(c->r[R_AX],0x80);
+sky_quad:
+    HB(5,0x15CD);HP(R_AX);c->r[R_AX]=HADDR(QUAD);HP(R_AX);cpu_push16(c,4);cpu_push16(c,bp_get(c,4));
+    HFAR(0x15D8,0x15DD);
+    HB(2,0x15DD);HSP(8);bp_put(c,BAND,(uint16_t)alu_inc(c,bp_get(c,BAND),1));
+sky_quad_test:
+    HB(2,0x15E3);HCMP(bp_get(c,BAND),16);if(x86_cond(c,13))goto ground_offsets_begin;
+    HB(20,0x15E9);
+    c->r[R_SI]=bp_get(c,BAND);HSH(R_SI,4,1);
+    c->r[R_AX]=bp_get(c,c->r[R_SI]+RIGHT_X);bp_put(c,QUAD,c->r[R_AX]);
+    c->r[R_AX]=bp_get(c,c->r[R_SI]+RIGHT_Y);bp_put(c,QUAD+2,c->r[R_AX]);
+    c->r[R_AX]=bp_get(c,c->r[R_SI]+LEFT_X);bp_put(c,QUAD+4,c->r[R_AX]);
+    c->r[R_AX]=bp_get(c,c->r[R_SI]+LEFT_Y);bp_put(c,QUAD+6,c->r[R_AX]);
+    c->r[R_AX]=bp_get(c,c->r[R_SI]+LEFT_X+2);bp_put(c,QUAD+8,c->r[R_AX]);
+    c->r[R_AX]=bp_get(c,c->r[R_SI]+LEFT_Y+2);bp_put(c,QUAD+10,c->r[R_AX]);
+    c->r[R_AX]=bp_get(c,c->r[R_SI]+RIGHT_X+2);bp_put(c,QUAD+12,c->r[R_AX]);
+    c->r[R_AX]=bp_get(c,c->r[R_SI]+RIGHT_Y+2);bp_put(c,QUAD+14,c->r[R_AX]);
+    HCMP(bp_get(c,FLAT_COLOUR),0);if(x86_cond(c,4))goto sky_band_colour;
+    HB(2,0x162E);c->r[R_AX]=0x88;goto sky_quad;
+    /* Ground offsets: z/((16-band)*32) - z/512. */
+ground_offsets_begin:
+    HB(6,0x1633);c->r[R_AX]=ds_get(c,0x49B0);c->r[R_CX]=512;HCWD();x86_idiv16(c,c->r[R_CX],0);
+    ds_put(c,0xC0AC,c->r[R_AX]);bp_put(c,BAND,1);
+ground_offset:
+    HB(5,0x1644);
+    c->r[R_AX]=ds_get(c,0x49B0);c->r[R_CX]=16;c->r[R_CX]=HSUB(c->r[R_CX],bp_get(c,BAND));HSH(R_CX,4,5);HCWD();
+    /* An aliased frame can change BAND; leave a divide fault to the original. */
+    if(idiv16_faults(c,c->r[R_CX])) { c->ip=0x1651;return 1; }
+    HB(8,0x1651);x86_idiv16(c,c->r[R_CX],0);
+    c->r[R_AX]=HSUB(c->r[R_AX],ds_get(c,0xC0AC));c->r[R_BX]=bp_get(c,BAND);HSH(R_BX,4,1);ds_put(c,(uint16_t)(c->r[R_BX]+0xC0AC),c->r[R_AX]);
+    bp_put(c,BAND,(uint16_t)alu_inc(c,bp_get(c,BAND),1));HCMP(bp_get(c,BAND),16);if(x86_cond(c,12))goto ground_offset;
+    HB(4,0x1669);c->r[R_AX]=HSUB(c->r[R_AX],c->r[R_AX]);ds_put(c,0xC0AC,c->r[R_AX]);bp_put(c,BAND,c->r[R_AX]);goto ground_point_test;
+ground_last_point:
+    HB(1,0x1674);bp_put(c,BAND_OFFSET,0xA7B8);
+ground_point:
+    HB(2,0x167A);cpu_push16(c,ds_get(c,0x49BC));cpu_push16(c,0xA7B8);
+    HFAR(0x1681,0x1686);
+    HB(5,0x1686);HPOP();HPOP();c->r[R_SI]=c->r[R_AX];cpu_push16(c,ds_get(c,0x98F8));cpu_push16(c,bp_get(c,BAND_OFFSET));
+    HFAR(0x1692,0x1697);
+    HB(21,0x1697);
+    HPOP();HPOP();c->r[R_DI]=c->r[R_AX];c->r[R_AX]=ds_get(c,0x0D1E);c->r[R_AX]=HSUB(c->r[R_AX],c->r[R_DI]);c->r[R_AX]=HADD(c->r[R_AX],c->r[R_SI]);
+    c->r[R_BX]=bp_get(c,BAND);HSH(R_BX,4,1);c->r[R_CX]=HADDR(RIGHT_X);c->r[R_DX]=c->r[R_BX];
+    c->r[R_BX]=HADD(c->r[R_BX],c->r[R_CX]);ds_put(c,c->r[R_BX],c->r[R_AX]);
+    c->r[R_BX]=HADDR(LEFT_X);c->r[R_BX]=HADD(c->r[R_BX],c->r[R_DX]);c->r[R_AX]=ds_get(c,0x0D1E);
+    c->r[R_AX]=HSUB(c->r[R_AX],c->r[R_SI]);c->r[R_AX]=HSUB(c->r[R_AX],c->r[R_DI]);ds_put(c,c->r[R_BX],c->r[R_AX]);
+    cpu_push16(c,ds_get(c,0x49BC));cpu_push16(c,bp_get(c,BAND_OFFSET));bp_put(c,INDEX_BYTES,c->r[R_DX]);
+    HFAR(0x16CA,0x16CF);
+    HB(5,0x16CF);HPOP();HPOP();c->r[R_SI]=c->r[R_AX];cpu_push16(c,ds_get(c,0x98F8));cpu_push16(c,0xA7B8);
+    HFAR(0x16DA,0x16DF);
+    HB(24,0x16DF);
+    HPOP();HPOP();c->r[R_DI]=c->r[R_AX];c->r[R_AX]=c->r[R_SI];c->r[R_AX]=HADD(c->r[R_AX],c->r[R_DI]);HSH(R_AX,7,2);
+    c->r[R_AX]=HSUB(c->r[R_AX],c->r[R_SI]);c->r[R_AX]=HSUB(c->r[R_AX],c->r[R_DI]);c->r[R_AX]=HADD(c->r[R_AX],ds_get(c,0x0D20));
+    c->r[R_BX]=bp_get(c,INDEX_BYTES);c->r[R_CX]=HADDR(RIGHT_Y);c->r[R_BX]=HADD(c->r[R_BX],c->r[R_CX]);ds_put(c,c->r[R_BX],c->r[R_AX]);
+    c->r[R_AX]=c->r[R_SI];c->r[R_AX]=HSUB(c->r[R_AX],c->r[R_DI]);HSH(R_AX,7,2);c->r[R_AX]=HSUB(c->r[R_AX],c->r[R_SI]);
+    c->r[R_AX]=HADD(c->r[R_AX],ds_get(c,0x0D20));c->r[R_AX]=HADD(c->r[R_AX],c->r[R_DI]);
+    c->r[R_BX]=bp_get(c,INDEX_BYTES);c->r[R_CX]=HADDR(LEFT_Y);c->r[R_BX]=HADD(c->r[R_BX],c->r[R_CX]);ds_put(c,c->r[R_BX],c->r[R_AX]);
+    bp_put(c,BAND,(uint16_t)alu_inc(c,bp_get(c,BAND),1));
+ground_point_test:
+    HB(2,0x171B);HCMP(bp_get(c,BAND),17);if(x86_cond(c,13))goto ground_quads_begin;
+    HB(2,0x1721);HCMP(bp_get(c,BAND),16);
+    if(!x86_cond(c,12)) { HB(1,0x1727);goto ground_last_point; }
+    HB(6,0x172A);
+    c->r[R_AX]=bp_get(c,HORIZON);c->r[R_BX]=bp_get(c,BAND);HSH(R_BX,4,1);
+    c->r[R_AX]=HSUB(c->r[R_AX],ds_get(c,(uint16_t)(c->r[R_BX]+0xC0AC)));bp_put(c,BAND_OFFSET,c->r[R_AX]);goto ground_point;
+ground_quads_begin:
+    HB(2,0x173D);bp_put(c,BAND,0);goto ground_quad_test;
+ground_band_colour:
+    HB(2,0x1744);c->r[R_AX]=bp_get(c,BAND);c->r[R_AX]=HADD(c->r[R_AX],0x70);
+ground_quad:
+    HB(5,0x174A);HP(R_AX);c->r[R_AX]=HADDR(QUAD);HP(R_AX);cpu_push16(c,4);cpu_push16(c,bp_get(c,4));
+    HFAR(0x1755,0x175A);
+    HB(2,0x175A);HSP(8);bp_put(c,BAND,(uint16_t)alu_inc(c,bp_get(c,BAND),1));
+ground_quad_test:
+    HB(2,0x1760);HCMP(bp_get(c,BAND),16);if(x86_cond(c,13))goto done;
+    HB(20,0x1766);
+    c->r[R_SI]=bp_get(c,BAND);HSH(R_SI,4,1);
+    c->r[R_AX]=bp_get(c,c->r[R_SI]+RIGHT_X);bp_put(c,QUAD,c->r[R_AX]);
+    c->r[R_AX]=bp_get(c,c->r[R_SI]+RIGHT_Y);bp_put(c,QUAD+2,c->r[R_AX]);
+    c->r[R_AX]=bp_get(c,c->r[R_SI]+LEFT_X);bp_put(c,QUAD+4,c->r[R_AX]);
+    c->r[R_AX]=bp_get(c,c->r[R_SI]+LEFT_Y);bp_put(c,QUAD+6,c->r[R_AX]);
+    c->r[R_AX]=bp_get(c,c->r[R_SI]+LEFT_X+2);bp_put(c,QUAD+8,c->r[R_AX]);
+    c->r[R_AX]=bp_get(c,c->r[R_SI]+LEFT_Y+2);bp_put(c,QUAD+10,c->r[R_AX]);
+    c->r[R_AX]=bp_get(c,c->r[R_SI]+RIGHT_X+2);bp_put(c,QUAD+12,c->r[R_AX]);
+    c->r[R_AX]=bp_get(c,c->r[R_SI]+RIGHT_Y+2);bp_put(c,QUAD+14,c->r[R_AX]);
+    HCMP(bp_get(c,FLAT_COLOUR),0);if(x86_cond(c,4))goto ground_band_colour;
+    HB(2,0x17AB);c->r[R_AX]=0x7C;goto ground_quad;
+done:
+    HB(4,0x17B0);c->r[R_SI]=cpu_pop16(c);c->r[R_DI]=cpu_pop16(c);x86_leave(c);near_ret(c);return 1;
+#undef HB
+#undef HP
+#undef HPOP
+#undef HADDR
+#undef HADD
+#undef HSUB
+#undef HCMP
+#undef HSP
+#undef HCWD
+#undef HSH
+#undef HRUN
+#undef HFAR
+#undef HNEAR
+}
+
+/* START 7904: collect world records whose type equals the signed low byte
+ * of the requested type, then choose one (randomly when there is more than
+ * one). Type-table value 16 scans level-three 16x16 tiles; other types scan
+ * levels one and two at steps one and four. Seven-byte source records become
+ * eight-byte far references carrying tile coordinates and level. The chosen
+ * record's local coordinates become the 32-bit position at CA92/CA96; CA8E
+ * holds its type and CA90 is reset to 7FFF. Return CA8E, or zero if none.
+ * Keep the original live far-pointer reads: the output buffer may overlap
+ * the result fields, changing its level byte before the final switch. */
+static int start_choose_world_record(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+    enum { LIST=-8, LIST_SEG=-6, X=-10, LEVEL=-12, Y=-14, COUNT=-16,
+           OUT=-22, OUT_SEG=-20, RECORD=-24, STEP=-26, LOOKUP=-32 };
+#define SB(n_,at_) do { SM4_NEED((n_),(at_));c->icount+=(n_); } while(0)
+#define TP(r_) cpu_push16(c,c->r[r_])
+#define TPOP() (c->r[R_BX]=cpu_pop16(c))
+#define TADD(a_,b_) ((uint16_t)alu_add(c,(a_),(b_),1,0))
+#define TSUB(a_,b_) ((uint16_t)alu_sub(c,(a_),(b_),1,0))
+#define TCMP(a_,b_) alu_sub(c,(a_),(b_),1,0)
+#define TSP(n_) (c->r[R_SP]=TADD(c->r[R_SP],(n_)))
+#define TSH(r_,op_,n_) (c->r[r_]=(uint16_t)x86_shift(c,(op_),c->r[r_],(n_),1))
+#define TCBW() (c->r[R_AX]=(uint16_t)(int16_t)(int8_t)get_r8(c,R_AL))
+#define TCWD() (c->r[R_DX]=(c->r[R_AX]&0x8000)?0xFFFF:0)
+#define TLES(r_,off_) do { c->r[r_]=bp_get(c,(off_));c->seg[S_ES]=bp_get(c,(off_)+2); } while(0)
+#define TEW(o_) seg_read16(c,c->seg[S_ES],(uint16_t)(c->r[R_BX]+(o_)))
+#define TEB(r_,o_) mem_read8(c,phys(c->seg[S_ES],(uint16_t)(c->r[r_]+(o_))))
+#define TPUTW(o_,v_) seg_write16(c,c->seg[S_ES],(uint16_t)(c->r[R_SI]+(o_)),(v_))
+#define TPUTB(o_,v_) mem_write8(c,phys(c->seg[S_ES],(uint16_t)(c->r[R_SI]+(o_))),(v_))
+#define TPOINT(r_) do { const uint16_t es_=c->seg[S_ES],at_=c->r[R_BX]; \
+    c->r[r_]=seg_read16(c,es_,at_);c->seg[S_ES]=seg_read16(c,es_,(uint16_t)(at_+2)); } while(0)
+#define TRUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call_);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define TNEAR(at_,target_,ret_,pop_) do { SM4_NEED(1,(at_));TRUN(guest_call_pop(m,(target_),(ret_),(pop_))); } while(0)
+    if(!room(c,15))return 0;
+    SB(15,0x7904);frame_open(c,32);TP(R_SI);
+    c->r[R_AX]=ds_get(c,0xD336);c->r[R_DX]=ds_get(c,0xD338);bp_put(c,OUT,c->r[R_AX]);bp_put(c,OUT_SEG,c->r[R_DX]);
+    ds_put(c,0xCA90,0x7FFF);bp_put(c,COUNT,0);set_r8(c,R_AL,bp_get8(c,4));TCBW();c->r[R_BX]=c->r[R_AX];
+    alu_sub(c,ds_get8(c,(uint16_t)(c->r[R_BX]+0xD2A6)),16,0,0);
+    if(x86_cond(c,4))goto special_tiles;
+    SB(1,0x7930);goto general_tiles;
+special_tiles:
+    SB(2,0x7933);bp_put(c,X,0);goto special_x_test;
+special_record:
+    SB(7,0x793B);set_r8(c,R_AL,bp_get8(c,4));TCBW();TLES(R_BX,LIST);
+    set_r8(c,R_CL,TEB(R_BX,6));set_r8(c,R_CH,(uint8_t)alu_sub(c,get_r8(c,R_CH),get_r8(c,R_CH),0,0));TCMP(c->r[R_CX],c->r[R_AX]);
+    if(x86_cond(c,5))goto special_record_advance;
+    SB(15,0x794C);TLES(R_SI,OUT);c->r[R_AX]=c->r[R_BX];c->r[R_DX]=bp_get(c,LIST_SEG);
+    TPUTW(0,c->r[R_AX]);TPUTW(2,c->r[R_DX]);TPUTB(6,3);set_r8(c,R_CL,4);
+    set_r8(c,R_AL,bp_get8(c,X));set_r8(c,R_AL,(uint8_t)x86_shift(c,4,get_r8(c,R_AL),get_r8(c,R_CL),0));TPUTB(4,get_r8(c,R_AL));
+    set_r8(c,R_AL,bp_get8(c,Y));set_r8(c,R_AL,(uint8_t)x86_shift(c,4,get_r8(c,R_AL),get_r8(c,R_CL),0));TPUTB(5,get_r8(c,R_AL));
+    bp_put(c,OUT,TADD(bp_get(c,OUT),8));bp_put(c,COUNT,(uint16_t)alu_inc(c,bp_get(c,COUNT),1));
+special_record_advance:
+    SB(2,0x797B);bp_put(c,LIST,TADD(bp_get(c,LIST),7));bp_put(c,RECORD,(uint16_t)alu_inc(c,bp_get(c,RECORD),1));
+special_record_test:
+    SB(5,0x7982);c->r[R_AX]=bp_get(c,RECORD);c->r[R_BX]=bp_get(c,LOOKUP);TSH(R_BX,4,1);
+    TCMP(ds_get(c,(uint16_t)(c->r[R_BX]+0x0FCA)),c->r[R_AX]);if(x86_cond(c,7))goto special_record;
+special_y_advance:
+    SB(1,0x7990);bp_put(c,Y,(uint16_t)alu_inc(c,bp_get(c,Y),1));
+special_y_test:
+    SB(2,0x7993);TCMP(bp_get(c,Y),16);if(x86_cond(c,13))goto special_x_advance;
+    SB(7,0x7999);c->r[R_BX]=bp_get(c,X);set_r8(c,R_CL,4);c->r[R_AX]=bp_get(c,Y);TSH(R_AX,4,get_r8(c,R_CL));c->r[R_BX]=TSUB(c->r[R_BX],c->r[R_AX]);
+    alu_logic(c,ds_get8(c,(uint16_t)(c->r[R_BX]+0xCBC8))&3,0);if(x86_cond(c,5))goto special_y_advance;
+    SB(4,0x79AC);cpu_push16(c,bp_get(c,Y));cpu_push16(c,bp_get(c,X));c->r[R_AX]=3;TP(R_AX);
+    TNEAR(0x79B6,0x7C56,0x79B9,0);
+    SB(4,0x79B9);TSP(6);bp_put(c,LOOKUP,c->r[R_AX]);c->r[R_AX]=(uint16_t)alu_inc(c,c->r[R_AX],1);
+    if(x86_cond(c,4))goto special_y_advance;
+    SB(7,0x79C2);c->r[R_BX]=bp_get(c,LOOKUP);TSH(R_BX,4,1);c->r[R_AX]=ds_get(c,(uint16_t)(c->r[R_BX]+0xC91C));
+    bp_put(c,LIST,c->r[R_AX]);bp_put(c,LIST_SEG,c->seg[S_DS]);bp_put(c,RECORD,0);goto special_record_test;
+special_x_advance:
+    SB(1,0x79D8);bp_put(c,X,(uint16_t)alu_inc(c,bp_get(c,X),1));
+special_x_test:
+    SB(2,0x79DB);TCMP(bp_get(c,X),16);
+    if(!x86_cond(c,12)) { SB(1,0x79E1);goto choose; }
+    SB(2,0x79E4);bp_put(c,Y,0);goto special_y_test;
+
+general_tiles:
+    SB(4,0x79EB);c->r[R_AX]=1;bp_put(c,LEVEL,c->r[R_AX]);bp_put(c,STEP,c->r[R_AX]);goto level_test;
+coarse_tile_arguments:
+    SB(8,0x79F7);c->r[R_AX]=bp_get(c,Y);TSH(R_AX,7,1);TSH(R_AX,7,1);TP(R_AX);
+    c->r[R_AX]=bp_get(c,X);TSH(R_AX,7,1);TSH(R_AX,7,1);TP(R_AX);
+general_lookup:
+    SB(1,0x7A07);cpu_push16(c,bp_get(c,LEVEL));
+    TNEAR(0x7A0A,0x7C56,0x7A0D,0);
+    SB(4,0x7A0D);TSP(6);bp_put(c,LOOKUP,c->r[R_AX]);TCMP(c->r[R_AX],0xFFFF);if(x86_cond(c,4))goto general_y_advance;
+    SB(10,0x7A18);set_r8(c,R_CL,5);c->r[R_BX]=bp_get(c,LEVEL);TSH(R_BX,4,get_r8(c,R_CL));
+    c->r[R_BX]=TADD(c->r[R_BX],c->r[R_AX]);TSH(R_BX,4,1);c->r[R_AX]=ds_get(c,(uint16_t)(c->r[R_BX]+0xC85C));
+    bp_put(c,LIST,c->r[R_AX]);bp_put(c,LIST_SEG,c->seg[S_DS]);bp_put(c,RECORD,0);goto general_record_test;
+general_record:
+    SB(7,0x7A34);set_r8(c,R_AL,bp_get8(c,4));TCBW();TLES(R_BX,LIST);
+    set_r8(c,R_CL,TEB(R_BX,6));set_r8(c,R_CH,(uint8_t)alu_sub(c,get_r8(c,R_CH),get_r8(c,R_CH),0,0));TCMP(c->r[R_CX],c->r[R_AX]);
+    if(x86_cond(c,5))goto general_record_advance;
+    SB(13,0x7A45);TLES(R_SI,OUT);c->r[R_AX]=c->r[R_BX];c->r[R_DX]=bp_get(c,LIST_SEG);
+    TPUTW(0,c->r[R_AX]);TPUTW(2,c->r[R_DX]);set_r8(c,R_AL,bp_get8(c,LEVEL));TPUTB(6,get_r8(c,R_AL));
+    set_r8(c,R_AL,bp_get8(c,X));TPUTB(4,get_r8(c,R_AL));set_r8(c,R_AL,bp_get8(c,Y));TPUTB(5,get_r8(c,R_AL));
+    bp_put(c,OUT,TADD(bp_get(c,OUT),8));bp_put(c,COUNT,(uint16_t)alu_inc(c,bp_get(c,COUNT),1));
+general_record_advance:
+    SB(2,0x7A70);bp_put(c,LIST,TADD(bp_get(c,LIST),7));bp_put(c,RECORD,(uint16_t)alu_inc(c,bp_get(c,RECORD),1));
+general_record_test:
+    SB(8,0x7A77);c->r[R_AX]=bp_get(c,RECORD);set_r8(c,R_CL,5);c->r[R_BX]=bp_get(c,LEVEL);TSH(R_BX,4,get_r8(c,R_CL));
+    c->r[R_BX]=TADD(c->r[R_BX],bp_get(c,LOOKUP));TSH(R_BX,4,1);TCMP(ds_get(c,(uint16_t)(c->r[R_BX]+0x0F0A)),c->r[R_AX]);if(x86_cond(c,7))goto general_record;
+general_y_advance:
+    SB(2,0x7A8C);c->r[R_AX]=bp_get(c,STEP);bp_put(c,Y,TADD(bp_get(c,Y),c->r[R_AX]));
+general_y_test:
+    SB(2,0x7A92);TCMP(bp_get(c,Y),256);if(x86_cond(c,13))goto general_x_advance;
+    SB(8,0x7A99);set_r8(c,R_CL,4);c->r[R_BX]=bp_get(c,X);TSH(R_BX,7,get_r8(c,R_CL));c->r[R_AX]=bp_get(c,Y);
+    set_r8(c,R_AL,(uint8_t)alu_logic(c,get_r8(c,R_AL)&0xF0,0));c->r[R_BX]=TSUB(c->r[R_BX],c->r[R_AX]);
+    alu_logic(c,ds_get8(c,(uint16_t)(c->r[R_BX]+0xCBC8))&3,0);if(x86_cond(c,5))goto general_y_advance;
+    SB(3,0x7AAE);bp_put(c,LOOKUP,0xFFFF);TCMP(bp_get(c,LEVEL),1);
+    if(!x86_cond(c,4)) { SB(1,0x7AB9);goto coarse_tile_arguments; }
+    SB(3,0x7ABC);cpu_push16(c,bp_get(c,Y));cpu_push16(c,bp_get(c,X));goto general_lookup;
+general_x_advance:
+    SB(2,0x7AC5);c->r[R_AX]=bp_get(c,STEP);bp_put(c,X,TADD(bp_get(c,X),c->r[R_AX]));
+general_x_test:
+    SB(2,0x7ACB);TCMP(bp_get(c,X),256);if(x86_cond(c,13))goto level_advance;
+    SB(2,0x7AD2);bp_put(c,Y,0);goto general_y_test;
+level_advance:
+    SB(2,0x7AD9);bp_put(c,LEVEL,(uint16_t)alu_inc(c,bp_get(c,LEVEL),1));bp_put(c,STEP,TADD(bp_get(c,STEP),3));
+level_test:
+    SB(2,0x7AE0);TCMP(bp_get(c,LEVEL),2);if(x86_cond(c,15))goto choose;
+    SB(2,0x7AE6);bp_put(c,X,0);goto general_x_test;
+
+choose:
+    SB(6,0x7AED);c->r[R_AX]=ds_get(c,0xD336);c->r[R_DX]=ds_get(c,0xD338);bp_put(c,OUT,c->r[R_AX]);bp_put(c,OUT_SEG,c->r[R_DX]);
+    TCMP(bp_get(c,COUNT),0);if(!x86_cond(c,5)) { SB(1,0x7B00);goto none; }
+    SB(2,0x7B03);TCMP(bp_get(c,COUNT),1);if(x86_cond(c,14))goto chosen;
+    SB(1,0x7B09);cpu_push16(c,bp_get(c,COUNT));
+    TNEAR(0x7B0C,0x76C0,0x7B0F,0);
+    SB(6,0x7B0F);TPOP();set_r8(c,R_CL,3);TSH(R_AX,4,get_r8(c,R_CL));c->r[R_AX]=TADD(c->r[R_AX],bp_get(c,OUT));c->r[R_DX]=bp_get(c,OUT_SEG);bp_put(c,OUT,c->r[R_AX]);
+chosen:
+    SB(16,0x7B1D);TLES(R_BX,OUT);TPOINT(R_SI);set_r8(c,R_AL,TEB(R_SI,6));set_r8(c,R_AH,(uint8_t)alu_sub(c,get_r8(c,R_AH),get_r8(c,R_AH),0,0));ds_put(c,0xCA8E,c->r[R_AX]);
+    c->seg[S_ES]=bp_get(c,OUT_SEG);set_r8(c,R_AL,TEB(R_BX,4));ds_put(c,0xCA92,c->r[R_AX]);ds_put(c,0xCA94,0);
+    set_r8(c,R_AL,TEB(R_BX,5));ds_put(c,0xCA96,c->r[R_AX]);ds_put(c,0xCA98,0);
+    set_r8(c,R_AL,12);TP(R_AX);c->r[R_CX]=0xCA92;TP(R_CX);
+    TNEAR(0x7B50,0x97D8,0x7B53,4);
+    SB(4,0x7B53);set_r8(c,R_AL,12);TP(R_AX);c->r[R_AX]=0xCA96;TP(R_AX);
+    TNEAR(0x7B5A,0x97D8,0x7B5D,4);
+    SB(5,0x7B5D);TLES(R_BX,OUT);set_r8(c,R_AL,TEB(R_BX,6));set_r8(c,R_AH,(uint8_t)alu_sub(c,get_r8(c,R_AH),get_r8(c,R_AH),0,0));c->r[R_AX]=(uint16_t)alu_dec(c,c->r[R_AX],1);
+    if(x86_cond(c,4))goto level_one_position;
+    SB(2,0x7B69);c->r[R_AX]=(uint16_t)alu_dec(c,c->r[R_AX],1);if(x86_cond(c,4))goto level_two_position;
+    SB(2,0x7B6C);c->r[R_AX]=(uint16_t)alu_dec(c,c->r[R_AX],1);if(x86_cond(c,4))goto level_three_position;
+    SB(1,0x7B6F);goto result;
+level_one_position:
+    SB(11,0x7B71);TLES(R_BX,OUT);TPOINT(R_SI);c->r[R_AX]=seg_read16(c,c->seg[S_ES],c->r[R_SI]);set_r8(c,R_AH,(uint8_t)alu_add(c,get_r8(c,R_AH),8,0,0));TCWD();
+    ds_put(c,0xCA92,TADD(ds_get(c,0xCA92),c->r[R_AX]));ds_put(c,0xCA94,(uint16_t)alu_add(c,ds_get(c,0xCA94),c->r[R_DX],1,(c->flags&F_CF)?1:0));
+    c->seg[S_ES]=bp_get(c,OUT_SEG);TPOINT(R_BX);c->r[R_AX]=TEW(2);set_r8(c,R_AH,(uint8_t)alu_add(c,get_r8(c,R_AH),8,0,0));
+position_y:
+    SB(3,0x7B93);TCWD();ds_put(c,0xCA96,TADD(ds_get(c,0xCA96),c->r[R_AX]));ds_put(c,0xCA98,(uint16_t)alu_add(c,ds_get(c,0xCA98),c->r[R_DX],1,(c->flags&F_CF)?1:0));
+result:
+    SB(2,0x7B9C);c->r[R_AX]=0xCA8E;goto done;
+level_two_position:
+    SB(16,0x7BA1);TLES(R_BX,OUT);TPOINT(R_SI);c->r[R_AX]=seg_read16(c,c->seg[S_ES],c->r[R_SI]);set_r8(c,R_AH,(uint8_t)alu_add(c,get_r8(c,R_AH),8,0,0));TSH(R_AX,4,1);TSH(R_AX,4,1);TCWD();
+    ds_put(c,0xCA92,TADD(ds_get(c,0xCA92),c->r[R_AX]));ds_put(c,0xCA94,(uint16_t)alu_add(c,ds_get(c,0xCA94),c->r[R_DX],1,(c->flags&F_CF)?1:0));
+    c->seg[S_ES]=bp_get(c,OUT_SEG);TPOINT(R_BX);c->r[R_AX]=TEW(2);set_r8(c,R_AH,(uint8_t)alu_add(c,get_r8(c,R_AH),8,0,0));TSH(R_AX,4,1);TSH(R_AX,4,1);goto position_y;
+level_three_position:
+    SB(17,0x7BCD);TLES(R_BX,OUT);TPOINT(R_SI);c->r[R_AX]=seg_read16(c,c->seg[S_ES],c->r[R_SI]);set_r8(c,R_CL,4);TSH(R_AX,4,get_r8(c,R_CL));TCWD();
+    c->r[R_AX]=TADD(c->r[R_AX],0x8000);c->r[R_DX]=(uint16_t)alu_add(c,c->r[R_DX],0,1,(c->flags&F_CF)?1:0);
+    ds_put(c,0xCA92,TADD(ds_get(c,0xCA92),c->r[R_AX]));ds_put(c,0xCA94,(uint16_t)alu_add(c,ds_get(c,0xCA94),c->r[R_DX],1,(c->flags&F_CF)?1:0));
+    c->seg[S_ES]=bp_get(c,OUT_SEG);TPOINT(R_BX);c->r[R_AX]=TEW(2);TSH(R_AX,4,get_r8(c,R_CL));TCWD();c->r[R_AX]=TADD(c->r[R_AX],0x8000);c->r[R_DX]=(uint16_t)alu_add(c,c->r[R_DX],0,1,(c->flags&F_CF)?1:0);
+    SB(1,0x7BFC);goto position_y_add;
+position_y_add:
+    SB(2,0x7B94);ds_put(c,0xCA96,TADD(ds_get(c,0xCA96),c->r[R_AX]));ds_put(c,0xCA98,(uint16_t)alu_add(c,ds_get(c,0xCA98),c->r[R_DX],1,(c->flags&F_CF)?1:0));goto result;
+none:
+    SB(1,0x7BFE);c->r[R_AX]=TSUB(c->r[R_AX],c->r[R_AX]);
+done:
+    SB(4,0x7C00);c->r[R_SI]=cpu_pop16(c);c->r[R_SP]=c->r[R_BP];c->r[R_BP]=cpu_pop16(c);near_ret(c);return 1;
+#undef SB
+#undef TP
+#undef TPOP
+#undef TADD
+#undef TSUB
+#undef TCMP
+#undef TSP
+#undef TSH
+#undef TCBW
+#undef TCWD
+#undef TLES
+#undef TEW
+#undef TEB
+#undef TPUTW
+#undef TPUTB
+#undef TPOINT
+#undef TRUN
+#undef TNEAR
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x1450, vgame_horizon_bands, "project and draw sky and ground bands", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x7904, start_choose_world_record, "choose a world record by type", 1 },
+
     { "matched", "START.EXE", START_47304, 0x0000, 0x39F7, start_menu_input, "menu input and pointer update", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x1CF5, end_menu_input, "menu input and pointer update", 1 },
 

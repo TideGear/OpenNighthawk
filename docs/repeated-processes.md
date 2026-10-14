@@ -8,6 +8,30 @@ whether they were measured or estimated. The rule behind the page: an
 optimisation must leave every check's inputs, outputs and verdicts
 identical, and the proof is the same verdicts before and after.
 
+## Horizon and world-record gate (14 October 2026)
+
+`matched_horizon_and_record` runs 5,000 states each for VGAME `1450` and START
+`7904` in 7.1 s. The first full gate failed in unit step `code_overrides` after
+23.8 s of unit tests (the failure surfaced before any route work), so a shared
+observer address costs one gate attempt unless the body calls the observer;
+the second passed in 1,418 s: translate/build 58 s, coverage 555 s, second
+translate/build 35 s, parity 771 s (the instruction and matched-routine
+lockstep steps run in the background beside coverage and parity and add 0 s).
+`presentation_check.py --scales 1 --jobs 16` over the 45 routes took about
+8 minutes and reported all exact.
+
+What already saves time: jobs start longest first; the interpreter result
+cache ignores `matched.c`; the coverage pass is skipped when its inputs and
+the generated code are unchanged. The standing gate command passes
+`--verify-interp-cache`, which reruns every interpreter route fresh and
+compares it with the cache, so "0 reused, 44 run" is expected there and the
+cache only saves time when that flag is dropped. `parallel()` now prints each
+stage's wall time, work, lower bound (the larger of the longest job and
+work / workers) and its four longest jobs. Read that before changing worker
+counts: if the longest job is near the stage's wall time, more workers cannot
+help; if the work divided by workers is, an interpreter run could instead
+start during coverage, since it does not depend on the translation.
+
 ## Menu-input fixture and gate (14 October 2026)
 
 `matched_menu_input` runs 5,000 states each for START `39F7` and END `1CF5`,

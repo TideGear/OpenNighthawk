@@ -544,6 +544,9 @@ static const struct { const char *module; uint16_t ip; int arg; uint16_t v[2]; }
 /* Exact code ranges when the default 0x300-byte window is unsuitable:
  * long/shared tails, or small walkers whose unrelated callees are nearby. */
 static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
+    { "VGAME.EXE", 0x1450, 0x1450, 0x0364 },
+    { "START.EXE", 0x7904, 0x7904, 0x0301 },
+
     { "START.EXE", 0x39F7, 0x39F7, 0x02F3 },
     { "END.EXE", 0x1CF5, 0x1CF5, 0x02F0 },
 
@@ -699,6 +702,8 @@ static uint64_t g_camera_seen;
 static const struct { const char *module; uint16_t seg, ip, len; unsigned insns, floor; const char *what; uint16_t boundary; unsigned clocks; } COVERED[] = {
     { "START.EXE", 0, 0x39F7, 0x02F3, 265, 265, "menu input and pointer update" },
     { "END.EXE", 0, 0x1CF5, 0x02F0, 267, 267, "menu input and pointer update" },
+    { "VGAME.EXE", 0, 0x1450, 0x0364, 301, 301, "project and draw sky and ground bands" },
+    { "START.EXE", 0, 0x7904, 0x0301, 272, 272, "choose a world record by type" },
     { "END.EXE", 0, 0x2BEC, 0x0435, 444, 444, "debrief narrative and measured layout" },
     { "START.EXE", 0, 0x6DB8, 0x03F5, 399, 399, "pilot options dialog" },
     { "START.EXE", 0, 0x149C, 0x039E, 365, 365, "flight plan display" },
@@ -2517,6 +2522,105 @@ int main(int argc, char **argv)
 #undef NW16
 #undef NW8
             }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0x1450) {
+                const uint16_t dg=0x5000;
+                seg[S_DS]=dg;seg[S_SS]=(s&4)?0x6000:dg;r[R_SP]=0xF000;
+                /* The quad and left point arrays overlap the live band table. */
+                if((s&15)==8) { seg[S_SS]=dg;r[R_SP]=0xC160; }
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+#define HW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define HW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);HW8((s_),(o_),v__);HW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define HRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                for(unsigned j=0;j<0x200;j++)HW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),HRAND());
+                for(unsigned j=0;j<0x200;j++)HW8(dg,0xF200+j,0);
+                small[0]=0x2000;HW16(seg[S_SS],r[R_SP],0x2000);HW16(dg,0x2004,HRAND());
+                static const uint16_t edge[]={0,1,0x1FF,0x200,0x201,0x7FFF,0x8000,0xFFFF};
+                static const uint8_t detail[]={0,2,3,4,127,128,255};
+                HW8(dg,0x990E,detail[s%7]);
+                HW16(dg,0x438E,(s>>3)&1);HW16(dg,0x43E0,(s>>4)&1);
+                HW16(dg,0x49B0,edge[HRAND()%8]);HW16(dg,0x49B6,edge[HRAND()%8]);
+                HW16(dg,0x49B8,edge[HRAND()%8]);HW16(dg,0x49BA,HRAND());HW16(dg,0x49BC,HRAND());
+                HW8(dg,0x4368,(s%4)?0:(1+HRAND()%31));HW8(dg,0x294B,(s>>2)&1);
+                HW16(dg,0x0D1E,HRAND());HW16(dg,0x0D20,HRAND());
+                for(unsigned j=0;j<16;j++)HW16(dg,0x0D22+2*j,HRAND());
+                /* Returning far draw probes fold argument order and all eight
+                 * vertex words into guest cells. Arithmetic helpers stay original. */
+                for(unsigned which=0;which<2;which++) {
+                    unsigned out_=which?0x01E6:0;const uint16_t cs_=0x0FB2,cell=0xF200+2*which;
+#define HEMIT(v_) HW8(cs_,out_++,(v_))
+                    HEMIT(0x55);HEMIT(0x8B);HEMIT(0xEC);HEMIT(0x50);HEMIT(0x53);HEMIT(0x56);
+                    HEMIT(0xFF);HEMIT(0x06);HEMIT(cell);HEMIT(cell>>8);
+                    for(unsigned j=0;j<(which?4:1);j++) {
+                        HEMIT(0x8B);HEMIT(0x46);HEMIT(6+2*j);
+                        HEMIT(0x8B);HEMIT(0x1E);HEMIT(cell);HEMIT(cell>>8);
+                        HEMIT(0xD1);HEMIT(0xC3);HEMIT(0x33);HEMIT(0xD8);
+                        HEMIT(0x89);HEMIT(0x1E);HEMIT(cell);HEMIT(cell>>8);
+                    }
+                    if(which) {
+                        HEMIT(0x8B);HEMIT(0x76);HEMIT(0x0A); /* DS:SI vertices */
+                        for(unsigned j=0;j<8;j++) {
+                            HEMIT(0x8B);HEMIT(0x44);HEMIT(2*j);
+                            HEMIT(0x8B);HEMIT(0x1E);HEMIT(cell);HEMIT(cell>>8);
+                            HEMIT(0xD1);HEMIT(0xC3);HEMIT(0x33);HEMIT(0xD8);
+                            HEMIT(0x89);HEMIT(0x1E);HEMIT(cell);HEMIT(cell>>8);
+                        }
+                    }
+                    HEMIT(0x5E);HEMIT(0x5B);HEMIT(0x58);HEMIT(0x5D);HEMIT(0xCB);
+#undef HEMIT
+                }
+#undef HRAND
+#undef HW16
+#undef HW8
+            }
+            if (!strcmp(o->module,"START.EXE") && o->seg==0 && o->ip==0x7904) {
+                const uint16_t dg=0x5000;seg[S_DS]=dg;seg[S_SS]=(s&4)?0x6000:dg;r[R_SP]=0xFF00;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+#define TW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define TW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);TW8((s_),(o_),v__);TW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define TRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                const unsigned kind=(s%64==0)?1:(s%64==1)?2:(s%64==4)?128:(s%64==5)?255:16;
+                small[0]=(uint16_t)kind;TW16(seg[S_SS],r[R_SP],kind);
+                TW8(dg,(uint16_t)(0xD2A6+(int8_t)kind),kind==16?16:0);
+                for(unsigned j=0;j<0x200;j++)TW8(seg[S_SS],0xFD00+j,TRAND());
+                for(unsigned j=0;j<0x800;j++)TW8(0x7000,0x1000+j,TRAND());
+                const int alias=(s%64==3);
+                TW16(dg,0xD336,alias?0xCA8C:0x1000);TW16(dg,0xD338,alias?dg:0x7000);
+                for(unsigned j=0;j<256;j++)TW8(dg,0xCAD8+j,3);
+                TW8(dg,0xCBC8,0); /* one populated tile; other tiles still test skip paths */
+                const unsigned count=alias?1:(s%13==0)?0:3;
+                for(unsigned level=1;level<=3;level++) {
+                    const uint16_t records=0x2000+level*0x100;
+                    if(level==3) { TW16(dg,0xC91C,records);TW16(dg,0x0FCA,count); }
+                    else { TW16(dg,0xC85C+64*level,records);TW16(dg,0x0F0A+64*level,(kind==2 && level==1)?0:count); }
+                    for(unsigned j=0;j<3;j++) {
+                        TW16(dg,records+7*j,(kind==1 && j==0)?0xEFFF:TRAND());TW16(dg,records+7*j+2,TRAND());
+                        TW16(dg,records+7*j+4,TRAND());TW8(dg,records+7*j+6,(j==0 || (j==1 && (s&8)))?kind:(kind+1));
+                    }
+                }
+                /* Level one selects a nonzero x tile with a negative local x,
+                 * forcing the low-word carry into the signed high word. */
+                TW16(dg,0xF800,s%17==0?0xFFFF:0);TW16(dg,0xF802,kind==1?16:((s>>3)&1));
+                TW16(dg,0xF810,0);TW16(dg,0xF812,0);
+                for(unsigned which=0;which<2;which++) {
+                    const uint16_t slot=which?0x76C0:0x7C56,code=which?0xF100:0xF000,cell=0xF810+2*which;
+                    TW8(0,slot,0xE9);TW16(0,slot+1,(uint16_t)(code-slot-3));
+                    unsigned out_=code;
+#define TEMIT(v_) TW8(0,out_++,(v_))
+                    TEMIT(0x55);TEMIT(0x8B);TEMIT(0xEC);TEMIT(0x53);
+                    TEMIT(0xFF);TEMIT(0x06);TEMIT(cell);TEMIT(cell>>8);
+                    for(unsigned j=0;j<(which?1:3);j++) {
+                        TEMIT(0x8B);TEMIT(0x46);TEMIT(4+2*j);TEMIT(0x8B);TEMIT(0x1E);TEMIT(cell);TEMIT(cell>>8);
+                        TEMIT(0xD1);TEMIT(0xC3);TEMIT(0x33);TEMIT(0xD8);TEMIT(0x89);TEMIT(0x1E);TEMIT(cell);TEMIT(cell>>8);
+                    }
+                    TEMIT(0x5B);TEMIT(0xA1);TEMIT(0x00+2*which);TEMIT(0xF8);TEMIT(0x5D);TEMIT(0xC3);
+#undef TEMIT
+                }
+#undef TRAND
+#undef TW16
+#undef TW8
+            }
             if (!strcmp(o->module, "START.EXE") && o->seg == 0 && o->ip == 0x6DB8) {
                 seg[S_DS] = seg[S_SS] = 0x0A95; r[R_SP] = 0xFF00;
                 flags = (uint16_t)(flags & (0xFFFFu ^ F_DF));
@@ -2637,7 +2741,7 @@ int main(int argc, char **argv)
             /* Author-written overlay headers. Separate memory also permits the
              * original zero-count LOOP to complete all 65,536 iterations. */
             g_fixture_args = (bind_entries || sprite_colour) && (s & 7) == 1;
-            g_step_cap = (bind_entries && (s == 1 || s == 2)) || (zero_loops && s == 1) ? 500000 : 100000;
+            g_step_cap = (!strcmp(o->module,"START.EXE") && o->seg==0 && o->ip==0x7904) ? 2000000 : (bind_entries && (s == 1 || s == 2)) || (zero_loops && s == 1) ? 500000 : 100000;
             g_native_int10 = !strcmp(o->module, "SETUP.EXE") && o->seg == 0 && o->ip == 0x14BE;
             if (bind_entries && ((s & 7) == 1 || (s & 7) == 2)) {
                 const unsigned mode = (s >> 3) & 7;

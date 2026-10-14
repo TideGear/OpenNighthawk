@@ -75,9 +75,10 @@ void observe_vertex(machine_t *m, uint16_t di, uint16_t bx);
  * BX the two projected records less 0xD6B4. */
 void observe_edge_prepared(machine_t *m, uint16_t slot, uint16_t di, uint16_t bx);
 
-/* Called by the matched routines placed at 130D:004A and 130D:0116, at
+/* Called by the matched routines placed at 1450, 130D:004A and 130D:0116, at
  * their entry: an override placed first at an address shadows any placed
  * after it, so these give the observer's records ('E', 'F') there. */
+void observe_game_draw(machine_t *m);   /* VGAME 1450: the frame phase and the pages the frame is rebuilt from */
 void observe_poly_edge(machine_t *m);
 void observe_poly_fill(machine_t *m);
 void observe_span_polygon(machine_t *m);   /* fill_polygon's entry: the corners handed to the span rasteriser ('U') */

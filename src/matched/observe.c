@@ -264,6 +264,7 @@ static int hook_span_polygon(machine_t *m)
     return 0;
 }
 
+void observe_game_draw(machine_t *m) { hook_game_draw(m); }
 void observe_poly_edge(machine_t *m) { hook_poly_edge(m); }
 void observe_span_polygon(machine_t *m) { hook_span_polygon(m); }
 void observe_poly_fill(machine_t *m) { hook_poly_fill(m); }

@@ -200,6 +200,24 @@ not the recompilation:
 
 ## Phase 2 - understood code
 
+VGAME's `1450` (`vgame_horizon_bands`, sky and ground band projection and fill,
+868 bytes / 301 instructions) and START's `7904` (`start_choose_world_record`,
+the world-record selection by type, 769 bytes / 272 instructions) are matched
+and named. Five seeds reach every instruction of each with no skipped states or
+differences; 11 and 17 private mutations are caught. The private full cycle
+runs them 276 and 2 times, matches all 66 checkpoints and the final state, and
+has no overruns. A permanent grouped CTest retains the fixtures. The first
+gate failed in `code_overrides`: the horizon routine's address is also the
+presentation observer's frame-phase hook, so the matched body silenced it.
+It now calls `observe_game_draw` at entry like the three other shared
+placements, and `1450` is on the test's deliberate list; the live check
+`presentation_check.py --scales 1` reports all 45 routes exact. Fresh full gate: 77 tests, all 45 routes / 44 fresh
+interpreter sessions, both 5,718,848-state instruction profiles, three
+869-address seeds (2,902,931 / 2,901,261 / 2,900,231 comparisons), zero
+mismatches, reachability and event audits pass (1,418 s). Census: 861
+functions / 106,493 bytes, P2 61.45%, overall 84.95%. Evidence:
+`D:/f117-gate/p2-pair`.
+
 START's `39F7` and END's `1CF5` menu-input and pointer updates are matched and
 named. They poll keyboard, mouse and joystick,
 choose directional hit rectangles, clamp and redraw the pointer, and normalize
@@ -798,7 +816,7 @@ instruction profiles and three 789-address matched seeds (2,561,209,
       Reimp's mapping; matched functions replacing translations one at a time,
       each held to the same parity checks. `tools/reimp_names.py` joins the
       Reimp's census (1,535 functions) with this project's regions as a private
-      lead list. 843 addresses are matched (835 of the census functions, 102,237 of
+      lead list. 869 addresses are matched (861 of the census functions, 106,493 of
       179,213 bytes); the table is at the end of `src/matched/matched.c` and the
       method is in [architecture.md](architecture.md#matched-routines-phase-2).
       The earlier "72 reached / 411 never run" inventory was incomplete:

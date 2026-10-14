@@ -402,6 +402,8 @@ if(F117R_BUILD_TESTS)
       --only START.EXE:6DB8)
     add_test(NAME matched_menu_input COMMAND func_lockstep --states 5000
       --only START.EXE:39F7,END.EXE:1CF5)
+    add_test(NAME matched_horizon_and_record COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:1450,START.EXE:7904)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000
