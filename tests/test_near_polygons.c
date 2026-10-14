@@ -362,6 +362,9 @@ static void seam_lifetime(void)
     drawlist_init(&d);drawlist_set_scale(&d,9);hires_init(&h,9);
     drawlist_seed(&d,'Z',0xA000,0,blank,sizeof blank);
     const int32_t fill[12]={0xFF07,0,0,319,199,0,0,0,0,0,0,2};record('F',fill,12);
+    /* An earlier verified sky/terrain layer protects geometry from the
+     * flat guard. That protection must not disable near-plane seam repair. */
+    memset(drawlist_page_of(&d,0xA000)->strokes,0xFF,64000/8);
     shared_face(0,0);shared_face(1,0);
     drawlist_page *p=drawlist_page_of(&d,0xA000);
     const size_t hole=189*2880+187,bytes=64000*81;
@@ -440,7 +443,19 @@ static void clipped_origin(int scale, int legacy, int ortho)
         CHECK(p->b[y*320+x]==(painted?7:0));
         for(int j=0;j<scale;j++)for(int i=0;i<scale;i++) {
             const int v=p->hi[(y*scale+j)*320*scale+x*scale+i];
-            if(!painted)CHECK(v==0);
+            if(scale==1 || fallback) { if(!painted)CHECK(v==0); }
+            else {
+                /* Verified geometry is clipped to the viewport, not to a
+                 * coarse staircase. Its diamond can cross that staircase
+                 * within one cell, but cannot cross the viewport or its
+                 * analytic boundary (half a fine pixel of coverage). */
+                if(x<79 || x>121 || y<79 || y>121)CHECK(v==0);
+                if(v) {
+                    const double centre=100.25+(ortho?0.5:0);
+                    const double px=x+(i+0.5)/scale,py=y+(j+0.5)/scale;
+                    CHECK(fabs(px-centre)+fabs(py-centre)<=30+1.0/scale+1e-9);
+                }
+            }
             detail+=v!=p->b[y*320+x];
         }
     }

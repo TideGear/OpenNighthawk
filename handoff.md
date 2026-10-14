@@ -15,32 +15,37 @@ standing practice, not a session-by-session log. Earlier sessions' detail
 
 ## Owner priority (13 October)
 
-Prioritize Phase 3 to completion, targeting **4K at 60 Hz** (16.67 ms per
-host frame). The pacing target now passes on two scenes (next section); what
-is left of Phase 3 is the owner's motion review on a physical panel, other
-scenes and slower machines. Phase 2's private routine batch stays parked
-until Phase 3 is closed out.
+Fix the remaining 4K uprez issues in the owner's screenshots: the map, toothy
+triangle edges and blocky terrain. The owner authorizes our own in-flight
+captures. **Once the uprez looks right and the map is fixed, return to Phase 2.**
+Do not wait for all remaining physical-panel and weaker-machine Phase 3
+checks before resuming P2. Its private leaf batch still needs new routes
+before it can count; do not resume that batch without reach evidence.
 
-## Latest Phase 3 integration: the owner's 4K review (13 October)
+## Latest Phase 3 integration: map and smooth terrain (13 October)
 
-The owner's first look at 4K found three roughnesses; two are fixed, one is open.
-**Joined strokes and outline edges:** strokes now run between end-cell centres with
-whole end caps (no notch at the canopy corner or the bearing marker), and the
-original's outline edges (`L`: ground markings, the weapon box) use the same fine
-stroke. **Horizon, sky and ground gradient:** these are polygons the game fills
-through its own span rasteriser (VGAME `0FB2:01E6`); a new observer record `U` (the
-corners) lets the fine renderer refill them from their corners, and a strip too thin
-to trim is drawn as one fine stroke. A banked horizon is one smooth diagonal; in-between
-frames show it too. Details, the thin-strip rule and the tests:
+The map's fine rectangles now survive the round trip through the unseeded
+cockpit-art page, guarded by matching logged coarse bytes, and repeated
+`x` display-blit bytes no longer erase them. Its one-cell displacement was
+orthographic alignment: the rounded integer names a cell centre. Ordinary
+verified model polygons now clip to the viewport instead of each coarse
+stair, removing triangle teeth; the guard preserves verified fine geometry.
+Narrow span-rasteriser regions retain both geometric edges; only actual
+zero-area strips use a stroke. Separate HUD and guard masks keep near-plane
+seam repair working after refined sky/terrain. N=1 remains the exact original.
+
+Verified: 62 selected CTests, all 96 retained-window checks, live boot N=4/9
+(368 exact frames / 366 pairs each), and all 45 N=1 routes (259,240 exact
+frames / 259,166 pairs, guest hashes unchanged, 669 s). The frozen runner is
+`dde819d160efa08869e69b289b6d3e2e235e2871a0708328a284ab5abe7d6cbb`.
+Fresh captures show the runway, smooth map diagonals and banked terrain.
+Isolated 4K/59.99 Hz/vsync/N=9 strike to 3.5B passes: 7,715 flight pictures,
+p99 17.23 ms, max 28.32, one late interval (0.013%), 2,062/2,062 exact logic
+frames, hash `bc8e3ae5a872405d`, equal to a fresh headless run. That SDL boot
+reproduces SETUP's event-limit overrun (one instruction), so **P2 resumes
+with that fix**, then reached routines/new routes. Evidence is in
+`D:/f117-gate/map-refill`. Details:
 [docs/presentation.md](docs/presentation.md#joined-strokes-outline-edges-and-span-rasteriser-polygons-13-october-2026).
-Gate: 61 tests, 45 routes identical, both profiles and three matched seeds with zero
-mismatches (1,584 s); 90 window checks (the 66 retained plus four new windows that
-carry `U` records, in `D:/f117-gate/p3-stream/obs`), boot N=4/9 exact, all 45 routes
-at N=1 exact. **The map is open**: its terrain stays a scaled copy of the original.
-The "map (open)" paragraph has the cause: two things discard its fine rows (the
-blit round trip through the cockpit-art page and the duplicate `x` byte record of the
-display blit), both fixed in a prototype, but the clipped refill then puts some polygons a
-cell out (165 of 4,620 cells), so it was not kept. Next: find why that refill is a cell out.
 
 ## Latest Phase 3 integration: threaded 4K/60 presentation (13 October)
 

@@ -13,23 +13,20 @@ re-walking the original's integer edges:
   x >> 1 over (z >> 8) >> 1 when that word is below 0x100), keeping the remainder the divide threw away, so the
   vertex lies inside the pixel the original chose (the divide truncates toward zero, so a negative quotient is
   moved to the pixel above it); the origin ([8602], [8604]) comes from G snapshots, or unclipped edges in legacy logs;
-* a fine pixel takes the polygon's fill when its centre lies inside that true polygon (left and top edges
-  inclusive, right and bottom exclusive: the top-left rule, so two polygons that share a vertex pair tile without
-  a crack or an overdraw), within the polygon's own overshoot, and
-* only inside the original's own footprint for that polygon (the rows its fill painted): nothing is added where
-  the original drew nothing, and a coarse pixel with all eight neighbours in the footprint is covered whole.
+* N = 1 paints exactly the original footprint; at N > 1 ordinary polygons use verified
+  geometry clipped to the viewport, with half a fine pixel of inclusive coverage. Clipping
+  every fine row to the old coarse staircase produced teeth and is no longer used;
+* orthographic coordinates round to the nearest integer, which names a cell centre;
+* near-plane polygons retain their separately verified footprint and seam rule.
 
-The overshoot is the one thing the original's inclusive spans add to the true shape (an edge's rows run from
-the leftmost to the rightmost pixel the edge touches, and both end pixels count). It is measured per polygon at
-N = 1 as the least distance, in pixels, at which the true shape covers the whole footprint (0, 0.5, 1, 1.5, 2 or
-3), and kept at that many pixels of the grid being drawn, so at N = 1 the footprint is exactly the original's
-and at N > 1 the edge lies within that many fine pixels of the true one. A polygon whose footprint lies further
-than 3 pixels from its geometry (the edge-on slivers at the horizon, clipped borders), one whose near crossing
-cannot be verified against retained E coordinates, one with an unrelated vertex behind the eye, one whose
-edges cannot all be tied to a vertex keep the nearest-neighbour fill; these are counted.
+The original footprint must still agree with the geometry within three coarse pixels;
+otherwise the polygon stays scaled. A missing snapshot, an unrelated vertex behind the
+camera, or a near crossing that disagrees with its captured coordinates also stays scaled.
+The guard excludes verified fine geometry. Fine rectangles survive a blit through an
+unseeded page only while its logged coarse bytes still match the saved rectangle.
 All fill styles have rules; dither and stipple retain coarse-sized pattern cells
-inside the refined boundary. Text, sprites, lines, blits and the HUD
-stay nearest-neighbour copies (Stage 2 handles the model polygons).
+inside the refined boundary. This Python tool handles model polygons; the C runtime also
+refines HUD strokes and U-record span polygons. Bitmap lettering and artwork remain original.
 
 The checks from the stage list, per phase at the display page: N = 1 is the replay's own picture; the flat-pixel
 agreement (every coarse pixel whose eight neighbours hold its value keeps it on all N x N fine pixels), counted
@@ -59,7 +56,7 @@ def vertex_fraction(v, ortho=0):
         projected = ortho_project((x, y, z), ortho)
         if projected is None or projected[0] != (px, py):
             return None
-        return projected[1]
+        return tuple(c + 0.5 for c in projected[1])
     if rng not in (0, 1):
         return None  # orthographic needs G mode metadata
     zu = z & 0xFFFFFFFF
@@ -208,6 +205,38 @@ def fine_cover(rows, edges, n, grow):
     return out
 
 
+def geometry_cover(edges, n, viewport, grow=0.5):
+    """Verified fine geometry, clipped to the viewport rather than coarse stair steps."""
+    ext = Extents(edges)
+    xmin, ymin, xmax, ymax = viewport
+    cover = {}
+    if not ext.edges:
+        return cover
+    top = math.ceil(min(e[1] for e in ext.edges)-grow-0.5)
+    bottom = math.floor(max(e[3] for e in ext.edges)+grow-0.5)+1
+    for y in range(max(0, ymin*n, top), min(HEIGHT*n, (ymax+1)*n, bottom)):
+        lo, hi = ext.over(y+0.5-grow, y+0.5+grow)
+        if lo == math.inf:
+            continue
+        l = max(0, xmin*n, math.ceil(lo-grow-0.5))
+        r = min(WIDTH*n-1, (xmax+1)*n-1, math.floor(hi+grow-0.5))
+        if l <= r:
+            cover[y] = [(l, r)]
+    return cover
+
+
+def protect_geometry(page, rows, cover, n):
+    for y, (l, r) in rows.items():
+        if 0 <= y < HEIGHT:
+            l, r = max(0,l), min(WIDTH-1,r)
+            if l <= r:
+                page.detail[y*WIDTH+l:y*WIDTH+r+1] = bytes([1])*(r-l+1)
+    for y, spans in cover.items():
+        for l, r in spans:
+            a, b = (y//n)*WIDTH+l//n, (y//n)*WIDTH+r//n
+            page.detail[a:b+1] = bytes([1])*(b-a+1)
+
+
 def choose_grow(rows, edges):
     """The least overshoot (GROWS) with which the polygon's own true edges cover the whole footprint on the
     original's grid, so that N = 1 is the original's picture; None if none in GROWS does."""
@@ -228,6 +257,7 @@ class SubBuilder(Builder):
         self.snapshots = {}         # exact camera records, when the capture supplies them
         self.palette = None
         self.origin = [159, 52]
+        self.blits = {}           # unseeded-page fine rectangle cache (at most eight)
         self.coverage = {}          # page identity -> page, geometry, paint, coarse footprint
 
     def finish_models(self, pages, clear=False):
@@ -394,6 +424,13 @@ class SubBuilder(Builder):
 
     def hook(self, f, pages):
         k = f[0]
+        for page in pages.values():
+            if isinstance(page, HiPage):
+                page.preserve_equal = False
+        if k == 'x' and int(f[2]) in (42,46):
+            page = pages.get(int(f[3]))
+            if isinstance(page, HiPage):
+                page.preserve_equal = True
         if k in 'LNQCTDHSMW':
             self.finish_models(pages, clear=True)
         elif k in ('Z', 'Y'):
@@ -401,7 +438,31 @@ class SubBuilder(Builder):
         if self.suppressed is not None and k not in ("b", "a"):
             self.suppressed.suppress = False
             self.suppressed = None
-        if k == "V":
+        if k == "C":
+            v = list(map(int, f[2:]))
+            _, sx, sy, _, dx, dy, w, ht, sseg, dseg = v[:10]
+            src, dst = pages.get(sseg), pages.get(dseg)
+            if self.n > 1 and 0 < w <= WIDTH and 0 < ht <= HEIGHT and 0 <= sx <= WIDTH-w and 0 <= sy <= HEIGHT-ht and 0 <= dx <= WIDTH-w and 0 <= dy <= HEIGHT-ht:
+                if isinstance(src, HiPage) and dst is None:
+                    key = (dseg, dx, dy, w, ht)
+                    coarse = b''.join(bytes(src[(sy+y)*WIDTH+sx:(sy+y)*WIDTH+sx+w]) for y in range(ht))
+                    fine = b''.join(src.hi[((sy*self.n+y)*WIDTH+sx)*self.n:((sy*self.n+y)*WIDTH+sx+w)*self.n] for y in range(ht*self.n))
+                    detail = b''.join(src.detail[(sy+y)*WIDTH+sx:(sy+y)*WIDTH+sx+w] for y in range(ht))
+                    if key not in self.blits and len(self.blits) == 8:
+                        del self.blits[next(iter(self.blits))]
+                    self.blits[key] = coarse, fine, detail
+                elif src is None and isinstance(dst, HiPage):
+                    saved = self.blits.get((sseg,sx,sy,w,ht))
+                    if saved is not None and saved[0] == bytes(v[10:]):
+                        _, fine, detail = saved
+                        for y in range(ht*self.n):
+                            at = ((dy*self.n+y)*WIDTH+dx)*self.n
+                            dst.hi[at:at+w*self.n] = fine[y*w*self.n:(y+1)*w*self.n]
+                        for y in range(ht):
+                            dst.detail[(dy+y)*WIDTH+dx:(dy+y)*WIDTH+dx+w] = detail[y*w:(y+1)*w]
+                        dst.suppress = True
+                        self.suppressed = dst
+        elif k == "V":
             self.vertices[int(f[9], 16)] = (int(f[1]),) + tuple(int(t) for t in f[2:8]) + (int(f[8], 16),)
         elif k == "G":
             slot, a, b = (int(t) for t in f[2:5])
@@ -453,12 +514,18 @@ class SubBuilder(Builder):
                 return
             self.stats["overshoot %g" % grow] += 1
             n = self.n
-            cover = fine_cover(rows, [tuple(c * n for c in e) for e in base], n, grow)
+            fine_edges = [tuple(c*n for c in e) for e in base]
+            geometric = n > 1 and not self.poly['nclip']
+            cover = (geometry_cover(fine_edges, n, self.poly['vp']) if geometric
+                     else fine_cover(rows, fine_edges, n, grow))
             if not self.lay_spans(page, cover, self.fill_colour):
                 self.stats["polygons left nearest"] += 1
                 self.finish_models(pages, clear=True)
                 return
-            self.track_model(page, rows, [tuple(c*n for c in e) for e in base], cover, self.poly['vp'])
+            if geometric:
+                protect_geometry(page, rows, cover, n)
+            else:
+                self.track_model(page, rows, fine_edges, cover, self.poly['vp'])
             self.stats["footprint pixels"] += sum(r - l + 1 for l, r in rows.values())
             self.stats["footprint fine pixels painted"] += sum(b - a + 1 for spans in cover.values() for a, b in spans)
             self.stats["polygons refilled from vertices"] += 1
@@ -478,6 +545,7 @@ def phase_check(page, n, stats, guard):
         for dx in (-1, 0, 1):
             ok &= coarse[1 + dy:HEIGHT - 1 + dy, 1 + dx:WIDTH - 1 + dx] == c
     flat[1:-1, 1:-1] = ok
+    flat &= ~np.frombuffer(page.detail, np.uint8).reshape(HEIGHT, WIDTH).astype(bool)
     scaled = np.repeat(np.repeat(coarse, n, axis=0), n, axis=1)
     differs = fine != scaled
     blocks = differs.reshape(HEIGHT, n, WIDTH, n).sum(axis=(1, 3))        # fine pixels unlike the coarse one, per coarse pixel

@@ -16,13 +16,15 @@
  * coarse rows. HUD lines and ticks are redrawn on the fine grid with
  * scale-proportional or chosen stroke width; colour operations preserve
  * those fine pixels. A blit or page copy between two held pages carries
- * the fine rows across. */
+ * the fine rows across. Blits through unseeded pages retain a bounded cache
+ * of fine rectangles, restored only while their logged coarse bytes match. */
 #ifndef F117R_DRAWLIST_H
 #define F117R_DRAWLIST_H
 
 #include <stdint.h>
 
 #define DRAWLIST_PAGES 4
+#define DRAWLIST_OVERLAYS 8       /* fine rectangles kept for pages the replay does not hold */
 
 typedef struct {
     uint16_t seg;
@@ -30,14 +32,27 @@ typedef struct {
     uint8_t  b[65536];
     uint8_t *hi;                  /* the finer picture, 320N x 200N, or NULL */
     int      n, suppress;
-    uint8_t  strokes[64000 / 8];  /* coarse cells touched by fine HUD strokes, for the flat guard */
+    uint8_t  strokes[64000 / 8];  /* coarse cells with authoritative fine strokes/geometry, for the flat guard */
+    uint8_t  hud_strokes[64000 / 8]; /* actual HUD strokes, which also take priority over seam repair */
     uint8_t *model;               /* two fine bit planes: true model geometry and actual model paint */
     uint8_t  model_foot[64000 / 8]; /* union of the tracked models' original footprints */
     int      model_active;
 } drawlist_page;
 
+/* A rectangle blitted to a page the replay does not hold (the cockpit-art page also keeps the
+ * map's terrain between frames): its coarse bytes and fine rows, so that the blit that brings it
+ * back, whose source the log carries only as coarse bytes, can bring the fine rows too. They are
+ * used only while the coarse bytes the log carries still equal the ones kept. */
+typedef struct {
+    uint16_t seg;
+    int32_t x, y, w, h, n;
+    uint8_t *b, *hi, *strokes;    /* w*h coarse bytes, (w*n)*(h*n) fine bytes, w*h flags (bit 0 guard protection, bit 1 HUD stroke) */
+} drawlist_overlay;
+
 typedef struct {
     drawlist_page page[DRAWLIST_PAGES];
+    drawlist_overlay overlay[DRAWLIST_OVERLAYS];
+    int noverlay, overlay_next;
     int      npages;
     int      n;                   /* the fine picture's scale, 0 for none */
     int      line_width;          /* fine HUD strokes: 0 uses the scale, else output pixels */

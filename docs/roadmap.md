@@ -1022,8 +1022,19 @@ instruction profiles and three 789-address matched seeds (2,561,209,
   logic frame exact and guest hashes unchanged; it costs one more host frame of
   picture age. The owner's 4K review (13 Oct) then found and fixed unjoined strokes,
   blocky outline edges and a stair-stepped horizon/sky gradient (a new `U` record
-  for polygons the game fills through its span rasteriser); the map's terrain edges
-  are still scaled copies. Open: the map, the owner's motion review on a physical
+  for polygons the game fills through its span rasteriser). The map now carries fine
+  geometry through its cockpit-art page round trip, aligns rounded orthographic vertices
+  with cell centres and preserves repeated display-blit bytes. Ordinary verified terrain
+  clips to its viewport instead of the coarse stair, and the guard preserves that fine
+  boundary; narrow span regions retain both edges. Map/copy, strip and seam regressions
+  cover these rules. Validation: 62 selected CTests, 96 retained-window checks,
+  boot N=4/9 (368 exact frames / 366 pairs each) and all 45 frozen-runner N=1
+  routes (259,240 frames / 259,166 pairs, guest hashes unchanged). The current
+  strike build passes 4K/59.99 Hz/vsync/N=9: 7,715 flight pictures, p99 17.23 ms,
+  maximum 28.32, one late interval (0.013%), 2,062 exact logic frames and the
+  unchanged headless hash. Stage 2 is complete. The owner asks to resume P2
+  after the visual fixes; the reproduced one-instruction SETUP overrun is first.
+  Open: the owner's motion review on a physical
   panel, and cargo/career flights and slower machines. See presentation.md.
 
 ## Phase 4 - checked by people and independent references

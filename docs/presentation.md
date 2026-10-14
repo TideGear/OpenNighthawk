@@ -73,7 +73,7 @@ Each stage is judged by a check, as in the rest of the project.
 |---|---|---|---|
 | 0 | Observer: log every call to the drawing primitives per frame | the log is identical across runs; hashes unchanged with it on | done |
 | 1 | Draw lists: a frame's primitives as a list, replayed at 320x200 | the replay reproduces the original's work and display pages bit for bit, every phase of every route | done: all 45 complete routes and staged original-instruction fixtures for rare branches; C and Python fill rules agree |
-| 2 | Re-draw the list at N times the resolution | N = 1 is Stage 1 exactly; at N > 1 every N x N block agrees with the N = 1 pixel wherever no edge crosses it | model polygons re-drawn from their sub-pixel vertices (`hires_subpixel.py`, and in C `hires.c`, live with `--present-scale N`); HUD lines/ticks redraw on the fine grid with scale-proportional or chosen thickness; original bitmap text/artwork stay scaled by the owner's choice; verified near-plane crossings now refined, incompatible geometry safely scaled |
+| 2 | Re-draw the list at N times the resolution | N = 1 is Stage 1 exactly; at N > 1 verified geometry has smooth boundaries and keeps the original viewport, fill styles and artwork | model polygons re-drawn from their sub-pixel vertices (`hires_subpixel.py`, and in C `hires.c`, live with `--present-scale N`); HUD lines/ticks redraw on the fine grid with scale-proportional or chosen thickness; original bitmap text/artwork stay scaled by the owner's choice; verified near-plane crossings now refined, incompatible geometry safely scaled |
 | 3 | Interpolate between consecutive draw lists to the host display rate | at a logic frame the output is exactly that frame; no in-between primitive absent from both neighbours | 320x200 study done (`interp_frame.py`, below): exact at both ends on seven windows, no violations; live path built at 320x200 (below): the feed, the presentation from the replay, and the interpolation in C, exact at both ends of 9,843 live frame pairs |
 | 4 | Pacing, vsync, a picture-age setting, HUD handling, a switch to the original picture | pictures at the display's refresh with t on the mission clock; the age setting measured | pacing at the host's vsync, age setting and Reimp-style HUD handling built (below); `--present scan` is the switch; real-display checks remain |
 
@@ -145,47 +145,45 @@ own span rasteriser (fill_polygon, VGAME `0FB2:01E6`), not model polygons, so th
 renderer only ever saw their span fills. A hook at that routine's entry now logs each
 polygon's corners (`U`: colour, count, x and y words in the rasteriser's own coordinates,
 which are far outside the picture for a horizon strip) before its span fill (`Q`). The fine
-renderer treats the corners as the true geometry to within half a cell (the game rounded
-them) and refills the strip the way a model polygon is refilled: the footprint is the span
-fill's rows, the shape sits at the corners' cell centres, and the least overshoot that covers
-the whole footprint at N=1 is kept at that many fine pixels. A banked horizon is one straight
-diagonal and the gradient strips are smooth slanted bands. A strip whose true shape is under
-60% of its footprint (the strips near the horizon whose edges nearly coincide) is a line in
-the original, a stair one or two cells thick: trimming it to its geometry left holes, so it is
-drawn as one fine stroke along its direction, from the footprint's first cell to its last, as
-thick in cells as the footprint is. A polygon whose footprint is not within 3 pixels of its
-corners stays a scaled copy. Interpolation pairs `U` records by colour and order and moves
-their corners with the span fills.
+renderer validates the corners against the original span footprint. At N > 1 it draws their
+cell-centred geometry with half a fine pixel of inclusive coverage, clipped to the span table's
+bounds. A narrow region keeps its two boundaries; only a polygon with zero area becomes a
+stroke. The earlier 60%-of-footprint rule made narrow regions into overly thick lines. A
+polygon whose footprint is not within 3 pixels of its corners stays scaled. Interpolation
+pairs `U` records by colour and order and moves their corners with the span fills.
 
-`tests/test_present_strips.c` pins the three cases (a thick strip's edge is straight, a thin
-strip stays a solid line, a mismatch is left scaled). In the retained banked window 219 of 230
-strip polygons are refined; live boot at N=4 and N=9, all 45 routes at N=1 and every retained
-window still pass, and the in-between pictures show the same smooth horizon.
+**Smooth terrain and triangles.** Fine polygons used to be clipped row by row to the original
+coarse footprint. That retained the original staircase and could cut teeth into a slanted
+edge. Ordinary verified model polygons now clip to their viewport and draw the actual
+geometry, with half a fine pixel of inclusive coverage to join adjacent faces. N=1 still
+paints the exact original footprint. Near-plane polygons retain their independently verified
+footprint/seam rule; incompatible geometry and the known extreme integer-overflow artifact
+still stay scaled. The flat-cell guard excludes verified fine geometry so it cannot put coarse
+stairs back. HUD protection is tracked separately for seam repair, so a previously refined sky
+cannot disable repair of a later near-plane polygon. Dither/stipple cells, bitmap lettering,
+cockpit art and map symbols remain the original artwork.
 
-**The map (open).** Its terrain is drawn once, by model polygons (integer-vertex triangles and
-quads in orthographic mode, clipped to the map window), into the work page; the game then
-copies it into the cockpit-art page (segment `09C0`) and back every frame, and to the display.
-That page is not one the replay holds, so a copy to it is skipped and a copy from it uses the
-logged coarse pixels: any fine detail is lost on that round trip. Two separate things discard
-it, and a prototype that fixed both (kept outside the tree) shows what is left:
+**The map is refined.** Its terrain is drawn once into the work page, then copied through the
+cockpit-art page (segment `09C0`) and back every frame. The replay does not hold that art page.
+A bounded cache of eight fine rectangles now carries those rows through the round trip,
+restoring a rectangle only when its logged coarse bytes still match. It survives replay-state
+copies and resets with the state; ordinary writes and changed source bytes retain the coarse
+fallback. A display blit is also logged as an `x` byte-change record: for entries 42 and 46,
+repeated bytes that already agree no longer flatten the fine rows the `C` record carried.
 
-- A blit to a page not held loses the fine rows. Keeping the fine rows of each rectangle so
-  copied, and restoring them when the log's coarse bytes still match (they matched on every
-  return), brings 11,565 fine pixels of the 77x60-cell map back to the display.
-- The display blit is logged twice, as a `C` (which carries the fine rows) and as an `x`
-  (the byte changes of graphics entry 42). The `x` rewrites the same bytes through the
-  flattening writer and erased the restored rows by the end of the frame. Skipping an `x` byte
-  that already equals the coarse byte, for entries 42 and 46, keeps them.
+The prototype's cell displacement came from orthographic alignment: this projection rounds
+to the nearest integer, which names a cell centre. Adding that half-cell alignment, rather
+than treating the rounded coordinate as a corner, fixes the displaced bottom band and top
+right tab. Flattening cells afterwards had left sawteeth and is not used. The map's triangles
+now follow their geometry, including during the normal cockpit page-copy cycle.
 
-With both, the display shows smooth diagonals, but the re-drawn terrain disagrees with the
-original's own cells: of 4,620 map cells 165 are not flat in the fine layer, 146 of those have a
-centre pixel of the wrong colour, and a few polygons (the bottom band, a three-cell tab at the
-top right) sit a whole cell out. The orthographic endpoint projections themselves match, so the
-displacement is in how the clipped polygons are refilled, not in the vertices. Flattening every
-cell whose fine pixels hold none of the original's colour removes the whole-cell errors but
-leaves sawtooth edges where wrong and right cells meet, so it is not an improvement. The
-prototype was therefore not kept: the map stays a scaled copy of the original, which is the
-original's own drawing, and the next step is to find why the clipped refill is a cell out.
+`test_present_map` pins a straight orthographic triangle edge and its rounded lower vertex,
+the fine rectangle's round trip through an unseeded page, independent ownership after a
+replay copy, repeated display-blit bytes and stale-byte fallback, at N=1/4/9.
+`test_present_strips` covers thick, narrow, degenerate and incompatible span polygons;
+`test_near_polygons` also checks that guard protection cannot suppress seam repair.
+Fresh in-flight captures inspect the runway, map and banked terrain. Validation evidence is
+kept outside the repository in `D:/f117-gate/map-refill`; current tallies are in the handoff.
 
 ## Fully clipped views, reused vertices and orthographic maps (12-13 October 2026)
 

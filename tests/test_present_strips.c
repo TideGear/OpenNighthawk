@@ -118,6 +118,23 @@ int main(void)
         }
     }
 
+    /* A narrow region still has two geometric boundaries. Its original
+     * inclusive footprint is much thicker, which must not turn it into a
+     * fat stroke or leave coarse teeth at the boundary. */
+    {
+        const int32_t corners[] = { -1000,0,1000,80,1000,81,-1000,1 };
+        start(9);
+        CHECK(strip(40,41,0.04,1.5,40,200,30,70,corners,4)>0);
+        CHECK(h.stats[HS_SPAN_REFILLED]==1 && h.stats[HS_SPAN_THIN]==0);
+        const drawlist_page *p=drawlist_get(&d,SEG);
+        for(int x=70*9;x<170*9;x++) {
+            int top=-1,bottom=-1;
+            for(int y=0;y<200*9;y++)if(p->hi[(size_t)y*2880+x]==COLOUR){if(top<0)top=y;bottom=y;}
+            CHECK(top>=0 && bottom-top+1<=12);
+        }
+        for(int y=71*9;y<200*9;y++)for(int x=0;x<2880;x++)CHECK(p->hi[(size_t)y*2880+x]==BACKGROUND);
+    }
+
     /* A strip of no thickness, painted as the one-cell line the original leaves. */
     {
         const double s2 = 0.25;

@@ -7,12 +7,13 @@
  * polygon's edges are tied through their 'G' records to the camera-space
  * vertices ('V'); each vertex is placed where the projection's divide put it,
  * with the remainder it threw away; a fine pixel takes the fill when its
- * centre lies inside the true polygon (top-left rule) within the polygon's own
- * overshoot (measured at N = 1, so N = 1 is the original's picture) and inside
- * the original's own footprint. Exact camera snapshots supply the origin even when every edge is
- * viewport-clipped, avoid reused V storage, and reconstruct verified
- * near-plane crossings. Missing snapshots, unrelated behind vertices
- * or a footprint more than 3 pixels from the geometry keep the scaled copy,
+ * centre lies inside the verified polygon, with half a fine pixel of
+ * inclusive coverage, clipped to its viewport. Orthographic rounding names
+ * cell centres. N = 1 retains the original footprint exactly; near-plane
+ * polygons retain the separately verified footprint/seam rule. Exact camera
+ * snapshots supply the origin even when every edge is viewport-clipped and
+ * avoid reused V storage. Missing snapshots, unrelated behind vertices or
+ * a footprint more than 3 pixels from the geometry keep the scaled copy,
  * as do text, sprites,
  * and blits. HUD lines and ticks are drawn on the fine grid by drawlist.c,
  * retaining the original glyph and artwork pixels. The state is plain data:
@@ -87,8 +88,8 @@ void hires_record(hires *h, drawlist *d, char kind, const int32_t *v, int n);
  * residue). Adds the flat pixels, those that agreed, and returns those it
  * restored. */
 int hires_guard(const uint8_t *coarse, uint8_t *fine, int n, uint64_t *flat, uint64_t *agree);
-/* Explicit fine HUD strokes cross cells that look flat at coarse resolution.
- * Exclude their bit mask (drawlist_page.strokes) from the polygon guard. */
+/* Authoritative fine geometry and HUD strokes can cross cells that look
+ * flat at coarse resolution. Exclude drawlist_page.strokes from the guard. */
 int hires_guard_masked(const uint8_t *coarse, uint8_t *fine, int n, const uint8_t *strokes,
                        uint64_t *flat, uint64_t *agree);
 

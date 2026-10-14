@@ -90,7 +90,10 @@ static int snapshot_fraction(const hires_snapshot *s, const hires_vertex *v, dou
     int32_t coarse[2]; double fine[2];
     if (!present_ortho_project(camera, s->ortho, coarse, fine) ||
         coarse[0] != v->px || coarse[1] != v->py) return 0;
-    *x = fine[0]; *y = fine[1]; return 1;
+    /* Orthographic coordinates round to the nearest integer; that integer
+     * names a cell centre. Perspective fractions already lie inside their
+     * captured cell, because vertex_fraction retains the divided remainder. */
+    *x = fine[0] + 0.5; *y = fine[1] + 0.5; return 1;
 }
 
 typedef struct { double ax, ay, bx, by, k; } xedge;
@@ -224,6 +227,55 @@ static int fine_cover(const footprint *f, const extents *x, int n, double grow, 
         }
     }
     return count;
+}
+
+/* Once geometry is verified against the original, clip it to the viewport,
+ * rather than to each coarse stair. A half fine pixel of inclusive coverage
+ * joins shared edges without retaining a whole coarse cell of overdraw. */
+static int geometry_cover(const extents *x, int n, double grow, const int32_t vp[4], int32_t *spans)
+{
+    int count=0;
+    if(vp[0]>vp[2] || vp[1]>vp[3] || vp[0]>=320 || vp[1]>=200 || vp[2]<0 || vp[3]<0) return 0;
+    int y0=vp[1]>0?vp[1]*n:0,y1=vp[3]<199?(vp[3]+1)*n:200*n;
+    double top=INFINITY,bottom=-INFINITY;
+    for(int k=0;k<x->n;k++){if(x->e[k].ay<top)top=x->e[k].ay;if(x->e[k].by>bottom)bottom=x->e[k].by;}
+    top=ceil(top-grow-0.5);bottom=floor(bottom+grow-0.5)+1;
+    if(top>=y1 || bottom<=y0) return 0;
+    if(top>y0)y0=(int)top;if(bottom<y1)y1=(int)bottom;
+    const int xmin=vp[0]>0?vp[0]*n:0,xmax=vp[2]<319?(vp[2]+1)*n-1:320*n-1;
+    for(int y=y0;y<y1;y++) {
+        double lo,hi;
+        if(grow) extents_over(x,y+0.5-grow,y+0.5+grow,&lo,&hi);
+        else extents_at(x,y+0.5,&lo,&hi);
+        if(lo==INFINITY) continue;
+        double l=ceil(lo-grow-0.5),r=grow?floor(hi+grow-0.5):ceil(hi-0.5)-1;
+        if(l<xmin)l=xmin;if(r>xmax)r=xmax;
+        if(l>r)continue;
+        spans[3*count]=y;spans[3*count+1]=(int32_t)l;spans[3*count+2]=(int32_t)r;count++;
+    }
+    return count;
+}
+
+/* A verified fine boundary is intentional detail. The flat-cell guard must
+ * not snap it back to the original's coarse rasterisation. The mask travels
+ * with page copies; ordinary writes clear it just as they do for HUD strokes. */
+static void protect_geometry(drawlist_page *p, const footprint *f, const int32_t *spans, int count)
+{
+    int lo[200], hi[200];
+    for(int y=0;y<200;y++){lo[y]=320;hi[y]=-1;}
+    for(int k=0;k<f->n;k++) if(f->has[k] && f->y0+k>=0 && f->y0+k<200) {
+        lo[f->y0+k]=f->l[k]<0?0:f->l[k];hi[f->y0+k]=f->r[k]>319?319:f->r[k];
+    }
+    for(int k=0;k<count;k++) {
+        const int y=spans[3*k]/p->n,l=spans[3*k+1]/p->n,r=spans[3*k+2]/p->n;
+        if(l<lo[y])lo[y]=l;if(r>hi[y])hi[y]=r;
+    }
+    for(int y=0;y<200;y++) if(lo[y]<=hi[y]) {
+        unsigned a=(unsigned)(y*320+lo[y]),b=(unsigned)(y*320+hi[y]);
+        while(a<=b && (a&7)){p->strokes[a>>3]|=(uint8_t)(1u<<(a&7));a++;}
+        if(a<=b && b-a>=7){const unsigned bytes=(b-a+1)/8;memset(p->strokes+(a>>3),0xFF,bytes);a+=8*bytes;}
+        while(a<=b){p->strokes[a>>3]|=(uint8_t)(1u<<(a&7));a++;}
+    }
 }
 
 static int64_t cover_total(const int32_t *spans, int count)
@@ -432,9 +484,12 @@ static void refill(hires *h, drawlist *d, drawlist_page *page)
     for (int k = 0; k < ne; k++)
         for (int c = 0; c < 4; c++) fine[k][c] = base[k][c] * n;
     extents_init(&x, (const double (*)[4])fine, ne);
-    const int count = fine_cover(&f, &x, n, GROWS[g], spans);
+    const int geometric = n > 1 && !h->poly.nclip;
+    const int count = geometric ? geometry_cover(&x, n, 0.5, h->poly.vp, spans)
+                                : fine_cover(&f, &x, n, GROWS[g], spans);
+    if (geometric) protect_geometry(page, &f, spans, count);
     const int W = 320 * n;
-    const int tracking=n>1 && (h->fill_colour&0xFF00)!=0xFB00;
+    const int tracking=!geometric && n>1 && (h->fill_colour&0xFF00)!=0xFB00;
     if(tracking) model_geometry(page,&f,&x,h->poly.vp);
     for (int k = 0; k < count; k++) {
         const int32_t hy = spans[3 * k];
@@ -460,15 +515,10 @@ static void refill(hires *h, drawlist *d, drawlist_page *page)
  * ground gradient strips and the map's regions) arrives as its integer corners, and the span
  * fill ('Q') that paints it follows. The corners are the true geometry to within half a pixel
  * (the game rounded them), so the edges between them are the exact lines the rasteriser walked.
- * Refill the strip on the fine grid the way a model polygon is refilled: the footprint is the
- * span fill's rows, the true shape sits at the corners' pixel centres, and the least overshoot
- * with which it covers the whole footprint at N = 1 is kept at that many fine pixels. */
-#ifndef THIN_PERCENT
-#define THIN_PERCENT 60
-#endif
-
-/* A strip whose true shape is a small part of its footprint is, in the original, a line: a
- * stair of cells one or two thick. Draw it as one fine stroke along the strip's direction, from
+ * Validate the corners against the original footprint, then refill on the fine grid with
+ * cell-centred corners and half a fine pixel of inclusive coverage. Clip to the span
+ * table's bounds, without retaining each row's coarse staircase. */
+/* An actually degenerate strip is, in the original, a line: a stair of cells one or two thick. Draw it as one fine stroke along the strip's direction, from
  * the footprint's first cell to its last, as thick (in cells) as the footprint is. */
 static void thin_strip_stroke(hires *h, drawlist *d, drawlist_page *page, const footprint *f,
                               const double (*base)[4], int ne, int64_t want)
@@ -552,22 +602,23 @@ static void refill_span_polygon(hires *h, drawlist *d, const int32_t *v, int n)
         if (cover_total(spans, c) == want) break;
     }
     if (g == 6) { h->stats[HS_SPAN_BEYOND]++; return; }
-    /* A strip so thin that its true shape is a small part of what the rasteriser painted (the
-     * gradient strips near the horizon, whose edges nearly coincide) is a stair-stepped line in
-     * the original, not a region: trimming it to the true geometry would leave holes, so it
-     * stays a scaled copy. */
-    {
-        const int c0 = fine_cover(&f, &x, 1, 0, spans);
-        if (cover_total(spans, c0) * 100 < want * THIN_PERCENT) {
-            thin_strip_stroke(h, d, page, &f, base, ne, want);
-            return;
-        }
+    /* Only an actually degenerate polygon needs a line. A narrow region
+     * still has two distinct boundaries at high resolution. */
+    double area = 0;
+    for(int k=0;k<ne;k++) area += base[k][0]*base[k][3]-base[k][2]*base[k][1];
+    if (fabs(area) < 1e-9) {
+        thin_strip_stroke(h, d, page, &f, base, ne, want);
+        return;
     }
     const int sc = h->n;
     for (int k = 0; k < ne; k++)
         for (int c = 0; c < 4; c++) fine[k][c] = base[k][c] * sc;
     extents_init(&x, (const double (*)[4])fine, ne);
-    const int count = fine_cover(&f, &x, sc, GROWS[g], spans);
+    int xmin=319,xmax=0;
+    for(int k=0;k<f.n;k++)if(f.has[k]){if(f.l[k]<xmin)xmin=f.l[k];if(f.r[k]>xmax)xmax=f.r[k];}
+    const int32_t vp[4]={xmin,f.y0,xmax,f.y0+f.n-1};
+    const int count = geometry_cover(&x, sc, 0.5, vp, spans);
+    protect_geometry(page, &f, spans, count);
     const int W = 320 * sc;
     const int word = 0xFF00 | (d->colour & 0xFF);
     for (int k = 0; k < count; k++) {

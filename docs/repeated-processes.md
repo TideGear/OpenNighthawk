@@ -113,6 +113,34 @@ After a presentation-code change: `ctest -E func_lockstep` (60 tests, 19 s at
 checks; run `build/test_drawlist`, `test_hires` and `test_interp` with absolute
 paths, the relative `build/` junction fails under Python's `subprocess`).
 
+## Map and terrain refinement checks (13 October 2026)
+
+`test_present_map` checks the orthographic triangle's actual straight edge and
+rounded lower vertex, unseeded-page rectangle round trips, independent cached
+ownership after a replay copy, duplicate display bytes and stale-source
+fallback, at N=1/4/9. The strip regression additionally distinguishes a narrow
+region from a degenerate line. The near-plane regression requires seam repair
+to work even after another geometry layer protects cells from the flat guard.
+These tests take under a second together. Fine rasterisation visits only the
+polygon's geometric y range inside its viewport; rectangle buffers are reused
+when replay states are copied, avoiding per-frame allocation for the map.
+
+For an all-route presentation check, freeze the runner outside the build and
+set `F117R_RUN_EXE` to that absolute path before starting
+`presentation_check.py`. Rebuilding its executable during a run invalidates
+the result even if every route individually passes; the checker verifies the
+runner hash at the end. A first map/terrain validation was stopped for that
+reason and restarted against a frozen runner. Retained windows also include
+the full map initialisation capture (`p3-stream/obs/f9.log`), bringing the
+replay/fine/interpolation selection to 96 checks. Final checks: 62 selected CTests in 30.6 s; all 96 window reports identical
+before/after the geometric-y-range optimisation; boot N=4/9 in 117 s;
+45 frozen-runner N=1 routes in 669 s, 259,240 frames and 259,166 pairs exact.
+The isolated 389.8 s strike replay passes 4K/59.99 Hz/vsync/N=9 (p99 17.23 ms,
+maximum 28.32, one late interval among 7,715 flight pictures), all 2,062 logic
+frames exact and guest hash equal to the fresh 36.8 s headless prefix. SDL
+writes its final hash to the machine log, not stdout. Screenshots and timing
+logs stay outside git in `D:/f117-gate/map-refill`.
+
 ## Observer path comparison (13 October 2026)
 
 Use the existing draw-list capture process with both engines, not just the

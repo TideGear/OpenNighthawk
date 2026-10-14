@@ -28,9 +28,16 @@ void drawlist_set_line_width(drawlist *d, int width)
     d->line_width = width >= 0 && width <= 20 ? width : 0;
 }
 
+static void overlay_free(drawlist_overlay *o)
+{
+    free(o->b); free(o->hi); free(o->strokes);
+    memset(o, 0, sizeof *o);
+}
+
 void drawlist_free(drawlist *d)
 {
     for (int k = 0; k < DRAWLIST_PAGES; k++) { free(d->page[k].hi);free(d->page[k].model); }
+    for (int k = 0; k < DRAWLIST_OVERLAYS; k++) overlay_free(&d->overlay[k]);
     const int n = d->n, line_width = d->line_width;
     drawlist_init(d);
     d->n = n;
@@ -48,7 +55,22 @@ void drawlist_copy(drawlist *dst, const drawlist *src)
 {
     uint8_t *keep[DRAWLIST_PAGES],*models[DRAWLIST_PAGES];
     for (int k = 0; k < DRAWLIST_PAGES; k++) {keep[k] = dst->page[k].hi;models[k]=dst->page[k].model;}
+    drawlist_overlay old[DRAWLIST_OVERLAYS];
+    memcpy(old, dst->overlay, sizeof old);
     memcpy(dst, src, sizeof *dst);
+    for (int k = 0; k < DRAWLIST_OVERLAYS; k++) {
+        const drawlist_overlay *s = &src->overlay[k];
+        drawlist_overlay *o = &dst->overlay[k];
+        o->b = old[k].b; o->hi = old[k].hi; o->strokes = old[k].strokes;
+        if (!s->b) { overlay_free(o); continue; }
+        const size_t cells = (size_t)s->w * s->h, fine = cells * (size_t)s->n * s->n;
+        if (!o->b || old[k].w != s->w || old[k].h != s->h || old[k].n != s->n) {
+            free(o->b); free(o->hi); free(o->strokes);
+            o->b = (uint8_t *)malloc(cells); o->strokes = (uint8_t *)malloc(cells); o->hi = (uint8_t *)malloc(fine);
+            if (!o->b || !o->strokes || !o->hi) { overlay_free(o); continue; }
+        }
+        memcpy(o->b, s->b, cells); memcpy(o->strokes, s->strokes, cells); memcpy(o->hi, s->hi, fine);
+    }
     for (int k = 0; k < DRAWLIST_PAGES; k++) {
         const drawlist_page *s = &src->page[k];
         drawlist_page *p = &dst->page[k];
@@ -73,7 +95,7 @@ uint64_t drawlist_finish_models(drawlist *d)
         const size_t bits=((size_t)64000*n*n+7)/8;
         const uint8_t *painted=p->model+bits;
         for(unsigned a=0;a<64000;a++) {
-            if(!((p->model_foot[a>>3]>>(a&7))&1) || ((p->strokes[a>>3]>>(a&7))&1)) continue;
+            if(!((p->model_foot[a>>3]>>(a&7))&1) || ((p->hud_strokes[a>>3]>>(a&7))&1)) continue;
             for(int j=0;j<n;j++) for(int i=0;i<n;i++) {
                 const size_t at=((size_t)(a/320)*n+j)*W+(a%320)*n+i;
                 if(((p->model[at>>3]>>(at&7))&1) && !((painted[at>>3]>>(at&7))&1) && p->hi[at]!=p->b[a]) {
@@ -120,6 +142,7 @@ static void mirror(drawlist_page *p, uint32_t a, uint8_t v)
 {
     if (!p->hi || p->suppress || a >= 64000) return;
     p->strokes[a >> 3] &= (uint8_t)~(1u << (a & 7));
+    p->hud_strokes[a >> 3] &= (uint8_t)~(1u << (a & 7));
     const int n = p->n;
     const size_t W = (size_t)320 * n;
     uint8_t *q = p->hi + (size_t)(a / 320) * n * W + (size_t)(a % 320) * n;
@@ -152,8 +175,77 @@ static void copy_hi_rect(drawlist_page *p, const drawlist_page *src, int32_t sx,
         for (int32_t x = x0; x < x1; x++) {
             const unsigned sa = (unsigned)((sy + y) * 320 + x), da = (unsigned)((dy + y) * 320 + dx + x - sx);
             const int stroke = (src->strokes[sa >> 3] >> (sa & 7)) & 1;
+            const int hud = (src->hud_strokes[sa >> 3] >> (sa & 7)) & 1;
             p->strokes[da >> 3] = (uint8_t)((p->strokes[da >> 3] & ~(1u << (da & 7))) | (stroke << (da & 7)));
+            p->hud_strokes[da >> 3] = (uint8_t)((p->hud_strokes[da >> 3] & ~(1u << (da & 7))) | (hud << (da & 7)));
         }
+    }
+}
+
+/* A blit to a page the replay does not hold: keep the fine rows of the held page it came from. */
+static void overlay_store(drawlist *d, uint16_t seg, int32_t dx, int32_t dy, int32_t w, int32_t h,
+                          const drawlist_page *src, int32_t sx, int32_t sy)
+{
+    if (!src->hi || src->n <= 1 || w <= 0 || w > 320 || h <= 0 || h > 200 ||
+        sx < 0 || sy < 0 || sx > 320 - w || sy > 200 - h ||
+        dx < 0 || dy < 0 || dx > 320 - w || dy > 200 - h) return;
+    int k;
+    for (k = 0; k < d->noverlay; k++) {
+        const drawlist_overlay *o = &d->overlay[k];
+        if (o->seg == seg && o->x == dx && o->y == dy && o->w == w && o->h == h) break;
+    }
+    if (k == d->noverlay) {
+        if (d->noverlay < DRAWLIST_OVERLAYS) d->noverlay++;
+        else k = d->overlay_next++ % DRAWLIST_OVERLAYS;
+    }
+    drawlist_overlay *o = &d->overlay[k];
+    const int n = src->n;
+    const size_t cells = (size_t)w * h, fine = cells * (size_t)n * n;
+    if (!o->b || o->w != w || o->h != h || o->n != n) {
+        overlay_free(o);
+        o->b = (uint8_t *)malloc(cells); o->strokes = (uint8_t *)malloc(cells); o->hi = (uint8_t *)malloc(fine);
+        if (!o->b || !o->strokes || !o->hi) { overlay_free(o); return; }
+    }
+    o->seg = seg; o->x = dx; o->y = dy; o->w = w; o->h = h; o->n = n;
+    const size_t W = (size_t)320 * n;
+    for (int32_t y = 0; y < h; y++) {
+        for (int32_t x = 0; x < w; x++) {
+            const unsigned a = (unsigned)((sy + y) * 320 + sx + x);
+            o->b[(size_t)y * w + x] = src->b[a];
+            o->strokes[(size_t)y * w + x] = (uint8_t)(((src->strokes[a >> 3] >> (a & 7)) & 1) |
+                (((src->hud_strokes[a >> 3] >> (a & 7)) & 1) << 1));
+        }
+        for (int j = 0; j < n; j++)
+            memcpy(o->hi + ((size_t)y * n + j) * (size_t)w * n, src->hi + ((size_t)(sy + y) * n + j) * W + (size_t)sx * n,
+                   (size_t)w * n);
+    }
+
+}
+
+/* The blit back: the log carries the source as coarse bytes. Where those are exactly the bytes kept
+ * for that rectangle, its fine rows come with them. */
+static void overlay_apply(const drawlist *d, uint16_t seg, int32_t sx, int32_t sy, int32_t w, int32_t h,
+                          const uint8_t *logged, drawlist_page *p, int32_t dx, int32_t dy)
+{
+    if (!p->hi || p->n <= 1 || w <= 0 || w > 320 || h <= 0 || h > 200 ||
+        dx < 0 || dy < 0 || dx > 320 - w || dy > 200 - h) return;
+    for (int k = 0; k < d->noverlay; k++) {
+        const drawlist_overlay *o = &d->overlay[k];
+        if (!o->b || o->seg != seg || o->x != sx || o->y != sy || o->w != w || o->h != h || o->n != p->n) continue;
+        if (memcmp(o->b, logged, (size_t)w * h)) return;
+        const int n = p->n;
+        const size_t W = (size_t)320 * n;
+        for (int32_t y = 0; y < h; y++) {
+            for (int j = 0; j < n; j++)
+                memcpy(p->hi + ((size_t)(dy + y) * n + j) * W + (size_t)dx * n, o->hi + ((size_t)y * n + j) * (size_t)w * n,
+                       (size_t)w * n);
+            for (int32_t x = 0; x < w; x++) {
+                const unsigned da = (unsigned)((dy + y) * 320 + dx + x);
+                p->strokes[da >> 3] = (uint8_t)((p->strokes[da >> 3] & ~(1u << (da & 7))) | ((o->strokes[(size_t)y * w + x] & 1) << (da & 7)));
+                p->hud_strokes[da >> 3] = (uint8_t)((p->hud_strokes[da >> 3] & ~(1u << (da & 7))) | ((o->strokes[(size_t)y * w + x] >> 1) << (da & 7)));
+            }
+        }
+        return;
     }
 }
 
@@ -170,6 +262,7 @@ void drawlist_seed(drawlist *d, char kind, uint16_t seg, uint16_t origin, const 
     memcpy(p->b, bytes, size);
     p->suppress = 0;
     memset(p->strokes, 0, sizeof p->strokes);
+    memset(p->hud_strokes, 0, sizeof p->hud_strokes);
     memset(p->model_foot,0,sizeof p->model_foot);p->model_active=0;
     if (d->n > 0) {                                   /* the fine picture starts as the scaled copy */
         const int n = d->n;
@@ -321,6 +414,7 @@ void drawlist_fine_stroke(drawlist_page *p, int ax, int ay, int bx, int by, int 
                 p->hi[(size_t)yy * w + xx] = (uint8_t)col;
                 const unsigned a = (unsigned)((yy / n) * 320 + xx / n);
                 p->strokes[a >> 3] |= (uint8_t)(1u << (a & 7));
+                p->hud_strokes[a >> 3] |= (uint8_t)(1u << (a & 7));
             }
         if (dx >= dy) { error -= dy; if (error < 0) { y += sy; error += dx; } x += sx; }
         else { error -= dx; if (error < 0) { x += sx; error += dy; } y += sy; }
@@ -726,12 +820,16 @@ void drawlist_record(drawlist *d, char kind, const int32_t *v, int n)
         break;
     }
     case 'C': {                                       /* entry 42, the blit */
-        if (n < 10 || !(p = page_of(d, (uint16_t)v[9]))) break;
+        if (n < 10) break;
         const int32_t sx = v[1], sy = v[2], dx = v[4], dy = v[5], w = v[6], h = v[7];
         const drawlist_page *src = page_of(d, (uint16_t)v[8]);
-        if (!src && n - 10 != w * h) { d->blits_no_source++; break; }
+        if (!(p = page_of(d, (uint16_t)v[9]))) {      /* a page not held: keep the fine rows for the blit back */
+            if (src) overlay_store(d, (uint16_t)v[9], dx, dy, w, h, src, sx, sy);
+            break;
+        }
         static F117_TLS uint8_t buf[65536 * 2];
         if (w <= 0 || h <= 0 || (int64_t)w * h > (int64_t)sizeof buf) break;
+        if (!src && n - 10 != w * h) { d->blits_no_source++; break; }
         if (src) {                                    /* from a replayed page: the replay itself */
             for (int32_t y = 0; y < h; y++)
                 for (int32_t x = 0; x < w; x++) {
@@ -753,6 +851,7 @@ void drawlist_record(drawlist *d, char kind, const int32_t *v, int n)
         for (int32_t y = 0; y < h; y++)
             for (int32_t x = 0; x < w; x++) put(p, (uint32_t)(320 * (dy + y) + dx + x), buf[y * w + x]);
         if (src) copy_hi_rect(p, src, sx, sy, dx, dy, w, h);
+        else if (n - 10 == w * h) overlay_apply(d, (uint16_t)v[8], sx, sy, w, h, buf, p, dx, dy);
         free(saved_hi);
         break;
     }
@@ -853,7 +952,9 @@ void drawlist_record(drawlist *d, char kind, const int32_t *v, int n)
         for (int32_t j = 0; j < count && 4 + 3 * j < n; j++) {
             const uint32_t a = (uint32_t)v[3 + 3 * j];
             if (a < p->size) {
-                wr(p, a, (uint8_t)v[4 + 3 * j]);
+                /* A blit to the display is also logged as a `C` that already carried the fine rows across;
+                 * its byte changes repeat the same bytes and must not flatten them again. */
+                if (!((entry == 42 || entry == 46) && p->b[a] == (uint8_t)v[4 + 3 * j])) wr(p, a, (uint8_t)v[4 + 3 * j]);
                 mark_copied(d, seg, a);
             }
         }

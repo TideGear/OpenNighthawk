@@ -39,6 +39,8 @@ class HiPage(bytearray):
         super().__init__(data)
         n = self.n
         self.suppress = False
+        self.detail = bytearray(WIDTH * HEIGHT)
+        self.preserve_equal = False
         self.hi = bytearray(WIDTH * n * HEIGHT * n)
         for y in range(HEIGHT):
             row = bytes(b for b in self[y * WIDTH:(y + 1) * WIDTH] for _ in range(n)) if len(self) >= (y + 1) * WIDTH else bytes(WIDTH * n)
@@ -48,6 +50,7 @@ class HiPage(bytearray):
 
     def _mirror(self, a, v):
         if 0 <= a < WIDTH * HEIGHT:
+            self.detail[a] = 0
             n = self.n
             y, x = divmod(a, WIDTH)
             block = bytes([v]) * n
@@ -59,6 +62,8 @@ class HiPage(bytearray):
         """A copy from another replayed page: the fine rows come across with the coarse ones."""
         n, W = self.n, WIDTH * self.n
         for y in range(h):
+            if 0 <= sy+y < HEIGHT and 0 <= dy+y < HEIGHT and 0 <= sx and sx+w <= WIDTH and 0 <= dx and dx+w <= WIDTH:
+                self.detail[(dy+y)*WIDTH+dx:(dy+y)*WIDTH+dx+w] = src.detail[(sy+y)*WIDTH+sx:(sy+y)*WIDTH+sx+w]
             if not (0 <= sy + y < HEIGHT and 0 <= dy + y < HEIGHT):
                 continue
             x0, x1 = max(sx, 0), min(sx + w, WIDTH)
@@ -77,8 +82,9 @@ class HiPage(bytearray):
                 for i, v in zip(idx, values):
                     self._mirror(i, v)
         else:
+            previous = self[key]
             super().__setitem__(key, value)
-            if not self.suppress:
+            if not self.suppress and not (self.preserve_equal and previous == value):
                 self._mirror(key, value)
 
 
