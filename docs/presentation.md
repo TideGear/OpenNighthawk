@@ -788,13 +788,19 @@ uses the render scale. At N = 1 the original replay is used exactly, including
 its line quirks, regardless of the width setting. `--present scan` retains the
 original picture at every scale.
 
-The line rule follows the Reimp's `src/core/hires.c`: canonical endpoint order,
-Bresenham on the output grid, and a square nib clipped to perpendicular end planes.
-A private direct comparison against that source finds 360 strokes byte-identical
-at scales 2/4/9 and widths 0/1/2/5/20, including dots, horizontal/vertical lines
-and random directions. No Reimp code or asset is required at runtime. The graphics
-driver's already-clipped endpoints and page origin come from the draw records;
-the observer never changes guest state or timing.
+The line rule began as the Reimp's `src/core/hires.c` (canonical endpoint order,
+Bresenham on the output grid, a square nib), which matched it byte for byte on 360
+strokes, but with that source's perpendicular end cuts. The owner's 4K review (13
+October) found the cost: strokes that share an end left a notch (the canopy corner,
+the bearing-tape marker), and each stroke sat half a cell up and left of the cells it
+stands for. The rule is now Bresenham between the **centres of the end cells** with a
+square nib and **whole end caps**: an axis-aligned stroke of the default width covers
+exactly the original's cells, and joined strokes meet solidly. It departs from the
+Reimp's strokes on purpose. The same stroke now draws the original's outline edges
+(record `L`: ground markings, the weapon target box), which were scaled blocks before.
+No Reimp code or asset is required at runtime. The graphics driver's already-clipped
+endpoints and page origin come from the draw records; the observer never changes guest
+state or timing.
 
 Colour replacement, OR/AND/shaded spans and page copies operate on the fine
 pixels already drawn. A small bit mask carries the cells crossed by fine strokes

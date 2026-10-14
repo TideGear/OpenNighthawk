@@ -60,9 +60,10 @@ int main(void)
     }
     start(&fine,4,0); line(&fine,10,10,20,10,0);
     const drawlist_page *f = drawlist_get(&fine,SEG);
-    CHECK(coloured(f,0x1F) == 41 * 4);              /* square nib, butt ends */
-    CHECK(f->hi[38 * 1280 + 40] == 0x1F && f->hi[41 * 1280 + 80] == 0x1F);
-    CHECK(f->hi[40 * 1280 + 39] == 0x10 && f->hi[40 * 1280 + 81] == 0x10);
+    CHECK(coloured(f,0x1F) == 44 * 4);              /* cells 10..20 of row 10: exactly the original's footprint */
+    CHECK(f->hi[40 * 1280 + 40] == 0x1F && f->hi[43 * 1280 + 83] == 0x1F);
+    CHECK(f->hi[40 * 1280 + 39] == 0x10 && f->hi[40 * 1280 + 84] == 0x10);
+    CHECK(f->hi[39 * 1280 + 40] == 0x10 && f->hi[44 * 1280 + 40] == 0x10);
     start(&fine,4,1); line(&fine,10,10,20,10,0);
     f = drawlist_get(&fine,SEG);
     CHECK(coloured(f,0x1F) == 41);
@@ -70,16 +71,20 @@ int main(void)
     CHECK(coloured(drawlist_get(&fine,SEG),0x1F) == 16);
     start(&fine,2,20); line(&fine,10,10,20,10,0);
     f = drawlist_get(&fine,SEG);
-    CHECK(coloured(f,0x1F) == 21 * 20);
+    CHECK(coloured(f,0x1F) == 40 * 20);              /* whole end caps: half a nib beyond each end centre */
     uint64_t flat_wide = 0, agree_wide = 0;
     f->hi[100 * 640 + 100] = 7;                    /* unrelated flat corruption still repaired */
     CHECK(hires_guard_masked(f->b,f->hi,2,f->strokes,&flat_wide,&agree_wide) == 1);
-    CHECK(coloured(f,0x1F) == 21 * 20 && f->hi[100 * 640 + 100] == 0x10);
+    CHECK(coloured(f,0x1F) == 40 * 20 && f->hi[100 * 640 + 100] == 0x10);
     start(&fine,4,1); line(&fine,0,0,10,5,0x8A29);
     f = drawlist_get(&fine,SEG);
-    CHECK(f->hi[440 * 1280 + 676] == 0x1F);         /* page origin: (169,110) */
-    CHECK(f->hi[460 * 1280 + 716] == 0x1F);
+    CHECK(f->hi[442 * 1280 + 678] == 0x1F);         /* page origin: (169,110), the cell's centre */
+    CHECK(f->hi[462 * 1280 + 718] == 0x1F);
 
+    /* two strokes sharing an end meet without a notch: the V's tip is solid on its outer side */
+    start(&fine,4,8); line(&fine,10,10,20,20,0); line(&fine,20,20,30,10,0);
+    f = drawlist_get(&fine,SEG);
+    CHECK(f->hi[85 * 1280 + 82] == 0x1F && f->hi[82 * 1280 + 85] == 0x1F && f->hi[82 * 1280 + 79] == 0x1F);
     start(&fine,4,1); line(&fine,10,10,20,15,0);
     f = drawlist_get(&fine,SEG);
     size_t mixed = 0;

@@ -301,13 +301,14 @@ static void lib_line(drawlist_page *p, int32_t x0, int32_t y0, int32_t x1, int32
  * Coordinates have already been clipped by the original graphics driver. */
 static void fine_line(drawlist_page *p, int x0, int y0, int x1, int y1, int width, int col)
 {
-    const int n = p->n, w = 320 * n, h = 200 * n;
-    int ax = x0 * n, ay = y0 * n, bx = x1 * n, by = y1 * n;
+    /* The stroke runs between the centres of its end cells, so an axis-aligned line of the
+     * default width covers exactly the original's cells; a square nib with whole end caps
+     * means strokes that share an end meet without a notch. */
+    const int n = p->n, w = 320 * n, h = 200 * n, centre = n / 2;
+    int ax = x0 * n + centre, ay = y0 * n + centre, bx = x1 * n + centre, by = y1 * n + centre;
     if (ax > bx || (ax == bx && ay > by)) {
         int t = ax; ax = bx; bx = t; t = ay; ay = by; by = t;
     }
-    const int64_t vx = (int64_t)bx - ax, vy = (int64_t)by - ay;
-    const int64_t length2 = vx * vx + vy * vy;
     const int dx = abs(bx - ax), dy = abs(by - ay);
     const int sx = bx < ax ? -1 : 1, sy = by < ay ? -1 : 1;
     int x = ax, y = ay, error = (dx >= dy ? dx : dy) / 2;
@@ -319,15 +320,12 @@ static void fine_line(drawlist_page *p, int x0, int y0, int x1, int y1, int widt
         if (r >= w) r = w - 1;
         if (top < 0) top = 0;
         if (bottom >= h) bottom = h - 1;
-        for (int yy = top; yy <= bottom; yy++) {
-            int64_t projection = ((int64_t)l - ax) * vx + ((int64_t)yy - ay) * vy;
-            for (int xx = l; xx <= r; xx++, projection += vx)
-                if (!length2 || (projection >= 0 && projection <= length2)) {
-                    p->hi[(size_t)yy * w + xx] = (uint8_t)col;
-                    const unsigned a = (unsigned)((yy / n) * 320 + xx / n);
-                    p->strokes[a >> 3] |= (uint8_t)(1u << (a & 7));
-                }
-        }
+        for (int yy = top; yy <= bottom; yy++)
+            for (int xx = l; xx <= r; xx++) {
+                p->hi[(size_t)yy * w + xx] = (uint8_t)col;
+                const unsigned a = (unsigned)((yy / n) * 320 + xx / n);
+                p->strokes[a >> 3] |= (uint8_t)(1u << (a & 7));
+            }
         if (dx >= dy) { error -= dy; if (error < 0) { y += sy; error += dx; } x += sx; }
         else { error -= dx; if (error < 0) { x += sx; error += dy; } y += sy; }
     }
@@ -345,6 +343,22 @@ static void hud_line(drawlist_page *p, int32_t x0, int32_t y0, int32_t x1, int32
     const int suppressed = p->suppress;
     if (fine) p->suppress = 1;
     lib_line(p, x0, y0, x1, y1, origin, col);
+    p->suppress = suppressed;
+    if (fine) fine_line(p, x0 + ox, y0 + oy, x1 + ox, y1 + oy, width ? width : p->n, col);
+}
+
+/* An outline edge (VGAME's own line routine) is the same kind of stroke as a HUD line: the exact
+ * coarse rule runs as before and only its fine mirror is replaced, by the fine stroke. Edges that
+ * leave the screen keep the scaled copy. */
+static void outline_line(drawlist_page *p, int x0, int y0, int x1, int y1, int32_t row0, int col, int width)
+{
+    const int ox = row0 % 320, oy = row0 / 320;
+    const int fine = p->hi && p->n > 1 && !p->suppress && row0 >= 0 && row0 < 64000 &&
+        x0 + ox >= 0 && x0 + ox < 320 && x1 + ox >= 0 && x1 + ox < 320 &&
+        y0 + oy >= 0 && y0 + oy < 200 && y1 + oy >= 0 && y1 + oy < 200;
+    const int suppressed = p->suppress;
+    if (fine) p->suppress = 1;
+    outline_edge(p, x0, y0, x1, y1, row0, col);
     p->suppress = suppressed;
     if (fine) fine_line(p, x0 + ox, y0 + oy, x1 + ox, y1 + oy, width ? width : p->n, col);
 }
@@ -674,7 +688,7 @@ void drawlist_record(drawlist *d, char kind, const int32_t *v, int n)
     case 'L':                                         /* an outline edge, by VGAME's own line routine */
         if (n < 10) break;
         if (v[9] != 0x046F || v[8] - v[7] != 320) { d->outline_no_rule++; break; }
-        if ((p = page_of(d, (uint16_t)v[6]))) outline_edge(p, v[1], v[2], v[3], v[4], v[7], v[5] & 0xFF);
+        if ((p = page_of(d, (uint16_t)v[6]))) outline_line(p, v[1], v[2], v[3], v[4], v[7], v[5] & 0xFF, d->line_width);
         break;
     case 'N': {
         if (n < 4 || d->colour < 0) break;
