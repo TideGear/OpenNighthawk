@@ -4,15 +4,23 @@
 A routine only counts as matched once a real route executes it
 (docs/roadmap.md, handoff.md), so the work left in Phase 2 is the unmatched
 census code that routes reach, plus whatever new routes would reach. This
-joins the census (reimp_names.py output) with the coverage files a gate
-leaves (the *.cov files: module, code hash, segment, offset and bytes of every
-instruction a route ran) and the matched table in src/matched/matched.c.
+joins the census (reimp_names.py output) with coverage files (*.cov: module,
+code hash, segment, offset and instruction bytes) and the matched table in
+src/matched/matched.c.
+
+The gate's recomp coverage records only INTERPRETED fallback instructions.
+It proves positive reach, but an absent entry may already run as translated
+code. To inventory a whole route, collect fresh --engine interp --coverage
+FILE runs. Neither source proves that an absent entry is unreachable.
 
     py tools/census_reach.py --census census.tsv --coverage DIR [--out reached.tsv]
 
-It prints, per program, how many unmatched code entries and bytes the routes
-enter and how many they never do (a routine none enters may still be run
-partway, which is counted separately). Census rows with no region are data.
+For example: py tools/run_route.py tools/routes/full_cycle.args --data DIR
+--engine interp --out NEW_DIR -- --coverage NEW_DIR/full_cycle.cov
+
+It prints entries with recorded execution, entries with only interior
+instructions recorded, and entries without evidence in these files.
+Census rows with no region are data.
 """
 import argparse
 import collections
@@ -43,13 +51,13 @@ def load_coverage(directory):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--census", required=True, help="reimp_names.py TSV")
-    ap.add_argument("--coverage", required=True, help="directory of the gate's *.cov files")
+    ap.add_argument("--coverage", required=True, help="directory of *.cov files; use fresh interpreter captures for complete route coverage")
     ap.add_argument("--out", help="write the entries routes enter, largest first, as TSV")
     args = ap.parse_args()
 
     matched = progress.matched_addresses()
     entries, inside = load_coverage(args.coverage)
-    reached, never, partial = [], [], []
+    reached, unseen, partial = [], [], []
     for line in list(open(args.census))[1:]:
         row = line.rstrip("\n").split("\t")
         binary, entry, size, region = row[0], row[1], int(row[2]), row[3]
@@ -66,15 +74,16 @@ def main():
         elif any(s == seg and ip <= a < ip + max(size, 1) for s, a in inside[module]):
             partial.append(record)
         else:
-            never.append(record)
+            unseen.append(record)
 
     def total(rows):
         return len(rows), sum(r[2] for r in rows)
 
     print("unmatched code entries entered by a route: %d (%d bytes)" % total(reached))
-    print("entered only partway (an instruction inside ran, the entry did not): %d (%d bytes)" % total(partial))
-    print("never run by any route: %d (%d bytes)" % total(never))
-    for label, rows in (("entered", reached), ("never", never)):
+    print("interior instructions recorded, entry not recorded: %d (%d bytes)" % total(partial))
+    print("no execution evidence in these files: %d (%d bytes)" % total(unseen))
+    print("absence is not unreachability: recomp coverage omits already-translated execution")
+    for label, rows in (("entered", reached), ("unseen", unseen)):
         per = collections.Counter()
         for r in rows:
             per[r[0]] += r[2]

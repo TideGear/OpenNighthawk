@@ -19,8 +19,56 @@ Fix the remaining 4K uprez issues in the owner's screenshots: the map, toothy
 triangle edges and blocky terrain. The owner authorizes our own in-flight
 captures. **Once the uprez looks right and the map is fixed, return to Phase 2.**
 Do not wait for all remaining physical-panel and weaker-machine Phase 3
-checks before resuming P2. Its private leaf batch still needs new routes
-before it can count; do not resume that batch without reach evidence.
+checks before resuming P2. Match code with positive real-route reach evidence;
+the complete interpreter capture below supplies new leads for the private batch.
+
+## Phase 2 reach inventory corrected (14 October)
+
+**Latest integration:** two eight-instruction conversion initializers
+(START `9D67`, END `56D9`) are implemented, fixture-proven at three seeds and
+real-driver-proven by `full_cycle` (89 / 9 calls, 66 exact checkpoints/final).
+The first full gate passes all 45 routes and both instruction profiles, but
+rotating seed `0x376cc4116689` exposes an existing VGAME `4B8F` alias bug:
+the named code read the argument before the original clears the output byte.
+The read now follows the clear through the live frame; the failing seed and
+both fixed seeds pass. CTest retains the failing seed. The fresh full gate
+passes: 64 unit tests, all 45 routes / 44 fresh interpreter sessions, both
+5,718,848-state profiles, three 838-address seeds (2,753,443 / 2,752,408 /
+2,752,308), zero mismatches, reachability/event checks pass (1,301 s).
+Coverage reuses the first gate's identical-input, unchanged-translation proof.
+Evidence: `D:/f117-gate/format-init/final-gate-verdict.json`; first failure
+retained in `gate.log` / `failed-func3.log`. Census: 830 functions / 99,033
+bytes, P2 57.50%, overall 83.81%. The owner's edited `f117a.example.ini` and
+untracked `4k60.bat` must remain untouched.
+
+The old "only 72 reached / 411 never run" conclusion was wrong: the gate's
+recomp `.cov` files contain only interpreted fallback instructions, not all
+execution. Absence says nothing about already-translated code. A fresh
+**interpreter** `full_cycle` capture alone reaches 358 remaining code entries
+(43,138 bytes), plus 6 interiors (521 bytes); 121 entries (12,813 bytes) lack
+evidence in that capture. It preserves all 66 checkpoints and final state
+`3300000000/6b61d89b95e7b562`. `tools/census_reach.py` now states this limit.
+Private proof and ranked leads: `D:/f117-gate/format-init/full_cycle.cov`,
+`reached.tsv`, `batch-reach.json`. Of the old 47 private draft entries,
+**37 have positive reach in this route** (including the two already matched
+front-end re-sync helpers). They can be reviewed, named, fixture-strengthened
+and real-driver-proven without first inventing new routes. The other ten
+still need reach evidence. Largest new leads include END `2BEC`, START
+`6DB8`/`149C`, VGAME `1450`/`DC46`/`04E6`; do not assume a lead is proven C.
+
+Next private named lead: `format-init/bind-segment-entries.c` implements
+VGAME `0FAE:0002` (overlay header offsets into five-byte far-jump slots).
+Strengthened fixtures at three seeds compare 1,940 / 1,999 / 1,787 states,
+cover all 27 instructions, all eight authored modes and the entire 65,536-step
+zero-count wrap, with zero differences. They include overlapping source/destination
+tables and stack writes changing the header's count. The
+real full-cycle route invokes it three times and preserves 66 checkpoints/final
+(`bind-route-verdict.json`). It is **not integrated or counted**: review the
+private fixture changes, retain mutation checks, then integrate with other
+reached candidates and run a fresh full gate. `format-init/project` contains
+this extra private candidate;
+never copy its entire matched file over main. `next-batch-review.json` records
+six further readings and warns about static walks past terminal DOS exits.
 
 ## Phase 2 resumed: SETUP's native BIOS boundary alert (14 October)
 
@@ -37,9 +85,9 @@ interpreter sessions, both 5,718,848-state profiles, three 836-address matched
 seeds (2,745,183 / 2,744,149 / 2,745,748), zero mismatches, reachability and
 event checks pass (1,745 s). Proof: `D:/f117-gate/p2-resume/final-gate-verdict.json`.
 
-No new routine is counted yet. Private fresh dossiers there identify reached
-START `9D67` / END `56D9` as the eight-instruction formatter conversion-state
-initialisers (hand back to the existing scan loop), and PLAYER `026B:0211`
+That native-boundary correction counted no new routine. The two formatter
+conversion initializers are now integrated above. Remaining private dossiers
+identify PLAYER `026B:0211`
 as its distinct timer re-sync and `026B:0336` as tick/callback service. The
 latter calls original code, so needs returning-helper fixtures. The private
 static drafts are unproven transcripts, not integration-ready bodies.
@@ -147,11 +195,10 @@ The timer interrupt handlers (VGAME `0x1C9B`, START `0x8D0B`, END `0x4BEF`) open
 with STI and are deliberately left as original code: after STI the run loop
 admits one more instruction, so a matched body cannot do more than the original.
 
-**Phase 2 is bounded by route coverage, not effort.** `py tools/census_reach.py
---census census.tsv --coverage DIR` shows that of 487 unmatched code entries only
-72 (1,954 bytes) are entered by any route, 4 only partway, and 411 (53,214 bytes)
-never run. The next Phase 2 step is new routes that enter unreached code (START
-and END screens, other missions, error paths), then matching what they reach.
+**Reach inventory:** use complete interpreter captures, not the gate's
+fallback-only coverage, to choose remaining routines. The corrected inventory
+above finds substantial reached code; new routes are needed only where positive
+evidence is still missing.
 
 ## Latest Phase 2 integration: logo sprite-set loader (13 October)
 
@@ -182,7 +229,7 @@ merge them wholesale. Check GitHub CI for the new commits.
 `D:/f117-gate/batch-a/project` is a fast fixture loop (direct candidate object
 linked before frozen libs copied from the main build; /Od; build with
 `build-proof.cmd`, setting TEMP and TMP to `D:/f117-gate/batch-a/tmp` first).
-`matched.c` there is the main file plus 47 unreviewed DRAFT bodies
+`matched.c` there is an older main file plus 47 unreviewed DRAFT bodies
 (`draft_<mod>_<seg>_<ip>`, from `matched_draft.py`, instruction-transcript style)
 and table rows; `rows.txt` lists them: call-free, plain-RET, 15-160 instructions,
 from VGAME/START/END/PLAYER/MPS_LOGO/DSWAP/SETUP. Drafts are not yet named or
@@ -198,10 +245,11 @@ leading zeros (`D0C`, not `0D0C`, or it silently compares 0 states). A passing
 draft still needs a real route that runs it (the gate's step 8 reports the ones
 that never run: drop those), a named and explained body, and one full gate for
 the whole batch. Nothing of this is in the repository. Reach check (13 Oct,
-`tools/census_reach.py`): only 3 of its 47 entries are entered by any route (START
-`8D71` and END `4C55` are now matched; PLAYER `026B:0211` is a different
-variant), so the rest cannot count until new routes reach them: do not spend a
-session on this batch.
+`tools/census_reach.py`) was fallback-only and incomplete. The fresh interpreter
+`full_cycle` capture now proves entry reach for 37 of 47 (see above). START
+`8D71` and END `4C55` are already matched; PLAYER `026B:0211` is a different
+variant. Rebase individual candidates onto current code and retain positive
+matched invocation counts and exact route hashes before counting them.
 
 ## Current state
 
@@ -277,9 +325,10 @@ Phase 2 work" below).
 
 ## Next up
 
-- **Phase 2 resumed after the visual fixes (owner, 13 Oct).** Match reached code or add routes to
-  unreached screens. The four fresh dossiers above are leads, not proven
-  bodies. Do not resume the unreachable private leaf batch by default.
+- **Phase 2 resumed after the visual fixes (owner, 13 Oct).** The corrected
+  interpreter inventory supplies 358 reached unmatched entries and 37 private
+  batch leads. Review and prove those before adding routes for entries still
+  lacking evidence. The private dossiers remain unproven transcripts.
 - **Remaining Phase 3 coverage.** Physical-panel motion review, cargo/career
   timing and weaker machines remain. The current strike build passes 4K/60;
   the older single-threaded p99 failure is superseded. Full checksums via
@@ -307,15 +356,11 @@ Phase 2 work" below).
   aircraft traffic, weapons in flight, view composition and mission generation). Earlier proofs and tested source
   snapshots remain under `D:/f117-gate/`; history is in
   [docs/repeated-processes.md](docs/repeated-processes.md).
-  Next: 487 census entries with a translated region (56.5 KB) remain; census
-  rows with no region are data (SETUP `0x027AE` is strings), so filter them out.
-  **Only 72 of them (1,954 bytes) are entered by any of the 45 routes**;
-  `py tools/census_reach.py --census census.tsv --coverage DIR` (the gate's
-  `*.cov` files) lists them. The other 411 (53,214 bytes) never run, so matching
-  them needs new routes first (screens START/END never visit, other missions),
-  and the private leaf-routine batch (`D:/f117-gate/batch-a`) is almost all in
-  that group: 3 of its 47 entries are reached. The reached set is small glue;
-  an interrupt handler that opens with STI cannot be matched past its first
+  Next: use the complete interpreter inventory above; census rows with no
+  region are data (SETUP `0x027AE` is strings), so filter them out. The gate's
+  fallback coverage is not a complete reach inventory. The private batch has
+  37 positively reached entries, and larger reached routines are listed too.
+  An interrupt handler that opens with STI cannot be matched past its first
   instruction (the timer interrupts at VGAME 0x1C9B, START 0x8D0B, END 0x4BEF).
   Screen with `tools/matched_draft.py --dossier` (module/seg/ip from the
   region name). Batch several routines per gate. DSWAP `0x03DF3` is deferred:

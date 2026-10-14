@@ -22696,11 +22696,13 @@ static int vgame_objective_place(machine_t *m)
 {
     cpu_t *c = &m->cpu;
     if (!room(c, 11)) return 0;
-    const uint16_t target = arg(c, 0);
     cpu_push16(c, c->r[R_BP]);
     c->r[R_BP] = c->r[R_SP];
     cpu_push16(c, c->r[R_SI]);
     VG2_SETDS8(0x98A6, 0);
+    /* The output byte can alias the argument on the stack. Read the live
+     * frame after clearing it, in the same order as the original. */
+    const uint16_t target = VG2_FRAME(4);
     uint16_t bx = x86_shift(c, 4, target, 4, 1);                  /* shl bx, 4 */
     c->r[R_SI] = ds_get(c, (uint16_t)(bx - 0x4D32));
     c->r[R_SI] = x86_shift(c, 4, c->r[R_SI], 1, 1);
@@ -25074,6 +25076,29 @@ static const st4_format_scan_t ST4_FORMAT_SCAN_START = { 0x9D06, 0xA4C6, 0xB154,
 static const st4_format_scan_t ST4_FORMAT_SCAN_END = { 0x5678, 0x5B4E, 0x531E, 0x4E9A, 0x52BA, 0x5668 };
 static int st4_start_format_scan(machine_t *m) { return st4_format_scan(m, &ST4_FORMAT_SCAN_START); }
 static int st4_end_format_scan(machine_t *m) { return st4_format_scan(m, &ST4_FORMAT_SCAN_END); }
+
+/* START 9D67 / END 56D9: the formatter's conversion-state initializer.
+ * A new conversion clears four conversion fields;
+ * precision starts at -1 (unspecified). The existing scan loop consumes the
+ * next character. Keep each store through live AX/BP: frame aliases must have
+ * the same order as the original. Eight instructions, including the jump. */
+static int st4_format_conversion_init(machine_t *m, uint16_t scan)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 8)) return 0;
+    c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);
+    bp_put(c, -16, c->r[R_AX]);
+    bp_put(c, -10, c->r[R_AX]);
+    bp_put(c, -18, c->r[R_AX]);
+    bp_put(c, -4, c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1);
+    bp_put(c, -12, c->r[R_AX]);
+    c->icount += 8;
+    c->ip = scan;
+    return 1;
+}
+static int st4_start_format_conversion_init(machine_t *m) { return st4_format_conversion_init(m, 0x9D19); }
+static int st4_end_format_conversion_init(machine_t *m) { return st4_format_conversion_init(m, 0x568B); }
 
 /* START 0x058DF, the aircraft's clamp opening: a 4-byte frame and the
  * aircraft record's word +38h ([CACA] far) in AX for the switch at
@@ -42234,6 +42259,8 @@ static const recomp_override MATCHED[] = {
     { "matched", "START.EXE", START_47304, 0x0000, 0x63FB, st4_start_roster_hover, "the roster screen's hover", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x9D06, st4_start_format_scan, "the formatter's scan", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x5678, st4_end_format_scan, "the formatter's scan", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x9D67, st4_start_format_conversion_init, "formatter conversion state", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x56D9, st4_end_format_conversion_init, "formatter conversion state", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x58DF, st4_start_clamp_open, "the aircraft clamp's opening", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x3682, st4_end_debrief_switch_open, "the debriefing picture's opening", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x0880, st4_end_icon_place_open, "an icon placement's opening", 1 },

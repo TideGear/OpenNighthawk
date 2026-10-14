@@ -506,6 +506,11 @@ static const struct { const char *module; uint16_t ip; uint32_t linear; uint8_t 
 
 static void patch_image_for(uint8_t *pristine, const recomp_override *o)
 {
+    /* These are jump-table handlers inside a live formatter frame, not
+     * callable functions. A returning scan thunk isolates the eight-instruction
+     * reset; real routes separately prove the untouched scan and its callers. */
+    if (o->seg == 0 && !strcmp(o->module, "START.EXE") && o->ip == 0x9D67) pristine[0x9D19] = 0xC3;
+    if (o->seg == 0 && !strcmp(o->module, "END.EXE") && o->ip == 0x56D9) pristine[0x568B] = 0xC3;
     for (unsigned i = 0; i < sizeof IMAGE_PATCHES / sizeof IMAGE_PATCHES[0]; i++)
         if (!strcmp(IMAGE_PATCHES[i].module, o->module) && IMAGE_PATCHES[i].ip == o->ip)
             pristine[IMAGE_PATCHES[i].linear] = IMAGE_PATCHES[i].value;
@@ -559,6 +564,8 @@ static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
     { "END.EXE", 0x3021, 0x3021, 0x0700 },      /* the scorer: its RET is at 0x03680 */
     { "START.EXE", 0x9D06, 0x9D06, 0x0500 },    /* the formatter: its exit is at entry + 4CFh */
     { "END.EXE", 0x5678, 0x5678, 0x0500 },
+    { "START.EXE", 0x9D67, 0x9D19, 0x0062 }, /* reset and its returning scan thunk */
+    { "END.EXE", 0x56D9, 0x568B, 0x0062 },
     { "START.EXE", 0x94FA, 0x94FA, 0x1000 },    /* itoa and ltoa: the shared conversion returns at 0x0A4B6 */
     { "START.EXE", 0x9516, 0x9516, 0x1000 },
     { "START.EXE", 0xA210, 0x98A8, 0x0990 },    /* the C runtime's DOS returns: START 0x098A8-0x098C9 */
@@ -666,8 +673,13 @@ static uint64_t g_camera_seen;
 /* Large named routines whose instruction coverage is tracked: which of
  * their instruction starts the original ran in this state, and over
  * compared states (all, and those the named routine finished itself). A
- * floor fails a 4,000-state run whose fixtures stopped reaching the arms. */
-static const struct { const char *module; uint16_t seg, ip, len; unsigned insns, floor; const char *what; } COVERED[] = {
+ * floor fails a 4,000-state run whose fixtures stopped reaching the arms.
+ * A bounded handler completes its named region at `boundary`, after `clocks`,
+ * rather than returning to the caller. Merely handing everything to original
+ * code must not satisfy its coverage floor. */
+static const struct { const char *module; uint16_t seg, ip, len; unsigned insns, floor; const char *what; uint16_t boundary; unsigned clocks; } COVERED[] = {
+    { "START.EXE", 0, 0x9D67, 20, 8, 8, "formatter conversion state", 0x9D19, 8 },
+    { "END.EXE", 0, 0x56D9, 20, 8, 8, "formatter conversion state", 0x568B, 8 },
     { "MPS_LOGO.EXE", 0x006D, 0x0112, 0x048F, 434, 434, "sprite-set loader" },
     { "SETUP.EXE", 0, 0x0010, 0x04F3, 505, 505, "setup main" },
     { "START.EXE", 0, 0x4239, 0x0EF5, 1332, 1332, "mission generator" },
@@ -2261,6 +2273,9 @@ int main(int argc, char **argv)
              * machine partway through it, as the original would be; the run
              * loop then finishes it with the original code, and so does this. */
             const int whole = g_m.cpu.seg[S_CS] == cs && g_m.cpu.ip == back;
+            const int covered_region = whole || (g_cov >= 0 && COVERED[g_cov].boundary &&
+                g_m.cpu.seg[S_CS] == cs && g_m.cpu.ip == COVERED[g_cov].boundary &&
+                g_m.cpu.icount == 1000 + COVERED[g_cov].clocks);
             if (g_m.cpu.seg[S_CS] != cs || g_m.cpu.ip != back) {
                 int more = 0;
                 if (!run_to_ret(&g_m.cpu, entry_sp, o->matched, &more, cs, ip)) { if (g_cov >= 0) g_cov_skips[5]++; ms++; restore(); continue; }
@@ -2268,7 +2283,7 @@ int main(int argc, char **argv)
             }
             mc++;
             if (g_cov >= 0) for (unsigned k = 0; k < COVERED[g_cov].len; k++) {
-                g_cov_cover[k] |= g_cov_seen[k]; if (whole) g_cov_whole[k] |= g_cov_seen[k];
+                g_cov_cover[k] |= g_cov_seen[k]; if (covered_region) g_cov_whole[k] |= g_cov_seen[k];
             }
             if (g_camera_fixture) camera_branches |= g_camera_seen;
             if (!strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0x983E) moving_branches |= g_moving_seen;
@@ -2369,7 +2384,7 @@ int main(int argc, char **argv)
             unsigned all = 0, whole = 0;
             for (unsigned k = 0; k < COVERED[g_cov].len; k++) { all += g_cov_cover[k]; whole += g_cov_whole[k]; }
             if (g_cov_escapes) { fprintf(stderr, "%s: %llu calls escaped their return\n", COVERED[g_cov].what, g_cov_escapes); mb++; }
-            printf("  %s instructions run by compared states: %u, by states the named routine finished: %u (of %u)\n",
+            printf("  %s instructions run by compared states: %u, by states completing the named region: %u (of %u)\n",
                    COVERED[g_cov].what, all, whole, COVERED[g_cov].insns);
             printf("  skipped: %llu fault, %llu long run, %llu bad return, %llu code written, %llu declined, %llu unfinished\n",
                    g_cov_skips[0], g_cov_skips[1], g_cov_skips[2], g_cov_skips[3], g_cov_skips[4], g_cov_skips[5]);

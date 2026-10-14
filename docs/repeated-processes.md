@@ -141,6 +141,49 @@ frames exact and guest hash equal to the fresh 36.8 s headless prefix. SDL
 writes its final hash to the machine log, not stdout. Screenshots and timing
 logs stay outside git in `D:/f117-gate/map-refill`.
 
+## Phase 2 complete execution inventory (14 October 2026)
+
+The gate's `--engine recomp --coverage FILE` logs only interpreted fallback
+instructions. Accumulated files are translation inputs, not a complete execution
+profile. In particular, missing entries cannot establish unreachability. To
+inventory a whole route, use a fresh interpreter run and coverage file:
+`py tools/run_route.py tools/routes/full_cycle.args --data DIR --engine interp
+--out NEW_DIR -- --coverage NEW_DIR/full_cycle.cov`. Keep this separate from the
+gate's fallback logs. `tools/census_reach.py --census PRIVATE_TSV --coverage
+NEW_DIR --out PRIVATE_TSV` joins either source but now describes absent entries
+as lacking evidence. Positive entries retain exactly the same ranked output.
+
+A fresh full-cycle capture preserves all 66 checkpoints and final state while
+recording 358 unmatched census entries / 43,138 bytes. This overturns the old
+fallback-only claim of 72 small reached routines. Thirty-seven of the private
+47-routine draft entries have positive entry reach (two already integrated).
+Each still needs named code, sufficient fixtures, positive matched invocation
+counts and exact real-route parity before integration. The remaining entries
+need more evidence, not a presumption of unreachability. Private inventory and
+hashes: `D:/f117-gate/format-init/reach-verdict.json`.
+
+The START/END formatter conversion reset fixtures replace only the following
+scan with a returning thunk. All eight original handler instructions must be
+covered in compared states where the named code reaches the original continuation
+after exactly eight clocks. An empty handler cannot satisfy this floor merely
+by falling back to the original: that planted mutation fails, as does a wrong
+frame-slot store. The actual full-cycle route leaves the scan untouched and
+executes the new handlers 89 / 9 times, with all 66 checkpoints/final exact.
+
+The first integration gate passed all 45 routes and both instruction profiles,
+but its rotating seed `0x376cc4116689` found an older objective-place ordering
+defect: clearing DS:98A6 can alias the target argument on the stack. The original
+reads the argument after that store; the named code had read it before the frame
+was opened. Reading the live frame after the clear passes the failed seed
+(4,916 comparisons) and both fixed seeds. CTest retains this exact seed as
+`matched_objective_place_alias`. The fresh gate passes: 64 unit tests, 45 routes
+(44 fresh interpreter sessions), both 5,718,848-state profiles and three
+838-address seeds (2,753,443 / 2,752,408 / 2,752,308), zero mismatches and
+passing reachability/event checks. Total 1,301 s: translate/build/tests 272,
+fresh parity 1,029. Coverage reuses the first gate's verified unchanged
+translation and identical inputs; the first full gate took 1,853 s and failed
+only at the rotating matched seed. Evidence: `format-init/final-gate-verdict.json`.
+
 ## Native BIOS boundary regression (14 October 2026)
 
 `native_service_boundary` runs a real ROM-free INT 10h callback at a slice

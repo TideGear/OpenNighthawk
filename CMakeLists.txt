@@ -390,6 +390,8 @@ if(F117R_BUILD_TESTS)
       --only START.EXE:7EE)
     add_test(NAME matched_objectives_panel COMMAND func_lockstep --states 4000
       --only VGAME.EXE:9515)
+    add_test(NAME matched_objective_place_alias COMMAND func_lockstep --states 4000
+      --only VGAME.EXE:4B8F --seed 0x376cc4116689)
     add_test(NAME matched_timer_tick COMMAND func_lockstep --states 4000
       --only VGAME.EXE:1E79)
     add_test(NAME matched_span_emit COMMAND func_lockstep --states 4000

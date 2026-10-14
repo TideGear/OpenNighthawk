@@ -200,6 +200,20 @@ not the recompilation:
 
 ## Phase 2 - understood code
 
+The formatter conversion-state initializers (START `9D67`, END `56D9`) are
+matched: four cleared fields, unspecified precision (-1), then the original
+scan loop. Returning scan fixtures cover all eight instructions and require
+the named code to reach its continuation after eight clocks; an empty handler
+and a wrong frame-slot mutation both fail. `full_cycle` invokes the handlers
+89 / 9 times and preserves all 66 checkpoints/final state. The rotating seed
+also exposed an older objective-place alias defect (VGAME `4B8F`): the target
+argument must be read after clearing the output buffer. Its retained seed
+regression and the fresh full gate pass: 64 tests, all 45 routes / 44 fresh
+interpreter sessions, both 5,718,848-state profiles, three 838-address seeds
+(2,753,443 / 2,752,408 / 2,752,308), zero mismatches and passing reachability/
+event checks (1,301 s). Census: 830 functions / 99,033 bytes, P2 57.50%, overall
+83.81%. Private proof: `D:/f117-gate/format-init/final-gate-verdict.json`.
+
 The SETUP event-limit alert seen with SDL's short slices is understood
 (14 October): its native INT 10h callback includes two atomic stub clocks,
 which the overrun audit had mistaken for extra guest instructions. Both
@@ -670,15 +684,20 @@ instruction profiles and three 789-address matched seeds (2,561,209,
       Reimp's mapping; matched functions replacing translations one at a time,
       each held to the same parity checks. `tools/reimp_names.py` joins the
       Reimp's census (1,535 functions) with this project's regions as a private
-      lead list. 836 addresses are matched (828 of the census functions, 98,993 of
+      lead list. 838 addresses are matched (830 of the census functions, 99,033 of
       179,213 bytes); the table is at the end of `src/matched/matched.c` and the
       method is in [architecture.md](architecture.md#matched-routines-phase-2).
-      What is left is mostly unreachable by today's routes (13 Oct,
-      `tools/census_reach.py`): of the 487 unmatched code entries, 72 (1,954 bytes) are
-      entered by a route, 4 (1,344 bytes) only partway, and 411 (53,214 bytes, mostly START, VGAME, END and
-      MPS_LOGO screens and paths) are never run by any of the 45, so under the
-      rule that a routine counts once a route runs it they need new routes
-      first. The reached ones are small and mostly interrupt or dispatch glue.
+      The earlier "72 reached / 411 never run" inventory was incomplete:
+      gate coverage logs only interpreted fallback instructions. A fresh complete
+      interpreter `full_cycle` capture (14 Oct) reaches 358 unmatched entries /
+      43,138 bytes, with 6 interiors / 521 bytes and 121 entries / 12,813 bytes
+      still lacking evidence in that capture. All 66 checkpoints and final state
+      match the plain replay. `tools/census_reach.py` now distinguishes missing
+      evidence from unreachability. The private 47-routine draft batch has 37
+      positively reached entries (two already matched), so review/proof can
+      resume there. Larger reached leads include END `2BEC`, START `6DB8` and
+      `149C`, and VGAME `1450`, `DC46` and `04E6`. New routes remain useful for
+      code without positive evidence. Private inventory: `D:/f117-gate/format-init`.
       Five of them were matched (the front ends' retrace re-sync, PLAYER's two
       tick-rate setters, VGAME's low-detail sky entry). The timer interrupt itself
       (VGAME 0x1C9B, START 0x8D0B, END 0x4BEF) opens with STI, after which the run
