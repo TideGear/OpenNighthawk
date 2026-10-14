@@ -45,7 +45,8 @@ Verified: 60 tests, all 45 routes at N=1 (259,240 logic frames / 259,166 pairs,
 unchanged; 481 s at `--jobs 16`), `boot_to_flight` N=4/9 (368 frames / 366
 pairs each) and the 66 retained-window checks. P3 **93.52%**, overall
 **83.23%**; Stage 3/4 is scored 80%, not 100%, because the panel motion review,
-cargo/career flights and slower machines are unchecked. A capture that changes
+cargo/career flights and a slower CPU clock or weaker GPU are unchecked (the
+strike flight also passes pinned to four logical CPUs: p99 16.71, max 16.82 ms). A capture that changes
 display mid-run (a window starting on the 1080p monitor, then the 4K one) logs
 two display lines and the checker rejects it: rerun with nothing else going.
 Evidence: `D:/f117-gate/p3-stream` (`thr2`, `air6`, `chk2`, `windows`).

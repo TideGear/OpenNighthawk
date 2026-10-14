@@ -873,9 +873,11 @@ Both pass the checker (median within 10% of the refresh period, p99 within
 host; drift +18.8, +6.2 and +2.8 ms). In-between pictures are 96% of the pictures
 shown. Each final hash equals a fresh headless run of the same input and stop count.
 
-What this does not establish: the picture on a physical panel (tearing, the
-look of motion), the cargo and career flights' timing, and a machine slower than
-this one (24 threads). The owner's motion review remains Phase 4 work.
+The strike flight also passes with the process pinned to four logical CPUs
+(p99 16.71 ms, worst 16.82 ms, none missed, same hash), so the thread design has
+headroom on core count. What this does not establish: the picture on a physical
+panel (tearing, the look of motion), the cargo and career flights' timing, and a
+slower CPU clock or weaker GPU than this machine's. The owner's motion review remains Phase 4 work.
 
 `tools/presentation_timing.py` checks the logged display settings (a log that
 changes display mid-run is rejected as ambiguous), intervals, interpolation and

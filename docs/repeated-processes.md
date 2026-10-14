@@ -100,6 +100,8 @@ hashes equal to fresh headless runs. Before the threaded draw the strike
 capture failed p99 at 24.30 ms. Per-stage timers (a temporary build; not kept)
 found the cause: logic-frame closes cost 21-25 ms and ordinary frames used
 89% of the budget on one thread. Details: [presentation.md](presentation.md).
+The same strike capture passes with the process pinned to four logical CPUs
+(`affinity` set before launch; p99 16.71 ms, worst 16.82 ms).
 Run these with nothing else heavy going: a first attempt that started on a
 1080p display and moved to the 4K one logged two display lines and the checker
 rejected it. Evidence: `D:/f117-gate/p3-stream` (`thr2`, `air6`, `chk2`).
