@@ -537,6 +537,7 @@ static const struct { const char *module; uint16_t ip; int arg; uint16_t v[2]; }
 static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
     { "END.EXE", 0x2BEC, 0x2BEC, 0x0435 },
     { "START.EXE", 0x6DB8, 0x6DB8, 0x03F5 },
+    { "START.EXE", 0x149C, 0x149C, 0x039E },
     { "MPS_LOGO.EXE", 0x0112, 0x0112, 0x048F },
     { "SETUP.EXE", 0x0010, 0x0010, 0x04F3 },
     { "START.EXE", 0x4239, 0x4239, 0x0EF5 },
@@ -686,6 +687,7 @@ static uint64_t g_camera_seen;
 static const struct { const char *module; uint16_t seg, ip, len; unsigned insns, floor; const char *what; uint16_t boundary; unsigned clocks; } COVERED[] = {
     { "END.EXE", 0, 0x2BEC, 0x0435, 444, 444, "debrief narrative and measured layout" },
     { "START.EXE", 0, 0x6DB8, 0x03F5, 399, 399, "pilot options dialog" },
+    { "START.EXE", 0, 0x149C, 0x039E, 365, 365, "flight plan display" },
     { "MPS_LOGO.EXE", 0x006D, 2, 0x0081, 63, 63, "sprite colour shift" },
     { "VGAME.EXE", 0x0FAE, 0x0002, 61, 27, 27, "segment entry binding" },
     { "START.EXE", 0, 0x9D67, 20, 8, 8, "formatter conversion state", 0x9D19, 8 },
@@ -739,7 +741,7 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
     const uint32_t watch = phys(cs, (uint16_t)(ip - g_below));
     const int watching = (g_below || g_watch_transient) && a->mem == g_mem[0];
     while ((unsigned)*steps < g_step_cap) {
-        const unsigned watch_bytes = (ip == 0x6DB8 || ip == 0x2BEC || ip == 0x0112 || ip == 0x0010 || ip == 0x4239 || ip == 0x2F9D || ip == 0x683E || ip == 0x5852 || ip == 0x3ADA || ip == 0x1EB0 || ip == 0xBCEF || ip == 0x983E || ip == 0x0016 || ip == 0x79BE || ip == 0x8A90) ? g_span : 0x300u + g_below;
+        const unsigned watch_bytes = (ip == 0x149C || ip == 0x6DB8 || ip == 0x2BEC || ip == 0x0112 || ip == 0x0010 || ip == 0x4239 || ip == 0x2F9D || ip == 0x683E || ip == 0x5852 || ip == 0x3ADA || ip == 0x1EB0 || ip == 0xBCEF || ip == 0x983E || ip == 0x0016 || ip == 0x79BE || ip == 0x8A90) ? g_span : 0x300u + g_below;
         if (watching && !g_self_written && memcmp(a->mem + watch, g_pristine + watch, watch_bytes)) g_self_written = 1;
         if (g_trace) printf("      %04X:%04X clk %llu sp %04X\n", a->seg[S_CS], a->ip, (unsigned long long)a->icount, a->r[R_SP]);
         const uint16_t here = a->ip;
@@ -964,7 +966,7 @@ int main(int argc, char **argv)
         if (g_cov >= 0) { g_cov_ip = COVERED[g_cov].ip; g_cov_escapes = 0; memset(g_cov_skips, 0, sizeof g_cov_skips); memset(g_cov_cover, 0, sizeof g_cov_cover); memset(g_cov_whole, 0, sizeof g_cov_whole); }
         g_hud_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0x1058 && o->ip == 0x0016;
         g_ground_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0x5046;
-        g_watch_transient = (!strcmp(o->module, "START.EXE") && o->seg == 0 && o->ip == 0x6DB8) || (!strcmp(o->module, "END.EXE") && o->seg == 0 && o->ip == 0x2BEC) || (!strcmp(o->module, "VGAME.EXE") && o->seg == 0x0FAE && o->ip == 2) ||
+        g_watch_transient = (!strcmp(o->module, "START.EXE") && o->seg == 0 && o->ip == 0x149C) || (!strcmp(o->module, "START.EXE") && o->seg == 0 && o->ip == 0x6DB8) || (!strcmp(o->module, "END.EXE") && o->seg == 0 && o->ip == 0x2BEC) || (!strcmp(o->module, "VGAME.EXE") && o->seg == 0x0FAE && o->ip == 2) ||
             (!strcmp(o->module, "MPS_LOGO.EXE") && o->seg == 0x006D && o->ip == 2) || (!strcmp(o->module, "MPS_LOGO.EXE") && o->seg == 0x006D && o->ip == 0x0112) || (!strcmp(o->module, "VGAME.EXE") && o->seg == 0x1058 && o->ip == 0x0016) ||
             (o->seg == 0 &&
             ((!strcmp(o->module, "VGAME.EXE") && (o->ip == 0x2F9D || o->ip == 0x683E || o->ip == 0x5046 || o->ip == 0x5852 || o->ip == 0x3ADA || o->ip == 0x1EB0 || o->ip == 0xBCEF || o->ip == 0x983E || o->ip == 0x79BE || o->ip == 0x8A90)) ||
@@ -2142,6 +2144,76 @@ int main(int argc, char **argv)
 #undef LW16
 #undef LH8
 #undef LH16
+            }
+            if (!strcmp(o->module, "START.EXE") && o->seg == 0 && o->ip == 0x149C) {
+                seg[S_DS] = seg[S_SS] = 0x0A95; r[R_SP] = 0xFF00;
+                flags = (uint16_t)(flags & (0xFFFFu ^ F_DF));
+#define NW8(seg_,off_,value_) do { uint32_t a_=phys((seg_),(uint16_t)(off_)); g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(value_); } while(0)
+#define NW16(seg_,off_,value_) do { uint16_t v_=(uint16_t)(value_); NW8(seg_,off_,v_);NW8(seg_,(uint16_t)((off_)+1),v_>>8); } while(0)
+                uint32_t x_=(uint32_t)s*2654435761u+777u;
+#define NEXT() (x_=x_*1103515245u+12345u, (x_>>16))
+#define EMIT(b_) NW8(0x0A95,at++,(b_))
+#define EMITC(b_) NW8(0,at++,(b_))
+                for(unsigned j=0;j<0x200;j++) NW8(0x0A95,0xFD00+j,0);
+                for(unsigned j=0;j<0x900;j++) NW8(0x0A95,0xF000+j,0);
+                /* The skip flag (the caller's argument): zero in half the states. */
+                small[0]=(s&1)?0:(uint16_t)(1+NEXT()%0x7F);
+                NW16(0x0A95,0xFF00,small[0]);
+                /* Airfield records at CBDE + 16 * index; the four indexes, sometimes takeoff == landing. */
+                for(unsigned j=0;j<0x90;j++) NW8(0x0A95,0xCBDE + j,NEXT());
+                for(unsigned k=0;k<9;k++) {
+                    NW16(0x0A95,0xCBDE + 16*k,(k&1)?0:1+NEXT()%15);       /* name index, or 0: use the byte at +E */
+                    NW8(0x0A95,0xCBDE + 16*k + 0xE,NEXT()%16);
+                }
+                const unsigned ia=NEXT()%8;
+                NW16(0x0A95,0xE062,ia); NW16(0x0A95,0xE060,NEXT()%8); NW16(0x0A95,0xE072,NEXT()%8);
+                NW16(0x0A95,0xE074,(s&4)?ia:NEXT()%8);
+                /* Airfield names: a pointer table at DC70 into short strings. */
+                for(unsigned k=0;k<16;k++) {
+                    NW16(0x0A95,0xDC70+2*k,0xF800+16*k);
+                    const unsigned len=NEXT()%9;
+                    for(unsigned j=0;j<len;j++) NW8(0x0A95,0xF800+16*k+j,'a'+NEXT()%26);
+                }
+                NW16(0x0A95,0xD88E,NEXT()); NW16(0x0A95,0xE09C,NEXT());
+                for(unsigned j=0;j<0x40;j++) { NW8(0x0A95,0xDC00+j,NEXT()); NW8(0x0A95,0xDC18+j,NEXT()); }
+                /* Argument-logging stubs: each folds its stack words into one checksum cell, so a
+                 * wrong argument is a difference. 2F4C and 405F also return scripted bytes. */
+                static const struct { uint16_t at, args, cell, tab, ctr; } near_stubs[]={
+                    {0x2F4C,5,0xF500,0xF410,0xF400},{0x405F,1,0xF502,0xF420,0xF402},
+                    {0x2B1B,6,0xF504,0,0},{0x2651,2,0xF506,0,0},{0x31FA,4,0xF508,0,0}};
+                for(unsigned j=0;j<sizeof near_stubs/sizeof near_stubs[0];j++) {
+                    unsigned at=near_stubs[j].at; const uint16_t cell=near_stubs[j].cell;
+                    EMITC(0x55);EMITC(0x8B);EMITC(0xEC);
+                    EMITC(0xB9);EMITC(near_stubs[j].args);EMITC(0);                  /* mov cx,args */
+                    EMITC(0x8D);EMITC(0x5E);EMITC(0x04);                              /* lea bx,[bp+4] */
+                    EMITC(0x8B);EMITC(0x07);EMITC(0x83);EMITC(0xC3);EMITC(0x02);        /* mov ax,[bx] / add bx,2 */
+                    EMITC(0x8B);EMITC(0x16);EMITC(cell);EMITC(cell>>8);                /* mov dx,[cell] */
+                    EMITC(0xD1);EMITC(0xC2);EMITC(0x33);EMITC(0xD0);                   /* rol dx,1 / xor dx,ax */
+                    EMITC(0x89);EMITC(0x16);EMITC(cell);EMITC(cell>>8);                /* mov [cell],dx */
+                    EMITC(0xE2);EMITC(0xED);                                         /* loop */
+                    if(near_stubs[j].tab) {
+                        EMITC(0x8B);EMITC(0x1E);EMITC(near_stubs[j].ctr);EMITC(near_stubs[j].ctr>>8);     /* mov bx,[ctr] */
+                        EMITC(0xFF);EMITC(0x06);EMITC(near_stubs[j].ctr);EMITC(near_stubs[j].ctr>>8);     /* inc word [ctr] */
+                        EMITC(0x8A);EMITC(0x87);EMITC(near_stubs[j].tab);EMITC(near_stubs[j].tab>>8);     /* mov al,[bx+tab] */
+                    }
+                    EMITC(0x5D);EMITC(0xC3);
+                }
+                NW8(0,0x3588,0xC3);
+                {   /* the far drawing slot 6A26 (seven words) */
+                    NW8(0x0A95,0x6A26,0xEA); NW16(0x0A95,0x6A27,0xF080); NW16(0x0A95,0x6A29,0x0A95);
+                    unsigned at=0xF080; const uint16_t cell=0xF50A;
+                    EMIT(0x55);EMIT(0x8B);EMIT(0xEC);EMIT(0xB9);EMIT(7);EMIT(0);EMIT(0x8D);EMIT(0x5E);EMIT(0x06);
+                    EMIT(0x8B);EMIT(0x07);EMIT(0x83);EMIT(0xC3);EMIT(0x02);
+                    EMIT(0x8B);EMIT(0x16);EMIT(cell);EMIT(cell>>8);EMIT(0xD1);EMIT(0xC2);EMIT(0x33);EMIT(0xD0);
+                    EMIT(0x89);EMIT(0x16);EMIT(cell);EMIT(cell>>8);EMIT(0xE2);EMIT(0xED);EMIT(0x5D);EMIT(0xCB);
+                }
+                static const uint8_t legret[]={0,0,1,2,0x80,0xFF}, waitret[]={0,1,0,0xFF};
+                for(unsigned j=0;j<8;j++) { NW8(0x0A95,0xF410+j,legret[NEXT()%6]); NW8(0x0A95,0xF420+j,waitret[NEXT()%4]); }
+#undef EMIT
+#undef EMITC
+#undef NEXT
+#undef NW8
+#undef NW16
             }
             if (!strcmp(o->module, "START.EXE") && o->seg == 0 && o->ip == 0x6DB8) {
                 seg[S_DS] = seg[S_SS] = 0x0A95; r[R_SP] = 0xFF00;

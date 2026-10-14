@@ -15,20 +15,47 @@ standing practice, not a session-by-session log. Earlier sessions' detail
 
 ## Current state (14 October, later)
 
-END `2BEC` (debrief narrative) and START `6DB8` (pilot options dialog) are
-matched, named and fully gated; END `206A` is renamed to the continue prompt it
-is. Census 834 functions / 101,311 bytes, P2 58.70%, overall 84.16%. Proof:
-`D:/f117-gate/debrief-narrative` and `D:/f117-gate/pilot-options`; the private
-mutation runners are `end-narrative/mut/run_mutants.py` and
-`start-6db8/mut/run_mutants.py`, and `start-6db8/apply_start.py` applies a
-candidate to a tree.
+END `2BEC` (debrief narrative), START `6DB8` (pilot options dialog) and START
+`149C` (flight-plan display) are matched, named and fully gated; END `206A` is
+renamed to the continue prompt it is. Census 835 functions / 102,237 bytes, P2
+59.20%, overall 84.30%. Proof: `D:/f117-gate/debrief-narrative`, `pilot-options`
+and `flight-plan`; the private mutation runners are `end-narrative/mut`,
+`start-6db8/mut` and `start-149c/mut`, and `start-6db8/apply_start.py` and
+`start-149c/apply_149c.py` apply a candidate to a tree. Run every new body at
+four or five seeds, not one.
 Only the owner's `f117a.example.ini` edit and untracked `4k60.bat` remain
 outside commits. Do not overwrite or stage them.
 
-Next P2 candidates (all reached by `full_cycle`): START `149C` (365
-instructions: the flight-plan display, "Depart from %s at %s hours" / "Land at
-%s", four route legs with key waits through `405F` and `2F4C`), VGAME `1450`,
-`DC46`, `04E6`. A wait inside the body must clamp
+**Private leaf batch, built but NOT gated or committed: `D:/f117-gate/leaf-batch`.**
+22 small routines (bodies `leaf*.c` joined as `leafall.c`, rows in
+`leaf_rows.json`, fixtures `fixtures*.inc`; `bash reset_project.sh && py -I
+apply_leaf.py project/matched.c project/func_lockstep.c` rebuilds the private
+/Od project from HEAD; to integrate, run `apply_leaf.py` on `src/matched/matched.c`
+and `tests/func_lockstep.c`, add the CTest rows, refresh the census with
+`progress.py --census D:/f117-gate/census.tsv`, write docs and run the full gate):
+the five of `batch-a` (PLAYER `0B84`/`0BA2`, START `8CE6`, END `4BCA`, SETUP
+`0FFE`), mouse wrappers (PLAYER `0F47`, END `44B9`/`44E7`, START `8545`/`8573`),
+SETUP `0237:0004`, `0C84`, `14BE`, `1387`, `0BFB`, PLAYER `026B:004D`, `05F6`,
+MPS_LOGO `00DA:0491`/`04C4`/`043D`, END `45AD`, START `A8C2`. Every one passed
+`func_lockstep` equal at 4,000 states with all instructions reached (except
+error exits that hand to the original, whose floors are lower); START `8427`
+and END `4393` (tick wait then palette flush) were DROPPED: their mutants
+(record stride, clock count) were not caught by any route, because the tick
+wait re-synchronises timing, and lockstep cannot run them. The batch changes
+the harness: `int_h` answers INT 33h (buttons 0-7, position, reset) and, for
+SETUP `14BE` only, INT 10h; the step cap is raised for the zero-count loops
+(MPS `0491`, END `45AD`). **Still to do before it counts:** run
+`lock_mutants.py` (18 planned mutants, never run: the owner interrupted it),
+`route_check.py` on `full_cycle`, `ibm_boot`, `setup_calibration` with the final
+bodies (an earlier build of 15 was identical on all three), check each runs on a
+route (`ran N times`), then the full gate. Also fix two comments in the committed
+`6DB8` body: `3517` queues a palette update (first register, table, count), and
+`2B06` delays N timer ticks through `8427`, which applies the queued palette.
+
+Next P2 candidates after that (all reached by `full_cycle`): VGAME `1450`, `DC46`,
+`04E6`, START `7904`, `39F7`, END `1CF5`; CRT routines with data-dependent `rep`
+counts (MPS `0146:067C` strstr, `0822`) need a prescan for their room claim as
+the committed strlen/strcpy have. A wait inside the body must clamp
 `m->run_until` to `c->stop_at` (see END `2BEC`'s `DN_RUN`).
 
 What keeps P3 below 100%: only Stage 3/4 (85%): the owner's panel motion

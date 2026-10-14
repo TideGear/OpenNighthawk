@@ -141,6 +141,22 @@ frames exact and guest hash equal to the fresh 36.8 s headless prefix. SDL
 writes its final hash to the machine log, not stdout. Screenshots and timing
 logs stay outside git in `D:/f117-gate/map-refill`.
 
+## Flight-plan display proof (14 October 2026)
+
+START `149C` follows the same recipe as `6DB8`. Near helpers that wait or draw
+(`2F4C`, `405F`, `2B1B`, `2651`, `31FA`) become code in the original code
+segment that folds its stack words into a checksum (a compact loop, so it fits
+in a 67-byte routine), and `2F4C` and `405F` also return scripted bytes; the
+far slot `6A26` jumps to a copy living in the data segment. Stubs written with
+the data-segment writer instead of the code-segment one left the real routines
+running (the first run skipped 2,815 of 4,000 states as long runs): write each
+stub into the segment the call executes in. Claim sizes came from a longest-path
+script over the listing with the loop and label heads as extra claim points;
+every `SM4_NEED` resume address must be the instruction the state is actually
+at, which no audit checks: the default seed passed a body whose stray resume
+point was wrong, and only another seed's mid-run stop showed it. Run every new
+body at four or five seeds before trusting the first.
+
 ## Pilot options dialog proof (14 October 2026)
 
 START `6DB8` calls the drawing library through five far slots in the data

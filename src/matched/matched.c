@@ -42560,7 +42560,266 @@ finish:
 #undef PO_FAR
 }
 
+/* START 149C: the flight-plan display. Four airfield records (takeoff, the
+ * two stops, landing; [E062], [E060], [E072], [E074], at CBDE + 16 * index)
+ * give map positions, which are scaled by 92h and C3h to the plan's grid.
+ * Each point gets a marker (two draws, front and back page). Unless the
+ * caller's flag says to skip them, each leg is announced in turn - "Depart
+ * from X at <hours>", the leg's description, "Land at Y" - and waits for a key
+ * (405F), after the leg's line is drawn (2F4C), which may itself set the flag.
+ * Finally the route letters T, L, P and S are drawn at the points (31FA).
+ * The original drawing, text, wait and format routines stay in the guest;
+ * waits hand back at the current event boundary. */
+static int start_flight_plan_display(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { SKIP=4, REC_A=-0x118, REC_B=-0x114, REC_C=-0x116, REC_D=-0x110, REC_A_COPY=-0x11E,
+           X0_COPY=-0x120, Y0_COPY=-0x122, NAME=-0x11A, X0=-0xC, Y0=-0x112, X1=-0x11C, Y1=-4,
+           X2=-2, Y2=-6, X3=-0xA, Y3=-0xE, MARKER_CTX=-8, TEXT=-0x10E };
+#define FP_ADDR(o_) ((uint16_t)(c->r[R_BP]+(o_)))
+#define FP_PUSH(r_) cpu_push16(c,c->r[r_])
+#define FP_POP() (c->r[R_BX]=cpu_pop16(c))
+#define FP_SP(n_) (c->r[R_SP]=(uint16_t)alu_add(c,c->r[R_SP],(n_),1,0))
+#define FP_SUB0(r_) (c->r[r_]=(uint16_t)alu_sub(c,c->r[r_],c->r[r_],1,0))
+#define FP_DEC(r_) (c->r[r_]=(uint16_t)alu_dec(c,c->r[r_],1))
+#define FP_RUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at) m->run_until=c->stop_at; \
+    const int returned_=(call_); m->run_until=until_; if(!returned_) return 1; } while(0)
+#define FP_NEAR(at_,ret_,next_) do { FP_RUN(guest_call(m,(at_),(ret_))); SM4_NEED((next_),(ret_)); } while(0)
+    /* Positions are [record + 2] / 92h and [record + 4] / C3h. DX is zero and the
+     * divisors are constants, so the divisions cannot fault. */
+    if (!room(c,78)) return 0;
+    frame_open(c,0x122);
+    FP_PUSH(R_DI); FP_PUSH(R_SI); set_r8(c,R_CL,4); c->icount+=6;
+
+    /* The four records' addresses. */
+    c->r[R_AX]=x86_shift(c,4,ds_get(c,0xE062),get_r8(c,R_CL),1);
+    c->r[R_AX]=(uint16_t)alu_add(c,c->r[R_AX],0xCBDE,1,0); bp_put(c,REC_A,c->r[R_AX]);
+    c->r[R_DX]=x86_shift(c,4,ds_get(c,0xE060),get_r8(c,R_CL),1);
+    c->r[R_DX]=(uint16_t)alu_add(c,c->r[R_DX],0xCBDE,1,0); bp_put(c,REC_B,c->r[R_DX]);
+    c->r[R_BX]=x86_shift(c,4,ds_get(c,0xE072),get_r8(c,R_CL),1);
+    c->r[R_BX]=(uint16_t)alu_add(c,c->r[R_BX],0xCBDE,1,0); bp_put(c,REC_C,c->r[R_BX]);
+    c->r[R_SI]=x86_shift(c,4,ds_get(c,0xE074),get_r8(c,R_CL),1);
+    c->r[R_SI]=(uint16_t)alu_add(c,c->r[R_SI],0xCBDE,1,0); bp_put(c,REC_D,c->r[R_SI]);
+    c->icount+=16;
+
+    /* Scale each record's position to the grid. Register use follows the
+     * original so that the final state matches. */
+    c->r[R_CX]=0x92; c->r[R_DI]=c->r[R_AX]; bp_put(c,REC_A_COPY,c->r[R_AX]);
+    c->r[R_AX]=ds_get(c,(uint16_t)(c->r[R_DI]+2)); c->r[R_DI]=c->r[R_DX]; FP_SUB0(R_DX);
+    (void)x86_div16(c,c->r[R_CX]); bp_put(c,X0,c->r[R_AX]); c->icount+=8;
+    c->r[R_CX]=0xC3; c->r[R_DX]=c->r[R_BX]; c->r[R_BX]=bp_get(c,REC_A_COPY);
+    bp_put(c,X0_COPY,c->r[R_AX]); c->r[R_AX]=ds_get(c,(uint16_t)(c->r[R_BX]+4));
+    c->r[R_BX]=c->r[R_DX]; FP_SUB0(R_DX); (void)x86_div16(c,c->r[R_CX]);
+    bp_put(c,Y0,c->r[R_AX]); c->icount+=9;
+    c->r[R_CX]=0x92; c->r[R_DX]=c->r[R_AX]; c->r[R_AX]=ds_get(c,(uint16_t)(c->r[R_DI]+2));
+    bp_put(c,Y0_COPY,c->r[R_DX]); FP_SUB0(R_DX); (void)x86_div16(c,c->r[R_CX]);
+    bp_put(c,X1,c->r[R_AX]); c->icount+=7;
+    c->r[R_AX]=ds_get(c,(uint16_t)(c->r[R_DI]+4)); c->r[R_DI]=0xC3; FP_SUB0(R_DX);
+    (void)x86_div16(c,c->r[R_DI]); bp_put(c,Y1,c->r[R_AX]); c->icount+=5;
+    c->r[R_AX]=ds_get(c,(uint16_t)(c->r[R_BX]+2)); FP_SUB0(R_DX); (void)x86_div16(c,c->r[R_CX]);
+    bp_put(c,X2,c->r[R_AX]); c->icount+=4;
+    c->r[R_AX]=ds_get(c,(uint16_t)(c->r[R_BX]+4)); FP_SUB0(R_DX); (void)x86_div16(c,c->r[R_DI]);
+    bp_put(c,Y2,c->r[R_AX]); c->icount+=4;
+    c->r[R_AX]=ds_get(c,(uint16_t)(c->r[R_SI]+2)); FP_SUB0(R_DX); (void)x86_div16(c,c->r[R_CX]);
+    bp_put(c,X3,c->r[R_AX]); c->icount+=4;
+    c->r[R_AX]=ds_get(c,(uint16_t)(c->r[R_SI]+4)); FP_SUB0(R_DX); (void)x86_div16(c,c->r[R_DI]);
+    bp_put(c,Y3,c->r[R_AX]); c->icount+=4;
+
+    /* Marker at the takeoff point, on the screen (DC02) and back page (DC18). */
+    cpu_push16(c,ds_get(c,0xD88E)); c->r[R_AX]=bp_get(c,Y0_COPY); FP_DEC(R_AX); FP_DEC(R_AX);
+    FP_PUSH(R_AX); c->r[R_AX]=bp_get(c,X0_COPY); FP_DEC(R_AX); FP_PUSH(R_AX);
+    c->r[R_AX]=0xDC02; FP_PUSH(R_AX); c->icount+=10;
+    FP_NEAR(0x3693,0x156D,13);
+    FP_SP(8);
+    cpu_push16(c,ds_get(c,0xD88E)); c->r[R_AX]=bp_get(c,Y0); FP_DEC(R_AX); FP_DEC(R_AX);
+    FP_PUSH(R_AX); c->r[R_AX]=bp_get(c,X0); FP_DEC(R_AX); FP_PUSH(R_AX);
+    c->r[R_AX]=0xDC18; bp_put(c,MARKER_CTX,c->r[R_AX]); FP_PUSH(R_AX); c->icount+=12;
+    FP_NEAR(0x3693,0x158A,19);
+    FP_SP(8);
+    alu_sub(c,bp_get8(c,SKIP),0,0,0); c->icount+=3;
+    if(!(c->flags&F_ZF)) goto first_leg;
+
+    /* "Depart from <airfield> at <hours>." */
+    c->r[R_BX]=bp_get(c,REC_A);
+    alu_sub(c,ds_get(c,c->r[R_BX]),0,1,0); c->icount+=3;
+    if(c->flags&F_ZF) {
+        set_r8(c,R_BL,ds_get8(c,(uint16_t)(c->r[R_BX]+0x0E)));
+        set_r8(c,R_BH,(uint8_t)alu_sub(c,get_r8(c,R_BH),get_r8(c,R_BH),0,0));
+    } else {
+        c->r[R_BX]=ds_get(c,c->r[R_BX]);
+    }
+    c->icount+=2;
+    c->r[R_BX]=x86_shift(c,4,c->r[R_BX],1,1);
+    c->r[R_AX]=ds_get(c,(uint16_t)(c->r[R_BX]-0x2390)); bp_put(c,NAME,c->r[R_AX]);
+    c->r[R_AX]=0x0D88; FP_PUSH(R_AX); cpu_push16(c,bp_get(c,NAME));
+    c->r[R_AX]=0x02F3; FP_PUSH(R_AX); c->r[R_AX]=FP_ADDR(TEXT); FP_PUSH(R_AX); c->icount+=10;
+    FP_NEAR(0x959E,0x15C3,14);                    /* format the sentence */
+    FP_SP(8);
+    c->r[R_AX]=0x78; FP_PUSH(R_AX); c->r[R_AX]=1; FP_PUSH(R_AX); c->r[R_AX]=3; FP_PUSH(R_AX);
+    c->r[R_AX]=(uint16_t)alu_add(c,bp_get(c,Y0),0x18,1,0); FP_PUSH(R_AX);
+    cpu_push16(c,bp_get(c,X0)); c->r[R_AX]=FP_ADDR(TEXT); FP_PUSH(R_AX); c->icount+=13;
+    FP_NEAR(0x2B1B,0x15E5,4);                     /* draw it */
+    FP_SP(0xC);
+    c->r[R_AX]=0xF0; FP_PUSH(R_AX); c->icount+=3;
+    FP_NEAR(0x405F,0x15EF,3);                     /* wait for a key */
+    FP_POP(); bp_put8(c,SKIP,get_r8(c,R_AL)); c->icount+=2;
+    FP_NEAR(0x3588,0x15F6,8);                     /* redraw */
+
+first_leg:
+    SM4_NEED(8,0x15F6);
+    c->r[R_AX]=(uint16_t)(int16_t)(int8_t)bp_get8(c,SKIP);
+    FP_PUSH(R_AX); cpu_push16(c,bp_get(c,Y1)); cpu_push16(c,bp_get(c,X1));
+    cpu_push16(c,bp_get(c,Y0)); cpu_push16(c,bp_get(c,X0)); c->icount+=7;
+    FP_NEAR(0x2F4C,0x160C,14);                    /* draw the leg from point 0 to 1 */
+    FP_SP(0xA); bp_put8(c,SKIP,get_r8(c,R_AL));
+    cpu_push16(c,ds_get(c,0xE09C)); c->r[R_AX]=bp_get(c,Y1); FP_DEC(R_AX); FP_PUSH(R_AX);
+    c->r[R_CX]=bp_get(c,X1); c->r[R_CX]=(uint16_t)alu_dec(c,c->r[R_CX],1); FP_PUSH(R_CX);
+    c->r[R_DX]=0xDC02; FP_PUSH(R_DX); c->r[R_SI]=c->r[R_AX]; c->r[R_DI]=c->r[R_CX]; c->icount+=13;
+    FP_NEAR(0x3693,0x162C,7);
+    FP_SP(8);
+    cpu_push16(c,ds_get(c,0xE09C)); FP_PUSH(R_SI); FP_PUSH(R_DI);
+    c->r[R_AX]=0xDC18; FP_PUSH(R_AX); c->icount+=6;
+    FP_NEAR(0x3693,0x163C,8);
+    FP_SP(8);
+    alu_sub(c,bp_get8(c,SKIP),0,0,0); c->icount+=3;
+    if(!(c->flags&F_ZF)) goto second_leg;
+    c->r[R_AX]=FP_ADDR(TEXT); FP_PUSH(R_AX); c->r[R_CX]=0xE05E; FP_PUSH(R_CX); c->icount+=4;
+    FP_NEAR(0x2651,0x1651,15);                    /* describe leg 1 */
+    FP_POP(); FP_POP();
+    c->r[R_AX]=0x78; FP_PUSH(R_AX); c->r[R_AX]=1; FP_PUSH(R_AX); c->r[R_AX]=3; FP_PUSH(R_AX);
+    c->r[R_AX]=(uint16_t)alu_add(c,bp_get(c,Y1),0x18,1,0); FP_PUSH(R_AX);
+    cpu_push16(c,bp_get(c,X1)); c->r[R_AX]=FP_ADDR(TEXT); FP_PUSH(R_AX); c->icount+=14;
+    FP_NEAR(0x2B1B,0x1672,4);
+    FP_SP(0xC);
+    c->r[R_AX]=0xF0; FP_PUSH(R_AX); c->icount+=3;
+    FP_NEAR(0x405F,0x167C,3);
+    FP_POP(); bp_put8(c,SKIP,get_r8(c,R_AL)); c->icount+=2;
+    FP_NEAR(0x3588,0x1683,8);
+
+second_leg:
+    SM4_NEED(8,0x1683);
+    c->r[R_AX]=(uint16_t)(int16_t)(int8_t)bp_get8(c,SKIP);
+    FP_PUSH(R_AX); cpu_push16(c,bp_get(c,Y2)); cpu_push16(c,bp_get(c,X2));
+    cpu_push16(c,bp_get(c,Y1)); cpu_push16(c,bp_get(c,X1)); c->icount+=7;
+    FP_NEAR(0x2F4C,0x1698,14);                    /* leg 1 to 2 */
+    FP_SP(0xA); bp_put8(c,SKIP,get_r8(c,R_AL));
+    cpu_push16(c,ds_get(c,0xE09C)); c->r[R_AX]=bp_get(c,Y2); FP_DEC(R_AX); FP_PUSH(R_AX);
+    c->r[R_CX]=bp_get(c,X2); c->r[R_CX]=(uint16_t)alu_dec(c,c->r[R_CX],1); FP_PUSH(R_CX);
+    c->r[R_DX]=0xDC02; FP_PUSH(R_DX); c->r[R_SI]=c->r[R_AX]; c->r[R_DI]=c->r[R_CX]; c->icount+=13;
+    FP_NEAR(0x3693,0x16B7,7);
+    FP_SP(8);
+    cpu_push16(c,ds_get(c,0xE09C)); FP_PUSH(R_SI); FP_PUSH(R_DI);
+    c->r[R_AX]=0xDC18; FP_PUSH(R_AX); c->icount+=6;
+    FP_NEAR(0x3693,0x16C7,8);
+    FP_SP(8);
+    alu_sub(c,bp_get8(c,SKIP),0,0,0); c->icount+=3;
+    if(!(c->flags&F_ZF)) goto third_leg;
+    c->r[R_AX]=FP_ADDR(TEXT); FP_PUSH(R_AX); c->r[R_CX]=0xE070; FP_PUSH(R_CX); c->icount+=4;
+    FP_NEAR(0x2651,0x16DC,15);                    /* describe leg 2 */
+    FP_POP(); FP_POP();
+    c->r[R_AX]=0x78; FP_PUSH(R_AX); c->r[R_AX]=1; FP_PUSH(R_AX); c->r[R_AX]=3; FP_PUSH(R_AX);
+    c->r[R_AX]=(uint16_t)alu_add(c,bp_get(c,Y2),0x18,1,0); FP_PUSH(R_AX);
+    cpu_push16(c,bp_get(c,X2)); c->r[R_AX]=FP_ADDR(TEXT); FP_PUSH(R_AX); c->icount+=14;
+    FP_NEAR(0x2B1B,0x16FC,4);
+    FP_SP(0xC);
+    c->r[R_AX]=0xF0; FP_PUSH(R_AX); c->icount+=3;
+    FP_NEAR(0x405F,0x1706,3);
+    FP_POP(); bp_put8(c,SKIP,get_r8(c,R_AL)); c->icount+=2;
+    FP_NEAR(0x3588,0x170D,8);
+
+third_leg:
+    SM4_NEED(8,0x170D);
+    c->r[R_AX]=(uint16_t)(int16_t)(int8_t)bp_get8(c,SKIP);
+    FP_PUSH(R_AX); cpu_push16(c,bp_get(c,Y3)); cpu_push16(c,bp_get(c,X3));
+    cpu_push16(c,bp_get(c,Y2)); cpu_push16(c,bp_get(c,X2)); c->icount+=7;
+    FP_NEAR(0x2F4C,0x1721,15);                    /* leg 2 to 3 */
+    FP_SP(0xA); bp_put8(c,SKIP,get_r8(c,R_AL));
+    cpu_push16(c,ds_get(c,0xD88E)); c->r[R_AX]=bp_get(c,Y3); FP_DEC(R_AX); FP_DEC(R_AX); FP_PUSH(R_AX);
+    c->r[R_CX]=bp_get(c,X3); c->r[R_CX]=(uint16_t)alu_dec(c,c->r[R_CX],1); FP_PUSH(R_CX);
+    c->r[R_DX]=0xDC02; FP_PUSH(R_DX); c->r[R_SI]=c->r[R_AX]; c->r[R_DI]=c->r[R_CX]; c->icount+=14;
+    FP_NEAR(0x3693,0x1741,7);
+    FP_SP(8);
+    cpu_push16(c,ds_get(c,0xD88E)); FP_PUSH(R_SI); FP_PUSH(R_DI);
+    c->r[R_AX]=0xDC18; FP_PUSH(R_AX); c->icount+=6;
+    FP_NEAR(0x3693,0x1751,17);
+    FP_SP(8);
+    alu_sub(c,bp_get8(c,SKIP),0,0,0); c->icount+=3;
+    if(!(c->flags&F_ZF)) goto draw_letters;
+
+    /* "Land at <airfield>." */
+    c->r[R_BX]=bp_get(c,REC_D);
+    alu_sub(c,ds_get(c,c->r[R_BX]),0,1,0); c->icount+=3;
+    if(c->flags&F_ZF) {
+        set_r8(c,R_BL,ds_get8(c,(uint16_t)(c->r[R_BX]+0x0E)));
+        set_r8(c,R_BH,(uint8_t)alu_sub(c,get_r8(c,R_BH),get_r8(c,R_BH),0,0));
+    } else {
+        c->r[R_BX]=ds_get(c,c->r[R_BX]);
+    }
+    c->icount+=2;
+    c->r[R_BX]=x86_shift(c,4,c->r[R_BX],1,1);
+    c->r[R_AX]=ds_get(c,(uint16_t)(c->r[R_BX]-0x2390)); bp_put(c,NAME,c->r[R_AX]);
+    FP_PUSH(R_AX); c->r[R_AX]=0x030F; FP_PUSH(R_AX);
+    c->r[R_AX]=FP_ADDR(TEXT); FP_PUSH(R_AX); c->icount+=8;
+    FP_NEAR(0x959E,0x1783,14);
+    FP_SP(6);
+    c->r[R_AX]=0x78; FP_PUSH(R_AX); c->r[R_AX]=1; FP_PUSH(R_AX); c->r[R_AX]=3; FP_PUSH(R_AX);
+    c->r[R_AX]=(uint16_t)alu_add(c,bp_get(c,Y3),0x18,1,0); FP_PUSH(R_AX);
+    cpu_push16(c,bp_get(c,X3)); c->r[R_AX]=FP_ADDR(TEXT); FP_PUSH(R_AX); c->icount+=13;
+    FP_NEAR(0x2B1B,0x17A4,4);
+    FP_SP(0xC);
+    c->r[R_AX]=0xF0; FP_PUSH(R_AX); c->icount+=3;
+    FP_NEAR(0x405F,0x17AE,3);
+    FP_POP(); bp_put8(c,SKIP,get_r8(c,R_AL)); c->icount+=2;
+    FP_NEAR(0x3588,0x17B5,11);
+
+draw_letters:
+    SM4_NEED(11,0x17B5);
+    c->r[R_BX]=bp_get(c,MARKER_CTX);
+    seg_write16(c,c->seg[S_DS],(uint16_t)(c->r[R_BX]+4),1);
+    seg_write16(c,c->seg[S_DS],(uint16_t)(c->r[R_BX]+0xC),4);
+    c->r[R_AX]=ds_get(c,0xE074);
+    alu_sub(c,ds_get(c,0xE062),c->r[R_AX],1,0); c->icount+=6;
+    if(!(c->flags&F_ZF)) goto two_fields;
+    cpu_push16(c,bp_get(c,REC_C)); cpu_push16(c,bp_get(c,REC_B)); cpu_push16(c,bp_get(c,REC_A));
+    c->r[R_AX]=0x031B; c->icount+=5;              /* takeoff = landing field: "T,L" */
+    goto final_letters;
+two_fields:                                       /* "T" at A, then "L" at D */
+    SM4_NEED(6,0x17DC);
+    cpu_push16(c,bp_get(c,REC_C)); cpu_push16(c,bp_get(c,REC_B)); cpu_push16(c,bp_get(c,REC_A));
+    c->r[R_AX]=0x031F; FP_PUSH(R_AX); c->icount+=5;
+    FP_NEAR(0x31FA,0x17EF,5);
+    FP_SP(8);
+    cpu_push16(c,bp_get(c,REC_C)); cpu_push16(c,bp_get(c,REC_B)); cpu_push16(c,bp_get(c,REC_D));
+    c->r[R_AX]=0x0321; c->icount+=5;
+final_letters:
+    SM4_NEED(2,0x1801);
+    FP_PUSH(R_AX); c->icount++;
+    FP_NEAR(0x31FA,0x1805,7);
+    FP_SP(8);
+    cpu_push16(c,bp_get(c,REC_C)); cpu_push16(c,bp_get(c,REC_A)); cpu_push16(c,bp_get(c,REC_B));
+    c->r[R_AX]=0x0323; FP_PUSH(R_AX); c->icount+=6;      /* "P" */
+    FP_NEAR(0x31FA,0x181B,7);
+    FP_SP(8);
+    cpu_push16(c,bp_get(c,REC_D)); cpu_push16(c,bp_get(c,REC_B)); cpu_push16(c,bp_get(c,REC_C));
+    c->r[R_AX]=0x0325; FP_PUSH(R_AX); c->icount+=6;      /* "S" */
+    FP_NEAR(0x31FA,0x1831,6);
+    FP_SP(8);
+    c->r[R_SI]=cpu_pop16(c); c->r[R_DI]=cpu_pop16(c);
+    c->r[R_SP]=c->r[R_BP]; c->r[R_BP]=cpu_pop16(c); near_ret(c); c->icount+=6;
+    return 1;
+#undef FP_ADDR
+#undef FP_PUSH
+#undef FP_POP
+#undef FP_SP
+#undef FP_SUB0
+#undef FP_DEC
+#undef FP_RUN
+#undef FP_NEAR
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "START.EXE", START_47304, 0x0000, 0x149C, start_flight_plan_display, "flight plan display", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x6DB8, start_pilot_options_dialog, "pilot options dialog", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x2BEC, end_debrief_narrative, "debrief narrative and measured layout", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0FAE, 0x0002, vgame_bind_segment_entries, "bind segment entry slots", 2 },
