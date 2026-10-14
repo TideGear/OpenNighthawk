@@ -127,9 +127,9 @@
       {
         "item": "Stage 2: high-resolution re-draw",
         "weight": 17.3,
-        "done": 0.95,
+        "done": 0.97,
         "kind": "estimate",
-        "evidence": "Verified camera-space geometry and exact snapshots refine perspective, near-plane and orthographic polygons; the boot sentinels refine all 48,856 polygons and preserve 368 exact logic frames, 366 endpoint pairs and guest hashes at N=4/9. All fill styles now refine too: dither/stipple preserve coarse-sized cells and transparent backgrounds, with N=1/4/9 fixtures and moving-polygon endpoint checks. All 66 checks across 11 retained windows pass. HUD strokes are fine-grid lines; bitmap lettering/artwork stay original by owner choice. The one extreme original clipping-overflow artifact and incomplete legacy metadata retain scaling deliberately. Remaining work is 4K/60 performance and display polish, not missing fill-style rules. See presentation.md."
+        "evidence": "Verified camera-space geometry and exact snapshots refine perspective, near-plane and orthographic polygons; the boot sentinels refine all 48,856 polygons and preserve 368 exact logic frames, 366 endpoint pairs and guest hashes at N=4/9. All fill styles now refine too: dither/stipple preserve coarse-sized cells and transparent backgrounds, with N=1/4/9 fixtures and moving-polygon endpoint checks. All 66 checks across 11 retained windows pass. HUD strokes are fine-grid lines that join without notches (cell-centred, whole end caps) and outline edges use the same stroke; the camera's sky/ground gradient strips and the horizon refill from their corners (observer record U), thin strips as strokes, with tests/test_present_strips.c; bitmap lettering/artwork stay original by owner choice. The map terrain's edges are still scaled copies (open). The one extreme original clipping-overflow artifact and incomplete legacy metadata retain scaling deliberately. Remaining work is 4K/60 performance and display polish, not missing fill-style rules. See presentation.md."
       },
       {
         "item": "Stage 3 and 4: interpolation to 60+ fps, pacing and polish",

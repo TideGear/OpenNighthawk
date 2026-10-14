@@ -30,6 +30,9 @@
  *   'R' the fill paints (1377:005E): the colour word, the top row, the row
  *       count and each row's bounds, after the near-clip join (an 'E' between
  *       'F' and 'R') and the border runs
+ *   'U' a polygon handed to the span rasteriser (0FB2:01E6, fill_polygon): the
+ *       colour byte, the corner count and each corner's x and y (screen words
+ *       before the rasteriser's clip); the span fills it makes follow as 'Q'
  *   'L' an edge of an outline polygon drawn as a line (1377:0055): slot,
  *       x0, y0, x1, y1, the colour word, the page segment, rows 0 and 1 of
  *       the row table, and the line handler's offset in 1377 */
@@ -77,6 +80,7 @@ void observe_edge_prepared(machine_t *m, uint16_t slot, uint16_t di, uint16_t bx
  * after it, so these give the observer's records ('E', 'F') there. */
 void observe_poly_edge(machine_t *m);
 void observe_poly_fill(machine_t *m);
+void observe_span_polygon(machine_t *m);   /* fill_polygon's entry: the corners handed to the span rasteriser ('U') */
 
 /* Register the hooks on the original's own entry points (once). */
 void observe_register(void);

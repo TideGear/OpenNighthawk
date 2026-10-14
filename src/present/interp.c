@@ -73,6 +73,7 @@ typedef struct { int v0, nv, g0, ng, p0, np, l0, nl; } batch_t;
 
 typedef struct { int colour, mode, ord, ri; } span_t;
 typedef struct { int colour, page, origin, ri; } hud_t;
+typedef struct { int colour, ord, ri; } ut_t;       /* a polygon handed to the span rasteriser ('U') */
 
 struct interp_frame {
     const interp_rec *rec;
@@ -90,6 +91,7 @@ struct interp_frame {
     int *pl; int npl, cpl;
     span_t *s; int ns, cs;
     hud_t *h; int nh, ch;
+    ut_t *u; int nu, cu;
 };
 
 static edge_t parse_edge(const int32_t *v, int ri)
@@ -221,6 +223,15 @@ interp_frame *interp_parse(const interp_rec *rec, int n)
                 f->s[f->ns++] = s;
             }
             break;
+        case 'U':
+            if (r->n >= 8 && v[1] >= 3 && v[1] <= 32 && 2 + 2 * v[1] <= r->n) {
+                int ord = 0;
+                for (int k = 0; k < f->nu; k++) ord += f->u[k].colour == v[0];
+                GROW(f->u, f->nu, f->cu);
+                ut_t u = { v[0], ord, i };
+                f->u[f->nu++] = u;
+            }
+            break;
         case 'N':
             if (r->n >= 7) {
                 GROW(f->h, f->nh, f->ch);
@@ -239,7 +250,7 @@ void interp_frame_free(interp_frame *f)
 {
     if (!f) return;
     free(f->b); free(f->vert); free(f->vrec); free(f->g); free(f->e); free(f->j); free(f->p);
-    free(f->bi); free(f->ai); free(f->li); free(f->pl); free(f->s); free(f->h);
+    free(f->bi); free(f->ai); free(f->li); free(f->pl); free(f->s); free(f->h); free(f->u);
     free(f);
 }
 
@@ -948,6 +959,24 @@ int interp_inbetween_ex(const interp_frame *A, const interp_frame *B, const inte
         out_pooled(&made, 'Q', S->rec[s->ri].icount, vals, n);
         st[IS_SPANS_MOVED]++;
         st[IS_REGENERATED]++;
+    }
+    /* polygons handed to the span rasteriser (the sky and ground strips, the map's regions): by
+     * colour and order, their corners moved; the fine refill follows the moved corners */
+    for (int k = 0; k < S->nu; k++) {
+        const ut_t *u = &S->u[k];
+        int j = -1;
+        for (int q = 0; q < O->nu; q++)
+            if (O->u[q].colour == u->colour && O->u[q].ord == u->ord) { j = O->u[q].ri; break; }
+        if (j < 0) continue;
+        const int32_t *va = S->rec[u->ri].v, *vb = O->rec[j].v;
+        if (va[1] != vb[1]) continue;
+        int n = 0;
+        vals[n++] = va[0];
+        vals[n++] = va[1];
+        for (int q = 0; q < 2 * va[1]; q++) vals[n++] = (int32_t)rnd(lerp(va[2 + q], vb[2 + q], w));
+        rep[u->ri] = made.n;
+        repn[u->ri] = 1;
+        out_pooled(&made, 'U', S->rec[u->ri].icount, vals, n);
     }
     /* HUD lines: groups by colour, page and origin */
     static F117_TLS int ia[4096], ib[4096];

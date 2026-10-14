@@ -299,13 +299,9 @@ static void lib_line(drawlist_page *p, int32_t x0, int32_t y0, int32_t x1, int32
  * grid, with a square nib clipped to the segment's perpendicular end planes.
  * Canonical endpoints make even widths and raster ties direction independent.
  * Coordinates have already been clipped by the original graphics driver. */
-static void fine_line(drawlist_page *p, int x0, int y0, int x1, int y1, int width, int col)
+void drawlist_fine_stroke(drawlist_page *p, int ax, int ay, int bx, int by, int width, int col)
 {
-    /* The stroke runs between the centres of its end cells, so an axis-aligned line of the
-     * default width covers exactly the original's cells; a square nib with whole end caps
-     * means strokes that share an end meet without a notch. */
-    const int n = p->n, w = 320 * n, h = 200 * n, centre = n / 2;
-    int ax = x0 * n + centre, ay = y0 * n + centre, bx = x1 * n + centre, by = y1 * n + centre;
+    const int n = p->n, w = 320 * n, h = 200 * n;
     if (ax > bx || (ax == bx && ay > by)) {
         int t = ax; ax = bx; bx = t; t = ay; ay = by; by = t;
     }
@@ -329,6 +325,15 @@ static void fine_line(drawlist_page *p, int x0, int y0, int x1, int y1, int widt
         if (dx >= dy) { error -= dy; if (error < 0) { y += sy; error += dx; } x += sx; }
         else { error -= dx; if (error < 0) { x += sx; error += dy; } y += sy; }
     }
+}
+
+static void fine_line(drawlist_page *p, int x0, int y0, int x1, int y1, int width, int col)
+{
+    /* The stroke runs between the centres of its end cells, so an axis-aligned line of the
+     * default width covers exactly the original's cells; a square nib with whole end caps
+     * means strokes that share an end meet without a notch. */
+    const int n = p->n, centre = n / 2;
+    drawlist_fine_stroke(p, x0 * n + centre, y0 * n + centre, x1 * n + centre, y1 * n + centre, width, col);
 }
 
 /* Keep the exact coarse rule, replacing only its fine-grid mirror. Unusual

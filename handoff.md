@@ -21,6 +21,25 @@ is left of Phase 3 is the owner's motion review on a physical panel, other
 scenes and slower machines. Phase 2's private routine batch stays parked
 until Phase 3 is closed out.
 
+## Latest Phase 3 integration: the owner's 4K review (13 October)
+
+The owner's first look at 4K found three roughnesses; two are fixed, one is open.
+**Joined strokes and outline edges:** strokes now run between end-cell centres with
+whole end caps (no notch at the canopy corner or the bearing marker), and the
+original's outline edges (`L`: ground markings, the weapon box) use the same fine
+stroke. **Horizon, sky and ground gradient:** these are polygons the game fills
+through its own span rasteriser (VGAME `0FB2:01E6`); a new observer record `U` (the
+corners) lets the fine renderer refill them from their corners, and a strip too thin
+to trim is drawn as one fine stroke. A banked horizon is one smooth diagonal; in-between
+frames show it too. Details, the thin-strip rule and the tests:
+[docs/presentation.md](docs/presentation.md#joined-strokes-outline-edges-and-span-rasteriser-polygons-13-october-2026).
+Gate: 61 tests, 45 routes identical, both profiles and three matched seeds with zero
+mismatches (1,584 s); 90 window checks (the 66 retained plus four new windows that
+carry `U` records, in `D:/f117-gate/p3-stream/obs`), boot N=4/9 exact, all 45 routes
+at N=1 exact. **The map is open**: its terrain triangles come out as scaled copies;
+see the "map (open)" paragraph for what is known (the cockpit-art page round trip, a
+prototype that restored fine rows, and why it changed nothing visible).
+
 ## Latest Phase 3 integration: threaded 4K/60 presentation (13 October)
 
 Fullscreen Direct3D 11, 3840x2160 at 59.99 Hz, vsync, N=9 passes

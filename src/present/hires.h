@@ -50,6 +50,7 @@ enum {
     HS_POLYGONS, HS_LEFT_NEAREST, HS_REFILLED, HS_FOOT_PIXELS, HS_FOOT_FINE,
     HS_GROW0, HS_GROW05, HS_GROW1, HS_GROW15, HS_GROW2, HS_GROW3,
     HS_NEAR_CLIPPED, HS_FEW_EDGES, HS_NO_VERTICES, HS_BEHIND, HS_NO_DIVISOR, HS_BEYOND, HS_STYLE,
+    HS_SPAN_POLYGONS, HS_SPAN_REFILLED, HS_SPAN_BEYOND, HS_SPAN_THIN,
     HS_COUNT
 };
 const char *hires_stat_name(int k);
@@ -67,6 +68,7 @@ typedef struct {
         int nedges, njoin;
         int32_t rows[2 * 256];
     } poly;
+    struct { int have, n, colour; double x[32], y[32]; } span_poly;   /* a 'U' waiting for its span fill */
     int seen_fill;
     int fill_colour;
     int suppressed;                   /* the page index paused while a refilled polygon's rows arrive, or -1 */

@@ -12,7 +12,9 @@ static const char *const STAT_NAMES[HS_COUNT] = {
     "footprint fine pixels painted", "overshoot 0", "overshoot 0.5", "overshoot 1", "overshoot 1.5", "overshoot 2",
     "overshoot 3", "skipped: near-clipped", "skipped: fewer than three edges", "skipped: edge without vertices",
     "skipped: vertex behind the eye", "skipped: vertex without a divisor",
-    "skipped: footprint beyond 3 px of its geometry", "skipped: fill style with no rule" };
+    "skipped: footprint beyond 3 px of its geometry", "skipped: fill style with no rule",
+    "span-rasteriser polygons (strips, regions)", "span polygons refilled from their corners",
+    "span polygons: footprint beyond 3 px of the corners", "span polygons: strips too thin to trim" };
 
 const char *hires_stat_name(int k) { return k >= 0 && k < HS_COUNT ? STAT_NAMES[k] : ""; }
 
@@ -454,6 +456,134 @@ static void refill(hires *h, drawlist *d, drawlist_page *page)
     h->suppressed = (int)(page - d->page);
 }
 
+/* A polygon the game fills through its own span rasteriser (record 'U': the camera's sky and
+ * ground gradient strips and the map's regions) arrives as its integer corners, and the span
+ * fill ('Q') that paints it follows. The corners are the true geometry to within half a pixel
+ * (the game rounded them), so the edges between them are the exact lines the rasteriser walked.
+ * Refill the strip on the fine grid the way a model polygon is refilled: the footprint is the
+ * span fill's rows, the true shape sits at the corners' pixel centres, and the least overshoot
+ * with which it covers the whole footprint at N = 1 is kept at that many fine pixels. */
+#ifndef THIN_PERCENT
+#define THIN_PERCENT 60
+#endif
+
+/* A strip whose true shape is a small part of its footprint is, in the original, a line: a
+ * stair of cells one or two thick. Draw it as one fine stroke along the strip's direction, from
+ * the footprint's first cell to its last, as thick (in cells) as the footprint is. */
+static void thin_strip_stroke(hires *h, drawlist *d, drawlist_page *page, const footprint *f,
+                              const double (*base)[4], int ne, int64_t want)
+{
+    double best = 0, dx = 0, dy = 0;
+    for (int k = 0; k < ne; k++) {
+        const double ex = base[k][2] - base[k][0], ey = base[k][3] - base[k][1], len = sqrt(ex * ex + ey * ey);
+        if (len > best) { best = len; dx = ex / len; dy = ey / len; }
+    }
+    if (best < 1e-9) { h->stats[HS_SPAN_THIN]++; return; }
+    double sx = 0, sy = 0;
+    for (int k = 0; k < f->n; k++) {
+        if (!f->has[k]) continue;
+        const int64_t cells = f->r[k] - f->l[k] + 1;
+        sx += (double)cells * (f->l[k] + f->r[k] + 1) / 2.0;
+        sy += (double)cells * (f->y0 + k + 0.5);
+    }
+    const double cx = sx / (double)want, cy = sy / (double)want;
+    double tmin = INFINITY, tmax = -INFINITY;
+    for (int k = 0; k < f->n; k++) {
+        if (!f->has[k]) continue;
+        const double y = f->y0 + k + 0.5 - cy;
+        const double a = (f->l[k] + 0.5 - cx) * dx + y * dy, b = (f->r[k] + 0.5 - cx) * dx + y * dy;
+        if (a < tmin) tmin = a;
+        if (b < tmin) tmin = b;
+        if (a > tmax) tmax = a;
+        if (b > tmax) tmax = b;
+    }
+    const double major = (tmax - tmin) * (fabs(dx) > fabs(dy) ? fabs(dx) : fabs(dy));
+    int thick = (int)floor((double)want / (major + 1.0) + 0.5);
+    if (thick < 1) thick = 1;
+    const int n = h->n;
+    const int ax = (int)floor((cx + dx * tmin) * n + 0.5), ay = (int)floor((cy + dy * tmin) * n + 0.5);
+    const int bx = (int)floor((cx + dx * tmax) * n + 0.5), by = (int)floor((cy + dy * tmax) * n + 0.5);
+    drawlist_fine_stroke(page, ax, ay, bx, by, thick * n, d->colour & 0xFF);
+    page->suppress = 1;
+    h->suppressed = (int)(page - d->page);
+    h->stats[HS_SPAN_THIN]++;
+}
+static void refill_span_polygon(hires *h, drawlist *d, const int32_t *v, int n)
+{
+    static F117_TLS double base[32][4], fine[32][4];
+    static F117_TLS footprint f;
+    static F117_TLS extents x;
+    static F117_TLS int32_t spans[3 * 2 * 256 * 64];
+    const int nrows = v[3];
+    if (v[2] != 0 || nrows <= 0 || nrows > 256 || h->n <= 1 || h->n > 64) return;   /* N = 1 is the original */
+    uint16_t seg = d->seg;
+    int32_t org = d->origin;
+    if (n >= 6 + 2 * nrows) { seg = (uint16_t)v[4 + 2 * nrows]; org = v[5 + 2 * nrows]; }
+    drawlist_page *page = drawlist_page_of(d, seg);
+    if (!page || !page->hi || org < 0 || org >= 64000 || d->colour < 0) return;
+    h->stats[HS_SPAN_POLYGONS]++;
+    const int ox = org % 320, oy = org / 320;
+    const int ne = h->span_poly.n;
+    for (int k = 0; k < ne; k++) {
+        const int j = (k + 1) % ne;
+        base[k][0] = h->span_poly.x[k] + ox + 0.5; base[k][1] = h->span_poly.y[k] + oy + 0.5;
+        base[k][2] = h->span_poly.x[j] + ox + 0.5; base[k][3] = h->span_poly.y[j] + oy + 0.5;
+    }
+    f.y0 = v[0] + oy;
+    f.n = nrows;
+    int64_t want = 0;
+    for (int k = 0; k < nrows; k++) {
+        int32_t l = v[4 + 2 * k], r = v[5 + 2 * k];
+        const int y = f.y0 + k;
+        f.has[k] = 0;
+        if (y < 0 || y >= 200 || r < l || (r == l && (r == 0 || r == 0x13F))) continue;
+        l += ox; r += ox;
+        if (l < 0) l = 0;
+        if (r > 319) r = 319;
+        if (l > r) continue;
+        f.l[k] = l; f.r[k] = r; f.has[k] = 1;
+        want += r - l + 1;
+    }
+    if (!want) return;
+    extents_init(&x, (const double (*)[4])base, ne);
+    int g;
+    for (g = 0; g < 6; g++) {
+        const int c = fine_cover(&f, &x, 1, GROWS[g], spans);
+        if (cover_total(spans, c) == want) break;
+    }
+    if (g == 6) { h->stats[HS_SPAN_BEYOND]++; return; }
+    /* A strip so thin that its true shape is a small part of what the rasteriser painted (the
+     * gradient strips near the horizon, whose edges nearly coincide) is a stair-stepped line in
+     * the original, not a region: trimming it to the true geometry would leave holes, so it
+     * stays a scaled copy. */
+    {
+        const int c0 = fine_cover(&f, &x, 1, 0, spans);
+        if (cover_total(spans, c0) * 100 < want * THIN_PERCENT) {
+            thin_strip_stroke(h, d, page, &f, base, ne, want);
+            return;
+        }
+    }
+    const int sc = h->n;
+    for (int k = 0; k < ne; k++)
+        for (int c = 0; c < 4; c++) fine[k][c] = base[k][c] * sc;
+    extents_init(&x, (const double (*)[4])fine, ne);
+    const int count = fine_cover(&f, &x, sc, GROWS[g], spans);
+    const int W = 320 * sc;
+    const int word = 0xFF00 | (d->colour & 0xFF);
+    for (int k = 0; k < count; k++) {
+        const int32_t hy = spans[3 * k];
+        int32_t l = spans[3 * k + 1], r = spans[3 * k + 2];
+        if (hy < 0 || hy >= 200 * sc) continue;
+        if (l < 0) l = 0;
+        if (r > W - 1) r = W - 1;
+        if (r < l) continue;
+        paint_run(page->hi + (size_t)hy * W + l, r - l + 1, word, l, hy, sc);
+    }
+    page->suppress = 1;
+    h->suppressed = (int)(page - d->page);
+    h->stats[HS_SPAN_REFILLED]++;
+}
+
 int hires_guard(const uint8_t *coarse, uint8_t *fine, int n, uint64_t *flat, uint64_t *agree)
 {
     return hires_guard_masked(coarse, fine, n, NULL, flat, agree);
@@ -514,6 +644,7 @@ static void parse_edge(hires *h, const int32_t *v, int n, hires_edge *e)
 
 void hires_record(hires *h, drawlist *d, char kind, const int32_t *v, int n)
 {
+    if (kind != 'U' && kind != 'K' && kind != 'Q' && kind != 'X' && kind != 'x' && kind != 'n') h->span_poly.have = 0;
     if (h->suppressed >= 0 && kind != 'b' && kind != 'a') {
         d->page[h->suppressed].suppress = 0;
         h->suppressed = -1;
@@ -583,6 +714,19 @@ void hires_record(hires *h, drawlist *d, char kind, const int32_t *v, int n)
             for (int k = 0; k < 2 * h->poly.nrows && 3 + k < n; k++) h->poly.rows[k] = v[3 + k];
             h->poly.have_rows = 1;
         }
+        break;
+    case 'U':
+        h->span_poly.have = 0;
+        if (n >= 8 && v[1] >= 3 && v[1] <= 32 && 2 + 2 * v[1] <= n) {
+            h->span_poly.have = 1;
+            h->span_poly.colour = v[0] & 0xFF;
+            h->span_poly.n = v[1];
+            for (int k = 0; k < v[1]; k++) { h->span_poly.x[k] = v[2 + 2 * k]; h->span_poly.y[k] = v[3 + 2 * k]; }
+        }
+        break;
+    case 'Q':
+        if (h->span_poly.have && n >= 4 && d->colour == h->span_poly.colour) refill_span_polygon(h, d, v, n);
+        h->span_poly.have = 0;
         break;
     case 'b':
         if (n < 5 || !h->poly.active || h->poly.done) break;

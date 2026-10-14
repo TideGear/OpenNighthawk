@@ -129,6 +129,52 @@ sessions), both 5,718,848-state instruction profiles and three 831-address
 matched seeds, with zero mismatches and passing reachability/event checks
 (1,969 seconds). Private evidence: `D:/f117-gate/p3-styles`.
 
+## Joined strokes, outline edges and span-rasteriser polygons (13 October 2026)
+
+The owner's first 4K review found three kinds of roughness, each with its own cause.
+
+**Strokes that did not join.** Strokes were cut square across their direction at both ends
+and centred on a cell's corner, so two strokes meeting at an angle left a notch (the
+canopy corner, the bearing-tape marker) and every stroke sat half a cell up and left of the
+cells it stands for. They now run between the centres of their end cells with whole end
+caps (see the line rule above). **Outline edges** (record `L`: ground markings, the weapon
+target box) were still scaled blocks; they use the same stroke.
+
+**The horizon and the sky and ground gradient.** These are polygons the game fills through its
+own span rasteriser (fill_polygon, VGAME `0FB2:01E6`), not model polygons, so the fine
+renderer only ever saw their span fills. A hook at that routine's entry now logs each
+polygon's corners (`U`: colour, count, x and y words in the rasteriser's own coordinates,
+which are far outside the picture for a horizon strip) before its span fill (`Q`). The fine
+renderer treats the corners as the true geometry to within half a cell (the game rounded
+them) and refills the strip the way a model polygon is refilled: the footprint is the span
+fill's rows, the shape sits at the corners' cell centres, and the least overshoot that covers
+the whole footprint at N=1 is kept at that many fine pixels. A banked horizon is one straight
+diagonal and the gradient strips are smooth slanted bands. A strip whose true shape is under
+60% of its footprint (the strips near the horizon whose edges nearly coincide) is a line in
+the original, a stair one or two cells thick: trimming it to its geometry left holes, so it is
+drawn as one fine stroke along its direction, from the footprint's first cell to its last, as
+thick in cells as the footprint is. A polygon whose footprint is not within 3 pixels of its
+corners stays a scaled copy. Interpolation pairs `U` records by colour and order and moves
+their corners with the span fills.
+
+`tests/test_present_strips.c` pins the three cases (a thick strip's edge is straight, a thin
+strip stays a solid line, a mismatch is left scaled). In the retained banked window 219 of 230
+strip polygons are refined; live boot at N=4 and N=9, all 45 routes at N=1 and every retained
+window still pass, and the in-between pictures show the same smooth horizon.
+
+**The map (open).** Its terrain is drawn once, by model polygons (integer-vertex triangles and
+quads in orthographic mode, clipped to the map window), into the work page; the game then
+copies it into the cockpit-art page (segment `09C0`) and back every frame. That page is not one
+the replay holds, so a copy to it is skipped and a copy from it uses the logged coarse pixels:
+any fine detail would be lost on that round trip. A prototype that kept the fine rows of each
+rectangle copied to a page not held, and restored them when the log's coarse bytes still
+matched, worked mechanically (the bytes matched on every return) but changed nothing visible:
+the map's fine layer differs from its coarse one in whole cells where terrain polygons overlap,
+which the flat-pixel guard hides, and the polygons' diagonal edges did not come out smooth.
+Why is not yet understood (their edges are clipped, with status words 8080 and 8A8A, against
+the map window). The prototype was removed; the map stays a scaled copy of the original, and
+this is the next piece of presentation work.
+
 ## Fully clipped views, reused vertices and orthographic maps (12-13 October 2026)
 
 The remaining horizon fallbacks in the corrected strike capture were not

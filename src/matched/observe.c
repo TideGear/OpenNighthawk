@@ -236,7 +236,36 @@ static int hook_poly_fill(machine_t *m)
     return 0;
 }
 
+/* 0FB2:01E6, a polygon handed to the span rasteriser (fill_polygon, a far routine; the camera's
+ * sky and ground gradient strips and, it seems, the map's regions go through it). At its entry
+ * the far-call frame holds the vertex count at SP+6, the DS list's offset at SP+8 and the colour
+ * byte at SP+0Ah; the list is x, y word pairs in DS, in screen coordinates before the
+ * rasteriser's clip. Logged ('U'): the colour, the count and each corner. Its span fills follow
+ * as 'Q'. */
+static int hook_span_polygon(machine_t *m)
+{
+    flush(m);
+    const f117_observer *o = g_f117_observer;
+    if (!o || !o->prim) return 0;
+    cpu_t *c = &m->cpu;
+    const uint16_t ss = c->seg[S_SS], sp = c->r[R_SP], ds = c->seg[S_DS];
+    const unsigned count = peek16(c, ss, (uint16_t)(sp + 6));
+    const uint16_t list = peek16(c, ss, (uint16_t)(sp + 8));
+    if (count < 3 || count > 32) return 0;
+    int32_t v[2 + 2 * 32];
+    int n = 0;
+    v[n++] = peek8(c, ss, (uint16_t)(sp + 10));
+    v[n++] = (int32_t)count;
+    for (unsigned i = 0; i < count; i++) {
+        v[n++] = (int16_t)peek16(c, ds, (uint16_t)(list + 4 * i));
+        v[n++] = (int16_t)peek16(c, ds, (uint16_t)(list + 4 * i + 2));
+    }
+    o->prim(o->user, c->icount, 'U', v, n);
+    return 0;
+}
+
 void observe_poly_edge(machine_t *m) { hook_poly_edge(m); }
+void observe_span_polygon(machine_t *m) { hook_span_polygon(m); }
 void observe_poly_fill(machine_t *m) { hook_poly_fill(m); }
 
 /* 1377:005E, the fill paints: the span rows as they stand once the fill
@@ -863,6 +892,7 @@ static const recomp_override OBSERVERS[] = {
     { "observe", "VGAME.EXE", VGAME_47304, 0x0000, 0x1450, hook_game_draw, "per-frame draw routine (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x130D, 0x004A, hook_poly_edge, "filled polygon edge (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x130D, 0x0116, hook_poly_fill, "filled polygon fill (observer)", 1 },
+    { "observe", "VGAME.EXE", VGAME_47304, 0x0FB2, 0x01E6, hook_span_polygon, "span polygon fill (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x1377, 0x004C, hook_outline_begin, "fill or outline begin (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x01D3, hook_lib_spans, "library span fill (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x1E42, 0x01EC, hook_lib_blit, "library blit (observer)", 1 },

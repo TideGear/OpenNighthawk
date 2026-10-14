@@ -1020,8 +1020,11 @@ instruction profiles and three 789-address matched seeds (2,561,209,
   air-to-air flight (19,000 pictures, worst 21.31 ms) and a 50,440-picture
   landing (worst 17.25 ms), with every
   logic frame exact and guest hashes unchanged; it costs one more host frame of
-  picture age. Open: the owner's motion review on a physical panel, and
-  cargo/career flights and slower machines. See presentation.md.
+  picture age. The owner's 4K review (13 Oct) then found and fixed unjoined strokes,
+  blocky outline edges and a stair-stepped horizon/sky gradient (a new `U` record
+  for polygons the game fills through its span rasteriser); the map's terrain edges
+  are still scaled copies. Open: the map, the owner's motion review on a physical
+  panel, and cargo/career flights and slower machines. See presentation.md.
 
 ## Phase 4 - checked by people and independent references
 

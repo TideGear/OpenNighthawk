@@ -32362,6 +32362,7 @@ static int vgame_span_divide_fault(machine_t *m) { return vgame_raster_divide_fa
 static int vgame_polygon_fill(machine_t *m)
 {
     cpu_t *c = &m->cpu;
+    if (g_f117_observer) observe_span_polygon(m);                /* this placement shadows the observer's own */
     if (!room(c, 8)) return 0;
     cpu_push16(c, c->r[R_BP]);
     c->r[R_BP] = c->r[R_SP];

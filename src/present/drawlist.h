@@ -86,4 +86,9 @@ void drawlist_record(drawlist *d, char kind, const int32_t *v, int n);
 const drawlist_page *drawlist_get(const drawlist *d, uint16_t seg);
 drawlist_page *drawlist_page_of(drawlist *d, uint16_t seg);
 
+/* A fine stroke between two points on the fine grid (pixels of the N-times picture): Bresenham
+ * between them with a square nib of `width` fine pixels and whole end caps. The cells it touches
+ * are marked so the flat-pixel guard leaves them alone. */
+void drawlist_fine_stroke(drawlist_page *p, int ax, int ay, int bx, int by, int width, int colour);
+
 #endif
