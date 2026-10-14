@@ -544,6 +544,7 @@ static const struct { const char *module; uint16_t ip; int arg; uint16_t v[2]; }
 /* Exact code ranges when the default 0x300-byte window is unsuitable:
  * long/shared tails, or small walkers whose unrelated callees are nearby. */
 static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
+    { "VGAME.EXE", 0xDC46, 0xDC46, 0x0363 },
     { "VGAME.EXE", 0x1450, 0x1450, 0x0364 },
     { "START.EXE", 0x7904, 0x7904, 0x0301 },
 
@@ -704,6 +705,7 @@ static const struct { const char *module; uint16_t seg, ip, len; unsigned insns,
     { "END.EXE", 0, 0x1CF5, 0x02F0, 267, 267, "menu input and pointer update" },
     { "VGAME.EXE", 0, 0x1450, 0x0364, 301, 301, "project and draw sky and ground bands" },
     { "START.EXE", 0, 0x7904, 0x0301, 272, 272, "choose a world record by type" },
+    { "VGAME.EXE", 0, 0xDC46, 0x0363, 295, 295, "walk and compose the scene objects" },
     { "END.EXE", 0, 0x2BEC, 0x0435, 444, 444, "debrief narrative and measured layout" },
     { "START.EXE", 0, 0x6DB8, 0x03F5, 399, 399, "pilot options dialog" },
     { "START.EXE", 0, 0x149C, 0x039E, 365, 365, "flight plan display" },
@@ -2620,6 +2622,81 @@ int main(int argc, char **argv)
 #undef TRAND
 #undef TW16
 #undef TW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xDC46) {
+                const uint16_t dg=0x5000;
+                seg[S_DS]=dg;seg[S_SS]=(s&4)?0x6000:dg;r[R_SP]=0xF000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+#define KW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define KW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);KW8((s_),(o_),v__);KW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define KRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                for(unsigned j=0;j<0x200;j++)KW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),KRAND());
+                /* Object table: up to three records, each its own random mix of
+                 * kinds, flags and positions. */
+                const unsigned count=(s%9==0)?0:1+(unsigned)(KRAND()%3);
+                KW16(dg,0x49F4,count);
+                static const uint8_t kinds[16]={0,1,10,15,0x18,0x18,0x18,0x19,0x24,0x25,0x25,0x26,0x27,0x30,0xF0,0x7F};
+                for(unsigned i=0;i<3;i++) {
+                    const uint16_t rec=(uint16_t)(0x2000+0x40*i);
+                    KW16(dg,0x4E6C+2*i,rec);
+                    const uint32_t h=KRAND()|(KRAND()<<16);
+                    unsigned kind=kinds[h%16];if(kind==0x7F)kind=(h>>4)&0xFF;
+                    unsigned hi=((h>>8)%7==0)?1+((h>>11)%3):0;
+                    const unsigned special_draw=((h>>14)%9==0);
+                    uint16_t word8=(uint16_t)(kind|(hi<<8)|(special_draw?0x0400:0)|(((h>>15)&1)<<15));
+                    for(unsigned j=0;j<0x20;j++)KW8(dg,rec+j,KRAND());
+                    KW16(dg,rec+8,word8);
+                    KW8(dg,rec+9,(uint8_t)((word8>>8)|(((h>>20)&1)?0x80:0)));
+                    KW8(dg,rec+6,(uint8_t)(((h>>21)%3==0?0x03:0)|(((h>>23)&1)?0x20:0)|((h>>24)&0x1C)));
+                    if((h>>26)&1)KW16(dg,rec+0x0E,0);
+                }
+                KW16(dg,0xC09E,(s%3==0)?0:(uint16_t)KRAND());
+                KW16(dg,0x2DF4,(s%5==0)?0:(s%5==1)?0x80:(uint16_t)KRAND());
+                KW16(dg,0xE00C,KRAND()&15);
+                for(unsigned j=0;j<16;j++)KW8(dg,0xB2D7+16*j,KRAND());
+                KW16(dg,0xB07E,(s&8)?(uint16_t)KRAND():0);
+                KW8(dg,0x9B34,KRAND());
+                KW16(dg,0x9908,(s&16)?(uint16_t)KRAND():0);
+                KW16(dg,0x98A4,KRAND());
+                for(unsigned j=0;j<0x200;j++)KW8(dg,0xB78A+j,KRAND());
+                for(unsigned j=0;j<0x200;j++)KW8(dg,0x4ED2+j,KRAND());
+                for(unsigned j=0;j<12;j++)KW16(dg,0x49D6+2*j,(s%11==0)?(uint16_t)(j*3):(uint16_t)KRAND());
+                /* The marker record at [7D7E]: bit 7 of either byte of the second
+                 * word rejects it. */
+                KW16(dg,0x7D7E,0x2400);
+                KW16(dg,0x2400,KRAND());
+                KW16(dg,0x2402,(s%4==0)?(uint16_t)KRAND():(uint16_t)(KRAND()&0x7F7F));
+                KW16(dg,0x2404,KRAND());
+                for(unsigned j=0;j<8;j++)KW16(dg,0xF830+2*j,KRAND());
+                for(unsigned j=0;j<8;j++)KW16(dg,0xF810+2*j,0);
+                /* Returning probes fold every argument, in order, into a guest cell
+                 * and count the call; the 104E:0 arithmetic helper stays original. */
+#define KSTUB(sg_,off_,cell_,nargs_,retcell_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    KW8(sgx_,out_++,0x55);KW8(sgx_,out_++,0x8B);KW8(sgx_,out_++,0xEC);KW8(sgx_,out_++,0x53); \
+    KW8(sgx_,out_++,0xFF);KW8(sgx_,out_++,0x06);KW8(sgx_,out_++,(cell_));KW8(sgx_,out_++,(cell_)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        KW8(sgx_,out_++,0x8B);KW8(sgx_,out_++,0x46);KW8(sgx_,out_++,(far_)?6+2*j_:4+2*j_); \
+        KW8(sgx_,out_++,0x8B);KW8(sgx_,out_++,0x1E);KW8(sgx_,out_++,(cell_));KW8(sgx_,out_++,(cell_)>>8); \
+        KW8(sgx_,out_++,0xD1);KW8(sgx_,out_++,0xC3);KW8(sgx_,out_++,0x33);KW8(sgx_,out_++,0xD8); \
+        KW8(sgx_,out_++,0x89);KW8(sgx_,out_++,0x1E);KW8(sgx_,out_++,(cell_));KW8(sgx_,out_++,(cell_)>>8); } \
+    KW8(sgx_,out_++,0x5B);KW8(sgx_,out_++,0xA1);KW8(sgx_,out_++,(retcell_));KW8(sgx_,out_++,(retcell_)>>8); \
+    KW8(sgx_,out_++,0x5D);KW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                KSTUB(0x1452,0x03AB,0xF810,4,0xF830,1);
+                KSTUB(0x120A,0x00CF,0xF812,6,0xF832,1);
+                {
+                    static const struct { uint16_t slot,code,cell,ret; unsigned args; } near_[4]={
+                        {0x1AE9,0xF200,0xF814,0xF834,4},{0xE123,0xF260,0xF816,0xF836,0},
+                        {0xE289,0xF2C0,0xF818,0xF838,0},{0x1B2E,0xF320,0xF81A,0xF83A,4}};
+                    for(unsigned k=0;k<4;k++) {
+                        KW8(0,near_[k].slot,0xE9);KW16(0,near_[k].slot+1,(uint16_t)(near_[k].code-near_[k].slot-3));
+                        KSTUB(0,near_[k].code,near_[k].cell,near_[k].args,near_[k].ret,0);
+                    }
+                }
+#undef KSTUB
+#undef KRAND
+#undef KW16
+#undef KW8
             }
             if (!strcmp(o->module, "START.EXE") && o->seg == 0 && o->ip == 0x6DB8) {
                 seg[S_DS] = seg[S_SS] = 0x0A95; r[R_SP] = 0xFF00;

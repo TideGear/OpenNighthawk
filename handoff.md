@@ -13,17 +13,15 @@ standing practice, not a session-by-session log. Earlier sessions' detail
 (what was tried, what failed, exact investigation narratives) is in
 `git log -p handoff.md` — it does not need to live here to stay available.
 
-## Current state (14 October, horizon and world-record pair)
+## Current state (14 October, compose walk)
 
-VGAME `1450` (`vgame_horizon_bands`) and START `7904`
-(`start_choose_world_record`) are matched, named and gated. Census: 861
-functions / 106,493 bytes, P2 61.45%, overall 84.95%. Fresh full gate (1,418 s):
-77 tests, all 45 routes / 44 fresh interpreter sessions, both 5,718,848-state
-profiles, three 869-address seeds (2,902,931 / 2,901,261 / 2,900,231), zero
-mismatches; reachability and event audits pass; `presentation_check.py
---scales 1` reports all 45 routes exact. Proof: `D:/f117-gate/p2-pair`
-(`gate.log`; the first attempt, `gate-observer-shadow-failed.log`, failed
-`code_overrides`).
+VGAME `DC46` (`vgame_compose_walk`) is matched, named and gated on top of the
+horizon / world-record pair. Census: 862 functions / 107,360 bytes, P2 61.91%,
+overall 85.09%. Fresh full gate (1,590 s): 78 tests, all 45 routes / 44 fresh
+interpreter sessions, both 5,718,848-state profiles, three 870-address seeds
+(2,907,880 / 2,906,214 / 2,904,010), zero mismatches; audits pass;
+`presentation_check.py --scales 1` reports all 45 routes exact. Proof:
+`D:/f117-gate/p2-compose`.
 
 Trap found: `1450` is also the presentation observer's frame-phase hook. At
 one address only the first override runs, so a matched body there must call
@@ -38,10 +36,18 @@ per-stage wall time and longest jobs; see
 workers. The owner's `f117a.example.ini` edit and untracked `4k60.bat` stay
 untouched.
 
-Next P2 candidates (all reached by `full_cycle`): VGAME `DC46`, `04E6`; CRT
-routines with data-dependent `rep` counts (MPS `0146:067C` strstr, `0822`)
-need a prescan for their room claim. A wait inside a body must clamp
-`m->run_until` to `c->stop_at` (see END `2BEC`'s `DN_RUN`).
+Next P2 candidate: VGAME `04E6` (810 bytes / 276 instructions, terrain tile
+rings), private in `D:/f117-gate/p2-scene`: `vgame_scene.c` is the named body
+(`vgame_scene_walk`), `fixture.inc` the fixture. Five seeds reach all 276
+instructions; the 37-mutation set and the full_cycle proof must pass before
+integrating (use `integrate` as for `DC46`: body before the MATCHED table, row,
+SPANS, COVERED and fixture in the lockstep test, a grouped CTest). Fixture
+traps found: the harness puts the return address BELOW the SP the fixture sets,
+so argument 0 is at SP, not SP+2; `--only` takes the address without a leading
+zero (`4E6`); a hex literal ending in E before `+` is a float token. Other
+candidates: CRT routines with data-dependent `rep` counts (MPS `0146:067C`
+strstr, `0822`) need a prescan for their room claim. A wait inside a body must
+clamp `m->run_until` to `c->stop_at` (see END `2BEC`'s `DN_RUN`).
 
 The 22-routine support batch is integrated and fully gated. Proof:
 `D:/f117-gate/leaf-batch/final-gate-verdict.json`. Fresh full gate: 75 tests,

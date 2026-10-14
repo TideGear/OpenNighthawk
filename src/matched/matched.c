@@ -44623,7 +44623,235 @@ done:
 #undef TNEAR
 }
 
+/* VGAME DC46: walk the scene's object table and compose every visible object.
+ * [49F4] objects, each a pointer in the word table at [4E6C]; a record with
+ * byte +9 bit 7 set is a special, hidden-class object ([C05C] = 1) and
+ * otherwise [C05C] = 0. The record's word +8 holds its kind (bit 0x400 set:
+ * a different drawer, called with the low three bits and +10h..+14h, 1AE9;
+ * bit 0x8000 is dropped), and +4 a byte kept at [48C4], +0Ah..+14h six words
+ * copied to [4994..499E]. The kind's high byte indexes a word table ([B78A]
+ * + 2 * byte) into [8590]. A nonzero high byte skips straight to drawing.
+ * Otherwise the draw flags [C064..C076] are cleared and set by kind: kinds 1,
+ * 0Ah and 0Fh set [C076]; 18h (a ground vehicle) uses the sorted depth, the
+ * three 104E:0 products and two shape ids 21h/22h; other kinds set [C074]
+ * when the record's +6 bit 5 is clear and [4998] is zero. 1452:03AB then
+ * transforms the position, E289 prepares it and 120A:00CF draws the shape.
+ * Kinds above 25h also look up a four-byte marker through [7D7E] (reject
+ * either byte's bit 7) and draw a label with 1B2E. Every call is original
+ * code; its arguments are cdecl and removed here. */
+static int vgame_compose_walk(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+    enum { FAR_FLAG=-2, RECORD=-4, INDEX=-6, DEPTH=-0xA, SHAPE_B=-0xC, SHAPE_A=-0xE };
+#define KB(n_,at_) do { SM4_NEED((n_),(at_));c->icount+=(n_); } while(0)
+#define KP(v_) cpu_push16(c,(v_))
+#define KPOP2() do { c->r[R_BX]=cpu_pop16(c);c->r[R_BX]=cpu_pop16(c); } while(0)
+#define KADD(a_,b_) ((uint16_t)alu_add(c,(a_),(b_),1,0))
+#define KSUB(a_,b_) ((uint16_t)alu_sub(c,(a_),(b_),1,0))
+#define KCMP(a_,b_) alu_sub(c,(a_),(b_),1,0)
+#define KNEG(v_) ((uint16_t)alu_sub(c,0,(v_),1,0))
+#define KTEST8(v_,m_) alu_logic(c,(uint32_t)(v_)&(m_),0)
+#define KDS(o_) ds_get(c,(uint16_t)(o_))
+#define KBXDS(d_) ds_get(c,(uint16_t)(c->r[R_BX]+(d_)))
+#define KSP(n_) (c->r[R_SP]=KADD(c->r[R_SP],(n_)))
+#define KRUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call_);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define KFAR(at_,ret_) do { SM4_NEED(1,(at_)); KRUN(guest_call_far(m,(at_),(ret_))); } while(0)
+#define KNEAR(at_,target_,ret_) do { SM4_NEED(1,(at_)); KRUN(guest_call_pop(m,(target_),(ret_),0)); } while(0)
+    if(!room(c,5))return 0;
+    KB(5,0xDC46);
+    x86_enter(c,0x10,0);KP(c->r[R_DI]);KP(c->r[R_SI]);bp_put(c,INDEX,0);goto loop_test;
+    /* One object: BX = its record. */
+visible_object:
+    KB(2,0xDC54);ds_put(c,0xC05C,0);c->r[R_AX]=KDS(0x98A4);goto object_state;special_object:
+    KB(3,0xDF9A);ds_put(c,0xC05C,1);c->r[R_AX]=KSUB(c->r[R_AX],c->r[R_AX]);
+object_state:
+    KB(6,0xDC5D);ds_put(c,0xC070,c->r[R_AX]);ds_put(c,0xC06E,c->r[R_AX]);
+    c->r[R_AX]=KBXDS(8);c->r[R_CX]=c->r[R_AX];KTEST8(get_r8(c,R_AH),0x04);
+    if(x86_cond(c,4))goto plain_kind;
+    KB(5,0xDC6D);
+    c->r[R_CX]=(uint16_t)alu_op(c,4,c->r[R_CX],7,1);KP(c->r[R_CX]);KP(KBXDS(0x14));KP(KBXDS(0x12));KP(KBXDS(0x10));
+    KNEAR(0xDC7A,0x1AE9,0xDC7D);
+    KB(1,0xDC7D);goto after_draw;
+plain_kind:
+    KB(24,0xDC80);
+    set_r8(c,R_AL,ds_get8(c,(uint16_t)(c->r[R_BX]+4)));ds_put8(c,0x48C4,get_r8(c,R_AL));
+    c->r[R_AX]=KBXDS(8);set_r8(c,R_AH,(uint8_t)alu_op(c,4,get_r8(c,R_AH),0x7F,0));ds_put(c,0x4986,c->r[R_AX]);
+    c->r[R_AX]=KBXDS(0x0A);ds_put(c,0x4994,c->r[R_AX]);
+    c->r[R_AX]=KBXDS(0x0C);ds_put(c,0x4996,c->r[R_AX]);
+    c->r[R_AX]=KBXDS(0x0E);ds_put(c,0x4998,c->r[R_AX]);
+    c->r[R_AX]=KBXDS(0x10);ds_put(c,0x499A,c->r[R_AX]);
+    c->r[R_AX]=KBXDS(0x12);ds_put(c,0x499C,c->r[R_AX]);
+    c->r[R_AX]=KBXDS(0x14);ds_put(c,0x499E,c->r[R_AX]);
+    set_r8(c,R_BL,ds_get8(c,0x4987));set_r8(c,R_BH,(uint8_t)alu_op(c,5,get_r8(c,R_BH),get_r8(c,R_BH),0));
+    c->r[R_BX]=(uint16_t)x86_shift(c,4,c->r[R_BX],1,1);c->r[R_AX]=KBXDS(0xB78A);ds_put(c,0x8590,c->r[R_AX]);
+    KTEST8(ds_get8(c,0x4987),0xFF);if(x86_cond(c,4))goto clear_flags;
+    KB(1,0xDCC9);goto draw_object;
+clear_flags:
+    KB(11,0xDCCC);
+    c->r[R_AX]=KSUB(c->r[R_AX],c->r[R_AX]);
+    ds_put(c,0xC076,c->r[R_AX]);ds_put(c,0xC074,c->r[R_AX]);ds_put(c,0xC072,c->r[R_AX]);ds_put(c,0xC06A,c->r[R_AX]);
+    ds_put(c,0xC068,c->r[R_AX]);ds_put(c,0xC066,c->r[R_AX]);ds_put(c,0xC064,c->r[R_AX]);
+    c->r[R_BX]=bp_get(c,RECORD);KTEST8(ds_get8(c,(uint16_t)(c->r[R_BX]+6)),0x03);
+    if(x86_cond(c,4))goto kind_dispatch;
+    KB(1,0xDCEC);ds_put(c,0xC072,1);
+kind_dispatch:
+    KB(3,0xDCF2);c->r[R_AX]=KDS(0x4986);KCMP(c->r[R_AX],0x18);if(x86_cond(c,4))goto vehicle_kind;
+    KB(1,0xDCFA);if(x86_cond(c,7))goto other_kind;
+    KB(2,0xDCFC);set_r8(c,R_AL,(uint8_t)alu_dec(c,get_r8(c,R_AL),0));if(x86_cond(c,5))goto kind_nine;
+    KB(1,0xDD00);goto marker_flag;
+kind_nine:
+    KB(2,0xDD03);set_r8(c,R_AL,(uint8_t)alu_op(c,5,get_r8(c,R_AL),9,0));if(x86_cond(c,4))goto marker_kind;
+    KB(2,0xDD07);set_r8(c,R_AL,(uint8_t)alu_op(c,5,get_r8(c,R_AL),5,0));if(x86_cond(c,5))goto other_kind;
+marker_kind:
+    KB(1,0xDD0B);goto marker_flag;
+other_kind:
+    KB(2,0xDD0E);KCMP(KDS(0x4998),0);if(x86_cond(c,4))goto draw_object_jump;
+    KB(2,0xDD15);KTEST8(ds_get8(c,(uint16_t)(c->r[R_BX]+6)),0x20);if(x86_cond(c,4))goto set_other_flag;
+draw_object_jump:
+    KB(1,0xDD1B);goto draw_object;
+set_other_flag:
+    KB(2,0xDD1E);ds_put(c,0xC074,1);goto draw_object;
+vehicle_kind:
+    KB(2,0xDD27);KCMP(KDS(0xC09E),0);if(x86_cond(c,5))goto vehicle_shapes;
+    KB(1,0xDD2E);goto vehicle_unset;
+vehicle_shapes:
+    KB(6,0xDD31);
+    bp_put(c,SHAPE_A,0x21);bp_put(c,SHAPE_B,0x22);ds_put(c,0xC064,1);
+    c->r[R_AX]=KDS(0xC09E);c->r[R_AX]=(uint16_t)alu_dec(c,c->r[R_AX],1);ds_put(c,0xC066,c->r[R_AX]);
+    KNEAR(0xDD48,0xE123,0xDD4B);
+    KB(6,0xDD4B);
+    c->r[R_AX]=KDS(0x2DF4);bp_put(c,DEPTH,c->r[R_AX]);c->r[R_BX]=KDS(0xE00C);
+    c->r[R_BX]=(uint16_t)x86_shift(c,4,c->r[R_BX],4,1);KTEST8(ds_get8(c,(uint16_t)(c->r[R_BX]+0xB2D7)),0x02);
+    if(x86_cond(c,4))goto vehicle_depth;
+    KB(2,0xDD5F);c->r[R_AX]=KSUB(c->r[R_AX],0x80);bp_put(c,DEPTH,c->r[R_AX]);
+vehicle_depth:
+    KB(2,0xDD65);KCMP(KDS(0xB07E),0);if(x86_cond(c,4))goto vehicle_back;
+    KB(2,0xDD6C);KCMP(bp_get(c,DEPTH),0);if(x86_cond(c,5))goto vehicle_back;
+    KB(2,0xDD72);KTEST8(ds_get8(c,0x9B34),0x08);if(x86_cond(c,4))goto vehicle_back;
+    KB(3,0xDD79);ds_put(c,0xC068,1);KP(KDS(0x49DE));KP(KDS(0x4998));
+    KFAR(0xDD87,0xDD8C);
+    KB(5,0xDD8C);KPOP2();KP(KDS(0x49DC));KP(KDS(0x4994));c->r[R_SI]=c->r[R_AX];
+    KFAR(0xDD98,0xDD9D);
+    KB(5,0xDD9D);KPOP2();KP(KDS(0x49E0));KP(KDS(0x4996));c->r[R_DI]=c->r[R_AX];
+    KFAR(0xDDA9,0xDDAE);
+    KB(5,0xDDAE);KPOP2();c->r[R_DI]=KADD(c->r[R_DI],c->r[R_AX]);c->r[R_SI]=KADD(c->r[R_SI],c->r[R_DI]);
+    if(x86_cond(c,9))goto far_flag_clear;
+    KB(2,0xDDB6);c->r[R_AX]=1;goto far_flag_store;
+far_flag_clear:
+    KB(1,0xDDBB);c->r[R_AX]=KSUB(c->r[R_AX],c->r[R_AX]);
+far_flag_store:
+    KB(1,0xDDBD);bp_put(c,FAR_FLAG,c->r[R_AX]);
+vehicle_back:
+    KB(2,0xDDC0);KP(KDS(0x49DA));KP(KDS(0x4996));
+    KFAR(0xDDC8,0xDDCD);
+    KB(5,0xDDCD);KPOP2();KP(KDS(0x49D8));KP(KDS(0x4998));c->r[R_SI]=c->r[R_AX];
+    KFAR(0xDDD9,0xDDDE);
+    KB(5,0xDDDE);KPOP2();KP(KDS(0x49D6));KP(KDS(0x4994));c->r[R_DI]=c->r[R_AX];
+    KFAR(0xDDEA,0xDDEF);
+    KB(5,0xDDEF);KPOP2();c->r[R_DI]=KADD(c->r[R_DI],c->r[R_AX]);c->r[R_SI]=KADD(c->r[R_SI],c->r[R_DI]);
+    if(x86_cond(c,9))goto vehicle_done;
+    KB(3,0xDDF7);bp_put(c,SHAPE_A,0x22);bp_put(c,SHAPE_B,0x21);goto vehicle_done;
+vehicle_unset:
+    KB(1,0xDE03);ds_put(c,0x4986,0x1F);
+vehicle_done:
+    KB(2,0xDE09);KCMP(KDS(0x9908),0);if(x86_cond(c,4))goto draw_object;
+    KB(2,0xDE10);c->r[R_AX]=KDS(0x9908);ds_put(c,0xC06A,c->r[R_AX]);
+draw_object:
+    KB(8,0xDE16);
+    KP(0x49D0);KP(KDS(0x499E));c->r[R_AX]=KNEG(KDS(0x499C));KP(c->r[R_AX]);c->r[R_AX]=KNEG(KDS(0x499A));KP(c->r[R_AX]);
+    KFAR(0xDE29,0xDE2E);
+    KB(1,0xDE2E);KSP(8);
+    KNEAR(0xDE31,0xE289,0xDE34);
+    KB(2,0xDE34);KCMP(KDS(0x4986),0x18);if(x86_cond(c,4))goto vehicle_shapes_draw;
+    KB(1,0xDE3B);goto generic_draw;
+vehicle_shapes_draw:
+    KB(2,0xDE3E);KCMP(KDS(0xC068),0);if(x86_cond(c,4))goto vehicle_shape_a;
+    KB(2,0xDE45);KCMP(bp_get(c,FAR_FLAG),0);if(x86_cond(c,4))goto vehicle_shape_a;
+    KB(8,0xDE4B);
+    KP(0xC05A);KP(0x49D0);c->r[R_AX]=KNEG(KDS(0x4996));KP(c->r[R_AX]);KP(KDS(0x4998));KP(KDS(0x4994));KP(0x23);
+    KFAR(0xDE61,0xDE66);
+    KB(1,0xDE66);KSP(0x0C);
+vehicle_shape_a:
+    KB(8,0xDE69);
+    KP(0xC05A);KP(0x49D0);c->r[R_AX]=KNEG(KDS(0x4996));KP(c->r[R_AX]);KP(KDS(0x4998));KP(KDS(0x4994));KP(bp_get(c,SHAPE_A));
+    KFAR(0xDE80,0xDE85);
+    KB(1,0xDE85);KSP(0x0C);
+    KB(8,0xDE88);
+    KP(0xC05A);KP(0x49D0);c->r[R_AX]=KNEG(KDS(0x4996));KP(c->r[R_AX]);KP(KDS(0x4998));KP(KDS(0x4994));KP(bp_get(c,SHAPE_B));
+    KFAR(0xDE9F,0xDEA4);
+    KB(3,0xDEA4);KSP(0x0C);KCMP(KDS(0xC068),0);if(x86_cond(c,5))goto vehicle_top;
+    KB(1,0xDEAE);goto next_object;
+vehicle_top:
+    KB(2,0xDEB1);KCMP(bp_get(c,FAR_FLAG),0);if(x86_cond(c,4))goto vehicle_top_draw;
+    KB(1,0xDEB7);goto next_object;
+vehicle_top_draw:
+    KB(8,0xDEBA);
+    KP(0xC05A);KP(0x49D0);c->r[R_AX]=KNEG(KDS(0x4996));KP(c->r[R_AX]);KP(KDS(0x4998));KP(KDS(0x4994));KP(0x23);
+    KFAR(0xDED0,0xDED5);
+    KB(2,0xDED5);KSP(0x0C);goto next_object;
+marker_flag:
+    KB(2,0xDEDB);ds_put(c,0xC076,1);goto draw_object;
+generic_draw:
+    KB(10,0xDEE4);
+    KP(0xC05A);KP(0x49D0);c->r[R_AX]=KNEG(KDS(0x4996));KP(c->r[R_AX]);KP(KDS(0x4998));KP(KDS(0x4994));
+    set_r8(c,R_AL,ds_get8(c,0x4986));set_r8(c,R_AH,(uint8_t)alu_op(c,5,get_r8(c,R_AH),get_r8(c,R_AH),0));KP(c->r[R_AX]);
+    KFAR(0xDEFE,0xDF03);
+    KB(3,0xDF03);KSP(0x0C);KCMP(KDS(0x4986),0x100);if(x86_cond(c,3))goto next_object;
+    KB(2,0xDF0E);KCMP(KDS(0x4986),0x25);if(x86_cond(c,5))goto label_kind;
+    KB(7,0xDF15);
+    c->r[R_BX]=KDS(0x7D7E);c->r[R_AX]=KBXDS(0);c->r[R_DX]=KBXDS(2);c->r[R_CX]=c->r[R_AX];c->r[R_SI]=c->r[R_DX];
+    alu_logic(c,(uint32_t)c->r[R_DX]&0x8080,1);if(x86_cond(c,5))goto next_object;
+    KB(9,0xDF28);
+    c->r[R_DI]=bp_get(c,RECORD);c->r[R_AX]=ds_get(c,(uint16_t)(c->r[R_DI]+6));c->r[R_DX]=c->r[R_AX];
+    c->r[R_DX]=(uint16_t)alu_op(c,4,c->r[R_DX],7,1);KP(c->r[R_DX]);
+    set_r8(c,R_AL,get_r8(c,R_AH));set_r8(c,R_AH,(uint8_t)alu_op(c,5,get_r8(c,R_AH),get_r8(c,R_AH),0));KP(c->r[R_AX]);
+    goto label_draw;
+label_kind:
+    KB(2,0xDF3B);KCMP(KDS(0x4986),0x25);if(x86_cond(c,6))goto next_object;
+    KB(7,0xDF42);
+    c->r[R_BX]=KDS(0x7D7E);c->r[R_AX]=KBXDS(0);c->r[R_DX]=KBXDS(2);c->r[R_CX]=c->r[R_AX];c->r[R_SI]=c->r[R_DX];
+    alu_logic(c,(uint32_t)c->r[R_DX]&0x8080,1);if(x86_cond(c,5))goto next_object;
+    KB(9,0xDF55);
+    c->r[R_AX]=KDS(0x4986);c->r[R_AX]=KSUB(c->r[R_AX],0x25);c->r[R_DX]=c->r[R_AX];
+    c->r[R_AX]=(uint16_t)alu_inc(c,c->r[R_AX],1);c->r[R_AX]=(uint16_t)alu_inc(c,c->r[R_AX],1);KP(c->r[R_AX]);
+    c->r[R_DI]=c->r[R_DX];c->r[R_DI]=(uint16_t)x86_shift(c,4,c->r[R_DI],1,1);KP(ds_get(c,(uint16_t)(c->r[R_DI]+0x4ED2)));
+label_draw:
+    KB(5,0xDF68);
+    c->r[R_AX]=KBXDS(4);c->r[R_AX]=KSUB(c->r[R_AX],0x6E);KP(c->r[R_AX]);c->r[R_CX]=KSUB(c->r[R_CX],0xA9);KP(c->r[R_CX]);
+    KNEAR(0xDF74,0x1B2E,0xDF77);
+after_draw:
+    KB(1,0xDF77);KSP(8);
+next_object:
+    KB(1,0xDF7A);bp_put(c,INDEX,(uint16_t)alu_inc(c,bp_get(c,INDEX),1));
+loop_test:
+    KB(3,0xDF7D);c->r[R_AX]=bp_get(c,INDEX);KCMP(KDS(0x49F4),c->r[R_AX]);if(x86_cond(c,14))goto done;
+    KB(6,0xDF86);
+    c->r[R_BX]=c->r[R_AX];c->r[R_BX]=(uint16_t)x86_shift(c,4,c->r[R_BX],1,1);c->r[R_BX]=KDS(c->r[R_BX]+0x4E6C);
+    bp_put(c,RECORD,c->r[R_BX]);KTEST8(ds_get8(c,(uint16_t)(c->r[R_BX]+9)),0x80);
+    if(x86_cond(c,5))goto special_object;
+    KB(1,0xDF97);goto visible_object;
+done:
+    KB(4,0xDFA5);c->r[R_SI]=cpu_pop16(c);c->r[R_DI]=cpu_pop16(c);x86_leave(c);near_ret(c);return 1;
+#undef KB
+#undef KP
+#undef KPOP2
+#undef KADD
+#undef KSUB
+#undef KCMP
+#undef KNEG
+#undef KTEST8
+#undef KDS
+#undef KBXDS
+#undef KSP
+#undef KRUN
+#undef KFAR
+#undef KNEAR
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xDC46, vgame_compose_walk, "walk and compose the scene objects", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x1450, vgame_horizon_bands, "project and draw sky and ground bands", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x7904, start_choose_world_record, "choose a world record by type", 1 },
 

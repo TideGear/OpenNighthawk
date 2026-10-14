@@ -200,6 +200,21 @@ not the recompilation:
 
 ## Phase 2 - understood code
 
+VGAME's `DC46` (`vgame_compose_walk`, 867 bytes / 295 instructions) walks the scene's
+object table and composes every visible object: the alternate drawer, the
+vehicle shapes with their three depth products, and the label markers. Five
+seeds compare 6,177-6,187 states and reach all 295 instructions with no skipped
+states or differences; 26 private mutations are caught. The private full cycle
+runs it 276 times (once a frame, as `1450`), matches all 66 checkpoints and the
+final state, and has no overruns. Its callees all return plainly, so the
+arguments are removed here. Fresh full gate: 78 tests, all 45 routes / 44 fresh
+interpreter sessions, both 5,718,848-state instruction profiles, three
+870-address seeds (2,907,880 / 2,906,214 / 2,904,010 comparisons), zero
+mismatches, reachability and event audits pass (1,590 s); the live
+`presentation_check.py --scales 1` reports all 45 routes exact. Census: 862
+functions / 107,360 bytes, P2 61.91%, overall 85.09%. Evidence:
+`D:/f117-gate/p2-compose`.
+
 VGAME's `1450` (`vgame_horizon_bands`, sky and ground band projection and fill,
 868 bytes / 301 instructions) and START's `7904` (`start_choose_world_record`,
 the world-record selection by type, 769 bytes / 272 instructions) are matched
@@ -816,7 +831,7 @@ instruction profiles and three 789-address matched seeds (2,561,209,
       Reimp's mapping; matched functions replacing translations one at a time,
       each held to the same parity checks. `tools/reimp_names.py` joins the
       Reimp's census (1,535 functions) with this project's regions as a private
-      lead list. 869 addresses are matched (861 of the census functions, 106,493 of
+      lead list. 870 addresses are matched (862 of the census functions, 107,360 of
       179,213 bytes); the table is at the end of `src/matched/matched.c` and the
       method is in [architecture.md](architecture.md#matched-routines-phase-2).
       The earlier "72 reached / 411 never run" inventory was incomplete:

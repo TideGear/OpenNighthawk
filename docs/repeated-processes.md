@@ -8,6 +8,14 @@ whether they were measured or estimated. The rule behind the page: an
 optimisation must leave every check's inputs, outputs and verdicts
 identical, and the proof is the same verdicts before and after.
 
+## Compose-walk gate (14 October 2026)
+
+`matched_compose_walk` runs 5,000 states of VGAME `DC46` in 0.5 s. The gate
+(1,590 s) printed its new stage timings: coverage 599 s and parity 810 s are both
+as long as their longest job, `career_promotion` (598 s; 810 s for its
+interpreter run), which first replays its seed route `career_serge`. Worker
+count therefore cannot shorten either stage; see the measurement below.
+
 ## Horizon and world-record gate (14 October 2026)
 
 `matched_horizon_and_record` runs 5,000 states each for VGAME `1450` and START
