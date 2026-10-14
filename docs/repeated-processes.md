@@ -32,6 +32,21 @@ counts: if the longest job is near the stage's wall time, more workers cannot
 help; if the work divided by workers is, an interpreter run could instead
 start during coverage, since it does not depend on the translation.
 
+Measured (14 October, `--parity-only --verify-interp-cache`, 1,160 s; the same
+stage took 771 s inside the gate, so one sample is not a baseline): 88 jobs,
+16,736 s of work on 16 workers (1,046 s if perfectly packed) and the longest job
+1,159 s, `career_promotion/interp`. That job started third. A seeded route's job
+first replays its whole seed chain (`prepare_roster` in `run_route.py`), so it is
+`career_serge` (790 s as its own job) plus its own run in sequence. The chain, not
+the worker count, sets the stage's wall time, and the seed run duplicates what the
+`career_serge` job already did. Reusing that roster would save work, not chain
+length, because the promotion run cannot start before the seed finishes. The two
+levers left: start the interpreter jobs during coverage (they do not depend on the
+translation, but need a private copy of `f117run.exe` because the second build
+replaces it), or stop forcing the interpreter side fresh with
+`--verify-interp-cache`, which weakens a verification rather than speeding up
+the same one, so it is the owner's decision.
+
 ## Menu-input fixture and gate (14 October 2026)
 
 `matched_menu_input` runs 5,000 states each for START `39F7` and END `1CF5`,
