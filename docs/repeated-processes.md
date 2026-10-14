@@ -141,6 +141,24 @@ frames exact and guest hash equal to the fresh 36.8 s headless prefix. SDL
 writes its final hash to the machine log, not stdout. Screenshots and timing
 logs stay outside git in `D:/f117-gate/map-refill`.
 
+## Debrief narrative proof (14 October 2026)
+
+END `2BEC` was proven in the order that has worked for the larger routines: an
+instruction transcript first (to validate the fixtures), then the named body,
+then its real-driver route, a room-claim audit, mutations and one full gate.
+Fixture states plant a world record, objective, return and kill-count fields,
+ROE counters and six measured text heights, and make the drawing, scoring and
+input helpers return; the string and CRT routines stay original. The helper
+that waits for a key stays a stub that records its two arguments: with a plain
+RET the one mutation that changed its position was not noticed, because nothing
+compared what had been pushed. The room audit (`room_audit.py` adapted to the
+body's macros) reports every counted instruction against its claim; shrinking
+two claims made it fail. Ten mutations, each a plausible defect, all fail the
+lockstep. The real route invokes the narrative once with 66 checkpoints/final
+exact. The fresh gate ran coverage again, as every commit adding a matched
+entry must: 67 tests, 45 routes, both profiles, three seeds, 1,771 s.
+Proof and mutant runner: `D:/f117-gate/debrief-narrative`, `D:/f117-gate/end-narrative`.
+
 ## Segment binding and sprite-colour fixtures (14 October 2026)
 
 The pair's authored headers and streams cover all 27 / 63 instructions,

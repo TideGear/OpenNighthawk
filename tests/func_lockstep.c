@@ -535,6 +535,7 @@ static const struct { const char *module; uint16_t ip; int arg; uint16_t v[2]; }
 /* Exact code ranges when the default 0x300-byte window is unsuitable:
  * long/shared tails, or small walkers whose unrelated callees are nearby. */
 static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
+    { "END.EXE", 0x2BEC, 0x2BEC, 0x0435 },
     { "MPS_LOGO.EXE", 0x0112, 0x0112, 0x048F },
     { "SETUP.EXE", 0x0010, 0x0010, 0x04F3 },
     { "START.EXE", 0x4239, 0x4239, 0x0EF5 },
@@ -682,6 +683,7 @@ static uint64_t g_camera_seen;
  * rather than returning to the caller. Merely handing everything to original
  * code must not satisfy its coverage floor. */
 static const struct { const char *module; uint16_t seg, ip, len; unsigned insns, floor; const char *what; uint16_t boundary; unsigned clocks; } COVERED[] = {
+    { "END.EXE", 0, 0x2BEC, 0x0435, 444, 444, "debrief narrative and measured layout" },
     { "MPS_LOGO.EXE", 0x006D, 2, 0x0081, 63, 63, "sprite colour shift" },
     { "VGAME.EXE", 0x0FAE, 0x0002, 61, 27, 27, "segment entry binding" },
     { "START.EXE", 0, 0x9D67, 20, 8, 8, "formatter conversion state", 0x9D19, 8 },
@@ -735,7 +737,7 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
     const uint32_t watch = phys(cs, (uint16_t)(ip - g_below));
     const int watching = (g_below || g_watch_transient) && a->mem == g_mem[0];
     while ((unsigned)*steps < g_step_cap) {
-        const unsigned watch_bytes = (ip == 0x0112 || ip == 0x0010 || ip == 0x4239 || ip == 0x2F9D || ip == 0x683E || ip == 0x5852 || ip == 0x3ADA || ip == 0x1EB0 || ip == 0xBCEF || ip == 0x983E || ip == 0x0016 || ip == 0x79BE || ip == 0x8A90) ? g_span : 0x300u + g_below;
+        const unsigned watch_bytes = (ip == 0x2BEC || ip == 0x0112 || ip == 0x0010 || ip == 0x4239 || ip == 0x2F9D || ip == 0x683E || ip == 0x5852 || ip == 0x3ADA || ip == 0x1EB0 || ip == 0xBCEF || ip == 0x983E || ip == 0x0016 || ip == 0x79BE || ip == 0x8A90) ? g_span : 0x300u + g_below;
         if (watching && !g_self_written && memcmp(a->mem + watch, g_pristine + watch, watch_bytes)) g_self_written = 1;
         if (g_trace) printf("      %04X:%04X clk %llu sp %04X\n", a->seg[S_CS], a->ip, (unsigned long long)a->icount, a->r[R_SP]);
         const uint16_t here = a->ip;
@@ -960,7 +962,7 @@ int main(int argc, char **argv)
         if (g_cov >= 0) { g_cov_ip = COVERED[g_cov].ip; g_cov_escapes = 0; memset(g_cov_skips, 0, sizeof g_cov_skips); memset(g_cov_cover, 0, sizeof g_cov_cover); memset(g_cov_whole, 0, sizeof g_cov_whole); }
         g_hud_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0x1058 && o->ip == 0x0016;
         g_ground_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0x5046;
-        g_watch_transient = (!strcmp(o->module, "VGAME.EXE") && o->seg == 0x0FAE && o->ip == 2) ||
+        g_watch_transient = (!strcmp(o->module, "END.EXE") && o->seg == 0 && o->ip == 0x2BEC) || (!strcmp(o->module, "VGAME.EXE") && o->seg == 0x0FAE && o->ip == 2) ||
             (!strcmp(o->module, "MPS_LOGO.EXE") && o->seg == 0x006D && o->ip == 2) || (!strcmp(o->module, "MPS_LOGO.EXE") && o->seg == 0x006D && o->ip == 0x0112) || (!strcmp(o->module, "VGAME.EXE") && o->seg == 0x1058 && o->ip == 0x0016) ||
             (o->seg == 0 &&
             ((!strcmp(o->module, "VGAME.EXE") && (o->ip == 0x2F9D || o->ip == 0x683E || o->ip == 0x5046 || o->ip == 0x5852 || o->ip == 0x3ADA || o->ip == 0x1EB0 || o->ip == 0xBCEF || o->ip == 0x983E || o->ip == 0x79BE || o->ip == 0x8A90)) ||
@@ -2138,6 +2140,46 @@ int main(int argc, char **argv)
 #undef LW16
 #undef LH8
 #undef LH16
+            }
+            if (!strcmp(o->module, "END.EXE") && o->seg == 0 && o->ip == 0x2BEC) {
+                seg[S_DS] = seg[S_SS] = 0x05FA; r[R_SP] = 0xFF00;
+                flags = (uint16_t)(flags & (0xFFFFu ^ F_DF));
+#define NW8(seg_,off_,value_) do { uint32_t a_=phys((seg_),(uint16_t)(off_)); g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(value_); } while(0)
+#define NW16(seg_,off_,value_) do { uint16_t v_=(uint16_t)(value_); NW8(seg_,off_,v_);NW8(seg_,(uint16_t)((off_)+1),v_>>8); } while(0)
+                for(unsigned j=0;j<0x200;j++) NW8(0x05FA,0xFD00+j,0);
+                for(unsigned j=0;j<1024;j++) NW8(0x05FA,0x6986+j,0);
+                for(unsigned j=0;j<0x80;j++) { NW8(0x3000,0x1000+j,0);NW8(0x3000,0x2000+j,0); }
+                for(unsigned j=0;j<22;j++) NW8(0x05FA,0x6D8C+j,0);
+                NW16(0x05FA,0x531E,0);
+                const uint16_t narrative_seg = (s & 63) >= 62 ? 0x05FA : 0x3000;
+                const uint16_t narrative_off = (s & 63) == 62 ? 0x6986 : (s & 63) == 63 ? 0xFD80 : 0x1000;
+                for(unsigned j=0;j<0x80;j++) NW8(narrative_seg,narrative_off+j,0);
+                NW16(0x05FA,0x7222,narrative_off);NW16(0x05FA,0x7224,narrative_seg);
+                NW16(0x05FA,0x55DE,0x2000);NW16(0x05FA,0x55E0,0x3000);
+                static const uint8_t name[]={67,72,69,67,75,0};
+                for(unsigned j=0;j<sizeof name;j++) NW8(0x05FA,0x7228+j,name[j]);
+                const unsigned mode=(unsigned)s;
+                NW16(narrative_seg,narrative_off+0x26,mode&3);NW16(narrative_seg,narrative_off+0x28,(mode>>2)&1);NW16(narrative_seg,narrative_off+0x30,(mode>>3)&1);
+                NW16(0x3000,0x203A,(mode>>4)%3);
+                NW8(0x05FA,0x6440,(mode>>5)&1);NW8(0x05FA,0x6D89,(mode>>6)&1);NW8(0x05FA,0x720E,(mode>>7)&1);
+                static const uint8_t totals[]={0,1,2,11,12,13,255};
+                NW8(0x05FA,0x64C8,totals[mode%7]);NW8(0x05FA,0x55DC,0);
+                NW8(0x05FA,0x6984,(mode>>3)%3);NW8(0x05FA,0x6D88,(mode>>5)%3);
+                NW8(0x05FA,0x5B9A,(mode>>2)%3);NW8(0x05FA,0x55DB,(mode>>1)&1);NW8(0x05FA,0x55E8,mode&1);
+                /* Returning drawing/input helpers; string operations stay real. */
+                static const uint16_t ui[]={0x0FA4,0x4722,0x0FDA,0x42BE,0x1A75,0x206A};
+                for(unsigned j=0;j<sizeof ui/sizeof ui[0];j++) NW8(0,ui[j],0xC3);
+                /* Return a measured text height through the supplied context. */
+                static const uint16_t heights[]={0,8,40,184,185,0xFFFF};
+                const uint16_t height=heights[(mode>>8)%6];
+                const uint8_t wrap[]={0x53,0x8B,0xDC,0x36,0x8B,0x5F,0x04,0xC7,0x47,0x0A,(uint8_t)height,(uint8_t)(height>>8),0x5B,0xC3};
+                for(unsigned j=0;j<sizeof wrap;j++) NW8(0,0x1A75+j,wrap[j]);
+                /* The continue prompt records its two arguments, so a wrong position is a difference. */
+                static const uint8_t prompt[]={0x8B,0xDC,0x8B,0x47,0x02,0xA3,0x00,0x90,0x8B,0x47,0x04,0xA3,0x02,0x90,0xC3};
+                for(unsigned j=0;j<sizeof prompt;j++) NW8(0,0x206A+j,prompt[j]);
+                NW8(0,0x3021,0xB8);NW16(0,0x3022,(mode%5)*75);NW8(0,0x3024,0xC3);
+#undef NW8
+#undef NW16
             }
             /* Author-written overlay headers. Separate memory also permits the
              * original zero-count LOOP to complete all 65,536 iterations. */

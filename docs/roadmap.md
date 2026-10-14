@@ -200,6 +200,25 @@ not the recompilation:
 
 ## Phase 2 - understood code
 
+The END debrief narrative builder (`0000:2BEC`, 444 instructions / 1,077 bytes)
+is matched and named: it scores the sortie, then writes the outcome, rating,
+air and ground kill counts, rules-of-engagement losses and friendly-loss
+paragraphs, measures the text and bottom-aligns it. END `206A`, previously
+labelled a fatal-error handler, is the "Press Selector to continue" prompt and
+is renamed. Fixtures vary the objective mask, return/training state, ROE,
+losses, six measured heights, overlapping output/record/frame memory and the
+direction flag; the stubbed prompt records its two arguments. Three seeds
+compare 4,999-5,000 states with all 444 instructions reached. Ten deliberately
+broken bodies fail (wrong string, inverted branch, layout constant, extra clock,
+missing stack clean-up, wrong counter, wrong record field, wrong condition,
+dropped ROE term, wrong prompt position). `full_cycle` invokes the narrative
+once and the prompt twice with all 66 checkpoints/final state exact. Fresh full
+gate passes 67 tests, all 45 routes / 44 fresh interpreter sessions, both
+5,718,848-state profiles, three 841-address seeds (2,765,608 / 2,764,527 /
+2,766,986), zero mismatches, reachability/event checks pass (1,771 s).
+Census: 833 functions / 100,298 bytes, P2 58.17%, overall 84.00%. Private
+proof: `D:/f117-gate/debrief-narrative`.
+
 Segment entry binding (VGAME `0FAE:0002`) and encoded-sprite recolouring
 (MPS_LOGO `006D:0002`) are matched. All 27 / 63 instructions are covered by
 authored original-instruction fixtures, including overlapping tables/frames,
@@ -698,7 +717,7 @@ instruction profiles and three 789-address matched seeds (2,561,209,
       Reimp's mapping; matched functions replacing translations one at a time,
       each held to the same parity checks. `tools/reimp_names.py` joins the
       Reimp's census (1,535 functions) with this project's regions as a private
-      lead list. 840 addresses are matched (832 of the census functions, 99,221 of
+      lead list. 841 addresses are matched (833 of the census functions, 100,298 of
       179,213 bytes); the table is at the end of `src/matched/matched.c` and the
       method is in [architecture.md](architecture.md#matched-routines-phase-2).
       The earlier "72 reached / 411 never run" inventory was incomplete:
@@ -709,7 +728,7 @@ instruction profiles and three 789-address matched seeds (2,561,209,
       match the plain replay. `tools/census_reach.py` now distinguishes missing
       evidence from unreachability. The private 47-routine draft batch has 37
       positively reached entries (two already matched), so review/proof can
-      resume there. Larger reached leads include END `2BEC`, START `6DB8` and
+      resume there. Larger reached leads include START `6DB8` and
       `149C`, and VGAME `1450`, `DC46` and `04E6`. New routes remain useful for
       code without positive evidence. Private inventory: `D:/f117-gate/format-init`.
       Five of them were matched (the front ends' retrace re-sync, PLAYER's two

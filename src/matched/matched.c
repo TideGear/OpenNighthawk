@@ -4845,10 +4845,11 @@ static int sm3_release_buffer(machine_t *m, uint16_t call_at)
 static int start_release_buffer(machine_t *m) { return sm3_release_buffer(m, 0x9A87); }
 static int mps_logo_release_buffer(machine_t *m) { return sm3_release_buffer(m, 0x0D5B); }
 
-/* END 0x0206A: the error handler - the word at [6D98] is 3, a message built by the
- * callee at 112Ah from the two argument words and a text, and the exit routine is
- * then called with -1. */
-static int end_fatal(machine_t *m)
+/* END 0x0206A: the continue prompt. It stores 3 in [6D98], formats the text at
+ * 02DC ("Press Selector to continue") from its two argument words into the
+ * buffer at 6D8C through 112A, then calls the input wait at 2092 with -1
+ * and returns when that wait does. */
+static int end_continue_prompt(machine_t *m)
 {
     cpu_t *c = &m->cpu;
     if (!room(c, 10)) return 0;
@@ -41875,7 +41876,397 @@ done:
     return 1;
 }
 
+/* END 2BEC: build the debrief narrative from the scored objective, return,
+ * training, combat and ROE fields, then measure and bottom-align its text.
+ * The original strings and CRT routines remain in the guest. Frame buffers
+ * and report records may alias; keep live reads and the original call ABI.
+ * UI waits hand back at the current event boundary, as SETUP's waits do. */
+static int end_debrief_narrative(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { OBJECTIVES=-0x182, GROUND=-0x180, SCORE=-0x17E, AIR=-0x17C,
+           TEMP=-0x17A, UNAUTHORISED=-0x118, PARAGRAPH=-0x116, TEXT=-0x16 };
+#define DN_ADDR(o_) ((uint16_t)(c->r[R_BP]+(o_)))
+#define DN_ESW(o_) seg_read16(c,c->seg[S_ES],(uint16_t)(c->r[R_BX]+(o_)))
+#define DN_POP2() do { c->r[R_BX]=cpu_pop16(c); c->r[R_BX]=cpu_pop16(c); } while(0)
+#define DN_SP(n_) (c->r[R_SP]=(uint16_t)alu_add(c,c->r[R_SP],(n_),1,0))
+#define DN_AH0() set_r8(c,R_AH,(uint8_t)alu_sub(c,get_r8(c,R_AH),get_r8(c,R_AH),0,0))
+#define DN_CH0() set_r8(c,R_CH,(uint8_t)alu_sub(c,get_r8(c,R_CH),get_r8(c,R_CH),0,0))
+#define DN_RUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at) m->run_until=c->stop_at; \
+    const int returned_=(call_); m->run_until=until_; if(!returned_) return 1; } while(0)
+#define DN_NEAR(at_,ret_,next_) do { DN_RUN(guest_call(m,(at_),(ret_))); SM4_NEED((next_),(ret_)); } while(0)
+#define DN_FAR(at_,next_) do { DN_RUN(guest_call_far(m,(at_),(uint16_t)((at_)+5))); SM4_NEED((next_),(uint16_t)((at_)+5)); } while(0)
+    if (!room(c,8)) return 0;
+    frame_open(c,0x182);
+    cpu_push16(c,c->r[R_DI]); cpu_push16(c,c->r[R_SI]);
+    c->r[R_AX]=0x100; cpu_push16(c,c->r[R_AX]); c->icount+=7;
+    DN_NEAR(0x3021,0x2BFC,3);                     /* score and populate counters */
+    c->r[R_BX]=cpu_pop16(c); bp_put(c,SCORE,c->r[R_AX]); c->icount+=2;
+    DN_FAR(0x2C01,5);
+    cpu_push16(c,ds_get(c,0x6444)); cpu_push16(c,ds_get(c,0x6442));
+    c->r[R_AX]=0x07BF; cpu_push16(c,c->r[R_AX]); c->icount+=4;
+    DN_NEAR(0x0FA4,0x2C15,4);                     /* screen and text setup */
+    DN_SP(6); cpu_push16(c,ds_get(c,0x55D0)); cpu_push16(c,ds_get(c,0x7220)); c->icount+=3;
+    DN_NEAR(0x4722,0x2C23,7);
+    DN_POP2(); c->r[R_AX]=0x1F25; cpu_push16(c,c->r[R_AX]);
+    c->r[R_AX]=0x07C8; cpu_push16(c,c->r[R_AX]); c->icount+=6;
+    DN_NEAR(0x0FDA,0x2C30,3);
+    DN_POP2(); c->icount+=2;
+    DN_NEAR(0x42BE,0x2C35,1);
+    DN_FAR(0x2C35,14);
+
+    /* Objective mask: primary in bit 1, secondary in bit 0. A training
+     * death describes what would have happened in actual combat. */
+    set_r8(c,R_AL,ds_get8(c,0x6D89)); DN_AH0();
+    c->r[R_AX]=x86_shift(c,4,c->r[R_AX],1,1);
+    set_r8(c,R_CL,ds_get8(c,0x720E)); DN_CH0();
+    c->r[R_AX]=(uint16_t)alu_logic(c,c->r[R_AX]|c->r[R_CX],1);
+    bp_put(c,OBJECTIVES,c->r[R_AX]);
+    c->r[R_BX]=ds_get(c,0x7222); c->seg[S_ES]=ds_get(c,0x7224);
+    alu_sub(c,DN_ESW(0x28),0,1,0); c->icount+=10;
+    if(c->flags&F_ZF) goto survival;
+    alu_sub(c,DN_ESW(0x30),0,1,0); c->icount+=2;
+    if(c->flags&F_ZF) goto survival;
+    alu_logic(c,c->r[R_AX],1); c->icount+=2;
+    if(c->flags&F_ZF) goto training_failure;
+    SM4_NEED(8,0x2C63);
+    c->r[R_BX]=c->r[R_AX]; c->r[R_BX]=x86_shift(c,4,c->r[R_BX],1,1);
+    cpu_push16(c,ds_get(c,(uint16_t)(c->r[R_BX]+0x0DAE)));
+    c->r[R_AX]=0x07D1; cpu_push16(c,c->r[R_AX]);
+    c->r[R_AX]=DN_ADDR(TEMP); cpu_push16(c,c->r[R_AX]); c->icount+=7;
+    DN_NEAR(0x521C,0x2C77,2);
+    DN_SP(6); c->icount+=2; goto training_intro;
+training_failure:
+    SM4_NEED(5,0x2C7C);
+    c->r[R_AX]=0x07F5; cpu_push16(c,c->r[R_AX]);
+    c->r[R_AX]=DN_ADDR(TEMP); cpu_push16(c,c->r[R_AX]); c->icount+=4;
+    DN_NEAR(0x5150,0x2C88,2); DN_POP2(); c->icount+=2;
+training_intro:
+    SM4_NEED(5,0x2C8A);
+    c->r[R_AX]=DN_ADDR(TEMP); cpu_push16(c,c->r[R_AX]);
+    c->r[R_AX]=0x7228; cpu_push16(c,c->r[R_AX]);
+    c->r[R_AX]=0x0817; c->icount+=5;
+format_detailed_outcome:
+    SM4_NEED(4,0x2C96);
+    cpu_push16(c,c->r[R_AX]); c->r[R_AX]=DN_ADDR(PARAGRAPH);
+    cpu_push16(c,c->r[R_AX]); c->icount+=3;
+    DN_NEAR(0x521C,0x2C9F,2); DN_SP(8); c->icount+=2; goto append_outcome;
+
+survival:
+    SM4_NEED(8,0x2CA5);
+    alu_sub(c,DN_ESW(0x28),0,1,0); c->icount+=2;
+    if(c->flags&F_ZF) goto international_incident;
+    alu_logic(c,c->r[R_AX],1); c->icount+=2;
+    if(c->flags&F_ZF) {
+        c->r[R_AX]=0x7228; cpu_push16(c,c->r[R_AX]); c->r[R_AX]=0x089B;
+    } else {
+        c->r[R_AX]=0x7228; cpu_push16(c,c->r[R_AX]); c->r[R_AX]=0x0860;
+    }
+    c->icount+=4; goto format_simple_outcome;
+international_incident:
+    SM4_NEED(6,0x2CC4);
+    alu_sub(c,DN_ESW(0x26),1,1,0); c->icount+=2;
+    if(c->flags&F_ZF) goto ejection;
+    alu_sub(c,ds_get8(c,0x6440),0,0,0); c->icount+=2;
+    if(!(c->flags&F_ZF)) goto ejection;
+    alu_logic(c,c->r[R_AX],1); c->icount+=2;
+    if(c->flags&F_ZF) goto incident_failure;
+    SM4_NEED(8,0x2CD6);
+    c->r[R_BX]=c->r[R_AX]; c->r[R_BX]=x86_shift(c,4,c->r[R_BX],1,1);
+    cpu_push16(c,ds_get(c,(uint16_t)(c->r[R_BX]+0x0DAE)));
+    c->r[R_AX]=0x08CE; cpu_push16(c,c->r[R_AX]);
+    c->r[R_AX]=DN_ADDR(TEMP); cpu_push16(c,c->r[R_AX]); c->icount+=7;
+    DN_NEAR(0x521C,0x2CEA,2); DN_SP(6); c->icount+=2; goto incident_intro;
+incident_failure:
+    SM4_NEED(5,0x2CEF);
+    c->r[R_AX]=0x0907; cpu_push16(c,c->r[R_AX]);
+    c->r[R_AX]=DN_ADDR(TEMP); cpu_push16(c,c->r[R_AX]); c->icount+=4;
+    DN_NEAR(0x5150,0x2CFB,2); DN_POP2(); c->icount+=2;
+incident_intro:
+    SM4_NEED(6,0x2CFD);
+    c->r[R_AX]=DN_ADDR(TEMP); cpu_push16(c,c->r[R_AX]);
+    c->r[R_AX]=0x7228; cpu_push16(c,c->r[R_AX]); c->r[R_AX]=0x0964;
+    c->icount+=6; goto format_detailed_outcome;
+ejection:
+    SM4_NEED(6,0x2D0B);
+    alu_sub(c,DN_ESW(0x26),2,1,0); c->icount+=2;
+    if(!(c->flags&F_ZF)) goto returned_home;
+    alu_sub(c,ds_get8(c,0x6440),0,0,0); c->icount+=2;
+    if(c->flags&F_ZF) goto returned_home;
+    alu_logic(c,c->r[R_AX],1); c->icount+=2;
+    if(c->flags&F_ZF) {
+        SM4_NEED(4,0x2D2F);
+        c->r[R_AX]=0x7228; cpu_push16(c,c->r[R_AX]); c->r[R_AX]=0x09F1;
+        c->icount+=4; goto format_simple_outcome;
+    }
+    SM4_NEED(7,0x2D1D);
+    c->r[R_BX]=c->r[R_AX]; c->r[R_BX]=x86_shift(c,4,c->r[R_BX],1,1);
+    cpu_push16(c,ds_get(c,(uint16_t)(c->r[R_BX]+0x0DAE)));
+    c->r[R_AX]=0x7228; cpu_push16(c,c->r[R_AX]); c->r[R_AX]=0x09B3;
+    c->icount+=7; goto format_detailed_outcome;
+returned_home:
+    SM4_NEED(4,0x2D38);
+    alu_sub(c,DN_ESW(0x26),3,1,0); c->icount+=2;
+    if(!(c->flags&F_ZF)) goto append_outcome;
+    alu_logic(c,c->r[R_AX],1); c->icount+=2;
+    if(c->flags&F_ZF) {
+        SM4_NEED(3,0x2D55);
+        c->r[R_AX]=0x7228; cpu_push16(c,c->r[R_AX]); c->r[R_AX]=0x0A71;
+        c->icount+=3; goto format_simple_outcome;
+    }
+    SM4_NEED(7,0x2D43);
+    c->r[R_BX]=c->r[R_AX]; c->r[R_BX]=x86_shift(c,4,c->r[R_BX],1,1);
+    cpu_push16(c,ds_get(c,(uint16_t)(c->r[R_BX]+0x0DAE)));
+    c->r[R_AX]=0x7228; cpu_push16(c,c->r[R_AX]); c->r[R_AX]=0x0A44;
+    c->icount+=7; goto format_detailed_outcome;
+format_simple_outcome:
+    SM4_NEED(4,0x2D5C);
+    cpu_push16(c,c->r[R_AX]); c->r[R_AX]=DN_ADDR(PARAGRAPH);
+    cpu_push16(c,c->r[R_AX]); c->icount+=3;
+    DN_NEAR(0x521C,0x2D65,1); DN_SP(6); c->icount++;
+append_outcome:
+    SM4_NEED(5,0x2D68);
+    c->r[R_AX]=DN_ADDR(PARAGRAPH); cpu_push16(c,c->r[R_AX]);
+    c->r[R_AX]=0x6986; cpu_push16(c,c->r[R_AX]); c->icount+=4;
+    DN_NEAR(0x5110,0x2D74,7); DN_POP2();
+    c->r[R_AX]=0x0AB8; cpu_push16(c,c->r[R_AX]);
+    c->r[R_AX]=0x6986; cpu_push16(c,c->r[R_AX]); c->icount+=6;
+    DN_NEAR(0x5110,0x2D81,5); DN_POP2();
+    c->r[R_BX]=ds_get(c,0x7222); c->seg[S_ES]=ds_get(c,0x7224);
+    alu_sub(c,DN_ESW(0x30),0,1,0); c->icount+=5;
+    if(!(c->flags&F_ZF)) {
+        SM4_NEED(5,0x2D95);
+        c->r[R_AX]=0x0ABB; cpu_push16(c,c->r[R_AX]);
+        c->r[R_AX]=DN_ADDR(TEMP); cpu_push16(c,c->r[R_AX]); c->icount+=4;
+        DN_NEAR(0x5150,0x2DA1,2); DN_POP2(); c->icount+=2;
+    } else {
+        SM4_NEED(2,0x2D8E); bp_put8(c,TEMP,0); c->icount+=2;
+    }
+    /* Rating and the training-flight suffix. */
+    SM4_NEED(8,0x2DA3);
+    c->r[R_AX]=DN_ADDR(TEMP); cpu_push16(c,c->r[R_AX]);
+    cpu_push16(c,bp_get(c,SCORE)); c->r[R_AX]=0x0AF5; cpu_push16(c,c->r[R_AX]);
+    c->r[R_AX]=DN_ADDR(PARAGRAPH); cpu_push16(c,c->r[R_AX]); c->icount+=7;
+    DN_NEAR(0x521C,0x2DB8,6);
+    DN_SP(8); c->r[R_AX]=DN_ADDR(PARAGRAPH); cpu_push16(c,c->r[R_AX]);
+    c->r[R_CX]=0x6986; cpu_push16(c,c->r[R_CX]); c->icount+=5;
+    DN_NEAR(0x5110,0x2DC7,14);
+    DN_POP2(); set_r8(c,R_AL,ds_get8(c,0x64C8)); DN_AH0();
+    set_r8(c,R_CL,ds_get8(c,0x55DC)); DN_CH0();
+    c->r[R_AX]=(uint16_t)alu_add(c,c->r[R_AX],c->r[R_CX],1,0);
+    bp_put(c,AIR,c->r[R_AX]); alu_logic(c,c->r[R_AX],1); c->icount+=10;
+    if(x86_cond(c,0xE)) goto ground_total;
+    alu_sub(c,c->r[R_AX],1,1,0); c->icount+=2;
+    if(x86_cond(c,0xE)) goto air_single_or_high;
+    alu_sub(c,c->r[R_AX],12,1,0); c->icount+=2;
+    if(x86_cond(c,0xD)) goto air_single_or_high;
+    SM4_NEED(2,0x2DE8);
+    cpu_push16(c,c->r[R_AX]); c->r[R_AX]=0x0B29; c->icount+=2;
+format_air_count:
+    SM4_NEED(4,0x2DEC);
+    cpu_push16(c,c->r[R_AX]); c->r[R_AX]=DN_ADDR(PARAGRAPH);
+    cpu_push16(c,c->r[R_AX]); c->icount+=3;
+    DN_NEAR(0x521C,0x2DF5,2); DN_SP(6); c->icount+=2; goto append_air;
+air_single_or_high:
+    SM4_NEED(5,0x2DFA);
+    alu_sub(c,c->r[R_AX],12,1,0); c->icount+=2;
+    if(x86_cond(c,0xC)) goto single_air;
+    cpu_push16(c,c->r[R_AX]); c->r[R_AX]=0x0B4D; c->icount+=3; goto format_air_count;
+single_air:
+    SM4_NEED(2,0x2E05);
+    alu_sub(c,c->r[R_AX],1,1,0); c->icount+=2;
+    if(!(c->flags&F_ZF)) goto append_air;
+    SM4_NEED(5,0x2E0A);
+    c->r[R_AX]=0x0BA1; cpu_push16(c,c->r[R_AX]);
+    c->r[R_AX]=DN_ADDR(PARAGRAPH); cpu_push16(c,c->r[R_AX]); c->icount+=4;
+    DN_NEAR(0x5150,0x2E16,2); DN_POP2(); c->icount+=2;
+append_air:
+    SM4_NEED(5,0x2E18);
+    c->r[R_AX]=DN_ADDR(PARAGRAPH); cpu_push16(c,c->r[R_AX]);
+    c->r[R_AX]=0x6986; cpu_push16(c,c->r[R_AX]); c->icount+=4;
+    DN_NEAR(0x5110,0x2E24,2); DN_POP2(); c->icount+=2;
+ground_total:
+    SM4_NEED(10,0x2E26);
+    set_r8(c,R_AL,ds_get8(c,0x6984)); DN_AH0(); set_r8(c,R_CL,ds_get8(c,0x6D88)); DN_CH0();
+    c->r[R_AX]=(uint16_t)alu_add(c,c->r[R_AX],c->r[R_CX],1,0);
+    bp_put(c,GROUND,c->r[R_AX]); alu_logic(c,c->r[R_AX],1); c->icount+=8;
+    if(x86_cond(c,0xE)) goto rules_of_engagement;
+    c->r[R_AX]=(uint16_t)alu_dec(c,c->r[R_AX],1); c->icount+=2;
+    if(!(c->flags&F_ZF)) goto multiple_ground;
+    SM4_NEED(5,0x2E3E);
+    c->r[R_AX]=0x0BC2; cpu_push16(c,c->r[R_AX]);
+    c->r[R_AX]=DN_ADDR(PARAGRAPH); cpu_push16(c,c->r[R_AX]); c->icount+=4;
+    DN_NEAR(0x5150,0x2E4A,3); DN_POP2(); c->icount+=3; goto append_ground;
+multiple_ground:
+    SM4_NEED(6,0x2E4E);
+    cpu_push16(c,bp_get(c,GROUND)); c->r[R_AX]=0x0BEB; cpu_push16(c,c->r[R_AX]);
+    c->r[R_AX]=DN_ADDR(PARAGRAPH); cpu_push16(c,c->r[R_AX]); c->icount+=5;
+    DN_NEAR(0x521C,0x2E5E,1); DN_SP(6); c->icount++;
+append_ground:
+    SM4_NEED(5,0x2E61);
+    c->r[R_AX]=DN_ADDR(PARAGRAPH); cpu_push16(c,c->r[R_AX]);
+    c->r[R_AX]=0x6986; cpu_push16(c,c->r[R_AX]); c->icount+=4;
+    DN_NEAR(0x5110,0x2E6D,2); DN_POP2(); c->icount+=2;
+rules_of_engagement:
+    /* Cold war reports civilian and unauthorised military losses; limited
+     * war reports civilians. The live world record selects the rule. */
+    SM4_NEED(4,0x2E6F);
+    c->r[R_BX]=ds_get(c,0x55DE); c->seg[S_ES]=ds_get(c,0x55E0);
+    alu_sub(c,DN_ESW(0x3A),0,1,0); c->icount+=3;
+    if(!(c->flags&F_ZF)) { c->icount++; goto limited_war; }
+    SM4_NEED(11,0x2E7D);
+    set_r8(c,R_AL,ds_get8(c,0x55DC)); DN_AH0();
+    set_r8(c,R_CL,ds_get8(c,0x6D88)); DN_CH0();
+    c->r[R_AX]=(uint16_t)alu_add(c,c->r[R_AX],c->r[R_CX],1,0);
+    bp_put(c,UNAUTHORISED,c->r[R_AX]);
+    alu_sub(c,ds_get8(c,0x5B9A),get_r8(c,R_CH),0,0); c->icount+=8;
+    if(!(c->flags&F_ZF)) goto roe_counts;
+    alu_logic(c,c->r[R_AX],1); c->icount+=2;
+    if(!(c->flags&F_ZF)) goto roe_counts;
+    c->icount++; goto friendly_losses;
+roe_counts:
+    SM4_NEED(13,0x2E9B);
+    alu_sub(c,ds_get8(c,0x5B9A),0,0,0); c->icount+=2;
+    if(c->flags&F_ZF) goto roe_one_kind;
+    alu_logic(c,c->r[R_AX],1); c->icount+=2;
+    if(c->flags&F_ZF) goto roe_one_kind;
+    cpu_push16(c,c->r[R_AX]); set_r8(c,R_AL,ds_get8(c,0x5B9A)); DN_AH0();
+    cpu_push16(c,c->r[R_AX]); c->r[R_AX]=0x0C1B; cpu_push16(c,c->r[R_AX]);
+    c->r[R_AX]=DN_ADDR(TEMP); cpu_push16(c,c->r[R_AX]); c->icount+=8;
+    DN_NEAR(0x521C,0x2EB9,2); DN_SP(8); c->icount+=2; goto roe_sentence;
+roe_one_kind:
+    SM4_NEED(2,0x2EBE);
+    alu_logic(c,c->r[R_AX],1); c->icount+=2;
+    if(c->flags&F_ZF) {
+        SM4_NEED(4,0x2EC8);
+        set_r8(c,R_AL,ds_get8(c,0x5B9A)); DN_AH0();
+        cpu_push16(c,c->r[R_AX]); c->r[R_AX]=0x0C5E; c->icount+=4;
+    } else {
+        SM4_NEED(3,0x2EC2);
+        cpu_push16(c,c->r[R_AX]); c->r[R_AX]=0x0C44; c->icount+=3;
+    }
+    SM4_NEED(4,0x2ED1);
+    cpu_push16(c,c->r[R_AX]); c->r[R_AX]=DN_ADDR(TEMP);
+    cpu_push16(c,c->r[R_AX]); c->icount+=3;
+    DN_NEAR(0x521C,0x2EDA,1); DN_SP(6); c->icount++;
+roe_sentence:
+    SM4_NEED(7,0x2EDD);
+    c->r[R_AX]=DN_ADDR(TEMP); cpu_push16(c,c->r[R_AX]);
+    c->r[R_AX]=0x0C6B; cpu_push16(c,c->r[R_AX]);
+    c->r[R_AX]=DN_ADDR(PARAGRAPH); cpu_push16(c,c->r[R_AX]); c->icount+=6;
+    DN_NEAR(0x521C,0x2EEE,6);
+    DN_SP(6); set_r8(c,R_AL,ds_get8(c,0x5B9A)); DN_AH0();
+    c->r[R_AX]=(uint16_t)alu_add(c,c->r[R_AX],bp_get(c,UNAUTHORISED),1,0);
+    alu_sub(c,c->r[R_AX],1,1,0); c->icount+=6;
+    if(x86_cond(c,0xE)) {
+        SM4_NEED(2,0x2F04); c->r[R_AX]=0x0CB2; c->icount+=2;
+    } else {
+        SM4_NEED(2,0x2EFF); c->r[R_AX]=0x0C98; c->icount+=2;
+    }
+    goto append_roe_suffix;
+limited_war:
+    SM4_NEED(4,0x2F09);
+    alu_sub(c,DN_ESW(0x3A),1,1,0); c->icount+=2;
+    if(!(c->flags&F_ZF)) goto friendly_losses;
+    alu_sub(c,ds_get8(c,0x5B9A),0,0,0); c->icount+=2;
+    if(c->flags&F_ZF) goto friendly_losses;
+    SM4_NEED(8,0x2F17);
+    set_r8(c,R_AL,ds_get8(c,0x5B9A)); DN_AH0(); cpu_push16(c,c->r[R_AX]);
+    c->r[R_AX]=0x0CCA; cpu_push16(c,c->r[R_AX]);
+    c->r[R_AX]=DN_ADDR(PARAGRAPH); cpu_push16(c,c->r[R_AX]); c->icount+=7;
+    DN_NEAR(0x521C,0x2F29,3);
+    DN_SP(6); alu_sub(c,ds_get8(c,0x5B9A),1,0,0); c->icount+=3;
+    if(x86_cond(c,6)) {
+        SM4_NEED(1,0x2F38); c->r[R_AX]=0x0D1B; c->icount++;
+    } else {
+        SM4_NEED(2,0x2F33); c->r[R_AX]=0x0D01; c->icount+=2;
+    }
+append_roe_suffix:
+    SM4_NEED(4,0x2F3B);
+    cpu_push16(c,c->r[R_AX]); c->r[R_AX]=DN_ADDR(PARAGRAPH);
+    cpu_push16(c,c->r[R_AX]); c->icount+=3;
+    DN_NEAR(0x5110,0x2F44,7);
+    DN_POP2(); c->r[R_AX]=DN_ADDR(PARAGRAPH); cpu_push16(c,c->r[R_AX]);
+    c->r[R_AX]=0x6986; cpu_push16(c,c->r[R_AX]); c->icount+=6;
+    DN_NEAR(0x5110,0x2F52,2); DN_POP2(); c->icount+=2;
+friendly_losses:
+    SM4_NEED(4,0x2F54);
+    alu_sub(c,ds_get8(c,0x55DB),0,0,0); c->icount+=2;
+    if(!(c->flags&F_ZF)) goto friendly_intro;
+    alu_sub(c,ds_get8(c,0x55E8),0,0,0); c->icount+=2;
+    if(c->flags&F_ZF) goto measure_and_draw;
+friendly_intro:
+    SM4_NEED(5,0x2F62);
+    c->r[R_AX]=0x0D32; cpu_push16(c,c->r[R_AX]);
+    c->r[R_AX]=0x6986; cpu_push16(c,c->r[R_AX]); c->icount+=4;
+    DN_NEAR(0x5110,0x2F6D,6); DN_POP2();
+    alu_sub(c,ds_get8(c,0x55DB),0,0,0); c->icount+=4;
+    if(c->flags&F_ZF) goto friendly_one_kind;
+    alu_sub(c,ds_get8(c,0x55E8),0,0,0); c->icount+=2;
+    if(c->flags&F_ZF) goto friendly_one_kind;
+    SM4_NEED(2,0x2F7D); c->r[R_AX]=0x0D77; c->icount+=2; goto append_friendly_kind;
+friendly_one_kind:
+    SM4_NEED(2,0x2F82);
+    alu_sub(c,ds_get8(c,0x55DB),0,0,0); c->icount+=2;
+    if(c->flags&F_ZF) {
+        SM4_NEED(1,0x2F8E); c->r[R_AX]=0x0D9D; c->icount++;
+    } else {
+        SM4_NEED(2,0x2F89); c->r[R_AX]=0x0D93; c->icount+=2;
+    }
+append_friendly_kind:
+    SM4_NEED(4,0x2F91);
+    cpu_push16(c,c->r[R_AX]); c->r[R_AX]=0x6986;
+    cpu_push16(c,c->r[R_AX]); c->icount+=3;
+    DN_NEAR(0x5110,0x2F99,2); DN_POP2(); c->icount+=2;
+measure_and_draw:
+    /* Measure with the copied context's page set to FFFF (no drawing),
+     * then draw at 184 - measured height. Keep both SUB and NEG flags. */
+    SM4_NEED(33,0x2F9B);
+    ds_put(c,0x6D98,4); ds_put(c,0x6D90,0xFD); ds_put(c,0x6D92,0xFE);
+    c->r[R_DI]=DN_ADDR(TEXT); c->r[R_SI]=0x6D8C;
+    cpu_push16(c,c->seg[S_SS]); c->seg[S_ES]=cpu_pop16(c); c->r[R_CX]=11;
+    rep_string(c,STR_MOVS,1,c->seg[S_DS],0);
+    bp_put(c,TEXT,0xFFFF);
+    c->r[R_AX]=(uint16_t)alu_sub(c,c->r[R_AX],c->r[R_AX],1,0);
+    cpu_push16(c,c->r[R_AX]); c->r[R_CX]=8; cpu_push16(c,c->r[R_CX]);
+    c->r[R_DX]=0x104; cpu_push16(c,c->r[R_DX]);
+    cpu_push16(c,c->r[R_AX]); cpu_push16(c,c->r[R_AX]);
+    c->r[R_BX]=0x6986; cpu_push16(c,c->r[R_BX]);
+    c->r[R_SI]=DN_ADDR(TEXT); cpu_push16(c,c->r[R_SI]); c->icount+=32;
+    DN_NEAR(0x1A75,0x2FD7,19);
+    DN_SP(14); c->r[R_AX]=1; cpu_push16(c,c->r[R_AX]);
+    c->r[R_AX]=8; cpu_push16(c,c->r[R_AX]);
+    c->r[R_AX]=0x104; cpu_push16(c,c->r[R_AX]);
+    c->r[R_AX]=bp_get(c,-0x0C); bp_put(c,-0x11A,c->r[R_AX]);
+    c->r[R_AX]=(uint16_t)alu_sub(c,c->r[R_AX],0xB8,1,0);
+    c->r[R_AX]=(uint16_t)alu_sub(c,0,c->r[R_AX],1,0); cpu_push16(c,c->r[R_AX]);
+    c->r[R_AX]=0x1E; cpu_push16(c,c->r[R_AX]);
+    c->r[R_AX]=0x6986; cpu_push16(c,c->r[R_AX]);
+    c->r[R_AX]=0x6D8C; cpu_push16(c,c->r[R_AX]); c->icount+=18;
+    DN_NEAR(0x1A75,0x3002,6);
+    DN_SP(14); c->r[R_AX]=0xC0; cpu_push16(c,c->r[R_AX]);
+    c->r[R_AX]=0xA0; cpu_push16(c,c->r[R_AX]); c->icount+=5;
+    DN_NEAR(0x206A,0x3010,5);                    /* continue selector prompt */
+    DN_POP2(); c->r[R_AX]=(uint16_t)alu_sub(c,c->r[R_AX],c->r[R_AX],1,0);
+    cpu_push16(c,c->r[R_AX]); c->icount+=4;
+    DN_FAR(0x3015,6);
+    c->r[R_BX]=cpu_pop16(c); c->r[R_SI]=cpu_pop16(c); c->r[R_DI]=cpu_pop16(c);
+    c->r[R_SP]=c->r[R_BP]; c->r[R_BP]=cpu_pop16(c); near_ret(c); c->icount+=6;
+    return 1;
+#undef DN_ADDR
+#undef DN_ESW
+#undef DN_POP2
+#undef DN_SP
+#undef DN_AH0
+#undef DN_CH0
+#undef DN_RUN
+#undef DN_NEAR
+#undef DN_FAR
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "END.EXE", END_47304, 0x0000, 0x2BEC, end_debrief_narrative, "debrief narrative and measured layout", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0FAE, 0x0002, vgame_bind_segment_entries, "bind segment entry slots", 2 },
     { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x006D, 0x0002, logo_sprite_recolour, "shift encoded sprite colours", 2 },
 
@@ -42104,7 +42495,7 @@ static const recomp_override MATCHED[] = {
     { "matched", "END.EXE", END_47304, 0x0000, 0x52DC, end_rand, "random number", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x462E, vgame_release_count, "release a counted hold", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x9A72, start_release_buffer, "release a stream's buffer", 1 },
-    { "matched", "END.EXE", END_47304, 0x0000, 0x206A, end_fatal, "fatal error message and exit", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x206A, end_continue_prompt, "continue prompt and wait", 1 },
     { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x05D0, player_two_calls, "two calls with word pairs", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x959E, start_sprintf, "format into a string", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x521C, end_sprintf, "format into a string", 1 },

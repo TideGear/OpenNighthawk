@@ -13,21 +13,23 @@ standing practice, not a session-by-session log. Earlier sessions' detail
 (what was tried, what failed, exact investigation narratives) is in
 `git log -p handoff.md` — it does not need to live here to stay available.
 
-## Conversation wrap-up (14 October)
+## Current state (14 October, later)
 
-The owner asked to hand off, commit, push and stop. No local gate, route or
-fixture processes remain running. Latest validated code milestone: `ddb84dc`,
-pushed to `origin/master`; its full gate is documented below. Its
-[GitHub CI run](https://github.com/TideGear/OpenNighthawk/actions/runs/38597066785)
-was still running when this handoff was written; check its final verdict.
-Only the owner's `f117a.example.ini` edit and untracked `4k60.bat` remain outside
-commits. Do not overwrite or stage them.
+END `2BEC` (debrief narrative) is matched, named and fully gated; END `206A`
+is renamed to the continue prompt it is. Census 833 functions / 100,298 bytes,
+P2 58.17%, overall 84.00%. Proof: `D:/f117-gate/debrief-narrative`; the
+private ten-mutation runner is `D:/f117-gate/end-narrative/mut/run_mutants.py`.
+Only the owner's `f117a.example.ini` edit and untracked `4k60.bat` remain
+outside commits. Do not overwrite or stage them.
 
-The next substantial P2 task is the private named END narrative candidate
-described below: three seeds pass, but its **named** body still needs actual
-driver replay, room/callee audit, mutations, integration and a fresh full gate.
-The earlier transcript's route proof must not be presented as the named body's
-proof. Preserve the separate private transcript and named artifacts.
+Next P2 candidates (all reached by `full_cycle`): START `6DB8` (399
+instructions, a menu dialog with a typed-text effect and an input-wait loop;
+draft and dossier in `D:/f117-gate/start-6db8`, not yet reviewed), START
+`149C`, VGAME `1450`, `DC46`, `04E6`. A wait inside the body must clamp
+`m->run_until` to `c->stop_at` (see END `2BEC`'s `DN_RUN`).
+
+What keeps P3 below 100%: only Stage 3/4 (85%): the owner's panel motion
+verdict, long cargo/career flight timing and weaker CPU/GPU checks.
 
 ## Owner priority (13 October)
 
@@ -92,24 +94,8 @@ Retained prototypes and mutations are in `D:/f117-gate/format-init`.
 `next-batch-review.json` there records six other readings and warns about static
 walks past terminal DOS exits. Never copy an old private matched file wholesale.
 
-Larger next target: END `0000:2BEC`, the debrief narrative builder (444
-instructions / 1,077 bytes, 36 calls). `D:/f117-gate/end-narrative/named.c` is
-now a named, explained candidate, with outcome/score/ROE paragraphs and measured
-bottom-aligned layout, using original CRT and bounded UI calls. Three private
-seeds compare 5,000 / 4,999 / 5,000 states, all 444 instructions, zero skips or
-differences. It is **not integrated or counted**: the real-route proof so far
-is for the earlier transcript (one invocation, 66 checkpoints/final exact).
-Next: prove the named body through real drivers, audit its room claims and
-callee RET forms, retain mutations, then integrate and run a fresh full gate.
-`foundation-verdict.json` retains the transcript proof; `named-seeds.json`
-retains the named proof. Fixtures vary objective masks, return/training, ROE,
-losses, six measured heights, overlapping output/record/frame memory and DF.
-Extract only `narrative-fixture.inc` when integrating: the private harness
-predates the new projectile decoy case and must not replace main wholesale.
-END `206A`'s public `end_fatal` name/comment are wrong: its label is a continue
-prompt and its `2092` callee waits for input and returns. Rename/explain it in
-the same next batch, preserving every guest operation. Dossier/call inventory:
-`D:/f117-gate/entry-palette/next`.
+END `2BEC` was this inventory's largest lead and is now integrated (see
+above). Its fixture is in `tests/func_lockstep.c`.
 
 ## Phase 2 resumed: SETUP's native BIOS boundary alert (14 October)
 
