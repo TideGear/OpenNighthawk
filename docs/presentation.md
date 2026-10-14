@@ -866,15 +866,16 @@ save, dummy audio, Direct3D 11 3840x2160 at 59.990002 Hz, vsync on, N=9):
 |---|---|---|---|---|---|
 | strike to 3.5B | 7,719 | 16.6677 / 16.7092 / 17.063 | 0 | 2,062 of 2,062 | `bc8e3ae5a872405d` |
 | air-to-air type 6 to 5.9B | 19,000 | 16.6675 / 16.7091 / 21.3108 | 0 | 3,679 of 3,679 | `b050542466c9a616` |
+| landing to 10.0B | 50,440 | 16.6677 / 16.7090 / 17.2537 | 0 | 13,408 of 13,408 | `efe080faa364f8f4` |
 
 Both pass the checker (median within 10% of the refresh period, p99 within
 125%, no interval above 150% of the period, guest clock within 100 ms of the
-host; drift +18.8 and +6.2 ms). In-between pictures are 96% of the pictures
-shown. The strike hash equals the unchanged scan/headless run.
+host; drift +18.8, +6.2 and +2.8 ms). In-between pictures are 96% of the pictures
+shown. Each final hash equals a fresh headless run of the same input and stop count.
 
 What this does not establish: the picture on a physical panel (tearing, the
-look of motion), the landing scene's timing, and a machine slower than this
-one (24 threads). The owner's motion review remains Phase 4 work.
+look of motion), the cargo and career flights' timing, and a machine slower than
+this one (24 threads). The owner's motion review remains Phase 4 work.
 
 `tools/presentation_timing.py` checks the logged display settings (a log that
 changes display mid-run is rejected as ambiguous), intervals, interpolation and

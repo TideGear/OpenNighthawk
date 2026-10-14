@@ -1005,11 +1005,12 @@ instruction profiles and three 789-address matched seeds (2,561,209,
   presentation now replays records as they arrive and draws the in-between
   picture one frame ahead on a worker thread, with palette conversion on helper
   threads: fullscreen Direct3D 11 3840x2160 at 59.99 Hz with vsync passes the
-  timing checker on a strike flight (p99 16.71 ms, none missed) and on a longer
-  air-to-air flight (19,000 pictures, p99 16.71 ms, worst 21.31 ms), with every
+  timing checker on a strike flight (p99 16.71 ms, none missed), a longer
+  air-to-air flight (19,000 pictures, worst 21.31 ms) and a 50,440-picture
+  landing (worst 17.25 ms), with every
   logic frame exact and guest hashes unchanged; it costs one more host frame of
-  picture age. Open: the owner's motion review on a physical panel, and other
-  scenes and slower machines. See presentation.md.
+  picture age. Open: the owner's motion review on a physical panel, and
+  cargo/career flights and slower machines. See presentation.md.
 
 ## Phase 4 - checked by people and independent references
 

@@ -91,10 +91,11 @@ unchanged full func_lockstep already covered by the preceding gate), seven
 Python verdict regressions and a ROM-free preset/metadata smoke check.
 
 Threaded presentation, isolated fullscreen captures (13 October): strike to
-3.5B takes 389.8 s and air-to-air type 6 to 5.9B takes 656.4 s of wall time
-(the machine is paced to the guest clock, so they cannot be shortened). Both
-pass `presentation_timing.py` at 3840x2160/59.99 Hz/vsync/N=9: p99 16.71 ms,
-maximum 17.06 and 21.31 ms, no missed interval, all logic frames exact, final
+3.5B takes 389.8 s, air-to-air type 6 to 5.9B 656.4 s and landing to 10.0B
+1,112 s of wall time
+(the machine is paced to the guest clock, so they cannot be shortened). All
+three pass `presentation_timing.py` at 3840x2160/59.99 Hz/vsync/N=9: p99 16.71 ms,
+maximum 17.06, 21.31 and 17.25 ms, no missed interval, all logic frames exact, final
 hashes equal to fresh headless runs. Before the threaded draw the strike
 capture failed p99 at 24.30 ms. Per-stage timers (a temporary build; not kept)
 found the cause: logic-frame closes cost 21-25 ms and ordinary frames used
