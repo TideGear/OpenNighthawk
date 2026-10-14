@@ -69,6 +69,7 @@ static unsigned long long g_sprite_zero, g_sprite_skip;
 static unsigned long long g_iret_full, g_iret_special;
 static int g_dos;                  /* the routine under test is in DOS_STUBS: INT 21h is answered here */
 
+static int g_native_int10;   /* answer INT 10h too (the string writer under test) */
 static int int_h(cpu_t *c, uint8_t vec)
 {
     side_t *s = side_of(c);
@@ -100,6 +101,14 @@ static int int_h(cpu_t *c, uint8_t vec)
         c->flags = (uint16_t)((c->flags & ~(F_CF | F_ZF)) | ((v & 0x400) ? F_CF : 0) | ((v & 0x800) ? F_ZF : 0));
         return 1;
     }
+    if (vec == 0x33) {              /* the mouse driver: reset answers FFFFh or 0; function 3 gives buttons 0-7, column, row */
+        s->nread++;
+        const uint64_t v = mix(0x5000000ull | vec, s->nread);
+        if (c->r[R_AX] == 3) { c->r[R_BX] = (uint16_t)(v & 7); c->r[R_CX] = (uint16_t)(v >> 8); c->r[R_DX] = (uint16_t)(v >> 24); }
+        else if (c->r[R_AX] == 0) c->r[R_AX] = (v & 0x100) ? 0xFFFF : 0;
+        return 1;
+    }
+    if (vec == 0x10 && g_native_int10) { s->nread++; return 1; }   /* the BIOS video calls leave the registers alone */
     return 0;                       /* not emulated: the CPU dispatches it */
 }
 
@@ -688,6 +697,28 @@ static const struct { const char *module; uint16_t seg, ip, len; unsigned insns,
     { "END.EXE", 0, 0x2BEC, 0x0435, 444, 444, "debrief narrative and measured layout" },
     { "START.EXE", 0, 0x6DB8, 0x03F5, 399, 399, "pilot options dialog" },
     { "START.EXE", 0, 0x149C, 0x039E, 365, 365, "flight plan display" },
+    { "PLAYER.EXE", 0x0000, 0x0B84, 0x001E, 15, 15, "refill the compressed-picture buffer" },
+    { "PLAYER.EXE", 0x0000, 0x0BA2, 0x002B, 16, 16, "open a compressed picture and reset input" },
+    { "START.EXE", 0x0000, 0x8CE6, 0x0021, 15, 15, "restore the BIOS timer and INT 8 vector" },
+    { "END.EXE", 0x0000, 0x4BCA, 0x0021, 15, 15, "restore the BIOS timer and INT 8 vector" },
+    { "SETUP.EXE", 0x0000, 0x0FFE, 0x0021, 15, 15, "restore the BIOS timer and INT 8 vector" },
+    { "PLAYER.EXE", 0x0000, 0x0F47, 0x0024, 15, 15, "read the mouse buttons" },
+    { "END.EXE", 0x0000, 0x44B9, 0x002E, 18, 18, "read the mouse position and buttons" },
+    { "START.EXE", 0x0000, 0x8545, 0x002E, 18, 18, "read the mouse position and buttons" },
+    { "END.EXE", 0x0000, 0x44E7, 0x0034, 19, 19, "reset and range the mouse" },
+    { "START.EXE", 0x0000, 0x8573, 0x0034, 19, 19, "reset and range the mouse" },
+    { "SETUP.EXE", 0x0237, 0x0004, 0x0028, 17, 17, "probe for a mouse driver" },
+    { "SETUP.EXE", 0x0000, 0x0C84, 0x002D, 20, 20, "find a file and compare its name" },
+    { "PLAYER.EXE", 0x026B, 0x004D, 0x0026, 18, 18, "restore the timer for the clock hook" },
+    { "MPS_LOGO.EXE", 0x00DA, 0x0491, 0x0033, 26, 26, "rebuild a block of seven-byte records" },
+    { "END.EXE", 0x0000, 0x45AD, 0x0059, 38, 38, "rebuild a block of five-byte records" },
+    { "SETUP.EXE", 0x0000, 0x14BE, 0x004B, 36, 36, "write a string with the BIOS" },
+    { "PLAYER.EXE", 0x0000, 0x05F6, 0x006D, 46, 46, "copy bytes between linear addresses" },
+    { "SETUP.EXE", 0x0000, 0x1387, 0x0065, 51, 51, "call a software interrupt with register blocks" },
+    { "SETUP.EXE", 0x0000, 0x0BFB, 0x003A, 27, 25, "free a memory block" },
+    { "MPS_LOGO.EXE", 0x00DA, 0x04C4, 0x0016, 11, 10, "free a memory block" },
+    { "MPS_LOGO.EXE", 0x00DA, 0x043D, 0x0054, 38, 35, "load a file into a segment" },
+    { "START.EXE", 0x0000, 0xA8C2, 0x0050, 39, 39, "resize a heap block" },
     { "MPS_LOGO.EXE", 0x006D, 2, 0x0081, 63, 63, "sprite colour shift" },
     { "VGAME.EXE", 0x0FAE, 0x0002, 61, 27, 27, "segment entry binding" },
     { "START.EXE", 0, 0x9D67, 20, 8, 8, "formatter conversion state", 0x9D19, 8 },
@@ -1023,6 +1054,8 @@ int main(int argc, char **argv)
                 g_end_lo[g_nend] = SHARED_ENDINGS[k].lo; g_end_hi[g_nend++] = SHARED_ENDINGS[k].hi;
             }
         const int bind_entries = !strcmp(o->module, "VGAME.EXE") && o->seg == 0x0FAE && o->ip == 2;
+        const int zero_loops = (!strcmp(o->module, "MPS_LOGO.EXE") && o->seg == 0x00DA && o->ip == 0x0491) ||
+                               (!strcmp(o->module, "END.EXE") && o->seg == 0 && o->ip == 0x45AD);
         unsigned bind_modes = 0, bind_zero = 0;
         const int sprite_colour = !strcmp(o->module, "MPS_LOGO.EXE") && o->seg == 0x006D && o->ip == 2;
         unsigned colour_modes = 0;
@@ -2145,6 +2178,192 @@ int main(int argc, char **argv)
 #undef LH8
 #undef LH16
             }
+            if (!strcmp(o->module, "SETUP.EXE") && o->seg == 0 && o->ip == 0x0C84) {
+                seg[S_DS] = seg[S_SS] = 0x024C; r[R_SP] = 0xFF00;
+                flags = (uint16_t)(flags & (0xFFFFu ^ F_DF));
+#define NW8(seg_,off_,value_) do { uint32_t a_=phys((seg_),(uint16_t)(off_)); g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(value_); } while(0)
+                /* The find-first call (INT 21h at 0C90) is replaced by MOV AL,k so that "found" is
+                 * reached: the machine's DOS answers "not found" for the template. */
+                const unsigned found = (s & 7) != 7;
+                NW8(0, 0x0C90, 0xB0); NW8(0, 0x0C91, found ? 0x00 : 0x01);
+                const unsigned len = (unsigned)s % 6;
+                for (unsigned j = 0; j < 8; j++) { NW8(0x024C, 0x0ACE + j, 0); NW8(0x024C, 0x0B0B + j, 0); }
+                for (unsigned j = 0; j < len; j++) { NW8(0x024C, 0x0ACE + j, 'A' + j); NW8(0x024C, 0x0B0B + j, 'A' + j); }
+                const unsigned bad = ((unsigned)s >> 3) % (len + 2);       /* a mismatch inside the name, or none */
+                if (bad < len) NW8(0x024C, 0x0B0B + bad, 'a' + bad);
+#undef NW8
+            }
+            if (!strcmp(o->module, "MPS_LOGO.EXE") && o->seg == 0x00DA && o->ip == 0x0491) {
+                seg[S_DS] = seg[S_SS] = 0x00DA; r[R_SP] = 0xFF00;
+                flags = (uint16_t)(flags & (0xFFFFu ^ F_DF));
+#define NW8(seg_,off_,value_) do { uint32_t a_=phys((seg_),(uint16_t)(off_)); g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(value_); } while(0)
+#define NW16(seg_,off_,value_) do { uint16_t v_=(uint16_t)(value_); NW8(seg_,off_,v_);NW8(seg_,(uint16_t)((off_)+1),v_>>8); } while(0)
+                uint32_t x_=(uint32_t)s*2654435761u+4242u;
+#define NEXT() (x_=x_*1103515245u+12345u, (x_>>16))
+                /* The argument is a segment: its header holds the index, count, fill word and sources.
+                 * State 1 has count 0: the loop runs 65,536 times. */
+                const uint16_t arg_seg=0x3000;
+                small[0]=arg_seg; NW16(0x00DA,0xFF00,arg_seg);
+                for(unsigned j=0;j<0x80;j++) NW8(arg_seg,j,NEXT());
+                /* Vary the loader-relocated MOV AX,segment operand; the zero-base image alone misses this. */
+                NW16(o->seg,0x04AD,(s & 1) ? 0x4000 : 0x00DA);
+                NW16(arg_seg,0x2E,NEXT()%4);
+                NW16(arg_seg,0x30,(s==1)?0:1+NEXT()%4);
+#undef NEXT
+#undef NW16
+#undef NW8
+            }
+            if (!strcmp(o->module, "END.EXE") && o->seg == 0 && o->ip == 0x45AD) {
+                seg[S_DS] = seg[S_SS] = 0x05FA; r[R_SP] = 0xFF00;
+                flags = (uint16_t)(flags & (0xFFFFu ^ F_DF));
+#define NW8(seg_,off_,value_) do { uint32_t a_=phys((seg_),(uint16_t)(off_)); g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(value_); } while(0)
+#define NW16(seg_,off_,value_) do { uint16_t v_=(uint16_t)(value_); NW8(seg_,off_,v_);NW8(seg_,(uint16_t)((off_)+1),v_>>8); } while(0)
+                uint32_t x_=(uint32_t)s*2654435761u+9191u;
+#define NEXT() (x_=x_*1103515245u+12345u, (x_>>16))
+                const uint16_t arg_seg=0x3000;
+                small[0]=arg_seg; NW16(0x05FA,0xFF00,arg_seg);
+                for(unsigned j=0;j<0x80;j++) NW8(arg_seg,j,NEXT());
+                NW16(arg_seg,0x1C,NEXT()%8);
+                NW16(arg_seg,0x22,(s==1)?0:1+NEXT()%4);
+                if (s == 1) {
+                    /* The full 65,536-iteration write must not overwrite the return frame.
+                     * Zero sources/fill also keep the routine's own [2612] flag clear. */
+                    seg[S_SS] = 0x6000;
+                    for (unsigned j = 0; j < 0x10000; j++) NW8(arg_seg,j,0);
+                    NW16(0x6000,0xFF00,arg_seg);
+                }
+#undef NEXT
+#undef NW16
+#undef NW8
+            }
+            if (!strcmp(o->module, "PLAYER.EXE") && o->seg == 0 && o->ip == 0x05F6) {
+                seg[S_DS] = seg[S_SS] = 0x6000; r[R_SP] = 0xFF00;
+                flags = (uint16_t)(flags & (0xFFFFu ^ F_DF));
+#define NW8(seg_,off_,value_) do { uint32_t a_=phys((seg_),(uint16_t)(off_)); g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(value_); } while(0)
+#define NW16(seg_,off_,value_) do { uint16_t v_=(uint16_t)(value_); NW8(seg_,off_,v_);NW8(seg_,(uint16_t)((off_)+1),v_>>8); } while(0)
+                uint32_t x_=(uint32_t)s*2654435761u+555u;
+#define NEXT() (x_=x_*1103515245u+12345u, (x_>>16))
+                /* Two linear addresses (low word, high word) inside scratch memory at 40000h..4FFFFh,
+                 * sometimes overlapping, and a count of 0 to 24 bytes (0 in one state in eight). */
+                const uint32_t lin_a = 0x40000u + (NEXT() & 0x0FFFu);
+                const uint32_t lin_b = (s & 1) ? lin_a + (NEXT() % 12) : 0x42000u + (NEXT() & 0x0FFFu);
+                const unsigned count = (s & 7) == 0 ? 0 : 1 + NEXT() % 24;
+                NW16(0x6000, 0xFF00, lin_a); NW16(0x6000, 0xFF02, lin_a >> 16);
+                NW16(0x6000, 0xFF04, lin_b); NW16(0x6000, 0xFF06, lin_b >> 16);
+                NW16(0x6000, 0xFF08, count);
+                small[0] = (uint16_t)lin_a; small[1] = (uint16_t)(lin_a >> 16); small[2] = (uint16_t)lin_b; small[3] = (uint16_t)(lin_b >> 16);
+                for (unsigned j = 0; j < 0x3100; j++) NW8(0x4000, j, NEXT());
+#undef NEXT
+#undef NW16
+#undef NW8
+            }
+            if ((!strcmp(o->module, "SETUP.EXE") && o->seg == 0 && (o->ip == 0x0BFB || o->ip == 0x1387)) ||
+                (!strcmp(o->module, "MPS_LOGO.EXE") && o->seg == 0x00DA && (o->ip == 0x04C4 || o->ip == 0x043D))) {
+                /* The DOS calls inside these routines are replaced by two-byte instructions that set the
+                 * outcome from the state's seed (CLC/STC for the carry; MOV AH,80h to fill a read), so each
+                 * arm - success and failure, a full buffer - is reached. */
+                seg[S_DS] = seg[S_SS] = 0x6000; r[R_SP] = 0xFF00;
+                flags = (uint16_t)(flags & (0xFFFFu ^ F_DF));
+#define NW8(seg_,off_,value_) do { uint32_t a_=phys((seg_),(uint16_t)(off_)); g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(value_); } while(0)
+#define NW16(seg_,off_,value_) do { uint16_t v_=(uint16_t)(value_); NW8(seg_,off_,v_);NW8(seg_,(uint16_t)((off_)+1),v_>>8); } while(0)
+                uint32_t x_=(uint32_t)s*2654435761u+8080u;
+#define NEXT() (x_=x_*1103515245u+12345u, (x_>>16))
+#define PATCH(at_,b0_,b1_) do { NW8(o->seg,(at_),(b0_)); NW8(o->seg,(at_)+1,(b1_)); } while(0)
+#define CARRY(at_) do { if (NEXT() & 1) PATCH(at_, 0xF9, 0x90); else PATCH(at_, 0xF8, 0x90); } while(0)
+                for (unsigned j = 0; j < 0x300; j++) NW8(0x6000, 0xFD00 + j, 0);
+                if (o->ip == 0x0BFB) {                         /* SETUP: free a block */
+                    CARRY(0x0C17); PATCH(0x0C20, 0x90, 0x90);
+                    /* Replace only the terminal error helper with a jump to the real epilogue,
+                     * so failed frees return and their message argument is compared too. */
+                    PATCH(0x0B9D, 0xE9, 0x85); NW8(0, 0x0B9F, 0x00);
+                    NW16(0x6000, 0xFF00, NEXT()); NW8(0x6000, 0x078E, (NEXT() & 3) == 0);
+                    small[0] = NEXT();
+                } else if (o->ip == 0x04C4) {                   /* MPS_LOGO: free a block (far) */
+                    CARRY(0x04CE);
+                    PATCH(0x040E, 0xE9, 0xC7); NW8(o->seg, 0x0410, 0); /* error helper jumps to POP ES / RETF */
+                    NW16(0x6000, 0xFF00, NEXT());
+                } else if (o->ip == 0x043D) {                   /* MPS_LOGO: load a file */
+                    NW16(0x6000, 0x0082, (s & 7) == 0 ? 0 : 0x1000 + (NEXT() & 0xFF));
+                    PATCH(0x040E, 0xE9, 0x7E); NW8(o->seg, 0x0410, 0); /* error helper jumps to POP DS / RET */
+                    CARRY(0x0449);                              /* open */
+                    if (NEXT() & 1) PATCH(0x045E, 0xB4, 0x80); else CARRY(0x045E);   /* read: full buffer, or carry */
+                    CARRY(0x0484);                              /* close */
+                } else {                                        /* SETUP 1387: the interrupt call */
+                    static const uint16_t vectors[] = { 0x10, 0x21, 0x16, 0x1A, 0x33, 0 };
+                    PATCH(0x13B9, 0x90, 0x90); PATCH(0x13BE, 0x90, 0x90); PATCH(0x13C3, 0x90, 0x90); PATCH(0x13C8, 0x90, 0x90);
+                    const uint16_t vec = vectors[NEXT() % 6];
+                    NW16(0x6000, 0xFF00, vec); NW16(0x6000, 0xFF02, 0x1000); NW16(0x6000, 0xFF04, 0x1100);
+                    small[0] = vec; small[1] = 0x1000; small[2] = 0x1100;
+                    for (unsigned j = 0; j < 8; j++) { NW8(0x6000, 0x1000 + j, NEXT()); NW8(0x6000, 0x1100 + j, NEXT()); }
+                }
+#undef CARRY
+#undef PATCH
+#undef NEXT
+#undef NW16
+#undef NW8
+            }
+            if (!strcmp(o->module, "START.EXE") && o->seg == 0 && o->ip == 0xA8C2) {
+                seg[S_DS] = seg[S_SS] = 0x6000; r[R_SP] = 0xFF00;
+                flags = (uint16_t)(flags & (0xFFFFu ^ F_DF));
+#define NW8(seg_,off_,value_) do { uint32_t a_=phys((seg_),(uint16_t)(off_)); g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(value_); } while(0)
+#define NW16(seg_,off_,value_) do { uint16_t v_=(uint16_t)(value_); NW8(seg_,off_,v_);NW8(seg_,(uint16_t)((off_)+1),v_>>8); } while(0)
+                uint32_t x_=(uint32_t)s*2654435761u+6060u;
+#define NEXT() (x_=x_*1103515245u+12345u, (x_>>16))
+                /* The DOS call (INT 21h at A8FC) becomes CLC or STC; the block record sits in the data
+                 * segment with its far flag, sizes and saved size from the seed. */
+                if (NEXT() & 1) { NW8(0, 0xA8FC, 0xF9); NW8(0, 0xA8FD, 0x90); } else { NW8(0, 0xA8FC, 0xF8); NW8(0, 0xA8FD, 0x90); }
+                const uint16_t rec = 0x1000 + 16 * (NEXT() & 0x1F);
+                for (unsigned j = 0; j < 0x400; j++) NW8(0x6000, 0x1000 + j, NEXT());
+                NW8(0x6000, rec + 2, NEXT() & 7);
+                NW16(0x6000, rec + 4, NEXT() % 0x40);
+                NW16(0x6000, rec - 2, NEXT() % 0x40);
+                NW16(0x6000, 0xAE58, NEXT());
+                r[R_BX] = rec;
+                r[R_AX] = (NEXT() % 3 == 0) ? (uint16_t)(NEXT() & 0xF) : (uint16_t)(NEXT() % 0x400);
+#undef NEXT
+#undef NW16
+#undef NW8
+            }
+            if (!strcmp(o->module, "SETUP.EXE") && o->seg == 0 && o->ip == 0x14BE) {
+                seg[S_DS] = seg[S_SS] = 0x6000; r[R_SP] = 0xFF00;
+                flags = (uint16_t)(flags & (0xFFFFu ^ F_DF));
+#define NW8(seg_,off_,value_) do { uint32_t a_=phys((seg_),(uint16_t)(off_)); g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(value_); } while(0)
+#define NW16(seg_,off_,value_) do { uint16_t v_=(uint16_t)(value_); NW8(seg_,off_,v_);NW8(seg_,(uint16_t)((off_)+1),v_>>8); } while(0)
+                uint32_t x_=(uint32_t)s*2654435761u+1414u;
+#define NEXT() (x_=x_*1103515245u+12345u, (x_>>16))
+                /* Row, column (both FFh: no cursor move) and a string of up to eight bytes, zero-ended:
+                 * letters, FFh attribute escapes (also a trailing one), and the BIOS answers in int_h. */
+                const unsigned nomove = (NEXT() & 3) == 0;
+                const uint16_t row = nomove ? 0xFFFF : (uint16_t)(NEXT() & 0x1F1F), col = nomove ? 0xFFFF : (uint16_t)(NEXT() & 0x1F1F);
+                NW16(0x6000, 0xFF00, row); NW16(0x6000, 0xFF02, col); NW16(0x6000, 0xFF04, 0x2000);
+                small[0] = row; small[1] = col; small[2] = 0x2000;
+                const unsigned len = NEXT() % 9;
+                for (unsigned j = 0; j < len; j++) NW8(0x6000, 0x2000 + j, (NEXT() % 5 == 0) ? 0xFF : 'a' + NEXT() % 26);
+                NW8(0x6000, 0x2000 + len, 0); NW8(0x6000, 0x2000 + len + 1, (NEXT() & 1) ? 0 : 0x1F);
+                NW8(0x6000, 0x2000 + len + 2, 0);
+#undef NEXT
+#undef NW16
+#undef NW8
+            }
+            if ((!strcmp(o->module, "PLAYER.EXE") && o->seg == 0 && o->ip == 0x0F47) ||
+                (!strcmp(o->module, "END.EXE") && o->seg == 0 && (o->ip == 0x44B9 || o->ip == 0x44E7)) ||
+                (!strcmp(o->module, "START.EXE") && o->seg == 0 && (o->ip == 0x8545 || o->ip == 0x8573)) ||
+                (!strcmp(o->module, "SETUP.EXE") && o->seg == 0x0237 && o->ip == 0x0004)) {
+                /* The mouse driver (INT 33h) is answered by int_h: buttons 0-7 (both together included),
+                 * column and row from the call count, and a reset answer of FFFFh or 0. The routine's data
+                 * goes to a scratch segment, away from the code. For the driver probe, the INT 21h answer
+                 * leaves BX and ES as the state has them: zero, or a pointer at an IRET, in some states. */
+                seg[S_DS] = seg[S_SS] = 0x6000; r[R_SP] = 0xFF00;
+                flags = (uint16_t)(flags & (0xFFFFu ^ F_DF));
+                if (o->ip == 0x0004) {
+                    uint32_t x_ = (uint32_t)s * 2654435761u + 7007u;
+#define NEXT() (x_ = x_ * 1103515245u + 12345u, (x_ >> 16))
+                    r[R_BX] = (NEXT() & 3) == 0 ? 0 : (uint16_t)(0x1000 + (NEXT() & 0xFF));
+                    seg[S_ES] = (NEXT() & 3) == 0 ? 0 : 0x6000;
+                    if (NEXT() & 1) { const uint32_t a_ = phys(seg[S_ES], r[R_BX]); g_pristine[a_] = g_mem[0][a_] = g_mem[1][a_] = 0xCF; }
+#undef NEXT
+                }
+            }
             if (!strcmp(o->module, "START.EXE") && o->seg == 0 && o->ip == 0x149C) {
                 seg[S_DS] = seg[S_SS] = 0x0A95; r[R_SP] = 0xFF00;
                 flags = (uint16_t)(flags & (0xFFFFu ^ F_DF));
@@ -2335,7 +2554,8 @@ int main(int argc, char **argv)
             /* Author-written overlay headers. Separate memory also permits the
              * original zero-count LOOP to complete all 65,536 iterations. */
             g_fixture_args = (bind_entries || sprite_colour) && (s & 7) == 1;
-            g_step_cap = bind_entries && (s == 1 || s == 2) ? 500000 : 100000;
+            g_step_cap = (bind_entries && (s == 1 || s == 2)) || (zero_loops && s == 1) ? 500000 : 100000;
+            g_native_int10 = !strcmp(o->module, "SETUP.EXE") && o->seg == 0 && o->ip == 0x14BE;
             if (bind_entries && ((s & 7) == 1 || (s & 7) == 2)) {
                 const unsigned mode = (s >> 3) & 7;
                 static const uint16_t counts[] = {1,2,255,16384,255,7,8,3};
@@ -2391,6 +2611,10 @@ int main(int argc, char **argv)
             g_self_written = 0;
             if (g_cov >= 0) { memset(g_cov_seen, 0, sizeof g_cov_seen); memset(g_cov_nsp, 0, sizeof g_cov_nsp); }
             const int returned = run_to_ret(a, entry_sp, o->matched, &steps, cs, ip);
+            if (zero_loops && s == 1 && (returned != 1 || g_self_written)) {
+                fprintf(stderr, "record-table zero-count fixture did not return intact\n");
+                return 1;
+            }
             if (returned == 2 && !g_self_written) {
                 g_side[0].overflow = g_side[1].overflow = 1;
                 g_lost = 0; g_ncalls = 0; g_callover = 0;

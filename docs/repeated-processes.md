@@ -141,6 +141,71 @@ frames exact and guest hash equal to the fresh 36.8 s headless prefix. SDL
 writes its final hash to the machine log, not stdout. Screenshots and timing
 logs stay outside git in `D:/f117-gate/map-refill`.
 
+## Parallel gate unit tests (14 October 2026)
+
+The gate now runs its independent CTests with up to eight workers before
+starting the route workers. `--unit-jobs 1` selects the previous serial run;
+`--unit-jobs N` changes only this stage. The full matched-routine lockstep
+still runs separately at all three seeds, with unchanged states and shards.
+The tests use separate processes and read-only generated modules; the one
+override-log writer has its own filename, and optional picture dumps are
+disabled in the CTest commands.
+
+Same executable, inputs, test selection, 24-CPU affinity and BelowNormal
+priority: all 75 tests pass, and every test's captured output is identical
+to the saved serial run. The serial tests total 159.76 seconds; the parallel
+stage takes 22.47 seconds, about 7.1 times faster and 137 seconds saved in
+this stage. The full gate above used the serial stage; the parallel stage
+was validated separately after its route workers finished. Fresh flight
+replays still dominate the total gate time. Proof:
+`D:/f117-gate/leaf-batch/unit-parallel-verdict.json` and the paired test logs.
+More balanced lockstep chunks and a shared CPU budget for route/lockstep
+workers remain experiments to benchmark before changing the gate.
+
+## Support-routine batch proof (14 October 2026)
+
+The 22-routine batch uses one private /Od project linked ahead of frozen
+libraries, then a normal /O2 integration build. Four independent seeds run
+concurrently in 8.6 seconds on the idle development machine, 103,554-103,672
+comparisons each. Each routine has an instruction floor; INT 33h answers reset,
+buttons and position, and INT 10h is answered only for SETUP's text writer.
+Interrupt inputs are still hashed before answering, so wrong arguments cannot
+disappear when later calls overwrite the registers. Only the authored
+zero-count record loops receive the higher 500,000-step guard. Both must
+return intact: END's zero-count case uses a separate stack and zero source
+words, preventing its full table write from overwriting the test's return
+frame or setting the routine's unusual early-return flag. A skipped
+zero-count case fails explicitly instead of disappearing into the skip tally.
+
+Plain terminal DOS errors did not return, so successful states alone missed
+wrong error-message arguments. The fixtures now replace the terminal helper
+with a jump to the routine's real epilogue, preserving the caller's frame and
+making error arguments comparable. The actual routes keep the original exits.
+The logo record builder's hardcoded segment survived the old zero-base
+fixtures and failed the real routes; reading the loader-relocated operand
+fixes it, and a varied-operand fixture rejects that same defect. All 20 private
+mutations are rejected, including skipping END's full zero-count loop.
+The final 20 one-at-a-time rebuilds and targeted comparisons take 102 seconds
+beside the integration build and unit tests.
+Final clamped-route checks take 31.0 seconds for
+`full_cycle`, 20.7 seconds for `ibm_boot` and 0.8 for `setup_calibration`;
+all 22 routines have positive invocation counts across these routes.
+The first complete gate matched all 45 routes and every lockstep state but
+failed the event-limit audit: three SETUP INT wrappers nested a run beyond
+the caller's next event. `support_int` now clamps the nested run to that
+event and restores the outer slice on return, following the existing wait
+wrappers. Private routes now use libraries from the current generated build
+and reject overrun reports as well as differing final hashes. Removing the
+clamp is rejected even though the final hash stays identical. This separate
+route mutant supplements the 20 fixture mutants. The failed gate is retained
+as `D:/f117-gate/leaf-batch/gate-event-limit-failed.log`.
+START `8427` and END `4393` remain original: tick waiting resynchronises their
+timing, masking the tested defects on the available routes, and lockstep
+cannot prove them. Verified unchanged coverage is reused. Fresh full gate
+passes 75 tests, all 45 routes / 44 fresh interpreter sessions, both
+5,718,848-state profiles, three 865-address seeds (2,883,318 / 2,881,648 /
+2,881,497), zero mismatches, reachability/event checks pass (1,390 s).
+
 ## Flight-plan display proof (14 October 2026)
 
 START `149C` follows the same recipe as `6DB8`. Near helpers that wait or draw

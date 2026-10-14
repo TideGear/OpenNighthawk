@@ -100,7 +100,7 @@ def recompile(data, gen, coverage_files):
     return changed
 
 
-def build(gen):
+def build(gen, unit_jobs=8):
     # A prior core-only build must not silently omit the five host tests.
     r = run(["cmd", "/c", os.path.join(ROOT, "build.cmd"), "-DF117R_BUILD_APP=ON",
              "-DF117R_GEN_DIR=" + gen.replace("\\", "/")],
@@ -110,12 +110,12 @@ def build(gen):
         print(tail)
         sys.exit("build failed")
     print("  build OK")
-    unit_tests()
+    unit_tests(unit_jobs)
 
 
-def unit_tests():
-    """The ROM-free unit tests CI runs (ctest), but func_lockstep, which the matched-routine step runs itself: under a
-    second, and the gate missed a failing one (the override registry's capacity) that CI caught."""
+def unit_tests(jobs=8):
+    """Run the unit tests, including generated-code fixtures, in independent processes.
+    The full func_lockstep run belongs to the separate matched-routine step."""
     cache = os.path.join(ROOT, "build", "CMakeCache.txt")
     ctest = shutil.which("ctest")
     if os.path.exists(cache):
@@ -124,7 +124,8 @@ def unit_tests():
                 ctest = line.split("=", 1)[1].strip()
     if not ctest:
         sys.exit("ctest not found (no CMAKE_CTEST_COMMAND in build/CMakeCache.txt)")
-    r = run([ctest, "--test-dir", os.path.join(ROOT, "build"), "-E", "func_lockstep", "--output-on-failure"],
+    r = run([ctest, "--test-dir", os.path.join(ROOT, "build"), "-E", "func_lockstep",
+             "--parallel", str(max(1, jobs)), "--output-on-failure"],
             capture_output=True, text=True)
     if r.returncode != 0:
         print((r.stdout or "")[-3000:])
@@ -431,6 +432,8 @@ def main():
     ap.add_argument("--work", default=os.path.join(os.path.expanduser("~"), "f117-recomp-local"))
     ap.add_argument("--jobs", type=int, default=max(1, min(24, (os.cpu_count() or 2) * 3 // 4)),
                     help="routes to run at once in the coverage and parity steps (1 = one at a time)")
+    ap.add_argument("--unit-jobs", type=int, default=max(1, min(8, os.cpu_count() or 1)),
+                    help="unit tests to run at once before the route workers start (default: up to 8; 1 = serial)")
     ap.add_argument("--seed-coverage", metavar="DIR",
                     help="start from the *.cov files of an earlier run's coverage directory, so the first "
                          "translation is already complete and the second build can be skipped")
@@ -467,7 +470,7 @@ def main():
         print("1. translate")
         recompile(a.data, gen, sorted(glob.glob(os.path.join(covdir, "*.cov"))))
         print("2. build")
-        build(gen)
+        build(gen, a.unit_jobs)
         lap("translate and build")
     lockstep = {}
     atexit.register(stop_locksteps, lockstep)
@@ -497,7 +500,7 @@ def main():
         if recompile(a.data, gen, sorted(glob.glob(os.path.join(covdir, "*.cov")))):
             # The locksteps ran the first build; the rebuild replaces their executables.
             stop_locksteps(lockstep)
-            build(gen)
+            build(gen, a.unit_jobs)
             if not a.no_parity:
                 lockstep.update(start_locksteps(a.work))
         else:

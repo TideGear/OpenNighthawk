@@ -200,6 +200,35 @@ not the recompilation:
 
 ## Phase 2 - understood code
 
+Twenty-two reached support routines are matched and named: PLAYER's picture
+open/refill and linear copy, the four timer shutdowns, five mouse wrappers and
+SETUP's mouse probe, file-name comparison, BIOS text writer, register-block
+interrupt call and memory free, the logo and debrief record-table fills, logo
+file loading/freeing and START heap resizing. Four seeds compare 103,554-103,672
+states per seed with zero differences. Fixtures cover each routine's
+instructions, with lower completion floors for terminal error paths that hand
+back to original code; returning error helpers also compare those branches.
+The record-table tests include the 65,536-iteration zero-count loops and vary
+the loader-relocated segment operand. This variation retains the defect found
+by the real route: a fixed 00DAh segment passed the zero-base fixtures but
+corrupted the logo after DOS relocated it. The three private routes
+(`full_cycle`, `ibm_boot`, `setup_calibration`) match their interpreter final
+states and together invoke every routine. Twenty planted defects are rejected,
+including skipping END's zero-count fill. Both zero-count fixtures must return
+intact; a separate stack and zeroed source keep END's full loop comparable.
+Six grouped CTests retain the fixtures. Fresh full gate passes 75 tests, all
+45 routes / 44 fresh interpreter sessions, both 5,718,848-state profiles,
+three 865-address seeds (2,883,318 / 2,881,648 / 2,881,497), zero mismatches,
+reachability/event checks pass (1,390 s).
+Nested interrupt runs stop at the caller's next event through `support_int`;
+removing its clamp is rejected by a route mutation even with equal final
+hashes. All three private routes now require zero overruns too.
+Census: 857 functions / 103,349 bytes,
+P2 59.78%, overall 84.47%. Private evidence: `D:/f117-gate/leaf-batch`.
+The gate unit stage now uses eight workers (`--unit-jobs 1` retains serial):
+75 tests have identical captured output, 159.76 seconds serial versus 22.47
+seconds parallel. Verified unchanged coverage is reused in the final gate.
+
 START's flight-plan display (`0000:149C`, 365 instructions / 926 bytes) is
 matched and named. It scales four airfield records' map positions to the plan
 grid, marks each point on both pages, then (unless the caller's flag says to

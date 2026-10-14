@@ -42305,7 +42305,7 @@ static int start_pilot_options_dialog(machine_t *m)
     ds_put(c,0xE08A,0x103); ds_put(c,0xE08C,0xB4);
     c->r[R_AX]=0x0A; PO_PUSH(R_AX); c->r[R_AX]=0x67A4; PO_PUSH(R_AX);
     c->r[R_AX]=0xEB; PO_PUSH(R_AX); c->icount+=16;
-    PO_NEAR(0x3517,0x6DF6,17);                    /* queue a drawing record */
+    PO_NEAR(0x3517,0x6DF6,17);                    /* queue palette update: first register, table, count */
 
     /* Copy the dialog's panel between the two pages (two blits), then draw
      * the current mark of each option group. */
@@ -42376,7 +42376,7 @@ type_loop:
     c->r[R_AX]=6; PO_PUSH(R_AX); c->icount+=4;
     PO_NEAR(0x76C0,0x6F80,4);                     /* random 0..5 */
     PO_POP(); c->r[R_AX]=(uint16_t)alu_add(c,c->r[R_AX],6,1,0); PO_PUSH(R_AX); c->icount+=3;
-    PO_NEAR(0x2B06,0x6F88,12);                    /* pause 6..11 ticks */
+    PO_NEAR(0x2B06,0x6F88,12);                    /* delay 6..11 timer ticks through 8427, applying the queued palette */
     PO_POP(); c->r[R_SI]=bp_get(c,CHAR_INDEX);
     alu_sub(c,mem_read8(c,phys(c->seg[S_SS],(uint16_t)(c->r[R_BP]+c->r[R_SI]-0x3C))),0,0,0);
     c->icount+=4;
@@ -42818,7 +42818,881 @@ final_letters:
 #undef FP_NEAR
 }
 
+/* ---- Picture input and front-end timer shutdown -------------------------
+ * PLAYER streams compressed pictures through a 4 KB buffer. Opening resets
+ * its bit-reader state; refilling retains the byte at SI as the look-behind
+ * byte immediately before the new block. Keep the guest stack and DOS calls
+ * live: an overlapping stack or a failed read has the original effects. */
+/* A nested INT run must stop at the caller's next event, including native
+ * BIOS callbacks that may wait. Restore the outer host slice on every exit. */
+static int support_int(machine_t *m, uint16_t at)
+{
+    const uint64_t until = m->run_until;
+    if (m->run_until > m->cpu.stop_at) m->run_until = m->cpu.stop_at;
+    const int returned = sm4_int(m, at);
+    m->run_until = until;
+    return returned;
+}
+
+static int player_picture_refill(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 10)) return 0;
+    cpu_push16(c, c->r[R_BX]);
+    cpu_push16(c, c->r[R_CX]);
+    cpu_push16(c, c->r[R_DX]);
+    set_r8(c, R_AL, ds_get8(c, c->r[R_SI]));
+    c->r[R_SI] = (uint16_t)alu_sub(c, c->r[R_SI], 0x1000, 1, 0);
+    ds_put8(c, c->r[R_SI], get_r8(c, R_AL));
+    set_r8(c, R_AH, 0x3F);
+    c->r[R_BX] = ds_get(c, 0x11B8);                 /* picture file handle */
+    c->r[R_CX] = 0x1000;
+    c->r[R_DX] = 0x01B8;                          /* refill buffer */
+    c->icount += 10;
+    SM4_NEED(1, 0x0B9C);
+    if (!support_int(m, 0x0B9C)) return 1;
+    SM4_NEED(4, 0x0B9E);
+    c->r[R_DX] = cpu_pop16(c);
+    c->r[R_CX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    near_ret(c);
+    c->icount += 4;
+    return 1;
+}
+
+static int player_picture_open(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 10)) return 0;
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    ds_put(c, 0x11BC, 0);                         /* remaining packed bits */
+    ds_put8(c, 0x11BE, 0);                        /* bit accumulator */
+    c->r[R_AX] = 0x01B8;
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], 0x1000, 1, 0);
+    ds_put(c, 0x01B6, c->r[R_AX]);                 /* initially empty buffer */
+    c->r[R_AX] = 0x3D00;
+    c->r[R_DX] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 4));
+    c->icount += 9;
+    if (!support_int(m, 0x0BC0)) return 1;
+    SM4_NEED(6, 0x0BC2);
+    ds_put(c, 0x11B8, c->r[R_AX]);
+    c->flags ^= F_CF;
+    c->r[R_AX] = 0;
+    c->r[R_AX] = (uint16_t)x86_shift(c, 2, c->r[R_AX], 1, 1);
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    c->icount += 6;                              /* AX=1 on success, 0 on failure */
+    return 1;
+}
+
+/* START 8CE6, END 4BCA and SETUP 0FFE have the same shutdown sequence:
+ * reload PIT counter 0 with 65536 in mode 3, restore the saved INT 8 vector,
+ * then clear the installed flag. Each port write has its own room claim,
+ * including ISA delay; the delay jumps still cost an instruction. The INT
+ * executes through the original DOS service so pending IRQ0 is preserved. */
+static int frontend_timer_restore(machine_t *m, uint16_t entry,
+                                  uint16_t saved_vector, uint16_t installed)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 1)) return 0;
+    c->op_cs = c->seg[S_CS];
+    set_r8(c, R_AL, 0x36);
+    c->icount++;
+    SM4_NEED(1 + IO_SLACK(1), SM4_AT(2));
+    c->op_ip = SM4_AT(2);
+    x86_out(c, 0x43, 0);
+    c->icount++;
+    SM4_NEED(2, SM4_AT(4));
+    set_r8(c, R_AL, (uint8_t)alu_logic(c, 0, 0));
+    c->icount += 2;                              /* delay jump, XOR AL,AL */
+    SM4_NEED(1 + IO_SLACK(1), SM4_AT(8));
+    c->op_ip = SM4_AT(8);
+    x86_out(c, 0x40, 0);
+    c->icount++;
+    SM4_NEED(1, SM4_AT(10));
+    c->icount++;                                /* delay jump */
+    SM4_NEED(1 + IO_SLACK(1), SM4_AT(12));
+    c->op_ip = SM4_AT(12);
+    x86_out(c, 0x40, 0);
+    c->icount++;
+    SM4_NEED(5, SM4_AT(14));
+    cpu_push16(c, c->seg[S_DS]);
+    set_r8(c, R_AH, 0x25);
+    set_r8(c, R_AL, 8);
+    c->r[R_DX] = seg_read16(c, c->seg[S_CS], saved_vector);
+    c->seg[S_DS] = seg_read16(c, c->seg[S_CS], (uint16_t)(saved_vector + 2));
+    c->icount += 4;
+    if (!support_int(m, SM4_AT(24))) return 1;
+    SM4_NEED(3, SM4_AT(26));
+    c->seg[S_DS] = cpu_pop16(c);
+    ds_put8(c, installed, 0);
+    near_ret(c);
+    c->icount += 3;
+    return 1;
+}
+static int start_timer_restore(machine_t *m) { return frontend_timer_restore(m, 0x8CE6, 0x8D6D, 0xADFB); }
+static int end_timer_restore(machine_t *m) { return frontend_timer_restore(m, 0x4BCA, 0x4C51, 0x50CB); }
+static int setup_timer_restore(machine_t *m) { return frontend_timer_restore(m, 0x0FFE, 0x10AF, 0x0E29); }
+
+/* ---- Mouse driver wrappers (INT 33h), driver probe, and DOS-call wrappers -------
+ * Each INT runs as original code (sm4_int), so the machine's mouse and BIOS
+ * services keep their own effects and time; the routine's own instructions
+ * around it are the matched C. */
+
+/* PLAYER 0F47, END 44B9, START 8545: read the mouse (INT 33h, AX=3: buttons in
+ * BX, column in CX, row in DX) and store the left and right button as 0/1
+ * bytes; END's and START's copies also keep the column halved (the driver
+ * counts 640 columns) and the row. */
+static int mouse_poll(machine_t *m, uint16_t entry, uint16_t xvar, uint16_t yvar,
+                      uint16_t left, uint16_t right)
+{
+    cpu_t *c = &m->cpu;
+    const int pos = xvar != 0;
+    if (!room(c, 3)) return 0;
+    cpu_push16(c, c->r[R_BX]);
+    c->r[R_AX] = 3;
+    c->icount += 2;
+    if (!support_int(m, SM4_AT(4))) return 1;
+    SM4_NEED(pos ? 15 : 12, SM4_AT(6));
+    c->r[R_AX] = c->r[R_BX];
+    c->r[R_BX] = cpu_pop16(c);
+    if (pos) {
+        c->r[R_CX] = (uint16_t)x86_shift(c, 5, c->r[R_CX], 1, 1);
+        ds_put(c, xvar, c->r[R_CX]);
+        ds_put(c, yvar, c->r[R_DX]);
+    }
+    set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
+    ds_put8(c, left, get_r8(c, R_AH));
+    ds_put8(c, right, get_r8(c, R_AH));
+    alu_logic(c, get_r8(c, R_AL) & 1, 0);
+    c->icount += pos ? 10 : 7;
+    if (!(c->flags & F_ZF)) {
+        ds_put8(c, left, (uint8_t)alu_inc(c, ds_get8(c, left), 0));
+        c->icount++;
+    }
+    alu_logic(c, get_r8(c, R_AL) & 2, 0);
+    c->icount += 2;
+    if (!(c->flags & F_ZF)) {
+        ds_put8(c, right, (uint8_t)alu_inc(c, ds_get8(c, right), 0));
+        c->icount++;
+    }
+    near_ret(c);
+    c->icount++;
+    return 1;
+}
+static int player_mouse_buttons(machine_t *m) { return mouse_poll(m, 0x0F47, 0, 0, 0x19DA, 0x19DB); }
+static int end_mouse_poll(machine_t *m) { return mouse_poll(m, 0x44B9, 0x7214, 0x7216, 0x23F8, 0x23F9); }
+static int start_mouse_poll(machine_t *m) { return mouse_poll(m, 0x8545, 0xE08A, 0xE08C, 0x69B6, 0x69B7); }
+
+/* END 44E7 and START 8573: reset the mouse driver, limit the pointer to
+ * columns 0..xmax and rows 0..C7h, set the speed ratio (8, 16) and put the
+ * pointer at the saved position. */
+static int mouse_setup(machine_t *m, uint16_t entry, uint16_t xmax, uint16_t xvar, uint16_t yvar)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 2)) return 0;
+    c->r[R_AX] = 0;
+    c->icount++;
+    if (!support_int(m, SM4_AT(0x03))) return 1;
+    SM4_NEED(4, SM4_AT(0x05));
+    c->r[R_AX] = 7; c->r[R_CX] = 0; c->r[R_DX] = xmax;
+    c->icount += 3;
+    if (!support_int(m, SM4_AT(0x0E))) return 1;
+    SM4_NEED(4, SM4_AT(0x10));
+    c->r[R_AX] = 8; c->r[R_CX] = 0; c->r[R_DX] = 0xC7;
+    c->icount += 3;
+    if (!support_int(m, SM4_AT(0x19))) return 1;
+    SM4_NEED(4, SM4_AT(0x1B));
+    c->r[R_AX] = 0x0F; c->r[R_CX] = 8; c->r[R_DX] = 0x10;
+    c->icount += 3;
+    if (!support_int(m, SM4_AT(0x24))) return 1;
+    SM4_NEED(4, SM4_AT(0x26));
+    c->r[R_AX] = 4; c->r[R_CX] = ds_get(c, xvar); c->r[R_DX] = ds_get(c, yvar);
+    c->icount += 3;
+    if (!support_int(m, SM4_AT(0x31))) return 1;
+    SM4_NEED(1, SM4_AT(0x33));
+    near_ret(c);
+    c->icount++;
+    return 1;
+}
+static int end_mouse_setup(machine_t *m) { return mouse_setup(m, 0x44E7, 0x0280, 0x7214, 0x7216); }
+static int start_mouse_setup(machine_t *m) { return mouse_setup(m, 0x8573, 0x027E, 0xE08A, 0xE08C); }
+
+/* SETUP 0237:0004 (far): is a mouse driver installed? INT 21h AH=35h gets the
+ * INT 33h vector; none, or one pointing at IRET, means no; otherwise the
+ * driver's reset (INT 33h AX=0) must answer FFFFh. Returns 1 or 0 in AX. */
+static int setup_mouse_present(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 2)) return 0;
+    c->r[R_AX] = 0x3533;
+    c->icount++;
+    if (!support_int(m, 0x0007)) return 1;
+    SM4_NEED(9, 0x0009);
+    alu_sub(c, c->r[R_BX], 0, 1, 0);
+    c->icount += 2;
+    if (c->flags & F_ZF) {
+        c->r[R_AX] = c->seg[S_ES];
+        alu_sub(c, c->r[R_AX], 0, 1, 0);
+        c->icount += 3;
+        if (c->flags & F_ZF) goto absent;
+    }
+    alu_sub(c, mem_read8(c, phys(c->seg[S_ES], c->r[R_BX])), 0xCF, 0, 0);
+    c->icount += 2;
+    if (c->flags & F_ZF) goto absent;
+    c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);
+    c->icount++;
+    if (!support_int(m, 0x0021)) return 1;
+    SM4_NEED(4, 0x0023);
+    alu_sub(c, c->r[R_AX], 0xFFFF, 1, 0);
+    c->icount += 2;
+    if (!(c->flags & F_ZF)) goto absent;
+    c->r[R_AX] = 1;
+    far_ret(c);
+    c->icount += 2;
+    return 1;
+absent:
+    c->r[R_AX] = 0;
+    far_ret(c);
+    c->icount += 2;
+    return 1;
+}
+
+/* SETUP 0C84: set the disk transfer area to B03h, find the first file matching
+ * the FCB at AD7h (INT 21h AH=11h) and, if one is found, compare the
+ * template's name at ACEh, byte by byte up to its zero, with the found entry
+ * at B0Bh. Returns 1 when they agree, 0 otherwise. */
+static int setup_find_match(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 3)) return 0;
+    set_r8(c, R_AH, 0x1A);
+    c->r[R_DX] = 0x0B03;
+    c->icount += 2;
+    if (!support_int(m, 0x0C89)) return 1;
+    SM4_NEED(3, 0x0C8B);
+    set_r8(c, R_AH, 0x11);
+    c->r[R_DX] = 0x0AD7;
+    c->icount += 2;
+    if (!support_int(m, 0x0C90)) return 1;
+    SM4_NEED(4, 0x0C92);
+    alu_logic(c, get_r8(c, R_AL), 0);
+    c->icount += 2;
+    if (!(c->flags & F_ZF)) goto mismatch;
+    set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));
+    c->r[R_BX] = 0xFFFF;
+    c->icount += 2;
+compare_next:
+    SM4_NEED(8, 0x0C9B);
+    c->r[R_BX] = (uint16_t)alu_inc(c, c->r[R_BX], 1);
+    set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + 0x0ACE)));
+    alu_logic(c, get_r8(c, R_AL), 0);
+    c->icount += 4;
+    if (c->flags & F_ZF) {
+        c->r[R_AX] = 1;
+        near_ret(c);
+        c->icount += 2;
+        return 1;
+    }
+    set_r8(c, R_AL, (uint8_t)alu_sub(c, get_r8(c, R_AL), ds_get8(c, (uint16_t)(c->r[R_BX] + 0x0B0B)), 0, 0));
+    c->icount += 2;
+    if (c->flags & F_ZF) goto compare_next;
+mismatch:
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+    near_ret(c);
+    c->icount += 2;
+    return 1;
+}
+
+/* PLAYER 026B:004D (far): the timer shutdown of PLAYER's own clock hook. If
+ * the installed flag [1A1C] is set (it is read and cleared in one step),
+ * reload PIT counter 0 with 65536 in mode 3 and restore the saved INT 8
+ * vector from CS:020Dh. Each port write has its own room claim, as in the
+ * front ends' copies above. */
+static int player_timer_restore(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = 0x004D;
+    if (!room(c, 7)) return 0;
+    cpu_push16(c, c->seg[S_DS]);
+    set_r8(c, R_AL, 0);
+    {
+        const uint8_t flag = ds_get8(c, 0x1A1C);
+        ds_put8(c, 0x1A1C, get_r8(c, R_AL));
+        set_r8(c, R_AL, flag);
+    }
+    alu_logic(c, get_r8(c, R_AL), 0);
+    c->icount += 5;
+    if (c->flags & F_ZF) goto restore_ds;
+    set_r8(c, R_AL, 0x36);
+    c->icount++;
+    c->op_cs = c->seg[S_CS];
+    SM4_NEED(1 + IO_SLACK(1), SM4_AT(0x0D));
+    c->op_ip = SM4_AT(0x0D);
+    x86_out(c, 0x43, 0);
+    c->icount++;
+    SM4_NEED(2, SM4_AT(0x0F));
+    set_r8(c, R_AL, (uint8_t)alu_logic(c, 0, 0));
+    c->icount += 2;                              /* delay jump, XOR AL,AL */
+    SM4_NEED(1 + IO_SLACK(1), SM4_AT(0x13));
+    c->op_ip = SM4_AT(0x13);
+    x86_out(c, 0x40, 0);
+    c->icount++;
+    SM4_NEED(1, SM4_AT(0x15));
+    c->icount++;                                 /* delay jump */
+    SM4_NEED(1 + IO_SLACK(1), SM4_AT(0x17));
+    c->op_ip = SM4_AT(0x17);
+    x86_out(c, 0x40, 0);
+    c->icount++;
+    SM4_NEED(4, SM4_AT(0x19));
+    set_r8(c, R_AH, 0x25);
+    set_r8(c, R_AL, 8);
+    c->r[R_DX] = seg_read16(c, c->seg[S_CS], 0x020D);
+    c->seg[S_DS] = seg_read16(c, c->seg[S_CS], 0x020F);
+    c->icount += 3;
+    if (!support_int(m, SM4_AT(0x22))) return 1;
+    SM4_NEED(2, SM4_AT(0x24));
+restore_ds:
+    c->seg[S_DS] = cpu_pop16(c);
+    far_ret(c);
+    c->icount += 2;
+    return 1;
+}
+
+/* MPS_LOGO 00DA:0491 (far): rebuild a block of 7-byte records at 00DA:0049 + 7 * idx.
+ * The argument is a segment whose header holds the index (word 2Eh), the count
+ * (30h), the fill word (28h) and a list of source words from 32h; each record
+ * keeps its first three bytes, takes the next source word and then the fill
+ * word. A count of 0 runs the loop 65,536 times, as LOOP does. */
+static int logo_record_table_fill(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 17)) return 0;
+    c->r[R_BX] = c->r[R_SP];
+    c->r[R_DX] = ds_get(c, (uint16_t)(c->r[R_BX] + 4));
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->seg[S_DS]);
+    cpu_push16(c, c->seg[S_ES]);
+    c->seg[S_DS] = c->r[R_DX];
+    c->r[R_SI] = 0x32;
+    c->r[R_AX] = ds_get(c, 0x2E);
+    set_r8(c, R_DL, 7);
+    x86_mul8(c, get_r8(c, R_DL));
+    /* LEA DI, [0049h] then ADD DI, AX: the flags are the addition's. */
+    c->r[R_DI] = (uint16_t)alu_add(c, 0x49, c->r[R_AX], 1, 0);
+    c->r[R_AX] = seg_read16(c, c->seg[S_CS], 0x04AD); /* loader-relocated record segment */
+    c->seg[S_ES] = c->r[R_AX];
+    c->r[R_CX] = ds_get(c, 0x30);
+    c->r[R_AX] = ds_get(c, 0x28);
+    c->icount += 17;
+    do {
+        SM4_NEED(4, 0x04B8);
+        c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], 3, 1, 0);
+        x86_movs(c, 1, c->seg[S_DS]);
+        x86_stos(c, 1);
+        c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);
+        c->icount += 4;
+    } while (c->r[R_CX]);
+    SM4_NEED(5, 0x04BF);
+    c->seg[S_ES] = cpu_pop16(c);
+    c->seg[S_DS] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    far_ret(c);
+    c->icount += 5;
+    return 1;
+}
+
+/* END 45AD: like the logo's table fill, for END's 5-byte records at DS:23FA +
+ * 5 * idx. The argument segment holds the index (word 1Ch), the count (22h),
+ * the word stored in each record's second field (18h) and a list of source
+ * words from 24h. The first field of each record is left alone. The routine
+ * clears [2612] first, and ends with a bare RET if the records overwrote it
+ * (the original's own frame then no longer matches; it is not reached in play,
+ * and the original behaviour is kept). */
+static int end_object_table_fill(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 22)) return 0;
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->seg[S_ES]);
+    cpu_push16(c, c->seg[S_DS]);
+    x86_push_reg(c, R_BP);
+    c->r[R_DX] = bp_get(c, 4);
+    ds_put8(c, 0x2612, 0);
+    c->seg[S_ES] = c->r[R_DX];
+    c->r[R_BX] = 0x23FA;
+    c->r[R_DI] = 0x1C;
+    c->r[R_AX] = seg_read16(c, c->seg[S_ES], c->r[R_DI]);
+    set_r8(c, R_DL, 5);
+    x86_mul8(c, get_r8(c, R_DL));
+    c->r[R_BX] = (uint16_t)alu_add(c, c->r[R_BX], c->r[R_AX], 1, 0);
+    c->r[R_DI] = 0x22;
+    c->r[R_CX] = seg_read16(c, c->seg[S_ES], c->r[R_DI]);
+    c->r[R_SI] = 0x24;
+    c->r[R_DI] = 0x18;
+    c->r[R_DI] = seg_read16(c, c->seg[S_ES], c->r[R_DI]);
+    c->icount += 22;
+    do {
+        SM4_NEED(6, 0x45E5);
+        c->r[R_AX] = seg_read16(c, c->seg[S_ES], c->r[R_SI]);
+        ds_put(c, (uint16_t)(c->r[R_BX] + 1), c->r[R_AX]);
+        ds_put(c, (uint16_t)(c->r[R_BX] + 3), c->r[R_DI]);
+        c->r[R_SI] = (uint16_t)alu_add(c, c->r[R_SI], 2, 1, 0);
+        c->r[R_BX] = (uint16_t)alu_add(c, c->r[R_BX], 5, 1, 0);
+        c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);
+        c->icount += 6;
+    } while (c->r[R_CX]);
+    SM4_NEED(10, 0x45F6);
+    alu_sub(c, ds_get8(c, 0x2612), 0, 0, 0);
+    c->icount += 2;
+    if (!(c->flags & F_ZF)) {
+        near_ret(c);
+        c->icount++;
+        return 1;
+    }
+    c->r[R_BP] = cpu_pop16(c);
+    c->seg[S_DS] = cpu_pop16(c);
+    c->seg[S_ES] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    c->icount += 8;
+    return 1;
+}
+
+/* SETUP 14BE: write a string with the BIOS. Arguments: row, column (both FFh
+ * leaves the cursor where it is) and the string. Each character goes out with
+ * INT 10h AH=09h (a blank in the current attribute) and then as teletype
+ * output (AH=0Eh), which moves the cursor. FFh in the string introduces a
+ * new attribute byte, kept in the code segment at 14BDh; a zero ends the
+ * string. */
+static int setup_text_out(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 10)) return 0;
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->r[R_SI]);
+    set_r8(c, R_AH, 2);
+    set_r8(c, R_BH, (uint8_t)alu_logic(c, 0, 0));
+    set_r8(c, R_DH, bp_get8(c, 4));
+    set_r8(c, R_DL, bp_get8(c, 6));
+    alu_sub(c, c->r[R_DX], 0xFFFF, 1, 0);
+    c->icount += 9;
+    if (!(c->flags & F_ZF)) {
+        if (!support_int(m, 0x14D1)) return 1;
+    }
+    SM4_NEED(4, 0x14D3);
+    set_r8(c, R_BL, mem_read8(c, phys(c->seg[S_CS], 0x14BD)));
+    set_r8(c, R_BH, (uint8_t)alu_logic(c, 0, 0));
+    c->r[R_CX] = 1;
+    c->r[R_SI] = bp_get(c, 8);
+    c->icount += 4;
+next_char:
+    SM4_NEED(9, 0x14E0);
+    x86_lods(c, 0, c->seg[S_DS]);
+    alu_logic(c, get_r8(c, R_AL), 0);
+    c->icount += 3;
+    if (c->flags & F_ZF) goto finish;
+    alu_sub(c, get_r8(c, R_AL), 0xFF, 0, 0);
+    c->icount += 2;
+    if (c->flags & F_ZF) goto new_attribute;
+    set_r8(c, R_DL, get_r8(c, R_AL));
+    set_r8(c, R_AH, 9);
+    set_r8(c, R_AL, 0x20);
+    c->icount += 3;
+    if (!support_int(m, 0x14EF)) return 1;
+    SM4_NEED(3, 0x14F1);
+    set_r8(c, R_AH, 0x0E);
+    set_r8(c, R_AL, get_r8(c, R_DL));
+    c->icount += 2;
+    if (!support_int(m, 0x14F5)) return 1;
+    SM4_NEED(1, 0x14F7);
+    c->icount++;
+    goto next_char;
+new_attribute:
+    SM4_NEED(6, 0x14F9);
+    x86_lods(c, 0, c->seg[S_DS]);
+    alu_logic(c, get_r8(c, R_AL), 0);
+    c->icount += 3;
+    if (c->flags & F_ZF) goto finish;
+    mem_write8(c, phys(c->seg[S_CS], 0x14BD), get_r8(c, R_AL));
+    set_r8(c, R_BL, get_r8(c, R_AL));
+    c->icount += 3;
+    goto next_char;
+finish:
+    SM4_NEED(3, 0x1506);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    c->icount += 3;
+    return 1;
+}
+
+/* PLAYER 05F6: copy CX bytes between two 32-bit linear addresses. Each address
+ * arrives as a low and a high word; it is turned into segment:offset with the
+ * offset below 16 (the linear address shifted right four bits, and its low
+ * nibble), and the bytes go one at a time, the offsets counting up as plain
+ * words. A count of 0 copies nothing. */
+static int player_linear_copy(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 33)) return 0;
+    frame_open(c, 8);
+    c->r[R_AX] = bp_get(c, 4);
+    c->r[R_DX] = bp_get(c, 6);
+    for (int k = 0; k < 4; k++) {                                /* shr dx,1 / rcr ax,1 */
+        c->r[R_DX] = (uint16_t)x86_shift(c, 5, c->r[R_DX], 1, 1);
+        c->r[R_AX] = (uint16_t)x86_shift(c, 3, c->r[R_AX], 1, 1);
+    }
+    bp_put(c, -2, c->r[R_AX]);                                   /* source segment */
+    set_r8(c, R_AL, bp_get8(c, 4));
+    c->r[R_AX] = (uint16_t)alu_logic(c, c->r[R_AX] & 0x000F, 1);
+    bp_put(c, -4, c->r[R_AX]);                                   /* source offset */
+    c->r[R_AX] = bp_get(c, 8);
+    c->r[R_DX] = bp_get(c, 10);
+    for (int k = 0; k < 4; k++) {
+        c->r[R_DX] = (uint16_t)x86_shift(c, 5, c->r[R_DX], 1, 1);
+        c->r[R_AX] = (uint16_t)x86_shift(c, 3, c->r[R_AX], 1, 1);
+    }
+    bp_put(c, -6, c->r[R_AX]);                                   /* destination segment */
+    set_r8(c, R_AL, bp_get8(c, 8));
+    c->r[R_AX] = (uint16_t)alu_logic(c, c->r[R_AX] & 0x000F, 1);
+    bp_put(c, -8, c->r[R_AX]);                                   /* destination offset */
+    c->r[R_CX] = bp_get(c, 12);
+    c->icount += 33;
+    goto test;
+copy_byte:
+    SM4_NEED(6, 0x0646);
+    c->r[R_BX] = bp_get(c, -4); c->seg[S_ES] = bp_get(c, -2);
+    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_ES], c->r[R_BX])));
+    c->r[R_BX] = bp_get(c, -8); c->seg[S_ES] = bp_get(c, -6);
+    mem_write8(c, phys(c->seg[S_ES], c->r[R_BX]), get_r8(c, R_AL));
+    bp_put(c, -4, (uint16_t)alu_inc(c, bp_get(c, -4), 1));
+    bp_put(c, -8, (uint16_t)alu_inc(c, bp_get(c, -8), 1));
+    c->icount += 6;
+test:
+    SM4_NEED(4, 0x0658);
+    c->r[R_AX] = c->r[R_CX];
+    c->r[R_CX] = (uint16_t)alu_dec(c, c->r[R_CX], 1);
+    alu_logic(c, c->r[R_AX], 1);
+    c->icount += 4;
+    if (!(c->flags & F_ZF)) goto copy_byte;
+    SM4_NEED(3, 0x065F);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    c->icount += 3;
+    return 1;
+}
+
+/* SETUP 1387: a software-interrupt call with register blocks. Arguments: the
+ * interrupt number (10h, 16h, 1Ah or 21h), the address of the input block
+ * (AX, BX, CX, DX as four words) and of the output block. The registers are
+ * loaded from the input block, the interrupt runs as original code, and AX,
+ * BX, CX, DX are stored to the output block. Any other number answers FFFFh in
+ * AX and stores nothing. The caller's registers are restored. */
+static int setup_interrupt_call(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 25)) return 0;
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->r[R_SI]); cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_AX]); cpu_push16(c, c->r[R_BX]);
+    cpu_push16(c, c->r[R_CX]); cpu_push16(c, c->r[R_DX]);
+    c->r[R_DI] = bp_get(c, 6);
+    c->r[R_AX] = ds_get(c, c->r[R_DI]);
+    c->r[R_BX] = ds_get(c, (uint16_t)(c->r[R_DI] + 2));
+    c->r[R_CX] = ds_get(c, (uint16_t)(c->r[R_DI] + 4));
+    c->r[R_DX] = ds_get(c, (uint16_t)(c->r[R_DI] + 6));
+    c->icount += 13;
+    alu_sub(c, bp_get(c, 4), 0x10, 1, 0); c->icount += 2;
+    if (c->flags & F_ZF) { if (!support_int(m, 0x13B9)) return 1; SM4_NEED(1, 0x13BB); c->icount++; goto store; }
+    alu_sub(c, bp_get(c, 4), 0x21, 1, 0); c->icount += 2;
+    if (c->flags & F_ZF) { if (!support_int(m, 0x13BE)) return 1; SM4_NEED(1, 0x13C0); c->icount++; goto store; }
+    alu_sub(c, bp_get(c, 4), 0x16, 1, 0); c->icount += 2;
+    if (c->flags & F_ZF) { if (!support_int(m, 0x13C3)) return 1; SM4_NEED(1, 0x13C5); c->icount++; goto store; }
+    alu_sub(c, bp_get(c, 4), 0x1A, 1, 0); c->icount += 2;
+    if (c->flags & F_ZF) { if (!support_int(m, 0x13C8)) return 1; SM4_NEED(1, 0x13CA); c->icount++; goto store; }
+    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
+    c->r[R_AX] = (uint16_t)~c->r[R_AX];
+    c->icount += 4;                                              /* jmp, sub, not, jmp */
+    goto leave;
+store:
+    SM4_NEED(5, 0x13D4);
+    c->r[R_DI] = bp_get(c, 8);
+    ds_put(c, c->r[R_DI], c->r[R_AX]);
+    ds_put(c, (uint16_t)(c->r[R_DI] + 2), c->r[R_BX]);
+    ds_put(c, (uint16_t)(c->r[R_DI] + 4), c->r[R_CX]);
+    ds_put(c, (uint16_t)(c->r[R_DI] + 6), c->r[R_DX]);
+    c->icount += 5;
+leave:
+    SM4_NEED(9, 0x13E2);
+    c->r[R_DX] = cpu_pop16(c); c->r[R_CX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c); c->r[R_AX] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c); c->r[R_SI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    c->icount += 9;
+    return 1;
+}
+
+/* SETUP 0BFB: free the memory block whose segment is the argument (INT 21h
+ * AH=49h). A failure prints the message at 0886h and ends the program (the
+ * original code does that, from 0B9D). The routine clears [078E] first, and a
+ * bare RET follows a successful free if it is set, which nothing in between
+ * does. */
+static int setup_free_block(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 13)) return 0;
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->r[R_DI]); cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->seg[S_ES]); cpu_push16(c, c->seg[S_DS]);
+    x86_push_reg(c, R_BP);
+    c->r[R_AX] = bp_get(c, 4);
+    ds_put8(c, 0x078E, 0);
+    c->seg[S_ES] = c->r[R_AX];
+    set_r8(c, R_AH, 0x49);
+    c->icount += 12;
+    if (!support_int(m, 0x0C17)) return 1;
+    SM4_NEED(4, 0x0C19);
+    c->icount++;                                                 /* jae */
+    if (!(c->flags & F_CF)) goto freed;
+    c->r[R_DX] = 0x0886;
+    set_r8(c, R_AH, 9);
+    c->icount += 2;
+    if (!support_int(m, 0x0C20)) return 1;
+    SM4_NEED(1, 0x0C22);
+    c->icount++;                                                 /* jmp 0B9D: the original ends the program */
+    c->ip = 0x0B9D;
+    return 1;
+freed:
+    SM4_NEED(10, 0x0C25);
+    alu_sub(c, ds_get8(c, 0x078E), 0, 0, 0);
+    c->icount += 2;
+    if (!(c->flags & F_ZF)) { near_ret(c); c->icount++; return 1; }
+    c->r[R_BP] = cpu_pop16(c);
+    c->seg[S_DS] = cpu_pop16(c);
+    c->seg[S_ES] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    c->icount += 8;
+    return 1;
+}
+
+/* MPS_LOGO 00DA:04C4 (far): free the memory block whose segment is the
+ * argument. A failure goes on to the program's error exit at 040E with DX =
+ * 0183h, in the original code. */
+static int logo_free_block(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 6)) return 0;
+    c->r[R_BX] = c->r[R_SP];
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 4));
+    cpu_push16(c, c->seg[S_ES]);
+    c->seg[S_ES] = c->r[R_AX];
+    set_r8(c, R_AH, 0x49);
+    c->icount += 5;
+    if (!support_int(m, 0x04CE)) return 1;
+    SM4_NEED(3, 0x04D0);
+    if (c->flags & F_CF) {
+        c->r[R_DX] = 0x0183;
+        c->icount += 3;                                          /* jae, mov dx, jmp 040E */
+        c->ip = 0x040E;
+        return 1;
+    }
+    c->icount++;
+    c->seg[S_ES] = cpu_pop16(c);
+    far_ret(c);
+    c->icount += 2;
+    return 1;
+}
+
+/* MPS_LOGO 00DA:043D: load the file named at [0082] (a zero word means none)
+ * into the segment in BX: open it (INT 21h AH=3Dh), read up to 8000h bytes
+ * to BX:0000, step the segment on by 800h paragraphs if the read filled the
+ * buffer, close the file and return the segment past the data in BX.
+ * Any failure goes to the program's error exit at 040E with DX = 00DDh, in the
+ * original code. DS is BX while the file is read and is restored at the end. */
+static int logo_load_file(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 6)) return 0;
+    cpu_push16(c, c->seg[S_DS]);
+    c->r[R_DX] = ds_get(c, 0x82);
+    alu_logic(c, c->r[R_DX], 1);
+    c->icount += 4;                                              /* push, mov, or, je */
+    if (c->flags & F_ZF) goto leave;
+    c->r[R_AX] = 0x3D00;
+    c->icount++;
+    if (!support_int(m, 0x0449)) return 1;
+    SM4_NEED(3, 0x044B);
+    if (c->flags & F_CF) goto failed;
+    c->icount++;
+    SM4_NEED(6, 0x0452);
+    c->seg[S_DS] = c->r[R_BX];
+    c->r[R_BX] = c->r[R_AX];
+    c->r[R_AX] = 0x3F00;
+    c->r[R_CX] = 0x8000;
+    c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0);
+    c->icount += 5;
+    if (!support_int(m, 0x045E)) return 1;
+    SM4_NEED(3, 0x0460);
+    if (c->flags & F_CF) goto failed;
+    c->icount++;
+    SM4_NEED(5, 0x0467);
+    alu_sub(c, c->r[R_AX], c->r[R_CX], 1, 0);
+    c->icount += 2;
+    if (!(c->flags & F_CF)) {                                    /* jb not taken: the buffer was filled */
+        c->r[R_AX] = c->seg[S_DS];
+        c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], 0x0800, 1, 0);
+        c->seg[S_DS] = c->r[R_AX];
+        c->icount += 3;
+    }
+    SM4_NEED(9, 0x0472);
+    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], 0x0F, 1, 0);
+    for (int k = 0; k < 4; k++) c->r[R_AX] = (uint16_t)x86_shift(c, 5, c->r[R_AX], 1, 1);
+    c->r[R_DX] = c->seg[S_DS];
+    c->r[R_DX] = (uint16_t)alu_add(c, c->r[R_DX], c->r[R_AX], 1, 0);
+    c->r[R_AX] = 0x3E00;
+    c->icount += 8;
+    if (!support_int(m, 0x0484)) return 1;
+    SM4_NEED(3, 0x0486);
+    if (c->flags & F_CF) goto failed;
+    c->icount++;
+    SM4_NEED(1, 0x048D);
+    c->r[R_BX] = c->r[R_DX];
+    c->icount++;
+leave:
+    SM4_NEED(2, 0x048F);
+    c->seg[S_DS] = cpu_pop16(c);
+    near_ret(c);
+    c->icount += 2;
+    return 1;
+failed:
+    c->r[R_DX] = 0x00DD;
+    c->icount += 3;                                              /* jae, mov dx, jmp 040E */
+    c->ip = 0x040E;
+    return 1;
+}
+
+/* START A8C2: resize the heap block described by the record at BX (a flag byte
+ * at +2 whose bit 2 means "a far block", the block's size in paragraphs at +4
+ * and a saved size at -2) to AX bytes with INT 21h AH=4Ah. For a far block
+ * the new size is checked against the old first and the DOS call is skipped
+ * when nothing needs to grow; the size is passed in paragraphs (a zero
+ * becomes 1000h, a whole segment) with ES the block's own segment, or the
+ * far heap's base at [AE58] for a far block. On success AX holds the size and a
+ * far block's saved size at -2 is updated; carry is clear. On failure the
+ * carry is DOS's. */
+static int start_heap_resize(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 10)) return 0;
+    c->r[R_DX] = c->r[R_AX];
+    alu_logic(c, ds_get8(c, (uint16_t)(c->r[R_BX] + 2)) & 4, 0);
+    c->icount += 3;                                              /* mov, test, je */
+    if (c->flags & F_ZF) goto resize;
+    c->r[R_DX] = (uint16_t)alu_dec(c, c->r[R_DX], 1);
+    c->r[R_SI] = ds_get(c, (uint16_t)(c->r[R_BX] + 4));
+    c->r[R_SI] = (uint16_t)alu_dec(c, c->r[R_SI], 1);
+    alu_sub(c, c->r[R_DX], c->r[R_SI], 1, 0);
+    c->icount += 5;                                              /* dec, mov, dec, cmp, jb */
+    if (c->flags & F_CF) goto grow_by_one;
+    alu_sub(c, ds_get(c, (uint16_t)(c->r[R_BX] - 2)), c->r[R_DX], 1, 0);
+    c->icount += 2;                                              /* cmp, jae */
+    if (!(c->flags & F_CF)) goto succeeded;
+grow_by_one:
+    SM4_NEED(1, 0xA8D8);
+    c->r[R_DX] = (uint16_t)alu_inc(c, c->r[R_DX], 1);
+    c->icount++;
+resize:
+    SM4_NEED(8, 0xA8D9);
+    cpu_push16(c, c->r[R_BX]);
+    cpu_push16(c, c->r[R_CX]);
+    c->r[R_SI] = c->seg[S_DS];
+    c->seg[S_ES] = c->r[R_SI];
+    set_r8(c, R_CL, 4);
+    c->r[R_AX] = (uint16_t)x86_shift(c, 5, c->r[R_AX], get_r8(c, R_CL), 1);
+    c->icount += 7;
+    if (c->flags & F_ZF) { c->r[R_AX] = 0x1000; c->icount++; }
+    SM4_NEED(6, 0xA8E8);
+    alu_logic(c, ds_get8(c, (uint16_t)(c->r[R_BX] + 2)) & 4, 0);
+    c->icount += 2;
+    if (!(c->flags & F_ZF)) {
+        c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], c->r[R_SI], 1, 0);
+        c->r[R_BX] = ds_get(c, 0xAE58);
+        c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_BX], 1, 0);
+        c->seg[S_ES] = c->r[R_BX];
+        c->icount += 4;
+    }
+    SM4_NEED(3, 0xA8F8);
+    c->r[R_BX] = c->r[R_AX];
+    set_r8(c, R_AH, 0x4A);
+    c->icount += 2;
+    if (!support_int(m, 0xA8FC)) return 1;
+    SM4_NEED(8, 0xA8FE);
+    c->r[R_CX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    c->icount += 3;                                              /* pop, pop, jb */
+    if (c->flags & F_CF) goto leave;
+    c->r[R_AX] = c->r[R_DX];
+    alu_logic(c, ds_get8(c, (uint16_t)(c->r[R_BX] + 2)) & 4, 0);
+    c->icount += 3;                                              /* mov, test, je */
+    if (!(c->flags & F_ZF)) {
+        c->r[R_DX] = (uint16_t)alu_dec(c, c->r[R_DX], 1);
+        ds_put(c, (uint16_t)(c->r[R_BX] - 2), c->r[R_DX]);
+        c->icount += 2;
+    }
+succeeded:
+    SM4_NEED(2, 0xA90E);
+    c->flags &= (uint16_t)~F_CF;
+    c->icount += 2;                                              /* clc, jmp */
+leave:
+    SM4_NEED(1, 0xA912);
+    near_ret(c);
+    c->icount++;
+    return 1;
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x0B84, player_picture_refill, "refill the compressed-picture buffer", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x0BA2, player_picture_open, "open a compressed picture and reset input", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x8CE6, start_timer_restore, "restore the BIOS timer and INT 8 vector", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x4BCA, end_timer_restore, "restore the BIOS timer and INT 8 vector", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x0FFE, setup_timer_restore, "restore the BIOS timer and INT 8 vector", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x0F47, player_mouse_buttons, "read the mouse buttons", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x44B9, end_mouse_poll, "read the mouse position and buttons", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x8545, start_mouse_poll, "read the mouse position and buttons", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x44E7, end_mouse_setup, "reset and range the mouse", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x8573, start_mouse_setup, "reset and range the mouse", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0237, 0x0004, setup_mouse_present, "probe for a mouse driver", 2 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x0C84, setup_find_match, "find a file and compare its name", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x026B, 0x004D, player_timer_restore, "restore the timer for the clock hook", 2 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x00DA, 0x0491, logo_record_table_fill, "rebuild a block of seven-byte records", 2 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x45AD, end_object_table_fill, "rebuild a block of five-byte records", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x14BE, setup_text_out, "write a string with the BIOS", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x05F6, player_linear_copy, "copy bytes between linear addresses", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x1387, setup_interrupt_call, "call a software interrupt with register blocks", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x0BFB, setup_free_block, "free a memory block", 1 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x00DA, 0x04C4, logo_free_block, "free a memory block", 2 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x00DA, 0x043D, logo_load_file, "load a file into a segment", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0xA8C2, start_heap_resize, "resize a heap block", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x149C, start_flight_plan_display, "flight plan display", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x6DB8, start_pilot_options_dialog, "pilot options dialog", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x2BEC, end_debrief_narrative, "debrief narrative and measured layout", 1 },

@@ -402,6 +402,18 @@ if(F117R_BUILD_TESTS)
       --only START.EXE:6DB8)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
+    add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000
+      --only PLAYER.EXE:B84,PLAYER.EXE:BA2,PLAYER.EXE:5F6)
+    add_test(NAME matched_timer_restore COMMAND func_lockstep --states 4000
+      --only START.EXE:8CE6,END.EXE:4BCA,SETUP.EXE:FFE,PLAYER.EXE:4D)
+    add_test(NAME matched_mouse_wrappers COMMAND func_lockstep --states 4000
+      --only PLAYER.EXE:F47,END.EXE:44B9,END.EXE:44E7,START.EXE:8545,START.EXE:8573,SETUP.EXE:4)
+    add_test(NAME matched_setup_services COMMAND func_lockstep --states 4000
+      --only SETUP.EXE:C84,SETUP.EXE:14BE,SETUP.EXE:1387,SETUP.EXE:BFB)
+    add_test(NAME matched_record_tables COMMAND func_lockstep --states 4000
+      --only MPS_LOGO.EXE:491,END.EXE:45AD)
+    add_test(NAME matched_file_heap_services COMMAND func_lockstep --states 4000
+      --only MPS_LOGO.EXE:4C4,MPS_LOGO.EXE:43D,START.EXE:A8C2)
     add_test(NAME matched_timer_tick COMMAND func_lockstep --states 4000
       --only VGAME.EXE:1E79)
     add_test(NAME matched_span_emit COMMAND func_lockstep --states 4000
