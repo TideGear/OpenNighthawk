@@ -24,7 +24,23 @@ the complete interpreter capture below supplies new leads for the private batch.
 
 ## Phase 2 reach inventory corrected (14 October)
 
-**Latest integration:** two eight-instruction conversion initializers
+**Latest integration:** VGAME `0FAE:0002` binds segment entry slots;
+MPS_LOGO `006D:0002` shifts encoded sprite colours. Authored fixtures cover all
+27 / 63 instructions, header/stack and stream/frame aliases, table overlap,
+wraparound, palette bases and the full 65,536-iteration zero-count LOOP.
+Full-cycle invocations: 3 / 82, with 66 checkpoints/final exact. Seven private
+mutations are rejected, including a five-clock claim for a six-instruction
+loop; the public mid-run audit now checks no-call clock overshoots too.
+An explicit live radar decoy removes a seed-dependent projectile coverage gap
+(870/886 -> 886/886); the floor stays 886. Fresh full gate passes: 66 tests,
+45 routes / 44 fresh interpreter sessions, both 5,718,848-state profiles,
+three 840-address seeds (2,760,609 / 2,759,527 / 2,756,481), zero mismatches,
+reachability/event checks pass (1,391 s). Verified unchanged coverage reused.
+Proof: `D:/f117-gate/entry-palette/final-gate-verdict.json`; prior coverage-only
+failure retained there. Census: 832 functions / 99,221 bytes; P2 57.60%,
+overall 83.84%. Owner edits in `f117a.example.ini` and `4k60.bat` stay untouched.
+
+**Earlier formatter integration:** two eight-instruction conversion initializers
 (START `9D67`, END `56D9`) are implemented, fixture-proven at three seeds and
 real-driver-proven by `full_cycle` (89 / 9 calls, 66 exact checkpoints/final).
 The first full gate passes all 45 routes and both instruction profiles, but
@@ -44,7 +60,7 @@ untracked `4k60.bat` must remain untouched.
 The old "only 72 reached / 411 never run" conclusion was wrong: the gate's
 recomp `.cov` files contain only interpreted fallback instructions, not all
 execution. Absence says nothing about already-translated code. A fresh
-**interpreter** `full_cycle` capture alone reaches 358 remaining code entries
+**interpreter** `full_cycle` capture alone reaches 358 then-unmatched code entries
 (43,138 bytes), plus 6 interiors (521 bytes); 121 entries (12,813 bytes) lack
 evidence in that capture. It preserves all 66 checkpoints and final state
 `3300000000/6b61d89b95e7b562`. `tools/census_reach.py` now states this limit.
@@ -56,19 +72,28 @@ and real-driver-proven without first inventing new routes. The other ten
 still need reach evidence. Largest new leads include END `2BEC`, START
 `6DB8`/`149C`, VGAME `1450`/`DC46`/`04E6`; do not assume a lead is proven C.
 
-Next private named lead: `format-init/bind-segment-entries.c` implements
-VGAME `0FAE:0002` (overlay header offsets into five-byte far-jump slots).
-Strengthened fixtures at three seeds compare 1,940 / 1,999 / 1,787 states,
-cover all 27 instructions, all eight authored modes and the entire 65,536-step
-zero-count wrap, with zero differences. They include overlapping source/destination
-tables and stack writes changing the header's count. The
-real full-cycle route invokes it three times and preserves 66 checkpoints/final
-(`bind-route-verdict.json`). It is **not integrated or counted**: review the
-private fixture changes, retain mutation checks, then integrate with other
-reached candidates and run a fresh full gate. `format-init/project` contains
-this extra private candidate;
-never copy its entire matched file over main. `next-batch-review.json` records
-six further readings and warns about static walks past terminal DOS exits.
+Retained prototypes and mutations are in `D:/f117-gate/format-init`.
+`next-batch-review.json` there records six other readings and warns about static
+walks past terminal DOS exits. Never copy an old private matched file wholesale.
+
+Larger next target: END `0000:2BEC`, the debrief narrative builder (444
+instructions / 1,077 bytes, 36 calls). `D:/f117-gate/end-narrative/named.c` is
+now a named, explained candidate, with outcome/score/ROE paragraphs and measured
+bottom-aligned layout, using original CRT and bounded UI calls. Three private
+seeds compare 5,000 / 4,999 / 5,000 states, all 444 instructions, zero skips or
+differences. It is **not integrated or counted**: the real-route proof so far
+is for the earlier transcript (one invocation, 66 checkpoints/final exact).
+Next: prove the named body through real drivers, audit its room claims and
+callee RET forms, retain mutations, then integrate and run a fresh full gate.
+`foundation-verdict.json` retains the transcript proof; `named-seeds.json`
+retains the named proof. Fixtures vary objective masks, return/training, ROE,
+losses, six measured heights, overlapping output/record/frame memory and DF.
+Extract only `narrative-fixture.inc` when integrating: the private harness
+predates the new projectile decoy case and must not replace main wholesale.
+END `206A`'s public `end_fatal` name/comment are wrong: its label is a continue
+prompt and its `2092` callee waits for input and returns. Rename/explain it in
+the same next batch, preserving every guest operation. Dossier/call inventory:
+`D:/f117-gate/entry-palette/next`.
 
 ## Phase 2 resumed: SETUP's native BIOS boundary alert (14 October)
 

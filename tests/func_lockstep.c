@@ -129,6 +129,10 @@ static uint64_t routine_seed(uint64_t seed, const recomp_override *o)
 
 static uint8_t *g_pristine, *g_mem[2];
 static cpu_t g_cpu[2];
+/* Only the authored zero-count binding case exceeds the usual guard. */
+static unsigned g_step_cap = 100000;
+/* Authored cases also run at s % 4 == 1, where mid-run stops are probed. */
+static int g_fixture_args;
 
 static void restore(void)
 {
@@ -197,9 +201,9 @@ static void setup_side(cpu_t *c, const recomp_override *o, uint16_t cs, uint16_t
     /* Half the states put small arguments above it: random words
      * almost never reach a routine's edge cases (zero, -1, 1). */
     const uint16_t args = o->matched == 3 ? 6 : o->matched == 2 ? 4 : 2;   /* above IP, CS, FLAGS */
-    for (int a = 0; a < 4 && (s & 2); a++)
+    for (int a = 0; a < 4 && ((s & 2) || g_fixture_args); a++)
         seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_SP] + args + 2 * a), small[a]);
-    c->stop_at = c->icount + 100000;
+    c->stop_at = c->icount + g_step_cap;
 }
 
 static unsigned long long g_overrun;    /* routines that ran past the event limit */
@@ -678,6 +682,8 @@ static uint64_t g_camera_seen;
  * rather than returning to the caller. Merely handing everything to original
  * code must not satisfy its coverage floor. */
 static const struct { const char *module; uint16_t seg, ip, len; unsigned insns, floor; const char *what; uint16_t boundary; unsigned clocks; } COVERED[] = {
+    { "MPS_LOGO.EXE", 0x006D, 2, 0x0081, 63, 63, "sprite colour shift" },
+    { "VGAME.EXE", 0x0FAE, 0x0002, 61, 27, 27, "segment entry binding" },
     { "START.EXE", 0, 0x9D67, 20, 8, 8, "formatter conversion state", 0x9D19, 8 },
     { "END.EXE", 0, 0x56D9, 20, 8, 8, "formatter conversion state", 0x568B, 8 },
     { "MPS_LOGO.EXE", 0x006D, 0x0112, 0x048F, 434, 434, "sprite-set loader" },
@@ -728,7 +734,7 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
 {
     const uint32_t watch = phys(cs, (uint16_t)(ip - g_below));
     const int watching = (g_below || g_watch_transient) && a->mem == g_mem[0];
-    while (*steps < 100000) {
+    while ((unsigned)*steps < g_step_cap) {
         const unsigned watch_bytes = (ip == 0x0112 || ip == 0x0010 || ip == 0x4239 || ip == 0x2F9D || ip == 0x683E || ip == 0x5852 || ip == 0x3ADA || ip == 0x1EB0 || ip == 0xBCEF || ip == 0x983E || ip == 0x0016 || ip == 0x79BE || ip == 0x8A90) ? g_span : 0x300u + g_below;
         if (watching && !g_self_written && memcmp(a->mem + watch, g_pristine + watch, watch_bytes)) g_self_written = 1;
         if (g_trace) printf("      %04X:%04X clk %llu sp %04X\n", a->seg[S_CS], a->ip, (unsigned long long)a->icount, a->r[R_SP]);
@@ -954,7 +960,8 @@ int main(int argc, char **argv)
         if (g_cov >= 0) { g_cov_ip = COVERED[g_cov].ip; g_cov_escapes = 0; memset(g_cov_skips, 0, sizeof g_cov_skips); memset(g_cov_cover, 0, sizeof g_cov_cover); memset(g_cov_whole, 0, sizeof g_cov_whole); }
         g_hud_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0x1058 && o->ip == 0x0016;
         g_ground_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0x5046;
-        g_watch_transient = (!strcmp(o->module, "MPS_LOGO.EXE") && o->seg == 0x006D && o->ip == 0x0112) || (!strcmp(o->module, "VGAME.EXE") && o->seg == 0x1058 && o->ip == 0x0016) ||
+        g_watch_transient = (!strcmp(o->module, "VGAME.EXE") && o->seg == 0x0FAE && o->ip == 2) ||
+            (!strcmp(o->module, "MPS_LOGO.EXE") && o->seg == 0x006D && o->ip == 2) || (!strcmp(o->module, "MPS_LOGO.EXE") && o->seg == 0x006D && o->ip == 0x0112) || (!strcmp(o->module, "VGAME.EXE") && o->seg == 0x1058 && o->ip == 0x0016) ||
             (o->seg == 0 &&
             ((!strcmp(o->module, "VGAME.EXE") && (o->ip == 0x2F9D || o->ip == 0x683E || o->ip == 0x5046 || o->ip == 0x5852 || o->ip == 0x3ADA || o->ip == 0x1EB0 || o->ip == 0xBCEF || o->ip == 0x983E || o->ip == 0x79BE || o->ip == 0x8A90)) ||
              (!strcmp(o->module, "START.EXE") && (o->ip == 0x4239 || o->ip == 0x39B3 || o->ip == 0x39D5)) ||
@@ -1009,6 +1016,10 @@ int main(int argc, char **argv)
             if (!strcmp(SHARED_ENDINGS[k].module, o->module) && SHARED_ENDINGS[k].seg == o->seg) {
                 g_end_lo[g_nend] = SHARED_ENDINGS[k].lo; g_end_hi[g_nend++] = SHARED_ENDINGS[k].hi;
             }
+        const int bind_entries = !strcmp(o->module, "VGAME.EXE") && o->seg == 0x0FAE && o->ip == 2;
+        unsigned bind_modes = 0, bind_zero = 0;
+        const int sprite_colour = !strcmp(o->module, "MPS_LOGO.EXE") && o->seg == 0x006D && o->ip == 2;
+        unsigned colour_modes = 0;
         unsigned long long mc = 0, ms = 0, mb = 0;
         for (int s = 0; s < states; s++) {
             if (s == states / 2) {
@@ -1418,7 +1429,7 @@ int main(int argc, char **argv)
             if (g_projectile_fixture && (s & 7) != 0) {
                 const unsigned v = (unsigned)s >> 3;
                 const uint32_t h = (uint32_t)v * 0x9E3779B1u;
-                /* At most 240 words, including all twelve weapon records. */
+                /* At most 244 words, including all twelve weapon records. */
                 struct { uint16_t at, value; } words[256]; unsigned n = 0;
 #define SHOT_WORD(a_, v_) do { if (n >= sizeof words / sizeof words[0]) { fprintf(stderr, "projectile fixture capacity exceeded\n"); return 1; } words[n].at = (uint16_t)(a_); words[n++].value = (uint16_t)(v_); } while (0)
                 static const uint16_t kinds[] = { 0xFFFF, 0, 1, 2, 3, 4, 5, 6, 7 };
@@ -1428,6 +1439,9 @@ int main(int argc, char **argv)
                 SHOT_WORD(0x39E0, (h >> 16) & 1); SHOT_WORD(0x39D8, px + 0x20); SHOT_WORD(0x39DA, py + 0x20);
                 SHOT_WORD(0x3D94, (h >> 17) & 1 ? 0xFFFF : 1); SHOT_WORD(0x3664, (h >> 18) & 1);
                 SHOT_WORD(0x3D90, (h >> 19) & 1 ? 5 : 0); SHOT_WORD(0x9F94, 2); SHOT_WORD(0x9B34, (h >> 20) & 3 ? 0 : 0x30);
+                /* A live radar decoy makes guidance-kind 3 test its aspect guard. */
+                SHOT_WORD(0x39E4, px + 0x30); SHOT_WORD(0x39E6, py - 0x20);
+                SHOT_WORD(0x39EA, 2); SHOT_WORD(0x39EC, 5);
                 SHOT_WORD(0x9912, 1); SHOT_WORD(0xDEB4, (h >> 21) & 1 ? 5 : 0); SHOT_WORD(0x3686, (h >> 22) & 3);
                 for (unsigned t = 0; t < 8; t++) {
                     const uint16_t rec = (uint16_t)(0x3394 + 0x12 * (0x1C + t));
@@ -2125,6 +2139,52 @@ int main(int argc, char **argv)
 #undef LH8
 #undef LH16
             }
+            /* Author-written overlay headers. Separate memory also permits the
+             * original zero-count LOOP to complete all 65,536 iterations. */
+            g_fixture_args = (bind_entries || sprite_colour) && (s & 7) == 1;
+            g_step_cap = bind_entries && (s == 1 || s == 2) ? 500000 : 100000;
+            if (bind_entries && ((s & 7) == 1 || (s & 7) == 2)) {
+                const unsigned mode = (s >> 3) & 7;
+                static const uint16_t counts[] = {1,2,255,16384,255,7,8,3};
+                seg[S_DS] = mode == 4 ? 0x7000 : 0x3000;
+                seg[S_SS] = mode == 5 || mode == 6 ? 0x7000 : 0x5000;
+                r[R_SP] = mode == 5 || mode == 6 ? 0x0028 : 0xFF00;
+                /* ENTER-equivalent saves replace the header count at SS:22h. */
+                if (mode == 5 || mode == 6) r[R_BP] = (uint16_t)(mode == 5 ? 2 : 1);
+                small[0] = 0x7000;
+                const uint16_t fields[][2] = {{0x18,0x3456},{0x1C,mode == 1 || mode == 7 ? 0xABFF : 0},{0x22,(s == 1 || s == 2) ? 0 : counts[mode]}};
+                for (unsigned j = 0; j < sizeof fields / sizeof fields[0]; j++) {
+                    uint32_t a = phys(0x7000, fields[j][0]);
+                    for (int k = 0; k < 2; k++) {
+                        const uint8_t b = (uint8_t)(fields[j][1] >> (k * 8));
+                        g_pristine[a+k] = g_mem[0][a+k] = g_mem[1][a+k] = b;
+                    }
+                }
+            }
+            if (sprite_colour && ((s & 7) == 1 || (s & 7) == 2)) {
+                static const uint8_t streams[][16] = {
+                    {0xFF}, {0xFE,0xFF}, {0xF9,0xFF}, {0xF9,0xFE,0xFF},
+                    {0xF9,1,0xFC,2,0x7F,0xFF}, {0,0xFF}, {0,0xFE,0xFF},
+                    {0,0xFC,0x10,0xFD,0xAB,0x7F,0xFE,0xF9,2,0x20,0xFF}
+                };
+                const unsigned mode = (s >> 3) & 15;
+                seg[S_DS] = 0x3000; seg[S_SS] = 0x5000; r[R_SP] = 0xFF00;
+                small[0] = mode >= 10 ? 0xFFFC : 0x0800;
+                small[1] = 0x7000;
+                static const uint16_t bases[] = {0,1,255,2};
+                small[2] = bases[(s >> 7) & 3];
+                /* Live locals/saved BP, or caller arguments, become the stream. */
+                if (mode == 8) {
+                    seg[S_SS] = 0x5000; r[R_SP] = 0x0100; r[R_BP] = 0xFF11;
+                    small[0] = 0x00F8; small[1] = 0x5000;
+                } else if (mode == 9) {
+                    r[R_SP] = 0x0100; small[0] = 0x0102; small[1] = 0x5000; small[2] = 0xFF00;
+                }
+                for (unsigned j = 0; j < sizeof streams[0]; j++) {
+                    const uint32_t a = phys(small[1], (uint16_t)(small[0]+j));
+                    g_pristine[a] = g_mem[0][a] = g_mem[1][a] = streams[mode & 7][j];
+                }
+            }
             for (int k = 0; k < 2; k++)
                 setup_side(k ? &g_m.cpu : &g_cpu[0], o, cs, ip, r, seg, flags, back, s, small);
             int steps = 0;
@@ -2206,13 +2266,13 @@ int main(int argc, char **argv)
                 g_ctx = ""; restore(); continue;
             }
             const uint16_t reach = g_reach;
-            if (!returned || a->seg[S_CS] != cs || a->ip != back || g_self_written) steps = 100000;
+            if (!returned || a->seg[S_CS] != cs || a->ip != back || g_self_written) steps = (int)g_step_cap;
             g_side[0].overflow = g_side[1].overflow = 1;      /* compare all memory */
             /* A real return lands back at the caller's stack level (RET n
              * pops at most a few words); a wild jump that happens to reach
              * the return address - a slide through zeroed memory - does not. */
             const uint16_t popped = (uint16_t)(a->r[R_SP] - entry_sp);
-            if (steps >= 100000 || popped < 2 || popped > 18) { if (getenv("FLWHY") && o->ip == 0x0815) printf("why1 s=%d steps=%d popped=%u\n", s, steps, popped); if (g_cov >= 0) g_cov_skips[steps >= 100000 ? 1 : 2]++; ms++; restore(); continue; }
+            if ((unsigned)steps >= g_step_cap || popped < 2 || popped > 18) { if (getenv("FLWHY") && o->ip == 0x0815) printf("why1 s=%d steps=%d popped=%u\n", s, steps, popped); if (g_cov >= 0) g_cov_skips[(unsigned)steps >= g_step_cap ? 1 : 2]++; ms++; restore(); continue; }
             /* A random state that makes the original write over its own code
              * (a copy aimed at the routine) runs instructions it was not; the
              * game never does, and no equivalent can follow it. The window is
@@ -2282,6 +2342,8 @@ int main(int argc, char **argv)
                 g_finished++;
             }
             mc++;
+            if (sprite_colour && ((s & 7) == 1 || (s & 7) == 2) && whole) colour_modes |= 1u << ((s >> 3) & 15);
+            if (bind_entries && ((s & 7) == 1 || (s & 7) == 2) && whole) { bind_modes |= 1u << ((s >> 3) & 7); if (s == 1 || s == 2) bind_zero++; }
             if (g_cov >= 0) for (unsigned k = 0; k < COVERED[g_cov].len; k++) {
                 g_cov_cover[k] |= g_cov_seen[k]; if (covered_region) g_cov_whole[k] |= g_cov_seen[k];
             }
@@ -2351,8 +2413,9 @@ int main(int argc, char **argv)
                 g_m.cpu.stop_at = start + k;
                 g_lost = 0; g_ncalls = 0; g_stopped = 0; g_callover = 0;
                 const int pr = o->fn(&g_m);
-                if (pr && g_callover) {
-                    printf("  OVERRUN %s %04X:%04X: a call started past the limit (stop at +%llu)\n", o->module, o->seg, ip, (unsigned long long)k);
+                if (pr && (g_callover || (!g_ncalls && g_m.cpu.stop_at && g_m.cpu.icount > g_m.cpu.stop_at))) {
+                    printf("  OVERRUN %s %04X:%04X: ran to +%llu with the limit at +%llu\n", o->module, o->seg, ip,
+                           (unsigned long long)(g_m.cpu.icount - start), (unsigned long long)k);
                     g_overrun++; mb++;
                 }
                 if (pr && !g_callover && !g_lost && g_m.cpu.icount - start < (uint64_t)steps) {
@@ -2378,6 +2441,8 @@ int main(int argc, char **argv)
         if (shards > 1) printf("@%u ", mi);                       /* the table index, for the merge */
         printf("%-10s %04X:%04X %-34s %6llu states compared, %4llu skipped, %s\n", o->module, o->seg, ip,
                o->what, mc, ms, mb ? "MISMATCH" : mc ? "equal" : "not testable here (routes only)");
+        if (sprite_colour) { printf("  sprite colour modes %04X\n", colour_modes); if (states >= 4000 && colour_modes != 65535) mb++; }
+        if (bind_entries) { printf("  binding modes %02X, completed zero-count wraps %u\n", bind_modes, bind_zero); if (states >= 4000 && (bind_modes != 255 || !bind_zero)) mb++; }
         if (g_checked_alloc) printf("  completed allocation-error states: %llu\n", g_alloc_errors);
         if (camera_gradients) printf("  completed 16-band states: %llu\n", g_gradient_full);
         if (g_cov >= 0) {

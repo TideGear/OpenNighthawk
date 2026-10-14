@@ -41724,7 +41724,161 @@ static int vgame_sky_low_detail_far(machine_t *m)
     return 1;
 }
 
+/* VGAME 0FAE:0002: bind an overlay header's entry offsets into five-byte
+ * far-jump slots. Header byte 1Ch selects the first slot; ES:22h gives the
+ * number of offsets beginning at ES:24h, and ES:18h gives their segment.
+ * LOOP with count zero deliberately writes 65,536 slots. Preserve live
+ * frame reads and word/store order when the tables overlap. */
+static int vgame_bind_segment_entries(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 17)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_SI]);
+    c->r[R_DX] = bp_get(c, 6);
+    c->seg[S_ES] = c->r[R_DX];
+    c->r[R_BX] = 0x011A;
+    c->r[R_DI] = 0x001C;
+    c->r[R_AX] = seg_read16(c, c->seg[S_ES], c->r[R_DI]);
+    set_r8(c, R_DL, 5);
+    x86_mul8(c, get_r8(c, R_DL));
+    c->r[R_BX] = (uint16_t)alu_add(c, c->r[R_BX], c->r[R_AX], 1, 0);
+    c->r[R_DI] = 0x0022;
+    c->r[R_CX] = seg_read16(c, c->seg[S_ES], c->r[R_DI]);
+    c->r[R_SI] = 0x0024;
+    c->r[R_DI] = 0x0018;
+    c->r[R_DI] = seg_read16(c, c->seg[S_ES], c->r[R_DI]);
+    c->icount += 17;
+    do {
+        if (!room(c, 6)) { c->ip = 0x002A; return 1; }
+        c->r[R_AX] = seg_read16(c, c->seg[S_ES], c->r[R_SI]);
+        ds_put(c, (uint16_t)(c->r[R_BX] + 1), c->r[R_AX]);
+        ds_put(c, (uint16_t)(c->r[R_BX] + 3), c->r[R_DI]);
+        c->r[R_SI] = (uint16_t)alu_add(c, c->r[R_SI], 2, 1, 0);
+        c->r[R_BX] = (uint16_t)alu_add(c, c->r[R_BX], 5, 1, 0);
+        c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);
+        c->icount += 6;
+    } while (c->r[R_CX]);
+    if (!room(c, 4)) { c->ip = 0x003B; return 1; }
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    far_ret(c);
+    c->icount += 4;
+    return 1;
+}
+
+/* MPS_LOGO 006D:0002: shift the colour bytes of an encoded sprite by
+ * (palette base - 1), leaving FC transparent bytes unchanged. FF terminates
+ * either layout; FE returns to the next row. F9 selects count/colour pairs;
+ * other rows carry literal colours, with FD skipping a two-byte prefix.
+ * Keep the original frame and reads: the source stream can alias the frame. */
+static int logo_sprite_recolour(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 17)) return 0;
+    x86_enter(c, 6, 0);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_SI]);
+    c->r[R_AX] = bp_get(c, 8);
+    bp_put(c, -2, c->r[R_AX]);
+    c->r[R_AX] = bp_get(c, 6);
+    bp_put(c, -6, c->r[R_AX]);
+    bp_put(c, -4, 4);
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->seg[S_ES]);
+    c->r[R_AX] = bp_get(c, -2);
+    c->seg[S_ES] = c->r[R_AX];
+    c->r[R_DI] = bp_get(c, -6);
+    c->r[R_BX] = bp_get(c, -4);
+    set_r8(c, R_CL, bp_get8(c, 10));
+    set_r8(c, R_CL, (uint8_t)alu_dec(c, get_r8(c, R_CL), 0));
+    c->icount += 17;
+next_row:
+    if (!room(c, 8)) { c->ip = 0x002C; return 1; }
+    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_ES], c->r[R_DI])));
+    c->r[R_DI] = (uint16_t)alu_inc(c, c->r[R_DI], 1);
+    alu_sub(c, get_r8(c, R_AL), 0xFF, 0, 0);
+    c->icount += 4;
+    if (c->flags & F_ZF) goto done;
+    alu_sub(c, get_r8(c, R_AL), 0xFE, 0, 0);
+    c->icount += 2;
+    if (c->flags & F_ZF) goto next_row;
+    alu_sub(c, get_r8(c, R_AL), 0xF9, 0, 0);
+    c->icount += 2;
+    if (!(c->flags & F_ZF)) goto literal_run;
+pair_run:
+    if (!room(c, 13)) { c->ip = 0x003C; return 1; }
+    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_ES], c->r[R_DI])));
+    c->r[R_DI] = (uint16_t)alu_inc(c, c->r[R_DI], 1);
+    alu_sub(c, get_r8(c, R_AL), 0xFF, 0, 0);
+    c->icount += 4;
+    if (c->flags & F_ZF) goto done;
+    alu_sub(c, get_r8(c, R_AL), 0xFE, 0, 0);
+    c->icount += 2;
+    if (c->flags & F_ZF) goto next_row;
+    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_ES], c->r[R_DI])));
+    alu_sub(c, get_r8(c, R_AL), 0xFC, 0, 0);
+    c->icount += 3;
+    if (!(c->flags & F_ZF)) {
+        set_r8(c, R_AL, (uint8_t)alu_add(c, get_r8(c, R_AL), get_r8(c, R_CL), 0, 0));
+        mem_write8(c, phys(c->seg[S_ES], c->r[R_DI]), get_r8(c, R_AL));
+        c->icount += 2;
+    }
+    c->r[R_DI] = (uint16_t)alu_inc(c, c->r[R_DI], 1);
+    c->icount += 2;
+    goto pair_run;
+literal_run:
+    if (!room(c, 16)) { c->ip = 0x0058; return 1; }
+    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_ES], c->r[R_DI])));
+    alu_sub(c, get_r8(c, R_AL), 0xFF, 0, 0);
+    c->icount += 3;
+    if (c->flags & F_ZF) goto done;
+    alu_sub(c, get_r8(c, R_AL), 0xFE, 0, 0);
+    c->icount += 2;
+    if (c->flags & F_ZF) {
+        c->r[R_DI] = (uint16_t)alu_inc(c, c->r[R_DI], 1);
+        c->icount += 2;
+        goto next_row;
+    }
+    alu_sub(c, get_r8(c, R_AL), 0xFD, 0, 0);
+    c->icount += 2;
+    if (c->flags & F_ZF) {
+        c->r[R_DI] = (uint16_t)alu_inc(c, c->r[R_DI], 1);
+        c->r[R_DI] = (uint16_t)alu_inc(c, c->r[R_DI], 1);
+        set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_ES], c->r[R_DI])));
+        c->icount += 3;
+    }
+    alu_sub(c, get_r8(c, R_AL), 0xFC, 0, 0);
+    c->icount += 2;
+    if (!(c->flags & F_ZF)) {
+        set_r8(c, R_AL, (uint8_t)alu_add(c, get_r8(c, R_AL), get_r8(c, R_CL), 0, 0));
+        mem_write8(c, phys(c->seg[S_ES], c->r[R_DI]), get_r8(c, R_AL));
+        c->icount += 2;
+    }
+    c->r[R_DI] = (uint16_t)alu_inc(c, c->r[R_DI], 1);
+    c->icount += 2;
+    goto literal_run;
+done:
+    if (!room(c, 7)) { c->ip = 0x007C; return 1; }
+    c->seg[S_ES] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    x86_leave(c);
+    far_ret(c);
+    c->icount += 7;
+    return 1;
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0FAE, 0x0002, vgame_bind_segment_entries, "bind segment entry slots", 2 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x006D, 0x0002, logo_sprite_recolour, "shift encoded sprite colours", 2 },
+
     { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x006D, 0x0112, logo_sprite_set_load, "load a sprite set and fix frame pointers", 2 },
     { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x0010, setup_questions, "setup questions and joystick calibration", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x4239, start_mission_generate, "generate objectives, bases and mission handover", 1 },

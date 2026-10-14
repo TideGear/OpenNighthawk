@@ -392,6 +392,10 @@ if(F117R_BUILD_TESTS)
       --only VGAME.EXE:9515)
     add_test(NAME matched_objective_place_alias COMMAND func_lockstep --states 4000
       --only VGAME.EXE:4B8F --seed 0x376cc4116689)
+    add_test(NAME matched_segment_bindings COMMAND func_lockstep --states 4000
+      --only VGAME.EXE:2)
+    add_test(NAME matched_sprite_recolour COMMAND func_lockstep --states 4000
+      --only MPS_LOGO.EXE:2)
     add_test(NAME matched_timer_tick COMMAND func_lockstep --states 4000
       --only VGAME.EXE:1E79)
     add_test(NAME matched_span_emit COMMAND func_lockstep --states 4000

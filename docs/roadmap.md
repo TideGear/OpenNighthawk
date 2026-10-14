@@ -200,6 +200,20 @@ not the recompilation:
 
 ## Phase 2 - understood code
 
+Segment entry binding (VGAME `0FAE:0002`) and encoded-sprite recolouring
+(MPS_LOGO `006D:0002`) are matched. All 27 / 63 instructions are covered by
+authored original-instruction fixtures, including overlapping tables/frames,
+wrapping offsets, markers, palette bases and the 65,536-iteration zero-count
+LOOP. Seven deliberately broken bodies fail. The mid-run harness now checks
+no-call clock overshoots; a live radar-decoy fixture guarantees the projectile
+aspect arm instead of depending on random table bytes (886/886 instructions,
+floor unchanged). Full-cycle invocations 3 / 82 preserve 66 checkpoints/final.
+The fresh full gate passes 66 tests, all 45 routes / 44 fresh interpreter
+sessions, both 5,718,848-state profiles, three 840-address seeds (2,760,609 /
+2,759,527 / 2,756,481), zero mismatches and passing reachability/event checks
+(1,391 s). Census: 832 functions / 99,221 bytes, P2 57.60%, overall 83.84%.
+Private proof: `D:/f117-gate/entry-palette/final-gate-verdict.json`.
+
 The formatter conversion-state initializers (START `9D67`, END `56D9`) are
 matched: four cleared fields, unspecified precision (-1), then the original
 scan loop. Returning scan fixtures cover all eight instructions and require
@@ -684,7 +698,7 @@ instruction profiles and three 789-address matched seeds (2,561,209,
       Reimp's mapping; matched functions replacing translations one at a time,
       each held to the same parity checks. `tools/reimp_names.py` joins the
       Reimp's census (1,535 functions) with this project's regions as a private
-      lead list. 838 addresses are matched (830 of the census functions, 99,033 of
+      lead list. 840 addresses are matched (832 of the census functions, 99,221 of
       179,213 bytes); the table is at the end of `src/matched/matched.c` and the
       method is in [architecture.md](architecture.md#matched-routines-phase-2).
       The earlier "72 reached / 411 never run" inventory was incomplete:

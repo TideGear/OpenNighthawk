@@ -141,6 +141,38 @@ frames exact and guest hash equal to the fresh 36.8 s headless prefix. SDL
 writes its final hash to the machine log, not stdout. Screenshots and timing
 logs stay outside git in `D:/f117-gate/map-refill`.
 
+## Segment binding and sprite-colour fixtures (14 October 2026)
+
+The pair's authored headers and streams cover all 27 / 63 instructions,
+eight binding modes and sixteen sprite modes. The binding count-zero case runs
+all 65,536 LOOP iterations; only its two authored states raise the 100,000-step
+harness guard to 500,000. Other cases keep the old guard. Header/stack aliases,
+overlapping tables, stream/frame aliases, wrapping offsets and palette bases
+are checked against original instructions and full memory. Authored states also
+run where mid-run budget probes apply. Three private strict seeds compare
+7,170 / 7,167 / 7,114 states together, zero differences. Wrong header-read order,
+zero-count handling, index width, transparent sentinel, palette base and escape
+length are all rejected by retained private mutations. The real full-cycle
+route invokes the helpers 3 / 82 times with all 66 checkpoints/final exact.
+
+A seventh mutation (five-clock claim for a six-instruction loop) exposed a
+mid-run audit gap: the old probe accepted 77 states, while checking a no-call
+clock overshoot rejects it. The initial probe already made this check. The
+public mid-run probe now does too. The first integration gate was stopped
+deliberately after its 66 unit tests passed. The stronger gate then passed
+all 45 routes and both instruction profiles but found a rotating-seed
+projectile coverage gap: 870 of 886 instructions, with every compared state
+equal. An authored radar decoy (position, type 2, live count) supplies the
+missing aspect guard. All three targeted seeds now cover 886/886; the floor
+is unchanged. The final fresh gate passes 66 tests, all 45 routes / 44 fresh
+interpreter sessions, both 5,718,848-state profiles and three 840-address seeds
+(2,760,609 / 2,759,527 / 2,756,481), zero mismatches and passing reachability/
+event checks. Total 1,391 s: translate/build/tests 181, fresh parity 1,210;
+coverage reuses the verified identical input and unchanged translation.
+Proof: `D:/f117-gate/entry-palette`; private mutation detail is in
+`next/midprobe-mutation.json`. Keep live-runner executables frozen before
+rebuilding private candidates.
+
 ## Phase 2 complete execution inventory (14 October 2026)
 
 The gate's `--engine recomp --coverage FILE` logs only interpreted fallback
