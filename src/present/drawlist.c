@@ -2,6 +2,7 @@
  * replays; tools/drawlist_frame.py and tools/drawlist_spans.py say more. */
 #include "drawlist.h"
 
+#include "tls.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -517,7 +518,7 @@ static void scaled_sprite(drawlist_page *p, const int32_t *v, int n)
     int32_t vstep = 320, cx = top;
     if (flip_y) { vstep = -320; cx = bottom; di += rows - 1; }
     /* where each source row starts */
-    static int32_t row_at[65536 + 1];
+    static F117_TLS int32_t row_at[65536 + 1];
     int32_t nrow_at = 1, pos = 0;
     row_at[0] = 0;
     for (int32_t k = 0; k < sh; k++) {
@@ -710,7 +711,7 @@ void drawlist_record(drawlist *d, char kind, const int32_t *v, int n)
         const int32_t sx = v[1], sy = v[2], dx = v[4], dy = v[5], w = v[6], h = v[7];
         const drawlist_page *src = page_of(d, (uint16_t)v[8]);
         if (!src && n - 10 != w * h) { d->blits_no_source++; break; }
-        static uint8_t buf[65536 * 2];
+        static F117_TLS uint8_t buf[65536 * 2];
         if (w <= 0 || h <= 0 || (int64_t)w * h > (int64_t)sizeof buf) break;
         if (src) {                                    /* from a replayed page: the replay itself */
             for (int32_t y = 0; y < h; y++)
@@ -722,7 +723,7 @@ void drawlist_record(drawlist *d, char kind, const int32_t *v, int n)
             for (int32_t k = 0; k < w * h; k++) buf[k] = (uint8_t)v[10 + k];
         /* An overlapping self-blit needs the fine source before coarse
          * writes mirror over it, just as buf already holds the coarse source. */
-        static drawlist_page saved;
+        static F117_TLS drawlist_page saved;
         uint8_t *saved_hi = NULL;
         if (src == p && p->hi && sx < dx + w && dx < sx + w && sy < dy + h && dy < sy + h) {
             saved = *src;
@@ -757,7 +758,7 @@ void drawlist_record(drawlist *d, char kind, const int32_t *v, int n)
         f.nglyphs = rest[8 + count];
         if (f.nglyphs > nrest - 9 - count) f.nglyphs = nrest - 9 - count;
         p = page_of(d, (uint16_t)v[1]);
-        static drawlist_page none;                    /* a page not held: the painter still runs */
+        static F117_TLS drawlist_page none;                    /* a page not held: the painter still runs */
         none.size = 0;
         if (text(p ? p : &none, v[0], v + 2, v + 14, nchars, &f)) d->colour = v[2 + 2] & 0xFF;
         break;

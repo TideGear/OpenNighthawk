@@ -87,6 +87,83 @@ static int g_scale, g_age, g_line_width; /* optional presentation settings */
 static const uint8_t *g_fine;         /* the finer picture to show, or NULL */
 static FILE *g_present_log;           /* --present-log */
 
+/* With --present interp the in-between picture is drawn one host frame ahead
+ * on a worker thread (planned for the clock a frame on), while the main thread
+ * runs the machine, collects the replay and shows the picture drawn last
+ * frame. The worker only reads the published steps; the main thread publishes
+ * new ones only while the worker is idle (docs/presentation.md). */
+typedef struct {
+    SDL_Thread *thread;
+    SDL_Semaphore *go, *done;
+    int busy, quit;
+    drawlive_plan plan;
+    present_frame frame;
+    int got;
+} present_worker;
+static present_worker g_pw;
+static uint64_t g_frame_ips;          /* guest clocks in one host frame */
+
+static int present_worker_main(void *u)
+{
+    present_worker *w = (present_worker *)u;
+    for (;;) {
+        SDL_WaitSemaphore(w->go);
+        if (w->quit) break;
+        w->got = drawlive_render(&g_live, &w->plan, &w->frame);
+        SDL_SignalSemaphore(w->done);
+    }
+    return 0;
+}
+
+#define PAL_HELPERS 3
+typedef struct {
+    SDL_Thread *thread;
+    SDL_Semaphore *go, *done;
+    const uint32_t *pal;
+    const uint8_t *src;
+    uint32_t *dst;
+    size_t from, to;
+    int quit;
+} pal_helper;
+static pal_helper g_pal[PAL_HELPERS];
+
+static int pal_helper_main(void *u)
+{
+    pal_helper *p = (pal_helper *)u;
+    for (;;) {
+        SDL_WaitSemaphore(p->go);
+        if (p->quit) break;
+        for (size_t k = p->from; k < p->to; k++) p->dst[k] = p->pal[p->src[k]];
+        SDL_SignalSemaphore(p->done);
+    }
+    return 0;
+}
+
+/* The fine picture through the frame's palette, in bands on the helpers. */
+static void convert_fine(const uint8_t *dac, const uint8_t *src, uint32_t *dst, size_t n)
+{
+    uint32_t pal[256];
+    for (int k = 0; k < 256; k++) {
+        const uint8_t *c = &dac[3 * k];
+        pal[k] = 0xFF000000u | (uint32_t)((c[0] << 2) | (c[0] >> 4)) << 16 |
+                 (uint32_t)((c[1] << 2) | (c[1] >> 4)) << 8 | (uint32_t)((c[2] << 2) | (c[2] >> 4));
+    }
+    const size_t band = n / (PAL_HELPERS + 1);
+    for (int h = 0; h < PAL_HELPERS; h++) {
+        pal_helper *p = &g_pal[h];
+        const size_t from = band * (size_t)h, to = band * (size_t)(h + 1);
+        if (!p->thread) {                                    /* no helper: this band is done here */
+            for (size_t k = from; k < to; k++) dst[k] = pal[src[k]];
+            continue;
+        }
+        p->pal = pal; p->src = src; p->dst = dst; p->from = from; p->to = to;
+        SDL_SignalSemaphore(p->go);
+    }
+    for (size_t k = band * PAL_HELPERS; k < n; k++) dst[k] = pal[src[k]];
+    for (int h = 0; h < PAL_HELPERS; h++)
+        if (g_pal[h].thread) SDL_WaitSemaphore(g_pal[h].done);
+}
+
 /* ---- machine hooks ------------------------------------------------------ */
 
 static void on_opl(void *u, uint64_t icount, uint8_t reg, uint8_t val)
@@ -642,6 +719,22 @@ int main(int argc, char **argv)
               audio_queue_log);
     if (audio_queue_log && mt32_seed_set)
         fprintf(audio_queue_log, "# mt32_seed=%u\n", mt32_seed);
+    if (g_replay == 2) {
+        const SDL_DisplayMode *mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(win));
+        const double hz = mode && mode->refresh_rate >= 10 ? mode->refresh_rate : 60.0;
+        g_frame_ips = (uint64_t)((double)H.m.ips / hz);
+        if (!getenv("F117_PRESENT_THREADS_OFF")) {
+            g_pw.go = SDL_CreateSemaphore(0);
+            g_pw.done = SDL_CreateSemaphore(0);
+            if (g_pw.go && g_pw.done) g_pw.thread = SDL_CreateThread(present_worker_main, "present-draw", &g_pw);
+            for (int k = 0; k < PAL_HELPERS; k++) {
+                g_pal[k].go = SDL_CreateSemaphore(0);
+                g_pal[k].done = SDL_CreateSemaphore(0);
+                if (g_pal[k].go && g_pal[k].done)
+                    g_pal[k].thread = SDL_CreateThread(pal_helper_main, "present-palette", &g_pal[k]);
+            }
+        }
+    }
     const uint64_t start_ns = SDL_GetTicksNS();
     uint64_t paused_ns = 0, pause_began = 0;
     uint64_t discarded_clocks = 0;
@@ -733,6 +826,10 @@ int main(int argc, char **argv)
                 if (until > target) until = target;
                 inputlog_feed(player, &H.m, until + ips);
                 int rc = machine_run(&H.m, until);
+                if (g_replay == 2) {
+                    if (g_pw.thread) drawlive_collect(&g_live, &g_feed);
+                    else drawlive_update(&g_live, &g_feed);
+                }
                 if (rc == RUN_EXITED) { running = 0; break; }
                 if (rc == RUN_FAULT) {
                     SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "F-117A: the machine stopped", H.m.fault, win);
@@ -781,28 +878,58 @@ int main(int argc, char **argv)
         int got = 0;
         double t_shown = 0;
         uint64_t older = 0, newer = 0;
+        int fine_ready = 0;
         if (g_replay == 2) {
             present_capture(&H.m, &H.frame);
-            drawlive_update(&g_live, &g_feed);
-            got = drawlive_present_interp(&g_live, &H.m, &H.frame);
+            if (g_pw.thread) {
+                drawlive_collect(&g_live, &g_feed);
+                /* the picture planned a frame ago, drawn meanwhile by the worker */
+                g_fine = NULL;
+                if (g_pw.busy) {
+                    SDL_WaitSemaphore(g_pw.done);
+                    g_pw.busy = 0;
+                    older = g_pw.plan.older; newer = g_pw.plan.newer; t_shown = g_pw.plan.t_shown;
+                    got = g_pw.got;
+                    if (got) {
+                        memcpy(H.frame.vram, g_pw.frame.vram, sizeof H.frame.vram);
+                        memcpy(H.frame.dac, g_pw.frame.dac, sizeof H.frame.dac);
+                        H.frame.text = g_pw.frame.text;
+                        g_fine = g_live.shown_hi;
+                        if (g_fine && tex_fine && !H.frame.text) {
+                            convert_fine(H.frame.dac, g_fine, fine_pixels, (size_t)320 * g_scale * 200 * g_scale);
+                            fine_ready = 1;
+                        }
+                    }
+                }
+                drawlive_publish(&g_live);          /* the worker is idle: nothing renders from the old steps */
+                drawlive_plan plan;
+                /* Interpolation shows the clock as it stands (a frame later than the drawing, which
+                 * leads the display by one); extrapolation is a prediction and looks a frame ahead. */
+                if (drawlive_plan_interp(&g_live, &H.m, &H.frame, H.m.cpu.icount + (g_age ? g_frame_ips : 0), &plan)) {
+                    g_pw.plan = plan;
+                    g_pw.frame = H.frame;
+                    g_pw.busy = 1;
+                    SDL_SignalSemaphore(g_pw.go);
+                }
+            } else {
+                drawlive_update(&g_live, &g_feed);
+                got = drawlive_present_interp(&g_live, &H.m, &H.frame);
+                g_fine = g_live.shown_hi;
+                const drawlive_step *a, *b;
+                drawlive_steps(&g_live, &a, &b);
+                if (a && b) {
+                    const double span = b->end > a->end ? (double)(b->end - a->end) : 0;
+                    older = a->seq; newer = b->seq;
+                    t_shown = span > 0 ? ((double)H.m.cpu.icount - (double)b->end) / span : 0.0;
+                }
+            }
             g_presented += (uint64_t)got;
-            g_fine = g_live.shown_hi;
-            const drawlive_step *a = &g_live.step[g_live.last ^ 1], *b = &g_live.step[g_live.last];
-            const double span = b->end > a->end ? (double)(b->end - a->end) : 0;
-            older = a->seq; newer = b->seq;
-            t_shown = span > 0 ? ((double)H.m.cpu.icount - (double)b->end) / span : 0.0;
         }
         int w, h;
         SDL_Texture *show = tex;
         if (g_fine && tex_fine && !H.frame.text) {           /* the finer picture, with the frame's palette */
-            uint32_t pal[256];
-            for (int k = 0; k < 256; k++) {
-                const uint8_t *c = &H.frame.dac[3 * k];
-                pal[k] = 0xFF000000u | (uint32_t)((c[0] << 2) | (c[0] >> 4)) << 16 |
-                         (uint32_t)((c[1] << 2) | (c[1] >> 4)) << 8 | (uint32_t)((c[2] << 2) | (c[2] >> 4));
-            }
             w = 320 * g_scale; h = 200 * g_scale;
-            for (int k = 0; k < w * h; k++) fine_pixels[k] = pal[g_fine[k]];
+            if (!fine_ready) convert_fine(H.frame.dac, g_fine, fine_pixels, (size_t)w * h);
             SDL_Rect src = { 0, 0, w, h };
             SDL_UpdateTexture(tex_fine, &src, fine_pixels, w * 4);
             show = tex_fine;
@@ -824,6 +951,7 @@ int main(int argc, char **argv)
             SDL_GetRenderVSync(ren, &vsync);
             fprintf(g_present_log, "# display renderer=%s output=%dx%d refresh=%.6f vsync=%d scale=%d\n",
                     SDL_GetRendererName(ren), width, height, mode ? mode->refresh_rate : 0.0, vsync, g_scale);
+            if (mode && mode->refresh_rate >= 10) g_frame_ips = (uint64_t)((double)H.m.ips / mode->refresh_rate);
             display_logged = 1;
         }
         if (g_present_log)                                    /* when the frame went out, and what it showed */
@@ -841,6 +969,18 @@ int main(int argc, char **argv)
         }
     }
 
+    if (g_pw.thread) {
+        if (g_pw.busy) SDL_WaitSemaphore(g_pw.done);
+        g_pw.quit = 1;
+        SDL_SignalSemaphore(g_pw.go);
+        SDL_WaitThread(g_pw.thread, NULL);
+    }
+    for (int k = 0; k < PAL_HELPERS; k++)
+        if (g_pal[k].thread) {
+            g_pal[k].quit = 1;
+            SDL_SignalSemaphore(g_pal[k].go);
+            SDL_WaitThread(g_pal[k].thread, NULL);
+        }
     if (H.record) fclose(H.record);
     if (g_present_log) fclose(g_present_log);
     inputlog_close(player);

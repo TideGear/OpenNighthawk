@@ -1,6 +1,7 @@
 /* drawfeed.c - see drawfeed.h. */
 #include "drawfeed.h"
 
+#include "tls.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -139,6 +140,9 @@ void drawlive_init(drawlive *r)
 {
     memset(r, 0, sizeof *r);
     drawlist_init(&r->list);
+    drawlist_init(&r->pending_start);
+    r->ia = r->ib = r->newest = -1;
+    r->picture = r->blank;
 }
 
 void drawlive_set_scale(drawlive *r, int n)
@@ -148,10 +152,10 @@ void drawlive_set_scale(drawlive *r, int n)
     drawlist_set_scale(&r->list, n);
     r->hr = (hires *)malloc(sizeof *r->hr);
     r->scratch_hr = (hires *)malloc(sizeof *r->scratch_hr);
+    r->pending_hires = (hires *)malloc(sizeof *r->pending_hires);
     hires_init(r->hr, n);
-    r->picture_hi = (uint8_t *)calloc(bytes, 1);
     r->inter_hi = (uint8_t *)calloc(bytes, 1);
-    for (int k = 0; k < 2; k++) {
+    for (int k = 0; k < DRAWLIVE_POOL; k++) {
         r->step[k].start_hires = (hires *)malloc(sizeof *r->hr);
         r->step[k].picture_hi = (uint8_t *)calloc(bytes, 1);
     }
@@ -167,7 +171,7 @@ static void feed(drawlist *d, hires *h, char kind, const int32_t *v, int n)
 {
     if (h) hires_record(h, d, kind, v, n);
     if (kind == 'Z' || kind == 'Y') {
-        static uint8_t bytes[65536];
+        static F117_TLS uint8_t bytes[65536];
         for (int a = 0; a < n - 2; a++) bytes[a] = (uint8_t)v[2 + a];
         drawlist_seed(d, kind, (uint16_t)v[0], (uint16_t)v[1], bytes, (unsigned)(n - 2));
     } else drawlist_record(d, kind, v, n);
@@ -228,15 +232,10 @@ static const uint8_t *draw_list(drawlive *r, const drawlive_step *skel)
     return disp->b;
 }
 
-static void pair_steps(drawlive *r)
+/* A published pair a hair from each end must draw as the two frames it joins. */
+static void check_pair(drawlive *r)
 {
-    interp_pairing_free(r->pair);
-    r->pair = NULL;
-    drawlive_step *a = &r->step[r->last ^ 1], *b = &r->step[r->last];
-    if (!a->ok || !b->ok || b->seq != a->seq + 1) return;
-    r->pair = interp_pair(a->parsed, b->parsed);
-    r->pairs++;
-    if (!r->check) return;
+    const drawlive_step *a = &r->step[r->ia], *b = &r->step[r->ib];
     /* t a hair from each end: every paired primitive regenerated and moved by
      * almost nothing. With a scale the vertices move too, and 1e-6 of a step
      * can still move a camera-space coordinate by a rounding unit, which shows
@@ -245,65 +244,165 @@ static void pair_steps(drawlive *r)
     const int flags = r->scale ? INTERP_VERTICES : 0;
     const double eps = r->scale ? 1e-9 : 1e-6;
     const size_t fine = (size_t)320 * r->scale * 200 * r->scale;
-    interp_inbetween_ex(a->parsed, b->parsed, r->pair, eps, flags, &r->ilist, &sb, NULL);
+    interp_inbetween_ex(a->parsed, b->parsed, b->pair, eps, flags, &r->ilist, &sb, NULL);
     const uint8_t *p = draw_list(r, sb ? b : a);
     ok &= p && !memcmp(p, a->picture, 64000) && (!r->scale || !memcmp(r->inter_hi, a->picture_hi, fine));
-    interp_inbetween_ex(a->parsed, b->parsed, r->pair, 1 - eps, flags, &r->ilist, &sb, NULL);
+    interp_inbetween_ex(a->parsed, b->parsed, b->pair, 1 - eps, flags, &r->ilist, &sb, NULL);
     p = draw_list(r, sb ? b : a);
     ok &= p && !memcmp(p, b->picture, 64000) && (!r->scale || !memcmp(r->inter_hi, b->picture_hi, fine));
     if (ok) r->pairs_exact++; else r->pairs_inexact++;
 }
 
-int drawlive_update(drawlive *r, drawfeed *f)
+/* Consume only records added since the last host slice. Keep the new
+ * frame's start separate: the published starts still serve interpolation. */
+static void replay_available(drawlive *r, const drawfeed_frame *fr)
+{
+    if (!r->pending_active || r->pending_seq != fr->seq) {
+        if (fr->seq != r->next_seq || r->pending_active) drawlist_reset(&r->list);
+        if (r->interp) {
+            drawlist_copy(&r->pending_start, &r->list);
+            if (r->scale) memcpy(r->pending_hires, r->hr, sizeof *r->hr);
+        }
+        r->pending_seq = fr->seq;
+        r->pending_at = 0;
+        r->pending_active = 1;
+    }
+    char kind;
+    uint64_t icount;
+    const int32_t *v;
+    int n;
+    while (drawfeed_next(fr, &r->pending_at, &kind, &icount, &v, &n))
+        feed(&r->list, r->scale ? r->hr : NULL, kind, v, n);
+}
+
+/* Transfer ownership of the cached fine pages without copying them again.
+ * A small stack buffer avoids placing a whole drawlist on the stack. */
+static void swap_lists(drawlist *a, drawlist *b)
+{
+    unsigned char temp[256];
+    for (size_t at = 0; at < sizeof *a; at += sizeof temp) {
+        const size_t left = sizeof *a - at;
+        const size_t n = left < sizeof temp ? left : sizeof temp;
+        unsigned char *pa = (unsigned char *)a + at, *pb = (unsigned char *)b + at;
+        memcpy(temp, pa, n); memcpy(pa, pb, n); memcpy(pb, temp, n);
+    }
+}
+
+static int free_step(const drawlive *r)
+{
+    for (int k = 0; k < DRAWLIVE_POOL; k++)
+        if (r->step[k].state == DRAWLIVE_FREE) return k;
+    return -1;
+}
+
+/* A frame closes into a step when the replay equals its display; the step is
+ * queued for drawlive_publish, with its pairing against the step kept before. */
+static void close_frame(drawlive *r, drawfeed *f, const drawfeed_frame *fr)
+{
+    r->frames++;
+    drawlist_finish_models(&r->list);
+    const drawlist_page *disp = drawlist_get(&r->list, 0xA000);
+    if (!r->list.have_seg || !disp || disp->size < 64000) { r->unseeded++; return; }
+    if (memcmp(disp->b, fr->display, 64000)) {
+        r->inexact++;
+        r->queue[r->nqueue++] = -1;                    /* nothing is shown until the next exact frame */
+        drawlist_reset(&r->list);
+        if (r->scale) hires_init(r->hr, r->scale);
+        drawfeed_reseed(f);
+        return;
+    }
+    r->exact++;
+    const int k = free_step(r);
+    drawlive_step *s = &r->step[k];
+    if (r->interp) {
+        swap_lists(&s->start, &r->pending_start);
+        if (r->scale) {
+            hires *old = s->start_hires;
+            s->start_hires = r->pending_hires;
+            r->pending_hires = old;
+        }
+    }
+    memcpy(s->picture, disp->b, 64000);
+    if (r->scale) take_fine(r, disp, s->picture_hi);
+    s->seq = fr->seq;
+    s->end = fr->end;
+    s->ok = 1;
+    interp_pairing_free(s->pair);
+    s->pair = NULL;
+    if (r->interp) {
+        keep_step(s, fr);
+        s->ok = !fr->seeded && s->start.have_seg;
+        const drawlive_step *prev = r->newest >= 0 ? &r->step[r->newest] : NULL;
+        if (prev && prev->ok && s->ok && s->seq == prev->seq + 1) {
+            s->pair = interp_pair(prev->parsed, s->parsed);
+            r->pairs++;
+        }
+    }
+    s->state = DRAWLIVE_STAGED;
+    r->newest = k;
+    r->queue[r->nqueue++] = k;
+}
+
+int drawlive_collect(drawlive *r, drawfeed *f)
 {
     int taken = 0;
     const drawfeed_frame *fr;
     while ((fr = drawfeed_oldest(f))) {
-        if (fr->seq != r->next_seq) drawlist_reset(&r->list);   /* a frame was dropped: wait for a seed */
-        r->next_seq = fr->seq + 1;
-        drawlive_step *step = r->interp ? &r->step[r->last ^ 1] : NULL;
-        if (step) {
-            drawlist_copy(&step->start, &r->list);
-            if (r->scale) memcpy(step->start_hires, r->hr, sizeof *r->hr);
-        }
-        size_t at = 0;
-        char kind;
-        uint64_t icount;
-        const int32_t *v;
-        int n;
-        while (drawfeed_next(fr, &at, &kind, &icount, &v, &n)) feed(&r->list, r->scale ? r->hr : NULL, kind, v, n);
-        r->frames++;
-        drawlist_finish_models(&r->list);
-        const drawlist_page *disp = drawlist_get(&r->list, 0xA000);
-        if (!r->list.have_seg || !disp || disp->size < 64000) r->unseeded++;
-        else if (!memcmp(disp->b, fr->display, 64000)) {
-            r->exact++;
-            memcpy(r->picture, disp->b, 64000);
-            r->shown = 1;
-            r->picture_seq = fr->seq;
-            r->picture_end = fr->end;
-            if (r->scale) take_fine(r, disp, r->picture_hi);
-            if (step) {
-                keep_step(step, fr);
-                memcpy(step->picture, disp->b, 64000);
-                if (r->scale) memcpy(step->picture_hi, r->picture_hi, (size_t)320 * r->scale * 200 * r->scale);
-                step->seq = fr->seq;
-                step->end = fr->end;
-                step->ok = !fr->seeded && step->start.have_seg;
-                r->last ^= 1;
-                pair_steps(r);
-            }
-        } else {
-            r->inexact++;
-            r->shown = 0;
-            drawlist_reset(&r->list);
-            if (r->scale) hires_init(r->hr, r->scale);
-            drawfeed_reseed(f);
-        }
+        if (free_step(r) < 0 || r->nqueue >= DRAWLIVE_QUEUE - 1) return taken;   /* wait for a publish */
+        replay_available(r, fr);
+        close_frame(r, f, fr);
         drawfeed_pop(f);
+        r->next_seq = fr->seq + 1;
+        r->pending_active = 0;
         taken++;
     }
+    const drawfeed_frame *current = open_frame(f);
+    if (current->len) replay_available(r, current);
     return taken;
+}
+
+static void release_step(drawlive *r, int k)
+{
+    interp_pairing_free(r->step[k].pair);
+    r->step[k].pair = NULL;
+    r->step[k].state = DRAWLIVE_FREE;
+}
+
+void drawlive_publish(drawlive *r)
+{
+    for (int q = 0; q < r->nqueue; q++) {
+        const int k = r->queue[q];
+        if (k < 0) { r->shown = 0; continue; }
+        drawlive_step *s = &r->step[k];
+        if (r->ia >= 0) release_step(r, r->ia);
+        r->ia = r->ib;
+        r->ib = k;
+        s->state = DRAWLIVE_PUBLISHED;
+        r->shown = 1;
+        r->picture = s->picture;
+        r->picture_hi = r->scale ? s->picture_hi : NULL;
+        r->picture_seq = s->seq;
+        r->picture_end = s->end;
+        if (r->check && s->pair && r->ia >= 0) check_pair(r);
+    }
+    r->nqueue = 0;
+}
+
+int drawlive_update(drawlive *r, drawfeed *f)
+{
+    int taken = 0, more;
+    do {                               /* a closed frame may have waited for a free step */
+        more = drawlive_collect(r, f);
+        drawlive_publish(r);
+        taken += more;
+    } while (more && drawfeed_oldest(f));
+    return taken;
+}
+
+void drawlive_steps(const drawlive *r, const drawlive_step **older, const drawlive_step **newer)
+{
+    *older = r->ia >= 0 ? &r->step[r->ia] : NULL;
+    *newer = r->ib >= 0 ? &r->step[r->ib] : NULL;
 }
 
 int drawlive_current(const drawlive *r, const machine_t *m)
@@ -318,36 +417,71 @@ int drawlive_present(drawlive *r, const machine_t *m, present_frame *f)
 {
     r->shown_hi = NULL;
     if (f->text || !drawlive_current(r, m)) return 0;
-    memcpy(f->vram, r->picture, sizeof r->picture);
+    memcpy(f->vram, r->picture, 64000);
+    if (r->scale) r->shown_hi = r->picture_hi;
+    return 1;
+}
+
+int drawlive_plan_interp(const drawlive *r, const machine_t *m, const present_frame *f, uint64_t icount,
+                         drawlive_plan *plan)
+{
+    memset(plan, 0, sizeof *plan);
+    const drawlive_step *a, *b;
+    drawlive_steps(r, &a, &b);
+    if (a && b) {
+        plan->older = a->seq;
+        plan->newer = b->seq;
+        const double span = b->end > a->end ? (double)(b->end - a->end) : 0;
+        plan->t_shown = span > 0 ? ((double)icount - (double)b->end) / span : 0.0;
+    }
+    if (f->text || !drawlive_current(r, m)) { plan->kind = PLAN_NONE; return 0; }
+    if (!a || !b || !b->pair || r->picture_seq != b->seq || b->end <= a->end) { plan->kind = PLAN_REPLAY; return 1; }
+    double t = (double)(icount - b->end) / (double)(b->end - a->end);
+    if (r->extrapolate) t = t + 1 > 2 ? 2 : t + 1;
+    plan->t = t;
+    plan->extrapolate = r->extrapolate;
+    if (t <= 0) plan->kind = PLAN_OLDER;
+    else if (t == 1 || (t > 1 && !r->extrapolate)) plan->kind = PLAN_NEWER;
+    else plan->kind = PLAN_BETWEEN;
+    return 1;
+}
+
+int drawlive_render(drawlive *r, const drawlive_plan *plan, present_frame *f)
+{
+    r->shown_hi = NULL;
+    if (plan->kind == PLAN_NONE) return 0;
+    if (plan->kind == PLAN_OLDER || plan->kind == PLAN_NEWER || plan->kind == PLAN_BETWEEN) {
+        const drawlive_step *a = &r->step[r->ia], *b = &r->step[r->ib];
+        if (plan->kind == PLAN_OLDER) {
+            memcpy(f->vram, a->picture, 64000);
+            if (r->scale) r->shown_hi = a->picture_hi;
+            return 1;
+        }
+        if (plan->kind == PLAN_NEWER) {
+            memcpy(f->vram, b->picture, 64000);
+            if (r->scale) r->shown_hi = b->picture_hi;
+            return 1;
+        }
+        int sb;
+        interp_inbetween_ex(a->parsed, b->parsed, b->pair, plan->t,
+                            (r->scale ? INTERP_VERTICES : 0) | (plan->extrapolate ? INTERP_EXTRAPOLATE : 0),
+                            &r->ilist, &sb, r->istats);
+        const uint8_t *p = draw_list(r, sb ? b : a);
+        if (p) {
+            memcpy(f->vram, p, 64000);
+            if (r->scale) r->shown_hi = r->inter_hi;
+            r->inbetweens++;
+            return 1;
+        }
+    }
+    memcpy(f->vram, r->picture, 64000);                /* the replayed picture */
     if (r->scale) r->shown_hi = r->picture_hi;
     return 1;
 }
 
 int drawlive_present_interp(drawlive *r, const machine_t *m, present_frame *f)
 {
-    const drawlive_step *a = &r->step[r->last ^ 1], *b = &r->step[r->last];
-    if (!r->pair || f->text || !drawlive_current(r, m) || r->picture_seq != b->seq || b->end <= a->end)
-        return drawlive_present(r, m, f);
-    double t = (double)(m->cpu.icount - b->end) / (double)(b->end - a->end);
-    if (r->extrapolate) t = t + 1 > 2 ? 2 : t + 1;
-    r->shown_hi = NULL;
-    if (t <= 0) {
-        memcpy(f->vram, a->picture, 64000);
-        if (r->scale) r->shown_hi = a->picture_hi;
-        return 1;
-    }
-    if (t == 1 || (t > 1 && !r->extrapolate)) {
-        memcpy(f->vram, b->picture, 64000);
-        if (r->scale) r->shown_hi = b->picture_hi;
-        return 1;
-    }
-    int sb;
-    interp_inbetween_ex(a->parsed, b->parsed, r->pair, t, (r->scale ? INTERP_VERTICES : 0) | (r->extrapolate ? INTERP_EXTRAPOLATE : 0),
-                        &r->ilist, &sb, r->istats);
-    const uint8_t *p = draw_list(r, sb ? b : a);
-    if (!p) return drawlive_present(r, m, f);
-    memcpy(f->vram, p, 64000);
-    if (r->scale) r->shown_hi = r->inter_hi;
-    r->inbetweens++;
-    return 1;
+    drawlive_plan plan;
+    drawlive_plan_interp(r, m, f, m->cpu.icount, &plan);
+    return drawlive_render(r, &plan, f);
 }

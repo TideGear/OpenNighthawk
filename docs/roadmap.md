@@ -1001,12 +1001,15 @@ instruction profiles and three 789-address matched seeds (2,561,209,
   and stipple now replay, refine and interpolate by rule, with coarse-sized
   pattern cells and transparent backgrounds. All 66 checks across 11
   retained windows and live N=4/9 boot sentinels pass. The owner set the
-  remaining performance/display target to 4K at 60 Hz (16.67 ms); private
-  fullscreen GPU timing now verifies 4K/59.99Hz/vsync output and exact guest
-  state, but p99 24.3045 ms fails the steady-refresh check. The guard
-  optimization is integrated; an incremental replay draft is parked
-  privately without route/timing proof. Physical motion review is unavailable
-  now; P3 remains 86.49%. See presentation.md for the retained result.
+  remaining performance/display target to 4K at 60 Hz (16.67 ms). The
+  presentation now replays records as they arrive and draws the in-between
+  picture one frame ahead on a worker thread, with palette conversion on helper
+  threads: fullscreen Direct3D 11 3840x2160 at 59.99 Hz with vsync passes the
+  timing checker on a strike flight (p99 16.71 ms, none missed) and on a longer
+  air-to-air flight (19,000 pictures, p99 16.71 ms, worst 21.31 ms), with every
+  logic frame exact and guest hashes unchanged; it costs one more host frame of
+  picture age. Open: the owner's motion review on a physical panel, and other
+  scenes and slower machines. See presentation.md.
 
 ## Phase 4 - checked by people and independent references
 

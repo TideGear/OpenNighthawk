@@ -2,6 +2,7 @@
 #include "hires.h"
 #include "nearclip.h"
 
+#include "tls.h"
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -406,13 +407,13 @@ static int polygon_edges(hires *h, double (*out)[4])
 static void refill(hires *h, drawlist *d, drawlist_page *page)
 {
     h->stats[HS_POLYGONS]++;
-    static double base[HIRES_EDGES][4], fine[HIRES_EDGES][4];
+    static F117_TLS double base[HIRES_EDGES][4], fine[HIRES_EDGES][4];
     const int ne = polygon_edges(h, base);
     if (!ne) { h->stats[HS_LEFT_NEAREST]++; return; }
-    static footprint f;
+    static F117_TLS footprint f;
     footprint_rows(h, &f);
-    static extents x;
-    static int32_t spans[3 * 2 * 256 * 64];
+    static F117_TLS extents x;
+    static F117_TLS int32_t spans[3 * 2 * 256 * 64];
     /* the least overshoot with which the true edges cover the whole footprint at N = 1 */
     int64_t want = 0;
     for (int k = 0; k < f.n; k++) if (f.has[k]) want += f.r[k] - f.l[k] + 1;

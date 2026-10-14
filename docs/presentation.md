@@ -816,34 +816,71 @@ Both hosts accept widths 0/1/20 and reject -1/21/non-numbers/trailing letters.
 `test_hires --line-width N --dump PREFIX` also renders
 the last checked frame as coarse and fine PPMs using the recorded palette.
 
-## Fullscreen 4K/60 timing (13 October 2026)
+## Fullscreen 4K/60 timing and the threaded presentation (13 October 2026)
 
-The flat-cell guard now checks safe unaligned 8/4-byte groups and tails.
-A scalar regression preserves every output byte and all repair counters
-at N=1..16; all 66 retained-window checks still pass. This supplies measured
-headroom without changing drawing rules or guest execution.
+The flat-cell guard checks safe unaligned 8/4-byte groups and tails. A scalar
+regression preserves every output byte and all repair counters at N=1..16, and
+all 66 retained-window checks still pass.
 
-An isolated fullscreen strike replay runs 389.84 seconds on the available
-virtual display: Direct3D 11, 3840x2160 output, reported 59.990002 Hz,
-vsync enabled, N=9. All 2,062 logic frames replay exactly; final guest hash
-`bc8e3ae5a872405d` equals the fresh interpreter run at 3.5B instructions.
-The 7,702 flight pictures have a 16.6676 ms median interval, 24.3045 ms p99
-and 30.9452 ms maximum. Twenty-five intervals exceed 25 ms (0.325%);
-accumulated guest drift is -11.23 ms, with 5,642 interpolation advances.
-The retained checker **rejects** the p99, which exceeds its 20.833 ms limit.
-This is not completion of steady 60 Hz pacing or a physical-panel verdict.
-The owner cannot assess motion now, so that check remains open.
+**Where the time went.** A single-threaded N=9 strike run (fullscreen Direct3D 11,
+3840x2160, 59.99 Hz, vsync) kept every logic frame exact and the guest hash
+unchanged, but its flight pictures had p99 24.30 ms and a worst interval of
+30.95 ms: the retained checker rejects p99 above 20.833 ms. Timers around each
+stage showed why. Every frame in which a logic step closed took 21-25 ms,
+because the replay of that frame at N=9 (6.4 ms) and its copies ran in that
+one host frame; the other frames took 16.7 ms. Even without those spikes the
+work outside the vsync wait had a median of 14.8 ms of the 16.67 ms budget:
+the in-between picture 7.6 ms, palette conversion and texture upload about 3 ms,
+the replay 2.3 ms and the machine 1.7 ms. Replaying records as they arrive
+(below) took p99 to 22.6 ms; the rest had to leave the main thread.
 
-`tools/presentation_timing.py` checks the logged display settings, intervals,
-interpolation and guest drift; malformed or incomplete captures fail.
-`f117a.4k.ini` is an optional ready-to-run fullscreen preset. Commands and
-limits are in [repeated-processes.md](repeated-processes.md).
+**The threaded presentation** (`--present interp`; `src/present/drawfeed.c`,
+`src/host/main.c`). The machine, the observer's feed and the replay stay on the
+main thread; the in-between picture is drawn one host frame ahead on a worker.
 
-The next performance hypothesis is to consume drawing records as the
-machine produces them, spreading fine replay across host slices. A private
-streaming draft passes a synthetic comparison of closed pictures, cached
-starts, endpoints, drops and reseeds, but has no route or timing verdict.
-It is parked outside the repository for the next conversation.
+- `drawlive_collect` replays the records of the open frame as they arrive (after
+  every 1 ms machine slice) and, when a frame closes, stages it: the replay's
+  start, the picture, its parsed records and its pairing with the step before
+  it go into a free step from a pool of five. `drawlive_publish` then makes the
+  staged steps the two published ones, in order, which is only pointer changes.
+  `drawlive_update` is both, so the headless checks are unchanged.
+- `drawlive_plan_interp` decides what to show (the older, the newer, the replay,
+  or an in-between picture at t) from the published steps and the machine;
+  `drawlive_render` draws it. The worker only reads published steps; the main
+  thread publishes only while the worker is idle (after joining it, before the
+  next plan), and a collect that finds no free step waits for a publish.
+- Palette conversion of the 5.2 million fine pixels runs on three helper
+  threads beside the main thread; the texture upload stays on the main thread.
+- File-scope scratch that both threads reach (`row_at`, the polygon and span
+  tables in `hires.c` and `interp.c`, the seed buffer) is thread-local (`tls.h`).
+- Cost and meaning: the picture shown was planned a frame earlier, for the
+  machine clock at that moment, so interpolation shows one host frame (16.7 ms)
+  older than before, on top of the step it already shows behind. Extrapolation
+  is a prediction anyway and plans a frame ahead. `F117_PRESENT_THREADS_OFF=1`
+  runs everything on the main thread for comparison.
+
+**Results** (`tools/presentation_timing.py`, isolated, one run at a time, fresh
+save, dummy audio, Direct3D 11 3840x2160 at 59.990002 Hz, vsync on, N=9):
+
+| scene | flight pictures | interval median / p99 / max (ms) | over 25 ms | logic frames exact | final guest hash |
+|---|---|---|---|---|---|
+| strike to 3.5B | 7,719 | 16.6677 / 16.7092 / 17.063 | 0 | 2,062 of 2,062 | `bc8e3ae5a872405d` |
+| air-to-air type 6 to 5.9B | 19,000 | 16.6675 / 16.7091 / 21.3108 | 0 | 3,679 of 3,679 | `b050542466c9a616` |
+
+Both pass the checker (median within 10% of the refresh period, p99 within
+125%, no interval above 150% of the period, guest clock within 100 ms of the
+host; drift +18.8 and +6.2 ms). In-between pictures are 96% of the pictures
+shown. The strike hash equals the unchanged scan/headless run.
+
+What this does not establish: the picture on a physical panel (tearing, the
+look of motion), the landing scene's timing, and a machine slower than this
+one (24 threads). The owner's motion review remains Phase 4 work.
+
+`tools/presentation_timing.py` checks the logged display settings (a log that
+changes display mid-run is rejected as ambiguous), intervals, interpolation and
+guest drift; malformed or incomplete captures fail. `f117a.4k.ini` is an optional
+ready-to-run fullscreen preset. Commands and limits are in
+[repeated-processes.md](repeated-processes.md).
 
 ## Open questions and risks
 

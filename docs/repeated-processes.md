@@ -90,15 +90,25 @@ The final guard-only build passes 59 CTests in 142.83 s (excluding the
 unchanged full func_lockstep already covered by the preceding gate), seven
 Python verdict regressions and a ROM-free preset/metadata smoke check.
 
-The isolated fullscreen strike capture takes 389.84 s on a virtual display:
-Direct3D11, 3840x2160, 59.990002 Hz, vsync enabled, N=9. Its 2,062 closed
-logic frames are exact and final hash bc8e3ae5a872405d equals a fresh
-interpreter run. For 7,702 flight pictures: median 16.6676, p99 24.3045,
-maximum 30.9452 ms; 25 intervals exceed 25 ms (0.325%), guest drift
--11.23 ms. The checker FAILS p99, so pacing remains open. Owner motion
-review is unavailable. Evidence: `D:/f117-gate/p3-styles/display`. A private
-open-frame streaming experiment has only synthetic proof and is parked at
-`p3-styles/stream-draft`; no route/timing verdict or completion credit.
+Threaded presentation, isolated fullscreen captures (13 October): strike to
+3.5B takes 389.8 s and air-to-air type 6 to 5.9B takes 656.4 s of wall time
+(the machine is paced to the guest clock, so they cannot be shortened). Both
+pass `presentation_timing.py` at 3840x2160/59.99 Hz/vsync/N=9: p99 16.71 ms,
+maximum 17.06 and 21.31 ms, no missed interval, all logic frames exact, final
+hashes equal to fresh headless runs. Before the threaded draw the strike
+capture failed p99 at 24.30 ms. Per-stage timers (a temporary build; not kept)
+found the cause: logic-frame closes cost 21-25 ms and ordinary frames used
+89% of the budget on one thread. Details: [presentation.md](presentation.md).
+Run these with nothing else heavy going: a first attempt that started on a
+1080p display and moved to the 4K one logged two display lines and the checker
+rejected it. Evidence: `D:/f117-gate/p3-stream` (`thr2`, `air6`, `chk2`).
+
+After a presentation-code change: `ctest -E func_lockstep` (60 tests, 19 s at
+`-j 8`), `presentation_check.py --scales 1 --jobs 16` over the 45 routes
+(481 s; 1,062 s at eight workers, same 259,240 frames / 259,166 pairs), the
+`boot_to_flight` sentinel at `--scales 4 9`, and the retained windows (66
+checks; run `build/test_drawlist`, `test_hires` and `test_interp` with absolute
+paths, the relative `build/` junction fails under Python's `subprocess`).
 
 ## Observer path comparison (13 October 2026)
 

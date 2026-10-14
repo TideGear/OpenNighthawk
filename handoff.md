@@ -16,8 +16,42 @@ standing practice, not a session-by-session log. Earlier sessions' detail
 ## Owner priority (13 October)
 
 Prioritize Phase 3 to completion, targeting **4K at 60 Hz** (16.67 ms per
-host frame). Phase 2's private routine batch is parked while presentation
-coverage, performance and the remaining display checks are finished.
+host frame). The pacing target now passes on two scenes (next section); what
+is left of Phase 3 is the owner's motion review on a physical panel, other
+scenes and slower machines. Phase 2's private routine batch stays parked
+until Phase 3 is closed out.
+
+## Latest Phase 3 integration: threaded 4K/60 presentation (13 October)
+
+Fullscreen Direct3D 11, 3840x2160 at 59.99 Hz, vsync, N=9 passes
+`tools/presentation_timing.py`: strike to 3.5B (7,719 pictures, p99 16.71 ms,
+max 17.06, none missed, 2,062/2,062 logic frames exact, hash
+`bc8e3ae5a872405d`) and air-to-air type 6 to 5.9B (19,000 pictures, p99
+16.71 ms, max 21.31, none missed, 3,679/3,679 exact, hash `b050542466c9a616`,
+equal to a fresh headless run). The single-threaded build had failed at p99
+24.30 ms: logic-frame closes cost 21-25 ms and ordinary frames used 89% of the
+budget. Now `drawlive_collect` replays records as they arrive and stages closed
+frames into a pool of five steps, `drawlive_publish` makes them current (pointer
+changes only), a worker thread draws the in-between picture one frame ahead
+(`drawlive_plan_interp` / `drawlive_render`) and three helper threads convert
+the palette. Scratch tables both threads reach are thread-local (`tls.h`). The
+picture is one host frame older (extrapolate mode plans a frame ahead
+instead). `F117_PRESENT_THREADS_OFF=1` runs single-threaded. Design, results
+and limits: [docs/presentation.md](docs/presentation.md).
+
+Verified: 60 tests, all 45 routes at N=1 (259,240 logic frames / 259,166 pairs,
+unchanged; 481 s at `--jobs 16`), `boot_to_flight` N=4/9 (368 frames / 366
+pairs each) and the 66 retained-window checks. P3 **93.52%**, overall
+**83.23%**; Stage 3/4 is scored 80%, not 100%, because the panel motion review,
+the landing scene and slower machines are unchecked. A capture that changes
+display mid-run (a window starting on the 1080p monitor, then the 4K one) logs
+two display lines and the checker rejects it: rerun with nothing else going.
+Evidence: `D:/f117-gate/p3-stream` (`thr2`, `air6`, `chk2`, `windows`).
+
+Next for Phase 3: time the landing scene and a long cargo/career flight, look
+at the SETUP `0000:0010` event-limit overrun seen once in an SDL boot log
+(two instructions past its limit under 1 ms slices; the headless gate has
+none), and get the owner's motion verdict.
 
 ## Latest Phase 3 integration: fill styles and replay coverage (13 October)
 
@@ -27,45 +61,18 @@ instruction fixtures pass 2,619 fill and 3,953 driver cases; Python matches
 2,187 original rows. All 45 complete routes pass at N=1: 259,240 exact logic
 frames / 259,166 exact endpoint pairs, unchanged guest checkpoints/finals,
 zero dropped/unseeded frames. Live boot N=4/9 and all 66 retained-window
-checks pass. Stage 1 complete; Stage 2 95%; P3 **86.49%**, overall **81.55%**.
+checks pass. Stage 1 complete; Stage 2 95%.
 
-Fresh full gate: 58 tests, 45 routes / 44 fresh interpreter sessions, both
-5,718,848-state instruction profiles, three 831-address matched seeds
-(2,725,058 / 2,723,998 / 2,725,465), zero mismatches; reachability/event checks
-pass (1,969 s). Proof: `D:/f117-gate/p3-styles`. The fill-style milestone
-(`571a490`) used frozen runner SHA256 `b1b99911ed22476aa1e83d925a2e0411a5f27124d8ef1e02933442bdc82862d3`.
+Fresh full gate (fill styles): 58 tests, 45 routes / 44 fresh interpreter
+sessions, both 5,718,848-state instruction profiles, three 831-address matched
+seeds (2,725,058 / 2,723,998 / 2,725,465), zero mismatches; reachability/event
+checks pass (1,969 s). Proof: `D:/f117-gate/p3-styles`. The fill-style milestone
+(`571a490`) used frozen runner SHA256
+`b1b99911ed22476aa1e83d925a2e0411a5f27124d8ef1e02933442bdc82862d3`.
 `tools/presentation_check.py` retains the full-route checker; use fresh
 baseline scan runs, canonical aliases and a fresh output save for each run.
-
-Follow-up: safe 8/4-byte flat-guard comparisons are integrated; scalar byte/
-counter equivalence passes at N=1..16 and all 66 windows still pass. Isolated
-fullscreen N=9 strike (389.84 s): Direct3D11, 3840x2160, 59.990002 Hz, vsync1;
-2,062 exact logic frames, original final hash `bc8e3ae5a872405d` at 3.5B.
-7,702 flight pictures: median16.6676 / p99 **24.3045** / max30.9452 ms;
-25 intervals above25 ms (0.325%), guest drift -11.23 ms. The new
-`tools/presentation_timing.py` correctly FAILS p99 (>20.833 ms). P3 stays
-86.49%; do not call 4K/60 complete. Owner cannot assess motion now.
-Optional preset: `f117a.4k.ini`. Evidence: `p3-styles/display`.
-Final guard-only rebuild passes 59 CTests (142.83 s; excludes the unchanged
-full func_lockstep already covered by the gate), seven Python verdict
-regressions and the ROM-free preset/metadata smoke. Source manifest:
-`p3-styles/guard-source-manifest.json`. Check the latest GitHub CI next time.
-
-Streaming replay experiment is PARKED at `D:/f117-gate/p3-styles/stream-draft`:
-source files, tracked patch and synthetic test. It consumes open-frame
-records, holds the pending start separately from both completed interpolation
-starts, then swaps page ownership on close; SDL calls it after each 1 ms
-machine slice. Synthetic closed-frame/cache/endpoint/drop/reseed comparison
-passes. No route or timing verdict: CTest was stopped at the unchanged slow
-func_lockstep when the owner requested handoff; the route matrix never ran.
-Public runtime was restored to guard-only and rebuilt. Do not merge the
-draft wholesale; its main/CMake files include the already-public guard/log
-work. Next: profile close-time spikes, validate streaming against real
-routes and fine endpoints, then repeat the isolated fullscreen timing.
-The actual SDL log also reports one SETUP `0000:0010` event-limit overrun
-of two instructions under its 1 ms slices; the headless full gate has none
-and the SDL final guest hash is exact. Retain and inspect this separately
-before claiming host-slice event bounds are fully covered.
+The safe 8/4-byte flat-guard comparisons are integrated (scalar equivalence
+at N=1..16, all 66 windows pass); optional preset `f117a.4k.ini`.
 
 ## Latest Phase 2 integration: logo sprite-set loader (13 October)
 

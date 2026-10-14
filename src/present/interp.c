@@ -3,6 +3,7 @@
 #include "interp.h"
 #include "nearclip.h"
 
+#include "tls.h"
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -280,7 +281,7 @@ typedef struct {
 
 static void spans_init(spans_t *s, int ymin, int ymax)
 {
-    static int ready;
+    static F117_TLS int ready;
     if (!ready) {
         for (int k = 0; k < SPAN_N; k++) { s->left[k] = NOLEFT; s->right[k] = NORIGHT; }
         ready = 1;
@@ -807,7 +808,7 @@ static int interp_poly(const interp_frame *fa, const poly_t *pa, const batch_t *
         for (int c = 0; c < 3; c++) if (d[c] > m) m = d[c];
         if (m > MAX_EDGE_MOTION) { st[IS_HELD_EDGE_MOTION]++; return -1; }
     }
-    static edge_t edges[1024], join[16];
+    static F117_TLS edge_t edges[1024], join[16];
     if (pa->ne > 1024 || pa->nj > 16) { st[IS_HELD_CLIP]++; return -1; }
     for (int k = 0; k < pa->ne; k++)
         edges[k] = interp_edge(&fa->e[pa->e0 + k], &fb->e[pb->e0 + k], w, fa, ba, fb, bb, pa->f + 1, 1, st);
@@ -844,7 +845,7 @@ int interp_inbetween(const interp_frame *A, const interp_frame *B, const interp_
 int interp_inbetween_ex(const interp_frame *A, const interp_frame *B, const interp_pairing *P, double t, int flags,
                         interp_list *out, int *skel_b, uint64_t *stats)
 {
-    static uint64_t scratch[IS_COUNT];
+    static F117_TLS uint64_t scratch[IS_COUNT];
     uint64_t *st = stats ? stats : scratch;
     out->n = 0;
     out->pool_n = 0;
@@ -864,9 +865,9 @@ int interp_inbetween_ex(const interp_frame *A, const interp_frame *B, const inte
     memset(&made, 0, sizeof made);
     const int *of = use_b ? P->pb_of : P->pa_of;
     const int base = rowbase_of(S);
-    static spans_t sp;
-    static int rows[2 * SPAN_N];
-    static int32_t vals[8 + 2 * SPAN_N];
+    static F117_TLS spans_t sp;
+    static F117_TLS int rows[2 * SPAN_N];
+    static F117_TLS int32_t vals[8 + 2 * SPAN_N];
     for (int bi = 0; bi < S->nb; bi++) {
         const batch_t *b = &S->b[bi];
         for (int q = 0; q < b->np; q++) {
@@ -949,7 +950,7 @@ int interp_inbetween_ex(const interp_frame *A, const interp_frame *B, const inte
         st[IS_REGENERATED]++;
     }
     /* HUD lines: groups by colour, page and origin */
-    static int ia[4096], ib[4096];
+    static F117_TLS int ia[4096], ib[4096];
     for (int k = 0; k < S->nh; k++) {
         const hud_t *h = &S->h[k];
         int first = 1;
