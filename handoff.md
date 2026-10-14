@@ -13,6 +13,22 @@ standing practice, not a session-by-session log. Earlier sessions' detail
 (what was tried, what failed, exact investigation narratives) is in
 `git log -p handoff.md` — it does not need to live here to stay available.
 
+## Conversation wrap-up (14 October)
+
+The owner asked to hand off, commit, push and stop. No local gate, route or
+fixture processes remain running. Latest validated code milestone: `ddb84dc`,
+pushed to `origin/master`; its full gate is documented below. Its
+[GitHub CI run](https://github.com/TideGear/OpenNighthawk/actions/runs/38597066785)
+was still running when this handoff was written; check its final verdict.
+Only the owner's `f117a.example.ini` edit and untracked `4k60.bat` remain outside
+commits. Do not overwrite or stage them.
+
+The next substantial P2 task is the private named END narrative candidate
+described below: three seeds pass, but its **named** body still needs actual
+driver replay, room/callee audit, mutations, integration and a fresh full gate.
+The earlier transcript's route proof must not be presented as the named body's
+proof. Preserve the separate private transcript and named artifacts.
+
 ## Owner priority (13 October)
 
 Fix the remaining 4K uprez issues in the owner's screenshots: the map, toothy
