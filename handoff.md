@@ -77,6 +77,35 @@ baseline scan runs, canonical aliases and a fresh output save for each run.
 The safe 8/4-byte flat-guard comparisons are integrated (scalar equivalence
 at N=1..16, all 66 windows pass); optional preset `f117a.4k.ini`.
 
+## Latest Phase 2 integration: five reached routines (13 October)
+
+Matched and gated: the front ends' retrace re-sync (START `0x8D71`, END `0x4C55`),
+PLAYER's two timer tick-rate setters (`026B:0073`, `026B:008B`) and VGAME's
+low-detail sky far entry (`0FB2:0000`). Three seeds each compare 2,300-4,700
+states with zero mismatches. Fresh full gate: 60 tests, 45 routes IDENTICAL
+(44 fresh interpreter sessions), both 5,718,848-state instruction profiles,
+three 836-address matched seeds (2,745,183 / 2,744,149 / 2,743,525), zero
+mismatches, routes-only reachability and event-limit checks pass (1,264 s).
+Census: 828 functions / 98,993 bytes; P2 57.48%, overall 83.59%. Proof:
+`D:/f117-gate/p3-stream/gate2.log`.
+
+The first gate failed (39 routes DIFFERENT) although the random-state lockstep
+passed at three seeds: the re-sync helper charged `icount` in one lump after
+several IN/OUT instructions, so the PIT and CRT-status accesses happened at a
+stale clock, which the harness cannot see. Charge the clock between every port
+access, stop right after each STI, and prove a body on `ibm_boot` first
+(`F117R_MATCHED_LIMIT=N py tools/run_route.py tools/routes/ibm_boot.args
+--engine recomp`, 22 s, compare `final hash` with the gate's interpreter run).
+The timer interrupt handlers (VGAME `0x1C9B`, START `0x8D0B`, END `0x4BEF`) open
+with STI and are deliberately left as original code: after STI the run loop
+admits one more instruction, so a matched body cannot do more than the original.
+
+**Phase 2 is bounded by route coverage, not effort.** `py tools/census_reach.py
+--census census.tsv --coverage DIR` shows that of 487 unmatched code entries only
+72 (1,954 bytes) are entered by any route, 4 only partway, and 411 (53,214 bytes)
+never run. The next Phase 2 step is new routes that enter unreached code (START
+and END screens, other missions, error paths), then matching what they reach.
+
 ## Latest Phase 2 integration: logo sprite-set loader (13 October)
 
 MPS_LOGO 006D:0112 (`logo_sprite_set_load`) is fully gated: 434 instructions /
@@ -121,7 +150,11 @@ route can prove them. Run any with
 leading zeros (`D0C`, not `0D0C`, or it silently compares 0 states). A passing
 draft still needs a real route that runs it (the gate's step 8 reports the ones
 that never run: drop those), a named and explained body, and one full gate for
-the whole batch. Nothing of this is in the repository.
+the whole batch. Nothing of this is in the repository. Reach check (13 Oct,
+`tools/census_reach.py`): only 3 of its 47 entries are entered by any route (START
+`8D71` and END `4C55` are now matched; PLAYER `026B:0211` is a different
+variant), so the rest cannot count until new routes reach them: do not spend a
+session on this batch.
 
 ## Current state
 
@@ -230,13 +263,18 @@ Phase 2 work" below).
   aircraft traffic, weapons in flight, view composition and mission generation). Earlier proofs and tested source
   snapshots remain under `D:/f117-gate/`; history is in
   [docs/repeated-processes.md](docs/repeated-processes.md).
-  Next: 492 census entries with a translated region (56.7 KB) remain; census
+  Next: 487 census entries with a translated region (56.5 KB) remain; census
   rows with no region are data (SETUP `0x027AE` is strings), so filter them out.
+  **Only 72 of them (1,954 bytes) are entered by any of the 45 routes**;
+  `py tools/census_reach.py --census census.tsv --coverage DIR` (the gate's
+  `*.cov` files) lists them. The other 411 (53,214 bytes) never run, so matching
+  them needs new routes first (screens START/END never visit, other missions),
+  and the private leaf-routine batch (`D:/f117-gate/batch-a`) is almost all in
+  that group: 3 of its 47 entries are reached. The reached set is small glue;
+  an interrupt handler that opens with STI cannot be matched past its first
+  instruction (the timer interrupts at VGAME 0x1C9B, START 0x8D0B, END 0x4BEF).
   Screen with `tools/matched_draft.py --dossier` (module/seg/ip from the
-  region name): 324 walk to a plain RET, 137 end in a far jump. Leads: the MISC
-  overlay loader pair (SETUP `0A9F`, MPS_LOGO `00DA:0352`; INT 21h 48h/4B03h/4Ah)
-  and the logo main (MPS_LOGO `0006:0072`; polling loops need SETUP's `SQ_RUN`
-  clamp). Batch several routines per gate. DSWAP `0x03DF3` is deferred:
+  region name). Batch several routines per gate. DSWAP `0x03DF3` is deferred:
   2,791 initial zero bytes, no generated entry; the static draft decodes data.
   Require an actual caller or execution before matching, and keep the census
   unchanged meanwhile. Evidence: `D:/f117-gate/dswap-3df3/candidate-review.json`.

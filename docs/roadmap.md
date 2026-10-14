@@ -655,9 +655,20 @@ instruction profiles and three 789-address matched seeds (2,561,209,
       Reimp's mapping; matched functions replacing translations one at a time,
       each held to the same parity checks. `tools/reimp_names.py` joins the
       Reimp's census (1,535 functions) with this project's regions as a private
-      lead list. 831 addresses are matched (823 of the census functions, 98,833 of
+      lead list. 836 addresses are matched (828 of the census functions, 98,993 of
       179,213 bytes); the table is at the end of `src/matched/matched.c` and the
       method is in [architecture.md](architecture.md#matched-routines-phase-2).
+      What is left is mostly unreachable by today's routes (13 Oct,
+      `tools/census_reach.py`): of the 487 unmatched code entries, 72 (1,954 bytes) are
+      entered by a route, 4 (1,344 bytes) only partway, and 411 (53,214 bytes, mostly START, VGAME, END and
+      MPS_LOGO screens and paths) are never run by any of the 45, so under the
+      rule that a routine counts once a route runs it they need new routes
+      first. The reached ones are small and mostly interrupt or dispatch glue.
+      Five of them were matched (the front ends' retrace re-sync, PLAYER's two
+      tick-rate setters, VGAME's low-detail sky entry). The timer interrupt itself
+      (VGAME 0x1C9B, START 0x8D0B, END 0x4BEF) opens with STI, after which the run
+      loop admits one more instruction before it looks at events, so a matched body
+      could do nothing the original does not: it stays original code.
       The batches of 8-9 Oct add 37 + 34 + 47 VGAME, 34 + 40 + 45 START/END and 21 + 44 + 64
       small-program routines, each checked at two 4,000-state seeds (the 9 Oct
       VGAME batch also at four more), and the picture decoder's

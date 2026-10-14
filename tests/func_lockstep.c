@@ -333,6 +333,8 @@ static void stub_driver_thunks(uint8_t *pristine, uint32_t at, const rc_module *
  * gray-scale flag END's DAC loader tests) lies inside END's image here, where it is a code byte that happens
  * to have the flag set, so the routine's normal path was never reached. Set in both sides' memory. */
 static const struct { const char *module; uint16_t ip; uint32_t linear; uint8_t value; } IMAGE_PATCHES[] = {
+    /* Sky low-detail entry: the line builder it calls (0FB2:0012) returns at once. */
+    { "VGAME.EXE", 0x0000, 0x0FB32, 0xC3 },
     /* Panel-frame caller fixture: returning drawing/string/navigation helpers;
      * real trig, distance, bearing and clamp helpers remain executable. */
     { "VGAME.EXE", 0x79BE, 0x1176E, 0xCB },

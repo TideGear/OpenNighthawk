@@ -41528,6 +41528,176 @@ sprite_failure: /* Return a null far pointer after a recorded failure. */
 #undef LS_FAR
 }
 
+/* START 0x8D71 and END 0x4C55: the timer library's retrace re-sync, the same
+ * reading as vgame_timer_resync (VGAME 0x1D01) over the front ends' own data.
+ * The timer interrupt calls it on every tick; it counts the calls down from
+ * 20 (`calls`) and does nothing else on 19 of 20. On the 20th, with `retrace`
+ * set, it waits for the vertical retrace: up to 65,536 changes of bit 0 of
+ * CRT status port 3DAh (BL follows the bit; interrupts are off for each
+ * read), stopping early when the retrace bit (3) is up; running out of
+ * changes clears `retrace`. Then it makes the count in use (`period`) the
+ * one asked for (`want`), programs PIT channel 0 with it (mode 36h, low byte
+ * then high), counts that in `count`, keeps the negated number of changes
+ * left in `left`, and, when `left` is not zero, adds one to the interrupt
+ * divider so the next tick is a step late.
+ *
+ * Every port is read or written at the clock the original does it. Each STI
+ * (the wait's, and the one before the RET) lets an interrupt in, so the
+ * routine stops right after it, at an instruction boundary, and the original
+ * carries on: the rest of the wait and the RET are the original's, as in
+ * vgame_timer_resync and the timer reload. */
+typedef struct {
+    uint16_t calls, retrace, period, want, count, left, divider;  /* data offsets: byte, byte, word x5 */
+} timer_resync_cfg;
+
+static int frontend_timer_resync(machine_t *m, const timer_resync_cfg *k)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t at = c->ip;
+    const uint16_t rearm = (uint16_t)(at + 0x06), wait_loop = (uint16_t)(at + 0x19);
+    const uint16_t adopt = (uint16_t)(at + 0x33), end = (uint16_t)(at + 0x65);
+    if (!room(c, 2)) return 0;
+    {                                                             /* dec byte [calls] / jne end */
+        const uint32_t a = phys(c->seg[S_DS], k->calls);
+        mem_write8(c, a, (uint8_t)alu_dec(c, mem_read8(c, a), 0));
+        c->icount += 2;
+        if (!(c->flags & F_ZF)) goto at_end;
+    }
+    if (!room(c, 3)) { c->ip = rearm; return 1; }
+    mem_write8(c, phys(c->seg[S_DS], k->calls), 20);              /* the next 20 calls pass by */
+    alu_op(c, 7, mem_read8(c, phys(c->seg[S_DS], k->retrace)), 0, 0);   /* cmp byte [retrace], 0 */
+    c->icount += 3;                                               /* mov, cmp, je */
+    if (c->flags & F_ZF) goto program_pit;                        /* no retrace wait asked for */
+    if (!room(c, 3)) { c->ip = (uint16_t)(at + 0x12); return 1; }
+    set_r8(c, R_BL, (uint8_t)alu_op(c, 6, get_r8(c, R_BL), get_r8(c, R_BL), 0));      /* xor bl, bl */
+    c->r[R_CX] = (uint16_t)alu_op(c, 6, c->r[R_CX], c->r[R_CX], 1);                   /* xor cx, cx */
+    c->r[R_DX] = 0x03DA;
+    c->icount += 3;
+    /* The first read of the wait. Its STI lets an interrupt in, so the routine stops right after it and the
+     * original carries on (the rest of the wait, the give-up and the final RET are its own). */
+    if (!room(c, 5 + IO_SLACK(1))) { c->ip = wait_loop; return 1; }
+    x86_cli(c);
+    c->icount += 1;
+    x86_in(c, c->r[R_DX], 0);                                     /* read at the clock after the CLI */
+    c->icount += 1;
+    alu_logic(c, (uint32_t)get_r8(c, R_AL) & 0x08, 0);            /* test al, 8 */
+    c->icount += 2;                                               /* test, jne */
+    if (!(c->flags & F_ZF)) goto program_pit;                     /* the retrace bit is up: stop waiting */
+    x86_sti(c);
+    c->icount += 1;
+    c->ip = (uint16_t)(at + 0x20);                                /* and al, 1 */
+    return 1;
+program_pit:
+    if (!room(c, 20 + IO_SLACK(3))) { c->ip = adopt; return 1; }
+    c->r[R_DX] = seg_read16(c, c->seg[S_DS], k->period);
+    alu_op(c, 7, c->r[R_DX], seg_read16(c, c->seg[S_DS], k->want), 1);                /* cmp dx, [want] */
+    c->icount += 3;                                               /* mov, cmp, je */
+    if (!(c->flags & F_ZF)) {                                     /* adopt the count asked for */
+        c->r[R_DX] = seg_read16(c, c->seg[S_DS], k->want);
+        seg_write16(c, c->seg[S_DS], k->period, c->r[R_DX]);
+        c->icount += 2;
+    }
+    set_r8(c, R_AL, 0x36);                                        /* channel 0, low then high byte, mode 3 */
+    c->icount += 1;
+    x86_out(c, 0x43, 0);                                          /* each port is written at its own clock */
+    c->icount += 2;                                               /* the OUT and the JMP that delays */
+    set_r8(c, R_AL, get_r8(c, R_DL));
+    c->icount += 1;
+    x86_out(c, 0x40, 0);
+    c->icount += 2;
+    set_r8(c, R_AL, get_r8(c, R_DH));
+    c->icount += 1;
+    x86_out(c, 0x40, 0);
+    c->icount += 1;
+    seg_write16(c, c->seg[S_DS], k->count, (uint16_t)alu_inc(c, seg_read16(c, c->seg[S_DS], k->count), 1));
+    c->r[R_CX] = (uint16_t)alu_sub(c, 0, c->r[R_CX], 1, 0);       /* neg cx */
+    seg_write16(c, c->seg[S_DS], k->left, c->r[R_CX]);
+    c->icount += 4;                                               /* inc, neg, mov, je */
+    if (c->flags & F_ZF) goto at_end;
+    seg_write16(c, c->seg[S_DS], k->divider, (uint16_t)alu_inc(c, seg_read16(c, c->seg[S_DS], k->divider), 1));
+    c->icount += 1;
+at_end:
+    if (!room(c, 1)) { c->ip = end; return 1; }
+    x86_sti(c);
+    c->icount += 1;
+    c->ip = (uint16_t)(end + 1);                                  /* the RET: the STI lets the run loop look at interrupts */
+    return 1;
+}
+
+static int start_timer_resync(machine_t *m)
+{
+    static const timer_resync_cfg k = { 0xAE09, 0xAE10, 0xAE03, 0xAE01, 0xAE05, 0xAE13, 0xAE11 };
+    return frontend_timer_resync(m, &k);
+}
+static int end_timer_resync(machine_t *m)
+{
+    static const timer_resync_cfg k = { 0x50DA, 0x50E1, 0x50D4, 0x50D2, 0x50D6, 0x50E4, 0x50E2 };
+    return frontend_timer_resync(m, &k);
+}
+
+/* PLAYER 026B:0073 and 026B:008B, far: set the timer tick rate (VGAME's
+ * 0x1C6D and 0x1C85 over PLAYER's data). 0073 takes the rate [1A10], keeps
+ * it as the tick divider [1A0E] and sets the PIT count [1A08] to the base
+ * count [1A12] divided by it; 008B sets the divider to 1 and the count to
+ * the base count. Both set the call counter [1A1B] to 1, so the next call of
+ * the re-sync runs at once. A zero rate would divide by zero: that goes to
+ * the original, which takes the divide error. */
+static int player_timer_rate(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 8)) return 0;
+    const uint16_t rate = ds_get(c, 0x1A10);
+    if (rate == 0) return 0;
+    c->r[R_BX] = rate;
+    ds_put(c, 0x1A0E, rate);
+    c->r[R_AX] = ds_get(c, 0x1A12);
+    c->r[R_DX] = (uint16_t)alu_op(c, 6, c->r[R_DX], c->r[R_DX], 1);   /* xor dx, dx */
+    x86_div16(c, c->r[R_BX]);
+    ds_put(c, 0x1A08, c->r[R_AX]);
+    ds_put8(c, 0x1A1B, 1);
+    c->icount += 8;
+    far_ret(c);
+    return 1;
+}
+
+static int player_timer_rate_one(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 5)) return 0;
+    ds_put(c, 0x1A0E, 1);
+    c->r[R_AX] = ds_get(c, 0x1A12);
+    ds_put(c, 0x1A08, c->r[R_AX]);
+    ds_put8(c, 0x1A1B, 1);
+    c->icount += 5;
+    far_ret(c);
+    return 1;
+}
+
+/* VGAME 0FB2:0000, far (the Reimp's sky_low_detail): the horizon line of
+ * the low-detail sky. The caller's pen colour (a byte, the first argument)
+ * goes to DS:0D46, then the segment's line builder at 0x0012 runs; SI and DI
+ * are kept across it. */
+static int vgame_sky_low_detail_far(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    if (!room(c, 7)) return 0;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    set_r8(c, R_AL, bp_get8(c, 6));
+    ds_put8(c, 0x0D46, get_r8(c, R_AL));
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->r[R_DI]);
+    c->icount += 6;
+    if (!guest_call(m, 0x0012, 0x000E)) return 1;
+    if (!room(c, 4)) { c->ip = 0x000E; return 1; }
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 4;
+    far_ret(c);
+    return 1;
+}
+
 static const recomp_override MATCHED[] = {
     { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x006D, 0x0112, logo_sprite_set_load, "load a sprite set and fix frame pointers", 2 },
     { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x0010, setup_questions, "setup questions and joystick calibration", 1 },
@@ -42365,6 +42535,11 @@ static const recomp_override MATCHED[] = {
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x66F8, vgame_ai_activate, "activate an aircraft slot at a target", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x72D8, vgame_ai_destroy, "mark an aircraft destroyed", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x73C8, vgame_target_damage, "score and alert a target hit", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x8D71, start_timer_resync, "timer library: retrace re-sync, every 20th tick", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x4C55, end_timer_resync, "timer library: retrace re-sync, every 20th tick", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x026B, 0x0073, player_timer_rate, "timer tick rate: divider and PIT count", 2 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x026B, 0x008B, player_timer_rate_one, "timer tick rate of one: divider 1", 2 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0FB2, 0x0000, vgame_sky_low_detail_far, "far entry of the low-detail sky line", 2 },
 };
 
 void matched_register(void)
