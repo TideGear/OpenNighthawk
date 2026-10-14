@@ -36,9 +36,11 @@ frames show it too. Details, the thin-strip rule and the tests:
 Gate: 61 tests, 45 routes identical, both profiles and three matched seeds with zero
 mismatches (1,584 s); 90 window checks (the 66 retained plus four new windows that
 carry `U` records, in `D:/f117-gate/p3-stream/obs`), boot N=4/9 exact, all 45 routes
-at N=1 exact. **The map is open**: its terrain triangles come out as scaled copies;
-see the "map (open)" paragraph for what is known (the cockpit-art page round trip, a
-prototype that restored fine rows, and why it changed nothing visible).
+at N=1 exact. **The map is open**: its terrain stays a scaled copy of the original.
+The "map (open)" paragraph has the cause: two things discard its fine rows (the
+blit round trip through the cockpit-art page and the duplicate `x` byte record of the
+display blit), both fixed in a prototype, but the clipped refill then puts some polygons a
+cell out (165 of 4,620 cells), so it was not kept. Next: find why that refill is a cell out.
 
 ## Latest Phase 3 integration: threaded 4K/60 presentation (13 October)
 

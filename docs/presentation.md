@@ -164,16 +164,28 @@ window still pass, and the in-between pictures show the same smooth horizon.
 
 **The map (open).** Its terrain is drawn once, by model polygons (integer-vertex triangles and
 quads in orthographic mode, clipped to the map window), into the work page; the game then
-copies it into the cockpit-art page (segment `09C0`) and back every frame. That page is not one
-the replay holds, so a copy to it is skipped and a copy from it uses the logged coarse pixels:
-any fine detail would be lost on that round trip. A prototype that kept the fine rows of each
-rectangle copied to a page not held, and restored them when the log's coarse bytes still
-matched, worked mechanically (the bytes matched on every return) but changed nothing visible:
-the map's fine layer differs from its coarse one in whole cells where terrain polygons overlap,
-which the flat-pixel guard hides, and the polygons' diagonal edges did not come out smooth.
-Why is not yet understood (their edges are clipped, with status words 8080 and 8A8A, against
-the map window). The prototype was removed; the map stays a scaled copy of the original, and
-this is the next piece of presentation work.
+copies it into the cockpit-art page (segment `09C0`) and back every frame, and to the display.
+That page is not one the replay holds, so a copy to it is skipped and a copy from it uses the
+logged coarse pixels: any fine detail is lost on that round trip. Two separate things discard
+it, and a prototype that fixed both (kept outside the tree) shows what is left:
+
+- A blit to a page not held loses the fine rows. Keeping the fine rows of each rectangle so
+  copied, and restoring them when the log's coarse bytes still match (they matched on every
+  return), brings 11,565 fine pixels of the 77x60-cell map back to the display.
+- The display blit is logged twice, as a `C` (which carries the fine rows) and as an `x`
+  (the byte changes of graphics entry 42). The `x` rewrites the same bytes through the
+  flattening writer and erased the restored rows by the end of the frame. Skipping an `x` byte
+  that already equals the coarse byte, for entries 42 and 46, keeps them.
+
+With both, the display shows smooth diagonals, but the re-drawn terrain disagrees with the
+original's own cells: of 4,620 map cells 165 are not flat in the fine layer, 146 of those have a
+centre pixel of the wrong colour, and a few polygons (the bottom band, a three-cell tab at the
+top right) sit a whole cell out. The orthographic endpoint projections themselves match, so the
+displacement is in how the clipped polygons are refilled, not in the vertices. Flattening every
+cell whose fine pixels hold none of the original's colour removes the whole-cell errors but
+leaves sawtooth edges where wrong and right cells meet, so it is not an improvement. The
+prototype was therefore not kept: the map stays a scaled copy of the original, which is the
+original's own drawing, and the next step is to find why the clipped refill is a cell out.
 
 ## Fully clipped views, reused vertices and orthographic maps (12-13 October 2026)
 
