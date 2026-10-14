@@ -6,7 +6,7 @@ For the next conversation on this repository. Read this, then
 checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 [docs/presentation.md](docs/presentation.md) (60+ fps and 4K) and
 [docs/repeated-processes.md](docs/repeated-processes.md) (every process we run
-more than once, what it costs). State as of 13 October 2026.
+more than once, what it costs). State as of 14 October 2026.
 
 This file is kept short on purpose: it holds only the current state and
 standing practice, not a session-by-session log. Earlier sessions' detail
@@ -21,6 +21,28 @@ captures. **Once the uprez looks right and the map is fixed, return to Phase 2.*
 Do not wait for all remaining physical-panel and weaker-machine Phase 3
 checks before resuming P2. Its private leaf batch still needs new routes
 before it can count; do not resume that batch without reach evidence.
+
+## Phase 2 resumed: SETUP's native BIOS boundary alert (14 October)
+
+The SDL alert is a false positive, not extra execution: SETUP's INT 10h at
+`14EF` runs two native callback/stub clocks atomically. A 4,096-clock boot
+reproduces it at 102,400 -> 102,401 on **both** engines with identical state.
+`native_stub_time` preserves the original clock cost and accounts for native service
+clocks in the overrun ledger. The new ROM-free regression allows the atomic
+callback and still rejects an extra NOP; it fails with the old accounting.
+Eight slice schedules x both engines x before/after: all 16 sets of per-slice
+records identical. Twelve SDL boots per build: same final hash, one old alert,
+zero new alerts. Fresh full gate: 63 unit tests, all 45 routes / 44 fresh
+interpreter sessions, both 5,718,848-state profiles, three 836-address matched
+seeds (2,745,183 / 2,744,149 / 2,745,748), zero mismatches, reachability and
+event checks pass (1,745 s). Proof: `D:/f117-gate/p2-resume/final-gate-verdict.json`.
+
+No new routine is counted yet. Private fresh dossiers there identify reached
+START `9D67` / END `56D9` as the eight-instruction formatter conversion-state
+initialisers (hand back to the existing scan loop), and PLAYER `026B:0211`
+as its distinct timer re-sync and `026B:0336` as tick/callback service. The
+latter calls original code, so needs returning-helper fixtures. The private
+static drafts are unproven transcripts, not integration-ready bodies.
 
 ## Latest Phase 3 integration: map and smooth terrain (13 October)
 
@@ -42,8 +64,8 @@ Fresh captures show the runway, smooth map diagonals and banked terrain.
 Isolated 4K/59.99 Hz/vsync/N=9 strike to 3.5B passes: 7,715 flight pictures,
 p99 17.23 ms, max 28.32, one late interval (0.013%), 2,062/2,062 exact logic
 frames, hash `bc8e3ae5a872405d`, equal to a fresh headless run. That SDL boot
-reproduces SETUP's event-limit overrun (one instruction), so **P2 resumes
-with that fix**, then reached routines/new routes. Evidence is in
+reproduced SETUP's one-instruction alert; the P2 follow-up above identifies
+and corrects its native BIOS accounting cause. Evidence is in
 `D:/f117-gate/map-refill`. Details:
 [docs/presentation.md](docs/presentation.md#joined-strokes-outline-edges-and-span-rasteriser-polygons-13-october-2026).
 
@@ -77,10 +99,9 @@ display mid-run (a window starting on the 1080p monitor, then the 4K one) logs
 two display lines and the checker rejects it: rerun with nothing else going.
 Evidence: `D:/f117-gate/p3-stream` (`thr2`, `air6`, `chk2`, `windows`).
 
-Next for Phase 3: time a long cargo/career flight, look
-at the SETUP `0000:0010` event-limit overrun seen once in an SDL boot log
-(two instructions past its limit under 1 ms slices; the headless gate has
-none), and get the owner's motion verdict.
+Next for Phase 3: time a long cargo/career flight and get the owner's
+motion verdict. The SETUP alert is resolved by the native-boundary
+accounting follow-up above.
 
 ## Latest Phase 3 integration: fill styles and replay coverage (13 October)
 
@@ -256,16 +277,13 @@ Phase 2 work" below).
 
 ## Next up
 
-- **Phase 3 first, 4K/60 target (owner, 13 Oct).** Finish presentation
-  coverage and performance before returning to routine matching. Keep
-  physical refresh/motion verdicts separate from hidden-window throughput.
-  Private throughput prototype:
-  `D:/f117-gate/p3-styles/bench` (`profile` versus `profile_guard`). Full fine
-  checksums and all repair/guard tallies agree across strike/landing/air-to-air
-  at N=9 and landing N=4. Guard is now integrated; the isolated actual-app
-  p99 still fails (see latest integration). `F117_BENCH_HASH=1` enables the
-  full frame checksum, adding work outside the per-frame timers. A grouped
-  seam-repair draft (`profile_fast`) barely helped and is deferred.
+- **Phase 2 resumed after the visual fixes (owner, 13 Oct).** Match reached code or add routes to
+  unreached screens. The four fresh dossiers above are leads, not proven
+  bodies. Do not resume the unreachable private leaf batch by default.
+- **Remaining Phase 3 coverage.** Physical-panel motion review, cargo/career
+  timing and weaker machines remain. The current strike build passes 4K/60;
+  the older single-threaded p99 failure is superseded. Full checksums via
+  `F117_BENCH_HASH=1` add work outside frame timers and are diagnostics.
 
 - **Branch housekeeping (12 Oct).** 24 local branches are fully merged into
   `master` and safe to delete; `flight-input` (older draft of aircraft

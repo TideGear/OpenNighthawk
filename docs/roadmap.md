@@ -200,6 +200,21 @@ not the recompilation:
 
 ## Phase 2 - understood code
 
+The SETUP event-limit alert seen with SDL's short slices is understood
+(14 October): its native INT 10h callback includes two atomic stub clocks,
+which the overrun audit had mistaken for extra guest instructions. Both
+engines already stopped at identical states. The ledger now accounts for
+those clocks without changing `icount`, and the regression still catches an
+extra NOP. Across eight slice schedules and both engines, all 16 sets of
+per-slice state records are identical before/after; 12 SDL boots per build
+have the same final hash, with one old alert and no new alerts. The new
+ROM-free boundary regression fails against the old accounting and passes
+with the correction. The fresh full gate passes 63 unit tests, all 45 routes (44 fresh interpreter
+sessions), both 5,718,848-state instruction profiles and three 836-address
+matched seeds (2,745,183 / 2,744,149 / 2,745,748 comparisons), with zero
+mismatches and passing reachability/event checks (1,745 s). No new census
+matching is claimed.
+
 Logo sprite-set loader (`MPS_LOGO 006D:0112`, `logo_sprite_set_load`) is matched:
 434 instructions / 1,164 bytes covering the stream open and signature check,
 record allocation, name and format validation, frame-pointer fix-up and palette
@@ -1033,7 +1048,8 @@ instruction profiles and three 789-address matched seeds (2,561,209,
   strike build passes 4K/59.99 Hz/vsync/N=9: 7,715 flight pictures, p99 17.23 ms,
   maximum 28.32, one late interval (0.013%), 2,062 exact logic frames and the
   unchanged headless hash. Stage 2 is complete. The owner asks to resume P2
-  after the visual fixes; the reproduced one-instruction SETUP overrun is first.
+  after the visual fixes; the SETUP alert is now resolved as the native BIOS
+  accounting false positive documented above.
   Open: the owner's motion review on a physical
   panel, and cargo/career flights and slower machines. See presentation.md.
 

@@ -107,6 +107,12 @@ and the inputs with the clock counts at which they arrived.
   POPF, IRET, EOI, an IMR write, a timer reload, reading port 60, a write to
   translated code - sets `stop_at` to 0 so the next boundary looks. So both
   engines take every interrupt at the same boundary.
+- **Atomic native service clocks.** A natively answered BIOS/DOS interrupt
+  includes the callback stub's clocks in the same atomic step as the INT.
+  These remain in `icount`; `native_stub_time` distinguishes them in the
+  matched-overrun ledger. A callback ending just past a slice is therefore
+  allowed, while an extra guest instruction after it is still reported.
+  `native_service_boundary` checks both cases without game data.
 - **The interrupt shadow.** STI, MOV SS and POP SS hold off interrupts for
   one instruction, as the CPU does.
 - **Inputs are machine events.** Keys, mouse and stick arrive with a clock

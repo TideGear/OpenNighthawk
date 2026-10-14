@@ -95,10 +95,10 @@ struct cpu {
 
     /* The run loop looks at events when icount >= stop_at. */
     uint64_t stop_at;
-    /* Clocks charged beyond the instructions themselves (the bus delay, DOS
-     * transfers): one instruction can carry the clock this far past stop_at. */
+    /* Extra clocks within an atomic instruction (bus delay, DOS transfers,
+     * native BIOS/DOS callback stubs): it can carry the clock past stop_at. */
     uint64_t charged;
-    /* The clock just after a bus delay carried it across stop_at; the run
+    /* The clock after an atomic port/service charge crossed stop_at; the run
      * loop looks at events before the next instruction. 0: none since cleared. */
     uint64_t io_cross;
     /* No hardware interrupt is taken at the boundary where icount equals

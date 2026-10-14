@@ -156,6 +156,21 @@ static int dos_overhead(const cpu_t *c, uint8_t vec)
     return vec == 0x21 && (ah == 0x0B || ah == 0x2C || (ah == 0x06 && (c->r[R_DX] & 0xFF) == 0xFF));
 }
 
+/* A native INT completes its callback/stub atomically, as cpu_step does on
+ * the interpreter path. These extra clocks can cross an event boundary
+ * without a matched caller executing any extra guest instruction. Keep
+ * them in the clock but distinguish them in the overrun accounting; the
+ * next instruction must still stop after a crossing. The 386 profile has
+ * its own cycle accounting and never runs matched routines. */
+static void native_stub_time(cpu_t *c, unsigned clocks)
+{
+    c->icount += clocks;
+    if (!c->t386) {
+        c->charged += clocks;
+        if (c->stop_at && c->icount >= c->stop_at) c->io_cross = c->icount;
+    }
+}
+
 /* A service called directly (the vector still DOSBox's stub) has run in
  * place at the INT; finish it the way DOSBox's stub would. The IRET kinds
  * cost their instructions with interrupts still off. The STI kinds set
@@ -165,15 +180,15 @@ static int dos_overhead(const cpu_t *c, uint8_t vec)
 static void finish_direct(machine_t *m, unsigned kind, int overhead)
 {
     cpu_t *c = &m->cpu;
-    if (kind == KIND_IRET) { c->icount += 2; return; }
-    if (kind == KIND_JMP) { c->icount += 3; return; }
+    if (kind == KIND_IRET) { native_stub_time(c, 2); return; }
+    if (kind == KIND_JMP) { native_stub_time(c, 3); return; }
     cpu_push16(c, c->flags);
     cpu_push16(c, c->seg[S_CS]);
     cpu_push16(c, c->ip);
     c->flags = (uint16_t)((c->flags | F_IF) & (uint16_t)(0xFFFFu ^ F_TF));
     c->seg[S_CS] = m->iret_seg;
     c->ip = overhead ? STUB_OVERHEAD : STUB_IRET;
-    c->icount += 2;                                    /* STI, the callback */
+    native_stub_time(c, 2);                            /* STI, the callback */
     cpu_irq_state_changed(c);
 }
 
@@ -326,13 +341,13 @@ int dos_int_hook(cpu_t *c, uint8_t vec)
     }
     case 0xF9: dos_bios_key_irq(m); return 1;      /* the INT 9 stub's translation step */
     case 0x20: return dos_terminate(m, 0);
-    case 0x11: c->r[R_AX] = mem_read16(c, BDA_EQUIPMENT); c->icount += 2; return 1;
-    case 0x12: c->r[R_AX] = mem_read16(c, BDA_MEM_KB); c->icount += 2; return 1;
+    case 0x11: c->r[R_AX] = mem_read16(c, BDA_EQUIPMENT); native_stub_time(c, 2); return 1;
+    case 0x12: c->r[R_AX] = mem_read16(c, BDA_MEM_KB); native_stub_time(c, 2); return 1;
     case 0x15:                                 /* system services: none */
         if ((c->r[R_AX] >> 8) != 0x4F)         /* 4Fh, the keyboard intercept: CF set, key kept */
             c->r[R_AX] = (uint16_t)((c->r[R_AX] & 0x00FF) | 0x8600);
         c->flags |= F_CF;
-        c->icount += 2;
+        native_stub_time(c, 2);
         return 1;
     default: return 0;                         /* the guest's vector, or the IRET stub */
     }

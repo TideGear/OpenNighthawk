@@ -278,6 +278,10 @@ if(F117R_BUILD_TESTS)
   target_link_libraries(test_overrides PRIVATE f117present f117recomp_none)
   add_test(NAME code_overrides COMMAND test_overrides)
 
+  add_executable(test_native_boundary tests/test_native_boundary.c)
+  target_link_libraries(test_native_boundary PRIVATE f117present f117recomp_none)
+  add_test(NAME native_service_boundary COMMAND test_native_boundary)
+
   # Every translated instruction of the game against the interpreter, one
   # instruction at a time from random states (needs the generated code).
   if(F117R_GEN_DIR)

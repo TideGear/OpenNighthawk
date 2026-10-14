@@ -141,6 +141,27 @@ frames exact and guest hash equal to the fresh 36.8 s headless prefix. SDL
 writes its final hash to the machine log, not stdout. Screenshots and timing
 logs stay outside git in `D:/f117-gate/map-refill`.
 
+## Native BIOS boundary regression (14 October 2026)
+
+`native_service_boundary` runs a real ROM-free INT 10h callback at a slice
+boundary, checks its unchanged three-clock cost and requires the overrun
+report to accept it while rejecting a deliberately added NOP. Linking it
+against the old DOS implementation produces four failures; the correction
+passes in 0.03 s. It needs no installed game or generated modules.
+
+For the actual SETUP startup, eight fixed/random slice schedules and both
+engines produce identical per-slice records before/after the accounting
+change (32 short boots, about 2 s per 16-run batch at eight workers). Twenty-
+four silent SDL boots to 3M clocks (12 per build, four workers, 6.5 s) retain
+the same final hash; one old alert becomes zero. Use fresh saves. These
+checks measure bookkeeping and state equality, not presentation pacing.
+A CPU-header edit forces generated C and both matched objects to rebuild;
+the measured rebuild here took about six minutes. The full fresh gate passes in 1,745 s: translate/build/63 unit tests 178 s,
+coverage 575 s, byte-identical regeneration 44 s and fresh parity 949 s.
+All 45 routes (44 fresh interpreter sessions), both instruction profiles,
+three matched seeds and reachability/event checks pass with zero mismatches.
+Runtime proof and logs remain outside git in `D:/f117-gate/p2-resume`.
+
 ## Observer path comparison (13 October 2026)
 
 Use the existing draw-list capture process with both engines, not just the
