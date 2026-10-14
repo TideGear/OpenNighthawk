@@ -43670,7 +43670,568 @@ leave:
     return 1;
 }
 
+/* START 39F7: poll the menu's input devices, move its pointer, and return a
+ * menu key. Arrow keys choose the closest rectangle centre in a directional
+ * cone; without a key, the joystick moves the pointer by (axis-128)/30.
+ * Both paths clamp to the menu bounds, restore the previous pointer backing,
+ * draw the new pointer, and update the hit selection. Enter/Escape produce
+ * one-shot selection/cancel codes; Delete and Backspace both produce 98.
+ * Locals remain in guest memory: a hit table may alias the stack frame. */
+static int start_menu_input(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+    enum { OLD_X=-2, RECT=-4, BEST_X=-6, OLD_Y=-8, BEST_Y=-10,
+           ELIGIBLE=-12, SELECT_BUTTON=-14, CANCEL_BUTTON=-16,
+           CENTRE_X=-18, CENTRE_Y=-20, KEY=-22, INDEX=-24,
+           RESULT=-28, BEST_DISTANCE=-30 };
+#define MI_BLOCK(n_,at_) do { SM4_NEED((n_),(at_)); c->icount+=(n_); } while(0)
+#define MI_PUSH(r_) cpu_push16(c,c->r[r_])
+#define MI_POP() (c->r[R_BX]=cpu_pop16(c))
+#define MI_SP(n_) (c->r[R_SP]=(uint16_t)alu_add(c,c->r[R_SP],(n_),1,0))
+#define MI_AH0() set_r8(c,R_AH,(uint8_t)alu_sub(c,get_r8(c,R_AH),get_r8(c,R_AH),0,0))
+#define MI_CMP(a_,b_) alu_sub(c,(a_),(b_),1,0)
+#define MI_LES() do { c->r[R_BX]=ds_get(c,0xE096); c->seg[S_ES]=ds_get(c,0xE098); } while(0)
+#define MI_TEST(bit_) alu_logic(c,mem_read8(c,phys(c->seg[S_ES],(uint16_t)(c->r[R_BX]+0x72)))&(bit_),0)
+#define MI_RUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call_); m->run_until=until_; if(!returned_)return 1; } while(0)
+#define MI_NEAR(at_,target_,ret_) do { SM4_NEED(1,(at_)); MI_RUN(guest_call(m,(target_),(ret_))); } while(0)
+#define MI_FAR(at_,ret_) do { SM4_NEED(1,(at_)); MI_RUN(guest_call_far(m,(at_),(ret_))); } while(0)
+    if(!room(c,10))return 0;
+    MI_BLOCK(10,0x39F7);
+    frame_open(c,30); MI_PUSH(R_SI);
+    c->r[R_AX]=(uint16_t)alu_sub(c,c->r[R_AX],c->r[R_AX],1,0);
+    bp_put(c,CANCEL_BUTTON,c->r[R_AX]); bp_put(c,SELECT_BUTTON,c->r[R_AX]);
+    MI_LES(); MI_TEST(1);
+    if(x86_cond(c,4))goto mouse_input;
+
+    MI_BLOCK(1,0x3A11); MI_PUSH(R_AX);
+    MI_FAR(0x3A12,0x3A17);                    /* joystick select button */
+    MI_BLOCK(4,0x3A17);
+    MI_POP(); bp_put(c,SELECT_BUTTON,c->r[R_AX]); c->r[R_AX]=1; MI_PUSH(R_AX);
+    MI_FAR(0x3A1F,0x3A24);                    /* joystick cancel button */
+    MI_BLOCK(2,0x3A24); MI_POP(); bp_put(c,CANCEL_BUTTON,c->r[R_AX]);
+
+mouse_input:
+    MI_BLOCK(3,0x3A28); MI_LES(); MI_TEST(2);
+    if(x86_cond(c,4))goto keyboard_input;
+    MI_NEAR(0x3A33,0x8545,0x3A36);             /* refresh mouse coordinates */
+    MI_BLOCK(6,0x3A36);
+    c->r[R_AX]=ds_get(c,0xE08A); bp_put(c,OLD_X,c->r[R_AX]);
+    c->r[R_AX]=ds_get(c,0xE08C); bp_put(c,OLD_Y,c->r[R_AX]);
+    c->r[R_AX]=(uint16_t)alu_sub(c,c->r[R_AX],c->r[R_AX],1,0); MI_PUSH(R_AX);
+    MI_NEAR(0x3A45,0x8530,0x3A48);
+    MI_BLOCK(4,0x3A48);
+    MI_POP(); bp_put(c,SELECT_BUTTON,(uint16_t)alu_logic(c,bp_get(c,SELECT_BUTTON)|c->r[R_AX],1));
+    c->r[R_AX]=1; MI_PUSH(R_AX);
+    MI_NEAR(0x3A50,0x8530,0x3A53);
+    MI_BLOCK(2,0x3A53);
+    MI_POP(); bp_put(c,CANCEL_BUTTON,(uint16_t)alu_logic(c,bp_get(c,CANCEL_BUTTON)|c->r[R_AX],1));
+
+keyboard_input:
+    MI_BLOCK(1,0x3A57); bp_put(c,KEY,0);
+    MI_FAR(0x3A5C,0x3A61);
+    MI_BLOCK(2,0x3A61); alu_logic(c,c->r[R_AX]|c->r[R_AX],1);
+    if(x86_cond(c,5))goto button_keys;
+    MI_FAR(0x3A65,0x3A6A);
+    MI_BLOCK(2,0x3A6A); bp_put(c,KEY,c->r[R_AX]); goto dispatch_key;
+button_keys:
+    MI_BLOCK(2,0x3A6F); MI_CMP(bp_get(c,SELECT_BUTTON),0);
+    if(x86_cond(c,4))goto cancel_key;
+    MI_BLOCK(2,0x3A75); bp_put(c,KEY,13); goto dispatch_key;
+cancel_key:
+    MI_BLOCK(2,0x3A7C); MI_CMP(bp_get(c,CANCEL_BUTTON),0);
+    if(x86_cond(c,4))goto dispatch_key;
+    MI_BLOCK(1,0x3A82); bp_put(c,KEY,27);
+dispatch_key:
+    MI_BLOCK(3,0x3A87); c->r[R_AX]=bp_get(c,KEY); alu_logic(c,c->r[R_AX]|c->r[R_AX],1);
+    if(x86_cond(c,4))goto analog_input;
+    MI_BLOCK(2,0x3A8E); c->r[R_AX]=(uint16_t)alu_sub(c,c->r[R_AX],0x1000,1,0);
+    if(x86_cond(c,4))goto hotkey;
+    MI_BLOCK(2,0x3A93); c->r[R_AX]=(uint16_t)alu_sub(c,c->r[R_AX],0x3800,1,0);
+    if(x86_cond(c,4))goto arrow_search;
+    MI_BLOCK(2,0x3A98); c->r[R_AX]=(uint16_t)alu_sub(c,c->r[R_AX],0x300,1,0);
+    if(x86_cond(c,4))goto arrow_search;
+    MI_BLOCK(2,0x3A9D); c->r[R_AX]=(uint16_t)alu_sub(c,c->r[R_AX],0x200,1,0);
+    if(x86_cond(c,4))goto arrow_search;
+    MI_BLOCK(2,0x3AA2); c->r[R_AX]=(uint16_t)alu_sub(c,c->r[R_AX],0x300,1,0);
+    if(x86_cond(c,4))goto arrow_search;
+    MI_BLOCK(1,0x3AA7);
+    goto clamp_x;
+
+analog_input:
+    MI_BLOCK(3,0x3AA9); MI_LES(); MI_TEST(1);
+    if(x86_cond(c,4))goto clamp_x;
+    MI_BLOCK(13,0x3AB4);
+    set_r8(c,R_AL,ds_get8(c,0x69B2)); MI_AH0();
+    c->r[R_AX]=(uint16_t)alu_sub(c,c->r[R_AX],128,1,0); c->r[R_CX]=30;
+    c->r[R_DX]=(c->r[R_AX]&0x8000)?0xFFFF:0; x86_idiv16(c,c->r[R_CX],0);
+    ds_put(c,0xE08A,(uint16_t)alu_add(c,ds_get(c,0xE08A),c->r[R_AX],1,0));
+    set_r8(c,R_AL,ds_get8(c,0x69B3)); MI_AH0();
+    c->r[R_AX]=(uint16_t)alu_sub(c,c->r[R_AX],128,1,0);
+    c->r[R_DX]=(c->r[R_AX]&0x8000)?0xFFFF:0; x86_idiv16(c,c->r[R_CX],0);
+    ds_put(c,0xE08C,(uint16_t)alu_add(c,ds_get(c,0xE08C),c->r[R_AX],1,0));
+    goto clamp_x;
+hotkey:
+    MI_NEAR(0x3AE4,0x7611,0x3AE7);
+    MI_BLOCK(1,0x3AE7); goto clamp_x;
+
+    /* Four arrow directions share the cone and distance tests. Preserve the
+     * original compare order and abs helper calls, including their flags. */
+arrow_search:
+    MI_BLOCK(7,0x3AE9);
+    bp_put(c,BEST_DISTANCE,1000); c->r[R_AX]=bp_get(c,4);
+    c->r[R_AX]=(uint16_t)alu_add(c,c->r[R_AX],4,1,0); bp_put(c,RECT,c->r[R_AX]);
+    bp_put(c,BEST_X,0xFFFF); bp_put(c,INDEX,0); goto next_rectangle;
+up_direction:
+    MI_BLOCK(3,0x3B03); c->r[R_AX]=bp_get(c,CENTRE_Y); MI_CMP(ds_get(c,0xE08C),c->r[R_AX]);
+    if(x86_cond(c,14))goto maybe_candidate;
+vertical_cone:
+    MI_BLOCK(3,0x3B0C);
+    c->r[R_CX]=ds_get(c,0xE08A); c->r[R_CX]=(uint16_t)alu_sub(c,c->r[R_CX],bp_get(c,CENTRE_X),1,0); MI_PUSH(R_CX);
+    MI_NEAR(0x3B14,0x96AE,0x3B17);
+    MI_BLOCK(5,0x3B17);
+    MI_POP(); c->r[R_CX]=ds_get(c,0xE08C);
+    c->r[R_CX]=(uint16_t)alu_sub(c,c->r[R_CX],bp_get(c,CENTRE_Y),1,0); MI_PUSH(R_CX); c->r[R_SI]=c->r[R_AX];
+    MI_NEAR(0x3B22,0x96AE,0x3B25);
+    MI_BLOCK(3,0x3B25); MI_POP(); MI_CMP(c->r[R_AX],c->r[R_SI]);
+    if(x86_cond(c,12))goto maybe_candidate;
+eligible:
+    MI_BLOCK(1,0x3B2A); mem_write8(c,phys(c->seg[S_SS],(uint16_t)(c->r[R_BP]+ELIGIBLE)),1);
+maybe_candidate:
+    MI_BLOCK(2,0x3B2E);
+    alu_sub(c,mem_read8(c,phys(c->seg[S_SS],(uint16_t)(c->r[R_BP]+ELIGIBLE))),0,0,0);
+    if(x86_cond(c,4))goto advance_rectangle;
+    MI_BLOCK(4,0x3B34);
+    cpu_push16(c,bp_get(c,CENTRE_Y)); cpu_push16(c,bp_get(c,CENTRE_X));
+    cpu_push16(c,ds_get(c,0xE08C)); cpu_push16(c,ds_get(c,0xE08A));
+    MI_NEAR(0x3B42,0x8BEA,0x3B45);
+    MI_BLOCK(3,0x3B45); MI_SP(8); MI_CMP(c->r[R_AX],bp_get(c,BEST_DISTANCE));
+    if(x86_cond(c,13))goto advance_rectangle;
+    MI_BLOCK(5,0x3B4D);
+    bp_put(c,BEST_DISTANCE,c->r[R_AX]); c->r[R_AX]=bp_get(c,CENTRE_X); bp_put(c,BEST_X,c->r[R_AX]);
+    c->r[R_AX]=bp_get(c,CENTRE_Y); bp_put(c,BEST_Y,c->r[R_AX]);
+advance_rectangle:
+    MI_BLOCK(2,0x3B5C);
+    bp_put(c,INDEX,(uint16_t)alu_inc(c,bp_get(c,INDEX),1));
+    bp_put(c,RECT,(uint16_t)alu_add(c,bp_get(c,RECT),8,1,0));
+next_rectangle:
+    MI_BLOCK(5,0x3B63);
+    c->r[R_BX]=bp_get(c,4); set_r8(c,R_AL,ds_get8(c,(uint16_t)(c->r[R_BX]+3))); MI_AH0();
+    MI_CMP(c->r[R_AX],bp_get(c,INDEX)); if(x86_cond(c,14))goto finish_search;
+    MI_BLOCK(13,0x3B70);
+    c->r[R_BX]=bp_get(c,RECT); c->r[R_AX]=ds_get(c,(uint16_t)(c->r[R_BX]+4));
+    c->r[R_AX]=(uint16_t)alu_add(c,c->r[R_AX],ds_get(c,c->r[R_BX]),1,0);
+    c->r[R_AX]=(uint16_t)x86_shift(c,5,c->r[R_AX],1,1); bp_put(c,CENTRE_X,c->r[R_AX]);
+    c->r[R_AX]=ds_get(c,(uint16_t)(c->r[R_BX]+2));
+    c->r[R_AX]=(uint16_t)alu_add(c,c->r[R_AX],ds_get(c,(uint16_t)(c->r[R_BX]+6)),1,0);
+    c->r[R_AX]=(uint16_t)x86_shift(c,5,c->r[R_AX],1,1); bp_put(c,CENTRE_Y,c->r[R_AX]);
+    mem_write8(c,phys(c->seg[S_SS],(uint16_t)(c->r[R_BP]+ELIGIBLE)),0);
+    c->r[R_AX]=bp_get(c,KEY); c->r[R_AX]=(uint16_t)alu_sub(c,c->r[R_AX],0x4800,1,0);
+    if(!x86_cond(c,5)) { MI_BLOCK(1,0x3B94); goto up_direction; }
+    MI_BLOCK(2,0x3B97); c->r[R_AX]=(uint16_t)alu_sub(c,c->r[R_AX],0x300,1,0);
+    if(x86_cond(c,4))goto left_direction;
+    MI_BLOCK(2,0x3B9C); c->r[R_AX]=(uint16_t)alu_sub(c,c->r[R_AX],0x200,1,0);
+    if(x86_cond(c,4))goto right_direction;
+    MI_BLOCK(2,0x3BA1); c->r[R_AX]=(uint16_t)alu_sub(c,c->r[R_AX],0x300,1,0);
+    if(x86_cond(c,5))goto maybe_candidate;
+    MI_BLOCK(3,0x3BA6); c->r[R_AX]=bp_get(c,CENTRE_Y); MI_CMP(ds_get(c,0xE08C),c->r[R_AX]);
+    if(x86_cond(c,13))goto reject_direction;
+    MI_BLOCK(1,0x3BAF);
+    goto vertical_cone;
+left_direction:
+    MI_BLOCK(3,0x3BB2); c->r[R_AX]=bp_get(c,CENTRE_X); MI_CMP(ds_get(c,0xE08A),c->r[R_AX]);
+    if(x86_cond(c,14))goto reject_direction;
+    MI_BLOCK(1,0x3BBB);
+    goto horizontal_cone;
+right_direction:
+    MI_BLOCK(3,0x3BBD); c->r[R_AX]=bp_get(c,CENTRE_X); MI_CMP(ds_get(c,0xE08A),c->r[R_AX]);
+    if(x86_cond(c,13))goto reject_direction;
+horizontal_cone:
+    MI_BLOCK(3,0x3BC6);
+    c->r[R_AX]=(uint16_t)alu_sub(c,c->r[R_AX],ds_get(c,0xE08A),1,0);
+    c->r[R_AX]=(uint16_t)alu_sub(c,0,c->r[R_AX],1,0); MI_PUSH(R_AX);
+    MI_NEAR(0x3BCD,0x96AE,0x3BD0);
+    MI_BLOCK(5,0x3BD0);
+    MI_POP(); c->r[R_CX]=ds_get(c,0xE08C);
+    c->r[R_CX]=(uint16_t)alu_sub(c,c->r[R_CX],bp_get(c,CENTRE_Y),1,0); MI_PUSH(R_CX); c->r[R_SI]=c->r[R_AX];
+    MI_NEAR(0x3BDB,0x96AE,0x3BDE);
+    MI_BLOCK(3,0x3BDE); MI_POP(); MI_CMP(c->r[R_AX],c->r[R_SI]);
+    if(x86_cond(c,14))goto accept_direction;
+reject_direction:
+    MI_BLOCK(1,0x3BE3); goto maybe_candidate;
+accept_direction:
+    MI_BLOCK(1,0x3BE6); goto eligible;
+finish_search:
+    MI_BLOCK(2,0x3BE9); MI_CMP(bp_get(c,BEST_X),0xFFFF);
+    if(!x86_cond(c,5)) { MI_BLOCK(1,0x3BEF); goto clamp_x; }
+    MI_BLOCK(5,0x3BF2);
+    c->r[R_AX]=bp_get(c,BEST_X); ds_put(c,0xE08A,c->r[R_AX]);
+    c->r[R_AX]=bp_get(c,BEST_Y); ds_put(c,0xE08C,c->r[R_AX]); goto clamp_x;
+
+clamp_x:
+    MI_BLOCK(3,0x3AD5); c->r[R_AX]=ds_get(c,0xDC2A); MI_CMP(ds_get(c,0xE08A),c->r[R_AX]);
+    if(x86_cond(c,12)) { MI_BLOCK(1,0x3AE1); goto store_x; }
+    MI_BLOCK(1,0x3ADE);
+    MI_BLOCK(3,0x3C01); c->r[R_AX]=ds_get(c,0xDC2C); MI_CMP(ds_get(c,0xE08A),c->r[R_AX]);
+    if(x86_cond(c,14))goto clamp_y;
+store_x:
+    MI_BLOCK(1,0x3C0A); ds_put(c,0xE08A,c->r[R_AX]);
+clamp_y:
+    MI_BLOCK(3,0x3C0D); c->r[R_AX]=ds_get(c,0xDC26); MI_CMP(ds_get(c,0xE08C),c->r[R_AX]);
+    if(x86_cond(c,12))goto store_y;
+    MI_BLOCK(3,0x3C16); c->r[R_AX]=ds_get(c,0xDC28); MI_CMP(ds_get(c,0xE08C),c->r[R_AX]);
+    if(x86_cond(c,14))goto sync_mouse;
+store_y:
+    MI_BLOCK(1,0x3C1F); ds_put(c,0xE08C,c->r[R_AX]);
+sync_mouse:
+    MI_BLOCK(3,0x3C22); MI_LES(); MI_TEST(2);
+    if(x86_cond(c,4))goto redraw;
+    MI_BLOCK(3,0x3C2D); c->r[R_AX]=bp_get(c,OLD_X); MI_CMP(ds_get(c,0xE08A),c->r[R_AX]);
+    if(x86_cond(c,5))goto move_mouse;
+    MI_BLOCK(3,0x3C36); c->r[R_AX]=bp_get(c,OLD_Y); MI_CMP(ds_get(c,0xE08C),c->r[R_AX]);
+    if(x86_cond(c,4))goto redraw;
+move_mouse:
+    MI_NEAR(0x3C3F,0x85A7,0x3C42);
+redraw:
+    MI_BLOCK(13,0x3C42);
+    set_r8(c,R_AL,ds_get8(c,0xE093)); MI_AH0(); MI_PUSH(R_AX);
+    set_r8(c,R_AL,ds_get8(c,0xE092)); MI_PUSH(R_AX);
+    cpu_push16(c,ds_get(c,0xE090)); cpu_push16(c,ds_get(c,0xE08E));
+    c->r[R_AX]=(uint16_t)alu_sub(c,c->r[R_AX],c->r[R_AX],1,0); MI_PUSH(R_AX);
+    cpu_push16(c,ds_get(c,0xE090)); cpu_push16(c,ds_get(c,0xE08E)); c->r[R_CX]=1; MI_PUSH(R_CX);
+    MI_FAR(0x3C63,0x3C68);
+    MI_BLOCK(6,0x3C68); MI_SP(16);
+    cpu_push16(c,ds_get(c,0xE088)); cpu_push16(c,ds_get(c,0xE08C)); cpu_push16(c,ds_get(c,0xE08A));
+    c->r[R_AX]=0xDC02; MI_PUSH(R_AX);
+    MI_NEAR(0x3C7B,0x3693,0x3C7E);
+    MI_BLOCK(5,0x3C7E); MI_SP(8);
+    c->r[R_AX]=ds_get(c,0xE08A); ds_put(c,0xE08E,c->r[R_AX]);
+    c->r[R_AX]=ds_get(c,0xE08C); ds_put(c,0xE090,c->r[R_AX]);
+    MI_NEAR(0x3C8D,0x3E5E,0x3C90);
+
+    /* Normalize keys and remember their low byte for repeat suppression.
+     * Delete skips the high-byte clear; all other keys have it cleared. */
+    MI_BLOCK(3,0x3C90); bp_put(c,RESULT,0); MI_CMP(bp_get(c,KEY),0x5300);
+    if(x86_cond(c,5))goto low_byte_key;
+delete_key:
+    MI_BLOCK(2,0x3C9C); bp_put(c,RESULT,98); goto remember_key;
+low_byte_key:
+    MI_BLOCK(3,0x3CA3);
+    mem_write8(c,phys(c->seg[S_SS],(uint16_t)(c->r[R_BP]+KEY+1)),0); MI_CMP(bp_get(c,KEY),8);
+    if(x86_cond(c,4))goto delete_key;
+    MI_BLOCK(2,0x3CAD); MI_CMP(bp_get(c,KEY),13); if(x86_cond(c,5))goto escape_key;
+    MI_BLOCK(2,0x3CB3); MI_CMP(ds_get(c,0xB306),13); if(x86_cond(c,4))goto escape_key;
+    MI_BLOCK(2,0x3CBA); bp_put(c,RESULT,1); goto remember_key;
+escape_key:
+    MI_BLOCK(2,0x3CC1); MI_CMP(bp_get(c,KEY),27); if(x86_cond(c,5))goto remember_key;
+    MI_BLOCK(2,0x3CC7); MI_CMP(ds_get(c,0xB306),27); if(x86_cond(c,4))goto remember_key;
+    MI_BLOCK(1,0x3CCE); bp_put(c,RESULT,2);
+remember_key:
+    MI_BLOCK(4,0x3CD3); c->r[R_AX]=bp_get(c,KEY); ds_put(c,0xB306,c->r[R_AX]); MI_CMP(bp_get(c,RESULT),0);
+    if(x86_cond(c,5))goto return_key;
+    MI_BLOCK(1,0x3CDF); bp_put(c,RESULT,c->r[R_AX]);
+return_key:
+    MI_BLOCK(5,0x3CE2); c->r[R_AX]=bp_get(c,RESULT);
+    c->r[R_SI]=cpu_pop16(c); c->r[R_SP]=c->r[R_BP]; c->r[R_BP]=cpu_pop16(c); near_ret(c);
+    return 1;
+#undef MI_BLOCK
+#undef MI_PUSH
+#undef MI_POP
+#undef MI_SP
+#undef MI_AH0
+#undef MI_CMP
+#undef MI_LES
+#undef MI_TEST
+#undef MI_RUN
+#undef MI_NEAR
+#undef MI_FAR
+}
+
+/* END 1CF5: poll the menu's input devices, move its pointer, and return a
+ * menu key. Arrow keys choose the closest rectangle centre in a directional
+ * cone; without a key, the joystick moves the pointer by (axis-128)/30.
+ * Both paths clamp to the menu bounds, restore the previous pointer backing,
+ * draw the new pointer, and update the hit selection. Enter/Escape produce
+ * one-shot selection/cancel codes; Delete and Backspace both produce 98.
+ * Locals remain in guest memory: a hit table may alias the stack frame. */
+static int end_menu_input(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+    enum { OLD_X=-2, RECT=-4, BEST_X=-6, OLD_Y=-8, BEST_Y=-10,
+           ELIGIBLE=-12, SELECT_BUTTON=-14, CANCEL_BUTTON=-16,
+           CENTRE_X=-18, CENTRE_Y=-20, KEY=-22, INDEX=-24,
+           RESULT=-28, BEST_DISTANCE=-30 };
+#define MI_BLOCK(n_,at_) do { SM4_NEED((n_),(at_)); c->icount+=(n_); } while(0)
+#define MI_PUSH(r_) cpu_push16(c,c->r[r_])
+#define MI_POP() (c->r[R_BX]=cpu_pop16(c))
+#define MI_SP(n_) (c->r[R_SP]=(uint16_t)alu_add(c,c->r[R_SP],(n_),1,0))
+#define MI_AH0() set_r8(c,R_AH,(uint8_t)alu_sub(c,get_r8(c,R_AH),get_r8(c,R_AH),0,0))
+#define MI_CMP(a_,b_) alu_sub(c,(a_),(b_),1,0)
+#define MI_LES() do { c->r[R_BX]=ds_get(c,0x7222); c->seg[S_ES]=ds_get(c,0x7224); } while(0)
+#define MI_TEST(bit_) alu_logic(c,mem_read8(c,phys(c->seg[S_ES],(uint16_t)(c->r[R_BX]+0x72)))&(bit_),0)
+#define MI_RUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call_); m->run_until=until_; if(!returned_)return 1; } while(0)
+#define MI_NEAR(at_,target_,ret_) do { SM4_NEED(1,(at_)); MI_RUN(guest_call(m,(target_),(ret_))); } while(0)
+#define MI_FAR(at_,ret_) do { SM4_NEED(1,(at_)); MI_RUN(guest_call_far(m,(at_),(ret_))); } while(0)
+    if(!room(c,10))return 0;
+    MI_BLOCK(10,0x1CF5);
+    frame_open(c,30); MI_PUSH(R_SI);
+    c->r[R_AX]=(uint16_t)alu_sub(c,c->r[R_AX],c->r[R_AX],1,0);
+    bp_put(c,CANCEL_BUTTON,c->r[R_AX]); bp_put(c,SELECT_BUTTON,c->r[R_AX]);
+    MI_LES(); MI_TEST(1);
+    if(x86_cond(c,4))goto mouse_input;
+
+    MI_BLOCK(1,0x1D0F); MI_PUSH(R_AX);
+    MI_FAR(0x1D10,0x1D15);                    /* joystick select button */
+    MI_BLOCK(4,0x1D15);
+    MI_POP(); bp_put(c,SELECT_BUTTON,c->r[R_AX]); c->r[R_AX]=1; MI_PUSH(R_AX);
+    MI_FAR(0x1D1D,0x1D22);                    /* joystick cancel button */
+    MI_BLOCK(2,0x1D22); MI_POP(); bp_put(c,CANCEL_BUTTON,c->r[R_AX]);
+
+mouse_input:
+    MI_BLOCK(3,0x1D26); MI_LES(); MI_TEST(2);
+    if(x86_cond(c,4))goto keyboard_input;
+    MI_NEAR(0x1D31,0x44B9,0x1D34);             /* refresh mouse coordinates */
+    MI_BLOCK(6,0x1D34);
+    c->r[R_AX]=ds_get(c,0x7214); bp_put(c,OLD_X,c->r[R_AX]);
+    c->r[R_AX]=ds_get(c,0x7216); bp_put(c,OLD_Y,c->r[R_AX]);
+    c->r[R_AX]=(uint16_t)alu_sub(c,c->r[R_AX],c->r[R_AX],1,0); MI_PUSH(R_AX);
+    MI_NEAR(0x1D43,0x44A4,0x1D46);
+    MI_BLOCK(4,0x1D46);
+    MI_POP(); bp_put(c,SELECT_BUTTON,(uint16_t)alu_logic(c,bp_get(c,SELECT_BUTTON)|c->r[R_AX],1));
+    c->r[R_AX]=1; MI_PUSH(R_AX);
+    MI_NEAR(0x1D4E,0x44A4,0x1D51);
+    MI_BLOCK(2,0x1D51);
+    MI_POP(); bp_put(c,CANCEL_BUTTON,(uint16_t)alu_logic(c,bp_get(c,CANCEL_BUTTON)|c->r[R_AX],1));
+
+keyboard_input:
+    MI_BLOCK(1,0x1D55); bp_put(c,KEY,0);
+    MI_FAR(0x1D5A,0x1D5F);
+    MI_BLOCK(2,0x1D5F); alu_logic(c,c->r[R_AX]|c->r[R_AX],1);
+    if(x86_cond(c,5))goto button_keys;
+    MI_FAR(0x1D63,0x1D68);
+    MI_BLOCK(2,0x1D68); bp_put(c,KEY,c->r[R_AX]); goto dispatch_key;
+button_keys:
+    MI_BLOCK(2,0x1D6D); MI_CMP(bp_get(c,SELECT_BUTTON),0);
+    if(x86_cond(c,4))goto cancel_key;
+    MI_BLOCK(2,0x1D73); bp_put(c,KEY,13); goto dispatch_key;
+cancel_key:
+    MI_BLOCK(2,0x1D7A); MI_CMP(bp_get(c,CANCEL_BUTTON),0);
+    if(x86_cond(c,4))goto dispatch_key;
+    MI_BLOCK(1,0x1D80); bp_put(c,KEY,27);
+dispatch_key:
+    MI_BLOCK(3,0x1D85); c->r[R_AX]=bp_get(c,KEY); alu_logic(c,c->r[R_AX]|c->r[R_AX],1);
+    if(x86_cond(c,4))goto analog_input;
+    MI_BLOCK(2,0x1D8C); c->r[R_AX]=(uint16_t)alu_sub(c,c->r[R_AX],0x1000,1,0);
+    if(x86_cond(c,4))goto hotkey;
+    MI_BLOCK(2,0x1D91); c->r[R_AX]=(uint16_t)alu_sub(c,c->r[R_AX],0x3800,1,0);
+    if(x86_cond(c,4))goto arrow_search;
+    MI_BLOCK(2,0x1D96); c->r[R_AX]=(uint16_t)alu_sub(c,c->r[R_AX],0x300,1,0);
+    if(x86_cond(c,4))goto arrow_search;
+    MI_BLOCK(2,0x1D9B); c->r[R_AX]=(uint16_t)alu_sub(c,c->r[R_AX],0x200,1,0);
+    if(x86_cond(c,4))goto arrow_search;
+    MI_BLOCK(2,0x1DA0); c->r[R_AX]=(uint16_t)alu_sub(c,c->r[R_AX],0x300,1,0);
+    if(x86_cond(c,4))goto arrow_search;
+    MI_BLOCK(1,0x1DA5);
+    goto clamp_x;
+
+analog_input:
+    MI_BLOCK(3,0x1DA7); MI_LES(); MI_TEST(1);
+    if(x86_cond(c,4))goto clamp_x;
+    MI_BLOCK(13,0x1DB2);
+    set_r8(c,R_AL,ds_get8(c,0x23F4)); MI_AH0();
+    c->r[R_AX]=(uint16_t)alu_sub(c,c->r[R_AX],128,1,0); c->r[R_CX]=30;
+    c->r[R_DX]=(c->r[R_AX]&0x8000)?0xFFFF:0; x86_idiv16(c,c->r[R_CX],0);
+    ds_put(c,0x7214,(uint16_t)alu_add(c,ds_get(c,0x7214),c->r[R_AX],1,0));
+    set_r8(c,R_AL,ds_get8(c,0x23F5)); MI_AH0();
+    c->r[R_AX]=(uint16_t)alu_sub(c,c->r[R_AX],128,1,0);
+    c->r[R_DX]=(c->r[R_AX]&0x8000)?0xFFFF:0; x86_idiv16(c,c->r[R_CX],0);
+    ds_put(c,0x7216,(uint16_t)alu_add(c,ds_get(c,0x7216),c->r[R_AX],1,0));
+    goto clamp_x;
+hotkey:
+    MI_BLOCK(2,0x1DE2);
+    c->r[R_AX]=(uint16_t)alu_sub(c,c->r[R_AX],c->r[R_AX],1,0); MI_PUSH(R_AX);
+    MI_NEAR(0x1DE5,0x3E61,0x1DE8);
+    MI_BLOCK(2,0x1DE8); MI_POP(); goto clamp_x;
+
+    /* Four arrow directions share the cone and distance tests. Preserve the
+     * END compare order and abs helper calls, including their flags.
+     * END also passes zero to its hotkey helper and omits START's horizontal NEG. */
+arrow_search:
+    MI_BLOCK(7,0x1DEB);
+    bp_put(c,BEST_DISTANCE,1000); c->r[R_AX]=bp_get(c,4);
+    c->r[R_AX]=(uint16_t)alu_add(c,c->r[R_AX],4,1,0); bp_put(c,RECT,c->r[R_AX]);
+    bp_put(c,BEST_X,0xFFFF); bp_put(c,INDEX,0); goto next_rectangle;
+up_direction:
+    MI_BLOCK(3,0x1E05); c->r[R_AX]=ds_get(c,0x7216); MI_CMP(bp_get(c,CENTRE_Y),c->r[R_AX]);
+    if(x86_cond(c,13))goto maybe_candidate;
+vertical_cone:
+    MI_BLOCK(3,0x1E0D);
+    c->r[R_CX]=ds_get(c,0x7214); c->r[R_CX]=(uint16_t)alu_sub(c,c->r[R_CX],bp_get(c,CENTRE_X),1,0); MI_PUSH(R_CX);
+    MI_NEAR(0x1E15,0x52BC,0x1E18);
+    MI_BLOCK(5,0x1E18);
+    MI_POP(); c->r[R_CX]=ds_get(c,0x7216);
+    c->r[R_CX]=(uint16_t)alu_sub(c,c->r[R_CX],bp_get(c,CENTRE_Y),1,0); MI_PUSH(R_CX); c->r[R_SI]=c->r[R_AX];
+    MI_NEAR(0x1E23,0x52BC,0x1E26);
+    MI_BLOCK(3,0x1E26); MI_POP(); MI_CMP(c->r[R_AX],c->r[R_SI]);
+    if(x86_cond(c,12))goto maybe_candidate;
+eligible:
+    MI_BLOCK(1,0x1E2B); mem_write8(c,phys(c->seg[S_SS],(uint16_t)(c->r[R_BP]+ELIGIBLE)),1);
+maybe_candidate:
+    MI_BLOCK(2,0x1E2F);
+    alu_sub(c,mem_read8(c,phys(c->seg[S_SS],(uint16_t)(c->r[R_BP]+ELIGIBLE))),0,0,0);
+    if(x86_cond(c,4))goto advance_rectangle;
+    MI_BLOCK(4,0x1E35);
+    cpu_push16(c,bp_get(c,CENTRE_Y)); cpu_push16(c,bp_get(c,CENTRE_X));
+    cpu_push16(c,ds_get(c,0x7216)); cpu_push16(c,ds_get(c,0x7214));
+    MI_NEAR(0x1E43,0x452C,0x1E46);
+    MI_BLOCK(3,0x1E46); MI_SP(8); MI_CMP(c->r[R_AX],bp_get(c,BEST_DISTANCE));
+    if(x86_cond(c,13))goto advance_rectangle;
+    MI_BLOCK(5,0x1E4E);
+    bp_put(c,BEST_DISTANCE,c->r[R_AX]); c->r[R_AX]=bp_get(c,CENTRE_X); bp_put(c,BEST_X,c->r[R_AX]);
+    c->r[R_AX]=bp_get(c,CENTRE_Y); bp_put(c,BEST_Y,c->r[R_AX]);
+advance_rectangle:
+    MI_BLOCK(2,0x1E5D);
+    bp_put(c,INDEX,(uint16_t)alu_inc(c,bp_get(c,INDEX),1));
+    bp_put(c,RECT,(uint16_t)alu_add(c,bp_get(c,RECT),8,1,0));
+next_rectangle:
+    MI_BLOCK(5,0x1E64);
+    c->r[R_BX]=bp_get(c,4); set_r8(c,R_AL,ds_get8(c,(uint16_t)(c->r[R_BX]+3))); MI_AH0();
+    MI_CMP(c->r[R_AX],bp_get(c,INDEX)); if(x86_cond(c,14))goto finish_search;
+    MI_BLOCK(13,0x1E71);
+    c->r[R_BX]=bp_get(c,RECT); c->r[R_AX]=ds_get(c,(uint16_t)(c->r[R_BX]+4));
+    c->r[R_AX]=(uint16_t)alu_add(c,c->r[R_AX],ds_get(c,c->r[R_BX]),1,0);
+    c->r[R_AX]=(uint16_t)x86_shift(c,5,c->r[R_AX],1,1); bp_put(c,CENTRE_X,c->r[R_AX]);
+    c->r[R_AX]=ds_get(c,(uint16_t)(c->r[R_BX]+2));
+    c->r[R_AX]=(uint16_t)alu_add(c,c->r[R_AX],ds_get(c,(uint16_t)(c->r[R_BX]+6)),1,0);
+    c->r[R_AX]=(uint16_t)x86_shift(c,5,c->r[R_AX],1,1); bp_put(c,CENTRE_Y,c->r[R_AX]);
+    mem_write8(c,phys(c->seg[S_SS],(uint16_t)(c->r[R_BP]+ELIGIBLE)),0);
+    c->r[R_AX]=bp_get(c,KEY); c->r[R_AX]=(uint16_t)alu_sub(c,c->r[R_AX],0x4800,1,0);
+    if(!x86_cond(c,5)) { MI_BLOCK(1,0x1E95); goto up_direction; }
+    MI_BLOCK(2,0x1E98); c->r[R_AX]=(uint16_t)alu_sub(c,c->r[R_AX],0x300,1,0);
+    if(x86_cond(c,4))goto left_direction;
+    MI_BLOCK(2,0x1E9D); c->r[R_AX]=(uint16_t)alu_sub(c,c->r[R_AX],0x200,1,0);
+    if(x86_cond(c,4))goto right_direction;
+    MI_BLOCK(2,0x1EA2); c->r[R_AX]=(uint16_t)alu_sub(c,c->r[R_AX],0x300,1,0);
+    if(x86_cond(c,5))goto maybe_candidate;
+    MI_BLOCK(3,0x1EA7); c->r[R_AX]=ds_get(c,0x7216); MI_CMP(bp_get(c,CENTRE_Y),c->r[R_AX]);
+    if(x86_cond(c,14))goto reject_direction;
+    MI_BLOCK(1,0x1EAF);
+    goto vertical_cone;
+left_direction:
+    MI_BLOCK(3,0x1EB2); c->r[R_AX]=ds_get(c,0x7214); MI_CMP(bp_get(c,CENTRE_X),c->r[R_AX]);
+    if(x86_cond(c,13))goto reject_direction;
+    MI_BLOCK(1,0x1EBA);
+    goto horizontal_cone;
+right_direction:
+    MI_BLOCK(3,0x1EBC); c->r[R_AX]=ds_get(c,0x7214); MI_CMP(bp_get(c,CENTRE_X),c->r[R_AX]);
+    if(x86_cond(c,14))goto reject_direction;
+horizontal_cone:
+    MI_BLOCK(2,0x1EC4);
+    c->r[R_AX]=(uint16_t)alu_sub(c,c->r[R_AX],bp_get(c,CENTRE_X),1,0); MI_PUSH(R_AX);
+    MI_NEAR(0x1EC8,0x52BC,0x1ECB);
+    MI_BLOCK(5,0x1ECB);
+    MI_POP(); c->r[R_CX]=ds_get(c,0x7216);
+    c->r[R_CX]=(uint16_t)alu_sub(c,c->r[R_CX],bp_get(c,CENTRE_Y),1,0); MI_PUSH(R_CX); c->r[R_SI]=c->r[R_AX];
+    MI_NEAR(0x1ED6,0x52BC,0x1ED9);
+    MI_BLOCK(3,0x1ED9); MI_POP(); MI_CMP(c->r[R_AX],c->r[R_SI]);
+    if(x86_cond(c,14))goto accept_direction;
+reject_direction:
+    MI_BLOCK(1,0x1EDE); goto maybe_candidate;
+accept_direction:
+    MI_BLOCK(1,0x1EE1); goto eligible;
+finish_search:
+    MI_BLOCK(2,0x1EE4); MI_CMP(bp_get(c,BEST_X),0xFFFF);
+    if(!x86_cond(c,5)) { MI_BLOCK(1,0x1EEA); goto clamp_x; }
+    MI_BLOCK(5,0x1EED);
+    c->r[R_AX]=bp_get(c,BEST_X); ds_put(c,0x7214,c->r[R_AX]);
+    c->r[R_AX]=bp_get(c,BEST_Y); ds_put(c,0x7216,c->r[R_AX]); goto clamp_x;
+
+clamp_x:
+    MI_BLOCK(3,0x1DD3); c->r[R_AX]=ds_get(c,0x6DB4); MI_CMP(ds_get(c,0x7214),c->r[R_AX]);
+    if(x86_cond(c,12)) { MI_BLOCK(1,0x1DDF); goto store_x; }
+    MI_BLOCK(1,0x1DDC);
+    MI_BLOCK(3,0x1EFC); c->r[R_AX]=ds_get(c,0x6DB6); MI_CMP(ds_get(c,0x7214),c->r[R_AX]);
+    if(x86_cond(c,14))goto clamp_y;
+store_x:
+    MI_BLOCK(1,0x1F05); ds_put(c,0x7214,c->r[R_AX]);
+clamp_y:
+    MI_BLOCK(3,0x1F08); c->r[R_AX]=ds_get(c,0x6DB0); MI_CMP(ds_get(c,0x7216),c->r[R_AX]);
+    if(x86_cond(c,12))goto store_y;
+    MI_BLOCK(3,0x1F11); c->r[R_AX]=ds_get(c,0x6DB2); MI_CMP(ds_get(c,0x7216),c->r[R_AX]);
+    if(x86_cond(c,14))goto sync_mouse;
+store_y:
+    MI_BLOCK(1,0x1F1A); ds_put(c,0x7216,c->r[R_AX]);
+sync_mouse:
+    MI_BLOCK(3,0x1F1D); MI_LES(); MI_TEST(2);
+    if(x86_cond(c,4))goto redraw;
+    MI_BLOCK(3,0x1F28); c->r[R_AX]=bp_get(c,OLD_X); MI_CMP(ds_get(c,0x7214),c->r[R_AX]);
+    if(x86_cond(c,5))goto move_mouse;
+    MI_BLOCK(3,0x1F31); c->r[R_AX]=bp_get(c,OLD_Y); MI_CMP(ds_get(c,0x7216),c->r[R_AX]);
+    if(x86_cond(c,4))goto redraw;
+move_mouse:
+    MI_NEAR(0x1F3A,0x451B,0x1F3D);
+redraw:
+    MI_BLOCK(13,0x1F3D);
+    set_r8(c,R_AL,ds_get8(c,0x721D)); MI_AH0(); MI_PUSH(R_AX);
+    set_r8(c,R_AL,ds_get8(c,0x721C)); MI_PUSH(R_AX);
+    cpu_push16(c,ds_get(c,0x721A)); cpu_push16(c,ds_get(c,0x7218));
+    c->r[R_AX]=(uint16_t)alu_sub(c,c->r[R_AX],c->r[R_AX],1,0); MI_PUSH(R_AX);
+    cpu_push16(c,ds_get(c,0x721A)); cpu_push16(c,ds_get(c,0x7218)); c->r[R_CX]=1; MI_PUSH(R_CX);
+    MI_FAR(0x1F5E,0x1F63);
+    MI_BLOCK(6,0x1F63); MI_SP(16);
+    cpu_push16(c,ds_get(c,0x7212)); cpu_push16(c,ds_get(c,0x7216)); cpu_push16(c,ds_get(c,0x7214));
+    c->r[R_AX]=0x6D8C; MI_PUSH(R_AX);
+    MI_NEAR(0x1F76,0x1992,0x1F79);
+    MI_BLOCK(5,0x1F79); MI_SP(8);
+    c->r[R_AX]=ds_get(c,0x7214); ds_put(c,0x7218,c->r[R_AX]);
+    c->r[R_AX]=ds_get(c,0x7216); ds_put(c,0x721A,c->r[R_AX]);
+    MI_NEAR(0x1F88,0x2023,0x1F8B);
+
+    /* Normalize keys and remember their low byte for repeat suppression.
+     * Delete skips the high-byte clear; all other keys have it cleared. */
+    MI_BLOCK(3,0x1F8B); bp_put(c,RESULT,0); MI_CMP(bp_get(c,KEY),0x5300);
+    if(x86_cond(c,5))goto low_byte_key;
+delete_key:
+    MI_BLOCK(2,0x1F97); bp_put(c,RESULT,98); goto remember_key;
+low_byte_key:
+    MI_BLOCK(3,0x1F9E);
+    mem_write8(c,phys(c->seg[S_SS],(uint16_t)(c->r[R_BP]+KEY+1)),0); MI_CMP(bp_get(c,KEY),8);
+    if(x86_cond(c,4))goto delete_key;
+    MI_BLOCK(2,0x1FA8); MI_CMP(bp_get(c,KEY),13); if(x86_cond(c,5))goto escape_key;
+    MI_BLOCK(2,0x1FAE); MI_CMP(ds_get(c,0x55BC),13); if(x86_cond(c,4))goto escape_key;
+    MI_BLOCK(2,0x1FB5); bp_put(c,RESULT,1); goto remember_key;
+escape_key:
+    MI_BLOCK(2,0x1FBC); MI_CMP(bp_get(c,KEY),27); if(x86_cond(c,5))goto remember_key;
+    MI_BLOCK(2,0x1FC2); MI_CMP(ds_get(c,0x55BC),27); if(x86_cond(c,4))goto remember_key;
+    MI_BLOCK(1,0x1FC9); bp_put(c,RESULT,2);
+remember_key:
+    MI_BLOCK(4,0x1FCE); c->r[R_AX]=bp_get(c,KEY); ds_put(c,0x55BC,c->r[R_AX]); MI_CMP(bp_get(c,RESULT),0);
+    if(x86_cond(c,5))goto return_key;
+    MI_BLOCK(1,0x1FDA); bp_put(c,RESULT,c->r[R_AX]);
+return_key:
+    MI_BLOCK(5,0x1FDD); c->r[R_AX]=bp_get(c,RESULT);
+    c->r[R_SI]=cpu_pop16(c); c->r[R_SP]=c->r[R_BP]; c->r[R_BP]=cpu_pop16(c); near_ret(c);
+    return 1;
+#undef MI_BLOCK
+#undef MI_PUSH
+#undef MI_POP
+#undef MI_SP
+#undef MI_AH0
+#undef MI_CMP
+#undef MI_LES
+#undef MI_TEST
+#undef MI_RUN
+#undef MI_NEAR
+#undef MI_FAR
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "START.EXE", START_47304, 0x0000, 0x39F7, start_menu_input, "menu input and pointer update", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x1CF5, end_menu_input, "menu input and pointer update", 1 },
+
     { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x0B84, player_picture_refill, "refill the compressed-picture buffer", 1 },
     { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x0BA2, player_picture_open, "open a compressed picture and reset input", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x8CE6, start_timer_restore, "restore the BIOS timer and INT 8 vector", 1 },

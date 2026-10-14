@@ -200,6 +200,21 @@ not the recompilation:
 
 ## Phase 2 - understood code
 
+START's `39F7` and END's `1CF5` menu-input and pointer updates are matched and
+named. They poll keyboard, mouse and joystick,
+choose directional hit rectangles, clamp and redraw the pointer, and normalize
+menu keys. Five seeds reach all 532 instructions with zero skipped states or
+differences; all 16 private mutations are caught. The private full-cycle route
+matches the interpreter's final state, runs the bodies 7,015 / 487 times, and
+has zero event overruns. A permanent grouped CTest retains the fixtures,
+including stack/table aliasing and END's extra hotkey argument. Fresh full gate:
+76 tests, all 45 routes / 44 fresh interpreter sessions, both 5,718,848-state
+instruction profiles, three 867-address seeds (2,893,246 / 2,891,591 / 2,892,499
+comparisons), zero mismatches, reachability and event audits pass (1,627 s).
+Census:
+859 functions / 104,856 bytes, P2 60.58%, overall 84.70%.
+Evidence: `D:/f117-gate/p2-next/final-gate-verdict.json`.
+
 Twenty-two reached support routines are matched and named: PLAYER's picture
 open/refill and linear copy, the four timer shutdowns, five mouse wrappers and
 SETUP's mouse probe, file-name comparison, BIOS text writer, register-block

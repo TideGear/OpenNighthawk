@@ -544,6 +544,9 @@ static const struct { const char *module; uint16_t ip; int arg; uint16_t v[2]; }
 /* Exact code ranges when the default 0x300-byte window is unsuitable:
  * long/shared tails, or small walkers whose unrelated callees are nearby. */
 static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
+    { "START.EXE", 0x39F7, 0x39F7, 0x02F3 },
+    { "END.EXE", 0x1CF5, 0x1CF5, 0x02F0 },
+
     { "END.EXE", 0x2BEC, 0x2BEC, 0x0435 },
     { "START.EXE", 0x6DB8, 0x6DB8, 0x03F5 },
     { "START.EXE", 0x149C, 0x149C, 0x039E },
@@ -694,6 +697,8 @@ static uint64_t g_camera_seen;
  * rather than returning to the caller. Merely handing everything to original
  * code must not satisfy its coverage floor. */
 static const struct { const char *module; uint16_t seg, ip, len; unsigned insns, floor; const char *what; uint16_t boundary; unsigned clocks; } COVERED[] = {
+    { "START.EXE", 0, 0x39F7, 0x02F3, 265, 265, "menu input and pointer update" },
+    { "END.EXE", 0, 0x1CF5, 0x02F0, 267, 267, "menu input and pointer update" },
     { "END.EXE", 0, 0x2BEC, 0x0435, 444, 444, "debrief narrative and measured layout" },
     { "START.EXE", 0, 0x6DB8, 0x03F5, 399, 399, "pilot options dialog" },
     { "START.EXE", 0, 0x149C, 0x039E, 365, 365, "flight plan display" },
@@ -2433,6 +2438,84 @@ int main(int argc, char **argv)
 #undef NEXT
 #undef NW8
 #undef NW16
+            }
+            if ((o->seg == 0) && ((!strcmp(o->module,"START.EXE") && o->ip==0x39F7) ||
+                                 (!strcmp(o->module,"END.EXE") && o->ip==0x1CF5))) {
+                const int front=!strcmp(o->module,"START.EXE");
+                const uint16_t dg=front?0x0A95:0x05FA;
+                seg[S_DS]=dg; seg[S_SS]=(s&32)?0x6000:dg; r[R_SP]=0xFF00;
+                flags=(uint16_t)(flags & (0xFFFFu ^ F_DF));
+#define NW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_)); g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define NW16(s_,o_,v_) do { uint16_t vv_=(uint16_t)(v_); NW8((s_),(o_),vv_); NW8((s_),(uint16_t)((o_)+1),vv_>>8); } while(0)
+                uint32_t rng_=(uint32_t)s*2654435761u+(uint32_t)routine_seed(seed,o);
+#define NEXT() (rng_=rng_*1103515245u+12345u,rng_>>16)
+                for(unsigned j=0;j<0x200;j++) NW8(seg[S_SS],0xFD00+j,NEXT());
+                for(unsigned j=0;j<0x800;j++) NW8(dg,0xF000+j,0);
+                const uint16_t cursor=front?0xE08A:0x7214, bounds=front?0xDC26:0x6DB0;
+                const uint16_t record_ptr=front?0xE096:0x7222, axes=front?0x69B2:0x23F4;
+                NW16(dg,record_ptr,0x1000); NW16(dg,record_ptr+2,0x3000);
+                NW8(0x3000,0x1072,(s>>4)&3);
+                NW8(dg,axes,NEXT());NW8(dg,axes+1,NEXT());
+                NW8(dg,axes+4,NEXT()&1);NW8(dg,axes+5,NEXT()&1);
+                NW16(dg,bounds,10);NW16(dg,bounds+2,190);NW16(dg,bounds+4,10);NW16(dg,bounds+6,310);
+                static const uint16_t pos[]={0,9,10,11,50,100,160,180,190,191,310,311,0x7FFF,0x8000,0xFFFF};
+                NW16(dg,cursor,pos[NEXT()%15]);NW16(dg,cursor+2,pos[NEXT()%15]);
+                for(unsigned j=4;j<10;j+=2) NW16(dg,cursor+j,NEXT());
+                NW8(dg,cursor+8,NEXT());NW8(dg,cursor+9,NEXT());
+                NW16(dg,cursor-2,NEXT());
+                static const uint16_t keys[]={0,0x1000,0x4800,0x4B00,0x4D00,0x5000,0x5300,8,13,27,65,0xFFFF};
+                const uint16_t key=keys[(s-1)%12];
+                NW16(dg,front?0xB306:0x55BC,(s&64)?key:keys[NEXT()%12]);
+                NW16(dg,0xF600,NEXT()&1);NW16(dg,0xF602,NEXT()&1);
+                const uint16_t table=(s%31==0 && seg[S_SS]==dg)?0xFFE0:0x1200;
+                small[0]=table; NW16(seg[S_SS],0xFF00,table);
+                for(unsigned j=0;j<0x80;j++) NW8(dg,table+j,NEXT());
+                NW8(dg,table+3,(s%9));
+                for(unsigned j=0;j<8;j++) {
+                    const unsigned x=15+NEXT()%290,y=15+NEXT()%170,w=NEXT()%16,h=NEXT()%16;
+                    NW16(dg,table+4+8*j,x);NW16(dg,table+6+8*j,y);
+                    NW16(dg,table+8+8*j,x+w);NW16(dg,table+10+8*j,y+h);
+                }
+                /* Returning driver/draw stubs hash every stack argument, including far-call frames.
+                 * Cells and return values are separate, so call order and arguments stay observable. */
+                static const struct { uint16_t a,b; uint8_t far,args,mode; } stubs[]={
+                    {0x6B89,0x25CB,1,1,1}, {0x6B7A,0x25BC,1,0,2}, {0x6B7F,0x25C1,1,0,3},
+                    {0x8545,0x44B9,0,0,0}, {0x7611,0x3E61,0,0,0}, {0x85A7,0x451B,0,0,0},
+                    {0x6A8A,0x24CC,1,8,0}, {0x3693,0x1992,0,4,0}, {0x3E5E,0x2023,0,0,0},
+                    {0x8BEA,0x452C,0,4,4}
+                };
+                for(unsigned j=0;j<sizeof stubs/sizeof stubs[0];j++) {
+                    const uint16_t slot=front?stubs[j].a:stubs[j].b, target_seg=stubs[j].far?dg:0;
+                    const uint16_t code=(uint16_t)(0xF000+0xB0*j),cell=(uint16_t)(0xF700+2*j),result=(uint16_t)(0xF740+2*j);
+                    if(stubs[j].far) { NW8(target_seg,slot,0xEA);NW16(target_seg,slot+1,code);NW16(target_seg,slot+3,dg); }
+                    else { NW8(0,slot,0xE9);NW16(0,slot+1,(uint16_t)(code-slot-3)); }
+                    const uint16_t cs_=stubs[j].far?dg:0;
+                    unsigned at_=code;
+#define EMIT(v_) NW8(cs_,at_++,(v_))
+                    EMIT(0x55);EMIT(0x8B);EMIT(0xEC);EMIT(0x50);EMIT(0x53);
+                    EMIT(0xFF);EMIT(0x06);EMIT(cell);EMIT(cell>>8); /* inc word [cell] */
+                    const unsigned nargs=stubs[j].args+(!front && j==4);
+                    for(unsigned k=0;k<nargs;k++) {
+                        EMIT(0x8B);EMIT(0x46);EMIT((stubs[j].far?6:4)+2*k);
+                        EMIT(0x8B);EMIT(0x1E);EMIT(cell);EMIT(cell>>8);
+                        EMIT(0xD1);EMIT(0xC3);EMIT(0x33);EMIT(0xD8);
+                        EMIT(0x89);EMIT(0x1E);EMIT(cell);EMIT(cell>>8);
+                    }
+                    EMIT(0x5B);EMIT(0x58);
+                    if(stubs[j].mode==1) {
+                        EMIT(0x53);EMIT(0x8B);EMIT(0x5E);EMIT(0x06);EMIT(0xD1);EMIT(0xE3);
+                        EMIT(0x8B);EMIT(0x87);EMIT(0x00);EMIT(0xF6);EMIT(0x5B);
+                    } else {
+                        EMIT(0xA1);EMIT(result);EMIT(result>>8);
+                    }
+                    EMIT(0x5D);EMIT(stubs[j].far?0xCB:0xC3);
+                    static const uint16_t distances[]={0,1,100,999,1000,1001,0x7FFF,0xFFFF};
+                    NW16(dg,result,stubs[j].mode==2?((s>>6)&1):stubs[j].mode==3?key:stubs[j].mode==4?distances[NEXT()%8]:NEXT());
+#undef EMIT
+                }
+#undef NEXT
+#undef NW16
+#undef NW8
             }
             if (!strcmp(o->module, "START.EXE") && o->seg == 0 && o->ip == 0x6DB8) {
                 seg[S_DS] = seg[S_SS] = 0x0A95; r[R_SP] = 0xFF00;

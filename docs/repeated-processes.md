@@ -8,6 +8,17 @@ whether they were measured or estimated. The rule behind the page: an
 optimisation must leave every check's inputs, outputs and verdicts
 identical, and the proof is the same verdicts before and after.
 
+## Menu-input fixture and gate (14 October 2026)
+
+`matched_menu_input` runs 5,000 states each for START `39F7` and END `1CF5`,
+including returning helper argument probes, stack/table aliasing, signed
+direction cones and key-repeat handling. CTest measured 0.99 s with the
+eight-worker unit stage. Five private seeds cover all 532 instructions and
+16 mutations are caught. The fresh full gate passes 76 tests, all 45 routes
+and 44 fresh interpreter sessions, both instruction profiles and all three
+matched seeds in 1,627 s. Coverage takes 614 s and adds no translated code;
+the second build is therefore reused. Proof: `D:/f117-gate/p2-next`.
+
 ## Presentation styles and full-route replay checks (13 October 2026)
 
 `test_present_fills` compares replay rules with the original VGAME fill
