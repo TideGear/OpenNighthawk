@@ -46,6 +46,11 @@ Identity capture (branch `present-scene-geometry`, `F117R_OBSERVE_IDENT=1` logs 
 frame's words -16h/-2/-18h/-4, word -0Ch) matches 1,062 of 1,837 batches uniquely between steps; the current pairing
 agrees on 728 and DISAGREES on 0, and identity recovers 334 batches it misses. 162 are ambiguous duplicates (same model
 twice in a cell: add the entry ordinal) and 98 enter or leave. The pose words (DS:4994) are camera-relative and useless.
+Draw-distance check (owner's from-scratch-renderer question, 15 Oct): the scene walk `04E6` visits four rings (levels) of
+terrain tiles; each ring has 32 resident tile slots (entry lists at DS:E330+2*(ring*32+tile), counts at DS:061E+...), and
+tile lookup `0871` returns -1 outside them. In the flight scene capture 18/18/25/18 slots hold entries (79/111/167/19
+entries), so only a window of the world is in memory. A longer view needs the game's world data loaded by our own
+code (how tiles are loaded from the files is not yet traced), plus nothing for moving objects beyond the sim's range.
 Next: use the key in `interp_pair`/`score` (a unique equal key pairs regardless of the motion limit; an ids mismatch
 refuses), turn the observer on for live presentation, then the 45-route checks and a fresh gate.
 
