@@ -35,11 +35,8 @@ typedef struct {
     uint8_t *hi;                  /* the finer picture, 320N x 200N, or NULL */
     int      n, suppress;
     uint8_t  strokes[64000 / 8];  /* coarse cells with authoritative fine strokes/geometry, for the flat guard */
-    uint8_t  hud_strokes[64000 / 8]; /* actual HUD strokes, which also take priority over seam repair */
-    uint8_t *model;               /* two fine bit planes: true model geometry and actual model paint */
+    uint8_t  hud_strokes[64000 / 8]; /* actual HUD strokes */
     uint8_t *tag;                 /* diagnostic only (diagtag.h): the path that wrote each fine pixel, or NULL */
-    uint8_t  model_foot[64000 / 8]; /* union of the tracked models' original footprints */
-    int      model_active;
 } drawlist_page;
 
 /* A rectangle blitted to a page the replay does not hold (the cockpit-art page also keeps the
@@ -69,7 +66,6 @@ typedef struct {
     /* offsets of the work page written from the original's bytes this phase */
     uint8_t  copied[65536 / 8];
     unsigned ncopied;
-    uint64_t seam_restored;
     uint8_t  diag_b, diag_q;      /* diagnostic: the origin tag the coarse rows of the current polygon / span fill take */
     /* what had no rule or no data */
     hud_ov   hud;                 /* the state-driven HUD: the pass being followed, the fonts, the counters (hud_overlay.h) */
@@ -94,9 +90,6 @@ void drawlist_set_line_width(drawlist *d, int width);
 void drawlist_free(drawlist *d);
 void drawlist_reset(drawlist *d);
 void drawlist_copy(drawlist *dst, const drawlist *src);
-/* Complete internal model seams before presenting or painting another layer.
- * Returns the fine pixels restored to their original coarse owner's colour. */
-uint64_t drawlist_finish_models(drawlist *d);
 
 /* Give the replay a page as it stands: 'Z' the work page at a phase's start
  * (its segment and the library origin then; it starts a phase), 'Y' the

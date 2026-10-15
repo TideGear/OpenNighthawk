@@ -156,12 +156,11 @@ pairs `U` records by colour and order and moves their corners with the span fill
 coarse footprint. That retained the original staircase and could cut teeth into a slanted
 edge. Ordinary verified model polygons now clip to their viewport and draw the actual
 geometry, with half a fine pixel of inclusive coverage to join adjacent faces. N=1 still
-paints the exact original footprint. Near-plane polygons retain their independently verified
-footprint/seam rule; incompatible geometry and the known extreme integer-overflow artifact
-still stay scaled. The flat-cell guard excludes verified fine geometry so it cannot put coarse
-stairs back. HUD protection is tracked separately for seam repair, so a previously refined sky
-cannot disable repair of a later near-plane polygon. Dither/stipple cells, bitmap lettering,
-cockpit art and map symbols remain the original artwork.
+paints the exact original footprint. Near-plane polygons were clamped to their footprint with a
+seam repair until 14 October; they are drawn from their verified geometry like the others (see
+"Footprints the original's clipper gets wrong"), and incompatible geometry still stays scaled. The flat-cell
+guard excludes verified fine geometry so it cannot put coarse stairs back. Dither/stipple cells, bitmap
+lettering, cockpit art and map symbols remain the original artwork.
 
 **The map is refined.** Its terrain is drawn once into the work page, then copied through the
 cockpit-art page (segment `09C0`) and back every frame. The replay does not hold that art page.
@@ -181,7 +180,8 @@ now follow their geometry, including during the normal cockpit page-copy cycle.
 the fine rectangle's round trip through an unseeded page, independent ownership after a
 replay copy, repeated display-blit bytes and stale-byte fallback, at N=1/4/9.
 `test_present_strips` covers thick, narrow, degenerate and incompatible span polygons;
-`test_near_polygons` also checks that guard protection cannot suppress seam repair.
+`test_near_polygons` checks that adjacent near-clipped faces leave no hole and that the near-clip tolerance accepts
+and refuses what it should.
 Fresh in-flight captures inspect the runway, map and banked terrain. Validation evidence is
 kept outside the repository in `D:/f117-gate/map-refill`; current tallies are in the handoff.
 
@@ -247,6 +247,9 @@ Independent C/Python replay of the orthographic prefix agrees on all 45
 polygons, 40,467 footprint pixels and 619,517 fine-grid paint pixels at N=4.
 
 ## Camera-plane reconstruction and shared seams (11 October 2026)
+
+*Superseded on 14 October: near-clipped polygons are drawn from their geometry, so the coverage tracking and
+seam repair described below (`drawlist_finish_models`, `DT_SEAM`) were removed; the crossing verification stays.*
 
 The current C and Python renderers also refine near-clipped convex polygons.
 G records carry both endpoints' camera coordinates, projected coordinates,
@@ -951,32 +954,36 @@ ready-to-run fullscreen preset. Commands and limits are in
 
 `F117_PRESENT_DIAG=DIR` (with `--present interp` or `replay` and `--present-scale N > 1`; off when unset) gives
 every replayed page a byte per fine pixel naming the path that last wrote it (`src/present/diagtag.h`: refined
-model polygon, refined span-rasteriser polygon, each fallback by reason, seam and guard repairs, strokes, text,
+model polygon, refined span-rasteriser polygon, each fallback by reason, guard repairs, strokes, text,
 sprites, blits from pages the replay does not hold, copies). The plane follows page copies, blits and the map's
 overlay cache as the fine pixels do. Beside each `--shots`/`--screen` picture, `f117run` writes `BASE.tag`, `BASE.diag.ppm`
-(false colour) and `BASE.txt`; `F117_PRESENT_DIAG_HIST=FILE` appends the per-tag counts of a window
+(false colour), `BASE.holes` and `BASE.txt`; `F117_PRESENT_DIAG_HIST=FILE` appends the per-tag counts of a window
 (`F117_PRESENT_DIAG_RECT=x0,y0,x1,y1`, default the 3-D view 0,0,320,91; `F117_PRESENT_DIAG_HIST_ONLY=1` skips the
-images), `F117_PRESENT_DIAG_TRACE=FILE` logs each polygon refused for a footprint beyond 3 px, and the final
+images) followed by the window's two hole counts, `F117_PRESENT_DIAG_TRACE=FILE` logs each polygon refused for a
+footprint beyond 3 px, and the final
 `[diag]` lines print the builder's and the interpolator's counters. `tools/present_diag.py` makes the side-by-side
 PNGs and class tables. Guest hashes and presented pictures are identical with it on (strike to 2.598B,
 N=4: `a8bc78f294805e14`, four shots byte-identical).
-`F117_PRESENT_DIAG_EXP=near` is an experiment only: it draws near-clipped polygons from their verified geometry
-instead of clamping them to the original's footprint.
+The hole counts (`diag_holes`, `headless.c`) are over the window, in fine pixels: *unwritten* is a pixel no path
+wrote in this frame (the seeded copy of an earlier frame shows); *stray* is a pixel a scene path wrote whose colour
+is none of the nine coarse cells around its own, so no boundary shift of up to a cell explains it (a gap showing what
+lies under the polygons, or geometry drawn where the original drew another colour). `BASE.holes` marks them (1, 2).
 
-Measured on the strike, landing and air-to-air type 6 flights (N=4, 3-D view, 144/167/126 frames sampled every 5 s
-of emulated time, 3-D window = 0,0,320,91):
-the view is 88 to 89% refined geometry (model polygons 9 to 34%, sky/ground span polygons 55 to 83%), strokes 2.5 to 5%,
-text 2%, canopy-frame sprites 3.4%, the rest scaled fallbacks. Two things leave visible blocks.
+Measured before the fixes below, on the strike, landing and air-to-air type 6 flights (N=4, 3-D view, 144/167/126
+frames sampled every 5 s of emulated time, 3-D window = 0,0,320,91):
+the view was 88 to 89% refined geometry (model polygons 9 to 34%, sky/ground span polygons 55 to 83%), strokes 2.5 to 5%,
+text 2%, canopy-frame sprites 3.4%, the rest scaled fallbacks. Two things left visible blocks.
 
-- **Near-clipped polygons are clamped to the original footprint** (`hires.c`, `geometric = n > 1 && !nclip`).
-  Their pixels (`DT_MODEL_NEAR`, 4 to 28% of the view) are cut to the original's coarse rows, so their edge against the
-  sky strips is a staircase of one-cell steps: 32 to 65% of the colour changes along that edge lie on the cell grid
-  (a refined edge gives 25% at N=4). With the experiment on, the same eight frames give 1 to 30%, and in the
-  one frame compared 615 of 465,920 window pixels differ.
-- **A polygon refused for "footprint beyond 3 px" is drawn as the scaled copy whole.** The test is exact equality of the
-  true shape plus 3 px with the original's rows, so missing 1 pixel in 15,000 refuses a large near-clipped sea/ground
-  polygon or the sky polygon (corners 20,000 to 30,000 px out). It happens in 6 to 8% of the sampled frames,
-  in bursts: the sky or the sea, up to 83% of the view, becomes cell-sized blocks for those frames.
+- **Near-clipped polygons were clamped to the original footprint** (`hires.c`, `geometric = n > 1 && !nclip`).
+  Their pixels (`DT_MODEL_NEAR`, 4 to 28% of the view) were cut to the original's coarse rows, so their edge against the
+  sky strips was a staircase of one-cell steps: 32 to 65% of the colour changes along that edge lay on the cell grid
+  (a refined edge gives 25% at N=4).
+- **A polygon refused for "footprint beyond 3 px" was drawn as the scaled copy whole.** The test was exact equality of the
+  true shape plus 3 px with the original's rows, so missing 1 pixel in 15,000 refused a large near-clipped sea/ground
+  polygon or the sky polygon (corners 20,000 to 30,000 px out). It happened in 6 to 8% of the sampled frames,
+  in bursts: the sky or the sea, up to 83% of the view, became cell-sized blocks for those frames.
+
+Both are fixed (next section). Evidence stays outside git in `D:/f117-gate/present-v2/fix3d`.
 
 HUD lines come from integer endpoints (`N` records: AX..DX of the library line call, already clipped); the in-between
 frame interpolates each endpoint with `rnd(lerp())` back to an integer, so a line moves in whole cells, and a group
@@ -1109,6 +1116,91 @@ original's art may differ. Altitude above 10,000 feet reads the label table past
 `[E56E] = 0` (ladder off), the small HUD in modes 1 and 2 and rungs at |n| >= 9 are modelled from the disassembly and
 not reproduced against a log. A pass is left on the original path when no `T` record has yet carried a font it
 needs (none happened in these windows). Nothing here has been seen on a physical display.
+
+## Footprints the original's clipper gets wrong (14 October 2026)
+
+**What changed.** At N > 1 every verified model polygon, near-clipped ones included, is drawn from its geometry
+(`geometry_cover`, half a fine pixel of inclusive coverage, clipped to the viewport); the footprint only decides
+whether the geometry reproduces the original. The footprint clamp, the coverage tracking and the seam repair it needed
+are gone (`DT_SEAM`, `drawlist_finish_models`). The exact test (footprint reproduced within 3 px) is kept; what
+changed is what happens beyond it, by polygon kind:
+
+| Kind | Rule at N > 1 | Why |
+|---|---|---|
+| Near-clipped model polygon (`nclip` 2, both crossings already verified against the original's) | accepted when the footprint lies within 16 px (Chebyshev, steps 4, 6, 9, 12, 16) of the geometry and the geometry spills over the footprint by at most a tenth of the footprint's size (`NEAR_CLIP_TOLERANCE`) | measured below |
+| Span-rasteriser polygon with an edge whose 16-bit difference overflows (two corners more than 32,767 apart) | accepted, and drawn from its corners | every refusal has one |
+| Zero-height span strip (all corners on one row) with a one-row footprint | the original's row is the rendition: tagged `DT_SPAN_LINE`, no refusal | there is nothing to refine; 28,672 of the 31,439 trace lines of one run were these |
+| Zero-area span polygon with a taller footprint | kept scaled, `DT_SPAN_DEGENERATE` | the original's own artefact (two to four per flight run) |
+| Anything else beyond 3 px (a non-clipped model polygon whose geometry sits rows from its footprint, no overflowing edge) | kept scaled | geometry that does not explain the picture |
+
+At N = 1 nothing changes: the footprint is the picture, and `refill_span_polygon` returns before any of this.
+
+**What the measurements say about the cause.** Refusals were traced over the strike, landing and air-to-air runs up to
+the sampled frames (`F117_PRESENT_DIAG_TRACE`, with the footprint's distance to the geometry). Span polygons: every
+non-degenerate refusal (863 to 49,000 per run) has an edge between corners more than 32,767 apart, which sends the
+original's clipper (`0FB2:0757`, `vgame_span_edge_clipped`) down its halve-both-axes path (RCR/SAR on the differences,
+losing their low bits) before the 32-bit-product divide that places the clipped endpoint. The footprints that result
+lie up to 8 px (most), 128 px (a few) from the true band; in the example colour-128 band the true rows are around 66
+and the original's footprint is three full rows at 70 to 72. Overflow alone does not predict refusal: 316,560
+overflowing polygons in one run matched within 3 px. Why only some are off was not established; the clipper was read,
+not reproduced offline. Model polygons: all 833 refused near-clipped polygons have a crossing 4,800 to 280,000 px
+outside the picture (826 beyond 32,767; the original's 16-bit edge record holds the wrapped value, -279,589 appearing as
+about -17,447), the original clips such an edge with a 32-step bisection and 16-bit slopes (`vgame_mc32_bisect_one`,
+`vgame_mclip_point`), and the footprint is within 4 px of the geometry for 82% of them, 6 px for 90%, 16 px for all,
+with the geometry spilling over the footprint by 0.5 to 4.6%. The 4,198 refused non-clipped polygons are different:
+mostly tiny polygons whose geometry lies rows from the footprint (corners at y 61.2, footprint at row 64), which is a
+geometry mismatch, not clipper error, and stay scaled.
+
+**Before and after** (N=4, 3-D window, the same sampling as above; before is the commit's own `46e1d7c` build with
+the hole counters added):
+
+| | strike (144) | landing (167) | air-to-air (126) |
+|---|---|---|---|
+| frames with more than 0.5% of the window in fallbacks | 12 (8.3%) to 4 (2.8%) | 12 (7.2%) to 10 (6.0%) | 7 (5.6%) to 1 (0.8%) |
+| frames above 5% / above 20% | 10 / 7 to 0 / 0 | 7 / 7 to 0 / 0 | 7 / 4 to 0 / 0 |
+| worst frame | 83.6% to 1.7% | 55.6% to 3.3% | 42.4% to 0.7% |
+| mean fallback share | 2.60% to 0.04% | 2.04% to 0.09% | 1.32% to 0.01% |
+| unwritten pixels | 0 to 0 | 0 to 0 | 0 to 0 |
+| mean stray pixels (share of the window) | 10,823 (2.3%) to 12,275 (2.6%) | 10,413 (2.2%) to 11,618 (2.5%) | 5,355 (1.1%) to 6,574 (1.4%) |
+| worst stray frame | 7.1% to 14.6% | 7.5% to 17.4% | 4.9% to 22.9% |
+
+The fallbacks that remain are `DT_SPAN_DEGENERATE` polygons (0.03%), non-clipped model polygons and
+`DT_FB_NEAR_CROSSING` (0.06% of landing). Over the sixteen diagnostic frames (`present_diag.py`'s set), the window's
+colour changes between two scene polygons that lie on a whole-cell run of the cell grid fall from 54,488 of 378,633
+(14.4%) to 5,404 of 379,446 (1.4%); the four burst frames go from 36.3, 83.6, 52.2 and 17.4% fallback to 0, 0.25, 0.70
+and 0. One-to-two-pixel slivers of colour between two polygons beside a near-clipped one, which a gap would make,
+number 457 before and 141 after.
+
+The stray count rises where the original's own clipper mis-drew a polygon: the picture now shows the polygon the game
+asked for, which differs from the original's N=1 picture by whole rows in those frames (the horizon and sky bands in
+the burst frames; up to 23% of the window in the worst). That is the intended result of "true geometry wins", and it
+means that in such frames the fine picture is not a refinement of the original's, so the owner's parity judgement
+applies to it. N = 1 is untouched.
+
+**A hard turn.** Scripted routes turn at 2 to 3 deg/s. Holding Left, then pulsing Down every 3 s after the takeoff
+climb, gives a steep bank (the horizon near vertical) at 3 to 7 g and 17 to 27 deg/s of yaw for about 12 s before the aircraft hits
+the ground (heading words sampled each 4.5M instructions; the sustained window starts 450M after the climb; a second
+script gives 10 to 40 deg/s). The two windows (30 and 29 frames at 0.5 s) show sea, terrain and a near-vertical
+horizon. Fallbacks there were already small: mean 0.01% / 0.02% before and after, worst 0.3% / 0.7%; the scene
+cell-stair share goes 1.6% to 0.9% and 1.6% to 1.0%; unwritten pixels 0. So these hard turns do not reproduce the
+bursts, which occurred at small bank angles near the horizon.
+
+**Checks.** `ctest -E func_lockstep`: 76 of 76. Sixteen retained windows (`logs41` eight, the map and span captures,
+three current-flight windows): replay, `test_hires` at N=1/4/9 and `test_interp --fine` at 4/9, 96 of 96 pass (N=1: 69
+of 69 phases equal in `w_strike_853`). `boot_to_flight` at N=4 and 9: 368 logic frames and 366 pairs exact, final hash
+`48a10e901505e2a9`, equal to the run without presentation. The strike window 3.255B to 3.29B at N=1 gives
+byte-identical pictures with the commit's own build. `test_present_strips` adds overflow, line and degenerate cases;
+`test_near_polygons` the tolerance.
+
+`tools/hires_subpixel.py`, the Python mirror of the builder, still has the earlier footprint/seam rule for near-clipped
+polygons and the 3 px test alone; it no longer mirrors `hires.c` on them.
+
+**What is not settled.** The original clipper's exact error was not reproduced, so the tolerances (16 px, a tenth,
+the overflow criterion) are bounds from the measured distribution on three flights, not derived limits: a flight
+with a larger error would be refused (and scaled) rather than drawn wrongly. A span polygon accepted on its
+overflow is drawn inside the bounding box of its footprint, so a band whose true rows lie outside the original's table
+loses that part. Zero-area polygons with a tall footprint, non-clipped model polygons whose geometry mismatches
+and the stipple/dither cells stay scaled.
 
 ## Open questions and risks
 

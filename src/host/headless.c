@@ -283,8 +283,9 @@ static const uint8_t g_diag_rgb[DT_COUNT][3] = {
     [DT_FB_UNATTEMPTED] = { 255, 0, 0 }, [DT_FB_NEAR_SHAPE] = { 220, 0, 40 }, [DT_FB_NEAR_CROSSING] = { 255, 60, 60 },
     [DT_FB_FEW_EDGES] = { 200, 40, 0 }, [DT_FB_NO_VERTICES] = { 255, 90, 0 }, [DT_FB_BEHIND] = { 190, 0, 80 },
     [DT_FB_NO_DIVISOR] = { 255, 120, 120 }, [DT_FB_BEYOND] = { 140, 0, 0 },
-    [DT_SEAM] = { 255, 150, 0 }, [DT_GUARD] = { 255, 190, 80 },
+    [DT_GUARD] = { 255, 190, 80 },
     [DT_SPAN_NOT_POLY] = { 180, 0, 180 }, [DT_SPAN_REJECT] = { 255, 0, 255 }, [DT_SPAN_BEYOND] = { 200, 0, 110 },
+    [DT_SPAN_LINE] = { 255, 255, 190 }, [DT_SPAN_DEGENERATE] = { 160, 0, 200 },
     [DT_SPAN_THIN] = { 255, 255, 120 }, [DT_SPAN_SHADE] = { 110, 0, 150 },
     [DT_HUD_FINE] = { 255, 255, 0 }, [DT_OUTLINE_FINE] = { 255, 215, 0 }, [DT_TICKS_FINE] = { 220, 220, 0 },
     [DT_HUD_COARSE] = { 160, 160, 0 }, [DT_OUTLINE_COARSE] = { 160, 130, 0 }, [DT_TICKS_COARSE] = { 130, 130, 0 },
@@ -293,29 +294,71 @@ static const uint8_t g_diag_rgb[DT_COUNT][3] = {
     [DT_X_DELTA] = { 120, 80, 40 }, [DT_OTHER] = { 255, 0, 200 },
 };
 
+/* Holes in the fine picture of a window (original pixels, x1 and y1 exclusive), counted in fine pixels.
+ * unwritten: no path wrote the pixel in this frame (the seed's scaled copy of an earlier frame shows).
+ * stray: a pixel the scene paths wrote (refined or scaled polygon, guard repairs) whose colour is
+ * none of the nine coarse cells around its own, so no shift of a boundary by up to a cell can explain it:
+ * a gap that shows what lies under the polygons, or geometry drawn where the original drew another colour.
+ * The coarse picture is the original's N = 1 rendition of the same frame. */
+static void diag_holes(const uint8_t *coarse, const uint8_t *hi, const uint8_t *tag, int n, const int rect[4],
+                       unsigned long long *unwritten, unsigned long long *stray, uint8_t *mask)
+{
+    const int w = 320 * n;
+    *unwritten = *stray = 0;
+    for (int cy = rect[1]; cy < rect[3]; cy++)
+        for (int cx = rect[0]; cx < rect[2]; cx++) {
+            uint8_t near[9];
+            int nn = 0;
+            for (int dy = -1; dy <= 1; dy++)
+                for (int dx = -1; dx <= 1; dx++) {
+                    const int x = cx + dx, y = cy + dy;
+                    near[nn++] = (x < 0 || x > 319 || y < 0 || y > 199) ? coarse[cy * 320 + cx] : coarse[y * 320 + x];
+                }
+            for (int j = 0; j < n; j++)
+                for (int i = 0; i < n; i++) {
+                    const size_t at = (size_t)(cy * n + j) * w + (size_t)cx * n + i;
+                    const uint8_t t = tag[at];
+                    if (t == DT_SEED) { (*unwritten)++; if (mask) mask[at] = 1; continue; }
+                    if (t > DT_SPAN_SHADE) continue;
+                    int k = 0;
+                    while (k < 9 && near[k] != hi[at]) k++;
+                    if (k == 9) { (*stray)++; if (mask) mask[at] = 2; }
+                }
+        }
+}
+
 /* F117_PRESENT_DIAG_HIST=FILE appends, for every shot, one line: the shot's name, the plan kind and t,
- * and the count of each origin tag inside the window F117_PRESENT_DIAG_RECT=x0,y0,x1,y1 (original
- * pixels; default 0,0,320,91, the 3-D view). F117_PRESENT_DIAG_HIST_ONLY=1 then writes no images. */
-static void diag_hist(const char *stem, int n)
+ * the count of each origin tag inside the window F117_PRESENT_DIAG_RECT=x0,y0,x1,y1 (original
+ * pixels; default 0,0,320,91, the 3-D view), then the window's unwritten and stray pixels (diag_holes).
+ * F117_PRESENT_DIAG_HIST_ONLY=1 then writes no images. */
+static void diag_window(int rect[4])
+{
+    rect[0] = 0; rect[1] = 0; rect[2] = 320; rect[3] = 91;
+    const char *r = getenv("F117_PRESENT_DIAG_RECT");
+    if (r) sscanf(r, "%d,%d,%d,%d", &rect[0], &rect[1], &rect[2], &rect[3]);
+}
+
+static void diag_hist(const char *stem, int n, const uint8_t *coarse)
 {
     const char *file = getenv("F117_PRESENT_DIAG_HIST");
     if (!file || !*file) return;
-    int x0 = 0, y0 = 0, x1 = 320, y1 = 91;
-    const char *r = getenv("F117_PRESENT_DIAG_RECT");
-    if (r) sscanf(r, "%d,%d,%d,%d", &x0, &y0, &x1, &y1);
+    int rect[4];
+    diag_window(rect);
     unsigned long long cnt[256] = { 0 };
     const int w = 320 * n;
-    for (int y = y0 * n; y < y1 * n; y++)
-        for (int x = x0 * n; x < x1 * n; x++) cnt[g_live.shown_tag[(size_t)y * w + x]]++;
+    for (int y = rect[1] * n; y < rect[3] * n; y++)
+        for (int x = rect[0] * n; x < rect[2] * n; x++) cnt[g_live.shown_tag[(size_t)y * w + x]]++;
+    unsigned long long unwritten, stray;
+    diag_holes(coarse, g_live.shown_hi, g_live.shown_tag, n, rect, &unwritten, &stray, NULL);
     FILE *o = fopen(file, "a");
     if (!o) return;
     fprintf(o, "%s %d %.6f", stem, g_live.diag_kind, g_live.diag_t);
     for (int k = 0; k < DT_COUNT; k++) fprintf(o, " %llu", cnt[k]);
-    fputc('\n', o);
+    fprintf(o, " %llu %llu\n", unwritten, stray);
     fclose(o);
 }
 
-static void diag_write(const char *shot_path, int n)
+static void diag_write(const char *shot_path, int n, const uint8_t *coarse)
 {
     const char *dir = getenv("F117_PRESENT_DIAG");
     if (!dir || !*dir || !g_live.shown_tag || n < 1) return;
@@ -326,7 +369,7 @@ static void diag_write(const char *shot_path, int n)
     char *dot = strrchr(stem, '.');
     if (dot) *dot = 0;
     const int w = 320 * n, h = 200 * n;
-    diag_hist(stem, n);
+    diag_hist(stem, n, coarse);
     if (getenv("F117_PRESENT_DIAG_HIST_ONLY")) return;
     snprintf(path, sizeof path, "%s/%s.tag", dir, stem);
     FILE *o = fopen(path, "wb");
@@ -349,6 +392,19 @@ static void diag_write(const char *shot_path, int n)
         fprintf(o, "scale %d width %d height %d\nplan %d t %.6f older %llu newer %llu\n", n, w, h, g_live.diag_kind,
                 g_live.diag_t, (unsigned long long)g_live.diag_older, (unsigned long long)g_live.diag_newer);
         fprintf(o, "plan kinds: 1 replay (logic frame), 2 older, 3 newer, 4 in-between\n");
+        int rect[4];
+        unsigned long long unwritten, stray;
+        diag_window(rect);
+        const size_t cells = (size_t)w * h;
+        uint8_t *mask = (uint8_t *)calloc(cells, 1);
+        diag_holes(coarse, g_live.shown_hi, g_live.shown_tag, n, rect, &unwritten, &stray, mask);
+        if (mask) {
+            snprintf(path, sizeof path, "%s/%s.holes", dir, stem);
+            FILE *hm = fopen(path, "wb");
+            if (hm) { fwrite(mask, 1, cells, hm); fclose(hm); }
+            free(mask);
+        }
+        fprintf(o, "window %d,%d,%d,%d holes: unwritten %llu stray %llu\n", rect[0], rect[1], rect[2], rect[3], unwritten, stray);
         fclose(o);
     }
 }
@@ -359,7 +415,7 @@ static void write_shot(const machine_t *m, const char *path)
     static present_frame f;
     capture(m, &f);
     if (!g_live.shown_hi) { present_frame_write_ppm(&f, path); return; }
-    diag_write(path, g_scale);
+    diag_write(path, g_scale, f.vram);
     const int n = g_scale, w = 320 * n, h = 200 * n;
     FILE *o = fopen(path, "wb");
     if (!o) return;

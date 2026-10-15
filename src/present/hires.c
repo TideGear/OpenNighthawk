@@ -27,7 +27,10 @@ static const char *const STAT_NAMES[HS_COUNT] = {
     "skipped: vertex behind the eye", "skipped: vertex without a divisor",
     "skipped: footprint beyond 3 px of its geometry", "skipped: fill style with no rule",
     "span-rasteriser polygons (strips, regions)", "span polygons refilled from their corners",
-    "span polygons: footprint beyond 3 px of the corners", "span polygons: strips too thin to trim" };
+    "span polygons: footprint beyond 3 px of the corners", "span polygons: strips too thin to trim",
+    "near-clipped polygons: footprint beyond 3 px, within the clip tolerance",
+    "span polygons: footprint beyond 3 px, explained by an overflowing edge",
+    "span polygons: zero-height line, one row", "span polygons: zero-area, more than one row" };
 
 const char *hires_stat_name(int k) { return k >= 0 && k < HS_COUNT ? STAT_NAMES[k] : ""; }
 
@@ -298,6 +301,50 @@ static int64_t cover_total(const int32_t *spans, int count)
     return t;
 }
 
+/* Beyond the exact test (the original's walk reproduced within 3 px) a polygon is still drawn from its geometry
+ * at N > 1 when the original's own arithmetic explains the difference (docs/presentation.md, "Footprints the
+ * original's clipper gets wrong"):
+ *  - a near-clipped polygon (two verified crossings), whose far crossing the original clips with 16-bit slopes
+ *    and a 32-step bisection: the footprint must lie within NEAR_CLIP_TOLERANCE pixels (Chebyshev) of the
+ *    geometry, and the geometry may spill over the footprint by at most a tenth of its size;
+ *  - a span-rasteriser polygon with an edge whose 16-bit difference overflows (two corners more than 32,767
+ *    apart), which sends the original's clipper (0FB2:0757) down its halve-both-axes path.
+ * A polygon that is neither (a tiny polygon whose geometry sits rows away from its footprint, a zero-area
+ * polygon with a tall footprint) keeps the scaled copy. */
+#define NEAR_CLIP_TOLERANCE 16.0
+#define NEAR_CLIP_SPILL_DIVISOR 10
+
+static int near_clip_tolerated(const footprint *f, const extents *x, int64_t want, const int32_t vp[4], int32_t *spans)
+{
+    static const double steps[] = { 4, 6, 9, 12, NEAR_CLIP_TOLERANCE };
+    int ok = 0;
+    for (unsigned q = 0; q < sizeof steps / sizeof *steps && !ok; q++) {
+        const int c = fine_cover(f, x, 1, steps[q], spans);
+        ok = cover_total(spans, c) == want;
+    }
+    if (!ok) return 0;
+    const int count = geometry_cover(x, 1, 0.5, vp, spans);
+    int64_t spill = 0;
+    for (int k = 0; k < count; k++) {
+        const int row = spans[3 * k] - f->y0;
+        int64_t inside = 0;
+        if (row >= 0 && row < f->n && f->has[row]) {
+            const int32_t lo = spans[3 * k + 1] > f->l[row] ? spans[3 * k + 1] : f->l[row];
+            const int32_t hi = spans[3 * k + 2] < f->r[row] ? spans[3 * k + 2] : f->r[row];
+            if (hi >= lo) inside = hi - lo + 1;
+        }
+        spill += (spans[3 * k + 2] - spans[3 * k + 1] + 1) - inside;
+    }
+    return spill * NEAR_CLIP_SPILL_DIVISOR <= want;
+}
+
+static int span_edge_overflows(const double (*base)[4], int ne)
+{
+    for (int k = 0; k < ne; k++)
+        if (fabs(base[k][2] - base[k][0]) > 32767 || fabs(base[k][3] - base[k][1]) > 32767) return 1;
+    return 0;
+}
+
 /* ---- the builder ---- */
 
 /* Keep the original checkerboard's pixel-sized cells while refining the
@@ -319,41 +366,6 @@ static void paint_run(uint8_t *row, uint8_t *trow, uint8_t tv, int n, int colour
         if (hi == 0xFC) { for (int i = 0; i < n; i++) if (((x + i) / scale + y / scale) & 1) trow[i] = tv; }
         else memset(trow, tv, (size_t)n);
     }
-}
-
-static void model_span(uint8_t *mask,size_t first,size_t last)
-{
-    for(size_t at=first;at<=last;at++) mask[at>>3]|=(uint8_t)(1u<<(at&7));
-}
-
-/* Track unclamped true geometry separately from the polygon's painted fine
- * spans. Their unions distinguish internal footprint seams from outer edges. */
-static void model_geometry(drawlist_page *page,const footprint *f,const extents *x,const int32_t vp[4])
-{
-    const int n=page->n,W=320*n,H=200*n;
-    const size_t bits=((size_t)W*H+7)/8;
-    if(!page->model) page->model=(uint8_t *)calloc(2*bits,1);
-    if(!page->model) return;
-    for(int k=0;k<f->n;k++) if(f->has[k] && f->y0+k>=0 && f->y0+k<200) {
-        int l=f->l[k]<0?0:f->l[k],r=f->r[k]>319?319:f->r[k];
-        if(l<=r) model_span(page->model_foot,(size_t)(f->y0+k)*320+l,(size_t)(f->y0+k)*320+r);
-    }
-    double top=H,bottom=0;
-    for(int k=0;k<x->n;k++) {if(x->e[k].ay<top) top=x->e[k].ay;if(x->e[k].by>bottom) bottom=x->e[k].by;}
-    int y0=top<=0?0:top>=H?H:(int)ceil(top-0.5);
-    int y1=bottom>=H?H-1:bottom<=0?-1:(int)ceil(bottom-0.5)-1;
-    if(vp[1]>0 && vp[1]<200 && y0<vp[1]*n) y0=vp[1]*n;
-    if(vp[3]>=0 && vp[3]<199 && y1>=(vp[3]+1)*n) y1=(vp[3]+1)*n-1;
-    if(vp[1]>=200 || vp[3]<0 || vp[0]>=320 || vp[2]<0) return;
-    const int xmin=vp[0]>0?vp[0]*n:0,xmax=vp[2]<319?(vp[2]+1)*n-1:W-1;
-    for(int y=y0;y<=y1;y++) {
-        double lo,hi;extents_at(x,y+0.5,&lo,&hi);
-        if(lo==INFINITY || hi<=0 || lo>=W) continue;
-        int l=lo<=0?0:(int)ceil(lo-0.5),r=hi>=W?W-1:(int)ceil(hi-0.5)-1;
-        if(l<xmin) l=xmin;if(r>xmax) r=xmax;
-        if(l<=r) model_span(page->model,(size_t)y*W+l,(size_t)y*W+r);
-    }
-    page->model_active=1;
 }
 
 /* The camera cut's two crossings close the visible part of a convex model
@@ -498,7 +510,8 @@ static void refill(hires *h, drawlist *d, drawlist_page *page)
         const int c = fine_cover(&f, &x, 1, GROWS[g], spans);
         if (cover_total(spans, c) == want) break;
     }
-    if (g == 6) {
+    const int tolerated = g == 6 && h->n > 1 && h->poly.nclip == 2 && near_clip_tolerated(&f, &x, want, h->poly.vp, spans);
+    if (g == 6 && !tolerated) {
         h->stats[HS_BEYOND]++; h->stats[HS_LEFT_NEAREST]++; d->diag_b = DT_FB_BEYOND;
         FILE *tf = trace_file();
         if (tf) {
@@ -510,25 +523,21 @@ static void refill(hires *h, drawlist *d, drawlist_page *page)
         }
         return;
     }
-    h->stats[HS_GROW0 + g]++;
+    h->stats[tolerated ? HS_NEAR_TOLERATED : HS_GROW0 + g]++;
     const int n = h->n;
     if (n > 64) return;
     for (int k = 0; k < ne; k++)
         for (int c = 0; c < 4; c++) fine[k][c] = base[k][c] * n;
     extents_init(&x, (const double (*)[4])fine, ne);
-    /* F117_PRESENT_DIAG_EXP=near (diagnostic experiment, off by default): draw near-clipped polygons from
-     * their verified geometry too, instead of clamping them to the original's coarse footprint. */
-    static int exp_near = -1;
-    if (exp_near < 0) { const char *e = getenv("F117_PRESENT_DIAG_EXP"); exp_near = e && strstr(e, "near") ? 1 : 0; }
-    const int geometric = n > 1 && (!h->poly.nclip || exp_near);
+    /* Every verified polygon, near-clipped ones included, is drawn from its geometry: the footprint only
+     * decided that the geometry reproduces the original (above). At N = 1 the footprint is the picture. */
+    const int geometric = n > 1;
     const int count = geometric ? geometry_cover(&x, n, 0.5, h->poly.vp, spans)
                                 : fine_cover(&f, &x, n, GROWS[g], spans);
     if (geometric) protect_geometry(page, &f, spans, count);
     const int W = 320 * n;
     const int hib = (h->fill_colour >> 8) & 0xFF;
     const uint8_t tv = h->poly.nclip ? DT_MODEL_NEAR : (hib != 0xFF && hib != 0xFE && hib != 0xFD && hib != 0xFB) ? DT_MODEL_PATTERN : DT_MODEL_SOLID;
-    const int tracking=!geometric && n>1 && (h->fill_colour&0xFF00)!=0xFB00;
-    if(tracking) model_geometry(page,&f,&x,h->poly.vp);
     for (int k = 0; k < count; k++) {
         const int32_t hy = spans[3 * k];
         int32_t l = spans[3 * k + 1], r = spans[3 * k + 2];
@@ -537,10 +546,6 @@ static void refill(hires *h, drawlist *d, drawlist_page *page)
         if (r > W - 1) r = W - 1;
         if (r < l) continue;
         paint_run(page->hi + (size_t)hy * W + l, page->tag ? page->tag + (size_t)hy * W + l : NULL, tv, r - l + 1, h->fill_colour, l, hy, n);
-        if(tracking && page->model) {
-            const size_t bits=((size_t)64000*n*n+7)/8;
-            model_span(page->model+bits,(size_t)hy*W+l,(size_t)hy*W+r);
-        }
     }
     h->stats[HS_FOOT_PIXELS] += (uint64_t)want;
     h->stats[HS_FOOT_FINE] += (uint64_t)cover_total(spans, count);
@@ -640,7 +645,23 @@ static void refill_span_polygon(hires *h, drawlist *d, const int32_t *v, int n)
         const int c = fine_cover(&f, &x, 1, GROWS[g], spans);
         if (cover_total(spans, c) == want) break;
     }
-    if (g == 6) {
+    /* Only an actually degenerate polygon needs a line. A narrow region
+     * still has two distinct boundaries at high resolution. */
+    double area = 0;
+    for(int k=0;k<ne;k++) area += base[k][0]*base[k][3]-base[k][2]*base[k][1];
+    const int degenerate = fabs(area) < 1e-9;
+    if (g == 6 && degenerate) {
+        /* A zero-height strip is a line, which the original paints as one row: that row is its true rendition
+         * and there is nothing to refine. A zero-area polygon with a taller footprint is the original's own
+         * artefact (its clipper's overflow), kept as it is drawn. */
+        int rows = 0;
+        for (int k = 0; k < f.n; k++) rows += f.has[k];
+        if (rows == 1) { h->stats[HS_SPAN_LINE]++; d->diag_q = DT_SPAN_LINE; }
+        else { h->stats[HS_SPAN_DEGENERATE]++; d->diag_q = DT_SPAN_DEGENERATE; }
+        return;
+    }
+    const int overflow = g == 6 && span_edge_overflows(base, ne);
+    if (g == 6 && !overflow) {
         h->stats[HS_SPAN_BEYOND]++; d->diag_q = DT_SPAN_BEYOND;
         FILE *tf = trace_file();
         if (tf) {
@@ -652,14 +673,11 @@ static void refill_span_polygon(hires *h, drawlist *d, const int32_t *v, int n)
         }
         return;
     }
-    /* Only an actually degenerate polygon needs a line. A narrow region
-     * still has two distinct boundaries at high resolution. */
-    double area = 0;
-    for(int k=0;k<ne;k++) area += base[k][0]*base[k][3]-base[k][2]*base[k][1];
-    if (fabs(area) < 1e-9) {
+    if (degenerate) {
         thin_strip_stroke(h, d, page, &f, base, ne, want);
         return;
     }
+    if (overflow) h->stats[HS_SPAN_OVERFLOW]++;
     const int sc = h->n;
     for (int k = 0; k < ne; k++)
         for (int c = 0; c < 4; c++) fine[k][c] = base[k][c] * sc;

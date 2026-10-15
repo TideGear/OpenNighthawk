@@ -9,6 +9,9 @@ NAME is a shot's base name (SHOTS/NAME.ppm, FRAMES/NAME.tag, .diag.ppm, .txt). T
 class's share of the window and the colour changes that lie on the coarse cell grid (about 1 in N for
 a refined edge, nearly all of them for scaled pixels), and writes NAME.png: the presented picture beside
 the origin picture, and NAME_win.png: the window only. Origins are named in src/present/diagtag.h.
+NAME.txt also counts the window's holes: "unwritten" pixels (no path wrote them in this frame) and "stray"
+ones (a scene pixel whose colour is none of the nine coarse cells around its own); NAME.holes marks them
+(1 unwritten, 2 stray), one byte per fine pixel.
 """
 import re, sys, os, json
 import numpy as np
@@ -27,16 +30,16 @@ for n in NAMES:
     if n in ("DT_MODEL_SOLID", "DT_MODEL_PATTERN", "DT_MODEL_NEAR"): c = "a"
     elif n == "DT_SPANPOLY_FINE": c = "a2"
     elif n == "DT_SEED": c = "e0"
-    elif n.startswith("DT_FB_") or n in ("DT_SEAM", "DT_GUARD"): c = "b"
-    elif n in ("DT_SPAN_REJECT", "DT_SPAN_BEYOND"): c = "b2"
-    elif n in ("DT_SPAN_THIN", "DT_HUD_FINE", "DT_OUTLINE_FINE", "DT_TICKS_FINE"): c = "c"
+    elif n.startswith("DT_FB_") or n == "DT_GUARD": c = "b"
+    elif n in ("DT_SPAN_REJECT", "DT_SPAN_BEYOND", "DT_SPAN_DEGENERATE"): c = "b2"
+    elif n in ("DT_SPAN_THIN", "DT_SPAN_LINE", "DT_HUD_FINE", "DT_OUTLINE_FINE", "DT_TICKS_FINE"): c = "c"
     elif n == "DT_TEXT": c = "d"
     elif n in ("DT_SPRITE", "DT_SPRITE_RLE", "DT_BLIT_UNHELD"): c = "e"
     elif n in ("DT_BLIT_COARSE", "DT_PAGECOPY"): c = "f"
     CLASS[n] = c
 CLASS_TITLE = {
     "a": "(a) refined model polygon, fine grid", "a2": "(a2) refined span-rasteriser polygon (sky/ground/map regions)",
-    "b": "(b) model polygon kept as scaled copy (+ seam/guard repairs)", "b2": "(b2) span-rasteriser polygon kept scaled",
+    "b": "(b) model polygon kept as scaled copy (+ guard repairs)", "b2": "(b2) span-rasteriser polygon kept scaled",
     "c": "(c) fine stroke (HUD, outline, ticks, thin strip)", "d": "(d) scaled text",
     "e0": "(e0) static cockpit art left from the seed (scaled copy, never redrawn)", "e": "(e) scaled sprite / cockpit & map artwork", "f": "(f) page copy / coarse blit",
     "g": "(g) anything else"}
@@ -137,6 +140,8 @@ def main():
         for c in ("a", "a2", "b", "b2", "c", "d", "e0", "e", "f", "g"):
             if cls.get(c): print(f"   {CLASS_TITLE[c]:75s} {100.0 * cls[c] / total:6.2f}%")
         print(f"   boundary pixels {tot}, on a cell line {al} ({100.0 * al / max(tot, 1):.1f}%; refined edges would give about {100.0 / n:.0f}%)")
+        for line in info:
+            if "holes:" in line: print("   " + line)
     json.dump(allres, open(f"{out}/stats.json", "w"), indent=1)
 
 
