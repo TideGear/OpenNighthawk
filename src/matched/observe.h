@@ -91,6 +91,10 @@ void observe_span_polygon(machine_t *m);   /* fill_polygon's entry: the corners 
  * when the observer asks for one. Reads guest memory directly; changes nothing. */
 void observe_hud_pass(machine_t *m);
 
+/* Called by the matched panel pass (matched.c, VGAME 0000:79BE) at its entry: the words the HUD's flight-path
+ * marker and bars are made from, as a record 'p' when the observer asks for the HUD state. */
+void observe_panel_pass(machine_t *m);
+
 /* Register the hooks on the original's own entry points (once). */
 void observe_register(void);
 

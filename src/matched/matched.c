@@ -33560,6 +33560,7 @@ static void panel_colour_ax(cpu_t *c, uint16_t address)
 static int vgame_panel_frame(machine_t *m)
 {
     cpu_t *c = &m->cpu;
+    if (g_f117_observer) observe_panel_pass(m);                 /* the panel items' state (the original path has no hook) */
     if (!room(c, 4)) return 0;
     x86_enter(c, 0x20, 0); x86_push_reg(c, R_DI); x86_push_reg(c, R_SI); c->icount += 3;
     VG3_FAR(0x79C4, 0);

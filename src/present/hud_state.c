@@ -802,6 +802,104 @@ int hud_fine(const hud_state *st, int N, const hud_exact_list *ex, hud_fine_list
     return out->overflow ? -1 : 0;
 }
 
+/* ---- the panel pass's items ----------------------------------------------------------------------------- */
+static void panel_derive(hud_panel *p)
+{
+    p->c_fpm = p->fpm; p->c_vs = p->vs; p->c_cmd = p->cmd; p->c_speed = p->raw / 27.0;
+}
+
+int hud_panel_load(const int32_t *v, int n, hud_panel *p)
+{
+    if (n < HUD_PANEL_N || v[0] != HUD_PANEL_VERSION) return 0;
+    p->fpm = s16(v[1]); p->vs = s16(v[2]); p->cmd = v[3] & 0xFFFF; p->raw = v[4] & 0xFFFF; p->speed = v[5] & 0xFFFF;
+    p->mode = v[6]; p->half = v[7];
+    panel_derive(p);
+    if (n >= HUD_PANEL_REC_FINE && v[HUD_PANEL_N] == HUD_PANEL_FINE_MAGIC) {
+        p->c_fpm = v[HUD_PANEL_N + 1] / 256.0;
+        p->c_vs = v[HUD_PANEL_N + 2] / 256.0;
+        p->c_cmd = v[HUD_PANEL_N + 3] / 256.0;
+        p->c_speed = v[HUD_PANEL_N + 4] / 1024.0;
+    }
+    return 1;
+}
+
+void hud_panel_from_ds(const uint8_t *ds, hud_panel *p)
+{
+    mem_t m = { (uint8_t *)ds };
+    p->fpm = MSW(&m, 0x98F6); p->vs = MSW(&m, 0xE586); p->cmd = MW(&m, 0xE474); p->raw = MW(&m, 0xB07E);
+    p->speed = MW(&m, 0xB194); p->mode = MB(&m, 0x294A); p->half = MB(&m, 0x294B);
+    panel_derive(p);
+}
+
+static int clamp3(int v, int lo, int hi)
+{
+    v = s16(v);
+    if (hi >= v) {
+        if (lo <= v) return v;
+        return v <= s16(0xC000) ? hi : lo;
+    }
+    return hi;
+}
+
+static double dclamp(double v, double lo, double hi) { return v < lo ? lo : v > hi ? hi : v; }
+
+int hud_panel_classify(const hud_panel *p, char kind, const int32_t *v, int n, hud_panel_item *out)
+{
+    memset(out, 0, sizeof *out);
+    if (kind == 'S') {
+        /* entry 71, the 11 x 7 marker from (55, 77) to (154, row - 4), row = 0x34 + ([98F6] >> 6) */
+        if (n < 14 || v[0] != 71) return HPI_NONE;
+        const int32_t *b = v + 2;
+        if (s16(b[1]) != 55 || s16(b[2]) != 77 || s16(b[4]) != 154 || s16(b[6]) != 11 || s16(b[7]) != 7) return HPI_NONE;
+        if (s16(b[5]) != 0x34 + (p->fpm >> 6) - 4) return HPI_NONE;
+        out->kind = HPI_FPM;
+        out->x0 = 154.0;
+        out->y0 = 52.0 + p->c_fpm / 64.0 - 4.0;
+        return HPI_FPM;
+    }
+    if (kind != 'N' || n < 7 || v[6] != 0) return HPI_NONE;
+    const int x0 = s16(v[0]), y0 = s16(v[1]), x1 = s16(v[2]), y1 = s16(v[3]);
+    if (x0 == 247 && x1 == 247 && y0 == 0x34) {
+        /* the vertical-speed bar: to row clamp3(0x34 - ([E586] >> 4), 0x14, 0x51) */
+        if (y1 != clamp3(0x34 - (p->vs >> 4), 0x14, 0x51)) return HPI_NONE;
+        out->kind = HPI_VS;
+        out->x0 = 247; out->y0 = 52;
+        out->x1 = 247; out->y1 = dclamp(52.0 - p->c_vs / 16.0, 20.0, 81.0);
+        return HPI_VS;
+    }
+    if (x0 == 72 && x1 == 72 && y1 == 0x51 && y0 != 0x51) {
+        /* the stall-margin bar: 0x51 - n up to 0x51, n = clamp3(((command - speed) * 2) / 5 + 0x1D, 0, 0x39); the divide truncates */
+        const int q = (s16(p->cmd - p->speed) * 2) / 5;
+        const int nn = clamp3(q + 0x1D, 0, 0x39);
+        if (nn == 0 || y0 != 0x51 - nn) return HPI_NONE;
+        const double nf = dclamp((((p->c_cmd - p->c_speed) * 2.0) / 5.0) + 29.0, 0.0, 57.0);
+        out->kind = HPI_STALL;
+        out->x0 = 72; out->y0 = 81.0 - nf;
+        out->x1 = 72; out->y1 = 81;
+        return HPI_STALL;
+    }
+    return HPI_NONE;
+}
+
+int hud_panel_blend(const int32_t *s, int ns, const int32_t *o, int no, double w, int32_t *out, int cap)
+{
+    if (ns < HUD_PANEL_N || no < HUD_PANEL_N || s[0] != HUD_PANEL_VERSION || o[0] != HUD_PANEL_VERSION || cap < HUD_PANEL_REC_FINE)
+        return 0;
+    if (s[6] != o[6] || s[7] != o[7]) return 0;                 /* the HUD mode or its size changed: no common picture */
+    if (fabs(w) < 1e-6) { memcpy(out, s, HUD_PANEL_N * sizeof *out); return HUD_PANEL_N; }
+    hud_panel a, b;
+    if (!hud_panel_load(s, ns, &a) || !hud_panel_load(o, no, &b)) return 0;
+    const double fpm = a.c_fpm + w * (b.c_fpm - a.c_fpm), vs = a.c_vs + w * (b.c_vs - a.c_vs);
+    const double cmd = a.c_cmd + w * (b.c_cmd - a.c_cmd), sp = a.c_speed + w * (b.c_speed - a.c_speed);
+    memcpy(out, s, HUD_PANEL_N * sizeof *out);
+    out[HUD_PANEL_N] = HUD_PANEL_FINE_MAGIC;
+    out[HUD_PANEL_N + 1] = (int32_t)floor(fpm * 256.0 + 0.5);
+    out[HUD_PANEL_N + 2] = (int32_t)floor(vs * 256.0 + 0.5);
+    out[HUD_PANEL_N + 3] = (int32_t)floor(cmd * 256.0 + 0.5);
+    out[HUD_PANEL_N + 4] = (int32_t)floor((sp < 0 ? 0 : sp) * 1024.0 + 0.5);
+    return HUD_PANEL_REC_FINE;
+}
+
 /* ---- interpolation -------------------------------------------------------------------------------- */
 static int rec_word(const int32_t *v, int off)
 {

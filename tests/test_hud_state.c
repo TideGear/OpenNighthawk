@@ -71,7 +71,7 @@ static int load_log(const char *path)
             r.v[12] = w[13];
             for (int i = 0; i < 12 && i < w[13]; i++) r.v[13 + i] = w[14 + i];
         }
-        if (k == 'S' && r.v[0] != 18) continue;
+        if (k == 'S' && r.v[0] != 18 && r.v[0] != 71) continue;
         add_rec(&r);
     }
     free(line);
@@ -93,7 +93,7 @@ static int match(const hud_prim *p, const rec_t *r)
         return 1;
     case HP_H: return r->kind == 'H' && p->si == r->v[0] && p->bx == (int16_t)r->v[1] && p->dl == r->v[2] && p->cl == r->v[3];
     case HP_S18:                                   /* the blit's block: source segment and x, y, page, destination x, y, size */
-        if (r->kind != 'S') return 0;
+        if (r->kind != 'S' || r->v[0] != 18) return 0;
         for (int k = 0; k < 8; k++) if (p->blk[k] != (uint16_t)r->v[2 + k]) return 0;
         return 1;
     }
@@ -131,6 +131,52 @@ static int driver_ticks(const hud_prim *h, int lo, int hi, int rows[200], int ce
         ch = ch == 10 ? 1 : ch + 1;
     }
     return n;
+}
+
+/* the panel pass's items: every record of the flight-path marker's and the two bars' geometry in the window is
+ * recognised by hud_panel_classify with the snapshot's state, and the fine position agrees with the integer one */
+static long c_pn_cand, c_pn_ok, c_pn_bad, c_fpm, c_vs, c_stall;
+static double fpm_lo = 9, fpm_hi = -9, vs_lo = 9, vs_hi = -9, st_lo = 9, st_hi = -9;
+
+static void check_panel(const uint8_t *ds, uint64_t tf, const char *name, int pass)
+{
+    hud_panel pn;
+    hud_panel_from_ds(ds, &pn);
+    for (int r = 0; r < g_nrec; r++) {
+        const rec_t *rc = &g_rec[r];
+        if (rc->t < tf - 21000 || rc->t > tf + 36000) continue;
+        int cand = 0;
+        if (rc->kind == 'S' && rc->v[0] == 71 && s16(rc->v[2 + 6]) == 11 && s16(rc->v[2 + 7]) == 7 && s16(rc->v[2 + 4]) == 154) cand = 1;
+        if (rc->kind == 'N' && rc->v[6] == 0 && s16(rc->v[0]) == 247 && s16(rc->v[2]) == 247 && s16(rc->v[1]) == 52) cand = 2;
+        if (rc->kind == 'N' && rc->v[6] == 0 && s16(rc->v[0]) == 72 && s16(rc->v[2]) == 72 && s16(rc->v[3]) == 81) cand = 3;
+        if (!cand) continue;
+        c_pn_cand++;
+        /* the record as the observer gives it: kind, then its values (S: entry, page, block); N: x0 y0 x1 y1 driver page origin */
+        int32_t v[16];
+        int n = 0;
+        if (rc->kind == 'S') { for (int k = 0; k < 14; k++) v[k] = rc->v[k]; n = 14; }
+        else { for (int k = 0; k < 7; k++) v[k] = rc->v[k]; n = 7; }
+        hud_panel_item it;
+        const int kind = hud_panel_classify(&pn, rc->kind, v, n, &it);
+        if (!kind) { c_pn_bad++; if (c_pn_bad < 6) printf("%s pass %d: panel record not recognised (%c %d %d %d %d)\n", name, pass, rc->kind, rc->v[0], rc->v[1], rc->v[2], rc->v[3]); continue; }
+        c_pn_ok++;
+        if (kind == HPI_FPM) {
+            c_fpm++;
+            const double d = (double)s16(rc->v[2 + 5]) - it.y0;
+            if (d < fpm_lo) fpm_lo = d;
+            if (d > fpm_hi) fpm_hi = d;
+        } else if (kind == HPI_VS) {
+            c_vs++;
+            const double d = (double)s16(rc->v[3]) - it.y1;
+            if (d < vs_lo) vs_lo = d;
+            if (d > vs_hi) vs_hi = d;
+        } else {
+            c_stall++;
+            const double d = (double)s16(rc->v[1]) - it.y0;
+            if (d < st_lo) st_lo = d;
+            if (d > st_hi) st_hi = d;
+        }
+    }
 }
 
 static void check_fine(const hud_state *st, const hud_exact_list *ex, int N, const char *name, int pass)
@@ -353,6 +399,7 @@ int main(int argc, char **argv)
             }
             (void)at;
             check_fine(&st, &ex, 4, name, (int)s);
+            check_panel(ds, tf, name, (int)s);
         }
         fclose(sf);
         printf("%-8s %ld passes: %ld exact, %ld mismatched\n", name, (long)count, wp, wb);
@@ -365,8 +412,10 @@ int main(int argc, char **argv)
     printf("FINE heading labels: %ld with int - float in [0, 2), %ld outside, %ld not drawn (int - float seen %d..%d)\n", c_head_ok, c_head_bad, c_head_cull, hx_lo, hx_hi);
     printf("FINE ladder: %ld passes with the rung numbering at a quantum boundary left out; %ld vertices, int - float x in [%d, %d], y in [%d, %d]; %ld label anchors, int - float x in [%d, %d], y in [%d, %d]; offset tables off the analytic form: %ld\n",
            c_rung_boundary, c_lad_n, ladx_lo, ladx_hi, lady_lo, lady_hi, c_anchor_n, anx_lo, anx_hi, any_lo, any_hi, c_off_bad);
+    printf("panel items: %ld records of the flight-path marker's and the bars' geometry, %ld recognised by their integer formulas, %ld not (marker %ld, vertical-speed bar %ld, stall bar %ld); integer minus float: marker top [%.2f, %.2f], vertical-speed bar end [%.2f, %.2f], stall bar top [%.2f, %.2f]\n",
+           c_pn_cand, c_pn_ok, c_pn_bad, c_fpm, c_vs, c_stall, fpm_lo, fpm_hi, vs_lo, vs_hi, st_lo, st_hi);
     printf("tick scale colour equal to the tape text colour: %ld of %ld H records\n", h_colour_ok, h_colour_ok + h_colour_bad);
-    g_fail += c_label_bad + c_tick_bad + c_head_bad + c_off_bad + h_colour_bad;
+    g_fail += c_label_bad + c_tick_bad + c_head_bad + c_off_bad + h_colour_bad + c_pn_bad;
     /* the analysis's measured windows for the ladder: vertices x in [-3, +5], y in [-3, +1] */
     if (ladx_lo < -3 || ladx_hi > 5 || lady_lo < -3 || lady_hi > 1) { printf("ladder vertex window exceeded\n"); g_fail++; }
     if (bad || g_fail) { printf("FAIL\n"); return 1; }

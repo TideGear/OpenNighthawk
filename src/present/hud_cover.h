@@ -41,8 +41,10 @@ typedef struct {
 typedef struct {
     hud_cover cover;
     hud_font  font[HUD_FONTS];
+    hud_panel panel;              /* the panel pass's state ('p'), while panel_valid */
+    int       panel_valid;
     /* what the HUD did, for reports */
-    uint64_t  passes, drawn, no_ticks, no_font, no_page, mismatched, replaced, kept, unsupported, leaked;
+    uint64_t  passes, drawn, no_ticks, no_font, no_page, mismatched, replaced, kept, unsupported, leaked, panel_replaced;
 } hud_ov;
 
 /* Remember the font a 'T' record carries (font index = its block's word 6). */

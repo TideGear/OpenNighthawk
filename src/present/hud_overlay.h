@@ -3,7 +3,9 @@
  * With a scale N > 1, the observer's 'h' record (the HUD pass's starting state, hud_state.h) makes the
  * replay draw the tapes, the heading strip and the pitch ladder on the fine grid from the state itself,
  * and the records of the pass that those replace (hud_cover.h) keep their coarse effect but leave the fine
- * picture alone. N = 1 and a log without 'h' records are the original's replay unchanged. */
+ * picture alone. The panel pass's flight-path marker and its two bars are drawn the same way from the
+ * observer's 'p' record (their records are recognised on arrival). N = 1 and a log without 'h' and 'p'
+ * records are the original's replay unchanged. */
 #ifndef F117R_HUD_OVERLAY_H
 #define F117R_HUD_OVERLAY_H
 
@@ -15,7 +17,7 @@ int hud_overlay_hook(drawlist *d, char kind, const int32_t *v, int n);
 
 /* The origin tags the state-driven HUD gives the diagnostic plane (diagtag.h's own enum is left alone). */
 enum { DT_HUD_STATE_LINE = 240, DT_HUD_STATE_TEXT = 241 };
-#define HUD_STATS 10
+#define HUD_STATS 11
 
 /* A check for tests: with it on, every record the fine picture replaces is run between two copies of the fine
  * page, and a record that changed it is counted ("leaked"). Slow; off by default. */

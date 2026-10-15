@@ -125,6 +125,44 @@ int hud_fine(const hud_state *st, int n, const hud_exact_list *ex, hud_fine_list
  * under a millionth), or 0. */
 int hud_blend(const int32_t *s, int ns, const int32_t *o, int no, double w, int32_t *out, int cap);
 
+/* ---- the panel pass's items: the flight-path marker and the two bars ----------------------------------------
+ * The panel pass (0000:79BE) runs before the HUD pass and draws the digital readouts, the stall-margin bar
+ * (x = 72), the vertical-speed bar (x = 247), the heading cue, the flight-path marker and the weapon texts. Three of
+ * those are a function of one or two state words each, and keep their state in the record 'p' the observer takes at the
+ * pass's entry: the flight-path marker (sprite, entry 71, 11 x 7, at x = 154, y = 48 + [98F6] / 64, full HUD), the
+ * vertical-speed bar ((247, 52) to (247, 52 - [E586] / 16), clamped to rows 20 to 81) and the stall bar ((72, 81)
+ * up to 81 - n, n = ((command speed - speed) * 2 / 5 + 29) clamped to 0..57). A record that arrives after a 'p' is
+ * recognised as one of these by its geometry and its value (the integer formulas); the heading cue, the digital numbers
+ * and the other items are not covered.
+ * v[0] HUD_PANEL_VERSION, then the words [98F6], [E586], [E474], [B07E], [B194], [294A], [294B]; an interpolated
+ * record appends HUD_PANEL_FINE_MAGIC and four fixed-point values (flight-path reference, vertical speed, command speed
+ * in 1/256, speed in 1/1024 knot). */
+#define HUD_PANEL_VERSION 1
+#define HUD_PANEL_N 8
+#define HUD_PANEL_FINE_MAGIC 0x50414E45
+#define HUD_PANEL_REC_FINE (HUD_PANEL_N + 5)
+
+typedef struct {
+    int    fpm, vs, cmd, raw, speed, mode, half;   /* the words (fpm and vs signed) */
+    double c_fpm, c_vs, c_cmd, c_speed;            /* the continuous values: the words, or interpolated */
+} hud_panel;
+
+enum { HPI_NONE, HPI_FPM, HPI_VS, HPI_STALL };
+typedef struct {
+    int    kind;                                   /* HPI_ */
+    double x0, y0, x1, y1;                         /* HPI_VS, HPI_STALL: a stroke's vertices in cell index space; HPI_FPM: x0, y0 the sprite's top-left */
+} hud_panel_item;
+
+/* 1 when v is a 'p' record */
+int hud_panel_load(const int32_t *v, int n, hud_panel *p);
+/* The state of 'p' from the words of a snapshot (tests) */
+void hud_panel_from_ds(const uint8_t *ds, hud_panel *p);
+/* The interpolated record, as hud_blend does for the HUD's. */
+int hud_panel_blend(const int32_t *s, int ns, const int32_t *o, int no, double w, int32_t *out, int cap);
+/* Is the record (kind 'S' or 'N', the observer's values) one of the items of this state, and where does the fine picture
+ * put it. With the state's integer words the position is the original's floor or ceiling. */
+int hud_panel_classify(const hud_panel *p, char kind, const int32_t *v, int n, hud_panel_item *out);
+
 /* The exact pipeline's own helpers, exported for the tests: the clipper, and the rotated, unclipped ladder
  * vertices of the last hud_exact on this thread */
 void hud_debug_ladder(int *nv, const int **rx, const int **ry, int *first_rung);

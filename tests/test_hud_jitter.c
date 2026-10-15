@@ -159,7 +159,7 @@ typedef struct { int cls, parity; char text[12]; } key_t;
 
 static key_t g_key[MAXK];
 static int g_nkey;
-typedef struct { series_t s[MAXK]; series_t pt; int pt_alive; pt_t pt_last; int nsamples; } track_t;
+typedef struct { series_t s[MAXK]; series_t pt; series_t pan[3]; int pt_alive; pt_t pt_last; int nsamples; } track_t;
 static track_t g_new, g_old;
 
 static int key_of(int cls, const char *text, int parity)
@@ -239,6 +239,13 @@ static void print_acc(const char *label, const acc_t o[2][2], int nseries)
     }
 }
 
+static void print_acc_one(const char *label, const acc_t o[2][2], int axis)
+{
+    printf("%-30s %c: %4d second differences; before: mean %.2f rms %.2f max %.2f; after: mean %.2f rms %.2f max %.2f\n",
+           label, axis ? 'y' : 'x', o[0][axis].n, o[0][axis].sum / o[0][axis].n, sqrt(o[0][axis].sq / o[0][axis].n), o[0][axis].max,
+           o[1][axis].sum / o[1][axis].n, sqrt(o[1][axis].sq / o[1][axis].n), o[1][axis].max);
+}
+
 static void summarise(void)
 {
     static const char *const names[4] = { "airspeed tape labels", "altitude tape labels", "heading labels", "ladder labels" };
@@ -253,6 +260,14 @@ static void summarise(void)
             ns += acc[0][0].n > before;
         }
         print_acc(names[cls], acc, ns);
+    }
+    static const char *const pnames[3] = { "flight-path marker top", "vertical-speed bar end", "stall bar end" };
+    for (int q = 0; q < 3; q++) {
+        acc_t acc[2][2];
+        memset(acc, 0, sizeof acc);
+        d2_series(&g_old.pan[q], &g_new.pan[q], acc);
+        if (!acc[0][1].n) printf("%-30s y: no run of three samples shown in both\n", pnames[q]);
+        else print_acc_one(pnames[q], acc, 1);
     }
     /* the ladder endpoint: followed separately in each mode, so its runs are counted separately */
     acc_t ep[2][2];
@@ -273,6 +288,33 @@ static void summarise(void)
                ep[1][axis].n ? ep[1][axis].sum / ep[1][axis].n : 0, ep[1][axis].n ? sqrt(ep[1][axis].sq / ep[1][axis].n) : 0, ep[1][axis].max);
 }
 
+/* the panel pass's items in a list: the flight-path marker's top and the two bars' free ends, in fine pixels, from the
+ * records themselves (before: whatever the interpolation left in them) or, after, from the state's continuous values */
+static void panel_sample(const interp_list *l, int after, double y[3], int has[3])
+{
+    static hud_panel pst;
+    int pvalid = 0;
+    y[0] = y[1] = y[2] = 0;
+    has[0] = has[1] = has[2] = 0;
+    for (int i = 0; i < l->n; i++) {
+        const interp_rec *r = &l->rec[i];
+        if (r->kind == 'p') { pvalid = hud_panel_load(r->v, r->n, &pst); continue; }
+        if (!pvalid) continue;
+        hud_panel_item it;
+        if (r->kind == 'S' && r->n >= 14 && r->v[0] == 71 && (int16_t)r->v[2 + 6] == 11 && (int16_t)r->v[2 + 7] == 7 && (int16_t)r->v[2 + 4] == 154) {
+            if (after) { if (hud_panel_classify(&pst, 'S', r->v, r->n, &it) == HPI_FPM) { y[0] = it.y0 * g_n; has[0] = 1; } }
+            else { y[0] = (int16_t)r->v[2 + 5] * (double)g_n; has[0] = 1; }
+        } else if (r->kind == 'N' && r->n >= 7 && r->v[6] == 0 && (int16_t)r->v[0] == 247 && (int16_t)r->v[2] == 247 && (int16_t)r->v[1] == 52) {
+            if (after) { if (hud_panel_classify(&pst, 'N', r->v, r->n, &it) == HPI_VS) { y[1] = (it.y1 + 0.5) * g_n; has[1] = 1; } }
+            else { y[1] = ((int16_t)r->v[3] + 0.5) * g_n; has[1] = 1; }
+        } else if (r->kind == 'N' && r->n >= 7 && r->v[6] == 0 && (int16_t)r->v[0] == 72 && (int16_t)r->v[2] == 72 && (int16_t)r->v[3] == 81) {
+            if (after) { if (hud_panel_classify(&pst, 'N', r->v, r->n, &it) == HPI_STALL) { y[2] = (it.y0 + 0.5) * g_n; has[2] = 1; } }
+            else { y[2] = ((int16_t)r->v[1] + 0.5) * g_n; has[2] = 1; }
+        }
+    }
+}
+
+
 static void sample_pair(const drawlive_step *a, const drawlive_step *b)
 {
     static interp_list lo, ln;
@@ -286,6 +328,14 @@ static void sample_pair(const drawlive_step *a, const drawlive_step *b)
         if (!okn || !oko) continue;
         record(&g_new, &sn);
         record(&g_old, &so);
+        double yn[3], yo[3];
+        int hn[3], ho[3];
+        panel_sample(&ln, 1, yn, hn);
+        panel_sample(&lo, 0, yo, ho);
+        for (int q = 0; q < 3; q++) {
+            put_series(&g_new.pan[q], g_new.nsamples - 1, hn[q], 0, yn[q]);
+            put_series(&g_old.pan[q], g_old.nsamples - 1, ho[q], 0, yo[q]);
+        }
     }
 }
 

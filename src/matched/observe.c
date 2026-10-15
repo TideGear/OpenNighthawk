@@ -299,6 +299,20 @@ void observe_hud_pass(machine_t *m)
     o->prim(o->user, c->icount, 'h', v, n);
 }
 
+/* VGAME 0000:79BE, the panel pass: the flight-path reference [98F6], the vertical speed [E586], the command speed
+ * [E474], the raw speed [B07E] and its whole knots [B194], and the HUD mode and size flags (hud_state.h, HUD_PANEL_*).
+ * Like the HUD pass's record it leaves a pending capture alone. */
+void observe_panel_pass(machine_t *m)
+{
+    const f117_observer *o = g_f117_observer;
+    if (!o || !o->prim || !o->hud) return;
+    cpu_t *c = &m->cpu;
+    const uint16_t ds = c->seg[S_DS];
+    const int32_t v[HUD_PANEL_N] = { HUD_PANEL_VERSION, peek16(c, ds, 0x98F6), peek16(c, ds, 0xE586), peek16(c, ds, 0xE474),
+                                     peek16(c, ds, 0xB07E), peek16(c, ds, 0xB194), peek8(c, ds, 0x294A), peek8(c, ds, 0x294B) };
+    o->prim(o->user, c->icount, 'p', v, HUD_PANEL_N);
+}
+
 void observe_game_draw(machine_t *m) { hook_game_draw(m); }
 void observe_poly_edge(machine_t *m) { hook_poly_edge(m); }
 void observe_span_polygon(machine_t *m) { hook_span_polygon(m); }

@@ -140,7 +140,7 @@ static void draw_text(const canvas *c, const hud_fprim *f, const hud_font *ft)
 }
 
 /* ---- the pass ----------------------------------------------------------------------------------- */
-enum { ST_PASSES, ST_DRAWN, ST_NO_TICKS, ST_NO_FONT, ST_NO_PAGE, ST_MISMATCH, ST_REPLACED, ST_KEPT, ST_UNSUPPORTED, ST_LEAKED };
+enum { ST_PASSES, ST_DRAWN, ST_NO_TICKS, ST_NO_FONT, ST_NO_PAGE, ST_MISMATCH, ST_REPLACED, ST_KEPT, ST_UNSUPPORTED, ST_LEAKED, ST_PANEL };
 
 void hud_overlay_stats(const drawlist *d, uint64_t out[HUD_STATS])
 {
@@ -148,13 +148,14 @@ void hud_overlay_stats(const drawlist *d, uint64_t out[HUD_STATS])
     out[ST_NO_FONT] = d->hud.no_font; out[ST_NO_PAGE] = d->hud.no_page; out[ST_MISMATCH] = d->hud.mismatched;
     out[ST_REPLACED] = d->hud.replaced; out[ST_KEPT] = d->hud.kept; out[ST_UNSUPPORTED] = d->hud.unsupported;
     out[ST_LEAKED] = d->hud.leaked;
+    out[ST_PANEL] = d->hud.panel_replaced;
 }
 
 const char *hud_overlay_stat_name(int k)
 {
     static const char *const names[HUD_STATS] = { "HUD passes", "drawn from state", "no driver tick table", "no font yet", "no page",
                                           "records that left the prediction", "records replaced", "records kept", "unsupported",
-                                          "replaced records that changed the fine picture" };
+                                          "replaced records that changed the fine picture", "panel items replaced" };
     return k >= 0 && k < HUD_STATS ? names[k] : "";
 }
 
@@ -225,24 +226,72 @@ static void run_without_fine(drawlist *d, char kind, const int32_t *v, int n)
     }
 }
 
+/* ---- the panel pass's items: the flight-path marker and the two bars --------------------------------------- */
+/* Draw one at its fine position. The marker is the record's own art (colour 0 transparent) as N x N blocks at the
+ * fine position, clipped to the record's clip rectangle; a bar is a stroke in the library colour of the moment. 0 when
+ * it cannot (no fine page, no colour): the original's record then draws it as before. */
+static int draw_panel_item(drawlist *d, const hud_panel_item *it, const int32_t *v, int n)
+{
+    const int N = d->n;
+    const uint16_t seg = (uint16_t)(it->kind == HPI_FPM ? v[1] : v[5]);
+    drawlist_page *p = drawlist_page_of(d, seg);
+    if (!p || !p->hi || p->n != N) return 0;
+    canvas c = { p, 320 * N, 200 * N, N, DT_HUD_STATE_LINE };
+    if (it->kind == HPI_FPM) {
+        const int32_t *blk = v + 2;
+        const int w = (int16_t)blk[6], h = (int16_t)blk[7];
+        if (w <= 0 || h <= 0 || n - 14 != w * h) return 0;
+        const int cl = (int16_t)blk[10] * N, cr = ((int16_t)blk[11] + 1) * N, ct = (int16_t)blk[8] * N, cb = ((int16_t)blk[9] + 1) * N;
+        const int X0 = (int)floor(it->x0 * N + 0.5), Y0 = (int)floor(it->y0 * N + 0.5);
+        c.tag = DT_HUD_STATE_TEXT;
+        for (int r = 0; r < h; r++)
+            for (int k = 0; k < w; k++) {
+                const int colour = v[14 + r * w + k] & 0xFF;
+                if (!colour) continue;
+                for (int yy = 0; yy < N; yy++)
+                    for (int xx = 0; xx < N; xx++) put_fine(&c, X0 + k * N + xx, Y0 + r * N + yy, colour, cl > 0 ? cl : 0, ct > 0 ? ct : 0, cr < c.W ? cr : c.W, cb < c.H ? cb : c.H);
+            }
+        return 1;
+    }
+    if (d->colour < 0) return 0;
+    const double width = d->line_width ? d->line_width : N;
+    thick_line(&c, (it->x0 + 0.5) * N, (it->y0 + 0.5) * N, (it->x1 + 0.5) * N, (it->y1 + 0.5) * N, width, d->colour, 0, 0, c.W, 91 * N);
+    return 1;
+}
+
 int hud_overlay_hook(drawlist *d, char kind, const int32_t *v, int n)
 {
     hud_ov *o = &d->hud;
     switch (kind) {
     case 'P':
         o->cover.active = 0;
+        o->panel_valid = 0;
         return 0;
     case 'h':
         return begin_pass(d, v, n);
+    case 'p':
+        o->panel_valid = hud_overlay_enabled() && d->n > 1 && hud_panel_load(v, n, &o->panel);
+        return 1;
     case 'T':
         hud_fonts_note(o, v, n);
         /* fall through */
     case 'K': case 'N': case 'H': case 'S': {
-        if (!o->cover.active) return 0;
-        const int r = hud_cover_step(&o->cover, kind, v, n);
-        if (r == HC_REPLACED) { o->replaced++; run_without_fine(d, kind, v, n); return 1; }
-        if (r == HC_KEPT) o->kept++;
-        if (r == HC_MISMATCH) o->mismatched++;
+        int handled = 0;
+        if (o->cover.active) {
+            const int r = hud_cover_step(&o->cover, kind, v, n);
+            if (r == HC_REPLACED) { o->replaced++; run_without_fine(d, kind, v, n); return 1; }
+            if (r == HC_KEPT) o->kept++;
+            if (r == HC_MISMATCH) o->mismatched++;
+            handled = r != HC_NONE;
+        }
+        if (!handled && o->panel_valid && (kind == 'S' || kind == 'N')) {
+            hud_panel_item it;
+            if (hud_panel_classify(&o->panel, kind, v, n, &it) && draw_panel_item(d, &it, v, n)) {
+                o->panel_replaced++;
+                run_without_fine(d, kind, v, n);
+                return 1;
+            }
+        }
         return 0;
     }
     default:
