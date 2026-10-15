@@ -101,14 +101,21 @@ this machine's instruction-level one.
   1.63M), **6.2 ms (max 8.8 ms) on one core** with translated code. Estimate from that: at a 57 ms step, 60 Hz needs
   about 2.5 extra draws a step (~27% of a core), 144 Hz about 7.5 (~80%), so higher rates need several copies in
   parallel, plus the existing refinement per picture.
+- **Follow-up (15 Oct):** compared per object (batches aligned by vertex count across both real frames and the
+  nudged copy), 98.4% of the nudged vertices on the owner's flight match an object in both frames and 98.0% of those
+  sit at the midpoint. Every unequal re-run (2 of 1,609 there; 861 of 3,679 on air-to-air type 6) differs only by the
+  observer's lazy `n` records (its own pending-line global, not the machine's): without them 3,679 of 3,679 are exact.
+  Aircraft slots (24h bytes at `C16A`, `[DEFC]` of them; +2/+4 are the 32-bit X/Y >> 5) can be nudged too: on
+  air-to-air type 6, scene-walk objects at the midpoint rise from 97.7% to 98.9%; a small `DF03` group (about 1,700
+  vertices, upstream `C2C8`) drops from 98.6% to 96.6% and is open. Weapons (28-byte records at `3C3A`) are not
+  nudged yet. The final hash is unchanged in every run.
 - **Requirements found:** a copy must redirect every back-pointer to its machine (`cpu.user` pointed at the real
   machine at first, so the copy's port reads and writes reached the real devices), clear hooks, the log, the input
   recorder and the OPL schedule, and disable coverage. The draw observer (`g_f117_observer`), the recompiled-code
   runtime (`g_rt`) and the code-write bits are process globals, so copies must run on the machine's thread until
   those are made per machine. Moving objects (slots) were not nudged yet.
 - **Status:** feasible; not yet implemented in the presentation.
-- **Next:** per-object comparison for the nudged draws; nudge object slots; confirm the two unequal frames; make the
-  observer/runtime per machine; then a switchable implementation with the smoothed clock, judged by
+- **Next:** the `DF03`/`C2C8` group and weapons; make the observer/runtime per machine; then a switchable implementation with the smoothed clock, judged by
   `tools/motion_check.py` (deformation included) and the owner.
 - **In reserve:** camera reprojection of one step's own draw list. No longer the main path: this project's own scene
   renderer (the unconnected `src/present/scene_mesh.c` draft;

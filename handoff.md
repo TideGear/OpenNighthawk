@@ -80,8 +80,10 @@ capture 2.45B-2.85B; `ident/draw.log` has identity records 2.75B-2.85B;
     `71bc32c7d96fe6b9` as without the probe), the halfway nudge lands 97.2% of
     vertices at the midpoint, 6.2 ms (max 8.8) per extra draw with translated
     code. Build the worktree with `-DF117R_GEN_DIR=...` or it interprets
-    (33 ms). Requirements and next steps: docs/presentation.md, "The current
-    plan for 60+ fps".
+    (33 ms). Per-object follow-up: 98% of nudged vertices at the midpoint;
+    every re-run exact apart from the observer's lazy `n` records; aircraft
+    slots nudged (scene-walk objects 97.7 -> 98.9% on air-to-air). Requirements
+    and next steps: docs/presentation.md, "The current plan for 60+ fps".
   - Reserve option: camera reprojection of one step's own draw list. The
     full own-renderer (`src/present/scene_mesh.c`, below) is no longer the
     main path.
