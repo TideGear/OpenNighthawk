@@ -13,15 +13,16 @@ standing practice, not a session-by-session log. Earlier sessions' detail
 (what was tried, what failed, exact investigation narratives) is in
 `git log -p handoff.md` — it does not need to live here to stay available.
 
-## Current state (14 October, traffic, ground sites and roster rows)
+## Current state (14 October, nearest object, attitude indicator, roster loop, picture stream)
 
-VGAME `63F2`, `528D` and START `6861` are matched and gated on top of the scene walk
-(`04E6`), briefing loop (`0FA3`), `DC46`, the horizon / world-record pair and the menu
-pair. Census: 867 functions / 110,808 bytes, P2 63.74%, overall 85.62%. Fresh full
-gate: 84 tests, all 45 routes / 44 fresh interpreter sessions, both 5,718,848-state
-profiles, three 875-address seeds (2,932,702 / 2,931,015 / 2,932,431), zero
-mismatches; `presentation_check.py --scales 1` reports all 45 routes exact. Proof:
-`D:/f117-gate/p2-batch3`.
+VGAME `0D14`, `17B4`, START `623E` and PLAYER `0244` are matched and gated on top of
+`63F2`, `528D`, START `6861`, the scene walk (`04E6`), briefing loop (`0FA3`), `DC46`,
+the horizon / world-record pair and the menu pair. Census: 871 functions / 112,696
+bytes, P2 64.74%, overall 85.91%. Fresh full gate: 88 tests,
+all 45 routes / 44 fresh interpreter sessions, both 5,718,848-state profiles, three
+879-address seeds (2,952,647 / 2,950,951 / 2,952,913), zero mismatches;
+`presentation_check.py --scales 1` reports all 45 routes exact. Proof:
+`D:/f117-gate/p2-batch4`.
 
 **Owner decision (14 October, evening): replace the capture-and-refine presentation
 with a state-driven one.** The owner reviewed 4K screenshots (blocky terrain edges when
@@ -51,14 +52,16 @@ Traps found today:
   `--only` addresses have no leading zero; hex literal ending in E before `+`).
 
 Private proofs are made with `D:/f117-gate/kit/kit.py` and may be run by separate
-agents in their own directories while a gate runs in the main tree. Four are ready
-and verified, not yet integrated: VGAME `0D14` (`vgame_nearest_object_lookup`,
-`D:/f117-gate/p2-vgame-0d14`; its body declines while fix D34 is on, via `fix_inside`),
-VGAME `17B4` (`vgame_attitude_indicator_draw`, `p2-vgame-17b4`), START `623E`
-(`start_roster_event_loop`, `p2-start-623e`) and PLAYER `0244`
-(`player_stream_picture_file`, `p2-player-0244`). To land them: `kit.py DIR integrate`
-for each, `build.cmd OFF`, ctest, one full gate for the batch, `presentation_check`,
-docs, commit.
+agents in their own directories while a gate runs in the main tree: `init`, write
+`body.c` / `fixture.inc` / `mutations.json`, `lock --cover`, `seeds`, `mutations`,
+`checkpoints`, `verdict`, then `integrate` in the main tree, `build.cmd OFF`, ctest,
+one full gate for the batch, `presentation_check`, docs, commit. Verify an agent's
+`private-verdict.json` yourself (counts, mutation list, source hashes, real-route
+calls) before integrating. The next candidates come from the ranked list of reached,
+unmatched entries (`D:/f117-gate/format-init/reached-corrected.tsv` minus the matched
+table): VGAME `130D:033F`, `F5F2`, `09A0`, `BB0D`, `F458`; START `A59A`, `0963`, `008D`,
+`64E5`, `74B1`, `40F0`; MPS_LOGO `0006:0072`, `0146:1894`, `0146:08CC`; DSWAP `0010`,
+`1D66`, `117E`; SETUP `19B6`; PLAYER `1602`; END `2092`, `0714`.
 
 Other candidates: CRT routines with data-dependent `rep` counts (MPS `0146:067C`
 strstr, `0822`) need a prescan for their room claim. A wait inside a body must

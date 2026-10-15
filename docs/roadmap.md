@@ -200,6 +200,22 @@ not the recompilation:
 
 ## Phase 2 - understood code
 
+Four more routines are matched and named, again proved privately with the shared kit:
+VGAME `0D14` (`vgame_nearest_object_lookup`: the nearest scene object around a world
+position over the cell grid; it declines while fix D34 is on), VGAME `17B4`
+(`vgame_attitude_indicator_draw`: the cockpit attitude indicator's rotated corners and
+panel), START `623E` (`start_roster_event_loop`: the roster page's pick, swap and
+confirm loop) and PLAYER `0244` (`player_stream_picture_file`: streaming a compressed
+picture file in). Each reaches every instruction at five seeds (6,203-6,249 states, no
+skipped states); 85, 104, 70 and 108 private mutations are caught; the real
+`full_cycle` route runs them 1, 275, 1 and 7 times with all 66 checkpoints and the
+final state exact (`0D14` and `623E` are thin real-route evidence: one call each).
+Fresh full gate: 88 tests, all 45 routes / 44 fresh interpreter sessions, both
+5,718,848-state instruction profiles, three 879-address seeds (2,952,647 / 2,950,951 /
+2,952,913 comparisons), zero mismatches, audits pass; `presentation_check.py
+--scales 1` reports all 45 routes exact. Census: 871 functions / 112,696 bytes.
+Evidence: `D:/f117-gate/p2-batch4`.
+
 Three more routines are matched and named, each proved privately with the shared kit
 (`D:/f117-gate/kit`): VGAME `63F2` (`vgame_traffic_lock_and_fire`: a traffic slot's
 lock level, announcement and missile launch), VGAME `528D`

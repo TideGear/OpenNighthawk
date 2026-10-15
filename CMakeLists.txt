@@ -418,6 +418,14 @@ if(F117R_BUILD_TESTS)
       --only VGAME.EXE:528D)
     add_test(NAME matched_start_draw_pilot_row COMMAND func_lockstep --states 5000
       --only START.EXE:6861)
+    add_test(NAME matched_vgame_nearest_object_lookup COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:D14)
+    add_test(NAME matched_vgame_attitude_indicator_draw COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:17B4)
+    add_test(NAME matched_start_roster_event_loop COMMAND func_lockstep --states 5000
+      --only START.EXE:623E)
+    add_test(NAME matched_player_stream_picture_file COMMAND func_lockstep --states 5000
+      --only PLAYER.EXE:244)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000
