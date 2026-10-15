@@ -607,6 +607,16 @@ static int ident_key(const interp_frame *f, const batch_t *b, int32_t k[5])
     return 1;
 }
 
+/* Identity pairing is an experiment, off unless F117_PRESENT_IDENT=1: the same object can arrive with the same vertex
+ * count but another set of visible vertices, and on the owner's flight 295 of the 316 pairs only identity made were
+ * deformed by over 100 px between the steps (docs/presentation.md). */
+int interp_ident_enabled(void)
+{
+    static int on = -1;
+    if (on < 0) { const char *e = getenv("F117_PRESENT_IDENT"); on = e && *e == '1'; }
+    return on;
+}
+
 static int ident_equal(const interp_frame *A, const batch_t *a, const interp_frame *B, const batch_t *b)
 {
     int32_t ka[5], kb[5];
@@ -640,7 +650,7 @@ interp_pairing *interp_pair(const interp_frame *A, const interp_frame *B)
     /* batches with the same identity, unique in both frames, pair first (whatever their order or motion) */
     char *fa = calloc((size_t)na + 1, 1), *fb = calloc((size_t)nb + 1, 1);
     P->bpair = malloc(sizeof(int) * 2 * (size_t)(na < nb ? na + 1 : nb + 1));
-    for (int i = 0; i < na; i++) {
+    for (int i = 0; i < na && interp_ident_enabled(); i++) {
         int found = -1, dup = 0;
         for (int j = 0; j < nb; j++)
             if (ident_equal(A, &A->b[i], B, &B->b[j])) { if (found >= 0) dup = 1; found = j; }

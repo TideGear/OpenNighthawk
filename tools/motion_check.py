@@ -13,7 +13,10 @@ identity records 'I'):
              more than 10/20/30%, and the range of apparent speed.
   pairing  - with the presentation's pairing (interp_frame.Pairing, identity first): polygons and
              outline edges with no partner in the next step (they switch at t = 0.5 instead of
-             moving), and held steps (cuts).
+             moving), held steps (cuts), and paired batches that DEFORM between the steps: the
+             largest vertex motion apart from the batch's mean motion (a rigid move is near 0; a
+             pair joining different visible vertices is hundreds of pixels). Fewer unpaired shapes
+             is no gain if more pairs deform: identity pairing (F117_PRESENT_IDENT=1) did exactly that.
 """
 from __future__ import annotations
 
@@ -46,8 +49,20 @@ def timing(frames):
     return out
 
 
+def deformation(a, b):
+    """The largest screen motion of a vertex of paired batches a, b apart from their mean motion (None: under two
+    comparable vertices)."""
+    ds = [(vb[3] - va[3], vb[4] - va[4]) for va, vb in zip(a.verts, b.verts) if va[5] != 2 and vb[5] != 2]
+    if len(ds) < 2:
+        return None
+    mx = sum(d[0] for d in ds) / len(ds)
+    my = sum(d[1] for d in ds) / len(ds)
+    return max(abs(d[0] - mx) + abs(d[1] - my) for d in ds)
+
+
 def pairing(frames):
     polys = paired = lines = lines_paired = cuts = 0
+    deformed = measured = 0
     for n in range(len(frames) - 1):
         P = I.Pairing(frames[n], frames[n + 1])
         polys += len(frames[n].polys)
@@ -55,11 +70,17 @@ def pairing(frames):
         lines += sum(len(b.lines) for b in frames[n].batches)
         lines_paired += sum(len(frames[n].batches[i].lines) for i in P.batches_a)
         cuts += 1 if I.is_cut(P) else 0
+        for i, j in P.batch_pairs:
+            d = deformation(frames[n].batches[i], frames[n + 1].batches[j])
+            if d is not None:
+                measured += 1
+                deformed += d > 100
     have_ident = any(b.ident is not None for f in frames for b in f.batches)
     return dict(step_pairs=len(frames) - 1, identity_records=have_ident,
                 polygons=polys, polygons_unpaired_pct=round(100.0 * (polys - paired) / max(1, polys), 2),
                 outline_edges=lines, outline_edges_unpaired_pct=round(100.0 * (lines - lines_paired) / max(1, lines), 2),
-                held_steps=cuts)
+                held_steps=cuts, paired_batches=measured,
+                paired_batches_deformed_over_100px_pct=round(100.0 * deformed / max(1, measured), 2))
 
 
 def main(argv=None):

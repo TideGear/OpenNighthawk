@@ -25,6 +25,7 @@ Everything else (text, sprites, blits, ticks, page copies) is held.
 """
 from __future__ import annotations
 
+import os
 import sys
 from collections import Counter
 
@@ -344,7 +345,10 @@ def ident_key(b):
 
 
 def ident_pairs(A, B):
-    """Batches with the same identity and vertex count, unique in both frames: [(i, j)]."""
+    """Batches with the same identity and vertex count, unique in both frames: [(i, j)]. An experiment, off unless
+    F117_PRESENT_IDENT=1 (interp.c): such pairs can join different visible-vertex sets and deform the object."""
+    if os.environ.get("F117_PRESENT_IDENT") != "1":
+        return []
     def keyed(F):
         out = {}
         for k, b in enumerate(F):

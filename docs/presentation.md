@@ -1436,7 +1436,8 @@ road edges that pop and building patches that jump. `tools/motion_check.py LOG` 
 checks cannot see: the share of polygons and outline edges with no partner in the next logic step (they switch at
 t = 0.5 instead of moving), held steps, and how unevenly the steps are timed.
 
-**Identity pairing.** With `F117R_OBSERVE_IDENT=1` (and always in the live presentation) the observer logs a
+**Identity pairing (an experiment, off; it made motion worse).** With `F117R_OBSERVE_IDENT=1` (and in the live
+presentation when `F117_PRESENT_IDENT=1`) the observer logs a
 compact record `I` for every model request at `120A:00CF` (`scene_capture.h`): the model, the caller chain, the
 scene walk's ring (`DS:E328`) and world-cell words. A batch's key is its model, ring and cell; batches whose keys
 and vertex counts are equal and unique in both frames pair first, whatever their order or motion (`interp.c`
@@ -1447,6 +1448,14 @@ old pairing missed. Same window, without / with identity: polygons unpaired 7.78
 pairs. A replay of 2.70B-2.72B holds 8,368 unpaired polygons instead of 11,490, with all 1,497 pairs exact at both
 ends and the guest hash unchanged. Remaining: two of the same model in one cell (needs the entry ordinal), detail
 changes (another mesh) and batches with no request (map, HUD).
+
+The owner saw more jitter with it, and `motion_check.py`'s deformation measure shows why: the extra pairs join the
+same object's batches when they hold different visible vertices (the original drops hidden vertices before
+drawing), so the object deforms between the steps instead of moving. Of the 316 pairs only identity made, 295 deformed
+by over 100 px (median 743 px; agreed pairs: median 2 px); paired batches deforming over 100 px rose from 3.78% to
+20.53%. Fewer unpaired shapes was the wrong goal. Identity pairing is off by default (`F117_PRESENT_IDENT=1` turns the
+experiment on); a usable version needs per-vertex identity (which model vertex each projected one is), which the
+state-driven scene renderer has by construction.
 
 **The step clock.** The game moves the aircraft a nearly fixed distance per logic step (mostly 46 units in the
 flight) while a step takes 42-86 ms by scene cost; 24% of step boundaries change duration by more than 20%. The

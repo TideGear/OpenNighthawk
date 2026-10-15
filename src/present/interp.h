@@ -102,4 +102,6 @@ void interp_pair_causes(const interp_pairing *p, interp_causes *c);
 int interp_pair_motion(const interp_pairing *p, int **motion);
 int interp_is_cut(const interp_pairing *p);
 
+int interp_ident_enabled(void);   /* F117_PRESENT_IDENT=1: the identity-pairing experiment (interp.c) */
+
 #endif

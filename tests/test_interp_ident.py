@@ -4,6 +4,8 @@ import sys
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
+import os
+os.environ["F117_PRESENT_IDENT"] = "1"   # the experiment is off by default
 import interp_frame as I
 
 

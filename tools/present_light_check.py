@@ -23,6 +23,9 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
+# Presentation analysis tools: run by people and tests, never by the runner or the gate's checks.
+TOOLS = {"tools/interp_frame.py", "tools/motion_check.py", "tools/present_diag.py", "tools/drawlist_frame.py",
+         "tools/drawlist_spans.py", "tools/hires_frame.py", "tools/hires_spans.py", "tools/hires_subpixel.py"}
 TESTS = re.compile(r"tests/test_(present_\w+|hud_\w+|band_\w+|world_\w+|map_marker|interp|hires|drawlist|"
                    r"near_polygons|nearclip|scene_mesh|frame_pacer)\.c$")
 
@@ -58,7 +61,7 @@ def refusals(names):
         if name.startswith("src/present/"):
             if name in shared:
                 out.append(f"{name}: included by the observer or other guest-side code")
-        elif TESTS.match(name) or name.startswith("docs/") or (name.endswith(".md") and "/" not in name):
+        elif TESTS.match(name) or name in TOOLS or name == "tests/test_interp_ident.py" or name.startswith("docs/") or (name.endswith(".md") and "/" not in name):
             continue
         else:
             out.append(f"{name}: not presentation-only")

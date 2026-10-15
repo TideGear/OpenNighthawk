@@ -20,15 +20,17 @@ recorded flight `session-20261015-103956` (road jitter, jumping building patches
 `D:/f117-gate/present-v2/owner-roads-20261015` (inputs, save, 633 MB draw capture 2.45B-2.85B; `ident/draw.log` has
 identity records 2.75B-2.85B; `analysis/` the scans). Findings and changes (details in
 [docs/presentation.md](docs/presentation.md#identity-pairing-and-the-step-clock-15-october-2026)):
-- Identity pairing is integrated: the observer's compact `I` record (model, ring, world cell) at `120A:00CF` pairs
-  batches unique in both frames first. Same window without/with: polygons unpaired 7.78/3.98%, outline edges
-  2.51/0.78%, held steps 7/4; 0 contradictions with the old pairing. Python mirrors it (`interp_frame.py`,
-  `tests/test_interp_ident.py`). Left: duplicates in a cell (entry ordinal), detail changes, map/HUD batches.
+- Identity pairing (the observer's compact `I` record: model, ring, world cell at `120A:00CF`) was integrated, then
+  turned OFF after the owner saw more jitter: it halves unpaired shapes (polygons 7.78 -> 3.98%, edges 2.51 -> 0.78%)
+  but the extra pairs join different visible-vertex sets, and paired batches deforming over 100 px between steps rose
+  3.78 -> 20.53% (`motion_check.py`). `F117_PRESENT_IDENT=1` keeps it as an experiment. Lesson: judge pairing by
+  deformation, not by unpaired counts; real identity needs per-vertex identity, i.e. the scene renderer.
 - The step clock is a second, separate cause: steps take 42-86 ms for a fixed distance, and `drawlive_plan_interp`'s
   t freezes or skips at uneven boundaries. A smoothed playback clock (simulated) cuts freezes/skips 35 -> 2 and
   >20% speed changes 21.4% -> 1.6% for ~17 ms more age. Not implemented: needs a third live step and its pairing;
   make it switchable (owner has not set defaults) and judge it with `tools/motion_check.py`.
-- `tools/motion_check.py LOG` reports pairing completeness and step-timing irregularity (the exactness checks cannot).
+- `tools/motion_check.py LOG` reports pairing completeness, deformation of paired batches and step-timing irregularity
+  (the exactness checks cannot see any of them).
 - Matched-code defect found by the rotating seed `0xfaf385733f77`: `or ax, ax` after a call was a byte test in VGAME
   `BAA2` and twice in `73C8` (wrong SF, and a zero low byte would take the wrong branch). Fixed; CTest
   `matched_or_ax_word` retains the seed.

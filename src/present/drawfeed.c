@@ -99,7 +99,7 @@ void drawfeed_init(drawfeed *f, const uint8_t *mem)
     f->obs.sources = 1;
     f->obs.want_pages = on_want_pages;
     f->obs.hud = 1;                                   /* the HUD pass's state, for the state-driven HUD */
-    f->obs.ident = 1;                                 /* each model request's identity, to pair its batches between steps */
+    f->obs.ident = interp_ident_enabled();           /* each model request's identity (the identity-pairing experiment) */
     f->obs.bands = 1;                                 /* the band pass's state, for the state-driven sky and ground */
     f->want_seed = 1;
     begin(f, 0);
