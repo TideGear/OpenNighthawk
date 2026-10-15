@@ -70,6 +70,7 @@ typedef struct {
     hires         *start_hires;   /* the sub-pixel builder at its start (with a scale) */
     uint8_t        picture[64000];
     uint8_t       *picture_hi;    /* and the fine picture it left */
+    uint8_t       *picture_tag;   /* diagnostic: that picture's origin plane (diagtag.h), or NULL */
     uint64_t       seq, end;
     int            ok;            /* exact, and no page dump inside */
     interp_pairing *pair;         /* this step paired with the one before it, or NULL */
@@ -130,6 +131,13 @@ typedef struct {
     const uint8_t *picture_hi;     /* the newest published step's fine picture */
     uint8_t       *inter_hi;       /* an in-between frame's */
     const uint8_t *shown_hi;       /* what the last render put in place of the scan, or NULL */
+    /* diagnostic (F117_PRESENT_DIAG, diagtag.h): the origin plane of what was shown, or NULL, and
+     * what the last render showed (a PLAN_ kind, t, the logic frames it drew from) */
+    const uint8_t *picture_tag, *shown_tag;
+    uint8_t       *inter_tag;
+    int            diag_kind;
+    double         diag_t;
+    uint64_t       diag_older, diag_newer;
     uint64_t       fine_flat, fine_agree, fine_restored;
 } drawlive;
 

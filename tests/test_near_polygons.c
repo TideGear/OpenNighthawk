@@ -16,6 +16,7 @@ static void record(char kind, const int32_t *v, int n)
     drawlist_record(&d,kind,v,n);
 }
 
+static int g_fat;   /* pixels the footprint's rows are widened by on each side */
 static void triangle(int scale, int legacy, int corrupt)
 {
     static const uint8_t blank[65536] = {0};
@@ -47,7 +48,8 @@ static void triangle(int scale, int legacy, int corrupt)
     record('F',fill,12);
     const int32_t join[8] = {72,24,26,16,24,0,0,0};record('E',join,8);
     /* Inclusive footprint of the triangle with the original's border pixels. */
-    const int32_t rows[18] = {0xFF07,20,7,20,20,19,21,18,22,17,22,16,23,20,24,24,24,0xFF07};
+    int32_t rows[18] = {0xFF07,20,7,20,20,19,21,18,22,17,22,16,23,20,24,24,24,0xFF07};
+    for (int k=0;k<7;k++) { rows[3+2*k]-=g_fat; rows[4+2*k]+=g_fat; }
     record('R',rows,18);
     for (int y=20;y<=26;y++) {
         const int l=rows[3+2*(y-20)],r=rows[4+2*(y-20)];
@@ -64,11 +66,27 @@ static void triangle(int scale, int legacy, int corrupt)
         for (int j=0;j<scale;j++) for (int i=0;i<scale;i++) {
             const int q=p->hi[(y*scale+j)*320*scale+x*scale+i];
             CHECK(q==0 || q==7);
-            if (!v) CHECK(q==0);  /* the original footprint bounds every fine pixel */
+            /* geometry, not the footprint, bounds a near-clipped polygon; the footprint is its
+             * coarse rendering, so no fine pixel lies more than a cell from a painted one */
+            if (q) {
+                int near_cell = 0;
+                for (int dy=-1;dy<=1;dy++) for (int dx=-1;dx<=1;dx++) {
+                    const int cx=x+dx,cy=y+dy;
+                    if (cx>=0 && cx<320 && cy>=0 && cy<200 && p->b[cy*320+cx]) near_cell=1;
+                }
+                CHECK(near_cell);
+            }
             detailed += q!=v;
         }
     }
-    if (legacy || corrupt) {
+    if (g_fat) {
+        /* A footprint the strict test (3 px) refuses is still drawn from the geometry at N > 1 when it lies
+         * within the near-clip tolerance and the geometry spills nowhere; one beyond it keeps the scaled copy. */
+        const int tolerated = scale>1 && g_fat<=16;
+        CHECK(h.stats[HS_NEAR_TOLERATED]==(uint64_t)tolerated && h.stats[HS_REFILLED]==(uint64_t)tolerated);
+        CHECK(h.stats[HS_BEYOND]==(uint64_t)(scale>1 && !tolerated));
+        CHECK(tolerated ? detailed>0 : !detailed);
+    } else if (legacy || corrupt) {
         CHECK(h.stats[HS_NEAR_CLIPPED]==1 && h.stats[HS_REFILLED]==0 && !detailed);
     } else {
         CHECK(h.stats[HS_NEAR_CLIPPED]==0 && h.stats[HS_REFILLED]==1);
@@ -221,7 +239,6 @@ static void pattern_picture(int scale, uint8_t *out)
     drawlist_init(&d);drawlist_set_scale(&d,scale);hires_init(&h,scale);
     drawlist_seed(&d,'Z',0xA000,0,background,sizeof background);
     for(int k=0;k<f.n;k++) record(f.rec[k].kind,f.rec[k].v,f.rec[k].n);
-    drawlist_finish_models(&d);
     const drawlist_page *p=drawlist_page_of(&d,0xA000);
     CHECK(h.stats[HS_REFILLED]==1 && !h.stats[HS_STYLE]);
     memcpy(out,p->hi,(size_t)64000*scale*scale);
@@ -298,8 +315,6 @@ static void shared_picture(int scale,int side,int reverse,uint8_t *pixels)
     const int32_t fill[12]={0xFF07,0,0,319,199,0,0,0,0,0,0,2};record('F',fill,12);
     if(side<2) shared_face(side,reverse);
     else {shared_face(side==2?0:1,0);shared_face(side==2?1:0,0);}
-    const uint64_t repaired=drawlist_finish_models(&d);
-    CHECK(repaired==(uint64_t)(side<2 || scale==4?0:6));
     const drawlist_page *p=drawlist_page_of(&d,0xA000);
     CHECK(h.stats[HS_REFILLED]==(side<2?1:2) && !h.stats[HS_NEAR_CLIPPED]);
     CHECK(!h.stats[HS_GROW15] && !h.stats[HS_GROW2] && !h.stats[HS_GROW3]);
@@ -330,11 +345,16 @@ static void shared_edges(int scale)
         int footprint=0;
         if(row>=0 && row<7) for(int side=0;side<2;side++)
             footprint|=cx>=shared_spans[side][2*row] && cx<=shared_spans[side][2*row+1];
-        if(!footprint) CHECK(!a[at]);
-        if(!left[at] && !right[at] && a[at]) {
-            CHECK(footprint && py>=20 && py<26 && px>=20-(py-20)*2/3 && px<20+(py-20)*2);
-            CHECK(a[at]==7); /* the six holes lie only in the left original footprint */
+        if(!footprint) {      /* the geometry strays at most one cell from the original's footprint */
+            int near_cell=0;
+            for(int dy=-1;dy<=1;dy++) for(int dx=-1;dx<=1;dx++) {
+                const int r2=cy+dy-20,c2=cx+dx;
+                if(r2>=0 && r2<7) for(int side=0;side<2;side++)
+                    near_cell|=c2>=shared_spans[side][2*r2] && c2<=shared_spans[side][2*r2+1];
+            }
+            if(a[at]) CHECK(near_cell);
         }
+        CHECK(left[at] || right[at] || !a[at]);   /* two faces paint nothing beyond what each paints alone */
         if(footprint && py>21 && py<25.5 && px>20-(py-20)*2/3 && px<20+(py-20)*2) {
             CHECK(a[at]!=0);interior++;
         }
@@ -352,46 +372,6 @@ static void shared_edges(int scale)
     }
     CHECK(black_kept>0);
     free(left);free(right);free(a);free(b);
-}
-
-static void seam_lifetime(void)
-{
-    static drawlist copy;
-    static const uint8_t blank[65536]={0};
-    static uint8_t coarse[65536];
-    drawlist_init(&d);drawlist_set_scale(&d,9);hires_init(&h,9);
-    drawlist_seed(&d,'Z',0xA000,0,blank,sizeof blank);
-    const int32_t fill[12]={0xFF07,0,0,319,199,0,0,0,0,0,0,2};record('F',fill,12);
-    /* An earlier verified sky/terrain layer protects geometry from the
-     * flat guard. That protection must not disable near-plane seam repair. */
-    memset(drawlist_page_of(&d,0xA000)->strokes,0xFF,64000/8);
-    shared_face(0,0);shared_face(1,0);
-    drawlist_page *p=drawlist_page_of(&d,0xA000);
-    const size_t hole=189*2880+187,bytes=64000*81;
-    CHECK(p->hi[hole]==0 && p->model_active);
-    memcpy(coarse,p->b,sizeof coarse);
-    drawlist_init(&copy);drawlist_copy(&copy,&d);
-    drawlist_page *q=drawlist_page_of(&copy,0xA000);
-    CHECK(q->model && q->model!=p->model);
-    CHECK(drawlist_finish_models(&copy)==6 && q->hi[hole]==7 && p->hi[hole]==0);
-    CHECK(drawlist_finish_models(&copy)==0);
-    CHECK(drawlist_finish_models(&d)==6 && !memcmp(p->hi,q->hi,bytes));
-    CHECK(!memcmp(p->b,coarse,sizeof coarse));
-    const int32_t hud_pen[1]={13};drawlist_record(&copy,'K',hud_pen,1);
-    const int32_t hud[7]={20,21,23,23,0,0xA000,0};drawlist_record(&copy,'N',hud,7);
-    CHECK(!q->model_active && drawlist_finish_models(&copy)==0);
-    /* A library painter closes the geometry layer before overwriting it. */
-    const int32_t pen[1]={11};drawlist_record(&d,'K',pen,1);
-    const int32_t row[8]={21,21,0,1,20,20,0xA000,0};drawlist_record(&d,'Q',row,8);
-    CHECK(!p->model_active && p->hi[hole]==11 && drawlist_finish_models(&d)==0);
-    /* A page copy carries a completed picture, with no stale geometry mask. */
-    drawlist_seed(&copy,'Y',0x2000,0,blank,64000);
-    const int32_t present[4]={44,64000,0xA000,0x2000};drawlist_record(&copy,'D',present,4);
-    const drawlist_page *shown=drawlist_get(&copy,0x2000);
-    CHECK(!q->model_active && !shown->model_active && !memcmp(q->hi,shown->hi,bytes));
-    drawlist_seed(&d,'Z',0xA000,0,blank,sizeof blank);
-    CHECK(!p->model_active && !p->model && !p->hi[hole] && drawlist_finish_models(&d)==0);
-    drawlist_free(&copy);drawlist_free(&d);
 }
 
 /* Every edge crosses the viewport; no unclipped edge can identify its origin.
@@ -467,6 +447,7 @@ int main(void)
 {
     triangle(1,0,0);triangle(4,0,0);
     triangle(4,1,0);triangle(4,0,1);
+    g_fat=4;triangle(4,0,0);g_fat=12;triangle(4,0,0);g_fat=30;triangle(4,0,0);g_fat=0;
     interpolation(0);interpolation(1);
     g_snapshot_fields=18;interpolation(0);interpolation(1);
     patterned_fills(1);patterned_fills(4);patterned_fills(9);
@@ -474,7 +455,6 @@ int main(void)
     g_fill_colour=0x1907;interpolation(0);interpolation(1);
     g_fill_colour=0xFF07;
     shared_edges(4);shared_edges(9);
-    seam_lifetime();
     clipped_origin(1,0,0);clipped_origin(4,0,0);clipped_origin(9,0,0);clipped_origin(4,1,0);
     clipped_origin(1,0,1);clipped_origin(4,0,1);clipped_origin(9,0,1);
     clipped_origin(4,1,1);clipped_origin(4,0,2);clipped_origin(4,0,3);

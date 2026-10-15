@@ -1,6 +1,7 @@
 /* interp.c - see interp.h. The functions follow tools/interp_frame.py's
  * one for one, under the same names where there is one. */
 #include "interp.h"
+#include "hud_cover.h"
 #include "nearclip.h"
 
 #include "tls.h"
@@ -72,7 +73,7 @@ typedef struct {
 typedef struct { int v0, nv, g0, ng, p0, np, l0, nl; } batch_t;
 
 typedef struct { int colour, mode, ord, ri; } span_t;
-typedef struct { int colour, page, origin, ri; } hud_t;
+typedef struct { int colour, page, origin, ri, covered; } hud_t;   /* covered: the state-driven HUD draws it (hud_cover.h) */
 typedef struct { int colour, ord, ri; } ut_t;       /* a polygon handed to the span rasteriser ('U') */
 
 struct interp_frame {
@@ -91,6 +92,7 @@ struct interp_frame {
     int *pl; int npl, cpl;
     span_t *s; int ns, cs;
     hud_t *h; int nh, ch;
+    int hud_rec, panel_rec;           /* the first HUD state record ('h') and panel state record ('p'), or -1 */
     ut_t *u; int nu, cu;
 };
 
@@ -106,6 +108,13 @@ interp_frame *interp_parse(const interp_rec *rec, int n)
     interp_frame *f = calloc(1, sizeof *f);
     f->rec = rec;
     f->nrec = n;
+    f->hud_rec = f->panel_rec = -1;
+    static F117_TLS hud_panel pst;
+    int pvalid = 0;
+    static F117_TLS hud_state hst;
+    static F117_TLS hud_exact_list hex;
+    hud_cover cov;
+    cov.active = 0;
     int cur = -1;                     /* the batch being collected */
     int pend0 = 0;                    /* edges since the last fill */
     int poly = -1, poly_nclip = 0;    /* the polygon between its fill entry and its painting */
@@ -115,6 +124,20 @@ interp_frame *interp_parse(const interp_rec *rec, int n)
     for (int i = 0; i < n; i++) {
         const interp_rec *r = &rec[i];
         const int32_t *v = r->v;
+        int covered = 0;                  /* a record of the HUD pass that the state-driven HUD replaces */
+        if (r->kind == 'h') {
+            if (f->hud_rec < 0) f->hud_rec = i;
+            cov.active = 0;
+            if (hud_state_load(v, r->n, &hst) && hst.have_ticks && hud_exact(&hst, &hex) == 0) hud_cover_begin(&cov, &hex);
+        } else if (r->kind == 'p') {
+            if (f->panel_rec < 0) f->panel_rec = i;
+            pvalid = hud_panel_load(v, r->n, &pst);
+        } else if (cov.active && (r->kind == 'K' || r->kind == 'N' || r->kind == 'T' || r->kind == 'H' || r->kind == 'S'))
+            covered = hud_cover_step(&cov, r->kind, v, r->n) == HC_REPLACED;
+        if (!covered && pvalid && (r->kind == 'N' || r->kind == 'S')) {
+            hud_panel_item it;
+            covered = hud_panel_classify(&pst, r->kind, v, r->n, &it) != HPI_NONE;
+        }
         switch (r->kind) {
         case 'V':
             if (r->n < 8) break;
@@ -235,7 +258,7 @@ interp_frame *interp_parse(const interp_rec *rec, int n)
         case 'N':
             if (r->n >= 7) {
                 GROW(f->h, f->nh, f->ch);
-                hud_t h = { colour, v[5], v[6], i };
+                hud_t h = { colour, v[5], v[6], i, covered };
                 f->h[f->nh++] = h;
             }
             break;
@@ -980,17 +1003,20 @@ int interp_inbetween_ex(const interp_frame *A, const interp_frame *B, const inte
     }
     /* HUD lines: groups by colour, page and origin */
     static F117_TLS int ia[4096], ib[4096];
+    /* (with INTERP_HUD the lines the state-driven HUD draws are not interpolated at all: it moves the state) */
+#define HUD_SKIP(hh) (((flags) & INTERP_HUD) && (hh).covered)
     for (int k = 0; k < S->nh; k++) {
         const hud_t *h = &S->h[k];
+        if (HUD_SKIP(*h)) continue;
         int first = 1;
         for (int q = 0; q < k; q++)
-            if (S->h[q].colour == h->colour && S->h[q].page == h->page && S->h[q].origin == h->origin) { first = 0; break; }
+            if (!HUD_SKIP(S->h[q]) && S->h[q].colour == h->colour && S->h[q].page == h->page && S->h[q].origin == h->origin) { first = 0; break; }
         if (!first) continue;
         int na = 0, nb = 0;
         for (int q = k; q < S->nh && na < 4096; q++)
-            if (S->h[q].colour == h->colour && S->h[q].page == h->page && S->h[q].origin == h->origin) ia[na++] = S->h[q].ri;
+            if (!HUD_SKIP(S->h[q]) && S->h[q].colour == h->colour && S->h[q].page == h->page && S->h[q].origin == h->origin) ia[na++] = S->h[q].ri;
         for (int q = 0; q < O->nh && nb < 4096; q++)
-            if (O->h[q].colour == h->colour && O->h[q].page == h->page && O->h[q].origin == h->origin) ib[nb++] = O->h[q].ri;
+            if (!HUD_SKIP(O->h[q]) && O->h[q].colour == h->colour && O->h[q].page == h->page && O->h[q].origin == h->origin) ib[nb++] = O->h[q].ri;
         st[IS_HUD] += (uint64_t)na;
         if (na != nb) { st[IS_HELD_HUD_GROUP] += (uint64_t)na; continue; }
         for (int q = 0; q < na; q++) {
@@ -1007,6 +1033,27 @@ int interp_inbetween_ex(const interp_frame *A, const interp_frame *B, const inte
             out_pooled(&made, 'N', ra->icount, vals, n);
             st[IS_HUD_MOVED]++;
             st[IS_REGENERATED]++;
+        }
+    }
+    /* the HUD's state: continuous values moved the same fraction, the layout and switches the skeleton's */
+    if ((flags & INTERP_HUD) && S->hud_rec >= 0 && O->hud_rec >= 0) {
+        static F117_TLS int32_t blended[HUD_REC_FINE];
+        const interp_rec *rs = &S->rec[S->hud_rec], *ro = &O->rec[O->hud_rec];
+        const int nb = hud_blend(rs->v, rs->n, ro->v, ro->n, w, blended, HUD_REC_FINE);
+        if (nb) {
+            rep[S->hud_rec] = made.n;
+            repn[S->hud_rec] = 1;
+            out_pooled(&made, 'h', rs->icount, blended, nb);
+        }
+    }
+    if ((flags & INTERP_HUD) && S->panel_rec >= 0 && O->panel_rec >= 0) {
+        static F117_TLS int32_t pblended[HUD_PANEL_REC_FINE];
+        const interp_rec *rs = &S->rec[S->panel_rec], *ro = &O->rec[O->panel_rec];
+        const int nb = hud_panel_blend(rs->v, rs->n, ro->v, ro->n, w, pblended, HUD_PANEL_REC_FINE);
+        if (nb) {
+            rep[S->panel_rec] = made.n;
+            repn[S->panel_rec] = 1;
+            out_pooled(&made, 'p', rs->icount, pblended, nb);
         }
     }
     /* outline edges: by batch, slot and colour */

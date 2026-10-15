@@ -204,8 +204,8 @@ paths, the relative `build/` junction fails under Python's `subprocess`).
 rounded lower vertex, unseeded-page rectangle round trips, independent cached
 ownership after a replay copy, duplicate display bytes and stale-source
 fallback, at N=1/4/9. The strip regression additionally distinguishes a narrow
-region from a degenerate line. The near-plane regression requires seam repair
-to work even after another geometry layer protects cells from the flat guard.
+region from a degenerate line. The near-plane regression requires adjacent
+near-clipped faces to leave no hole (seam repair was removed on 14 October).
 These tests take under a second together. Fine rasterisation visits only the
 polygon's geometric y range inside its viewport; rectangle buffers are reused
 when replay states are copied, avoiding per-frame allocation for the map.
@@ -1554,6 +1554,7 @@ These are recorded separately and are not passing gates.
 | Route recording (adaptive pilots) | after a timing change moves a flight | 10-20 min per flight; try several parameters in parallel | recorded inputs replace them in the gate; a timing change invalidates all of them at once (see `airair_type5-8`, `strike`, `cargo`, `recon`) |
 | Draw-list capture windows | per presentation stage | 3-4 min per window, four at a time | windows are independent and already run in parallel |
 | Fine HUD recorded-scene checks | after HUD/replay changes | about 10-15 s for eight corrected windows at N=1/4/9, three workers (10 Oct) | reuse `p3-live/logs41/w_*.log`; run carried `test_drawlist` and `test_hires`; older strike/air captures omit colour-replace records and fail the unchanged baseline too. `test_hires --dump PREFIX` renders the last checked frame, about a second per 69-phase N=4 window |
+| State-driven HUD checks | after a change to the HUD model, cover or interpolation | 0.4 s for `test_hud_state` over 288 passes; 3 s per 35-74 frame window for `test_hud_live`; windows take 40-120 s to record (14 Oct) | `test_hud_state D:/f117-gate/present-v2/hud/corpus` (ctest `presentation_hud_state`, skipped when the corpus is absent); windows recorded with `F117R_OBSERVE_PAGES=1 F117R_OBSERVE_HUD=1 run_route.py ROUTE.args -- --steps TO --observe LOG:FROM:TO` (fly3 2.79B-2.81B, fly1 2.86B-2.88B, strike 8.53B-8.56B), then `test_hud_live LOG 4 --leak-check` (ctest `presentation_hud_live`) and `test_hud_jitter LOG 4`. `--leak-check` copies the fine page around every replaced record; leave it off when timing |
 | Fine HUD live sentinel | after presentation changes | 146.9/112.8 s at N=4/9, two workers beside the gate (10 Oct) | `run_route.py boot_to_flight.args -- --present interp --present-scale N --hash-every 50000000`; 368 exact logic frames and 366 exact pairs per scale, 54 matching guest checkpoints and final hash; separate outputs and inherited 24-CPU affinity. These concurrent runs do not measure isolated performance |
 | MSVC matched-code compilation | every matched-code build | PLAYER decompressor stalled for more than 18 min at /O2; about 30 s for the file with the workaround (8 Oct) | only `player_unpack` disables MSVC optimisation; the rest of the file keeps the build's flags. It runs during picture loading. Stop an orphan compiler only after checking its source/output paths; otherwise its object stays locked |
 | Worktree build and generated code | per worktree | 8 min first, then incremental | give each tree its own TEMP (build.cmd shares one log); do not share a generated directory between concurrent builds |

@@ -60,6 +60,10 @@ typedef struct f117_observer {
      * F117R_OBSERVE_PAGES has them at every phase. A live replay asks until
      * it has its first 'Z'. */
     int (*want_pages)(void *user);
+    /* Nonzero: the HUD pass (VGAME 1058:0016) hands over the state it starts from as a record 'h' (hud_state.h
+     * describes it: the data segment's words the pass reads and the driver's tick tables), once per pass, just
+     * before the pass's own library calls. Off by default so that existing logs stay as they were. */
+    int hud;
 } f117_observer;
 
 extern const f117_observer *g_f117_observer;
@@ -82,6 +86,14 @@ void observe_game_draw(machine_t *m);   /* VGAME 1450: the frame phase and the p
 void observe_poly_edge(machine_t *m);
 void observe_poly_fill(machine_t *m);
 void observe_span_polygon(machine_t *m);   /* fill_polygon's entry: the corners handed to the span rasteriser ('U') */
+
+/* Called by the matched HUD pass (matched.c) at its entry: the state the pass starts from, as an 'h' record
+ * when the observer asks for one. Reads guest memory directly; changes nothing. */
+void observe_hud_pass(machine_t *m);
+
+/* Called by the matched panel pass (matched.c, VGAME 0000:79BE) at its entry: the words the HUD's flight-path
+ * marker and bars are made from, as a record 'p' when the observer asks for the HUD state. */
+void observe_panel_pass(machine_t *m);
 
 /* Register the hooks on the original's own entry points (once). */
 void observe_register(void);

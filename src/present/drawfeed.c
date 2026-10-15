@@ -1,6 +1,7 @@
 /* drawfeed.c - see drawfeed.h. */
 #include "drawfeed.h"
 
+#include "diagtag.h"
 #include "tls.h"
 #include <stdlib.h>
 #include <string.h>
@@ -97,6 +98,7 @@ void drawfeed_init(drawfeed *f, const uint8_t *mem)
     f->obs.prim = on_prim;
     f->obs.sources = 1;
     f->obs.want_pages = on_want_pages;
+    f->obs.hud = 1;                                   /* the HUD pass's state, for the state-driven HUD */
     f->want_seed = 1;
     begin(f, 0);
 }
@@ -155,9 +157,12 @@ void drawlive_set_scale(drawlive *r, int n)
     r->pending_hires = (hires *)malloc(sizeof *r->pending_hires);
     hires_init(r->hr, n);
     r->inter_hi = (uint8_t *)calloc(bytes, 1);
+    const char *diag = getenv("F117_PRESENT_DIAG");
+    if (diag && *diag) { drawlist_diag_enable(1); r->inter_tag = (uint8_t *)calloc(bytes, 1); }
     for (int k = 0; k < DRAWLIVE_POOL; k++) {
         r->step[k].start_hires = (hires *)malloc(sizeof *r->hr);
         r->step[k].picture_hi = (uint8_t *)calloc(bytes, 1);
+        if (r->inter_tag) r->step[k].picture_tag = (uint8_t *)calloc(bytes, 1);
     }
 }
 
@@ -178,10 +183,12 @@ static void feed(drawlist *d, hires *h, char kind, const int32_t *v, int n)
 }
 
 /* the fine picture of a display page, guarded, into out */
-static void take_fine(drawlive *r, const drawlist_page *disp, uint8_t *out)
+static void take_fine(drawlive *r, const drawlist_page *disp, uint8_t *out, uint8_t *out_tag)
 {
     memcpy(out, disp->hi, (size_t)320 * r->scale * 200 * r->scale);
-    r->fine_restored += (uint64_t)hires_guard_masked(disp->b, out, r->scale, disp->strokes, &r->fine_flat, &r->fine_agree);
+    if (out_tag && disp->tag) memcpy(out_tag, disp->tag, (size_t)320 * r->scale * 200 * r->scale);
+    r->fine_restored += (uint64_t)hires_guard_masked_tag(disp->b, out, r->scale, disp->strokes, &r->fine_flat, &r->fine_agree,
+                                                         out_tag && disp->tag ? out_tag : NULL);
 }
 
 /* Keep a replayed frame's records for interpolation (P, Z, Y and J left out). */
@@ -221,13 +228,14 @@ static const uint8_t *draw_list(drawlive *r, const drawlive_step *skel)
     hires *h = NULL;
     if (r->scale) { memcpy(r->scratch_hr, skel->start_hires, sizeof *r->scratch_hr); h = r->scratch_hr; }
     for (int i = 0; i < r->ilist.n; i++) feed(&r->scratch, h, r->ilist.rec[i].kind, r->ilist.rec[i].v, r->ilist.rec[i].n);
-    drawlist_finish_models(&r->scratch);
     const drawlist_page *disp = drawlist_get(&r->scratch, 0xA000);
     if (!disp || disp->size < 64000) return NULL;
     if (r->scale) {
         memcpy(r->inter_hi, disp->hi, (size_t)320 * r->scale * 200 * r->scale);
+        if (r->inter_tag && disp->tag) memcpy(r->inter_tag, disp->tag, (size_t)320 * r->scale * 200 * r->scale);
         uint64_t flat = 0, agree = 0;
-        hires_guard_masked(disp->b, r->inter_hi, r->scale, disp->strokes, &flat, &agree);
+        hires_guard_masked_tag(disp->b, r->inter_hi, r->scale, disp->strokes, &flat, &agree,
+                               r->inter_tag && disp->tag ? r->inter_tag : NULL);
     }
     return disp->b;
 }
@@ -241,7 +249,7 @@ static void check_pair(drawlive *r)
      * can still move a camera-space coordinate by a rounding unit, which shows
      * on a finer grid: those ends are checked at 1e-9. */
     int sb, ok = 1;
-    const int flags = r->scale ? INTERP_VERTICES : 0;
+    const int flags = (r->scale ? INTERP_VERTICES : 0) | (r->scale > 1 ? INTERP_HUD : 0);
     const double eps = r->scale ? 1e-9 : 1e-6;
     const size_t fine = (size_t)320 * r->scale * 200 * r->scale;
     interp_inbetween_ex(a->parsed, b->parsed, b->pair, eps, flags, &r->ilist, &sb, NULL);
@@ -300,7 +308,6 @@ static int free_step(const drawlive *r)
 static void close_frame(drawlive *r, drawfeed *f, const drawfeed_frame *fr)
 {
     r->frames++;
-    drawlist_finish_models(&r->list);
     const drawlist_page *disp = drawlist_get(&r->list, 0xA000);
     if (!r->list.have_seg || !disp || disp->size < 64000) { r->unseeded++; return; }
     if (memcmp(disp->b, fr->display, 64000)) {
@@ -323,7 +330,7 @@ static void close_frame(drawlive *r, drawfeed *f, const drawfeed_frame *fr)
         }
     }
     memcpy(s->picture, disp->b, 64000);
-    if (r->scale) take_fine(r, disp, s->picture_hi);
+    if (r->scale) take_fine(r, disp, s->picture_hi, s->picture_tag);
     s->seq = fr->seq;
     s->end = fr->end;
     s->ok = 1;
@@ -381,6 +388,7 @@ void drawlive_publish(drawlive *r)
         r->shown = 1;
         r->picture = s->picture;
         r->picture_hi = r->scale ? s->picture_hi : NULL;
+        r->picture_tag = r->scale ? s->picture_tag : NULL;
         r->picture_seq = s->seq;
         r->picture_end = s->end;
         if (r->check && s->pair && r->ia >= 0) check_pair(r);
@@ -415,10 +423,11 @@ int drawlive_current(const drawlive *r, const machine_t *m)
 
 int drawlive_present(drawlive *r, const machine_t *m, present_frame *f)
 {
-    r->shown_hi = NULL;
+    r->shown_hi = r->shown_tag = NULL;
     if (f->text || !drawlive_current(r, m)) return 0;
     memcpy(f->vram, r->picture, 64000);
-    if (r->scale) r->shown_hi = r->picture_hi;
+    if (r->scale) { r->shown_hi = r->picture_hi; r->shown_tag = r->picture_tag; }
+    r->diag_kind = PLAN_REPLAY; r->diag_t = 0; r->diag_older = r->diag_newer = r->picture_seq;
     return 1;
 }
 
@@ -448,34 +457,36 @@ int drawlive_plan_interp(const drawlive *r, const machine_t *m, const present_fr
 
 int drawlive_render(drawlive *r, const drawlive_plan *plan, present_frame *f)
 {
-    r->shown_hi = NULL;
+    r->shown_hi = r->shown_tag = NULL;
     if (plan->kind == PLAN_NONE) return 0;
+    r->diag_kind = plan->kind; r->diag_t = plan->t; r->diag_older = plan->older; r->diag_newer = plan->newer;
     if (plan->kind == PLAN_OLDER || plan->kind == PLAN_NEWER || plan->kind == PLAN_BETWEEN) {
         const drawlive_step *a = &r->step[r->ia], *b = &r->step[r->ib];
         if (plan->kind == PLAN_OLDER) {
             memcpy(f->vram, a->picture, 64000);
-            if (r->scale) r->shown_hi = a->picture_hi;
+            if (r->scale) { r->shown_hi = a->picture_hi; r->shown_tag = a->picture_tag; }
             return 1;
         }
         if (plan->kind == PLAN_NEWER) {
             memcpy(f->vram, b->picture, 64000);
-            if (r->scale) r->shown_hi = b->picture_hi;
+            if (r->scale) { r->shown_hi = b->picture_hi; r->shown_tag = b->picture_tag; }
             return 1;
         }
         int sb;
         interp_inbetween_ex(a->parsed, b->parsed, b->pair, plan->t,
-                            (r->scale ? INTERP_VERTICES : 0) | (plan->extrapolate ? INTERP_EXTRAPOLATE : 0),
+                            (r->scale ? INTERP_VERTICES : 0) | (r->scale > 1 ? INTERP_HUD : 0) | (plan->extrapolate ? INTERP_EXTRAPOLATE : 0),
                             &r->ilist, &sb, r->istats);
         const uint8_t *p = draw_list(r, sb ? b : a);
         if (p) {
             memcpy(f->vram, p, 64000);
-            if (r->scale) r->shown_hi = r->inter_hi;
+            if (r->scale) { r->shown_hi = r->inter_hi; r->shown_tag = r->inter_tag; }
             r->inbetweens++;
             return 1;
         }
     }
     memcpy(f->vram, r->picture, 64000);                /* the replayed picture */
-    if (r->scale) r->shown_hi = r->picture_hi;
+    if (r->scale) { r->shown_hi = r->picture_hi; r->shown_tag = r->picture_tag; }
+    r->diag_kind = PLAN_REPLAY;
     return 1;
 }
 

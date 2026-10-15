@@ -73,7 +73,7 @@ Each stage is judged by a check, as in the rest of the project.
 |---|---|---|---|
 | 0 | Observer: log every call to the drawing primitives per frame | the log is identical across runs; hashes unchanged with it on | done |
 | 1 | Draw lists: a frame's primitives as a list, replayed at 320x200 | the replay reproduces the original's work and display pages bit for bit, every phase of every route | done: all 45 complete routes and staged original-instruction fixtures for rare branches; C and Python fill rules agree |
-| 2 | Re-draw the list at N times the resolution | N = 1 is Stage 1 exactly; at N > 1 verified geometry has smooth boundaries and keeps the original viewport, fill styles and artwork | model polygons re-drawn from their sub-pixel vertices (`hires_subpixel.py`, and in C `hires.c`, live with `--present-scale N`); HUD lines/ticks redraw on the fine grid with scale-proportional or chosen thickness; original bitmap text/artwork stay scaled by the owner's choice; verified near-plane crossings now refined, incompatible geometry safely scaled |
+| 2 | Re-draw the list at N times the resolution | N = 1 is Stage 1 exactly; at N > 1 verified geometry has smooth boundaries and keeps the original viewport, fill styles and artwork | model polygons re-drawn from their sub-pixel vertices (`hires_subpixel.py`, and in C `hires.c`, live with `--present-scale N`); HUD lines/ticks redraw on the fine grid with scale-proportional or chosen thickness; original bitmap text/artwork stay scaled by the owner's choice; verified near-plane crossings now refined, incompatible geometry safely scaled; the HUD tapes, heading strip and pitch ladder are drawn from the game state, not from the original's rounded calls ([below](#the-state-driven-hud-14-october-2026)) |
 | 3 | Interpolate between consecutive draw lists to the host display rate | at a logic frame the output is exactly that frame; no in-between primitive absent from both neighbours | 320x200 study done (`interp_frame.py`, below): exact at both ends on seven windows, no violations; live path built at 320x200 (below): the feed, the presentation from the replay, and the interpolation in C, exact at both ends of 9,843 live frame pairs |
 | 4 | Pacing, vsync, a picture-age setting, HUD handling, a switch to the original picture | pictures at the display's refresh with t on the mission clock; the age setting measured | pacing at the host's vsync, age setting and Reimp-style HUD handling built (below); `--present scan` is the switch; real-display checks remain |
 
@@ -156,12 +156,11 @@ pairs `U` records by colour and order and moves their corners with the span fill
 coarse footprint. That retained the original staircase and could cut teeth into a slanted
 edge. Ordinary verified model polygons now clip to their viewport and draw the actual
 geometry, with half a fine pixel of inclusive coverage to join adjacent faces. N=1 still
-paints the exact original footprint. Near-plane polygons retain their independently verified
-footprint/seam rule; incompatible geometry and the known extreme integer-overflow artifact
-still stay scaled. The flat-cell guard excludes verified fine geometry so it cannot put coarse
-stairs back. HUD protection is tracked separately for seam repair, so a previously refined sky
-cannot disable repair of a later near-plane polygon. Dither/stipple cells, bitmap lettering,
-cockpit art and map symbols remain the original artwork.
+paints the exact original footprint. Near-plane polygons were clamped to their footprint with a
+seam repair until 14 October; they are drawn from their verified geometry like the others (see
+"Footprints the original's clipper gets wrong"), and incompatible geometry still stays scaled. The flat-cell
+guard excludes verified fine geometry so it cannot put coarse stairs back. Dither/stipple cells, bitmap
+lettering, cockpit art and map symbols remain the original artwork.
 
 **The map is refined.** Its terrain is drawn once into the work page, then copied through the
 cockpit-art page (segment `09C0`) and back every frame. The replay does not hold that art page.
@@ -181,7 +180,8 @@ now follow their geometry, including during the normal cockpit page-copy cycle.
 the fine rectangle's round trip through an unseeded page, independent ownership after a
 replay copy, repeated display-blit bytes and stale-byte fallback, at N=1/4/9.
 `test_present_strips` covers thick, narrow, degenerate and incompatible span polygons;
-`test_near_polygons` also checks that guard protection cannot suppress seam repair.
+`test_near_polygons` checks that adjacent near-clipped faces leave no hole and that the near-clip tolerance accepts
+and refuses what it should.
 Fresh in-flight captures inspect the runway, map and banked terrain. Validation evidence is
 kept outside the repository in `D:/f117-gate/map-refill`; current tallies are in the handoff.
 
@@ -247,6 +247,9 @@ Independent C/Python replay of the orthographic prefix agrees on all 45
 polygons, 40,467 footprint pixels and 619,517 fine-grid paint pixels at N=4.
 
 ## Camera-plane reconstruction and shared seams (11 October 2026)
+
+*Superseded on 14 October: near-clipped polygons are drawn from their geometry, so the coverage tracking and
+seam repair described below (`drawlist_finish_models`, `DT_SEAM`) were removed; the crossing verification stays.*
 
 The current C and Python renderers also refine near-clipped convex polygons.
 G records carry both endpoints' camera coordinates, projected coordinates,
@@ -946,6 +949,258 @@ changes display mid-run is rejected as ambiguous), intervals, interpolation and
 guest drift; malformed or incomplete captures fail. `f117a.4k.ini` is an optional
 ready-to-run fullscreen preset. Commands and limits are in
 [repeated-processes.md](repeated-processes.md).
+
+## Where the blockiness comes from: the pixel-origin diagnostic (14 October 2026)
+
+`F117_PRESENT_DIAG=DIR` (with `--present interp` or `replay` and `--present-scale N > 1`; off when unset) gives
+every replayed page a byte per fine pixel naming the path that last wrote it (`src/present/diagtag.h`: refined
+model polygon, refined span-rasteriser polygon, each fallback by reason, guard repairs, strokes, text,
+sprites, blits from pages the replay does not hold, copies). The plane follows page copies, blits and the map's
+overlay cache as the fine pixels do. Beside each `--shots`/`--screen` picture, `f117run` writes `BASE.tag`, `BASE.diag.ppm`
+(false colour), `BASE.holes` and `BASE.txt`; `F117_PRESENT_DIAG_HIST=FILE` appends the per-tag counts of a window
+(`F117_PRESENT_DIAG_RECT=x0,y0,x1,y1`, default the 3-D view 0,0,320,91; `F117_PRESENT_DIAG_HIST_ONLY=1` skips the
+images) followed by the window's two hole counts, `F117_PRESENT_DIAG_TRACE=FILE` logs each polygon refused for a
+footprint beyond 3 px, and the final
+`[diag]` lines print the builder's and the interpolator's counters. `tools/present_diag.py` makes the side-by-side
+PNGs and class tables. Guest hashes and presented pictures are identical with it on (strike to 2.598B,
+N=4: `a8bc78f294805e14`, four shots byte-identical).
+The hole counts (`diag_holes`, `headless.c`) are over the window, in fine pixels: *unwritten* is a pixel no path
+wrote in this frame (the seeded copy of an earlier frame shows); *stray* is a pixel a scene path wrote whose colour
+is none of the nine coarse cells around its own, so no boundary shift of up to a cell explains it (a gap showing what
+lies under the polygons, or geometry drawn where the original drew another colour). `BASE.holes` marks them (1, 2).
+
+Measured before the fixes below, on the strike, landing and air-to-air type 6 flights (N=4, 3-D view, 144/167/126
+frames sampled every 5 s of emulated time, 3-D window = 0,0,320,91):
+the view was 88 to 89% refined geometry (model polygons 9 to 34%, sky/ground span polygons 55 to 83%), strokes 2.5 to 5%,
+text 2%, canopy-frame sprites 3.4%, the rest scaled fallbacks. Two things left visible blocks.
+
+- **Near-clipped polygons were clamped to the original footprint** (`hires.c`, `geometric = n > 1 && !nclip`).
+  Their pixels (`DT_MODEL_NEAR`, 4 to 28% of the view) were cut to the original's coarse rows, so their edge against the
+  sky strips was a staircase of one-cell steps: 32 to 65% of the colour changes along that edge lay on the cell grid
+  (a refined edge gives 25% at N=4).
+- **A polygon refused for "footprint beyond 3 px" was drawn as the scaled copy whole.** The test was exact equality of the
+  true shape plus 3 px with the original's rows, so missing 1 pixel in 15,000 refused a large near-clipped sea/ground
+  polygon or the sky polygon (corners 20,000 to 30,000 px out). It happened in 6 to 8% of the sampled frames,
+  in bursts: the sky or the sea, up to 83% of the view, became cell-sized blocks for those frames.
+
+Both are fixed (next section). Evidence stays outside git in `D:/f117-gate/present-v2/fix3d`.
+
+HUD lines come from integer endpoints (`N` records: AX..DX of the library line call, already clipped); the in-between
+frame interpolates each endpoint with `rnd(lerp())` back to an integer, so a line moves in whole cells, and a group
+whose size changed between steps is held (18% of HUD lines in the strike flight) and switches at t = 0.5.
+Text and tick marks are held whole until t = 0.5. The next section replaces that for the tapes, the heading strip
+and the pitch ladder.
+
+## The state-driven HUD (14 October 2026)
+
+At N > 1 the tape labels and tick marks, the heading labels and tick strip, the pitch ladder with its labels, the
+flight-path marker and the vertical-speed and stall bars are drawn from the game's state at fine-pixel precision, and the
+state is interpolated between logic steps. The original
+rounds every one of these to whole cells before it calls the library (the ladder's rungs by up to 5 cells), so the
+picture built from its calls jitters at 4K however it is interpolated. N = 1 is unchanged: the original's calls are
+replayed as before. The analysis is `D:/f117-gate/present-v2/hud-analysis.md` (private; the formulas are in
+`src/present/hud_state.c`, ported from its `hudmodel.py` and `closedform.py`).
+
+**The state.** VGAME's HUD pass (1058:0016) is a pure function of its data segment at entry. The observer's new
+record `h` (`observe_hud_pass`, called by the matched pass at its entry; only with `f117_observer.hud`, which the live
+feed sets and `F117R_OBSERVE_HUD=1` sets for `--observe`) copies the 1,560 words 0x2080-0x2CAE (tables, layout
+constants, text blocks), 19 scattered words (heading, pitch, roll, altitude, raw and whole-knot speed, the ladder
+flag, the G text) and the graphics driver's tick tables (the x column and row limits of library entry 11, not in
+the data segment): 1,593 values, `hud_state.h` has the layout. A second record, `p` (`observe_panel_pass`, at the entry of the
+matched panel pass 0000:79BE, which runs before the HUD pass), holds the words the flight-path marker and the two bars are
+made from: `[98F6]`, `[E586]`, `[E474]`, `[B07E]`, `[B194]` and the HUD mode and size flags. It reads guest memory directly and changes nothing: the
+route's final guest hash is the same with and without it, the `--observe` log with `h` records removed is
+byte-identical to the log without them (`p` records included), and that equals the log of the build before this change
+(fly3 route, 2.79-2.81B, 88,585 records, 57,589,444 bytes; final hash `3a1030e87d4f1807`).
+
+**Two modes** (`hud_state.c`). EXACT is the original's integer pipeline (the clipper `0FB2:0330` included); it gives
+the library calls of the pass in order (K colour, N line, T text with its eleven block words, H tick scale, the two
+entry-18 blits). FINE carries the same formulas in floating point from the continuous state, with no final rounding:
+airspeed from `[B07E] / 27` (the raw word is finer than the HUD's knot), altitude, and heading, pitch and roll as
+fractional angle words. Lines are strokes between vertices at cell centres, bitmap text is placed by its top-left
+corner (the convention that keeps the original's alignment between tick and glyph centre), and clips are the
+original's, at cell edges.
+
+**Drawing** (`hud_overlay.c`, entered from `drawlist_record` through one hook). At an `h` record the replay draws the
+FINE primitives on the work page's fine picture: strokes of the HUD line width (`--present-line-width`, default one
+cell) as oriented rectangles with square caps, so an axis-aligned stroke at cell centres covers exactly the original's
+cells; glyphs from the font the `T` records carried (kept per font index), each source pixel an N x N block at the
+glyph's fine position. A cover (`hud_cover.c`) then follows the records of the pass that arrive and recognises each
+of the EXACT list's in order, by kind and every value. The ones FINE replaces still run through the coarse replay
+(so the coarse picture, the colour and text state and the exactness check against the display are the original's) with
+every page's fine mirror off. Counted per replay (`[present] state-driven HUD ...` line of `f117run`):
+passes drawn, records replaced and kept, records that left the prediction (the cover then ends and the rest of that
+pass keeps the original path), passes left on the original path (no tick table, no font yet, no page). The panel pass's
+items need no list: after a `p`, a record is taken for the flight-path marker (entry 71, 11 x 7 from (55, 77) to x = 154,
+y = 48 + `[98F6]` >> 6) or a bar (library line at x = 247 from row 52, or at x = 72 down to row 81) when its geometry and its
+value are what the integer formulas give for that state; the marker is then drawn from the record's own art as N x N
+blocks at y = 48 + `[98F6]` / 64, and a bar as a stroke in the library colour of the moment, its free end at
+52 - `[E586]` / 16 (vertical speed, rows 20 to 81) or 81 - ((command speed - speed) * 2 / 5 + 29) (stall margin, the
+speed being `[B07E]` / 27).
+`F117_PRESENT_HUD=old` turns it off. The ink is tagged 240/241 in the diagnostic plane (`hud_overlay.h`;
+`tools/present_diag.py` does not class them).
+
+**Interpolation.** `INTERP_HUD` (set with a scale above 1): the HUD lines the state draws are left out of the HUD-line
+pairing, and the skeleton's `h` record is regenerated with speed, altitude, heading, pitch and roll moved the same
+fraction (angles by the shortest arc, `hud_blend`; a hair from a logic frame it is the frame's own record, so the
+endpoints stay exact). Layout, mode, the readout flag, colours and the ladder switch are the skeleton's, as every other
+discrete item (the nearer frame, switching at t = 0.5); if two frames disagree on them the skeleton's state is used
+unmoved. Fixed-point override values: 1/1024 kt, 1/256 ft, 1/256 of an angle word.
+
+**What is covered, and what is not.**
+
+| covered (state-driven at N > 1) | still the original's records |
+|---|---|
+| airspeed and altitude labels (both altitude scales, full and small HUD), their tick marks | frame outline and the pointer marks beside the tapes (constants, already crisp strokes) |
+| heading labels and the heading tick strip (modes 0 and 1) | centre reticle (fixed art) and the G meter text (changes once per step) |
+| pitch ladder rungs, all rung shapes, rotated by roll, clipped to the ladder window; rung labels | the rest of the panel pass: digital speed and altitude, heading cue, station and gun text, tracking cross, ILS, sink marker |
+| flight-path marker (sub-cell height), vertical-speed bar, stall-margin bar | weapon and target symbology, cockpit art (canopy posts, attitude ball) |
+
+**Checks** (`tests/test_hud_state.c`, `tests/test_hud_live.c`, `tests/test_hud_jitter.c`; the corpus of 288 passes and
+the windows are private under `D:/f117-gate/present-v2/`).
+
+- EXACT against the original's log, seven scripted flights (full HUD climbing, on the runway, small HUD, steep pitch,
+  48 degrees of bank, mode 1 inverted, mode 2 diving), 288 passes: 12,921 library calls, 0 mismatches (K 1,111, N 4,640,
+  T 6,217, H 418, entry-18 blits 535).
+- FINE where it must agree with the original's integers: 1,447 tape labels equal to the float's floor (614 more are
+  outside the row clip and not drawn); 418 tick lattices identical to the driver's marks; 849 heading labels with
+  integer minus float in [0, 2) (139 clipped); 6,836 ladder vertices with integer minus floor of float in x [-3, 5],
+  y [-3, 1], the analysis's windows (one pass at a rung-numbering boundary left out); the ladder's label-offset tables equal
+  to their analytic form; the tick scale's colour equals the tape text's in all 418 H records. The ladder sits up to 3
+  cells higher in the original than in the float: its pitch is cut to a quarter degree and floored twice.
+- The panel pass's items, from the snapshot words: 504 of 504 records of the marker's and the bars' geometry are
+  recognised by the integer formulas (marker 258, vertical-speed bar 179, stall bar 67); integer minus float: marker top
+  [-0.97, 0.00] cells (a floor), vertical-speed bar end [0.00, 0.94] (the original shifts right, a floor of the speed, so
+  it ends up to a cell lower than the float), stall bar top [-1.17, 0.79].
+- Through the live path (drawfeed, drawlive, interpolation; strike 8.53B and four fly3/fly1 windows, N = 4): every logic
+  frame equal to the display at its close (35, 37, 37, 39 and 74 frames), every pair exact at both ends, coarse and
+  fine (33, 35, 35, 37, 72), 0 records off the prediction, panel items replaced 74, 37, 40 and 148 in the four fly windows
+  (the stall bar, whose n was 0 in them, only in the corpus), 0 replaced records that changed the fine picture (checked by
+  copying the fine page around each, `--leak-check`). The machine live (`run_route.py fly3.args -- --steps 2810000000
+  --present interp --present-scale 4`, headless): 789 HUD passes all drawn from the state, 789 logic frames equal to the
+  display at their close, 787 pairs exact at both ends, 0 records off the prediction, 1,790 panel items replaced, final
+  guest hash `3a1030e87d4f1807`, the same as without presentation. The `boot_to_flight` sentinel at N = 4 keeps its
+  368 exact logic frames, 366 exact pairs and final hash `48a10e901505e2a9` with 369 passes drawn from the state. Cost: with N = 9 a window with the state-driven HUD takes the
+  same time as without (3.2 s against 3.4 s for 37 frames, 105 in-between pictures and the end checks).
+- Unchanged where it must be: the eight retained windows give identical output from `test_drawlist` (carried and not),
+  `test_hires` at N = 1, 2, 4 and 9 (carried) and `test_interp` (default and `--fine 4`) before and after: 64 of 64.
+
+**Motion** (`test_hud_jitter`): the same pair of frames is interpolated as before (integer HUD lines, text and ticks held)
+and with the state, sampled four times per logic step; the second difference of a feature's position along the samples,
+in fine pixels at N = 4 (a smooth path has second differences near 0; 4 is one cell):
+
+| window | feature | before: rms, max | after: rms, max |
+|---|---|---|---|
+| fly1, climb 2.86B (72 pairs) | airspeed labels, y | 1.99, 4.00 | 0.01, 0.07 |
+| | altitude labels, y | 2.13, 4.00 | 0.01, 0.10 |
+| | heading labels, x | 0.67, 4.00 | 0.03, 0.48 |
+| | ladder labels, x / y | 1.05, 8.00 / 3.78, 28.00 | 0.00, 0.02 / 0.01, 0.05 |
+| | ladder endpoint, x / y | 0.37, 4.00 / 0.74, 8.00 | 0.11, 1.65 / 0.38, 5.86 |
+| | flight-path marker, y | 4.32, 40.00 | 1.10, 10.22 |
+| | vertical-speed bar end, y | 1.42, 4.00 | 0.19, 1.88 |
+| fly3 f3b, inverted bank, mode 1 (35 pairs) | heading labels, x | 1.72, 4.00 | 0.06, 0.66 |
+| | flight-path marker, y | 3.60, 28.00 | 0.80, 6.53 |
+| | ladder labels, x / y | 4.65, 16.00 / 4.58, 12.00 | 0.35, 2.12 / 0.49, 3.30 |
+| | ladder endpoint, x / y | 2.18, 8.00 / 2.18, 8.00 | 0.22, 2.14 / 0.15, 1.72 |
+| fly3 f3a, steady 48 degree bank (35 pairs) | heading labels, x | 1.33, 4.00 | 0.00, 0.01 |
+| | altitude labels, y | 0.68, 4.00 | 0.00, 0.00 |
+
+The residue of the new path is the flight state itself: the original repeats a state in consecutive logic frames and
+the next frame jumps (the 5.86 is one such repeat; the marker's 10.22 was not examined), which interpolation between real frames cannot hide. In the
+f3a window the ladder does not move (constant pitch and roll) and both paths are still. Pictures at N = 4 are in
+`D:/f117-gate/present-v2/hud/img`.
+
+**Not established.** Colour-display HUD (`[43DE]` set: tape and text colour 10, ladder 47) was not in any capture; the
+fine strokes take their colour from the state and the tape's text block, the strip's from the tape colour, and the
+original's art may differ. Altitude above 10,000 feet reads the label table past what the captures reached;
+`[E56E] = 0` (ladder off), the small HUD in modes 1 and 2 and rungs at |n| >= 9 are modelled from the disassembly and
+not reproduced against a log. A pass is left on the original path when no `T` record has yet carried a font it
+needs (none happened in these windows). Nothing here has been seen on a physical display.
+
+## Footprints the original's clipper gets wrong (14 October 2026)
+
+**What changed.** At N > 1 every verified model polygon, near-clipped ones included, is drawn from its geometry
+(`geometry_cover`, half a fine pixel of inclusive coverage, clipped to the viewport); the footprint only decides
+whether the geometry reproduces the original. The footprint clamp, the coverage tracking and the seam repair it needed
+are gone (`DT_SEAM`, `drawlist_finish_models`). The exact test (footprint reproduced within 3 px) is kept; what
+changed is what happens beyond it, by polygon kind:
+
+| Kind | Rule at N > 1 | Why |
+|---|---|---|
+| Near-clipped model polygon (`nclip` 2, both crossings already verified against the original's) | accepted when the footprint lies within 16 px (Chebyshev, steps 4, 6, 9, 12, 16) of the geometry and the geometry spills over the footprint by at most a tenth of the footprint's size (`NEAR_CLIP_TOLERANCE`) | measured below |
+| Span-rasteriser polygon with an edge whose 16-bit difference overflows (two corners more than 32,767 apart) | accepted, and drawn from its corners | every refusal has one |
+| Zero-height span strip (all corners on one row) with a one-row footprint | the original's row is the rendition: tagged `DT_SPAN_LINE`, no refusal | there is nothing to refine; 28,672 of the 31,439 trace lines of one run were these |
+| Zero-area span polygon with a taller footprint | kept scaled, `DT_SPAN_DEGENERATE` | the original's own artefact (two to four per flight run) |
+| Anything else beyond 3 px (a non-clipped model polygon whose geometry sits rows from its footprint, no overflowing edge) | kept scaled | geometry that does not explain the picture |
+
+At N = 1 nothing changes: the footprint is the picture, and `refill_span_polygon` returns before any of this.
+
+**What the measurements say about the cause.** Refusals were traced over the strike, landing and air-to-air runs up to
+the sampled frames (`F117_PRESENT_DIAG_TRACE`, with the footprint's distance to the geometry). Span polygons: every
+non-degenerate refusal (863 to 49,000 per run) has an edge between corners more than 32,767 apart, which sends the
+original's clipper (`0FB2:0757`, `vgame_span_edge_clipped`) down its halve-both-axes path (RCR/SAR on the differences,
+losing their low bits) before the 32-bit-product divide that places the clipped endpoint. The footprints that result
+lie up to 8 px (most), 128 px (a few) from the true band; in the example colour-128 band the true rows are around 66
+and the original's footprint is three full rows at 70 to 72. Overflow alone does not predict refusal: 316,560
+overflowing polygons in one run matched within 3 px. Why only some are off was not established; the clipper was read,
+not reproduced offline. Model polygons: all 833 refused near-clipped polygons have a crossing 4,800 to 280,000 px
+outside the picture (826 beyond 32,767; the original's 16-bit edge record holds the wrapped value, -279,589 appearing as
+about -17,447), the original clips such an edge with a 32-step bisection and 16-bit slopes (`vgame_mc32_bisect_one`,
+`vgame_mclip_point`), and the footprint is within 4 px of the geometry for 82% of them, 6 px for 90%, 16 px for all,
+with the geometry spilling over the footprint by 0.5 to 4.6%. The 4,198 refused non-clipped polygons are different:
+mostly tiny polygons whose geometry lies rows from the footprint (corners at y 61.2, footprint at row 64), which is a
+geometry mismatch, not clipper error, and stay scaled.
+
+**Before and after** (N=4, 3-D window, the same sampling as above; before is the commit's own `46e1d7c` build with
+the hole counters added):
+
+| | strike (144) | landing (167) | air-to-air (126) |
+|---|---|---|---|
+| frames with more than 0.5% of the window in fallbacks | 12 (8.3%) to 4 (2.8%) | 12 (7.2%) to 10 (6.0%) | 7 (5.6%) to 1 (0.8%) |
+| frames above 5% / above 20% | 10 / 7 to 0 / 0 | 7 / 7 to 0 / 0 | 7 / 4 to 0 / 0 |
+| worst frame | 83.6% to 1.7% | 55.6% to 3.3% | 42.4% to 0.7% |
+| mean fallback share | 2.60% to 0.04% | 2.04% to 0.09% | 1.32% to 0.01% |
+| unwritten pixels | 0 to 0 | 0 to 0 | 0 to 0 |
+| mean stray pixels (share of the window) | 10,823 (2.3%) to 12,275 (2.6%) | 10,413 (2.2%) to 11,618 (2.5%) | 5,355 (1.1%) to 6,574 (1.4%) |
+| worst stray frame | 7.1% to 14.6% | 7.5% to 17.4% | 4.9% to 22.9% |
+
+The fallbacks that remain are `DT_SPAN_DEGENERATE` polygons (0.03%), non-clipped model polygons and
+`DT_FB_NEAR_CROSSING` (0.06% of landing). Over the sixteen diagnostic frames (`present_diag.py`'s set), the window's
+colour changes between two scene polygons that lie on a whole-cell run of the cell grid fall from 54,488 of 378,633
+(14.4%) to 5,404 of 379,446 (1.4%); the four burst frames go from 36.3, 83.6, 52.2 and 17.4% fallback to 0, 0.25, 0.70
+and 0. One-to-two-pixel slivers of colour between two polygons beside a near-clipped one, which a gap would make,
+number 457 before and 141 after.
+
+The stray count rises where the original's own clipper mis-drew a polygon: the picture now shows the polygon the game
+asked for, which differs from the original's N=1 picture by whole rows in those frames (the horizon and sky bands in
+the burst frames; up to 23% of the window in the worst). That is the intended result of "true geometry wins", and it
+means that in such frames the fine picture is not a refinement of the original's, so the owner's parity judgement
+applies to it. N = 1 is untouched.
+
+**A hard turn.** Scripted routes turn at 2 to 3 deg/s. Holding Left, then pulsing Down every 3 s after the takeoff
+climb, gives a steep bank (the horizon near vertical) at 3 to 7 g and 17 to 27 deg/s of yaw for about 12 s before the aircraft hits
+the ground (heading words sampled each 4.5M instructions; the sustained window starts 450M after the climb; a second
+script gives 10 to 40 deg/s). The two windows (30 and 29 frames at 0.5 s) show sea, terrain and a near-vertical
+horizon. Fallbacks there were already small: mean 0.01% / 0.02% before and after, worst 0.3% / 0.7%; the scene
+cell-stair share goes 1.6% to 0.9% and 1.6% to 1.0%; unwritten pixels 0. So these hard turns do not reproduce the
+bursts, which occurred at small bank angles near the horizon.
+
+**Checks.** `ctest -E func_lockstep`: 76 of 76. Sixteen retained windows (`logs41` eight, the map and span captures,
+three current-flight windows): replay, `test_hires` at N=1/4/9 and `test_interp --fine` at 4/9, 96 of 96 pass (N=1: 69
+of 69 phases equal in `w_strike_853`). `boot_to_flight` at N=4 and 9: 368 logic frames and 366 pairs exact, final hash
+`48a10e901505e2a9`, equal to the run without presentation. The strike window 3.255B to 3.29B at N=1 gives
+byte-identical pictures with the commit's own build. `test_present_strips` adds overflow, line and degenerate cases;
+`test_near_polygons` the tolerance.
+
+`tools/hires_subpixel.py`, the Python mirror of the builder, still has the earlier footprint/seam rule for near-clipped
+polygons and the 3 px test alone; it no longer mirrors `hires.c` on them.
+
+**What is not settled.** The original clipper's exact error was not reproduced, so the tolerances (16 px, a tenth,
+the overflow criterion) are bounds from the measured distribution on three flights, not derived limits: a flight
+with a larger error would be refused (and scaled) rather than drawn wrongly. A span polygon accepted on its
+overflow is drawn inside the bounding box of its footprint, so a band whose true rows lie outside the original's table
+loses that part. Zero-area polygons with a tall footprint, non-clipped model polygons whose geometry mismatches
+and the stipple/dither cells stay scaled.
 
 ## Open questions and risks
 

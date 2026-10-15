@@ -1190,7 +1190,19 @@ instruction profiles and three 789-address matched seeds (2,561,209,
       restore real-time pacing. Production D1 is unchanged, and no limiter is
       shipped: the default is the game's own cap at 20 MIPS (above).
 - [ ] **60+ fps and 4K presentation**, design and status in
-      [presentation.md](presentation.md). The owner chose to observe and replay
+      [presentation.md](presentation.md). Owner decision (14 Oct): move to a
+      state-driven presentation where the capture is the wrong technique, keep
+      the original's logic tick, keep pixel art integer-scaled, retire each old
+      path when its replacement passes N=1 equality. Done so far: the HUD's
+      tapes, heading strip, pitch ladder, flight-path marker and bars are drawn
+      from game state at N>1 (exact against 12,921 original HUD calls; ladder-label
+      jitter rms 3.78 -> 0.01 fine px); near-clipped polygons are drawn from their
+      geometry, and polygons whose footprint the original's clipper gets wrong
+      are accepted at N>1 (worst-frame fallback 84% -> 1.7%, no holes); a per-pixel
+      origin diagnostic (`F117_PRESENT_DIAG`). Left: the rest of the HUD
+      (outline, reticle, readouts, weapon symbology), the horizon bands from state
+      (their corners are the game's rounded integers), cockpit icons such as the
+      map marker, and state rather than polygon interpolation. Earlier: the owner chose to observe and replay
       the original's draw path. Stage 0 (the observer) and Stage 1 (draw lists
       that rebuild every phase of the windows tried bit for bit, 0 bytes copied)
       are built. The observer now also captures original projection and edge

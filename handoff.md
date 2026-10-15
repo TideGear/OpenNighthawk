@@ -30,17 +30,18 @@ cockpit from game state at any resolution, interpolate state (not matched polygo
 and throw the current methods out. Retire each old path in the same commit that
 replaces it (never leave a hole; `--present scan` stays as the original picture and
 the oracle). Every layer is checked by "at a logic frame, N=1 equals the original's
-frame". Two branches are finished and verified but not yet merged (they need one full
-gate together, the 45-route `presentation_check`, the N=4/9 sentinels):
-`present-diag` (worktree `D:/f117-wt/present-diag`, `ec51aef`: the per-pixel origin
-diagnostic `F117_PRESENT_DIAG`, near-clipped polygons drawn from geometry, and polygons
-the original's clipper mis-draws accepted at N>1; evidence `D:/f117-gate/present-v2/fix3d`)
-and `present-hud` (worktree `D:/f117-wt/present-hud`, `f9f4e0d`, branched from
-`46e1d7c`: the HUD's tapes, heading strip, pitch ladder, flight-path marker and bars drawn
-from game state; evidence `D:/f117-gate/present-v2/hud`, analysis
-`D:/f117-gate/present-v2/hud-analysis.md`). Not yet from state: frame outline, reticle,
-G text, readouts, weapon/target symbology, cockpit art; horizon band corner rounding
-(derive the bands from state, VGAME `1450`). Interpolation costs
+frame". Merged (branches `present-diag` and `present-hud`, gate 99 tests / 45 routes,
+45-route `presentation_check` exact at N=1, `boot_to_flight` N=4/9 368/366 exact): the
+per-pixel origin diagnostic `F117_PRESENT_DIAG`, near-clipped polygons drawn from geometry,
+polygons the original's clipper mis-draws accepted at N>1 (evidence
+`D:/f117-gate/present-v2/fix3d`), and the HUD's tapes, heading strip, pitch ladder,
+flight-path marker and bars drawn from game state (`src/present/hud_state.c`,
+`hud_cover.c`, `hud_overlay.c`; `F117_PRESENT_HUD=old` switches it off; evidence
+`D:/f117-gate/present-v2/hud`, analysis `D:/f117-gate/present-v2/hud-analysis.md`). Not yet
+from state: frame outline, reticle, G text, readouts, weapon/target symbology, cockpit art
+and the map marker; horizon band corner rounding (derive the bands from state, VGAME
+`1450`); state rather than polygon-pairing interpolation. The owner has not yet viewed the
+merged picture on the 4K display. Interpolation costs
 about one logic step of picture age (67-110 ms); that is the stated price
 ([docs/presentation.md](docs/presentation.md), Stage 4).
 

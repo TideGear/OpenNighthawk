@@ -33560,6 +33560,7 @@ static void panel_colour_ax(cpu_t *c, uint16_t address)
 static int vgame_panel_frame(machine_t *m)
 {
     cpu_t *c = &m->cpu;
+    if (g_f117_observer) observe_panel_pass(m);                 /* the panel items' state (the original path has no hook) */
     if (!room(c, 4)) return 0;
     x86_enter(c, 0x20, 0); x86_push_reg(c, R_DI); x86_push_reg(c, R_SI); c->icount += 3;
     VG3_FAR(0x79C4, 0);
@@ -34047,6 +34048,7 @@ static void hud_swap_ax_bytes(cpu_t *c)
 static int vgame_hud_pass(machine_t *m)
 {
     cpu_t *c = &m->cpu;
+    if (g_f117_observer) observe_hud_pass(m);                   /* the state the pass starts from (the original path has no hook) */
     if (!room(c, 1)) return 0;
     SM4_NEED(1, 0x0016); VG3_FAR(0x0016, 11);
     set_r8(c, R_AH, (uint8_t)alu_sub(c, get_r8(c, R_AH), get_r8(c, R_AH), 0, 0));

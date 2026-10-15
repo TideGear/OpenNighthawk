@@ -72,6 +72,11 @@ int interp_inbetween(const interp_frame *a, const interp_frame *b, const interp_
  * past b as far again as they came from a (the skeleton is b). */
 #define INTERP_VERTICES 1
 #define INTERP_EXTRAPOLATE 2
+/* INTERP_HUD: the HUD the state-driven path draws (hud_state.h, hud_cover.h) moves as state. Its lines
+ * are left out of the HUD line interpolation, and the record of the HUD's state ('h') is regenerated with
+ * its continuous values (speed, altitude, heading, pitch, roll) moved the same fraction of the way and its
+ * layout and switches the skeleton's. */
+#define INTERP_HUD 4
 int interp_inbetween_ex(const interp_frame *a, const interp_frame *b, const interp_pairing *p, double t, int flags,
                         interp_list *out, int *skel_b, uint64_t *stats);
 void interp_list_free(interp_list *l);

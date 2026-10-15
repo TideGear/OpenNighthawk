@@ -10,16 +10,15 @@
  * centre lies inside the verified polygon, with half a fine pixel of
  * inclusive coverage, clipped to its viewport. Orthographic rounding names
  * cell centres. N = 1 retains the original footprint exactly; near-plane
- * polygons retain the separately verified footprint/seam rule. Exact camera
+ * polygons are drawn the same way once the footprint test passes. Exact camera
  * snapshots supply the origin even when every edge is viewport-clipped and
  * avoid reused V storage. Missing snapshots, unrelated behind vertices or
- * a footprint more than 3 pixels from the geometry keep the scaled copy,
- * as do text, sprites,
+ * a footprint more than 3 pixels from the geometry keep the scaled copy
+ * (except a near-clipped polygon within hires.c's clip tolerance, and a span
+ * polygon the original's clipper overflowed on), as do text, sprites,
  * and blits. HUD lines and ticks are drawn on the fine grid by drawlist.c,
  * retaining the original glyph and artwork pixels. The state is plain data:
- * a copy (memcpy) carries on. drawlist_finish_models completes uncovered
- * internal seams from the original coarse owner before a picture is read;
- * drawlist_record closes that coverage layer before other painters. */
+ * a copy (memcpy) carries on. */
 #ifndef F117R_HIRES_H
 #define F117R_HIRES_H
 
@@ -52,6 +51,7 @@ enum {
     HS_GROW0, HS_GROW05, HS_GROW1, HS_GROW15, HS_GROW2, HS_GROW3,
     HS_NEAR_CLIPPED, HS_FEW_EDGES, HS_NO_VERTICES, HS_BEHIND, HS_NO_DIVISOR, HS_BEYOND, HS_STYLE,
     HS_SPAN_POLYGONS, HS_SPAN_REFILLED, HS_SPAN_BEYOND, HS_SPAN_THIN,
+    HS_NEAR_TOLERATED, HS_SPAN_OVERFLOW, HS_SPAN_LINE, HS_SPAN_DEGENERATE,
     HS_COUNT
 };
 const char *hires_stat_name(int k);
@@ -92,5 +92,9 @@ int hires_guard(const uint8_t *coarse, uint8_t *fine, int n, uint64_t *flat, uin
  * flat at coarse resolution. Exclude drawlist_page.strokes from the guard. */
 int hires_guard_masked(const uint8_t *coarse, uint8_t *fine, int n, const uint8_t *strokes,
                        uint64_t *flat, uint64_t *agree);
+/* The same, also marking each restored cell DT_GUARD in the diagnostic origin plane `tag`
+ * (same layout as fine; diagtag.h) when it is not NULL. */
+int hires_guard_masked_tag(const uint8_t *coarse, uint8_t *fine, int n, const uint8_t *strokes,
+                           uint64_t *flat, uint64_t *agree, uint8_t *tag);
 
 #endif
