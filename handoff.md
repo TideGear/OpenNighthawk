@@ -38,6 +38,8 @@ capture 2.45B-2.85B; `ident/draw.log` has identity records 2.75B-2.85B;
   35 -> 2 and >20% speed changes 21.4% -> 1.6% for ~17 ms more age. Not built:
   it needs a third live step and its pairing; make it switchable (the owner
   has not set defaults).
+- **Road and coastline jitter are in the original** (owner, 15 Oct 14:40: the same jitter shows in the GOG
+  DOSBox release). Not our defect; smoothing it at N>1 is an optional enhancement, the owner's call.
 - **Road jitter is NOT from interpolation** (owner, 15 Oct 14:30): it is still visible in sharp mode
   (`--present replay`, no in-between frames). Owner's sharp session frozen in
   `D:/f117-gate/present-v2/owner-sharp-20261015` (`session-20261015-142924`; headless replay N=9,
@@ -46,7 +48,7 @@ capture 2.45B-2.85B; `ident/draw.log` has identity records 2.75B-2.85B;
   both ends on screen, so outlines crossing the near plane or leaving the screen (long roads passing
   under the aircraft) are drawn from the original's whole-pixel endpoints scaled up and hop in N-pixel
   steps. No coarse-fallback outline pixels appeared (DIAG tag 25 = 0), so it is not a path flip.
-  Next: confirm roads are among those 6.1%, then refine clipped outlines by clipping their exact
+  Optional enhancement (not a fix): confirm roads are among those 6.1%, then refine clipped outlines by clipping their exact
   camera-space segment to the near plane and screen (as near-clipped polygons already are); a
   presentation-only change (`present_light_check.py`). If refined roads still wobble, measure the
   original's per-frame coordinate noise on a correctly tracked static road edge.
