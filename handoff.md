@@ -15,6 +15,25 @@ standing practice, not a session-by-session log. Earlier sessions' detail
 
 ## Current state (15 October)
 
+**Latest handoff / owner retest.** Main stays on validated foundation `f518d4c`; the owner reports that dark-gray
+ground lines (apparently roads) still jitter and green building patches sometimes jump abruptly while flying.
+The screenshots alone do not establish whether each jump comes from original detail/culling or our interpolation.
+The new session `session-20261015-103956` is frozen privately in `D:/f117-gate/present-v2/owner-roads-20261015`:
+1,152 inputs, replay through clock 2,850,306,120, 57 checkpoints and final `71bc32c7d96fe6b9` identical between
+engines. The complete draw capture covers 2,450,306,120..2,850,306,120 (`recomp/draw.log`, about 633 MB);
+`replay-verdict.json` is the guest-parity result, not a visual diagnosis. Use this as the next regression source.
+
+Unfinished native work is committed/pushed as **`a2202f1`** on **`present-scene-geometry`**, worktree **`D:/f117-wt/present-world-lines`**:
+`src/present/scene_mesh.c/.h`, `tests/test_scene_mesh.c` and its CMake wiring. It decodes owned complete meshes,
+loads prepared poses, evaluates hidden/visible camera geometry and plane shading, walks painter order and conditional
+material bytecode. It is not connected to live rendering. Build and the synthetic `presentation_scene_mesh` CTest
+pass; native comparison against all original fixtures, material-call parity, broader tests and a fresh full gate are
+still pending. **Do not merge this draft into main as a finished fix.** Private implementation/proof notes:
+`D:/f117-gate/present-v2/scene/next-step.txt` and `live-integration-notes.txt`. Next: reproduce road jitter/building jumps
+from the frozen flight; verify native geometry/material semantics against original-byte fixtures; then add compact
+prepared-pose and upstream identity/candidate capture and connect the common projection/clipping path. Keep original
+graphics and gameplay/input timing. No visible/fullscreen tests without asking. All agent test/build processes are stopped.
+
 The remaining HUD/map-position follow-up is integrated on top of sky/ground (`f57f9cf`) and world lines (`84f3edc`).
 All original fonts/sprites remain, including the eight-heading 4x4 aircraft arrow. Continuous state moves on the fine
 grid; discrete readouts, switches and arrow heading wait for the logic frame. Map-origin subtraction preserves its
