@@ -58,6 +58,20 @@ static void flush(machine_t *m);
 void observe_scene_model(machine_t *m)
 {
     const f117_observer *o = g_f117_observer;
+    if (o && o->ident && o->prim) {
+        flush(m);
+        const cpu_t *c=&m->cpu;
+        const uint16_t ds=c->seg[S_DS],ss=c->seg[S_SS],sp=c->r[R_SP],bp=c->r[R_BP];
+        const uint16_t parent=peek16(c,ss,bp),entry=peek16(c,ds,0xE476);
+        int32_t v[SCENE_IDENT_N]={SCENE_CAPTURE_VERSION,peek16(c,ss,(uint16_t)(sp+4)),peek16(c,ss,sp),
+            peek16(c,ss,(uint16_t)(bp+2)),bp,parent,peek16(c,ds,0xE328),entry,
+            peek16(c,ds,0x4994),peek16(c,ds,0x4996),peek16(c,ds,0x4998),
+            peek16(c,ss,(uint16_t)(parent-0x16)),peek16(c,ss,(uint16_t)(parent-2)),
+            peek16(c,ss,(uint16_t)(parent-0x18)),peek16(c,ss,(uint16_t)(parent-4)),
+            peek16(c,ss,(uint16_t)(parent-0xC)),peek16(c,ss,(uint16_t)(parent-0x1E))};
+        for(int k=0;k<5;k++)v[17+k]=peek8(c,ds,(uint16_t)(entry+k));
+        o->prim(o->user,c->icount,SCENE_IDENT_KIND,v,SCENE_IDENT_N);
+    }
     if (!o || !o->scene || !o->prim || (o->want_scene && !o->want_scene(o->user,m->cpu.icount))) return;
     const cpu_t *c=&m->cpu;
     const uint16_t ds=c->seg[S_DS],ss=c->seg[S_SS],sp=c->r[R_SP],bank=peek16(c,ds,0x8590);

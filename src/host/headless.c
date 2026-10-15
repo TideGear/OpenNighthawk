@@ -544,6 +544,7 @@ int main(int argc, char **argv)
             if (!g_obs_file) { fprintf(stderr, "cannot write %s\n", path); return 2; }
             if (getenv("F117R_OBSERVE_HUD")) g_obs.hud = 1;
             if (getenv("F117R_OBSERVE_BANDS")) g_obs.bands = 1;
+            if (getenv("F117R_OBSERVE_IDENT")) g_obs.ident = 1;
             const char *scene=getenv("F117R_OBSERVE_SCENE");
             if(scene) {
                 char *end;const unsigned long limit=strtoul(scene,&end,10);

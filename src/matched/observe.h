@@ -73,6 +73,10 @@ typedef struct f117_observer {
      * and count; NULL accepts every request when scene is enabled. */
     int scene;
     int (*want_scene)(void *user, uint64_t icount);
+    /* Nonzero: every model request (VGAME 120A:00CF at entry) logs a compact record 'I' (scene_capture.h) with the
+     * model index, caller chain and the world-cell words that name the object (research for stable identity; the
+     * words are raw and unproven). Off by default so that existing logs stay as they were. */
+    int ident;
 } f117_observer;
 
 extern const f117_observer *g_f117_observer;
