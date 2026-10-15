@@ -947,6 +947,41 @@ guest drift; malformed or incomplete captures fail. `f117a.4k.ini` is an optiona
 ready-to-run fullscreen preset. Commands and limits are in
 [repeated-processes.md](repeated-processes.md).
 
+## Where the blockiness comes from: the pixel-origin diagnostic (14 October 2026)
+
+`F117_PRESENT_DIAG=DIR` (with `--present interp` or `replay` and `--present-scale N > 1`; off when unset) gives
+every replayed page a byte per fine pixel naming the path that last wrote it (`src/present/diagtag.h`: refined
+model polygon, refined span-rasteriser polygon, each fallback by reason, seam and guard repairs, strokes, text,
+sprites, blits from pages the replay does not hold, copies). The plane follows page copies, blits and the map's
+overlay cache as the fine pixels do. Beside each `--shots`/`--screen` picture, `f117run` writes `BASE.tag`, `BASE.diag.ppm`
+(false colour) and `BASE.txt`; `F117_PRESENT_DIAG_HIST=FILE` appends the per-tag counts of a window
+(`F117_PRESENT_DIAG_RECT=x0,y0,x1,y1`, default the 3-D view 0,0,320,91; `F117_PRESENT_DIAG_HIST_ONLY=1` skips the
+images), `F117_PRESENT_DIAG_TRACE=FILE` logs each polygon refused for a footprint beyond 3 px, and the final
+`[diag]` lines print the builder's and the interpolator's counters. `tools/present_diag.py` makes the side-by-side
+PNGs and class tables. Guest hashes and presented pictures are identical with it on (strike to 2.598B,
+N=4: `a8bc78f294805e14`, four shots byte-identical).
+`F117_PRESENT_DIAG_EXP=near` is an experiment only: it draws near-clipped polygons from their verified geometry
+instead of clamping them to the original's footprint.
+
+Measured on the strike, landing and air-to-air type 6 flights (N=4, 3-D view, 144/167/126 frames sampled every 5 s
+of emulated time, 3-D window = 0,0,320,91):
+the view is 88 to 89% refined geometry (model polygons 9 to 34%, sky/ground span polygons 55 to 83%), strokes 2.5 to 5%,
+text 2%, canopy-frame sprites 3.4%, the rest scaled fallbacks. Two things leave visible blocks.
+
+- **Near-clipped polygons are clamped to the original footprint** (`hires.c`, `geometric = n > 1 && !nclip`).
+  Their pixels (`DT_MODEL_NEAR`, 4 to 28% of the view) are cut to the original's coarse rows, so their edge against the
+  sky strips is a staircase of one-cell steps: 32 to 65% of the colour changes along that edge lie on the cell grid
+  (a refined edge gives 25% at N=4). With the experiment on, the same eight frames give 1 to 30%, and in the
+  one frame compared 615 of 465,920 window pixels differ.
+- **A polygon refused for "footprint beyond 3 px" is drawn as the scaled copy whole.** The test is exact equality of the
+  true shape plus 3 px with the original's rows, so missing 1 pixel in 15,000 refuses a large near-clipped sea/ground
+  polygon or the sky polygon (corners 20,000 to 30,000 px out). It happens in 6 to 8% of the sampled frames,
+  in bursts: the sky or the sea, up to 83% of the view, becomes cell-sized blocks for those frames.
+
+HUD lines come from integer endpoints (`N` records: AX..DX of the library line call, already clipped); the in-between
+frame interpolates each endpoint with `rnd(lerp())` back to an integer, so a line moves in whole cells, and a group
+whose size changed between steps is held (18% of HUD lines in the strike flight) and switches at t = 0.5.
+
 ## Open questions and risks
 
 - **Pairing for interpolation.** Done for 86-99% of painted polygons by batch alignment

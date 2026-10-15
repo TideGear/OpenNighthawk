@@ -1,6 +1,7 @@
 /* drawfeed.c - see drawfeed.h. */
 #include "drawfeed.h"
 
+#include "diagtag.h"
 #include "tls.h"
 #include <stdlib.h>
 #include <string.h>
@@ -155,9 +156,12 @@ void drawlive_set_scale(drawlive *r, int n)
     r->pending_hires = (hires *)malloc(sizeof *r->pending_hires);
     hires_init(r->hr, n);
     r->inter_hi = (uint8_t *)calloc(bytes, 1);
+    const char *diag = getenv("F117_PRESENT_DIAG");
+    if (diag && *diag) { drawlist_diag_enable(1); r->inter_tag = (uint8_t *)calloc(bytes, 1); }
     for (int k = 0; k < DRAWLIVE_POOL; k++) {
         r->step[k].start_hires = (hires *)malloc(sizeof *r->hr);
         r->step[k].picture_hi = (uint8_t *)calloc(bytes, 1);
+        if (r->inter_tag) r->step[k].picture_tag = (uint8_t *)calloc(bytes, 1);
     }
 }
 
@@ -178,10 +182,12 @@ static void feed(drawlist *d, hires *h, char kind, const int32_t *v, int n)
 }
 
 /* the fine picture of a display page, guarded, into out */
-static void take_fine(drawlive *r, const drawlist_page *disp, uint8_t *out)
+static void take_fine(drawlive *r, const drawlist_page *disp, uint8_t *out, uint8_t *out_tag)
 {
     memcpy(out, disp->hi, (size_t)320 * r->scale * 200 * r->scale);
-    r->fine_restored += (uint64_t)hires_guard_masked(disp->b, out, r->scale, disp->strokes, &r->fine_flat, &r->fine_agree);
+    if (out_tag && disp->tag) memcpy(out_tag, disp->tag, (size_t)320 * r->scale * 200 * r->scale);
+    r->fine_restored += (uint64_t)hires_guard_masked_tag(disp->b, out, r->scale, disp->strokes, &r->fine_flat, &r->fine_agree,
+                                                         out_tag && disp->tag ? out_tag : NULL);
 }
 
 /* Keep a replayed frame's records for interpolation (P, Z, Y and J left out). */
@@ -226,8 +232,10 @@ static const uint8_t *draw_list(drawlive *r, const drawlive_step *skel)
     if (!disp || disp->size < 64000) return NULL;
     if (r->scale) {
         memcpy(r->inter_hi, disp->hi, (size_t)320 * r->scale * 200 * r->scale);
+        if (r->inter_tag && disp->tag) memcpy(r->inter_tag, disp->tag, (size_t)320 * r->scale * 200 * r->scale);
         uint64_t flat = 0, agree = 0;
-        hires_guard_masked(disp->b, r->inter_hi, r->scale, disp->strokes, &flat, &agree);
+        hires_guard_masked_tag(disp->b, r->inter_hi, r->scale, disp->strokes, &flat, &agree,
+                               r->inter_tag && disp->tag ? r->inter_tag : NULL);
     }
     return disp->b;
 }
@@ -323,7 +331,7 @@ static void close_frame(drawlive *r, drawfeed *f, const drawfeed_frame *fr)
         }
     }
     memcpy(s->picture, disp->b, 64000);
-    if (r->scale) take_fine(r, disp, s->picture_hi);
+    if (r->scale) take_fine(r, disp, s->picture_hi, s->picture_tag);
     s->seq = fr->seq;
     s->end = fr->end;
     s->ok = 1;
@@ -381,6 +389,7 @@ void drawlive_publish(drawlive *r)
         r->shown = 1;
         r->picture = s->picture;
         r->picture_hi = r->scale ? s->picture_hi : NULL;
+        r->picture_tag = r->scale ? s->picture_tag : NULL;
         r->picture_seq = s->seq;
         r->picture_end = s->end;
         if (r->check && s->pair && r->ia >= 0) check_pair(r);
@@ -415,10 +424,11 @@ int drawlive_current(const drawlive *r, const machine_t *m)
 
 int drawlive_present(drawlive *r, const machine_t *m, present_frame *f)
 {
-    r->shown_hi = NULL;
+    r->shown_hi = r->shown_tag = NULL;
     if (f->text || !drawlive_current(r, m)) return 0;
     memcpy(f->vram, r->picture, 64000);
-    if (r->scale) r->shown_hi = r->picture_hi;
+    if (r->scale) { r->shown_hi = r->picture_hi; r->shown_tag = r->picture_tag; }
+    r->diag_kind = PLAN_REPLAY; r->diag_t = 0; r->diag_older = r->diag_newer = r->picture_seq;
     return 1;
 }
 
@@ -448,18 +458,19 @@ int drawlive_plan_interp(const drawlive *r, const machine_t *m, const present_fr
 
 int drawlive_render(drawlive *r, const drawlive_plan *plan, present_frame *f)
 {
-    r->shown_hi = NULL;
+    r->shown_hi = r->shown_tag = NULL;
     if (plan->kind == PLAN_NONE) return 0;
+    r->diag_kind = plan->kind; r->diag_t = plan->t; r->diag_older = plan->older; r->diag_newer = plan->newer;
     if (plan->kind == PLAN_OLDER || plan->kind == PLAN_NEWER || plan->kind == PLAN_BETWEEN) {
         const drawlive_step *a = &r->step[r->ia], *b = &r->step[r->ib];
         if (plan->kind == PLAN_OLDER) {
             memcpy(f->vram, a->picture, 64000);
-            if (r->scale) r->shown_hi = a->picture_hi;
+            if (r->scale) { r->shown_hi = a->picture_hi; r->shown_tag = a->picture_tag; }
             return 1;
         }
         if (plan->kind == PLAN_NEWER) {
             memcpy(f->vram, b->picture, 64000);
-            if (r->scale) r->shown_hi = b->picture_hi;
+            if (r->scale) { r->shown_hi = b->picture_hi; r->shown_tag = b->picture_tag; }
             return 1;
         }
         int sb;
@@ -469,13 +480,14 @@ int drawlive_render(drawlive *r, const drawlive_plan *plan, present_frame *f)
         const uint8_t *p = draw_list(r, sb ? b : a);
         if (p) {
             memcpy(f->vram, p, 64000);
-            if (r->scale) r->shown_hi = r->inter_hi;
+            if (r->scale) { r->shown_hi = r->inter_hi; r->shown_tag = r->inter_tag; }
             r->inbetweens++;
             return 1;
         }
     }
     memcpy(f->vram, r->picture, 64000);                /* the replayed picture */
-    if (r->scale) r->shown_hi = r->picture_hi;
+    if (r->scale) { r->shown_hi = r->picture_hi; r->shown_tag = r->picture_tag; }
+    r->diag_kind = PLAN_REPLAY;
     return 1;
 }
 

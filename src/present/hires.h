@@ -92,5 +92,9 @@ int hires_guard(const uint8_t *coarse, uint8_t *fine, int n, uint64_t *flat, uin
  * flat at coarse resolution. Exclude drawlist_page.strokes from the guard. */
 int hires_guard_masked(const uint8_t *coarse, uint8_t *fine, int n, const uint8_t *strokes,
                        uint64_t *flat, uint64_t *agree);
+/* The same, also marking each restored cell DT_GUARD in the diagnostic origin plane `tag`
+ * (same layout as fine; diagtag.h) when it is not NULL. */
+int hires_guard_masked_tag(const uint8_t *coarse, uint8_t *fine, int n, const uint8_t *strokes,
+                           uint64_t *flat, uint64_t *agree, uint8_t *tag);
 
 #endif

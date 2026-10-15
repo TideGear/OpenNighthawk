@@ -1,11 +1,24 @@
 /* hires.c - see hires.h. The functions follow tools/hires_subpixel.py's. */
 #include "hires.h"
+#include "diagtag.h"
 #include "nearclip.h"
 
 #include "tls.h"
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
+
+/* F117_PRESENT_DIAG_TRACE=FILE (diagnostic): one line per polygon the builder refuses for a footprint
+ * more than 3 px from its geometry: the corners, the footprint's rows, and the cover found at the
+ * largest allowed overshoot against the footprint's size. */
+static FILE *trace_file(void)
+{
+    static int tried;
+    static FILE *f;
+    if (!tried) { tried = 1; const char *p = getenv("F117_PRESENT_DIAG_TRACE"); if (p && *p) f = fopen(p, "a"); }
+    return f;
+}
 
 static const char *const STAT_NAMES[HS_COUNT] = {
     "polygons", "polygons left nearest", "polygons refilled from vertices", "footprint pixels",
@@ -291,7 +304,7 @@ static int64_t cover_total(const int32_t *spans, int count)
  * polygon boundary. Changing its frequency with scale would change the
  * texture rather than just the geometry. Transparent stipple cells retain
  * the fine background already drawn. */
-static void paint_run(uint8_t *row, int n, int colour, int x, int y, int scale)
+static void paint_run(uint8_t *row, uint8_t *trow, uint8_t tv, int n, int colour, int x, int y, int scale)
 {
     const uint8_t lo = (uint8_t)colour, hi = (uint8_t)(colour >> 8);
     if (hi == 0xFF) memset(row, lo, (size_t)n);
@@ -301,6 +314,10 @@ static void paint_run(uint8_t *row, int n, int colour, int x, int y, int scale)
         const int odd = ((x + i) / scale + y / scale) & 1;
         if (hi == 0xFC) { if (odd) row[i] = lo; }
         else row[i] = odd ? hi : lo;
+    }
+    if (trow && hi != 0xFB) {                      /* diagnostic origin plane: what this run painted */
+        if (hi == 0xFC) { for (int i = 0; i < n; i++) if (((x + i) / scale + y / scale) & 1) trow[i] = tv; }
+        else memset(trow, tv, (size_t)n);
     }
 }
 
@@ -342,48 +359,50 @@ static void model_geometry(drawlist_page *page,const footprint *f,const extents 
 /* The camera cut's two crossings close the visible part of a convex model
  * polygon. Verify each against the crossing retained by the original before
  * using the precision discarded there. Legacy logs retain their old fill. */
+static F117_TLS int why_poly;               /* diagnostic: the origin tag of the last refusal */
+#define NEAR_FAIL(code) do { why_poly = (code); return 0; } while (0)
 static int near_polygon_edges(hires *h, double (*out)[4])
 {
     const int ne = h->poly.nedges;
-    if (h->poly.nclip != 2 || ne >= HIRES_EDGES) return 0;
+    if (h->poly.nclip != 2 || ne >= HIRES_EDGES) NEAR_FAIL(DT_FB_NEAR_SHAPE);
     int count = 0, cuts = 0;
     double crossing[2][2];
     int32_t origin[2] = { 0, 0 };
     for (int k = 0; k < ne; k++) {
         const hires_edge *e = &h->poly.edges[k];
         const hires_snapshot *s = &e->snap;
-        if (!s->valid || s->ortho) return 0;
+        if (!s->valid || s->ortho) NEAR_FAIL(DT_FB_NEAR_SHAPE);
         if (!k) { origin[0] = s->origin[0]; origin[1] = s->origin[1]; }
-        else if (origin[0] != s->origin[0] || origin[1] != s->origin[1]) return 0;
+        else if (origin[0] != s->origin[0] || origin[1] != s->origin[1]) NEAR_FAIL(DT_FB_NEAR_SHAPE);
         if (s->behind == 3) {
-            if (!(e->st & 0x80)) return 0;
+            if (!(e->st & 0x80)) NEAR_FAIL(DT_FB_NEAR_SHAPE);
             continue;
         }
         double a[2], b[2];
         if (s->behind) {
-            if (!(e->st & 0x40) || !e->have_crossing || cuts == 2) return 0;
+            if (!(e->st & 0x40) || !e->have_crossing || cuts == 2) NEAR_FAIL(DT_FB_NEAR_SHAPE);
             const hires_vertex *front = s->behind == 1 ? &s->b : &s->a;
             const hires_vertex *behind = s->behind == 1 ? &s->a : &s->b;
             const int32_t f[3] = { front->x, front->y, front->z };
             const int32_t z[3] = { behind->x, behind->y, behind->z };
             int32_t coarse[2];
             double fine[2], visible[2];
-            if (!present_near_crossing(f,z,coarse,fine) || !vertex_fraction(front,&visible[0],&visible[1])) return 0;
+            if (!present_near_crossing(f,z,coarse,fine) || !vertex_fraction(front,&visible[0],&visible[1])) NEAR_FAIL(DT_FB_NEAR_CROSSING);
             for (int c = 0; c < 2; c++) {
-                if (coarse[c] + origin[c] != e->crossing[c]) return 0;
+                if (coarse[c] + origin[c] != e->crossing[c]) NEAR_FAIL(DT_FB_NEAR_CROSSING);
                 crossing[cuts][c] = fine[c] + origin[c];
                 a[c] = (s->behind == 1 ? fine[c] : visible[c]) + origin[c];
                 b[c] = (s->behind == 1 ? visible[c] : fine[c]) + origin[c];
             }
             cuts++;
         } else {
-            if (e->st & 0x40 || !vertex_fraction(&s->a,&a[0],&a[1]) || !vertex_fraction(&s->b,&b[0],&b[1])) return 0;
+            if (e->st & 0x40 || !vertex_fraction(&s->a,&a[0],&a[1]) || !vertex_fraction(&s->b,&b[0],&b[1])) NEAR_FAIL(DT_FB_NEAR_SHAPE);
             for (int c = 0; c < 2; c++) { a[c] += origin[c]; b[c] += origin[c]; }
         }
         out[count][0] = a[0]; out[count][1] = a[1]; out[count][2] = b[0]; out[count][3] = b[1];
         count++;
     }
-    if (cuts != 2 || count < 2) return 0;
+    if (cuts != 2 || count < 2) NEAR_FAIL(DT_FB_NEAR_SHAPE);
     out[count][0] = crossing[0][0]; out[count][1] = crossing[0][1];
     out[count][2] = crossing[1][0]; out[count][3] = crossing[1][1];
     return count + 1;
@@ -398,7 +417,7 @@ static int polygon_edges(hires *h, double (*out)[4])
         return ne;
     }
     const int ne = h->poly.nedges;
-    if (ne < 3) { h->stats[HS_FEW_EDGES]++; return 0; }
+    if (ne < 3) { h->stats[HS_FEW_EDGES]++; why_poly = DT_FB_FEW_EDGES; return 0; }
     /* Modern records retain the camera and origin at edge preparation.
      * A polygon clipped on every edge has no unclipped endpoint to vote for
      * its origin; using the previous view's origin loses valid fine geometry.
@@ -415,7 +434,7 @@ static int polygon_edges(hires *h, double (*out)[4])
             const hires_snapshot *s = &h->poly.edges[k].snap;
             double ax, ay, bx, by;
             if (!snapshot_fraction(s, &s->a, &ax, &ay) || !snapshot_fraction(s, &s->b, &bx, &by)) {
-                h->stats[HS_NO_DIVISOR]++; return 0;
+                h->stats[HS_NO_DIVISOR]++; why_poly = DT_FB_NO_DIVISOR; return 0;
             }
             out[k][0] = ax + s->origin[0]; out[k][1] = ay + s->origin[1];
             out[k][2] = bx + s->origin[0]; out[k][3] = by + s->origin[1];
@@ -424,8 +443,8 @@ static int polygon_edges(hires *h, double (*out)[4])
     }
     for (int k = 0; k < ne; k++) {
         const hires_edge *e = &h->poly.edges[k];
-        if (!e->have_g || !e->a.ok || !e->b.ok) { h->stats[HS_NO_VERTICES]++; return 0; }
-        if (e->a.range == 2 || e->b.range == 2) { h->stats[HS_BEHIND]++; return 0; }
+        if (!e->have_g || !e->a.ok || !e->b.ok) { h->stats[HS_NO_VERTICES]++; why_poly = DT_FB_NO_VERTICES; return 0; }
+        if (e->a.range == 2 || e->b.range == 2) { h->stats[HS_BEHIND]++; why_poly = DT_FB_BEHIND; return 0; }
     }
     /* the origin ([8602], [8604]) most of the unclipped edges agree on, the first on a tie */
     int32_t vx[HIRES_EDGES], vy[HIRES_EDGES], vc[HIRES_EDGES];
@@ -450,6 +469,7 @@ static int polygon_edges(hires *h, double (*out)[4])
         double ax, ay, bx, by;
         if (!vertex_fraction(&e->a, &ax, &ay) || !vertex_fraction(&e->b, &bx, &by)) {
             h->stats[HS_NO_DIVISOR]++;
+            why_poly = DT_FB_NO_DIVISOR;
             return 0;
         }
         out[k][0] = ax + h->origin[0]; out[k][1] = ay + h->origin[1];
@@ -462,8 +482,9 @@ static void refill(hires *h, drawlist *d, drawlist_page *page)
 {
     h->stats[HS_POLYGONS]++;
     static F117_TLS double base[HIRES_EDGES][4], fine[HIRES_EDGES][4];
+    why_poly = DT_FB_UNATTEMPTED;
     const int ne = polygon_edges(h, base);
-    if (!ne) { h->stats[HS_LEFT_NEAREST]++; return; }
+    if (!ne) { h->stats[HS_LEFT_NEAREST]++; d->diag_b = (uint8_t)why_poly; return; }
     static F117_TLS footprint f;
     footprint_rows(h, &f);
     static F117_TLS extents x;
@@ -477,18 +498,35 @@ static void refill(hires *h, drawlist *d, drawlist_page *page)
         const int c = fine_cover(&f, &x, 1, GROWS[g], spans);
         if (cover_total(spans, c) == want) break;
     }
-    if (g == 6) { h->stats[HS_BEYOND]++; h->stats[HS_LEFT_NEAREST]++; return; }
+    if (g == 6) {
+        h->stats[HS_BEYOND]++; h->stats[HS_LEFT_NEAREST]++; d->diag_b = DT_FB_BEYOND;
+        FILE *tf = trace_file();
+        if (tf) {
+            const int c = fine_cover(&f, &x, 1, GROWS[5], spans);
+            fprintf(tf, "MODEL nclip %d ne %d rows %d y0 %d want %lld cover3 %lld vp %d %d %d %d corners", h->poly.nclip, ne, f.n, f.y0,
+                    (long long)want, (long long)cover_total(spans, c), h->poly.vp[0], h->poly.vp[1], h->poly.vp[2], h->poly.vp[3]);
+            for (int k = 0; k < ne && k < 8; k++) fprintf(tf, " (%.2f,%.2f)", base[k][0], base[k][1]);
+            fputc(10, tf);
+        }
+        return;
+    }
     h->stats[HS_GROW0 + g]++;
     const int n = h->n;
     if (n > 64) return;
     for (int k = 0; k < ne; k++)
         for (int c = 0; c < 4; c++) fine[k][c] = base[k][c] * n;
     extents_init(&x, (const double (*)[4])fine, ne);
-    const int geometric = n > 1 && !h->poly.nclip;
+    /* F117_PRESENT_DIAG_EXP=near (diagnostic experiment, off by default): draw near-clipped polygons from
+     * their verified geometry too, instead of clamping them to the original's coarse footprint. */
+    static int exp_near = -1;
+    if (exp_near < 0) { const char *e = getenv("F117_PRESENT_DIAG_EXP"); exp_near = e && strstr(e, "near") ? 1 : 0; }
+    const int geometric = n > 1 && (!h->poly.nclip || exp_near);
     const int count = geometric ? geometry_cover(&x, n, 0.5, h->poly.vp, spans)
                                 : fine_cover(&f, &x, n, GROWS[g], spans);
     if (geometric) protect_geometry(page, &f, spans, count);
     const int W = 320 * n;
+    const int hib = (h->fill_colour >> 8) & 0xFF;
+    const uint8_t tv = h->poly.nclip ? DT_MODEL_NEAR : (hib != 0xFF && hib != 0xFE && hib != 0xFD && hib != 0xFB) ? DT_MODEL_PATTERN : DT_MODEL_SOLID;
     const int tracking=!geometric && n>1 && (h->fill_colour&0xFF00)!=0xFB00;
     if(tracking) model_geometry(page,&f,&x,h->poly.vp);
     for (int k = 0; k < count; k++) {
@@ -498,7 +536,7 @@ static void refill(hires *h, drawlist *d, drawlist_page *page)
         if (l < 0) l = 0;
         if (r > W - 1) r = W - 1;
         if (r < l) continue;
-        paint_run(page->hi + (size_t)hy * W + l, r - l + 1, h->fill_colour, l, hy, n);
+        paint_run(page->hi + (size_t)hy * W + l, page->tag ? page->tag + (size_t)hy * W + l : NULL, tv, r - l + 1, h->fill_colour, l, hy, n);
         if(tracking && page->model) {
             const size_t bits=((size_t)64000*n*n+7)/8;
             model_span(page->model+bits,(size_t)hy*W+l,(size_t)hy*W+r);
@@ -553,6 +591,7 @@ static void thin_strip_stroke(hires *h, drawlist *d, drawlist_page *page, const 
     const int n = h->n;
     const int ax = (int)floor((cx + dx * tmin) * n + 0.5), ay = (int)floor((cy + dy * tmin) * n + 0.5);
     const int bx = (int)floor((cx + dx * tmax) * n + 0.5), by = (int)floor((cy + dy * tmax) * n + 0.5);
+    drawlist_diag_stroke_tag(DT_SPAN_THIN);
     drawlist_fine_stroke(page, ax, ay, bx, by, thick * n, d->colour & 0xFF);
     page->suppress = 1;
     h->suppressed = (int)(page - d->page);
@@ -601,7 +640,18 @@ static void refill_span_polygon(hires *h, drawlist *d, const int32_t *v, int n)
         const int c = fine_cover(&f, &x, 1, GROWS[g], spans);
         if (cover_total(spans, c) == want) break;
     }
-    if (g == 6) { h->stats[HS_SPAN_BEYOND]++; return; }
+    if (g == 6) {
+        h->stats[HS_SPAN_BEYOND]++; d->diag_q = DT_SPAN_BEYOND;
+        FILE *tf = trace_file();
+        if (tf) {
+            const int c = fine_cover(&f, &x, 1, GROWS[5], spans);
+            fprintf(tf, "SPAN colour %d ne %d rows %d y0 %d want %lld cover3 %lld ox %d oy %d corners", d->colour, ne, nrows, f.y0,
+                    (long long)want, (long long)cover_total(spans, c), ox, oy);
+            for (int k = 0; k < ne && k < 8; k++) fprintf(tf, " (%.1f,%.1f)", base[k][0], base[k][1]);
+            fputc(10, tf);
+        }
+        return;
+    }
     /* Only an actually degenerate polygon needs a line. A narrow region
      * still has two distinct boundaries at high resolution. */
     double area = 0;
@@ -628,7 +678,7 @@ static void refill_span_polygon(hires *h, drawlist *d, const int32_t *v, int n)
         if (l < 0) l = 0;
         if (r > W - 1) r = W - 1;
         if (r < l) continue;
-        paint_run(page->hi + (size_t)hy * W + l, r - l + 1, word, l, hy, sc);
+        paint_run(page->hi + (size_t)hy * W + l, page->tag ? page->tag + (size_t)hy * W + l : NULL, DT_SPANPOLY_FINE, r - l + 1, word, l, hy, sc);
     }
     page->suppress = 1;
     h->suppressed = (int)(page - d->page);
@@ -642,6 +692,12 @@ int hires_guard(const uint8_t *coarse, uint8_t *fine, int n, uint64_t *flat, uin
 
 int hires_guard_masked(const uint8_t *coarse, uint8_t *fine, int n, const uint8_t *strokes,
                        uint64_t *flat, uint64_t *agree)
+{
+    return hires_guard_masked_tag(coarse, fine, n, strokes, flat, agree, NULL);
+}
+
+int hires_guard_masked_tag(const uint8_t *coarse, uint8_t *fine, int n, const uint8_t *strokes,
+                           uint64_t *flat, uint64_t *agree, uint8_t *tag)
 {
     const size_t W = (size_t)320 * n;
     int restored = 0;
@@ -676,6 +732,7 @@ int hires_guard_masked(const uint8_t *coarse, uint8_t *fine, int n, const uint8_
             }
             if (ok) { (*agree)++; continue; }
             for (int j = 0; j < n; j++) memset(q + j * W, v, (size_t)n);
+            if (tag) for (int j = 0; j < n; j++) memset(tag + ((size_t)y * n + j) * W + (size_t)x * n, DT_GUARD, (size_t)n);
             restored++;
         }
     return restored;
@@ -740,6 +797,7 @@ void hires_record(hires *h, drawlist *d, char kind, const int32_t *v, int n)
         if (h->npending < HIRES_EDGES) parse_edge(h, v, n, &h->pending[h->npending++]);
         break;
     case 'F':
+        d->diag_b = DT_FB_UNATTEMPTED;
         if (n < 12) break;
         if (!h->seen_fill) {
             h->seen_fill = 1;
@@ -776,6 +834,7 @@ void hires_record(hires *h, drawlist *d, char kind, const int32_t *v, int n)
         }
         break;
     case 'Q':
+        d->diag_q = h->span_poly.have ? DT_SPAN_REJECT : DT_SPAN_NOT_POLY;
         if (h->span_poly.have && n >= 4 && d->colour == h->span_poly.colour) refill_span_polygon(h, d, v, n);
         h->span_poly.have = 0;
         break;

@@ -1,12 +1,21 @@
 /* drawlist.c - see drawlist.h. Each rule cites the original routine it
  * replays; tools/drawlist_frame.py and tools/drawlist_spans.py say more. */
 #include "drawlist.h"
+#include "diagtag.h"
 
 #include "tls.h"
 #include <stdlib.h>
 #include <string.h>
 
 static int s16(int32_t v) { return (int16_t)(uint16_t)v; }
+
+/* Diagnostic origin planes (diagtag.h). g_diag is set once, before any page is seeded; the
+ * two tags are per thread, since a worker draws in-between pictures beside the replay. */
+static int g_diag;
+static F117_TLS uint8_t cur_tag, cur_stroke;
+void drawlist_diag_enable(int on) { g_diag = on; }
+int drawlist_diag_enabled(void) { return g_diag; }
+void drawlist_diag_stroke_tag(uint8_t tag) { cur_stroke = tag; }
 
 /* Python's floor division and remainder, as the line rule uses them */
 static int32_t fdiv(int32_t a, int32_t b) { int32_t q = a / b; return (a % b && (a < 0) != (b < 0)) ? q - 1 : q; }
@@ -30,13 +39,13 @@ void drawlist_set_line_width(drawlist *d, int width)
 
 static void overlay_free(drawlist_overlay *o)
 {
-    free(o->b); free(o->hi); free(o->strokes);
+    free(o->b); free(o->hi); free(o->strokes); free(o->tag);
     memset(o, 0, sizeof *o);
 }
 
 void drawlist_free(drawlist *d)
 {
-    for (int k = 0; k < DRAWLIST_PAGES; k++) { free(d->page[k].hi);free(d->page[k].model); }
+    for (int k = 0; k < DRAWLIST_PAGES; k++) { free(d->page[k].hi);free(d->page[k].model);free(d->page[k].tag); }
     for (int k = 0; k < DRAWLIST_OVERLAYS; k++) overlay_free(&d->overlay[k]);
     const int n = d->n, line_width = d->line_width;
     drawlist_init(d);
@@ -53,31 +62,36 @@ void drawlist_reset(drawlist *d)
 
 void drawlist_copy(drawlist *dst, const drawlist *src)
 {
-    uint8_t *keep[DRAWLIST_PAGES],*models[DRAWLIST_PAGES];
-    for (int k = 0; k < DRAWLIST_PAGES; k++) {keep[k] = dst->page[k].hi;models[k]=dst->page[k].model;}
+    uint8_t *keep[DRAWLIST_PAGES],*models[DRAWLIST_PAGES],*tags[DRAWLIST_PAGES];
+    for (int k = 0; k < DRAWLIST_PAGES; k++) {keep[k] = dst->page[k].hi;models[k]=dst->page[k].model;tags[k]=dst->page[k].tag;}
     drawlist_overlay old[DRAWLIST_OVERLAYS];
     memcpy(old, dst->overlay, sizeof old);
     memcpy(dst, src, sizeof *dst);
     for (int k = 0; k < DRAWLIST_OVERLAYS; k++) {
         const drawlist_overlay *s = &src->overlay[k];
         drawlist_overlay *o = &dst->overlay[k];
-        o->b = old[k].b; o->hi = old[k].hi; o->strokes = old[k].strokes;
+        o->b = old[k].b; o->hi = old[k].hi; o->strokes = old[k].strokes; o->tag = old[k].tag;
         if (!s->b) { overlay_free(o); continue; }
         const size_t cells = (size_t)s->w * s->h, fine = cells * (size_t)s->n * s->n;
         if (!o->b || old[k].w != s->w || old[k].h != s->h || old[k].n != s->n) {
-            free(o->b); free(o->hi); free(o->strokes);
+            free(o->b); free(o->hi); free(o->strokes); free(o->tag);
             o->b = (uint8_t *)malloc(cells); o->strokes = (uint8_t *)malloc(cells); o->hi = (uint8_t *)malloc(fine);
+            o->tag = NULL;
             if (!o->b || !o->strokes || !o->hi) { overlay_free(o); continue; }
         }
+        if (s->tag) { if (!o->tag) o->tag = (uint8_t *)malloc(fine); if (o->tag) memcpy(o->tag, s->tag, fine); }
+        else { free(o->tag); o->tag = NULL; }
         memcpy(o->b, s->b, cells); memcpy(o->strokes, s->strokes, cells); memcpy(o->hi, s->hi, fine);
     }
     for (int k = 0; k < DRAWLIST_PAGES; k++) {
         const drawlist_page *s = &src->page[k];
         drawlist_page *p = &dst->page[k];
-        if (!s->hi) { free(keep[k]);free(models[k]);p->hi = NULL;p->model=NULL;continue; }
+        if (!s->hi) { free(keep[k]);free(models[k]);free(tags[k]);p->hi = NULL;p->model=NULL;p->tag=NULL;continue; }
         const size_t bytes = (size_t)320 * s->n * 200 * s->n;
         p->hi = (uint8_t *)realloc(keep[k], bytes);
         memcpy(p->hi, s->hi, bytes);
+        if (s->tag) { p->tag = (uint8_t *)realloc(tags[k], bytes); if (p->tag) memcpy(p->tag, s->tag, bytes); }
+        else { free(tags[k]); p->tag = NULL; }
         if(s->model) {
             const size_t mask_bytes=2*((bytes+7)/8);
             p->model=(uint8_t *)realloc(models[k],mask_bytes);memcpy(p->model,s->model,mask_bytes);
@@ -100,6 +114,7 @@ uint64_t drawlist_finish_models(drawlist *d)
                 const size_t at=((size_t)(a/320)*n+j)*W+(a%320)*n+i;
                 if(((p->model[at>>3]>>(at&7))&1) && !((painted[at>>3]>>(at&7))&1) && p->hi[at]!=p->b[a]) {
                     p->hi[at]=p->b[a];restored++;
+                    if(p->tag) p->tag[at]=DT_SEAM;
                 }
             }
         }
@@ -147,6 +162,10 @@ static void mirror(drawlist_page *p, uint32_t a, uint8_t v)
     const size_t W = (size_t)320 * n;
     uint8_t *q = p->hi + (size_t)(a / 320) * n * W + (size_t)(a % 320) * n;
     for (int j = 0; j < n; j++, q += W) memset(q, v, (size_t)n);
+    if (p->tag) {
+        uint8_t *t = p->tag + (size_t)(a / 320) * n * W + (size_t)(a % 320) * n;
+        for (int j = 0; j < n; j++, t += W) memset(t, cur_tag, (size_t)n);
+    }
 }
 
 static void wr(drawlist_page *p, uint32_t a, uint8_t v)
@@ -171,6 +190,7 @@ static void copy_hi_rect(drawlist_page *p, const drawlist_page *src, int32_t sx,
             const size_t s_at = ((size_t)(sy + y) * n + j) * W + (size_t)x0 * n;
             const size_t d_at = ((size_t)(dy + y) * n + j) * W + (size_t)(dx + x0 - sx) * n;
             memmove(p->hi + d_at, src->hi + s_at, (size_t)(x1 - x0) * n);
+            if (p->tag && src->tag) memmove(p->tag + d_at, src->tag + s_at, (size_t)(x1 - x0) * n);
         }
         for (int32_t x = x0; x < x1; x++) {
             const unsigned sa = (unsigned)((sy + y) * 320 + x), da = (unsigned)((dy + y) * 320 + dx + x - sx);
@@ -207,6 +227,8 @@ static void overlay_store(drawlist *d, uint16_t seg, int32_t dx, int32_t dy, int
         if (!o->b || !o->strokes || !o->hi) { overlay_free(o); return; }
     }
     o->seg = seg; o->x = dx; o->y = dy; o->w = w; o->h = h; o->n = n;
+    if (src->tag) { if (!o->tag) o->tag = (uint8_t *)malloc(fine); }
+    else { free(o->tag); o->tag = NULL; }
     const size_t W = (size_t)320 * n;
     for (int32_t y = 0; y < h; y++) {
         for (int32_t x = 0; x < w; x++) {
@@ -215,9 +237,12 @@ static void overlay_store(drawlist *d, uint16_t seg, int32_t dx, int32_t dy, int
             o->strokes[(size_t)y * w + x] = (uint8_t)(((src->strokes[a >> 3] >> (a & 7)) & 1) |
                 (((src->hud_strokes[a >> 3] >> (a & 7)) & 1) << 1));
         }
-        for (int j = 0; j < n; j++)
+        for (int j = 0; j < n; j++) {
             memcpy(o->hi + ((size_t)y * n + j) * (size_t)w * n, src->hi + ((size_t)(sy + y) * n + j) * W + (size_t)sx * n,
                    (size_t)w * n);
+            if (o->tag) memcpy(o->tag + ((size_t)y * n + j) * (size_t)w * n, src->tag + ((size_t)(sy + y) * n + j) * W + (size_t)sx * n,
+                               (size_t)w * n);
+        }
     }
 
 }
@@ -236,9 +261,15 @@ static void overlay_apply(const drawlist *d, uint16_t seg, int32_t sx, int32_t s
         const int n = p->n;
         const size_t W = (size_t)320 * n;
         for (int32_t y = 0; y < h; y++) {
-            for (int j = 0; j < n; j++)
+            for (int j = 0; j < n; j++) {
                 memcpy(p->hi + ((size_t)(dy + y) * n + j) * W + (size_t)dx * n, o->hi + ((size_t)y * n + j) * (size_t)w * n,
                        (size_t)w * n);
+                if (p->tag) {
+                    if (o->tag) memcpy(p->tag + ((size_t)(dy + y) * n + j) * W + (size_t)dx * n, o->tag + ((size_t)y * n + j) * (size_t)w * n,
+                                       (size_t)w * n);
+                    else memset(p->tag + ((size_t)(dy + y) * n + j) * W + (size_t)dx * n, DT_BLIT_UNHELD, (size_t)w * n);
+                }
+            }
             for (int32_t x = 0; x < w; x++) {
                 const unsigned da = (unsigned)((dy + y) * 320 + dx + x);
                 p->strokes[da >> 3] = (uint8_t)((p->strokes[da >> 3] & ~(1u << (da & 7))) | ((o->strokes[(size_t)y * w + x] & 1) << (da & 7)));
@@ -268,6 +299,10 @@ void drawlist_seed(drawlist *d, char kind, uint16_t seg, uint16_t origin, const 
         const int n = d->n;
         const size_t W = (size_t)320 * n;
         if (!p->hi || p->n != n) { free(p->hi); p->hi = (uint8_t *)malloc(W * 200 * n); }
+        if (g_diag) {
+            if (!p->tag || p->n != n) { free(p->tag); p->tag = (uint8_t *)malloc(W * 200 * n); }
+            if (p->tag) memset(p->tag, DT_SEED, W * 200 * n);
+        }
         p->n = n;
         if(p->model) {free(p->model);p->model=NULL;}
         for (int y = 0; y < 200; y++) {
@@ -412,6 +447,7 @@ void drawlist_fine_stroke(drawlist_page *p, int ax, int ay, int bx, int by, int 
         for (int yy = top; yy <= bottom; yy++)
             for (int xx = l; xx <= r; xx++) {
                 p->hi[(size_t)yy * w + xx] = (uint8_t)col;
+                if (p->tag) p->tag[(size_t)yy * w + xx] = cur_stroke;
                 const unsigned a = (unsigned)((yy / n) * 320 + xx / n);
                 p->strokes[a >> 3] |= (uint8_t)(1u << (a & 7));
                 p->hud_strokes[a >> 3] |= (uint8_t)(1u << (a & 7));
@@ -477,6 +513,7 @@ static void fine_colour(drawlist_page *p, uint32_t a, int mode, int colour, int 
             else if (mode == 2) row[x] = (uint8_t)(b & colour);
             else if (mode == 3) row[x] = (uint8_t)(((b & 0x0E) >> 1) | 0x98);
             else if (b == (uint8_t)from) row[x] = (uint8_t)colour;
+            if (mode >= 1 && mode <= 3 && p->tag) p->tag[(size_t)(row - p->hi) + x] = DT_SPAN_SHADE;
         }
 }
 
@@ -758,6 +795,21 @@ static int sprite_clip(const int32_t *blk, int32_t *dx, int32_t *dy, int32_t *w,
 void drawlist_record(drawlist *d, char kind, const int32_t *v, int n)
 {
     if (!d->have_seg) return;
+    cur_tag = cur_stroke = DT_OTHER;                  /* the diagnostic's origin tags (diagtag.h) */
+    switch (kind) {
+    case 'b': cur_tag = d->diag_b; break;
+    case 'Q': cur_tag = d->diag_q; break;
+    case 'L': cur_tag = DT_OUTLINE_COARSE; cur_stroke = DT_OUTLINE_FINE; break;
+    case 'N': cur_tag = DT_HUD_COARSE; cur_stroke = DT_HUD_FINE; break;
+    case 'H': cur_tag = DT_TICKS_COARSE; cur_stroke = DT_TICKS_FINE; break;
+    case 'T': cur_tag = DT_TEXT; break;
+    case 'S': cur_tag = DT_SPRITE; break;
+    case 'W': cur_tag = DT_SPRITE_RLE; break;
+    case 'C': cur_tag = DT_BLIT_COARSE; break;
+    case 'D': cur_tag = DT_PAGECOPY; break;
+    case 'x': cur_tag = DT_X_DELTA; break;
+    default: break;
+    }
     /* Model fills accumulate together; a different painter starts a new
      * layer. Finalise first so copies, text, sprites and HUD see closed seams. */
     if(strchr("LNQCTDHSMW",kind)) flush_models(d);
@@ -823,6 +875,7 @@ void drawlist_record(drawlist *d, char kind, const int32_t *v, int n)
         if (n < 10) break;
         const int32_t sx = v[1], sy = v[2], dx = v[4], dy = v[5], w = v[6], h = v[7];
         const drawlist_page *src = page_of(d, (uint16_t)v[8]);
+        if (!src) cur_tag = DT_BLIT_UNHELD;
         if (!(p = page_of(d, (uint16_t)v[9]))) {      /* a page not held: keep the fine rows for the blit back */
             if (src) overlay_store(d, (uint16_t)v[9], dx, dy, w, h, src, sx, sy);
             break;
@@ -841,21 +894,28 @@ void drawlist_record(drawlist *d, char kind, const int32_t *v, int n)
         /* An overlapping self-blit needs the fine source before coarse
          * writes mirror over it, just as buf already holds the coarse source. */
         static F117_TLS drawlist_page saved;
-        uint8_t *saved_hi = NULL;
+        uint8_t *saved_hi = NULL, *saved_tag = NULL;
         if (src == p && p->hi && sx < dx + w && dx < sx + w && sy < dy + h && dy < sy + h) {
             saved = *src;
             const size_t bytes = (size_t)320 * p->n * 200 * p->n;
             saved_hi = (uint8_t *)malloc(bytes);
-            if (saved_hi) { memcpy(saved_hi, src->hi, bytes); saved.hi = saved_hi; src = &saved; }
+            if (src->tag) saved_tag = (uint8_t *)malloc(bytes);
+            if (saved_hi) {
+                memcpy(saved_hi, src->hi, bytes); saved.hi = saved_hi;
+                if (saved_tag) memcpy(saved_tag, src->tag, bytes);
+                saved.tag = saved_tag;
+                src = &saved;
+            }
         }
         for (int32_t y = 0; y < h; y++)
             for (int32_t x = 0; x < w; x++) put(p, (uint32_t)(320 * (dy + y) + dx + x), buf[y * w + x]);
         if (src) copy_hi_rect(p, src, sx, sy, dx, dy, w, h);
         else if (n - 10 == w * h) overlay_apply(d, (uint16_t)v[8], sx, sy, w, h, buf, p, dx, dy);
         free(saved_hi);
+        free(saved_tag);
         break;
     }
-    case 'W':                                         /* entry 22, the scaled RLE sprite */
+    case 'W':                                       /* entry 22, the scaled RLE sprite */
         if (n >= 2 && (p = page_of(d, (uint16_t)v[1]))) scaled_sprite(p, v, n);
         break;
     case 'T': {

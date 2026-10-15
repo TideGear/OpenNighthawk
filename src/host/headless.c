@@ -37,6 +37,12 @@
  * --present-age extrapolate predicts past the newer frame instead of trailing
  * it. --present-scale N draws the presented picture N times finer (Stage 2):
  * the shots and --screen are then 320N x 200N.
+ *
+ * F117_PRESENT_DIAG=DIR (with --present-scale N > 1; off when unset, nothing in the machine or
+ * the pictures changes): beside each shot or --screen picture, DIR gets BASE.tag (one byte per
+ * pixel of the N-times picture naming the path that produced it, src/present/diagtag.h),
+ * BASE.diag.ppm (the same in false colour) and BASE.txt (what the picture was). At the end the
+ * sub-pixel builder's counters are printed as [diag] lines.
  */
 #include "machine.h"
 #include "keys.h"
@@ -46,6 +52,7 @@
 #include "fixes.h"
 #include "inputlog.h"
 #include "drawfeed.h"
+#include "diagtag.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -252,10 +259,91 @@ static uint64_t picture_hash(const uint8_t *p)
 static int capture(const machine_t *m, present_frame *f)
 {
     present_capture(m, f);
-    g_live.shown_hi = NULL;
+    g_live.shown_hi = g_live.shown_tag = NULL;
     if (!g_replay) return 0;
     drawlive_update(&g_live, &g_feed);
     return g_replay == 2 ? drawlive_present_interp(&g_live, m, f) : drawlive_present(&g_live, m, f);
+}
+
+/* F117_PRESENT_DIAG: the origin plane of the picture just presented, beside the shot. The
+ * false colours group diagtag.h's tags by class: greens refined polygons; reds polygons left
+ * scaled; yellows fine strokes; white text; blues sprites and artwork; greys copies; the dark
+ * colours what nothing wrote. */
+static const uint8_t g_diag_rgb[DT_COUNT][3] = {
+    [DT_SEED] = { 40, 40, 40 },
+    [DT_MODEL_SOLID] = { 0, 170, 0 }, [DT_MODEL_PATTERN] = { 130, 230, 130 }, [DT_MODEL_NEAR] = { 0, 230, 170 },
+    [DT_SPANPOLY_FINE] = { 0, 110, 90 },
+    [DT_FB_UNATTEMPTED] = { 255, 0, 0 }, [DT_FB_NEAR_SHAPE] = { 220, 0, 40 }, [DT_FB_NEAR_CROSSING] = { 255, 60, 60 },
+    [DT_FB_FEW_EDGES] = { 200, 40, 0 }, [DT_FB_NO_VERTICES] = { 255, 90, 0 }, [DT_FB_BEHIND] = { 190, 0, 80 },
+    [DT_FB_NO_DIVISOR] = { 255, 120, 120 }, [DT_FB_BEYOND] = { 140, 0, 0 },
+    [DT_SEAM] = { 255, 150, 0 }, [DT_GUARD] = { 255, 190, 80 },
+    [DT_SPAN_NOT_POLY] = { 180, 0, 180 }, [DT_SPAN_REJECT] = { 255, 0, 255 }, [DT_SPAN_BEYOND] = { 200, 0, 110 },
+    [DT_SPAN_THIN] = { 255, 255, 120 }, [DT_SPAN_SHADE] = { 110, 0, 150 },
+    [DT_HUD_FINE] = { 255, 255, 0 }, [DT_OUTLINE_FINE] = { 255, 215, 0 }, [DT_TICKS_FINE] = { 220, 220, 0 },
+    [DT_HUD_COARSE] = { 160, 160, 0 }, [DT_OUTLINE_COARSE] = { 160, 130, 0 }, [DT_TICKS_COARSE] = { 130, 130, 0 },
+    [DT_TEXT] = { 255, 255, 255 }, [DT_SPRITE] = { 0, 200, 255 }, [DT_SPRITE_RLE] = { 150, 230, 255 },
+    [DT_BLIT_UNHELD] = { 70, 70, 255 }, [DT_BLIT_COARSE] = { 150, 150, 150 }, [DT_PAGECOPY] = { 100, 100, 100 },
+    [DT_X_DELTA] = { 120, 80, 40 }, [DT_OTHER] = { 255, 0, 200 },
+};
+
+/* F117_PRESENT_DIAG_HIST=FILE appends, for every shot, one line: the shot's name, the plan kind and t,
+ * and the count of each origin tag inside the window F117_PRESENT_DIAG_RECT=x0,y0,x1,y1 (original
+ * pixels; default 0,0,320,91, the 3-D view). F117_PRESENT_DIAG_HIST_ONLY=1 then writes no images. */
+static void diag_hist(const char *stem, int n)
+{
+    const char *file = getenv("F117_PRESENT_DIAG_HIST");
+    if (!file || !*file) return;
+    int x0 = 0, y0 = 0, x1 = 320, y1 = 91;
+    const char *r = getenv("F117_PRESENT_DIAG_RECT");
+    if (r) sscanf(r, "%d,%d,%d,%d", &x0, &y0, &x1, &y1);
+    unsigned long long cnt[256] = { 0 };
+    const int w = 320 * n;
+    for (int y = y0 * n; y < y1 * n; y++)
+        for (int x = x0 * n; x < x1 * n; x++) cnt[g_live.shown_tag[(size_t)y * w + x]]++;
+    FILE *o = fopen(file, "a");
+    if (!o) return;
+    fprintf(o, "%s %d %.6f", stem, g_live.diag_kind, g_live.diag_t);
+    for (int k = 0; k < DT_COUNT; k++) fprintf(o, " %llu", cnt[k]);
+    fputc('\n', o);
+    fclose(o);
+}
+
+static void diag_write(const char *shot_path, int n)
+{
+    const char *dir = getenv("F117_PRESENT_DIAG");
+    if (!dir || !*dir || !g_live.shown_tag || n < 1) return;
+    const char *slash = strrchr(shot_path, '/'), *back = strrchr(shot_path, '\\');
+    const char *base = slash > back ? slash + 1 : back ? back + 1 : shot_path;
+    char stem[300], path[900];
+    snprintf(stem, sizeof stem, "%s", base);
+    char *dot = strrchr(stem, '.');
+    if (dot) *dot = 0;
+    const int w = 320 * n, h = 200 * n;
+    diag_hist(stem, n);
+    if (getenv("F117_PRESENT_DIAG_HIST_ONLY")) return;
+    snprintf(path, sizeof path, "%s/%s.tag", dir, stem);
+    FILE *o = fopen(path, "wb");
+    if (o) { fwrite(g_live.shown_tag, 1, (size_t)w * h, o); fclose(o); }
+    snprintf(path, sizeof path, "%s/%s.diag.ppm", dir, stem);
+    if ((o = fopen(path, "wb"))) {
+        fprintf(o, "P6\n%d %d\n255\n", w, h);
+        static uint8_t row[3 * 320 * 16];
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                const uint8_t t = g_live.shown_tag[(size_t)y * w + x];
+                memcpy(row + 3 * x, g_diag_rgb[t < DT_COUNT ? t : DT_OTHER], 3);
+            }
+            fwrite(row, 3, (size_t)w, o);
+        }
+        fclose(o);
+    }
+    snprintf(path, sizeof path, "%s/%s.txt", dir, stem);
+    if ((o = fopen(path, "w"))) {
+        fprintf(o, "scale %d width %d height %d\nplan %d t %.6f older %llu newer %llu\n", n, w, h, g_live.diag_kind,
+                g_live.diag_t, (unsigned long long)g_live.diag_older, (unsigned long long)g_live.diag_newer);
+        fprintf(o, "plan kinds: 1 replay (logic frame), 2 older, 3 newer, 4 in-between\n");
+        fclose(o);
+    }
 }
 
 /* A shot: the finer picture when one was presented, with the frame's palette. */
@@ -264,6 +352,7 @@ static void write_shot(const machine_t *m, const char *path)
     static present_frame f;
     capture(m, &f);
     if (!g_live.shown_hi) { present_frame_write_ppm(&f, path); return; }
+    diag_write(path, g_scale);
     const int n = g_scale, w = 320 * n, h = 200 * n;
     FILE *o = fopen(path, "wb");
     if (!o) return;
@@ -665,6 +754,12 @@ int main(int argc, char **argv)
                    g_scale, (unsigned long long)g_live.hr->stats[HS_POLYGONS], (unsigned long long)g_live.hr->stats[HS_REFILLED],
                    (unsigned long long)g_live.fine_flat, (unsigned long long)g_live.fine_agree, g_scale * g_scale,
                    (unsigned long long)g_live.fine_restored);
+        if (g_scale > 1 && getenv("F117_PRESENT_DIAG") && *getenv("F117_PRESENT_DIAG"))
+            for (int k = 0; k < HS_COUNT; k++)
+                printf("[diag] %s: %llu\n", hires_stat_name(k), (unsigned long long)g_live.hr->stats[k]);
+        if (g_scale > 1 && g_replay == 2 && getenv("F117_PRESENT_DIAG") && *getenv("F117_PRESENT_DIAG"))
+            for (int k = 0; k < IS_COUNT; k++)
+                printf("[diag] interp %s: %llu\n", interp_stat_name(k), (unsigned long long)g_live.istats[k]);
         printf("[present] replay: %llu logic frames, %llu equal to the display at their close, %llu not, %llu before a seed; "
                "%llu dropped\n", (unsigned long long)g_live.frames, (unsigned long long)g_live.exact,
                (unsigned long long)g_live.inexact, (unsigned long long)g_live.unseeded, (unsigned long long)g_feed.dropped);

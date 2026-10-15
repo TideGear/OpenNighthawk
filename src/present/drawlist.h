@@ -35,6 +35,7 @@ typedef struct {
     uint8_t  strokes[64000 / 8];  /* coarse cells with authoritative fine strokes/geometry, for the flat guard */
     uint8_t  hud_strokes[64000 / 8]; /* actual HUD strokes, which also take priority over seam repair */
     uint8_t *model;               /* two fine bit planes: true model geometry and actual model paint */
+    uint8_t *tag;                 /* diagnostic only (diagtag.h): the path that wrote each fine pixel, or NULL */
     uint8_t  model_foot[64000 / 8]; /* union of the tracked models' original footprints */
     int      model_active;
 } drawlist_page;
@@ -46,6 +47,7 @@ typedef struct {
 typedef struct {
     uint16_t seg;
     int32_t x, y, w, h, n;
+    uint8_t *tag;                 /* diagnostic origin plane, same size as hi, or NULL */
     uint8_t *b, *hi, *strokes;    /* w*h coarse bytes, (w*n)*(h*n) fine bytes, w*h flags (bit 0 guard protection, bit 1 HUD stroke) */
 } drawlist_overlay;
 
@@ -66,12 +68,20 @@ typedef struct {
     uint8_t  copied[65536 / 8];
     unsigned ncopied;
     uint64_t seam_restored;
+    uint8_t  diag_b, diag_q;      /* diagnostic: the origin tag the coarse rows of the current polygon / span fill take */
     /* what had no rule or no data */
     unsigned long long outline_no_rule, blits_no_source, copies_no_source, sprites_no_source, text_no_font,
                        recolour_no_rule;
 } drawlist;
 
 void drawlist_init(drawlist *d);
+
+/* Diagnostic origin planes (diagtag.h): off unless enabled before the pages are seeded. With
+ * them on, every page keeps a byte per fine pixel naming what wrote it. The tag set by
+ * drawlist_diag_stroke_tag is what the next fine stroke takes (hires.c, for a thin strip). */
+void drawlist_diag_enable(int on);
+int  drawlist_diag_enabled(void);
+void drawlist_diag_stroke_tag(uint8_t tag);
 
 /* Keep a picture n times finer (1 or more; 0 none) on the pages seeded from
  * now on; drawlist_free releases them, drawlist_reset forgets the pages but
