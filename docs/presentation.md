@@ -73,7 +73,7 @@ Each stage is judged by a check, as in the rest of the project.
 |---|---|---|---|
 | 0 | Observer: log every call to the drawing primitives per frame | the log is identical across runs; hashes unchanged with it on | done |
 | 1 | Draw lists: a frame's primitives as a list, replayed at 320x200 | the replay reproduces the original's work and display pages bit for bit, every phase of every route | done: all 45 complete routes and staged original-instruction fixtures for rare branches; C and Python fill rules agree |
-| 2 | Re-draw the list at N times the resolution | N = 1 is Stage 1 exactly; at N > 1 verified geometry has smooth boundaries and keeps the original viewport, fill styles and artwork | model polygons re-drawn from their sub-pixel vertices (`hires_subpixel.py`, and in C `hires.c`, live with `--present-scale N`); HUD lines/ticks redraw on the fine grid with scale-proportional or chosen thickness; original bitmap text/artwork stay scaled by the owner's choice; verified near-plane crossings now refined, incompatible geometry safely scaled |
+| 2 | Re-draw the list at N times the resolution | N = 1 is Stage 1 exactly; at N > 1 verified geometry has smooth boundaries and keeps the original viewport, fill styles and artwork | model polygons re-drawn from their sub-pixel vertices (`hires_subpixel.py`, and in C `hires.c`, live with `--present-scale N`); HUD lines/ticks redraw on the fine grid with scale-proportional or chosen thickness; original bitmap text/artwork stay scaled by the owner's choice; verified near-plane crossings now refined, incompatible geometry safely scaled; the HUD tapes, heading strip and pitch ladder are drawn from the game state, not from the original's rounded calls ([below](#the-state-driven-hud-14-october-2026)) |
 | 3 | Interpolate between consecutive draw lists to the host display rate | at a logic frame the output is exactly that frame; no in-between primitive absent from both neighbours | 320x200 study done (`interp_frame.py`, below): exact at both ends on seven windows, no violations; live path built at 320x200 (below): the feed, the presentation from the replay, and the interpolation in C, exact at both ends of 9,843 live frame pairs |
 | 4 | Pacing, vsync, a picture-age setting, HUD handling, a switch to the original picture | pictures at the display's refresh with t on the mission clock; the age setting measured | pacing at the host's vsync, age setting and Reimp-style HUD handling built (below); `--present scan` is the switch; real-display checks remain |
 
@@ -981,6 +981,134 @@ text 2%, canopy-frame sprites 3.4%, the rest scaled fallbacks. Two things leave 
 HUD lines come from integer endpoints (`N` records: AX..DX of the library line call, already clipped); the in-between
 frame interpolates each endpoint with `rnd(lerp())` back to an integer, so a line moves in whole cells, and a group
 whose size changed between steps is held (18% of HUD lines in the strike flight) and switches at t = 0.5.
+Text and tick marks are held whole until t = 0.5. The next section replaces that for the tapes, the heading strip
+and the pitch ladder.
+
+## The state-driven HUD (14 October 2026)
+
+At N > 1 the tape labels and tick marks, the heading labels and tick strip, the pitch ladder with its labels, the
+flight-path marker and the vertical-speed and stall bars are drawn from the game's state at fine-pixel precision, and the
+state is interpolated between logic steps. The original
+rounds every one of these to whole cells before it calls the library (the ladder's rungs by up to 5 cells), so the
+picture built from its calls jitters at 4K however it is interpolated. N = 1 is unchanged: the original's calls are
+replayed as before. The analysis is `D:/f117-gate/present-v2/hud-analysis.md` (private; the formulas are in
+`src/present/hud_state.c`, ported from its `hudmodel.py` and `closedform.py`).
+
+**The state.** VGAME's HUD pass (1058:0016) is a pure function of its data segment at entry. The observer's new
+record `h` (`observe_hud_pass`, called by the matched pass at its entry; only with `f117_observer.hud`, which the live
+feed sets and `F117R_OBSERVE_HUD=1` sets for `--observe`) copies the 1,560 words 0x2080-0x2CAE (tables, layout
+constants, text blocks), 19 scattered words (heading, pitch, roll, altitude, raw and whole-knot speed, the ladder
+flag, the G text) and the graphics driver's tick tables (the x column and row limits of library entry 11, not in
+the data segment): 1,593 values, `hud_state.h` has the layout. A second record, `p` (`observe_panel_pass`, at the entry of the
+matched panel pass 0000:79BE, which runs before the HUD pass), holds the words the flight-path marker and the two bars are
+made from: `[98F6]`, `[E586]`, `[E474]`, `[B07E]`, `[B194]` and the HUD mode and size flags. It reads guest memory directly and changes nothing: the
+route's final guest hash is the same with and without it, the `--observe` log with `h` records removed is
+byte-identical to the log without them (`p` records included), and that equals the log of the build before this change
+(fly3 route, 2.79-2.81B, 88,585 records, 57,589,444 bytes; final hash `3a1030e87d4f1807`).
+
+**Two modes** (`hud_state.c`). EXACT is the original's integer pipeline (the clipper `0FB2:0330` included); it gives
+the library calls of the pass in order (K colour, N line, T text with its eleven block words, H tick scale, the two
+entry-18 blits). FINE carries the same formulas in floating point from the continuous state, with no final rounding:
+airspeed from `[B07E] / 27` (the raw word is finer than the HUD's knot), altitude, and heading, pitch and roll as
+fractional angle words. Lines are strokes between vertices at cell centres, bitmap text is placed by its top-left
+corner (the convention that keeps the original's alignment between tick and glyph centre), and clips are the
+original's, at cell edges.
+
+**Drawing** (`hud_overlay.c`, entered from `drawlist_record` through one hook). At an `h` record the replay draws the
+FINE primitives on the work page's fine picture: strokes of the HUD line width (`--present-line-width`, default one
+cell) as oriented rectangles with square caps, so an axis-aligned stroke at cell centres covers exactly the original's
+cells; glyphs from the font the `T` records carried (kept per font index), each source pixel an N x N block at the
+glyph's fine position. A cover (`hud_cover.c`) then follows the records of the pass that arrive and recognises each
+of the EXACT list's in order, by kind and every value. The ones FINE replaces still run through the coarse replay
+(so the coarse picture, the colour and text state and the exactness check against the display are the original's) with
+every page's fine mirror off. Counted per replay (`[present] state-driven HUD ...` line of `f117run`):
+passes drawn, records replaced and kept, records that left the prediction (the cover then ends and the rest of that
+pass keeps the original path), passes left on the original path (no tick table, no font yet, no page). The panel pass's
+items need no list: after a `p`, a record is taken for the flight-path marker (entry 71, 11 x 7 from (55, 77) to x = 154,
+y = 48 + `[98F6]` >> 6) or a bar (library line at x = 247 from row 52, or at x = 72 down to row 81) when its geometry and its
+value are what the integer formulas give for that state; the marker is then drawn from the record's own art as N x N
+blocks at y = 48 + `[98F6]` / 64, and a bar as a stroke in the library colour of the moment, its free end at
+52 - `[E586]` / 16 (vertical speed, rows 20 to 81) or 81 - ((command speed - speed) * 2 / 5 + 29) (stall margin, the
+speed being `[B07E]` / 27).
+`F117_PRESENT_HUD=old` turns it off. The ink is tagged 240/241 in the diagnostic plane (`hud_overlay.h`;
+`tools/present_diag.py` does not class them).
+
+**Interpolation.** `INTERP_HUD` (set with a scale above 1): the HUD lines the state draws are left out of the HUD-line
+pairing, and the skeleton's `h` record is regenerated with speed, altitude, heading, pitch and roll moved the same
+fraction (angles by the shortest arc, `hud_blend`; a hair from a logic frame it is the frame's own record, so the
+endpoints stay exact). Layout, mode, the readout flag, colours and the ladder switch are the skeleton's, as every other
+discrete item (the nearer frame, switching at t = 0.5); if two frames disagree on them the skeleton's state is used
+unmoved. Fixed-point override values: 1/1024 kt, 1/256 ft, 1/256 of an angle word.
+
+**What is covered, and what is not.**
+
+| covered (state-driven at N > 1) | still the original's records |
+|---|---|
+| airspeed and altitude labels (both altitude scales, full and small HUD), their tick marks | frame outline and the pointer marks beside the tapes (constants, already crisp strokes) |
+| heading labels and the heading tick strip (modes 0 and 1) | centre reticle (fixed art) and the G meter text (changes once per step) |
+| pitch ladder rungs, all rung shapes, rotated by roll, clipped to the ladder window; rung labels | the rest of the panel pass: digital speed and altitude, heading cue, station and gun text, tracking cross, ILS, sink marker |
+| flight-path marker (sub-cell height), vertical-speed bar, stall-margin bar | weapon and target symbology, cockpit art (canopy posts, attitude ball) |
+
+**Checks** (`tests/test_hud_state.c`, `tests/test_hud_live.c`, `tests/test_hud_jitter.c`; the corpus of 288 passes and
+the windows are private under `D:/f117-gate/present-v2/`).
+
+- EXACT against the original's log, seven scripted flights (full HUD climbing, on the runway, small HUD, steep pitch,
+  48 degrees of bank, mode 1 inverted, mode 2 diving), 288 passes: 12,921 library calls, 0 mismatches (K 1,111, N 4,640,
+  T 6,217, H 418, entry-18 blits 535).
+- FINE where it must agree with the original's integers: 1,447 tape labels equal to the float's floor (614 more are
+  outside the row clip and not drawn); 418 tick lattices identical to the driver's marks; 849 heading labels with
+  integer minus float in [0, 2) (139 clipped); 6,836 ladder vertices with integer minus floor of float in x [-3, 5],
+  y [-3, 1], the analysis's windows (one pass at a rung-numbering boundary left out); the ladder's label-offset tables equal
+  to their analytic form; the tick scale's colour equals the tape text's in all 418 H records. The ladder sits up to 3
+  cells higher in the original than in the float: its pitch is cut to a quarter degree and floored twice.
+- The panel pass's items, from the snapshot words: 504 of 504 records of the marker's and the bars' geometry are
+  recognised by the integer formulas (marker 258, vertical-speed bar 179, stall bar 67); integer minus float: marker top
+  [-0.97, 0.00] cells (a floor), vertical-speed bar end [0.00, 0.94] (the original shifts right, a floor of the speed, so
+  it ends up to a cell lower than the float), stall bar top [-1.17, 0.79].
+- Through the live path (drawfeed, drawlive, interpolation; strike 8.53B and four fly3/fly1 windows, N = 4): every logic
+  frame equal to the display at its close (35, 37, 37, 39 and 74 frames), every pair exact at both ends, coarse and
+  fine (33, 35, 35, 37, 72), 0 records off the prediction, panel items replaced 74, 37, 40 and 148 in the four fly windows
+  (the stall bar, whose n was 0 in them, only in the corpus), 0 replaced records that changed the fine picture (checked by
+  copying the fine page around each, `--leak-check`). The machine live (`run_route.py fly3.args -- --steps 2810000000
+  --present interp --present-scale 4`, headless): 789 HUD passes all drawn from the state, 789 logic frames equal to the
+  display at their close, 787 pairs exact at both ends, 0 records off the prediction, 1,790 panel items replaced, final
+  guest hash `3a1030e87d4f1807`, the same as without presentation. The `boot_to_flight` sentinel at N = 4 keeps its
+  368 exact logic frames, 366 exact pairs and final hash `48a10e901505e2a9` with 369 passes drawn from the state. Cost: with N = 9 a window with the state-driven HUD takes the
+  same time as without (3.2 s against 3.4 s for 37 frames, 105 in-between pictures and the end checks).
+- Unchanged where it must be: the eight retained windows give identical output from `test_drawlist` (carried and not),
+  `test_hires` at N = 1, 2, 4 and 9 (carried) and `test_interp` (default and `--fine 4`) before and after: 64 of 64.
+
+**Motion** (`test_hud_jitter`): the same pair of frames is interpolated as before (integer HUD lines, text and ticks held)
+and with the state, sampled four times per logic step; the second difference of a feature's position along the samples,
+in fine pixels at N = 4 (a smooth path has second differences near 0; 4 is one cell):
+
+| window | feature | before: rms, max | after: rms, max |
+|---|---|---|---|
+| fly1, climb 2.86B (72 pairs) | airspeed labels, y | 1.99, 4.00 | 0.01, 0.07 |
+| | altitude labels, y | 2.13, 4.00 | 0.01, 0.10 |
+| | heading labels, x | 0.67, 4.00 | 0.03, 0.48 |
+| | ladder labels, x / y | 1.05, 8.00 / 3.78, 28.00 | 0.00, 0.02 / 0.01, 0.05 |
+| | ladder endpoint, x / y | 0.37, 4.00 / 0.74, 8.00 | 0.11, 1.65 / 0.38, 5.86 |
+| | flight-path marker, y | 4.32, 40.00 | 1.10, 10.22 |
+| | vertical-speed bar end, y | 1.42, 4.00 | 0.19, 1.88 |
+| fly3 f3b, inverted bank, mode 1 (35 pairs) | heading labels, x | 1.72, 4.00 | 0.06, 0.66 |
+| | flight-path marker, y | 3.60, 28.00 | 0.80, 6.53 |
+| | ladder labels, x / y | 4.65, 16.00 / 4.58, 12.00 | 0.35, 2.12 / 0.49, 3.30 |
+| | ladder endpoint, x / y | 2.18, 8.00 / 2.18, 8.00 | 0.22, 2.14 / 0.15, 1.72 |
+| fly3 f3a, steady 48 degree bank (35 pairs) | heading labels, x | 1.33, 4.00 | 0.00, 0.01 |
+| | altitude labels, y | 0.68, 4.00 | 0.00, 0.00 |
+
+The residue of the new path is the flight state itself: the original repeats a state in consecutive logic frames and
+the next frame jumps (the 5.86 is one such repeat; the marker's 10.22 was not examined), which interpolation between real frames cannot hide. In the
+f3a window the ladder does not move (constant pitch and roll) and both paths are still. Pictures at N = 4 are in
+`D:/f117-gate/present-v2/hud/img`.
+
+**Not established.** Colour-display HUD (`[43DE]` set: tape and text colour 10, ladder 47) was not in any capture; the
+fine strokes take their colour from the state and the tape's text block, the strip's from the tape colour, and the
+original's art may differ. Altitude above 10,000 feet reads the label table past what the captures reached;
+`[E56E] = 0` (ladder off), the small HUD in modes 1 and 2 and rungs at |n| >= 9 are modelled from the disassembly and
+not reproduced against a log. A pass is left on the original path when no `T` record has yet carried a font it
+needs (none happened in these windows). Nothing here has been seen on a physical display.
 
 ## Open questions and risks
 
