@@ -16,10 +16,10 @@ original's machine code is translated, instruction by instruction, into C
 and compiled natively. Its routines are then progressively replaced by
 named, explained C, each proven to behave identically to the original
 instructions, register for register and clock for clock. It is not a
-byte-matching decompilation: it does not rebuild the original EXE. Its emulated PC supports the GOG release's DOSBox
-timing and a 386DX/33 profile measured against 86Box. Every translated
-instruction is checked against a reference interpreter validated on real
-silicon.
+byte-matching decompilation: it does not rebuild the original EXE. Its
+emulated PC supports the GOG release's DOSBox timing and a 386DX/33 profile
+measured against 86Box. Every translated instruction is checked against a
+reference interpreter validated on real silicon.
 
 **This is not a lazy, fire-and-forget project.** I decide what gets
 built, what counts as proof, which results to distrust and measure again,
@@ -36,15 +36,15 @@ lose proximity damage at high frame estimates; its
 digitised speech can hang the game; supply drops never earn credit;
 secret-airstrip missions are disabled outside the Persian Gulf; and long
 missions can overrun an unbounded table and corrupt the game's state. The
-catalogue in
-[docs/bugs.md](docs/bugs.md) has the evidence for each. Keeping the game
-playable, faithfully, on today's machines is a game-preservation job, and
-this project treats it as one.
+catalogue in [docs/bugs.md](docs/bugs.md) has the evidence for each.
+Keeping the game playable, faithfully, on today's machines is a
+game-preservation job, and this project treats it as one.
 
 **1:1 parity with the original is the first priority.** The game does
 exactly what the DOS original does, including its bugs, which are tracked in
-[docs/bugs.md](docs/bugs.md) so they can be fixed later as switchable
-options. Fifteen catalogued fixes and balance options are available now, all off by default.
+[docs/bugs.md](docs/bugs.md) so they can be fixed as switchable options.
+Fifteen catalogued fixes and balance options are available now, all off by
+default.
 
 ## Status
 
@@ -53,100 +53,48 @@ options. Fifteen catalogued fixes and balance options are available now, all off
   the debriefing (END) and back to the front end. All three sound drivers
   work: AdLib (music and digitised speech through an OPL emulator), the PC
   speaker, and Roland (Munt synthesis with your MT-32 ROMs, or Windows
-  MIDI; live synthesis tested, exact rendered parity still open).
-- **Translated:** 89,365 instruction starts in the latest checked build,
-  across all 17 code files and the
-  LZEXE decompressor: 96% of the bytes of the code areas, and no
-  untranslated stretch left that decodes as code (`tools/census.py`; the
-  rest is strings, tables and variables). On the scripted sessions no game
+  MIDI; exact rendered Roland parity is still open).
+- **Translated:** all 17 code files and the LZEXE decompressor, 89,365
+  instruction starts, 96% of the bytes of the code areas; the rest is
+  strings, tables and variables. On the scripted sessions no game
   instruction is interpreted under the default timing profile; only the
   emulated BIOS's own stubs are.
 - **Named and matched:** 891 routine addresses (889 census functions,
-  117,660 of 179,213 code bytes) have explained C equivalents checked against
-  their original bodies. Another 646 census functions remain. Under the
-  386 profile, matched entries use their original translated bodies until
-  their handwritten clocks gain cycle costs.
-- **Parity, measured:** forty-five scripted routes, run as 44 sessions (boot to flight; a full
-  sortie through the debriefing and back; boots under the speaker and Roland
-  drivers, where the programs load at other addresses; transfer and flight
-  routes across all nine theatres and all four mission categories; pilot
-  creation, editing, erasure and saving; roster dialogs and direct maintenance;
-  a destroyed ground-strike primary with consumed Mavericks and hit credit;
-  a takeoff, return and landing at the home base; a credited reconnaissance
-  photograph; every primary objective type, supply drops, secret airstrips,
-  air-to-air kills, and the career awards and retirement)
-  end in
-  identical state under the interpreter and the recompiled code - all of memory, the
-  registers, and every byte sent to the sound card, the palette, MIDI and
-  the disk - checked at intervals along the way. Planted defects in the
-  generated code are caught (see `tools/mutation_check.py`). A recorded input log replays on either
-  engine, and in the windowed game, to the same final state.
-- **Random flying, held to the interpreter:** `tools/random_flights.py`
-  takes off and hands the aircraft to a seeded random pilot (stick,
-  throttle, weapons, views, systems keys) under both engines, hashing the
-  whole machine every 50 million instructions. Every session so far is
-  identical at every hash.
-- **The emulated PC is held to GOG's DOSBox,** the machine the game is sold
-  on: `tools/fidelity.py` runs one probe program under both and compares
-  1,210 answers - the DOS memory layout, PSP and environment the game gets,
-  every register after every DOS and BIOS call it makes, what each call
-  costs in time, the BIOS data area, the VGA registers, the devices, the
-  clocks, an EXEC'd child and the return from it. All agree (a 4 KB file
-  read's cost within 5%, the clock rates within 2%). DOSBox-X is a second
-  reference (`--reference dosbox-x`) for where DOSBox 0.74 itself is
-  questionable.
-- **The game's music against GOG's DOSBox:** `tools/dosbox_compare.py`
-  captures the AdLib's register writes in DOSBox and here over the logo
-  and intro: 22,687 writes, 100.7 s of music, identical in order and
-  value, timing within 36 ms.
-- **The picture comparison now runs:** `tools/video_compare.py` captures
-  DOSBox's lossless video and compares exact RGB pictures against our
-  completed four-part scanout frames at the native VGA period. A 130.8 s
-  reference matches 1,319 pictures in order; seven reference pictures and
-  28 shots remain unmatched,
-  each lasting one sample. Scanout and transition timing remain under
-  investigation; the apparent roster cursor changes were screenshot aliasing.
-- **Two more reference machines, headless:** `tools/pc_parity.py` plays the
-  intro on GOG's DOSBox (a saved capture), on DOSBox-X and on 86Box at once,
-  with no window and no sound, and checks the pictures, the music and a
-  scripted pilot-roster session's saved file against measured limits: DOSBox-X matches 1,237 exact pictures in order (timing within
-  about 0.2 s). The 86Box reference is now a 386DX/33 running MS-DOS 5.00
-  with Microsoft MOUSE.COM 6.26. Its intro pictures match in VGA DAC values
-  except two documented samples between consecutive pictures; the check
-  rejects any other difference. Builds and notes: `tools/ref86box/`.
-- **386 timing on both engines:** the latest calibration matches all 93
-  saved 86Box instruction and service probes (the DOS time query varies by
-  four cycles between runs). Paired flight sessions have 574 identical
-  machine-state checkpoints and stick responses. File loading still drifts
-  against the reference VM's disk model; fast loads remain the default.
-  This profile is currently exposed through the headless runner:
-  `build\f117run.exe --timing 386 --engine recomp --data INSTALL_DIR`.
-- **Every translated instruction, not only the ones the sessions reach:**
-  the sessions run about half the game's code (`tools/exercised.py`).
-  `tests/insn_lockstep.c` runs each of the 89,366 translated instruction starts
-  from 64 random machine states through the generated code and the
-  interpreter and compares everything it can change: 5.7 million
-  comparisons per timing profile, 0 differences. The 386 check includes
-  prefetch and unfinished REP state; a second seed also checks code in VGA
-  memory.
-- **The translator is checked against silicon:** 90,900 8088 and 94,200
-  80286 hardware test vectors run through generated code with 0 unexplained
-  differences.
+  117,660 of 179,213 code bytes) have explained C equivalents checked
+  against their original bodies; 646 census functions remain.
+- **Parity, measured:** 45 scripted routes, run as 44 sessions, end in
+  identical state under the reference interpreter and the recompiled code -
+  all of memory, the registers and every byte sent to the sound card, the
+  palette, MIDI and the disk - checked every 50 million clocks along the
+  way. They cover boot to flight, a full sortie through the debriefing and
+  back, the speaker and Roland drivers, all nine theatres and all four
+  mission categories, pilot creation, editing, erasure and saving, every
+  primary objective type, supply drops, secret airstrips, air-to-air kills,
+  landing at the home base, and the career awards and retirement. Every
+  translated instruction, reached or not, is also compared from random
+  machine states (0 differences), the translator is checked against 8088 and
+  80286 silicon test vectors, and planted defects in the generated code are
+  caught.
+- **The emulated PC is held to other machines:** GOG's DOSBox (the machine
+  the game is sold on; the machine probe, the intro's pictures and music),
+  DOSBox-X, and 86Box running a 386DX/33 with MS-DOS 5.00. The 386DX/33
+  timing profile plays at a period PC's pace.
 - **Steam's release works too:** its game files are byte-identical to GOG's
   (`tools/verify_install.py`), and the app finds its install.
-- **Optional presentation:** live interpolation and finer polygon geometry,
-  with Reimp-style HUD strokes and original bitmap text and artwork. Use
-  `--present interp --present-scale 9` for a 4K display; `--present-line-width 1`
-  selects thin HUD strokes. The scanned original picture remains the default.
-  The optional [4K preset](f117a.4k.ini) also selects fullscreen and interpolation
-  age: `build\f117a.exe --config f117a.4k.ini --data INSTALL_DIR`.
-- **Not yet done:** the remaining named C routines; steady 4K/60 pacing and physical-display motion
-  checks; play by a person at the keyboard; rendered Roland output against
-  an independent reference and listening checks.
+- **Optional sharper and smoother pictures:** finer polygon geometry and HUD
+  strokes up to 4K, with the original bitmap text and artwork kept; see
+  [Presentation](#presentation).
+- **Not yet done:** the remaining named C routines; smooth 60+ fps motion
+  without artefacts, and physical-display checks; play by a person at the
+  keyboard; rendered Roland output against an independent reference, and
+  listening checks.
 
-How the parity claim is built and checked: [docs/architecture.md](docs/architecture.md).
-What is done and what is left: [docs/roadmap.md](docs/roadmap.md).
-The [Windows build check](https://github.com/TideGear/OpenNighthawk/actions/workflows/windows.yml)
+The figures and evidence for each check are in
+[docs/roadmap.md](docs/roadmap.md) (what is done and left) and
+[docs/architecture.md](docs/architecture.md) (how the parity claim is
+built and checked); the reference-machine comparisons in detail are in
+[docs/parity-audit.md](docs/parity-audit.md). The
+[Windows build check](https://github.com/TideGear/OpenNighthawk/actions/workflows/windows.yml)
 builds the full interpreter application and runs ROM-free CPU, machine and
 comparator tests on pushes and pull requests. Game-dependent parity checks
 run locally against the user's installation.
@@ -176,8 +124,8 @@ please open an issue: that is a bug, and a serious one.
 
 Requirements: Windows, Visual Studio 2026 Build Tools with the C++ tools and
 Windows SDK, CMake 3.24+, Ninja, Git, and Python 3.12. CMake, Ninja, Git and
-Python must be available in the terminal. The build fetches SDL 3.2.10 on
-its first configure; it needs an internet connection then.
+Python must be available in the terminal. The build fetches SDL 3.2.10 (and
+Munt, below) on its first configure; it needs an internet connection then.
 
 From a new PowerShell terminal, in the directory where you keep source:
 
@@ -190,34 +138,23 @@ py tools/build_recomp.py --data "C:/GOG Games/F-117A" --work "$env:USERPROFILE/f
 
 Replace the data path with your installed game. `capstone` is needed by the
 translator; Pillow enables the picture comparator tests. Generated C,
-coverage and saves go in the supplied work directory. On first build,
-`build.cmd` creates a `build` junction to a local directory under
-`$env:USERPROFILE/f117-recomp-local`, with a separate CMake cache for each
-checkout. No generated files or game assets belong in the source tree.
-This sequence was verified from a fresh public clone, including coverage,
-both builds, the six routes present in that clone and the instruction lockstep. Translation
-counts depend on accumulated coverage: that run produced 89,276 starts,
-compared with 89,216 in the earlier local build.
-
-For a checkout that is already set up, the default work directory works too:
-
-```bat
-py tools\build_recomp.py --data "C:\GOG Games\F-117A"
-```
+coverage and saves go in the work directory (default
+`%USERPROFILE%\f117-recomp-local`). On first build, `build.cmd` creates a
+`build` junction to a local directory under `%USERPROFILE%\f117-recomp-local`,
+with a separate CMake cache for each checkout. No generated files or game
+assets belong in the source tree. This sequence has been verified from a
+fresh public clone. Translation counts depend on accumulated coverage, so a
+first build can translate slightly fewer instruction starts (that run
+produced 89,276) than the figures above.
 
 That one command translates the game, builds it, plays the scripted routes
 in `tools/routes/` to gather coverage, translates and builds again, and
-verifies parity between the engines. With `F117R_BUILD_APP=ON` (the CMake
-default), the result includes `build\f117a.exe`. If this checkout was
-configured for headless work, enable the app after the gate with
-`build.cmd -DF117R_BUILD_APP=ON`. A build without generated C supports only
-the interpreter; `build.cmd` reuses the checkout's existing CMake settings.
+verifies parity between the engines. It always builds the app,
+`build\f117a.exe`. Run on its own, `build.cmd` reuses the checkout's existing
+CMake settings; a build without generated C supports only the interpreter.
 
 After a runtime change, `py tools\build_recomp.py --data "C:\GOG Games\F-117A"
 --parity-only` checks the existing build without translating or rebuilding.
-It compares checkpoints every 50 million clocks as well as final states,
-then runs instruction checks under both timing profiles, matched-routine
-checks, and confirms every routine that needs route coverage was exercised.
 
 ## Running
 
@@ -225,30 +162,50 @@ checks, and confirms every routine that needs route coverage was exercised.
 build\f117a.exe --data "C:\GOG Games\F-117A"
 ```
 
+The game asks its original SETUP questions at each start (joystick, sound
+card), as it did in 1991. Answer 2 for AdLib, or 3 for Roland with `roland`
+set (and, for Munt, `mt32-roms`).
+
 | Option | Meaning |
 |---|---|
 | `--data DIR` | the game's folder (found automatically for common GOG/Steam paths) |
-| `--save DIR` | where the game's own saves go (default: your user profile); the install is never written |
+| `--save DIR` | where the game's own saves go (default: `%APPDATA%\F117Recomp\F-117A\save`); the install is never written |
 | `--engine recomp\|interp` | recompiled code (default) or the reference interpreter only |
-| `--ips N` | emulated CPU speed, instructions per second (default 20,000,000 in `f117a`, which plays at 16.7 frames a second in flight; 9,000,000 in `f117run` and the route checks, GOG DOSBox's `cycles=9000`) |
-| `--roland munt\|windows\|off` | where Roland music goes: Munt's MT-32 emulation (needs `--mt32-roms`), the Windows MIDI synthesizer, or nowhere |
+| `--timing dosbox\|386` | the emulated PC's speed model: `dosbox` (default) is this machine's instruction model at `--ips`; `386` is a 386DX/33 of 1991 (5-9 frames a second in flight, the original's pace) |
+| `--ips N` | emulated CPU speed under `dosbox` timing, instructions per second (default 20,000,000 in `f117a`, which plays at about 16.7 frames a second in flight; 9,000,000 in `f117run` and the route checks, GOG DOSBox's `cycles=9000`) |
+| `--roland munt\|windows\|off` | where Roland music goes: Munt's MT-32 emulation (needs `--mt32-roms`), the Windows MIDI synthesizer (General MIDI: wrong instruments), or nowhere |
 | `--mt32-roms DIR` | the folder holding your MT-32 control and PCM ROMs, recognised by content whatever they are called (see [MT-32 ROMs](#mt-32-roms)); on its own it means `--roland munt` |
 | `--midi N` | send Roland MIDI to Windows MIDI device N instead of the mapper |
 | `--mt32-control FILE --mt32-pcm FILE` | name the two ROM files instead of a folder |
 | `--opl dbopl\|nuked` | GOG DOSBox's OPL2 synthesizer (default), or Nuked OPL3 in OPL2 mode; both output at 44,100 Hz |
 | `--speaker realsound\|pwm` | smoothed digitised speaker speech (default), or the original PWM carrier |
 | `--scale N`, `--fullscreen`, `--no-aspect` | window size; fullscreen; square pixels instead of 4:3 |
-| `--present scan\|replay\|interp`, `--present-scale N` | original scanned picture (default), replay, or interpolation; optional fine rendering at scale 1–16 |
-| `--present-line-width N` | fine HUD stroke width in output pixels, 1–20; 0 (default) scales with resolution; text and artwork retain original pixels |
-| `--present-age interp\|extrapolate` | interpolate one logic step behind (default), or predict beyond the latest frame |
+| `--present scan\|replay\|interp` | the picture in flight; see [Presentation](#presentation) |
+| `--present-scale N` | with `replay` or `interp`: the picture N times finer, 1-16 |
+| `--present-line-width N` | fine HUD stroke width in output pixels, 0-20; 0 (default) scales with `--present-scale`, 1 is a thin stroke; text and artwork keep their original pixels |
+| `--present-age interp\|extrapolate` | with `interp`: trail the original by one logic step and be exact at its frames (default), or predict beyond the latest frame (can overshoot a sudden change) |
 | `--config FILE`, `--no-config` | read settings from FILE instead of `f117a.ini` beside the executable; or read none |
 | `--fix ID`, `--list-fixes` | switch on a fix for one of the original's bugs (`all` for every one); every fix is off unless named, so the default is the original, bugs included |
+| `--record FILE`, `--no-record`, `--replay FILE` | record this session's input to FILE, or record nothing; play a recorded input log back |
+
+Any option the app does not recognise (for example `--help`) prints the full
+list, including diagnostic options not shown here.
 
 `--fix D1REAL --present interp` uses eight simulation steps per real second
 with interpolated display. It replaces the original adaptive simulation
 cadence; see [the timing option](docs/bugs.md#d1real-real-time-simulation-cadence).
 The separate `D1TTL`, `D1SLOT`, `D1PROX` and `D1ACCEL` options repair incoming
 missile lifetime, slot reuse, proximity sampling and acceleration.
+
+Host keys (chosen so as not to collide with the game's):
+
+| Keys | Action |
+|---|---|
+| Alt+Enter | toggle fullscreen |
+| Ctrl+Alt+P | pause / resume |
+| Ctrl+Alt+F12 | quit |
+
+### Settings file
 
 Every option can also be kept in a settings file: copy `f117a.example.ini`
 (written beside `f117a.exe` by the build) to `f117a.ini` in the same folder
@@ -258,9 +215,32 @@ Relative paths are taken from the file's folder, and an option given on the
 command line still wins (any Roland option there replaces all of the file's).
 `--config FILE` reads another file; `--no-config` ignores it.
 
-The game asks its original SETUP questions at each start (joystick, sound
-card), as it did in 1991. Answer 2 for AdLib, or 3 for Roland with `roland`
-set (and, for Munt, `mt32-roms`).
+### Presentation
+
+By default (`--present scan`) you see exactly what the emulated VGA scanned
+out, at 320x200. The other modes are optional and never change the game
+itself:
+
+- `--present replay --present-scale N` redraws the same picture from the
+  original's own draw records, N times finer: the 3-D scene's polygons from
+  their vertices and the HUD's lines on the output grid, with the original
+  text, sprites and cockpit artwork kept. It runs at the game's own frame
+  rate with no in-between frames, and is the verified, sharp mode. Scale 9
+  fills a 4K screen's 2160 lines at 4:3.
+- `--present interp` adds in-between frames at the display's own rate, one
+  logic step behind. It is experimental: some objects still move unevenly.
+  The planned method for smooth 60+ fps re-runs the original's own,
+  unmodified drawing at in-between moments.
+
+The optional preset [f117a.4k.ini](f117a.4k.ini) (copied beside `f117a.exe`)
+selects fullscreen, `present = interp` and scale 9:
+`build\f117a.exe --config f117a.4k.ini --data INSTALL_DIR`. Select
+3840x2160 at 60 Hz in Windows' display settings first. For the sharp mode
+without in-between frames, use `--present replay --present-scale 9`
+instead. Design, status and measurements:
+[docs/presentation.md](docs/presentation.md).
+
+### Roland and Munt
 
 Munt is part of the default build; no ROMs are included. CMake fetches
 [libmt32emu](https://github.com/munt/munt/tree/master/mt32emu) at a pinned
@@ -273,8 +253,7 @@ pass `-DF117R_WITH_MT32EMU=ON`). Munt is LGPL-2.1-or-later; its source and
 license come with the fetched checkout (`build/_deps/munt-src`).
 Version 2.8.3 at commit `6e7c01fba7e1d50c8fa705834889fd0eac136075` was built
 and checked with first-generation MT-32 1.07 control and PCM ROMs. Invalid or
-missing ROMs fail explicitly. Original game MIDI renders offline and live;
-exact reference PCM comparison, flight sound and listening checks remain open.
+missing ROMs fail explicitly.
 
 ### MT-32 ROMs
 
@@ -313,37 +292,6 @@ Each ROM must be a single whole file; the split halves some dumps come as
 (`..._a` / `..._b`, `..._l` / `..._h`) are not combined. On Windows,
 `certutil -hashfile FILE SHA1` shows a file's SHA-1.
 
-For offline validation, `f117run --midi-log FILE` records each MPU byte with
-its instruction clock. `f117run --speaker-log FILE` records each speaker hook
-event with the guest clock, port 61h low bits, PIT2 reload and mode, PIT2
-epoch in PIT clocks and PIT2's null-count flag (1 after a control word).
-`audio_render` merges OPL, speaker, and optional MIDI events by guest clock;
-for example, render a complete OPL/speaker replay
-through a known end clock with:
-
-```bat
-build\audio_render.exe opl.log flight.wav 9000000 9799924671 --speaker-log speaker.log
-```
-
-`--speaker-model pwm` renders the speaker's digitised speech with its 15 kHz
-carrier instead of without it (`realsound`, the default; `speaker` in
-`f117a.ini`).
-
-To include Roland, add `--mt32` and the control and PCM ROM paths as in this
-example:
-
-```bat
-build\audio_render.exe midi.log roland.wav 9000000 1300000000 --mt32 "C:\ROMs\CONTROL.ROM" "C:\ROMs\PCM.ROM"
-```
-
-Host keys (chosen so as not to collide with the game's):
-
-| Keys | Action |
-|---|---|
-| Alt+Enter | toggle fullscreen |
-| Ctrl+Alt+P | pause / resume |
-| Ctrl+Alt+F12 | quit |
-
 ## Verifying parity yourself
 
 Every claim above can be re-run on your own copy:
@@ -366,57 +314,40 @@ GOG's DOSBox (a saved capture), DOSBox-X and 86Box, headless, and compares
 the pictures, the music and a saved roster; `tools\fidelity_all.py` does the
 same for the machine-behaviour probe. DOSBox-X and 86Box are built from source for it; the steps are in
 [tools/ref86box/build_dosbox_x.md](tools/ref86box/build_dosbox_x.md) and
-[tools/ref86box/build_86box.md](tools/ref86box/build_86box.md). Every process the
-project repeats, and what it costs, is listed in
-[docs/repeated-processes.md](docs/repeated-processes.md).
+[tools/ref86box/build_86box.md](tools/ref86box/build_86box.md). The
+386DX/33 profile can be run headless with
+`build\f117run.exe --timing 386 --engine recomp --data INSTALL_DIR`.
 
 Your own play sessions are recorded too: each run of `f117a.exe` writes
-`sessions\<date-time>\` (the input log and the save folder as it began)
-next to its save folder. `build\f117run.exe --replay input.log` replays one
-under either engine (`--engine interp` or `recomp`), and the two must end in
-the same state. A session played with fixes on names them in its log
-(`# f117r-fixes D5`), and replaying it switches the same fixes on.
+`sessions\session-<date-time>\` beside its save folder: the input log
+(`input.log`) and the save folder as the session began (`save-start`).
+`build\f117run.exe --data INSTALL_DIR --save COPY_OF_SAVE_START --replay input.log`
+replays one under either engine (`--engine interp` or `recomp`), and the two
+must end in the same state. A session played with fixes on names them in its
+log (`# f117r-fixes D5`), and replaying it switches the same fixes on.
 
-The landing route also has a stronger observer that checks ground contact
-inside the home approach box, a stop at idle, gear/brakes, the original
-countdown and the parent flight record's successful-return result:
-
-```bat
-py tools\landing_pilot.py --data "C:\GOG Games\F-117A" --engine interp --replay tools/routes/landing.input --out C:/landing-check
-```
-
-The reconnaissance route earns primary photo credit and stops airborne.
-Its observer checks the exposure count, photo-credit event, intact target
-and retained camera:
-
-```bat
-py tools\recon_pilot.py --data "C:\GOG Games\F-117A" --engine interp --replay tools/routes/recon.input --out C:/recon-check
-```
-
-`recon_return` completes both photos and stops on the raised home runway;
-`recon_career` continues through debriefing, earns the ten-mission tour
-ribbon and saves the updated career. Both engines match. The stronger return
-observer checks both original credit events, intact targets and the parent
-result block:
+Some routes also have a stronger observer that checks what a route's own
+milestones cannot: a real landing (ground contact inside the home approach
+box, a stop at idle, gear and brakes, the original countdown and the
+successful-return result), a credited reconnaissance photograph, or a secret
+airstrip's delivery. For example:
 
 ```powershell
+py tools/landing_pilot.py --data "C:\GOG Games\F-117A" --engine interp --replay tools/routes/landing.input --out C:/landing-check
+py tools/recon_pilot.py --data "C:\GOG Games\F-117A" --engine interp --replay tools/routes/recon.input --out C:/recon-check
 py tools/recon_pilot.py --data "C:\GOG Games\F-117A" --engine interp --complete --replay tools/routes/recon_return.input --out C:/recon-return-check
+py tools/airstrip_check.py --data "C:\GOG Games\F-117A" --replay tools/routes/secret_airstrip.input --steps 8373782617 --out PRIVATE_DIR
 ```
 
-The [parity audit](docs/parity-audit.md) documents independent DOSBox saves,
+Every route and its observer:
+[docs/architecture.md](docs/architecture.md#observing-flights-through-normal-controls)
+and [tools/routes/README.md](tools/routes/README.md). Career routes chain
+actual earned saves; no saved game is distributed. The
+[parity audit](docs/parity-audit.md) documents independent DOSBox saves,
 flight observations, input stress, host pacing and rendered audio, including
-the remaining differences and checks requiring hardware or ROMs.
-
-`career_promotion` earns Serge's starting roster through `career_serge`,
-then flies another normal sortie to earn First Lieutenant and an Airman's
-Medal. Its `# seed-roster` prerequisite is replayed in a fresh process;
-only the resulting roster is carried forward. No saved game is distributed.
-
-`secret_airstrip` lands normally at a Persian Gulf secret strip and earns
-the primary's original event and store consumption. It stops at the strip.
-Use `tools/airstrip_check.py --replay tools/routes/secret_airstrip.input
---steps 8373782617 --data INSTALL_DIR --out PRIVATE_DIR` for the stronger
-read-only acceptance check.
+the remaining differences and checks requiring hardware or ROMs. Every
+process the project repeats, and what it costs, is listed in
+[docs/repeated-processes.md](docs/repeated-processes.md).
 
 ## Repository layout
 
@@ -425,11 +356,13 @@ read-only acceptance check.
 | `src/cpu/` | the CPU: interpreter and shared instruction semantics |
 | `src/machine/` | the emulated PC: DOS, BIOS, devices, the run loop |
 | `src/recomp/` | the recompiled code's run-time |
-| `src/host/` | the SDL3 window, audio, input; the headless runner |
+| `src/matched/` | the named, matched C routines |
+| `src/fixes/` | the switchable fixes for the original's bugs |
+| `src/host/` | the SDL3 window, audio, input, presentation; the headless runner |
 | `recompiler/` | the translator (Python) |
-| `tools/` | the build pipeline, unpacker, scripted routes |
-| `tests/` | silicon-vector harnesses for the interpreter and for generated code |
-| `docs/` | [architecture](docs/architecture.md), [roadmap](docs/roadmap.md), [original-game bugs](docs/bugs.md), [presentation](docs/presentation.md), [provenance](docs/provenance.md) |
+| `tools/` | the build pipeline, unpacker, scripted routes, checks |
+| `tests/` | silicon-vector harnesses for the interpreter and for generated code; lockstep and unit tests |
+| `docs/` | [architecture](docs/architecture.md), [roadmap](docs/roadmap.md), [original-game bugs](docs/bugs.md), [presentation](docs/presentation.md), [parity audit](docs/parity-audit.md), [provenance](docs/provenance.md) |
 
 ## Licence
 

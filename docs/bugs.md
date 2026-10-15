@@ -2,15 +2,15 @@
 
 This is the tracker for defects in the original DOS release of *F-117A
 Nighthawk Stealth Fighter 2.0* (473.03 with the 473.04 VGAME update, which is
-what GOG ships). It is for anyone deciding which bugs to fix later and how.
+what GOG ships). It is for anyone deciding which bugs to fix and how.
 
 **Confirmed defects in the shipped DOS code are preserved deliberately.** The
 recompiled code is the original's machine code translated instruction for
 instruction, so it does what the original did, defects included. That is
 what 1:1 parity means. Fixes are switchable patches layered on top (see
-[How a fix will attach](#how-a-fix-will-attach)), each off unless named with
-`--fix ID`, and parity stays the default reference. `--list-fixes` prints
-the available fixes, including D1TTL for the long-lived missile hit guard.
+[How a fix attaches](#how-a-fix-attaches)), each off unless named with
+`--fix ID`, so parity stays the default. `--list-fixes` prints the available
+fixes.
 
 Most entries were established by the F-117A Reimp project. They are restated
 here with the Reimp's evidence; the detail lives in its
@@ -64,44 +64,37 @@ Status values:
   from the actual frame rate, so world time depends on machine speed. No
   tested speed keeps the mission clock at real time. The earlier claim that
   S swings between 15 and 3 above about 16-18 fps came from a model that
-  omitted the original's frame wait; it was not reproduced in 199 flights.
-  Combat measurements and observer corrections are in [speed-sweep.md](speed-sweep.md).
+  omitted the original's frame wait (Reimp `src/core/compose.h:166`); it
+  was not reproduced in 199 flights at 3-40 MIPS and on the 386 profile.
 - **Where.** VGAME `0x441D` (the controller, tail of `0x3ADA`); clamp at
   `0x0D441`; the unsigned divide at `0x4435`; floor at `0x4451`; `imul
   ax,[0x368E],0x3C0` at `0x446C`; S initialised at `0x3B79`. A latent divide
   by S=0 at `0x4435` is never reached because `0x0D441` raises the floor
   first.
+- **The frame wait.** `[0x43E8]` is the original's frame wait, not only an
+  overrun correction. At `0x0409` the frame set-up calls `0x04C7`, which
+  waits until the tick byte `[0x264A]` has advanced by `[0x43E8]` ticks.
+  `0x0D441` sets `[0x43E8]` = clamp((9 + trunc(-120/S)) >> 1, 1, 4) when the
+  measured S is above 15, and 0 otherwise; so the wait sets a frame period
+  of at least N ticks: N = 1 for S 16-23 (a 60 fps cap), 2 for 24-35 (30
+  fps), 3 for 40 and up (20 fps). S itself is clamped to 15 at `0x0D479`.
+  The game tick is 66.75-70.09 Hz, not 60, so four ticks are not a 15 fps
+  period; the wait's own cap is not 15.
 - **In this recompilation.** The original controller and frame wait both
-  run. The default is 9 million instructions a second, GOG DOSBox's
-  `cycles=9000`; `--ips` changes the emulated speed. The measured world-speed
-  differences are recorded in [speed-sweep.md](speed-sweep.md).
-- **Fix options.** Pin the controller's S, or step the flight model on a
-  fixed clock (the Reimp's choice). Either is a patch over `0x441D`.
-- **Measured here.** Flying `boot_to_flight`'s inputs (input times scaled
-  to the machine's speed), GOG's 9 MIPS settles at S 9 and draws 11.6
-  frames a second; the mission clock advances 209 in 162 s. At 20 MIPS the
-  machine draws 16.8 a second, S sits clamped at 15 and the clock advances
-  181: the world runs 13% behind GOG's. That flight does not show the 15/3
-  swing.
-- **Re-read 9 Oct 2026 (the VGAME listing).** `[0x43E8]` is the original's
-  frame wait, not only an overrun correction. At `0x0409` the frame set-up
-  calls `0x04C7`, which waits until the tick byte `[0x264A]` has advanced by
-  `[0x43E8]` ticks. `0x0D441` sets `[0x43E8]` = clamp((9 + trunc(-120/S)) >> 1,
-  1, 4) when the measured S is above 15, and 0 otherwise; so the wait sets a
-  frame period of at least N ticks: N = 1 for S 16-23 (a 60 fps cap), 2 for
-  24-35 (30 fps), 3 for 40 and up (20 fps). S itself is clamped to 15 at
-  `0x0D479`. This is the original's code, so it runs in this recompilation.
-  The 15/3 swing described above did not appear in any run here: at 16 and
-  18 MIPS S held at 15 throughout. What does appear is the clamp's effect:
-  above 15 frames a second the mission clock runs at frames divided by 15
-  times real time (180 in 161.66 s at 16 MIPS: 1.11, as 16.7 / 15 predicts;
-  209 in 161.66 s at GOG's 9 MIPS: 1.29, with S 9 against 11.6 frames a
-  second). So no setting measured here keeps the clock real. An isolated
-  15 fps limiter experiment also settles at S 12, not 15, with a mission
-  clock about 1.25 times real time; a cap alone does not correct it.
-  Four of the measured 66.75-70.09 Hz ticks are not a 15 fps period.
-  The original wait's own cap is not 15.
-- **Speed study (9 Oct 2026, `docs/speed-sweep.md`).** Not reproduced in the original's own loop. The frame wait at `0x0409` runs in this build (traced at 40 MIPS), and in 199 flights at 3-40 MIPS and on the 386 profile S never fell from 15 to 3. The model that predicted the swing omitted the wait. At 13 MIPS and up the frame rate settles near 16.7 and S sits at 15, so the mission clock runs about 1.11 times real time. On boot_to_flight at GOG's 9 MIPS it runs 1.29 times real time (S 9 against 11.6 frames a second). Measured against GOG's own speed, 13-14 MIPS keeps the clock within 1% and 16 MIPS and up runs it 14% slower. No speed gives real time (1.00).
+  run (the wait traced at 40 MIPS). `f117run` and the recorded routes run
+  at 9 million instructions a second, GOG DOSBox's `cycles=9000`; the app
+  `f117a` runs at 20 million; `--ips` changes either.
+- **Measured here.** Flying `boot_to_flight`'s inputs, GOG's 9 MIPS settles
+  at S 9 and draws 11.6 frames a second; the mission clock advances 209 in
+  162 s (1.29 times real time). At 16 MIPS: 180 in 161.66 s (1.11, as
+  16.7 / 15 predicts). At 20 MIPS the machine draws 16.8 a second, S sits
+  clamped at 15 and the clock advances 181: the world runs 13% behind GOG's.
+  Across the speed sweep, at 13 MIPS and up the frame rate settles near 16.7
+  and S sits at 15, so the mission clock runs about 1.11 times real time;
+  measured against GOG's own speed, 13-14 MIPS keeps the clock within 1% and
+  16 MIPS and up runs it 14% slower. An isolated 15 fps limiter settles at
+  S 12, not 15, with a clock about 1.25 times real time: a cap alone does
+  not correct it. Measurements: [speed-sweep.md](speed-sweep.md).
 - **AI and weapons (listing correction, 10 Oct).** Ground launch routine
   `0x5046` runs every frame. The visibility guard at `0x5050`-`0x5059`
   skips only the cockpit bar repaint, branching to the site loop at `0x50CA`.
@@ -112,14 +105,10 @@ Status values:
   firing check. `detect_evaluate` (`0x5582`) has no direct S input; it uses
   range, terrain, difficulty, heading aspect, airspeed, altitude and realism.
   `[0xB080]` is the active-air-unit budget compared against difficulty
-  `[0x3686]`, not theatre tension (which is `[0x3688]`).
-- **Incoming acceleration (10 Oct independent check).** Ground missiles
-  start at speed 1 (`0x54ED`), air missiles at terminal speed (`0x662A`).
-  `0x7209`-`0x722B` adds one speed unit on odd frames, without dividing by
-  S. A staged SA-5 reaches speed 9/16 after two simulated seconds at S8/15,
-  with both engines identical. High S accelerates faster; this separate
-  timing defect does not by itself explain weaker high-speed combat.
-  [Probe and limits](speed-sweep.md#cancelled-slot-repair-and-remaining-distance-defect-10-oct).
+  `[0x3686]`, not theatre tension (which is `[0x3688]`). Incoming missile
+  acceleration is a separate defect: [D1ACCEL](#d1accel-incoming-missile-acceleration-depends-on-s).
+- **Fix options.** Pin the controller's S, or step the flight model on a
+  fixed clock (the Reimp's choice). Either is a patch over `0x441D`.
 - **Fix available: `--fix D1`,** a frame limiter. An override at VGAME
   `0x441D`, the controller's entry, which every frame passes once, holds
   a frame that arrives before its slot (time passes and interrupts are
@@ -144,38 +133,35 @@ Status values:
 ### D1REAL. Real-time simulation cadence
 
 - **Optional timing change: `--fix D1REAL`.** Pin the simulation divisor
-  to8 and admit eight frames per machine second. With original 2x time
-  compression, S becomes4 at the same frame cadence. The original D441
-  code derives all dependent rates. The4359 frame counter waits at event
-  boundaries, so timer interrupts continue normally. Fractional clocks
-  are retained; overruns catch up without losing time,
-  and entering the original pause or quit dialog clears the deadline. State belongs to
-  each machine and resets at program changes. This intentionally replaces
-  the original adaptive cadence; it is off by default. Eight is below the
-  slowest prior 9 MIPS cohort orbit average (8.663 fps), with less display
-  delay than Reimp's initial five-step cadence. Use `--present interp`
-  to display interpolated frames at the host refresh rate. At8 Hz, that
-  presentation adds about125ms of picture delay. CPUs unable to execute
-  eight simulation frames per second can still fall behind.
-- **Normal-input source checks.** `tools/d1real_check.py` passes at9/20/40
-  MIPS in both engines, every case hash matching within each speed. Each
-  gives240frames/30mission seconds in30seconds; compression gives80/20
-  in10seconds, restored rate80/10, pause0/0 over3seconds and resume24/3.
-  Quit-dialog waiting and cancellation also preserve0/0 and24/3.
-  The independent pacer test covers fractional clocks, event-boundary waits,
-  lossless catch-up, program/speed changes and dialog reset. The corrected
-  24-flight cohort holds S8 and an active mission clock near 1.000 at both
-  9/20 MIPS; interpreter/native natural replays match every sample. The
-  earlier launch/burst gap was confounded by VGAME's separate BIOS-tick RNG
-  seed and the pilot sampling different portions of each 125 ms step.
-  With both aligned, all 12 pairs have identical launch counts; 11 also
-  match burst/damage counts and orbit duration. The remaining pair takes
-  more damage at 20 MIPS after an input-phase divergence. The cohort shows
-  no high-speed enemy weakness, while exact whole-flight CPU determinism
-  remains limited by original input polling and slow frames.
+  to 8 and admit eight frames per machine second; with the original's 2x
+  time compression, S becomes 4 at the same frame cadence. The original
+  `0x0D441` code derives all dependent rates. The frame counter at `0x4359`
+  waits at event boundaries, so timer interrupts continue normally.
+  Fractional clocks are retained; overruns catch up without losing time,
+  and entering the original pause or quit dialog clears the deadline. State
+  belongs to each machine and resets at program changes. This intentionally
+  replaces the original adaptive cadence; it is off by default. Eight is
+  below the slowest 9 MIPS cohort orbit average (8.663 fps), with less
+  display delay than the Reimp's initial five-step cadence. Use
+  `--present interp` to display interpolated frames at the host refresh
+  rate; at 8 Hz that adds about 125 ms of picture delay. CPUs unable to
+  execute eight simulation frames per second can still fall behind.
+- **Checks.** `tools/d1real_check.py` passes at 9/20/40 MIPS in both
+  engines, every case hash matching within each speed. Each gives 240
+  frames / 30 mission seconds in 30 seconds; compression gives 80/20 in 10
+  seconds, restored rate 80/10, pause 0/0 over 3 seconds and resume 24/3;
+  quit-dialog waiting and cancellation also give 0/0 and 24/3. An
+  independent pacer test covers fractional clocks, event-boundary waits,
+  lossless catch-up, program/speed changes and dialog reset. A 24-flight
+  cohort holds S 8 and an active mission clock near 1.000 at both 9 and 20
+  MIPS; interpreter/native replays match every sample. With VGAME's
+  BIOS-tick RNG seed and the pilot's sampling phase aligned, all 12 pairs
+  have identical launch counts and 11 also match burst/damage counts and
+  orbit duration; the remaining pair diverges after an input-phase
+  difference. The cohort shows no high-speed enemy weakness; exact
+  whole-flight CPU determinism remains limited by original input polling
+  and slow frames.
   [Measurements and reproduction](speed-sweep.md#optional-real-time-cadence-10-oct-controlled-airborne-checks-complete).
-  The source gate passed all 35 route pairs, both instruction profiles and
-  three matched seeds.
 
 ### D1TTL. Long-lived SA-5 missiles cannot cause proximity damage
 
@@ -249,20 +235,22 @@ Status values:
 
 ### D1ACCEL. Incoming missile acceleration depends on S
 
-- **Where.** VGAME `0x7221` tests frame parity; `0x722B` increments speed
-  on odd frames. Ground missiles start at speed 1, air missiles at terminal
-  speed. A normal SA-5 reaches speed 9/16 after two simulated seconds at
-  S8/15. Both engines reproduce this; it favors high-S acceleration and
+- **Where.** Ground missiles start at speed 1 (`0x54ED`), air missiles at
+  terminal speed (`0x662A`). `0x7209`-`0x722B` adds one speed unit on odd
+  frames without dividing by S: `0x7221` tests frame parity and `0x722B`
+  increments. A normal SA-5 reaches speed 9/16 after two simulated seconds
+  at S8/15. Both engines reproduce this; it favours high-S acceleration and
   does not by itself explain weaker high-speed combat.
+  [Probe and limits](speed-sweep.md#cancelled-slot-repair-and-remaining-distance-defect-10-oct).
 - **Optional timing repair: `--fix D1ACCEL`.** Integrate 9/2 speed units
   per simulated second, the original S9 rate, with exact integer fractions
   for every allowed S. Initial parity preserves the S9 increment pattern.
   State is per machine and resets on a new program, launch or frame gap.
   Terminal speed is retained. Player weapons use their original path.
 - **Check.** `tools/d1physics_check.py` measures equal simulated time and
-  keeps S9/player controls before behavior-changing cases. Both engines
-  agree in all 21 cases, with unchanged control hashes. Natural combat is
-  being measured separately.
+  keeps S9/player controls before behaviour-changing cases. Both engines
+  agree in all 21 cases, with unchanged control hashes. Natural combat with
+  all five D1 options: [speed-sweep.md](speed-sweep.md#optional-real-time-cadence-10-oct-controlled-airborne-checks-complete).
 
 ### D2. AdLib digitised speech can hang the game
 
@@ -277,10 +265,9 @@ Status values:
 - **In this recompilation.** Reproduced, including the pause the busy-wait
   causes. The speech itself plays as the card played it: one OPL write per
   sample, rendered at the sample the write's emulated time falls on.
-- **Fix options.** A non-blocking speech path (the Reimp's mixer), as a patch
-  on `0x2552`.
-- **Fix available: `--fix D2`.** An override at ASOUND `0x2552` (AdLib arm,
-  `[17F2]` = 0; the Sound Blaster arms are untouched) queues the driver's
+- **Fix available: `--fix D2`.** A non-blocking speech path (the Reimp's
+  approach), as an override at ASOUND `0x2552` (AdLib arm, `[17F2]` = 0;
+  the Sound Blaster arms are untouched). It queues the driver's
   own OPL writes on the machine's schedule and returns at once: 0x25BB's
   channel-0 setup, 0x2649's counter-0 wait, one level write to 43h per
   sample at the PIT counter-2 rate (150 PIT clocks, 7955 Hz), and 0x2593's
@@ -359,9 +346,8 @@ Status values:
   patch note claims a fix; the 473.04 VGAME still has the defect.
 - **Where.** VGAME gate `0x06D1C`, `cmp [bx+0x3C4A],0x26` at `0x6D35`, credit
   `0x6E4C`, skip `0x6EBB`, sibling `0x077F2`, saved type read at `0x70A0`.
-- **Fix options.** Add `0x26` to the gate (the Reimp's proposal, awaiting the
-  owner's decision there).
-- **Fix available: `--fix D5`.** A code override on the gate's fall-through
+- **Fix available: `--fix D5`.** Adds `0x26` to the gate (the Reimp's
+  proposal): a code override on the gate's fall-through
   `jmp` at VGAME `0000:6D2E` (473.04 file only) continues type 26h to
   `0x6D31`, as the three admitted types do; every other type still jumps to
   `0x6EBB`. The original's own test at `0x6D35` then takes the credit path.
@@ -377,18 +363,15 @@ Status values:
   class 26h/weapon 18, impacts at (10500,3951), height -5: octagonal distance
   113 from target 24, below 256, mission time 588 before deadline 1094.
   Primary flag/event remain absent. `cargo_check.py` requires actual impact
-  rather than counting consumed stores or expiry. This is engine replay
-  evidence. Independent GOG DOSBox supply-mission generation is reproduced
-  (exact type-3/target-24/departure-58/home-51 triple at a -275 ms seed
-  compensating about 275 ms of autoexec guest time); open-loop replay then
-  diverges in flight. A closed-loop pilot (`tools/cargo_pilot.py`, gate route
-  `cargo_pilot`) now flies the same mission in our emulator, selects the
-  crate and releases it when the aircraft's own state is inside the release
-  window, and `cargo_check.py` gives one timely impact in the delivery area
-  with no credit. The same pilot delivers on DOSBox-X
-  (`tools/dosbox_cargo_pilot.py`) and on 86Box (`tools/b86_cargo_pilot.py`,
-  whose runs are now deterministic): one timely impact in the delivery area,
-  no credit.
+  rather than counting consumed stores or expiry. A closed-loop pilot
+  (`tools/cargo_pilot.py`, gate route `cargo_pilot`) flies the same mission,
+  selects the crate and releases it when the aircraft's own state is inside
+  the release window: one timely impact in the delivery area, no credit, in
+  our emulator, on DOSBox-X (`tools/dosbox_cargo_pilot.py`) and on 86Box
+  (`tools/b86_cargo_pilot.py`, deterministic runs). GOG DOSBox reproduces
+  the same mission (type 3, target 24, departure 58, home 51 at a -275 ms
+  seed compensating about 275 ms of autoexec guest time); open-loop replay
+  diverges there in flight.
 - **Approach trap.** The shipped instructions at 6C23..6C4C apply the owner
   pitch floor (slot field +22, zero for the crate) to any weapon at height 1,
   so a crate whose height lands on exactly 1 gets pitch 0, stays there and
@@ -417,8 +400,8 @@ Status values:
   every object placed in the 20 cells has `z = 0` and 5 cells have none, so
   they are flat, not mountains; none overlaps a friendly base or carrier;
   15 of the 20 share their ground pattern with unmasked cells; the manual
-  and the three theatres' briefings name no radar gap. Status unchanged:
-  the mechanism is measured, the cause is not proven.
+  and the three theatres' briefings name no radar gap. The mechanism is
+  measured, the cause is not proven.
 - **In this recompilation.** Reproduced exactly: it is the game's own
   arithmetic on the shipped world data, translated instruction for
   instruction.
@@ -441,43 +424,28 @@ Status values:
 - **Fixed by:** D8.
 
 - **What happens.** Players report the training mission not completing
-  ("Strike Training vs Strike Mission"); a community workaround exists. Not
-  located, and may not exist in this build.
-- **Measured here (6 Oct 2026), inconclusive.** Central America / Cold War /
-  Ground Strike Training at the default startup clock generates a
-  reconnaissance primary (type 1, target 1, camera on station 0), not a
-  strike. Two adaptive recon flights (nose and level acquisition) passed
-  within 3 map units of target 1 at about 2,500 ft, but the nose-ray
-  designation stayed on object 0, so no photo cue or exposure was made and
-  the sortie ran out its 30 minutes. That is the pilot's designation, not
-  yet evidence about the game: whether the training target can be
-  designated and credited is still open.
-- **A strike training mission, found (7 Oct).** The start clock seeds the
-  mission generator. Of eight clocks 0-7 s past the default, 5 s and 7 s give
-  Ground Strike Training a strike primary (type 2, targets 1 and 21), the
-  others a reconnaissance. At +5 s the target is designated normally (lock 1
-  inside 2,900 map units) and the loaded weapon is a laser-guided bomb
-  (weapon 13, class 28, two stores). `strike_pilot.py --front-route
-  routes/central_america_strike_training.front --time-us 700000005000000`
-  flies it: the bomb is released (one launch event; at the target, or at 2,500
-  units with `--release-range 2500`), the target is not damaged, nothing is
-  credited and no hit event is logged. The pilot was written for a Maverick
-  (a seeker lock), so the first releases did not separate a bad release from
-  the game not crediting the training bomb.
+  ("Strike Training vs Strike Mission"); a community workaround exists.
+- **Finding the mission.** The start clock seeds the mission generator. At
+  the default clock, Central America / Cold War / Ground Strike Training
+  generates a reconnaissance primary, not a strike; of eight clocks 0-7 s
+  past the default, 5 s and 7 s give a strike primary (type 2, targets 1
+  and 21). At +5 s the target is designated normally (lock 1 inside 2,900
+  map units) and the loaded weapon is a laser-guided bomb (weapon 13, class
+  28, two stores).
 - **Result (7 Oct): the mission completes; the bomb has a narrow window.**
   Releasing once designated and within N map units of the target, at about
   177 ft above the ground, the target is destroyed, one hit event is logged
   and the objective is credited (flags 0x4000) for N = 80, 120 and 150, and
   not for N = 40, 190, 220, 250, 400, 600, 900 or 2,500 (a release at the
   target, or at 2,500, left it undamaged; the bomb fell short or long). So the
-  training strike cannot be shown to be impossible: it is credited, but only
-  from a release within roughly 80-150 map units, which is what D8's clamp
-  predicts (the bomb's guidance can steepen its fixed 11.25-degree dive but
-  never flatten it, so its reach is a fraction of the release height; the
-  Reimp's arithmetic gives about height / 6.4). A player who releases at the
-  range the other strike weapons use, or does not hold the designation to
-  that point, sees a bomb that never hits and a mission that does not
-  complete, which fits the report. Reproduce: `strike_pilot.py --front-route
+  training strike is credited, but only from a release within roughly
+  80-150 map units, which is what D8's clamp predicts (the bomb's guidance
+  can steepen its fixed 11.25-degree dive but never flatten it, so its reach
+  is a fraction of the release height; the Reimp's arithmetic gives about
+  height / 6.4). A player who releases at the range the other strike weapons
+  use, or does not hold the designation to that point, sees a bomb that
+  never hits and a mission that does not complete, which fits the report.
+  Reproduce: `strike_pilot.py --front-route
   routes/central_america_strike_training.front --time-us 700000005000000
   --release-range 120`.
 - **Detail.** Reimp catalogue:724-727.
@@ -510,23 +478,20 @@ Status values:
   routine that checks mountains for collisions and distance could corrupt the
   stack." They establish a Macintosh defect. The earlier assertion that
   DOS shared it and never received the fix was an inference, and is withdrawn.
-- **Searched here (9 October 2026).** The DOS contact test is in the model
-  renderer: model draws set the ground-contact flag `[0xC6B2]` at
+- **Searched here (9 and 12 October 2026).** The DOS contact test is in the
+  model renderer: model draws set the ground-contact flag `[0xC6B2]` at
   `0x1223F` (`model_fill_stream`, `120A:00CF`, hand-written assembly), which
   ends the flight through `[0x9F96]`. `tools/stack_balance.py` walks every
-  path of all 469 VGAME census functions, with callee-popped arguments
+  path of all 490 VGAME census entries, with callee-popped arguments
   counted: no game routine returns with the stack moved. The five it flags
   are C runtime code that moves SP by design (start-up, the exit family's
   shared tail, the stack probe, a file write's error tail, an exit call that
   never returns); in the renderer's segment the only uneven depth is the
   depth-order walk's own work stack (`120A:0E5B`, balanced by its count in
   BP). A corruption by a stray write into the stack, rather than a push/pop
-  imbalance, is not excluded.
+  imbalance, is not excluded, and successful collision routes cannot
+  establish that every possible collision is safe.
 - **Detail.** Reimp catalogue:830-841.
-- **Repeat (12 October 2026).** The current census walks 490 VGAME entries;
-  the same five intentional C runtime paths are flagged, with no additional
-  finding. Successful collision routes cannot establish that every possible
-  collision is safe.
 - **Reopen when:** a reproducible DOS collision corrupts the stack, or a
   specific DOS instruction path demonstrates an invalid stack write.
 - **Evidence and commands:** [legacy-reports.md](legacy-reports.md).
@@ -540,9 +505,8 @@ Status values:
 - **In this recompilation.** The game's own writes go to a save directory
   overlaid on the install (the install is never written), but each write is
   still the original's truncate-and-write.
-- **Fix options.** Make the host's file layer write atomically (temporary
-  file, then rename) - invisible to the program.
-- **Fix available: `--fix D11`.** A file the program creates (INT 21h
+- **Fix available: `--fix D11`.** The host's file layer writes atomically,
+  invisibly to the program: a file the program creates (INT 21h
   AH=3Ch) in the save directory is written to `<name>.f117r-tmp` and moved
   over the real file when the handle closes (`MoveFileEx` with replace on
   Windows, `rename` elsewhere). An interruption before the close leaves the
@@ -583,10 +547,9 @@ Status values:
   finally a crash" on long missions; the crash itself is not measured.
 - **Where.** VGAME `0x00F3D`; table `[0xB79E]`, count `[0x9932]`; writers
   `0x07549`, `0x043EC`; readers `0x006E3`, `0x00D43`, `0x00FBD`.
-- **Fix options.** Cap the table at 30 records (the Reimp's fix), as a patch
-  at the two writers.
-- **Fix available: `--fix D34`,** the Reimp's design: the first 30 records
-  stay in the table, later ones go to an extension outside the guest.
+- **Fix available: `--fix D34`,** the Reimp's design (a cap at 30 records):
+  the first 30 records stay in the table, later ones go to an extension
+  outside the guest.
   Overrides cover every place a record is reached - the append `0x0F97`,
   the lookup `0x0FBD`, the type write `0x0F7E` and read `0x0D5E` through
   the index the lookup leaves in `[0x950C]` - and VGAME's entry empties the
@@ -613,22 +576,19 @@ Status values:
   deltas across `loop 0x100` and divides `0x5140` by the result. At a high
   enough speed the delta is 0: integer divide by zero, "R6003".
 - **In this recompilation.** A zero measured interval would fault, but the
-  earlier claim that raising `--ips` necessarily reproduces it is withdrawn.
-  The same driver's AdLib detection
-  (`0x0140`: start OPL timer 1, poll the status port 200 times, expect
-  `0xC0`) is why this project models ISA I/O timing at all (see
+  earlier claim that raising `--ips` necessarily reproduces it is withdrawn:
+  the modelled ISA I/O delays keep the calibration's measured PIT delta
+  above zero. The same driver's AdLib detection (`0x0140`: start OPL timer
+  1, poll the status port 200 times, expect `0xC0`) is why this project
+  models ISA I/O timing at all (see
   [architecture.md](architecture.md#time)).
-- **Checked here (5 October 2026):** not reproduced. At 200 million
-  instructions a second the game runs through the intro into START, and at
-  1,000 million MPS_LOGO and its AdLib calibration finish normally; the
-  modelled ISA I/O delays keep the calibration's measured PIT delta above
-  zero. No fix is offered for a failure this machine does not show.
+- **Checked here (5 and 12 October 2026):** not reproduced. All 18 fresh
+  startup probes reach START: 200/1,000/5,000 MIPS, interpreter/recompiler
+  and speaker/AdLib/Roland. These use normal Enter inputs to skip the
+  intros; they verify driver initialization and the transition to START,
+  not complete movie playback at every speed. No speculative calibration
+  fix or speed cap is added.
 - **Detail.** Reimp catalogue:1408-1426.
-- **Repeat (12 October 2026).** All 18 fresh startup probes reach START:
-  200/1,000/5,000 MIPS, interpreter/recompiler and speaker/AdLib/Roland.
-  These use normal Enter inputs to skip the intros; they verify driver
-  initialization and the transition to START, not complete movie playback
-  at every speed. No speculative calibration fix or speed cap is added.
 - **Reopen when:** an identified DOS version and machine configuration
   reproduce the failure, with a trace identifying the failed wait or
   calibration. A reference-hardware reproduction may expose a machine-model
@@ -651,25 +611,21 @@ Status values:
   "Jet Engine" (three PCM partials on waves 24, 7 and 24, one synth
   partial; a 24-semitone bend range), note 23 held. A jet standing braked
   sends the updates but never starts the note.
-- **Checked here (9 October 2026), with Munt:** not reproduced. Control ROMs
-  2.04 and 2.07 have the same PCM wave map as 1.07 (all 128 entries equal;
-  waves 24 and 7 loop in both). The landing flight's engine alone renders
-  at about 1,155 RMS, steady, on 1.05 and 1.07, and at 750-970 RMS,
-  unsteady, on 2.04 and 2.07: about 3.4 dB quieter, not silent. The MT-100
-  and CM-32L use other PCM ROMs and were not tried. Munt models the
+- **Checked here (9 and 12 October 2026), with Munt:** not reproduced.
+  Control ROMs 2.04 and 2.07 have the same PCM wave map as 1.07 (all 128
+  entries equal; waves 24 and 7 loop in both). The landing flight's engine
+  alone renders at about 1,155 RMS, steady, on 1.05 and 1.07, and at
+  750-970 RMS, unsteady, on 2.04 and 2.07: about 3.4 dB quieter, not silent.
+  A staged replay holding the first active engine note for 20 seconds
+  produces sound on all seven available control versions; the fixed-note
+  levels are in [legacy-reports.md](legacy-reports.md). Munt models the
   firmware's tables, not all of its code, so a real 2.0x unit can still
-  differ; no fix is offered for a failure this machine does not show.
+  differ; no fix or speculative timbre replacement is offered.
 - **Detail.** Reimp catalogue:1430-1439.
-- **Repeat (12 October 2026).** A staged replay retains the captured engine
-  initialization and first active note, then holds it for 20 seconds. All
-  seven available control versions (1.04/1.05/1.06/1.07/2.04/2.06/2.07)
-  produce sound. Last-ten-second RMS is 342.49 for 1.0x and 292.40 for 2.0x;
-  those fixed-note levels are not the earlier moving-flight measurement.
-  This extends Munt evidence, not proof of every physical firmware's behavior.
 - **Reopen when:** a flying recording on an identified physical MT-32/MT-100
   or matching independent emulator reproduces silence with its ROM identities
   and MIDI stream, or an incompatible mapping is demonstrated on an untested
-  model. No speculative timbre replacement is offered.
+  model.
 - **Evidence and commands:** [legacy-reports.md](legacy-reports.md).
 
 ## Smaller confirmed defects (Q-series and quirks)
@@ -732,21 +688,21 @@ START.EXE the user owns, so a retail copy asks the quiz and GOG's does not.
   game: they cost the recompilation speed, never correctness, and are
   tracked in [architecture.md](architecture.md).
 
-## How a fix will attach
+## How a fix attaches
 
 The recompilation keeps the original's behaviour as the reference, and every
-fix will be optional, so a player can always choose 1:1. The mechanisms, in
-order of preference:
+fix is optional, so a player can always choose 1:1. The mechanisms, in
+order of preference, all implemented:
 
-1. **Data patches** (D4): bytes corrected as the file is read, through the
-   machine's `file_data` hook. The code is untouched. Implemented.
+1. **Data patches** (D4's world half): bytes corrected as the file is read,
+   through the machine's `file_data` hook. The code is untouched.
 2. **Host-side fixes** (D11): the emulated PC's file layer, invisible to the
    program.
-3. **Code overrides** (D1, D2, D5, D34): a hand-written C function registered
-   for a module address replaces that address's code under either engine
-   (`src/fixes/fixes.c`, mechanism in `src/recomp/recomp.c`). Each is pinned
-   to the shipped file it was written for by hash and switched at run time.
-   Implemented; D5 is the first.
+3. **Code overrides** (the D1 family, D2, D3, D4's table half, D5, D6, D8,
+   D12, D34): a hand-written C function registered for a module address
+   replaces that address's code under either engine (`src/fixes/fixes.c`,
+   mechanism in `src/recomp/recomp.c`). Each is pinned to the shipped file
+   it was written for by hash and switched at run time.
 
 The Reimp grouped its fixes in tiers (MicroProse's own patches, fan fixes,
 its own). Those tiers can carry over unchanged.

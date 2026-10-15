@@ -1,7 +1,8 @@
 # Historical reports reviewed, 12-13 October 2026
 
-These reports are closed for Phase 3 without claiming that every historical
-machine was unaffected. Their evidence and reopening criteria remain in
+These reports are closed for Phase 3 as not reproduced or not established
+for DOS, not relabelled as fixed bugs, and without claiming that every
+historical machine was unaffected. Their reopening criteria are in
 [bugs.md](bugs.md). No speculative game patch was added.
 
 | Report | Original source | Result and limit |
@@ -63,5 +64,4 @@ mapping can therefore reopen D36.
 The local evidence bundle retains original archive/note hashes, startup
 logs and results, the staged MIDI stream, ROM identities, wave-table
 comparison and audio measurements. Original game files, ROMs, recordings
-and raw logs stay outside git. The reports are closed as not reproduced
-or not established for DOS, rather than relabeled as fixed bugs.
+and raw logs stay outside git.

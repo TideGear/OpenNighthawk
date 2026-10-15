@@ -22,10 +22,10 @@ make (Phase 4).
   and variables; `tools/census.py`). The coverage pass adds no further
   translated code; changed code and declined override entries can fall back
   to the interpreter.
-- **Engine parity.** 41 scripted routes are identical between the interpreter
+- **Engine parity.** 45 scripted routes (44 sessions) are identical between the interpreter
   and the recompiled code at every 50-million-clock checkpoint and at the end;
   every translated instruction is held to the interpreter from random states
-  (5,718,976 comparisons, 0 differences); the interpreter and the translator are
+  (5,718,848 comparisons under each of the two timing profiles, 0 differences); the interpreter and the translator are
   held to 8088 and 80286 silicon vectors; 144 of 144 planted defects are
   caught; seeded random flights are identical. See
   [architecture.md](architecture.md#verification-why-11-is-a-claim-with-evidence).
@@ -60,105 +60,94 @@ make (Phase 4).
   exact pictures in order, drift up to 0.2 s; 86Box (a source build, windowless and
   silent, the 386DX/33 with MS-DOS 5.00 and MOUSE.COM) matches 85 of 86 graphics
   pictures exactly in 6-bit DAC values, in order (the other a single sample of
-  START's roster screen half drawn while its files load). The same run checks the music (GOG envelope 0.963,
-  spectral 0.992, level 1.005; DOSBox-X 0.90-0.92 and 0.947, its mixer 0.74 of
-  the level; 86Box (a 386DX/33 profile): identical first 2,000 AdLib writes and notes on
-  four of six channels, scene timing within 0.31 s per scene and 2.0 s drift
-  over the intro) and a scripted START session's saved roster (byte-identical on
-  DOSBox-X and 86Box); `tools/fidelity_all.py` holds the machine probe to
-  stored baselines. Builds and notes: `tools/ref86box/`.
+  START's roster screen half drawn while its files load). The same run checks the
+  music (GOG envelope 0.963, spectral 0.992, level 1.005; DOSBox-X 0.90-0.92 and
+  0.947, its mixer 0.74 of the level; 86Box (a 386DX/33 profile): identical first
+  2,000 AdLib writes and notes on four of six channels, scene timing within 0.31 s
+  per scene and 2.0 s drift over the intro) and a scripted START session's saved
+  roster (byte-identical on DOSBox-X and 86Box); `tools/fidelity_all.py` holds the
+  machine probe to stored baselines. Builds and notes: `tools/ref86box/`.
 - **Independent GOG DOSBox flights.** Reconnaissance with both photos and the
   raised-deck return completes on GOG's DOSBox and passes the same strict
   gates. The supply mission is reproduced exactly on GOG's DOSBox (its autoexec
   consumes about 275 ms of guest time, so the seed is set 275 ms early); delivery
-  there is open (below).
+  there is not pursued (Settled, below).
 - **The game version verified:** GOG's installer (build 28044) with the 473.04
   update; Steam's release is byte-identical (`tools/verify_install.py`).
 - **The gate** (`tools/build_recomp.py`): translate, build, coverage, both
   engines on every route, instruction and matched-routine lockstep; about 7
   minutes after a `matched.c`-only change with cached interpreter results;
-  about 25–30 minutes when verifying every interpreter route fresh.
-  Repeated processes and what was optimised:
-  [repeated-processes.md](repeated-processes.md).
-  The gate explicitly enables the app build so its host tests are included
-  even after a core-only build.
-  A retained rotating-seed regression checks the in-place 32-bit shift's
-  stores through live BX after the original helper returns, including a
-  stack overlapping that helper's code (`matched_shift_stack_alias`).
-
+  about 22–30 minutes when verifying every interpreter route fresh (15 Oct: 1,330 s with
+  coverage skipped, 1,706 s with it). It
+  explicitly enables the app build so its host tests are included even after a
+  core-only build. Repeated processes, their cost and what was optimised:
+  [repeated-processes.md](repeated-processes.md). A retained rotating-seed
+  regression checks the in-place 32-bit shift's stores through live BX after
+  the original helper returns, including a stack overlapping that helper's
+  code (`matched_shift_stack_alias`).
 - **Rendered speaker and speech audio.** PIT counter 2 follows the 8254 model;
   speaker music matches the DOSBox-X reference (envelope 0.87, spectral
-  0.92-0.93, level 0.95). The missing speech waveform reference is now captured
-  silently from 86Box's mixer on MS-DOS 5.00/MOUSE.COM 6.26 (9 Oct): the
-  takeoff call's 12,924 non-silence counts are identical, over 855.626 ms;
-  in 300-3400 Hz waveform correlation is -0.9916, envelope 0.9995, zero lag.
-  Opposite polarity and 3.17x level follow the independent speaker models'
-  amplitude formulas; no renderer/default change was needed. Capture leaves
-  all 4,500 frame records and port writes byte-identical. Commands and limits:
+  0.92-0.93, level 0.95). The speech waveform reference is captured silently
+  from 86Box's mixer on MS-DOS 5.00/MOUSE.COM 6.26 (9 Oct): the takeoff call's
+  12,924 non-silence counts are identical, over 855.626 ms; in 300-3400 Hz
+  waveform correlation is -0.9916, envelope 0.9995, zero lag. Opposite polarity
+  and 3.17x level follow the independent speaker models' amplitude formulas; no
+  renderer/default change was needed. Capture leaves all 4,500 frame records
+  and port writes byte-identical. Commands and limits:
   [build_86box.md](../tools/ref86box/build_86box.md#silent-speech-waveform-reference).
   Listening remains Phase 4; OPL mixer sample equality remains out of scope.
-
-- **A 386DX/33 timing profile** (completed 10 Oct 2026). The game steps its
-      flight model by its own frame rate ([0x368E]) and reads the stick once a
-      frame, so the same inputs play out a little differently on a faster or
-      slower PC: this is what makes the recompilation play like the original on
-      a period machine. This machine follows DOSBox's model (one clock an
-      instruction plus I/O delays, 9.00 M clocks a second); the profile
-      (`f117run --timing 386`, `F117R_TIMING=386`; src/cpu/timing386.c) charges
-      what 86Box's 386DX/33 charges, from its source
-      ([timing386.md](../tools/ref86box/timing386.md), `ops386.json`): each
-      instruction's cycles and prefetch refills, the IBM VGA's 8-bit bus, ISA
-      port costs, at 33.333 MHz. Results that do not depend on speed must match
-      under both profiles; recorded routes and hashes stay on the DOSBox profile.
-      Done: the interpreter matches 86Box to the cycle on all 77 blocks of
-      `probe386.py` (ALU, memory forms, jumps, calls, INT, REP chunks with
-      prefixes, VGA memory, ports), and the services it answers natively are
-      charged their measured 86Box cost (video BIOS mode sets, palette, text;
-      INT 16h, 1Ah; INT 21h AH=0Bh and 2Ch; INT 33h): all 93 probe blocks
-      exact in the latest run against the saved MS-DOS 5.00 reference with
-      Microsoft MOUSE.COM 6.26 (AH=2Ch varies by four cycles between runs)
-      (`build_msdos_vm.py`; 5.00 and 6.22 cost the same on the game's calls,
-      4.01 10% less, FreeDOS twice on 2Ch; CuteMouse 45% cheaper than 6.26).
-      Shown: the game's frame rate in flight (S) is 5-9 under the profile and
-      7-9 on 86Box, against 14-15 on DOSBox's model, so the same inputs now fly
-      at the period PC's pace (`stick_response.py --machine machine386`); over
-      the intro's animation the scenes hold 86Box's pace to a frame
-      (`frames386.py`, timing386.md). DOS file services are now charged
-      (open, read, write, close, attributes, seek; timing386.md "File
-      services"), fitted to the 1989 3500 rpm drive preset, the reference's
-      period drive (9 Oct 2026; the RAM-disk preset's fit is recorded there too).
-      EXEC and overlay loads are now charged too (9-10 Oct 2026). PLAYER.EXE,
-      DSWAP.EXE and START.EXE - the three loads that dominate the intro's
-      drift - are each measured and charged at their own real position on the
-      reference disk (`realexec.py`); any other load is charged by which of
-      three synthetic-file sizes it is closest to, not a per-byte formula (a
-      fifteen-size follow-up probe came back non-monotonic in size, confirming
-      the cost is seek-distance dominated like an ordinary read, not size
-      dominated, so a same-size synthetic file is a poor stand-in for a real
-      one's own position - borne out by the real files costing 27-45% more
-      than their same-size synthetic stand-ins). On that reference the intro's
-      drift at the end falls from +0.43 s (uncharged) to +0.10 s (synthetic
-      sizes) to +0.04 s (real positions), the same 1,237 of 1,275 pictures
-      exact throughout. Reference parity: pictures, music and the picture
-      check now all pass (p037's one close picture is a confirmed mid-fade
-      capture-timing artifact). The last alleged timing failure was a harness
-      error: it compared the default 9 MIPS capture with 86Box. The retained
-      check now requires a separate recorded 386 capture and pairs held
-      pictures by content. Fresh references pass all checks: 21 of 21 held
-      pictures match, maximum duration difference 0.214 s (limit 0.30, tightened
-      10 Oct from 0.35), start drift 1.113 s (limit 1.5, tightened from 2.2).
-      The final hangar differs by 19 ms after
-      excluding reference screen-off gaps. Eight regressions reject wrong
-      profiles, wrong pictures, missing holds and excessive duration/drift.
-      Both engines now charge the same profile: 5,713,152 instruction
-      comparisons each in RAM and with code in VRAM, no differences; paired
-      flight sessions have 574 identical state checkpoints and stick responses
-      (`stick_response.py --machine machine386 --engine interp|recomp`).
-      Matched entries use the original translated body under this profile.
-      STI and SS loads hold interrupts through the following instruction even
-      when it costs zero cycles; four regressions failed before the fix and
-      pass after it. Regions are capped at 1,024 instructions to bound MSVC's
-      optimisation work (generated rebuild 479 s to 120 s).
+- **A 386DX/33 timing profile** (completed 10 Oct 2026; `f117run --timing 386`,
+  `F117R_TIMING=386`, `src/cpu/timing386.c`; reference
+  [timing386.md](../tools/ref86box/timing386.md), `ops386.json`). The game steps
+  its flight model by its own frame rate ([0x368E]) and reads the stick once a
+  frame, so the same inputs play out a little differently on a faster or slower
+  PC; this profile makes the recompilation play like the original on a period
+  machine. The default machine follows DOSBox's model (one clock an instruction
+  plus I/O delays, 9.00 M clocks a second); the profile charges what 86Box's
+  386DX/33 charges, from its source: each instruction's cycles and prefetch
+  refills, the IBM VGA's 8-bit bus and ISA port costs, at 33.333 MHz. Results
+  that do not depend on speed must match under both profiles; recorded routes
+  and hashes stay on the DOSBox profile.
+  - *CPU and services:* the interpreter matches 86Box to the cycle on all 77
+    blocks of `probe386.py` (ALU, memory forms, jumps, calls, INT, REP chunks
+    with prefixes, VGA memory, ports); the services answered natively (video
+    BIOS mode sets, palette, text; INT 16h, 1Ah; INT 21h AH=0Bh and 2Ch; INT 33h)
+    are charged their measured cost: all 93 probe blocks exact against the saved
+    MS-DOS 5.00 reference with Microsoft MOUSE.COM 6.26 (AH=2Ch varies by four
+    cycles between runs). `build_msdos_vm.py`: 5.00 and 6.22 cost the same on
+    the game's calls, 4.01 10% less, FreeDOS twice on 2Ch; CuteMouse 45% cheaper
+    than 6.26.
+  - *Disk:* DOS file services (open, read, write, close, attributes, seek) are
+    fitted to the 1989 3500 rpm drive preset, the reference's period drive
+    (timing386.md "File services"; the RAM-disk preset's fit is recorded there
+    too). EXEC and overlay loads are charged: PLAYER.EXE, DSWAP.EXE and
+    START.EXE, the three loads that dominate the intro's drift, at their own
+    measured position on the reference disk (`realexec.py`); any other load by
+    the nearest of three synthetic-file sizes. The cost is seek-distance
+    dominated, not size dominated (a fifteen-size probe was non-monotonic; the
+    real files cost 27-45% more than same-size synthetic stand-ins). The intro's
+    drift at the end: +0.43 s uncharged, +0.10 s synthetic sizes, +0.04 s real
+    positions, the same 1,237 of 1,275 pictures exact throughout.
+  - *Result:* the game's frame rate in flight (S) is 5-9 under the profile and
+    7-9 on 86Box, against 14-15 on DOSBox's model, so the same inputs fly at the
+    period PC's pace (`stick_response.py --machine machine386`); the intro's
+    scenes hold 86Box's pace to a frame (`frames386.py`). Pictures, music and the
+    picture check pass against the reference (p037's one close picture is a
+    confirmed mid-fade capture-timing artifact). The retained check needs a
+    separately recorded 386 capture (comparing the default 9 MIPS capture with
+    86Box was a harness error) and pairs held pictures by content: 21 of 21 held
+    pictures match, maximum duration difference 0.214 s (limit 0.30), start
+    drift 1.113 s (limit 1.5); the final hangar differs by 19 ms after excluding
+    reference screen-off gaps. Eight regressions reject wrong profiles, wrong
+    pictures, missing holds and excessive duration/drift.
+  - *Both engines* charge the same profile: 5,713,152 instruction comparisons
+    each in RAM and with code in VRAM, no differences; paired flight sessions
+    have 574 identical state checkpoints and stick responses (`stick_response.py
+    --machine machine386 --engine interp|recomp`). Matched entries use the
+    original translated body under this profile. STI and SS loads hold
+    interrupts through the following instruction even when it costs zero cycles
+    (four regressions). Regions are capped at 1,024 instructions to bound MSVC's
+    optimisation work (generated rebuild 479 s to 120 s).
 
 ### Settled (scope, 8 Oct 2026)
 
@@ -200,930 +189,340 @@ not the recompilation:
 
 ## Phase 2 - understood code
 
-Four more routines are matched and named: END `0714` (`end_replay_step`, one event of the
-debrief replay), END `2092` (`end_wait_answer`, the prompt's answer wait), START `40F0`
-(`start_mission_take_out_sites`: the theatre load, mission generation and the random
-destroyed sites) and VGAME `F458` (`vgame_read_file_handle`, the C runtime's text-mode
-read). Each reaches every instruction at five seeds with 46-62 private mutations caught;
-the real `full_cycle` route runs them 1, 17, 2 and 11 times with all 66 checkpoints and the
-final state exact. `F458` needs the lockstep's scripted DOS answers to deliver the byte a
-one-byte read brings (`g_dos_script[].put`), so its CR-LF path is reached. This batch was
-gated in a separate worktree (`D:/f117-wt/gate`) so the owner could test the app meanwhile:
-103 tests, all 45 routes / 44 fresh interpreter sessions, both 5,718,848-state instruction
-profiles, three 891-address seeds (3,012,188 / 3,010,490 / 3,009,308 comparisons), zero
-mismatches, audits pass. Census: 889 functions / 117,660 bytes. Evidence:
-`D:/f117-gate/p2-batch7`.
+- [ ] **Name the translated routines and data**, with explanations, drawing on
+      the Reimp's mapping; matched functions replace translations one at a
+      time, each held to the same parity checks. Method:
+      [architecture.md](architecture.md#matched-routines-phase-2); the table is
+      at the end of `src/matched/matched.c`; how routines are proved now (the
+      private kit and parallel agents) and the next candidates:
+      [../handoff.md](../handoff.md). `tools/reimp_names.py` joins the Reimp's
+      census (1,535 functions) with this project's regions as a private lead
+      list.
+      **Now:** 891 addresses matched, covering 889 of the census functions and
+      117,660 of 179,213 bytes (P2 67.37%, overall 86.67%).
+      **What is left:** `tools/census_reach.py` separates code with no run
+      evidence from unreachable code (gate coverage logs only interpreted
+      fallback instructions, so it cannot show what ran). A complete interpreter
+      `full_cycle` capture (14 Oct; all 66 checkpoints and the final state match
+      the plain replay) reached 358 unmatched entries / 43,138 bytes; 6
+      interiors / 521 bytes and 121 entries / 12,813 bytes had no evidence in
+      it, so new routes remain useful for those. These figures predate the 14-15
+      Oct batches. The private 47-routine draft batch has 37 positively reached
+      entries (two already matched). Private inventory:
+      `D:/f117-gate/format-init`.
+      **Stays original code:** the timer interrupts (VGAME 0x1C9B, START
+      0x8D0B, END 0x4BEF) open with STI, after which the run loop admits one
+      more instruction before it looks at events, so a matched body could do
+      nothing the original does not. The line clipper's divide-error handler
+      (`0FB2:04DD`) is fixture-proven like `084E` below but **not integrated**:
+      no input reaches it (all 39 routes, three staged flight scripts and an
+      instrumented probe over 146,153 real clip divisions across 14 routes stay
+      well under its 32,767-unit threshold); it is kept on local branch
+      `irq-divide-fault` and as a patch file, not in `master`, until a route
+      reaches it. Three unequal candidates were excluded: START 0x11DB,
+      MPS_LOGO 0x1ADC and 0x1C82.
 
-Eight more routines are matched and named, proved privately with the kit: VGAME `09A0`
-(`vgame_load_table_pair`), `F5F2` (`vgame_open_file_handle`, the C runtime's open),
-`BB0D` (`vgame_draw_model_in_view`); START `0963` (`start_arms_screen_loop`), `A59A`
-(`start_sopen_file`, START's copy of the C runtime's open), `008D`
-(`start_draw_pilot_card`), `64E5` (`start_draw_pilot_record_sheet`, one function whose
-span holds six census entries reached only by its own jumps) and `74B1`
-(`start_world_page_objects`). Each reaches every instruction at five seeds (no skipped
-states) with 66-104 private mutations caught; the real `full_cycle` route runs them
-1-447 times with all 66 checkpoints and the final state exact (`09A0`, `0963` and
-`64E5` once each: thin real-route evidence). `A59A` needs the lockstep harness to
-script the first INT 21h answers (`g_dos_script`) so that its create path, reached only
-when the open fails with AX 2, is tested. The first gate's commit-derived seed found an
-old harness gap: VGAME `683E`'s fuzzed pointer writes could overwrite a returning stub
-planted at a callee, so the callee ran garbage and the call escaped; such states are now
-skipped as code written, and `matched_projectile_stub_overwrite` retains the seed. Fresh
-full gate: 97 tests, all 45 routes / 44 fresh interpreter sessions, both
-5,718,848-state instruction profiles, three 887-address seeds (2,992,388 / 2,990,656 /
-2,993,522 comparisons), zero mismatches, audits pass. Census: 885 functions / 116,273
-bytes. Evidence: `D:/f117-gate/p2-batch5`, `p2-batch6`.
+### How an entry is proved
 
-Four more routines are matched and named, again proved privately with the shared kit:
-VGAME `0D14` (`vgame_nearest_object_lookup`: the nearest scene object around a world
-position over the cell grid; it declines while fix D34 is on), VGAME `17B4`
-(`vgame_attitude_indicator_draw`: the cockpit attitude indicator's rotated corners and
-panel), START `623E` (`start_roster_event_loop`: the roster page's pick, swap and
-confirm loop) and PLAYER `0244` (`player_stream_picture_file`: streaming a compressed
-picture file in). Each reaches every instruction at five seeds (6,203-6,249 states, no
-skipped states); 85, 104, 70 and 108 private mutations are caught; the real
-`full_cycle` route runs them 1, 275, 1 and 7 times with all 66 checkpoints and the
-final state exact (`0D14` and `623E` are thin real-route evidence: one call each).
-Fresh full gate: 88 tests, all 45 routes / 44 fresh interpreter sessions, both
-5,718,848-state instruction profiles, three 879-address seeds (2,952,647 / 2,950,951 /
-2,952,913 comparisons), zero mismatches, audits pass; `presentation_check.py
---scales 1` reports all 45 routes exact. Census: 871 functions / 112,696 bytes.
-Evidence: `D:/f117-gate/p2-batch4`.
-
-Three more routines are matched and named, each proved privately with the shared kit
-(`D:/f117-gate/kit`): VGAME `63F2` (`vgame_traffic_lock_and_fire`: a traffic slot's
-lock level, announcement and missile launch), VGAME `528D`
-(`vgame_ground_site_engage`: a ground site's sighting, alert level and fire) and
-START `6861` (`start_draw_pilot_row`: one roster row's background and four texts).
-Each reaches every instruction at five seeds (6,115-6,249 states, no skipped states);
-87, 74 and 59 private mutations are caught; the real `full_cycle` route runs them 9,
-12 and 10 times with all 66 checkpoints and the final state exact. Fresh full gate: 84
-tests, all 45 routes / 44 fresh interpreter sessions, both 5,718,848-state
-instruction profiles, three 875-address seeds (2,932,702 / 2,931,015 / 2,932,431
-comparisons), zero mismatches, audits pass; `presentation_check.py --scales 1`
-reports all 45 routes exact. Census: 867 functions / 110,808 bytes. Evidence:
-`D:/f117-gate/p2-batch3`.
-
-Two more routines are matched and named: VGAME's `04E6` (`vgame_scene_walk`, 810
-bytes / 276 instructions) walks the terrain tile rings around the viewpoint and
-composes each tile's objects, and START's `0FA3` (`start_brief_key_loop`, 568 bytes /
-224 instructions) is the briefing page's key loop. Both reach every instruction at
-five seeds (6,233-6,250 states each, no skipped states), 37 and 46 private mutations
-are caught, and the real `full_cycle` route runs them 275 and 2 times with all 66
-checkpoints and the final state exact. The gate's commit-derived seed also found an
-old defect in the matched hit test (START `393D`, END `1C3B`): a rectangle list at
-offset FFFFh wraps inside the segment, so its words land back on the stack frame
-while the guard assumed eight contiguous bytes. The guard now tests each byte's own
-address and `matched_menu_hit_wrap` retains the seed. Fresh full gate: 81 tests, all
-45 routes / 44 fresh interpreter sessions, both 5,718,848-state instruction
-profiles, three 872-address seeds (2,917,868 / 2,916,202 / 2,918,100 comparisons),
-zero mismatches, audits pass (1,583 s; the first attempt, which found the `393D` defect, is retained); the
-live `presentation_check.py --scales 1` reports all 45 routes exact. Census: 864
-functions / 108,738 bytes. Evidence: `D:/f117-gate/p2-batch2`, `D:/f117-gate/p2-scene`,
-`D:/f117-gate/p2-start-0fa3`.
-
-VGAME's `DC46` (`vgame_compose_walk`, 867 bytes / 295 instructions) walks the scene's
-object table and composes every visible object: the alternate drawer, the
-vehicle shapes with their three depth products, and the label markers. Five
-seeds compare 6,177-6,187 states and reach all 295 instructions with no skipped
-states or differences; 26 private mutations are caught. The private full cycle
-runs it 276 times (once a frame, as `1450`), matches all 66 checkpoints and the
-final state, and has no overruns. Its callees all return plainly, so the
-arguments are removed here. Fresh full gate: 78 tests, all 45 routes / 44 fresh
-interpreter sessions, both 5,718,848-state instruction profiles, three
-870-address seeds (2,907,880 / 2,906,214 / 2,904,010 comparisons), zero
-mismatches, reachability and event audits pass (1,590 s); the live
-`presentation_check.py --scales 1` reports all 45 routes exact. Census: 862
-functions / 107,360 bytes, P2 61.91%, overall 85.09%. Evidence:
-`D:/f117-gate/p2-compose`.
-
-VGAME's `1450` (`vgame_horizon_bands`, sky and ground band projection and fill,
-868 bytes / 301 instructions) and START's `7904` (`start_choose_world_record`,
-the world-record selection by type, 769 bytes / 272 instructions) are matched
-and named. Five seeds reach every instruction of each with no skipped states or
-differences; 11 and 17 private mutations are caught. The private full cycle
-runs them 276 and 2 times, matches all 66 checkpoints and the final state, and
-has no overruns. A permanent grouped CTest retains the fixtures. The first
-gate failed in `code_overrides`: the horizon routine's address is also the
-presentation observer's frame-phase hook, so the matched body silenced it.
-It now calls `observe_game_draw` at entry like the three other shared
-placements, and `1450` is on the test's deliberate list; the live check
-`presentation_check.py --scales 1` reports all 45 routes exact. Fresh full gate: 77 tests, all 45 routes / 44 fresh
-interpreter sessions, both 5,718,848-state instruction profiles, three
-869-address seeds (2,902,931 / 2,901,261 / 2,900,231 comparisons), zero
-mismatches, reachability and event audits pass (1,418 s). Census: 861
-functions / 106,493 bytes, P2 61.45%, overall 84.95%. Evidence:
-`D:/f117-gate/p2-pair`.
-
-START's `39F7` and END's `1CF5` menu-input and pointer updates are matched and
-named. They poll keyboard, mouse and joystick,
-choose directional hit rectangles, clamp and redraw the pointer, and normalize
-menu keys. Five seeds reach all 532 instructions with zero skipped states or
-differences; all 16 private mutations are caught. The private full-cycle route
-matches the interpreter's final state, runs the bodies 7,015 / 487 times, and
-has zero event overruns. A permanent grouped CTest retains the fixtures,
-including stack/table aliasing and END's extra hotkey argument. Fresh full gate:
-76 tests, all 45 routes / 44 fresh interpreter sessions, both 5,718,848-state
-instruction profiles, three 867-address seeds (2,893,246 / 2,891,591 / 2,892,499
-comparisons), zero mismatches, reachability and event audits pass (1,627 s).
-Census:
-859 functions / 104,856 bytes, P2 60.58%, overall 84.70%.
-Evidence: `D:/f117-gate/p2-next/final-gate-verdict.json`.
-
-Twenty-two reached support routines are matched and named: PLAYER's picture
-open/refill and linear copy, the four timer shutdowns, five mouse wrappers and
-SETUP's mouse probe, file-name comparison, BIOS text writer, register-block
-interrupt call and memory free, the logo and debrief record-table fills, logo
-file loading/freeing and START heap resizing. Four seeds compare 103,554-103,672
-states per seed with zero differences. Fixtures cover each routine's
-instructions, with lower completion floors for terminal error paths that hand
-back to original code; returning error helpers also compare those branches.
-The record-table tests include the 65,536-iteration zero-count loops and vary
-the loader-relocated segment operand. This variation retains the defect found
-by the real route: a fixed 00DAh segment passed the zero-base fixtures but
-corrupted the logo after DOS relocated it. The three private routes
-(`full_cycle`, `ibm_boot`, `setup_calibration`) match their interpreter final
-states and together invoke every routine. Twenty planted defects are rejected,
-including skipping END's zero-count fill. Both zero-count fixtures must return
-intact; a separate stack and zeroed source keep END's full loop comparable.
-Six grouped CTests retain the fixtures. Fresh full gate passes 75 tests, all
-45 routes / 44 fresh interpreter sessions, both 5,718,848-state profiles,
-three 865-address seeds (2,883,318 / 2,881,648 / 2,881,497), zero mismatches,
-reachability/event checks pass (1,390 s).
-Nested interrupt runs stop at the caller's next event through `support_int`;
-removing its clamp is rejected by a route mutation even with equal final
-hashes. All three private routes now require zero overruns too.
-Census: 857 functions / 103,349 bytes,
-P2 59.78%, overall 84.47%. Private evidence: `D:/f117-gate/leaf-batch`.
-The gate unit stage now uses eight workers (`--unit-jobs 1` retains serial):
-75 tests have identical captured output, 159.76 seconds serial versus 22.47
-seconds parallel. Verified unchanged coverage is reused in the final gate.
-
-START's flight-plan display (`0000:149C`, 365 instructions / 926 bytes) is
-matched and named. It scales four airfield records' map positions to the plan
-grid, marks each point on both pages, then (unless the caller's flag says to
-skip) announces "Depart from X at <hours>", each leg's description and "Land
-at Y", waiting for a key after each leg's line, and finally draws the route
-letters T, L, P and S. Fixtures stub the drawing, text, wait and format
-helpers with code that folds each call's stack words into a checksum cell and
-script the wait and leg results from the seed; they vary the airfields (takeoff
-equal to landing included), names and the skip flag. All 365 instructions are
-reached at five seeds (about 4,970-4,985 states) with zero differences, and 20
-deliberately broken bodies fail. The first seeds exposed a stray resume point
-(a claim after the `jne` that would have re-run three instructions on a mid-run
-stop); only a non-default seed saw it, so every body is now tested at several
-seeds. `full_cycle` runs the display twice with all 66 checkpoints/final state
-exact. Fresh full gate passes 69 tests, all 45 routes / 44 fresh interpreter
-sessions, both 5,718,848-state profiles, three 843-address seeds (2,775,593 /
-2,774,497 / 2,774,942), zero mismatches, reachability/event checks pass
-(1,932 s). Census: 835 functions / 102,237 bytes, P2 59.20%, overall 84.30%.
-Private proof: `D:/f117-gate/flight-plan`.
-
-START's pilot options dialog (`0000:6DB8`, 399 instructions / 1,013 bytes) is
-matched and named. It types the pilot's rank and surname with a click per
-letter, then polls the dialog's hit table until the pilot confirms (key 10) or
-cancels (63); keys 1-4, 5-7 and 8-9 choose in three option groups, each choice
-erasing the old mark and drawing the new one. Cancel restores the 80-byte
-record from its backup copy, confirm saves it there and moves the pointer.
-Fixtures stub the far drawing slots with code that folds each call's stack
-words into a checksum, script the poll's keys from the seed, and vary the slot,
-rank, name length, option values and key sequences; all 399 instructions are
-reached at three seeds (4,998-5,000 states) with zero differences. Eighteen
-deliberately broken bodies fail. `full_cycle` runs the dialog once with all 66
-checkpoints/final state exact. Fresh full gate passes 68 tests, all 45 routes /
-44 fresh interpreter sessions, both 5,718,848-state profiles, three 842-address
-seeds (2,770,608 / 2,769,525 / 2,768,736), zero mismatches, reachability/event
-checks pass (1,990 s). Census: 834 functions / 101,311 bytes, P2 58.70%,
-overall 84.16%. Private proof: `D:/f117-gate/pilot-options`.
-
-The END debrief narrative builder (`0000:2BEC`, 444 instructions / 1,077 bytes)
-is matched and named: it scores the sortie, then writes the outcome, rating,
-air and ground kill counts, rules-of-engagement losses and friendly-loss
-paragraphs, measures the text and bottom-aligns it. END `206A`, previously
-labelled a fatal-error handler, is the "Press Selector to continue" prompt and
-is renamed. Fixtures vary the objective mask, return/training state, ROE,
-losses, six measured heights, overlapping output/record/frame memory and the
-direction flag; the stubbed prompt records its two arguments. Three seeds
-compare 4,999-5,000 states with all 444 instructions reached. Ten deliberately
-broken bodies fail (wrong string, inverted branch, layout constant, extra clock,
-missing stack clean-up, wrong counter, wrong record field, wrong condition,
-dropped ROE term, wrong prompt position). `full_cycle` invokes the narrative
-once and the prompt twice with all 66 checkpoints/final state exact. Fresh full
-gate passes 67 tests, all 45 routes / 44 fresh interpreter sessions, both
-5,718,848-state profiles, three 841-address seeds (2,765,608 / 2,764,527 /
-2,766,986), zero mismatches, reachability/event checks pass (1,771 s).
-Census: 833 functions / 100,298 bytes, P2 58.17%, overall 84.00%. Private
-proof: `D:/f117-gate/debrief-narrative`.
-
-Segment entry binding (VGAME `0FAE:0002`) and encoded-sprite recolouring
-(MPS_LOGO `006D:0002`) are matched. All 27 / 63 instructions are covered by
-authored original-instruction fixtures, including overlapping tables/frames,
-wrapping offsets, markers, palette bases and the 65,536-iteration zero-count
-LOOP. Seven deliberately broken bodies fail. The mid-run harness now checks
-no-call clock overshoots; a live radar-decoy fixture guarantees the projectile
-aspect arm instead of depending on random table bytes (886/886 instructions,
-floor unchanged). Full-cycle invocations 3 / 82 preserve 66 checkpoints/final.
-The fresh full gate passes 66 tests, all 45 routes / 44 fresh interpreter
-sessions, both 5,718,848-state profiles, three 840-address seeds (2,760,609 /
-2,759,527 / 2,756,481), zero mismatches and passing reachability/event checks
-(1,391 s). Census: 832 functions / 99,221 bytes, P2 57.60%, overall 83.84%.
-Private proof: `D:/f117-gate/entry-palette/final-gate-verdict.json`.
-
-The formatter conversion-state initializers (START `9D67`, END `56D9`) are
-matched: four cleared fields, unspecified precision (-1), then the original
-scan loop. Returning scan fixtures cover all eight instructions and require
-the named code to reach its continuation after eight clocks; an empty handler
-and a wrong frame-slot mutation both fail. `full_cycle` invokes the handlers
-89 / 9 times and preserves all 66 checkpoints/final state. The rotating seed
-also exposed an older objective-place alias defect (VGAME `4B8F`): the target
-argument must be read after clearing the output buffer. Its retained seed
-regression and the fresh full gate pass: 64 tests, all 45 routes / 44 fresh
-interpreter sessions, both 5,718,848-state profiles, three 838-address seeds
-(2,753,443 / 2,752,408 / 2,752,308), zero mismatches and passing reachability/
-event checks (1,301 s). Census: 830 functions / 99,033 bytes, P2 57.50%, overall
-83.81%. Private proof: `D:/f117-gate/format-init/final-gate-verdict.json`.
-
-The SETUP event-limit alert seen with SDL's short slices is understood
-(14 October): its native INT 10h callback includes two atomic stub clocks,
-which the overrun audit had mistaken for extra guest instructions. Both
-engines already stopped at identical states. The ledger now accounts for
-those clocks without changing `icount`, and the regression still catches an
-extra NOP. Across eight slice schedules and both engines, all 16 sets of
-per-slice state records are identical before/after; 12 SDL boots per build
-have the same final hash, with one old alert and no new alerts. The new
-ROM-free boundary regression fails against the old accounting and passes
-with the correction. The fresh full gate passes 63 unit tests, all 45 routes (44 fresh interpreter
-sessions), both 5,718,848-state instruction profiles and three 836-address
-matched seeds (2,745,183 / 2,744,149 / 2,745,748 comparisons), with zero
-mismatches and passing reachability/event checks (1,745 s). No new census
-matching is claimed.
-
-Logo sprite-set loader (`MPS_LOGO 006D:0112`, `logo_sprite_set_load`) is matched:
-434 instructions / 1,164 bytes covering the stream open and signature check,
-record allocation, name and format validation, frame-pointer fix-up and palette
-preparation, with open/signature/allocation/name/format failures recorded in
-`DS:0C74`. All 78 room claims and 35 calls (33 far, two PUSH CS / near calls to
-RETF helpers, popped with `guest_call_pop`) audit exactly. Three optimized seeds
-compare 3,728 / 3,733 / 3,728 states, all 434 instructions reached by the named
-code, zero mismatches; authored streams and heap records stage the failure and
-signed-frame-count arms, while string copies and pointer normalisation stay real.
-The boot route's real logo load runs it once; the 10M-clock prefix matches all
-100 checkpoints and the final hash on both engines. The fresh full gate passes
-56 tests, 45 routes (44 fresh interpreter sessions), both 5,718,848-state
-instruction profiles and three 831-address matched seeds (2,725,058 / 2,723,998 /
-2,723,885 comparisons), zero mismatches and passing reachability/event checks,
-1,687 s. Census: 823 functions / 98,833 bytes, P2 57.39%, overall 81.31%.
-Private proof: `D:/f117-gate/logo-07e2`.
-
-SETUP questions and calibration (`0000:0010`, `setup_questions`) are matched:
-505 instructions / 1,267 bytes, with named stages for the shared handover,
-joystick question/calibration, driver names, sound choices and exit. All 122
-budgets and 77 calls (13 far) audit exactly. Live relocated operands preserve
-MISC's keyboard/button calls; the D3 interior-fix guard keeps keypad handling
-reachable. Three optimized final-build seeds compare 4,484 / 4,484 / 4,489 states, all 505
-instructions reached,
-zero mismatches. Eight actual startup cases match 320 checkpoints/final states:
-all four sound choices, completed calibration, original keypad quit, D3 accepting
-a keypad digit and D3 preserving another extended key's quit. Four startup
-regression routes retain the calibration and key cases; their exit milestones
-prevent matching early failures from passing. Synthetic fixtures stage devices
-and returning exits; real routes retain every original helper.
-The fresh full gate passes 55 tests, 45 routes (44 fresh interpreter sessions),
-both 5,718,848-state instruction profiles and three 830-address matched seeds
-(2,721,330 / 2,720,260 / 2,719,536), zero mismatches and passing reachability/event checks,
-1,608 s. Census: 822 functions / 97,669 bytes, P2 56.77%, overall 81.13%.
-Private proof: `D:/f117-gate/setup-0010/final-gate-verdict.json`.
-
-Mission generation (`START 0000:4239`, `start_mission_generate`) is matched:
-objectives, bases, special air units, map window, variants and flight handover
-now have named stages and live data aliases. Resolving the nine-entry switch
-produces a walk of 1,332 instructions / 3,811 code bytes; census ownership is
-3,035 bytes. All 339 instruction budgets and 60 calls audit exactly. Three
-development seeds compare 3,858 / 3,859 / 3,858 states, reaching every original
-instruction with zero mismatches. Two optimized targeted seeds repeat full
-coverage (3,859 / 3,858 comparisons). Each includes 95 divide-fault frames at
-both possible sites; the final divisor is fixed at 150. Synthetic worlds and
-returning helpers stage retry arms, including one otherwise-unreachable timing
-arm; real routes retain every actual helper. The fresh optimized boot route
-executes the routine once and preserves all 54 checkpoints and final hash.
-The full gate passes 54 tests, all 41 routes (40 fresh interpreter sessions),
-both 5,718,976-state instruction profiles and three 829-address matched seeds
-(2,716,846 / 2,715,774 / 2,715,365 comparisons), with zero mismatches and passing
-reachability/event checks, 1,832 s. Census: 821 functions / 96,402 bytes,
-P2 56.10%, overall 80.94%. Private proof:
-`D:/f117-gate/start-4239/final-gate-verdict.json`.
-
-View composition (`VGAME 0000:2F9D`) is matched: 938 instructions /
-2,595 bytes covering forward/side, preset, chase, tracked-object and fixed
-views; camera angles and position; cockpit/view-change redraw; the scene
-call, overlays and external readouts. Named labels and comments explain
-the modes while preserving live stack reads and all 66 calls. All 208
-instruction budgets match their blocks. Three 4,000-state seeds compare
-3,199 / 3,216 / 3,200 states with zero mismatches and all 938 original
-instruction starts reached. One seed also visits a nonstandard address
-inside the span; an audit against the listing excludes it from that claim.
-The camera-gradient replay executes the named routine 8,456 times, with all
-234 checkpoints and the final identical and no event overrun. Census:
-820 functions / 93,367 bytes, 828 addresses, P2 54.49%.
-The fresh full gate (`gate-view-compose-render.log`) passes 53 unit tests,
-all 41 routes (40 fresh interpreter sessions), both instruction profiles
-and three matched seeds, with zero mismatches and passing reachability and
-event checks, 1,768 s. Private proof: `D:/f117-gate/frame-2f9d`.
-
-Candidate drafts can retain private static dossiers (`matched_draft.py
---dossier`): image/tool identities, segmented coordinates, disjoint ranges,
-calls and unresolved flow. The polygon draft remains byte-identical; the
-shared-flow span-edge candidate demonstrates why walk size is not census
-ownership. Synthetic checks run in Windows CI, including a C compile check
-that protects the draft tool from shared-emitter vocabulary changes (13 Oct:
-IC now accepts the opcode; translated-region TIMING records are omitted).
-Details and limits:
+Each entry below is compared with the original from random states at several
+seeds (states compared, every instruction reached by the named code, zero
+differences unless stated), rejects deliberately broken bodies ("mutations"),
+and is run by a real route with every checkpoint and the final state exact.
+Every batch then passed a fresh full gate (all routes identical, both
+instruction profiles, three matched seeds, reachability and event checks, zero
+mismatches) before its commit; per-batch gate figures and census snapshots are
+in the commits and evidence directories, the current ones in
+[../handoff.md](../handoff.md). Real-route checkpoint counts: `full_cycle` 66,
+camera-gradient replay 234, F3 replay 57, boot/startup 54, training 133.
+*Routes only* marks a routine no random state can compare (interrupt-vector
+or BIOS calls), proved by the routes alone; *thin* marks one a real route
+calls only once. Candidate drafts can keep private static dossiers
+(`matched_draft.py --dossier`; the synthetic checks, including a C compile
+check of the draft tool, run in Windows CI): see
 [repeated-processes.md](repeated-processes.md#phase-2-candidate-reading).
 
-Weapons in flight (`VGAME 0000:683E`) is integrated and fully gated:
-886 instructions / 2,565 bytes covering incoming/player target selection,
-seeker indications, steering, gravity, movement, terrain contact, blast,
-supply objectives, proximity damage and map markers. Four 4,000-state seeds
-compare 4,844 / 4,851 / 4,862 / 4,852 states, zero mismatches, all 886
-instructions reached inside the named routine at each seed. Divide-error
-frames compare too (291 / 271 / 264 / 274 faults); a wrong return address
-is caught. The transcript, room audit and all 25 callee-return checks pass.
-Fixtures retain real math helpers; one returning label fixture deliberately
-retypes a weapon to reach the supply arm normally bypassed by D5. This is
-staged coverage, not normal renderer behaviour. The entry guard preserves
-D5, D8, D1TTL, D1SLOT, D1PROX and D1ACCEL hooks.
-Actual camera-gradient replay: 8,459 calls, all 234 checkpoints/final
-identical, no event overrun (105.8 s). Census: 819 functions /
-90,772 bytes, P2 53.12%, overall 77.60% (827 addresses).
-Fresh full gate (`D:/f117-gate/gate-projectiles.log`): 52 unit tests,
-all 41 routes (40 fresh interpreter sessions), both 5,718,976-comparison
-instruction profiles and three matched seeds, zero mismatches, passing
-reachability/event checks. Total: 1,772 s.
-Private evidence: `D:/f117-gate/frame-683e/current-full-gate-verdict.json`.
+### Matched: VGAME flight, weapons and world
 
-Aircraft traffic (`VGAME 0000:5852`) is integrated and fully gated:
-998 instructions / 2,976 bytes of named C covering formation, pursuit,
-patrol, steering, movement, landing,
-smoke, map markers and staggered firing decisions. Three 4,000-state seeds
-compare 2,056 / 2,017 / 2,078 states, zero mismatches, all 998 instructions
-reached inside the named routine at each seed. The harness also compares
-226 / 208 / 223 divide-error states at four sites, before following the
-fault vector; a wrong fault return address is caught. Returning driver and
-terrain-probe fixtures retain real math helpers; the private instruction
-transcript validates the harness. Room audit passes. Actual camera-gradient
-replay: 8,464 calls, all 234 checkpoints/final identical, no event overrun
-(130.7 s). Census: 818 functions / 88,207 bytes, P2 51.76%, overall 77.20%
-(826 addresses). Private evidence: `D:/f117-gate/frame-5852`.
-The fresh full gate (`gate-air-traffic.log`) passes 51 unit tests, all
-41 routes (40 fresh interpreter sessions; one shared reconnaissance
-replay), both instruction profiles and three matched seeds with zero
-mismatches and passing reachability/event checks, 1,963 s.
-Audited verdict: `frame-5852/current-full-gate-verdict.json`.
+- `3ADA` frame update (the per-frame world update): 848 instructions / 2,608
+  bytes, all 71 calls kept; map cell and clamp, first-frame set-up, markers,
+  timers, landing field and traffic, tower, field contact, crashes, carrier
+  deck, frame counter, frame-rate measure, standing-target count. Seeds 2,931 /
+  2,914 / 2,912 states (all 848 instructions; 827 at one seed); replay 8,462
+  calls. Declines while D1 or D1REAL is on (defects below).
+  `D:/f117-gate/frame-3ada`.
+- `1EB0` flight input (the player's flight step): 1,274 instructions / 3,543
+  bytes, all 121 calls; keys, stick scaling, holds, trim, recovery, ejection,
+  engine, attitude, position, touchdown/crash tests, 16-frame pose history.
+  Seeds 2,112 / 2,718 / 2,292 (all instructions at the default seed); replay
+  8,464 calls. `D:/f117-gate/flight-input`.
+- `5852` aircraft traffic: 998 instructions / 2,976 bytes; formation, pursuit,
+  patrol, landing, smoke, markers, staggered firing. Seeds 2,056 / 2,017 /
+  2,078, plus 226 / 208 / 223 divide-error states at four sites; replay 8,464
+  calls. `D:/f117-gate/frame-5852`.
+- `683E` weapons in flight: 886 instructions / 2,565 bytes; target selection,
+  seekers, steering, gravity, terrain contact, blast, supply objectives,
+  proximity damage, markers. Four seeds 4,844 / 4,851 / 4,862 / 4,852, divide
+  faults 291 / 271 / 264 / 274, all 25 callee-return checks; replay 8,459 calls.
+  The supply arm (normally bypassed by D5) is reached only by a staged fixture.
+  The entry guard keeps the D5, D8, D1TTL, D1SLOT, D1PROX and D1ACCEL hooks.
+  `D:/f117-gate/frame-683e`.
+- `5046` ground defences: 195 instructions / 583 bytes; damage/stealth bars,
+  site reload and engagement, incoming marker and arc, warning countdown. Seeds
+  2,696 / 2,679 / 2,685; the reload's divide faults (1,006 / 996 / 1,039,
+  deliberately staged, not normal play) require hand-back at `5122`;
+  `matched_ground_defences`; replay 8,465 calls. `D:/f117-gate/nav5046`.
+- `63F2` `vgame_traffic_lock_and_fire` and `528D` `vgame_ground_site_engage`:
+  87 and 74 mutations; `full_cycle` 9 and 12 calls. `D:/f117-gate/p2-batch3`.
+- `0D14` `vgame_nearest_object_lookup` (declines while D34 is on): 85
+  mutations; `full_cycle` once (thin). `D:/f117-gate/p2-batch4`.
+- `066F8` aircraft activation and `072D8` destruction: three seeds, about 9,200
+  comparable states each. Destroy reaches the sound gate's uninitialised driver
+  thunk (`0xD414`), so the harness needs its own entry for it
+  (architecture.md).
+- `073C8` `vgame_target_damage` (target scoring): 174 instructions; three seeds;
+  its compound branch conditions make most random states incomparable, so the
+  routes are the stronger check; planted weapon-lock values in
+  `tests/func_lockstep.c`.
+- `04777` projectile motion and gunfire refill, `01007` terrain collision
+  probe (the census's replacement-operation name was misleading), `0D3F9`
+  sound priority (engine reassertion kept even when a request is rejected),
+  `0D87C` scene finish: two seeds 7,763 / 7,777 states, including partial runs.
+- `3A4E` `vgame_pause`: 14,879 states; a real Alt+P / repeated-Alt+P / Space /
+  quit probe matches 54 checkpoints; `matched_pause_wait`, route `pause_resume`.
+- `1E79` timer tick: 13,776 comparisons; camera replay 53,226 calls; census
+  extent 53 bytes (shared walk 95).
+- `01C0E` `vgame_isrclock_init` (timer vector hook) and `01E72`
+  `vgame_frame_mission_start` (BIOS clock sample): routes only.
+- `0F8EC` `vgame_free` (beside the matched `0F91A` `vgame_malloc`): seeds
+  66,505 / 4,411 / 4,436.
+- `0BAA2` `vgame_init_models`: 17 / 0 / 1 comparable states at three seeds
+  (thin random-state evidence; the gate's routes run it).
+- `09A0` `vgame_load_table_pair` (thin) and `F5F2` `vgame_open_file_handle` (C runtime
+  open), `D:/f117-gate/p2-batch5`/`p2-batch6`; `F458` `vgame_read_file_handle`
+  (text-mode read; its CR-LF path needs the lockstep's scripted DOS answers to
+  deliver the byte a one-byte read brings, `g_dos_script[].put`; `full_cycle`
+  11 calls), `D:/f117-gate/p2-batch7`. The batch-7 routines (`F458`, START
+  `40F0`, END `0714`, `2092`) reach every instruction at five seeds with 46-62
+  mutations caught.
+- `0FAE:0002` segment entry binding: all 27 instructions by authored fixtures.
 
-Ground defences (`VGAME 0000:5046`) is integrated and fully gated:
-195 instructions / 583 bytes. Named C preserves the
-cockpit damage/stealth bars, staggered site reload timers and engagement,
-incoming ground/air marker and bearing arc, and warning countdown. Drawing
-and engagement callees return in fixtures; the clamp and long divide run
-for real. Three 4,000-state seeds compare 2,696 / 2,679 / 2,685 states with
-zero mismatches, each reaching all 195 instructions in the named code.
-The reload's zero-divisor and overflow cases now compare the full original
-divide-error frame after requiring hand-back at `5122` (1,006 / 996 / 1,039
-faults); removing that hand-back fails immediately. These are deliberately
-staged faults, not normal-play evidence. `matched_ground_defences` retains
-the regression. Actual camera-gradient replay: 8,465 calls, all 234 checkpoints
-and final identical, no event overrun (117.1 s). Census: 817 functions /
-85,231 bytes, P2 50.18%, overall 76.75% (825 addresses).
-Private evidence: `D:/f117-gate/nav5046`.
-The fresh full gate (`gate-ground-defences.log`) passes 50 unit tests, all
-41 routes (40 fresh interpreter sessions; reconnaissance career/return share
-one replay), both instruction profiles and three matched seeds with zero
-mismatches and passing reachability/event checks, 1,834 s.
+### Matched: VGAME scene and rendering
 
-Frame update (`VGAME 0000:3ADA`, the per-frame world update) is
-integrated and fully gated: 848 instructions / 2,608 bytes, all
-71 calls kept. Named C covers the map cell from the 32-bit position and its
-clamp, first-frame mission set-up, map markers, the sub-pass calls, timers,
-the nearest landing field and its traffic, the tower call, field contact
-(carrier wire, landing objectives, parked end of mission), ground crash,
-wreck strikes, carrier deck motion, the frame counter and per-second work,
-the frame-rate measure and the standing-target count. Three seeds compare
-2,931 / 2,914 / 2,912 states, zero mismatches; airfield fixtures and
-returning sub-passes let the named code run all 848 instructions (827 at
-one seed). The camera-gradient replay first reported one event overrun:
-four divides sat outside their room claims, which the lockstep's
-one-short probe could not see. Fixed; `room_audit.py` (private) checks
-every claim against the instructions counted. The replay then invokes it
-8,462 times with all 234 checkpoints/final identical and no overrun; 49
-isolated tests pass. Census 816 functions /
-84,648 bytes, P2 49.87%, overall 76.66% (824 matched addresses). Private
-evidence: `D:/f117-gate/frame-3ada`.
-Its first full gate failed one route, `d1_fast_machine`: the D1 fix sits at
-`0x441D`, inside this routine, and the named body ran through it, so the fix
-never got its turn in the recompiled engine. Five matched routines contain
-a fix site after their entry (this one with D1 and D1REAL, flight input
-with D1REAL, `vgame_scene_set_override` with D34, `vgame_detect_evaluate`
-with D6); each now declines while an enabled fix is placed in its body
-(`recomp_fix_placed_in`), and the original runs. Checked: the D1 route
-matches again; strike with D1REAL matches between engines and differs
-without the decline; D34 and D6 do not trigger on that route, so no route
-yet shows them. The fresh re-gate (`gate-fix-inside.log`) passes 49 unit
-tests, all 41 routes, both instruction profiles and three matched seeds,
-zero mismatches, in 1,746 s.
+- `2F9D` view composition: 938 instructions / 2,595 bytes, all 66 calls; view
+  modes, camera, redraw, scene call, overlays, readouts. Seeds 3,199 / 3,216 /
+  3,200 (one seed also visits a nonstandard address inside the span, excluded
+  from the claim by an audit against the listing); replay 8,456 calls.
+  `D:/f117-gate/frame-2f9d`.
+- `BCEF` camera-image pass: 14,735 targeted comparisons including 145
+  helper-return divide faults, all 32 tracked paths; replay 7,880 calls; all 49
+  calls kept; census extent 1,863 bytes. `D:/f117-gate/camimage`.
+- `983E` moving-object pass: 8,071 comparisons, all 32 tracked paths; F3
+  replay 550 calls; all 38 calls kept; extent 1,724 bytes.
+  `D:/f117-gate/moving-objects`.
+- `04E6` `vgame_scene_walk` (810 bytes / 276 instructions; terrain tile rings
+  and their objects): 37 mutations, `full_cycle` 275 calls.
+  `D:/f117-gate/p2-scene`.
+- `DC46` `vgame_compose_walk` (867 bytes / 295 instructions): 6,177-6,187 states
+  a seed, 26 mutations, `full_cycle` 276 calls. `D:/f117-gate/p2-compose`.
+- `1450` `vgame_horizon_bands` (868 bytes / 301 instructions): 11 mutations,
+  `full_cycle` 276 calls; it calls `observe_game_draw` at entry (defects
+  below). `D:/f117-gate/p2-pair`.
+- `BB0D` `vgame_draw_model_in_view`. `D:/f117-gate/p2-batch5`/`p2-batch6`.
+- `1974`/`19FD` camera sky/ground strips: 28,726 states including 2,279
+  sixteen-band walks; camera-gradient replay 7,851 / 1,108 calls (that route
+  checks rendering and makes no mission-completion claim).
+- `C45C` camera darkening (77x61 inset): 8,873 states; reconnaissance with F6
+  calls it 1,608 times, all 150 checkpoints; `recon_darken`,
+  `matched_camera_darken`.
+- `0FB2:01E6` closed polygon fill: 6,600 states; camera-gradient replay
+  382,365 calls; `matched_polygon_fill`.
+- `0FB2:06A6` clipped span edge: 14,461 states; 1,529,189 calls; extent 419
+  bytes (shared tails not counted again).
+- `0FB2:05A4`/`05B3` span-emitter entries: 20,325 states; 507,745 / 591,404
+  executions; inside the already-counted `0555` region, so no byte credit.
+- `0FB2:084E` span-table divide-error (INT 0) handler, matched as an interrupt
+  entry (kind 3, ending in IRET); the lockstep plants the interrupt frame and
+  compares interrupt depth. It runs in 28 of the 39 routes then gated; eight
+  (81,235 runs) are identical at all 1,236 checkpoints, and a sign-flipped
+  handler changes `vietnam_airair`.
+- `vgame_outcode` (image `0x0FFDC`) is registered at its real `0FB2:04BC`
+  entry (dispatch checks CS, so the linear address missed rasterizer calls);
+  the strike route runs it 4,361,362 times.
+- `11A8` moving-map downward frame and MPS_LOGO `006D:0678` sprite run: 28,613
+  states, including 1,172 opaque zero-count runs (256 writes) and 595
+  transparent runs; `full_cycle` reaches both.
+- Low-detail sky entry (with the batch of 8-9 Oct below).
 
-Flight input (`VGAME 0000:1EB0`, the player's flight step) is integrated and
-fully gated at `1337acf`: 1,274 instructions / 3,543 bytes, all 121 calls
-kept. Named C covers the first-call pose reset, the key commands (throttle,
-brakes and catapult, HUD, re-centre, quit prompt, pause, blank view), stick
-scaling, altitude/heading hold, trim, low-speed recovery, the ejected
-pilot, engine spool, speed, attitude, height compression, X/Y position,
-touchdown and crash tests and the 16-frame pose history. Three seeds
-compare 2,112 / 2,718 / 2,292 states, zero mismatches; fixtures plant keys,
-quit answers, ejection, braking, touchdown and crash states, and the named
-code itself runs all 1,274 instructions at the default seed. The harness
-now fails any callee return the named code misses while the original
-reaches it - a missed `RET 8` on the long divide had let the original
-finish every state unseen (break-tested). 49 isolated tests pass. Actual
-camera-gradient replay invokes it 8,464 times with all 234 checkpoints/
-final identical. Census 815 functions / 82,040 bytes, P2 48.49%, overall
-76.25% (823 matched addresses). Private evidence: `D:/f117-gate/flight-input`.
-The fresh gate passes 48 tests, all 40 routes (40 fresh interpreter
-sessions), both instruction profiles, three matched seeds and the
-reachability/event checks, 1,745 s.
+### Matched: VGAME HUD and cockpit
 
-Camera-image pass (`VGAME 0000:BCEF`) is integrated and fully gated:
-14,735 targeted comparisons including 145 controlled helper-return
-divide faults, all 32 tracked paths per seed and 46 isolated tests pass.
-Actual camera-gradient replay invokes it 7,880 times with all 234 checkpoints/
-final identical. Named C retains all 49 calls, background/model/terrain
-ordering, nested render-global restoration, pitch folding, overlays,
-labels and zoom/compact-HUD restoration. Its 1,863-byte census extent brings
-the census to 814 functions / 78,497 bytes, P2 46.61%, overall 75.71%
-(822 matched addresses). Private evidence: `D:/f117-gate/camimage`.
-The fresh full gate passes 47 tests, all 40 routes (40 fresh interpreter
-sessions), both instruction profiles and three matched seeds, with
-reachability/event checks, 1,480 s (build 94, coverage 584, regeneration 25,
-parity 777).
+- `1058:0016` HUD pass: 14,750 comparisons including 905 divide faults, all 32
+  paths and four fault sites a seed; F3 replay 550 calls; extent 2,488 bytes.
+- `79BE` cockpit panel frame: 14,729 comparisons, 32 paths; F3 replay 550
+  calls; extent 2,090 bytes.
+- `8A90` navigation grid: 6,206 comparisons, 19 paths; F3 replay 314 calls;
+  the retained `navigation_grid` input adds the F3 replay to the gate; extent
+  1,094 bytes.
+- `9515` objectives panel: 8,439 comparisons including partial stops; the
+  `objectives_panel` F10 route calls it four times; its 500-byte shared walk
+  earns only its 91-byte census extent.
+- `17B4` `vgame_attitude_indicator_draw`: 104 mutations, `full_cycle` 275
+  calls. `D:/f117-gate/p2-batch4`.
+- `1058:09D8` HUD colour setup and `1058:0A2C` small/full layout: 26,500
+  states; real C/C toggles match 54 checkpoints; `matched_hud_layouts`, route
+  `hud_layout_toggle`.
+- Projected HUD diamond: 14,933 states; the laser-guided training route calls
+  it 1,051 times (the plain strike's weapon model 1Bh does not enter its
+  drawing arms).
+- `0B171` weapon-lock marker, `8A18` right-aligned number and `881F` HUD line:
+  29,522 states with returning driver thunks (the routes use the real driver).
+- `114A:0280` display fill and `796E` cockpit initialiser: 14,971 states.
+- `114A:03AD` navigation symbol and `114A:03FD` sprite rectangle: 24,775
+  states.
+- `114A:014F` readout outline, `114A:0006` active-block line and `114A:01DB`
+  target box: 44,398 states.
+- `0D6DD` cockpit canopy (side frames, posts, landing-approach cue).
+- `114A:02CE` `vgame_panel_navigation`: routes only (two call sites run every
+  frame of normal flight, confirmed before the gate).
 
-A rotating matched seed (this commit's own, `0x2fa6695118ca`) exposed a
-stack-aliasing bug in the already-matched map projection (`VGAME 0000:13B9`,
-`vgame_map_project`): it cached its `y` and `py` stack arguments up front,
-but the original reads both late - at `[bp+6]`/`[bp+0xa]`, after the first
-result is stored through `px` - and in a fuzzed state where DS and SS alias,
-that store can land on either argument's own stack slot, which the original's
-late read would see and the matched code's early, cached read would miss (the
-same bug class as `vgame_eventlog_add` above). Fixed by declining, before
-touching anything, whenever the `px` store could physically overlap either
-slot, alongside the existing decline for the three data addresses the second
-half reads. Regression: `matched_map_project_stack_alias`, retaining the
-failing seed. No new address matched; this fixes an existing one.
+### Matched: START
 
-Moving-object pass (`VGAME 0000:983E`) is integrated and fully gated at
-`b811414`: 8,071 targeted comparisons across three seeds, all 32 tracked paths,
-45 isolated tests, and 550 actual-driver F3 calls with all 57 checkpoints/
-final identical. Named C preserves target cycling before drawing, live
-guest frame slots, detail reduction, shadows, projectiles and exterior
-player ordering. All 38 original calls remain. Its 1,724-byte census extent
-brings the census to 813 functions / 76,634 bytes, P2 45.62%, overall 75.42%
-(821 matched addresses). Private evidence: `D:/f117-gate/moving-objects`.
-The fresh gate passes 45 tests, all 41 routes (40 fresh interpreter
-sessions), both instruction profiles, three matched seeds and
-reachability/event checks, with zero mismatches.
+- `4239` `start_mission_generate`: a 1,332-instruction / 3,811-byte walk once
+  its nine-entry switch is resolved (census ownership 3,035 bytes); all 339
+  budgets and 60 calls audited. Seeds 3,858 / 3,859 / 3,858 plus two optimized
+  targeted seeds, each with 95 divide-fault frames at both sites; one
+  otherwise-unreachable timing arm is staged. The boot route runs it once.
+  `D:/f117-gate/start-4239`.
+- `40F0` `start_mission_take_out_sites` (theatre load, mission generation,
+  random destroyed sites): `full_cycle` 2 calls. `D:/f117-gate/p2-batch7`.
+- `7904` `start_choose_world_record` (769 bytes / 272 instructions): 17
+  mutations, `full_cycle` 2 calls. `D:/f117-gate/p2-pair`.
+- `0FA3` `start_brief_key_loop` (568 bytes / 224 instructions): 46 mutations,
+  `full_cycle` 2 calls. `D:/f117-gate/p2-start-0fa3`.
+- `149C` flight-plan display (365 instructions / 926 bytes): about 4,970-4,985
+  states at five seeds; 20 broken bodies fail; `full_cycle` 2 calls.
+  `D:/f117-gate/flight-plan`.
+- `6DB8` pilot options dialog (399 instructions / 1,013 bytes): 4,998-5,000
+  states at three seeds; 18 broken bodies fail; `full_cycle` once.
+  `D:/f117-gate/pilot-options`.
+- `07EE` armament screen: 6,459 comparisons; `full_cycle` once; its 373-byte
+  walk earns 67 census bytes.
+- `0963` `start_arms_screen_loop` (thin), `A59A` `start_sopen_file` (its create
+  path, reached when the open fails with AX 2, needs scripted INT 21h answers,
+  `g_dos_script`), `008D` `start_draw_pilot_card`, `64E5`
+  `start_draw_pilot_record_sheet` (one function whose span holds six census
+  entries; thin) and `74B1` `start_world_page_objects`: 66-104 mutations;
+  `full_cycle` 1-447 calls. `D:/f117-gate/p2-batch5`, `p2-batch6`.
+- `623E` `start_roster_event_loop` (thin) and `6861` `start_draw_pilot_row`:
+  70 and 59 mutations. `D:/f117-gate/p2-batch4`, `p2-batch3`.
+- `39F7` (with END `1CF5`) menu input and pointer update: all 532 instructions,
+  16 mutations; `full_cycle` 7,015 / 487 calls.
+  `D:/f117-gate/p2-next/final-gate-verdict.json`.
+- Screen loader with optional overlay callback: 4,839 caller states;
+  `full_cycle` 5 calls.
+- `9D67` (with END `56D9`) formatter conversion-state initializer: all eight
+  instructions; `full_cycle` 89 / 9 calls. `D:/f117-gate/format-init`.
 
-HUD pass (`VGAME 1058:0016`) is integrated and fully gated at `de1189e`:
-14,750 targeted comparisons including 905 divide faults, all 32 tracked
-paths and four fault sites per seed, zero mismatches; 44 isolated tests pass.
-Actual-driver F3 replay invokes it 550 times with all 57 checkpoints/final
-identical. Preserve byte-DIV fault frames, single-bit shifts, overlapping
-vertex-index stores, live reads and guest stack pushes during rotation,
-and an event guard at every far call. Its 2,488-byte census extent brings
-the census to 812 functions / 74,910 bytes, P2 44.71%, overall 75.16%
-(820 matched addresses).
-The fresh gate passes 44 tests, all 41 routes (40 fresh interpreter
-sessions), both instruction profiles, three matched seeds and
-reachability/event checks, with zero mismatches.
+### Matched: END
 
-Cockpit panel frame (`VGAME 0000:79BE`) is integrated and fully gated at
-`ae4b50f`: 14,729 targeted comparisons,
-all 32 tracked paths, zero mismatches; 43 isolated tests pass. Real F3 replay
-executes it 550 times with all 57 checkpoints/final identical. Preserve
-shared text buffers, byte-only HUD coordinates, waypoint/message stores,
-accepted-page flag and navigation projection before ILS projection.
-Its 2,090-byte census extent brings the census to 811 functions / 72,422
-bytes, P2 43.39%, overall 74.78% (819 matched addresses).
-The fresh gate passes 43 tests, all 41 routes (40 fresh interpreter
-sessions), both instruction profiles, three matched seeds and
-reachability/event checks, with zero mismatches.
+- `2BEC` debrief narrative builder (444 instructions / 1,077 bytes): 4,999-5,000
+  states at three seeds; ten broken bodies fail; `full_cycle` once. END `206A`,
+  once labelled a fatal-error handler, is the "Press Selector to continue"
+  prompt and is renamed. `D:/f117-gate/debrief-narrative`.
+- `0714` `end_replay_step` and `2092` `end_wait_answer`: `full_cycle` 1 and 17
+  calls. `D:/f117-gate/p2-batch7`.
+- `0100D` `end_ribbons_draw`: 33 and 1 comparable states at two of three seeds;
+  called from nine sites.
+- `1CF5` and `56D9`: with START above.
 
-Navigation grid (`VGAME 0000:8A90`) is integrated and fully gated at
-`f1ecb55`: 6,206 targeted comparisons,
-all 19 tracked paths, zero mismatches; 42 isolated tests pass. Real F3 replay
-executes it 314 times with all 57 checkpoints/final identical. Preserve byte
-arithmetic, live projection stores and the full-body code-write watch.
-The retained `navigation_grid` input adds the F3 replay to the gate. Its
-1,094-byte census extent brings the census to 810 functions / 70,332 bytes,
-P2 42.28%, overall 74.45% (818 matched addresses).
-The fresh gate passes all 42 tests and 41 routes (40 fresh interpreter
-sessions), both instruction profiles, all three matched seeds and
-reachability/event checks, with zero mismatches.
+### Matched: SETUP, PLAYER, MPS_LOGO, DSWAP and the runtime
 
-The armament screen (`START 0000:07EE`) is integrated and fully gated at
-`fc98297`. It preserves live settings/mission pointers, unavailable stations,
-weapon hit boxes and DF-sensitive palette copies, sheet loads and stores
-text. Three seeds pass 6,459 comparisons with all required fixture branches;
-41 isolated tests pass. Real `full_cycle` invokes it once and matches all 66
-checkpoints/final. Its 373-byte walk earns 67 census bytes: 809 functions /
-69,238 bytes, P2 41.70%.
-The fresh full gate passes 41 tests, all 40 routes (39 fresh interpreter
-sessions), both instruction profiles, three matched seeds and reachability/
-event checks, with zero mismatches.
+- SETUP `0010` `setup_questions` (505 instructions / 1,267 bytes): all 122
+  budgets and 77 calls audited; seeds 4,484 / 4,484 / 4,489; eight real startup
+  cases match 320 checkpoints (all four sound choices, calibration, keypad quit,
+  D3 on and off); four startup regression routes. `D:/f117-gate/setup-0010`.
+- MPS_LOGO `006D:0112` `logo_sprite_set_load` (434 instructions / 1,164
+  bytes): all 78 room claims and 35 calls audited; seeds 3,728 / 3,733 / 3,728;
+  the boot route matches all 100 checkpoints of its 10M-clock prefix.
+  `D:/f117-gate/logo-07e2`.
+- MPS_LOGO `006D:0002` encoded-sprite recolouring: all 63 instructions by
+  authored fixtures; seven broken bodies fail (with `0FAE:0002`).
+  `D:/f117-gate/entry-palette`.
+- PLAYER `0244` `player_stream_picture_file`: 108 mutations, `full_cycle` 7
+  calls. `D:/f117-gate/p2-batch4`.
+- Twenty-two support routines: PLAYER's picture open/refill and linear copy,
+  the four timer shutdowns, five mouse wrappers and SETUP's mouse probe,
+  file-name comparison, BIOS text writer, register-block interrupt call and
+  memory free, the logo and debrief record-table fills (including the
+  65,536-iteration zero-count loops), logo file loading/freeing and START heap
+  resizing. Four seeds compare 103,554-103,672 states each; twenty planted
+  defects are rejected; `full_cycle`, `ibm_boot` and `setup_calibration`
+  together call every routine with zero overruns; six grouped CTests.
+  `D:/f117-gate/leaf-batch`.
+- DSWAP's checked allocator and five Ctrl+Break restore helpers: 76,014
+  states, including 3,709 allocation-error results (this checks the caller
+  when cleanup returns, not real out-of-memory termination).
+- Five Ctrl+Break installers (VGAME, START, END, DSWAP, SETUP) and DSWAP's DOS
+  allocate/free wrappers: 98,171 states.
+- The batches of 8-9 Oct: 37 + 34 + 47 VGAME, 34 + 40 + 45 START/END and 21 +
+  44 + 64 small-program routines, each checked at two 4,000-state seeds (the 9
+  Oct VGAME batch at four more); the picture decoder's RLE row and LZW step in
+  VGAME and END (the step is routes only); the front ends' retrace re-sync,
+  PLAYER's two tick-rate setters and VGAME's low-detail sky entry. The
+  lockstep includes VGAME `1377:00F3`'s loop and RET below its entry.
 
-The objectives panel (`VGAME 0000:9515`) is integrated and fully gated at
-`ae57d1b`. It preserves live phrase dispatch, objective colours, target/place
-names, completed flags and the original deadline-buffer copy order. Three
-seeds pass 8,439 comparisons, including partial stops, and reach every
-required fixture branch. All 40 isolated tests pass. The retained
-`objectives_panel` F10 route executes it four times and matches all 57
-checkpoints/final. Its 500-byte shared walk earns only its 91-byte census
-extent: 808 functions / 69,171 bytes, P2 41.67%.
-The fresh full gate passes all 40 tests and 40 routes, both instruction
-profiles and three matched seeds, plus reachability/event checks.
+### Defects found in matched code and the harness
 
-The timer tick (`VGAME 0000:1E79`) is integrated and fully gated at
-`b253f3a`: counters, driver cadence and shared rate-
-request tails. Three seeds pass 13,776 comparisons, 39 isolated tests pass,
-and a real camera replay calls it 53,226 times with all 234 checkpoints/final
-identical. Its census extent is 53 bytes; the shared walk is 95 bytes.
-The fresh full gate passes 39 tests, all 39 routes at every checkpoint/final,
-both instruction profiles and three matched seeds, with reachability/event
-checks. Census: 807 functions / 69,080 bytes, P2 41.62%.
+Each is fixed; the named regressions keep the failing seed or case.
 
-Shared span-emitter entries (`0FB2:05A4` / `05B3`) are integrated and fully
-gated at `eda53ee`. Three seeds compare 20,325
-states without mismatches; 38 isolated tests pass. A real camera replay
-executes the entries 507,745 / 591,404 times with all 234 checkpoints/final
-identical to the latest fresh interpreter capture. These complete shared
-flow within the already-counted `0555` census region, adding no byte credit.
-The full gate passes 38 tests, all 39 routes at every checkpoint/final, both
-instruction profiles and three matched seeds, with reachability/event checks.
-Counts and timing: [repeated-processes.md](repeated-processes.md#phase-2-candidate-reading).
-
-VGAME's clipped span edge (`0FB2:06A6`) is integrated and fully gated. The named routine preserves the temporary INT 0 vector, signed
-intersection rounding, overflow halving, boundary columns, live endpoints
-and tail jumps into shared emitters. Three private seeds compare 14,461
-states with zero mismatches; 37 isolated unit tests pass. The real camera
-replay executes it 1,529,189 times with all 234 checkpoints/final identical.
-Its census extent is 419 bytes; shared tails are not counted again.
-The full gate at `1a26b2c` passes all 39 routes, 37 unit tests, both
-5,718,976-state instruction profiles and three matched seeds (2,659,030 /
-2,657,868 / 2,657,992 comparisons), including `0x1a26b2c7fed2`, with zero
-mismatches and passing reachability/event checks.
-
-VGAME's closed polygon fill (`0FB2:01E6`) is integrated and fully gated. It names the live vertex walk, stack-saved endpoints, closing edge,
-span reset and driver fill, preserving DF, count wraparound and event stops.
-Three returning-rasterizer/driver caller fixtures compare 6,600 states with
-zero mismatches; the real `camera_gradients` replay executes it 382,365 times
-with all 234 checkpoints and final hash identical to the saved fresh
-interpreter capture. `matched_polygon_fill` retains the caller check;
-the full gate passes 36 unit tests, all 39 routes, both 5,718,976-state
-instruction profiles and three matched seeds (2,654,205 / 2,653,053 /
-2,653,554 comparisons), including commit seed `0x723c46a9db96`, with zero
-mismatches and passing reachability/event checks.
-The census refresh also includes three already-integrated entries omitted
-from the last refresh (map wrapper, logo sprite run, span divide handler):
-804 functions / 68,512 bytes before this change, 805 / 68,608 after it.
-
-VGAME's span-table divide-error (INT 0) handler, 0FB2:084E, is matched as
-an interrupt entry (kind 3, ending in IRET) for the line into the span
-tables (0FB2:06A6). The saved fault IP picks the live denominator, the sign
-picks +/-7F00h, DX becomes 0 and the frame skips the four-byte IDIV. The
-lockstep plants the interrupt frame (IF and TF cleared, depth 1 or 2), stops
-at the handler's IRET, compares the interrupt depth for every entry and
-counts a kind-3 return to any other address as a difference; half the
-states save the faulting IDIV's own IP. Real-driver: 084E runs in 28 of the
-39 routes; eight of them (81,235 runs) are identical to a fresh interpreter
-capture at all 1,236 checkpoints and the end, and a sign-flipped handler
-changes `vietnam_airair` from the 3,200,000,000 checkpoint on. The full gate
-passes: 35 unit tests, all 39 routes, both instruction profiles and three
-810-address matched seeds (including this commit's own rotating seed), with
-zero differences and passing reachability/event checks. See
-[repeated-processes.md](repeated-processes.md) for the timing breakdown.
-
-The line clipper's own divide-error handler, 0FB2:04DD, is matched and
-fixture-proven the same way but **not integrated**: an exhaustive search
-(all 39 routes, three staged flight scripts, an instrumented probe over
-146,153 real clip divisions across 14 routes) found no input that overflows
-it, since every caller's line length stays well under the 32,767-unit
-threshold that would trigger it. Preserved on local branch
-`irq-divide-fault` and as a patch file, not in `master`, until a real route
-is found that reaches it.
-
-A rotating matched seed exposed a 12-instruction shortfall in existing
-VGAME target scoring (73C8). The private fix restores the live slot walk,
-flags and original loop/join instructions; all three targeted seeds pass.
-Main includes the fix and a regression retaining the failing seed. The full
-gate now passes: `D:/f117-gate/gate-sprite-map-retry.log`, 34 unit tests,
-all 39 routes, both instruction profiles and three 809-address matched
-seeds (including this commit's own rotating seed), with zero differences
-and passing reachability/event checks. See
-[repeated-processes.md](repeated-processes.md) for the timing breakdown.
-
-The logo sprite repeat/transparent run (006D:0678) and moving-map downward
-scene frame (VGAME 11A8) are integrated and gated. Three-seed
-caller comparisons pass 28,613 states, including 1,172 opaque zero-count
-sprite runs (256 writes) and 595 transparent runs. Full cycle reaches both
-helpers through real drivers and matches all 66 checkpoints/final state
-against a fresh original capture. A focused regression retains the boundary
-cases and returning-call map fixtures. Main now has 809 matched addresses.
-
-Camera sky/ground strips (VGAME 1974/19FD) are integrated and gated.
-Returning-fill caller fixtures compare 28,726 states at three seeds,
-including 2,279 complete sixteen-band walks. Real-driver `camera_gradients`
-replay reaches both helpers (7,851 sky / 1,108 ground calls), with all 234
-checkpoints and final state identical to the interpreter. Alt+W changes
-drawing cost and this recorded flight ends before landing; the route checks
-rendering and makes no mission-completion claim. One focused regression
-retains both caller fixtures. The full gate passes 32 unit tests, all 39
-routes, both instruction profiles, three 807-address matched seeds
-(2,638,463 / 2,637,344 / 2,634,993 comparisons), and reachability/event
-checks, with zero differences.
-
-Two further entries are integrated and gated: VGAME's projected
-HUD diamond and START's screen loader with optional overlay callback.
-Three-seed comparisons pass 14,933 diamond states and 4,839 screen-loader
-caller states. The training replay reaches the diamond 1,051 times and
-preserves all 133 checkpoints/final hash; full cycle calls the screen loader
-five times and preserves all 66 checkpoints/final hash. The screen fixture
-uses returning callees; real callee behavior is checked by the replays.
-Focused regressions retain both. The full gate passes 31 unit tests, all
-38 routes, both instruction profiles, three 805-address matched seeds and
-reachability/event checks, with zero differences.
-
-Six further entries are integrated and gated: DSWAP's checked
-allocator and five Ctrl+Break restore helpers. Private tests compare 76,014
-states across three seeds, including 3,709 completed allocation-error
-results under returning cleanup fixtures; this checks the caller when
-cleanup returns, not real out-of-memory termination. A full-cycle probe
-matches all 66 hashes and reaches VGAME/SETUP restore. Focused regressions
-retain the error fixture and all five restore entries. The full gate passes
-29 unit tests, all 38 routes, both instruction profiles, three 803-address
-matched seeds and reachability/event checks, with zero differences.
-
-Seven runtime entries are integrated and gated: five Ctrl+Break installers
-(VGAME, START, END, DSWAP, SETUP) and DSWAP's DOS allocate/free wrappers.
-The installers read the loader-relocated segment operand; a nonzero-image
-fixture catches all five earlier constant-zero mistakes. Three fixed seeds
-compare 98,171 states exactly; 27 unit tests and a full-cycle real-driver
-probe pass (66 checkpoints/final hash). The full gate passes 27 unit tests,
-all 38 routes, both 5,718,976-state instruction profiles and three
-797-address matched seeds, with zero differences and passing reachability
-and event checks.
-
-Camera darkening (`VGAME 0000:C45C`) is integrated and gated. It sets the
-caller's camera origin, builds the 77x61 inset boundary and fills in mode 3,
-then restores the origin. Three targeted seeds compare 8,873 states exactly;
-real-driver reconnaissance with F6 enabled calls it 1,608 times and preserves
-all 150 checkpoints/final hash. `recon_darken` and `matched_camera_darken`
-retain coverage. The full gate passes 25 tests, all 38 routes, both instruction
-profiles, three 790-address matched seeds and reachability/event checks.
-The projected-point diamond is integrated and gated:
-fresh three-seed tests compare 14,933 states exactly. The laser-guided
-training route calls it 1,051 times and preserves all 133 checkpoints/final
-hash. The plain strike's weapon model 1Bh does not enter its drawing arms.
-
-Pause handler (`VGAME 0000:3A4E`, `vgame_pause`) integrated and gated:
-engine note off, timer saved in the guest stack, empty-input/repeated-Alt+P
-polling, then sound and timer restored after another key. Three targeted
-seeds compare 14,879 states exactly with returning sound-driver thunks and
-the existing BIOS/DOS answers. A real-input Alt+P/repeated-Alt+P/Space/quit
-probe runs the handler once; all 54 checkpoints/final hash match the original.
-Focused `matched_pause_wait` CTest and `pause_resume` route retain coverage.
-HUD colour setup (`1058:09D8`) and small/full layout (`1058:0A2C`) are also
-integrated and gated. Three planted seeds compare 26,500 states exactly;
-real-driver C/C toggles preserve 54 checkpoints/final hash. The full-layout
-window origin comes from the original graphics call. `matched_hud_layouts`
-CTest and `hud_layout_toggle` route retain coverage. The first pause gate's
-rotating seed found two changed-code fuzz inputs; an extended code watch
-passes 8,944 states at that seed, retained as `matched_frame_code_alias`.
-The combined full gate passes 24 tests, all 37 routes, both 5,718,912-state
-instruction profiles and three 789-address matched seeds (2,561,209,
-2,560,263 and 2,560,055 comparisons), with reachability/event checks.
-
-- [ ] Name the translated routines and data, with explanations, drawing on the
-      Reimp's mapping; matched functions replacing translations one at a time,
-      each held to the same parity checks. `tools/reimp_names.py` joins the
-      Reimp's census (1,535 functions) with this project's regions as a private
-      lead list. 870 addresses are matched (862 of the census functions, 107,360 of
-      179,213 bytes); the table is at the end of `src/matched/matched.c` and the
-      method is in [architecture.md](architecture.md#matched-routines-phase-2).
-      The earlier "72 reached / 411 never run" inventory was incomplete:
-      gate coverage logs only interpreted fallback instructions. A fresh complete
-      interpreter `full_cycle` capture (14 Oct) reaches 358 unmatched entries /
-      43,138 bytes, with 6 interiors / 521 bytes and 121 entries / 12,813 bytes
-      still lacking evidence in that capture. All 66 checkpoints and final state
-      match the plain replay. `tools/census_reach.py` now distinguishes missing
-      evidence from unreachability. The private 47-routine draft batch has 37
-      positively reached entries (two already matched), so review/proof can
-      resume there. Larger reached leads include and VGAME `1450`, `DC46` and `04E6`. New routes remain useful for
-      code without positive evidence. Private inventory: `D:/f117-gate/format-init`.
-      Five of them were matched (the front ends' retrace re-sync, PLAYER's two
-      tick-rate setters, VGAME's low-detail sky entry). The timer interrupt itself
-      (VGAME 0x1C9B, START 0x8D0B, END 0x4BEF) opens with STI, after which the run
-      loop admits one more instruction before it looks at events, so a matched body
-      could do nothing the original does not: it stays original code.
-      The batches of 8-9 Oct add 37 + 34 + 47 VGAME, 34 + 40 + 45 START/END and 21 + 44 + 64
-      small-program routines, each checked at two 4,000-state seeds (the 9 Oct
-      VGAME batch also at four more), and the picture decoder's
-      RLE row and LZW step in VGAME and END (the step is routes-only: its
-      prefix walk checked room once for a chain of any depth, now every turn).
-      Three unequal candidates were excluded: START 0x11DB, MPS_LOGO 0x1ADC
-      and 0x1C82.
-      Follow-up gate repairs (9 Oct): the lockstep now includes VGAME
-      1377:00F3's loop and RET below its entry; START/END's shadow-text
-      helper preserves PUSH SS's memory write when its source aliases the
-      stack, with seed `0xf2a7d2c1bf36` retained as a CTest regression.
-      VGAME's weapon-lock marker (`0x0B171`) now names the searching box and
-      locked hexagon geometry, preserving the small-HUD argument write and
-      the original stack reads for every line call. Its random-state check
-      substitutes returning driver thunks on both sides, so the active
-      drawing branches return too; the routes use the real driver.
-      The right-aligned number (`0000:8A18`) and HUD line (`0000:881F`)
-      helpers name number formatting and four-pixel character alignment, and
-      the compact/full HUD clip bounds. Three targeted seeds compare 29,522
-      states without differences, using the same returning driver thunks.
-      Full gate passes all 35 routes, both instruction profiles and three
-      779-address matched seeds; reachability and event-room checks pass.
-      The display fill (`114A:0280`) and cockpit initialiser (`0000:796E`)
-      name display bounds, pen setup, startup elements, legend invalidation
-      and objectives-page selection. Three targeted seeds compare 14,971
-      states without differences; full gate passes 35 routes, both instruction
-      profiles, three 781-address matched seeds and event/reachability checks.
-      The navigation symbol (`114A:03AD`) and sprite rectangle (`114A:03FD`)
-      name the 7x7 sheet grid, centring, selected display page and mask/copy
-      modes. Three targeted 4,000-state seeds compare 24,775 states without
-      differences; the driver runs normally in the full routes. Full gate
-      passes 35 routes, 18 tests, both instruction profiles, three 783-address
-      matched seeds, reachability and event-room checks.
-      The readout outline (`114A:014F`), active-block line (`114A:0006`)
-      and nine-by-seven target box (`114A:01DB`) name their bounds, origin,
-      pen selection and four-edge walks. Three targeted 4,000-state seeds
-      compare 44,398 states without differences, preserving live frame reads,
-      flags, stack cleanup, call order and instruction clocks.
-      Full gate passes 35 routes, 19 tests, both instruction profiles, three
-      786-address matched seeds, reachability and event-room checks. The
-      commit seed exposed a self-modifying fuzz input in END's pair swap;
-      its temporary code overwrite is now watched per instruction, with the
-      seed retained in `matched_order_code_alias` (15,984 comparable states).
-      The cockpit canopy (`0x0D6DD`) now names the compact side frames, shaded
-      posts and landing-approach cue, including clearing the old cue before
-      painting the new one and preserving the original page-copy arguments.
-      Projectile motion and gunfire refill (`0x04777`) now names the twelve-byte
-      slots, their frame-rate-dependent walk, signed round-robin shot selection,
-      ammunition cost and launch velocity; every loop iteration checks event room.
-      The terrain collision probe (`0x01007`) now names its level-four cell
-      scaling, nearest eligible obstacle and model probe, preserving stack
-      locals, signed Manhattan distance and original calls. The census's
-      replacement-operation name was misleading; original data addresses
-      confirm the collision reading. Sound priority (`0x0D3F9`) retains engine
-      reassertion even when a request is rejected; scene finish (`0x0D87C`)
-      retains deferred drawing, driver-origin reset, work counters and the
-      view matrix. Two 4,000-state seeds compare 7,763/7,777 states with zero
-      mismatches, including partial-run checks. Driver thunks return on both
-      sides in the random-state checks; routes retain the real drivers.
-      Aircraft activation (`0x066F8`) and destruction (`0x072D8`) are now
-      matched: activate places a 36-byte slot at its target (a high close
-      approach for runways, a low approach otherwise), zero-extending map
-      coordinates, scaling the countdown by S, and announcing the scramble
-      except for reserve slots; destroy marks a slot destroyed once, updates
-      the type's kill tally and active-unit count, clears a matching lock,
-      queues the blast/score event, masks a zero-endurance slot's flags to
-      01C1h, and always announces (even an already-marked slot). Destroy
-      calls the sound-priority gate as a callee, which reaches its own
-      uninitialised driver thunk (`0xD414`) even though sound priority itself
-      is not the routine under test; the random-state harness needed its own
-      entry for `0x072D8`, without which every one of 4,000 states ran off
-      into the thunk and none were comparable (`architecture.md`). Three
-      4,000-state seeds pass both routines with zero mismatches (about 9,200
-      comparable states a seed); the full 770-routine suite passes at
-      2,505,075 comparisons, zero mismatching.
-
-      Target scoring (`0x073C8`, `vgame_target_damage`) is now matched: scores
-      and alerts a hit on the per-target 16-byte record (base `target<<4`),
-      skipping straight to the shared sound/marker tail when already notified;
-      otherwise computes a 32-bit ratio through the runtime's shift and an
-      unmatched helper, scans the two fixed weapon-lock slots for one of type
-      2 on this target (marking it and alerting the sound gate), scores the
-      hit and a follow-up, then always alerts the sound gate again and
-      refreshes a UI marker. A distinct target-zero gate reads further
-      unmatched helpers and a type-indexed table. At 174 original instructions
-      this is the densest routine matched by hand this session; a freshly
-      regenerated instruction-by-instruction draft confirmed every opcode and
-      branch direction before transcription, and random-state lockstep testing
-      (not the draft check) caught and fixed four separate instruction-clock
-      accounting slips - each a missed Jcc or pop in the dense branchy middle,
-      the kind of mistake this routine's density makes easy and the testing
-      exists to catch. Three seeds and the full 771-routine suite pass with
-      zero mismatches (the routine's own compound branch conditions make most
-      random states incomparable - the routes' real gameplay inputs are the
-      stronger check here, via the full gate below). Planted test values added
-      for the weapon-lock match condition (`tests/func_lockstep.c`).
-
-      The timer tick vector hook (`0x01C0E`, `vgame_isrclock_init`) is now
-      matched: four run-time counters reset, the timer rate calibrated
-      (already-matched `0x01D88`), then INT 8's old vector saved and the
-      new one installed from a fixed far pointer, using the project's
-      established `sm4_int`/`SM4_AT` DOS-interrupt helpers rather than a
-      literal transcription. Entirely linear, no branches. Unfuzzable by
-      random-state lockstep (DOS interrupt-vector installation doesn't
-      produce a comparable state from random inputs - "routes only," like
-      the picture decoder's steps); verified instead by the full gate,
-      which confirmed it actually ran on a route and passed clean.
-
-      A model-type byte-table copy (`0x0BAA2`, `vgame_init_models`) is now
-      matched: looks up a model-type block by a fixed key, and on a miss
-      falls through to an unmatched allocator; on a hit it records the
-      block, then walks its entry count copying each entry's one-byte
-      field into two parallel tables (one holding the raw byte, the other
-      a fixed stride marker) before restoring the frame. Lockstep caught
-      two bugs beyond the draft check: a missed `je` left the clock one
-      instruction short on the no-block path, and the loop's exit
-      comparison read a local copy of the loop index instead of the real
-      `mov ax,[bp-6]` side effect, so AX read stale coming out of the loop.
-      Both fixed and reverified: 17 states at the default seed, 0 and 1 at
-      two more seeds, all zero mismatches; the full 773-routine suite
-      passes at 2,505,089 comparisons, zero mismatching, and the full gate
-      (every route IDENTICAL, every check) confirms it clean.
-
-      A clock sample (`0x01E72`, `vgame_frame_mission_start`) is now matched:
-      zeroes AH, reads the BIOS tick count (INT 1Ah), and returns its low
-      word (DX) in AX - a frame or mission's start timestamp. Four
-      instructions, the interrupt handled by the project's generic
-      `sm4_int` rather than a literal int-dispatch transcription (the same
-      helper used for DOS calls; it does not care which vector). Routes
-      only, like the timer-vector hook above - 0 states comparable at any
-      seed - verified by the full gate's routes-only check and a clean
-      774-routine suite (2,505,089 comparisons, zero mismatching).
-
-      `free()`'s near-heap counterpart (`0x0F8EC`, `vgame_free`) is now
-      matched, alongside the already-matched `malloc` (`0x0F91A`,
-      `vgame_malloc`): both operate on the same heap descriptor at 922E,
-      confirmed by a verified call site (`0xF1CB`) pushing a pointer before
-      the call. Steps a pointer back to its block header, sets the
-      header's free bit, and advances the descriptor's free-search hint
-      past the freed block when it reaches further than the hint already
-      does. Lockstep caught a missed-Jcc icount bug on the first attempt
-      (both conditional jumps' own instruction counts were left out of
-      their blocks); fixed and reverified clean across three seeds
-      (66,505/4,411/4,436 comparable states) and the full 775-routine
-      suite (2,509,526 comparisons, zero mismatching).
-
-      A latent aliasing bug was found and fixed in an already-matched
-      routine, `vgame_eventlog_add` (`0x04ABA`): it cached its two stack
-      arguments up front, but the original reads them late - after three
-      prior writes to the event-log record - and in a fuzzed state where
-      DS and SS alias, one of those writes can land on the stack slot
-      holding an argument the original hasn't read yet. The original's
-      late read sees its own write; the matched code's early, cached read
-      did not. Found by a new commit's per-run seed in the full gate's
-      seed 7c check (step 7a/7b at the same commit were clean - this is
-      a low-probability state, not a systematic one). Fixed by reading
-      both arguments at the same point in program order as the original
-      instead of hoisting them. No new address matched; this fixes an
-      existing one.
-
-      A HUD draw (`0x114A:0x02CE`, `vgame_panel_navigation`) is now
-      matched: draws two navigation panel elements, calling the same far
-      helper (`FB2:0246`) once per element with four shared stack
-      arguments and a different trailing word (`DS:0x4010`, then
-      `DS:0x4028`). Routes only - confirmed reachable beforehand via a
-      bank-corrected call-site trace (three call sites, two inside
-      `game_input` and `0x3ADA`, both proven to run every frame of
-      normal flight) before investing in the build/gate cycle, after two
-      earlier "routes only" leads this session passed every lockstep
-      check yet failed the gate's actual route-coverage check. Verified
-      by a clean 776-routine suite and the full gate (every route
-      IDENTICAL, every check, step 8 confirms it ran).
-
-      A score-ribbon draw (`END 0x0100D`, `end_ribbons_draw`) is now
-      matched: forwards its three arguments through two unmatched
-      drawing helpers (`0x400F`, `0x4648`) and saves the first's return
-      value as a third call's (`0x40BD`) argument - a thin per-call
-      dispatcher with no hardware or driver state of its own. Produces
-      real comparable random-fuzz states at two of three seeds (33 and 1,
-      zero mismatching; the third seed found none to compare) rather than
-      "routes only," and is called from nine sites across END.EXE's
-      report/ribbon code. Full gate passes clean (every route IDENTICAL,
-      both instruction profiles and all three 777-address matched seeds
-      zero mismatching, every routes-only routine ran).
-
-      The existing clipping outcode (`vgame_outcode`, image `0x0FFDC`)
-      now registers at its actual `0FB2:04BC` call entry instead of
-      `0000:FFDC`. Dispatch checks CS, so the old equivalent linear
-      address missed normal rasterizer calls. The strike route now runs
-      it 4,361,362 times; three targeted seeds and the full gate pass
-      (35 identical routes, both instruction profiles, three matched
-      seeds, no event overruns). Counts are unchanged: this activates
-      an existing implementation.
+- **Arguments read late.** `13B9` `vgame_map_project` and `04ABA`
+  `vgame_eventlog_add` cached stack arguments the original reads after its own
+  stores, which can alias them when DS and SS overlap; they now read in the
+  original's order or decline (`matched_map_project_stack_alias`). VGAME `4B8F`
+  (objective place) must read its target after clearing the output buffer.
+- **Byte and word tests.** `or ax, ax` after a call was a byte test in `BAA2`
+  and twice in `73C8` (wrong SF; a zero low byte took the wrong branch);
+  `matched_or_ax_word` keeps seed `0xfaf385733f77`. `73C8` also had a
+  12-instruction shortfall in its slot walk (regression keeps the failing seed;
+  `D:/f117-gate/gate-sprite-map-retry.log`).
+- **Wrapping and relocation.** The menu hit test (START `393D`, END `1C3B`)
+  assumed eight contiguous bytes for a list at FFFFh (`matched_menu_hit_wrap`).
+  A fixed `00DAh` segment in the record-table fills passed zero-base fixtures
+  but corrupted the logo after DOS relocated it; fixtures now vary the
+  relocated operand. The five Ctrl+Break installers read the loader-relocated
+  segment too (a nonzero-image fixture catches a constant zero).
+- **Code written during a run.** Fuzzed pointer writes from `683E` could
+  overwrite a planted callee stub; such states are skipped
+  (`matched_projectile_stub_overwrite`). Fuzz inputs that write code (END's
+  pair swap; two found by the pause gate's seed) are watched per instruction
+  (`matched_order_code_alias`, 15,984 states; `matched_frame_code_alias`, 8,944
+  states). START/END's shadow-text helper keeps PUSH SS's memory write when it
+  aliases the stack (seed `0xf2a7d2c1bf36`).
+- **Fix sites inside matched bodies.** A named body ran through D1's site
+  (`0x441D`, in `3ADA`), so the fix never ran in the recompiled engine. Five
+  matched routines contain a fix site after their entry (`3ADA` with D1 and
+  D1REAL, flight input with D1REAL, `vgame_scene_set_override` with D34,
+  `vgame_detect_evaluate` with D6); each declines while an enabled fix is
+  placed in its body (`recomp_fix_placed_in`). D34 and D6 are not triggered by
+  any route yet.
+- **Shared hooks.** `1450`'s address is also the presentation observer's
+  frame-phase hook; it calls `observe_game_draw` at entry like the three other
+  shared placements and is on `code_overrides`' deliberate list.
+- **Room and returns.** Four divides in `3ADA` sat outside their room claims,
+  invisible to the one-short probe; `room_audit.py` (private) checks every
+  claim. A missed `RET 8` on the long divide let the original finish every
+  state unseen; the harness now fails any callee return the named code misses.
+  `149C` had a stray resume point only a non-default seed saw, so every body
+  is tested at several seeds. The mid-run harness checks no-call clock
+  overshoots; a radar-decoy fixture guarantees the projectile aspect arm
+  (886/886 instructions). Nested interrupt runs stop at the caller's next event
+  through `support_int`; removing its clamp is rejected by a route mutation.
+- **SETUP event-limit alert (14 Oct).** Not a defect in the game code: its
+  native INT 10h callback includes two atomic stub clocks the overrun audit
+  took for guest instructions. The ledger now accounts for them without
+  changing `icount`; per-slice state records are identical across eight slice
+  schedules and both engines, 12 SDL boots per build keep the same final hash,
+  the regression still catches an extra NOP, and a ROM-free boundary
+  regression fails against the old accounting.
 
 ## Phase 3 - fixes and enhancements (switchable)
 
@@ -1143,223 +542,118 @@ instruction profiles and three 789-address matched seeds (2,561,209,
       proven a defect), D3 (keypad digits with NumLock off answer SETUP's
       sound question instead of quitting to DOS), D1TTL (unsigned valid
       missile lifetimes restore SA-5 proximity damage at S >= 14 without
-      limiting frames; `tools/d1ttl_check.py`), D1SLOT (seeker-cancelled incoming
-      life stays zero, releasing its launcher slot; `tools/d1slot_check.py`),
-      plus D1PROX (a swept incoming proximity band using an explicit S9
-      terminal-speed reference) and D1ACCEL (incoming acceleration per
-      simulated second; `tools/d1physics_check.py`). All 21 staged physics cases pass under both engines,
-      with unchanged S9/player controls. The72-flight cohort retains a burst gap
-      across32 matching missions; optional D1REAL passes seven normal-input clock/dialog cases at9/20/40
-      MIPS in both engines. Corrected airborne clocks run at real time;
-      all 12 seed- and step-aligned mission pairs have identical launch
-      counts, 11 match burst/damage counts, and the remaining pair takes
-      more damage at 20 MIPS after input-phase divergence. The identified
-      CPU/enemy defects are repaired in the optional corrected mode;
-      original key-poll timing still limits exact whole-flight determinism.
-      [Evidence](speed-sweep.md#optional-real-time-cadence-10-oct-controlled-airborne-checks-complete). D7 is fixed by D8. D10, D35 and D36 are
-      closed after review as not established for DOS or not reproduced,
-      with evidence, limits and reopening criteria in
-      [legacy-reports.md](legacy-reports.md). No speculative fix is offered. D96 is the Reimp's
-      native-UI wait, not a patch for this translated START. A session recorded
-      with fixes on names them in its log and replays with them.
-      The [D1 follow-up](speed-sweep.md#d1-follow-up-9-october-2026) adds 90
-      flights: no oscillation, D1 inactive hash-for-hash at 9 MIPS, but its
-      fast-machine 11.6 fps cap gives a 1.2882x mission clock rather than
-      real time. The default speed is now 20 million instructions a second
-      with no limiter (9 Oct 2026; [speed-sweep.md](speed-sweep.md#fast-machine-default-9-october-2026)):
-      the game's own clamp holds S at 15 and the drawn rate near 16.7, with no
-      swings in 214 flights. A follow-up controlled threat-profile measurement
-      (10 Oct 2026, [speed-sweep.md](speed-sweep.md#controlled-threat-profile-combat-measurement-9-10-oct-2026)),
-      orbiting each flight's primary target instead of flying past it once,
-      used an observer that hid SA-5 launches above signed life 32767 and
-      missed burst resets between polls; its earlier gap estimates are
-      superseded. The tools now retain unsigned valid life, the official
-      launch counter, burst crossings, timing/detection inputs and damage
-      counters on early exit. The game's signed hit guard independently
-      suppresses SA-5 damage at S >= 14 (D1TTL). A corrected 96-flight,
-      24-mission paired cohort and 24 combined-fix follow-ups show that
-      D1TTL+D1PROX increase 20 MIPS bursts from 2.75 to 3.375 per flight,
-      but a deficit against 9 MIPS (4.125) remained at that checkpoint.
-      The later five-option, seed- and step-aligned checks above supersede
-      that result for the corrected mode. A further 24 held-out flights (12 matching mission
-      pairs) retain a -0.5 burst/flight difference with a wide interval;
-      pooled 36-pair difference -0.6667 (95% -1.25..-0.0833). Seeker-cleared
-      lifetime underflows to FFFF and can occupy the launcher's chosen
-      slot; the new optional D1SLOT prevents that underflow. Staged S=8/15
-      cancellation and eleven countdown controls pass in both engines, with
-      unchanged control hashes. A 24-pair same-option-set cohort gives
-      20-minus-9 bursts -0.9583 (95% -2.2083..+0.25); this does not prove
-      equivalence. A constant-speed, straight-pass probe still hits at S=8
-      and misses at S=15 with TTL+PROX+SLOT, independently confirming
-      residual proximity-distance dependence. A separate two-simulated-second
-      SA-5 probe reaches speed9/16 at S8/15: acceleration is also unscaled
-      (this effect favors high-S acceleration, not weaker combat).
-      Control-response tooling now accepts speed, fixes,
-      program-relative menus and boot-clock overrides and retains early exits.
-      Ten control flights now share mission identifiers after boot-clock
-      alignment; their progressive input sequences still diverge, so they
-      do not establish a safe speed.
-      An [isolated 15 FPS experiment](speed-sweep.md#actual-15-fps-limiter-experiment-9-october-2026)
-      settles at S 12 with a 1.25x mission clock: the proposed cap does not
-      restore real-time pacing. Production D1 is unchanged, and no limiter is
-      shipped: the default is the game's own cap at 20 MIPS (above).
-- [ ] **60+ fps and 4K presentation**, design and status in
-      [presentation.md](presentation.md). Owner decision (14 Oct): move to a
-      state-driven presentation where the capture is the wrong technique, keep
-      the original's logic tick, keep pixel art integer-scaled, retire each old
-      path when its replacement passes N=1 equality. Done so far: the HUD's
-      tapes, heading strip, pitch ladder, flight-path marker and bars are drawn
-      from game state at N>1 (exact against 12,921 original HUD calls; ladder-label
-      jitter rms 3.78 -> 0.01 fine px); near-clipped polygons are drawn from their
-      geometry, and polygons whose footprint the original's clipper gets wrong
-      are accepted at N>1 (worst-frame fallback 84% -> 1.7%, no holes); a per-pixel
-      origin diagnostic (`F117_PRESENT_DIAG`). Left: the rest of the HUD
-      (outline, reticle, readouts, weapon symbology), cockpit icons such as the
-      map marker, and state rather than polygon interpolation. Earlier: the owner chose to observe and replay
-      the original's draw path. Stage 0 (the observer) and Stage 1 (draw lists
-      that rebuild every phase of the windows tried bit for bit, 0 bytes copied)
-      are built. The observer now also captures original projection and edge
-      paths under both engines and timing profiles (13 Oct). Paired default
-      captures agree on all 217,022 vertices and 300,637 edge snapshots;
-      386 draw logs are byte-identical, with 80 matching checkpoints/final.
-      Stage 0 is complete; remaining replay-branch coverage is Stage 1.
-      Its fresh full gate passes 53 tests and all 41 routes with 40 fresh
-      interpreter sessions, both profiles and three matched seeds, zero
-      mismatches and passing reachability/event checks. Stage 2 (8 Oct 2026, `tools/hires_subpixel.py`): the model
-      polygons re-projected from their camera-space vertices and filled with a
-      tiling rule are equal to Stage 1 at N=1, agree on 99.96-100% of flat
-      pixels at N=2 and 4 and show 1.5-5.4 times the nearest-neighbour floor's
-      change (real edge detail); text, sprites, the HUD and the cockpit art stay
-      scaled copies, and 3-6% of polygons (near-clipped, horizon slivers) too.
-      Stage 3 (`tools/interp_frame.py`, a 320x200 study): the replay is exact at
-      both logic frames, 86-98% of model polygons pair between steps and 1 of 182
-      flight steps was a held cut; at 320x200 the in-between frames change under
-      1% of pixels, so the gain comes on Stage 2's grid. The live path (9 Oct
-      2026, `--present replay|interp`, `present =` in f117a.ini, off by
-      default): the observer hands each logic frame's records to the host in
-      memory and C ports of the replay and the interpolation draw from them;
-      on the strike flight all 9,845 logic frames equal the display at their
-      close and all 9,843 pairs are exact at both ends, hashes unchanged; it
-      costs 35% (replay) and 54% (interp) of the recompiled run. In-between
-      frames also run on Stage 2's grid (`--present-scale N`): all 9,843
-      strike pairs match at both coarse and fine endpoints at N = 1/2/4/9,
-      with guest hashes unchanged. Stage 4 host pacing, vsync, picture-age
-      selection and the original-picture switch are built; dummy-driver
-      measurements are in [presentation.md](presentation.md#stage-4-pacing-and-the-pictures-age-9-october-2026).
-      The owner chose the Reimp's HUD treatment: fine-grid lines and ticks,
-      scale-proportional or chosen stroke width (`--present-line-width`),
-      original bitmap text/artwork. The line rule matches 360 Reimp reference
-      strokes exactly; eight recorded windows pass at N = 1/4/9.
-      Live N = 4/9 sentinels pass all 368 logic frames and 366 interpolation
-      pairs, with 54 checkpoints/final hash equal to both fresh scan engines.
-      Full gate passes 18 tests, all 35 routes and both instruction profiles.
-      Near-plane rendering (11 Oct; integrated and gated): exact camera snapshots and retained
-      crossings reconstruct clipped polygons and move together between frames.
-      C/Python geometry counts and footprint totals agree across fresh strike,
-      landing and air-to-air windows; 5,014 original crossings match. Fine
-      endpoint and live N=4/9 checks pass. Geometry-aware seam repair closes six
-      synthetic N=9 interior holes while preserving outer detail and original
-      colour footprints. C/Python repair counts agree across all three scenes;
-      copies, reseeds, black fills, HUD layering and passive diagnostics are tested.
-      Final isolated unit run passes 20 tests; main full gate passes 21 tests,
-      all 35 routes, both instruction profiles and three matched seeds.
-      The 12-13 October follow-up uses exact camera snapshots for ordinary
-      polygons too, fixing fully clipped view origins and reused vertices.
-      Strike refines all 17,058 evaluated polygons and landing all 4,916;
-      air-to-air refines 4,110/4,111, retaining one extreme original integer
-      clipping artifact. A fresh live boot also exposed 27 orthographic
-      map polygons with Z=0: G now records the projection shift, the fine
-      renderer verifies its original rounded coordinates, and interpolation
-      preserves compatible projection metadata. Both live N=4/9 runs refine
-      all 48,856 polygons and retain 368 exact logic frames, 366 exact
-      interpolation pairs and all 54 checkpoint/final hashes. Original
-      bitmap artwork remains by choice. Real-display refresh pacing, motion
-      and 4K checks remain Phase 4.
-
-  Presentation branch coverage (13 Oct) now closes Stage 1: all 45
-  complete N=1 routes preserve 259,240 logic frames, 259,166 interpolation
-  pairs and every guest hash, with zero dropped/unseeded frames. The
-  original executable matches 2,619 fill-style and 3,953 graphics-driver
-  fixtures, including opaque/clipped text, sprite clipping/scaling/flips
-  and both tick variants; Python matches 2,187 original fill rows. Dither
-  and stipple now replay, refine and interpolate by rule, with coarse-sized
-  pattern cells and transparent backgrounds. All 66 checks across 11
-  retained windows and live N=4/9 boot sentinels pass. The owner set the
-  remaining performance/display target to 4K at 60 Hz (16.67 ms). The
-  presentation now replays records as they arrive and draws the in-between
-  picture one frame ahead on a worker thread, with palette conversion on helper
-  threads: fullscreen Direct3D 11 3840x2160 at 59.99 Hz with vsync passes the
-  timing checker on a strike flight (p99 16.71 ms, none missed), a longer
-  air-to-air flight (19,000 pictures, worst 21.31 ms) and a 50,440-picture
-  landing (worst 17.25 ms), with every
-  logic frame exact and guest hashes unchanged; it costs one more host frame of
-  picture age. The owner's 4K review (13 Oct) then found and fixed unjoined strokes,
-  blocky outline edges and a stair-stepped horizon/sky gradient (a new `U` record
-  for polygons the game fills through its span rasteriser). The map now carries fine
-  geometry through its cockpit-art page round trip, aligns rounded orthographic vertices
-  with cell centres and preserves repeated display-blit bytes. Ordinary verified terrain
-  clips to its viewport instead of the coarse stair, and the guard preserves that fine
-  boundary; narrow span regions retain both edges. Map/copy, strip and seam regressions
-  cover these rules. Validation: 62 selected CTests, 96 retained-window checks,
-  boot N=4/9 (368 exact frames / 366 pairs each) and all 45 frozen-runner N=1
-  routes (259,240 frames / 259,166 pairs, guest hashes unchanged). The current
-  strike build passes 4K/59.99 Hz/vsync/N=9: 7,715 flight pictures, p99 17.23 ms,
-  maximum 28.32, one late interval (0.013%), 2,062 exact logic frames and the
-  unchanged headless hash. Stage 2 is complete. The owner asks to resume P2
-  after the visual fixes; the SETUP alert is now resolved as the native BIOS
-  accounting false positive documented above.
-  The 15 October follow-up projects unclipped world outlines and single-pixel markers from their exact camera
-  snapshots and interpolates matching geometry. Full fixed-point perspective removes negative-modulo and rounded-depth
-  jumps; one perpendicular-width pen also removes diagonal thickening. The retained strike window's N=9 interpolation
-  RMS falls from 1.680 to 0.0039 fine pixels for outlines and 2.756 to 0.0140 for dot markers. Original sprites/artwork,
-  including the map arrow, stay. Coastline transitions and widths by drawing role remain open; sampled
-  shoreline boundary motion improves little. Details and verification: [presentation.md](presentation.md#projected-outlines-point-markers-and-one-stroke-pen-15-october-2026).
-  The sky/ground bands now also draw from their original state at N>1, keeping their original colours and graphics.
-  The exact model matches 1,514,560 captured quads; 108 selected CTests, all 45 N=1 routes, boot N=4/9 and 106 retained
-  checks pass. In the owner's window, N=9 horizon RMS falls about 3.3 -> 0.4 fine pixels; the sea/land boundary itself
-  is unchanged. Regenerated pictures also omit obsolete post-copy snapshots, which had put coarse ghosts over fine
-  edges; raw-frame changed-byte fallbacks remain tested. Low detail, incompatible geometry and coastline topology
-  transitions remain separate work. Details: [presentation.md](presentation.md#the-state-driven-sky-and-ground-bands-15-october-2026).
-  The remaining HUD/panel items and the original map arrow now also move from state. The original fonts and eight
-  4x4 arrow bitmaps remain; text, switches and sprite heading change on the logic frame, while continuous position
-  uses the aircraft's 32-bit coordinates and preserves map-origin wrap. All six HUD modes match 29,594 original HUD
-  calls, 11,490 panel calls and 714 arrow blits. A fresh full gate, 111 CTests, all 45 N=1 routes, boot N=4/9 and 130
-  retained/live checks pass. The complete owner replay retains 2,101 frames / 2,099 pairs and all guest hashes;
-  its map terrain remains refined geometry. Hidden 4K throughput passes coarse replay and averages 119-150 fps,
-  but the interrupted fullscreen run is not refresh acceptance. Keep tests off the owner's screen; ask before a
-  visible/fullscreen run. Coastline topology transitions and width tuning remain open. Details:
-  [presentation.md](presentation.md#the-remaining-hud-and-original-map-marker-movement-15-october-2026).
-  Next priority (owner review, 15 Oct): consolidate world geometry into a state-driven scene path before more
-  clipping exceptions. Raw visible-edge coordinates already exist; complete pre-visibility model topology and
-  persistent instance/face identity are missing. Observe original model requests before vertex/face filtering,
-  decode original mesh/material data, and share pose interpolation, projection and clipping across terrain, roads,
-  outlines and dots. Preserve original artwork, discrete detail/events and N=1 parity. The clip-specific prototype
-  is retained privately, not integrated. Steps and acceptance:
-  [presentation.md](presentation.md#consolidate-world-geometry-before-more-clipping-exceptions-15-october-2026).
-  Opt-in complete model-input capture now preserves all 69 owner-replay checkpoints and final state between engines,
-  with 64 identical requests / 8,404,992 input bytes. 112 CTests, 18 Python capture/model regressions and the fresh
-  full gate pass. A second paired in-flight capture adds 128 identical requests / 16,809,984 bytes with
-  unchanged checkpoints/final. Private decoding agrees with original detail selection for all 192 and geometry stream
-  boundaries/counts for the 191 that reach them. The reusable model decoder also matches their 2,330 camera vertices
-  and 488 plane tests; controlled original-byte checks agree across 205 detail variants. All 45 N=1 presentation
-  routes preserve 259,240 frames / 259,166 pairs; boot N=4/9 passes.
-  Stable identity, independent pose preparation, rendered material parity and the shared scene
-  renderer remain open. Unlocked rendering must preserve the original simulation/control timing; eliminating
-  interpolation age requires latest-state rendering or strictly visual prediction, with errors measured.
-  Owner retest (15 Oct): road-like gray ground lines still jitter and green building patches sometimes jump.
-  The new recorded flight replays identically between engines (57 checkpoints/final). Its pairing scan: 6.4% of polygons
-  and 2.4% of outline edges have no partner between logic steps, about 95% of the edge misses from the 60 px motion limit
-  or look-alike ordering rather than culling (handoff.md); the road-jitter cause itself is not yet confirmed.
-  Identity pairing (model + world cell from the request) halved those misses but deformed the extra pairs (paired
-  batches deforming over 100 px 3.78 -> 20.53%; the owner saw more jitter), so it is off, an opt-in experiment; a second cause is the uneven step clock (freezes/skips at 24% of step
-  boundaries), for which a smoothed playback clock is designed and simulated but not built. `tools/motion_check.py`
-  measures both. Owner decision (15 Oct): stop improving primitive pairing; for 60+ fps re-run the original's
-  unmodified draw on a throwaway machine copy at each in-between moment (camera and object slots nudged), with the
-  smoothed clock, at any scale and refresh rate; meanwhile `--present replay` is the safe sharp mode (handoff.md).
-  Native mesh/pose/visibility/order/material evaluation is drafted on `present-scene-geometry`, with a passing
-  synthetic CTest, but is not connected to live rendering or accepted by a fresh full gate. See handoff.md.
-  Open: the owner's motion review on a physical
-  panel, and cargo/career flights and slower machines. See presentation.md.
+      limiting frames; `tools/d1ttl_check.py`), D1SLOT (seeker-cancelled
+      incoming life stays zero, releasing its launcher slot;
+      `tools/d1slot_check.py`), D1PROX (a swept incoming proximity band using
+      an explicit S9 terminal-speed reference) and D1ACCEL (incoming
+      acceleration per simulated second; `tools/d1physics_check.py`), and the
+      optional D1REAL. D7 is fixed by D8. D10, D35 and D36 are closed after
+      review as not established for DOS or not reproduced, with evidence,
+      limits and reopening criteria in [legacy-reports.md](legacy-reports.md).
+      No speculative fix is offered. D96 is the Reimp's native-UI wait, not a
+      patch for this translated START. A session recorded with fixes on names
+      them in its log and replays with them.
+  - *Speed* ([speed-sweep.md](speed-sweep.md)): the default is 20 million
+    instructions a second with no limiter
+    ([9 Oct](speed-sweep.md#fast-machine-default-9-october-2026)): the game's
+    own clamp holds S at 15 and the drawn rate near 16.7, with no swings in 214
+    flights. The [D1 follow-up](speed-sweep.md#d1-follow-up-9-october-2026)
+    (90 flights): no oscillation, D1 inactive hash-for-hash at 9 MIPS, but its
+    fast-machine 11.6 fps cap gives a 1.2882x mission clock rather than real
+    time. An [isolated 15 FPS experiment](speed-sweep.md#actual-15-fps-limiter-experiment-9-october-2026)
+    settles at S 12 with a 1.25x mission clock, so a cap does not restore
+    real-time pacing; production D1 is unchanged and no limiter is shipped.
+  - *Combat at high S* (the first [threat-profile measurement](speed-sweep.md#controlled-threat-profile-combat-measurement-9-10-oct-2026)'s
+    observer was faulty and its gap estimates are superseded; the findings below are the corrected ones):
+    the game's signed hit guard suppresses SA-5 damage at S >= 14 (D1TTL);
+    seeker-cleared lifetime underflows to FFFF and can occupy the launcher's
+    chosen slot (D1SLOT; staged S=8/15 cancellation and eleven countdown
+    controls pass in both engines with unchanged control hashes); a
+    constant-speed straight-pass probe still hits at S=8 and misses at S=15
+    with TTL+PROX+SLOT (residual proximity-distance dependence); a
+    two-simulated-second SA-5 probe reaches speed 9/16 at S8/15 (acceleration
+    is unscaled, which favours high-S acceleration, not weaker combat). All 21
+    staged physics cases pass under both engines, with unchanged S9/player
+    controls. The 72-flight cohort retains a burst gap across 32 matching
+    missions. Burst differences, 20 minus 9 MIPS: 12 held-out pairs -0.5 a
+    flight (wide interval); pooled 36 pairs -0.6667 (95% -1.25..-0.0833); a
+    24-pair same-option-set cohort -0.9583 (95% -2.2083..+0.25), which does not
+    prove equivalence. The tools keep unsigned valid life, the official launch
+    counter, burst crossings, timing/detection inputs and damage counters on
+    early exit (an earlier observer hid SA-5 launches above signed life 32767
+    and missed burst resets; its gap estimates are superseded).
+  - *D1REAL* ([evidence](speed-sweep.md#optional-real-time-cadence-10-oct-controlled-airborne-checks-complete)):
+    passes seven normal-input clock/dialog cases at 9/20/40 MIPS in both
+    engines; corrected airborne clocks run at real time; all 12 seed- and
+    step-aligned mission pairs have identical launch counts, 11 match
+    burst/damage counts, and the remaining pair takes more damage at 20 MIPS
+    after input-phase divergence. The identified CPU/enemy defects are repaired
+    in this optional corrected mode; original key-poll timing still limits
+    exact whole-flight determinism. Control-response tooling accepts speed,
+    fixes, program-relative menus and boot-clock overrides and keeps early
+    exits; ten control flights share mission identifiers after boot-clock
+    alignment, but their progressive input sequences still diverge, so they do
+    not establish a safe speed.
+- [ ] **60+ fps and 4K presentation.** Design, measurements, rules and history:
+      [presentation.md](presentation.md). Off by default (`--present
+      replay|interp`, `present =` in f117a.ini, `--present-scale N`). Rules:
+      keep the original's logic tick and simulation/control timing, keep pixel
+      art and the original bitmap text/artwork integer-scaled, and retire an
+      old path only when its replacement passes N=1 equality. Target: 4K at 60
+      Hz (16.67 ms), and any scale and refresh rate, lower or higher.
+  - *Done:* the observer and draw lists rebuild every picture bit for bit: all
+    45 complete N=1 routes keep 259,240 logic frames, 259,166 interpolation
+    pairs and every guest hash; the original executable matches 2,619
+    fill-style and 3,953 graphics-driver fixtures. Model polygons are
+    re-projected on the fine grid from exact camera snapshots, including
+    near-clipped polygons, seams, the map's cockpit-art round trip and polygons
+    filled through the span rasteriser (`U` record); polygons whose footprint
+    the original's clipper gets wrong are accepted at N>1 (worst-frame fallback
+    84% -> 1.7%). Lines follow the Reimp's HUD treatment (fine-grid strokes,
+    `--present-line-width`; 360 Reimp reference strokes exact). Drawn from
+    game state at N>1: the HUD (all six modes match 29,594 original HUD calls),
+    panel (11,490 calls), map arrow (714 blits, eight original 4x4 bitmaps),
+    world outlines and dot markers (N=9 RMS 1.680 -> 0.0039 and 2.756 -> 0.0140
+    fine pixels) and sky/ground bands (1,514,560 captured quads; horizon RMS
+    about 3.3 -> 0.4). `F117_PRESENT_DIAG` shows each pixel's origin. The
+    presentation draws the in-between picture one frame ahead on a worker
+    thread; the 13 Oct strike build passed fullscreen Direct3D 11 3840x2160 at
+    59.99 Hz with vsync at N=9 (7,715 flight pictures, p99 17.23 ms, maximum
+    28.32, one late interval, 0.013%). Opt-in scene-input capture
+    (`F117R_OBSERVE_SCENE=N`, `tools/scene_capture.py`, `tools/scene_model.py`)
+    is integrated: 192 identical requests / 25,214,976 bytes between engines, decoded topology
+    agreeing with the original on 2,330 camera vertices, 488 plane tests and
+    all 205 reachable detail variants.
+  - *Owner decision (15 Oct): stop improving primitive pairing.* Identity
+    pairing halved unpaired shapes but deformed the extra pairs (paired
+    batches deforming over 100 px 3.78 -> 20.53%), so it is off
+    (`F117_PRESENT_IDENT=1` opt-in); `tools/motion_check.py` measures pairing,
+    deformation and step timing
+    ([presentation.md](presentation.md#identity-pairing-and-the-step-clock-15-october-2026)).
+    The safe sharp mode meanwhile is `--present replay --present-scale N`. For
+    60+ fps the chosen method is to re-run the original's unmodified draw on a
+    throwaway copy of the machine at each in-between moment, with only camera
+    and object inputs nudged, plus a smoothed playback clock (designed and
+    simulated, not built), at any scale and refresh rate; plan and safety
+    proof in [../handoff.md](../handoff.md). Draw distance is not extended.
+    The earlier plan to
+    [consolidate world geometry](presentation.md#consolidate-world-geometry-before-more-clipping-exceptions-15-october-2026)
+    into the project's own scene renderer is no longer the main path:
+    `src/present/scene_mesh.c` is on master as part of a gated tree but is
+    unconnected to live rendering and not a finished fix.
+  - *Open:* the re-run-draw prototype; the owner's road jitter (gray ground
+    lines) and jumping building patches (6.4% of polygons and 2.4% of outline
+    edges have no partner between logic steps, about 95% of those edge misses
+    from the 60 px motion limit or look-alike ordering rather than culling;
+    the road-jitter cause is not yet confirmed, see
+    [presentation.md](presentation.md#identity-pairing-and-the-step-clock-15-october-2026));
+    the uneven step clock (freezes/skips at 24% of step boundaries); coastline
+    topology transitions and widths by drawing role; low detail and
+    incompatible geometry; width tuning; weapon/target symbology; fullscreen
+    refresh pacing for the latest batches (hidden 4K throughput 119-150 fps;
+    an interrupted fullscreen run is not acceptance; ask before any
+    visible/fullscreen test); the owner's motion review on a physical panel;
+    cargo/career flights and slower machines.
 
 ## Phase 4 - checked by people and independent references
 
@@ -1390,4 +684,5 @@ this project did not build.
 - [x] Tested 24 gate workers against the same-code 16-worker baseline:
       identical verdicts/checkpoints, no coverage/parity speedup. Retain 16;
       the local launcher now verifies inherited BelowNormal priority too.
+      Gate unit tests run on eight workers (`--unit-jobs 1` for serial).
       Measurements and proof: [repeated-processes.md](repeated-processes.md).
