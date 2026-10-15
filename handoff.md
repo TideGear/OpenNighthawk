@@ -41,6 +41,13 @@ Outline edges (roads) over the same window: 20,735 drawn, 491 (2.4%) in batches 
 So about 95% are pairing misses, not original culling: identity pairing should keep them moving. Raising `MAX_MOTION` was tried in the Python model on this flight: 60/120/250/1000 px pair 93.5/94.7/95.6/96.2% of polygons
 and keep 20,244/20,409/20,499/20,595 of 20,735 outline edges in paired batches (cuts 9/8/7/5). A larger limit recovers
 under half of the misses and risks wrong pairs, so it is not the fix: connect the scene path's identities.
+Identity capture (branch `present-scene-geometry`, `F117R_OBSERVE_IDENT=1` logs an 'I' record per 00CF request; capture
+`owner-roads-20261015/ident/draw.log`, 2.75B-2.85B): the world-cell key (model, ring DS:E328, cell sums of the parent
+frame's words -16h/-2/-18h/-4, word -0Ch) matches 1,062 of 1,837 batches uniquely between steps; the current pairing
+agrees on 728 and DISAGREES on 0, and identity recovers 334 batches it misses. 162 are ambiguous duplicates (same model
+twice in a cell: add the entry ordinal) and 98 enter or leave. The pose words (DS:4994) are camera-relative and useless.
+Next: use the key in `interp_pair`/`score` (a unique equal key pairs regardless of the motion limit; an ids mismatch
+refuses), turn the observer on for live presentation, then the 45-route checks and a fresh gate.
 
 Unfinished native work is committed/pushed as **`a2202f1`** on **`present-scene-geometry`**, worktree **`D:/f117-wt/present-world-lines`**:
 `src/present/scene_mesh.c/.h`, `tests/test_scene_mesh.c` and its CMake wiring. It decodes owned complete meshes,
