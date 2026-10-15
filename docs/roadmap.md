@@ -199,7 +199,7 @@ not the recompilation:
       census (1,535 functions) with this project's regions as a private lead
       list.
       **Now:** 891 addresses matched, covering 889 of the census functions and
-      117,660 of 179,213 bytes (P2 67.37%, overall 86.67%).
+      117,660 of 179,213 bytes (P2 67.37%, overall 85.68%).
       **What is left:** `tools/census_reach.py` separates code with no run
       evidence from unreachable code (gate coverage logs only interpreted
       fallback instructions, so it cannot show what ran). A complete interpreter
@@ -658,7 +658,7 @@ Each is fixed; the named regressions keep the failing seed or case.
 ## Phase 4 - checked by people and independent references
 
 What a machine cannot judge by itself: it needs a person, or a reference that
-this project did not build.
+this project did not build. Not scored by `tools/progress.py` (owner, 15 Oct 2026).
 
 - [ ] **A person playing it:** controls, joystick and mouse, saves, the feel.
       Sessions already record themselves for replay.

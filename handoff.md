@@ -13,7 +13,7 @@ session log. Earlier detail is in `git log -p handoff.md`.
 
 ## Current state (15 October)
 
-Scoreboard: P1 100.00%, P2 67.37%, P3 95.79%, P4 42.90%, All 86.67%
+Scoreboard: P1 100.00%, P2 67.37%, P3 82.75%, All 85.68% (P4 is no longer scored)
 (`py tools/progress.py --title`). Phase 2: 889 census functions / 117,660 bytes.
 
 ### Presentation: latest (15 October, afternoon)
@@ -163,8 +163,10 @@ capture 2.45B-2.85B; `ident/draw.log` has identity records 2.75B-2.85B;
 
 ### Phase 3
 
-What keeps P3 below 100% is only Stage 3/4 (85%): the owner's panel motion
-verdict, long cargo/career flight timing and weaker CPU/GPU checks.
+P3 (82.75%) is held down by Stage 3, smooth in-between frames (15%: the chosen
+method is not built), Stage 4 infrastructure (90%: fullscreen pacing of the latest
+builds, slower machines, cargo/career flights) and Stage 2 (95%: coastline
+transitions, widths by role). Details and the method: docs/progress.md.
 
 ## Next steps
 

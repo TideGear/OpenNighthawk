@@ -2,7 +2,7 @@
 
 Every commit title starts with the current progress (it ended with it until
 7 Oct 2026; older commits keep the suffix), for example
-`(P1 94.81%, P2 10.81%, P3 44.60%, P4 42.90%, All 53.94%) Subject`, printed by
+`(P1 100.00%, P2 67.37%, P3 82.75%, All 85.68%) Subject`, printed by
 `py tools/progress.py --title`. This page says what the numbers mean, so
 that they can be checked and argued with.
 
@@ -18,16 +18,16 @@ that they can be checked and argued with.
   evidence beside it, and an estimate is only raised with new evidence.
 
 A phase's percentage is its items' weighted completion. **All** is the
-phases weighted by their share of the whole project's effort: Phase 1 42%,
-Phase 2 29%, Phase 3 24%, Phase 4 5%. Phase 1 is the largest because building
+scored phases weighted by their share of the effort: Phase 1 42, Phase 2 29,
+Phase 3 24 (normalised over their sum). Phase 1 is the largest because building
 an exact recompilation, its machine and its proof was the bulk of the work;
 Phases 2 and 3 are large too (thousands of routines to name and match; a new
 presentation path for 60+ fps and 4K), and their weights say so.
 Items closed by scope keep only the weight of the work done (8 Oct 2026: the
-roadmap's "Settled" list), so dropping work never reads as finishing it. Phase 4 holds
-what only a person or an independent reference can settle (a person playing
-the game; Roland output against a reference, with a listening check), so the
-automated phases can reach 100% without pretending to have settled it.
+roadmap's "Settled" list), so dropping work never reads as finishing it. Phase 4 (what only
+a person or an independent reference can settle: a person playing the game, Roland
+output against a reference with a listening check) is not scored (owner, 15 Oct
+2026: its estimates had stopped meaning anything); it stays on the roadmap.
 
 ## What is measured
 
@@ -59,3 +59,7 @@ automated phases can reach 100% without pretending to have settled it.
   the same commit that records the finding.
 - Weights are revisited when the remaining work is understood better; a
   weight change is its own commit, so the percentages' jump is visible.
+- 15 Oct 2026: Phase 3's "interpolation to 60+ fps" (0.85) was split into Stage 4
+  infrastructure (0.9) and smooth in-between frames (0.15), because the owner judged
+  the motion not acceptable and the method is being replaced; Stage 2 went to 0.95
+  for its open items. P3 fell from 95.79% to 82.75%.

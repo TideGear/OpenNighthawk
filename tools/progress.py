@@ -2,7 +2,7 @@
 """progress.py - how much of the roadmap is done, by phase and overall.
 
     py tools/progress.py              # the table and the commit-title suffix
-    py tools/progress.py --title      # only the suffix, e.g. (P1 85.90%, P2 6.93%, P3 15.00%, P4 40.00%, All 46.83%)
+    py tools/progress.py --title      # only the suffix, e.g. (P1 100.00%, P2 67.37%, P3 82.75%, All 85.68%)
     py tools/progress.py --census FILE.tsv   # refresh the census figures from reimp_names.py output
 
 Each phase is a weighted list of items in docs/progress.json: weight is the
