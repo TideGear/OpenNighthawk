@@ -1346,6 +1346,10 @@ instruction profiles and three 789-address matched seeds (2,561,209,
   Stable identity, independent pose preparation, rendered material parity and the shared scene
   renderer remain open. Unlocked rendering must preserve the original simulation/control timing; eliminating
   interpolation age requires latest-state rendering or strictly visual prediction, with errors measured.
+  Owner retest (15 Oct): road-like gray ground lines still jitter and green building patches sometimes jump.
+  The new recorded flight replays identically between engines (57 checkpoints/final); visual cause remains unproven.
+  Native mesh/pose/visibility/order/material evaluation is drafted on `present-scene-geometry`, with a passing
+  synthetic CTest, but is not connected to live rendering or accepted by a fresh full gate. See handoff.md.
   Open: the owner's motion review on a physical
   panel, and cargo/career flights and slower machines. See presentation.md.
 

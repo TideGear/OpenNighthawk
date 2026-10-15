@@ -48,7 +48,7 @@ target_link_libraries(f117machine PUBLIC f117cpu)
 
 # ---- Presentation shared by the window and the headless runner -----------
 add_library(f117present STATIC src/host/present.c src/host/keys.c src/host/inputlog.c
-  src/present/drawlist.c src/present/drawfeed.c src/present/interp.c src/present/hires.c src/present/nearclip.c src/present/hud_state.c src/present/hud_cover.c src/present/hud_overlay.c src/present/band_state.c)
+  src/present/drawlist.c src/present/drawfeed.c src/present/interp.c src/present/hires.c src/present/nearclip.c src/present/hud_state.c src/present/hud_cover.c src/present/hud_overlay.c src/present/band_state.c src/present/scene_mesh.c)
 target_include_directories(f117present PUBLIC src/host src/present src/matched)
 target_link_libraries(f117present PUBLIC f117machine)
 
@@ -284,6 +284,9 @@ if(F117R_BUILD_TESTS)
   add_executable(test_scene_observer tests/test_scene_observer.c)
   target_link_libraries(test_scene_observer PRIVATE f117present f117recomp_none)
   add_test(NAME presentation_scene_observer COMMAND test_scene_observer)
+  add_executable(test_scene_mesh tests/test_scene_mesh.c)
+  target_link_libraries(test_scene_mesh PRIVATE f117present)
+  add_test(NAME presentation_scene_mesh COMMAND test_scene_mesh)
   # ... and through the live path (a strike window recorded with F117R_OBSERVE_PAGES=1 F117R_OBSERVE_HUD=1).
   add_executable(test_hud_live tests/test_hud_live.c)
   target_link_libraries(test_hud_live PRIVATE f117present f117recomp_none)
