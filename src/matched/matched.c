@@ -38016,9 +38016,12 @@ shots_return:
 #define FC_CALL(t, r) do { if (!guest_call(m, (t), (r))) return 1; } while (0)
 #define FC_FAR(ip) do { if (!guest_call_far(m, (ip), (uint16_t)((ip) + 5))) return 1; } while (0)
 #define FC_DIV(v) x86_div16(c, (v))
+/* EXPERIMENT (draw-rerun-probe, not for master): called at 2F9D entry, before anything runs. */
+void (*g_frame_compose_probe)(machine_t *m);
 static int vgame_frame_compose(machine_t *m)
 {
     cpu_t *c = &m->cpu;
+    if (g_frame_compose_probe) g_frame_compose_probe(m);
     if (!room(c, 28)) return 0;
     /*2F9D*/ x86_enter(c, 0x0018, 0); /*2FA1*/ cpu_push16(c, c->r[R_SI]); /*2FA2*/ FC_SETFRAME(-2, 0x5B);
     /*2FA7*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0xBA3C)); /*2FAA*/ c->r[R_DX] = (uint16_t)(ds_get(c, 0xBA3E)); /*2FAE*/ ds_put(c, 0xDEC4, c->r[R_AX]);

@@ -70,7 +70,7 @@ if(F117R_GEN_DIR)
 endif()
 
 # Headless runner: tests, captures, coverage, lockstep.
-add_executable(f117run src/host/headless.c)
+add_executable(f117run src/host/headless.c src/host/rerun_probe.c)
 if(F117R_GEN_DIR)
   target_link_libraries(f117run PRIVATE f117present f117recomp)
 else()

@@ -59,6 +59,7 @@
 #include "drawfeed.h"
 #include "diagtag.h"
 #include "hud_overlay.h"
+#include "rerun_probe.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -715,6 +716,10 @@ int main(int argc, char **argv)
         fprintf(shot_meta, "requested_icount,frame_icount,video_mode,scan_valid,frame_blank,seq1,scan_part,scan_next,vsync_next,scan_frame,nonzero_pixels,nonblack_palette_entries,visible_pixels\n");
     for (int k = 0; k < g_ncmd; k++)
         if (!g_cmd[k].prog[0]) schedule(&m, &g_cmd[k], g_cmd[k].after);
+    if (getenv("F117_RERUN_PROBE")) {
+        if (g_replay || g_obs_file) { fprintf(stderr, "F117_RERUN_PROBE is its own observer: no --present or --observe\n"); return 2; }
+        if (!rerun_probe_start(&m, getenv("F117_RERUN_PROBE"))) { fprintf(stderr, "cannot write F117_RERUN_PROBE\n"); return 1; }
+    }
     inputlog_reader *player = NULL;
     if (replay && !(player = inputlog_open(replay))) { fprintf(stderr, "cannot read %s\n", replay); return 1; }
 
@@ -741,6 +746,7 @@ int main(int argc, char **argv)
          * second past the slice's end. */
         inputlog_feed(player, &m, until + ips);
         rc = machine_run(&m, until);
+        rerun_probe_service(&m);
         if (trace && m.cpu.icount <= trace_to) {
             const cpu_t *c = &m.cpu;
             fprintf(trace, "%llu %04X:%04X AX=%04X BX=%04X CX=%04X DX=%04X SI=%04X DI=%04X BP=%04X SP=%04X "
@@ -826,6 +832,7 @@ int main(int argc, char **argv)
     if (shot_meta) fclose(shot_meta);
     if (frame_log) fclose(frame_log);
     double secs = (double)(clock() - t0) / CLOCKS_PER_SEC;
+    rerun_probe_finish();
     printf("stopped at icount %llu (%s) after %.1f s host time, %.1f M instr/s; "
            "interpreted %llu; program %s; exit %s; final hash %016llx\n",
            (unsigned long long)m.cpu.icount, rc == RUN_FAULT ? m.fault : rc == RUN_EXITED ? "exited" : "budget",
