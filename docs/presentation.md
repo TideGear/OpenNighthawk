@@ -117,7 +117,13 @@ this machine's instruction-level one.
   runtime (`g_rt`) and the code-write bits are process globals, so copies must run on the machine's thread until
   those are made per machine. Moving objects (slots) were not nudged yet.
 - **Status:** feasible; not yet implemented in the presentation.
-- **Next:** the `DF03`/`C2C8` group; make the observer/runtime per machine; then a switchable implementation with the smoothed clock, judged by
+- **Integration design (15 Oct):** an in-between picture is frame k's own draw records with the part from the 2F9D
+  entry to its return replaced by the nudged copy's records (the copy's record count is that boundary exactly; the
+  probe shows the unnudged copy reproduces it). Records before 2F9D and after its return (cockpit, panels) stay as
+  frame k drew them; the HUD and bands already come from state at the in-between moment. The spliced list goes
+  through the existing replay and refinement at any scale; the smoothed clock picks the moments; copies run on the
+  machine thread between slices until the observer and runtime are per machine.
+- **Next:** render spliced in-between pictures headless for the owner to see; the `DF03`/`C2C8` group; make the observer/runtime per machine; then a switchable implementation with the smoothed clock, judged by
   `tools/motion_check.py` (deformation included) and the owner.
 - **In reserve:** camera reprojection of one step's own draw list. No longer the main path: this project's own scene
   renderer (the unconnected `src/present/scene_mesh.c` draft;
