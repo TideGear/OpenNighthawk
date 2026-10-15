@@ -3,6 +3,7 @@
 #include "matched.h"
 #include "recomp_rt.h"
 #include "cpu.h"
+#include "../present/hud_state.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -262,6 +263,40 @@ static int hook_span_polygon(machine_t *m)
     }
     o->prim(o->user, c->icount, 'U', v, n);
     return 0;
+}
+
+/* VGAME 1058:0016, the HUD pass: its whole input is the data segment as it stands at entry, which is a few
+ * hundred words of layout and tables and about twenty scattered state words (hud_state.h). The graphics
+ * driver's tick tables (the x column and the row limits of entry 11) are not in the data segment, so they are
+ * read the way hook_lib_ticks reads them. Nothing here writes memory or moves the clock. */
+void observe_hud_pass(machine_t *m)
+{
+    const f117_observer *o = g_f117_observer;
+    if (!o || !o->prim || !o->hud) return;
+    /* no flush(m): a capture the previous library call left pending must close where it always did, at the next
+     * library call, or its record's clock would move (the 'n' records' stamps, by one instruction) */
+    cpu_t *c = &m->cpu;
+    const uint16_t ds = c->seg[S_DS];
+    static int32_t v[HUD_REC_BASE];
+    int n = 0;
+    v[n++] = HUD_REC_VERSION;
+    for (int k = 0; k < HUD_NWORDS; k++) v[n++] = peek16(c, ds, (uint16_t)(HUD_DS_LO + 2 * k));
+    for (int k = 0; k < HUD_NEXTRA; k++) v[n++] = peek16(c, ds, hud_extra_off[k]);
+    const uint16_t drv = peek16(c, ds, 0x0151 + 3);
+    int have = 0;
+    int32_t ticks[12] = { 0 };
+    if (drv && peek8(c, drv, 0x071C) == 0xB8) {
+        const uint16_t dds = peek16(c, drv, 0x071D);
+        for (int k = 0; k < 4; k++) {
+            ticks[3 * k] = peek16(c, dds, (uint16_t)(0x1966 + 2 * k));
+            ticks[3 * k + 1] = peek16(c, dds, (uint16_t)(0x196E + 2 * k));
+            ticks[3 * k + 2] = peek16(c, dds, (uint16_t)(0x1976 + 2 * k));
+        }
+        have = 1;
+    }
+    v[n++] = have;
+    for (int k = 0; k < 12; k++) v[n++] = ticks[k];
+    o->prim(o->user, c->icount, 'h', v, n);
 }
 
 void observe_game_draw(machine_t *m) { hook_game_draw(m); }

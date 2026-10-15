@@ -48,7 +48,7 @@ target_link_libraries(f117machine PUBLIC f117cpu)
 
 # ---- Presentation shared by the window and the headless runner -----------
 add_library(f117present STATIC src/host/present.c src/host/keys.c src/host/inputlog.c
-  src/present/drawlist.c src/present/drawfeed.c src/present/interp.c src/present/hires.c src/present/nearclip.c)
+  src/present/drawlist.c src/present/drawfeed.c src/present/interp.c src/present/hires.c src/present/nearclip.c src/present/hud_state.c)
 target_include_directories(f117present PUBLIC src/host src/present src/matched)
 target_link_libraries(f117present PUBLIC f117machine)
 
@@ -260,6 +260,11 @@ if(F117R_BUILD_TESTS)
   add_executable(test_present_lines tests/test_present_lines.c)
   target_link_libraries(test_present_lines PRIVATE f117present)
   add_test(NAME presentation_hud_lines COMMAND test_present_lines)
+  # The state-driven HUD against the original's draw log (a private corpus: D:/f117-gate/present-v2/hud/corpus).
+  add_executable(test_hud_state tests/test_hud_state.c)
+  target_link_libraries(test_hud_state PRIVATE f117present)
+  add_test(NAME presentation_hud_state COMMAND test_hud_state D:/f117-gate/present-v2/hud/corpus)
+  set_tests_properties(presentation_hud_state PROPERTIES SKIP_RETURN_CODE 77)
   add_executable(test_present_strips tests/test_present_strips.c)
   target_link_libraries(test_present_strips PRIVATE f117present)
   add_test(NAME presentation_span_polygons COMMAND test_present_strips)
