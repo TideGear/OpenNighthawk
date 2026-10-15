@@ -72,6 +72,10 @@ jobs:
         run: python tests/test_present_styles.py
       - name: Presentation verdict regressions
         run: python tests/test_presentation_check.py
+      - name: Complete scene-input capture regressions
+        run: python tests/test_scene_capture.py
+      - name: Original model topology regressions
+        run: python tests/test_scene_model.py
       - name: Presentation pacing verdict regressions
         run: python tests/test_presentation_timing.py
       - name: Preserve pacing diagnostics on failure

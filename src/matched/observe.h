@@ -68,6 +68,11 @@ typedef struct f117_observer {
      * (band_state.h: the data segment's words the pass reads), once per call, after the phase's pages. Off by
      * default so that existing logs stay as they were. */
     int bands;
+    /* Opt-in model-input research capture (scene_capture.h), before model
+     * selection/culling. want_scene may bound requests to a clock window
+     * and count; NULL accepts every request when scene is enabled. */
+    int scene;
+    int (*want_scene)(void *user, uint64_t icount);
 } f117_observer;
 
 extern const f117_observer *g_f117_observer;
@@ -102,6 +107,7 @@ void observe_panel_pass(machine_t *m);
 /* Called by the matched per-frame update (VGAME 0000:3ADA) just before it blits the player's arrow onto the moving
  * map: the arrow's position words and sprite, as a record 'm' when the observer asks for the HUD state. */
 void observe_map_marker(machine_t *m);
+void observe_scene_model(machine_t *m); /* VGAME 120A:00CF at entry, before its prologue */
 
 /* Register the hooks on the original's own entry points (once). */
 void observe_register(void);

@@ -1368,6 +1368,67 @@ presentation change, not a replacement of the game simulation or its artwork. Le
 original-resolution oracle and a fallback for data not yet covered; it does not define completion of the new path.
 Evidence and preserved prototype: `D:/f117-gate/present-v2/coast-finish`.
 
+### Complete model-input capture
+
+`F117R_OBSERVE_SCENE=N` enables a bounded research capture with the headless runner's `--observe` clock window.
+Keep both `i` (request) and `j` (memory) records when filtering kinds. Each request records the original model,
+position/orientation arguments, camera/view metadata, CPU registers, complete DS and model-bank segments, and
+256 stack bytes starting at SP. Reads bypass device accessors so capturing VGA-backed addresses cannot charge
+guest bus cycles. The app does not enable this capture. Original bytes stay private; this is intentionally a
+research boundary, not the final per-frame scene representation or a persistent object identity.
+
+`py tools/scene_capture.py LOG --out JSON` reconstructs the inputs and rejects missing/duplicate bytes, mismatched
+segments/clocks, out-of-range words and metadata inconsistent with the captured memory. Empty captures fail.
+ROM-free tests check logical/physical address wrapping, every captured byte and unchanged guest memory/registers/
+clocks under both timing profiles; parser regressions check completeness and reject malformed captures.
+
+The owner's complete replay captures 64 requests (23 model indices, perspective and orthographic-map views):
+8,404,992 original input bytes and all request metadata/clocks are identical between the interpreter and recompiled
+engines. Both retain the baseline's 69 checkpoints and final `31c259b992340414`. Evidence:
+`D:/f117-gate/present-v2/scene/pair-verdict.json`. This proves inputs for requests the game submits, not every
+world candidate or stable scene identity. The shared renderer is still to be implemented.
+
+A second paired replay captures 128 in-flight requests after clock 2.5B: all 16,809,984 input bytes, request metadata
+and clocks agree, and both engines retain the same 69 baseline checkpoints/final state. Its selected detail pointers
+and all geometry stream boundaries/counts agree with original-byte execution for all 128 requests. Evidence:
+`D:/f117-gate/present-v2/scene/flight/pair-verdict.json` and `flight/layout-verdict.json`.
+
+`tools/scene_model.py` decodes original parts, planes, vertex lists, ordering trees, vertices, edges and material
+commands. It derives original detail selection directly from request position and camera state; all 192 selections
+agree with original-byte execution. All 191 requests that reach geometry also agree at the part/plane/vertex/edge/
+face stream boundaries and counts. The other request returns at the original reach test. From original prepared
+part poses, complete camera geometry agrees on 2,330 submitted vertices, including articulated transforms; face
+tests agree on 488 planes, 349 visible shades and their vertex flags. The decoder retains the 108 hidden vertices
+that the original omits. This is not independent pose preparation or rendered material/style parity.
+
+Controlled original-byte fixtures also exercise all 205 reachable detail variants in the two banks, including six
+articulated and nine zero-vertex variants: every stream boundary/count, 1,722 plane tests/shades and 3,870 transformed
+vertices agree; 32 unreferenced vertices remain available. The fixture deliberately selects a level and enables the
+original map projection, so it is format/geometry proof, not a real-route result. Original execution harnesses and
+assets stay private (`controlled-layout-verdict.json` and the two `original-stream-boundaries.json` files).
+
+Eleven ROM-free model tests cover detail thresholds and signed depth, articulated and zero-vertex topology,
+positive/shared vertices, the cache's padded 16-byte stride, part switches without planes, signed/wrapped camera
+sums, conditional plane visibility/shading, logical address wrapping and malformed material/LOD streams. Shared
+vertices are synthetic coverage here: none occurs in the captured banks, so that path still needs real proof.
+Unproven extended ordering-tree leaves fail explicitly. Material commands are decoded but not yet rendered.
+
+Validation of the observer runtime: 112 selected CTests; fresh full gate (1,706 s) with all 45 routes / 44 fresh
+interpreter sessions, both 5,718,848-state instruction profiles and three 891-address matched seeds, zero mismatches;
+reachability/event checks pass. Seven capture-parser and eleven model tests pass. All 45 N=1 presentation routes
+retain 259,240 exact frames / 259,166 exact pairs; boot N=4/9 each retains 368 frames / 366 pairs. No runner changes,
+dropped frames or endpoint mismatches. Consolidated evidence: `D:/f117-gate/present-v2/scene/foundation-verdict.json`.
+
+### Unlocked rendering and control latency
+
+Gameplay/logic parity remains the first requirement. Rendering may run independently, but must not advance the
+original simulation faster, retime its input reads or feed predicted poses back into gameplay. Resolution alone
+does not require interpolation delay. Latest-state presentation can avoid that delay while retaining the original
+motion steps; smooth presentation without waiting requires visual prediction, whose errors need measurement.
+The shared scene path should make pose/camera prediction possible and avoid unnecessary queued frames. Exact
+interpolation still requires known states and carries its documented picture age; the existing extrapolation's
+measured errors are not a solved latency result. No default or owner configuration is changed by this work.
+
 ## Open questions and risks
 
 - **Pairing for interpolation.** Done for 86-99% of painted polygons by batch alignment

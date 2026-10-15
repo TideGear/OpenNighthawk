@@ -1336,6 +1336,16 @@ instruction profiles and three 789-address matched seeds (2,561,209,
   outlines and dots. Preserve original artwork, discrete detail/events and N=1 parity. The clip-specific prototype
   is retained privately, not integrated. Steps and acceptance:
   [presentation.md](presentation.md#consolidate-world-geometry-before-more-clipping-exceptions-15-october-2026).
+  Opt-in complete model-input capture now preserves all 69 owner-replay checkpoints and final state between engines,
+  with 64 identical requests / 8,404,992 input bytes. 112 CTests, 18 Python capture/model regressions and the fresh
+  full gate pass. A second paired in-flight capture adds 128 identical requests / 16,809,984 bytes with
+  unchanged checkpoints/final. Private decoding agrees with original detail selection for all 192 and geometry stream
+  boundaries/counts for the 191 that reach them. The reusable model decoder also matches their 2,330 camera vertices
+  and 488 plane tests; controlled original-byte checks agree across 205 detail variants. All 45 N=1 presentation
+  routes preserve 259,240 frames / 259,166 pairs; boot N=4/9 passes.
+  Stable identity, independent pose preparation, rendered material parity and the shared scene
+  renderer remain open. Unlocked rendering must preserve the original simulation/control timing; eliminating
+  interpolation age requires latest-state rendering or strictly visual prediction, with errors measured.
   Open: the owner's motion review on a physical
   panel, and cargo/career flights and slower machines. See presentation.md.
 

@@ -28008,6 +28008,7 @@ static const vg3_model_run_t VG3_MODEL_PROBE = { 0, 0x01F5, 0x0210, 0x0235, 0x02
 static int vg3_model_run(machine_t *m, const vg3_model_run_t *t)
 {
     cpu_t *c = &m->cpu;
+    if (t->draw && g_f117_observer) observe_scene_model(m);
     if (!room(c, t->draw ? 27 : 25)) return 0;
     x86_push_reg(c, R_BP);
     c->r[R_BP] = c->r[R_SP];

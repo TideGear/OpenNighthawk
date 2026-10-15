@@ -8,6 +8,20 @@ whether they were measured or estimated. The rule behind the page: an
 optimisation must leave every check's inputs, outputs and verdicts
 identical, and the proof is the same verdicts before and after.
 
+## Complete model-input capture and decoder (15 October 2026)
+
+The fresh observer gate took 1,706 s: initial translate/build 113 s, coverage 711 s,
+second translate/build 35 s and paired parity 848 s. All 112 selected tests, 45 routes /
+44 fresh interpreter sessions, both instruction profiles and three 891-address seeds pass.
+Original-byte model checks run from bounded private snapshots rather than replaying a
+whole flight per model: 192 captured requests and controlled fixtures for 205 detail
+variants. The latter take about 2.4 s, including loading/parsing the private source inputs;
+they prove format/geometry, not route reachability. Eleven synthetic model tests take
+0.05 s, seven capture-parser tests about 0.7 s. N=1 presentation checks at eight jobs
+take 860 s, overlapping the final gate stage; all 45 retain 259,240 frames / 259,166 pairs.
+Boot N=4/9 checks take 56 s at two jobs, 368 frames / 366 pairs each. Original assets/logs
+remain outside git.
+
 ## Agent-proved batches (14 October 2026)
 
 Proofs now run in parallel agents, each in its own `D:/f117-gate/p2-*` directory with

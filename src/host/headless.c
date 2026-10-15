@@ -152,6 +152,7 @@ static void on_load(void *user, machine_t *m, const char *name, const uint8_t *f
  * and timing profiles; it reads and changes nothing. */
 static FILE *g_obs_file;
 static uint64_t g_obs_from, g_obs_to;
+static unsigned g_scene_limit,g_scene_count;
 /* F117R_OBSERVE_KINDS=LETTERS keeps only the records of those kinds (a corpus of a few kinds over a long flight
  * without gigabytes of the rest); unset, every record is written. */
 static int obs_kind(char kind)
@@ -160,6 +161,12 @@ static int obs_kind(char kind)
     static const char *keep;
     if (!ready) { ready = 1; keep = getenv("F117R_OBSERVE_KINDS"); if (keep && !*keep) keep = NULL; }
     return !keep || strchr(keep, kind) != NULL;
+}
+static int obs_want_scene(void *user,uint64_t clock)
+{
+    (void)user;
+    if(clock<g_obs_from || clock>=g_obs_to || g_scene_count>=g_scene_limit || !obs_kind('i') || !obs_kind('j'))return 0;
+    g_scene_count++;return 1;
 }
 static void obs_phase(void *u, uint64_t icount)
 {
@@ -537,6 +544,12 @@ int main(int argc, char **argv)
             if (!g_obs_file) { fprintf(stderr, "cannot write %s\n", path); return 2; }
             if (getenv("F117R_OBSERVE_HUD")) g_obs.hud = 1;
             if (getenv("F117R_OBSERVE_BANDS")) g_obs.bands = 1;
+            const char *scene=getenv("F117R_OBSERVE_SCENE");
+            if(scene) {
+                char *end;const unsigned long limit=strtoul(scene,&end,10);
+                if(!*scene || *end || limit<1 || limit>65536) { fprintf(stderr,"F117R_OBSERVE_SCENE requires a request limit 1..65536\n");return 2; }
+                g_scene_limit=(unsigned)limit;g_scene_count=0;g_obs.scene=1;g_obs.want_scene=obs_want_scene;
+            }
             observe_set(&g_obs); i++;
         }
         else if (!strcmp(a, "--dump") && v) { dump_at = strtoul(v, NULL, 16); const char *c2 = strchr(v, ':'); dump_len = c2 ? strtoul(c2 + 1, NULL, 16) : 0x100; i++; }

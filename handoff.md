@@ -40,9 +40,26 @@ roads, outlines and dots. Preserve sprites/fonts and the original simulation. De
 The clip-only prototype in `D:/f117-gate/present-v2/coast-finish/clip-prototype` passes its analytic regression and
 112 selected tests, but is set aside and not integrated. Its test can be adapted to the broader path.
 
+**Scene-input foundation is integrated.** Opt-in `F117R_OBSERVE_SCENE=N` captures pre-visibility requests and complete inputs;
+`tools/scene_capture.py` audits completeness; `tools/scene_model.py` decodes complete topology and derives detail
+selection. Two paired owner replays preserve all 69 baseline checkpoints/final `31c259b992340414`, with 192 identical
+requests / 25,214,976 bytes. Original-byte checks agree on all 192 selections and the 191 geometry submissions:
+stream boundaries/counts, 2,330 camera vertices, 488 plane tests and 349 visible shades. Controlled fixtures agree
+on all 205 reachable detail variants, including six articulated and nine zero-vertex variants. Shared-vertex coverage
+is synthetic only. No persistent identity, independent pose preparation or live scene renderer is implemented yet.
+112 selected CTests and 18 Python capture/model tests pass. Fresh gate passes (1,706 s): all 45 routes / 44 fresh
+interpreter sessions, both instruction profiles, three 891-address seeds, reachability/event limits. All 45 N=1 routes
+retain 259,240 frames / 259,166 pairs; boot N=4/9 retains 368/366 each. Evidence/private original-execution harnesses:
+`D:/f117-gate/present-v2/scene` (foundation-verdict.json, gate.log, *-verdict.json,
+flight/*-verdict.json). Harness return traps use a self-loop; standalone CPU stepping does not stop at HLT.
+
+**Gameplay and logic parity remain the owner's top priority.** Independent rendering must preserve original control
+reads and simulation timing. Latest-state rendering avoids interpolation age; smoothing without waiting requires
+strictly visual prediction and measured corrections. Do not silently change defaults or the owner's configuration.
+
 The full owner replay confirms refined map terrain; short windows with a previously cached map can show only
 its original bitmap. Never force `F117R_OBSERVE_PAGES=1` on live presentation: it reseeds every phase and prevents
-pairs. The stopped WIP branches remain preserved, not second integration candidates. The HUD2 gate refreshed the
+pairs. The stopped WIP branches remain preserved, not second integration candidates. The scene gate refreshed the
 source-keyed interpreter cache; new observer work will require another gate before P2 checkpoints. Refresh the kit
 libraries from main after its build. Width tuning and weapon/target symbology remain open.
 

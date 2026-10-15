@@ -5,6 +5,7 @@
 #include "cpu.h"
 #include "../present/hud_state.h"
 #include "../present/band_state.h"
+#include "../present/scene_capture.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -53,6 +54,37 @@ static int32_t ds_dword(cpu_t *c, uint16_t at)
 
 /* (flush, below) */
 static void flush(machine_t *m);
+
+void observe_scene_model(machine_t *m)
+{
+    const f117_observer *o = g_f117_observer;
+    if (!o || !o->scene || !o->prim || (o->want_scene && !o->want_scene(o->user,m->cpu.icount))) return;
+    const cpu_t *c=&m->cpu;
+    const uint16_t ds=c->seg[S_DS],ss=c->seg[S_SS],sp=c->r[R_SP],bank=peek16(c,ds,0x8590);
+    int32_t v[SCENE_REQUEST_N]={SCENE_CAPTURE_VERSION,ds,ss,sp,c->seg[S_CS],c->ip,
+        peek16(c,ss,sp),peek16(c,ss,(uint16_t)(sp+2)),bank,peek16(c,bank,0),
+        peek16(c,ss,(uint16_t)(sp+4)),peek16(c,ss,(uint16_t)(sp+6)),peek16(c,ss,(uint16_t)(sp+8)),
+        peek16(c,ss,(uint16_t)(sp+10)),peek16(c,ss,(uint16_t)(sp+12)),peek16(c,ss,(uint16_t)(sp+14)),
+        peek8(c,ds,0x7D8E),peek16(c,ds,0x8602),peek16(c,ds,0x8604),
+        peek16(c,ds,0x85FA),peek16(c,ds,0x85FC),peek16(c,ds,0x85FE),peek16(c,ds,0x8600),c->seg[S_ES]};
+    for(int k=0;k<8;k++)v[24+k]=c->r[k];v[32]=c->flags;
+    o->prim(o->user,c->icount,SCENE_REQUEST_KIND,v,SCENE_REQUEST_N);
+    /* Keep complete original DS/model segments for the first decoder proof.
+     * DS includes shared world vertices and part matrices. Compact cached
+     * assets and stable identity come after the stream is understood. */
+    int32_t words[SCENE_MEMORY_MAX];
+    for(int role=0;role<3;role++) {
+        const uint16_t seg=role==0?ds:role==1?bank:ss;
+        const unsigned size=role==2?SCENE_STACK_BYTES:65536;
+        for(unsigned at=0;at<size;at+=SCENE_CHUNK_BYTES) {
+            const unsigned count=size-at<SCENE_CHUNK_BYTES?size-at:SCENE_CHUNK_BYTES;
+            const uint16_t off=(uint16_t)(at+(role==2?sp:0));
+            words[0]=SCENE_CAPTURE_VERSION;words[1]=role;words[2]=seg;words[3]=off;words[4]=count;
+            for(unsigned k=0;k<count/2;k++)words[SCENE_MEMORY_HEAD+k]=peek16(c,seg,(uint16_t)(off+2*k));
+            o->prim(o->user,c->icount,SCENE_MEMORY_KIND,words,SCENE_MEMORY_HEAD+(int)count/2);
+        }
+    }
+}
 
 void observe_vertex(machine_t *m, uint16_t di, uint16_t bx)
 {
@@ -1008,8 +1040,10 @@ static int hook_map_marker(machine_t *m)
     observe_map_marker(m);
     return 0;
 }
+static int hook_scene_model(machine_t *m) { observe_scene_model(m); return 0; }
 
 static const recomp_override OBSERVERS[] = {
+    { "observe", "VGAME.EXE", VGAME_47304, 0x120A, 0x00CF, hook_scene_model, "complete model input capture (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x0000, 0x3D95, hook_map_marker, "map arrow blit (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x120A, 0x08D5, hook_vertex_return, "orthographic left-shift projection return (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x120A, 0x0901, hook_vertex_return, "orthographic rounded projection return (observer)", 1 },
