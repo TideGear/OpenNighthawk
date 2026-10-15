@@ -200,6 +200,24 @@ not the recompilation:
 
 ## Phase 2 - understood code
 
+Two more routines are matched and named: VGAME's `04E6` (`vgame_scene_walk`, 810
+bytes / 276 instructions) walks the terrain tile rings around the viewpoint and
+composes each tile's objects, and START's `0FA3` (`start_brief_key_loop`, 568 bytes /
+224 instructions) is the briefing page's key loop. Both reach every instruction at
+five seeds (6,233-6,250 states each, no skipped states), 37 and 46 private mutations
+are caught, and the real `full_cycle` route runs them 275 and 2 times with all 66
+checkpoints and the final state exact. The gate's commit-derived seed also found an
+old defect in the matched hit test (START `393D`, END `1C3B`): a rectangle list at
+offset FFFFh wraps inside the segment, so its words land back on the stack frame
+while the guard assumed eight contiguous bytes. The guard now tests each byte's own
+address and `matched_menu_hit_wrap` retains the seed. Fresh full gate: 81 tests, all
+45 routes / 44 fresh interpreter sessions, both 5,718,848-state instruction
+profiles, three 872-address seeds (2,917,868 / 2,916,202 / 2,918,100 comparisons),
+zero mismatches, audits pass (1,583 s; the first attempt, which found the `393D` defect, is retained); the
+live `presentation_check.py --scales 1` reports all 45 routes exact. Census: 864
+functions / 108,738 bytes. Evidence: `D:/f117-gate/p2-batch2`, `D:/f117-gate/p2-scene`,
+`D:/f117-gate/p2-start-0fa3`.
+
 VGAME's `DC46` (`vgame_compose_walk`, 867 bytes / 295 instructions) walks the scene's
 object table and composes every visible object: the alternate drawer, the
 vehicle shapes with their three depth products, and the label markers. Five

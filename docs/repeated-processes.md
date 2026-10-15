@@ -8,6 +8,21 @@ whether they were measured or estimated. The rule behind the page: an
 optimisation must leave every check's inputs, outputs and verdicts
 identical, and the proof is the same verdicts before and after.
 
+## Scene-walk and briefing-loop gate (14 October 2026)
+
+`matched_scene_walk` (2.3 s) and `matched_start_brief_key_loop` (0.6 s) run 5,000 states
+each. The first full gate failed at step 7c, 1,868 s in: the commit-derived seed
+exposed the wrap-around defect in the matched hit test, so a rotating seed can
+fail a commit that did not touch the failing routine; reproduce with
+`func_lockstep --seed S --only MOD:IP` on a build without the new body to tell. The
+rerun with the fix passed in 1,583 s (coverage 623 s, parity 814 s, both again as
+long as `career_promotion`).
+
+Private proofs now use `D:/f117-gate/kit/kit.py` (init, build, lock, seeds,
+mutations, checkpoints, verdict, integrate; the method and traps are in
+`D:/f117-gate/kit/BRIEF.md`), so several routines can be proved at once by
+separate agents in their own directories while one main-tree gate runs.
+
 ## Compose-walk gate (14 October 2026)
 
 `matched_compose_walk` runs 5,000 states of VGAME `DC46` in 0.5 s. The gate

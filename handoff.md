@@ -13,41 +13,47 @@ standing practice, not a session-by-session log. Earlier sessions' detail
 (what was tried, what failed, exact investigation narratives) is in
 `git log -p handoff.md` — it does not need to live here to stay available.
 
-## Current state (14 October, compose walk)
+## Current state (14 October, scene walk and briefing loop)
 
-VGAME `DC46` (`vgame_compose_walk`) is matched, named and gated on top of the
-horizon / world-record pair. Census: 862 functions / 107,360 bytes, P2 61.91%,
-overall 85.09%. Fresh full gate (1,590 s): 78 tests, all 45 routes / 44 fresh
-interpreter sessions, both 5,718,848-state profiles, three 870-address seeds
-(2,907,880 / 2,906,214 / 2,904,010), zero mismatches; audits pass;
-`presentation_check.py --scales 1` reports all 45 routes exact. Proof:
-`D:/f117-gate/p2-compose`.
+VGAME `04E6` (`vgame_scene_walk`) and START `0FA3` (`start_brief_key_loop`) are
+matched and gated on top of `DC46`, the horizon / world-record pair and the menu
+pair. Census: 864 functions / 108,738 bytes, P2 62.64%, overall 85.30%. Fresh full
+gate (1,583 s): 81 tests, all 45 routes / 44 fresh interpreter sessions, both
+5,718,848-state profiles, three 872-address seeds (2,917,868 / 2,916,202 /
+2,918,100), zero mismatches; `presentation_check.py --scales 1` reports all 45
+routes exact. Proof: `D:/f117-gate/p2-batch2` (`gate.log`; the first attempt,
+`p2-scene/gate.log`, failed on the old `393D` defect below).
 
-Trap found: `1450` is also the presentation observer's frame-phase hook. At
-one address only the first override runs, so a matched body there must call
-the observer itself (`observe_game_draw`, like `observe_poly_edge` at 130D:004A)
-and the address goes on `deliberate` in `tests/test_overrides.c`. Before
-matching any address, grep `src/matched/observe.c` for it.
+Traps found today:
+- `1450` is also the presentation observer's frame-phase hook. At one address only
+  the first override runs, so a matched body there must call the observer itself
+  (`observe_game_draw`) and the address goes on `deliberate` in
+  `tests/test_overrides.c`. `kit.py integrate` refuses an address with an observer.
+- The gate's commit-derived seed (rotates with HEAD) can fail a routine the commit
+  did not touch: it found the segment-wrap defect in `hit_test` (START `393D`, END
+  `1C3B`). Reproduce with `func_lockstep --seed S --only MOD:IP` on a build without
+  the new body. Any guard that treats a record as contiguous bytes is wrong when a
+  16-bit offset wraps at FFFFh: test each byte's own linear address.
+- Fixture rules are in `D:/f117-gate/kit/BRIEF.md` (arguments start at SP, not SP+2;
+  `--only` addresses have no leading zero; hex literal ending in E before `+`).
 
-The menu-input pair (START `39F7`, END `1CF5`) landed just before (gate
-1,627 s, proof `D:/f117-gate/p2-next`). Gate speed: `parallel()` now prints
-per-stage wall time and longest jobs; see
-[docs/repeated-processes.md](docs/repeated-processes.md) before changing
-workers. The owner's `f117a.example.ini` edit and untracked `4k60.bat` stay
-untouched.
+Private proofs are made with `D:/f117-gate/kit/kit.py` and may be run by separate
+agents in their own directories while a gate runs in the main tree. Three are ready
+and verified, not yet integrated: VGAME `63F2` (`vgame_traffic_lock_and_fire`,
+`D:/f117-gate/p2-vgame-63f2`), VGAME `528D` (`vgame_ground_site_engage`,
+`p2-vgame-528d`) and START `6861` (`start_draw_pilot_row`, `p2-start-6861`); VGAME
+`0D14` (`p2-vgame-0d14`) was still in progress. To land them: `kit.py DIR integrate`
+for each, `build.cmd OFF`, ctest, one full gate for the batch, `presentation_check`,
+docs, commit. 63F2 and 528D both call 5582, whose fix D6 (at 55EB) runs as original
+code on the real route.
 
-Next P2 candidate: VGAME `04E6` (810 bytes / 276 instructions, terrain tile
-rings), private in `D:/f117-gate/p2-scene`: `vgame_scene.c` is the named body
-(`vgame_scene_walk`), `fixture.inc` the fixture. Five seeds reach all 276
-instructions; the 37-mutation set and the full_cycle proof must pass before
-integrating (use `integrate` as for `DC46`: body before the MATCHED table, row,
-SPANS, COVERED and fixture in the lockstep test, a grouped CTest). Fixture
-traps found: the harness puts the return address BELOW the SP the fixture sets,
-so argument 0 is at SP, not SP+2; `--only` takes the address without a leading
-zero (`4E6`); a hex literal ending in E before `+` is a float token. Other
-candidates: CRT routines with data-dependent `rep` counts (MPS `0146:067C`
+Other candidates: CRT routines with data-dependent `rep` counts (MPS `0146:067C`
 strstr, `0822`) need a prescan for their room claim. A wait inside a body must
-clamp `m->run_until` to `c->stop_at` (see END `2BEC`'s `DN_RUN`).
+clamp `m->run_until` to `c->stop_at` (see END `2BEC`'s `DN_RUN`). Gate speed:
+`parallel()` prints per-stage wall time; both coverage and parity are as long as
+the `career_promotion` seed chain (see
+[docs/repeated-processes.md](docs/repeated-processes.md)). The owner's
+`f117a.example.ini` edit and untracked `4k60.bat` stay untouched.
 
 The 22-routine support batch is integrated and fully gated. Proof:
 `D:/f117-gate/leaf-batch/final-gate-verdict.json`. Fresh full gate: 75 tests,

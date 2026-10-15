@@ -1618,8 +1618,13 @@ static int hit_test(machine_t *m, uint16_t px_at, uint16_t py_at)
     unsigned clocks = 5;
     int found = 0;
     for (uint32_t i = 0; (int32_t)i < (int16_t)n; i++) {
-        const uint32_t r = phys(ds, list);
-        if (r + 7 >= frame_lo && r <= frame_hi + 1) return 0;     /* a rectangle in the frame */
+        /* A rectangle's eight bytes wrap at the segment end (list FFFFh puts its
+         * y0, x1 and y1 words at offsets 1, 3 and 5), so test each byte's own
+         * linear address against the frame, not one contiguous span. */
+        for (unsigned k = 0; k < 8; k++) {
+            const uint32_t at = phys(ds, (uint16_t)(list + k));
+            if (at >= frame_lo && at <= frame_hi + 1) return 0;   /* a rectangle in the frame */
+        }
         const uint16_t x0 = seg_read16(c, ds, list), x1 = seg_read16(c, ds, (uint16_t)(list + 4));
         const uint16_t y0 = seg_read16(c, ds, (uint16_t)(list + 2)), y1 = seg_read16(c, ds, (uint16_t)(list + 6));
         if (x0 > px) clocks += 9;
@@ -44850,7 +44855,528 @@ done:
 #undef KNEAR
 }
 
+/* VGAME 04E6: walk the terrain tiles around the viewpoint, ring by ring, and
+ * compose the objects standing on each. The first argument (bp+4) is the
+ * heading: (1000h - heading) >> 13 picks one of eight sectors. A ring (E328,
+ * from 4 down to 1, and only where [04FA + 2 * ring] is set) first places the
+ * view on a grid cell: 810 rounds each of the three position longs to the
+ * ring's cell size and F018 shifts them down by 12; the low 12 bits stay as
+ * offsets inside the cell. Up to 16 cells per sector are then visited
+ * (STEP; ring 4 at low detail stops at 9, rings below 4 skip steps 4 and
+ * above at low detail): the cell's coordinates come from the sector table at
+ * [034C] (nine entries a sector, two sectors apart for the second axis) or,
+ * when the pitch argument (bp+6) is below D555h, from the near tables [04CC]
+ * and [04DE]. E3AC says whether the cell is out of view, D9E7 stores its
+ * screen position, and 0871 finds the tile (-1: none). Each tile owns a list
+ * of seven-byte entries at [E330 + 2 * (ring * 32 + tile)], counted at [061E
+ * + ...]; 0FBD decides whether an entry is the same object as the previous
+ * hit, and E2B6 draws each (C436 maps the entry's type). Ring 4 at detail 0
+ * also draws its centre tile's first entry on its own. */
+static int vgame_scene_walk(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+    enum { DETAIL=-0xA, SECTOR=-6, STEP=-0x10, CELL_X=-2, CELL_Y=-4, ENTRY=-0xC, ATTR=-0x14,
+           BASE_X=-0x16, BASE_Y=-0x18, X_OFF=-8, Y_OFF=-0xE, LONG_LO=-0x1C, TILE=-0x1E };
+#define SB(n_,at_) do { SM4_NEED((n_),(at_));c->icount+=(n_); } while(0)
+#define SP_(v_) cpu_push16(c,(v_))
+#define SADD(a_,b_) ((uint16_t)alu_add(c,(a_),(b_),1,0))
+#define SSUB(a_,b_) ((uint16_t)alu_sub(c,(a_),(b_),1,0))
+#define SCMP(a_,b_) alu_sub(c,(a_),(b_),1,0)
+#define SNEG(v_) ((uint16_t)alu_sub(c,0,(v_),1,0))
+#define SSHL(v_,n_) ((uint16_t)x86_shift(c,4,(v_),(n_),1))
+#define SDS(o_) ds_get(c,(uint16_t)(o_))
+#define SBXDS(d_) ds_get(c,(uint16_t)(c->r[R_BX]+(d_)))
+#define SSP(n_) (c->r[R_SP]=SADD(c->r[R_SP],(n_)))
+#define SRUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call_);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define SNEAR(at_,target_,ret_) do { SM4_NEED(1,(at_)); SRUN(guest_call_pop(m,(target_),(ret_),0)); } while(0)
+    if(!room(c,4))return 0;
+    SB(4,0x04E6);
+    x86_enter(c,0x20,0);bp_put(c,DETAIL,0);SCMP(SDS(0x990E),2);if(x86_cond(c,13))goto high_detail;
+    SB(2,0x04F6);SCMP(SDS(0x0348),0);if(x86_cond(c,4))goto detail_set;
+high_detail:
+    SB(1,0x04FD);bp_put(c,DETAIL,1);
+detail_set:
+    SB(6,0x0502);
+    c->r[R_AX]=0x1000;c->r[R_AX]=SSUB(c->r[R_AX],bp_get(c,4));c->r[R_AX]=(uint16_t)x86_shift(c,5,c->r[R_AX],0x0D,1);
+    bp_put(c,SECTOR,c->r[R_AX]);ds_put(c,0xE328,4);goto ring_test;
+    /* One cell: the sector table gives its coordinates. */
+cell_lookup:
+    SB(32,0x0517);
+    c->r[R_BX]=x86_imul3(c,bp_get(c,SECTOR),9);c->r[R_AX]=bp_get(c,STEP);c->r[R_BX]=SADD(c->r[R_BX],c->r[R_AX]);
+    c->r[R_BX]=SSHL(c->r[R_BX],1);c->r[R_CX]=ds_get(c,(uint16_t)(c->r[R_BX]+0x034C));bp_put(c,CELL_X,c->r[R_CX]);
+    set_r8(c,R_DL,bp_get8(c,SECTOR));set_r8(c,R_DL,(uint8_t)alu_op(c,0,get_r8(c,R_DL),2,0));
+    c->r[R_DX]=(uint16_t)alu_op(c,4,c->r[R_DX],7,1);
+    c->r[R_BX]=x86_imul3(c,c->r[R_DX],9);c->r[R_BX]=SADD(c->r[R_BX],c->r[R_AX]);c->r[R_BX]=SSHL(c->r[R_BX],1);
+    c->r[R_AX]=ds_get(c,(uint16_t)(c->r[R_BX]+0x034C));bp_put(c,CELL_Y,c->r[R_AX]);
+    c->r[R_CX]=SSHL(c->r[R_CX],0x0C);c->r[R_CX]=SSUB(c->r[R_CX],bp_get(c,X_OFF));c->r[R_CX]=SNEG(c->r[R_CX]);
+    c->r[R_CX]=SSUB(c->r[R_CX],0x0800);ds_put(c,0x9506,c->r[R_CX]);
+    c->r[R_AX]=SSHL(c->r[R_AX],0x0C);c->r[R_AX]=SSUB(c->r[R_AX],bp_get(c,Y_OFF));c->r[R_AX]=SNEG(c->r[R_AX]);
+    c->r[R_AX]=SSUB(c->r[R_AX],0x0800);ds_put(c,0x9508,c->r[R_AX]);ds_put(c,0x49AA,7);
+    c->r[R_DX]=SDS(0x950A);c->r[R_DX]=SNEG(c->r[R_DX]);SP_(c->r[R_DX]);c->r[R_AX]=SNEG(c->r[R_AX]);SP_(c->r[R_AX]);
+    c->r[R_CX]=SNEG(c->r[R_CX]);SP_(c->r[R_CX]);
+    SNEAR(0x0571,0xE3AC,0x0574);
+    SB(3,0x0574);SSP(6);c->r[R_AX]=(uint16_t)alu_op(c,1,c->r[R_AX],c->r[R_AX],1);if(x86_cond(c,5))goto cell_culled;
+    SB(1,0x057B);goto cell_position;
+cell_culled:
+    SB(1,0x057E);goto next_step;
+ring_cell:
+    SB(2,0x0581);SCMP(bp_get(c,STEP),9);if(x86_cond(c,5))goto cell_not_nine;
+    SB(1,0x0587);goto next_ring;
+cell_not_nine:
+    SB(2,0x058A);SCMP(SDS(0xE328),4);if(x86_cond(c,4))goto cell_source;
+    SB(2,0x0591);SCMP(SDS(0x990E),2);if(x86_cond(c,13))goto cell_source;
+    SB(2,0x0598);SCMP(bp_get(c,STEP),4);if(x86_cond(c,13))goto cell_source;
+    SB(1,0x059E);goto next_step;
+    /* Near tables when the pitch argument is below D555h, else the sector table. */
+cell_source:
+    SB(2,0x05A1);SCMP(bp_get(c,6),0xD555);if(x86_cond(c,13))goto cell_from_sector;
+    SB(6,0x05A8);
+    c->r[R_BX]=bp_get(c,STEP);c->r[R_BX]=SSHL(c->r[R_BX],1);c->r[R_AX]=ds_get(c,(uint16_t)(c->r[R_BX]+0x04CC));
+    bp_put(c,CELL_X,c->r[R_AX]);c->r[R_AX]=ds_get(c,(uint16_t)(c->r[R_BX]+0x04DE));goto cell_xy_ready;
+cell_from_sector:
+    SB(13,0x05BA);
+    c->r[R_BX]=x86_imul3(c,bp_get(c,SECTOR),9);c->r[R_AX]=bp_get(c,STEP);c->r[R_BX]=SADD(c->r[R_BX],c->r[R_AX]);
+    c->r[R_BX]=SSHL(c->r[R_BX],1);c->r[R_CX]=ds_get(c,(uint16_t)(c->r[R_BX]+0x034C));bp_put(c,CELL_X,c->r[R_CX]);
+    set_r8(c,R_CL,bp_get8(c,SECTOR));set_r8(c,R_CL,(uint8_t)alu_op(c,0,get_r8(c,R_CL),2,0));
+    c->r[R_CX]=(uint16_t)alu_op(c,4,c->r[R_CX],7,1);
+    c->r[R_BX]=x86_imul3(c,c->r[R_CX],9);c->r[R_BX]=SADD(c->r[R_BX],c->r[R_AX]);c->r[R_BX]=SSHL(c->r[R_BX],1);
+    c->r[R_AX]=ds_get(c,(uint16_t)(c->r[R_BX]+0x034C));
+cell_xy_ready:
+    SB(13,0x05E0);
+    bp_put(c,CELL_Y,c->r[R_AX]);c->r[R_AX]=bp_get(c,CELL_X);c->r[R_AX]=SSHL(c->r[R_AX],0x0C);
+    c->r[R_AX]=SSUB(c->r[R_AX],bp_get(c,X_OFF));c->r[R_AX]=SNEG(c->r[R_AX]);c->r[R_AX]=SSUB(c->r[R_AX],0x0800);
+    ds_put(c,0x9506,c->r[R_AX]);
+    c->r[R_AX]=bp_get(c,CELL_Y);c->r[R_AX]=SSHL(c->r[R_AX],0x0C);
+    c->r[R_AX]=SSUB(c->r[R_AX],bp_get(c,Y_OFF));c->r[R_AX]=SNEG(c->r[R_AX]);c->r[R_AX]=SSUB(c->r[R_AX],0x0800);
+    ds_put(c,0x9508,c->r[R_AX]);
+cell_position:
+    SB(3,0x0605);SP_(SDS(0x950A));SP_(SDS(0x9508));SP_(SDS(0x9506));
+    SNEAR(0x0611,0xD9E7,0x0614);
+    SB(8,0x0614);
+    SSP(6);c->r[R_AX]=bp_get(c,BASE_Y);c->r[R_AX]=SADD(c->r[R_AX],bp_get(c,CELL_Y));SP_(c->r[R_AX]);
+    c->r[R_AX]=bp_get(c,CELL_X);c->r[R_AX]=SADD(c->r[R_AX],bp_get(c,BASE_X));SP_(c->r[R_AX]);SP_(SDS(0xE328));
+    SNEAR(0x0629,0x0871,0x062C);
+    SB(4,0x062C);SSP(6);bp_put(c,TILE,c->r[R_AX]);c->r[R_AX]=(uint16_t)alu_inc(c,c->r[R_AX],1);
+    if(x86_cond(c,5))goto tile_found;
+    SB(1,0x0635);goto next_step;
+tile_found:
+    SB(2,0x0638);SCMP(bp_get(c,STEP),4);if(x86_cond(c,13))goto tile_marker;
+    SB(2,0x063E);SCMP(bp_get(c,DETAIL),0);if(x86_cond(c,5))goto tile_marker;
+    SB(1,0x0644);goto centre_tile;
+tile_marker:
+    SB(2,0x0647);SCMP(SDS(0x990E),2);if(x86_cond(c,5))goto ring_marker;
+    SB(2,0x064E);c->r[R_AX]=SSUB(c->r[R_AX],c->r[R_AX]);goto marker_ready;
+ring_marker:
+    SB(2,0x0652);set_r8(c,R_AH,ds_get8(c,0xE328));set_r8(c,R_AL,(uint8_t)alu_op(c,5,get_r8(c,R_AL),get_r8(c,R_AL),0));
+marker_ready:
+    SB(9,0x0658);
+    ds_put(c,0x0504,c->r[R_AX]);c->r[R_BX]=SDS(0xE328);c->r[R_BX]=SSHL(c->r[R_BX],5);
+    c->r[R_BX]=SADD(c->r[R_BX],bp_get(c,TILE));c->r[R_BX]=SSHL(c->r[R_BX],1);
+    c->r[R_AX]=ds_get(c,(uint16_t)(c->r[R_BX]+0xE330));ds_put(c,0xE476,c->r[R_AX]);bp_put(c,ENTRY,0);goto entry_test;
+    /* One entry of the tile: BX = [E476], its byte +6 the type. */
+entry_plain:
+    SB(4,0x0675);c->r[R_BX]=SDS(0xE476);set_r8(c,R_AL,ds_get8(c,(uint16_t)(c->r[R_BX]+6)));
+    c->r[R_AX]=(uint16_t)alu_op(c,4,c->r[R_AX],0x7F,1);goto type_ready;
+entry_marked:
+    SB(2,0x0681);set_r8(c,R_AL,ds_get8(c,(uint16_t)(c->r[R_BX]+6)));set_r8(c,R_AH,(uint8_t)alu_op(c,5,get_r8(c,R_AH),get_r8(c,R_AH),0));
+type_ready:
+    SB(1,0x0686);bp_put(c,ATTR,c->r[R_AX]);
+draw_entry:
+    SB(9,0x0689);
+    SP_(SBXDS(4));SP_(SBXDS(2));SP_(ds_get(c,c->r[R_BX]));SP_(0);SP_(0);SP_(0);
+    c->r[R_AX]=bp_get(c,ATTR);set_r8(c,R_AH,(uint8_t)alu_op(c,1,get_r8(c,R_AH),1,0));SP_(c->r[R_AX]);
+    SNEAR(0x069E,0xC436,0x06A1);
+    SB(2,0x06A1);c->r[R_BX]=cpu_pop16(c);SP_(c->r[R_AX]);
+    SNEAR(0x06A3,0xE2B6,0x06A6);
+    SB(4,0x06A6);
+    SSP(0x0E);ds_put(c,0xE476,(uint16_t)alu_op(c,0,SDS(0xE476),7,1));
+    ds_put(c,0x0504,(uint16_t)alu_inc(c,SDS(0x0504),1));bp_put(c,ENTRY,(uint16_t)alu_inc(c,bp_get(c,ENTRY),1));
+entry_test:
+    SB(7,0x06B5);
+    c->r[R_AX]=bp_get(c,ENTRY);c->r[R_BX]=SDS(0xE328);c->r[R_BX]=SSHL(c->r[R_BX],5);
+    c->r[R_BX]=SADD(c->r[R_BX],bp_get(c,TILE));c->r[R_BX]=SSHL(c->r[R_BX],1);
+    alu_op(c,7,ds_get(c,(uint16_t)(c->r[R_BX]+0x061E)),c->r[R_AX],1);if(x86_cond(c,7))goto entry_live;
+    SB(1,0x06CA);goto next_step;
+entry_live:
+    SB(6,0x06CD);
+    c->r[R_CX]=SDS(0x98A4);ds_put(c,0xC070,c->r[R_CX]);ds_put(c,0xC06E,c->r[R_CX]);c->r[R_BX]=SDS(0xE476);
+    alu_logic(c,(uint32_t)ds_get8(c,(uint16_t)(c->r[R_BX]+6))&0x80,0);if(x86_cond(c,4))goto entry_marked;
+    SB(8,0x06E3);
+    c->r[R_CX]=bp_get(c,BASE_Y);c->r[R_CX]=SADD(c->r[R_CX],bp_get(c,CELL_Y));SP_(c->r[R_CX]);
+    c->r[R_CX]=bp_get(c,CELL_X);c->r[R_CX]=SADD(c->r[R_CX],bp_get(c,BASE_X));SP_(c->r[R_CX]);SP_(c->r[R_AX]);SP_(SDS(0xE328));
+    SNEAR(0x06F6,0x0FBD,0x06F9);
+    SB(4,0x06F9);SSP(8);bp_put(c,ATTR,c->r[R_AX]);c->r[R_AX]=(uint16_t)alu_op(c,1,c->r[R_AX],c->r[R_AX],1);
+    if(x86_cond(c,5))goto entry_repeat;
+    SB(1,0x0703);goto entry_plain;
+entry_repeat:
+    SB(4,0x0706);
+    c->r[R_BX]=SDS(0xE476);set_r8(c,R_AL,(uint8_t)alu_op(c,6,get_r8(c,R_AL),ds_get8(c,(uint16_t)(c->r[R_BX]+6)),0));
+    alu_logic(c,(uint32_t)get_r8(c,R_AL)&0x7F,0);if(x86_cond(c,4))goto entry_same_type;
+    SB(1,0x0711);goto draw_entry;
+entry_same_type:
+    SB(6,0x0714);
+    c->r[R_AX]=SSUB(c->r[R_AX],c->r[R_AX]);ds_put(c,0xC070,c->r[R_AX]);ds_put(c,0xC06E,c->r[R_AX]);
+    c->r[R_AX]=bp_get(c,ATTR);set_r8(c,R_AH,(uint8_t)alu_op(c,1,get_r8(c,R_AH),0x80,0));goto type_ready;
+centre_tile:
+    SB(2,0x0725);SCMP(SDS(0xE328),4);if(x86_cond(c,5))goto next_step;
+    SB(17,0x072C);
+    c->r[R_BX]=SDS(0xE328);c->r[R_BX]=SSHL(c->r[R_BX],5);c->r[R_BX]=SADD(c->r[R_BX],bp_get(c,TILE));
+    c->r[R_BX]=SSHL(c->r[R_BX],1);c->r[R_AX]=ds_get(c,(uint16_t)(c->r[R_BX]+0xE330));ds_put(c,0xE476,c->r[R_AX]);
+    ds_put(c,0x0504,0x0400);c->r[R_BX]=c->r[R_AX];
+    SP_(SBXDS(4));SP_(SBXDS(2));SP_(ds_get(c,c->r[R_BX]));SP_(0);SP_(0);SP_(0);
+    set_r8(c,R_AL,ds_get8(c,(uint16_t)(c->r[R_BX]+6)));set_r8(c,R_AH,1);SP_(c->r[R_AX]);
+    SNEAR(0x075B,0xE2B6,0x075E);
+    SB(1,0x075E);SSP(0x0E);
+next_step:
+    SB(1,0x0761);bp_put(c,STEP,(uint16_t)alu_inc(c,bp_get(c,STEP),1));
+step_test:
+    SB(2,0x0764);SCMP(SDS(0xE328),4);if(x86_cond(c,5))goto step_more;
+    SB(2,0x076B);SCMP(SDS(0x990E),2);if(x86_cond(c,13))goto step_limit;
+step_more:
+    SB(1,0x0772);goto ring_cell;
+step_limit:
+    SB(2,0x0775);SCMP(bp_get(c,STEP),0x0F);if(x86_cond(c,4))goto next_ring;
+    SB(1,0x077B);goto cell_lookup;
+next_ring:
+    SB(1,0x077E);ds_put(c,0xE328,(uint16_t)alu_dec(c,SDS(0xE328),1));
+ring_test:
+    SB(2,0x0782);SCMP(SDS(0xE328),1);if(x86_cond(c,13))goto ring_active;
+    SB(1,0x0789);goto done;
+    /* The ring's grid cell: each position long rounded by 810 and shifted by 12. */
+ring_active:
+    SB(4,0x078C);
+    c->r[R_BX]=SDS(0xE328);c->r[R_BX]=SSHL(c->r[R_BX],1);SCMP(ds_get(c,(uint16_t)(c->r[R_BX]+0x04FA)),0);
+    if(x86_cond(c,4))goto next_ring;
+    SB(3,0x0799);SP_(bp_get(c,0x0A));SP_(bp_get(c,8));SP_(SDS(0xE328));
+    SNEAR(0x07A3,0x0810,0x07A6);
+    SB(3,0x07A6);SSP(6);bp_put(c,LONG_LO,c->r[R_AX]);set_r8(c,R_CL,0x0C);
+    SNEAR(0x07AE,0xF018,0x07B1);
+    SB(7,0x07B1);
+    bp_put(c,BASE_X,c->r[R_AX]);c->r[R_AX]=bp_get(c,LONG_LO);set_r8(c,R_AH,(uint8_t)alu_op(c,4,get_r8(c,R_AH),0x0F,0));
+    bp_put(c,X_OFF,c->r[R_AX]);SP_(bp_get(c,0x0E));SP_(bp_get(c,0x0C));SP_(SDS(0xE328));
+    SNEAR(0x07C7,0x0810,0x07CA);
+    SB(3,0x07CA);SSP(6);bp_put(c,LONG_LO,c->r[R_AX]);set_r8(c,R_CL,0x0C);
+    SNEAR(0x07D2,0xF018,0x07D5);
+    SB(7,0x07D5);
+    bp_put(c,BASE_Y,c->r[R_AX]);c->r[R_AX]=bp_get(c,LONG_LO);set_r8(c,R_AH,(uint8_t)alu_op(c,4,get_r8(c,R_AH),0x0F,0));
+    bp_put(c,Y_OFF,c->r[R_AX]);SP_(bp_get(c,0x12));SP_(bp_get(c,0x10));SP_(SDS(0xE328));
+    SNEAR(0x07EB,0x0810,0x07EE);
+    SB(4,0x07EE);SSP(6);bp_put(c,LONG_LO,c->r[R_AX]);c->r[R_DX]=(uint16_t)alu_op(c,1,c->r[R_DX],c->r[R_DX],1);
+    if(x86_cond(c,5))goto next_ring;
+    SB(2,0x07F8);alu_op(c,7,c->r[R_AX],0x7FFF,1);if(x86_cond(c,3))goto next_ring;
+    SB(2,0x07FD);alu_op(c,7,c->r[R_AX],2,1);if(x86_cond(c,3))goto depth_ready;
+    SB(1,0x0802);c->r[R_AX]=2;
+depth_ready:
+    SB(3,0x0805);ds_put(c,0x950A,c->r[R_AX]);bp_put(c,STEP,c->r[R_DX]);goto step_test;
+done:
+    SB(2,0x080E);x86_leave(c);near_ret(c);return 1;
+#undef SB
+#undef SP_
+#undef SADD
+#undef SSUB
+#undef SCMP
+#undef SNEG
+#undef SSHL
+#undef SDS
+#undef SBXDS
+#undef SSP
+#undef SRUN
+#undef SNEAR
+}
+
+/* START 0FA3: the briefing page's key loop. It first calls 0F4E, then reads one
+ * event code at a time from the poll 38AC (argument 6D1E) and acts on it until
+ * an event ends the page:
+ *   1, 2, 3  select the pane in [B2E8] (1, 2, 3);
+ *   4        set bit 40h in byte 9 of every listed record whose word 6 is
+ *            nonzero; 5 clears it again (and BFh). The list is [B2E6] rows
+ *            of two record numbers at [B286 + 2 * row] and [B287 + 2 * row]
+ *            (signed bytes, 16-byte records from CBDEh); both then redraw
+ *            through 141D(1);
+ *   6        call 20D6;
+ *   7        call 3989 and return 3;   63h  call 3989 and return 0;
+ *   8        clear [D2A2] and call 1308;
+ *   120h     with pane 1 selected only: ask 393D(6D22h, [6D21]) for a code
+ *            in AL, keep it at BP-2, call 3588 when it exceeds 8, toggle
+ *            [B284], redraw through 141D(1), and for a code above 8 open
+ *            the popup 1C2F(code - 9);
+ *   any event below [6D21] (signed) is a row number: both of its records at
+ *            [B274 + 2 * event] and [B275 + 2 * event] toggle bit 40h of
+ *            byte 9 when word 6 is nonzero, then 3588, 141D(1), 3517(event
+ *            + B7h, 11AFh, 1) and the popup 1C2F(event - 9).
+ * After every other event the pane in [B2E8] is compared with the pane drawn
+ * last ([B285]); when they differ the old pane is erased and the new one
+ * drawn through 3517 (arguments 100h minus the pane, a code, 1), [B285]
+ * takes the new pane and 141D(1) redraws. All callees return with a plain
+ * RET: the pushes after them are this routine's to pop. */
+static int start_brief_key_loop(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+    enum { KEY=-4, CODE=-2, ROW=-8 };
+#define LB(n_,at_) do { SM4_NEED((n_),(at_));c->icount+=(n_); } while(0)
+#define LP(r_) cpu_push16(c,c->r[r_])
+#define LPOP() (c->r[R_BX]=cpu_pop16(c))
+#define LCMP(a_,b_) alu_sub(c,(a_),(b_),1,0)
+#define LCMP8(a_,b_) alu_sub(c,(a_),(b_),0,0)
+#define LCBW() (c->r[R_AX]=(uint16_t)(int16_t)(int8_t)get_r8(c,R_AL))
+#define LAH0() set_r8(c,R_AH,(uint8_t)alu_op(c,5,get_r8(c,R_AH),get_r8(c,R_AH),0))
+#define LSHL(r_,n_) (c->r[r_]=(uint16_t)x86_shift(c,4,c->r[r_],(n_),1))
+#define LAT(d_) ((uint16_t)(c->r[R_BX]+(d_)))
+#define LSP6() (c->r[R_SP]=(uint16_t)alu_op(c,0,c->r[R_SP],6,1))
+#define LRUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call_);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define LNEAR(at_,target_,ret_) do { SM4_NEED(1,(at_)); LRUN(guest_call_pop(m,(target_),(ret_),0)); } while(0)
+    /* The record a row's byte names: BX = CBDEh + 16 * signed byte. */
+#define LROW_RECORD(tab_) do { \
+    c->r[R_BX]=bp_get(c,ROW);LSHL(R_BX,1);set_r8(c,R_AL,ds_get8(c,LAT(tab_)));LCBW(); \
+    c->r[R_BX]=c->r[R_AX];set_r8(c,R_CL,4);c->r[R_BX]=(uint16_t)x86_shift(c,4,c->r[R_BX],get_r8(c,R_CL),1); \
+    c->r[R_BX]=(uint16_t)alu_op(c,0,c->r[R_BX],0xCBDE,1);LCMP(ds_get(c,LAT(6)),0); } while(0)
+    /* The record an event's byte names: byte 9 sits at CBE7h + 16 * signed byte. */
+#define LEVENT_RECORD(tab_) do { \
+    c->r[R_BX]=bp_get(c,KEY);LSHL(R_BX,1);set_r8(c,R_AL,ds_get8(c,LAT(tab_)));LCBW(); \
+    c->r[R_BX]=c->r[R_AX];set_r8(c,R_CL,4);c->r[R_BX]=(uint16_t)x86_shift(c,4,c->r[R_BX],get_r8(c,R_CL),1); \
+    LCMP(ds_get(c,LAT(0xCBE4)),0); } while(0)
+    if(!room(c,3))return 0;
+    LB(3,0x0FA3);
+    frame_open(c,8);
+    LNEAR(0x0FA9,0x0F4E,0x0FAC);
+next_event:
+    LB(2,0x0FAC);
+    c->r[R_AX]=0x6D1E;LP(R_AX);
+    LNEAR(0x0FB0,0x38AC,0x0FB3);
+    LB(4,0x0FB3);
+    LPOP();bp_put(c,KEY,c->r[R_AX]);c->r[R_AX]=(uint16_t)alu_dec(c,c->r[R_AX],1);
+    if(x86_cond(c,5))goto not_one;
+    LB(1,0x0FBA);goto pane_one;
+not_one:
+    LB(2,0x0FBD);c->r[R_AX]=(uint16_t)alu_dec(c,c->r[R_AX],1);
+    if(x86_cond(c,5))goto not_two;
+    LB(1,0x0FC0);goto pane_two;
+not_two:
+    LB(2,0x0FC3);c->r[R_AX]=(uint16_t)alu_dec(c,c->r[R_AX],1);
+    if(x86_cond(c,5))goto not_three;
+    LB(1,0x0FC6);goto pane_three;
+not_three:
+    LB(2,0x0FC9);c->r[R_AX]=(uint16_t)alu_dec(c,c->r[R_AX],1);
+    if(x86_cond(c,5))goto not_four;
+    LB(1,0x0FCC);goto mark_all;
+not_four:
+    LB(2,0x0FCF);c->r[R_AX]=(uint16_t)alu_dec(c,c->r[R_AX],1);
+    if(x86_cond(c,5))goto not_five;
+    LB(1,0x0FD2);goto unmark_all;
+not_five:
+    LB(2,0x0FD5);c->r[R_AX]=(uint16_t)alu_dec(c,c->r[R_AX],1);
+    if(x86_cond(c,5))goto not_six;
+    LB(1,0x0FD8);goto event_six;
+not_six:
+    LB(2,0x0FDB);c->r[R_AX]=(uint16_t)alu_dec(c,c->r[R_AX],1);
+    if(x86_cond(c,5))goto not_seven;
+    LB(1,0x0FDE);goto event_seven;
+not_seven:
+    LB(2,0x0FE1);c->r[R_AX]=(uint16_t)alu_dec(c,c->r[R_AX],1);
+    if(x86_cond(c,5))goto not_eight;
+    LB(1,0x0FE4);goto event_eight;
+not_eight:
+    LB(2,0x0FE7);c->r[R_AX]=(uint16_t)alu_op(c,5,c->r[R_AX],0x005B,1);
+    if(x86_cond(c,5))goto not_end;
+    LB(1,0x0FEC);goto event_end;
+not_end:
+    LB(2,0x0FEF);c->r[R_AX]=(uint16_t)alu_op(c,5,c->r[R_AX],0x00BD,1);
+    if(x86_cond(c,5))goto not_toggle;
+    LB(1,0x0FF4);goto event_toggle;
+not_toggle:
+    LB(4,0x0FF7);
+    set_r8(c,R_AL,ds_get8(c,0x6D21));LAH0();LCMP(c->r[R_AX],bp_get(c,KEY));
+    if(x86_cond(c,14))goto settle;
+    /* A row event: both records of the row toggle bit 40h. */
+    LB(9,0x1001);
+    LEVENT_RECORD(0xB274);
+    if(x86_cond(c,4))goto row_second;
+    LB(1,0x1018);
+    ds_put8(c,LAT(0xCBE7),(uint8_t)alu_op(c,6,ds_get8(c,LAT(0xCBE7)),0x40,0));
+row_second:
+    LB(9,0x101D);
+    LEVENT_RECORD(0xB275);
+    if(x86_cond(c,4))goto row_done;
+    LB(1,0x1034);
+    ds_put8(c,LAT(0xCBE7),(uint8_t)alu_op(c,6,ds_get8(c,LAT(0xCBE7)),0x40,0));
+row_done:
+    LNEAR(0x1039,0x3588,0x103C);
+    LB(2,0x103C);
+    c->r[R_AX]=1;LP(R_AX);
+    LNEAR(0x1040,0x141D,0x1043);
+    LB(8,0x1043);
+    LPOP();c->r[R_AX]=1;LP(R_AX);c->r[R_AX]=0x11AF;LP(R_AX);
+    c->r[R_AX]=bp_get(c,KEY);c->r[R_AX]=(uint16_t)alu_op(c,0,c->r[R_AX],0x00B7,1);LP(R_AX);
+    LNEAR(0x1053,0x3517,0x1056);
+    LB(3,0x1056);
+    LSP6();c->r[R_AX]=bp_get(c,KEY);goto popup;
+pane_one:
+    LB(1,0x105F);
+    ds_put8(c,0xB2E8,1);
+    goto settle;
+    /* The pane in [B2E8] against the pane drawn last in [B285]. */
+settle:
+    LB(3,0x1064);
+    set_r8(c,R_AL,ds_get8(c,0xB2E8));LCMP8(ds_get8(c,0xB285),get_r8(c,R_AL));
+    if(x86_cond(c,5))goto pane_changed;
+    LB(1,0x106D);goto next_event;
+pane_changed:
+    LB(2,0x1070);
+    LCMP8(ds_get8(c,0xB285),0);
+    if(x86_cond(c,4))goto draw_pane;
+    LB(9,0x1077);
+    c->r[R_AX]=1;LP(R_AX);c->r[R_AX]=0x11C4;LP(R_AX);
+    set_r8(c,R_AL,ds_get8(c,0xB285));LCBW();
+    c->r[R_AX]=(uint16_t)alu_op(c,5,c->r[R_AX],0x0100,1);
+    c->r[R_AX]=(uint16_t)alu_sub(c,0,c->r[R_AX],1,0);LP(R_AX);
+    LNEAR(0x1089,0x3517,0x108C);
+    LB(1,0x108C);
+    LSP6();
+draw_pane:
+    LB(9,0x108F);
+    c->r[R_AX]=1;LP(R_AX);c->r[R_CX]=0x11C7;LP(R_CX);
+    set_r8(c,R_AL,ds_get8(c,0xB2E8));LCBW();
+    c->r[R_AX]=(uint16_t)alu_op(c,5,c->r[R_AX],0x0100,1);
+    c->r[R_AX]=(uint16_t)alu_sub(c,0,c->r[R_AX],1,0);LP(R_AX);
+    LNEAR(0x10A1,0x3517,0x10A4);
+    LB(5,0x10A4);
+    LSP6();set_r8(c,R_AL,ds_get8(c,0xB2E8));ds_put8(c,0xB285,get_r8(c,R_AL));
+    c->r[R_AX]=1;LP(R_AX);
+    LNEAR(0x10B1,0x141D,0x10B4);
+    LB(2,0x10B4);
+    LPOP();goto next_event;
+pane_two:
+    LB(2,0x10B8);
+    ds_put8(c,0xB2E8,2);goto settle;
+pane_three:
+    LB(2,0x10BF);
+    ds_put8(c,0xB2E8,3);goto settle;
+    /* 4: mark every listed record. */
+mark_all:
+    LB(2,0x10C6);
+    bp_put(c,ROW,0);goto mark_test;
+mark_row:
+    LB(10,0x10CD);
+    LROW_RECORD(0xB286);
+    if(x86_cond(c,4))goto mark_second;
+    LB(1,0x10E7);
+    ds_put8(c,LAT(9),(uint8_t)alu_op(c,1,ds_get8(c,LAT(9)),0x40,0));
+mark_second:
+    LB(10,0x10EB);
+    LROW_RECORD(0xB287);
+    if(x86_cond(c,4))goto mark_next;
+    LB(1,0x1105);
+    ds_put8(c,LAT(9),(uint8_t)alu_op(c,1,ds_get8(c,LAT(9)),0x40,0));
+mark_next:
+    LB(1,0x1109);
+    bp_put(c,ROW,(uint16_t)alu_inc(c,bp_get(c,ROW),1));
+mark_test:
+    LB(3,0x110C);
+    c->r[R_AX]=ds_get(c,0xB2E6);LCMP(bp_get(c,ROW),c->r[R_AX]);
+    if(x86_cond(c,2))goto mark_row;
+redraw_all:
+    LB(2,0x1114);
+    c->r[R_AX]=1;LP(R_AX);
+    LNEAR(0x1118,0x141D,0x111B);
+redraw_done:
+    LB(2,0x111B);
+    LPOP();goto settle;
+    /* 5: clear the mark on every listed record. */
+unmark_all:
+    LB(2,0x111F);
+    bp_put(c,ROW,0);goto unmark_test;
+unmark_advance:
+    LB(1,0x1126);
+    bp_put(c,ROW,(uint16_t)alu_inc(c,bp_get(c,ROW),1));
+unmark_test:
+    LB(3,0x1129);
+    c->r[R_AX]=ds_get(c,0xB2E6);LCMP(bp_get(c,ROW),c->r[R_AX]);
+    if(x86_cond(c,3))goto redraw_all;
+    LB(10,0x1131);
+    LROW_RECORD(0xB286);
+    if(x86_cond(c,4))goto unmark_second;
+    LB(1,0x114B);
+    ds_put8(c,LAT(9),(uint8_t)alu_op(c,4,ds_get8(c,LAT(9)),0xBF,0));
+unmark_second:
+    LB(10,0x114F);
+    LROW_RECORD(0xB287);
+    if(x86_cond(c,4))goto unmark_advance;
+    LB(2,0x1169);
+    ds_put8(c,LAT(9),(uint8_t)alu_op(c,4,ds_get8(c,LAT(9)),0xBF,0));
+    goto unmark_advance;
+event_six:
+    LNEAR(0x116F,0x20D6,0x1172);
+    LB(1,0x1172);goto settle;
+event_seven:
+    LNEAR(0x1175,0x3989,0x1178);
+    LB(2,0x1178);
+    c->r[R_AX]=3;goto leave;
+event_eight:
+    LB(1,0x117D);
+    ds_put8(c,0xD2A2,0);
+    LNEAR(0x1182,0x1308,0x1185);
+    LB(1,0x1185);goto settle;
+event_end:
+    LNEAR(0x1188,0x3989,0x118B);
+    LB(2,0x118B);
+    c->r[R_AX]=(uint16_t)alu_op(c,5,c->r[R_AX],c->r[R_AX],1);goto leave;
+event_toggle:
+    LB(2,0x118F);
+    alu_op(c,7,ds_get8(c,0xB2E8),0x01,0);
+    if(x86_cond(c,4))goto toggle_ask;
+    LB(1,0x1196);goto settle;
+toggle_ask:
+    LB(5,0x1199);
+    set_r8(c,R_AL,ds_get8(c,0x6D21));LAH0();LP(R_AX);c->r[R_AX]=0x6D22;LP(R_AX);
+    LNEAR(0x11A3,0x393D,0x11A6);
+    LB(5,0x11A6);
+    LPOP();LPOP();bp_put8(c,CODE,get_r8(c,R_AL));alu_op(c,7,get_r8(c,R_AL),0x08,0);
+    if(x86_cond(c,6))goto toggle_flip;
+    LNEAR(0x11AF,0x3588,0x11B2);
+toggle_flip:
+    LB(3,0x11B2);
+    ds_put8(c,0xB284,(uint8_t)alu_op(c,6,ds_get8(c,0xB284),0x01,0));
+    c->r[R_AX]=1;LP(R_AX);
+    LNEAR(0x11BB,0x141D,0x11BE);
+    LB(3,0x11BE);
+    LPOP();alu_op(c,7,bp_get8(c,CODE),0x08,0);
+    if(x86_cond(c,7))goto toggle_popup;
+    LB(1,0x11C5);goto settle;
+toggle_popup:
+    LB(2,0x11C8);
+    set_r8(c,R_AL,bp_get8(c,CODE));LAH0();
+popup:
+    LB(2,0x11CD);
+    c->r[R_AX]=(uint16_t)alu_op(c,5,c->r[R_AX],0x0009,1);LP(R_AX);
+    LNEAR(0x11D1,0x1C2F,0x11D4);
+    LB(1,0x11D4);goto redraw_done;
+leave:
+    LB(3,0x11D7);
+    frame_close_ret(c);
+    return 1;
+#undef LB
+#undef LP
+#undef LPOP
+#undef LCMP
+#undef LCMP8
+#undef LCBW
+#undef LAH0
+#undef LSHL
+#undef LAT
+#undef LSP6
+#undef LRUN
+#undef LNEAR
+#undef LROW_RECORD
+#undef LEVENT_RECORD
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "START.EXE", START_47304, 0x0000, 0x0FA3, start_brief_key_loop, "dispatch the briefing page key events", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x04E6, vgame_scene_walk, "walk the terrain tile rings and compose each tile", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xDC46, vgame_compose_walk, "walk and compose the scene objects", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x1450, vgame_horizon_bands, "project and draw sky and ground bands", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x7904, start_choose_world_record, "choose a world record by type", 1 },

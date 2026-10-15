@@ -400,12 +400,18 @@ if(F117R_BUILD_TESTS)
       --only END.EXE:2BEC)
     add_test(NAME matched_pilot_options COMMAND func_lockstep --states 4000
       --only START.EXE:6DB8)
+    add_test(NAME matched_menu_hit_wrap COMMAND func_lockstep --states 4000 --seed 0xe77d9d194a06
+      --only START.EXE:393D,END.EXE:1C3B)
     add_test(NAME matched_menu_input COMMAND func_lockstep --states 5000
       --only START.EXE:39F7,END.EXE:1CF5)
     add_test(NAME matched_horizon_and_record COMMAND func_lockstep --states 5000
       --only VGAME.EXE:1450,START.EXE:7904)
+    add_test(NAME matched_scene_walk COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:4E6)
     add_test(NAME matched_compose_walk COMMAND func_lockstep --states 5000
       --only VGAME.EXE:DC46)
+    add_test(NAME matched_start_brief_key_loop COMMAND func_lockstep --states 5000
+      --only START.EXE:FA3)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000
