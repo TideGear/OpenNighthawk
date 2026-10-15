@@ -22,7 +22,9 @@
 #include "drawfeed.h"
 #include "diagtag.h"
 #include "hud_overlay.h"
+#include "hud_state.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -96,6 +98,92 @@ static uint64_t ours_pixels(const uint8_t *tag)
     return n;
 }
 
+/* ---- the discrete items' hold: in every in-between picture the texts and numbers (G meter, readouts, station and gun,
+ * ACCEL, TRAINING, the message, the mode-2 heading) and the map arrow's sprite are the older frame's ------------------ */
+static uint64_t g_hold_pairs, g_hold_differ, g_hold_samples, g_hold_bad;
+
+typedef struct { int n; struct { uint8_t item; uint8_t text[HUD_TEXT_MAX + 1]; int16_t x, y; } t[64]; int map_src; } discrete_t;
+
+static void discrete_add(discrete_t *d, const hud_fine_list *fl)
+{
+    for (int i = 0; i < fl->n && d->n < 64; i++) {
+        const hud_fprim *f = &fl->p[i];
+        if (f->type != HF_TEXT) continue;
+        if (f->item != HI_G && (f->item < PI_STATION || f->item == PI_FPM || f->item == PI_CROSS || f->item == PI_STALL || f->item == PI_VS ||
+                                f->item == PI_SINK || f->item == PI_BOX || f->item == PI_CUE)) continue;
+        d->t[d->n].item = f->item;
+        memset(d->t[d->n].text, 0, sizeof d->t[d->n].text);
+        memcpy(d->t[d->n].text, f->text, f->ntext);
+        d->t[d->n].x = (int16_t)floor(f->x0 / g_n + 0.5);
+        d->t[d->n].y = (int16_t)floor(f->y0 / g_n + 0.5);
+        d->n++;
+    }
+}
+
+/* the discrete items of a list's state records, as drawn (hud_state_load_drawn and friends) */
+static void discrete_of(const interp_rec *rec, int nrec, discrete_t *d)
+{
+    static hud_state st;
+    static hud_exact_list ex;
+    static hud_fine_list fl;
+    static hud_panel pn;
+    static uint8_t ds[0x10000];
+    static hud_map mp;
+    memset(d, 0, sizeof *d);
+    d->map_src = -1;
+    for (int i = 0; i < nrec; i++) {
+        const interp_rec *r = &rec[i];
+        if (r->kind == 'h' && hud_state_load_drawn(r->v, r->n, &st) && hud_exact(&st, &ex) == 0 && hud_fine(&st, g_n, &ex, &fl) == 0)
+            discrete_add(d, &fl);
+        if (r->kind == 'p' && hud_panel_load_drawn(r->v, r->n, &pn, ds) && pn.ext && hud_panel_exact(ds, &pn, g_n, NULL, &fl) == 0)
+            discrete_add(d, &fl);
+        if (r->kind == 'm' && hud_map_load_drawn(r->v, r->n, &mp)) d->map_src = mp.src_x * 1000 + mp.art[5] + mp.art[6] * 7 + mp.art[9] * 13;
+    }
+}
+
+static int discrete_same(const discrete_t *a, const discrete_t *b)
+{
+    if (a->n != b->n || a->map_src != b->map_src) return 0;
+    for (int i = 0; i < a->n; i++)
+        if (a->t[i].item != b->t[i].item || memcmp(a->t[i].text, b->t[i].text, sizeof a->t[i].text) || a->t[i].x != b->t[i].x ||
+            a->t[i].y != b->t[i].y) return 0;
+    return 1;
+}
+
+static void hold_check(const drawlive_step *a, const drawlive_step *b)
+{
+    static discrete_t da, db, dt;
+    static interp_list l;
+    discrete_of(a->rec, a->nrec, &da);
+    discrete_of(b->rec, b->nrec, &db);
+    g_hold_pairs++;
+    if (!discrete_same(&da, &db)) g_hold_differ++;
+    const double ts[4] = { 0.25, 0.5, 0.75, 1 - 1e-9 };
+    for (int k = 0; k < 4; k++) {
+        int sb;
+        interp_inbetween_ex(a->parsed, b->parsed, b->pair, ts[k], INTERP_VERTICES | INTERP_HUD | INTERP_HUD_HOLD, &l, &sb, NULL);
+        discrete_of(l.rec, l.n, &dt);
+        g_hold_samples++;
+        if (!discrete_same(&dt, &da)) {
+            g_hold_bad++;
+            if (g_hold_bad < 5) {
+                printf("hold: pair %llu t %.3f: the discrete items are not the older frame's (%d items, map %d; older %d, %d):",
+                       (unsigned long long)g_hold_pairs, ts[k], dt.n, dt.map_src, da.n, da.map_src);
+                for (int i = 0; i < dt.n && i < da.n; i++)
+                    if (memcmp(dt.t[i].text, da.t[i].text, sizeof dt.t[i].text) || dt.t[i].x != da.t[i].x || dt.t[i].y != da.t[i].y)
+                        printf(" [%d '%s' %d,%d vs '%s' %d,%d]", dt.t[i].item, dt.t[i].text, dt.t[i].x, dt.t[i].y, da.t[i].text, da.t[i].x, da.t[i].y);
+                printf("\n");
+            }
+        }
+    }
+    /* at t = 1 the newer frame itself */
+    int sb;
+    interp_inbetween_ex(a->parsed, b->parsed, b->pair, 1.0, INTERP_VERTICES | INTERP_HUD | INTERP_HUD_HOLD, &l, &sb, NULL);
+    discrete_of(l.rec, l.n, &dt);
+    g_hold_samples++;
+    if (!discrete_same(&dt, &db)) { g_hold_bad++; if (g_hold_bad < 5) printf("hold: pair %llu t 1: not the newer frame's\n", (unsigned long long)g_hold_pairs); }
+}
+
 static void inbetweens(void)
 {
     const drawlive_step *a, *b;
@@ -105,6 +193,7 @@ static void inbetweens(void)
     if (last == b->seq) return;
     last = b->seq;
     g_pairs_seen++;
+    hold_check(a, b);
     static present_frame fr;
     const double ts[3] = { 0.25, 0.5, 0.75 };
     for (int k = 0; k < 3; k++) {
@@ -216,9 +305,11 @@ int main(int argc, char **argv)
     for (int k = 0; k < HUD_STATS; k++) printf("%s%s %llu", k ? ", " : "", hud_overlay_stat_name(k), (unsigned long long)st[k]);
     printf("\n%llu in-between pictures drawn (%llu failed); state-driven HUD pixels in them %llu\n",
            (unsigned long long)g_between, (unsigned long long)g_between_bad, (unsigned long long)g_ours_px);
+    printf("hold: %llu pairs (%llu whose two frames differ in a discrete item), %llu samples at t = 1/4, 1/2, 3/4, 1 - 1e-9 and 1, %llu with the wrong frame's items\n",
+           (unsigned long long)g_hold_pairs, (unsigned long long)g_hold_differ, (unsigned long long)g_hold_samples, (unsigned long long)g_hold_bad);
     int fail = 0;
     if (live.inexact || live.pairs_inexact || g_between_bad || !live.exact) fail = 1;
-    if (!old && (st[5] || !st[1] || st[9] || !g_ours_px)) fail = 1;   /* st[9] counts only with --leak-check */
+    if (!old && (st[5] || !st[1] || st[9] || !g_ours_px || st[13] || g_hold_bad)) fail = 1;   /* st[9] counts only with --leak-check */
     printf(fail ? "FAIL\n" : "PASS\n");
     return fail;
 }

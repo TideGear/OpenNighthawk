@@ -26,7 +26,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef struct { uint64_t t; char kind; int n; int v[48]; } rec_t;
+typedef struct { uint64_t t; char kind; int n; int v[80]; } rec_t;
 
 static rec_t *g_rec;
 static int g_nrec, g_crec;
@@ -54,8 +54,8 @@ static int load_log(const char *path)
         r.t = (uint64_t)strtoull(p, &end, 10);
         p = end;
         r.kind = k;
-        int n = 0, want = k == 'T' ? 13 + 12 : k == 'N' ? 7 : k == 'H' ? 9 : 14;
-        while (n < want && n < 48) {
+        int n = 0, want = k == 'T' ? 13 + HUD_TEXT_MAX + 1 : k == 'N' ? 7 : k == 'H' ? 9 : 14;
+        while (n < want && n < 80) {
             const long v = strtol(p, &end, 10);
             if (end == p) break;
             r.v[n++] = (int)v;
@@ -64,14 +64,14 @@ static int load_log(const char *path)
         r.n = n;
         if (k == 'T') {
             /* entry, page, 11 block words, count, chars: regroup as entry, 11 words, count, chars */
-            int w[48];
+            int w[80];
             memcpy(w, r.v, sizeof w);
             r.v[0] = w[0];
             for (int i = 0; i < 11; i++) r.v[1 + i] = w[2 + i];
             r.v[12] = w[13];
-            for (int i = 0; i < 12 && i < w[13]; i++) r.v[13 + i] = w[14 + i];
+            for (int i = 0; i < HUD_TEXT_MAX + 1 && i < w[13]; i++) r.v[13 + i] = w[14 + i];
         }
-        if (k == 'S' && r.v[0] != 18 && r.v[0] != 71) continue;
+        if (k == 'S' && r.v[0] != 18 && r.v[0] != 71 && r.v[0] != 73) continue;
         add_rec(&r);
     }
     free(line);
@@ -94,6 +94,10 @@ static int match(const hud_prim *p, const rec_t *r)
     case HP_H: return r->kind == 'H' && p->si == r->v[0] && p->bx == (int16_t)r->v[1] && p->dl == r->v[2] && p->cl == r->v[3];
     case HP_S18:                                   /* the blit's block: source segment and x, y, page, destination x, y, size */
         if (r->kind != 'S' || r->v[0] != 18) return 0;
+        for (int k = 0; k < 8; k++) if (p->blk[k] != (uint16_t)r->v[2 + k]) return 0;
+        return 1;
+    case HP_S:
+        if (r->kind != 'S' || r->v[0] != p->entry) return 0;
         for (int k = 0; k < 8; k++) if (p->blk[k] != (uint16_t)r->v[2 + k]) return 0;
         return 1;
     }
@@ -176,6 +180,53 @@ static void check_panel(const uint8_t *ds, uint64_t tf, const char *name, int pa
             if (d < st_lo) st_lo = d;
             if (d > st_hi) st_hi = d;
         }
+    }
+}
+
+/* The panel pass's EXACT list (hud_panel_exact) against the log's records of the pass, which come before the HUD pass's:
+ * every predicted record in order, field for field, other calls of the pass allowed between them. far40 and far42 (the
+ * settings record's words, outside the data segment) are given. Per item kind, the counts compared. */
+static long pe_pass, pe_ok, pe_bad, pe_items[HI_COUNT], pe_foreign_t, pe_foreign_n;
+static void check_panel_exact(const uint8_t *ds, int far40, int far42, const int *idx, int nidx, const char *name, int pass)
+{
+    static hud_exact_list pex;
+    hud_panel pn;
+    hud_panel_from_ds(ds, &pn);
+    pn.far40 = far40; pn.far42 = far42;
+    if (hud_panel_exact(ds, &pn, 1, &pex, NULL) < 0) { pe_bad++; printf("%s pass %d: panel model failed\n", name, pass); return; }
+    pe_pass++;
+    int j = 0;
+    for (int r = 0; r < nidx && j < pex.n; r++) {
+        const rec_t *rc = &g_rec[idx[r]];
+        if (match(&pex.p[j], rc)) { j++; continue; }
+        if (rc->kind == 'T' && rc->v[0] == 5) pe_foreign_t++;
+        if (rc->kind == 'N' && rc->v[6] == 0) pe_foreign_n++;
+    }
+    if (j == pex.n) {
+        pe_ok++;
+        for (int i = 0; i < pex.n; i++) if (pex.p[i].kind != HP_K) pe_items[pex.p[i].item]++;
+        return;
+    }
+    pe_bad++;
+    if (pe_bad < 8) {
+        const hud_prim *p = &pex.p[j];
+        printf("%s pass %d: panel item %d of %d (item %d, kind %d) not found:", name, pass, j, pex.n, p->item, p->kind);
+        if (p->kind == HP_T) printf(" T e%d '%.*s' x%d y%d", p->entry, p->ntext, p->text, p->blk[4], p->blk[5]);
+        if (p->kind == HP_N) printf(" N %d %d %d %d o%d", p->x0, p->y0, p->x1, p->y1, p->origin);
+        if (p->kind == HP_K) printf(" K %d", p->colour);
+        if (p->kind == HP_S) printf(" S%d %u %u -> %u %u", p->entry, p->blk[1], p->blk[2], p->blk[4], p->blk[5]);
+        printf("\n   log:");
+        for (int r = 0; r < nidx; r++) {
+            const rec_t *rc = &g_rec[idx[r]];
+            if (rc->kind == 'T') {
+                printf(" T%d'", rc->v[0]);
+                for (int k = 0; k < rc->v[12] && k < 20; k++) putchar(rc->v[13 + k]);
+                printf("'@%d,%d", rc->v[1 + 4], rc->v[1 + 5]);
+            } else if (rc->kind == 'N') printf(" N%d,%d-%d,%d", rc->v[0], rc->v[1], rc->v[2], rc->v[3]);
+            else if (rc->kind == 'K') printf(" K%d", rc->v[0]);
+            else if (rc->kind == 'S') printf(" S%d", rc->v[0]);
+        }
+        printf("\n");
     }
 }
 
@@ -397,9 +448,18 @@ int main(int argc, char **argv)
                     }
                 continue;
             }
-            (void)at;
             check_fine(&st, &ex, 4, name, (int)s);
             check_panel(ds, tf, name, (int)s);
+            {
+                /* the panel pass's records: the snapshot is taken 21,000 instructions before the HUD frame, which in some
+                 * passes is after the pass's first text, so they are looked for from further back */
+                static int pidx[1024];
+                int np = 0;
+                const uint64_t end = g_rec[idx[at]].t;
+                for (int r = 0; r < g_nrec && np < 1024; r++)
+                    if (g_rec[r].t + 45000 >= tf && g_rec[r].t < end) pidx[np++] = r;
+                check_panel_exact(ds, 0, 0, pidx, np, name, (int)s);
+            }
         }
         fclose(sf);
         printf("%-8s %ld passes: %ld exact, %ld mismatched\n", name, (long)count, wp, wb);
@@ -415,6 +475,9 @@ int main(int argc, char **argv)
     printf("panel items: %ld records of the flight-path marker's and the bars' geometry, %ld recognised by their integer formulas, %ld not (marker %ld, vertical-speed bar %ld, stall bar %ld); integer minus float: marker top [%.2f, %.2f], vertical-speed bar end [%.2f, %.2f], stall bar top [%.2f, %.2f]\n",
            c_pn_cand, c_pn_ok, c_pn_bad, c_fpm, c_vs, c_stall, fpm_lo, fpm_hi, vs_lo, vs_hi, st_lo, st_hi);
     printf("tick scale colour equal to the tape text colour: %ld of %ld H records\n", h_colour_ok, h_colour_ok + h_colour_bad);
+    printf("panel EXACT (settings words taken as 0): %ld passes, %ld with every predicted record in order, %ld not; items:", pe_pass, pe_ok, pe_bad);
+    for (int k = 0; k < HI_COUNT; k++) if (pe_items[k]) printf(" %d:%ld", k, pe_items[k]);
+    printf("; records of the pass between them: T(5) %ld, N(origin 0) %ld\n", pe_foreign_t, pe_foreign_n);
     g_fail += c_label_bad + c_tick_bad + c_head_bad + c_off_bad + h_colour_bad + c_pn_bad;
     /* the analysis's measured windows for the ladder: vertices x in [-3, +5], y in [-3, +1] */
     if (ladx_lo < -3 || ladx_hi > 5 || lady_lo < -3 || lady_hi > 1) { printf("ladder vertex window exceeded\n"); g_fail++; }

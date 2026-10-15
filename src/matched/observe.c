@@ -323,9 +323,63 @@ void observe_panel_pass(machine_t *m)
     if (!o || !o->prim || !o->hud) return;
     cpu_t *c = &m->cpu;
     const uint16_t ds = c->seg[S_DS];
-    const int32_t v[HUD_PANEL_N] = { HUD_PANEL_VERSION, peek16(c, ds, 0x98F6), peek16(c, ds, 0xE586), peek16(c, ds, 0xE474),
-                                     peek16(c, ds, 0xB07E), peek16(c, ds, 0xB194), peek8(c, ds, 0x294A), peek8(c, ds, 0x294B) };
-    o->prim(o->user, c->icount, 'p', v, HUD_PANEL_N);
+    static int32_t v[HUD_PANEL_MAX];
+    const int32_t head[HUD_PANEL_N] = { HUD_PANEL_VERSION, peek16(c, ds, 0x98F6), peek16(c, ds, 0xE586), peek16(c, ds, 0xE474),
+                                        peek16(c, ds, 0xB07E), peek16(c, ds, 0xB194), peek8(c, ds, 0x294A), peek8(c, ds, 0x294B) };
+    int n = 0;
+    for (int k = 0; k < HUD_PANEL_N; k++) v[n++] = head[k];
+    /* the rest of the pass's inputs (hud_state.h): the settings record behind [9924], then pieces of the data segment */
+    v[n++] = HUD_PANEL_EXT_MAGIC;
+    const uint16_t soff = peek16(c, ds, 0x9924), sseg = peek16(c, ds, 0x9926);
+    v[n++] = peek16(c, sseg, (uint16_t)(soff + 0x40));
+    v[n++] = peek16(c, sseg, (uint16_t)(soff + 0x42));
+    const int count_at = n++;
+    int pieces = 0;
+    uint16_t at[HUD_PANEL_NSEG + 5], len[HUD_PANEL_NSEG + 5];
+    for (int k = 0; k < HUD_PANEL_NSEG; k++) { at[pieces] = hud_panel_seg[k][0]; len[pieces++] = hud_panel_seg[k][1]; }
+    const uint16_t kind = peek16(c, ds, (uint16_t)(0x3670 + 4 * peek16(c, ds, 0x3680)));
+    at[pieces] = peek16(c, ds, 0x4010); len[pieces++] = 0x18;
+    at[pieces] = peek16(c, ds, 0x4028); len[pieces++] = 0x18;
+    at[pieces] = (uint16_t)(0x369A + 26 * kind); len[pieces++] = 26;
+    at[pieces] = 0xC5A4; len[pieces++] = 64;
+    at[pieces] = (uint16_t)(0xB2D0 + 16 * peek16(c, ds, 0xE00C)); len[pieces++] = 16;
+    for (int k = 0; k < pieces && n + 2 + len[k] <= HUD_PANEL_MAX; k++) {
+        v[n++] = at[k];
+        v[n++] = len[k];
+        for (int b = 0; b < len[k]; b++) v[n++] = peek8(c, ds, (uint16_t)(at[k] + b));
+        v[count_at] = k + 1;
+    }
+    o->prim(o->user, c->icount, 'p', v, n);
+}
+
+/* VGAME 0000:3ADA at 3D95, just before the player's arrow is blitted onto the moving map: the words its position and
+ * its sprite come from (hud_state.h, 'm'), and the arrow's 16 bytes read the way the blit will read them. */
+void observe_map_marker(machine_t *m)
+{
+    const f117_observer *o = g_f117_observer;
+    if (!o || !o->prim || !o->hud) return;
+    cpu_t *c = &m->cpu;
+    const uint16_t ds = c->seg[S_DS], ss = c->seg[S_SS], bp = c->r[R_BP];
+    int32_t v[HUD_MAP_N];
+    int n = 0;
+    v[n++] = HUD_MAP_VERSION;
+    v[n++] = peek16(c, ds, 0xC0D0); v[n++] = peek16(c, ds, 0xC0DE);
+    v[n++] = peek16(c, ds, 0xBA3C); v[n++] = peek16(c, ds, 0xBA3E);
+    v[n++] = peek16(c, ds, 0xC056); v[n++] = peek16(c, ds, 0xC058);
+    v[n++] = peek16(c, ds, 0x40B2); v[n++] = peek16(c, ds, 0x40B4); v[n++] = peek8(c, ds, 0x40AE);
+    const uint16_t hdg = peek16(c, ds, 0x2DEE);
+    v[n++] = hdg;
+    v[n++] = peek16(c, ss, (uint16_t)(bp - 2)); v[n++] = peek16(c, ss, (uint16_t)(bp - 4));
+    const int sx = 0x100 + 4 * ((((hdg + 0x1000) & 0xFFFF) >> 13) & 7);
+    v[n++] = sx;
+    /* the driver of entry 73: its jump slot 1E42:0287 is in VGAME's data segment (the hooks read it through CS, which
+     * is that segment while a slot runs; here CS is VGAME's code) */
+    const uint16_t drv = peek16(c, ds, 0x0287 + 3), src = peek16(c, ds, 0xE584);
+    for (int y = 0; y < 4; y++) {
+        const uint16_t row = (uint16_t)(peek16(c, drv, (uint16_t)(4 + 2 * (4 + y))) + sx);
+        for (int x = 0; x < 4; x++) v[n++] = peek8(c, src, (uint16_t)(row + x));
+    }
+    o->prim(o->user, c->icount, 'm', v, n);
 }
 
 void observe_game_draw(machine_t *m) { hook_game_draw(m); }
@@ -947,7 +1001,16 @@ static void any_begin_display(machine_t *m, int entry, uint16_t page)
     g_any_display.on = 1;
 }
 
+/* VGAME 0000:3D95 on the original path (the matched update emits the record itself, or yields to the original at
+ * this very address): the map arrow's record */
+static int hook_map_marker(machine_t *m)
+{
+    observe_map_marker(m);
+    return 0;
+}
+
 static const recomp_override OBSERVERS[] = {
+    { "observe", "VGAME.EXE", VGAME_47304, 0x0000, 0x3D95, hook_map_marker, "map arrow blit (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x120A, 0x08D5, hook_vertex_return, "orthographic left-shift projection return (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x120A, 0x0901, hook_vertex_return, "orthographic rounded projection return (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x120A, 0x0937, hook_vertex_return, "far perspective projection return (observer)", 1 },

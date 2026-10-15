@@ -1285,6 +1285,45 @@ The isolated strike replay passes Direct3D 11 at 3840x2160 / 59.99 Hz / vsync / 
 median 16.6679 ms, p99 16.7314, worst 17.0385, no missed intervals and 11.6 ms guest drift. All 2,062 logic frames
 are exact; final hash `bc8e3ae5a872405d` matches the fresh headless reference. Physical-panel motion remains an owner check.
 
+## The remaining HUD and original map-marker movement (15 October 2026)
+
+The state-driven HUD now also covers its frame, reticle and G readout, plus the panel pass's station/gun text,
+digital readouts, cue, outlines and messages. Bitmap fonts and sprites are the original art. The map aircraft
+marker remains the original 4x4 bitmap selected from eight headings; only its position moves on the fine grid.
+Its continuous position comes from the original 32-bit aircraft coordinates, with the map's zoom, origin and
+16-bit subtraction wrap preserved. No replacement graphics are introduced.
+
+Continuous values interpolate; numbers, text, switches and the selected arrow bitmap stay with the older logic
+frame until the newer frame arrives. The original calls of the selected frame still update the coarse replay.
+Extended panel records preserve the earlier eight-word format, and missing fonts or sprite art retain the original
+path until available. `F117_PRESENT_HUD=old` retains the existing off switch. Horizon interpolation and discrete HUD
+holding use separate option bits.
+
+Fresh captures cover all six full/small HUD modes, three altitude bands, ladder-off passes and steep-pitch rungs.
+The exact models match 29,594 HUD calls over 711 passes, 11,490 panel calls over 710 passes, and all 714 map-marker
+blits. The corpus checker rejects an empty capture: seven files in the stopped draft had contained no records.
+ROM-free tests check all eight synthetic arrow bitmaps pixel for pixel, transparency, coarse replay, fine movement,
+heading timing and wrapped map origins. The pre-fix map-origin model fails that rendered-pixel regression. Observer
+tests verify every sprite byte and unchanged guest memory, registers and clocks under both timing profiles.
+
+Validation: 111 selected CTests; fresh full gate with all 45 routes / 44 fresh interpreter sessions, both 5,718,848-state
+instruction profiles and three 891-address matched seeds, zero mismatches, reachability/event checks passing.
+All 45 N=1 presentation routes retain 259,240 frames / 259,166 pairs; boot N=4/9 retains 368/366 each. All 96 retained
+checks and 34 live checks over 17 fresh windows pass. The owner's complete N=9 replay retains 69 checkpoints and
+final hash `31c259b992340414`, with 2,101 exact logic frames / 2,099 exact pairs and no drops or prediction mismatches.
+
+N=9 fly1: the map arrow's horizontal second-difference RMS falls 0.75 -> 0.00 fine pixels (286 samples), and the
+vertical-speed bar 3.19 -> 0.43. Small-HUD loop: the arrow's vertical RMS falls 0.84 -> 0.00 (458 samples).
+The full owner replay also confirms the map's terrain is refined geometry. A short window that begins after the
+map was cached can instead show its original bitmap; that window alone cannot prove the live map is blocky.
+Do not force `F117R_OBSERVE_PAGES=1` on a live presentation run: it reseeds every phase and prevents pairing.
+
+The owner requires background checks and no visible/fullscreen tests without asking first. The interrupted
+fullscreen timing attempt supplies no acceptance result. A hidden Direct3D 11 3840x2160 target measures 119.47,
+127.45 and 150.10 fps over strike, mode-2 and small-HUD windows; regeneration/raster p99 stays below 5 ms.
+Occasional upload stalls reach about 100 ms. This is uncapped throughput, **not** steady-refresh acceptance;
+fullscreen pacing for this batch remains unchecked. Evidence: `D:/f117-gate/present-v2/hud2`.
+
 ## Open questions and risks
 
 - **Pairing for interpolation.** Done for 86-99% of painted polygons by batch alignment

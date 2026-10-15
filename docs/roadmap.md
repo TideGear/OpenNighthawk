@@ -1320,6 +1320,15 @@ instruction profiles and three 789-address matched seeds (2,561,209,
   is unchanged. Regenerated pictures also omit obsolete post-copy snapshots, which had put coarse ghosts over fine
   edges; raw-frame changed-byte fallbacks remain tested. Low detail, incompatible geometry and coastline topology
   transitions remain separate work. Details: [presentation.md](presentation.md#the-state-driven-sky-and-ground-bands-15-october-2026).
+  The remaining HUD/panel items and the original map arrow now also move from state. The original fonts and eight
+  4x4 arrow bitmaps remain; text, switches and sprite heading change on the logic frame, while continuous position
+  uses the aircraft's 32-bit coordinates and preserves map-origin wrap. All six HUD modes match 29,594 original HUD
+  calls, 11,490 panel calls and 714 arrow blits. A fresh full gate, 111 CTests, all 45 N=1 routes, boot N=4/9 and 130
+  retained/live checks pass. The complete owner replay retains 2,101 frames / 2,099 pairs and all guest hashes;
+  its map terrain remains refined geometry. Hidden 4K throughput passes coarse replay and averages 119-150 fps,
+  but the interrupted fullscreen run is not refresh acceptance. Keep tests off the owner's screen; ask before a
+  visible/fullscreen run. Coastline topology transitions and width tuning remain open. Details:
+  [presentation.md](presentation.md#the-remaining-hud-and-original-map-marker-movement-15-october-2026).
   Open: the owner's motion review on a physical
   panel, and cargo/career flights and slower machines. See presentation.md.
 

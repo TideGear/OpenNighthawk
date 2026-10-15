@@ -144,6 +144,32 @@ roughly 100 ms upload stall. Short landing and air-to-air runs also exceed
 the steady-refresh check. Private sources and
 logs: `D:/f117-gate/p3-styles/bench` and `guard-before/after-*`.
 
+## HUD/map follow-up checks (15 October 2026)
+
+The stopped HUD2 draft had seven empty capture files; model success without records was not evidence. The checker
+now fails such a file. Seventeen fresh observer windows contain all six HUD layouts, ladder-off and steep-pitch
+passes, and match 29,594 HUD calls, 11,490 panel calls and 714 original arrow blits. Thirty-four live N=4/9 checks
+and 96 retained checks pass. The new ROM-free rendered-marker test checks all eight synthetic bitmaps, transparency,
+heading timing and wrapped origins; the old origin calculation fails it. Direct observer tests preserve all guest
+state in both timing profiles. Full gate: 111 CTests, all 45 routes / 44 fresh interpreter sessions, both instruction
+profiles, three matched seeds (3,012,188 / 3,010,490 / 3,011,451 comparisons), no mismatches or event/reachability
+failures (1,898 s). Coverage added no generated code. The simultaneous eight-worker N=1 presentation check took
+1,321.61 s and retained 259,240 frames / 259,166 pairs; its baseline logs and latest saves were frozen before the
+gate could overwrite them. Boot N=4/9 takes 58.91 s, 368 frames / 366 pairs each.
+
+A full owner replay must use a fresh copy of `save-start` and the input header's 20 MIPS / time. Live drawfeed already
+asks for the sources and its first page seed: leave `F117R_OBSERVE_PAGES` unset. Forcing it reseeds every phase,
+prevents interpolation pairs and loses carried fine map terrain. The corrected N=9 run preserves 69 checkpoints,
+2,101 logic frames / 2,099 pairs and final `31c259b992340414`; its map origin plane is refined model geometry.
+Create the diagnostic output directory before running: the writer does not create it.
+
+Keep all future automated checks headless or hidden. The owner stopped the visible fullscreen timing run; it is not
+acceptance evidence. A private hidden 3840x2160 Direct3D 11 probe uses the current library and all state/interpolation
+flags, carries the replay and verifies its coarse frames, then draws five intermediates per pair. Strike/mode-2/small
+windows measure 119.47 / 127.45 / 150.10 fps, regeneration/raster p99 below 5 ms, with occasional roughly 100 ms upload
+stalls. These uncapped numbers do not prove fullscreen refresh pacing. Ask before another visible/fullscreen run.
+Evidence and private probe: `D:/f117-gate/present-v2/hud2`.
+
 ## World-line projection and stroke checks (15 October 2026)
 
 After the full-precision projection and shared pen changes: 104 CTests pass

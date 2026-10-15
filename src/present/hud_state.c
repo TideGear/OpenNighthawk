@@ -144,12 +144,16 @@ int hud_clip_line(int x0, int y0, int x1, int y1, int xmax, int ymax, int16_t ou
 
 typedef struct { hud_exact_list *out; } xout_t;
 
+static F117_TLS int g_item;                   /* the item the prims being made belong to (HI_ / PI_) */
+static F117_TLS int g_overflow;
+
 static hud_prim *prim_new(hud_exact_list *l, int kind)
 {
-    if (l->n >= HUD_MAX_EXACT) return NULL;
+    if (l->n >= HUD_MAX_EXACT) { g_overflow = 1; return NULL; }
     hud_prim *p = &l->p[l->n++];
     memset(p, 0, sizeof *p);
     p->kind = (uint8_t)kind;
+    p->item = (uint8_t)g_item;
     return p;
 }
 
@@ -175,7 +179,7 @@ static void x_t(hud_exact_list *l, const mem_t *m, int entry, int blk, int strp,
     p->keep = (uint8_t)keep;
     for (int k = 0; k < 11; k++) p->blk[k] = (uint16_t)MW(m, blk + 2 * k);
     int len = 0;
-    while (len < 11 && MB(m, strp + len)) { p->text[len] = MB(m, strp + len); len++; }
+    while (len < HUD_TEXT_MAX && MB(m, strp + len)) { p->text[len] = MB(m, strp + len); len++; }
     p->ntext = (uint8_t)len;
 }
 
@@ -218,6 +222,8 @@ int hud_exact(const hud_state *st, hud_exact_list *out)
     memcpy(buf, st->ds, sizeof buf);
     mem_t m = { buf }, *d = &m;
     out->n = 0;
+    g_overflow = 0;
+    g_item = HI_ASPD;
     const int mode = MB(d, 0x294A), half = MB(d, 0x294B);
 
     /* the preamble: AX = AL of entry 45 into the eight blocks' page words */
@@ -264,17 +270,19 @@ int hud_exact(const hud_state *st, hud_exact_list *out)
         x_h(out, 0, MW(d, 0x2952), s8(MB(d, 0x2971)), MB(d, 0x294B));
     }
     /* ---- the fixed pointer marks ---------------------------------------------------------------- */
+    g_item = HI_MARKS;
     if (mode <= 1) {
         x_k(out, MB(d, 0x2CA0));
         if (half) {
-            if (mode == 0) { x_n(out, 0x7A, 0x3C, 0x7C, 0x3C, 0, 1); x_n(out, 0xC4, 0x3C, 0xC6, 0x3C, 0, 1); }
-            x_n(out, 0x9F, 0x1D, 0x9F, 0x1E, 0, 1);
+            if (mode == 0) { x_n(out, 0x7A, 0x3C, 0x7C, 0x3C, 0, 0); x_n(out, 0xC4, 0x3C, 0xC6, 0x3C, 0, 0); }
+            x_n(out, 0x9F, 0x1D, 0x9F, 0x1E, 0, 0);
         } else {
-            if (mode == 0) { x_n(out, 0x49, 0x34, 0x4C, 0x34, 0, 1); x_n(out, 0xF3, 0x34, 0xF6, 0x34, 0, 1); }
-            x_n(out, 0x9F, 0x10, 0x9F, 0x12, 0, 1);
+            if (mode == 0) { x_n(out, 0x49, 0x34, 0x4C, 0x34, 0, 0); x_n(out, 0xF3, 0x34, 0xF6, 0x34, 0, 0); }
+            x_n(out, 0x9F, 0x10, 0x9F, 0x12, 0, 0);
         }
     }
     /* ---- altitude tape -------------------------------------------------------------------- */
+    g_item = HI_ALT;
     if (mode == 0) {
         const int alt = MW(d, 0x2DF6);
         const int band = alt / 1000, rem = alt % 1000;
@@ -348,6 +356,7 @@ int hud_exact(const hud_state *st, hud_exact_list *out)
         x_h(out, 2, MW(d, 0x2952), s8(MB(d, 0x2971)), MB(d, 0x294B));
     }
     /* ---- heading strip ------------------------------------------------------------------------ */
+    g_item = HI_HDG;
     if (mode <= 1) {
         const int hdg = MW(d, 0x2DEE);
         const int ax = (hdg - 0x2000) & 0xFFFF;
@@ -385,30 +394,35 @@ int hud_exact(const hud_state *st, hud_exact_list *out)
             if (s16(vv) >= s16(MW(d, 0x292B))) vv = (vv - MW(d, 0x292B)) & 0xFFFF;
             const int di = (vv << 1) & 0xFFFF;
             pW(d, 0x28A8, MW(d, di + (half == 1 ? 0x2AFE : 0x2AEA)));
+            g_item = HI_STRIP;
             x_s18(out, d, 1, 0);
         }
     }
     /* ---- the frame -------------------------------------------------------------------------------- */
+    g_item = HI_FRAME;
     {
         x_k(out, 15);
         if (half == 0) {
-            x_n(out, 0x2E, 0x5A, 0x2E, 0x0E, 0, 1); x_n(out, 0x112, 0x5A, 0x112, 0x0E, 0, 1);
+            x_n(out, 0x2E, 0x5A, 0x2E, 0x0E, 0, 0); x_n(out, 0x112, 0x5A, 0x112, 0x0E, 0, 0);
             x_k(out, 8);
-            x_n(out, 0x2D, 0x5A, 0x2D, 0x0E, 0, 1); x_n(out, 0x113, 0x5A, 0x113, 0x0E, 0, 1);
-            x_n(out, 0x113, 0x0E, 0xE8, 2, 0, 1); x_n(out, 0xE8, 2, 0x5A, 2, 0, 1); x_n(out, 0x2D, 0x0E, 0x59, 2, 0, 1);
+            x_n(out, 0x2D, 0x5A, 0x2D, 0x0E, 0, 0); x_n(out, 0x113, 0x5A, 0x113, 0x0E, 0, 0);
+            x_n(out, 0x113, 0x0E, 0xE8, 2, 0, 0); x_n(out, 0xE8, 2, 0x5A, 2, 0, 0); x_n(out, 0x2D, 0x0E, 0x59, 2, 0, 0);
         } else {
-            x_n(out, 0x62, 0x5A, 0x62, 0x1E, 0, 1); x_n(out, 0xDD, 0x5A, 0xDD, 0x1E, 0, 1);
+            x_n(out, 0x62, 0x5A, 0x62, 0x1E, 0, 0); x_n(out, 0xDD, 0x5A, 0xDD, 0x1E, 0, 0);
             x_k(out, 8);
-            x_n(out, 0x61, 0x5A, 0x61, 0x1E, 0, 1); x_n(out, 0xDE, 0x5A, 0xDE, 0x1E, 0, 1);
-            x_n(out, 0xDE, 0x1E, 0xD1, 0x11, 0, 1); x_n(out, 0xD1, 0x11, 0x6E, 0x11, 0, 1); x_n(out, 0x6E, 0x11, 0x61, 0x1E, 0, 1);
+            x_n(out, 0x61, 0x5A, 0x61, 0x1E, 0, 0); x_n(out, 0xDE, 0x5A, 0xDE, 0x1E, 0, 0);
+            x_n(out, 0xDE, 0x1E, 0xD1, 0x11, 0, 0); x_n(out, 0xD1, 0x11, 0x6E, 0x11, 0, 0); x_n(out, 0x6E, 0x11, 0x61, 0x1E, 0, 0);
         }
     }
     /* ---- readout bitmap (the reticle) and the G meter ---------------------------------------------- */
-    if (MB(d, 0x2956)) x_s18(out, d, 0, 1);
+    g_item = HI_RETICLE;
+    if (MB(d, 0x2956)) x_s18(out, d, 0, 0);
+    g_item = HI_G;
     pW(d, 0x2896, MW(d, 0x2948));
-    x_t(out, d, 4, 0x288E, 0x9900, 1);
+    x_t(out, d, 4, 0x288E, 0x9900, 0);
 
     /* ---- pitch ladder -------------------------------------------------------------------------------- */
+    g_item = HI_LADDER;
     ladder_t L;
     memset(&L, 0, sizeof L);
     {
@@ -475,7 +489,7 @@ int hud_exact(const hud_state *st, hud_exact_list *out)
         memcpy(g_lad_ry, L.ry, sizeof L.ry);
     }
     /* the ladder's drawing half (1058:0806 .. 09D2) */
-    if (MB(d, HUD_LADDER_ON) == 0) return 0;
+    if (MB(d, HUD_LADDER_ON) == 0) return g_overflow ? -1 : 0;
     x_k(out, MB(d, 0x2CA1));
     {
         const int origin = MW(d, 0x2942);
@@ -501,6 +515,7 @@ int hud_exact(const hud_state *st, hud_exact_list *out)
             break;
         }
         /* the labels */
+        g_item = HI_LADDER_LABEL;
         int first = (L.dl + 11) & 0xFFFF;
         const int roll = MW(d, 0x2DF2);
         const int i0 = ((roll >> 8) >> 1 >> 1) & 0xFF;
@@ -541,7 +556,7 @@ int hud_exact(const hud_state *st, hud_exact_list *out)
         }
 #undef T
     }
-    return 0;
+    return g_overflow ? -1 : 0;
 }
 
 /* ---- FINE ----------------------------------------------------------------------------------------- */
@@ -550,6 +565,7 @@ static hud_fprim *fine_new(hud_fine_list *l)
     if (l->n >= HUD_MAX_FINE) { l->overflow = 1; return NULL; }
     hud_fprim *p = &l->p[l->n++];
     memset(p, 0, sizeof *p);
+    p->item = (uint8_t)g_item;
     return p;
 }
 
@@ -575,7 +591,7 @@ static void f_text(hud_fine_list *l, int N, const mem_t *m, int blk, int entry, 
     for (int k = 0; k < 11; k++) p->blk[k] = (uint16_t)MW(m, blk + 2 * k);
     p->colour = (uint8_t)(p->blk[2] & 0xFF);
     p->x0 = x * N; p->y0 = y * N;
-    p->ntext = (uint8_t)(ntext > 11 ? 11 : ntext);
+    p->ntext = (uint8_t)(ntext > HUD_TEXT_MAX ? HUD_TEXT_MAX : ntext);
     memcpy(p->text, text, p->ntext);
     p->cl = 0; p->ct = 0; p->cr = 320 * N; p->cb = 200 * N;
 }
@@ -585,6 +601,18 @@ static int text_from(const mem_t *m, int at, uint8_t *out)
     int n = 0;
     while (n < 11 && MB(m, at + n)) { out[n] = MB(m, at + n); n++; }
     return n;
+}
+
+/* a bitmap the original blits from the data segment's eight-word block at blk (source segment, x, y, page,
+ * destination x, y, width, height), placed at (x, y) cells */
+static void f_sprite(hud_fine_list *l, int N, const mem_t *m, int blk, double x, double y)
+{
+    hud_fprim *p = fine_new(l);
+    if (!p) return;
+    p->type = HF_SPRITE;
+    for (int k = 0; k < 8; k++) p->blk[k] = (uint16_t)MW(m, blk + 2 * k);
+    p->x0 = x * N; p->y0 = y * N;
+    p->cl = 0; p->ct = 0; p->cr = 320 * N; p->cb = 200 * N;
 }
 
 static const double PI_ = 3.14159265358979323846;
@@ -614,6 +642,7 @@ int hud_fine(const hud_state *st, int N, const hud_exact_list *ex, hud_fine_list
     const int tape_colour = MW(d, 0x284C + 4) & 0xFF;
 
     /* a tape (airspeed: ti 0/2 by the small flag; altitude: 1/3) */
+    g_item = HI_ASPD;
     if (mode == 0) {
         /* airspeed labels and ticks */
         const double sc = (double)(1 << sh) / 5.0;
@@ -643,6 +672,21 @@ int hud_fine(const hud_state *st, int N, const hud_exact_list *ex, hud_fine_list
                 f_line(out, N, xx, y, xx - (nn - 1), y, tape_colour, 0, lo, 319, hi);
             }
         }
+    }
+    /* the fixed pointer marks beside the tapes and under the heading strip (the original's own lines) */
+    g_item = HI_MARKS;
+    if (mode <= 1) {
+        const int pc = MB(d, 0x2CA0);
+        if (half) {
+            if (mode == 0) { f_line(out, N, 0x7A, 0x3C, 0x7C, 0x3C, pc, 0, 0, 319, 199); f_line(out, N, 0xC4, 0x3C, 0xC6, 0x3C, pc, 0, 0, 319, 199); }
+            f_line(out, N, 0x9F, 0x1D, 0x9F, 0x1E, pc, 0, 0, 319, 199);
+        } else {
+            if (mode == 0) { f_line(out, N, 0x49, 0x34, 0x4C, 0x34, pc, 0, 0, 319, 199); f_line(out, N, 0xF3, 0x34, 0xF6, 0x34, pc, 0, 0, 319, 199); }
+            f_line(out, N, 0x9F, 0x10, 0x9F, 0x12, pc, 0, 0, 319, 199);
+        }
+    }
+    g_item = HI_ALT;
+    if (mode == 0) {
         /* altitude labels and ticks */
         const double alt = st->alt < 0 ? 0 : st->alt;
         const int xa = MW(d, 0x2925);
@@ -692,6 +736,7 @@ int hud_fine(const hud_state *st, int N, const hud_exact_list *ex, hud_fine_list
         }
     }
     /* heading labels and the tick strip */
+    g_item = HI_HDG;
     if (mode <= 1) {
         const double hdg = st->hdg * 360.0 / 65536.0;
         const int L = MB(d, 0x291C), I = MW(d, 0x2927);
@@ -711,6 +756,7 @@ int hud_fine(const hud_state *st, int N, const hud_exact_list *ex, hud_fine_list
         /* strip: marks every 10 degrees (the major, the whole height) and every 5 (the bottom row) */
         const int sx = MW(d, 0x28AC), sy = MW(d, 0x28AE), sw = MW(d, 0x28B0), shh = MW(d, 0x28B2);
         const double tlo = floor((hdg - 120.0) / 5.0), thi = ceil((hdg + 120.0) / 5.0);
+        g_item = HI_STRIP;
         for (int j = (int)tlo; j <= (int)thi && has_strip; j++) {
             const double c = 159.0 + k * (5.0 * j - hdg);
             if (c < sx - 1.0 || c > sx + sw) continue;
@@ -718,7 +764,31 @@ int hud_fine(const hud_state *st, int N, const hud_exact_list *ex, hud_fine_list
             f_line(out, N, c, major ? sy : sy + shh - 1, c, sy + shh - 1, tape_colour, sx, sy, sx + sw - 1, sy + shh - 1);
         }
     }
+    /* the frame (constants: the vertical sides are the original's cells, the slanted top is a fine line) */
+    g_item = HI_FRAME;
+    if (half == 0) {
+        f_line(out, N, 0x2E, 0x5A, 0x2E, 0x0E, 15, 0, 0, 319, 199); f_line(out, N, 0x112, 0x5A, 0x112, 0x0E, 15, 0, 0, 319, 199);
+        f_line(out, N, 0x2D, 0x5A, 0x2D, 0x0E, 8, 0, 0, 319, 199); f_line(out, N, 0x113, 0x5A, 0x113, 0x0E, 8, 0, 0, 319, 199);
+        f_line(out, N, 0x113, 0x0E, 0xE8, 2, 8, 0, 0, 319, 199); f_line(out, N, 0xE8, 2, 0x5A, 2, 8, 0, 0, 319, 199);
+        f_line(out, N, 0x2D, 0x0E, 0x59, 2, 8, 0, 0, 319, 199);
+    } else {
+        f_line(out, N, 0x62, 0x5A, 0x62, 0x1E, 15, 0, 0, 319, 199); f_line(out, N, 0xDD, 0x5A, 0xDD, 0x1E, 15, 0, 0, 319, 199);
+        f_line(out, N, 0x61, 0x5A, 0x61, 0x1E, 8, 0, 0, 319, 199); f_line(out, N, 0xDE, 0x5A, 0xDE, 0x1E, 8, 0, 0, 319, 199);
+        f_line(out, N, 0xDE, 0x1E, 0xD1, 0x11, 8, 0, 0, 319, 199); f_line(out, N, 0xD1, 0x11, 0x6E, 0x11, 8, 0, 0, 319, 199);
+        f_line(out, N, 0x6E, 0x11, 0x61, 0x1E, 8, 0, 0, 319, 199);
+    }
+    /* the centre reticle (its art, from the original's blit) and the G meter's text */
+    g_item = HI_RETICLE;
+    if (MB(d, 0x2956)) f_sprite(out, N, d, 0x28C2, MSW(d, 0x28CA), MSW(d, 0x28CC));
+    g_item = HI_G;
+    {
+        pW(d, 0x2896, MW(d, 0x2948));
+        uint8_t text[12];
+        const int nt = text_from(d, 0x9900, text);
+        f_text(out, N, d, 0x288E, 0, MSW(d, 0x2948), MSW(d, 0x2898), text, nt);
+    }
     /* the pitch ladder */
+    g_item = HI_LADDER;
     if (MB(d, HUD_LADDER_ON) != 0) {
         const double pitch_deg = st->pitch * 360.0 / 65536.0;
         const double Rr = st->roll * 2.0 * PI_ / 65536.0;
@@ -779,6 +849,7 @@ int hud_fine(const hud_state *st, int N, const hud_exact_list *ex, hud_fine_list
         /* labels: both ends of each rung. The offsets are the original's tables (trunc(-3.5 + 6 cos), ...)
          * without the truncation, at the exact roll. */
         const int lx = MSW(d, 0x2940), ly = MSW(d, 0x293E);
+        g_item = HI_LADDER_LABEL;
         for (int j = 0; j < 5; j++) {
             const int n = n0 + j, idx = n + 11;
             if (idx < 0 || idx > 22) continue;
@@ -802,19 +873,65 @@ int hud_fine(const hud_state *st, int N, const hud_exact_list *ex, hud_fine_list
     return out->overflow ? -1 : 0;
 }
 
-/* ---- the panel pass's items ----------------------------------------------------------------------------- */
+/* ---- the panel pass ----------------------------------------------------------------------------------------- */
+static double arc(double a, double b, double w);
+
 static void panel_derive(hud_panel *p)
 {
     p->c_fpm = p->fpm; p->c_vs = p->vs; p->c_cmd = p->cmd; p->c_speed = p->raw / 27.0;
 }
 
-int hud_panel_load(const int32_t *v, int n, hud_panel *p)
+/* the length of the record's own words (0 when it is not a 'p' record) */
+int hud_panel_base_len(const int32_t *v, int n)
 {
     if (n < HUD_PANEL_N || v[0] != HUD_PANEL_VERSION) return 0;
+    if (n <= HUD_PANEL_N || v[HUD_PANEL_N] != HUD_PANEL_EXT_MAGIC) return HUD_PANEL_N;
+    int at = HUD_PANEL_N + 3;
+    if (at >= n) return 0;
+    const int pieces = v[at++];
+    for (int k = 0; k < pieces; k++) {
+        if (at + 2 > n || v[at + 1] < 0) return 0;
+        at += 2 + v[at + 1];
+        if (at > n) return 0;
+    }
+    return at;
+}
+
+int hud_panel_load_ds(const int32_t *v, int n, hud_panel *p, uint8_t *dsout)
+{
+    const int base = hud_panel_base_len(v, n);
+    if (!base) return 0;
+    memset(p, 0, sizeof *p);
     p->fpm = s16(v[1]); p->vs = s16(v[2]); p->cmd = v[3] & 0xFFFF; p->raw = v[4] & 0xFFFF; p->speed = v[5] & 0xFFFF;
     p->mode = v[6]; p->half = v[7];
     panel_derive(p);
-    if (n >= HUD_PANEL_REC_FINE && v[HUD_PANEL_N] == HUD_PANEL_FINE_MAGIC) {
+    if (base > HUD_PANEL_N) {
+        static F117_TLS uint8_t scratch[0x10000];
+        uint8_t *ds = dsout ? dsout : scratch;
+        memset(ds, 0, 0x10000);
+        p->ext = 1;
+        p->far40 = v[HUD_PANEL_N + 1] & 0xFFFF;
+        p->far42 = v[HUD_PANEL_N + 2] & 0xFFFF;
+        int at = HUD_PANEL_N + 4;
+        for (int k = 0; k < v[HUD_PANEL_N + 3]; k++) {
+            const int off = v[at] & 0xFFFF, len = v[at + 1];
+            for (int b = 0; b < len; b++) ds[(off + b) & 0xFFFF] = (uint8_t)v[at + 2 + b];
+            at += 2 + len;
+        }
+        mem_t m = { ds };
+        p->c_hdg = MW(&m, 0x2DEE);
+        p->c_x = MW(&m, 0xC0D0);
+        p->c_y = MW(&m, 0xC0DE);
+        if (n >= base + 1 + HUD_PANEL_NFINE && v[base] == HUD_PANEL_FINE2_MAGIC) {
+            p->c_fpm = v[base + 1] / 256.0;
+            p->c_vs = v[base + 2] / 256.0;
+            p->c_cmd = v[base + 3] / 256.0;
+            p->c_speed = v[base + 4] / 1024.0;
+            p->c_hdg = v[base + 5] / 256.0;
+            p->c_x = v[base + 6] / 256.0;
+            p->c_y = v[base + 7] / 256.0;
+        }
+    } else if (n >= HUD_PANEL_REC_FINE && v[HUD_PANEL_N] == HUD_PANEL_FINE_MAGIC) {
         p->c_fpm = v[HUD_PANEL_N + 1] / 256.0;
         p->c_vs = v[HUD_PANEL_N + 2] / 256.0;
         p->c_cmd = v[HUD_PANEL_N + 3] / 256.0;
@@ -823,12 +940,37 @@ int hud_panel_load(const int32_t *v, int n, hud_panel *p)
     return 1;
 }
 
+int hud_panel_load(const int32_t *v, int n, hud_panel *p) { return hud_panel_load_ds(v, n, p, NULL); }
+
+int hud_panel_load_drawn(const int32_t *v, int n, hud_panel *p, uint8_t *ds)
+{
+    const int base = hud_panel_base_len(v, n);
+    if (!base) return 0;
+    const int hold = base + 1 + HUD_PANEL_NFINE;
+    if (base > HUD_PANEL_N && n >= hold + 2 && v[base] == HUD_PANEL_FINE2_MAGIC && v[hold] == HUD_HOLD_MAGIC &&
+        v[hold + 1] > 0 && hold + 2 + v[hold + 1] <= n) {
+        if (!hud_panel_load_ds(v + hold + 2, v[hold + 1], p, ds)) return 0;
+        p->c_fpm = v[base + 1] / 256.0;
+        p->c_vs = v[base + 2] / 256.0;
+        p->c_cmd = v[base + 3] / 256.0;
+        p->c_speed = v[base + 4] / 1024.0;
+        p->c_hdg = v[base + 5] / 256.0;
+        p->c_x = v[base + 6] / 256.0;
+        p->c_y = v[base + 7] / 256.0;
+        return 1;
+    }
+    return hud_panel_load_ds(v, n, p, ds);
+}
+
 void hud_panel_from_ds(const uint8_t *ds, hud_panel *p)
 {
     mem_t m = { (uint8_t *)ds };
+    memset(p, 0, sizeof *p);
     p->fpm = MSW(&m, 0x98F6); p->vs = MSW(&m, 0xE586); p->cmd = MW(&m, 0xE474); p->raw = MW(&m, 0xB07E);
     p->speed = MW(&m, 0xB194); p->mode = MB(&m, 0x294A); p->half = MB(&m, 0x294B);
     panel_derive(p);
+    p->ext = 1;
+    p->c_hdg = MW(&m, 0x2DEE); p->c_x = MW(&m, 0xC0D0); p->c_y = MW(&m, 0xC0DE);
 }
 
 static int clamp3(int v, int lo, int hi)
@@ -881,23 +1023,505 @@ int hud_panel_classify(const hud_panel *p, char kind, const int32_t *v, int n, h
     return HPI_NONE;
 }
 
-int hud_panel_blend(const int32_t *s, int ns, const int32_t *o, int no, double w, int32_t *out, int cap)
+int hud_panel_blend(const int32_t *s, int ns, const int32_t *o, int no, double w, int hold, int32_t *out, int cap)
 {
-    if (ns < HUD_PANEL_N || no < HUD_PANEL_N || s[0] != HUD_PANEL_VERSION || o[0] != HUD_PANEL_VERSION || cap < HUD_PANEL_REC_FINE)
-        return 0;
-    if (s[6] != o[6] || s[7] != o[7]) return 0;                 /* the HUD mode or its size changed: no common picture */
-    if (fabs(w) < 1e-6) { memcpy(out, s, HUD_PANEL_N * sizeof *out); return HUD_PANEL_N; }
-    hud_panel a, b;
+    const int bs = hud_panel_base_len(s, ns), bo = hud_panel_base_len(o, no);
+    if (!bs || !bo) return 0;
+    const int same = s[6] == o[6] && s[7] == o[7];          /* the HUD mode and its size: else no common picture */
+    if (bs == HUD_PANEL_N || bo == HUD_PANEL_N) {           /* a record without the pass's inputs: the first version's blend */
+        if (!same || cap < HUD_PANEL_REC_FINE) return 0;
+        if (fabs(w) < 1e-6) { memcpy(out, s, HUD_PANEL_N * sizeof *out); return HUD_PANEL_N; }
+        hud_panel a, b;
+        if (!hud_panel_load(s, ns, &a) || !hud_panel_load(o, no, &b)) return 0;
+        const double fpm = a.c_fpm + w * (b.c_fpm - a.c_fpm), vs = a.c_vs + w * (b.c_vs - a.c_vs);
+        const double cmd = a.c_cmd + w * (b.c_cmd - a.c_cmd), sp = a.c_speed + w * (b.c_speed - a.c_speed);
+        memcpy(out, s, HUD_PANEL_N * sizeof *out);
+        out[HUD_PANEL_N] = HUD_PANEL_FINE_MAGIC;
+        out[HUD_PANEL_N + 1] = (int32_t)floor(fpm * 256.0 + 0.5);
+        out[HUD_PANEL_N + 2] = (int32_t)floor(vs * 256.0 + 0.5);
+        out[HUD_PANEL_N + 3] = (int32_t)floor(cmd * 256.0 + 0.5);
+        out[HUD_PANEL_N + 4] = (int32_t)floor((sp < 0 ? 0 : sp) * 1024.0 + 0.5);
+        return HUD_PANEL_REC_FINE;
+    }
+    if (!same && !hold) return 0;
+    const int need = bs + 1 + HUD_PANEL_NFINE + (hold == 1 ? 2 + bo : 0);
+    if (cap < need) return 0;
+    if (fabs(w) < 1e-6 && hold != 1) { memcpy(out, s, (size_t)bs * sizeof *out); return bs; }
+    static F117_TLS hud_panel a, b;
     if (!hud_panel_load(s, ns, &a) || !hud_panel_load(o, no, &b)) return 0;
-    const double fpm = a.c_fpm + w * (b.c_fpm - a.c_fpm), vs = a.c_vs + w * (b.c_vs - a.c_vs);
-    const double cmd = a.c_cmd + w * (b.c_cmd - a.c_cmd), sp = a.c_speed + w * (b.c_speed - a.c_speed);
-    memcpy(out, s, HUD_PANEL_N * sizeof *out);
-    out[HUD_PANEL_N] = HUD_PANEL_FINE_MAGIC;
-    out[HUD_PANEL_N + 1] = (int32_t)floor(fpm * 256.0 + 0.5);
-    out[HUD_PANEL_N + 2] = (int32_t)floor(vs * 256.0 + 0.5);
-    out[HUD_PANEL_N + 3] = (int32_t)floor(cmd * 256.0 + 0.5);
-    out[HUD_PANEL_N + 4] = (int32_t)floor((sp < 0 ? 0 : sp) * 1024.0 + 0.5);
-    return HUD_PANEL_REC_FINE;
+    double c[HUD_PANEL_NFINE];
+    const hud_panel *keep = hold == 1 ? &b : &a;
+    if (same) {
+        c[0] = a.c_fpm + w * (b.c_fpm - a.c_fpm); c[1] = a.c_vs + w * (b.c_vs - a.c_vs);
+        c[2] = a.c_cmd + w * (b.c_cmd - a.c_cmd); c[3] = a.c_speed + w * (b.c_speed - a.c_speed);
+        c[4] = arc(a.c_hdg, b.c_hdg, w); c[5] = a.c_x + w * (b.c_x - a.c_x); c[6] = a.c_y + w * (b.c_y - a.c_y);
+    } else {
+        c[0] = keep->c_fpm; c[1] = keep->c_vs; c[2] = keep->c_cmd; c[3] = keep->c_speed;
+        c[4] = keep->c_hdg; c[5] = keep->c_x; c[6] = keep->c_y;
+    }
+    if (c[3] < 0) c[3] = 0;
+    c[4] = fmod(c[4], 65536.0); if (c[4] < 0) c[4] += 65536.0;
+    memcpy(out, s, (size_t)bs * sizeof *out);
+    int n = bs;
+    out[n++] = HUD_PANEL_FINE2_MAGIC;
+    out[n++] = (int32_t)floor(c[0] * 256.0 + 0.5);
+    out[n++] = (int32_t)floor(c[1] * 256.0 + 0.5);
+    out[n++] = (int32_t)floor(c[2] * 256.0 + 0.5);
+    out[n++] = (int32_t)floor(c[3] * 1024.0 + 0.5);
+    out[n++] = (int32_t)floor(c[4] * 256.0 + 0.5);
+    out[n++] = (int32_t)floor(c[5] * 256.0 + 0.5);
+    out[n++] = (int32_t)floor(c[6] * 256.0 + 0.5);
+    if (hold == 1) {
+        out[n++] = HUD_HOLD_MAGIC;
+        out[n++] = bo;
+        memcpy(out + n, o, (size_t)bo * sizeof *out);
+        n += bo;
+    }
+    return n;
+}
+
+/* ---- the panel pass: EXACT and FINE ----------------------------------------------------------------------------- */
+static int abs16(int v) { v = s16(v); return s16(v < 0 ? -v : v); }
+
+/* 0000:C702 */
+int hud_bearing(int x, int y)
+{
+    x = s16(x); y = s16(y);
+    if (x == 0) return y > 0 ? 0 : 0x8000;
+    if (y == 0) return x > 0 ? 0x4000 : 0xC000;
+    const int ay = abs16(y), ax = abs16(x);
+    int flag;
+    int32_t num, den;
+    if (ax > ay) { num = (int32_t)((uint32_t)(int32_t)ay << 14); den = ax; flag = 1; }
+    else { num = (int32_t)((uint32_t)(int32_t)ax << 14); den = ay; flag = 0; }
+    const int r = s16(num / den);
+    const int t = abs16(0x1333 - r);
+    int32_t q = (int32_t)t * 0xB00;
+    q >>= 14;
+    const int32_t mm = 0x2800 - q;
+    int32_t pr = (int32_t)((uint32_t)(int32_t)r * (uint32_t)mm);
+    pr >>= 14;
+    const int rr = (int)(pr & 0xFFFF);
+    int res;
+    if (x > 0) res = y > 0 ? (flag ? 0x4000 - rr : rr) : (flag ? rr + 0x4000 : 0x8000 - rr);
+    else res = y > 0 ? (flag ? rr - 0x4000 : -rr) : (flag ? 0xC000 - rr : rr + 0x8000);
+    return res & 0xFFFF;
+}
+
+/* the same arithmetic without its truncations (the original's octant polynomial, not the true arctangent) */
+double hud_bearing_f(double x, double y)
+{
+    if (x == 0) return y > 0 ? 0 : 32768.0;
+    if (y == 0) return x > 0 ? 16384.0 : 49152.0;
+    const double ax = fabs(x), ay = fabs(y);
+    const int flag = ax > ay;
+    const double r = 16384.0 * (flag ? ay / ax : ax / ay);
+    const double rr = r * (10240.0 - fabs(4915.0 - r) * 2816.0 / 16384.0) / 16384.0;
+    double res;
+    if (x > 0) res = y > 0 ? (flag ? 16384.0 - rr : rr) : (flag ? rr + 16384.0 : 32768.0 - rr);
+    else res = y > 0 ? (flag ? rr - 16384.0 : -rr) : (flag ? 49152.0 - rr : rr + 32768.0);
+    res = fmod(res, 65536.0);
+    return res < 0 ? res + 65536.0 : res;
+}
+
+/* 0000:C6B3: the larger of |x| and |y| plus half the smaller, at most 7FFFh */
+static int dist_i(int x, int y)
+{
+    const int a = abs16(x), b = abs16(y);
+    const int32_t r = b >= a ? (int32_t)b + (a >> 1) : (int32_t)a + (b >> 1);
+    if (r < 0) return s16(r & 0xFFFF);
+    return r > 0x7FFF ? 0x7FFF : r;
+}
+
+/* the C runtime's itoa / ltoa in radix 10 */
+static int put_dec(uint8_t *out, int32_t v)
+{
+    char tmp[16];
+    int n = 0, len = 0;
+    const int neg = v < 0;
+    uint32_t u = neg ? (uint32_t)(-(int64_t)v) : (uint32_t)v;
+    do { tmp[n++] = (char)('0' + u % 10); u /= 10; } while (u);
+    if (neg) out[len++] = '-';
+    while (n) out[len++] = (uint8_t)tmp[--n];
+    out[len] = 0;
+    return len;
+}
+
+static int str_len(const mem_t *m, int at) { int n = 0; while (n < 255 && MB(m, at + n)) n++; return n; }
+static void str_cpy(mem_t *m, int to, int from)
+{
+    int k = 0;
+    uint8_t c;
+    do { c = MB(m, from + k); pB(m, to + k, c); k++; } while (c && k < 256);
+}
+static void str_cat(mem_t *m, int to, int from) { str_cpy(m, to + str_len(m, to), from); }
+static void str_cat_bytes(mem_t *m, int to, const uint8_t *s)
+{
+    const int at = to + str_len(m, to);
+    int k = 0;
+    do { pB(m, at + k, s[k]); } while (s[k++]);
+}
+static void str_upr(mem_t *m, int at)
+{
+    for (int k = 0; k < 255 && MB(m, at + k); k++) {
+        const int c = MB(m, at + k);
+        if (c >= 'a' && c <= 'z') pB(m, at + k, c - 32);
+    }
+}
+
+typedef struct { hud_exact_list *ex; hud_fine_list *fl; int N; mem_t *d; const hud_panel *p; } pctx;
+
+/* pen 886A: the colour into both text blocks */
+static void p_pen(pctx *c, int colour)
+{
+    pW(c->d, MW(c->d, 0x4010) + 4, colour);
+    pW(c->d, MW(c->d, 0x4028) + 4, colour);
+}
+
+/* 895E / 898F -> 89C0: the string at strp, upper-cased in place (EDC2), through entry 5 with the block [40B6] chooses */
+static void p_text(pctx *c, int strp, int x, int y, int colour)
+{
+    mem_t *d = c->d;
+    const int blk = MB(d, 0x40B6) ? MW(d, 0x4028) : MW(d, 0x4010);
+    pW(d, blk + 0xC, 0);
+    pW(d, blk + 8, x);
+    pW(d, blk + 0xA, y);
+    pW(d, blk + 4, colour);
+    str_upr(d, strp);
+    x_t(c->ex, d, 5, blk, strp, 0);
+    if (c->fl) {
+        uint8_t text[HUD_TEXT_MAX + 1];
+        int nt = 0;
+        while (nt < HUD_TEXT_MAX && MB(d, strp + nt)) { text[nt] = MB(d, strp + nt); nt++; }
+        f_text(c->fl, c->N, d, blk, 0, s16(x), s16(y), text, nt);
+    }
+}
+
+/* 114A:0006: a line clipped to block [4010]'s rectangle, in its colour (entry 33, then the clipper and entry 31);
+ * the fine stroke runs between (fx0, fy0) and (fx1, fy1) */
+static void p_line(pctx *c, int x0, int y0, int x1, int y1, double fx0, double fy0, double fx1, double fy1)
+{
+    mem_t *d = c->d;
+    const int b = MW(d, 0x4010);
+    const int w = MSW(d, b + 0x14) - MSW(d, b + 0x12) + 1, h = MSW(d, b + 0x10) - MSW(d, b + 0xE) + 1;
+    const int colour = MW(d, b + 4) & 0xFF;
+    x_k(c->ex, colour);
+    const int origin = (MSW(d, b + 0xE) * 320 + MSW(d, b + 0x12)) & 0xFFFF;
+    int16_t o[4];
+    if (hud_clip_line(x0, y0, x1, y1, w - 1, h - 1, o)) x_n(c->ex, o[0], o[1], o[2], o[3], origin, 0);
+    if (c->fl) {
+        const int ox = MSW(d, b + 0x12), oy = MSW(d, b + 0xE);
+        f_line(c->fl, c->N, fx0 + ox, fy0 + oy, fx1 + ox, fy1 + oy, colour, ox, oy, ox + w - 1, oy + h - 1);
+    }
+}
+
+/* 114A:014F: a rectangle round a readout, four lines through 114A:0070 (box 0..13Fh x 0..C7h) */
+static void p_outline(pctx *c, int x0, int y0, int x1, int y1, int colour)
+{
+    mem_t *d = c->d;
+    p_pen(c, colour);
+    const int e[4][4] = { { x0, y0, x1, y0 }, { x0, y1, x1, y1 }, { x0, y0, x0, y1 }, { x1, y0, x1, y1 } };
+    for (int k = 0; k < 4; k++) {
+        x_k(c->ex, MW(d, MW(d, 0x4010) + 4) & 0xFF);
+        int16_t o[4];
+        if (hud_clip_line(e[k][0], e[k][1], e[k][2], e[k][3], 0x13F, 0xC7, o)) x_n(c->ex, o[0], o[1], o[2], o[3], 0, 0);
+        if (c->fl) f_line(c->fl, c->N, e[k][0], e[k][1], e[k][2], e[k][3], colour & 0xFF, 0, 0, 319, 199);
+    }
+}
+
+/* 89F7: a number at (x, y); 8A18: a long, right-aligned at x */
+static void p_number(pctx *c, int32_t value, int x, int y, int colour, int right)
+{
+    uint8_t s[16];
+    const int len = put_dec(s, value);
+    for (int k = 0; k <= len; k++) pB(c->d, 0xC604 + k, s[k]);
+    p_text(c, 0xC604, right ? x - 4 * len : x, y, colour);
+}
+
+/* the waypoint cue's position: the bearing to the waypoint less the heading, scaled and clamped (exact and fine) */
+static void cue_x(const mem_t *d, const hud_panel *pn, int dx, int dy, double fdx, double fdy, int div, int lo, int hi, int *X, double *fX)
+{
+    const int brg = hud_bearing(dx, s16(-dy));
+    *X = clamp3(s16(s16(brg - MW(d, 0x2DEE)) >> 6) / div + 0x9F, lo, hi);
+    double dd = fmod(hud_bearing_f(fdx, -fdy) - pn->c_hdg, 65536.0);
+    if (dd >= 32768.0) dd -= 65536.0;
+    if (dd < -32768.0) dd += 65536.0;
+    *fX = dclamp(dd / 64.0 / div + 159.0, lo, hi);
+}
+
+int hud_panel_exact(const uint8_t *ds0, const hud_panel *pn, int N, hud_exact_list *ex, hud_fine_list *fl)
+{
+    static F117_TLS uint8_t buf[0x10000];
+    static F117_TLS hud_exact_list scratch;
+    if (!ex) ex = &scratch;
+    ex->n = 0;
+    if (fl) { fl->n = 0; fl->overflow = 0; }
+    g_overflow = 0;
+    if (!pn->ext) return -1;
+    memcpy(buf, ds0, sizeof buf);
+    mem_t m = { buf }, *d = &m;
+    pctx c = { ex, fl, N, d, pn };
+    const int half = MB(d, 0x294B), mode = MB(d, 0x294A);
+    const int pc = s8(MB(d, 0x2CA0)) & 0xFFFF, lc = s8(MB(d, 0x2CA1)) & 0xFFFF;
+    const int alt = MW(d, 0x2DF6), alt5 = alt < 100 ? alt : (alt / 5) * 5;
+    if (MW(d, 0x368C) == 0 || MW(d, 0xC0A6) != 0) goto message;
+    /* the selected station: "<count> <name>" */
+    g_item = PI_STATION;
+    {
+        const int st = MW(d, 0x3680);
+        uint8_t num[16];
+        str_cpy(d, 0x98A6, 0x40CE);
+        put_dec(num, MSW(d, 0x3672 + 4 * st));
+        str_cat_bytes(d, 0x98A6, num);
+        str_cat(d, 0x98A6, 0x40CF);
+        str_cat(d, 0x98A6, 0x369A + 26 * MW(d, 0x3670 + 4 * st));
+        p_text(&c, 0x98A6, half == 0 ? 0x35 : 0x6A, 0x55, pc);
+    }
+    /* the cannon: "GUN <rounds>", unless the settings record hides it */
+    g_item = PI_GUN;
+    if (pn->far42 == 0) {
+        uint8_t num[16];
+        str_cpy(d, 0x98A6, 0x40D1);
+        put_dec(num, MSW(d, 0x3682));
+        str_cat_bytes(d, 0x98A6, num);
+        p_text(&c, 0x98A6, half == 0 ? 0xEF : 0xBC, 0x55, pc);
+    }
+    /* the flight-path marker (entry 71 from page [E584] (37h, 4Dh), 11 x 7) */
+    g_item = PI_FPM;
+    if (MW(d, 0xE32A) == 0 || MW(d, 0xE32A) == 2) {
+        p_pen(&c, lc);
+        const int row = s16((half == 0 ? 0x34 : 0x3C) + (MSW(d, 0x98F6) >> 6));
+        if (half == 0 && row > 10 && row < 0x5D) {
+            const int blk[8] = { MW(d, 0xE584), 0x37, 0x4D, MB(d, 0x40B6) ? 1 : 0, 0x9A, s16(row - 4) & 0xFFFF, 0xB, 7 };
+            hud_prim *q = prim_new(ex, HP_S);
+            if (q) {
+                q->entry = 71;
+                for (int k = 0; k < 8; k++) q->blk[k] = (uint16_t)blk[k];
+            }
+            if (fl) {
+                hud_fprim *f = fine_new(fl);
+                if (f) {
+                    f->type = HF_SPRITE;
+                    f->entry = 71;
+                    for (int k = 0; k < 8; k++) f->blk[k] = (uint16_t)blk[k];
+                    f->x0 = 0x9A * N;
+                    f->y0 = (0x34 + pn->c_fpm / 64.0 - 4.0) * N;
+                    /* the clip of entry 71: rows [40A0]..[40A2], columns [40A4]..[40A6] */
+                    f->ct = MSW(d, 0x40A0) * N; f->cb = (MSW(d, 0x40A2) + 1) * N;
+                    f->cl = MSW(d, 0x40A4) * N; f->cr = (MSW(d, 0x40A6) + 1) * N;
+                }
+            }
+        }
+    }
+    if (half) goto small;
+    /* the tracking cross */
+    g_item = PI_CROSS;
+    if (MB(d, 0x9B35) & 2) {
+        const int on = MW(d, 0xB2B8) == 0 ? 1 : (MB(d, 0x3D8E) & 1);
+        if (on) {
+            p_pen(&c, pc);
+            p_line(&c, 0x9C, 0x55, 0xA4, 0x55, 0x9C, 0x55, 0xA4, 0x55);
+            p_line(&c, 0xA0, 0x52, 0xA0, 0x58, 0xA0, 0x52, 0xA0, 0x58);
+        }
+    }
+    if (mode == 0) {
+        /* the stall-margin bar and the vertical-speed bar */
+        g_item = PI_STALL;
+        p_pen(&c, MW(d, 0x368A) >= 1 ? 0x2A : 0);
+        const int nn = clamp3(s16(s16(s16(MW(d, 0xE474) - MW(d, 0xB194)) * 2) / 5) + 0x1D, 0, 0x39);
+        if (nn != 0) {
+            const double nf = dclamp((((pn->c_cmd - pn->c_speed) * 2.0) / 5.0) + 29.0, 0.0, 57.0);
+            p_line(&c, 0x48, 0x51 - nn, 0x48, 0x51, 0x48, 81.0 - nf, 0x48, 0x51);
+        }
+        g_item = PI_VS;
+        const int y = clamp3(0x34 - (MSW(d, 0xE586) >> 4), 0x14, 0x51);
+        p_line(&c, 0xF7, 0x34, 0xF7, y, 0xF7, 0x34, 0xF7, dclamp(52.0 - pn->c_vs / 16.0, 20.0, 81.0));
+        /* the sink marker, blinking */
+        g_item = PI_SINK;
+        if (!(MB(d, 0x9B34) & 1) && (MB(d, 0x3D8E) & 1) && pn->far40 != 0 && MSW(d, 0xE586) < 0) {
+            const int q = (MB(d, 0xB2D0 + 16 * MW(d, 0xE00C) + 7) & 2) ? 0x100 : 0x80;
+            const int sy = ((q / pn->far40) >> 4) + 0x34;
+            p_pen(&c, pc);
+            p_line(&c, 0xF2, sy - 2, 0xF4, sy, 0xF2, sy - 2, 0xF4, sy);
+            p_line(&c, 0xF2, sy + 2, 0xF4, sy, 0xF2, sy + 2, 0xF4, sy);
+        }
+    }
+    /* (the ILS and, with an air target, its box and the envelope ring are not modelled: other calls come here) */
+    /* the digital readouts */
+    g_item = PI_SPEED;
+    p_number(&c, MW(d, 0xB194), mode == 0 ? 0x50 : 0x3A, 0x32, pc, 0);
+    g_item = PI_ALT;
+    p_number(&c, alt5, mode == 0 ? 0xF0 : 0x108, 0x32, pc, 1);
+    if (mode != 0) {
+        if (mode == 2) {
+            g_item = PI_HDGNUM;
+            p_number(&c, MW(d, 0x2DEE) / 0xB6, 0x9A, 8, pc, 0);
+            g_item = PI_BOX;
+            p_outline(&c, 0x97, 5, 0xA7, 0xF, pc);
+        }
+        g_item = PI_BOX;
+        p_outline(&c, 0x37, 0x2F, 0x4F, 0x39, pc);
+        p_outline(&c, 0xF1, 0x2F, 0x109, 0x39, pc);
+    }
+    g_item = PI_ACCEL;
+    if (MSW(d, 0x3DA8) > 1) p_text(&c, 0x40D6, 0x6E, 0x55, pc);
+    g_item = PI_TRAINING;
+    if (MB(d, 0x9B35) & 0x10) p_text(&c, 0x40DC, 0xB6, 0x55, pc);
+    /* the waypoint cue on the heading strip (and the next waypoint once this one is reached) */
+    g_item = PI_CUE;
+    if (!(MB(d, 0x3664) & 8)) {
+        const int wp = MW(d, 0x2EAE);
+        const int dx = s16(MW(d, 0x2E9E + 4 * wp) - MW(d, 0xC0D0)), dy = s16(MW(d, 0x2EA0 + 4 * wp) - MW(d, 0xC0DE));
+        const double fdx = MW(d, 0x2E9E + 4 * wp) - pn->c_x, fdy = MW(d, 0x2EA0 + 4 * wp) - pn->c_y;
+        if (dist_i(dx, dy) < 0x200 && MSW(d, 0x2EAE) < 3) {
+            pW(d, 0x2EAE, MW(d, 0x2EAE) + 1);
+            uint8_t num[16];
+            str_cpy(d, 0x98A6, 0x40E5);
+            put_dec(num, MSW(d, 0x2EAE));
+            str_cat_bytes(d, 0x98A6, num);
+            str_cat(d, 0x98A6, 0x40EF);
+            str_cpy(d, 0xC5A4, 0x98A6);
+            pW(d, 0x40CC, MW(d, 0x368E) * 3);
+        }
+        int X;
+        double fX;
+        cue_x(d, pn, dx, dy, fdx, fdy, 3, 0x59, 0xE5, &X, &fX);
+        p_pen(&c, 0xB);
+        if (mode == 2) {
+            p_line(&c, X, 0x11, X, 0x11, fX, 0x11, fX, 0x11);
+            p_line(&c, X - 1, 0x12, X + 1, 0x12, fX - 1, 0x12, fX + 1, 0x12);
+        } else {
+            p_line(&c, X - 2, 0xB, X, 0xD, fX - 2, 0xB, fX, 0xD);
+            p_line(&c, X, 0xD, X + 2, 0xB, fX, 0xD, fX + 2, 0xB);
+            p_line(&c, X - 2, 0xB, X + 2, 0xB, fX - 2, 0xB, fX + 2, 0xB);
+        }
+    }
+    goto message;
+small:
+    g_item = PI_CUE;
+    if (!(MB(d, 0x3664) & 8)) {
+        const int wp = MW(d, 0x2EAE);
+        const int dx = s16(MW(d, 0x2E9E + 4 * wp) - MW(d, 0xC0D0)), dy = s16(MW(d, 0x2EA0 + 4 * wp) - MW(d, 0xC0DE));
+        const double fdx = MW(d, 0x2E9E + 4 * wp) - pn->c_x, fdy = MW(d, 0x2EA0 + 4 * wp) - pn->c_y;
+        int X;
+        double fX;
+        cue_x(d, pn, dx, dy, fdx, fdy, 7, 0x82, 0xBC, &X, &fX);
+        p_pen(&c, 0xB);
+        p_line(&c, X, 0x1B, X, 0x1B, fX, 0x1B, fX, 0x1B);
+        p_line(&c, X - 1, 0x1C, X + 1, 0x1C, fX - 1, 0x1C, fX + 1, 0x1C);
+    }
+    if (mode != 0) {
+        g_item = PI_SPEED;
+        p_number(&c, MW(d, 0xB194), 0x67, 0x3A, pc, 0);
+        g_item = PI_ALT;
+        p_number(&c, alt5, 0xDA, 0x3A, pc, 1);
+        if (mode == 2) {
+            g_item = PI_HDGNUM;
+            p_number(&c, MW(d, 0x2DEE) / 0xB6, 0x9A, 0x14, pc, 0);
+        }
+    }
+message:
+    /* the message line, centred, while its count lasts */
+    g_item = PI_MESSAGE;
+    if (MW(d, 0x40CC) != 0 && MW(d, 0xC0A6) == 0 && MB(d, 0x294B) == 0) {
+        const int len = str_len(d, 0xC5A4);
+        p_text(&c, 0xC5A4, s16(0xA0 - 2 * (len & 0xFE)), 0x14, pc);
+        pW(d, 0x40CC, MW(d, 0x40CC) - 1);
+    }
+    if (g_overflow || (fl && fl->overflow)) return -1;
+    return 0;
+}
+
+/* ---- the moving map's aircraft marker -------------------------------------------------------------------------- */
+static void map_parse(const int32_t *v, hud_map *m)
+{
+    memset(m, 0, sizeof *m);
+    m->x0 = v[1] & 0xFFFF; m->y0 = v[2] & 0xFFFF;
+    m->px = (int32_t)((uint32_t)(v[3] & 0xFFFF) | ((uint32_t)(v[4] & 0xFFFF) << 16));
+    m->py = (int32_t)((uint32_t)(v[5] & 0xFFFF) | ((uint32_t)(v[6] & 0xFFFF) << 16));
+    m->ox = v[7] & 0xFFFF; m->oy = v[8] & 0xFFFF; m->zoom = v[9] & 0xFF; m->hdg = v[10] & 0xFFFF;
+    m->sx_screen = s16(v[11]); m->sy_screen = s16(v[12]); m->src_x = v[13];
+    for (int k = 0; k < 16; k++) m->art[k] = (uint8_t)v[14 + k];
+    m->c_x = hud_map_fine_x(m);
+    m->c_y = hud_map_fine_y(m);
+}
+
+/* [C0D0] is [BA3C] / 32 and [C0DE] is 8000h - [C056] / 32, each rounded to a whole unit (test_hud_logs checks it): the
+ * continuous position is the same without the rounding */
+double hud_map_fine_x(const hud_map *m) { return m->px / 32.0; }
+double hud_map_fine_y(const hud_map *m) { return 32768.0 - m->py / 32.0; }
+
+int hud_map_load(const int32_t *v, int n, hud_map *m)
+{
+    if (n < HUD_MAP_N || v[0] != HUD_MAP_VERSION) return 0;
+    map_parse(v, m);
+    if (n >= HUD_MAP_N + 3 && v[HUD_MAP_N] == HUD_MAP_FINE_MAGIC) {
+        m->c_x = v[HUD_MAP_N + 1] / 256.0;
+        m->c_y = v[HUD_MAP_N + 2] / 256.0;
+    }
+    return 1;
+}
+
+int hud_map_load_drawn(const int32_t *v, int n, hud_map *m)
+{
+    if (!hud_map_load(v, n, m)) return 0;
+    const int h = HUD_MAP_N + 3;
+    if (n >= h + 2 + HUD_MAP_N && v[HUD_MAP_N] == HUD_MAP_FINE_MAGIC && v[h] == HUD_HOLD_MAGIC && v[h + 1] == HUD_MAP_N) {
+        hud_map old;
+        map_parse(v + h + 2, &old);
+        memcpy(m->art, old.art, sizeof m->art);       /* the older frame's arrow, at the position of the moment */
+        m->src_x = old.src_x;
+        m->hdg = old.hdg;
+    }
+    return 1;
+}
+
+int hud_map_blend(const int32_t *s, int ns, const int32_t *o, int no, double w, int hold, int32_t *out, int cap)
+{
+    if (ns < HUD_MAP_N || no < HUD_MAP_N || s[0] != HUD_MAP_VERSION || o[0] != HUD_MAP_VERSION) return 0;
+    if (cap < HUD_MAP_MAX) return 0;
+    hud_map a, b;
+    hud_map_load(s, ns, &a);
+    hud_map_load(o, no, &b);
+    /* the map's origin and zoom must agree, or the arrow stays where the skeleton's map has it */
+    const int same = a.ox == b.ox && a.oy == b.oy && a.zoom == b.zoom;
+    if (fabs(w) < 1e-6 && hold != 1) { memcpy(out, s, HUD_MAP_N * sizeof *out); return HUD_MAP_N; }
+    memcpy(out, s, HUD_MAP_N * sizeof *out);
+    int n = HUD_MAP_N;
+    out[n++] = HUD_MAP_FINE_MAGIC;
+    out[n++] = (int32_t)floor((same ? a.c_x + w * (b.c_x - a.c_x) : a.c_x) * 256.0 + 0.5);
+    out[n++] = (int32_t)floor((same ? a.c_y + w * (b.c_y - a.c_y) : a.c_y) * 256.0 + 0.5);
+    if (hold == 1) {
+        out[n++] = HUD_HOLD_MAGIC;
+        out[n++] = HUD_MAP_N;
+        memcpy(out + n, o, HUD_MAP_N * sizeof *out);
+        n += HUD_MAP_N;
+    }
+    return n;
+}
+
+int hud_map_classify(const hud_map *m, const int32_t *v, int n, double *x, double *y)
+{
+    if (n < 14 + 16 || v[0] != 73) return 0;
+    const int32_t *b = v + 2;
+    if (s16(b[1]) != m->src_x || s16(b[2]) != 4 || s16(b[6]) != 4 || s16(b[7]) != 4) return 0;
+    if (s16(b[4]) != s16(m->sx_screen - 1) || s16(b[5]) != s16(m->sy_screen - 1)) return 0;
+    /* the position the record's words give, the original's way: then the continuous one is the same formula */
+    const int sh = 10 - m->zoom;
+    if (sh < 0 || sh > 15) return 0;
+    if (s16((s16(m->x0 - m->ox) >> sh) + 0x70) != m->sx_screen) return 0;
+    if (s16((s16((s16(m->y0 - m->oy) >> sh) * 3) >> 2) + 0x8B) != m->sy_screen) return 0;
+    const double scale = (double)(1 << sh);
+    /* The original subtracts map coordinates in a word. Preserve that
+     * wrap before removing the grid rounding (an origin just below zero
+     * is stored near FFFF, not sixty-five thousand map units away). */
+    double dx = fmod(m->c_x - m->ox + 32768.0, 65536.0);
+    double dy = fmod(m->c_y - m->oy + 32768.0, 65536.0);
+    if (dx < 0) dx += 65536.0;
+    if (dy < 0) dy += 65536.0;
+    *x = (dx - 32768.0) / scale + 0x70 - 1;
+    *y = (dy - 32768.0) / scale * 0.75 + 0x8B - 1;
+    return 1;
 }
 
 /* ---- interpolation -------------------------------------------------------------------------------- */
@@ -933,34 +1557,59 @@ static double arc(double a, double b, double w)
     return a + w * dlt;
 }
 
-int hud_blend(const int32_t *s, int ns, const int32_t *o, int no, double w, int32_t *out, int cap)
+int hud_blend(const int32_t *s, int ns, const int32_t *o, int no, double w, int hold, int32_t *out, int cap)
 {
     if (ns < HUD_REC_BASE || no < HUD_REC_BASE || s[0] != HUD_REC_VERSION || o[0] != HUD_REC_VERSION) return 0;
-    if (cap < HUD_REC_FINE) return 0;
-    if (fabs(w) < 1e-6) {             /* a hair from a logic frame: that frame's own state, not its quantised copy */
+    if (cap < (hold == 1 ? HUD_REC_HELD : HUD_REC_FINE)) return 0;
+    /* the layout and the switches must agree: the constants 291C..294B, the readout flag, the colours,
+     * the ladder flag */
+    int same = 1;
+    for (int off = 0x291C; off < 0x294C && same; off += 2) same = s[1 + (off - HUD_DS_LO) / 2] == o[1 + (off - HUD_DS_LO) / 2];
+    static const int sw[] = { 0x2956, 0x2CA0, HUD_LADDER_ON };
+    for (unsigned k = 0; k < sizeof sw / sizeof sw[0] && same; k++) same = rec_word(s, sw[k]) == rec_word(o, sw[k]);
+    if (!same && !hold) return 0;
+    if (fabs(w) < 1e-6 && hold != 1) {    /* a hair from a logic frame: that frame's own state, not its quantised copy */
         memcpy(out, s, HUD_REC_BASE * sizeof *out);
         return HUD_REC_BASE;
     }
-    /* the layout and the switches must agree: the constants 291C..294B, the readout flag, the colours,
-     * the ladder flag */
-    for (int off = 0x291C; off < 0x294C; off += 2) if (s[1 + (off - HUD_DS_LO) / 2] != o[1 + (off - HUD_DS_LO) / 2]) return 0;
-    static const int sw[] = { 0x2956, 0x2CA0, HUD_LADDER_ON };
-    for (unsigned k = 0; k < sizeof sw / sizeof sw[0]; k++) if (rec_word(s, sw[k]) != rec_word(o, sw[k])) return 0;
-    double cs[5], co[5];
+    double cs[5], co[5], c[5];
     rec_continuous(s, ns, cs);
     rec_continuous(o, no, co);
-    double speed = cs[0] + w * (co[0] - cs[0]), alt = cs[1] + w * (co[1] - cs[1]);
-    double hdg = arc(cs[2], co[2], w), pitch = arc(cs[3], co[3], w), roll = arc(cs[4], co[4], w);
-    if (speed < 0) speed = 0;
-    if (alt < 0) alt = 0;
-    hdg = fmod(hdg, 65536.0); if (hdg < 0) hdg += 65536.0;
-    roll = fmod(roll, 65536.0); if (roll < 0) roll += 65536.0;
+    if (same) {
+        c[0] = cs[0] + w * (co[0] - cs[0]); c[1] = cs[1] + w * (co[1] - cs[1]);
+        c[2] = arc(cs[2], co[2], w); c[3] = arc(cs[3], co[3], w); c[4] = arc(cs[4], co[4], w);
+    } else memcpy(c, hold == 1 ? co : cs, sizeof c);   /* no common picture: the older frame, unmoved */
+    if (c[0] < 0) c[0] = 0;
+    if (c[1] < 0) c[1] = 0;
+    c[2] = fmod(c[2], 65536.0); if (c[2] < 0) c[2] += 65536.0;
+    c[4] = fmod(c[4], 65536.0); if (c[4] < 0) c[4] += 65536.0;
     memcpy(out, s, HUD_REC_BASE * sizeof *out);
     out[HUD_REC_BASE] = HUD_FINE_MAGIC;
-    out[HUD_REC_BASE + 1] = (int32_t)floor(speed * 1024.0 + 0.5);
-    out[HUD_REC_BASE + 2] = (int32_t)floor(alt * 256.0 + 0.5);
-    out[HUD_REC_BASE + 3] = (int32_t)floor(hdg * 256.0 + 0.5);
-    out[HUD_REC_BASE + 4] = (int32_t)floor(pitch * 256.0 + 0.5);
-    out[HUD_REC_BASE + 5] = (int32_t)floor(roll * 256.0 + 0.5);
-    return HUD_REC_FINE;
+    out[HUD_REC_BASE + 1] = (int32_t)floor(c[0] * 1024.0 + 0.5);
+    out[HUD_REC_BASE + 2] = (int32_t)floor(c[1] * 256.0 + 0.5);
+    out[HUD_REC_BASE + 3] = (int32_t)floor(c[2] * 256.0 + 0.5);
+    out[HUD_REC_BASE + 4] = (int32_t)floor(c[3] * 256.0 + 0.5);
+    out[HUD_REC_BASE + 5] = (int32_t)floor(c[4] * 256.0 + 0.5);
+    if (hold != 1) return HUD_REC_FINE;
+    out[HUD_REC_FINE] = HUD_HOLD_MAGIC;
+    out[HUD_REC_FINE + 1] = HUD_REC_BASE;
+    memcpy(out + HUD_REC_FINE + 2, o, HUD_REC_BASE * sizeof *out);
+    return HUD_REC_HELD;
+}
+
+int hud_state_load_drawn(const int32_t *v, int n, hud_state *st)
+{
+    if (n >= HUD_REC_HELD && v[HUD_REC_FINE] == HUD_HOLD_MAGIC && v[HUD_REC_FINE + 1] == HUD_REC_BASE) {
+        if (!hud_state_load(v + HUD_REC_FINE + 2, HUD_REC_BASE, st)) return 0;
+        if (v[HUD_REC_BASE] == HUD_FINE_MAGIC) {
+            st->speed = v[HUD_REC_BASE + 1] / 1024.0;
+            st->alt = v[HUD_REC_BASE + 2] / 256.0;
+            st->hdg = v[HUD_REC_BASE + 3] / 256.0;
+            st->pitch = v[HUD_REC_BASE + 4] / 256.0;
+            st->roll = v[HUD_REC_BASE + 5] / 256.0;
+            st->interpolated = 1;
+        }
+        return 1;
+    }
+    return hud_state_load(v, n, st);
 }

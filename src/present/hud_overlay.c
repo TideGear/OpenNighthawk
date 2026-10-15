@@ -106,7 +106,8 @@ static void draw_text(const canvas *c, const hud_fprim *f, const hud_font *ft)
 }
 
 /* ---- the pass ----------------------------------------------------------------------------------- */
-enum { ST_PASSES, ST_DRAWN, ST_NO_TICKS, ST_NO_FONT, ST_NO_PAGE, ST_MISMATCH, ST_REPLACED, ST_KEPT, ST_UNSUPPORTED, ST_LEAKED, ST_PANEL };
+enum { ST_PASSES, ST_DRAWN, ST_NO_TICKS, ST_NO_FONT, ST_NO_PAGE, ST_MISMATCH, ST_REPLACED, ST_KEPT, ST_UNSUPPORTED, ST_LEAKED, ST_PANEL,
+       ST_PANEL_PASSES, ST_PANEL_DRAWN, ST_PANEL_MISSED, ST_NO_ART, ST_ART_CHANGED, ST_MAP_DRAWN, ST_MAP_KEPT };
 
 void hud_overlay_stats(const drawlist *d, uint64_t out[HUD_STATS])
 {
@@ -115,51 +116,148 @@ void hud_overlay_stats(const drawlist *d, uint64_t out[HUD_STATS])
     out[ST_REPLACED] = d->hud.replaced; out[ST_KEPT] = d->hud.kept; out[ST_UNSUPPORTED] = d->hud.unsupported;
     out[ST_LEAKED] = d->hud.leaked;
     out[ST_PANEL] = d->hud.panel_replaced;
+    out[ST_PANEL_PASSES] = d->hud.panel_passes; out[ST_PANEL_DRAWN] = d->hud.panel_drawn; out[ST_PANEL_MISSED] = d->hud.panel_missed;
+    out[ST_NO_ART] = d->hud.panel_no_art; out[ST_ART_CHANGED] = d->hud.art_changed;
+    out[ST_MAP_DRAWN] = d->hud.map_drawn; out[ST_MAP_KEPT] = d->hud.map_kept;
 }
 
 const char *hud_overlay_stat_name(int k)
 {
     static const char *const names[HUD_STATS] = { "HUD passes", "drawn from state", "no driver tick table", "no font yet", "no page",
                                           "records that left the prediction", "records replaced", "records kept", "unsupported",
-                                          "replaced records that changed the fine picture", "panel items replaced" };
+                                          "replaced records that changed the fine picture", "panel items replaced",
+                                          "panel passes", "panel passes drawn from state", "panel items not seen",
+                                          "blits left to the original (no art yet)", "blit art changed after use",
+                                          "map arrows drawn from state", "map arrows left to the original" };
     return k >= 0 && k < HUD_STATS ? names[k] : "";
+}
+
+/* a blit's art as N x N blocks at the fine top-left (X0, Y0), colour 0 transparent, inside [cl, cr) x [ct, cb) */
+static void draw_art(const canvas *c, const uint8_t *px, int w, int h, int X0, int Y0, int cl, int ct, int cr, int cb)
+{
+    const int N = c->n;
+    if (cl < 0) cl = 0;
+    if (ct < 0) ct = 0;
+    if (cr > c->W) cr = c->W;
+    if (cb > c->H) cb = c->H;
+    for (int r = 0; r < h; r++)
+        for (int k = 0; k < w; k++) {
+            const int colour = px[r * w + k];
+            if (!colour) continue;
+            for (int yy = 0; yy < N; yy++)
+                for (int xx = 0; xx < N; xx++) put_fine(c, X0 + k * N + xx, Y0 + r * N + yy, colour, cl, ct, cr, cb);
+        }
+}
+
+/* a pass's fine primitives, in order. 0 when a font or an art it needs is missing (nothing drawn then); *no_art
+ * collects the sprites whose art is not known yet (they are skipped, and the original's record keeps them). */
+static int fonts_ready(const hud_ov *o, const hud_fine_list *fl)
+{
+    for (int i = 0; i < fl->n; i++)
+        if (fl->p[i].type == HF_TEXT) {
+            const int idx = fl->p[i].blk[6];
+            if (idx < 0 || idx >= HUD_FONTS || !o->font[idx].valid) return 0;
+        }
+    return 1;
+}
+
+static const hud_art *art_of(const hud_ov *o, const hud_fprim *f, int entry)
+{
+    return hud_art_find(o, entry, f->blk[0], f->blk[1], f->blk[2], f->blk[6], f->blk[7]);
+}
+
+static void draw_fine(drawlist *d, canvas *c, const hud_fine_list *fl, int sprite_entry)
+{
+    hud_ov *o = &d->hud;
+    const double width = d->line_width ? d->line_width : d->n;
+    for (int i = 0; i < fl->n; i++) {
+        const hud_fprim *f = &fl->p[i];
+        int cl = f->cl < 0 ? 0 : f->cl, ct = f->ct < 0 ? 0 : f->ct, cr = f->cr > c->W ? c->W : f->cr, cb = f->cb > c->H ? c->H : f->cb;
+        if (f->type == HF_LINE) {
+            c->tag = DT_HUD_STATE_LINE;
+            thick_line(c, f->x0, f->y0, f->x1, f->y1, width, f->colour, cl, ct, cr, cb);
+        } else if (f->type == HF_TEXT) {
+            c->tag = DT_HUD_STATE_TEXT;
+            draw_text(c, f, &o->font[f->blk[6]]);
+        } else {
+            const hud_art *a = art_of(o, f, sprite_entry ? sprite_entry : f->entry);
+            if (!a) continue;
+            c->tag = DT_HUD_STATE_TEXT;
+            draw_art(c, a->px, a->w, a->h, (int)floor(f->x0 + 0.5), (int)floor(f->y0 + 0.5), cl, ct, cr, cb);
+        }
+    }
+}
+
+/* the records of the pass the fine picture does not draw itself, because a blit's art is not known yet: kept */
+static void keep_sprites_without_art(const hud_ov *o, hud_exact_list *ex, const hud_fine_list *fl, int sprite_entry, uint64_t *no_art)
+{
+    for (int i = 0; i < fl->n; i++) {
+        const hud_fprim *f = &fl->p[i];
+        if (f->type != HF_SPRITE || art_of(o, f, sprite_entry ? sprite_entry : f->entry)) continue;
+        (*no_art)++;
+        for (int k = 0; k < ex->n; k++)
+            if (ex->p[k].item == f->item && (ex->p[k].kind == HP_S18 || ex->p[k].kind == HP_S)) ex->p[k].keep = 1;
+    }
+}
+
+static void end_panel(hud_ov *o)
+{
+    if (o->pcover.n) o->panel_missed += (uint64_t)hud_pcover_end(&o->pcover);
 }
 
 static int begin_pass(drawlist *d, const int32_t *v, int n)
 {
-    static F117_TLS hud_state st;
-    static F117_TLS hud_exact_list ex;
+    static F117_TLS hud_state st, fst;
+    static F117_TLS hud_exact_list ex, fex;
     static F117_TLS hud_fine_list fl;
     hud_ov *o = &d->hud;
     o->cover.active = 0;
+    end_panel(o);
+    o->panel_valid = 0;
     o->passes++;
     if (!hud_overlay_enabled() || d->n <= 1) return 1;
-    if (!hud_state_load(v, n, &st)) { o->unsupported++; return 1; }
+    if (!hud_state_load(v, n, &st) || !hud_state_load_drawn(v, n, &fst)) { o->unsupported++; return 1; }
     if (!st.have_ticks) { o->no_ticks++; return 1; }
     drawlist_page *p = drawlist_page_of(d, d->seg);
     if (!p || !p->hi || p->n != d->n) { o->no_page++; return 1; }
-    if (hud_exact(&st, &ex) < 0) { o->unsupported++; return 1; }
-    if (hud_fine(&st, d->n, &ex, &fl) < 0) { o->unsupported++; return 1; }
-    for (int i = 0; i < fl.n; i++)
-        if (fl.p[i].type == HF_TEXT) {
-            const int idx = fl.p[i].blk[6];
-            if (idx < 0 || idx >= HUD_FONTS || !o->font[idx].valid) { o->no_font++; return 1; }
-        }
+    /* the skeleton's pass, whose records arrive, and the pass the picture is drawn from (the held older frame's) */
+    if (hud_exact(&st, &ex) < 0 || hud_exact(&fst, &fex) < 0) { o->unsupported++; return 1; }
+    if (hud_fine(&fst, d->n, &fex, &fl) < 0) { o->unsupported++; return 1; }
+    if (!fonts_ready(o, &fl)) { o->no_font++; return 1; }
+    keep_sprites_without_art(o, &ex, &fl, 18, &o->panel_no_art);
     canvas c = { p, 320 * d->n, 200 * d->n, d->n, DT_HUD_STATE_LINE };
-    const double width = d->line_width ? d->line_width : d->n;
-    for (int i = 0; i < fl.n; i++) {
-        const hud_fprim *f = &fl.p[i];
-        int cl = f->cl < 0 ? 0 : f->cl, ct = f->ct < 0 ? 0 : f->ct, cr = f->cr > c.W ? c.W : f->cr, cb = f->cb > c.H ? c.H : f->cb;
-        if (f->type == HF_LINE) {
-            c.tag = DT_HUD_STATE_LINE;
-            thick_line(&c, f->x0, f->y0, f->x1, f->y1, width, f->colour, cl, ct, cr, cb);
-        } else {
-            c.tag = DT_HUD_STATE_TEXT;
-            draw_text(&c, f, &o->font[f->blk[6]]);
-        }
-    }
+    draw_fine(d, &c, &fl, 18);
     o->drawn++;
     hud_cover_begin(&o->cover, &ex);
+    return 1;
+}
+
+/* the panel pass ('p', extended): its fine items drawn now, from the drawn state, and its records recognised as they come */
+static int begin_panel(drawlist *d, const int32_t *v, int n)
+{
+    static F117_TLS hud_panel ps, pd;
+    static F117_TLS uint8_t dss[0x10000], dsd[0x10000];
+    static F117_TLS hud_exact_list ex;
+    static F117_TLS hud_fine_list fl;
+    hud_ov *o = &d->hud;
+    end_panel(o);
+    o->panel_valid = 0;
+    if (!hud_overlay_enabled() || d->n <= 1) return 1;
+    if (!hud_panel_load_ds(v, n, &ps, dss)) return 1;
+    if (!ps.ext) { o->panel_valid = 1; o->panel = ps; return 1; }   /* a first-version record: its items by classify */
+    o->panel_passes++;
+    if (!hud_panel_load_drawn(v, n, &pd, dsd)) return 1;
+    drawlist_page *p = drawlist_page_of(d, d->seg);
+    if (!p || !p->hi || p->n != d->n) { o->no_page++; return 1; }
+    if (hud_panel_exact(dss, &ps, 1, &ex, NULL) < 0) { o->unsupported++; return 1; }
+    if (hud_panel_exact(dsd, &pd, d->n, NULL, &fl) < 0) { o->unsupported++; return 1; }
+    if (!fonts_ready(o, &fl)) { o->no_font++; return 1; }
+    keep_sprites_without_art(o, &ex, &fl, 0, &o->panel_no_art);
+    canvas c = { p, 320 * d->n, 200 * d->n, d->n, DT_HUD_STATE_LINE };
+    draw_fine(d, &c, &fl, 0);
+    o->panel_drawn++;
+    hud_pcover_begin(&o->pcover, &ex);
+    o->pcover_seg = d->seg;
     return 1;
 }
 
@@ -192,7 +290,7 @@ static void run_without_fine(drawlist *d, char kind, const int32_t *v, int n)
     }
 }
 
-/* ---- the panel pass's items: the flight-path marker and the two bars --------------------------------------- */
+/* ---- the first version's panel items: the flight-path marker and the two bars, recognised one by one ---------------- */
 /* Draw one at its fine position. The marker is the record's own art (colour 0 transparent) as N x N blocks at the
  * fine position, clipped to the record's clip rectangle; a bar is a stroke in the library colour of the moment. 0 when
  * it cannot (no fine page, no colour): the original's record then draws it as before. */
@@ -207,21 +305,30 @@ static int draw_panel_item(drawlist *d, const hud_panel_item *it, const int32_t 
         const int32_t *blk = v + 2;
         const int w = (int16_t)blk[6], h = (int16_t)blk[7];
         if (w <= 0 || h <= 0 || n - 14 != w * h) return 0;
-        const int cl = (int16_t)blk[10] * N, cr = ((int16_t)blk[11] + 1) * N, ct = (int16_t)blk[8] * N, cb = ((int16_t)blk[9] + 1) * N;
-        const int X0 = (int)floor(it->x0 * N + 0.5), Y0 = (int)floor(it->y0 * N + 0.5);
+        static F117_TLS uint8_t px[64000];
+        for (int k = 0; k < w * h; k++) px[k] = (uint8_t)v[14 + k];
         c.tag = DT_HUD_STATE_TEXT;
-        for (int r = 0; r < h; r++)
-            for (int k = 0; k < w; k++) {
-                const int colour = v[14 + r * w + k] & 0xFF;
-                if (!colour) continue;
-                for (int yy = 0; yy < N; yy++)
-                    for (int xx = 0; xx < N; xx++) put_fine(&c, X0 + k * N + xx, Y0 + r * N + yy, colour, cl > 0 ? cl : 0, ct > 0 ? ct : 0, cr < c.W ? cr : c.W, cb < c.H ? cb : c.H);
-            }
+        draw_art(&c, px, w, h, (int)floor(it->x0 * N + 0.5), (int)floor(it->y0 * N + 0.5), (int16_t)blk[10] * N,
+                 (int16_t)blk[8] * N, ((int16_t)blk[11] + 1) * N, ((int16_t)blk[9] + 1) * N);
         return 1;
     }
     if (d->colour < 0) return 0;
     const double width = d->line_width ? d->line_width : N;
     thick_line(&c, (it->x0 + 0.5) * N, (it->y0 + 0.5) * N, (it->x1 + 0.5) * N, (it->y1 + 0.5) * N, width, d->colour, 0, 0, c.W, 91 * N);
+    return 1;
+}
+
+/* ---- the moving map's arrow ('m', then its entry-73 blit) ----------------------------------------------------------- */
+static int draw_map_arrow(drawlist *d, const int32_t *v, int n)
+{
+    hud_ov *o = &d->hud;
+    double x, y;
+    if (!hud_map_classify(&o->map, v, n, &x, &y)) return 0;
+    drawlist_page *p = drawlist_page_of(d, (uint16_t)v[1]);
+    if (!p || !p->hi || p->n != d->n) return 0;
+    const int N = d->n;
+    canvas c = { p, 320 * N, 200 * N, N, DT_HUD_STATE_TEXT };
+    draw_art(&c, o->map.art, 4, 4, (int)floor(x * N + 0.5), (int)floor(y * N + 0.5), 0, 0, c.W, c.H);
     return 1;
 }
 
@@ -231,13 +338,25 @@ int hud_overlay_hook(drawlist *d, char kind, const int32_t *v, int n)
     switch (kind) {
     case 'P':
         o->cover.active = 0;
+        end_panel(o);
         o->panel_valid = 0;
+        o->map_valid = 0;
         return 0;
     case 'h':
         return begin_pass(d, v, n);
     case 'p':
-        o->panel_valid = hud_overlay_enabled() && d->n > 1 && hud_panel_load(v, n, &o->panel);
+        return begin_panel(d, v, n);
+    case 'm': {
+        /* the skeleton's words recognise the blit; the drawn state's arrow (the held older frame's) is what is drawn */
+        static F117_TLS hud_map ms;
+        o->map_valid = hud_overlay_enabled() && d->n > 1 && hud_map_load(v, n, &ms) && hud_map_load_drawn(v, n, &o->map);
+        if (o->map_valid) {
+            o->map.x0 = ms.x0; o->map.y0 = ms.y0; o->map.ox = ms.ox; o->map.oy = ms.oy; o->map.zoom = ms.zoom;
+            o->map.sx_screen = ms.sx_screen; o->map.sy_screen = ms.sy_screen;
+            o->map.src_x = ms.src_x;                   /* the blit's own source; the art may be the older frame's */
+        }
         return 1;
+    }
     case 'T':
         hud_fonts_note(o, v, n);
         /* fall through */
@@ -245,10 +364,30 @@ int hud_overlay_hook(drawlist *d, char kind, const int32_t *v, int n)
         int handled = 0;
         if (o->cover.active) {
             const int r = hud_cover_step(&o->cover, kind, v, n);
+            if (r != HC_NONE && r != HC_MISMATCH && kind == 'S' && o->cover.last == HI_RETICLE) hud_art_note(o, v, n);
             if (r == HC_REPLACED) { o->replaced++; run_without_fine(d, kind, v, n); return 1; }
             if (r == HC_KEPT) o->kept++;
             if (r == HC_MISMATCH) o->mismatched++;
             handled = r != HC_NONE;
+        }
+        if (!handled && o->pcover.active && kind != 'H') {
+            const int r = hud_pcover_step(&o->pcover, kind, v, n);
+            if (r != HC_NONE && kind == 'S' && o->pcover.last == PI_FPM) hud_art_note(o, v, n);
+            if (r == HC_REPLACED) {
+                /* the fine items were drawn on the page of the moment the pass began: a record for another page left it */
+                const int seg = kind == 'N' ? (n >= 6 ? v[5] : -1) : (n >= 2 ? v[1] : -1);
+                if (seg != o->pcover_seg) o->mismatched++;
+                o->panel_replaced++;
+                run_without_fine(d, kind, v, n);
+                return 1;
+            }
+            handled = r != HC_NONE;
+        }
+        if (!handled && o->map_valid && kind == 'S' && n >= 1 && v[0] == 73) {
+            o->map_valid = 0;
+            if (draw_map_arrow(d, v, n)) { o->map_drawn++; run_without_fine(d, kind, v, n); return 1; }
+            o->map_kept++;
+            return 0;
         }
         if (!handled && o->panel_valid && (kind == 'S' || kind == 'N')) {
             hud_panel_item it;

@@ -82,6 +82,10 @@ int interp_inbetween(const interp_frame *a, const interp_frame *b, const interp_
  * camera's height and its pitch and roll moved the same fraction of the way. Without it the 'U' corners move as
  * integers and the 'o' records are left out of an in-between frame. */
 #define INTERP_BANDS 8
+/* INTERP_HUD_HOLD (with INTERP_HUD): the HUD's discrete state (texts, numbers, modes, the map arrow's sprite) is the
+ * older frame's for every t below 1, not the nearer frame's (hud_blend's hold): it changes when the newer logic
+ * frame itself is shown. */
+#define INTERP_HUD_HOLD 16
 int interp_inbetween_ex(const interp_frame *a, const interp_frame *b, const interp_pairing *p, double t, int flags,
                         interp_list *out, int *skel_b, uint64_t *stats);
 void interp_list_free(interp_list *l);
