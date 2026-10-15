@@ -10,7 +10,7 @@
 > [GOG](https://www.gog.com/en/game/f117a_nighthawk_stealth_fighter_20). Please buy it.
 
 This is a fully **human-driven**, AI-powered recompilation **AND**
-lockstep-verified decompilation of the PC DOS classic *F-117A
+decompilation (both lockstep-verified) of the PC DOS classic *F-117A
 Nighthawk Stealth Fighter 2.0* (MicroProse, 1991) for Windows. The
 original's machine code is translated, instruction by instruction, into C
 and compiled natively. Its routines are then progressively replaced by
