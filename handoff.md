@@ -36,7 +36,10 @@ next step and so switch at t = 0.5 (1,046 moved over 60 px, 709 have no polygon 
 26 and a run at 323-328). This is pairing by vertex slot, not identity: the scene path's stable identities are the fix.
 Outline edges (roads) over the same window: 20,735 drawn, 491 (2.4%) in batches with no partner, and 98 of 339 steps
 (29%) have at least one such edge, so a road edge pops in or out at t = 0.5 on about one step in three (steps 41-44,
-56-57 and 75-80 lose 3-5 edges each). Next: check whether those edges are original culling/clipping or a pairing miss.
+56-57 and 75-80 lose 3-5 edges each). Cause of those edges (counting both frames): 651 of 1,081 sit in a batch whose same-size partner exists but moved over
+60 px (the pairing's `MAX_MOTION`), 377 lost to a nearer look-alike or order, and only 51 are a real model-size change.
+So about 95% are pairing misses, not original culling: identity pairing should keep them moving. Next: connect the
+scene path's identities, or test a motion-scaled threshold against the 45-route exactness checks.
 
 Unfinished native work is committed/pushed as **`a2202f1`** on **`present-scene-geometry`**, worktree **`D:/f117-wt/present-world-lines`**:
 `src/present/scene_mesh.c/.h`, `tests/test_scene_mesh.c` and its CMake wiring. It decodes owned complete meshes,
