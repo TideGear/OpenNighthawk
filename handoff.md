@@ -23,6 +23,15 @@ The new session `session-20261015-103956` is frozen privately in `D:/f117-gate/p
 engines. The complete draw capture covers 2,450,306,120..2,850,306,120 (`recomp/draw.log`, about 633 MB);
 `replay-verdict.json` is the guest-parity result, not a visual diagnosis. Use this as the next regression source.
 
+Headless replays of that flight at N=4 interp (`--shots-vga`, 1,499 frames / 1,497 pairs exact) are in
+`owner-roads-20261015/diagnose` (2.70B, open sea) and `diagnose2` (2.80B-2.85B, night land, 176 shots). Presented
+pictures repeat 3-4 VGA shots, so per-shot line fits are not a jitter metric; use `F117_PRESENT_DIAG` or compare
+interpolated frames per logic step. `diagnose3` (N=9, `F117_PRESENT_DIAG`, 2.802B, 4 shots) shows roads are
+`DT_OUTLINE_FINE` strokes (yellow in the false colour) and buildings are model polygons; in that window the main
+road moved only 0.05 fine px across four in-between frames, so it does not reproduce the jitter. Cause of the
+road jitter is still undiagnosed: next, a per-logic-step continuity scan over the whole `draw.log` window for
+outline edges whose endpoints appear/disappear or change clipping between steps (identity work).
+
 Unfinished native work is committed/pushed as **`a2202f1`** on **`present-scene-geometry`**, worktree **`D:/f117-wt/present-world-lines`**:
 `src/present/scene_mesh.c/.h`, `tests/test_scene_mesh.c` and its CMake wiring. It decodes owned complete meshes,
 loads prepared poses, evaluates hidden/visible camera geometry and plane shading, walks painter order and conditional
