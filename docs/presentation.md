@@ -73,7 +73,7 @@ Each stage is judged by a check, as in the rest of the project.
 |---|---|---|---|
 | 0 | Observer: log every call to the drawing primitives per frame | the log is identical across runs; hashes unchanged with it on | done |
 | 1 | Draw lists: a frame's primitives as a list, replayed at 320x200 | the replay reproduces the original's work and display pages bit for bit, every phase of every route | done: all 45 complete routes and staged original-instruction fixtures for rare branches; C and Python fill rules agree |
-| 2 | Re-draw the list at N times the resolution | N = 1 is Stage 1 exactly; at N > 1 verified geometry has smooth boundaries and keeps the original viewport, fill styles and artwork | model polygons re-drawn from their sub-pixel vertices (`hires_subpixel.py`, and in C `hires.c`, live with `--present-scale N`); HUD lines/ticks redraw on the fine grid with scale-proportional or chosen thickness; original bitmap text/artwork stay scaled by the owner's choice; verified near-plane crossings now refined, incompatible geometry safely scaled; the HUD tapes, heading strip and pitch ladder are drawn from the game state, not from the original's rounded calls ([below](#the-state-driven-hud-14-october-2026)) |
+| 2 | Re-draw the list at N times the resolution | N = 1 is Stage 1 exactly; at N > 1 verified geometry has smooth boundaries and keeps the original viewport, fill styles and artwork | model polygons re-drawn from their sub-pixel vertices (`hires_subpixel.py`, and in C `hires.c`, live with `--present-scale N`); HUD lines/ticks redraw on the fine grid with scale-proportional or chosen thickness; original bitmap text/artwork stay scaled by the owner's choice; verified near-plane crossings now refined, incompatible geometry safely scaled; the HUD tapes, heading strip and pitch ladder are drawn from the game state, not from the original's rounded calls ([below](#the-state-driven-hud-14-october-2026)), and so are the sky and ground bands ([below](#the-state-driven-sky-and-ground-bands-14-october-2026)) |
 | 3 | Interpolate between consecutive draw lists to the host display rate | at a logic frame the output is exactly that frame; no in-between primitive absent from both neighbours | 320x200 study done (`interp_frame.py`, below): exact at both ends on seven windows, no violations; live path built at 320x200 (below): the feed, the presentation from the replay, and the interpolation in C, exact at both ends of 9,843 live frame pairs |
 | 4 | Pacing, vsync, a picture-age setting, HUD handling, a switch to the original picture | pictures at the display's refresh with t on the mission clock; the age setting measured | pacing at the host's vsync, age setting and Reimp-style HUD handling built (below); `--present scan` is the switch; real-display checks remain |
 
@@ -334,7 +334,9 @@ its edges, `N` library line, `K` colour, `Q` span fill, `C` blit, `T` text
 (with its font, so the replay needs no game data), `S` sprite, `W` scaled RLE
 sprite, `H` tick scale, `D` page copies (44 present, 48 copy, 79 dissolve),
 `M` colour replace (entry 41), `X` any other entry, `x` changed byte deltas, `J` the display palette (768 six-bit DAC
-components, logged beside `Y` with `F117R_OBSERVE_PAGES=1`).
+components, logged beside `Y` with `F117R_OBSERVE_PAGES=1`). The state records `h`, `p` (`F117R_OBSERVE_HUD=1`) and
+`o` (`F117R_OBSERVE_BANDS=1`) are described with the state-driven HUD and bands below. `F117R_OBSERVE_KINDS=LETTERS`
+keeps only those kinds in the log (a corpus of a few kinds over a whole flight).
 
 `tools/drawlist_frame.py LOG` rebuilds each phase from the previous page dump
 plus every captured primitive in order and compares it, byte for byte over

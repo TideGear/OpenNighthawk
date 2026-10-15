@@ -4,6 +4,7 @@
 #include "recomp_rt.h"
 #include "cpu.h"
 #include "../present/hud_state.h"
+#include "../present/band_state.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -185,6 +186,20 @@ static int hook_game_draw(machine_t *m)
             for (unsigned k = 0; k < 768; k++) v[k] = m->dac_display[k];
             o->prim(o->user, c->icount, 'J', v, 768);
         }
+    }
+    /* The band pass's starting state ('o', band_state.h): the view block it was called with (the near call's
+     * argument, above the return address), that block's word +4, and the data segment's words it reads. Read
+     * directly; nothing written, the clock not moved. */
+    if (o && o->prim && o->bands) {
+        cpu_t *c = &m->cpu;
+        const uint16_t ds = c->seg[S_DS], view = peek16(c, c->seg[S_SS], (uint16_t)(c->r[R_SP] + 2));
+        int32_t v[BAND_REC_BASE];
+        int n = 0;
+        v[n++] = BAND_REC_VERSION;
+        v[n++] = view;
+        v[n++] = peek16(c, ds, (uint16_t)(view + 4));
+        for (int k = 0; k < BAND_NWORDS; k++) v[n++] = band_rec_byte[k] ? peek8(c, ds, band_rec_off[k]) : peek16(c, ds, band_rec_off[k]);
+        o->prim(o->user, c->icount, 'o', v, n);
     }
     return 0;
 }

@@ -23,6 +23,7 @@
 #define F117R_HIRES_H
 
 #include "drawlist.h"
+#include "band_state.h"
 
 #include <stdint.h>
 
@@ -69,7 +70,9 @@ typedef struct {
         int nedges, njoin;
         int32_t rows[2 * 256];
     } poly;
-    struct { int have, n, colour; double x[32], y[32]; } span_poly;   /* a 'U' waiting for its span fill */
+    struct { int have, n, colour, state; double x[32], y[32]; } span_poly;   /* a 'U' waiting for its span fill;
+                                                                       state: its corners are the band state's fine ones */
+    band_cover band;                  /* the sky and ground band pass being followed (band_state.h), at N > 1 */
     int seen_fill;
     int fill_colour;
     int suppressed;                   /* the page index paused while a refilled polygon's rows arrive, or -1 */

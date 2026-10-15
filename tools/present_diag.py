@@ -24,11 +24,16 @@ body = ENUM[ENUM.index("enum {"):ENUM.index("DT_COUNT")]
 NAMES = re.findall(r"\b(DT_[A-Z_0-9]+)\b(?=\s*[,/])", body)
 NAMES = [n for n in NAMES]
 assert NAMES[0] == "DT_SEED"
+# tags given outside diagtag.h's enum: the band state's (src/present/band_state.h)
+NAMES += ["DT_UNNAMED_%d" % k for k in range(len(NAMES), 243)]
+NAMES[242] = "DT_BAND_STATE"
 CLASS = {}
 for n in NAMES:
     c = "g"
     if n in ("DT_MODEL_SOLID", "DT_MODEL_PATTERN", "DT_MODEL_NEAR"): c = "a"
     elif n == "DT_SPANPOLY_FINE": c = "a2"
+    elif n == "DT_BAND_STATE": c = "a3"
+    elif n.startswith("DT_UNNAMED_"): c = "-"   # counted in the window's total, in no class
     elif n == "DT_SEED": c = "e0"
     elif n.startswith("DT_FB_") or n == "DT_GUARD": c = "b"
     elif n in ("DT_SPAN_REJECT", "DT_SPAN_BEYOND", "DT_SPAN_DEGENERATE"): c = "b2"
@@ -39,6 +44,7 @@ for n in NAMES:
     CLASS[n] = c
 CLASS_TITLE = {
     "a": "(a) refined model polygon, fine grid", "a2": "(a2) refined span-rasteriser polygon (sky/ground/map regions)",
+    "a3": "(a3) sky/ground band drawn from the band state",
     "b": "(b) model polygon kept as scaled copy (+ guard repairs)", "b2": "(b2) span-rasteriser polygon kept scaled",
     "c": "(c) fine stroke (HUD, outline, ticks, thin strip)", "d": "(d) scaled text",
     "e0": "(e0) static cockpit art left from the seed (scaled copy, never redrawn)", "e": "(e) scaled sprite / cockpit & map artwork", "f": "(f) page copy / coarse blit",
@@ -137,7 +143,7 @@ def main():
                           cls=cls, boundary_pixels=tot, aligned=al,
                           stair={k: v for k, v in st.items()})
         print(nm, info[1])
-        for c in ("a", "a2", "b", "b2", "c", "d", "e0", "e", "f", "g"):
+        for c in ("a", "a2", "a3", "b", "b2", "c", "d", "e0", "e", "f", "g"):
             if cls.get(c): print(f"   {CLASS_TITLE[c]:75s} {100.0 * cls[c] / total:6.2f}%")
         print(f"   boundary pixels {tot}, on a cell line {al} ({100.0 * al / max(tot, 1):.1f}%; refined edges would give about {100.0 / n:.0f}%)")
         for line in info:
@@ -149,7 +155,7 @@ if __name__ == "__main__":
     main()
 
 
-SCENE = {"a", "a2", "b", "b2"}
+SCENE = {"a", "a2", "a3", "b", "b2"}
 
 
 def runs_of(mask):

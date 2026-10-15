@@ -703,6 +703,72 @@ static void refill_span_polygon(hires *h, drawlist *d, const int32_t *v, int n)
     h->stats[HS_SPAN_REFILLED]++;
 }
 
+/* A band of the sky and ground pass whose 'U' record the band state recognised (band_state.h): its corners are
+ * already the unrounded ones of the state, so it needs no check against the original's footprint. It is drawn
+ * from that geometry with half a fine pixel of inclusive coverage, clipped to the span rasteriser's window (not to
+ * its footprint, which follows the rounded corners), even when the original's own polygon left no row there: the
+ * bands tile the window between them, and a fine band edge can cross a cell its rounded twin did not reach. */
+static void refill_band_polygon(hires *h, drawlist *d, const int32_t *v, int n)
+{
+    static F117_TLS double fine[32][4];
+    static F117_TLS footprint f;
+    static F117_TLS extents x;
+    static F117_TLS int32_t spans[3 * 200 * 64];
+    const int sc = h->n, nrows = v[3];
+    if (sc <= 1 || sc > 64 || nrows < 0 || nrows > 256) return;
+    uint16_t seg = d->seg;
+    int32_t org = d->origin;
+    if (n >= 6 + 2 * nrows) { seg = (uint16_t)v[4 + 2 * nrows]; org = v[5 + 2 * nrows]; }
+    drawlist_page *page = drawlist_page_of(d, seg);
+    if (!page || !page->hi || page->n != sc || org < 0 || org >= 64000 || d->colour < 0) return;
+    const int ox = org % 320, oy = org / 320;
+    const int ne = h->span_poly.n;
+    for (int k = 0; k < ne; k++) {
+        const int j = (k + 1) % ne;
+        fine[k][0] = (h->span_poly.x[k] + ox + 0.5) * sc; fine[k][1] = (h->span_poly.y[k] + oy + 0.5) * sc;
+        fine[k][2] = (h->span_poly.x[j] + ox + 0.5) * sc; fine[k][3] = (h->span_poly.y[j] + oy + 0.5) * sc;
+    }
+    f.y0 = v[0] + oy;
+    f.n = nrows;
+    int64_t want = 0;
+    for (int k = 0; k < nrows && 5 + 2 * k < n; k++) {
+        int32_t l = v[4 + 2 * k], r = v[5 + 2 * k];
+        const int y = f.y0 + k;
+        f.has[k] = 0;
+        if (y < 0 || y >= 200 || r < l || (r == l && (r == 0 || r == 0x13F))) continue;
+        l += ox; r += ox;
+        if (l < 0) l = 0;
+        if (r > 319) r = 319;
+        if (l > r) continue;
+        f.l[k] = l; f.r[k] = r; f.has[k] = 1;
+        want += r - l + 1;
+    }
+    extents_init(&x, (const double (*)[4])fine, ne);
+    int32_t vp[4] = { ox, oy, ox + h->band.xmax, oy + h->band.ymax };
+    if (vp[2] > 319) vp[2] = 319;
+    if (vp[3] > 199) vp[3] = 199;
+    const int count = geometry_cover(&x, sc, 0.5, vp, spans);
+    if (!count) {
+        if (want) h->band.scaled++;               /* nothing of the geometry in the window: the original's rows, scaled */
+        return;
+    }
+    protect_geometry(page, &f, spans, count);
+    const int W = 320 * sc;
+    const int word = 0xFF00 | (d->colour & 0xFF);
+    for (int k = 0; k < count; k++) {
+        const int32_t hy = spans[3 * k];
+        int32_t l = spans[3 * k + 1], r = spans[3 * k + 2];
+        if (hy < 0 || hy >= 200 * sc) continue;
+        if (l < 0) l = 0;
+        if (r > W - 1) r = W - 1;
+        if (r < l) continue;
+        paint_run(page->hi + (size_t)hy * W + l, page->tag ? page->tag + (size_t)hy * W + l : NULL, DT_BAND_STATE, r - l + 1, word, l, hy, sc);
+    }
+    page->suppress = 1;
+    h->suppressed = (int)(page - d->page);
+    h->band.painted++;
+}
+
 int hires_guard(const uint8_t *coarse, uint8_t *fine, int n, uint64_t *flat, uint64_t *agree)
 {
     return hires_guard_masked(coarse, fine, n, NULL, flat, agree);
@@ -842,19 +908,36 @@ void hires_record(hires *h, drawlist *d, char kind, const int32_t *v, int n)
             h->poly.have_rows = 1;
         }
         break;
+    case 'P':
+        band_cover_end(&h->band);
+        break;
+    case 'o':                                         /* the band pass's state: its 'U' records follow */
+        h->band.active = 0;
+        if (h->n > 1 && band_state_enabled()) band_cover_begin(&h->band, v, n, 1);
+        break;
     case 'U':
-        h->span_poly.have = 0;
+        h->span_poly.have = h->span_poly.state = 0;
         if (n >= 8 && v[1] >= 3 && v[1] <= 32 && 2 + 2 * v[1] <= n) {
             h->span_poly.have = 1;
             h->span_poly.colour = v[0] & 0xFF;
             h->span_poly.n = v[1];
             for (int k = 0; k < v[1]; k++) { h->span_poly.x[k] = v[2 + 2 * k]; h->span_poly.y[k] = v[3 + 2 * k]; }
         }
+        if (h->band.active) {
+            const band_fquad *fq = NULL;
+            if (band_cover_step(&h->band, v, n, &fq) == BC_REPLACED && h->span_poly.have && h->span_poly.n == 4) {
+                for (int k = 0; k < 4; k++) { h->span_poly.x[k] = fq->x[k]; h->span_poly.y[k] = fq->y[k]; }
+                h->span_poly.state = 1;
+            }
+        }
         break;
     case 'Q':
         d->diag_q = h->span_poly.have ? DT_SPAN_REJECT : DT_SPAN_NOT_POLY;
-        if (h->span_poly.have && n >= 4 && d->colour == h->span_poly.colour) refill_span_polygon(h, d, v, n);
-        h->span_poly.have = 0;
+        if (h->span_poly.have && n >= 4 && d->colour == h->span_poly.colour) {
+            if (h->span_poly.state) refill_band_polygon(h, d, v, n);
+            else refill_span_polygon(h, d, v, n);
+        }
+        h->span_poly.have = h->span_poly.state = 0;
         break;
     case 'b':
         if (n < 5 || !h->poly.active || h->poly.done) break;

@@ -77,6 +77,11 @@ int interp_inbetween(const interp_frame *a, const interp_frame *b, const interp_
  * its continuous values (speed, altitude, heading, pitch, roll) moved the same fraction of the way and its
  * layout and switches the skeleton's. */
 #define INTERP_HUD 4
+/* INTERP_BANDS: the sky and ground bands the state draws (band_state.h) move as state. Their 'U' records are held
+ * (the skeleton's, which the band state recognises), and each band pass's record ('o') is regenerated with the
+ * camera's height and its pitch and roll moved the same fraction of the way. Without it the 'U' corners move as
+ * integers and the 'o' records are left out of an in-between frame. */
+#define INTERP_BANDS 8
 int interp_inbetween_ex(const interp_frame *a, const interp_frame *b, const interp_pairing *p, double t, int flags,
                         interp_list *out, int *skel_b, uint64_t *stats);
 void interp_list_free(interp_list *l);
