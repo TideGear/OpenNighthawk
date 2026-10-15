@@ -69,6 +69,23 @@ owner's verdict on the 4K picture. The owner was told that at N>1 bands are now 
 where the geometry puts them where the original's clipper mis-drew them (1x unchanged)
 and has not replied either way.
 
+**Owner's 4K review of the merged build (14 October, 23:20): next presentation priorities.**
+Better than before, but still jittering: (1) single-dot objects such as lights; (2) the
+coastline where land meets water; (3) the road lines on the ground seen from altitude. Also
+some lines look far too fat while others look right. Likely causes (not yet measured; check
+each with `F117_PRESENT_DIAG` and a jitter measurement like the HUD's before changing code):
+(1) dots are single original pixels at integer positions, scaled to N x N blocks: place them
+at their unrounded projected position (find what draws them and whether a camera-space point
+is available, as for the 'V' vertex records) at a chosen size; (2) in-between frames often
+fall back from camera-space to integer screen-space edge interpolation (the diagnostic counted
+2.48M fallbacks against 3.09M camera-space edges on strike), so refined land/sea edges wobble
+between logic frames: interpolate geometry, not rounded edges; (3) the roads are outline-edge
+strokes (record `L`) whose endpoints are the original's integers, as the HUD lines were:
+draw them from their unrounded endpoints. Line width: state-driven HUD lines use a true
+perpendicular width, the remaining strokes a square nib (up to 1.4x fatter on diagonals), and
+every stroke is N px wide whatever it is: put all strokes on one pen with a width per class
+(HUD, ground marking, outline), not rules per line.
+
 Traps found today:
 - `1450` is also the presentation observer's frame-phase hook. At one address only
   the first override runs, so a matched body there must call the observer itself
