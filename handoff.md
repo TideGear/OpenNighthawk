@@ -13,38 +13,61 @@ standing practice, not a session-by-session log. Earlier sessions' detail
 (what was tried, what failed, exact investigation narratives) is in
 `git log -p handoff.md` — it does not need to live here to stay available.
 
-## Current state (14 October, night)
+## Current state (14 October, end of session)
 
-Phase 2: 889 census functions / 117,660 bytes matched (END `0714`, `2092`, START `40F0`,
-VGAME `F458` added in a worktree-gated batch, `D:/f117-gate/p2-batch7`). The
-latest batch (VGAME `09A0`, `F5F2`, `BB0D`; START `0963`, `A59A`, `008D`, `64E5`, `74B1`)
-and a harness fix (planted callee stubs overwritten by a fuzzed pointer now skip as
-code written) passed a fresh full gate: 97 tests, all 45 routes, both instruction
-profiles, three 887-address seeds, zero mismatches. Proof: `D:/f117-gate/p2-batch6`.
-All proofs agents delivered are integrated; no verified proof is waiting.
+`master` is `471fb9c`, pushed; nothing verified is waiting. The main working tree holds
+only the owner's untracked `4k60.bat` (the owner reverted their `f117a.example.ini` edit
+themselves at 21:11). `build/f117a.exe` there is the merged presentation build the owner
+is testing with `4k60.bat` (built 21:33 from `dfe8cf4`'s content); the batch-7 commit
+after it changes only matched routines.
 
-**Owner decision (14 October, evening): replace the capture-and-refine presentation
-with a state-driven one.** The owner reviewed 4K screenshots (blocky terrain edges when
-turning, jittering HUD lines, fat map marker) and chose: render the 3-D world, HUD and
-cockpit from game state at any resolution, interpolate state (not matched polygons) for
-60+ fps, keep original pixel art integer-scaled, keep the logic at its original tick,
-and throw the current methods out. Retire each old path in the same commit that
-replaces it (never leave a hole; `--present scan` stays as the original picture and
-the oracle). Every layer is checked by "at a logic frame, N=1 equals the original's
-frame". Merged (branches `present-diag` and `present-hud`, gate 99 tests / 45 routes,
-45-route `presentation_check` exact at N=1, `boot_to_flight` N=4/9 368/366 exact): the
-per-pixel origin diagnostic `F117_PRESENT_DIAG`, near-clipped polygons drawn from geometry,
-polygons the original's clipper mis-draws accepted at N>1 (evidence
-`D:/f117-gate/present-v2/fix3d`), and the HUD's tapes, heading strip, pitch ladder,
-flight-path marker and bars drawn from game state (`src/present/hud_state.c`,
-`hud_cover.c`, `hud_overlay.c`; `F117_PRESENT_HUD=old` switches it off; evidence
-`D:/f117-gate/present-v2/hud`, analysis `D:/f117-gate/present-v2/hud-analysis.md`). Not yet
-from state: frame outline, reticle, G text, readouts, weapon/target symbology, cockpit art
-and the map marker; horizon band corner rounding (derive the bands from state, VGAME
-`1450`); state rather than polygon-pairing interpolation. The owner has not yet viewed the
-merged picture on the 4K display. Interpolation costs
-about one logic step of picture age (67-110 ms); that is the stated price
-([docs/presentation.md](docs/presentation.md), Stage 4).
+**Phase 2:** 889 census functions / 117,660 bytes (P2 67.37%, overall 86.67%). Today added
+24 routines in seven gated commits (proofs `D:/f117-gate/p2-*`; gates `p2-pair`, `p2-compose`,
+`p2-batch2`..`p2-batch7`).
+Two harness changes came with them: scripted INT 21h answers (`g_dos_script`, with `.put`
+for the byte a one-byte read brings), and skipping states that overwrite a planted
+callee stub. Next candidates (reached by `full_cycle`, unmatched; ranked list
+`D:/f117-gate/format-init/reached-corrected.tsv` minus the matched table): MPS_LOGO
+`0006:0072`, `0146:1894`, `0146:08CC`; DSWAP `0010`, `1D66`, `117E`; VGAME `130D:033F`;
+SETUP `19B6`; PLAYER `1602`, then the rest of that list. Agents were stopped mid-proof
+on VGAME `130D:033F`, MPS_LOGO `0146:1894` and PLAYER `1602` (their directories hold a
+draft `body.c`/`fixture.inc`, unverified) and before starting SETUP `19B6` (empty).
+
+**How Phase 2 is done now: the kit and parallel agents.** `D:/f117-gate/kit/kit.py` runs a
+private proof for one routine (`init`, write `body.c` / `fixture.inc` / `mutations.json`,
+`lock --cover`, `seeds`, `mutations` (four edits built at a time), `checkpoints`,
+`verdict`, `integrate`); `D:/f117-gate/kit/BRIEF.md` is the agent brief with every trap
+found so far. Agents work only in their `p2-*` directory. Then: verify each
+`private-verdict.json` yourself (counts, mutations, source hashes, real-route calls),
+`kit.py DIR integrate` (set `KIT_ROOT` to integrate into a worktree), apply any harness
+change the agent reports by hand, build, ctest, ONE full gate per batch, the 45-route
+`presentation_check --scales 1`, docs, commit, push. Gate batches in a separate worktree
+(`D:/f117-wt/gate`, branch `gate-batch7`; build it once with `build.cmd OFF` before the
+gate, which needs its `f117cpu_api.dll`) when the owner is testing the main tree's
+build. `kit.py checkpoints` needs the interpreter cache entry for the current source tree:
+after changing anything under `src/` other than `matched.c`, run a gate before the next
+proofs' checkpoints. Refresh `D:/f117-gate/kit-libs` from a main build after the libraries
+change (the kit recopies newer libraries into each proof).
+
+**Presentation (owner decision 14 October: state-driven where the capture is the wrong
+technique).** Merged and gated (`dfe8cf4`): the per-pixel origin diagnostic
+`F117_PRESENT_DIAG`; near-clipped polygons drawn from geometry and polygons the original's
+clipper mis-draws accepted at N>1 (worst-frame fallback 84% -> 1.7%, no holes); the HUD's
+tapes, heading strip, pitch ladder, flight-path marker and bars drawn from game state
+(exact on 12,921 original HUD calls; ladder-label jitter rms 3.78 -> 0.01 fine px;
+`F117_PRESENT_HUD=old` switches it off). Evidence `D:/f117-gate/present-v2/{diag,fix3d,hud}`,
+analysis `present-v2/hud-analysis.md`. Two follow-ups were stopped mid-task and pushed as
+UNVERIFIED work-in-progress branches (do not merge without finishing and checking them):
+`wip-present-horizon` (worktree `D:/f117-wt/present-horizon`: sky/ground bands from state,
+VGAME `1450`; new `src/present/band_state.c`; outputs `present-v2/horizon`) and
+`wip-present-hud2` (worktree `D:/f117-wt/present-hud2`: the rest of the HUD, discrete items
+held to the logic frame, the map aircraft marker; outputs `present-v2/hud2`). Their briefs:
+the same deliverables and checks as the merged HUD work (exact model against captured logs,
+fine model at N>1, ctest, retained windows, `boot_to_flight` N=4/9, jitter numbers). Also
+left: weapon/target symbology, state rather than polygon-pairing interpolation, and the
+owner's verdict on the 4K picture. The owner was told that at N>1 bands are now drawn
+where the geometry puts them where the original's clipper mis-drew them (1x unchanged)
+and has not replied either way.
 
 Traps found today:
 - `1450` is also the presentation observer's frame-phase hook. At one address only
@@ -53,31 +76,16 @@ Traps found today:
   `tests/test_overrides.c`. `kit.py integrate` refuses an address with an observer.
 - The gate's commit-derived seed (rotates with HEAD) can fail a routine the commit
   did not touch: it found the segment-wrap defect in `hit_test` (START `393D`, END
-  `1C3B`). Reproduce with `func_lockstep --seed S --only MOD:IP` on a build without
-  the new body. Any guard that treats a record as contiguous bytes is wrong when a
-  16-bit offset wraps at FFFFh: test each byte's own linear address.
-- Fixture rules are in `D:/f117-gate/kit/BRIEF.md` (arguments start at SP, not SP+2;
-  `--only` addresses have no leading zero; hex literal ending in E before `+`).
-
-Private proofs are made with `D:/f117-gate/kit/kit.py` and may be run by separate
-agents in their own directories while a gate runs in the main tree: `init`, write
-`body.c` / `fixture.inc` / `mutations.json`, `lock --cover`, `seeds`, `mutations`,
-`checkpoints`, `verdict`, then `integrate` in the main tree, `build.cmd OFF`, ctest,
-one full gate for the batch, `presentation_check`, docs, commit. Verify an agent's
-`private-verdict.json` yourself (counts, mutation list, source hashes, real-route
-calls) before integrating. The next candidates come from the ranked list of reached,
-unmatched entries (`D:/f117-gate/format-init/reached-corrected.tsv` minus the matched
-table): VGAME `130D:033F`, `F5F2`, `09A0`, `BB0D`, `F458`; START `A59A`, `0963`, `008D`,
-`64E5`, `74B1`, `40F0`; MPS_LOGO `0006:0072`, `0146:1894`, `0146:08CC`; DSWAP `0010`,
-`1D66`, `117E`; SETUP `19B6`; PLAYER `1602`; END `2092`, `0714`.
-
-Other candidates: CRT routines with data-dependent `rep` counts (MPS `0146:067C`
-strstr, `0822`) need a prescan for their room claim. A wait inside a body must
-clamp `m->run_until` to `c->stop_at` (see END `2BEC`'s `DN_RUN`). Gate speed:
-`parallel()` prints per-stage wall time; both coverage and parity are as long as
-the `career_promotion` seed chain (see
-[docs/repeated-processes.md](docs/repeated-processes.md)). The owner's
-`f117a.example.ini` edit and untracked `4k60.bat` stay untouched.
+  `1C3B`) and the overwritten stubs of VGAME `683E`. Reproduce with `func_lockstep --seed
+  S --only MOD:IP`, or shard the whole run (`--shard K/8`) to find which routine fails.
+- `build.cmd` now logs inside the checkout's build directory; before that, a build in
+  another worktree overwrote the shared log and printed BUILD OK for a failed link. Run
+  builds from PowerShell; through bash they hang.
+- Finished agents can wake on their own timers and resend their report many times:
+  stop them (TaskStop) once their proof is verified.
+- Gate speed: `parallel()` prints per-stage wall time; coverage and parity are each as long
+  as the `career_promotion` seed chain; the owner has not decided on the two
+  verification-weakening speedups ([docs/repeated-processes.md](docs/repeated-processes.md)).
 
 The 22-routine support batch is integrated and fully gated. Proof:
 `D:/f117-gate/leaf-batch/final-gate-verdict.json`. Fresh full gate: 75 tests,
