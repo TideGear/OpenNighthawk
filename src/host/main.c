@@ -79,7 +79,8 @@ typedef struct {
 static host_t H;
 
 /* --present replay */
-static int g_replay;                  /* 1 replay, 2 interp */
+static int g_replay;                  /* 1 replay, 2 interp (with g_rerun: in-between pictures drawn by the original on a copy) */
+static int g_rerun;
 static drawfeed g_feed;
 static drawlive g_live;
 static uint64_t g_presented;          /* VGA frames shown from the replay */
@@ -445,11 +446,12 @@ int main(int argc, char **argv)
         }
         else if (!strcmp(a, "--list-fixes")) { fixes_list(stdout); return 0; }
         else if (!strcmp(a, "--present") && v) {
-            if (strcmp(v, "replay") && strcmp(v, "scan") && strcmp(v, "interp")) {
-                fprintf(stderr, "--present takes scan, replay or interp\n");
+            if (strcmp(v, "replay") && strcmp(v, "scan") && strcmp(v, "interp") && strcmp(v, "rerun")) {
+                fprintf(stderr, "--present takes scan, replay, interp or rerun\n");
                 return 2;
             }
-            g_replay = !strcmp(v, "replay") ? 1 : !strcmp(v, "interp") ? 2 : 0;
+            g_rerun = !strcmp(v, "rerun");
+            g_replay = !strcmp(v, "replay") ? 1 : !strcmp(v, "interp") || g_rerun ? 2 : 0;
             i++;
         }
         else if (!strcmp(a, "--present-log") && v) {
@@ -635,6 +637,7 @@ int main(int argc, char **argv)
         g_live.extrapolate = g_age;
         if (g_scale) drawlive_set_scale(&g_live, g_scale);
         drawlive_set_line_width(&g_live, g_line_width);
+        if (g_rerun) { drawfeed_set_rerun(&g_feed); drawlive_set_rerun(&g_live); }
         observe_set(&g_feed.obs);
     }
     /* A replay brings its own speed and boot time; a recording writes ours. */
@@ -906,6 +909,7 @@ int main(int argc, char **argv)
                 /* Interpolation shows the clock as it stands (a frame later than the drawing, which
                  * leads the display by one); extrapolation is a prediction and looks a frame ahead. */
                 if (drawlive_plan_interp(&g_live, &H.m, &H.frame, H.m.cpu.icount + (g_age ? g_frame_ips : 0), &plan)) {
+                    drawlive_prepare_rerun(&g_live, &plan);   /* the copy runs here, on the machine's thread */
                     g_pw.plan = plan;
                     g_pw.frame = H.frame;
                     g_pw.busy = 1;
@@ -996,6 +1000,11 @@ int main(int argc, char **argv)
                     "%llu VGA frames presented from the replay, %llu of them in-between frames\n", (unsigned long long)g_live.frames,
                     (unsigned long long)g_live.exact, (unsigned long long)g_live.inexact, (unsigned long long)g_presented,
                     (unsigned long long)g_live.inbetweens);
+        if (g_rerun)
+            fprintf(H.m.log, "[present] rerun: %llu in-between pictures drawn by the original on a copy, %llu fell back to "
+                    "interpolation, %.0f instructions a copy\n", (unsigned long long)g_live.rerun_drawn,
+                    (unsigned long long)g_live.rerun_fell_back,
+                    g_live.rerun_drawn ? (double)g_live.rerun_insn / (double)g_live.rerun_drawn : 0.0);
     }
     recomp_shutdown(&H.m);
     machine_shutdown(&H.m);

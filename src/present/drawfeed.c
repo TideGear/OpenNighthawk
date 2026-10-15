@@ -276,13 +276,30 @@ static const uint8_t *draw_list(drawlive *r, const drawlive_step *skel)
 
 /* rerun: the original's own drawing at t between steps a and b on a copy of a's machine, spliced after a's records
  * from before its composition, then replayed from a's start. NULL when it could not be made. */
+static int run_copy(drawlive *r, const drawlive_step *a, const drawlive_step *b, double t)
+{
+    if (!a->have_compose || !a->snap.valid) return 0;
+    if (!rerun_draw(&a->snap, b && b->have_compose ? &b->snap : NULL, t, &r->rlist) || r->rlist.first < 0) return 0;
+    r->rerun_insn += r->rlist.insn;
+    return 1;
+}
+
+/* the step's own start state, then the copy's drawing from where the step begins (its first phase) */
+static const uint8_t *draw_copy(drawlive *r, const drawlive_step *a)
+{
+    return draw_recs(r, a, r->rlist.rec + r->rlist.first, r->rlist.nrec - r->rlist.first);
+}
+
 static const uint8_t *draw_rerun(drawlive *r, const drawlive_step *a, const drawlive_step *b, double t)
 {
-    if (!a->have_compose || !a->snap.valid) return NULL;
-    if (!rerun_draw(&a->snap, b && b->have_compose ? &b->snap : NULL, t, &r->rlist) || r->rlist.first < 0) return NULL;
-    r->rerun_insn += r->rlist.insn;
-    /* the step's own start state, then the copy's drawing from where the step begins (its first phase) */
-    return draw_recs(r, a, r->rlist.rec + r->rlist.first, r->rlist.nrec - r->rlist.first);
+    return run_copy(r, a, b, t) ? draw_copy(r, a) : NULL;
+}
+
+void drawlive_prepare_rerun(drawlive *r, drawlive_plan *plan)
+{
+    plan->rerun_ready = 0;
+    if (!r->rerun || plan->kind != PLAN_BETWEEN || plan->extrapolate || r->ia < 0 || r->ib < 0) return;
+    plan->rerun_ready = run_copy(r, &r->step[r->ia], &r->step[r->ib], plan->t);
 }
 
 /* rerun: at t = 0 the copy, unchanged, must draw a's own picture exactly. */
@@ -552,7 +569,7 @@ int drawlive_render(drawlive *r, const drawlive_plan *plan, present_frame *f)
             return 1;
         }
         if (r->rerun && !plan->extrapolate) {
-            const uint8_t *p = draw_rerun(r, a, b, plan->t);
+            const uint8_t *p = plan->rerun_ready ? draw_copy(r, a) : plan->rerun_inline ? draw_rerun(r, a, b, plan->t) : NULL;
             if (p) {
                 memcpy(f->vram, p, 64000);
                 if (r->scale) { r->shown_hi = r->inter_hi; r->shown_tag = r->inter_tag; }
@@ -585,5 +602,6 @@ int drawlive_present_interp(drawlive *r, const machine_t *m, present_frame *f)
 {
     drawlive_plan plan;
     drawlive_plan_interp(r, m, f, m->cpu.icount, &plan);
+    plan.rerun_inline = 1;                                      /* single-threaded: this is the machine's thread */
     return drawlive_render(r, &plan, f);
 }

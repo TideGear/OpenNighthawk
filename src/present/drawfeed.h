@@ -102,6 +102,8 @@ typedef struct {
     int      extrapolate;
     uint64_t older, newer;        /* the steps the picture comes from (a log's columns) */
     double   t_shown;
+    int      rerun_ready;         /* rerun: drawlive_prepare_rerun has the copy's records for this plan */
+    int      rerun_inline;        /* rerun: the render may run the copy itself (it is on the machine's thread) */
 } drawlive_plan;
 
 /* The replay of the feed, a frame at a time: the picture it leaves on the
@@ -218,5 +220,10 @@ int drawlive_present_interp(drawlive *r, const machine_t *m, present_frame *f);
 int drawlive_plan_interp(const drawlive *r, const machine_t *m, const present_frame *f, uint64_t icount,
                          drawlive_plan *plan);
 int drawlive_render(drawlive *r, const drawlive_plan *plan, present_frame *f);
+
+/* rerun: run the copy of the machine a plan's in-between picture needs, on the machine's thread, so another thread
+ * can then render the plan. A render never runs a copy unless the plan says it may (rerun_inline: the single-threaded
+ * drawlive_present_interp); otherwise an unprepared plan is interpolated. */
+void drawlive_prepare_rerun(drawlive *r, drawlive_plan *plan);
 
 #endif
