@@ -192,8 +192,8 @@ paths, the relative `build/` junction fails under Python's `subprocess`).
 rounded lower vertex, unseeded-page rectangle round trips, independent cached
 ownership after a replay copy, duplicate display bytes and stale-source
 fallback, at N=1/4/9. The strip regression additionally distinguishes a narrow
-region from a degenerate line. The near-plane regression requires seam repair
-to work even after another geometry layer protects cells from the flat guard.
+region from a degenerate line. The near-plane regression requires adjacent
+near-clipped faces to leave no hole (seam repair was removed on 14 October).
 These tests take under a second together. Fine rasterisation visits only the
 polygon's geometric y range inside its viewport; rectangle buffers are reused
 when replay states are copied, avoiding per-frame allocation for the map.

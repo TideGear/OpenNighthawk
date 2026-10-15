@@ -62,7 +62,6 @@ static int g_nph, g_cph;
 static int g_scale=1;
 static uint8_t *g_fine;
 static uint64_t g_refilled,g_nearest;
-static uint64_t g_seams;
 
 static void render(const frame_t *fr, const interp_rec *rec, int n, uint8_t *work, uint8_t *disp)
 {
@@ -81,8 +80,6 @@ static void render(const frame_t *fr, const interp_rec *rec, int n, uint8_t *wor
         if(g_scale>1) hires_record(&h,&d,rec[i].kind,rec[i].v,rec[i].n);
         drawlist_record(&d, rec[i].kind, rec[i].v, rec[i].n);
     }
-    drawlist_finish_models(&d);
-    g_seams=d.seam_restored;
     const drawlist_page *w = drawlist_get(&d, (uint16_t)ph->z[0]), *y = drawlist_get(&d, 0xA000);
     memcpy(work, w->b, 65536);
     memcpy(disp, y->b, 64000);
@@ -412,7 +409,6 @@ static int fine_check(const frame_t *frames,int nfr)
         for(int end=0;end<2;end++) {
             const frame_t *frame=end?b:a;
             render(frame,frame->rec,frame->nrec,work,display);
-            const uint64_t original_seams=g_seams;
             memcpy(expected,g_fine,bytes);
             int skeleton;
             const double t=end?1-1e-9:1e-9;
@@ -420,8 +416,7 @@ static int fine_check(const frame_t *frames,int nfr)
             render(frame,list.rec,list.n,work,display);
             int diff=0;for(size_t k=0;k<bytes;k++) diff+=g_fine[k]!=expected[k];
             if(diff) {
-                fprintf(stderr,"pair %d endpoint %d: %d fine bytes differ (repairs %llu/%llu)\n",n,end,diff,
-                    (unsigned long long)original_seams,(unsigned long long)g_seams);
+                fprintf(stderr,"pair %d endpoint %d: %d fine bytes differ\n",n,end,diff);
                 if(failed<2) for(size_t k=0,shown=0;k<bytes && shown<4;k++) if(g_fine[k]!=expected[k]) {
                     fprintf(stderr,"  pixel %zu,%zu: %u/%u\n",k%(320*g_scale),k/(320*g_scale),expected[k],g_fine[k]);shown++;
                 }

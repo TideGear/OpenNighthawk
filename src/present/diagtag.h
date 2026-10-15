@@ -23,12 +23,13 @@ enum {
     DT_FB_BEHIND,       /* a vertex behind the eye */
     DT_FB_NO_DIVISOR,   /* a vertex without a positive divisor */
     DT_FB_BEYOND,       /* footprint more than 3 px from the geometry */
-    DT_SEAM,            /* seam repair: inside a refined model, restored to the coarse owner's colour */
     DT_GUARD,           /* flat-cell guard: restored to the coarse colour at presentation */
     /* span fills (library entries 37/40) */
     DT_SPAN_NOT_POLY,   /* a span fill with no fill_polygon corners before it */
     DT_SPAN_REJECT,     /* corners seen but the polygon was not refined (colour/mode/page) */
-    DT_SPAN_BEYOND,     /* corners did not reproduce the footprint within 3 px */
+    DT_SPAN_BEYOND,     /* corners did not reproduce the footprint within 3 px, and no overflowing edge explains it */
+    DT_SPAN_LINE,       /* zero-height strip: one row of the original is its true rendition */
+    DT_SPAN_DEGENERATE, /* zero-area polygon with a footprint taller than a row: the original's own artefact, kept */
     DT_SPAN_THIN,       /* degenerate strip drawn as one fine stroke */
     DT_SPAN_SHADE,      /* OR/AND/shade span fill modifying fine pixels in place */
     /* (c) strokes */

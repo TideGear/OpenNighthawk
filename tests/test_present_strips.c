@@ -170,6 +170,56 @@ int main(void)
                 for (int j = 0; j < 4; j++) for (int k = 0; k < 4; k++)
                     CHECK(p->hi[(size_t)(y * 4 + j) * 1280 + x * 4 + k] == p->b[y * 320 + x]);
     }
+    /* Corners more than 32,767 apart overflow the original's 16-bit edge difference, and its footprint is then
+     * off the true band by rows. N > 1 draws the band from its corners (the footprint is five rows high here);
+     * the same band with near corners is not explained by an overflow and keeps the scaled copy; at N = 1
+     * the original's rows stay. */
+    {
+        const double s3 = 0.04;
+        const int32_t far_corners[] = { -22000, (int32_t)lround(60 - 22000 * s3), 22000, (int32_t)lround(60 + 22000 * s3),
+                                        22000, (int32_t)lround(78 + 22000 * s3), -22000, (int32_t)lround(78 - 22000 * s3) };
+        for (int scale = 4; scale <= 9; scale += 5) {
+            start(scale);
+            CHECK(strip(55, 73, s3, 0.5, 40, 200, 40, 110, far_corners, 4) > 20);
+            CHECK(h.stats[HS_SPAN_OVERFLOW] == 1 && h.stats[HS_SPAN_REFILLED] == 1 && h.stats[HS_SPAN_BEYOND] == 0);
+            const drawlist_page *p = drawlist_get(&d, SEG);
+            const int W = 320 * scale;
+            double worst = 0;
+            for (int x = 70 * scale; x < 170 * scale; x++) {
+                int top = -1;
+                for (int y = 0; y < 200 * scale; y++) if (p->hi[(size_t)y * W + x] == COLOUR) { top = y; break; }
+                CHECK(top >= 0);
+                const double e = fabs(top - (60 + s3 * ((x + 0.5) / scale)) * scale);
+                if (e > worst) worst = e;
+            }
+            CHECK(worst < 0.5 * scale);                   /* the geometry's line, not the footprint's, five rows higher */
+        }
+        const int32_t near_corners[] = { -1000, (int32_t)lround(60 - 1000 * s3), 1000, (int32_t)lround(60 + 1000 * s3),
+                                         1000, (int32_t)lround(78 + 1000 * s3), -1000, (int32_t)lround(78 - 1000 * s3) };
+        start(4);
+        CHECK(strip(55, 73, s3, 0.5, 40, 200, 40, 110, near_corners, 4) > 20);
+        CHECK(h.stats[HS_SPAN_OVERFLOW] == 0 && h.stats[HS_SPAN_REFILLED] == 0 && h.stats[HS_SPAN_BEYOND] == 1);
+        start(1);
+        CHECK(strip(55, 73, s3, 0.5, 40, 200, 40, 110, far_corners, 4) > 20);
+        CHECK(h.stats[HS_SPAN_POLYGONS] == 0 && h.stats[HS_SPAN_REFILLED] == 0 && h.stats[HS_SPAN_OVERFLOW] == 0);
+    }
+
+    /* A zero-height strip is a line: one row of the original is its rendition, and it is not a refusal. A zero-area
+     * polygon whose footprint is taller than a row is the original's artefact and stays as it was drawn. */
+    {
+        const int32_t line[] = { -22000, 52, 22000, 52, 22000, 52, -22000, 52 };
+        start(4);
+        CHECK(strip(52.5, 52.5, 0, 0.3, 0, 319, 40, 70, line, 4) == 1);
+        CHECK(h.stats[HS_SPAN_LINE] == 1 && h.stats[HS_SPAN_BEYOND] == 0 && h.stats[HS_SPAN_REFILLED] == 0 && h.stats[HS_SPAN_DEGENERATE] == 0);
+        const drawlist_page *p = drawlist_get(&d, SEG);
+        for (int y = 0; y < 200; y++)
+            for (int x = 0; x < 320; x++)
+                for (int j = 0; j < 4; j++) for (int k = 0; k < 4; k++)
+                    CHECK(p->hi[(size_t)(y * 4 + j) * 1280 + x * 4 + k] == p->b[y * 320 + x]);
+        start(4);
+        CHECK(strip(50, 60, 0, 0.5, 0, 319, 40, 70, line, 4) > 5);
+        CHECK(h.stats[HS_SPAN_DEGENERATE] == 1 && h.stats[HS_SPAN_LINE] == 0 && h.stats[HS_SPAN_REFILLED] == 0);
+    }
     puts("span-rasteriser polygons: a thick strip's edge is straight, a thin strip stays a solid line, a mismatch is left scaled");
     return 0;
 }
