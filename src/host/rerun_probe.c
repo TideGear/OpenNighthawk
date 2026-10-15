@@ -19,6 +19,8 @@ static sink_t   *g_sink;
 static long long g_nsnap, g_done;
 static int       g_in_scratch;
 static int       g_nudge_slots;   /* traffic slots the last nudged copy moved */
+static int       g_nudge_weapons; /* weapons in flight it moved */
+static long long g_weapon_frames;
 static long long g_slot_frames, g_slot_sum;
 static FILE     *g_out;
 static uint8_t  *g_scr_mem;
@@ -150,6 +152,22 @@ static int scratch(const machine_t *a, const uint8_t *amem, const machine_t *b, 
          * X/Y, +10/+12/+14 heading/pitch/roll, +16 type, +18 state. A slot moves halfway only when it holds the
          * same type in the same state in both frames (a reused slot steps instead of gliding). */
         g_nudge_slots = 0;
+        /* Weapons in flight (VGAME 683E): twelve 1Ch-byte records at 3C3A; from its movement code +0/+2 X/Y and +4
+         * height (16-bit), +6 pitch, +8 heading, +0E life (0 = ended), +10 type. A weapon moves halfway only when it
+         * is alive with the same type in both frames. */
+        if (getenv("F117_RERUN_NUDGE_WEAPONS"))
+            for (int i = 0; i < 12; i++) {
+                const uint16_t at = (uint16_t)(0x3C3A + 0x1C * i);
+                if (!rd16(amem, ds, (uint16_t)(at + 0x0E)) || !rd16(bmem, bds, (uint16_t)(at + 0x0E)) ||
+                    rd16(amem, ds, (uint16_t)(at + 0x10)) != rd16(bmem, bds, (uint16_t)(at + 0x10))) continue;
+                static const uint16_t f16[] = { 0x00, 0x02, 0x04, 0x06, 0x08 };
+                for (int f = 0; f < 5; f++) {
+                    const uint16_t o = (uint16_t)(at + f16[f]);
+                    const uint16_t va = rd16(amem, ds, o), vb = rd16(bmem, bds, o);
+                    wr16(g_scr_mem, ds, o, (uint16_t)(va + (int16_t)(vb - va) / 2));
+                }
+                g_nudge_weapons++;
+            }
         if (getenv("F117_RERUN_NUDGE_TRAFFIC")) {
             const uint16_t n = rd16(amem, ds, 0xDEFC);
             for (uint16_t i = 0; i < n && i < 64 && n == rd16(bmem, bds, 0xDEFC); i++) {
@@ -295,7 +313,7 @@ static void process(machine_t *m, long long k)
     unsigned long long insn2; double us2;
     const int ok2 = scratch(a, g_snap_mem[ka], b, g_snap_mem[kb], &insn2, &us2);
     unsigned long long cmp = 0, good = 0, mid = 0, tripled = 0;
-    g_slot_frames += g_nudge_slots > 0; g_slot_sum += g_nudge_slots;
+    g_slot_frames += g_nudge_slots > 0; g_slot_sum += g_nudge_slots; g_weapon_frames += g_nudge_weapons > 0; g_nudge_weapons = 0;
     const sink_t *rb = &g_real[kb];
     if (ok2 && rb->nv / 5 >= nv_b) {
         g_tot.nudge_frames++;
@@ -356,8 +374,9 @@ void rerun_probe_finish(void)
             g_tot.frames, g_tot.skipped_view, g_tot.skipped_late, n, g_tot.trapped, g_tot.equal, g_tot.unequal, g_tot.mem_changed,
             n ? (double)g_tot.insn_sum / n : 0.0, g_tot.insn_max, n ? g_tot.us_sum / n : 0.0, g_tot.us_max,
             g_tot.nudge_frames, g_tot.v_tripled, g_tot.v_mid, g_tot.v_ok, g_tot.v_cmp);
-    fprintf(g_out, "traffic slots nudged: %lld frames with any, %lld slot-frames; re-runs equal without the observer's 'n' records %lld\n",
-            g_slot_frames, g_slot_sum, g_tot.equal_wo_n);
+    fprintf(g_out, "traffic slots nudged: %lld frames with any, %lld slot-frames; weapons nudged in %lld frames; "
+            "re-runs equal without the observer's 'n' records %lld\n",
+            g_slot_frames, g_slot_sum, g_weapon_frames, g_tot.equal_wo_n);
     for (int k = 0; k < g_ncall; k++)
         fprintf(g_out, "caller %04X:%04X: %llu of %llu vertices within the midpoint tolerance\n",
                 (unsigned)(g_call[k].caller >> 16) & 0xFFFF, (unsigned)g_call[k].caller & 0xFFFF, g_call[k].good, g_call[k].cmp);
