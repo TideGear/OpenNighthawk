@@ -167,7 +167,7 @@ void drawlive_init(drawlive *r)
     memset(r, 0, sizeof *r);
     drawlist_init(&r->list);
     drawlist_init(&r->pending_start);
-    r->ia = r->ib = r->newest = -1;
+    r->ia = r->ib = r->newest = r->im = -1;
     r->picture = r->blank;
 }
 
@@ -198,6 +198,8 @@ void drawlive_set_line_width(drawlive *r, int width)
 void drawlive_set_rerun(drawlive *r)
 {
     r->rerun = 1;
+    const char *clock = getenv("F117_PRESENT_CLOCK");
+    r->smooth = !(clock && !strcmp(clock, "raw"));      /* the smoothed clock, unless F117_PRESENT_CLOCK=raw */
 }
 
 /* One record into the replay, through the sub-pixel builder first when there is one. */
@@ -298,14 +300,16 @@ static const uint8_t *draw_rerun(drawlive *r, const drawlive_step *a, const draw
 void drawlive_prepare_rerun(drawlive *r, drawlive_plan *plan)
 {
     plan->rerun_ready = 0;
-    if (!r->rerun || plan->kind != PLAN_BETWEEN || plan->extrapolate || r->ia < 0 || r->ib < 0) return;
-    plan->rerun_ready = run_copy(r, &r->step[r->ia], &r->step[r->ib], plan->t);
+    if (!r->rerun || plan->kind != PLAN_BETWEEN || plan->extrapolate || r->ib < 0) return;
+    const int ia = plan->sa >= 0 ? plan->sa : (r->smooth ? r->im : r->ia), ib = plan->sb >= 0 ? plan->sb : r->ib;
+    if (ia < 0 || ib < 0) return;
+    plan->rerun_ready = run_copy(r, &r->step[ia], &r->step[ib], plan->t);
 }
 
 /* rerun: at t = 0 the copy, unchanged, must draw a's own picture exactly. */
 static void check_rerun(drawlive *r)
 {
-    const drawlive_step *a = &r->step[r->ia];
+    const drawlive_step *a = &r->step[r->smooth ? r->im : r->ia];
     const uint8_t *p = draw_rerun(r, a, NULL, 0);
     if (!p) return;
     static int reported;
@@ -331,7 +335,7 @@ static void check_rerun(drawlive *r)
 /* A published pair a hair from each end must draw as the two frames it joins. */
 static void check_pair(drawlive *r)
 {
-    const drawlive_step *a = &r->step[r->ia], *b = &r->step[r->ib];
+    const drawlive_step *a = &r->step[r->smooth ? r->im : r->ia], *b = &r->step[r->ib];
     /* t a hair from each end: every paired primitive regenerated and moved by
      * almost nothing. With a scale the vertices move too, and 1e-6 of a step
      * can still move a camera-space coordinate by a rounding unit, which shows
@@ -477,7 +481,15 @@ void drawlive_publish(drawlive *r)
         if (k < 0) { r->shown = 0; continue; }
         drawlive_step *s = &r->step[k];
         if (r->ia >= 0) release_step(r, r->ia);
-        r->ia = r->ib;
+        if (r->smooth) {                               /* three published: the playback clock sits between them */
+            if (r->last_end && s->end > r->last_end) {
+                const double d = (double)(s->end - r->last_end);
+                r->ema = r->ema > 0 ? 0.8 * r->ema + 0.2 * d : d;
+            }
+            r->last_end = s->end;
+            r->ia = r->im;
+            r->im = r->ib;
+        } else r->ia = r->ib;
         r->ib = k;
         s->state = DRAWLIVE_PUBLISHED;
         r->shown = 1;
@@ -486,8 +498,8 @@ void drawlive_publish(drawlive *r)
         r->picture_tag = r->scale ? s->picture_tag : NULL;
         r->picture_seq = s->seq;
         r->picture_end = s->end;
-        if (r->check && s->pair && r->ia >= 0) check_pair(r);
-        if (r->check && r->rerun && r->ia >= 0) check_rerun(r);
+        if (r->check && s->pair && (r->smooth ? r->im : r->ia) >= 0) check_pair(r);
+        if (r->check && r->rerun && (r->smooth ? r->im : r->ia) >= 0) check_rerun(r);
     }
     r->nqueue = 0;
 }
@@ -505,7 +517,8 @@ int drawlive_update(drawlive *r, drawfeed *f)
 
 void drawlive_steps(const drawlive *r, const drawlive_step **older, const drawlive_step **newer)
 {
-    *older = r->ia >= 0 ? &r->step[r->ia] : NULL;
+    const int prev = r->smooth ? r->im : r->ia;
+    *older = prev >= 0 ? &r->step[prev] : NULL;
     *newer = r->ib >= 0 ? &r->step[r->ib] : NULL;
 }
 
@@ -527,10 +540,45 @@ int drawlive_present(drawlive *r, const machine_t *m, present_frame *f)
     return 1;
 }
 
-int drawlive_plan_interp(const drawlive *r, const machine_t *m, const present_frame *f, uint64_t icount,
+/* The smoothed playback clock: the position advances with the machine clock over the smoothed step duration, is
+ * pulled towards one step behind the newest closed step, never passes it, and names the two consecutive published
+ * steps it lies between. Returns 0 when it cannot (fewer than two consecutive steps): the caller plans as before. */
+static int plan_smooth(drawlive *r, uint64_t icount, drawlive_plan *plan)
+{
+    const int idx[3] = { r->ia, r->im, r->ib };
+    if (r->ib < 0 || r->im < 0 || r->ema <= 0) return 0;
+    const drawlive_step *newest = &r->step[r->ib];
+    const uint64_t oldest_seq = r->ia >= 0 ? r->step[r->ia].seq : r->step[r->im].seq;
+    const double N = (double)newest->seq;
+    if (!r->play_icount) { r->play_pos = N - 1.0; r->play_icount = icount; }
+    if (icount > r->play_icount) {
+        const double rate = 1.0 + 0.05 * ((N - 1.0) - r->play_pos);
+        r->play_pos += (rate > 0.2 ? rate : 0.2) * (double)(icount - r->play_icount) / r->ema;
+    }
+    r->play_icount = icount;
+    if (r->play_pos > N) r->play_pos = N;
+    if (r->play_pos < (double)oldest_seq) r->play_pos = (double)oldest_seq;
+    int lo = -1;
+    for (int k = 0; k < 2; k++)
+        if (idx[k] >= 0 && idx[k + 1] >= 0 && r->step[idx[k]].seq + 1 == r->step[idx[k + 1]].seq &&
+            r->step[idx[k + 1]].pair && r->step[idx[k]].have_compose && r->step[idx[k + 1]].have_compose &&   /* a pair that can be drawn, or interpolated if the copy fails */
+            r->play_pos >= (double)r->step[idx[k]].seq && r->play_pos <= (double)r->step[idx[k + 1]].seq) { lo = k; break; }
+    if (getenv("F117_RERUN_DEBUG")) fprintf(stderr, "[clock] idx %d %d %d pos %.3f N %.0f ema %.0f lo %d\n", idx[0], idx[1], idx[2], r->play_pos, N, r->ema, lo);
+    if (lo < 0) return 0;
+    const drawlive_step *a = &r->step[idx[lo]], *b = &r->step[idx[lo + 1]];
+    plan->sa = idx[lo]; plan->sb = idx[lo + 1];
+    plan->older = a->seq; plan->newer = b->seq;
+    plan->t = r->play_pos - (double)a->seq;
+    plan->t_shown = plan->t;
+    plan->kind = PLAN_BETWEEN;
+    return 1;
+}
+
+int drawlive_plan_interp(drawlive *r, const machine_t *m, const present_frame *f, uint64_t icount,
                          drawlive_plan *plan)
 {
     memset(plan, 0, sizeof *plan);
+    plan->sa = plan->sb = -1;
     const drawlive_step *a, *b;
     drawlive_steps(r, &a, &b);
     if (a && b) {
@@ -540,6 +588,7 @@ int drawlive_plan_interp(const drawlive *r, const machine_t *m, const present_fr
         plan->t_shown = span > 0 ? ((double)icount - (double)b->end) / span : 0.0;
     }
     if (f->text || !drawlive_current(r, m)) { plan->kind = PLAN_NONE; return 0; }
+    if (r->rerun && r->smooth && plan_smooth(r, icount, plan)) return 1;
     if (!a || !b || !b->pair || r->picture_seq != b->seq || b->end <= a->end) { plan->kind = PLAN_REPLAY; return 1; }
     double t = (double)(icount - b->end) / (double)(b->end - a->end);
     if (r->extrapolate) t = t + 1 > 2 ? 2 : t + 1;
@@ -557,7 +606,8 @@ int drawlive_render(drawlive *r, const drawlive_plan *plan, present_frame *f)
     if (plan->kind == PLAN_NONE) return 0;
     r->diag_kind = plan->kind; r->diag_t = plan->t; r->diag_older = plan->older; r->diag_newer = plan->newer;
     if (plan->kind == PLAN_OLDER || plan->kind == PLAN_NEWER || plan->kind == PLAN_BETWEEN) {
-        const drawlive_step *a = &r->step[r->ia], *b = &r->step[r->ib];
+        const int older_ix = plan->sa >= 0 ? plan->sa : (r->smooth ? r->im : r->ia);   /* as drawlive_steps names it */
+        const drawlive_step *a = &r->step[older_ix], *b = &r->step[plan->sb >= 0 ? plan->sb : r->ib];
         if (plan->kind == PLAN_OLDER) {
             memcpy(f->vram, a->picture, 64000);
             if (r->scale) { r->shown_hi = a->picture_hi; r->shown_tag = a->picture_tag; }

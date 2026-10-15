@@ -104,6 +104,7 @@ typedef struct {
     double   t_shown;
     int      rerun_ready;         /* rerun: drawlive_prepare_rerun has the copy's records for this plan */
     int      rerun_inline;        /* rerun: the render may run the copy itself (it is on the machine's thread) */
+    int      sa, sb;              /* smoothed clock: the published steps (indexes) the picture is drawn between, else -1 */
 } drawlive_plan;
 
 /* The replay of the feed, a frame at a time: the picture it leaves on the
@@ -132,6 +133,13 @@ typedef struct {
     int            interp, check;  /* check: draw each pair a hair from each end and compare */
     drawlive_step  step[DRAWLIVE_POOL];
     int            ia, ib;         /* the published older and newer steps, -1 none */
+    /* the smoothed playback clock (rerun): three steps are published (ia, im, ib, oldest first) and the picture is
+     * drawn at a playback position, in steps, advanced by the machine's clock over a smoothed step duration and held
+     * about one step behind the newest, so an uneven step never freezes or skips it (docs/presentation.md, "The step
+     * clock"). It costs about a third of a step more picture age than showing each step as soon as it closes. */
+    int            smooth, im;
+    double         play_pos, ema;
+    uint64_t       play_icount, last_end;
     int            newest;         /* the last step kept, staged or published, -1 none */
     int            queue[DRAWLIVE_QUEUE]; /* collected steps (their index) and exact-frame failures (-1), in order */
     int            nqueue;
@@ -217,7 +225,7 @@ int drawlive_present_interp(drawlive *r, const machine_t *m, present_frame *f);
  * picture will be shown a frame on). The render fills f->vram and shown_hi
  * and returns 1 when it put a picture there. A plan for another time or from
  * another publication must not be rendered. */
-int drawlive_plan_interp(const drawlive *r, const machine_t *m, const present_frame *f, uint64_t icount,
+int drawlive_plan_interp(drawlive *r, const machine_t *m, const present_frame *f, uint64_t icount,
                          drawlive_plan *plan);
 int drawlive_render(drawlive *r, const drawlive_plan *plan, present_frame *f);
 
