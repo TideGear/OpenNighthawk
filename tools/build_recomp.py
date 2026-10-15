@@ -480,6 +480,13 @@ def main():
     ap.add_argument("--overlap-jobs", type=int, default=8,
                     help="interpreter parity runs started during coverage, from a private copy of the first build's "
                          "runner (0 = wait for the parity step, as before); same runs, same comparisons")
+    ap.add_argument("--no-reuse-coverage-runs", action="store_true",
+                    help="run the recompiled half of parity again even when coverage added no translated code (by "
+                         "default the coverage runs, which ran that same build with the same checkpoints, are the "
+                         "recompiled half)")
+    ap.add_argument("--check-coverage-reuse", action="store_true",
+                    help="run the recompiled half anyway and require it to equal the coverage runs route by route "
+                         "(the proof that reusing them changes no verdict)")
     a = ap.parse_args()
     if a.parity_only and a.no_parity:
         ap.error("--parity-only and --no-parity cannot be combined")
@@ -545,6 +552,7 @@ def main():
         return fresh
 
     early, early_pool = {}, None
+    coverage_runs = {}          # route -> the coverage run, when it ran the final build (step 4)
     if (not a.no_coverage and not a.parity_only and not skip_coverage and not a.no_parity
             and a.overlap_jobs > 0):
         exe, env = snapshot_runner(a.work)
@@ -558,13 +566,21 @@ def main():
             len(early), a.overlap_jobs, exe))
     if not a.no_coverage and not a.parity_only and not skip_coverage:
         print("3. coverage")
+        cov_results = {}
+        reuse = not a.no_parity and not a.no_reuse_coverage_runs
+
         def cover(r):
             name = os.path.splitext(os.path.basename(r))[0]
             # Appended to, never replaced: a build records only what it had
             # to INTERPRET, so code an earlier capture got translated is
             # absent from this one - dropping the old file would lose it.
             cov = os.path.join(covdir, name + ".cov")
-            icount, h, interp, *_ = headless("recomp", a.data, a.work, name, route_args(r), ["--coverage", cov], r)
+            # With the parity step's checkpoints, a coverage run is that step's recompiled run whenever the
+            # coverage adds no translated code (the build does not change): see step 5.
+            extra = ["--coverage", cov] + (["--hash-every", "50000000"] if reuse else [])
+            result = headless("recomp", a.data, a.work, name, route_args(r), extra, r)
+            cov_results[r] = result
+            icount, h, interp = result[:3]
             return name, icount, interp
         for name, icount, interp in parallel(a.jobs, [g[0] for g in groups], cover, cost=expected_cost,
                                              name=lambda r: os.path.splitext(os.path.basename(r))[0]):
@@ -580,6 +596,8 @@ def main():
         else:
             print("  the coverage added no translated code: the generated files are byte-identical, "
                   "so the first build stands")
+            if reuse:
+                coverage_runs = cov_results
             if a.coverage_record:
                 record_coverage_verified(a.coverage_record, key, gen_digest)
         lap("second translate and build")
@@ -592,7 +610,17 @@ def main():
             name = os.path.splitext(os.path.basename(r))[0]
             if engine == "interp":
                 return interp_run(r)
-            return headless(engine, a.data, a.work, name, route_args(r), ["--hash-every", "50000000"], r)
+            if r in coverage_runs and not a.check_coverage_reuse:
+                return coverage_runs[r]
+            fresh = headless(engine, a.data, a.work, name, route_args(r), ["--hash-every", "50000000"], r)
+            if r in coverage_runs and fresh[:4] != coverage_runs[r][:4]:
+                sys.exit("coverage run of %s differs from its parity run: %s/%s vs %s/%s" % (
+                    name, coverage_runs[r][0], coverage_runs[r][1], fresh[0], fresh[1]))
+            return fresh
+        if coverage_runs and not a.check_coverage_reuse:
+            print("  the recompiled half is the coverage runs (the same build, the same checkpoints)")
+        elif coverage_runs:
+            print("  checking: every recompiled parity run must equal its coverage run")
         engines = ("recomp",) if early else ("interp", "recomp")
         jobs = [(r, e) for r in leads for e in engines]
         done = parallel(a.jobs, jobs, replay, cost=lambda j: expected_cost(j[0], j[1]),

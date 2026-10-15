@@ -11602,6 +11602,11 @@ static int vgame_map_project(machine_t *m)
      * alias would change what the checks above assumed. */
     for (int k = -1; k <= 1; k++)
         if ((uint16_t)(px + k) == 0x0D20 || (uint16_t)(px + k) == 0x9514 || (uint16_t)(px + k) == 0x950E) return 0;
+    /* The original pushes BP before it reads any of its data words; the values above were read first, so a saved
+     * BP landing on one of them (SS:SP-2 wrapping onto DS) would change what the original divides by. */
+    static const uint16_t reads[] = { 0x0D1E, 0x9512, 0x950E, 0x0D20, 0x9514 };
+    for (unsigned k = 0; k < sizeof reads / sizeof reads[0]; k++)
+        if (words_overlap(phys(c->seg[S_SS], bp_after), phys(c->seg[S_DS], reads[k]))) return 0;
     cpu_push16(c, c->r[R_BP]);
     c->r[R_BP] = c->r[R_SP];
     uint16_t ax = (uint16_t)alu_sub(c, x, ds_get(c, 0x0D1E), 1, 0);

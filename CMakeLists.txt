@@ -377,6 +377,9 @@ if(F117R_BUILD_TESTS)
     # A store through px can land on the stack slot still holding y or py.
     add_test(NAME matched_map_project_stack_alias COMMAND func_lockstep --states 4000
       --seed 0x2fa6695118ca --only VGAME.EXE:13B9)
+    # The saved BP can wrap onto the scale word it divides by (SS:SP-2 past 1 MB onto DS:950E).
+    add_test(NAME matched_map_project_saved_bp_alias COMMAND func_lockstep --states 4000
+      --seed 0xbf2b70af59c7 --only VGAME.EXE:13B9)
     add_test(NAME matched_control_break COMMAND func_lockstep --states 4000
       --only VGAME.EXE:1B73,START.EXE:85B8,END.EXE:4557,DSWAP.EXE:523,SETUP.EXE:C35)
     add_test(NAME matched_dswap_memory COMMAND func_lockstep --states 4000
