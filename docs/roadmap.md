@@ -1353,7 +1353,9 @@ instruction profiles and three 789-address matched seeds (2,561,209,
   Identity pairing (model + world cell from the request) halved those misses but deformed the extra pairs (paired
   batches deforming over 100 px 3.78 -> 20.53%; the owner saw more jitter), so it is off, an opt-in experiment; a second cause is the uneven step clock (freezes/skips at 24% of step
   boundaries), for which a smoothed playback clock is designed and simulated but not built. `tools/motion_check.py`
-  measures both. Next: the smoothed clock (switchable), then the state-driven scene renderer.
+  measures both. Owner decision (15 Oct): stop improving primitive pairing; for 60+ fps re-run the original's
+  unmodified draw on a throwaway machine copy at each in-between moment (camera and object slots nudged), with the
+  smoothed clock, at any scale and refresh rate; meanwhile `--present replay` is the safe sharp mode (handoff.md).
   Native mesh/pose/visibility/order/material evaluation is drafted on `present-scene-geometry`, with a passing
   synthetic CTest, but is not connected to live rendering or accepted by a fresh full gate. See handoff.md.
   Open: the owner's motion review on a physical

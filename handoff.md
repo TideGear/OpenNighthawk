@@ -41,14 +41,26 @@ identity records 2.75B-2.85B; `analysis/` the scans). Findings and changes (deta
   runs, both instruction profiles 0 mismatches, 891 matched routines at three seeds incl. `0xfaf385733f77`,
   reachability/event checks); 45-route N=1 259,240 frames / 259,166 pairs; boot N=4/9 368/366.
   Evidence `D:/f117-gate/present-v2/identity-*`.
-- Owner decisions today: no longer draw distance for now (resident world is four rings of 32 tile slots); make the
-  state-driven scene renderer the main path for world geometry (no primitive pairing), then the smoothed clock.
+- Owner decisions today: no longer draw distance for now (resident world is four rings of 32 tile slots); the 60+ fps
+  method changed later the same day (below).
   The unconnected `src/present/scene_mesh.c` draft (mesh/pose/visibility/order/
   material evaluation, synthetic CTest) is on master as part of the gated tree; it is not a finished fix. Private
   notes: `D:/f117-gate/present-v2/scene/next-step.txt`, `live-integration-notes.txt`.
-- Next, in order: implement the smoothed clock as an option; time the gate overlap; then the scene renderer (prepared
-  poses + identity capture in one observer batch, one gate). Keep original graphics, N=1 and gameplay/input timing.
-  No visible/fullscreen tests without asking.
+- **Owner decision (15 Oct, 13:00): stop improving primitive pairing.** Safe mode now: `--present replay --present-scale N`
+  (sharp uprez at the game's own frame rate, no in-between frames, already verified). For 60+ fps, the chosen method
+  is to **re-run the original's own, unmodified 3-D draw on a throwaway copy of the machine** at each in-between moment,
+  with only its inputs nudged: camera (view angles `E478`/`C0A8`/`B79C`, position `B2B4`/`B77E`/`B788`, view mode
+  `C0A6`, documented on `vgame_frame_compose` 2F9D) and moving objects by their table slots (aircraft traffic 5852,
+  weapons in flight 683E; a reused slot steps instead of gliding). The existing uprez refines those draws as it does
+  logic frames, plus the smoothed playback clock. It must work at any `--present-scale` and any refresh rate (the
+  owner asked for lower and higher than 4K/60, not just 4K/60). Safety proof: guest checkpoints/final unchanged on every route plus a new check that the real
+  machine's memory is byte-identical before and after each extra draw; nothing in the copy may reach files, sound or
+  devices. Feasibility so far: the 3-D geometry phase is about 478k instructions a step (median; p90 542k; 42% of a
+  step) on the owner's flight, so roughly 5-6 ms per extra draw at ~86 MIPS, one core at 144 Hz, parallel across copies.
+  Next: confirm the camera words drive the draw and nothing else, measure a real extra draw on a copy (cost and
+  isolation), then prototype behind a switch and judge it with `motion_check.py` (deformation included). Option kept
+  in reserve: camera reprojection of one step's own draw list. The full own-renderer (scene_mesh draft) is no longer
+  the main path.
 
 The remaining HUD/map-position follow-up is integrated on top of sky/ground (`f57f9cf`) and world lines (`84f3edc`).
 All original fonts/sprites remain, including the eight-heading 4x4 aircraft arrow. Continuous state moves on the fine
