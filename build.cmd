@@ -19,7 +19,9 @@ if not exist build\ (
     mklink /J build "!F117R_BUILD_LOCAL!" >nul
     if errorlevel 1 exit /b 1
 )
-set "LOG=%TEMP%\f117r-build.log"
+rem The log lives in this checkout's own build directory: a shared temp file let a build in another
+rem worktree overwrite it, and a scan of the wrong log printed BUILD OK.
+set "LOG=%~dp0build\f117r-build.log"
 del /q build\*.old.* 2>nul
 
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo %*

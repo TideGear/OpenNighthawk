@@ -200,6 +200,26 @@ not the recompilation:
 
 ## Phase 2 - understood code
 
+Eight more routines are matched and named, proved privately with the kit: VGAME `09A0`
+(`vgame_load_table_pair`), `F5F2` (`vgame_open_file_handle`, the C runtime's open),
+`BB0D` (`vgame_draw_model_in_view`); START `0963` (`start_arms_screen_loop`), `A59A`
+(`start_sopen_file`, START's copy of the C runtime's open), `008D`
+(`start_draw_pilot_card`), `64E5` (`start_draw_pilot_record_sheet`, one function whose
+span holds six census entries reached only by its own jumps) and `74B1`
+(`start_world_page_objects`). Each reaches every instruction at five seeds (no skipped
+states) with 66-104 private mutations caught; the real `full_cycle` route runs them
+1-447 times with all 66 checkpoints and the final state exact (`09A0`, `0963` and
+`64E5` once each: thin real-route evidence). `A59A` needs the lockstep harness to
+script the first INT 21h answers (`g_dos_script`) so that its create path, reached only
+when the open fails with AX 2, is tested. The first gate's commit-derived seed found an
+old harness gap: VGAME `683E`'s fuzzed pointer writes could overwrite a returning stub
+planted at a callee, so the callee ran garbage and the call escaped; such states are now
+skipped as code written, and `matched_projectile_stub_overwrite` retains the seed. Fresh
+full gate: 97 tests, all 45 routes / 44 fresh interpreter sessions, both
+5,718,848-state instruction profiles, three 887-address seeds (2,992,388 / 2,990,656 /
+2,993,522 comparisons), zero mismatches, audits pass. Census: 885 functions / 116,273
+bytes. Evidence: `D:/f117-gate/p2-batch5`, `p2-batch6`.
+
 Four more routines are matched and named, again proved privately with the shared kit:
 VGAME `0D14` (`vgame_nearest_object_lookup`: the nearest scene object around a world
 position over the cell grid; it declines while fix D34 is on), VGAME `17B4`

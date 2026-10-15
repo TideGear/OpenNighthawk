@@ -13,16 +13,14 @@ standing practice, not a session-by-session log. Earlier sessions' detail
 (what was tried, what failed, exact investigation narratives) is in
 `git log -p handoff.md` — it does not need to live here to stay available.
 
-## Current state (14 October, nearest object, attitude indicator, roster loop, picture stream)
+## Current state (14 October, night)
 
-VGAME `0D14`, `17B4`, START `623E` and PLAYER `0244` are matched and gated on top of
-`63F2`, `528D`, START `6861`, the scene walk (`04E6`), briefing loop (`0FA3`), `DC46`,
-the horizon / world-record pair and the menu pair. Census: 871 functions / 112,696
-bytes, P2 64.74%, overall 85.91%. Fresh full gate: 88 tests,
-all 45 routes / 44 fresh interpreter sessions, both 5,718,848-state profiles, three
-879-address seeds (2,952,647 / 2,950,951 / 2,952,913), zero mismatches;
-`presentation_check.py --scales 1` reports all 45 routes exact. Proof:
-`D:/f117-gate/p2-batch4`.
+Phase 2: 885 census functions / 116,273 bytes matched (P2 66.64%, overall 86.46%). The
+latest batch (VGAME `09A0`, `F5F2`, `BB0D`; START `0963`, `A59A`, `008D`, `64E5`, `74B1`)
+and a harness fix (planted callee stubs overwritten by a fuzzed pointer now skip as
+code written) passed a fresh full gate: 97 tests, all 45 routes, both instruction
+profiles, three 887-address seeds, zero mismatches. Proof: `D:/f117-gate/p2-batch6`.
+All proofs agents delivered are integrated; no verified proof is waiting.
 
 **Owner decision (14 October, evening): replace the capture-and-refine presentation
 with a state-driven one.** The owner reviewed 4K screenshots (blocky terrain edges when
@@ -32,9 +30,17 @@ cockpit from game state at any resolution, interpolate state (not matched polygo
 and throw the current methods out. Retire each old path in the same commit that
 replaces it (never leave a hole; `--present scan` stays as the original picture and
 the oracle). Every layer is checked by "at a logic frame, N=1 equals the original's
-frame". Evidence-gathering is under way in worktree `D:/f117-wt/present-diag` (branch
-`present-diag`): a per-pixel diagnostic of what stays blocky, and
-`D:/f117-gate/present-v2/hud-analysis.md` (how the HUD is produced). Interpolation costs
+frame". Two branches are finished and verified but not yet merged (they need one full
+gate together, the 45-route `presentation_check`, the N=4/9 sentinels):
+`present-diag` (worktree `D:/f117-wt/present-diag`, `ec51aef`: the per-pixel origin
+diagnostic `F117_PRESENT_DIAG`, near-clipped polygons drawn from geometry, and polygons
+the original's clipper mis-draws accepted at N>1; evidence `D:/f117-gate/present-v2/fix3d`)
+and `present-hud` (worktree `D:/f117-wt/present-hud`, `f9f4e0d`, branched from
+`46e1d7c`: the HUD's tapes, heading strip, pitch ladder, flight-path marker and bars drawn
+from game state; evidence `D:/f117-gate/present-v2/hud`, analysis
+`D:/f117-gate/present-v2/hud-analysis.md`). Not yet from state: frame outline, reticle,
+G text, readouts, weapon/target symbology, cockpit art; horizon band corner rounding
+(derive the bands from state, VGAME `1450`). Interpolation costs
 about one logic step of picture age (67-110 ms); that is the stated price
 ([docs/presentation.md](docs/presentation.md), Stage 4).
 

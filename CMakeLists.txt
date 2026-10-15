@@ -402,6 +402,8 @@ if(F117R_BUILD_TESTS)
       --only START.EXE:6DB8)
     add_test(NAME matched_menu_hit_wrap COMMAND func_lockstep --states 4000 --seed 0xe77d9d194a06
       --only START.EXE:393D,END.EXE:1C3B)
+    add_test(NAME matched_projectile_stub_overwrite COMMAND func_lockstep --states 4000 --seed 0x1894deb34178
+      --only VGAME.EXE:683E)
     add_test(NAME matched_menu_input COMMAND func_lockstep --states 5000
       --only START.EXE:39F7,END.EXE:1CF5)
     add_test(NAME matched_horizon_and_record COMMAND func_lockstep --states 5000
@@ -426,6 +428,22 @@ if(F117R_BUILD_TESTS)
       --only START.EXE:623E)
     add_test(NAME matched_player_stream_picture_file COMMAND func_lockstep --states 5000
       --only PLAYER.EXE:244)
+    add_test(NAME matched_vgame_load_table_pair COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:9A0)
+    add_test(NAME matched_start_arms_screen_loop COMMAND func_lockstep --states 5000
+      --only START.EXE:963)
+    add_test(NAME matched_start_sopen_file COMMAND func_lockstep --states 5000
+      --only START.EXE:A59A)
+    add_test(NAME matched_vgame_open_file_handle COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:F5F2)
+    add_test(NAME matched_start_draw_pilot_card COMMAND func_lockstep --states 5000
+      --only START.EXE:8D)
+    add_test(NAME matched_vgame_draw_model_in_view COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:BB0D)
+    add_test(NAME matched_start_draw_pilot_record_sheet COMMAND func_lockstep --states 5000
+      --only START.EXE:64E5)
+    add_test(NAME matched_start_world_page_objects COMMAND func_lockstep --states 5000
+      --only START.EXE:74B1)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000

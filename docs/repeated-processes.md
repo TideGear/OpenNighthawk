@@ -8,6 +8,18 @@ whether they were measured or estimated. The rule behind the page: an
 optimisation must leave every check's inputs, outputs and verdicts
 identical, and the proof is the same verdicts before and after.
 
+## Agent-proved batches (14 October 2026)
+
+Proofs now run in parallel agents, each in its own `D:/f117-gate/p2-*` directory with
+`D:/f117-gate/kit/kit.py`; the kit's `mutations` step builds four edits at a time in
+separate work directories (37 edits: about 8 minutes serially, 90 s), with identical
+CAUGHT results, and never edits `body.c`. A gate then lands a batch: eight routines plus
+a harness fix in one gate (1,743 s to the last lockstep). `build.cmd` now writes its log
+inside the checkout's own build directory: with the shared `%TEMP%` log, a build in an
+agent's worktree overwrote it and a scan of that log printed BUILD OK for a build that
+had not linked `func_lockstep.exe`. Check the executable's time after a build when other
+checkouts are building.
+
 ## Scene-walk and briefing-loop gate (14 October 2026)
 
 `matched_scene_walk` (2.3 s) and `matched_start_brief_key_loop` (0.6 s) run 5,000 states
