@@ -13,16 +13,29 @@ standing practice, not a session-by-session log. Earlier sessions' detail
 (what was tried, what failed, exact investigation narratives) is in
 `git log -p handoff.md` — it does not need to live here to stay available.
 
-## Current state (14 October, scene walk and briefing loop)
+## Current state (14 October, traffic, ground sites and roster rows)
 
-VGAME `04E6` (`vgame_scene_walk`) and START `0FA3` (`start_brief_key_loop`) are
-matched and gated on top of `DC46`, the horizon / world-record pair and the menu
-pair. Census: 864 functions / 108,738 bytes, P2 62.64%, overall 85.30%. Fresh full
-gate (1,583 s): 81 tests, all 45 routes / 44 fresh interpreter sessions, both
-5,718,848-state profiles, three 872-address seeds (2,917,868 / 2,916,202 /
-2,918,100), zero mismatches; `presentation_check.py --scales 1` reports all 45
-routes exact. Proof: `D:/f117-gate/p2-batch2` (`gate.log`; the first attempt,
-`p2-scene/gate.log`, failed on the old `393D` defect below).
+VGAME `63F2`, `528D` and START `6861` are matched and gated on top of the scene walk
+(`04E6`), briefing loop (`0FA3`), `DC46`, the horizon / world-record pair and the menu
+pair. Census: 867 functions / 110,808 bytes, P2 63.74%, overall 85.62%. Fresh full
+gate: 84 tests, all 45 routes / 44 fresh interpreter sessions, both 5,718,848-state
+profiles, three 875-address seeds (2,932,702 / 2,931,015 / 2,932,431), zero
+mismatches; `presentation_check.py --scales 1` reports all 45 routes exact. Proof:
+`D:/f117-gate/p2-batch3`.
+
+**Owner decision (14 October, evening): replace the capture-and-refine presentation
+with a state-driven one.** The owner reviewed 4K screenshots (blocky terrain edges when
+turning, jittering HUD lines, fat map marker) and chose: render the 3-D world, HUD and
+cockpit from game state at any resolution, interpolate state (not matched polygons) for
+60+ fps, keep original pixel art integer-scaled, keep the logic at its original tick,
+and throw the current methods out. Retire each old path in the same commit that
+replaces it (never leave a hole; `--present scan` stays as the original picture and
+the oracle). Every layer is checked by "at a logic frame, N=1 equals the original's
+frame". Evidence-gathering is under way in worktree `D:/f117-wt/present-diag` (branch
+`present-diag`): a per-pixel diagnostic of what stays blocky, and
+`D:/f117-gate/present-v2/hud-analysis.md` (how the HUD is produced). Interpolation costs
+about one logic step of picture age (67-110 ms); that is the stated price
+([docs/presentation.md](docs/presentation.md), Stage 4).
 
 Traps found today:
 - `1450` is also the presentation observer's frame-phase hook. At one address only
@@ -38,14 +51,14 @@ Traps found today:
   `--only` addresses have no leading zero; hex literal ending in E before `+`).
 
 Private proofs are made with `D:/f117-gate/kit/kit.py` and may be run by separate
-agents in their own directories while a gate runs in the main tree. Three are ready
-and verified, not yet integrated: VGAME `63F2` (`vgame_traffic_lock_and_fire`,
-`D:/f117-gate/p2-vgame-63f2`), VGAME `528D` (`vgame_ground_site_engage`,
-`p2-vgame-528d`) and START `6861` (`start_draw_pilot_row`, `p2-start-6861`); VGAME
-`0D14` (`p2-vgame-0d14`) was still in progress. To land them: `kit.py DIR integrate`
+agents in their own directories while a gate runs in the main tree. Four are ready
+and verified, not yet integrated: VGAME `0D14` (`vgame_nearest_object_lookup`,
+`D:/f117-gate/p2-vgame-0d14`; its body declines while fix D34 is on, via `fix_inside`),
+VGAME `17B4` (`vgame_attitude_indicator_draw`, `p2-vgame-17b4`), START `623E`
+(`start_roster_event_loop`, `p2-start-623e`) and PLAYER `0244`
+(`player_stream_picture_file`, `p2-player-0244`). To land them: `kit.py DIR integrate`
 for each, `build.cmd OFF`, ctest, one full gate for the batch, `presentation_check`,
-docs, commit. 63F2 and 528D both call 5582, whose fix D6 (at 55EB) runs as original
-code on the real route.
+docs, commit.
 
 Other candidates: CRT routines with data-dependent `rep` counts (MPS `0146:067C`
 strstr, `0822`) need a prescan for their room claim. A wait inside a body must

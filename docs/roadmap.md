@@ -200,6 +200,20 @@ not the recompilation:
 
 ## Phase 2 - understood code
 
+Three more routines are matched and named, each proved privately with the shared kit
+(`D:/f117-gate/kit`): VGAME `63F2` (`vgame_traffic_lock_and_fire`: a traffic slot's
+lock level, announcement and missile launch), VGAME `528D`
+(`vgame_ground_site_engage`: a ground site's sighting, alert level and fire) and
+START `6861` (`start_draw_pilot_row`: one roster row's background and four texts).
+Each reaches every instruction at five seeds (6,115-6,249 states, no skipped states);
+87, 74 and 59 private mutations are caught; the real `full_cycle` route runs them 9,
+12 and 10 times with all 66 checkpoints and the final state exact. Fresh full gate: 84
+tests, all 45 routes / 44 fresh interpreter sessions, both 5,718,848-state
+instruction profiles, three 875-address seeds (2,932,702 / 2,931,015 / 2,932,431
+comparisons), zero mismatches, audits pass; `presentation_check.py --scales 1`
+reports all 45 routes exact. Census: 867 functions / 110,808 bytes. Evidence:
+`D:/f117-gate/p2-batch3`.
+
 Two more routines are matched and named: VGAME's `04E6` (`vgame_scene_walk`, 810
 bytes / 276 instructions) walks the terrain tile rings around the viewpoint and
 composes each tile's objects, and START's `0FA3` (`start_brief_key_loop`, 568 bytes /

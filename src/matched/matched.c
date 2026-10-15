@@ -45374,7 +45374,880 @@ leave:
 #undef LEVENT_RECORD
 }
 
+/* VGAME 63F2: raise one traffic slot's lock level and, once locked, announce it
+ * and fire. The caller (the traffic step, 62B0) passes the slot index (bp+4)
+ * of a 36-byte record at [C16C + 36 * index]: three position words at +0, +2
+ * and +4, a heading word at +0E, flag bytes at +16h and +17h, a missile type
+ * at +1Ch and the lock level at +20h. [9520] picks the weapon, a 32-byte entry at [2FF4] whose name
+ * starts the entry and whose word at +18h is the weapon kind (a 14-byte entry
+ * at [2EBA]; its byte +4 holds flag bits 1 and 2).
+ *
+ * 5582 first measures the slot against the player's aircraft: it returns a
+ * strength and stores a range word (bp-10h) and a bearing word (bp-0Ah) through the two pointers it is
+ * given. A positive strength is scaled, (strength + [3D8A]) * range / 100,
+ * into [C09C]. Unless the weapon kind has flag 2, the heading word's high byte
+ * gives a window [C166]..[C168] of -+30h around it, and a bearing whose
+ * distance from the heading has a high byte above 30h zeroes the strength. A
+ * record flagged 8 at +16h takes the window from the bearing's high byte, -+20h,
+ * instead. The strength plus [3D8A] picks the gauge colour (0Bh, 0Fh above
+ * 64h) and the level, capped at 63h, that the far routine 114A:033C draws
+ * with 6 and 9; [3D98] gets [368E], [C0AA] the complement of the index, [98A2]
+ * the colour and [E578] the weapon kind's bit 0.
+ *
+ * When the strength plus [3D8A] is above 64h the lock level rises, otherwise the
+ * record's flag 8 at +16h is cleared and its level drops by 20h. The gain is
+ * ([3688] + [3686] + 2) * 16, halved when [9B34] has bit 4 set, added to the
+ * level. Above C0h the record is locked: [DF02] counts it, bit 6 of +17h is
+ * set and 56BB refreshes the view. If +17h does not yet have bit 3 and 8 >>
+ * [368A] is above the range, bit 3 is set, [DEFA] counts, and the message
+ * buffer 98A6 is built from the string at 3E45 and the weapon's name, shown by
+ * 8A4F, with sound request 1/7 and event 6 for the weapon (4ABA). Firing
+ * needs 2 * [3686] >= [B080], a free missile slot (index & 7, 1Ch bytes at
+ * [3C3A]; its word +0Eh zero), the bearing within 1800h of the heading, a
+ * missile type other than 0 whose stock ([339C]) exceeds the range and whose
+ * cue 2 * (4 - [3686]) is below it. The slot then gets the record's
+ * position (height less 19h), the type's rate word >> 6, the heading words, the
+ * time to hit (stock * [368E] << 5 / the rate), the type and the negated
+ * index; a second message, the type's name at [3394], the string at 3E52 and
+ * the weapon's name, is shown, and the launch is counted in word +2Ch of the
+ * far record at [E574]. Last the record's flag 8 at +16h is set (with sound
+ * request 1/7 the first time) unless the lock fell, and C67A clamps the level
+ * to 0..FFh. Returns with the level in AX and SI and DI restored. */
+static int vgame_traffic_lock_and_fire(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+    enum { INDEX=4, RANGE=-0x10, BEARING=-0xA, WEAPON=-0x14, STRENGTH=-0x1C, LEVEL=-0x12, SLOT=-0x16 };
+#define TB(n_,at_) do { SM4_NEED((n_),(at_));c->icount+=(n_); } while(0)
+#define TP(v_) cpu_push16(c,(uint16_t)(v_))
+#define TPOP2() do { c->r[R_BX]=cpu_pop16(c);c->r[R_BX]=cpu_pop16(c); } while(0)
+#define TADD(a_,b_) ((uint16_t)alu_op(c,0,(a_),(b_),1))
+#define TSUB(a_,b_) ((uint16_t)alu_op(c,5,(a_),(b_),1))
+#define TCMP(a_,b_) ((void)alu_op(c,7,(a_),(b_),1))
+#define TAND(a_,b_) ((uint16_t)alu_op(c,4,(a_),(b_),1))
+#define TOR(a_,b_) ((uint16_t)alu_op(c,1,(a_),(b_),1))
+#define TNEG(v_) ((uint16_t)alu_sub(c,0,(v_),1,0))
+#define TSHL(v_,n_) ((uint16_t)x86_shift(c,4,(v_),(n_),1))
+#define TSAR(v_,n_) ((uint16_t)x86_shift(c,7,(v_),(n_),1))
+#define TTEST8(v_,m_) alu_logic(c,(uint32_t)(v_)&(m_),0)
+#define TDS(o_) ds_get(c,(uint16_t)(o_))
+#define TREC(r_,d_) ds_get(c,(uint16_t)(c->r[r_]+(d_)))
+#define TREC8(r_,d_) ds_get8(c,(uint16_t)(c->r[r_]+(d_)))
+#define TSP(n_) (c->r[R_SP]=TADD(c->r[R_SP],(n_)))
+#define TRECORD() (c->r[R_BX]=x86_imul3(c,bp_get(c,INDEX),0x24))
+#define TCBW() (c->r[R_AX]=(uint16_t)(int16_t)(int8_t)get_r8(c,R_AL))
+#define TCWD() (c->r[R_DX]=(c->r[R_AX]&0x8000)?0xFFFF:0x0000)
+#define TRUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call_);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define TFAR(at_,ret_) do { SM4_NEED(1,(at_)); TRUN(guest_call_far(m,(at_),(ret_))); } while(0)
+#define TNEARP(at_,target_,ret_,pops_) do { SM4_NEED(1,(at_)); TRUN(guest_call_pop(m,(target_),(ret_),(pops_))); } while(0)
+#define TNEAR(at_,target_,ret_) TNEARP(at_,target_,ret_,0)
+    if(!room(c,17))return 0;
+    /* Measure the slot: 5582(&range, &bearing, weapon kind, x, y, z). */
+    TB(17,0x63F2);
+    x86_enter(c,0x1E,0);cpu_push16(c,c->r[R_DI]);cpu_push16(c,c->r[R_SI]);
+    c->r[R_AX]=(uint16_t)(c->r[R_BP]-0x10);TP(c->r[R_AX]);
+    c->r[R_CX]=(uint16_t)(c->r[R_BP]-0xA);TP(c->r[R_CX]);
+    c->r[R_BX]=TDS(0x9520);c->r[R_BX]=TSHL(c->r[R_BX],5);
+    c->r[R_DX]=TREC(R_BX,0x300C);bp_put(c,WEAPON,c->r[R_DX]);TP(c->r[R_DX]);
+    TRECORD();TP(TREC(R_BX,0xC170));TP(TREC(R_BX,0xC16E));TP(TREC(R_BX,0xC16C));
+    c->r[R_SI]=c->r[R_BX];
+    TNEAR(0x6421,0x5582,0x6424);
+    TB(5,0x6424);
+    TSP(0x0C);bp_put(c,STRENGTH,c->r[R_AX]);ds_put(c,0x3D9A,0x002A);
+    c->r[R_AX]=TOR(c->r[R_AX],c->r[R_AX]);if(x86_cond(c,15))goto strength_positive;
+    TB(1,0x6434);goto lock_check;
+    /* Scale: (strength + [3D8A]) * range / 100 into [C09C]. */
+strength_positive:
+    TB(8,0x6437);
+    TP(0);TP(0x64);TP(0);TP(bp_get(c,RANGE));
+    c->r[R_AX]=TADD(c->r[R_AX],TDS(0x3D8A));TCWD();TP(c->r[R_DX]);TP(c->r[R_AX]);
+    TNEARP(0x6447,0xEF36,0x644A,8);
+    TB(2,0x644A);
+    TP(c->r[R_DX]);TP(c->r[R_AX]);
+    TNEARP(0x644C,0xEE9C,0x644F,8);
+    TB(4,0x644F);
+    ds_put(c,0xC09C,c->r[R_AX]);
+    c->r[R_BX]=x86_imul3(c,bp_get(c,WEAPON),0x0E);
+    TTEST8(ds_get8(c,(uint16_t)(c->r[R_BX]+0x2EBE)),0x02);if(x86_cond(c,5))goto bearing_done;
+    /* Window from the heading word's high byte; a bearing too far from the
+     * heading zeroes the strength. */
+    TB(12,0x645D);
+    c->r[R_AX]=TREC(R_SI,0xC17A);c->r[R_CX]=c->r[R_AX];
+    set_r8(c,R_AL,get_r8(c,R_AH));TCBW();c->r[R_DX]=c->r[R_AX];
+    c->r[R_AX]=TSUB(c->r[R_AX],0x30);ds_put(c,0xC166,c->r[R_AX]);
+    c->r[R_DX]=TADD(c->r[R_DX],0x30);ds_put(c,0xC168,c->r[R_DX]);
+    c->r[R_CX]=TSUB(c->r[R_CX],bp_get(c,BEARING));c->r[R_CX]=TNEG(c->r[R_CX]);TP(c->r[R_CX]);
+    TNEAR(0x647B,0xEE0C,0x647E);
+    TB(3,0x647E);
+    c->r[R_BX]=cpu_pop16(c);alu_op(c,7,get_r8(c,R_AH),0x30,0);if(x86_cond(c,14))goto bearing_done;
+    TB(1,0x6484);
+    bp_put(c,STRENGTH,0);
+bearing_done:
+    TB(3,0x6489);
+    TRECORD();TTEST8(TREC8(R_BX,0xC182),0x08);if(x86_cond(c,4))goto gauge;
+    /* A record flagged 8: the window comes from the bearing's high byte. */
+    TB(7,0x6494);
+    set_r8(c,R_AL,bp_get8(c,BEARING+1));TCBW();c->r[R_CX]=c->r[R_AX];
+    c->r[R_AX]=TSUB(c->r[R_AX],0x20);ds_put(c,0xC166,c->r[R_AX]);
+    c->r[R_CX]=TADD(c->r[R_CX],0x20);ds_put(c,0xC168,c->r[R_CX]);
+    /* The gauge: colour 0Bh (0Fh above 64h), level capped at 63h. */
+gauge:
+    TB(4,0x64A7);
+    c->r[R_AX]=bp_get(c,STRENGTH);c->r[R_AX]=TADD(c->r[R_AX],TDS(0x3D8A));TCMP(c->r[R_AX],0x64);
+    if(x86_cond(c,14))goto gauge_colour_low;
+    TB(2,0x64B3);
+    c->r[R_AX]=0x000F;goto gauge_colour_set;
+gauge_colour_low:
+    TB(1,0x64B8);
+    c->r[R_AX]=0x000B;
+gauge_colour_set:
+    TB(5,0x64BB);
+    ds_put(c,0x3D9A,c->r[R_AX]);c->r[R_AX]=bp_get(c,STRENGTH);bp_put(c,LEVEL,c->r[R_AX]);
+    TCMP(c->r[R_AX],0x63);if(x86_cond(c,14))goto gauge_draw;
+    TB(1,0x64C9);
+    bp_put(c,LEVEL,0x0063);
+gauge_draw:
+    TB(4,0x64CE);
+    TP(9);TP(6);TP(TDS(0x3D9A));TP(bp_get(c,LEVEL));
+    TFAR(0x64D9,0x64DE);
+    TB(12,0x64DE);
+    TSP(8);
+    c->r[R_AX]=TDS(0x368E);ds_put(c,0x3D98,c->r[R_AX]);
+    c->r[R_AX]=0xFFFF;c->r[R_AX]=TSUB(c->r[R_AX],bp_get(c,INDEX));ds_put(c,0xC0AA,c->r[R_AX]);
+    c->r[R_AX]=TDS(0x3D9A);ds_put(c,0x98A2,c->r[R_AX]);
+    c->r[R_BX]=x86_imul3(c,bp_get(c,WEAPON),0x0E);
+    set_r8(c,R_AL,ds_get8(c,(uint16_t)(c->r[R_BX]+0x2EBE)));
+    c->r[R_AX]=TAND(c->r[R_AX],0x0001);ds_put(c,0xE578,c->r[R_AX]);
+    /* Above 64h the lock level rises, otherwise it falls. */
+lock_check:
+    TB(4,0x6504);
+    c->r[R_AX]=bp_get(c,STRENGTH);c->r[R_AX]=TADD(c->r[R_AX],TDS(0x3D8A));TCMP(c->r[R_AX],0x64);
+    if(x86_cond(c,15))goto lock_rises;
+    TB(1,0x6510);goto lock_falls;
+lock_rises:
+    TNEAR(0x6513,0x56A9,0x6516);
+    TB(15,0x6516);
+    set_r8(c,R_AL,ds_get8(c,0x9B34));c->r[R_AX]=TAND(c->r[R_AX],0x0010);TCMP(c->r[R_AX],1);
+    set_r8(c,R_CL,(uint8_t)alu_op(c,3,get_r8(c,R_CL),get_r8(c,R_CL),0));
+    set_r8(c,R_CL,(uint8_t)alu_inc(c,get_r8(c,R_CL),0));
+    c->r[R_AX]=TDS(0x3688);c->r[R_AX]=TADD(c->r[R_AX],TDS(0x3686));
+    c->r[R_AX]=(uint16_t)alu_inc(c,c->r[R_AX],1);c->r[R_AX]=(uint16_t)alu_inc(c,c->r[R_AX],1);
+    c->r[R_AX]=TSHL(c->r[R_AX],4);c->r[R_AX]=TSAR(c->r[R_AX],get_r8(c,R_CL));
+    TRECORD();
+    ds_put(c,(uint16_t)(c->r[R_BX]+0xC18C),TADD(TREC(R_BX,0xC18C),c->r[R_AX]));
+    TCMP(TREC(R_BX,0xC18C),0x00C0);if(x86_cond(c,15))goto locked;
+    TB(1,0x6541);goto finish_marks;
+    /* Locked: count it, flag it, refresh the view. */
+locked:
+    TB(3,0x6544);
+    ds_put(c,0xDF02,(uint16_t)alu_inc(c,TDS(0xDF02),1));
+    ds_put8(c,(uint16_t)(c->r[R_BX]+0xC183),(uint8_t)alu_op(c,1,TREC8(R_BX,0xC183),0x40,0));
+    c->r[R_SI]=c->r[R_BX];
+    TNEAR(0x654F,0x56BB,0x6552);
+    TB(2,0x6552);
+    TTEST8(TREC8(R_SI,0xC183),0x08);if(x86_cond(c,5))goto launch_check;
+    TB(5,0x6559);
+    set_r8(c,R_CL,ds_get8(c,0x368A));c->r[R_AX]=0x0008;c->r[R_AX]=TSAR(c->r[R_AX],get_r8(c,R_CL));
+    TCMP(c->r[R_AX],bp_get(c,RANGE));if(x86_cond(c,6))goto launch_check;
+    /* First lock in range: flag it and announce the weapon. */
+    TB(4,0x6567);
+    ds_put8(c,(uint16_t)(c->r[R_SI]+0xC183),(uint8_t)alu_op(c,1,TREC8(R_SI,0xC183),0x08,0));
+    ds_put(c,0xDEFA,(uint16_t)alu_inc(c,TDS(0xDEFA),1));
+    TP(0x3E45);TP(0x98A6);
+    TNEAR(0x6576,0xEB50,0x6579);
+    TB(7,0x6579);
+    TPOP2();
+    c->r[R_AX]=TDS(0x9520);c->r[R_AX]=TSHL(c->r[R_AX],5);c->r[R_AX]=TADD(c->r[R_AX],0x2FF4);TP(c->r[R_AX]);TP(0x98A6);
+    TNEAR(0x6588,0xEB10,0x658B);
+    TB(3,0x658B);
+    TPOP2();
+    TP(0x98A6);
+    TNEAR(0x6590,0x8A4F,0x6593);
+    TB(3,0x6593);
+    c->r[R_BX]=cpu_pop16(c);TP(1);TP(7);
+    TNEAR(0x6598,0xD3F9,0x659B);
+    TB(4,0x659B);
+    TPOP2();
+    TP(TDS(0x9520));TP(6);
+    TNEAR(0x65A3,0x4ABA,0x65A6);
+    TB(2,0x65A6);
+    TPOP2();
+    /* Fire: needs 2 * [3686] >= [B080] and a free missile slot (index & 7). */
+launch_check:
+    TB(7,0x65A8);
+    set_r8(c,R_AL,bp_get8(c,INDEX));c->r[R_AX]=TAND(c->r[R_AX],0x0007);bp_put(c,SLOT,c->r[R_AX]);
+    c->r[R_CX]=TDS(0x3686);c->r[R_CX]=TSHL(c->r[R_CX],1);TCMP(c->r[R_CX],TDS(0xB080));
+    if(x86_cond(c,13))goto slot_check;
+    TB(1,0x65BD);goto finish_marks;
+slot_check:
+    TB(3,0x65C0);
+    c->r[R_BX]=x86_imul3(c,c->r[R_AX],0x1C);
+    TCMP(TREC(R_BX,0x3C48),0);if(x86_cond(c,5))goto no_launch;
+    TB(5,0x65CA);
+    c->r[R_AX]=bp_get(c,BEARING);c->r[R_SI]=x86_imul3(c,bp_get(c,INDEX),0x24);
+    c->r[R_AX]=TSUB(c->r[R_AX],TREC(R_SI,0xC17A));TP(c->r[R_AX]);c->r[R_DI]=c->r[R_BX];
+    TNEAR(0x65D8,0xEE0C,0x65DB);
+    TB(3,0x65DB);
+    c->r[R_BX]=cpu_pop16(c);TCMP(c->r[R_AX],0x1800);if(x86_cond(c,13))goto no_launch;
+    TB(6,0x65E1);
+    c->r[R_AX]=TREC(R_SI,0xC188);bp_put(c,WEAPON,c->r[R_AX]);
+    c->r[R_BX]=x86_imul3(c,c->r[R_AX],0x12);c->r[R_CX]=bp_get(c,RANGE);
+    TCMP(TREC(R_BX,0x339C),c->r[R_CX]);if(x86_cond(c,6))goto no_launch;
+    TB(5,0x65F4);
+    c->r[R_DX]=0x0004;c->r[R_DX]=TSUB(c->r[R_DX],TDS(0x3686));c->r[R_DX]=TSHL(c->r[R_DX],1);
+    TCMP(c->r[R_DX],c->r[R_CX]);if(x86_cond(c,3))goto no_launch;
+    TB(2,0x6601);
+    c->r[R_AX]=TOR(c->r[R_AX],c->r[R_AX]);if(x86_cond(c,5))goto launch;
+no_launch:
+    TB(1,0x6605);goto finish_marks;
+    /* Fill the missile slot DI (1Ch bytes at [3C3A]) from the record SI and the
+     * type at BX. */
+launch:
+    TB(24,0x6608);
+    c->r[R_CX]=TREC(R_SI,0xC16C);ds_put(c,(uint16_t)(c->r[R_DI]+0x3C3A),c->r[R_CX]);
+    c->r[R_CX]=TREC(R_SI,0xC16E);ds_put(c,(uint16_t)(c->r[R_DI]+0x3C3C),c->r[R_CX]);
+    c->r[R_CX]=TREC(R_SI,0xC170);c->r[R_CX]=TSUB(c->r[R_CX],0x19);ds_put(c,(uint16_t)(c->r[R_DI]+0x3C3E),c->r[R_CX]);
+    c->r[R_CX]=TREC(R_BX,0x339E);c->r[R_CX]=TSAR(c->r[R_CX],6);ds_put(c,(uint16_t)(c->r[R_DI]+0x3C40),c->r[R_CX]);
+    c->r[R_CX]=TREC(R_SI,0xC17A);ds_put(c,(uint16_t)(c->r[R_DI]+0x3C42),c->r[R_CX]);
+    c->r[R_CX]=TREC(R_SI,0xC17C);ds_put(c,(uint16_t)(c->r[R_DI]+0x3C44),c->r[R_CX]);
+    c->r[R_CX]=TREC(R_SI,0xC17E);ds_put(c,(uint16_t)(c->r[R_DI]+0x3C46),c->r[R_CX]);
+    c->r[R_AX]=TREC(R_DI,0x3C40);TCWD();TP(c->r[R_DX]);TP(c->r[R_AX]);
+    c->r[R_AX]=TREC(R_BX,0x339C);x86_imul16(c,TDS(0x368E));
+    set_r8(c,R_CL,0x05);c->r[R_SI]=c->r[R_BX];
+    TNEAR(0x6659,0xEF68,0x665C);
+    TB(2,0x665C);
+    TP(c->r[R_DX]);TP(c->r[R_AX]);
+    TNEARP(0x665E,0xEE9C,0x6661,8);
+    TB(9,0x6661);
+    ds_put(c,(uint16_t)(c->r[R_DI]+0x3C48),c->r[R_AX]);
+    c->r[R_AX]=bp_get(c,WEAPON);ds_put(c,(uint16_t)(c->r[R_DI]+0x3C4A),c->r[R_AX]);
+    c->r[R_AX]=bp_get(c,INDEX);c->r[R_AX]=TNEG(c->r[R_AX]);ds_put(c,(uint16_t)(c->r[R_DI]+0x3C50),c->r[R_AX]);
+    c->r[R_SI]=TADD(c->r[R_SI],0x3394);TP(c->r[R_SI]);TP(0x98A6);
+    TNEAR(0x667D,0xEB50,0x6680);
+    TB(4,0x6680);
+    TPOP2();
+    TP(0x3E52);TP(0x98A6);
+    TNEAR(0x6688,0xEB10,0x668B);
+    TB(7,0x668B);
+    TPOP2();
+    c->r[R_AX]=TDS(0x9520);c->r[R_AX]=TSHL(c->r[R_AX],5);c->r[R_AX]=TADD(c->r[R_AX],0x2FF4);TP(c->r[R_AX]);TP(0x98A6);
+    TNEAR(0x669A,0xEB10,0x669D);
+    TB(3,0x669D);
+    TPOP2();
+    TP(0x98A6);
+    TNEAR(0x66A2,0x8A4F,0x66A5);
+    TB(3,0x66A5);
+    c->r[R_BX]=cpu_pop16(c);
+    c->r[R_BX]=ds_get(c,0xE574);c->seg[S_ES]=ds_get(c,0xE576);
+    seg_write16(c,c->seg[S_ES],(uint16_t)(c->r[R_BX]+0x2C),(uint16_t)alu_inc(c,seg_read16(c,c->seg[S_ES],(uint16_t)(c->r[R_BX]+0x2C)),1));
+    /* Flag the record 8 (with a sound request the first time). */
+finish_marks:
+    TB(3,0x66AE);
+    TRECORD();TTEST8(TREC8(R_BX,0xC182),0x08);if(x86_cond(c,5))goto mark_flagged;
+    TB(2,0x66B9);
+    TP(1);TP(7);
+    TNEAR(0x66BD,0xD3F9,0x66C0);
+    TB(2,0x66C0);
+    TPOP2();
+mark_flagged:
+    TB(3,0x66C2);
+    TRECORD();ds_put8(c,(uint16_t)(c->r[R_BX]+0xC182),(uint8_t)alu_op(c,1,TREC8(R_BX,0xC182),0x08,0));
+    goto level_clamp;
+    /* Not above 64h: unflag the record and cut its level by 20h. */
+lock_falls:
+    TB(3,0x66CD);
+    TRECORD();ds_put8(c,(uint16_t)(c->r[R_BX]+0xC182),(uint8_t)alu_op(c,4,TREC8(R_BX,0xC182),0xF7,0));
+    ds_put(c,(uint16_t)(c->r[R_BX]+0xC18C),TSUB(TREC(R_BX,0xC18C),0x20));
+    /* C67A(level, 0, FFh) clamps the level. */
+level_clamp:
+    TB(5,0x66DB);
+    TP(0x00FF);TP(0);TRECORD();TP(TREC(R_BX,0xC18C));c->r[R_SI]=c->r[R_BX];
+    TNEAR(0x66EA,0xC67A,0x66ED);
+    TB(6,0x66ED);
+    TSP(6);ds_put(c,(uint16_t)(c->r[R_SI]+0xC18C),c->r[R_AX]);
+    c->r[R_SI]=cpu_pop16(c);c->r[R_DI]=cpu_pop16(c);x86_leave(c);near_ret(c);return 1;
+#undef TB
+#undef TP
+#undef TPOP2
+#undef TADD
+#undef TSUB
+#undef TCMP
+#undef TAND
+#undef TOR
+#undef TNEG
+#undef TSHL
+#undef TSAR
+#undef TTEST8
+#undef TDS
+#undef TREC
+#undef TREC8
+#undef TSP
+#undef TRECORD
+#undef TCBW
+#undef TCWD
+#undef TRUN
+#undef TFAR
+#undef TNEARP
+#undef TNEAR
+}
+
+/* VGAME 528D: a ground site's engagement of the aircraft (the per-frame site
+ * loop at 5046 calls it when a site's reload timer passes through 4). The
+ * argument (bp+4) indexes the site's sixteen-byte record at [B2CE + 16 *
+ * index]: +2 and +4 its position, +6 its type, +8 and +9 flag bytes (04h
+ * seen, 10h engaged; +9 01h skips the cover, 10h warned), +0Ah its alert
+ * level (0 to FFh). The detection routine (5582, given the position and the
+ * type, and the addresses of two locals) returns a visibility figure and
+ * stores the range (bp-1Eh) and the bearing (bp-16h). A visibility above zero
+ * (clamped to 99 for the display) picks a palette cue - 2Ah, then 29h when the
+ * figure plus the player's damage [3D8A] passes 32h, then 11h when it passes
+ * 64h - and draws the contact marker (far 114A:033C), derives [C09C] (that
+ * sum times the range over 100) and the bearing window [C166, C168], and,
+ * unless the record already carries the seen bit, draws the scope marks (94E1,
+ * 8625, 94AD, 9216), sets the bit and logs the sighting text (4B03, EB10,
+ * 8A4F). Whatever the visibility, a sum above 64h then raises the alert level
+ * by ([3688] + [3686] + 1) * 16 (halved when [9B34] bit 4 is set), capped at
+ * FFh, and the engaged bit is set at the end; a quiet sum instead clears that
+ * bit and lowers the level by 10h, not below zero. A raised level above 7Fh
+ * spends the cover calculation (56BB), but only when +9 bit 0 and [39E0] are
+ * clear. A level above C0h, when [B080] is not above [3686], the type is not
+ * 15h and [9922] is above 500h, counts an engagement ([DF02]). Once the
+ * record has been warned, or while its level is under FAh, that fires: in the
+ * shot slot (index and 7, 1Ch bytes at [3C3A]) whose word +0Eh is free, when
+ * the range is within the type's reach ([339C + 18 * type], unsigned), it
+ * stores the site's position, the bearing and a flight time (the reach times
+ * [368E] times 16, through the long helpers EF68 and EE9C), logs the launch,
+ * and counts it in the record behind the far pointer [E574]. At level FAh or
+ * more and not yet warned, the warned bit is set instead, the warning is
+ * logged and sounded (D3F9, 4ABA). The long helpers EF36, EF68 and EE9C are
+ * original code; every call's arguments are cdecl and removed here. */
+static int vgame_ground_site_engage(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+    enum { SIZE=-0x2A, SLOT=-0x24, TYPE=-0x22, CLAMP=-0x20, DIST=-0x1E, BEARING=-0x16, BEARING_HI=-0x15 };
+#define GB(n_,at_) do { SM4_NEED((n_),(at_));c->icount+=(n_); } while(0)
+#define GP(v_) cpu_push16(c,(v_))
+#define GADD(a_,b_) ((uint16_t)alu_op(c,0,(a_),(b_),1))
+#define GSUB(a_,b_) ((uint16_t)alu_op(c,5,(a_),(b_),1))
+#define GCMP(a_,b_) alu_op(c,7,(a_),(b_),1)
+#define GSHL(v_,n_) ((uint16_t)x86_shift(c,4,(v_),(n_),1))
+#define GDS(o_) ds_get(c,(uint16_t)(o_))
+#define GBXDS(d_) ds_get(c,(uint16_t)(c->r[R_BX]+(d_)))
+#define GSP(n_) (c->r[R_SP]=GADD(c->r[R_SP],(n_)))
+#define GPOP() (c->r[R_BX]=cpu_pop16(c))
+#define GRUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call_);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define GNEAR(at_,target_,ret_,pops_) do { SM4_NEED(1,(at_)); GRUN(guest_call_pop(m,(target_),(ret_),(pops_))); } while(0)
+#define GFAR(at_,ret_) do { SM4_NEED(1,(at_)); GRUN(guest_call_far(m,(at_),(ret_))); } while(0)
+    if(!room(c,15))return 0;
+    GB(15,0x528D);
+    x86_enter(c,0x2A,0);x86_push_reg(c,R_DI);x86_push_reg(c,R_SI);
+    c->r[R_BX]=GSHL(bp_get(c,4),4);
+    c->r[R_AX]=GBXDS(0xB2D4);bp_put(c,TYPE,c->r[R_AX]);
+    c->r[R_CX]=(uint16_t)(c->r[R_BP]-0x1E);GP(c->r[R_CX]);
+    c->r[R_CX]=(uint16_t)(c->r[R_BP]-0x16);GP(c->r[R_CX]);
+    GP(c->r[R_AX]);GP(0);GP(GBXDS(0xB2D2));GP(GBXDS(0xB2D0));
+    GNEAR(0x52B3,0x5582,0x52B6,0);
+    /* Visibility in AX. */
+    GB(5,0x52B6);
+    GSP(0x0C);bp_put(c,SIZE,c->r[R_AX]);ds_put(c,0x3D9A,0);
+    c->r[R_AX]=(uint16_t)alu_op(c,1,c->r[R_AX],c->r[R_AX],1);
+    if(x86_cond(c,15))goto visible;
+    GB(1,0x52C6);goto exposure_tail;
+visible:
+    GB(3,0x52C9);
+    bp_put(c,CLAMP,c->r[R_AX]);GCMP(c->r[R_AX],0x63);
+    if(x86_cond(c,14))goto cue_first;
+    GB(1,0x52D1);bp_put(c,CLAMP,0x63);
+cue_first:
+    GB(5,0x52D6);
+    ds_put(c,0x3D9A,0x2A);c->r[R_AX]=GDS(0x3D8A);c->r[R_AX]=GADD(c->r[R_AX],bp_get(c,SIZE));
+    GCMP(c->r[R_AX],0x32);
+    if(x86_cond(c,14))goto cue_second;
+    GB(1,0x52E7);ds_put(c,0x3D9A,0x29);
+cue_second:
+    GB(4,0x52ED);
+    c->r[R_AX]=GDS(0x3D8A);c->r[R_AX]=GADD(c->r[R_AX],bp_get(c,SIZE));GCMP(c->r[R_AX],0x64);
+    if(x86_cond(c,14))goto contact_marker;
+    GB(1,0x52F8);ds_put(c,0x3D9A,0x11);
+contact_marker:
+    GB(4,0x52FE);
+    GP(4);GP(1);GP(GDS(0x3D9A));GP(bp_get(c,CLAMP));
+    GFAR(0x5309,0x530E);
+    GB(10,0x530E);
+    GSP(8);GP(0);GP(0x64);GP(0);GP(bp_get(c,DIST));
+    c->r[R_AX]=GDS(0x3D8A);c->r[R_AX]=GADD(c->r[R_AX],bp_get(c,SIZE));
+    c->r[R_DX]=(c->r[R_AX]&0x8000)?0xFFFF:0x0000;GP(c->r[R_DX]);GP(c->r[R_AX]);
+    GNEAR(0x5323,0xEF36,0x5326,8);
+    GB(2,0x5326);
+    GP(c->r[R_DX]);GP(c->r[R_AX]);
+    GNEAR(0x5328,0xEE9C,0x532B,8);
+    GB(13,0x532B);
+    ds_put(c,0xC09C,c->r[R_AX]);c->r[R_AX]=GDS(0x368E);ds_put(c,0x3D98,c->r[R_AX]);
+    c->r[R_AX]=bp_get(c,4);ds_put(c,0xC0AA,c->r[R_AX]);
+    c->r[R_BX]=x86_imul3(c,bp_get(c,TYPE),0x0E);
+    set_r8(c,R_CL,ds_get8(c,(uint16_t)(c->r[R_BX]+0x2EBE)));
+    c->r[R_CX]=(uint16_t)alu_op(c,4,c->r[R_CX],0x01,1);ds_put(c,0xE578,c->r[R_CX]);
+    c->r[R_BX]=c->r[R_AX];c->r[R_BX]=GSHL(c->r[R_BX],4);
+    GCMP(GBXDS(0xB2D8),0);
+    if(x86_cond(c,4))goto scope_marks;
+    GB(7,0x5355);
+    set_r8(c,R_AL,bp_get8(c,BEARING_HI));c->r[R_AX]=(uint16_t)(int16_t)(int8_t)get_r8(c,R_AL);c->r[R_CX]=c->r[R_AX];
+    c->r[R_AX]=GSUB(c->r[R_AX],0x20);ds_put(c,0xC166,c->r[R_AX]);
+    c->r[R_CX]=GADD(c->r[R_CX],0x20);ds_put(c,0xC168,c->r[R_CX]);
+scope_marks:
+    GB(6,0x5368);
+    c->r[R_AX]=GDS(0x3D9A);ds_put(c,0x98A2,c->r[R_AX]);
+    c->r[R_BX]=GSHL(bp_get(c,4),4);
+    alu_logic(c,(uint32_t)ds_get8(c,(uint16_t)(c->r[R_BX]+0xB2D6))&0x04,0);
+    if(x86_cond(c,5))goto exposure_tail;
+    GB(2,0x537B);
+    GCMP(GDS(0xDF06),0);
+    if(x86_cond(c,5))goto seen_bit;
+    GB(2,0x5382);
+    GCMP(GDS(0x368C),0);
+    if(x86_cond(c,4))goto seen_bit;
+    GB(1,0x5389);
+    c->r[R_SI]=c->r[R_BX];
+    GNEAR(0x538B,0x94E1,0x538E,0);
+    GB(4,0x538E);
+    GP(1);GP(0);GP(ds_get(c,(uint16_t)(c->r[R_SI]+0xB2D2)));GP(ds_get(c,(uint16_t)(c->r[R_SI]+0xB2D0)));
+    GNEAR(0x539A,0x8625,0x539D,0);
+    GB(1,0x539D);
+    GSP(8);
+    GNEAR(0x53A0,0x94AD,0x53A3,0);
+    GB(2,0x53A3);
+    GCMP(GDS(0xE008),0x14);
+    if(x86_cond(c,5))goto seen_bit;
+    GNEAR(0x53AA,0x9216,0x53AD,0);
+    /* Mark the record seen and log the sighting. */
+seen_bit:
+    GB(4,0x53AD);
+    c->r[R_BX]=GSHL(bp_get(c,4),4);
+    ds_put8(c,(uint16_t)(c->r[R_BX]+0xB2D6),(uint8_t)alu_op(c,1,ds_get8(c,(uint16_t)(c->r[R_BX]+0xB2D6)),0x04,0));
+    GP(bp_get(c,4));
+    GNEAR(0x53BB,0x4B03,0x53BE,0);
+    GB(3,0x53BE);
+    GPOP();GP(0x3E08);GP(0x98A6);
+    GNEAR(0x53C5,0xEB10,0x53C8,0);
+    GB(3,0x53C8);
+    GPOP();GPOP();GP(0x98A6);
+    GNEAR(0x53CD,0x8A4F,0x53D0,0);
+    GB(1,0x53D0);
+    GPOP();
+    /* The exposure sum decides between raising the alert level and lowering it. */
+exposure_tail:
+    GB(4,0x53D1);
+    c->r[R_AX]=GDS(0x3D8A);c->r[R_AX]=GADD(c->r[R_AX],bp_get(c,SIZE));GCMP(c->r[R_AX],0x64);
+    if(x86_cond(c,15))goto raise_level;
+    GB(1,0x53DC);goto lower_level;
+raise_level:
+    GNEAR(0x53DF,0x56A9,0x53E2,0);
+    GB(15,0x53E2);
+    set_r8(c,R_AL,ds_get8(c,0x9B34));c->r[R_AX]=(uint16_t)alu_op(c,4,c->r[R_AX],0x10,1);GCMP(c->r[R_AX],1);
+    set_r8(c,R_CL,(uint8_t)alu_op(c,3,get_r8(c,R_CL),get_r8(c,R_CL),0));
+    set_r8(c,R_CL,(uint8_t)alu_inc(c,get_r8(c,R_CL),0));
+    c->r[R_AX]=GDS(0x3688);c->r[R_AX]=GADD(c->r[R_AX],GDS(0x3686));c->r[R_AX]=(uint16_t)alu_inc(c,c->r[R_AX],1);
+    c->r[R_AX]=GSHL(c->r[R_AX],4);c->r[R_AX]=(uint16_t)x86_shift(c,7,c->r[R_AX],get_r8(c,R_CL),1);
+    c->r[R_BX]=GSHL(bp_get(c,4),4);
+    ds_put(c,(uint16_t)(c->r[R_BX]+0xB2D8),GADD(GBXDS(0xB2D8),c->r[R_AX]));
+    GCMP(GBXDS(0xB2D8),0x00FF);
+    if(x86_cond(c,14))goto level_capped;
+    GB(1,0x540E);ds_put(c,(uint16_t)(c->r[R_BX]+0xB2D8),0x00FF);
+level_capped:
+    GB(4,0x5414);
+    c->r[R_BX]=GSHL(bp_get(c,4),4);
+    alu_logic(c,(uint32_t)ds_get8(c,(uint16_t)(c->r[R_BX]+0xB2D7))&0x01,0);
+    if(x86_cond(c,5))goto cover_done;
+    GB(2,0x5421);
+    GCMP(GDS(0x39E0),0);
+    if(x86_cond(c,5))goto cover_done;
+    GB(2,0x5428);
+    GCMP(GBXDS(0xB2D8),0x7F);
+    if(x86_cond(c,14))goto cover_done;
+    GNEAR(0x542F,0x56BB,0x5432,0);
+cover_done:
+    GB(3,0x5432);
+    c->r[R_AX]=GDS(0x3686);GCMP(GDS(0xB080),c->r[R_AX]);
+    if(x86_cond(c,14))goto engage_test;
+    GB(1,0x543B);goto mark_engaged;
+engage_test:
+    GB(4,0x543E);
+    c->r[R_BX]=GSHL(bp_get(c,4),4);
+    GCMP(GBXDS(0xB2D8),0x00C0);
+    if(x86_cond(c,14))goto no_engage;
+    GB(2,0x544C);
+    GCMP(bp_get(c,TYPE),0x15);
+    if(x86_cond(c,4))goto no_engage;
+    GB(2,0x5452);
+    GCMP(GDS(0x9922),0x0500);
+    if(x86_cond(c,15))goto engaged;
+no_engage:
+    GB(1,0x545A);goto mark_engaged;
+engaged:
+    GB(3,0x545D);
+    ds_put(c,0xDF02,(uint16_t)alu_inc(c,GDS(0xDF02),1));
+    alu_logic(c,(uint32_t)ds_get8(c,(uint16_t)(c->r[R_BX]+0xB2D7))&0x10,0);
+    if(x86_cond(c,5))goto fire;
+    GB(2,0x5468);
+    GCMP(GBXDS(0xB2D8),0x00FA);
+    if(x86_cond(c,12))goto fire;
+    /* Level FAh reached and not yet warned: warn. */
+    GB(3,0x5470);
+    ds_put8(c,(uint16_t)(c->r[R_BX]+0xB2D7),(uint8_t)alu_op(c,1,ds_get8(c,(uint16_t)(c->r[R_BX]+0xB2D7)),0x10,0));
+    ds_put(c,0xDEFE,(uint16_t)alu_inc(c,GDS(0xDEFE),1));GP(bp_get(c,4));
+    GNEAR(0x547C,0x4B03,0x547F,0);
+    GB(3,0x547F);
+    GPOP();GP(0x3E12);GP(0x98A6);
+    GNEAR(0x5486,0xEB10,0x5489,0);
+    GB(3,0x5489);
+    GPOP();GPOP();GP(0x98A6);
+    GNEAR(0x548E,0x8A4F,0x5491,0);
+    GB(3,0x5491);
+    GPOP();GP(1);GP(8);
+    GNEAR(0x5496,0xD3F9,0x5499,0);
+    GB(4,0x5499);
+    GPOP();GPOP();GP(bp_get(c,4));GP(7);
+    GNEAR(0x54A0,0x4ABA,0x54A3,0);
+    GB(3,0x54A3);
+    GPOP();GPOP();goto mark_engaged;
+    /* Fire from the shot slot (index and 7): BX = slot * 1Ch, SI = type * 12h. */
+fire:
+    GB(6,0x54A8);
+    set_r8(c,R_AL,bp_get8(c,4));c->r[R_AX]=(uint16_t)alu_op(c,4,c->r[R_AX],0x07,1);bp_put(c,SLOT,c->r[R_AX]);
+    c->r[R_BX]=x86_imul3(c,c->r[R_AX],0x1C);
+    GCMP(ds_get(c,(uint16_t)(c->r[R_BX]+0x3C48)),0);
+    if(x86_cond(c,4))goto slot_free;
+    GB(1,0x54BB);goto mark_engaged;
+slot_free:
+    GB(4,0x54BE);
+    c->r[R_AX]=bp_get(c,DIST);c->r[R_SI]=x86_imul3(c,bp_get(c,TYPE),0x12);
+    GCMP(ds_get(c,(uint16_t)(c->r[R_SI]+0x339C)),c->r[R_AX]);
+    if(x86_cond(c,7))goto in_reach;
+    GB(1,0x54CB);goto mark_engaged;
+in_reach:
+    GB(20,0x54CE);
+    c->r[R_DI]=GSHL(bp_get(c,4),4);
+    c->r[R_AX]=ds_get(c,(uint16_t)(c->r[R_DI]+0xB2D0));c->r[R_AX]=GADD(c->r[R_AX],8);
+    ds_put(c,(uint16_t)(c->r[R_BX]+0x3C3A),c->r[R_AX]);
+    c->r[R_AX]=ds_get(c,(uint16_t)(c->r[R_DI]+0xB2D2));ds_put(c,(uint16_t)(c->r[R_BX]+0x3C3C),c->r[R_AX]);
+    ds_put(c,(uint16_t)(c->r[R_BX]+0x3C3E),0);ds_put(c,(uint16_t)(c->r[R_BX]+0x3C40),1);
+    c->r[R_AX]=bp_get(c,BEARING);ds_put(c,(uint16_t)(c->r[R_BX]+0x3C42),c->r[R_AX]);
+    ds_put(c,(uint16_t)(c->r[R_BX]+0x3C44),0x4000);
+    c->r[R_AX]=ds_get(c,(uint16_t)(c->r[R_BX]+0x3C40));
+    c->r[R_DX]=(c->r[R_AX]&0x8000)?0xFFFF:0x0000;GP(c->r[R_DX]);GP(c->r[R_AX]);
+    c->r[R_AX]=ds_get(c,(uint16_t)(c->r[R_SI]+0x339C));x86_imul16(c,GDS(0x368E));
+    set_r8(c,R_CL,0x04);c->r[R_DI]=c->r[R_BX];
+    GNEAR(0x5513,0xEF68,0x5516,0);
+    GB(2,0x5516);
+    GP(c->r[R_DX]);GP(c->r[R_AX]);
+    GNEAR(0x5518,0xEE9C,0x551B,8);
+    GB(6,0x551B);
+    ds_put(c,(uint16_t)(c->r[R_DI]+0x3C48),c->r[R_AX]);
+    c->r[R_AX]=bp_get(c,TYPE);ds_put(c,(uint16_t)(c->r[R_DI]+0x3C4A),c->r[R_AX]);
+    c->r[R_CX]=bp_get(c,4);ds_put(c,(uint16_t)(c->r[R_DI]+0x3C50),c->r[R_CX]);GP(c->r[R_CX]);
+    GNEAR(0x552E,0x4B03,0x5531,0);
+    GB(3,0x5531);
+    GPOP();GP(0x3E1E);GP(0x98A6);
+    GNEAR(0x5538,0xEB10,0x553B,0);
+    GB(5,0x553B);
+    GPOP();GPOP();c->r[R_SI]=GADD(c->r[R_SI],0x3394);GP(c->r[R_SI]);GP(0x98A6);
+    GNEAR(0x5545,0xEB10,0x5548,0);
+    GB(3,0x5548);
+    GPOP();GPOP();GP(0x98A6);
+    GNEAR(0x554D,0x8A4F,0x5550,0);
+    GB(3,0x5550);
+    GPOP();
+    c->r[R_BX]=ds_get(c,0xE574);c->seg[S_ES]=ds_get(c,0xE576);
+    {
+        const uint16_t o_=(uint16_t)(c->r[R_BX]+0x002C);
+        const uint16_t v_=seg_read16(c,c->seg[S_ES],o_);
+        seg_write16(c,c->seg[S_ES],o_,(uint16_t)alu_inc(c,v_,1));
+    }
+mark_engaged:
+    GB(4,0x5559);
+    c->r[R_BX]=GSHL(bp_get(c,4),4);
+    ds_put8(c,(uint16_t)(c->r[R_BX]+0xB2D6),(uint8_t)alu_op(c,1,ds_get8(c,(uint16_t)(c->r[R_BX]+0xB2D6)),0x10,0));
+    goto leave;
+    /* A quiet exposure: clear the engaged bit and lower the level by 10h, not below zero. */
+lower_level:
+    GB(5,0x5566);
+    c->r[R_BX]=GSHL(bp_get(c,4),4);
+    ds_put8(c,(uint16_t)(c->r[R_BX]+0xB2D6),(uint8_t)alu_op(c,4,ds_get8(c,(uint16_t)(c->r[R_BX]+0xB2D6)),0xEF,0));
+    ds_put(c,(uint16_t)(c->r[R_BX]+0xB2D8),(uint16_t)alu_op(c,5,GBXDS(0xB2D8),0x10,1));
+    if(x86_cond(c,9))goto leave;
+    GB(1,0x5578);ds_put(c,(uint16_t)(c->r[R_BX]+0xB2D8),0);
+leave:
+    GB(4,0x557E);
+    c->r[R_SI]=cpu_pop16(c);c->r[R_DI]=cpu_pop16(c);x86_leave(c);near_ret(c);return 1;
+#undef GB
+#undef GP
+#undef GADD
+#undef GSUB
+#undef GCMP
+#undef GSHL
+#undef GDS
+#undef GBXDS
+#undef GSP
+#undef GPOP
+#undef GRUN
+#undef GNEAR
+#undef GFAR
+}
+
+/* START 6861, draw_pilot_row(slot, y): one pilot's line on the roster page. The
+ * pilot is the 50h-byte record at D892 + 50h * slot (the roster read by 07218);
+ * every text goes into the window DC18h at the height y. A rectangle copy from
+ * the driver (0A95:6A8A, eight words: 3, 1Eh, y, 1, 1Eh, y, 102h, 8) first puts
+ * the row's background in place. Then the same three texts are drawn twice in
+ * a row, the second time over the first with the same arithmetic (the original
+ * formats them again with its second copy of the "%s%s" format):
+ *   - the rank and name: sprintf(buf, "%s%s", the rank string whose pointer is
+ *     the word at 1D78h + 2 * [record + 20h], the name at record + 2), drawn by
+ *     0x03567 (window, text, x = 1Eh, y);
+ *   - the long at record + 32h (low) and + 34h (high) as decimal text (0x09516),
+ *     measured by 0x0373C and drawn right-aligned: x = E0h - its width;
+ *   - the word at record + 36h as decimal text (0x094FA), right-aligned at F6h
+ *     the same way;
+ *   - the status text, the string whose pointer is the word at 0E40h + 2 *
+ *     [record + 4Eh] (0x094AC copies it), centred in a 23h-wide field at FDh:
+ *     x = FDh + (23h - width) / 2, the division rounding toward zero (CWD, SUB
+ *     AX, DX, SAR 1).
+ * The record's address is kept at BP-54h, the last width at BP-2 and the text
+ * buffer at BP-52h. Every callee returns with a plain RET; 0x0373C takes two
+ * words but the caller pushes three: the third (y) is left on the stack and is
+ * the y argument of the 0x03567 call that follows, so the pops after 0x0373C
+ * take two words and the add sp,8 after 0x03567 takes it again. SI and DI are
+ * saved and restored; SI holds the name's address across the first half. */
+static int start_draw_pilot_row(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+    enum { SLOT=4, ROW_Y=6, RECORD=-0x54, WIDTH=-2 };
+#define PB(n_,at_) do { SM4_NEED((n_),(at_));c->icount+=(n_); } while(0)
+#define PP(v_) cpu_push16(c,(uint16_t)(v_))
+#define PPOP2() do { c->r[R_BX]=cpu_pop16(c);c->r[R_BX]=cpu_pop16(c); } while(0)
+#define PADD(a_,b_) ((uint16_t)alu_op(c,0,(a_),(b_),1))
+#define PSUB(a_,b_) ((uint16_t)alu_op(c,5,(a_),(b_),1))
+#define PNEG(v_) ((uint16_t)alu_sub(c,0,(v_),1,0))
+#define PSHL(v_) ((uint16_t)x86_shift(c,4,(v_),1,1))
+#define PSAR(v_) ((uint16_t)x86_shift(c,7,(v_),1,1))
+#define PINC(v_) ((uint16_t)alu_inc(c,(v_),1))
+#define PDS(o_) ds_get(c,(uint16_t)(o_))
+#define PLEA(r_) (c->r[(r_)]=(uint16_t)(c->r[R_BP]+0xFFAE))
+#define PSP(n_) (c->r[R_SP]=PADD(c->r[R_SP],(n_)))
+#define PCENTRE() do { c->r[R_AX]=PSUB(c->r[R_AX],0x23);c->r[R_AX]=PNEG(c->r[R_AX]);cwd(c); \
+    c->r[R_AX]=PSUB(c->r[R_AX],c->r[R_DX]);c->r[R_AX]=PSAR(c->r[R_AX]);c->r[R_AX]=PADD(c->r[R_AX],0x00FD); } while(0)
+#define PRUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call_);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define PFAR(at_,ret_) do { SM4_NEED(1,(at_)); PRUN(guest_call_far(m,(at_),(ret_))); } while(0)
+#define PNEAR(at_,target_,ret_) do { SM4_NEED(1,(at_)); PRUN(guest_call_pop(m,(target_),(ret_),0)); } while(0)
+    if(!room(c,18))return 0;
+    /* The row's background: the driver's rectangle copy. */
+    PB(18,0x6861);
+    frame_open(c,0x54);PP(c->r[R_DI]);PP(c->r[R_SI]);
+    c->r[R_AX]=8;PP(c->r[R_AX]);
+    c->r[R_AX]=0x0102;PP(c->r[R_AX]);
+    PP(bp_get(c,ROW_Y));
+    c->r[R_AX]=0x001E;PP(c->r[R_AX]);
+    c->r[R_CX]=1;PP(c->r[R_CX]);
+    PP(bp_get(c,ROW_Y));
+    PP(c->r[R_AX]);
+    c->r[R_CX]=3;PP(c->r[R_CX]);
+    PFAR(0x6884,0x6889);
+    /* First pass. The record and the rank and name text. */
+    PB(17,0x6889);
+    PSP(0x10);
+    c->r[R_AX]=0x0050;x86_imul16(c,bp_get(c,SLOT));
+    c->r[R_AX]=PADD(c->r[R_AX],0xD892);
+    bp_put(c,RECORD,c->r[R_AX]);
+    c->r[R_AX]=PINC(c->r[R_AX]);c->r[R_AX]=PINC(c->r[R_AX]);
+    PP(c->r[R_AX]);
+    c->r[R_BX]=bp_get(c,RECORD);
+    c->r[R_SI]=PDS(c->r[R_BX]+0x20);c->r[R_SI]=PSHL(c->r[R_SI]);
+    PP(PDS(c->r[R_SI]+0x1D78));
+    c->r[R_CX]=0x0E94;PP(c->r[R_CX]);
+    PLEA(R_CX);PP(c->r[R_CX]);
+    c->r[R_SI]=c->r[R_AX];
+    PNEAR(0x68B1,0x959E,0x68B4);
+    PB(8,0x68B4);
+    PSP(8);
+    PP(bp_get(c,ROW_Y));
+    c->r[R_AX]=0x001E;PP(c->r[R_AX]);
+    PLEA(R_CX);PP(c->r[R_CX]);
+    c->r[R_DX]=0xDC18;PP(c->r[R_DX]);
+    PNEAR(0x68C6,0x3567,0x68C9);
+    /* The long, right-aligned at E0h. */
+    PB(8,0x68C9);
+    PSP(8);
+    c->r[R_AX]=0x000A;PP(c->r[R_AX]);
+    PLEA(R_CX);PP(c->r[R_CX]);
+    c->r[R_BX]=bp_get(c,RECORD);
+    PP(PDS(c->r[R_BX]+0x34));PP(PDS(c->r[R_BX]+0x32));
+    PNEAR(0x68DD,0x9516,0x68E0);
+    PB(6,0x68E0);
+    PSP(8);
+    PP(bp_get(c,ROW_Y));
+    PLEA(R_AX);PP(c->r[R_AX]);
+    c->r[R_CX]=0xDC18;PP(c->r[R_CX]);
+    PNEAR(0x68EE,0x373C,0x68F1);
+    PB(10,0x68F1);
+    PPOP2();
+    bp_put(c,WIDTH,c->r[R_AX]);
+    c->r[R_AX]=PSUB(c->r[R_AX],0x00E0);c->r[R_AX]=PNEG(c->r[R_AX]);PP(c->r[R_AX]);
+    PLEA(R_AX);PP(c->r[R_AX]);
+    c->r[R_CX]=0xDC18;PP(c->r[R_CX]);
+    PNEAR(0x6904,0x3567,0x6907);
+    /* The word at +36h, right-aligned at F6h. */
+    PB(7,0x6907);
+    PSP(8);
+    c->r[R_AX]=0x000A;PP(c->r[R_AX]);
+    PLEA(R_CX);PP(c->r[R_CX]);
+    c->r[R_BX]=bp_get(c,RECORD);
+    PP(PDS(c->r[R_BX]+0x36));
+    PNEAR(0x6918,0x94FA,0x691B);
+    PB(6,0x691B);
+    PSP(6);
+    PP(bp_get(c,ROW_Y));
+    PLEA(R_AX);PP(c->r[R_AX]);
+    c->r[R_CX]=0xDC18;PP(c->r[R_CX]);
+    PNEAR(0x6929,0x373C,0x692C);
+    PB(10,0x692C);
+    PPOP2();
+    bp_put(c,WIDTH,c->r[R_AX]);
+    c->r[R_AX]=PSUB(c->r[R_AX],0x00F6);c->r[R_AX]=PNEG(c->r[R_AX]);PP(c->r[R_AX]);
+    PLEA(R_AX);PP(c->r[R_AX]);
+    c->r[R_CX]=0xDC18;PP(c->r[R_CX]);
+    PNEAR(0x693F,0x3567,0x6942);
+    /* The status text, centred. */
+    PB(7,0x6942);
+    PSP(8);
+    c->r[R_BX]=bp_get(c,RECORD);
+    c->r[R_DI]=PDS(c->r[R_BX]+0x4E);c->r[R_DI]=PSHL(c->r[R_DI]);
+    PP(PDS(c->r[R_DI]+0x0E40));
+    PLEA(R_AX);PP(c->r[R_AX]);
+    PNEAR(0x6955,0x94AC,0x6958);
+    PB(7,0x6958);
+    PPOP2();
+    PP(bp_get(c,ROW_Y));
+    PLEA(R_AX);PP(c->r[R_AX]);
+    c->r[R_CX]=0xDC18;PP(c->r[R_CX]);
+    PNEAR(0x6965,0x373C,0x6968);
+    PB(14,0x6968);
+    PPOP2();
+    bp_put(c,WIDTH,c->r[R_AX]);
+    PCENTRE();
+    PP(c->r[R_AX]);
+    PLEA(R_AX);PP(c->r[R_AX]);
+    c->r[R_CX]=0xDC18;PP(c->r[R_CX]);
+    PNEAR(0x6983,0x3567,0x6986);
+    /* Second pass: the rank and name again (SI is the name's address). */
+    PB(10,0x6986);
+    PSP(8);
+    PP(c->r[R_SI]);
+    c->r[R_BX]=bp_get(c,RECORD);
+    c->r[R_SI]=PDS(c->r[R_BX]+0x20);c->r[R_SI]=PSHL(c->r[R_SI]);
+    PP(PDS(c->r[R_SI]+0x1D78));
+    c->r[R_AX]=0x0E99;PP(c->r[R_AX]);
+    PLEA(R_AX);PP(c->r[R_AX]);
+    PNEAR(0x699E,0x959E,0x69A1);
+    PB(8,0x69A1);
+    PSP(8);
+    PP(bp_get(c,ROW_Y));
+    c->r[R_AX]=0x001E;PP(c->r[R_AX]);
+    PLEA(R_AX);PP(c->r[R_AX]);
+    c->r[R_CX]=0xDC18;PP(c->r[R_CX]);
+    PNEAR(0x69B3,0x3567,0x69B6);
+    PB(8,0x69B6);
+    PSP(8);
+    c->r[R_AX]=0x000A;PP(c->r[R_AX]);
+    PLEA(R_CX);PP(c->r[R_CX]);
+    c->r[R_BX]=bp_get(c,RECORD);
+    PP(PDS(c->r[R_BX]+0x34));PP(PDS(c->r[R_BX]+0x32));
+    PNEAR(0x69CA,0x9516,0x69CD);
+    PB(6,0x69CD);
+    PSP(8);
+    PP(bp_get(c,ROW_Y));
+    PLEA(R_AX);PP(c->r[R_AX]);
+    c->r[R_CX]=0xDC18;PP(c->r[R_CX]);
+    PNEAR(0x69DB,0x373C,0x69DE);
+    PB(10,0x69DE);
+    PPOP2();
+    bp_put(c,WIDTH,c->r[R_AX]);
+    c->r[R_AX]=PSUB(c->r[R_AX],0x00E0);c->r[R_AX]=PNEG(c->r[R_AX]);PP(c->r[R_AX]);
+    PLEA(R_AX);PP(c->r[R_AX]);
+    c->r[R_CX]=0xDC18;PP(c->r[R_CX]);
+    PNEAR(0x69F1,0x3567,0x69F4);
+    PB(7,0x69F4);
+    PSP(8);
+    c->r[R_AX]=0x000A;PP(c->r[R_AX]);
+    PLEA(R_AX);PP(c->r[R_AX]);
+    c->r[R_BX]=bp_get(c,RECORD);
+    PP(PDS(c->r[R_BX]+0x36));
+    PNEAR(0x6A05,0x94FA,0x6A08);
+    PB(6,0x6A08);
+    PSP(6);
+    PP(bp_get(c,ROW_Y));
+    PLEA(R_AX);PP(c->r[R_AX]);
+    c->r[R_CX]=0xDC18;PP(c->r[R_CX]);
+    PNEAR(0x6A16,0x373C,0x6A19);
+    PB(10,0x6A19);
+    PPOP2();
+    bp_put(c,WIDTH,c->r[R_AX]);
+    c->r[R_AX]=PSUB(c->r[R_AX],0x00F6);c->r[R_AX]=PNEG(c->r[R_AX]);PP(c->r[R_AX]);
+    PLEA(R_AX);PP(c->r[R_AX]);
+    c->r[R_CX]=0xDC18;PP(c->r[R_CX]);
+    PNEAR(0x6A2C,0x3567,0x6A2F);
+    PB(7,0x6A2F);
+    PSP(8);
+    c->r[R_BX]=bp_get(c,RECORD);
+    c->r[R_BX]=PDS(c->r[R_BX]+0x4E);c->r[R_BX]=PSHL(c->r[R_BX]);
+    PP(PDS(c->r[R_BX]+0x0E40));
+    PLEA(R_AX);PP(c->r[R_AX]);
+    PNEAR(0x6A42,0x94AC,0x6A45);
+    PB(7,0x6A45);
+    PPOP2();
+    PP(bp_get(c,ROW_Y));
+    PLEA(R_AX);PP(c->r[R_AX]);
+    c->r[R_CX]=0xDC18;PP(c->r[R_CX]);
+    PNEAR(0x6A52,0x373C,0x6A55);
+    PB(14,0x6A55);
+    PPOP2();
+    bp_put(c,WIDTH,c->r[R_AX]);
+    PCENTRE();
+    PP(c->r[R_AX]);
+    PLEA(R_AX);PP(c->r[R_AX]);
+    c->r[R_AX]=0xDC18;PP(c->r[R_AX]);
+    PNEAR(0x6A70,0x3567,0x6A73);
+    PB(6,0x6A73);
+    PSP(8);
+    c->r[R_SI]=cpu_pop16(c);c->r[R_DI]=cpu_pop16(c);
+    frame_close_ret(c);
+    return 1;
+#undef PB
+#undef PP
+#undef PPOP2
+#undef PADD
+#undef PSUB
+#undef PNEG
+#undef PSHL
+#undef PSAR
+#undef PINC
+#undef PDS
+#undef PLEA
+#undef PSP
+#undef PCENTRE
+#undef PRUN
+#undef PFAR
+#undef PNEAR
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "START.EXE", START_47304, 0x0000, 0x6861, start_draw_pilot_row, "draw one pilot's roster row", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x528D, vgame_ground_site_engage, "ground site engagement: sighting, alert level, fire", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x63F2, vgame_traffic_lock_and_fire, "raise a traffic slot lock, announce and fire", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x0FA3, start_brief_key_loop, "dispatch the briefing page key events", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x04E6, vgame_scene_walk, "walk the terrain tile rings and compose each tile", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xDC46, vgame_compose_walk, "walk and compose the scene objects", 1 },
