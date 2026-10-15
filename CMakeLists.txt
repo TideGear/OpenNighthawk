@@ -265,6 +265,11 @@ if(F117R_BUILD_TESTS)
   target_link_libraries(test_hud_state PRIVATE f117present)
   add_test(NAME presentation_hud_state COMMAND test_hud_state D:/f117-gate/present-v2/hud/corpus)
   set_tests_properties(presentation_hud_state PROPERTIES SKIP_RETURN_CODE 77)
+  # ... both passes and the map arrow against observer logs carrying the HUD's state records (private: present-v2/hud2).
+  add_executable(test_hud_logs tests/test_hud_logs.c)
+  target_link_libraries(test_hud_logs PRIVATE f117present)
+  add_test(NAME presentation_hud_logs COMMAND test_hud_logs D:/f117-gate/present-v2/hud2/corpus/list.txt)
+  set_tests_properties(presentation_hud_logs PROPERTIES SKIP_RETURN_CODE 77)
   # ... and through the live path (a strike window recorded with F117R_OBSERVE_PAGES=1 F117R_OBSERVE_HUD=1).
   add_executable(test_hud_live tests/test_hud_live.c)
   target_link_libraries(test_hud_live PRIVATE f117present f117recomp_none)

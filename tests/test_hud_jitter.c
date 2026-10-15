@@ -88,20 +88,22 @@ static int sample_after(const interp_list *l, sample_t *s)
     memset(s, 0, sizeof *s);
     for (int i = 0; i < l->n; i++) {
         if (l->rec[i].kind != 'h') continue;
-        if (!hud_state_load(l->rec[i].v, l->rec[i].n, &st) || !st.have_ticks || hud_exact(&st, &ex) < 0) return 0;
+        if (!hud_state_load_drawn(l->rec[i].v, l->rec[i].n, &st) || !st.have_ticks || hud_exact(&st, &ex) < 0) return 0;
         if (hud_fine(&st, g_n, &ex, &fl) < 0) return 0;
         const int origin = st.ds[0x2942] | (st.ds[0x2943] << 8);
         const double ox = origin % 320, oy = origin / 320;
         s->pivot_x = (159 + 0.5) * g_n; s->pivot_y = (52 + 0.5) * g_n;
         for (int k = 0; k < fl.n; k++) {
             const hud_fprim *f = &fl.p[k];
+            if (f->type == HF_TEXT && f->item == HI_G) continue;     /* a fixed text: not one of the moving labels */
+            if (f->type == HF_SPRITE) continue;
             if (f->type == HF_TEXT) {
                 const int x = f->blk[4];
                 (void)x;
                 const int cls = f->entry == 1 ? (fabs(f->x0 / g_n - (st.ds[0x2923] | st.ds[0x2924] << 8)) < 0.01 ? C_ASPD : C_ALT)
                                 : f->entry == 6 ? C_HDG : C_LAD;
                 add_label(s, cls, f->text, f->ntext, f->x0, f->y0);
-            } else if (f->cl == (int)ox * g_n && f->ct == (int)oy * g_n && s->npt + 2 <= 96) {
+            } else if (f->item == HI_LADDER && f->cl == (int)ox * g_n && f->ct == (int)oy * g_n && s->npt + 2 <= 96) {
                 s->pt[s->npt++] = (pt_t){ f->x0, f->y0 };
                 s->pt[s->npt++] = (pt_t){ f->x1, f->y1 };
             }
@@ -159,7 +161,7 @@ typedef struct { int cls, parity; char text[12]; } key_t;
 
 static key_t g_key[MAXK];
 static int g_nkey;
-typedef struct { series_t s[MAXK]; series_t pt; series_t pan[3]; int pt_alive; pt_t pt_last; int nsamples; } track_t;
+typedef struct { series_t s[MAXK]; series_t pt; series_t pan[6]; int pt_alive; pt_t pt_last; int nsamples; } track_t;
 static track_t g_new, g_old;
 
 static int key_of(int cls, const char *text, int parity)
@@ -261,8 +263,9 @@ static void summarise(void)
         }
         print_acc(names[cls], acc, ns);
     }
-    static const char *const pnames[3] = { "flight-path marker top", "vertical-speed bar end", "stall bar end" };
-    for (int q = 0; q < 3; q++) {
+    static const char *const pnames[6] = { "flight-path marker top", "vertical-speed bar end", "stall bar end", "waypoint cue centre x",
+                                           "map arrow left x", "map arrow top y" };
+    for (int q = 0; q < 6; q++) {
         acc_t acc[2][2];
         memset(acc, 0, sizeof acc);
         d2_series(&g_old.pan[q], &g_new.pan[q], acc);
@@ -290,15 +293,44 @@ static void summarise(void)
 
 /* the panel pass's items in a list: the flight-path marker's top and the two bars' free ends, in fine pixels, from the
  * records themselves (before: whatever the interpolation left in them) or, after, from the state's continuous values */
-static void panel_sample(const interp_list *l, int after, double y[3], int has[3])
+static void panel_sample(const interp_list *l, int after, double y[6], int has[6])
 {
-    static hud_panel pst;
-    int pvalid = 0;
-    y[0] = y[1] = y[2] = 0;
-    has[0] = has[1] = has[2] = 0;
+    static hud_panel pst, pdr;
+    static hud_map mp;
+    static uint8_t ds[0x10000];
+    static hud_fine_list fl;
+    int pvalid = 0, mvalid = 0;
+    for (int q = 0; q < 6; q++) { y[q] = 0; has[q] = 0; }
     for (int i = 0; i < l->n; i++) {
         const interp_rec *r = &l->rec[i];
-        if (r->kind == 'p') { pvalid = hud_panel_load(r->v, r->n, &pst); continue; }
+        if (r->kind == 'p') {
+            pvalid = hud_panel_load(r->v, r->n, &pst);
+            /* the waypoint cue: after, its fine centre from the drawn state (the bar of the full HUD's mark) */
+            if (after && pvalid && hud_panel_load_drawn(r->v, r->n, &pdr, ds) && pdr.ext && hud_panel_exact(ds, &pdr, g_n, NULL, &fl) == 0)
+                for (int k = 0; k < fl.n; k++) {
+                    const hud_fprim *f = &fl.p[k];
+                    if (f->item == PI_CUE && f->type == HF_LINE && fabs(f->y0 - f->y1) < 1e-9 && fabs(f->y0 - 11.5 * g_n) < 1e-6 &&
+                        fabs(fabs(f->x1 - f->x0) - 4.0 * g_n) < 1e-6) { y[3] = (f->x0 + f->x1) / 2; has[3] = 1; }
+                }
+            continue;
+        }
+        if (r->kind == 'm') { mvalid = after ? hud_map_load_drawn(r->v, r->n, &mp) : 1; continue; }
+        if (r->kind == 'S' && r->n >= 10 && r->v[0] == 73 && (int16_t)r->v[2 + 6] == 4 && (int16_t)r->v[2 + 7] == 4 &&
+            (int16_t)r->v[2 + 2] == 4 && (r->v[2 + 1] & 0xFF00) == 0x100 && mvalid) {
+            mvalid = 0;
+            if (after) {
+                double x, yy;
+                static hud_map sk;
+                memcpy(&sk, &mp, sizeof sk);
+                sk.src_x = r->v[2 + 1];
+                if (hud_map_classify(&sk, r->v, r->n, &x, &yy)) { y[4] = x * g_n; y[5] = yy * g_n; has[4] = has[5] = 1; }
+            } else { y[4] = (int16_t)r->v[2 + 4] * (double)g_n; y[5] = (int16_t)r->v[2 + 5] * (double)g_n; has[4] = has[5] = 1; }
+            continue;
+        }
+        /* before: the cue's bar as the list holds it (a library line at row 11, four cells wide) */
+        if (!after && r->kind == 'N' && r->n >= 7 && r->v[6] == 0 && r->v[1] == 11 && r->v[3] == 11 && r->v[2] - r->v[0] == 4) {
+            y[3] = (r->v[0] + 2 + 0.5) * g_n; has[3] = 1;
+        }
         if (!pvalid) continue;
         hud_panel_item it;
         if (r->kind == 'S' && r->n >= 14 && r->v[0] == 71 && (int16_t)r->v[2 + 6] == 11 && (int16_t)r->v[2 + 7] == 7 && (int16_t)r->v[2 + 4] == 154) {
@@ -323,16 +355,16 @@ static void sample_pair(const drawlive_step *a, const drawlive_step *b)
     for (int k = 0; k < 4; k++) {
         int sb;
         interp_inbetween_ex(a->parsed, b->parsed, b->pair, ts[k], INTERP_VERTICES, &lo, &sb, NULL);
-        interp_inbetween_ex(a->parsed, b->parsed, b->pair, ts[k], INTERP_VERTICES | INTERP_HUD, &ln, &sb, NULL);
+        interp_inbetween_ex(a->parsed, b->parsed, b->pair, ts[k], INTERP_VERTICES | INTERP_HUD | INTERP_HUD_HOLD, &ln, &sb, NULL);
         const int okn = sample_after(&ln, &sn), oko = sample_before(&lo, &so);
         if (!okn || !oko) continue;
         record(&g_new, &sn);
         record(&g_old, &so);
-        double yn[3], yo[3];
-        int hn[3], ho[3];
+        double yn[6], yo[6];
+        int hn[6], ho[6];
         panel_sample(&ln, 1, yn, hn);
         panel_sample(&lo, 0, yo, ho);
-        for (int q = 0; q < 3; q++) {
+        for (int q = 0; q < 6; q++) {
             put_series(&g_new.pan[q], g_new.nsamples - 1, hn[q], 0, yn[q]);
             put_series(&g_old.pan[q], g_old.nsamples - 1, ho[q], 0, yo[q]);
         }

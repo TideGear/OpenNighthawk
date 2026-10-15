@@ -92,7 +92,7 @@ struct interp_frame {
     int *pl; int npl, cpl;
     span_t *s; int ns, cs;
     hud_t *h; int nh, ch;
-    int hud_rec, panel_rec;           /* the first HUD state record ('h') and panel state record ('p'), or -1 */
+    int hud_rec, panel_rec, map_rec;  /* the first HUD state record ('h'), panel state record ('p') and map arrow ('m'), or -1 */
     ut_t *u; int nu, cu;
 };
 
@@ -108,13 +108,15 @@ interp_frame *interp_parse(const interp_rec *rec, int n)
     interp_frame *f = calloc(1, sizeof *f);
     f->rec = rec;
     f->nrec = n;
-    f->hud_rec = f->panel_rec = -1;
+    f->hud_rec = f->panel_rec = f->map_rec = -1;
     static F117_TLS hud_panel pst;
     int pvalid = 0;
     static F117_TLS hud_state hst;
-    static F117_TLS hud_exact_list hex;
-    hud_cover cov;
+    static F117_TLS hud_exact_list hex, pex;
+    static F117_TLS uint8_t pds[0x10000];
+    static F117_TLS hud_cover cov, pcov;
     cov.active = 0;
+    pcov.active = 0;
     int cur = -1;                     /* the batch being collected */
     int pend0 = 0;                    /* edges since the last fill */
     int poly = -1, poly_nclip = 0;    /* the polygon between its fill entry and its painting */
@@ -128,12 +130,24 @@ interp_frame *interp_parse(const interp_rec *rec, int n)
         if (r->kind == 'h') {
             if (f->hud_rec < 0) f->hud_rec = i;
             cov.active = 0;
+            pcov.active = 0;
+            pvalid = 0;
             if (hud_state_load(v, r->n, &hst) && hst.have_ticks && hud_exact(&hst, &hex) == 0) hud_cover_begin(&cov, &hex);
         } else if (r->kind == 'p') {
             if (f->panel_rec < 0) f->panel_rec = i;
-            pvalid = hud_panel_load(v, r->n, &pst);
+            pvalid = hud_panel_load_ds(v, r->n, &pst, pds);
+            pcov.active = 0;
+            /* an extended record: the pass's items are recognised in order (hud_cover.h); else the first version's */
+            if (pvalid && pst.ext) { if (hud_panel_exact(pds, &pst, 1, &pex, NULL) == 0) hud_pcover_begin(&pcov, &pex); pvalid = 0; }
+        } else if (r->kind == 'm') {
+            if (f->map_rec < 0) f->map_rec = i;
+        } else if (r->kind == 'P') {
+            pcov.active = 0;
+            pvalid = 0;
         } else if (cov.active && (r->kind == 'K' || r->kind == 'N' || r->kind == 'T' || r->kind == 'H' || r->kind == 'S'))
             covered = hud_cover_step(&cov, r->kind, v, r->n) == HC_REPLACED;
+        else if (pcov.active && (r->kind == 'K' || r->kind == 'N' || r->kind == 'T' || r->kind == 'S'))
+            covered = hud_pcover_step(&pcov, r->kind, v, r->n) == HC_REPLACED;
         if (!covered && pvalid && (r->kind == 'N' || r->kind == 'S')) {
             hud_panel_item it;
             covered = hud_panel_classify(&pst, r->kind, v, r->n, &it) != HPI_NONE;
@@ -1036,10 +1050,12 @@ int interp_inbetween_ex(const interp_frame *A, const interp_frame *B, const inte
         }
     }
     /* the HUD's state: continuous values moved the same fraction, the layout and switches the skeleton's */
+    /* with INTERP_HUD_HOLD the discrete state is the older frame's: o's when the skeleton is the newer one */
+    const int hold = !(flags & INTERP_HUD_HOLD) || t >= 1 ? 0 : use_b ? 1 : -1;
     if ((flags & INTERP_HUD) && S->hud_rec >= 0 && O->hud_rec >= 0) {
-        static F117_TLS int32_t blended[HUD_REC_FINE];
+        static F117_TLS int32_t blended[HUD_REC_HELD];
         const interp_rec *rs = &S->rec[S->hud_rec], *ro = &O->rec[O->hud_rec];
-        const int nb = hud_blend(rs->v, rs->n, ro->v, ro->n, w, blended, HUD_REC_FINE);
+        const int nb = hud_blend(rs->v, rs->n, ro->v, ro->n, w, hold, blended, HUD_REC_HELD);
         if (nb) {
             rep[S->hud_rec] = made.n;
             repn[S->hud_rec] = 1;
@@ -1047,13 +1063,23 @@ int interp_inbetween_ex(const interp_frame *A, const interp_frame *B, const inte
         }
     }
     if ((flags & INTERP_HUD) && S->panel_rec >= 0 && O->panel_rec >= 0) {
-        static F117_TLS int32_t pblended[HUD_PANEL_REC_FINE];
+        static F117_TLS int32_t pblended[2 * HUD_PANEL_MAX + HUD_PANEL_NFINE + 3];
         const interp_rec *rs = &S->rec[S->panel_rec], *ro = &O->rec[O->panel_rec];
-        const int nb = hud_panel_blend(rs->v, rs->n, ro->v, ro->n, w, pblended, HUD_PANEL_REC_FINE);
+        const int nb = hud_panel_blend(rs->v, rs->n, ro->v, ro->n, w, hold, pblended, 2 * HUD_PANEL_MAX + HUD_PANEL_NFINE + 3);
         if (nb) {
             rep[S->panel_rec] = made.n;
             repn[S->panel_rec] = 1;
             out_pooled(&made, 'p', rs->icount, pblended, nb);
+        }
+    }
+    if ((flags & INTERP_HUD) && S->map_rec >= 0 && O->map_rec >= 0) {
+        static F117_TLS int32_t mblended[HUD_MAP_MAX];
+        const interp_rec *rs = &S->rec[S->map_rec], *ro = &O->rec[O->map_rec];
+        const int nb = hud_map_blend(rs->v, rs->n, ro->v, ro->n, w, hold, mblended, HUD_MAP_MAX);
+        if (nb) {
+            rep[S->map_rec] = made.n;
+            repn[S->map_rec] = 1;
+            out_pooled(&made, 'm', rs->icount, mblended, nb);
         }
     }
     /* outline edges: by batch, slot and colour */

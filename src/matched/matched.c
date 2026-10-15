@@ -36043,7 +36043,9 @@ frame_sub_passes:
     SM4_NEED(2, 0x3D8E); alu_sub(c, ds_get(c, 0xDF06), 0, 1, 0); c->icount += 2;
     if (!(c->flags & F_ZF)) goto frame_timers;
     /* The player's arrow: one of eight headings, sprite 1xxh. */
-    SM4_NEED(16, 0x3D95); cpu_push16(c, 0); cpu_push16(c, 4); cpu_push16(c, 4); cpu_push16(c, 4);
+    SM4_NEED(16, 0x3D95);
+    if (g_f117_observer) observe_map_marker(m);                  /* the arrow's state (the original path has no hook) */
+    cpu_push16(c, 0); cpu_push16(c, 4); cpu_push16(c, 4); cpu_push16(c, 4);
     c->r[R_AX] = ds_get(c, 0x2DEE); set_r8(c, R_AH, (uint8_t)alu_add(c, get_r8(c, R_AH), 0x10, 0, 0));
     c->r[R_AX] = (uint16_t)x86_shift(c, 7, c->r[R_AX], 0x0B, 1); set_r8(c, R_AL, (uint8_t)alu_logic(c, get_r8(c, R_AL) & 0x1C, 0)); set_r8(c, R_AH, 1);
     cpu_push16(c, c->r[R_AX]); c->r[R_AX] = (uint16_t)alu_dec(c, VG3_FRAME(0xFFFC), 1); cpu_push16(c, c->r[R_AX]);

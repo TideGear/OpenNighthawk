@@ -91,9 +91,13 @@ void observe_span_polygon(machine_t *m);   /* fill_polygon's entry: the corners 
  * when the observer asks for one. Reads guest memory directly; changes nothing. */
 void observe_hud_pass(machine_t *m);
 
-/* Called by the matched panel pass (matched.c, VGAME 0000:79BE) at its entry: the words the HUD's flight-path
- * marker and bars are made from, as a record 'p' when the observer asks for the HUD state. */
+/* Called by the matched panel pass (matched.c, VGAME 0000:79BE) at its entry: the state the pass's HUD items are
+ * made from, as a record 'p' when the observer asks for the HUD state. */
 void observe_panel_pass(machine_t *m);
+
+/* Called by the matched per-frame update (VGAME 0000:3ADA) just before it blits the player's arrow onto the moving
+ * map: the arrow's position words and sprite, as a record 'm' when the observer asks for the HUD state. */
+void observe_map_marker(machine_t *m);
 
 /* Register the hooks on the original's own entry points (once). */
 void observe_register(void);
