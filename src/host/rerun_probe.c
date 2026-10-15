@@ -18,6 +18,8 @@ static sink_t    g_real[RING], g_scr;
 static sink_t   *g_sink;
 static long long g_nsnap, g_done;
 static int       g_in_scratch;
+static const char *g_pic_path;   /* set: the next copy also dumps the picture it presents */
+static char      g_pic_buf[600];
 static int       g_nudge_slots;   /* traffic slots the last nudged copy moved */
 static int       g_nudge_weapons; /* weapons in flight it moved */
 static long long g_weapon_frames;
@@ -50,7 +52,8 @@ static void push_h(sink_t *s, uint64_t h, char kind)
     s->h[s->n++] = h;
 }
 
-static int32_t g_caller;   /* the last model request's caller (its 'I' record) */
+static int32_t g_caller;
+static int     g_scr_presented;   /* the copy reached graphics entry 44 (present) */   /* the last model request's caller (its 'I' record) */
 
 static void push_v(sink_t *s, int32_t x, int32_t y, int32_t range, int32_t start)
 {
@@ -76,6 +79,7 @@ static void ob_prim(void *u, uint64_t ic, char kind, const int32_t *v, int n)
     (void)u; (void)ic;
     if (!g_sink) return;
     if (kind == 'I') { if (n > 3) g_caller = v[2] | v[3] << 16; return; }   /* identity: not a draw record */
+    if (kind == 'D' && n > 0 && v[0] == 44 && g_in_scratch) g_scr_presented = 1;
     uint64_t h = fnv(0xCBF29CE484222325ull, &kind, 1);
     push_h(g_sink, fnv(h, v, sizeof *v * (size_t)n), kind);
 }
@@ -211,6 +215,16 @@ static int scratch(const machine_t *a, const uint8_t *amem, const machine_t *b, 
     do rc = machine_run(s, s->cpu.icount + 2000000); while (rc == RUN_SLICE && s->cpu.icount - start < 3000000ull);
     *us = now_us() - t0;
     *insn = s->cpu.icount - start;
+    if (rc == RUN_TRAP && g_pic_path) {
+        s->trap_on = 0;
+        g_scr_presented = 0;
+        const uint64_t limit = s->cpu.icount + 4000000ull;
+        while (!g_scr_presented && s->cpu.icount < limit && machine_run(s, s->cpu.icount + 5000) == RUN_SLICE) {}
+        if (g_scr_presented) machine_run(s, s->cpu.icount + 60000);    /* the page copy to the display */
+        FILE *o = fopen(g_pic_path, "wb");
+        if (o) { fwrite(g_scr_mem + 0xA0000, 1, 64000, o); fwrite(s->dac, 1, 768, o); fclose(o); }
+        g_pic_path = NULL;
+    }
     g_in_scratch = 0; g_sink = saved; g_caller = saved_caller;
     if (rc != RUN_TRAP && g_out)
         fprintf(g_out, "  no return: rc %d at %04X:%04X SP %04X; trap %04X:%04X SP %04X; entry stack %04X %04X %04X; fault '%s'\n",
@@ -311,6 +325,34 @@ static void process(machine_t *m, long long k)
     const int nv_b = g_scr.nv / 5;
     /* nudged halfway to frame k+1 */
     unsigned long long insn2; double us2;
+    const char *pics = getenv("F117_RERUN_PICS");          /* DIR:FIRST:COUNT, logic frames by number */
+    int want_pic = 0;
+    char picdir[400] = "";
+    if (pics) {
+        long long first = 0, count = 0;
+        const char *c1 = strrchr(pics, ':');
+        if (c1) {
+            const char *c0 = c1 - 1;
+            while (c0 > pics && *c0 != ':') c0--;
+            if (c0 > pics) {
+                snprintf(picdir, sizeof picdir, "%.*s", (int)(c0 - pics), pics);
+                first = atoll(c0 + 1); count = atoll(c1 + 1);
+                want_pic = k >= first && k < first + count;
+            }
+        }
+    }
+    if (want_pic) {
+        snprintf(g_pic_buf, sizeof g_pic_buf, "%s/f%06lld_mid.raw", picdir, k);
+        g_pic_path = g_pic_buf;
+        char path[600];
+        snprintf(path, sizeof path, "%s/f%06lld_a.raw", picdir, k);
+        FILE *o = fopen(path, "wb");
+        if (o) { fwrite(g_snap_mem[kb] + 0xA0000, 1, 64000, o); fwrite(b->dac, 1, 768, o); fclose(o); }
+        const int kc = (int)((k + 2) % RING);
+        snprintf(path, sizeof path, "%s/f%06lld_b.raw", picdir, k);
+        o = fopen(path, "wb");
+        if (o) { fwrite(g_snap_mem[kc] + 0xA0000, 1, 64000, o); fwrite(g_snap[kc].dac, 1, 768, o); fclose(o); }
+    }
     const int ok2 = scratch(a, g_snap_mem[ka], b, g_snap_mem[kb], &insn2, &us2);
     unsigned long long cmp = 0, good = 0, mid = 0, tripled = 0;
     g_slot_frames += g_nudge_slots > 0; g_slot_sum += g_nudge_slots; g_weapon_frames += g_nudge_weapons > 0; g_nudge_weapons = 0;
