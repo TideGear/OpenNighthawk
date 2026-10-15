@@ -17,7 +17,7 @@ make (Phase 4).
 
 ### Done
 
-- **Translation.** All 17 code files and the LZEXE decompressor: 89,367
+- **Translation.** All 17 code files and the LZEXE decompressor: 89,365
   instruction starts, 96% of the code-area bytes (the rest is strings, tables
   and variables; `tools/census.py`). The coverage pass adds no further
   translated code; changed code and declined override entries can fall back

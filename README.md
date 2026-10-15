@@ -10,10 +10,13 @@
 > [GOG](https://www.gog.com/en/game/f117a_nighthawk_stealth_fighter_20). Please buy it.
 
 This is a fully **human-driven**, AI-powered recompilation **AND**
-lockstep-verified matching decompilation of the PC DOS classic *F-117A
+lockstep-verified decompilation of the PC DOS classic *F-117A
 Nighthawk Stealth Fighter 2.0* (MicroProse, 1991) for Windows. The
 original's machine code is translated, instruction by instruction, into C
-and compiled natively. Its emulated PC supports the GOG release's DOSBox
+and compiled natively. Its routines are then progressively replaced by
+named, explained C, each proven to behave identically to the original
+instructions, register for register and clock for clock. It is not a
+byte-matching decompilation: it does not rebuild the original EXE. Its emulated PC supports the GOG release's DOSBox
 timing and a 386DX/33 profile measured against 86Box. Every translated
 instruction is checked against a reference interpreter validated on real
 silicon.
@@ -51,19 +54,19 @@ options. Fifteen catalogued fixes and balance options are available now, all off
   work: AdLib (music and digitised speech through an OPL emulator), the PC
   speaker, and Roland (Munt synthesis with your MT-32 ROMs, or Windows
   MIDI; live synthesis tested, exact rendered parity still open).
-- **Translated:** 89,367 instruction starts in the latest checked build,
+- **Translated:** 89,365 instruction starts in the latest checked build,
   across all 17 code files and the
   LZEXE decompressor: 96% of the bytes of the code areas, and no
   untranslated stretch left that decodes as code (`tools/census.py`; the
   rest is strings, tables and variables). On the scripted sessions no game
   instruction is interpreted under the default timing profile; only the
   emulated BIOS's own stubs are.
-- **Named and matched:** 810 routine addresses (801 census functions,
-  68,294 of 179,213 code bytes) have explained C equivalents checked against
-  their original bodies. Another 734 census functions remain. Under the
+- **Named and matched:** 891 routine addresses (889 census functions,
+  117,660 of 179,213 code bytes) have explained C equivalents checked against
+  their original bodies. Another 646 census functions remain. Under the
   386 profile, matched entries use their original translated bodies until
   their handwritten clocks gain cycle costs.
-- **Parity, measured:** thirty-nine scripted sessions (boot to flight; a full
+- **Parity, measured:** forty-five scripted routes, run as 44 sessions (boot to flight; a full
   sortie through the debriefing and back; boots under the speaker and Roland
   drivers, where the programs load at other addresses; transfer and flight
   routes across all nine theatres and all four mission categories; pilot
