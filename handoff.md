@@ -15,7 +15,8 @@ standing practice, not a session-by-session log. Earlier sessions' detail
 
 ## Current state (14 October, night)
 
-Phase 2: 885 census functions / 116,273 bytes matched (P2 66.64%, overall 86.46%). The
+Phase 2: 889 census functions / 117,660 bytes matched (END `0714`, `2092`, START `40F0`,
+VGAME `F458` added in a worktree-gated batch, `D:/f117-gate/p2-batch7`). The
 latest batch (VGAME `09A0`, `F5F2`, `BB0D`; START `0963`, `A59A`, `008D`, `64E5`, `74B1`)
 and a harness fix (planted callee stubs overwritten by a fuzzed pointer now skip as
 code written) passed a fresh full gate: 97 tests, all 45 routes, both instruction

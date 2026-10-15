@@ -200,6 +200,20 @@ not the recompilation:
 
 ## Phase 2 - understood code
 
+Four more routines are matched and named: END `0714` (`end_replay_step`, one event of the
+debrief replay), END `2092` (`end_wait_answer`, the prompt's answer wait), START `40F0`
+(`start_mission_take_out_sites`: the theatre load, mission generation and the random
+destroyed sites) and VGAME `F458` (`vgame_read_file_handle`, the C runtime's text-mode
+read). Each reaches every instruction at five seeds with 46-62 private mutations caught;
+the real `full_cycle` route runs them 1, 17, 2 and 11 times with all 66 checkpoints and the
+final state exact. `F458` needs the lockstep's scripted DOS answers to deliver the byte a
+one-byte read brings (`g_dos_script[].put`), so its CR-LF path is reached. This batch was
+gated in a separate worktree (`D:/f117-wt/gate`) so the owner could test the app meanwhile:
+103 tests, all 45 routes / 44 fresh interpreter sessions, both 5,718,848-state instruction
+profiles, three 891-address seeds (3,012,188 / 3,010,490 / 3,009,308 comparisons), zero
+mismatches, audits pass. Census: 889 functions / 117,660 bytes. Evidence:
+`D:/f117-gate/p2-batch7`.
+
 Eight more routines are matched and named, proved privately with the kit: VGAME `09A0`
 (`vgame_load_table_pair`), `F5F2` (`vgame_open_file_handle`, the C runtime's open),
 `BB0D` (`vgame_draw_model_in_view`); START `0963` (`start_arms_screen_loop`), `A59A`

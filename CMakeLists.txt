@@ -457,6 +457,14 @@ if(F117R_BUILD_TESTS)
       --only START.EXE:64E5)
     add_test(NAME matched_start_world_page_objects COMMAND func_lockstep --states 5000
       --only START.EXE:74B1)
+    add_test(NAME matched_end_replay_step COMMAND func_lockstep --states 5000
+      --only END.EXE:714)
+    add_test(NAME matched_end_wait_answer COMMAND func_lockstep --states 5000
+      --only END.EXE:2092)
+    add_test(NAME matched_start_mission_take_out_sites COMMAND func_lockstep --states 5000
+      --only START.EXE:40F0)
+    add_test(NAME matched_vgame_read_file_handle COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:F458)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000
