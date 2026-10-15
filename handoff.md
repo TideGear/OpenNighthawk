@@ -34,7 +34,9 @@ frames; output `analysis/pairing.txt`) finds the jumps' source: 2,363 of 37,147 
 next step and so switch at t = 0.5 (1,046 moved over 60 px, 709 have no polygon with their edges in the paired batch,
 324 lost to a nearer look-alike, 284 whose model split/merged), and 9 of 339 steps fall back to a held cut (frames 15,
 26 and a run at 323-328). This is pairing by vertex slot, not identity: the scene path's stable identities are the fix.
-Outline edges (roads) are not yet counted separately; add that to the scan next.
+Outline edges (roads) over the same window: 20,735 drawn, 491 (2.4%) in batches with no partner, and 98 of 339 steps
+(29%) have at least one such edge, so a road edge pops in or out at t = 0.5 on about one step in three (steps 41-44,
+56-57 and 75-80 lose 3-5 edges each). Next: check whether those edges are original culling/clipping or a pairing miss.
 
 Unfinished native work is committed/pushed as **`a2202f1`** on **`present-scene-geometry`**, worktree **`D:/f117-wt/present-world-lines`**:
 `src/present/scene_mesh.c/.h`, `tests/test_scene_mesh.c` and its CMake wiring. It decodes owned complete meshes,
