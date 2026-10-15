@@ -1350,6 +1350,10 @@ instruction profiles and three 789-address matched seeds (2,561,209,
   The new recorded flight replays identically between engines (57 checkpoints/final). Its pairing scan: 6.4% of polygons
   and 2.4% of outline edges have no partner between logic steps, about 95% of the edge misses from the 60 px motion limit
   or look-alike ordering rather than culling (handoff.md); the road-jitter cause itself is not yet confirmed.
+  Identity pairing (model + world cell from the request) now halves those misses in the same window (polygons
+  7.78 -> 3.98%, edges 2.51 -> 0.78%); a second cause is the uneven step clock (freezes/skips at 24% of step
+  boundaries), for which a smoothed playback clock is designed and simulated but not built. `tools/motion_check.py`
+  measures both. Next: the smoothed clock (switchable), then the state-driven scene renderer.
   Native mesh/pose/visibility/order/material evaluation is drafted on `present-scene-geometry`, with a passing
   synthetic CTest, but is not connected to live rendering or accepted by a fresh full gate. See handoff.md.
   Open: the owner's motion review on a physical

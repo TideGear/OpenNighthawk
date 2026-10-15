@@ -8,6 +8,23 @@ whether they were measured or estimated. The rule behind the page: an
 optimisation must leave every check's inputs, outputs and verdicts
 identical, and the proof is the same verdicts before and after.
 
+## Interpreter runs beside coverage, and the light presentation check (15 October 2026)
+
+The gate's two long stages are each one job long (`career_promotion`, after its `career_serge` seed): coverage 663 s,
+parity 808-1,222 s. Interpreter runs do not depend on the translation, so `build_recomp.py` now starts them on
+`--overlap-jobs` workers (default 8; 0 = as before) during coverage, from a private copy of the first build's runner
+and libraries (`snapshot_runner`), and parity then runs only the recompiled half and collects them. The runs,
+comparisons, cache verification and verdicts are unchanged. Not yet measured: the overlap applies only when
+coverage runs, and the first gate with it skipped coverage (unchanged translation), finishing in 1,330 s with parity
+1,223 s (all 88 jobs in one stage). A forced-coverage comparison (`--coverage-record ''`) is next.
+
+`tools/present_light_check.py --base REV` is for presentation-only changes: it refuses unless every file changed
+since the last full gate's commit is under `src/present/` and not included from guest-side code (the observer
+includes `band_state.h`, `hud_state.h`, `scene_capture.h`), a presentation test or documentation; then it builds and
+runs every CTest, the 45-route N=1 presentation check against the last gate's baseline runs, and boot at N=4/9.
+Observer, matched, CPU, machine and host changes still need the full gate, and a full gate is still needed before
+the next Phase 2 `kit.py checkpoints` (any `src/` change retires the interpreter cache entry). Owner-approved.
+
 ## Complete model-input capture and decoder (15 October 2026)
 
 The fresh observer gate took 1,706 s: initial translate/build 113 s, coverage 711 s,

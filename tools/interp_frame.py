@@ -120,6 +120,8 @@ class Poly:
 class Batch:
     def __init__(self, idx):
         self.idx = idx
+        self.ident = None        # the model request's 'I' values (scene_capture.h), or None
+        self.chunk = 0           # which of that request's batches this is
         self.verts = []          # V values
         self.edges = {}          # slot -> (vertex k of the first end, of the second)
         self.polys: list[Poly] = []
@@ -139,12 +141,21 @@ def parse_phase(ph):
     fill_poly = None
     cur = None
     seen_fill = False
+    pend_id = last_id = None
+    last_chunk = 0
     for i, rec in enumerate(ph.recs):
         k = rec.kind
-        if k == "V":
+        if k == "I":
+            pend_id = rec.v
+        elif k == "V":
             v = rec.v
             if v[-2] == 0xC6B4 or cur is None:
+                if pend_id is not None:
+                    last_id, last_chunk, pend_id = pend_id, 0, None
+                elif last_id is not None:
+                    last_chunk += 1
                 cur = Batch(len(batches))
+                cur.ident, cur.chunk = last_id, last_chunk
                 batches.append(cur)
             cur.verts.append(v)
         elif k == "G":
@@ -323,13 +334,40 @@ def compatible(a, b):
     return near >= 0.7 * lo      # a vertex dropped from the middle shifts the rest: most must still agree
 
 
+def ident_key(b):
+    """The object a batch draws, by its model request ('I'): model, ring and world cell. Only a
+    request's first batch is named (interp.c's ident_key)."""
+    v = b.ident
+    if v is None or b.chunk != 0 or len(v) < 17:
+        return None
+    return (v[1], v[6], (v[11] + v[12]) & 0xFFFF, (v[13] + v[14]) & 0xFFFF, v[15])
+
+
+def ident_pairs(A, B):
+    """Batches with the same identity and vertex count, unique in both frames: [(i, j)]."""
+    def keyed(F):
+        out = {}
+        for k, b in enumerate(F):
+            key = ident_key(b)
+            if key is not None:
+                out.setdefault((key, b.sig), []).append(k)
+        return out
+    ka, kb = keyed(A), keyed(B)
+    return sorted((la[0], kb[key][0]) for key, la in ka.items() if len(la) == 1 and len(kb.get(key, [])) == 1)
+
+
 def align_batches(A, B):
-    """Pair batches of two frames in order by the longest common subsequence of compatible
-    batches (equal counts count most), look-alikes decided by the smaller screen motion.
-    Returns [(i, j)]."""
+    """Pair batches of two frames: first those with the same identity, unique in both frames
+    (whatever their order or motion), then the rest in order by the longest common subsequence of
+    compatible batches (equal counts count most), look-alikes decided by the smaller screen motion.
+    Returns [(i, j)] in A's order."""
     na, nb = len(A), len(B)
+    forced = ident_pairs(A, B)
+    fa, fb = {i for i, _ in forced}, {j for _, j in forced}
 
     def score(i, j):
+        if i in fa or j in fb:
+            return None
         if not compatible(A[i], B[j]):
             return None
         d = batch_distance(A[i], B[j])
@@ -354,7 +392,7 @@ def align_batches(A, B):
             i += 1
         else:
             j += 1
-    return pairs
+    return sorted(forced + pairs)
 
 
 def align_polys(PA, PB):

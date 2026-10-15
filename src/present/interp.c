@@ -72,7 +72,9 @@ typedef struct {
 } poly_t;
 
 /* a batch's vertices, G edges, polygons (indexes into pl) and outline edges (into li) */
-typedef struct { int v0, nv, g0, ng, p0, np, l0, nl; } batch_t;
+/* ident: the record index of the model request ('I', scene_capture.h) that produced it, or -1; chunk: which of that
+ * request's batches it is */
+typedef struct { int v0, nv, g0, ng, p0, np, l0, nl, ident, chunk; } batch_t;
 
 typedef struct { int colour, mode, ord, ri; } span_t;
 typedef struct { int colour, page, origin, ri, covered; } hud_t;   /* covered: the state-driven HUD draws it (hud_cover.h) */
@@ -129,6 +131,7 @@ interp_frame *interp_parse(const interp_rec *rec, int n)
     int pend0 = 0;                    /* edges since the last fill */
     int poly = -1, poly_nclip = 0;    /* the polygon between its fill entry and its painting */
     int fill_poly = -1;
+    int pend_id = -1, last_id = -1, last_chunk = 0;   /* the model request ('I') the next batch belongs to */
     int seen_fill = 0;                /* the first polygon may have edges from before the frame */
     int colour = -1;
     for (int i = 0; i < n; i++) {
@@ -152,6 +155,8 @@ interp_frame *interp_parse(const interp_rec *rec, int n)
             band_cover_begin(&bcov, v, r->n, band_state_enabled());
         } else if (r->kind == 'm') {
             if (f->map_rec < 0) f->map_rec = i;
+        } else if (r->kind == 'I') {
+            pend_id = i;
         } else if (r->kind == 'P') {
             pcov.active = 0;
             pvalid = 0;
@@ -168,7 +173,9 @@ interp_frame *interp_parse(const interp_rec *rec, int n)
             if (r->n < 8) break;
             if (v[6] == 0xC6B4 || cur < 0) {
                 GROW(f->b, f->nb, f->cb);
-                batch_t nb = { f->nvert, 0, f->ng, 0, f->npl, 0, f->nli, 0 };
+                if (pend_id >= 0) { last_id = pend_id; last_chunk = 0; pend_id = -1; }
+                else if (last_id >= 0) last_chunk++;
+                batch_t nb = { f->nvert, 0, f->ng, 0, f->npl, 0, f->nli, 0, last_id, last_chunk };
                 f->b[f->nb++] = nb;
                 cur = f->nb - 1;
             }
@@ -589,8 +596,26 @@ struct interp_pairing {
     int *bmap_ab, *bmap_ba;           /* batch -> paired batch, or -1 */
 };
 
-static int score(const interp_frame *A, int i, const interp_frame *B, int j, double *s)
+/* The same object in both frames, by the model request's own words ('I', scene_capture.h): its model, the ring and
+ * the world cell the scene walk was in. Only a request's first batch is named, and only with equal vertex counts
+ * (another detail level is another mesh). Equal keys unique in both frames pair whatever the motion. */
+static int ident_key(const interp_frame *f, const batch_t *b, int32_t k[5])
 {
+    if (b->ident < 0 || b->chunk != 0 || f->rec[b->ident].n < 17) return 0;
+    const int32_t *v = f->rec[b->ident].v;
+    k[0] = v[1]; k[1] = v[6]; k[2] = (v[11] + v[12]) & 0xFFFF; k[3] = (v[13] + v[14]) & 0xFFFF; k[4] = v[15];
+    return 1;
+}
+
+static int ident_equal(const interp_frame *A, const batch_t *a, const interp_frame *B, const batch_t *b)
+{
+    int32_t ka[5], kb[5];
+    return a->nv == b->nv && ident_key(A, a, ka) && ident_key(B, b, kb) && !memcmp(ka, kb, sizeof ka);
+}
+
+static int score(const interp_frame *A, int i, const interp_frame *B, int j, const char *fa, const char *fb, double *s)
+{
+    if (fa[i] || fb[j]) return 0;
     if (!compatible(A, &A->b[i], B, &B->b[j])) return 0;
     double d = 0;
     const int have = batch_distance(A, &A->b[i], B, &B->b[j], &d);
@@ -612,6 +637,20 @@ interp_pairing *interp_pair(const interp_frame *A, const interp_frame *B)
     interp_pairing *P = calloc(1, sizeof *P);
     P->A = A; P->B = B;
     const int na = A->nb, nb = B->nb;
+    /* batches with the same identity, unique in both frames, pair first (whatever their order or motion) */
+    char *fa = calloc((size_t)na + 1, 1), *fb = calloc((size_t)nb + 1, 1);
+    P->bpair = malloc(sizeof(int) * 2 * (size_t)(na < nb ? na + 1 : nb + 1));
+    for (int i = 0; i < na; i++) {
+        int found = -1, dup = 0;
+        for (int j = 0; j < nb; j++)
+            if (ident_equal(A, &A->b[i], B, &B->b[j])) { if (found >= 0) dup = 1; found = j; }
+        for (int x = 0; x < na && found >= 0 && !dup; x++)
+            if (x != i && ident_equal(A, &A->b[x], B, &B->b[found])) dup = 1;
+        if (found < 0 || dup) continue;
+        fa[i] = fb[found] = 1;
+        P->bpair[2 * P->nbpair] = i; P->bpair[2 * P->nbpair + 1] = found; P->nbpair++;
+    }
+    const int nforced = P->nbpair;
     /* batches: the longest common subsequence of compatible batches */
     double *best = malloc((size_t)(na + 1) * (nb + 1) * sizeof *best);
 #define BEST(i, j) best[(size_t)(i) * (nb + 1) + (j)]
@@ -620,16 +659,15 @@ interp_pairing *interp_pair(const interp_frame *A, const interp_frame *B)
     for (int i = na - 1; i >= 0; i--)
         for (int j = nb - 1; j >= 0; j--) {
             double s, v = -1;
-            if (score(A, i, B, j, &s)) v = BEST(i + 1, j + 1) + s;
+            if (score(A, i, B, j, fa, fb, &s)) v = BEST(i + 1, j + 1) + s;
             double m = BEST(i + 1, j);
             if (BEST(i, j + 1) > m) m = BEST(i, j + 1);
             if (v > m) m = v;
             BEST(i, j) = m;
         }
-    P->bpair = malloc(sizeof(int) * 2 * (size_t)(na < nb ? na + 1 : nb + 1));
     for (int i = 0, j = 0; i < na && j < nb;) {
         double s;
-        if (score(A, i, B, j, &s) && fabs(BEST(i, j) - (BEST(i + 1, j + 1) + s)) < 1e-9) {
+        if (score(A, i, B, j, fa, fb, &s) && fabs(BEST(i, j) - (BEST(i + 1, j + 1) + s)) < 1e-9) {
             P->bpair[2 * P->nbpair] = i;
             P->bpair[2 * P->nbpair + 1] = j;
             P->nbpair++;
@@ -639,6 +677,13 @@ interp_pairing *interp_pair(const interp_frame *A, const interp_frame *B)
     }
 #undef BEST
     free(best);
+    free(fa); free(fb);
+    for (int q = nforced; q < P->nbpair; q++) {                 /* in A's order, as the pairs always were */
+        const int pi = P->bpair[2 * q], pj = P->bpair[2 * q + 1];
+        int k = q;
+        while (k > 0 && P->bpair[2 * (k - 1)] > pi) { P->bpair[2 * k] = P->bpair[2 * (k - 1)]; P->bpair[2 * k + 1] = P->bpair[2 * (k - 1) + 1]; k--; }
+        P->bpair[2 * k] = pi; P->bpair[2 * k + 1] = pj;
+    }
     P->pa_of = malloc(sizeof(int) * (size_t)(A->np + 1));
     P->pb_of = malloc(sizeof(int) * (size_t)(B->np + 1));
     for (int k = 0; k < A->np; k++) P->pa_of[k] = -1;

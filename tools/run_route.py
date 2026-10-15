@@ -50,15 +50,16 @@ def roster_seed(path, ancestors=()):
     return seed
 
 
-def prepare_roster(path, data, engine, save, work):
-    """Earn the prerequisite through its normal input; copy only its roster."""
+def prepare_roster(path, data, engine, save, work, env=None):
+    """Earn the prerequisite through its normal input; copy only its roster. env (default: this
+    process's) can name another runner with F117R_RUN_EXE."""
     seed = roster_seed(path)
     if seed is None:
         return
     out = tempfile.mkdtemp(prefix="earned-roster-", dir=work)
     result = subprocess.run([sys.executable, os.path.abspath(__file__), seed,
         "--data", data, "--engine", engine, "--out", out],
-        capture_output=True, text=True)
+        capture_output=True, text=True, env=env)
     with open(os.path.join(out, "runner.txt"), "w") as stream:
         stream.write((result.stdout or "") + (result.stderr or ""))
     if result.returncode:

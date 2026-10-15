@@ -134,14 +134,15 @@ def unit_tests(jobs=8):
     print("  unit tests: " + (passed.group(0) if passed else "passed"))
 
 
-def headless(engine, data, work, name, args, extra, route):
-    exe = os.path.join(ROOT, "build", "f117run.exe")
+def headless(engine, data, work, name, args, extra, route, exe=None, env=None):
+    """One route on one engine. exe/env name another runner (a private copy: see snapshot_runner)."""
+    exe = exe or os.path.join(ROOT, "build", "f117run.exe")
     rundir = os.path.join(work, "runs", "%s_%s" % (name, engine))
     os.makedirs(rundir, exist_ok=True)
     # Each replay starts from the install's roster, including after a
     # coverage run or an earlier pipeline that edited/saved a pilot.
     save = tempfile.mkdtemp(prefix="save-", dir=rundir)
-    prepare_roster(route, data, engine, save, rundir)
+    prepare_roster(route, data, engine, save, rundir, env)
     cmd = [exe, "--engine", engine, "--data", data, "--save", save,
            "--log", os.path.join(rundir, "run.log")] + args + extra
     r = run(cmd, capture_output=True, text=True)
@@ -305,6 +306,21 @@ def store_interp(cache_dir, key, result):
                        stored=time.time()), meta_file)
 
 
+def snapshot_runner(work):
+    """A private copy of the first build's runner and its libraries, for the interpreter runs that
+    start during coverage: the second build replaces build/f117run.exe while they run. The
+    interpreter never runs translated code, so either build gives the same interpreter results
+    (the interpreter cache rests on the same fact); the parity step still compares them with the
+    final build's recompiled runs."""
+    dst = os.path.join(work, "interp-runner")
+    shutil.rmtree(dst, ignore_errors=True)
+    os.makedirs(dst)
+    for src in [os.path.join(ROOT, "build", "f117run.exe")] + glob.glob(os.path.join(ROOT, "build", "*.dll")):
+        shutil.copy2(src, dst)
+    exe = os.path.join(dst, "f117run.exe")
+    return exe, dict(os.environ, F117R_RUN_EXE=exe)
+
+
 def session_groups(routes):
     """Group routes that play the same session: the same options (so the same
     inputs, budget, clock and replay file) and the same seed roster. Only
@@ -461,6 +477,9 @@ def main():
                     help="where a finished coverage pass leaves its key, so an identical later gate skips the pass "
                          "('' turns the skip off)")
     ap.add_argument("--parity-only", action="store_true", help="check the current build without translating or rebuilding")
+    ap.add_argument("--overlap-jobs", type=int, default=8,
+                    help="interpreter parity runs started during coverage, from a private copy of the first build's "
+                         "runner (0 = wait for the parity step, as before); same runs, same comparisons")
     a = ap.parse_args()
     if a.parity_only and a.no_parity:
         ap.error("--parity-only and --no-parity cannot be combined")
@@ -497,6 +516,46 @@ def main():
         skip_coverage = coverage_verified(a.coverage_record, key, gen_digest)
         if skip_coverage:
             print("3. coverage: skipped - the same inputs and generated code already gave a pass that added nothing")
+    leads = [g[0] for g in groups]
+    base_key = interpreter_key(a.data) if (a.interp_cache and not a.no_parity) else None
+    cache_stats = {"hit": 0, "miss": 0}
+    stats_lock = threading.Lock()
+
+    def interp_run(r, exe=None, env=None):
+        """The interpreter half of a route's parity, from the cache or fresh (and, with
+        --verify-interp-cache, fresh and held to the cache)."""
+        name = os.path.splitext(os.path.basename(r))[0]
+        rundir = os.path.join(a.work, "runs", "%s_interp" % name)
+        hit = None
+        if a.interp_cache:
+            key = route_cache_key(r, base_key)
+            hit = cached_interp(a.interp_cache, key, name, rundir, r)
+            if hit and not a.verify_interp_cache:
+                with stats_lock:
+                    cache_stats["hit"] += 1
+                return hit
+        fresh = headless("interp", a.data, a.work, name, route_args(r), ["--hash-every", "50000000"], r, exe, env)
+        if a.interp_cache:
+            if hit and fresh[:4] != hit[:4]:
+                sys.exit("interpreter cache is STALE for %s: cached %s/%s, fresh %s/%s" % (
+                    name, hit[0], hit[1], fresh[0], fresh[1]))
+            store_interp(a.interp_cache, key, fresh)
+            with stats_lock:
+                cache_stats["miss"] += 1
+        return fresh
+
+    early, early_pool = {}, None
+    if (not a.no_coverage and not a.parity_only and not skip_coverage and not a.no_parity
+            and a.overlap_jobs > 0):
+        exe, env = snapshot_runner(a.work)
+        early_pool = concurrent.futures.ThreadPoolExecutor(max_workers=a.overlap_jobs)
+        # If an earlier step fails, do not start the queued runs on the way out.
+        atexit.register(early_pool.shutdown, wait=False, cancel_futures=True)
+        early_started = time.time()
+        for r in sorted(leads, key=lambda r: -expected_cost(r, "interp")):
+            early[r] = early_pool.submit(interp_run, r, exe, env)
+        print("  %d interpreter parity runs started beside coverage on %d workers (private runner %s)" % (
+            len(early), a.overlap_jobs, exe))
     if not a.no_coverage and not a.parity_only and not skip_coverage:
         print("3. coverage")
         def cover(r):
@@ -528,32 +587,25 @@ def main():
         print("5. parity")
         bad = 0
 
-        base_key = interpreter_key(a.data) if a.interp_cache else None
-        cache_stats = {"hit": 0, "miss": 0}
-
         def replay(job):
             r, engine = job
             name = os.path.splitext(os.path.basename(r))[0]
-            rundir = os.path.join(a.work, "runs", "%s_%s" % (name, engine))
-            if engine == "interp" and a.interp_cache:
-                key = route_cache_key(r, base_key)
-                hit = cached_interp(a.interp_cache, key, name, rundir, r)
-                if hit and not a.verify_interp_cache:
-                    cache_stats["hit"] += 1
-                    return hit
-                fresh = headless(engine, a.data, a.work, name, route_args(r), ["--hash-every", "50000000"], r)
-                if hit and fresh[:4] != hit[:4]:
-                    sys.exit("interpreter cache is STALE for %s: cached %s/%s, fresh %s/%s" % (
-                        name, hit[0], hit[1], fresh[0], fresh[1]))
-                store_interp(a.interp_cache, key, fresh)
-                cache_stats["miss"] += 1
-                return fresh
+            if engine == "interp":
+                return interp_run(r)
             return headless(engine, a.data, a.work, name, route_args(r), ["--hash-every", "50000000"], r)
-        leads = [g[0] for g in groups]
-        jobs = [(r, e) for r in leads for e in ("interp", "recomp")]
+        engines = ("recomp",) if early else ("interp", "recomp")
+        jobs = [(r, e) for r in leads for e in engines]
         done = parallel(a.jobs, jobs, replay, cost=lambda j: expected_cost(j[0], j[1]),
                         name=lambda j: "%s/%s" % (os.path.splitext(os.path.basename(j[0]))[0], j[1]))
-        by_lead = {r: (done[2 * k], done[2 * k + 1]) for k, r in enumerate(leads)}
+        if early:
+            # The interpreter halves started beside coverage: collect them (a failure inside one
+            # exits here, as it would have in the parity pool).
+            interp = {r: f.result() for r, f in early.items()}
+            early_pool.shutdown()
+            print("  [interpreter runs beside coverage finished %.0f s after they started]" % (time.time() - early_started))
+            by_lead = {r: (interp[r], done[k]) for k, r in enumerate(leads)}
+        else:
+            by_lead = {r: (done[2 * k], done[2 * k + 1]) for k, r in enumerate(leads)}
         for g in groups:
             ri, rr = by_lead[g[0]]
             same = ri[:2] == rr[:2] and ri[3] == rr[3]

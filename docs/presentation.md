@@ -1429,6 +1429,40 @@ The shared scene path should make pose/camera prediction possible and avoid unne
 interpolation still requires known states and carries its documented picture age; the existing extrapolation's
 measured errors are not a solved latency result. No default or owner configuration is changed by this work.
 
+## Identity pairing and the step clock (15 October 2026)
+
+The owner's recorded flight (`session-20261015-103956`, frozen privately with its draw capture) still showed
+road edges that pop and building patches that jump. `tools/motion_check.py LOG` now measures what the exactness
+checks cannot see: the share of polygons and outline edges with no partner in the next logic step (they switch at
+t = 0.5 instead of moving), held steps, and how unevenly the steps are timed.
+
+**Identity pairing.** With `F117R_OBSERVE_IDENT=1` (and always in the live presentation) the observer logs a
+compact record `I` for every model request at `120A:00CF` (`scene_capture.h`): the model, the caller chain, the
+scene walk's ring (`DS:E328`) and world-cell words. A batch's key is its model, ring and cell; batches whose keys
+and vertex counts are equal and unique in both frames pair first, whatever their order or motion (`interp.c`
+`ident_key`; mirrored in `interp_frame.py`), and the existing order/motion pairing handles the rest. In a 100M-clock
+window of the flight the key agreed with every existing pair (0 contradictions in 728) and matched 334 batches the
+old pairing missed. Same window, without / with identity: polygons unpaired 7.78% / 3.98%, outline edges unpaired
+2.51% / 0.78%, held steps 7 / 4. Raising the 60 px motion limit instead recovered under half as much and risks wrong
+pairs. A replay of 2.70B-2.72B holds 8,368 unpaired polygons instead of 11,490, with all 1,497 pairs exact at both
+ends and the guest hash unchanged. Remaining: two of the same model in one cell (needs the entry ordinal), detail
+changes (another mesh) and batches with no request (map, HUD).
+
+**The step clock.** The game moves the aircraft a nearly fixed distance per logic step (mostly 46 units in the
+flight) while a step takes 42-86 ms by scene cost; 24% of step boundaries change duration by more than 20%. The
+in-between frame's t is the time since the newest step closed over the previous step's duration
+(`drawlive_plan_interp`), so a longer next step freezes the picture at t = 1 and a shorter one skips forward when it
+arrives. Simulated over the flight's real step times at 60 Hz (1,186 frames): the current clock gives 29 freezes,
+6 skips and 21.4% of frames whose speed changes by more than 20% (p99 429%); a playback clock advanced by host time
+over a smoothed step duration, held about one step behind the newest and never past it, gives 2 freezes, 0 skips and
+1.6% (p99 41%), for about 0.3 step (17 ms) more picture age. Not yet implemented: it needs one more step and its
+pairing kept alive in the threaded pipeline; it will be switchable and judged by `motion_check.py`.
+
+**The state-driven scene renderer** remains the main path for world geometry: drawn from interpolated poses, it
+needs no primitive pairing (object identity still names moving objects). The original's resident world is four
+rings of 32 tile slots (`DS:E330`, counts at `DS:061E`; 18-25 populated in the capture), so a longer view would need
+our own world loader; the owner chose not to extend the draw distance for now.
+
 ## Open questions and risks
 
 - **Pairing for interpolation.** Done for 86-99% of painted polygons by batch alignment

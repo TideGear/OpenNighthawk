@@ -15,55 +15,38 @@ standing practice, not a session-by-session log. Earlier sessions' detail
 
 ## Current state (15 October)
 
-**Latest handoff / owner retest.** Main stays on validated foundation `f518d4c`; the owner reports that dark-gray
-ground lines (apparently roads) still jitter and green building patches sometimes jump abruptly while flying.
-The screenshots alone do not establish whether each jump comes from original detail/culling or our interpolation.
-The new session `session-20261015-103956` is frozen privately in `D:/f117-gate/present-v2/owner-roads-20261015`:
-1,152 inputs, replay through clock 2,850,306,120, 57 checkpoints and final `71bc32c7d96fe6b9` identical between
-engines. The complete draw capture covers 2,450,306,120..2,850,306,120 (`recomp/draw.log`, about 633 MB);
-`replay-verdict.json` is the guest-parity result, not a visual diagnosis. Use this as the next regression source.
-
-Headless replays of that flight at N=4 interp (`--shots-vga`, 1,499 frames / 1,497 pairs exact) are in
-`owner-roads-20261015/diagnose` (2.70B, open sea) and `diagnose2` (2.80B-2.85B, night land, 176 shots). Presented
-pictures repeat 3-4 VGA shots, so per-shot line fits are not a jitter metric; use `F117_PRESENT_DIAG` or compare
-interpolated frames per logic step. `diagnose3` (N=9, `F117_PRESENT_DIAG`, 2.802B, 4 shots) shows roads are
-`DT_OUTLINE_FINE` strokes (yellow in the false colour) and buildings are model polygons; in that window the main
-road moved only 0.05 fine px across four in-between frames, so it does not reproduce the jitter. Cause of the
-road jitter is still undiagnosed, but `tools/interp_frame.py draw.log --pairing` over the whole window (340 logic
-frames; output `analysis/pairing.txt`) finds the jumps' source: 2,363 of 37,147 polygons (6.4%) have no partner in the
-next step and so switch at t = 0.5 (1,046 moved over 60 px, 709 have no polygon with their edges in the paired batch,
-324 lost to a nearer look-alike, 284 whose model split/merged), and 9 of 339 steps fall back to a held cut (frames 15,
-26 and a run at 323-328). This is pairing by vertex slot, not identity: the scene path's stable identities are the fix.
-Outline edges (roads) over the same window: 20,735 drawn, 491 (2.4%) in batches with no partner, and 98 of 339 steps
-(29%) have at least one such edge, so a road edge pops in or out at t = 0.5 on about one step in three (steps 41-44,
-56-57 and 75-80 lose 3-5 edges each). Cause of those edges (counting both frames): 651 of 1,081 sit in a batch whose same-size partner exists but moved over
-60 px (the pairing's `MAX_MOTION`), 377 lost to a nearer look-alike or order, and only 51 are a real model-size change.
-So about 95% are pairing misses, not original culling: identity pairing should keep them moving. Raising `MAX_MOTION` was tried in the Python model on this flight: 60/120/250/1000 px pair 93.5/94.7/95.6/96.2% of polygons
-and keep 20,244/20,409/20,499/20,595 of 20,735 outline edges in paired batches (cuts 9/8/7/5). A larger limit recovers
-under half of the misses and risks wrong pairs, so it is not the fix: connect the scene path's identities.
-Identity capture (branch `present-scene-geometry`, `F117R_OBSERVE_IDENT=1` logs an 'I' record per 00CF request; capture
-`owner-roads-20261015/ident/draw.log`, 2.75B-2.85B): the world-cell key (model, ring DS:E328, cell sums of the parent
-frame's words -16h/-2/-18h/-4, word -0Ch) matches 1,062 of 1,837 batches uniquely between steps; the current pairing
-agrees on 728 and DISAGREES on 0, and identity recovers 334 batches it misses. 162 are ambiguous duplicates (same model
-twice in a cell: add the entry ordinal) and 98 enter or leave. The pose words (DS:4994) are camera-relative and useless.
-Draw-distance check (owner's from-scratch-renderer question, 15 Oct): the scene walk `04E6` visits four rings (levels) of
-terrain tiles; each ring has 32 resident tile slots (entry lists at DS:E330+2*(ring*32+tile), counts at DS:061E+...), and
-tile lookup `0871` returns -1 outside them. In the flight scene capture 18/18/25/18 slots hold entries (79/111/167/19
-entries), so only a window of the world is in memory. A longer view needs the game's world data loaded by our own
-code (how tiles are loaded from the files is not yet traced), plus nothing for moving objects beyond the sim's range.
-Next: use the key in `interp_pair`/`score` (a unique equal key pairs regardless of the motion limit; an ids mismatch
-refuses), turn the observer on for live presentation, then the 45-route checks and a fresh gate.
-
-Unfinished native work is committed/pushed as **`a2202f1`** on **`present-scene-geometry`**, worktree **`D:/f117-wt/present-world-lines`**:
-`src/present/scene_mesh.c/.h`, `tests/test_scene_mesh.c` and its CMake wiring. It decodes owned complete meshes,
-loads prepared poses, evaluates hidden/visible camera geometry and plane shading, walks painter order and conditional
-material bytecode. It is not connected to live rendering. Build and the synthetic `presentation_scene_mesh` CTest
-pass; native comparison against all original fixtures, material-call parity, broader tests and a fresh full gate are
-still pending. **Do not merge this draft into main as a finished fix.** Private implementation/proof notes:
-`D:/f117-gate/present-v2/scene/next-step.txt` and `live-integration-notes.txt`. Next: reproduce road jitter/building jumps
-from the frozen flight; verify native geometry/material semantics against original-byte fixtures; then add compact
-prepared-pose and upstream identity/candidate capture and connect the common projection/clipping path. Keep original
-graphics and gameplay/input timing. No visible/fullscreen tests without asking. All agent test/build processes are stopped.
+**Latest (15 October, afternoon): identity pairing, a `BAA2` fix, motion metric, gate tooling.** The owner's
+recorded flight `session-20261015-103956` (road jitter, jumping building patches) is frozen privately in
+`D:/f117-gate/present-v2/owner-roads-20261015` (inputs, save, 633 MB draw capture 2.45B-2.85B; `ident/draw.log` has
+identity records 2.75B-2.85B; `analysis/` the scans). Findings and changes (details in
+[docs/presentation.md](docs/presentation.md#identity-pairing-and-the-step-clock-15-october-2026)):
+- Identity pairing is integrated: the observer's compact `I` record (model, ring, world cell) at `120A:00CF` pairs
+  batches unique in both frames first. Same window without/with: polygons unpaired 7.78/3.98%, outline edges
+  2.51/0.78%, held steps 7/4; 0 contradictions with the old pairing. Python mirrors it (`interp_frame.py`,
+  `tests/test_interp_ident.py`). Left: duplicates in a cell (entry ordinal), detail changes, map/HUD batches.
+- The step clock is a second, separate cause: steps take 42-86 ms for a fixed distance, and `drawlive_plan_interp`'s
+  t freezes or skips at uneven boundaries. A smoothed playback clock (simulated) cuts freezes/skips 35 -> 2 and
+  >20% speed changes 21.4% -> 1.6% for ~17 ms more age. Not implemented: needs a third live step and its pairing;
+  make it switchable (owner has not set defaults) and judge it with `tools/motion_check.py`.
+- `tools/motion_check.py LOG` reports pairing completeness and step-timing irregularity (the exactness checks cannot).
+- Matched-code defect found by the rotating seed `0xfaf385733f77`: `or ax, ax` after a call was a byte test in VGAME
+  `BAA2` and twice in `73C8` (wrong SF, and a zero low byte would take the wrong branch). Fixed; CTest
+  `matched_or_ax_word` retains the seed.
+- Gate: `build_recomp.py --overlap-jobs` (default 8) starts interpreter runs during coverage from a private runner copy;
+  not yet timed, because the gate skipped coverage (unchanged translation). Time it with `--coverage-record ''`.
+  `tools/present_light_check.py --base REV` is the owner-approved light check for presentation-only changes.
+- Verification of the merged tree: fresh full gate 1,330 s (114 CTests, 45 routes IDENTICAL / 44 fresh interpreter
+  runs, both instruction profiles 0 mismatches, 891 matched routines at three seeds incl. `0xfaf385733f77`,
+  reachability/event checks); 45-route N=1 259,240 frames / 259,166 pairs; boot N=4/9 368/366.
+  Evidence `D:/f117-gate/present-v2/identity-*`.
+- Owner decisions today: no longer draw distance for now (resident world is four rings of 32 tile slots); make the
+  state-driven scene renderer the main path for world geometry (no primitive pairing), then the smoothed clock.
+  The unconnected `src/present/scene_mesh.c` draft (mesh/pose/visibility/order/
+  material evaluation, synthetic CTest) is on master as part of the gated tree; it is not a finished fix. Private
+  notes: `D:/f117-gate/present-v2/scene/next-step.txt`, `live-integration-notes.txt`.
+- Next, in order: implement the smoothed clock as an option; time the gate overlap; then the scene renderer (prepared
+  poses + identity capture in one observer batch, one gate). Keep original graphics, N=1 and gameplay/input timing.
+  No visible/fullscreen tests without asking.
 
 The remaining HUD/map-position follow-up is integrated on top of sky/ground (`f57f9cf`) and world lines (`84f3edc`).
 All original fonts/sprites remain, including the eight-heading 4x4 aircraft arrow. Continuous state moves on the fine

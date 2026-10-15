@@ -12243,7 +12243,7 @@ static int vgame_init_models(machine_t *m)
     if (!guest_call(m, 0xE586, 0xBAAD)) return 1;
     if (!room(c, 4)) { c->ip = 0xBAAD; return 1; }
     c->r[R_BX] = cpu_pop16(c);
-    alu_logic(c, (uint32_t)c->r[R_AX] | c->r[R_AX], 0);
+    alu_logic(c, (uint32_t)c->r[R_AX] | c->r[R_AX], 1); /* or ax, ax: a word */
     c->icount += 3;                                            /* pop, or, its branch */
     if (c->flags & F_ZF) {                                     /* no model-type block found */
         if (!room(c, 4)) { c->ip = 0xBB03; return 1; }
@@ -17612,7 +17612,7 @@ static int vgame_target_damage(machine_t *m)
             c->icount += 1;
             NEAR_THEN(0x792E, 0x74C4, 0, 3);
             c->r[R_BX] = cpu_pop16(c);
-            alu_logic(c, (uint32_t)c->r[R_AX] | c->r[R_AX], 0);
+            alu_logic(c, (uint32_t)c->r[R_AX] | c->r[R_AX], 1); /* or ax, ax: a word */
             c->icount += 3;                                     /* pop, or, its branch */
             if (c->flags & F_ZF) { c->icount++; c->ip = 0x7590; return 1; }  /* nothing to report (the extra jmp): stop here */
             if (!room(c, 45)) { c->ip = 0x74CC; return 1; }
@@ -17653,7 +17653,7 @@ static int vgame_target_damage(machine_t *m)
                 c->icount += 1;
                 NEAR_THEN(0xB9F6, 0x7519, 0, 3);
                 c->r[R_BX] = cpu_pop16(c);
-                alu_logic(c, (uint32_t)c->r[R_AX] | c->r[R_AX], 0);
+                alu_logic(c, (uint32_t)c->r[R_AX] | c->r[R_AX], 1); /* or ax, ax: a word */
                 c->icount += 3;                                 /* pop, or, its branch */
                 if (c->flags & F_ZF) { set_r8(c, R_AL, ds_get8(c, 0xDED0)); c->icount++; }
                 else { set_r8(c, R_AL, ds_get8(c, 0xC0D8)); c->icount += 2; }  /* the extra jmp when not taken */
