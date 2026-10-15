@@ -1202,6 +1202,43 @@ overflow is drawn inside the bounding box of its footprint, so a band whose true
 loses that part. Zero-area polygons with a tall footprint, non-clipped model polygons whose geometry mismatches
 and the stipple/dither cells stay scaled.
 
+## Projected outlines, point markers and one stroke pen (15 October 2026)
+
+At N > 1, unclipped world outlines and degenerate edges (the single-pixel scenery and light markers) now draw from
+exact G camera snapshots. Their slot, projected endpoints and origin must match the captured L; stale, clipped,
+behind-camera and unsupported records retain the earlier path. Paired outlines interpolate their camera coordinates
+when both snapshots name the same vertices. An internal L suffix carries that geometry without changing the original
+ten replay fields. The original 1x picture and all guest execution remain unchanged.
+
+Perspective uses the full fixed-point ratio, `256*x/z`, before the original shifts its numerator and depth. The earlier
+fine renderer kept the final divide remainder but still rounded depth, and its positive modulo jumped at each negative
+projected integer. Full projection removes both sources of motion steps, for polygons as well as strokes. Orthographic
+and verified near-plane crossing rules are unchanged. C and the Python study use the same projection.
+
+Captured HUD lines, ticks, world outlines, thin strips and the state-driven HUD now share a pen with perpendicular width
+and square caps. The square nib previously made a diagonal up to 1.4 times thicker. Default width remains one original
+cell; `--present-line-width` retains its fine-pixel override. Different widths by drawing role have **not** been assigned:
+identifying ground markings separately from object outlines and tuning those widths remain open. The owner keeps all
+original sprites and artwork, including the map's 4x4, eight-heading aircraft arrow; no vector replacement is requested.
+
+`test_world_lines` retains coarse equality at N=1/4/9, signed-coordinate and depth-boundary continuity, stale-slot and
+vertex-identity rejection, and equal-width horizontal/diagonal strokes. `test_world_jitter LOG N` measures paired
+outlines and dot markers at eighth-step intervals within each skeleton half, isolating interpolation rounding from
+logic-step acceleration and cuts. On the retained strike window at N=9, RMS second differences fall from 1.680 to 0.0039
+fine pixels for outlines (4,592 coordinate samples), and 2.756 to 0.0140 for dot markers (8,828). Negative polygon axes
+fall from 0.496 to 0.0634 (76,753). A replay of the owner's flight also checks 19 exact frames / 17 exact pairs; its
+negative-axis RMS falls from 0.877 to 0.00049. These are coordinate measurements, not a claim that every visible coast
+or topology transition is resolved. Shoreline boundary measurements in the two sampled windows improve little;
+coastline motion, horizon-band motion and per-class width tuning remain open.
+
+Evidence: `D:/f117-gate/present-v2/world-lines`. Final route, live-scale and timing checks are recorded in
+[repeated-processes.md](repeated-processes.md).
+
+The isolated N=9 strike replay also passes 3840x2160 / 59.99 Hz / vsync:
+7,718 flight pictures, median 16.6675 ms, p99 16.7123, maximum 16.8153,
+zero missed intervals and 17.5 ms guest drift. All 2,062 logic frames are exact;
+the final guest hash equals the fresh headless reference (`bc8e3ae5a872405d`).
+
 ## Open questions and risks
 
 - **Pairing for interpolation.** Done for 86-99% of painted polygons by batch alignment

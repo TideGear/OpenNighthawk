@@ -1309,6 +1309,12 @@ instruction profiles and three 789-address matched seeds (2,561,209,
   unchanged headless hash. Stage 2 is complete. The owner asks to resume P2
   after the visual fixes; the SETUP alert is now resolved as the native BIOS
   accounting false positive documented above.
+  The 15 October follow-up projects unclipped world outlines and single-pixel markers from their exact camera
+  snapshots and interpolates matching geometry. Full fixed-point perspective removes negative-modulo and rounded-depth
+  jumps; one perpendicular-width pen also removes diagonal thickening. The retained strike window's N=9 interpolation
+  RMS falls from 1.680 to 0.0039 fine pixels for outlines and 2.756 to 0.0140 for dot markers. Original sprites/artwork,
+  including the map arrow, stay. Coastline transitions, horizon bands and widths by drawing role remain open; sampled
+  shoreline boundary motion improves little. Details and verification: [presentation.md](presentation.md#projected-outlines-point-markers-and-one-stroke-pen-15-october-2026).
   Open: the owner's motion review on a physical
   panel, and cargo/career flights and slower machines. See presentation.md.
 

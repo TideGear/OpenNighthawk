@@ -6,20 +6,22 @@ For the next conversation on this repository. Read this, then
 checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 [docs/presentation.md](docs/presentation.md) (60+ fps and 4K) and
 [docs/repeated-processes.md](docs/repeated-processes.md) (every process we run
-more than once, what it costs). State as of 14 October 2026.
+more than once, what it costs). State as of 15 October 2026.
 
 This file is kept short on purpose: it holds only the current state and
 standing practice, not a session-by-session log. Earlier sessions' detail
 (what was tried, what failed, exact investigation narratives) is in
 `git log -p handoff.md` — it does not need to live here to stay available.
 
-## Current state (14 October, end of session)
+## Current state (15 October)
 
-`master` is `471fb9c`, pushed; nothing verified is waiting. The main working tree holds
-only the owner's untracked `4k60.bat` (the owner reverted their `f117a.example.ini` edit
-themselves at 21:11). `build/f117a.exe` there is the merged presentation build the owner
-is testing with `4k60.bat` (built 21:33 from `dfe8cf4`'s content); the batch-7 commit
-after it changes only matched routines.
+The world-line presentation follow-up is integrated in this commit. It passes 104 selected CTests,
+all 45 N=1 routes (259,240 frames / 259,166 pairs), live boot N=4/9 (368/366 each) and 96
+retained-window checks. Isolated 3840x2160 / 59.99 Hz / vsync / N=9 strike also passes:
+7,718 flight pictures, p99 16.7123 ms, worst 16.8153, none missed, 2,062 exact logic frames,
+final hash `bc8e3ae5a872405d` equal to the fresh headless reference. Evidence:
+`D:/f117-gate/present-v2/world-lines`. Main's build is rebuilt from this content for `4k60.bat`.
+Only the owner's untracked `4k60.bat` remains outside the task. Phase 2 counts are unchanged.
 
 **Phase 2:** 889 census functions / 117,660 bytes (P2 67.37%, overall 86.67%). Today added
 24 routines in seven gated commits (proofs `D:/f117-gate/p2-*`; gates `p2-pair`, `p2-compose`,
@@ -69,22 +71,21 @@ owner's verdict on the 4K picture. The owner was told that at N>1 bands are now 
 where the geometry puts them where the original's clipper mis-drew them (1x unchanged)
 and has not replied either way.
 
-**Owner's 4K review of the merged build (14 October, 23:20): next presentation priorities.**
-Better than before, but still jittering: (1) single-dot objects such as lights; (2) the
-coastline where land meets water; (3) the road lines on the ground seen from altitude. Also
-some lines look far too fat while others look right. Likely causes (not yet measured; check
-each with `F117_PRESENT_DIAG` and a jitter measurement like the HUD's before changing code):
-(1) dots are single original pixels at integer positions, scaled to N x N blocks: place them
-at their unrounded projected position (find what draws them and whether a camera-space point
-is available, as for the 'V' vertex records) at a chosen size; (2) in-between frames often
-fall back from camera-space to integer screen-space edge interpolation (the diagnostic counted
-2.48M fallbacks against 3.09M camera-space edges on strike), so refined land/sea edges wobble
-between logic frames: interpolate geometry, not rounded edges; (3) the roads are outline-edge
-strokes (record `L`) whose endpoints are the original's integers, as the HUD lines were:
-draw them from their unrounded endpoints. Line width: state-driven HUD lines use a true
-perpendicular width, the remaining strokes a square nib (up to 1.4x fatter on diagonals), and
-every stroke is N px wide whatever it is: put all strokes on one pen with a width per class
-(HUD, ground marking, outline), not rules per line.
+**Owner's 4K priorities (14 October, 23:20; follow-up 15 October).** Dots/lights and roads are
+now drawn from exact camera geometry when their captured endpoints match it, and matching
+outlines interpolate in camera space. Full `256*x/z` projection removes positive-modulo
+jumps at negative coordinates and the earlier rounded-depth steps. One perpendicular-width
+pen serves HUD, outlines and strips; no per-class widths have been assigned yet. N=9 strike
+RMS: outlines 1.680 -> 0.0039 fine px, dots 2.756 -> 0.0140. The owner's recorded flight also
+passes 19 frames / 17 pairs; its negative model-axis RMS falls 0.877 -> 0.00049. **Coastline
+motion remains open**: sampled visible shoreline RMS improves little, and those probes omit
+boundaries that disappear or change topology. Next investigate those transitions and finish
+the unverified horizon-band branch. Keep the two WIP branches separate until checked.
+
+**Owner instruction (15 October): keep all original graphics.** The map aircraft arrow is a
+4x4 sprite selected from eight headings; keep it and the rest of the sprite/bitmap artwork.
+Smooth positioning and render the existing geometry; do not replace it with a vector icon.
+Different widths by reliable drawing role remain a tuning task, not a fixed four-class list.
 
 Traps found today:
 - `1450` is also the presentation observer's frame-phase hook. At one address only

@@ -30,7 +30,8 @@ static const char *const STAT_NAMES[HS_COUNT] = {
     "span polygons: footprint beyond 3 px of the corners", "span polygons: strips too thin to trim",
     "near-clipped polygons: footprint beyond 3 px, within the clip tolerance",
     "span polygons: footprint beyond 3 px, explained by an overflowing edge",
-    "span polygons: zero-height line, one row", "span polygons: zero-area, more than one row" };
+    "span polygons: zero-height line, one row", "span polygons: zero-area, more than one row",
+    "outline strokes and dots", "outlines drawn from projected geometry" };
 
 const char *hires_stat_name(int k) { return k >= 0 && k < HS_COUNT ? STAT_NAMES[k] : ""; }
 
@@ -83,19 +84,15 @@ static int slot_find(hires *h, uint16_t key, int make)
 
 /* ---- geometry ---- */
 
-/* The vertex's position in coarse pixels: the pixel the original made plus the
- * share the projection's divide threw away. 0 when the divisor is not positive. */
+/* Full fixed-point perspective, before the original's numerator and depth
+ * shifts and signed divide. Keeping only the divide remainder still jumps
+ * whenever its rounded depth changes, especially on long terrain edges.
+ * Range still rejects vertices behind the original's camera plane. */
 static int vertex_fraction(const hires_vertex *v, double *x, double *y)
 {
-    if (v->range < 0 || v->range > 1) return 0; /* orthographic needs G mode metadata */
-    const uint32_t zu = (uint32_t)v->z;
-    int64_t den, nx, ny;
-    if (v->range == 0) { den = zu >> 16; nx = (int64_t)v->x >> 8; ny = (int64_t)v->y >> 8; }
-    else { den = ((zu >> 8) & 0xFFFF) >> 1; nx = (int64_t)v->x >> 1; ny = (int64_t)v->y >> 1; }
-    if (den <= 0) return 0;
-    const int64_t mx = ((nx % den) + den) % den, my = ((ny % den) + den) % den;
-    *x = v->px + (double)mx / (double)den;
-    *y = v->py + (double)my / (double)den;
+    if (v->range < 0 || v->range > 1 || v->z <= 0) return 0;
+    *x = (double)v->x * 256.0 / v->z;
+    *y = (double)v->y * 256.0 / v->z;
     return 1;
 }
 
@@ -107,9 +104,63 @@ static int snapshot_fraction(const hires_snapshot *s, const hires_vertex *v, dou
     if (!present_ortho_project(camera, s->ortho, coarse, fine) ||
         coarse[0] != v->px || coarse[1] != v->py) return 0;
     /* Orthographic coordinates round to the nearest integer; that integer
-     * names a cell centre. Perspective fractions already lie inside their
-     * captured cell, because vertex_fraction retains the divided remainder. */
+     * names a cell centre. Perspective uses the full camera ratio rather than the
+     * original's rounded numerator and depth. */
     *x = fine[0] + 0.5; *y = fine[1] + 0.5; return 1;
+}
+
+/* Only an exact, unclipped snapshot may replace a captured outline. A slot can
+ * be reused, so validate the projected endpoints and origin against this L. */
+int hires_outline_points(const int32_t *g, int ng, const int32_t *l, int nl, double xy[4])
+{
+    if (ng < 17 || nl < 10 || g[0] != l[0] || g[10] || g[16] || l[9] != 0x046F || l[8] != l[7] + 320) return 0;
+    hires_snapshot snap = {0};
+    snap.ortho = ng >= 18 ? g[17] : 0;
+    for (int end = 0; end < 2; end++) {
+        const int at = 5 + 6 * end;
+        if ((int64_t)g[at+3] + g[3] != l[1+2*end] || (int64_t)g[at+4] + g[4] != l[2+2*end]) return 0;
+        const int zhi = s16(g[at+2] >> 16);
+        const hires_vertex v = {1,g[at],g[at+1],g[at+2],g[at+3],g[at+4],zhi >= 0x100 ? 0 : zhi >= 1 ? 1 : 2};
+        if (!snapshot_fraction(&snap, &v, &xy[2*end], &xy[2*end+1])) return 0;
+        xy[2*end] += g[3] + (snap.ortho ? 0 : 0.5);
+        xy[2*end+1] += g[4] + (snap.ortho ? 0 : 0.5);
+    }
+    return 1;
+}
+
+static void outline_refine(hires *h, drawlist *d, const int32_t *v, int n)
+{
+    if (n < 10 || h->n <= 1) return;
+    h->stats[HS_OUTLINES]++;
+    drawlist_page *p = drawlist_page_of(d, (uint16_t)v[6]);
+    if (!p || !p->hi || p->suppress || v[7] < 0 || v[7] >= 64000 || v[8] != v[7]+320 || v[9] != 0x046F) return;
+    double xy[4];
+    if (n == 27 || n == 28) {
+        const int32_t *g=v+10;
+        int32_t l[10];memcpy(l,v,sizeof l);
+        for (int e=0;e<2;e++) { l[1+2*e]=g[8+6*e]+g[3];l[2+2*e]=g[9+6*e]+g[4]; }
+        if (!hires_outline_points(g,n-10,l,10,xy)) return;
+    } else {
+        const int k = slot_find(h, (uint16_t)v[0], 0);
+        if (k < 0 || !h->slot[k].snap.valid) return;
+        const hires_snapshot *s = &h->slot[k].snap;
+        int32_t g[18] = { v[0],0,0,s->origin[0],s->origin[1] };
+        g[17] = s->ortho;
+        const hires_vertex *ends[2] = { &s->a, &s->b };
+        for (int e=0;e<2;e++) {
+            const int at=5+6*e; const hires_vertex *a=ends[e];
+            g[at]=a->x;g[at+1]=a->y;g[at+2]=a->z;g[at+3]=a->px;g[at+4]=a->py;g[at+5]=(s->behind>>e)&1;
+        }
+        if (!hires_outline_points(g,18,v,n,xy)) return;
+    }
+    const int ox=v[7]%320, oy=v[7]/320, N=p->n;
+    /* Do not substitute wrapped addresses or infer a viewport for a clipped L. */
+    for (int e=0;e<2;e++) if (v[1+2*e]+ox<0 || v[1+2*e]+ox>=320 || v[2+2*e]+oy<0 || v[2+2*e]+oy>=200) return;
+    drawlist_diag_stroke_tag(DT_OUTLINE_FINE);
+    drawlist_stroke(p,(xy[0]+ox)*N,(xy[1]+oy)*N,(xy[2]+ox)*N,(xy[3]+oy)*N,
+                    d->line_width ? d->line_width : N,v[5]&0xFF,0,0,320*N,200*N);
+    p->suppress=1;h->suppressed=(int)(p-d->page);
+    h->stats[HS_OUTLINES_REFINED]++;
 }
 
 typedef struct { double ax, ay, bx, by, k; } xedge;
@@ -806,6 +857,9 @@ void hires_record(hires *h, drawlist *d, char kind, const int32_t *v, int n)
         }
         break;
     }
+    case 'L':
+        outline_refine(h,d,v,n);
+        break;
     case 'E':
         if (n < 6) break;
         if (h->poly.active && h->poly.nclip == 2 && !h->poly.njoin) {

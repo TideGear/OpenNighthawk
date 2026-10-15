@@ -394,7 +394,11 @@ static void clipped_origin(int scale, int legacy, int ortho)
             const int vertex=(k+end)%4,at=5+6*end;
             g[at]=xy[vertex][0]*(ortho?2097152:512)+(ortho?524288:128);
             g[at+1]=xy[vertex][1]*(ortho?2097152:512)+(ortho?524288:128);
-            g[at+2]=ortho?0:0x20000;g[at+3]=xy[vertex][0];g[at+4]=xy[vertex][1];
+            g[at+2]=ortho?0:0x20000;
+            /* Perspective IDIV truncates toward zero, including negative
+             * camera coordinates with a positive fractional offset. */
+            g[at+3]=ortho?xy[vertex][0]:g[at]/512;
+            g[at+4]=ortho?xy[vertex][1]:g[at+1]/512;
         }
         g[17]=ortho==3?32:ortho?21:0;
         if(ortho==2 && k==0)g[8]++;

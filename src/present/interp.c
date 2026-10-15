@@ -3,6 +3,7 @@
 #include "interp.h"
 #include "hud_cover.h"
 #include "nearclip.h"
+#include "hires.h"
 
 #include "tls.h"
 #include <math.h>
@@ -89,6 +90,7 @@ struct interp_frame {
     int *bi; int nbi, cbi;
     int *ai; int nai, cai;
     int *li; int nli, cli;
+    int *lg;                         /* latest exact G at each outline, or -1 */
     int *pl; int npl, cpl;
     span_t *s; int ns, cs;
     hud_t *h; int nh, ch;
@@ -163,7 +165,11 @@ interp_frame *interp_parse(const interp_rec *rec, int n)
             break;
         case 'L':
             if (cur >= 0) {
+                if (f->nli == f->cli) f->lg = realloc(f->lg, sizeof(int) * (size_t)(f->cli ? 2*f->cli : 64));
                 GROW(f->li, f->nli, f->cli);
+                int gi = -1;
+                for (int k=i-1;k>=0;k--) if (rec[k].kind=='G' && rec[k].n>=3 && rec[k].v[0]==v[0]) { gi=k;break; }
+                f->lg[f->nli] = gi;
                 f->li[f->nli++] = i;
                 f->b[cur].nl++;
             }
@@ -273,7 +279,7 @@ void interp_frame_free(interp_frame *f)
 {
     if (!f) return;
     free(f->b); free(f->vert); free(f->vrec); free(f->g); free(f->e); free(f->j); free(f->p);
-    free(f->bi); free(f->ai); free(f->li); free(f->pl); free(f->s); free(f->h); free(f->u);
+    free(f->bi); free(f->ai); free(f->li); free(f->lg); free(f->pl); free(f->s); free(f->h); free(f->u);
     free(f);
 }
 
@@ -1080,6 +1086,40 @@ int interp_inbetween_ex(const interp_frame *A, const interp_frame *B, const inte
             const int32_t *u = O->rec[match].v;
             int n = 0;
             for (int k = 0; k < S->rec[i].n; k++) vals[n++] = k >= 1 && k <= 4 ? (int32_t)rnd(lerp(v[k], u[k], w)) : v[k];
+            /* Fine outlines move in camera space, including degenerate edges used as lights.
+             * Leave the original ten fields on their exact coarse replay path. */
+            const int gi = S->lg[b->l0+q];
+            int gj = -1;
+            for (int x=0;x<ob->nl;x++) if (O->li[ob->l0+x]==match) { gj=O->lg[ob->l0+x];break; }
+            if ((flags & INTERP_VERTICES) && gi>=0 && gj>=0) {
+                const interp_rec *ga=&S->rec[gi], *gb=&O->rec[gj];
+                double pa[4],pb[4];
+                if (ga->n==gb->n && (ga->n==17 || ga->n==18) &&
+                    ga->v[1]==gb->v[1] && ga->v[2]==gb->v[2] &&
+                    hires_outline_points(ga->v,ga->n,v,S->rec[i].n,pa) &&
+                    hires_outline_points(gb->v,gb->n,u,O->rec[match].n,pb) &&
+                    ga->v[3]==gb->v[3] && ga->v[4]==gb->v[4] &&
+                    (ga->n==17 || ga->v[17]==gb->v[17])) {
+                    int32_t g[18],l[10];memcpy(g,ga->v,ga->n*sizeof *g);memcpy(l,v,10*sizeof *l);
+                    int ok=1;
+                    for (int end=0;end<2 && ok;end++) {
+                        const int at=5+6*end;int64_t xf[3],px[2];
+                        for (int axis=0;axis<3;axis++) {
+                            xf[axis]=rnd(lerp(ga->v[at+axis],gb->v[at+axis],w));
+                            if (xf[axis]<INT32_MIN || xf[axis]>INT32_MAX) ok=0;
+                            g[at+axis]=(int32_t)xf[axis];
+                        }
+                        if (!ok || !project_snapshot(xf,ga->n==18?g[17]:0,px)) { ok=0;break; }
+                        g[at+3]=(int32_t)px[0];g[at+4]=(int32_t)px[1];
+                        l[1+2*end]=g[at+3]+g[3];l[2+2*end]=g[at+4]+g[4];
+                    }
+                    double xy[4];
+                    if (ok && hires_outline_points(g,ga->n,l,10,xy)) {
+                        memcpy(vals+10,g,ga->n*sizeof *g);
+                        n=10+ga->n;
+                    }
+                }
+            }
             rep[i] = made.n;
             repn[i] = 1;
             out_pooled(&made, 'L', S->rec[i].icount, vals, n);

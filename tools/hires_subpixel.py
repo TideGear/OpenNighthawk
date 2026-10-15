@@ -9,10 +9,10 @@ re-walking the original's integer edges:
 * the polygon's edges come from the 'E' records, each tied by its slot to the 'G' record that prepared it and
   that to the two 'V' records of its vertices (camera-space x, y, z and the pixel the original made of each);
   extended G captures preserve exact camera endpoints and origin for all polygons;
-* a vertex's position is rebuilt from the projection's own divide (0x129A2: x >> 8 over the high word of z, or
-  x >> 1 over (z >> 8) >> 1 when that word is below 0x100), keeping the remainder the divide threw away, so the
-  vertex lies inside the pixel the original chose (the divide truncates toward zero, so a negative quotient is
-  moved to the pixel above it); the origin ([8602], [8604]) comes from G snapshots, or unclipped edges in legacy logs;
+* a perspective vertex uses the full fixed-point camera ratio (256 x / z, 256 y / z), before the original
+  shifts the numerator and depth or truncates the signed divide. Keeping only the final remainder still
+  jumped at depth-shift boundaries; using positive modulo also jumped at negative projected integers.
+  The origin ([8602], [8604]) comes from G snapshots, or unclipped edges in legacy logs;
 * N = 1 paints exactly the original footprint; at N > 1 ordinary polygons use verified
   geometry clipped to the viewport, with half a fine pixel of inclusive coverage. Clipping
   every fine row to the old coarse staircase produced teeth and is no longer used;
@@ -50,7 +50,7 @@ from hires_frame import Builder, HiPage, WIDTH, HEIGHT
 
 def vertex_fraction(v, ortho=0):
     """The position of a vertex in coarse pixels from a 'V' record (icount, x, y, z, px, py, range, xf_at, px_at):
-    the pixel the original made plus the share the projection's divide threw away."""
+    the full perspective ratio, or the verified orthographic projection."""
     _, x, y, z, px, py, rng = v[:7]
     if ortho:
         projected = ortho_project((x, y, z), ortho)
@@ -59,14 +59,12 @@ def vertex_fraction(v, ortho=0):
         return tuple(c + 0.5 for c in projected[1])
     if rng not in (0, 1):
         return None  # orthographic needs G mode metadata
-    zu = z & 0xFFFFFFFF
-    if rng == 0:
-        den, nx, ny = zu >> 16, x >> 8, y >> 8
-    else:
-        den, nx, ny = ((zu >> 8) & 0xFFFF) >> 1, x >> 1, y >> 1
-    if den <= 0:
+    # Retain the full fixed-point numerator and depth. Keeping only the
+    # final divide remainder still jumps when the earlier depth shift changes.
+    # This also preserves the sign of negative projected coordinates.
+    if z <= 0:
         return None
-    return px + (nx % den) / den, py + (ny % den) / den
+    return x * 256 / z, y * 256 / z
 
 
 def ortho_project(camera, shift):

@@ -6,7 +6,7 @@
  * record goes to hires_record first, then to drawlist_record. A filled
  * polygon's edges are tied through their 'G' records to the camera-space
  * vertices ('V'); each vertex is placed where the projection's divide put it,
- * with the remainder it threw away; a fine pixel takes the fill when its
+ * before the numerator/depth shifts and division discard precision; a fine pixel takes the fill when its
  * centre lies inside the verified polygon, with half a fine pixel of
  * inclusive coverage, clipped to its viewport. Orthographic rounding names
  * cell centres. N = 1 retains the original footprint exactly; near-plane
@@ -52,6 +52,7 @@ enum {
     HS_NEAR_CLIPPED, HS_FEW_EDGES, HS_NO_VERTICES, HS_BEHIND, HS_NO_DIVISOR, HS_BEYOND, HS_STYLE,
     HS_SPAN_POLYGONS, HS_SPAN_REFILLED, HS_SPAN_BEYOND, HS_SPAN_THIN,
     HS_NEAR_TOLERATED, HS_SPAN_OVERFLOW, HS_SPAN_LINE, HS_SPAN_DEGENERATE,
+    HS_OUTLINES, HS_OUTLINES_REFINED,
     HS_COUNT
 };
 const char *hires_stat_name(int k);
@@ -78,6 +79,9 @@ typedef struct {
 } hires;
 
 void hires_init(hires *h, int n);
+
+/* Validate an unclipped L against its exact G snapshot and retain projection fractions. */
+int hires_outline_points(const int32_t *g, int ng, const int32_t *l, int nl, double xy[4]);
 
 /* One observer record, before drawlist_record gets it. */
 void hires_record(hires *h, drawlist *d, char kind, const int32_t *v, int n);

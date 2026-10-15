@@ -109,9 +109,11 @@ void drawlist_record_plain(drawlist *d, char kind, const int32_t *v, int n);
 const drawlist_page *drawlist_get(const drawlist *d, uint16_t seg);
 drawlist_page *drawlist_page_of(drawlist *d, uint16_t seg);
 
-/* A fine stroke between two points on the fine grid (pixels of the N-times picture): Bresenham
- * between them with a square nib of `width` fine pixels and whole end caps. The cells it touches
- * are marked so the flat-pixel guard leaves them alone. */
+/* A continuous fine-grid stroke with perpendicular width and square caps, clipped to
+ * [cl, cr) x [ct, cb). Touched cells survive the flat-pixel guard. */
+void drawlist_stroke(drawlist_page *p, double ax, double ay, double bx, double by,
+                     double width, int colour, int cl, int ct, int cr, int cb);
+/* Integer fine-pixel centres, using the same pen. */
 void drawlist_fine_stroke(drawlist_page *p, int ax, int ay, int bx, int by, int width, int colour);
 
 #endif

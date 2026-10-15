@@ -144,6 +144,40 @@ roughly 100 ms upload stall. Short landing and air-to-air runs also exceed
 the steady-refresh check. Private sources and
 logs: `D:/f117-gate/p3-styles/bench` and `guard-before/after-*`.
 
+## World-line projection and stroke checks (15 October 2026)
+
+After the full-precision projection and shared pen changes: 104 CTests pass
+(`ctest -E '^func_lockstep$' -j 8`, 40.67 s); all 45 N=1 routes preserve
+259,240 logic frames / 259,166 interpolation pairs and all guest checkpoints
+and final hashes (520.83 s, 16 workers). Live `boot_to_flight` at N=4/9 each
+preserves 368 frames / 366 pairs. All 96 replay/refinement/interpolation
+checks across 16 retained windows pass. The current camera-snapshot windows
+retain every previously refined polygon; legacy windows change a few conservative
+fallback decisions. Original sprites and artwork stay unchanged.
+
+`test_world_lines` is ROM-free and checks signed-coordinate and depth-shift
+continuity, exact coarse replay, stale slots and mismatched vertex identities,
+and perpendicular stroke widths. `test_world_jitter LOG N` measures coordinate
+second differences at eighth-step intervals inside each skeleton half. This
+isolates interpolation rounding; it does not measure cuts or establish an
+entire flight's perceived motion. N=9 strike RMS: outlines 1.680 -> 0.0039 fine
+pixels, dot markers 2.756 -> 0.0140, negative model axes 0.496 -> 0.0634.
+
+Replaying the owner's recorded flight from a copy of its saved starting files
+checks another 19 exact frames / 17 pairs. The private pixel-boundary probe
+tracks the sea/land transition only where both sides carry refined geometry;
+shoreline RMS changes little (0.628 -> 0.617 fine pixels in that window), so
+coastline motion remains open. This measurement excludes missing/disappearing
+boundaries and cannot close clipping or topology transitions.
+
+Proof: `D:/f117-gate/present-v2/world-lines`; timing uses the isolated process
+below, with a fresh headless reference at 3.5B (`bc8e3ae5a872405d`).
+
+The isolated N=9 strike replay also passes 3840x2160 / 59.99 Hz / vsync:
+7,718 flight pictures, median 16.6675 ms, p99 16.7123, maximum 16.8153,
+zero missed intervals and 17.5 ms guest drift. All 2,062 logic frames are exact;
+the final guest hash equals the fresh headless reference (`bc8e3ae5a872405d`).
+
 ## GPU refresh and 4K presentation timing (13 October 2026)
 
 Capture an isolated application replay with a fresh save directory, using

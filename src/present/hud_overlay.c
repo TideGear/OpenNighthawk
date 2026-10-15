@@ -55,42 +55,8 @@ static void fill_rect(const canvas *c, double x0, double y0, double x1, double y
  * centres with w = N cover exactly the original's cells. */
 static void thick_line(const canvas *c, double ax, double ay, double bx, double by, double w, int colour, int cl, int ct, int cr, int cb)
 {
-    const double h = w / 2.0;
-    const double dx = bx - ax, dy = by - ay;
-    const double len = sqrt(dx * dx + dy * dy);
-    if (len < 1e-9 || fabs(dy) < 1e-9 || fabs(dx) < 1e-9) {
-        const double xa = ax < bx ? ax : bx, xb = ax < bx ? bx : ax, ya = ay < by ? ay : by, yb = ay < by ? by : ay;
-        fill_rect(c, xa - h, ya - h, xb + h, yb + h, colour, cl, ct, cr, cb);
-        return;
-    }
-    const double ux = dx / len, uy = dy / len;
-    /* the rectangle's extent in y */
-    const double ey = fabs(uy) * (len + w) / 2 + fabs(ux) * h;
-    const double my = (ay + by) / 2;
-    int j0 = (int)floor(my - ey), j1 = (int)ceil(my + ey);
-    if (j0 < ct) j0 = ct;
-    if (j1 > cb) j1 = cb;
-    for (int j = j0; j < j1; j++) {
-        const double yc = j + 0.5;
-        double xlo = -1e18, xhi = 1e18;
-        /* t = (x - ax) ux + (yc - ay) uy in [-h, len + h);  s = -(x - ax) uy + (yc - ay) ux in [-h, h) */
-        for (int k = 0; k < 2; k++) {
-            const double slope = k == 0 ? ux : -uy;
-            const double base = k == 0 ? (yc - ay) * uy - ax * ux : (yc - ay) * ux + ax * uy;
-            const double lo = k == 0 ? -h : -h, hi = k == 0 ? len + h : h;
-            /* lo <= slope * x + base < hi */
-            if (fabs(slope) < 1e-12) { if (base < lo || base >= hi) { xlo = 1; xhi = 0; } continue; }
-            double a = (lo - base) / slope, b = (hi - base) / slope;
-            if (a > b) { const double t = a; a = b; b = t; }
-            if (a > xlo) xlo = a;
-            if (b < xhi) xhi = b;
-        }
-        if (xlo >= xhi) continue;
-        int i0 = (int)ceil(xlo - 0.5), i1 = (int)ceil(xhi - 0.5);
-        if (i0 < cl) i0 = cl;
-        if (i1 > cr) i1 = cr;
-        for (int i = i0; i < i1; i++) put_fine(c, i, j, colour, cl, ct, cr, cb);
-    }
+    drawlist_diag_stroke_tag(c->tag);
+    drawlist_stroke(c->p, ax, ay, bx, by, w, colour, cl, ct, cr, cb);
 }
 
 static int gl(const hud_font *f, int at) { return at >= 0 && at < f->nglyph ? f->glyph[at] : 0; }

@@ -5,6 +5,7 @@
 #include "hud_overlay.h"
 
 #include "tls.h"
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -386,44 +387,60 @@ static void lib_line(drawlist_page *p, int32_t x0, int32_t y0, int32_t x1, int32
     }
 }
 
-/* Reimp-style presentation stroke: a Bresenham centre line on the output
- * grid, with a square nib clipped to the segment's perpendicular end planes.
- * Canonical endpoints make even widths and raster ties direction independent.
- * Coordinates have already been clipped by the original graphics driver. */
+/* One pen for captured lines, projected outlines and the state-driven HUD.
+ * The width is perpendicular to the segment; square caps join shared ends.
+ * Clip before converting coordinates to integers, including off-screen geometry. */
+void drawlist_stroke(drawlist_page *p, double ax, double ay, double bx, double by,
+                     double width, int col, int cl, int ct, int cr, int cb)
+{
+    if (!p->hi || width <= 0 || !isfinite(ax) || !isfinite(ay) || !isfinite(bx) || !isfinite(by)) return;
+    const int n = p->n, W = 320 * n, H = 200 * n;
+    if (cl < 0) cl = 0; if (ct < 0) ct = 0;
+    if (cr > W) cr = W; if (cb > H) cb = H;
+    if (cl >= cr || ct >= cb) return;
+    if (ax > bx || (ax == bx && ay > by)) {
+        double t = ax; ax = bx; bx = t; t = ay; ay = by; by = t;
+    }
+    const double dx = bx - ax, dy = by - ay, len = hypot(dx, dy), half = width / 2;
+    const double ux = len > 1e-9 ? dx / len : 1, uy = len > 1e-9 ? dy / len : 0;
+    const double ey = fabs(uy) * (len + width) / 2 + fabs(ux) * half;
+    const double my = (ay + by) / 2;
+    double top = floor(my - ey), bottom = ceil(my + ey);
+    if (top < ct) top = ct; if (bottom > cb) bottom = cb;
+    if (top >= bottom) return;
+    for (int y = (int)top; y < (int)bottom; y++) {
+        const double yc = y + 0.5;
+        double lo = cl, hi = cr;
+        for (int k = 0; k < 2; k++) {
+            const double slope = k ? -uy : ux;
+            const double base = k ? (yc - ay) * ux + ax * uy : (yc - ay) * uy - ax * ux;
+            const double low = -half, high = k ? half : len + half;
+            if (fabs(slope) < 1e-12) { if (base < low || base >= high) hi = lo; continue; }
+            double a = (low - base) / slope, b = (high - base) / slope;
+            if (a > b) { double t = a; a = b; b = t; }
+            if (a > lo) lo = a; if (b < hi) hi = b;
+        }
+        if (lo >= hi) continue;
+        int left = (int)ceil(lo - 0.5), right = (int)ceil(hi - 0.5);
+        for (int x = left; x < right; x++) {
+            p->hi[(size_t)y * W + x] = (uint8_t)col;
+            if (p->tag) p->tag[(size_t)y * W + x] = cur_stroke;
+            const unsigned a = (unsigned)((y / n) * 320 + x / n);
+            p->strokes[a >> 3] |= (uint8_t)(1u << (a & 7));
+            p->hud_strokes[a >> 3] |= (uint8_t)(1u << (a & 7));
+        }
+    }
+}
+
 void drawlist_fine_stroke(drawlist_page *p, int ax, int ay, int bx, int by, int width, int col)
 {
-    const int n = p->n, w = 320 * n, h = 200 * n;
-    if (ax > bx || (ax == bx && ay > by)) {
-        int t = ax; ax = bx; bx = t; t = ay; ay = by; by = t;
-    }
-    const int dx = abs(bx - ax), dy = abs(by - ay);
-    const int sx = bx < ax ? -1 : 1, sy = by < ay ? -1 : 1;
-    int x = ax, y = ay, error = (dx >= dy ? dx : dy) / 2;
-    const int steps = dx >= dy ? dx : dy;
-    for (int k = 0; k <= steps; k++) {
-        const int low = width / 2, high = width - 1 - low;
-        int l = x - low, r = x + high, top = y - low, bottom = y + high;
-        if (l < 0) l = 0;
-        if (r >= w) r = w - 1;
-        if (top < 0) top = 0;
-        if (bottom >= h) bottom = h - 1;
-        for (int yy = top; yy <= bottom; yy++)
-            for (int xx = l; xx <= r; xx++) {
-                p->hi[(size_t)yy * w + xx] = (uint8_t)col;
-                if (p->tag) p->tag[(size_t)yy * w + xx] = cur_stroke;
-                const unsigned a = (unsigned)((yy / n) * 320 + xx / n);
-                p->strokes[a >> 3] |= (uint8_t)(1u << (a & 7));
-                p->hud_strokes[a >> 3] |= (uint8_t)(1u << (a & 7));
-            }
-        if (dx >= dy) { error -= dy; if (error < 0) { y += sy; error += dx; } x += sx; }
-        else { error -= dx; if (error < 0) { x += sx; error += dy; } y += sy; }
-    }
+    drawlist_stroke(p, ax + 0.5, ay + 0.5, bx + 0.5, by + 0.5, width, col, 0, 0, 320*p->n, 200*p->n);
 }
 
 static void fine_line(drawlist_page *p, int x0, int y0, int x1, int y1, int width, int col)
 {
     /* The stroke runs between the centres of its end cells, so an axis-aligned line of the
-     * default width covers exactly the original's cells; a square nib with whole end caps
+     * default width covers exactly the original's cells; perpendicular width with square end caps
      * means strokes that share an end meet without a notch. */
     const int n = p->n, centre = n / 2;
     drawlist_fine_stroke(p, x0 * n + centre, y0 * n + centre, x1 * n + centre, y1 * n + centre, width, col);
