@@ -71,10 +71,16 @@ capture 2.45B-2.85B; `ident/draw.log` has identity records 2.75B-2.85B;
   after a call was a byte test in VGAME `BAA2` and twice in `73C8` (wrong SF;
   a zero low byte took the wrong branch). Fixed; CTest `matched_or_ax_word`
   retains the seed.
-- Gate: `build_recomp.py --overlap-jobs` (default 8) starts interpreter runs
-  during coverage from a private runner copy; not yet timed, because the gate
-  skipped coverage (unchanged translation). Time it with
-  `--coverage-record ''`. `tools/present_light_check.py --base REV` is the
+- Gate speedups (no verification weakened): `--overlap-jobs` (default 8) runs
+  the interpreter half during coverage from a private runner copy, and coverage
+  runs are reused as parity's recompiled half when coverage adds no code
+  (`--check-coverage-reuse` proved them equal). 1,706 s -> about 1,550 s; the
+  gate now ends with `career_promotion`'s interpreter chain.
+- Matched-code defect fixed: VGAME `13B9` (map projection) read `[950E]` before
+  its push of BP, which can wrap onto it (seed `0xbf2b70af59c7`); CTest
+  `matched_map_project_saved_bp_alias`. Proof gate 1,853 s: 115 CTests, 45 routes
+  IDENTICAL, 891 matched routines at three seeds, N=1 259,240 / 259,166, boot
+  N=4/9 368/366. Evidence `D:/f117-gate/present-v2/proof-gate`. `tools/present_light_check.py --base REV` is the
   owner-approved light check for presentation-only changes.
 - Verification of the current tree: fresh full gate 1,330 s (114 CTests,
   45 routes IDENTICAL / 44 fresh interpreter runs, both instruction profiles
