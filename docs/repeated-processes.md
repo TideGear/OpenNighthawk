@@ -1678,3 +1678,22 @@ separately, against recorded references: GOG's DOSBox 0.74
 (`tools/fidelity.py`, saved video and flight captures), DOSBox-X for some
 timing traces, and 86Box as the real-hardware-style reference once it runs
 the game. Those are recorded or run per question, not per commit.
+
+## Interpolation provenance audit (15 October 2026)
+
+The coarse diagnostic omitted regenerated span-polygon `U` records from its allowed kinds and counted a bad
+record without failing the command. The canonical owner window reported 48 violations over 51 intermediate
+frames while returning success. Allow the implemented `U` generator and make either an unknown kind or more
+novel records than the generator counted fatal. Keep this check separate from endpoint equality. A private
+midpoint-only unknown-kind mutation must fail while leaving the two endpoint checks intact; original and fixed
+validators are compared on the same input. No presentation runtime change accompanies this audit.
+
+A separate clip-motion prototype passed 112 selected CTests (110.11 s) and an analytic viewport-entry test,
+including fully clipped edges and exact coarse/N=1 replay. It was preserved privately after reviewing the owner's concern
+about a broader solution; it is not an integrated fix or completion evidence for scene rendering. The model-stream
+boundary review and next acceptance requirements are in presentation.md. Evidence:
+`D:/f117-gate/present-v2/coast-finish`.
+
+The repaired audit passes the canonical capture with zero provenance violations. Both private midpoint-only
+mutations (unknown record kind and a regeneration-count overrun) return success under the old validator and fail
+under the corrected one. All 111 selected CTests pass (36.56 s) and all 96 retained checks pass.

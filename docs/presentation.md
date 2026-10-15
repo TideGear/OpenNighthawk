@@ -1324,6 +1324,50 @@ fullscreen timing attempt supplies no acceptance result. A hidden Direct3D 11 38
 Occasional upload stalls reach about 100 ms. This is uncapped throughput, **not** steady-refresh acceptance;
 fullscreen pacing for this batch remains unchecked. Evidence: `D:/f117-gate/present-v2/hud2`.
 
+## Consolidate world geometry before more clipping exceptions (15 October 2026)
+
+The owner's concern about spot treatments changes the next priority: build one state-driven world-geometry path,
+rather than land another exception for coastline clipping. The visible-edge capture already contains raw camera
+coordinates (`G`); precision alone is not the missing input. It lacks a complete model before visibility filtering
+and persistent instance/face identities. Pairing clipped command lists can therefore hold or switch geometry when
+an edge enters the viewport, a face disappears or a model changes its submitted vertices. In the owner's retained
+window, the old diagnostic reports 135 held clipping changes and 27 unpaired polygons over 51 intermediate frames.
+A private clip-specific prototype passes an analytic moving-triangle regression and 112 selected tests, but it is
+set aside: it cannot by itself supply absent faces or stable model identity. No prototype runtime change is merged.
+
+**Capture boundary found in the matched original.** VGAME `120A:00CF` takes the model index, position and orientation,
+selects its original detail level, sets up parts (`0317`) and planes (`0561`), then submits vertices (`06B5`), edges
+(`0A33`) and faces (`0C76`). Visibility is already filtering the later inputs: `06B5` skips vertices whose `7A02`
+byte is zero, and `0CA8` skips hidden faces. Therefore adding precision only to `G`/`E` cannot recover the whole
+model. Start the observer at the model request/selected-data boundary, before those filters, and record the camera
+and original model inputs. Inspect upstream scene-cell/aircraft-slot identities; a reused projected vertex address
+or draw order is not a persistent object ID.
+
+Implementation order and acceptance:
+
+1. Record complete original model inputs and stable instance identity, scoped to a view/camera/viewport, including
+   orthographic map views. Cache original mesh data by its content; retain original part transforms, face/edge
+   topology, material/fill commands, detail selection and submission order. Observer reads must preserve guest
+   memory, clocks and bus timing in both profiles. Assets and captures stay private.
+2. Decode the original model stream once into presentation geometry. With the original integer state and visibility
+   rules, compare its submitted vertices, edges, faces, colours and styles against original calls. Cover positive,
+   zero and shared-world vertex counts, part switches, hidden faces and all material commands. Capture completeness
+   is a requirement: do not call a collection of visible edges a full scene.
+3. Interpolate camera and model poses by stable identity, transform shared vertices once, and project/clip geometry
+   at the displayed resolution. Filled terrain, roads, outlines and dots use the same transforms and clipping rules.
+   Keep complete geometry available across visibility changes. Original detail switches, text, sprites, explosions
+   and other discrete events retain their logic-frame policy; all original artwork remains.
+4. Verify camera-plane and viewport crossings, entering/disappearing faces, shared-edge tiling, moving objects,
+   reused storage, view changes and detail changes with analytic geometry and real captures. Preserve all N=1
+   routes and guest hashes; compare interpolation endpoints to each new fine frame and measure visible coastline
+   motion across skeleton switches and logic boundaries, including features missing from one old capture. Check
+   hidden 4K throughput. Physical refresh remains separate and needs approval before any visible/fullscreen run.
+
+Reuse the existing fine fill/style rules, stroke pen, map-copy handling and presentation worker. This is a broader
+presentation change, not a replacement of the game simulation or its artwork. Legacy capture replay remains the
+original-resolution oracle and a fallback for data not yet covered; it does not define completion of the new path.
+Evidence and preserved prototype: `D:/f117-gate/present-v2/coast-finish`.
+
 ## Open questions and risks
 
 - **Pairing for interpolation.** Done for 86-99% of painted polygons by batch alignment

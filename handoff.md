@@ -30,12 +30,25 @@ stalls. Fullscreen refresh pacing for this batch is unchecked. Ask before a visi
 work headless/hidden. Main's executable is rebuilt from this content for `4k60.bat`; the owner's untracked batch
 file stays untouched. Phase 2 counts are unchanged.
 
-**Next 4K work:** coastlines at topology/clipping transitions (boundary probes omit missing/changing edges),
-weapon/target symbology and widths by reliable drawing role. The full owner replay confirms refined map terrain;
-short windows with a previously cached map can show only its original bitmap. Never force `F117R_OBSERVE_PAGES=1`
-on a live presentation run: it reseeds every phase and prevents pairs. The original stopped WIP branches remain
-preserved; neither is a second integration candidate. The fresh gate refreshes the source-keyed interpreter cache
-for the next P2 checkpoints; refresh the kit libraries from main after its build.
+**Next 4K work (owner review, 15 October): a broader world-geometry fix.** Do not keep adding clipping exceptions.
+Raw camera positions for visible edges already exist; the missing inputs are complete model topology before
+visibility filtering and persistent instance/face identities. The original model request `120A:00CF` selects
+parts/planes, then `06B5` skips invisible vertices and `0CA8` skips hidden faces. Observe upstream model/scene
+state; decode original meshes/materials and share pose interpolation, projection and clipping across terrain,
+roads, outlines and dots. Preserve sprites/fonts and the original simulation. Detailed steps and acceptance:
+[docs/presentation.md](docs/presentation.md#consolidate-world-geometry-before-more-clipping-exceptions-15-october-2026).
+The clip-only prototype in `D:/f117-gate/present-v2/coast-finish/clip-prototype` passes its analytic regression and
+112 selected tests, but is set aside and not integrated. Its test can be adapted to the broader path.
+
+The full owner replay confirms refined map terrain; short windows with a previously cached map can show only
+its original bitmap. Never force `F117R_OBSERVE_PAGES=1` on live presentation: it reseeds every phase and prevents
+pairs. The stopped WIP branches remain preserved, not second integration candidates. The HUD2 gate refreshed the
+source-keyed interpreter cache; new observer work will require another gate before P2 checkpoints. Refresh the kit
+libraries from main after its build. Width tuning and weapon/target symbology remain open.
+
+**Validation audit:** coarse interpolation now accepts its implemented `U` generator and fails on unknown novel
+records or regeneration-count overruns. Both midpoint-only mutants fail the corrected checker and escaped the old
+one. All 111 selected tests and 96 retained checks pass. No presentation runtime changed in this audit.
 
 **Phase 2:** 889 census functions / 117,660 bytes (P2 67.37%, overall 86.67%). Today added
 24 routines in seven gated commits (proofs `D:/f117-gate/p2-*`; gates `p2-pair`, `p2-compose`,

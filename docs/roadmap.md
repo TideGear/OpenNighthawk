@@ -1329,6 +1329,13 @@ instruction profiles and three 789-address matched seeds (2,561,209,
   but the interrupted fullscreen run is not refresh acceptance. Keep tests off the owner's screen; ask before a
   visible/fullscreen run. Coastline topology transitions and width tuning remain open. Details:
   [presentation.md](presentation.md#the-remaining-hud-and-original-map-marker-movement-15-october-2026).
+  Next priority (owner review, 15 Oct): consolidate world geometry into a state-driven scene path before more
+  clipping exceptions. Raw visible-edge coordinates already exist; complete pre-visibility model topology and
+  persistent instance/face identity are missing. Observe original model requests before vertex/face filtering,
+  decode original mesh/material data, and share pose interpolation, projection and clipping across terrain, roads,
+  outlines and dots. Preserve original artwork, discrete detail/events and N=1 parity. The clip-specific prototype
+  is retained privately, not integrated. Steps and acceptance:
+  [presentation.md](presentation.md#consolidate-world-geometry-before-more-clipping-exceptions-15-october-2026).
   Open: the owner's motion review on a physical
   panel, and cargo/career flights and slower machines. See presentation.md.
 

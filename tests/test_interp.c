@@ -372,11 +372,13 @@ int main(int argc, char **argv)
             for (int i = 0; i < list.n; i++) {
                 if (set_has(&known, &list.rec[i])) continue;
                 novel++;
-                if (!strchr("RbQLDN", list.rec[i].kind)) kinds_ok = 0;
+                if (!strchr("RbQLDNU", list.rec[i].kind)) kinds_ok = 0;
             }
             res_add("records in the list", (uint64_t)list.n);
             res_add("records neither frame has", (uint64_t)novel);
-            res_add("provenance violations", (uint64_t)novel > st[IS_REGENERATED] || !kinds_ok);
+            const int bad_provenance = (uint64_t)novel > st[IS_REGENERATED] || !kinds_ok;
+            res_add("provenance violations", bad_provenance);
+            failed |= bad_provenance;
             stats_add(st);
             render(sb ? B : A, list.rec, list.n, z, y);
             int extra = 0;
