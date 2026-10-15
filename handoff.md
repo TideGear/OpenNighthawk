@@ -73,10 +73,15 @@ capture 2.45B-2.85B; `ident/draw.log` has identity records 2.75B-2.85B;
     plus a new check that the real machine's memory is byte-identical before
     and after each extra draw; nothing in the copy may reach files, sound or
     devices.
-  - Feasibility so far: the 3-D geometry phase is about 478k instructions a
-    step (median; p90 542k; 42% of a step) on the owner's flight, so roughly
-    5-6 ms per extra draw at ~86 MIPS, one core at 144 Hz, parallel across
-    copies.
+  - **Feasibility measured (15 Oct, branch `draw-rerun-probe`,
+    `F117_RERUN_PROBE=FILE`, worktree `D:/f117-wt/draw-rerun`; evidence
+    `D:/f117-gate/present-v2/rerun-probe/probe4.txt`):** 1,607 of 1,609 re-runs
+    reproduce the real draw exactly, the real machine never changes (final hash
+    `71bc32c7d96fe6b9` as without the probe), the halfway nudge lands 97.2% of
+    vertices at the midpoint, 6.2 ms (max 8.8) per extra draw with translated
+    code. Build the worktree with `-DF117R_GEN_DIR=...` or it interprets
+    (33 ms). Requirements and next steps: docs/presentation.md, "The current
+    plan for 60+ fps".
   - Reserve option: camera reprojection of one step's own draw list. The
     full own-renderer (`src/present/scene_mesh.c`, below) is no longer the
     main path.

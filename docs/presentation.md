@@ -90,12 +90,26 @@ this machine's instruction-level one.
 - **Safety proof required:** guest checkpoints/final hash unchanged on every route, plus a new check that the real
   machine's memory is byte-identical before and after each extra draw; nothing in the copy may reach files, sound or
   devices.
-- **Feasibility estimate** (not yet measured on a real copy): the 3-D geometry phase is about 478k instructions a step
-  (median; p90 542k; 42% of a step) on the owner's flight, so roughly 5-6 ms per extra draw at ~86 MIPS, about one
-  core at 144 Hz, parallel across copies.
-- **Status:** not yet implemented.
-- **Next:** confirm the camera words drive the draw and nothing else; measure a real extra draw on a copy (cost and
-  isolation); then prototype behind a switch and judge it with `tools/motion_check.py` (deformation included).
+- **Feasibility, measured (15 Oct 2026, experiment branch `draw-rerun-probe`, `F117_RERUN_PROBE=FILE`):** at each
+  2F9D entry the machine is copied; between run slices the copy runs 2F9D to its return. On the owner's flight
+  (1,609 logic frames): every re-run returns; 1,607 reproduce the real draw records exactly (two adjacent pre-flight
+  frames differ, probably an observer-buffering artefact, unconfirmed); the real machine's memory and state hash never
+  change, and the final hash equals a run without the probe (`71bc32c7d96fe6b9`). Nudging the inputs 2F9D reads (the
+  aircraft's 32-bit position `BA3C`/`C056`, attitude `2DEE`/`2DF0`/`2DF2`, altitude `2DF4`/`2DF6`; 2F9D copies them
+  into the camera words) halfway to the next frame puts 400,569 of 412,022 vertices (97.2%) within tolerance of the
+  two real frames' midpoint (1,207 frames with matching vertex lists). Cost per extra draw: 1.08M instructions (max
+  1.63M), **6.2 ms (max 8.8 ms) on one core** with translated code. Estimate from that: at a 57 ms step, 60 Hz needs
+  about 2.5 extra draws a step (~27% of a core), 144 Hz about 7.5 (~80%), so higher rates need several copies in
+  parallel, plus the existing refinement per picture.
+- **Requirements found:** a copy must redirect every back-pointer to its machine (`cpu.user` pointed at the real
+  machine at first, so the copy's port reads and writes reached the real devices), clear hooks, the log, the input
+  recorder and the OPL schedule, and disable coverage. The draw observer (`g_f117_observer`), the recompiled-code
+  runtime (`g_rt`) and the code-write bits are process globals, so copies must run on the machine's thread until
+  those are made per machine. Moving objects (slots) were not nudged yet.
+- **Status:** feasible; not yet implemented in the presentation.
+- **Next:** per-object comparison for the nudged draws; nudge object slots; confirm the two unequal frames; make the
+  observer/runtime per machine; then a switchable implementation with the smoothed clock, judged by
+  `tools/motion_check.py` (deformation included) and the owner.
 - **In reserve:** camera reprojection of one step's own draw list. No longer the main path: this project's own scene
   renderer (the unconnected `src/present/scene_mesh.c` draft;
   [Consolidate world geometry](#consolidate-world-geometry-before-more-clipping-exceptions-15-october-2026)).
