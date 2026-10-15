@@ -39,7 +39,8 @@ capture 2.45B-2.85B; `ident/draw.log` has identity records 2.75B-2.85B;
   it needs a third live step and its pairing; make it switchable (the owner
   has not set defaults).
 - **Road and coastline jitter are in the original** (owner, 15 Oct 14:40: the same jitter shows in the GOG
-  DOSBox release). Not our defect; smoothing it at N>1 is an optional enhancement, the owner's call.
+  DOSBox release). Not our defect. Owner's choice (15 Oct): smooth it at N>1 only (option 2), after the
+  60+ fps work; N=1 stays the original.
 - **Road jitter is NOT from interpolation** (owner, 15 Oct 14:30): it is still visible in sharp mode
   (`--present replay`, no in-between frames). Owner's sharp session frozen in
   `D:/f117-gate/present-v2/owner-sharp-20261015` (`session-20261015-142924`; headless replay N=9,
