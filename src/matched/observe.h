@@ -7,6 +7,7 @@
 #ifndef F117R_OBSERVE_H
 #define F117R_OBSERVE_H
 
+#include <stddef.h>
 #include <stdint.h>
 #include "machine.h"
 
@@ -77,6 +78,10 @@ typedef struct f117_observer {
      * model index, caller chain and the world-cell words that name the object (research for stable identity; the
      * words are raw and unproven). Off by default so that existing logs stay as they were. */
     int ident;
+    /* The view composition (VGAME 0000:2F9D) was entered: the machine as it stands there, before any of it runs, for a
+     * presentation that re-runs the original's own drawing on a copy (docs/presentation.md, "The current plan for
+     * 60+ fps"). It may read and copy the machine; it must not change it. NULL: not called. */
+    void (*compose)(void *user, machine_t *m);
 } f117_observer;
 
 extern const f117_observer *g_f117_observer;
@@ -112,6 +117,15 @@ void observe_panel_pass(machine_t *m);
  * map: the arrow's position words and sprite, as a record 'm' when the observer asks for the HUD state. */
 void observe_map_marker(machine_t *m);
 void observe_scene_model(machine_t *m); /* VGAME 120A:00CF at entry, before its prologue */
+void observe_frame_compose(machine_t *m); /* VGAME 0000:2F9D at entry (the matched body calls it: its placement shadows ours) */
+
+/* The observer's own pending state (a fill's rows awaiting their 'a' bytes, a line's or an undecoded entry's page
+ * bytes awaiting the next event): a copy of the machine run with another observer must start with none and must not
+ * disturb the real run's. Save it, clear it, run the copy, restore it. */
+size_t observe_pending_size(void);
+void observe_pending_save(void *dst);
+void observe_pending_restore(const void *src);
+void observe_pending_clear(void);
 
 /* Register the hooks on the original's own entry points (once). */
 void observe_register(void);

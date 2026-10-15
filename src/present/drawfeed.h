@@ -17,6 +17,7 @@
 #include "interp.h"
 #include "hires.h"
 #include "present.h"
+#include "rerun.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -31,6 +32,10 @@ typedef struct {
     int32_t *rec;                 /* each record: kind, n, the clock's low and high words, n values */
     size_t   len, cap;
     uint8_t  display[64000];      /* A000 at the close: what the replay must equal */
+    /* rerun (rerun.h): the machine at the view composition that draws this frame (entered just before its first
+     * phase, so at the end of the frame before) */
+    rerun_snap snap;
+    int      have_compose;
 } drawfeed_frame;
 
 typedef struct {
@@ -41,6 +46,9 @@ typedef struct {
     int            presented;     /* the frame being collected has presented */
     int            want_seed;     /* dump the pages at the next phase */
     uint64_t       closed, dropped;
+    int            rerun;         /* snapshot the machine at each frame's view composition */
+    rerun_snap     next_snap;     /* taken at a composition after the open frame presented: it draws the next frame */
+    int            have_next_snap;
 } drawfeed;
 
 /* Set up (the observer included; install it with observe_set(&f->obs)). */
@@ -50,6 +58,9 @@ void drawfeed_free(drawfeed *f);
 /* The oldest closed frame, or NULL; drawfeed_pop releases it. */
 const drawfeed_frame *drawfeed_oldest(const drawfeed *f);
 void drawfeed_pop(drawfeed *f);
+
+/* Keep a snapshot of the machine at each frame's first view composition (rerun.h). */
+void drawfeed_set_rerun(drawfeed *f);
 
 /* Have the next phase bring the pages again. */
 void drawfeed_reseed(drawfeed *f);
@@ -74,6 +85,8 @@ typedef struct {
     uint64_t       seq, end;
     int            ok;            /* exact, and no page dump inside */
     interp_pairing *pair;         /* this step paired with the one before it, or NULL */
+    rerun_snap     snap;          /* rerun: the machine at the view composition that draws the step */
+    int            have_compose;
     int            state;         /* DRAWLIVE_FREE, _STAGED (collected, not yet shown) or _PUBLISHED */
 } drawlive_step;
 
@@ -139,6 +152,12 @@ typedef struct {
     double         diag_t;
     uint64_t       diag_older, diag_newer;
     uint64_t       fine_flat, fine_agree, fine_restored;
+    /* rerun (rerun.h): in-between pictures drawn by the original on a copy of the machine */
+    int            rerun;
+    rerun_list     rlist;
+    interp_rec    *splice;
+    int            nsplice, csplice;
+    uint64_t       rerun_drawn, rerun_fell_back, rerun_t0_exact, rerun_t0_inexact, rerun_insn;
 } drawlive;
 
 void drawlive_init(drawlive *r);
@@ -147,6 +166,10 @@ void drawlive_init(drawlive *r);
  * their vertices, the rest scaled; presented in place of the 320x200 one. */
 void drawlive_set_scale(drawlive *r, int n);
 void drawlive_set_line_width(drawlive *r, int width);
+
+/* In-between pictures from the original's own drawing on a copy of the machine (rerun.h) instead of interpolated
+ * draw lists; needs interp and a feed with drawfeed_set_rerun. Renders must then run on the machine's thread. */
+void drawlive_set_rerun(drawlive *r);
 
 /* Replay the records available, including the open frame, and stage every
  * closed frame the feed holds, releasing it. Open work never replaces the

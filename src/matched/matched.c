@@ -38019,6 +38019,7 @@ shots_return:
 static int vgame_frame_compose(machine_t *m)
 {
     cpu_t *c = &m->cpu;
+    if (g_f117_observer) observe_frame_compose(m);                /* this placement shadows the observer's own */
     if (!room(c, 28)) return 0;
     /*2F9D*/ x86_enter(c, 0x0018, 0); /*2FA1*/ cpu_push16(c, c->r[R_SI]); /*2FA2*/ FC_SETFRAME(-2, 0x5B);
     /*2FA7*/ c->r[R_AX] = (uint16_t)(ds_get(c, 0xBA3C)); /*2FAA*/ c->r[R_DX] = (uint16_t)(ds_get(c, 0xBA3E)); /*2FAE*/ ds_put(c, 0xDEC4, c->r[R_AX]);

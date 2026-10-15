@@ -449,7 +449,7 @@ int main(void)
     /* No two of the real tables' entries share a place, except where the matched routine calls the
      * observer itself (vgame_horizon_bands, vgame_model_edge_spans and vgame_model_poly_finish): at one address only the
      * first that applies runs, and a merge once left two observer hooks idle this way. */
-    static const char *const deliberate[] = { "VGAME.EXE 0000:1450", "VGAME.EXE 130D:004A", "VGAME.EXE 130D:0116", "VGAME.EXE 120A:0B3B", "VGAME.EXE 0FB2:01E6", "VGAME.EXE 120A:00CF", NULL };
+    static const char *const deliberate[] = { "VGAME.EXE 0000:1450", "VGAME.EXE 0000:2F9D", "VGAME.EXE 130D:004A", "VGAME.EXE 130D:0116", "VGAME.EXE 120A:0B3B", "VGAME.EXE 0FB2:01E6", "VGAME.EXE 120A:00CF", NULL };
     observe_register();
     fixes_register();
     CHECK(recomp_override_duplicates(stdout, deliberate) == 0);

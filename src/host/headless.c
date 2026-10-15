@@ -260,7 +260,8 @@ static int shot_write_changed(const machine_t *m, const char *path)
  * read. They are equal, or the scan already shows the next frame (the replay
  * presents a frame at its close, the first phase after its present), or the
  * scan caught the original drawing on the display: the next frame decides. */
-static int g_replay;                       /* 1 replay, 2 interp */
+static int g_replay;                       /* 1 replay, 2 interp (with g_rerun: drawn by the original on a copy) */
+static int g_rerun;
 static int g_scale, g_age, g_line_width;    /* optional presentation settings */
 static drawfeed g_feed;
 static drawlive g_live;
@@ -575,11 +576,12 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--no-mouse")) no_mouse = 1;
         else if (!strcmp(a, "--frame-log") && v) { frame_log_path = v; i++; }
         else if (!strcmp(a, "--present") && v) {
-            if (strcmp(v, "replay") && strcmp(v, "scan") && strcmp(v, "interp")) {
-                fprintf(stderr, "--present takes scan, replay or interp\n");
+            if (strcmp(v, "replay") && strcmp(v, "scan") && strcmp(v, "interp") && strcmp(v, "rerun")) {
+                fprintf(stderr, "--present takes scan, replay, interp or rerun\n");
                 return 2;
             }
-            g_replay = !strcmp(v, "replay") ? 1 : !strcmp(v, "interp") ? 2 : 0;
+            g_rerun = !strcmp(v, "rerun");
+            g_replay = !strcmp(v, "replay") ? 1 : !strcmp(v, "interp") || g_rerun ? 2 : 0;
             i++;
         }
         else if (!strcmp(a, "--present-scale") && v) {
@@ -665,6 +667,7 @@ int main(int argc, char **argv)
         g_live.extrapolate = g_age;
         if (g_scale) drawlive_set_scale(&g_live, g_scale);
         drawlive_set_line_width(&g_live, g_line_width);
+        if (g_rerun) { drawfeed_set_rerun(&g_feed); drawlive_set_rerun(&g_live); }
         observe_set(&g_feed.obs);
         hooks.vsync = on_vsync_check;
     }
@@ -867,6 +870,13 @@ int main(int argc, char **argv)
         printf("[present] replay: %llu logic frames, %llu equal to the display at their close, %llu not, %llu before a seed; "
                "%llu dropped\n", (unsigned long long)g_live.frames, (unsigned long long)g_live.exact,
                (unsigned long long)g_live.inexact, (unsigned long long)g_live.unseeded, (unsigned long long)g_feed.dropped);
+        if (g_rerun)
+            printf("[present] rerun: %llu in-between pictures drawn by the original on a copy, %llu fell back to "
+                   "interpolation; at t = 0 the copy drew its frame exactly %llu times, not %llu; %.0f instructions a copy\n",
+                   (unsigned long long)g_live.rerun_drawn, (unsigned long long)g_live.rerun_fell_back,
+                   (unsigned long long)g_live.rerun_t0_exact, (unsigned long long)g_live.rerun_t0_inexact,
+                   g_live.rerun_drawn + g_live.rerun_t0_exact + g_live.rerun_t0_inexact
+                       ? (double)g_live.rerun_insn / (double)(g_live.rerun_drawn + g_live.rerun_t0_exact + g_live.rerun_t0_inexact) : 0.0);
         if (g_replay == 2)
             printf("[present] interp: %llu frame pairs, %llu exact at both ends (t = e and 1 - e, e 1e-6, or 1e-9 with a scale), %llu not; "
                    "%llu VGA frames, %llu presented, %llu of them in-between frames, which moved %llu polygons, "

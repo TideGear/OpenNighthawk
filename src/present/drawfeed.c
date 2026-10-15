@@ -3,6 +3,7 @@
 
 #include "diagtag.h"
 #include "tls.h"
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -40,6 +41,7 @@ static void begin(drawfeed *f, uint64_t icount)
     fr->phases = 0;
     fr->seeded = 0;
     fr->len = 0;
+    fr->have_compose = 0;
     f->presented = 0;
 }
 
@@ -60,6 +62,11 @@ static void on_phase(void *user, uint64_t icount)
         f->count++;
         begin(f, icount);
         fr = open_frame(f);
+        if (f->have_next_snap) {
+            rerun_snap_swap(&fr->snap, &f->next_snap);
+            fr->have_compose = 1;
+            f->have_next_snap = 0;
+        }
     }
     if (!fr->phases) fr->start = icount;
     fr->phases++;
@@ -81,6 +88,20 @@ static void on_prim(void *user, uint64_t icount, char kind, const int32_t *v, in
     if (kind == 'Z') { f->want_seed = 0; fr->seeded = 1; }
     if (kind == 'D' && n >= 1 && v[0] == 44) f->presented = 1;
     append(fr, kind, icount, v, n);
+}
+
+static void on_compose(void *user, machine_t *m)
+{
+    drawfeed *f = (drawfeed *)user;
+    if (!f->presented) return;                        /* only the composition that will draw the next frame */
+    rerun_snap_take(&f->next_snap, m);
+    f->have_next_snap = f->next_snap.valid;
+}
+
+void drawfeed_set_rerun(drawfeed *f)
+{
+    f->rerun = 1;
+    f->obs.compose = on_compose;
 }
 
 static int on_want_pages(void *user)
@@ -107,7 +128,8 @@ void drawfeed_init(drawfeed *f, const uint8_t *mem)
 
 void drawfeed_free(drawfeed *f)
 {
-    for (int k = 0; k < DRAWFEED_FRAMES; k++) free(f->frame[k].rec);
+    for (int k = 0; k < DRAWFEED_FRAMES; k++) { free(f->frame[k].rec); rerun_snap_free(&f->frame[k].snap); }
+    rerun_snap_free(&f->next_snap);
     memset(f, 0, sizeof *f);
 }
 
@@ -173,6 +195,11 @@ void drawlive_set_line_width(drawlive *r, int width)
     drawlist_set_line_width(&r->list, width);
 }
 
+void drawlive_set_rerun(drawlive *r)
+{
+    r->rerun = 1;
+}
+
 /* One record into the replay, through the sub-pixel builder first when there is one. */
 static void feed(drawlist *d, hires *h, char kind, const int32_t *v, int n)
 {
@@ -224,12 +251,12 @@ static void keep_step(drawlive_step *s, const drawfeed_frame *fr)
 
 /* Draw the in-between list on a copy of the replay at the skeleton's start
  * (with a scale, its fine picture goes to inter_hi). */
-static const uint8_t *draw_list(drawlive *r, const drawlive_step *skel)
+static const uint8_t *draw_recs(drawlive *r, const drawlive_step *skel, const interp_rec *rec, int nrec)
 {
     drawlist_copy(&r->scratch, &skel->start);
     hires *h = NULL;
     if (r->scale) { memcpy(r->scratch_hr, skel->start_hires, sizeof *r->scratch_hr); h = r->scratch_hr; }
-    for (int i = 0; i < r->ilist.n; i++) feed(&r->scratch, h, r->ilist.rec[i].kind, r->ilist.rec[i].v, r->ilist.rec[i].n);
+    for (int i = 0; i < nrec; i++) feed(&r->scratch, h, rec[i].kind, rec[i].v, rec[i].n);
     const drawlist_page *disp = drawlist_get(&r->scratch, 0xA000);
     if (!disp || disp->size < 64000) return NULL;
     if (r->scale) {
@@ -240,6 +267,48 @@ static const uint8_t *draw_list(drawlive *r, const drawlive_step *skel)
                                r->inter_tag && disp->tag ? r->inter_tag : NULL);
     }
     return disp->b;
+}
+
+static const uint8_t *draw_list(drawlive *r, const drawlive_step *skel)
+{
+    return draw_recs(r, skel, r->ilist.rec, r->ilist.n);
+}
+
+/* rerun: the original's own drawing at t between steps a and b on a copy of a's machine, spliced after a's records
+ * from before its composition, then replayed from a's start. NULL when it could not be made. */
+static const uint8_t *draw_rerun(drawlive *r, const drawlive_step *a, const drawlive_step *b, double t)
+{
+    if (!a->have_compose || !a->snap.valid) return NULL;
+    if (!rerun_draw(&a->snap, b && b->have_compose ? &b->snap : NULL, t, &r->rlist) || r->rlist.first < 0) return NULL;
+    r->rerun_insn += r->rlist.insn;
+    /* the step's own start state, then the copy's drawing from where the step begins (its first phase) */
+    return draw_recs(r, a, r->rlist.rec + r->rlist.first, r->rlist.nrec - r->rlist.first);
+}
+
+/* rerun: at t = 0 the copy, unchanged, must draw a's own picture exactly. */
+static void check_rerun(drawlive *r)
+{
+    const drawlive_step *a = &r->step[r->ia];
+    const uint8_t *p = draw_rerun(r, a, NULL, 0);
+    if (!p) return;
+    static int reported;
+    if (getenv("F117_RERUN_DEBUG") && reported < 12) {
+        /* the copy's records against the step's own from its composition */
+        int i = 0;
+        const int base = r->rlist.first;
+        for (; base + i < r->rlist.nrec && i < a->nrec; i++) {
+            const interp_rec *x = &r->rlist.rec[base + i], *y = &a->rec[i];
+            if (x->kind != y->kind || x->n != y->n || memcmp(x->v, y->v, (size_t)x->n * sizeof *x->v)) break;
+        }
+        fprintf(stderr, "[rerun] step %llu: copy %d records from its first phase, step %d; first difference at %d: copy '%c' n %d, step '%c' n %d\n",
+                (unsigned long long)a->seq, r->rlist.nrec - base, a->nrec, i,
+                base + i < r->rlist.nrec ? r->rlist.rec[base + i].kind : '-', base + i < r->rlist.nrec ? r->rlist.rec[base + i].n : -1,
+                i < a->nrec ? a->rec[i].kind : '-', i < a->nrec ? a->rec[i].n : -1);
+        reported++;
+    }
+    const size_t fine = (size_t)320 * r->scale * 200 * r->scale;
+    if (!memcmp(p, a->picture, 64000) && (!r->scale || !memcmp(r->inter_hi, a->picture_hi, fine))) r->rerun_t0_exact++;
+    else r->rerun_t0_inexact++;
 }
 
 /* A published pair a hair from each end must draw as the two frames it joins. */
@@ -340,6 +409,11 @@ static void close_frame(drawlive *r, drawfeed *f, const drawfeed_frame *fr)
     s->ok = 1;
     interp_pairing_free(s->pair);
     s->pair = NULL;
+    s->have_compose = 0;
+    if (r->rerun && fr->have_compose) {
+        rerun_snap_swap(&s->snap, &((drawfeed_frame *)fr)->snap);
+        s->have_compose = 1;
+    }
     if (r->interp) {
         keep_step(s, fr);
         s->ok = !fr->seeded && s->start.have_seg;
@@ -396,6 +470,7 @@ void drawlive_publish(drawlive *r)
         r->picture_seq = s->seq;
         r->picture_end = s->end;
         if (r->check && s->pair && r->ia >= 0) check_pair(r);
+        if (r->check && r->rerun && r->ia >= 0) check_rerun(r);
     }
     r->nqueue = 0;
 }
@@ -475,6 +550,17 @@ int drawlive_render(drawlive *r, const drawlive_plan *plan, present_frame *f)
             memcpy(f->vram, b->picture, 64000);
             if (r->scale) { r->shown_hi = b->picture_hi; r->shown_tag = b->picture_tag; }
             return 1;
+        }
+        if (r->rerun && !plan->extrapolate) {
+            const uint8_t *p = draw_rerun(r, a, b, plan->t);
+            if (p) {
+                memcpy(f->vram, p, 64000);
+                if (r->scale) { r->shown_hi = r->inter_hi; r->shown_tag = r->inter_tag; }
+                r->inbetweens++;
+                r->rerun_drawn++;
+                return 1;
+            }
+            r->rerun_fell_back++;
         }
         int sb;
         interp_inbetween_ex(a->parsed, b->parsed, b->pair, plan->t,

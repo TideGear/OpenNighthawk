@@ -429,6 +429,12 @@ void observe_map_marker(machine_t *m)
 }
 
 void observe_game_draw(machine_t *m) { hook_game_draw(m); }
+
+void observe_frame_compose(machine_t *m)
+{
+    const f117_observer *o = g_f117_observer;
+    if (o && o->compose) o->compose(o->user, m);
+}
 void observe_poly_edge(machine_t *m) { hook_poly_edge(m); }
 void observe_span_polygon(machine_t *m) { hook_span_polygon(m); }
 void observe_poly_fill(machine_t *m) { hook_poly_fill(m); }
@@ -549,6 +555,28 @@ static struct {
     int on, entry;
     uint8_t before[65536];
 } g_any_display;
+
+size_t observe_pending_size(void) { return sizeof g_pend + sizeof g_line + sizeof g_any + sizeof g_any_display; }
+
+void observe_pending_save(void *dst)
+{
+    uint8_t *p = (uint8_t *)dst;
+    memcpy(p, &g_pend, sizeof g_pend); p += sizeof g_pend;
+    memcpy(p, &g_line, sizeof g_line); p += sizeof g_line;
+    memcpy(p, &g_any, sizeof g_any); p += sizeof g_any;
+    memcpy(p, &g_any_display, sizeof g_any_display);
+}
+
+void observe_pending_restore(const void *src)
+{
+    const uint8_t *p = (const uint8_t *)src;
+    memcpy(&g_pend, p, sizeof g_pend); p += sizeof g_pend;
+    memcpy(&g_line, p, sizeof g_line); p += sizeof g_line;
+    memcpy(&g_any, p, sizeof g_any); p += sizeof g_any;
+    memcpy(&g_any_display, p, sizeof g_any_display);
+}
+
+void observe_pending_clear(void) { g_pend.n = 0; g_line.on = 0; g_any.on = 0; g_any_display.on = 0; }
 
 static void any_emit(machine_t *m, int entry, uint16_t page,
                      const uint8_t *before, int emit_empty)
@@ -1055,6 +1083,7 @@ static int hook_map_marker(machine_t *m)
     return 0;
 }
 static int hook_scene_model(machine_t *m) { observe_scene_model(m); return 0; }
+static int hook_frame_compose(machine_t *m) { observe_frame_compose(m); return 0; }
 
 static const recomp_override OBSERVERS[] = {
     { "observe", "VGAME.EXE", VGAME_47304, 0x120A, 0x00CF, hook_scene_model, "complete model input capture (observer)", 1 },
@@ -1066,6 +1095,7 @@ static const recomp_override OBSERVERS[] = {
     { "observe", "VGAME.EXE", VGAME_47304, 0x120A, 0x0970, hook_vertex_return, "behind-eye projection return (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x120A, 0x0B3B, hook_edge_prepared, "model edge preparation (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x0000, 0x1450, hook_game_draw, "per-frame draw routine (observer)", 1 },
+    { "observe", "VGAME.EXE", VGAME_47304, 0x0000, 0x2F9D, hook_frame_compose, "view composition entry (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x130D, 0x004A, hook_poly_edge, "filled polygon edge (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x130D, 0x0116, hook_poly_fill, "filled polygon fill (observer)", 1 },
     { "observe", "VGAME.EXE", VGAME_47304, 0x0FB2, 0x01E6, hook_span_polygon, "span polygon fill (observer)", 1 },
