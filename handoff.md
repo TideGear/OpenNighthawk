@@ -23,7 +23,26 @@ The new session `session-20261015-103956` is frozen privately in `D:/f117-gate/p
 engines. The complete draw capture covers 2,450,306,120..2,850,306,120 (`recomp/draw.log`, about 633 MB);
 `replay-verdict.json` is the guest-parity result, not a visual diagnosis. Use this as the next regression source.
 
-Unfinished native work is on **`present-scene-geometry`**, worktree **`D:/f117-wt/present-world-lines`**:
+Headless replays of that flight at N=4 interp (`--shots-vga`, 1,499 frames / 1,497 pairs exact) are in
+`owner-roads-20261015/diagnose` (2.70B, open sea) and `diagnose2` (2.80B-2.85B, night land, 176 shots). Presented
+pictures repeat 3-4 VGA shots, so per-shot line fits are not a jitter metric; use `F117_PRESENT_DIAG` or compare
+interpolated frames per logic step. `diagnose3` (N=9, `F117_PRESENT_DIAG`, 2.802B, 4 shots) shows roads are
+`DT_OUTLINE_FINE` strokes (yellow in the false colour) and buildings are model polygons; in that window the main
+road moved only 0.05 fine px across four in-between frames, so it does not reproduce the jitter. Cause of the
+road jitter is still undiagnosed, but `tools/interp_frame.py draw.log --pairing` over the whole window (340 logic
+frames; output `analysis/pairing.txt`) finds the jumps' source: 2,363 of 37,147 polygons (6.4%) have no partner in the
+next step and so switch at t = 0.5 (1,046 moved over 60 px, 709 have no polygon with their edges in the paired batch,
+324 lost to a nearer look-alike, 284 whose model split/merged), and 9 of 339 steps fall back to a held cut (frames 15,
+26 and a run at 323-328). This is pairing by vertex slot, not identity: the scene path's stable identities are the fix.
+Outline edges (roads) over the same window: 20,735 drawn, 491 (2.4%) in batches with no partner, and 98 of 339 steps
+(29%) have at least one such edge, so a road edge pops in or out at t = 0.5 on about one step in three (steps 41-44,
+56-57 and 75-80 lose 3-5 edges each). Cause of those edges (counting both frames): 651 of 1,081 sit in a batch whose same-size partner exists but moved over
+60 px (the pairing's `MAX_MOTION`), 377 lost to a nearer look-alike or order, and only 51 are a real model-size change.
+So about 95% are pairing misses, not original culling: identity pairing should keep them moving. Raising `MAX_MOTION` was tried in the Python model on this flight: 60/120/250/1000 px pair 93.5/94.7/95.6/96.2% of polygons
+and keep 20,244/20,409/20,499/20,595 of 20,735 outline edges in paired batches (cuts 9/8/7/5). A larger limit recovers
+under half of the misses and risks wrong pairs, so it is not the fix: connect the scene path's identities.
+
+Unfinished native work is committed/pushed as **`a2202f1`** on **`present-scene-geometry`**, worktree **`D:/f117-wt/present-world-lines`**:
 `src/present/scene_mesh.c/.h`, `tests/test_scene_mesh.c` and its CMake wiring. It decodes owned complete meshes,
 loads prepared poses, evaluates hidden/visible camera geometry and plane shading, walks painter order and conditional
 material bytecode. It is not connected to live rendering. Build and the synthetic `presentation_scene_mesh` CTest
