@@ -123,7 +123,11 @@ this machine's instruction-level one.
   frame k drew them; the HUD and bands already come from state at the in-between moment. The spliced list goes
   through the existing replay and refinement at any scale; the smoothed clock picks the moments; copies run on the
   machine thread between slices until the observer and runtime are per machine.
-- **Next:** render spliced in-between pictures headless for the owner to see; the `DF03`/`C2C8` group; make the observer/runtime per machine; then a switchable implementation with the smoothed clock, judged by
+- **First pictures (15 Oct):** `F117_RERUN_PICS=DIR:FIRST:COUNT` lets the nudged copy run on to the original's own
+  present and dumps that 320x200 picture beside the two real frames; on the owner's flight (frames 1450-1462,
+  `D:/f117-gate/present-v2/rerun-probe/pics/strip.png`, `view.png`) the horizon, pitch ladder and HUD sit between the
+  two real frames, drawn entirely by the original.
+- **Next:** the spliced list through the refinement for N > 1 pictures; the `DF03`/`C2C8` group; make the observer/runtime per machine; then a switchable implementation with the smoothed clock, judged by
   `tools/motion_check.py` (deformation included) and the owner.
 - **In reserve:** camera reprojection of one step's own draw list. No longer the main path: this project's own scene
   renderer (the unconnected `src/present/scene_mesh.c` draft;
