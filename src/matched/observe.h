@@ -64,6 +64,10 @@ typedef struct f117_observer {
      * describes it: the data segment's words the pass reads and the driver's tick tables), once per pass, just
      * before the pass's own library calls. Off by default so that existing logs stay as they were. */
     int hud;
+    /* Nonzero: the sky and ground band pass (VGAME 0000:1450) hands over the state it starts from as a record 'o'
+     * (band_state.h: the data segment's words the pass reads), once per call, after the phase's pages. Off by
+     * default so that existing logs stay as they were. */
+    int bands;
 } f117_observer;
 
 extern const f117_observer *g_f117_observer;

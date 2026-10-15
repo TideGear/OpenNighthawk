@@ -108,6 +108,21 @@ int main(void)
     CHECK(list.rec[2].n==10);
     gb[1]-=8;
     interp_list_free(&list);interp_pairing_free(pair);interp_frame_free(a);interp_frame_free(b);
+    /* A recorded post-present snapshot names the original dot position.
+     * Replaying it after a regenerated copy would paint a coarse ghost dot. */
+    point(ga,la,16384);point(gb,lb,278528);vb[0]=278528;vb[3]=4;
+    int32_t copy[5]={44,64000,SEG,0xA000,0};
+    int32_t da[6]={44,0xA000,1,52*320+159,7,0},db[6]={44,0xA000,1,52*320+163,7,0};
+    interp_rec ca[]={{'V',0,va,8},{'G',0,ga,18},{'L',0,la,10},{'D',0,copy,5},{'x',0,da,6}};
+    interp_rec cb[]={{'V',1,vb,8},{'G',1,gb,18},{'L',1,lb,10},{'D',1,copy,5},{'x',1,db,6}};
+    a=interp_parse(ca,5);b=interp_parse(cb,5);pair=interp_pair(a,b);
+    interp_inbetween_ex(a,b,pair,0.25,INTERP_VERTICES,&list,&sb,NULL);
+    seed(9);drawlist_seed(&d,'Y',0xA000,0,blank,sizeof blank);
+    for(int k=0;k<list.n;k++)feed(list.rec[k].kind,list.rec[k].v,list.rec[k].n);
+    const drawlist_page *display=drawlist_get(&d,0xA000);
+    CHECK(display->hi[472*2880+1435]==0);          /* original 159.5 centre: no ghost */
+    CHECK(display->hi[472*2880+1446]==7);          /* regenerated 160.75 centre */
+    interp_list_free(&list);interp_pairing_free(pair);interp_frame_free(a);interp_frame_free(b);
     /* Equal-length strokes have equal area regardless of direction, within
      * raster sampling. A square nib would make the diagonal ~40% thicker. */
     seed(4);drawlist_page *p=drawlist_page_of(&d,SEG);

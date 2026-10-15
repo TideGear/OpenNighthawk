@@ -143,6 +143,23 @@ int main(void)
     const int32_t present[] = {44,64000,SEG,0xA000};
     drawlist_record(&fine,'D',present,4);
     CHECK(!memcmp(drawlist_get(&fine,0xA000)->hi,f->hi,bytes));
+    /* Duplicate copy deltas preserve fine detail. A genuine byte change
+     * in a raw frame still takes the ordinary coarse fallback. */
+    start(&fine,4,1);line(&fine,10,10,20,15,0);
+    drawlist_seed(&fine,'Y',0xA000,0,blank,sizeof blank);
+    drawlist_record(&fine,'D',present,4);
+    const drawlist_page *delta_display=drawlist_get(&fine,0xA000);
+    memcpy(before,delta_display->hi,bytes);
+    const int entries[3]={42,44,46};
+    for(int k=0;k<3;k++) {
+        int32_t delta[6]={entries[k],0xA000,1,10*320+10,delta_display->b[10*320+10],0};
+        drawlist_record(&fine,'x',delta,6);
+        CHECK(!memcmp(before,delta_display->hi,bytes));
+    }
+    const int32_t changed_delta[6]={44,0xA000,1,10*320+10,0x77,0};
+    drawlist_record(&fine,'x',changed_delta,6);
+    CHECK(delta_display->b[10*320+10]==0x77);
+    for(int y=40;y<44;y++)for(int x=40;x<44;x++)CHECK(delta_display->hi[y*1280+x]==0x77);
     start(&fine,4,1); line(&fine,10,10,20,15,0);
     f = drawlist_get(&fine,SEG);
     drawlist_seed(&fine,'Y',0xA000,0,blank,sizeof blank);

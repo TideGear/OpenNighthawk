@@ -608,7 +608,8 @@ def main(path=None, page_factory=bytearray, hook=None, on_phase=None):
             for j in range(n):
                 a, now = v[3 + 3 * j], v[4 + 3 * j]
                 if a < len(page):
-                    page[a] = now
+                    if not (entry in (42, 44, 46) and page[a] == now):
+                        page[a] = now
                     if xseg == seg:
                         copied.add(a)
     t = totals

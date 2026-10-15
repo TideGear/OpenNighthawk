@@ -15,13 +15,24 @@ standing practice, not a session-by-session log. Earlier sessions' detail
 
 ## Current state (15 October)
 
-The world-line presentation follow-up is integrated in this commit. It passes 104 selected CTests,
-all 45 N=1 routes (259,240 frames / 259,166 pairs), live boot N=4/9 (368/366 each) and 96
-retained-window checks. Isolated 3840x2160 / 59.99 Hz / vsync / N=9 strike also passes:
-7,718 flight pictures, p99 16.7123 ms, worst 16.8153, none missed, 2,062 exact logic frames,
-final hash `bc8e3ae5a872405d` equal to the fresh headless reference. Evidence:
-`D:/f117-gate/present-v2/world-lines`. Main's build is rebuilt from this content for `4k60.bat`.
-Only the owner's untracked `4k60.bat` remains outside the task. Phase 2 counts are unchanged.
+The sky/ground band follow-up is now integrated, on top of world lines (`84f3edc`). It retains the original
+band colours/artwork, draws the high-detail bands from state, and leaves low detail and invalid/wrapped cases on
+their conservative path. EXACT matches 1,514,560 original quads over 47,516 passes. All 108 selected CTests,
+45 N=1 routes (259,240 frames / 259,166 pairs), boot N=4/9 (368/366 each), 96 retained checks and 10 band-live
+checks pass. The owner's flight keeps 69 checkpoints/final hash `31c259b992340414`, 2,101 logic frames / 2,099
+pairs exact. Its N=9 horizon RMS falls about 3.3 -> 0.4 fine pixels; coastline boundary RMS is unchanged.
+Isolated 4K/59.99 Hz/vsync/N=9 strike passes: p99 16.7314 ms, worst 17.0385, none missed, 2,062 exact logic
+frames, final `bc8e3ae5a872405d` equal to a fresh headless reference. Evidence:
+`D:/f117-gate/present-v2/band-finish`. Main's build is rebuilt from this content for `4k60.bat`.
+Only the owner's untracked `4k60.bat` remains outside the task; Phase 2 counts are unchanged.
+
+**Next 4K work:** investigate coastlines at topology/clipping transitions (boundary probes omit missing/changing
+edges), finish the remaining HUD/map-position work without replacing graphics, and tune widths by reliable drawing
+role. Copy snapshots in logs had painted coarse ghosts over regenerated pictures: interpolation now drops known
+42/44/46 diagnostics, while raw-frame different-byte fallbacks stay tested. The new moving-dot regression rejects
+the ghost. Wrapped-band and old-renderer regressions reject the earlier drafts; `F117_PRESENT_BANDS=old` works.
+Before the next P2 checkpoints, run a fresh full gate to refresh the source-keyed interpreter cache; observer and
+presentation sources changed. Refresh the kit libraries from main after its build.
 
 **Phase 2:** 889 census functions / 117,660 bytes (P2 67.37%, overall 86.67%). Today added
 24 routines in seven gated commits (proofs `D:/f117-gate/p2-*`; gates `p2-pair`, `p2-compose`,
@@ -58,18 +69,12 @@ clipper mis-draws accepted at N>1 (worst-frame fallback 84% -> 1.7%, no holes); 
 tapes, heading strip, pitch ladder, flight-path marker and bars drawn from game state
 (exact on 12,921 original HUD calls; ladder-label jitter rms 3.78 -> 0.01 fine px;
 `F117_PRESENT_HUD=old` switches it off). Evidence `D:/f117-gate/present-v2/{diag,fix3d,hud}`,
-analysis `present-v2/hud-analysis.md`. Two follow-ups were stopped mid-task and pushed as
-UNVERIFIED work-in-progress branches (do not merge without finishing and checking them):
-`wip-present-horizon` (worktree `D:/f117-wt/present-horizon`: sky/ground bands from state,
-VGAME `1450`; new `src/present/band_state.c`; outputs `present-v2/horizon`) and
-`wip-present-hud2` (worktree `D:/f117-wt/present-hud2`: the rest of the HUD, discrete items
-held to the logic frame, the map aircraft marker; outputs `present-v2/hud2`). Their briefs:
-the same deliverables and checks as the merged HUD work (exact model against captured logs,
-fine model at N>1, ctest, retained windows, `boot_to_flight` N=4/9, jitter numbers). Also
-left: weapon/target symbology, state rather than polygon-pairing interpolation, and the
-owner's verdict on the 4K picture. The owner was told that at N>1 bands are now drawn
-where the geometry puts them where the original's clipper mis-drew them (1x unchanged)
-and has not replied either way.
+analysis `present-v2/hud-analysis.md`. The horizon follow-up from `present-horizon` is now finished and integrated
+(above). The original WIP branch is preserved, not a second integration candidate. The remaining unverified WIP is
+`present-hud2` (worktree `D:/f117-wt/present-hud2`, outputs `present-v2/hud2`): the rest of the HUD, discrete items
+held to the logic frame, and smooth positioning of the original map aircraft sprite. Finish and check it before
+merging. Also left: weapon/target symbology, state rather than polygon-pairing interpolation, and the owner's
+physical-panel verdict. Preserve original sprites and artwork.
 
 **Owner's 4K priorities (14 October, 23:20; follow-up 15 October).** Dots/lights and roads are
 now drawn from exact camera geometry when their captured endpoints match it, and matching
@@ -79,8 +84,8 @@ pen serves HUD, outlines and strips; no per-class widths have been assigned yet.
 RMS: outlines 1.680 -> 0.0039 fine px, dots 2.756 -> 0.0140. The owner's recorded flight also
 passes 19 frames / 17 pairs; its negative model-axis RMS falls 0.877 -> 0.00049. **Coastline
 motion remains open**: sampled visible shoreline RMS improves little, and those probes omit
-boundaries that disappear or change topology. Next investigate those transitions and finish
-the unverified horizon-band branch. Keep the two WIP branches separate until checked.
+boundaries that disappear or change topology. Next investigate those transitions. The horizon bands are now integrated; the HUD/map-position WIP still needs
+review and verification.
 
 **Owner instruction (15 October): keep all original graphics.** The map aircraft arrow is a
 4x4 sprite selected from eight headings; keep it and the rest of the sprite/bitmap artwork.

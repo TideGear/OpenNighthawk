@@ -994,9 +994,9 @@ void drawlist_record_plain(drawlist *d, char kind, const int32_t *v, int n)
         for (int32_t j = 0; j < count && 4 + 3 * j < n; j++) {
             const uint32_t a = (uint32_t)v[3 + 3 * j];
             if (a < p->size) {
-                /* A blit to the display is also logged as a `C` that already carried the fine rows across;
+                /* A display blit/present has C/D records that already carried the fine rows across;
                  * its byte changes repeat the same bytes and must not flatten them again. */
-                if (!((entry == 42 || entry == 46) && p->b[a] == (uint8_t)v[4 + 3 * j])) wr(p, a, (uint8_t)v[4 + 3 * j]);
+                if (!((entry == 42 || entry == 44 || entry == 46) && p->b[a] == (uint8_t)v[4 + 3 * j])) wr(p, a, (uint8_t)v[4 + 3 * j]);
                 mark_copied(d, seg, a);
             }
         }

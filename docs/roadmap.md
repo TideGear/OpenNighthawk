@@ -1214,8 +1214,7 @@ instruction profiles and three 789-address matched seeds (2,561,209,
       geometry, and polygons whose footprint the original's clipper gets wrong
       are accepted at N>1 (worst-frame fallback 84% -> 1.7%, no holes); a per-pixel
       origin diagnostic (`F117_PRESENT_DIAG`). Left: the rest of the HUD
-      (outline, reticle, readouts, weapon symbology), the horizon bands from state
-      (their corners are the game's rounded integers), cockpit icons such as the
+      (outline, reticle, readouts, weapon symbology), cockpit icons such as the
       map marker, and state rather than polygon interpolation. Earlier: the owner chose to observe and replay
       the original's draw path. Stage 0 (the observer) and Stage 1 (draw lists
       that rebuild every phase of the windows tried bit for bit, 0 bytes copied)
@@ -1313,8 +1312,14 @@ instruction profiles and three 789-address matched seeds (2,561,209,
   snapshots and interpolates matching geometry. Full fixed-point perspective removes negative-modulo and rounded-depth
   jumps; one perpendicular-width pen also removes diagonal thickening. The retained strike window's N=9 interpolation
   RMS falls from 1.680 to 0.0039 fine pixels for outlines and 2.756 to 0.0140 for dot markers. Original sprites/artwork,
-  including the map arrow, stay. Coastline transitions, horizon bands and widths by drawing role remain open; sampled
+  including the map arrow, stay. Coastline transitions and widths by drawing role remain open; sampled
   shoreline boundary motion improves little. Details and verification: [presentation.md](presentation.md#projected-outlines-point-markers-and-one-stroke-pen-15-october-2026).
+  The sky/ground bands now also draw from their original state at N>1, keeping their original colours and graphics.
+  The exact model matches 1,514,560 captured quads; 108 selected CTests, all 45 N=1 routes, boot N=4/9 and 106 retained
+  checks pass. In the owner's window, N=9 horizon RMS falls about 3.3 -> 0.4 fine pixels; the sea/land boundary itself
+  is unchanged. Regenerated pictures also omit obsolete post-copy snapshots, which had put coarse ghosts over fine
+  edges; raw-frame changed-byte fallbacks remain tested. Low detail, incompatible geometry and coastline topology
+  transitions remain separate work. Details: [presentation.md](presentation.md#the-state-driven-sky-and-ground-bands-15-october-2026).
   Open: the owner's motion review on a physical
   panel, and cargo/career flights and slower machines. See presentation.md.
 

@@ -178,6 +178,33 @@ The isolated N=9 strike replay also passes 3840x2160 / 59.99 Hz / vsync:
 zero missed intervals and 17.5 ms guest drift. All 2,062 logic frames are exact;
 the final guest hash equals the fresh headless reference (`bc8e3ae5a872405d`).
 
+## Sky/ground band proof and capture diagnostics (15 October 2026)
+
+`test_band_state CORPUS_DIR` compares the original's `o/U/K/Q` records with the exact model: 47,516 passes,
+1,514,560 quads, no mismatches; 47,313 blend pairs, six discrete-state refusals, no failed endpoints or midpoints.
+`F117R_OBSERVE_BANDS=1` captures the state; `F117R_OBSERVE_KINDS=PoUKQ` keeps this corpus small. The published
+`test_band_rules` and `test_band_observer` are ROM-free: analytic geometry, original colours, low detail, short-arc
+interpolation, wrapped corners, the old-renderer switch, and no guest/clock/bus changes under default and 386 timing.
+Private mutants reject the old wrapped-band rule and obsolete copy snapshots; the off-switch regression also failed
+before its correction.
+
+Final source: 108 selected CTests (38.64 s); 45 N=1 routes at 16 workers (482.30 s, 259,240 frames / 259,166 pairs,
+all guest checkpoints/final states exact); boot N=4/9 (368/366 each); 96 retained checks and 10 band-live checks.
+The owner's recorded flight adds 69 unchanged guest checkpoints, final `31c259b992340414`, and 2,101 exact logic
+frames / 2,099 exact interpolation pairs. N=9 band-edge RMS in its retained window falls 3.65 -> 0.41 fine pixels;
+its canonical sea/land-boundary RMS is unchanged at 0.642 (147,640 shared second differences). Topology transitions
+and missing boundaries are excluded from that probe and remain open.
+
+Copy/fill `x` records are original-picture diagnostics: interpolated pictures now omit entries 42/44/46 after their
+actual drawing records regenerate the result. Raw-frame different-byte fallback remains covered by the map test.
+The Python and C raw replays both retain all 19 phases of the owner's window exactly. Corrected captures remove
+2,592 coarse-residue fine pixels at its sampled horizon. Avoid interpreting those old snapshot artefacts as live
+rendering errors. Proof, source mutants, captures and timing: `D:/f117-gate/present-v2/band-finish`.
+
+Isolated N=9 strike: 3840x2160 / 59.99 Hz / vsync, 7,718 flight pictures, p99 16.7314 ms, maximum 17.0385,
+no missed intervals; 2,062 exact logic frames, final hash `bc8e3ae5a872405d` equal to a fresh headless reference.
+Timing includes the state-driven bands; it is separate from the concurrent correctness runs above.
+
 ## GPU refresh and 4K presentation timing (13 October 2026)
 
 Capture an isolated application replay with a fresh save directory, using

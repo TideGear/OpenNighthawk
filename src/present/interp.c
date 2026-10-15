@@ -2,6 +2,7 @@
  * one for one, under the same names where there is one. */
 #include "interp.h"
 #include "hud_cover.h"
+#include "band_state.h"
 #include "nearclip.h"
 #include "hires.h"
 
@@ -75,7 +76,9 @@ typedef struct { int v0, nv, g0, ng, p0, np, l0, nl; } batch_t;
 
 typedef struct { int colour, mode, ord, ri; } span_t;
 typedef struct { int colour, page, origin, ri, covered; } hud_t;   /* covered: the state-driven HUD draws it (hud_cover.h) */
-typedef struct { int colour, ord, ri; } ut_t;       /* a polygon handed to the span rasteriser ('U') */
+typedef struct { int colour, ord, ri, covered; } ut_t;   /* a polygon handed to the span rasteriser ('U'); covered: a band
+                                                         * the state-driven sky and ground draws (band_state.h) */
+#define INTERP_BAND_RECS 8
 
 struct interp_frame {
     const interp_rec *rec;
@@ -96,6 +99,7 @@ struct interp_frame {
     hud_t *h; int nh, ch;
     int hud_rec, panel_rec;           /* the first HUD state record ('h') and panel state record ('p'), or -1 */
     ut_t *u; int nu, cu;
+    int band_rec[INTERP_BAND_RECS], nband;   /* the band pass state records ('o'), in order */
 };
 
 static edge_t parse_edge(const int32_t *v, int ri)
@@ -117,6 +121,8 @@ interp_frame *interp_parse(const interp_rec *rec, int n)
     static F117_TLS hud_exact_list hex;
     hud_cover cov;
     cov.active = 0;
+    static F117_TLS band_cover bcov;
+    bcov.active = 0;
     int cur = -1;                     /* the batch being collected */
     int pend0 = 0;                    /* edges since the last fill */
     int poly = -1, poly_nclip = 0;    /* the polygon between its fill entry and its painting */
@@ -134,6 +140,9 @@ interp_frame *interp_parse(const interp_rec *rec, int n)
         } else if (r->kind == 'p') {
             if (f->panel_rec < 0) f->panel_rec = i;
             pvalid = hud_panel_load(v, r->n, &pst);
+        } else if (r->kind == 'o') {
+            if (f->nband < INTERP_BAND_RECS) f->band_rec[f->nband++] = i;
+            band_cover_begin(&bcov, v, r->n, band_state_enabled());
         } else if (cov.active && (r->kind == 'K' || r->kind == 'N' || r->kind == 'T' || r->kind == 'H' || r->kind == 'S'))
             covered = hud_cover_step(&cov, r->kind, v, r->n) == HC_REPLACED;
         if (!covered && pvalid && (r->kind == 'N' || r->kind == 'S')) {
@@ -257,7 +266,11 @@ interp_frame *interp_parse(const interp_rec *rec, int n)
                 int ord = 0;
                 for (int k = 0; k < f->nu; k++) ord += f->u[k].colour == v[0];
                 GROW(f->u, f->nu, f->cu);
-                ut_t u = { v[0], ord, i };
+                const int band = band_cover_step(&bcov, v, r->n, NULL);
+                /* Keep every predicted band record on its exact coarse path.
+                 * Wrapped bands cannot use fine geometry, but moving their U
+                 * corners would break the cover before later valid bands. */
+                ut_t u = { v[0], ord, i, band == BC_REPLACED || (band == BC_KEPT && bcov.state_ok) };
                 f->u[f->nu++] = u;
             }
             break;
@@ -993,6 +1006,7 @@ int interp_inbetween_ex(const interp_frame *A, const interp_frame *B, const inte
      * colour and order, their corners moved; the fine refill follows the moved corners */
     for (int k = 0; k < S->nu; k++) {
         const ut_t *u = &S->u[k];
+        if ((flags & INTERP_BANDS) && u->covered) continue;   /* held: the band state moves instead */
         int j = -1;
         for (int q = 0; q < O->nu; q++)
             if (O->u[q].colour == u->colour && O->u[q].ord == u->ord) { j = O->u[q].ri; break; }
@@ -1050,6 +1064,21 @@ int interp_inbetween_ex(const interp_frame *A, const interp_frame *B, const inte
             rep[S->hud_rec] = made.n;
             repn[S->hud_rec] = 1;
             out_pooled(&made, 'h', rs->icount, blended, nb);
+        }
+    }
+    /* the band passes' states, by order: moved like the HUD's; without INTERP_BANDS the bands' corners move as
+     * integers above and the state records are dropped, so the fine builder takes the moved corners as they are */
+    for (int k = 0; k < S->nband; k++) {
+        const int ri = S->band_rec[k];
+        if (!(flags & INTERP_BANDS)) { if (fabs(w) >= 1e-6) rep[ri] = -2; continue; }
+        if (k >= O->nband) continue;
+        static F117_TLS int32_t bblended[BAND_REC_FINE];
+        const interp_rec *rs = &S->rec[ri], *ro = &O->rec[O->band_rec[k]];
+        const int nb = band_blend(rs->v, rs->n, ro->v, ro->n, w, bblended, BAND_REC_FINE);
+        if (nb) {
+            rep[ri] = made.n;
+            repn[ri] = 1;
+            out_pooled(&made, 'o', rs->icount, bblended, nb);
         }
     }
     if ((flags & INTERP_HUD) && S->panel_rec >= 0 && O->panel_rec >= 0) {
@@ -1231,6 +1260,14 @@ int interp_inbetween_ex(const interp_frame *A, const interp_frame *B, const inte
     /* the list: the skeleton with its replacements */
     for (int i = 0; i < S->nrec; i++) {
         if (rep[i] == -2) continue;
+        /* These post-call snapshots describe the original copy/fill, not
+         * the picture regenerated above. C/D and model rows already draw it.
+         * Keep unknown-entry deltas as the ordinary fallback. Exact endpoint
+         * lists return earlier and retain every original record. */
+        if (S->rec[i].kind == 'x' && S->rec[i].n >= 3) {
+            const int entry = S->rec[i].v[0];
+            if (entry == 42 || entry == 44 || entry == 46) continue;
+        }
         if (rep[i] == -1) { out_rec(out, S->rec[i].kind, S->rec[i].icount, S->rec[i].v, S->rec[i].n, -1); continue; }
         for (int k = 0; k < repn[i]; k++) {
             const int m = rep[i] + k;

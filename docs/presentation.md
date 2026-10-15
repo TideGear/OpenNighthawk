@@ -73,7 +73,7 @@ Each stage is judged by a check, as in the rest of the project.
 |---|---|---|---|
 | 0 | Observer: log every call to the drawing primitives per frame | the log is identical across runs; hashes unchanged with it on | done |
 | 1 | Draw lists: a frame's primitives as a list, replayed at 320x200 | the replay reproduces the original's work and display pages bit for bit, every phase of every route | done: all 45 complete routes and staged original-instruction fixtures for rare branches; C and Python fill rules agree |
-| 2 | Re-draw the list at N times the resolution | N = 1 is Stage 1 exactly; at N > 1 verified geometry has smooth boundaries and keeps the original viewport, fill styles and artwork | model polygons re-drawn from their sub-pixel vertices (`hires_subpixel.py`, and in C `hires.c`, live with `--present-scale N`); HUD lines/ticks redraw on the fine grid with scale-proportional or chosen thickness; original bitmap text/artwork stay scaled by the owner's choice; verified near-plane crossings now refined, incompatible geometry safely scaled; the HUD tapes, heading strip and pitch ladder are drawn from the game state, not from the original's rounded calls ([below](#the-state-driven-hud-14-october-2026)) |
+| 2 | Re-draw the list at N times the resolution | N = 1 is Stage 1 exactly; at N > 1 verified geometry has smooth boundaries and keeps the original viewport, fill styles and artwork | model polygons re-drawn from their sub-pixel vertices (`hires_subpixel.py`, and in C `hires.c`, live with `--present-scale N`); HUD lines/ticks redraw on the fine grid with scale-proportional or chosen thickness; original bitmap text/artwork stay scaled by the owner's choice; verified near-plane crossings now refined, incompatible geometry safely scaled; the HUD tapes, heading strip and pitch ladder are drawn from the game state, not from the original's rounded calls ([below](#the-state-driven-hud-14-october-2026)), and so are the sky and ground bands ([below](#the-state-driven-sky-and-ground-bands-15-october-2026)) |
 | 3 | Interpolate between consecutive draw lists to the host display rate | at a logic frame the output is exactly that frame; no in-between primitive absent from both neighbours | 320x200 study done (`interp_frame.py`, below): exact at both ends on seven windows, no violations; live path built at 320x200 (below): the feed, the presentation from the replay, and the interpolation in C, exact at both ends of 9,843 live frame pairs |
 | 4 | Pacing, vsync, a picture-age setting, HUD handling, a switch to the original picture | pictures at the display's refresh with t on the mission clock; the age setting measured | pacing at the host's vsync, age setting and Reimp-style HUD handling built (below); `--present scan` is the switch; real-display checks remain |
 
@@ -334,7 +334,9 @@ its edges, `N` library line, `K` colour, `Q` span fill, `C` blit, `T` text
 (with its font, so the replay needs no game data), `S` sprite, `W` scaled RLE
 sprite, `H` tick scale, `D` page copies (44 present, 48 copy, 79 dissolve),
 `M` colour replace (entry 41), `X` any other entry, `x` changed byte deltas, `J` the display palette (768 six-bit DAC
-components, logged beside `Y` with `F117R_OBSERVE_PAGES=1`).
+components, logged beside `Y` with `F117R_OBSERVE_PAGES=1`). The state records `h`, `p` (`F117R_OBSERVE_HUD=1`) and
+`o` (`F117R_OBSERVE_BANDS=1`) are described with the state-driven HUD and bands below. `F117R_OBSERVE_KINDS=LETTERS`
+keeps only those kinds in the log (a corpus of a few kinds over a whole flight).
 
 `tools/drawlist_frame.py LOG` rebuilds each phase from the previous page dump
 plus every captured primitive in order and compares it, byte for byte over
@@ -1229,7 +1231,7 @@ fine pixels for outlines (4,592 coordinate samples), and 2.756 to 0.0140 for dot
 fall from 0.496 to 0.0634 (76,753). A replay of the owner's flight also checks 19 exact frames / 17 exact pairs; its
 negative-axis RMS falls from 0.877 to 0.00049. These are coordinate measurements, not a claim that every visible coast
 or topology transition is resolved. Shoreline boundary measurements in the two sampled windows improve little;
-coastline motion, horizon-band motion and per-class width tuning remain open.
+coastline transitions and per-class width tuning remain open. Horizon-band motion is addressed below.
 
 Evidence: `D:/f117-gate/present-v2/world-lines`. Final route, live-scale and timing checks are recorded in
 [repeated-processes.md](repeated-processes.md).
@@ -1238,6 +1240,50 @@ The isolated N=9 strike replay also passes 3840x2160 / 59.99 Hz / vsync:
 7,718 flight pictures, median 16.6675 ms, p99 16.7123, maximum 16.8153,
 zero missed intervals and 17.5 ms guest drift. All 2,062 logic frames are exact;
 the final guest hash equals the fresh headless reference (`bc8e3ae5a872405d`).
+
+## The state-driven sky and ground bands (15 October 2026)
+
+The high-detail background now follows the same approach as the HUD: read the pass's original state, predict its
+integer calls exactly, then draw the same quadrilaterals with their rounding removed. It keeps the original 16 sky
+and 16 ground colours and the original graphics. N=1 stays on the captured calls. Low detail retains its original
+path; wrapped corners and unusable geometry retain a conservative fallback. `F117_PRESENT_BANDS=old` restores the
+previous band renderer.
+
+The observer emits `o` once at VGAME `1450`: height, pitch/roll sine-cosine pairs, the offsets, view centre, window,
+flags and shifts. The EXACT model follows the original signed arithmetic, rounded multiplies, divides and wraps.
+The FINE model uses the same formulas without rounding. Interpolation moves height linearly and angles along their
+shortest arc; view, detail, colours and other discrete settings stay on the selected logic frame. Band `U` records
+stay exact while the state moves. A band with a wrapped corner keeps that record too, so it cannot break recognition
+of later bands. The old-renderer switch retains its original integer-corner interpolation.
+
+**Evidence.** All 1,514,560 original quadrilaterals match over 47,516 captured passes, including 186 low-detail and
+1,609 flat passes. There are no mismatched or truncated passes. On 47,313 same-view pairs, endpoint and midpoint
+checks pass; six discrete-state changes decline. The recorded owner's flight keeps all 69 guest checkpoints and
+final hash `31c259b992340414`. Its live replay checks 2,101 logic frames / 2,099 pairs exactly; the retained window
+checks another 19 frames / 17 pairs. A ROM-free observer test checks identical records and no clock, VGA bus or guest
+memory changes under both timing profiles, including wrapped stack/view offsets.
+
+At N=9, in the owner's window, horizon-height second differences at columns 40/160 fall from RMS 3.27/3.29 to
+0.44/0.35 fine pixels; all band edges together fall from 3.65 to 0.41 (4,174 samples). Strike: all band edges 3.67
+to 1.26 (61,216); its visible horizon columns 160/280 fall from 3.56/3.65 to 1.00/1.34. These measurements include
+logic-step changes and camera acceleration, not just rounding within one pair. A canonical sea/land-boundary probe
+in the owner's window is unchanged (0.642 fine-pixel RMS, maximum 2): coastline topology transitions remain open.
+
+**Capture replay correction.** Post-call `x` snapshots for copies/fills are measurements of the original picture.
+Applying them to a regenerated picture painted coarse ghosts at the original edge positions. Interpolation now
+omits snapshots for known entries 42/44/46; the C/D and model records draw their result. Raw frames still apply genuine
+changed-byte fallbacks, and duplicate presents preserve carried fine pixels. The map fallback regression is retained.
+A synthetic moving-dot regression fails without this correction; the wrapped-band and old-switch regressions reject
+the earlier drafts too. At the sampled horizon, 2,592 fine pixels of coarse snapshot residue disappear. The old mode
+matches the prior renderer byte for byte when redundant diagnostic snapshots are removed from its input.
+
+Validation: 108 selected CTests, all 45 N=1 routes (259,240 frames / 259,166 pairs), live boot N=4/9 (368/366 each),
+96 retained-window checks and 10 additional band-live checks. Proof and the isolated timing result:
+`D:/f117-gate/present-v2/band-finish`; [repeated-processes.md](repeated-processes.md).
+
+The isolated strike replay passes Direct3D 11 at 3840x2160 / 59.99 Hz / vsync / N=9: 7,718 flight pictures,
+median 16.6679 ms, p99 16.7314, worst 17.0385, no missed intervals and 11.6 ms guest drift. All 2,062 logic frames
+are exact; final hash `bc8e3ae5a872405d` matches the fresh headless reference. Physical-panel motion remains an owner check.
 
 ## Open questions and risks
 

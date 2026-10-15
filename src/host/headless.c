@@ -152,28 +152,38 @@ static void on_load(void *user, machine_t *m, const char *name, const uint8_t *f
  * and timing profiles; it reads and changes nothing. */
 static FILE *g_obs_file;
 static uint64_t g_obs_from, g_obs_to;
+/* F117R_OBSERVE_KINDS=LETTERS keeps only the records of those kinds (a corpus of a few kinds over a long flight
+ * without gigabytes of the rest); unset, every record is written. */
+static int obs_kind(char kind)
+{
+    static int ready;
+    static const char *keep;
+    if (!ready) { ready = 1; keep = getenv("F117R_OBSERVE_KINDS"); if (keep && !*keep) keep = NULL; }
+    return !keep || strchr(keep, kind) != NULL;
+}
 static void obs_phase(void *u, uint64_t icount)
 {
     (void)u;
-    if (icount >= g_obs_from && icount < g_obs_to) fprintf(g_obs_file, "P %llu\n", (unsigned long long)icount);
+    if (icount >= g_obs_from && icount < g_obs_to && obs_kind('P')) fprintf(g_obs_file, "P %llu\n", (unsigned long long)icount);
 }
 static void obs_vertex(void *u, uint64_t icount, const int32_t xf[3], const int32_t px[2], int range,
                        uint16_t xf_at, uint16_t px_at)
 {
     (void)u;
-    if (icount >= g_obs_from && icount < g_obs_to)
+    if (icount >= g_obs_from && icount < g_obs_to && obs_kind('V'))
         fprintf(g_obs_file, "V %llu %d %d %d %d %d %d %04X %04X\n", (unsigned long long)icount, xf[0], xf[1], xf[2], px[0], px[1], range,
                 xf_at, px_at);
 }
 static void obs_prim(void *u, uint64_t icount, char kind, const int32_t *v, int n)
 {
     (void)u;
-    if (icount < g_obs_from || icount >= g_obs_to) return;
+    if (icount < g_obs_from || icount >= g_obs_to || !obs_kind(kind)) return;
     fprintf(g_obs_file, "%c %llu", kind, (unsigned long long)icount);
     for (int k = 0; k < n; k++) fprintf(g_obs_file, " %d", v[k]);
     fputc(10, g_obs_file);
 }
-/* F117R_OBSERVE_HUD=1 also logs the HUD pass's starting state ('h', hud_state.h); without it the log is as it always was. */
+/* F117R_OBSERVE_HUD=1 also logs the HUD pass's starting state ('h', hud_state.h), F117R_OBSERVE_BANDS=1 the sky and
+ * ground band pass's ('o', band_state.h); without them the log is as it always was. */
 static f117_observer g_obs = { 0, obs_phase, obs_vertex, obs_prim };
 
 static FILE *g_opl_log;
@@ -319,7 +329,7 @@ static void diag_holes(const uint8_t *coarse, const uint8_t *hi, const uint8_t *
                     const size_t at = (size_t)(cy * n + j) * w + (size_t)cx * n + i;
                     const uint8_t t = tag[at];
                     if (t == DT_SEED) { (*unwritten)++; if (mask) mask[at] = 1; continue; }
-                    if (t > DT_SPAN_SHADE) continue;
+                    if (t > DT_SPAN_SHADE && t != DT_BAND_STATE) continue;   /* the band state's bands are scene too */
                     int k = 0;
                     while (k < 9 && near[k] != hi[at]) k++;
                     if (k == 9) { (*stray)++; if (mask) mask[at] = 2; }
@@ -381,7 +391,8 @@ static void diag_write(const char *shot_path, int n, const uint8_t *coarse)
         for (int y = 0; y < h; y++) {
             for (int x = 0; x < w; x++) {
                 const uint8_t t = g_live.shown_tag[(size_t)y * w + x];
-                memcpy(row + 3 * x, g_diag_rgb[t < DT_COUNT ? t : DT_OTHER], 3);
+                static const uint8_t band_rgb[3] = { 0, 150, 200 };       /* the band state's (band_state.h) */
+                memcpy(row + 3 * x, t == DT_BAND_STATE ? band_rgb : g_diag_rgb[t < DT_COUNT ? t : DT_OTHER], 3);
             }
             fwrite(row, 3, (size_t)w, o);
         }
@@ -525,6 +536,7 @@ int main(int argc, char **argv)
             g_obs_file = fopen(path, "w"); g_obs_from = f; g_obs_to = t;
             if (!g_obs_file) { fprintf(stderr, "cannot write %s\n", path); return 2; }
             if (getenv("F117R_OBSERVE_HUD")) g_obs.hud = 1;
+            if (getenv("F117R_OBSERVE_BANDS")) g_obs.bands = 1;
             observe_set(&g_obs); i++;
         }
         else if (!strcmp(a, "--dump") && v) { dump_at = strtoul(v, NULL, 16); const char *c2 = strchr(v, ':'); dump_len = c2 ? strtoul(c2 + 1, NULL, 16) : 0x100; i++; }
@@ -824,6 +836,13 @@ int main(int argc, char **argv)
             printf("[present] state-driven HUD (the replay since its last seed): ");
             for (int k = 0; k < HUD_STATS; k++) printf("%s%s %llu", k ? ", " : "", hud_overlay_stat_name(k), (unsigned long long)hs[k]);
             printf("\n");
+            const band_cover *bc = &g_live.hr->band;
+            printf("[present] state-driven sky and ground (logic frames since the last seed): band passes %llu, at low detail %llu, "
+                   "bands drawn from the state %llu, kept the original's (wrapped) %llu, records that left the prediction %llu, "
+                   "band polygons painted %llu, left scaled %llu\n",
+                   (unsigned long long)bc->passes, (unsigned long long)bc->low_detail, (unsigned long long)bc->replaced,
+                   (unsigned long long)bc->kept, (unsigned long long)bc->mismatched, (unsigned long long)bc->painted,
+                   (unsigned long long)bc->scaled);
         }
         if (g_scale > 1 && getenv("F117_PRESENT_DIAG") && *getenv("F117_PRESENT_DIAG"))
             for (int k = 0; k < HS_COUNT; k++)
