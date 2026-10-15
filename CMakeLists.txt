@@ -48,7 +48,7 @@ target_link_libraries(f117machine PUBLIC f117cpu)
 
 # ---- Presentation shared by the window and the headless runner -----------
 add_library(f117present STATIC src/host/present.c src/host/keys.c src/host/inputlog.c
-  src/present/drawlist.c src/present/drawfeed.c src/present/interp.c src/present/hires.c src/present/nearclip.c src/present/hud_state.c)
+  src/present/drawlist.c src/present/drawfeed.c src/present/interp.c src/present/hires.c src/present/nearclip.c src/present/hud_state.c src/present/hud_cover.c src/present/hud_overlay.c)
 target_include_directories(f117present PUBLIC src/host src/present src/matched)
 target_link_libraries(f117present PUBLIC f117machine)
 
@@ -265,6 +265,14 @@ if(F117R_BUILD_TESTS)
   target_link_libraries(test_hud_state PRIVATE f117present)
   add_test(NAME presentation_hud_state COMMAND test_hud_state D:/f117-gate/present-v2/hud/corpus)
   set_tests_properties(presentation_hud_state PROPERTIES SKIP_RETURN_CODE 77)
+  # ... and through the live path (a strike window recorded with F117R_OBSERVE_PAGES=1 F117R_OBSERVE_HUD=1).
+  add_executable(test_hud_live tests/test_hud_live.c)
+  target_link_libraries(test_hud_live PRIVATE f117present f117recomp_none)
+  add_test(NAME presentation_hud_live COMMAND test_hud_live D:/f117-gate/present-v2/hud/w_strike853/w.log 4 --leak-check)
+  # How smoothly the HUD moves between logic frames, before and after (a measurement, not a pass/fail test).
+  add_executable(test_hud_jitter tests/test_hud_jitter.c)
+  target_link_libraries(test_hud_jitter PRIVATE f117present f117recomp_none)
+  set_tests_properties(presentation_hud_live PROPERTIES SKIP_RETURN_CODE 77)
   add_executable(test_present_strips tests/test_present_strips.c)
   target_link_libraries(test_present_strips PRIVATE f117present)
   add_test(NAME presentation_span_polygons COMMAND test_present_strips)

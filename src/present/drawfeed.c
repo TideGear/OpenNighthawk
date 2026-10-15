@@ -98,6 +98,7 @@ void drawfeed_init(drawfeed *f, const uint8_t *mem)
     f->obs.prim = on_prim;
     f->obs.sources = 1;
     f->obs.want_pages = on_want_pages;
+    f->obs.hud = 1;                                   /* the HUD pass's state, for the state-driven HUD */
     f->want_seed = 1;
     begin(f, 0);
 }
@@ -249,7 +250,7 @@ static void check_pair(drawlive *r)
      * can still move a camera-space coordinate by a rounding unit, which shows
      * on a finer grid: those ends are checked at 1e-9. */
     int sb, ok = 1;
-    const int flags = r->scale ? INTERP_VERTICES : 0;
+    const int flags = (r->scale ? INTERP_VERTICES : 0) | (r->scale > 1 ? INTERP_HUD : 0);
     const double eps = r->scale ? 1e-9 : 1e-6;
     const size_t fine = (size_t)320 * r->scale * 200 * r->scale;
     interp_inbetween_ex(a->parsed, b->parsed, b->pair, eps, flags, &r->ilist, &sb, NULL);
@@ -475,7 +476,7 @@ int drawlive_render(drawlive *r, const drawlive_plan *plan, present_frame *f)
         }
         int sb;
         interp_inbetween_ex(a->parsed, b->parsed, b->pair, plan->t,
-                            (r->scale ? INTERP_VERTICES : 0) | (plan->extrapolate ? INTERP_EXTRAPOLATE : 0),
+                            (r->scale ? INTERP_VERTICES : 0) | (r->scale > 1 ? INTERP_HUD : 0) | (plan->extrapolate ? INTERP_EXTRAPOLATE : 0),
                             &r->ilist, &sb, r->istats);
         const uint8_t *p = draw_list(r, sb ? b : a);
         if (p) {

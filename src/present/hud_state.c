@@ -186,10 +186,14 @@ static void x_h(hud_exact_list *l, int si, int bx, int dl, int cl)
     p->si = (int16_t)si; p->bx = (int16_t)bx; p->dl = (int16_t)dl; p->cl = (int16_t)cl;
 }
 
-static void x_s18(hud_exact_list *l, int strip, int keep)
+/* an entry-18 blit: its block is eight words in the data segment, the strip's at 28A4 (source segment, x, y,
+ * destination page, x, y, width, height; the source y was just chosen by the phase) and the reticle's at 28C2 */
+static void x_s18(hud_exact_list *l, const mem_t *m, int strip, int keep)
 {
     hud_prim *p = prim_new(l, HP_S18);
-    if (p) { p->strip = (uint8_t)strip; p->keep = (uint8_t)keep; }
+    if (!p) return;
+    p->strip = (uint8_t)strip; p->keep = (uint8_t)keep;
+    for (int k = 0; k < 8; k++) p->blk[k] = (uint16_t)MW(m, (strip ? 0x28A4 : 0x28C2) + 2 * k);
 }
 
 /* the rotated ladder, as the model builds it */
@@ -381,7 +385,7 @@ int hud_exact(const hud_state *st, hud_exact_list *out)
             if (s16(vv) >= s16(MW(d, 0x292B))) vv = (vv - MW(d, 0x292B)) & 0xFFFF;
             const int di = (vv << 1) & 0xFFFF;
             pW(d, 0x28A8, MW(d, di + (half == 1 ? 0x2AFE : 0x2AEA)));
-            x_s18(out, 1, 0);
+            x_s18(out, d, 1, 0);
         }
     }
     /* ---- the frame -------------------------------------------------------------------------------- */
@@ -400,7 +404,7 @@ int hud_exact(const hud_state *st, hud_exact_list *out)
         }
     }
     /* ---- readout bitmap (the reticle) and the G meter ---------------------------------------------- */
-    if (MB(d, 0x2956)) x_s18(out, 0, 1);
+    if (MB(d, 0x2956)) x_s18(out, d, 0, 1);
     pW(d, 0x2896, MW(d, 0x2948));
     x_t(out, d, 4, 0x288E, 0x9900, 1);
 

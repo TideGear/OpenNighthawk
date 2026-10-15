@@ -43,6 +43,11 @@
  * pixel of the N-times picture naming the path that produced it, src/present/diagtag.h),
  * BASE.diag.ppm (the same in false colour) and BASE.txt (what the picture was). At the end the
  * sub-pixel builder's counters are printed as [diag] lines.
+ *
+ * With --present-scale N > 1 the pitch ladder, tapes and heading strip are drawn from the HUD's state
+ * (src/present/hud_state.h); F117_PRESENT_HUD=old draws them from the original's rounded library calls as
+ * before, and a [present] line says what the state-driven HUD did. F117R_OBSERVE_HUD=1 adds the HUD state's
+ * record ('h') to an --observe log.
  */
 #include "machine.h"
 #include "keys.h"
@@ -53,6 +58,7 @@
 #include "inputlog.h"
 #include "drawfeed.h"
 #include "diagtag.h"
+#include "hud_overlay.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -167,7 +173,8 @@ static void obs_prim(void *u, uint64_t icount, char kind, const int32_t *v, int 
     for (int k = 0; k < n; k++) fprintf(g_obs_file, " %d", v[k]);
     fputc(10, g_obs_file);
 }
-static const f117_observer g_obs = { 0, obs_phase, obs_vertex, obs_prim };
+/* F117R_OBSERVE_HUD=1 also logs the HUD pass's starting state ('h', hud_state.h); without it the log is as it always was. */
+static f117_observer g_obs = { 0, obs_phase, obs_vertex, obs_prim };
 
 static FILE *g_opl_log;
 static FILE *g_midi_log;
@@ -461,6 +468,7 @@ int main(int argc, char **argv)
             else if (p2) *p2 = ':';                     /* no window: the whole run */
             g_obs_file = fopen(path, "w"); g_obs_from = f; g_obs_to = t;
             if (!g_obs_file) { fprintf(stderr, "cannot write %s\n", path); return 2; }
+            if (getenv("F117R_OBSERVE_HUD")) g_obs.hud = 1;
             observe_set(&g_obs); i++;
         }
         else if (!strcmp(a, "--dump") && v) { dump_at = strtoul(v, NULL, 16); const char *c2 = strchr(v, ':'); dump_len = c2 ? strtoul(c2 + 1, NULL, 16) : 0x100; i++; }
@@ -754,6 +762,13 @@ int main(int argc, char **argv)
                    g_scale, (unsigned long long)g_live.hr->stats[HS_POLYGONS], (unsigned long long)g_live.hr->stats[HS_REFILLED],
                    (unsigned long long)g_live.fine_flat, (unsigned long long)g_live.fine_agree, g_scale * g_scale,
                    (unsigned long long)g_live.fine_restored);
+        if (g_scale > 1) {
+            uint64_t hs[HUD_STATS];
+            hud_overlay_stats(&g_live.list, hs);
+            printf("[present] state-driven HUD (the replay since its last seed): ");
+            for (int k = 0; k < HUD_STATS; k++) printf("%s%s %llu", k ? ", " : "", hud_overlay_stat_name(k), (unsigned long long)hs[k]);
+            printf("\n");
+        }
         if (g_scale > 1 && getenv("F117_PRESENT_DIAG") && *getenv("F117_PRESENT_DIAG"))
             for (int k = 0; k < HS_COUNT; k++)
                 printf("[diag] %s: %llu\n", hires_stat_name(k), (unsigned long long)g_live.hr->stats[k]);

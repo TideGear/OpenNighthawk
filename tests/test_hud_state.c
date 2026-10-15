@@ -10,8 +10,9 @@
  * HUD mode 1 inverted and mode 2 in a dive.
  *
  * 1. EXACT: for each snapshot, the library calls hud_exact predicts (every K colour, N line after
- *    the original's clipper, H tick record, T text with its eleven block words, and the entry-18
- *    blits) must appear contiguously in the log's records of the pass, field for field.
+ *    the original's clipper and its origin, H tick record, T text with its eleven block words, and
+ *    the entry-18 blits with their blocks: positions and sizes) must appear contiguously in the
+ *    log's records of the pass, field for field.
  * 2. FINE agrees with EXACT where the analysis says it must (evaluated at the snapshot's own integer
  *    state): tape labels (y = floor of the float), tape tick lattices (the same rows and lengths), the
  *    heading labels (int - float in [0, 2)), ladder vertices and label anchors (within the analysis's
@@ -91,7 +92,10 @@ static int match(const hud_prim *p, const rec_t *r)
         for (int k = 0; k < p->ntext; k++) if (p->text[k] != r->v[13 + k]) return 0;
         return 1;
     case HP_H: return r->kind == 'H' && p->si == r->v[0] && p->bx == (int16_t)r->v[1] && p->dl == r->v[2] && p->cl == r->v[3];
-    case HP_S18: return r->kind == 'S';
+    case HP_S18:                                   /* the blit's block: source segment and x, y, page, destination x, y, size */
+        if (r->kind != 'S') return 0;
+        for (int k = 0; k < 8; k++) if (p->blk[k] != (uint16_t)r->v[2 + k]) return 0;
+        return 1;
     }
     return 0;
 }
@@ -103,7 +107,7 @@ static uint8_t *g_ds;
 static int s16(int v) { return (int16_t)(uint16_t)v; }
 static int W(int o) { return g_ds[o] | (g_ds[o + 1] << 8); }
 
-static long g_fail;
+static long g_fail, h_colour_ok, h_colour_bad;
 static long c_label_ok, c_label_bad, c_label_cull;
 static long c_tick_ok, c_tick_bad;
 static long c_head_ok, c_head_bad, c_head_cull;
@@ -319,6 +323,10 @@ int main(int argc, char **argv)
                 for (int i = 0; i < ex.n; i++) {
                     items++;
                     switch (ex.p[i].kind) { case HP_K: nk++; break; case HP_N: nn++; break; case HP_T: nt++; break; case HP_H: nh++; break; default: ns++; }
+                    /* the tick marks are drawn in the colour the last text left the library at: the tape text's */
+                    if (ex.p[i].kind == HP_H) {
+                        if (g_rec[idx[at + i]].v[4] == (W(0x284C + 4) & 0xFF)) h_colour_ok++; else h_colour_bad++;
+                    }
                 }
             } else {
                 wb++;
@@ -357,7 +365,8 @@ int main(int argc, char **argv)
     printf("FINE heading labels: %ld with int - float in [0, 2), %ld outside, %ld not drawn (int - float seen %d..%d)\n", c_head_ok, c_head_bad, c_head_cull, hx_lo, hx_hi);
     printf("FINE ladder: %ld passes with the rung numbering at a quantum boundary left out; %ld vertices, int - float x in [%d, %d], y in [%d, %d]; %ld label anchors, int - float x in [%d, %d], y in [%d, %d]; offset tables off the analytic form: %ld\n",
            c_rung_boundary, c_lad_n, ladx_lo, ladx_hi, lady_lo, lady_hi, c_anchor_n, anx_lo, anx_hi, any_lo, any_hi, c_off_bad);
-    g_fail += c_label_bad + c_tick_bad + c_head_bad + c_off_bad;
+    printf("tick scale colour equal to the tape text colour: %ld of %ld H records\n", h_colour_ok, h_colour_ok + h_colour_bad);
+    g_fail += c_label_bad + c_tick_bad + c_head_bad + c_off_bad + h_colour_bad;
     /* the analysis's measured windows for the ladder: vertices x in [-3, +5], y in [-3, +1] */
     if (ladx_lo < -3 || ladx_hi > 5 || lady_lo < -3 || lady_hi > 1) { printf("ladder vertex window exceeded\n"); g_fail++; }
     if (bad || g_fail) { printf("FAIL\n"); return 1; }

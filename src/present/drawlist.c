@@ -2,6 +2,7 @@
  * replays; tools/drawlist_frame.py and tools/drawlist_spans.py say more. */
 #include "drawlist.h"
 #include "diagtag.h"
+#include "hud_overlay.h"
 
 #include "tls.h"
 #include <stdlib.h>
@@ -48,7 +49,10 @@ void drawlist_free(drawlist *d)
     for (int k = 0; k < DRAWLIST_PAGES; k++) { free(d->page[k].hi);free(d->page[k].model);free(d->page[k].tag); }
     for (int k = 0; k < DRAWLIST_OVERLAYS; k++) overlay_free(&d->overlay[k]);
     const int n = d->n, line_width = d->line_width;
+    hud_font fonts[HUD_FONTS];
+    memcpy(fonts, d->hud.font, sizeof fonts);
     drawlist_init(d);
+    memcpy(d->hud.font, fonts, sizeof fonts);
     d->n = n;
     d->line_width = line_width;
 }
@@ -793,6 +797,12 @@ static int sprite_clip(const int32_t *blk, int32_t *dx, int32_t *dy, int32_t *w,
 }
 
 void drawlist_record(drawlist *d, char kind, const int32_t *v, int n)
+{
+    if (d->have_seg && hud_overlay_hook(d, kind, v, n)) return;
+    drawlist_record_plain(d, kind, v, n);
+}
+
+void drawlist_record_plain(drawlist *d, char kind, const int32_t *v, int n)
 {
     if (!d->have_seg) return;
     cur_tag = cur_stroke = DT_OTHER;                  /* the diagnostic's origin tags (diagtag.h) */

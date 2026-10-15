@@ -21,6 +21,8 @@
 #ifndef F117R_DRAWLIST_H
 #define F117R_DRAWLIST_H
 
+#include "hud_cover.h"
+
 #include <stdint.h>
 
 #define DRAWLIST_PAGES 4
@@ -70,6 +72,7 @@ typedef struct {
     uint64_t seam_restored;
     uint8_t  diag_b, diag_q;      /* diagnostic: the origin tag the coarse rows of the current polygon / span fill take */
     /* what had no rule or no data */
+    hud_ov   hud;                 /* the state-driven HUD: the pass being followed, the fonts, the counters (hud_overlay.h) */
     unsigned long long outline_no_rule, blits_no_source, copies_no_source, sprites_no_source, text_no_font,
                        recolour_no_rule;
 } drawlist;
@@ -106,6 +109,8 @@ void drawlist_phase(drawlist *d, uint16_t seg, uint16_t origin);
 
 /* One observer record: its kind and values (the log line without the clock). */
 void drawlist_record(drawlist *d, char kind, const int32_t *v, int n);
+/* The same without the state-driven HUD hook (hud_overlay.c runs the records it replaces through this). */
+void drawlist_record_plain(drawlist *d, char kind, const int32_t *v, int n);
 
 /* The replay of a page, or NULL when it holds none at seg. */
 const drawlist_page *drawlist_get(const drawlist *d, uint16_t seg);
