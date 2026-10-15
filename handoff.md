@@ -29,8 +29,12 @@ pictures repeat 3-4 VGA shots, so per-shot line fits are not a jitter metric; us
 interpolated frames per logic step. `diagnose3` (N=9, `F117_PRESENT_DIAG`, 2.802B, 4 shots) shows roads are
 `DT_OUTLINE_FINE` strokes (yellow in the false colour) and buildings are model polygons; in that window the main
 road moved only 0.05 fine px across four in-between frames, so it does not reproduce the jitter. Cause of the
-road jitter is still undiagnosed: next, a per-logic-step continuity scan over the whole `draw.log` window for
-outline edges whose endpoints appear/disappear or change clipping between steps (identity work).
+road jitter is still undiagnosed, but `tools/interp_frame.py draw.log --pairing` over the whole window (340 logic
+frames; output `analysis/pairing.txt`) finds the jumps' source: 2,363 of 37,147 polygons (6.4%) have no partner in the
+next step and so switch at t = 0.5 (1,046 moved over 60 px, 709 have no polygon with their edges in the paired batch,
+324 lost to a nearer look-alike, 284 whose model split/merged), and 9 of 339 steps fall back to a held cut (frames 15,
+26 and a run at 323-328). This is pairing by vertex slot, not identity: the scene path's stable identities are the fix.
+Outline edges (roads) are not yet counted separately; add that to the scan next.
 
 Unfinished native work is committed/pushed as **`a2202f1`** on **`present-scene-geometry`**, worktree **`D:/f117-wt/present-world-lines`**:
 `src/present/scene_mesh.c/.h`, `tests/test_scene_mesh.c` and its CMake wiring. It decodes owned complete meshes,
