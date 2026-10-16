@@ -55680,7 +55680,271 @@ program_end:                                                      /* 0x0B9D */
 #undef XB
 }
 
+/* END 04D2: draw the prepared mission route, one record per [54B8]. The
+ * byte argument suppresses the initial selector wait once it has answered.
+ * The pairs at 5440 select a 16-byte object at 56EA and either a normal
+ * route mark or a split mark. X/Y come from 54BA/5532. Normal marks use
+ * the live/dead flag and bit 3 to choose 7226, 720C or 5DA0 as their colour.
+ * Split marks draw four short pieces at x-1 and x+2, in 720C and 5DA0.
+ * 1992 draws each piece from one of the two templates (6DA2 and 6D8C),
+ * with four words removed by the caller. 2092 waits with argument 8;
+ * the far sound thunk receives 1Ch. All callees return without popping
+ * arguments. Keep CX live on the first normal draw, as the original does. */
+static int end_draw_mission_route(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+#define RB(n,at) do { SM4_NEED((n),(at));c->icount+=(n); } while(0)
+#define RRUN(call) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define RNEAR(at,to,ret) do { SM4_NEED(1,(at));RRUN(guest_call_pop(m,(to),(ret),0)); } while(0)
+#define RP(v) cpu_push16(c,(uint16_t)(v))
+#define RDROP() (c->r[R_SP]=(uint16_t)alu_op(c,0,c->r[R_SP],8,1))
+    if(!room(c,5))return 0;
+    RB(5,0x04D2);frame_open(c,12);bp_put(c,-10,0);goto next_record;
+normal_mark:
+    RB(3,0x04DF);c->r[R_BX]=bp_get(c,-4);
+    alu_op(c,7,ds_get(c,(uint16_t)(c->r[R_BX]+6)),0,1);
+    if(x86_cond(c,4))goto dead_colour;
+    RB(2,0x04E8);alu_logic(c,ds_get8(c,(uint16_t)(c->r[R_BX]+8))&8,0);
+    if(x86_cond(c,4))goto ordinary_colour;
+    RB(2,0x04EE);c->r[R_AX]=ds_get(c,0x7226);goto normal_draw;
+ordinary_colour:
+    RB(2,0x04F3);c->r[R_AX]=ds_get(c,0x720C);goto normal_draw;
+dead_colour:
+    RB(1,0x04F8);c->r[R_AX]=ds_get(c,0x5DA0);
+normal_draw:
+    RB(6,0x04FB);bp_put(c,-2,c->r[R_AX]);RP(c->r[R_AX]);RP(c->r[R_CX]);
+    RP(bp_get(c,-6));c->r[R_AX]=0x6DA2;RP(c->r[R_AX]);
+    RNEAR(0x0507,0x1992,0x050A);
+    RB(4,0x050A);RDROP();RP(bp_get(c,-2));RP(bp_get(c,-8));RP(bp_get(c,-6));
+second_template:
+    RB(2,0x0516);c->r[R_AX]=0x6D8C;RP(c->r[R_AX]);
+    RNEAR(0x051A,0x1992,0x051D);
+    RB(2,0x051D);RDROP();bp_put(c,-10,(uint16_t)alu_inc(c,bp_get(c,-10),1));
+next_record:
+    RB(3,0x0523);c->r[R_AX]=ds_get(c,0x54B8);alu_op(c,7,bp_get(c,-10),c->r[R_AX],1);
+    if(x86_cond(c,2))goto prepare_record;
+    RB(1,0x052B);goto done;
+prepare_record:
+    RB(2,0x052E);alu_op(c,7,bp_get8(c,4),0,0);if(x86_cond(c,5))goto load_record;
+    RB(2,0x0534);c->r[R_AX]=8;RP(c->r[R_AX]);
+    RNEAR(0x0538,0x2092,0x053B);
+    RB(4,0x053B);c->r[R_BX]=cpu_pop16(c);bp_put8(c,4,get_r8(c,R_AL));
+    c->r[R_AX]=0x1C;RP(c->r[R_AX]);
+    SM4_NEED(1,0x0543);RRUN(guest_call_far(m,0x0543,0x0548));
+    RB(1,0x0548);c->r[R_BX]=cpu_pop16(c);
+load_record:
+    RB(14,0x0549);c->r[R_BX]=bp_get(c,-10);
+    c->r[R_BX]=(uint16_t)x86_shift(c,4,c->r[R_BX],1,1);
+    set_r8(c,R_AL,ds_get8(c,(uint16_t)(c->r[R_BX]+0x5440)));
+    c->r[R_AX]=(uint16_t)(int16_t)(int8_t)get_r8(c,R_AL);set_r8(c,R_CL,4);
+    c->r[R_AX]=(uint16_t)x86_shift(c,4,c->r[R_AX],get_r8(c,R_CL),1);
+    c->r[R_AX]=(uint16_t)alu_op(c,0,c->r[R_AX],0x56EA,1);bp_put(c,-4,c->r[R_AX]);
+    c->r[R_AX]=ds_get(c,(uint16_t)(c->r[R_BX]+0x54BA));bp_put(c,-6,c->r[R_AX]);
+    c->r[R_CX]=ds_get(c,(uint16_t)(c->r[R_BX]+0x5532));bp_put(c,-8,c->r[R_CX]);
+    alu_op(c,7,ds_get8(c,(uint16_t)(c->r[R_BX]+0x5441)),0,0);
+    if(x86_cond(c,5))goto split_mark;
+    RB(1,0x0572);goto normal_mark;
+split_mark:
+    RB(10,0x0575);c->r[R_AX]=(uint16_t)alu_dec(c,c->r[R_AX],1);bp_put(c,-6,c->r[R_AX]);
+    c->r[R_DX]=c->r[R_AX];c->r[R_AX]=(uint16_t)alu_op(c,0,c->r[R_AX],3,1);bp_put(c,-12,c->r[R_AX]);
+    RP(ds_get(c,0x720C));RP(c->r[R_CX]);RP(c->r[R_DX]);c->r[R_AX]=0x6DA2;RP(c->r[R_AX]);
+    RNEAR(0x058B,0x1992,0x058E);
+    RB(6,0x058E);RDROP();RP(ds_get(c,0x5DA0));RP(bp_get(c,-8));RP(bp_get(c,-12));
+    c->r[R_AX]=0x6DA2;RP(c->r[R_AX]);
+    RNEAR(0x059F,0x1992,0x05A2);
+    RB(6,0x05A2);RDROP();RP(ds_get(c,0x720C));RP(bp_get(c,-8));RP(bp_get(c,-6));
+    c->r[R_AX]=0x6D8C;RP(c->r[R_AX]);
+    RNEAR(0x05B3,0x1992,0x05B6);
+    RB(5,0x05B6);RDROP();RP(ds_get(c,0x5DA0));RP(bp_get(c,-8));RP(bp_get(c,-12));goto second_template;
+done:
+    RB(3,0x05C6);frame_close_ret(c);return 1;
+#undef RB
+#undef RRUN
+#undef RNEAR
+#undef RP
+#undef RDROP
+}
+
+/* END 3D4F: prepare the debrief's graphics regions. Draw ribbon text 10C4
+ * with argument 2, reset the driver's region builder, then define seven
+ * rectangles on page 2. The returned handles go to 5DA0, 5DB6, 643E,
+ * 5B9C, 6D86, 720C and 7226, in that order. Finish the builder and hand
+ * the third handle to 1FE5. The near helpers have plain RETs; each far
+ * driver slot has a plain RETF, so all arguments stay for this caller. */
+static int end_prepare_graphics_regions(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+#define GB(n,at) do { SM4_NEED((n),(at));c->icount+=(n); } while(0)
+#define GRUN(call) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define GFAR(at) do { SM4_NEED(1,(at));GRUN(guest_call_far(m,(at),(uint16_t)((at)+5))); } while(0)
+#define GP(reg,v) do { c->r[(reg)]=(v);cpu_push16(c,c->r[(reg)]); } while(0)
+#define GPOP() (c->r[R_BX]=cpu_pop16(c))
+#define GSAVE(at) do { c->r[R_SP]=(uint16_t)alu_op(c,0,c->r[R_SP],10,1);ds_put(c,(at),c->r[R_AX]); } while(0)
+    if(!room(c,4))return 0;
+    GB(4,0x3D4F);GP(R_AX,2);GP(R_CX,0x10C4);
+    SM4_NEED(1,0x3D57);GRUN(guest_call_pop(m,0x100D,0x3D5A,0));
+    GB(2,0x3D5A);GPOP();GPOP();GFAR(0x3D5C);
+    GB(10,0x3D61);GP(R_AX,5);GP(R_CX,3);GP(R_DX,0xA1);GP(R_BX,0x138);GP(R_BX,2);
+    GFAR(0x3D75);
+    GB(12,0x3D7A);GSAVE(0x5DA0);GP(R_AX,0x14);GP(R_AX,0x56);GP(R_AX,0x68);GP(R_AX,0xEA);GP(R_AX,2);
+    GFAR(0x3D94);
+    GB(12,0x3D99);GSAVE(0x5DB6);GP(R_AX,0x10);GP(R_AX,0x0B);GP(R_AX,0xB8);GP(R_AX,0x135);GP(R_CX,2);
+    GFAR(0x3DB3);
+    GB(11,0x3DB8);GSAVE(0x643E);GP(R_AX,5);cpu_push16(c,c->r[R_AX]);GP(R_CX,0xA1);GP(R_DX,0x13B);GP(R_DX,2);
+    GFAR(0x3DCF);
+    GB(12,0x3DD4);GSAVE(0x5B9C);GP(R_AX,5);GP(R_CX,3);GP(R_DX,0x9C);GP(R_DX,0x13D);GP(R_DX,2);
+    GFAR(0x3DEE);
+    GB(12,0x3DF3);GSAVE(0x6D86);GP(R_AX,5);GP(R_CX,3);GP(R_DX,0xA1);GP(R_BX,0x132);GP(R_BX,2);
+    GFAR(0x3E0D);
+    GB(12,0x3E12);GSAVE(0x720C);GP(R_AX,5);GP(R_AX,3);GP(R_AX,0xA1);GP(R_AX,0x135);GP(R_AX,2);
+    GFAR(0x3E2C);
+    GB(2,0x3E31);GSAVE(0x7226);GFAR(0x3E37);
+    GB(1,0x3E3C);cpu_push16(c,ds_get(c,0x643E));
+    SM4_NEED(1,0x3E40);GRUN(guest_call_pop(m,0x1FE5,0x3E43,0));
+    GB(2,0x3E43);GPOP();near_ret(c);return 1;
+#undef GB
+#undef GRUN
+#undef GFAR
+#undef GP
+#undef GPOP
+#undef GSAVE
+}
+
+/* VGAME D8AF: configure the raster viewport from the block passed at BP+4.
+ * Its inclusive bounds are left/right at +12/+14 and top/bottom at +0E/+10.
+ * Derive width, height and half extents with the original signed shifts.
+ * A top edge of zero selects the cockpit-dependent vertical origin (100,
+ * 60 or 52). Ask the driver for stride, region handle and region selection.
+ * Publish bounds, projection centre, last pixel and the table word selected
+ * by the block's first word. Pick the two raster callbacks by cockpit mode,
+ * adding 20h to the second when the cockpit is enabled. The driver calls
+ * are cdecl far; their arguments are popped here. SI is saved by the frame. */
+static int vgame_configure_viewport(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+#define VB(n,at) do { SM4_NEED((n),(at));c->icount+=(n); } while(0)
+#define VRUN(call) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define VFAR(at) do { SM4_NEED(1,(at));VRUN(guest_call_far(m,(at),(uint16_t)((at)+5))); } while(0)
+#define VD(d) ds_get(c,(uint16_t)(c->r[R_BX]+(d)))
+    if(!room(c,26))return 0;
+    VB(26,0xD8AF);x86_enter(c,4,0);x86_push_reg(c,R_SI);ds_put(c,0x7D84,0xFFDC);
+    c->r[R_AX]=0x24;ds_put(c,0x7D86,c->r[R_AX]);ds_put(c,0x7D88,c->r[R_AX]);
+    c->r[R_BX]=bp_get(c,4);c->r[R_AX]=VD(0x14);
+    c->r[R_AX]=(uint16_t)alu_op(c,5,c->r[R_AX],VD(0x12),1);
+    c->r[R_AX]=(uint16_t)alu_inc(c,c->r[R_AX],1);bp_put(c,-4,c->r[R_AX]);
+    c->r[R_CX]=VD(0x10);c->r[R_CX]=(uint16_t)alu_op(c,5,c->r[R_CX],VD(0x0E),1);
+    c->r[R_CX]=(uint16_t)alu_inc(c,c->r[R_CX],1);bp_put(c,-2,c->r[R_CX]);
+    c->r[R_AX]=(uint16_t)alu_inc(c,c->r[R_AX],1);
+    c->r[R_AX]=(uint16_t)x86_shift(c,7,c->r[R_AX],1,1);
+    c->r[R_AX]=(uint16_t)alu_dec(c,c->r[R_AX],1);ds_put(c,0x0D1E,c->r[R_AX]);
+    c->r[R_AX]=c->r[R_CX];c->r[R_AX]=(uint16_t)alu_inc(c,c->r[R_AX],1);
+    c->r[R_AX]=(uint16_t)x86_shift(c,7,c->r[R_AX],1,1);
+    c->r[R_AX]=(uint16_t)alu_dec(c,c->r[R_AX],1);ds_put(c,0x0D20,c->r[R_AX]);
+    alu_op(c,7,VD(0x0E),0,1);if(x86_cond(c,5))goto driver_stride;
+    VB(2,0xD8F0);alu_op(c,7,ds_get(c,0x368C),0,1);if(x86_cond(c,4))goto full_height;
+    VB(5,0xD8F7);alu_op(c,7,ds_get8(c,0x294B),1,0);
+    c->r[R_AX]=(uint16_t)alu_op(c,3,c->r[R_AX],c->r[R_AX],1);
+    set_r8(c,R_AL,(uint8_t)alu_op(c,4,get_r8(c,R_AL),0xF8,0));
+    c->r[R_AX]=(uint16_t)alu_op(c,0,c->r[R_AX],0x3C,1);goto special_height;
+full_height:
+    VB(1,0xD905);c->r[R_AX]=0x64;
+special_height:
+    VB(1,0xD908);ds_put(c,0x0D20,c->r[R_AX]);
+driver_stride:
+    VB(4,0xD90B);c->r[R_AX]=bp_get(c,-4);c->r[R_AX]=(uint16_t)alu_dec(c,c->r[R_AX],1);
+    cpu_push16(c,c->r[R_AX]);c->r[R_SI]=c->r[R_AX];VFAR(0xD912);
+    VB(4,0xD917);c->r[R_BX]=cpu_pop16(c);c->r[R_BX]=bp_get(c,4);
+    cpu_push16(c,VD(0x0E));cpu_push16(c,VD(0x12));VFAR(0xD921);
+    VB(3,0xD926);c->r[R_BX]=cpu_pop16(c);c->r[R_BX]=cpu_pop16(c);cpu_push16(c,c->r[R_AX]);VFAR(0xD929);
+    VB(28,0xD92E);c->r[R_BX]=cpu_pop16(c);c->r[R_BX]=bp_get(c,4);
+    c->r[R_AX]=VD(0x12);ds_put(c,0x85FA,c->r[R_AX]);c->r[R_AX]=VD(0x0E);ds_put(c,0x85FC,c->r[R_AX]);
+    c->r[R_AX]=VD(0x14);ds_put(c,0x85FE,c->r[R_AX]);c->r[R_AX]=VD(0x10);ds_put(c,0x8600,c->r[R_AX]);
+    c->r[R_AX]=VD(0x12);c->r[R_AX]=(uint16_t)alu_op(c,0,c->r[R_AX],ds_get(c,0x0D1E),1);ds_put(c,0x8602,c->r[R_AX]);
+    c->r[R_AX]=VD(0x0E);c->r[R_AX]=(uint16_t)alu_op(c,0,c->r[R_AX],ds_get(c,0x0D20),1);ds_put(c,0x8604,c->r[R_AX]);
+    ds_put(c,0x2293,c->r[R_SI]);c->r[R_AX]=bp_get(c,-2);c->r[R_AX]=(uint16_t)alu_dec(c,c->r[R_AX],1);ds_put(c,0x2295,c->r[R_AX]);
+    c->r[R_BX]=VD(0);c->r[R_BX]=(uint16_t)x86_shift(c,4,c->r[R_BX],1,1);
+    c->r[R_AX]=ds_get(c,(uint16_t)(c->r[R_BX]-0x79EE));ds_put(c,0x861A,c->r[R_AX]);
+    ds_put(c,0xE56A,0x4906);ds_put(c,0xE570,0x4926);alu_op(c,7,ds_get8(c,0x294B),0,0);
+    if(x86_cond(c,4))goto cockpit_callback;
+    VB(2,0xD987);ds_put(c,0xE56A,0x4916);ds_put(c,0xE570,0x4936);
+cockpit_callback:
+    VB(2,0xD993);alu_op(c,7,ds_get(c,0x368C),0,1);if(x86_cond(c,4))goto done;
+    VB(1,0xD99A);ds_put(c,0xE570,(uint16_t)alu_op(c,0,ds_get(c,0xE570),0x20,1));
+done:
+    VB(3,0xD99F);c->r[R_SI]=cpu_pop16(c);x86_leave(c);near_ret(c);return 1;
+#undef VB
+#undef VRUN
+#undef VFAR
+#undef VD
+}
+
+/* VGAME D578: light or extinguish a cockpit element on the requested page.
+ * The 12-byte record at 4708 supplies the rectangle origin, size and palette
+ * group. Select the lit/off pair in the group's 16-byte colour table at
+ * 46A2, then ask the original driver to replace two colours in the rectangle.
+ * Group 4 has four colours. Store the selected state in the record's last
+ * word. Driver entry 41 is also a presentation observer: keep the real far
+ * calls so it sees each recolour. The caller removes all seven arguments;
+ * SI and DI hold the palette indices across the calls and are saved here. */
+static int vgame_set_cockpit_element(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+#define CB(n,at) do { SM4_NEED((n),(at));c->icount+=(n); } while(0)
+#define CFAR(at) do { SM4_NEED(1,(at));const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=guest_call_far(m,(at),(uint16_t)((at)+5)); \
+    m->run_until=until_;if(!returned_)return 1; } while(0)
+#define CP(v) cpu_push16(c,(uint16_t)(v))
+#define CARGS(off) do { CP(ds_get(c,(uint16_t)(c->r[R_DI]+(off)))); \
+    CP(ds_get(c,(uint16_t)(c->r[R_SI]+(off))));CP(bp_get(c,-14)); \
+    CP(bp_get(c,-12));CP(bp_get(c,-10));CP(bp_get(c,-8));CP(bp_get(c,4)); } while(0)
+#define CDROP() (c->r[R_SP]=(uint16_t)alu_op(c,0,c->r[R_SP],14,1))
+    if(!room(c,16))return 0;
+    CB(16,0xD578);x86_enter(c,16,0);x86_push_reg(c,R_DI);x86_push_reg(c,R_SI);
+    c->r[R_BX]=x86_imul3(c,bp_get(c,6),12);
+    c->r[R_AX]=ds_get(c,(uint16_t)(c->r[R_BX]+0x4708));bp_put(c,-8,c->r[R_AX]);
+    c->r[R_CX]=ds_get(c,(uint16_t)(c->r[R_BX]+0x470A));bp_put(c,-10,c->r[R_CX]);
+    c->r[R_AX]=(uint16_t)alu_op(c,0,c->r[R_AX],ds_get(c,(uint16_t)(c->r[R_BX]+0x470C)),1);bp_put(c,-12,c->r[R_AX]);
+    c->r[R_CX]=(uint16_t)alu_op(c,0,c->r[R_CX],ds_get(c,(uint16_t)(c->r[R_BX]+0x470E)),1);bp_put(c,-14,c->r[R_CX]);
+    c->r[R_AX]=ds_get(c,(uint16_t)(c->r[R_BX]+0x4710));bp_put(c,-16,c->r[R_AX]);
+    alu_op(c,7,bp_get(c,8),0,1);if(x86_cond(c,4))goto unlit;
+    CB(3,0xD5AB);bp_put(c,-6,0);c->r[R_AX]=1;goto palette_pair;
+unlit:
+    CB(2,0xD5B5);bp_put(c,-6,1);c->r[R_AX]=(uint16_t)alu_op(c,5,c->r[R_AX],c->r[R_AX],1);
+palette_pair:
+    CB(18,0xD5BC);bp_put(c,-4,c->r[R_AX]);bp_put(c,-2,c->r[R_AX]);c->r[R_BX]=bp_get(c,-16);
+    c->r[R_BX]=(uint16_t)x86_shift(c,4,c->r[R_BX],3,1);c->r[R_AX]=c->r[R_BX];
+    c->r[R_BX]=(uint16_t)alu_op(c,0,c->r[R_BX],bp_get(c,-4),1);
+    c->r[R_BX]=(uint16_t)x86_shift(c,4,c->r[R_BX],1,1);CP(ds_get(c,(uint16_t)(c->r[R_BX]+0x46A2)));
+    c->r[R_SI]=c->r[R_AX];c->r[R_SI]=(uint16_t)alu_op(c,0,c->r[R_SI],bp_get(c,-6),1);
+    c->r[R_SI]=(uint16_t)x86_shift(c,4,c->r[R_SI],1,1);CP(ds_get(c,(uint16_t)(c->r[R_SI]+0x46A2)));
+    CP(c->r[R_CX]);CP(bp_get(c,-12));CP(bp_get(c,-10));CP(bp_get(c,-8));CP(bp_get(c,4));c->r[R_DI]=c->r[R_BX];CFAR(0xD5ED);
+    CB(8,0xD5F2);CDROP();CARGS(0x46A6);CFAR(0xD60C);
+    CB(3,0xD611);CDROP();alu_op(c,7,bp_get(c,-16),4,1);if(x86_cond(c,5))goto save_state;
+    CB(7,0xD61A);CARGS(0x46AA);CFAR(0xD631);
+    CB(8,0xD636);CDROP();CARGS(0x46AE);CFAR(0xD650);
+    CB(1,0xD655);CDROP();
+save_state:
+    CB(7,0xD658);c->r[R_AX]=bp_get(c,-2);c->r[R_BX]=x86_imul3(c,bp_get(c,6),12);
+    ds_put(c,(uint16_t)(c->r[R_BX]+0x4712),c->r[R_AX]);c->r[R_SI]=cpu_pop16(c);c->r[R_DI]=cpu_pop16(c);x86_leave(c);near_ret(c);return 1;
+#undef CB
+#undef CFAR
+#undef CP
+#undef CARGS
+#undef CDROP
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD578, vgame_set_cockpit_element, "light or extinguish a cockpit element", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD8AF, vgame_configure_viewport, "configure the raster viewport and projection centre", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x3D4F, end_prepare_graphics_regions, "prepare seven graphics regions for the debrief", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x04D2, end_draw_mission_route, "draw the prepared debrief mission route", 1 },
     { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x0A9F, setup_load_overlay, "load an overlay file into a memory block of its own", 1 },
     { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x03FE, player_make_room_for_block, "Check the stream buffer has room for the next block, wrapping the tail to its start", 1 },
     { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x0BE2, player_unpack_lz91_block, "Unpack one LZ91 block from the file buffer to a linear address", 1 },

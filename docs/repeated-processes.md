@@ -308,6 +308,26 @@ about 149 s each. All five seeds, 53 mutations and both real routes were
 repeated for the revised body, then all 13 routines passed optimized seeds
 and the full gate. Evidence: `D:/f117-gate/p2-batch-b2-accept`.
 
+**Shared matched object (16 Oct).** Both runtime libraries used to compile
+`matched.c` separately with identical options. The `f117matched` object target
+now compiles it once and includes that object in both static archives; each
+archive remains self-contained. Normal /O2 settings and non-Windows PIC are
+preserved. Against both previous objects, all 9,372 non-debug sections have
+identical code, data, unwind tables, section characteristics and relocation
+targets (uninitialized BSS compared by size; linker-removed checksum records
+excluded). Evidence: `D:/f117-gate/p2-batch-c-accept/shared-object-verdict.json`.
+This removes one compiler invocation; a gate wall-time saving is not established.
+In one local build pair the two old compilations took 143.74 / 144.40 s
+concurrently, and the single shared compilation took 99.75 s (Ninja timings).
+
+**Independent checks (16 Oct).** Three private proofs ran concurrently in
+separate directories on CPU masks `0000FF`, `00FF00` and `FF0000`, at
+BelowNormal priority. Each retained five seeds, full instruction coverage,
+mutations and both real routes. Presentation N=1 over all routes and boot
+N=4/9 can also overlap using a frozen runner and separate output directories
+(16 + 2 workers within the existing 24-CPU affinity). Gate workers and the
+default eight interpreter overlap workers are unchanged.
+
 The private kit writes generated project files only when their bytes change
 (15 Oct). An unchanged harness and CMake file therefore keep their timestamps
 across mutations; the candidate source still changes and is rebuilt. A

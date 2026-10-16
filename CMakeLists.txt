@@ -54,13 +54,18 @@ target_link_libraries(f117present PUBLIC f117machine)
 
 # ---- The recomp runtime: generated code if there is any ------------------
 # Switchable fixes attach to the runtime as code overrides (src/fixes).
-add_library(f117recomp_none STATIC src/recomp/recomp.c src/recomp/recomp_empty.c src/fixes/fixes.c src/matched/matched.c src/matched/observe.c)
+# Both runtimes use the same matched bodies and compile settings. Compile
+# this large source once, then include its object in each runtime archive.
+add_library(f117matched OBJECT src/matched/matched.c)
+target_include_directories(f117matched PRIVATE src/fixes src/matched)
+target_link_libraries(f117matched PRIVATE f117machine)
+add_library(f117recomp_none STATIC src/recomp/recomp.c src/recomp/recomp_empty.c src/fixes/fixes.c src/matched/observe.c $<TARGET_OBJECTS:f117matched>)
 target_include_directories(f117recomp_none PUBLIC src/fixes src/matched)
 target_link_libraries(f117recomp_none PUBLIC f117machine)
 
 if(F117R_GEN_DIR)
   file(GLOB F117R_GEN_SOURCES CONFIGURE_DEPENDS "${F117R_GEN_DIR}/gen_*.c")
-  add_library(f117recomp STATIC src/recomp/recomp.c src/fixes/fixes.c src/matched/matched.c src/matched/observe.c ${F117R_GEN_SOURCES})
+  add_library(f117recomp STATIC src/recomp/recomp.c src/fixes/fixes.c src/matched/observe.c $<TARGET_OBJECTS:f117matched> ${F117R_GEN_SOURCES})
   target_include_directories(f117recomp PUBLIC src/fixes src/matched)
   target_link_libraries(f117recomp PUBLIC f117machine)
   if(MSVC)
@@ -188,7 +193,7 @@ if(F117R_BUILD_TESTS)
     target_link_libraries(f117machine_api PRIVATE f117recomp_none)
   endif()
   if(NOT WIN32)
-    set_target_properties(f117cpu f117machine f117present f117recomp_none
+    set_target_properties(f117cpu f117machine f117present f117matched f117recomp_none
       PROPERTIES POSITION_INDEPENDENT_CODE ON)
     if(F117R_GEN_DIR)
       set_target_properties(f117recomp PROPERTIES POSITION_INDEPENDENT_CODE ON)
@@ -568,6 +573,14 @@ if(F117R_BUILD_TESTS)
       --only PLAYER.EXE:3FE)
     add_test(NAME matched_setup_load_overlay COMMAND func_lockstep --states 5000
       --only SETUP.EXE:A9F)
+    add_test(NAME matched_end_draw_mission_route COMMAND func_lockstep --states 5000
+      --only END.EXE:4D2)
+    add_test(NAME matched_end_prepare_graphics_regions COMMAND func_lockstep --states 5000
+      --only END.EXE:3D4F)
+    add_test(NAME matched_vgame_configure_viewport COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:D8AF)
+    add_test(NAME matched_vgame_set_cockpit_element COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:D578)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000
