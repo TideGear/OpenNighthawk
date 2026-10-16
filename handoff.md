@@ -13,8 +13,8 @@ session log. Earlier detail is in `git log -p handoff.md`.
 
 ## Current state (16 October)
 
-Scoreboard: P1 100.00%, P2 69.55%, P3 96.33%, All 89.78% (P4 is no longer scored)
-(`py tools/progress.py --title`). Phase 2: 898 census functions / 121,765 bytes.
+Scoreboard: P1 100.00%, P2 70.09%, P3 96.33%, All 89.94% (P4 is no longer scored)
+(`py tools/progress.py --title`). Phase 2: 901 census functions / 122,786 bytes.
 
 ### Presentation: latest (15 October, evening)
 
@@ -42,8 +42,7 @@ times them (`F117_PRESENT_CLOCK=raw` for the old clock; opt-in knobs `F117_PRESE
   "at least for now" (22:32): Stage 3 raised from 0.15 to 0.9, P3 96.33%.
 - **Still open (Stage 3's last 0.1):** clock skips against picture age; per-machine
   observer/runtime/fix state for parallel copies above about 120 Hz (one copy costs about 6 ms); the small
-  `DF03`/`C2C8` vertex group (`rerun-accept/object-follow-up.txt` is a lead); `thin_strip_stroke` in `hires.c`
-  ignores `present-line-width`; slower machines.
+  `DF03`/`C2C8` vertex group (`rerun-accept/object-follow-up.txt` is a lead); slower machines.
 - **Owner decisions (15 Oct):** stop improving primitive pairing (identity pairing is opt-in,
   `F117_PRESENT_IDENT=1`: it halved unpaired shapes but deformed the extra pairs); road and coastline jitter are the
   original's (also in GOG DOSBox and in sharp `replay` mode) and are **not** smoothed at any scale (21:23); the
@@ -101,26 +100,29 @@ times them (`F117_PRESENT_CLOCK=raw` for the old clock; opt-in knobs `F117_PRESE
 
 ### Phase 2
 
-- Latest batch: DSWAP `0010` (`dswap_load_from_drives`, 197 instructions),
-  `117E` (`dswap_crt_setargv`, 204) and `1D66` (`dswap_open_file`, 163) add
-  3 census functions / 1,338 bytes. Root verified five seeds each, full
-  instruction coverage, all 177 mutations, exact 26/66 route checkpoints and
-  positive 1/4 calls. The loader exposed lost report attribution when a nested
-  call replaces its module: `recomp.c` now keeps the registered override index
-  before calling the body (`code_overrides` regression fails both counter
-  assertions on the old runtime). Full gate 1,956 s: 125 CTests, 45 identical
-  routes, both instruction profiles, 900 routines at three seeds,
-  reachability and event limits clean. N=1: 517.89 s, 259,240 exact frames / 259,166 pairs and every guest hash. Evidence
-  `D:/f117-gate/p2-dswap-accept`; proofs `p2-dswap-{0010,117e,1d66}`.
-- Next, fixture-proven and waiting only for route proofs (`kit.py checkpoints`
-  after the kit libraries are refreshed from this batch's main build), then
-  `verdict`, review and one gate: VGAME `0FB2:0330` (`p2-vgame-fe50`, line
-  clipper, 60/60 mutations; its NOTES propose two scoped `func_lockstep.c`
-  changes, an IRET stop-limit restore and a stronger escape guard, that need
-  review before integration), PLAYER `0000:005C` (`p2-player-005c`,
-  `player_prepare_playback`, 49/49) and VGAME `0000:E586` (`p2-vgame-e586`,
-  `vgame_load_file_buffer`, 48/48). Ranked remaining entries:
-  `D:/f117-gate/dswap-next-reached.json`.
+- Latest batches (16 Oct): DSWAP `0010`/`117E`/`1D66` (3 functions / 1,338 bytes; also a runtime fix: the
+  override dispatcher keeps its registered index across a nested module replacement; evidence
+  `D:/f117-gate/p2-dswap-accept`), then VGAME `0FB2:0330` (`vgame_clip_raster_line`), PLAYER `005C`
+  (`player_prepare_playback`) and VGAME `E586` (`vgame_load_file_buffer`): 3 functions / 1,021 bytes, with two
+  scoped `func_lockstep.c` changes for the clipper (IRET keeps the fixed stop limit; any return to the caller
+  inside a nested run is an escape). Its first gate failed step 7c: VGAME `0D14`'s fixture reached its
+  "none found" exit only by chance (189/190 at the commit seed, reproduced on master); one state in sixteen
+  now empties every cell list (190/190 at 22 seeds). Second gate 1,371 s (coverage provably empty and
+  skipped): 128 CTests, 45 identical routes, 903 routines at three seeds, limits clean. N=1: 708.44 s, 259,240 exact frames / 259,166 pairs; boot N=4/9 368/366 each.
+  Evidence `D:/f117-gate/p2-batch-fe50-accept`.
+- **Next batch, privately proven, route-proven and audited** (`D:/f117-gate/audit_proofs.py`; results in
+  `p2-batch-b2-accept/private-audit.json` and `p2-batch-b2-accept-tail/`): START `0448`, `3F33`, `1308`,
+  `30A0`; VGAME `0B05`, `120A:0CE9`, `8462`, `03CE`; END `02A4`, `1607`; PLAYER `0BE2`, `03FE`; SETUP
+  `0A9F`. Each: five seeds, every mutation caught, 66 full_cycle and 26 ibm_boot checkpoints exact, positive
+  calls. To integrate: `kit.py integrate` each, plus hand-applied harness changes from `120A:0CE9` (a
+  CODE_BELOW row and the `g_below` coverage shift, like `130D:033F`) and `0A9F` (a PROGRAM_ENDS table so an
+  error arm stopped at its INT 21h/4Ch counts as completed); both are in those directories'
+  `tests-base.c` against `tests-base.orig.c`. Several config lengths are the full envelope through the RET
+  (census credit is measured from the TSV, not from these). `0B05`, `3F33`, `02A4`, `1607` and `30A0` call
+  tick waits through the clamped call (the gate's step 9 checks them); `1607` and `30A0` hand a rare IDIV
+  fault back to the original code (untested by lockstep). Ranked remaining entries:
+  `D:/f117-gate/dswap-next-reached.json` (next: END `04D2`, `3D4F`, VGAME `D8AF`, `D578`, MPS_LOGO
+  `0146:0016`...).
 - Kit libraries are refreshed from main's normal /O2 build after each batch;
   `D:/f117-gate/kit-libs/manifest.json` records the source commit and hashes.
 - Other leads: PLAYER `026B:0211` (a distinct timer re-sync) and `026B:0336`
@@ -161,10 +163,11 @@ transitions, widths by role). Details and the method: docs/progress.md.
    BelowNormal priority, leaving desktop CPUs free. `progress.py --census D:/f117-gate/census.tsv` preserves
    START `64E5`'s six already-proved interiors (518 bytes); three regressions prevent lost/duplicated credit.
    Measure every delta using the same TSV.
-2. **Possible 386-model gap:** a warm DOS open is charged 50,145 cycles against 3.56 M measured (check before
-   changing). The other audit corrections landed with the DSWAP batch.
+2. **The 386 file-open cost is settled:** the reference's warm open measures 50,145 cycles
+   (`D:/f117-gate/p1-dos-probe/seq1989.log`), exactly `T386_FILE_OPEN`; 3.56 M is START.EXE's whole EXEC
+   (`T386_EXEC_START`), not an open. Nothing to change.
 3. **Presentation** (owner verdicts first): the 4K screen/motion verdict (ask before any visible test); whether to
-   adopt the clock setting alpha 0.4 / pull 0.025; `thin_strip_stroke` ignoring `present-line-width`; the open items
+   adopt the clock setting alpha 0.4 / pull 0.025; the open items
    above. No jitter smoothing (owner).
 4. **Phase 3 coverage:** time a long cargo/career flight; weaker machines. Full checksums via `F117_BENCH_HASH=1`
    add work outside frame timers and are diagnostics.

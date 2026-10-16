@@ -151,8 +151,8 @@ not the recompilation:
       [../handoff.md](../handoff.md). `tools/reimp_names.py` joins the Reimp's
       census (1,535 functions) with this project's regions as a private lead
       list.
-      **Now:** 900 addresses matched, covering 898 of the census functions and
-      121,765 of 179,213 bytes (P2 69.55%, overall 89.78%).
+      **Now:** 903 addresses matched, covering 901 of the census functions and
+      122,786 of 179,213 bytes (P2 70.09%, overall 89.94%).
       **What is left:** `tools/census_reach.py` separates code with run
       evidence from code without (gate coverage logs only interpreted
       fallback instructions, so it cannot show what ran). A complete
@@ -255,6 +255,14 @@ reaches. Candidate drafts can keep private static dossiers
   64 mutations, `full_cycle` 184,777 calls). Its near-`RET` accept path at
   `031B` (a latent quirk of the original) is handed back to the original
   code, so that path is not independently tested. `D:/f117-gate/p2-vgame-033f`.
+- `0FB2:0330` `vgame_clip_raster_line` (16 Oct; 149 instructions, five
+  seeds, 60 mutations, `full_cycle` 10,688 calls): clips a raster line
+  against the view rectangle and draws the visible part. Its temporary
+  divide-error vector is saved and restored exactly; the handler `04DD`
+  stays original code (no route reaches it). The lockstep harness keeps its fixed
+  clock limit across that handler's IRET and treats any return to the
+  caller inside a nested run as an escape, both scoped to this entry.
+  `D:/f117-gate/p2-vgame-fe50`.
 - `1974`/`19FD` camera sky/ground strips (including sixteen-band walks;
   camera-gradient replay 7,851 / 1,108 calls; that route checks rendering
   and makes no mission-completion claim).
@@ -379,6 +387,14 @@ reaches. Candidate drafts can keep private static dossiers
   negative control. Proofs `D:/f117-gate/p2-dswap-{0010,117e,1d66}`;
   batch evidence `D:/f117-gate/p2-dswap-accept`. Census gain: 3 functions /
   1,338 bytes. The near argv terminal retains its stack allocation.
+- PLAYER `005C` `player_prepare_playback` (120 instructions; memory,
+  timer services and video mode before playback) and VGAME `E586`
+  `vgame_load_file_buffer` (119; opens a file, allocates a paragraph-rounded
+  buffer and reads it in FFFFh-byte chunks): five seeds each, 49 and 48
+  mutations, 26 boot and 66 full-cycle checkpoints exact, `full_cycle` 2 and
+  4 calls. Proofs `D:/f117-gate/p2-player-005c`, `p2-vgame-e586`; batch
+  evidence (with `0FB2:0330` above) `D:/f117-gate/p2-batch-fe50-accept`.
+  Census gain for the three: 3 functions / 1,021 bytes.
 - Twenty-two support routines: PLAYER's picture open/refill and linear copy,
   the four timer shutdowns, five mouse wrappers and SETUP's mouse probe,
   file-name comparison, BIOS text writer, register-block interrupt call and
@@ -436,7 +452,9 @@ Each is fixed; the named regressions keep the failing seed or case.
   `room_audit.py` (private) checks every claim. A missed `RET 8` let the
   original finish every state unseen; the harness now fails any callee return
   the named code misses. `149C` had a stray resume point only a non-default
-  seed saw, so every body is tested at several seeds. Nested interrupt runs
+  seed saw, so every body is tested at several seeds. `0D14`'s fixture reached
+  its "none found" exit only by chance (189 of 190 at seed `0xd1699b13b019`);
+  one state in sixteen now has every cell list empty. Nested interrupt runs
   stop at the caller's next event through `support_int`.
 - **SETUP event-limit alert (14 Oct).** Not a game-code defect: two atomic
   native service clocks were counted as guest instructions; the ledger now

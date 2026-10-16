@@ -534,6 +534,12 @@ if(F117R_BUILD_TESTS)
       --only DSWAP.EXE:117E)
     add_test(NAME matched_dswap_load_from_drives COMMAND func_lockstep --states 5000
       --only DSWAP.EXE:10)
+    add_test(NAME matched_player_prepare_playback COMMAND func_lockstep --states 5000
+      --only PLAYER.EXE:5C)
+    add_test(NAME matched_vgame_load_file_buffer COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:E586)
+    add_test(NAME matched_vgame_clip_raster_line COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:330)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000

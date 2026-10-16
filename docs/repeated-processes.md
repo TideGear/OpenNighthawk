@@ -32,12 +32,12 @@ tools/build_recomp.py --data INSTALL --seed-coverage WORK/coverage --jobs 16
 --verify-interp-cache`, started through `D:/f117-gate/affinity_launch.py`
 (below).
 
-**Current figures (16 October 2026):** 125 CTests; 45 routes identical, run
-as 44 sessions; 5,718,848 instruction states under each timing profile; 900
+**Current figures (16 October 2026):** 128 CTests; 45 routes identical, run
+as 44 sessions; 5,718,848 instruction states under each timing profile; 903
 matched routines at three seeds; reachability and event limits clean. A gate
-takes about 1,300-2,000 s. The latest measured breakdown (1,956 s, with
-coverage): translate/build/tests 380 s, coverage 711 s, second translation
-72 s, parity 793 s. With coverage skipped, the last gate took 1,330 s (parity
+takes about 1,300-2,000 s. Measured 16 Oct: 1,956 s with coverage
+(translate/build/tests 380 s, coverage 711 s, second translation 72 s,
+parity 793 s); 1,371 s with coverage skipped (build 88 s, parity 1,282 s). With coverage skipped, the last gate took 1,330 s (parity
 1,223 s, all 88 jobs in one stage): skipping coverage no longer shortens the
 gate, because the same interpreter chain sets the end either way (below).
 

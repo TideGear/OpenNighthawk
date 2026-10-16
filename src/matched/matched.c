@@ -53093,7 +53093,383 @@ shutdown:
 
 
 
+/* PLAYER 005C: initialise playback memory and hardware services.
+ * The word at 0000:04F0 points to the handover block. Its field 1Ch is
+ * passed to the runtime importer. DOS allocation is queried with FFFFh,
+ * expecting error 8 and at least 2000h available paragraphs, then retried
+ * for that size, saving the allocated segment at 207Ch. Three returning
+ * error-message calls report unexpected answers or insufficient memory.
+ * Paragraph values are expanded with four original SHL/RCL pairs, keeping
+ * 16-bit addition wrap before conversion. The base, base+80h and base+size
+ * byte addresses initialise the playback buffers and their cursors.
+ * Finally it blanks video, selects timing rate 5, installs the timer,
+ * saves service vectors, queries the video mode, and selects mode 13h if
+ * necessary. All near callees use plain RET and the timer uses RETF.
+ * Preserve each push, cleanup, carry propagation and boundary around calls. */
+static int player_prepare_playback(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+    enum { AVAILABLE=-2, HANDOVER=-6, HANDOVER_SEG=-4 };
+#define PB(n,at) do { SM4_NEED((n),(at));c->icount+=(n); } while(0)
+#define PP(v) cpu_push16(c,(v))
+#define PA(a,b) ((uint16_t)alu_add(c,(a),(b),1,0))
+#define PS(n) (c->r[R_SP]=PA(c->r[R_SP],(n)))
+#define PCMP(a,b) alu_op(c,7,(a),(b),1)
+#define PH(reg_,op) (c->r[reg_]=(uint16_t)x86_shift(c,(op),c->r[reg_],1,1))
+#define PPARA(lo,hi) do { PH(lo,4);PH(hi,2);PH(lo,4);PH(hi,2);PH(lo,4);PH(hi,2);PH(lo,4);PH(hi,2); } while(0)
+#define PRUN(call) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define PN(at,target,ret) do { SM4_NEED(1,(at));PRUN(guest_call_pop(m,(target),(ret),0)); } while(0)
+#define PF(at,ret) do { SM4_NEED(1,(at));PRUN(guest_call_far(m,(at),(ret))); } while(0)
+    if(!room(c,11))return 0;
+    PB(11,0x005C);
+    x86_push_reg(c,R_BP);c->r[R_BP]=c->r[R_SP];
+    c->r[R_SP]=(uint16_t)alu_sub(c,c->r[R_SP],6,1,0);
+    bp_put(c,HANDOVER_SEG,0);bp_put(c,HANDOVER,0x04F0);
+    c->r[R_BX]=bp_get(c,HANDOVER);c->seg[S_ES]=bp_get(c,HANDOVER_SEG);
+    c->r[R_AX]=seg_read16(c,c->seg[S_ES],c->r[R_BX]);
+    ds_put(c,0x208C,c->r[R_AX]);ds_put(c,0x208A,0);
+    c->r[R_BX]=ds_get(c,0x208A);c->seg[S_ES]=ds_get(c,0x208C);
+    PP(seg_read16(c,c->seg[S_ES],(uint16_t)(c->r[R_BX]+0x1C)));
+    PN(0x0083,0x0F6C,0x0086);
+    PB(5,0x0086);PS(2);c->r[R_AX]=(uint16_t)(c->r[R_BP]+AVAILABLE);PP(c->r[R_AX]);c->r[R_AX]=0xFFFF;PP(c->r[R_AX]);
+    PN(0x0091,0x14A0,0x0094);
+    PB(3,0x0094);PS(4);PCMP(c->r[R_AX],8);if(x86_cond(c,4))goto allocate;
+    PB(6,0x009C);c->r[R_AX]=0x68;PP(c->r[R_AX]);c->r[R_AX]=0x5D;PP(c->r[R_AX]);c->r[R_AX]=0x66;PP(c->r[R_AX]);
+    PN(0x00A8,0x1476,0x00AB);
+    PB(1,0x00AB);PS(6);
+allocate:
+    PB(3,0x00AE);c->r[R_AX]=0x207C;PP(c->r[R_AX]);PP(bp_get(c,AVAILABLE));
+    PN(0x00B5,0x14A0,0x00B8);
+    PB(3,0x00B8);PS(4);c->r[R_AX]=(uint16_t)alu_logic(c,c->r[R_AX],1);if(x86_cond(c,4))goto check_size;
+    PB(6,0x00BF);c->r[R_AX]=0x69;PP(c->r[R_AX]);c->r[R_AX]=0x86;PP(c->r[R_AX]);c->r[R_AX]=0x8F;PP(c->r[R_AX]);
+    PN(0x00CB,0x1476,0x00CE);
+    PB(1,0x00CE);PS(6);
+check_size:
+    PB(2,0x00D1);PCMP(bp_get(c,AVAILABLE),0x2000);if(x86_cond(c,3))goto buffers;
+    PB(6,0x00D8);c->r[R_AX]=0x6A;PP(c->r[R_AX]);c->r[R_AX]=0xB0;PP(c->r[R_AX]);c->r[R_AX]=0xB9;PP(c->r[R_AX]);
+    PN(0x00E4,0x1476,0x00E7);
+    PB(1,0x00E7);PS(6);
+buffers:
+    PB(48,0x00EA);
+    c->r[R_AX]=ds_get(c,0x207C);c->r[R_DX]=(uint16_t)alu_sub(c,c->r[R_DX],c->r[R_DX],1,0);
+    PPARA(R_AX,R_DX);ds_put(c,0x207E,c->r[R_AX]);ds_put(c,0x2080,c->r[R_DX]);
+    c->r[R_AX]=ds_get(c,0x207C);c->r[R_AX]=PA(c->r[R_AX],0x80);c->r[R_DX]=(uint16_t)alu_sub(c,c->r[R_DX],c->r[R_DX],1,0);
+    PPARA(R_AX,R_DX);ds_put(c,0x1E6A,c->r[R_AX]);ds_put(c,0x1E6C,c->r[R_DX]);
+    c->r[R_CX]=bp_get(c,AVAILABLE);c->r[R_CX]=PA(c->r[R_CX],ds_get(c,0x207C));c->r[R_BX]=(uint16_t)alu_sub(c,c->r[R_BX],c->r[R_BX],1,0);
+    PPARA(R_CX,R_BX);ds_put(c,0x1E60,c->r[R_CX]);ds_put(c,0x1E62,c->r[R_BX]);
+    ds_put(c,0x2082,c->r[R_AX]);ds_put(c,0x2084,c->r[R_DX]);
+    ds_put(c,0x2086,c->r[R_AX]);ds_put(c,0x2088,c->r[R_DX]);
+    ds_put(c,0x1E66,c->r[R_AX]);ds_put(c,0x1E68,c->r[R_DX]);
+    ds_put(c,0x1E6E,c->r[R_AX]);ds_put(c,0x1E70,c->r[R_DX]);
+    ds_put(c,0x2094,c->r[R_AX]);ds_put(c,0x2096,c->r[R_DX]);
+    PN(0x0169,0x0DB0,0x016C);
+    PB(2,0x016C);c->r[R_AX]=5;PP(c->r[R_AX]);
+    PN(0x0170,0x0E0C,0x0173);
+    PB(2,0x0173);PS(2);ds_put(c,0x1E7A,1);
+    PF(0x017C,0x0181);
+    PN(0x0181,0x0583,0x0184);
+    PN(0x0184,0x0520,0x0187);
+    PB(3,0x0187);ds_put(c,0x1E74,c->r[R_AX]);PCMP(c->r[R_AX],0x13);if(x86_cond(c,4))goto done;
+    PB(2,0x018F);c->r[R_AX]=0x13;PP(c->r[R_AX]);
+    PN(0x0193,0x0540,0x0196);
+done:
+    PB(3,0x0196);c->r[R_SP]=c->r[R_BP];c->r[R_BP]=cpu_pop16(c);near_ret(c);return 1;
+#undef PF
+#undef PN
+#undef PRUN
+#undef PPARA
+#undef PH
+#undef PCMP
+#undef PS
+#undef PA
+#undef PP
+#undef PB
+}
+
+/* VGAME E586 opens a file and allocates a paragraph-aligned buffer for its
+ * full length. It publishes the length at C0A0:C0A2, compares the rounded
+ * paragraph requirement with the driver's available memory, and returns
+ * zero on open, length, capacity or allocation failure. Reads use the DOS
+ * register pack at C5F6 and its extra segment word at E014. Whole FFFFh-byte
+ * chunks update the original 32-bit remaining count and 16-bit buffer
+ * offset; a final nonzero remainder is read once. The stream is closed and
+ * the allocated segment is returned. Keep the original signed comparisons,
+ * sign extension of the handle byte, and guest pointer/argument order.
+ */
+static int vgame_load_file_buffer(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+    enum { ALLOC_SEG=-0x20, STREAM=-0x1E, PARA_LO=-0x1C, PARA_HI=-0x1A,
+           BUFFER_OFF=-8, BUFFER_SEG=-6, BYTES_LO=-4, BYTES_HI=-2 };
+#define XB(n,at) do { SM4_NEED((n),(at));c->icount+=(n); } while(0)
+#define XP(v) cpu_push16(c,(v))
+#define XPOP() (c->r[R_BX]=cpu_pop16(c))
+#define XZERO() (c->r[R_AX]=(uint16_t)alu_op(c,5,c->r[R_AX],c->r[R_AX],1))
+#define XC(a,b) ((void)alu_op(c,7,(a),(b),1))
+#define XTEST() (c->r[R_AX]=(uint16_t)alu_op(c,1,c->r[R_AX],c->r[R_AX],1))
+#define XRUN(call) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define XN(at,to,ret) do { SM4_NEED(1,(at));XRUN(guest_call_pop(m,(to),(ret),0)); } while(0)
+#define XF(at,ret) do { SM4_NEED(1,(at));XRUN(guest_call_far(m,(at),(ret))); } while(0)
+    if(!room(c,8))return 0;
+    XB(8,0xE586);x86_enter(c,0x20,0);x86_push_reg(c,R_DI);x86_push_reg(c,R_SI);XZERO();
+    ds_put(c,0xC0A2,c->r[R_AX]);ds_put(c,0xC0A0,c->r[R_AX]);XP(0x4EE2);XP(bp_get(c,4));
+    XN(0xE59A,0xEA1C,0xE59D);
+    XB(5,0xE59D);XPOP();XPOP();bp_put(c,STREAM,c->r[R_AX]);XTEST();if(x86_cond(c,5))goto get_length;
+failed:
+    XB(2,0xE5A6);XZERO();goto finished;
+get_length:
+    XB(4,0xE5AB);c->r[R_BX]=c->r[R_AX];set_r8(c,R_AL,ds_get8(c,(uint16_t)(c->r[R_BX]+7)));
+    set_r8(c,R_AH,(uint8_t)alu_op(c,5,get_r8(c,R_AH),get_r8(c,R_AH),0));XP(c->r[R_AX]);
+    XN(0xE5B3,0xEC90,0xE5B6);
+    XB(5,0xE5B6);XPOP();bp_put(c,BYTES_LO,c->r[R_AX]);bp_put(c,BYTES_HI,c->r[R_DX]);XC(c->r[R_AX],0xFFFF);if(x86_cond(c,5))goto capacity;
+    XB(2,0xE5C2);XC(c->r[R_DX],c->r[R_AX]);if(x86_cond(c,4))goto failed;
+capacity:
+    XF(0xE5C6,0xE5CB);
+    XB(10,0xE5CB);c->r[R_DX]=(uint16_t)alu_op(c,5,c->r[R_DX],c->r[R_DX],1);c->r[R_CX]=c->r[R_AX];c->r[R_BX]=c->r[R_DX];
+    c->r[R_AX]=bp_get(c,BYTES_LO);c->r[R_DX]=bp_get(c,BYTES_HI);c->r[R_AX]=(uint16_t)alu_op(c,0,c->r[R_AX],0x0F,1);
+    c->r[R_DX]=(uint16_t)alu_op(c,2,c->r[R_DX],c->r[R_BX],1);c->r[R_SI]=c->r[R_CX];set_r8(c,R_CL,4);c->r[R_DI]=c->r[R_BX];
+    XN(0xE5E2,0xEF74,0xE5E5);
+    XB(4,0xE5E5);bp_put(c,PARA_LO,c->r[R_AX]);bp_put(c,PARA_HI,c->r[R_DX]);XC(c->r[R_DX],c->r[R_DI]);if(x86_cond(c,12))goto allocate;
+    XB(1,0xE5EF);if(x86_cond(c,15))goto too_large;
+    XB(2,0xE5F1);XC(c->r[R_AX],c->r[R_SI]);if(x86_cond(c,6))goto allocate;
+too_large:
+    XB(1,0xE5F5);XP(bp_get(c,STREAM));
+    XN(0xE5F8,0xE946,0xE5FB);
+    XB(2,0xE5FB);XPOP();goto failed;
+allocate:
+    XB(3,0xE5FE);c->r[R_AX]=(uint16_t)(c->r[R_BP]+ALLOC_SEG);XP(c->r[R_AX]);XP(bp_get(c,PARA_LO));
+    XN(0xE605,0xEE52,0xE608);
+    XB(4,0xE608);XPOP();XPOP();XTEST();if(x86_cond(c,5))goto failed;
+    XB(7,0xE60E);c->r[R_AX]=bp_get(c,ALLOC_SEG);bp_put(c,BUFFER_SEG,c->r[R_AX]);bp_put(c,BUFFER_OFF,0);
+    c->r[R_AX]=bp_get(c,BYTES_LO);c->r[R_DX]=bp_get(c,BYTES_HI);ds_put(c,0xC0A0,c->r[R_AX]);ds_put(c,0xC0A2,c->r[R_DX]);
+chunk_test:
+    XB(2,0xE626);XC(bp_get(c,BYTES_HI),0);if(x86_cond(c,12))goto remainder;
+    XB(1,0xE62C);if(x86_cond(c,15))goto whole_chunk;
+    XB(2,0xE62E);XC(bp_get(c,BYTES_LO),0xFFFF);if(x86_cond(c,6))goto remainder;
+whole_chunk:
+    XB(14,0xE634);ds_put(c,0xC5FA,0xFFFF);ds_put(c,0xC5F6,0x3F00);c->r[R_BX]=bp_get(c,STREAM);
+    set_r8(c,R_AL,ds_get8(c,(uint16_t)(c->r[R_BX]+7)));c->r[R_AX]=(uint16_t)(int16_t)(int8_t)get_r8(c,R_AL);ds_put(c,0xC5F8,c->r[R_AX]);
+    c->r[R_AX]=bp_get(c,BUFFER_OFF);ds_put(c,0xC5FC,c->r[R_AX]);c->r[R_AX]=bp_get(c,BUFFER_SEG);ds_put(c,0xE014,c->r[R_AX]);
+    XP(0xE00E);XP(0xC5F6);XP(0xC5F6);XP(0x21);
+    XN(0xE661,0xED10,0xE664);
+    XB(5,0xE664);c->r[R_SP]=(uint16_t)alu_op(c,0,c->r[R_SP],8,1);
+    bp_put(c,BYTES_LO,(uint16_t)alu_op(c,5,bp_get(c,BYTES_LO),0xFFFF,1));
+    bp_put(c,BYTES_HI,(uint16_t)alu_op(c,3,bp_get(c,BYTES_HI),0,1));bp_put(c,BUFFER_OFF,(uint16_t)alu_dec(c,bp_get(c,BUFFER_OFF),1));goto chunk_test;
+remainder:
+    XB(3,0xE674);c->r[R_AX]=bp_get(c,BYTES_HI);c->r[R_AX]=(uint16_t)alu_op(c,1,c->r[R_AX],bp_get(c,BYTES_LO),1);if(x86_cond(c,4))goto close_stream;
+    XB(15,0xE67C);c->r[R_AX]=bp_get(c,BYTES_LO);ds_put(c,0xC5FA,c->r[R_AX]);ds_put(c,0xC5F6,0x3F00);c->r[R_BX]=bp_get(c,STREAM);
+    set_r8(c,R_AL,ds_get8(c,(uint16_t)(c->r[R_BX]+7)));c->r[R_AX]=(uint16_t)(int16_t)(int8_t)get_r8(c,R_AL);ds_put(c,0xC5F8,c->r[R_AX]);
+    c->r[R_AX]=bp_get(c,BUFFER_OFF);ds_put(c,0xC5FC,c->r[R_AX]);c->r[R_AX]=bp_get(c,BUFFER_SEG);ds_put(c,0xE014,c->r[R_AX]);
+    XP(0xE00E);XP(0xC5F6);XP(0xC5F6);XP(0x21);
+    XN(0xE6A9,0xED10,0xE6AC);
+    XB(1,0xE6AC);c->r[R_SP]=(uint16_t)alu_op(c,0,c->r[R_SP],8,1);
+close_stream:
+    XB(1,0xE6AF);XP(bp_get(c,STREAM));
+    XN(0xE6B2,0xE946,0xE6B5);
+    XB(2,0xE6B5);XPOP();c->r[R_AX]=bp_get(c,ALLOC_SEG);
+finished:
+    XB(4,0xE6B9);c->r[R_SI]=cpu_pop16(c);c->r[R_DI]=cpu_pop16(c);x86_leave(c);c->ip=cpu_pop16(c);return 1;
+#undef XF
+#undef XN
+#undef XRUN
+#undef XTEST
+#undef XC
+#undef XZERO
+#undef XPOP
+#undef XP
+#undef XB
+}
+
+
+/* VGAME 0FB2:0330: clip the DS:2299/229D -> 229B/229F raster line to
+ * [0,2293] x [0,2295], then call the runtime-filled far drawing thunk.
+ * The first endpoint's outcode is kept at 228A. A common outside edge rejects
+ * the line; otherwise one endpoint is clipped, swapped and the other clipped.
+ * Overflowing endpoint deltas are halved together. Signed products/divisions
+ * retain the original remainder corrections and half-delta rounding, including
+ * every register, flag and scratch-cell update. The temporary INT0 vector uses
+ * the relocated segment operand from loaded code; both exits restore its words.
+ * 04BC is the original near outcode helper. Divide overflow keeps the original
+ * 04DD saturation handler executable, returning to the authored continuation;
+ * it is not promoted to a matched interrupt entry. The far draw thunk returns
+ * RETF without argument cleanup. */
+static int vgame_clip_raster_line(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define LB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define LR(call_) do { const uint64_t until_=m->run_until; \
+    if (m->run_until>c->stop_at) m->run_until=c->stop_at; \
+    const int returned_=(call_); m->run_until=until_; if (!returned_) return 1; } while (0)
+#define LSUB(r_,v_) (c->r[(r_)]=(uint16_t)alu_op(c,5,c->r[(r_)],(v_),1))
+#define LADD(r_,v_) (c->r[(r_)]=(uint16_t)alu_op(c,0,c->r[(r_)],(v_),1))
+#define LOR(r_) (c->r[(r_)]=(uint16_t)alu_op(c,1,c->r[(r_)],c->r[(r_)],1))
+#define LTEST(v_,mask_) alu_logic(c,(uint32_t)(v_)&(mask_),0)
+#define LCMP(a_,b_,w_) alu_op(c,7,(a_),(b_),(w_))
+#define LXOR8(r_,v_) set_r8(c,(r_),(uint8_t)alu_op(c,6,get_r8(c,(r_)),(v_),0))
+#define LSHIFT(r_,op_) (c->r[(r_)]=(uint16_t)x86_shift(c,(op_),c->r[(r_)],1,1))
+#define LPUSH_ES(o_) do { const uint16_t value_=seg_read16(c,c->seg[S_ES],(o_)); \
+    c->r[R_SP]=(uint16_t)(c->r[R_SP]-2);seg_write16(c,c->seg[S_SS],c->r[R_SP], \
+    c->model>=CPU_80286?value_:seg_read16(c,c->seg[S_ES],(o_))); } while(0)
+#define LSWAP(a_,b_) do { uint16_t tmp_=c->r[(a_)];c->r[(a_)]=c->r[(b_)];c->r[(b_)]=tmp_; } while (0)
+    /* IDIV is its own event boundary. On overflow the original handler runs
+     * to the exact CS:next/SP continuation, with the previous trap restored. */
+#define LDIV(at_,next_,den_) do { \
+    SM4_NEED(1,(at_)); \
+    const uint16_t caller_cs_=c->seg[S_CS],caller_sp_=c->r[R_SP]; \
+    c->op_cs=caller_cs_;c->op_ip=(at_);c->ip=(next_); \
+    const int divided_=x86_idiv16(c,ds_get(c,(den_)),0);c->icount++; \
+    if (!divided_) { \
+        const uint8_t trap_on_=m->trap_on; \
+        const uint16_t trap_cs_=m->trap_cs,trap_ip_=m->trap_ip,trap_sp_=m->trap_sp; \
+        const uint64_t until_=m->run_until; \
+        m->trap_on=1;m->trap_cs=caller_cs_;m->trap_ip=(next_);m->trap_sp=caller_sp_; \
+        if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+        const int rc_=matched_runner(m); \
+        m->run_until=until_;m->trap_on=trap_on_;m->trap_cs=trap_cs_;m->trap_ip=trap_ip_;m->trap_sp=trap_sp_; \
+        c->io_cross=0;if(rc_!=RUN_TRAP)return 1; \
+    } \
+} while(0)
+    if (!room(c,10)) return 0;
+    LB(10,0x0330);
+    LSUB(R_AX,c->r[R_AX]);c->seg[S_ES]=c->r[R_AX];
+    LPUSH_ES(0);
+    LPUSH_ES(2);
+    c->r[R_AX]=0x04DD;
+    seg_write16(c,c->seg[S_ES],0,c->r[R_AX]);
+    seg_write16(c,c->seg[S_ES],2,seg_read16(c,c->seg[S_CS],0x034B));
+    cpu_push16(c,c->seg[S_DS]);c->seg[S_ES]=cpu_pop16(c);
+    goto classify;
+draw:
+    LB(10,0x0352);
+    LSUB(R_AX,c->r[R_AX]);c->seg[S_ES]=c->r[R_AX];
+    seg_write16(c,c->seg[S_ES],2,cpu_pop16(c));
+    seg_write16(c,c->seg[S_ES],0,cpu_pop16(c));
+    cpu_push16(c,c->seg[S_DS]);c->seg[S_ES]=cpu_pop16(c);
+    c->r[R_AX]=ds_get(c,0x2299);c->r[R_BX]=ds_get(c,0x229D);
+    c->r[R_CX]=ds_get(c,0x229B);c->r[R_DX]=ds_get(c,0x229F);
+    SM4_NEED(1,0x0371);LR(guest_call_far(m,0x0371,0x0376));
+    LB(2,0x0376);set_flag(c,F_CF,0);near_ret(c);return 1;
+reject:
+    LB(8,0x0378);
+    LSUB(R_AX,c->r[R_AX]);c->seg[S_ES]=c->r[R_AX];
+    seg_write16(c,c->seg[S_ES],2,cpu_pop16(c));
+    seg_write16(c,c->seg[S_ES],0,cpu_pop16(c));
+    cpu_push16(c,c->seg[S_DS]);c->seg[S_ES]=cpu_pop16(c);
+    set_flag(c,F_CF,1);near_ret(c);return 1;
+horizontal_overflow:
+    LB(8,0x038A);
+    c->flags^=F_CF;LSHIFT(R_DX,3);ds_put(c,0x228B,c->r[R_DX]);
+    LSHIFT(R_DX,7);ds_put(c,0x228F,c->r[R_DX]);
+    c->r[R_DX]=c->r[R_DI];LSUB(R_DX,c->r[R_BP]);
+    if(x86_cond(c,1))goto vertical_half;
+    LB(3,0x039D);c->flags^=F_CF;LSHIFT(R_DX,3);goto deltas_done;
+vertical_half:
+    LB(2,0x03A3);LSHIFT(R_DX,7);goto deltas_done;
+vertical_overflow:
+    LB(5,0x03A8);
+    c->flags^=F_CF;LSHIFT(R_DX,3);
+    ds_put(c,0x228B,(uint16_t)x86_shift(c,7,ds_get(c,0x228B),1,1));
+    ds_put(c,0x228F,(uint16_t)x86_shift(c,7,ds_get(c,0x228F),1,1));
+    goto deltas_done;
+common_edge:
+    LB(1,0x03B6);goto reject;
+classify:
+    LB(6,0x03B8);
+    c->r[R_CX]=ds_get(c,0x2299);c->r[R_DX]=ds_get(c,0x229D);
+    c->r[R_SI]=ds_get(c,0x229B);c->r[R_DI]=ds_get(c,0x229F);
+    c->r[R_BX]=c->r[R_CX];c->r[R_BP]=c->r[R_DX];
+    SM4_NEED(1,0x03CC);LR(guest_call_pop(m,0x04BC,0x03CF,0));
+    LB(3,0x03CF);ds_put8(c,0x228A,get_r8(c,R_AL));
+    c->r[R_BX]=c->r[R_SI];c->r[R_BP]=c->r[R_DI];
+    SM4_NEED(1,0x03D6);LR(guest_call_pop(m,0x04BC,0x03D9,0));
+    LB(1,0x03D9);if(x86_cond(c,5))goto compare_edges;
+    LB(2,0x03DB);LCMP(ds_get8(c,0x228A),0,0);
+    if(x86_cond(c,5))goto swap_first;
+    LB(1,0x03E2);goto draw;
+swap_first:
+    LB(5,0x03E5);LSWAP(R_SI,R_CX);LSWAP(R_DI,R_DX);
+    { const uint8_t code_=ds_get8(c,0x228A),al_=get_r8(c,R_AL);
+      ds_put8(c,0x228A,al_);set_r8(c,R_AL,code_); }
+    ds_put(c,0x2299,c->r[R_CX]);ds_put(c,0x229D,c->r[R_DX]);
+compare_edges:
+    LB(2,0x03F5);LTEST(ds_get8(c,0x228A),get_r8(c,R_AL));
+    if(x86_cond(c,5))goto common_edge;
+    LB(4,0x03FB);c->r[R_BP]=c->r[R_DX];c->r[R_DX]=c->r[R_SI];
+    LSUB(R_DX,c->r[R_CX]);if(x86_cond(c,0))goto horizontal_overflow;
+    LB(6,0x0403);ds_put(c,0x228B,c->r[R_DX]);LSHIFT(R_DX,7);
+    ds_put(c,0x228F,c->r[R_DX]);c->r[R_DX]=c->r[R_DI];
+    LSUB(R_DX,c->r[R_BP]);if(x86_cond(c,0))goto vertical_overflow;
+deltas_done:
+    LB(3,0x0413);ds_put(c,0x228D,c->r[R_DX]);LSHIFT(R_DX,7);ds_put(c,0x2291,c->r[R_DX]);
+clip_endpoint:
+    LB(2,0x041D);LTEST(get_r8(c,R_AL),0x09);if(x86_cond(c,4))goto clip_y;
+    LB(3,0x0421);LSUB(R_BX,c->r[R_BX]);LOR(R_SI);if(x86_cond(c,8))goto x_boundary;
+    LB(1,0x0427);c->r[R_BX]=ds_get(c,0x2293);
+x_boundary:
+    LB(5,0x042B);c->r[R_AX]=c->r[R_BX];LSUB(R_AX,c->r[R_CX]);
+    x86_imul16(c,ds_get(c,0x228D));x86_push_reg(c,R_BX);c->r[R_BX]=c->r[R_DX];
+    LDIV(0x0436,0x043A,0x228B);
+    LB(3,0x043A);set_r8(c,R_BL,get_r8(c,R_BH));LXOR8(R_BL,ds_get8(c,0x228C));
+    if(x86_cond(c,9))goto round_x;
+    LB(2,0x0442);c->r[R_DX]=(uint16_t)alu_sub(c,0,c->r[R_DX],1,0);c->r[R_AX]=(uint16_t)alu_dec(c,c->r[R_AX],1);
+round_x:
+    LB(3,0x0445);LSUB(R_DX,ds_get(c,0x228F));LXOR8(R_DH,get_r8(c,R_BH));
+    if(x86_cond(c,8))goto finish_x;
+    LB(1,0x044D);c->r[R_AX]=(uint16_t)alu_inc(c,c->r[R_AX],1);
+finish_x:
+    LB(3,0x044E);c->r[R_BX]=cpu_pop16(c);LADD(R_AX,c->r[R_BP]);if(x86_cond(c,8))goto zero_y;
+    LB(2,0x0453);LCMP(c->r[R_AX],ds_get(c,0x2295),1);if(x86_cond(c,14))goto store_endpoint;
+clip_y:
+    LB(3,0x0459);c->r[R_BX]=ds_get(c,0x2295);LCMP(c->r[R_DI],c->r[R_BX],1);
+    if(x86_cond(c,15))goto y_boundary;
+zero_y:
+    LB(1,0x0461);LSUB(R_BX,c->r[R_BX]);
+y_boundary:
+    LB(5,0x0463);c->r[R_AX]=c->r[R_BX];LSUB(R_AX,c->r[R_BP]);
+    x86_imul16(c,ds_get(c,0x228B));x86_push_reg(c,R_BX);c->r[R_BX]=c->r[R_DX];
+    LDIV(0x046E,0x0472,0x228D);
+    LB(3,0x0472);set_r8(c,R_BL,get_r8(c,R_BH));LXOR8(R_BL,ds_get8(c,0x228E));
+    if(x86_cond(c,9))goto round_y;
+    LB(2,0x047A);c->r[R_DX]=(uint16_t)alu_sub(c,0,c->r[R_DX],1,0);c->r[R_AX]=(uint16_t)alu_dec(c,c->r[R_AX],1);
+round_y:
+    LB(3,0x047D);LSUB(R_DX,ds_get(c,0x2291));LXOR8(R_DH,get_r8(c,R_BH));
+    if(x86_cond(c,8))goto finish_y;
+    LB(1,0x0485);c->r[R_AX]=(uint16_t)alu_inc(c,c->r[R_AX],1);
+finish_y:
+    LB(3,0x0486);c->r[R_BX]=cpu_pop16(c);LADD(R_AX,c->r[R_CX]);if(x86_cond(c,8))goto outside;
+    LB(2,0x048B);LCMP(c->r[R_AX],ds_get(c,0x2293),1);if(x86_cond(c,15))goto outside;
+    LB(1,0x0491);LSWAP(R_BX,R_AX);
+store_endpoint:
+    LB(2,0x0492);LCMP(ds_get8(c,0x228A),0,0);if(x86_cond(c,5))goto store_first;
+    LB(3,0x0499);ds_put(c,0x229F,c->r[R_AX]);ds_put(c,0x229B,c->r[R_BX]);goto draw;
+outside:
+    LB(1,0x04A3);goto reject;
+store_first:
+    LB(7,0x04A6);ds_put(c,0x229D,c->r[R_AX]);ds_put(c,0x2299,c->r[R_BX]);
+    LSWAP(R_SI,R_CX);LSWAP(R_DI,R_BP);set_r8(c,R_AL,ds_get8(c,0x228A));ds_put8(c,0x228A,0);
+    goto clip_endpoint;
+#undef LB
+#undef LR
+#undef LSUB
+#undef LADD
+#undef LOR
+#undef LTEST
+#undef LCMP
+#undef LXOR8
+#undef LSHIFT
+#undef LPUSH_ES
+#undef LSWAP
+#undef LDIV
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0FB2, 0x0330, vgame_clip_raster_line, "clip a raster line and draw its visible part", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xE586, vgame_load_file_buffer, "allocate a buffer and read a whole file in FFFF-byte chunks", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x005C, player_prepare_playback, "Prepare playback memory, timer services and video mode", 1 },
     { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x0010, dswap_load_from_drives, "initialize the loader and retry resource files on drives A and B", 1 },
     { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x117E, dswap_crt_setargv, "C start-up: DOS version, program name and argument vector", 1 },
     { "matched", "DSWAP.EXE", DSWAP_47304, 0x0000, 0x1D66, dswap_open_file, "open or create a file with runtime modes", 1 },

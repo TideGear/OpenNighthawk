@@ -554,6 +554,9 @@ static const struct { const char *module; uint16_t ip; int arg; uint16_t v[2]; }
 /* Exact code ranges when the default 0x300-byte window is unsuitable:
  * long/shared tails, or small walkers whose unrelated callees are nearby. */
 static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
+    { "VGAME.EXE", 0x0330, 0x0330, 0x018C },
+    { "VGAME.EXE", 0xE586, 0xE586, 0x0137 },
+    { "PLAYER.EXE", 0x005C, 0x005C, 0x013E },
     { "DSWAP.EXE", 0x0010, 0x0010, 0x0209 },
     { "DSWAP.EXE", 0x117E, 0x117E, 0x018E },
     { "DSWAP.EXE", 0x1D66, 0x1D66, 0x01AB },
@@ -780,6 +783,9 @@ static const struct { const char *module; uint16_t seg, ip, len; unsigned insns,
     { "DSWAP.EXE", 0x0000, 0x1D66, 0x01AB, 163, 163, "open or create a file with runtime modes" },
     { "DSWAP.EXE", 0x0000, 0x117E, 0x018E, 204, 204, "C start-up: DOS version, program name and argument vector" },
     { "DSWAP.EXE", 0x0000, 0x0010, 0x0209, 197, 197, "initialize the loader and retry resource files on drives A and B" },
+    { "PLAYER.EXE", 0x0000, 0x005C, 0x013E, 120, 120, "Prepare playback memory, timer services and video mode" },
+    { "VGAME.EXE", 0x0000, 0xE586, 0x0137, 119, 119, "allocate a buffer and read a whole file in FFFF-byte chunks" },
+    { "VGAME.EXE", 0x0FB2, 0x0330, 0x018C, 149, 149, "clip a raster line and draw its visible part" },
     { "END.EXE", 0, 0x2BEC, 0x0435, 444, 444, "debrief narrative and measured layout" },
     { "START.EXE", 0, 0x6DB8, 0x03F5, 399, 399, "pilot options dialog" },
     { "START.EXE", 0, 0x149C, 0x039E, 365, 365, "flight plan display" },
@@ -1006,9 +1012,16 @@ static int step_runner(machine_t *mm)
              * the named code after it. (A callee that wanders off in both
              * engines - random code bytes, a random stack - never returns
              * in the original either.) */
-            if (g_cov >= 0 && mm->trap_cs == g_back_cs && cov_reached(mm->trap_ip,
+            /* VGAME 0FB2:0330's callees (arithmetic, the draw thunk's probe and
+             * the divide-error handler) all return normally, so reaching its
+             * caller's return inside a nested run is an escape even when the
+             * requested trap IP is not an instruction cov_reached knows. */
+            if (g_cov >= 0 && mm->trap_cs == g_back_cs &&
+                ((!strcmp(COVERED[g_cov].module, "VGAME.EXE") &&
+                  COVERED[g_cov].seg == 0x0FB2 && COVERED[g_cov].ip == 0x0330) ||
+                 cov_reached(mm->trap_ip,
                     (uint16_t)(call_sp - ((!strcmp(COVERED[g_cov].module, "MPS_LOGO.EXE") &&
-                    COVERED[g_cov].seg == 6 && COVERED[g_cov].ip == 0x72 && mm->trap_ip == 0x007D) ? 0x0318 : 0)), 16)) {
+                    COVERED[g_cov].seg == 6 && COVERED[g_cov].ip == 0x72 && mm->trap_ip == 0x007D) ? 0x0318 : 0)), 16))) {
                 g_cov_escapes++;
                 printf("  ESCAPED CALL (state %d): trap %04X:%04X sp %04X, at %04X:%04X sp %04X flags %04X\n", g_state_index,
                        mm->trap_cs, mm->trap_ip, mm->trap_sp, c->seg[S_CS], c->ip, c->r[R_SP], c->flags);
@@ -1017,7 +1030,16 @@ static int step_runner(machine_t *mm)
         }
         if (c->icount >= c->stop_at) { g_stopped = 1; return RUN_SLICE; }
         if (g_trace) printf("      (callee) %04X:%04X clk %llu sp %04X\n", c->seg[S_CS], c->ip, (unsigned long long)c->icount, c->r[R_SP]);
+        const uint64_t limit = c->stop_at;
+        const uint8_t op = mem_read8(c, phys(c->seg[S_CS], c->ip));
         cpu_step(c);
+        /* This runner has a fixed clock limit and no pending PC events. IRET
+         * clears stop_at for machine_run to recompute its event window; keep
+         * the fixed limit so VGAME 0FB2:0330's divide-error handler returns
+         * to the trap instead of letting the original finish the routine. */
+        if (op == 0xCF && c->stop_at == 0 && g_cov >= 0 && !strcmp(COVERED[g_cov].module, "VGAME.EXE") &&
+            COVERED[g_cov].seg == 0x0FB2 && COVERED[g_cov].ip == 0x0330)
+            c->stop_at = limit;
         if (c->flags & F_TF) cpu_interrupt(c, 1);
     }
     g_lost = 1;
@@ -3633,6 +3655,11 @@ int main(int argc, char **argv)
                         XSTUB(stub_[k].code,stub_[k].cell,stub_[k].args,stub_[k].list,stub_[k].list2);
                     }
                 }
+                /* One state in sixteen has no objects in any cell, so the "none
+                 * found" exit (0F37) is reached at every seed. Drawn last, so the
+                 * other states keep every earlier draw. */
+                if(XPICK(16)==0)
+                    for(unsigned slot=0;slot<100;slot++)XW16(dg,0x061E + 2*slot,0);
 #undef XSTUB
 #undef XPICK
 #undef XRAND
@@ -6337,6 +6364,169 @@ int main(int argc, char **argv)
 #undef XRAND
             }
 
+            if (!strcmp(o->module,"PLAYER.EXE") && o->seg==0 && o->ip==0x005C) {
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XW8(s_,o_,v_) do { const uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { const uint16_t v__=(uint16_t)(v_);XW8(s_,o_,v__);XW8(s_,(o_)+1,v__>>8); } while(0)
+                const uint16_t dg=0x5000, hand=0x3000;
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?dg:0x6000;r[R_SP]=0xE000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],r[R_SP]-0x200+j,XRAND());
+                for(unsigned j=0x1E50;j<0x20A0;j++)XW8(dg,j,XRAND());
+                XW16(0,0x04F0,hand);XW16(hand,0x1C,XRAND());
+                static const uint16_t sizes_[]={0,1,0x1FFF,0x2000,0x2001,0x7FFF,0x8000,0xFFFF};
+                static const uint16_t bases_[]={0,1,0x0FFF,0x1000,0x7F80,0xFF7F,0xFF80,0xFFFF};
+                static const uint16_t err_[]={0,7,8,8,8,9,0xFFFF};
+                const uint16_t size_=sizes_[XRAND()%8],base_=bases_[XRAND()%8];
+                XW16(seg[S_SS],r[R_SP]-6,size_);
+                XW16(dg,0xD000,err_[XRAND()%7]);XW16(dg,0xD002,(XRAND()&1)?0:1+XRAND()%15);
+                XW16(dg,0xD010,size_);XW16(dg,0xD012,base_);
+                static const uint16_t entry_[]={0x0F6C,0x14A0,0x1476,0x0DB0,0x0E0C,0x0583,0x0520,0x0540,0x000A};
+                static const uint8_t argc_[]={1,2,3,0,1,0,0,1,0};
+                for(unsigned k=0;k<9;k++) {
+                    const uint16_t cell_=(uint16_t)(0xD100+8*k);
+                    const uint16_t stub_=(uint16_t)(0xF000+0x100*k);
+                    const uint16_t sg_=k==8?0x026B:cs;
+                    uint16_t at_=k==8?entry_[k]:stub_;
+#define XE8(v_) XW8(sg_,at_++,(v_))
+#define XE16(v_) do { const uint16_t w_=(uint16_t)(v_);XE8(w_);XE8(w_>>8); } while(0)
+                    XW16(dg,cell_,XRAND());XW16(dg,cell_+2,0);
+                    if(k!=8) {XW8(cs,entry_[k],0xE9);XW16(cs,entry_[k]+1,(uint16_t)(stub_-entry_[k]-3));}
+                    XE8(0x55);XE8(0x89);XE8(0xE5);XE8(0x53);XE8(0x56);XE8(0x57);
+                    XE8(0x8B);XE8(0x1E);XE16(cell_);
+                    for(unsigned a=0;a<argc_[k];a++) {
+                        XE8(0xD1);XE8(0xC3);XE8(0x8B);XE8(0x46);XE8(4+2*a);XE8(0x31);XE8(0xC3);
+                    }
+                    XE8(0x89);XE8(0x1E);XE16(cell_);
+                    if(k==1) {
+                        XE8(0x8B);XE8(0x36);XE16(cell_+2);XE8(0xD1);XE8(0xE6);
+                        XE8(0x8B);XE8(0x84);XE16(0xD010);XE8(0x8B);XE8(0x7E);XE8(6);XE8(0x89);XE8(0x05);
+                        XE8(0x8B);XE8(0x84);XE16(0xD000);
+                    } else {
+                        const uint16_t result_=k==6?((XRAND()&1)?0x13:(uint16_t)XRAND()):(uint16_t)XRAND();
+                        XE8(0xB8);XE16(result_);
+                    }
+                    XE8(0xFF);XE8(0x06);XE16(cell_+2);
+                    XE8(0x5F);XE8(0x5E);XE8(0x5B);XE8(0x5D);XE8(k==8?0xCB:0xC3);
+#undef XE16
+#undef XE8
+                }
+#undef XW16
+#undef XW8
+#undef XRAND
+            }
+            if(!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xE586) {
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t w__=(uint16_t)(v_);XW8((s_),(o_),w__);XW8((s_),(o_)+1,w__>>8); } while(0)
+                seg[S_DS]=0x5000;seg[S_SS]=(XRAND()&1)?0x6000:seg[S_DS];r[R_SP]=0xF000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));g_watch_transient=1;
+                for(unsigned j=0;j<0x200;j++){XW8(seg[S_SS],0xEE00+j,XRAND());XW8(seg[S_DS],0xEE00+j,XRAND());}
+                for(unsigned j=0;j<4;j++){small[j]=(uint16_t)XRAND();XW16(seg[S_SS],r[R_SP]+2*j,small[j]);}
+                uint16_t stream_=(uint16_t)(0x3000+0x10*(XRAND()%16));
+                static const uint8_t handles_[]={0,1,0x7F,0x80,0xFE,0xFF};
+                XW8(seg[S_DS],stream_+7,handles_[XRAND()%6]);
+                static const uint32_t sizes_[]={0,1,14,15,16,17,0xFFFE,0xFFFF,0x10000,0x10001,0x1FFFE,0x1FFFF,0x20000,0xFFFF0,0xFFFF1,0x80000000,0xFFFFFFF0,0xFFFF0000,0xFFFFFFFF};
+                uint32_t bytes_=sizes_[XRAND()%(sizeof sizes_/sizeof sizes_[0])];
+                uint32_t rounded_=(bytes_+15u);rounded_=(uint32_t)((int32_t)rounded_>>4);
+                uint16_t free_=(uint16_t[]){0,1,2,0x100,0x1000,0x8000,0xFFFF}[XRAND()%7];
+                if(XRAND()%3==0)free_=(uint16_t)((rounded_&0xFFFF)+((XRAND()%3)-1));
+                uint16_t allocated_=(uint16_t)(0x8000+XRAND()%256);
+                uint16_t alloc_result_=(XRAND()%4==0)?5:0;
+                for(unsigned j=0;j<0x20;j++)XW8(seg[S_DS],0xC5F0+j,XRAND());
+                for(unsigned j=0;j<0x10;j++)XW8(seg[S_DS],0xE00E + j,XRAND());
+                static const struct { uint16_t sg,ip;unsigned args; } stub_[]={
+                    {0,0xEA1C,2},{0,0xEC90,1},{0x1E42,0x0214,0},
+                    {0,0xE946,1},{0,0xEE52,2},{0,0xED10,4}};
+                for(unsigned k=0;k<sizeof stub_/sizeof stub_[0];k++) {
+                    uint16_t cell_=(uint16_t)(0xA000+8*k);XW16(seg[S_DS],cell_,0);XW16(seg[S_DS],cell_+2,0);
+                    uint16_t ax_=(uint16_t)XRAND(),dx_=(uint16_t)XRAND();
+                    if(k==0)ax_=(XRAND()%5==0)?0:stream_;
+                    if(k==1){ax_=(uint16_t)bytes_;dx_=(uint16_t)(bytes_>>16);}
+                    if(k==2)ax_=free_;
+                    if(k==4)ax_=alloc_result_;
+                    unsigned out_=stub_[k].sg?0x1000:0xD000+0x100*k;
+                    const uint16_t code_seg_=stub_[k].sg?0x7000:0;
+                    if(stub_[k].sg) {
+                        XW8(stub_[k].sg,stub_[k].ip,0xEA);XW16(stub_[k].sg,stub_[k].ip+1,out_);XW16(stub_[k].sg,stub_[k].ip+3,code_seg_);
+                    } else {XW8(0,stub_[k].ip,0xE9);XW16(0,stub_[k].ip+1,(uint16_t)(out_-stub_[k].ip-3));}
+#define EMIT(b_) XW8(code_seg_,out_++,(b_))
+#define WORD(v_) do { uint16_t w_=(uint16_t)(v_);EMIT(w_);EMIT(w_>>8); } while(0)
+                    EMIT(0x55);EMIT(0x8B);EMIT(0xEC);EMIT(0x53);
+                    EMIT(0xFF);EMIT(0x06);WORD(cell_+2);
+#define FOLD_AX() do { EMIT(0x8B);EMIT(0x1E);WORD(cell_);EMIT(0xD1);EMIT(0xC3);EMIT(0x33);EMIT(0xD8);EMIT(0x89);EMIT(0x1E);WORD(cell_); } while(0)
+                    for(unsigned j=0;j<stub_[k].args;j++) {EMIT(0x8B);EMIT(0x46);EMIT((stub_[k].sg?6:4)+2*j);FOLD_AX();}
+                    /* The read probe consumes the register pack at EVERY
+                     * call, so a wrong full-chunk value cannot be hidden by
+                     * the final remainder overwriting that global field. */
+                    if(k==5) {
+                        static const uint16_t fields_[]={0xC5F6,0xC5F8,0xC5FA,0xC5FC,0xE014};
+                        for(unsigned j=0;j<5;j++){EMIT(0xA1);WORD(fields_[j]);FOLD_AX();}
+                    }
+                    /* DOS allocation writes through DS, just as EE52 does,
+                     * even when the caller's frame is in another SS. */
+                    if(k==4) {EMIT(0x8B);EMIT(0x5E);EMIT(6);EMIT(0xC7);EMIT(0x07);WORD(allocated_);}
+                    EMIT(0xB8);WORD(ax_);EMIT(0xBA);WORD(dx_);EMIT(0x5B);EMIT(0x5D);EMIT(stub_[k].sg?0xCB:0xC3);
+#undef FOLD_AX
+#undef WORD
+#undef EMIT
+                }
+#undef XW16
+#undef XW8
+#undef XRAND
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0x0FB2 && o->ip==0x0330) {
+                const uint16_t dg=0x5000;
+                seg[S_DS]=dg;seg[S_SS]=(s&4)?0x6000:dg;r[R_SP]=0xF000;
+                flags=(uint16_t)(flags&~F_DF);
+#define LW8(s_,o_,v_) do { const uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define LW16(s_,o_,v_) do { const uint16_t w_=(uint16_t)(v_);LW8((s_),(o_),w_);LW8((s_),(o_)+1,w_>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define LRN() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                for(unsigned j=0;j<0x200;j++)LW8(seg[S_SS],r[R_SP]-0x200+j,LRN());
+                for(unsigned j=0;j<0x40;j++)LW8(dg,0x2280+j,LRN());
+                LW16(0,0,LRN());LW16(0,2,LRN());
+                /* A genuinely relocated handler operand: the unchanged original handler
+                 * is copied to the selected segment, so overflow still executes it. */
+                const uint16_t handler_seg_=(LRN()&1)?0x0FB2:0x3A00;
+                if(handler_seg_!=0x0FB2)for(unsigned j=0;j<0x21;j++) {
+                    const uint8_t b_=g_pristine[phys(0x0FB2,0x04DD+j)];LW8(handler_seg_,0x04DD+j,b_);
+                }
+                LW16(0x0FB2,0x034B,handler_seg_);
+                /* The runtime draw thunk is a RETF probe. It stores all four register
+                 * arguments and counts calls without changing any input register. */
+                const uint16_t draw_seg_=(LRN()&1)?0x1E42:0x3B00;
+                LW16(0x0FB2,0x0374,draw_seg_);
+                { static const uint8_t code_[]={0xA3,0x00,0xE0,0x89,0x1E,0x02,0xE0,
+                    0x89,0x0E,0x04,0xE0,0x89,0x16,0x06,0xE0,0xFF,0x06,0x08,0xE0,0xCB};
+                  for(unsigned j=0;j<sizeof code_;j++)LW8(draw_seg_,0x01B5+j,code_[j]); }
+                for(unsigned j=0;j<10;j++)LW8(dg,0xE000+j,LRN());
+                /* Independent boundaries, ordinary visible/offscreen coordinates, exact
+                 * borders, and signed extremes exercise both delta overflow halves. */
+                static const uint16_t bounds_[]={1,2,3,7,31,159,199,319,639,0x1000,0x3FFF,0x7FFF};
+                const uint16_t width_=bounds_[LRN()%(sizeof bounds_/sizeof bounds_[0])];
+                const uint16_t height_=bounds_[LRN()%(sizeof bounds_/sizeof bounds_[0])];
+                LW16(dg,0x2293,width_);LW16(dg,0x2295,height_);
+                for(unsigned j=0;j<4;j++) {
+                    const uint16_t bound_=(j&1)?height_:width_;
+                    uint16_t v_;switch(LRN()%16) {
+                      case 0:v_=0;break;case 1:v_=1;break;case 2:v_=0xFFFF;break;
+                      case 3:v_=bound_;break;case 4:v_=(uint16_t)(bound_-1);break;
+                      case 5:v_=(uint16_t)(bound_+1);break;case 6:v_=0x8000;break;
+                      case 7:v_=0x7FFF;break;case 8:v_=0x8001;break;
+                      case 9:v_=(uint16_t)(LRN()%(bound_+1));break;
+                      case 10:v_=(uint16_t)(-1-(int)(LRN()%256));break;
+                      case 11:v_=(uint16_t)(bound_+1+LRN()%256);break;
+                      default:v_=(uint16_t)LRN();break;
+                    }
+                    static const uint16_t cells_[]={0x2299,0x229D,0x229B,0x229F};LW16(dg,cells_[j],v_);
+                }
+#undef LRN
+#undef LW16
+#undef LW8
+            }
             if (!strcmp(o->module, "START.EXE") && o->seg == 0 && o->ip == 0x6DB8) {
                 seg[S_DS] = seg[S_SS] = 0x0A95; r[R_SP] = 0xFF00;
                 flags = (uint16_t)(flags & (0xFFFFu ^ F_DF));
