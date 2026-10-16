@@ -157,11 +157,15 @@ not the recompilation:
       bytes) is included in these figures; see the handoff.
       **What is left:** `tools/census_reach.py` separates code with run
       evidence from code without (gate coverage logs only interpreted
-      fallback instructions, so it cannot show what ran). A complete
-      interpreter `full_cycle` capture (14 Oct, before that day's and 15
-      Oct's batches) reached 358 unmatched entries / 43,138 bytes; 121 entries
-      / 12,813 bytes (and 6 interiors / 521 bytes) had no evidence in it, so
-      new routes are needed for those.
+      fallback instructions, so it cannot show what ran). Fresh interpreter
+      captures of all 45 routes (16 Oct, after batch d) run the entries of
+      381 unmatched census rows / 25,821 bytes, including 92 rows / 7,688
+      bytes that start inside one of our translation regions (interior
+      entries such as VGAME `0CB77` key dispatch, which the tool used to
+      skip as data). 21 rows / 4,764 bytes have only interior instructions
+      run, and 208 rows / 18,901 bytes have no evidence; those include data
+      (DSWAP `3DF3`, SETUP `27AE`'s strings) and need new routes or a
+      data/code decision each.
       **Stays original code:** the timer interrupts (VGAME 0x1C9B, START
       0x8D0B, END 0x4BEF) open with STI, after which the run loop admits one
       more instruction before it looks at events, so a matched body could do

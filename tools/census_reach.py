@@ -20,7 +20,10 @@ For example: py tools/run_route.py tools/routes/full_cycle.args --data DIR
 
 It prints entries with recorded execution, entries with only interior
 instructions recorded, and entries without evidence in these files.
-Census rows with no region are data.
+A census row with no region of ours is an entry our translation did not
+start a region at (an interior entry, or data such as SETUP 0x027AE's
+strings); it is judged by its linear address (segment * 16 + offset) and
+counted separately, so code is not mistaken for data or data for code.
 """
 import argparse
 import collections
@@ -36,6 +39,7 @@ import progress  # noqa: E402
 def load_coverage(directory):
     entries = collections.defaultdict(set)       # (module, segment, offset) -> routes that ran it
     inside = collections.defaultdict(list)       # module -> [(segment, offset)]
+    linear = collections.defaultdict(dict)       # module -> {linear address: routes}
     for path in sorted(glob.glob(os.path.join(directory, "*.cov"))):
         route = os.path.basename(path)[:-4]
         for line in open(path, errors="replace"):
@@ -45,7 +49,8 @@ def load_coverage(directory):
                 if not entries[key]:
                     inside[parts[0]].append((key[1], int(key[2], 16)))
                 entries[key].add(route)
-    return entries, inside
+                linear[parts[0]].setdefault(int(key[1], 16) * 16 + int(key[2], 16), set()).add(route)
+    return entries, inside, linear
 
 
 def main():
@@ -56,12 +61,24 @@ def main():
     args = ap.parse_args()
 
     matched = progress.matched_addresses()
-    entries, inside = load_coverage(args.coverage)
+    entries, inside, linear = load_coverage(args.coverage)
     reached, unseen, partial = [], [], []
+    regionless = {"entered": [], "interior": [], "unseen": []}
     for line in list(open(args.census))[1:]:
         row = line.rstrip("\n").split("\t")
         binary, entry, size, region = row[0], row[1], int(row[2]), row[3]
-        if (binary, int(entry, 16)) in matched or not region:
+        if (binary, int(entry, 16)) in matched:
+            continue
+        if not region:
+            ran = linear.get(binary + ".EXE", {})
+            start = int(entry, 16)
+            record = (binary, entry, size, "(no region)", sorted(ran.get(start, ())))
+            if start in ran:
+                regionless["entered"].append(record)
+            elif any(start <= a < start + max(size, 1) for a in ran):
+                regionless["interior"].append(record)
+            else:
+                regionless["unseen"].append(record)
             continue
         m = re.match(r"R_([A-Z_0-9]+?)_EXE_([0-9A-F]{4})_([0-9A-F]{4})$", region)
         if not m:
@@ -82,6 +99,9 @@ def main():
     print("unmatched code entries entered by a route: %d (%d bytes)" % total(reached))
     print("interior instructions recorded, entry not recorded: %d (%d bytes)" % total(partial))
     print("no execution evidence in these files: %d (%d bytes)" % total(unseen))
+    print("rows with no region of ours: entry run %d (%d bytes), interior only %d (%d bytes), "
+          "no evidence %d (%d bytes, data included)" % (*total(regionless["entered"]), *total(regionless["interior"]),
+                                                        *total(regionless["unseen"])))
     print("absence is not unreachability: recomp coverage omits already-translated execution")
     for label, rows in (("entered", reached), ("unseen", unseen)):
         per = collections.Counter()
@@ -90,7 +110,7 @@ def main():
         print("  %s, bytes by program: %s" % (label, dict(sorted(per.items()))))
     if args.out:
         with open(args.out, "w") as out:
-            for r in sorted(reached, key=lambda r: -r[2]):
+            for r in sorted(reached + regionless["entered"], key=lambda r: -r[2]):
                 out.write("\t".join([r[0], r[1], str(r[2]), r[3], str(len(r[4])), ",".join(r[4])[:80]]) + "\n")
         print("wrote", args.out)
 
