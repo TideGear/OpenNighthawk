@@ -8,8 +8,9 @@ checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 [docs/repeated-processes.md](docs/repeated-processes.md) (every process we run
 more than once, what it costs). State as of 16 October 2026.
 
-16 October (evening): the owner set the goal "complete the plan in
-roadmap.md"; work continues Phase 2 first (owner priority), batch by batch.
+16 October (evening): the owner asked for a handoff, commit, push and stop. `p2-batch-d` is landed;
+eleven more routines are privately proved and waiting (below). All agents were stopped; nothing is
+left running. Standing goal from the owner: complete the roadmap's plan, Phase 2 first.
 
 This file holds only the current state and standing practice, not a
 session log. Earlier detail is in `git log -p handoff.md`.
@@ -119,8 +120,17 @@ times them (`F117_PRESENT_CLOCK=raw` for the old clock; opt-in knobs `F117_PRESE
   `8FC6`, END `4EBC`, MPS_LOGO `010E` (needs the `FATAL_JUMPS` table and loop in
   `program_end_reached()`, all three rows; diff each directory's `tests-base.orig.c` against
   `tests-base.c`; START/END reuse the existing parameterised `sm4_cinit`). `kit.py integrate` does
-  not carry these harness hunks: apply them by hand. Agents were still proving START `3CEA`, `7272` and
-  VGAME `00F0`.
+  not carry these harness hunks: apply them by hand. Also proved: START `3CEA` modal dialog and START
+  `7272` roster save (3 real calls). Integrate all of these as `p2-batch-e`: one gate plus N=1 / boot N=4,9 presentation,
+  using `D:/f117-gate/p2-batch-d-accept/{accept,audit-integrated,verdict}.py` as templates.
+- **Stopped early drafts (no proof yet; reuse or restart):** START `020F`, `5BF0`, `6AB3` (only
+  `roster_edit` reaches it), END `3BF4`, `03D9` (D12 sites 0443/0450 may lie inside: decline while D12
+  is on), `2703` (career routes only), PLAYER `0696`, VGAME `00F0`, `7663`. Their directories are
+  `D:/f117-gate/p2-<prog>-<ip>`.
+- **Routes other than full_cycle:** `kit.py DIR checkpoints --route NAME` (and `ROUTE=NAME` for
+  `finish.sh`) proves a routine on another cached route; `audit_proofs.py` reads the route from the
+  checkpoint verdict. Rank with `D:/f117-gate/p2-batch-d-accept/reached-allroutes.tsv` (all 45 routes,
+  region-less rows included; column 6 lists the routes) and pick the shortest route that runs it.
 - **Blocked, stays original:** the C start-up (START `8EDC` and six copies) must stop after its own STI
   and never returns to its caller's stack, so no lockstep state can complete it
   (`D:/f117-gate/p2-start-8edc/BLOCKED.txt` lists the harness rules that would unblock it). Fixes D4
@@ -138,8 +148,9 @@ times them (`F117_PRESENT_CLOCK=raw` for the old clock; opt-in knobs `F117_PRESE
   routine owns (set `insns` to the span, rebuild, rerun seeds; credit stays the census row).
 - **Coverage for new routes:** a fresh interpreter `--coverage` capture of all 45 routes is in
   `D:/f117-gate/p2-batch-d-accept/allroutes/` (`interp_cover.py`); run `tools/census_reach.py` on it to
-  see which of the 120 "no evidence" census entries any route runs before designing new routes.
-- Ranked leads: `D:/f117-gate/p2-batch-c-accept/next-reached.tsv` (minus the routines above).
+  see which census entries any route runs before designing new routes (done 16 Oct: 208 rows /
+  18,901 bytes have no evidence, data included; see the roadmap).
+- Ranked leads: `D:/f117-gate/p2-batch-d-accept/reached-allroutes.tsv` (minus the routines above).
 - Kit libraries are refreshed from main's normal /O2 build after each batch;
   `D:/f117-gate/kit-libs/manifest.json` records the source commit and hashes.
 - Other leads: PLAYER `026B:0211` (a distinct timer re-sync) and `026B:0336`
@@ -174,7 +185,7 @@ transitions, widths by role). Details and the method: docs/progress.md.
 
 1. **Phase 2 first (owner).** `p2-batch-d` is gated and landed; integrate the privately proved
    routines listed above (with their harness hunks) as the next batch. Continue down the ranked list
-   (`D:/f117-gate/p2-batch-c-accept/next-reached.tsv`) with the private kit and parallel agents (agents do steps 1-7 only; root runs
+   (`D:/f117-gate/p2-batch-d-accept/reached-allroutes.tsv`) with the private kit and parallel agents (agents do steps 1-7 only; root runs
    `kit.py checkpoints` and `D:/f117-gate/kit/boot_proof.py` with `KIT_ROOT` at the gated worktree, then
    `verdict` and `audit_proofs.py`). The brief's "Traps found on 16 October" lists today's lessons.
    Verify every source hash, full coverage, five seeds, mutations and actual route calls; one full gate plus
