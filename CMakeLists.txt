@@ -583,6 +583,32 @@ if(F117R_BUILD_TESTS)
       --only VGAME.EXE:D8AF)
     add_test(NAME matched_vgame_set_cockpit_element COMMAND func_lockstep --states 5000
       --only VGAME.EXE:D578)
+    add_test(NAME matched_start_read_file_handle COMMAND func_lockstep --states 5000
+      --only START.EXE:A230)
+    add_test(NAME matched_logo_read_file_handle COMMAND func_lockstep --states 5000
+      --only MPS_LOGO.EXE:1510)
+    add_test(NAME matched_mps_logo_fclose COMMAND func_lockstep --states 5000
+      --only MPS_LOGO.EXE:2BA)
+    add_test(NAME matched_vgame_line_in_box_window COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:70)
+    add_test(NAME matched_start_graphics_pages_setup COMMAND func_lockstep --states 5000
+      --only START.EXE:73CE)
+    add_test(NAME matched_start_roster_settle_and_save COMMAND func_lockstep --states 5000
+      --only START.EXE:6D07)
+    add_test(NAME matched_start_draw_roster_board COMMAND func_lockstep --states 5000
+      --only START.EXE:615C)
+    add_test(NAME matched_mps_logo_draw_sprite_frame COMMAND func_lockstep --states 5000
+      --only MPS_LOGO.EXE:5BE)
+    add_test(NAME matched_vgame_armament_background COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:300)
+    add_test(NAME matched_logo_read_stream_items COMMAND func_lockstep --states 5000
+      --only MPS_LOGO.EXE:3B6)
+    add_test(NAME matched_dswap_openfile COMMAND func_lockstep --states 5000
+      --only DSWAP.EXE:1520)
+    add_test(NAME matched_mps_logo_openfile COMMAND func_lockstep --states 5000
+      --only MPS_LOGO.EXE:D72)
+    add_test(NAME matched_mps_logo_fread_far COMMAND func_lockstep --states 5000
+      --only MPS_LOGO.EXE:116)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000

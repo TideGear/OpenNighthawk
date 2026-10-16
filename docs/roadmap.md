@@ -68,11 +68,11 @@ make (Phase 4).
   early for its autoexec); delivery there is not pursued (Settled, below).
 - **The game version verified:** GOG's installer (build 28044) with the 473.04
   update; Steam's release is byte-identical (`tools/verify_install.py`).
-- **The gate** (`tools/build_recomp.py`): translate, build, unit tests (147),
+- **The gate** (`tools/build_recomp.py`): translate, build, unit tests (160),
   coverage, both engines on every route, instruction lockstep under both
   timing profiles, matched-routine lockstep at three seeds, and the
   routes-only and event-limit checks. About 21-30 minutes when every
-  interpreter route is verified fresh (latest 1,532 s); costs and what was
+  interpreter route is verified fresh (latest 1,655 s); costs and what was
   optimised: [repeated-processes.md](repeated-processes.md).
 - **Rendered speaker and speech audio.** PIT counter 2 follows the 8254 model;
   speaker music matches DOSBox-X (envelope 0.87, spectral 0.92-0.93, level
@@ -151,14 +151,10 @@ not the recompilation:
       [../handoff.md](../handoff.md). `tools/reimp_names.py` joins the Reimp's
       census (1,535 functions) with this project's regions as a private lead
       list.
-      **Now:** 920 addresses matched, covering 918 of the census functions and
-      127,436 of 179,213 bytes (P2 72.55%, overall 90.69%).
-      The latest four-routine batch and its shared matched-object build are
-      included in these figures. Its first gate exposed an existing START
-      `3E84` argument-alias mismatch at seed `0x7721a2f2bd17`; the matched body
-      now reads its second argument after its first store, as the original
-      does, and CTest `matched_set_pointer_alias` retains the seed. The
-      repeated gate and presentation passed. See the handoff.
+      **Now:** 933 addresses matched, covering 931 of the census functions and
+      130,245 of 179,213 bytes (P2 74.04%, overall 91.15%).
+      The latest batch (`p2-batch-d`, 16 Oct: 13 routines, 2,809 census
+      bytes) is included in these figures; see the handoff.
       **What is left:** `tools/census_reach.py` separates code with run
       evidence from code without (gate coverage logs only interpreted
       fallback instructions, so it cannot show what ran). A complete
@@ -173,8 +169,11 @@ not the recompilation:
       (`0FB2:04DD`) is fixture-proven but **not integrated**: no input reaches
       it (146,153 real clip divisions across 14 routes stay well under its
       32,767-unit threshold); it is kept on local branch `irq-divide-fault`
-      until a route reaches it. Excluded as unequal: START 0x11DB, MPS_LOGO
-      0x1ADC and 0x1C82.
+      until a route reaches it. The C start-up routine (START `8EDC` and its
+      six copies) must stop right after its own STI and never returns to its
+      caller's stack, so no lockstep state can complete it; it needs a harness
+      completion rule first (`D:/f117-gate/p2-start-8edc/BLOCKED.txt`).
+      Excluded as unequal: START 0x11DB, MPS_LOGO 0x1ADC and 0x1C82.
 
 ### How an entry is proved
 
@@ -246,6 +245,12 @@ reaches. Candidate drafts can keep private static dossiers
 
 ### Matched: VGAME scene and rendering
 
+- `114A:0070` line clipped to an explicit box, optionally on both pages
+  (16 Oct, batch d): 78 instructions, 38 mutations, `full_cycle` 4,997
+  calls. Its far callee `0FB2:0324` is the far entry of the raster line
+  clipper, now named `vgame_clip_raster_line_far` (it was mislabelled "sky
+  bands"). Proof `D:/f117-gate/p2-vgame-114a-0070`.
+
 - `D8AF` viewport bounds, projection centre and raster callbacks (16 Oct):
   all 85 instructions at five seeds, 45 mutations caught; `full_cycle`
   275 calls. Proof `D:/f117-gate/p2-vgame-d8af`.
@@ -302,6 +307,9 @@ reaches. Candidate drafts can keep private static dossiers
 
 ### Matched: VGAME HUD and cockpit
 
+- `0300` armament panel background (16 Oct, batch d): 71 instructions, 50
+  mutations, `full_cycle` 1 call. Proof `D:/f117-gate/p2-vgame-0300`.
+
 - `D578` cockpit element recolouring (16 Oct): all 77 instructions at five
   seeds, 36 mutations caught; `full_cycle` 39 calls. Keeps the original far
   driver calls through the presentation observer. Proof `D:/f117-gate/p2-vgame-d578`.
@@ -327,6 +335,13 @@ reaches. Candidate drafts can keep private static dossiers
   frame of normal flight).
 
 ### Matched: START
+
+- `A230` text-mode file read (the copy of VGAME `F458`, all 101 original
+  instructions checked against it), `73CE` graphics pages set-up, `6D07`
+  roster settle and save and `615C` roster page (16 Oct, batch d): 94/79/65/98
+  instructions, 60/58/46/56 mutations, `full_cycle` 38/2/2/1 calls. The
+  read's shared DOS return `98BD-98C9` earns no duplicate coverage credit.
+  Proofs `D:/f117-gate/p2-start-{a230,73ce,6d07,615c}`.
 
 - `0448` launch animation, `3F33` key/button wait, `1308` mission-order
   decoding/briefing and `30A0` palette fade (16 Oct): five seeds each,
@@ -381,6 +396,22 @@ reaches. Candidate drafts can keep private static dossiers
 - `1CF5` and `56D9`: with START above.
 
 ### Matched: SETUP, PLAYER, MPS_LOGO, DSWAP and the runtime
+
+- MPS_LOGO's far-model C runtime: `0146:1510` text-mode read (a reviewed
+  copy of START `A230`: far return, arguments two bytes higher), `02BA`
+  `fclose`, `03B6` `fread`, `0D72` `_openfile` and `0045:0116` `fread` into a
+  far buffer through a 512-byte bounce buffer; with `006D:05BE` RLE sprite
+  frame and DSWAP `1520` `_openfile` (16 Oct, batch d). 62/44/43/58/46/42/54
+  mutations; `full_cycle` 25/1/561/1/416/82/4 calls. `05BE`'s 288-byte watch
+  span encloses the matched helper `0678`, so its proof covers 122
+  instructions (112 its own); census credit stays its 186-byte row. `03B6`'s
+  two divide faults return to original code (not fixture-tested). The far
+  `fread` calls `RETF 8` helpers through a local far-call trap that raises
+  the return SP by the pop count. Proofs `D:/f117-gate/p2-logo-{1510,02ba,
+  03b6,0d72,0045-0116,006d-05be}`, `p2-dswap-1520`. Batch: 13 routines, 657
+  mutations, 26 boot and 66 full-cycle checkpoints exact each, 65 optimized
+  seed runs; full gate and all-route N=1 presentation:
+  `D:/f117-gate/p2-batch-d-accept`. Census gain 13 functions / 2,809 bytes.
 
 - PLAYER `0BE2` LZ91 block decoding and `03FE` stream-buffer room/wrap,
   SETUP `0A9F` overlay loading (16 Oct): five seeds each, 47/43/45
