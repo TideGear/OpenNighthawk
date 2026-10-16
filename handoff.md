@@ -18,6 +18,30 @@ Scoreboard: P1 100.00%, P2 67.37%, P3 82.75%, All 85.68% (P4 is no longer scored
 
 ### Presentation: latest (15 October, afternoon)
 
+**START HERE (end of 15 Oct): `--present rerun` is built on branch `present-rerun` (worktree `D:/f117-wt/present-rerun`,
+pushed, NOT merged, no full gate yet).** In-between pictures are drawn by the original itself on a throwaway copy of
+the machine at each in-between moment (camera, other aircraft and weapons nudged), replayed at any `--present-scale`;
+a smoothed playback clock (three published steps; `F117_PRESENT_CLOCK=raw` turns it off) is built. Files:
+`src/present/rerun.c/.h` (snapshot, copy, nudge), `drawfeed.c/.h` (`drawfeed_set_rerun`, `drawlive_set_rerun`,
+`drawlive_prepare_rerun`, `plan_smooth`), `src/matched/observe.c/.h` (`compose` callback at VGAME 2F9D, pending-state
+save/restore), `headless.c` and `main.c` (`--present rerun`, `[present] rerun:` summary). Verified: headless to 2.72B
+at N=2/4 on the owner's flight, final hash unchanged (`924be0d3e03d45aa`), the copy at t = 0 redraws its frame exactly
+(1,495 of 1,495); `f117a` headless real time at scale 2 with the raw clock: 59.9 pictures/s, game = wall time, 10 of
+5,693 intervals over 20 ms. Not verified / open, in order:
+1. The threaded app crashed with the smoothed clock (render took the oldest published step, index -1, when the clock
+   fell back to the old plan); fixed in `c7b4d77`. Two app runs through the owner's flight (scale 2, software
+   renderer, `D:/f117-gate/present-v2/rerun-mode/app7`) exit 0, 5,606 and 5,628 pictures drawn by the original, 4 fell
+   back. Clock, from `--present-log` (step index + t per picture): raw clock 274 freezes, 12 skips, 18.4% of pictures
+   change speed by over 20%; smoothed 17-21 freezes, 23-34 skips, 3.3-5.0%. Still to tune: the skips (pull-in rate
+   `0.05`, the one-step lag target, the EMA 0.8/0.2 in `plan_smooth`/`drawlive_publish`) against the extra picture age.
+2. Run the 45-route N=1 check, boot at N=4/9 and a full gate on the branch (the observer and matched.c changed), then merge.
+3. Real-screen test at 4K by the owner (ask first; a batch file with `--present rerun` in `f117a.4k.ini`).
+4. Per-copy observer/runtime so copies can run in parallel (needed above 60 Hz: about 6 ms per copy, 7.5 copies a step
+   at 144 Hz), and the small `DF03`/`C2C8` group of vertices that moves worse when nudged.
+Smoothing the original's road jitter at N>1 (option 2) comes after this. The experiment branch `draw-rerun-probe`
+holds the research harness (`F117_RERUN_PROBE`). Scoreboard: P3 82.75% until this merges.
+
+
 The owner's recorded flight `session-20261015-103956` (road jitter, jumping
 building patches) is frozen privately in
 `D:/f117-gate/present-v2/owner-roads-20261015` (inputs, save, 633 MB draw
