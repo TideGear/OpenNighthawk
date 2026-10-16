@@ -50313,7 +50313,671 @@ single:
 #undef XFLAG
 }
 
+/* PLAYER 0x01602, the C start-up's argument set-up (the Microsoft C run-time's _setargv, in the form that
+ * builds the vectors on the stack). It is entered by a CALL and ends by a jump through the return address,
+ * which it first saves in the data word `ret` (1ABCh): the stack pointer it leaves is therefore lower than
+ * the caller's by the room the vectors take, and they are left there.
+ *
+ *  - DOS function 30h gives the DOS version; AX is kept in [1A62h].
+ *  - The program prefix's segment is [1A60h]. For DOS 2 (AL = 2) there is no environment block to scan and
+ *    the program-name length is taken as 1; the name pointer [1A83h]/[1A85h] is not set up.
+ *  - Otherwise the environment segment (the word at 2Ch of the prefix) is scanned with REPNE SCASB for the
+ *    empty string that ends it; two bytes past it (the word count) is the program name, whose address is
+ *    saved in [1A83h] (offset) and [1A85h] (segment) and whose length including its zero is found the same way.
+ *  - The command tail (prefix:81h) is read twice, by the C run-time's quoting rules: blanks and tabs separate
+ *    arguments, a run of backslashes before a quote halves (an odd one keeps a literal quote), quotes switch
+ *    the "inside" state and are not copied; a carriage return or zero ends it.
+ *    First pass: counts the arguments (DI, starting at 1 for the program name, saved in [1A7Dh]) and the
+ *    characters (DX); the stack is lowered by the even-rounded size of the pointer vector (argc + 2 words)
+ *    plus the characters and their zeros, and the new SP is kept in [1A7Fh].
+ *    Second pass: writes the vector (pointers, then a zero word) at the new SP and the strings behind it:
+ *    the program name first, then each argument.
+ *  Registers: DS becomes SS; ES = SS; BX, SI, DI, CX, AX, DX end as the original leaves them; flags too.
+ * The two INT/REP stretches whose length depends on the data (the REP SCASB / REP STOSB) and every
+ * character step check for room first and leave the machine at their instruction so that the original code
+ * can carry on from there; the INT is made by the original's own instruction (sm4_int), as for a call. */
+static int player_crt_setargv(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = 0x1602;
+    enum { RET = 0x1ABC, PSP = 0x1A60, DOSVER = 0x1A62, ARGC = 0x1A7D, ARGV = 0x1A7F, NAME_OFF = 0x1A83, NAME_SEG = 0x1A85 };
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+#define XC(n) (c->icount += (n))
+#define ZF() ((c->flags & F_ZF) != 0)
+#define CMP_AL(v) alu_op(c, 7, get_r8(c, R_AL), (v), 0)
+#define OR_AL() alu_logic(c, get_r8(c, R_AL), 0)
+#define LODSB() x86_lods(c, 0, c->seg[S_DS])
+#define STOSB() do { mem_write8(c, phys(c->seg[S_ES], c->r[R_DI]), get_r8(c, R_AL)); \
+                     c->r[R_DI] = (uint16_t)(c->r[R_DI] + x86_str_delta(c, 0)); } while (0)
+    /* REP STOSB at `at`: whole, or left to the original when the clock has no room for it. */
+#define REP_STOSB(at) do { const unsigned k_ = c->r[R_CX] ? c->r[R_CX] : 1u; \
+                           if (!room(c, k_)) { c->ip = (uint16_t)(at); return 1; } \
+                           XC(sm_rep_stos(c, 0)); } while (0)
+
+    if (!room(c, 2)) return 0;
+    ds_put(c, RET, cpu_pop16(c));                                 /* the caller's return address */
+    set_r8(c, R_AH, 0x30);
+    XC(2);
+    if (!sm4_int(m, SM4_AT(6))) return 1;                         /* int 21h: the DOS version */
+
+    XB(4, 0x160A);
+    ds_put(c, DOSVER, c->r[R_AX]);
+    c->r[R_DX] = 1;
+    CMP_AL(2);
+    if (ZF()) goto args;                                          /* DOS 2: no program name */
+
+    XB(7, 0x1614);
+    c->seg[S_ES] = ds_get(c, PSP);
+    c->seg[S_ES] = seg_read16(c, c->seg[S_ES], 0x2C);             /* the environment */
+    ds_put(c, NAME_SEG, c->seg[S_ES]);
+    c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);                    /* xor ax, ax */
+    c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0x0000;         /* cwd */
+    c->r[R_CX] = 0x8000;
+    c->r[R_DI] = (uint16_t)alu_logic(c, 0, 1);                    /* xor di, di */
+scan_env:                                                         /* REPNE SCASB, then SCASB: a second zero ends it */
+    XB(1, 0x1629);
+    if (c->r[R_CX] != 0) {
+        x86_scas(c, 0);
+        c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);
+        if (c->r[R_CX] != 0 && !ZF()) goto scan_env;
+    }
+    XB(2, 0x162B);
+    x86_scas(c, 0);
+    if (x86_cond(c, 5)) goto scan_env;                            /* jne */
+    XB(4, 0x162E);
+    c->r[R_DI] = (uint16_t)alu_inc(c, c->r[R_DI], 1);
+    c->r[R_DI] = (uint16_t)alu_inc(c, c->r[R_DI], 1);             /* past the word count: the program name */
+    ds_put(c, NAME_OFF, c->r[R_DI]);
+    c->r[R_CX] = 0xFFFF;
+scan_name:                                                        /* REPNE SCASB: the name's length */
+    XB(1, 0x1637);
+    if (c->r[R_CX] != 0) {
+        x86_scas(c, 0);
+        c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);
+        if (c->r[R_CX] != 0 && !ZF()) goto scan_name;
+    }
+    XB(2, 0x1639);
+    c->r[R_CX] = (uint16_t)~c->r[R_CX];                           /* not cx */
+    c->r[R_DX] = c->r[R_CX];
+
+args:                                                             /* 0x163D: first pass over the command tail */
+    XB(3, 0x163D);
+    c->r[R_DI] = 1;
+    c->r[R_SI] = 0x81;
+    c->seg[S_DS] = ds_get(c, PSP);
+skip_blanks:                                                      /* 0x1647 */
+    XB(3, 0x1647);
+    LODSB();
+    CMP_AL(0x20);
+    if (ZF()) goto skip_blanks;
+    XB(2, 0x164C);
+    CMP_AL(9);
+    if (ZF()) goto skip_blanks;
+    XB(2, 0x1650);
+    CMP_AL(0x0D);
+    if (ZF()) goto count_done;
+    XB(2, 0x1654);
+    OR_AL();
+    if (ZF()) goto count_done;
+    XB(1, 0x1658);
+    c->r[R_DI] = (uint16_t)alu_inc(c, c->r[R_DI], 1);             /* an argument begins */
+count_back:                                                       /* 0x1659 */
+    XB(1, 0x1659);
+    c->r[R_SI] = (uint16_t)alu_dec(c, c->r[R_SI], 1);
+count_out:                                                        /* 0x165A: outside quotes */
+    XB(3, 0x165A);
+    LODSB();
+    CMP_AL(0x20);
+    if (ZF()) goto skip_blanks;
+    XB(2, 0x165F);
+    CMP_AL(9);
+    if (ZF()) goto skip_blanks;
+    XB(2, 0x1663);
+    CMP_AL(0x0D);
+    if (ZF()) goto count_done;
+    XB(2, 0x1667);
+    OR_AL();
+    if (ZF()) goto count_done;
+    XB(2, 0x166B);
+    CMP_AL(0x22);
+    if (ZF()) goto count_in;
+    XB(2, 0x166F);
+    CMP_AL(0x5C);
+    if (ZF()) goto count_slash_out;
+    XB(2, 0x1673);
+    c->r[R_DX] = (uint16_t)alu_inc(c, c->r[R_DX], 1);
+    goto count_out;
+count_slash_out:                                                  /* 0x1676: backslashes, then a quote or not */
+    XB(1, 0x1676);
+    c->r[R_CX] = (uint16_t)alu_logic(c, 0, 1);
+slash_out_loop:
+    XB(4, 0x1678);
+    c->r[R_CX] = (uint16_t)alu_inc(c, c->r[R_CX], 1);
+    LODSB();
+    CMP_AL(0x5C);
+    if (ZF()) goto slash_out_loop;
+    XB(2, 0x167E);
+    CMP_AL(0x22);
+    if (ZF()) goto slash_out_quote;
+    XB(2, 0x1682);
+    c->r[R_DX] = (uint16_t)alu_add(c, c->r[R_DX], c->r[R_CX], 1, 0);   /* the backslashes count as they are */
+    goto count_back;
+slash_out_quote:                                                  /* 0x1686: a quote after them: half, odd keeps it */
+    XB(5, 0x1686);
+    c->r[R_AX] = c->r[R_CX];
+    c->r[R_CX] = x86_shift(c, 5, c->r[R_CX], 1, 1);
+    c->r[R_DX] = (uint16_t)alu_op(c, 2, c->r[R_DX], c->r[R_CX], 1);
+    alu_logic(c, get_r8(c, R_AL) & 1, 0);
+    if (!ZF()) goto count_out;
+    XB(1, 0x1690);
+    goto count_in;
+count_back2:                                                      /* 0x1692 */
+    XB(1, 0x1692);
+    c->r[R_SI] = (uint16_t)alu_dec(c, c->r[R_SI], 1);
+count_in:                                                         /* 0x1693: inside quotes */
+    XB(3, 0x1693);
+    LODSB();
+    CMP_AL(0x0D);
+    if (ZF()) goto count_done;
+    XB(2, 0x1698);
+    OR_AL();
+    if (ZF()) goto count_done;
+    XB(2, 0x169C);
+    CMP_AL(0x22);
+    if (ZF()) goto count_out;
+    XB(2, 0x16A0);
+    CMP_AL(0x5C);
+    if (ZF()) goto count_slash_in;
+    XB(2, 0x16A4);
+    c->r[R_DX] = (uint16_t)alu_inc(c, c->r[R_DX], 1);
+    goto count_in;
+count_slash_in:                                                   /* 0x16A7 */
+    XB(1, 0x16A7);
+    c->r[R_CX] = (uint16_t)alu_logic(c, 0, 1);
+slash_in_loop:
+    XB(4, 0x16A9);
+    c->r[R_CX] = (uint16_t)alu_inc(c, c->r[R_CX], 1);
+    LODSB();
+    CMP_AL(0x5C);
+    if (ZF()) goto slash_in_loop;
+    XB(2, 0x16AF);
+    CMP_AL(0x22);
+    if (ZF()) goto slash_in_quote;
+    XB(2, 0x16B3);
+    c->r[R_DX] = (uint16_t)alu_add(c, c->r[R_DX], c->r[R_CX], 1, 0);
+    goto count_back2;
+slash_in_quote:                                                   /* 0x16B7 */
+    XB(5, 0x16B7);
+    c->r[R_AX] = c->r[R_CX];
+    c->r[R_CX] = x86_shift(c, 5, c->r[R_CX], 1, 1);
+    c->r[R_DX] = (uint16_t)alu_op(c, 2, c->r[R_DX], c->r[R_CX], 1);
+    alu_logic(c, get_r8(c, R_AL) & 1, 0);
+    if (!ZF()) goto count_in;
+    XB(1, 0x16C1);
+    goto count_out;
+
+count_done:                                                       /* 0x16C3: make room, start the vector */
+    XB(20, 0x16C3);
+    cpu_push16(c, c->seg[S_SS]);                                  /* push ss, pop ds */
+    c->seg[S_DS] = cpu_pop16(c);
+    ds_put(c, ARGC, c->r[R_DI]);
+    c->r[R_DX] = (uint16_t)alu_add(c, c->r[R_DX], c->r[R_DI], 1, 0);
+    c->r[R_DI] = (uint16_t)alu_inc(c, c->r[R_DI], 1);
+    c->r[R_DI] = x86_shift(c, 4, c->r[R_DI], 1, 1);               /* two bytes a pointer */
+    c->r[R_DX] = (uint16_t)alu_add(c, c->r[R_DX], c->r[R_DI], 1, 0);
+    c->r[R_DX] = (uint16_t)alu_inc(c, c->r[R_DX], 1);
+    set_r8(c, R_DL, (uint8_t)alu_op(c, 4, get_r8(c, R_DL), 0xFE, 0));   /* even */
+    c->r[R_SP] = (uint16_t)alu_sub(c, c->r[R_SP], c->r[R_DX], 1, 0);
+    c->r[R_AX] = c->r[R_SP];
+    ds_put(c, ARGV, c->r[R_AX]);
+    c->r[R_BX] = c->r[R_AX];
+    c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], c->r[R_BX], 1, 0);   /* the strings begin behind the vector */
+    cpu_push16(c, c->seg[S_SS]);                                  /* push ss, pop es */
+    c->seg[S_ES] = cpu_pop16(c);
+    seg_write16(c, c->seg[S_SS], c->r[R_BX], c->r[R_DI]);         /* the first pointer: the program name */
+    c->r[R_BX] = (uint16_t)alu_inc(c, c->r[R_BX], 1);
+    c->r[R_BX] = (uint16_t)alu_inc(c, c->r[R_BX], 1);
+    c->r[R_SI] = ds_get(c, NAME_OFF);                             /* lds si, [1A83h] */
+    c->seg[S_DS] = ds_get(c, (uint16_t)(NAME_OFF + 2));
+copy_name:                                                        /* 0x16EA: the name with its zero */
+    XB(4, 0x16EA);
+    LODSB();
+    STOSB();
+    OR_AL();
+    if (!ZF()) goto copy_name;
+    XB(3, 0x16F0);
+    c->seg[S_DS] = seg_read16(c, c->seg[S_SS], PSP);
+    c->r[R_SI] = 0x81;
+    goto next_arg;
+end_arg:                                                          /* 0x16FA: close the argument just copied */
+    XB(2, 0x16FA);
+    c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);
+    STOSB();
+next_arg:                                                         /* 0x16FD */
+    XB(3, 0x16FD);
+    LODSB();
+    CMP_AL(0x20);
+    if (ZF()) goto next_arg;
+    XB(2, 0x1702);
+    CMP_AL(9);
+    if (ZF()) goto next_arg;
+    XB(2, 0x1706);
+    CMP_AL(0x0D);
+    if (ZF()) goto finish;
+    XB(2, 0x170A);
+    OR_AL();
+    if (ZF()) goto finish;
+    XB(3, 0x170E);
+    seg_write16(c, c->seg[S_SS], c->r[R_BX], c->r[R_DI]);         /* a pointer to this argument */
+    c->r[R_BX] = (uint16_t)alu_inc(c, c->r[R_BX], 1);
+    c->r[R_BX] = (uint16_t)alu_inc(c, c->r[R_BX], 1);
+copy_back:                                                        /* 0x1713 */
+    XB(1, 0x1713);
+    c->r[R_SI] = (uint16_t)alu_dec(c, c->r[R_SI], 1);
+copy_out:                                                         /* 0x1714: outside quotes */
+    XB(3, 0x1714);
+    LODSB();
+    CMP_AL(0x20);
+    if (ZF()) goto end_arg;
+    XB(2, 0x1719);
+    CMP_AL(9);
+    if (ZF()) goto end_arg;
+    XB(2, 0x171D);
+    CMP_AL(0x0D);
+    if (ZF()) goto close_last;
+    XB(2, 0x1721);
+    OR_AL();
+    if (ZF()) goto close_last;
+    XB(2, 0x1725);
+    CMP_AL(0x22);
+    if (ZF()) goto copy_in;
+    XB(2, 0x1729);
+    CMP_AL(0x5C);
+    if (ZF()) goto copy_slash_out;
+    XB(2, 0x172D);
+    STOSB();
+    goto copy_out;
+copy_slash_out:                                                   /* 0x1730 */
+    XB(1, 0x1730);
+    c->r[R_CX] = (uint16_t)alu_logic(c, 0, 1);
+copy_slash_out_loop:
+    XB(4, 0x1732);
+    c->r[R_CX] = (uint16_t)alu_inc(c, c->r[R_CX], 1);
+    LODSB();
+    CMP_AL(0x5C);
+    if (ZF()) goto copy_slash_out_loop;
+    XB(2, 0x1738);
+    CMP_AL(0x22);
+    if (ZF()) goto copy_slash_out_quote;
+    XB(1, 0x173C);
+    set_r8(c, R_AL, 0x5C);                                        /* the backslashes as they are */
+    REP_STOSB(0x173E);
+    XB(1, 0x1740);
+    goto copy_back;
+copy_slash_out_quote:                                             /* 0x1742 */
+    XB(2, 0x1742);
+    set_r8(c, R_AL, 0x5C);
+    c->r[R_CX] = x86_shift(c, 5, c->r[R_CX], 1, 1);
+    REP_STOSB(0x1746);                                            /* half of them */
+    XB(1, 0x1748);
+    if (x86_cond(c, 3)) goto copy_in;                             /* jae: even, the quote is syntax */
+    XB(3, 0x174A);
+    set_r8(c, R_AL, 0x22);                                        /* odd: a literal quote */
+    STOSB();
+    goto copy_out;
+copy_back_in:                                                     /* 0x174F */
+    XB(1, 0x174F);
+    c->r[R_SI] = (uint16_t)alu_dec(c, c->r[R_SI], 1);
+copy_in:                                                          /* 0x1750: inside quotes */
+    XB(3, 0x1750);
+    LODSB();
+    CMP_AL(0x0D);
+    if (ZF()) goto close_last;
+    XB(2, 0x1755);
+    OR_AL();
+    if (ZF()) goto close_last;
+    XB(2, 0x1759);
+    CMP_AL(0x22);
+    if (ZF()) goto copy_out;
+    XB(2, 0x175D);
+    CMP_AL(0x5C);
+    if (ZF()) goto copy_slash_in;
+    XB(2, 0x1761);
+    STOSB();
+    goto copy_in;
+copy_slash_in:                                                    /* 0x1764 */
+    XB(1, 0x1764);
+    c->r[R_CX] = (uint16_t)alu_logic(c, 0, 1);
+copy_slash_in_loop:
+    XB(4, 0x1766);
+    c->r[R_CX] = (uint16_t)alu_inc(c, c->r[R_CX], 1);
+    LODSB();
+    CMP_AL(0x5C);
+    if (ZF()) goto copy_slash_in_loop;
+    XB(2, 0x176C);
+    CMP_AL(0x22);
+    if (ZF()) goto copy_slash_in_quote;
+    XB(1, 0x1770);
+    set_r8(c, R_AL, 0x5C);
+    REP_STOSB(0x1772);
+    XB(1, 0x1774);
+    goto copy_back_in;
+copy_slash_in_quote:                                              /* 0x1776 */
+    XB(2, 0x1776);
+    set_r8(c, R_AL, 0x5C);
+    c->r[R_CX] = x86_shift(c, 5, c->r[R_CX], 1, 1);
+    REP_STOSB(0x177A);
+    XB(1, 0x177C);
+    if (x86_cond(c, 3)) goto copy_out;
+    XB(3, 0x177E);
+    set_r8(c, R_AL, 0x22);
+    STOSB();
+    goto copy_in;
+close_last:                                                       /* 0x1783: the last argument's zero */
+    XB(2, 0x1783);
+    c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);
+    STOSB();
+finish:                                                           /* 0x1786: terminate the vector, go back */
+    XB(4, 0x1786);
+    cpu_push16(c, c->seg[S_SS]);                                  /* push ss, pop ds */
+    c->seg[S_DS] = cpu_pop16(c);
+    ds_put(c, c->r[R_BX], 0);
+    c->ip = ds_get(c, RET);                                       /* jmp [1ABCh] */
+    return 1;
+#undef REP_STOSB
+#undef STOSB
+#undef LODSB
+#undef OR_AL
+#undef CMP_AL
+#undef ZF
+#undef XC
+#undef XB
+}
+
+/* VGAME 130D:033F (0x1340F), clip a model edge to the clip window. SI points at
+ * a record of one edge: two ends, each a pair of 32-bit coordinates stored as
+ * (low, high) words: x1 at +0/+2, y1 at +4/+6, x2 at +8/+0A, y2 at +0C/+0E. The
+ * window is [85FA] (left) .. [85FE] (right), [85FC] (top) .. [8600] (bottom).
+ * The routine returns far and gives its verdict in the word [SI+2] (x1's high
+ * word, which the verdict overwrites, or the published end code of 0217/05E5):
+ * 0 for an edge wholly inside, 8080h for one wholly outside, 80h-or-ed codes
+ * for edges cut off by a corner (8Ah / 85h and the like).
+ *
+ * Which of two paths runs depends on the coordinates. When every high word
+ * is just the sign extension of its low word (the CWD of the low word equals
+ * the high word), the edge fits in 16 bits and 0471 runs: [85F0] is cleared,
+ * the outcode of each end comes from 02DD (it sets [85F0] when a compare
+ * overflows), an edge with both ends outside the same side is rejected
+ * (0469: [SI+2] = 8080h) or, if no side is shared, an edge with an end
+ * outside is cut: 0217 publishes the clipped ends, dx = x2 - x1 and dy =
+ * y2 - y1 go to [85DC]/[85DE] (an overflow in either, or [85F0] set, sends
+ * the edge round the long path through 04F8), and 0271 moves each end onto
+ * the window. The two outcodes with no bit in common and both zero give 0463:
+ * [SI+2] = 0. A failed cut leaves [SI+2] = outcode | 80h (04F0).
+ *
+ * Otherwise 0365 runs: the outcode of each end comes from 0671. Both
+ * inside: [SI+2] = 0 with a near RET (031B: the original ends this one path
+ * with a near return, and so does this). Both beyond a common side: 05E5
+ * publishes the ends, then [SI+2] = outcode | 80h (a shared left/right
+ * side, 03A5) or 8080h (a shared top/bottom, 03A6). Otherwise the record
+ * and its twin at SI-10h are copied to a scratch record at [8598], 05E5
+ * publishes the ends, and the ends are bisected onto the window: 0577 moves
+ * one end when only one lies outside (03DA, 03EE), 04FB both (0401, with the
+ * outcodes in [85D8], [85DA]; CF set means no cut, [SI+2] = 8Ah or 85h by
+ * bit 2 of the first outcode). 0321 (from 04F8) first turns each low word
+ * into a sign-extended long and goes round the long path again.
+ *
+ * Callees return with a plain RET: 0671, 05E5, 0577, 04FB, 02DD, 0217 and
+ * 0271 are called as they are (original or matched code). */
+static int vgame_model_edge_clip(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while(0)
+#define XRUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call_);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define XCALL(at_,target_,ret_) do { SM4_NEED(1,(at_)); XRUN(guest_call_pop(m,(target_),(ret_),0)); } while(0)
+#define XW(o_) ds_get(c,(uint16_t)(c->r[R_SI]+(o_)))
+#define XWP(o_,v_) ds_put(c,(uint16_t)(c->r[R_SI]+(o_)),(uint16_t)(v_))
+#define XDWP(o_,v_) ds_put(c,(uint16_t)(c->r[R_DI]+(o_)),(uint16_t)(v_))
+#define XCWD() (c->r[R_DX]=(c->r[R_AX]&0x8000)?0xFFFF:0x0000)
+#define XAL() get_r8(c,R_AL)
+#define XAH() get_r8(c,R_AH)
+#define XOR16(a_,b_) ((uint16_t)alu_op(c,1,(a_),(b_),1))
+#define XADD16(a_,b_) ((uint16_t)alu_op(c,0,(a_),(b_),1))
+#define XSUB16(a_,b_) ((uint16_t)alu_op(c,5,(a_),(b_),1))
+#define XSXCMP(lo_,hi_) do { c->r[R_AX]=XW(lo_); XCWD(); (void)alu_op(c,7,c->r[R_DX],XW(hi_),1); } while(0)
+#define XRETF() do { c->ip=cpu_pop16(c); c->seg[S_CS]=cpu_pop16(c); } while(0)
+    if(!room(c,4))return 0;
+    /* Is each coordinate a sign-extended 16-bit value? x1, x2, y1, y2. */
+    c->icount+=4;
+    XSXCMP(0,2);
+    if(x86_cond(c,5))goto wide;
+    XB(4,0x0347);XSXCMP(8,0xA);
+    if(x86_cond(c,5))goto wide;
+    XB(4,0x0350);XSXCMP(4,6);
+    if(x86_cond(c,5))goto wide;
+    XB(4,0x0359);XSXCMP(0xC,0xE);
+    if(x86_cond(c,5))goto wide;
+    XB(1,0x0362);goto narrow;
+
+    /* The 32-bit path: the outcode of the second end, then of the first. */
+wide:
+    XB(4,0x0365);
+    c->r[R_AX]=XW(8);c->r[R_DX]=XW(0xA);c->r[R_BX]=XW(0xC);c->r[R_CX]=XW(0xE);
+    XCALL(0x0371,0x0671,0x0374);
+    XB(5,0x0374);
+    c->r[R_DI]=c->r[R_BP];
+    c->r[R_AX]=XW(0);c->r[R_DX]=XW(2);c->r[R_BX]=XW(4);c->r[R_CX]=XW(6);
+    XCALL(0x0381,0x0671,0x0384);
+    XB(4,0x0384);
+    c->r[R_AX]=c->r[R_BP];c->r[R_BX]=c->r[R_DI];
+    c->r[R_AX]=XOR16(c->r[R_AX],c->r[R_BX]);
+    if(x86_cond(c,4))goto accept;                                 /* both inside */
+    XB(3,0x038C);
+    c->r[R_AX]=c->r[R_BP];
+    alu_logic(c,(uint32_t)(c->r[R_BX]&c->r[R_AX]),1);
+    if(x86_cond(c,4))goto straddle;                               /* no side in common */
+    XB(3,0x0392);
+    c->r[R_AX]=(uint16_t)alu_op(c,4,c->r[R_AX],c->r[R_BX],1);
+    alu_logic(c,(uint32_t)(c->r[R_AX]&3),1);
+    if(x86_cond(c,5))goto outside_vert;
+    XB(1,0x0399);
+    c->r[R_DI]=c->r[R_BX];
+    XCALL(0x039B,0x05E5,0x039E);
+    XB(4,0x039E);
+    set_r8(c,R_AL,(uint8_t)alu_op(c,1,XAL(),0x80,0));
+    set_r8(c,R_AH,XAL());XWP(2,c->r[R_AX]);
+    XRETF();return 1;
+outside_vert:
+    XB(4,0x03A6);
+    set_r8(c,R_AL,0x80);set_r8(c,R_AH,XAL());XWP(2,c->r[R_AX]);
+    XRETF();return 1;
+
+    /* The edge straddles the window: keep a copy of the record, publish the
+     * ends, then bisect. */
+straddle:
+    XB(30,0x03AE);
+    cpu_push16(c,c->r[R_BP]);cpu_push16(c,c->r[R_DI]);cpu_push16(c,c->r[R_SI]);
+    c->r[R_DI]=0x8598;
+    cpu_push16(c,c->seg[S_ES]);
+    c->r[R_AX]=c->seg[S_DS];c->seg[S_ES]=c->r[R_AX];
+    c->r[R_CX]=8;
+    (void)rep_string(c,STR_MOVS,1,c->seg[S_DS],0);
+    c->r[R_CX]=0;                                                 /* the REP ran CX down to 0 */
+    c->r[R_SI]=XSUB16(c->r[R_SI],0x10);
+    c->r[R_CX]=8;
+    (void)rep_string(c,STR_MOVS,1,c->seg[S_DS],0);
+    c->r[R_CX]=0;
+    c->seg[S_ES]=cpu_pop16(c);c->r[R_SI]=cpu_pop16(c);c->r[R_DI]=cpu_pop16(c);c->r[R_BP]=cpu_pop16(c);
+    XCALL(0x03CA,0x05E5,0x03CD);
+    XB(4,0x03CD);
+    set_r8(c,R_AH,XAL());XWP(2,c->r[R_AX]);
+    c->r[R_DI]=XOR16(c->r[R_DI],c->r[R_DI]);
+    if(x86_cond(c,4))goto bisect_first;
+    XB(2,0x03D6);
+    c->r[R_BP]=XOR16(c->r[R_BP],c->r[R_BP]);
+    if(x86_cond(c,5))goto bisect_both;
+    XB(4,0x03DA);
+    cpu_push16(c,c->r[R_SI]);c->r[R_SI]=0x8598;c->r[R_DI]=c->r[R_SI];c->r[R_DI]=XADD16(c->r[R_DI],8);
+    XCALL(0x03E3,0x0577,0x03E6);
+    XB(4,0x03E6);
+    c->r[R_SI]=cpu_pop16(c);XWP(8,c->r[R_AX]);XWP(0xC,c->r[R_BX]);
+    XRETF();return 1;
+bisect_first:
+    XB(4,0x03EE);
+    cpu_push16(c,c->r[R_SI]);c->r[R_SI]=0x8598;c->r[R_DI]=c->r[R_SI];c->r[R_SI]=XADD16(c->r[R_SI],8);
+    XCALL(0x03F7,0x0577,0x03FA);
+    XB(4,0x03FA);
+    c->r[R_SI]=cpu_pop16(c);XWP(0,c->r[R_AX]);XWP(4,c->r[R_BX]);
+    XRETF();return 1;
+bisect_both:
+    XB(6,0x0401);
+    ds_put(c,0x85D8,c->r[R_BP]);ds_put(c,0x85DA,c->r[R_DI]);
+    cpu_push16(c,c->r[R_SI]);c->r[R_SI]=0x8598;c->r[R_DI]=c->r[R_SI];c->r[R_DI]=XADD16(c->r[R_DI],8);
+    XCALL(0x0412,0x04FB,0x0415);
+    XB(2,0x0415);
+    c->r[R_SI]=cpu_pop16(c);
+    if(x86_cond(c,2))goto no_cut;
+    XB(8,0x0418);
+    c->r[R_DI]=XSUB16(c->r[R_DI],8);
+    XDWP(0,c->r[R_AX]);XDWP(2,c->r[R_DX]);XDWP(4,c->r[R_BX]);XDWP(6,c->r[R_CX]);
+    cpu_push16(c,c->r[R_SI]);c->r[R_SI]=c->r[R_DI];c->r[R_DI]=XADD16(c->r[R_DI],0x10);
+    XCALL(0x042C,0x0577,0x042F);
+    XB(11,0x042F);
+    c->r[R_DI]=c->r[R_SI];c->r[R_SI]=cpu_pop16(c);
+    XWP(0,c->r[R_AX]);XDWP(0,c->r[R_AX]);XDWP(2,c->r[R_DX]);
+    XWP(4,c->r[R_BX]);XDWP(4,c->r[R_BX]);XDWP(6,c->r[R_CX]);
+    cpu_push16(c,c->r[R_SI]);c->r[R_SI]=c->r[R_DI];c->r[R_DI]=XADD16(c->r[R_DI],0x18);
+    XCALL(0x0448,0x0577,0x044B);
+    XB(4,0x044B);
+    c->r[R_SI]=cpu_pop16(c);XWP(8,c->r[R_AX]);XWP(0xC,c->r[R_BX]);
+    XRETF();return 1;
+no_cut:
+    XB(3,0x0453);
+    set_r8(c,R_AL,0x8A);
+    alu_logic(c,(uint32_t)(c->r[R_BP]&4),1);
+    if(!x86_cond(c,5)){
+        XB(1,0x045B);
+        set_r8(c,R_AL,(uint8_t)alu_op(c,6,XAL(),0x0F,0));
+    }
+    XB(3,0x045D);
+    set_r8(c,R_AH,XAL());XWP(2,c->r[R_AX]);
+    XRETF();return 1;
+
+    /* The 16-bit path. */
+narrow:
+    XB(4,0x0471);
+    ds_put8(c,0x85F0,0);
+    c->r[R_BX]=XW(8);c->r[R_CX]=XW(0xC);
+    XCALL(0x047D,0x02DD,0x0480);
+    XB(5,0x0480);
+    set_r8(c,R_AH,XAL());
+    c->r[R_DX]=c->r[R_BX];c->r[R_BP]=c->r[R_CX];
+    c->r[R_BX]=XW(0);c->r[R_CX]=XW(4);
+    XCALL(0x048B,0x02DD,0x048E);
+    XB(2,0x048E);
+    c->r[R_AX]=XOR16(c->r[R_AX],c->r[R_AX]);
+    if(x86_cond(c,4))goto reject_zero;
+    XB(2,0x0492);
+    alu_logic(c,(uint32_t)(XAL()&XAH()),0);
+    if(x86_cond(c,4))goto narrow_cut;
+    XB(5,0x0496);
+    {
+        cpu_push16(c,c->r[R_AX]);
+        set_r8(c,R_AH,(uint8_t)alu_op(c,4,XAH(),XAL(),0));
+        alu_logic(c,(uint32_t)(XAH()&3),0);
+        c->r[R_AX]=cpu_pop16(c);
+    }
+    if(x86_cond(c,5))goto reject_80;
+    XCALL(0x049F,0x0217,0x04A2);
+    XB(3,0x04A2);
+    set_r8(c,R_BL,0x85);
+    alu_logic(c,(uint32_t)(XAL()&8),0);
+    if(!x86_cond(c,5)){
+        XB(1,0x04A8);
+        set_r8(c,R_BL,0x8A);
+    }
+    XB(3,0x04AA);
+    set_r8(c,R_BH,get_r8(c,R_BL));XWP(2,c->r[R_BX]);
+    XRETF();return 1;
+reject_zero:
+    XB(3,0x0463);
+    c->r[R_AX]=(uint16_t)alu_op(c,5,c->r[R_AX],c->r[R_AX],1);
+    XWP(2,c->r[R_AX]);
+    XRETF();return 1;
+reject_80:
+    XB(4,0x0469);
+    set_r8(c,R_AL,0x80);set_r8(c,R_AH,XAL());XWP(2,c->r[R_AX]);
+    XRETF();return 1;
+narrow_cut:
+    XCALL(0x04B0,0x0217,0x04B3);
+    XB(2,0x04B3);
+    c->r[R_DX]=XSUB16(c->r[R_DX],c->r[R_BX]);
+    if(x86_cond(c,0))goto slow;
+    XB(3,0x04B7);
+    ds_put(c,0x85DC,c->r[R_DX]);
+    c->r[R_BP]=XSUB16(c->r[R_BP],c->r[R_CX]);
+    if(x86_cond(c,0))goto slow;
+    XB(4,0x04BF);
+    ds_put(c,0x85DE,c->r[R_BP]);
+    ds_put8(c,0x85F1,XAH());
+    alu_logic(c,(uint32_t)(ds_get8(c,0x85F0)&1),0);
+    if(x86_cond(c,4))goto cut_ends;
+slow:
+    XB(1,0x04CE);                                                 /* jmp 04F8 */
+    XB(1,0x04F8);                                                 /* jmp 0321 */
+    XB(13,0x0321);                                                /* sign-extend the four low words */
+    c->r[R_AX]=XW(0);XCWD();XWP(2,c->r[R_DX]);
+    c->r[R_AX]=XW(4);XCWD();XWP(6,c->r[R_DX]);
+    c->r[R_AX]=XW(8);XCWD();XWP(0xA,c->r[R_DX]);
+    c->r[R_AX]=XW(0xC);XCWD();XWP(0xE,c->r[R_DX]);
+    goto wide;
+cut_ends:
+    XCALL(0x04D1,0x0271,0x04D4);
+    XB(1,0x04D4);
+    if(x86_cond(c,2))goto cut_failed;
+    XB(5,0x04D6);
+    XWP(0,c->r[R_BP]);XWP(4,c->r[R_DX]);
+    c->r[R_BX]=XW(8);c->r[R_CX]=XW(0xC);
+    set_r8(c,R_AL,ds_get8(c,0x85F1));
+    XCALL(0x04E4,0x0271,0x04E7);
+    XB(1,0x04E7);
+    if(x86_cond(c,2))goto cut_failed;
+    XB(3,0x04E9);
+    XWP(8,c->r[R_BP]);XWP(0xC,c->r[R_DX]);
+    XRETF();return 1;
+cut_failed:
+    XB(4,0x04F0);
+    set_r8(c,R_AL,(uint8_t)alu_op(c,1,XAL(),0x80,0));
+    set_r8(c,R_AH,XAL());XWP(2,c->r[R_AX]);
+    XRETF();return 1;
+
+    /* Both ends inside the window: the original sets [SI+2] = 0 and ends with a
+     * near RET (031B), in a routine its callers far-call. The body hands over there
+     * and the original code does that ending, as it would after any other stop. */
+accept:
+    c->ip=0x031B;
+    return 1;
+#undef XB
+#undef XRUN
+#undef XCALL
+#undef XW
+#undef XWP
+#undef XDWP
+#undef XCWD
+#undef XAL
+#undef XAH
+#undef XOR16
+#undef XADD16
+#undef XSUB16
+#undef XSXCMP
+#undef XRETF
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "VGAME.EXE", VGAME_47304, 0x130D, 0x033F, vgame_model_edge_clip, "clip a model edge to the window", 2 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x1602, player_crt_setargv, "C start-up: DOS version, program name and argument vector", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xF458, vgame_read_file_handle, "read from a file handle, text mode translated", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x40F0, start_mission_take_out_sites, "load the theatre, generate the mission, take out random sites", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x2092, end_wait_answer, "wait for a prompt answer", 1 },

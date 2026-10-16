@@ -516,6 +516,10 @@ if(F117R_BUILD_TESTS)
       --only START.EXE:40F0)
     add_test(NAME matched_vgame_read_file_handle COMMAND func_lockstep --states 5000
       --only VGAME.EXE:F458)
+    add_test(NAME matched_player_crt_setargv COMMAND func_lockstep --states 5000
+      --only PLAYER.EXE:1602)
+    add_test(NAME matched_vgame_model_edge_clip COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:33F)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000

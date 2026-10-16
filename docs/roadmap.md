@@ -198,8 +198,8 @@ not the recompilation:
       [../handoff.md](../handoff.md). `tools/reimp_names.py` joins the Reimp's
       census (1,535 functions) with this project's regions as a private lead
       list.
-      **Now:** 891 addresses matched, covering 889 of the census functions and
-      117,660 of 179,213 bytes (P2 67.37%, overall 85.68%).
+      **Now:** 893 addresses matched, covering 891 of the census functions and
+      118,501 of 179,213 bytes (P2 67.82%, overall 85.82%).
       **What is left:** `tools/census_reach.py` separates code with no run
       evidence from unreachable code (gate coverage logs only interpreted
       fallback instructions, so it cannot show what ran). A complete interpreter
@@ -449,6 +449,14 @@ check of the draft tool, run in Windows CI): see
   `D:/f117-gate/entry-palette`.
 - PLAYER `0244` `player_stream_picture_file`: 108 mutations, `full_cycle` 7
   calls. `D:/f117-gate/p2-batch4`.
+- `1602` PLAYER `player_crt_setargv` (the C start-up's argument vector; leaves by
+  `JMP [1ABC]` with the stack lowered, so the lockstep accepts that exit for this
+  routine only): 204 instructions, five seeds of about 6,245 states, 61 mutations,
+  `full_cycle` 2 calls. VGAME `130D:033F` `vgame_model_edge_clip` (472 bytes, 206
+  instructions): five seeds of about 6,220 states, 64 mutations, `full_cycle` 184,777
+  calls; its near-`RET` accept path at `031B` (a latent quirk of the original) is
+  handed back to the original code, so that path is not independently tested.
+  `D:/f117-gate/p2-player-1602`, `p2-vgame-033f`.
 - Twenty-two support routines: PLAYER's picture open/refill and linear copy,
   the four timer shutdowns, five mouse wrappers and SETUP's mouse probe,
   file-name comparison, BIOS text writer, register-block interrupt call and

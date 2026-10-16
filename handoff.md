@@ -13,8 +13,8 @@ session log. Earlier detail is in `git log -p handoff.md`.
 
 ## Current state (15 October)
 
-Scoreboard: P1 100.00%, P2 67.37%, P3 82.75%, All 85.68% (P4 is no longer scored)
-(`py tools/progress.py --title`). Phase 2: 889 census functions / 117,660 bytes.
+Scoreboard: P1 100.00%, P2 67.82%, P3 82.75%, All 85.82% (P4 is no longer scored)
+(`py tools/progress.py --title`). Phase 2: 891 census functions / 118,501 bytes.
 
 ### Presentation: latest (15 October, evening)
 
@@ -199,11 +199,11 @@ capture 2.45B-2.85B; `ident/draw.log` has identity records 2.75B-2.85B;
 - Next candidates (reached by `full_cycle`, unmatched; ranked list
   `D:/f117-gate/format-init/reached-corrected.tsv` minus the matched table):
   MPS_LOGO `0006:0072`, `0146:1894`, `0146:08CC`; DSWAP `0010`, `1D66`,
-  `117E`; VGAME `130D:033F`; SETUP `19B6`; PLAYER `1602`, then the rest of
-  that list. Agents were stopped mid-proof on VGAME `130D:033F`, MPS_LOGO
-  `0146:1894` and PLAYER `1602` (their `p2-*` directories hold a draft
-  `body.c`/`fixture.inc`, unverified) and before starting SETUP `19B6`
-  (empty).
+  `117E`; SETUP `19B6`, then the rest of that list (VGAME `130D:033F` and PLAYER
+  `1602` were matched 15 Oct). An agent was stopped mid-proof on MPS_LOGO
+  `0146:1894` (its `p2-*` directory holds an unverified draft) and before
+  starting SETUP `19B6` (empty). Refresh `D:/f117-gate/kit-libs` before the next
+  kit `checkpoints` run: the old libs no longer link.
 - Other leads: PLAYER `026B:0211` (a distinct timer re-sync) and `026B:0336`
   (tick/callback service; calls original code, so needs returning-helper
   fixtures). Private static drafts are unproven transcripts, not

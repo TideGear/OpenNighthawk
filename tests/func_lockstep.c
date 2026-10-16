@@ -554,6 +554,8 @@ static const struct { const char *module; uint16_t ip; int arg; uint16_t v[2]; }
 /* Exact code ranges when the default 0x300-byte window is unsuitable:
  * long/shared tails, or small walkers whose unrelated callees are nearby. */
 static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
+    { "VGAME.EXE", 0x033F, 0x033F, 0x01D8 },
+    { "PLAYER.EXE", 0x1602, 0x1602, 0x018E },
     { "VGAME.EXE", 0xF458, 0xF458, 0x00E9 },
     { "START.EXE", 0x40F0, 0x40F0, 0x0149 },
     { "END.EXE", 0x2092, 0x2092, 0x016E },
@@ -667,6 +669,7 @@ static const struct { const char *module; uint16_t seg, ip, below; } CODE_BELOW[
     { "VGAME.EXE", 0x0000, 0x1E79, 0x020C }, /* timer tick: shared rate-control tails from 1C6D */
     { "VGAME.EXE", 0x0FB2, 0x05A4, 0x004F }, /* boundary edge tail-jumps into column store */
     { "VGAME.EXE", 0x0FB2, 0x06A6, 0x0151 },     /* clipped edge: shared column/emitter flow from 0555 */
+    { "VGAME.EXE", 0x130D, 0x033F, 0x001E },     /* model edge clip: the sign-extend tail at 0321 (031B, the near-RET accept, is handed to the original) */
     { "VGAME.EXE", 0x130D, 0x0577, 0x0018 },     /* bisection's equal-word midpoint cases at 055F/056B */
     { "VGAME.EXE", 0x1377, 0x0968, 0x00CC },     /* model fill: the jump to the common exit 089C */
     { "VGAME.EXE", 0x1377, 0x099F, 0x0007 },     /* stipple fill, exit at 0998 */
@@ -759,6 +762,8 @@ static const struct { const char *module; uint16_t seg, ip, len; unsigned insns,
     { "END.EXE", 0x0000, 0x2092, 0x016E, 141, 141, "wait for a prompt answer" },
     { "START.EXE", 0x0000, 0x40F0, 0x0149, 112, 112, "load the theatre, generate the mission, take out random sites" },
     { "VGAME.EXE", 0x0000, 0xF458, 0x00E9, 94, 94, "read from a file handle, text mode translated" },
+    { "PLAYER.EXE", 0x0000, 0x1602, 0x018E, 204, 204, "C start-up: DOS version, program name and argument vector" },
+    { "VGAME.EXE", 0x130D, 0x033F, 0x01D8, 206, 206, "clip a model edge to the window" },
     { "END.EXE", 0, 0x2BEC, 0x0435, 444, 444, "debrief narrative and measured layout" },
     { "START.EXE", 0, 0x6DB8, 0x03F5, 399, 399, "pilot options dialog" },
     { "START.EXE", 0, 0x149C, 0x039E, 365, 365, "flight plan display" },
@@ -946,6 +951,9 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
         if (kind == 1 && op == 0xFF && a->mem[phys(a->seg[S_CS], (uint16_t)(here + 1))] == 0xE1 &&
                 sp_before == (uint16_t)(entry_sp + 2) && a->ip == a->r[R_CX])
             return inside;
+        /* PLAYER's C start-up argument set-up (1602) pops its return address into [1ABC], lowers the stack for the
+         * argument vector and leaves by JMP [1ABC] (at 178C). */
+        if (kind == 1 && ip == 0x1602 && here == 0x178C && op == 0xFF) return inside;
     }
     return 0;
 }
@@ -1059,7 +1067,7 @@ int main(int argc, char **argv)
         g_cov = -1;
         for (unsigned k = 0; k < sizeof COVERED / sizeof COVERED[0]; k++)
             if (!strcmp(o->module, COVERED[k].module) && o->seg == COVERED[k].seg && o->ip == COVERED[k].ip) g_cov = (int)k;
-        if (g_cov >= 0) { g_cov_ip = COVERED[g_cov].ip; g_cov_escapes = 0; memset(g_cov_skips, 0, sizeof g_cov_skips); memset(g_cov_cover, 0, sizeof g_cov_cover); memset(g_cov_whole, 0, sizeof g_cov_whole); }
+        if (g_cov >= 0) { g_cov_ip = (uint16_t)(COVERED[g_cov].ip - (o->seg == 0x130D && o->ip == 0x033F ? g_below : 0)); g_cov_escapes = 0; memset(g_cov_skips, 0, sizeof g_cov_skips); memset(g_cov_cover, 0, sizeof g_cov_cover); memset(g_cov_whole, 0, sizeof g_cov_whole); }
         g_hud_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0x1058 && o->ip == 0x0016;
         g_ground_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0x5046;
         g_watch_transient = (!strcmp(o->module, "START.EXE") && o->seg == 0 && o->ip == 0x149C) || (!strcmp(o->module, "START.EXE") && o->seg == 0 && o->ip == 0x6DB8) || (!strcmp(o->module, "END.EXE") && o->seg == 0 && o->ip == 0x2BEC) || (!strcmp(o->module, "VGAME.EXE") && o->seg == 0x0FAE && o->ip == 2) ||
@@ -5612,6 +5620,166 @@ int main(int argc, char **argv)
 #undef XW16
 #undef XW8
             }
+            if (!strcmp(o->module,"PLAYER.EXE") && o->seg==0 && o->ip==0x1602) {
+                const uint16_t dg=0x5000, psp=0x4000, env=0x3000;
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()%4==0)?0x6000:dg;r[R_SP]=0xF000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                for(unsigned j=0;j<0x800;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x800+j),XRAND());
+                /* The data words: the program prefix segment (in both data and stack segments, as the
+                 * routine reads it through SS later), stale name pointer and return slot. */
+                XW16(dg,0x1A60,psp);XW16(seg[S_SS],0x1A60,psp);
+                XW16(dg,0x1A83,0x0010);XW16(dg,0x1A85,0x2000);
+                XW16(seg[S_SS],0x1A83,0x0010);XW16(seg[S_SS],0x1A85,0x2000);
+                {const unsigned sl_=XRAND()%10;for(unsigned j=0;j<sl_;j++)XW8(0x2000,0x10+j,1+XRAND()%255);XW8(0x2000,0x10+sl_,0);}
+                XW16(dg,0x1ABC,(uint16_t)XRAND());XW16(seg[S_SS],0x1ABC,back);
+                /* The environment block: strings, an empty one, a count word, the program name. Now and
+                 * then the block has no zero for 8000h bytes (the REP SCASB runs out of count). */
+                {
+                    const unsigned mode_=XRAND()%24;
+                    unsigned at_=0;
+                    if(mode_==0) {
+                        for(unsigned j=0;j<0x8010;j++)XW8(env,(uint16_t)j,1+XRAND()%255);
+                        for(unsigned j=0x8010;j<0x8030;j++)XW8(env,(uint16_t)j,(XRAND()%3)?0:(uint8_t)(1+XRAND()%255));
+                    } else {
+                        const unsigned n_=(mode_<4)?0:XRAND()%5;
+                        for(unsigned k=0;k<n_;k++) {
+                            const unsigned len_=1+XRAND()%12;
+                            for(unsigned j=0;j<len_;j++)XW8(env,at_++,1+XRAND()%255);
+                            XW8(env,at_++,0);
+                        }
+                        XW8(env,at_++,0);                       /* the empty string ends the block */
+                        if(n_==0&&(XRAND()&1))XW8(env,at_++,0);  /* an empty environment is two zeros */
+                        XW16(env,at_,XRAND()%3);at_+=2;           /* the word count */
+                        const unsigned nl_=(XRAND()%8==0)?0:(XRAND()%6==0)?(1+XRAND()%80):(1+XRAND()%12);
+                        for(unsigned j=0;j<nl_;j++)XW8(env,at_++,1+XRAND()%255);
+                        for(unsigned j=0;j<0x20;j++)XW8(env,at_+j,0);
+                    }
+                    XW16(psp,0x2C,env);
+                }
+                /* The command tail at prefix:81h: blanks, tabs, quotes, backslash runs, letters; ended by a
+                 * carriage return, a zero, or (rarely) left unterminated within the 7Fh bytes. */
+                {
+                    unsigned at_=0;
+                    const unsigned want_=(XRAND()%5==0)?0:(XRAND()%6==0)?(40+XRAND()%80):(1+XRAND()%30);
+                    const unsigned lead_=(XRAND()%3==0)?XRAND()%4:0;
+                    for(unsigned j=0;j<lead_&&at_<0x7E;j++)XW8(psp,0x81+at_++,(XRAND()&1)?0x20:9);
+                    while(at_<want_&&at_<0x7E) {
+                        const unsigned t_=XRAND()%24;
+                        if(t_<7)      XW8(psp,0x81+at_++,"abcxyz-"[XRAND()%7]);
+                        else if(t_<11)XW8(psp,0x81+at_++,0x20);
+                        else if(t_<12)XW8(psp,0x81+at_++,9);
+                        else if(t_<16)XW8(psp,0x81+at_++,0x22);
+                        else if(t_<22) {
+                            const unsigned run_=1+XRAND()%6;
+                            for(unsigned j=0;j<run_&&at_<0x7E;j++)XW8(psp,0x81+at_++,0x5C);
+                            if(XRAND()%2&&at_<0x7E)XW8(psp,0x81+at_++,0x22);
+                        }
+                        else if(t_<23)XW8(psp,0x81+at_++,(XRAND()%3)?'q':(XRAND()%2)?0x0D:0);
+                        else          XW8(psp,0x81+at_++,0x5C);
+                    }
+                    const unsigned endk_=XRAND()%10;
+                    if(at_<0x7E) {
+                        XW8(psp,0x81+at_,(endk_<7)?0x0D:(endk_<9)?0:'z');
+                        XW8(psp,0x82+at_,0x0D);
+                    }
+                    XW8(psp,0x80,(uint8_t)at_);
+                }
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0x130D && o->ip==0x033F) {
+                const uint16_t dg=0x5000;
+                seg[S_DS]=dg;seg[S_SS]=(s&4)?0x6000:dg;r[R_SP]=0xF000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                for(unsigned j=0;j<4;j++)small[j]=(uint16_t)XRAND();
+                for(unsigned j=0;j<4;j++)XW16(seg[S_SS],(uint16_t)(r[R_SP]+4+2*j),small[j]);
+                /* The scratch record, the overflow note and the window: random first. */
+                for(unsigned j=0;j<0x80;j++)XW8(dg,0x8590+j,XRAND());
+                /* Window: xmin [85FA], ymin [85FC], xmax [85FE], ymax [8600]. */
+                int32_t lo_[2],hi_[2];
+                const unsigned cls=XRAND()%12;     /* 0-5 narrow, 6-7 wide, 8-9 wide inside the window as unsigned words, 10-11 wide with a stray word */
+                const unsigned wt=(cls==8||cls==9)?6u:XRAND()%8;
+                for(unsigned a=0;a<2;a++) {
+                    int32_t lo,hi;
+                    if(wt<3) { lo=(int32_t)(XRAND()%0x40); hi=lo+0x20+(int32_t)(XRAND()%0x100); }
+                    else if(wt<5) { lo=(int32_t)(int16_t)XRAND(); hi=(int32_t)(int16_t)XRAND(); if(lo>hi){int32_t t_=lo;lo=hi;hi=t_;} }
+                    else if(wt==5) { lo=-0x7F00+(int32_t)(XRAND()%0x300); hi=0x7C00+(int32_t)(XRAND()%0x300); }
+                    else if(wt==6) { lo=0x7000+(int32_t)(XRAND()%0x1000); hi=0xE000+(int32_t)(XRAND()%0x1FF0); }   /* unsigned-high window: the wide path can be inside */
+                    else { lo=(int32_t)(XRAND()%8); hi=lo+(int32_t)(XRAND()%4); }                                  /* tiny window */
+                    lo_[a]=lo;hi_[a]=hi;
+                }
+                XW16(dg,0x85FA,lo_[0]);XW16(dg,0x85FC,lo_[1]);XW16(dg,0x85FE,hi_[0]);XW16(dg,0x8600,hi_[1]);
+                /* The record at SI (and its twin at SI-10h): two ends, each x then y as
+                 * (low, high) words. Each coordinate lands inside, on an edge, just outside or far outside. */
+                const uint16_t rec=(uint16_t)(0x2100+2*(XRAND()%0x300));
+                r[R_SI]=rec;
+                for(unsigned j=0;j<0x30;j++)XW8(dg,(uint16_t)(rec-0x20+j),XRAND());
+                uint16_t lowv[4];                  /* x1 y1 x2 y2 */
+                for(unsigned k=0;k<4;k++) {
+                    const unsigned a=k&1;
+                    const int32_t lo=lo_[a],hi=hi_[a];
+                    const unsigned t=XRAND()%12;
+                    int32_t v;
+                    switch(t) {
+                    case 0: v=lo-1-(int32_t)(XRAND()%3); break;
+                    case 1: v=hi+1+(int32_t)(XRAND()%3); break;
+                    case 2: v=(XRAND()&1)?lo:hi; break;
+                    case 6: v=lo-(int32_t)(XRAND()%0x300); break;
+                    case 7: v=hi+(int32_t)(XRAND()%0x300); break;
+                    case 8: v=lo-0x2000+(int32_t)(XRAND()%0x4000); break;
+                    case 9: v=(XRAND()&1)?-0x7FF0+(int32_t)(XRAND()%0x20):0x7FF0-(int32_t)(XRAND()%0x20); break;
+                    case 10: v=(int32_t)(int16_t)XRAND(); break;
+                    default: v=(hi>lo)?lo+(int32_t)(XRAND()%(uint32_t)(hi-lo+1)):lo; break;
+                    }
+                    lowv[k]=(uint16_t)v;
+                }
+                if(cls==8||cls==9) {       /* hi words 0 and the window unsigned-high: never every end inside (that path ends in a near RET the lockstep cannot follow) */
+                    int in_=1;
+                    for(unsigned k=0;k<4;k++){const unsigned a=k&1;if(lowv[k]<lo_[a]||lowv[k]>hi_[a])in_=0;}
+                    if(in_)lowv[XRAND()%4]=(uint16_t)(hi_[XRAND()&1]+1+XRAND()%3);
+                }
+                static const unsigned slot_[4]={0,4,8,0xC};     /* x1 y1 x2 y2 */
+                for(unsigned k=0;k<4;k++) {
+                    uint16_t highw=(lowv[k]&0x8000)?0xFFFF:0;
+                    if(cls==8||cls==9) highw=0;
+                    else if(cls>=6) {
+                        const unsigned h=XRAND()%12;
+                        if(h==0)highw=1;else if(h==1)highw=0xFFFF;else if(h==2)highw=0xFFFE;else if(h==3)highw=0;
+                        else if(h==4)highw=(uint16_t)XRAND();
+                    }
+                    XW16(dg,rec+slot_[k],lowv[k]);
+                    XW16(dg,rec+slot_[k]+2,highw);
+                }
+                /* One wide state in four takes a random word anywhere in the record. */
+                if(cls>=10) XW16(dg,rec+2*(XRAND()%8),(uint16_t)XRAND());
+                /* The wide path ends in a near RET (and the lockstep cannot follow the original there)
+                 * when both ends are inside the window as 32-bit values: keep one end out. */
+#define XR16(o_) ((uint16_t)(g_mem[0][phys(dg,(uint16_t)(o_))]|(g_mem[0][phys(dg,(uint16_t)((o_)+1))]<<8)))
+                {
+                    int wide_=0,inside_=1;
+                    for(unsigned k=0;k<4;k++) {
+                        const uint16_t lw=XR16(rec+slot_[k]),hw=XR16(rec+slot_[k]+2);
+                        if(hw!=((lw&0x8000)?0xFFFFu:0u))wide_=1;
+                        const uint16_t wmin=XR16(0x85FA + 2*(k&1)),wmax=XR16(0x85FE + 2*(k&1));
+                        if(hw!=0||lw<wmin||lw>wmax)inside_=0;
+                    }
+                    if(wide_&&inside_)XW16(dg,rec+0xA,1);
+                }
+#undef XR16
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
             if (!strcmp(o->module, "START.EXE") && o->seg == 0 && o->ip == 0x6DB8) {
                 seg[S_DS] = seg[S_SS] = 0x0A95; r[R_SP] = 0xFF00;
                 flags = (uint16_t)(flags & (0xFFFFu ^ F_DF));
@@ -5867,7 +6035,8 @@ int main(int argc, char **argv)
              * pops at most a few words); a wild jump that happens to reach
              * the return address - a slide through zeroed memory - does not. */
             const uint16_t popped = (uint16_t)(a->r[R_SP] - entry_sp);
-            if ((unsigned)steps >= g_step_cap || popped < 2 || popped > 18) { if (getenv("FLWHY") && o->ip == 0x0815) printf("why1 s=%d steps=%d popped=%u\n", s, steps, popped); if (g_cov >= 0) g_cov_skips[(unsigned)steps >= g_step_cap ? 1 : 2]++; ms++; restore(); continue; }
+            const int setargv_ = !strcmp(o->module, "PLAYER.EXE") && o->ip == 0x1602;   /* returns by JMP with the vector left on the stack */
+            if ((unsigned)steps >= g_step_cap || ((popped < 2 || popped > 18) && !(setargv_ && (uint16_t)(0u - popped) < 0x400u))) { if (getenv("FLWHY") && o->ip == 0x0815) printf("why1 s=%d steps=%d popped=%u\n", s, steps, popped); if (g_cov >= 0) g_cov_skips[(unsigned)steps >= g_step_cap ? 1 : 2]++; ms++; restore(); continue; }
             /* A random state that makes the original write over its own code
              * (a copy aimed at the routine) runs instructions it was not; the
              * game never does, and no equivalent can follow it. The window is

@@ -2,7 +2,7 @@
 
 Every commit title starts with the current progress (it ended with it until
 7 Oct 2026; older commits keep the suffix), for example
-`(P1 100.00%, P2 67.37%, P3 82.75%, All 85.68%) Subject`, printed by
+`(P1 100.00%, P2 67.82%, P3 82.75%, All 85.82%) Subject`, printed by
 `py tools/progress.py --title`. This page says what the numbers mean, so
 that they can be checked and argued with.
 
