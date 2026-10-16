@@ -1,7 +1,7 @@
 /* cpu.h - 8086/80186/80286 real-mode CPU state, memory and stack.
  *
- * Derived from the F-117A Reimp project's oracle (tools/x86oracle/cpu.h at
- * Reimp commit cfb8cec9), which is validated against the SingleStepTests
+ * Derived from the author's earlier private interpreter (commit cfb8cec9),
+ * which is validated against the SingleStepTests
  * 8088 and 80286 hardware vectors. See docs/provenance.md for what changed
  * and why.
  *

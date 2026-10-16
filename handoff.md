@@ -6,15 +6,15 @@ For the next conversation on this repository. Read this, then
 checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 [docs/presentation.md](docs/presentation.md) (60+ fps and 4K) and
 [docs/repeated-processes.md](docs/repeated-processes.md) (every process we run
-more than once, what it costs). State as of 15 October 2026.
+more than once, what it costs). State as of 16 October 2026.
 
 This file holds only the current state and standing practice, not a
 session log. Earlier detail is in `git log -p handoff.md`.
 
-## Current state (15 October)
+## Current state (16 October)
 
-Scoreboard: P1 100.00%, P2 68.25%, P3 96.33%, All 89.38% (P4 is no longer scored)
-(`py tools/progress.py --title`). Phase 2: 893 census functions / 119,318 bytes.
+Scoreboard: P1 100.00%, P2 68.84%, P3 96.33%, All 89.56% (P4 is no longer scored)
+(`py tools/progress.py --title`). Phase 2: 895 census functions / 120,427 bytes.
 
 ### Presentation: latest (15 October, evening)
 
@@ -103,24 +103,34 @@ times them (`F117_PRESENT_CLOCK=raw` for the old clock; opt-in knobs `F117_PRESE
 
 - Next candidates (reached by `full_cycle`, unmatched; ranked list
   `D:/f117-gate/format-init/reached-corrected.tsv` minus the matched table):
-  MPS_LOGO `0006:0072`, `0146:08CC`; DSWAP `0010`, `1D66`, `117E`, then the
-  rest of that list. Matched 15 Oct: PLAYER `1602`, VGAME `130D:033F`, SETUP
-  `19B6` (`setup_crt_setargv`) and MPS_LOGO `0146:1894` (`mps_logo_open_file`).
-  The latest two add 2 census functions / 817 bytes; full gate 1,553 s,
-  120 CTests, 45 routes identical, 895 routine addresses at three seeds,
-  no event overruns. Evidence `D:/f117-gate/p2-setup-logo-accept`; individual
-  proofs `D:/f117-gate/p2-setup-19b6`, `p2-logo-1894`. The 45-route N=1 check
-  passes in 530.70 s: 259,240 exact frames / 259,166 pairs, all guest hashes exact.
-  Next private proofs: `D:/f117-gate/p2-logo-0072` (intro sequence, 248
-  instructions, 707 observed bytes / 712-byte watch envelope, 58 mutations)
-  and `p2-logo-08cc` (far-model startup argv, 205 instructions, 62 mutations).
-  Five seeds and full instruction coverage pass for both; root verified every
-  source hash and mutation. Both have positive calls and exact ibm_boot (26)
-  and full_cycle (66) checkpoints against the fresh gated worktree's cache.
-  A private integration preview is in `D:/f117-gate/p2-logo-main-argv-preview`.
-  Both need their documented private harness extensions applied by hand.
-  Kit libraries refreshed from main at 7fa1b62 (old ones in
-  `D:/f117-gate/kit-libs-old-20261015`).
+  DSWAP `0010`, `1D66`, `117E`, then the rest of that list.
+- Latest Phase 2 batches: SETUP `19B6` (`setup_crt_setargv`) and MPS_LOGO
+  `0146:1894` (`mps_logo_open_file`) add 2 census functions / 817 bytes;
+  full gate 1,553 s, 120 CTests, 45 identical routes, 895 routine addresses
+  at three seeds, no event overruns. N=1: 530.70 s, 259,240 exact frames /
+  259,166 pairs and all guest hashes. Pushed as `30cda09`, GitHub CI passed.
+  Evidence `D:/f117-gate/p2-setup-logo-accept`; proofs `p2-setup-19b6`, `p2-logo-1894`.
+- MPS_LOGO `0006:0072` (`mps_logo_play_intro`, 248 instructions, 707 observed
+  bytes / 712-byte watch envelope, 58 mutations) and `0146:08CC`
+  (`mps_logo_crt_setargv`, 205 instructions, 62 mutations) add 2 census
+  functions / 1,109 bytes. Root verified every source hash, all five private
+  seeds, full instruction coverage, 120 mutations, positive calls and exact
+  ibm_boot (26) and full_cycle (66) checkpoints. Both also pass five targeted
+  seeds under /O2 with the same comparison counts. Their documented harness
+  extensions are integrated: the allocator's lower return SP must be caught
+  (its negative control proves the escaped-call guard), and the far argv
+  return keeps its allocation. Full gate passed in 1,718 s: 122 CTests,
+  45 identical routes, both instruction profiles, 897 routines at three
+  seeds, reachability and event limits clean. The 45-route N=1 pass takes
+  579.53 s, keeping 259,240 exact frames / 259,166 pairs and every guest hash.
+  Evidence `D:/f117-gate/p2-logo-main-argv-accept`; worktree `D:/f117-wt/gate`
+  on `p2-batch-logo-main-argv` (merged after validation).
+  Individual proofs: `D:/f117-gate/p2-logo-0072`, `p2-logo-08cc`.
+  Kit libraries are refreshed from main's normal /O2 build after each batch;
+  `D:/f117-gate/kit-libs/manifest.json` records the source commit and hashes.
+  Prior libraries are preserved in `D:/f117-gate/kit-libs-before-logo-main-argv-20261016`.
+  The queued provenance cleanup is complete (six C/header edits verified
+  comment-only; vector-harness DLL/path messages and name-tool usage corrected).
 - Other leads: PLAYER `026B:0211` (a distinct timer re-sync) and `026B:0336`
   (tick/callback service; calls original code, so needs returning-helper
   fixtures). Private static drafts are unproven transcripts, not
@@ -151,32 +161,27 @@ transitions, widths by role). Details and the method: docs/progress.md.
 
 ## Next steps
 
-1. **Phase 2 first (owner).** Finish the two next MPS_LOGO proofs above, verify their actual route calls and
-   every source hash, integrate their bodies and harness extensions, then one full gate and the 45-route
-   `presentation_check --scales 1 --jobs 16`, docs, commit and push. Safely optimise/parallelise the process
-   (owner): no checks removed. Use separate private proof directories and CPU sets at BelowNormal priority;
-   leave desktop CPUs free. The gate's existing overlap option can run 16 interpreter workers in the next batch.
-   `progress.py --census D:/f117-gate/census.tsv` now preserves START `64E5`'s six already-proved interior
-   entries (518 bytes); three regressions prevent lost or duplicated credit. Measure deltas using the same TSV.
-2. **De-identify code comments** (found by the 15 Oct docs audit; public-repo rule): `src/cpu/cpu.h:3` names the
-   earlier project; `cpu.c`, `x86_sem.h`, `dos.c`, `pc.c`, `tests/cpu_api.c` and `tests/sst286.py` cite private
-   `tools/x86oracle/...` paths; `tools/reimp_names.py`'s usage shows a project path. Comment-only, but under `src/`:
-   batch it with the next full gate.
-3. **Small code-side corrections from the audit:** `tools/pc_parity.py` 86Box miss comment (p037, not the roster
+1. **Phase 2 first (owner).** Continue the DSWAP candidates above with the private kit and parallel agents.
+   Verify every source hash, full coverage, five seeds, mutations and actual route calls; one full gate plus
+   `presentation_check --scales 1 --jobs 16` per batch, then docs, commit and push. Safe optimisations and
+   parallelisation are authorised; no check may be removed. Use separate proof directories and CPU sets at
+   BelowNormal priority, leaving desktop CPUs free. `progress.py --census D:/f117-gate/census.tsv` preserves
+   START `64E5`'s six already-proved interiors (518 bytes); three regressions prevent lost/duplicated credit.
+   Measure every delta using the same TSV.
+2. **Small code-side corrections from the audit:** `tools/pc_parity.py` 86Box miss comment (p037, not the roster
    screen); `tools/dosbox_compare.py:104` should point to `build_dosbox_x.md`; `tools/d1prox_check.py` describes the
    withdrawn S=9-floor version; `secret_airstrip_return.args` steps vs its comment (18,635,798,708); the
    `DRAWLIVE_POOL` comment in `drawfeed.h` says two published steps (rerun publishes three; drawfeed needs the full
    gate); possible 386-model gap: a warm DOS open is charged 50,145 cycles against 3.56 M measured (check before
    changing).
-4. **Presentation** (owner verdicts first): the 4K screen/motion verdict (ask before any visible test); whether to
+3. **Presentation** (owner verdicts first): the 4K screen/motion verdict (ask before any visible test); whether to
    adopt the clock setting alpha 0.4 / pull 0.025; `thin_strip_stroke` ignoring `present-line-width`; the open items
    above. No jitter smoothing (owner).
-5. **Phase 2** with the kit and parallel agents, from the candidate list above.
-6. **Phase 3 coverage:** time a long cargo/career flight; weaker machines. Full checksums via `F117_BENCH_HASH=1`
+4. **Phase 3 coverage:** time a long cargo/career flight; weaker machines. Full checksums via `F117_BENCH_HASH=1`
    add work outside frame timers and are diagnostics.
-7. **Branch housekeeping:** many local branches are fully merged into `master`. Not merged: `flight-input` (older
+5. **Branch housekeeping:** many local branches are fully merged into `master`. Not merged: `flight-input` (older
    aircraft-traffic draft, superseded by `b41ec9c`; its worktree `D:/f117-wt/span-emitter` has uncommitted edits),
-   `irq-divide-fault` (kept on purpose) and the current Phase 2 batch (item 1). The stopped presentation WIP branches
+   `irq-divide-fault` (kept on purpose). The stopped presentation WIP branches
    are preserved for history; do not merge them again. Ask the owner before deleting anything.
 
 ## Owner decisions and instructions in force
@@ -187,6 +192,9 @@ transitions, widths by role). Details and the method: docs/progress.md.
   are built only into `f117a.exe`, which the gate never runs): build, CTests and an app replay of a recorded
   session in `interp` and `rerun` (`--app-session`, `--app-exit-after`), with exact logic frames and every
   scanned-out palette presented; break-tested against the frozen-palette bug.
+- **Overlap trial (15 Oct):** 16 interpreter workers preserved all checks, but did not establish a speed gain
+  (1,718 s versus the prior 1,553 s with different build work; post-build 1,329 versus 1,257 s). Keep the default
+  eight; do not silently change it. The proven private-kit write saving and isolated proof parallelism stay.
 - **Phase 2 priority; safe optimisation/parallelisation authorised (15 Oct).** The private kit now writes generated
   files only when bytes differ: verified identical source hashes/build commands; an unchanged `08CC` build reports
   no work in 1.59 s. Actual seeds, mutations and route proofs remain mandatory. Evidence

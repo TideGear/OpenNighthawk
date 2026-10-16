@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """reimp_names.py - name the translated routines from the Reimp's reading.
 
-    py tools/reimp_names.py --reimp "..\\F-117A Reimp" --gen GEN_DIR --out FILE.tsv
+    py tools/reimp_names.py --reimp PRIVATE_CHECKOUT --gen GEN_DIR --out FILE.tsv
 
 Phase 2 names the translated code. The Reimp (a separate project, read here
 and never written) has already read much of the original: its census

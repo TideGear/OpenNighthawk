@@ -2,7 +2,7 @@
  * (sstest.py, sst286.py). Everything crosses the boundary as scalars so
  * ctypes never has to know the layout of cpu_t.
  *
- * The same API is the oracle's (Reimp tools/x86oracle/oracle_api.c), so the
+ * The API is unchanged from the earlier private interpreter, so the
  * harnesses run unchanged against this core. The standalone CPU has no
  * recompiled code and no machine, so the two hooks those supply are no-ops.
  */

@@ -1,8 +1,8 @@
 /* x86_sem.h - instruction semantics shared by the interpreter and the
  * recompiled code.
  *
- * Every helper here is the oracle interpreter's own code (Reimp
- * tools/x86oracle/cpu.c at cfb8cec9), moved out of cpu_step so that the
+ * Every helper here began in the author's earlier private interpreter
+ * (cfb8cec9), moved out of cpu_step so that the
  * generated C calls exactly what the interpreter calls. Nothing in this file
  * decodes: operands arrive already decoded, from cpu_step at run time or
  * from the recompiler at build time. The quirk comments are the oracle's,

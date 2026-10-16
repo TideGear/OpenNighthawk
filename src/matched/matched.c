@@ -51665,7 +51665,608 @@ room_for_it:
 #undef OZERO_CX
 }
 
+/* MPS_LOGO 0006:0072 plays the introduction. argv[1]'s initial letter
+ * selects a music file (N disables music), after lowercase conversion.
+ * It starts the driver, saves the palette and loads the sprite set.
+ * Each sprite record adds a delay to a 32-bit deadline. Frames are drawn
+ * after that deadline until a key disables further waiting. Escape,
+ * space and other keys return 1, 2 and 3; uninterrupted playback returns 0.
+ * The runtime allocator reserves 318h bytes below BP. The four MOVSWs
+ * deliberately read DS, including when SS differs. All helpers remain
+ * guest calls, preserving driver behavior and timer/event suspension. */
+static int mps_logo_play_intro(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+    enum { RESULT=-0x318, HEIGHT=-0x316, WIDTH=-0x314, SCREEN_OFF=-0x312,
+           SCREEN_SEG=-0x310, FRAME=-0x30E, DEADLINE_LO=-0x30C,
+           DEADLINE_HI=-0x30A, PALETTE=-0x308, MUSIC_CHAR=-8,
+           MUSIC_HANDLE=-6, SPRITE_OFF=-4, SPRITE_SEG=-2 };
+#define XB(n,at) do { SM4_NEED((n),(at)); c->icount+=(n); } while(0)
+#define XP(v) cpu_push16(c,(v))
+#define XA(a,b) ((uint16_t)alu_op(c,0,(a),(b),1))
+#define XC(a,b) ((void)alu_op(c,7,(a),(b),1))
+#define XCB(a,b) ((void)alu_op(c,7,(a),(b),0))
+#define XZERO(reg) (c->r[(reg)]=(uint16_t)alu_op(c,6,c->r[(reg)],c->r[(reg)],1))
+#define XTEST(reg) (c->r[(reg)]=(uint16_t)alu_op(c,4,c->r[(reg)],c->r[(reg)],1))
+#define XSP(n) (c->r[R_SP]=XA(c->r[R_SP],(n)))
+#define XRUN(call) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define XF(at,ret) do { SM4_NEED(1,(at)); XRUN(guest_call_far(m,(at),(ret))); } while(0)
+    if(!room(c,3))return 0;
+    XB(3,0x0072);x86_push_reg(c,R_BP);c->r[R_BP]=c->r[R_SP];c->r[R_AX]=0x0318;
+    /* This helper reserves AX bytes by moving SP before RETF. Unlike a
+     * normal far call, its return trap is below the caller's original SP. */
+    SM4_NEED(1,0x0078);
+    {
+        const uint16_t caller_cs=c->seg[S_CS],reserve=c->r[R_AX];
+        const uint16_t target_off=seg_read16(c,caller_cs,0x0079),target_seg=seg_read16(c,caller_cs,0x007B);
+        const uint8_t trap_on=m->trap_on;
+        const uint16_t trap_cs=m->trap_cs,trap_ip=m->trap_ip,trap_sp=m->trap_sp;
+        const uint64_t until=m->run_until;
+        XP(caller_cs);XP(0x007D);c->seg[S_CS]=target_seg;c->ip=target_off;c->icount++;
+        m->trap_on=1;m->trap_cs=caller_cs;m->trap_ip=0x007D;
+        m->trap_sp=(uint16_t)(c->r[R_SP]+4-reserve);
+        if(m->run_until>c->stop_at)m->run_until=c->stop_at;
+        const int rc=matched_runner(m);
+        m->run_until=until;m->trap_on=trap_on;m->trap_cs=trap_cs;m->trap_ip=trap_ip;m->trap_sp=trap_sp;
+        c->io_cross=0;if(rc!=RUN_TRAP)return 1;
+    }
+    XB(10,0x007D);
+    x86_push_reg(c,R_SI);x86_push_reg(c,R_DI);ds_put(c,0x0E76,1);
+    bp_put(c,RESULT,0);bp_put(c,WIDTH,0x0140);bp_put(c,HEIGHT,0x00C8);
+    bp_put(c,SCREEN_OFF,0);bp_put(c,SCREEN_SEG,0xA000);
+    XC(bp_get(c,6),2);if(x86_cond(c,13))goto read_option;
+    XB(2,0x00A9);c->r[R_AX]=0x04AD;XP(c->r[R_AX]);
+    XF(0x00AD,0x00B2);
+    XB(1,0x00B2);XSP(2);
+read_option:
+    XB(6,0x00B5);
+    c->r[R_BX]=bp_get(c,8);c->r[R_BX]=ds_get(c,(uint16_t)(c->r[R_BX]+2));
+    set_r8(c,R_AL,ds_get8(c,c->r[R_BX]));bp_put8(c,MUSIC_CHAR,get_r8(c,R_AL));
+    XCB(bp_get8(c,MUSIC_CHAR),0x61);if(x86_cond(c,12))goto select_music;
+    XB(2,0x00C6);XCB(bp_get8(c,MUSIC_CHAR),0x7A);if(x86_cond(c,15))goto select_music;
+    XB(1,0x00CC);bp_put8(c,MUSIC_CHAR,(uint8_t)alu_op(c,5,bp_get8(c,MUSIC_CHAR),0x20,0));
+select_music:
+    XB(4,0x00D0);bp_put(c,MUSIC_HANDLE,0);set_r8(c,R_AL,bp_get8(c,MUSIC_CHAR));
+    c->r[R_AX]=(uint16_t)(int16_t)(int8_t)get_r8(c,R_AL);goto test_adlib;
+music_roland:
+    XB(4,0x00DC);XZERO(R_AX);XP(c->r[R_AX]);c->r[R_AX]=0x04D1;XP(c->r[R_AX]);
+    XF(0x00E3,0x00E8);
+    XB(3,0x00E8);XSP(4);bp_put(c,MUSIC_HANDLE,c->r[R_AX]);goto music_loaded;
+music_adlib:
+    XB(4,0x00F2);XZERO(R_AX);XP(c->r[R_AX]);c->r[R_AX]=0x04DC;XP(c->r[R_AX]);
+    XF(0x00F9,0x00FE);
+    XB(3,0x00FE);XSP(4);bp_put(c,MUSIC_HANDLE,c->r[R_AX]);goto music_loaded;
+music_internal:
+    XB(4,0x0108);XZERO(R_AX);XP(c->r[R_AX]);c->r[R_AX]=0x04E7;XP(c->r[R_AX]);
+    XF(0x010F,0x0114);
+    XB(3,0x0114);XSP(4);bp_put(c,MUSIC_HANDLE,c->r[R_AX]);goto music_loaded;
+music_tandy:
+    XB(4,0x011C);XZERO(R_AX);XP(c->r[R_AX]);c->r[R_AX]=0x04F2;XP(c->r[R_AX]);
+    XF(0x0123,0x0128);
+    XB(3,0x0128);XSP(4);bp_put(c,MUSIC_HANDLE,c->r[R_AX]);goto music_loaded;
+music_none:
+    XB(1,0x0130);goto music_loaded;
+bad_option:
+    XB(2,0x0132);c->r[R_AX]=0x04FD;XP(c->r[R_AX]);
+    XF(0x0136,0x013B);
+    XB(2,0x013B);XSP(2);goto music_loaded;
+test_adlib:
+    XB(2,0x0140);XC(c->r[R_AX],0x0041);if(x86_cond(c,5))goto test_internal;
+    XB(1,0x0145);goto music_adlib;
+test_internal:
+    XB(2,0x0148);XC(c->r[R_AX],0x0049);if(x86_cond(c,4))goto music_internal;
+    XB(2,0x014D);XC(c->r[R_AX],0x004E);if(x86_cond(c,4))goto music_none;
+    XB(2,0x0152);XC(c->r[R_AX],0x0052);if(x86_cond(c,5))goto test_tandy;
+    XB(1,0x0157);goto music_roland;
+test_tandy:
+    XB(2,0x015A);XC(c->r[R_AX],0x0054);if(x86_cond(c,4))goto music_tandy;
+    XB(1,0x015F);goto bad_option;
+music_loaded:
+    XB(2,0x0162);XC(bp_get(c,MUSIC_HANDLE),0);if(x86_cond(c,5))goto start_music;
+    XB(2,0x0168);XCB(bp_get8(c,MUSIC_CHAR),0x4E);if(x86_cond(c,4))goto start_music;
+    XB(2,0x016E);c->r[R_AX]=0x0521;XP(c->r[R_AX]);
+    XF(0x0172,0x0177);
+    XB(1,0x0177);XSP(2);
+start_music:
+    XB(2,0x017A);XCB(bp_get8(c,MUSIC_CHAR),0x4E);if(x86_cond(c,4))goto video_init;
+    XB(2,0x0180);c->r[R_AX]=bp_get(c,MUSIC_HANDLE);XP(c->r[R_AX]);
+    XF(0x0184,0x0189);
+    XB(1,0x0189);XSP(2);
+music_busy:
+    XB(4,0x018C);XZERO(R_AX);XP(c->r[R_AX]);XZERO(R_AX);XP(c->r[R_AX]);
+    XF(0x0192,0x0197);
+    XB(3,0x0197);XSP(4);XTEST(R_AX);if(x86_cond(c,4))goto video_init;
+    XB(1,0x019E);goto music_busy;
+video_init:
+    XF(0x01A0,0x01A5);
+    XB(2,0x01A5);c->r[R_AX]=0x0013;XP(c->r[R_AX]);
+    XF(0x01A9,0x01AE);
+    XB(5,0x01AE);XSP(2);c->r[R_AX]=(uint16_t)(c->r[R_BP]+PALETTE);
+    c->r[R_DX]=c->seg[S_SS];XP(c->r[R_DX]);XP(c->r[R_AX]);
+    XF(0x01B9,0x01BE);
+    XB(7,0x01BE);XSP(4);c->r[R_AX]=(uint16_t)(c->r[R_BP]+PALETTE);XP(c->r[R_AX]);
+    XZERO(R_AX);XP(c->r[R_AX]);c->r[R_AX]=0x0530;XP(c->r[R_AX]);
+    XF(0x01CD,0x01D2);
+    XB(7,0x01D2);XSP(6);bp_put(c,SPRITE_OFF,c->r[R_AX]);bp_put(c,SPRITE_SEG,c->r[R_DX]);
+    c->r[R_AX]=bp_get(c,SPRITE_OFF);c->r[R_DX]=bp_get(c,SPRITE_SEG);XTEST(R_AX);
+    if(x86_cond(c,5))goto install_palette;
+    XB(2,0x01E5);XTEST(R_DX);if(x86_cond(c,5))goto install_palette;
+    XB(2,0x01E9);c->r[R_AX]=0x0539;XP(c->r[R_AX]);
+    XF(0x01ED,0x01F2);
+    XB(1,0x01F2);XSP(2);
+install_palette:
+    XB(4,0x01F5);c->r[R_AX]=(uint16_t)(c->r[R_BP]+PALETTE);c->r[R_DX]=c->seg[S_SS];
+    XP(c->r[R_DX]);XP(c->r[R_AX]);
+    XF(0x01FD,0x0202);
+    XB(3,0x0202);XSP(4);XCB(bp_get8(c,MUSIC_CHAR),0x4E);if(x86_cond(c,4))goto initial_clock;
+    XB(2,0x020B);c->r[R_AX]=2;XP(c->r[R_AX]);
+    XF(0x020F,0x0214);
+    XB(1,0x0214);XSP(2);
+initial_clock:
+    XF(0x0217,0x021C);
+    XB(4,0x021C);bp_put(c,DEADLINE_LO,c->r[R_AX]);bp_put(c,DEADLINE_HI,c->r[R_DX]);
+    bp_put(c,FRAME,1);goto frame_test;
+next_frame:
+    XB(1,0x022C);bp_put(c,FRAME,(uint16_t)alu_inc(c,bp_get(c,FRAME),1));
+frame_test:
+    XB(4,0x0230);c->r[R_BX]=bp_get(c,SPRITE_OFF);c->seg[S_ES]=bp_get(c,SPRITE_SEG);
+    c->r[R_AX]=seg_read16(c,c->seg[S_ES],(uint16_t)(c->r[R_BX]+0x10));
+    XC(bp_get(c,FRAME),c->r[R_AX]);if(x86_cond(c,14))goto frame_delay;
+    XB(1,0x023D);goto playback_done;
+frame_delay:
+    XB(14,0x0240);c->r[R_AX]=0x14;c->r[R_BX]=bp_get(c,SPRITE_OFF);c->r[R_CX]=bp_get(c,SPRITE_SEG);
+    c->r[R_BX]=XA(c->r[R_BX],c->r[R_AX]);c->r[R_AX]=0x0E;x86_imul16(c,bp_get(c,FRAME));
+    c->r[R_BX]=XA(c->r[R_BX],c->r[R_AX]);c->seg[S_ES]=c->r[R_CX];
+    c->r[R_AX]=seg_read16(c,c->seg[S_ES],(uint16_t)(c->r[R_BX]+4));XZERO(R_DX);
+    bp_put(c,DEADLINE_LO,XA(bp_get(c,DEADLINE_LO),c->r[R_AX]));
+    bp_put(c,DEADLINE_HI,(uint16_t)alu_op(c,2,bp_get(c,DEADLINE_HI),c->r[R_DX],1));
+    XC(ds_get(c,0x0E76),0);if(x86_cond(c,4))goto draw_frame;
+wait_deadline:
+    XF(0x026B,0x0270);
+    XB(2,0x0270);XC(c->r[R_DX],bp_get(c,DEADLINE_HI));if(x86_cond(c,15))goto draw_frame;
+    XB(1,0x0276);if(x86_cond(c,12))goto wait_again;
+    XB(2,0x0278);XC(c->r[R_AX],bp_get(c,DEADLINE_LO));if(x86_cond(c,3))goto draw_frame;
+wait_again:
+    XB(1,0x027E);goto wait_deadline;
+draw_frame:
+    XB(16,0x0280);c->r[R_SP]=(uint16_t)alu_op(c,5,c->r[R_SP],8,1);
+    c->r[R_SI]=(uint16_t)(c->r[R_BP]+HEIGHT);c->r[R_DI]=c->r[R_SP];XP(c->seg[S_SS]);c->seg[S_ES]=cpu_pop16(c);
+    x86_movs(c,1,c->seg[S_DS]);x86_movs(c,1,c->seg[S_DS]);x86_movs(c,1,c->seg[S_DS]);x86_movs(c,1,c->seg[S_DS]);
+    XZERO(R_AX);XP(c->r[R_AX]);c->r[R_AX]=0x03E7;XP(c->r[R_AX]);
+    XP(bp_get(c,FRAME));XP(bp_get(c,SPRITE_SEG));XP(bp_get(c,SPRITE_OFF));
+    XF(0x02A0,0x02A5);
+    XB(3,0x02A5);XSP(0x12);c->r[R_AX]=1;XP(c->r[R_AX]);
+    XF(0x02AC,0x02B1);
+    XB(3,0x02B1);XSP(2);XTEST(R_AX);if(x86_cond(c,4))goto frame_advance;
+    XB(2,0x02B8);XZERO(R_AX);XP(c->r[R_AX]);
+    XF(0x02BB,0x02C0);
+    XB(3,0x02C0);XSP(2);bp_put(c,RESULT,c->r[R_AX]);ds_put(c,0x0E76,0);
+frame_advance:
+    XB(1,0x02CD);goto next_frame;
+playback_done:
+    XB(2,0x02D0);c->r[R_AX]=(uint16_t)(c->r[R_BP]+SPRITE_OFF);XP(c->r[R_AX]);
+    XF(0x02D4,0x02D9);
+    XB(3,0x02D9);XSP(2);XCB(bp_get8(c,MUSIC_CHAR),0x4E);if(x86_cond(c,4))goto classify_key;
+    XB(2,0x02E2);XZERO(R_AX);XP(c->r[R_AX]);
+    XF(0x02E5,0x02EA);
+    XB(1,0x02EA);XSP(2);
+    XF(0x02ED,0x02F2);
+    XB(2,0x02F2);c->r[R_AX]=bp_get(c,MUSIC_HANDLE);XP(c->r[R_AX]);
+    XF(0x02F6,0x02FB);
+    XB(1,0x02FB);XSP(2);
+classify_key:
+    XB(2,0x02FE);c->r[R_AX]=bp_get(c,RESULT);goto test_key;
+no_key:
+    XB(1,0x0304);goto finished;
+escape_key:
+    XB(2,0x0306);bp_put(c,RESULT,1);goto finished;
+space_key:
+    XB(2,0x030E);bp_put(c,RESULT,2);goto finished;
+other_key:
+    XB(2,0x0316);bp_put(c,RESULT,3);goto finished;
+test_key:
+    XB(2,0x0320);XTEST(R_AX);if(x86_cond(c,4))goto no_key;
+    XB(2,0x0324);XC(c->r[R_AX],0x011B);if(x86_cond(c,4))goto escape_key;
+    XB(2,0x0329);XC(c->r[R_AX],0x1000);if(x86_cond(c,4))goto space_key;
+    XB(1,0x032E);goto other_key;
+finished:
+    XB(6,0x0330);c->r[R_AX]=bp_get(c,RESULT);c->r[R_DI]=cpu_pop16(c);c->r[R_SI]=cpu_pop16(c);
+    c->r[R_SP]=c->r[R_BP];c->r[R_BP]=cpu_pop16(c);c->ip=cpu_pop16(c);c->seg[S_CS]=cpu_pop16(c);
+    return 1;
+#undef XF
+#undef XRUN
+#undef XSP
+#undef XTEST
+#undef XZERO
+#undef XCB
+#undef XC
+#undef XA
+#undef XP
+#undef XB
+}
+
+/* MPS_LOGO 0146:08CC builds the C runtime argument vector on the stack.
+ * It removes and saves the far caller's IP and CS at DS:0264/0266, queries
+ * the DOS version with INT 21h/30h, and records it at 0200h. The PSP segment
+ * is at 01FEh. Except on DOS 2, it scans the PSP environment for its double
+ * zero terminator and program name, saving that far pointer at 0221/0223h.
+ * Two passes over PSP:81h first count and then copy the arguments. Spaces
+ * and tabs separate arguments; quotes toggle quoted text; backslash runs
+ * before quotes halve, with odd runs producing a literal quote. CR or zero
+ * ends either pass. It lowers SP by the even-rounded vector/string size,
+ * writes argc at 021Bh, argv at 021Dh, and the zero-terminated near pointer
+ * vector and strings in SS. DS and ES finish as SS. The final indirect far
+ * jump returns through 0264h with the allocated argument vector left on
+ * the stack. There are no ordinary callees; INT execution uses sm4_int so
+ * DOS service effects and event limits follow the original route. Every
+ * branch target and REP iteration retains its own room/clock boundary.
+ * Adapted from the proven, authored setup_crt_setargv: this larger-model
+ * variant adds the CS pop and returns with LJMP instead of near JMP. */
+static int mps_logo_crt_setargv(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = 0x08CC;
+    enum { RET = 0x0264, PSP = 0x01FE, DOSVER = 0x0200, ARGC = 0x021B, ARGV = 0x021D, NAME_OFF = 0x0221, NAME_SEG = 0x0223 };
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+#define XC(n) (c->icount += (n))
+#define ZF() ((c->flags & F_ZF) != 0)
+#define CMP_AL(v) alu_op(c, 7, get_r8(c, R_AL), (v), 0)
+#define OR_AL() alu_logic(c, get_r8(c, R_AL), 0)
+#define LODSB() x86_lods(c, 0, c->seg[S_DS])
+#define STOSB() do { mem_write8(c, phys(c->seg[S_ES], c->r[R_DI]), get_r8(c, R_AL)); \
+                     c->r[R_DI] = (uint16_t)(c->r[R_DI] + x86_str_delta(c, 0)); } while (0)
+    /* REP STOSB at `at`: whole, or left to the original when the clock has no room for it. */
+#define REP_STOSB(at) do { const unsigned k_ = c->r[R_CX] ? c->r[R_CX] : 1u; \
+                           if (!room(c, k_)) { c->ip = (uint16_t)(at); return 1; } \
+                           XC(sm_rep_stos(c, 0)); } while (0)
+
+    if (!room(c, 3)) return 0;
+    ds_put(c, RET, cpu_pop16(c));                                 /* saved caller IP */
+    ds_put(c, RET + 2, cpu_pop16(c));                             /* saved caller CS */
+    set_r8(c, R_AH, 0x30);
+    XC(3);
+    if (!sm4_int(m, SM4_AT(10))) return 1;                         /* int 21h: the DOS version */
+
+    XB(4, 0x08D8);
+    ds_put(c, DOSVER, c->r[R_AX]);
+    c->r[R_DX] = 1;
+    CMP_AL(2);
+    if (ZF()) goto args;                                          /* DOS 2: no program name */
+
+    XB(7, 0x08E2);
+    c->seg[S_ES] = ds_get(c, PSP);
+    c->seg[S_ES] = seg_read16(c, c->seg[S_ES], 0x2C);             /* the environment */
+    ds_put(c, NAME_SEG, c->seg[S_ES]);
+    c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);                    /* xor ax, ax */
+    c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0x0000;         /* cwd */
+    c->r[R_CX] = 0x8000;
+    c->r[R_DI] = (uint16_t)alu_logic(c, 0, 1);                    /* xor di, di */
+scan_env:                                                         /* REPNE SCASB, then SCASB: a second zero ends it */
+    XB(1, 0x08F7);
+    if (c->r[R_CX] != 0) {
+        x86_scas(c, 0);
+        c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);
+        if (c->r[R_CX] != 0 && !ZF()) goto scan_env;
+    }
+    XB(2, 0x08F9);
+    x86_scas(c, 0);
+    if (x86_cond(c, 5)) goto scan_env;                            /* jne */
+    XB(4, 0x08FC);
+    c->r[R_DI] = (uint16_t)alu_inc(c, c->r[R_DI], 1);
+    c->r[R_DI] = (uint16_t)alu_inc(c, c->r[R_DI], 1);             /* past the word count: the program name */
+    ds_put(c, NAME_OFF, c->r[R_DI]);
+    c->r[R_CX] = 0xFFFF;
+scan_name:                                                        /* REPNE SCASB: the name's length */
+    XB(1, 0x0905);
+    if (c->r[R_CX] != 0) {
+        x86_scas(c, 0);
+        c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);
+        if (c->r[R_CX] != 0 && !ZF()) goto scan_name;
+    }
+    XB(2, 0x0907);
+    c->r[R_CX] = (uint16_t)~c->r[R_CX];                           /* not cx */
+    c->r[R_DX] = c->r[R_CX];
+
+args:                                                             /* 0x090B: first pass over the command tail */
+    XB(3, 0x090B);
+    c->r[R_DI] = 1;
+    c->r[R_SI] = 0x81;
+    c->seg[S_DS] = ds_get(c, PSP);
+skip_blanks:                                                      /* 0x0915 */
+    XB(3, 0x0915);
+    LODSB();
+    CMP_AL(0x20);
+    if (ZF()) goto skip_blanks;
+    XB(2, 0x091A);
+    CMP_AL(9);
+    if (ZF()) goto skip_blanks;
+    XB(2, 0x091E);
+    CMP_AL(0x0D);
+    if (ZF()) goto count_done;
+    XB(2, 0x0922);
+    OR_AL();
+    if (ZF()) goto count_done;
+    XB(1, 0x0926);
+    c->r[R_DI] = (uint16_t)alu_inc(c, c->r[R_DI], 1);             /* an argument begins */
+count_back:                                                       /* 0x0927 */
+    XB(1, 0x0927);
+    c->r[R_SI] = (uint16_t)alu_dec(c, c->r[R_SI], 1);
+count_out:                                                        /* 0x0928: outside quotes */
+    XB(3, 0x0928);
+    LODSB();
+    CMP_AL(0x20);
+    if (ZF()) goto skip_blanks;
+    XB(2, 0x092D);
+    CMP_AL(9);
+    if (ZF()) goto skip_blanks;
+    XB(2, 0x0931);
+    CMP_AL(0x0D);
+    if (ZF()) goto count_done;
+    XB(2, 0x0935);
+    OR_AL();
+    if (ZF()) goto count_done;
+    XB(2, 0x0939);
+    CMP_AL(0x22);
+    if (ZF()) goto count_in;
+    XB(2, 0x093D);
+    CMP_AL(0x5C);
+    if (ZF()) goto count_slash_out;
+    XB(2, 0x0941);
+    c->r[R_DX] = (uint16_t)alu_inc(c, c->r[R_DX], 1);
+    goto count_out;
+count_slash_out:                                                  /* 0x0944: backslashes, then a quote or not */
+    XB(1, 0x0944);
+    c->r[R_CX] = (uint16_t)alu_logic(c, 0, 1);
+slash_out_loop:
+    XB(4, 0x0946);
+    c->r[R_CX] = (uint16_t)alu_inc(c, c->r[R_CX], 1);
+    LODSB();
+    CMP_AL(0x5C);
+    if (ZF()) goto slash_out_loop;
+    XB(2, 0x094C);
+    CMP_AL(0x22);
+    if (ZF()) goto slash_out_quote;
+    XB(2, 0x0950);
+    c->r[R_DX] = (uint16_t)alu_add(c, c->r[R_DX], c->r[R_CX], 1, 0);   /* the backslashes count as they are */
+    goto count_back;
+slash_out_quote:                                                  /* 0x0954: a quote after them: half, odd keeps it */
+    XB(5, 0x0954);
+    c->r[R_AX] = c->r[R_CX];
+    c->r[R_CX] = x86_shift(c, 5, c->r[R_CX], 1, 1);
+    c->r[R_DX] = (uint16_t)alu_op(c, 2, c->r[R_DX], c->r[R_CX], 1);
+    alu_logic(c, get_r8(c, R_AL) & 1, 0);
+    if (!ZF()) goto count_out;
+    XB(1, 0x095E);
+    goto count_in;
+count_back2:                                                      /* 0x0960 */
+    XB(1, 0x0960);
+    c->r[R_SI] = (uint16_t)alu_dec(c, c->r[R_SI], 1);
+count_in:                                                         /* 0x0961: inside quotes */
+    XB(3, 0x0961);
+    LODSB();
+    CMP_AL(0x0D);
+    if (ZF()) goto count_done;
+    XB(2, 0x0966);
+    OR_AL();
+    if (ZF()) goto count_done;
+    XB(2, 0x096A);
+    CMP_AL(0x22);
+    if (ZF()) goto count_out;
+    XB(2, 0x096E);
+    CMP_AL(0x5C);
+    if (ZF()) goto count_slash_in;
+    XB(2, 0x0972);
+    c->r[R_DX] = (uint16_t)alu_inc(c, c->r[R_DX], 1);
+    goto count_in;
+count_slash_in:                                                   /* 0x0975 */
+    XB(1, 0x0975);
+    c->r[R_CX] = (uint16_t)alu_logic(c, 0, 1);
+slash_in_loop:
+    XB(4, 0x0977);
+    c->r[R_CX] = (uint16_t)alu_inc(c, c->r[R_CX], 1);
+    LODSB();
+    CMP_AL(0x5C);
+    if (ZF()) goto slash_in_loop;
+    XB(2, 0x097D);
+    CMP_AL(0x22);
+    if (ZF()) goto slash_in_quote;
+    XB(2, 0x0981);
+    c->r[R_DX] = (uint16_t)alu_add(c, c->r[R_DX], c->r[R_CX], 1, 0);
+    goto count_back2;
+slash_in_quote:                                                   /* 0x0985 */
+    XB(5, 0x0985);
+    c->r[R_AX] = c->r[R_CX];
+    c->r[R_CX] = x86_shift(c, 5, c->r[R_CX], 1, 1);
+    c->r[R_DX] = (uint16_t)alu_op(c, 2, c->r[R_DX], c->r[R_CX], 1);
+    alu_logic(c, get_r8(c, R_AL) & 1, 0);
+    if (!ZF()) goto count_in;
+    XB(1, 0x098F);
+    goto count_out;
+
+count_done:                                                       /* 0x0991: make room, start the vector */
+    XB(20, 0x0991);
+    cpu_push16(c, c->seg[S_SS]);                                  /* push ss, pop ds */
+    c->seg[S_DS] = cpu_pop16(c);
+    ds_put(c, ARGC, c->r[R_DI]);
+    c->r[R_DX] = (uint16_t)alu_add(c, c->r[R_DX], c->r[R_DI], 1, 0);
+    c->r[R_DI] = (uint16_t)alu_inc(c, c->r[R_DI], 1);
+    c->r[R_DI] = x86_shift(c, 4, c->r[R_DI], 1, 1);               /* two bytes a pointer */
+    c->r[R_DX] = (uint16_t)alu_add(c, c->r[R_DX], c->r[R_DI], 1, 0);
+    c->r[R_DX] = (uint16_t)alu_inc(c, c->r[R_DX], 1);
+    set_r8(c, R_DL, (uint8_t)alu_op(c, 4, get_r8(c, R_DL), 0xFE, 0));   /* even */
+    c->r[R_SP] = (uint16_t)alu_sub(c, c->r[R_SP], c->r[R_DX], 1, 0);
+    c->r[R_AX] = c->r[R_SP];
+    ds_put(c, ARGV, c->r[R_AX]);
+    c->r[R_BX] = c->r[R_AX];
+    c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], c->r[R_BX], 1, 0);   /* the strings begin behind the vector */
+    cpu_push16(c, c->seg[S_SS]);                                  /* push ss, pop es */
+    c->seg[S_ES] = cpu_pop16(c);
+    seg_write16(c, c->seg[S_SS], c->r[R_BX], c->r[R_DI]);         /* the first pointer: the program name */
+    c->r[R_BX] = (uint16_t)alu_inc(c, c->r[R_BX], 1);
+    c->r[R_BX] = (uint16_t)alu_inc(c, c->r[R_BX], 1);
+    c->r[R_SI] = ds_get(c, NAME_OFF);                             /* lds si, [0221h] */
+    c->seg[S_DS] = ds_get(c, (uint16_t)(NAME_OFF + 2));
+copy_name:                                                        /* 0x09B8: the name with its zero */
+    XB(4, 0x09B8);
+    LODSB();
+    STOSB();
+    OR_AL();
+    if (!ZF()) goto copy_name;
+    XB(3, 0x09BE);
+    c->seg[S_DS] = seg_read16(c, c->seg[S_SS], PSP);
+    c->r[R_SI] = 0x81;
+    goto next_arg;
+end_arg:                                                          /* 0x09C8: close the argument just copied */
+    XB(2, 0x09C8);
+    c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);
+    STOSB();
+next_arg:                                                         /* 0x09CB */
+    XB(3, 0x09CB);
+    LODSB();
+    CMP_AL(0x20);
+    if (ZF()) goto next_arg;
+    XB(2, 0x09D0);
+    CMP_AL(9);
+    if (ZF()) goto next_arg;
+    XB(2, 0x09D4);
+    CMP_AL(0x0D);
+    if (ZF()) goto finish;
+    XB(2, 0x09D8);
+    OR_AL();
+    if (ZF()) goto finish;
+    XB(3, 0x09DC);
+    seg_write16(c, c->seg[S_SS], c->r[R_BX], c->r[R_DI]);         /* a pointer to this argument */
+    c->r[R_BX] = (uint16_t)alu_inc(c, c->r[R_BX], 1);
+    c->r[R_BX] = (uint16_t)alu_inc(c, c->r[R_BX], 1);
+copy_back:                                                        /* 0x09E1 */
+    XB(1, 0x09E1);
+    c->r[R_SI] = (uint16_t)alu_dec(c, c->r[R_SI], 1);
+copy_out:                                                         /* 0x09E2: outside quotes */
+    XB(3, 0x09E2);
+    LODSB();
+    CMP_AL(0x20);
+    if (ZF()) goto end_arg;
+    XB(2, 0x09E7);
+    CMP_AL(9);
+    if (ZF()) goto end_arg;
+    XB(2, 0x09EB);
+    CMP_AL(0x0D);
+    if (ZF()) goto close_last;
+    XB(2, 0x09EF);
+    OR_AL();
+    if (ZF()) goto close_last;
+    XB(2, 0x09F3);
+    CMP_AL(0x22);
+    if (ZF()) goto copy_in;
+    XB(2, 0x09F7);
+    CMP_AL(0x5C);
+    if (ZF()) goto copy_slash_out;
+    XB(2, 0x09FB);
+    STOSB();
+    goto copy_out;
+copy_slash_out:                                                   /* 0x09FE */
+    XB(1, 0x09FE);
+    c->r[R_CX] = (uint16_t)alu_logic(c, 0, 1);
+copy_slash_out_loop:
+    XB(4, 0x0A00);
+    c->r[R_CX] = (uint16_t)alu_inc(c, c->r[R_CX], 1);
+    LODSB();
+    CMP_AL(0x5C);
+    if (ZF()) goto copy_slash_out_loop;
+    XB(2, 0x0A06);
+    CMP_AL(0x22);
+    if (ZF()) goto copy_slash_out_quote;
+    XB(1, 0x0A0A);
+    set_r8(c, R_AL, 0x5C);                                        /* the backslashes as they are */
+    REP_STOSB(0x0A0C);
+    XB(1, 0x0A0E);
+    goto copy_back;
+copy_slash_out_quote:                                             /* 0x0A10 */
+    XB(2, 0x0A10);
+    set_r8(c, R_AL, 0x5C);
+    c->r[R_CX] = x86_shift(c, 5, c->r[R_CX], 1, 1);
+    REP_STOSB(0x0A14);                                            /* half of them */
+    XB(1, 0x0A16);
+    if (x86_cond(c, 3)) goto copy_in;                             /* jae: even, the quote is syntax */
+    XB(3, 0x0A18);
+    set_r8(c, R_AL, 0x22);                                        /* odd: a literal quote */
+    STOSB();
+    goto copy_out;
+copy_back_in:                                                     /* 0x0A1D */
+    XB(1, 0x0A1D);
+    c->r[R_SI] = (uint16_t)alu_dec(c, c->r[R_SI], 1);
+copy_in:                                                          /* 0x0A1E: inside quotes */
+    XB(3, 0x0A1E);
+    LODSB();
+    CMP_AL(0x0D);
+    if (ZF()) goto close_last;
+    XB(2, 0x0A23);
+    OR_AL();
+    if (ZF()) goto close_last;
+    XB(2, 0x0A27);
+    CMP_AL(0x22);
+    if (ZF()) goto copy_out;
+    XB(2, 0x0A2B);
+    CMP_AL(0x5C);
+    if (ZF()) goto copy_slash_in;
+    XB(2, 0x0A2F);
+    STOSB();
+    goto copy_in;
+copy_slash_in:                                                    /* 0x0A32 */
+    XB(1, 0x0A32);
+    c->r[R_CX] = (uint16_t)alu_logic(c, 0, 1);
+copy_slash_in_loop:
+    XB(4, 0x0A34);
+    c->r[R_CX] = (uint16_t)alu_inc(c, c->r[R_CX], 1);
+    LODSB();
+    CMP_AL(0x5C);
+    if (ZF()) goto copy_slash_in_loop;
+    XB(2, 0x0A3A);
+    CMP_AL(0x22);
+    if (ZF()) goto copy_slash_in_quote;
+    XB(1, 0x0A3E);
+    set_r8(c, R_AL, 0x5C);
+    REP_STOSB(0x0A40);
+    XB(1, 0x0A42);
+    goto copy_back_in;
+copy_slash_in_quote:                                              /* 0x0A44 */
+    XB(2, 0x0A44);
+    set_r8(c, R_AL, 0x5C);
+    c->r[R_CX] = x86_shift(c, 5, c->r[R_CX], 1, 1);
+    REP_STOSB(0x0A48);
+    XB(1, 0x0A4A);
+    if (x86_cond(c, 3)) goto copy_out;
+    XB(3, 0x0A4C);
+    set_r8(c, R_AL, 0x22);
+    STOSB();
+    goto copy_in;
+close_last:                                                       /* 0x0A51: the last argument's zero */
+    XB(2, 0x0A51);
+    c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);
+    STOSB();
+finish:                                                           /* 0x0A54: terminate the vector, go back */
+    XB(4, 0x0A54);
+    cpu_push16(c, c->seg[S_SS]);                                  /* push ss, pop ds */
+    c->seg[S_DS] = cpu_pop16(c);
+    ds_put(c, c->r[R_BX], 0);
+    c->ip = ds_get(c, RET);                                       /* ljmp [0264h] */
+    c->seg[S_CS] = ds_get(c, RET + 2);
+    return 1;
+#undef REP_STOSB
+#undef STOSB
+#undef LODSB
+#undef OR_AL
+#undef CMP_AL
+#undef ZF
+#undef XC
+#undef XB
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x08CC, mps_logo_crt_setargv, "C start-up: far-returning DOS version, program name and argument vector", 2 },
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0006, 0x0072, mps_logo_play_intro, "play the introductory music and timed sprite animation", 2 },
     { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x1894, mps_logo_open_file, "open or create a file as the C runtime does", 2 },
     { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x19B6, setup_crt_setargv, "C start-up: DOS version, program name and argument vector", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x130D, 0x033F, vgame_model_edge_clip, "clip a model edge to the window", 2 },

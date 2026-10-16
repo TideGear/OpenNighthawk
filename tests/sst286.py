@@ -8,10 +8,10 @@ masked to five bits, none of which an 8088 has or does the same way. Those were 
 a shared misunderstanding. These vectors were captured from a Harris N80C286-12, in real mode, one
 instruction at a time, ~1,000-5,000 cases per opcode (1.5 million in all).
 
-    py tools/x86oracle/sst286.py --dir DIR              # every file in DIR (v1_real_mode/*.MOO.gz)
-    py tools/x86oracle/sst286.py --dir DIR 69 6B C0.4   # just those
-    py tools/x86oracle/sst286.py --dir DIR --used       # only opcodes our three programs execute
-    py tools/x86oracle/sst286.py --dir DIR --verbose --limit=500
+    py tests/sst286.py --dir DIR              # every file in DIR (v1_real_mode/*.MOO.gz)
+    py tests/sst286.py --dir DIR 69 6B C0.4   # just those
+    py tests/sst286.py --dir DIR --used       # only opcodes our three programs execute
+    py tests/sst286.py --dir DIR --verbose --limit=500
 
 Fetch: https://github.com/SingleStepTests/80286/tree/main/v1_real_mode (326 MB; keep it on a local
 disk, not a synced folder). MOO format: https://github.com/dbalsom/moo.
@@ -102,7 +102,7 @@ def undefined_mask(op, sub, regs, byts):
 class Oracle:
     def __init__(self):
         if not os.path.exists(DLL):
-            sys.exit('x86oracle.dll not built - run tools/x86oracle/build.cmd first')
+            sys.exit('f117cpu_api.dll not built - run build.cmd first')
         self.lib = ctypes.CDLL(DLL)
         L = self.lib
         L.orc_new.restype = ctypes.c_void_p
@@ -417,7 +417,7 @@ def main():
     if '--fetch' in flags:
         return fetch(d)
     if not os.path.isdir(d) or not any(FILE_RE.match(f) for f in os.listdir(d)):
-        print('no 286 vectors in %s - run: py tools/x86oracle/sst286.py --fetch' % d)
+        print('no 286 vectors in %s - run: py tests/sst286.py --fetch' % d)
         return 77                                  # "not run", as verify.py reads it
     want = None
     if args:

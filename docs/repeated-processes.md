@@ -32,12 +32,12 @@ tools/build_recomp.py --data INSTALL --seed-coverage WORK/coverage --jobs 16
 --verify-interp-cache`, started through `D:/f117-gate/affinity_launch.py`
 (below).
 
-**Current figures (15 October 2026):** 120 CTests; 45 routes identical, run
-as 44 sessions; 5,718,848 instruction states under each timing profile; 895
+**Current figures (16 October 2026):** 122 CTests; 45 routes identical, run
+as 44 sessions; 5,718,848 instruction states under each timing profile; 897
 matched routines at three seeds; reachability and event limits clean. A gate
-takes about 1,300-1,700 s. The latest measured breakdown (1,553 s, with
-coverage and a new generated-code directory): translate/build/tests 296 s,
-coverage 744 s, second translation 47 s, parity 466 s. With coverage skipped, the last gate took 1,330 s (parity
+takes about 1,300-1,800 s. The latest measured breakdown (1,718 s, with
+coverage and a CPU-header rebuild): translate/build/tests 389 s, coverage
+939 s, second translation 67 s, parity 323 s. With coverage skipped, the last gate took 1,330 s (parity
 1,223 s, all 88 jobs in one stage): skipping coverage no longer shortens the
 gate, because the same interpreter chain sets the end either way (below).
 
@@ -54,6 +54,14 @@ gate, because the same interpreter chain sets the end either way (below).
 Before these changes (6 Oct) a gate took 30-38 minutes; the first round
 alone cut the same code's gate from 1,895 s to 1,365 s with every route's
 clock, hash and verdict and both lockstep tallies identical.
+
+**Overlap worker count (15 Oct).** The latest batch tried 16 interpreter
+workers beside coverage: every one of the 44 sessions still ran fresh, all
+45 route results were identical, and every other check remained. It took
+1,718 s versus 1,553 s for the previous eight-worker batch, with different
+source/build work; after the build, 1,329 versus 1,257 s. This is not a
+controlled speed gain, so the default stays at eight. Private proof
+parallelism and write-if-changed builds remain adopted.
 
 **What sets the wall time.** `parallel()` prints each stage's wall time,
 work, lower bound (the larger of the longest job and work / workers) and its
@@ -107,10 +115,10 @@ route and lockstep workers remain experiments to benchmark first.
 ## Presentation checks
 
 **After a presentation-code change**, all headless:
-- `ctest -E func_lockstep -j 8`: the same 120 tests the gate runs (111 took
+- `ctest -E func_lockstep -j 8`: the same 122 tests the gate runs (111 took
   36.56 s on 15 Oct).
 - `tools/presentation_check.py --data DIR --baseline-runs DIR/runs --out DIR
-  --scales 1` over the 45 routes: 530.70 s at 16 workers; 1,321.61 s at
+  --scales 1` over the 45 routes: 579.53 s at 16 workers; 1,321.61 s at
   eight workers beside a gate. It keeps 259,240 exact logic frames / 259,166
   exact interpolation pairs and every guest checkpoint and final hash.
   Options: `--routes STEM...`, `--scales N...` (default 4 and 9), `--jobs N`

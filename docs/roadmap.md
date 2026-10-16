@@ -68,7 +68,7 @@ make (Phase 4).
   early for its autoexec); delivery there is not pursued (Settled, below).
 - **The game version verified:** GOG's installer (build 28044) with the 473.04
   update; Steam's release is byte-identical (`tools/verify_install.py`).
-- **The gate** (`tools/build_recomp.py`): translate, build, unit tests (120),
+- **The gate** (`tools/build_recomp.py`): translate, build, unit tests (122),
   coverage, both engines on every route, instruction lockstep under both
   timing profiles, matched-routine lockstep at three seeds, and the
   routes-only and event-limit checks. About 21-30 minutes when every
@@ -151,8 +151,8 @@ not the recompilation:
       [../handoff.md](../handoff.md). `tools/reimp_names.py` joins the Reimp's
       census (1,535 functions) with this project's regions as a private lead
       list.
-      **Now:** 895 addresses matched, covering 893 of the census functions and
-      119,318 of 179,213 bytes (P2 68.25%, overall 89.38%).
+      **Now:** 897 addresses matched, covering 895 of the census functions and
+      120,427 of 179,213 bytes (P2 68.84%, overall 89.56%).
       **What is left:** `tools/census_reach.py` separates code with run
       evidence from code without (gate coverage logs only interpreted
       fallback instructions, so it cannot show what ran). A complete
@@ -355,6 +355,19 @@ reaches. Candidate drafts can keep private static dossiers
   same census before and after; shared tails add no credit.
   `D:/f117-gate/p2-setup-19b6`, `p2-logo-1894`; batch gate and N=1
   presentation evidence: `D:/f117-gate/p2-setup-logo-accept`.
+- MPS_LOGO `0006:0072` `mps_logo_play_intro` (248 instructions, all 26 far
+  calls retained): music selection, palette/sprite load, timed frames and
+  keyboard cancellation. Its runtime allocator returns with SP lowered by
+  `0318h`; the local return trap and the harness's escaped-call check both
+  account for it. Five seeds, 58 mutations including the wrong-trap negative
+  control, `ibm_boot` 26 and `full_cycle` 66 exact checkpoints, 1 call each.
+  The watch envelope is 712 bytes including gaps; census credit stays 707.
+  MPS_LOGO `0146:08CC` `mps_logo_crt_setargv` (205 instructions) is the
+  far-model startup argv builder: five seeds, 62 mutations, the same two
+  exact routes and positive counts. Its indirect far return keeps argv on
+  the stack; the harness accepts that terminal for this entry.
+  Proofs `D:/f117-gate/p2-logo-0072`, `p2-logo-08cc`; batch evidence
+  `D:/f117-gate/p2-logo-main-argv-accept`. Census gain: 2 functions / 1,109 bytes.
 - Twenty-two support routines: PLAYER's picture open/refill and linear copy,
   the four timer shutdowns, five mouse wrappers and SETUP's mouse probe,
   file-name comparison, BIOS text writer, register-block interrupt call and

@@ -102,7 +102,7 @@ def undefined_mask(op, sub, initial_regs):
 class Oracle:
     def __init__(self):
         if not os.path.exists(DLL):
-            sys.exit('x86oracle.dll not built - run build.cmd first')
+            sys.exit('f117cpu_api.dll not built - run build.cmd first')
         self.lib = ctypes.CDLL(DLL)
         L = self.lib
         L.orc_new.restype = ctypes.c_void_p

@@ -554,6 +554,8 @@ static const struct { const char *module; uint16_t ip; int arg; uint16_t v[2]; }
 /* Exact code ranges when the default 0x300-byte window is unsuitable:
  * long/shared tails, or small walkers whose unrelated callees are nearby. */
 static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
+    { "MPS_LOGO.EXE", 0x08CC, 0x08CC, 0x0192 },
+    { "MPS_LOGO.EXE", 0x0072, 0x0072, 0x02C8 },
     { "MPS_LOGO.EXE", 0x1894, 0x1894, 0x01AB },
     { "SETUP.EXE", 0x19B6, 0x19B6, 0x018E },
     { "VGAME.EXE", 0x033F, 0x033F, 0x01D8 },
@@ -770,6 +772,8 @@ static const struct { const char *module; uint16_t seg, ip, len; unsigned insns,
     { "VGAME.EXE", 0x130D, 0x033F, 0x01D8, 206, 206, "clip a model edge to the window" },
     { "SETUP.EXE", 0x0000, 0x19B6, 0x018E, 204, 204, "C start-up: DOS version, program name and argument vector" },
     { "MPS_LOGO.EXE", 0x0146, 0x1894, 0x01AB, 163, 163, "open or create a file as the C runtime does" },
+    { "MPS_LOGO.EXE", 0x0006, 0x0072, 0x02C8, 248, 248, "play the introductory music and timed sprite animation" },
+    { "MPS_LOGO.EXE", 0x0146, 0x08CC, 0x0192, 205, 205, "C start-up: far-returning DOS version, program name and argument vector" },
     { "END.EXE", 0, 0x2BEC, 0x0435, 444, 444, "debrief narrative and measured layout" },
     { "START.EXE", 0, 0x6DB8, 0x03F5, 399, 399, "pilot options dialog" },
     { "START.EXE", 0, 0x149C, 0x039E, 365, 365, "flight plan display" },
@@ -960,6 +964,8 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
         /* PLAYER's C start-up argument set-up (1602) pops its return address into [1ABC], lowers the stack for the
          * argument vector and leaves by JMP [1ABC] (at 178C). */
         if (kind == 1 && ip == 0x1602 && here == 0x178C && op == 0xFF) return inside;
+        /* The far-model argv builder keeps its allocation and returns by LJMP. */
+        if (kind == 2 && ip == 0x08CC && here == 0x0A5A && op == 0xFF) return inside;
         if (kind == 1 && ip == 0x19B6 && here == 0x1B40 && op == 0xFF) return inside;   /* SETUP's copy: JMP [0EBA] */
     }
     return 0;
@@ -992,7 +998,9 @@ static int step_runner(machine_t *mm)
              * the named code after it. (A callee that wanders off in both
              * engines - random code bytes, a random stack - never returns
              * in the original either.) */
-            if (g_cov >= 0 && mm->trap_cs == g_back_cs && cov_reached(mm->trap_ip, call_sp, 16)) {
+            if (g_cov >= 0 && mm->trap_cs == g_back_cs && cov_reached(mm->trap_ip,
+                    (uint16_t)(call_sp - ((!strcmp(COVERED[g_cov].module, "MPS_LOGO.EXE") &&
+                    COVERED[g_cov].seg == 6 && COVERED[g_cov].ip == 0x72 && mm->trap_ip == 0x007D) ? 0x0318 : 0)), 16)) {
                 g_cov_escapes++;
                 printf("  ESCAPED CALL (state %d): trap %04X:%04X sp %04X, at %04X:%04X sp %04X flags %04X\n", g_state_index,
                        mm->trap_cs, mm->trap_ip, mm->trap_sp, c->seg[S_CS], c->ip, c->r[R_SP], c->flags);
@@ -5945,6 +5953,155 @@ int main(int argc, char **argv)
 #undef XW16
 #undef XW8
             }
+            if(!strcmp(o->module,"MPS_LOGO.EXE") && o->seg==6 && o->ip==0x72) {
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t vv_=(uint16_t)(v_);XW8((s_),(o_),vv_);XW8((s_),(o_)+1,vv_>>8); } while(0)
+                seg[S_DS]=0x5000;seg[S_SS]=(XRAND()&1)?0x6000:seg[S_DS];r[R_SP]=0xF000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));g_watch_transient=1;
+                for(unsigned j=0;j<0x500;j++) { XW8(seg[S_SS],0xEB00+j,XRAND());XW8(seg[S_DS],0xEB00+j,XRAND()); }
+                uint16_t argc_=(uint16_t[]){0,1,2,3,0x7FFF,0x8000,0xFFFF}[XRAND()%7];
+                uint16_t argv_=(uint16_t)(0x2000+2*(XRAND()%32)),str_=(uint16_t)(0x3000+2*(XRAND()%32));
+                XW16(seg[S_SS],0xF000,argc_);XW16(seg[S_SS],0xF002,argv_);small[0]=argc_;small[1]=argv_;
+                small[2]=small[3]=(uint16_t)XRAND();XW16(seg[S_SS],0xF004,small[2]);XW16(seg[S_SS],0xF006,small[3]);
+                XW16(seg[S_DS],argv_+2,str_);
+                static const uint8_t chars_[]={ 'A','I','N','R','T','a','i','n','r','t',0x60,0x61,0x7A,0x7B,0x80,0xFF,0 };
+                XW8(seg[S_DS],str_,chars_[XRAND()%(sizeof chars_)]);
+                /* The real stack allocator stays executable and is guaranteed
+                 * enough room. The other helpers use far returning probes. */
+                XW16(seg[S_DS],0x0232,0x1000);
+                static const struct { uint16_t sg,ip;unsigned args; } probes_[]={
+                    {6,0x000C,1},{0xDA,0x0352,2},{0xDA,0x0491,1},{0xDA,0x0307,2},
+                    {6,0x0044,0},{6,0x03E4,1},{6,0x038E,2},{0x6D,0x0112,3},
+                    {6,0x033A,2},{0xDA,0x030E,1},{0x45,0x0062,0},{0x6D,0x05BE,9},
+                    {0x146,0x0724,1},{0x6D,0x05A2,1},{0xDA,0x0315,0},{0xDA,0x04C4,1}};
+                uint16_t sprite_off_=0x2000,sprite_seg_=0x8000;
+                switch(XRAND()%8) {case 0:sprite_off_=0;break;case 1:sprite_seg_=0;break;case 2:sprite_off_=sprite_seg_=0;break;default:break;}
+                unsigned frames_=(sprite_off_==0 && sprite_seg_==0)?0:XRAND()%5;
+                XW16(sprite_seg_,sprite_off_+0x10,frames_);
+                for(unsigned j=1;j<6;j++) {
+                    for(unsigned k=0;k<14;k++)XW8(sprite_seg_,sprite_off_+0x14+14*j+k,XRAND());
+                    XW16(sprite_seg_,sprite_off_+0x18+14*j,(XRAND()&1)?XRAND():0);
+                }
+                uint16_t clock_lo_=(XRAND()%4==0)?0:((XRAND()&1)?(uint16_t)(0xFFF0+XRAND()%16):(uint16_t)XRAND());
+                uint16_t clock_hi_=(uint16_t[]){0,0xFFFF,0x7FFF,0x8000}[XRAND()%4];
+                uint16_t key_=(uint16_t[]){0,0x011B,0x1000,0x011A,0x011C,0x0FFF,0x1001,0xFFFF}[XRAND()%8];
+                unsigned keys_enabled_=XRAND()&1;
+                for(unsigned p=0;p<sizeof probes_/sizeof probes_[0];p++) {
+                    uint16_t cell_=(uint16_t)(0xB000+8*p),list_=(uint16_t)(0xD000+0x80*p);
+                    XW16(seg[S_DS],cell_,0);XW16(seg[S_DS],cell_+2,0);XW16(seg[S_DS],cell_+4,0);
+                    for(unsigned j=0;j<32;j++) {
+                        uint16_t ax_=(uint16_t)XRAND(),dx_=(uint16_t)XRAND();
+                        if(p==1)ax_=(XRAND()%3)?(uint16_t)(1+XRAND()%100):0;
+                        if(p==3)ax_=(j==0 && (XRAND()&1))?1:0;
+                        if(p==7){ax_=sprite_off_;dx_=sprite_seg_;}
+                        if(p==10){ax_=(j==0)?clock_lo_:(j<4?0:0xFFFF);dx_=(j==0)?clock_hi_:(j==1?0x8000:(j==2?clock_hi_:0x7FFF));}
+                        if(p==12)ax_=keys_enabled_?((j&1)?key_:1):0;
+                        XW16(seg[S_DS],list_+4*j,ax_);XW16(seg[S_DS],list_+4*j+2,dx_);
+                    }
+                    unsigned out_=0x1000+0x100*p;
+                    /* Far jump to isolated code, preserving the original far
+                     * return frame. Fold arguments in order, then use a pair
+                     * list for AX:DX, advancing a separate call counter. */
+                    XW8(probes_[p].sg,probes_[p].ip,0xEA);XW16(probes_[p].sg,probes_[p].ip+1,out_);XW16(probes_[p].sg,probes_[p].ip+3,0x7000);
+#define EMIT(b) XW8(0x7000,out_++,(b))
+#define WORD(v) do { uint16_t w_=(uint16_t)(v);EMIT(w_);EMIT(w_>>8); } while(0)
+                    EMIT(0x55);EMIT(0x8B);EMIT(0xEC);EMIT(0x53);
+                    EMIT(0xFF);EMIT(0x06);WORD(cell_+4);
+                    for(unsigned j=0;j<probes_[p].args;j++) {
+                        EMIT(0x8B);EMIT(0x46);EMIT(6+2*j);
+                        EMIT(0x8B);EMIT(0x1E);WORD(cell_);
+                        EMIT(0xD1);EMIT(0xC3);EMIT(0x33);EMIT(0xD8);
+                        EMIT(0x89);EMIT(0x1E);WORD(cell_);
+                    }
+                    EMIT(0x8B);EMIT(0x1E);WORD(cell_+2);
+                    EMIT(0x8B);EMIT(0x87);WORD(list_);EMIT(0x8B);EMIT(0x97);WORD(list_+2);
+                    EMIT(0x83);EMIT(0xC3);EMIT(4);EMIT(0x83);EMIT(0xE3);EMIT(0x7C);
+                    EMIT(0x89);EMIT(0x1E);WORD(cell_+2);EMIT(0x5B);EMIT(0x5D);EMIT(0xCB);
+#undef WORD
+#undef EMIT
+                }
+#undef XW16
+#undef XW8
+#undef XRAND
+            }
+
+
+
+            if (!strcmp(o->module,"MPS_LOGO.EXE") && o->seg==0x0146 && o->ip==0x08CC) {
+                const uint16_t dg=0x5000, psp=0x4000, env=0x3000;
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()%4==0)?0x6000:dg;r[R_SP]=0xF000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                g_dos=1;g_dos_script_n=1;{static const uint8_t major_[]={0,1,2,2,2,3,5,6,7,255};const uint16_t minor_=(uint16_t)(XRAND()&255);const uint8_t majorver_=major_[XRAND()%10];g_dos_script[0].ax=(uint16_t)((minor_<<8)|majorver_);}g_dos_script[0].cf=(uint8_t)(XRAND()&1);
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                for(unsigned j=0;j<0x800;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x800+j),XRAND());
+                /* The data words: the program prefix segment (in both data and stack segments, as the
+                 * routine reads it through SS later), stale name pointer and return slot. */
+                XW16(dg,0x01FE,psp);XW16(seg[S_SS],0x01FE,psp);
+                XW16(dg,0x0221,0x0010);XW16(dg,0x0223,0x2000);
+                XW16(seg[S_SS],0x0221,0x0010);XW16(seg[S_SS],0x0223,0x2000);
+                {const unsigned sl_=XRAND()%10;for(unsigned j=0;j<sl_;j++)XW8(0x2000,0x10+j,1+XRAND()%255);XW8(0x2000,0x10+sl_,0);}
+                XW16(dg,0x0264,(uint16_t)XRAND());XW16(seg[S_SS],0x0264,back);XW16(seg[S_SS],0x0266,cs);
+                /* The environment block: strings, an empty one, a count word, the program name. Now and
+                 * then the block has no zero for 8000h bytes (the REP SCASB runs out of count). */
+                {
+                    const unsigned mode_=XRAND()%24;
+                    unsigned at_=0;
+                    if(mode_==0) {
+                        for(unsigned j=0;j<0x8010;j++)XW8(env,(uint16_t)j,1+XRAND()%255);
+                        for(unsigned j=0x8010;j<0x8030;j++)XW8(env,(uint16_t)j,(XRAND()%3)?0:(uint8_t)(1+XRAND()%255));
+                    } else {
+                        const unsigned n_=(mode_<4)?0:XRAND()%5;
+                        for(unsigned k=0;k<n_;k++) {
+                            const unsigned len_=1+XRAND()%12;
+                            for(unsigned j=0;j<len_;j++)XW8(env,at_++,1+XRAND()%255);
+                            XW8(env,at_++,0);
+                        }
+                        XW8(env,at_++,0);                       /* the empty string ends the block */
+                        if(n_==0&&(XRAND()&1))XW8(env,at_++,0);  /* an empty environment is two zeros */
+                        XW16(env,at_,XRAND()%3);at_+=2;           /* the word count */
+                        const unsigned nl_=(XRAND()%8==0)?0:(XRAND()%6==0)?(1+XRAND()%80):(1+XRAND()%12);
+                        for(unsigned j=0;j<nl_;j++)XW8(env,at_++,1+XRAND()%255);
+                        for(unsigned j=0;j<0x20;j++)XW8(env,at_+j,0);
+                    }
+                    XW16(psp,0x2C,env);
+                }
+                /* The command tail at prefix:81h: blanks, tabs, quotes, backslash runs, letters; ended by a
+                 * carriage return, a zero, or (rarely) left unterminated within the 7Fh bytes. */
+                {
+                    unsigned at_=0;
+                    const unsigned want_=(XRAND()%5==0)?0:(XRAND()%6==0)?(40+XRAND()%80):(1+XRAND()%30);
+                    const unsigned lead_=(XRAND()%3==0)?XRAND()%4:0;
+                    for(unsigned j=0;j<lead_&&at_<0x7E;j++)XW8(psp,0x81+at_++,(XRAND()&1)?0x20:9);
+                    while(at_<want_&&at_<0x7E) {
+                        const unsigned t_=XRAND()%24;
+                        if(t_<7)      XW8(psp,0x81+at_++,"abcxyz-"[XRAND()%7]);
+                        else if(t_<11)XW8(psp,0x81+at_++,0x20);
+                        else if(t_<12)XW8(psp,0x81+at_++,9);
+                        else if(t_<16)XW8(psp,0x81+at_++,0x22);
+                        else if(t_<22) {
+                            const unsigned run_=1+XRAND()%6;
+                            for(unsigned j=0;j<run_&&at_<0x7E;j++)XW8(psp,0x81+at_++,0x5C);
+                            if(XRAND()%2&&at_<0x7E)XW8(psp,0x81+at_++,0x22);
+                        }
+                        else if(t_<23)XW8(psp,0x81+at_++,(XRAND()%3)?'q':(XRAND()%2)?0x0D:0);
+                        else          XW8(psp,0x81+at_++,0x5C);
+                    }
+                    const unsigned endk_=XRAND()%10;
+                    if(at_<0x7E) {
+                        XW8(psp,0x81+at_,(endk_<7)?0x0D:(endk_<9)?0:'z');
+                        XW8(psp,0x82+at_,0x0D);
+                    }
+                    XW8(psp,0x80,(uint8_t)at_);
+                }
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
             if (!strcmp(o->module, "START.EXE") && o->seg == 0 && o->ip == 0x6DB8) {
                 seg[S_DS] = seg[S_SS] = 0x0A95; r[R_SP] = 0xFF00;
                 flags = (uint16_t)(flags & (0xFFFFu ^ F_DF));
@@ -6200,7 +6357,9 @@ int main(int argc, char **argv)
              * pops at most a few words); a wild jump that happens to reach
              * the return address - a slide through zeroed memory - does not. */
             const uint16_t popped = (uint16_t)(a->r[R_SP] - entry_sp);
-            const int setargv_ = (!strcmp(o->module, "PLAYER.EXE") && o->ip == 0x1602) || (!strcmp(o->module, "SETUP.EXE") && o->ip == 0x19B6);   /* returns by JMP with the vector left on the stack */
+            const int setargv_ = (!strcmp(o->module, "PLAYER.EXE") && o->ip == 0x1602) ||
+                (!strcmp(o->module, "SETUP.EXE") && o->ip == 0x19B6) ||
+                (!strcmp(o->module, "MPS_LOGO.EXE") && o->seg == 0x0146 && o->ip == 0x08CC);   /* returns by JMP with the vector left on the stack */
             if ((unsigned)steps >= g_step_cap || ((popped < 2 || popped > 18) && !(setargv_ && (uint16_t)(0u - popped) < 0x400u))) { if (getenv("FLWHY") && o->ip == 0x0815) printf("why1 s=%d steps=%d popped=%u\n", s, steps, popped); if (g_cov >= 0) g_cov_skips[(unsigned)steps >= g_step_cap ? 1 : 2]++; ms++; restore(); continue; }
             /* A random state that makes the original write over its own code
              * (a copy aimed at the routine) runs instructions it was not; the

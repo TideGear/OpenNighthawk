@@ -1,6 +1,6 @@
 /* cpu.c - 8086/80186/80286 real-mode interpreter.
  *
- * The decode loop of the Reimp oracle (tools/x86oracle/cpu.c at cfb8cec9)
+ * The decode loop of the author's earlier private interpreter (cfb8cec9)
  * with every instruction's semantics moved into x86_sem.h, which the
  * recompiled code calls too. This file is the reference engine: whatever the
  * recompiled code does, it must do what cpu_step does.

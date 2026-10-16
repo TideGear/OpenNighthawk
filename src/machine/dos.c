@@ -1,6 +1,6 @@
 /* dos.c - DOS and the PC BIOS, as much of them as the game uses.
  *
- * Begun as the Reimp oracle's DOS (tools/x86oracle/dos.c at cfb8cec9): the
+ * Begun as the author's earlier private DOS model (cfb8cec9): the
  * loader, the EXEC/overlay/terminate machinery that F117.COM's phase chain
  * needs, the bump allocator, the INT 21h file calls. The oracle served
  * scripted captures, so it returned "no key" from a blocking read rather

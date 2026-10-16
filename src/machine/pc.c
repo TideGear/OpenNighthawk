@@ -4,8 +4,8 @@
  * the VGA's registers and DAC, the AdLib's timers, the MPU-401 in UART mode,
  * the analog game port and the speaker gate.
  *
- * The device models began as the Reimp oracle's (tools/x86oracle/dos.c at
- * cfb8cec9), whose comments record why each one has to move rather than
+ * The device models began in the author's earlier private interpreter
+ * (cfb8cec9), whose comments record why each one has to move rather than
  * return a constant: the PIT read-back that a sound driver's speed
  * calibration divides by, the OPL status a card detection waits on, the
  * game-port one-shots a paddle routine counts. What changed here is that

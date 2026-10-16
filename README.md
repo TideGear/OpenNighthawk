@@ -59,8 +59,8 @@ default.
   strings, tables and variables. On the scripted sessions no game
   instruction is interpreted under the default timing profile; only the
   emulated BIOS's own stubs are.
-- **Named and matched:** 895 routine addresses (893 census functions,
-  119,318 of 179,213 code bytes) have explained C equivalents checked
+- **Named and matched:** 897 routine addresses (895 census functions,
+  120,427 of 179,213 code bytes) have explained C equivalents checked
   against their original bodies; 644 census functions remain.
 - **Parity, measured:** 45 scripted routes, run as 44 sessions, end in
   identical state under the reference interpreter and the recompiled code -
