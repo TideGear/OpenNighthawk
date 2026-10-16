@@ -68,7 +68,7 @@ make (Phase 4).
   early for its autoexec); delivery there is not pursued (Settled, below).
 - **The game version verified:** GOG's installer (build 28044) with the 473.04
   update; Steam's release is byte-identical (`tools/verify_install.py`).
-- **The gate** (`tools/build_recomp.py`): translate, build, unit tests (142),
+- **The gate** (`tools/build_recomp.py`): translate, build, unit tests (147),
   coverage, both engines on every route, instruction lockstep under both
   timing profiles, matched-routine lockstep at three seeds, and the
   routes-only and event-limit checks. About 21-30 minutes when every
@@ -151,12 +151,14 @@ not the recompilation:
       [../handoff.md](../handoff.md). `tools/reimp_names.py` joins the Reimp's
       census (1,535 functions) with this project's regions as a private lead
       list.
-      **Now:** 916 addresses matched, covering 914 of the census functions and
-      126,460 of 179,213 bytes (P2 72.04%, overall 90.54%).
-      A four-routine batch and shared matched-object build saving are preserved
-      locally on `p2-batch-c` (`4365021`), not included in these figures. Its
-      gate found an existing START `3E84` mismatch at seed `0x7721a2f2bd17`,
-      reproduced on main; full acceptance remains pending. See the handoff.
+      **Now:** 920 addresses matched, covering 918 of the census functions and
+      127,436 of 179,213 bytes (P2 72.55%, overall 90.69%).
+      The latest four-routine batch and its shared matched-object build are
+      included in these figures. Its first gate exposed an existing START
+      `3E84` argument-alias mismatch at seed `0x7721a2f2bd17`; the matched body
+      now reads its second argument after its first store, as the original
+      does, and CTest `matched_set_pointer_alias` retains the seed. The
+      repeated gate and presentation passed. See the handoff.
       **What is left:** `tools/census_reach.py` separates code with run
       evidence from code without (gate coverage logs only interpreted
       fallback instructions, so it cannot show what ran). A complete
@@ -244,6 +246,10 @@ reaches. Candidate drafts can keep private static dossiers
 
 ### Matched: VGAME scene and rendering
 
+- `D8AF` viewport bounds, projection centre and raster callbacks (16 Oct):
+  all 85 instructions at five seeds, 45 mutations caught; `full_cycle`
+  275 calls. Proof `D:/f117-gate/p2-vgame-d8af`.
+
 - `0B05` tile-object loading, `120A:0CE9` model fill command stream,
   `8462` map redraw and `03CE` scene dispatch (16 Oct): five seeds each,
   42/41/52/44 mutations; `full_cycle` 1/32,334/1/275 calls. The command
@@ -295,6 +301,10 @@ reaches. Candidate drafts can keep private static dossiers
 - Low-detail sky entry (with the batches of 8-9 Oct below).
 
 ### Matched: VGAME HUD and cockpit
+
+- `D578` cockpit element recolouring (16 Oct): all 77 instructions at five
+  seeds, 36 mutations caught; `full_cycle` 39 calls. Keeps the original far
+  driver calls through the presentation observer. Proof `D:/f117-gate/p2-vgame-d578`.
 
 - `1058:0016` HUD pass (2,488 census bytes), `79BE` cockpit panel frame (2,090
   bytes): F3 replay 550 calls each. `8A90` navigation grid: F3 replay 314
@@ -349,6 +359,13 @@ reaches. Candidate drafts can keep private static dossiers
   `full_cycle` 89 / 9 calls. `D:/f117-gate/format-init`.
 
 ### Matched: END
+
+- `04D2` mission-route marks and `3D4F` debrief graphics-region preparation
+  (16 Oct): all 94/103 instructions at five seeds, 42/35 mutations caught;
+  `full_cycle` one call each. Proofs `D:/f117-gate/p2-end-{04d2,3d4f}`.
+  This four-routine batch also shares one normal /O2 matched object between
+  the two runtime archives. Full gate, all 45 N=1 routes and boot N=4/9 pass;
+  evidence `D:/f117-gate/p2-batch-c-accept/final-gate-verdict.json`.
 
 - `02A4` debrief opening and `1607` palette fade (16 Oct): five seeds,
   46 mutations each, `full_cycle` 1 and 4 calls. The fade's rare IDIV fault

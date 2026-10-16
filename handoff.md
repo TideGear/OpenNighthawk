@@ -8,17 +8,17 @@ checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 [docs/repeated-processes.md](docs/repeated-processes.md) (every process we run
 more than once, what it costs). State as of 16 October 2026.
 
-Owner requested handoff, commit, push and stop on 16 October. Resume only in
-the next conversation. Main remains at the last accepted batch; the next
-batch is saved locally and has not passed the full gate (details below).
+Owner requested handoff, commit, push and stop on 16 October (afternoon).
+Resume only in the next conversation. The `p2-batch-c` batch below is gated
+and landed; nothing is left running.
 
 This file holds only the current state and standing practice, not a
 session log. Earlier detail is in `git log -p handoff.md`.
 
 ## Current state (16 October)
 
-Scoreboard: P1 100.00%, P2 72.04%, P3 96.33%, All 90.54% (P4 is no longer scored)
-(`py tools/progress.py --title`). Phase 2: 914 census functions / 126,460 bytes.
+Scoreboard: P1 100.00%, P2 72.55%, P3 96.33%, All 90.69% (P4 is no longer scored)
+(`py tools/progress.py --title`). Phase 2: 918 census functions / 127,436 bytes.
 
 ### Presentation: latest (15 October, evening)
 
@@ -104,32 +104,17 @@ times them (`F117_PRESENT_CLOCK=raw` for the old clock; opt-in knobs `F117_PRESE
 
 ### Phase 2
 
-- **Unaccepted local checkpoint `4365021` on `p2-batch-c`**, worktree
-  `D:/f117-wt/gate` (not merged or pushed). Four new routines: END `04D2`
-  mission-route marks / `3D4F` graphics regions, VGAME `D8AF` viewport /
-  `D578` cockpit recolouring. All four private proofs audited: full coverage,
-  five seeds, all 158 mutations caught, 26 boot / 66 full-cycle checkpoints
-  exact, real full-cycle calls 1/1/275/39. All 20 optimized seed runs pass.
-  Candidate score only: P2 72.55%, All 90.69% (four functions / 976 bytes).
-  Main's scoreboard above does **not** include these.
-  The batch also compiles `matched.c` once into `f117matched`, embedding
-  that object in both runtime archives with the same /O2 and non-Windows PIC.
-  Against both old objects, all 9,372 non-debug sections' code, data, unwind
-  tables and relocation targets match; one build pair measured two concurrent
-  compiles at 143.74/144.40 s versus one shared compile at 99.75 s.
-  Evidence `D:/f117-gate/p2-batch-c-accept/{private-audit,integrated-audit.json,shared-object-verdict.json}`.
-- **Gate blocker:** that batch's fresh gate stopped after 1,516.11 s at step
-  7c: START `3E84` (`start_set_pointer`), seed `0x7721a2f2bd17`, AX 7165 vs
-  6975. It reproduces identically on main's existing normal /O2 executable
-  (`baseline-3e84.log`: 1,152 comparisons, two skips, one mismatch), so it
-  predates the new bodies and build change. Before the failure: 146 CTests,
-  all 45 routes identical / 44 fresh interpreter sessions, both instruction
-  profiles (5,718,848 comparisons each), matched default and C0FFEE seeds
-  clean. Final reachability/event-limit steps and presentation N=1/N4/N9
-  did **not** run. No acceptance verdict exists. Logs/scripts under
-  `D:/f117-gate/p2-batch-c-accept`; `accept.py` still attempts a full gate
-  before presentation. Fix/reproduce the old seed and retain it as a regression,
-  then repeat the complete gate and presentation checks before publishing code.
+- **Gate blocker resolved (16 Oct, afternoon):** the first `p2-batch-c` gate
+  stopped at START `3E84` (`start_set_pointer`), seed `0x7721a2f2bd17`, AX 7165
+  vs 6975; it reproduced on main, so it predated the batch. Cause: the original
+  stores its first argument to `DS:[E08A]` and only then reads the second
+  argument from the stack; in that state the store address physically aliased
+  the second argument's stack slot, so the original read the stored value back.
+  The matched body had cached both arguments first. `st3_set_pointer` (START
+  `3E84` / END `2049`) now reads each argument where the original does; CTest
+  `matched_set_pointer_alias` retains the seed. Fix on master `075ccd1`, merged
+  into the batch before its passing gate. The repeated full gate and
+  presentation then passed (latest batch below).
 - **Next private drafts, not integrated:** START `A230` and MPS_LOGO
   `0146:1510`, text-mode file reads, each has 101 original instructions
   checked against VGAME's proved copy and all 94 owned instructions equal
@@ -142,31 +127,39 @@ times them (`F117_PRESENT_CLOCK=raw` for the old clock; opt-in knobs `F117_PRESE
   then both real routes; neither has a private acceptance verdict. MPS_LOGO
   `0146:0016` remains a screened startup lead with STI at `003C`, no body.
   Refreshed ranked leads: `D:/f117-gate/p2-batch-c-accept/next-reached.tsv`.
-- All local proof/gate jobs from this session have ended. Main's executable
-  and kit libraries still correspond to accepted `7721a2f`; no main rebuild
-  was needed for this documentation-only handoff. No visible tests were run.
+- All local proof/gate jobs from this session have ended. Main's executable is
+  rebuilt from the landed batch and the kit libraries are refreshed from that
+  build (`D:/f117-gate/kit-libs/manifest.json` records the commit and hashes).
+  No visible tests were run.
 
-- Latest batch (16 Oct): **`p2-batch-b2` is gated and landed**. START `0448`, `3F33`, `1308`,
-  `30A0`; VGAME `0B05`, `120A:0CE9`, `8462`, `03CE`; END `02A4`, `1607`; PLAYER `0BE2`, `03FE`;
-  SETUP `0A9F`: 13 census functions / 3,674 bytes. Every private proof audited: five seeds, all 611 mutations
-  caught, 26 boot and 66 full-cycle checkpoints exact, positive full-cycle calls. All 65 optimized seed runs pass.
-  The stalled MSVC compile was START `1308`'s four inline palette copies; a small noinline helper keeps their
-  MOVSW/MOVSB order and clocks. Full optimized compile 119.3 s diagnostically, normal matched objects 149 s each.
-  Its five seeds, 53 mutations and both real routes were repeated after the change.
-  Harness: `120A:0CE9`'s CODE_BELOW/coverage origin includes its shared tail; SETUP `0A9F`'s PROGRAM_ENDS row
-  counts the error arm at its original INT 21h/4Ch as complete. `1607`/`30A0` leave rare IDIV faults to original
-  code (not fixture-tested); all tick-wait calls clamp to the next event.
-  The first gate (1,742 s) kept all 45 routes but exposed a pre-existing `683E` false escape at seed
-  `0x3ad6ecf4e53b`: the original changed sine helper `C830` from RET to RET n. The harness now accepts only
-  an exact original changed-return state (first return at that IP; same clock, source, registers, segments and
-  flags), still compares the state and gives original completion no named coverage. Wrong-trap, clock and
-  movement controls all fail; regression `matched_projectile_changed_return` retains the seed.
-  Final gate: 1269 s, 142 CTests, 45 identical routes / 44 fresh interpreter sessions, 916 matched routines
-  at three seeds, both instruction timing profiles clean, reachability and event limits clean.
-  N=1: 557.34 s, 259,240 exact frames / 259,166 pairs; boot N=4/9 368/366 each.
-  Evidence `D:/f117-gate/p2-batch-b2-accept/final-gate-verdict.json`, `final-private-audit/`, `integrated-audit.json`.
-  Refreshed ranked leads: `D:/f117-gate/p2-batch-b2-accept/next-reached.json` (END `04D2`, `3D4F`, VGAME
-  `D8AF`, `D578`, MPS_LOGO `0146:0016`...).
+- Latest batch (16 Oct): **`p2-batch-c` is gated and landed**. END `04D2`, `3D4F`;
+  VGAME `D8AF`, `D578`: four census functions / 976 bytes. Five seeds and full instruction coverage each,
+  all 158 mutations caught, 26 boot and 66 full-cycle checkpoints exact; real full-cycle calls 1/1/275/39.
+  All 20 optimized seed runs pass. No switchable fix or observer lies inside the new bodies; `D578` keeps
+  its original far calls to the graphics recolour observer at `1E42:01E7`.
+  Final gate: 1157.81 s, 147 CTests, 45 identical routes / 44 fresh interpreter sessions,
+  920 matched routines at three seeds, both instruction timing profiles, reachability and event limits clean.
+  N=1: 493.83 s, 259,240 exact frames / 259,166 pairs; boot N=4/9 368/366 each.
+  Evidence `D:/f117-gate/p2-batch-c-accept/final-gate-verdict.json`, `private-audit/`, `integrated-audit.json`.
+- Build saving: `f117matched` compiles `matched.c` once and embeds the same object in both runtime archives.
+  Normal /O2 and non-Windows PIC stay. Code/data/unwind tables/relocation targets match both previous objects;
+  one local pair measured 143.74/144.40 s (two concurrent compiles) versus 99.75 s (one shared compile).
+  Private proofs can run in separate directories and CPU sets; N=1 and boot N=4/9 checks overlap with a frozen
+  runner and separate outputs. Gate jobs 16 / interpreter overlap 8 / fresh-cache verification are unchanged.
+- Previous `p2-batch-b2` landed 13 functions / 3,674 bytes. START `1308`'s noinline palette helper avoids the
+  optimizer stall without changing MOVSW/MOVSB order or clocks. The harness handles the exact original
+  changed return of VGAME `683E`'s sine helper (`C830` RET mutated to RET n); wrong-return, clock and motion
+  controls fail, and CTest `matched_projectile_changed_return` retains seed `0x3ad6ecf4e53b`.
+  Its shared-tail (`120A:0CE9`) and terminal-DOS (`SETUP 0A9F`) accounting are in architecture.md.
+  Ranked leads: `D:/f117-gate/p2-batch-c-accept/next-reached.tsv`.
+  Next private candidate START `A230` (text-mode file read) has 101 original instructions checked against
+  its VGAME copy and all 94 owned instructions equal at five seeds; shared return `98BD-98C9` gets no duplicate
+  coverage credit. Mutations and real-route proofs remain before integration (`D:/f117-gate/p2-start-a230`).
+  MPS_LOGO `0146:1510` is a reviewed copy of that read routine with far return and arguments shifted by two;
+  its 101 instructions correspond and all 94 owned instructions pass five seeds (`D:/f117-gate/p2-logo-1510`).
+  Both private mutation runs stopped before testing: generated bodies use CRLF while multiline mutation patterns
+  use LF (`read buffer argument` not found; it matches after newline normalization). Fix the preparers to write LF,
+  then repeat seeds/mutations and both route proofs. Neither routine is integrated or credited.
 - Kit libraries are refreshed from main's normal /O2 build after each batch;
   `D:/f117-gate/kit-libs/manifest.json` records the source commit and hashes.
 - Other leads: PLAYER `026B:0211` (a distinct timer re-sync) and `026B:0336`
@@ -199,13 +192,10 @@ transitions, widths by role). Details and the method: docs/progress.md.
 
 ## Next steps
 
-1. **Resolve the saved gate failure first:** reproduce with
-   `build/func_lockstep.exe --states 5000 --seed 0x7721a2f2bd17 --only START.EXE:3E84`.
-   Keep the failing seed as a regression. The four-routine batch on local
-   `p2-batch-c` stays unpublished until the complete gate and presentation pass.
-   Do not run `finish-docs.py` or claim its projected score before acceptance.
-   **Phase 2 first (owner).** Then continue down the ranked list
-   (`D:/f117-gate/p2-batch-b2-accept/next-reached.json`) with the private kit and parallel agents (agents do steps 1-7 only; root runs
+1. **Phase 2 first (owner).** The `3E84` gate blocker is fixed and retained as
+   CTest `matched_set_pointer_alias` (seed `0x7721a2f2bd17`); `p2-batch-c` is
+   gated and landed (see above). Continue down the ranked list
+   (`D:/f117-gate/p2-batch-c-accept/next-reached.tsv`) with the private kit and parallel agents (agents do steps 1-7 only; root runs
    `kit.py checkpoints` and `D:/f117-gate/kit/boot_proof.py` with `KIT_ROOT` at the gated worktree, then
    `verdict` and `audit_proofs.py`). The brief's "Traps found on 16 October" lists today's lessons.
    Verify every source hash, full coverage, five seeds, mutations and actual route calls; one full gate plus
@@ -224,7 +214,7 @@ transitions, widths by role). Details and the method: docs/progress.md.
    add work outside frame timers and are diagnostics.
 5. **Branch housekeeping:** many local branches are fully merged into `master`. Not merged: `flight-input` (older
    aircraft-traffic draft, superseded by `b41ec9c`; its worktree `D:/f117-wt/span-emitter` has uncommitted edits),
-   `irq-divide-fault` (kept on purpose). `p2-batch-b2` is now merged; its worktree is retained. The stopped presentation WIP branches
+   `irq-divide-fault` (kept on purpose). `p2-batch-b2` and `p2-batch-c` are now merged; its worktree is retained. The stopped presentation WIP branches
    are preserved for history; do not merge them again. Ask the owner before deleting anything.
 
 ## Owner decisions and instructions in force
@@ -348,8 +338,8 @@ found so far. Agents work only in their `p2-*` directory. Then:
 3. Build, ctest, ONE full gate per batch, the 45-route
    `presentation_check --scales 1`, docs, commit, push.
 
-Gate batches in a separate worktree (`D:/f117-wt/gate`, currently on the unaccepted local branch
-`p2-batch-c`; resume its saved checkpoint first. Build it once with `build.cmd -DF117R_BUILD_APP=OFF` before the gate, which
+Gate batches in a separate worktree (`D:/f117-wt/gate`, currently on the merged branch
+`p2-batch-c`. Build it once with `build.cmd -DF117R_BUILD_APP=OFF` before the gate, which
 needs its `f117cpu_api.dll`) when the owner is testing the main tree's build.
 
 Screening and older method: `tools/matched_draft.py --dossier` (module/seg/ip
