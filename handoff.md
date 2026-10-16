@@ -110,14 +110,19 @@ times them (`F117_PRESENT_CLOCK=raw` for the old clock; opt-in knobs `F117_PRESE
   now empties every cell list (190/190 at 22 seeds). Second gate 1,371 s (coverage provably empty and
   skipped): 128 CTests, 45 identical routes, 903 routines at three seeds, limits clean. N=1: 708.44 s, 259,240 exact frames / 259,166 pairs; boot N=4/9 368/366 each.
   Evidence `D:/f117-gate/p2-batch-fe50-accept`.
-- **Next batch, privately proven, route-proven and audited** (`D:/f117-gate/audit_proofs.py`; results in
+- **Next batch: integrated, NOT gated** — branch `p2-batch-b2` (pushed, `3ad6ecf`; worktree
+  `D:/f117-wt/gate`). Privately proven, route-proven and audited (`D:/f117-gate/audit_proofs.py`; results in
   `p2-batch-b2-accept/private-audit.json` and `p2-batch-b2-accept-tail/`): START `0448`, `3F33`, `1308`,
   `30A0`; VGAME `0B05`, `120A:0CE9`, `8462`, `03CE`; END `02A4`, `1607`; PLAYER `0BE2`, `03FE`; SETUP
   `0A9F`. Each: five seeds, every mutation caught, 66 full_cycle and 26 ibm_boot checkpoints exact, positive
-  calls. To integrate: `kit.py integrate` each, plus hand-applied harness changes from `120A:0CE9` (a
-  CODE_BELOW row and the `g_below` coverage shift, like `130D:033F`) and `0A9F` (a PROGRAM_ENDS table so an
-  error arm stopped at its INT 21h/4Ch counts as completed); both are in those directories'
-  `tests-base.c` against `tests-base.orig.c`. Several config lengths are the full envelope through the RET
+  calls. The branch also carries the hand-applied harness changes from `120A:0CE9` (a CODE_BELOW row and the
+  `g_below` coverage shift, like `130D:033F`) and `0A9F` (a PROGRAM_ENDS table so an error arm stopped at its
+  INT 21h/4Ch counts as completed). **Blocker:** its `build.cmd OFF` spent over 40 minutes in the two /O2
+  compiles of `matched.c` (normally about 150 s each, about 2 GB each) and was stopped: one of these bodies is
+  pathological for MSVC's optimizer. Find it first (compile `matched.c` once with `/d2cgsummary`, or bisect by
+  body), restructure that body without changing its instruction order or clocks, re-run its seeds/mutations,
+  then build, optimized seeds (`p2-batch-fe50-accept/optimized-seeds.py` pattern), gate, N=1 check, docs
+  (README/architecture/roadmap counts, `progress.py --census`), commit, push. Several config lengths are the full envelope through the RET
   (census credit is measured from the TSV, not from these). `0B05`, `3F33`, `02A4`, `1607` and `30A0` call
   tick waits through the clamped call (the gate's step 9 checks them); `1607` and `30A0` hand a rare IDIV
   fault back to the original code (untested by lockstep). Ranked remaining entries:
@@ -155,8 +160,10 @@ transitions, widths by role). Details and the method: docs/progress.md.
 
 ## Next steps
 
-1. **Phase 2 first (owner).** Finish the three fixture-proven candidates above, then continue down the ranked list
-   with the private kit and parallel agents.
+1. **Phase 2 first (owner).** Land `p2-batch-b2` (above: find the slow-compiling body first), then continue down
+   the ranked list with the private kit and parallel agents (agents do steps 1-7 only; root runs
+   `kit.py checkpoints` and `D:/f117-gate/kit/boot_proof.py` with `KIT_ROOT` at the gated worktree, then
+   `verdict` and `audit_proofs.py`). The brief's "Traps found on 16 October" lists today's lessons.
    Verify every source hash, full coverage, five seeds, mutations and actual route calls; one full gate plus
    `presentation_check --scales 1 --jobs 16` per batch, then docs, commit and push. Safe optimisations and
    parallelisation are authorised; no check may be removed. Use separate proof directories and CPU sets at
@@ -173,7 +180,7 @@ transitions, widths by role). Details and the method: docs/progress.md.
    add work outside frame timers and are diagnostics.
 5. **Branch housekeeping:** many local branches are fully merged into `master`. Not merged: `flight-input` (older
    aircraft-traffic draft, superseded by `b41ec9c`; its worktree `D:/f117-wt/span-emitter` has uncommitted edits),
-   `irq-divide-fault` (kept on purpose). The stopped presentation WIP branches
+   `irq-divide-fault` (kept on purpose), `p2-batch-b2` (the ungated batch above). The stopped presentation WIP branches
    are preserved for history; do not merge them again. Ask the owner before deleting anything.
 
 ## Owner decisions and instructions in force
@@ -297,8 +304,8 @@ found so far. Agents work only in their `p2-*` directory. Then:
 3. Build, ctest, ONE full gate per batch, the 45-route
    `presentation_check --scales 1`, docs, commit, push.
 
-Gate batches in a separate worktree (`D:/f117-wt/gate`, branch
-`gate-batch7`; build it once with `build.cmd OFF` before the gate, which
+Gate batches in a separate worktree (`D:/f117-wt/gate`, now on branch
+`p2-batch-b2`; build it once with `build.cmd OFF` before the gate, which
 needs its `f117cpu_api.dll`) when the owner is testing the main tree's build.
 
 Screening and older method: `tools/matched_draft.py --dossier` (module/seg/ip
