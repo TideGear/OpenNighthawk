@@ -37,7 +37,10 @@ times them (`F117_PRESENT_CLOCK=raw` for the old clock; opt-in knobs `F117_PRESE
   changes; alpha 0.4 / pull 0.025: 3 and 1.3%; picture age not measured. Defaults unchanged: the owner's call.
 - **Verification scope:** `drawfeed.c/.h` and `rerun.c/.h` execute or snapshot machines, so they need the full gate
   plus `presentation_check.py --mode rerun` over all 45 routes; the light check refuses them.
-- **Still open:** clock skips against picture age; the owner's 4K screen/motion verdict (ask first); per-machine
+- **Owner verdict on a real screen (15 Oct):** played `4k-rerun.bat` (fullscreen 4K, rerun) twice: "seems great"
+  apart from the original's jitter (20:50), and "looks good" after the palette fix (22:30). Not yet agreed as
+  formal motion acceptance for P3 (ask whether it counts before changing `docs/progress.json`).
+- **Still open:** clock skips against picture age; formal motion acceptance (above); per-machine
   observer/runtime/fix state for parallel copies above about 120 Hz (one copy costs about 6 ms); the small
   `DF03`/`C2C8` vertex group (`rerun-accept/object-follow-up.txt` is a lead); `thin_strip_stroke` in `hires.c`
   ignores `present-line-width`. P3 stays at 82.75% until motion is judged.
