@@ -24,7 +24,8 @@ depends on how much was translated; only speed does.
 ## Components
 
 ```
-src/cpu/        the CPU: state, the interpreter (cpu.c), the shared semantics (x86_sem.h)
+src/cpu/        the CPU: state, the interpreter (cpu.c), the shared semantics (x86_sem.h),
+                the 386DX/33 timing profile (timing386.c)
 src/machine/    the PC: DOS and BIOS (dos.c dispatch and BIOS stubs; dos_memory.c,
                 dos_programs.c, dos_files.c, dos_keyboard.c, dos_video.c),
                 devices (pc.c), mouse driver (mouse.c)
@@ -32,8 +33,10 @@ src/recomp/     the recompiled code's run-time (recomp.c) and the generated-code
 src/matched/    hand-written equivalents of original routines (matched.c) and the
                 draw-list observer (observe.c)
 src/fixes/      the switchable fixes (fixes.c)
-src/host/       the window, audio and input (main.c), the headless runner (headless.c),
-                presentation (present.c), the MT-32 backend (mt32.c)
+src/present/    the optional presentation: draw lists, finer re-draw, in-between frames
+src/host/       the window, input and presentation driver (main.c, present.c), the
+                headless runner (headless.c), audio (audio.c, speaker.c), the MT-32
+                backend (mt32.c), the scripting API (machine_api.c)
 recompiler/     the translator: decoder, code discovery, C emitter (Python)
 tools/          the gate (build_recomp.py), pilots and checks, reference-machine
                 harnesses (ref86box/), routes (routes/)
@@ -43,18 +46,16 @@ third_party/    DOSBox DBOPL (GPL-2+) and Nuked OPL3 (LGPL-2.1)
 
 The optional presentation (finer pictures, in-between frames) observes the
 original's draw path and never changes the machine; its design is in
-[presentation.md](presentation.md).
-
-The rerun mode executes extra draws on machine copies. The normal gate's
-scan routes do not exercise those copies: `presentation_check.py --mode
-rerun` separately compares every guest checkpoint and final hash against
-the scan baseline, checks the unnudged redraw, and compares real memory,
-machine state and the fixes' host state around each extra draw. Memory
-equality alone was insufficient: an early copy advanced D1's shared frame
-limiter without writing real guest memory. Fix state now travels with the
-snapshot and the live state is restored after each copy.
-The light-check classifier excludes `drawfeed.c/.h` and `rerun.c/.h` for
-this reason; their location under `src/present/` does not make them read-only.
+[presentation.md](presentation.md). Its `rerun` mode is the one part that runs
+guest code: it re-runs the original's draw on throwaway copies of the machine.
+The gate's routes do not exercise those copies, so `presentation_check.py
+--mode rerun` checks them on every route: guest checkpoints and final hashes
+against the plain run, the unnudged redraw, and real memory, machine state
+and the fixes' host state before and after each extra draw. Memory alone was
+not enough: an early copy advanced D1's frame limiter, which lives outside
+guest memory, so fix state now travels with the snapshot. For the same reason
+the light check for presentation-only changes (`tools/present_light_check.py`)
+refuses changes to `drawfeed.c/.h` and `rerun.c/.h`; those need the full gate.
 
 ## The CPU and its two engines
 
@@ -107,9 +108,9 @@ and the inputs with the clock counts at which they arrived.
   byte, and ports 86Box's costs in place of DOSBox's delays
   ([timing386.md](../tools/ref86box/timing386.md)). `probe386.py` holds the
   interpreter to 86Box block by block; both engines charge these costs and
-  instruction lockstep checks them. File loading still drifts against the
-  reference VM's disk model; fast loads remain the default. Recorded routes
-  run on the default DOSBox profile.
+  instruction lockstep checks them. DOS file services and program loads are
+  charged the reference drive's measured costs. Recorded routes run on the
+  default DOSBox profile.
 - **ISA I/O delay.** With `cycles = floor(ips/1000)`, a port read costs
   `floor(cycles/1024)` extra clocks and a write `floor(cycles/1365)`:
   eight and six at the 9 MIPS reference speed. DOSBox suppresses that delay when
@@ -153,8 +154,9 @@ and the inputs with the clock counts at which they arrived.
   the game's own timer handler runs first and reloads the PIT to about 70 Hz;
   the BIOS tick then runs about four times faster and START's four-tick
   palette loops take a quarter as long. The machine does the same
-  (`F117R_PIT_CONTROL_IRQ=0` turns it off); it was the cause of the old
-  roster-entry delay ([roadmap.md](roadmap.md)). It is one of the places the
+  (`F117R_PIT_CONTROL_IRQ=0` turns it off); it was the cause of an old
+  delay entering the roster (the video drift against GOG's capture went from
+  -570 ms to +14 ms when it was modelled). It is one of the places the
   machine follows DOSBox 0.74 rather than known real hardware; 86Box is the
   reference that can overrule it.
 
@@ -222,11 +224,13 @@ cover them.
   and memory chain (programs at 1566 or 18E1 depending on the sound driver),
   not any particular DOS version's.
 - **The CPU** is a 286 where DOSBox emulates a 386; the game has no CPU
-  detection and the one observable difference is flag bits 12-14 after PUSHF.
+  detection and the one observable difference is flag bits 12-14 after PUSHF,
+  which the game's PUSHF sites never read.
 - **The OPL** defaults to GOG DOSBox's DBOPL core at 44,100 Hz with its 2x
   mixer gain; `--opl nuked` selects Nuked OPL3 in OPL2 mode. Timestamped writes
-  render preceding samples before changing the chip. Register timing, mixer
-  scheduling and exact PCM agreement with DOSBox are not yet verified.
+  render preceding samples before changing the chip. The register writes match
+  DOSBox's in order, value and timing (below); sample-for-sample agreement with
+  DOSBox's mixer is not checked.
 
 ## The recompiler
 
@@ -368,9 +372,10 @@ are in [roadmap.md](roadmap.md).
    the gap sweep took for code that are invalid 286 opcodes). The reference
    is the machine's own step (`cpu_step` plus the TF trap), not bare
    `cpu_step`. The gate repeats this under the 386 profile, comparing the
-   prefetch queue and held REP chunk as well, with code in RAM and in VGA
-   memory. States exercise cached and uncached memory, partly filled queues
-   and unfinished chunks. A diagnostic instruction budget stops after one
+   prefetch queue and held REP chunk as well; `insn_lockstep --base-seg`
+   places the code in VGA memory for a separate run outside the gate.
+   States exercise cached and uncached memory, partly filled queues and
+   unfinished chunks. A diagnostic instruction budget stops after one
    operation even when its clock cost is zero.
 5. **Replay.** Input logs recorded on one engine replay on the other, and in
    the windowed game, to the same clock count and final state.
@@ -420,11 +425,11 @@ are in [roadmap.md](roadmap.md).
    answers) is held to stored baselines of known differences in
    `tools/fidelity_baseline.json`: none for GOG's DOSBox (held to every
    answer, DOS memory layout included, since this machine follows it), 40
-   for DOSBox-X and 95 for 86Box; a new difference fails. For the other two
+   for DOSBox-X and 73 for 86Box; a new difference fails. For the other two
    the answers that describe how a DOS and BIOS lay memory out (segment
    values, PSP, memory chain, the EXEC'd child's frame) are left out, so the
    lists hold behaviour: the DOS version, BDA words, a few VGA/DAC registers,
-   the PIC mask, the MPU port, 86Box's missing mouse driver, speed-dependent
+   the PIC mask, the MPU port, a few mouse-driver answers, speed-dependent
    counts.
 
    Which of those the game can see: `tools/port_reads.py` replays every
@@ -451,9 +456,9 @@ are in [roadmap.md](roadmap.md).
      the end. A second independent capture matches 1,321 with 11 one-sample
      differences per side: the remaining differences vary from capture to
      capture, so they are not a model defect. `tools/video_compare.py`
-     compares completed four-part scanout frames at the native VGA period;
-     its current figures are in [parity-audit.md](parity-audit.md). Apparent
-     roster cursor changes there were screenshot aliasing.
+     compares completed four-part scanout frames at the native VGA period.
+     Roster cursor changes it once appeared to show were screenshot
+     aliasing.
    - DOSBox-X: 1,237 exact pictures; timing drift up to about 0.2 s over the
      intro. DOSBox-X draws scanline by scanline, so a palette write can land
      between the two scanlines of a doubled line (its 640x400 capture of mode
@@ -481,17 +486,18 @@ are in [roadmap.md](roadmap.md).
    PLAYER's DAC throughput is within a few bytes of DOSBox's after matching
    its I/O-delay suppression at slice boundaries).
 
-   Open: exact frame phase against DOSBox (the intro's partial-logo
-   transitions depend on capture timing) and exact PCM agreement. Reimp's D96
-   is an extra wait in its own UI and is not evidence for a wait in the
-   translated START.
+   Not pursued (out of scope, [roadmap.md](roadmap.md)): exact frame phase
+   against DOSBox (the intro's partial-logo transitions depend on capture
+   timing) and sample-for-sample PCM agreement.
 
 ## Observing flights through normal controls
 
 With `F117R_BUILD_TESTS=ON`, `f117machine_api` exposes a scalar host API and
 `tools/machine_api.py` wraps it: boot, advance to an absolute clock, read guest
 memory, queue normal keys and mouse input, record input, capture a picture. It
-has no memory or register setters. Only one machine may be live per process.
+has no register setters, and its one memory write, `stage_write16`, exists
+only for staging fix checks ([the run-time](#the-run-time)); pilots and
+observers never call it. Only one machine may be live per process.
 
 The pilots fly with released key pulses and record an input log of keys and
 mouse events only; the gate replays the log without the controller. Each
@@ -743,13 +749,13 @@ carrier (`realsound`, the default, without it).
 
 Status: the interpreter's and recompiler's MIDI logs are byte-identical, and
 offline renders of one stream are byte-identical. Live renders with the same
-seed differ because Munt 2.8.3's `TVP::nextPitch()` draws from global `rand()`
+seed differ because Munt's `TVP::nextPitch()` draws from global `rand()`
 while partials render serially, so a different audio-advance boundary assigns
 the random sequence to different partials; a fixed offline quantum
 (`audio_render --step-clocks`) is repeatable. Live SDL playback also shows brief
-starvation gaps. Live output is therefore not a stable PCM oracle. Independent
-reference PCM and a listening check for Roland, and exact OPL PCM agreement,
-remain open ([roadmap.md](roadmap.md)).
+starvation gaps. Live output is therefore not a stable PCM reference.
+Independent reference PCM and a listening check for Roland remain open
+(Phase 4 in [roadmap.md](roadmap.md)).
 
 The PC speaker is the cone driven by PIT counter 2's OUT through port 61h
 bit 1, with bit 0 the counter's gate. The machine reports each control word,

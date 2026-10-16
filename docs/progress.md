@@ -3,8 +3,10 @@
 Every commit title starts with the current progress (it ended with it until
 7 Oct 2026; older commits keep the suffix), for example
 `(P1 100.00%, P2 67.82%, P3 82.75%, All 85.82%) Subject`, printed by
-`py tools/progress.py --title`. This page says what the numbers mean, so
-that they can be checked and argued with.
+`py tools/progress.py --title`. `py tools/progress.py` alone prints every item
+with its weight, completion and kind. This page says what the numbers mean, so
+that they can be checked and argued with. What each item covers is in
+[roadmap.md](roadmap.md).
 
 ## The method
 
@@ -23,11 +25,13 @@ Phase 3 24 (normalised over their sum). Phase 1 is the largest because building
 an exact recompilation, its machine and its proof was the bulk of the work;
 Phases 2 and 3 are large too (thousands of routines to name and match; a new
 presentation path for 60+ fps and 4K), and their weights say so.
+
 Items closed by scope keep only the weight of the work done (8 Oct 2026: the
-roadmap's "Settled" list), so dropping work never reads as finishing it. Phase 4 (what only
-a person or an independent reference can settle: a person playing the game, Roland
-output against a reference with a listening check) is not scored (owner, 15 Oct
-2026: its estimates had stopped meaning anything); it stays on the roadmap.
+roadmap's "Settled" list), so dropping work never reads as finishing it.
+Phase 4 (what only a person or an independent reference can settle: a person
+playing the game, Roland output against a reference with a listening check) is
+not scored (owner, 15 Oct 2026: its estimates had stopped meaning anything); it
+stays on the roadmap.
 
 ## What is measured
 
@@ -43,23 +47,24 @@ output against a reference with a listening check) is not scored (owner, 15 Oct
   actionable reports catalogued as `### Dn.` in `docs/bugs.md`. An explicit
   `Disposition. Closed:` excludes an unestablished historical report;
   `Fixed by:` credits a report addressed by another available fix (D7 by D8).
-  Closed reports are printed separately and never counted as patches.
-  Closing D10/D35/D36 (13 October 2026) cut this item's weight from 35 to
-  27.5 (11/14 of 35) before Phase 3's weights were renormalised to 100; the
-  resulting 11/11 does not mean three new fixes shipped.
+  Closed reports are printed separately and never counted as fixes. Closing
+  D10, D35 and D36 (13 Oct 2026) cut this item's weight from 35 to 27.5
+  (11/14 of 35) before Phase 3's weights were renormalised; its 11 of 11 does
+  not mean three new fixes shipped.
 
 ## What is estimated, and how to be honest about it
 
 - Phase 1's completed work (translation, lockstep, routes, machine fidelity)
-  is one item at 100%, backed by the parity evidence; each open roadmap item
-  is an estimate with its gap named.
+  is one item at 100%, backed by the parity evidence; each other item is an
+  estimate with its gap named.
 - An estimate is not raised for effort spent, only for something now shown
   (a gate that passes, a capture that matches, a defect found and fixed).
 - When something thought done turns out not to be, its estimate goes down in
   the same commit that records the finding.
 - Weights are revisited when the remaining work is understood better; a
-  weight change is its own commit, so the percentages' jump is visible.
-- 15 Oct 2026: Phase 3's "interpolation to 60+ fps" (0.85) was split into Stage 4
-  infrastructure (0.9) and smooth in-between frames (0.15), because the owner judged
-  the motion not acceptable and the method is being replaced; Stage 2 went to 0.95
-  for its open items. P3 fell from 95.79% to 82.75%.
+  weight change is its own commit, so the percentages' jump is visible. The
+  largest so far: on 15 Oct 2026 Phase 3's "interpolation to 60+ fps" (0.85)
+  was split into Stage 4 infrastructure (0.9) and Stage 3, smooth in-between
+  frames (0.15), because the owner judged the motion not acceptable; P3 fell
+  from 95.79% to 82.75%. Stage 3 stays at 0.15 until the motion is judged on
+  a physical display, even though `--present rerun` is now integrated.

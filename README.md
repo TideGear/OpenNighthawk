@@ -92,8 +92,8 @@ default.
 The figures and evidence for each check are in
 [docs/roadmap.md](docs/roadmap.md) (what is done and left) and
 [docs/architecture.md](docs/architecture.md) (how the parity claim is
-built and checked); the reference-machine comparisons in detail are in
-[docs/parity-audit.md](docs/parity-audit.md). The
+built and checked); [docs/parity-audit.md](docs/parity-audit.md) is an
+earlier, dated audit of the reference-machine comparisons. The
 [Windows build check](https://github.com/TideGear/OpenNighthawk/actions/workflows/windows.yml)
 builds the full interpreter application and runs ROM-free CPU, machine and
 comparator tests on pushes and pull requests. Game-dependent parity checks
@@ -235,10 +235,29 @@ itself:
   `F117_PRESENT_CLOCK=raw` selects the older clock. It remains experimental:
   clock skips, higher refresh rates and physical-display motion need review.
 
+**Higher resolution (`--present-scale` above 1) and higher frame rates
+(`interp`, `rerun`) are experimental.** Both redraw what the original draws,
+so they keep the original renderer's quirks: roads, coastlines and other
+edges jitter as they do in the original; objects can appear in front of or
+behind others in the wrong order, as the original's drawing order puts them;
+lines and dots keep the same thickness at any distance; and there may be
+others.
+
+**Frame rate.** `interp` and `rerun` are the modes that raise it. The window
+presents one picture per display refresh (vsync), so the frame rate follows
+the refresh rate Windows has set for that display: 60 fps at 60 Hz, 144 fps
+at 144 Hz, if the PC keeps up. The game's own logic still runs at its
+original rate (about 15-17 steps a second); the extra pictures are drawn
+between its steps, one step behind. `scan` and `replay` also present at the
+display's refresh but only show a new picture when the game draws one.
+
 The optional preset [f117a.4k.ini](f117a.4k.ini) (copied beside `f117a.exe`)
 selects fullscreen, `present = interp` and scale 9:
 `build\f117a.exe --config f117a.4k.ini --data INSTALL_DIR`. Select
-3840x2160 at 60 Hz in Windows' display settings first. For the sharp mode
+3840x2160 at 60 Hz in Windows' display settings first. The build copies the
+repository's `f117a.4k.ini` into `build\` whenever it changes, replacing the
+copy there: edit the repository's file and rebuild, or keep your own file
+and pass it with `--config`. For the sharp mode
 without in-between frames, use `--present replay --present-scale 9`
 instead. Design, status and measurements:
 [docs/presentation.md](docs/presentation.md).
@@ -361,11 +380,12 @@ process the project repeats, and what it costs, is listed in
 | `src/recomp/` | the recompiled code's run-time |
 | `src/matched/` | the named, matched C routines |
 | `src/fixes/` | the switchable fixes for the original's bugs |
-| `src/host/` | the SDL3 window, audio, input, presentation; the headless runner |
+| `src/host/` | the SDL3 window, audio and input; the headless runner |
+| `src/present/` | the optional sharper and smoother pictures (`replay`, `interp`, `rerun`) |
 | `recompiler/` | the translator (Python) |
 | `tools/` | the build pipeline, unpacker, scripted routes, checks |
 | `tests/` | silicon-vector harnesses for the interpreter and for generated code; lockstep and unit tests |
-| `docs/` | [architecture](docs/architecture.md), [roadmap](docs/roadmap.md), [original-game bugs](docs/bugs.md), [presentation](docs/presentation.md), [parity audit](docs/parity-audit.md), [provenance](docs/provenance.md) |
+| `docs/` | [architecture](docs/architecture.md), [roadmap](docs/roadmap.md), [original-game bugs](docs/bugs.md), [presentation](docs/presentation.md), [parity audit](docs/parity-audit.md), [repeated processes](docs/repeated-processes.md), [provenance](docs/provenance.md) |
 
 ## Licence
 

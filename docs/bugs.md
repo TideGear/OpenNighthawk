@@ -1,49 +1,53 @@
 # Bugs in the original game
 
 This is the tracker for defects in the original DOS release of *F-117A
-Nighthawk Stealth Fighter 2.0* (473.03 with the 473.04 VGAME update, which is
-what GOG ships). It is for anyone deciding which bugs to fix and how.
+Nighthawk Stealth Fighter 2.0*, as GOG ships it (with MicroProse's final
+473.04 update applied). It is for anyone deciding which bugs to fix and how.
 
 **Confirmed defects in the shipped DOS code are preserved deliberately.** The
 recompiled code is the original's machine code translated instruction for
 instruction, so it does what the original did, defects included. That is
 what 1:1 parity means. Fixes are switchable patches layered on top (see
 [How a fix attaches](#how-a-fix-attaches)), each off unless named with
-`--fix ID`, so parity stays the default. `--list-fixes` prints the available
-fixes.
+`--fix ID` (`--fix all` for every one), so parity stays the default.
+`--list-fixes` prints the fifteen available fixes: D1, D1TTL, D1SLOT, D1PROX,
+D1REAL, D1ACCEL, D2, D3, D4, D5, D6, D8, D11, D12 and D34.
 
-Most entries were established by the F-117A Reimp project. They are restated
-here with the Reimp's evidence; the detail lives in its
-`docs/bugs/catalogue.md` (cited as *Reimp catalogue*, with line numbers as of
-Reimp commit `cfb8cec9`). Addresses are **always given with their program**:
-START, VGAME and END all load at the same segment, so a bare address is
-ambiguous. They are image offsets of the unpacked load module unless marked
-otherwise.
+Most entries were first established by the Reimp, the author's earlier
+private project (see [provenance.md](provenance.md)). They are restated here
+with its evidence; the detail lives in its bug catalogue, cited as *Reimp
+catalogue* with line numbers as of Reimp commit `cfb8cec9` unless another
+commit is named. Addresses are **always given with their program**: START,
+VGAME and END all load at the same segment, so a bare address is ambiguous.
+They are image offsets of the unpacked load module unless marked otherwise.
 
 Status values:
 
 - **Confirmed**: traced to instructions in the shipped binaries.
 - **Reported**: known from players, vendors or MicroProse, not yet located.
 - **Recomp**: found or confirmed by this project.
+- **Explained**: a reported symptom traced to another entry's defect.
+- **Option**: a deliberate change to the original's timing or balance, not a
+  repair of a single faulty instruction.
 - **Closed**: investigated historical reports, not established for DOS or
-  not reproduced in this machine; evidence and reopening criteria are retained.
+  not reproduced in this machine; evidence and reopening criteria are kept.
 
 ## Summary
 
 | ID | Status | Program | Defect | Fix |
 |---|---|---|---|---|
-| D1 | Confirmed | VGAME | Frame-rate estimate and 15 clamp make world speed depend on machine speed; reported oscillation not reproduced | `--fix D1` |
+| D1 | Confirmed | VGAME | Frame-rate estimate and its clamp at 15 make world speed depend on machine speed; the reported oscillation is not reproduced | `--fix D1` |
 | D1TTL | Recomp | VGAME | SA-5 lifetime crosses the signed boundary at S >= 14, suppressing proximity damage | `--fix D1TTL` |
-| D1REAL | Timing option | VGAME | Original simulation clock varies with CPU speed | `--fix D1REAL` |
+| D1REAL | Option (timing) | VGAME | Original simulation clock varies with CPU speed | `--fix D1REAL` |
 | D1SLOT | Recomp | VGAME | Seeker-cleared life underflows to FFFF, keeping the launcher's slot occupied | `--fix D1SLOT` |
 | D1ACCEL | Recomp | VGAME | Incoming missile acceleration is per frame rather than per simulated second | `--fix D1ACCEL` |
-| D1PROX | Balance option | VGAME | Proximity hit distance and movement sampling depend on S | `--fix D1PROX` |
+| D1PROX | Option (balance) | VGAME | Proximity hit distance and movement sampling depend on S | `--fix D1PROX` |
 | D2 | Confirmed | ASOUND.117 | Digitised speech busy-waits; can hang the game | `--fix D2` |
 | D3 | Confirmed | SETUP | A keypad digit with NumLock off quits to DOS from the sound screen | `--fix D3` |
 | D4 | Confirmed | START + .WLD | Secret-airstrip missions disabled in Libya, North Cape, Middle East | `--fix D4` |
 | D5 | Confirmed | VGAME | Supply drops never award credit (despite the 473.04 note) | `--fix D5` |
 | D6 | Confirmed | world data + VGAME | "Stealth mountains": 20 terrain sectors where nothing can detect you | `--fix D6` |
-| D7 | Explained | VGAME (via D8) | Strike training mission does not complete correctly: the bomb only hits from a 80-150 unit release | `--fix D8` |
+| D7 | Explained | VGAME (via D8) | Strike training seems not to complete: the bomb only hits from an 80-150 unit release | `--fix D8` |
 | D8 | Confirmed | VGAME | Laser-guided bomb pitch clamped at -11.25 degrees | `--fix D8` |
 | D10 | Closed: Mac only | Macintosh | Mountain-collision stack corruption; no DOS equivalent established | - |
 | D11 | Reported | START | Fragile saves: ROSTER.FIL truncated in place | `--fix D11` |
@@ -58,14 +62,15 @@ Status values:
 
 ### D1. The frame-rate controller does not keep world time at real time
 
-- **What happens.** The flight model, AI and weapon guidance step per drawn
-  frame, with per-second rates divided by S = `[0x368E]`, the controller's
-  frame-rate estimate. S is clamped to [4 - time_scale, 15] and can differ
-  from the actual frame rate, so world time depends on machine speed. No
-  tested speed keeps the mission clock at real time. The earlier claim that
-  S swings between 15 and 3 above about 16-18 fps came from a model that
-  omitted the original's frame wait (Reimp `src/core/compose.h:166`); it
-  was not reproduced in 199 flights at 3-40 MIPS and on the 386 profile.
+- **What happens.** The flight model, AI and weapon guidance step once per
+  drawn frame, with per-second rates divided by S = `[0x368E]`, the
+  controller's frame-rate estimate. S is clamped to [4 - time_scale, 15] and
+  can differ from the actual frame rate, so world time depends on machine
+  speed, and no tested speed keeps the mission clock at real time. The
+  earlier claim that S swings between 15 and 3 above about 16-18 fps came
+  from a model that left out the original's frame wait (Reimp
+  `src/core/compose.h:166`); it was not reproduced in 199 flights at 3-40
+  MIPS and on the 386 profile.
 - **Where.** VGAME `0x441D` (the controller, tail of `0x3ADA`); clamp at
   `0x0D441`; the unsigned divide at `0x4435`; floor at `0x4451`; `imul
   ax,[0x368E],0x3C0` at `0x446C`; S initialised at `0x3B79`. A latent divide
@@ -75,237 +80,223 @@ Status values:
   overrun correction. At `0x0409` the frame set-up calls `0x04C7`, which
   waits until the tick byte `[0x264A]` has advanced by `[0x43E8]` ticks.
   `0x0D441` sets `[0x43E8]` = clamp((9 + trunc(-120/S)) >> 1, 1, 4) when the
-  measured S is above 15, and 0 otherwise; so the wait sets a frame period
-  of at least N ticks: N = 1 for S 16-23 (a 60 fps cap), 2 for 24-35 (30
-  fps), 3 for 40 and up (20 fps). S itself is clamped to 15 at `0x0D479`.
-  The game tick is 66.75-70.09 Hz, not 60, so four ticks are not a 15 fps
-  period; the wait's own cap is not 15.
+  measured S is above 15, and 0 otherwise, so the frame period is at least
+  N ticks: N = 1 for S 16-23, 2 for 24-35, 3 for 40 and up. S itself is
+  clamped to 15 at `0x0D479`. The game tick is 66.75-70.09 Hz, not 60, so
+  the wait's own cap is not 15 fps.
+- **AI and weapons.** Ground launch routine `0x5046` runs every frame; its
+  visibility guard at `0x5050`-`0x5059` skips only the cockpit bar repaint
+  (branching to the site loop at `0x50CA`). Aircraft AI also runs every
+  frame, but its firing decisions at `0x6275`-`0x629D` are staggered: each
+  aircraft is checked once per `16*S` frames, at a phase derived from its
+  index. Awareness changes per firing check. `detect_evaluate` (`0x5582`)
+  has no direct S input: it uses range, terrain, difficulty, heading aspect,
+  airspeed, altitude and realism. `[0xB080]` is the active-air-unit budget
+  compared against difficulty `[0x3686]`, not theatre tension (`[0x3688]`).
+  Incoming missiles have their own S defects: D1TTL, D1SLOT, D1PROX and
+  [D1ACCEL](#d1accel-incoming-missile-acceleration-depends-on-s).
 - **In this recompilation.** The original controller and frame wait both
-  run (the wait traced at 40 MIPS). `f117run` and the recorded routes run
-  at 9 million instructions a second, GOG DOSBox's `cycles=9000`; the app
-  `f117a` runs at 20 million; `--ips` changes either.
-- **Measured here.** Flying `boot_to_flight`'s inputs, GOG's 9 MIPS settles
-  at S 9 and draws 11.6 frames a second; the mission clock advances 209 in
-  162 s (1.29 times real time). At 16 MIPS: 180 in 161.66 s (1.11, as
-  16.7 / 15 predicts). At 20 MIPS the machine draws 16.8 a second, S sits
-  clamped at 15 and the clock advances 181: the world runs 13% behind GOG's.
-  Across the speed sweep, at 13 MIPS and up the frame rate settles near 16.7
-  and S sits at 15, so the mission clock runs about 1.11 times real time;
-  measured against GOG's own speed, 13-14 MIPS keeps the clock within 1% and
-  16 MIPS and up runs it 14% slower. An isolated 15 fps limiter settles at
-  S 12, not 15, with a clock about 1.25 times real time: a cap alone does
-  not correct it. Measurements: [speed-sweep.md](speed-sweep.md).
-- **AI and weapons (listing correction, 10 Oct).** Ground launch routine
-  `0x5046` runs every frame. The visibility guard at `0x5050`-`0x5059`
-  skips only the cockpit bar repaint, branching to the site loop at `0x50CA`.
-  Aircraft AI also runs every frame, but its firing decisions at
-  `0x6275`-`0x629D` are staggered: frame modulo `16*S` must equal that
-  aircraft's index-derived phase times S. With stable S, each aircraft is
-  checked once per `16*S` frames, not every frame. Awareness changes per
-  firing check. `detect_evaluate` (`0x5582`) has no direct S input; it uses
-  range, terrain, difficulty, heading aspect, airspeed, altitude and realism.
-  `[0xB080]` is the active-air-unit budget compared against difficulty
-  `[0x3686]`, not theatre tension (which is `[0x3688]`). Incoming missile
-  acceleration is a separate defect: [D1ACCEL](#d1accel-incoming-missile-acceleration-depends-on-s).
-- **Fix options.** Pin the controller's S, or step the flight model on a
-  fixed clock (the Reimp's choice). Either is a patch over `0x441D`.
+  run. `f117run` and the recorded routes run at 9 million instructions a
+  second (GOG DOSBox's `cycles=9000`); the app `f117a` runs at 20 million;
+  `--ips` changes either.
+- **Measured.** On `boot_to_flight` (the parked jet), GOG's 9 MIPS settles
+  at S 9 and draws 11.6 frames a second, so the mission clock runs 1.29
+  times real time. From 16 MIPS up S sits at its clamp of 15 and the frame
+  rate near 16.7, so the clock runs about 1.11 times real time, about 13%
+  behind GOG's; at 14 MIPS the parked jet's clock is within 1% of GOG's.
+  Most airborne scenes already draw about 16.7 fps at 9 MIPS. An isolated
+  15 fps cap settles at S 12 with a clock of about 1.25: a cap alone does
+  not correct it. Figures and methods:
+  [speed-sweep.md](speed-sweep.md).
 - **Fix available: `--fix D1`,** a frame limiter. An override at VGAME
-  `0x441D`, the controller's entry, which every frame passes once, holds
-  a frame that arrives before its slot (time passes and interrupts are
-  serviced, as in a HLT loop), so no machine draws faster than GOG's 11.6
-  frames a second. The controller is untouched and keeps measuring, so S
-  settles where GOG's does. Pinning S instead, without pacing, ran the
-  mission clock three times too fast at 40 MIPS (600 against 209). At 9
-  MIPS and below the fix never waits and the run is the original's, hash
-  for hash. `tools/d1_check.py` flies both machines and requires S 9, the
-  mission clock within 2 and frames a second within 0.2 of GOG's at 40
-  MIPS, where both engines give identical hashes; the gate plays route
-  `d1_fast_machine` (the same flight with the fix) under both engines.
-- **Broader D1 sweep (9 Oct).** Ninety fresh flights at 9, 12, 16, 20 and
-  40 MIPS, with and without the fix: no swings; all nine 9 MIPS pairs have
-  identical hashes. Above 9 MIPS, complete fixed flights draw about 11.6 fps,
-  S stays at 9 and the mission clock runs at 1.2882 per real second. Most
-  unfixed airborne scenes already draw about 16.7 fps at 9 MIPS, so the fix
-  preserves the parked-jet baseline rather than GOG's pacing in every scene.
-  Results and short-flight exclusions: [speed-sweep.md](speed-sweep.md#d1-follow-up-9-october-2026).
+  `0x441D`, which every frame passes once, holds a frame that arrives before
+  its slot (time passes and interrupts are serviced, as in a HLT loop), so
+  no machine draws faster than the parked jet does at GOG's speed (11.6
+  frames a second). The controller is untouched and keeps measuring, so S
+  settles at 9 as GOG's does on the parked jet. At 9 MIPS and below the fix
+  never waits and the run is the original's, hash for hash. It holds the
+  parked-jet pacing, not GOG's pacing in every scene, and does not make the
+  world run at real time: above 9 MIPS fixed flights draw about 11.6 fps
+  with S 9 and a mission clock of 1.2882
+  ([90-flight sweep](speed-sweep.md#d1-follow-up-9-october-2026)). Pinning S
+  instead, without pacing, ran the mission clock three times too fast at 40
+  MIPS. `tools/d1_check.py` flies both machines at 40 MIPS and requires the
+  fixed one to match GOG's settled S, its mission clock to within 2 and its
+  frames a second to within 0.2; the gate plays route `d1_fast_machine` (the
+  same flight with the fix) under both engines.
 - **Detail.** Reimp catalogue:330-449; Reimp `docs/re/01-timing-architecture.md`.
 
 ### D1REAL. Real-time simulation cadence
 
-- **Optional timing change: `--fix D1REAL`.** Pin the simulation divisor
-  to 8 and admit eight frames per machine second; with the original's 2x
-  time compression, S becomes 4 at the same frame cadence. The original
-  `0x0D441` code derives all dependent rates. The frame counter at `0x4359`
-  waits at event boundaries, so timer interrupts continue normally.
-  Fractional clocks are retained; overruns catch up without losing time,
-  and entering the original pause or quit dialog clears the deadline. State
-  belongs to each machine and resets at program changes. This intentionally
-  replaces the original adaptive cadence; it is off by default. Eight is
-  below the slowest 9 MIPS cohort orbit average (8.663 fps), with less
-  display delay than the Reimp's initial five-step cadence. Use
-  `--present interp` to display interpolated frames at the host refresh
-  rate; at 8 Hz that adds about 125 ms of picture delay. CPUs unable to
-  execute eight simulation frames per second can still fall behind.
-- **Checks.** `tools/d1real_check.py` passes at 9/20/40 MIPS in both
-  engines, every case hash matching within each speed. Each gives 240
-  frames / 30 mission seconds in 30 seconds; compression gives 80/20 in 10
-  seconds, restored rate 80/10, pause 0/0 over 3 seconds and resume 24/3;
-  quit-dialog waiting and cancellation also give 0/0 and 24/3. An
-  independent pacer test covers fractional clocks, event-boundary waits,
-  lossless catch-up, program/speed changes and dialog reset. A 24-flight
-  cohort holds S 8 and an active mission clock near 1.000 at both 9 and 20
-  MIPS; interpreter/native replays match every sample. With VGAME's
-  BIOS-tick RNG seed and the pilot's sampling phase aligned, all 12 pairs
-  have identical launch counts and 11 also match burst/damage counts and
-  orbit duration; the remaining pair diverges after an input-phase
-  difference. The cohort shows no high-speed enemy weakness; exact
-  whole-flight CPU determinism remains limited by original input polling
-  and slow frames.
+- **Optional timing change: `--fix D1REAL`.** Pins the simulation divisor S
+  at 8 and admits eight frames per machine second; under the original's 2x
+  time compression S becomes 4 at the same frame cadence. The original
+  `0x0D441` code still derives every dependent rate. The frame counter at
+  `0x4359` waits at event boundaries, so timer interrupts continue normally.
+  Fractional time is kept, overruns catch up without losing time, and
+  entering the original pause (`0x3A4E`) or quit dialog (`0x2071`) clears
+  the deadline. State belongs to each machine and resets at program changes.
+  This replaces the original adaptive cadence on purpose; it is off by
+  default. Eight was chosen below the slowest 9 MIPS cohort's average orbit
+  frame rate (8.663 fps). Use `--present interp` to display interpolated
+  frames at the host refresh rate; at 8 Hz that adds about 125 ms of picture
+  delay. A CPU unable to run eight simulation frames a second still falls
+  behind.
+- **Checks.** `tools/d1real_check.py` passes at 9, 20 and 40 MIPS in both
+  engines, every case hash matching within each speed: normal flight gives
+  240 frames and 30 mission seconds in 30 seconds; 2x compression 80 frames
+  and 20 mission seconds in 10; restored rate 80/10; pause 0/0 over 3
+  seconds, then resume 24/3; quit-dialog waiting and cancellation also 0/0
+  and 24/3. A separate pacer test covers fractional time, event-boundary
+  waits, lossless catch-up, program and speed changes and the dialog reset.
+- **Natural flights.** With all five D1-family options, a 24-flight cohort
+  holds S 8 and an in-flight mission clock of 1.000 at 9 and 20 MIPS. With
+  VGAME's own seed and the pilot's input phase aligned, all 12 mission pairs
+  have identical launch counts and 11 also match bursts, damage and orbit
+  time: no high-speed enemy weakness. Whole-flight cross-CPU determinism is
+  still limited by the original's input polling.
   [Measurements and reproduction](speed-sweep.md#optional-real-time-cadence-10-oct-controlled-airborne-checks-complete).
 
 ### D1TTL. Long-lived SA-5 missiles cannot cause proximity damage
 
 - **What happens.** A ground SA-5 (weapon type 2, range 150) starts with
   `150*S*16` frames of life: 31,200 at S=13, 33,600 at S=14 and 36,000 at
-  S=15. Its slot remains active when this word is nonzero, but the hit guard
-  compares it with `4*S` as a signed word. At S=15 it cannot proximity-hit
-  until 3,233 frames have passed, about 194 seconds at the measured frame
-  rate. This defect exists in the shipped game and in the Reimp's
-  `frame_weapons.c`; the Reimp's starting S=5 avoids this boundary.
+  S=15. Its slot stays active while this word is nonzero, but the hit guard
+  compares it with `4*S` as a signed word, so at S=15 it cannot
+  proximity-hit until 3,233 frames have passed, about 194 seconds at the
+  measured frame rate. The Reimp's `frame_weapons.c` has the same guard; its
+  starting S of 5 avoids the boundary.
 - **Where.** VGAME `0x708D` tests active life against zero; `0x6F15`
   compares life with `4*S`; signed `JLE` at `0x6F19` skips damage.
-- **Fix available: `--fix D1TTL`.** Use unsigned comparison for valid
-  shipped lifetimes (up to 36,000). Preserve the original signed branch
-  above that limit: seeker `0x72A5` can clear life before movement `0x6CA6`
-  decrements it to FFFF; values above 36,000 remain suppressed. This is not
-  slot reclamation: a sufficiently old abandoned counter could decay into
-  the admitted range. D1SLOT separately prevents the zero-to-FFFF underflow.
-  The fix retains motion, guidance, clocks and suppression
-  during the final `4*S` frames. It adds no frame limiter.
-- **Check.** `tools/d1ttl_check.py` explicitly stages a nearby missile after
-  normal boot at 20 MIPS. Positive-lifetime controls, the final `4*S` window,
-  lifetimes across 32768, and the abandoned-slot sentinel are tested under
-  both engines. This is a hit-boundary regression, not a natural combat flight.
+- **Fix available: `--fix D1TTL`.** Uses an unsigned comparison for valid
+  shipped lifetimes (up to 36,000) and keeps the original signed branch above
+  that, so seeker-abandoned FFFF missiles (see D1SLOT) stay harmless. It is
+  not slot reclamation: a sufficiently old abandoned counter could decay into
+  the admitted range; D1SLOT prevents that underflow. Motion, guidance,
+  clocks and the suppression during the final `4*S` frames are kept. It adds
+  no frame limiter.
+- **Check.** `tools/d1ttl_check.py` stages a nearby missile after a normal
+  boot at 20 MIPS and tests positive-lifetime controls, the final `4*S`
+  window, lifetimes across 32768 and the abandoned-slot sentinel under both
+  engines. It is a hit-boundary regression, not a natural combat flight.
 
 ### D1SLOT. Cancelled incoming missiles keep their launcher's slot occupied
 
 - **What happens.** Seeker `0x72A5` clears an incoming missile's lifetime
   when the target is well behind its nose, but the common movement path
-  still decrements it at `0x6CA6`. Zero becomes FFFF. Ground launch `0x54B4`
-  and aircraft launch `0x65C3` require their `(unit_index & 7)` slot to have
-  zero life, so the abandoned missile can block that launcher. This also
-  happens at low S and remains in the Reimp.
-- **Fix available: `--fix D1SLOT`.** Keep a cancelled incoming lifetime at
-  zero when the countdown is reached. Retain DEC's flags and instruction
-  count; positive lifetimes and player-weapon slots use the original DEC.
-  This prevents new underflows; it does not reclaim pre-existing abandoned
-  slots if enabled partway through a flight. D1TTL's hit guard is separate.
-- **Check.** `tools/d1slot_check.py` stages S=8/15, zero/one/positive signed
-  and unsigned lifetime controls, incoming slots 0/7 and player slot 8. All
-  15 cases agree across engines, with all 11 control hashes unchanged;
-  cancellation leaves zero with the fix and FFFF without it. In 24 matched
-  missions per arm, it increases bursts by 2.1667/2.375 per flight at 20/9
-  MIPS. Both fixed raw-slot traces have zero abandoned-slot episodes. Combat
-  still depends on S; see [speed-sweep.md](speed-sweep.md).
+  still decrements it at `0x6CA6`: zero becomes FFFF. Ground launch `0x54B4`
+  and aircraft launch `0x65C3` need their `(unit_index & 7)` slot at zero
+  life, so the abandoned missile can block that launcher. This happens at
+  low S too, and remains in the Reimp.
+- **Fix available: `--fix D1SLOT`.** Keeps a cancelled incoming lifetime at
+  zero when the countdown reaches it, with DEC's flags and instruction count;
+  positive lifetimes and player-weapon slots run the original DEC. It
+  prevents new underflows; it does not reclaim slots already abandoned
+  before it was switched on.
+- **Check.** `tools/d1slot_check.py` stages S=8 and 15, zero, one and
+  positive signed and unsigned lifetime controls, incoming slots 0 and 7 and
+  player slot 8: all 15 cases agree across engines, the 11 control hashes are
+  unchanged, and cancellation leaves zero with the fix and FFFF without it.
+  In 24 matched missions per arm it adds 2.17 (20 MIPS) and 2.38 (9 MIPS)
+  bursts per flight, and fixed traces show no abandoned slots. Combat still
+  depends on S without the other options; see [speed-sweep.md](speed-sweep.md).
 
 ### D1PROX. Incoming proximity distance shrinks with S
 
 - **Where.** VGAME `0x6EF5` divides `speed<<3` by S, then `0x6EF9`/`0x6EFB`
-  admit a hit when that unsigned reach exceeds slant. This allowance for
-  movement between frames also acts as a hit radius, so near misses that
-  damage the aircraft at low S can miss at high S.
-- **Optional balance change: `--fix D1PROX` (v2).** Use a continuous swept
-  octagonal slant band, calibrated to terminal weapon speed*8/9. The S=9
-  reference is an explicit balance choice, not a recovered warhead radius.
-  Relative movement includes the player's previous/current position when
-  the same live missile persists across consecutive frames. Fresh launches
-  and program changes reset history. Guidance, movement, frame pacing,
-  player weapons and lifetime/damage guards retain their original code.
-  This supersedes the earlier S9 floor, which still admitted a wider band
-  below S9 and could miss between samples even at S9.
+  admit a hit when that unsigned reach exceeds the slant distance. This
+  allowance for movement between frames also acts as the hit radius, so a
+  near miss that damages the aircraft at low S can miss at high S.
+- **Optional balance change: `--fix D1PROX`.** A continuous swept octagonal
+  slant band (overrides at `0x6C50` and `0x6EFB`), calibrated to terminal
+  weapon speed x 8/9. The S=9 reference is an explicit balance choice, not a
+  recovered warhead radius. Relative movement includes the player's previous
+  and current positions while the same live missile persists across
+  consecutive frames; fresh launches and program changes reset it. Guidance,
+  movement, frame pacing, player weapons and the lifetime and damage guards
+  keep their original code. This is the second version; the first, a floor
+  at the S=9 reach, still admitted a wider band below S 9 and could miss
+  between samples, and is withdrawn.
 - **Check.** `tests/test_weapon_sweep.c` compares 20,000 paths against
   independent half-space clipping and checks strict boundaries, reversal,
-  subdivision and wrapped deltas. `tools/d1physics_check.py` checks complete
-  frozen-speed/heading passes at S4/8/9/15. All 21 staged cases pass in
-  both engines, including slot 7 and an S change during flight; both S9/player
-  control hashes are unchanged. The earlier five-case proximity check also
-  passes, with unchanged S8/9 control hashes.
-  Earlier floor-cohort evidence is historical, not evidence for v2:
+  subdivision and wrapped deltas. `tools/d1physics_check.py` flies complete
+  frozen-speed, frozen-heading passes at S 4, 8, 9 and 15: all 21 staged
+  cases pass in both engines, including slot 7 and an S change in flight,
+  with the S9 and player control hashes unchanged. The older five-case
+  `tools/d1prox_check.py` also passes. Cohort figures:
   [speed-sweep.md](speed-sweep.md#independent-combat-investigation-10-october-2026).
 
 ### D1ACCEL. Incoming missile acceleration depends on S
 
 - **Where.** Ground missiles start at speed 1 (`0x54ED`), air missiles at
   terminal speed (`0x662A`). `0x7209`-`0x722B` adds one speed unit on odd
-  frames without dividing by S: `0x7221` tests frame parity and `0x722B`
-  increments. A normal SA-5 reaches speed 9/16 after two simulated seconds
-  at S8/15. Both engines reproduce this; it favours high-S acceleration and
-  does not by itself explain weaker high-speed combat.
-  [Probe and limits](speed-sweep.md#cancelled-slot-repair-and-remaining-distance-defect-10-oct).
-- **Optional timing repair: `--fix D1ACCEL`.** Integrate 9/2 speed units
-  per simulated second, the original S9 rate, with exact integer fractions
-  for every allowed S. Initial parity preserves the S9 increment pattern.
+  frames (`0x7221` tests frame parity, `0x722B` increments) without dividing
+  by S, so a normal SA-5 reaches speed 9 after two simulated seconds at S 8
+  and 16 at S 15. Both engines reproduce this. It favours high S, so it does
+  not by itself explain weaker high-speed combat.
+  [Probe](speed-sweep.md#cancelled-slot-repair-and-remaining-distance-defect-10-oct).
+- **Optional timing repair: `--fix D1ACCEL`.** Integrates 9/2 speed units
+  per simulated second, the original S=9 rate, with exact integer fractions
+  for every allowed S; the starting parity keeps the S=9 increment pattern.
   State is per machine and resets on a new program, launch or frame gap.
-  Terminal speed is retained. Player weapons use their original path.
-- **Check.** `tools/d1physics_check.py` measures equal simulated time and
-  keeps S9/player controls before behaviour-changing cases. Both engines
-  agree in all 21 cases, with unchanged control hashes. Natural combat with
-  all five D1 options: [speed-sweep.md](speed-sweep.md#optional-real-time-cadence-10-oct-controlled-airborne-checks-complete).
+  Terminal speed is kept; player weapons use their original path.
+- **Check.** `tools/d1physics_check.py` (above) measures equal simulated
+  time; all 21 cases agree in both engines with unchanged control hashes.
+  Natural combat with all five D1 options:
+  [speed-sweep.md](speed-sweep.md#optional-real-time-cadence-10-oct-controlled-airborne-checks-complete).
 
 ### D2. AdLib digitised speech can hang the game
 
-- **What happens.** ASOUND `0x2552` hands each spoken line to `0x1DBA`,
-  which silences six voices and spins with no timeout until their state
-  bytes read zero. Only the sequencer, on the timer interrupt, clears them.
-  Playback then paces samples on PIT counter 2 (mode 2, divisor 150, 7955 Hz)
-  writing the OPL carrier level once per sample (loop at `0x266F`). The busy
-  waits can race and freeze the game.
-- **Where.** ASOUND.117 `0x2552`, `0x1DBA`, `0x266F`; Sound Blaster arm's IRQ
-  flag `[0x190D]`. The samples are SPEECH.117 (8-bit, 8 kHz).
+- **What happens.** ASOUND's speech entry `0x2552` (AdLib arm) calls
+  `0x1DBA`, which silences six voices and spins with no timeout until their
+  state bytes read zero; only the sequencer, on the timer interrupt, clears
+  them. `0x2577` then programs channel 0 (`0x25BB`) and PIT counter 2 (mode
+  2, divisor 150, 7955 Hz) and disables interrupts, and `0x2661` writes the
+  OPL carrier level once per sample; `0x2593` keys off and restores the
+  interrupt mask. The busy-waits can race and freeze the game.
+- **Where.** ASOUND.117 `0x2552`, `0x1DBA`, `0x2577`, `0x2661`, `0x2593`; the
+  Sound Blaster arms' IRQ flag `[0x190D]`. The samples are SPEECH.117 (8-bit,
+  8 kHz).
 - **In this recompilation.** Reproduced, including the pause the busy-wait
-  causes. The speech itself plays as the card played it: one OPL write per
-  sample, rendered at the sample the write's emulated time falls on.
+  causes. The speech plays as the card played it: one OPL write per sample,
+  rendered at the sample its emulated time falls on.
 - **Fix available: `--fix D2`.** A non-blocking speech path (the Reimp's
-  approach), as an override at ASOUND `0x2552` (AdLib arm, `[17F2]` = 0;
-  the Sound Blaster arms are untouched). It queues the driver's
-  own OPL writes on the machine's schedule and returns at once: 0x25BB's
-  channel-0 setup, 0x2649's counter-0 wait, one level write to 43h per
-  sample at the PIT counter-2 rate (150 PIT clocks, 7955 Hz), and 0x2593's
-  key-off. Nothing masks the timer or spins, so the game and the music keep
-  running while the word plays. The music's own channel-0 writes are held
-  off meanwhile, and the channel is then restored from the driver's
-  register shadow (DS:1A06). Channel 1's key-off at 0x2593 is left out
-  because the music is still playing. On the strike route the scheduled
-  6,464 writes to 43h equal the original's value for value at the same
-  per-sample interval, under both engines. Newer DOSBox releases may avoid
-  the hang on their own; this fix removes the wait however the emulator
-  times it.
+  approach), an override at ASOUND `0x2552` for the AdLib arm only
+  (`[17F2]` = 0). It queues the driver's own OPL writes on the machine's
+  schedule and returns at once: the channel-0 setup, `0x2649`'s counter-0
+  wait, one level write to 43h per sample at the PIT counter-2 rate, and the
+  channel-0 key-off. Nothing masks the timer or spins, so the game and the
+  music keep running while the word plays. The music's own channel-0 writes
+  are held off meanwhile, and the channel is then restored from the
+  driver's register shadow (DS:1A06); channel 1's key-off is left out
+  because the music is still playing. On the strike route the 6,464
+  scheduled writes to 43h equal the original's, value for value, at the same
+  per-sample interval, under both engines.
 - **Detail.** Reimp catalogue:452-503; Reimp `docs/re/10-sound.md`.
 
-### D3. Keypad keys on the sound-driver screen (GOG, reported)
+### D3. Keypad keys on the sound-driver screen quit to DOS
 
 - **What happens.** GOG support reported SETUP crashing on the sound
-  selection screen when DOSBox does not detect keypad keys.
-- **Where.** SETUP reads the answer through MISC.EXE's `mov ah,1; int 21h;
-  retf` (DOS read with echo), which leaves AH 1, and keeps the whole word
+  selection screen when DOSBox does not detect keypad keys. The cause: SETUP
+  reads the answer through MISC.EXE's `mov ah,1; int 21h; retf` (DOS read
+  with echo), which leaves AH 1, and keeps the whole word
   (`0x00422`-`0x00427`). At `0x0042D` a word of 100h calls `exit(0)`
   (`0x00434`-`0x00437`): it is the 0 that DOS returns first for an extended
-  key. With NumLock off a keypad digit is one (keypad 1 is End, 4F00h), so
-  SETUP ends and F117.COM returns to DOS; a main-row 1 reads as 0131h and
-  selects the driver. DOSBox may also report keypad keys without NumLock,
-  which is the GOG report.
-- **In this recompilation.** The keyboard is a set-1 scancode stream with a
-  real BIOS translation, and DOS's console holds an extended key's scan code
-  for the next read as DOS and DOSBox do, so keypad keys reach SETUP as they
-  would on a PC: keypad 1 with NumLock off quits 355 instructions after the
-  key; with NumLock on it selects the driver as main-row 1 does.
-- **Fix available: `--fix D3`.** At `0x0042D`, a word of 100h whose held
-  scan code is a keypad digit's (47h-52h, NumLock off) is replaced by the
-  word the main-row digit reads as, and the original compare runs on it: the
-  scan code is taken, so it is not read later. Keypad 1 then finishes SETUP
-  at the same clock and with the same exit code (36) as main-row 1, on both
-  engines; any other extended key still quits, and with the fix off keypad 1
-  quits as before.
+  key. With NumLock off a keypad digit is an extended key (keypad 1 is End,
+  4F00h), so SETUP ends and F117.COM returns to DOS; a main-row 1 reads as
+  0131h and selects the driver. DOSBox may also report keypad keys without
+  NumLock, which is the GOG report.
+- **In this recompilation.** Keypad keys reach SETUP as they would on a PC
+  (set-1 scancodes, a real BIOS translation, and DOS's console holding an
+  extended key's scan code for the next read): keypad 1 with NumLock off
+  quits 355 instructions after the key; with NumLock on it selects the
+  driver as main-row 1 does.
+- **Fix available: `--fix D3`.** At `0x0042D`, a word of 100h whose held scan
+  code is a keypad digit's (47h-52h) is replaced by the word the main-row
+  digit reads as, and the original compare runs on it; the scan code is
+  consumed. Keypad 1 then finishes SETUP at the same clock and with the same
+  exit code (36) as main-row 1, on both engines; any other extended key still
+  quits.
 - **Detail.** Reimp catalogue:507-520.
 
 ### D4. Secret-airstrip missions are disabled outside the Gulf
@@ -321,21 +312,19 @@ Status values:
   a defect.
 - **Where.** START DS:`11DA` (82 entries of 12 bytes); the `.WLD` object-class
   table; NC.WLD flags.
-- **Fix options.** Widen the mask to `0x027` and correct the two world-data
-  bytes at load time (debugcom's fan patch, packaged by damsonn, is the same
-  8-byte change). Data patches, no code.
 - **Fix available: `--fix D4`,** as the Reimp decided: Libya, the Gulf,
-  North Cape and the Middle East. The world half corrects five bytes as DOS
-  reads the files (class byte LB.WLD `0x53A`, ME.WLD `0x597`, NC.WLD
-  `0x607` 0 to 1; NC.WLD `0x1F1` and `0x201` 08 to 09), each pinned by file
-  name, size and the shipped byte. The table half is an override at START's
-  entry `0000:8EDC`: START is LZEXE-packed, so its four masks (DGROUP
-  `0A95:11DA`, first word of entries 0-3) become 0027h in memory once it has
-  unpacked, and the original instruction then runs. Measured: Libya's
-  generator offers a supply drop at airstrip target 26 (startup clock
-  700000036000000, normal input) with the fix, which the shipped mask cannot;
-  VGAME loads North Cape's airstrips with flags 09 instead of 08. Flying an
-  airstrip mission outside the Gulf remains to do.
+  North Cape and the Middle East (debugcom's fan patch, packaged by damsonn,
+  is the same 8-byte change). The world half corrects five bytes as DOS reads
+  the files (class byte LB.WLD `0x53A`, ME.WLD `0x597`, NC.WLD `0x607` 0 to
+  1; NC.WLD `0x1F1` and `0x201` 08 to 09), each pinned by file name, size and
+  the shipped byte. The table half is an override at START's entry
+  `0000:8EDC`: START is LZEXE-packed, so its four masks (DGROUP `0A95:11DA`,
+  first word of entries 0-3) become 0027h in memory once it has unpacked, and
+  the original instruction then runs. Measured: with the fix, Libya's
+  generator offers a supply drop at airstrip target 26 (start clock
+  700000036000000, normal input), which the shipped mask cannot; VGAME loads
+  North Cape's airstrips with flags 09 instead of 08. An airstrip mission
+  outside the Gulf has not yet been flown with the fix.
 - **Detail.** Reimp catalogue:524-622; Reimp `docs/re/04-mission-generator.md`.
 
 ### D5. Supply drops never award credit
@@ -346,45 +335,35 @@ Status values:
   patch note claims a fix; the 473.04 VGAME still has the defect.
 - **Where.** VGAME gate `0x06D1C`, `cmp [bx+0x3C4A],0x26` at `0x6D35`, credit
   `0x6E4C`, skip `0x6EBB`, sibling `0x077F2`, saved type read at `0x70A0`.
+- **Reproduced with normal input.** Route `cargo` drops the loaded supply
+  crate in a generated type-3 Persian Gulf mission: player slot 11, class
+  26h/weapon 18, impact at (10500,3951), height -5, octagonal distance 113
+  from target 24 (below 256), mission time 588 before deadline 1094; no
+  primary flag or event follows. `cargo_check.py` requires an actual impact,
+  not consumed stores or expiry. The closed-loop pilot `tools/cargo_pilot.py`
+  (gate route `cargo_pilot`) gives one timely impact in the delivery area
+  and no credit in this machine, on DOSBox-X (`tools/dosbox_cargo_pilot.py`)
+  and on 86Box (`tools/b86_cargo_pilot.py`). GOG DOSBox generates the same
+  mission (seed set 275 ms early to offset its autoexec), but open-loop
+  replay diverges there in flight.
 - **Fix available: `--fix D5`.** Adds `0x26` to the gate (the Reimp's
-  proposal): a code override on the gate's fall-through
-  `jmp` at VGAME `0000:6D2E` (473.04 file only) continues type 26h to
-  `0x6D31`, as the three admitted types do; every other type still jumps to
-  `0x6EBB`. The original's own test at `0x6D35` then takes the credit path.
-  Replaying the unchanged `cargo.input` with the fix on, the impact earns
-  primary flag 4000h and one 8Bh event under both engines (route
-  `cargo_d5_fixed`, 149 checkpoints, final `61fc0505fcee1ba3`); with it off
-  the run still ends at the original's `20b78dd06d275670`. The recompiler
-  gives `0x6D2E` a region of its own, so nothing else is interpreted for
-  it.
+  proposal): an override on the gate's fall-through `jmp` at VGAME
+  `0000:6D2E` continues type 26h to `0x6D31`, as the three admitted types do;
+  every other type still jumps to `0x6EBB`, and the original's own test at
+  `0x6D35` then takes the credit path. Replaying the unchanged `cargo.input`
+  with the fix (route `cargo_d5_fixed`), the impact earns primary flag 4000h
+  and one 8Bh event under both engines; with it off the run is the
+  original's.
+- **Approach trap (not a defect fixed here).** The shipped code at
+  `6C23`-`6C4C` applies the owner pitch floor (slot field +22, zero for the
+  crate) to any weapon at height 1, so a crate whose height lands on exactly
+  1 gets pitch 0, stays there and expires without reaching the impact
+  handler. A near-level release falls 2-3 units a frame on a 9 MIPS PC and
+  one unit a frame on 86Box's 386DX/33 (S 4), where it traps almost always.
+  `cargo_pilot.py` therefore releases in a steep dive (aircraft pitch -1200
+  or lower, 150 or more above the ground, 60-300 map units short of the
+  target), which falls several units a frame on every machine.
 - **Detail.** Reimp catalogue:626-675.
-- **Normal-input reproduction.** `tools/routes/cargo.args` drops the loaded
-  supply crate in a generated type-3 Persian Gulf mission. Player slot 11,
-  class 26h/weapon 18, impacts at (10500,3951), height -5: octagonal distance
-  113 from target 24, below 256, mission time 588 before deadline 1094.
-  Primary flag/event remain absent. `cargo_check.py` requires actual impact
-  rather than counting consumed stores or expiry. A closed-loop pilot
-  (`tools/cargo_pilot.py`, gate route `cargo_pilot`) flies the same mission,
-  selects the crate and releases it when the aircraft's own state is inside
-  the release window: one timely impact in the delivery area, no credit, in
-  our emulator, on DOSBox-X (`tools/dosbox_cargo_pilot.py`) and on 86Box
-  (`tools/b86_cargo_pilot.py`, deterministic runs). GOG DOSBox reproduces
-  the same mission (type 3, target 24, departure 58, home 51 at a -275 ms
-  seed compensating about 275 ms of autoexec guest time); open-loop replay
-  diverges there in flight.
-- **Approach trap.** The shipped instructions at 6C23..6C4C apply the owner
-  pitch floor (slot field +22, zero for the crate) to any weapon at height 1,
-  so a crate whose height lands on exactly 1 gets pitch 0, stays there and
-  expires instead of reaching the impact handler. The crate starts at AGL - 20
-  with the aircraft's pitch (0x7786); a pitch above 0 is pulled down each
-  frame, so a near-level release falls 2 or 3 units per frame, and the trap
-  springs when the start height minus 1 is a multiple of that step (seen at
-  start heights 189 with step 2 and 187 with step 3). On 86Box's 386DX/33
-  the frame divisor S is 4 (7-8 on a 9 MIPS PC), a near-level crate falls one
-  unit a frame and traps almost always. `cargo_pilot.py` therefore releases in
-  a steep dive (aircraft pitch -1200 or lower, 150 or more AGL, 60-300 map
-  units short of the target): the crate keeps that pitch and falls several
-  units a frame on every machine. No game semantics were changed.
 
 ### D6. "Stealth mountains"
 
@@ -393,108 +372,97 @@ Status values:
   CE.WLD, 7 in NC.WLD, 1 in CU.WLD), so no sensor can ever detect the player
   there. Whether these are what players called "stealth mountains", and what
   473.04 changed about them, is not established.
-- **Measured since (Reimp, 3 October 2026), leaning towards a defect:** the
-  cover lookup reads the *player's* position (the same `[0xC0D0]`/`[0xC0DE]`
-  the function uses for range), so the effect is the same against every
-  sensor from every bearing, unlike terrain masking, which is directional;
-  every object placed in the 20 cells has `z = 0` and 5 cells have none, so
-  they are flat, not mountains; none overlaps a friendly base or carrier;
-  15 of the 20 share their ground pattern with unmasked cells; the manual
-  and the three theatres' briefings name no radar gap. The mechanism is
-  measured, the cause is not proven.
-- **In this recompilation.** Reproduced exactly: it is the game's own
-  arithmetic on the shipped world data, translated instruction for
-  instruction.
-- **Fix available: `--fix D6`** (off by default; whether the cells are a
-  defect is not proven, so the original's behaviour stays the default). An
-  override at `0x55EB` replaces the load and the AND: a sector whose cover
-  bits are 0 reads as 4, the lowest nonzero cover, and every other sector runs
-  the original's two instructions. `tools/d6_check.py` shows it at work: the
-  table VGAME holds in Central Europe has the 12 cover-0 sectors the Reimp
-  found; with the player's own sector made one, the fixed run logs `[fix D6]
-  cover 0 read as 4` and the plain run logs nothing. With the fix off every
-  route is unchanged.
+- **Evidence leaning towards a defect** (Reimp, 3 October 2026): the cover
+  lookup reads the *player's* position (the same `[0xC0D0]`/`[0xC0DE]` the
+  function uses for range), so the effect is the same against every sensor
+  from every bearing, unlike terrain masking, which is directional; every
+  object placed in the 20 cells has `z = 0` and 5 cells have none, so they
+  are flat, not mountains; none overlaps a friendly base or carrier; 15 of
+  the 20 share their ground pattern with unmasked cells; the manual and the
+  three theatres' briefings name no radar gap. The mechanism is measured,
+  the cause is not proven.
 - **Where.** VGAME `0x5582` (detection), `0x55B8`, `0x55CB`/`0x55E8` (the
   player's sector), `0x55EB`, `0x5654`.
+- **In this recompilation.** Reproduced exactly: it is the game's own
+  arithmetic on the shipped world data.
+- **Fix available: `--fix D6`** (whether the cells are a defect is not
+  proven, so the original stays the default). An override at `0x55EB`
+  replaces the load and the AND: a sector whose cover bits are 0 reads as 4,
+  the lowest nonzero cover; every other sector runs the original's two
+  instructions. `tools/d6_check.py` finds Central Europe's 12 cover-0
+  sectors in the table VGAME holds, makes the player's own sector one, and
+  requires the fixed run to log `[fix D6] cover 0 read as 4` and the plain
+  run to log nothing.
 - **Detail.** Reimp catalogue:679-752, at Reimp commit `9e0716dc` (the
-  addendum post-dates the `cfb8cec9` copy in provenance.md).
+  3 October addendum is later than `cfb8cec9`).
 
 ### D7. Strike training does not complete (reported)
 
 - **Fixed by:** D8.
-
 - **What happens.** Players report the training mission not completing
   ("Strike Training vs Strike Mission"); a community workaround exists.
 - **Finding the mission.** The start clock seeds the mission generator. At
   the default clock, Central America / Cold War / Ground Strike Training
-  generates a reconnaissance primary, not a strike; of eight clocks 0-7 s
-  past the default, 5 s and 7 s give a strike primary (type 2, targets 1
-  and 21). At +5 s the target is designated normally (lock 1 inside 2,900
-  map units) and the loaded weapon is a laser-guided bomb (weapon 13, class
-  28, two stores).
-- **Result (7 Oct): the mission completes; the bomb has a narrow window.**
-  Releasing once designated and within N map units of the target, at about
-  177 ft above the ground, the target is destroyed, one hit event is logged
-  and the objective is credited (flags 0x4000) for N = 80, 120 and 150, and
-  not for N = 40, 190, 220, 250, 400, 600, 900 or 2,500 (a release at the
-  target, or at 2,500, left it undamaged; the bomb fell short or long). So the
-  training strike is credited, but only from a release within roughly
-  80-150 map units, which is what D8's clamp predicts (the bomb's guidance
-  can steepen its fixed 11.25-degree dive but never flatten it, so its reach
-  is a fraction of the release height; the Reimp's arithmetic gives about
-  height / 6.4). A player who releases at the range the other strike weapons
-  use, or does not hold the designation to that point, sees a bomb that
-  never hits and a mission that does not complete, which fits the report.
-  Reproduce: `strike_pilot.py --front-route
-  routes/central_america_strike_training.front --time-us 700000005000000
-  --release-range 120`.
+  generates a reconnaissance primary, not a strike; of start clocks 0-7 s
+  past the default, +5 s and +7 s give a strike primary (type 2, targets 1
+  and 21). At +5 s the target is designated normally and the loaded weapon
+  is a laser-guided bomb (weapon 13, class 28, two stores).
+- **Finding.** The mission completes, but the bomb has a narrow window.
+  Released once designated, at about 177 ft above the ground, it destroys
+  the target and earns the objective credit (flags 0x4000, one hit event)
+  from 80, 120 and 150 map units, and not from 40 or from 190-2,500 (short or
+  long). This is what D8's clamp predicts: the bomb's guidance can steepen
+  its fixed 11.25-degree dive but never flatten it, so its reach is a
+  fraction of the release height (about height / 6.4 by the Reimp's
+  arithmetic). A player who releases at the range other strike weapons use,
+  or loses the designation before that point, sees a bomb that never hits
+  and a mission that does not complete, which fits the report. Reproduce:
+  `strike_pilot.py --front-route routes/central_america_strike_training.front
+  --time-us 700000005000000 --release-range 120`.
 - **Detail.** Reimp catalogue:724-727.
 
 ### D8. Laser-guided bomb pitch clamp
 
 - **What happens.** After guidance writes a pitch demand, `0x6C17` forces any
-  pitch below -2048 (11.25 degrees down) to -2048: a demand of -500 still
-  leaves the bomb at -2048 on every frame measured. HARM guidance was
-  cleared: with a lock it guides and hits; released without one nose-down it
+  pitch shallower than -2048 (11.25 degrees down) to -2048: a demand of -500
+  still leaves the bomb at -2048 on every frame measured. HARM guidance was
+  cleared: with a lock it guides and hits; released nose-down without one it
   keeps diving (one-sided correction at `0x6BDE`), which may be intended.
 - **Where.** VGAME bomb test `0x69E5`, `0x6A16`, clamp `0x6C17`; HARM
-  `0x782B`, `0x6BDE`; release refusal past 70 degrees of bank at `0x7670`.
-- **Fix available: `--fix D8`.** The compare and the store at `0x6C0F-0x6C17`
-  are skipped (an override at `0x6C0F` continues at `0x6C1D`), so the bomb's
-  guidance can flatten its dive. Measured on Ground Strike Training (D7,
-  start clock +5 s): without the fix a release hits only from 80-150 map units;
-  with it releases from 250, 600, 1,200 and 2,500 units all destroy the target
-  and earn the objective credit (flag 0x4000, one hit event). Route
-  `strike_training_d8` replays the 1,200-unit release with the fix on;
-  `strike_training` is the same mission without it. With the fix off every
-  other route is unchanged.
+  `0x782B`, `0x6BDE`; release refused past 70 degrees of bank at `0x7670`.
+- **Fix available: `--fix D8`.** The compare and the store at
+  `0x6C0F`-`0x6C17` are skipped (an override at `0x6C0F` continues at
+  `0x6C1D`), so the guidance can flatten the dive. On Ground Strike Training
+  (D7, start clock +5 s), releases from 250, 600, 1,200 and 2,500 units then
+  all destroy the target and earn the credit. Route `strike_training_d8`
+  replays the 1,200-unit release with the fix; `strike_training` is the same
+  mission without it.
 - **Detail.** Reimp catalogue:731-808; Reimp `docs/re/21-bomb-guidance.md`.
 
 ### D10. Mountain-collision stack corruption (Macintosh)
 
-- **Disposition.** Closed: not established for DOS. MicroProse's original
-  Macintosh release notes, version 2.3.0 (22 July 1994), recovered from
-  `F117a_Update_2.3.1.sit`, say: "An error in an assembler
-  routine that checks mountains for collisions and distance could corrupt the
-  stack." They establish a Macintosh defect. The earlier assertion that
-  DOS shared it and never received the fix was an inference, and is withdrawn.
-- **Searched here (9 and 12 October 2026).** The DOS contact test is in the
-  model renderer: model draws set the ground-contact flag `[0xC6B2]` at
-  `0x1223F` (`model_fill_stream`, `120A:00CF`, hand-written assembly), which
-  ends the flight through `[0x9F96]`. `tools/stack_balance.py` walks every
-  path of all 490 VGAME census entries, with callee-popped arguments
-  counted: no game routine returns with the stack moved. The five it flags
-  are C runtime code that moves SP by design (start-up, the exit family's
-  shared tail, the stack probe, a file write's error tail, an exit call that
-  never returns); in the renderer's segment the only uneven depth is the
-  depth-order walk's own work stack (`120A:0E5B`, balanced by its count in
-  BP). A corruption by a stray write into the stack, rather than a push/pop
-  imbalance, is not excluded, and successful collision routes cannot
-  establish that every possible collision is safe.
-- **Detail.** Reimp catalogue:830-841.
+- **Disposition.** Closed: not established for DOS. MicroProse's Macintosh
+  release notes for version 2.3.0 (22 July 1994), recovered from
+  `F117a_Update_2.3.1.sit`, say: "An error in an assembler routine that
+  checks mountains for collisions and distance could corrupt the stack."
+  They establish a Macintosh defect. The earlier assertion that DOS shared it
+  was an inference, and is withdrawn.
+- **Searched for DOS.** The DOS contact test is in the model renderer: model
+  draws set the ground-contact flag `[0xC6B2]` at `0x1223F`
+  (`model_fill_stream`, `120A:00CF`, hand-written assembly), which ends the
+  flight through `[0x9F96]`. `tools/stack_balance.py` walks every path of
+  all 490 VGAME census entries, counting callee-popped arguments: no game
+  routine returns with the stack moved. The five it flags are C runtime code
+  that moves SP by design (start-up, the exit family's shared tail, the
+  stack probe, a file write's error tail, an exit call that never returns);
+  in the renderer's segment the only uneven depth is the depth-order walk's
+  own work stack (`120A:0E5B`, balanced by its count in BP). A stray write
+  into the stack, as opposed to a push/pop imbalance, is not excluded, and
+  successful collision routes cannot show that every collision is safe.
 - **Reopen when:** a reproducible DOS collision corrupts the stack, or a
   specific DOS instruction path demonstrates an invalid stack write.
-- **Evidence and commands:** [legacy-reports.md](legacy-reports.md).
+- **Detail.** Reimp catalogue:830-841. Evidence and commands:
+  [legacy-reports.md](legacy-reports.md).
 
 ### D11. Fragile saves
 
@@ -502,17 +470,17 @@ Status values:
   ten 80-byte records) by truncating it in place; an interruption loses the
   roster. GOG once shipped without CLIMBIN.PIC.
 - **Where.** START read `0x07218`, write `0x07272`.
-- **In this recompilation.** The game's own writes go to a save directory
+- **In this recompilation.** The game's writes go to a save directory
   overlaid on the install (the install is never written), but each write is
   still the original's truncate-and-write.
 - **Fix available: `--fix D11`.** The host's file layer writes atomically,
-  invisibly to the program: a file the program creates (INT 21h
-  AH=3Ch) in the save directory is written to `<name>.f117r-tmp` and moved
-  over the real file when the handle closes (`MoveFileEx` with replace on
-  Windows, `rename` elsewhere). An interruption before the close leaves the
-  previous roster as it was. The program sees the same reads and writes:
-  the roster_edit route reaches the same final hash `2bb553498fc8b735` and
-  saves a byte-identical roster with the fix on, leaving no temporary file.
+  invisibly to the program: a file the program creates (INT 21h AH=3Ch) in
+  the save directory is written to `<name>.f117r-tmp` and moved over the
+  real file when the handle closes (`MoveFileEx` with replace on Windows,
+  `rename` elsewhere), so an interruption before the close leaves the
+  previous roster as it was. The program sees the same reads and writes: the
+  `roster_edit` route reaches the same final state and saves a
+  byte-identical roster with the fix on, leaving no temporary file.
 - **Detail.** Reimp catalogue:845-889.
 
 ### D12. END's hidden rating tally mixes signed and unsigned
@@ -523,17 +491,16 @@ Status values:
   displays these fields.
 - **Where.** END loop `0x003D9`; `0x00441`-`0x0045A`; far pointer
   `DS:0x55DE`.
-- **Fix available: `--fix D12`.** Two overrides in END: 0x0443 compares the
-  best rating signed, and 0x0450 sign-extends the rating before it joins the
-  total (`cwd` for `sub dx,dx`). Both clocks are unchanged. Checked on the
-  `career_serge` route (END's tally after a survived mission, record at ES:BX
-  020E:1272 on this route): unstaged, fixed and unfixed runs agree exactly
-  (best 66 -> 218, total 284, so a positive rating is untouched). With one
-  staged write, the best set to 0xFFF0 (-16) before the tally, the original
-  keeps 65,520 as the best rating and the fix replaces it with 218; the run
-  log names it (`[fix D12] best -16, rating 218: replaced`). The total's
-  sign extension only differs for a negative rating, which no route reaches;
-  that half is checked by reading the code, not by a run.
+- **Fix available: `--fix D12`.** Two overrides in END: `0x0443` compares
+  the best rating signed, and `0x0450` sign-extends the rating before it
+  joins the total (`cwd` for `sub dx,dx`). Both clocks are unchanged.
+  Checked on the `career_serge` route: unstaged, fixed and unfixed runs agree
+  exactly (best 66 -> 218, total 284; a positive rating is untouched). With
+  the best staged to 0xFFF0 (-16) before the tally, the original keeps
+  65,520 as the best rating and the fix replaces it with 218, logging
+  `[fix D12] best -16, rating 218: replaced`. No route reaches a negative
+  rating, so the total's sign extension is checked by reading the code, not
+  by a run.
 - **Detail.** Reimp catalogue:893-940.
 
 ### D34. The destroyed-object table has no end
@@ -547,22 +514,20 @@ Status values:
   finally a crash" on long missions; the crash itself is not measured.
 - **Where.** VGAME `0x00F3D`; table `[0xB79E]`, count `[0x9932]`; writers
   `0x07549`, `0x043EC`; readers `0x006E3`, `0x00D43`, `0x00FBD`.
-- **Fix available: `--fix D34`,** the Reimp's design (a cap at 30 records):
-  the first 30 records stay in the table, later ones go to an extension
-  outside the guest.
-  Overrides cover every place a record is reached - the append `0x0F97`,
-  the lookup `0x0FBD`, the type write `0x0F7E` and read `0x0D5E` through
-  the index the lookup leaves in `[0x950C]` - and VGAME's entry empties the
-  extension. Each declines until the table is full, so a fixed flight is the
-  original's instruction for instruction until record 31: the strike route
-  ends at its committed `197c6b398d6fbb9f` either way. Staged check
+- **Fix available: `--fix D34`,** the Reimp's design: the first 30 records
+  stay in the table, later ones go to an extension outside the guest.
+  Overrides cover every place a record is reached - the append `0x0F97`, the
+  lookup `0x0FBD`, and the type write `0x0F7E` and read `0x0D5E` through the
+  index the lookup leaves in `[0x950C]` - and VGAME's entry (`0xE6BE`)
+  empties the extension. Each declines until the table is full, so a fixed
+  flight is the original's, instruction for instruction, until record 31:
+  the `strike` route ends in the same final state either way. Staged check
   (`tools/d34_check.py --stage [--fix D34]`, the count set to 30 after
-  mission setup): unfixed, the Maverick
-  hit makes record 31 and its type byte lands on the F7/F8 flag `B838` as
-  0x4A, the value the Reimp measured on the original; fixed, the count stays
-  30, `B834`-`B838` are untouched, the log shows record 31 kept past the
-  table and found by the game's lookup 0.66 million clocks later, the target
-  stays destroyed, and both engines end at `13110a036af486ba`.
+  mission setup): unfixed, the Maverick hit makes record 31 and its type
+  byte lands on the F7/F8 flag `B838` as 0x4A, the value the Reimp measured
+  on the original; fixed, the count stays 30, `B834`-`B838` are untouched,
+  record 31 is kept past the table and found again by the game's lookup, the
+  target stays destroyed, and both engines agree.
 - **Detail.** Reimp catalogue:1331-1404.
 
 ### D35. Fast machines stop after the intro (reported)
@@ -573,65 +538,63 @@ Status values:
   anything faster than a 486SX-25 unless caches are disabled. Suspects: the
   retrace calibrations in START and PLAYER, and the AdLib logo driver's
   delay-loop calibration (ASOUND.LOG `0x00FE`), which averages sixteen PIT
-  deltas across `loop 0x100` and divides `0x5140` by the result. At a high
-  enough speed the delta is 0: integer divide by zero, "R6003".
-- **In this recompilation.** A zero measured interval would fault, but the
-  earlier claim that raising `--ips` necessarily reproduces it is withdrawn:
-  the modelled ISA I/O delays keep the calibration's measured PIT delta
-  above zero. The same driver's AdLib detection (`0x0140`: start OPL timer
-  1, poll the status port 200 times, expect `0xC0`) is why this project
-  models ISA I/O timing at all (see
+  deltas across `loop 0x100` and divides `0x5140` by the result: a delta of
+  0 would be an integer divide by zero, "R6003".
+- **In this recompilation.** The modelled ISA I/O delays keep the
+  calibration's measured PIT delta above zero, so raising `--ips` does not
+  by itself reproduce the fault. The same driver's AdLib detection
+  (`0x0140`: start OPL timer 1, poll the status port 200 times, expect
+  `0xC0`) is why this project models ISA I/O timing at all (see
   [architecture.md](architecture.md#time)).
-- **Checked here (5 and 12 October 2026):** not reproduced. All 18 fresh
-  startup probes reach START: 200/1,000/5,000 MIPS, interpreter/recompiler
-  and speaker/AdLib/Roland. These use normal Enter inputs to skip the
-  intros; they verify driver initialization and the transition to START,
-  not complete movie playback at every speed. No speculative calibration
-  fix or speed cap is added.
-- **Detail.** Reimp catalogue:1408-1426.
+- **Checked:** not reproduced. All 18 fresh startup probes reach START at
+  200, 1,000 and 5,000 MIPS, under the interpreter and the recompiled code,
+  with speaker, AdLib and Roland. They skip the intros with normal Enter
+  inputs, so they verify driver initialisation and the move to START, not
+  complete movie playback at every speed. No speculative calibration fix or
+  speed cap is added.
 - **Reopen when:** an identified DOS version and machine configuration
   reproduce the failure, with a trace identifying the failed wait or
   calibration. A reference-hardware reproduction may expose a machine-model
   gap even if our engines agree.
-- **Evidence and commands:** [legacy-reports.md](legacy-reports.md).
+- **Detail.** Reimp catalogue:1408-1426. Evidence and commands:
+  [legacy-reports.md](legacy-reports.md).
 
 ### D36. Later MT-32s play no engine sound (reported)
 
 - **Disposition.** Closed: not reproduced on available MT-32 ROMs.
   [DOS Days](https://www.dosdays.co.uk/topics/Games/game_f117.php) reports
   silence while flying on newer MT-32s and the MT-100. Its moved-sample-address
-  explanation is unconfirmed for these MT-32 ROMs; it is not an established
-  defect in RSOUND.117. Physical units and MT-100/CM-32L PCM ROMs were not tested.
-- **How the engine is made.** VGAME sends sound request 0x17 every frame
-  with the airspeed in knots (`[0xB07E]` / 27, `0x02802`). RSOUND's entry
-  `0x124C` turns it into channel 8's pitch bend (`0x1F40` + 5 x knots) and
-  volume (`0x39` + knots / 16); its timer tick (`0x0BAD`) starts the engine
-  sequence on that channel once the engine flag is set and the speed is
-  above zero: program 7, which the start-up upload makes memory timbre 7
-  "Jet Engine" (three PCM partials on waves 24, 7 and 24, one synth
-  partial; a 24-semitone bend range), note 23 held. A jet standing braked
-  sends the updates but never starts the note.
-- **Checked here (9 and 12 October 2026), with Munt:** not reproduced.
-  Control ROMs 2.04 and 2.07 have the same PCM wave map as 1.07 (all 128
-  entries equal; waves 24 and 7 loop in both). The landing flight's engine
-  alone renders at about 1,155 RMS, steady, on 1.05 and 1.07, and at
-  750-970 RMS, unsteady, on 2.04 and 2.07: about 3.4 dB quieter, not silent.
-  A staged replay holding the first active engine note for 20 seconds
-  produces sound on all seven available control versions; the fixed-note
-  levels are in [legacy-reports.md](legacy-reports.md). Munt models the
-  firmware's tables, not all of its code, so a real 2.0x unit can still
-  differ; no fix or speculative timbre replacement is offered.
-- **Detail.** Reimp catalogue:1430-1439.
+  explanation is unconfirmed for these ROMs; it is not an established defect
+  in RSOUND.117. Physical units and MT-100/CM-32L PCM ROMs were not tested.
+- **How the engine sound is made.** VGAME sends sound request 0x17 every
+  frame with the airspeed in knots (`[0xB07E]` / 27, `0x02802`). RSOUND's
+  entry `0x124C` turns it into channel 8's pitch bend (`0x1F40` + 5 x knots)
+  and volume (`0x39` + knots / 16); its timer tick (`0x0BAD`) starts the
+  engine sequence on that channel once the engine flag is set and the speed
+  is above zero: program 7, which the start-up upload makes memory timbre 7
+  "Jet Engine" (three PCM partials on waves 24, 7 and 24, one synth partial;
+  a 24-semitone bend range), note 23 held. A jet standing braked sends the
+  updates but never starts the note.
+- **Checked with Munt:** not reproduced. Control ROMs 2.04 and 2.07 have the
+  same PCM wave map as 1.07 (all 128 entries equal; waves 24 and 7 loop in
+  both). The landing flight's engine renders steadily at about 1,155 RMS on
+  1.05 and 1.07, and unsteadily at 750-970 RMS on 2.04 and 2.07: about 3.4 dB
+  quieter, not silent. A staged replay holding the first engine note for 20
+  seconds produces sound on all seven available control versions (levels in
+  [legacy-reports.md](legacy-reports.md)). Munt models the firmware's tables,
+  not all of its code, so a real 2.0x unit can still differ; no fix or
+  speculative timbre replacement is offered.
 - **Reopen when:** a flying recording on an identified physical MT-32/MT-100
   or matching independent emulator reproduces silence with its ROM identities
   and MIDI stream, or an incompatible mapping is demonstrated on an untested
   model.
-- **Evidence and commands:** [legacy-reports.md](legacy-reports.md).
+- **Detail.** Reimp catalogue:1430-1439. Evidence and commands:
+  [legacy-reports.md](legacy-reports.md).
 
 ## Smaller confirmed defects (Q-series and quirks)
 
 These are reproduced, and some are visible. Each has its evidence in the
-Reimp catalogue's Q sections and the cited Reimp documents.
+Reimp catalogue's Q sections and the cited Reimp documents. None has a fix.
 
 | ID | Program | Defect | Where |
 |---|---|---|---|
@@ -677,11 +640,10 @@ START.EXE the user owns, so a retail copy asks the quiz and GOG's does not.
 - **Alt+Q in flight, answered Y, returns to DOS.** VGAME's quit prompt
   (`0x01F5F` -> `0x02071`, `flight_end(7)` at `0x020CD`) records outcome 7
   in the pilot record, but the program then exits with code 0, and F117.COM
-  treats 0 as "leave the game": no debriefing. The reference interpreter
-  does the same on the same inputs, so this is the original's behaviour; it
-  is very likely intended ("quit") rather than a defect. Flying into the
-  ground instead exits with 129 and runs END. Still to confirm against GOG
-  DOSBox.
+  treats 0 as "leave the game": no debriefing. The interpreter does the same
+  on the same inputs, so this is the original's behaviour and very likely
+  intended ("quit") rather than a defect. Flying into the ground instead
+  exits with 129 and runs END. Not yet confirmed on GOG DOSBox.
 - **Data inside code regions.** F117.COM keeps variables after code that
   discovery walks into; VGAME's thunk table in DGROUP is patched at start;
   MGRAPHIC uses part of MISC.EXE's image as a buffer. Not defects in the
@@ -691,18 +653,20 @@ START.EXE the user owns, so a retail copy asks the quiz and GOG's does not.
 ## How a fix attaches
 
 The recompilation keeps the original's behaviour as the reference, and every
-fix is optional, so a player can always choose 1:1. The mechanisms, in
-order of preference, all implemented:
+fix is optional, so a player can always choose 1:1. All three mechanisms are
+implemented in `src/fixes/fixes.c`:
 
 1. **Data patches** (D4's world half): bytes corrected as the file is read,
-   through the machine's `file_data` hook. The code is untouched.
+   through the machine's `file_data` hook, each pinned by file name, size
+   and the byte it replaces. The code is untouched.
 2. **Host-side fixes** (D11): the emulated PC's file layer, invisible to the
    program.
 3. **Code overrides** (the D1 family, D2, D3, D4's table half, D5, D6, D8,
    D12, D34): a hand-written C function registered for a module address
-   replaces that address's code under either engine (`src/fixes/fixes.c`,
-   mechanism in `src/recomp/recomp.c`). Each is pinned to the shipped file
-   it was written for by hash and switched at run time.
+   replaces that address's code under either engine (mechanism in
+   `src/recomp/recomp.c`). Each is pinned by hash to the shipped file it was
+   written for and switched at run time. The recompiler reads the override
+   table (`recompiler/recomp.py`) and gives each overridden address a region
+   of its own, so nothing else is interpreted because of it.
 
-The Reimp grouped its fixes in tiers (MicroProse's own patches, fan fixes,
-its own). Those tiers can carry over unchanged.
+With a fix off, its override declines and the original code runs.

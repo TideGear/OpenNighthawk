@@ -1,19 +1,68 @@
 # Scripted routes
 
-These are inputs to the original game, scheduled relative to each program's
-first EXEC. Run them through `tools/run_route.py` so the shell does not
-change keyboard escapes. `tools/build_recomp.py` discovers every `.args`
-file here and compares the interpreter and generated code at 50-million-
-clock checkpoints and the final state.
-Each pipeline replay gets a new `save-*` directory, so coverage or a prior
-pipeline's edited pilot cannot change its starting state. Coverage reports
-also use fresh run directories. Earlier saved rosters are preserved.
+A route is a file of inputs to the original game: one `f117run` option per
+line, `#` starting a comment. Keys and clicks are scheduled relative to a
+program's first EXEC (`START.EXE+120000000:258,182`) or replayed from a
+recorded `.input` log. Routes hold only what a player would type or click;
+everything a run produces stays outside the repository.
 
-The transfer routes select the existing cleared pilot, request a theatre,
-tension and mission category, then enter the briefing, arming and hangar.
-They take off, exercise flight/weapon/view controls and quit with Alt+Q, Y.
-They exercise mission generation and flight; they do not complete the
-objectives or establish successful landing.
+Key escapes (`src/host/keys.c`): `\r` Return, `\s` Space, `\e` Escape, `\t`
+Tab, `\b` Backspace, `\U` `\D` `\L` `\R` the arrows, `\1`-`\9` F1-F9, `\0`
+F10, `\aX` Alt+X, `\cX` Ctrl+X, `\\` a backslash. Run a route with
+`tools/run_route.py`, never through a shell: a shell changes these escapes
+and so the inputs.
+`tools/build_recomp.py` discovers every `.args` file here and compares the
+interpreter and the recompiled code at 50-million-clock checkpoints and the
+final state. Routes with identical options play one session per engine
+(today `recon_return` and `recon_career`), and each is held to its own
+milestones on it: 45 routes, 44 sessions. Every replay starts from a fresh
+`save-*` directory holding the install's roster, so coverage runs or an
+earlier pipeline's edited pilot cannot change its starting state.
+
+## Milestones
+
+Comment lines that `run_route.py` and the gate check after each run, so equal
+early crashes cannot pass parity:
+
+| Line | Requires |
+|---|---|
+| `# expect-world STEM` | START opens `STEM.WLD` and VGAME opens `STEM.3DG` |
+| `# expect-exit PROGRAM CODE MIN_CLOCKS` | that program exits with that code, after at least that many clocks |
+| `# expect-open FILE PROGRAM MIN_COUNT` | that program opens the file at least that many times |
+| `# expect-save FILE OFFSET HEX` | those bytes at that offset of the saved file, independently of engine equality |
+| `# seed-roster ROUTE.args` | earn the roster of another route first, in a fresh process, and start from it unchanged (chains are allowed; cycles and failed prerequisites are rejected) |
+
+Milestones prove that a route got where it claims; they do not prove a
+landing or a credited objective. Routes marked *observer* below have a
+stronger read-only check (next section). Airborne screenshots are reviewed
+separately when a flight route is added.
+
+## The routes
+
+**Boot, SETUP and sound drivers**
+
+| Route | What it plays |
+|---|---|
+| `boot_to_flight` | boot, SETUP (no joystick, AdLib), logo and intro, the pilot form, briefing, arming, a takeoff and a few seconds of flight in the default Libya mission, then Alt+Q, Y |
+| `full_cycle` | the whole loop: boot, the front end, a training sortie flown into the ground, the debriefing (END) and back to the front end |
+| `ibm_boot`, `roland_boot` | boot into the front end with the PC speaker (SETUP answer 1) or Roland (answer 3) driver; drivers and programs load at other segments than under AdLib |
+| `setup_calibration` | full joystick calibration, both buttons, then AdLib (SETUP exits 36) |
+| `setup_keypad_original` | the original quits SETUP on keypad 1 with NumLock off (exit 0) |
+| `setup_keypad_fixed`, `setup_extended_fixed` | fix D3: keypad 1 is accepted (exit 36); other extended keys still take the original quit path (exit 0) |
+| `d1_fast_machine` | `boot_to_flight` on a 40 MIPS machine (`--ips 40000000`) with fix D1, every program-relative input time scaled by 40/9 so the menus get the same emulated seconds; *observer* `d1_check.py` |
+
+**Front end**
+
+| Route | What it plays |
+|---|---|
+| `roster_edit` | creates pilot CHECK with Backspace and Return, edits one character, cancels another edit with Escape, deletes a KIA pilot with an empty name and returns to the office to save; `--move WHEN:X,Y` hovers over a row without selecting it. Saved-byte milestones check the name, the erased row and the cleared career counters of the 802-byte roster |
+| `frontend_dialogs` | opens and dismisses the KIA and retired-pilot dialogs (each has its own OK position; Enter with the pointer outside the button does not dismiss them), uses the MAINT door before and after the briefing, assigns AIM-9 to station 1 and AMRAAM to station 3 (the first arming page has empty stations; the generated assignment fills the second); checks two arming-page and four office-page loads |
+
+**Theatre transfers.** Each selects the existing cleared pilot, requests a
+theatre, tension and mission category, takes the briefing, arming and hangar,
+takes off, exercises the weapon, target, view and map keys for about a minute
+and quits with Alt+Q, Y. They exercise mission generation and flight, not
+objectives or landing.
 
 | Route | World | Tension | Mission category |
 |---|---|---|---|
@@ -26,203 +75,132 @@ objectives or establish successful landing.
 | `persian_gulf_air_training` | Persian Gulf / PG | Limited War | Air Combat Training |
 | `kuwait_strike` | Kuwait / KU | Conventional War | Strike Missions |
 
-Libya / LB is the default theatre in `boot_to_flight` and `full_cycle`.
-`pause_resume` uses the same boot and default Libya mission, then presses
-Alt+P, Alt+P again, Space, and finally Alt+Q/Y. The repeated pause key stays
-inside the wait; Space releases it. The isolated matched handler ran once,
-with all 54 checkpoints and the final hash equal to the original interpreter.
-World-open and minimum exit-time milestones reject an early exit.
-`hud_layout_toggle` presses C twice during the same default flight to select
-the small then full HUD. Real-driver interpreter/matched probes match all
-54 checkpoints and the final hash; colour setup runs once and the separately
-callable layout selector twice. It also checks world-open and exit time.
-`objectives_panel` opens F10, switches HUD layout with C, and opens F10
-again in each layout before quitting normally. The isolated named panel
-runs four times through the real drivers; all 57 checkpoints and final
-`2877054667/c465c5fd46862b46` match the fresh interpreter replay. World-open
-and minimum exit-time milestones reject an early exit. Random-state fixtures
-separately cover all eight objective phrases, invalid kinds, completed
-objectives, deadlines and empty/nonempty place names.
-`navigation_grid` opens F3 repeatedly and switches HUD layout with C before
-quitting normally. The isolated named grid runs 314 times through the real
-drivers; all 57 checkpoints and final `2877054444/5ea6b18cd60f6608` match the
-interpreter replay. World-open and minimum exit-time milestones reject an
-early exit. Fixtures separately cover zoom settings, aircraft markers,
-weapon trails, ground-object types and countermeasures, including partial
-instruction-budget stops and transient writes across the whole code body.
-`recon_darken` replays `recon` with F6 pressed at 100 million VGAME clocks,
-enabling camera darkening. Original/isolated probes preserve all 150
-checkpoints and final hash; the darkening helper runs 1,608 times through
-the actual graphics driver. This is an airborne photo route, without a
-completed-return claim.
-`camera_gradients` replays the Vietnam type-5 inputs with Alt+W at 100 million
-VGAME clocks, selecting gradient camera rendering. The isolated matched
-probe reaches sky 7,851 times and ground 1,108 times through the real
-graphics driver; all 234 checkpoints and final state match the interpreter.
-Changing drawing cost changes this recorded flight: VGAME exits after
-7,385,839,082 clocks, before the base route's landing sequence. This route
-checks rendering, world loading and a minimum 7B-clock exit, without an
-objective-completion or landing claim.
-`full_cycle` also covers the logo sprite-run helper and moving-map frame
-wrapper through real drivers (1,570 calls and one call in the isolated
-probe). All 66 checkpoints/final state match a fresh interpreter capture.
-Explicit random-state fixtures separately retain the sprite's opaque
-zero-count wrap to 256 writes, which the shipped logo never uses.
-The speaker and Roland routes cover the other sound drivers and program
-load addresses. Together the routes select all nine worlds, three tension
-levels and four mission categories. Many individual objective types within a
-category still need dedicated routes.
+Libya / LB is the default theatre of `boot_to_flight` and `full_cycle`, so
+the routes select all nine worlds, all three tension levels and all four
+mission categories. Many objective types within a category still have no
+dedicated route.
 
-Transfer coordinates come from START's own menu rectangles at DS:6F6E and
-the theatre mapping at DS:0DE2. A transfer requires the pilot's clearance;
-clicking a theatre on an uncleared pilot leaves Libya selected. The
-Middle East route waits longer for mission-order decoding. Korea's carrier
-start releases its initial brakes; the six new routes use runway starts
-with brakes already released. Toggling brakes on those starts prevents
-takeoff and causes an early crash.
+**Cockpit keys in the default Libya flight** (each also checks the world and
+a minimum exit time, so an early exit fails). These are the real-driver
+proofs for matched routines; call counts are in
+[roadmap.md](../../docs/roadmap.md).
 
-`# expect-world STEM` requires START to open `STEM.WLD` and VGAME to open
-`STEM.3DG`. `# expect-exit PROGRAM CODE MIN_CLOCKS` requires that program
-to exit with the declared code after the minimum elapsed time. Both route
-tools enforce these milestones: equal early crashes cannot pass parity.
-Airborne screenshots are reviewed separately when adding a flight route.
+| Route | What it plays |
+|---|---|
+| `pause_resume` | Alt+P, Alt+P again (it stays paused), Space resumes, then Alt+Q, Y |
+| `hud_layout_toggle` | C twice: the small, then the full HUD |
+| `objectives_panel` | F10, C, F10 again in each HUD layout, then quit |
+| `navigation_grid` | F3 repeatedly in both HUD layouts, then quit |
 
-`roster_edit` creates CHECK using Backspace and Return, edits one character,
-cancels another edit with Escape, deletes a KIA pilot with an empty name,
-and returns to the office to save. `--move WHEN:X,Y` hovers over a row
-without selecting it. `# expect-save FILE OFFSET HEX` checks the committed
-bytes independently of engine equality: the name, erased row and cleared
-career counters. The 802-byte roster and a fresh-process reload were checked;
-the recorded mouse/key session also replays identically under the interpreter.
+**Recorded sorties.** Each replays a recorded flight flown with normal keys
+and mouse (most by an adaptive pilot tool), so a timing change that moves
+the flight invalidates the recording.
 
-`frontend_dialogs` opens and dismisses the shipped KIA and retired pilot
-dialogs, then uses the MAINT door before and after taking the briefing.
-The first arming page has empty stations; the generated assignment fills
-the second. The route assigns AIM-9 to station 1 and AMRAAM to station 3
-and returns to the office. The dialogs have different OK positions, and
-Enter with the pointer outside their button does not dismiss them.
-`# expect-open FILE PROGRAM MIN_COUNT` checks two arming-page loads and
-four office-page loads; screenshots verify the dialogs and station changes.
+| Route | What it plays | Ends |
+|---|---|---|
+| `strike` | Libya training: destroys primary target 3 with the Maverick | airborne after credit; *observer* |
+| `strike_return` | the same credit kept through a normal landing at home 33 and the debrief | landed; *observer* |
+| `strike_training` | Central America Ground Strike Training, started at a clock (+5 s) that makes it a ground strike; the laser-guided bomb is released inside its narrow 80-150 map-unit window ([bugs.md](../../docs/bugs.md) D7, D8) | airborne after credit; *observer* |
+| `strike_training_d8` | the same mission with fix D8: the bomb released at 1,200 units still hits and earns credit | airborne after credit; *observer* |
+| `recon` | Libya: photographs target 1 | airborne after credit; *observer* |
+| `recon_darken` | `recon` with F6 at 100 million VGAME clocks (camera darkening) | airborne; no return claim |
+| `recon_return` | primary and secondary photos, then a stop on the raised home runway and END's debrief | landed, END exits normally; *observer* |
+| `landing` | Libya: flies to home 33, lands and stops | landed (VGAME exit 129); *observer* |
+| `cargo` | Persian Gulf supply drop: a timely impact in the delivery area without credit, the original defect D5 | airborne; *observer* |
+| `cargo_d5_fixed` | `cargo.input` with fix D5: the same impact earns the original's own credit (flag 4000h, one 8Bh event) | airborne; *observer* |
+| `cargo_return` | the same delivery, then home 51: holds 8,000 ft until 14,000 units out (clear of the northern-coast hills), lands on the short runway; hit on the way (damage mask 8Eh) and still returns | landed; *observer* |
+| `cargo_pilot` | a closed-loop supply drop: `tools/cargo_pilot.py` released the crate by the aircraft's own state (steep dive, 60-300 units short, 150 ft AGL or more, bay selected) | airborne; *observer* |
+| `secret_airstrip` | Persian Gulf type-4 primary by landing at the secret strip | stopped at the strip; *observer* |
+| `secret_airstrip_return` | the strip delivery, a ground turn and taxi, a second takeoff and a return to home 58 | landed; *observer* |
+| `airair_type5` to `airair_type8` | the four air-to-air objective types: AMRAAMs kill special unit 0 (one missile for type 5, three for 6-8), primary credit, landing at home (72 for type 6, 33 for the others) | landed, debrief (VGAME exit 129); *observer* |
+| `camera_gradients` | `airair_type5`'s inputs with Alt+W at 100 million VGAME clocks (gradient camera rendering); the changed drawing cost changes the flight, which ends before the landing | rendering, world loading and a minimum 7B-clock exit only |
 
-`recon_return` extends the photo route through secondary credit and a raised
-home-runway stop. `recon_pilot.py --complete --replay recon_return.input`
-checks both original event types, intact targets and the successful parent
-result block. Its route args also acknowledge END's debrief so `run_route.py`
-can verify a normal END exit after the VGAME return. The current recording
-uses an earlier deck descent target and passes under interpreter and
-recompiler. `recon_career` continues through END, earns the tenth-mission tour
-ribbon and saves the changed score, sortie count and award. Those saved bytes
-are asserted independently of engine hash equality.
+**Careers** (saved-roster milestones; every earned save comes from a route,
+none is distributed)
 
-`strike` destroys Libya training primary target 3 with the loaded Maverick.
-It stops airborne after credit and does not establish a return. The stronger
-`strike_pilot.py --replay strike.input` observer requires ground-strike type,
-target damage, primary credit, one matching hit event, weapon release events,
-consumed stores and an airborne aircraft with fuel and no ejection/crash.
-`strike_training` is Central America Ground Strike Training started at a clock
-(+5 s) that makes it a ground strike, with the laser-guided bomb released
-inside its 80-150 map unit window (`docs/bugs.md` D7/D8); the same observer
-(`strike_pilot.py --replay strike_training.input`) takes the recording's own
-start clock and fixes from its header. `strike_training_d8` is the same
-mission with fix D8 on and the bomb released at 1,200 units. `strike_return` replays a separate normal-input
-flight through a home-33 landing. Run `py tools/strike_pilot.py --complete --replay
-tools/routes/strike_return.input --data D:/GOG/F-117A --out PRIVATE_DIR` (add
-`--engine interp` for the second observer). It checks that primary hit and
-credit persist through stop/debrief, with fuel, gear, brakes and idle gates
-and parent result 0/status 3. Interpreter and recompiler observers agree at
-297 checkpoints/final hash `a4f05231eacf9d75`.
+| Route | What it plays |
+|---|---|
+| `career_serge` | selects Serge, completes both photos, returns and saves sortie two |
+| `career_promotion` | `# seed-roster career_serge.args`, then a third sortie: promotion and a medal |
+| `recon_career` | `recon_return`'s flight continued through END: the tenth-mission tour ribbon, and the changed score, sortie count and award saved |
 
-`vietnam_airair.front` enters Vietnam / Conventional War / Air-to-Air through
-normal menu inputs. `airair_pilot.py` steers to the generated special aircraft,
-uses the loaded station-0 AMRAAM, observes its seeker cone and release, then
-returns to home 33 after objective credit. It checks the slot-0 kill and
-primary event at the credit sample, consumed AMRAAM store, and full landing
-result. The adaptive input log replays with `--engine recomp` and
-`--engine interp` for a direct flight-state parity check.
+## Strong observers
 
-Dedicated air-to-air objective routes cover types 5–8: `airair_type5` to
-`airair_type8`, each a recorded adaptive sortie replayed in the gate, ending
-in the debriefing (VGAME exit 129). Type 5 uses the Vietnam front and the
-default `--time-us 700000000000000`; type 7 uses `vietnam_airair_type7.front`
-with `--time-us 700000003000000`; type 8 uses `vietnam_airair_type8.front`
-with `--time-us 700000002000000`. Type 6 uses `central_europe_airair.front`
-and the default startup clock. Type 5 releases one station-0 AMRAAM, types
-6–8 three; each kills special unit 0, earns primary credit and lands at home
-with result 0/status 3. Recorded 6 Oct under the current timing (the 5 Oct
-recordings predate the rational VGA schedule and no longer reproduce), each
-replays byte-identically under both engines and matches its adaptive run:
-type 5 has 946 observations and hash `96c08003b72f6a8b`; type 6 616 and
-`33696aa9f6c6f6a8`; type 7 734 and `2b96c2633ed7b639`; type 8 764 and
-`f873304b995b58ed`. Type 6 was flown with `--floor 11000 --landing-aim 100
---nudge 0`: at the default 8000 ft pursuit floor it flew into Central
-Europe's terrain (the original's draw-detected collision, `[0xC6B2]` ->
-`[0x9F96]` -> `flight_end(2)`), and the close-return centreline nudge of 10,
-tuned for home 33, puts home 72's touchdown on its box edge. Type 7 used
-`--landing-aim 50`. For a close objective return, `airair_pilot.py` holds
-cruise altitude while turning onto the runway heading, then begins the
-final descent. Strong observer: `airair_pilot.py --replay
-tools/routes/airair_typeN.input --engine interp|recomp`.
+Each observer replays the route's recording read-only under either engine
+(`--engine interp` or `recomp`) and checks what milestones cannot. All take
+`--data INSTALL --out PRIVATE_DIR`.
 
-`cargo` reproduces original D5 through a normally released supply crate.
-`cargo_check.py --replay cargo.input --steps 7353559391` requires one cargo
-store and release, the actual player weapon slot, ground penetration and
-matching impact coordinates inside the delivery area before its deadline.
-It also requires an airborne aircraft with fuel and the retained absence of
-primary credit for a full second afterwards. Normal TTL expiry cannot pass.
-This route stops airborne and does not establish a home return.
+| Route | Command (inputs under `tools/routes/`) | Checks |
+|---|---|---|
+| `strike` | `strike_pilot.py --replay strike.input` | ground-strike type, target damage, primary credit, one matching hit event, release events, consumed stores; airborne with fuel, no ejection or crash |
+| `strike_training`, `strike_training_d8` | `strike_pilot.py --replay strike_training.input` (or `_d8.input`) | as `strike`; takes the start clock and fixes from the recording's header |
+| `strike_return` | `strike_pilot.py --complete --replay strike_return.input` | primary hit and credit persist through stop and debrief; fuel, gear, brakes and idle; parent result 0 / status 3 |
+| `recon`, `recon_return` | `recon_pilot.py --replay recon.input`; `--complete --replay recon_return.input` | credited photograph; with `--complete` both event types, intact targets and the successful parent result |
+| `landing` | `landing_pilot.py --replay landing.input` | ground contact inside the home approach box, stop at idle, gear and brakes, countdown, successful result |
+| `cargo`, `cargo_d5_fixed` | `cargo_check.py [--fix D5] --replay cargo.input --steps 7353559391` | one cargo store and release from the player's weapon slot, ground penetration, matching impact inside the area before the deadline, airborne with fuel; no primary credit for a full second after (with D5: credit at the impact, never before). Normal TTL expiry cannot pass |
+| `cargo_return` | `cargo_check.py --complete --replay cargo_return.input --steps 20000000000` | no credit and the consumed store throughout, then every landing gate and the successful parent result |
+| `cargo_pilot` | `cargo_check.py --replay cargo_pilot.input --steps 6382359385` | one timely impact in the area, no credit without D5 |
+| `secret_airstrip` | `airstrip_check.py --replay secret_airstrip.input --steps 8373782617` | delivery by landing at the strip |
+| `secret_airstrip_return` | `airstrip_check.py --complete --replay secret_airstrip_return.input --steps 18635798708` | the return landing; credit earned at delivery is kept, and the strip's later damage is reported separately |
+| `airair_type5`-`8` | `airair_pilot.py --replay airair_typeN.input` | the slot-0 kill and primary event at the credit sample, the consumed AMRAAM, the full landing result |
+| `d1_fast_machine` | `d1_check.py` | the same inputs at GOG's 9 MIPS without fixes and at 40 MIPS with D1: settled S, mission clock and frame rate agree |
 
-`cargo_return` continues the same delivery home: the aircraft holds 8,000 ft
-until 14,000 units from home 51, clear of the hills on the northern coast
-that ended a 2,500 ft attempt, then lands on the short runway (aim 50 units
-before its centre at 200 knots). It is hit on the way out and back (damage
-mask 8Eh, eight hits counted) and still returns. `cargo_check.py --complete
---replay tools/routes/cargo_return.input --steps 20000000000` requires the
-original no-credit and consumed store throughout the return, then every
-landing gate and the parent block's successful result.
+Per-route figures (checkpoints, final hashes, clocks) are in
+[parity-audit.md](../../docs/parity-audit.md).
 
-`cargo_pilot` is a closed-loop supply drop: `tools/cargo_pilot.py` flies the
-generated type-3 mission in our emulator and releases the crate by the
-aircraft's own state (in a steep dive, 60-300 units short of target, 150 AGL or more, with
-the cargo bay selected), then pulls up. Its recorded input is replayed here.
-`cargo_check.py --replay cargo_pilot.input --steps 6382359385` requires one
-timely impact in the delivery area, no credit without fix D5, on both engines.
+**Career chains beyond the routes.** `career_check.py --initial-roster
+ACTUAL_ROSTER --replay PHOTO_RECORD --steps CLOCK_BUDGET --count N --data
+INSTALL --out PRIVATE_DIR` earns successive sorties under both engines, each
+starting from the preceding actual 802-byte save copied unchanged. Strict
+photo/home gates, the saved score/count/status progression, every checkpoint
+and all save bytes must agree before the next sortie starts; the replay's
+startup clock is kept. Promotion can change the generated assignment and need
+a new recording; a failed flight stops the batch. Use only actual earned
+saves. `--ahead N` runs the recompiled legs up to N sorties ahead in their
+own processes; sorties are still accepted in order and only when both legs
+agree.
 
-`cargo_d5_fixed` replays `cargo.input` with fix D5 switched on (`--fix D5`):
-the same impact now earns the original's own primary credit, flag 4000h and
-one 8Bh event. `cargo_check.py --fix D5 --replay tools/routes/cargo.input
---steps 7353559391` turns the verdict round and requires that credit at the
-impact, never before it.
+## Recording notes
 
-`d1_fast_machine` is `boot_to_flight` on a 40 MIPS machine (`--ips
-40000000`) with fix D1 switched on, every program-relative input time scaled
-by 40/9 so the menus get the same emulated seconds. Its strong observer,
-`d1_check.py --data D:/GOG/F-117A`, flies the same inputs at GOG's 9 MIPS
-without fixes and at 40 MIPS with D1, and requires the settled S, the
-mission clock and the frame rate to agree.
+- Transfer coordinates come from START's own menu rectangles at DS:6F6E and
+  the theatre mapping at DS:0DE2. A transfer needs the pilot's clearance:
+  clicking a theatre on an uncleared pilot leaves Libya selected. The Middle
+  East route waits longer for its mission orders to decode.
+- Korea starts on a carrier and releases its brakes first; the other
+  transfers start on runways with the brakes already off, where toggling
+  them prevents takeoff and causes an early crash.
+- The air-to-air recordings (6 Oct, under the current VGA timing) replay
+  byte-identically under both engines and match their adaptive runs. Type 5
+  uses `vietnam_airair.front` and the default `--time-us 700000000000000`;
+  type 6 `central_europe_airair.front`; type 7 `vietnam_airair_type7.front`
+  with `--time-us 700000003000000`; type 8 `vietnam_airair_type8.front` with
+  `--time-us 700000002000000`. Type 6 was flown with `--floor 11000
+  --landing-aim 100 --nudge 0`: at the default 8,000 ft pursuit floor it flew
+  into Central Europe's terrain (the original's draw-detected collision), and
+  the default centreline nudge, tuned for home 33, put home 72's touchdown on
+  its box edge. Type 7 used `--landing-aim 50`. For a close objective return,
+  `airair_pilot.py` holds cruise altitude while turning onto the runway
+  heading, then descends.
 
-`secret_airstrip_return` delivers at the intact primary strip, turns and
-taxis for a second takeoff, then returns to home. Run `airstrip_check.py
---complete --replay tools/routes/secret_airstrip_return.input --steps
-17850000000 --data D:/GOG/F-117A --out PRIVATE_DIR` for the strong observer.
-The target is damaged after delivery; earned credit remains and that later
-damage is reported separately.
+## Support files
 
-`career_check.py --initial-roster ACTUAL_ROSTER --replay PHOTO_RECORD
---steps CLOCK_BUDGET --count N --data D:/GOG/F-117A --out PRIVATE_DIR`
-earns successive sorties under both engines. Each starts with the preceding
-actual 802-byte save copied unchanged. Strict photo/home gates, saved
-score/count/status progression, every checkpoint and all save bytes must
-agree before another sortie starts. The replay's startup clock is retained.
-Promotion can change the generated assignment and require a new recording;
-failed flights stop the batch. Use only actual earned saves for this evidence.
-`--ahead N` runs the recompiled legs up to N sorties ahead, each in its own
-process, with the interpreter legs following from the same input bytes;
-sorties are still accepted in order and only when both legs agree.
+| File | Use |
+|---|---|
+| `*.input` | recorded input logs that routes replay (`--replay`, relative to the route file) |
+| `*.front` | recorded front ends (menu inputs up to VGAME) that the adaptive pilots start from (`--front-route`, or `--front` for the DOSBox-X/86Box pilots): `recon.front`, `career.front`, `career_regular_realistic.front` (`tools/career_chain.py`), `central_america_strike_training.front` (`strike_pilot.py`, with `--time-us 700000005000000`) and the air-to-air fronts |
+| `*.reads` | the data-segment read sets the DOSBox-X and 86Box closed-loop pilots answer from (`cargo_pilot.reads`, `strike_training.reads`, `career.reads`), regenerated with `dosbox_cargo_pilot.py --trace-reads` |
+| `setup_*.input` | SETUP key logs replayed by the `setup_*` routes |
+| `career_rank6.input` | the input `tools/career_rank6.py` replays over a staged rank-6 roster (not a gate route) |
 
-Keep run outputs and saves outside the repository. Use a fresh output
-directory for a baseline run, since an existing save can change the pilot
-and mission:
+## Running one
+
+Keep run outputs and saves outside the repository, and use a fresh output
+directory for a baseline run, since an existing save can change the pilot and
+mission:
 
 ```powershell
-py tools/run_route.py tools/routes/kuwait_strike.args --data D:/GOG/F-117A --out C:/Users/Tideg/f117-recomp-local/check-kuwait -- --hash-every 50000000 --shots 90000000:C:/Users/Tideg/f117-recomp-local/check-kuwait/shot
+py tools/run_route.py tools/routes/kuwait_strike.args --data "C:\GOG Games\F-117A" --out "$env:USERPROFILE/f117-recomp-local/check-kuwait" -- --hash-every 50000000 --shots "90000000:$env:USERPROFILE/f117-recomp-local/check-kuwait/shot"
 ```
+
+Options after `--` go to `f117run`; `--engine interp|recomp` chooses the
+engine.

@@ -1,8 +1,9 @@
 # Parity audit, 4 October 2026
 
-*A dated snapshot, kept for its findings and reasoning. Current figures (routes, matched
-routines, the DOSBox-X and 86Box checks) are in [roadmap.md](roadmap.md) and
-[../handoff.md](../handoff.md).*
+*A dated snapshot, kept for its findings and reasoning. Its counts (routes,
+lockstep states, video pictures, coverage) are those of 4 October 2026 and
+have since been superseded; current figures, including the DOSBox-X and
+86Box checks, are in [roadmap.md](roadmap.md).*
 
 The interpreter and recompiler share the CPU semantics and PC model. Equal
 machine hashes establish agreement between those engines; the DOSBox checks
@@ -76,12 +77,10 @@ recompilation and is not paired evidence.
 **Reconnaissance sortie.** The adaptive pilot needed two corrections before
 the original completed the sortie: restoring power below 240 knots, and
 designating with the physical nose angle, adding the camera mounting offset
-only after acquiring the target (as the two original routines do). Failed
-attempts (`dosbox-recon-02`, 04, 05, 06: a crash at 44% throttle, a missed
-moving secondary, circling with the wrong object designated, fuel
-exhaustion) are kept as controller failures; no shared game-model defect was
-isolated from them. With the corrected pilot the recompiled return still
-reaches `c403d0542430b898`, and a normal-input return passes both engines'
+only after acquiring the target (as the two original routines do). The
+earlier failed attempts (`dosbox-recon-02`, 04, 05, 06) were pilot failures;
+no game-model defect was isolated from them. With the corrected pilot the
+recompiled return still reaches `c403d0542430b898`, and a normal-input return passes both engines'
 observers at DSWAP clock 13,836,105,984, hash `f4ae7ae4e610850d` (fuel 4910,
 countdown 3 with S=8, parent 0/3). The optional `--acquisition level` mode
 (nonnegative nose, designation near the original's constant 640-unit ray,
@@ -99,7 +98,9 @@ dynamic-state equivalence.
 **Video.** Current-build replay against the saved GOG video matches 1,319
 exact RGB pictures in order. Seven reference pictures and 28 of ours remain
 unmatched, all for a single sample; the end transition is about 571 ms later
-here. Neither difference is dismissed as a pass.
+here. Neither difference is dismissed as a pass. (Superseded: the current
+build matches 1,329 pictures with three one-sample differences per side and
+no end drift; see [roadmap.md](roadmap.md).)
 
 **Sound.** `audio_render` uses the application's actual audio
 implementation. `tools/audio_compare.py` extracts PCM from the DOSBox AVI and
@@ -191,3 +192,8 @@ attached on this machine, so physical calibration, deadzones and control
 feel need hardware and a player. MT-32 PCM needs a reference comparison with
 the supplied ROMs; the Roland boot route alone cannot validate rendered
 parity.
+
+Since closed (see [roadmap.md](roadmap.md)): earned retirement (a rank-3
+career is paired through retirement at sortie 99), the supply-drop home
+return (route `cargo_return`), and the speech audio reference (captured from
+86Box on 9 October).

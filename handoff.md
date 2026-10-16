@@ -18,133 +18,35 @@ Scoreboard: P1 100.00%, P2 67.82%, P3 82.75%, All 85.82% (P4 is no longer scored
 
 ### Presentation: latest (15 October, evening)
 
-**START HERE: `--present rerun` is integrated and gated.** Intermediate camera/aircraft/weapon poses are drawn
-by the original on a throwaway machine, then refined at any scale. Three published steps feed a smoothed clock;
-`F117_PRESENT_CLOCK=raw` selects the old clock. Defaults and the owner's existing settings/4k60.bat are unchanged.
-The separate, local `4k-rerun.bat` uses the 4K preset with explicit rerun/interpolation-age overrides.
+**`--present rerun` is integrated and gated.** In-between camera/aircraft/weapon poses are drawn by the original's
+own code on a throwaway machine copy, then refined at any scale; a smoothed playback clock (three published steps)
+times them (`F117_PRESENT_CLOCK=raw` for the old clock; opt-in knobs `F117_PRESENT_CLOCK_ALPHA`/`_PULL`, defaults
+0.2/0.05). Defaults and the owner's settings are unchanged; the owner's local `4k-rerun.bat` runs the 4K preset with
+`--present rerun`. Design and figures: [docs/presentation.md](docs/presentation.md).
 
-**Proof:** full gate 1,288 s: 116 CTests, all 45 routes identical / 44 fresh interpreter sessions, both instruction
-profiles (5,718,848 states each), 891 matched routines at three seeds, reachability/event checks clean. The separate
-45-route N=1 rerun pass keeps 259,240 frames / 259,166 pairs and every guest checkpoint/final hash exact. Boot N=4/9
-keeps 368 frames / 366 pairs each. Across these checks: 1,638,579 copies checked, 1,378,030 original in-between draws,
-259,787 unchanged-copy frames exact and 0 unequal; no changed real state or blocked DOS calls. Evidence:
-`D:/f117-gate/present-v2/rerun-accept/final-gate-verdict.json` (all logs also compared to the fresh scan baselines).
-The final threaded app smoke test is offscreen/silent, under load: exit 0, 1,610 exact logic frames, 4,933 original
-intermediate pictures, 3 fallbacks in 143.36 s (`app-verdict.json`). This is not physical-refresh acceptance.
-
-**Isolation trap, now fixed:** the first rerun route pass failed D1 despite byte-identical real memory: a copy
-advanced the process-global frame limiter. Snapshots now include fixes' host state (D1 and D34); each copy loads
-its snapshot's state and restores live state afterward. Checked draws compare real machine, all 1 MiB of memory
-and fix state before/after. DOS file operations (including the chained native callback) are blocked; console-status
-and emulated-clock reads run on the copy. Private speech schedules are freed. The watchdog permits at least a
-quarter emulated second for pacing waits on faster machines. `d1_fast_machine` now passes all hashes, 374 frames /
-372 pairs and 2,624 isolation checks. Live HUD/band tests must initialize manually built plans' sa/sb indexes to -1.
-
-**Verification scope:** `drawfeed.c/.h` and `rerun.c/.h` execute or snapshot machines, so the light checker now
-refuses them; use the full gate plus `presentation_check.py --mode rerun` over all 45 routes for those changes.
-The checker requires positive original intermediate draws, not just t = 0 copies; its six regression tests pass.
-The 44 routes apart from the separate D1 probe took 1,696.92 s at 16 jobs; D1 352.03 s and boot N=4/9 185.44 s
-shared the gate's load. Main's libraries changed: refresh `D:/f117-gate/kit-libs` before the next Phase 2 proof.
-
-**Still open, in order:** tune skips against picture age; obtain the owner's 4K screen/motion verdict (ask first);
-make observer/runtime/fix state per machine for parallel copies above 60 Hz; inspect the small `DF03`/`C2C8` group.
-Clock evidence on `c7b4d77` (two hidden scale-2 owner-flight runs, `rerun-mode/app7`): raw clock 274 freezes,
-12 skips, 18.4% >20% speed changes; smoothed 17-21, 23-34, 3.3-5.0%. Defaults remain pull-in 0.05, one-step lag,
-EMA 0.8/0.2. Opt-in knobs `F117_PRESENT_CLOCK_ALPHA`/`_PULL` exist (gated). One hidden owner-flight run each (`D:/f117-gate/present-v2/clock-tune`): default 6 freezes, 2.5% >20% speed changes; alpha 0.4/pull 0.025 3 and 1.3%; 0.4/0.05 4 and 1.3%; picture age not measured. Defaults unchanged: the owner's call. A private sweep (`rerun-accept/clock_sweep.py`, `clock-sweep.json`) suggests EMA alpha 0.4 / pull-in
-0.025 at 30/60/144 Hz; simulation only, not adopted/live-tested. `DF03` is the generic deferred-object draw in a
-secondary camera's nested terrain view; `rerun-accept/object-follow-up.txt` is a lead, not a fix.
-Smooth the original's road jitter at N>1 afterward. P3 stays at 82.75% until motion is judged; merging alone does
-not establish motion quality. The earlier research harness remains on `draw-rerun-probe`.
-
-The owner's recorded flight `session-20261015-103956` (road jitter, jumping
-building patches) is frozen privately in
-`D:/f117-gate/present-v2/owner-roads-20261015` (inputs, save, 633 MB draw
-capture 2.45B-2.85B; `ident/draw.log` has identity records 2.75B-2.85B;
-`analysis/` the scans). Details:
-[docs/presentation.md](docs/presentation.md#identity-pairing-and-the-step-clock-15-october-2026).
-
-- **Identity pairing is OFF** (opt-in `F117_PRESENT_IDENT=1`, an experiment).
-  It uses the observer's compact `I` record (model, ring, world cell at
-  `120A:00CF`). It halves unpaired shapes (polygons 7.78 -> 3.98%, edges
-  2.51 -> 0.78%), but the extra pairs join different visible-vertex sets:
-  paired batches deforming over 100 px between steps rose 3.78 -> 20.53%, and
-  the owner saw more jitter. Lesson: judge pairing by deformation, not by
-  unpaired counts; real identity needs per-vertex identity.
-- **The step clock is a second cause.** Steps take 42-86 ms for a fixed
-  distance, and `drawlive_plan_interp`'s t freezes or skips at uneven
-  boundaries. A smoothed playback-clock simulation cuts freezes/skips
-  35 -> 2 and >20% speed changes 21.4% -> 1.6% for ~17 ms more age. Built for rerun mode with three published steps; live skip/age tuning and the owner's verdict remain open.
-- **Road and coastline jitter are in the original** (owner, 15 Oct 14:40: the same jitter shows in the GOG
-  DOSBox release). Not our defect. Owner's choice (15 Oct): smooth it at N>1 only (option 2), after the
-  60+ fps work; N=1 stays the original.
-- **Road jitter is NOT from interpolation** (owner, 15 Oct 14:30): it is still visible in sharp mode
-  (`--present replay`, no in-between frames). Owner's sharp session frozen in
-  `D:/f117-gate/present-v2/owner-sharp-20261015` (`session-20261015-142924`; headless replay N=9,
-  1,013 logic frames exact). In it 101,449 of 108,047 outline strokes (93.9%) were refined from exact
-  geometry and 6,598 (6.1%) were not: `hires.c` `outline_refine` refines only unclipped outlines with
-  both ends on screen, so outlines crossing the near plane or leaving the screen (long roads passing
-  under the aircraft) are drawn from the original's whole-pixel endpoints scaled up and hop in N-pixel
-  steps. No coarse-fallback outline pixels appeared (DIAG tag 25 = 0), so it is not a path flip.
-  Optional enhancement (not a fix): confirm roads are among those 6.1%, then refine clipped outlines by clipping their exact
-  camera-space segment to the near plane and screen (as near-clipped polygons already are); a
-  presentation-only change (`present_light_check.py`). If refined roads still wobble, measure the
-  original's per-frame coordinate noise on a correctly tracked static road edge.
-- `tools/motion_check.py LOG` reports pairing completeness, deformation of
-  paired batches and step-timing irregularity, which the exactness checks
-  cannot see.
-- **Owner decision (15 Oct, 13:00): stop improving primitive pairing.**
-  - Safe mode now: `--present replay --present-scale N` (sharp uprez at the
-    game's own frame rate, no in-between frames, already verified).
-  - For 60+ fps: **re-run the original's own, unmodified 3-D draw on a
-    throwaway copy of the machine** at each in-between moment, with only its
-    inputs nudged: camera (view angles `E478`/`C0A8`/`B79C`, position
-    `B2B4`/`B77E`/`B788`, view mode `C0A6`, documented on
-    `vgame_frame_compose` 2F9D) and moving objects by their table slots
-    (aircraft traffic 5852, weapons in flight 683E; a reused slot steps
-    instead of gliding). The existing uprez refines those draws as it does
-    logic frames, plus the smoothed playback clock. It must work at any
-    `--present-scale` and any refresh rate (the owner asked for lower and
-    higher than 4K/60, not just 4K/60).
-  - Safety proof required: guest checkpoints/final unchanged on every route,
-    plus a new check that the real machine's memory is byte-identical before
-    and after each extra draw; nothing in the copy may reach files, sound or
-    devices.
-  - **Feasibility measured (15 Oct, branch `draw-rerun-probe`,
-    `F117_RERUN_PROBE=FILE`, worktree `D:/f117-wt/draw-rerun`; evidence
-    `D:/f117-gate/present-v2/rerun-probe/probe4.txt`):** 1,607 of 1,609 re-runs
-    reproduce the real draw exactly, the real machine never changes (final hash
-    `71bc32c7d96fe6b9` as without the probe), the halfway nudge lands 97.2% of
-    vertices at the midpoint, 6.2 ms (max 8.8) per extra draw with translated
-    code. Build the worktree with `-DF117R_GEN_DIR=...` or it interprets
-    (33 ms). Per-object follow-up: 98% of nudged vertices at the midpoint;
-    every re-run exact apart from the observer's lazy `n` records; aircraft
-    slots nudged (scene-walk objects 97.7 -> 98.9% on air-to-air). Requirements
-    and next steps: docs/presentation.md, "The current plan for 60+ fps".
-  - Reserve option: camera reprojection of one step's own draw list. The
-    full own-renderer (`src/present/scene_mesh.c`, below) is no longer the
-    main path.
-- **No longer draw distance for now** (owner): the resident world is four
-  rings of 32 tile slots.
-- Matched-code defect found by the rotating seed `0xfaf385733f77`: `or ax, ax`
-  after a call was a byte test in VGAME `BAA2` and twice in `73C8` (wrong SF;
-  a zero low byte took the wrong branch). Fixed; CTest `matched_or_ax_word`
-  retains the seed.
-- Gate speedups (no verification weakened): `--overlap-jobs` (default 8) runs
-  the interpreter half during coverage from a private runner copy, and coverage
-  runs are reused as parity's recompiled half when coverage adds no code
-  (`--check-coverage-reuse` proved them equal). 1,706 s -> about 1,550 s; the
-  gate now ends with `career_promotion`'s interpreter chain.
-- Matched-code defect fixed: VGAME `13B9` (map projection) read `[950E]` before
-  its push of BP, which can wrap onto it (seed `0xbf2b70af59c7`); CTest
-  `matched_map_project_saved_bp_alias`. Proof gate 1,853 s: 115 CTests, 45 routes
-  IDENTICAL, 891 matched routines at three seeds, N=1 259,240 / 259,166, boot
-  N=4/9 368/366. Evidence `D:/f117-gate/present-v2/proof-gate`. `tools/present_light_check.py --base REV` is the
-  owner-approved light check for presentation-only changes.
-- Earlier baseline: fresh full gate 1,330 s (114 CTests,
-  45 routes IDENTICAL / 44 fresh interpreter runs, both instruction profiles
-  0 mismatches, 891 matched routines at three seeds incl. `0xfaf385733f77`,
-  reachability/event checks); 45-route N=1 259,240 frames / 259,166 pairs;
-  boot N=4/9 368/366. Evidence `D:/f117-gate/present-v2/identity-*`.
+- **Proof at integration (`fe20913`):** full gate; the 45-route N=1 rerun pass keeps 259,240 frames / 259,166 pairs
+  and every guest hash; boot N=4/9 368/366; 1,638,579 copy-isolation checks with no changed real state.
+  Evidence `D:/f117-gate/present-v2/rerun-accept/final-gate-verdict.json`, `app-verdict.json`.
+- **Threaded palette bug (fixed 15 Oct):** the threaded app path froze the palette at N>1 in `interp` and `rerun`
+  (the driver's colour cycling of the gun rounds showed solid dark red; fades froze too). Headless runs never use
+  that path, so no route check could see it. `F117_PRESENT_SHOTS` dumps what the app presents; the app summary
+  counts distinct presented/scanned palettes, and `present_light_check.py` now checks app-only changes by replaying
+  a recorded session through the app (`--app-session`, `--app-exit-after`). Owner's gun session:
+  `%APPDATA%/F117Recomp/F-117A/sessions/session-20261015-203305` (burst near 2.83B clocks).
+- **Clock tuning (one hidden run each, `D:/f117-gate/present-v2/clock-tune`):** default 6 freezes, 2.5% >20% speed
+  changes; alpha 0.4 / pull 0.025: 3 and 1.3%; picture age not measured. Defaults unchanged: the owner's call.
+- **Verification scope:** `drawfeed.c/.h` and `rerun.c/.h` execute or snapshot machines, so they need the full gate
+  plus `presentation_check.py --mode rerun` over all 45 routes; the light check refuses them.
+- **Still open:** clock skips against picture age; the owner's 4K screen/motion verdict (ask first); per-machine
+  observer/runtime/fix state for parallel copies above about 120 Hz (one copy costs about 6 ms); the small
+  `DF03`/`C2C8` vertex group (`rerun-accept/object-follow-up.txt` is a lead); `thin_strip_stroke` in `hires.c`
+  ignores `present-line-width`. P3 stays at 82.75% until motion is judged.
+- **Owner decisions (15 Oct):** stop improving primitive pairing (identity pairing is opt-in,
+  `F117_PRESENT_IDENT=1`: it halved unpaired shapes but deformed the extra pairs); road and coastline jitter are the
+  original's (also in GOG DOSBox and in sharp `replay` mode) and are **not** smoothed at any scale (21:23); the
+  higher-resolution and higher-frame-rate modes are experimental and keep the original renderer's quirks (README);
+  draw distance is not extended. Owner flights frozen for reference: `D:/f117-gate/present-v2/owner-roads-20261015`
+  and `owner-sharp-20261015`. The rerun research harness stays on branch `draw-rerun-probe` for history.
 
 ### Presentation: what is integrated
 
@@ -190,20 +92,22 @@ capture 2.45B-2.85B; `ident/draw.log` has identity records 2.75B-2.85B;
   integrated; its test can be adapted.
 - The coarse-interpolation checker fails on unknown novel records and
   regeneration-count overruns.
-- Open: coastline motion (boundaries that disappear or change topology),
-  width tuning by drawing role, weapon/target symbology, the owner's
-  physical-panel motion verdict.
+- Open: width tuning by drawing role, weapon/target symbology, the owner's
+  physical-panel motion verdict. Coastline topology work is not planned (no
+  jitter smoothing, owner 15 Oct).
 
 ### Phase 2
 
 - Next candidates (reached by `full_cycle`, unmatched; ranked list
   `D:/f117-gate/format-init/reached-corrected.tsv` minus the matched table):
-  MPS_LOGO `0006:0072`, `0146:1894`, `0146:08CC`; DSWAP `0010`, `1D66`,
-  `117E`; SETUP `19B6`, then the rest of that list (VGAME `130D:033F` and PLAYER
-  `1602` were matched 15 Oct). An agent was stopped mid-proof on MPS_LOGO
-  `0146:1894` (its `p2-*` directory holds an unverified draft) and before
-  starting SETUP `19B6` (empty). Refresh `D:/f117-gate/kit-libs` before the next
-  kit `checkpoints` run: the old libs no longer link.
+  MPS_LOGO `0006:0072`, `0146:08CC`; DSWAP `0010`, `1D66`, `117E`, then the
+  rest of that list. Matched 15 Oct: PLAYER `1602`, VGAME `130D:033F`. Proven
+  privately and integrated on worktree branch `p2-batch-setup-logo`
+  (`D:/f117-wt/gate`), awaiting their gate: SETUP `19B6` (`setup_crt_setargv`,
+  the same C start-up as PLAYER `1602`) and MPS_LOGO `0146:1894`
+  (`mps_logo_open_file`, the C runtime's open, as START `A59A`); proofs in
+  `D:/f117-gate/p2-setup-19b6`, `p2-logo-1894`. Kit libraries refreshed from
+  main at 7fa1b62 (old ones in `D:/f117-gate/kit-libs-old-20261015`).
 - Other leads: PLAYER `026B:0211` (a distinct timer re-sync) and `026B:0336`
   (tick/callback service; calls original code, so needs returning-helper
   fixtures). Private static drafts are unproven transcripts, not
@@ -234,24 +138,40 @@ transitions, widths by role). Details and the method: docs/progress.md.
 
 ## Next steps
 
-1. **60+ fps by re-running the original draw** (above): tune
-   the smoothed clock against picture age, then obtain the owner's physical-display verdict.
-2. **Phase 2** with the kit and parallel agents (below), from the candidate
-   list above. Do not wait for the remaining physical-panel and
-   weaker-machine Phase 3 checks before continuing P2.
-3. **Phase 3 coverage:** time a long cargo/career flight; get the owner's
-   motion verdict on a physical panel; weaker machines. Full checksums via
-   `F117_BENCH_HASH=1` add work outside frame timers and are diagnostics.
-4. **Branch housekeeping:** many local branches are fully merged into
-   `master`. Not merged: `flight-input` (older aircraft-traffic draft,
-   superseded by `b41ec9c`; its worktree `D:/f117-wt/span-emitter` has
-   uncommitted edits) and `irq-divide-fault` (kept on purpose). The stopped
-   presentation WIP branches (`present-horizon`, `present-hud2` and others)
-   are preserved for history; do not merge them again. Ask the owner before
-   deleting anything.
+1. **Gate the Phase 2 batch on branch `p2-batch-setup-logo`** (pushed, worktree `D:/f117-wt/gate`, one commit
+   `e11062f` on top of `7fa1b62`): rebase onto `master`, build, ctest, one full gate, `presentation_check --scales 1`,
+   refresh `docs/progress.json` (measure the census delta against the same TSV with and without the change:
+   PLAYER `1602` + VGAME `033F` added exactly 2 functions / 841 bytes), README/roadmap/architecture figures,
+   commit to `master`, push.
+2. **De-identify code comments** (found by the 15 Oct docs audit; public-repo rule): `src/cpu/cpu.h:3` names the
+   earlier project; `cpu.c`, `x86_sem.h`, `dos.c`, `pc.c`, `tests/cpu_api.c` and `tests/sst286.py` cite private
+   `tools/x86oracle/...` paths; `tools/reimp_names.py`'s usage shows a project path. Comment-only, but under `src/`:
+   batch it with the next full gate.
+3. **Small code-side corrections from the audit:** `tools/pc_parity.py` 86Box miss comment (p037, not the roster
+   screen); `tools/dosbox_compare.py:104` should point to `build_dosbox_x.md`; `tools/d1prox_check.py` describes the
+   withdrawn S=9-floor version; `secret_airstrip_return.args` steps vs its comment (18,635,798,708); the
+   `DRAWLIVE_POOL` comment in `drawfeed.h` says two published steps (rerun publishes three; drawfeed needs the full
+   gate); possible 386-model gap: a warm DOS open is charged 50,145 cycles against 3.56 M measured (check before
+   changing).
+4. **Presentation** (owner verdicts first): the 4K screen/motion verdict (ask before any visible test); whether to
+   adopt the clock setting alpha 0.4 / pull 0.025; `thin_strip_stroke` ignoring `present-line-width`; the open items
+   above. No jitter smoothing (owner).
+5. **Phase 2** with the kit and parallel agents, from the candidate list above.
+6. **Phase 3 coverage:** time a long cargo/career flight; weaker machines. Full checksums via `F117_BENCH_HASH=1`
+   add work outside frame timers and are diagnostics.
+7. **Branch housekeeping:** many local branches are fully merged into `master`. Not merged: `flight-input` (older
+   aircraft-traffic draft, superseded by `b41ec9c`; its worktree `D:/f117-wt/span-emitter` has uncommitted edits),
+   `irq-divide-fault` (kept on purpose) and `p2-batch-setup-logo` (item 1). The stopped presentation WIP branches
+   are preserved for history; do not merge them again. Ask the owner before deleting anything.
 
 ## Owner decisions and instructions in force
 
+- **Gate speed (15 Oct):** only optimisations that are totally safe and weaken no check. Declined: splitting the
+  long interpreter run into checkpoint segments (only as strong as the saved states are complete) and dropping
+  `--verify-interp-cache`. Adopted: the light check's app-only class (`src/host/main.c` and the example ini files
+  are built only into `f117a.exe`, which the gate never runs): build, CTests and an app replay of a recorded
+  session in `interp` and `rerun` (`--app-session`, `--app-exit-after`), with exact logic frames and every
+  scanned-out palette presented; break-tested against the frozen-palette bug.
 - **Gameplay and logic parity are the top priority.** Independent rendering
   must preserve original control reads and simulation timing. Latest-state
   rendering avoids interpolation age; smoothing without waiting requires
@@ -381,7 +301,7 @@ A routine only counts as matched once it passes BOTH:
    count, with every checkpoint and the final hash identical between engines.
    Fixture proof alone is not enough: this project has repeatedly found
    routines that pass every fixture seed but were never reached by real play
-   (04DD above; the historical pattern is in `docs/repeated-processes.md` and
+   (04DD above; see `docs/repeated-processes.md` ("Phase 2 proofs", traps) and
    `docs/roadmap.md`). If no route reaches a new routine, say so plainly and
    keep it out of `master`.
 
@@ -389,7 +309,7 @@ Every change to `src/matched/matched.c` needs a fresh full gate
 (`py tools/build_recomp.py --data D:/GOG/F-117A --seed-coverage
 C:/Users/Tideg/f117-recomp-local/coverage --jobs 16 --verify-interp-cache`,
 via `D:/f117-gate/affinity_launch.py`, which sets and verifies `BelowNormal`
-priority and affinity; ~30 min) before it's pushed. Read the actual tally in
+priority and affinity; about 22-28 min) before it's pushed. Read the actual tally in
 the log, not just the exit code. Check GitHub CI for new commits.
 
 ## Where things are
