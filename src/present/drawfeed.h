@@ -139,6 +139,7 @@ typedef struct {
      * clock"). It costs about a third of a step more picture age than showing each step as soon as it closes. */
     int            smooth, im;
     double         play_pos, ema;
+    double         ema_alpha, pull_in;   /* clock tuning: weight of a new step duration, pull towards one step behind */
     uint64_t       play_icount, last_end;
     int            newest;         /* the last step kept, staged or published, -1 none */
     int            queue[DRAWLIVE_QUEUE]; /* collected steps (their index) and exact-frame failures (-1), in order */

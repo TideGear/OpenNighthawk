@@ -163,6 +163,7 @@ this machine's instruction-level one.
 | `F117_PRESENT_HUD=old`, `F117_PRESENT_BANDS=old` | the captured-call HUD / sky and ground instead of the state-driven ones |
 | `F117_PRESENT_IDENT=1` | the identity-pairing experiment (off by default) |
 | `F117_PRESENT_CLOCK=raw` | use the old step clock in rerun mode instead of the smoothed playback clock |
+| `F117_PRESENT_CLOCK_ALPHA`, `F117_PRESENT_CLOCK_PULL` | tuning only: weight of a new step duration (default 0.2) and pull towards one step behind the newest (default 0.05) |
 | `F117_PRESENT_THREADS_OFF=1` | everything on the main thread, for comparison |
 | `F117_PRESENT_DIAG=DIR` and its `_HIST`, `_RECT`, `_HIST_ONLY`, `_TRACE` | the pixel-origin diagnostic ([below](#where-the-blockiness-comes-from-the-pixel-origin-diagnostic-14-october-2026)) |
 | `F117R_OBSERVE_PAGES`, `_HUD`, `_BANDS`, `_KINDS`, `_SCENE`, `_IDENT` | observer log options for `f117run --observe` ([record kinds](#stage-0-and-1-the-observer-and-the-draw-list)) |

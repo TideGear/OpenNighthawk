@@ -200,6 +200,10 @@ void drawlive_set_rerun(drawlive *r)
     r->rerun = 1;
     const char *clock = getenv("F117_PRESENT_CLOCK");
     r->smooth = !(clock && !strcmp(clock, "raw"));      /* the smoothed clock, unless F117_PRESENT_CLOCK=raw */
+    r->ema_alpha = 0.2; r->pull_in = 0.05;
+    const char *a = getenv("F117_PRESENT_CLOCK_ALPHA"), *p = getenv("F117_PRESENT_CLOCK_PULL");   /* tuning only */
+    if (a && atof(a) > 0 && atof(a) <= 1) r->ema_alpha = atof(a);
+    if (p && atof(p) > 0 && atof(p) <= 1) r->pull_in = atof(p);
 }
 
 /* One record into the replay, through the sub-pixel builder first when there is one. */
@@ -484,7 +488,7 @@ void drawlive_publish(drawlive *r)
         if (r->smooth) {                               /* three published: the playback clock sits between them */
             if (r->last_end && s->end > r->last_end) {
                 const double d = (double)(s->end - r->last_end);
-                r->ema = r->ema > 0 ? 0.8 * r->ema + 0.2 * d : d;
+                r->ema = r->ema > 0 ? (1 - r->ema_alpha) * r->ema + r->ema_alpha * d : d;
             }
             r->last_end = s->end;
             r->ia = r->im;
@@ -552,7 +556,7 @@ static int plan_smooth(drawlive *r, uint64_t icount, drawlive_plan *plan)
     const double N = (double)newest->seq;
     if (!r->play_icount) { r->play_pos = N - 1.0; r->play_icount = icount; }
     if (icount > r->play_icount) {
-        const double rate = 1.0 + 0.05 * ((N - 1.0) - r->play_pos);
+        const double rate = 1.0 + r->pull_in * ((N - 1.0) - r->play_pos);
         r->play_pos += (rate > 0.2 ? rate : 0.2) * (double)(icount - r->play_icount) / r->ema;
     }
     r->play_icount = icount;

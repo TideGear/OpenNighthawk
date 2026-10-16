@@ -50,7 +50,7 @@ shared the gate's load. Main's libraries changed: refresh `D:/f117-gate/kit-libs
 make observer/runtime/fix state per machine for parallel copies above 60 Hz; inspect the small `DF03`/`C2C8` group.
 Clock evidence on `c7b4d77` (two hidden scale-2 owner-flight runs, `rerun-mode/app7`): raw clock 274 freezes,
 12 skips, 18.4% >20% speed changes; smoothed 17-21, 23-34, 3.3-5.0%. Defaults remain pull-in 0.05, one-step lag,
-EMA 0.8/0.2. A private sweep (`rerun-accept/clock_sweep.py`, `clock-sweep.json`) suggests EMA alpha 0.4 / pull-in
+EMA 0.8/0.2. Opt-in knobs `F117_PRESENT_CLOCK_ALPHA`/`_PULL` exist (gated). One hidden owner-flight run each (`D:/f117-gate/present-v2/clock-tune`): default 6 freezes, 2.5% >20% speed changes; alpha 0.4/pull 0.025 3 and 1.3%; 0.4/0.05 4 and 1.3%; picture age not measured. Defaults unchanged: the owner's call. A private sweep (`rerun-accept/clock_sweep.py`, `clock-sweep.json`) suggests EMA alpha 0.4 / pull-in
 0.025 at 30/60/144 Hz; simulation only, not adopted/live-tested. `DF03` is the generic deferred-object draw in a
 secondary camera's nested terrain view; `rerun-accept/object-follow-up.txt` is a lead, not a fix.
 Smooth the original's road jitter at N>1 afterward. P3 stays at 82.75% until motion is judged; merging alone does
