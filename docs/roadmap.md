@@ -68,7 +68,7 @@ make (Phase 4).
   early for its autoexec); delivery there is not pursued (Settled, below).
 - **The game version verified:** GOG's installer (build 28044) with the 473.04
   update; Steam's release is byte-identical (`tools/verify_install.py`).
-- **The gate** (`tools/build_recomp.py`): translate, build, unit tests (118),
+- **The gate** (`tools/build_recomp.py`): translate, build, unit tests (120),
   coverage, both engines on every route, instruction lockstep under both
   timing profiles, matched-routine lockstep at three seeds, and the
   routes-only and event-limit checks. About 21-30 minutes when every
@@ -151,8 +151,8 @@ not the recompilation:
       [../handoff.md](../handoff.md). `tools/reimp_names.py` joins the Reimp's
       census (1,535 functions) with this project's regions as a private lead
       list.
-      **Now:** 893 addresses matched, covering 891 of the census functions and
-      118,501 of 179,213 bytes (P2 67.82%, overall 89.25%).
+      **Now:** 895 addresses matched, covering 893 of the census functions and
+      119,318 of 179,213 bytes (P2 68.25%, overall 89.38%).
       **What is left:** `tools/census_reach.py` separates code with run
       evidence from code without (gate coverage logs only interpreted
       fallback instructions, so it cannot show what ran). A complete
@@ -311,7 +311,7 @@ reaches. Candidate drafts can keep private static dossiers
   `pilot-options`.
 - `0963` `start_arms_screen_loop` (thin), `A59A` `start_sopen_file` (its create
   path needs scripted INT 21h answers), `008D` `start_draw_pilot_card`,
-  `64E5` `start_draw_pilot_record_sheet` (thin; its span holds six census
+  `64E5` `start_draw_pilot_record_sheet` (thin; its span holds six interior census
   entries), `74B1` `start_world_page_objects`, `623E`
   `start_roster_event_loop` (thin) and `6861` `start_draw_pilot_row`.
   `D:/f117-gate/p2-batch3` to `p2-batch6`.
@@ -346,6 +346,15 @@ reaches. Candidate drafts can keep private static dossiers
   vector, 204 instructions; it leaves by `JMP [1ABC]` with the stack lowered,
   so the lockstep accepts that exit for this routine only): five seeds, 61
   mutations, `full_cycle` 2 calls. `D:/f117-gate/p2-player-1602`.
+- SETUP `19B6` `setup_crt_setargv` (204 instructions; the same startup as
+  PLAYER `1602`, with its own `JMP [0EBA]` exit): five seeds, 61 mutations,
+  `full_cycle` 1 call. MPS_LOGO `0146:1894` `mps_logo_open_file` (163
+  instructions; the far-return form of START's runtime open): five seeds,
+  59 mutations, `full_cycle` 1 call. Each keeps all 66 checkpoints and the
+  final hash. Census credit: 2 functions / 817 bytes, measured against the
+  same census before and after; shared tails add no credit.
+  `D:/f117-gate/p2-setup-19b6`, `p2-logo-1894`; batch gate and N=1
+  presentation evidence: `D:/f117-gate/p2-setup-logo-accept`.
 - Twenty-two support routines: PLAYER's picture open/refill and linear copy,
   the four timer shutdowns, five mouse wrappers and SETUP's mouse probe,
   file-name comparison, BIOS text writer, register-block interrupt call and

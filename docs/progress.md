@@ -42,7 +42,11 @@ stays on the roadmap.
   counts as named only when it has a named, explained matched equivalent in
   the repository; name leads from `tools/reimp_names.py` do not count until
   they are checked and used. Refresh the census figures with
-  `py tools/progress.py --census <reimp_names.py output>`.
+  `py tools/progress.py --census <reimp_names.py output>`. Explicitly proved
+  spans also credit wholly covered interior census routines once (START
+  `64E5` includes six interiors, 518 bytes); a static walk into shared code
+  earns no additional credit. The refresh requires the span's matched entry
+  to remain registered.
 - **Phase 3, fixes:** fixes available in `src/fixes/fixes.c` over the
   actionable reports catalogued as `### Dn.` in `docs/bugs.md`. An explicit
   `Disposition. Closed:` excludes an unestablished historical report;

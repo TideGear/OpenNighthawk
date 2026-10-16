@@ -23,6 +23,11 @@ import re
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.path.join(ROOT, "docs", "progress.json")
 
+# Proven bodies that also replace separately listed interior census routines.
+# START's pilot-record sheet covers six interiors through the next entry, 6861.
+# Keep this explicit: a static walk into shared code is not proof of ownership.
+CENSUS_SPANS = {("START", 0x64E5): 0x6861}
+
 
 def matched_addresses():
     text = open(os.path.join(ROOT, "src", "matched", "matched.c"), encoding="utf-8").read()
@@ -49,14 +54,24 @@ def fixes_share():
 
 
 def refresh_census(data, path):
-    rows = [l.rstrip("\n").split("\t") for l in open(path, encoding="utf-8")][1:]
+    with open(path, encoding="utf-8") as source:
+        rows = [l.rstrip("\n").split("\t") for l in source][1:]
     matched = matched_addresses()
     c = data["census"]
     c["functions"] = len(rows)
     c["bytes"] = sum(int(r[2]) for r in rows)
-    hit = [r for r in rows if (r[0], int(r[1], 16)) in matched]
+    hit = [r for r in rows if census_row_matched(r, matched)]
     c["matched_functions"] = len(hit)
     c["matched_bytes"] = sum(int(r[2]) for r in hit)
+
+
+def census_row_matched(row, matched):
+    module, entry, size = row[0], int(row[1], 16), int(row[2])
+    if (module, entry) in matched:
+        return True
+    return any(module == mod and (mod, start) in matched
+               and start <= entry and entry + size <= end
+               for (mod, start), end in CENSUS_SPANS.items())
 
 
 def compute(data):

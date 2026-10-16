@@ -32,12 +32,12 @@ tools/build_recomp.py --data INSTALL --seed-coverage WORK/coverage --jobs 16
 --verify-interp-cache`, started through `D:/f117-gate/affinity_launch.py`
 (below).
 
-**Current figures (15 October 2026):** 118 CTests; 45 routes identical, run
-as 44 sessions; 5,718,848 instruction states under each timing profile; 893
+**Current figures (15 October 2026):** 120 CTests; 45 routes identical, run
+as 44 sessions; 5,718,848 instruction states under each timing profile; 895
 matched routines at three seeds; reachability and event limits clean. A gate
-takes about 1,300-1,700 s. The latest measured breakdown (1,288 s, with
-coverage): translate/build 87 s, coverage 815 s, second translation 41 s,
-parity 345 s. With coverage skipped, the last gate took 1,330 s (parity
+takes about 1,300-1,700 s. The latest measured breakdown (1,553 s, with
+coverage and a new generated-code directory): translate/build/tests 296 s,
+coverage 744 s, second translation 47 s, parity 466 s. With coverage skipped, the last gate took 1,330 s (parity
 1,223 s, all 88 jobs in one stage): skipping coverage no longer shortens the
 gate, because the same interpreter chain sets the end either way (below).
 
@@ -107,10 +107,10 @@ route and lockstep workers remain experiments to benchmark first.
 ## Presentation checks
 
 **After a presentation-code change**, all headless:
-- `ctest -E func_lockstep -j 8`: the same 118 tests the gate runs (111 took
+- `ctest -E func_lockstep -j 8`: the same 120 tests the gate runs (111 took
   36.56 s on 15 Oct).
 - `tools/presentation_check.py --data DIR --baseline-runs DIR/runs --out DIR
-  --scales 1` over the 45 routes: 482.30 s at 16 workers; 1,321.61 s at
+  --scales 1` over the 45 routes: 530.70 s at 16 workers; 1,321.61 s at
   eight workers beside a gate. It keeps 259,240 exact logic frames / 259,166
   exact interpolation pairs and every guest checkpoint and final hash.
   Options: `--routes STEM...`, `--scales N...` (default 4 and 9), `--jobs N`
@@ -287,7 +287,21 @@ verdict yourself, then land a batch with one gate.
 | isolated unit tests | 29.72-80.52 s (36-44 tests) | |
 | real-route replay | 0.8 s (`setup_calibration`) to 190.6 s (camera image on `camera_gradients`) | needs positive matched invocation counts |
 | full gate | as above | one per batch |
-| census refresh (`reimp_names.py`, then `progress.py --census`) | about a minute | the lead list changes only when the Reimp does; refresh the census each batch |
+| census refresh (`reimp_names.py`, then `progress.py --census`) | about a minute for new leads; existing TSV refresh <1 s | the lead list changes only when the Reimp does; refresh the census each batch; explicitly proved interior spans retain credit without double counting |
+
+The private kit writes generated project files only when their bytes change
+(15 Oct). An unchanged harness and CMake file therefore keep their timestamps
+across mutations; the candidate source still changes and is rebuilt. A
+mocked-build probe with real SETUP proof inputs requires identical generated
+SHA256s and build commands, retained unchanged timestamps, and a mutation
+changing only the candidate source. Evidence:
+`D:/f117-gate/kit-write-probe/verification.json`. An actual unchanged
+MPS_LOGO `08CC` proof build takes 1.59 s on its two assigned CPUs and Ninja
+reports no work (`D:/f117-gate/p2-logo-08cc/build-unchanged.log`). Actual
+seeds, mutations and route proofs still run normally; no proof is skipped.
+Proof workers can use
+separate CPU sets at BelowNormal priority beside the gate, leaving desktop
+CPUs free; keep each worker's mutation builds serial when sharing the machine.
 
 Each routine's states, calls and behaviour are in [roadmap.md](roadmap.md);
 the private evidence is in its named `D:/f117-gate/` directory. Typical
