@@ -4,7 +4,7 @@
  *   f117a [--data DIR] [--save DIR] [--engine recomp|interp] [--ips N] [--timing dosbox|386]
  *         [--scale N] [--fullscreen] [--no-aspect] [--midi N] [--log FILE]
  *         [--audio-queue-log FILE]
- *         [--audio-dump FILE] [--present scan|replay|interp] [--present-scale N]
+ *         [--audio-dump FILE] [--present scan|replay|interp|rerun] [--present-scale N]
  *         [--present-line-width N] [--present-age interp|extrapolate] [--present-log FILE] [--config FILE | --no-config]
  *
  * Every option can also be kept in f117a.ini beside the executable (or the
@@ -103,6 +103,19 @@ typedef struct {
 } present_worker;
 static present_worker g_pw;
 static uint64_t g_frame_ips;          /* guest clocks in one host frame */
+
+/* Distinct palettes, presented and scanned out, for the summary: a presentation that freezes the palette
+ * shows one against the machine's many (the colour cycling of the gun rounds, fades). */
+#define PAL_SET_MAX 1024
+typedef struct { uint64_t h[PAL_SET_MAX]; int n; } pal_set;
+static pal_set g_pal_shown, g_pal_scanned;
+static void pal_note(pal_set *s, const uint8_t *dac)
+{
+    uint64_t h = 1469598103934665603ull;
+    for (int i = 0; i < 768; i++) h = (h ^ dac[i]) * 1099511628211ull;
+    for (int k = 0; k < s->n; k++) if (s->h[k] == h) return;
+    if (s->n < PAL_SET_MAX) s->h[s->n++] = h;
+}
 
 static int present_worker_main(void *u)
 {
@@ -486,7 +499,7 @@ int main(int argc, char **argv)
                 "             [--record FILE | --no-record] [--replay FILE] [--time-us N]\n"
                 "             [--exit-after CLOCKS] [--opl dbopl|nuked] [--speaker realsound|pwm]\n"
                 "             [--audio-queue-log FILE]\n"
-                "             [--audio-dump FILE] [--present scan|replay|interp] [--present-scale N]\n"
+                "             [--audio-dump FILE] [--present scan|replay|interp|rerun] [--present-scale N]\n"
                 "             [--present-line-width 0..20] [--present-age interp|extrapolate] [--present-log FILE]\n"
                 "             [--roland munt|windows|off] [--mt32-roms DIR]\n"
                 "             [--mt32-control FILE --mt32-pcm FILE] [--fix ID|all]... [--list-fixes]\n"
@@ -885,6 +898,11 @@ int main(int argc, char **argv)
         if (g_replay == 2) {
             present_capture(&H.m, &H.frame);
             if (g_pw.thread) {
+                /* The machine as it stands now: the next plan and its palette come from this, not from the
+                 * frame shown below, which carries the previous plan's picture and palette (handing that on
+                 * froze the palette: the driver's colour cycling, e.g. the gun rounds, and every fade). */
+                static present_frame fresh;
+                fresh = H.frame;
                 drawlive_collect(&g_live, &g_feed);
                 /* the picture planned a frame ago, drawn meanwhile by the worker */
                 g_fine = NULL;
@@ -908,10 +926,10 @@ int main(int argc, char **argv)
                 drawlive_plan plan;
                 /* Interpolation shows the clock as it stands (a frame later than the drawing, which
                  * leads the display by one); extrapolation is a prediction and looks a frame ahead. */
-                if (drawlive_plan_interp(&g_live, &H.m, &H.frame, H.m.cpu.icount + (g_age ? g_frame_ips : 0), &plan)) {
+                if (drawlive_plan_interp(&g_live, &H.m, &fresh, H.m.cpu.icount + (g_age ? g_frame_ips : 0), &plan)) {
                     drawlive_prepare_rerun(&g_live, &plan);   /* the copy runs here, on the machine's thread */
                     g_pw.plan = plan;
-                    g_pw.frame = H.frame;
+                    g_pw.frame = fresh;
                     g_pw.busy = 1;
                     SDL_SignalSemaphore(g_pw.go);
                 }
@@ -931,6 +949,10 @@ int main(int argc, char **argv)
         }
         int w, h;
         SDL_Texture *show = tex;
+        if (g_replay && !H.frame.text) {
+            pal_note(&g_pal_shown, H.frame.dac);
+            if (H.m.scan_valid) pal_note(&g_pal_scanned, H.m.scan_dac);
+        }
         if (g_fine && tex_fine && !H.frame.text) {           /* the finer picture, with the frame's palette */
             w = 320 * g_scale; h = 200 * g_scale;
             if (!fine_ready) convert_fine(H.frame.dac, g_fine, fine_pixels, (size_t)w * h);
@@ -941,6 +963,26 @@ int main(int argc, char **argv)
             present_render(&H.frame, pixels, &w, &h, (int)((SDL_GetTicksNS() / 266666666ull) & 1));
             SDL_Rect src = { 0, 0, w, h };
             SDL_UpdateTexture(tex, &src, pixels, w * 4);
+        }
+        /* F117_PRESENT_SHOTS=PREFIX (diagnostic): the picture just made ready for the display, from machine clock
+         * F117_PRESENT_SHOTS_FROM, F117_PRESENT_SHOTS_COUNT of them, as PREFIX<icount>.ppm */
+        {
+            static const char *shots; static uint64_t from, left; static int shots_init;
+            if (!shots_init) {
+                shots_init = 1; shots = getenv("F117_PRESENT_SHOTS");
+                const char *f = getenv("F117_PRESENT_SHOTS_FROM"), *c = getenv("F117_PRESENT_SHOTS_COUNT");
+                from = f ? strtoull(f, NULL, 0) : 0; left = c ? strtoull(c, NULL, 0) : 60;
+            }
+            if (shots && left && H.m.cpu.icount >= from) {
+                char path[900]; snprintf(path, sizeof path, "%s%llu.ppm", shots, (unsigned long long)H.m.cpu.icount);
+                FILE *sf = fopen(path, "wb");
+                if (sf) {
+                    const uint32_t *px = show == tex_fine ? fine_pixels : pixels;
+                    fprintf(sf, "P6\n%d %d\n255\n", w, h);
+                    for (int k = 0; k < w * h; k++) { const uint8_t rgb[3] = { (uint8_t)(px[k] >> 16), (uint8_t)(px[k] >> 8), (uint8_t)px[k] }; fwrite(rgb, 1, 3, sf); }
+                    fclose(sf); left--;
+                }
+            }
         }
         SDL_FRect srcf = { 0, 0, (float)w, (float)h };
         SDL_FRect dst = output_rect(ren, aspect);
@@ -1000,6 +1042,9 @@ int main(int argc, char **argv)
                     "%llu VGA frames presented from the replay, %llu of them in-between frames\n", (unsigned long long)g_live.frames,
                     (unsigned long long)g_live.exact, (unsigned long long)g_live.inexact, (unsigned long long)g_presented,
                     (unsigned long long)g_live.inbetweens);
+        if (g_replay)
+            fprintf(H.m.log, "[present] palettes: %d distinct presented, %d distinct scanned out (counted up to %d)\n",
+                    g_pal_shown.n, g_pal_scanned.n, PAL_SET_MAX);
         if (g_rerun)
             fprintf(H.m.log, "[present] rerun: %llu in-between pictures drawn by the original on a copy, %llu fell back to "
                     "interpolation, %.0f instructions a copy\n", (unsigned long long)g_live.rerun_drawn,
