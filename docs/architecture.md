@@ -45,6 +45,17 @@ The optional presentation (finer pictures, in-between frames) observes the
 original's draw path and never changes the machine; its design is in
 [presentation.md](presentation.md).
 
+The rerun mode executes extra draws on machine copies. The normal gate's
+scan routes do not exercise those copies: `presentation_check.py --mode
+rerun` separately compares every guest checkpoint and final hash against
+the scan baseline, checks the unnudged redraw, and compares real memory,
+machine state and the fixes' host state around each extra draw. Memory
+equality alone was insufficient: an early copy advanced D1's shared frame
+limiter without writing real guest memory. Fix state now travels with the
+snapshot and the live state is restored after each copy.
+The light-check classifier excludes `drawfeed.c/.h` and `rerun.c/.h` for
+this reason; their location under `src/present/` does not make them read-only.
+
 ## The CPU and its two engines
 
 `src/cpu/cpu.c` is the Reimp project's oracle interpreter (see

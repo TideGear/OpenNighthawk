@@ -26,8 +26,13 @@ matched-routine lockstep (three seeds), then the reachability and event-limit
 checks. The gate explicitly sets `F117R_BUILD_APP=ON`, so a previous
 core-only build cannot silently omit the host tests.
 
-**Current cost (15 October 2026).** Fresh full gates from 11 to 15 October took
-between 1,301 s and 1,990 s. Latest: 1,330 s with coverage skipped
+**Current cost (15 October 2026).** Latest full gate with coverage: 1,288 s
+(rerun integration; translate/build 87 s, coverage 815 s, second translation
+41 s, parity 345 s; 116 CTests, 45 routes / 44 fresh interpreter runs,
+both instruction profiles, 891 matched routines at three seeds, reachability
+and event limits clean). D1/boot rerun probes overlapped its start; this is
+a correctness-run cost, not an isolated performance comparison.
+Earlier fresh gates took 1,301-1,990 s. Latest with coverage skipped: 1,330 s
 (unchanged translation; parity 1,223 s, all 88 jobs in one stage; 114 CTests,
 45 routes / 44 fresh interpreter runs, both instruction profiles, 891 matched
 routines at three seeds). Latest with coverage: 1,706 s (initial
@@ -129,6 +134,25 @@ route/lockstep workers remain experiments to benchmark first.
   These concurrent runs check correctness, not refresh-rate performance.
 - `boot_to_flight` at `--scales 4 9`: 56 s at two jobs (58.91 s in another
   run), 368 frames / 366 pairs each.
+- Rerun integration adds `--mode rerun` to the same presentation check (the
+  default remains `interp`). In addition to all existing equality, endpoint,
+  route-milestone and guest-hash checks, it requires unchanged-copy t = 0
+  equality, byte-identical real memory/machine/fix state around every copy, and
+  no blocked DOS operations. Flight routes must actually draw intermediate
+  pictures on copies; an all-fallback run cannot pass. Console-status and emulated-clock reads use
+  the copy; file operations are blocked. The ROM-free
+  `presentation_rerun_isolation` test checks private memory/devices, silent
+  hooks, restored observer, and direct/chained DOS rejection in both timing
+  profiles (0.02 s isolated). The 44 N=1 routes apart from the separate D1
+  probe took 1,696.92 s at 16 jobs; D1 352.03 s and boot N=4/9 185.44 s
+  shared the gate's load. The combined 45 routes keep 259,240 frames /
+  259,166 pairs and all guest hashes exact; all checks together include
+  1,638,579 isolated copies. Final threaded owner-flight smoke test: 143.36 s
+  offscreen/silent under load, exit 0, 1,610 exact logic frames, 4,933 original
+  in-between draws and 3 fallbacks. Evidence: `rerun-accept` (the handoff).
+  The first full rerun pass exposed shared D1 limiter state despite unchanged
+  memory; fix globals now travel with the draw snapshots and are restored
+  after each copy. Keep `d1_fast_machine` in this pass.
 - The retained windows: 96 replay/refinement/interpolation checks across 16
   windows. Run `build/test_drawlist`, `test_hires` and `test_interp` with
   absolute paths: the relative `build/` junction fails under Python's
@@ -139,7 +163,10 @@ owner-approved, 15 Oct) replaces the full gate for presentation-only changes.
 It refuses unless every file changed since the last full gate's commit is
 under `src/present/` and not included from guest-side code (the observer
 includes `band_state.h`, `hud_state.h`, `scene_capture.h`), a presentation
-test or documentation; then it builds and runs every CTest, the 45-route N=1
+test or documentation. `drawfeed.c/.h` and `rerun.c/.h` are excluded: they
+snapshot or execute machines, so changes there require the full gate plus
+the 45-route `--mode rerun` checks, despite their directory. For eligible
+read-only changes it builds and runs every CTest, the 45-route N=1
 check against the last gate's baseline runs, and boot at N=4/9. Observer,
 matched, CPU, machine and host changes still need the full gate, and a full
 gate is still needed before the next Phase 2 `kit.py checkpoints` (any `src/`

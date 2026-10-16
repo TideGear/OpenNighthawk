@@ -281,7 +281,7 @@ static const uint8_t *draw_list(drawlive *r, const drawlive_step *skel)
 static int run_copy(drawlive *r, const drawlive_step *a, const drawlive_step *b, double t)
 {
     if (!a->have_compose || !a->snap.valid) return 0;
-    if (!rerun_draw(&a->snap, b && b->have_compose ? &b->snap : NULL, t, &r->rlist) || r->rlist.first < 0) return 0;
+    if (!rerun_draw(&a->snap, b && b->have_compose ? &b->snap : NULL, t, &r->rlist, r->check) || r->rlist.first < 0) return 0;
     r->rerun_insn += r->rlist.insn;
     return 1;
 }

@@ -20,6 +20,11 @@ void fixes_list(FILE *f);
 void fixes_enabled(char *out, size_t n);
 /* Switch on each fix a recorded session names; 0 if one is unknown. */
 int  fixes_enable_list(const char *ids);
+/* Host state used by fixes, saved/restored around a speculative draw on a
+ * copied machine. The enabled set is unchanged; the copy runs the same fixes. */
+size_t fixes_pending_size(void);
+void fixes_pending_save(void *dst);
+void fixes_pending_restore(const void *src);
 /* machine_hooks.file_data: the data corrections of the fixes that are on. */
 void fixes_file_data(void *user, machine_t *m, const char *name, long size, long pos,
                      uint8_t *buf, size_t n);

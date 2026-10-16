@@ -199,6 +199,7 @@ static void inbetweens(void)
     for (int k = 0; k < 3; k++) {
         drawlive_plan plan;
         memset(&plan, 0, sizeof plan);
+        plan.sa = plan.sb = -1;
         plan.kind = PLAN_BETWEEN;
         plan.t = ts[k];
         plan.older = a->seq; plan.newer = b->seq;

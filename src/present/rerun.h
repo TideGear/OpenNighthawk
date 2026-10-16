@@ -19,6 +19,7 @@
 typedef struct {
     machine_t m;
     uint8_t  *mem;           /* MEM_SIZE bytes, or NULL */
+    void     *fix_pending;   /* the fixes' host state at the same moment */
     int       valid;
 } rerun_snap;
 
@@ -37,12 +38,13 @@ typedef struct {
     int         presented;    /* the copy reached graphics entry 44 */
     int         first;        /* the first record after the copy's first frame phase (VGAME 1450), or -1 */
     uint64_t    insn;         /* instructions the copy ran */
+    uint64_t    checks, changed, blocked; /* cumulative isolation diagnostics */
 } rerun_list;
 
 void rerun_list_free(rerun_list *l);
 
 /* Run a copy of a with its inputs moved the fraction t (0..1) towards b (b NULL or t 0: unchanged), and collect its
  * records into out. Returns 1 when the copy presented and its frame closed. Call only on the thread that runs the machine. */
-int rerun_draw(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *out);
+int rerun_draw(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *out, int check);
 
 #endif

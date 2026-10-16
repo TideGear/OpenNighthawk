@@ -180,8 +180,8 @@ set (and, for Munt, `mt32-roms`).
 | `--opl dbopl\|nuked` | GOG DOSBox's OPL2 synthesizer (default), or Nuked OPL3 in OPL2 mode; both output at 44,100 Hz |
 | `--speaker realsound\|pwm` | smoothed digitised speaker speech (default), or the original PWM carrier |
 | `--scale N`, `--fullscreen`, `--no-aspect` | window size; fullscreen; square pixels instead of 4:3 |
-| `--present scan\|replay\|interp` | the picture in flight; see [Presentation](#presentation) |
-| `--present-scale N` | with `replay` or `interp`: the picture N times finer, 1-16 |
+| `--present scan\|replay\|interp\|rerun` | the picture in flight; see [Presentation](#presentation) |
+| `--present-scale N` | with `replay`, `interp` or `rerun`: the picture N times finer, 1-16 |
 | `--present-line-width N` | fine HUD stroke width in output pixels, 0-20; 0 (default) scales with `--present-scale`, 1 is a thin stroke; text and artwork keep their original pixels |
 | `--present-age interp\|extrapolate` | with `interp`: trail the original by one logic step and be exact at its frames (default), or predict beyond the latest frame (can overshoot a sudden change) |
 | `--config FILE`, `--no-config` | read settings from FILE instead of `f117a.ini` beside the executable; or read none |
@@ -229,8 +229,11 @@ itself:
   fills a 4K screen's 2160 lines at 4:3.
 - `--present interp` adds in-between frames at the display's own rate, one
   logic step behind. It is experimental: some objects still move unevenly.
-  The planned method for smooth 60+ fps re-runs the original's own,
-  unmodified drawing at in-between moments.
+- `--present rerun` draws intermediate poses with the original's own,
+  unmodified drawing code on a disposable machine copy, then refines them
+  at the chosen scale. Its smoothed playback clock reduces uneven motion;
+  `F117_PRESENT_CLOCK=raw` selects the older clock. It remains experimental:
+  clock skips, higher refresh rates and physical-display motion need review.
 
 The optional preset [f117a.4k.ini](f117a.4k.ini) (copied beside `f117a.exe`)
 selects fullscreen, `present = interp` and scale 9:

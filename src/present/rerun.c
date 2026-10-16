@@ -1,6 +1,7 @@
 /* rerun.c - see rerun.h. */
 #include "rerun.h"
 #include "observe.h"
+#include "../fixes/fixes.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -8,15 +9,18 @@
 void rerun_snap_take(rerun_snap *s, const machine_t *m)
 {
     if (!s->mem) s->mem = (uint8_t *)malloc(MEM_SIZE);
-    if (!s->mem) { s->valid = 0; return; }
+    if (!s->fix_pending) s->fix_pending = malloc(fixes_pending_size());
+    if (!s->mem || !s->fix_pending) { s->valid = 0; return; }
     s->m = *m;
     memcpy(s->mem, m->mem, MEM_SIZE);
+    fixes_pending_save(s->fix_pending);
     s->valid = 1;
 }
 
 void rerun_snap_free(rerun_snap *s)
 {
     free(s->mem);
+    free(s->fix_pending);
     memset(s, 0, sizeof *s);
 }
 
@@ -25,6 +29,7 @@ void rerun_snap_swap(rerun_snap *a, rerun_snap *b)
     static machine_t tm;              /* the machine structure is large: not on the stack */
     tm = a->m; a->m = b->m; b->m = tm;
     uint8_t *mem = a->mem; a->mem = b->mem; b->mem = mem;
+    void *fix_pending = a->fix_pending; a->fix_pending = b->fix_pending; b->fix_pending = fix_pending;
     const int valid = a->valid; a->valid = b->valid; b->valid = valid;
 }
 
@@ -81,6 +86,30 @@ static const f117_observer g_copy_obs = { .user = NULL, .frame_phase = on_phase,
 static machine_t g_copy;
 static uint8_t  *g_copy_mem;
 static void     *g_pending;
+static void     *g_fix_pending;
+static void     *g_fix_after;
+static machine_t g_before;
+static uint8_t *g_before_mem;
+static int g_blocked;
+
+/* No DOS operation, including a chained call to its native stub, may touch
+ * the host from a speculative draw. BIOS/device operations use the copy. */
+static int copy_int(cpu_t *c, uint8_t vec)
+{
+    if (vec == 0x21 || vec == 0xE3 || vec == 0x20) {
+        /* The draw polls DOS's console status and reads its clock. These
+         * services use only the copy's memory and emulated time. */
+        const unsigned ah = c->r[R_AX] >> 8;
+        if (vec != 0x20 && (ah == 0x0B || ah == 0x2C)) return dos_int_hook(c, vec);
+        static int reports;
+        if (reports++ < 4) fprintf(stderr, "[rerun] blocked DOS vector %02X AX %04X at %04X:%04X\n", vec, c->r[R_AX], c->op_cs, c->op_ip);
+        g_blocked = 1;
+        machine_of(c)->exited = 1;
+        c->stop_at = 0;
+        return 1;
+    }
+    return dos_int_hook(c, vec);
+}
 
 static uint16_t rd16(const uint8_t *mem, uint16_t seg, uint16_t off)
 {
@@ -156,7 +185,7 @@ static void nudge(uint8_t *dst, uint16_t ds, const uint8_t *amem, const uint8_t 
     }
 }
 
-int rerun_draw(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *out)
+int rerun_draw(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *out, int check)
 {
     out->nvals = 0;
     out->nrec = 0;
@@ -165,6 +194,14 @@ int rerun_draw(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *o
     if (!a || !a->valid) return 0;
     if (!g_copy_mem && !(g_copy_mem = (uint8_t *)malloc(MEM_SIZE))) return 0;
     if (!g_pending && !(g_pending = malloc(observe_pending_size()))) return 0;
+    if (!g_fix_pending && !(g_fix_pending = malloc(fixes_pending_size()))) return 0;
+    const machine_t *real_machine = (const machine_t *)a->m.cpu.user;
+    if (check) {
+        if (!real_machine || (!g_before_mem && !(g_before_mem = (uint8_t *)malloc(MEM_SIZE)))) return 0;
+        if (!g_fix_after && !(g_fix_after = malloc(fixes_pending_size()))) return 0;
+        g_before = *real_machine;
+        memcpy(g_before_mem, real_machine->mem, MEM_SIZE);
+    }
     machine_t *s = &g_copy;
     *s = a->m;
     memcpy(g_copy_mem, a->mem, MEM_SIZE);
@@ -173,6 +210,8 @@ int rerun_draw(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *o
     s->cpu.mem = g_copy_mem;
     s->cpu.user = s;
     s->cpu.cover = NULL;
+    s->cpu.int_hook = copy_int;
+    memset(s->files, 0, sizeof s->files);
     memset(&s->hooks, 0, sizeof s->hooks);
     s->log = NULL;
     s->on_input = NULL;
@@ -185,16 +224,32 @@ int rerun_draw(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *o
     /* run it under its own observer, the real one's pending state set aside */
     const f117_observer *real = g_f117_observer;
     observe_pending_save(g_pending);
+    fixes_pending_save(g_fix_pending);
+    fixes_pending_restore(a->fix_pending);
     observe_pending_clear();
     observe_set(&g_copy_obs);
     g_out = out;
     g_done = 0;
-    const uint64_t start = s->cpu.icount, limit = start + 4000000ull;
+    g_blocked = 0;
+    const uint64_t start = s->cpu.icount, limit = start + (s->ips / 4 > 4000000ull ? s->ips / 4 : 4000000ull);
     while (!g_done && s->cpu.icount < limit)
         if (machine_run(s, s->cpu.icount + 20000) != RUN_SLICE) break;
     g_out = NULL;
     observe_set(real);
     observe_pending_restore(g_pending);
+    fixes_pending_restore(g_fix_pending);
+    free(s->opl_sched);               /* a fix may have scheduled private speech during the copy */
+    s->opl_sched = NULL;
+    out->blocked += g_blocked != 0;
+    if (check) {
+        fixes_pending_save(g_fix_after);
+        out->checks++;
+        if (memcmp(&g_before, real_machine, sizeof g_before) || memcmp(g_before_mem, real_machine->mem, MEM_SIZE) ||
+            memcmp(g_fix_pending, g_fix_after, fixes_pending_size())) {
+            out->changed++;
+            return 0;
+        }
+    }
     out->insn = s->cpu.icount - start;
     /* the records, as interp_rec over the values */
     out->nrec = 0;
@@ -208,11 +263,13 @@ int rerun_draw(const rerun_snap *a, const rerun_snap *b, double t, rerun_list *o
         }
         if (out->nrec == out->crec) {
             out->crec = out->crec ? 2 * out->crec : 4096;
-            out->rec = (interp_rec *)realloc(out->rec, (size_t)out->crec * sizeof *out->rec);
+            interp_rec *rec = (interp_rec *)realloc(out->rec, (size_t)out->crec * sizeof *out->rec);
+            if (!rec) { out->crec /= 2; return 0; }
+            out->rec = rec;
         }
         const interp_rec r = { (char)p[0], (uint64_t)(uint32_t)p[2] | (uint64_t)(uint32_t)p[3] << 32, p + 4, p[1] };
         out->rec[out->nrec++] = r;
         at += 4 + (size_t)p[1];
     }
-    return out->presented && g_done;
+    return out->presented && g_done && !g_blocked;
 }

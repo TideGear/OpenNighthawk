@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The light check for a presentation-only change (docs/repeated-processes.md).
 
-A change confined to the presentation code cannot change the emulated machine: the guest runs the
+A change confined to read-only presentation code cannot change the emulated machine: the guest runs the
 same instructions and the presentation only reads what the observer hands it. Such a change is
 checked by every CTest, the 45-route N=1 presentation check (which also holds every guest checkpoint
 and final hash to the last full gate's baseline runs) and boot at N=4/9, instead of the full gate.
@@ -13,6 +13,8 @@ a presentation test, or documentation. Anything else needs the full gate. Run:
   py tools/present_light_check.py --base REV --data D:/GOG/F-117A --out DIR
 A full gate is still needed before the next Phase 2 kit checkpoints: any change under src/ retires
 the interpreter cache entry that `kit.py checkpoints` needs.
+The draw feed and rerun implementation snapshot/execute machines and are not read-only presentation:
+changes there require the full gate and the separate --mode rerun route checks.
 """
 import argparse
 import json
@@ -28,6 +30,8 @@ TOOLS = {"tools/interp_frame.py", "tools/motion_check.py", "tools/present_diag.p
          "tools/drawlist_spans.py", "tools/hires_frame.py", "tools/hires_spans.py", "tools/hires_subpixel.py"}
 TESTS = re.compile(r"tests/test_(present_\w+|hud_\w+|band_\w+|world_\w+|map_marker|interp|hires|drawlist|"
                    r"near_polygons|nearclip|scene_mesh|frame_pacer)\.c$")
+MACHINE_EXECUTION = {"src/present/drawfeed.c", "src/present/drawfeed.h",
+                     "src/present/rerun.c", "src/present/rerun.h"}
 
 
 def git(*args):
@@ -59,7 +63,9 @@ def refusals(names):
     out = []
     for name in names:
         if name.startswith("src/present/"):
-            if name in shared:
+            if name in MACHINE_EXECUTION:
+                out.append(f"{name}: machine snapshot/execution code; requires full gate and rerun route checks")
+            elif name in shared:
                 out.append(f"{name}: included by the observer or other guest-side code")
         elif TESTS.match(name) or name in TOOLS or name == "tests/test_interp_ident.py" or name.startswith("docs/") or (name.endswith(".md") and "/" not in name):
             continue

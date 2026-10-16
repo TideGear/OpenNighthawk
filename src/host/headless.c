@@ -870,13 +870,17 @@ int main(int argc, char **argv)
         printf("[present] replay: %llu logic frames, %llu equal to the display at their close, %llu not, %llu before a seed; "
                "%llu dropped\n", (unsigned long long)g_live.frames, (unsigned long long)g_live.exact,
                (unsigned long long)g_live.inexact, (unsigned long long)g_live.unseeded, (unsigned long long)g_feed.dropped);
-        if (g_rerun)
+        if (g_rerun) {
             printf("[present] rerun: %llu in-between pictures drawn by the original on a copy, %llu fell back to "
                    "interpolation; at t = 0 the copy drew its frame exactly %llu times, not %llu; %.0f instructions a copy\n",
                    (unsigned long long)g_live.rerun_drawn, (unsigned long long)g_live.rerun_fell_back,
                    (unsigned long long)g_live.rerun_t0_exact, (unsigned long long)g_live.rerun_t0_inexact,
                    g_live.rerun_drawn + g_live.rerun_t0_exact + g_live.rerun_t0_inexact
                        ? (double)g_live.rerun_insn / (double)(g_live.rerun_drawn + g_live.rerun_t0_exact + g_live.rerun_t0_inexact) : 0.0);
+            printf("[present] isolation: %llu copies checked, %llu changed the real machine, %llu DOS calls blocked\n",
+                   (unsigned long long)g_live.rlist.checks, (unsigned long long)g_live.rlist.changed,
+                   (unsigned long long)g_live.rlist.blocked);
+        }
         if (g_replay == 2)
             printf("[present] interp: %llu frame pairs, %llu exact at both ends (t = e and 1 - e, e 1e-6, or 1e-9 with a scale), %llu not; "
                    "%llu VGA frames, %llu presented, %llu of them in-between frames, which moved %llu polygons, "

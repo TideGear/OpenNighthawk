@@ -770,3 +770,34 @@ void fixes_file_data(void *user, machine_t *m, const char *name, long size, long
         if (*b == d->from) *b = d->to;
     }
 }
+
+/* Most fix state belongs to machine_t already. These older host globals
+ * must also be private to a speculative presentation draw: D1's limiter
+ * changes future simulation timing even when real guest memory is untouched. */
+typedef struct {
+    uint64_t next;
+    int pace_logged, best_logged, ext_n, ext_logged;
+    int clamp_logged, cover_logged, keypad_logged;
+    uint8_t ext[D34_EXTRA][5];
+} fixes_pending;
+
+size_t fixes_pending_size(void) { return sizeof(fixes_pending); }
+
+void fixes_pending_save(void *dst)
+{
+    fixes_pending *p = (fixes_pending *)dst;
+    memset(p, 0, sizeof *p);
+    p->next = d1_next; p->pace_logged = d1_logged; p->best_logged = d12_logged;
+    p->ext_n = d34_n; p->ext_logged = d34_found_logged;
+    p->clamp_logged = d8_logged; p->cover_logged = d6_logged; p->keypad_logged = d3_logged;
+    memcpy(p->ext, d34_ext, sizeof p->ext);
+}
+
+void fixes_pending_restore(const void *src)
+{
+    const fixes_pending *p = (const fixes_pending *)src;
+    d1_next = p->next; d1_logged = p->pace_logged; d12_logged = p->best_logged;
+    d34_n = p->ext_n; d34_found_logged = p->ext_logged;
+    d8_logged = p->clamp_logged; d6_logged = p->cover_logged; d3_logged = p->keypad_logged;
+    memcpy(d34_ext, p->ext, sizeof d34_ext);
+}

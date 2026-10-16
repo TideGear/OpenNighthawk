@@ -16,7 +16,45 @@ session log. Earlier detail is in `git log -p handoff.md`.
 Scoreboard: P1 100.00%, P2 67.37%, P3 82.75%, All 85.68% (P4 is no longer scored)
 (`py tools/progress.py --title`). Phase 2: 889 census functions / 117,660 bytes.
 
-### Presentation: latest (15 October, afternoon)
+### Presentation: latest (15 October, evening)
+
+**START HERE: `--present rerun` is integrated and gated.** Intermediate camera/aircraft/weapon poses are drawn
+by the original on a throwaway machine, then refined at any scale. Three published steps feed a smoothed clock;
+`F117_PRESENT_CLOCK=raw` selects the old clock. Defaults and the owner's existing settings/4k60.bat are unchanged.
+The separate, local `4k-rerun.bat` uses the 4K preset with explicit rerun/interpolation-age overrides.
+
+**Proof:** full gate 1,288 s: 116 CTests, all 45 routes identical / 44 fresh interpreter sessions, both instruction
+profiles (5,718,848 states each), 891 matched routines at three seeds, reachability/event checks clean. The separate
+45-route N=1 rerun pass keeps 259,240 frames / 259,166 pairs and every guest checkpoint/final hash exact. Boot N=4/9
+keeps 368 frames / 366 pairs each. Across these checks: 1,638,579 copies checked, 1,378,030 original in-between draws,
+259,787 unchanged-copy frames exact and 0 unequal; no changed real state or blocked DOS calls. Evidence:
+`D:/f117-gate/present-v2/rerun-accept/final-gate-verdict.json` (all logs also compared to the fresh scan baselines).
+The final threaded app smoke test is offscreen/silent, under load: exit 0, 1,610 exact logic frames, 4,933 original
+intermediate pictures, 3 fallbacks in 143.36 s (`app-verdict.json`). This is not physical-refresh acceptance.
+
+**Isolation trap, now fixed:** the first rerun route pass failed D1 despite byte-identical real memory: a copy
+advanced the process-global frame limiter. Snapshots now include fixes' host state (D1 and D34); each copy loads
+its snapshot's state and restores live state afterward. Checked draws compare real machine, all 1 MiB of memory
+and fix state before/after. DOS file operations (including the chained native callback) are blocked; console-status
+and emulated-clock reads run on the copy. Private speech schedules are freed. The watchdog permits at least a
+quarter emulated second for pacing waits on faster machines. `d1_fast_machine` now passes all hashes, 374 frames /
+372 pairs and 2,624 isolation checks. Live HUD/band tests must initialize manually built plans' sa/sb indexes to -1.
+
+**Verification scope:** `drawfeed.c/.h` and `rerun.c/.h` execute or snapshot machines, so the light checker now
+refuses them; use the full gate plus `presentation_check.py --mode rerun` over all 45 routes for those changes.
+The checker requires positive original intermediate draws, not just t = 0 copies; its six regression tests pass.
+The 44 routes apart from the separate D1 probe took 1,696.92 s at 16 jobs; D1 352.03 s and boot N=4/9 185.44 s
+shared the gate's load. Main's libraries changed: refresh `D:/f117-gate/kit-libs` before the next Phase 2 proof.
+
+**Still open, in order:** tune skips against picture age; obtain the owner's 4K screen/motion verdict (ask first);
+make observer/runtime/fix state per machine for parallel copies above 60 Hz; inspect the small `DF03`/`C2C8` group.
+Clock evidence on `c7b4d77` (two hidden scale-2 owner-flight runs, `rerun-mode/app7`): raw clock 274 freezes,
+12 skips, 18.4% >20% speed changes; smoothed 17-21, 23-34, 3.3-5.0%. Defaults remain pull-in 0.05, one-step lag,
+EMA 0.8/0.2. A private sweep (`rerun-accept/clock_sweep.py`, `clock-sweep.json`) suggests EMA alpha 0.4 / pull-in
+0.025 at 30/60/144 Hz; simulation only, not adopted/live-tested. `DF03` is the generic deferred-object draw in a
+secondary camera's nested terrain view; `rerun-accept/object-follow-up.txt` is a lead, not a fix.
+Smooth the original's road jitter at N>1 afterward. P3 stays at 82.75% until motion is judged; merging alone does
+not establish motion quality. The earlier research harness remains on `draw-rerun-probe`.
 
 The owner's recorded flight `session-20261015-103956` (road jitter, jumping
 building patches) is frozen privately in
@@ -34,10 +72,8 @@ capture 2.45B-2.85B; `ident/draw.log` has identity records 2.75B-2.85B;
   unpaired counts; real identity needs per-vertex identity.
 - **The step clock is a second cause.** Steps take 42-86 ms for a fixed
   distance, and `drawlive_plan_interp`'s t freezes or skips at uneven
-  boundaries. A smoothed playback clock (simulated only) cuts freezes/skips
-  35 -> 2 and >20% speed changes 21.4% -> 1.6% for ~17 ms more age. Not built:
-  it needs a third live step and its pairing; make it switchable (the owner
-  has not set defaults).
+  boundaries. A smoothed playback-clock simulation cuts freezes/skips
+  35 -> 2 and >20% speed changes 21.4% -> 1.6% for ~17 ms more age. Built for rerun mode with three published steps; live skip/age tuning and the owner's verdict remain open.
 - **Road and coastline jitter are in the original** (owner, 15 Oct 14:40: the same jitter shows in the GOG
   DOSBox release). Not our defect. Owner's choice (15 Oct): smooth it at N>1 only (option 2), after the
   60+ fps work; N=1 stays the original.
@@ -104,7 +140,7 @@ capture 2.45B-2.85B; `ident/draw.log` has identity records 2.75B-2.85B;
   IDENTICAL, 891 matched routines at three seeds, N=1 259,240 / 259,166, boot
   N=4/9 368/366. Evidence `D:/f117-gate/present-v2/proof-gate`. `tools/present_light_check.py --base REV` is the
   owner-approved light check for presentation-only changes.
-- Verification of the current tree: fresh full gate 1,330 s (114 CTests,
+- Earlier baseline: fresh full gate 1,330 s (114 CTests,
   45 routes IDENTICAL / 44 fresh interpreter runs, both instruction profiles
   0 mismatches, 891 matched routines at three seeds incl. `0xfaf385733f77`,
   reachability/event checks); 45-route N=1 259,240 frames / 259,166 pairs;
@@ -191,17 +227,15 @@ capture 2.45B-2.85B; `ident/draw.log` has identity records 2.75B-2.85B;
 
 ### Phase 3
 
-P3 (82.75%) is held down by Stage 3, smooth in-between frames (15%: the chosen
-method is not built), Stage 4 infrastructure (90%: fullscreen pacing of the latest
+P3 (82.75%) is held down by Stage 3, smooth in-between frames (15%: rerun mode is built, but motion
+acceptance and clock tuning remain), Stage 4 infrastructure (90%: fullscreen pacing of the latest
 builds, slower machines, cargo/career flights) and Stage 2 (95%: coastline
 transitions, widths by role). Details and the method: docs/progress.md.
 
 ## Next steps
 
-1. **60+ fps by re-running the original draw** (above): confirm the camera
-   words drive the draw and nothing else, measure a real extra draw on a copy
-   (cost and isolation), then prototype behind a switch and judge it with
-   `motion_check.py` (deformation included), with the smoothed playback clock.
+1. **60+ fps by re-running the original draw** (above): tune
+   the smoothed clock against picture age, then obtain the owner's physical-display verdict.
 2. **Phase 2** with the kit and parallel agents (below), from the candidate
    list above. Do not wait for the remaining physical-panel and
    weaker-machine Phase 3 checks before continuing P2.

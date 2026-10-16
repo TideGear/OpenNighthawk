@@ -51,6 +51,19 @@ def presentation(text, flight):
     return dict(frames=frames, pairs=paired, dropped=dropped)
 
 
+def rerun_presentation(text, paired):
+    isolation = re.search(r"\[present\] isolation: (\d+) copies checked, (\d+) changed the real machine, (\d+) DOS calls blocked", text)
+    rerun = re.search(r"\[present\] rerun: (\d+) in-between pictures drawn by the original on a copy, (\d+) fell back to "
+                      r"interpolation; at t = 0 the copy drew its frame exactly (\d+) times, not (\d+)", text)
+    if not isolation or not rerun:
+        raise ValueError("missing rerun checks")
+    copies, changed, blocked = map(int, isolation.groups())
+    drawn, fallback, exact, wrong = map(int, rerun.groups())
+    if changed or blocked or wrong or copies < drawn + exact + wrong or (paired and (not drawn or not exact)):
+        raise ValueError("rerun isolation, unchanged-copy equality or drawing failed")
+    return dict(copies=copies, copy_exact=exact, rerun_drawn=drawn, rerun_fell_back=fallback)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--data", required=True)
@@ -59,6 +72,7 @@ def main():
     ap.add_argument("--scales", type=int, nargs="+", default=[4, 9])
     ap.add_argument("--routes", nargs="+", help="route stems; default all gate routes")
     ap.add_argument("--jobs", type=int, default=4)
+    ap.add_argument("--mode", choices=("interp", "rerun"), default="interp")
     args = ap.parse_args()
     if any(n < 1 or n > 12 for n in args.scales) or args.jobs < 1:
         ap.error("scales must be 1..12 and jobs positive")
@@ -94,7 +108,7 @@ def main():
         began = time.monotonic()
         with (out / "runner.txt").open("w") as stream:
             result = subprocess.run([sys.executable, str(ROOT / "tools/run_route.py"), str(route),
-                "--data", args.data, "--out", str(out), "--", "--present", "interp", "--present-scale", str(scale),
+                "--data", args.data, "--out", str(out), "--", "--present", args.mode, "--present-scale", str(scale),
                 "--hash-every", "50000000"], env=dict(os.environ, F117R_RUN_EXE=str(exe)),
                 stdout=stream, stderr=subprocess.STDOUT)
         row = dict(route=route.stem, scale=scale, out=str(out), seconds=round(time.monotonic()-began, 2), errors=[])
@@ -106,6 +120,8 @@ def main():
                 raise ValueError("guest checkpoints/final state differ from scan baseline")
             log = (out / "run.log").read_text()
             row.update(presentation(text, "[exec] VGAME.EXE " in log))
+            if args.mode == "rerun":
+                row.update(rerun_presentation(text, row["pairs"]))
         except (OSError, ValueError) as error:
             row["errors"].append(str(error))
         print(f"{route.stem} N={scale}: {'FAIL '+str(row['errors']) if row['errors'] else 'exact'}", flush=True)

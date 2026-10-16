@@ -115,9 +115,23 @@ this machine's instruction-level one.
   machine at first, so the copy's port reads and writes reached the real devices), clear hooks, the log, the input
   recorder and the OPL schedule, and disable coverage. The draw observer (`g_f117_observer`), the recompiled-code
   runtime (`g_rt`) and the code-write bits are process globals, so copies must run on the machine's thread until
-  those are made per machine. Moving objects (slots) were not nudged yet.
-- **Status:** feasible; not yet implemented in the presentation.
-- **Integration design (15 Oct):** an in-between picture is frame k's own draw records with the part from the 2F9D
+  those are made per machine. Aircraft and weapon slots are now nudged as described above.
+- **Status:** `--present rerun` is integrated. The full gate passes (116 CTests, 45 routes identical, both instruction
+  profiles, three matched seeds and reachability/event checks); the separate 45-route rerun N=1 check keeps
+  259,240 frames / 259,166 pairs and every guest hash exact. Boot N=4/9 is exact. Across these passes 1,638,579
+  copies leave real memory, machine and fix state unchanged; 259,787 unchanged-copy frames are exact, 0 unequal.
+  Evidence: `D:/f117-gate/present-v2/rerun-accept/final-gate-verdict.json`. It replays the
+  copy's records from its first frame phase through its present at any scale, using the earlier frame's start pages.
+  The machine thread prepares the copy; the worker refines/rasterises its records. The smoothed clock retains three
+  published steps; `F117_PRESENT_CLOCK=raw` selects the previous clock. No configuration defaults have changed.
+  Unchanged-copy equality is checked at t = 0; test runs also compare the real machine structure and all 1 MiB of
+  memory and fixes' host state before and after every extra draw. Host hooks are cleared and DOS calls (including the chained native stub)
+  stop the copy before any file operation. A failed copy falls back to the older interpolation path and is counted.
+  The 45-route rerun check found that guest-memory equality alone was insufficient: D1's frame limiter used process
+  globals, and a copy advanced its live deadline. Snapshots now include the fixes' host state (D1's limiter and D34's
+  extension table); a copy loads its snapshot's state and restores the live state afterward. Its watchdog allows at
+  least a quarter emulated second for the pacing wait on faster machines. Private speech schedules are freed.
+- **Earlier integration design (15 Oct; superseded by the whole-frame copy above):** an in-between picture is frame k's own draw records with the part from the 2F9D
   entry to its return replaced by the nudged copy's records (the copy's record count is that boundary exactly; the
   probe shows the unnudged copy reproduces it). Records before 2F9D and after its return (cockpit, panels) stay as
   frame k drew them; the HUD and bands already come from state at the in-between moment. The spliced list goes
@@ -127,8 +141,8 @@ this machine's instruction-level one.
   present and dumps that 320x200 picture beside the two real frames; on the owner's flight (frames 1450-1462,
   `D:/f117-gate/present-v2/rerun-probe/pics/strip.png`, `view.png`) the horizon, pitch ladder and HUD sit between the
   two real frames, drawn entirely by the original.
-- **Next:** the spliced list through the refinement for N > 1 pictures; the `DF03`/`C2C8` group; make the observer/runtime per machine; then a switchable implementation with the smoothed clock, judged by
-  `tools/motion_check.py` (deformation included) and the owner.
+- **Next:** tune the clock's skips against picture age, inspect the `DF03`/`C2C8` group,
+  make the observer/runtime per machine for parallel copies, and obtain the owner's physical-display verdict.
 - **In reserve:** camera reprojection of one step's own draw list. No longer the main path: this project's own scene
   renderer (the unconnected `src/present/scene_mesh.c` draft;
   [Consolidate world geometry](#consolidate-world-geometry-before-more-clipping-exceptions-15-october-2026)).
@@ -141,17 +155,20 @@ this machine's instruction-level one.
 | `--present scan` (`present = scan` in `f117a.ini`) | the scanned-out picture, the original at every scale |
 | `--present replay` | the replayed display, one logic frame at a time ([live path](#the-live-path-first-part-feed-and-replay-9-october-2026)) |
 | `--present interp` | in-between frames, drawn on a worker thread ([threaded presentation](#fullscreen-4k60-timing-and-the-threaded-presentation-13-october-2026)) |
+| `--present rerun` | in-between frames drawn by the original on a disposable machine copy, then refined on the worker |
 | `--present-scale N` (`present-scale =`) | the picture N times finer (off by default; N = 9 for 4K) |
 | `--present-age interp\|extrapolate` (`present-age =`) | `interp` (default) or prediction past the newest frame ([Stage 4](#stage-4-pacing-and-the-pictures-age-9-october-2026)) |
 | `--present-line-width N` (`present-line-width =`) | stroke width 1-20 output pixels; 0, the default, is one original cell |
 | `f117a.4k.ini` | optional ready-to-run fullscreen preset |
 | `F117_PRESENT_HUD=old`, `F117_PRESENT_BANDS=old` | the captured-call HUD / sky and ground instead of the state-driven ones |
 | `F117_PRESENT_IDENT=1` | the identity-pairing experiment (off by default) |
+| `F117_PRESENT_CLOCK=raw` | use the old step clock in rerun mode instead of the smoothed playback clock |
 | `F117_PRESENT_THREADS_OFF=1` | everything on the main thread, for comparison |
 | `F117_PRESENT_DIAG=DIR` and its `_HIST`, `_RECT`, `_HIST_ONLY`, `_TRACE` | the pixel-origin diagnostic ([below](#where-the-blockiness-comes-from-the-pixel-origin-diagnostic-14-october-2026)) |
 | `F117R_OBSERVE_PAGES`, `_HUD`, `_BANDS`, `_KINDS`, `_SCENE`, `_IDENT` | observer log options for `f117run --observe` ([record kinds](#stage-0-and-1-the-observer-and-the-draw-list)) |
 
-At N = 1 every mode uses the original replay exactly, line quirks included. Do not force `F117R_OBSERVE_PAGES=1` on a
+At N = 1 every logic-frame replay is exact, line quirks included; rerun mode adds the original's draws at intermediate
+poses. Do not force `F117R_OBSERVE_PAGES=1` on a
 live presentation run: it reseeds every phase and prevents pairing.
 
 ## Stages
@@ -163,8 +180,8 @@ Each stage is judged by a check, as in the rest of the project.
 | 0 | Observer: log every call to the drawing primitives per frame | the log is identical across runs; hashes unchanged with it on | done |
 | 1 | Draw lists: a frame's primitives as a list, replayed at 320x200 | the replay reproduces the original's work and display pages bit for bit, every phase of every route | done: all 45 complete routes and staged original-instruction fixtures for rare branches; C and Python fill rules agree |
 | 2 | Re-draw the list at N times the resolution | N = 1 is Stage 1 exactly; at N > 1 verified geometry has smooth boundaries and keeps the original viewport, fill styles and artwork | done and live (`--present-scale N`): model and span-rasteriser polygons from their camera-space geometry, near-plane crossings verified against the original's; one stroke pen for HUD lines, ticks and outlines; original bitmap text/artwork scaled by the owner's choice; HUD, panel items, map marker and sky/ground bands drawn from the game state ([HUD](#the-state-driven-hud-14-october-2026), [bands](#the-state-driven-sky-and-ground-bands-15-october-2026)); incompatible geometry safely scaled |
-| 3 | Interpolate between consecutive draw lists to the host display rate | at a logic frame the output is exactly that frame; no in-between primitive absent from both neighbours | 320x200 study done; live interpolation in C, exact at both ends of every pair; primitive pairing frozen (15 Oct): in-between pictures are to come from re-running the original's draw ([plan](#the-current-plan-for-60-fps-15-october-2026-owner)) |
-| 4 | Pacing, vsync, a picture-age setting, HUD handling, a switch to the original picture | pictures at the display's refresh with t on the mission clock; the age setting measured | pacing at the host's vsync, age setting, Reimp-style HUD handling and the threaded presentation built; isolated 4K/60 runs pass the timing checker; `--present scan` is the switch; smoothed step clock designed, not built; physical-display checks remain |
+| 3 | Draw intermediate poses at the host display rate | logic frames exact; extra draws leave live state unchanged; an unnudged copy reproduces its frame | 320x200 study done; live interpolation in C, exact at both ends of every pair; primitive pairing frozen (15 Oct); `--present rerun` draws intermediate poses with the original on a machine copy, with full route/isolation checks passed ([plan](#the-current-plan-for-60-fps-15-october-2026-owner)) |
+| 4 | Pacing, vsync, a picture-age setting, HUD handling, a switch to the original picture | pictures at the display's refresh with t on the mission clock; the age setting measured | pacing at the host's vsync, age setting, Reimp-style HUD handling and the threaded presentation built; the earlier interpolation build passed isolated 4K/60 timing checks; rerun fullscreen checks remain; `--present scan` is the switch; smoothed step clock built for rerun mode; skip/age tuning and physical-display checks remain |
 
 ## Stage 0 and 1: the observer and the draw list
 
@@ -1109,9 +1126,11 @@ longer next step freezes the picture at t = 1 and a shorter one skips forward wh
 flight's real step times at 60 Hz (1,186 frames): the current clock gives 29 freezes, 6 skips and 21.4% of frames
 whose speed changes by more than 20% (p99 429%); a playback clock advanced by host time over a smoothed step duration,
 held about one step behind the newest and never past it, gives 2 freezes, 0 skips and 1.6% (p99 41%), for about 0.3
-step (17 ms) more picture age. Not yet implemented: it needs one more step and its pairing kept alive in the threaded
-pipeline; it will be switchable (the owner has not set defaults) and judged by `motion_check.py`. It is part of the
-current plan.
+step (17 ms) more picture age. It is now implemented for `--present rerun`, retaining three published steps;
+`F117_PRESENT_CLOCK=raw` switches it off. Two hidden threaded owner-flight runs reduce freezes from 274 with the raw
+clock to 17-21 and >20% speed changes from 18.4% to 3.3-5.0%; skips rise from 12 to 23-34. These live results are
+weaker than the simulation: pull-in rate (0.05), one-step lag target and step-duration EMA (0.8/0.2) still need tuning
+against extra picture age. The owner has not accepted the motion on a physical display.
 
 **World extent.** The original's resident world is four rings of 32 tile slots (`DS:E330`, counts at `DS:061E`; 18-25
 populated in the capture), so a longer view would need our own world loader; the owner chose not to extend the draw
@@ -1145,14 +1164,14 @@ These are correctness checks; they do not establish physical refresh or the look
 ## Open questions and risks
 
 - **In-between pictures.** Batch-alignment pairing covers 86-99% of painted polygons in the study windows, but
-  unpaired shapes switch and wrongly paired ones deform; primitive pairing is frozen and the in-betweens are to come
-  from re-running the original's draw ([plan](#the-current-plan-for-60-fps-15-october-2026-owner)), whose isolation
-  and cost are not yet measured.
+  unpaired shapes switch and wrongly paired ones deform; primitive pairing is frozen. The opt-in rerun mode uses
+  the original's draw ([plan](#the-current-plan-for-60-fps-15-october-2026-owner)); isolated copy cost is about 6 ms.
+  Parallel copies for high refresh rates and the owner's motion verdict remain open.
 - **Things that are not smooth** (explosions, tracers, discrete HUD readouts, a cut between views) must be left alone:
   hold the previous frame or switch on the logic frame.
 - **The wall.** If the original's rasteriser depends on state not in the draw list (a clip window held in a register,
   a dither phase), the replay misses pixels; that is a finding that says what else to record, not a failure of method.
-- **Uneven step timing** freezes and skips the picture until the smoothed playback clock is built.
+- **Uneven step timing** is reduced by the rerun mode's smoothed clock, but skips and picture age still need tuning.
 - **Remaining geometry fallbacks.** One extreme original clipping-arithmetic artifact (air-to-air), polygons whose
   geometry does not explain their footprint, zero-area span polygons and missing metadata stay scaled. The clipper
   tolerances are measured bounds, not derived limits. Coastline topology transitions and per-role stroke widths are

@@ -596,7 +596,7 @@ Each is fixed; the named regressions keep the failing seed or case.
     not establish a safe speed.
 - [ ] **60+ fps and 4K presentation.** Design, measurements, rules and history:
       [presentation.md](presentation.md). Off by default (`--present
-      replay|interp`, `present =` in f117a.ini, `--present-scale N`). Rules:
+      replay|interp|rerun`, `present =` in f117a.ini, `--present-scale N`). Rules:
       keep the original's logic tick and simulation/control timing, keep pixel
       art and the original bitmap text/artwork integer-scaled, and retire an
       old path only when its replacement passes N=1 equality. Target: 4K at 60
@@ -633,27 +633,35 @@ Each is fixed; the named regressions keep the failing seed or case.
     The safe sharp mode meanwhile is `--present replay --present-scale N`. For
     60+ fps the chosen method is to re-run the original's unmodified draw on a
     throwaway copy of the machine at each in-between moment, with only camera
-    and object inputs nudged, plus a smoothed playback clock (designed and
-    simulated, not built), at any scale and refresh rate; plan and safety
-    proof in [../handoff.md](../handoff.md). Draw distance is not extended.
+    and object inputs nudged, plus a smoothed playback clock, at any scale and
+    refresh rate. Both are integrated in `--present rerun`: the full gate
+    passes, and all 45 rerun N=1 routes keep 259,240 frames / 259,166 pairs
+    and every guest hash exact. Boot N=4/9 is exact; 1,638,579 copy-isolation
+    checks leave real memory, machine and fix state unchanged. Unnudged
+    copies produce 259,787 exact frames, 0 unequal. The final hidden threaded
+    owner-flight smoke test passes under load (1,610 exact logic frames,
+    4,933 original intermediate pictures). Evidence and remaining clock
+    tuning: [../handoff.md](../handoff.md). `F117_PRESENT_CLOCK=raw` selects
+    the old clock. Draw distance is not extended.
     The earlier plan to
     [consolidate world geometry](presentation.md#consolidate-world-geometry-before-more-clipping-exceptions-15-october-2026)
     into the project's own scene renderer is no longer the main path:
     `src/present/scene_mesh.c` is on master as part of a gated tree but is
     unconnected to live rendering and not a finished fix.
-  - *Open:* the re-run-draw prototype; the owner's road jitter (gray ground
-    lines) and jumping building patches (6.4% of polygons and 2.4% of outline
-    edges have no partner between logic steps, about 95% of those edge misses
-    from the 60 px motion limit or look-alike ordering rather than culling;
-    the road-jitter cause is not yet confirmed, see
-    [presentation.md](presentation.md#identity-pairing-and-the-step-clock-15-october-2026));
-    the uneven step clock (freezes/skips at 24% of step boundaries); coastline
+  - *Open:* clock tuning against picture age; per-machine observer/runtime/fix
+    state for parallel copies above 60 Hz; the small `DF03`/`C2C8` vertex group that nudges less well.
+    Road/coastline jitter also occurs in the original GOG DOSBox release
+    (owner, 15 Oct); the owner chose optional smoothing at N>1 after the
+    60+ fps work. Sharp replay confirms that clipped/off-screen outlines
+    still use scaled whole-pixel endpoints (6.1% of outlines in that flight);
+    refinement of those outlines remains an optional enhancement. Coastline
     topology transitions and widths by drawing role; low detail and
     incompatible geometry; width tuning; weapon/target symbology; fullscreen
-    refresh pacing for the latest batches (hidden 4K throughput 119-150 fps;
+    refresh pacing for rerun mode (earlier interpolation build: hidden 4K
+    throughput 119-150 fps;
     an interrupted fullscreen run is not acceptance; ask before any
     visible/fullscreen test); the owner's motion review on a physical panel;
-    cargo/career flights and slower machines.
+    real-time cargo/career pacing and slower machines.
 
 ## Phase 4 - checked by people and independent references
 
