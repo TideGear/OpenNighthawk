@@ -3328,16 +3328,20 @@ static int start_flag_call(machine_t *m)
 /* START 0x03E84 and END 0x02049, set_pointer(x, y): the pair stored at
  * [pos]/[pos+2] (START E08A, END 7214); when bit 1 of byte 72h of the
  * structure at far [rec] (START E096, END 7222) is set, the pointer's
- * redraw (START 0x085A7, END 0x0451B) runs. */
+ * redraw (START 0x085A7, END 0x0451B) runs. The second argument is read
+ * only after the first store, as the original reads it: when DS:[pos]
+ * aliases the stack slot of that argument, the stored x is what the
+ * original goes on to store again and leave in AX (seed 0x7721a2f2bd17). */
 static int st3_set_pointer(machine_t *m, uint16_t entry, uint16_t pos, uint16_t rec, uint16_t redraw)
 {
     cpu_t *c = &m->cpu;
     if (!room(c, 13)) return 0;
-    const uint16_t x = arg(c, 0), y = arg(c, 1);
     cpu_push16(c, c->r[R_BP]);
     c->r[R_BP] = c->r[R_SP];
+    const uint16_t x = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 4));
     c->r[R_AX] = x;
     ds_put(c, pos, x);
+    const uint16_t y = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 6));
     c->r[R_AX] = y;
     ds_put(c, (uint16_t)(pos + 2), y);
     const uint16_t bx = ds_get(c, rec), es = ds_get(c, (uint16_t)(rec + 2));

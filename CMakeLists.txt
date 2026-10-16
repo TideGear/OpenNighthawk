@@ -475,6 +475,8 @@ if(F117R_BUILD_TESTS)
       --seed 0x3ad6ecf4e53b --only VGAME.EXE:683E)
     add_test(NAME matched_projectile_stub_overwrite COMMAND func_lockstep --states 4000 --seed 0x1894deb34178
       --only VGAME.EXE:683E)
+    add_test(NAME matched_set_pointer_alias COMMAND func_lockstep --states 5000 --seed 0x7721a2f2bd17
+      --only START.EXE:3E84,END.EXE:2049)
     add_test(NAME matched_menu_input COMMAND func_lockstep --states 5000
       --only START.EXE:39F7,END.EXE:1CF5)
     add_test(NAME matched_horizon_and_record COMMAND func_lockstep --states 5000
