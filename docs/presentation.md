@@ -118,7 +118,7 @@ without its dashes (`present = rerun`).
 | `--present rerun` | in-between pictures drawn by the original on a disposable machine copy, then refined on the worker ([rerun](#the-rerun-mode-in-between-pictures-drawn-by-the-original)) |
 | `--present-scale N` | the picture N times finer, 1 to 16, with `replay`, `interp` or `rerun` (off by default; 9 for 4K) |
 | `--present-age interp\|extrapolate` | `interp` (default) shows the step before the newest; `extrapolate` predicts past the newest ([picture age](#the-live-path-feed-replay-pacing-and-picture-age)). With `rerun` and its smoothed clock nothing is predicted; the clock is only read one display frame later |
-| `--present-line-width N` | at N > 1, stroke width of HUD lines, ticks, world outlines and dots: 1-20 pixels of the fine picture; 0, the default, is one original cell ([pen](#projected-outlines-point-markers-and-one-stroke-pen)) |
+| `--present-line-width N` | at N > 1, stroke width of HUD lines, ticks, world outlines, dots and thin span strips: 1-20 pixels of the fine picture; 0, the default, is one original cell ([pen](#projected-outlines-point-markers-and-one-stroke-pen)) |
 | `--present-log FILE` | app only: per presented picture, the host clock, the machine's clock, the logic frames shown and t, plus the display mode |
 | `f117a.4k.ini` | optional fullscreen preset: `scale = 9`, `present = interp`, `present-scale = 9` |
 | `F117_PRESENT_HUD=old`, `F117_PRESENT_BANDS=old` (or `0`, `off`) | the captured-call HUD / sky and ground instead of the state-driven ones |
@@ -412,8 +412,8 @@ between the centres of its end cells, with perpendicular width and square caps, 
 wide covers exactly the original's cells and joined strokes meet solidly (the Reimp's square nib, the starting
 point, made diagonals up to 1.4 times thicker). The width is one original cell (N fine pixels) unless
 `--present-line-width` sets 1-20 fine pixels; that setting applies to HUD lines, ticks, the state-driven HUD,
-world outlines and dots. **Exception (open):** thin span strips (`thin_strip_stroke` in `hires.c`) still use their
-footprint's thickness times N and ignore the setting. Widths by drawing role (ground markings against object
+world outlines, dots and thin span strips (a strip as thick as its footprint, one or two cells, takes the setting
+per cell). Widths by drawing role (ground markings against object
 outlines) are not assigned. Text, sprites and artwork never change with the width.
 
 **Checks.** `test_world_lines` (coarse equality at N=1/4/9, signed-coordinate and depth-boundary continuity,
@@ -862,8 +862,8 @@ These are correctness checks; they do not establish physical refresh or the look
   a dither phase), the replay misses pixels; that says what else to record, not that the method fails.
 - **Remaining geometry fallbacks.** One extreme clipping-arithmetic case (air-to-air), polygons whose geometry does
   not explain their footprint, zero-area span polygons, missing metadata and the HUD items not drawn from state stay
-  scaled. The clipper tolerances are measured bounds, not derived limits. Thin span strips ignore
-  `--present-line-width`; widths by drawing role are not assigned.
+  scaled. The clipper tolerances are measured bounds, not derived limits. Widths by drawing role are not
+  assigned.
 - **Real display.** Refresh pacing on a physical panel, `rerun` fullscreen timing, the look of motion at 60 and
   144 Hz, fullscreen acceptance of the latest HUD batch, cargo/career flights and slower machines all remain owner
   (Phase 4) checks.

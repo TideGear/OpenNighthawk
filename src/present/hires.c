@@ -613,7 +613,8 @@ static void refill(hires *h, drawlist *d, drawlist_page *page)
  * cell-centred corners and half a fine pixel of inclusive coverage. Clip to the span
  * table's bounds, without retaining each row's coarse staircase. */
 /* An actually degenerate strip is, in the original, a line: a stair of cells one or two thick. Draw it as one fine stroke along the strip's direction, from
- * the footprint's first cell to its last, as thick (in cells) as the footprint is. */
+ * the footprint's first cell to its last, as thick (in cells) as the footprint is; a cell is the scale, or
+ * present-line-width output pixels when that is set, as for every other fine stroke. */
 static void thin_strip_stroke(hires *h, drawlist *d, drawlist_page *page, const footprint *f,
                               const double (*base)[4], int ne, int64_t want)
 {
@@ -648,7 +649,7 @@ static void thin_strip_stroke(hires *h, drawlist *d, drawlist_page *page, const 
     const int ax = (int)floor((cx + dx * tmin) * n + 0.5), ay = (int)floor((cy + dy * tmin) * n + 0.5);
     const int bx = (int)floor((cx + dx * tmax) * n + 0.5), by = (int)floor((cy + dy * tmax) * n + 0.5);
     drawlist_diag_stroke_tag(DT_SPAN_THIN);
-    drawlist_fine_stroke(page, ax, ay, bx, by, thick * n, d->colour & 0xFF);
+    drawlist_fine_stroke(page, ax, ay, bx, by, thick * (d->line_width ? d->line_width : n), d->colour & 0xFF);
     page->suppress = 1;
     h->suppressed = (int)(page - d->page);
     h->stats[HS_SPAN_THIN]++;
