@@ -540,6 +540,32 @@ if(F117R_BUILD_TESTS)
       --only VGAME.EXE:E586)
     add_test(NAME matched_vgame_clip_raster_line COMMAND func_lockstep --states 5000
       --only VGAME.EXE:330)
+    add_test(NAME matched_start_launch_animation COMMAND func_lockstep --states 5000
+      --only START.EXE:448)
+    add_test(NAME matched_start_wait_key_or_button COMMAND func_lockstep --states 5000
+      --only START.EXE:3F33)
+    add_test(NAME matched_start_decode_mission_orders COMMAND func_lockstep --states 5000
+      --only START.EXE:1308)
+    add_test(NAME matched_start_fade_palette COMMAND func_lockstep --states 5000
+      --only START.EXE:30A0)
+    add_test(NAME matched_vgame_load_tile_objects COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:B05)
+    add_test(NAME matched_vgame_model_fill_stream COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:CE9)
+    add_test(NAME matched_vgame_map_redraw COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:8462)
+    add_test(NAME matched_vgame_scene_dispatch COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:3CE)
+    add_test(NAME matched_end_debrief_open COMMAND func_lockstep --states 5000
+      --only END.EXE:2A4)
+    add_test(NAME matched_end_fade_palette COMMAND func_lockstep --states 5000
+      --only END.EXE:1607)
+    add_test(NAME matched_player_unpack_lz91_block COMMAND func_lockstep --states 5000
+      --only PLAYER.EXE:BE2)
+    add_test(NAME matched_player_make_room_for_block COMMAND func_lockstep --states 5000
+      --only PLAYER.EXE:3FE)
+    add_test(NAME matched_setup_load_overlay COMMAND func_lockstep --states 5000
+      --only SETUP.EXE:A9F)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000
