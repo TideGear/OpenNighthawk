@@ -76,6 +76,42 @@ static void check_override_capacity(void)
 }
 
 
+/* A nested DOS load can replace the executing override's module. Its call
+ * and event-overrun reports must still belong to the original override. */
+static int replace_self(machine_t *mm)
+{
+    static const uint8_t replacement[0x40] = { 0x90 };
+    recomp_module_load(NULL, mm, "REPLACE.OVL", replacement, sizeof replacement,
+                       MODLOAD_OVERLAY, 0x7000, 0x7000);
+    mm->cpu.icount += 2;
+    return 1;
+}
+
+static void check_replaced_override_report(void)
+{
+    static const uint8_t image[0x40] = { 0xC3 };
+    const recomp_override o = { "matched", "UNLOAD.OVL", 0, 0, 0x10,
+        replace_self, "replaced during call", 1 };
+    CHECK(recomp_override_add(&o) >= 0);
+    recomp_module_load(NULL, &m, "UNLOAD.OVL", image, sizeof image,
+                       MODLOAD_OVERLAY, 0x7000, 0x7000);
+    m.engine = ENGINE_RECOMP;
+    m.cpu.stop_at = m.cpu.icount + 1;
+    CHECK(step_at(0x7000, 0x10) == 1);
+    FILE *f = tmpfile();
+    CHECK(f != NULL);
+    if (f) {
+        char report[16384];
+        recomp_report(&m, f);
+        rewind(f);
+        const size_t n = fread(report, 1, sizeof report - 1, f);
+        report[n] = 0;
+        CHECK(strstr(report, "[matched] UNLOAD.OVL 0000:0010 replaced during call: ran 1 times") != NULL);
+        CHECK(strstr(report, "[matched] OVERRUN UNLOAD.OVL 0000:0010 replaced during call: past the event limit 1 times, the first by 1 instructions") != NULL);
+        fclose(f);
+    }
+}
+
 /* The observer reads a projected vertex without touching the machine. */
 static int obs_calls, obs_range;
 static int32_t obs_xf[3], obs_px[2];
@@ -446,6 +482,7 @@ int main(void)
     check_observer();
     check_edge_snapshot();
     check_override_capacity();
+    check_replaced_override_report();
     /* No two of the real tables' entries share a place, except where the matched routine calls the
      * observer itself (vgame_horizon_bands, vgame_model_edge_spans and vgame_model_poly_finish): at one address only the
      * first that applies runs, and a merge once left two observer hooks idle this way. */

@@ -659,6 +659,13 @@ caught real defects:
   (each route's output lists `[matched] ... ran N times`): with no route
   executing it there is no evidence at all, and the routine is dropped (as
   VGAME 0xF024, the run-time termination messages, was).
+- Counter attribution survives a nested program exit or load: the dispatcher
+  keeps the registered override index before calling its body. A nested DOS
+  call can clear or reuse the module instance before the body returns; reading
+  its placement index afterwards lost DSWAP `0010`'s call and could attribute
+  an event overrun to a different routine. `code_overrides` replaces its own
+  module inside a callback and checks both reports; the old runtime fails
+  both assertions. This changes reporting, not guest execution.
 - Room on the routes: the dispatcher (`recomp_override_step`) checks every
   matched routine it runs. One whose instructions carry the clock past an
   event limit nothing moved claimed too little room, and the run's output
@@ -709,7 +716,7 @@ live game in a window (a diagnostic, not a gate: device state is not in the
 snapshot). `f117run --dump LINEAR:LENGTH` prints registers and memory at the
 end of a run for comparing two engines at a chosen clock.
 
-897 addresses are matched in all seven programs (the census totals are in
+900 addresses are matched in all seven programs (the census totals are in
 [roadmap.md](roadmap.md)). The programs carry byte-identical copies of the C
 runtime helpers (string and block copies, the 32-bit shifts, multiply and
 divide), so one matched routine serves several addresses. MPS_LOGO carries

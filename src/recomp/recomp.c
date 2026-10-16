@@ -377,7 +377,10 @@ int recomp_override_step(machine_t *m)
     }
     for (int k = 0; k < in->nov; k++) {
         if (fix >= 0 && k != fix) continue;
-        const recomp_override *o = &g_ov[in->ov_index[k]];
+        /* Guest calls can unload or replace this instance before the body
+         * returns. Keep the registered override's identity for its counters. */
+        const int index = in->ov_index[k];
+        const recomp_override *o = &g_ov[index];
         if (in->ov_lin[k] != lin || (uint16_t)(in->base + o->seg) != cs) continue;
         if (is_parity(o) && m->engine != ENGINE_RECOMP) continue;   /* an observer placed there still runs */
         /* Observers always leave the original instruction to the caller.
@@ -408,9 +411,9 @@ int recomp_override_step(machine_t *m)
         const uint64_t ran_to = c->icount - (c->charged - charged);
         const uint64_t past = ran_to > limit ? ran_to - limit
                             : c->io_cross && c->icount > c->io_cross + 1 ? c->icount - c->io_cross : 0;
-        if (o->matched && c->stop_at == limit && past && !g_ov_over[in->ov_index[k]]++)
-            g_ov_over_by[in->ov_index[k]] = past;
-        g_ov_hits[in->ov_index[k]]++;
+        if (o->matched && c->stop_at == limit && past && !g_ov_over[index]++)
+            g_ov_over_by[index] = past;
+        g_ov_hits[index]++;
         return 1;
     }
     return 0;

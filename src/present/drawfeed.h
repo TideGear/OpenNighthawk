@@ -90,7 +90,7 @@ typedef struct {
     int            state;         /* DRAWLIVE_FREE, _STAGED (collected, not yet shown) or _PUBLISHED */
 } drawlive_step;
 
-#define DRAWLIVE_POOL 5           /* steps: two published, up to three collected and waiting */
+#define DRAWLIVE_POOL 5           /* steps: two published (three in rerun), remaining slots collected and waiting */
 #define DRAWLIVE_QUEUE 16
 enum { DRAWLIVE_FREE, DRAWLIVE_STAGED, DRAWLIVE_PUBLISHED };
 

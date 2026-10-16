@@ -47,8 +47,8 @@ LIMITS = {
     "dosbox-x": dict(min_exact=1200, max_multi_unmatched=3, max_drift_ms=350),   # measured 1237, 3, 143-200 ms (real-time captures varied; fast-forward ones are identical)
     # 86Box: every graphics picture matches ours exactly in 6-bit DAC values, in order, except the
     # ones named in ref86box/expected_misses86.txt (each tied to its picture's hash). Measured 9 Oct 2026
-    # on the MS-DOS 5.00 VM: 85 of 86 exact, the other a single sample of START's roster screen half
-    # drawn while its files load. min_total guards against a comparison that found nothing to compare.
+    # on the MS-DOS 5.00 VM: 85 of 86 exact, the other p037, a single sample of the title
+    # screen fade-in between consecutive DAC steps. min_total guards against a comparison that found nothing to compare.
     "86box": dict(min_total=80),
     # GOG's raw OPL capture: every write, from this machine started 275 ms in (dosbox_compare.GOG_BOOT_MS); measured 22,840, -14..+1 ms
     # max_timing_ms tightened 10 Oct 2026 from 40 (measured max abs 14 ms,

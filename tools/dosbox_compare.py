@@ -101,7 +101,7 @@ def run_dosbox_x(data, game, seconds, *, work=WORK, exe, turbo=True):
     """Capture the intro on DOSBox-X with no window, no sound and no host input.
 
     `exe` is DOSBox-X built from source with the DBX_AUTO_VIDEO patch
-    (tools/ref86box/build_86box.md): with that variable set it records AVI
+    (tools/ref86box/build_dosbox_x.md): with that variable set it records AVI
     video from the first frame, so the capture starts at the same emulated
     moment on every run. `-silent` runs without a window, SETUP's two
     answers are scheduled in emulated time (DBX_AUTO_INPUT, 5.0 and 5.8 s

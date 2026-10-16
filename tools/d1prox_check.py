@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Staged proximity-distance check for D1PROX (an explicit S=9 balance floor).
+"""Staged proximity-distance check for D1PROX (a swept band calibrated at S=9).
 
 Boot normally at 20 MIPS, then place a guided SA-12 beside the parked jet.
 S and its measurement window are staged along with the weapon and damage

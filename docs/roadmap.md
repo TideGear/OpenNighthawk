@@ -151,8 +151,8 @@ not the recompilation:
       [../handoff.md](../handoff.md). `tools/reimp_names.py` joins the Reimp's
       census (1,535 functions) with this project's regions as a private lead
       list.
-      **Now:** 897 addresses matched, covering 895 of the census functions and
-      120,427 of 179,213 bytes (P2 68.84%, overall 89.56%).
+      **Now:** 900 addresses matched, covering 898 of the census functions and
+      121,765 of 179,213 bytes (P2 69.55%, overall 89.78%).
       **What is left:** `tools/census_reach.py` separates code with run
       evidence from code without (gate coverage logs only interpreted
       fallback instructions, so it cannot show what ran). A complete
@@ -368,6 +368,17 @@ reaches. Candidate drafts can keep private static dossiers
   the stack; the harness accepts that terminal for this entry.
   Proofs `D:/f117-gate/p2-logo-0072`, `p2-logo-08cc`; batch evidence
   `D:/f117-gate/p2-logo-main-argv-accept`. Census gain: 2 functions / 1,109 bytes.
+- DSWAP `0010` `dswap_load_from_drives` (197 instructions), `117E`
+  `dswap_crt_setargv` (204) and `1D66` `dswap_open_file` (163): five seeds
+  each, 56/61/60 mutations caught, 26 boot and 66 full-cycle checkpoints
+  exact, one boot call and four full-cycle calls each. The open routine's
+  427-byte watch envelope includes eight gap bytes; census credit is 419.
+  The loader exposed a runtime reporting bug when its nested call exits
+  the program: the dispatcher now retains its override index across the
+  module replacement, with a ROM-free regression and an old-runtime
+  negative control. Proofs `D:/f117-gate/p2-dswap-{0010,117e,1d66}`;
+  batch evidence `D:/f117-gate/p2-dswap-accept`. Census gain: 3 functions /
+  1,338 bytes. The near argv terminal retains its stack allocation.
 - Twenty-two support routines: PLAYER's picture open/refill and linear copy,
   the four timer shutdowns, five mouse wrappers and SETUP's mouse probe,
   file-name comparison, BIOS text writer, register-block interrupt call and

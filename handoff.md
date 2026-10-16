@@ -13,8 +13,8 @@ session log. Earlier detail is in `git log -p handoff.md`.
 
 ## Current state (16 October)
 
-Scoreboard: P1 100.00%, P2 68.84%, P3 96.33%, All 89.56% (P4 is no longer scored)
-(`py tools/progress.py --title`). Phase 2: 895 census functions / 120,427 bytes.
+Scoreboard: P1 100.00%, P2 69.55%, P3 96.33%, All 89.78% (P4 is no longer scored)
+(`py tools/progress.py --title`). Phase 2: 898 census functions / 121,765 bytes.
 
 ### Presentation: latest (15 October, evening)
 
@@ -101,36 +101,28 @@ times them (`F117_PRESENT_CLOCK=raw` for the old clock; opt-in knobs `F117_PRESE
 
 ### Phase 2
 
-- Next candidates (reached by `full_cycle`, unmatched; ranked list
-  `D:/f117-gate/format-init/reached-corrected.tsv` minus the matched table):
-  DSWAP `0010`, `1D66`, `117E`, then the rest of that list.
-- Latest Phase 2 batches: SETUP `19B6` (`setup_crt_setargv`) and MPS_LOGO
-  `0146:1894` (`mps_logo_open_file`) add 2 census functions / 817 bytes;
-  full gate 1,553 s, 120 CTests, 45 identical routes, 895 routine addresses
-  at three seeds, no event overruns. N=1: 530.70 s, 259,240 exact frames /
-  259,166 pairs and all guest hashes. Pushed as `30cda09`, GitHub CI passed.
-  Evidence `D:/f117-gate/p2-setup-logo-accept`; proofs `p2-setup-19b6`, `p2-logo-1894`.
-- MPS_LOGO `0006:0072` (`mps_logo_play_intro`, 248 instructions, 707 observed
-  bytes / 712-byte watch envelope, 58 mutations) and `0146:08CC`
-  (`mps_logo_crt_setargv`, 205 instructions, 62 mutations) add 2 census
-  functions / 1,109 bytes. Root verified every source hash, all five private
-  seeds, full instruction coverage, 120 mutations, positive calls and exact
-  ibm_boot (26) and full_cycle (66) checkpoints. Both also pass five targeted
-  seeds under /O2 with the same comparison counts. Their documented harness
-  extensions are integrated: the allocator's lower return SP must be caught
-  (its negative control proves the escaped-call guard), and the far argv
-  return keeps its allocation. Full gate passed in 1,718 s: 122 CTests,
-  45 identical routes, both instruction profiles, 897 routines at three
-  seeds, reachability and event limits clean. The 45-route N=1 pass takes
-  579.53 s, keeping 259,240 exact frames / 259,166 pairs and every guest hash.
-  Evidence `D:/f117-gate/p2-logo-main-argv-accept`; worktree `D:/f117-wt/gate`
-  on `p2-batch-logo-main-argv` (merged after validation).
-  Individual proofs: `D:/f117-gate/p2-logo-0072`, `p2-logo-08cc`.
-  Kit libraries are refreshed from main's normal /O2 build after each batch;
+- Latest batch: DSWAP `0010` (`dswap_load_from_drives`, 197 instructions),
+  `117E` (`dswap_crt_setargv`, 204) and `1D66` (`dswap_open_file`, 163) add
+  3 census functions / 1,338 bytes. Root verified five seeds each, full
+  instruction coverage, all 177 mutations, exact 26/66 route checkpoints and
+  positive 1/4 calls. The loader exposed lost report attribution when a nested
+  call replaces its module: `recomp.c` now keeps the registered override index
+  before calling the body (`code_overrides` regression fails both counter
+  assertions on the old runtime). Full gate 1,956 s: 125 CTests, 45 identical
+  routes, both instruction profiles, 900 routines at three seeds,
+  reachability and event limits clean. N=1: 517.89 s, 259,240 exact frames / 259,166 pairs and every guest hash. Evidence
+  `D:/f117-gate/p2-dswap-accept`; proofs `p2-dswap-{0010,117e,1d66}`.
+- Next, fixture-proven and waiting only for route proofs (`kit.py checkpoints`
+  after the kit libraries are refreshed from this batch's main build), then
+  `verdict`, review and one gate: VGAME `0FB2:0330` (`p2-vgame-fe50`, line
+  clipper, 60/60 mutations; its NOTES propose two scoped `func_lockstep.c`
+  changes, an IRET stop-limit restore and a stronger escape guard, that need
+  review before integration), PLAYER `0000:005C` (`p2-player-005c`,
+  `player_prepare_playback`, 49/49) and VGAME `0000:E586` (`p2-vgame-e586`,
+  `vgame_load_file_buffer`, 48/48). Ranked remaining entries:
+  `D:/f117-gate/dswap-next-reached.json`.
+- Kit libraries are refreshed from main's normal /O2 build after each batch;
   `D:/f117-gate/kit-libs/manifest.json` records the source commit and hashes.
-  Prior libraries are preserved in `D:/f117-gate/kit-libs-before-logo-main-argv-20261016`.
-  The queued provenance cleanup is complete (six C/header edits verified
-  comment-only; vector-harness DLL/path messages and name-tool usage corrected).
 - Other leads: PLAYER `026B:0211` (a distinct timer re-sync) and `026B:0336`
   (tick/callback service; calls original code, so needs returning-helper
   fixtures). Private static drafts are unproven transcripts, not
@@ -161,19 +153,16 @@ transitions, widths by role). Details and the method: docs/progress.md.
 
 ## Next steps
 
-1. **Phase 2 first (owner).** Continue the DSWAP candidates above with the private kit and parallel agents.
+1. **Phase 2 first (owner).** Finish the three fixture-proven candidates above, then continue down the ranked list
+   with the private kit and parallel agents.
    Verify every source hash, full coverage, five seeds, mutations and actual route calls; one full gate plus
    `presentation_check --scales 1 --jobs 16` per batch, then docs, commit and push. Safe optimisations and
    parallelisation are authorised; no check may be removed. Use separate proof directories and CPU sets at
    BelowNormal priority, leaving desktop CPUs free. `progress.py --census D:/f117-gate/census.tsv` preserves
    START `64E5`'s six already-proved interiors (518 bytes); three regressions prevent lost/duplicated credit.
    Measure every delta using the same TSV.
-2. **Small code-side corrections from the audit:** `tools/pc_parity.py` 86Box miss comment (p037, not the roster
-   screen); `tools/dosbox_compare.py:104` should point to `build_dosbox_x.md`; `tools/d1prox_check.py` describes the
-   withdrawn S=9-floor version; `secret_airstrip_return.args` steps vs its comment (18,635,798,708); the
-   `DRAWLIVE_POOL` comment in `drawfeed.h` says two published steps (rerun publishes three; drawfeed needs the full
-   gate); possible 386-model gap: a warm DOS open is charged 50,145 cycles against 3.56 M measured (check before
-   changing).
+2. **Possible 386-model gap:** a warm DOS open is charged 50,145 cycles against 3.56 M measured (check before
+   changing). The other audit corrections landed with the DSWAP batch.
 3. **Presentation** (owner verdicts first): the 4K screen/motion verdict (ask before any visible test); whether to
    adopt the clock setting alpha 0.4 / pull 0.025; `thin_strip_stroke` ignoring `present-line-width`; the open items
    above. No jitter smoothing (owner).

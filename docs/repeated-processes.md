@@ -32,12 +32,12 @@ tools/build_recomp.py --data INSTALL --seed-coverage WORK/coverage --jobs 16
 --verify-interp-cache`, started through `D:/f117-gate/affinity_launch.py`
 (below).
 
-**Current figures (16 October 2026):** 122 CTests; 45 routes identical, run
-as 44 sessions; 5,718,848 instruction states under each timing profile; 897
+**Current figures (16 October 2026):** 125 CTests; 45 routes identical, run
+as 44 sessions; 5,718,848 instruction states under each timing profile; 900
 matched routines at three seeds; reachability and event limits clean. A gate
-takes about 1,300-1,800 s. The latest measured breakdown (1,718 s, with
-coverage and a CPU-header rebuild): translate/build/tests 389 s, coverage
-939 s, second translation 67 s, parity 323 s. With coverage skipped, the last gate took 1,330 s (parity
+takes about 1,300-2,000 s. The latest measured breakdown (1,956 s, with
+coverage): translate/build/tests 380 s, coverage 711 s, second translation
+72 s, parity 793 s. With coverage skipped, the last gate took 1,330 s (parity
 1,223 s, all 88 jobs in one stage): skipping coverage no longer shortens the
 gate, because the same interpreter chain sets the end either way (below).
 
@@ -118,7 +118,7 @@ route and lockstep workers remain experiments to benchmark first.
 - `ctest -E func_lockstep -j 8`: the same 122 tests the gate runs (111 took
   36.56 s on 15 Oct).
 - `tools/presentation_check.py --data DIR --baseline-runs DIR/runs --out DIR
-  --scales 1` over the 45 routes: 579.53 s at 16 workers; 1,321.61 s at
+  --scales 1` over the 45 routes: 517.89-579.53 s at 16 workers; 1,321.61 s at
   eight workers beside a gate. It keeps 259,240 exact logic frames / 259,166
   exact interpolation pairs and every guest checkpoint and final hash.
   Options: `--routes STEM...`, `--scales N...` (default 4 and 9), `--jobs N`
