@@ -308,6 +308,21 @@ about 149 s each. All five seeds, 53 mutations and both real routes were
 repeated for the revised body, then all 13 routines passed optimized seeds
 and the full gate. Evidence: `D:/f117-gate/p2-batch-b2-accept`.
 
+**Saved build optimisation, not landed (16 Oct).** Local `p2-batch-c`
+(`4365021`) compiles `matched.c` once and includes its object in both runtime
+archives. All 9,372 non-debug sections match both old objects (code, data,
+unwind tables, section characteristics and relocation targets; BSS by size,
+linker-removed checksums excluded). Two concurrent compiles measured
+143.74/144.40 s; the shared compile 99.75 s in one local pair. Three private
+proofs also ran in separate directories on disjoint eight-CPU sets at
+BelowNormal priority. Gate jobs 16 / interpreter overlap 8 / fresh cache
+verification stay unchanged. Evidence `D:/f117-gate/p2-batch-c-accept`.
+The fresh gate took 1,516.11 s and kept all 45 routes and 146 CTests, but
+failed the rotating matched seed on existing START `3E84` (also fails on
+main). Final gate steps and presentation checks remain; the batch is not
+published. Its acceptance script overlaps N=1 and boot N=4/9 with a frozen
+runner and separate outputs, but that overlap has not run for this batch.
+
 The private kit writes generated project files only when their bytes change
 (15 Oct). An unchanged harness and CMake file therefore keep their timestamps
 across mutations; the candidate source still changes and is rebuilt. A

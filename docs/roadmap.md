@@ -153,6 +153,10 @@ not the recompilation:
       list.
       **Now:** 916 addresses matched, covering 914 of the census functions and
       126,460 of 179,213 bytes (P2 72.04%, overall 90.54%).
+      A four-routine batch and shared matched-object build saving are preserved
+      locally on `p2-batch-c` (`4365021`), not included in these figures. Its
+      gate found an existing START `3E84` mismatch at seed `0x7721a2f2bd17`,
+      reproduced on main; full acceptance remains pending. See the handoff.
       **What is left:** `tools/census_reach.py` separates code with run
       evidence from code without (gate coverage logs only interpreted
       fallback instructions, so it cannot show what ran). A complete
