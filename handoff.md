@@ -13,8 +13,8 @@ session log. Earlier detail is in `git log -p handoff.md`.
 
 ## Current state (16 October)
 
-Scoreboard: P1 100.00%, P2 70.09%, P3 96.33%, All 89.94% (P4 is no longer scored)
-(`py tools/progress.py --title`). Phase 2: 901 census functions / 122,786 bytes.
+Scoreboard: P1 100.00%, P2 72.04%, P3 96.33%, All 90.54% (P4 is no longer scored)
+(`py tools/progress.py --title`). Phase 2: 914 census functions / 126,460 bytes.
 
 ### Presentation: latest (15 October, evening)
 
@@ -100,29 +100,27 @@ times them (`F117_PRESENT_CLOCK=raw` for the old clock; opt-in knobs `F117_PRESE
 
 ### Phase 2
 
-- Latest batches (16 Oct): DSWAP `0010`/`117E`/`1D66` (3 functions / 1,338 bytes; also a runtime fix: the
-  override dispatcher keeps its registered index across a nested module replacement; evidence
-  `D:/f117-gate/p2-dswap-accept`), then VGAME `0FB2:0330` (`vgame_clip_raster_line`), PLAYER `005C`
-  (`player_prepare_playback`) and VGAME `E586` (`vgame_load_file_buffer`): 3 functions / 1,021 bytes, with two
-  scoped `func_lockstep.c` changes for the clipper (IRET keeps the fixed stop limit; any return to the caller
-  inside a nested run is an escape). Its first gate failed step 7c: VGAME `0D14`'s fixture reached its
-  "none found" exit only by chance (189/190 at the commit seed, reproduced on master); one state in sixteen
-  now empties every cell list (190/190 at 22 seeds). Second gate 1,371 s (coverage provably empty and
-  skipped): 128 CTests, 45 identical routes, 903 routines at three seeds, limits clean. N=1: 708.44 s, 259,240 exact frames / 259,166 pairs; boot N=4/9 368/366 each.
-  Evidence `D:/f117-gate/p2-batch-fe50-accept`.
-- **Next batch, privately proven, route-proven and audited** (`D:/f117-gate/audit_proofs.py`; results in
-  `p2-batch-b2-accept/private-audit.json` and `p2-batch-b2-accept-tail/`): START `0448`, `3F33`, `1308`,
-  `30A0`; VGAME `0B05`, `120A:0CE9`, `8462`, `03CE`; END `02A4`, `1607`; PLAYER `0BE2`, `03FE`; SETUP
-  `0A9F`. Each: five seeds, every mutation caught, 66 full_cycle and 26 ibm_boot checkpoints exact, positive
-  calls. To integrate: `kit.py integrate` each, plus hand-applied harness changes from `120A:0CE9` (a
-  CODE_BELOW row and the `g_below` coverage shift, like `130D:033F`) and `0A9F` (a PROGRAM_ENDS table so an
-  error arm stopped at its INT 21h/4Ch counts as completed); both are in those directories'
-  `tests-base.c` against `tests-base.orig.c`. Several config lengths are the full envelope through the RET
-  (census credit is measured from the TSV, not from these). `0B05`, `3F33`, `02A4`, `1607` and `30A0` call
-  tick waits through the clamped call (the gate's step 9 checks them); `1607` and `30A0` hand a rare IDIV
-  fault back to the original code (untested by lockstep). Ranked remaining entries:
-  `D:/f117-gate/dswap-next-reached.json` (next: END `04D2`, `3D4F`, VGAME `D8AF`, `D578`, MPS_LOGO
-  `0146:0016`...).
+- Latest batch (16 Oct): **`p2-batch-b2` is gated and landed**. START `0448`, `3F33`, `1308`,
+  `30A0`; VGAME `0B05`, `120A:0CE9`, `8462`, `03CE`; END `02A4`, `1607`; PLAYER `0BE2`, `03FE`;
+  SETUP `0A9F`: 13 census functions / 3,674 bytes. Every private proof audited: five seeds, all 611 mutations
+  caught, 26 boot and 66 full-cycle checkpoints exact, positive full-cycle calls. All 65 optimized seed runs pass.
+  The stalled MSVC compile was START `1308`'s four inline palette copies; a small noinline helper keeps their
+  MOVSW/MOVSB order and clocks. Full optimized compile 119.3 s diagnostically, normal matched objects 149 s each.
+  Its five seeds, 53 mutations and both real routes were repeated after the change.
+  Harness: `120A:0CE9`'s CODE_BELOW/coverage origin includes its shared tail; SETUP `0A9F`'s PROGRAM_ENDS row
+  counts the error arm at its original INT 21h/4Ch as complete. `1607`/`30A0` leave rare IDIV faults to original
+  code (not fixture-tested); all tick-wait calls clamp to the next event.
+  The first gate (1,742 s) kept all 45 routes but exposed a pre-existing `683E` false escape at seed
+  `0x3ad6ecf4e53b`: the original changed sine helper `C830` from RET to RET n. The harness now accepts only
+  an exact original changed-return state (first return at that IP; same clock, source, registers, segments and
+  flags), still compares the state and gives original completion no named coverage. Wrong-trap, clock and
+  movement controls all fail; regression `matched_projectile_changed_return` retains the seed.
+  Final gate: 1269 s, 142 CTests, 45 identical routes / 44 fresh interpreter sessions, 916 matched routines
+  at three seeds, both instruction timing profiles clean, reachability and event limits clean.
+  N=1: 557.34 s, 259,240 exact frames / 259,166 pairs; boot N=4/9 368/366 each.
+  Evidence `D:/f117-gate/p2-batch-b2-accept/final-gate-verdict.json`, `final-private-audit/`, `integrated-audit.json`.
+  Refreshed ranked leads: `D:/f117-gate/p2-batch-b2-accept/next-reached.json` (END `04D2`, `3D4F`, VGAME
+  `D8AF`, `D578`, MPS_LOGO `0146:0016`...).
 - Kit libraries are refreshed from main's normal /O2 build after each batch;
   `D:/f117-gate/kit-libs/manifest.json` records the source commit and hashes.
 - Other leads: PLAYER `026B:0211` (a distinct timer re-sync) and `026B:0336`
@@ -155,8 +153,10 @@ transitions, widths by role). Details and the method: docs/progress.md.
 
 ## Next steps
 
-1. **Phase 2 first (owner).** Finish the three fixture-proven candidates above, then continue down the ranked list
-   with the private kit and parallel agents.
+1. **Phase 2 first (owner).** Continue down the ranked list
+   (`D:/f117-gate/p2-batch-b2-accept/next-reached.json`) with the private kit and parallel agents (agents do steps 1-7 only; root runs
+   `kit.py checkpoints` and `D:/f117-gate/kit/boot_proof.py` with `KIT_ROOT` at the gated worktree, then
+   `verdict` and `audit_proofs.py`). The brief's "Traps found on 16 October" lists today's lessons.
    Verify every source hash, full coverage, five seeds, mutations and actual route calls; one full gate plus
    `presentation_check --scales 1 --jobs 16` per batch, then docs, commit and push. Safe optimisations and
    parallelisation are authorised; no check may be removed. Use separate proof directories and CPU sets at
@@ -173,7 +173,7 @@ transitions, widths by role). Details and the method: docs/progress.md.
    add work outside frame timers and are diagnostics.
 5. **Branch housekeeping:** many local branches are fully merged into `master`. Not merged: `flight-input` (older
    aircraft-traffic draft, superseded by `b41ec9c`; its worktree `D:/f117-wt/span-emitter` has uncommitted edits),
-   `irq-divide-fault` (kept on purpose). The stopped presentation WIP branches
+   `irq-divide-fault` (kept on purpose). `p2-batch-b2` is now merged; its worktree is retained. The stopped presentation WIP branches
    are preserved for history; do not merge them again. Ask the owner before deleting anything.
 
 ## Owner decisions and instructions in force
@@ -297,8 +297,8 @@ found so far. Agents work only in their `p2-*` directory. Then:
 3. Build, ctest, ONE full gate per batch, the 45-route
    `presentation_check --scales 1`, docs, commit, push.
 
-Gate batches in a separate worktree (`D:/f117-wt/gate`, branch
-`gate-batch7`; build it once with `build.cmd OFF` before the gate, which
+Gate batches in a separate worktree (`D:/f117-wt/gate`, currently on the merged branch
+`p2-batch-b2`; create a new batch branch there. Build it once with `build.cmd -DF117R_BUILD_APP=OFF` before the gate, which
 needs its `f117cpu_api.dll`) when the owner is testing the main tree's build.
 
 Screening and older method: `tools/matched_draft.py --dossier` (module/seg/ip

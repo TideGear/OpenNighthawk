@@ -466,6 +466,8 @@ if(F117R_BUILD_TESTS)
       --only START.EXE:6DB8)
     add_test(NAME matched_menu_hit_wrap COMMAND func_lockstep --states 4000 --seed 0xe77d9d194a06
       --only START.EXE:393D,END.EXE:1C3B)
+    add_test(NAME matched_projectile_changed_return COMMAND func_lockstep --states 4000
+      --seed 0x3ad6ecf4e53b --only VGAME.EXE:683E)
     add_test(NAME matched_projectile_stub_overwrite COMMAND func_lockstep --states 4000 --seed 0x1894deb34178
       --only VGAME.EXE:683E)
     add_test(NAME matched_menu_input COMMAND func_lockstep --states 5000

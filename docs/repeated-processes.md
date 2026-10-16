@@ -32,14 +32,14 @@ tools/build_recomp.py --data INSTALL --seed-coverage WORK/coverage --jobs 16
 --verify-interp-cache`, started through `D:/f117-gate/affinity_launch.py`
 (below).
 
-**Current figures (16 October 2026):** 128 CTests; 45 routes identical, run
-as 44 sessions; 5,718,848 instruction states under each timing profile; 903
-matched routines at three seeds; reachability and event limits clean. A gate
-takes about 1,300-2,000 s. Measured 16 Oct: 1,956 s with coverage
-(translate/build/tests 380 s, coverage 711 s, second translation 72 s,
-parity 793 s); 1,371 s with coverage skipped (build 88 s, parity 1,282 s). With coverage skipped, the last gate took 1,330 s (parity
-1,223 s, all 88 jobs in one stage): skipping coverage no longer shortens the
-gate, because the same interpreter chain sets the end either way (below).
+**Current figures (16 October 2026):** 142 CTests; 45 routes identical, run
+as 44 sessions; 5,718,848 instruction states under each timing profile; 916
+matched routines at three seeds; reachability and event limits clean. The
+latest batch's full gate took 1269 s, with every interpreter
+session verified fresh. Coverage ran in the first gate (859 s, no new code)
+and was provably empty in the final gate. Evidence:
+`D:/f117-gate/p2-batch-b2-accept/final-gate-verdict.json`. Typical gates take
+about 1,300-2,000 s; the longest career seed chain sets the route time.
 
 | Stage | Latest measured | What sets it, what was duplicated | Status |
 |---|---|---|---|
@@ -115,7 +115,7 @@ route and lockstep workers remain experiments to benchmark first.
 ## Presentation checks
 
 **After a presentation-code change**, all headless:
-- `ctest -E func_lockstep -j 8`: the same 122 tests the gate runs (111 took
+- `ctest -E func_lockstep -j 8`: the same 142 tests the gate runs (111 took
   36.56 s on 15 Oct).
 - `tools/presentation_check.py --data DIR --baseline-runs DIR/runs --out DIR
   --scales 1` over the 45 routes: 517.89-579.53 s at 16 workers; 1,321.61 s at
@@ -296,6 +296,17 @@ verdict yourself, then land a batch with one gate.
 | real-route replay | 0.8 s (`setup_calibration`) to 190.6 s (camera image on `camera_gradients`) | needs positive matched invocation counts |
 | full gate | as above | one per batch |
 | census refresh (`reimp_names.py`, then `progress.py --census`) | about a minute for new leads; existing TSV refresh <1 s | the lead list changes only when the Reimp does; refresh the census each batch; explicitly proved interior spans retain credit without double counting |
+
+**Optimizer stalls (16 Oct).** START `1308` expanded four MOVSW/MOVSB
+palette copies into one optimizer graph: the batch's two normal /O2 compiles
+were stopped after more than 40 minutes. Compiling each new routine alone
+identified `1308` (still running at the 60-second cutoff; the other twelve
+took 1-5 seconds). A small MSVC-noinline palette-copy helper keeps the exact
+read/write and pointer-update order. The isolated routine then took 1.36 s,
+the complete `/d2cgsummary` compile 119.3 s and both normal /O2 matched objects
+about 149 s each. All five seeds, 53 mutations and both real routes were
+repeated for the revised body, then all 13 routines passed optimized seeds
+and the full gate. Evidence: `D:/f117-gate/p2-batch-b2-accept`.
 
 The private kit writes generated project files only when their bytes change
 (15 Oct). An unchanged harness and CMake file therefore keep their timestamps

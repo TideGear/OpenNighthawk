@@ -68,7 +68,7 @@ make (Phase 4).
   early for its autoexec); delivery there is not pursued (Settled, below).
 - **The game version verified:** GOG's installer (build 28044) with the 473.04
   update; Steam's release is byte-identical (`tools/verify_install.py`).
-- **The gate** (`tools/build_recomp.py`): translate, build, unit tests (122),
+- **The gate** (`tools/build_recomp.py`): translate, build, unit tests (142),
   coverage, both engines on every route, instruction lockstep under both
   timing profiles, matched-routine lockstep at three seeds, and the
   routes-only and event-limit checks. About 21-30 minutes when every
@@ -151,8 +151,8 @@ not the recompilation:
       [../handoff.md](../handoff.md). `tools/reimp_names.py` joins the Reimp's
       census (1,535 functions) with this project's regions as a private lead
       list.
-      **Now:** 903 addresses matched, covering 901 of the census functions and
-      122,786 of 179,213 bytes (P2 70.09%, overall 89.94%).
+      **Now:** 916 addresses matched, covering 914 of the census functions and
+      126,460 of 179,213 bytes (P2 72.04%, overall 90.54%).
       **What is left:** `tools/census_reach.py` separates code with run
       evidence from code without (gate coverage logs only interpreted
       fallback instructions, so it cannot show what ran). A complete
@@ -240,6 +240,13 @@ reaches. Candidate drafts can keep private static dossiers
 
 ### Matched: VGAME scene and rendering
 
+- `0B05` tile-object loading, `120A:0CE9` model fill command stream,
+  `8462` map redraw and `03CE` scene dispatch (16 Oct): five seeds each,
+  42/41/52/44 mutations; `full_cycle` 1/32,334/1/275 calls. The command
+  stream's shared condition tail and RET below its entry are included in
+  the harness's code watch and instruction coverage.
+  Proofs `D:/f117-gate/p2-vgame-{0b05,120a-0ce9,8462,03ce}`.
+
 - `2F9D` view composition (938 instructions, all 66 calls): view modes,
   camera, redraw, scene call, overlays, readouts. Replay 8,456 calls.
   `D:/f117-gate/frame-2f9d`.
@@ -307,6 +314,14 @@ reaches. Candidate drafts can keep private static dossiers
 
 ### Matched: START
 
+- `0448` launch animation, `3F33` key/button wait, `1308` mission-order
+  decoding/briefing and `30A0` palette fade (16 Oct): five seeds each,
+  47/38/53/67 mutations; `full_cycle` 1/542/2/15 calls. The four palette
+  copies in `1308` use a helper kept out of MSVC's inline expansion: the
+  same MOVSW/MOVSB order and clocks, without the optimizer stall.
+  `30A0`'s rare IDIV fault returns to original code (not fixture-tested).
+  Proofs `D:/f117-gate/p2-start-{0448,3f33,1308,30a0}`.
+
 - `4239` `start_mission_generate` (1,332 instructions once its nine-entry
   switch is resolved; all 339 room claims and 60 calls audited; one
   otherwise-unreachable timing arm staged). The boot route runs it once.
@@ -331,6 +346,11 @@ reaches. Candidate drafts can keep private static dossiers
 
 ### Matched: END
 
+- `02A4` debrief opening and `1607` palette fade (16 Oct): five seeds,
+  46 mutations each, `full_cycle` 1 and 4 calls. The fade's rare IDIV fault
+  returns to original code (not fixture-tested).
+  Proofs `D:/f117-gate/p2-end-{02a4,1607}`.
+
 - `2BEC` debrief narrative builder (444 instructions). END `206A`, once
   labelled a fatal-error handler, is the "Press Selector to continue" prompt.
   `D:/f117-gate/debrief-narrative`.
@@ -340,6 +360,16 @@ reaches. Candidate drafts can keep private static dossiers
 - `1CF5` and `56D9`: with START above.
 
 ### Matched: SETUP, PLAYER, MPS_LOGO, DSWAP and the runtime
+
+- PLAYER `0BE2` LZ91 block decoding and `03FE` stream-buffer room/wrap,
+  SETUP `0A9F` overlay loading (16 Oct): five seeds each, 47/43/45
+  mutations; `full_cycle` 34/823,304/1 calls. SETUP's terminal DOS error
+  arm counts as completing the named code at its original INT 21h/4Ch.
+  Proofs `D:/f117-gate/p2-player-{0be2,03fe}`, `p2-setup-0a9f`.
+  This batch's 13 routines passed 26 boot and 66 full-cycle checkpoints
+  each, 611 mutations and 65 optimized seed runs. Full gate and all-route
+  N=1 presentation evidence: `D:/f117-gate/p2-batch-b2-accept`.
+  Census gain: 13 functions / 3,674 bytes.
 
 - SETUP `0010` `setup_questions` (505 instructions): eight real startup cases
   match 320 checkpoints (all four sound choices, calibration, keypad quit, D3
@@ -456,6 +486,14 @@ Each is fixed; the named regressions keep the failing seed or case.
   its "none found" exit only by chance (189 of 190 at seed `0xd1699b13b019`);
   one state in sixteen now has every cell list empty. Nested interrupt runs
   stop at the caller's next event through `support_int`.
+- **Changed callee return (16 Oct).** VGAME `683E`'s fuzz state changed
+  `C830` from RET to RET n after earlier normal returns at the same site.
+  The harness's escape test used that earlier stack depth as evidence for
+  the later call. Exact original changed-return states now distinguish
+  original completion from an escaped trap, without skipping comparison or
+  granting named coverage. Regression `matched_projectile_changed_return`;
+  wrong-trap, clock and movement negative controls all fail. Reproduced on
+  unchanged master before fixing the harness.
 - **SETUP event-limit alert (14 Oct).** Not a game-code defect: two atomic
   native service clocks were counted as guest instructions; the ledger now
   tells them apart (`native_service_boundary`;

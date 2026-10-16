@@ -871,6 +871,37 @@ static uint16_t g_cov_ip;
 static unsigned long long g_cov_escapes;
 static unsigned long long g_cov_skips[6];   /* fault, long run, bad return, code written, declined, unfinished */
 static uint8_t g_cov_seen[0x1000], g_cov_cover[0x1000], g_cov_whole[0x1000];
+/* A fuzzed write can turn a callee's RET into RET n. The original then
+ * returns to its caller at a different stack depth, so the normal trap
+ * cannot catch it. Keep exact original return states: an earlier iteration
+ * reaching the same IP at the normal depth is not evidence of an escape.
+ * A full record falls back to the conservative escaped-call check. */
+static struct { uint64_t clock; uint16_t from_cs, from_ip, r[8], seg[4], flags, ip; } g_changed_ret[128];
+static unsigned g_changed_ret_n;
+static int g_callee_finished;
+
+static int changed_return(const cpu_t *c, uint16_t cs, uint16_t ip)
+{
+    const uint8_t op = c->mem[phys(cs, ip)];
+    if (op != 0xC3 && op != 0xC2 && op != 0xCB && op != 0xCA) return 0;
+    const unsigned len = op == 0xC2 || op == 0xCA ? 3 : 1;
+    for (unsigned k = 0; k < len; k++) {
+        const uint32_t at = phys(cs, (uint16_t)(ip + k));
+        if (c->mem[at] != g_pristine[at]) return 1;
+    }
+    return 0;
+}
+
+static int same_changed_return(const cpu_t *c, uint16_t cs, uint16_t ip)
+{
+    for (unsigned k = 0; k < g_changed_ret_n; k++)
+        if (g_changed_ret[k].clock == c->icount && g_changed_ret[k].from_cs == cs &&
+            g_changed_ret[k].from_ip == ip && g_changed_ret[k].ip == c->ip &&
+            g_changed_ret[k].flags == c->flags &&
+            !memcmp(g_changed_ret[k].r, c->r, sizeof c->r) &&
+            !memcmp(g_changed_ret[k].seg, c->seg, sizeof c->seg)) return 1;
+    return 0;
+}
 /* The stack depths the original had at each instruction (up to four;
  * five means more): a callee return the original reached at the call's
  * depth, or up to 16 bytes above it (what the callee's RET n removed),
@@ -983,7 +1014,18 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
         const uint8_t op = a->mem[phys(a->seg[S_CS], a->ip)];
         const uint16_t sp_before = a->r[R_SP];
         const int depth_before = a->int_depth;
+        const uint16_t from_cs = a->seg[S_CS];
+        const int changed = g_cov >= 0 && a->mem == g_mem[0] && !own && changed_return(a, from_cs, here);
         cpu_step(a);
+        if (changed && a->seg[S_CS] == cs && (uint16_t)(a->ip - g_from) < g_span &&
+            g_changed_ret_n < sizeof g_changed_ret / sizeof g_changed_ret[0]) {
+            const unsigned k = g_changed_ret_n++;
+            g_changed_ret[k].clock = a->icount;
+            g_changed_ret[k].from_cs = from_cs; g_changed_ret[k].from_ip = here;
+            g_changed_ret[k].ip = a->ip; g_changed_ret[k].flags = a->flags;
+            memcpy(g_changed_ret[k].r, a->r, sizeof a->r);
+            memcpy(g_changed_ret[k].seg, a->seg, sizeof a->seg);
+        }
         if (a->flags & F_TF) cpu_interrupt(a, 1);
         ++*steps;
         /* A HUD divide fault is a comparable boundary even though it cannot
@@ -1040,6 +1082,7 @@ static int step_runner(machine_t *mm)
 {
     cpu_t *c = &mm->cpu;
     const uint16_t call_sp = (uint16_t)(c->r[R_SP] + (mm->trap_cs == c->seg[S_CS] ? 2 : 4));  /* before the CALL pushed */
+    int changed_return_matched = 0, return_seen = 0;
     g_ncalls++;
     if (c->icount > c->stop_at) g_callover = 1;  /* the CALL itself ran at or after the limit */
     for (int i = 0; i < 200000; i++) {
@@ -1056,7 +1099,11 @@ static int step_runner(machine_t *mm)
              * the divide-error handler) all return normally, so reaching its
              * caller's return inside a nested run is an escape even when the
              * requested trap IP is not an instruction cov_reached knows. */
-            if (g_cov >= 0 && mm->trap_cs == g_back_cs &&
+            if (changed_return_matched) {
+                g_callee_finished = 1;
+                g_finished++;
+            }
+            if (!changed_return_matched && g_cov >= 0 && mm->trap_cs == g_back_cs &&
                 ((!strcmp(COVERED[g_cov].module, "VGAME.EXE") &&
                   COVERED[g_cov].seg == 0x0FB2 && COVERED[g_cov].ip == 0x0330) ||
                  cov_reached(mm->trap_ip,
@@ -1071,8 +1118,16 @@ static int step_runner(machine_t *mm)
         if (c->icount >= c->stop_at) { g_stopped = 1; return RUN_SLICE; }
         if (g_trace) printf("      (callee) %04X:%04X clk %llu sp %04X\n", c->seg[S_CS], c->ip, (unsigned long long)c->icount, c->r[R_SP]);
         const uint64_t limit = c->stop_at;
-        const uint8_t op = mem_read8(c, phys(c->seg[S_CS], c->ip));
+        const uint16_t from_cs = c->seg[S_CS], from_ip = c->ip;
+        const uint8_t op = mem_read8(c, phys(from_cs, from_ip));
+        const int changed = g_cov >= 0 && changed_return(c, from_cs, from_ip);
         cpu_step(c);
+        if ((op == 0xC3 || op == 0xC2 || op == 0xCB || op == 0xCA) &&
+            c->seg[S_CS] == mm->trap_cs && c->ip == mm->trap_ip) {
+            if (!return_seen && changed && c->r[R_SP] != mm->trap_sp &&
+                same_changed_return(c, from_cs, from_ip)) changed_return_matched = 1;
+            return_seen = 1;
+        }
         /* This runner has a fixed clock limit and no pending PC events. IRET
          * clears stop_at for machine_run to recompute its event window; keep
          * the fixed limit so VGAME 0FB2:0330's divide-error handler returns
@@ -1372,6 +1427,7 @@ int main(int argc, char **argv)
              * pitch recovery, ground braking and touchdown. Everything else
              * stays random. */
             g_state_index = s;
+            g_changed_ret_n = 0; g_callee_finished = 0;
             if (g_flight_fixture) {
                 static const uint8_t poll[] = { 0xA1, 0x9C, 0x92, 0xFF, 0x0E, 0x9C, 0x92, 0xC3 };
                 static const uint16_t deltas[] = { 0x011B, 0x0A15, 0x00FD, 0x0032, 0x00CC, 0x0012, 0x02C3, 0x0900, 0x0600, 0x0F63, 0x019D };
@@ -8394,10 +8450,10 @@ int main(int argc, char **argv)
              * machine partway through it, as the original would be; the run
              * loop then finishes it with the original code, and so does this. */
             const int whole = g_m.cpu.seg[S_CS] == cs && g_m.cpu.ip == back;
-            const int covered_region = whole || (g_cov >= 0 && COVERED[g_cov].boundary &&
+            const int covered_region = !g_callee_finished && (whole || (g_cov >= 0 && COVERED[g_cov].boundary &&
                 g_m.cpu.seg[S_CS] == cs && g_m.cpu.ip == COVERED[g_cov].boundary &&
                 g_m.cpu.icount == 1000 + COVERED[g_cov].clocks) ||
-                (g_cov >= 0 && program_end_reached(o, &g_m.cpu, cs));
+                (g_cov >= 0 && program_end_reached(o, &g_m.cpu, cs)));
             if (g_m.cpu.seg[S_CS] != cs || g_m.cpu.ip != back) {
                 int more = 0;
                 if (!run_to_ret(&g_m.cpu, entry_sp, o->matched, &more, cs, ip)) { if (g_cov >= 0) g_cov_skips[5]++; ms++; restore(); continue; }

@@ -53883,6 +53883,16 @@ done:
  * The routine's own flags at the end are 0x01B37's: nothing after it sets any.
  * SI and DI are saved and restored around it (PUSH DI / PUSH SI after the
  * 4-byte frame). */
+/* Keep the four palette copies out of the caller's optimizer graph. Each
+ * still executes MOVSW then MOVSB, including the original pointer updates. */
+#ifdef _MSC_VER
+__declspec(noinline)
+#endif
+static void start_copy_palette_colour(cpu_t *c)
+{
+    x86_movs(c,1,c->seg[S_DS]);x86_movs(c,0,c->seg[S_DS]);
+}
+
 static int start_decode_mission_orders(machine_t *m)
 {
     cpu_t *c=&m->cpu;
@@ -53898,7 +53908,7 @@ static int start_decode_mission_orders(machine_t *m)
 #define GNEAR(at_,target_,ret_) do { SM4_NEED(1,(at_)); GRUN(guest_call_pop(m,(target_),(ret_),0)); } while(0)
 #define GFAR(at_,ret_) do { SM4_NEED(1,(at_)); GRUN(guest_call_far(m,(at_),(ret_))); } while(0)
 /* MOVSW / MOVSB: one 3-byte palette entry from DS:SI to ES:DI. */
-#define GCOLOUR() do { x86_movs(c,1,c->seg[S_DS]);x86_movs(c,0,c->seg[S_DS]); } while(0)
+#define GCOLOUR() start_copy_palette_colour(c)
     if(!room(c,17))return 0;
     /* Page 3 onto the screen. */
     GB(17,0x1308);

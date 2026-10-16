@@ -646,7 +646,9 @@ caught real defects:
   missed a row table overwriting the loop displacement); a one-step defect in
   the branch fails on its first state. For those the original's code is also
   watched after every step, since a row table over the code (DS = CS) can
-  change an instruction, run it and write the bytes back.
+  change an instruction, run it and write the bytes back. The model command
+  stream at `120A:0CE9` also owns the condition tail and RET at `0CC5-0CE8`;
+  its instruction-coverage origin includes that earlier code.
 - OVERRUN: given one instruction less room than the original takes, a routine
   must decline. Mid-run stop: stopped at a random clock inside its path, the
   state it leaves must equal the original's at that clock. It may never start a
@@ -666,6 +668,15 @@ caught real defects:
   an event overrun to a different routine. `code_overrides` replaces its own
   module inside a callback and checks both reports; the old runtime fails
   both assertions. This changes reporting, not guest execution.
+- A fuzzed write can change a callee's RET into RET n: VGAME `683E` does
+  this to the sine helper at `C830` at seed `0x3ad6ecf4e53b`. An earlier
+  iteration returned at the normal stack depth, so the old harness falsely
+  reported the later changed return as an escape. The harness now records
+  changed returns from the original. Only the first return to the requested
+  IP can qualify, and its clock, source address, registers, segments and
+  flags must exactly match. The resulting state is still compared; original
+  completion earns no named-region coverage. Ordinary missed traps still
+  fail (including a deliberately wrong stack-depth trap on this seed).
 - Room on the routes: the dispatcher (`recomp_override_step`) checks every
   matched routine it runs. One whose instructions carry the clock past an
   event limit nothing moved claimed too little room, and the run's output
@@ -696,7 +707,10 @@ caught real defects:
   inside are the original's, and its own instructions before and after
   are the C; it checks room after the call, since a DOS transfer charges
   time. A call that ends the program (DOS 4Ch) is left to the
-  original: the routine stops at the INT. In the harness INT 21h and 16h
+  original: the routine stops at the INT. `PROGRAM_ENDS` marks SETUP
+  `0A9F`'s error exit at `0BA0` (AH = 4Ch) as completing the named region;
+  the original INT still runs and the resulting state is compared.
+  In the harness INT 21h and 16h
   answer as port reads do (AX from the call count, a random carry and
   zero flag); through the vector table, which is the image's first bytes
   there, a DOS call used to lose the state.
@@ -716,7 +730,7 @@ live game in a window (a diagnostic, not a gate: device state is not in the
 snapshot). `f117run --dump LINEAR:LENGTH` prints registers and memory at the
 end of a run for comparing two engines at a chosen clock.
 
-903 addresses are matched in all seven programs (the census totals are in
+916 addresses are matched in all seven programs (the census totals are in
 [roadmap.md](roadmap.md)). The programs carry byte-identical copies of the C
 runtime helpers (string and block copies, the 32-bit shifts, multiply and
 divide), so one matched routine serves several addresses. MPS_LOGO carries
