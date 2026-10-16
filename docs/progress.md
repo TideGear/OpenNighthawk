@@ -2,7 +2,7 @@
 
 Every commit title starts with the current progress (it ended with it until
 7 Oct 2026; older commits keep the suffix), for example
-`(P1 100.00%, P2 67.82%, P3 82.75%, All 85.82%) Subject`, printed by
+`(P1 100.00%, P2 67.82%, P3 96.33%, All 89.25%) Subject`, printed by
 `py tools/progress.py --title`. `py tools/progress.py` alone prints every item
 with its weight, completion and kind. This page says what the numbers mean, so
 that they can be checked and argued with. What each item covers is in
@@ -66,5 +66,5 @@ stays on the roadmap.
   largest so far: on 15 Oct 2026 Phase 3's "interpolation to 60+ fps" (0.85)
   was split into Stage 4 infrastructure (0.9) and Stage 3, smooth in-between
   frames (0.15), because the owner judged the motion not acceptable; P3 fell
-  from 95.79% to 82.75%. Stage 3 stays at 0.15 until the motion is judged on
-  a physical display, even though `--present rerun` is now integrated.
+  from 95.79% to 82.75%. After the owner played `--present rerun` fullscreen at
+  4K ("good at least for now", 15 Oct, 22:32) Stage 3 went to 0.9: P3 96.33%.

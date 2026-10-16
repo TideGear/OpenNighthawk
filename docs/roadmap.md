@@ -152,7 +152,7 @@ not the recompilation:
       census (1,535 functions) with this project's regions as a private lead
       list.
       **Now:** 893 addresses matched, covering 891 of the census functions and
-      118,501 of 179,213 bytes (P2 67.82%, overall 85.82%).
+      118,501 of 179,213 bytes (P2 67.82%, overall 89.25%).
       **What is left:** `tools/census_reach.py` separates code with run
       evidence from code without (gate coverage logs only interpreted
       fallback instructions, so it cannot show what ran). A complete
@@ -494,11 +494,12 @@ Each is fixed; the named regressions keep the failing seed or case.
     engines and its decoded topology agrees with the original; the project's
     own scene renderer (`src/present/scene_mesh.c`) is an unconnected draft,
     no longer the main path.
-  - *Open:* clock tuning against picture age; the owner's motion verdict on a
-    physical display (ask before any visible or fullscreen test);
-    per-machine observer, runtime and fix state for parallel copies above
+  - *Owner verdict (15 Oct):* rerun's motion at 4K accepted "at least for
+    now" (fullscreen, apart from the original's jitter).
+  - *Open:* clock tuning against picture age; ask before any visible or
+    fullscreen test; per-machine observer, runtime and fix state for parallel copies above
     60 Hz; the small `DF03`/`C2C8` vertex group that nudges less well;
-    fullscreen pacing of the latest builds; coastline topology transitions;
+    fullscreen pacing of the latest builds;
     line widths by drawing role; weapon and target symbology; long
     cargo/career flights and slower machines. Optional: refine clipped or
     off-screen outlines (6.1% of outlines in the owner's sharp flight still

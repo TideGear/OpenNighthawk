@@ -13,7 +13,7 @@ session log. Earlier detail is in `git log -p handoff.md`.
 
 ## Current state (15 October)
 
-Scoreboard: P1 100.00%, P2 67.82%, P3 82.75%, All 85.82% (P4 is no longer scored)
+Scoreboard: P1 100.00%, P2 67.82%, P3 96.33%, All 89.25% (P4 is no longer scored)
 (`py tools/progress.py --title`). Phase 2: 891 census functions / 118,501 bytes.
 
 ### Presentation: latest (15 October, evening)
@@ -38,12 +38,12 @@ times them (`F117_PRESENT_CLOCK=raw` for the old clock; opt-in knobs `F117_PRESE
 - **Verification scope:** `drawfeed.c/.h` and `rerun.c/.h` execute or snapshot machines, so they need the full gate
   plus `presentation_check.py --mode rerun` over all 45 routes; the light check refuses them.
 - **Owner verdict on a real screen (15 Oct):** played `4k-rerun.bat` (fullscreen 4K, rerun) twice: "seems great"
-  apart from the original's jitter (20:50), and "looks good" after the palette fix (22:30). Not yet agreed as
-  formal motion acceptance for P3 (ask whether it counts before changing `docs/progress.json`).
-- **Still open:** clock skips against picture age; formal motion acceptance (above); per-machine
+  apart from the original's jitter (20:50), "looks good" after the palette fix (22:30), and accepted the motion
+  "at least for now" (22:32): Stage 3 raised from 0.15 to 0.9, P3 96.33%.
+- **Still open (Stage 3's last 0.1):** clock skips against picture age; per-machine
   observer/runtime/fix state for parallel copies above about 120 Hz (one copy costs about 6 ms); the small
   `DF03`/`C2C8` vertex group (`rerun-accept/object-follow-up.txt` is a lead); `thin_strip_stroke` in `hires.c`
-  ignores `present-line-width`. P3 stays at 82.75% until motion is judged.
+  ignores `present-line-width`; slower machines.
 - **Owner decisions (15 Oct):** stop improving primitive pairing (identity pairing is opt-in,
   `F117_PRESENT_IDENT=1`: it halved unpaired shapes but deformed the extra pairs); road and coastline jitter are the
   original's (also in GOG DOSBox and in sharp `replay` mode) and are **not** smoothed at any scale (21:23); the
@@ -134,8 +134,8 @@ times them (`F117_PRESENT_CLOCK=raw` for the old clock; opt-in knobs `F117_PRESE
 
 ### Phase 3
 
-P3 (82.75%) is held down by Stage 3, smooth in-between frames (15%: rerun mode is built, but motion
-acceptance and clock tuning remain), Stage 4 infrastructure (90%: fullscreen pacing of the latest
+P3 (96.33%) is held down by Stage 3, smooth in-between frames (90%: accepted by the owner for now;
+high refresh rates, clock tuning and slower machines remain), Stage 4 infrastructure (90%: fullscreen pacing of the latest
 builds, slower machines, cargo/career flights) and Stage 2 (95%: coastline
 transitions, widths by role). Details and the method: docs/progress.md.
 
