@@ -50975,7 +50975,699 @@ accept:
 #undef XRETF
 }
 
+/* SETUP 0x019B6, the C start-up's argument set-up (the Microsoft C run-time's _setargv, in the form that
+ * builds the vectors on the stack). It is entered by a CALL and ends by a jump through the return address,
+ * which it first saves in the data word `ret` (0EBAh): the stack pointer it leaves is therefore lower than
+ * the caller's by the room the vectors take, and they are left there.
+ *
+ *  - DOS function 30h gives the DOS version; AX is kept in [0E86h].
+ *  - The program prefix's segment is [0E84h]. For DOS 2 (AL = 2) there is no environment block to scan and
+ *    the program-name length is taken as 1; the name pointer [0EA7h]/[0EA9h] is not set up.
+ *  - Otherwise the environment segment (the word at 2Ch of the prefix) is scanned with REPNE SCASB for the
+ *    empty string that ends it; two bytes past it (the word count) is the program name, whose address is
+ *    saved in [0EA7h] (offset) and [0EA9h] (segment) and whose length including its zero is found the same way.
+ *  - The command tail (prefix:81h) is read twice, by the C run-time's quoting rules: blanks and tabs separate
+ *    arguments, a run of backslashes before a quote halves (an odd one keeps a literal quote), quotes switch
+ *    the "inside" state and are not copied; a carriage return or zero ends it.
+ *    First pass: counts the arguments (DI, starting at 1 for the program name, saved in [0EA1h]) and the
+ *    characters (DX); the stack is lowered by the even-rounded size of the pointer vector (argc + 2 words)
+ *    plus the characters and their zeros, and the new SP is kept in [0EA3h].
+ *    Second pass: writes the vector (pointers, then a zero word) at the new SP and the strings behind it:
+ *    the program name first, then each argument.
+ *  Registers: DS becomes SS; ES = SS; BX, SI, DI, CX, AX, DX end as the original leaves them; flags too.
+ * The two INT/REP stretches whose length depends on the data (the REP SCASB / REP STOSB) and every
+ * character step check for room first and leave the machine at their instruction so that the original code
+ * can carry on from there; the INT is made by the original's own instruction (sm4_int), as for a call. */
+static int setup_crt_setargv(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    const uint16_t entry = 0x19B6;
+    enum { RET = 0x0EBA, PSP = 0x0E84, DOSVER = 0x0E86, ARGC = 0x0EA1, ARGV = 0x0EA3, NAME_OFF = 0x0EA7, NAME_SEG = 0x0EA9 };
+#define XB(n, at) do { SM4_NEED((n), (at)); c->icount += (n); } while (0)
+#define XC(n) (c->icount += (n))
+#define ZF() ((c->flags & F_ZF) != 0)
+#define CMP_AL(v) alu_op(c, 7, get_r8(c, R_AL), (v), 0)
+#define OR_AL() alu_logic(c, get_r8(c, R_AL), 0)
+#define LODSB() x86_lods(c, 0, c->seg[S_DS])
+#define STOSB() do { mem_write8(c, phys(c->seg[S_ES], c->r[R_DI]), get_r8(c, R_AL)); \
+                     c->r[R_DI] = (uint16_t)(c->r[R_DI] + x86_str_delta(c, 0)); } while (0)
+    /* REP STOSB at `at`: whole, or left to the original when the clock has no room for it. */
+#define REP_STOSB(at) do { const unsigned k_ = c->r[R_CX] ? c->r[R_CX] : 1u; \
+                           if (!room(c, k_)) { c->ip = (uint16_t)(at); return 1; } \
+                           XC(sm_rep_stos(c, 0)); } while (0)
+
+    if (!room(c, 2)) return 0;
+    ds_put(c, RET, cpu_pop16(c));                                 /* the caller's return address */
+    set_r8(c, R_AH, 0x30);
+    XC(2);
+    if (!sm4_int(m, SM4_AT(6))) return 1;                         /* int 21h: the DOS version */
+
+    XB(4, 0x19BE);
+    ds_put(c, DOSVER, c->r[R_AX]);
+    c->r[R_DX] = 1;
+    CMP_AL(2);
+    if (ZF()) goto args;                                          /* DOS 2: no program name */
+
+    XB(7, 0x19C8);
+    c->seg[S_ES] = ds_get(c, PSP);
+    c->seg[S_ES] = seg_read16(c, c->seg[S_ES], 0x2C);             /* the environment */
+    ds_put(c, NAME_SEG, c->seg[S_ES]);
+    c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);                    /* xor ax, ax */
+    c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0x0000;         /* cwd */
+    c->r[R_CX] = 0x8000;
+    c->r[R_DI] = (uint16_t)alu_logic(c, 0, 1);                    /* xor di, di */
+scan_env:                                                         /* REPNE SCASB, then SCASB: a second zero ends it */
+    XB(1, 0x19DD);
+    if (c->r[R_CX] != 0) {
+        x86_scas(c, 0);
+        c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);
+        if (c->r[R_CX] != 0 && !ZF()) goto scan_env;
+    }
+    XB(2, 0x19DF);
+    x86_scas(c, 0);
+    if (x86_cond(c, 5)) goto scan_env;                            /* jne */
+    XB(4, 0x19E2);
+    c->r[R_DI] = (uint16_t)alu_inc(c, c->r[R_DI], 1);
+    c->r[R_DI] = (uint16_t)alu_inc(c, c->r[R_DI], 1);             /* past the word count: the program name */
+    ds_put(c, NAME_OFF, c->r[R_DI]);
+    c->r[R_CX] = 0xFFFF;
+scan_name:                                                        /* REPNE SCASB: the name's length */
+    XB(1, 0x19EB);
+    if (c->r[R_CX] != 0) {
+        x86_scas(c, 0);
+        c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);
+        if (c->r[R_CX] != 0 && !ZF()) goto scan_name;
+    }
+    XB(2, 0x19ED);
+    c->r[R_CX] = (uint16_t)~c->r[R_CX];                           /* not cx */
+    c->r[R_DX] = c->r[R_CX];
+
+args:                                                             /* 0x19F1: first pass over the command tail */
+    XB(3, 0x19F1);
+    c->r[R_DI] = 1;
+    c->r[R_SI] = 0x81;
+    c->seg[S_DS] = ds_get(c, PSP);
+skip_blanks:                                                      /* 0x19FB */
+    XB(3, 0x19FB);
+    LODSB();
+    CMP_AL(0x20);
+    if (ZF()) goto skip_blanks;
+    XB(2, 0x1A00);
+    CMP_AL(9);
+    if (ZF()) goto skip_blanks;
+    XB(2, 0x1A04);
+    CMP_AL(0x0D);
+    if (ZF()) goto count_done;
+    XB(2, 0x1A08);
+    OR_AL();
+    if (ZF()) goto count_done;
+    XB(1, 0x1A0C);
+    c->r[R_DI] = (uint16_t)alu_inc(c, c->r[R_DI], 1);             /* an argument begins */
+count_back:                                                       /* 0x1A0D */
+    XB(1, 0x1A0D);
+    c->r[R_SI] = (uint16_t)alu_dec(c, c->r[R_SI], 1);
+count_out:                                                        /* 0x1A0E: outside quotes */
+    XB(3, 0x1A0E);
+    LODSB();
+    CMP_AL(0x20);
+    if (ZF()) goto skip_blanks;
+    XB(2, 0x1A13);
+    CMP_AL(9);
+    if (ZF()) goto skip_blanks;
+    XB(2, 0x1A17);
+    CMP_AL(0x0D);
+    if (ZF()) goto count_done;
+    XB(2, 0x1A1B);
+    OR_AL();
+    if (ZF()) goto count_done;
+    XB(2, 0x1A1F);
+    CMP_AL(0x22);
+    if (ZF()) goto count_in;
+    XB(2, 0x1A23);
+    CMP_AL(0x5C);
+    if (ZF()) goto count_slash_out;
+    XB(2, 0x1A27);
+    c->r[R_DX] = (uint16_t)alu_inc(c, c->r[R_DX], 1);
+    goto count_out;
+count_slash_out:                                                  /* 0x1A2A: backslashes, then a quote or not */
+    XB(1, 0x1A2A);
+    c->r[R_CX] = (uint16_t)alu_logic(c, 0, 1);
+slash_out_loop:
+    XB(4, 0x1A2C);
+    c->r[R_CX] = (uint16_t)alu_inc(c, c->r[R_CX], 1);
+    LODSB();
+    CMP_AL(0x5C);
+    if (ZF()) goto slash_out_loop;
+    XB(2, 0x1A32);
+    CMP_AL(0x22);
+    if (ZF()) goto slash_out_quote;
+    XB(2, 0x1A36);
+    c->r[R_DX] = (uint16_t)alu_add(c, c->r[R_DX], c->r[R_CX], 1, 0);   /* the backslashes count as they are */
+    goto count_back;
+slash_out_quote:                                                  /* 0x1A3A: a quote after them: half, odd keeps it */
+    XB(5, 0x1A3A);
+    c->r[R_AX] = c->r[R_CX];
+    c->r[R_CX] = x86_shift(c, 5, c->r[R_CX], 1, 1);
+    c->r[R_DX] = (uint16_t)alu_op(c, 2, c->r[R_DX], c->r[R_CX], 1);
+    alu_logic(c, get_r8(c, R_AL) & 1, 0);
+    if (!ZF()) goto count_out;
+    XB(1, 0x1A44);
+    goto count_in;
+count_back2:                                                      /* 0x1A46 */
+    XB(1, 0x1A46);
+    c->r[R_SI] = (uint16_t)alu_dec(c, c->r[R_SI], 1);
+count_in:                                                         /* 0x1A47: inside quotes */
+    XB(3, 0x1A47);
+    LODSB();
+    CMP_AL(0x0D);
+    if (ZF()) goto count_done;
+    XB(2, 0x1A4C);
+    OR_AL();
+    if (ZF()) goto count_done;
+    XB(2, 0x1A50);
+    CMP_AL(0x22);
+    if (ZF()) goto count_out;
+    XB(2, 0x1A54);
+    CMP_AL(0x5C);
+    if (ZF()) goto count_slash_in;
+    XB(2, 0x1A58);
+    c->r[R_DX] = (uint16_t)alu_inc(c, c->r[R_DX], 1);
+    goto count_in;
+count_slash_in:                                                   /* 0x1A5B */
+    XB(1, 0x1A5B);
+    c->r[R_CX] = (uint16_t)alu_logic(c, 0, 1);
+slash_in_loop:
+    XB(4, 0x1A5D);
+    c->r[R_CX] = (uint16_t)alu_inc(c, c->r[R_CX], 1);
+    LODSB();
+    CMP_AL(0x5C);
+    if (ZF()) goto slash_in_loop;
+    XB(2, 0x1A63);
+    CMP_AL(0x22);
+    if (ZF()) goto slash_in_quote;
+    XB(2, 0x1A67);
+    c->r[R_DX] = (uint16_t)alu_add(c, c->r[R_DX], c->r[R_CX], 1, 0);
+    goto count_back2;
+slash_in_quote:                                                   /* 0x1A6B */
+    XB(5, 0x1A6B);
+    c->r[R_AX] = c->r[R_CX];
+    c->r[R_CX] = x86_shift(c, 5, c->r[R_CX], 1, 1);
+    c->r[R_DX] = (uint16_t)alu_op(c, 2, c->r[R_DX], c->r[R_CX], 1);
+    alu_logic(c, get_r8(c, R_AL) & 1, 0);
+    if (!ZF()) goto count_in;
+    XB(1, 0x1A75);
+    goto count_out;
+
+count_done:                                                       /* 0x1A77: make room, start the vector */
+    XB(20, 0x1A77);
+    cpu_push16(c, c->seg[S_SS]);                                  /* push ss, pop ds */
+    c->seg[S_DS] = cpu_pop16(c);
+    ds_put(c, ARGC, c->r[R_DI]);
+    c->r[R_DX] = (uint16_t)alu_add(c, c->r[R_DX], c->r[R_DI], 1, 0);
+    c->r[R_DI] = (uint16_t)alu_inc(c, c->r[R_DI], 1);
+    c->r[R_DI] = x86_shift(c, 4, c->r[R_DI], 1, 1);               /* two bytes a pointer */
+    c->r[R_DX] = (uint16_t)alu_add(c, c->r[R_DX], c->r[R_DI], 1, 0);
+    c->r[R_DX] = (uint16_t)alu_inc(c, c->r[R_DX], 1);
+    set_r8(c, R_DL, (uint8_t)alu_op(c, 4, get_r8(c, R_DL), 0xFE, 0));   /* even */
+    c->r[R_SP] = (uint16_t)alu_sub(c, c->r[R_SP], c->r[R_DX], 1, 0);
+    c->r[R_AX] = c->r[R_SP];
+    ds_put(c, ARGV, c->r[R_AX]);
+    c->r[R_BX] = c->r[R_AX];
+    c->r[R_DI] = (uint16_t)alu_add(c, c->r[R_DI], c->r[R_BX], 1, 0);   /* the strings begin behind the vector */
+    cpu_push16(c, c->seg[S_SS]);                                  /* push ss, pop es */
+    c->seg[S_ES] = cpu_pop16(c);
+    seg_write16(c, c->seg[S_SS], c->r[R_BX], c->r[R_DI]);         /* the first pointer: the program name */
+    c->r[R_BX] = (uint16_t)alu_inc(c, c->r[R_BX], 1);
+    c->r[R_BX] = (uint16_t)alu_inc(c, c->r[R_BX], 1);
+    c->r[R_SI] = ds_get(c, NAME_OFF);                             /* lds si, [0EA7h] */
+    c->seg[S_DS] = ds_get(c, (uint16_t)(NAME_OFF + 2));
+copy_name:                                                        /* 0x1A9E: the name with its zero */
+    XB(4, 0x1A9E);
+    LODSB();
+    STOSB();
+    OR_AL();
+    if (!ZF()) goto copy_name;
+    XB(3, 0x1AA4);
+    c->seg[S_DS] = seg_read16(c, c->seg[S_SS], PSP);
+    c->r[R_SI] = 0x81;
+    goto next_arg;
+end_arg:                                                          /* 0x1AAE: close the argument just copied */
+    XB(2, 0x1AAE);
+    c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);
+    STOSB();
+next_arg:                                                         /* 0x1AB1 */
+    XB(3, 0x1AB1);
+    LODSB();
+    CMP_AL(0x20);
+    if (ZF()) goto next_arg;
+    XB(2, 0x1AB6);
+    CMP_AL(9);
+    if (ZF()) goto next_arg;
+    XB(2, 0x1ABA);
+    CMP_AL(0x0D);
+    if (ZF()) goto finish;
+    XB(2, 0x1ABE);
+    OR_AL();
+    if (ZF()) goto finish;
+    XB(3, 0x1AC2);
+    seg_write16(c, c->seg[S_SS], c->r[R_BX], c->r[R_DI]);         /* a pointer to this argument */
+    c->r[R_BX] = (uint16_t)alu_inc(c, c->r[R_BX], 1);
+    c->r[R_BX] = (uint16_t)alu_inc(c, c->r[R_BX], 1);
+copy_back:                                                        /* 0x1AC7 */
+    XB(1, 0x1AC7);
+    c->r[R_SI] = (uint16_t)alu_dec(c, c->r[R_SI], 1);
+copy_out:                                                         /* 0x1AC8: outside quotes */
+    XB(3, 0x1AC8);
+    LODSB();
+    CMP_AL(0x20);
+    if (ZF()) goto end_arg;
+    XB(2, 0x1ACD);
+    CMP_AL(9);
+    if (ZF()) goto end_arg;
+    XB(2, 0x1AD1);
+    CMP_AL(0x0D);
+    if (ZF()) goto close_last;
+    XB(2, 0x1AD5);
+    OR_AL();
+    if (ZF()) goto close_last;
+    XB(2, 0x1AD9);
+    CMP_AL(0x22);
+    if (ZF()) goto copy_in;
+    XB(2, 0x1ADD);
+    CMP_AL(0x5C);
+    if (ZF()) goto copy_slash_out;
+    XB(2, 0x1AE1);
+    STOSB();
+    goto copy_out;
+copy_slash_out:                                                   /* 0x1AE4 */
+    XB(1, 0x1AE4);
+    c->r[R_CX] = (uint16_t)alu_logic(c, 0, 1);
+copy_slash_out_loop:
+    XB(4, 0x1AE6);
+    c->r[R_CX] = (uint16_t)alu_inc(c, c->r[R_CX], 1);
+    LODSB();
+    CMP_AL(0x5C);
+    if (ZF()) goto copy_slash_out_loop;
+    XB(2, 0x1AEC);
+    CMP_AL(0x22);
+    if (ZF()) goto copy_slash_out_quote;
+    XB(1, 0x1AF0);
+    set_r8(c, R_AL, 0x5C);                                        /* the backslashes as they are */
+    REP_STOSB(0x1AF2);
+    XB(1, 0x1AF4);
+    goto copy_back;
+copy_slash_out_quote:                                             /* 0x1AF6 */
+    XB(2, 0x1AF6);
+    set_r8(c, R_AL, 0x5C);
+    c->r[R_CX] = x86_shift(c, 5, c->r[R_CX], 1, 1);
+    REP_STOSB(0x1AFA);                                            /* half of them */
+    XB(1, 0x1AFC);
+    if (x86_cond(c, 3)) goto copy_in;                             /* jae: even, the quote is syntax */
+    XB(3, 0x1AFE);
+    set_r8(c, R_AL, 0x22);                                        /* odd: a literal quote */
+    STOSB();
+    goto copy_out;
+copy_back_in:                                                     /* 0x1B03 */
+    XB(1, 0x1B03);
+    c->r[R_SI] = (uint16_t)alu_dec(c, c->r[R_SI], 1);
+copy_in:                                                          /* 0x1B04: inside quotes */
+    XB(3, 0x1B04);
+    LODSB();
+    CMP_AL(0x0D);
+    if (ZF()) goto close_last;
+    XB(2, 0x1B09);
+    OR_AL();
+    if (ZF()) goto close_last;
+    XB(2, 0x1B0D);
+    CMP_AL(0x22);
+    if (ZF()) goto copy_out;
+    XB(2, 0x1B11);
+    CMP_AL(0x5C);
+    if (ZF()) goto copy_slash_in;
+    XB(2, 0x1B15);
+    STOSB();
+    goto copy_in;
+copy_slash_in:                                                    /* 0x1B18 */
+    XB(1, 0x1B18);
+    c->r[R_CX] = (uint16_t)alu_logic(c, 0, 1);
+copy_slash_in_loop:
+    XB(4, 0x1B1A);
+    c->r[R_CX] = (uint16_t)alu_inc(c, c->r[R_CX], 1);
+    LODSB();
+    CMP_AL(0x5C);
+    if (ZF()) goto copy_slash_in_loop;
+    XB(2, 0x1B20);
+    CMP_AL(0x22);
+    if (ZF()) goto copy_slash_in_quote;
+    XB(1, 0x1B24);
+    set_r8(c, R_AL, 0x5C);
+    REP_STOSB(0x1B26);
+    XB(1, 0x1B28);
+    goto copy_back_in;
+copy_slash_in_quote:                                              /* 0x1B2A */
+    XB(2, 0x1B2A);
+    set_r8(c, R_AL, 0x5C);
+    c->r[R_CX] = x86_shift(c, 5, c->r[R_CX], 1, 1);
+    REP_STOSB(0x1B2E);
+    XB(1, 0x1B30);
+    if (x86_cond(c, 3)) goto copy_out;
+    XB(3, 0x1B32);
+    set_r8(c, R_AL, 0x22);
+    STOSB();
+    goto copy_in;
+close_last:                                                       /* 0x1B37: the last argument's zero */
+    XB(2, 0x1B37);
+    c->r[R_AX] = (uint16_t)alu_logic(c, 0, 1);
+    STOSB();
+finish:                                                           /* 0x1B3A: terminate the vector, go back */
+    XB(4, 0x1B3A);
+    cpu_push16(c, c->seg[S_SS]);                                  /* push ss, pop ds */
+    c->seg[S_DS] = cpu_pop16(c);
+    ds_put(c, c->r[R_BX], 0);
+    c->ip = ds_get(c, RET);                                       /* jmp [0EBAh] */
+    return 1;
+#undef REP_STOSB
+#undef STOSB
+#undef LODSB
+#undef OR_AL
+#undef CMP_AL
+#undef ZF
+#undef XC
+#undef XB
+}
+
+/* MPS_LOGO 0146:1894, the C runtime's _sopen(path, oflag, shflag, pmode), far: open or create a file through DOS
+ * and answer its handle, or the error through the runtime's DOS ending (0146:0B53, sm4_dos_end KEEP: with carry the
+ * DOS code is mapped to errno by 0B66 and the answer is -1 in DX:AX). It is START's 0A59A with the far frame: the
+ * arguments a word higher (path [bp+6], oflag [bp+8], shflag [bp+0Ah], pmode [bp+0Ch]), RETF at the end, and the
+ * DOS version, default-mode byte, handle count and handle table at [0200], [0447], [0205] and [0207].
+ * Locals: [bp-4] the handle's flag byte, [bp-3] 1 when the file existed, [bp-2] the share bits.
+ *   - The share bits (low byte of shflag) count from DOS version 3 on only ([0200] at least 3), else 0; pmode then
+ *     replaces shflag at [bp+0Ah]. The flag byte is 80h (text) unless oflag asks for binary (8000h), or the default
+ *     in [0447] is binary (bit 7) and oflag does not ask for text (4000h).
+ *   - DOS opens the path (3Dh), AL = (oflag & 3) | share bits. A failure other than "file not found" (2), or one
+ *     without oflag's create bit (100h), answers the error. With the create bit a missing file is created below.
+ *   - A file that opened: create and exclusive together (500h) close it again and answer error 11h. IOCTL 4400h
+ *     tells devices (DL bit 7): the flag byte gets 40h and nothing is changed in the file. For a file, oflag's
+ *     truncate bit (200h) truncates it - by a write of zero bytes when oflag is writable (bits 0-1 not both zero),
+ *     else the file is closed, its attributes read (4300h) and it is created anew with them. Without the truncate
+ *     bit a text-mode file opened for writing (bit 2) has a trailing Ctrl-Z (1Ah) cut off (seek to 1 byte before
+ *     the end, read it, seek back, write zero bytes) and the pointer goes to the start.
+ *   - Creating: pmode goes through the mask test 1A3F (CL 1 = read-only: bit 7 of pmode less the mask [01FA]),
+ *     CL is cleared again when share bits were given or oflag lacks bit 2, and DOS creates the file (3Ch). With
+ *     share bits, or oflag bit 2, that handle stays; otherwise it is closed and the file opened (3Dh, mode as
+ *     above). A file created without the read/write bit and with pmode bit 0 set gets its attributes set (4301h,
+ *     CL | 1).
+ *   - The flag byte for the handle's table entry is then made from the attributes (4300h): 10h when read-only,
+ *     20h when oflag has the append bit (8), the text and device bits and 1 (open). A handle at or past the
+ *     count ([0205]) is closed again and answers error 18h; otherwise the byte is stored at [0207 + handle] and
+ *     the handle is the answer.
+ * Every DOS call is the INT 21h the original makes (st4_int21); the mask test returns with a plain RET, and the
+ * error ending is shared code (sm4_dos_end, entered at 0B53 by a JMP, with carry set). */
+static int mps_logo_open_file(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { PATH = 6, OFLAG = 8, SHARE = 10, PMODE = 12, FLAGS = -4, EXISTED = -3, SHARE_KEPT = -2, PEEK = -1 };
+    /* A block of n instructions starting at at_: claim the room and charge them. */
+#define OB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+    /* A block of n instructions ending in an INT 21h: charge all but the INT, set
+     * the registers, then OINT(at of the INT) runs it (the INT charges itself). */
+#define OBI(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_) - 1; } while (0)
+#define OINT(int_at_) do { if (!st4_int21(m, (int_at_))) return 1; } while (0)
+#define ORUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define OTEST(v_,mask_,w_) alu_logic(c, (uint32_t)(v_) & (mask_), (w_))
+#define OCMP(a_,b_,w_) alu_op(c, 7, (a_), (b_), (w_))
+#define OREG8(r_,op_,b_) set_r8(c, (r_), (uint8_t)alu_op(c, (op_), get_r8(c, (r_)), (b_), 0))
+#define OXCHG() do { const uint16_t t_ = c->r[R_AX]; c->r[R_AX] = c->r[R_BX]; c->r[R_BX] = t_; } while (0)
+#define OZERO_CX() (c->r[R_CX] = (uint16_t)alu_op(c, 6, c->r[R_CX], c->r[R_CX], 1))
+    if (!room(c, 6)) return 0;
+    OB(6, 0x1894);
+    frame_open(c, 4);
+    set_r8(c, R_BH, (uint8_t)alu_op(c, 6, get_r8(c, R_BH), get_r8(c, R_BH), 0));
+    OCMP(ds_get8(c, 0x0200), 3, 0);
+    if (x86_cond(c, 2)) goto share_done;                          /* DOS before 3: no share bits */
+    OB(1, 0x18A3);
+    set_r8(c, R_BH, bp_get8(c, SHARE));
+share_done:
+    OB(3, 0x18A6);
+    c->r[R_AX] = bp_get(c, PMODE);
+    bp_put(c, SHARE, c->r[R_AX]);
+    OB(6, 0x18B6);
+    bp_put8(c, SHARE_KEPT, get_r8(c, R_BH));
+    c->r[R_AX] = bp_get(c, OFLAG);
+    c->r[R_CX] = c->r[R_AX];
+    bp_put8(c, FLAGS, 0);
+    OTEST(c->r[R_AX], 0x8000, 1);
+    if (x86_cond(c, 5)) goto mode_done;                           /* binary asked for */
+    OB(2, 0x18C7);
+    OTEST(c->r[R_AX], 0x4000, 1);
+    if (x86_cond(c, 5)) goto text;                                /* text asked for */
+    OB(2, 0x18CC);
+    OTEST(ds_get8(c, 0x0447), 0x80, 0);
+    if (x86_cond(c, 5)) goto mode_done;                           /* the default is binary */
+text:
+    OB(1, 0x18D3);
+    bp_put8(c, FLAGS, 0x80);
+mode_done:
+    OBI(5, 0x18D7);
+    c->r[R_DX] = bp_get(c, PATH);
+    OREG8(R_AL, 4, 0x03);
+    OREG8(R_AL, 1, get_r8(c, R_BH));
+    set_r8(c, R_AH, 0x3D);
+    OINT(0x18E0);                                                 /* open */
+    OB(1, 0x18E2);
+    if (x86_cond(c, 3)) goto opened;
+    OB(2, 0x18E4);
+    OCMP(c->r[R_AX], 2, 1);
+    if (x86_cond(c, 5)) goto fail;                                /* not "file not found" */
+    OB(2, 0x18E9);
+    OTEST(c->r[R_CX], 0x0100, 1);
+    if (x86_cond(c, 4)) goto fail;                                /* and no create bit */
+    OB(1, 0x18EF);
+    goto create;
+fail:
+    OB(2, 0x18F2);                                                /* STC, JMP 0B53 */
+    set_flag(c, F_CF, 1);
+    return sm4_dos_end(m, 0x0B3E, SM4_KEEP, 1);
+opened:
+    OB(5, 0x18F6);
+    OXCHG();
+    c->r[R_AX] = c->r[R_CX];
+    c->r[R_AX] = (uint16_t)alu_op(c, 4, c->r[R_AX], 0x0500, 1);
+    OCMP(c->r[R_AX], 0x0500, 1);
+    if (x86_cond(c, 5)) goto exists_ok;
+    OBI(2, 0x1901);
+    set_r8(c, R_AH, 0x3E);
+    OINT(0x1903);                                                 /* close: create and exclusive */
+    OB(2, 0x1905);
+    c->r[R_AX] = 0x1100;
+    goto fail;
+exists_ok:
+    OBI(3, 0x190A);
+    bp_put8(c, EXISTED, 1);
+    c->r[R_AX] = 0x4400;
+    OINT(0x1911);                                                 /* IOCTL: device or file */
+    OB(2, 0x1913);
+    OTEST(get_r8(c, R_DL), 0x80, 0);
+    if (x86_cond(c, 4)) goto not_device;
+    OB(1, 0x1918);
+    bp_put8(c, FLAGS, (uint8_t)alu_op(c, 1, bp_get8(c, FLAGS), 0x40, 0));
+not_device:
+    OB(2, 0x191C);
+    OTEST(bp_get8(c, FLAGS), 0x40, 0);
+    if (x86_cond(c, 4)) goto is_file;
+    OB(1, 0x1922);
+    goto attributes;                                              /* a device: nothing to change */
+is_file:
+    OB(3, 0x1925);
+    c->r[R_AX] = bp_get(c, OFLAG);
+    OTEST(c->r[R_AX], 0x0200, 1);
+    if (x86_cond(c, 4)) goto no_truncate;
+    OB(2, 0x192D);
+    OTEST(c->r[R_AX], 0x0003, 1);
+    if (x86_cond(c, 4)) goto read_only_truncate;
+    OBI(3, 0x1932);
+    OZERO_CX();
+    set_r8(c, R_AH, 0x40);
+    OINT(0x1936);                                                 /* write 0 bytes: truncate */
+    OB(1, 0x1938);
+    goto attributes;
+read_only_truncate:
+    OBI(2, 0x193B);
+    set_r8(c, R_AH, 0x3E);
+    OINT(0x193D);                                                 /* close */
+    OBI(3, 0x193F);
+    c->r[R_DX] = bp_get(c, PATH);
+    c->r[R_AX] = 0x4300;
+    OINT(0x1945);                                                 /* its attributes */
+    OB(1, 0x1947);
+    goto create_call;
+no_truncate:
+    OB(2, 0x1949);
+    OTEST(bp_get8(c, FLAGS), 0x80, 0);
+    if (x86_cond(c, 5)) goto text_file;
+    OB(1, 0x194F);
+    goto attributes;                                              /* binary: leave it */
+text_file:
+    OB(2, 0x1952);
+    OTEST(c->r[R_AX], 0x0002, 1);
+    if (x86_cond(c, 5)) goto text_writable;
+    OB(1, 0x1957);
+    goto attributes;
+text_writable:
+    OBI(4, 0x195A);
+    c->r[R_CX] = 0xFFFF;
+    c->r[R_DX] = c->r[R_CX];
+    c->r[R_AX] = 0x4202;
+    OINT(0x1962);                                                 /* seek to 1 byte before the end */
+    OBI(4, 0x1964);
+    c->r[R_CX] = (uint16_t)alu_sub(c, 0, c->r[R_CX], 1, 0);
+    c->r[R_DX] = (uint16_t)(c->r[R_BP] + 0xFFFF);
+    set_r8(c, R_AH, 0x3F);
+    OINT(0x196B);                                                 /* read that byte */
+    OB(2, 0x196D);
+    c->r[R_AX] = (uint16_t)alu_op(c, 1, c->r[R_AX], c->r[R_AX], 1);
+    if (x86_cond(c, 4)) goto to_start;                            /* nothing read */
+    OB(2, 0x1971);
+    OCMP(bp_get8(c, PEEK), 0x1A, 0);
+    if (x86_cond(c, 5)) goto to_start;                            /* not a Ctrl-Z */
+    OBI(4, 0x1977);
+    c->r[R_CX] = (uint16_t)alu_sub(c, 0, c->r[R_CX], 1, 0);
+    c->r[R_DX] = c->r[R_CX];
+    c->r[R_AX] = 0x4202;
+    OINT(0x197E);                                                 /* back over it */
+    OBI(3, 0x1980);
+    OZERO_CX();
+    set_r8(c, R_AH, 0x40);
+    OINT(0x1984);                                                 /* write 0 bytes: cut it off */
+to_start:
+    OBI(4, 0x1986);
+    OZERO_CX();
+    c->r[R_DX] = c->r[R_CX];
+    c->r[R_AX] = 0x4200;
+    OINT(0x198D);                                                 /* seek to the start */
+    OB(1, 0x198F);
+    goto attributes;
+create:
+    OB(2, 0x1991);
+    bp_put8(c, EXISTED, 0);
+    c->r[R_CX] = bp_get(c, SHARE);
+    SM4_NEED(1, 0x1998);
+    ORUN(guest_call_pop(m, 0x1A3F, 0x199B, 0));                   /* the mask test: CL 1 = read-only */
+    OB(3, 0x199B);
+    bp_put(c, SHARE, c->r[R_CX]);
+    OTEST(bp_get8(c, SHARE_KEPT), 0xFF, 0);
+    if (x86_cond(c, 5)) goto clear_read_only;
+    OB(2, 0x19A4);
+    OTEST(bp_get(c, OFLAG), 0x0002, 1);
+    if (x86_cond(c, 5)) goto create_call;
+clear_read_only:
+    OB(1, 0x19AB);
+    OREG8(R_CL, 4, 0xFE);
+create_call:
+    OBI(3, 0x19AE);
+    c->r[R_DX] = bp_get(c, PATH);
+    set_r8(c, R_AH, 0x3C);
+    OINT(0x19B3);                                                 /* create */
+    OB(1, 0x19B5);
+    if (x86_cond(c, 3)) goto created;
+create_failed:
+    OB(1, 0x19B7);                                                /* JMP 0B53 */
+    return sm4_dos_end(m, 0x0B3E, SM4_KEEP, 1);
+created:
+    OB(3, 0x19BA);
+    OXCHG();
+    OTEST(bp_get8(c, SHARE_KEPT), 0xFF, 0);
+    if (x86_cond(c, 5)) goto reopen;
+    OB(2, 0x19C1);
+    OTEST(bp_get(c, OFLAG), 0x0002, 1);
+    if (x86_cond(c, 5)) goto attributes;
+reopen:
+    OBI(2, 0x19C8);
+    set_r8(c, R_AH, 0x3E);
+    OINT(0x19CA);                                                 /* close the new file */
+    OBI(6, 0x19CC);
+    set_r8(c, R_AL, bp_get8(c, OFLAG));
+    OREG8(R_AL, 4, 0x03);
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 1, get_r8(c, R_AL), bp_get8(c, SHARE_KEPT), 0));
+    c->r[R_DX] = bp_get(c, PATH);
+    set_r8(c, R_AH, 0x3D);
+    OINT(0x19D9);                                                 /* open it in the mode asked for */
+    OB(1, 0x19DB);
+    if (x86_cond(c, 2)) goto create_failed;
+    OB(3, 0x19DD);
+    OXCHG();
+    OTEST(bp_get8(c, EXISTED), 0x01, 0);
+    if (x86_cond(c, 5)) goto attributes;
+    OB(2, 0x19E4);
+    OTEST(bp_get(c, SHARE), 0x0001, 1);
+    if (x86_cond(c, 4)) goto attributes;                          /* pmode not read-only */
+    OBI(4, 0x19EB);
+    OREG8(R_CL, 1, 0x01);
+    c->r[R_DX] = bp_get(c, PATH);
+    c->r[R_AX] = 0x4301;
+    OINT(0x19F4);                                                 /* set the attributes: read-only */
+    OB(1, 0x19F6);
+    if (x86_cond(c, 2)) goto create_failed;
+attributes:
+    OB(2, 0x19F8);
+    OTEST(bp_get8(c, FLAGS), 0x40, 0);
+    if (x86_cond(c, 5)) goto device_flags;
+    OBI(3, 0x19FE);
+    c->r[R_DX] = bp_get(c, PATH);
+    c->r[R_AX] = 0x4300;
+    OINT(0x1A04);                                                 /* the attributes */
+    OB(4, 0x1A06);
+    c->r[R_AX] = c->r[R_CX];
+    OREG8(R_CL, 6, get_r8(c, R_CL));
+    c->r[R_AX] = (uint16_t)alu_op(c, 4, c->r[R_AX], 0x0001, 1);
+    if (x86_cond(c, 4)) goto not_read_only;
+    OB(1, 0x1A0F);
+    set_r8(c, R_CL, 0x10);
+not_read_only:
+    OB(2, 0x1A11);
+    OTEST(bp_get(c, OFLAG), 0x0008, 1);
+    if (x86_cond(c, 4)) goto handle_check;
+    OB(1, 0x1A18);
+    OREG8(R_CL, 1, 0x20);
+    goto handle_check;
+device_flags:
+    OB(2, 0x1A3B);
+    OREG8(R_CL, 6, get_r8(c, R_CL));
+handle_check:
+    OB(2, 0x1A1B);
+    OCMP(c->r[R_BX], ds_get(c, 0x0205), 1);
+    if (x86_cond(c, 2)) goto room_for_it;
+    OBI(2, 0x1A21);
+    set_r8(c, R_AH, 0x3E);
+    OINT(0x1A23);                                                 /* too many handles: close it */
+    OB(2, 0x1A25);
+    c->r[R_AX] = 0x1800;
+    goto fail;
+room_for_it:
+    OB(7, 0x1A2B);
+    set_r8(c, R_CL, (uint8_t)alu_op(c, 1, get_r8(c, R_CL), bp_get8(c, FLAGS), 0));
+    OREG8(R_CL, 1, 0x01);
+    ds_put8(c, (uint16_t)(c->r[R_BX] + 0x0207), get_r8(c, R_CL));
+    c->r[R_AX] = c->r[R_BX];
+    sm4_leave_ret(c, 1);
+    return 1;
+#undef OB
+#undef OBI
+#undef OINT
+#undef ORUN
+#undef OTEST
+#undef OCMP
+#undef OREG8
+#undef OXCHG
+#undef OZERO_CX
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x1894, mps_logo_open_file, "open or create a file as the C runtime does", 2 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x19B6, setup_crt_setargv, "C start-up: DOS version, program name and argument vector", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x130D, 0x033F, vgame_model_edge_clip, "clip a model edge to the window", 2 },
     { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x1602, player_crt_setargv, "C start-up: DOS version, program name and argument vector", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xF458, vgame_read_file_handle, "read from a file handle, text mode translated", 1 },
