@@ -750,6 +750,10 @@ if(F117R_BUILD_TESTS)
       --only END.EXE:1BAA)
     add_test(NAME matched_start_wait_confirm_cancel COMMAND func_lockstep --states 5000
       --only START.EXE:3EA5)
+    add_test(NAME matched_vgame_pic_rows_to_page_far COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:A)
+    add_test(NAME matched_start_onc_grid_reference COMMAND func_lockstep --states 5000
+      --only START.EXE:58DF)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000

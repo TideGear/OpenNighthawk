@@ -25124,10 +25124,10 @@ static int st4_format_conversion_init(machine_t *m, uint16_t scan)
 static int st4_start_format_conversion_init(machine_t *m) { return st4_format_conversion_init(m, 0x9D19); }
 static int st4_end_format_conversion_init(machine_t *m) { return st4_format_conversion_init(m, 0x568B); }
 
-/* START 0x058DF, the aircraft's clamp opening: a 4-byte frame and the
- * aircraft record's word +38h ([CACA] far) in AX for the switch at
- * 0x05956. END 0x03682 is the same for the debriefing record ([7222],
- * word +28h; 2 bytes; on at 0x036BC). */
+/* END 0x03682: build a two-byte frame and read the debriefing record's
+ * word +28h ([7222] far) for the switch at 036BC. START 58DF's former
+ * six-instruction opening also used this helper; its full grid-reference
+ * formatter is now named separately. */
 static int st4_record_switch_open(machine_t *m, uint16_t locals, uint16_t rec, uint16_t field, uint16_t to)
 {
     cpu_t *c = &m->cpu;
@@ -25140,7 +25140,7 @@ static int st4_record_switch_open(machine_t *m, uint16_t locals, uint16_t rec, u
     c->ip = to;
     return 1;
 }
-static int st4_start_clamp_open(machine_t *m) { return st4_record_switch_open(m, 4, 0xCACA, 0x38, 0x5956); }
+
 static int st4_end_debrief_switch_open(machine_t *m) { return st4_record_switch_open(m, 2, 0x7222, 0x28, 0x36BC); }
 
 /* END 0x00880, an icon's placement opening: the icon record at the
@@ -66323,7 +66323,137 @@ done:
 #undef AX
 }
 
+/* VGAME 11D8:000A, far: decode a 320-by-200 picture onto a graphics page.
+ * The relocated MOV operand at CS:0013 supplies the decoder's data segment.
+ * Save the caller's DS, ES, DI, SI and BP (BP twice), store the far-call
+ * arguments as handle/page, and select that page through the driver thunks.
+ * For each row obtain its address, decode a row through 11ED:0006, submit
+ * the buffer at 9546h and finish that row. The remaining byte count steps
+ * FA00h down by 140h; the row number counts up. All original callees retain
+ * their own return form: 0155 is near RET; the other entries are far RETF.
+ * Restore DS before popping the saved frame and returning far. */
+static int vgame_pic_rows_to_page_far(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+    enum { HANDLE=6,PAGE=8,FILE_CELL=0x4662,PAGE_CELL=0x4666,
+           REMAINING=0x4664,ROW=0x466C,ADDRESS=0x4668 };
+#define XB(n_,at_) do { SM4_NEED((n_),(at_));c->icount+=(n_); } while(0)
+#define RUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at;const int returned_=(call_); \
+    m->run_until=until_;if(!returned_)return 1; } while(0)
+#define FAR(at_,ret_) do { SM4_NEED(1,(at_));RUN(guest_call_far(m,(at_),(ret_))); } while(0)
+    if(!room(c,13))return 0;
+    XB(13,0x000A);x86_push_reg(c,R_BP);c->r[R_BP]=c->r[R_SP];
+    x86_push_reg(c,R_DI);x86_push_reg(c,R_SI);cpu_push16(c,c->seg[S_ES]);x86_push_reg(c,R_BP);cpu_push16(c,c->seg[S_DS]);
+    c->r[R_AX]=seg_read16(c,c->seg[S_CS],0x0013);c->seg[S_DS]=c->r[R_AX];
+    c->r[R_AX]=bp_get(c,HANDLE);ds_put(c,FILE_CELL,c->r[R_AX]);
+    c->r[R_AX]=bp_get(c,PAGE);ds_put(c,PAGE_CELL,c->r[R_AX]);
+    SM4_NEED(1,0x0023);RUN(guest_call_pop(m,0x0155,0x0026,0));
+    XB(1,0x0026);c->r[R_SI]=ds_get(c,PAGE_CELL);FAR(0x002A,0x002F);FAR(0x002F,0x0034);
+    XB(2,0x0034);ds_put(c,ROW,0);ds_put(c,REMAINING,0xFA00);
+row:
+    XB(1,0x0040);c->r[R_DI]=ds_get(c,ROW);FAR(0x0044,0x0049);
+    XB(1,0x0049);ds_put(c,ADDRESS,c->r[R_AX]);FAR(0x004C,0x0051);
+    XB(3,0x0051);c->r[R_DI]=ds_get(c,ADDRESS);c->r[R_BP]=0x9546;c->r[R_BX]=ds_get(c,ROW);FAR(0x005C,0x0061);
+    XB(1,0x0061);c->r[R_DI]=ds_get(c,ADDRESS);FAR(0x0065,0x006A);
+    XB(3,0x006A);ds_put(c,ROW,(uint16_t)alu_inc(c,ds_get(c,ROW),1));
+    ds_put(c,REMAINING,(uint16_t)alu_op(c,5,ds_get(c,REMAINING),0x0140,1));if(x86_cond(c,5))goto row;
+    XB(8,0x0076);c->seg[S_DS]=cpu_pop16(c);c->r[R_BP]=cpu_pop16(c);c->seg[S_ES]=cpu_pop16(c);
+    c->r[R_SI]=cpu_pop16(c);c->r[R_DI]=cpu_pop16(c);c->r[R_SP]=c->r[R_BP];c->r[R_BP]=cpu_pop16(c);
+    c->ip=cpu_pop16(c);c->seg[S_CS]=cpu_pop16(c);return 1;
+#undef FAR
+#undef RUN
+#undef XB
+}
+
+/* START 58DF, format the selected theatre's ONC grid reference at B394.
+ * The word at far [CACA]+38 selects a live CS jump-table entry. Each of
+ * its nine arms copies a four-byte prefix; theatre 0 uses biases (6,4),
+ * theatre 3 (3,5), and the others (0,0). For each signed coordinate, keep
+ * the original SAR 5, signed multiply by 20 (including DX), SAR 10 and
+ * 16-bit bias addition. Repeated subtraction of ten changes the letter;
+ * the remaining byte changes the digit (northing uses 9 minus the byte).
+ * An out-of-range theatre skips prefix/bias initialization exactly as the
+ * original does, retaining the frame's prior bytes. The sole callee is
+ * the original near cdecl strcpy at 94AC. Unknown live table targets are
+ * handed back at the original JMP boundary with the frame intact. */
+static int start_onc_grid_reference(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+#define AX c->r[R_AX]
+#define BX c->r[R_BX]
+#define CX c->r[R_CX]
+#define XB(n_,at_) do { SM4_NEED((n_),(at_));c->icount+=(n_); } while(0)
+#define CALL(at_,ret_) do { SM4_NEED(1,(at_));const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at;const int returned_=guest_call_pop(m,0x94AC,(ret_),0); \
+    m->run_until=until_;if(!returned_)return 1; } while(0)
+    if(!room(c,6))return 0;
+    XB(6,0x58DF);x86_push_reg(c,R_BP);c->r[R_BP]=c->r[R_SP];
+    c->r[R_SP]=(uint16_t)alu_op(c,5,c->r[R_SP],4,1);
+    BX=ds_get(c,0xCACA);c->seg[S_ES]=ds_get(c,0xCACC);AX=seg_read16(c,c->seg[S_ES],(uint16_t)(BX+0x38));
+    XB(2,0x5956);alu_op(c,7,AX,8,1);if(x86_cond(c,7))goto coordinates;
+    XB(3,0x595B);AX=(uint16_t)x86_shift(c,4,AX,1,1);
+    {const uint16_t old_=AX;AX=BX;BX=old_;}
+    {const uint16_t target_=seg_read16(c,c->seg[S_CS],(uint16_t)(BX+0x5963));
+     switch(target_){
+        case 0x58EF:goto theatre0;case 0x5908:goto theatre1;case 0x591F:goto theatre2;
+        case 0x5924:goto theatre3;case 0x593D:goto theatre4;case 0x5942:goto theatre5;
+        case 0x5947:goto theatre6;case 0x594C:goto theatre7;case 0x5951:goto theatre8;
+        default:c->ip=target_;return 1;
+     }}
+theatre0:
+    XB(4,0x58EF);AX=0x0DA5;x86_push_reg(c,R_AX);AX=0xB394;x86_push_reg(c,R_AX);CALL(0x58F7,0x58FA);
+    XB(5,0x58FA);BX=cpu_pop16(c);BX=cpu_pop16(c);bp_put(c,-2,6);bp_put(c,-4,4);goto coordinates;
+theatre1:
+    XB(1,0x5908);AX=0x0DAA;goto copy_zero;
+theatre2:
+    XB(2,0x591F);AX=0x0DAF;goto copy_zero;
+theatre3:
+    XB(4,0x5924);AX=0x0DB4;x86_push_reg(c,R_AX);AX=0xB394;x86_push_reg(c,R_AX);CALL(0x592C,0x592F);
+    XB(5,0x592F);BX=cpu_pop16(c);BX=cpu_pop16(c);bp_put(c,-2,3);bp_put(c,-4,5);goto coordinates;
+theatre4:
+    XB(2,0x593D);AX=0x0DB9;goto copy_zero;
+theatre5:
+    XB(2,0x5942);AX=0x0DBE;goto copy_zero;
+theatre6:
+    XB(2,0x5947);AX=0x0DC3;goto copy_zero;
+theatre7:
+    XB(2,0x594C);AX=0x0DC8;goto copy_zero;
+theatre8:
+    XB(2,0x5951);AX=0x0DCD;goto copy_zero;
+copy_zero:
+    XB(3,0x590B);x86_push_reg(c,R_AX);AX=0xB394;x86_push_reg(c,R_AX);CALL(0x5910,0x5913);
+    XB(6,0x5913);BX=cpu_pop16(c);BX=cpu_pop16(c);AX=(uint16_t)alu_op(c,5,AX,AX,1);bp_put(c,-2,AX);bp_put(c,-4,AX);
+coordinates:
+    XB(10,0x5975);AX=bp_get(c,4);set_r8(c,R_CL,5);AX=(uint16_t)x86_shift(c,7,AX,get_r8(c,R_CL),1);
+    CX=20;x86_imul16(c,CX);set_r8(c,R_CL,10);AX=(uint16_t)x86_shift(c,7,AX,get_r8(c,R_CL),1);
+    AX=(uint16_t)alu_op(c,0,AX,bp_get(c,-2),1);bp_put(c,4,AX);goto xcheck;
+xletter:
+    XB(2,0x598D);bp_put(c,4,(uint16_t)alu_op(c,5,bp_get(c,4),10,1));
+    ds_put8(c,0xB394,(uint8_t)alu_inc(c,ds_get8(c,0xB394),0));
+xcheck:
+    XB(2,0x5995);alu_op(c,7,bp_get(c,4),9,1);if(x86_cond(c,15))goto xletter;
+    XB(12,0x599B);set_r8(c,R_AL,bp_get8(c,4));ds_put8(c,0xB396,(uint8_t)alu_op(c,0,ds_get8(c,0xB396),get_r8(c,R_AL),0));
+    AX=bp_get(c,6);set_r8(c,R_CL,5);AX=(uint16_t)x86_shift(c,7,AX,get_r8(c,R_CL),1);
+    CX=20;x86_imul16(c,CX);set_r8(c,R_CL,10);AX=(uint16_t)x86_shift(c,7,AX,get_r8(c,R_CL),1);
+    AX=(uint16_t)alu_op(c,0,AX,bp_get(c,-4),1);bp_put(c,6,AX);goto ycheck;
+yletter:
+    XB(2,0x59BA);bp_put(c,6,(uint16_t)alu_op(c,5,bp_get(c,6),10,1));
+    ds_put8(c,0xB395,(uint8_t)alu_dec(c,ds_get8(c,0xB395),0));
+ycheck:
+    XB(2,0x59C2);alu_op(c,7,bp_get(c,6),9,1);if(x86_cond(c,15))goto yletter;
+    XB(7,0x59C8);set_r8(c,R_AL,9);set_r8(c,R_AL,(uint8_t)alu_op(c,5,get_r8(c,R_AL),bp_get8(c,6),0));
+    ds_put8(c,0xB397,(uint8_t)alu_op(c,0,ds_get8(c,0xB397),get_r8(c,R_AL),0));AX=0xB394;x86_leave(c);near_ret(c);return 1;
+#undef CALL
+#undef XB
+#undef CX
+#undef BX
+#undef AX
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "START.EXE", START_47304, 0x0000, 0x58DF, start_onc_grid_reference, "format a theatre grid reference from signed world coordinates", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x11D8, 0x000A, vgame_pic_rows_to_page_far, "decode picture rows to a graphics page using the decoder data segment", 2 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x3EA5, start_wait_confirm_cancel, "wait for confirm or cancel through buttons or keyboard", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x1BAA, end_wait_report_widget, "wait for report widget selection cancel or matching input", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x2265, end_run_awards_pages, "run the awards report pages and announcements when enabled", 1 },
@@ -67025,7 +67155,6 @@ static const recomp_override MATCHED[] = {
     { "matched", "END.EXE", END_47304, 0x0000, 0x5678, st4_end_format_scan, "the formatter's scan", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x9D67, st4_start_format_conversion_init, "formatter conversion state", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x56D9, st4_end_format_conversion_init, "formatter conversion state", 1 },
-    { "matched", "START.EXE", START_47304, 0x0000, 0x58DF, st4_start_clamp_open, "the aircraft clamp's opening", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x3682, st4_end_debrief_switch_open, "the debriefing picture's opening", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x0880, st4_end_icon_place_open, "an icon placement's opening", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x94FA, st4_start_itoa, "itoa", 1 },
