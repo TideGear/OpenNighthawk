@@ -24875,52 +24875,7 @@ static int st4_end_ribbon_layout(machine_t *m)
     return 1;
 }
 
-/* END 0x022EB, the award slots' opening: a 12-byte flag list at [bp-0Eh]
- * cleared (0x04ADE), the counters at [bp-16h] and [bp-2] zeroed, the far
- * pointer at [bp-14h] set to the debriefing record ([55DE]) + 22h and the
- * slot counter [bp-10h] to 0; the first slot's word tested, and a used one
- * recorded in the list. The loop goes on at 0x02335. */
-static int st4_end_award_slots_open(machine_t *m)
-{
-    cpu_t *c = &m->cpu;
-    if (!room(c, 9)) return 0;
-    frame_open(c, 0x16);
-    cpu_push16(c, c->r[R_SI]);
-    c->r[R_AX] = 0x000C;
-    cpu_push16(c, c->r[R_AX]);
-    c->r[R_AX] = (uint16_t)(c->r[R_BP] - 0x0E);                   /* lea ax, [bp-0Eh] */
-    cpu_push16(c, c->r[R_AX]);
-    c->icount += 8;
-    if (!guest_call(m, 0x4ADE, 0x22FD)) return 1;
-    ST2_NEED(20, 0x22FD);
-    c->r[R_BX] = cpu_pop16(c);
-    c->r[R_BX] = cpu_pop16(c);
-    set_r8(c, R_AL, (uint8_t)alu_sub(c, get_r8(c, R_AL), get_r8(c, R_AL), 0, 0));
-    bp_put8(c, -0x16, get_r8(c, R_AL));
-    bp_put8(c, -2, get_r8(c, R_AL));
-    c->r[R_AX] = ds_get(c, 0x55DE);
-    c->r[R_DX] = ds_get(c, 0x55E0);
-    c->r[R_AX] = (uint16_t)alu_add(c, c->r[R_AX], 0x22, 1, 0);
-    bp_put(c, -0x14, c->r[R_AX]);
-    bp_put(c, -0x12, c->r[R_DX]);
-    bp_put(c, -0x10, 0);
-    c->r[R_BX] = bp_get(c, -0x14);                                /* les bx, [bp-14h] */
-    c->seg[S_ES] = bp_get(c, -0x12);
-    alu_sub(c, seg_read16(c, c->seg[S_ES], c->r[R_BX]), 0, 1, 0);
-    unsigned n = 14;
-    if (!(c->flags & F_ZF)) {                                     /* a used slot: note its number */
-        set_r8(c, R_AL, bp_get8(c, -0x16));
-        set_r8(c, R_CL, bp_get8(c, -2));
-        set_r8(c, R_CH, (uint8_t)alu_sub(c, get_r8(c, R_CH), get_r8(c, R_CH), 0, 0));
-        c->r[R_SI] = c->r[R_CX];
-        mem_write8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] + c->r[R_SI] - 0x0E)), get_r8(c, R_AL));
-        bp_put8(c, -2, (uint8_t)alu_inc(c, bp_get8(c, -2), 0));
-        n += 6;
-    }
-    c->icount += n;
-    c->ip = 0x2335;
-    return 1;
-}
+
 
 /* START 0x00B01 and 0x063FB, a screen's hover, each frame: the menu hit
  * test (0x0393D) over the screen's item list gives the item under the
@@ -66451,7 +66406,142 @@ ycheck:
 #undef AX
 }
 
+/* END 2200, the awards page's redraw callback. Three full 320x200 driver
+ * rectangle calls use the eight-word argument tuples (top of stack first)
+ * (0,0,0,1,0,0,320,200), (0,0,0,4,0,0,320,200), then
+ * (1,0,0,0,0,0,320,200). Between them draw ribbon 3 at 05A4 and run
+ * 22EB followed by 22EA. Keep the original register setup, all pushes,
+ * caller cleanup flags and return value from the final driver call.
+ * Driver 05FA:24CC is far cdecl; 100D/22EB/22EA use plain near RET. */
+static int end_awards_page_callback(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+#define AX c->r[R_AX]
+#define BX c->r[R_BX]
+#define CX c->r[R_CX]
+#define DX c->r[R_DX]
+#define PUSH(r_) x86_push_reg(c,(r_))
+#define XB(n_,at_) do { SM4_NEED((n_),(at_));c->icount+=(n_); } while(0)
+#define RUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at;const int returned_=(call_); \
+    m->run_until=until_;if(!returned_)return 1; } while(0)
+#define NEAR(at_,target_,ret_) do { SM4_NEED(1,(at_));RUN(guest_call_pop(m,(target_),(ret_),0)); } while(0)
+#define FAR(at_,ret_) do { SM4_NEED(1,(at_));RUN(guest_call_far(m,(at_),(ret_))); } while(0)
+    if(!room(c,12))return 0;
+    XB(12,0x2200);AX=200;PUSH(R_AX);CX=320;PUSH(R_CX);DX=(uint16_t)alu_op(c,5,DX,DX,1);
+    PUSH(R_DX);PUSH(R_DX);BX=1;PUSH(R_BX);PUSH(R_DX);PUSH(R_DX);PUSH(R_DX);FAR(0x2213,0x2218);
+    XB(13,0x2218);c->r[R_SP]=(uint16_t)alu_op(c,0,c->r[R_SP],16,1);
+    AX=200;PUSH(R_AX);CX=320;PUSH(R_CX);DX=(uint16_t)alu_op(c,5,DX,DX,1);
+    PUSH(R_DX);PUSH(R_DX);BX=4;PUSH(R_BX);PUSH(R_DX);PUSH(R_DX);PUSH(R_DX);FAR(0x222E,0x2233);
+    XB(5,0x2233);c->r[R_SP]=(uint16_t)alu_op(c,0,c->r[R_SP],16,1);AX=3;PUSH(R_AX);AX=0x05A4;PUSH(R_AX);
+    NEAR(0x223E,0x100D,0x2241);
+    XB(2,0x2241);BX=cpu_pop16(c);BX=cpu_pop16(c);NEAR(0x2243,0x22EB,0x2246);NEAR(0x2246,0x22EA,0x2249);
+    XB(12,0x2249);AX=200;PUSH(R_AX);AX=320;PUSH(R_AX);AX=(uint16_t)alu_op(c,5,AX,AX,1);
+    PUSH(R_AX);PUSH(R_AX);PUSH(R_AX);PUSH(R_AX);PUSH(R_AX);AX=1;PUSH(R_AX);FAR(0x225C,0x2261);
+    XB(2,0x2261);c->r[R_SP]=(uint16_t)alu_op(c,0,c->r[R_SP],16,1);near_ret(c);return 1;
+#undef FAR
+#undef NEAR
+#undef RUN
+#undef XB
+#undef PUSH
+#undef DX
+#undef CX
+#undef BX
+#undef AX
+}
+
+/* END 22EB: collect owned award indices from six words at pilot+22h and
+ * five at pilot+44h. Append up to three further indices until twelve are
+ * present, then draw every collected index through the three-argument
+ * ribbon row helper 23D6. The list is twelve bytes at BP-0Eh; count and
+ * next index are bytes, while the scan/draw index is a word. Pointer adds
+ * wrap the offset without carrying into the segment. Keep the original
+ * DS-based clear at 4ADE even when SS differs from DS. Both callees use
+ * plain RET; retain caller POP/ADD cleanup and all intermediate flags. */
+static int end_collect_award_ribbons(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+    enum {NEXT=-0x16,PTR=-0x14,PTRSEG=-0x12,INDEX=-0x10,LIST=-0x0E,COUNT=-2};
+#define AX c->r[R_AX]
+#define BX c->r[R_BX]
+#define CX c->r[R_CX]
+#define DX c->r[R_DX]
+#define SI c->r[R_SI]
+#define XB(n_,at_) do { SM4_NEED((n_),(at_));c->icount+=(n_); } while(0)
+#define RUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at;const int returned_=(call_); \
+    m->run_until=until_;if(!returned_)return 1; } while(0)
+#define NEAR(at_,target_,ret_) do { SM4_NEED(1,(at_));RUN(guest_call_pop(m,(target_),(ret_),0)); } while(0)
+#define APPEND() do { set_r8(c,R_AL,bp_get8(c,NEXT));set_r8(c,R_CL,bp_get8(c,COUNT)); \
+    set_r8(c,R_CH,(uint8_t)alu_op(c,5,get_r8(c,R_CH),get_r8(c,R_CH),0));SI=CX; \
+    bp_put8(c,(int16_t)(SI+LIST),get_r8(c,R_AL)); \
+    bp_put8(c,COUNT,(uint8_t)alu_inc(c,bp_get8(c,COUNT),0)); } while(0)
+#define ADVANCE() do { bp_put(c,PTR,(uint16_t)alu_op(c,0,bp_get(c,PTR),2,1)); \
+    bp_put8(c,NEXT,(uint8_t)alu_inc(c,bp_get8(c,NEXT),0)); \
+    bp_put(c,INDEX,(uint16_t)alu_inc(c,bp_get(c,INDEX),1)); } while(0)
+#define TESTWORD() do { BX=bp_get(c,PTR);c->seg[S_ES]=bp_get(c,PTRSEG); \
+    (void)alu_op(c,7,seg_read16(c,c->seg[S_ES],BX),0,1); } while(0)
+    if(!room(c,8))return 0;
+    XB(8,0x22EB);frame_open(c,0x16);x86_push_reg(c,R_SI);AX=12;x86_push_reg(c,R_AX);
+    AX=(uint16_t)(c->r[R_BP]+LIST);x86_push_reg(c,R_AX);NEAR(0x22FA,0x4ADE,0x22FD);
+    XB(11,0x22FD);BX=cpu_pop16(c);BX=cpu_pop16(c);
+    set_r8(c,R_AL,(uint8_t)alu_op(c,5,get_r8(c,R_AL),get_r8(c,R_AL),0));
+    bp_put8(c,NEXT,get_r8(c,R_AL));bp_put8(c,COUNT,get_r8(c,R_AL));
+    AX=ds_get(c,0x55DE);DX=ds_get(c,0x55E0);AX=(uint16_t)alu_op(c,0,AX,0x22,1);
+    bp_put(c,PTR,AX);bp_put(c,PTRSEG,DX);bp_put(c,INDEX,0);
+first:
+    XB(3,0x231C);TESTWORD();if(x86_cond(c,4))goto first_advance;
+    XB(6,0x2325);APPEND();
+first_advance:
+    XB(5,0x2335);ADVANCE();(void)alu_op(c,7,bp_get(c,INDEX),6,1);if(x86_cond(c,12))goto first;
+    XB(6,0x2345);AX=ds_get(c,0x55DE);DX=ds_get(c,0x55E0);AX=(uint16_t)alu_op(c,0,AX,0x44,1);
+    bp_put(c,PTR,AX);bp_put(c,PTRSEG,DX);bp_put(c,INDEX,0);
+second:
+    XB(3,0x235A);TESTWORD();if(x86_cond(c,4))goto second_advance;
+    XB(6,0x2363);APPEND();
+second_advance:
+    XB(5,0x2373);ADVANCE();(void)alu_op(c,7,bp_get(c,INDEX),5,1);if(x86_cond(c,12))goto second;
+    XB(1,0x2383);bp_put(c,INDEX,0);
+extra:
+    XB(2,0x2388);(void)alu_op(c,7,bp_get8(c,COUNT),12,0);if(x86_cond(c,3))goto draw_start;
+    XB(10,0x238E);set_r8(c,R_AL,bp_get8(c,NEXT));
+    bp_put8(c,NEXT,(uint8_t)alu_inc(c,bp_get8(c,NEXT),0));set_r8(c,R_CL,bp_get8(c,COUNT));
+    set_r8(c,R_CH,(uint8_t)alu_op(c,5,get_r8(c,R_CH),get_r8(c,R_CH),0));SI=CX;
+    bp_put8(c,(int16_t)(SI+LIST),get_r8(c,R_AL));bp_put8(c,COUNT,(uint8_t)alu_inc(c,bp_get8(c,COUNT),0));
+    bp_put(c,INDEX,(uint16_t)alu_inc(c,bp_get(c,INDEX),1));(void)alu_op(c,7,bp_get(c,INDEX),3,1);
+    if(x86_cond(c,12))goto extra;
+draw_start:
+    XB(2,0x23AA);bp_put(c,INDEX,0);goto draw_test;
+draw:
+    XB(6,0x23B1);x86_push_reg(c,R_AX);
+    {const uint16_t before_=bp_get(c,INDEX);c->r[R_SP]=(uint16_t)(c->r[R_SP]-2);
+     seg_write16(c,c->seg[S_SS],c->r[R_SP],c->model>=CPU_80286?before_:bp_get(c,INDEX));}
+    SI=bp_get(c,INDEX);set_r8(c,R_AL,bp_get8(c,(int16_t)(SI+LIST)));
+    set_r8(c,R_AH,(uint8_t)alu_op(c,5,get_r8(c,R_AH),get_r8(c,R_AH),0));x86_push_reg(c,R_AX);
+    NEAR(0x23BE,0x23D6,0x23C1);
+    XB(2,0x23C1);c->r[R_SP]=(uint16_t)alu_op(c,0,c->r[R_SP],6,1);
+    bp_put(c,INDEX,(uint16_t)alu_inc(c,bp_get(c,INDEX),1));
+draw_test:
+    XB(4,0x23C7);set_r8(c,R_AL,bp_get8(c,COUNT));
+    set_r8(c,R_AH,(uint8_t)alu_op(c,5,get_r8(c,R_AH),get_r8(c,R_AH),0));
+    (void)alu_op(c,7,AX,bp_get(c,INDEX),1);if(x86_cond(c,15))goto draw;
+    XB(4,0x23D1);SI=cpu_pop16(c);c->r[R_SP]=c->r[R_BP];c->r[R_BP]=cpu_pop16(c);near_ret(c);return 1;
+#undef TESTWORD
+#undef ADVANCE
+#undef APPEND
+#undef NEAR
+#undef RUN
+#undef XB
+#undef SI
+#undef DX
+#undef CX
+#undef BX
+#undef AX
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "END.EXE", END_47304, 0x0000, 0x22EB, end_collect_award_ribbons, "collect owned awards and draw their ribbon rows", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x2200, end_awards_page_callback, "compose the awards page through full-page copies ribbon and report callbacks", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x58DF, start_onc_grid_reference, "format a theatre grid reference from signed world coordinates", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x11D8, 0x000A, vgame_pic_rows_to_page_far, "decode picture rows to a graphics page using the decoder data segment", 2 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x3EA5, start_wait_confirm_cancel, "wait for confirm or cancel through buttons or keyboard", 1 },
@@ -67148,7 +67238,6 @@ static const recomp_override MATCHED[] = {
     { "matched", "START.EXE", START_47304, 0x0000, 0x2651, st4_start_objective_open, "the objective line's opening", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x3021, st4_end_scorer_open, "the scorer's opening", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x23D6, st4_end_ribbon_layout, "a ribbon row's layout", 1 },
-    { "matched", "END.EXE", END_47304, 0x0000, 0x22EB, st4_end_award_slots_open, "the award slots' opening", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x0B01, st4_start_weapon_hover, "the weapon screen's hover", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x63FB, st4_start_roster_hover, "the roster screen's hover", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x9D06, st4_start_format_scan, "the formatter's scan", 1 },

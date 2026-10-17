@@ -754,6 +754,10 @@ if(F117R_BUILD_TESTS)
       --only VGAME.EXE:A)
     add_test(NAME matched_start_onc_grid_reference COMMAND func_lockstep --states 5000
       --only START.EXE:58DF)
+    add_test(NAME matched_end_awards_page_callback COMMAND func_lockstep --states 5000
+      --only END.EXE:2200)
+    add_test(NAME matched_end_collect_award_ribbons COMMAND func_lockstep --states 5000
+      --only END.EXE:22EB)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000
