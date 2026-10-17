@@ -126,6 +126,11 @@ times them (`F117_PRESENT_CLOCK=raw` for the old clock; opt-in knobs `F117_PRESE
   uncredited; the returning fixture covers six of the eight tail bytes), END
   `4648`, VGAME `0FB2:0246` (linear `FD66`), START `9094`
   (new `PROGRAM_ENDS` row and alternate-entry return rule).
+  Main's normal /O2 application build passed (219.81 s); the proof-kit
+  libraries were refreshed from `258c74d` (hashes in `kit-libs/manifest.json`).
+  Both Windows and Munt CI passed:
+  https://github.com/TideGear/OpenNighthawk/actions/runs/39013542862.
+  All local acceptance/build/proof processes are finished.
 - Previous batch (16 Oct, late): **`p2-batch-h` is gated and landed**, 18 routines /
   3,894 census bytes by byte credit (985 addresses; 142,612 of 179,213 bytes).
   Five seeds each, full instruction coverage, 803 mutations caught in all, exact
@@ -247,7 +252,9 @@ transitions, widths by role). Details and the method: docs/progress.md.
    add work outside frame timers and are diagnostics.
 5. **Branch housekeeping:** many local branches are fully merged into `master`. Not merged: `flight-input` (older
    aircraft-traffic draft, superseded by `b41ec9c`; its worktree `D:/f117-wt/span-emitter` has uncommitted edits),
-   `irq-divide-fault` (kept on purpose). `p2-batch-b2`, `p2-batch-c`, `p2-batch-d`, `p2-batch-e` and `p2-batch-f` are merged; the gate worktree is retained. The stopped presentation WIP branches
+   `irq-divide-fault` (kept on purpose). `p2-batch-b2`, `p2-batch-c`, `p2-batch-d`,
+   `p2-batch-e`, `p2-batch-f`, `p2-batch-g`, `p2-batch-h` and `p2-batch-i` are merged;
+   the gate worktree is retained. The stopped presentation WIP branches
    are preserved for history; do not merge them again. Ask the owner before deleting anything.
 
 ## Safe scheduling follow-up (16 October, owner request)
