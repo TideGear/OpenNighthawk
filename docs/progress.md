@@ -54,6 +54,20 @@ stays on the roadmap.
   `py tools/progress.py --census <reimp_names.py output> --named-cover DIR
   --route-cover <interpreter captures of all routes> --data <game directory>`.
   The refresh stops if any matched routine has no coverage line.
+  **The denominator is split** (owner, 17 October 2026): the score is credited bytes over the *creditable*
+  census, which leaves out the bytes that can never earn credit. `tools/census_classify.py` puts every census
+  byte in one class: `credited`; `ran` (a route ran it, no matched body covers it yet); `never_run` (decodes
+  as code reachable from a census entry, but no route runs it); `unreached` (no walk reaches it and nothing
+  marks it as data); `slots` (tables of blank far-jump slots, `EA 00 00 00 00`, patched at run time);
+  `data`; and `original`. Only `data` and `original` leave the denominator, and only the bytes of those
+  classes that are not credited. `data` needs strong evidence: a zero fill of eight bytes or more, a text
+  run of eight or more that is at least 80% letters and spaces and that no walk decodes as code (opcodes
+  are printable too: `cmp al,'s'` reads as text), or a range a person has read and listed in
+  `docs/census-data.tsv`. `original` is the table `docs/census-original.tsv`: the STI-first timer
+  interrupts, the never-returning C start-up and its copies, the palette loaders with an STI inside their
+  loop, and the divide-error handler no route reaches. When in doubt a byte stays in the denominator; a
+  byte that a route ran or a matched body covers is credited whatever it was judged to be. A routine
+  that is only hard, blocked by tooling or not yet proved belongs in the denominator.
 - **Phase 3, fixes:** fixes available in `src/fixes/fixes.c` over the
   actionable reports catalogued as `### Dn.` in `docs/bugs.md`. An explicit
   `Disposition. Closed:` excludes an unestablished historical report;

@@ -26,9 +26,14 @@ session log. Earlier detail is in `git log -p handoff.md`.
 
 Batch n is landed, built and CI-green; no private processes are running.
 
-Scoreboard: P1 100.00%, P2 83.02%, P3 96.33%, All 93.89% (P4 is no longer scored)
+Scoreboard: P1 100.00%, P2 87.28%, P3 96.33%, All 95.19% (P4 is no longer scored)
 (`py tools/progress.py --title`). Phase 2: 1,003 addresses matched; named code runs
-147,180 of 179,213 census bytes (credit by byte since 16 October).
+147,180 of 169,932 creditable census bytes (credit by byte since 16 October). **The denominator was split on
+17 October (owner):** 9,281 of the 179,213 census bytes are data or code that stays original and no longer count
+(`tools/census_classify.py`, `docs/census-data.tsv`, `docs/census-original.tsv`; rule in docs/progress.md).
+The jump from 83.02% to 87.28% is that change, not new matching. Open owner decision: 844 bytes of blank
+far-jump slot tables (SETUP `2D65`, PLAYER `3BFA`...) stay in the denominator; leaving them out gives P2 +0.4.
+After any batch, rerun `progress.py --census ...` as before: it now also stores the class counts.
 
 ### Presentation: latest (15 October, evening)
 

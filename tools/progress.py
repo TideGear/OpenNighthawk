@@ -142,13 +142,19 @@ def refresh_census(data, path, cover_dir, data_dir, route_dir):
     c["matched_bytes"] = sum(credit)
     c["matched_functions"] = sum(1 for r, n in zip(rows, credit) if n == int(r[2]))
     c["partial_functions"] = sum(1 for r, n in zip(rows, credit) if 0 < n < int(r[2]))
+    # The denominator is split (tools/census_classify.py): data and code that stays original cannot earn credit.
+    import census_classify
+    _, totals, _ = census_classify.run(path, cover_dir, route_dir, data_dir)
+    assert totals["credited"] == c["matched_bytes"], "census_classify and progress disagree on the credit"
+    c["classes"] = {k: totals[k] for k in census_classify.CLASSES}
+    c["creditable_bytes"] = c["bytes"] - totals["data"] - totals["original"]
 
 
 def compute(data):
     c = data["census"]
     share, fixed, catalogued, closed = fixes_share()
     measures = {
-        "census_matched_bytes": c["matched_bytes"] / c["bytes"],
+        "census_matched_bytes": c["matched_bytes"] / c.get("creditable_bytes", c["bytes"]),
         "fixes_share": share,
     }
     out = {}
@@ -193,9 +199,9 @@ def main():
     for phase, item, weight, done, kind in rows:
         print("%-3s %5.1f%% of weight %5.1f  %-9s %s" % (phase, 100 * done, weight, kind, item))
     c = data["census"]
-    print("census: %d of %d bytes run by named code; %d of %d functions whole, %d in part; fixes %d of %d actionable reports; %d historical reports closed without fixes"
-          % (c["matched_bytes"], c["bytes"], c["matched_functions"], c["functions"], c.get("partial_functions", 0),
-             fixed, catalogued, closed))
+    print("census: %d of %d creditable bytes (%d in all; data and original code left out) run by named code; %d of %d functions whole, %d in part; fixes %d of %d actionable reports; %d historical reports closed without fixes"
+          % (c["matched_bytes"], c.get("creditable_bytes", c["bytes"]), c["bytes"], c["matched_functions"], c["functions"],
+             c.get("partial_functions", 0), fixed, catalogued, closed))
     print(title(pct))
 
 

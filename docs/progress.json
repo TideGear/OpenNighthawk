@@ -152,6 +152,16 @@
     "bytes": 179213,
     "matched_functions": 961,
     "matched_bytes": 147180,
-    "partial_functions": 293
+    "partial_functions": 293,
+    "classes": {
+      "credited": 147180,
+      "ran": 6190,
+      "never_run": 14832,
+      "unreached": 886,
+      "slots": 844,
+      "data": 6907,
+      "original": 2374
+    },
+    "creditable_bytes": 169932
   }
 }
