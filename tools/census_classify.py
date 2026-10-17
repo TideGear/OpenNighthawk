@@ -11,6 +11,12 @@ ever earn credit, so the score's denominator is split. Every census byte is exac
   never_run     decodes as code reachable from a census entry or from a route-run instruction, but no
                 route runs it (error paths, library arms the game never uses, code behind inputs no route
                 supplies): workable only with a new route or a decision that it is unreachable
+  slots         the entry-point jump vectors that each program's segment binder fills in at start-up (VGAME
+                0FAE:0002, matched as vgame_bind_segment_entries, writes EA + offset + segment into 84
+                five-byte slots; the same binder code is in SETUP, PLAYER, DSWAP, START and END, and exactly
+                those programs have the table). In the file the unfilled slots read EA 00 00 00 00. They
+                are live code: in VGAME 47 of the 84 are executed by the routes. This class is the
+                entries no route runs; it stays in the denominator.
   unreached     no walk reaches it and nothing marks it as data: possibly code only a computed jump
                 reaches, possibly data nobody has looked at. It stays in the denominator until a person
                 has read it and decided.
@@ -28,7 +34,7 @@ programs, which is how the rest of the tooling reads them.
 
 The rule that protects the score: when in doubt a byte stays in the denominator. Only `data` (strong evidence
 above) and `original` (a table a person maintains) leave it, and a byte that a matched body does run is
-credited whatever it was judged to be. docs/census-classes.md records every excluded range after review.
+credited whatever it was judged to be. docs/census-data.tsv records every data range a person read.
 """
 import argparse
 import collections
@@ -69,7 +75,7 @@ def read_data_table(path=DATA_TABLE):
 
 
 def slot_bytes(image, minimum=4):
-    """Offsets inside runs of `minimum` or more consecutive blank far-jump slots (EA 00 00 00 00)."""
+    """Offsets inside runs of `minimum` or more consecutive unfilled entry vectors (EA 00 00 00 00)."""
     out, i, n = set(), 0, len(image)
     while i < n:
         j = i
@@ -200,8 +206,6 @@ def main():
     creditable = total - totals["data"] - totals["original"]
     print("creditable denominator %d; Phase 2 share %.2f%% (whole census %.2f%%)"
           % (creditable, 100.0 * totals["credited"] / creditable, 100.0 * totals["credited"] / total))
-    print("  if the blank far-jump slots also left it: %.2f%%"
-          % (100.0 * totals["credited"] / (creditable - totals["slots"])))
     if a.rows:
         left = sorted(((r["ran"] + r["never_run"], row, r) for row, r in zip(rows, per_row)), key=lambda x: -x[0])
         for n, (module, linear, size), r in left[:a.rows]:

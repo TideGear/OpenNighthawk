@@ -58,7 +58,8 @@ stays on the roadmap.
   census, which leaves out the bytes that can never earn credit. `tools/census_classify.py` puts every census
   byte in one class: `credited`; `ran` (a route ran it, no matched body covers it yet); `never_run` (decodes
   as code reachable from a census entry, but no route runs it); `unreached` (no walk reaches it and nothing
-  marks it as data); `slots` (tables of blank far-jump slots, `EA 00 00 00 00`, patched at run time);
+  marks it as data); `slots` (unfilled entry-point jump vectors, `EA 00 00 00 00`, that the program's segment binder fills at
+  start-up: live code, so they stay in the denominator);
   `data`; and `original`. Only `data` and `original` leave the denominator, and only the bytes of those
   classes that are not credited. `data` needs strong evidence: a zero fill of eight bytes or more, a text
   run of eight or more that is at least 80% letters and spaces and that no walk decodes as code (opcodes

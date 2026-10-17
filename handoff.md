@@ -31,8 +31,11 @@ Scoreboard: P1 100.00%, P2 87.28%, P3 96.33%, All 95.19% (P4 is no longer scored
 147,180 of 169,932 creditable census bytes (credit by byte since 16 October). **The denominator was split on
 17 October (owner):** 9,281 of the 179,213 census bytes are data or code that stays original and no longer count
 (`tools/census_classify.py`, `docs/census-data.tsv`, `docs/census-original.tsv`; rule in docs/progress.md).
-The jump from 83.02% to 87.28% is that change, not new matching. Open owner decision: 844 bytes of blank
-far-jump slot tables (SETUP `2D65`, PLAYER `3BFA`...) stay in the denominator; leaving them out gives P2 +0.4.
+The jump from 83.02% to 87.28% is that change, not new matching. The 844 bytes of unused
+entry-vector slots (SETUP `2D65`, PLAYER `3BFA`...) stay in the denominator: checked 17 Oct, they are live jump
+vectors filled by each program's segment binder (VGAME `0FAE:0002` is `vgame_bind_segment_entries`; the same
+binder is in SETUP, PLAYER, DSWAP, START and END), and 47 of VGAME's 84 run. An earlier memory-dump comparison
+that suggested otherwise used a misaligned match; locate a program in a dump by many aligned chunks.
 After any batch, rerun `progress.py --census ...` as before: it now also stores the class counts.
 
 ### Presentation: latest (15 October, evening)

@@ -172,8 +172,9 @@ not the recompilation:
       **What the uncredited bytes are** (17 Oct, `tools/census_classify.py`, 32,033 bytes): 6,190 in
       instructions routes ran (workable now), 14,832 decoded as code that no route runs (needs a new route
       or a decision that it is unreachable), 886 that no walk reaches and nothing marks as data (to be read),
-      844 in tables of blank far-jump slots (SETUP `2D65`, PLAYER `3BFA` and the like; they stay in the
-      denominator until the owner decides), and the 9,281 bytes of data and original code that left it.
+      844 in entry-vector slots no route uses (SETUP `2D65`, PLAYER `3BFA`: the program's segment binder,
+      VGAME `0FAE:0002`, fills them with far jumps at start-up; 47 of VGAME's 84 run, so they are live code and
+      stay in the denominator), and the 9,281 bytes of data and original code that left it.
       The classifier's cross-checks: no excluded byte lies in a row our translation treats as code, and
       the one text rule that hid real code (PLAYER `1BE7`, a printf switch of compare-and-jump bytes that
       reads as text) was tightened; every range in `docs/census-data.tsv` was read in full.
