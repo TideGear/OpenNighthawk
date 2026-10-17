@@ -10459,11 +10459,13 @@ int main(int argc, char **argv)
                 for(unsigned j=0;j<4;j++){ const uint16_t v_=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),v_);small[j]=v_; }
                 for(unsigned j=0x1DC0;j<0x20C0;j++)XW8(dg,j,XRAND());
                 for(unsigned j=0x13C0;j<0x13E0;j++)XW8(dg,j,XRAND());
-                /* The busy flag, the frame delay and the fade's steps left. */
+                /* The busy flag, the frame delay and the fade's steps left. Every tenth
+                 * state plants a busy word outright: the random draw alone left the busy
+                 * early exit (073F) unreached at seed 0x70ca1542de1f. */
                 {
                     static const uint16_t busy_[]={1,0x0100,0x8000,0xFFFF};
                     uint16_t busy=0;
-                    if(XRAND()%10==0)XPICK(busy,busy_);
+                    if((XRAND()%10==0)||(s%10==0))XPICK(busy,busy_);
                     XW16(dg,0x1E7A,busy);
                     static const uint16_t delay_[]={0,0,0,1,1,1,2,0x8000,0xFFFF};
                     uint16_t delay;XPICK(delay,delay_);

@@ -619,6 +619,10 @@ if(F117R_BUILD_TESTS)
       --only MPS_LOGO.EXE:BCC)
     add_test(NAME matched_player_frame_tick COMMAND func_lockstep --states 5000
       --only PLAYER.EXE:738)
+    # At this seed the fixture's random draw never planted the busy word, so the
+    # busy early exit went unreached and the coverage floor failed.
+    add_test(NAME matched_player_frame_tick_busy_seed COMMAND func_lockstep --states 4000
+      --seed 0x70ca1542de1f --only PLAYER.EXE:738)
     add_test(NAME matched_start_write_file_handle COMMAND func_lockstep --states 5000
       --only START.EXE:A31A)
     add_test(NAME matched_start_cinit COMMAND func_lockstep --states 5000
