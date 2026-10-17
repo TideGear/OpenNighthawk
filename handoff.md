@@ -250,8 +250,9 @@ times them (`F117_PRESENT_CLOCK=raw` for the old clock; opt-in knobs `F117_PRESE
   five seeds reach all 579 instructions with no skips/mismatches, and
   the existing `34EA` entry passes five seeds / all 170 instructions after
   a shared-helper refactor. The initial jump to `34ED` skips its increment.
-  152 mutation checks are running, followed automatically by real-route,
-  boot and root audits; no private acceptance claim yet. Live state:
+  All 152 mutations caught; exact `recon_career` 344 checkpoints / 3 calls,
+  boot26 and root source/route audit passed. Existing `34EA` alias five seeds
+  passed separately. Private proof complete; state/integration requirements:
   `D:/f117-gate/p2-end-3021/CONTINUE.md`. Not integrated; batch-m gate source
   stays fixed. Refresh/reprove against m's final libraries before integration.
   Current registration/byte-credit screening: `p2-next-after-l/ranked.json`.
@@ -266,6 +267,15 @@ times them (`F117_PRESENT_CLOCK=raw` for the old clock; opt-in knobs `F117_PRESE
   `p2-vgame-11cd3/RESEARCH.txt` identifies a 512-byte picture read and its
   terminal DOS error path; its default draft walks past exit into data and
   another function, so it needs a bounded dossier before implementation.
+  VGAME `11B8:0008` / linear `11B88`, the picture opener, is implemented
+  separately in `p2-vgame-11b88`: all 67 instructions / five seeds, 47 caught
+  mutations, exact `full_cycle` 66 checkpoints / 2 calls, boot26 and root
+  audit passed. Fatal DOS paths are fixture-proved through a bounded dossier
+  and terminal-entry/native-INT10 harness additions, documented in its
+  `INTEGRATION.txt`. First complete proof preserved; a full repeat is now
+  running with the original relocation value included among fixture choices
+  to cover its unchanged instruction bytes. Live state:
+  `D:/f117-gate/p2-vgame-11b88/CONTINUE.md`. Private only; refresh after m.
 - **Stopped draft:** END `03D9` (D12 sites 0443/0450 may lie inside: decline
   while D12 is on). VGAME `7663` was superseded by batch g.
 - **Routes other than full_cycle:** `kit.py DIR checkpoints --route NAME` (and `ROUTE=NAME` for
