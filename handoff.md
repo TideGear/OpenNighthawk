@@ -9,7 +9,8 @@ checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 more than once, what it costs). State as of 17 October 2026.
 
 17 October: `p2-batch-l` is gated and landed (two bodies; see Phase 2 below).
-Next: continue the screened Phase 2 leads, checking enclosing functions for interior entries. Resume the roadmap's plan, Phase 2 first.
+Next: continue the screened Phase 2 leads, checking enclosing functions for
+interior entries. Resume the roadmap's plan, Phase 2 first.
 
 **Process notes (16 October):** screen leads with `p2-batch-g-accept/screen_leads.py` before any
 agent starts (five of the first twelve picks were blocked or already inline); agents run `pin.py` with
@@ -127,6 +128,10 @@ times them (`F117_PRESENT_CLOCK=raw` for the old clock; opt-in knobs `F117_PRESE
   `korea_strike` 2 calls / 76 checkpoints; replaces the old six-instruction
   opening at the same address. END's shared helper is preserved.
   Jump-table data `5963..5974` and VGAME `11DFF` remain uncredited.
+  Main's normal /O2 application build passed (168.61 s); proof-kit
+  libraries were refreshed from `354cf5c` (hashes in `kit-libs/manifest.json`).
+  Both Windows and Munt CI passed: https://github.com/TideGear/OpenNighthawk/actions/runs/39061808384.
+  All batch-l acceptance/build processes are finished.
 - Previous batch (17 Oct): **`p2-batch-k` is gated and landed**, five routines /
   802 census bytes (1,000 addresses; 145,365 of 179,213 bytes). Five seeds
   each, full instruction coverage, all 267 mutations caught, exact real-route
@@ -227,7 +232,20 @@ times them (`F117_PRESENT_CLOCK=raw` for the old clock; opt-in knobs `F117_PRESE
   superseded by the full `58DF` formatter. END `3100` is an interior scorer
   arm (live BP frame), not an independent routine; its draft is in
   `p2-end-3100`. Inspect the enclosing `3021` scorer and named `34EA` step
-  before selecting a replacement boundary.
+  before selecting a replacement boundary. Its complete 12-way-switch dossier
+  (`p2-end-3021/dossier/full.json`) covers 579 instructions / 1,608 bytes;
+  the initial jump to `34ED` skips `34EA`'s index increment.
+  Current registration/byte-credit screening: `p2-next-after-l/ranked.json`.
+  Private next-batch candidates against batch-l optimized libraries:
+  `p2-end-2200` (page redraw callback, 52 instructions, five seeds and 28
+  mutations) and `p2-end-22eb` (full ribbon collector, 86 instructions,
+  five seeds and 46 mutations; expansion of the existing opening, so retain
+  the registered address). Their current process state and next commands
+  are in `D:/f117-gate/p2-next-after-l/CONTINUE.md`. Not integrated.
+  `p2-end-2373` is superseded by the enclosing `22EB` expansion.
+  `p2-vgame-11cd3/RESEARCH.txt` identifies a 512-byte picture read and its
+  terminal DOS error path; its default draft walks past exit into data and
+  another function, so it needs a bounded dossier before implementation.
 - **Stopped draft:** END `03D9` (D12 sites 0443/0450 may lie inside: decline
   while D12 is on). VGAME `7663` was superseded by batch g.
 - **Routes other than full_cycle:** `kit.py DIR checkpoints --route NAME` (and `ROUTE=NAME` for
@@ -469,7 +487,7 @@ found so far. Agents work only in their `p2-*` directory. Then:
    `presentation_check --scales 1`, docs, commit, push.
 
 Gate batches in a separate worktree (`D:/f117-wt/gate-h`, currently on the merged branch
-`p2-batch-l`. Build it once with `build.cmd -DF117R_BUILD_APP=OFF` before the gate, which
+`p2-batch-l`). Build it once with `build.cmd -DF117R_BUILD_APP=OFF` before the gate, which
 needs its `f117cpu_api.dll`) when the owner is testing the main tree's build.
 
 Screening and older method: `tools/matched_draft.py --dossier` (module/seg/ip
