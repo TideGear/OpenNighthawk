@@ -32,13 +32,13 @@ tools/build_recomp.py --data INSTALL --seed-coverage WORK/coverage --jobs 16
 --verify-interp-cache`, started through `D:/f117-gate/affinity_launch.py`
 (below).
 
-**Current figures (17 October 2026):** 231 CTests; 45 routes identical, run
-as 44 sessions; 5,718,848 instruction states under each timing profile; 1,001
-matched routines at three seeds; reachability and event limits clean. Batch l's
-full gate took 1,847.11 s, with every interpreter session verified fresh.
+**Current figures (17 October 2026):** 233 CTests; 45 routes identical, run
+as 44 sessions; 5,718,848 instruction states under each timing profile; 1,002
+matched routines at three seeds; reachability and event limits clean. Batch m's
+full gate took 1,811.97 s, with every interpreter session verified fresh.
 All acceptance processes, including N=1 and boot N=4/9 presentation, finished
-in 1,900.11 s using checked presentation overlap. Evidence:
-`D:/f117-gate/p2-batch-l-accept/final-gate-verdict.json`.
+in 1,865.48 s using checked presentation overlap. Evidence:
+`D:/f117-gate/p2-batch-m-accept/final-gate-verdict.json`.
 Typical gates take about 1,300-2,000 s; the longest career seed chain sets the route time.
 
 | Stage | Latest measured | What sets it, what was duplicated | Status |

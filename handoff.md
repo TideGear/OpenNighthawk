@@ -8,9 +8,8 @@ checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 [docs/repeated-processes.md](docs/repeated-processes.md) (every process we run
 more than once, what it costs). State as of 17 October 2026.
 
-17 October: `p2-batch-l` is gated and landed (two bodies; see Phase 2 below).
-Next: finish the already running batch-m acceptance, then continue the
-screened Phase 2 leads. Resume the roadmap's plan, Phase 2 first.
+17 October: `p2-batch-m` is gated and landed (two bodies; see Phase 2 below).
+Next: continue the screened Phase 2 leads, checking enclosing functions for interior entries. Resume the roadmap's plan, Phase 2 first.
 
 **Process notes (16 October):** screen leads with `p2-batch-g-accept/screen_leads.py` before any
 agent starts (five of the first twelve picks were blocked or already inline); agents run `pin.py` with
@@ -37,9 +36,9 @@ commands: `D:/f117-gate/p2-batch-m-accept/CONTINUE.md` and
 `D:/f117-gate/p2-batch-n-accept/CONTINUE.md`. Main's unverified batch-m
 source is isolated and locally committed on `p2-batch-m`, not pushed.
 
-Scoreboard: P1 100.00%, P2 82.22%, P3 96.33%, All 93.65% (P4 is no longer scored)
-(`py tools/progress.py --title`). Phase 2: 1,001 addresses matched; named code runs
-145,679 of 179,213 census bytes (credit by byte since 16 October).
+Scoreboard: P1 100.00%, P2 82.36%, P3 96.33%, All 93.69% (P4 is no longer scored)
+(`py tools/progress.py --title`). Phase 2: 1,002 addresses matched; named code runs
+145,941 of 179,213 census bytes (credit by byte since 16 October).
 
 ### Presentation: latest (15 October, evening)
 
@@ -125,7 +124,21 @@ times them (`F117_PRESENT_CLOCK=raw` for the old clock; opt-in knobs `F117_PRESE
 
 ### Phase 2
 
-- Latest batch (17 Oct): **`p2-batch-l` is gated and landed**: one new address
+- Latest batch (17 Oct): **`p2-batch-m` is gated and landed**: one new address
+  and one existing-entry expansion (1,002 addresses; 145,941 / 179,213 bytes,
+  +262). Five seeds each, full instruction coverage, all 74 mutations caught,
+  exact 344-checkpoint `recon_career` routes with one call each, boot26 and
+  ten optimized seed runs. Gate 1,811.97 s: 233 CTests, 45 identical
+  routes / 44 fresh interpreter sessions, 1,002 matched routines at three
+  seeds, both timing profiles, reachability and event limits clean.
+  N=1 259,240 exact frames / 259,166 pairs; boot N=4/9 368/366.
+  All acceptance processes 1,865.48 s.
+  Evidence `D:/f117-gate/p2-batch-m-accept/final-gate-verdict.json`.
+  END `2200` awards-page callback: 52 instructions / 28 mutations.
+  END `22EB` complete ribbon collector: 86 instructions / 46 mutations;
+  replaces its old opening. Fresh coverage replaces the inherited entry's
+  evidence (+161 bytes); the new callback adds 101. Same census denominator.
+- Previous batch (17 Oct): **`p2-batch-l` is gated and landed**: one new address
   plus an existing-entry expansion (1,001 addresses; 145,679 / 179,213 bytes,
   +314). Five seeds each, full instruction coverage, all 115 mutations caught,
   exact route/boot proofs and ten optimized seed runs. Gate 1,847.11 s:
@@ -239,18 +252,6 @@ times them (`F117_PRESENT_CLOCK=raw` for the old clock; opt-in knobs `F117_PRESE
   with `--only` and `F117_COVER`.
 - **Declined (recorded in `kit/DECLINED.tsv`):** PLAYER `2853`, PLAYER `0211`
   re-sync, VGAME `14C2:0000` (STI in its colour loop; the `set_dac` family).
-- **Batch m acceptance running:** worktree `D:/f117-wt/gate-h`, branch
-  `p2-batch-m`, fixed source `e6858ea` (unverified, not pushed). Optimized
-  prebuild and all ten optimized seed runs pass. Byte audit passes:
-  145,679 -> 145,941 (+262), all prior credit retained; old END `22EB`
-  opening coverage replaced with fresh complete-body evidence. Two bodies,
-  one net new address; expected 1,002 matched addresses / 233 CTests.
-  Five seeds each, full instruction coverage, all 74 mutations caught,
-  exact 344-checkpoint `recon_career` proofs with one call each, boot26,
-  private source/coverage/route audits all passed. The unchanged full gate
-  is live, presentation follows the checked overlap process. Resume it;
-  do not reintegrate or restart it. State, handles and finish commands:
-  `D:/f117-gate/p2-batch-m-accept/CONTINUE.md`. Main stays on verified batch l.
 - **Next leads:** rescreen with current registrations and actual byte credit;
   `p2-batch-j-accept/ranked.json` predates recent batches. `p2-start-5951` is
   superseded by the full `58DF` formatter. END `3100` is an interior scorer
@@ -268,13 +269,7 @@ times them (`F117_PRESENT_CLOCK=raw` for the old clock; opt-in knobs `F117_PRESE
   `D:/f117-gate/p2-end-3021/CONTINUE.md`. Not integrated; batch-m gate source
   stays fixed. Refresh/reprove against m's final libraries before integration.
   Current registration/byte-credit screening: `p2-next-after-l/ranked.json`.
-  Batch-m candidates proved against batch-l optimized libraries:
-  `p2-end-2200` (page redraw callback, 52 instructions, five seeds and 28
-  mutations) and `p2-end-22eb` (full ribbon collector, 86 instructions,
-  five seeds and 46 mutations; expansion of the existing opening, so retain
-  the registered address). Their current process state and next commands
-  are in `D:/f117-gate/p2-batch-m-accept/CONTINUE.md`. Integrated privately;
-  the full gate is not finished yet.
+  `p2-end-2200` and `p2-end-22eb` landed in batch m;
   `p2-end-2373` is superseded by the enclosing `22EB` expansion.
   `p2-vgame-11cd3/RESEARCH.txt` identifies a 512-byte picture read and its
   terminal DOS error path; its default draft walks past exit into data and
@@ -352,7 +347,7 @@ transitions, widths by role). Details and the method: docs/progress.md.
 
 ## Next steps
 
-1. **Phase 2 first (owner).** `p2-batch-l` is gated and landed.
+1. **Phase 2 first (owner).** `p2-batch-m` is gated and landed.
    Continue down the ranked list
    (`D:/f117-gate/p2-batch-d-accept/reached-allroutes.tsv`) with the private kit and parallel agents (agents do steps 1-7 only; root runs
    `kit.py checkpoints` and `D:/f117-gate/kit/boot_proof.py` with `KIT_ROOT` at the gated worktree, then
@@ -374,7 +369,7 @@ transitions, widths by role). Details and the method: docs/progress.md.
 5. **Branch housekeeping:** many local branches are fully merged into `master`. Not merged: `flight-input` (older
    aircraft-traffic draft, superseded by `b41ec9c`; its worktree `D:/f117-wt/span-emitter` has uncommitted edits),
    `irq-divide-fault` (kept on purpose). `p2-batch-b2`, `p2-batch-c`, `p2-batch-d`,
-   `p2-batch-e`, `p2-batch-f`, `p2-batch-g`, `p2-batch-h`, `p2-batch-i`, `p2-batch-j`, `p2-batch-k` and `p2-batch-l` are merged;
+   `p2-batch-e`, `p2-batch-f`, `p2-batch-g`, `p2-batch-h`, `p2-batch-i`, `p2-batch-j`, `p2-batch-k`, `p2-batch-l` and `p2-batch-m` are merged;
    the gate worktree is retained. The stopped presentation WIP branches
    are preserved for history; do not merge them again. Ask the owner before deleting anything.
 
@@ -535,7 +530,7 @@ found so far. Agents work only in their `p2-*` directory. Then:
 3. Build, ctest, ONE full gate per batch, the 45-route
    `presentation_check --scales 1`, docs, commit, push.
 
-Gate batches in a separate worktree (`D:/f117-wt/gate-h`, currently on the active branch
+Gate batches in a separate worktree (`D:/f117-wt/gate-h`, currently on the merged branch
 `p2-batch-m`). Build it once with `build.cmd -DF117R_BUILD_APP=OFF` before the gate, which
 needs its `f117cpu_api.dll`) when the owner is testing the main tree's build.
 
