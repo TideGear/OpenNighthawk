@@ -142,10 +142,16 @@ def refresh_census(data, path, cover_dir, data_dir, route_dir):
     c["matched_bytes"] = sum(credit)
     c["matched_functions"] = sum(1 for r, n in zip(rows, credit) if n == int(r[2]))
     c["partial_functions"] = sum(1 for r, n in zip(rows, credit) if 0 < n < int(r[2]))
-    # The denominator is split (tools/census_classify.py): data and code that stays original cannot earn credit.
+
+
+def refresh_classes(data, path, cover_dir, data_dir, route_dir):
+    """The denominator is split (tools/census_classify.py): data and code that stays original cannot earn
+    credit. Run after refresh_census; it decodes the game's programs, which the credit step does not need."""
     import census_classify
+    c = data["census"]
     _, totals, _ = census_classify.run(path, cover_dir, route_dir, data_dir)
     assert totals["credited"] == c["matched_bytes"], "census_classify and progress disagree on the credit"
+    assert sum(totals.values()) == c["bytes"], "census_classify and progress disagree on the census size"
     c["classes"] = {k: totals[k] for k in census_classify.CLASSES}
     c["creditable_bytes"] = c["bytes"] - totals["data"] - totals["original"]
 
@@ -189,6 +195,7 @@ def main():
         if not (a.named_cover and a.route_cover and a.data):
             ap.error("--census needs --named-cover, --route-cover and --data: credit is by the bytes named code runs")
         refresh_census(data, a.census, a.named_cover, a.data, a.route_cover)
+        refresh_classes(data, a.census, a.named_cover, a.data, a.route_cover)
         with open(DATA, "w", encoding="utf-8", newline="\n") as f:
             json.dump(data, f, indent=2)
             f.write("\n")

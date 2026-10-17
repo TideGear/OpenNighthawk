@@ -122,3 +122,5 @@ jobs:
         run: python tests/test_matched_draft.py
       - name: Phase 2 census credit regressions
         run: python tests/test_progress.py
+      - name: Phase 2 census classification regressions
+        run: python tests/test_census_classify.py

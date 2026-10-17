@@ -56,21 +56,23 @@ SLOT = b"\xea\x00\x00\x00\x00"   # a far jump to 0000:0000: a blank slot the run
 
 def read_original(path=ORIGINAL):
     rows = set()
-    for line in open(path, encoding="utf-8"):
-        if line.strip() and not line.startswith("#"):
-            a = line.split("\t")
-            rows.add((a[0].upper().replace(".EXE", ""), int(a[1], 16)))
+    with open(path, encoding="utf-8") as source:
+        for line in source:
+            if line.strip() and not line.startswith("#"):
+                a = line.split("\t")
+                rows.add((a[0].upper().replace(".EXE", ""), int(a[1], 16)))
     return rows
 
 
 def read_data_table(path=DATA_TABLE):
     """{module: set of linear addresses} for the ranges a person has read and judged to be data."""
     out = collections.defaultdict(set)
-    for line in open(path, encoding="utf-8"):
-        if line.strip() and not line.startswith("#"):
-            a = line.split("\t")
-            start = int(a[1], 16)
-            out[a[0].upper().replace(".EXE", "")].update(range(start, start + int(a[2])))
+    with open(path, encoding="utf-8") as source:
+        for line in source:
+            if line.strip() and not line.startswith("#"):
+                a = line.split("\t")
+                start = int(a[1], 16)
+                out[a[0].upper().replace(".EXE", "")].update(range(start, start + int(a[2])))
     return out
 
 
