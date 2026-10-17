@@ -133,6 +133,13 @@ times them (`F117_PRESENT_CLOCK=raw` for the old clock; opt-in knobs `F117_PRESE
   matched routines at three seeds, both timing profiles, reachability and event limits clean.
   N=1 259,240 exact frames / 259,166 pairs; boot N=4/9 368/366. All acceptance processes
   1,965.26 s. Evidence `D:/f117-gate/p2-batch-o-accept/final-gate-verdict.json`.
+  Main's normal /O2 application build passed (244.56 s); proof-kit libraries were refreshed from
+  `aa8991b` (hashes in `kit-libs/manifest.json`). CI of `aa8991b` failed in "Phase 2 census credit
+  regressions": the split-denominator change had made `progress.refresh_census` load the game's programs,
+  which that test does not have; fixed in `e35d1f9` (classification is its own step,
+  `tests/test_census_classify.py` added to CI). Both Windows and Munt CI passed on `bfafc31`:
+  https://github.com/TideGear/OpenNighthawk/actions/runs/39076427990.
+  All batch-o acceptance/build processes are finished.
   END `26A9` report page text, VGAME `D826` view and sky, START `9E3E` formatter dispatch
   (harness: any `FATAL_JUMPS` row of a routine ends it). The integrated-source audit ignores
   trailing whitespace (one comment line of `9E3E` had some). END `400F` (DOS open, fatal tail at
