@@ -14,6 +14,9 @@ ever earn credit, so the score's denominator is split. Every census byte is exac
   unreached     no walk reaches it and nothing marks it as data: possibly code only a computed jump
                 reaches, possibly data nobody has looked at. It stays in the denominator until a person
                 has read it and decided.
+  slots         tables of blank far-jump slots (EA 00 00 00 00, 84 + 6 + 5 or 9 of them, the same in all seven
+                programs). Not code the program runs: in a real run of SETUP, DSWAP and VGAME none of the 84
+                slots is still intact, the area is rewritten with the program's own data.
   data          strong evidence only: a zero fill of eight or more bytes (executing eight `add [bx+si],al`
                 in a row is not code), or a printable-text run of eight or more that no walk decodes as
                 code. There is no instruction to match.
@@ -21,13 +24,13 @@ ever earn credit, so the score's denominator is split. Every census byte is exac
                 timer interrupts, the never-returning C start-up, the palette loaders that run an STI
                 inside their loop, the divide-error handler no route reaches)
 
-The Phase 2 measure is credited / (bytes - data - original): the share of the creditable census that matched
-code runs. `data` and `original` leave only the bytes of those classes that are not credited; a body that
+The Phase 2 measure is credited / (bytes - data - slots - original): the share of the creditable census that matched
+code runs. `data`, `slots` and `original` leave only the bytes of those classes that are not credited; a body that
 does run some of those bytes keeps its credit. Linear census addresses are the image offsets of the loaded
 programs, which is how the rest of the tooling reads them.
 
 The rule that protects the score: when in doubt a byte stays in the denominator. Only `data` (strong evidence
-above) and `original` (a table a person maintains) leave it, and a byte that a matched body does run is
+above), `slots` (checked in a real run) and `original` (a table a person maintains) leave it, and a byte that a matched body does run is
 credited whatever it was judged to be. docs/census-classes.md records every excluded range after review.
 """
 import argparse
@@ -197,11 +200,9 @@ def main():
     total = sum(totals.values())
     for k in CLASSES:
         print("%-9s %7d  %5.2f%%" % (k, totals[k], 100.0 * totals[k] / total))
-    creditable = total - totals["data"] - totals["original"]
+    creditable = total - totals["data"] - totals["slots"] - totals["original"]
     print("creditable denominator %d; Phase 2 share %.2f%% (whole census %.2f%%)"
           % (creditable, 100.0 * totals["credited"] / creditable, 100.0 * totals["credited"] / total))
-    print("  if the blank far-jump slots also left it: %.2f%%"
-          % (100.0 * totals["credited"] / (creditable - totals["slots"])))
     if a.rows:
         left = sorted(((r["ran"] + r["never_run"], row, r) for row, r in zip(rows, per_row)), key=lambda x: -x[0])
         for n, (module, linear, size), r in left[:a.rows]:

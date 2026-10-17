@@ -147,7 +147,7 @@ def refresh_census(data, path, cover_dir, data_dir, route_dir):
     _, totals, _ = census_classify.run(path, cover_dir, route_dir, data_dir)
     assert totals["credited"] == c["matched_bytes"], "census_classify and progress disagree on the credit"
     c["classes"] = {k: totals[k] for k in census_classify.CLASSES}
-    c["creditable_bytes"] = c["bytes"] - totals["data"] - totals["original"]
+    c["creditable_bytes"] = c["bytes"] - totals["data"] - totals["slots"] - totals["original"]
 
 
 def compute(data):
@@ -199,7 +199,7 @@ def main():
     for phase, item, weight, done, kind in rows:
         print("%-3s %5.1f%% of weight %5.1f  %-9s %s" % (phase, 100 * done, weight, kind, item))
     c = data["census"]
-    print("census: %d of %d creditable bytes (%d in all; data and original code left out) run by named code; %d of %d functions whole, %d in part; fixes %d of %d actionable reports; %d historical reports closed without fixes"
+    print("census: %d of %d creditable bytes (%d in all; data, blank slots and original code left out) run by named code; %d of %d functions whole, %d in part; fixes %d of %d actionable reports; %d historical reports closed without fixes"
           % (c["matched_bytes"], c.get("creditable_bytes", c["bytes"]), c["bytes"], c["matched_functions"], c["functions"],
              c.get("partial_functions", 0), fixed, catalogued, closed))
     print(title(pct))

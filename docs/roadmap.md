@@ -152,8 +152,8 @@ not the recompilation:
       census (1,535 functions) with this project's regions as a private lead
       list.
       **Now:** 1,003 addresses matched; named code runs 147,180 of the
-      169,932 creditable census bytes (179,213 in all, 9,281 of them data or code that stays original; see
-      [progress.md](progress.md#what-is-measured)) (P2 87.28%, overall 95.19%): 961 census rows
+      169,088 creditable census bytes (179,213 in all, 10,125 of them data, blank slots or code that stays original; see
+      [progress.md](progress.md#what-is-measured)) (P2 87.69%, overall 95.31%): 961 census rows
       wholly, 293 in part. Credit is by byte since 16 October
       ([progress.md](progress.md#what-is-measured)): under it master's 946 routines
       held 132,537 bytes (132,638 by whole rows), batch g added 6,181 and
@@ -172,8 +172,9 @@ not the recompilation:
       **What the uncredited bytes are** (17 Oct, `tools/census_classify.py`, 32,033 bytes): 6,190 in
       instructions routes ran (workable now), 14,832 decoded as code that no route runs (needs a new route
       or a decision that it is unreachable), 886 that no walk reaches and nothing marks as data (to be read),
-      844 in tables of blank far-jump slots (SETUP `2D65`, PLAYER `3BFA` and the like; they stay in the
-      denominator until the owner decides), and the 9,281 bytes of data and original code that left it.
+      and the 10,125 bytes that left the denominator: 6,907 data, 2,374 original code and 844 in tables of
+      blank far-jump slots (SETUP `2D65`, PLAYER `3BFA` and the like; checked 17 Oct by dumping memory after
+      real SETUP, DSWAP and VGAME runs: no slot survives, the area holds the program's own data).
       The classifier's cross-checks: no excluded byte lies in a row our translation treats as code, and
       the one text rule that hid real code (PLAYER `1BE7`, a printf switch of compare-and-jump bytes that
       reads as text) was tightened; every range in `docs/census-data.tsv` was read in full.
