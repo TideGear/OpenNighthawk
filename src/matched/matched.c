@@ -59620,7 +59620,3371 @@ done:
 #undef PB
 }
 
+/* VGAME 00F0: a flight's start-up, from the mission handover to the first
+ * cockpit picture. No arguments, no frame of its own; every callee is a
+ * plain RET or RETF routine whose arguments the caller removes.
+ *   - 4BEC loads the mission (the block copies out of the pilot record),
+ *     BAA2 the model tables;
+ *   - the settings block is the far pointer [9924]; its word +38h (the
+ *     theatre) selects a name pointer [90h + 2t], which EB50 copies to the
+ *     buffer [8E] (strcpy(dst = [8E], src = [90h + 2t]), two POP BX);
+ *   - 0986 sets the graphics mode; E586(F7h) reads the file named at DS:F7
+ *     into a new buffer, kept in [8A]; when it is non-zero, the library's
+ *     sound entry 1E42:0313 is handed request 28h with the buffer and the
+ *     pair [C0A0], [C0A2] (caller drops 8); then entry 1E42:0273;
+ *   - [368A] = the byte +33h of the pilot record (far [E574]), zero-extended;
+ *     [0D47] = byte [EEh + t], t re-read from the settings block;
+ *     [43DE] = 1 when [368A] is 0, else 0 (`cmp ..., 1 / sbb / neg`);
+ *     byte [8C] = 1;
+ *   - 1039:0000 builds the palette; 886A(0) sets both pens' colour; the
+ *     far fill 0FB2:0246 clears rows 0..5Bh, columns 0..13Fh of the page
+ *     behind each pen ([4010], then [4028]; caller drops 0Ah each);
+ *     D52E(102h, 2) (two POP BX); 0300 assembles the armament panel;
+ *     114A:02FF(0, 5Bh, 140h, 6Dh) copies the panel band from page 2 to
+ *     both pages (caller drops 8);
+ *   - and it leaves by JMP to 01C1, the HUD bitmap recolour, which is run
+ *     here as part of this routine: ENTER 4; 1058:000E (HUD colours and
+ *     layout); the colour pair (bp-4, bp-2) is (0Fh, 0Ah) when [43DE] is
+ *     non-zero, else (0Ah, 0Fh); the library's colour replace 1E42:01E7 on
+ *     [4040] for three rectangles - (0, 0, 8Ch, 1Dh), (0, 1Eh, 40h, 25h),
+ *     (26h, 4Bh, 5Bh, 57h) - each with the pair (caller drops 0Eh, the last
+ *     by LEAVE); RET.
+ * 01B9 (CALL 1039:0000, JMP 01C1) lies between the two parts and is not
+ * run here. */
+static int vgame_flight_start(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+    enum { FROM=-4, TO=-2 };
+#define VFB(n_,at_) do { SM4_NEED((n_),(at_));c->icount+=(n_); } while(0)
+#define VFP(v_) cpu_push16(c,(v_))
+#define VFRUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call_);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define VFNEAR(at_,target_,ret_) do { SM4_NEED(1,(at_)); VFRUN(guest_call_pop(m,(target_),(ret_),0)); } while(0)
+#define VFFAR(at_,ret_) do { SM4_NEED(1,(at_)); VFRUN(guest_call_far(m,(at_),(ret_))); } while(0)
+    if(!room(c,1))return 0;
+    /* The mission, the models, the theatre's name. */
+    VFNEAR(0x00F0,0x4BEC,0x00F3);
+    VFNEAR(0x00F3,0xBAA2,0x00F6);
+    VFB(5,0x00F6);
+    c->r[R_BX]=ds_get(c,0x9924);c->seg[S_ES]=ds_get(c,0x9926);
+    c->r[R_BX]=seg_read16(c,c->seg[S_ES],(uint16_t)(c->r[R_BX]+0x0038));
+    c->r[R_BX]=(uint16_t)x86_shift(c,4,c->r[R_BX],1,1);
+    VFP(ds_get(c,(uint16_t)(c->r[R_BX]+0x0090)));
+    VFP(ds_get(c,0x008E));
+    VFNEAR(0x0108,0xEB50,0x010B);
+    VFB(2,0x010B);
+    c->r[R_BX]=cpu_pop16(c);c->r[R_BX]=cpu_pop16(c);
+    /* The mode, then the file at DS:F7 handed to the sound entry. */
+    VFNEAR(0x010D,0x0986,0x0110);
+    VFB(1,0x0110);
+    VFP(0x00F7);
+    VFNEAR(0x0113,0xE586,0x0116);
+    VFB(4,0x0116);
+    c->r[R_BX]=cpu_pop16(c);
+    ds_put(c,0x008A,c->r[R_AX]);
+    c->r[R_AX]=(uint16_t)alu_op(c,1,c->r[R_AX],c->r[R_AX],1);
+    if(x86_cond(c,4))goto no_file;
+    VFB(4,0x011E);
+    VFP(ds_get(c,0xC0A2));VFP(ds_get(c,0xC0A0));VFP(c->r[R_AX]);VFP(0x0028);
+    VFFAR(0x0129,0x012E);
+    VFB(1,0x012E);
+    c->r[R_SP]=(uint16_t)alu_op(c,0,c->r[R_SP],0x0008,1);
+no_file:
+    VFFAR(0x0131,0x0136);
+    /* The record's flag, the theatre's byte, the colour choice. */
+    VFB(13,0x0136);
+    c->r[R_BX]=ds_get(c,0xE574);c->seg[S_ES]=ds_get(c,0xE576);
+    set_r8(c,0,mem_read8(c,phys(c->seg[S_ES],(uint16_t)(c->r[R_BX]+0x0033))));
+    set_r8(c,4,(uint8_t)alu_op(c,5,get_r8(c,4),get_r8(c,4),0));
+    ds_put(c,0x368A,c->r[R_AX]);
+    c->r[R_BX]=ds_get(c,0x9924);c->seg[S_ES]=ds_get(c,0x9926);
+    c->r[R_BX]=seg_read16(c,c->seg[S_ES],(uint16_t)(c->r[R_BX]+0x0038));
+    set_r8(c,0,ds_get8(c,(uint16_t)(c->r[R_BX]+0x00EE)));
+    ds_put8(c,0x0D47,get_r8(c,0));
+    (void)alu_op(c,7,ds_get(c,0x368A),0x0001,1);
+    c->r[R_AX]=(uint16_t)alu_op(c,3,c->r[R_AX],c->r[R_AX],1);
+    c->r[R_AX]=(uint16_t)alu_sub(c,0,c->r[R_AX],1,0);
+    ds_put(c,0x43DE,c->r[R_AX]);
+    ds_put8(c,0x008C,0x01);
+    /* Palette, pens, the two cleared pages, the cockpit pictures. */
+    VFFAR(0x0163,0x0168);
+    VFB(1,0x0168);
+    VFP(0x0000);
+    VFNEAR(0x016A,0x886A,0x016D);
+    VFB(6,0x016D);
+    c->r[R_BX]=cpu_pop16(c);
+    VFP(0x005B);VFP(0x013F);VFP(0x0000);VFP(0x0000);VFP(ds_get(c,0x4010));
+    VFFAR(0x017B,0x0180);
+    VFB(6,0x0180);
+    c->r[R_SP]=(uint16_t)alu_op(c,0,c->r[R_SP],0x000A,1);
+    VFP(0x005B);VFP(0x013F);VFP(0x0000);VFP(0x0000);VFP(ds_get(c,0x4028));
+    VFFAR(0x0190,0x0195);
+    VFB(3,0x0195);
+    c->r[R_SP]=(uint16_t)alu_op(c,0,c->r[R_SP],0x000A,1);
+    VFP(0x0002);VFP(0x0102);
+    VFNEAR(0x019D,0xD52E,0x01A0);
+    VFB(2,0x01A0);
+    c->r[R_BX]=cpu_pop16(c);c->r[R_BX]=cpu_pop16(c);
+    VFNEAR(0x01A2,0x0300,0x01A5);
+    VFB(4,0x01A5);
+    VFP(0x006D);VFP(0x0140);VFP(0x005B);VFP(0x0000);
+    VFFAR(0x01AE,0x01B3);
+    VFB(2,0x01B3);                                                 /* and the JMP to 01C1 */
+    c->r[R_SP]=(uint16_t)alu_op(c,0,c->r[R_SP],0x0008,1);
+    /* 01C1: the HUD bitmaps recoloured. */
+    VFB(1,0x01C1);
+    x86_enter(c,4,0);
+    VFFAR(0x01C5,0x01CA);
+    VFB(2,0x01CA);
+    (void)alu_op(c,7,ds_get(c,0x43DE),0x0000,1);
+    if(x86_cond(c,4))goto pair_a_f;
+    VFB(3,0x01D1);                                                 /* with its JMP */
+    bp_put(c,FROM,0x000F);bp_put(c,TO,0x000A);
+    goto recolour;
+pair_a_f:
+    VFB(2,0x01DD);
+    bp_put(c,FROM,0x000A);bp_put(c,TO,0x000F);
+recolour:
+    VFB(7,0x01E7);
+    VFP(bp_get(c,TO));VFP(bp_get(c,FROM));VFP(0x001D);VFP(0x008C);VFP(0x0000);VFP(0x0000);VFP(ds_get(c,0x4040));
+    VFFAR(0x01FA,0x01FF);
+    VFB(8,0x01FF);
+    c->r[R_SP]=(uint16_t)alu_op(c,0,c->r[R_SP],0x000E,1);
+    VFP(bp_get(c,TO));VFP(bp_get(c,FROM));VFP(0x0025);VFP(0x0040);VFP(0x001E);VFP(0x0000);VFP(ds_get(c,0x4040));
+    VFFAR(0x0214,0x0219);
+    VFB(8,0x0219);
+    c->r[R_SP]=(uint16_t)alu_op(c,0,c->r[R_SP],0x000E,1);
+    VFP(bp_get(c,TO));VFP(bp_get(c,FROM));VFP(0x0057);VFP(0x005B);VFP(0x004B);VFP(0x0026);VFP(ds_get(c,0x4040));
+    VFFAR(0x022E,0x0233);
+    VFB(2,0x0233);
+    x86_leave(c);c->ip=cpu_pop16(c);return 1;
+#undef VFFAR
+#undef VFNEAR
+#undef VFRUN
+#undef VFP
+#undef VFB
+}
+
+/* VGAME 01C1, recolour the HUD bitmaps after the pilot mode changes.
+ * Enter a four-byte frame, call the far HUD-layout helper 1058:000E, then
+ * choose the colour pair at BP-4/BP-2: 0Fh to 0Ah when [43DE] is nonzero,
+ * 0Ah to 0Fh otherwise. The colour-replace driver 1E42:01E7 receives the
+ * bitmap page [4040], rectangle and pair for three regions: (0,0)-(8C,1D),
+ * (0,1E)-(40,25), and (26,4B)-(5B,57). Each call returns far without popping
+ * arguments. ADD SP drops the first two sets; LEAVE drops the last set and
+ * the frame. No arguments; a near RET. This is also the flight-start tail,
+ * but other callers enter here directly, so this entry is proved separately. */
+static int vgame_hud_bitmap_recolour(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+    enum { FROM=-4, TO=-2 };
+#define VFB(n_,at_) do { SM4_NEED((n_),(at_));c->icount+=(n_); } while(0)
+#define VFP(v_) cpu_push16(c,(v_))
+#define VFRUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call_);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define VFNEAR(at_,target_,ret_) do { SM4_NEED(1,(at_)); VFRUN(guest_call_pop(m,(target_),(ret_),0)); } while(0)
+#define VFFAR(at_,ret_) do { SM4_NEED(1,(at_)); VFRUN(guest_call_far(m,(at_),(ret_))); } while(0)
+    if(!room(c,1))return 0;
+    /* 01C1: the HUD bitmaps recoloured. */
+    VFB(1,0x01C1);
+    x86_enter(c,4,0);
+    VFFAR(0x01C5,0x01CA);
+    VFB(2,0x01CA);
+    (void)alu_op(c,7,ds_get(c,0x43DE),0x0000,1);
+    if(x86_cond(c,4))goto pair_a_f;
+    VFB(3,0x01D1);                                                 /* with its JMP */
+    bp_put(c,FROM,0x000F);bp_put(c,TO,0x000A);
+    goto recolour;
+pair_a_f:
+    VFB(2,0x01DD);
+    bp_put(c,FROM,0x000A);bp_put(c,TO,0x000F);
+recolour:
+    VFB(7,0x01E7);
+    VFP(bp_get(c,TO));VFP(bp_get(c,FROM));VFP(0x001D);VFP(0x008C);VFP(0x0000);VFP(0x0000);VFP(ds_get(c,0x4040));
+    VFFAR(0x01FA,0x01FF);
+    VFB(8,0x01FF);
+    c->r[R_SP]=(uint16_t)alu_op(c,0,c->r[R_SP],0x000E,1);
+    VFP(bp_get(c,TO));VFP(bp_get(c,FROM));VFP(0x0025);VFP(0x0040);VFP(0x001E);VFP(0x0000);VFP(ds_get(c,0x4040));
+    VFFAR(0x0214,0x0219);
+    VFB(8,0x0219);
+    c->r[R_SP]=(uint16_t)alu_op(c,0,c->r[R_SP],0x000E,1);
+    VFP(bp_get(c,TO));VFP(bp_get(c,FROM));VFP(0x0057);VFP(0x005B);VFP(0x004B);VFP(0x0026);VFP(ds_get(c,0x4040));
+    VFFAR(0x022E,0x0233);
+    VFB(2,0x0233);
+    x86_leave(c);c->ip=cpu_pop16(c);return 1;
+#undef VFFAR
+#undef VFNEAR
+#undef VFRUN
+#undef VFP
+#undef VFB
+}
+
+/* START 5BF0, the world/options screen. Picture 6 and hit boxes 6F6E offer
+ * theatre choices (pilot +38h), tension (+3Ah), and mission kind (+3Ch).
+ * A pending accepted mission [D2A2] asks for confirmation before choices
+ * below 11h; answer 2 cancels the choice, other answers clear that flag.
+ * The original dispatch compares the event as a word, then reduces AL with
+ * signed byte conditions; retain those operations and flags exactly.
+ * Theatre changes update palette highlights and call 60DC to redraw. Tension
+ * and mission changes retain the old option at BP-0Ah and redraw old/new
+ * highlights through the driver and both pages. Unrecognized events keep the
+ * original behavior, including reads of the uninitialized old-option local.
+ * Event 63h restores the pointer and returns 0. Event 11h saves the roster
+ * with report=0, optionally draws the [B39A] message, runs the 62-step exit
+ * wipe and waits 30 ticks, then returns 0. Other events return to polling.
+ * No arguments; save SI and BP, ten-byte frame. All callees use plain RET or
+ * RETF; arguments are dropped by the caller. Nested calls stop at events. */
+static int start_world_options(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+    enum { EVENT=-2, X=-4, Y=-6, WIPE=-8, OLD_OPTION=-10 };
+#define WB(n_,at_) do { SM4_NEED((n_),(at_));c->icount+=(n_); } while(0)
+#define WP(v_) cpu_push16(c,(uint16_t)(v_))
+#define WV(v_) do { c->r[R_AX]=(uint16_t)(v_);WP(c->r[R_AX]); } while(0)
+#define WD(n_) (c->r[R_SP]=(uint16_t)alu_op(c,0,c->r[R_SP],(n_),1))
+#define WPOP() (c->r[R_BX]=cpu_pop16(c))
+#define WRUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call_);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define WC(at_,to_,ret_) do { SM4_NEED(1,(at_));WRUN(guest_call_pop(m,(to_),(ret_),0)); } while(0)
+#define WF(at_,ret_) do { SM4_NEED(1,(at_));WRUN(guest_call_far(m,(at_),(ret_))); } while(0)
+#define WREC() do { c->r[R_BX]=ds_get(c,0xCACA);c->seg[S_ES]=ds_get(c,0xCACC); } while(0)
+#define WALDEC() set_r8(c,R_AL,(uint8_t)alu_dec(c,get_r8(c,R_AL),0))
+#define WALSUB(n_) set_r8(c,R_AL,(uint8_t)alu_op(c,5,get_r8(c,R_AL),(n_),0))
+#define WZERO() (c->r[R_AX]=(uint16_t)alu_op(c,5,c->r[R_AX],c->r[R_AX],1))
+    if(!room(c,8))return 0;
+    WB(8,0x5BF0);frame_open(c,10);WP(c->r[R_SI]);WV(0x5A8A);WV(6);
+    WC(0x5BFF,0x3641,0x5C02);
+    WB(2,0x5C02);WPOP();WPOP();
+poll:
+    WB(2,0x5C04);WV(0x6F6E);
+    WC(0x5C08,0x38AC,0x5C0B);
+    WB(4,0x5C0B);WPOP();bp_put(c,EVENT,c->r[R_AX]);
+    alu_op(c,7,ds_get8(c,0xD2A2),0,0);
+    if(x86_cond(c,4))goto dispatch;
+    WB(2,0x5C16);alu_op(c,7,c->r[R_AX],0x11,1);
+    if(x86_cond(c,13))goto dispatch;
+    WB(6,0x5C1B);WV(0x46);WV(0x56);WV(0x70AA);
+    WC(0x5C27,0x3CEA,0x5C2A);
+    WB(3,0x5C2A);WD(6);alu_op(c,7,c->r[R_AX],2,1);
+    if(x86_cond(c,5))goto discard_mission;
+    WB(2,0x5C32);bp_put(c,EVENT,0);goto dispatch;
+discard_mission:
+    WB(1,0x5C39);ds_put8(c,0xD2A2,0);
+dispatch:
+    WB(3,0x5C3E);c->r[R_AX]=bp_get(c,EVENT);alu_op(c,7,c->r[R_AX],0x63,1);
+    if(x86_cond(c,5))goto reduce;
+    WB(1,0x5C46);goto cancel;
+reduce:
+    WB(1,0x5C49);if(x86_cond(c,7))goto changed;
+    WB(2,0x5C4B);WALDEC();if(x86_cond(c,12))goto changed;
+    WB(2,0x5C4F);WALSUB(2);if(x86_cond(c,14))goto theatre_gate;
+    WB(2,0x5C53);WALDEC();if(x86_cond(c,5))goto reduce_more;
+    WB(1,0x5C57);goto theatre;
+reduce_more:
+    WB(2,0x5C5A);WALDEC();if(x86_cond(c,12))goto changed;
+    WB(2,0x5C5E);WALSUB(4);if(x86_cond(c,14))goto theatre_gate;
+    WB(2,0x5C62);WALDEC();if(x86_cond(c,12))goto changed;
+    WB(2,0x5C66);WALSUB(2);if(x86_cond(c,15))goto reduce_mission;
+    WB(1,0x5C6A);goto tension;
+reduce_mission:
+    WB(2,0x5C6D);WALDEC();if(x86_cond(c,12))goto changed;
+    WB(2,0x5C71);WALSUB(3);if(x86_cond(c,15))goto reduce_exit;
+    WB(1,0x5C75);goto mission;
+reduce_exit:
+    WB(2,0x5C78);WALDEC();if(x86_cond(c,5))goto other;
+    WB(1,0x5C7C);goto save_exit;
+other:
+    WB(1,0x5C7F);goto changed;
+theatre_gate:
+    WB(3,0x5C81);c->r[R_BX]=ds_get(c,0xE096);c->seg[S_ES]=ds_get(c,0xE098);
+    alu_op(c,7,seg_read16(c,c->seg[S_ES],(uint16_t)(c->r[R_BX]+0x22)),0,1);
+    if(x86_cond(c,4))goto unavailable;
+    WB(1,0x5C8C);goto theatre;
+unavailable:
+    WB(6,0x5C8F);WV(0x3C);WV(0x46);WV(0x7338);
+    WC(0x5C9B,0x3CEA,0x5C9E);
+    WB(1,0x5C9E);WD(6);
+changed:
+    WB(2,0x5CA1);alu_op(c,7,bp_get(c,EVENT),9,1);
+    if(x86_cond(c,15))goto highlights;
+    WB(1,0x5CA7);goto poll;
+highlights:
+    WB(18,0x5CAA);
+    c->r[R_BX]=bp_get(c,OLD_OPTION);
+    c->r[R_BX]=(uint16_t)x86_shift(c,4,c->r[R_BX],1,1);
+    c->r[R_AX]=ds_get(c,(uint16_t)(c->r[R_BX]+0x0DFA));bp_put(c,Y,c->r[R_AX]);
+    c->r[R_CX]=8;WP(c->r[R_CX]);c->r[R_DX]=12;WP(c->r[R_DX]);WP(c->r[R_AX]);
+    c->r[R_SI]=ds_get(c,(uint16_t)(c->r[R_BX]+0x0DEC));bp_put(c,X,c->r[R_SI]);WP(c->r[R_SI]);
+    c->r[R_BX]=1;WP(c->r[R_BX]);WP(c->r[R_AX]);WP(c->r[R_SI]);WV(3);
+    WF(0x5CD1,0x5CD6);
+    WB(13,0x5CD6);WD(16);WV(8);WV(12);WP(bp_get(c,Y));WP(bp_get(c,X));
+    WZERO();WP(c->r[R_AX]);WP(bp_get(c,Y));WP(bp_get(c,X));WV(3);
+    WF(0x5CF4,0x5CF9);
+    WB(9,0x5CF9);WD(16);c->r[R_BX]=bp_get(c,EVENT);
+    c->r[R_BX]=(uint16_t)x86_shift(c,4,c->r[R_BX],1,1);
+    c->r[R_AX]=ds_get(c,(uint16_t)(c->r[R_BX]+0x0DD8));bp_put(c,X,c->r[R_AX]);
+    c->r[R_AX]=ds_get(c,(uint16_t)(c->r[R_BX]+0x0DE6));bp_put(c,Y,c->r[R_AX]);WV(0x1B);
+    WF(0x5D13,0x5D18);
+    WB(6,0x5D18);WPOP();WP(ds_get(c,0xCABA));WP(bp_get(c,Y));WP(bp_get(c,X));WV(0xDC18);
+    WC(0x5D27,0x3693,0x5D2A);
+    WB(6,0x5D2A);WD(8);WP(ds_get(c,0xCABA));WP(bp_get(c,Y));WP(bp_get(c,X));WV(0xDC02);
+    WC(0x5D3B,0x3693,0x5D3E);
+    WB(2,0x5D3E);WD(8);goto poll;
+theatre:
+    WB(6,0x5D44);c->r[R_BX]=bp_get(c,EVENT);
+    set_r8(c,R_AL,ds_get8(c,(uint16_t)(c->r[R_BX]+0x0DE2)));
+    set_r8(c,R_AH,(uint8_t)alu_op(c,5,get_r8(c,R_AH),get_r8(c,R_AH),0));
+    c->r[R_SI]=ds_get(c,0xCACA);c->seg[S_ES]=ds_get(c,0xCACC);
+    alu_op(c,7,c->r[R_AX],seg_read16(c,c->seg[S_ES],(uint16_t)(c->r[R_SI]+0x38)),1);
+    if(x86_cond(c,5))goto change_theatre;
+    WB(1,0x5D57);goto unchanged;
+change_theatre:
+    WB(8,0x5D5A);WV(1);c->r[R_CX]=0x11AC;WP(c->r[R_CX]);
+    c->r[R_SI]=seg_read16(c,c->seg[S_ES],(uint16_t)(c->r[R_SI]+0x38));
+    set_r8(c,R_CL,ds_get8(c,(uint16_t)(c->r[R_SI]+0x0DD8)));
+    set_r8(c,R_CH,(uint8_t)alu_op(c,5,get_r8(c,R_CH),get_r8(c,R_CH),0));WP(c->r[R_CX]);
+    WC(0x5D6D,0x3517,0x5D70);
+    WB(15,0x5D70);WD(6);c->r[R_BX]=bp_get(c,EVENT);
+    set_r8(c,R_AL,ds_get8(c,(uint16_t)(c->r[R_BX]+0x0DE2)));
+    set_r8(c,R_AH,(uint8_t)alu_op(c,5,get_r8(c,R_AH),get_r8(c,R_AH),0));
+    WREC();seg_write16(c,c->seg[S_ES],(uint16_t)(c->r[R_BX]+0x38),c->r[R_AX]);
+    WV(1);WV(0x11C7);WREC();c->r[R_BX]=seg_read16(c,c->seg[S_ES],(uint16_t)(c->r[R_BX]+0x38));
+    set_r8(c,R_AL,ds_get8(c,(uint16_t)(c->r[R_BX]+0x0DD8)));
+    set_r8(c,R_AH,(uint8_t)alu_op(c,5,get_r8(c,R_AH),get_r8(c,R_AH),0));WP(c->r[R_AX]);
+    WC(0x5D9B,0x3517,0x5D9E);
+    WB(1,0x5D9E);WD(6);
+    WC(0x5DA1,0x60DC,0x5DA4);
+    WB(1,0x5DA4);goto changed;
+tension:
+    WB(6,0x5DA7);WREC();c->r[R_AX]=seg_read16(c,c->seg[S_ES],(uint16_t)(c->r[R_BX]+0x3A));
+    c->r[R_CX]=c->r[R_AX];c->r[R_AX]=(uint16_t)alu_op(c,5,c->r[R_AX],bp_get(c,EVENT),1);
+    alu_op(c,7,c->r[R_AX],0xFFF6,1);if(x86_cond(c,4))goto unchanged;
+    WB(5,0x5DB9);bp_put(c,OLD_OPTION,c->r[R_CX]);c->r[R_AX]=bp_get(c,EVENT);
+    c->r[R_AX]=(uint16_t)alu_op(c,5,c->r[R_AX],10,1);
+    seg_write16(c,c->seg[S_ES],(uint16_t)(c->r[R_BX]+0x3A),c->r[R_AX]);goto changed;
+mission:
+    WB(6,0x5DC9);WREC();c->r[R_AX]=seg_read16(c,c->seg[S_ES],(uint16_t)(c->r[R_BX]+0x3C));
+    c->r[R_CX]=c->r[R_AX];c->r[R_AX]=(uint16_t)alu_op(c,5,c->r[R_AX],bp_get(c,EVENT),1);
+    alu_op(c,7,c->r[R_AX],0xFFF3,1);if(x86_cond(c,5))goto change_mission;
+unchanged:
+    WB(1,0x5DDB);goto changed;
+change_mission:
+    WB(6,0x5DDE);c->r[R_CX]=(uint16_t)alu_op(c,0,c->r[R_CX],3,1);
+    bp_put(c,OLD_OPTION,c->r[R_CX]);c->r[R_AX]=bp_get(c,EVENT);
+    c->r[R_AX]=(uint16_t)alu_op(c,5,c->r[R_AX],13,1);
+    seg_write16(c,c->seg[S_ES],(uint16_t)(c->r[R_BX]+0x3C),c->r[R_AX]);goto changed;
+cancel:
+    WC(0x5DF1,0x3989,0x5DF4);
+zero_answer:
+    WB(2,0x5DF4);WZERO();goto leave;
+save_exit:
+    WC(0x5DF8,0x3989,0x5DFB);
+    WB(2,0x5DFB);WZERO();WP(c->r[R_AX]);
+    WC(0x5DFE,0x7272,0x5E01);
+    WB(3,0x5E01);WPOP();alu_op(c,7,ds_get8(c,0xB39A),0,0);
+    if(x86_cond(c,4))goto wipe_setup;
+    WB(8,0x5E09);WV(7);WV(0x10D2);WV(0x10E0);WV(4);
+    WC(0x5E19,0x28CE,0x5E1C);
+    WB(1,0x5E1C);WD(8);
+wipe_setup:
+    WB(1,0x5E1F);bp_put(c,WIPE,0);
+wipe:
+    WC(0x5E24,0x8427,0x5E27);
+    WB(18,0x5E27);WV(12);WV(1);WV(0xBC);
+    c->r[R_AX]=bp_get(c,WIPE);c->r[R_AX]=(uint16_t)alu_op(c,0,c->r[R_AX],0x102,1);WP(c->r[R_AX]);
+    WZERO();WP(c->r[R_AX]);WV(0xA7);
+    c->r[R_AX]=bp_get(c,WIPE);c->r[R_AX]=(uint16_t)alu_op(c,0,c->r[R_AX],0xF1,1);WP(c->r[R_AX]);WV(2);
+    WF(0x5E4C,0x5E51);
+    WB(1,0x5E51);WD(16);
+    WC(0x5E54,0x2901,0x5E57);
+    WB(3,0x5E57);bp_put(c,WIPE,(uint16_t)alu_inc(c,bp_get(c,WIPE),1));
+    alu_op(c,7,bp_get(c,WIPE),0x3E,1);if(x86_cond(c,12))goto wipe;
+    WB(2,0x5E60);WV(30);
+    WC(0x5E64,0x2B06,0x5E67);
+    WB(2,0x5E67);WPOP();goto zero_answer;
+leave:
+    WB(4,0x5E6A);c->r[R_SI]=cpu_pop16(c);frame_close_ret(c);return 1;
+#undef WZERO
+#undef WALSUB
+#undef WALDEC
+#undef WREC
+#undef WF
+#undef WC
+#undef WRUN
+#undef WPOP
+#undef WD
+#undef WV
+#undef WP
+#undef WB
+}
+
+/* VGAME 825D: put the multi-function display `n` (bp+4) up. Nothing happens
+ * while [368C] (the cockpit's displays are live) is zero. When the display
+ * showing now, [E008], is not `n`, its cockpit element ([4096 + 2 * old]) is
+ * put out through D578 (page [4010], element, 0); leaving the compass display
+ * (13h) also puts out element 1Bh and, while its cache cell [483E] says it is
+ * lit, element 19h. Then the builder of the new display runs, still seeing
+ * the OLD [E008]: 13h the compass (8342, then the far 114A:0280 with 2 and
+ * 9Fh, cdecl), 14h the navigation display (8F71), 15h the armament display
+ * (93E9), 18h the objectives (9515); other values build nothing. Only then
+ * does [E008] become `n`. The new display's element ([4096 + 2 * n]) is lit
+ * through D578 (page, element, 1) unless its cache cell [4712 + 12 * element]
+ * already says so; when it was lit and `n` is the compass, element 1Bh is lit
+ * too, and element 19h as well while [43E0] is set and [483E] is clear.
+ * Every callee returns with a plain RET (RETF for 114A:0280); this routine
+ * removes the arguments itself with ADD SP,6 (or two POP BX). */
+static int vgame_display_select(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { MODE = 4 };
+#define DSB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while(0)
+#define DSCMP(a_,b_) alu_op(c,7,(a_),(b_),1)
+#define DSDROP6() (c->r[R_SP] = (uint16_t)alu_op(c,0,c->r[R_SP],6,1))
+#define DSRUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call_);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define DSNEAR(at_,target_,ret_) do { SM4_NEED(1,(at_)); DSRUN(guest_call_pop(m,(target_),(ret_),0)); } while(0)
+#define DSFAR(at_,ret_) do { SM4_NEED(1,(at_)); DSRUN(guest_call_far(m,(at_),(ret_))); } while(0)
+    if (!room(c, 5)) return 0;
+    DSB(5, 0x825D);
+    x86_push_reg(c, R_BP); c->r[R_BP] = c->r[R_SP]; x86_push_reg(c, R_SI);
+    DSCMP(ds_get(c, 0x368C), 0); if (x86_cond(c, 5)) goto live;
+    DSB(1, 0x8268); goto done;
+live:
+    DSB(3, 0x826B);
+    c->r[R_AX] = bp_get(c, MODE); DSCMP(ds_get(c, 0xE008), c->r[R_AX]); if (x86_cond(c, 4)) goto build;
+    /* The display going away: its element out. */
+    DSB(5, 0x8274);
+    cpu_push16(c, 0); c->r[R_BX] = ds_get(c, 0xE008); c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 1, 1);
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x4096))); cpu_push16(c, ds_get(c, 0x4010));
+    DSNEAR(0x8284, 0xD578, 0x8287);
+    DSB(3, 0x8287);
+    DSDROP6(); DSCMP(ds_get(c, 0xE008), 0x13); if (x86_cond(c, 5)) goto build;
+    /* Leaving the compass: elements 1Bh and (when lit) 19h out too. */
+    DSB(3, 0x8291);
+    cpu_push16(c, 0); cpu_push16(c, 0x1B); cpu_push16(c, ds_get(c, 0x4010));
+    DSNEAR(0x8299, 0xD578, 0x829C);
+    DSB(3, 0x829C);
+    DSDROP6(); DSCMP(ds_get(c, 0x483E), 0); if (x86_cond(c, 4)) goto build;
+    DSB(3, 0x82A6);
+    cpu_push16(c, 0); cpu_push16(c, 0x19); cpu_push16(c, ds_get(c, 0x4010));
+    DSNEAR(0x82AE, 0xD578, 0x82B1);
+    DSB(1, 0x82B1); DSDROP6();
+    /* The builder of the new display, chosen by `n` while [E008] is still the old one. */
+build:
+    DSB(2, 0x82B4); c->r[R_AX] = bp_get(c, MODE); goto choose;
+compass:
+    DSNEAR(0x82B9, 0x8342, 0x82BC);
+    DSB(2, 0x82BC); cpu_push16(c, 0x9F); cpu_push16(c, 2);
+    DSFAR(0x82C1, 0x82C6);
+    DSB(3, 0x82C6); c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); goto store;
+armament:
+    DSNEAR(0x82CA, 0x93E9, 0x82CD);
+    DSB(1, 0x82CD); goto store;
+navigation:
+    DSNEAR(0x82CF, 0x8F71, 0x82D2);
+    DSB(1, 0x82D2); goto store;
+objectives:
+    DSNEAR(0x82D4, 0x9515, 0x82D7);
+    DSB(1, 0x82D7); goto store;
+choose:
+    DSB(2, 0x82D9); c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], 0x13, 1); if (x86_cond(c, 4)) goto compass;
+    DSB(2, 0x82DE); c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1); if (x86_cond(c, 4)) goto navigation;
+    DSB(2, 0x82E1); c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1); if (x86_cond(c, 4)) goto armament;
+    DSB(2, 0x82E4); c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], 3, 1); if (x86_cond(c, 4)) goto objectives;
+    /* The new display is current; its element lit unless its cache says it is. */
+store:
+    DSB(7, 0x82E9);
+    c->r[R_AX] = bp_get(c, MODE); ds_put(c, 0xE008, c->r[R_AX]); c->r[R_BX] = c->r[R_AX];
+    c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 1, 1);
+    c->r[R_SI] = x86_imul3(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x4096)), 0x0C);
+    DSCMP(ds_get(c, (uint16_t)(c->r[R_SI] + 0x4712)), 0); if (x86_cond(c, 5)) goto done;
+    DSB(3, 0x82FF);
+    cpu_push16(c, 1); cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x4096))); cpu_push16(c, ds_get(c, 0x4010));
+    DSNEAR(0x8309, 0xD578, 0x830C);
+    DSB(3, 0x830C);
+    DSDROP6(); DSCMP(bp_get(c, MODE), 0x13); if (x86_cond(c, 5)) goto done;
+    /* The compass also lights element 1Bh, and 19h while [43E0] is set and it is not lit. */
+    DSB(3, 0x8315);
+    cpu_push16(c, 1); cpu_push16(c, 0x1B); cpu_push16(c, ds_get(c, 0x4010));
+    DSNEAR(0x831D, 0xD578, 0x8320);
+    DSB(3, 0x8320);
+    DSDROP6(); DSCMP(ds_get(c, 0x43E0), 0); if (x86_cond(c, 4)) goto done;
+    DSB(2, 0x832A); DSCMP(ds_get(c, 0x483E), 0); if (x86_cond(c, 5)) goto done;
+    DSB(3, 0x8331);
+    cpu_push16(c, 1); cpu_push16(c, 0x19); cpu_push16(c, ds_get(c, 0x4010));
+    DSNEAR(0x8339, 0xD578, 0x833C);
+    DSB(1, 0x833C); DSDROP6();
+done:
+    DSB(3, 0x833F); c->r[R_SI] = cpu_pop16(c); x86_leave(c); near_ret(c); return 1;
+#undef DSB
+#undef DSCMP
+#undef DSDROP6
+#undef DSRUN
+#undef DSNEAR
+#undef DSFAR
+}
+
+/* START 2696: the objective sentence for a photograph or destroy target -
+ * arms 1 and 2 of the objective-line switch (2651 jumps here through its
+ * table at 284E). It runs inside 2651's frame (st4_start_objective_open):
+ * [BP+4] is the objective record, [BP+6] the output string; 2651 has left
+ * the kind byte of the objective's type at [BP-2], the 16-byte target
+ * record it names (CBDE + 16 * word +2) at [BP-6] and the target's name
+ * (DC70 indexed by the target's first word, or 0) at [BP-4]; [BP-58h] is
+ * a scratch string. The verb is string 08CF for kind 1 and 08DA
+ * otherwise, kept at [BP-5Ah]. A target whose first word is nonzero prints
+ * sprintf(out, 08E2, verb, object, name); otherwise sprintf(out, 08F2,
+ * verb, object). The object is the word table DC70 indexed by the target's
+ * byte +0Eh. The deadline comes from byte +4 of the objective's twelve-byte
+ * type record (11DE + 12 * word +8, the record 2651 took the kind from):
+ * bit 20h formats sprintf(tail, 08FC, 0D7C), bit 2 sprintf(tail, 0937,
+ * 0D7C); with neither, a trailing comma of the output is cut (strlen; the
+ * index len-1 is kept at [BP-8]) and the tail is strcpy'd from 0949. The
+ * tail is strcat'd onto the output, whose pointer strcat leaves in AX, and
+ * 2651's shared exit at 285E returns it. sprintf (959E), strlen (94DE),
+ * strcpy (94AC) and strcat (946C) are cdecl near calls run as original
+ * code; this code removes their arguments. */
+static int start_objective_strike_line(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+    enum { TARGET=4, OUT=6, KIND=-2, NAME=-4, RECORD=-6, LAST=-8, TAIL=-0x58, VERB=-0x5A };
+#define OB(n_,at_) do { SM4_NEED((n_),(at_));c->icount+=(n_); } while(0)
+#define OP(v_) cpu_push16(c,(v_))
+#define OPOP() (c->r[R_BX]=cpu_pop16(c))
+#define OSP(n_) (c->r[R_SP]=(uint16_t)alu_op(c,0,c->r[R_SP],(n_),1))
+#define OSHL1(r_) (c->r[r_]=(uint16_t)x86_shift(c,4,c->r[r_],1,1))
+#define ORUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call_);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define ONEAR(at_,target_,ret_) do { SM4_NEED(1,(at_));ORUN(guest_call_pop(m,(target_),(ret_),0)); } while(0)
+    if(!room(c,2))return 0;
+    OB(2,0x2696);
+    alu_op(c,7,bp_get8(c,KIND),0x01,0);
+    if(x86_cond(c,5))goto destroy_verb;
+    OB(2,0x269C);bp_put(c,VERB,0x08CF);goto verb_chosen;
+destroy_verb:
+    OB(1,0x26A3);bp_put(c,VERB,0x08DA);
+verb_chosen:
+    OB(3,0x26A8);
+    c->r[R_BX]=bp_get(c,RECORD);alu_op(c,7,ds_get(c,c->r[R_BX]),0,1);
+    if(x86_cond(c,4))goto unnamed;
+    /* sprintf(out, 08E2, verb, object, name) */
+    OB(9,0x26B0);
+    OP(bp_get(c,NAME));
+    set_r8(c,R_BL,ds_get8(c,(uint16_t)(c->r[R_BX]+0x0E)));set_r8(c,R_BH,(uint8_t)alu_op(c,5,get_r8(c,R_BH),get_r8(c,R_BH),0));OSHL1(R_BX);
+    OP(ds_get(c,(uint16_t)(c->r[R_BX]+0xDC70)));OP(bp_get(c,VERB));c->r[R_AX]=0x08E2;OP(c->r[R_AX]);OP(bp_get(c,OUT));
+    ONEAR(0x26C8,0x959E,0x26CB);
+    OB(2,0x26CB);OSP(0x0A);goto deadline;
+unnamed:
+    /* sprintf(out, 08F2, verb, object) */
+    OB(8,0x26D0);
+    set_r8(c,R_BL,ds_get8(c,(uint16_t)(c->r[R_BX]+0x0E)));set_r8(c,R_BH,(uint8_t)alu_op(c,5,get_r8(c,R_BH),get_r8(c,R_BH),0));OSHL1(R_BX);
+    OP(ds_get(c,(uint16_t)(c->r[R_BX]+0xDC70)));OP(bp_get(c,VERB));c->r[R_AX]=0x08F2;OP(c->r[R_AX]);OP(bp_get(c,OUT));
+    ONEAR(0x26E5,0x959E,0x26E8);
+    OB(1,0x26E8);OSP(0x08);
+deadline:
+    OB(6,0x26EB);
+    c->r[R_AX]=0x000C;c->r[R_BX]=bp_get(c,TARGET);x86_imul16(c,ds_get(c,(uint16_t)(c->r[R_BX]+8)));c->r[R_BX]=c->r[R_AX];
+    alu_logic(c,ds_get8(c,(uint16_t)(c->r[R_BX]+0x11E2))&0x20,0);
+    if(x86_cond(c,4))goto not_unloading;
+    OB(3,0x26FD);c->r[R_AX]=0x0D7C;OP(c->r[R_AX]);c->r[R_AX]=0x08FC;
+format_tail:
+    /* sprintf(tail, format, 0D7C) */
+    OB(3,0x2704);OP(c->r[R_AX]);c->r[R_AX]=(uint16_t)(c->r[R_BP]+TAIL);OP(c->r[R_AX]);
+    ONEAR(0x2709,0x959E,0x270C);
+    OB(2,0x270C);OSP(0x06);goto append;
+not_unloading:
+    OB(6,0x2711);
+    c->r[R_AX]=0x000C;c->r[R_BX]=bp_get(c,TARGET);x86_imul16(c,ds_get(c,(uint16_t)(c->r[R_BX]+8)));c->r[R_BX]=c->r[R_AX];
+    alu_logic(c,ds_get8(c,(uint16_t)(c->r[R_BX]+0x11E2))&0x02,0);
+    if(x86_cond(c,4))goto no_deadline;
+    OB(4,0x2723);c->r[R_AX]=0x0D7C;OP(c->r[R_AX]);c->r[R_AX]=0x0937;goto format_tail;
+no_deadline:
+    /* strlen(out); a final comma is cut; strcpy(tail, 0949) */
+    OB(1,0x272C);OP(bp_get(c,OUT));
+    ONEAR(0x272F,0x94DE,0x2732);
+    OB(7,0x2732);
+    OPOP();c->r[R_BX]=c->r[R_AX];c->r[R_BX]=(uint16_t)alu_dec(c,c->r[R_BX],1);bp_put(c,LAST,c->r[R_BX]);c->r[R_SI]=bp_get(c,OUT);
+    alu_op(c,7,ds_get8(c,(uint16_t)(c->r[R_BX]+c->r[R_SI])),0x2C,0);
+    if(x86_cond(c,5))goto stop_tail;
+    OB(1,0x2741);ds_put8(c,(uint16_t)(c->r[R_BX]+c->r[R_SI]),0);
+stop_tail:
+    OB(4,0x2744);c->r[R_AX]=0x0949;OP(c->r[R_AX]);c->r[R_AX]=(uint16_t)(c->r[R_BP]+TAIL);OP(c->r[R_AX]);
+    ONEAR(0x274C,0x94AC,0x274F);
+    OB(2,0x274F);OPOP();OPOP();
+append:
+    /* strcat(out, tail), then 2651's exit */
+    OB(3,0x2751);c->r[R_AX]=(uint16_t)(c->r[R_BP]+TAIL);OP(c->r[R_AX]);OP(bp_get(c,OUT));
+    ONEAR(0x2758,0x946C,0x275B);
+    OB(3,0x275B);OPOP();OPOP();
+    OB(4,0x285E);c->r[R_SI]=cpu_pop16(c);c->r[R_SP]=c->r[R_BP];c->r[R_BP]=cpu_pop16(c);near_ret(c);return 1;
+#undef OB
+#undef OP
+#undef OPOP
+#undef OSP
+#undef OSHL1
+#undef ORUN
+#undef ONEAR
+}
+
+/* VGAME 7663: the player releases the selected store (weapon button 1).
+ * Six refusals come first. The roll [2DF2] through EE0C (abs) must not be
+ * above 3000h; the selected station [3680] must still hold a count at
+ * [3672 + 4 * station]; its store kind [3670 + 4 * station] (bp-6) gives the
+ * class [36A6 + 1Ah * kind] (bp-2), which must be neither 0 nor -1. With the
+ * bay shut ([9B34] bit 2) anything but class -2 is refused, and so is any
+ * release on the ground ([2DF6] 0) or at exactly 80h over a target whose
+ * flags byte [B2D7 + 16 * [E00C]] has bit 1: those two sound the driver
+ * straight (1E42:0313, id 20h) and print 3EFAh or 3F05h through 8A4F.
+ * Otherwise the station's count drops by one. Class -2 is a countermeasure:
+ * [3666] += 76Ch, message 3F1Bh, and the navigation page (8F71) is redrawn
+ * when it is up ([E008] = 14h). Any other class logs event 4 for the
+ * station (4ABA), resets the time scale (D4F5) and looks for the LAST free
+ * player slot among 8..11 of the 1Ch-byte weapon records at 3C3A (life word
+ * +0Eh zero). A slot gets the player's position, altitude less 14h, speed
+ * [B07E] >> 10, heading, pitch and roll; its life is the class's range
+ * [339C + 12h * class] times the frame divisor [368E], shifted left 5 (EF68)
+ * and divided (EE9C, ret 8) by (speed [339E + ...] sar 6) + 1, plus 6, or
+ * 3E7h when that is 6 or less. Class and kind are stored, the three lock
+ * words set to -1; class 1Bh clears [43E2]; classes 1Eh, 1Dh, 1Ch and 26h
+ * halve the speed; class 1Eh keeps B96C's release angle less 400h in +16h.
+ * With a lock ([3D94] >= 0 and [E588] set) classes 6, 4 (when the target's
+ * word +4 is set) and 5 (when BA2B accepts it) carry the target index and
+ * its position; [E588] clear stores -1 for the index. Class 1Dh flies at
+ * pitch C000h and speed 1. The slot goes to [B07C], the store's name
+ * (369Ah + 1Ah * kind) is copied to 98A6h (EB50), 3F29h appended (EB10) and
+ * shown (8A4F), and sound 0Dh (range zero) or 10h is requested at priority 2
+ * (D3F9). Last, with or without a slot, the stores page is redrawn (83E9
+ * with 15h) when it is up. Every callee is cdecl except EE9C. */
+static int vgame_release_store(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+    enum { CLASS=-2, SLOT_I=-4, KIND=-6, SLOT=-8 };
+#define WB(n_,at_) do { SM4_NEED((n_),(at_));c->icount+=(n_); } while(0)
+#define WP(v_) cpu_push16(c,(uint16_t)(v_))
+#define WPOP() (c->r[R_BX]=cpu_pop16(c))
+#define WDS(o_) ds_get(c,(uint16_t)(o_))
+#define WCMP(a_,b_) alu_op(c,7,(a_),(uint16_t)(b_),1)
+#define WRUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call_);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define WNEAR(at_,target_,ret_,pops_) do { SM4_NEED(1,(at_)); WRUN(guest_call_pop(m,(target_),(ret_),(pops_))); } while(0)
+#define WFAR(at_) do { SM4_NEED(1,(at_)); WRUN(guest_call_far(m,(at_),(uint16_t)((at_)+5))); } while(0)
+#define WREC() (c->r[R_BX]=x86_imul3(c,bp_get(c,SLOT),0x1C))
+    if(!room(c,3))return 0;
+    WB(3,0x7663);x86_enter(c,8,0);x86_push_reg(c,R_SI);WP(WDS(0x2DF2));
+    WNEAR(0x766C,0xEE0C,0x766F,0);
+    WB(3,0x766F);WPOP();WCMP(c->r[R_AX],0x3000);if(x86_cond(c,15))goto leave_routine;
+    WB(4,0x7675);c->r[R_BX]=WDS(0x3680);c->r[R_BX]=(uint16_t)x86_shift(c,4,c->r[R_BX],2,1);
+    WCMP(WDS(c->r[R_BX]+0x3672),0);if(x86_cond(c,4))goto leave_routine;
+    WB(9,0x7683);c->r[R_BX]=WDS(0x3680);c->r[R_BX]=(uint16_t)x86_shift(c,4,c->r[R_BX],2,1);
+    c->r[R_AX]=WDS(c->r[R_BX]+0x3670);bp_put(c,KIND,c->r[R_AX]);c->r[R_BX]=x86_imul3(c,c->r[R_AX],0x1A);
+    c->r[R_AX]=WDS(c->r[R_BX]+0x36A6);bp_put(c,CLASS,c->r[R_AX]);
+    c->r[R_AX]=(uint16_t)alu_op(c,1,c->r[R_AX],c->r[R_AX],1);if(x86_cond(c,4))goto leave_routine;
+    WB(2,0x769F);c->r[R_AX]=(uint16_t)alu_inc(c,c->r[R_AX],1);if(x86_cond(c,5))goto bay_test;
+leave_routine:
+    WB(1,0x76A2);goto epilogue;
+    /* The bay must be open unless the class is -2. */
+bay_test:
+    WB(2,0x76A5);alu_logic(c,(uint32_t)ds_get8(c,0x9B34)&0x04,0);if(x86_cond(c,5))goto ground_test;
+    WB(2,0x76AC);WCMP(bp_get(c,CLASS),0xFFFE);if(x86_cond(c,4))goto ground_test;
+    WB(1,0x76B2);WP(0x20);WFAR(0x76B4);
+    WB(2,0x76B9);WPOP();WP(0x3EFA);
+refusal_message:
+    WNEAR(0x76BD,0x8A4F,0x76C0,0);
+    WB(1,0x76C0);goto drop_argument;
+    /* Not on the ground, nor at 80h over a deck. */
+ground_test:
+    WB(2,0x76C3);WCMP(WDS(0x2DF6),0);if(x86_cond(c,4))goto grounded;
+    WB(4,0x76CA);c->r[R_BX]=WDS(0xE00C);c->r[R_BX]=(uint16_t)x86_shift(c,4,c->r[R_BX],4,1);
+    alu_logic(c,(uint32_t)ds_get8(c,(uint16_t)(c->r[R_BX]+0xB2D7))&0x02,0);if(x86_cond(c,4))goto released;
+    WB(2,0x76D8);WCMP(WDS(0x2DF6),0x80);if(x86_cond(c,5))goto released;
+grounded:
+    WB(1,0x76E0);WP(0x20);WFAR(0x76E2);
+    WB(3,0x76E7);WPOP();WP(0x3F05);goto refusal_message;
+    /* One fewer on the station; class -2 is a countermeasure. */
+released:
+    WB(5,0x76ED);c->r[R_BX]=WDS(0x3680);c->r[R_BX]=(uint16_t)x86_shift(c,4,c->r[R_BX],2,1);
+    ds_put(c,(uint16_t)(c->r[R_BX]+0x3672),(uint16_t)alu_dec(c,WDS(c->r[R_BX]+0x3672),1));
+    WCMP(bp_get(c,CLASS),0xFFFE);if(x86_cond(c,5))goto launch;
+    WB(2,0x76FE);ds_put(c,0x3666,(uint16_t)alu_op(c,0,WDS(0x3666),0x076C,1));WP(0x3F1B);
+    WNEAR(0x7707,0x8A4F,0x770A,0);
+    WB(3,0x770A);WPOP();WCMP(WDS(0xE008),0x14);if(x86_cond(c,4))goto navigation_page;
+    WB(1,0x7712);goto epilogue;
+navigation_page:
+    WNEAR(0x7715,0x8F71,0x7718,0);
+    WB(3,0x7718);c->r[R_SI]=cpu_pop16(c);x86_leave(c);near_ret(c);return 1;
+    /* A weapon: log it, reset the time scale, find the last free slot. */
+launch:
+    WB(2,0x771B);WP(WDS(0x3680));WP(4);
+    WNEAR(0x7721,0x4ABA,0x7724,0);
+    WB(2,0x7724);WPOP();WPOP();
+    WNEAR(0x7726,0xD4F5,0x7729,0);
+    WB(2,0x7729);bp_put(c,SLOT,0xFFFF);bp_put(c,SLOT_I,8);
+slot_test:
+    WB(3,0x7733);c->r[R_BX]=x86_imul3(c,bp_get(c,SLOT_I),0x1C);
+    WCMP(WDS(c->r[R_BX]+0x3C48),0);if(x86_cond(c,5))goto slot_next;
+    WB(2,0x773E);c->r[R_AX]=bp_get(c,SLOT_I);bp_put(c,SLOT,c->r[R_AX]);
+slot_next:
+    WB(3,0x7744);bp_put(c,SLOT_I,(uint16_t)alu_inc(c,bp_get(c,SLOT_I),1));
+    WCMP(bp_get(c,SLOT_I),0x0C);if(x86_cond(c,12))goto slot_test;
+    WB(2,0x774D);WCMP(bp_get(c,SLOT),0xFFFF);if(x86_cond(c,5))goto fill_slot;
+    WB(1,0x7753);goto stores_page;
+    /* The slot takes the aircraft's state; its life is range over speed. */
+fill_slot:
+    WB(28,0x7756);
+    c->r[R_AX]=WDS(0xC0D0);WREC();ds_put(c,(uint16_t)(c->r[R_BX]+0x3C3A),c->r[R_AX]);
+    c->r[R_AX]=WDS(0xC0DE);ds_put(c,(uint16_t)(c->r[R_BX]+0x3C3C),c->r[R_AX]);
+    c->r[R_AX]=WDS(0x2DF4);c->r[R_AX]=(uint16_t)alu_op(c,5,c->r[R_AX],0x14,1);ds_put(c,(uint16_t)(c->r[R_BX]+0x3C3E),c->r[R_AX]);
+    c->r[R_AX]=WDS(0xB07E);c->r[R_AX]=(uint16_t)x86_shift(c,5,c->r[R_AX],0x0A,1);ds_put(c,(uint16_t)(c->r[R_BX]+0x3C40),c->r[R_AX]);
+    c->r[R_AX]=WDS(0x2DEE);ds_put(c,(uint16_t)(c->r[R_BX]+0x3C42),c->r[R_AX]);
+    c->r[R_AX]=WDS(0x2DF0);ds_put(c,(uint16_t)(c->r[R_BX]+0x3C44),c->r[R_AX]);
+    c->r[R_AX]=WDS(0x2DF2);ds_put(c,(uint16_t)(c->r[R_BX]+0x3C46),c->r[R_AX]);
+    c->r[R_SI]=x86_imul3(c,bp_get(c,CLASS),0x12);c->r[R_AX]=WDS(c->r[R_SI]+0x339E);
+    c->r[R_AX]=(uint16_t)x86_shift(c,7,c->r[R_AX],6,1);c->r[R_AX]=(uint16_t)alu_inc(c,c->r[R_AX],1);
+    c->r[R_DX]=(c->r[R_AX]&0x8000)?0xFFFF:0x0000;WP(c->r[R_DX]);WP(c->r[R_AX]);
+    c->r[R_AX]=WDS(c->r[R_SI]+0x339C);x86_imul16(c,WDS(0x368E));set_r8(c,R_CL,5);c->r[R_SI]=c->r[R_BX];
+    WNEAR(0x77AC,0xEF68,0x77AF,0);
+    WB(2,0x77AF);WP(c->r[R_DX]);WP(c->r[R_AX]);
+    WNEAR(0x77B1,0xEE9C,0x77B4,8);
+    WB(4,0x77B4);c->r[R_AX]=(uint16_t)alu_op(c,0,c->r[R_AX],6,1);ds_put(c,(uint16_t)(c->r[R_SI]+0x3C48),c->r[R_AX]);
+    WCMP(c->r[R_AX],6);if(x86_cond(c,15))goto slot_identity;
+    WB(1,0x77C0);ds_put(c,(uint16_t)(c->r[R_SI]+0x3C48),0x03E7);
+slot_identity:
+    WB(11,0x77C6);c->r[R_AX]=bp_get(c,CLASS);WREC();ds_put(c,(uint16_t)(c->r[R_BX]+0x3C4A),c->r[R_AX]);
+    c->r[R_CX]=bp_get(c,KIND);ds_put(c,(uint16_t)(c->r[R_BX]+0x3C4C),c->r[R_CX]);c->r[R_CX]=0xFFFF;
+    ds_put(c,(uint16_t)(c->r[R_BX]+0x3C54),c->r[R_CX]);ds_put(c,(uint16_t)(c->r[R_BX]+0x3C52),c->r[R_CX]);
+    ds_put(c,(uint16_t)(c->r[R_BX]+0x3C4E),c->r[R_CX]);WCMP(c->r[R_AX],0x1B);if(x86_cond(c,5))goto half_speed_test;
+    WB(1,0x77EC);ds_put(c,0x43E2,0);
+half_speed_test:
+    WB(2,0x77F2);WCMP(bp_get(c,CLASS),0x1E);if(x86_cond(c,4))goto half_speed;
+    WB(2,0x77F8);WCMP(bp_get(c,CLASS),0x1D);if(x86_cond(c,4))goto half_speed;
+    WB(2,0x77FE);WCMP(bp_get(c,CLASS),0x1C);if(x86_cond(c,4))goto half_speed;
+    WB(2,0x7804);WCMP(bp_get(c,CLASS),0x26);if(x86_cond(c,5))goto release_angle_test;
+half_speed:
+    WB(2,0x780A);WREC();
+    ds_put(c,(uint16_t)(c->r[R_BX]+0x3C40),(uint16_t)x86_shift(c,7,WDS(c->r[R_BX]+0x3C40),1,1));
+release_angle_test:
+    WB(2,0x7812);WCMP(bp_get(c,CLASS),0x1E);if(x86_cond(c,5))goto lock_test;
+    WNEAR(0x7818,0xB96C,0x781B,0);
+    WB(3,0x781B);c->r[R_AX]=(uint16_t)alu_op(c,5,c->r[R_AX],0x0400,1);WREC();
+    ds_put(c,(uint16_t)(c->r[R_BX]+0x3C50),c->r[R_AX]);
+    /* Whether the weapon carries the player's lock. */
+lock_test:
+    WB(2,0x7826);WCMP(WDS(0x3D94),0);if(x86_cond(c,12))goto pitch_test;
+    WB(2,0x782D);WCMP(WDS(0xE588),0);if(x86_cond(c,4))goto no_lock;
+    WB(3,0x7834);c->r[R_BX]=x86_imul3(c,bp_get(c,CLASS),0x12);
+    WCMP(WDS(c->r[R_BX]+0x33A0),6);if(x86_cond(c,4))goto carry_lock;
+    WB(2,0x783F);WCMP(WDS(c->r[R_BX]+0x33A0),4);if(x86_cond(c,5))goto class_five_test;
+    WB(4,0x7846);c->r[R_BX]=WDS(0x3D94);c->r[R_BX]=(uint16_t)x86_shift(c,4,c->r[R_BX],4,1);
+    WCMP(WDS(c->r[R_BX]+0xB2D4),0);if(x86_cond(c,5))goto carry_lock;
+class_five_test:
+    WB(3,0x7854);c->r[R_BX]=x86_imul3(c,bp_get(c,CLASS),0x12);
+    WCMP(WDS(c->r[R_BX]+0x33A0),5);if(x86_cond(c,5))goto pitch_test;
+    WB(1,0x785F);WP(WDS(0x3D94));
+    WNEAR(0x7863,0xBA2B,0x7866,0);
+    WB(3,0x7866);WPOP();c->r[R_AX]=(uint16_t)alu_op(c,1,c->r[R_AX],c->r[R_AX],1);if(x86_cond(c,4))goto pitch_test;
+carry_lock:
+    WB(9,0x786B);c->r[R_BX]=WDS(0x3D94);c->r[R_SI]=x86_imul3(c,bp_get(c,SLOT),0x1C);
+    ds_put(c,(uint16_t)(c->r[R_SI]+0x3C4E),c->r[R_BX]);c->r[R_BX]=(uint16_t)x86_shift(c,4,c->r[R_BX],4,1);
+    c->r[R_AX]=WDS(c->r[R_BX]+0xB2D0);ds_put(c,(uint16_t)(c->r[R_SI]+0x3C52),c->r[R_AX]);
+    c->r[R_AX]=WDS(c->r[R_BX]+0xB2D2);ds_put(c,(uint16_t)(c->r[R_SI]+0x3C54),c->r[R_AX]);goto pitch_test;
+no_lock:
+    WB(2,0x788C);WREC();ds_put(c,(uint16_t)(c->r[R_BX]+0x3C4E),0xFFFF);
+pitch_test:
+    WB(2,0x7896);WCMP(bp_get(c,CLASS),0x1D);if(x86_cond(c,5))goto announce;
+    WB(3,0x789C);WREC();ds_put(c,(uint16_t)(c->r[R_BX]+0x3C44),0xC000);ds_put(c,(uint16_t)(c->r[R_BX]+0x3C40),1);
+    /* Name the store, say it is away, request the launch sound. */
+announce:
+    WB(6,0x78AC);c->r[R_AX]=bp_get(c,SLOT);ds_put(c,0xB07C,c->r[R_AX]);
+    c->r[R_AX]=x86_imul3(c,bp_get(c,KIND),0x1A);c->r[R_AX]=(uint16_t)alu_op(c,0,c->r[R_AX],0x369A,1);
+    WP(c->r[R_AX]);WP(0x98A6);
+    WNEAR(0x78BD,0xEB50,0x78C0,0);
+    WB(4,0x78C0);WPOP();WPOP();WP(0x3F29);WP(0x98A6);
+    WNEAR(0x78C8,0xEB10,0x78CB,0);
+    WB(3,0x78CB);WPOP();WPOP();WP(0x98A6);
+    WNEAR(0x78D0,0x8A4F,0x78D3,0);
+    WB(8,0x78D3);WPOP();WP(2);c->r[R_BX]=x86_imul3(c,bp_get(c,CLASS),0x12);WCMP(WDS(c->r[R_BX]+0x339C),1);
+    c->r[R_AX]=(uint16_t)alu_op(c,3,c->r[R_AX],c->r[R_AX],1);c->r[R_AX]=(uint16_t)alu_op(c,4,c->r[R_AX],3,1);
+    c->r[R_AX]=(uint16_t)alu_op(c,0,c->r[R_AX],0x0D,1);WP(c->r[R_AX]);
+    WNEAR(0x78E8,0xD3F9,0x78EB,0);
+    WB(2,0x78EB);WPOP();WPOP();
+stores_page:
+    WB(2,0x78ED);WCMP(WDS(0xE008),0x15);if(x86_cond(c,5))goto epilogue;
+    WB(1,0x78F4);WP(0x15);
+    WNEAR(0x78F6,0x83E9,0x78F9,0);
+drop_argument:
+    WB(1,0x78F9);WPOP();
+epilogue:
+    WB(3,0x78FA);c->r[R_SI]=cpu_pop16(c);x86_leave(c);near_ret(c);return 1;
+#undef WB
+#undef WP
+#undef WPOP
+#undef WDS
+#undef WCMP
+#undef WRUN
+#undef WNEAR
+#undef WFAR
+#undef WREC
+}
+
+/* START 0x0A015, the formatter's integer conversion (an arm of printf's
+ * _output, START 0x09D06, reached through its handler table for d, i, u, o,
+ * x and X; it runs inside _output's frame and ends with a JMP back to the
+ * scan at 0x09D19). The conversion state is the frame's:
+ *   [bp-4]  flags: 01h '+', 02h ' ', 04h '-' (left-justify), 08h '0' (zero
+ *           pad), 10h a long argument, 40h a signed conversion;
+ *   [bp-3]  01h the value was negative, 02h '#' (a leading 0);
+ *   [bp-6]  the radix (byte); [bp-0Ah] the width; [bp-0Ch] the precision
+ *           (negative: none); [bp-0Eh] the prefix bytes and [bp-10h] their
+ *           count; [bp-15h] the end of the digit buffer.
+ * The argument is the next dword (0x0A118) for a long, else the next word
+ * (0x0A110), sign-extended (CWD) for a signed conversion and zero-extended
+ * otherwise. A negative signed value sets [bp-3] bit 0 and is negated as
+ * a 32-bit pair (NEG AX / ADC DX,0 / NEG DX). No precision means 1 digit;
+ * a precision cancels '0' padding. A zero value has no prefix. The digits
+ * (0x0A1A4: DX:AX in base CX, at least SI of them, backwards from ES:DI)
+ * come back at ES:DI with their count in CX; with '#' a '0' is put in front
+ * unless the first digit is one already. A signed conversion's prefix is
+ * '-', '+' or ' ' (count 1) by the flags. The padding, width less digits
+ * less prefix (0 when negative), goes before the prefix as spaces unless
+ * '-' or '0' was given, between prefix and digits as '0's with '0' and
+ * without '-', and after the digits as spaces with '-'. Runs go out through
+ * 0x0A188 (CX copies of DL) and 0x0A16A (CX bytes at ES:DI), each adding to
+ * the count at [bp-8]. All callees are near and return by a plain RET with
+ * their arguments in registers. */
+static int start_format_integer(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { FLAGS = -4, FLAGS_HI = -3, RADIX = -6, WIDTH = -10, PRECISION = -12,
+           PREFIX = -14, PREFIX_LEN = -16, DIGITS_END = -21 };
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while(0)
+#define XRUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call_);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define XNEAR(at_,target_,ret_) do { SM4_NEED(1,(at_)); XRUN(guest_call_pop(m,(target_),(ret_),0)); } while(0)
+#define XTEST(d_,mask_) alu_logic(c, (uint32_t)bp_get8(c, (d_)) & (mask_), 0)
+    if (!room(c, 2)) return 0;
+    XB(2, 0xA015);
+    XTEST(FLAGS, 0x10);
+    if (x86_cond(c, 4)) goto word_arg;
+    XNEAR(0xA01B, 0xA118, 0xA01E);                                      /* a long: DX:AX */
+    XB(1, 0xA01E);
+    goto sign;
+word_arg:
+    XNEAR(0xA020, 0xA110, 0xA023);
+    XB(2, 0xA023);
+    XTEST(FLAGS, 0x40);
+    if (x86_cond(c, 4)) goto unsigned_word;
+    XB(2, 0xA029);
+    c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0x0000;              /* cwd */
+    goto sign;
+unsigned_word:
+    XB(1, 0xA02C);
+    c->r[R_DX] = (uint16_t)alu_op(c, 6, c->r[R_DX], c->r[R_DX], 1);
+sign:
+    XB(2, 0xA02E);
+    XTEST(FLAGS, 0x40);
+    if (x86_cond(c, 4)) goto precision;
+    XB(2, 0xA034);
+    c->r[R_DX] = (uint16_t)alu_op(c, 1, c->r[R_DX], c->r[R_DX], 1);
+    if (x86_cond(c, 13)) goto precision;
+    XB(4, 0xA038);                                                      /* negative: note it, negate */
+    bp_put8(c, FLAGS_HI, (uint8_t)alu_op(c, 1, bp_get8(c, FLAGS_HI), 0x01, 0));
+    c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0);
+    c->r[R_DX] = (uint16_t)alu_op(c, 2, c->r[R_DX], 0, 1);
+    c->r[R_DX] = (uint16_t)alu_sub(c, 0, c->r[R_DX], 1, 0);
+precision:
+    XB(2, 0xA043);
+    alu_op(c, 7, bp_get(c, PRECISION), 0, 1);
+    if (x86_cond(c, 13)) goto precision_given;
+    XB(2, 0xA049);
+    bp_put(c, PRECISION, 1);
+    goto zero_test;
+precision_given:
+    XB(1, 0xA050);                                                      /* no '0' padding */
+    bp_put8(c, FLAGS, (uint8_t)alu_op(c, 4, bp_get8(c, FLAGS), 0xF7, 0));
+zero_test:
+    XB(3, 0xA054);
+    c->r[R_BX] = c->r[R_AX];
+    c->r[R_BX] = (uint16_t)alu_op(c, 1, c->r[R_BX], c->r[R_DX], 1);
+    if (x86_cond(c, 5)) goto digits;
+    XB(1, 0xA05A);                                                      /* zero: no prefix */
+    bp_put(c, PREFIX_LEN, 0);
+digits:
+    XB(6, 0xA05F);
+    c->r[R_DI] = (uint16_t)(c->r[R_BP] + DIGITS_END);
+    cpu_push16(c, c->seg[S_SS]);
+    c->seg[S_ES] = cpu_pop16(c);
+    set_r8(c, R_CL, bp_get8(c, RADIX));
+    set_r8(c, R_CH, (uint8_t)alu_op(c, 6, get_r8(c, R_CH), get_r8(c, R_CH), 0));
+    c->r[R_SI] = bp_get(c, PRECISION);
+    XNEAR(0xA06C, 0xA1A4, 0xA06F);
+    XB(2, 0xA06F);
+    XTEST(FLAGS_HI, 0x02);
+    if (x86_cond(c, 4)) goto alternate_done;
+    XB(1, 0xA075);                                                      /* '#': a leading 0 */
+    if (c->r[R_CX] == 0) goto put_zero;
+    XB(2, 0xA077);
+    alu_op(c, 7, mem_read8(c, phys(c->seg[S_ES], c->r[R_DI])), 0x30, 0);
+    if (x86_cond(c, 4)) goto alternate_done;
+put_zero:
+    XB(3, 0xA07D);
+    c->r[R_DI] = (uint16_t)alu_dec(c, c->r[R_DI], 1);
+    mem_write8(c, phys(c->seg[S_ES], c->r[R_DI]), 0x30);
+    c->r[R_CX] = (uint16_t)alu_inc(c, c->r[R_CX], 1);
+alternate_done:
+    XB(1, 0xA083);                                                      /* jmp to the next instruction */
+    XB(2, 0xA085);
+    XTEST(FLAGS, 0x40);
+    if (x86_cond(c, 4)) goto padding;
+    XB(2, 0xA08B);
+    XTEST(FLAGS_HI, 0x01);
+    if (x86_cond(c, 4)) goto plus;
+    XB(3, 0xA091);
+    bp_put8(c, PREFIX, 0x2D);                                           /* '-' */
+    bp_put(c, PREFIX_LEN, 1);
+    goto padding;
+plus:
+    XB(2, 0xA09C);
+    XTEST(FLAGS, 0x01);
+    if (x86_cond(c, 4)) goto space;
+    XB(3, 0xA0A2);
+    bp_put8(c, PREFIX, 0x2B);                                           /* '+' */
+    bp_put(c, PREFIX_LEN, 1);
+    goto padding;
+space:
+    XB(2, 0xA0AD);
+    XTEST(FLAGS, 0x02);
+    if (x86_cond(c, 4)) goto padding;
+    XB(2, 0xA0B3);
+    bp_put8(c, PREFIX, 0x20);                                           /* ' ' */
+    bp_put(c, PREFIX_LEN, 1);
+padding:
+    XB(4, 0xA0BC);
+    c->r[R_AX] = bp_get(c, WIDTH);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_CX], 1);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], bp_get(c, PREFIX_LEN), 1);
+    if (x86_cond(c, 13)) goto keep_digits;
+    XB(1, 0xA0C6);
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);
+keep_digits:
+    XB(5, 0xA0C8);
+    cpu_push16(c, c->seg[S_ES]);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_CX]);
+    XTEST(FLAGS, 0x0C);
+    if (x86_cond(c, 5)) goto prefix;
+    XB(2, 0xA0D1);                                                      /* right-justified with spaces */
+    c->r[R_CX] = c->r[R_AX];
+    set_r8(c, R_DL, 0x20);
+    XNEAR(0xA0D5, 0xA188, 0xA0D8);
+prefix:
+    XB(5, 0xA0D8);
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, c->seg[S_SS]);
+    c->seg[S_ES] = cpu_pop16(c);
+    c->r[R_DI] = (uint16_t)(c->r[R_BP] + PREFIX);
+    c->r[R_CX] = bp_get(c, PREFIX_LEN);
+    XNEAR(0xA0E1, 0xA16A, 0xA0E4);
+    XB(3, 0xA0E4);
+    c->r[R_AX] = cpu_pop16(c);
+    XTEST(FLAGS, 0x08);
+    if (x86_cond(c, 4)) goto put_digits;
+    XB(2, 0xA0EB);
+    XTEST(FLAGS, 0x04);
+    if (x86_cond(c, 5)) goto put_digits;
+    XB(2, 0xA0F1);                                                      /* zero padding */
+    c->r[R_CX] = c->r[R_AX];
+    set_r8(c, R_DL, 0x30);
+    XNEAR(0xA0F5, 0xA188, 0xA0F8);
+put_digits:
+    XB(4, 0xA0F8);
+    c->r[R_CX] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->seg[S_ES] = cpu_pop16(c);
+    cpu_push16(c, c->r[R_AX]);
+    XNEAR(0xA0FC, 0xA16A, 0xA0FF);
+    XB(3, 0xA0FF);
+    c->r[R_AX] = cpu_pop16(c);
+    XTEST(FLAGS, 0x04);
+    if (x86_cond(c, 4)) goto next;
+    XB(2, 0xA106);                                                      /* left-justified: trailing spaces */
+    c->r[R_CX] = c->r[R_AX];
+    set_r8(c, R_DL, 0x20);
+    XNEAR(0xA10A, 0xA188, 0xA10D);
+next:
+    XB(1, 0xA10D);                                                      /* jmp to the scan */
+    c->ip = 0x9D19;
+    return 1;
+#undef XTEST
+#undef XNEAR
+#undef XRUN
+#undef XB
+}
+
+/* VGAME C9AE: the `8` key's arm of the flight key dispatcher (keys_dispatch,
+ * 0C8D8 up), entered by a jump from its key table with the dispatcher's frame
+ * live (the key at bp+4, locals at bp-2 and bp-10h, SI and DI saved below
+ * them), and everything it runs through to the dispatcher's one RET:
+ *
+ * - The bay doors. Unless [3664] bit 4 (a weapon on its way) refuses them,
+ *   bit 0 of [E58A] flips and the driver's sound request 1E42:0313 gets 1Fh.
+ * - The common exit at C8FA: while [9B35] bit 4 (the map's own scrolling)
+ *   is set, a second key chain: Alt-R (1300h) repairs and rearms (49F9) and
+ *   refreshes the displays (83E9 with 16h); Alt-I/Alt-K (1700h/2500h) move
+ *   the long [C056] and Alt-J/Alt-L (2400h/2600h) the long [BA3C] by 20000h
+ *   shifted right by the map zoom [40AE] (EF74 is the 32-bit SAR); Alt-N
+ *   (3100h) sets [43DC], flips [368A] bit 0 and copies the palette (01B9).
+ * - At D038, with the navigation display up ([E008] = 14h): the cursor keys.
+ *   [bp-2] = 1000h when [B838] is 0, else 0, shifted right by the zoom, moves
+ *   the selected waypoint's x ([2E9E + 4 * [2EB0]]) or y ([2EA0 + ...]);
+ *   the plain cursor keys only when bit 0 of the flight record's +72h (far
+ *   pointer [E574]) is set, their keypad twins always. PgUp/PgDn step [2EB0]
+ *   (or [2EAE] while [B838] is set) within four; Home/End move [9912] by
+ *   3Ch. A step selects display 14h (825D); every arm ends by clamping the
+ *   waypoint's two words with C67A(v, 0, 7FFFh).
+ * - At D172, every time: [C09A] set selects the fixed camera ([C0A6] = 8Ch);
+ *   the release cooldown [43EC] counts down; when button 1 (C89C) is held
+ *   with the cooldown out and nothing locked, the release (7663), the
+ *   armament panel when it is the display up ([E008] = 15h, [368C] set,
+ *   93E9), and a new cooldown of 4. Damage bit 6 of [3664] puts both
+ *   countermeasure switches ([9B34] bits 4, 5) and their lamps (889B 5 and 6)
+ *   out. [43F4] counts up while bit 5 is set (clearing it past [368E] * 14h)
+ *   and down otherwise, and lamp 6 shows 0Ah, 2Ah (count left) or 0. [3664]
+ *   bit 4 forces the bay open ([E58A] = 1, [9908] = 2), bit 3 drops the
+ *   height hold [3684]. The navigation display is refreshed (83E9 with 14h)
+ *   every 32nd frame ([3D8E]) while the mission runs ([368C]).
+ * - The bay's door animation [9908] runs between 0 and 2 by [E58A]: reaching
+ *   2 sets [9B34] bit 2; at 0 the bit is cleared, after the compass display
+ *   (8342) when [9B35] bit 1 is set. Lamp 2 blinks 11h on odd frames while
+ *   bit 2 is set. The gear's animation [C09E] runs between 0 and 3 by [A098]:
+ *   at 3 (with [A098] set) [9B34] bit 0 is cleared, at 0 (with it clear) set.
+ *   Lamp 3 is 0 while bit 0 is set, else 0Ah below [B194] 250 (signed) and on
+ *   odd frames above.
+ *
+ * Then SI, DI, the frame and the dispatcher's own RET. Every callee returns
+ * with a plain RET; the caller removes the arguments (POP BX or ADD SP,6). */
+static int vgame_key_bay_doors_and_tail(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+    enum { KEY=4, STEP=-2, LAMP=-0x10 };
+#define KB(n_,at_) do { SM4_NEED((n_),(at_));c->icount+=(n_); } while(0)
+#define KPUSH(v_) cpu_push16(c,(uint16_t)(v_))
+#define KPUSHM(s_,o_) do { const uint16_t ps_=(s_),po_=(uint16_t)(o_);const uint16_t pv_=seg_read16(c,ps_,po_); \
+    c->r[R_SP]=(uint16_t)(c->r[R_SP]-2); \
+    seg_write16(c,c->seg[S_SS],c->r[R_SP],(c->model>=CPU_80286)?pv_:seg_read16(c,ps_,po_)); } while(0)
+#define KCMP(o_,v_) alu_op(c,7,ds_get(c,(o_)),(uint16_t)(v_),1)
+#define KTEST(o_,v_) alu_logic(c,(uint32_t)ds_get8(c,(o_))&(v_),0)
+#define KOPB(op_,o_,v_) ds_put8(c,(o_),(uint8_t)alu_op(c,(op_),ds_get8(c,(o_)),(v_),0))
+#define KOPW(op_,o_,v_) ds_put(c,(o_),(uint16_t)alu_op(c,(op_),ds_get(c,(o_)),(uint16_t)(v_),1))
+#define KINC(o_) ds_put(c,(o_),(uint16_t)alu_inc(c,ds_get(c,(o_)),1))
+#define KDEC(o_) ds_put(c,(o_),(uint16_t)alu_dec(c,ds_get(c,(o_)),1))
+#define KSUBAX(v_) (c->r[R_AX]=(uint16_t)alu_op(c,5,c->r[R_AX],(v_),1))
+#define KPOPBX() (c->r[R_BX]=cpu_pop16(c))
+#define KRUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call_);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define KNEAR(at_,target_,ret_) do { SM4_NEED(1,(at_));KRUN(guest_call_pop(m,(target_),(ret_),0)); } while(0)
+#define KFAR(at_,ret_) do { SM4_NEED(1,(at_));KRUN(guest_call_far(m,(at_),(ret_))); } while(0)
+/* The pan step: DX:AX = 20000h, CL = the zoom, EF74 shifts it right. */
+#define KPAN(at_,call_at_) do { KB(3,(at_));c->r[R_AX]=(uint16_t)alu_op(c,5,c->r[R_AX],c->r[R_AX],1); \
+    c->r[R_DX]=2;set_r8(c,R_CL,ds_get8(c,0x40AE));KNEAR((call_at_),0xEF74,(uint16_t)((call_at_)+3)); } while(0)
+/* One cursor step: AX = [bp-2] >> zoom, then x or y of the selected waypoint moved by op. */
+#define KSTEP(op_,field_) do { uint16_t at_; set_r8(c,R_CL,ds_get8(c,0x40AE));c->r[R_AX]=bp_get(c,STEP); \
+    c->r[R_AX]=(uint16_t)x86_shift(c,7,c->r[R_AX],get_r8(c,R_CL),1);c->r[R_BX]=ds_get(c,0x2EB0); \
+    c->r[R_BX]=(uint16_t)x86_shift(c,4,c->r[R_BX],2,1);at_=(uint16_t)(c->r[R_BX]+(field_)); \
+    ds_put(c,at_,(uint16_t)alu_op(c,(op_),ds_get(c,at_),c->r[R_AX],1)); } while(0)
+/* The flight record's +72h bit 0: may the plain cursor keys move it. */
+#define KREC() do { c->r[R_BX]=ds_get(c,0xE574);c->seg[S_ES]=ds_get(c,0xE576); \
+    alu_logic(c,(uint32_t)mem_read8(c,phys(c->seg[S_ES],(uint16_t)(c->r[R_BX]+0x72)))&1,0); } while(0)
+    if(!room(c,2))return 0;
+    KB(2,0xC9AE);KTEST(0x3664,0x10);if(x86_cond(c,5))goto bay_refused;
+    KB(3,0xC9B5);KOPB(6,0xE58A,1);KPUSH(0x1F);
+    KFAR(0xC98A,0xC98F);
+    KB(2,0xC98F);KPOPBX();goto map_keys;
+bay_refused:
+    KB(1,0xC9E5);
+    /* C8FA: the second key chain, only while the map scrolls itself. */
+map_keys:
+    KB(2,0xC8FA);KTEST(0x9B35,0x10);if(x86_cond(c,5))goto map_chain;
+    KB(1,0xC901);goto nav_keys;
+map_chain:
+    KB(3,0xC904);c->r[R_AX]=bp_get(c,KEY);KSUBAX(0x1300);if(x86_cond(c,5))goto map_not_1300;
+    KB(1,0xC90C);goto repair;
+map_not_1300:
+    KB(2,0xC90F);KSUBAX(0x0400);if(x86_cond(c,5))goto map_not_1700;
+    KB(1,0xC914);goto pan_c056_up;
+map_not_1700:
+    KB(2,0xC917);KSUBAX(0x0D00);if(x86_cond(c,5))goto map_not_2400;
+    KB(1,0xC91C);goto pan_ba3c_down;
+map_not_2400:
+    KB(2,0xC91F);KSUBAX(0x0100);if(x86_cond(c,5))goto map_not_2500;
+    KB(1,0xC924);goto pan_c056_down;
+map_not_2500:
+    KB(2,0xC927);KSUBAX(0x0100);if(x86_cond(c,5))goto map_not_2600;
+    KB(1,0xC92C);goto pan_ba3c_up;
+map_not_2600:
+    KB(2,0xC92F);KSUBAX(0x0B00);if(x86_cond(c,5))goto map_not_3100;
+    KB(1,0xC934);goto palette;
+map_not_3100:
+    KB(1,0xC937);goto nav_keys;
+repair:
+    KNEAR(0xD0C4,0x49F9,0xD0C7);
+    KB(1,0xD0C7);KPUSH(0x16);
+    KNEAR(0xD0C9,0x83E9,0xD0CC);
+    KB(2,0xD0CC);KPOPBX();goto nav_keys;
+pan_c056_up:
+    KPAN(0xD0D0,0xD0D9);
+    KB(3,0xD0DC);KOPW(0,0xC056,c->r[R_AX]);KOPW(2,0xC058,c->r[R_DX]);goto nav_keys;
+pan_c056_down:
+    KPAN(0xD0E7,0xD0F0);
+    KB(3,0xD0F3);KOPW(5,0xC056,c->r[R_AX]);KOPW(3,0xC058,c->r[R_DX]);goto nav_keys;
+pan_ba3c_down:
+    KPAN(0xD0FE,0xD107);
+    KB(3,0xD10A);KOPW(5,0xBA3C,c->r[R_AX]);KOPW(3,0xBA3E,c->r[R_DX]);goto nav_keys;
+pan_ba3c_up:
+    KPAN(0xD115,0xD11E);
+    KB(3,0xD121);KOPW(0,0xBA3C,c->r[R_AX]);KOPW(2,0xBA3E,c->r[R_DX]);goto nav_keys;
+palette:
+    KB(2,0xD02A);ds_put(c,0x43DC,1);KOPB(6,0x368A,1);
+    KNEAR(0xD035,0x01B9,0xD038);
+    /* D038: the navigation display's cursor keys. */
+nav_keys:
+    KB(2,0xD038);KCMP(0xE008,0x14);if(x86_cond(c,4))goto nav_chain;
+    KB(1,0xD03F);goto after_nav;
+nav_chain:
+    KB(7,0xD042);
+    KCMP(0xB838,1);c->r[R_AX]=(uint16_t)alu_op(c,3,c->r[R_AX],c->r[R_AX],1);
+    c->r[R_AX]=(uint16_t)alu_op(c,4,c->r[R_AX],0x1000,1);bp_put(c,STEP,c->r[R_AX]);
+    c->r[R_AX]=bp_get(c,KEY);KSUBAX(0x4700);if(x86_cond(c,5))goto nav_not_4700;
+    KB(1,0xD057);goto clock_back;
+nav_not_4700:
+    KB(2,0xD05A);KSUBAX(0x0100);if(x86_cond(c,5))goto nav_not_4800;
+    KB(1,0xD05F);goto up_key;
+nav_not_4800:
+    KB(2,0xD062);KSUBAX(0x0038);if(x86_cond(c,5))goto nav_not_4838;
+    KB(1,0xD067);goto up_step;
+nav_not_4838:
+    KB(2,0xD06A);KSUBAX(0x00C8);if(x86_cond(c,5))goto nav_not_4900;
+    KB(1,0xD06F);goto pgup_key;
+nav_not_4900:
+    KB(2,0xD072);KSUBAX(0x0039);if(x86_cond(c,5))goto nav_not_4939;
+    KB(1,0xD077);goto pgup_step;
+nav_not_4939:
+    KB(2,0xD07A);KSUBAX(0x01C7);if(x86_cond(c,5))goto nav_not_4B00;
+    KB(1,0xD07F);goto left_key;
+nav_not_4B00:
+    KB(2,0xD082);KSUBAX(0x0034);if(x86_cond(c,5))goto nav_not_4B34;
+    KB(1,0xD087);goto left_step;
+nav_not_4B34:
+    KB(2,0xD08A);KSUBAX(0x01CC);if(x86_cond(c,5))goto nav_not_4D00;
+    KB(1,0xD08F);goto right_key;
+nav_not_4D00:
+    KB(2,0xD092);KSUBAX(0x0036);if(x86_cond(c,5))goto nav_not_4D36;
+    KB(1,0xD097);goto right_step;
+nav_not_4D36:
+    KB(2,0xD09A);KSUBAX(0x01CA);if(x86_cond(c,5))goto nav_not_4F00;
+    KB(1,0xD09F);goto clock_on;
+nav_not_4F00:
+    KB(2,0xD0A2);KSUBAX(0x0100);if(x86_cond(c,5))goto nav_not_5000;
+    KB(1,0xD0A7);goto down_key;
+nav_not_5000:
+    KB(2,0xD0AA);KSUBAX(0x0032);if(x86_cond(c,5))goto nav_not_5032;
+    KB(1,0xD0AF);goto down_step;
+nav_not_5032:
+    KB(2,0xD0B2);KSUBAX(0x00CE);if(x86_cond(c,5))goto nav_not_5100;
+    KB(1,0xD0B7);goto pgdn_key;
+nav_not_5100:
+    KB(2,0xD0BA);KSUBAX(0x0033);if(x86_cond(c,5))goto nav_not_5133;
+    KB(1,0xD0BF);goto pgdn_step;
+nav_not_5133:
+    KB(1,0xD0C2);goto clamp;
+up_key:
+    KB(3,0xD12C);KREC();if(x86_cond(c,4))goto clamp;
+    KB(1,0xD137);goto up_step;
+    /* D13A: the selected waypoint's x and y held to 0..7FFFh. */
+clamp:
+    KB(6,0xD13A);KPUSH(0x7FFF);KPUSH(0);c->r[R_BX]=ds_get(c,0x2EB0);
+    c->r[R_BX]=(uint16_t)x86_shift(c,4,c->r[R_BX],2,1);KPUSHM(c->seg[S_DS],c->r[R_BX]+0x2E9E);c->r[R_SI]=c->r[R_BX];
+    KNEAR(0xD14C,0xC67A,0xD14F);
+    KB(8,0xD14F);c->r[R_SP]=(uint16_t)alu_op(c,0,c->r[R_SP],6,1);ds_put(c,(uint16_t)(c->r[R_SI]+0x2E9E),c->r[R_AX]);
+    KPUSH(0x7FFF);KPUSH(0);c->r[R_BX]=ds_get(c,0x2EB0);
+    c->r[R_BX]=(uint16_t)x86_shift(c,4,c->r[R_BX],2,1);KPUSHM(c->seg[S_DS],c->r[R_BX]+0x2EA0);c->r[R_SI]=c->r[R_BX];
+    KNEAR(0xD168,0xC67A,0xD16B);
+    KB(2,0xD16B);c->r[R_SP]=(uint16_t)alu_op(c,0,c->r[R_SP],6,1);ds_put(c,(uint16_t)(c->r[R_SI]+0x2EA0),c->r[R_AX]);
+    /* D172: the fixed camera, the release and the indicators. */
+after_nav:
+    KB(2,0xD172);KCMP(0xC09A,0);if(x86_cond(c,4))goto cooldown;
+    KB(1,0xD179);ds_put(c,0xC0A6,0x008C);
+cooldown:
+    KB(2,0xD17F);KCMP(0x43EC,0);if(x86_cond(c,14))goto button;
+    KB(1,0xD186);KDEC(0x43EC);
+button:
+    KB(1,0xD18A);KPUSH(1);
+    KNEAR(0xD18C,0xC89C,0xD18F);
+    KB(3,0xD18F);KPOPBX();c->r[R_AX]=(uint16_t)alu_op(c,1,c->r[R_AX],c->r[R_AX],1);if(x86_cond(c,4))goto damage;
+    KB(2,0xD194);KCMP(0x43EC,0);if(x86_cond(c,5))goto damage;
+    KB(2,0xD19B);KCMP(0xC09A,0);if(x86_cond(c,5))goto damage;
+    KNEAR(0xD1A2,0x7663,0xD1A5);
+    KB(2,0xD1A5);KCMP(0xE008,0x15);if(x86_cond(c,5))goto rearm;
+    KB(2,0xD1AC);KCMP(0x368C,0);if(x86_cond(c,4))goto rearm;
+    KNEAR(0xD1B3,0x93E9,0xD1B6);
+rearm:
+    KB(1,0xD1B6);ds_put(c,0x43EC,4);
+damage:
+    KB(2,0xD1BC);KTEST(0x3664,0x40);if(x86_cond(c,4))goto cm_timer;
+    KB(3,0xD1C3);KOPB(4,0x9B34,0xCF);KPUSH(0);KPUSH(5);
+    KNEAR(0xD1CC,0x889B,0xD1CF);
+    KB(4,0xD1CF);KPOPBX();KPOPBX();KPUSH(0);KPUSH(6);
+    KNEAR(0xD1D5,0x889B,0xD1D8);
+    KB(2,0xD1D8);KPOPBX();KPOPBX();
+cm_timer:
+    KB(2,0xD1DA);KTEST(0x9B34,0x20);if(x86_cond(c,5))goto cm_up;
+    KB(1,0xD1E1);goto cm_down;
+cm_up:
+    KB(4,0xD1E4);c->r[R_AX]=x86_imul3(c,ds_get(c,0x368E),0x0014);KINC(0x43F4);
+    alu_op(c,7,c->r[R_AX],ds_get(c,0x43F4),1);if(x86_cond(c,12))goto cm_expired;
+    KB(1,0xD1F3);goto cm_lamp;
+cm_expired:
+    KB(2,0xD1F6);KOPB(4,0x9B34,0xDF);goto cm_lamp;
+up_step:
+    KB(6,0xD1FE);KSTEP(5,0x2EA0);
+    /* D212: a step selects the navigation display, then the clamp. */
+nav_moved:
+    KB(1,0xD212);KPUSH(0x14);
+    KNEAR(0xD214,0x825D,0xD217);
+    KB(2,0xD217);KPOPBX();goto clamp;
+down_key:
+    KB(3,0xD21B);KREC();if(x86_cond(c,4))goto refused;
+down_step:
+    KB(7,0xD226);KSTEP(0,0x2EA0);goto nav_moved;
+left_key:
+    KB(3,0xD23C);KREC();if(x86_cond(c,4))goto refused;
+left_step:
+    KB(7,0xD247);KSTEP(5,0x2E9E);goto nav_moved;
+right_key:
+    KB(3,0xD25D);KREC();if(x86_cond(c,4))goto refused;
+right_step:
+    KB(7,0xD268);KSTEP(0,0x2E9E);goto nav_moved;
+pgup_key:
+    KB(3,0xD27E);KREC();if(x86_cond(c,5))goto pgup_step;
+refused:
+    KB(1,0xD289);goto clamp;
+pgup_step:
+    KB(2,0xD28C);KCMP(0xB838,0);if(x86_cond(c,4))goto pgup_waypoint;
+    KB(2,0xD293);KDEC(0x2EAE);goto entry_wrap;
+pgup_waypoint:
+    KB(1,0xD299);KDEC(0x2EB0);
+waypoint_wrap:
+    KB(2,0xD29D);KOPW(4,0x2EB0,3);goto nav_moved;
+pgdn_key:
+    KB(3,0xD2A5);KREC();if(x86_cond(c,5))goto pgdn_step;
+    KB(1,0xD2B0);goto clamp;
+pgdn_step:
+    KB(2,0xD2B3);KCMP(0xB838,0);if(x86_cond(c,4))goto pgdn_waypoint;
+    KB(1,0xD2BA);KINC(0x2EAE);
+entry_wrap:
+    KB(2,0xD2BE);KOPW(4,0x2EAE,3);goto nav_moved;
+pgdn_waypoint:
+    KB(2,0xD2C6);KINC(0x2EB0);goto waypoint_wrap;
+clock_on:
+    KB(2,0xD2CC);KOPW(0,0x9912,0x3C);goto clamp;
+clock_back:
+    KB(2,0xD2D4);KOPW(5,0x9912,0x3C);goto clamp;
+cm_down:
+    KB(2,0xD2DC);KCMP(0x43F4,0);if(x86_cond(c,14))goto cm_lamp;
+    KB(1,0xD2E3);KDEC(0x43F4);
+    /* D2E7: lamp 6. */
+cm_lamp:
+    KB(2,0xD2E7);KTEST(0x9B34,0x20);if(x86_cond(c,4))goto cm_lamp_count;
+    KB(2,0xD2EE);c->r[R_AX]=0x000A;goto cm_lamp_set;
+cm_lamp_count:
+    KB(4,0xD2F3);KCMP(0x43F4,1);c->flags^=F_CF;c->r[R_AX]=(uint16_t)alu_op(c,3,c->r[R_AX],c->r[R_AX],1);
+    c->r[R_AX]=(uint16_t)alu_op(c,4,c->r[R_AX],0x002A,1);
+cm_lamp_set:
+    KB(2,0xD2FE);KPUSH(c->r[R_AX]);KPUSH(6);
+    KNEAR(0xD301,0x889B,0xD304);
+    KB(4,0xD304);KPOPBX();KPOPBX();KTEST(0x3664,0x10);if(x86_cond(c,4))goto height_hold;
+    KB(2,0xD30D);ds_put(c,0xE58A,1);ds_put(c,0x9908,2);
+height_hold:
+    KB(2,0xD319);KTEST(0x3664,0x08);if(x86_cond(c,4))goto nav_refresh;
+    KB(1,0xD320);ds_put(c,0x3684,0);
+nav_refresh:
+    KB(2,0xD326);KCMP(0xE008,0x14);if(x86_cond(c,5))goto bay;
+    KB(2,0xD32D);KTEST(0x3D8E,0x1F);if(x86_cond(c,5))goto bay;
+    KB(2,0xD334);KCMP(0x368C,0);if(x86_cond(c,4))goto bay;
+    KB(1,0xD33B);KPUSH(0x14);
+    KNEAR(0xD33D,0x83E9,0xD340);
+    KB(1,0xD340);KPOPBX();
+    /* D341: the bay doors' animation and lamp 2. */
+bay:
+    KB(2,0xD341);KCMP(0xE58A,0);if(x86_cond(c,4))goto bay_closing;
+    KB(2,0xD348);KCMP(0x9908,2);if(x86_cond(c,5))goto bay_opening;
+    KB(2,0xD34F);KOPB(1,0x9B34,0x04);goto bay_lamp;
+bay_opening:
+    KB(2,0xD356);KINC(0x9908);goto bay_lamp;
+bay_closing:
+    KB(2,0xD35C);KCMP(0x9908,0);if(x86_cond(c,5))goto bay_still_closing;
+    KB(2,0xD363);KTEST(0x9B35,0x02);if(x86_cond(c,4))goto bay_closed;
+    KNEAR(0xD36A,0x8342,0xD36D);
+bay_closed:
+    KB(2,0xD36D);KOPB(4,0x9B34,0xFB);goto bay_lamp;
+bay_still_closing:
+    KB(1,0xD374);KDEC(0x9908);
+bay_lamp:
+    KB(2,0xD378);KTEST(0x9B34,0x04);if(x86_cond(c,4))goto bay_lamp_off;
+    KB(2,0xD37F);KTEST(0x3D8E,0x01);if(x86_cond(c,4))goto bay_lamp_off;
+    KB(2,0xD386);bp_put(c,LAMP,0x0011);goto bay_lamp_set;
+bay_lamp_off:
+    KB(1,0xD38D);bp_put(c,LAMP,0);
+bay_lamp_set:
+    KB(2,0xD392);KPUSHM(c->seg[S_SS],c->r[R_BP]+LAMP);KPUSH(2);
+    KNEAR(0xD397,0x889B,0xD39A);
+    /* D39C: the gear's animation and lamp 3. */
+    KB(4,0xD39A);KPOPBX();KPOPBX();KCMP(0xA098,0);if(x86_cond(c,4))goto gear_up;
+    KB(2,0xD3A3);KCMP(0xC09E,3);if(x86_cond(c,5))goto gear_lowering;
+    KB(2,0xD3AA);KOPB(4,0x9B34,0xFE);goto gear_lamp;
+gear_lowering:
+    KB(2,0xD3B1);KINC(0xC09E);goto gear_lamp;
+gear_up:
+    KB(2,0xD3B7);KCMP(0xC09E,0);if(x86_cond(c,5))goto gear_raising;
+    KB(2,0xD3BE);KOPB(1,0x9B34,0x01);goto gear_lamp;
+gear_raising:
+    KB(1,0xD3C5);KDEC(0xC09E);
+gear_lamp:
+    KB(2,0xD3C9);KTEST(0x9B34,0x01);if(x86_cond(c,5))goto gear_lamp_off;
+    KB(2,0xD3D0);KCMP(0xB194,0x00FA);if(x86_cond(c,12))goto gear_lamp_on;
+    KB(2,0xD3D8);KTEST(0x3D8E,0x01);if(x86_cond(c,4))goto gear_lamp_off;
+gear_lamp_on:
+    KB(2,0xD3DF);bp_put(c,LAMP,0x000A);goto gear_lamp_set;
+gear_lamp_off:
+    KB(1,0xD3E6);bp_put(c,LAMP,0);
+gear_lamp_set:
+    KB(2,0xD3EB);KPUSHM(c->seg[S_SS],c->r[R_BP]+LAMP);KPUSH(3);
+    KNEAR(0xD3F0,0x889B,0xD3F3);
+    KB(6,0xD3F3);KPOPBX();KPOPBX();c->r[R_SI]=cpu_pop16(c);c->r[R_DI]=cpu_pop16(c);x86_leave(c);near_ret(c);return 1;
+#undef KB
+#undef KPUSH
+#undef KPUSHM
+#undef KCMP
+#undef KTEST
+#undef KOPB
+#undef KOPW
+#undef KINC
+#undef KDEC
+#undef KSUBAX
+#undef KPOPBX
+#undef KRUN
+#undef KNEAR
+#undef KFAR
+#undef KPAN
+#undef KSTEP
+#undef KREC
+}
+
+/* START 0x09EB3, the formatter's %s field (printf's _output, Borland C runtime): the %s arm
+ * (0x09E9A) takes the argument (0x0A124) and comes here when ES:DI is not a null pointer.
+ *  - The length: with the precision at [BP-0Ch] zero the string is empty; otherwise REPNE
+ *    SCASB for its zero over at most that many bytes (FFFFh when none was given), the zero
+ *    itself not counted. CX = the length, DI = the start, ES kept.
+ *  - The field (the tail 0x0A085 every conversion shares): with flag 40h of [BP-4] (a signed
+ *    conversion) the sign goes to [BP-0Eh], its length 1 to [BP-10h]: '-' when [BP-3] bit 0 (a
+ *    negative value), else '+' with flag 1, else ' ' with flag 2. The padding is the width at
+ *    [BP-0Ah] less the length and the sign's length, 0 when that is negative (signed compare).
+ *    Without flags 4 (left) or 8 (zeros) the padding is spaces before everything (0x0A188, DL
+ *    20h, CX the count); then the sign (0x0A16A from SS:[BP-0Eh], CX [BP-10h]); with flag 8 and
+ *    not flag 4 the padding is zeros (DL 30h) after the sign; then the string itself (0x0A16A
+ *    from ES:DI, CX its length); with flag 4 the padding is spaces after it. The padding count
+ *    lives in AX across the calls (pushed around the sign and the string), ES:DI and CX on the
+ *    stack around the leading padding and the sign.
+ *  - Then back to the format scan at 0x09D19 (JMP): the next format character. The routine
+ *    ends with the machine there; the scan is the original's code.
+ * The REPNE SCASB's iterations are counted before it runs (it writes nothing), so the routine
+ * stops before it when the turn would cross the run loop's limit. Both callees end with a plain
+ * RET (no arguments on the stack; CX, DL and ES:DI are theirs). */
+static int start_format_string_field(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { PAD = 0xA188, PUT = 0xA16A, SCAN = 0x9D19 };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define XCALL(at_, target_, ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+#define XTEST(off_, mask_) alu_logic(c, (uint32_t)bp_get8(c, (off_)) & (mask_), 0)
+#define XSET() (!(c->flags & F_ZF))
+    if (!room(c, 3)) return 0;
+    XB(3, 0x9EB3);
+    cpu_push16(c, c->r[R_DI]);                                    /* push di: the string's start */
+    c->r[R_CX] = bp_get(c, -0x0C);                                /* the precision */
+    if (c->r[R_CX]) {                                             /* jcxz 9EC0: precision 0 */
+        XB(1, 0x9EB9);
+        set_r8(c, R_AL, (uint8_t)alu_op(c, 6, get_r8(c, R_AL), get_r8(c, R_AL), 0));   /* xor al, al */
+        {   /* REPNE SCASB: its iterations first, then the scan and the JNE */
+            unsigned k = 0; uint16_t di = c->r[R_DI], cx = c->r[R_CX];
+            const uint16_t step = (c->flags & F_DF) ? 0xFFFFu : 1u;
+            for (;;) {
+                const uint8_t b = mem_read8(c, phys(c->seg[S_ES], di));
+                k++; cx--; di = (uint16_t)(di + step);
+                if (!cx || !b) break;
+            }
+            SM4_NEED(k + 1, 0x9EBB);
+            c->icount += rep_string(c, STR_SCAS, 0, 0, 1) + 1;
+        }
+        if (!x86_cond(c, 5)) {                                    /* jne 9EC0 not taken: the zero was found */
+            XB(1, 0x9EBF);
+            c->r[R_DI] = (uint16_t)alu_dec(c, c->r[R_DI], 1);     /* dec di: not counted */
+        }
+    }
+    XB(4, 0x9EC0);
+    c->r[R_CX] = cpu_pop16(c);                                    /* pop cx: the start */
+    c->r[R_DI] = (uint16_t)alu_op(c, 5, c->r[R_DI], c->r[R_CX], 1);   /* sub di, cx: the length */
+    { const uint16_t t = c->r[R_DI]; c->r[R_DI] = c->r[R_CX]; c->r[R_CX] = t; }   /* xchg di, cx */
+    /* 0A085: the shared field */
+    XB(2, 0xA085);
+    XTEST(-4, 0x40);
+    if (XSET()) {                                                 /* a signed conversion: its sign */
+        XB(2, 0xA08B);
+        XTEST(-3, 0x01);
+        if (XSET()) {
+            XB(3, 0xA091);
+            bp_put8(c, -0x0E, 0x2D);                              /* '-' */
+            bp_put(c, -0x10, 1);
+        } else {
+            XB(2, 0xA09C);
+            XTEST(-4, 0x01);
+            if (XSET()) {
+                XB(3, 0xA0A2);
+                bp_put8(c, -0x0E, 0x2B);                          /* '+' */
+                bp_put(c, -0x10, 1);
+            } else {
+                XB(2, 0xA0AD);
+                XTEST(-4, 0x02);
+                if (XSET()) {
+                    XB(2, 0xA0B3);
+                    bp_put8(c, -0x0E, 0x20);                      /* ' ' */
+                    bp_put(c, -0x10, 1);
+                }
+            }
+        }
+    }
+    XB(4, 0xA0BC);
+    c->r[R_AX] = bp_get(c, -0x0A);                                /* the width */
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_CX], 1);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], bp_get(c, -0x10), 1);
+    if (!x86_cond(c, 13)) {                                       /* jge 0A0C8 not taken: no padding */
+        XB(1, 0xA0C6);
+        c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);
+    }
+    XB(5, 0xA0C8);
+    cpu_push16(c, c->seg[S_ES]);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_CX]);
+    XTEST(-4, 0x0C);
+    if (!XSET()) {                                                /* right-justified with spaces */
+        XB(2, 0xA0D1);
+        c->r[R_CX] = c->r[R_AX];
+        set_r8(c, R_DL, 0x20);
+        XCALL(0xA0D5, PAD, 0xA0D8);
+    }
+    XB(5, 0xA0D8);
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, c->seg[S_SS]);                                  /* push ss / pop es */
+    c->seg[S_ES] = cpu_pop16(c);
+    c->r[R_DI] = (uint16_t)(c->r[R_BP] - 0x0E);                   /* lea di, [bp-0Eh]: the sign */
+    c->r[R_CX] = bp_get(c, -0x10);
+    XCALL(0xA0E1, PUT, 0xA0E4);
+    XB(3, 0xA0E4);
+    c->r[R_AX] = cpu_pop16(c);
+    XTEST(-4, 0x08);
+    if (XSET()) {
+        XB(2, 0xA0EB);
+        XTEST(-4, 0x04);
+        if (!XSET()) {                                            /* zeros after the sign */
+            XB(2, 0xA0F1);
+            c->r[R_CX] = c->r[R_AX];
+            set_r8(c, R_DL, 0x30);
+            XCALL(0xA0F5, PAD, 0xA0F8);
+        }
+    }
+    XB(4, 0xA0F8);
+    c->r[R_CX] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->seg[S_ES] = cpu_pop16(c);
+    cpu_push16(c, c->r[R_AX]);
+    XCALL(0xA0FC, PUT, 0xA0FF);                                   /* the string */
+    XB(3, 0xA0FF);
+    c->r[R_AX] = cpu_pop16(c);
+    XTEST(-4, 0x04);
+    if (XSET()) {                                                 /* left-justified: spaces after */
+        XB(2, 0xA106);
+        c->r[R_CX] = c->r[R_AX];
+        set_r8(c, R_DL, 0x20);
+        XCALL(0xA10A, PAD, 0xA10D);
+    }
+    XB(1, 0xA10D);
+    c->ip = SCAN;                                                 /* jmp 9D19: the next format character */
+    return 1;
+#undef XSET
+#undef XTEST
+#undef XCALL
+#undef XRUN
+#undef XB
+}
+
+/* END 0x05825, the formatter's (printf's _output) "%s" length. A jump-table
+ * arm inside _output's live frame, not a callable function: the "%s"
+ * conversion (0x0580C) takes the string argument into ES:DI and, unless it
+ * is a null pointer (then "(null)"), comes here. The precision [bp-0Ch]
+ * bounds the length: 0 makes an empty string (no scan); otherwise REPNE
+ * SCASB looks for the NUL in at most that many bytes (-1, no precision
+ * given, allows up to FFFFh), the NUL itself not counted. The start comes
+ * back off the stack, so CX = the length and DI = the start (AL is left 0
+ * when scanned), and the arm jumps to the field output shared by every
+ * conversion (0x059F7: sign, padding, the characters). The scan is counted
+ * first, as the interpreter will step it (one clock a byte), and runs whole
+ * or not at all. */
+static int end_format_string_length(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { PRECISION = -0x0C };
+#define FSL_BLOCK(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+    if (!room(c, 3)) return 0;
+    c->icount += 3;                                               /* push di, mov cx, jcxz */
+    cpu_push16(c, c->r[R_DI]);
+    c->r[R_CX] = bp_get(c, PRECISION);
+    if (c->r[R_CX] != 0) {
+        FSL_BLOCK(1, 0x582B);
+        set_r8(c, R_AL, (uint8_t)alu_op(c, 6, get_r8(c, R_AL), get_r8(c, R_AL), 0));   /* xor al, al */
+        {   /* repne scasb: the bytes it will compare, up to the NUL or CX */
+            unsigned k = 0;
+            uint16_t di = c->r[R_DI], cx = c->r[R_CX];
+            const uint16_t step = (c->flags & F_DF) ? 0xFFFF : 1;
+            for (;;) {
+                const uint8_t b = mem_read8(c, phys(c->seg[S_ES], di));
+                k++;
+                cx--;
+                di = (uint16_t)(di + step);
+                if (cx == 0 || b == get_r8(c, R_AL)) break;
+            }
+            SM4_NEED(k, 0x582D);
+        }
+        c->icount += rep_string(c, STR_SCAS, 0, 0, 1);
+        FSL_BLOCK(1, 0x582F);                                     /* jne: no NUL within the precision */
+        if (!x86_cond(c, 5)) {
+            FSL_BLOCK(1, 0x5831);
+            c->r[R_DI] = (uint16_t)alu_dec(c, c->r[R_DI], 1);     /* back onto the NUL */
+        }
+    }
+    FSL_BLOCK(4, 0x5832);                                         /* pop cx, sub, xchg, jmp */
+    c->r[R_CX] = cpu_pop16(c);
+    c->r[R_DI] = (uint16_t)alu_op(c, 5, c->r[R_DI], c->r[R_CX], 1);
+    {
+        const uint16_t t = c->r[R_DI];
+        c->r[R_DI] = c->r[R_CX];
+        c->r[R_CX] = t;
+    }
+    c->ip = 0x59F7;
+    return 1;
+#undef FSL_BLOCK
+}
+
+/* END 3887: the screen for a pilot who landed. Shows picture 100Bh through
+ * the picture loader 1901 (372Fh is passed as the loader's palette hook),
+ * starts sound 27h (driver entry 5FA:25F3), and waits 120 ticks (11A2).
+ * Then three panels are copied to page 0 by the driver's copy 5FA:24CC
+ * (source page, x, y, destination page, x, y, width, height), each followed
+ * by a 12-tick wait: page 2 (0,0) to (33h,2Ch), D2h by 70h; page 3 (0,0)
+ * to (33h,1Eh), D4h by 60h; page 4 (0,0) to (34h,4), D4h by 6Ch. Four
+ * animation frames follow, the 26h by 10h strips of page 4 at (D6h, 16 *
+ * frame) copied to (80h,7Eh), 12 ticks apart (frame counter at [bp-4],
+ * strip y at [bp-2]). Finally the text colours 6D90h/6D92h become 0Fh and
+ * 0, the prompt is drawn at (A0h,ACh) by 206A and sound 0 is requested.
+ * Every near helper and both far driver entries end in a plain RET/RETF,
+ * so this caller removes all arguments itself. AX is whatever the last
+ * sound request returned. */
+static int end_landed_screen(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+    enum { FRAME=-4, STRIP_Y=-2 };
+#define LB(n,at) do { SM4_NEED((n),(at));c->icount+=(n); } while(0)
+#define LRUN(call) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define LFAR(at) do { SM4_NEED(1,(at));LRUN(guest_call_far(m,(at),(uint16_t)((at)+5))); } while(0)
+#define LNEAR(at,target) do { SM4_NEED(1,(at));LRUN(guest_call_pop(m,(target),(uint16_t)((at)+3),0)); } while(0)
+#define LP(reg,v) do { c->r[(reg)]=(v);cpu_push16(c,c->r[(reg)]); } while(0)
+#define LPOP() (c->r[R_BX]=cpu_pop16(c))
+#define LZERO(reg) (c->r[(reg)]=(uint16_t)alu_op(c,5,c->r[(reg)],c->r[(reg)],1))
+#define LDROP8() (c->r[R_SP]=(uint16_t)alu_op(c,0,c->r[R_SP],0x10,1))
+#define LWAIT(at,ticks) do { LP(R_AX,(ticks));LNEAR((at),0x11A2); } while(0)
+    if(!room(c,7))return 0;
+    /* The picture, its palette hook, the opening sound and a 120-tick hold. */
+    LB(7,0x3887);
+    cpu_push16(c,c->r[R_BP]);c->r[R_BP]=c->r[R_SP];
+    c->r[R_SP]=(uint16_t)alu_op(c,5,c->r[R_SP],4,1);
+    LP(R_AX,0x372F);LP(R_AX,0x100B);
+    LNEAR(0x3895,0x1901);
+    LB(4,0x3898);LPOP();LPOP();LP(R_AX,0x0027);
+    LFAR(0x389E);
+    LB(3,0x38A3);LPOP();LWAIT(0x38A8,0x0078);
+    /* Panel one: page 2 to (33h,2Ch), D2h by 70h. */
+    LB(15,0x38AB);LPOP();
+    LP(R_AX,0x0070);LP(R_AX,0x00D2);LP(R_AX,0x002C);LP(R_AX,0x0033);
+    LZERO(R_CX);cpu_push16(c,c->r[R_CX]);cpu_push16(c,c->r[R_CX]);cpu_push16(c,c->r[R_CX]);
+    LP(R_DX,0x0002);
+    LFAR(0x38C5);
+    LB(3,0x38CA);LDROP8();LWAIT(0x38D1,0x000C);
+    /* Panel two: page 3 to (33h,1Eh), D4h by 60h. */
+    LB(15,0x38D4);LPOP();
+    LP(R_AX,0x0060);LP(R_AX,0x00D4);LP(R_CX,0x001E);LP(R_CX,0x0033);
+    LZERO(R_CX);cpu_push16(c,c->r[R_CX]);cpu_push16(c,c->r[R_CX]);cpu_push16(c,c->r[R_CX]);
+    LP(R_DX,0x0003);
+    LFAR(0x38EE);
+    LB(3,0x38F3);LDROP8();LWAIT(0x38FA,0x000C);
+    /* Panel three: page 4 to (34h,4), D4h by 6Ch (AX = 4 serves twice). */
+    LB(14,0x38FD);LPOP();
+    LP(R_AX,0x006C);LP(R_AX,0x00D4);LP(R_AX,0x0004);LP(R_CX,0x0034);
+    LZERO(R_CX);cpu_push16(c,c->r[R_CX]);cpu_push16(c,c->r[R_CX]);cpu_push16(c,c->r[R_CX]);
+    cpu_push16(c,c->r[R_AX]);
+    LFAR(0x3914);
+    LB(3,0x3919);LDROP8();LWAIT(0x3920,0x000C);
+    LB(5,0x3923);LPOP();LZERO(R_AX);bp_put(c,FRAME,c->r[R_AX]);bp_put(c,STRIP_Y,c->r[R_AX]);
+    goto frame_test;
+frame:
+    /* One 26h by 10h strip of page 4, (D6h, y), to (80h,7Eh). */
+    LB(15,0x392E);
+    LP(R_AX,0x0010);LP(R_AX,0x0026);LP(R_AX,0x007E);LP(R_AX,0x0080);
+    LZERO(R_AX);cpu_push16(c,c->r[R_AX]);
+    cpu_push16(c,bp_get(c,STRIP_Y));
+    LP(R_AX,0x00D6);LP(R_AX,0x0004);
+    LFAR(0x394C);
+    LB(3,0x3951);LDROP8();LWAIT(0x3958,0x000C);
+    LB(3,0x395B);LPOP();
+    bp_put(c,FRAME,(uint16_t)alu_inc(c,bp_get(c,FRAME),1));
+    bp_put(c,STRIP_Y,(uint16_t)alu_op(c,0,bp_get(c,STRIP_Y),0x10,1));
+frame_test:
+    LB(2,0x3963);alu_op(c,7,bp_get(c,FRAME),4,1);
+    if(x86_cond(c,12))goto frame;
+    /* Prompt colours, the prompt, and the closing sound request. */
+    LB(6,0x3969);ds_put(c,0x6D90,0x000F);ds_put(c,0x6D92,0x0000);
+    LP(R_AX,0x00AC);LP(R_AX,0x00A0);
+    LNEAR(0x397D,0x206A);
+    LB(4,0x3980);LPOP();LPOP();LZERO(R_AX);cpu_push16(c,c->r[R_AX]);
+    LFAR(0x3985);
+    LB(4,0x398A);LPOP();c->r[R_SP]=c->r[R_BP];c->r[R_BP]=cpu_pop16(c);near_ret(c);
+    return 1;
+#undef LB
+#undef LRUN
+#undef LFAR
+#undef LNEAR
+#undef LP
+#undef LPOP
+#undef LZERO
+#undef LDROP8
+#undef LWAIT
+}
+
+/* END 099D: put an icon on the debriefing map, the tail of the icon placement
+ * routine 0880 after its switch (0977) has chosen the icon. It runs in 0880's
+ * frame: the icon record at the argument (BP+4), the icon's number in the
+ * local at BP-8, and DI and SI saved below the 8 bytes of locals.
+ *   The record's map position, bytes +2 and +3, is scaled to the page by the
+ * report's two bar scales (0ECD: (v << 7) / 146 for x, 0EE0: (v << 7) / 195
+ * for y) into [55AE] and [55B0]. The icon, 30h wide and 28h tall, is put
+ * beside that point on the side away from the page's edges: right of it
+ * (x + 0Ah) while x is below 73h, else left of it (x - 3Ah); below it
+ * (y + 0Ah) while y is below 59h, else above it (y - 28h).
+ *   Then three copies by the driver's page copy (05FA:24CC: source page, x, y,
+ * destination page, x, y, width, height; it returns with RETF and this
+ * routine removes the 16 bytes): the backdrop under the icon on page 1 is
+ * saved to page 2 at (0, A0h) (0E82 puts it back); the icon is copied from the
+ * sheet on page 2, a grid of six columns of 30h by 28h cells, column n mod 6
+ * and row n / 6, to its place on page 1; and that place is copied from page 1
+ * to page 0, the screen. The routine then leaves through 0880's epilogue
+ * (POP SI, POP DI, MOV SP,BP, POP BP, RET). The two scales return with a
+ * plain RET; the routine pops their argument into BX. */
+static int end_icon_place_draw(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { RECORD = 4, ICON = -8 };
+    const uint16_t X = 0x55AE, Y = 0x55B0;
+#define IPB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while(0)
+#define IPCMP(a_,b_) ((void)alu_op(c,7,(a_),(b_),1))
+#define IPADDM(off_,n_) ds_put(c,(off_),(uint16_t)alu_op(c,0,ds_get(c,(off_)),(n_),1))
+#define IPSUBM(off_,n_) ds_put(c,(off_),(uint16_t)alu_op(c,5,ds_get(c,(off_)),(n_),1))
+#define IPDROP16() (c->r[R_SP]=(uint16_t)alu_op(c,0,c->r[R_SP],0x10,1))
+#define IPZERO(r_) (c->r[r_]=(uint16_t)alu_op(c,5,c->r[r_],c->r[r_],1))
+#define IPBYTE(d_) do { c->r[R_BX]=bp_get(c,RECORD); \
+    set_r8(c,R_AL,ds_get8(c,(uint16_t)(c->r[R_BX]+(d_)))); \
+    set_r8(c,R_AH,(uint8_t)alu_op(c,5,get_r8(c,R_AH),get_r8(c,R_AH),0)); \
+    cpu_push16(c,c->r[R_AX]); } while(0)
+#define IPRUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call_);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define IPNEAR(at_,target_,ret_) do { SM4_NEED(1,(at_)); IPRUN(guest_call_pop(m,(target_),(ret_),0)); } while(0)
+#define IPFAR(at_,ret_) do { SM4_NEED(1,(at_)); IPRUN(guest_call_far(m,(at_),(ret_))); } while(0)
+    if (!room(c, 4)) return 0;
+    /* The point on the page. */
+    IPB(4, 0x099D);
+    IPBYTE(2);
+    IPNEAR(0x09A6, 0x0ECD, 0x09A9);
+    IPB(6, 0x09A9);
+    c->r[R_BX] = cpu_pop16(c); ds_put(c, X, c->r[R_AX]);
+    IPBYTE(3);
+    IPNEAR(0x09B6, 0x0EE0, 0x09B9);
+    IPB(4, 0x09B9);
+    c->r[R_BX] = cpu_pop16(c); ds_put(c, Y, c->r[R_AX]);
+    IPCMP(ds_get(c, X), 0x73); if (x86_cond(c, 3)) goto not_upper_left;
+    IPB(2, 0x09C4);
+    IPCMP(c->r[R_AX], 0x59); if (x86_cond(c, 3)) goto not_upper_left;
+    /* Upper left: right of and below the point. */
+    IPB(1, 0x09C9);
+    IPADDM(X, 0x0A);
+below:
+    IPB(2, 0x09CE);
+    IPADDM(Y, 0x0A);
+    goto draw;
+not_upper_left:
+    IPB(2, 0x09D5);
+    IPCMP(ds_get(c, X), 0x73); if (x86_cond(c, 2)) goto lower_half;
+    IPB(2, 0x09DC);
+    IPCMP(c->r[R_AX], 0x59); if (x86_cond(c, 3)) goto lower_half;
+    /* Upper right: left of and below the point. */
+    IPB(2, 0x09E1);
+    IPSUBM(X, 0x3A);
+    goto below;
+lower_half:
+    IPB(2, 0x09E8);
+    IPCMP(ds_get(c, X), 0x73); if (x86_cond(c, 2)) goto lower_left;
+    IPB(2, 0x09EF);
+    IPCMP(c->r[R_AX], 0x59); if (x86_cond(c, 2)) goto lower_left;
+    /* Lower right: left of and above the point. */
+    IPB(2, 0x09F4);
+    IPSUBM(X, 0x3A);
+    goto above;
+lower_left:
+    IPB(1, 0x09FB);
+    IPADDM(X, 0x0A);
+above:
+    IPB(1, 0x0A00);
+    IPSUBM(Y, 0x28);
+    /* Save the backdrop: page 1 (x, y) to page 2 (0, A0h), 30h by 28h. The
+     * icon's sheet row, (n / 6) * 28h, waits in SI. */
+draw:
+    IPB(21, 0x0A05);
+    c->r[R_AX] = bp_get(c, ICON);
+    c->r[R_CX] = 6;
+    IPZERO(R_DX);
+    x86_div16(c, c->r[R_CX]);
+    c->r[R_BX] = 0x28;
+    x86_mul16(c, c->r[R_BX]);
+    c->r[R_DX] = c->r[R_BX];
+    cpu_push16(c, c->r[R_DX]);
+    c->r[R_BX] = 0x30; cpu_push16(c, c->r[R_BX]);
+    c->r[R_SI] = 0xA0; cpu_push16(c, c->r[R_SI]);
+    IPZERO(R_SI); cpu_push16(c, c->r[R_SI]);
+    c->r[R_DI] = 2; cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, ds_get(c, Y));
+    cpu_push16(c, ds_get(c, X));
+    c->r[R_CX] = 1; cpu_push16(c, c->r[R_CX]);
+    c->r[R_SI] = c->r[R_AX];
+    IPFAR(0x0A34, 0x0A39);
+    /* The icon: page 2 (column (n mod 6) * 30h, row) to page 1 (x, y). */
+    IPB(19, 0x0A39);
+    IPDROP16();
+    c->r[R_AX] = 0x28; cpu_push16(c, c->r[R_AX]);
+    c->r[R_CX] = 0x30; cpu_push16(c, c->r[R_CX]);
+    cpu_push16(c, ds_get(c, Y));
+    cpu_push16(c, ds_get(c, X));
+    c->r[R_DX] = 1; cpu_push16(c, c->r[R_DX]);
+    cpu_push16(c, c->r[R_SI]);
+    c->r[R_AX] = bp_get(c, ICON);
+    c->r[R_BX] = 6;
+    IPZERO(R_DX);
+    x86_div16(c, c->r[R_BX]);
+    c->r[R_AX] = c->r[R_DX];
+    c->r[R_BX] = c->r[R_CX];
+    x86_mul16(c, c->r[R_BX]);
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, c->r[R_DI]);
+    IPFAR(0x0A63, 0x0A68);
+    /* Show it: page 1 (x, y) to page 0 (x, y). */
+    IPB(13, 0x0A68);
+    IPDROP16();
+    c->r[R_AX] = 0x28; cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0x30; cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, ds_get(c, Y));
+    cpu_push16(c, ds_get(c, X));
+    IPZERO(R_AX); cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, ds_get(c, Y));
+    cpu_push16(c, ds_get(c, X));
+    c->r[R_AX] = 1; cpu_push16(c, c->r[R_AX]);
+    IPFAR(0x0A8A, 0x0A8F);
+    /* 0880's epilogue. */
+    IPB(6, 0x0A8F);
+    IPDROP16();
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef IPB
+#undef IPCMP
+#undef IPADDM
+#undef IPSUBM
+#undef IPDROP16
+#undef IPZERO
+#undef IPBYTE
+#undef IPRUN
+#undef IPNEAR
+#undef IPFAR
+}
+
+/* VGAME D9FE: place one moving object relative to the eye, cull it, and
+ * defer it for the distance-ordered draw. Called with nine words: the model
+ * (BP+4), the object's 32-bit east and north positions (BP+6/8, BP+0Ah/0Ch),
+ * its height (BP+0Eh) and three attitude words (BP+10h..14h).
+ * The position is first measured from the aircraft: east minus [BA3C],
+ * north plus [C056] minus 01000000h, height minus [2DF4]. When [C0A6] bit 7
+ * is set (an outside view) the camera is the origin instead: east minus
+ * [B2B4], north plus [B77E], height minus [B788] (each by undoing the
+ * aircraft term and applying the camera's). The longs are then shifted right
+ * arithmetically by 3, or by 2 when [294B] is nonzero, in place by EF9C (RET 4,
+ * the north long first), and the height by SAR. EE0C (|word|, plain RET)
+ * rejects either low word whose magnitude is 7FFFh or more (8000h stays
+ * negative and passes). D9E7 (cdecl) gets the scene origin (0, 0, -height);
+ * [E328] = 1. The eye-relative point (east, -north, height ? 1 : 0) minus the
+ * origin [49AC..49B0] goes to [4994..4998], [49AA] = 2, and the cull E3AC
+ * (cdecl) takes it; a nonzero answer leaves. Otherwise the model and the
+ * three attitude words go to [4986] and [499A..499E] and DB3C defers the
+ * object. A near RET; AX is what the last callee left. */
+static int vgame_compose_defer_model(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+    enum { MODEL=4, EAST_LO=6, EAST_HI=8, NORTH_LO=0x0A, NORTH_HI=0x0C, HEIGHT=0x0E, ATT_A=0x10, ATT_B=0x12, ATT_C=0x14,
+           EYE_EAST=-2, EYE_NORTH=-4, ABOVE=-6, SHIFT_NEG=-8, DX_LO=-0x0C, DX_HI=-0x0A, DY_LO=-0x10, DY_HI=-0x0E,
+           DZ=-0x12, SHIFT=-0x14 };
+#define DB(n_,at_) do { SM4_NEED((n_),(at_));c->icount+=(n_); } while(0)
+#define DP(v_) cpu_push16(c,(v_))
+#define DPOP2() do { c->r[R_BX]=cpu_pop16(c);c->r[R_BX]=cpu_pop16(c); } while(0)
+#define DOP(op_,a_,b_) ((uint16_t)alu_op(c,(op_),(a_),(b_),1))
+#define DNEG(v_) ((uint16_t)alu_sub(c,0,(v_),1,0))
+#define DRUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call_);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define DNEAR(at_,target_,ret_,pops_) do { SM4_NEED(1,(at_)); DRUN(guest_call_pop(m,(target_),(ret_),(pops_))); } while(0)
+    if(!room(c,22))return 0;
+    /* D9FE: the object measured from the aircraft. */
+    DB(22,0xD9FE);
+    x86_enter(c,0x14,0);DP(c->r[R_DI]);DP(c->r[R_SI]);
+    c->r[R_AX]=bp_get(c,EAST_LO);c->r[R_DX]=bp_get(c,EAST_HI);
+    c->r[R_AX]=DOP(5,c->r[R_AX],ds_get(c,0xBA3C));c->r[R_DX]=DOP(3,c->r[R_DX],ds_get(c,0xBA3E));
+    bp_put(c,DX_LO,c->r[R_AX]);bp_put(c,DX_HI,c->r[R_DX]);
+    c->r[R_CX]=bp_get(c,NORTH_LO);c->r[R_BX]=bp_get(c,NORTH_HI);
+    c->r[R_CX]=DOP(0,c->r[R_CX],ds_get(c,0xC056));c->r[R_BX]=DOP(2,c->r[R_BX],ds_get(c,0xC058));
+    c->r[R_CX]=DOP(5,c->r[R_CX],0x0000);c->r[R_BX]=DOP(3,c->r[R_BX],0x0100);
+    bp_put(c,DY_LO,c->r[R_CX]);bp_put(c,DY_HI,c->r[R_BX]);
+    c->r[R_SI]=bp_get(c,HEIGHT);c->r[R_SI]=DOP(5,c->r[R_SI],ds_get(c,0x2DF4));bp_put(c,DZ,c->r[R_SI]);
+    alu_logic(c,(uint32_t)ds_get8(c,0xC0A6)&0x80,0);
+    if(x86_cond(c,4))goto shift_count;
+    /* DA44: an outside view measures from the camera instead. */
+    DB(15,0xDA44);
+    c->r[R_AX]=DOP(5,c->r[R_AX],ds_get(c,0xB2B4));c->r[R_DX]=DOP(3,c->r[R_DX],ds_get(c,0xB2B6));
+    c->r[R_AX]=DOP(0,c->r[R_AX],ds_get(c,0xBA3C));c->r[R_DX]=DOP(2,c->r[R_DX],ds_get(c,0xBA3E));
+    bp_put(c,DX_LO,c->r[R_AX]);bp_put(c,DX_HI,c->r[R_DX]);
+    c->r[R_CX]=DOP(5,c->r[R_CX],ds_get(c,0xC056));c->r[R_BX]=DOP(3,c->r[R_BX],ds_get(c,0xC058));
+    c->r[R_CX]=DOP(0,c->r[R_CX],ds_get(c,0xB77E));c->r[R_BX]=DOP(2,c->r[R_BX],ds_get(c,0xB780));
+    bp_put(c,DY_LO,c->r[R_CX]);bp_put(c,DY_HI,c->r[R_BX]);
+    c->r[R_SI]=DOP(5,c->r[R_SI],ds_get(c,0xB788));c->r[R_SI]=DOP(0,c->r[R_SI],ds_get(c,0x2DF4));
+    bp_put(c,DZ,c->r[R_SI]);
+shift_count:
+    /* DA7B: shift by 3 when [294B] is zero, else 2 (AX = FF03h / FF02h). */
+    DB(9,0xDA7B);
+    (void)alu_op(c,7,ds_get8(c,0x294B),0x01,0);
+    c->r[R_AX]=DOP(3,c->r[R_AX],c->r[R_AX]);c->r[R_AX]=DOP(0,c->r[R_AX],0xFFFE);
+    bp_put(c,SHIFT_NEG,c->r[R_AX]);
+    set_r8(c,R_AL,(uint8_t)alu_sub(c,0,get_r8(c,R_AL),0,0));
+    DP(c->r[R_AX]);c->r[R_CX]=(uint16_t)(c->r[R_BP]+DY_LO);DP(c->r[R_CX]);
+    bp_put(c,SHIFT,c->r[R_AX]);
+    DNEAR(0xDA92,0xEF9C,0xDA95,4);
+    DB(5,0xDA95);
+    set_r8(c,R_CL,bp_get8(c,SHIFT));
+    bp_put(c,DZ,x86_shift(c,7,bp_get(c,DZ),get_r8(c,R_CL),1));
+    DP(c->r[R_CX]);c->r[R_AX]=(uint16_t)(c->r[R_BP]+DX_LO);DP(c->r[R_AX]);
+    DNEAR(0xDAA0,0xEF9C,0xDAA3,4);
+    /* DAA3: |east| and |north| must both stay below 7FFFh. */
+    DB(4,0xDAA3);
+    DP(c->r[R_DX]);DP(c->r[R_AX]);c->r[R_SI]=c->r[R_AX];c->r[R_DI]=c->r[R_DX];
+    DNEAR(0xDAA9,0xEE0C,0xDAAC,0);
+    DB(4,0xDAAC);
+    DPOP2();(void)alu_op(c,7,c->r[R_AX],0x7FFF,1);
+    if(x86_cond(c,12))goto east_near;
+    DB(1,0xDAB3);goto done;
+east_near:
+    DB(2,0xDAB6);
+    DP(bp_get(c,DY_HI));DP(bp_get(c,DY_LO));
+    DNEAR(0xDABC,0xEE0C,0xDABF,0);
+    DB(4,0xDABF);
+    DPOP2();(void)alu_op(c,7,c->r[R_AX],0x7FFF,1);
+    if(x86_cond(c,13))goto done;
+    /* DAC6: the scene origin (0, 0, -height). */
+    DB(5,0xDAC6);
+    c->r[R_AX]=bp_get(c,DZ);c->r[R_AX]=DNEG(c->r[R_AX]);DP(c->r[R_AX]);DP(0x0000);DP(0x0000);
+    DNEAR(0xDAD0,0xD9E7,0xDAD3,0);
+    /* DAD3: the eye-relative point, culled. */
+    DB(21,0xDAD3);
+    c->r[R_SP]=DOP(0,c->r[R_SP],0x0006);
+    ds_put(c,0xE328,0x0001);
+    c->r[R_AX]=c->r[R_SI];bp_put(c,EYE_EAST,c->r[R_AX]);
+    c->r[R_CX]=bp_get(c,DY_LO);c->r[R_CX]=DNEG(c->r[R_CX]);bp_put(c,EYE_NORTH,c->r[R_CX]);
+    (void)alu_op(c,7,bp_get(c,HEIGHT),0x0001,1);
+    c->r[R_DX]=DOP(3,c->r[R_DX],c->r[R_DX]);c->r[R_DX]=(uint16_t)alu_inc(c,c->r[R_DX],1);bp_put(c,ABOVE,c->r[R_DX]);
+    c->r[R_AX]=DOP(5,c->r[R_AX],ds_get(c,0x49AC));ds_put(c,0x4994,c->r[R_AX]);
+    c->r[R_CX]=DOP(5,c->r[R_CX],ds_get(c,0x49AE));ds_put(c,0x4996,c->r[R_CX]);
+    c->r[R_DX]=DOP(5,c->r[R_DX],ds_get(c,0x49B0));ds_put(c,0x4998,c->r[R_DX]);
+    ds_put(c,0x49AA,0x0002);
+    DP(c->r[R_DX]);DP(c->r[R_CX]);DP(c->r[R_AX]);
+    DNEAR(0xDB13,0xE3AC,0xDB16,0);
+    DB(3,0xDB16);
+    c->r[R_SP]=DOP(0,c->r[R_SP],0x0006);c->r[R_AX]=DOP(1,c->r[R_AX],c->r[R_AX]);
+    if(x86_cond(c,5))goto done;
+    /* DB1D: kept; the model and attitude published, the object deferred. */
+    DB(8,0xDB1D);
+    c->r[R_AX]=bp_get(c,MODEL);ds_put(c,0x4986,c->r[R_AX]);
+    c->r[R_AX]=bp_get(c,ATT_A);ds_put(c,0x499A,c->r[R_AX]);
+    c->r[R_AX]=bp_get(c,ATT_B);ds_put(c,0x499C,c->r[R_AX]);
+    c->r[R_AX]=bp_get(c,ATT_C);ds_put(c,0x499E,c->r[R_AX]);
+    DNEAR(0xDB35,0xDB3C,0xDB38,0);
+done:
+    DB(4,0xDB38);
+    c->r[R_SI]=cpu_pop16(c);c->r[R_DI]=cpu_pop16(c);x86_leave(c);near_ret(c);return 1;
+#undef DB
+#undef DP
+#undef DPOP2
+#undef DOP
+#undef DNEG
+#undef DRUN
+#undef DNEAR
+}
+
+/* START 644A: the second half of the roster screen's hover (0x063FB, whose
+ * matched body leaves here at 0x644A), run in 63FB's frame: [BP-2] is the
+ * item under the pointer, as 0x0393D's hit test left it; [D096] is the item
+ * lit until now (0 none, 1..10 a pilot row, higher the screen's buttons).
+ *
+ * With a pilot row (or nothing) lit, the pilot detail strip is put back
+ * from the clean board: the far graphics thunk 0A95:6A8A (cdecl, the
+ * caller removes 16 bytes) copies the rectangle x 24h, y 9Fh, E0h wide,
+ * 29h high from page 3 to page 1, then again to page 0 (page, x, y, page,
+ * x, y, width, height). Then, when an item is hovered and it is not the
+ * lit one: unless it is the pilot's own row (100h - item - [CACA]->[0] is
+ * -1, i.e. [[CACA]] = item - 1), its colours are queued with 0x03517
+ * (near cdecl: 100h - item, 11C1h, 1; plain RET, the caller removes 6
+ * bytes), and a pilot row (item 1..10) has its record sheet drawn by
+ * 0x064E5 (near, argument item - 1, removed by POP BX). The hovered item
+ * becomes the lit one ([D096]), and 63FB's frame is closed (POP SI,
+ * MOV SP,BP, POP BP, RET). [BP-2] is read afresh after every call, as the
+ * original does. */
+static int start_roster_hover_detail(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { ITEM = -2, LIT = 0xD096, PILOT = 0xCACA };
+#define RB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while(0)
+#define RRUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call_);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define RNEAR(at_,target_,ret_) do { SM4_NEED(1,(at_)); RRUN(guest_call_pop(m,(target_),(ret_),0)); } while(0)
+#define RFAR(at_,ret_) do { SM4_NEED(1,(at_)); RRUN(guest_call_far(m,(at_),(ret_))); } while(0)
+#define RSP(n_) (c->r[R_SP]=(uint16_t)alu_op(c,0,c->r[R_SP],(n_),1))
+    if (!room(c, 2)) return 0;
+    RB(2, 0x644A);
+    alu_op(c, 7, ds_get8(c, LIT), 0x0A, 0);
+    if (x86_cond(c, 7)) goto hovered;                                   /* a button was lit */
+    /* The detail strip from page 3 to page 1 ... */
+    RB(14, 0x6451);
+    c->r[R_AX] = 0x0029; cpu_push16(c, c->r[R_AX]);
+    c->r[R_CX] = 0x00E0; cpu_push16(c, c->r[R_CX]);
+    c->r[R_DX] = 0x009F; cpu_push16(c, c->r[R_DX]);
+    c->r[R_BX] = 0x0024; cpu_push16(c, c->r[R_BX]);
+    c->r[R_SI] = 0x0001; cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->r[R_DX]);
+    cpu_push16(c, c->r[R_BX]);
+    c->r[R_SI] = 0x0003; cpu_push16(c, c->r[R_SI]);
+    RFAR(0x646B, 0x6470);
+    /* ... and to page 0. */
+    RB(14, 0x6470);
+    RSP(0x10);
+    c->r[R_AX] = 0x0029; cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0x00E0; cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0x009F; cpu_push16(c, c->r[R_AX]);
+    c->r[R_CX] = 0x0024; cpu_push16(c, c->r[R_CX]);
+    c->r[R_DX] = (uint16_t)alu_op(c, 5, c->r[R_DX], c->r[R_DX], 1);
+    cpu_push16(c, c->r[R_DX]);
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, c->r[R_CX]);
+    cpu_push16(c, c->r[R_SI]);
+    RFAR(0x6489, 0x648E);
+    RB(1, 0x648E);
+    RSP(0x10);
+hovered:
+    RB(2, 0x6491);
+    alu_op(c, 7, bp_get8(c, ITEM), 0x00, 0);
+    if (x86_cond(c, 4)) goto light;                                     /* nothing hovered */
+    RB(3, 0x6497);
+    set_r8(c, R_AL, ds_get8(c, LIT));
+    alu_op(c, 7, bp_get8(c, ITEM), get_r8(c, R_AL), 0);
+    if (x86_cond(c, 4)) goto light;                                     /* already lit */
+    RB(8, 0x649F);
+    set_r8(c, R_AL, bp_get8(c, ITEM));
+    set_r8(c, R_AH, (uint8_t)alu_op(c, 5, get_r8(c, R_AH), get_r8(c, R_AH), 0));
+    c->r[R_BX] = ds_get(c, PILOT);                                      /* les bx, [CACA] */
+    c->seg[S_ES] = ds_get(c, (uint16_t)(PILOT + 2));
+    c->r[R_CX] = c->r[R_AX];
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], seg_read16(c, c->seg[S_ES], c->r[R_BX]), 1);
+    c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0);            /* neg ax */
+    alu_op(c, 7, c->r[R_AX], 0xFFFF, 1);
+    if (x86_cond(c, 4)) goto sheet;                                     /* the pilot's own row */
+    /* The hovered item's colours: 3517(100h - item, 11C1h, 1). */
+    RB(7, 0x64B4);
+    c->r[R_AX] = 0x0001; cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0x11C1; cpu_push16(c, c->r[R_AX]);
+    c->r[R_CX] = (uint16_t)alu_op(c, 5, c->r[R_CX], 0x0100, 1);
+    c->r[R_CX] = (uint16_t)alu_sub(c, 0, c->r[R_CX], 1, 0);            /* neg cx */
+    cpu_push16(c, c->r[R_CX]);
+    RNEAR(0x64C3, 0x3517, 0x64C6);
+    RB(1, 0x64C6);
+    RSP(0x06);
+sheet:
+    RB(2, 0x64C9);
+    alu_op(c, 7, bp_get8(c, ITEM), 0x0A, 0);
+    if (x86_cond(c, 7)) goto light;                                     /* not a pilot row */
+    RB(4, 0x64CF);
+    set_r8(c, R_AL, bp_get8(c, ITEM));
+    set_r8(c, R_AH, (uint8_t)alu_op(c, 5, get_r8(c, R_AH), get_r8(c, R_AH), 0));
+    c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1);
+    cpu_push16(c, c->r[R_AX]);
+    RNEAR(0x64D6, 0x64E5, 0x64D9);                                      /* the pilot's record sheet */
+    RB(1, 0x64D9);
+    c->r[R_BX] = cpu_pop16(c);
+light:
+    RB(6, 0x64DA);
+    set_r8(c, R_AL, bp_get8(c, ITEM));
+    ds_put8(c, LIT, get_r8(c, R_AL));
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef RB
+#undef RRUN
+#undef RNEAR
+#undef RFAR
+#undef RSP
+}
+
+/* END 372F: the landing screen's three pictures and its palette fade rates.
+ * First the pictures named by the strings at FE7, FF3 and FFF are loaded into
+ * pages 2, 3 and 4 through 100D (name, page; cdecl, removed with two POP BX;
+ * 100D also reads a third word, which here is this routine's saved SI).
+ * Then the flight's event log - 256 six-byte records from 5E38, a 16-bit time
+ * at +0 and a kind in the low six bits of +4 - is scanned for the first
+ * kind-8 record; with none, the index stops at 100h and the word just past the
+ * log (6438) is read as its time. The span is that time minus the first
+ * record's time (16-bit, wrapping), clamped unsigned to 708h (1800). A span
+ * of 0 copies the 32 base colours (96 bytes at 1396) to 2165 through 4B0C
+ * (src, dst, count; cdecl) and returns. Otherwise the target colour is the
+ * first triple of 13F6 when byte +33h of the far record [7222] is set, else of
+ * 1336 - the same triple for all 32 entries, the pointer is never advanced.
+ * Each of the 96 channels gets (target - base[i]) * 1800 / span, both bytes
+ * zero-extended and the difference sign-extended to 32 bits, computed with
+ * the long multiply 539C and the signed long divide 5302 (both RET 8; the span
+ * is pushed first, left under the product, and is the divisor); the low byte
+ * of the quotient is stored at 2165 + i. The red difference's high word goes
+ * through CX and the low word through DI; green and blue live in the frame
+ * at [BP-4] and [BP-8], the span as a long at [BP-16h]. */
+static int end_landing_fade_rates(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { LOG = 0x5E38, KIND = 0x5E3C, LOG_STRIDE = 6, KIND_LANDED = 8, LOG_RECORDS = 0x100,
+           MAX_SPAN = 0x708, BASE = 0x1396, RATES = 0x2165, ENTRIES = 0x20,
+           IDX = -0x0A, SPAN = -0x12, TABLE = -0x10, G_LO = -4, G_HI = -2, B_LO = -8, B_HI = -6,
+           SPAN_LO = -0x16, SPAN_HI = -0x14 };
+#define LFB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while(0)
+#define LFCWD() (c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0x0000)
+#define LFSUB8(r8_) set_r8(c, (r8_), (uint8_t)alu_op(c, 5, get_r8(c, (r8_)), get_r8(c, (r8_)), 0))
+#define LFRUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call_);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define LFNEAR(at_,target_,ret_,pops_) do { SM4_NEED(1,(at_)); LFRUN(guest_call_pop(m,(target_),(ret_),(pops_))); } while(0)
+    if (!room(c, 9)) return 0;
+    /* The three pictures, into pages 2, 3 and 4. */
+    LFB(9, 0x372F);
+    x86_push_reg(c, R_BP); c->r[R_BP] = c->r[R_SP];
+    c->r[R_SP] = (uint16_t)alu_op(c, 5, c->r[R_SP], 0x16, 1);
+    x86_push_reg(c, R_DI); x86_push_reg(c, R_SI);
+    c->r[R_AX] = 2; x86_push_reg(c, R_AX); c->r[R_AX] = 0x0FE7; x86_push_reg(c, R_AX);
+    LFNEAR(0x373F, 0x100D, 0x3742, 0);
+    LFB(6, 0x3742);
+    c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c);
+    c->r[R_AX] = 3; x86_push_reg(c, R_AX); c->r[R_AX] = 0x0FF3; x86_push_reg(c, R_AX);
+    LFNEAR(0x374C, 0x100D, 0x374F, 0);
+    LFB(6, 0x374F);
+    c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c);
+    c->r[R_AX] = 4; x86_push_reg(c, R_AX); c->r[R_AX] = 0x0FFF; x86_push_reg(c, R_AX);
+    LFNEAR(0x3759, 0x100D, 0x375C, 0);
+    LFB(4, 0x375C);
+    c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c);
+    bp_put(c, IDX, 0);
+    goto scan_test;
+    /* The first kind-8 record of the event log. */
+scan_next:
+    LFB(1, 0x3765);
+    bp_put(c, IDX, (uint16_t)alu_inc(c, bp_get(c, IDX), 1));
+scan_test:
+    LFB(2, 0x3768);
+    alu_op(c, 7, bp_get(c, IDX), LOG_RECORDS, 1);
+    if (x86_cond(c, 3)) goto found;
+    LFB(7, 0x376F);
+    c->r[R_AX] = LOG_STRIDE; x86_mul16(c, bp_get(c, IDX)); c->r[R_BX] = c->r[R_AX];
+    set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + KIND)));
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 4, get_r8(c, R_AL), 0x3F, 0));
+    alu_op(c, 7, get_r8(c, R_AL), KIND_LANDED, 0);
+    if (x86_cond(c, 5)) goto scan_next;
+    /* Its time since the log's first record, clamped to 1800. */
+found:
+    LFB(8, 0x3781);
+    c->r[R_AX] = LOG_STRIDE; x86_mul16(c, bp_get(c, IDX)); c->r[R_BX] = c->r[R_AX];
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + LOG));
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], ds_get(c, LOG), 1);
+    bp_put(c, SPAN, c->r[R_AX]);
+    alu_op(c, 7, c->r[R_AX], MAX_SPAN, 1);
+    if (x86_cond(c, 6)) goto span_set;
+    LFB(1, 0x3799);
+    bp_put(c, SPAN, MAX_SPAN);
+span_set:
+    LFB(2, 0x379E);
+    alu_op(c, 7, bp_get(c, SPAN), 0, 1);
+    if (x86_cond(c, 5)) goto rates;
+    /* No time at all: the base colours themselves, copied. */
+    LFB(6, 0x37A4);
+    c->r[R_AX] = 0x60; x86_push_reg(c, R_AX); c->r[R_AX] = RATES; x86_push_reg(c, R_AX);
+    c->r[R_AX] = BASE; x86_push_reg(c, R_AX);
+    LFNEAR(0x37B0, 0x4B0C, 0x37B3, 0);
+    LFB(2, 0x37B3);
+    c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 6, 1);
+    goto done;
+    /* The target triple: 13F6 or 1336 by the far record's byte +33h. */
+rates:
+    LFB(3, 0x37B9);
+    c->r[R_BX] = ds_get(c, 0x7222); c->seg[S_ES] = ds_get(c, 0x7224);
+    alu_op(c, 7, mem_read8(c, phys(c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x33))), 0, 0);
+    if (x86_cond(c, 4)) goto table_1336;
+    LFB(2, 0x37C4);
+    bp_put(c, TABLE, 0x13F6);
+    goto table_set;
+table_1336:
+    LFB(1, 0x37CB);
+    bp_put(c, TABLE, 0x1336);
+table_set:
+    LFB(1, 0x37D0);
+    bp_put(c, IDX, 0);
+    /* Each entry: three channel differences, each * 1800 / span. */
+entry:
+    LFB(40, 0x37D5);
+    c->r[R_BX] = bp_get(c, TABLE);
+    set_r8(c, R_AL, ds_get8(c, c->r[R_BX])); LFSUB8(R_AH);
+    c->r[R_SI] = bp_get(c, IDX); c->r[R_CX] = c->r[R_SI];
+    c->r[R_SI] = (uint16_t)x86_shift(c, 4, c->r[R_SI], 1, 1);
+    c->r[R_SI] = (uint16_t)alu_op(c, 0, c->r[R_SI], c->r[R_CX], 1);
+    set_r8(c, R_CL, ds_get8(c, (uint16_t)(c->r[R_SI] + BASE))); LFSUB8(R_CH);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_CX], 1);
+    LFCWD();
+    set_r8(c, R_CL, ds_get8(c, (uint16_t)(c->r[R_SI] + BASE + 1)));
+    c->r[R_DI] = c->r[R_AX];
+    set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + 1))); LFSUB8(R_AH);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_CX], 1);
+    c->r[R_CX] = c->r[R_DX];
+    LFCWD();
+    bp_put(c, G_LO, c->r[R_AX]); bp_put(c, G_HI, c->r[R_DX]);
+    set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_SI] + BASE + 2))); LFSUB8(R_AH);
+    c->r[R_DX] = c->r[R_AX];
+    set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + 2)));
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_DX], 1);
+    LFCWD();
+    bp_put(c, B_LO, c->r[R_AX]); bp_put(c, B_HI, c->r[R_DX]);
+    c->r[R_AX] = bp_get(c, SPAN);
+    c->r[R_DX] = (uint16_t)alu_op(c, 5, c->r[R_DX], c->r[R_DX], 1);
+    x86_push_reg(c, R_DX); x86_push_reg(c, R_AX);
+    bp_put(c, SPAN_LO, c->r[R_AX]); bp_put(c, SPAN_HI, c->r[R_DX]);
+    c->r[R_AX] = MAX_SPAN; LFCWD(); x86_push_reg(c, R_DX); x86_push_reg(c, R_AX);
+    x86_push_reg(c, R_CX); x86_push_reg(c, R_DI);
+    LFNEAR(0x382D, 0x539C, 0x3830, 8);
+    LFB(2, 0x3830);
+    x86_push_reg(c, R_DX); x86_push_reg(c, R_AX);
+    LFNEAR(0x3832, 0x5302, 0x3835, 8);
+    LFB(9, 0x3835);
+    ds_put8(c, (uint16_t)(c->r[R_SI] + RATES), get_r8(c, R_AL));
+    cpu_push16(c, bp_get(c, SPAN_HI)); cpu_push16(c, bp_get(c, SPAN_LO));
+    c->r[R_AX] = MAX_SPAN; LFCWD(); x86_push_reg(c, R_DX); x86_push_reg(c, R_AX);
+    cpu_push16(c, bp_get(c, G_HI)); cpu_push16(c, bp_get(c, G_LO));
+    LFNEAR(0x384B, 0x539C, 0x384E, 8);
+    LFB(2, 0x384E);
+    x86_push_reg(c, R_DX); x86_push_reg(c, R_AX);
+    LFNEAR(0x3850, 0x5302, 0x3853, 8);
+    LFB(9, 0x3853);
+    ds_put8(c, (uint16_t)(c->r[R_SI] + RATES + 1), get_r8(c, R_AL));
+    cpu_push16(c, bp_get(c, SPAN_HI)); cpu_push16(c, bp_get(c, SPAN_LO));
+    c->r[R_AX] = MAX_SPAN; LFCWD(); x86_push_reg(c, R_DX); x86_push_reg(c, R_AX);
+    cpu_push16(c, bp_get(c, B_HI)); cpu_push16(c, bp_get(c, B_LO));
+    LFNEAR(0x3869, 0x539C, 0x386C, 8);
+    LFB(2, 0x386C);
+    x86_push_reg(c, R_DX); x86_push_reg(c, R_AX);
+    LFNEAR(0x386E, 0x5302, 0x3871, 8);
+    LFB(4, 0x3871);
+    ds_put8(c, (uint16_t)(c->r[R_SI] + RATES + 2), get_r8(c, R_AL));
+    bp_put(c, IDX, (uint16_t)alu_inc(c, bp_get(c, IDX), 1));
+    alu_op(c, 7, bp_get(c, IDX), ENTRIES, 1);
+    if (x86_cond(c, 3)) goto done;
+    LFB(1, 0x387E);
+    goto entry;
+done:
+    LFB(5, 0x3881);
+    c->r[R_SI] = cpu_pop16(c); c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP]; c->r[R_BP] = cpu_pop16(c);
+    near_ret(c); return 1;
+#undef LFB
+#undef LFCWD
+#undef LFSUB8
+#undef LFRUN
+#undef LFNEAR
+}
+
+/* END 0x05987, the formatter's integer conversion (an arm of printf's
+ * _output, END 0x05678, reached through its handler table for d, i, u, o,
+ * x and X; it runs inside _output's frame and ends with a JMP back to the
+ * scan at 0x0568B). The conversion state is the frame's:
+ *   [bp-4]  flags: 01h '+', 02h ' ', 04h '-' (left-justify), 08h '0' (zero
+ *           pad), 10h a long argument, 40h a signed conversion;
+ *   [bp-3]  01h the value was negative, 02h '#' (a leading 0);
+ *   [bp-6]  the radix (byte); [bp-0Ah] the width; [bp-0Ch] the precision
+ *           (negative: none); [bp-0Eh] the prefix bytes and [bp-10h] their
+ *           count; [bp-15h] the end of the digit buffer.
+ * The argument is the next dword (0x05A8A) for a long, else the next word
+ * (0x05A82), sign-extended (CWD) for a signed conversion and zero-extended
+ * otherwise. A negative signed value sets [bp-3] bit 0 and is negated as
+ * a 32-bit pair (NEG AX / ADC DX,0 / NEG DX). No precision means 1 digit;
+ * a precision cancels '0' padding. A zero value has no prefix. The digits
+ * (0x05B16: DX:AX in base CX, at least SI of them, backwards from ES:DI)
+ * come back at ES:DI with their count in CX; with '#' a '0' is put in front
+ * unless the first digit is one already. A signed conversion's prefix is
+ * '-', '+' or ' ' (count 1) by the flags. The padding, width less digits
+ * less prefix (0 when negative), goes before the prefix as spaces unless
+ * '-' or '0' was given, between prefix and digits as '0's with '0' and
+ * without '-', and after the digits as spaces with '-'. Runs go out through
+ * 0x05AFA (CX copies of DL) and 0x05ADC (CX bytes at ES:DI), each adding to
+ * the count at [bp-8]. All callees are near and return by a plain RET with
+ * their arguments in registers. */
+static int end_format_integer(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { FLAGS = -4, FLAGS_HI = -3, RADIX = -6, WIDTH = -10, PRECISION = -12,
+           PREFIX = -14, PREFIX_LEN = -16, DIGITS_END = -21 };
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while(0)
+#define XRUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call_);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define XNEAR(at_,target_,ret_) do { SM4_NEED(1,(at_)); XRUN(guest_call_pop(m,(target_),(ret_),0)); } while(0)
+#define XTEST(d_,mask_) alu_logic(c, (uint32_t)bp_get8(c, (d_)) & (mask_), 0)
+    if (!room(c, 2)) return 0;
+    XB(2, 0x5987);
+    XTEST(FLAGS, 0x10);
+    if (x86_cond(c, 4)) goto word_arg;
+    XNEAR(0x598D, 0x5A8A, 0x5990);                                      /* a long: DX:AX */
+    XB(1, 0x5990);
+    goto sign;
+word_arg:
+    XNEAR(0x5992, 0x5A82, 0x5995);
+    XB(2, 0x5995);
+    XTEST(FLAGS, 0x40);
+    if (x86_cond(c, 4)) goto unsigned_word;
+    XB(2, 0x599B);
+    c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0x0000;              /* cwd */
+    goto sign;
+unsigned_word:
+    XB(1, 0x599E);
+    c->r[R_DX] = (uint16_t)alu_op(c, 6, c->r[R_DX], c->r[R_DX], 1);
+sign:
+    XB(2, 0x59A0);
+    XTEST(FLAGS, 0x40);
+    if (x86_cond(c, 4)) goto precision;
+    XB(2, 0x59A6);
+    c->r[R_DX] = (uint16_t)alu_op(c, 1, c->r[R_DX], c->r[R_DX], 1);
+    if (x86_cond(c, 13)) goto precision;
+    XB(4, 0x59AA);                                                      /* negative: note it, negate */
+    bp_put8(c, FLAGS_HI, (uint8_t)alu_op(c, 1, bp_get8(c, FLAGS_HI), 0x01, 0));
+    c->r[R_AX] = (uint16_t)alu_sub(c, 0, c->r[R_AX], 1, 0);
+    c->r[R_DX] = (uint16_t)alu_op(c, 2, c->r[R_DX], 0, 1);
+    c->r[R_DX] = (uint16_t)alu_sub(c, 0, c->r[R_DX], 1, 0);
+precision:
+    XB(2, 0x59B5);
+    alu_op(c, 7, bp_get(c, PRECISION), 0, 1);
+    if (x86_cond(c, 13)) goto precision_given;
+    XB(2, 0x59BB);
+    bp_put(c, PRECISION, 1);
+    goto zero_test;
+precision_given:
+    XB(1, 0x59C2);                                                      /* no '0' padding */
+    bp_put8(c, FLAGS, (uint8_t)alu_op(c, 4, bp_get8(c, FLAGS), 0xF7, 0));
+zero_test:
+    XB(3, 0x59C6);
+    c->r[R_BX] = c->r[R_AX];
+    c->r[R_BX] = (uint16_t)alu_op(c, 1, c->r[R_BX], c->r[R_DX], 1);
+    if (x86_cond(c, 5)) goto digits;
+    XB(1, 0x59CC);                                                      /* zero: no prefix */
+    bp_put(c, PREFIX_LEN, 0);
+digits:
+    XB(6, 0x59D1);
+    c->r[R_DI] = (uint16_t)(c->r[R_BP] + DIGITS_END);
+    cpu_push16(c, c->seg[S_SS]);
+    c->seg[S_ES] = cpu_pop16(c);
+    set_r8(c, R_CL, bp_get8(c, RADIX));
+    set_r8(c, R_CH, (uint8_t)alu_op(c, 6, get_r8(c, R_CH), get_r8(c, R_CH), 0));
+    c->r[R_SI] = bp_get(c, PRECISION);
+    XNEAR(0x59DE, 0x5B16, 0x59E1);
+    XB(2, 0x59E1);
+    XTEST(FLAGS_HI, 0x02);
+    if (x86_cond(c, 4)) goto alternate_done;
+    XB(1, 0x59E7);                                                      /* '#': a leading 0 */
+    if (c->r[R_CX] == 0) goto put_zero;
+    XB(2, 0x59E9);
+    alu_op(c, 7, mem_read8(c, phys(c->seg[S_ES], c->r[R_DI])), 0x30, 0);
+    if (x86_cond(c, 4)) goto alternate_done;
+put_zero:
+    XB(3, 0x59EF);
+    c->r[R_DI] = (uint16_t)alu_dec(c, c->r[R_DI], 1);
+    mem_write8(c, phys(c->seg[S_ES], c->r[R_DI]), 0x30);
+    c->r[R_CX] = (uint16_t)alu_inc(c, c->r[R_CX], 1);
+alternate_done:
+    XB(1, 0x59F5);                                                      /* jmp to the next instruction */
+    XB(2, 0x59F7);
+    XTEST(FLAGS, 0x40);
+    if (x86_cond(c, 4)) goto padding;
+    XB(2, 0x59FD);
+    XTEST(FLAGS_HI, 0x01);
+    if (x86_cond(c, 4)) goto plus;
+    XB(3, 0x5A03);
+    bp_put8(c, PREFIX, 0x2D);                                           /* '-' */
+    bp_put(c, PREFIX_LEN, 1);
+    goto padding;
+plus:
+    XB(2, 0x5A0E);
+    XTEST(FLAGS, 0x01);
+    if (x86_cond(c, 4)) goto space;
+    XB(3, 0x5A14);
+    bp_put8(c, PREFIX, 0x2B);                                           /* '+' */
+    bp_put(c, PREFIX_LEN, 1);
+    goto padding;
+space:
+    XB(2, 0x5A1F);
+    XTEST(FLAGS, 0x02);
+    if (x86_cond(c, 4)) goto padding;
+    XB(2, 0x5A25);
+    bp_put8(c, PREFIX, 0x20);                                           /* ' ' */
+    bp_put(c, PREFIX_LEN, 1);
+padding:
+    XB(4, 0x5A2E);
+    c->r[R_AX] = bp_get(c, WIDTH);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_CX], 1);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], bp_get(c, PREFIX_LEN), 1);
+    if (x86_cond(c, 13)) goto keep_digits;
+    XB(1, 0x5A38);
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);
+keep_digits:
+    XB(5, 0x5A3A);
+    cpu_push16(c, c->seg[S_ES]);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->r[R_CX]);
+    XTEST(FLAGS, 0x0C);
+    if (x86_cond(c, 5)) goto prefix;
+    XB(2, 0x5A43);                                                      /* right-justified with spaces */
+    c->r[R_CX] = c->r[R_AX];
+    set_r8(c, R_DL, 0x20);
+    XNEAR(0x5A47, 0x5AFA, 0x5A4A);
+prefix:
+    XB(5, 0x5A4A);
+    cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, c->seg[S_SS]);
+    c->seg[S_ES] = cpu_pop16(c);
+    c->r[R_DI] = (uint16_t)(c->r[R_BP] + PREFIX);
+    c->r[R_CX] = bp_get(c, PREFIX_LEN);
+    XNEAR(0x5A53, 0x5ADC, 0x5A56);
+    XB(3, 0x5A56);
+    c->r[R_AX] = cpu_pop16(c);
+    XTEST(FLAGS, 0x08);
+    if (x86_cond(c, 4)) goto put_digits;
+    XB(2, 0x5A5D);
+    XTEST(FLAGS, 0x04);
+    if (x86_cond(c, 5)) goto put_digits;
+    XB(2, 0x5A63);                                                      /* zero padding */
+    c->r[R_CX] = c->r[R_AX];
+    set_r8(c, R_DL, 0x30);
+    XNEAR(0x5A67, 0x5AFA, 0x5A6A);
+put_digits:
+    XB(4, 0x5A6A);
+    c->r[R_CX] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->seg[S_ES] = cpu_pop16(c);
+    cpu_push16(c, c->r[R_AX]);
+    XNEAR(0x5A6E, 0x5ADC, 0x5A71);
+    XB(3, 0x5A71);
+    c->r[R_AX] = cpu_pop16(c);
+    XTEST(FLAGS, 0x04);
+    if (x86_cond(c, 4)) goto next;
+    XB(2, 0x5A78);                                                      /* left-justified: trailing spaces */
+    c->r[R_CX] = c->r[R_AX];
+    set_r8(c, R_DL, 0x20);
+    XNEAR(0x5A7C, 0x5AFA, 0x5A7F);
+next:
+    XB(1, 0x5A7F);                                                      /* jmp to the scan */
+    c->ip = 0x568B;
+    return 1;
+#undef XTEST
+#undef XNEAR
+#undef XRUN
+#undef XB
+}
+
+/* END 34EA: the debrief score's loop step and its final scaling - the continue point of the
+ * scorer that starts at 3021 (PUSH BP / MOV BP,SP / SUB SP,0Eh / PUSH SI), entered with that frame
+ * live: [bp+4] the number of the last log record, [bp-8] the record index, [bp-0Ch]:[bp-0Ah] the
+ * running total (a long), [bp-2] the flag the kind-8 arm raises for a record after the first, and
+ * [bp-0Eh] / [bp-4] the current record's argument and class flags for the arms. Every arm of the
+ * record-kind switch ends with JMP 34EA, and so do the two kinds the scorer throws away (4, 5).
+ *
+ * The step: the index goes up by one; while it is not above the last record's number the record
+ * [5E3C + 6 * index] (MUL, so the product wraps) is read. A record whose kind byte is zero ends the
+ * log. Otherwise its argument byte [+1] is sign-extended into [bp-0Eh]; its low seven bits pick a
+ * 16-byte unit record [56F8 + 16 * (arg & 7Fh)], whose first byte is a class; the class's flags
+ * byte [6902 + class] goes to [bp-4]. AX is the kind byte's low six bits, and BX = DX = the record's
+ * offset (CX keeps it with CL = 4), and the routine leaves by JMP 34C4: the switch below the entry
+ * (DEC AX / CMP AX,0Bh / JA 34EA / jump table at 34D2), original code. The body stops there.
+ *
+ * The end of the log: the total is scaled five or six times, each time as total * f / 8 through
+ * the long multiply 539C and the signed long divide 5302 (both RET 8, so the caller pushes the
+ * divisor 8 first and never cleans up): by the word tables 0E68, 0E72, 0E7A and 0E82, indexed by
+ * the words +38h, +3Ch, +3Eh and +40h of the record the far pointer [55DE] points at; then, when
+ * [bp-2] is set and the word +26h of the record behind the far pointer [7222] is 2, by the table
+ * 0E88 indexed by the byte [6440]; and last by 9, 10 or 11 when that record's +2Eh lies in
+ * [7000, 9000), [9000, 11500) or [11500, ...) (unsigned). The low word of the total is returned in
+ * AX; the frame is taken down (POP SI / MOV SP,BP / POP BP) and the routine returns with RET. */
+static int end_debrief_score_step(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { LAST = 4, FLAG = -2, CLASSF = -4, INDEX = -8, TOT_HI = -0x0A, TOT_LO = -0x0C, ARG = -0x0E,
+           LOG = 0x5E3C, UNITS = 0x56F8, CLASS_FLAGS = 0x6902, SWITCH = 0x34C4,
+           LMUL = 0x539C, LDIV = 0x5302 };
+#define SCB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define SCRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define SCNEAR(at_, target_, ret_) do { SM4_NEED(1, (at_)); SCRUN(guest_call_pop(m, (target_), (ret_), 8)); } while (0)
+/* PUSH WORD [BP+d] in the draft's form: an 8086 reads the word after SP moves. */
+#define SCPUSHM(d_) do { const uint16_t before_ = bp_get(c, (d_)); \
+    c->r[R_SP] = (uint16_t)(c->r[R_SP] - 2); \
+    seg_write16(c, c->seg[S_SS], c->r[R_SP], (c->model >= CPU_80286) ? before_ : bp_get(c, (d_))); } while (0)
+/* MOV AX,8 / CWD / PUSH DX / PUSH AX: the divisor. */
+#define SCEIGHT() do { c->r[R_AX] = 8; cwd(c); x86_push_reg(c, R_DX); x86_push_reg(c, R_AX); } while (0)
+/* CWD / PUSH DX / PUSH AX: a factor in AX as a long. */
+#define SCLONG() do { cwd(c); x86_push_reg(c, R_DX); x86_push_reg(c, R_AX); } while (0)
+/* MOV [bp-0Ch],AX / MOV [bp-0Ah],DX: the quotient is the new total. */
+#define SCSTORE() do { bp_put(c, TOT_LO, c->r[R_AX]); bp_put(c, TOT_HI, c->r[R_DX]); } while (0)
+/* LES BX,[55DE] / MOV SI,ES:[BX+field] / SHL SI,1 / MOV AX,[SI+table] */
+#define SCFACTOR_SI(field_, table_) do { \
+    c->r[R_BX] = ds_get(c, 0x55DE); c->seg[S_ES] = ds_get(c, 0x55E0); \
+    c->r[R_SI] = seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + (field_))); \
+    c->r[R_SI] = (uint16_t)x86_shift(c, 4, c->r[R_SI], 1, 1); \
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_SI] + (table_))); } while (0)
+    if (!room(c, 4)) return 0;
+    /* The next record: INC [bp-8], and past the last one the log is done. */
+    SCB(4, 0x34EA);
+    bp_put(c, INDEX, (uint16_t)alu_inc(c, bp_get(c, INDEX), 1));
+    c->r[R_AX] = bp_get(c, LAST);
+    (void)alu_op(c, 7, bp_get(c, INDEX), c->r[R_AX], 1);
+    if (x86_cond(c, 7)) goto scale;
+    SCB(5, 0x34F5);
+    c->r[R_AX] = 6;
+    x86_mul16(c, bp_get(c, INDEX));
+    c->r[R_BX] = c->r[R_AX];
+    (void)alu_op(c, 7, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] + LOG))), 0x00, 0);
+    if (x86_cond(c, 4)) goto scale;                                  /* a zero kind ends the log */
+    /* The record's argument, its unit's class flags, and its kind for the switch. */
+    SCB(17, 0x3504);
+    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] + LOG + 1))));
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);         /* CBW */
+    c->r[R_CX] = c->r[R_BX];
+    c->r[R_DX] = c->r[R_CX];
+    bp_put(c, ARG, c->r[R_AX]);
+    c->r[R_BX] = c->r[R_AX];
+    c->r[R_BX] = (uint16_t)alu_op(c, 4, c->r[R_BX], 0x007F, 1);
+    set_r8(c, R_CL, 4);
+    c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], get_r8(c, R_CL), 1);
+    set_r8(c, R_BL, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] + UNITS))));
+    set_r8(c, R_BH, (uint8_t)alu_op(c, 5, get_r8(c, R_BH), get_r8(c, R_BH), 0));
+    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] + CLASS_FLAGS))));
+    bp_put8(c, CLASSF, get_r8(c, R_AL));
+    c->r[R_BX] = c->r[R_DX];
+    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] + LOG))));
+    c->r[R_AX] = (uint16_t)alu_op(c, 4, c->r[R_AX], 0x003F, 1);
+    c->ip = SWITCH;                                                  /* JMP 34C4: the kind's arm */
+    return 1;
+scale:
+    /* Total * [0E68 + 2 * rec+38h] / 8. */
+    SCB(13, 0x3531);
+    SCEIGHT(); SCPUSHM(TOT_HI); SCPUSHM(TOT_LO);
+    SCFACTOR_SI(0x38, 0x0E68); SCLONG();
+    SCNEAR(0x354E, LMUL, 0x3551);
+    SCB(2, 0x3551); x86_push_reg(c, R_DX); x86_push_reg(c, R_AX);
+    SCNEAR(0x3553, LDIV, 0x3556);
+    /* Total * [0E72 + 2 * rec+3Ch] / 8. */
+    SCB(15, 0x3556);
+    SCSTORE(); SCEIGHT(); SCPUSHM(TOT_HI); SCPUSHM(TOT_LO);
+    SCFACTOR_SI(0x3C, 0x0E72); SCLONG();
+    SCNEAR(0x3579, LMUL, 0x357C);
+    SCB(2, 0x357C); x86_push_reg(c, R_DX); x86_push_reg(c, R_AX);
+    SCNEAR(0x357E, LDIV, 0x3581);
+    /* Total * [0E7A + 2 * rec+3Eh] / 8. */
+    SCB(15, 0x3581);
+    SCSTORE(); SCEIGHT(); SCPUSHM(TOT_HI); SCPUSHM(TOT_LO);
+    SCFACTOR_SI(0x3E, 0x0E7A); SCLONG();
+    SCNEAR(0x35A4, LMUL, 0x35A7);
+    SCB(2, 0x35A7); x86_push_reg(c, R_DX); x86_push_reg(c, R_AX);
+    SCNEAR(0x35A9, LDIV, 0x35AC);
+    /* Total * [0E82 + 2 * rec+40h] / 8, the index through BX this time. */
+    SCB(15, 0x35AC);
+    SCSTORE(); SCEIGHT(); SCPUSHM(TOT_HI); SCPUSHM(TOT_LO);
+    c->r[R_BX] = ds_get(c, 0x55DE); c->seg[S_ES] = ds_get(c, 0x55E0);
+    c->r[R_BX] = seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x40));
+    c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 1, 1);
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0x0E82));
+    SCLONG();
+    SCNEAR(0x35CF, LMUL, 0x35D2);
+    SCB(2, 0x35D2); x86_push_reg(c, R_DX); x86_push_reg(c, R_AX);
+    SCNEAR(0x35D4, LDIV, 0x35D7);
+    /* With the flag set and the record behind [7222] saying 2 at +26h: total * [0E88 + 2 * [6440]] / 8. */
+    SCB(4, 0x35D7);
+    SCSTORE();
+    (void)alu_op(c, 7, bp_get(c, FLAG), 0, 1);
+    if (x86_cond(c, 4)) goto band;
+    SCB(3, 0x35E3);
+    c->r[R_BX] = ds_get(c, 0x7222); c->seg[S_ES] = ds_get(c, 0x7224);
+    (void)alu_op(c, 7, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x26)), 2, 1);
+    if (x86_cond(c, 5)) goto band;
+    SCB(13, 0x35EE);
+    SCEIGHT(); SCPUSHM(TOT_HI); SCPUSHM(TOT_LO);
+    set_r8(c, R_BL, ds_get8(c, 0x6440));
+    set_r8(c, R_BH, (uint8_t)alu_op(c, 5, get_r8(c, R_BH), get_r8(c, R_BH), 0));
+    c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 1, 1);
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0x0E88));
+    SCLONG();
+    SCNEAR(0x3609, LMUL, 0x360C);
+    SCB(2, 0x360C); x86_push_reg(c, R_DX); x86_push_reg(c, R_AX);
+    SCNEAR(0x360E, LDIV, 0x3611);
+    SCB(2, 0x3611);
+    SCSTORE();
+band:
+    /* The band of the word +2Eh of the record behind [7222]: 7000, 9000, 11500 (unsigned). */
+    SCB(3, 0x3617);
+    c->r[R_BX] = ds_get(c, 0x7222); c->seg[S_ES] = ds_get(c, 0x7224);
+    (void)alu_op(c, 7, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x2E)), 0x1B58, 1);
+    if (x86_cond(c, 2)) goto band2;
+    SCB(2, 0x3623);
+    (void)alu_op(c, 7, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x2E)), 0x2328, 1);
+    if (x86_cond(c, 3)) goto band2;
+    SCB(6, 0x362B);
+    SCEIGHT(); c->r[R_AX] = 9;
+    goto last;
+band2:
+    SCB(2, 0x3636);
+    (void)alu_op(c, 7, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x2E)), 0x2328, 1);
+    if (x86_cond(c, 2)) goto band3;
+    SCB(2, 0x363E);
+    (void)alu_op(c, 7, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x2E)), 0x2CEC, 1);
+    if (x86_cond(c, 3)) goto band3;
+    SCB(6, 0x3646);
+    SCEIGHT(); c->r[R_AX] = 0x0A;
+    goto last;
+band3:
+    SCB(2, 0x3651);
+    (void)alu_op(c, 7, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x2E)), 0x2CEC, 1);
+    if (x86_cond(c, 2)) goto done;
+    SCB(5, 0x3659);
+    SCEIGHT(); c->r[R_AX] = 0x0B;
+last:
+    /* Total * 9, 10 or 11 / 8: here the factor is pushed first. */
+    SCB(5, 0x3662);
+    SCLONG(); SCPUSHM(TOT_HI); SCPUSHM(TOT_LO);
+    SCNEAR(0x366B, LMUL, 0x366E);
+    SCB(2, 0x366E); x86_push_reg(c, R_DX); x86_push_reg(c, R_AX);
+    SCNEAR(0x3670, LDIV, 0x3673);
+    SCB(2, 0x3673);
+    SCSTORE();
+done:
+    /* The total's low word; the frame down; RET. */
+    SCB(5, 0x3679);
+    c->r[R_AX] = bp_get(c, TOT_LO);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef SCFACTOR_SI
+#undef SCSTORE
+#undef SCLONG
+#undef SCEIGHT
+#undef SCPUSHM
+#undef SCNEAR
+#undef SCRUN
+#undef SCB
+}
+
+/* END 2A01: the promotion announcement after a mission. The text is built in
+ * a 256-byte buffer on the stack (bp-100h) by format_n (0x521C, cdecl:
+ * buffer, format, then its values) and, when something was built (the byte
+ * at bp-104h), printed by 0x26A9 (one argument, cdecl).
+ * - Promoted ([55E6] set): the format at [4F0F] with 7228h, the message
+ *   703h (or 704h while the mission's word far [7222]+28h is set) and the
+ *   rank's name [5F2 + 2 * rank] (rank: far [55DE]+20h); then the rank
+ *   badges are drawn (0x28ED).
+ * - Promotion held back ([55E7] set): the format at [4F0D] with 7228h and
+ *   the word [5F4 + 2 * rank].
+ * - Neither, and no award at all ([643A], [55DD], [55E2] and [55DA] all
+ *   clear): the fixed text 712h with 7228h. Otherwise nothing is built.
+ * After that, a pilot with exactly 99 missions (far [55DE]+36h == 63h)
+ * whose mission word far [7222]+28h is clear gets the line [4F11] printed.
+ * Finally a promoted pilot's award flag [643A], when it is exactly 1, is
+ * cleared. format_n, 0x28ED and 0x26A9 all return with a plain RET; this
+ * routine removes their arguments (ADD SP,n or POP BX). */
+static int end_promotion_announce(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { BUILT = -0x104, MSG = -0x102, BUF = -0x100 };
+#define PAB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while(0)
+#define PACMP8(a_,b_) alu_op(c,7,(a_),(b_),0)
+#define PACMP16(a_,b_) alu_op(c,7,(a_),(b_),1)
+#define PALES(at_) do { c->r[R_BX] = ds_get(c, (at_)); c->seg[S_ES] = ds_get(c, (uint16_t)((at_) + 2)); } while(0)
+#define PAES(off_) seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + (off_)))
+#define PARUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call_);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define PANEAR(at_,target_,ret_) do { SM4_NEED(1,(at_)); PARUN(guest_call_pop(m,(target_),(ret_),0)); } while(0)
+#define PADROP(n_) (c->r[R_SP] = (uint16_t)alu_op(c,0,c->r[R_SP],(n_),1))
+    if (!room(c, 6)) return 0;
+    PAB(6, 0x2A01);
+    x86_push_reg(c, R_BP); c->r[R_BP] = c->r[R_SP];
+    c->r[R_SP] = (uint16_t)alu_op(c, 5, c->r[R_SP], 0x0104, 1);
+    bp_put8(c, BUILT, 0);
+    PACMP8(ds_get8(c, 0x55E6), 0); if (x86_cond(c, 4)) goto not_promoted;
+    /* Promoted: the message by the mission's word, the new rank's name. */
+    PAB(3, 0x2A14);
+    PALES(0x7222); PACMP16(PAES(0x28), 0); if (x86_cond(c, 5)) goto msg_704;
+    PAB(2, 0x2A1F); bp_put(c, MSG, 0x0703); goto promoted_text;
+msg_704:
+    PAB(1, 0x2A27); bp_put(c, MSG, 0x0704);
+promoted_text:
+    PAB(10, 0x2A2D);
+    PALES(0x55DE); c->r[R_BX] = PAES(0x20);
+    c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 1, 1);
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x05F2)));
+    cpu_push16(c, bp_get(c, MSG));
+    c->r[R_AX] = 0x7228; x86_push_reg(c, R_AX);
+    cpu_push16(c, ds_get(c, 0x4F0F));
+    c->r[R_AX] = (uint16_t)(c->r[R_BP] + BUF); x86_push_reg(c, R_AX);
+    PANEAR(0x2A4C, 0x521C, 0x2A4F);
+    PAB(1, 0x2A4F); PADROP(0x0A);
+    PANEAR(0x2A52, 0x28ED, 0x2A55);
+    PAB(1, 0x2A55); goto built;
+not_promoted:
+    PAB(2, 0x2A57);
+    PACMP8(ds_get8(c, 0x55E7), 0); if (x86_cond(c, 4)) goto no_promotion;
+    /* Promotion held back. */
+    PAB(9, 0x2A5E);
+    PALES(0x55DE); c->r[R_BX] = PAES(0x20);
+    c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 1, 1);
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x05F4)));
+    c->r[R_AX] = 0x7228; x86_push_reg(c, R_AX);
+    cpu_push16(c, ds_get(c, 0x4F0D));
+    c->r[R_AX] = (uint16_t)(c->r[R_BP] + BUF); x86_push_reg(c, R_AX);
+    PANEAR(0x2A79, 0x521C, 0x2A7C);
+    PAB(2, 0x2A7C); PADROP(8); goto built;
+no_promotion:
+    /* Any award this mission: nothing to announce here. */
+    PAB(2, 0x2A81); PACMP8(ds_get8(c, 0x643A), 0); if (x86_cond(c, 5)) goto print;
+    PAB(2, 0x2A88); PACMP8(ds_get8(c, 0x55DD), 0); if (x86_cond(c, 5)) goto print;
+    PAB(2, 0x2A8F); PACMP8(ds_get8(c, 0x55E2), 0); if (x86_cond(c, 5)) goto print;
+    PAB(2, 0x2A96); PACMP8(ds_get8(c, 0x55DA), 0); if (x86_cond(c, 5)) goto print;
+    PAB(6, 0x2A9D);
+    c->r[R_AX] = 0x7228; x86_push_reg(c, R_AX);
+    c->r[R_AX] = 0x0712; x86_push_reg(c, R_AX);
+    c->r[R_AX] = (uint16_t)(c->r[R_BP] + BUF); x86_push_reg(c, R_AX);
+    PANEAR(0x2AAA, 0x521C, 0x2AAD);
+    PAB(1, 0x2AAD); PADROP(6);
+built:
+    PAB(1, 0x2AB0); bp_put8(c, BUILT, 1);
+print:
+    PAB(2, 0x2AB5); PACMP8(bp_get8(c, BUILT), 0); if (x86_cond(c, 4)) goto ninety_nine;
+    PAB(2, 0x2ABC);
+    c->r[R_AX] = (uint16_t)(c->r[R_BP] + BUF); x86_push_reg(c, R_AX);
+    PANEAR(0x2AC1, 0x26A9, 0x2AC4);
+    PAB(1, 0x2AC4); c->r[R_BX] = cpu_pop16(c);
+ninety_nine:
+    /* The 99-mission line. */
+    PAB(3, 0x2AC5);
+    PALES(0x55DE); PACMP16(PAES(0x36), 0x63); if (x86_cond(c, 5)) goto award_flag;
+    PAB(3, 0x2AD0);
+    PALES(0x7222); PACMP16(PAES(0x28), 0); if (x86_cond(c, 5)) goto award_flag;
+    PAB(1, 0x2ADB); cpu_push16(c, ds_get(c, 0x4F11));
+    PANEAR(0x2ADF, 0x26A9, 0x2AE2);
+    PAB(1, 0x2AE2); c->r[R_BX] = cpu_pop16(c);
+award_flag:
+    PAB(2, 0x2AE3); PACMP8(ds_get8(c, 0x55E6), 0); if (x86_cond(c, 4)) goto done;
+    PAB(2, 0x2AEA); PACMP8(ds_get8(c, 0x643A), 1); if (x86_cond(c, 5)) goto done;
+    PAB(1, 0x2AF1); ds_put8(c, 0x643A, 0);
+done:
+    PAB(3, 0x2AF6); x86_leave(c); near_ret(c); return 1;
+#undef PAB
+#undef PACMP8
+#undef PACMP16
+#undef PALES
+#undef PAES
+#undef PARUN
+#undef PANEAR
+#undef PADROP
+}
+
+/* VGAME 4657: the second half of release_hold(index) (0x462E), entered by its JG
+ * while the hold count at [3668h + 2 * index] had not run out, inside that
+ * routine's frame: the index at [bp+4], the chosen slot at [bp-4] (FFFFh there
+ * means none), a loop counter at [bp-2]. The released object goes into one of
+ * the four 12-byte slots at 39D8h: slot 0 only for index 3, and only while its
+ * timer word (+8, 39E0h) is zero and bit 40h of [3664h] is clear; for any other
+ * index the LAST of slots 1-3 whose timer is zero. With no slot the routine goes
+ * straight to the gauge. A slot is filled with [C0D0h] (+0), [C0DEh] (+2), the
+ * index (+6) and the timer (9 - 2 * [3686h]) * [368Eh] (+8, the low word of a
+ * signed multiply; DX keeps the high word). Then by index: 1 copies the string
+ * at 3DE6h to the message buffer 98A6h (strcpy, EB50h) and sets [3DBEh] to
+ * 3 * [368Eh]; 2 copies 3DECh and sets [3DBCh] the same way; 3 copies 3DF2h and
+ * shifts the slot's timer left by 3; any other index copies nothing. The suffix
+ * at 3DF8h is appended (strcat, EB10h) and the buffer shown (cockpit_message,
+ * 8A4Fh). Last, with or without a slot: the countermeasure gauge (45E0h) with
+ * the index, and sound 0Fh with 2 (D3F9h). It returns through release_hold's
+ * LEAVE/RET. Every callee ends in a plain RET; the arguments are removed here
+ * with POP BX. */
+static int vgame_release_place(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { INDEX = 4, COUNTER = -2, SLOT = -4 };
+#define RPB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while(0)
+#define RPCMP(a_,b_) alu_op(c,7,(a_),(b_),1)
+#define RPRUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call_);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define RPNEAR(at_,target_,ret_) do { SM4_NEED(1,(at_)); RPRUN(guest_call_pop(m,(target_),(ret_),0)); } while(0)
+#define RPPOP() (c->r[R_BX] = cpu_pop16(c))
+    if (!room(c, 2)) return 0;
+    RPB(2, 0x4657);
+    RPCMP(bp_get(c, INDEX), 3); if (x86_cond(c, 5)) goto search;
+    /* Index 3: slot 0, while its timer is zero and bit 40h of [3664h] is clear. */
+    RPB(2, 0x465D);
+    RPCMP(ds_get(c, 0x39E0), 0); if (x86_cond(c, 5)) goto chosen;
+    RPB(2, 0x4664);
+    alu_logic(c, (uint32_t)mem_read8(c, phys(c->seg[S_DS], 0x3664)) & 0x40, 0);
+    if (x86_cond(c, 5)) goto chosen;
+    RPB(2, 0x466B);
+    bp_put(c, SLOT, 0); goto chosen;
+    /* Any other index: the last of slots 1-3 whose timer is zero. */
+search:
+    RPB(1, 0x4672);
+    bp_put(c, COUNTER, 1);
+next:
+    RPB(3, 0x4677);
+    c->r[R_BX] = x86_imul3(c, bp_get(c, COUNTER), 0x0C);
+    RPCMP(ds_get(c, (uint16_t)(c->r[R_BX] + 0x39E0)), 0); if (x86_cond(c, 5)) goto step;
+    RPB(2, 0x4682);
+    c->r[R_AX] = bp_get(c, COUNTER); bp_put(c, SLOT, c->r[R_AX]);
+step:
+    RPB(3, 0x4688);
+    bp_put(c, COUNTER, (uint16_t)alu_inc(c, bp_get(c, COUNTER), 1));
+    RPCMP(bp_get(c, COUNTER), 4); if (x86_cond(c, 12)) goto next;
+chosen:
+    RPB(2, 0x4691);
+    RPCMP(bp_get(c, SLOT), 0xFFFF); if (x86_cond(c, 5)) goto fill;
+    RPB(1, 0x4697); goto gauge;
+    /* Fill the slot: position words, the index, the timer. */
+fill:
+    RPB(15, 0x469A);
+    c->r[R_AX] = ds_get(c, 0xC0D0);
+    c->r[R_BX] = x86_imul3(c, bp_get(c, SLOT), 0x0C);
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x39D8), c->r[R_AX]);
+    c->r[R_AX] = ds_get(c, 0xC0DE);
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x39DA), c->r[R_AX]);
+    c->r[R_AX] = bp_get(c, INDEX);
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x39DE), c->r[R_AX]);
+    c->r[R_AX] = 9;
+    c->r[R_CX] = ds_get(c, 0x3686);
+    c->r[R_CX] = (uint16_t)x86_shift(c, 4, c->r[R_CX], 1, 1);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_CX], 1);
+    x86_imul16(c, ds_get(c, 0x368E));
+    ds_put(c, (uint16_t)(c->r[R_BX] + 0x39E0), c->r[R_AX]);
+    c->r[R_AX] = bp_get(c, INDEX);
+    /* The message by index. */
+    RPB(2, 0x470B);
+    c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1); if (x86_cond(c, 4)) goto first;
+    RPB(2, 0x470E);
+    c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1); if (x86_cond(c, 4)) goto second;
+    RPB(2, 0x4711);
+    c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1); if (x86_cond(c, 4)) goto third;
+    goto suffix;
+first:
+    RPB(2, 0x46CB);
+    cpu_push16(c, 0x3DE6); cpu_push16(c, 0x98A6);
+    RPNEAR(0x46D1, 0xEB50, 0x46D4);
+    RPB(5, 0x46D4);
+    RPPOP(); RPPOP();
+    c->r[R_AX] = x86_imul3(c, ds_get(c, 0x368E), 3);
+    ds_put(c, 0x3DBE, c->r[R_AX]); goto suffix;
+second:
+    RPB(2, 0x46E0);
+    cpu_push16(c, 0x3DEC); cpu_push16(c, 0x98A6);
+    RPNEAR(0x46E6, 0xEB50, 0x46E9);
+    RPB(5, 0x46E9);
+    RPPOP(); RPPOP();
+    c->r[R_AX] = x86_imul3(c, ds_get(c, 0x368E), 3);
+    ds_put(c, 0x3DBC, c->r[R_AX]); goto suffix;
+third:
+    RPB(2, 0x46F5);
+    cpu_push16(c, 0x3DF2); cpu_push16(c, 0x98A6);
+    RPNEAR(0x46FB, 0xEB50, 0x46FE);
+    RPB(5, 0x46FE);
+    RPPOP(); RPPOP();
+    c->r[R_BX] = x86_imul3(c, bp_get(c, SLOT), 0x0C);
+    {
+        const uint16_t at = (uint16_t)(c->r[R_BX] + 0x39E0);
+        ds_put(c, at, (uint16_t)x86_shift(c, 4, ds_get(c, at), 3, 1));
+    }
+    /* The suffix, and the message shown. */
+suffix:
+    RPB(2, 0x4714);
+    cpu_push16(c, 0x3DF8); cpu_push16(c, 0x98A6);
+    RPNEAR(0x471A, 0xEB10, 0x471D);
+    RPB(3, 0x471D);
+    RPPOP(); RPPOP(); cpu_push16(c, 0x98A6);
+    RPNEAR(0x4722, 0x8A4F, 0x4725);
+    RPB(1, 0x4725);
+    RPPOP();
+    /* The gauge and the sound, slot or not. */
+gauge:
+    RPB(1, 0x4726);
+    cpu_push16(c, bp_get(c, INDEX));
+    RPNEAR(0x4729, 0x45E0, 0x472C);
+    RPB(3, 0x472C);
+    RPPOP(); cpu_push16(c, 2); cpu_push16(c, 0x0F);
+    RPNEAR(0x4731, 0xD3F9, 0x4734);
+    RPB(4, 0x4734);
+    RPPOP(); RPPOP();
+    x86_leave(c);
+    near_ret(c);
+    return 1;
+#undef RPB
+#undef RPCMP
+#undef RPRUN
+#undef RPNEAR
+#undef RPPOP
+}
+
+/* PLAYER 0x00D0C, load_palette(first, count, far colours): `count` colours from the far pointer
+ * (6-bit R, G, B bytes) into the program's palette copy at 13DA of its data segment (the
+ * relocated operand of MOV AX at 0D26, read from the code) and into the VGA DAC from index
+ * `first` (its low byte to port 3C8h; then one OUT to 3C9h a byte). Arguments cdecl, plain RET.
+ * The colours run as 3 * count bytes by LOOP, so a count whose triple wraps to 0 runs 65,536.
+ *  - While a palette fade has steps left ([13D4] of the data segment not 0) the bytes are only
+ *    copied and the DAC gets zeros: the fade brings the colours in later (MOVSB, OUT AL = 0).
+ *  - Otherwise each byte is copied and written to the DAC (LODSB, STOSB, OUT).
+ *  - When the BIOS data area's gray-scale summing flag (0000:0489h, bit 1) is set the original
+ *    goes on at 0D5F with a loop of its own (each colour weighted to a grey, between CLI and
+ *    STI); the body hands that path back to the original code there.
+ * Flags at the return: the CMP of [13D4] (no fade) or the XOR AL, AL (fade); LOOP and the POPs
+ * leave them. The JMP $+2 after the index OUT is the original's I/O delay. */
+static int player_load_palette(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { GRAY_FLAG = 0x0489, PALETTE = 0x13DA, FADE_LEFT = 0x13D4, SEG_OPERAND = 0x0D27,
+           DAC_INDEX = 0x03C8 };
+    /* Room for a block of n instructions with k port accesses (their bus delay beside them). */
+#define XNEED(n_, k_, at_) SM4_NEED((n_) + IO_SLACK(k_), (at_))
+    if (!room(c, 16)) return 0;
+    c->icount += 16;
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    cpu_push16(c, c->r[R_SI]);
+    cpu_push16(c, c->r[R_DI]);
+    cpu_push16(c, c->seg[S_DS]);
+    cpu_push16(c, c->seg[S_ES]);
+    c->r[R_BX] = bp_get(c, 4);                                    /* the first DAC index */
+    c->r[R_CX] = bp_get(c, 6);                                    /* how many colours */
+    c->r[R_SI] = bp_get(c, 8);                                    /* lds si: the colours */
+    c->seg[S_DS] = bp_get(c, 10);
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);
+    c->seg[S_ES] = c->r[R_AX];                                    /* ES = 0: the BIOS data area */
+    alu_logic(c, (uint32_t)mem_read8(c, phys(c->seg[S_ES], GRAY_FLAG)) & 0x02, 0);
+    c->r[R_AX] = seg_read16(c, c->seg[S_CS], SEG_OPERAND);        /* the data segment (relocated) */
+    c->seg[S_ES] = c->r[R_AX];
+    c->r[R_DI] = PALETTE;
+    if (x86_cond(c, 5)) { c->ip = 0x0D5F; return 1; }             /* gray-scale: the original's loop */
+    /* The byte count and the DAC's write index. */
+    XNEED(8, 1, 0x0D31);
+    c->r[R_AX] = c->r[R_CX];
+    c->r[R_CX] = (uint16_t)alu_op(c, 0, c->r[R_CX], c->r[R_AX], 1);
+    c->r[R_CX] = (uint16_t)alu_op(c, 0, c->r[R_CX], c->r[R_AX], 1);
+    c->r[R_DX] = DAC_INDEX;
+    set_r8(c, R_AL, get_r8(c, R_BL));
+    c->icount += 5;
+    x86_out(c, c->r[R_DX], 0);
+    c->r[R_DX] = (uint16_t)alu_inc(c, c->r[R_DX], 1);             /* the data port */
+    c->icount += 3;                                               /* out, inc dx, jmp $+2 */
+    XNEED(2, 0, 0x0D40);
+    alu_op(c, 7, seg_read16(c, c->seg[S_ES], FADE_LEFT), 0, 1);
+    c->icount += 2;
+    if (x86_cond(c, 4)) goto colours;
+    /* A fade under way: the copy only, the DAC gets black. */
+    XNEED(1, 0, 0x0D48);
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 6, get_r8(c, R_AL), get_r8(c, R_AL), 0));
+    c->icount += 1;
+    do {                                                          /* 0D4A: movsb, out, loop */
+        XNEED(3, 1, 0x0D4A);
+        x86_movs(c, 0, c->seg[S_DS]);
+        c->icount += 1;
+        x86_out(c, c->r[R_DX], 0);
+        c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);
+        c->icount += 2;
+    } while (c->r[R_CX] != 0);
+    XNEED(6, 0, 0x0D4E);
+    goto leave;
+colours:
+    do {                                                          /* 0D54: lodsb, stosb, out, loop */
+        XNEED(4, 1, 0x0D54);
+        x86_lods(c, 0, c->seg[S_DS]);
+        x86_stos(c, 0);
+        c->icount += 2;
+        x86_out(c, c->r[R_DX], 0);
+        c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);
+        c->icount += 2;
+    } while (c->r[R_CX] != 0);
+    XNEED(6, 0, 0x0D59);
+leave:
+    c->seg[S_ES] = cpu_pop16(c);
+    c->seg[S_DS] = cpu_pop16(c);
+    c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_BP] = cpu_pop16(c);
+    c->icount += 6;
+    near_ret(c);
+    return 1;
+#undef XNEED
+}
+
+/* END 0A98, draw_event_caption(event, index): the debrief replay's caption
+ * for one event record. `event` (bp+4) points at the record: byte +4 is its
+ * kind (low six bits the caption type, 80h and 40h two "who" flags), byte +5
+ * the unit it concerns (low seven bits). `index` (bp+6) is the event's place
+ * in the replay. Locals: [bp-88h] the unit, [bp-8Ah] its 16-byte record at
+ * 56EAh (word +0 the unit's parent, byte +0Eh its class), [bp-2] the unit's
+ * 32-byte name block at 179Eh, [bp-4] the "who" text (E0h with 80h, F2h with
+ * 40h, else the class's name from the pointer table 6DFAh), and the caption
+ * buffer at [bp-84h].
+ * The type minus one picks an arm through the twelve-word table at cs:0D12
+ * (other types draw whatever the buffer holds):
+ *   1, 12  (0AFE) a class whose 6902h nibble is 13: format 106h with the
+ *          parent's name; else with a parent format 111h (who, parent's
+ *          name), without one 124h (who);
+ *   2      (0B6D) 80h: copy 141h; 40h: copy 15Dh; else 17Bh or 186h (by the
+ *          unit's own 6902h nibble) formatted with the unit's name;
+ *   3, 6   (0B5E / 0C3F) 131h / 232h with the name block and block + 7;
+ *   4      (0C4F) 242h with the text 1B98h[] of the flight record's word
+ *          (far pointer [7222h]) at +38h + 2 * unit;
+ *   5      (0C0C) 205h with the text 1B3Eh[unit];
+ *   7      (0C1C) with a parent 217h (parent's name, who), else 223h (who);
+ *   8      (0C6B) the first event: 24Eh with the name of the current unit's
+ *          ([71ECh]) parent, or its class when it has none (kept at
+ *          [bp-86h]); later events: copy 260h and append 26Eh, 276h, 283h,
+ *          28Ch or 29Ah by the flight record's result (+26h) and, for 2,
+ *          its +28h and the byte [6440h];
+ *   10     (0BE9) with a parent 1DFh (parent's name, who), else 1F5h (who);
+ *   11     (0BB3) copy 193h and append 1A3h (80h) or 1C0h (40h).
+ * Formats go through 521C (sprintf), copies through 5150 (strcpy), appends
+ * through 5110 (strcat); all plain RET, the caller drops the arguments.
+ * Then the caption box: colour [6DA6h] = E2h and 49D2 fills (6DA2h, 8Ch,
+ * B4h, EEh, C3h); the context gets [6DAEh] = 3, [6DA6h] = Fh, [6DA8h] = 8;
+ * 1A75 draws the buffer wrapped (6DA2h, buffer, 8Ch, B4h, 6Ah, 8, 1); and
+ * the far 05FA:24CC (1, 8Ch, B4h, 0, 8Ch, B4h, 6Eh, 10h) puts the box on
+ * the screen. Its AX is the routine's. */
+static int end_draw_event_caption(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { EVENT = 4, INDEX = 6, WHO = -4, NAMES = -2, UNIT = -0x88, UNIT_REC = -0x8A, KEPT = -0x86, BUF = -0x84 };
+#define CDB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while(0)
+#define CDCMP(a_,b_,w_) alu_op(c,7,(a_),(b_),(w_))
+#define CDRUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call_);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define CDNEAR(at_,target_,ret_) do { SM4_NEED(1,(at_)); CDRUN(guest_call_pop(m,(target_),(ret_),0)); } while(0)
+#define CDFAR(at_,ret_) do { SM4_NEED(1,(at_)); CDRUN(guest_call_far(m,(at_),(ret_))); } while(0)
+#define CDBUF() (c->r[R_AX] = (uint16_t)(c->r[R_BP] + BUF))
+#define CDSHL1(r_) (c->r[(r_)] = (uint16_t)x86_shift(c, 4, c->r[(r_)], 1, 1))
+#define CDDROP(n_) (c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], (n_), 1))
+    if (!room(c, 19)) return 0;
+    CDB(19, 0x0A98);
+    x86_push_reg(c, R_BP); c->r[R_BP] = c->r[R_SP];
+    c->r[R_SP] = (uint16_t)alu_op(c, 5, c->r[R_SP], 0x8A, 1);
+    x86_push_reg(c, R_SI);
+    c->r[R_BX] = bp_get(c, EVENT);
+    set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + 5)));
+    c->r[R_AX] = (uint16_t)alu_op(c, 4, c->r[R_AX], 0x7F, 1);
+    bp_put(c, UNIT, c->r[R_AX]);
+    set_r8(c, R_CL, 4); c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], get_r8(c, R_CL), 1);
+    c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], 0x56EA, 1);
+    bp_put(c, UNIT_REC, c->r[R_AX]);
+    set_r8(c, R_CL, 5); c->r[R_AX] = bp_get(c, UNIT);
+    c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], get_r8(c, R_CL), 1);
+    c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], 0x179E, 1);
+    bp_put(c, NAMES, c->r[R_AX]);
+    alu_logic(c, ds_get8(c, (uint16_t)(c->r[R_BX] + 4)) & 0x80, 0); if (x86_cond(c, 4)) goto who_40;
+    CDB(2, 0x0ACC); bp_put(c, WHO, 0xE0); goto kind;
+who_40:
+    CDB(2, 0x0AD3);
+    alu_logic(c, ds_get8(c, (uint16_t)(c->r[R_BX] + 4)) & 0x40, 0); if (x86_cond(c, 4)) goto who_class;
+    CDB(2, 0x0AD9); bp_put(c, WHO, 0xF2); goto kind;
+who_class:
+    CDB(6, 0x0AE0);
+    c->r[R_BX] = bp_get(c, UNIT_REC);
+    set_r8(c, R_BL, ds_get8(c, (uint16_t)(c->r[R_BX] + 0x0E)));
+    set_r8(c, R_BH, (uint8_t)alu_op(c, 5, get_r8(c, R_BH), get_r8(c, R_BH), 0));
+    CDSHL1(R_BX);
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0x6DFA));
+    bp_put(c, WHO, c->r[R_AX]);
+kind:
+    CDB(4, 0x0AF2);
+    c->r[R_BX] = bp_get(c, EVENT);
+    set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + 4)));
+    c->r[R_AX] = (uint16_t)alu_op(c, 4, c->r[R_AX], 0x3F, 1);
+    /* 0D04: the switch (its table at cs:0D12 follows the dispatch). */
+    CDB(3, 0x0D04);
+    c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1);
+    CDCMP(c->r[R_AX], 0x0B, 1); if (x86_cond(c, 7)) goto draw;
+    CDB(3, 0x0D0A);
+    CDSHL1(R_AX);
+    { const uint16_t t_ = c->r[R_AX]; c->r[R_AX] = c->r[R_BX]; c->r[R_BX] = t_; }
+    {
+        const uint16_t target = seg_read16(c, c->seg[S_CS], (uint16_t)(c->r[R_BX] + 0x0D12));
+        switch (target) {
+        case 0x0AFE: goto type_unit;
+        case 0x0B6D: goto type_unit_self;
+        case 0x0B5E: goto type_names_a;
+        case 0x0C4F: goto type_flight_text;
+        case 0x0C0C: goto type_text;
+        case 0x0C3F: goto type_names_b;
+        case 0x0C1C: goto type_parent_who;
+        case 0x0C6B: goto type_result;
+        case 0x0D2A: goto draw;
+        case 0x0BE9: goto type_who_parent;
+        case 0x0BB3: goto type_flags;
+        default: c->ip = target; return 1;
+        }
+    }
+
+    /* Types 1 and 12 (0AFE). */
+type_unit:
+    CDB(7, 0x0AFE);
+    c->r[R_BX] = bp_get(c, UNIT_REC);
+    set_r8(c, R_BL, ds_get8(c, (uint16_t)(c->r[R_BX] + 0x0E)));
+    c->r[R_BX] = (uint16_t)alu_op(c, 4, c->r[R_BX], 0x7F, 1);
+    set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + 0x6902)));
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 4, get_r8(c, R_AL), 0x0F, 0));
+    CDCMP(get_r8(c, R_AL), 0x0D, 0); if (x86_cond(c, 5)) goto unit_parent;
+    CDB(6, 0x0B12);
+    c->r[R_BX] = bp_get(c, UNIT_REC); c->r[R_BX] = ds_get(c, c->r[R_BX]); CDSHL1(R_BX);
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x6DFA)));
+    c->r[R_AX] = 0x0106; goto format_one;
+unit_parent:
+    CDB(3, 0x0B23);
+    c->r[R_BX] = bp_get(c, UNIT_REC);
+    CDCMP(ds_get(c, c->r[R_BX]), 0, 1); if (x86_cond(c, 4)) goto unit_alone;
+    CDB(5, 0x0B2C);
+    c->r[R_BX] = ds_get(c, c->r[R_BX]); CDSHL1(R_BX);
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x6DFA)));
+    cpu_push16(c, bp_get(c, WHO));
+    c->r[R_AX] = 0x0111;
+    /* 0B3A: sprintf(buffer, format AX, two arguments). */
+format_two:
+    CDB(3, 0x0B3A);
+    cpu_push16(c, c->r[R_AX]); CDBUF(); cpu_push16(c, c->r[R_AX]);
+    CDNEAR(0x0B40, 0x521C, 0x0B43);
+    CDB(2, 0x0B43); CDDROP(8); goto draw;
+unit_alone:
+    CDB(2, 0x0B49);
+    cpu_push16(c, bp_get(c, WHO)); c->r[R_AX] = 0x0124;
+    /* 0B4F: sprintf(buffer, format AX, one argument). */
+format_one:
+    CDB(3, 0x0B4F);
+    cpu_push16(c, c->r[R_AX]); CDBUF(); cpu_push16(c, c->r[R_AX]);
+    CDNEAR(0x0B55, 0x521C, 0x0B58);
+    CDB(2, 0x0B58); CDDROP(6); goto draw;
+
+    /* Type 3 (0B5E). */
+type_names_a:
+    CDB(6, 0x0B5E);
+    c->r[R_AX] = bp_get(c, NAMES); c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], 7, 1);
+    cpu_push16(c, c->r[R_AX]); cpu_push16(c, bp_get(c, NAMES));
+    c->r[R_AX] = 0x0131; goto format_two;
+
+    /* Type 2 (0B6D). */
+type_unit_self:
+    CDB(3, 0x0B6D);
+    c->r[R_BX] = bp_get(c, EVENT);
+    alu_logic(c, ds_get8(c, (uint16_t)(c->r[R_BX] + 4)) & 0x80, 0); if (x86_cond(c, 4)) goto self_40;
+    CDB(2, 0x0B76); c->r[R_AX] = 0x0141; goto copy_text;
+self_40:
+    CDB(2, 0x0B7B);
+    alu_logic(c, ds_get8(c, (uint16_t)(c->r[R_BX] + 4)) & 0x40, 0); if (x86_cond(c, 4)) goto self_named;
+    CDB(1, 0x0B81); c->r[R_AX] = 0x015D;
+copy_text:
+    CDB(3, 0x0B84);
+    cpu_push16(c, c->r[R_AX]); CDBUF(); cpu_push16(c, c->r[R_AX]);
+    CDNEAR(0x0B8A, 0x5150, 0x0B8D);
+    CDB(1, 0x0B8D); goto drop_two;
+self_named:
+    CDB(5, 0x0B8F);
+    c->r[R_BX] = bp_get(c, UNIT);
+    set_r8(c, R_AL, ds_get8(c, (uint16_t)(c->r[R_BX] + 0x6902)));
+    set_r8(c, R_AL, (uint8_t)alu_op(c, 4, get_r8(c, R_AL), 0x0F, 0));
+    CDCMP(get_r8(c, R_AL), 0x0D, 0); if (x86_cond(c, 5)) goto self_other;
+    CDB(4, 0x0B9D);
+    CDSHL1(R_BX); cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x6DFA)));
+    c->r[R_AX] = 0x017B; goto format_one;
+self_other:
+    CDB(4, 0x0BA8);
+    CDSHL1(R_BX); cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x6DFA)));
+    c->r[R_AX] = 0x0186; goto format_one;
+
+    /* Type 11 (0BB3). */
+type_flags:
+    CDB(4, 0x0BB3);
+    c->r[R_AX] = 0x0193; cpu_push16(c, c->r[R_AX]); CDBUF(); cpu_push16(c, c->r[R_AX]);
+    CDNEAR(0x0BBC, 0x5150, 0x0BBF);
+    CDB(5, 0x0BBF);
+    c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = bp_get(c, EVENT);
+    alu_logic(c, ds_get8(c, (uint16_t)(c->r[R_BX] + 4)) & 0x80, 0); if (x86_cond(c, 4)) goto flags_40;
+    CDB(2, 0x0BCA); c->r[R_AX] = 0x01A3; goto append_text;
+flags_40:
+    CDB(2, 0x0BCF);
+    alu_logic(c, ds_get8(c, (uint16_t)(c->r[R_BX] + 4)) & 0x40, 0); if (x86_cond(c, 5)) goto flags_40_text;
+    CDB(1, 0x0BD5); goto draw;
+flags_40_text:
+    CDB(1, 0x0BD8); c->r[R_AX] = 0x01C0;
+    /* 0BDB: strcat(buffer, AX). */
+append_text:
+    CDB(3, 0x0BDB);
+    cpu_push16(c, c->r[R_AX]); CDBUF(); cpu_push16(c, c->r[R_AX]);
+    CDNEAR(0x0BE1, 0x5110, 0x0BE4);
+drop_two:
+    CDB(3, 0x0BE4);
+    c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); goto draw;
+
+    /* Type 10 (0BE9). */
+type_who_parent:
+    CDB(3, 0x0BE9);
+    c->r[R_BX] = bp_get(c, UNIT_REC);
+    CDCMP(ds_get(c, c->r[R_BX]), 0, 1); if (x86_cond(c, 4)) goto who_no_parent;
+    CDB(6, 0x0BF2);
+    c->r[R_BX] = ds_get(c, c->r[R_BX]); CDSHL1(R_BX);
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x6DFA)));
+    cpu_push16(c, bp_get(c, WHO));
+    c->r[R_AX] = 0x01DF; goto format_two;
+who_no_parent:
+    CDB(3, 0x0C03);
+    cpu_push16(c, bp_get(c, WHO)); c->r[R_AX] = 0x01F5; goto format_one;
+
+    /* Type 5 (0C0C). */
+type_text:
+    CDB(5, 0x0C0C);
+    c->r[R_BX] = bp_get(c, UNIT); CDSHL1(R_BX);
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x1B3E)));
+    c->r[R_AX] = 0x0205; goto format_one;
+
+    /* Type 7 (0C1C). */
+type_parent_who:
+    CDB(3, 0x0C1C);
+    c->r[R_BX] = bp_get(c, UNIT_REC);
+    CDCMP(ds_get(c, c->r[R_BX]), 0, 1); if (x86_cond(c, 4)) goto parent_who_alone;
+    CDB(6, 0x0C25);
+    cpu_push16(c, bp_get(c, WHO));
+    c->r[R_BX] = ds_get(c, c->r[R_BX]); CDSHL1(R_BX);
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x6DFA)));
+    c->r[R_AX] = 0x0217; goto format_two;
+parent_who_alone:
+    CDB(3, 0x0C36);
+    cpu_push16(c, bp_get(c, WHO)); c->r[R_AX] = 0x0223; goto format_one;
+
+    /* Type 6 (0C3F). */
+type_names_b:
+    CDB(6, 0x0C3F);
+    c->r[R_AX] = bp_get(c, NAMES); c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], 7, 1);
+    cpu_push16(c, c->r[R_AX]); cpu_push16(c, bp_get(c, NAMES));
+    c->r[R_AX] = 0x0232; goto format_two;
+
+    /* Type 4 (0C4F). */
+type_flight_text:
+    CDB(9, 0x0C4F);
+    c->r[R_SI] = bp_get(c, UNIT); CDSHL1(R_SI);
+    c->r[R_BX] = ds_get(c, 0x7222); c->seg[S_ES] = ds_get(c, 0x7224);
+    c->r[R_BX] = (uint16_t)alu_op(c, 0, c->r[R_BX], 0x38, 1);
+    c->r[R_BX] = seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + c->r[R_SI]));
+    CDSHL1(R_BX);
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + 0x1B98)));
+    c->r[R_AX] = 0x0242; goto format_one;
+
+    /* Type 8 (0C6B). */
+type_result:
+    CDB(2, 0x0C6B);
+    CDCMP(bp_get(c, INDEX), 0, 1); if (x86_cond(c, 5)) goto result_later;
+    CDB(5, 0x0C71);
+    set_r8(c, R_CL, 4); c->r[R_BX] = ds_get(c, 0x71EC);
+    c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], get_r8(c, R_CL), 1);
+    CDCMP(ds_get(c, (uint16_t)(c->r[R_BX] + 0x56EA)), 0, 1); if (x86_cond(c, 4)) goto result_class;
+    CDB(2, 0x0C80);
+    c->r[R_BX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0x56EA)); goto result_name;
+result_class:
+    CDB(5, 0x0C86);
+    set_r8(c, R_CL, 4); c->r[R_BX] = ds_get(c, 0x71EC);
+    c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], get_r8(c, R_CL), 1);
+    set_r8(c, R_BL, ds_get8(c, (uint16_t)(c->r[R_BX] + 0x56F8)));
+    set_r8(c, R_BH, (uint8_t)alu_op(c, 5, get_r8(c, R_BH), get_r8(c, R_BH), 0));
+result_name:
+    CDB(6, 0x0C94);
+    CDSHL1(R_BX);
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0x6DFA));
+    bp_put(c, KEPT, c->r[R_AX]);
+    cpu_push16(c, c->r[R_AX]); c->r[R_AX] = 0x024E; goto format_one;
+result_later:
+    CDB(4, 0x0CA5);
+    c->r[R_AX] = 0x0260; cpu_push16(c, c->r[R_AX]); CDBUF(); cpu_push16(c, c->r[R_AX]);
+    CDNEAR(0x0CAE, 0x5150, 0x0CB1);
+    CDB(6, 0x0CB1);
+    c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = ds_get(c, 0x7222); c->seg[S_ES] = ds_get(c, 0x7224);
+    c->r[R_AX] = seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x26));
+    c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1); if (x86_cond(c, 4)) goto result_1;
+    CDB(2, 0x0CBE);
+    c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1); if (x86_cond(c, 4)) goto result_2;
+    CDB(2, 0x0CC1);
+    c->r[R_AX] = (uint16_t)alu_dec(c, c->r[R_AX], 1); if (x86_cond(c, 4)) goto result_3;
+    CDB(1, 0x0CC4); goto draw;
+result_1:
+    CDB(2, 0x0CC6); c->r[R_AX] = 0x026E; goto append_text;
+result_2:
+    CDB(3, 0x0CCC);
+    c->r[R_BX] = ds_get(c, 0x7222); c->seg[S_ES] = ds_get(c, 0x7224);
+    CDCMP(seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x28)), 0, 1); if (x86_cond(c, 5)) goto result_2b;
+    CDB(2, 0x0CD7);
+    CDCMP(ds_get8(c, 0x6440), 0, 0); if (x86_cond(c, 4)) goto result_2b;
+    CDB(2, 0x0CDE); c->r[R_AX] = 0x0276; goto append_text;
+result_2b:
+    CDB(2, 0x0CE4);
+    CDCMP(seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x28)), 0, 1); if (x86_cond(c, 5)) goto result_2d;
+    CDB(2, 0x0CEB);
+    CDCMP(ds_get8(c, 0x6440), 0, 0); if (x86_cond(c, 5)) goto result_2d;
+    CDB(2, 0x0CF2); c->r[R_AX] = 0x0283; goto append_text;
+result_2d:
+    CDB(2, 0x0CF8); c->r[R_AX] = 0x028C; goto append_text;
+result_3:
+    CDB(2, 0x0CFE); c->r[R_AX] = 0x029A; goto append_text;
+
+    /* 0D2A: the caption box cleared, the caption drawn into it, the box shown. */
+draw:
+    CDB(11, 0x0D2A);
+    ds_put(c, 0x6DA6, 0xE2);
+    c->r[R_AX] = 0xC3; cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0xEE; cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0xB4; cpu_push16(c, c->r[R_AX]);
+    c->r[R_CX] = 0x8C; cpu_push16(c, c->r[R_CX]);
+    c->r[R_DX] = 0x6DA2; cpu_push16(c, c->r[R_DX]);
+    CDNEAR(0x0D44, 0x49D2, 0x0D47);
+    CDB(18, 0x0D47);
+    CDDROP(0x0A);
+    ds_put(c, 0x6DAE, 3); ds_put(c, 0x6DA6, 0x0F);
+    c->r[R_AX] = 1; cpu_push16(c, c->r[R_AX]);
+    c->r[R_CX] = 8; ds_put(c, 0x6DA8, c->r[R_CX]); cpu_push16(c, c->r[R_CX]);
+    c->r[R_CX] = 0x6A; cpu_push16(c, c->r[R_CX]);
+    c->r[R_CX] = 0xB4; cpu_push16(c, c->r[R_CX]);
+    c->r[R_DX] = 0x8C; cpu_push16(c, c->r[R_DX]);
+    c->r[R_BX] = (uint16_t)(c->r[R_BP] + BUF); cpu_push16(c, c->r[R_BX]);
+    c->r[R_BX] = 0x6DA2; cpu_push16(c, c->r[R_BX]);
+    CDNEAR(0x0D77, 0x1A75, 0x0D7A);
+    CDB(15, 0x0D7A);
+    CDDROP(0x0E);
+    c->r[R_AX] = 0x10; cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0x6E; cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0xB4; cpu_push16(c, c->r[R_AX]);
+    c->r[R_CX] = 0x8C; cpu_push16(c, c->r[R_CX]);
+    c->r[R_DX] = (uint16_t)alu_op(c, 5, c->r[R_DX], c->r[R_DX], 1); cpu_push16(c, c->r[R_DX]);
+    cpu_push16(c, c->r[R_AX]); cpu_push16(c, c->r[R_CX]);
+    c->r[R_AX] = 1; cpu_push16(c, c->r[R_AX]);
+    CDFAR(0x0D96, 0x0D9B);
+    CDB(5, 0x0D9B);
+    CDDROP(0x10);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP]; c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef CDB
+#undef CDCMP
+#undef CDRUN
+#undef CDNEAR
+#undef CDFAR
+#undef CDBUF
+#undef CDSHL1
+#undef CDDROP
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "END.EXE", END_47304, 0x0000, 0x0A98, end_draw_event_caption, "format and draw a replay event caption", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x0D0C, player_load_palette, "palette to its copy and the DAC (black during a fade)", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x4657, vgame_release_place, "place a released countermeasure in a slot and announce it", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x2A01, end_promotion_announce, "announce a promotion, a held-back one or a plain debrief", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x34EA, end_debrief_score_step, "debrief score: next log record, or scale and return the total", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x5987, end_format_integer, "the formatter's integer conversion", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x372F, end_landing_fade_rates, "landing pictures and palette fade rates", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x644A, start_roster_hover_detail, "roster hover: detail strip, colours, record sheet", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD9FE, vgame_compose_defer_model, "measure an object from the eye, cull it and defer it for drawing", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x099D, end_icon_place_draw, "place and draw a debriefing map icon", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x3887, end_landed_screen, "show the landed screen: picture, three panels, four animation frames, prompt", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x5825, end_format_string_length, "the formatter's string length", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x9EB3, start_format_string_field, "the formatter's string field", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xC9AE, vgame_key_bay_doors_and_tail, "8 key bay doors, then the key dispatcher tail: map pan, nav cursor, release and lamps", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0xA015, start_format_integer, "the formatter's integer conversion", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x7663, vgame_release_store, "release the selected store", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x2696, start_objective_strike_line, "objective line for a photograph or destroy target", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x825D, vgame_display_select, "put a multi-function display up", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x5BF0, start_world_options, "world options: theatre, tension, mission, roster save and exit wipe", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x01C1, vgame_hud_bitmap_recolour, "recolour three HUD bitmap rectangles for the current pilot mode", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x00F0, vgame_flight_start, "flight start-up: mission, models, mode, sound file, palette, cockpit pages and HUD recolour (tail 01C1)", 1 },
     { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x0696, player_poll_controls, "poll intro controls and dispatch pending keys", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x020F, start_frontend_menu, "dispatch the front-end menu until launch is accepted", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x7272, start_roster_save, "save the roster: header byte and ten pilot records to Roster.Fil", 1 },

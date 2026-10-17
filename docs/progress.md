@@ -41,12 +41,19 @@ stays on the roadmap.
   three-instruction helper does not count like the flight model. A routine
   counts as named only when it has a named, explained matched equivalent in
   the repository; name leads from `tools/reimp_names.py` do not count until
-  they are checked and used. Refresh the census figures with
-  `py tools/progress.py --census <reimp_names.py output>`. Explicitly proved
-  spans also credit wholly covered interior census routines once (START
-  `64E5` includes six interiors, 518 bytes); a static walk into shared code
-  earns no additional credit. The refresh requires the span's matched entry
-  to remain registered.
+  they are checked and used. **Credit is by byte** (owner, 16 October 2026):
+  a census byte counts once it lies inside an original instruction that a
+  matched body runs at its own level, as measured by the lockstep. So a body
+  that names only a census entry's RET earns that RET, a body that runs a
+  shared tail or another entry's code inline earns those bytes once, and a
+  row holding library code the game never runs (printf's `%n`, `%p` and
+  floating-point arms) is credited only for the arm it uses. Fixture states
+  count alongside routes, as for the proofs themselves. Refresh after every
+  batch: run `func_lockstep` with `F117_NAMED_COVER=FILE` (one file per shard
+  in a directory; it appends one line per matched routine), then
+  `py tools/progress.py --census <reimp_names.py output> --named-cover DIR
+  --data <game directory>`. The refresh stops if any matched routine has no
+  coverage line.
 - **Phase 3, fixes:** fixes available in `src/fixes/fixes.c` over the
   actionable reports catalogued as `### Dn.` in `docs/bugs.md`. An explicit
   `Disposition. Closed:` excludes an unestablished historical report;

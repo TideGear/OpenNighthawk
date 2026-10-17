@@ -36,7 +36,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import progress  # noqa: E402
 
 
-def load_coverage(directory):
+def load_coverage(directory, images=None):
+    """With `images` ({"MODULE.EXE": loaded module}), a line counts by linear address only when its
+    instruction bytes are the program's own there: a packed program's unpacker runs from a copy
+    whose linear addresses overlap the unpacked code (MPS_LOGO 027A:0022 is linear 0x027C2, which
+    is also 0146:1362 of the unpacked image)."""
     entries = collections.defaultdict(set)       # (module, segment, offset) -> routes that ran it
     inside = collections.defaultdict(list)       # module -> [(segment, offset)]
     linear = collections.defaultdict(dict)       # module -> {linear address: routes}
@@ -49,7 +53,13 @@ def load_coverage(directory):
                 if not entries[key]:
                     inside[parts[0]].append((key[1], int(key[2], 16)))
                 entries[key].add(route)
-                linear[parts[0]].setdefault(int(key[1], 16) * 16 + int(key[2], 16), set()).add(route)
+                at = int(key[1], 16) * 16 + int(key[2], 16)
+                m = (images or {}).get(parts[0])
+                if m is not None and len(parts) >= 5:
+                    off = m.off(int(key[1], 16), int(key[2], 16))
+                    if bytes.fromhex(parts[4]) != m.image[off:off + len(parts[4]) // 2]:
+                        continue
+                linear[parts[0]].setdefault(at, set()).add(route)
     return entries, inside, linear
 
 
@@ -58,10 +68,19 @@ def main():
     ap.add_argument("--census", required=True, help="reimp_names.py TSV")
     ap.add_argument("--coverage", required=True, help="directory of *.cov files; use fresh interpreter captures for complete route coverage")
     ap.add_argument("--out", help="write the entries routes enter, largest first, as TSV")
+    ap.add_argument("--data", help="the game directory: judge rows with no region only by the program's own bytes")
     args = ap.parse_args()
 
     matched = progress.matched_addresses()
-    entries, inside, linear = load_coverage(args.coverage)
+    images = None
+    if args.data:
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "recompiler"))
+        from modules import load_all
+        images = {m.name.upper() if m.name.upper().endswith(".EXE") else m.name.upper() + ".EXE": m
+                  for m in load_all(args.data)}
+    else:
+        print("note: without --data, a packed program's unpacker can look like its own code at the same linear address")
+    entries, inside, linear = load_coverage(args.coverage, images)
     reached, unseen, partial = [], [], []
     regionless = {"entered": [], "interior": [], "unseen": []}
     for line in list(open(args.census))[1:]:
