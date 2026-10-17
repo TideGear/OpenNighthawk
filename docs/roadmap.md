@@ -68,11 +68,11 @@ make (Phase 4).
   early for its autoexec); delivery there is not pursued (Settled, below).
 - **The game version verified:** GOG's installer (build 28044) with the 473.04
   update; Steam's release is byte-identical (`tools/verify_install.py`).
-- **The gate** (`tools/build_recomp.py`): translate, build, unit tests (160),
+- **The gate** (`tools/build_recomp.py`): translate, build, unit tests (171),
   coverage, both engines on every route, instruction lockstep under both
   timing profiles, matched-routine lockstep at three seeds, and the
   routes-only and event-limit checks. About 21-30 minutes when every
-  interpreter route is verified fresh (latest 1,655 s); costs and what was
+  interpreter route is verified fresh (latest 1,611 s); costs and what was
   optimised: [repeated-processes.md](repeated-processes.md).
 - **Rendered speaker and speech audio.** PIT counter 2 follows the 8254 model;
   speaker music matches DOSBox-X (envelope 0.87, spectral 0.92-0.93, level
@@ -151,9 +151,9 @@ not the recompilation:
       [../handoff.md](../handoff.md). `tools/reimp_names.py` joins the Reimp's
       census (1,535 functions) with this project's regions as a private lead
       list.
-      **Now:** 933 addresses matched, covering 931 of the census functions and
-      130,245 of 179,213 bytes (P2 74.04%, overall 91.15%).
-      The latest batch (`p2-batch-d`, 16 Oct: 13 routines, 2,809 census
+      **Now:** 944 addresses matched, covering 942 of the census functions and
+      132,307 of 179,213 bytes (P2 75.14%, overall 91.48%).
+      The latest batch (`p2-batch-e`, 16 Oct: 11 routines, 2,062 census
       bytes) is included in these figures; see the handoff.
       **What is left:** `tools/census_reach.py` separates code with run
       evidence from code without (gate coverage logs only interpreted
@@ -195,6 +195,34 @@ routes alone; *thin* marks one a real route calls only once or a seed barely
 reaches. Candidate drafts can keep private static dossiers
 (`matched_draft.py --dossier`):
 [repeated-processes.md](repeated-processes.md#phase-2-candidate-reading).
+
+### Latest batch: runtime, intro and front end (16 October 2026)
+
+Batch e adds eleven routines / 2,062 census bytes. Each has five seed proofs,
+full instruction coverage, detected mutations (476 total), and exact boot
+(26 checkpoints) and full-cycle (66 checkpoints) proofs. Evidence:
+`D:/f117-gate/p2-batch-e-accept` and the private directories named below.
+
+- VGAME `450A` key dispatch and radar signature: 74 instructions, 40
+  mutations, 275 full-cycle calls (`p2-vgame-450a`).
+- PLAYER `0738` timer-driven picture, fade and stream-position step: 53
+  instructions, 42 mutations, 7,355 calls (`p2-player-0738`).
+- START `038C` launch prompt and animation: 88 instructions, 45 mutations,
+  one call; `3CEA` modal dialog and backdrop restore: 83 instructions, 40
+  mutations, one call; `7272` roster save: 69 instructions, 46 mutations,
+  three calls (`p2-start-{038c,3cea,7272}`). D11 remains a DOS-layer option.
+- START `A31A` file-handle write with text translation: 77 instructions,
+  53 mutations, six calls (`p2-start-a31a`).
+- MPS_LOGO `00DA:0352` sound-overlay loader: 98 instructions, 66 mutations,
+  one call; `0146:0BCC` stream refill: 65 instructions, 46 mutations, 25
+  calls (`p2-logo-{00da-0352,0bcc}`).
+- C runtime initialization: START `8FC6` / END `4EBC` reuse `sm4_cinit`
+  (84 instructions, 26 mutations each, two / one calls); MPS_LOGO
+  `0146:010E` is the far-code variant (82 instructions, 46 mutations, one
+  call). The harness recognizes the three fatal-hook jump targets as the
+  end of the named region; original code still executes the fatal exit.
+  The overlay loader's DOS-exit arm has the same scoped completion rule.
+  Proofs `p2-start-8fc6`, `p2-end-4ebc`, `p2-logo-010e`.
 
 ### Matched: VGAME flight, weapons and world
 

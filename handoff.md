@@ -8,17 +8,17 @@ checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 [docs/repeated-processes.md](docs/repeated-processes.md) (every process we run
 more than once, what it costs). State as of 16 October 2026.
 
-16 October (evening): the owner asked for a handoff, commit, push and stop. `p2-batch-d` is landed;
-eleven more routines are privately proved and waiting (below). All agents were stopped; nothing is
-left running. Standing goal from the owner: complete the roadmap's plan, Phase 2 first.
+16 October: resumed the standing Phase 2 plan. `p2-batch-e` is gated and landed;
+the next privately proved routines are listed below. Standing goal from the owner:
+complete the roadmap's plan, Phase 2 first.
 
 This file holds only the current state and standing practice, not a
 session log. Earlier detail is in `git log -p handoff.md`.
 
 ## Current state (16 October)
 
-Scoreboard: P1 100.00%, P2 74.04%, P3 96.33%, All 91.15% (P4 is no longer scored)
-(`py tools/progress.py --title`). Phase 2: 931 census functions / 130,245 bytes.
+Scoreboard: P1 100.00%, P2 75.14%, P3 96.33%, All 91.48% (P4 is no longer scored)
+(`py tools/progress.py --title`). Phase 2: 942 census functions / 132,307 bytes.
 
 ### Presentation: latest (15 October, evening)
 
@@ -104,28 +104,25 @@ times them (`F117_PRESENT_CLOCK=raw` for the old clock; opt-in knobs `F117_PRESE
 
 ### Phase 2
 
-- Latest batch (16 Oct, evening): **`p2-batch-d` is gated and landed**, 13 routines / 2,809 census
-  bytes: START `A230`, `73CE`, `6D07`, `615C`; VGAME `114A:0070`, `0300`; MPS_LOGO `0146:1510`, `02BA`,
-  `03B6`, `0D72`, `0045:0116`, `006D:05BE`; DSWAP `1520` (names and figures in the roadmap). Five seeds
-  and full coverage each, 657 mutations caught, 26 boot and 66 full-cycle checkpoints exact, 65 optimized
-  seed runs. Gate 1,654.92 s: 160 CTests, 45 identical routes / 44 fresh interpreter sessions, 933 matched
-  routines at three seeds, both timing profiles, routes-only and event limits clean. N=1 259,240 frames /
-  259,166 pairs; boot N=4/9 368/366. Evidence `D:/f117-gate/p2-batch-d-accept/final-gate-verdict.json`.
-  `0FB2:0324` is now `vgame_clip_raster_line_far` (it was mislabelled as the sky bands).
-- **Privately proved, waiting for the next batch** (each has `private-verdict.json`, 26 boot and 66
-  full-cycle checkpoints exact; root audit `D:/f117-gate/audit_proofs.py` passes): MPS_LOGO `00DA:0352`
-  overlay loader (needs a `PROGRAM_ENDS` row `{ "MPS_LOGO.EXE", 0x00DA, 0x0352, 0x043B }` in
-  `tests/func_lockstep.c`, see its `tests-base.c`), VGAME `450A`, START `038C`, MPS_LOGO `0BCC`, PLAYER
-  `0738` (timer hook, 7,355 real calls), START `A31A` (text-mode write), and the `_cinit` family START
-  `8FC6`, END `4EBC`, MPS_LOGO `010E` (needs the `FATAL_JUMPS` table and loop in
-  `program_end_reached()`, all three rows; diff each directory's `tests-base.orig.c` against
-  `tests-base.c`; START/END reuse the existing parameterised `sm4_cinit`). `kit.py integrate` does
-  not carry these harness hunks: apply them by hand. Also proved: START `3CEA` modal dialog and START
-  `7272` roster save (3 real calls). Integrate all of these as `p2-batch-e`: one gate plus N=1 / boot N=4,9 presentation,
-  using `D:/f117-gate/p2-batch-d-accept/{accept,audit-integrated,verdict}.py` as templates.
-- **Stopped early drafts (no proof yet; reuse or restart):** START `020F`, `5BF0`, `6AB3` (only
+- Latest batch (16 Oct): **`p2-batch-e` is gated and landed**, 11 routines / 2,062 census
+  bytes: MPS_LOGO `00DA:0352`, `0146:0BCC`, `0146:010E`; VGAME `450A`; PLAYER `0738`;
+  START `038C`, `A31A`, `8FC6`, `3CEA`, `7272`; END `4EBC` (names and figures in the roadmap).
+  Five seeds and full instruction coverage each, 476 mutations caught, 26 boot and 66 full-cycle
+  checkpoints exact, 55 optimized seed runs. Gate 1,611.36 s: 171 CTests, 45 identical
+  routes / 44 fresh interpreter sessions, 944 matched routines at three seeds, both timing profiles,
+  routes-only and event limits clean. N=1 259,240 frames / 259,166 pairs; boot N=4/9 368/366.
+  Evidence `D:/f117-gate/p2-batch-e-accept/final-gate-verdict.json`.
+  The harness now includes the overlay loader's `PROGRAM_ENDS` row and all three `_cinit`
+  `FATAL_JUMPS` rows; `kit.py integrate` still does not carry private harness changes automatically.
+- **Privately proved, waiting for the next batch:** START `020F` front-end menu loop
+  (`D:/f117-gate/p2-start-020f`): 67 instructions, five seeds, 41 mutations caught,
+  two full-cycle calls, 26 boot and 66 full-cycle checkpoints exact; root audit passed.
+  PLAYER `0696` intro control poll (`D:/f117-gate/p2-player-0696`): 61 instructions,
+  five seeds, 39 mutations caught, 2,310,066 full-cycle calls, both route proofs exact;
+  root audit passed. Its 161-byte watch span includes the RET (160 census bytes).
+- **Stopped early drafts (no proof yet; reuse or restart):** START `5BF0`, `6AB3` (only
   `roster_edit` reaches it), END `3BF4`, `03D9` (D12 sites 0443/0450 may lie inside: decline while D12
-  is on), `2703` (career routes only), PLAYER `0696`, VGAME `00F0`, `7663`. Their directories are
+  is on), `2703` (career routes only), VGAME `00F0`, `7663`. Their directories are
   `D:/f117-gate/p2-<prog>-<ip>`.
 - **Routes other than full_cycle:** `kit.py DIR checkpoints --route NAME` (and `ROUTE=NAME` for
   `finish.sh`) proves a routine on another cached route; `audit_proofs.py` reads the route from the
@@ -204,8 +201,33 @@ transitions, widths by role). Details and the method: docs/progress.md.
    add work outside frame timers and are diagnostics.
 5. **Branch housekeeping:** many local branches are fully merged into `master`. Not merged: `flight-input` (older
    aircraft-traffic draft, superseded by `b41ec9c`; its worktree `D:/f117-wt/span-emitter` has uncommitted edits),
-   `irq-divide-fault` (kept on purpose). `p2-batch-b2`, `p2-batch-c` and `p2-batch-d` are merged; the gate worktree is retained. The stopped presentation WIP branches
+   `irq-divide-fault` (kept on purpose). `p2-batch-b2`, `p2-batch-c`, `p2-batch-d` and `p2-batch-e` are merged; the gate worktree is retained. The stopped presentation WIP branches
    are preserved for history; do not merge them again. Ask the owner before deleting anything.
+
+## Safe scheduling follow-up (16 October, owner request)
+
+The owner asked whether current processes can be optimized or parallelized safely.
+Batch e's active gate was left unchanged. At its interpreter-only tail CPU use
+was 26%; the early pool stays at eight even after coverage frees other workers.
+Private prototype `D:/f117-gate/p2-batch-e-accept/adaptive_pool.py` keeps eight jobs
+during coverage, then permits sixteen, using one executor and a semaphore (no
+cancellation, resubmission or duplicate route work). `test_adaptive_pool.py` /
+`adaptive-pool-verdict.json` prove the 8/8, 8/16 and 1/4 schedules, exactly-once
+jobs, identical results and preserved exceptions. It is **not integrated or
+speed-proven**: trial it as an opt-in on a future batch, comparing every gate
+tally and wall time before changing defaults. Queue analysis (`schedule-analysis.json`)
+puts the observed interpreter wall at 1,346 s and its longest career job at 1,285 s:
+holding job durations fixed, adaptive scheduling saves only about 61 s. This is a
+model, not a measured speed gain, and probably not the first optimization to pursue.
+The earlier always-sixteen overlap trial is still not a demonstrated gain.
+A more promising overlap is presentation after the final build settles, while fresh
+interpreter runs continue: freeze previous baseline runs, require their checkpoints
+and final hashes to match valid cache entries under the current interpreter/route
+keys, then require the fresh gate results to equal those frozen baselines too.
+Keep the fresh gate and every presentation check; use at most 8 interpreter + 16
+presentation workers, with boot N=4/9 after the gate. Fall back to the existing
+sequential process if a valid baseline is unavailable or the runner changes.
+This workflow is a proposal, not implemented or proved; benchmark before adopting.
 
 ## Owner decisions and instructions in force
 
@@ -329,7 +351,7 @@ found so far. Agents work only in their `p2-*` directory. Then:
    `presentation_check --scales 1`, docs, commit, push.
 
 Gate batches in a separate worktree (`D:/f117-wt/gate`, currently on the merged branch
-`p2-batch-d`. Build it once with `build.cmd -DF117R_BUILD_APP=OFF` before the gate, which
+`p2-batch-e`. Build it once with `build.cmd -DF117R_BUILD_APP=OFF` before the gate, which
 needs its `f117cpu_api.dll`) when the owner is testing the main tree's build.
 
 Screening and older method: `tools/matched_draft.py --dossier` (module/seg/ip

@@ -32,14 +32,12 @@ tools/build_recomp.py --data INSTALL --seed-coverage WORK/coverage --jobs 16
 --verify-interp-cache`, started through `D:/f117-gate/affinity_launch.py`
 (below).
 
-**Current figures (16 October 2026):** 142 CTests; 45 routes identical, run
-as 44 sessions; 5,718,848 instruction states under each timing profile; 916
-matched routines at three seeds; reachability and event limits clean. The
-latest batch's full gate took 1269 s, with every interpreter
-session verified fresh. Coverage ran in the first gate (859 s, no new code)
-and was provably empty in the final gate. Evidence:
-`D:/f117-gate/p2-batch-b2-accept/final-gate-verdict.json`. Typical gates take
-about 1,300-2,000 s; the longest career seed chain sets the route time.
+**Current figures (16 October 2026):** 171 CTests; 45 routes identical, run
+as 44 sessions; 5,718,848 instruction states under each timing profile; 944
+matched routines at three seeds; reachability and event limits clean. Batch e's
+full gate took 1,611.36 s, with every interpreter session verified fresh.
+Evidence: `D:/f117-gate/p2-batch-e-accept/final-gate-verdict.json`.
+Typical gates take about 1,300-2,000 s; the longest career seed chain sets the route time.
 
 | Stage | Latest measured | What sets it, what was duplicated | Status |
 |---|---|---|---|
@@ -62,6 +60,21 @@ workers beside coverage: every one of the 44 sessions still ran fresh, all
 source/build work; after the build, 1,329 versus 1,257 s. This is not a
 controlled speed gain, so the default stays at eight. Private proof
 parallelism and write-if-changed builds remain adopted.
+
+**Adaptive interpreter pool (16 Oct, private prototype).** At batch e's
+interpreter-only tail the eight-worker pool used 26% total CPU even though
+coverage had ended. `D:/f117-gate/p2-batch-e-accept/adaptive_pool.py` retains
+eight running jobs during coverage, then permits sixteen through a semaphore
+on the same executor. Scheduling tests require exactly 44 calls, identical
+results, the requested before/after concurrency, idempotent expansion and
+preserved exceptions. All pass (`adaptive-pool-verdict.json`). This is not
+integrated and establishes no real gate speed gain. Queue analysis of this run
+(`schedule-analysis.json`) gives 1,346 s observed interpreter wall and a 1,285 s
+longest job; keeping measured job durations fixed, eight-to-sixteen scheduling
+would save only about 61 s. This estimate ignores changed CPU contention and
+second translation. It may not justify adoption. Overlapping presentation against
+frozen, current-key baselines, still cross-checked by the fresh gate, is a more
+promising future experiment. Every verification remains mandatory.
 
 **What sets the wall time.** `parallel()` prints each stage's wall time,
 work, lower bound (the larger of the longest job and work / workers) and its

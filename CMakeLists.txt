@@ -609,6 +609,28 @@ if(F117R_BUILD_TESTS)
       --only MPS_LOGO.EXE:D72)
     add_test(NAME matched_mps_logo_fread_far COMMAND func_lockstep --states 5000
       --only MPS_LOGO.EXE:116)
+    add_test(NAME matched_logo_load_overlay COMMAND func_lockstep --states 5000
+      --only MPS_LOGO.EXE:352)
+    add_test(NAME matched_vgame_keys_and_signature COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:450A)
+    add_test(NAME matched_start_launch_prompt COMMAND func_lockstep --states 5000
+      --only START.EXE:38C)
+    add_test(NAME matched_logo_fill_stream_buffer COMMAND func_lockstep --states 5000
+      --only MPS_LOGO.EXE:BCC)
+    add_test(NAME matched_player_frame_tick COMMAND func_lockstep --states 5000
+      --only PLAYER.EXE:738)
+    add_test(NAME matched_start_write_file_handle COMMAND func_lockstep --states 5000
+      --only START.EXE:A31A)
+    add_test(NAME matched_start_cinit COMMAND func_lockstep --states 5000
+      --only START.EXE:8FC6)
+    add_test(NAME matched_end_cinit COMMAND func_lockstep --states 5000
+      --only END.EXE:4EBC)
+    add_test(NAME matched_mps_logo_cinit COMMAND func_lockstep --states 5000
+      --only MPS_LOGO.EXE:10E)
+    add_test(NAME matched_start_modal_ask COMMAND func_lockstep --states 5000
+      --only START.EXE:3CEA)
+    add_test(NAME matched_start_roster_save COMMAND func_lockstep --states 5000
+      --only START.EXE:7272)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000

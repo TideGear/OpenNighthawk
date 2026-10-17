@@ -708,8 +708,12 @@ caught real defects:
   are the C; it checks room after the call, since a DOS transfer charges
   time. A call that ends the program (DOS 4Ch) is left to the
   original: the routine stops at the INT. `PROGRAM_ENDS` marks SETUP
-  `0A9F`'s error exit at `0BA0` (AH = 4Ch) as completing the named region;
+  `0A9F`'s error exit at `0BA0` and MPS_LOGO `00DA:0352`'s at `043B`
+  (AH = 4Ch) as completing the named region;
   the original INT still runs and the resulting state is compared.
+  `FATAL_JUMPS` likewise marks only the fatal-hook jump targets of START
+  `8FC6`, END `4EBC` and MPS_LOGO `0146:010E` as named-region completion;
+  the original fatal-exit code still runs and its resulting state is compared.
   In the harness INT 21h and 16h
   answer as port reads do (AX from the call count, a random carry and
   zero flag); through the vector table, which is the image's first bytes
@@ -730,7 +734,7 @@ live game in a window (a diagnostic, not a gate: device state is not in the
 snapshot). `f117run --dump LINEAR:LENGTH` prints registers and memory at the
 end of a run for comparing two engines at a chosen clock.
 
-933 addresses are matched in all seven programs (the census totals are in
+944 addresses are matched in all seven programs (the census totals are in
 [roadmap.md](roadmap.md)). The programs carry byte-identical copies of the C
 runtime helpers (string and block copies, the 32-bit shifts, multiply and
 divide), so one matched routine serves several addresses. MPS_LOGO carries
