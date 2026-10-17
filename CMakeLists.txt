@@ -631,6 +631,10 @@ if(F117R_BUILD_TESTS)
       --only START.EXE:3CEA)
     add_test(NAME matched_start_roster_save COMMAND func_lockstep --states 5000
       --only START.EXE:7272)
+    add_test(NAME matched_start_frontend_menu COMMAND func_lockstep --states 5000
+      --only START.EXE:20F)
+    add_test(NAME matched_player_poll_controls COMMAND func_lockstep --states 5000
+      --only PLAYER.EXE:696)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000

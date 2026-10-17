@@ -32,11 +32,13 @@ tools/build_recomp.py --data INSTALL --seed-coverage WORK/coverage --jobs 16
 --verify-interp-cache`, started through `D:/f117-gate/affinity_launch.py`
 (below).
 
-**Current figures (16 October 2026):** 171 CTests; 45 routes identical, run
-as 44 sessions; 5,718,848 instruction states under each timing profile; 944
-matched routines at three seeds; reachability and event limits clean. Batch e's
-full gate took 1,611.36 s, with every interpreter session verified fresh.
-Evidence: `D:/f117-gate/p2-batch-e-accept/final-gate-verdict.json`.
+**Current figures (16 October 2026):** 173 CTests; 45 routes identical, run
+as 44 sessions; 5,718,848 instruction states under each timing profile; 946
+matched routines at three seeds; reachability and event limits clean. Batch f's
+full gate took 1,781.97 s, with every interpreter session verified fresh.
+All acceptance processes, including N=1 and boot N=4/9 presentation, finished
+in 1,836.51 s using the overlap below. Evidence:
+`D:/f117-gate/p2-batch-f-accept/final-gate-verdict.json`.
 Typical gates take about 1,300-2,000 s; the longest career seed chain sets the route time.
 
 | Stage | Latest measured | What sets it, what was duplicated | Status |
@@ -72,9 +74,27 @@ integrated and establishes no real gate speed gain. Queue analysis of this run
 (`schedule-analysis.json`) gives 1,346 s observed interpreter wall and a 1,285 s
 longest job; keeping measured job durations fixed, eight-to-sixteen scheduling
 would save only about 61 s. This estimate ignores changed CPU contention and
-second translation. It may not justify adoption. Overlapping presentation against
-frozen, current-key baselines, still cross-checked by the fresh gate, is a more
-promising future experiment. Every verification remains mandatory.
+second translation. It may not justify adoption. Presentation overlap against
+frozen, current-key baselines has now passed the checks below. Every verification
+remains mandatory.
+
+**Presentation beside the interpreter tail (16 Oct, adopted batch practice).**
+The private acceptance wrapper `D:/f117-gate/p2-batch-f-accept/overlap_accept.py`
+freezes existing baselines and validates them against current interpreter/route
+cache keys, full checkpoints/final hashes and every route milestone. After the
+gate's final build settles, N=1 uses a frozen runner and baselines on 16 workers
+beside the eight fresh interpreter workers, under the existing 24-CPU affinity.
+Boot N=4/9 starts after the gate. Every command/check is retained. Before accepting,
+all 44 fresh interpreter sessions must match the frozen baselines at every
+checkpoint/final and milestone; all frozen file and runner hashes must still match.
+Five deliberate faults are rejected (wrong final, wrong checkpoints, missing
+final, changed frozen file, stale result claimed as fresh). Evidence:
+`overlap-guards-verdict.json`, `fresh-baseline-verdict.json`, `overlap-verdict.json`.
+Batch f: gate 1,781.97 s, total acceptance 1,836.51 s;
+N=1 started at +1,087.12 s. These are observed
+concurrent timings, not a controlled speed comparison against batch e. Sequential
+checking remains the fallback if no valid keyed baseline is available. No change
+to the gate's default worker count or fresh interpreter verification.
 
 **What sets the wall time.** `parallel()` prints each stage's wall time,
 work, lower bound (the larger of the longest job and work / workers) and its

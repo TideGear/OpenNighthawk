@@ -59449,7 +59449,180 @@ done:
 #undef XB
 }
 
+/* START 020F, the front end's menu loop. The far record [CBD8] and current
+ * pilot [CACA]+4Eh select the initial event (4 instead of 0). Event 0 draws
+ * picture 5/008Dh when the redraw byte is set, then polls the 6F42h hit boxes
+ * until the answer differs from 63h. Events 1..4 restore the pointer backdrop
+ * and enter the world, pilot, mission or briefing dialog. Their answers become
+ * the next event. Event 5 asks to launch; its AL is the exit byte and the event
+ * is reset to 0. Other events simply repeat. All callees return near without
+ * popping arguments. BP-2 is the redraw byte (always 1 here), BP-4 the event,
+ * BP-6 the exit byte. The result is the launch callee's AX, preserved by the
+ * final byte comparison. Every nested call is bounded by the next event. */
+static int start_frontend_menu(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+    enum { REDRAW=-2, EVENT=-4, EXIT_BYTE=-6 };
+#define MB(n_,at_) do { SM4_NEED((n_),(at_));c->icount+=(n_); } while(0)
+#define MC(at_,to_,ret_) do { SM4_NEED(1,(at_)); \
+    const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=guest_call_pop(m,(to_),(ret_),0); \
+    m->run_until=until_;if(!returned_)return 1; } while(0)
+    if(!room(c,9))return 0;
+    MB(9,0x020F);
+    frame_open(c,6);
+    bp_put8(c,REDRAW,1);bp_put(c,EVENT,0);bp_put8(c,EXIT_BYTE,0);
+    c->r[R_BX]=ds_get(c,0xCBD8);c->seg[S_ES]=ds_get(c,0xCBDA);
+    alu_op(c,7,seg_read16(c,c->seg[S_ES],c->r[R_BX]),0,1);
+    if(x86_cond(c,5))goto initial_event;
+    MB(3,0x022C);
+    c->r[R_BX]=ds_get(c,0xCACA);c->seg[S_ES]=ds_get(c,0xCACC);
+    alu_op(c,7,seg_read16(c,c->seg[S_ES],(uint16_t)(c->r[R_BX]+0x4E)),0,1);
+    if(x86_cond(c,4))goto repeat;
+initial_event:
+    MB(2,0x0237);bp_put(c,EVENT,4);goto repeat;
+menu:
+    MB(2,0x023E);
+    alu_op(c,7,bp_get(c,EVENT),0,1);
+    if(x86_cond(c,5))goto dispatch;
+    MB(2,0x0244);
+    alu_op(c,7,bp_get8(c,REDRAW),0,0);
+    if(x86_cond(c,4))goto poll;
+    MB(4,0x024A);
+    c->r[R_AX]=0x008D;x86_push_reg(c,R_AX);
+    c->r[R_AX]=5;x86_push_reg(c,R_AX);
+    MC(0x0252,0x3641,0x0255);
+    MB(2,0x0255);c->r[R_BX]=cpu_pop16(c);c->r[R_BX]=cpu_pop16(c);
+poll:
+    MB(2,0x0257);c->r[R_AX]=0x6F42;x86_push_reg(c,R_AX);
+    MC(0x025B,0x38AC,0x025E);
+    MB(4,0x025E);c->r[R_BX]=cpu_pop16(c);bp_put(c,EVENT,c->r[R_AX]);
+    alu_op(c,7,c->r[R_AX],0x63,1);
+    if(x86_cond(c,4))goto poll;
+dispatch:
+    MB(4,0x0267);bp_put8(c,REDRAW,1);c->r[R_AX]=bp_get(c,EVENT);
+    c->r[R_AX]=(uint16_t)alu_dec(c,c->r[R_AX],1);
+    if(x86_cond(c,4))goto world;
+    MB(2,0x0271);c->r[R_AX]=(uint16_t)alu_dec(c,c->r[R_AX],1);
+    if(x86_cond(c,4))goto pilot;
+    MB(2,0x0274);c->r[R_AX]=(uint16_t)alu_dec(c,c->r[R_AX],1);
+    if(x86_cond(c,4))goto mission;
+    MB(2,0x0277);c->r[R_AX]=(uint16_t)alu_dec(c,c->r[R_AX],1);
+    if(x86_cond(c,4))goto briefing;
+    MB(2,0x027A);c->r[R_AX]=(uint16_t)alu_dec(c,c->r[R_AX],1);
+    if(x86_cond(c,4))goto launch;
+    MB(1,0x027D);goto repeat;
+world:
+    MC(0x027F,0x3989,0x0282);MC(0x0282,0x5BF0,0x0285);
+answer:
+    MB(2,0x0285);bp_put(c,EVENT,c->r[R_AX]);goto repeat;
+pilot:
+    MC(0x028A,0x3989,0x028D);MC(0x028D,0x0FA3,0x0290);
+    MB(1,0x0290);goto answer;
+mission:
+    MC(0x0292,0x3989,0x0295);MC(0x0295,0x0963,0x0298);
+    MB(1,0x0298);goto answer;
+briefing:
+    MC(0x029A,0x3989,0x029D);MC(0x029D,0x623E,0x02A0);
+    MB(1,0x02A0);goto answer;
+launch:
+    MC(0x02A2,0x3989,0x02A5);MC(0x02A5,0x038C,0x02A8);
+    MB(2,0x02A8);bp_put8(c,EXIT_BYTE,get_r8(c,R_AL));bp_put(c,EVENT,0);
+repeat:
+    MB(2,0x02B0);alu_op(c,7,bp_get8(c,EXIT_BYTE),0,0);
+    if(x86_cond(c,4))goto menu;
+    MB(3,0x02B6);frame_close_ret(c);return 1;
+#undef MC
+#undef MB
+}
+
+/* PLAYER 0696: poll the intro's controls and dispatch a waiting key. [2092]
+ * is a pending key for 01F6. A busy frame step [1E7A] first makes request 3
+ * through the loaded driver thunk 02A3:13B9. The settings far pointer [208A]
+ * selects joystick buttons (bit 0 at +72h) and mouse buttons (bit 1).
+ * Either button becomes Escape when no keyboard key is waiting; otherwise
+ * 13A6 reads the keyboard key. 01F6 handles it with [1E7A] held at 1,
+ * then [1E7A] is cleared. All calls return without popping arguments;
+ * the routine saves SI/DI, has no arguments, and returns near. */
+static int player_poll_controls(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+    enum { PENDING=0x2092, BUSY=0x1E7A, SETTINGS=0x208A };
+#define PB(n_,at_) do { SM4_NEED((n_),(at_));c->icount+=(n_); } while(0)
+#define PRUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call_);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define PC(at_,to_,ret_) do { SM4_NEED(1,(at_));PRUN(guest_call_pop(m,(to_),(ret_),0)); } while(0)
+#define PDROP() (c->r[R_SP]=(uint16_t)alu_op(c,0,c->r[R_SP],2,1))
+#define PSETTINGS() do { c->r[R_BX]=ds_get(c,SETTINGS);c->seg[S_ES]=ds_get(c,SETTINGS+2); } while(0)
+    if(!room(c,4))return 0;
+    PB(4,0x0696);x86_push_reg(c,R_DI);x86_push_reg(c,R_SI);
+    alu_op(c,7,ds_get(c,PENDING),0,1);
+    if(x86_cond(c,4))goto busy;
+    PB(1,0x069F);cpu_push16(c,ds_get(c,PENDING));
+    PC(0x06A3,0x01F6,0x06A6);
+    PB(1,0x06A6);PDROP();
+busy:
+    PB(2,0x06A9);alu_op(c,7,ds_get(c,BUSY),0,1);
+    if(x86_cond(c,4))goto joystick;
+    PB(2,0x06B0);c->r[R_AX]=3;x86_push_reg(c,R_AX);
+    SM4_NEED(1,0x06B4);PRUN(guest_call_far(m,0x06B4,0x06B9));
+    PB(1,0x06B9);PDROP();
+joystick:
+    PB(4,0x06BC);c->r[R_SI]=(uint16_t)alu_op(c,5,c->r[R_SI],c->r[R_SI],1);
+    PSETTINGS();alu_logic(c,mem_read8(c,phys(c->seg[S_ES],(uint16_t)(c->r[R_BX]+0x72)))&1,0);
+    if(x86_cond(c,4))goto mouse;
+    PB(2,0x06C9);c->r[R_AX]=1;x86_push_reg(c,R_AX);
+    PC(0x06CD,0x0F1A,0x06D0);
+    PB(4,0x06D0);PDROP();c->r[R_CX]=(uint16_t)alu_op(c,5,c->r[R_CX],c->r[R_CX],1);
+    x86_push_reg(c,R_CX);c->r[R_SI]=c->r[R_AX];
+    PC(0x06D8,0x0F1A,0x06DB);
+    PB(2,0x06DB);PDROP();c->r[R_SI]=(uint16_t)alu_op(c,1,c->r[R_SI],c->r[R_AX],1);
+mouse:
+    PB(3,0x06E0);PSETTINGS();
+    alu_logic(c,mem_read8(c,phys(c->seg[S_ES],(uint16_t)(c->r[R_BX]+0x72)))&2,0);
+    if(x86_cond(c,4))goto keyboard;
+    PC(0x06EB,0x0F47,0x06EE);
+    PB(2,0x06EE);c->r[R_AX]=1;x86_push_reg(c,R_AX);
+    PC(0x06F2,0x0F32,0x06F5);
+    PB(4,0x06F5);PDROP();c->r[R_CX]=(uint16_t)alu_op(c,5,c->r[R_CX],c->r[R_CX],1);
+    x86_push_reg(c,R_CX);c->r[R_DI]=c->r[R_AX];
+    PC(0x06FD,0x0F32,0x0700);
+    PB(3,0x0700);PDROP();c->r[R_DI]=(uint16_t)alu_op(c,1,c->r[R_DI],c->r[R_AX],1);
+    c->r[R_SI]=(uint16_t)alu_op(c,1,c->r[R_SI],c->r[R_DI],1);
+keyboard:
+    PC(0x0707,0x1380,0x070A);
+    PB(3,0x070A);c->r[R_DI]=c->r[R_AX];
+    c->r[R_DI]=(uint16_t)alu_op(c,1,c->r[R_DI],c->r[R_DI],1);
+    if(x86_cond(c,5))goto handle;
+    PB(2,0x0710);c->r[R_SI]=(uint16_t)alu_op(c,1,c->r[R_SI],c->r[R_SI],1);
+    if(x86_cond(c,4))goto done;
+handle:
+    PB(3,0x0714);ds_put(c,BUSY,1);
+    c->r[R_DI]=(uint16_t)alu_op(c,1,c->r[R_DI],c->r[R_DI],1);
+    if(x86_cond(c,4))goto escape;
+    PC(0x071E,0x13A6,0x0721);
+    PB(1,0x0721);goto dispatch;
+escape:
+    PB(1,0x0724);c->r[R_AX]=0x1B;
+dispatch:
+    PB(1,0x0727);x86_push_reg(c,R_AX);
+    PC(0x0728,0x01F6,0x072B);
+    PB(1,0x072B);PDROP();
+done:
+    PB(4,0x072E);ds_put(c,BUSY,0);c->r[R_SI]=cpu_pop16(c);c->r[R_DI]=cpu_pop16(c);
+    near_ret(c);return 1;
+#undef PSETTINGS
+#undef PDROP
+#undef PC
+#undef PRUN
+#undef PB
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x0696, player_poll_controls, "poll intro controls and dispatch pending keys", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x020F, start_frontend_menu, "dispatch the front-end menu until launch is accepted", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x7272, start_roster_save, "save the roster: header byte and ten pilot records to Roster.Fil", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x3CEA, start_modal_ask, "show a dialog, wait for an event other than 63h, put the backdrop back; returns the event", 1 },
     { "matched", "MPS_LOGO.EXE", MPS_LOGO_47304, 0x0146, 0x010E, mps_logo_cinit, "the run-time's start-up", 2 },

@@ -8,7 +8,7 @@ checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 [docs/repeated-processes.md](docs/repeated-processes.md) (every process we run
 more than once, what it costs). State as of 16 October 2026.
 
-16 October: resumed the standing Phase 2 plan. `p2-batch-e` is gated and landed;
+16 October: resumed the standing Phase 2 plan. `p2-batch-f` is gated and landed;
 the next privately proved routines are listed below. Standing goal from the owner:
 complete the roadmap's plan, Phase 2 first.
 
@@ -17,8 +17,8 @@ session log. Earlier detail is in `git log -p handoff.md`.
 
 ## Current state (16 October)
 
-Scoreboard: P1 100.00%, P2 75.14%, P3 96.33%, All 91.48% (P4 is no longer scored)
-(`py tools/progress.py --title`). Phase 2: 942 census functions / 132,307 bytes.
+Scoreboard: P1 100.00%, P2 75.31%, P3 96.33%, All 91.53% (P4 is no longer scored)
+(`py tools/progress.py --title`). Phase 2: 944 census functions / 132,638 bytes.
 
 ### Presentation: latest (15 October, evening)
 
@@ -104,25 +104,28 @@ times them (`F117_PRESENT_CLOCK=raw` for the old clock; opt-in knobs `F117_PRESE
 
 ### Phase 2
 
-- Latest batch (16 Oct): **`p2-batch-e` is gated and landed**, 11 routines / 2,062 census
-  bytes: MPS_LOGO `00DA:0352`, `0146:0BCC`, `0146:010E`; VGAME `450A`; PLAYER `0738`;
-  START `038C`, `A31A`, `8FC6`, `3CEA`, `7272`; END `4EBC` (names and figures in the roadmap).
-  Five seeds and full instruction coverage each, 476 mutations caught, 26 boot and 66 full-cycle
-  checkpoints exact, 55 optimized seed runs. Gate 1,611.36 s: 171 CTests, 45 identical
-  routes / 44 fresh interpreter sessions, 944 matched routines at three seeds, both timing profiles,
-  routes-only and event limits clean. N=1 259,240 frames / 259,166 pairs; boot N=4/9 368/366.
-  Evidence `D:/f117-gate/p2-batch-e-accept/final-gate-verdict.json`.
-  The harness now includes the overlay loader's `PROGRAM_ENDS` row and all three `_cinit`
-  `FATAL_JUMPS` rows; `kit.py integrate` still does not carry private harness changes automatically.
-- **Privately proved, waiting for the next batch:** START `020F` front-end menu loop
-  (`D:/f117-gate/p2-start-020f`): 67 instructions, five seeds, 41 mutations caught,
-  two full-cycle calls, 26 boot and 66 full-cycle checkpoints exact; root audit passed.
-  PLAYER `0696` intro control poll (`D:/f117-gate/p2-player-0696`): 61 instructions,
-  five seeds, 39 mutations caught, 2,310,066 full-cycle calls, both route proofs exact;
-  root audit passed. Its 161-byte watch span includes the RET (160 census bytes).
-- **Stopped early drafts (no proof yet; reuse or restart):** START `5BF0`, `6AB3` (only
+- Latest batch (16 Oct): **`p2-batch-f` is gated and landed**, two routines / 331 census
+  bytes: START `020F` front-end menu and PLAYER `0696` intro control poll. Five seeds each,
+  full instruction coverage, 80 mutations caught, 26 boot checkpoints and 66 full-cycle
+  checkpoints exact (two / 2,310,066 full-cycle calls); ten optimized seed runs.
+  Gate 1,781.97 s: 173 CTests, 45 identical routes / 44 fresh interpreter sessions,
+  946 matched routines at three seeds, both timing profiles, routes-only and event limits clean.
+  N=1 259,240 exact frames / 259,166 pairs; boot N=4/9 368/366. All acceptance processes
+  finished in 1,836.51 s using the checked presentation overlap below.
+  Evidence `D:/f117-gate/p2-batch-f-accept/final-gate-verdict.json`.
+- **Privately proved, waiting for the next batch:** VGAME `00F0` flight start
+  (`D:/f117-gate/p2-vgame-00f0`): 105 instructions including the shared HUD tail,
+  54 mutations caught, five seeds, one full-cycle call, 26 boot / 66 full-cycle checkpoints
+  exact; census credit is its own 201 bytes. VGAME `01C1` HUD bitmap recolour
+  (`D:/f117-gate/p2-vgame-01c1`): 37 instructions, 34 mutations, five seeds, one full-cycle
+  call and both routes exact; its independent 116-byte census row is proved separately.
+  START `5BF0` world/options screen (`D:/f117-gate/p2-start-5bf0`): 251 instructions,
+  64 mutations, five seeds; `central_europe_airair` one call,
+  81 exact checkpoints plus the boot proof. `full_cycle` never calls it.
+  Root audits pass for every listed proof. Use the batch-f scripts as the next batch template.
+- **Stopped early drafts (no proof yet; reuse or restart):** START `6AB3` (only
   `roster_edit` reaches it), END `3BF4`, `03D9` (D12 sites 0443/0450 may lie inside: decline while D12
-  is on), `2703` (career routes only), VGAME `00F0`, `7663`. Their directories are
+  is on), `2703` (career routes only), VGAME `7663`. Their directories are
   `D:/f117-gate/p2-<prog>-<ip>`.
 - **Routes other than full_cycle:** `kit.py DIR checkpoints --route NAME` (and `ROUTE=NAME` for
   `finish.sh`) proves a routine on another cached route; `audit_proofs.py` reads the route from the
@@ -201,7 +204,7 @@ transitions, widths by role). Details and the method: docs/progress.md.
    add work outside frame timers and are diagnostics.
 5. **Branch housekeeping:** many local branches are fully merged into `master`. Not merged: `flight-input` (older
    aircraft-traffic draft, superseded by `b41ec9c`; its worktree `D:/f117-wt/span-emitter` has uncommitted edits),
-   `irq-divide-fault` (kept on purpose). `p2-batch-b2`, `p2-batch-c`, `p2-batch-d` and `p2-batch-e` are merged; the gate worktree is retained. The stopped presentation WIP branches
+   `irq-divide-fault` (kept on purpose). `p2-batch-b2`, `p2-batch-c`, `p2-batch-d`, `p2-batch-e` and `p2-batch-f` are merged; the gate worktree is retained. The stopped presentation WIP branches
    are preserved for history; do not merge them again. Ask the owner before deleting anything.
 
 ## Safe scheduling follow-up (16 October, owner request)
@@ -220,14 +223,21 @@ puts the observed interpreter wall at 1,346 s and its longest career job at 1,28
 holding job durations fixed, adaptive scheduling saves only about 61 s. This is a
 model, not a measured speed gain, and probably not the first optimization to pursue.
 The earlier always-sixteen overlap trial is still not a demonstrated gain.
-A more promising overlap is presentation after the final build settles, while fresh
-interpreter runs continue: freeze previous baseline runs, require their checkpoints
-and final hashes to match valid cache entries under the current interpreter/route
-keys, then require the fresh gate results to equal those frozen baselines too.
-Keep the fresh gate and every presentation check; use at most 8 interpreter + 16
-presentation workers, with boot N=4/9 after the gate. Fall back to the existing
-sequential process if a valid baseline is unavailable or the runner changes.
-This workflow is a proposal, not implemented or proved; benchmark before adopting.
+**Presentation overlap is checked and adopted for batch acceptance.**
+`D:/f117-gate/p2-batch-f-accept/overlap_accept.py` freezes baseline runs, requires their
+checkpoints and final hashes to match valid cache entries under the current interpreter/route
+keys, then starts N=1 after the final build settles while the eight fresh interpreter workers
+continue. It requires all fresh results and milestones to match the frozen files too, verifies
+the frozen files and runner hashes again, and retains the unchanged full gate, all 45 N=1
+routes and boot N=4/9 (boot starts after the gate). No cache verification is dropped.
+Five break tests reject wrong finals/checkpoints, missing finals, modified frozen files and old
+results presented as fresh; `overlap-guards-verdict.json` and `fresh-baseline-verdict.json` pass.
+Batch f: gate 1,781.97 s, all processes 1,836.51 s;
+N=1 started 1,087.12 s after the gate started.
+This records observed scheduling, not a controlled speed comparison with another batch.
+The wrapper falls back to sequential checking when a valid keyed baseline is unavailable;
+acceptance fails if the final runner or any baseline changes. Defaults in `build_recomp.py`
+stay unchanged. Root runs the wrapper through the existing affinity/priority launcher.
 
 ## Owner decisions and instructions in force
 
@@ -351,7 +361,7 @@ found so far. Agents work only in their `p2-*` directory. Then:
    `presentation_check --scales 1`, docs, commit, push.
 
 Gate batches in a separate worktree (`D:/f117-wt/gate`, currently on the merged branch
-`p2-batch-e`. Build it once with `build.cmd -DF117R_BUILD_APP=OFF` before the gate, which
+`p2-batch-f`. Build it once with `build.cmd -DF117R_BUILD_APP=OFF` before the gate, which
 needs its `f117cpu_api.dll`) when the owner is testing the main tree's build.
 
 Screening and older method: `tools/matched_draft.py --dossier` (module/seg/ip

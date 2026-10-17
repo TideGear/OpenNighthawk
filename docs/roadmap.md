@@ -68,11 +68,11 @@ make (Phase 4).
   early for its autoexec); delivery there is not pursued (Settled, below).
 - **The game version verified:** GOG's installer (build 28044) with the 473.04
   update; Steam's release is byte-identical (`tools/verify_install.py`).
-- **The gate** (`tools/build_recomp.py`): translate, build, unit tests (171),
+- **The gate** (`tools/build_recomp.py`): translate, build, unit tests (173),
   coverage, both engines on every route, instruction lockstep under both
   timing profiles, matched-routine lockstep at three seeds, and the
   routes-only and event-limit checks. About 21-30 minutes when every
-  interpreter route is verified fresh (latest 1,611 s); costs and what was
+  interpreter route is verified fresh (latest 1,782 s); costs and what was
   optimised: [repeated-processes.md](repeated-processes.md).
 - **Rendered speaker and speech audio.** PIT counter 2 follows the 8254 model;
   speaker music matches DOSBox-X (envelope 0.87, spectral 0.92-0.93, level
@@ -151,9 +151,9 @@ not the recompilation:
       [../handoff.md](../handoff.md). `tools/reimp_names.py` joins the Reimp's
       census (1,535 functions) with this project's regions as a private lead
       list.
-      **Now:** 944 addresses matched, covering 942 of the census functions and
-      132,307 of 179,213 bytes (P2 75.14%, overall 91.48%).
-      The latest batch (`p2-batch-e`, 16 Oct: 11 routines, 2,062 census
+      **Now:** 946 addresses matched, covering 944 of the census functions and
+      132,638 of 179,213 bytes (P2 75.31%, overall 91.53%).
+      The latest batch (`p2-batch-f`, 16 Oct: 2 routines, 331 census
       bytes) is included in these figures; see the handoff.
       **What is left:** `tools/census_reach.py` separates code with run
       evidence from code without (gate coverage logs only interpreted
@@ -196,7 +196,22 @@ reaches. Candidate drafts can keep private static dossiers
 (`matched_draft.py --dossier`):
 [repeated-processes.md](repeated-processes.md#phase-2-candidate-reading).
 
-### Latest batch: runtime, intro and front end (16 October 2026)
+### Latest batch: front-end menu and intro controls (16 October 2026)
+
+Batch f adds two routines / 331 census bytes. Both have five seed proofs,
+full instruction coverage, 80 mutations caught and exact boot (26 checkpoints)
+and full-cycle (66 checkpoints) proofs. Evidence `D:/f117-gate/p2-batch-f-accept`.
+
+- START `020F` front-end menu loop: dispatches world, pilot, mission,
+  briefing and launch choices, retaining the original event and redraw logic.
+  67 instructions, 41 mutations, two full-cycle calls (`p2-start-020f`).
+- PLAYER `0696` intro control poll: pending key dispatch, joystick/mouse
+  buttons and keyboard handling with the original busy flag around handlers.
+  61 instructions, 39 mutations, 2,310,066 full-cycle calls
+  (`p2-player-0696`). The 161-byte watch span includes the RET; census credit
+  remains 160 bytes.
+
+### Runtime, intro and front end (16 October 2026, batch e)
 
 Batch e adds eleven routines / 2,062 census bytes. Each has five seed proofs,
 full instruction coverage, detected mutations (476 total), and exact boot
