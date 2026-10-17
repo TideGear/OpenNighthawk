@@ -8,9 +8,9 @@ checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 [docs/repeated-processes.md](docs/repeated-processes.md) (every process we run
 more than once, what it costs). State as of 16 October 2026.
 
-16 October: resumed the standing Phase 2 plan. `p2-batch-f` is gated and landed;
-the next privately proved routines are listed below. Standing goal from the owner:
-complete the roadmap's plan, Phase 2 first.
+16 October: wrapped up at the owner's request for a new conversation. `p2-batch-f`
+is gated and landed at `a34d3c6`; the next privately proved routines are listed below.
+No next batch has started. Resume the roadmap's plan, Phase 2 first, when requested.
 
 This file holds only the current state and standing practice, not a
 session log. Earlier detail is in `git log -p handoff.md`.
@@ -113,6 +113,12 @@ times them (`F117_PRESENT_CLOCK=raw` for the old clock; opt-in knobs `F117_PRESE
   N=1 259,240 exact frames / 259,166 pairs; boot N=4/9 368/366. All acceptance processes
   finished in 1,836.51 s using the checked presentation overlap below.
   Evidence `D:/f117-gate/p2-batch-f-accept/final-gate-verdict.json`.
+  Main's normal /O2 application build passed (168.78 s), and proof-kit libraries were
+  refreshed from `a34d3c6`; hashes are in `D:/f117-gate/kit-libs/manifest.json`.
+  Both Windows and Munt CI passed for that exact commit:
+  https://github.com/TideGear/OpenNighthawk/actions/runs/38993307275
+  (`D:/f117-gate/p2-batch-f-accept/ci-run.json`). All local acceptance/build/proof
+  processes are finished; no test session needs resuming.
 - **Privately proved, waiting for the next batch:** VGAME `00F0` flight start
   (`D:/f117-gate/p2-vgame-00f0`): 105 instructions including the shared HUD tail,
   54 mutations caught, five seeds, one full-cycle call, 26 boot / 66 full-cycle checkpoints
@@ -139,8 +145,7 @@ times them (`F117_PRESENT_CLOCK=raw` for the old clock; opt-in knobs `F117_PRESE
   `D:/f117-gate/kit/pin.py MASK` (CPU set + BelowNormal) with `mutations --jobs 2`; while a gate runs
   (affinity `0xFFFFFF`), agents use the CPU pairs at bits 24-29. Root finishes each proof with
   `D:/f117-gate/p2-batch-d-accept/finish.sh DIR` (checkpoints, boot proof, verdict, audit). Traps found:
-  preparers must write LF (`write_text(..., newline='
-')`); kit bases (`matched-base.c`,
+  preparers must write LF (`write_text(..., newline='\n')`); kit bases (`matched-base.c`,
   `tests-base.c`) go stale when a batch lands - refresh them before rebuilding an old draft; a body edit
   after the mutation run (even a comment) fails the audit until seeds and mutations are rerun; an IRET in
   a fixture's interrupt handler stops the body (use RETF 2); the lockstep DOS handler sets DX on some
@@ -183,7 +188,7 @@ transitions, widths by role). Details and the method: docs/progress.md.
 
 ## Next steps
 
-1. **Phase 2 first (owner).** `p2-batch-d` is gated and landed; integrate the privately proved
+1. **Phase 2 first (owner).** `p2-batch-f` is gated and landed; integrate the privately proved
    routines listed above (with their harness hunks) as the next batch. Continue down the ranked list
    (`D:/f117-gate/p2-batch-d-accept/reached-allroutes.tsv`) with the private kit and parallel agents (agents do steps 1-7 only; root runs
    `kit.py checkpoints` and `D:/f117-gate/kit/boot_proof.py` with `KIT_ROOT` at the gated worktree, then
