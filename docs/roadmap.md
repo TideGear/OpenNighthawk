@@ -68,11 +68,11 @@ make (Phase 4).
   early for its autoexec); delivery there is not pursued (Settled, below).
 - **The game version verified:** GOG's installer (build 28044) with the 473.04
   update; Steam's release is byte-identical (`tools/verify_install.py`).
-- **The gate** (`tools/build_recomp.py`): translate, build, unit tests (219),
+- **The gate** (`tools/build_recomp.py`): translate, build, unit tests (224),
   coverage, both engines on every route, instruction lockstep under both
   timing profiles, matched-routine lockstep at three seeds, and the
   routes-only and event-limit checks. About 21-33 minutes when every
-  interpreter route is verified fresh (latest 1,916 s); costs and what was
+  interpreter route is verified fresh (latest 1,727 s); costs and what was
   optimised: [repeated-processes.md](repeated-processes.md).
 - **Rendered speaker and speech audio.** PIT counter 2 follows the 8254 model;
   speaker music matches DOSBox-X (envelope 0.87, spectral 0.92-0.93, level
@@ -151,12 +151,12 @@ not the recompilation:
       [../handoff.md](../handoff.md). `tools/reimp_names.py` joins the Reimp's
       census (1,535 functions) with this project's regions as a private lead
       list.
-      **Now:** 991 addresses matched; named code runs 143,214 of
-      179,213 census bytes (P2 80.92%, overall 93.25%): 932 census rows
+      **Now:** 995 addresses matched; named code runs 144,563 of
+      179,213 census bytes (P2 81.63%, overall 93.46%): 935 census rows
       wholly, 290 in part. Credit is by byte since 16 October
       ([progress.md](progress.md#what-is-measured)): under it master's 946 routines
       held 132,537 bytes (132,638 by whole rows), batch g added 6,181 and
-      batch h added 3,894; batch i adds 602.
+      batch h added 3,894, batch i 602 and batch j 1,349.
       **What is left:** `tools/census_reach.py` separates code with run
       evidence from code without (gate coverage logs only interpreted
       fallback instructions, so it cannot show what ran). Fresh interpreter
@@ -202,7 +202,27 @@ reaches. Candidate drafts can keep private static dossiers
 (`matched_draft.py --dossier`):
 [repeated-processes.md](repeated-processes.md#phase-2-candidate-reading).
 
-### Latest batch: 6 routines (17 October 2026, batch i)
+### Latest batch: 4 routines (17 October 2026, batch j)
+
+Batch j adds four routines and 1,349 census bytes. Five seeds per routine
+reach every instruction, all 203 mutations are caught, and exact real-route
+and boot proofs pass. All 20 optimized seed runs pass. END `0010`'s final two
+bytes remain uncredited because the fixture patches the following callee.
+Evidence `D:/f117-gate/p2-batch-j-accept`.
+
+The first gate exposed a pre-existing START `76C0` RNG error: the generator
+can update its caller's divisor through aliased memory. The named routine
+now reads the bound after that call, as the original does. Five private
+seeds, nine-instruction coverage, 28 mutations, exact boot/route proofs and
+six optimized generic seed runs prove the correction; the failing seed is
+retained as `matched_start_rnd_stack_alias`. The full gate was rerun.
+
+- START `6AB3` edit a pilot name with prefix backspace acceptance and roster update: 254 instructions, 64 mutations, `roster_edit` 3 calls (`p2-start-6ab3`).
+- END `2703` announce granted and deferred medals special awards and service ribbons: 196 instructions, 69 mutations, `recon_career` 1 call (`p2-end-2703`).
+- START `0010` run the front end prepare the mission block and choose its exit code: 40 instructions, 33 mutations, `full_cycle` 2 calls (`p2-start-0010`).
+- END `0010` run the debrief update sorties and terminal pilot status then shut down: 51 instructions, 37 mutations, `full_cycle` 1 call (`p2-end-0010`).
+
+### 6 routines (17 October 2026, batch i)
 
 Batch i adds six routines and 602 census bytes. Each has five seed proofs
 with every instruction reached, 207 mutations caught in all, an exact boot

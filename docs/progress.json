@@ -150,8 +150,8 @@
     "_about": "From the Reimp's census (tools/reimp_names.py output). matched_bytes: census bytes inside instructions matched code runs (lockstep and route evidence); matched_functions: rows wholly credited; partial_functions: rows in part. Refreshed by tools/progress.py --census FILE --named-cover DIR --route-cover DIR --data DIR.",
     "functions": 1535,
     "bytes": 179213,
-    "matched_functions": 932,
-    "matched_bytes": 143214,
+    "matched_functions": 935,
+    "matched_bytes": 144563,
     "partial_functions": 290
   }
 }

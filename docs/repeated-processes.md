@@ -32,13 +32,13 @@ tools/build_recomp.py --data INSTALL --seed-coverage WORK/coverage --jobs 16
 --verify-interp-cache`, started through `D:/f117-gate/affinity_launch.py`
 (below).
 
-**Current figures (17 October 2026):** 219 CTests; 45 routes identical, run
-as 44 sessions; 5,718,848 instruction states under each timing profile; 991
-matched routines at three seeds; reachability and event limits clean. Batch i's
-full gate took 1,915.56 s, with every interpreter session verified fresh.
+**Current figures (17 October 2026):** 224 CTests; 45 routes identical, run
+as 44 sessions; 5,718,848 instruction states under each timing profile; 995
+matched routines at three seeds; reachability and event limits clean. Batch j's
+full gate took 1,726.66 s, with every interpreter session verified fresh.
 All acceptance processes, including N=1 and boot N=4/9 presentation, finished
-in 1,969.70 s using checked presentation overlap. Evidence:
-`D:/f117-gate/p2-batch-i-accept/final-gate-verdict.json`.
+in 1,779.95 s using checked presentation overlap. Evidence:
+`D:/f117-gate/p2-batch-j-accept/final-gate-verdict.json`.
 Typical gates take about 1,300-2,000 s; the longest career seed chain sets the route time.
 
 | Stage | Latest measured | What sets it, what was duplicated | Status |
@@ -539,3 +539,15 @@ video and flight captures), DOSBox-X for some timing traces, and 86Box running
 a 386DX/33 with MS-DOS 5.00, the 386 timing profile's reference
 ([timing386.md](../tools/ref86box/timing386.md)). Those run per question or
 before a release (`pc_parity.py`), not per commit.
+
+**Batch j proof notes (17 Oct).** Four new routines retain five seeds each,
+full instruction coverage, 203 caught mutations and positive real-route calls;
+20 optimized seed runs repeat their checks. A pre-existing RNG alias bug found
+by the rotating gate seed was reproduced on main, corrected and independently
+proved with five seeds, 28 mutations, boot and `full_cycle`, then six optimized
+generic seed runs. The first failed gate is preserved under
+`p2-batch-j-accept/attempt-1-failed`; the complete gate and presentation checks
+were rerun after the correction. Inherited coverage for the changed RNG was
+removed and replaced with fresh optimized coverage before computing byte credit.
+Screening also joins actual byte credit: an unregistered census entry can be
+fully covered inside an existing named body, so a FREE lead alone is insufficient.

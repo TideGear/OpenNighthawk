@@ -8,7 +8,7 @@ checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 [docs/repeated-processes.md](docs/repeated-processes.md) (every process we run
 more than once, what it costs). State as of 17 October 2026.
 
-17 October: `p2-batch-i` is gated and landed (six routines; see Phase 2 below).
+17 October: `p2-batch-j` is gated and landed (four routines; see Phase 2 below).
 Next: continue down the screened census leads. Resume the roadmap's plan, Phase 2 first.
 
 **Process notes (16 October):** screen leads with `p2-batch-g-accept/screen_leads.py` before any
@@ -24,9 +24,9 @@ session log. Earlier detail is in `git log -p handoff.md`.
 
 ## Current state (17 October)
 
-Scoreboard: P1 100.00%, P2 80.92%, P3 96.33%, All 93.25% (P4 is no longer scored)
-(`py tools/progress.py --title`). Phase 2: 991 addresses matched; named code runs
-143,214 of 179,213 census bytes (credit by byte since 16 October).
+Scoreboard: P1 100.00%, P2 81.63%, P3 96.33%, All 93.46% (P4 is no longer scored)
+(`py tools/progress.py --title`). Phase 2: 995 addresses matched; named code runs
+144,563 of 179,213 census bytes (credit by byte since 16 October).
 
 ### Presentation: latest (15 October, evening)
 
@@ -112,7 +112,24 @@ times them (`F117_PRESENT_CLOCK=raw` for the old clock; opt-in knobs `F117_PRESE
 
 ### Phase 2
 
-- Latest batch (17 Oct): **`p2-batch-i` is gated and landed**, six routines /
+- Latest batch (17 Oct): **`p2-batch-j` is gated and landed**, four routines /
+  1,349 census bytes by byte credit (995 addresses; 144,563 of 179,213 bytes).
+  Five seeds each, full instruction coverage, 203 mutations caught, exact boot
+  and real-route proofs; 20 optimized seed runs. Gate 1,726.66 s:
+  224 CTests, 45 identical routes / 44 fresh interpreter sessions, 995 matched
+  routines at three seeds (0 mismatching), both timing profiles, routes-only
+  and event limits clean. N=1 259,240 exact frames / 259,166 pairs; boot N=4/9
+  368/366. All acceptance processes 1,779.95 s with checked overlap.
+  Evidence `D:/f117-gate/p2-batch-j-accept/final-gate-verdict.json`.
+  Routines: START `6AB3` (`roster_edit`), END `2703` (`recon_career`),
+  START `0010` and END `0010` (`full_cycle`). END's final two bytes stay uncredited.
+  Corrected the pre-existing START `76C0` RNG bound read order: the generator
+  can update the stacked bound through DS/SS aliasing. Five private seeds,
+  all nine instructions, 28 caught mutations, exact boot/route and six optimized
+  generic seed runs prove it. Permanent CTest keeps the failing seed
+  `0x4ebc42e1d00b`; it reproduces on batch i too. First failure preserved under
+  `attempt-1-failed`; the full gate and presentation checks were rerun.
+- Previous batch (17 Oct): **`p2-batch-i` is gated and landed**, six routines /
   602 census bytes by byte credit (991 addresses; 143,214 of 179,213 bytes).
   Five seeds each, full instruction coverage, 207 mutations caught, exact boot
   and `full_cycle` route proofs; 30 optimized seed runs. Gate 1,915.56 s:
@@ -171,11 +188,24 @@ times them (`F117_PRESENT_CLOCK=raw` for the old clock; opt-in knobs `F117_PRESE
   with `--only` and `F117_COVER`.
 - **Declined (recorded in `kit/DECLINED.tsv`):** PLAYER `2853`, PLAYER `0211`
   re-sync, VGAME `14C2:0000` (STI in its colour loop; the `set_dac` family).
-- **Stopped early drafts (no proof yet; reuse or restart):** START `6AB3` (only
-  `roster_edit` reaches it), END `3BF4`, `03D9` (D12 sites 0443/0450 may lie inside: decline while D12
-  is on), `2703` (career routes only). VGAME `7663` was superseded by batch g.
-  Their directories are
-  `D:/f117-gate/p2-<prog>-<ip>`.
+- **Pending batch k:** END `3BF4` (`p2-end-3bf4`) has five seeds and 58 caught
+  mutations, exact `full_cycle` and boot proofs against its older base.
+  Refresh bases and proof libraries from landed batch j, then repeat its
+  seeds/mutations and real-route/boot/audit.
+  It owns 235 bytes in `3BF4..3CA0` and shared tail `4B8C..4BC9` (86 original
+  instructions); the 4,054-byte envelope includes nine fixture callee JMPs,
+  so harness coverage is 95. Preserve the separate code-store boundaries.
+- Other private batch-k candidates: SETUP `111A` (`p2-setup-111a`, five
+  seeds/all 54 instructions/52 mutations; requires its one `POPF_STOPS` row),
+  END `1BAA` (`p2-end-1baa`, five seeds/all 58 instructions/50 mutations,
+  exact `full_cycle` and boot), START `3EA5` (`p2-start-3ea5`, five seeds/all
+  56 instructions/55 mutations, exact 350-checkpoint `career_serge` and boot),
+  END `2265` (`p2-end-2265`, five seeds/all 46 instructions/52 mutations,
+  exact `full_cycle` and boot). SETUP's 3-checkpoint `setup_calibration` and
+  boot also pass. Combined audit: `p2-batch-k-accept/private-audit.json`.
+  Refresh their bases/libraries after batch j lands and repeat final proofs.
+- **Stopped draft:** END `03D9` (D12 sites 0443/0450 may lie inside: decline
+  while D12 is on). VGAME `7663` was superseded by batch g.
 - **Routes other than full_cycle:** `kit.py DIR checkpoints --route NAME` (and `ROUTE=NAME` for
   `finish.sh`) proves a routine on another cached route; `audit_proofs.py` reads the route from the
   checkpoint verdict. Rank with `D:/f117-gate/p2-batch-d-accept/reached-allroutes.tsv` (all 45 routes,
@@ -231,7 +261,7 @@ transitions, widths by role). Details and the method: docs/progress.md.
 
 ## Next steps
 
-1. **Phase 2 first (owner).** `p2-batch-i` is gated and landed.
+1. **Phase 2 first (owner).** `p2-batch-j` is gated and landed.
    Continue down the ranked list
    (`D:/f117-gate/p2-batch-d-accept/reached-allroutes.tsv`) with the private kit and parallel agents (agents do steps 1-7 only; root runs
    `kit.py checkpoints` and `D:/f117-gate/kit/boot_proof.py` with `KIT_ROOT` at the gated worktree, then
@@ -253,7 +283,7 @@ transitions, widths by role). Details and the method: docs/progress.md.
 5. **Branch housekeeping:** many local branches are fully merged into `master`. Not merged: `flight-input` (older
    aircraft-traffic draft, superseded by `b41ec9c`; its worktree `D:/f117-wt/span-emitter` has uncommitted edits),
    `irq-divide-fault` (kept on purpose). `p2-batch-b2`, `p2-batch-c`, `p2-batch-d`,
-   `p2-batch-e`, `p2-batch-f`, `p2-batch-g`, `p2-batch-h` and `p2-batch-i` are merged;
+   `p2-batch-e`, `p2-batch-f`, `p2-batch-g`, `p2-batch-h`, `p2-batch-i` and `p2-batch-j` are merged;
    the gate worktree is retained. The stopped presentation WIP branches
    are preserved for history; do not merge them again. Ask the owner before deleting anything.
 
@@ -344,6 +374,10 @@ Matching and the gate:
   the observer itself (`observe_game_draw`) and the address goes on
   `deliberate` in `tests/test_overrides.c`. `kit.py integrate` refuses an
   address with an observer.
+- A screened FREE lead may already be wholly inline in an existing named body.
+  Join current named-byte credit and registered entries before selecting it
+  (`p2-batch-j-accept/rank.py`). Use canonical `recon_career` for the keyed
+  interpreter baseline, not its alias `recon_return`.
 - The gate's commit-derived seed rotates with HEAD and can fail a routine the
   commit did not touch. Reproduce with `func_lockstep --seed S --only MOD:IP`,
   or shard the run (`--shard K/8`) to find the failing routine.
@@ -411,7 +445,7 @@ found so far. Agents work only in their `p2-*` directory. Then:
    `presentation_check --scales 1`, docs, commit, push.
 
 Gate batches in a separate worktree (`D:/f117-wt/gate-h`, currently on the merged branch
-`p2-batch-i`. Build it once with `build.cmd -DF117R_BUILD_APP=OFF` before the gate, which
+`p2-batch-j`. Build it once with `build.cmd -DF117R_BUILD_APP=OFF` before the gate, which
 needs its `f117cpu_api.dll`) when the owner is testing the main tree's build.
 
 Screening and older method: `tools/matched_draft.py --dossier` (module/seg/ip
