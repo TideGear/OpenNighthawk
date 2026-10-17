@@ -153,7 +153,7 @@ not the recompilation:
       list.
       **Now:** 1,006 addresses matched; named code runs 147,448 of the
       169,932 creditable census bytes (179,213 in all, 9,281 of them data or code that stays original; see
-      [progress.md](progress.md#what-is-measured)) (P2 87.43%, overall 95.23%): 964 census rows
+      [progress.md](progress.md#what-is-measured)) (P2 87.43%, overall 95.31%): 964 census rows
       wholly, 293 in part. Credit is by byte since 16 October
       ([progress.md](progress.md#what-is-measured)): under it master's 946 routines
       held 132,537 bytes (132,638 by whole rows), batch g added 6,181 and
@@ -916,11 +916,29 @@ Each is fixed; the named regressions keep the failing seed or case.
     60 Hz; the small `DF03`/`C2C8` vertex group that nudges less well;
     fullscreen pacing of the latest builds;
     line widths by drawing role; weapon and target symbology; long
-    cargo/career flights and slower machines. Optional: refine clipped or
-    off-screen outlines (6.1% of outlines in the owner's sharp flight still
-    use scaled whole-pixel endpoints). Not planned: smoothing the original's
-    road and coastline jitter (owner, 15 Oct: N=1 stays authentic) and a
-    longer draw distance.
+    cargo/career flights and slower machines. What the owner decided
+    against is under "Possible future work" below and is not scored.
+
+## Possible future work (decided against for now, not scored)
+
+Things the owner decided not to do. They are not scored by `tools/progress.py`
+(owner, 17 Oct 2026) and stay here as ideas that may be taken up later, as with
+Phase 4. The decisions and their reasons are in
+[presentation.md](presentation.md) ("Stop improving primitive pairing", "The
+jitter is the original's; no smoothing", "Do not extend the draw distance").
+
+- [ ] **Smooth the original's road and coastline jitter**, at N=1 or any higher
+      scale (owner, 15 Oct 2026: it is the original's own, shown by the GOG
+      DOSBox release too; N=1 stays authentic and the finer modes keep the
+      original renderer's quirks).
+- [ ] **Coastline topology transitions** in the finer modes (not planned with
+      the jitter ruling).
+- [ ] **Refine clipped or off-screen outlines**: 6.1% of outline strokes in the
+      owner's sharp flight are still drawn from scaled whole-pixel endpoints.
+- [ ] **More work on primitive pairing** for in-between pictures (owner, 15 Oct
+      2026: stopped; identity pairing stays opt-in, `F117_PRESENT_IDENT=1`,
+      because it deformed objects; in-between pictures come from `rerun`).
+- [ ] **A longer draw distance** (owner, 15 Oct 2026).
 
 ## Phase 4 - checked by people and independent references
 

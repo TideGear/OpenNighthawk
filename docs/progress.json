@@ -126,9 +126,9 @@
       {
         "item": "Stage 2: high-resolution re-draw",
         "weight": 17.3,
-        "done": 0.95,
+        "done": 0.967,
         "kind": "estimate",
-        "evidence": "Verified camera-space snapshots refine perspective, near-plane and orthographic polygons; every fill style has a rule (original-sized dither/stipple cells); original bitmap lettering, sprites and artwork kept; fine HUD/outline strokes on one perpendicular-width pen; sky/ground bands and HUD drawn from state; map geometry preserved through the cockpit-art page. All 45 N=1 routes retain 259,240 exact frames / 259,166 pairs and every guest hash; boot N=4/9 368/366. `--present replay --present-scale N` is the verified sharp mode. Open (15 Oct 2026, so not full credit): coastline topology transitions, line widths by drawing role, the owner's review on a physical panel. See presentation.md."
+        "evidence": "Verified camera-space snapshots refine perspective, near-plane and orthographic polygons; every fill style has a rule (original-sized dither/stipple cells); original bitmap lettering, sprites and artwork kept; fine HUD/outline strokes on one perpendicular-width pen; sky/ground bands and HUD drawn from state; map geometry preserved through the cockpit-art page. All 45 N=1 routes retain 259,240 exact frames / 259,166 pairs and every guest hash; boot N=4/9 368/366. `--present replay --present-scale N` is the verified sharp mode. Open (17 Oct 2026, so not full credit): line widths by drawing role and the owner's review on a physical panel. Coastline topology transitions, refining clipped or off-screen outlines and smoothing the original's jitter were decided against by the owner (15 Oct 2026) and are no longer scored; they are listed under Possible future work in the roadmap. Done was raised from 0.95 to 0.967 on 17 Oct: the open 0.05 covered three items (coastline transitions, line widths, the panel review) and one left, so two thirds of it remain. See presentation.md."
       },
       {
         "item": "Stage 4: live feed, pacing, threading and 4K throughput",

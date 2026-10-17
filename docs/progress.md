@@ -27,7 +27,10 @@ Phases 2 and 3 are large too (thousands of routines to name and match; a new
 presentation path for 60+ fps and 4K), and their weights say so.
 
 Items closed by scope keep only the weight of the work done (8 Oct 2026: the
-roadmap's "Settled" list), so dropping work never reads as finishing it.
+roadmap's "Settled" list), so dropping work never reads as finishing it; the
+exception is work the owner removes from scoring altogether (Phase 4, 15 Oct
+2026; the items under "Possible future work" in the roadmap, 17 Oct 2026),
+which is not scored and stays listed as possible later work.
 Phase 4 (what only a person or an independent reference can settle: a person
 playing the game, Roland output against a reference with a listening check) is
 not scored (owner, 15 Oct 2026: its estimates had stopped meaning anything); it
@@ -93,4 +96,7 @@ stays on the roadmap.
   was split into Stage 4 infrastructure (0.9) and Stage 3, smooth in-between
   frames (0.15), because the owner judged the motion not acceptable; P3 fell
   from 95.79% to 82.75%. After the owner played `--present rerun` fullscreen at
-  4K ("good at least for now", 15 Oct, 22:32) Stage 3 went to 0.9: P3 96.33%.
+  4K ("good at least for now", 15 Oct, 22:32) Stage 3 went to 0.9: P3 96.33%. On
+17 Oct 2026 the owner removed the work he had decided against from the score
+(roadmap, "Possible future work"): Stage 2's open share fell by the coastline
+item, 0.95 to 0.967, and P3 went to 96.62%.

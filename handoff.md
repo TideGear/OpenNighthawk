@@ -26,7 +26,7 @@ session log. Earlier detail is in `git log -p handoff.md`.
 
 Batch n is landed, built and CI-green; no private processes are running.
 
-Scoreboard: P1 100.00%, P2 87.43%, P3 96.33%, All 95.23% (P4 is no longer scored)
+Scoreboard: P1 100.00%, P2 87.43%, P3 96.62%, All 95.31% (P4 and the decided-against P3 items are no longer scored)
 (`py tools/progress.py --title`). Phase 2: 1,006 addresses matched; named code runs
 147,448 of 169,932 creditable census bytes (credit by byte since 16 October). **The denominator was split on
 17 October (owner):** 9,281 of the 179,213 census bytes are data or code that stays original and no longer count
@@ -117,8 +117,9 @@ times them (`F117_PRESENT_CLOCK=raw` for the old clock; opt-in knobs `F117_PRESE
 - The coarse-interpolation checker fails on unknown novel records and
   regeneration-count overruns.
 - Open: width tuning by drawing role, weapon/target symbology, the owner's
-  physical-panel motion verdict. Coastline topology work is not planned (no
-  jitter smoothing, owner 15 Oct).
+  physical-panel motion verdict. What the owner decided against (jitter smoothing,
+  coastline topology transitions, outline refinement, more pairing work, a longer draw
+  distance) is not scored since 17 Oct; the roadmap lists it as possible future work.
 
 ### Phase 2
 
@@ -345,10 +346,10 @@ times them (`F117_PRESENT_CLOCK=raw` for the old clock; opt-in knobs `F117_PRESE
 
 ### Phase 3
 
-P3 (96.33%) is held down by Stage 3, smooth in-between frames (90%: accepted by the owner for now;
+P3 (96.62%) is held down by Stage 3, smooth in-between frames (90%: accepted by the owner for now;
 high refresh rates, clock tuning and slower machines remain), Stage 4 infrastructure (90%: fullscreen pacing of the latest
-builds, slower machines, cargo/career flights) and Stage 2 (95%: coastline
-transitions, widths by role). Details and the method: docs/progress.md.
+builds, slower machines, cargo/career flights) and Stage 2 (96.7%: widths by
+role, the panel review; the coastline and other decided-against items left the score on 17 Oct). Details and the method: docs/progress.md.
 
 ## Next steps
 
