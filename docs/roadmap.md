@@ -151,11 +151,12 @@ not the recompilation:
       [../handoff.md](../handoff.md). `tools/reimp_names.py` joins the Reimp's
       census (1,535 functions) with this project's regions as a private lead
       list.
-      **Now:** 967 addresses matched; named code runs 138,718 of
-      179,213 census bytes (P2 78.53%, overall 92.52%): 902 census rows
-      wholly, 285 in part. Credit is by byte since 16 October
+      **Now:** 985 addresses matched; named code runs 142,612 of
+      179,213 census bytes (P2 80.60%, overall 93.15%): 928 census rows
+      wholly, 288 in part. Credit is by byte since 16 October
       ([progress.md](progress.md#what-is-measured)): under it master's 946 routines
-      held 132,537 bytes (132,638 by whole rows), and batch g adds 6,181.
+      held 132,537 bytes (132,638 by whole rows), batch g added 6,181 and
+      batch h adds 3,894.
       **What is left:** `tools/census_reach.py` separates code with run
       evidence from code without (gate coverage logs only interpreted
       fallback instructions, so it cannot show what ran). Fresh interpreter
@@ -201,7 +202,35 @@ reaches. Candidate drafts can keep private static dossiers
 (`matched_draft.py --dossier`):
 [repeated-processes.md](repeated-processes.md#phase-2-candidate-reading).
 
-### Latest batch: 21 routines (16 October 2026, batch g)
+### Latest batch: 18 routines (16 October 2026, batch h)
+
+Batch h adds 18 routines. Each has five seed proofs with every instruction
+reached, 803 mutations caught in all, and an exact boot proof (26 checkpoints)
+plus an exact real route that calls it. The harness gained `POPF_STOPS` for
+routines whose named code ends with a POPF that restores the caller's IF, and a
+`LIVE_FRAMES` row for START `0B49`. Evidence
+`D:/f117-gate/p2-batch-h-accept`.
+
+- VGAME `ED10` call software interrupt n with register structures (int86x): 64 instructions, 39 mutations, `full_cycle` 4 calls (`p2-vgame-ed10`).
+- PLAYER `026B:0272` calibrate the clock hook timer from the refresh: 54 instructions, 48 mutations, `full_cycle` 2 calls (`p2-player-026b-0272`).
+- START `20D6` draw the orders folder pages and wait on each: 449 instructions, 74 mutations, `career_serge` 1 call (`p2-start-20d6`).
+- END `4CBC` set the timer rate from the refresh: 54 instructions, 52 mutations, `full_cycle` 5 calls (`p2-end-4cbc`).
+- END `1901` show a picture and its palette, run the optional callback, fade in: 64 instructions, 36 mutations, `full_cycle` 1 call (`p2-end-1901`).
+- START `38AC` wait for an event on a button table: 58 instructions, 45 mutations, `full_cycle` 9 calls (`p2-start-38ac`).
+- VGAME `4973` a mission's seed, opening display, frame counter, clock and palette: 46 instructions, 37 mutations, `full_cycle` 1 call (`p2-vgame-4973`).
+- START `8DD8` set the timer rate from the refresh: 54 instructions, 52 mutations, `full_cycle` 17 calls (`p2-start-8dd8`).
+- VGAME `0235` run a flight between the clock hook and unhook: 45 instructions, 44 mutations, `full_cycle` 1 call (`p2-vgame-0235`).
+- START `141D` copy the generated map, draw sites, route, view overlay and sprite, show the briefing page: 66 instructions, 34 mutations, `full_cycle` 2 calls (`p2-start-141d`).
+- START `0B49` arms page hover change: relight the hovered item, restore the one left: 59 instructions, 47 mutations, `full_cycle` 1,425 calls (`p2-start-0b49`).
+- END `3CD0` allocate page memory, make the five pages: 47 instructions, 43 mutations, `full_cycle` 1 call (`p2-end-3cd0`).
+- END `4722` unpack a compressed picture onto a page, row by row: 38 instructions, 30 mutations, `full_cycle` 2 calls (`p2-end-4722`).
+- START `76D1` shut the drivers and hooks down and exit with the code: 43 instructions, 45 mutations, `full_cycle` 1 call (`p2-start-76d1`).
+- START `7312` front-end start-up: shared block, shape sets, pages, art, timer, joystick, mouse, random seed: 42 instructions, 36 mutations, `full_cycle` 2 calls (`p2-start-7312`).
+- VGAME `EC12` call software interrupt n with a register structure (int86): 52 instructions, 42 mutations, `boot_to_flight` 1 call (`p2-vgame-ec12`).
+- PLAYER `13CE` call software interrupt n with register structures (int86): 52 instructions, 43 mutations, `full_cycle` 2 calls (`p2-player-13ce`).
+- PLAYER `07EA` show one picture of the intro stream and return the next one's address: 117 instructions, 56 mutations, `full_cycle` 1,592 calls (`p2-player-07ea`).
+
+### 21 routines (16 October 2026, batch g)
 
 Batch g adds 21 routines. Each has five seed proofs with every instruction
 reached, 1,017 mutations caught in all, and an exact boot proof (26 checkpoints)

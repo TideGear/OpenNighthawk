@@ -8,8 +8,8 @@ checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 [docs/repeated-processes.md](docs/repeated-processes.md) (every process we run
 more than once, what it costs). State as of 16 October 2026.
 
-16 October (late): `p2-batch-g` is gated and landed (21 routines; see Phase 2 below).
-Batch h (18 route-proved routines) is next. Resume the roadmap's plan, Phase 2 first.
+16 October (late): `p2-batch-h` is gated and landed (18 routines; see Phase 2 below).
+Next: route-prove the six pending routines as batch i. Resume the roadmap's plan, Phase 2 first.
 
 **Process notes (16 October):** screen leads with `p2-batch-g-accept/screen_leads.py` before any
 agent starts (five of the first twelve picks were blocked or already inline); agents run `pin.py` with
@@ -24,9 +24,9 @@ session log. Earlier detail is in `git log -p handoff.md`.
 
 ## Current state (16 October)
 
-Scoreboard: P1 100.00%, P2 78.53%, P3 96.33%, All 92.52% (P4 is no longer scored)
-(`py tools/progress.py --title`). Phase 2: 967 addresses matched; named code runs
-138,718 of 179,213 census bytes (credit by byte since 16 October).
+Scoreboard: P1 100.00%, P2 80.60%, P3 96.33%, All 93.15% (P4 is no longer scored)
+(`py tools/progress.py --title`). Phase 2: 985 addresses matched; named code runs
+142,612 of 179,213 census bytes (credit by byte since 16 October).
 
 ### Presentation: latest (15 October, evening)
 
@@ -112,7 +112,18 @@ times them (`F117_PRESENT_CLOCK=raw` for the old clock; opt-in knobs `F117_PRESE
 
 ### Phase 2
 
-- Latest batch (16 Oct, late): **`p2-batch-g` is gated and landed**, 21 routines /
+- Latest batch (16 Oct, late): **`p2-batch-h` is gated and landed**, 18 routines /
+  3,894 census bytes by byte credit (985 addresses; 142,612 of 179,213 bytes).
+  Five seeds each, full instruction coverage, 803 mutations caught in all, exact
+  boot and real-route proofs; 90 optimized seed runs. Gate 1,623.75 s: 213 CTests,
+  45 identical routes / 44 fresh interpreter sessions, 985 matched routines at
+  three seeds (0 mismatching), both timing profiles, routes-only and event limits
+  clean. N=1 259,240 exact frames / 259,166 pairs; boot N=4/9 368/366.
+  All acceptance processes finished in 2,185.69 s (presentation sequential: no
+  valid keyed baseline for the new tree, so the overlap fell back; freeze a
+  baseline before integrating next time to keep the overlap).
+  Evidence `D:/f117-gate/p2-batch-h-accept/final-gate-verdict.json`.
+- Previous batch (16 Oct, late): **`p2-batch-g` is gated and landed**, 21 routines /
   6,181 census bytes by byte credit (967 addresses; 138,718 of 179,213 bytes).
   Five seeds each, full instruction coverage, 1,017 mutations caught in all, exact
   boot and real-route proofs; 105 optimized seed runs. Gate 1,803.14 s: 195 CTests,
@@ -134,17 +145,11 @@ times them (`F117_PRESENT_CLOCK=raw` for the old clock; opt-in knobs `F117_PRESE
   harness prints a routine's `equal` line before the floor check adds its failure,
   so a lone `1 mismatching` with all lines equal means a coverage floor: reproduce
   with `--only` and `F117_COVER`.
-- **Batch h, route-proved, waiting to integrate (18):** VGAME `ED10`, PLAYER
-  `026B:0272`, START `20D6`, END `4CBC`, END `1901`, START `38AC`, VGAME `4973`,
-  START `8DD8`, VGAME `0235`, START `141D`, START `0B49`, END `3CD0`, END `4722`,
-  START `76D1`, START `7312`, VGAME `EC12`, PLAYER `13CE`, PLAYER `07EA`
-  (directories `D:/f117-gate/p2-<name>`). Harness rows `kit.py integrate` does not
-  carry: POPF_STOPS for `026B:0272`, `4CBC`, `8DD8`
-  (`D:/f117-gate/p2-player-026b-0272/harness-hunk.diff`); LIVE_FRAMES for `0B49`.
-- **Proved privately, route proof not run (6):** END `3F44`, START `8782`,
+- **Batch i, route proof not run (6, seeds and mutations done):** END `3F44`, START `8782`,
   PLAYER `019A` (its last 8 bytes can never be credited), END `4648`, VGAME
   `FD66` (census row `0FB2:0246`), START `9094` (needs a PROGRAM_ENDS row and a
-  `run_to_ret` rule; see its `harness-hunk.diff`).
+  `run_to_ret` rule; see its `harness-hunk.diff`). Root runs `finish.sh` per
+  directory with `KIT_ROOT` at the gated tree, then integrate as one batch.
 - **Declined (add to `kit/DECLINED.tsv`):** PLAYER `2853`, PLAYER `0211`
   re-sync, VGAME `14C2:0000` (STI in its colour loop; the `set_dac` family).
 - **Stopped early drafts (no proof yet; reuse or restart):** START `6AB3` (only
@@ -206,8 +211,8 @@ transitions, widths by role). Details and the method: docs/progress.md.
 
 ## Next steps
 
-1. **Phase 2 first (owner).** `p2-batch-g` is gated and landed; integrate batch h
-   above (with its harness rows), then route-prove the six pending routines.
+1. **Phase 2 first (owner).** `p2-batch-h` is gated and landed; route-prove the
+   six pending routines above and integrate them as batch i.
    Continue down the ranked list
    (`D:/f117-gate/p2-batch-d-accept/reached-allroutes.tsv`) with the private kit and parallel agents (agents do steps 1-7 only; root runs
    `kit.py checkpoints` and `D:/f117-gate/kit/boot_proof.py` with `KIT_ROOT` at the gated worktree, then
