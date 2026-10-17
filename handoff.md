@@ -121,6 +121,12 @@ times them (`F117_PRESENT_CLOCK=raw` for the old clock; opt-in knobs `F117_PRESE
   clean. N=1 259,240 exact frames / 259,166 pairs; boot N=4/9 368/366.
   All acceptance processes finished in 1,856.14 s using the checked presentation
   overlap. Evidence `D:/f117-gate/p2-batch-g-accept/final-gate-verdict.json`.
+  Main's normal /O2 application build passed (173.41 s), and proof-kit libraries
+  were refreshed from `8e42b41`; hashes are in `D:/f117-gate/kit-libs/manifest.json`.
+  Both Windows and Munt CI passed for the merge commit:
+  https://github.com/TideGear/OpenNighthawk/actions/runs/39004209030
+  (`D:/f117-gate/p2-batch-g-accept/ci-run.json`). All local acceptance/build/proof
+  processes are finished; no test session needs resuming.
   The first gate attempt failed step 7c at seed `0x70ca1542de1f`: PLAYER `0738`'s
   coverage floor (its busy early exit `073F` unreached; the fixture planted the
   busy word only on a 1-in-10 random draw). Every tenth state now plants one
