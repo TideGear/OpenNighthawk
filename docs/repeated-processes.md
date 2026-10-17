@@ -32,13 +32,13 @@ tools/build_recomp.py --data INSTALL --seed-coverage WORK/coverage --jobs 16
 --verify-interp-cache`, started through `D:/f117-gate/affinity_launch.py`
 (below).
 
-**Current figures (17 October 2026):** 229 CTests; 45 routes identical, run
-as 44 sessions; 5,718,848 instruction states under each timing profile; 1,000
-matched routines at three seeds; reachability and event limits clean. Batch k's
-full gate took 1,833.81 s, with every interpreter session verified fresh.
+**Current figures (17 October 2026):** 231 CTests; 45 routes identical, run
+as 44 sessions; 5,718,848 instruction states under each timing profile; 1,001
+matched routines at three seeds; reachability and event limits clean. Batch l's
+full gate took 1,847.11 s, with every interpreter session verified fresh.
 All acceptance processes, including N=1 and boot N=4/9 presentation, finished
-in 1,888.80 s using checked presentation overlap. Evidence:
-`D:/f117-gate/p2-batch-k-accept/final-gate-verdict.json`.
+in 1,900.11 s using checked presentation overlap. Evidence:
+`D:/f117-gate/p2-batch-l-accept/final-gate-verdict.json`.
 Typical gates take about 1,300-2,000 s; the longest career seed chain sets the route time.
 
 | Stage | Latest measured | What sets it, what was duplicated | Status |
@@ -353,13 +353,12 @@ This removes one compiler invocation; a gate wall-time saving is not established
 In one local build pair the two old compilations took 143.74 / 144.40 s
 concurrently, and the single shared compilation took 99.75 s (Ninja timings).
 
-**Independent checks (17 Oct).** Five pending proofs finished in four lanes,
-with separate directories and CPU masks `00003F`, `000FC0`, `03F000` and
-`FC0000`, at BelowNormal priority, leaving eight CPUs for the desktop.
-The full refresh took 338.36 s: normal optimized libraries and
-current bases, five seeds, all 267 mutations repeated, real-route and boot
-replays, and source/coverage/mutation audits. Bodies and fixtures were
-unchanged, and library hashes held throughout. Presentation N=1
+**Independent checks (17 Oct).** Two pending proofs were refreshed in two
+isolated lanes (`000FFF`, `FFF000`, BelowNormal), leaving eight CPUs for the
+desktop. The refresh took 192.62 s: optimized libraries/current bases,
+five seeds each, all 115 mutations repeated, real-route and boot replays, and
+source/coverage/mutation audits. Bodies, fixtures and library hashes held.
+Presentation N=1
 over all routes and boot N=4/9 can also overlap using a frozen runner and separate output directories
 (16 + 2 workers within the existing 24-CPU affinity). Gate workers and the
 default eight interpreter overlap workers are unchanged.
@@ -480,6 +479,15 @@ were rerun after the correction. Inherited coverage for the changed RNG was
 removed and replaced with fresh optimized coverage before computing byte credit.
 Screening also joins actual byte credit: an unregistered census entry can be
 fully covered inside an existing named body, so a FREE lead alone is insufficient.
+
+**Existing-entry expansions (17 Oct).** Keep the old registered address
+when replacing a named opening with its whole function. Remove only its old
+wrapper/registration, preserve shared helpers used elsewhere, and add full
+span/coverage fixtures and a dedicated CTest. Retire that entry's inherited
+named-byte coverage and collect fresh optimized evidence. START `58DF` adds
+197 bytes this way without adding an address. A census lead such as `5951`
+can be an interior arm: expand the enclosing function and its jump-table
+dossier before introducing a new override. Switch data are never byte credit.
 
 ## Phase 2 candidate reading
 

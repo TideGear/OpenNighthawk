@@ -68,11 +68,11 @@ make (Phase 4).
   early for its autoexec); delivery there is not pursued (Settled, below).
 - **The game version verified:** GOG's installer (build 28044) with the 473.04
   update; Steam's release is byte-identical (`tools/verify_install.py`).
-- **The gate** (`tools/build_recomp.py`): translate, build, unit tests (229),
+- **The gate** (`tools/build_recomp.py`): translate, build, unit tests (231),
   coverage, both engines on every route, instruction lockstep under both
   timing profiles, matched-routine lockstep at three seeds, and the
   routes-only and event-limit checks. About 21-33 minutes when every
-  interpreter route is verified fresh (latest 1,834 s); costs and what was
+  interpreter route is verified fresh (latest 1,847 s); costs and what was
   optimised: [repeated-processes.md](repeated-processes.md).
 - **Rendered speaker and speech audio.** PIT counter 2 follows the 8254 model;
   speaker music matches DOSBox-X (envelope 0.87, spectral 0.92-0.93, level
@@ -151,12 +151,12 @@ not the recompilation:
       [../handoff.md](../handoff.md). `tools/reimp_names.py` joins the Reimp's
       census (1,535 functions) with this project's regions as a private lead
       list.
-      **Now:** 1,000 addresses matched; named code runs 145,365 of
-      179,213 census bytes (P2 82.06%, overall 93.59%): 940 census rows
-      wholly, 291 in part. Credit is by byte since 16 October
+      **Now:** 1,001 addresses matched; named code runs 145,679 of
+      179,213 census bytes (P2 82.22%, overall 93.65%): 948 census rows
+      wholly, 293 in part. Credit is by byte since 16 October
       ([progress.md](progress.md#what-is-measured)): under it master's 946 routines
       held 132,537 bytes (132,638 by whole rows), batch g added 6,181 and
-      batch h added 3,894, batch i 602, batch j 1,349 and batch k 802.
+      batch h added 3,894, batch i 602, batch j 1,349, batch k 802 and batch l 314.
       **What is left:** `tools/census_reach.py` separates code with run
       evidence from code without (gate coverage logs only interpreted
       fallback instructions, so it cannot show what ran). Fresh interpreter
@@ -202,7 +202,31 @@ reaches. Candidate drafts can keep private static dossiers
 (`matched_draft.py --dossier`):
 [repeated-processes.md](repeated-processes.md#phase-2-candidate-reading).
 
-### Latest batch: 5 routines (17 October 2026, batch k)
+### Latest batch: a far picture wrapper and a complete grid formatter (17 October 2026, batch l)
+
+Batch l adds one address and expands an existing one: 1,001 matched addresses,
+314 more census bytes. Both bodies have five seed proofs, full instruction
+coverage, 115 caught mutations in all, exact real-route and boot proofs, and
+ten optimized seed runs. Evidence `D:/f117-gate/p2-batch-l-accept`.
+
+- VGAME `11D8:000A` (linear `11D8A`), `vgame_pic_rows_to_page_far`: the far
+  picture/page wrapper, 40 instructions, 41 mutations, `full_cycle` 2 calls
+  and 66 exact checkpoints. Its 200-row loop reads the relocated DS operand
+  and driver call targets from live code. Probes fold return IP/CS as well
+  as registers; a first missed return-address mutation was preserved, then
+  all seeds and mutations were repeated with the strengthened probes.
+- START `58DF`, `start_onc_grid_reference`: the full nine-arm theatre grid
+  formatter replaces the former six-instruction opening at the same address.
+  91 instructions, 74 mutations, `korea_strike` 2 calls and 76 exact
+  checkpoints. The fixture permutes the live switch table and covers signed
+  coordinates and the original uninitialized-bias behavior above theatre 8.
+  END's shared opening helper is retained; no duplicate START entry is added.
+
+Fresh coverage replaces the old START opening's evidence: +197 bytes there,
++117 for the picture wrapper. The eighteen switch-table bytes `5963..5974`
+and VGAME `11DFF` stay uncredited; the same TSV/denominator is retained.
+
+### 5 routines (17 October 2026, batch k)
 
 Batch k reaches 1,000 matched addresses and adds 802 census bytes. Five seeds
 per routine reach every instruction; all 267 mutations are caught. Exact
