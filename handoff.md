@@ -25,6 +25,18 @@ session log. Earlier detail is in `git log -p handoff.md`.
 
 ## Current state (17 October)
 
+**Stopped for handoff at the owner's request (17 October, 12:53 PDT).**
+Main contains verified batch l plus handoff updates. Batch m's unchanged
+full gate and overlapping N=1 presentation checks are still running; leave
+worktree HEAD `e6858ea` fixed and collect the existing processes next time.
+Tool session `31530`; gate Python PID `77364`, presentation PID `4620`
+confirmed live at 12:52. No private candidate process remains running.
+All next-batch private proofs are complete, but need refresh against m's
+accepted source/libraries before integration. Details and exact finish
+commands: `D:/f117-gate/p2-batch-m-accept/CONTINUE.md` and
+`D:/f117-gate/p2-batch-n-accept/CONTINUE.md`. Main's unverified batch-m
+source is isolated and locally committed on `p2-batch-m`, not pushed.
+
 Scoreboard: P1 100.00%, P2 82.22%, P3 96.33%, All 93.65% (P4 is no longer scored)
 (`py tools/progress.py --title`). Phase 2: 1,001 addresses matched; named code runs
 145,679 of 179,213 census bytes (credit by byte since 16 October).
@@ -272,10 +284,17 @@ times them (`F117_PRESENT_CLOCK=raw` for the old clock; opt-in knobs `F117_PRESE
   mutations, exact `full_cycle` 66 checkpoints / 2 calls, boot26 and root
   audit passed. Fatal DOS paths are fixture-proved through a bounded dossier
   and terminal-entry/native-INT10 harness additions, documented in its
-  `INTEGRATION.txt`. First complete proof preserved; a full repeat is now
-  running with the original relocation value included among fixture choices
-  to cover its unchanged instruction bytes. Live state:
-  `D:/f117-gate/p2-vgame-11b88/CONTINUE.md`. Private only; refresh after m.
+  `INTEGRATION.txt`. First complete proof preserved; the full repeat with
+  original and varied relocation values also passed: five seeds / all67,
+  all47 mutations, full_cycle66 / 2 calls, boot26, source/route/root audit.
+  Final proof state: `D:/f117-gate/p2-vgame-11b88/CONTINUE.md`.
+  Private only; refresh after m. Next-batch scripts are prepared/compiled
+  (`refresh-batch-n.py`, `prepare-batch-n.py`, `integrate-batch-n.py` under
+  `D:/f117-gate`), not run. They preserve the existing scorer alias and
+  add five optimized alias seeds (15 optimized seeds total), terminal
+  harness support and an independent dossier-based byte-credit audit.
+  `p2-batch-n-accept/ranked-partials.json` additionally ranks incomplete
+  registered routines (screen before selecting; some remaining bytes are data).
 - **Stopped draft:** END `03D9` (D12 sites 0443/0450 may lie inside: decline
   while D12 is on). VGAME `7663` was superseded by batch g.
 - **Routes other than full_cycle:** `kit.py DIR checkpoints --route NAME` (and `ROUTE=NAME` for
