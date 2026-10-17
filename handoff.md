@@ -123,6 +123,11 @@ times them (`F117_PRESENT_CLOCK=raw` for the old clock; opt-in knobs `F117_PRESE
   valid keyed baseline for the new tree, so the overlap fell back; freeze a
   baseline before integrating next time to keep the overlap).
   Evidence `D:/f117-gate/p2-batch-h-accept/final-gate-verdict.json`.
+  Main's normal /O2 application build passed (177.95 s), and proof-kit libraries
+  were refreshed from `eab3cc0`; hashes are in `D:/f117-gate/kit-libs/manifest.json`.
+  CI for `eab3cc0` was still running at wrap-up; check
+  https://github.com/TideGear/OpenNighthawk/actions for its verdict before
+  starting batch i. All local acceptance/build/proof processes are finished.
 - Previous batch (16 Oct, late): **`p2-batch-g` is gated and landed**, 21 routines /
   6,181 census bytes by byte credit (967 addresses; 138,718 of 179,213 bytes).
   Five seeds each, full instruction coverage, 1,017 mutations caught in all, exact
