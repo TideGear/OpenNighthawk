@@ -24,17 +24,10 @@ session log. Earlier detail is in `git log -p handoff.md`.
 
 ## Current state (17 October)
 
-**Stopped for handoff at the owner's request (17 October, 12:53 PDT).**
-Main contains verified batch l plus handoff updates. Batch m's unchanged
-full gate and overlapping N=1 presentation checks are still running; leave
-worktree HEAD `e6858ea` fixed and collect the existing processes next time.
-Tool session `31530`; gate Python PID `77364`, presentation PID `4620`
-confirmed live at 12:52. No private candidate process remains running.
-All next-batch private proofs are complete, but need refresh against m's
-accepted source/libraries before integration. Details and exact finish
-commands: `D:/f117-gate/p2-batch-m-accept/CONTINUE.md` and
-`D:/f117-gate/p2-batch-n-accept/CONTINUE.md`. Main's unverified batch-m
-source is isolated and locally committed on `p2-batch-m`, not pushed.
+Batch m is landed, built and CI-green. Private batch-n proofs (END `3021` scorer,
+VGAME `11B8:0008` picture opener) are complete but need refreshing against m's
+libraries before integration: `D:/f117-gate/p2-batch-n-accept/CONTINUE.md`
+(`refresh-batch-n.py`, then `prepare-batch-n.py`, `integrate-batch-n.py`).
 
 Scoreboard: P1 100.00%, P2 82.36%, P3 96.33%, All 93.69% (P4 is no longer scored)
 (`py tools/progress.py --title`). Phase 2: 1,002 addresses matched; named code runs
@@ -138,6 +131,10 @@ times them (`F117_PRESENT_CLOCK=raw` for the old clock; opt-in knobs `F117_PRESE
   END `22EB` complete ribbon collector: 86 instructions / 46 mutations;
   replaces its old opening. Fresh coverage replaces the inherited entry's
   evidence (+161 bytes); the new callback adds 101. Same census denominator.
+  Main's normal /O2 application build passed (125.70 s); proof-kit
+  libraries were refreshed from `6489da3` (hashes in `kit-libs/manifest.json`).
+  Both Windows and Munt CI passed: https://github.com/TideGear/OpenNighthawk/actions/runs/39067339405.
+  All batch-m acceptance/build processes are finished.
 - Previous batch (17 Oct): **`p2-batch-l` is gated and landed**: one new address
   plus an existing-entry expansion (1,001 addresses; 145,679 / 179,213 bytes,
   +314). Five seeds each, full instruction coverage, all 115 mutations caught,
