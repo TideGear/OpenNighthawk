@@ -24,7 +24,7 @@ session log. Earlier detail is in `git log -p handoff.md`.
 
 ## Current state (17 October)
 
-Batch n is gated and landed; its main build and CI follow the pattern below.
+Batch n is landed, built and CI-green; no private processes are running.
 
 Scoreboard: P1 100.00%, P2 83.02%, P3 96.33%, All 93.89% (P4 is no longer scored)
 (`py tools/progress.py --title`). Phase 2: 1,003 addresses matched; named code runs
@@ -127,6 +127,10 @@ times them (`F117_PRESENT_CLOCK=raw` for the old clock; opt-in knobs `F117_PRESE
   END `3021` complete debrief scorer (579 instructions, existing `34EA`
   alias kept); VGAME `11B8:0008` packed picture opener with a terminal DOS
   exit (harness: `PROGRAM_ENDS` entry, native INT 10h predicate).
+  Main's normal /O2 application build passed (212.16 s); proof-kit
+  libraries were refreshed from `ef6fb93` (hashes in `kit-libs/manifest.json`).
+  Both Windows and Munt CI passed: https://github.com/TideGear/OpenNighthawk/actions/runs/39070726821.
+  All batch-n acceptance/build processes are finished.
 - Previous batch (17 Oct): **`p2-batch-m` is gated and landed**: one new address
   and one existing-entry expansion (1,002 addresses; 145,941 / 179,213 bytes,
   +262). Five seeds each, full instruction coverage, all 74 mutations caught,
