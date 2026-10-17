@@ -68,11 +68,11 @@ make (Phase 4).
   early for its autoexec); delivery there is not pursued (Settled, below).
 - **The game version verified:** GOG's installer (build 28044) with the 473.04
   update; Steam's release is byte-identical (`tools/verify_install.py`).
-- **The gate** (`tools/build_recomp.py`): translate, build, unit tests (233),
+- **The gate** (`tools/build_recomp.py`): translate, build, unit tests (235),
   coverage, both engines on every route, instruction lockstep under both
   timing profiles, matched-routine lockstep at three seeds, and the
   routes-only and event-limit checks. About 21-33 minutes when every
-  interpreter route is verified fresh (latest 1,812 s); costs and what was
+  interpreter route is verified fresh (latest 1,839 s); costs and what was
   optimised: [repeated-processes.md](repeated-processes.md).
 - **Rendered speaker and speech audio.** PIT counter 2 follows the 8254 model;
   speaker music matches DOSBox-X (envelope 0.87, spectral 0.92-0.93, level
@@ -151,12 +151,12 @@ not the recompilation:
       [../handoff.md](../handoff.md). `tools/reimp_names.py` joins the Reimp's
       census (1,535 functions) with this project's regions as a private lead
       list.
-      **Now:** 1,002 addresses matched; named code runs 145,941 of
-      179,213 census bytes (P2 82.36%, overall 93.69%): 951 census rows
+      **Now:** 1,003 addresses matched; named code runs 147,180 of
+      179,213 census bytes (P2 83.02%, overall 93.89%): 961 census rows
       wholly, 293 in part. Credit is by byte since 16 October
       ([progress.md](progress.md#what-is-measured)): under it master's 946 routines
       held 132,537 bytes (132,638 by whole rows), batch g added 6,181 and
-      batch h added 3,894, batch i 602, batch j 1,349, batch k 802, batch l 314 and batch m 262.
+      batch h added 3,894, batch i 602, batch j 1,349, batch k 802, batch l 314, batch m 262 and batch n 1,239.
       **What is left:** `tools/census_reach.py` separates code with run
       evidence from code without (gate coverage logs only interpreted
       fallback instructions, so it cannot show what ran). Fresh interpreter
@@ -202,7 +202,28 @@ reaches. Candidate drafts can keep private static dossiers
 (`matched_draft.py --dossier`):
 [repeated-processes.md](repeated-processes.md#phase-2-candidate-reading).
 
-### Latest batch: awards page callback and complete ribbon collector (17 October 2026, batch m)
+### Latest batch: the debrief scorer and a packed picture opener (17 October 2026, batch n)
+
+Batch n adds one address and expands an existing one: 1,003 addresses,
+1,239 more census bytes. Five seeds each reach all 646 instructions across
+both bodies; all 199 mutations are caught, and fifteen optimized seed runs
+pass (five of them on the existing END `34EA` entry). Evidence
+`D:/f117-gate/p2-batch-n-accept`.
+
+- END `3021`, `end_debrief_log_score`: the complete scorer with its
+  12-way switch (579 instructions / 1,608 bytes, 152 mutations). The registered
+  `34EA` entry is preserved as an alias that resumes after the increment;
+  the initial jump to `34ED` does not increment. Exact `recon_career`
+  (344 checkpoints, 3 calls) and a 26-checkpoint boot proof.
+- VGAME `11B8:0008`, `vgame_picture_open_far`: the far picture opener with
+  its terminal DOS-error exit (67 instructions / 152 bytes, 47 mutations).
+  The harness gained terminal-entry (`PROGRAM_ENDS`) and native INT 10h
+  support for it. Exact `full_cycle` (66 checkpoints, 2 calls).
+
+Fresh evidence replaces the inherited `3021`/`34EA` opening coverage.
+The census denominator is unchanged; switch data `34D2..34E9` stays uncredited.
+
+### Awards page callback and complete ribbon collector (17 October 2026, batch m)
 
 Batch m adds one address and expands an existing one: 1,002 addresses,
 262 more census bytes. Five seeds each reach all 138 instructions across
