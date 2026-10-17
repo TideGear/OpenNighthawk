@@ -151,10 +151,11 @@ not the recompilation:
       [../handoff.md](../handoff.md). `tools/reimp_names.py` joins the Reimp's
       census (1,535 functions) with this project's regions as a private lead
       list.
-      **Now:** 946 addresses matched, covering 944 of the census functions and
-      132,638 of 179,213 bytes (P2 75.31%, overall 91.53%).
-      The latest batch (`p2-batch-f`, 16 Oct: 2 routines, 331 census
-      bytes) is included in these figures; see the handoff.
+      **Now:** 967 addresses matched; named code runs 138,718 of
+      179,213 census bytes (P2 78.53%, overall 92.52%): 902 census rows
+      wholly, 285 in part. Credit is by byte since 16 October
+      ([progress.md](progress.md#what-is-measured)): under it master's 946 routines
+      held 132,537 bytes (132,638 by whole rows), and batch g adds 6,181.
       **What is left:** `tools/census_reach.py` separates code with run
       evidence from code without (gate coverage logs only interpreted
       fallback instructions, so it cannot show what ran). Fresh interpreter
@@ -176,7 +177,11 @@ not the recompilation:
       until a route reaches it. The C start-up routine (START `8EDC` and its
       six copies) must stop right after its own STI and never returns to its
       caller's stack, so no lockstep state can complete it; it needs a harness
-      completion rule first (`D:/f117-gate/p2-start-8edc/BLOCKED.txt`).
+      completion rule first (`D:/f117-gate/p2-start-8edc/BLOCKED.txt`); its
+      copies are VGAME `E6BE`, DSWAP `0C7E`, SETUP `1516`, END `4DD2`, PLAYER
+      `1096` and MPS_LOGO `0146:0016`. The far palette loader VGAME `14C2:0000`
+      has STI inside its colour loop, like START `8378` and END `42E4`, whose
+      matched bodies stop at the first STI.
       Excluded as unequal: START 0x11DB, MPS_LOGO 0x1ADC and 0x1C82.
 
 ### How an entry is proved
@@ -196,7 +201,39 @@ reaches. Candidate drafts can keep private static dossiers
 (`matched_draft.py --dossier`):
 [repeated-processes.md](repeated-processes.md#phase-2-candidate-reading).
 
-### Latest batch: front-end menu and intro controls (16 October 2026)
+### Latest batch: 21 routines (16 October 2026, batch g)
+
+Batch g adds 21 routines. Each has five seed proofs with every instruction
+reached, 1,017 mutations caught in all, and an exact boot proof (26 checkpoints)
+plus an exact real route that calls it. Several are interior entries
+(arms of a switch, a loop's continue point, the second half of a routine
+another matched body hands back to); the harness gained `LIVE_FRAMES` for
+entries whose function frame is already built. Evidence
+`D:/f117-gate/p2-batch-g-accept`.
+
+- VGAME `00F0` flight start-up: mission, models, mode, sound file, palette, cockpit pages and HUD recolour (tail 01C1): 105 instructions, 54 mutations, `full_cycle` 1 call (`p2-vgame-00f0`).
+- VGAME `01C1` recolour three HUD bitmap rectangles for the current pilot mode: 37 instructions, 34 mutations, `full_cycle` 1 call (`p2-vgame-01c1`).
+- START `5BF0` world options: theatre, tension, mission, roster save and exit wipe: 251 instructions, 64 mutations, `central_europe_airair` 1 call (`p2-start-5bf0`).
+- VGAME `825D` put a multi-function display up: 84 instructions, 38 mutations, `strike_training_d8` 1 call (`p2-vgame-825d`).
+- START `2696` objective line for a photograph or destroy target: 83 instructions, 44 mutations, `full_cycle` 4 calls (`p2-start-2696`).
+- VGAME `7663` release the selected store: 218 instructions, 68 mutations, `korea_strike` 2 calls (`p2-vgame-7663g`).
+- START `A015` the formatter's integer conversion: 98 instructions, 40 mutations, `full_cycle` 8 calls (`p2-start-a015`).
+- VGAME `C9AE` 8 key bay doors, then the key dispatcher tail: map pan, nav cursor, release and lamps: 343 instructions, 52 mutations, `korea_strike` 1 call (`p2-vgame-c9ae`).
+- START `9EB3` the formatter's string field: 66 instructions, 42 mutations, `full_cycle` 81 calls (`p2-start-9eb3`).
+- END `5825` the formatter's string length: 11 instructions, 28 mutations, `full_cycle` 7 calls (`p2-end-5825`).
+- END `3887` show the landed screen: picture, three panels, four animation frames, prompt: 122 instructions, 45 mutations, `airair_type6` 1 call (`p2-end-3887`).
+- END `099D` place and draw a debriefing map icon: 97 instructions, 41 mutations, `full_cycle` 1 call (`p2-end-099d`).
+- VGAME `D9FE` measure an object from the eye, cull it and defer it for drawing: 114 instructions, 74 mutations, `airair_type6` 848 calls (`p2-vgame-d9fe`).
+- START `644A` roster hover: detail strip, colours, record sheet: 69 instructions, 47 mutations, `full_cycle` 2 calls (`p2-start-644a`).
+- END `372F` landing pictures and palette fade rates: 145 instructions, 37 mutations, `landing` 1 call (`p2-end-372f`).
+- END `5987` the formatter's integer conversion: 98 instructions, 40 mutations, `full_cycle` 2 calls (`p2-end-5987`).
+- END `34EA` debrief score: next log record, or scale and return the total: 170 instructions, 53 mutations, `full_cycle` 5 calls (`p2-end-34ea`).
+- END `2A01` announce a promotion, a held-back one or a plain debrief: 80 instructions, 44 mutations, `career_promotion` 1 call (`p2-end-2a01`).
+- VGAME `4657` place a released countermeasure in a slot and announce it: 83 instructions, 40 mutations, `korea_strike` 2 calls (`p2-vgame-4657`).
+- PLAYER `0D0C` palette to its copy and the DAC (black during a fade): 46 instructions, 33 mutations, `full_cycle` 7 calls (`p2-player-0d0c`).
+- END `0A98` format and draw a replay event caption: 282 instructions, 99 mutations, `full_cycle` 1 call (`p2-end-0a98`).
+
+### Front-end menu and intro controls (16 October 2026, batch f)
 
 Batch f adds two routines / 331 census bytes. Both have five seed proofs,
 full instruction coverage, 80 mutations caught and exact boot (26 checkpoints)
@@ -711,6 +748,9 @@ this project did not build. Not scored by `tools/progress.py` (owner, 15 Oct 202
 
 ## Housekeeping
 
+- [x] Phase 2 credit by byte (16 Oct): `F117_NAMED_COVER` in the lockstep and
+      route captures measure the census bytes named code runs
+      ([progress.md](progress.md#what-is-measured)).
 - [x] `src/machine/dos.c` split by service (`dos_memory.c`, `dos_programs.c`,
       `dos_files.c`, `dos_keyboard.c`, `dos_video.c`), the mouse driver in
       `mouse.c`; routes agreed before and after at every checkpoint.

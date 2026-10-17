@@ -8,78 +8,25 @@ checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 [docs/repeated-processes.md](docs/repeated-processes.md) (every process we run
 more than once, what it costs). State as of 16 October 2026.
 
-16 October (evening): stop point for a new conversation. `p2-batch-f` is gated and landed at
-`a34d3c6`. Batch g is **not** gated and is **not** on master. Read this section first.
-
-### Stop point (16 October, evening)
-
-- **master** (`70ca154`) is the verified batch f code. Nothing unverified is on master.
-- **Batch g is on branch `p2-batch-g`** (pushed, WIP, UNVERIFIED; commits `b6ac121`, `34daa38`). It holds
-  21 proved routines integrated, the harness hunks applied by hand, and the byte-level census
-  credit tooling (`progress.py --named-cover/--route-cover`, `CENSUS_SPANS` removed, 7 tests pass).
-  Its `progress.json` reads P2 78.53% (138,718 bytes): unverified, do not record as achieved.
-- **The gate failed on batch g.** Step 7c, matched routines at this commit's seed `0x70ca1542de1f`:
-  `1 mismatching`. Every other step passed in that run (173-test suite, 45 routes identical, both
-  instruction profiles). The failing routine is **not yet identified**. Shard runs of
-  `func_lockstep --shard K/N` at that seed printed no mismatch; the wrapper `tools/func_lockstep_par.py
-  --states 4000 --verbose --seed 0x70ca1542de1f` reports the count without naming the routine (the
-  per-routine line is not in its log). Next: run `func_lockstep --states 4000 --verbose --seed
-  0x70ca1542de1f --only MOD:IP` per batch-g routine, or `--shard K/8` with the full
-  `--states 4000`, and grep `MISMATCH`. Suspects: a batch-g body, or a LIVE_FRAMES row (the batch-g
-  tree has END `34EA`, END `099D`, VGAME `4657` and START `0B49`). The presentation check was never validated for
-  batch g (N=1 exited 0; the acceptance aborted at the gate).
-- **Not integrated, route-proved, five-seed lockstep passed (18 routines, batch h):** VGAME
-  `ED10` (int86x; `boot_to_flight`), PLAYER `026B:0272` (`full_cycle`), START `20D6` (`career_serge`),
-  END `4CBC` (`full_cycle`), END `1901` (`full_cycle`), START `38AC` (`full_cycle`), VGAME `4973`
-  (`full_cycle`), START `8DD8` (`full_cycle`), VGAME `0235` (`full_cycle`), START `141D`
-  (`full_cycle`), START `0B49` (`full_cycle`), END `3CD0` (`full_cycle`), END `4722` (`full_cycle`),
-  START `76D1` (`full_cycle`), START `7312` (`full_cycle`), VGAME `EC12` (`boot_to_flight`),
-  PLAYER `13CE` (`full_cycle`), PLAYER `07EA` (`full_cycle`). Directories `D:/f117-gate/p2-<name>`.
-  Harness rows the kit's `integrate` does **not** carry: POPF_STOPS for `026B:0272`, `4CBC`, `8DD8`
-  (`D:/f117-gate/p2-player-026b-0272/harness-hunk.diff`); LIVE_FRAMES for `0B49`.
-- **Proved privately, route proof not run (6):** END `3F44` (`full_cycle`), START `8782` (`ibm_boot`;
-  twin of END `4722`), PLAYER `019A` (`ibm_boot`; its last 8 bytes follow a call that exits, so they
-  can never be credited), END `4648` (`full_cycle`), VGAME `FD66` (`full_cycle`; census row address
-  `0FB2:0246`), START `9094` (`full_cycle`; needs a PROGRAM_ENDS row and a `run_to_ret` rule, see its
-  `harness-hunk.diff`).
-- **Declined (add to `kit/DECLINED.tsv`):** PLAYER `2853` (STI-first timer handler, `026B:01A3`),
-  PLAYER `0211` re-sync (STI in its loop). VGAME `14C2:0000` (STI in its colour loop; the
-  `set_dac` family).
-- **Census lead list:** `census_reach.py` judged rows in packed programs by linear address, so the
-  unpacker's copy looked like the program's code (MPS_LOGO `27C2` and `27AE` were false reach). The
-  branch fixes it (segment and offset, plus a byte check with `--data`). Corrected reach:
-  `D:/f117-gate/p2-batch-g-accept/reached-fixed.tsv`; free leads after screening:
-  `screened-g.tsv` (298 free, most under 150 bytes). Filter with `kit/DECLINED.tsv` first.
-- **Byte-level credit (not yet in master's docs).** Owner decision, 16 October: P2 counts the census
-  bytes that a matched body's own code runs (lockstep plus route evidence). On master's 946 routines
-  this is 132,537 bytes, against 132,638 by whole rows. `docs/progress.md` on branch `p2-batch-g`
-  describes the rule.
-
-**To finish batch g:** (1) identify and fix the seed `0x70ca1542de1f` mismatch; (2) integrate the
-harness rows above; (3) run `finish_docs.py` in `D:/f117-gate/p2-batch-g-accept` after a passing
-`final-gate-verdict.json` (it writes the roadmap and handoff figures from the audit, not by hand);
-(4) run one full gate and `presentation_check --scales 1 --jobs 16` on the exact commit; (5) merge to
-master. Then route-prove the six pending routines, and integrate batch h the same way.
+16 October (late): `p2-batch-g` is gated and landed (21 routines; see Phase 2 below).
+Batch h (18 route-proved routines) is next. Resume the roadmap's plan, Phase 2 first.
 
 **Process notes (16 October):** screen leads with `p2-batch-g-accept/screen_leads.py` before any
 agent starts (five of the first twelve picks were blocked or already inline); agents run `pin.py` with
 an absolute path to the program; `--shard K/N` is 0-based; a stray `dis.py` in the Temp folder shadows
 the standard library (moved to scratch); route proofs can finish in four parallel lanes
-(`p2-batch-g-accept/lanes.sh`).
-
-The owner's untracked `4k*.bat` files are still untouched.
-
-### Previous state (16 October, earlier)
-
-Batch f's text follows, kept for reference.
+(`p2-batch-g-accept/lanes.sh`). Census leads: `D:/f117-gate/p2-batch-g-accept/reached-fixed.tsv`;
+free leads after screening: `screened-g.tsv` (298 free, most under 150 bytes); filter with
+`kit/DECLINED.tsv` first. The owner's untracked `4k*.bat` files are still untouched.
 
 This file holds only the current state and standing practice, not a
 session log. Earlier detail is in `git log -p handoff.md`.
 
 ## Current state (16 October)
 
-Scoreboard: P1 100.00%, P2 75.31%, P3 96.33%, All 91.53% (P4 is no longer scored)
-(`py tools/progress.py --title`). Phase 2: 944 census functions / 132,638 bytes.
+Scoreboard: P1 100.00%, P2 78.53%, P3 96.33%, All 92.52% (P4 is no longer scored)
+(`py tools/progress.py --title`). Phase 2: 967 addresses matched; named code runs
+138,718 of 179,213 census bytes (credit by byte since 16 October).
 
 ### Presentation: latest (15 October, evening)
 
@@ -165,31 +112,35 @@ times them (`F117_PRESENT_CLOCK=raw` for the old clock; opt-in knobs `F117_PRESE
 
 ### Phase 2
 
-- Latest batch (16 Oct): **`p2-batch-f` is gated and landed**, two routines / 331 census
-  bytes: START `020F` front-end menu and PLAYER `0696` intro control poll. Five seeds each,
-  full instruction coverage, 80 mutations caught, 26 boot checkpoints and 66 full-cycle
-  checkpoints exact (two / 2,310,066 full-cycle calls); ten optimized seed runs.
-  Gate 1,781.97 s: 173 CTests, 45 identical routes / 44 fresh interpreter sessions,
-  946 matched routines at three seeds, both timing profiles, routes-only and event limits clean.
-  N=1 259,240 exact frames / 259,166 pairs; boot N=4/9 368/366. All acceptance processes
-  finished in 1,836.51 s using the checked presentation overlap below.
-  Evidence `D:/f117-gate/p2-batch-f-accept/final-gate-verdict.json`.
-  Main's normal /O2 application build passed (168.78 s), and proof-kit libraries were
-  refreshed from `a34d3c6`; hashes are in `D:/f117-gate/kit-libs/manifest.json`.
-  Both Windows and Munt CI passed for that exact commit:
-  https://github.com/TideGear/OpenNighthawk/actions/runs/38993307275
-  (`D:/f117-gate/p2-batch-f-accept/ci-run.json`). All local acceptance/build/proof
-  processes are finished; no test session needs resuming.
-- **Privately proved, waiting for the next batch:** VGAME `00F0` flight start
-  (`D:/f117-gate/p2-vgame-00f0`): 105 instructions including the shared HUD tail,
-  54 mutations caught, five seeds, one full-cycle call, 26 boot / 66 full-cycle checkpoints
-  exact; census credit is its own 201 bytes. VGAME `01C1` HUD bitmap recolour
-  (`D:/f117-gate/p2-vgame-01c1`): 37 instructions, 34 mutations, five seeds, one full-cycle
-  call and both routes exact; its independent 116-byte census row is proved separately.
-  START `5BF0` world/options screen (`D:/f117-gate/p2-start-5bf0`): 251 instructions,
-  64 mutations, five seeds; `central_europe_airair` one call,
-  81 exact checkpoints plus the boot proof. `full_cycle` never calls it.
-  Root audits pass for every listed proof. Use the batch-f scripts as the next batch template.
+- Latest batch (16 Oct, late): **`p2-batch-g` is gated and landed**, 21 routines /
+  6,181 census bytes by byte credit (967 addresses; 138,718 of 179,213 bytes).
+  Five seeds each, full instruction coverage, 1,017 mutations caught in all, exact
+  boot and real-route proofs; 105 optimized seed runs. Gate 1,803.14 s: 195 CTests,
+  45 identical routes / 44 fresh interpreter sessions, 967 matched routines at
+  three seeds (0 mismatching), both timing profiles, routes-only and event limits
+  clean. N=1 259,240 exact frames / 259,166 pairs; boot N=4/9 368/366.
+  All acceptance processes finished in 1,856.14 s using the checked presentation
+  overlap. Evidence `D:/f117-gate/p2-batch-g-accept/final-gate-verdict.json`.
+  The first gate attempt failed step 7c at seed `0x70ca1542de1f`: PLAYER `0738`'s
+  coverage floor (its busy early exit `073F` unreached; the fixture planted the
+  busy word only on a 1-in-10 random draw). Every tenth state now plants one
+  outright, and `matched_player_frame_tick_busy_seed` retains the seed. Note the
+  harness prints a routine's `equal` line before the floor check adds its failure,
+  so a lone `1 mismatching` with all lines equal means a coverage floor: reproduce
+  with `--only` and `F117_COVER`.
+- **Batch h, route-proved, waiting to integrate (18):** VGAME `ED10`, PLAYER
+  `026B:0272`, START `20D6`, END `4CBC`, END `1901`, START `38AC`, VGAME `4973`,
+  START `8DD8`, VGAME `0235`, START `141D`, START `0B49`, END `3CD0`, END `4722`,
+  START `76D1`, START `7312`, VGAME `EC12`, PLAYER `13CE`, PLAYER `07EA`
+  (directories `D:/f117-gate/p2-<name>`). Harness rows `kit.py integrate` does not
+  carry: POPF_STOPS for `026B:0272`, `4CBC`, `8DD8`
+  (`D:/f117-gate/p2-player-026b-0272/harness-hunk.diff`); LIVE_FRAMES for `0B49`.
+- **Proved privately, route proof not run (6):** END `3F44`, START `8782`,
+  PLAYER `019A` (its last 8 bytes can never be credited), END `4648`, VGAME
+  `FD66` (census row `0FB2:0246`), START `9094` (needs a PROGRAM_ENDS row and a
+  `run_to_ret` rule; see its `harness-hunk.diff`).
+- **Declined (add to `kit/DECLINED.tsv`):** PLAYER `2853`, PLAYER `0211`
+  re-sync, VGAME `14C2:0000` (STI in its colour loop; the `set_dac` family).
 - **Stopped early drafts (no proof yet; reuse or restart):** START `6AB3` (only
   `roster_edit` reaches it), END `3BF4`, `03D9` (D12 sites 0443/0450 may lie inside: decline while D12
   is on), `2703` (career routes only), VGAME `7663`. Their directories are
@@ -249,8 +200,9 @@ transitions, widths by role). Details and the method: docs/progress.md.
 
 ## Next steps
 
-1. **Phase 2 first (owner).** `p2-batch-f` is gated and landed; integrate the privately proved
-   routines listed above (with their harness hunks) as the next batch. Continue down the ranked list
+1. **Phase 2 first (owner).** `p2-batch-g` is gated and landed; integrate batch h
+   above (with its harness rows), then route-prove the six pending routines.
+   Continue down the ranked list
    (`D:/f117-gate/p2-batch-d-accept/reached-allroutes.tsv`) with the private kit and parallel agents (agents do steps 1-7 only; root runs
    `kit.py checkpoints` and `D:/f117-gate/kit/boot_proof.py` with `KIT_ROOT` at the gated worktree, then
    `verdict` and `audit_proofs.py`). The brief's "Traps found on 16 October" lists today's lessons.

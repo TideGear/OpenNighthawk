@@ -198,6 +198,17 @@ static const interrupt_frame_fixture *interrupt_frame(const recomp_override *o)
     return NULL;
 }
 
+/* Entry points inside a function whose frame is already built (a loop's continue point the
+ * function's own arms jump back to, or the second half of a routine another matched body hands
+ * back to): the return address the harness pushes is the frame's, and the routine starts `frame`
+ * bytes below it (saved BP, locals, saved registers), which the fixture fills, so its own pushes
+ * do not overwrite locals it reads later. Its RET still comes with SP back at the return address. */
+static const struct { const char *module; uint16_t seg, ip, frame; } LIVE_FRAMES[] = {
+    { "END.EXE", 0x0000, 0x34EA, 0x0012 },   /* debrief score step: saved BP, 0Eh bytes of locals, SI */
+    { "END.EXE", 0x0000, 0x099D, 0x000E },   /* icon placement in 0880's frame: 8 bytes of locals, DI, SI */
+    { "VGAME.EXE", 0x0000, 0x4657, 0x0008 }, /* countermeasure release in 462E's frame (ENTER 6,0) */
+};
+
 /* The routine's entry state: registers, and the stack as a caller leaves it
  * (for an interrupt handler, as the CPU's interrupt entry leaves it). */
 static void setup_side(cpu_t *c, const recomp_override *o, uint16_t cs, uint16_t ip, const uint16_t *r,
@@ -222,6 +233,9 @@ static void setup_side(cpu_t *c, const recomp_override *o, uint16_t cs, uint16_t
     const uint16_t args = o->matched == 3 ? 6 : o->matched == 2 ? 4 : 2;   /* above IP, CS, FLAGS */
     for (int a = 0; a < 4 && ((s & 2) || g_fixture_args); a++)
         seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_SP] + args + 2 * a), small[a]);
+    for (unsigned k = 0; k < sizeof LIVE_FRAMES / sizeof LIVE_FRAMES[0]; k++)
+        if (!strcmp(LIVE_FRAMES[k].module, o->module) && LIVE_FRAMES[k].seg == o->seg && LIVE_FRAMES[k].ip == o->ip)
+            c->r[R_SP] = (uint16_t)(c->r[R_SP] - LIVE_FRAMES[k].frame);
     c->stop_at = c->icount + g_step_cap;
 }
 
@@ -510,6 +524,9 @@ static const struct { const char *module; uint16_t ip; uint32_t linear; uint8_t 
     { "START.EXE", 0x3641, 0x826C, 0xC3 },
     { "START.EXE", 0x3641, 0x3070, 0xC3 },
     { "START.EXE", 0x3641, 0x3693, 0xC3 },
+    /* START 0x0A015 and END 0x05987, the formatter's integer conversion: an arm of _output that ends with a JMP to the scan. */
+    { "START.EXE", 0xA015, 0x09D19, 0xC3 },
+    { "END.EXE", 0x5987, 0x0568B, 0xC3 },
 
     { "END.EXE", 0x42E4, 0x0489, 0x00 },
     /* Returning failure cleanup tests the caller after its normally terminal exit. */
@@ -534,6 +551,7 @@ static void patch_image_for(uint8_t *pristine, const recomp_override *o)
      * reset; real routes separately prove the untouched scan and its callers. */
     if (o->seg == 0 && !strcmp(o->module, "START.EXE") && o->ip == 0x9D67) pristine[0x9D19] = 0xC3;
     if (o->seg == 0 && !strcmp(o->module, "END.EXE") && o->ip == 0x56D9) pristine[0x568B] = 0xC3;
+    if (o->seg == 0 && !strcmp(o->module, "END.EXE") && o->ip == 0x5825) pristine[0x59F7] = 0xC3;   /* "%s" length: the shared field output returns */
     for (unsigned i = 0; i < sizeof IMAGE_PATCHES / sizeof IMAGE_PATCHES[0]; i++)
         if (!strcmp(IMAGE_PATCHES[i].module, o->module) && IMAGE_PATCHES[i].ip == o->ip)
             pristine[IMAGE_PATCHES[i].linear] = IMAGE_PATCHES[i].value;
@@ -554,6 +572,27 @@ static const struct { const char *module; uint16_t ip; int arg; uint16_t v[2]; }
 /* Exact code ranges when the default 0x300-byte window is unsuitable:
  * long/shared tails, or small walkers whose unrelated callees are nearby. */
 static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
+    { "END.EXE", 0x0A98, 0x0A98, 0x030B },
+    { "PLAYER.EXE", 0x0D0C, 0x0D0C, 0x00A4 },
+    { "VGAME.EXE", 0x4657, 0x4657, 0x00E1 },
+    { "END.EXE", 0x2A01, 0x2A01, 0x00F9 },
+    { "END.EXE", 0x34EA, 0x34EA, 0x0197 },
+    { "END.EXE", 0x5987, 0x5987, 0x00FB },
+    { "END.EXE", 0x372F, 0x372F, 0x0158 },
+    { "START.EXE", 0x644A, 0x644A, 0x009B },
+    { "VGAME.EXE", 0xD9FE, 0xD9FE, 0x013E },
+    { "END.EXE", 0x099D, 0x099D, 0x00FB },
+    { "END.EXE", 0x3887, 0x3887, 0x0108 },
+    { "END.EXE", 0x5825, 0x5825, 0x0015 },
+    { "START.EXE", 0x9EB3, 0x9EB3, 0x025D },
+    { "VGAME.EXE", 0xC9AE, 0xC9AE, 0x0AFF },
+    { "START.EXE", 0xA015, 0xA015, 0x00FB },
+    { "VGAME.EXE", 0x7663, 0x7663, 0x029A },
+    { "START.EXE", 0x2696, 0x2696, 0x01CD },
+    { "VGAME.EXE", 0x825D, 0x825D, 0x00E5 },
+    { "START.EXE", 0x5BF0, 0x5BF0, 0x027F },
+    { "VGAME.EXE", 0x01C1, 0x01C1, 0x0074 },
+    { "VGAME.EXE", 0x00F0, 0x00F0, 0x0145 },
     { "PLAYER.EXE", 0x0696, 0x0696, 0x00A1 },
     { "START.EXE", 0x020F, 0x020F, 0x00AB },
     { "START.EXE", 0x7272, 0x7272, 0x00A0 },
@@ -598,6 +637,7 @@ static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
     { "START.EXE", 0x3F33, 0x3F33, 0x012C },
     { "START.EXE", 0x0448, 0x0448, 0x0133 },
     { "VGAME.EXE", 0x0330, 0x0330, 0x018C },
+    { "VGAME.EXE", 0xC9AE, 0xC8FA, 0x0AFF },     /* the bay-door arm: the dispatcher's common exit C8FA below it, its RET at D3F8 */
     { "VGAME.EXE", 0xE586, 0xE586, 0x0137 },
     { "PLAYER.EXE", 0x005C, 0x005C, 0x013E },
     { "DSWAP.EXE", 0x0010, 0x0010, 0x0209 },
@@ -673,6 +713,7 @@ static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
     { "START.EXE", 0x9D06, 0x9D06, 0x0500 },    /* the formatter: its exit is at entry + 4CFh */
     { "END.EXE", 0x5678, 0x5678, 0x0500 },
     { "START.EXE", 0x9D67, 0x9D19, 0x0062 }, /* reset and its returning scan thunk */
+    { "START.EXE", 0xA015, 0x9D19, 0x03F7 }, /* integer conversion and its returning scan thunk */
     { "END.EXE", 0x56D9, 0x568B, 0x0062 },
     { "START.EXE", 0x94FA, 0x94FA, 0x1000 },    /* itoa and ltoa: the shared conversion returns at 0x0A4B6 */
     { "START.EXE", 0x9516, 0x9516, 0x1000 },
@@ -682,6 +723,8 @@ static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
     { "START.EXE", 0xA59A, 0x98A8, 0x0EB0 },    /* the open: the C runtime DOS return START 0x098BD-0x098C9 is its error exit */
     { "MPS_LOGO.EXE", 0x1894, 0x0B3E, 0x0F12 }, /* MPS_LOGO's copy: its error ending at 0B53 below the entry, and the 1A3F mask test */
     { "END.EXE", 0x5096, 0x5096, 0x0410 },      /* ... END 0x05482-0x054A3 */
+    { "END.EXE", 0x5825, 0x5825, 0x01D3 },      /* "%s" length arm and the returning field output at 59F7 */
+    { "END.EXE", 0x5987, 0x568B, 0x03F7 }, /* integer conversion and its returning scan thunk */
 };
 static uint16_t g_from, g_span = 0x300; /* the routine under test's code: from g_from, g_span bytes */
 
@@ -873,6 +916,27 @@ static const struct { const char *module; uint16_t seg, ip, len; unsigned insns,
     { "START.EXE", 0x0000, 0x7272, 0x00A0, 69, 69, "save the roster: header byte and ten pilot records to Roster.Fil" },
     { "START.EXE", 0x0000, 0x020F, 0x00AB, 67, 67, "dispatch the front-end menu until launch is accepted" },
     { "PLAYER.EXE", 0x0000, 0x0696, 0x00A1, 61, 61, "poll intro controls and dispatch pending keys" },
+    { "VGAME.EXE", 0x0000, 0x00F0, 0x0145, 105, 105, "flight start-up: mission, models, mode, sound file, palette, cockpit pages and HUD recolour (tail 01C1)" },
+    { "VGAME.EXE", 0x0000, 0x01C1, 0x0074, 37, 37, "recolour three HUD bitmap rectangles for the current pilot mode" },
+    { "START.EXE", 0x0000, 0x5BF0, 0x027F, 251, 251, "world options: theatre, tension, mission, roster save and exit wipe" },
+    { "VGAME.EXE", 0x0000, 0x825D, 0x00E5, 84, 84, "put a multi-function display up" },
+    { "START.EXE", 0x0000, 0x2696, 0x01CD, 83, 83, "objective line for a photograph or destroy target" },
+    { "VGAME.EXE", 0x0000, 0x7663, 0x029A, 218, 218, "release the selected store" },
+    { "START.EXE", 0x0000, 0xA015, 0x00FB, 98, 98, "the formatter's integer conversion" },
+    { "VGAME.EXE", 0x0000, 0xC9AE, 0x0AFF, 343, 343, "8 key bay doors, then the key dispatcher tail: map pan, nav cursor, release and lamps" },
+    { "START.EXE", 0x0000, 0x9EB3, 0x025D, 66, 66, "the formatter's string field" },
+    { "END.EXE", 0x0000, 0x5825, 0x0015, 11, 11, "the formatter's string length" },
+    { "END.EXE", 0x0000, 0x3887, 0x0108, 122, 122, "show the landed screen: picture, three panels, four animation frames, prompt" },
+    { "END.EXE", 0x0000, 0x099D, 0x00FB, 97, 97, "place and draw a debriefing map icon" },
+    { "VGAME.EXE", 0x0000, 0xD9FE, 0x013E, 114, 114, "measure an object from the eye, cull it and defer it for drawing" },
+    { "START.EXE", 0x0000, 0x644A, 0x009B, 69, 69, "roster hover: detail strip, colours, record sheet" },
+    { "END.EXE", 0x0000, 0x372F, 0x0158, 145, 145, "landing pictures and palette fade rates" },
+    { "END.EXE", 0x0000, 0x5987, 0x00FB, 98, 98, "the formatter's integer conversion" },
+    { "END.EXE", 0x0000, 0x34EA, 0x0197, 170, 170, "debrief score: next log record, or scale and return the total" },
+    { "END.EXE", 0x0000, 0x2A01, 0x00F9, 80, 80, "announce a promotion, a held-back one or a plain debrief" },
+    { "VGAME.EXE", 0x0000, 0x4657, 0x00E1, 83, 83, "place a released countermeasure in a slot and announce it" },
+    { "PLAYER.EXE", 0x0000, 0x0D0C, 0x00A4, 46, 46, "palette to its copy and the DAC (black during a fade)" },
+    { "END.EXE", 0x0000, 0x0A98, 0x030B, 282, 282, "format and draw a replay event caption" },
     { "END.EXE", 0, 0x2BEC, 0x0435, 444, 444, "debrief narrative and measured layout" },
     { "START.EXE", 0, 0x6DB8, 0x03F5, 399, 399, "pilot options dialog" },
     { "START.EXE", 0, 0x149C, 0x039E, 365, 365, "flight plan display" },
@@ -925,7 +989,12 @@ static const struct { const char *module; uint16_t seg, ip, end; } PROGRAM_ENDS[
  * returns). A named routine stopped there has completed its named region. */
 static const struct { const char *module; uint16_t seg, ip, target; } FATAL_JUMPS[] = {
     { "START.EXE", 0x0000, 0x8FC6, 0x9820 },
+    { "START.EXE", 0x0000, 0xA015, 0x9D19 },    /* the formatter's integer conversion: JMP back to the scan */
+    { "START.EXE", 0x0000, 0x9EB3, 0x9D19 },    /* the formatter's %s field: its JMP back to the format scan */
     { "END.EXE", 0x0000, 0x4EBC, 0x53FA },
+    { "END.EXE", 0x0000, 0x5825, 0x59F7 },      /* "%s" length: its JMP to the shared field output ends the named code */
+    { "END.EXE", 0x0000, 0x5987, 0x568B },    /* the formatter's integer conversion: JMP back to the scan */
+    { "END.EXE", 0x0000, 0x34EA, 0x34C4 },    /* debrief score step: JMP to the record-kind switch below it */
     { "MPS_LOGO.EXE", 0x0146, 0x010E, 0x08A2 },    /* _cinit: a carry from the floating-point hook */
 };
 static int program_end_reached(const recomp_override *o, const cpu_t *c, uint16_t cs)
@@ -1003,6 +1072,26 @@ static uint64_t g_cockpit_seen;
 static unsigned g_nav_seen;
 static unsigned g_panel_seen;           /* original branches in the current panel fixture */
 static unsigned g_arms_seen;            /* original arming setup branches in this fixture */
+/* Named coverage (F117_NAMED_COVER=FILE): which of the original's instructions a matched body
+ * replaces. Per compared state, the original side records every instruction it runs in the
+ * routine's code segment at the routine's own level (not inside a called routine or an
+ * interrupt); the named side records what the interpreter still runs after the body hands back.
+ * The difference is the body's own work; its union over states is written per routine. */
+static uint8_t *g_nc_track;             /* the bitmap being filled, or NULL */
+static uint8_t g_nc_orig[0x2000], g_nc_fall[0x2000], g_nc_named[0x2000];
+static uint8_t g_nc_hand[0x2000];       /* where the body handed back to the original */
+static int g_nc_in_callee;
+static uint16_t g_nc_callee_sp;
+static FILE *nc_out;
+static const uint8_t *g_nc_img;         /* the program as loaded, before fixtures and test patches */
+static uint32_t g_nc_at, g_nc_size;
+
+static void nc_begin(uint8_t *map)
+{
+    memset(map, 0, 0x2000);
+    g_nc_track = map; g_nc_in_callee = 0;
+}
+
 static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_t cs, uint16_t ip)
 {
     const uint32_t watch = phys(cs, (uint16_t)(ip - g_below));
@@ -1089,7 +1178,19 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
         const int depth_before = a->int_depth;
         const uint16_t from_cs = a->seg[S_CS];
         const int changed = g_cov >= 0 && a->mem == g_mem[0] && !own && changed_return(a, from_cs, here);
+        int nc_call = 0;
+        if (g_nc_track) {
+            if (g_nc_in_callee && sp_before >= g_nc_callee_sp) g_nc_in_callee = 0;   /* back from the call */
+            const uint32_t lin = phys(from_cs, here) - g_nc_at;   /* only the program's own bytes: not a fixture stub or a test patch */
+            if (!g_nc_in_callee && !depth_before && from_cs == cs && lin + 2 < g_nc_size &&
+                !memcmp(a->mem + phys(from_cs, here), g_nc_img + lin, 3)) {
+                g_nc_track[here >> 3] |= (uint8_t)(1u << (here & 7));
+                const uint8_t modrm = a->mem[phys(from_cs, (uint16_t)(here + 1))];
+                nc_call = op == 0xE8 || op == 0x9A || (op == 0xFF && ((modrm >> 3) & 7) >= 2 && ((modrm >> 3) & 7) <= 3);
+            }
+        }
         cpu_step(a);
+        if (nc_call && a->int_depth == depth_before && a->r[R_SP] < sp_before) { g_nc_in_callee = 1; g_nc_callee_sp = sp_before; }
         if (changed && a->seg[S_CS] == cs && (uint16_t)(a->ip - g_from) < g_span &&
             g_changed_ret_n < sizeof g_changed_ret / sizeof g_changed_ret[0]) {
             const unsigned k = g_changed_ret_n++;
@@ -1281,6 +1382,7 @@ int main(int argc, char **argv)
         for (unsigned k = 0; k < sizeof COVERED / sizeof COVERED[0]; k++)
             if (!strcmp(o->module, COVERED[k].module) && o->seg == COVERED[k].seg && o->ip == COVERED[k].ip) g_cov = (int)k;
         if (g_cov >= 0) { g_cov_ip = (uint16_t)(COVERED[g_cov].ip - ((o->seg == 0x130D && o->ip == 0x033F) || (o->seg == 0x120A && o->ip == 0x0CE9) ? g_below : 0)); g_cov_escapes = 0; memset(g_cov_skips, 0, sizeof g_cov_skips); memset(g_cov_cover, 0, sizeof g_cov_cover); memset(g_cov_whole, 0, sizeof g_cov_whole); }
+        if (g_cov >= 0 && !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0xC9AE) g_cov_ip = 0xC8FA;   /* coverage from the common exit below the entry */
         g_hud_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0x1058 && o->ip == 0x0016;
         g_ground_fixture = !strcmp(o->module, "VGAME.EXE") && o->seg == 0 && o->ip == 0x5046;
         g_watch_transient = (!strcmp(o->module, "START.EXE") && o->seg == 0 && o->ip == 0x149C) || (!strcmp(o->module, "START.EXE") && o->seg == 0 && o->ip == 0x6DB8) || (!strcmp(o->module, "END.EXE") && o->seg == 0 && o->ip == 0x2BEC) || (!strcmp(o->module, "VGAME.EXE") && o->seg == 0x0FAE && o->ip == 2) ||
@@ -1294,6 +1396,7 @@ int main(int argc, char **argv)
         for (uint32_t a = 0; a < MEM_SIZE; a += 8) { uint64_t v = rnd(); memcpy(g_pristine + a, &v, 8); }
         const uint32_t at = (uint32_t)base * 16u + m->origin;
         memcpy(g_pristine + at, m->image, m->size);
+        g_nc_img = m->image; g_nc_at = at; g_nc_size = m->size;
         stub_driver_thunks(g_pristine, at, m, o);
         patch_image_for(g_pristine, o);
         memcpy(g_mem[0], g_pristine, MEM_SIZE);
@@ -1346,6 +1449,8 @@ int main(int argc, char **argv)
         const int sprite_colour = !strcmp(o->module, "MPS_LOGO.EXE") && o->seg == 0x006D && o->ip == 2;
         unsigned colour_modes = 0;
         unsigned long long mc = 0, ms = 0, mb = 0;
+        if (!nc_out && getenv("F117_NAMED_COVER")) nc_out = fopen(getenv("F117_NAMED_COVER"), "a");
+        memset(g_nc_named, 0, sizeof g_nc_named); memset(g_nc_hand, 0, sizeof g_nc_hand);
         for (int s = 0; s < states; s++) {
             if (s == states / 2) {
                 /* The second half runs on memory of mostly 00, FF and 01
@@ -10354,11 +10459,13 @@ int main(int argc, char **argv)
                 for(unsigned j=0;j<4;j++){ const uint16_t v_=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),v_);small[j]=v_; }
                 for(unsigned j=0x1DC0;j<0x20C0;j++)XW8(dg,j,XRAND());
                 for(unsigned j=0x13C0;j<0x13E0;j++)XW8(dg,j,XRAND());
-                /* The busy flag, the frame delay and the fade's steps left. */
+                /* The busy flag, the frame delay and the fade's steps left. Every tenth
+                 * state plants a busy word outright: the random draw alone left the busy
+                 * early exit (073F) unreached at seed 0x70ca1542de1f. */
                 {
                     static const uint16_t busy_[]={1,0x0100,0x8000,0xFFFF};
                     uint16_t busy=0;
-                    if(XRAND()%10==0)XPICK(busy,busy_);
+                    if((XRAND()%10==0)||(s%10==0))XPICK(busy,busy_);
                     XW16(dg,0x1E7A,busy);
                     static const uint16_t delay_[]={0,0,0,1,1,1,2,0x8000,0xFFFF};
                     uint16_t delay;XPICK(delay,delay_);
@@ -11458,6 +11565,1834 @@ int main(int argc, char **argv)
 #undef XW16
 #undef XW8
             }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0x00F0) {
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+                seg[S_DS]=dg;seg[S_SS]=XPICK(2)?0x6000:dg;
+                static const uint16_t stacks[]={0xF000,0x0004,0xFFFE,0x8000};
+                r[R_SP]=stacks[XPICK(4)];
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                for(unsigned j=0;j<8;j++) {
+                    const uint16_t w=(uint16_t)XRAND();
+                    XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),w);if(j<4)small[j]=w;
+                }
+                const uint16_t settings_seg=XPICK(2)?dg:0x3000;
+                const uint16_t pilot_seg=XPICK(2)?dg:0x4000;
+                const uint16_t settings_off=XPICK(3)?0x7000:0xFFE0;
+                const uint16_t pilot_off=XPICK(3)?0x9000:0xFFE0;
+                const uint16_t theatre=XPICK(3)?(uint16_t)XPICK(12):(uint16_t)XRAND();
+                XW16(dg,(uint16_t)(0x0090+2*theatre),XRAND());
+                XW8(dg,(uint16_t)(0x00EE + theatre),XRAND());
+                XW16(dg,0x008E,XRAND());XW16(dg,0x008A,XRAND());XW8(dg,0x008C,XRAND());
+                XW16(dg,0x9924,settings_off);XW16(dg,0x9926,settings_seg);
+                XW16(dg,0xE574,pilot_off);XW16(dg,0xE576,pilot_seg);
+                XW16(settings_seg,(uint16_t)(settings_off+0x38),theatre);
+                static const uint8_t flags_[]={0,1,2,0x7F,0x80,0xFF};
+                XW8(pilot_seg,(uint16_t)(pilot_off+0x33),flags_[XPICK(6)]);
+                for(unsigned j=0;j<0x10;j++)XW8(dg,0x3684+j,XRAND());
+                XW16(dg,0x43DE,XRAND());XW8(dg,0x0D47,XRAND());
+                XW16(dg,0xC0A0,XRAND());XW16(dg,0xC0A2,XRAND());
+                XW16(dg,0x4010,XRAND());XW16(dg,0x4028,XRAND());XW16(dg,0x4040,XRAND());
+                /* Each returning helper folds identity and every stack argument,
+                 * counts the call and advances through a list of varied answers.
+                 * The file loader (k 4) answers zero half the time. Far entries
+                 * jump to roomy probes in segment 7000, avoiding adjacent driver
+                 * thunks; every probe uses RET or RETF, with caller cleanup. */
+                for(unsigned k=0;k<15;k++) {
+                    for(unsigned j=0;j<32;j++) {
+                        uint16_t value=(uint16_t)XRAND();
+                        if(k==4 && XPICK(2))value=0;
+                        XW16(dg,0xF400+0x40*k+2*j,value);
+                    }
+                    XW16(dg,0xF802+2*k,XRAND());XW16(dg,0xF820+2*k,0);
+                }
+                XW16(dg,0xF800,XRAND());
+#define XSTUB(sg_,off_,k_,id_,nargs_,far_) do { \
+    uint8_t cb_[400]; unsigned n_=0; \
+    const unsigned cnt_=0xF802+2*(k_),ptr_=0xF820+2*(k_),list_=0xF400+0x40*(k_); \
+    cb_[n_++]=0x55;cb_[n_++]=0x8B;cb_[n_++]=0xEC;cb_[n_++]=0x53; \
+    cb_[n_++]=0xFF;cb_[n_++]=0x06;cb_[n_++]=cnt_&255;cb_[n_++]=cnt_>>8; \
+    cb_[n_++]=0x8B;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xF8; \
+    cb_[n_++]=0xD1;cb_[n_++]=0xC3; \
+    cb_[n_++]=0x81;cb_[n_++]=0xF3;cb_[n_++]=(id_)&255;cb_[n_++]=(id_)>>8; \
+    cb_[n_++]=0x89;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xF8; \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        cb_[n_++]=0x8B;cb_[n_++]=0x46;cb_[n_++]=(uint8_t)(((far_)?6:4)+2*j_); \
+        cb_[n_++]=0x8B;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xF8; \
+        cb_[n_++]=0xD1;cb_[n_++]=0xC3;cb_[n_++]=0x33;cb_[n_++]=0xD8; \
+        cb_[n_++]=0x89;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xF8; } \
+    cb_[n_++]=0x8B;cb_[n_++]=0x1E;cb_[n_++]=ptr_&255;cb_[n_++]=ptr_>>8; \
+    cb_[n_++]=0x8B;cb_[n_++]=0x87;cb_[n_++]=list_&255;cb_[n_++]=list_>>8; \
+    cb_[n_++]=0x83;cb_[n_++]=0xC3;cb_[n_++]=0x02; \
+    cb_[n_++]=0x83;cb_[n_++]=0xE3;cb_[n_++]=0x3E; \
+    cb_[n_++]=0x89;cb_[n_++]=0x1E;cb_[n_++]=ptr_&255;cb_[n_++]=ptr_>>8; \
+    cb_[n_++]=0x5B;cb_[n_++]=0x5D;cb_[n_++]=(far_)?0xCB:0xC3; \
+    for(unsigned k2_=0;k2_<n_;k2_++)XW8((sg_),(off_)+k2_,cb_[k2_]); } while(0)
+
+                {
+                    static const struct { uint16_t entry; uint8_t args; } calls[]={
+                        {0x4BEC,0},{0xBAA2,0},{0xEB50,2},{0x0986,0},
+                        {0xE586,1},{0x886A,1},{0xD52E,2},{0x0300,0}};
+                    for(unsigned k=0;k<8;k++) {
+                        const uint16_t code=(uint16_t)(0xF000+0x100*k);
+                        XW8(0,calls[k].entry,0xE9);XW16(0,calls[k].entry+1,(uint16_t)(code-calls[k].entry-3));
+                        XSTUB(0,code,k,0x1234+0x1111*k,calls[k].args,0);
+                    }
+                    static const struct { uint16_t seg,off; uint8_t args; } far_calls[]={
+                        {0x1E42,0x0313,4},{0x1E42,0x0273,0},{0x1039,0,0},
+                        {0x0FB2,0x0246,5},{0x114A,0x02FF,4},{0x1058,0x000E,0},{0x1E42,0x01E7,7}};
+                    for(unsigned j=0;j<7;j++) {
+                        const unsigned k=j+8;const uint16_t code=(uint16_t)(0x1000+0x200*j);
+                        XW8(far_calls[j].seg,far_calls[j].off,0xEA);
+                        XW16(far_calls[j].seg,far_calls[j].off+1,code);
+                        XW16(far_calls[j].seg,far_calls[j].off+3,0x7000);
+                        XSTUB(0x7000,code,k,0x1234+0x1111*k,far_calls[j].args,1);
+                    }
+                }
+#undef XSTUB
+#undef XPICK
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0x01C1) {
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+                seg[S_DS]=dg;seg[S_SS]=XPICK(2)?0x6000:dg;
+                static const uint16_t stacks[]={0xF000,0x0004,0xFFFE,0x8000};
+                r[R_SP]=stacks[XPICK(4)];
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                for(unsigned j=0;j<8;j++) {
+                    const uint16_t w=(uint16_t)XRAND();
+                    XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),w);if(j<4)small[j]=w;
+                }
+                XW16(dg,0x43DE,XPICK(2)?0:XRAND());XW16(dg,0x4040,XRAND());
+                /* Both probes count their calls and fold identity and every
+                 * argument. The colour probe sees all three rectangles and the
+                 * selected colour pair; the layout probe takes no arguments. */
+                for(unsigned k=0;k<2;k++) {
+                    for(unsigned j=0;j<32;j++)XW16(dg,0xF400+0x40*k+2*j,XRAND());
+                    XW16(dg,0xF802+2*k,XRAND());XW16(dg,0xF820+2*k,0);
+                }
+                XW16(dg,0xF800,XRAND());
+#define XSTUB(sg_,off_,k_,id_,nargs_,far_) do { \
+    uint8_t cb_[400]; unsigned n_=0; \
+    const unsigned cnt_=0xF802+2*(k_),ptr_=0xF820+2*(k_),list_=0xF400+0x40*(k_); \
+    cb_[n_++]=0x55;cb_[n_++]=0x8B;cb_[n_++]=0xEC;cb_[n_++]=0x53; \
+    cb_[n_++]=0xFF;cb_[n_++]=0x06;cb_[n_++]=cnt_&255;cb_[n_++]=cnt_>>8; \
+    cb_[n_++]=0x8B;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xF8; \
+    cb_[n_++]=0xD1;cb_[n_++]=0xC3; \
+    cb_[n_++]=0x81;cb_[n_++]=0xF3;cb_[n_++]=(id_)&255;cb_[n_++]=(id_)>>8; \
+    cb_[n_++]=0x89;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xF8; \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        cb_[n_++]=0x8B;cb_[n_++]=0x46;cb_[n_++]=(uint8_t)(((far_)?6:4)+2*j_); \
+        cb_[n_++]=0x8B;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xF8; \
+        cb_[n_++]=0xD1;cb_[n_++]=0xC3;cb_[n_++]=0x33;cb_[n_++]=0xD8; \
+        cb_[n_++]=0x89;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xF8; } \
+    cb_[n_++]=0x8B;cb_[n_++]=0x1E;cb_[n_++]=ptr_&255;cb_[n_++]=ptr_>>8; \
+    cb_[n_++]=0x8B;cb_[n_++]=0x87;cb_[n_++]=list_&255;cb_[n_++]=list_>>8; \
+    cb_[n_++]=0x83;cb_[n_++]=0xC3;cb_[n_++]=0x02; \
+    cb_[n_++]=0x83;cb_[n_++]=0xE3;cb_[n_++]=0x3E; \
+    cb_[n_++]=0x89;cb_[n_++]=0x1E;cb_[n_++]=ptr_&255;cb_[n_++]=ptr_>>8; \
+    cb_[n_++]=0x5B;cb_[n_++]=0x5D;cb_[n_++]=(far_)?0xCB:0xC3; \
+    for(unsigned k2_=0;k2_<n_;k2_++)XW8((sg_),(off_)+k2_,cb_[k2_]); } while(0)
+
+                {
+                    static const struct { uint16_t seg,off; uint8_t args; } calls[]={
+                        {0x1058,0x000E,0},{0x1E42,0x01E7,7}};
+                    for(unsigned k=0;k<2;k++) {
+                        const uint16_t code=(uint16_t)(0x1000+0x200*k);
+                        XW8(calls[k].seg,calls[k].off,0xEA);
+                        XW16(calls[k].seg,calls[k].off+1,code);XW16(calls[k].seg,calls[k].off+3,0x7000);
+                        XSTUB(0x7000,code,k,0x1234+0x1111*k,calls[k].args,1);
+                    }
+                }
+#undef XSTUB
+#undef XPICK
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"START.EXE") && o->seg==0 && o->ip==0x5BF0) {
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+                seg[S_DS]=dg;seg[S_SS]=XPICK(2)?0x6000:dg;
+                static const uint16_t stacks[]={0xF000,0x0004,0xFFFE,0x8000};
+                r[R_SP]=stacks[XPICK(4)];
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                for(unsigned j=0;j<8;j++) {
+                    const uint16_t w=(uint16_t)XRAND();
+                    XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),w);if(j<4)small[j]=w;
+                }
+                /* The dispatch tables overlap in the executable. Keep that
+                 * layout, with varied coordinates and valid byte theatre IDs.
+                 * Noise below SP also varies the original uninitialized local. */
+                for(unsigned j=0;j<0x80;j++)XW8(dg,0x0DD0+j,XRAND());
+                for(unsigned j=1;j<=9;j++)XW8(dg,0x0DE2+j,XPICK(9));
+                const uint16_t pilot_seg=XPICK(2)?dg:0x3000;
+                const uint16_t pilot_off=XPICK(3)?0x7000:0xFFE0;
+                const uint16_t gate_seg=XPICK(2)?dg:0x4000;
+                const uint16_t gate_off=XPICK(3)?0x9000:0xFFF0;
+                XW16(dg,0xCACA,pilot_off);XW16(dg,0xCACC,pilot_seg);
+                XW16(dg,0xE096,gate_off);XW16(dg,0xE098,gate_seg);
+                XW16(pilot_seg,(uint16_t)(pilot_off+0x38),XPICK(4)?XPICK(9):XRAND());
+                XW16(pilot_seg,(uint16_t)(pilot_off+0x3A),XPICK(4)?XPICK(3):XRAND());
+                XW16(pilot_seg,(uint16_t)(pilot_off+0x3C),XPICK(4)?XPICK(4):XRAND());
+                XW16(gate_seg,(uint16_t)(gate_off+0x22),XPICK(2)?0:XRAND());
+                XW8(dg,0xD2A2,XPICK(2)?0:XRAND());XW8(dg,0xB39A,XPICK(2)?0:XRAND());
+                XW16(dg,0xCABA,XRAND());
+                /* Every helper folds its identity and stack arguments, counts
+                 * calls and returns a varied list value. Poll lists include all
+                 * choices, exact boundaries, byte/word oddities, and a guaranteed
+                 * final 63h, so the full dialog can always finish. */
+                for(unsigned k=0;k<14;k++) {
+                    for(unsigned j=0;j<32;j++) {
+                        uint16_t value=(uint16_t)XRAND();
+                        if(k==1) {
+                            static const uint16_t events[]={0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,
+                                18,0x62,0x63,0x64,0xFFFF,0x8000,0x0101,0xFF11};
+                            value=events[XPICK(sizeof events/sizeof events[0])];if(j==31)value=0x63;
+                        } else if(k==2) {
+                            static const uint16_t answers[]={0,1,2,3,0x102,0xFFFF};
+                            value=answers[XPICK(6)];
+                        }
+                        XW16(dg,0xF400+0x40*k+2*j,value);
+                    }
+                    XW16(dg,0xF802+2*k,XRAND());XW16(dg,0xF820+2*k,0);
+                }
+                XW16(dg,0xF800,XRAND());
+#define XSTUB(sg_,off_,k_,id_,nargs_,far_) do { \
+    uint8_t cb_[400]; unsigned n_=0; \
+    const unsigned cnt_=0xF802+2*(k_),ptr_=0xF820+2*(k_),list_=0xF400+0x40*(k_); \
+    cb_[n_++]=0x55;cb_[n_++]=0x8B;cb_[n_++]=0xEC;cb_[n_++]=0x53; \
+    cb_[n_++]=0xFF;cb_[n_++]=0x06;cb_[n_++]=cnt_&255;cb_[n_++]=cnt_>>8; \
+    cb_[n_++]=0x8B;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xF8; \
+    cb_[n_++]=0xD1;cb_[n_++]=0xC3; \
+    cb_[n_++]=0x81;cb_[n_++]=0xF3;cb_[n_++]=(id_)&255;cb_[n_++]=(id_)>>8; \
+    cb_[n_++]=0x89;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xF8; \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        cb_[n_++]=0x8B;cb_[n_++]=0x46;cb_[n_++]=(uint8_t)(((far_)?6:4)+2*j_); \
+        cb_[n_++]=0x8B;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xF8; \
+        cb_[n_++]=0xD1;cb_[n_++]=0xC3;cb_[n_++]=0x33;cb_[n_++]=0xD8; \
+        cb_[n_++]=0x89;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xF8; } \
+    cb_[n_++]=0x8B;cb_[n_++]=0x1E;cb_[n_++]=ptr_&255;cb_[n_++]=ptr_>>8; \
+    cb_[n_++]=0x8B;cb_[n_++]=0x87;cb_[n_++]=list_&255;cb_[n_++]=list_>>8; \
+    cb_[n_++]=0x83;cb_[n_++]=0xC3;cb_[n_++]=0x02; \
+    cb_[n_++]=0x83;cb_[n_++]=0xE3;cb_[n_++]=0x3E; \
+    cb_[n_++]=0x89;cb_[n_++]=0x1E;cb_[n_++]=ptr_&255;cb_[n_++]=ptr_>>8; \
+    cb_[n_++]=0x5B;cb_[n_++]=0x5D;cb_[n_++]=(far_)?0xCB:0xC3; \
+    for(unsigned k2_=0;k2_<n_;k2_++)XW8((sg_),(off_)+k2_,cb_[k2_]); } while(0)
+
+                {
+                    static const struct { uint16_t entry; uint8_t args; } calls[]={
+                        {0x3641,2},{0x38AC,1},{0x3CEA,3},{0x3989,0},{0x3693,4},{0x3517,3},
+                        {0x60DC,0},{0x7272,1},{0x28CE,4},{0x8427,0},{0x2901,0},{0x2B06,1}};
+                    for(unsigned k=0;k<12;k++) {
+                        const uint16_t code=(uint16_t)(0xF000+0x100*k);
+                        XW8(0,calls[k].entry,0xE9);XW16(0,calls[k].entry+1,(uint16_t)(code-calls[k].entry-3));
+                        XSTUB(0,code,k,0x1234+0x1111*k,calls[k].args,0);
+                    }
+                    static const struct { uint16_t off; uint8_t args; } far_calls[]={{0x6A8A,8},{0x6BB1,1}};
+                    for(unsigned j=0;j<2;j++) {
+                        const unsigned k=j+12;const uint16_t code=(uint16_t)(0x1000+0x200*j);
+                        XW8(0x0A95,far_calls[j].off,0xEA);XW16(0x0A95,far_calls[j].off+1,code);
+                        XW16(0x0A95,far_calls[j].off+3,0x7000);
+                        XSTUB(0x7000,code,k,0x1234+0x1111*k,far_calls[j].args,1);
+                    }
+                }
+#undef XSTUB
+#undef XPICK
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0x825D) {
+                const uint16_t dg=0x5000;
+                seg[S_DS]=dg;seg[S_SS]=(s&4)?0x6000:dg;r[R_SP]=0xF000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* Display numbers: the four with builders, their neighbours (the
+                 * switch's subtract/decrement boundaries), small ones, and now
+                 * and then any word. */
+                static const uint16_t modes_[12]={0x13,0x13,0x14,0x15,0x18,0x12,0x16,0x17,0x19,0x00,0x01,0x1B};
+#define XMODE() ((XRAND()%10==0)?(uint16_t)XRAND():(XRAND()%5==0)?(uint16_t)(XRAND()%0x20):modes_[XRAND()%12])
+                const uint16_t mode=XMODE();
+                uint16_t arg[4];
+                arg[0]=mode;arg[1]=(uint16_t)XRAND();arg[2]=(uint16_t)XRAND();arg[3]=(uint16_t)XRAND();
+                for(unsigned j=0;j<4;j++)XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);
+                for(unsigned j=0;j<4;j++)small[j]=arg[j];
+                /* The displays-live flag, the current display, the page. */
+                XW16(dg,0x368C,(XRAND()%8==0)?0:(XRAND()%4==0)?(uint16_t)(1u<<(XRAND()%16)):(uint16_t)(1+XRAND()%0xFFFF));
+                {
+                    const unsigned pick_=XRAND()%8;
+                    const uint16_t cur_=(pick_<3)?mode:(pick_<5)?0x13:XMODE();
+                    XW16(dg,0xE008,cur_);
+                }
+                XW16(dg,0x4010,XRAND());
+                /* Element of each display, and each element's lit cache cell
+                 * [4712 + 12 * element] (element 19h's is [483E]). */
+                for(unsigned k=0;k<0x40;k++) {
+                    const uint16_t el_=(XRAND()%16==0)?(uint16_t)XRAND():(XRAND()%4==0)?((XRAND()&1)?0x19:0x1B):(uint16_t)(XRAND()%0x30);
+                    XW16(dg,0x4096+2*k,el_);
+                }
+                for(unsigned e=0;e<0x30;e++)XW16(dg,0x4712+12*e,(XRAND()%2)?0:(uint16_t)(1+XRAND()%0xFFFF));
+                XW16(dg,0x483E,(XRAND()%2)?0:(uint16_t)(1u<<(XRAND()%16)));
+                XW16(dg,0x43E0,(XRAND()%2)?0:(uint16_t)(1u<<(XRAND()%16)));
+                /* Call log: every stub folds its own id, its arguments in order
+                 * and the [E008] it sees into [F800], and counts at [F802]. */
+                XW16(dg,0xF800,XRAND());XW16(dg,0xF802,0);
+#define XSTUB(sg_,off_,id_,nargs_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,0x00);XW8(sgx_,out_++,0xF8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3); \
+    XW8(sgx_,out_++,0x81);XW8(sgx_,out_++,0xF3);XW8(sgx_,out_++,(id_)&0xFF);XW8(sgx_,out_++,(id_)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3); \
+        XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0x5E);XW8(sgx_,out_++,((far_)?6:4)+2*j_); } \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3); \
+    XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,0x08);XW8(sgx_,out_++,0xE0); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,0x00);XW8(sgx_,out_++,0xF8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,0x02);XW8(sgx_,out_++,0xF8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    static const struct { uint16_t slot,code,id; unsigned args; } stub_[5]={
+                        {0xD578,0xF200,0x1D57,3},{0x8342,0xF240,0x2C83,0},{0x93E9,0xF280,0x3A93,0},
+                        {0x8F71,0xF2C0,0x48F7,0},{0x9515,0xF300,0x5951,0}};
+                    for(unsigned k=0;k<5;k++) {
+                        XW8(0,stub_[k].slot,0xE9);XW16(0,stub_[k].slot+1,(uint16_t)(stub_[k].code-stub_[k].slot-3));
+                        XSTUB(0,stub_[k].code,stub_[k].id,stub_[k].args,0);
+                    }
+                    XSTUB(0x114A,0x0280,0x6114,2,1);
+                }
+#undef XSTUB
+#undef XMODE
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"START.EXE") && o->seg==0 && o->ip==0x2696) {
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+                seg[S_DS]=dg;seg[S_SS]=XPICK(2)?0x6000:dg;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                /* The routine runs inside 2651's frame and leaves by its exit
+                 * (pop si; mov sp,bp; pop bp; ret): the RET is taken at BP+2, so
+                 * BP sits two words below the arguments, with the return address
+                 * the harness pushes at [BP+2]. */
+                static const uint16_t stacks[]={0xF000,0x8000,0x0100,0x0060};
+                r[R_SP]=stacks[XPICK(4)];
+                r[R_BP]=(uint16_t)(r[R_SP]-4);
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* Arguments: the target entry and the output string. */
+                const uint16_t target=(uint16_t)(0x7000+XPICK(0x400));
+                const uint16_t out=(uint16_t)(0x9000+XPICK(0x100));
+                uint16_t arg[4];
+                arg[0]=target;arg[1]=out;arg[2]=(uint16_t)XRAND();arg[3]=(uint16_t)XRAND();
+                for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                /* 2651's locals: kind byte, name pointer, record pointer. */
+                {
+                    static const uint8_t kinds[]={1,1,1,2,2,2,0,3,0x81,0xFF};
+                    const uint8_t kind=XPICK(4)?kinds[XPICK(10)]:(uint8_t)XRAND();
+                    XW8(seg[S_SS],(uint16_t)(r[R_BP]-2),kind);
+                }
+                XW16(seg[S_SS],(uint16_t)(r[R_BP]-4),XRAND());
+                const uint16_t record=XPICK(4)?(uint16_t)(0xCBDE+16*XPICK(64)):(uint16_t)(0xA000+XPICK(0x800));
+                XW16(seg[S_SS],(uint16_t)(r[R_BP]-6),record);
+                /* The object-name table DC70 and the record's first word and object index. */
+                for(unsigned j=0;j<0x100;j++)XW16(dg,(uint16_t)(0xDC70+2*j),XRAND());
+                {
+                    static const uint16_t firsts[]={0,0,0,1,0x8000,0xFFFF,0x0100};
+                    XW16(dg,record,XPICK(2)?firsts[XPICK(7)]:(uint16_t)XRAND());
+                    XW8(dg,(uint16_t)(record+0x0E),XRAND());
+                }
+                /* The entry's row index (word +8) and the row's flag byte at 11E2 + 12 * index. */
+                {
+                    const uint16_t index=XPICK(3)?(uint16_t)XPICK(0x200):(uint16_t)XRAND();
+                    XW16(dg,(uint16_t)(target+8),index);
+                    static const uint8_t flagset[]={0x20,0x02,0x22,0x00,0xDD,0xFF,0xDF,0xFD,0x00,0x20,0x02};
+                    const uint16_t row=(uint16_t)(0x11E2+(uint16_t)(index*12u));
+                    XW8(dg,row,XPICK(4)?flagset[XPICK(11)]:(uint8_t)XRAND());
+                }
+                /* The output string: commas at many places, so the cut is seen. */
+                for(unsigned j=0;j<0x60;j++)XW8(dg,(uint16_t)(out-0x10+j),XPICK(2)?0x2C:(uint8_t)XRAND());
+                /* Callee probes: fold every argument in order into F800, count the
+                 * call, return the next word of a list. strlen's list holds lengths
+                 * (0 reads the byte before the string). */
+                for(unsigned k=0;k<4;k++) {
+                    for(unsigned j=0;j<32;j++) {
+                        uint16_t value=(uint16_t)XRAND();
+                        if(k==1)value=XPICK(8)?(uint16_t)XPICK(0x40):(XPICK(2)?0:1);
+                        XW16(dg,0xF400+0x40*k+2*j,value);
+                    }
+                    XW16(dg,0xF802+2*k,XRAND());XW16(dg,0xF820+2*k,(uint16_t)(2*XPICK(32)));
+                }
+                XW16(dg,0xF800,XRAND());
+#define XSTUB(sg_,off_,k_,id_,nargs_) do { \
+    uint8_t cb_[200]; unsigned n_=0; \
+    const unsigned cnt_=0xF802+2*(k_),ptr_=0xF820+2*(k_),list_=0xF400+0x40*(k_); \
+    cb_[n_++]=0x55;cb_[n_++]=0x8B;cb_[n_++]=0xEC;cb_[n_++]=0x53; \
+    cb_[n_++]=0xFF;cb_[n_++]=0x06;cb_[n_++]=cnt_&255;cb_[n_++]=cnt_>>8; \
+    cb_[n_++]=0x8B;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xF8; \
+    cb_[n_++]=0xD1;cb_[n_++]=0xC3; \
+    cb_[n_++]=0x81;cb_[n_++]=0xF3;cb_[n_++]=(id_)&255;cb_[n_++]=(id_)>>8; \
+    cb_[n_++]=0x89;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xF8; \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        cb_[n_++]=0x8B;cb_[n_++]=0x46;cb_[n_++]=(uint8_t)(4+2*j_); \
+        cb_[n_++]=0x8B;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xF8; \
+        cb_[n_++]=0xD1;cb_[n_++]=0xC3;cb_[n_++]=0x33;cb_[n_++]=0xD8; \
+        cb_[n_++]=0x89;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xF8; } \
+    cb_[n_++]=0x8B;cb_[n_++]=0x1E;cb_[n_++]=ptr_&255;cb_[n_++]=ptr_>>8; \
+    cb_[n_++]=0x8B;cb_[n_++]=0x87;cb_[n_++]=list_&255;cb_[n_++]=list_>>8; \
+    cb_[n_++]=0x83;cb_[n_++]=0xC3;cb_[n_++]=0x02; \
+    cb_[n_++]=0x83;cb_[n_++]=0xE3;cb_[n_++]=0x3E; \
+    cb_[n_++]=0x89;cb_[n_++]=0x1E;cb_[n_++]=ptr_&255;cb_[n_++]=ptr_>>8; \
+    cb_[n_++]=0x5B;cb_[n_++]=0x5D;cb_[n_++]=0xC3; \
+    for(unsigned k2_=0;k2_<n_;k2_++)XW8((sg_),(off_)+k2_,cb_[k2_]); } while(0)
+                {
+                    /* sprintf, strlen, strcpy, strcat */
+                    static const struct { uint16_t entry; uint8_t args; } calls[]={
+                        {0x959E,5},{0x94DE,1},{0x94AC,2},{0x946C,2}};
+                    for(unsigned k=0;k<4;k++) {
+                        const uint16_t code=(uint16_t)(0xF000+0x100*k);
+                        XW8(0,calls[k].entry,0xE9);XW16(0,calls[k].entry+1,(uint16_t)(code-calls[k].entry-3));
+                        XSTUB(0,code,k,0x1234+0x1111*k,calls[k].args);
+                    }
+                }
+#undef XSTUB
+#undef XPICK
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0x7663) {
+
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PICK(n_) ((unsigned)(XRAND()%(n_)))
+                const uint16_t dg=(XRAND()&1)?0x5000:0x5200;
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?dg:0x6000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                { static const uint16_t sp_[]={0xF000,0x0100,0x0040,0xFFF0};r[R_SP]=sp_[PICK(4)]; }
+                for(unsigned j=0;j<0x100;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x100+j),XRAND());
+                for(unsigned j=0;j<8;j++){const uint16_t w_=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),w_);if(j<4)small[j]=w_;}
+
+                /* The aircraft: roll straddles +-3000h (and 8000h, whose abs is
+                 * negative), altitude 0 / 80h / other, position and attitude. */
+                {
+                    static const uint16_t roll_[]={0x3000,0x3001,0x2FFF,0xD000,0xCFFF,0xD001,0x8000,0x7FFF};
+                    uint16_t roll=(uint16_t)XRAND();
+                    if(PICK(3)==0)roll=roll_[PICK(8)];else if(PICK(2))roll=(uint16_t)(PICK(0x6000)-0x3000);
+                    XW16(dg,0x2DF2,roll);
+                    static const uint16_t alt_[]={0,0x80,0,0x80,0x7F,0x81};
+                    XW16(dg,0x2DF6,PICK(2)?alt_[PICK(6)]:(uint16_t)XRAND());
+                    uint16_t agl=(uint16_t)XRAND();if(agl==0xF000)agl=0xF001;
+                    XW16(dg,0x2DF4,agl);
+                    XW16(dg,0x2DEE,XRAND());XW16(dg,0x2DF0,XRAND());
+                    XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());XW16(dg,0xB07E,XRAND());
+                    XW8(dg,0x9B34,XRAND());XW16(dg,0x3666,XRAND());XW16(dg,0x43E2,XRAND());XW16(dg,0xB07C,XRAND());
+                    static const uint16_t page_[]={0x14,0x15,0x13,0x16,0};
+                    XW16(dg,0xE008,PICK(3)?page_[PICK(2)]:page_[2+PICK(3)]);
+                }
+                /* Stations 0..3: kind and count; classes per kind. */
+                {
+                    XW16(dg,0x3680,PICK(4));
+                    for(unsigned st=0;st<4;st++){
+                        XW16(dg,0x3670+4*st,PICK(10));
+                        XW16(dg,0x3672+4*st,PICK(5)==0?0:(PICK(2)?1:(uint16_t)(1+PICK(9))));
+                    }
+                    static const uint16_t cls_[]={0,0xFFFF,0xFFFE,0xFFFE,0x1B,0x1C,0x1D,0x1E,0x1E,0x26,4,5,6,0x1A,0x1F,0x25,0x27};
+                    for(unsigned k=0;k<10;k++){
+                        const uint16_t cl=PICK(3)?cls_[PICK(17)]:(uint16_t)(1+PICK(0x27));
+                        XW16(dg,0x36A6+0x1A*k,cl);
+                    }
+                    /* Class table: range, speed, type. Speed never makes the
+                     * divisor (speed sar 6) + 1 zero. */
+                    for(unsigned cl=0;cl<0x28;cl++){
+                        const unsigned b=0x339C+0x12*cl;
+                        uint16_t range,speed;
+                        switch(PICK(6)){case 0:range=0;break;case 1:range=1;break;case 2:range=(uint16_t)(2+PICK(3));break;default:range=(uint16_t)XRAND();}
+                        switch(PICK(4)){case 0:speed=(uint16_t)(0x7C0+PICK(64));break;case 1:speed=(uint16_t)PICK(0x800);break;
+                            default:speed=(uint16_t)XRAND();if(speed>=0xFFC0)speed=(uint16_t)(speed&0x7FFF);}
+                        XW16(dg,b,range);XW16(dg,b+2,speed);
+                        static const uint16_t type_[]={4,5,6,4,5,6,0,1,2,3,7};
+                        XW16(dg,b+4,type_[PICK(11)]);
+                    }
+                    switch(PICK(4)){case 0:case 1:XW16(dg,0x368E,1+PICK(4));break;case 2:XW16(dg,0x368E,0x10+PICK(16));break;
+                        default:XW16(dg,0x368E,1+PICK(0x7FFF));}
+                    XW16(dg,0x3DA8,PICK(2)?2:PICK(4));
+                    XW16(dg,0x951A,PICK(4)==0?(uint16_t)(0xFD+PICK(4)):(uint16_t)PICK(0xFF));
+                    XW16(dg,0x9912,XRAND());
+                }
+                /* The player's weapon slots 8..11 (1Ch-byte records at 3C3A). */
+                for(unsigned i=8;i<12;i++){
+                    const unsigned b=0x3C3A+0x1C*i;
+                    for(unsigned j=0;j<0x1C;j+=2)XW16(dg,b+j,XRAND());
+                    if(PICK(3)==0)XW16(dg,b+0x0E,0);
+                }
+                /* Targets: 16-byte records at B2D0, the object classes at C630. */
+                {
+                    for(unsigned j=0;j<0x100;j++)XW8(dg,0xB2D0+j,XRAND());
+                    for(unsigned t=0;t<16;t++)if(PICK(2))XW16(dg,0xB2D4+16*t,0);
+                    for(unsigned j=0;j<0x80;j++)XW8(dg,0xC630+j,PICK(2)?(uint8_t)((XRAND()&0xF0)|(0x0C+PICK(2))):(uint8_t)XRAND());
+                    XW16(dg,0xE00C,PICK(16));
+                    const unsigned lk=PICK(8);
+                    XW16(dg,0x3D94,lk==0?0xFFFF:lk==1?(uint16_t)(0x8000|XRAND()):(uint16_t)PICK(16));
+                    XW16(dg,0xE588,PICK(3)==0?0:(uint16_t)(1|XRAND()));
+                }
+                /* Returning probes fold the caller's FLAGS, callee identity
+                 * and every argument in order. Each call returns a different
+                 * fixture word and clobbers AX/BX/CX/DX; SI/DI/BP survive. */
+                XW16(dg,0xE800,XRAND());
+                for(unsigned k=0;k<7;k++){
+                    XW16(dg,0xE810+2*k,0);
+                    XW16(dg,0xEC00+2*k,XRAND());XW16(dg,0xEC40+2*k,XRAND());
+                    for(unsigned j=0;j<32;j++)XW16(dg,0xE900+0x40*k+2*j,XRAND());
+                }
+#define XSTUB(sg_,off_,k_,args_,far_) do { \
+    uint8_t cb_[220];unsigned n_=0;const unsigned cnt_=0xE810+2*(k_),list_=0xE900+0x40*(k_); \
+    cb_[n_++]=0x55;cb_[n_++]=0x8B;cb_[n_++]=0xEC;cb_[n_++]=0x9C;cb_[n_++]=0x58; \
+    cb_[n_++]=0x8B;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xE8; \
+    cb_[n_++]=0xD1;cb_[n_++]=0xC3;cb_[n_++]=0x33;cb_[n_++]=0xD8; \
+    cb_[n_++]=0x81;cb_[n_++]=0xF3;cb_[n_++]=(uint8_t)(0x51+17*(k_));cb_[n_++]=0x0A; \
+    for(unsigned j_=0;j_<(args_);j_++){ \
+        cb_[n_++]=0x8B;cb_[n_++]=0x46;cb_[n_++]=(uint8_t)(((far_)?6:4)+2*j_); \
+        cb_[n_++]=0xD1;cb_[n_++]=0xC3;cb_[n_++]=0x33;cb_[n_++]=0xD8; } \
+    cb_[n_++]=0x89;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xE8; \
+    cb_[n_++]=0x8B;cb_[n_++]=0x1E;cb_[n_++]=cnt_&255;cb_[n_++]=cnt_>>8; \
+    cb_[n_++]=0xFF;cb_[n_++]=0x06;cb_[n_++]=cnt_&255;cb_[n_++]=cnt_>>8; \
+    cb_[n_++]=0xD1;cb_[n_++]=0xE3;cb_[n_++]=0x83;cb_[n_++]=0xE3;cb_[n_++]=0x3E; \
+    cb_[n_++]=0x8B;cb_[n_++]=0x87;cb_[n_++]=list_&255;cb_[n_++]=list_>>8; \
+    cb_[n_++]=0x8B;cb_[n_++]=0x0E;cb_[n_++]=(uint8_t)(2*(k_));cb_[n_++]=0xEC; \
+    cb_[n_++]=0x8B;cb_[n_++]=0x16;cb_[n_++]=(uint8_t)(0x40+2*(k_));cb_[n_++]=0xEC; \
+    cb_[n_++]=0x5D;cb_[n_++]=(far_)?0xCB:0xC3; \
+    for(unsigned k2_=0;k2_<n_;k2_++)XW8((sg_),(off_)+k2_,cb_[k2_]); } while(0)
+#define XNEAR(entry_,k_,args_) do { const uint16_t stub_=(uint16_t)(0xF200+0x100*(k_)); \
+    XW8(0,(entry_),0xE9);XW16(0,(entry_)+1,(uint16_t)(stub_-(entry_)-3));XSTUB(0,stub_,k_,args_,0); } while(0)
+#define XFAR(sg_,off_,k_,args_) do { const uint16_t stub_=(uint16_t)(0x1000+0x100*(k_)); \
+    XW8((sg_),(off_),0xEA);XW16((sg_),(off_)+1,stub_);XW16((sg_),(off_)+3,0x3000); \
+    XSTUB(0x3000,stub_,k_,args_,1); } while(0)
+                /* 8A4F message, 8F71 navigation page, EB50 strcpy, EB10 strcat,
+                 * D3F9 sound request, 83E9 stores page; the driver 1E42:0313.
+                 * EE0C, EF68, EE9C, B96C, BA2B, 4ABA and D4F5 stay original. */
+                XNEAR(0x8A4F,0,1);XNEAR(0x8F71,1,0);XNEAR(0xEB50,2,2);XNEAR(0xEB10,3,2);
+                XNEAR(0xD3F9,4,2);XNEAR(0x83E9,5,1);XFAR(0x1E42,0x0313,6,1);
+
+#undef XFAR
+#undef XNEAR
+#undef XSTUB
+#undef PICK
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"START.EXE") && o->seg==0 && o->ip==0xA015) {
+                /* The formatter's integer conversion runs in _output's frame: BP above SP,
+                 * the stream at [bp+4] (next pointer, room), the argument list pointer at
+                 * [bp+8], the conversion state below BP. All callees stay original: the
+                 * argument fetchers, the digits, the runs and the string stream's
+                 * put-character (its room never runs out, so the flush is not called).
+                 * The scan at 0x09D19 is a RET here (IMAGE_PATCHES), the arm's way out. */
+                const uint16_t dg=0x5000;
+                seg[S_DS]=dg;seg[S_SS]=(s&4)?0x6000:dg;r[R_SP]=0xF000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                const uint16_t ss_=seg[S_SS];
+                for(unsigned j=0;j<0x400;j++)XW8(ss_,(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                for(unsigned j=0;j<4;j++){const uint16_t w_=(uint16_t)XRAND();XW16(ss_,(uint16_t)(r[R_SP]+2*j),w_);small[j]=w_;}
+                const uint16_t bp_=(uint16_t)(r[R_SP]+0x60+2*(XRAND()%0x40));
+                r[R_BP]=bp_;
+                /* The stream: next pointer and a room that never runs out. */
+                const uint16_t stream_=(uint16_t)(0x3000+2*(XRAND()%8));
+                XW16(ss_,bp_+4,stream_);
+                XW16(dg,stream_,(uint16_t)(0x3100+XRAND()%0x40));
+                XW16(dg,stream_+2,(uint16_t)(0x0800+XRAND()%0x4000));
+                for(unsigned j=0;j<0x200;j++)XW8(dg,0x3100+j,XRAND());
+                /* The argument list: words with the boundaries of the sign and zero tests. */
+                const uint16_t list_=(uint16_t)(0x2000+2*(XRAND()%0x20));
+                XW16(ss_,bp_+8,list_);
+                XW16(ss_,bp_+6,XRAND());
+                for(unsigned j=0;j<4;j++) {
+                    uint16_t v_;
+                    switch(XRAND()%10) {
+                    case 0: v_=0; break;
+                    case 1: v_=0x8000; break;
+                    case 2: v_=0x7FFF; break;
+                    case 3: v_=0xFFFF; break;
+                    case 4: v_=(uint16_t)(XRAND()%1000); break;
+                    case 5: v_=(uint16_t)(0-(XRAND()%1000)); break;
+                    default: v_=(uint16_t)XRAND(); break;
+                    }
+                    XW16(dg,list_+2*j,v_);
+                }
+                /* The conversion state. */
+                XW8(ss_,bp_-1,(XRAND()&1)?0x27:0x07);                       /* the letter offset */
+                XW8(ss_,bp_-2,XRAND());
+                XW8(ss_,bp_-3,XRAND());                                      /* negative, '#' */
+                XW8(ss_,bp_-4,XRAND());                                      /* the flags */
+                XW8(ss_,bp_-5,XRAND());
+                {
+                    static const uint8_t radix_[]={8,10,16,10,16,8,2,3,7,36};
+                    XW8(ss_,bp_-6,radix_[XRAND()%10]);
+                }
+                XW16(ss_,bp_-8,XRAND());                                     /* the count so far */
+                {
+                    uint16_t w_;                                             /* the width */
+                    switch(XRAND()%8) {
+                    case 0: w_=(uint16_t)(0-(XRAND()%4)); break;
+                    case 1: w_=(uint16_t)(0-(XRAND()%0x7000)); break;
+                    default: w_=(uint16_t)(XRAND()%28); break;
+                    }
+                    XW16(ss_,bp_-10,w_);
+                }
+                {
+                    uint16_t p_;                                             /* the precision */
+                    switch(XRAND()%8) {
+                    case 0: p_=0xFFFF; break;
+                    case 1: p_=0; break;
+                    case 2: p_=(uint16_t)(0x8000+XRAND()%4); break;
+                    case 3: p_=(uint16_t)(0-(XRAND()%5)); break;
+                    default: p_=(uint16_t)(XRAND()%22); break;
+                    }
+                    XW16(ss_,bp_-12,p_);
+                }
+                XW8(ss_,bp_-14,XRAND());XW8(ss_,bp_-13,XRAND());             /* the prefix */
+                XW16(ss_,bp_-16,XRAND()%3);
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xC9AE) {
+                /* The `8` key's arm, entered with the key dispatcher's frame live: the
+                 * dispatcher's own RET (after POP SI, POP DI, LEAVE) must come back to
+                 * the harness's return word at SP-2, so BP sits two words below the SP
+                 * set here and the key (bp+4) is argument 0. The locals at bp-2 and
+                 * bp-10h lie under the stack the routine pushes on; both are written
+                 * before they are read. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);uint16_t o__=(uint16_t)(o_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PCT(p_) (XRAND()%100u<(unsigned)(p_))
+#define PICK(a_) ((a_)[XRAND()%(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;seg[S_ES]=(uint16_t)XRAND();
+                r[R_SP]=0xF000;r[R_BP]=0xEFFC;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The key: the bay's own 0938h, the second chain's Alt keys, the
+                 * navigation display's cursor keys, their neighbours, or any word. */
+                {
+                    static const uint16_t keys_[]={0x0938,0x1300,0x1700,0x2400,0x2500,0x2600,0x3100,
+                        0x4700,0x4800,0x4838,0x4900,0x4939,0x4B00,0x4B34,0x4D00,0x4D36,0x4F00,
+                        0x5000,0x5032,0x5100,0x5133,0x12FF,0x4701,0x5134,0x3101};
+                    uint16_t arg[4];
+                    arg[0]=PCT(8)?(uint16_t)XRAND():PICK(keys_);
+                    for(unsigned j=1;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                }
+                {
+                    static const uint16_t small_[]={0,1,2,3,4,0xFFFF,0x8000,0x7FFF};
+                    static const uint16_t clampv_[]={0,1,0xFFFF,0x7FFF,0x8000,0xBFFF,0xC000,0xC001,0x4000,0x0FFF};
+                    XW8(dg,0x3664,XRAND());XW8(dg,0x3665,XRAND());
+                    XW16(dg,0xE58A,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW8(dg,0x9B35,XRAND());XW8(dg,0x9B34,XRAND());
+                    XW16(dg,0xE008,PCT(50)?0x14:PCT(40)?0x15:(uint16_t)XRAND());
+                    XW16(dg,0xB838,PCT(40)?0:PCT(50)?1:(uint16_t)XRAND());
+                    XW16(dg,0x43DC,XRAND());XW8(dg,0x368A,XRAND());
+                    XW16(dg,0x40AE,PCT(85)?(uint16_t)(XRAND()%18):(uint16_t)XRAND());
+                    XW16(dg,0xC056,XRAND());XW16(dg,0xC058,XRAND());XW16(dg,0xBA3C,XRAND());XW16(dg,0xBA3E,XRAND());
+                    /* The flight record's +72h, bit 0 either way. */
+                    {
+                        const uint16_t rec=(uint16_t)(XRAND()&0x7FFF);
+                        XW16(dg,0xE574,rec);XW16(dg,0xE576,0x7000);XW8(0x7000,(uint16_t)(rec+0x72),XRAND());
+                    }
+                    /* The waypoint index and the waypoint table, with the clamp's edges. */
+                    XW16(dg,0x2EB0,PCT(70)?(uint16_t)(XRAND()&3):PCT(50)?PICK(small_):(uint16_t)(XRAND()&0x0FFF));
+                    for(unsigned j=0;j<0x20;j++)XW16(dg,(uint16_t)(0x2E9E + 2*j),PCT(50)?PICK(clampv_):(uint16_t)XRAND());
+                    XW16(dg,0x2EAE,PCT(50)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x9912,XRAND());
+                    XW16(dg,0xC09A,PCT(50)?0:(uint16_t)XRAND());XW16(dg,0xC0A6,XRAND());
+                    XW16(dg,0x43EC,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0x368C,PCT(30)?0:(uint16_t)XRAND());
+                    {
+                        const uint16_t rate=PCT(70)?(uint16_t)(1+XRAND()%20):(uint16_t)XRAND();
+                        XW16(dg,0x368E,rate);
+                        XW16(dg,0x43F4,PCT(40)?(uint16_t)(rate*0x14+(XRAND()%5)-2):PCT(60)?PICK(small_):(uint16_t)XRAND());
+                    }
+                    XW8(dg,0x3D8E,PCT(30)?(XRAND()&0xE1):XRAND());
+                    XW16(dg,0x9908,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xA098,PCT(50)?0:(uint16_t)XRAND());
+                    XW16(dg,0xC09E,PCT(70)?PICK(small_):(uint16_t)XRAND());
+                    XW16(dg,0xB194,PCT(50)?(uint16_t)(0xF8+XRAND()%5):(uint16_t)XRAND());
+                    XW16(dg,0x3684,XRAND());
+                    for(unsigned j=0;j<16;j++)XW16(dg,(uint16_t)(0x3666+2*j),XRAND());   /* 49F9's stations */
+                }
+                /* Probe cells (fold, list cursor, count) and answer lists. */
+                for(unsigned j=0;j<0x48;j++)XW16(dg,(uint16_t)(0xF800+2*j),0);
+                for(unsigned k=0;k<9;k++)XW16(dg,(uint16_t)(0xF802+8*k),2*(XRAND()%32));
+                for(unsigned k=0;k<9;k++)
+                    for(unsigned j=0;j<32;j++)
+                        XW16(dg,(uint16_t)(0xF400+0x40*k+2*j),(k==2)?(PCT(50)?0:(uint16_t)XRAND()):(uint16_t)XRAND());
+                /* A stub: push bp, fold FLAGS (as at the call) and every argument in
+                 * order into the cell, count the call, answer from the list. */
+#define XSTUB(sg_,off_,cell_,nargs_,list_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x9C);XW8(sgx_,out_++,0x58); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_)+4);XW8(sgx_,out_++,((cell_)+4)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,((far_)?6:4)+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x3E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    /* Near callees that draw, sound, redraw or answer a button are
+                     * stubbed; 49F9 (setter), EF74 (shift) and C67A (clamp) stay original. */
+                    static const struct { uint16_t entry; uint8_t args; } calls_[]={
+                        {0x01B9,0},{0x83E9,1},{0xC89C,1},{0x7663,0},{0x93E9,0},{0x889B,2},{0x825D,1},{0x8342,0}};
+                    for(unsigned k=0;k<8;k++) {
+                        const uint16_t code=(uint16_t)(0xF200+0x60*k);
+                        XW8(0,calls_[k].entry,0xE9);XW16(0,(uint16_t)(calls_[k].entry+1),(uint16_t)(code-calls_[k].entry-3));
+                        XSTUB(0,code,0xF800+8*k,calls_[k].args,0xF400+0x40*k,0);
+                    }
+                    /* The driver's sound request 1E42:0313 jumps to its stub at 1E42:0800. */
+                    XSTUB(0x1E42,0x0800,0xF840,1,0xF600,1);
+                    XW8(0x1E42,0x0313,0xE9);XW16(0x1E42,0x0314,(uint16_t)(0x0800-0x0313-3));
+                }
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"START.EXE") && o->seg==0 && o->ip==0x9EB3) {
+                /* The formatter's %s field. Its JMP back to the format scan ends the named code:
+                 * the scan's first byte (0x09D19) is a RET here, shared code the routine reaches. */
+                g_nend=1;g_end_lo[0]=0x9D19;g_end_hi[0]=0x9D1A;
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(unsigned)(n_)))
+                XW8(0,0x9D19,0xC3);
+                seg[S_DS]=dg;seg[S_SS]=XPICK(2)?0x6000:dg;
+                static const uint16_t stacks[]={0xE000,0x8000,0xFF00,0x2000};
+                r[R_SP]=stacks[XPICK(4)];
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x300;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x100+j),XRAND());
+                for(unsigned j=0;j<4;j++)small[j]=(uint16_t)XRAND();
+                for(unsigned j=0;j<4;j++)XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),small[j]);
+                /* The formatter's frame: its locals above the stack (BP-10h .. BP-1). */
+                const uint16_t bp=(uint16_t)(r[R_SP]+0x20+2*XPICK(0x60));
+                r[R_BP]=bp;
+                /* The string: L non-zero bytes and a zero, at ES:DI (sometimes wrapping the
+                 * segment's end); the precision: none (FFFFh), 0, around L, or any word. */
+                static const uint16_t strsegs[]={0x5000,0x7000,0x6000};
+                const uint16_t es=strsegs[XPICK(3)];
+                const unsigned lk=XPICK(8);
+                const unsigned L=lk==0?0:lk<5?1+XPICK(12):lk<7?XPICK(64):XPICK(300);
+                const uint16_t di=XPICK(6)==0?(uint16_t)(0xFFF0+XPICK(16)):(uint16_t)(0x1000+XPICK(0x4000));
+                for(unsigned j=0;j<L;j++)XW8(es,(uint16_t)(di+j),1+XPICK(255));
+                XW8(es,(uint16_t)(di+L),0);
+                for(unsigned j=1;j<8;j++)XW8(es,(uint16_t)(di+L+j),XRAND());
+                seg[S_ES]=es;r[R_DI]=di;
+                const unsigned pk=XPICK(10);
+                const uint16_t prec=pk<4?0xFFFF:pk<5?0:pk<9?(uint16_t)(L+XPICK(5)-2):(uint16_t)XRAND();
+                XW16(seg[S_SS],(uint16_t)(bp-0x0C),prec);
+                const unsigned len=prec<L?prec:L;
+                /* The sign's length (0 or 1 in the game), the width around the field's
+                 * length, and the flags (random bytes cover every combination). */
+                const unsigned sk=XPICK(10);
+                const uint16_t sign=sk<4?0:sk<8?1:sk<9?(uint16_t)(2+XPICK(3)):(uint16_t)XRAND();
+                XW16(seg[S_SS],(uint16_t)(bp-0x10),sign);
+                const unsigned wk=XPICK(10);
+                const uint16_t width=wk<5?(uint16_t)(len+sign+XPICK(6)-2):wk<8?(uint16_t)XPICK(80):(uint16_t)XRAND();
+                XW16(seg[S_SS],(uint16_t)(bp-0x0A),width);
+                XW8(seg[S_SS],(uint16_t)(bp-0x0E),XRAND());
+                XW8(seg[S_SS],(uint16_t)(bp-4),XRAND());
+                XW8(seg[S_SS],(uint16_t)(bp-3),XRAND());
+                /* Stubs for the padding (0x0A188, k 0) and the run (0x0A16A, k 1): count the
+                 * call, fold CX, DX, DI, AX and ES into a cell, answer AX from a list and CX
+                 * with the fold. */
+                for(unsigned k=0;k<2;k++) {
+                    const uint16_t cnt=(uint16_t)(0x0200+0x10*k),acc=(uint16_t)(cnt+2),ptr=(uint16_t)(cnt+4);
+                    const uint16_t list=(uint16_t)(0x0300+0x40*k),code=(uint16_t)(0xF200+0x100*k);
+                    const uint16_t entry=k?0xA16A:0xA188,id=(uint16_t)(0x1357+0x2468*k);
+                    XW16(dg,cnt,XRAND());XW16(dg,acc,XRAND());XW16(dg,ptr,XRAND()&0x3E);
+                    for(unsigned j=0;j<32;j++)XW16(dg,(uint16_t)(list+2*j),XPICK(2)?0:(uint16_t)XRAND());
+                    uint8_t cb[64];unsigned n=0;
+#define XC(b_) (cb[n++]=(uint8_t)(b_))
+#define XCW(w_) do { XC((w_)&255);XC((w_)>>8); } while(0)
+                    XC(0xFF);XC(0x06);XCW(cnt);                           /* inc word [cnt] */
+                    XC(0x8B);XC(0x1E);XCW(acc);                           /* mov bx, [acc] */
+                    XC(0xD1);XC(0xC3);XC(0x33);XC(0xD9);                  /* rol bx,1 / xor bx,cx */
+                    XC(0xD1);XC(0xC3);XC(0x33);XC(0xDA);                  /* dx */
+                    XC(0xD1);XC(0xC3);XC(0x33);XC(0xDF);                  /* di */
+                    XC(0xD1);XC(0xC3);XC(0x33);XC(0xD8);                  /* ax */
+                    XC(0x8C);XC(0xC1);                                    /* mov cx, es */
+                    XC(0xD1);XC(0xC3);XC(0x33);XC(0xD9);                  /* es */
+                    XC(0x81);XC(0xF3);XCW(id);                            /* xor bx, id */
+                    XC(0x89);XC(0x1E);XCW(acc);                           /* mov [acc], bx */
+                    XC(0x8B);XC(0xCB);                                    /* mov cx, bx */
+                    XC(0x8B);XC(0x1E);XCW(ptr);                           /* mov bx, [ptr] */
+                    XC(0x8B);XC(0x87);XCW(list);                          /* mov ax, [bx+list] */
+                    XC(0x83);XC(0xC3);XC(0x02);                           /* add bx, 2 */
+                    XC(0x83);XC(0xE3);XC(0x3E);                           /* and bx, 3Eh */
+                    XC(0x89);XC(0x1E);XCW(ptr);                           /* mov [ptr], bx */
+                    XC(0xC3);                                             /* ret */
+#undef XCW
+#undef XC
+                    for(unsigned j=0;j<n;j++)XW8(0,(uint16_t)(code+j),cb[j]);
+                    XW8(0,entry,0xE9);XW16(0,(uint16_t)(entry+1),(uint16_t)(code-entry-3));
+                }
+#undef XPICK
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"END.EXE") && o->seg==0 && o->ip==0x5825) {
+                /* The formatter's "%s" length arm (end_format_string_length):
+                 * ES:DI a string, [bp-0Ch] the precision. 0x059F7 (the shared
+                 * field output) is a RET here (patch_image_for). Precisions:
+                 * 0, -1, the string's length and length + 1 (the NUL found by
+                 * the last compare), others; strings forwards and, with DF
+                 * set, backwards; ES the data segment, the stack's or its own;
+                 * a string wrapping the segment's end now and then. */
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?0x6000:dg;r[R_SP]=(uint16_t)(0xF000-2*(XRAND()&0x3F));
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                const int back_=XRAND()%8==0;
+                if(back_)flags|=F_DF;
+                for(unsigned j=0;j<0x80;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x80+j),XRAND());
+                for(unsigned j=0;j<4;j++){const uint16_t v=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),v);small[j]=v;}
+                /* The frame: BP well above the stack, the precision at BP-0Ch. */
+                r[R_BP]=(uint16_t)(0xF400+(XRAND()&0x3FF));
+                for(unsigned j=0;j<0x10;j++)XW8(seg[S_SS],(uint16_t)(r[R_BP]-0x10+j),XRAND());
+                /* The string: L non-NUL bytes, then the NUL (before DI going backwards). */
+                const unsigned es_pick=XRAND()%4;
+                seg[S_ES]=es_pick==0?dg:es_pick==1?seg[S_SS]:(XRAND()&1)?0x7000:0x7800;
+                uint16_t di=(uint16_t)(0x1000+(XRAND()&0x7FFF));
+                if(seg[S_ES]!=dg&&seg[S_ES]!=seg[S_SS]&&XRAND()%6==0)di=(uint16_t)(back_?(XRAND()&0x3F):(0xFFC0+(XRAND()&0x3F)));
+                r[R_DI]=di;
+                const unsigned len=XRAND()%5==0?0:XRAND()%3==0?(unsigned)(XRAND()%160):(unsigned)(XRAND()%24);
+                const uint16_t step=back_?0xFFFF:1;
+                for(unsigned j=0;j<len;j++){uint8_t b=(uint8_t)XRAND();if(!b)b=(uint8_t)(1+XRAND()%255);XW8(seg[S_ES],(uint16_t)(di+step*j),b);}
+                XW8(seg[S_ES],(uint16_t)(di+step*len),0);
+                /* and past it more bytes, NULs among them, for a precision longer than the string */
+                for(unsigned j=1;j<0x40;j++)XW8(seg[S_ES],(uint16_t)(di+step*(len+j)),XRAND()%6==0?0:XRAND());
+                uint16_t prec;
+                switch(XRAND()%8){
+                case 0: prec=0; break;
+                case 1: case 2: prec=0xFFFF; break;
+                case 3: prec=(uint16_t)len; break;
+                case 4: prec=(uint16_t)(len+1); break;
+                case 5: prec=(uint16_t)(1+XRAND()%(len+2)); break;
+                case 6: prec=(uint16_t)(len+2+XRAND()%60); break;
+                default: prec=(XRAND()&1)?(uint16_t)(0x8000|XRAND()):(uint16_t)(len?len-1:1); break;
+                }
+                XW16(seg[S_SS],(uint16_t)(r[R_BP]-0x0C),prec);
+                r[R_AX]=(uint16_t)XRAND();r[R_CX]=(uint16_t)XRAND();
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"END.EXE") && o->seg==0 && o->ip==0x3887) {
+
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define PICK(n_) ((unsigned)(XRAND()%(n_)))
+                const uint16_t dg=(XRAND()&1)?0x5000:0x5200;
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?dg:0x6000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                { static const uint16_t sp_[]={0xF000,0x0100,0x0040,0xFFF0};r[R_SP]=sp_[PICK(4)]; }
+                for(unsigned j=0;j<0x100;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x100+j),XRAND());
+                for(unsigned j=0;j<8;j++){const uint16_t w_=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),w_);if(j<4)small[j]=w_;}
+                /* The routine takes no arguments. Its two text colour words get
+                 * random values so the stores are seen. */
+                XW16(dg,0x6D90,XRAND());XW16(dg,0x6D92,XRAND());
+                for(unsigned j=0;j<0x40;j++)XW8(dg,0x6D70+j,XRAND());
+                XW16(dg,0xE800,XRAND());
+                for(unsigned k=0;k<5;k++){
+                    /* A random starting count: from 0 the first stub's AND
+                     * leaves exactly the flags of the SUB CX,CX that follows. */
+                    XW16(dg,0xE810+2*k,XRAND()&0x1F);
+                    XW16(dg,0xEA00+2*k,XRAND());XW16(dg,0xEA40+2*k,XRAND());
+                    for(unsigned j=0;j<32;j++)XW16(dg,0xE900+0x40*k+2*j,XRAND());
+                }
+                /* Returning probes fold the caller's FLAGS, callee identity
+                 * and every argument in order into [E800], count their calls,
+                 * return a fixture word in AX and clobber BX/CX/DX. The picture
+                 * loader, the tick wait and the prompt are near stubs; the
+                 * driver's sound and copy entries are far stubs. */
+#define XSTUB(sg_,off_,k_,args_,far_) do { \
+    uint8_t cb_[220];unsigned n_=0;const unsigned cnt_=0xE810+2*(k_),list_=0xE900+0x40*(k_); \
+    cb_[n_++]=0x55;cb_[n_++]=0x8B;cb_[n_++]=0xEC;cb_[n_++]=0x9C;cb_[n_++]=0x58; \
+    cb_[n_++]=0x8B;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xE8; \
+    cb_[n_++]=0xD1;cb_[n_++]=0xC3;cb_[n_++]=0x33;cb_[n_++]=0xD8; \
+    cb_[n_++]=0x81;cb_[n_++]=0xF3;cb_[n_++]=(uint8_t)(0x51+17*(k_));cb_[n_++]=0x0A; \
+    for(unsigned j_=0;j_<(args_);j_++){ \
+        cb_[n_++]=0x8B;cb_[n_++]=0x46;cb_[n_++]=(uint8_t)(((far_)?6:4)+2*j_); \
+        cb_[n_++]=0xD1;cb_[n_++]=0xC3;cb_[n_++]=0x33;cb_[n_++]=0xD8; } \
+    cb_[n_++]=0x89;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xE8; \
+    cb_[n_++]=0x8B;cb_[n_++]=0x1E;cb_[n_++]=cnt_&255;cb_[n_++]=cnt_>>8; \
+    cb_[n_++]=0xFF;cb_[n_++]=0x06;cb_[n_++]=cnt_&255;cb_[n_++]=cnt_>>8; \
+    cb_[n_++]=0xD1;cb_[n_++]=0xE3;cb_[n_++]=0x83;cb_[n_++]=0xE3;cb_[n_++]=0x3E; \
+    cb_[n_++]=0x8B;cb_[n_++]=0x87;cb_[n_++]=list_&255;cb_[n_++]=list_>>8; \
+    cb_[n_++]=0x8B;cb_[n_++]=0x0E;cb_[n_++]=(uint8_t)(2*(k_));cb_[n_++]=0xEA; \
+    cb_[n_++]=0x8B;cb_[n_++]=0x16;cb_[n_++]=(uint8_t)(0x40+2*(k_));cb_[n_++]=0xEA; \
+    cb_[n_++]=0x5D;cb_[n_++]=(far_)?0xCB:0xC3; \
+    for(unsigned k2_=0;k2_<n_;k2_++)XW8((sg_),(off_)+k2_,cb_[k2_]); } while(0)
+#define XNEAR(entry_,k_,args_) do { const uint16_t stub_=(uint16_t)(0xF200+0x100*(k_)); \
+    XW8(0,(entry_),0xE9);XW16(0,(entry_)+1,(uint16_t)(stub_-(entry_)-3));XSTUB(0,stub_,k_,args_,0); } while(0)
+#define XFAR(sg_,off_,k_,args_) do { const uint16_t stub_=(uint16_t)(0x1000+0x100*(k_)); \
+    XW8((sg_),(off_),0xEA);XW16((sg_),(off_)+1,stub_);XW16((sg_),(off_)+3,0x3000); \
+    XSTUB(0x3000,stub_,k_,args_,1); } while(0)
+
+                XNEAR(0x1901,0,2);XFAR(0x05FA,0x25F3,1,1);XNEAR(0x11A2,2,1);
+                XFAR(0x05FA,0x24CC,3,8);XNEAR(0x206A,4,2);
+
+#undef XFAR
+#undef XNEAR
+#undef XSTUB
+#undef PICK
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"END.EXE") && o->seg==0 && o->ip==0x099D) {
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+                seg[S_DS]=dg;seg[S_SS]=XPICK(2)?0x6000:dg;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                /* The routine runs inside 0880's frame and leaves by its epilogue
+                 * (pop si; pop di; mov sp,bp; pop bp; ret): the RET is taken at
+                 * BP+2, so BP sits two words below the argument, with the return
+                 * address the harness pushes at [BP+2]. The harness then lowers
+                 * the entry SP to BP-12, below 0880's locals and saved DI, SI. */
+                static const uint16_t stacks[]={0xF000,0x8000,0x0100,0x0060};
+                r[R_SP]=stacks[XPICK(4)];
+                r[R_BP]=(uint16_t)(r[R_SP]-4);
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The argument: the icon record, and 0880's other words above it. */
+                const uint16_t record=(uint16_t)(0x7000+XPICK(0x400));
+                uint16_t arg[4];
+                arg[0]=record;arg[1]=(uint16_t)XRAND();arg[2]=(uint16_t)XRAND();arg[3]=(uint16_t)XRAND();
+                for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                /* The icon number at BP-8: the sheet's cells, the row and column
+                 * boundaries, and now and then any word. */
+                {
+                    const uint16_t icon=XPICK(4)?(uint16_t)XPICK(24):(XPICK(2)?(uint16_t)XRAND():(uint16_t)(0xFFF0+XPICK(16)));
+                    XW16(seg[S_SS],(uint16_t)(r[R_BP]-8),icon);
+                }
+                /* The record's map position, bytes +2 and +3: values whose scaled
+                 * x lands on 72h, 73h, 74h (131, 132, 133) and scaled y on 58h, 59h
+                 * (135, 136), the ends, and any byte. */
+                {
+                    static const uint8_t xs[]={0,1,130,131,132,133,134,200,255,131,132};
+                    static const uint8_t ys[]={0,1,134,135,136,137,138,200,255,135,136};
+                    uint8_t bx_=XPICK(3)?xs[XPICK(11)]:(uint8_t)XRAND();
+                    uint8_t by_=XPICK(3)?ys[XPICK(11)]:(uint8_t)XRAND();
+                    for(unsigned j=0;j<8;j++)XW8(dg,(uint16_t)(record+j),XRAND());
+                    XW8(dg,(uint16_t)(record+2),bx_);
+                    XW8(dg,(uint16_t)(record+3),by_);
+                }
+                XW16(dg,0x55AE,XRAND());XW16(dg,0x55B0,XRAND());
+                /* The page copy 05FA:24CC is a probe: it folds its id and its eight
+                 * arguments in order into [F800], counts calls at [F802], and
+                 * returns AX, CX and DX from lists at F400, F440, F480. */
+                for(unsigned j=0;j<0x60;j++)XW16(dg,(uint16_t)(0xF400+2*j),XRAND());
+                XW16(dg,0xF800,XRAND());XW16(dg,0xF802,XRAND());XW16(dg,0xF804,(uint16_t)(2*XPICK(32)));
+                {
+                    uint8_t cb_[128]; unsigned n_=0;
+                    const uint16_t id_=0x24CC;
+                    cb_[n_++]=0x55;cb_[n_++]=0x8B;cb_[n_++]=0xEC;cb_[n_++]=0x53;
+                    cb_[n_++]=0x8B;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xF8;
+                    cb_[n_++]=0xD1;cb_[n_++]=0xC3;
+                    cb_[n_++]=0x81;cb_[n_++]=0xF3;cb_[n_++]=id_&255;cb_[n_++]=id_>>8;
+                    for(unsigned j=0;j<8;j++){cb_[n_++]=0xD1;cb_[n_++]=0xC3;cb_[n_++]=0x33;cb_[n_++]=0x5E;cb_[n_++]=(uint8_t)(6+2*j);}
+                    cb_[n_++]=0x89;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xF8;
+                    cb_[n_++]=0xFF;cb_[n_++]=0x06;cb_[n_++]=0x02;cb_[n_++]=0xF8;
+                    cb_[n_++]=0x8B;cb_[n_++]=0x1E;cb_[n_++]=0x04;cb_[n_++]=0xF8;
+                    cb_[n_++]=0x8B;cb_[n_++]=0x87;cb_[n_++]=0x00;cb_[n_++]=0xF4;
+                    cb_[n_++]=0x8B;cb_[n_++]=0x8F;cb_[n_++]=0x40;cb_[n_++]=0xF4;
+                    cb_[n_++]=0x8B;cb_[n_++]=0x97;cb_[n_++]=0x80;cb_[n_++]=0xF4;
+                    cb_[n_++]=0x83;cb_[n_++]=0xC3;cb_[n_++]=0x02;
+                    cb_[n_++]=0x83;cb_[n_++]=0xE3;cb_[n_++]=0x3E;
+                    cb_[n_++]=0x89;cb_[n_++]=0x1E;cb_[n_++]=0x04;cb_[n_++]=0xF8;
+                    cb_[n_++]=0x5B;cb_[n_++]=0x5D;cb_[n_++]=0xCB;
+                    for(unsigned k_=0;k_<n_;k_++)XW8(0x05FA,0x24CC+k_,cb_[k_]);
+                }
+#undef XPICK
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xD9FE) {
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+#define XW32(s_,o_,v_) do { uint32_t w__=(uint32_t)(v_);XW16((s_),(o_),w__);XW16((s_),(uint16_t)((o_)+2),w__>>16); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+#define XR32() ((uint32_t)XRAND()|((uint32_t)XRAND()<<16))
+                const int same=XPICK(4)!=0;
+                seg[S_DS]=dg;seg[S_SS]=same?dg:0x6000;
+                static const uint16_t stacks[]={0xF000,0x0004,0xFFFE,0x8000,0x7FF2};
+                r[R_SP]=stacks[XPICK(5)];
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The eye: aircraft position [BA3C]/[C056]/[2DF4] and the
+                 * outside camera [B2B4]/[B77E]/[B788], selected by [C0A6] bit 7. */
+                const uint32_t ac_x=XR32(),ac_y=XR32(),cam_x=XR32(),cam_y=XR32();
+                XW32(dg,0xBA3C,ac_x);XW32(dg,0xC056,ac_y);XW32(dg,0xB2B4,cam_x);XW32(dg,0xB77E,cam_y);
+                XW16(dg,0x2DF4,XRAND());XW16(dg,0xB788,XRAND());
+                const uint8_t view=(uint8_t)((XRAND()&0x7F)|(XPICK(2)?0x80:0));
+                XW8(dg,0xC0A6,view);
+                static const uint8_t layouts[]={0,0,1,2,0x80,0xFF};
+                const uint8_t layout=layouts[XPICK(6)];
+                XW8(dg,0x294B,layout);
+                const unsigned shift=layout<1?3:2;
+                /* Shifted low words chosen around the 7FFFh magnitude edge. */
+                static const uint16_t edges[]={0x7FFE,0x7FFF,0x8000,0x8001,0x8002,0x0000,0xFFFF,0x0001,0x8003,0x7FFD};
+                uint16_t low[2];
+                for(unsigned k=0;k<2;k++) {
+                    const unsigned pick=XPICK(16);
+                    low[k]=pick<10?edges[pick]:pick<13?(uint16_t)(XRAND()&0x3FFF):(uint16_t)XRAND();
+                }
+                const uint32_t dx=((((uint32_t)XRAND()<<16)|low[0])<<shift)|(XRAND()&((1u<<shift)-1));
+                const uint32_t dy=((((uint32_t)XRAND()<<16)|low[1])<<shift)|(XRAND()&((1u<<shift)-1));
+                const uint32_t east=dx+((view&0x80)?cam_x:ac_x);
+                const uint32_t north=dy-((view&0x80)?cam_y:ac_y)+0x01000000u;
+                static const uint16_t heights[]={0,0,1,2,0xFFFF,0x8000};
+                const unsigned hp=XPICK(9);
+                const uint16_t height=hp<6?heights[hp]:(uint16_t)XRAND();
+                uint16_t args[9];
+                args[0]=(uint16_t)XRAND();
+                args[1]=(uint16_t)east;args[2]=(uint16_t)(east>>16);
+                args[3]=(uint16_t)north;args[4]=(uint16_t)(north>>16);
+                args[5]=height;
+                for(unsigned j=6;j<9;j++)args[j]=(uint16_t)XRAND();
+                for(unsigned j=0;j<9;j++) {
+                    XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),args[j]);
+                    if(j<4)small[j]=args[j];
+                }
+                /* EF9C shifts through DS: with a separate stack segment it
+                 * works on DS at the frame's offsets, so put longs there too. */
+                if(!same) {
+                    const uint16_t bp=(uint16_t)(r[R_SP]-4);
+                    XW32(dg,(uint16_t)(bp-0x0C),dx);XW32(dg,(uint16_t)(bp-0x10),dy);
+                }
+                /* The origin, the published point and the deferred record. */
+                for(unsigned j=0;j<3;j++)XW16(dg,0x49AC+2*j,XPICK(4)?(uint16_t)XRAND():0);
+                XW16(dg,0x49AA,XRAND());XW16(dg,0xE328,XRAND());
+                for(unsigned j=0;j<6;j++)XW16(dg,0x4994+2*j,XRAND());
+                XW16(dg,0x4986,XRAND());
+                /* The origin setter D9E7, the cull E3AC and the deferral DB3C
+                 * become probes: each counts its calls, folds every argument in
+                 * order into its own cell and returns a fixture word (the cull
+                 * zero half the time, so the object is kept). */
+                for(unsigned j=0;j<3;j++)XW16(dg,0xF810+2*j,0);
+                XW16(dg,0xF830,XRAND());
+                {
+                    static const uint16_t culls[]={0,0,0,0,1,0x8000,0xFFFF};
+                    const unsigned cp=XPICK(8);
+                    XW16(dg,0xF832,cp<7?culls[cp]:(uint16_t)XRAND());
+                }
+                XW16(dg,0xF834,XRAND());
+#define XSTUB(off_,cell_,nargs_,retcell_) do { unsigned out_=(off_); \
+    XW8(0,out_++,0x55);XW8(0,out_++,0x8B);XW8(0,out_++,0xEC);XW8(0,out_++,0x53); \
+    XW8(0,out_++,0xFF);XW8(0,out_++,0x06);XW8(0,out_++,(cell_));XW8(0,out_++,(cell_)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(0,out_++,0x8B);XW8(0,out_++,0x46);XW8(0,out_++,4+2*j_); \
+        XW8(0,out_++,0x8B);XW8(0,out_++,0x1E);XW8(0,out_++,(cell_));XW8(0,out_++,(cell_)>>8); \
+        XW8(0,out_++,0xD1);XW8(0,out_++,0xC3);XW8(0,out_++,0x33);XW8(0,out_++,0xD8); \
+        XW8(0,out_++,0x89);XW8(0,out_++,0x1E);XW8(0,out_++,(cell_));XW8(0,out_++,(cell_)>>8); } \
+    XW8(0,out_++,0x5B);XW8(0,out_++,0xA1);XW8(0,out_++,(retcell_));XW8(0,out_++,(retcell_)>>8); \
+    XW8(0,out_++,0x5D);XW8(0,out_++,0xC3); } while(0)
+                {
+                    static const struct { uint16_t slot,code,cell,ret; unsigned args; } near_[3]={
+                        {0xD9E7,0xF200,0xF810,0xF830,3},{0xE3AC,0xF260,0xF812,0xF832,3},{0xDB3C,0xF2C0,0xF814,0xF834,0}};
+                    for(unsigned k=0;k<3;k++) {
+                        XW8(0,near_[k].slot,0xE9);XW16(0,near_[k].slot+1,(uint16_t)(near_[k].code-near_[k].slot-3));
+                        XSTUB(near_[k].code,near_[k].cell,near_[k].args,near_[k].ret);
+                    }
+                }
+#undef XSTUB
+#undef XR32
+#undef XPICK
+#undef XRAND
+#undef XW32
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"START.EXE") && o->seg==0 && o->ip==0x644A) {
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define RND(n_) ((unsigned)(XRAND()%(unsigned)(n_)))
+#define PCT(p_) (RND(100)<(unsigned)(p_))
+#define PICK(a_) ((a_)[RND(sizeof(a_)/sizeof((a_)[0]))])
+                seg[S_DS]=dg;seg[S_SS]=PCT(50)?dg:0x6000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                /* The code runs inside 0x063FB's frame and leaves by its exit (pop si;
+                 * mov sp,bp; pop bp; ret): the RET is taken at BP+2, so BP sits two
+                 * words below the SP set here, the harness's return address at [BP+2]. */
+                { static const uint16_t sp_[]={0xF000,0x8000,0x1000,0x0400};
+                  r[R_SP]=PICK(sp_); }
+                r[R_BP]=(uint16_t)(r[R_SP]-4);
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                for(unsigned j=0;j<4;j++){small[j]=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),small[j]);}
+                /* The hovered item: none, a pilot row 1..10 (its boundary 0Ah/0Bh), a
+                 * button, or a byte with the top bit set (unsigned compares). */
+                static const uint8_t items_[]={0,1,2,3,5,9,0x0A,0x0A,0x0B,0x0B,0x0C,0x11,0x12,0x7F,0x80,0xFF};
+                const uint8_t item_=PCT(85)?PICK(items_):(uint8_t)XRAND();
+                XW8(seg[S_SS],(uint16_t)(r[R_BP]-2),item_);
+                /* The item lit until now: the same item at times, else the same kinds. */
+                { const uint8_t lit_=PCT(20)?item_:PCT(85)?PICK(items_):(uint8_t)XRAND();
+                  XW8(dg,0xD096,lit_); }
+                /* The pilot record pointer [CACA] (DS or another segment) and its first
+                 * word, the pilot's index: item - 1 at times, its neighbours, others. */
+                { const uint16_t es_=PCT(50)?dg:0x7000;
+                  const uint16_t at_=(uint16_t)(0x2000+2*RND(0x1000));
+                  XW16(dg,0xCACA,at_);XW16(dg,0xCACC,es_);
+                  const unsigned q_=RND(100);
+                  const uint16_t own_=q_<35?(uint16_t)(item_-1):q_<45?(uint16_t)item_:q_<55?(uint16_t)(item_-2):
+                                      q_<70?(uint16_t)RND(12):(uint16_t)XRAND();
+                  XW16(es_,at_,own_); }
+                /* Callee probes. Each folds the flags and registers at its entry, the
+                 * stack copy of BX and every argument in order into F800, counts its
+                 * calls (F802 + 2k), answers AX from its list (F400 + 40h k, index at
+                 * F820 + 2k). The graphics thunk's and 3517's probes also store the
+                 * answer's low byte over the caller's [BP-2] (the hovered item: in the
+                 * real frame it survives the calls; here, with the frame two words below
+                 * the entry SP, the pushes overwrite it). Their lists mostly hold the
+                 * hovered item again. 64E5's probe stores nothing: its return address is
+                 * at [BP-2] here, so after it [BP-2] reads D9h. */
+                for(unsigned k=0;k<3;k++) {
+                    for(unsigned j=0;j<32;j++) {
+                        const unsigned q_=RND(100);
+                        const uint8_t lo_=q_<55?item_:q_<90?PICK(items_):(uint8_t)XRAND();
+                        XW16(dg,(uint16_t)(0xF400+0x40*k+2*j),(uint16_t)((XRAND()&0xFF00)|lo_));
+                    }
+                    XW16(dg,(uint16_t)(0xF802+2*k),XRAND());XW16(dg,(uint16_t)(0xF820+2*k),(uint16_t)(2*RND(32)));
+                }
+                XW16(dg,0xF800,XRAND());
+#define XSTUB(sg_,off_,k_,id_,nargs_,base_,far_,put_) do { \
+    uint8_t cb_[200]; unsigned n_=0; \
+    const unsigned cnt_=0xF802+2*(k_),ptr_=0xF820+2*(k_),list_=0xF400+0x40*(k_); \
+    static const uint8_t regs_[]={0xD8,0xD9,0xDA,0xDE,0xDF}; \
+    cb_[n_++]=0x55;cb_[n_++]=0x8B;cb_[n_++]=0xEC;cb_[n_++]=0x53;cb_[n_++]=0x9C; \
+    cb_[n_++]=0xFF;cb_[n_++]=0x06;cb_[n_++]=cnt_&255;cb_[n_++]=cnt_>>8; \
+    cb_[n_++]=0x8B;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xF8; \
+    cb_[n_++]=0xD1;cb_[n_++]=0xC3; \
+    cb_[n_++]=0x81;cb_[n_++]=0xF3;cb_[n_++]=(id_)&255;cb_[n_++]=(id_)>>8; \
+    for(unsigned j_=0;j_<5;j_++){cb_[n_++]=0xD1;cb_[n_++]=0xC3;cb_[n_++]=0x33;cb_[n_++]=regs_[j_];} \
+    cb_[n_++]=0xD1;cb_[n_++]=0xC3;cb_[n_++]=0x33;cb_[n_++]=0x5E;cb_[n_++]=0xFC; \
+    cb_[n_++]=0xD1;cb_[n_++]=0xC3;cb_[n_++]=0x33;cb_[n_++]=0x5E;cb_[n_++]=0xFE; \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        cb_[n_++]=0x8B;cb_[n_++]=0x46;cb_[n_++]=(uint8_t)((base_)+2*j_); \
+        cb_[n_++]=0xD1;cb_[n_++]=0xC3;cb_[n_++]=0x33;cb_[n_++]=0xD8; } \
+    cb_[n_++]=0x89;cb_[n_++]=0x1E;cb_[n_++]=0x00;cb_[n_++]=0xF8; \
+    cb_[n_++]=0x8B;cb_[n_++]=0x1E;cb_[n_++]=ptr_&255;cb_[n_++]=ptr_>>8; \
+    cb_[n_++]=0x8B;cb_[n_++]=0x87;cb_[n_++]=list_&255;cb_[n_++]=list_>>8; \
+    cb_[n_++]=0x83;cb_[n_++]=0xC3;cb_[n_++]=0x02; \
+    cb_[n_++]=0x83;cb_[n_++]=0xE3;cb_[n_++]=0x3E; \
+    cb_[n_++]=0x89;cb_[n_++]=0x1E;cb_[n_++]=ptr_&255;cb_[n_++]=ptr_>>8; \
+    if(put_){cb_[n_++]=0x8B;cb_[n_++]=0x5E;cb_[n_++]=0x00; \
+             cb_[n_++]=0x36;cb_[n_++]=0x88;cb_[n_++]=0x47;cb_[n_++]=0xFE;} \
+    cb_[n_++]=0x5B;cb_[n_++]=0x5B;cb_[n_++]=0x5D;cb_[n_++]=(far_)?0xCB:0xC3; \
+    for(unsigned k2_=0;k2_<n_;k2_++)XW8((sg_),(off_)+k2_,cb_[k2_]); } while(0)
+                /* The far graphics thunk 0A95:6A8A (eight arguments), the colour queue
+                 * 3517 (three) and the record sheet 64E5 (one): near ones by a JMP to
+                 * 0:F000 / 0:F100. */
+                XSTUB(0x0A95,0x6A8A,0,0x1234,8,6,1,1);
+                XW8(0,0x3517,0xE9);XW16(0,0x3518,(uint16_t)(0xF000-0x3517-3));
+                XSTUB(0,0xF000,1,0x2345,3,4,0,1);
+                XW8(0,0x64E5,0xE9);XW16(0,0x64E6,(uint16_t)(0xF100-0x64E5-3));
+                XSTUB(0,0xF100,2,0x3456,1,4,0,0);
+#undef XSTUB
+#undef PICK
+#undef PCT
+#undef RND
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"END.EXE") && o->seg==0 && o->ip==0x372F) {
+                const uint16_t dg=0x5000;
+                seg[S_DS]=dg;seg[S_SS]=(s&4)?0x6000:dg;r[R_SP]=0xF000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                {
+                    uint16_t arg[4];
+                    for(unsigned j=0;j<4;j++)arg[j]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++)XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);
+                    for(unsigned j=0;j<4;j++)small[j]=arg[j];
+                }
+                /* The event log: 256 six-byte records at 5E38 and the word
+                 * after it. Kinds other than 8 include the near misses (9, 18h,
+                 * 28h, 0); a kind-8 record may carry any of the top two bits. */
+                static const uint8_t other_[8]={0x00,0x09,0x18,0x28,0x07,0x0A,0x48^0x01,0x3F};
+                for(unsigned k=0;k<0x100;k++) {
+                    for(unsigned j=0;j<6;j++)XW8(dg,0x5E38+6*k+j,XRAND());
+                    const uint8_t kind_=(XRAND()%3==0)?(uint8_t)((XRAND()&0xC0)|other_[XRAND()%8]):(uint8_t)XRAND();
+                    XW8(dg,0x5E3C+6*k,((kind_&0x3F)==8)?(uint8_t)(kind_^0x01):kind_);
+                }
+                XW16(dg,0x6438,XRAND());XW16(dg,0x643A,XRAND());XW16(dg,0x643C,XRAND());
+                {
+                    /* Where the first kind-8 record is: the first record (a span
+                     * of 0), early, anywhere, the last, or nowhere (100h). */
+                    const unsigned pick_=XRAND()%8;
+                    const unsigned at_=(pick_==0)?0:(pick_==1)?1+XRAND()%4:(pick_==2)?0xFF:(pick_==3)?0x100:(unsigned)(XRAND()%0x100);
+                    if(at_<0x100) {
+                        const unsigned kind_=(XRAND()&0xC0)|8;
+                        XW8(dg,0x5E3C+6*at_,kind_);
+                        /* Later kind-8 records are ignored. */
+                        if(XRAND()%2) { const unsigned later_=at_+1+XRAND()%0x20; if(later_<0x100)XW8(dg,0x5E3C+6*later_,(XRAND()&0xC0)|8); }
+                    }
+                    /* The span after the first record's time: 0, 1, around 708h,
+                     * small, large, wrapped. */
+                    static const uint16_t spans_[12]={0,1,2,0x707,0x708,0x709,0x7FFF,0x8000,0xFFFF,0x0700,0x0010,0x0100};
+                    const unsigned sp_=XRAND()%4;
+                    const uint16_t span_=(sp_==0)?spans_[XRAND()%12]:(sp_==1)?(uint16_t)XRAND():(uint16_t)(1+XRAND()%0x708);
+                    const uint16_t t0_=(uint16_t)XRAND();
+                    XW16(dg,0x5E38,t0_);
+                    if(at_>0) { const unsigned tat_=0x5E38+6*at_; XW16(dg,tat_,(uint16_t)(t0_+span_)); }
+                }
+                /* Base colours, target tables and the rates' old contents;
+                 * extremes now and then so differences reach +-255. */
+                for(unsigned j=0;j<0x60;j++) {
+                    const unsigned v_=XRAND();
+                    XW8(dg,0x1396+j,(v_%5==0)?0:(v_%5==1)?0xFF:(v_%5==2)?(XRAND()&0x3F):XRAND());
+                }
+                for(unsigned j=0;j<3;j++) {
+                    const unsigned v_=XRAND();
+                    XW8(dg,0x1336+j,(v_%5==0)?0:(v_%5==1)?0xFF:(v_%5==2)?(XRAND()&0x3F):XRAND());
+                    const unsigned w_=XRAND();
+                    XW8(dg,0x13F6+j,(w_%5==0)?0:(w_%5==1)?0xFF:(w_%5==2)?(XRAND()&0x3F):XRAND());
+                }
+                for(unsigned j=3;j<0x10;j++){XW8(dg,0x1336+j,XRAND());XW8(dg,0x13F6+j,XRAND());}
+                for(unsigned j=0;j<0x60;j++)XW8(dg,0x2165+j,XRAND());
+                /* The far record [7222] and its byte +33h. */
+                {
+                    const uint16_t fs_=(uint16_t)(0x7000+(XRAND()&0x0FFF)), fo_=(uint16_t)XRAND();
+                    XW16(dg,0x7222,fo_);XW16(dg,0x7224,fs_);
+                    XW8(fs_,(uint16_t)(fo_+0x33),(XRAND()%2)?0:(XRAND()%4==0)?0x80:(1+XRAND()%0xFF));
+                }
+                /* The picture loader 100D is a stub: it folds its id, its two
+                 * arguments and the third word it reads into [F800] and counts
+                 * at [F802]; AX comes back changed. */
+                XW16(dg,0xF800,XRAND());XW16(dg,0xF802,0);
+                {
+                    unsigned out_=0xF200;const uint16_t sx_=0;
+                    XW8(0,0x100D,0xE9);XW16(0,0x100E,(uint16_t)(0xF200-0x100D-3));
+                    XW8(sx_,out_++,0x55);XW8(sx_,out_++,0x8B);XW8(sx_,out_++,0xEC);XW8(sx_,out_++,0x53);
+                    XW8(sx_,out_++,0x8B);XW8(sx_,out_++,0x1E);XW8(sx_,out_++,0x00);XW8(sx_,out_++,0xF8);
+                    XW8(sx_,out_++,0xD1);XW8(sx_,out_++,0xC3);
+                    XW8(sx_,out_++,0x81);XW8(sx_,out_++,0xF3);XW8(sx_,out_++,0x0D);XW8(sx_,out_++,0x10);
+                    for(unsigned j_=0;j_<3;j_++) {
+                        XW8(sx_,out_++,0xD1);XW8(sx_,out_++,0xC3);
+                        XW8(sx_,out_++,0x33);XW8(sx_,out_++,0x5E);XW8(sx_,out_++,4+2*j_); }
+                    XW8(sx_,out_++,0x89);XW8(sx_,out_++,0x1E);XW8(sx_,out_++,0x00);XW8(sx_,out_++,0xF8);
+                    XW8(sx_,out_++,0xFF);XW8(sx_,out_++,0x06);XW8(sx_,out_++,0x02);XW8(sx_,out_++,0xF8);
+                    XW8(sx_,out_++,0x8B);XW8(sx_,out_++,0xC3);
+                    XW8(sx_,out_++,0x5B);XW8(sx_,out_++,0x5D);XW8(sx_,out_++,0xC3);
+                }
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"END.EXE") && o->seg==0 && o->ip==0x5987) {
+                /* The formatter's integer conversion runs in _output's frame: BP above SP,
+                 * the stream at [bp+4] (next pointer, room), the argument list pointer at
+                 * [bp+8], the conversion state below BP. All callees stay original: the
+                 * argument fetchers, the digits, the runs and the string stream's
+                 * put-character (its room never runs out, so the flush is not called).
+                 * The scan at 0x0568B is a RET here (IMAGE_PATCHES), the arm's way out. */
+                const uint16_t dg=0x5000;
+                seg[S_DS]=dg;seg[S_SS]=(s&4)?0x6000:dg;r[R_SP]=0xF000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                const uint16_t ss_=seg[S_SS];
+                for(unsigned j=0;j<0x400;j++)XW8(ss_,(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                for(unsigned j=0;j<4;j++){const uint16_t w_=(uint16_t)XRAND();XW16(ss_,(uint16_t)(r[R_SP]+2*j),w_);small[j]=w_;}
+                const uint16_t bp_=(uint16_t)(r[R_SP]+0x60+2*(XRAND()%0x40));
+                r[R_BP]=bp_;
+                /* The stream: next pointer and a room that never runs out. */
+                const uint16_t stream_=(uint16_t)(0x3000+2*(XRAND()%8));
+                XW16(ss_,bp_+4,stream_);
+                XW16(dg,stream_,(uint16_t)(0x3100+XRAND()%0x40));
+                XW16(dg,stream_+2,(uint16_t)(0x0800+XRAND()%0x4000));
+                for(unsigned j=0;j<0x200;j++)XW8(dg,0x3100+j,XRAND());
+                /* The argument list: words with the boundaries of the sign and zero tests. */
+                const uint16_t list_=(uint16_t)(0x2000+2*(XRAND()%0x20));
+                XW16(ss_,bp_+8,list_);
+                XW16(ss_,bp_+6,XRAND());
+                for(unsigned j=0;j<4;j++) {
+                    uint16_t v_;
+                    switch(XRAND()%10) {
+                    case 0: v_=0; break;
+                    case 1: v_=0x8000; break;
+                    case 2: v_=0x7FFF; break;
+                    case 3: v_=0xFFFF; break;
+                    case 4: v_=(uint16_t)(XRAND()%1000); break;
+                    case 5: v_=(uint16_t)(0-(XRAND()%1000)); break;
+                    default: v_=(uint16_t)XRAND(); break;
+                    }
+                    XW16(dg,list_+2*j,v_);
+                }
+                /* The conversion state. */
+                XW8(ss_,bp_-1,(XRAND()&1)?0x27:0x07);                       /* the letter offset */
+                XW8(ss_,bp_-2,XRAND());
+                XW8(ss_,bp_-3,XRAND());                                      /* negative, '#' */
+                XW8(ss_,bp_-4,XRAND());                                      /* the flags */
+                XW8(ss_,bp_-5,XRAND());
+                {
+                    static const uint8_t radix_[]={8,10,16,10,16,8,2,3,7,36};
+                    XW8(ss_,bp_-6,radix_[XRAND()%10]);
+                }
+                XW16(ss_,bp_-8,XRAND());                                     /* the count so far */
+                {
+                    uint16_t w_;                                             /* the width */
+                    switch(XRAND()%8) {
+                    case 0: w_=(uint16_t)(0-(XRAND()%4)); break;
+                    case 1: w_=(uint16_t)(0-(XRAND()%0x7000)); break;
+                    default: w_=(uint16_t)(XRAND()%28); break;
+                    }
+                    XW16(ss_,bp_-10,w_);
+                }
+                {
+                    uint16_t p_;                                             /* the precision */
+                    switch(XRAND()%8) {
+                    case 0: p_=0xFFFF; break;
+                    case 1: p_=0; break;
+                    case 2: p_=(uint16_t)(0x8000+XRAND()%4); break;
+                    case 3: p_=(uint16_t)(0-(XRAND()%5)); break;
+                    default: p_=(uint16_t)(XRAND()%22); break;
+                    }
+                    XW16(ss_,bp_-12,p_);
+                }
+                XW8(ss_,bp_-14,XRAND());XW8(ss_,bp_-13,XRAND());             /* the prefix */
+                XW16(ss_,bp_-16,XRAND()%3);
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"END.EXE") && o->seg==0 && o->ip==0x34EA) {
+                /* The debrief score's loop step, entered inside the scorer's live frame (LIVE_FRAMES lowers
+                 * SP by 12h below the return address): BP = the return address's slot - 2. */
+                const uint16_t dg=0x5000;
+                seg[S_DS]=dg;seg[S_SS]=(s&4)?0x6000:dg;r[R_SP]=0xF000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+                const uint16_t ss_=seg[S_SS];
+                for(unsigned j=0;j<0x200;j++)XW8(ss_,(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                const uint16_t bp_=(uint16_t)(r[R_SP]-4);
+                r[R_BP]=bp_;
+                /* Registers the routine overwrites or keeps: varied. */
+                r[R_SI]=(uint16_t)XRAND();r[R_DI]=(uint16_t)XRAND();r[R_CX]=(uint16_t)XRAND();
+                /* Tables the step reads: unit records (class byte at +0 of each 16), class flags. */
+                for(unsigned j=0;j<0x800;j++)XW8(dg,0x56F8 + j,XRAND());
+                for(unsigned j=0;j<0x100;j++)XW8(dg,0x6902 + j,XRAND());
+                /* The index before the INC, and the last record's number (the argument at [bp+4]). */
+                uint16_t idx,last;
+                switch(XPICK(10)) {
+                    case 0: idx=(uint16_t)XRAND(); last=(XPICK(2))?(uint16_t)(idx+1+XPICK(3)):(uint16_t)XRAND(); break;
+                    case 1: idx=0xFFFF; last=(uint16_t)XPICK(4); break;                          /* INC wraps to 0 */
+                    case 2: idx=(uint16_t)XPICK(16); last=(uint16_t)idx; break;                 /* one past: done */
+                    case 3: idx=(uint16_t)XPICK(16); last=(uint16_t)(idx+1); break;             /* exactly the last */
+                    case 4: idx=(uint16_t)XPICK(16); last=(uint16_t)(XPICK(2)?0xFFFF-XPICK(2):(idx>0?idx-1:0)); break;   /* the log's end decides */
+                    default: idx=(uint16_t)XPICK(16); last=(uint16_t)(idx+1+XPICK(5)); break;
+                }
+                /* A wild index (the product wraps) only where its eight records miss the stack, the
+                 * stubs' cells and the far pointers' records' cells. */
+                if(idx>=16 && idx!=0xFFFF) {
+                    unsigned tries_=0;
+                    for(;;) {
+                        const uint16_t at0_=(uint16_t)(0x5E3C + 6*(uint16_t)(idx+1));
+                        if(at0_>=0x1000 && at0_<0xE000) break;
+                        if(++tries_>40) { idx=(uint16_t)XPICK(16); break; }
+                        idx=(uint16_t)XRAND();
+                    }
+                }
+                /* Records from the one the step reads on: kinds 0 (end), 1..12, the thrown-away 4/5,
+                 * out of the switch's range, with bits 6 and 7 set, or anything. Arguments any byte. */
+                {
+                    const uint16_t first=(uint16_t)(idx+1);
+                    for(unsigned k=0;k<8;k++) {
+                        const uint16_t at_=(uint16_t)(0x5E3C + 6*(uint16_t)(first+k));
+                        if((uint16_t)(at_-0xEC00)<0x0E00 || (uint16_t)(at_+6)<at_) continue;   /* never over the stack or the cells */
+                        uint8_t kind;
+                        switch(XPICK(8)) {
+                            case 0: kind=0; break;
+                            case 1: kind=(uint8_t)(4+XPICK(2)); break;
+                            case 2: kind=(uint8_t)(0x40*XPICK(4)+XPICK(64)); break;
+                            case 3: kind=(uint8_t)XRAND(); break;
+                            case 4: kind=(uint8_t)(0x40*(1+XPICK(3))+1+XPICK(12)); break;
+                            default: kind=(uint8_t)(1+XPICK(12)); break;
+                        }
+                        if(k==0 && XPICK(16)==0) kind=0x40;                                 /* kind 0 after the mask */
+                        if(k==7) kind=0;                                                    /* the log always ends */
+                        XW8(dg,at_,kind);
+                        XW8(dg,at_+1,XRAND());
+                        for(unsigned j=2;j<6;j++)XW8(dg,at_+j,XRAND());
+                    }
+                }
+                /* The frame: saved BP, locals, saved SI below the return address; the argument above. */
+                XW16(ss_,bp_,XRAND());
+                XW16(ss_,(uint16_t)(bp_-2),(XPICK(2))?0:(XPICK(2))?1:(uint16_t)XRAND());   /* the post-record flag */
+                XW16(ss_,(uint16_t)(bp_-4),XRAND());XW16(ss_,(uint16_t)(bp_-6),XRAND());
+                XW16(ss_,(uint16_t)(bp_-8),idx);
+                {
+                    uint32_t tot;
+                    switch(XPICK(5)) {
+                        case 0: tot=XPICK(200); break;
+                        case 1: tot=(uint32_t)(0u-XPICK(200)); break;
+                        case 2: tot=((uint32_t)XRAND()<<16)|XRAND(); break;
+                        default: tot=(uint32_t)((int32_t)(int16_t)XRAND()); break;
+                    }
+                    XW16(ss_,(uint16_t)(bp_-0x0C),(uint16_t)tot);XW16(ss_,(uint16_t)(bp_-0x0A),(uint16_t)(tot>>16));
+                }
+                XW16(ss_,(uint16_t)(bp_-0x0E),XRAND());XW16(ss_,(uint16_t)(bp_-0x10),XRAND());
+                XW16(ss_,(uint16_t)(bp_+4),last);small[0]=last;
+                for(unsigned j=1;j<4;j++){const uint16_t w_=(uint16_t)XRAND();XW16(ss_,(uint16_t)(bp_+4+2*j),w_);small[j]=w_;}
+                /* The scale tables 0E68..0E88 (and around them, for wild indices): small factors mostly. */
+                for(unsigned j=0;j<0x200;j+=2) {
+                    const uint16_t v_=(XPICK(3)==0)?(uint16_t)XRAND():(XPICK(4)==0)?(uint16_t)(0u-XPICK(16)):(uint16_t)(1+XPICK(24));
+                    XW16(dg,0x0D80 + j,v_);
+                }
+                XW8(dg,0x6440,(XPICK(2))?XPICK(4):XRAND());
+                /* The far records behind [55DE] (the four scale indices) and [7222] (+26h, +2Eh). */
+                {
+                    const uint16_t s1_=(XPICK(2))?0x7000:0x8000, o1_=(uint16_t)(XPICK(0x400)*0x10+XPICK(16));
+                    XW16(dg,0x55DE,o1_);XW16(dg,0x55E0,s1_);
+                    for(unsigned j=0;j<0x48;j++)XW8(s1_,(uint16_t)(o1_+j),XRAND());
+                    static const uint16_t fo_[4]={0x38,0x3C,0x3E,0x40};
+                    for(unsigned k=0;k<4;k++) {
+                        const uint16_t v_=(XPICK(6)==0)?(uint16_t)XRAND():(XPICK(8)==0)?(uint16_t)(0x8000+XPICK(4)):(uint16_t)XPICK(6);
+                        XW16(s1_,(uint16_t)(o1_+fo_[k]),v_);
+                    }
+                    const uint16_t s2_=(XPICK(4)==0)?s1_:(XPICK(2))?0x7000:0x8000;
+                    const uint16_t o2_=(s2_==s1_ && XPICK(2))?o1_:(uint16_t)(XPICK(0x400)*0x10+0x4000+XPICK(16));
+                    XW16(dg,0x7222,o2_);XW16(dg,0x7224,s2_);
+                    for(unsigned j=0;j<0x30;j++)XW8(s2_,(uint16_t)(o2_+j),XRAND());
+                    XW16(s2_,(uint16_t)(o2_+0x26),(XPICK(2))?2:(XPICK(2))?(uint16_t)(0x0100+2*XPICK(2)):(uint16_t)XPICK(4));
+                    static const uint16_t bands_[12]={0x1B57,0x1B58,0x2327,0x2328,0x2CEB,0x2CEC,0x0000,0xFFFF,0x2000,0x2800,0x7FFF,0x8000};
+                    XW16(s2_,(uint16_t)(o2_+0x2E),(XPICK(5)==0)?(uint16_t)XRAND():bands_[XPICK(12)]);
+                }
+                /* The switch's arms are stubs: each folds AX, BX, CX, DX, SI, DI, [bp-0Eh], [bp-4], [bp-8] and
+                 * its own id into [F800], counts at [F802], and goes back to 34EA as the arms do. */
+                XW16(dg,0xF800,XRAND());XW16(dg,0xF802,0);
+                {
+                    static const uint16_t arms_[9]={0x316D,0x33AA,0x3258,0x34B2,0x34A2,0x3059,0x3100,0x3078,0x30C4};
+                    for(unsigned k=0;k<9;k++) {
+                        const uint16_t code_=(uint16_t)(0xF200+0x80*k);
+                        unsigned out_=code_;
+                        XW8(cs,arms_[k],0xE9);XW16(cs,arms_[k]+1,(uint16_t)(code_-arms_[k]-3));
+#define XFOLDR(mrm_) do { XW8(cs,out_++,0x31);XW8(cs,out_++,(mrm_));XW8(cs,out_++,0x00);XW8(cs,out_++,0xF8); \
+    XW8(cs,out_++,0xD1);XW8(cs,out_++,0x06);XW8(cs,out_++,0x00);XW8(cs,out_++,0xF8); } while(0)
+                        XFOLDR(0x06);XFOLDR(0x1E);XFOLDR(0x0E);XFOLDR(0x16);XFOLDR(0x36);XFOLDR(0x3E);
+                        XW8(cs,out_++,0x8B);XW8(cs,out_++,0x46);XW8(cs,out_++,0xF2);XFOLDR(0x06);
+                        XW8(cs,out_++,0x8B);XW8(cs,out_++,0x46);XW8(cs,out_++,0xFC);XFOLDR(0x06);
+                        XW8(cs,out_++,0x8B);XW8(cs,out_++,0x46);XW8(cs,out_++,0xF8);XFOLDR(0x06);
+                        XW8(cs,out_++,0x81);XW8(cs,out_++,0x36);XW8(cs,out_++,0x00);XW8(cs,out_++,0xF8);
+                        XW16(cs,out_,0x1A00+0x111*k);out_+=2;
+                        XW8(cs,out_++,0xFF);XW8(cs,out_++,0x06);XW8(cs,out_++,0x02);XW8(cs,out_++,0xF8);
+                        XW8(cs,out_++,0xE9);XW16(cs,out_,(uint16_t)(0x34EA-(out_+2)));out_+=2;
+#undef XFOLDR
+                    }
+                }
+#undef XPICK
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"END.EXE") && o->seg==0 && o->ip==0x2A01) {
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+                seg[S_DS]=dg;seg[S_SS]=XPICK(2)?0x6000:dg;r[R_SP]=0xF000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                /* The 256-byte text buffer and the two locals live below SP. */
+                for(unsigned j=0;j<0x300;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x300+j),XRAND());
+                {
+                    uint16_t arg[4];
+                    for(unsigned j=0;j<4;j++){arg[j]=(uint16_t)XRAND();XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                }
+                /* The flags: promoted, held back, and the awards; each clear
+                 * about half the time, else 1 or another byte. [643A] is
+                 * also exactly 1 or 2 (the final clear tests for 1). */
+#define XFLAG() (XPICK(2)?0:XPICK(2)?1:(uint8_t)(XPICK(3)==0?0x80:1+XPICK(0xFF)))
+                XW8(dg,0x55E6,XFLAG());
+                XW8(dg,0x55E7,XFLAG());
+                XW8(dg,0x643A,XPICK(3)==0?1:XPICK(2)?0:XFLAG());
+                XW8(dg,0x55DD,XFLAG());
+                XW8(dg,0x55E2,XFLAG());
+                XW8(dg,0x55DA,XFLAG());
+                /* Neighbours of the flags hold random bytes. */
+                XW8(dg,0x55E5,XRAND());XW8(dg,0x55E8,XRAND());XW8(dg,0x6439,XRAND());XW8(dg,0x643B,XRAND());
+                XW8(dg,0x55DC,XRAND());XW8(dg,0x55DB,XRAND());XW8(dg,0x55E3,XRAND());XW8(dg,0x55E1,XRAND());
+                /* The format words and the rank tables. */
+                XW16(dg,0x4F0D,XRAND());XW16(dg,0x4F0F,XRAND());XW16(dg,0x4F11,XRAND());
+                for(unsigned k=0;k<0x40;k++)XW16(dg,0x05F2+2*k,XRAND());
+                /* The pilot's record (far [55DE]) and the mission's (far [7222]),
+                 * in DS or another segment. */
+                static const uint16_t segs_[3]={0x5000,0x6800,0x7400};
+                {
+                    const uint16_t ps=segs_[XPICK(3)];
+                    const uint16_t po=(uint16_t)(0x8000+2*XPICK(0x400));
+                    XW16(dg,0x55DE,po);XW16(dg,0x55E0,ps);
+                    for(unsigned k=0;k<0x40;k++)XW8(ps,(uint16_t)(po+k),XRAND());
+                    const uint16_t rank=(XPICK(8)==0)?(uint16_t)XRAND():(uint16_t)XPICK(8);
+                    XW16(ps,(uint16_t)(po+0x20),rank);
+                    static const uint16_t missions_[8]={0x63,0x63,0x63,0x62,0x64,0x0163,0x6300,0x00};
+                    const uint16_t mis=XPICK(5)==0?(uint16_t)XRAND():missions_[XPICK(8)];
+                    XW16(ps,(uint16_t)(po+0x36),mis);
+                }
+                {
+                    const uint16_t ms=segs_[XPICK(3)];
+                    const uint16_t mo=(uint16_t)(0x9800+2*XPICK(0x400));
+                    XW16(dg,0x7222,mo);XW16(dg,0x7224,ms);
+                    for(unsigned k=0;k<0x40;k++)XW8(ms,(uint16_t)(mo+k),XRAND());
+                    const uint16_t w=XPICK(2)?0:XPICK(2)?(uint16_t)(1u<<XPICK(16)):(uint16_t)XRAND();
+                    XW16(ms,(uint16_t)(mo+0x28),w);
+                }
+                /* Call log: every stub folds its own id and its arguments in
+                 * order into [F800], and counts at [F802]. format_n's stub
+                 * folds five words (the shorter calls fold the caller's locals). */
+                XW16(dg,0xF800,XRAND());XW16(dg,0xF802,0);
+#define XSTUB(sg_,off_,id_,nargs_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,0x00);XW8(sgx_,out_++,0xF8); \
+    XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3); \
+    XW8(sgx_,out_++,0x81);XW8(sgx_,out_++,0xF3);XW8(sgx_,out_++,(id_)&0xFF);XW8(sgx_,out_++,(id_)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3); \
+        XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0x5E);XW8(sgx_,out_++,((far_)?6:4)+2*j_); } \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,0x00);XW8(sgx_,out_++,0xF8); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,0x02);XW8(sgx_,out_++,0xF8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                {
+                    static const struct { uint16_t slot,code,id; unsigned args; } stub_[3]={
+                        {0x521C,0xF200,0x1521,5},{0x28ED,0xF240,0x228E,0},{0x26A9,0xF280,0x326A,1}};
+                    for(unsigned k=0;k<3;k++) {
+                        XW8(0,stub_[k].slot,0xE9);XW16(0,stub_[k].slot+1,(uint16_t)(stub_[k].code-stub_[k].slot-3));
+                        XSTUB(0,stub_[k].code,stub_[k].id,stub_[k].args,0);
+                    }
+                }
+#undef XSTUB
+#undef XFLAG
+#undef XPICK
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0x4657) {
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(n_)))
+                seg[S_DS]=dg;seg[S_SS]=XPICK(2)?0x6000:dg;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                /* The routine runs inside 462E's frame (ENTER 6,0) and leaves by its
+                 * LEAVE/RET: the RET is taken at BP+2, so BP sits two words below the
+                 * index, with the return address the harness pushes at [BP+2]. The
+                 * harness then lowers the entry SP to BP-6, below 462E's locals. */
+                static const uint16_t stacks[]={0xF000,0x8000,0x0100,0x0060};
+                r[R_SP]=stacks[XPICK(4)];
+                r[R_BP]=(uint16_t)(r[R_SP]-4);
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The index: the three countermeasures, the switch's neighbours, any word. */
+                {
+                    static const uint16_t idx[]={1,2,3,1,2,3,3,0,4,0xFFFF};
+                    const uint16_t index=XPICK(8)?idx[XPICK(10)]:(uint16_t)XRAND();
+                    uint16_t arg[4];
+                    arg[0]=index;arg[1]=(uint16_t)XRAND();arg[2]=(uint16_t)XRAND();arg[3]=(uint16_t)XRAND();
+                    for(unsigned j=0;j<4;j++){XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);small[j]=arg[j];}
+                }
+                /* 462E's locals: the chosen slot (FFFFh as 462E leaves it, or a slot),
+                 * the loop counter. */
+                {
+                    const uint16_t slot=XPICK(3)?0xFFFF:(XPICK(4)?(uint16_t)XPICK(4):(uint16_t)XPICK(8));
+                    XW16(seg[S_SS],(uint16_t)(r[R_BP]-4),slot);
+                    XW16(seg[S_SS],(uint16_t)(r[R_BP]-2),XRAND());
+                    XW16(seg[S_SS],(uint16_t)(r[R_BP]-6),XRAND());
+                }
+                /* The slots at 39D8h (eight, so a stray slot number lands on data):
+                 * timers zero half the time, else 1, -1, 8000h or any word. */
+                for(unsigned k=0;k<8;k++) {
+                    for(unsigned j=0;j<12;j+=2)XW16(dg,(uint16_t)(0x39D8+12*k+j),XRAND());
+                    static const uint16_t timers[]={1,0xFFFF,0x8000,0x0100,0x0001};
+                    const uint16_t t=XPICK(2)?0:(XPICK(2)?timers[XPICK(5)]:(uint16_t)XRAND());
+                    XW16(dg,(uint16_t)(0x39E0+12*k),t);
+                }
+                /* [3664h]: bit 40h set or clear among other bits. */
+                {
+                    const uint8_t b=(uint8_t)XRAND();
+                    XW8(dg,0x3664,XPICK(2)?(uint8_t)(b|0x40):(uint8_t)(b&~0x40));
+                    XW8(dg,0x3665,XRAND());
+                }
+                /* Position words, the count [3686h] (0-4 and any) and the rate [368Eh]. */
+                XW16(dg,0xC0D0,XRAND());XW16(dg,0xC0DE,XRAND());
+                {
+                    static const uint16_t counts[]={0,1,2,3,4,5,0x8000,0xFFFF};
+                    XW16(dg,0x3686,XPICK(4)?counts[XPICK(8)]:(uint16_t)XRAND());
+                    static const uint16_t rates[]={1,2,15,16,30,0x7FFF,0x8000,0xFFFF};
+                    XW16(dg,0x368E,XPICK(2)?rates[XPICK(8)]:(uint16_t)XRAND());
+                }
+                XW16(dg,0x3DBC,XRAND());XW16(dg,0x3DBE,XRAND());
+                /* Call log: every stub folds its own id, its arguments in order,
+                 * [3DBEh], [3DBCh], AX and DX into [F800], and counts at [F802]. */
+                XW16(dg,0xF800,XRAND());XW16(dg,0xF802,XRAND());
+#define XSTUB(off_,id_,nargs_) do { unsigned out_=(off_); \
+    XW8(0,out_++,0x55);XW8(0,out_++,0x8B);XW8(0,out_++,0xEC);XW8(0,out_++,0x53); \
+    XW8(0,out_++,0x8B);XW8(0,out_++,0x1E);XW8(0,out_++,0x00);XW8(0,out_++,0xF8); \
+    XW8(0,out_++,0xD1);XW8(0,out_++,0xC3); \
+    XW8(0,out_++,0x81);XW8(0,out_++,0xF3);XW8(0,out_++,(id_)&0xFF);XW8(0,out_++,(id_)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(0,out_++,0xD1);XW8(0,out_++,0xC3); \
+        XW8(0,out_++,0x33);XW8(0,out_++,0x5E);XW8(0,out_++,4+2*j_); } \
+    XW8(0,out_++,0xD1);XW8(0,out_++,0xC3);XW8(0,out_++,0x33);XW8(0,out_++,0x1E);XW8(0,out_++,0xBE);XW8(0,out_++,0x3D); \
+    XW8(0,out_++,0xD1);XW8(0,out_++,0xC3);XW8(0,out_++,0x33);XW8(0,out_++,0x1E);XW8(0,out_++,0xBC);XW8(0,out_++,0x3D); \
+    XW8(0,out_++,0xD1);XW8(0,out_++,0xC3);XW8(0,out_++,0x33);XW8(0,out_++,0xD8); \
+    XW8(0,out_++,0xD1);XW8(0,out_++,0xC3);XW8(0,out_++,0x33);XW8(0,out_++,0xDA); \
+    XW8(0,out_++,0x89);XW8(0,out_++,0x1E);XW8(0,out_++,0x00);XW8(0,out_++,0xF8); \
+    XW8(0,out_++,0xFF);XW8(0,out_++,0x06);XW8(0,out_++,0x02);XW8(0,out_++,0xF8); \
+    XW8(0,out_++,0x5B);XW8(0,out_++,0x5D);XW8(0,out_++,0xC3); } while(0)
+                {
+                    /* strcpy, strcat, cockpit_message, countermeasure_gauge, sound */
+                    static const struct { uint16_t slot,code,id; unsigned args; } stub_[5]={
+                        {0xEB50,0xF200,0x1EB5,2},{0xEB10,0xF240,0x2EB1,2},{0x8A4F,0xF280,0x38A4,1},
+                        {0x45E0,0xF2C0,0x445E,1},{0xD3F9,0xF300,0x5D3F,2}};
+                    for(unsigned k=0;k<5;k++) {
+                        XW8(0,stub_[k].slot,0xE9);XW16(0,stub_[k].slot+1,(uint16_t)(stub_[k].code-stub_[k].slot-3));
+                        XSTUB(stub_[k].code,stub_[k].id,stub_[k].args);
+                    }
+                }
+#undef XSTUB
+#undef XPICK
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"PLAYER.EXE") && o->seg==0 && o->ip==0x0D0C) {
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XW8(s_,o_,v_) do { const uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { const uint16_t v__=(uint16_t)(v_);XW8(s_,o_,v__);XW8(s_,(o_)+1,v__>>8); } while(0)
+/* A word from a list of edge values, or anything. */
+#define XPICK(v_,list_) do { const unsigned n_=(unsigned)(sizeof(list_)/sizeof(list_[0])); \
+    const unsigned k_=XRAND()%(n_+2);const uint16_t r_=(uint16_t)XRAND(); \
+    (v_)=k_<n_?list_[k_]:r_; } while(0)
+                /* The data segment: the relocated operand of MOV AX at 0D26. */
+                const uint16_t dg=(uint16_t)(g_pristine[phys(cs,0x0D27)]|(g_pristine[phys(cs,0x0D28)]<<8));
+                seg[S_DS]=(uint16_t)(0x5000+(XRAND()&0x0FF0));
+                seg[S_SS]=(XRAND()&1)?0x5000:0x6000;r[R_SP]=0xE000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],r[R_SP]-0x200+j,XRAND());
+                /* The BIOS data area's flags byte: the gray-scale summing bit (1) set a quarter of
+                 * the time, the other bits anything. */
+                const int gray=(XRAND()&3)==0;
+                XW8(0,0x0489,(XRAND()&0xFD)|(gray?2:0));
+                /* The fade's steps left: 0 half the time, else edge values or anything. */
+                {
+                    static const uint16_t fade_[]={1,0x0100,0x8000,0xFFFF};
+                    uint16_t fade=0;
+                    if(XRAND()&1)XPICK(fade,fade_);
+                    XW16(dg,0x13D4,fade);
+                }
+                /* The arguments: the first index (any word), the count (small, or one whose
+                 * triple wraps to a few bytes; small for the gray path, which loops per colour),
+                 * the colours' far pointer (anywhere in 7000h, near its end, or over the copy). */
+                uint16_t first=(uint16_t)XRAND(),count,src_off,src_seg;
+                {
+                    static const uint16_t wrap_[]={0x5556,0xAAAB,0xAAAC,0x5560};
+                    const unsigned ck_=XRAND()%10;
+                    if(gray) count=(uint16_t)(1+XRAND()%40);
+                    else if(ck_<2) count=wrap_[XRAND()%4];
+                    else if(ck_<4) count=(uint16_t)(1+XRAND()%4);
+                    else if(ck_<5) count=0x100;
+                    else count=(uint16_t)(1+XRAND()%300);
+                    const unsigned sk_=XRAND()%6;
+                    if(sk_<3) { src_seg=0x7000;src_off=(uint16_t)XRAND(); }
+                    else if(sk_<4) { src_seg=0x7000;src_off=(uint16_t)(0xFFF0+XRAND()%16); }
+                    else if(sk_<5) { src_seg=dg;src_off=(uint16_t)(0x13DA+XRAND()%8); }
+                    else { src_seg=(uint16_t)XRAND()|0x1000u;src_off=(uint16_t)XRAND(); if(src_seg<0x2000) src_seg=(uint16_t)(src_seg+0x6000); }
+                }
+                {
+                    const uint16_t args_[4]={first,count,src_off,src_seg};
+                    for(unsigned j=0;j<4;j++){ XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),args_[j]);small[j]=args_[j]; }
+                }
+#undef XPICK
+#undef XW16
+#undef XW8
+#undef XRAND
+            }
+            if (!strcmp(o->module,"END.EXE") && o->seg==0 && o->ip==0x0A98) {
+                const uint16_t dg=0x5000;
+                seg[S_DS]=dg;seg[S_SS]=(s&4)?0x6000:dg;r[R_SP]=0xF000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { const uint16_t o__=(uint16_t)(o_);uint16_t v__=(uint16_t)(v_);XW8((s_),o__,v__);XW8((s_),(uint16_t)(o__+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* The event record: kind byte (+4) and unit byte (+5). Types 1-12
+                 * with the switch's edges (0, 9 draws only, 13, 63) and now and
+                 * then any byte; the 80h and 40h flags in every combination. */
+                const uint16_t ev=(uint16_t)(0x3000+2*(XRAND()%0x80));
+                {
+                    static const uint8_t types_[17]={1,2,3,4,5,6,7,8,9,10,11,12,8,2,11,0,13};
+                    const unsigned pick_=XRAND()%20;
+                    uint8_t kind_=(pick_<17)?types_[pick_]:(pick_==17)?0x3F:(uint8_t)(XRAND()&0x3F);
+                    kind_=(uint8_t)(kind_|(XRAND()&0xC0));
+                    XW8(dg,ev+4,kind_);
+                    XW8(dg,ev+5,XRAND());
+                    XW8(dg,ev+6,XRAND());XW8(dg,ev+3,XRAND());
+                }
+                uint16_t arg[4];
+                arg[0]=ev;arg[1]=(XRAND()&1)?0:(XRAND()%4==0)?(uint16_t)(1u<<(XRAND()%16)):(uint16_t)XRAND();
+                arg[2]=(uint16_t)XRAND();arg[3]=(uint16_t)XRAND();
+                for(unsigned j=0;j<4;j++)XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);
+                for(unsigned j=0;j<4;j++)small[j]=arg[j];
+                /* Unit records (16 bytes at 56EAh): parent word +0 (zero a third of
+                 * the time), class byte +0Eh. */
+                for(unsigned k=0;k<0x80;k++) {
+                    const uint16_t at_=(uint16_t)(0x56EA+16*k);
+                    for(unsigned j=0;j<16;j++)XW8(dg,at_+j,XRAND());
+                    const unsigned p_=XRAND()%6;
+                    XW16(dg,at_,(p_<2)?0:(p_<5)?(uint16_t)(XRAND()%0x100):(uint16_t)XRAND());
+                }
+                /* Class kinds (6902h, low nibble 13 a third of the time). */
+                for(unsigned k=0;k<0x80;k++)XW8(dg,0x6902+k,(XRAND()%3==0)?(uint8_t)((XRAND()&0xF0)|0x0D):(uint8_t)XRAND());
+                /* Name pointers 6DFAh, texts 1B3Eh and 1B98h. */
+                for(unsigned k=0;k<0x100;k++)XW16(dg,0x6DFA+2*k,XRAND());
+                for(unsigned k=0;k<0x80;k++)XW16(dg,0x1B3E + 2*k,XRAND());
+                for(unsigned k=0;k<0x100;k++)XW16(dg,0x1B98+2*k,XRAND());
+                /* The current unit, the byte 6440h, the drawing context 6DA2h. */
+                XW16(dg,0x71EC,(XRAND()%8==0)?(uint16_t)XRAND():(uint16_t)(XRAND()%0x80));
+                XW8(dg,0x6440,(XRAND()&1)?0:(uint8_t)(1+XRAND()%0xFF));
+                for(unsigned j=0;j<0x10;j++)XW8(dg,0x6DA2+j,XRAND());
+                /* The flight record (far pointer 7222h): result +26h, +28h, and
+                 * the words at +38h + 2 * unit. */
+                {
+                    const uint16_t fs_=(XRAND()&1)?dg:0x7000;
+                    const uint16_t fo_=(fs_==dg)?(uint16_t)(0xA000+2*(XRAND()%0x400)):(uint16_t)XRAND();
+                    XW16(dg,0x7222,fo_);XW16(dg,0x7224,fs_);
+                    static const uint16_t results_[8]={1,2,3,2,0,4,2,1};
+                    const unsigned rp_=XRAND()%9;
+                    XW16(fs_,fo_+0x26,(rp_<8)?results_[rp_]:(uint16_t)XRAND());
+                    XW16(fs_,fo_+0x28,(XRAND()&1)?0:(uint16_t)(1u<<(XRAND()%16)));
+                    for(unsigned k=0;k<0x80;k++) {
+                        const uint16_t at_=(uint16_t)(fo_+0x38+2*k);
+                        XW16(fs_,at_,(XRAND()%8==0)?(uint16_t)XRAND():(uint16_t)(XRAND()%0x100));
+                    }
+                }
+                /* Call log: every stub folds its id, its arguments, AX, CX, DX, SI,
+                 * the flags, ES and the context cells 6DA6h, 6DA8h, 6DAEh into
+                 * [F800], counts at [F802], and returns its own AX. */
+                XW16(dg,0xF800,XRAND());XW16(dg,0xF802,0);
+#define XB_(v_) XW8(sgx_,out_++,(v_))
+#define XROL_() do { XB_(0xD1);XB_(0xC3); } while(0)
+#define XSTUB(sg_,off_,id_,nargs_,far_,ret_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    XB_(0x55);XB_(0x8B);XB_(0xEC);XB_(0x53); \
+    XB_(0x8B);XB_(0x1E);XB_(0x00);XB_(0xF8); \
+    XROL_();XB_(0x81);XB_(0xF3);XB_((id_)&0xFF);XB_((id_)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { XROL_();XB_(0x33);XB_(0x5E);XB_(((far_)?6:4)+2*j_); } \
+    XROL_();XB_(0x33);XB_(0xD8); XROL_();XB_(0x33);XB_(0xD9); \
+    XROL_();XB_(0x33);XB_(0xDA); XROL_();XB_(0x33);XB_(0xDE); \
+    XB_(0x9C);XB_(0x58);XROL_();XB_(0x33);XB_(0xD8); \
+    XB_(0x8C);XB_(0xC0);XROL_();XB_(0x33);XB_(0xD8); \
+    XROL_();XB_(0x33);XB_(0x1E);XB_(0xA6);XB_(0x6D); \
+    XROL_();XB_(0x33);XB_(0x1E);XB_(0xA8);XB_(0x6D); \
+    XROL_();XB_(0x33);XB_(0x1E);XB_(0xAE);XB_(0x6D); \
+    XB_(0x89);XB_(0x1E);XB_(0x00);XB_(0xF8); \
+    XB_(0xFF);XB_(0x06);XB_(0x02);XB_(0xF8); \
+    XB_(0xB8);XB_((ret_)&0xFF);XB_(((ret_)>>8)&0xFF); \
+    XB_(0x5B);XB_(0x5D);XB_((far_)?0xCB:0xC3); } while(0)
+                {
+                    static const struct { uint16_t slot,code,id; unsigned args; } stub_[5]={
+                        {0x521C,0xF200,0x521C,4},{0x5150,0xF280,0x5150,2},{0x5110,0xF300,0x5110,2},
+                        {0x49D2,0xF380,0x49D2,5},{0x1A75,0xF400,0x1A75,7}};
+                    for(unsigned k=0;k<5;k++) {
+                        XW8(0,stub_[k].slot,0xE9);XW16(0,stub_[k].slot+1,(uint16_t)(stub_[k].code-stub_[k].slot-3));
+                        const uint16_t rv_=(uint16_t)XRAND();
+                        XSTUB(0,stub_[k].code,stub_[k].id,stub_[k].args,0,rv_);
+                    }
+                    const uint16_t rvf_=(uint16_t)XRAND();
+                    XSTUB(0x05FA,0x24CC,0x24CC,8,1,rvf_);
+                }
+#undef XSTUB
+#undef XROL_
+#undef XB_
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
             if (!strcmp(o->module, "START.EXE") && o->seg == 0 && o->ip == 0x6DB8) {
                 seg[S_DS] = seg[S_SS] = 0x0A95; r[R_SP] = 0xFF00;
                 flags = (uint16_t)(flags & (0xFFFFu ^ F_DF));
@@ -11634,7 +13569,9 @@ int main(int argc, char **argv)
             g_reach = 0; g_camera_seen = 0; g_moving_seen = 0; g_hud_seen = 0; g_cockpit_seen = 0; g_nav_seen = 0; g_panel_seen = 0; g_arms_seen = 0;
             g_self_written = 0;
             if (g_cov >= 0) { memset(g_cov_seen, 0, sizeof g_cov_seen); memset(g_cov_nsp, 0, sizeof g_cov_nsp); }
+            if (nc_out) nc_begin(g_nc_orig);
             const int returned = run_to_ret(a, entry_sp, o->matched, &steps, cs, ip);
+            g_nc_track = NULL;
             if (zero_loops && s == 1 && (returned != 1 || g_self_written)) {
                 fprintf(stderr, "record-table zero-count fixture did not return intact\n");
                 return 1;
@@ -11790,12 +13727,18 @@ int main(int argc, char **argv)
                 g_m.cpu.seg[S_CS] == cs && g_m.cpu.ip == COVERED[g_cov].boundary &&
                 g_m.cpu.icount == 1000 + COVERED[g_cov].clocks) ||
                 (g_cov >= 0 && program_end_reached(o, &g_m.cpu, cs)));
+            if (nc_out) memset(g_nc_fall, 0, sizeof g_nc_fall);
+            if (nc_out && g_m.cpu.seg[S_CS] == cs && g_m.cpu.ip != back) g_nc_hand[g_m.cpu.ip >> 3] |= (uint8_t)(1u << (g_m.cpu.ip & 7));
             if (g_m.cpu.seg[S_CS] != cs || g_m.cpu.ip != back) {
                 int more = 0;
-                if (!run_to_ret(&g_m.cpu, entry_sp, o->matched, &more, cs, ip)) { if (g_cov >= 0) g_cov_skips[5]++; ms++; restore(); continue; }
+                if (nc_out) nc_begin(g_nc_fall);
+                const int fin = run_to_ret(&g_m.cpu, entry_sp, o->matched, &more, cs, ip);
+                g_nc_track = NULL;
+                if (!fin) { if (g_cov >= 0) g_cov_skips[5]++; ms++; restore(); continue; }
                 g_finished++;
             }
             mc++;
+            if (nc_out) for (unsigned k = 0; k < sizeof g_nc_named; k++) g_nc_named[k] |= (uint8_t)(g_nc_orig[k] & ~g_nc_fall[k]);
             if (sprite_colour && ((s & 7) == 1 || (s & 7) == 2) && whole) colour_modes |= 1u << ((s >> 3) & 15);
             if (bind_entries && ((s & 7) == 1 || (s & 7) == 2) && whole) { bind_modes |= 1u << ((s >> 3) & 7); if (s == 1 || s == 2) bind_zero++; }
             if (g_cov >= 0) for (unsigned k = 0; k < COVERED[g_cov].len; k++) {
@@ -11891,6 +13834,13 @@ int main(int argc, char **argv)
                 restore();
             }
             if (mb) break;
+        }
+        if (nc_out) {   /* MODULE SEG IP compared: every named instruction offset in the routine's segment | hand-back offsets */
+            fprintf(nc_out, "%s %04X %04X %llu:", o->module, o->seg, ip, mc);
+            for (unsigned k = 0; k < 0x10000; k++) if (g_nc_named[k >> 3] >> (k & 7) & 1) fprintf(nc_out, " %04X", k);
+            fputs(" |", nc_out);   /* then the addresses where it handed back */
+            for (unsigned k = 0; k < 0x10000; k++) if (g_nc_hand[k >> 3] >> (k & 7) & 1) fprintf(nc_out, " %04X", k);
+            fputc('\n', nc_out); fflush(nc_out);
         }
         if (shards > 1) printf("@%u ", mi);                       /* the table index, for the merge */
         printf("%-10s %04X:%04X %-34s %6llu states compared, %4llu skipped, %s\n", o->module, o->seg, ip,

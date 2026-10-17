@@ -619,6 +619,10 @@ if(F117R_BUILD_TESTS)
       --only MPS_LOGO.EXE:BCC)
     add_test(NAME matched_player_frame_tick COMMAND func_lockstep --states 5000
       --only PLAYER.EXE:738)
+    # At this seed the fixture's random draw never planted the busy word, so the
+    # busy early exit went unreached and the coverage floor failed.
+    add_test(NAME matched_player_frame_tick_busy_seed COMMAND func_lockstep --states 4000
+      --seed 0x70ca1542de1f --only PLAYER.EXE:738)
     add_test(NAME matched_start_write_file_handle COMMAND func_lockstep --states 5000
       --only START.EXE:A31A)
     add_test(NAME matched_start_cinit COMMAND func_lockstep --states 5000
@@ -635,6 +639,48 @@ if(F117R_BUILD_TESTS)
       --only START.EXE:20F)
     add_test(NAME matched_player_poll_controls COMMAND func_lockstep --states 5000
       --only PLAYER.EXE:696)
+    add_test(NAME matched_vgame_flight_start COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:F0)
+    add_test(NAME matched_vgame_hud_bitmap_recolour COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:1C1)
+    add_test(NAME matched_start_world_options COMMAND func_lockstep --states 5000
+      --only START.EXE:5BF0)
+    add_test(NAME matched_vgame_display_select COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:825D)
+    add_test(NAME matched_start_objective_strike_line COMMAND func_lockstep --states 5000
+      --only START.EXE:2696)
+    add_test(NAME matched_vgame_release_store COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:7663)
+    add_test(NAME matched_start_format_integer COMMAND func_lockstep --states 5000
+      --only START.EXE:A015)
+    add_test(NAME matched_vgame_key_bay_doors_and_tail COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:C9AE)
+    add_test(NAME matched_start_format_string_field COMMAND func_lockstep --states 5000
+      --only START.EXE:9EB3)
+    add_test(NAME matched_end_format_string_length COMMAND func_lockstep --states 5000
+      --only END.EXE:5825)
+    add_test(NAME matched_end_landed_screen COMMAND func_lockstep --states 5000
+      --only END.EXE:3887)
+    add_test(NAME matched_end_icon_place_draw COMMAND func_lockstep --states 5000
+      --only END.EXE:99D)
+    add_test(NAME matched_vgame_compose_defer_model COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:D9FE)
+    add_test(NAME matched_start_roster_hover_detail COMMAND func_lockstep --states 5000
+      --only START.EXE:644A)
+    add_test(NAME matched_end_landing_fade_rates COMMAND func_lockstep --states 5000
+      --only END.EXE:372F)
+    add_test(NAME matched_end_format_integer COMMAND func_lockstep --states 5000
+      --only END.EXE:5987)
+    add_test(NAME matched_end_debrief_score_step COMMAND func_lockstep --states 5000
+      --only END.EXE:34EA)
+    add_test(NAME matched_end_promotion_announce COMMAND func_lockstep --states 5000
+      --only END.EXE:2A01)
+    add_test(NAME matched_vgame_release_place COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:4657)
+    add_test(NAME matched_player_load_palette COMMAND func_lockstep --states 5000
+      --only PLAYER.EXE:D0C)
+    add_test(NAME matched_end_draw_event_caption COMMAND func_lockstep --states 5000
+      --only END.EXE:A98)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000
