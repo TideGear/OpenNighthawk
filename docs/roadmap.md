@@ -68,11 +68,11 @@ make (Phase 4).
   early for its autoexec); delivery there is not pursued (Settled, below).
 - **The game version verified:** GOG's installer (build 28044) with the 473.04
   update; Steam's release is byte-identical (`tools/verify_install.py`).
-- **The gate** (`tools/build_recomp.py`): translate, build, unit tests (224),
+- **The gate** (`tools/build_recomp.py`): translate, build, unit tests (229),
   coverage, both engines on every route, instruction lockstep under both
   timing profiles, matched-routine lockstep at three seeds, and the
   routes-only and event-limit checks. About 21-33 minutes when every
-  interpreter route is verified fresh (latest 1,727 s); costs and what was
+  interpreter route is verified fresh (latest 1,834 s); costs and what was
   optimised: [repeated-processes.md](repeated-processes.md).
 - **Rendered speaker and speech audio.** PIT counter 2 follows the 8254 model;
   speaker music matches DOSBox-X (envelope 0.87, spectral 0.92-0.93, level
@@ -151,12 +151,12 @@ not the recompilation:
       [../handoff.md](../handoff.md). `tools/reimp_names.py` joins the Reimp's
       census (1,535 functions) with this project's regions as a private lead
       list.
-      **Now:** 995 addresses matched; named code runs 144,563 of
-      179,213 census bytes (P2 81.63%, overall 93.46%): 935 census rows
-      wholly, 290 in part. Credit is by byte since 16 October
+      **Now:** 1,000 addresses matched; named code runs 145,365 of
+      179,213 census bytes (P2 82.06%, overall 93.59%): 940 census rows
+      wholly, 291 in part. Credit is by byte since 16 October
       ([progress.md](progress.md#what-is-measured)): under it master's 946 routines
       held 132,537 bytes (132,638 by whole rows), batch g added 6,181 and
-      batch h added 3,894, batch i 602 and batch j 1,349.
+      batch h added 3,894, batch i 602, batch j 1,349 and batch k 802.
       **What is left:** `tools/census_reach.py` separates code with run
       evidence from code without (gate coverage logs only interpreted
       fallback instructions, so it cannot show what ran). Fresh interpreter
@@ -202,7 +202,29 @@ reaches. Candidate drafts can keep private static dossiers
 (`matched_draft.py --dossier`):
 [repeated-processes.md](repeated-processes.md#phase-2-candidate-reading).
 
-### Latest batch: 4 routines (17 October 2026, batch j)
+### Latest batch: 5 routines (17 October 2026, batch k)
+
+Batch k reaches 1,000 matched addresses and adds 802 census bytes. Five seeds
+per routine reach every instruction; all 267 mutations are caught. Exact
+real-route and boot proofs pass, as do 25 optimized seed runs. The final
+private proofs were repeated against batch j's normal optimized libraries;
+source and library hashes are frozen in `p2-batch-k-accept/refresh-verdict.json`.
+
+END `3BF4` includes the shared timer-install tail `4B8C` (235 bytes in two
+ranges); its wide test envelope also includes nine fixture callee JMPs, so
+95 covered instructions represent 86 original instructions. Code-operand
+stores keep separate stop boundaries. SETUP `111A` adds one `POPF_STOPS`
+row, using the existing completion rule. Its unreachable gap at `1182`
+remains uncredited; the census denominator is unchanged.
+Evidence `D:/f117-gate/p2-batch-k-accept`.
+
+- END `3BF4` prepare drivers memory devices report pages and the clock hook: 86 original instructions (95 including fixture probes), 58 mutations, `full_cycle` 1 call (`p2-end-3bf4`).
+- SETUP `111A` set the timer rate from the refresh: 54 instructions, 52 mutations, `setup_calibration` 2 calls (`p2-setup-111a`).
+- END `2265` run the awards report pages and announcements when enabled: 46 instructions, 52 mutations, `full_cycle` 1 call (`p2-end-2265`).
+- END `1BAA` wait for report widget selection cancel or matching input: 58 instructions, 50 mutations, `full_cycle` 1 call (`p2-end-1baa`).
+- START `3EA5` wait for confirm or cancel through buttons or keyboard: 56 instructions, 55 mutations, `career_serge` 2 calls (`p2-start-3ea5`).
+
+### 4 routines (17 October 2026, batch j)
 
 Batch j adds four routines and 1,349 census bytes. Five seeds per routine
 reach every instruction, all 203 mutations are caught, and exact real-route

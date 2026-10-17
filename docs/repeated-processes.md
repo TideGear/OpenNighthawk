@@ -32,13 +32,13 @@ tools/build_recomp.py --data INSTALL --seed-coverage WORK/coverage --jobs 16
 --verify-interp-cache`, started through `D:/f117-gate/affinity_launch.py`
 (below).
 
-**Current figures (17 October 2026):** 224 CTests; 45 routes identical, run
-as 44 sessions; 5,718,848 instruction states under each timing profile; 995
-matched routines at three seeds; reachability and event limits clean. Batch j's
-full gate took 1,726.66 s, with every interpreter session verified fresh.
+**Current figures (17 October 2026):** 229 CTests; 45 routes identical, run
+as 44 sessions; 5,718,848 instruction states under each timing profile; 1,000
+matched routines at three seeds; reachability and event limits clean. Batch k's
+full gate took 1,833.81 s, with every interpreter session verified fresh.
 All acceptance processes, including N=1 and boot N=4/9 presentation, finished
-in 1,779.95 s using checked presentation overlap. Evidence:
-`D:/f117-gate/p2-batch-j-accept/final-gate-verdict.json`.
+in 1,888.80 s using checked presentation overlap. Evidence:
+`D:/f117-gate/p2-batch-k-accept/final-gate-verdict.json`.
 Typical gates take about 1,300-2,000 s; the longest career seed chain sets the route time.
 
 | Stage | Latest measured | What sets it, what was duplicated | Status |
@@ -353,12 +353,13 @@ This removes one compiler invocation; a gate wall-time saving is not established
 In one local build pair the two old compilations took 143.74 / 144.40 s
 concurrently, and the single shared compilation took 99.75 s (Ninja timings).
 
-**Independent checks (17 Oct).** Six pending proofs finished in four lanes,
+**Independent checks (17 Oct).** Five pending proofs finished in four lanes,
 with separate directories and CPU masks `00003F`, `000FC0`, `03F000` and
 `FC0000`, at BelowNormal priority, leaving eight CPUs for the desktop.
-The longest lane took 183.19 s (two routines): refreshed bases, five seeds,
-real-route and boot replays, source/coverage/mutation audits. The unchanged
-bodies and fixtures retained all 207 caught mutation results. Presentation N=1
+The full refresh took 338.36 s: normal optimized libraries and
+current bases, five seeds, all 267 mutations repeated, real-route and boot
+replays, and source/coverage/mutation audits. Bodies and fixtures were
+unchanged, and library hashes held throughout. Presentation N=1
 over all routes and boot N=4/9 can also overlap using a frozen runner and separate output directories
 (16 + 2 workers within the existing 24-CPU affinity). Gate workers and the
 default eight interpreter overlap workers are unchanged.
@@ -468,6 +469,18 @@ bookkeeping and state equality, not presentation pacing. Use fresh saves.
 42,391 states without differences (three targeted seeds: 23,978 interrupt
 states); a normal-driver replay reaching both handlers is still outstanding.
 
+**Batch j proof notes (17 Oct).** Four new routines retain five seeds each,
+full instruction coverage, 203 caught mutations and positive real-route calls;
+20 optimized seed runs repeat their checks. A pre-existing RNG alias bug found
+by the rotating gate seed was reproduced on main, corrected and independently
+proved with five seeds, 28 mutations, boot and `full_cycle`, then six optimized
+generic seed runs. The first failed gate is preserved under
+`p2-batch-j-accept/attempt-1-failed`; the complete gate and presentation checks
+were rerun after the correction. Inherited coverage for the changed RNG was
+removed and replaced with fresh optimized coverage before computing byte credit.
+Screening also joins actual byte credit: an unregistered census entry can be
+fully covered inside an existing named body, so a FREE lead alone is insufficient.
+
 ## Phase 2 candidate reading
 
 `tools/matched_draft.py --dossier` writes a private JSON beside the draft,
@@ -539,15 +552,3 @@ video and flight captures), DOSBox-X for some timing traces, and 86Box running
 a 386DX/33 with MS-DOS 5.00, the 386 timing profile's reference
 ([timing386.md](../tools/ref86box/timing386.md)). Those run per question or
 before a release (`pc_parity.py`), not per commit.
-
-**Batch j proof notes (17 Oct).** Four new routines retain five seeds each,
-full instruction coverage, 203 caught mutations and positive real-route calls;
-20 optimized seed runs repeat their checks. A pre-existing RNG alias bug found
-by the rotating gate seed was reproduced on main, corrected and independently
-proved with five seeds, 28 mutations, boot and `full_cycle`, then six optimized
-generic seed runs. The first failed gate is preserved under
-`p2-batch-j-accept/attempt-1-failed`; the complete gate and presentation checks
-were rerun after the correction. Inherited coverage for the changed RNG was
-removed and replaced with fresh optimized coverage before computing byte credit.
-Screening also joins actual byte credit: an unregistered census entry can be
-fully covered inside an existing named body, so a FREE lead alone is insufficient.
