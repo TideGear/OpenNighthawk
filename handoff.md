@@ -8,9 +8,70 @@ checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 [docs/repeated-processes.md](docs/repeated-processes.md) (every process we run
 more than once, what it costs). State as of 16 October 2026.
 
-16 October: wrapped up at the owner's request for a new conversation. `p2-batch-f`
-is gated and landed at `a34d3c6`; the next privately proved routines are listed below.
-No next batch has started. Resume the roadmap's plan, Phase 2 first, when requested.
+16 October (evening): stop point for a new conversation. `p2-batch-f` is gated and landed at
+`a34d3c6`. Batch g is **not** gated and is **not** on master. Read this section first.
+
+### Stop point (16 October, evening)
+
+- **master** (`70ca154`) is the verified batch f code. Nothing unverified is on master.
+- **Batch g is on branch `p2-batch-g`** (pushed, WIP, UNVERIFIED; commits `b6ac121`, `34daa38`). It holds
+  21 proved routines integrated, the harness hunks applied by hand, and the byte-level census
+  credit tooling (`progress.py --named-cover/--route-cover`, `CENSUS_SPANS` removed, 7 tests pass).
+  Its `progress.json` reads P2 78.53% (138,718 bytes): unverified, do not record as achieved.
+- **The gate failed on batch g.** Step 7c, matched routines at this commit's seed `0x70ca1542de1f`:
+  `1 mismatching`. Every other step passed in that run (173-test suite, 45 routes identical, both
+  instruction profiles). The failing routine is **not yet identified**. Shard runs of
+  `func_lockstep --shard K/N` at that seed printed no mismatch; the wrapper `tools/func_lockstep_par.py
+  --states 4000 --verbose --seed 0x70ca1542de1f` reports the count without naming the routine (the
+  per-routine line is not in its log). Next: run `func_lockstep --states 4000 --verbose --seed
+  0x70ca1542de1f --only MOD:IP` per batch-g routine, or `--shard K/8` with the full
+  `--states 4000`, and grep `MISMATCH`. Suspects: a batch-g body, or a LIVE_FRAMES row (the batch-g
+  tree has END `34EA`, END `099D`, VGAME `4657` and START `0B49`). The presentation check was never validated for
+  batch g (N=1 exited 0; the acceptance aborted at the gate).
+- **Not integrated, route-proved, five-seed lockstep passed (18 routines, batch h):** VGAME
+  `ED10` (int86x; `boot_to_flight`), PLAYER `026B:0272` (`full_cycle`), START `20D6` (`career_serge`),
+  END `4CBC` (`full_cycle`), END `1901` (`full_cycle`), START `38AC` (`full_cycle`), VGAME `4973`
+  (`full_cycle`), START `8DD8` (`full_cycle`), VGAME `0235` (`full_cycle`), START `141D`
+  (`full_cycle`), START `0B49` (`full_cycle`), END `3CD0` (`full_cycle`), END `4722` (`full_cycle`),
+  START `76D1` (`full_cycle`), START `7312` (`full_cycle`), VGAME `EC12` (`boot_to_flight`),
+  PLAYER `13CE` (`full_cycle`), PLAYER `07EA` (`full_cycle`). Directories `D:/f117-gate/p2-<name>`.
+  Harness rows the kit's `integrate` does **not** carry: POPF_STOPS for `026B:0272`, `4CBC`, `8DD8`
+  (`D:/f117-gate/p2-player-026b-0272/harness-hunk.diff`); LIVE_FRAMES for `0B49`.
+- **Proved privately, route proof not run (6):** END `3F44` (`full_cycle`), START `8782` (`ibm_boot`;
+  twin of END `4722`), PLAYER `019A` (`ibm_boot`; its last 8 bytes follow a call that exits, so they
+  can never be credited), END `4648` (`full_cycle`), VGAME `FD66` (`full_cycle`; census row address
+  `0FB2:0246`), START `9094` (`full_cycle`; needs a PROGRAM_ENDS row and a `run_to_ret` rule, see its
+  `harness-hunk.diff`).
+- **Declined (add to `kit/DECLINED.tsv`):** PLAYER `2853` (STI-first timer handler, `026B:01A3`),
+  PLAYER `0211` re-sync (STI in its loop). VGAME `14C2:0000` (STI in its colour loop; the
+  `set_dac` family).
+- **Census lead list:** `census_reach.py` judged rows in packed programs by linear address, so the
+  unpacker's copy looked like the program's code (MPS_LOGO `27C2` and `27AE` were false reach). The
+  branch fixes it (segment and offset, plus a byte check with `--data`). Corrected reach:
+  `D:/f117-gate/p2-batch-g-accept/reached-fixed.tsv`; free leads after screening:
+  `screened-g.tsv` (298 free, most under 150 bytes). Filter with `kit/DECLINED.tsv` first.
+- **Byte-level credit (not yet in master's docs).** Owner decision, 16 October: P2 counts the census
+  bytes that a matched body's own code runs (lockstep plus route evidence). On master's 946 routines
+  this is 132,537 bytes, against 132,638 by whole rows. `docs/progress.md` on branch `p2-batch-g`
+  describes the rule.
+
+**To finish batch g:** (1) identify and fix the seed `0x70ca1542de1f` mismatch; (2) integrate the
+harness rows above; (3) run `finish_docs.py` in `D:/f117-gate/p2-batch-g-accept` after a passing
+`final-gate-verdict.json` (it writes the roadmap and handoff figures from the audit, not by hand);
+(4) run one full gate and `presentation_check --scales 1 --jobs 16` on the exact commit; (5) merge to
+master. Then route-prove the six pending routines, and integrate batch h the same way.
+
+**Process notes (16 October):** screen leads with `p2-batch-g-accept/screen_leads.py` before any
+agent starts (five of the first twelve picks were blocked or already inline); agents run `pin.py` with
+an absolute path to the program; `--shard K/N` is 0-based; a stray `dis.py` in the Temp folder shadows
+the standard library (moved to scratch); route proofs can finish in four parallel lanes
+(`p2-batch-g-accept/lanes.sh`).
+
+The owner's untracked `4k*.bat` files are still untouched.
+
+### Previous state (16 October, earlier)
+
+Batch f's text follows, kept for reference.
 
 This file holds only the current state and standing practice, not a
 session log. Earlier detail is in `git log -p handoff.md`.
