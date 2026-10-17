@@ -851,9 +851,9 @@ These are correctness checks; they do not establish physical refresh or the look
 
 ## Open questions and risks
 
-- **`rerun` motion.** The smoothed clock still skips; its tuning against picture age, parallel copies for refresh
-  rates above 60 Hz (per-machine observer, runtime and fix state) and the owner's verdict on a physical display remain
-  open. The `DF03`/`C2C8` group nudges less well.
+- **`rerun` motion.** The smoothed clock still skips; its tuning against picture age, the owner's verdict on a physical
+  display remains open. Parallel copies for refresh rates above 60 Hz (per-machine observer, runtime and fix state)
+  moved to the unscored Phase 4 on 17 October 2026: the owner has no convenient way to test above 60 Hz. The `DF03`/`C2C8` group nudges less well.
 - **`interp`.** Batch pairing covers 86-99% of painted polygons in the study windows, but unpaired shapes switch and
   wrongly paired ones deform; pairing is frozen.
 - **Things that are not smooth** (explosions, tracers, discrete HUD readouts, a cut between views) are left alone:

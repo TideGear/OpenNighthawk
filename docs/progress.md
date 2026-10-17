@@ -99,4 +99,4 @@ stays on the roadmap.
   4K ("good at least for now", 15 Oct, 22:32) Stage 3 went to 0.9: P3 96.33%. On
 17 Oct 2026 the owner removed the work he had decided against from the score
 (roadmap, "Possible future work" and the coastline item under Phase 4): Stage
-2's open share fell by the coastline item, 0.95 to 0.967, and P3 went to 96.62%.
+2's open share fell by the coastline item, 0.95 to 0.967, and P3 went to 96.62%; moving the refresh rates above 60 Hz to Phase 4 (Stage 3, 0.9 to 0.933) made it 97.22%.

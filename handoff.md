@@ -26,7 +26,7 @@ session log. Earlier detail is in `git log -p handoff.md`.
 
 Batch n is landed, built and CI-green; no private processes are running.
 
-Scoreboard: P1 100.00%, P2 87.43%, P3 96.62%, All 95.31% (P4 and the decided-against P3 items are no longer scored)
+Scoreboard: P1 100.00%, P2 87.43%, P3 97.22%, All 95.46% (P4 and the decided-against P3 items are no longer scored)
 (`py tools/progress.py --title`). Phase 2: 1,006 addresses matched; named code runs
 147,448 of 169,932 creditable census bytes (credit by byte since 16 October). **The denominator was split on
 17 October (owner):** 9,281 of the 179,213 census bytes are data or code that stays original and no longer count
@@ -62,9 +62,10 @@ times them (`F117_PRESENT_CLOCK=raw` for the old clock; opt-in knobs `F117_PRESE
 - **Owner verdict on a real screen (15 Oct):** played `4k-rerun.bat` (fullscreen 4K, rerun) twice: "seems great"
   apart from the original's jitter (20:50), "looks good" after the palette fix (22:30), and accepted the motion
   "at least for now" (22:32): Stage 3 raised from 0.15 to 0.9, P3 96.33%.
-- **Still open (Stage 3's last 0.1):** clock skips against picture age; per-machine
-  observer/runtime/fix state for parallel copies above about 120 Hz (one copy costs about 6 ms); the small
+- **Still open (Stage 3's last 0.067):** clock skips against picture age; the small
   `DF03`/`C2C8` vertex group (`rerun-accept/object-follow-up.txt` is a lead); slower machines.
+  Refresh rates above 60 Hz (per-machine observer/runtime/fix state for parallel copies; one copy
+  costs about 6 ms) moved to the unscored Phase 4 on 17 Oct: the owner cannot test above 60 Hz.
 - **Owner decisions (15 Oct):** stop improving primitive pairing (identity pairing is opt-in,
   `F117_PRESENT_IDENT=1`: it halved unpaired shapes but deformed the extra pairs); road and coastline jitter are the
   original's (also in GOG DOSBox and in sharp `replay` mode) and are **not** smoothed at any scale (21:23); the
@@ -347,8 +348,8 @@ times them (`F117_PRESENT_CLOCK=raw` for the old clock; opt-in knobs `F117_PRESE
 
 ### Phase 3
 
-P3 (96.62%) is held down by Stage 3, smooth in-between frames (90%: accepted by the owner for now;
-high refresh rates, clock tuning and slower machines remain), Stage 4 infrastructure (90%: fullscreen pacing of the latest
+P3 (97.22%) is held down by Stage 3, smooth in-between frames (93.3%: accepted by the owner for now;
+clock tuning and slower machines remain; refresh rates above 60 Hz are unscored Phase 4), Stage 4 infrastructure (90%: fullscreen pacing of the latest
 builds, slower machines, cargo/career flights) and Stage 2 (96.7%: widths by
 role, the panel review; the coastline and the other decided-against items left the score on 17 Oct). Details and the method: docs/progress.md.
 

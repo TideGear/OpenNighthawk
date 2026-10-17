@@ -153,7 +153,7 @@ not the recompilation:
       list.
       **Now:** 1,006 addresses matched; named code runs 147,448 of the
       169,932 creditable census bytes (179,213 in all, 9,281 of them data or code that stays original; see
-      [progress.md](progress.md#what-is-measured)) (P2 87.43%, overall 95.31%): 964 census rows
+      [progress.md](progress.md#what-is-measured)) (P2 87.43%, overall 95.46%): 964 census rows
       wholly, 293 in part. Credit is by byte since 16 October
       ([progress.md](progress.md#what-is-measured)): under it master's 946 routines
       held 132,537 bytes (132,638 by whole rows), batch g added 6,181 and
@@ -912,8 +912,7 @@ Each is fixed; the named regressions keep the failing seed or case.
   - *Owner verdict (15 Oct):* rerun's motion at 4K accepted "at least for
     now" (fullscreen, apart from the original's jitter).
   - *Open:* clock tuning against picture age; ask before any visible or
-    fullscreen test; per-machine observer, runtime and fix state for parallel copies above
-    60 Hz; the small `DF03`/`C2C8` vertex group that nudges less well;
+    fullscreen test; the small `DF03`/`C2C8` vertex group that nudges less well;
     fullscreen pacing of the latest builds;
     line widths by drawing role; weapon and target symbology; long
     cargo/career flights and slower machines. What the owner decided
@@ -951,6 +950,11 @@ this project did not build. Not scored by `tools/progress.py` (owner, 15 Oct 202
       output is not a stable PCM reference
       ([architecture.md](architecture.md#audio)). Open: independent reference
       PCM and a listening check.
+- [ ] **Refresh rates above 60 Hz:** `rerun` costs about 6 ms a step, so 144 Hz
+      needs parallel copies, which need the observer, the recompiled-code
+      runtime and the fix state per machine ([presentation.md](presentation.md)).
+      Moved here on 17 Oct 2026: the owner has no convenient high-refresh
+      display to test on, so it cannot be judged by the people who would use it.
 - [ ] **Coastline transitions:** the coastline's topology transitions are an
       issue of the original game itself (the owner, 17 Oct 2026; its jitter
       shows in the GOG DOSBox release too). Not planned for the finer modes; a
