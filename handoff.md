@@ -118,8 +118,9 @@ times them (`F117_PRESENT_CLOCK=raw` for the old clock; opt-in knobs `F117_PRESE
   regeneration-count overruns.
 - Open: width tuning by drawing role, weapon/target symbology, the owner's
   physical-panel motion verdict. What the owner decided against (jitter smoothing,
-  coastline topology transitions, outline refinement, more pairing work, a longer draw
-  distance) is not scored since 17 Oct; the roadmap lists it as possible future work.
+  outline refinement, more pairing work, a longer draw distance) is not scored since 17 Oct; the
+  roadmap lists it as possible future work. The coastline transitions are an issue of the original
+  game and sit among the unscored Phase 4 items.
 
 ### Phase 2
 
@@ -349,7 +350,7 @@ times them (`F117_PRESENT_CLOCK=raw` for the old clock; opt-in knobs `F117_PRESE
 P3 (96.62%) is held down by Stage 3, smooth in-between frames (90%: accepted by the owner for now;
 high refresh rates, clock tuning and slower machines remain), Stage 4 infrastructure (90%: fullscreen pacing of the latest
 builds, slower machines, cargo/career flights) and Stage 2 (96.7%: widths by
-role, the panel review; the coastline and other decided-against items left the score on 17 Oct). Details and the method: docs/progress.md.
+role, the panel review; the coastline and the other decided-against items left the score on 17 Oct). Details and the method: docs/progress.md.
 
 ## Next steps
 

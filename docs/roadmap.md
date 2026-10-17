@@ -931,8 +931,6 @@ jitter is the original's; no smoothing", "Do not extend the draw distance").
       scale (owner, 15 Oct 2026: it is the original's own, shown by the GOG
       DOSBox release too; N=1 stays authentic and the finer modes keep the
       original renderer's quirks).
-- [ ] **Coastline topology transitions** in the finer modes (not planned with
-      the jitter ruling).
 - [ ] **Refine clipped or off-screen outlines**: 6.1% of outline strokes in the
       owner's sharp flight are still drawn from scaled whole-pixel endpoints.
 - [ ] **More work on primitive pairing** for in-between pictures (owner, 15 Oct
@@ -953,6 +951,10 @@ this project did not build. Not scored by `tools/progress.py` (owner, 15 Oct 202
       output is not a stable PCM reference
       ([architecture.md](architecture.md#audio)). Open: independent reference
       PCM and a listening check.
+- [ ] **Coastline transitions:** the coastline's topology transitions are an
+      issue of the original game itself (the owner, 17 Oct 2026; its jitter
+      shows in the GOG DOSBox release too). Not planned for the finer modes; a
+      person judges whether it is ever worth changing.
 
 ## Housekeeping
 
