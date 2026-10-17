@@ -681,6 +681,42 @@ if(F117R_BUILD_TESTS)
       --only PLAYER.EXE:D0C)
     add_test(NAME matched_end_draw_event_caption COMMAND func_lockstep --states 5000
       --only END.EXE:A98)
+    add_test(NAME matched_vgame_interrupt_call COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:ED10)
+    add_test(NAME matched_player_timer_calibrate COMMAND func_lockstep --states 5000
+      --only PLAYER.EXE:272)
+    add_test(NAME matched_start_orders_folder COMMAND func_lockstep --states 5000
+      --only START.EXE:20D6)
+    add_test(NAME matched_end_timer_calibrate COMMAND func_lockstep --states 5000
+      --only END.EXE:4CBC)
+    add_test(NAME matched_end_show_picture COMMAND func_lockstep --states 5000
+      --only END.EXE:1901)
+    add_test(NAME matched_start_wait_table_event COMMAND func_lockstep --states 5000
+      --only START.EXE:38AC)
+    add_test(NAME matched_vgame_mission_cockpit_setup COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:4973)
+    add_test(NAME matched_start_timer_calibrate COMMAND func_lockstep --states 5000
+      --only START.EXE:8DD8)
+    add_test(NAME matched_vgame_flight_session COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:235)
+    add_test(NAME matched_start_draw_briefing_page COMMAND func_lockstep --states 5000
+      --only START.EXE:141D)
+    add_test(NAME matched_start_arms_hover_change COMMAND func_lockstep --states 5000
+      --only START.EXE:B49)
+    add_test(NAME matched_end_graphics_pages_setup COMMAND func_lockstep --states 5000
+      --only END.EXE:3CD0)
+    add_test(NAME matched_end_unpack_picture COMMAND func_lockstep --states 5000
+      --only END.EXE:4722)
+    add_test(NAME matched_start_leave_front_end COMMAND func_lockstep --states 5000
+      --only START.EXE:76D1)
+    add_test(NAME matched_start_frontend_startup COMMAND func_lockstep --states 5000
+      --only START.EXE:7312)
+    add_test(NAME matched_vgame_interrupt_call_regs COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:EC12)
+    add_test(NAME matched_player_interrupt_call COMMAND func_lockstep --states 5000
+      --only PLAYER.EXE:13CE)
+    add_test(NAME matched_player_show_picture COMMAND func_lockstep --states 5000
+      --only PLAYER.EXE:7EA)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000
