@@ -740,6 +740,16 @@ if(F117R_BUILD_TESTS)
       --only START.EXE:10)
     add_test(NAME matched_end_debrief_main COMMAND func_lockstep --states 5000
       --only END.EXE:10)
+    add_test(NAME matched_end_prepare_debrief COMMAND func_lockstep --states 5000
+      --only END.EXE:3BF4)
+    add_test(NAME matched_setup_timer_calibrate COMMAND func_lockstep --states 5000
+      --only SETUP.EXE:111A)
+    add_test(NAME matched_end_run_awards_pages COMMAND func_lockstep --states 5000
+      --only END.EXE:2265)
+    add_test(NAME matched_end_wait_report_widget COMMAND func_lockstep --states 5000
+      --only END.EXE:1BAA)
+    add_test(NAME matched_start_wait_confirm_cancel COMMAND func_lockstep --states 5000
+      --only START.EXE:3EA5)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000

@@ -65958,7 +65958,377 @@ leave:
 #undef AX
 }
 
+/* END 3BF4, prepare the debriefing. Read the shared block's three driver
+ * parameter words, allocate 35000 bytes and expose the resulting segment,
+ * select the current driver mode, optionally initialise joystick and mouse,
+ * hook Ctrl-Break, derive the report data, and compose the pilot's display
+ * name from its rank prefix plus far name string. Create pages and load art.
+ * The final JMP enters the shared timer installer at 4B8C: initialise its
+ * counters, calibrate the rate, save INT 8's vector in the handler's live
+ * operands, and install the far pointer read from CS:4BEB. The ISR itself
+ * stays original code. Each code-operand store has its own boundary: a write
+ * that invalidates translated code must stop before the following opcode.
+ * All near callees use RET. strlen (5182) drops only its one argument here;
+ * the already pushed far name pointer becomes fstrcpy (4B72)'s other args. */
+static int end_prepare_debrief(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+#define AX c->r[R_AX]
+#define BX c->r[R_BX]
+#define CX c->r[R_CX]
+#define DX c->r[R_DX]
+#define XB(n_,at_) do { SM4_NEED((n_),(at_));c->icount+=(n_); } while(0)
+#define LES(at_) do { BX=ds_get(c,(at_));c->seg[S_ES]=ds_get(c,(at_)+2); } while(0)
+#define PUSH(r_) x86_push_reg(c,(r_))
+#define POPBX() (BX=cpu_pop16(c))
+#define PUSHM(s_,o_) do { const uint16_t sg_=(s_),off_=(uint16_t)(o_),v_=seg_read16(c,sg_,off_); \
+    c->r[R_SP]=(uint16_t)(c->r[R_SP]-2);seg_write16(c,c->seg[S_SS],c->r[R_SP],c->model>=CPU_80286?v_:seg_read16(c,sg_,off_)); } while(0)
+#define NEAR(at_,target_,ret_) do { SM4_NEED(1,(at_));const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at;const int returned_=guest_call_pop(m,(target_),(ret_),0); \
+    m->run_until=until_;if(!returned_)return 1; } while(0)
+#define INT21(at_) do { SM4_NEED(1,(at_));if(!support_int(m,(at_)))return 1; } while(0)
+    if(!room(c,1))return 0;
+    NEAR(0x3BF4,0x3CA1,0x3BF7);
+    XB(2,0x3BF7);LES(0x7222);PUSHM(c->seg[S_ES],BX+0x1E);NEAR(0x3BFF,0x45AD,0x3C02);
+    XB(3,0x3C02);POPBX();LES(0x7222);PUSHM(c->seg[S_ES],BX+0x1A);NEAR(0x3C0B,0x45AD,0x3C0E);
+    XB(3,0x3C0E);POPBX();LES(0x7222);PUSHM(c->seg[S_ES],BX+0x1C);NEAR(0x3C17,0x45AD,0x3C1A);
+    XB(5,0x3C1A);POPBX();AX=0x88B8;DX=(uint16_t)alu_op(c,5,DX,DX,1);PUSH(R_DX);PUSH(R_AX);
+    NEAR(0x3C22,0x2BA0,0x3C25);
+    XB(5,0x3C25);POPBX();POPBX();ds_put(c,0x7220,AX);ds_put(c,0x6444,AX);ds_put(c,0x6442,0);
+    NEAR(0x3C33,0x45A6,0x3C36);
+    XB(1,0x3C36);PUSH(R_AX);NEAR(0x3C37,0x52CA,0x3C3A);
+    XB(4,0x3C3A);POPBX();LES(0x7222);
+    alu_logic(c,mem_read8(c,phys(c->seg[S_ES],(uint16_t)(BX+0x72)))&1,0);if(x86_cond(c,4))goto mouse;
+    XB(3,0x3C46);AX=(uint16_t)(BX+0x48);cpu_push16(c,c->seg[S_ES]);PUSH(R_AX);
+    NEAR(0x3C4B,0x448E,0x3C4E);
+    XB(2,0x3C4E);POPBX();POPBX();
+mouse:
+    XB(3,0x3C50);LES(0x7222);alu_logic(c,mem_read8(c,phys(c->seg[S_ES],(uint16_t)(BX+0x72)))&2,0);
+    if(x86_cond(c,4))goto hooks;
+    NEAR(0x3C5B,0x44E7,0x3C5E);
+hooks:
+    NEAR(0x3C5E,0x4557,0x3C61);NEAR(0x3C61,0x00C9,0x3C64);
+    /* Prefix, strlen(prefix), append far pilot name. Preserve the far args
+     * across strlen's caller-pop exactly as in the original evaluation. */
+    XB(6,0x3C64);LES(0x55DE);BX=seg_read16(c,c->seg[S_ES],BX+0x20);BX=(uint16_t)x86_shift(c,4,BX,1,1);
+    PUSHM(c->seg[S_DS],BX+0x1B8A);AX=0x7228;PUSH(R_AX);NEAR(0x3C76,0x5150,0x3C79);
+    XB(10,0x3C79);POPBX();POPBX();AX=ds_get(c,0x55DE);DX=ds_get(c,0x55E0);
+    AX=(uint16_t)alu_inc(c,AX,1);AX=(uint16_t)alu_inc(c,AX,1);PUSH(R_DX);PUSH(R_AX);AX=0x7228;PUSH(R_AX);
+    NEAR(0x3C8A,0x5182,0x3C8D);
+    XB(3,0x3C8D);POPBX();AX=(uint16_t)alu_op(c,0,AX,0x7228,1);PUSH(R_AX);NEAR(0x3C92,0x4B72,0x3C95);
+    XB(1,0x3C95);c->r[R_SP]=(uint16_t)alu_op(c,0,c->r[R_SP],6,1);
+    NEAR(0x3C98,0x3CD0,0x3C9B);NEAR(0x3C9B,0x3D4F,0x3C9E);
+    XB(1,0x3C9E); /* JMP to the shared timer-install tail, no new frame */
+    XB(4,0x4B8C);ds_put(c,0x50D8,1);ds_put(c,0x50E2,1);ds_put(c,0x50CE,0);ds_put(c,0x50D0,0);
+    NEAR(0x4BA4,0x4CBC,0x4BA7);
+    XB(2,0x4BA7);set_r8(c,R_AH,0x35);set_r8(c,R_AL,8);INT21(0x4BAB);
+    XB(1,0x4BAD);seg_write16(c,c->seg[S_CS],0x4C51,BX);
+    XB(1,0x4BB2);seg_write16(c,c->seg[S_CS],0x4C53,c->seg[S_ES]);
+    XB(4,0x4BB7);cpu_push16(c,c->seg[S_DS]);set_r8(c,R_AH,0x25);set_r8(c,R_AL,8);
+    DX=seg_read16(c,c->seg[S_CS],0x4BEB);c->seg[S_DS]=seg_read16(c,c->seg[S_CS],0x4BED);INT21(0x4BC1);
+    XB(3,0x4BC3);c->seg[S_DS]=cpu_pop16(c);ds_put8(c,0x50CB,1);near_ret(c);return 1;
+#undef INT21
+#undef NEAR
+#undef PUSHM
+#undef POPBX
+#undef PUSH
+#undef LES
+#undef XB
+#undef DX
+#undef CX
+#undef BX
+#undef AX
+}
+
+/* SETUP 111A, calibrate the clock hook from 16 screen refresh intervals.
+ * This is SETUP's copy of END 4CBC: 17 descending PIT readings accumulate
+ * unsigned frame differences into a 32-bit sum and running total. Half the
+ * average, plus its sixteenth, divided by 3977 gives a frame length in ticks.
+ * Accept 4..6; otherwise use 5 ticks and count 4DAE. Keep a caller divisor of
+ * one, otherwise replace it with the tick count. Store the resulting timer
+ * count twice. PUSHF/CLI protect the sampling; stop after POPF so the run loop
+ * handles interrupts before the original RET. All divisions fit and have a
+ * nonzero divisor. The retrace reader 11AF is plain RET, no arguments. */
+static int setup_timer_calibrate(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { RESYNC = 0x0E36, BELIEVED = 0x0E3D, SUM_LO = 0x0E39, SUM_HI = 0x0E3B,
+           TOTAL_LO = 0x0E2A, TOTAL_HI = 0x0E2C, TICKS = 0x0E37, DIVISOR = 0x0E34,
+           COUNT = 0x0E30, COUNT_COPY = 0x0E2E, RETRACE_TIMER = 0x11AF };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XCMP(a_, b_) ((void)alu_op(c, 7, (a_), (b_), 1))
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define XNEAR(at_, target_, ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+    if (!room(c, 7)) return 0;
+    /* Interrupts off; the countdown and the flag set, the sum cleared. */
+    XB(7, 0x111A);
+    x86_pushf(c);
+    x86_cli(c);
+    ds_put8(c, RESYNC, 1);
+    c->r[R_AX] = (uint16_t)alu_op(c, 6, c->r[R_AX], c->r[R_AX], 1);
+    ds_put8(c, BELIEVED, 1);
+    ds_put(c, SUM_LO, c->r[R_AX]);
+    ds_put(c, SUM_HI, c->r[R_AX]);
+    /* The first reading, then 16 frames. */
+    XNEAR(0x112E, RETRACE_TIMER, 0x1131);
+    XB(2, 0x1131);
+    c->r[R_BX] = c->r[R_AX];
+    c->r[R_CX] = 0x0010;
+    do {
+        XB(1, 0x1136);
+        cpu_push16(c, c->r[R_BX]);
+        XNEAR(0x1137, RETRACE_TIMER, 0x113A);
+        XB(6, 0x113A);
+        c->r[R_BX] = cpu_pop16(c);
+        c->r[R_BX] = (uint16_t)alu_op(c, 5, c->r[R_BX], c->r[R_AX], 1);
+        ds_put(c, SUM_LO, (uint16_t)alu_op(c, 0, ds_get(c, SUM_LO), c->r[R_BX], 1));
+        ds_put(c, SUM_HI, (uint16_t)alu_op(c, 2, ds_get(c, SUM_HI), 0, 1));
+        c->r[R_BX] = c->r[R_AX];
+        c->r[R_CX] = (uint16_t)(c->r[R_CX] - 1);                       /* LOOP: no flags */
+    } while (c->r[R_CX]);
+    /* Into the run total; half the average frame, plus a sixteenth, over 3977. */
+    XB(19, 0x114A);
+    c->r[R_AX] = ds_get(c, SUM_LO);
+    c->r[R_DX] = ds_get(c, SUM_HI);
+    ds_put(c, TOTAL_LO, (uint16_t)alu_op(c, 0, ds_get(c, TOTAL_LO), c->r[R_AX], 1));
+    ds_put(c, TOTAL_HI, (uint16_t)alu_op(c, 2, ds_get(c, TOTAL_HI), c->r[R_DX], 1));
+    c->r[R_CX] = 0x0010;
+    x86_div16(c, c->r[R_CX]);
+    c->r[R_AX] = (uint16_t)x86_shift(c, 5, c->r[R_AX], 1, 1);
+    ds_put(c, SUM_LO, c->r[R_AX]);
+    c->r[R_BX] = c->r[R_AX];
+    for (int k = 0; k < 4; k++) c->r[R_BX] = (uint16_t)x86_shift(c, 5, c->r[R_BX], 1, 1);
+    c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], c->r[R_BX], 1);
+    c->r[R_DX] = (uint16_t)alu_op(c, 6, c->r[R_DX], c->r[R_DX], 1);
+    c->r[R_BX] = 0x0F89;
+    x86_div16(c, c->r[R_BX]);
+    XCMP(c->r[R_AX], 4);
+    if (x86_cond(c, 2)) goto fallback;
+    XB(2, 0x117B);
+    XCMP(c->r[R_AX], 6);
+    if (x86_cond(c, 7)) goto fallback;
+    XB(1, 0x1180);
+    goto store;
+fallback:
+    /* Not 4 to 6 ticks: 5, and the 60 Hz count. */
+    XB(3, 0x1183);
+    ds_put8(c, BELIEVED, 0);
+    ds_put(c, SUM_LO, 0x4DAE);
+    c->r[R_AX] = 0x0005;
+store:
+    XB(3, 0x1191);
+    ds_put(c, TICKS, c->r[R_AX]);
+    XCMP(ds_get(c, DIVISOR), 1);
+    if (x86_cond(c, 4)) goto rate;
+    XB(1, 0x119B);
+    ds_put(c, DIVISOR, c->r[R_AX]);
+rate:
+    /* The timer's count, and interrupts as they were. */
+    XB(6, 0x119E);
+    c->r[R_AX] = ds_get(c, SUM_LO);
+    c->r[R_DX] = (uint16_t)alu_op(c, 6, c->r[R_DX], c->r[R_DX], 1);
+    x86_div16(c, ds_get(c, DIVISOR));
+    ds_put(c, COUNT, c->r[R_AX]);
+    ds_put(c, COUNT_COPY, c->r[R_AX]);
+    x86_popf(c);
+    c->ip = 0x11AE;                                                    /* the RET */
+    return 1;
+#undef XNEAR
+#undef XRUN
+#undef XCMP
+#undef XB
+}
+
+/* END 2265, run the awards portion of debrief when its gate allows it.
+ * Skip only when the shared input record's +30h word is nonzero and both
+ * status bytes 6D89/720E are zero. Otherwise clear six award/status bytes,
+ * show page 0618 with callback 2200, set the two markers FD/FE and compute
+ * the report. Any of four resulting award flags sounds cue 24h. Finish
+ * the report and announcements, silence sound, and return. Near callees
+ * are plain RET; the sound thunk is far cdecl. Every flag remains live
+ * across calls, so post-call tests reread memory in the original order. */
+static int end_run_awards_pages(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+#define AX c->r[R_AX]
+#define BX c->r[R_BX]
+#define XB(n_,at_) do { SM4_NEED((n_),(at_));c->icount+=(n_); } while(0)
+#define RUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at;const int returned_=(call_); \
+    m->run_until=until_;if(!returned_)return 1; } while(0)
+#define CALL(at_,target_,ret_) do { SM4_NEED(1,(at_));RUN(guest_call_pop(m,(target_),(ret_),0)); } while(0)
+#define FAR(at_,ret_) do { SM4_NEED(1,(at_));RUN(guest_call_far(m,(at_),(ret_))); } while(0)
+    if(!room(c,3))return 0;
+    XB(3,0x2265);BX=ds_get(c,0x7222);c->seg[S_ES]=ds_get(c,0x7224);
+    alu_op(c,7,seg_read16(c,c->seg[S_ES],(uint16_t)(BX+0x30)),0,1);if(x86_cond(c,4))goto show;
+    XB(2,0x2270);alu_op(c,7,ds_get8(c,0x6D89),0,0);if(x86_cond(c,5))goto show;
+    XB(2,0x2277);alu_op(c,7,ds_get8(c,0x720E),0,0);if(x86_cond(c,5))goto show;
+    XB(2,0x227E);AX=(uint16_t)alu_op(c,5,AX,AX,1);near_ret(c);return 1;
+show:
+    XB(11,0x2281);set_r8(c,R_AL,(uint8_t)alu_op(c,5,get_r8(c,R_AL),get_r8(c,R_AL),0));
+    ds_put8(c,0x55E2,get_r8(c,R_AL));ds_put8(c,0x55DD,get_r8(c,R_AL));ds_put8(c,0x643A,get_r8(c,R_AL));
+    ds_put8(c,0x55E7,get_r8(c,R_AL));ds_put8(c,0x55DA,get_r8(c,R_AL));ds_put8(c,0x55E6,get_r8(c,R_AL));
+    AX=0x2200;x86_push_reg(c,R_AX);AX=0x0618;x86_push_reg(c,R_AX);CALL(0x229D,0x1901,0x22A0);
+    XB(4,0x22A0);BX=cpu_pop16(c);BX=cpu_pop16(c);ds_put(c,0x6D90,0xFD);ds_put(c,0x6D92,0xFE);
+    CALL(0x22AE,0x2AFA,0x22B1);CALL(0x22B1,0x2476,0x22B4);
+    XB(2,0x22B4);alu_op(c,7,ds_get8(c,0x643A),0,0);if(x86_cond(c,5))goto sound;
+    XB(2,0x22BB);alu_op(c,7,ds_get8(c,0x55DD),0,0);if(x86_cond(c,5))goto sound;
+    XB(2,0x22C2);alu_op(c,7,ds_get8(c,0x55E2),0,0);if(x86_cond(c,5))goto sound;
+    XB(2,0x22C9);alu_op(c,7,ds_get8(c,0x55E6),0,0);if(x86_cond(c,4))goto finish;
+sound:
+    XB(2,0x22D0);AX=0x24;x86_push_reg(c,R_AX);FAR(0x22D4,0x22D9);
+    XB(1,0x22D9);BX=cpu_pop16(c);
+finish:
+    CALL(0x22DA,0x2A01,0x22DD);CALL(0x22DD,0x2703,0x22E0);
+    XB(2,0x22E0);AX=(uint16_t)alu_op(c,5,AX,AX,1);x86_push_reg(c,R_AX);FAR(0x22E3,0x22E8);
+    XB(2,0x22E8);BX=cpu_pop16(c);near_ret(c);return 1;
+#undef FAR
+#undef CALL
+#undef RUN
+#undef XB
+#undef BX
+#undef AX
+}
+
+/* END 1BAA, wait for a report widget's result. Each pass optionally flushes
+ * the display, waits, invokes the widget's optional callback and polls it.
+ * Event 1 hit-tests the entries at widget+4 using the byte count at +3,
+ * sounds success/failure and returns a nonzero hit result. Event 2 sounds
+ * cancel and returns 99. A matching byte event at +2 returns its signed byte
+ * with AH incremented. Other events repeat. All calls preserve the original
+ * stack, flags and memory access order; near callees use plain RET. */
+static int end_wait_report_widget(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+#define AX c->r[R_AX]
+#define BX c->r[R_BX]
+#define XB(n_,at_) do { SM4_NEED((n_),(at_));c->icount+=(n_); } while(0)
+#define RUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at;const int returned_=(call_); \
+    m->run_until=until_;if(!returned_)return 1; } while(0)
+#define CALL(at_,target_,ret_) do { SM4_NEED(1,(at_));RUN(guest_call_pop(m,(target_),(ret_),0)); } while(0)
+    if(!room(c,4))return 0;
+    XB(4,0x1BAA);x86_push_reg(c,R_BP);c->r[R_BP]=c->r[R_SP];
+    c->r[R_SP]=(uint16_t)alu_op(c,5,c->r[R_SP],4,1);bp_put(c,-2,0);
+poll:
+    XB(3,0x1BB5);BX=ds_get(c,0x7222);c->seg[S_ES]=ds_get(c,0x7224);
+    alu_logic(c,mem_read8(c,phys(c->seg[S_ES],(uint16_t)(BX+0x72)))&1,0);
+    if(x86_cond(c,4))goto wait;
+    CALL(0x1BC0,0x43C6,0x1BC3);
+wait:
+    CALL(0x1BC3,0x4393,0x1BC6);
+    XB(3,0x1BC6);BX=bp_get(c,4);alu_op(c,7,ds_get(c,BX),0,1);
+    if(x86_cond(c,4))goto dispatch;
+    CALL(0x1BCE,ds_get(c,BX),0x1BD0);
+dispatch:
+    XB(1,0x1BD0);cpu_push16(c,bp_get(c,4));
+    CALL(0x1BD3,0x1CF5,0x1BD6);
+    XB(4,0x1BD6);BX=cpu_pop16(c);bp_put8(c,-4,get_r8(c,R_AL));
+    set_r8(c,R_AL,(uint8_t)alu_op(c,1,get_r8(c,R_AL),get_r8(c,R_AL),0));
+    if(x86_cond(c,4))goto result;
+    XB(2,0x1BDE);set_r8(c,R_AL,(uint8_t)alu_dec(c,get_r8(c,R_AL),0));
+    if(x86_cond(c,5))goto other;
+    XB(6,0x1BE2);BX=bp_get(c,4);set_r8(c,R_AL,ds_get8(c,BX+3));
+    set_r8(c,R_AH,(uint8_t)alu_op(c,5,get_r8(c,R_AH),get_r8(c,R_AH),0));
+    x86_push_reg(c,R_AX);AX=(uint16_t)(BX+4);x86_push_reg(c,R_AX);
+    CALL(0x1BEF,0x1C3B,0x1BF2);
+    XB(5,0x1BF2);BX=cpu_pop16(c);BX=cpu_pop16(c);bp_put(c,-2,AX);
+    AX=(uint16_t)alu_op(c,1,AX,AX,1);if(x86_cond(c,4))goto invalid;
+    XB(1,0x1BFB);AX=0x1A;
+sound:
+    XB(1,0x1BFE);x86_push_reg(c,R_AX);
+    SM4_NEED(1,0x1BFF);RUN(guest_call_far(m,0x1BFF,0x1C04));
+    XB(2,0x1C04);BX=cpu_pop16(c);goto result;
+invalid:
+    XB(2,0x1C07);AX=0x22;goto sound;
+other:
+    XB(2,0x1C0C);alu_op(c,7,bp_get8(c,-4),2,0);if(x86_cond(c,5))goto byte_event;
+    XB(3,0x1C12);bp_put(c,-2,99);AX=0x23;goto sound;
+byte_event:
+    XB(4,0x1C1C);set_r8(c,R_AL,bp_get8(c,-4));BX=bp_get(c,4);
+    alu_op(c,7,ds_get8(c,BX+2),get_r8(c,R_AL),0);if(x86_cond(c,5))goto result;
+    XB(3,0x1C27);AX=(uint16_t)(int16_t)(int8_t)get_r8(c,R_AL);
+    set_r8(c,R_AH,(uint8_t)alu_op(c,0,get_r8(c,R_AH),1,0));bp_put(c,-2,AX);
+result:
+    XB(2,0x1C2E);alu_op(c,7,bp_get(c,-2),0,1);if(x86_cond(c,4))goto poll;
+    XB(4,0x1C34);AX=bp_get(c,-2);x86_leave(c);near_ret(c);return 1;
+#undef CALL
+#undef RUN
+#undef XB
+#undef BX
+#undef AX
+}
+
+/* START 3EA5, wait for a confirm/cancel choice. After each timer/palette
+ * service, input-record flag bit 0 enables driver buttons 0/1 and bit 1
+ * enables the local pointer buttons. Either returns 1/2. Otherwise wait for
+ * a driver key; 1000h refreshes the keyboard state, Enter accepts, Escape
+ * cancels, and other low bytes repeat. The saved key's high byte is cleared
+ * before comparisons. Callees use near RET or far cdecl RETF. */
+static int start_wait_confirm_cancel(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+#define AX c->r[R_AX]
+#define BX c->r[R_BX]
+#define XB(n_,at_) do { SM4_NEED((n_),(at_));c->icount+=(n_); } while(0)
+#define RUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at;const int returned_=(call_); \
+    m->run_until=until_;if(!returned_)return 1; } while(0)
+#define CALL(at_,target_,ret_) do { SM4_NEED(1,(at_));RUN(guest_call_pop(m,(target_),(ret_),0)); } while(0)
+#define FAR(at_,ret_) do { SM4_NEED(1,(at_));RUN(guest_call_far(m,(at_),(ret_))); } while(0)
+#define INPUT() do { BX=ds_get(c,0xE096);c->seg[S_ES]=ds_get(c,0xE098); } while(0)
+    if(!room(c,3))return 0;
+    XB(3,0x3EA5);x86_push_reg(c,R_BP);c->r[R_BP]=c->r[R_SP];c->r[R_SP]=(uint16_t)alu_op(c,5,c->r[R_SP],2,1);
+poll:
+    CALL(0x3EAB,0x8427,0x3EAE);
+    XB(3,0x3EAE);INPUT();alu_logic(c,mem_read8(c,phys(c->seg[S_ES],(uint16_t)(BX+0x72)))&1,0);
+    if(x86_cond(c,4))goto pointer;
+    XB(2,0x3EB9);AX=(uint16_t)alu_op(c,5,AX,AX,1);x86_push_reg(c,R_AX);FAR(0x3EBC,0x3EC1);
+    XB(3,0x3EC1);BX=cpu_pop16(c);AX=(uint16_t)alu_op(c,1,AX,AX,1);if(x86_cond(c,4))goto second_driver;
+accept:
+    XB(2,0x3EC6);AX=1;goto done;
+second_driver:
+    XB(2,0x3ECB);AX=1;x86_push_reg(c,R_AX);FAR(0x3ECF,0x3ED4);
+    XB(3,0x3ED4);BX=cpu_pop16(c);AX=(uint16_t)alu_op(c,1,AX,AX,1);if(x86_cond(c,4))goto pointer;
+cancel:
+    XB(2,0x3ED9);AX=2;goto done;
+pointer:
+    XB(3,0x3EDE);INPUT();alu_logic(c,mem_read8(c,phys(c->seg[S_ES],(uint16_t)(BX+0x72)))&2,0);
+    if(x86_cond(c,4))goto keyboard;
+    CALL(0x3EE9,0x8545,0x3EEC);
+    XB(2,0x3EEC);AX=(uint16_t)alu_op(c,5,AX,AX,1);x86_push_reg(c,R_AX);CALL(0x3EEF,0x8530,0x3EF2);
+    XB(3,0x3EF2);BX=cpu_pop16(c);AX=(uint16_t)alu_op(c,1,AX,AX,1);if(x86_cond(c,5))goto accept;
+    XB(2,0x3EF7);AX=1;x86_push_reg(c,R_AX);CALL(0x3EFB,0x8530,0x3EFE);
+    XB(3,0x3EFE);BX=cpu_pop16(c);AX=(uint16_t)alu_op(c,1,AX,AX,1);if(x86_cond(c,5))goto cancel;
+keyboard:
+    FAR(0x3F03,0x3F08);
+    XB(2,0x3F08);AX=(uint16_t)alu_op(c,1,AX,AX,1);if(x86_cond(c,5))goto poll;
+    FAR(0x3F0C,0x3F11);
+    XB(3,0x3F11);bp_put(c,-2,AX);alu_op(c,7,AX,0x1000,1);if(x86_cond(c,5))goto key;
+    CALL(0x3F19,0x7611,0x3F1C);
+key:
+    XB(3,0x3F1C);bp_put8(c,-1,0);alu_op(c,7,bp_get(c,-2),13,1);if(x86_cond(c,4))goto accept;
+    XB(2,0x3F26);alu_op(c,7,bp_get(c,-2),27,1);if(x86_cond(c,4))goto cancel;
+    XB(1,0x3F2C);goto poll;
+done:
+    XB(3,0x3F2F);x86_leave(c);near_ret(c);return 1;
+#undef INPUT
+#undef FAR
+#undef CALL
+#undef RUN
+#undef XB
+#undef BX
+#undef AX
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "START.EXE", START_47304, 0x0000, 0x3EA5, start_wait_confirm_cancel, "wait for confirm or cancel through buttons or keyboard", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x1BAA, end_wait_report_widget, "wait for report widget selection cancel or matching input", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x2265, end_run_awards_pages, "run the awards report pages and announcements when enabled", 1 },
+    { "matched", "SETUP.EXE", SETUP_47304, 0x0000, 0x111A, setup_timer_calibrate, "set the timer rate from the refresh", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x3BF4, end_prepare_debrief, "prepare drivers memory devices report pages and the clock hook", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x0010, end_debrief_main, "run the debrief update sorties and terminal pilot status then shut down", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x0010, start_frontend_main, "run the front end prepare the mission block and choose its exit code", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x2703, end_announce_awards, "announce granted and deferred medals special awards and service ribbons", 1 },
