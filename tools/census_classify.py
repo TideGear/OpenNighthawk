@@ -127,6 +127,8 @@ def route_instructions(route_dir, mods, audit=None):
                 if len(record[4]) != 4 or not all(0 <= v <= 0xFFFF for v in record[2:4]):
                     raise ValueError("%s:%d: invalid coverage address or four-byte window" % (path, number))
                 records.add(record)
+    if not records:
+        raise ValueError("route coverage contains no instruction records in %s" % route_dir)
     ran, counts = collections.defaultdict(set), collections.Counter()
     reloc = {name: mod.reloc_bytes() for name, mod in mods.items()}
     slots = {name: slot_bytes(mod.image) for name, mod in mods.items()}

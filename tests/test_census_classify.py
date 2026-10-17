@@ -191,7 +191,7 @@ class RouteTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             with self.assertRaises(ValueError):
                 cc.route_instructions(directory, {})
-        for record in ("T.EXE 1234 0000 0000\n", "T.EXE 1234 0000 0000 c3\n"):
+        for record in ("", "T.EXE 1234 0000 0000\n", "T.EXE 1234 0000 0000 c3\n"):
             with self.assertRaises(ValueError):
                 self.capture(b"\xc3", record)
 
