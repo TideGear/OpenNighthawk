@@ -729,6 +729,14 @@ if(F117R_BUILD_TESTS)
       --only VGAME.EXE:246)
     add_test(NAME matched_start_exit COMMAND func_lockstep --states 5000
       --only START.EXE:9094)
+    add_test(NAME matched_start_edit_pilot_name COMMAND func_lockstep --states 5000
+      --only START.EXE:6AB3)
+    add_test(NAME matched_end_announce_awards COMMAND func_lockstep --states 5000
+      --only END.EXE:2703)
+    add_test(NAME matched_start_frontend_main COMMAND func_lockstep --states 5000
+      --only START.EXE:10)
+    add_test(NAME matched_end_debrief_main COMMAND func_lockstep --states 5000
+      --only END.EXE:10)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000

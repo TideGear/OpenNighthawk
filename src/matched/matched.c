@@ -65536,7 +65536,424 @@ static int vgame_fill_box(machine_t *m)
 static const sm4_exit_t SM4_EXIT_START = { 0x9094, 0xCAAC, 0xB18C, 0xB18E, 0xB18E, 0xB170, 0x9826 };
 static int start_exit(machine_t *m) { return sm4_exit(m, &SM4_EXIT_START, 0); }
 
+/* START 6AB3, edit one pilot's name. The selected slot is argument 0.
+ * Its 80-byte roster record begins at D892 + 80*slot, its screen row at
+ * 2C + 10*slot. A 50-byte stack buffer starts with the existing prefix;
+ * the editor accepts printable characters and backspace after that prefix.
+ * Escape abandons the edit. Enter, 29 added characters, or a rendered width
+ * over 150 commits it: recolour the old/new rows, clear the record, copy the
+ * entered suffix, set its initial fields, and copy 40 words to the current
+ * pilot's far record. The final redraw restores the ordinary roster row.
+ * Near helpers return RET, graphics and keyboard thunks RETF; callers clean
+ * all arguments. The byte before the string remains a real stack variable:
+ * aliased writes can make its redraw/exit tests true, so they are retained. */
+static int start_edit_pilot_name(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { SLOT = 4, RECORD = -0x36, ROW = -0x38, LENGTH = -0x3A,
+           KEY = -0x3C, PREFIX = -0x3E, BUFFER = -0x32, DONE = -0x34 };
+#define AX c->r[R_AX]
+#define BX c->r[R_BX]
+#define CX c->r[R_CX]
+#define DX c->r[R_DX]
+#define SI c->r[R_SI]
+#define DI c->r[R_DI]
+#define BP c->r[R_BP]
+#define SP c->r[R_SP]
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while(0)
+#define PUSH(r_) x86_push_reg(c,(r_))
+#define POPBX() (BX=cpu_pop16(c))
+#define DROP(n_) (SP=(uint16_t)alu_op(c,0,SP,(n_),1))
+#define CMP(a_,b_) ((void)alu_op(c,7,(a_),(b_),1))
+#define BPUT(o_,v_) bp_put(c,(o_),(v_))
+#define BGET(o_) bp_get(c,(o_))
+#define BYTE(o_) mem_read8(c,phys(c->seg[S_SS],(uint16_t)(BP+(o_))))
+#define PUTBYTE(o_,v_) mem_write8(c,phys(c->seg[S_SS],(uint16_t)(BP+(o_))),(v_))
+#define CBW() (AX=(uint16_t)(int16_t)(int8_t)get_r8(c,R_AL))
+#define PUSHM(s_,o_) do { const uint16_t sg_=(s_), off_=(uint16_t)(o_); const uint16_t v_=seg_read16(c,sg_,off_); \
+    SP=(uint16_t)(SP-2);seg_write16(c,c->seg[S_SS],SP,c->model>=CPU_80286?v_:seg_read16(c,sg_,off_)); } while(0)
+#define RUN(call_) do { const uint64_t until_=m->run_until; if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call_);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define NEAR(at_,target_,ret_) do { SM4_NEED(1,(at_));RUN(guest_call_pop(m,(target_),(ret_),0)); } while(0)
+#define FAR(at_,ret_) do { SM4_NEED(1,(at_));RUN(guest_call_far(m,(at_),(ret_))); } while(0)
+    if (!room(c,5)) return 0;
+    XB(5,0x6AB3);
+    PUSH(R_BP);BP=SP;SP=(uint16_t)alu_op(c,5,SP,0x3E,1);PUSH(R_DI);PUSH(R_SI);
+    NEAR(0x6ABB,0x3989,0x6ABE);
+    /* Locate the roster slot and select its highlighted editing row. */
+    XB(26,0x6ABE);
+    AX=0x50;x86_imul16(c,BGET(SLOT));AX=(uint16_t)alu_op(c,0,AX,0xD892,1);BPUT(RECORD,AX);
+    AX=10;x86_imul16(c,BGET(SLOT));AX=(uint16_t)alu_op(c,0,AX,0x2C,1);BPUT(ROW,AX);
+    CX=0xFF;CX=(uint16_t)alu_op(c,5,CX,BGET(SLOT),1);ds_put(c,0xDC1C,CX);
+    CX=8;PUSH(R_CX);DX=0x9E;PUSH(R_DX);PUSH(R_AX);BX=0x1E;PUSH(R_BX);
+    SI=1;ds_put(c,0xDC24,SI);PUSH(R_SI);PUSH(R_AX);PUSH(R_BX);SI=3;PUSH(R_SI);SI=AX;
+    FAR(0x6AFD,0x6B02);
+    XB(4,0x6B02);
+    DROP(16);PUSHM(c->seg[S_DS],0x1D78);AX=(uint16_t)(BP+BUFFER);PUSH(R_AX);
+    NEAR(0x6B0D,0x94AC,0x6B10); /* copy the prefix into the stack buffer */
+    XB(9,0x6B10);
+    POPBX();POPBX();PUSH(R_SI);AX=0x1E;PUSH(R_AX);CX=(uint16_t)(BP+BUFFER);PUSH(R_CX);DX=0xDC18;PUSH(R_DX);
+    NEAR(0x6B1F,0x3567,0x6B22);
+    XB(5,0x6B22);DROP(8);AX=0xE9E;PUSH(R_AX);AX=0xDC18;PUSH(R_AX);
+    FAR(0x6B2D,0x6B32);
+    XB(4,0x6B32);POPBX();POPBX();AX=(uint16_t)(BP+BUFFER);PUSH(R_AX);
+    NEAR(0x6B38,0x94DE,0x6B3B);
+    XB(16,0x6B3B);
+    POPBX();BPUT(LENGTH,AX);BPUT(PREFIX,AX);AX=8;PUSH(R_AX);AX=0x9E;PUSH(R_AX);PUSH(R_SI);
+    AX=0x1E;PUSH(R_AX);CX=(uint16_t)alu_op(c,5,CX,CX,1);PUSH(R_CX);PUSH(R_SI);PUSH(R_AX);AX=1;PUSH(R_AX);
+    FAR(0x6B58,0x6B5D);
+    XB(2,0x6B5D);DROP(16);PUTBYTE(DONE,0);
+read_key:
+    /* A full field is accepted without waiting for another key. */
+    XB(4,0x6B64);AX=BGET(PREFIX);AX=(uint16_t)alu_op(c,5,AX,BGET(LENGTH),1);CMP(AX,0xFFE3);
+    if(x86_cond(c,4))goto full;
+    XB(4,0x6B6F);AX=(uint16_t)(BP+BUFFER);PUSH(R_AX);AX=0xDC18;PUSH(R_AX);
+    NEAR(0x6B77,0x373C,0x6B7A);
+    XB(4,0x6B7A);POPBX();POPBX();CMP(AX,0x96);if(x86_cond(c,14))goto poll;
+full:
+    XB(2,0x6B81);PUTBYTE(KEY,13);goto dispatch_key;
+poll:
+    FAR(0x6B87,0x6B8C);
+    XB(2,0x6B8C);AX=(uint16_t)alu_op(c,1,AX,AX,1);if(x86_cond(c,5))goto poll;
+    FAR(0x6B90,0x6B95);
+    XB(1,0x6B95);PUTBYTE(KEY,get_r8(c,R_AL));
+dispatch_key:
+    XB(4,0x6B98);set_r8(c,R_AL,BYTE(KEY));CBW();CMP(AX,27);if(x86_cond(c,5))goto ordinary_key;
+    XB(1,0x6BA1);goto restore_row;
+ordinary_key:
+    XB(1,0x6BA4);if(x86_cond(c,7))goto printable;
+    XB(2,0x6BA6);set_r8(c,R_AL,(uint8_t)alu_op(c,5,get_r8(c,R_AL),8,0));if(x86_cond(c,5))goto check_enter;
+    XB(1,0x6BAA);goto backspace;
+check_enter:
+    XB(2,0x6BAD);set_r8(c,R_AL,(uint8_t)alu_op(c,5,get_r8(c,R_AL),5,0));if(x86_cond(c,4))goto commit;
+printable:
+    XB(3,0x6BB1);set_r8(c,R_AL,BYTE(KEY));CBW();PUSH(R_AX);
+    NEAR(0x6BB6,0x9694,0x6BB9);
+    XB(3,0x6BB9);POPBX();AX=(uint16_t)alu_op(c,1,AX,AX,1);if(x86_cond(c,5))goto append;
+    XB(1,0x6BBE);goto redraw;
+append:
+    XB(5,0x6BC1);set_r8(c,R_AL,BYTE(KEY));SI=BGET(LENGTH);PUTBYTE(SI+BUFFER,get_r8(c,R_AL));
+    BPUT(LENGTH,(uint16_t)alu_inc(c,BGET(LENGTH),1));goto terminate;
+commit:
+    /* Recolour the pilot selection, clear the slot, copy the entered suffix. */
+    XB(8,0x6BD0);AX=1;PUSH(R_AX);CX=0x11CD;PUSH(R_CX);CX=0xFF;
+    BX=ds_get(c,0xCACA);c->seg[S_ES]=ds_get(c,0xCACC);CX=(uint16_t)alu_op(c,5,CX,seg_read16(c,c->seg[S_ES],BX),1);PUSH(R_CX);
+    NEAR(0x6BE3,0x3517,0x6BE6);
+    XB(8,0x6BE6);DROP(6);AX=1;PUSH(R_AX);AX=0x11C7;PUSH(R_AX);AX=0xFF;
+    AX=(uint16_t)alu_op(c,5,AX,BGET(SLOT),1);PUSH(R_AX);
+    NEAR(0x6BF8,0x3517,0x6BFB);
+    XB(4,0x6BFB);DROP(6);AX=0x50;PUSH(R_AX);PUSHM(c->seg[S_SS],BP+RECORD);
+    NEAR(0x6C05,0x8B3E,0x6C08);
+    XB(9,0x6C08);POPBX();POPBX();SI=BGET(PREFIX);AX=(uint16_t)(BP+SI+BUFFER);PUSH(R_AX);
+    AX=BGET(RECORD);AX=(uint16_t)alu_inc(c,AX,1);AX=(uint16_t)alu_inc(c,AX,1);PUSH(R_AX);
+    NEAR(0x6C17,0x94AC,0x6C1A);
+    XB(2,0x6C1A);POPBX();POPBX();
+    XB(12,0x6C1C);AX=BGET(SLOT);BX=BGET(RECORD);ds_put(c,BX,AX);ds_put(c,BX+0x3A,2);ds_put(c,BX+0x3C,3);ds_put(c,BX+0x4E,0);
+    AX=ds_get(c,0xCACA);DX=ds_get(c,0xCACC);DI=AX;SI=BX;c->seg[S_ES]=DX;CX=0x28;
+    XB(40,0x6C43);while(CX){x86_movs(c,1,c->seg[S_DS]);CX=(uint16_t)(CX-1);}
+restore_row:
+    XB(2,0x6C45);PUSHM(c->seg[S_SS],BP+ROW);PUSHM(c->seg[S_SS],BP+SLOT);
+    NEAR(0x6C4B,0x6861,0x6C4E);
+    XB(15,0x6C4E);POPBX();POPBX();AX=8;PUSH(R_AX);AX=0x10E;PUSH(R_AX);PUSHM(c->seg[S_SS],BP+ROW);
+    AX=0x1E;PUSH(R_AX);CX=(uint16_t)alu_op(c,5,CX,CX,1);PUSH(R_CX);PUSHM(c->seg[S_SS],BP+ROW);PUSH(R_AX);AX=1;PUSH(R_AX);
+    FAR(0x6C6A,0x6C6F);
+    XB(3,0x6C6F);DROP(16);AX=(uint16_t)alu_op(c,5,AX,AX,1);goto finish;
+backspace:
+    XB(3,0x6C77);AX=BGET(PREFIX);CMP(BGET(LENGTH),AX);if(x86_cond(c,14))goto redraw;
+    XB(1,0x6C7F);BPUT(LENGTH,(uint16_t)alu_dec(c,BGET(LENGTH),1));
+terminate:
+    XB(2,0x6C82);SI=BGET(LENGTH);PUTBYTE(SI+BUFFER,0);
+redraw:
+    /* Draw the edited text and its cursor, then release the highlight. */
+    XB(13,0x6C89);AX=8;PUSH(R_AX);AX=0x9E;PUSH(R_AX);PUSHM(c->seg[S_SS],BP+ROW);AX=0x1E;PUSH(R_AX);
+    CX=1;PUSH(R_CX);PUSHM(c->seg[S_SS],BP+ROW);PUSH(R_AX);CX=3;PUSH(R_CX);
+    FAR(0x6CA4,0x6CA9);
+    XB(8,0x6CA9);DROP(16);PUSHM(c->seg[S_SS],BP+ROW);AX=0x1E;PUSH(R_AX);AX=(uint16_t)(BP+BUFFER);PUSH(R_AX);AX=0xDC18;PUSH(R_AX);
+    NEAR(0x6CBB,0x3567,0x6CBE);
+    XB(3,0x6CBE);DROP(8);alu_op(c,7,BYTE(DONE),0,0);if(x86_cond(c,5))goto cursor_done;
+    XB(4,0x6CC7);AX=0xEA0;PUSH(R_AX);AX=0xDC18;PUSH(R_AX);
+    FAR(0x6CCF,0x6CD4);
+    XB(2,0x6CD4);POPBX();POPBX();
+cursor_done:
+    XB(13,0x6CD6);AX=8;PUSH(R_AX);AX=0x9E;PUSH(R_AX);PUSHM(c->seg[S_SS],BP+ROW);AX=0x1E;PUSH(R_AX);
+    CX=(uint16_t)alu_op(c,5,CX,CX,1);PUSH(R_CX);PUSHM(c->seg[S_SS],BP+ROW);PUSH(R_AX);AX=1;PUSH(R_AX);
+    FAR(0x6CF0,0x6CF5);
+    XB(3,0x6CF5);DROP(16);alu_op(c,7,BYTE(DONE),0,0);if(x86_cond(c,5))goto finish;
+    XB(1,0x6CFE);goto read_key;
+finish:
+    XB(5,0x6D01);SI=cpu_pop16(c);DI=cpu_pop16(c);SP=BP;BP=cpu_pop16(c);near_ret(c);return 1;
+#undef FAR
+#undef NEAR
+#undef RUN
+#undef PUSHM
+#undef CBW
+#undef PUTBYTE
+#undef BYTE
+#undef BGET
+#undef BPUT
+#undef CMP
+#undef DROP
+#undef POPBX
+#undef PUSH
+#undef XB
+#undef SP
+#undef BP
+#undef DI
+#undef SI
+#undef DX
+#undef CX
+#undef BX
+#undef AX
+}
+
+/* END 2703, announce the pilot's awards. Two driver boxes establish the
+ * report panel. A newly granted award (643A) selects its wording and a
+ * 100-by-60 cell of the medal artwork; 55DD adds the special award line,
+ * 55E2 the new service ribbon and mission count, and 55DA a deferred medal.
+ * Mission result fields +28h and +30h choose the article/award wording.
+ * The 256-byte local text buffer is passed to the formatter (521C) and line
+ * printer (26A9), in that order, for each applicable announcement. Their
+ * helpers return RET; the graphics thunk RETF; this caller drops arguments.
+ * Both signed divisions use a freshly sign-extended word and denominator
+ * three, so neither zero division nor quotient overflow is possible. */
+static int end_announce_awards(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+    enum { TEXT=-0x100, ARTICLE=-0x104, MEDAL_X=-0x108, MEDAL_Y=-0x102, WORDING=-0x10C };
+#define AX c->r[R_AX]
+#define BX c->r[R_BX]
+#define CX c->r[R_CX]
+#define DX c->r[R_DX]
+#define SI c->r[R_SI]
+#define DI c->r[R_DI]
+#define BP c->r[R_BP]
+#define SP c->r[R_SP]
+#define XB(n_,at_) do { SM4_NEED((n_),(at_));c->icount+=(n_); } while(0)
+#define PUSH(r_) x86_push_reg(c,(r_))
+#define POPBX() (BX=cpu_pop16(c))
+#define DROP(n_) (SP=(uint16_t)alu_op(c,0,SP,(n_),1))
+#define BGET(o_) bp_get(c,(o_))
+#define BPUT(o_,v_) bp_put(c,(o_),(v_))
+#define CMP8(at_) ((void)alu_op(c,7,ds_get8(c,(at_)),0,0))
+#define LES(at_) do { BX=ds_get(c,(at_));c->seg[S_ES]=ds_get(c,(at_)+2); } while(0)
+#define PUSHM(s_,o_) do { const uint16_t sg_=(s_),off_=(uint16_t)(o_),v_=seg_read16(c,sg_,off_); \
+    SP=(uint16_t)(SP-2);seg_write16(c,c->seg[S_SS],SP,c->model>=CPU_80286?v_:seg_read16(c,sg_,off_)); } while(0)
+#define RUN(call_) do { const uint64_t until_=m->run_until;if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call_);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define NEAR(at_,target_,ret_) do { SM4_NEED(1,(at_));RUN(guest_call_pop(m,(target_),(ret_),0)); } while(0)
+#define FAR(at_,ret_) do { SM4_NEED(1,(at_));RUN(guest_call_far(m,(at_),(ret_))); } while(0)
+    if(!room(c,19))return 0;
+    /* Panel background and border. */
+    XB(19,0x2703);PUSH(R_BP);BP=SP;SP=(uint16_t)alu_op(c,5,SP,0x10C,1);PUSH(R_DI);PUSH(R_SI);
+    AX=0x70;PUSH(R_AX);CX=0x50;PUSH(R_CX);DX=0x4F;PUSH(R_DX);BX=0xDB;PUSH(R_BX);
+    SI=(uint16_t)alu_op(c,5,SI,SI,1);PUSH(R_SI);PUSH(R_DX);PUSH(R_BX);SI=4;PUSH(R_SI);
+    FAR(0x2725,0x272A);
+    XB(14,0x272A);DROP(16);AX=0x70;PUSH(R_AX);AX=0x50;PUSH(R_AX);AX=0x4F;PUSH(R_AX);
+    CX=0xDB;PUSH(R_CX);DX=1;PUSH(R_DX);PUSH(R_AX);PUSH(R_CX);PUSH(R_SI);
+    FAR(0x2744,0x2749);
+    XB(4,0x2749);DROP(16);mem_write8(c,phys(c->seg[S_SS],(uint16_t)(BP+TEXT)),0);CMP8(0x643A);
+    if(x86_cond(c,5))goto award;
+    XB(1,0x2758);goto special;
+award:
+    /* Award text: its noun comes from 5D2 + 2*award, its article from the result. */
+    XB(3,0x275B);LES(0x7222);alu_op(c,7,seg_read16(c,c->seg[S_ES],BX+0x28),0,1);
+    if(x86_cond(c,4))goto ordinary_article;
+    XB(2,0x2766);BPUT(ARTICLE,0x61F);goto format_award;
+ordinary_article:
+    XB(1,0x276E);BPUT(ARTICLE,0x62D);
+format_award:
+    XB(11,0x2774);set_r8(c,R_BL,ds_get8(c,0x643A));
+    set_r8(c,R_BH,(uint8_t)alu_op(c,5,get_r8(c,R_BH),get_r8(c,R_BH),0));BX=(uint16_t)x86_shift(c,4,BX,1,1);
+    PUSHM(c->seg[S_DS],BX+0x5D2);PUSHM(c->seg[S_SS],BP+ARTICLE);AX=0x7228;PUSH(R_AX);AX=0x62E;PUSH(R_AX);
+    AX=(uint16_t)(BP+TEXT);PUSH(R_AX);NEAR(0x2791,0x521C,0x2794);
+    XB(17,0x2794);DROP(10);AX=0x70;PUSH(R_AX);CX=0x50;PUSH(R_CX);DX=0x4F;PUSH(R_DX);BX=0xDB;PUSH(R_BX);
+    SI=1;PUSH(R_SI);DI=(uint16_t)alu_op(c,5,DI,DI,1);PUSH(R_DI);AX=0xB4;PUSH(R_AX);AX=3;PUSH(R_AX);
+    FAR(0x27B6,0x27BB);
+    /* Medal sheet: floor((award-1)/3)*100 and ((award-1)%3)*60. */
+    XB(31,0x27BB);DROP(16);set_r8(c,R_AL,ds_get8(c,0x643A));
+    set_r8(c,R_AH,(uint8_t)alu_op(c,5,get_r8(c,R_AH),get_r8(c,R_AH),0));AX=(uint16_t)alu_op(c,5,AX,SI,1);
+    CX=3;BX=AX;DX=(AX&0x8000)?0xFFFF:0;(void)x86_idiv16(c,CX,0);CX=0x64;x86_imul16(c,CX);BPUT(MEDAL_X,AX);
+    CX=0x60;PUSH(R_CX);CX=0x3C;PUSH(R_CX);DX=0x57;PUSH(R_DX);DX=0xE7;PUSH(R_DX);PUSH(R_SI);PUSH(R_AX);
+    AX=BX;DX=3;BX=DX;DX=(AX&0x8000)?0xFFFF:0;(void)x86_idiv16(c,BX,0);AX=DX;x86_imul16(c,CX);BPUT(MEDAL_Y,AX);PUSH(R_AX);PUSH(R_BX);
+    FAR(0x27FC,0x2801);
+    XB(13,0x2801);DROP(16);AX=0x70;PUSH(R_AX);AX=0x50;PUSH(R_AX);AX=0x4F;PUSH(R_AX);CX=0xDB;PUSH(R_CX);
+    PUSH(R_DI);PUSH(R_AX);PUSH(R_CX);PUSH(R_SI);FAR(0x2818,0x281D);
+    XB(3,0x281D);DROP(16);AX=(uint16_t)(BP+TEXT);PUSH(R_AX);NEAR(0x2825,0x26A9,0x2828);
+    XB(1,0x2828);POPBX();
+special:
+    XB(2,0x2829);CMP8(0x55DD);if(x86_cond(c,4))goto ribbon;
+    XB(6,0x2830);AX=0x7228;PUSH(R_AX);AX=0x647;PUSH(R_AX);AX=(uint16_t)(BP+TEXT);PUSH(R_AX);
+    NEAR(0x283D,0x521C,0x2840);
+    XB(3,0x2840);DROP(6);AX=(uint16_t)(BP+TEXT);PUSH(R_AX);NEAR(0x2848,0x26A9,0x284B);
+    XB(1,0x284B);POPBX();
+ribbon:
+    XB(2,0x284C);CMP8(0x55E2);if(x86_cond(c,4))goto deferred;
+    XB(2,0x2853);CMP8(0x643A);if(x86_cond(c,5))goto extra_line;
+    XB(2,0x285A);CMP8(0x55DD);if(x86_cond(c,4))goto first_line;
+extra_line:
+    XB(2,0x2861);BPUT(WORDING,0x6A4);goto format_ribbon;
+first_line:
+    XB(1,0x2869);BPUT(WORDING,0x6D6);
+format_ribbon:
+    XB(11,0x286F);LES(0x55DE);PUSHM(c->seg[S_ES],BX+0x36);set_r8(c,R_BL,ds_get8(c,0x55E2));
+    set_r8(c,R_BH,(uint8_t)alu_op(c,5,get_r8(c,R_BH),get_r8(c,R_BH),0));BX=(uint16_t)x86_shift(c,4,BX,1,1);
+    PUSHM(c->seg[S_DS],BX+0x5EA);AX=0x7228;PUSH(R_AX);PUSHM(c->seg[S_SS],BP+WORDING);AX=(uint16_t)(BP+TEXT);PUSH(R_AX);
+    NEAR(0x2890,0x521C,0x2893);
+    XB(3,0x2893);DROP(10);AX=(uint16_t)(BP+TEXT);PUSH(R_AX);NEAR(0x289B,0x26A9,0x289E);
+    XB(1,0x289E);POPBX();
+deferred:
+    XB(2,0x289F);CMP8(0x55DA);if(x86_cond(c,4))goto finish;
+    XB(3,0x28A6);LES(0x7222);alu_op(c,7,seg_read16(c,c->seg[S_ES],BX+0x30),0,1);if(x86_cond(c,4))goto withheld_home;
+    XB(6,0x28B1);set_r8(c,R_BL,ds_get8(c,0x55DA));
+    set_r8(c,R_BH,(uint8_t)alu_op(c,5,get_r8(c,R_BH),get_r8(c,R_BH),0));BX=(uint16_t)x86_shift(c,4,BX,1,1);
+    PUSHM(c->seg[S_DS],BX+0x5DE);PUSHM(c->seg[S_DS],0x4F09);goto format_deferred;
+withheld_home:
+    XB(5,0x28C3);set_r8(c,R_BL,ds_get8(c,0x55DA));
+    set_r8(c,R_BH,(uint8_t)alu_op(c,5,get_r8(c,R_BH),get_r8(c,R_BH),0));BX=(uint16_t)x86_shift(c,4,BX,1,1);
+    PUSHM(c->seg[S_DS],BX+0x5DE);PUSHM(c->seg[S_DS],0x4F0B);
+format_deferred:
+    XB(2,0x28D3);AX=(uint16_t)(BP+TEXT);PUSH(R_AX);NEAR(0x28D8,0x521C,0x28DB);
+    XB(3,0x28DB);DROP(6);AX=(uint16_t)(BP+TEXT);PUSH(R_AX);NEAR(0x28E3,0x26A9,0x28E6);
+    XB(1,0x28E6);POPBX();
+finish:
+    XB(5,0x28E7);SI=cpu_pop16(c);DI=cpu_pop16(c);SP=BP;BP=cpu_pop16(c);near_ret(c);return 1;
+#undef FAR
+#undef NEAR
+#undef RUN
+#undef PUSHM
+#undef LES
+#undef CMP8
+#undef BPUT
+#undef BGET
+#undef DROP
+#undef POPBX
+#undef PUSH
+#undef XB
+#undef SP
+#undef BP
+#undef DI
+#undef SI
+#undef DX
+#undef CX
+#undef BX
+#undef AX
+}
+
+/* START 0010, the front-end's main sequence. Initialise, inspect the shared
+ * launch word (the nonzero arm contains three NOPs), run the roster/options
+ * pages and world selection, then prepare the far mission block at E096.
+ * Its +26h is 3, +28h/+2Ch zero, and +30h records whether the selected
+ * pilot's +3Ch exceeds 1. Bit 1 of the 16-byte theatre record selects exit
+ * code 13 or 12. The shutdown normally terminates DOS; its returning arm
+ * still has the original POP BX and RET. Every near callee is plain RET. */
+static int start_frontend_main(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+#define AX c->r[R_AX]
+#define BX c->r[R_BX]
+#define LES(at_) do { BX=ds_get(c,(at_));c->seg[S_ES]=ds_get(c,(at_)+2); } while(0)
+#define XB(n_,at_) do { SM4_NEED((n_),(at_));c->icount+=(n_); } while(0)
+#define CALL(at_,target_,ret_) do { SM4_NEED(1,(at_));const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at;const int returned_=guest_call_pop(m,(target_),(ret_),0); \
+    m->run_until=until_;if(!returned_)return 1; } while(0)
+    if(!room(c,1))return 0;
+    CALL(0x0010,0x7312,0x0013);
+    XB(3,0x0013);LES(0xCBD8);alu_op(c,7,seg_read16(c,c->seg[S_ES],BX),0,1);
+    if(x86_cond(c,4))goto pages;
+    XB(3,0x001D); /* the three original NOPs */
+pages:
+    CALL(0x0020,0x6D07,0x0023);
+    CALL(0x0023,0x0E23,0x0026);
+    CALL(0x0026,0x020F,0x0029);
+    XB(2,0x0029);AX=0x42;x86_push_reg(c,R_AX);
+    CALL(0x002D,0x5625,0x0030);
+    XB(10,0x0030);BX=cpu_pop16(c);LES(0xE096);seg_write16(c,c->seg[S_ES],BX+0x26,3);
+    LES(0xE096);seg_write16(c,c->seg[S_ES],BX+0x28,0);
+    LES(0xE096);seg_write16(c,c->seg[S_ES],BX+0x2C,0);
+    LES(0xCACA);alu_op(c,7,seg_read16(c,c->seg[S_ES],BX+0x3C),1,1);
+    if(x86_cond(c,6))goto basic_pilot;
+    XB(3,0x005A);LES(0xE096);seg_write16(c,c->seg[S_ES],BX+0x30,1);goto theatre;
+basic_pilot:
+    XB(2,0x0066);LES(0xE096);seg_write16(c,c->seg[S_ES],BX+0x30,0);
+theatre:
+    XB(5,0x0070);set_r8(c,R_CL,4);BX=ds_get(c,0xE062);BX=(uint16_t)x86_shift(c,4,BX,get_r8(c,R_CL),1);
+    alu_logic(c,mem_read8(c,phys(c->seg[S_DS],(uint16_t)(BX-0x3419)))&2,0);if(x86_cond(c,4))goto ordinary;
+    XB(2,0x007F);AX=13;goto leave;
+ordinary:
+    XB(1,0x0084);AX=12;
+leave:
+    XB(1,0x0087);x86_push_reg(c,R_AX);CALL(0x0088,0x76D1,0x008B);
+    XB(2,0x008B);BX=cpu_pop16(c);near_ret(c);return 1;
+#undef CALL
+#undef XB
+#undef LES
+#undef BX
+#undef AX
+}
+
+/* END 0010, the debriefing main sequence. Initialise; increment the pilot's
+ * sortie word only when result +30h is zero; set report mode 3. Result +26h
+ * selects the three report paths, with a second predicate for type 2.
+ * Then score, draw the map, report awards and update the pilot record.
+ * Exactly 99 sorties marks status +4Eh = 1; a type-1 result with +30h zero
+ * overrides it with 2. Shutdown uses code 23h. All callees return plain RET
+ * in the returning arm; the real shutdown exits DOS. */
+static int end_debrief_main(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+#define AX c->r[R_AX]
+#define BX c->r[R_BX]
+#define LES(at_) do { BX=ds_get(c,(at_));c->seg[S_ES]=ds_get(c,(at_)+2); } while(0)
+#define ESW(o_) seg_read16(c,c->seg[S_ES],(uint16_t)(BX+(o_)))
+#define CMP(a_,b_) ((void)alu_op(c,7,(a_),(b_),1))
+#define XB(n_,at_) do { SM4_NEED((n_),(at_));c->icount+=(n_); } while(0)
+#define CALL(at_,target_,ret_) do { SM4_NEED(1,(at_));const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at;const int returned_=guest_call_pop(m,(target_),(ret_),0); \
+    m->run_until=until_;if(!returned_)return 1; } while(0)
+    if(!room(c,2))return 0;
+    XB(2,0x0010);x86_push_reg(c,R_BP);c->r[R_BP]=c->r[R_SP];CALL(0x0013,0x3BF4,0x0016);
+    XB(3,0x0016);LES(0x7222);CMP(ESW(0x30),0);if(x86_cond(c,5))goto report;
+    XB(2,0x0021);LES(0x55DE);seg_write16(c,c->seg[S_ES],BX+0x36,(uint16_t)alu_inc(c,ESW(0x36),1));
+report:
+    XB(4,0x0029);ds_put8(c,0x6440,3);LES(0x7222);AX=ESW(0x26);goto select_report;
+type_one:
+    CALL(0x0038,0x370A,0x003B);XB(1,0x003B);goto score;
+type_two:
+    CALL(0x003D,0x00A1,0x0040);XB(2,0x0040);AX=(uint16_t)alu_op(c,1,AX,AX,1);if(x86_cond(c,4))goto other_type_two;
+    CALL(0x0044,0x3B9A,0x0047);XB(1,0x0047);goto score;
+other_type_two:
+    CALL(0x0049,0x3BBF,0x004C);XB(1,0x004C);goto score;
+type_three:
+    CALL(0x004E,0x3887,0x0051);XB(1,0x0051);goto score;
+select_report:
+    XB(2,0x0053);AX=(uint16_t)alu_dec(c,AX,1);if(x86_cond(c,4))goto type_one;
+    XB(2,0x0056);AX=(uint16_t)alu_dec(c,AX,1);if(x86_cond(c,4))goto type_two;
+    XB(2,0x0059);AX=(uint16_t)alu_dec(c,AX,1);if(x86_cond(c,4))goto type_three;
+score:
+    CALL(0x005C,0x2BEC,0x005F);CALL(0x005F,0x03D9,0x0062);CALL(0x0062,0x2265,0x0065);CALL(0x0065,0x39D0,0x0068);
+    XB(3,0x0068);LES(0x55DE);CMP(ESW(0x36),0x63);if(x86_cond(c,5))goto status;
+    XB(1,0x0073);seg_write16(c,c->seg[S_ES],BX+0x4E,1);
+status:
+    XB(3,0x0079);LES(0x7222);CMP(ESW(0x26),1);if(x86_cond(c,5))goto leave;
+    XB(2,0x0084);CMP(ESW(0x30),0);if(x86_cond(c,5))goto leave;
+    XB(2,0x008B);LES(0x55DE);seg_write16(c,c->seg[S_ES],BX+0x4E,2);
+leave:
+    XB(2,0x0095);AX=0x23;x86_push_reg(c,R_AX);CALL(0x0099,0x3F44,0x009C);
+    XB(4,0x009C);BX=cpu_pop16(c);c->r[R_SP]=c->r[R_BP];c->r[R_BP]=cpu_pop16(c);near_ret(c);return 1;
+#undef CALL
+#undef XB
+#undef CMP
+#undef ESW
+#undef LES
+#undef BX
+#undef AX
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "END.EXE", END_47304, 0x0000, 0x0010, end_debrief_main, "run the debrief update sorties and terminal pilot status then shut down", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x0010, start_frontend_main, "run the front end prepare the mission block and choose its exit code", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x2703, end_announce_awards, "announce granted and deferred medals special awards and service ribbons", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x6AB3, start_edit_pilot_name, "edit a pilot name with prefix backspace acceptance and roster update", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x9094, start_exit, "end the program", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0FB2, 0x0246, vgame_fill_box, "fill a box through the span tables", 2 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x4648, end_pic_rows_to_page, "decode a picture onto a page row by row", 1 },
