@@ -245,8 +245,15 @@ times them (`F117_PRESENT_CLOCK=raw` for the old clock; opt-in knobs `F117_PRESE
   arm (live BP frame), not an independent routine; its draft is in
   `p2-end-3100`. Inspect the enclosing `3021` scorer and named `34EA` step
   before selecting a replacement boundary. Its complete 12-way-switch dossier
-  (`p2-end-3021/dossier/full.json`) covers 579 instructions / 1,608 bytes;
-  the initial jump to `34ED` skips `34EA`'s index increment.
+  (`p2-end-3021/dossier/full.json`) covers 579 instructions / 1,608 bytes.
+  A full named scorer is now implemented privately in `p2-end-3021`:
+  five seeds reach all 579 instructions with no skips/mismatches, and
+  the existing `34EA` entry passes five seeds / all 170 instructions after
+  a shared-helper refactor. The initial jump to `34ED` skips its increment.
+  152 mutation checks are running, followed automatically by real-route,
+  boot and root audits; no private acceptance claim yet. Live state:
+  `D:/f117-gate/p2-end-3021/CONTINUE.md`. Not integrated; batch-m gate source
+  stays fixed. Refresh/reprove against m's final libraries before integration.
   Current registration/byte-credit screening: `p2-next-after-l/ranked.json`.
   Batch-m candidates proved against batch-l optimized libraries:
   `p2-end-2200` (page redraw callback, 52 instructions, five seeds and 28
