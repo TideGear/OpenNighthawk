@@ -1,0 +1,20 @@
+# Census entries that stay original code because matching them cannot be proved or would change behaviour.
+# They leave the Phase 2 denominator (tools/census_classify.py); the bytes a matched body does run in them
+# still count as credit. Columns: module, linear address (the census row), reason.
+# A routine that is merely hard, blocked by tooling or not yet proved belongs in the denominator, not here.
+START	0x08EDC	C start-up: stops after its own STI and never returns to its caller's stack
+VGAME	0x0E6BE	C start-up copy
+DSWAP	0x00C7E	C start-up copy
+SETUP	0x01516	C start-up copy
+END	0x04DD2	C start-up copy
+PLAYER	0x01096	C start-up copy
+MPS_LOGO	0x01476	C start-up copy (0146:0016)
+VGAME	0x01C9B	STI-first timer interrupt: after STI the run loop admits one more instruction, so a body cannot do more than the original
+START	0x08D0B	STI-first timer interrupt
+END	0x04BEF	STI-first timer interrupt
+PLAYER	0x02853	STI-first timer interrupt (026B:01A3)
+PLAYER	0x028C1	timer re-sync 026B:0211: STI inside its loop
+VGAME	0x14C20	palette loader (set_dac): STI inside its colour loop
+START	0x08378	palette loader copy: STI inside its colour loop
+END	0x042E4	palette loader copy: STI inside its colour loop
+VGAME	0x0FFFD	line clipper's divide-error handler 04DD: fixture-proven, no route or input reaches it

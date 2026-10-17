@@ -151,8 +151,9 @@ not the recompilation:
       [../handoff.md](../handoff.md). `tools/reimp_names.py` joins the Reimp's
       census (1,535 functions) with this project's regions as a private lead
       list.
-      **Now:** 1,003 addresses matched; named code runs 147,180 of
-      179,213 census bytes (P2 83.02%, overall 93.89%): 961 census rows
+      **Now:** 1,003 addresses matched; named code runs 147,180 of the
+      169,932 creditable census bytes (179,213 in all, 9,281 of them data or code that stays original; see
+      [progress.md](progress.md#what-is-measured)) (P2 87.28%, overall 95.19%): 961 census rows
       wholly, 293 in part. Credit is by byte since 16 October
       ([progress.md](progress.md#what-is-measured)): under it master's 946 routines
       held 132,537 bytes (132,638 by whole rows), batch g added 6,181 and
@@ -168,6 +169,15 @@ not the recompilation:
       run, and 208 rows / 18,901 bytes have no evidence; those include data
       (DSWAP `3DF3`, SETUP `27AE`'s strings) and need new routes or a
       data/code decision each.
+      **What the uncredited bytes are** (17 Oct, `tools/census_classify.py`, 32,033 bytes): 6,190 in
+      instructions routes ran (workable now), 14,832 decoded as code that no route runs (needs a new route
+      or a decision that it is unreachable), 886 that no walk reaches and nothing marks as data (to be read),
+      844 in entry-vector slots no route uses (SETUP `2D65`, PLAYER `3BFA`: the program's segment binder,
+      VGAME `0FAE:0002`, fills them with far jumps at start-up; 47 of VGAME's 84 run, so they are live code and
+      stay in the denominator), and the 9,281 bytes of data and original code that left it.
+      The classifier's cross-checks: no excluded byte lies in a row our translation treats as code, and
+      the one text rule that hid real code (PLAYER `1BE7`, a printf switch of compare-and-jump bytes that
+      reads as text) was tightened; every range in `docs/census-data.tsv` was read in full.
       **Stays original code:** the timer interrupts (VGAME 0x1C9B, START
       0x8D0B, END 0x4BEF) open with STI, after which the run loop admits one
       more instruction before it looks at events, so a matched body could do

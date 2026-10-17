@@ -1,0 +1,8 @@
+# Census bytes that were read by a person and are data, not code: no instruction to match, so they leave the
+# Phase 2 denominator (tools/census_classify.py). A byte that a route ran or a matched body covers is never
+# excluded by this table. Add a range only after reading it; when in doubt leave it out, which keeps the byte
+# in the denominator. Columns: module, first linear address, length in bytes, what it is and how it was checked.
+SETUP	0x027AE	1495	screen and message text with box-drawing characters, a word table of characters (0x2C2E) and C-runtime messages; read in full, 0x027AE..0x02D64
+PLAYER	0x040C8	1070	zero fill, the C runtime's messages ("Error releasing overlay memory", "_C_FILE_INFO=", "Assertion failed"), and small tables; read in full
+DSWAP	0x03DF3	2924	zero fill plus the C runtime's messages, "_C_FILE_INFO=" and small tables; read in full (the census lists it as a function)
+DSWAP	0x02920	518	a lookup table: zero fill, then an arithmetic sequence of byte values with flag bytes 40/80/C0/00; the census rows 0x02920 and 0x029E6 overlap it; read in full, 0x02920..0x02B25
