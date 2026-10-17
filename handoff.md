@@ -9,7 +9,8 @@ checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 more than once, what it costs). State as of 17 October 2026.
 
 17 October: `p2-batch-j` is gated and landed (four routines; see Phase 2 below).
-Next: continue down the screened census leads. Resume the roadmap's plan, Phase 2 first.
+Next: integrate and gate the five refreshed batch-k routines, then continue
+down the screened census leads. Resume the roadmap's plan, Phase 2 first.
 
 **Process notes (16 October):** screen leads with `p2-batch-g-accept/screen_leads.py` before any
 agent starts (five of the first twelve picks were blocked or already inline); agents run `pin.py` with
@@ -129,6 +130,10 @@ times them (`F117_PRESENT_CLOCK=raw` for the old clock; opt-in knobs `F117_PRESE
   generic seed runs prove it. Permanent CTest keeps the failing seed
   `0x4ebc42e1d00b`; it reproduces on batch i too. First failure preserved under
   `attempt-1-failed`; the full gate and presentation checks were rerun.
+  Main's normal /O2 application build passed (180.86 s); proof-kit
+  libraries were refreshed from `07b0897` (hashes in `kit-libs/manifest.json`).
+  Both Windows and Munt CI passed: https://github.com/TideGear/OpenNighthawk/actions/runs/39034858973.
+  All batch-j acceptance/build processes are finished.
 - Previous batch (17 Oct): **`p2-batch-i` is gated and landed**, six routines /
   602 census bytes by byte credit (991 addresses; 143,214 of 179,213 bytes).
   Five seeds each, full instruction coverage, 207 mutations caught, exact boot
@@ -188,22 +193,22 @@ times them (`F117_PRESENT_CLOCK=raw` for the old clock; opt-in knobs `F117_PRESE
   with `--only` and `F117_COVER`.
 - **Declined (recorded in `kit/DECLINED.tsv`):** PLAYER `2853`, PLAYER `0211`
   re-sync, VGAME `14C2:0000` (STI in its colour loop; the `set_dac` family).
-- **Pending batch k:** END `3BF4` (`p2-end-3bf4`) has five seeds and 58 caught
-  mutations, exact `full_cycle` and boot proofs against its older base.
-  Refresh bases and proof libraries from landed batch j, then repeat its
-  seeds/mutations and real-route/boot/audit.
-  It owns 235 bytes in `3BF4..3CA0` and shared tail `4B8C..4BC9` (86 original
-  instructions); the 4,054-byte envelope includes nine fixture callee JMPs,
-  so harness coverage is 95. Preserve the separate code-store boundaries.
-- Other private batch-k candidates: SETUP `111A` (`p2-setup-111a`, five
-  seeds/all 54 instructions/52 mutations; requires its one `POPF_STOPS` row),
-  END `1BAA` (`p2-end-1baa`, five seeds/all 58 instructions/50 mutations,
-  exact `full_cycle` and boot), START `3EA5` (`p2-start-3ea5`, five seeds/all
-  56 instructions/55 mutations, exact 350-checkpoint `career_serge` and boot),
-  END `2265` (`p2-end-2265`, five seeds/all 46 instructions/52 mutations,
-  exact `full_cycle` and boot). SETUP's 3-checkpoint `setup_calibration` and
-  boot also pass. Combined audit: `p2-batch-k-accept/private-audit.json`.
-  Refresh their bases/libraries after batch j lands and repeat final proofs.
+- **Batch k ready for integration:** five routines, refreshed from batch j's
+  normal /O2 libraries (`07b0897`). Five seeds each, full instruction coverage,
+  all 267 mutations caught, exact real-route and 26-checkpoint boot proofs.
+  The four-lane refresh took 338.36 s; bodies and fixtures unchanged.
+  Evidence `D:/f117-gate/p2-batch-k-accept/refresh-verdict.json` and
+  `private-audit/private-audit.json` there. Not integrated or gated yet.
+  END `3BF4` (`p2-end-3bf4`), SETUP `111A` (`p2-setup-111a`), END `1BAA`
+  (`p2-end-1baa`), START `3EA5` (`p2-start-3ea5`), END `2265` (`p2-end-2265`).
+  Routes: `full_cycle` (1 call each for the three END routines),
+  `setup_calibration` (3 checkpoints, 2 calls), `career_serge` (350 checkpoints,
+  2 calls). Scripts `prepare_acceptance.py` then `integrate.py` then
+  `start_acceptance.py` retain all standing checks. Integration adds SETUP's
+  one `POPF_STOPS` row. END `3BF4` owns 235 bytes in `3BF4..3CA0` plus
+  `4B8C..4BC9` (86 original instructions); its 4,054-byte envelope includes
+  nine fixture callee JMPs, hence 95 covered instructions. Preserve its
+  separate code-store boundaries. Measure credit after optimized seeds.
 - **Stopped draft:** END `03D9` (D12 sites 0443/0450 may lie inside: decline
   while D12 is on). VGAME `7663` was superseded by batch g.
 - **Routes other than full_cycle:** `kit.py DIR checkpoints --route NAME` (and `ROUTE=NAME` for
