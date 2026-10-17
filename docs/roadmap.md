@@ -68,11 +68,11 @@ make (Phase 4).
   early for its autoexec); delivery there is not pursued (Settled, below).
 - **The game version verified:** GOG's installer (build 28044) with the 473.04
   update; Steam's release is byte-identical (`tools/verify_install.py`).
-- **The gate** (`tools/build_recomp.py`): translate, build, unit tests (235),
+- **The gate** (`tools/build_recomp.py`): translate, build, unit tests (238),
   coverage, both engines on every route, instruction lockstep under both
   timing profiles, matched-routine lockstep at three seeds, and the
   routes-only and event-limit checks. About 21-33 minutes when every
-  interpreter route is verified fresh (latest 1,839 s); costs and what was
+  interpreter route is verified fresh (latest 1,895 s); costs and what was
   optimised: [repeated-processes.md](repeated-processes.md).
 - **Rendered speaker and speech audio.** PIT counter 2 follows the 8254 model;
   speaker music matches DOSBox-X (envelope 0.87, spectral 0.92-0.93, level
@@ -151,13 +151,13 @@ not the recompilation:
       [../handoff.md](../handoff.md). `tools/reimp_names.py` joins the Reimp's
       census (1,535 functions) with this project's regions as a private lead
       list.
-      **Now:** 1,003 addresses matched; named code runs 147,180 of the
+      **Now:** 1,006 addresses matched; named code runs 147,448 of the
       169,932 creditable census bytes (179,213 in all, 9,281 of them data or code that stays original; see
-      [progress.md](progress.md#what-is-measured)) (P2 87.28%, overall 95.19%): 961 census rows
+      [progress.md](progress.md#what-is-measured)) (P2 87.43%, overall 95.23%): 964 census rows
       wholly, 293 in part. Credit is by byte since 16 October
       ([progress.md](progress.md#what-is-measured)): under it master's 946 routines
       held 132,537 bytes (132,638 by whole rows), batch g added 6,181 and
-      batch h added 3,894, batch i 602, batch j 1,349, batch k 802, batch l 314, batch m 262 and batch n 1,239.
+      batch h added 3,894, batch i 602, batch j 1,349, batch k 802, batch l 314, batch m 262, batch n 1,239 and batch o 268.
       **What is left:** `tools/census_reach.py` separates code with run
       evidence from code without (gate coverage logs only interpreted
       fallback instructions, so it cannot show what ran). Fresh interpreter
@@ -169,8 +169,8 @@ not the recompilation:
       run, and 208 rows / 18,901 bytes have no evidence; those include data
       (DSWAP `3DF3`, SETUP `27AE`'s strings) and need new routes or a
       data/code decision each.
-      **What the uncredited bytes are** (17 Oct, `tools/census_classify.py`, 32,033 bytes): 6,190 in
-      instructions routes ran (workable now), 14,832 decoded as code that no route runs (needs a new route
+      **What the uncredited bytes are** (17 Oct, `tools/census_classify.py`, 31,765 bytes): 5,973 in
+      instructions routes ran (workable now), 14,781 decoded as code that no route runs (needs a new route
       or a decision that it is unreachable), 886 that no walk reaches and nothing marks as data (to be read),
       844 in entry-vector slots no route uses (SETUP `2D65`, PLAYER `3BFA`: the program's segment binder,
       VGAME `0FAE:0002`, fills them with far jumps at start-up; 47 of VGAME's 84 run, so they are live code and
@@ -211,6 +211,28 @@ routes alone; *thin* marks one a real route calls only once or a seed barely
 reaches. Candidate drafts can keep private static dossiers
 (`matched_draft.py --dossier`):
 [repeated-processes.md](repeated-processes.md#phase-2-candidate-reading).
+
+### Latest batch: report text, view and sky, formatter dispatch (17 October 2026, batch o)
+
+Batch o adds three addresses: 1,006 addresses, 268 more census bytes. Five
+seeds each reach every instruction of the three bodies (111 in all); all 104
+mutations are caught. END proves on the exact `recon_career` route (344
+checkpoints, 1 call); VGAME and START on the exact `full_cycle` route (66
+checkpoints, 276 and 89 calls); fifteen optimized seed runs pass. Evidence
+`D:/f117-gate/p2-batch-o-accept`.
+
+- END `26A9`, `end_report_page_text`: the continue-prompt screen of the
+  debrief: restore the text area from page 1, draw the wrapped text, wait at the prompt.
+  44 instructions / 90 bytes, 27 mutations.
+- VGAME `D826`, `vgame_set_view_and_sky`: set the view, camera matrices and
+  scene origin, then draw the sky bands when asked (the wait on the timer flag
+  runs only on the route; lockstep delivers no interrupt). 30 instructions /
+  86 bytes, 37 mutations.
+- START `9E3E`, `start_format_dispatch`: the printf formatter's conversion
+  dispatch (an interior arm with eleven exits). 41 instructions / 92 bytes,
+  40 mutations. The lockstep harness now lets any `FATAL_JUMPS` row of a
+  routine end its named code; END `400F` (DOS open with a fatal tail) was
+  proved privately but is held back until its tail is verified.
 
 ### Latest batch: the debrief scorer and a packed picture opener (17 October 2026, batch n)
 
