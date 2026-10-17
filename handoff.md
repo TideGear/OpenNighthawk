@@ -8,8 +8,11 @@ checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 [docs/repeated-processes.md](docs/repeated-processes.md) (every process we run
 more than once, what it costs). State as of 17 October 2026.
 
-17 October: `p2-batch-o` is gated and landed (three bodies; see Phase 2 below).
-Next: continue the screened Phase 2 leads, checking enclosing functions for interior entries. Resume the roadmap's plan, Phase 2 first.
+17 October: `p2-batch-o` is gated and landed (three bodies; see Phase 2 below). Stopped for handoff at the
+owner's request (17 Oct, 16:14 PDT): everything is committed and pushed, no process is running, the gate worktree
+`D:/f117-wt/gate-h` is clean at `aa8991b` (master is ahead of it by doc and tool commits only).
+**Start here:** (1) the census-gap decision below; (2) ask the owner before a longer fullscreen air-to-air timing
+run; (3) Phase 2 batch p. Resume the roadmap's plan, Phase 2 first.
 
 **Process notes (16 October):** screen leads with `p2-batch-g-accept/screen_leads.py` before any
 agent starts (five of the first twelve picks were blocked or already inline); agents run `pin.py` with
@@ -24,7 +27,7 @@ session log. Earlier detail is in `git log -p handoff.md`.
 
 ## Current state (17 October)
 
-Batch n is landed, built and CI-green; no private processes are running.
+Batches n and o are landed, built and CI-green; no private processes are running.
 
 Scoreboard: P1 100.00%, P2 87.43%, P3 97.22%, All 95.46% (P4 and the decided-against P3 items are no longer scored)
 (`py tools/progress.py --title`). Phase 2: 1,006 addresses matched; named code runs
@@ -37,6 +40,31 @@ vectors filled by each program's segment binder (VGAME `0FAE:0002` is `vgame_bin
 binder is in SETUP, PLAYER, DSWAP, START and END), and 47 of VGAME's 84 run. An earlier memory-dump comparison
 that suggested otherwise used a misaligned match; locate a program in a dump by many aligned chunks.
 After any batch, rerun `progress.py --census ...` as before: it now also stores the class counts.
+
+### The census undercounts the game's code (found 17 Oct; owner left the decision to me, not yet taken)
+
+The denominator is the Reimp's census (1,535 rows, 179,213 bytes). Measured with `D:/f117-gate/census-gap-20261017/`
+(`gap.py` per module: translated instructions, route-run instructions, census rows; `gap2.py` characterises the gaps;
+`gap.json` is the data; interpreter captures of all 45 routes, coverage from the gate):
+- **Routes run 24,207 bytes outside every census row**, 462 of them credited. About 18,400 are in files the census
+  does not cover at all: the sound drivers ASOUND/ISOUND/RSOUND (`.117` overlays and `.LOG` files, 14,000 bytes),
+  MGRAPHIC.EXE (3,228), F117.COM (844), MISC.EXE (68). About 5,800 are inside the seven programs (VGAME 3,868,
+  START 1,172, SETUP 354, END 168, MPS_LOGO 91, DSWAP 81, PLAYER 46).
+- **Translated code outside the census rows:** 21,349 bytes in the seven programs (VGAME 8,767, SETUP 3,839,
+  START 2,587, DSWAP 2,241, MPS_LOGO 1,738, PLAYER 1,308, END 869) and about 29,800 in the other modules
+  (including the 325-byte LZEXE stub, which is not game code).
+- **143 census rows have size 0** (a bare entry from the Reimp), so they add nothing to the denominator or to
+  credit. The biggest known: **VGAME `09EFA` `prepass_display_body`**: 4,552 translated bytes, 3,411 run by routes,
+  not matched, not counted. VGAME's other gap runs of 250-550 bytes (`149F9`, `14583`, `13974`, `05737`)
+  are mostly not run by the routes; what they are has not been read.
+- **Not done:** deciding whether to add these bytes to the denominator and how. My recommendation: yes for code
+  the routes run or the translation knows in the seven programs (it is certainly game code; adding 21,349 bytes
+  would put Phase 2 near 77%; adding the other modules too, near 67%), reported as a separate, named figure so the
+  jump is not mistaken for lost work. The matched table names only the seven programs, so the driver files would
+  first need engine support (their code loads at run-time segments). Do not add anything without checking each class
+  the way `tools/census_classify.py` was checked (aligned dumps, second program, break tests).
+- Lead from this: **VGAME `09EFA`** is a large, executed, unmatched function. Screen it with the kit before
+  small leads; its census row is size 0, so give the kit `--module VGAME --seg 0 --ip 9EFA` and set `length` by hand.
 
 ### Presentation: latest (15 October, evening)
 
@@ -362,7 +390,16 @@ role, the panel review; the coastline and the other decided-against items left t
 
 ## Next steps
 
-1. **Phase 2 first (owner).** `p2-batch-o` is gated and landed.
+0. **Open questions for the owner** (do not assume): extend the Phase 2 denominator as above; whether to run a
+   longer fullscreen air-to-air timing test on his 4K screen (strike and landing passed, air-to-air missed p99 on a
+   short sample; the run script is `D:/f117-gate/present-v2/stage4-fullscreen-20261017/stage4.py`, live input is
+   ignored during a replay, but other load on the machine would disturb the timing); whether Stage 3's remaining skips and slower machines, and
+   Stage 4's slower CPUs/GPUs and long career flights, are worth pursuing (see the P3 table in this conversation:
+   Stage 3 93.3%, Stage 4 90%, Stage 2 96.7%).
+1. **Phase 2 first (owner).** `p2-batch-o` is gated and landed. END `400F` is proved privately (`p2-end-400f`)
+   but held back (stand-in fatal tail, one uncaught mutation, coverage counts 21 of 39); new screened leads are in
+   `D:/f117-gate/p2-next-after-n/screened.tsv` (FREE rows; `kit/DECLINED.tsv` now also lists END `57B0` and START
+   `01285` as interior arms).
    Continue down the ranked list
    (`D:/f117-gate/p2-batch-d-accept/reached-allroutes.tsv`) with the private kit and parallel agents (agents do steps 1-7 only; root runs
    `kit.py checkpoints` and `D:/f117-gate/kit/boot_proof.py` with `KIT_ROOT` at the gated worktree, then
