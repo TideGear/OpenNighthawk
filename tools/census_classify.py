@@ -27,8 +27,10 @@ ever earn credit, so the score's denominator is split. Every census byte is exac
                 timer interrupts, the never-returning C start-up, the palette loaders that run an STI
                 inside their loop, the divide-error handler no route reaches)
 
-The Phase 2 measure is credited / (bytes - data - original): the share of the creditable census that matched
-code runs. `data` and `original` leave only the bytes of those classes that are not credited; a body that
+The historical census share is credited / (bytes - data - original). Phase 2 also includes the separately
+reported supplement of executed instructions outside these rows in the same seven programs; add its named
+bytes to the numerator and all its bytes to the denominator. Static-only discoveries and other modules are
+an explicit scope backlog. `data` and `original` leave only uncredited bytes; a body that
 does run some of those bytes keeps its credit. Linear census addresses are the image offsets of the loaded
 programs, which is how the rest of the tooling reads them.
 
@@ -93,15 +95,69 @@ def segment_of(linear):
     return (linear >> 4) & 0xF000 if linear > 0xFFFF else 0
 
 
-def route_instructions(route_dir):
-    """Bytes of every instruction an interpreter capture ran, by module and linear address."""
-    ran = collections.defaultdict(set)
-    for path in sorted(glob.glob(os.path.join(route_dir, "*.cov"))):
-        for line in open(path, encoding="utf-8", errors="replace"):
-            a = line.split()
-            if len(a) >= 5:
-                seg, ip, n = int(a[2], 16), int(a[3], 16), len(a[4]) // 2
-                ran[a[0].upper().replace(".EXE", "")].update(range(seg * 16 + ip, seg * 16 + ip + n))
+def route_instructions(route_dir, mods, audit=None):
+    """Decode executed instructions, after checking module identity and the captured bytes.
+
+    recomp.c records a FOUR-BYTE WINDOW, not the instruction's bytes or its length.
+    Decode the image for the length; compare only the captured part of that instruction
+    (the window can extend into the next instruction). Ignore relocated operands, as
+    the translator does. Reject the unpacker's overlapping addresses and other changed
+    code. The one supported patch is a bound entry vector: EA remains EA and the four
+    operand bytes are filled by the segment binder. Addresses remain module-relative
+    CS:IP until after validation; COM's origin affects image indexing, not the result.
+
+    audit counts unique records, since the same instruction occurs in many routes.
+    Rejected records are reported, never treated as executed image instructions.
+    """
+    from x86dec import DecodeError, K_INVALID, decode
+    paths = sorted(glob.glob(os.path.join(route_dir, "*.cov")))
+    if not paths:
+        raise ValueError("no route coverage files in %s" % route_dir)
+    records = set()
+    for path in paths:
+        with open(path, encoding="utf-8") as source:
+            for number, line in enumerate(source, 1):
+                if not line.strip() or line.startswith("#"):
+                    continue
+                a = line.split()
+                if len(a) != 5:
+                    raise ValueError("%s:%d: expected NAME HASH SEG IP WINDOW" % (path, number))
+                name = a[0].upper().replace(".EXE", "")
+                record = (name, int(a[1], 16), int(a[2], 16), int(a[3], 16), bytes.fromhex(a[4]))
+                if len(record[4]) != 4 or not all(0 <= v <= 0xFFFF for v in record[2:4]):
+                    raise ValueError("%s:%d: invalid coverage address or four-byte window" % (path, number))
+                records.add(record)
+    ran, counts = collections.defaultdict(set), collections.Counter()
+    reloc = {name: mod.reloc_bytes() for name, mod in mods.items()}
+    slots = {name: slot_bytes(mod.image) for name, mod in mods.items()}
+    for name, file_hash, seg, ip, raw in sorted(records):
+        mod = mods.get(name)
+        if mod is None or mod.file_hash != file_hash:
+            counts["identity"] += 1
+            continue
+        off = mod.off(seg, ip)
+        if off < 0 or off >= len(mod.image):
+            counts["outside"] += 1
+            continue
+        try:
+            ins = decode(mod.image, off, ip)
+        except DecodeError:
+            counts["decode"] += 1
+            continue
+        if ins.kind == K_INVALID or off + ins.length > len(mod.image):
+            counts["decode"] += 1
+            continue
+        bound_slot = (mod.image[off:off + 5] == SLOT and off in slots[name] and raw[0] == 0xEA)
+        if not bound_slot and any(mod.image[off + k] != raw[k] for k in range(min(4, ins.length))
+                                  if off + k not in reloc[name]):
+            counts["changed"] += 1
+            continue
+        ran[name].update(range(seg * 16 + ip, seg * 16 + ip + ins.length))
+        counts["accepted"] += 1
+        if bound_slot:
+            counts["bound_slots"] += 1
+    if audit is not None:
+        audit.update(counts)
     return ran
 
 
@@ -184,12 +240,41 @@ def load_rows(path):
     return [(r[0], int(r[1], 16), int(r[2])) for r in lines if len(r) > 2]
 
 
-def run(census, cover_dir, route_dir, data_dir):
+def supplemental_scope(rows, covered, ran):
+    """Executed code outside the old census, in its seven programs only.
+
+    Keep the historical rows intact. Add each outside byte once if a validated
+    interpreter capture or a matched body's proof executed its instruction.
+    Static discovery alone is not execution evidence and adds nothing here.
+    The other modules remain separately reported debt, not silently included
+    in a measure whose matched table only supports these seven programs.
+    """
+    inside = collections.defaultdict(set)
+    for module, linear, size in rows:
+        inside[module].update(range(linear, linear + size))
+    by_module = {}
+    for module, census in sorted(inside.items()):
+        named = covered.get(module, set())
+        extra = (ran.get(module, set()) | named) - census
+        by_module[module] = dict(bytes=len(extra), credited=len(extra & named))
+    other = {module: len(bytes_) for module, bytes_ in sorted(ran.items()) if module not in inside}
+    return dict(basis="census plus executed instructions in the seven census programs",
+                bytes=sum(v["bytes"] for v in by_module.values()),
+                credited=sum(v["credited"] for v in by_module.values()),
+                by_module=by_module, other_modules_executed_bytes=other)
+
+
+def run(census, cover_dir, route_dir, data_dir, scope=None):
     from modules import load_all
     mods = {m.name.upper().replace(".EXE", ""): m for m in load_all(data_dir)}
     rows = load_rows(census)
     covered = progress.named_bytes(cover_dir, data_dir, route_dir)
-    totals, per_row = classify(rows, covered, route_instructions(route_dir), mods, read_original(), read_data_table())
+    audit = {}
+    ran = route_instructions(route_dir, mods, audit)
+    totals, per_row = classify(rows, covered, ran, mods, read_original(), read_data_table())
+    if scope is not None:
+        scope.update(supplemental_scope(rows, covered, ran))
+        scope["route_records"] = audit
     return rows, totals, per_row
 
 
@@ -201,13 +286,21 @@ def main():
     ap.add_argument("--data", required=True)
     ap.add_argument("--rows", type=int, default=0, help="also list the N rows with the most uncredited bytes")
     a = ap.parse_args()
-    rows, totals, per_row = run(a.census, a.named_cover, a.route_cover, a.data)
+    scope = {}
+    rows, totals, per_row = run(a.census, a.named_cover, a.route_cover, a.data, scope=scope)
     total = sum(totals.values())
     for k in CLASSES:
         print("%-9s %7d  %5.2f%%" % (k, totals[k], 100.0 * totals[k] / total))
     creditable = total - totals["data"] - totals["original"]
-    print("creditable denominator %d; Phase 2 share %.2f%% (whole census %.2f%%)"
+    print("old census creditable denominator %d; named-byte share %.2f%% (whole census %.2f%%)"
           % (creditable, 100.0 * totals["credited"] / creditable, 100.0 * totals["credited"] / total))
+    print("supplement outside census: %d bytes, %d credited; expanded seven-program share %.2f%%"
+          % (scope["bytes"], scope["credited"],
+             100.0 * (totals["credited"] + scope["credited"]) / (creditable + scope["bytes"])))
+    for module, counts in scope["by_module"].items():
+        print("  %-9s %5d extra, %4d credited" % (module, counts["bytes"], counts["credited"]))
+    print("route records (unique): %s" % scope["route_records"])
+    print("other modules, executed bytes outside score: %s" % scope["other_modules_executed_bytes"])
     if a.rows:
         left = sorted(((r["ran"] + r["never_run"], row, r) for row, r in zip(rows, per_row)), key=lambda x: -x[0])
         for n, (module, linear, size), r in left[:a.rows]:

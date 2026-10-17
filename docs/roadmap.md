@@ -152,12 +152,20 @@ not the recompilation:
       census (1,535 functions) with this project's regions as a private lead
       list.
       **Now:** 1,006 addresses matched; named code runs 147,448 of the
-      169,932 creditable census bytes (179,213 in all, 9,281 of them data or code that stays original; see
-      [progress.md](progress.md#what-is-measured)) (P2 87.43%, overall 95.46%): 964 census rows
+      169,933 creditable census bytes (179,213 in all, 9,280 of them data or code that stays original; see
+      [progress.md](progress.md#what-is-measured)): 964 census rows
       wholly, 293 in part. Credit is by byte since 16 October
       ([progress.md](progress.md#what-is-measured)): under it master's 946 routines
       held 132,537 bytes (132,638 by whole rows), batch g added 6,181 and
       batch h added 3,894, batch i 602, batch j 1,349, batch k 802, batch l 314, batch m 262, batch n 1,239 and batch o 268.
+      **Expanded scope (17 October):** add 5,927 bytes outside the census whose instructions routes or matched
+      proofs execute in these seven programs, 846 already named. The score now measures 148,294 / 175,860
+      creditable bytes (P2 85.11%, overall 94.75%); the earlier 87.43% used only the old census.
+      No matching was removed. Static-only discoveries and 18,469 validated executed bytes in other modules
+      remain an explicit scope backlog. The route-byte audit now decodes instruction lengths instead of
+      counting four-byte capture windows; hash/image validation rejects changed code. All 57,646 accepted
+      records agree with an independent decoder. VGAME `09EFA` is screened: 1,628 instructions / 4,552
+      bytes, no observer or fix at its entry; the private dossier is prepared, implementation/proof still open.
       **What is left:** `tools/census_reach.py` separates code with run
       evidence from code without (gate coverage logs only interpreted
       fallback instructions, so it cannot show what ran). Fresh interpreter
@@ -169,12 +177,13 @@ not the recompilation:
       run, and 208 rows / 18,901 bytes have no evidence; those include data
       (DSWAP `3DF3`, SETUP `27AE`'s strings) and need new routes or a
       data/code decision each.
-      **What the uncredited bytes are** (17 Oct, `tools/census_classify.py`, 31,765 bytes): 5,973 in
-      instructions routes ran (workable now), 14,781 decoded as code that no route runs (needs a new route
-      or a decision that it is unreachable), 886 that no walk reaches and nothing marks as data (to be read),
-      844 in entry-vector slots no route uses (SETUP `2D65`, PLAYER `3BFA`: the program's segment binder,
+      **What the old census's uncredited bytes are** (17 Oct, corrected instruction lengths,
+      `tools/census_classify.py`, 31,765 bytes): 5,486 in instructions routes ran (workable now),
+      15,127 decoded as code that no route runs (needs a new route or a decision that it is unreachable),
+      1,030 that no walk reaches and nothing marks as data (to be read),
+      842 in entry-vector slots no route uses (SETUP `2D65`, PLAYER `3BFA`: the program's segment binder,
       VGAME `0FAE:0002`, fills them with far jumps at start-up; 47 of VGAME's 84 run, so they are live code and
-      stay in the denominator), and the 9,281 bytes of data and original code that left it.
+      stay in the denominator), and the 9,280 bytes of data and original code that left it.
       The classifier's cross-checks: no excluded byte lies in a row our translation treats as code, and
       the one text rule that hid real code (PLAYER `1BE7`, a printf switch of compare-and-jump bytes that
       reads as text) was tightened; every range in `docs/census-data.tsv` was read in full.

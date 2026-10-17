@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 sys.path.insert(0, str(ROOT / "recompiler"))
 import census_classify as cc
 import progress
+from modules import Module
 
 SLOT = bytes.fromhex("ea00000000")
 RET = b"\xc3"
@@ -123,7 +124,101 @@ class TableTests(unittest.TestCase):
             self.assertEqual(cc.read_data_table(str(path))["SETUP"], {0x100, 0x101, 0x102, 0x103})
 
 
+class RouteTests(unittest.TestCase):
+    def capture(self, image, records, *, origin=0, relocs=()):
+        mod = Module("T.EXE", 0x1234, "exe", image, set(relocs), origin=origin)
+        audit = {}
+        with tempfile.TemporaryDirectory() as directory:
+            Path(directory, "route.cov").write_text(records, encoding="utf-8")
+            ran = cc.route_instructions(directory, {"T": mod}, audit)
+        return ran.get("T", set()), audit
+
+    def test_the_window_is_not_the_instruction_length(self):
+        # PUSH is one byte; MOV word ptr [1234],5678 is six. The same four-byte
+        # windows used by the runtime must earn one and six bytes respectively.
+        ran, audit = self.capture(bytes.fromhex("55909090c70634127856c3909090"),
+                                  "T.EXE 1234 0000 0000 55909090\n"
+                                  "T.EXE 1234 0000 0004 c7063412\n")
+        self.assertEqual(ran, {0} | set(range(4, 10)))
+        self.assertEqual(audit["accepted"], 2)
+
+    def test_wrong_hash_changed_code_and_unpacker_addresses_do_not_count(self):
+        ran, audit = self.capture(bytes.fromhex("b83412c3909090"),
+                                  "T.EXE 9999 0000 0000 b83412c3\n"
+                                  "T.EXE 1234 0000 0000 b87856c3\n"
+                                  "T.EXE 1234 1000 0000 b83412c3\n")
+        self.assertEqual(ran, set())
+        self.assertEqual((audit["identity"], audit["changed"], audit["outside"]), (1, 1, 1))
+
+    def test_relocated_operands_are_allowed_but_changed_opcodes_are_not(self):
+        ran, audit = self.capture(bytes.fromhex("b80000c3909090"),
+                                  "T.EXE 1234 0000 0000 b83412c3\n"
+                                  "T.EXE 1234 0000 0000 b93412c3\n", relocs={1})
+        self.assertEqual(ran, {0, 1, 2})
+        self.assertEqual((audit["accepted"], audit["changed"]), (1, 1))
+
+    def test_window_bytes_after_the_instruction_are_not_validated(self):
+        ran, _ = self.capture(bytes.fromhex("c3909090"), "T.EXE 1234 0000 0000 c3abcdef\n")
+        self.assertEqual(ran, {0})
+
+    def test_bound_jump_vectors_keep_all_five_bytes(self):
+        ran, audit = self.capture(SLOT * 4, "T.EXE 1234 0000 0005 ea341278\n")
+        self.assertEqual(ran, set(range(5, 10)))
+        self.assertEqual(audit["bound_slots"], 1)
+
+    def test_a_far_jump_outside_a_vector_table_cannot_change(self):
+        ran, audit = self.capture(SLOT, "T.EXE 1234 0000 0000 ea341278\n")
+        self.assertEqual(ran, set())
+        self.assertEqual(audit["changed"], 1)
+
+    def test_com_origin_is_not_a_byte_offset_or_a_segment_alias(self):
+        ran, _ = self.capture(bytes.fromhex("c3909090"),
+                              "T.EXE 1234 0010 0000 c3909090\n", origin=0x100)
+        self.assertEqual(ran, {0x100})
+
+    def test_duplicates_across_routes_count_once(self):
+        record = "T.EXE 1234 0000 0000 c3909090\n"
+        ran, audit = self.capture(bytes.fromhex("c3909090"), record * 2)
+        self.assertEqual(ran, {0})
+        self.assertEqual(audit["accepted"], 1)
+
+    def test_a_truncated_instruction_cannot_extend_beyond_the_image(self):
+        ran, audit = self.capture(bytes.fromhex("c7063412"), "T.EXE 1234 0000 0000 c7063412\n")
+        self.assertEqual(ran, set())
+        self.assertEqual(audit["decode"], 1)
+
+    def test_missing_or_malformed_capture_fails(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaises(ValueError):
+                cc.route_instructions(directory, {})
+        for record in ("T.EXE 1234 0000 0000\n", "T.EXE 1234 0000 0000 c3\n"):
+            with self.assertRaises(ValueError):
+                self.capture(b"\xc3", record)
+
+
 class ScoreTests(unittest.TestCase):
+    def test_supplement_adds_executed_bytes_once_without_changing_old_rows(self):
+        rows = [("T", 0, 3), ("T", 0x10, 0), ("U", 0, 1)]
+        scope = cc.supplemental_scope(rows, {"T": {2, 3, 4, 7}},
+                                      {"T": {2, 3, 4, 5}, "U": {0, 1}, "DRIVER.117": {0, 1}})
+        self.assertEqual(scope["bytes"], 5)   # T: 3,4,5,7; U: 1
+        self.assertEqual(scope["credited"], 3)
+        self.assertEqual(scope["by_module"]["T"], dict(bytes=4, credited=3))
+        self.assertEqual(scope["other_modules_executed_bytes"], {"DRIVER.117": 2})
+        self.assertEqual(rows[1], ("T", 0x10, 0))
+
+    def test_a_zero_size_row_does_not_hide_executed_code(self):
+        scope = cc.supplemental_scope([("T", 0x10, 0)], {"T": {0x10}}, {"T": {0x10, 0x11}})
+        self.assertEqual((scope["bytes"], scope["credited"]), (2, 1))
+
+    def test_score_includes_the_supplement_in_both_numerator_and_denominator(self):
+        data = {"census": {"matched_bytes": 50, "bytes": 200, "creditable_bytes": 100,
+                           "supplemental": {"credited": 10, "bytes": 50}},
+                "phases": {"P2": [{"item": "x", "weight": 1, "done": "census_matched_bytes", "kind": "measured"}]},
+                "phase_weights": {"P2": 1}}
+        out, _, _ = progress.compute(data)
+        self.assertAlmostEqual(out["P2"], 40.0)
+
     def test_the_measure_uses_the_creditable_bytes(self):
         data = {"census": {"matched_bytes": 50, "bytes": 200, "creditable_bytes": 100},
                 "phases": {"P2": [{"item": "x", "weight": 1, "done": "census_matched_bytes", "kind": "measured"}]},

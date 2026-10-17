@@ -11,8 +11,8 @@ more than once, what it costs). State as of 17 October 2026.
 17 October: `p2-batch-o` is gated and landed (three bodies; see Phase 2 below). Stopped for handoff at the
 owner's request (17 Oct, 16:14 PDT): everything is committed and pushed, no process is running, the gate worktree
 `D:/f117-wt/gate-h` is clean at `aa8991b` (master is ahead of it by doc and tool commits only).
-**Start here:** (1) the census-gap decision below; (2) ask the owner before a longer fullscreen air-to-air timing
-run; (3) Phase 2 batch p. Resume the roadmap's plan, Phase 2 first.
+**Start here:** Phase 2 batch p; the census-gap decision is implemented below. Ask the owner before a longer
+fullscreen air-to-air timing run. Resume the roadmap's plan, Phase 2 first.
 
 **Process notes (16 October):** screen leads with `p2-batch-g-accept/screen_leads.py` before any
 agent starts (five of the first twelve picks were blocked or already inline); agents run `pin.py` with
@@ -29,42 +29,46 @@ session log. Earlier detail is in `git log -p handoff.md`.
 
 Batches n and o are landed, built and CI-green; no private processes are running.
 
-Scoreboard: P1 100.00%, P2 87.43%, P3 97.22%, All 95.46% (P4 and the decided-against P3 items are no longer scored)
+Scoreboard: P1 100.00%, P2 85.11%, P3 97.22%, All 94.75% (P4 and the decided-against P3 items are no longer scored)
 (`py tools/progress.py --title`). Phase 2: 1,006 addresses matched; named code runs
-147,448 of 169,932 creditable census bytes (credit by byte since 16 October). **The denominator was split on
-17 October (owner):** 9,281 of the 179,213 census bytes are data or code that stays original and no longer count
+147,448 of 169,933 creditable historical census bytes, plus 846 of 5,927 proven bytes outside its rows:
+**148,294 / 175,860 in the expanded seven-program scope** (credit by byte since 16 October).
+**The denominator was split on 17 October (owner):** 9,280 of the 179,213 census bytes are data or code that stays original and no longer count
 (`tools/census_classify.py`, `docs/census-data.tsv`, `docs/census-original.tsv`; rule in docs/progress.md).
-The jump from 83.02% to 87.28% at the change was the metric, not new matching. The 844 bytes of unused
+The jump from 83.02% to 87.28% at the change was the metric, not new matching. The 842 bytes of unused
 entry-vector slots (SETUP `2D65`, PLAYER `3BFA`...) stay in the denominator: checked 17 Oct, they are live jump
 vectors filled by each program's segment binder (VGAME `0FAE:0002` is `vgame_bind_segment_entries`; the same
 binder is in SETUP, PLAYER, DSWAP, START and END), and 47 of VGAME's 84 run. An earlier memory-dump comparison
 that suggested otherwise used a misaligned match; locate a program in a dump by many aligned chunks.
 After any batch, rerun `progress.py --census ...` as before: it now also stores the class counts.
 
-### The census undercounts the game's code (found 17 Oct; owner left the decision to me, not yet taken)
+### The census scope was expanded (17 Oct; owner left this decision to me)
 
-The denominator is the Reimp's census (1,535 rows, 179,213 bytes). Measured with `D:/f117-gate/census-gap-20261017/`
-(`gap.py` per module: translated instructions, route-run instructions, census rows; `gap2.py` characterises the gaps;
-`gap.json` is the data; interpreter captures of all 45 routes, coverage from the gate):
-- **Routes run 24,207 bytes outside every census row**, 462 of them credited. About 18,400 are in files the census
-  does not cover at all: the sound drivers ASOUND/ISOUND/RSOUND (`.117` overlays and `.LOG` files, 14,000 bytes),
-  MGRAPHIC.EXE (3,228), F117.COM (844), MISC.EXE (68). About 5,800 are inside the seven programs (VGAME 3,868,
-  START 1,172, SETUP 354, END 168, MPS_LOGO 91, DSWAP 81, PLAYER 46).
-- **Translated code outside the census rows:** 21,349 bytes in the seven programs (VGAME 8,767, SETUP 3,839,
-  START 2,587, DSWAP 2,241, MPS_LOGO 1,738, PLAYER 1,308, END 869) and about 29,800 in the other modules
-  (including the 325-byte LZEXE stub, which is not game code).
-- **143 census rows have size 0** (a bare entry from the Reimp), so they add nothing to the denominator or to
-  credit. The biggest known: **VGAME `09EFA` `prepass_display_body`**: 4,552 translated bytes, 3,411 run by routes,
-  not matched, not counted. VGAME's other gap runs of 250-550 bytes (`149F9`, `14583`, `13974`, `05737`)
-  are mostly not run by the routes; what they are has not been read.
-- **Not done:** deciding whether to add these bytes to the denominator and how. My recommendation: yes for code
-  the routes run or the translation knows in the seven programs (it is certainly game code; adding 21,349 bytes
-  would put Phase 2 near 77%; adding the other modules too, near 67%), reported as a separate, named figure so the
-  jump is not mistaken for lost work. The matched table names only the seven programs, so the driver files would
-  first need engine support (their code loads at run-time segments). Do not add anything without checking each class
-  the way `tools/census_classify.py` was checked (aligned dumps, second program, break tests).
-- Lead from this: **VGAME `09EFA`** is a large, executed, unmatched function. Screen it with the kit before
-  small leads; its census row is size 0, so give the kit `--module VGAME --seg 0 --ip 9EFA` and set `length` by hand.
+Keep the historical census (1,535 rows, 179,213 bytes) for comparison; add instructions actually executed
+outside its rows in those seven programs. `tools/census_classify.py` computes a separate supplement and
+`progress.py --census ...` refreshes it automatically. No game source or matched body changed.
+
+- **Corrected the initial audit:** `recomp.c` writes four-byte windows, not instruction lengths. The earlier
+  `gap.py`/`gap.json` route-byte figures must not be used. The classifier now decodes the image, checks the
+  file hash and captured instruction bytes, masks relocation words and accepts the known bound jump vectors.
+  All 57,646 accepted unique records agree in length with Capstone; 124 changed and 3 undecodable records are
+  rejected and reported. ROM-free regressions plant short/long instructions, stale hashes, changed code,
+  relocation/vector cases, duplicate records and COM origins. Evidence:
+  `D:/f117-gate/census-gap-20261017/{check_decoders.py,decoder-verdict.json,validated-ran.json}`.
+- **Added:** 5,524 validated route-run bytes plus 403 additional fixture-proven named bytes = **5,927**, of
+  which **846** are credited. By module, bytes/credited: VGAME 4,060/311, START 1,186/291, SETUP 288/51,
+  END 171/24, DSWAP 135/98, MPS_LOGO 64/49, PLAYER 23/22. The old census's uncredited classes also change
+  under actual instruction lengths (roadmap); one formerly excluded byte returns, denominator 169,933.
+  P2 87.43% -> 85.11%, overall 95.46% -> 94.75% is a scope correction, not lost matching.
+- **Still outside the score:** static-only discoveries (the earlier translator count found 21,349 outside
+  census bytes in the seven programs; its instruction lengths were decoded already), and **18,469 validated
+  executed bytes in other modules**, individually reported by the classifier. Audit static-only code before
+  adding it; matching the launcher, resident graphics and sound drivers also needs module/segment support.
+  The score explicitly describes the expanded seven-program scope, not all game code.
+- **Batch p lead screened:** VGAME `09EFA` (`prepass_display_body`) has a prepared private dossier at
+  `D:/f117-gate/p2-vgame-9efa/`: **1,628 instructions / 4,552 bytes**, RET at `B0C1`, length must enclose
+  4,552 bytes. Its zero-size census row no longer hides its executed code. No observer/fix at the entry.
+  Body, fixtures, seeds, mutations and route proof are **not done**; config still has placeholder names.
 
 ### Presentation: latest (15 October, evening)
 
@@ -390,7 +394,7 @@ role, the panel review; the coastline and the other decided-against items left t
 
 ## Next steps
 
-0. **Open questions for the owner** (do not assume): extend the Phase 2 denominator as above; whether to run a
+0. **Open questions for the owner** (do not assume): whether to run a
    longer fullscreen air-to-air timing test on his 4K screen (strike and landing passed, air-to-air missed p99 on a
    short sample; the run script is `D:/f117-gate/present-v2/stage4-fullscreen-20261017/stage4.py`, live input is
    ignored during a replay, but other load on the machine would disturb the timing); whether Stage 3's remaining skips and slower machines, and

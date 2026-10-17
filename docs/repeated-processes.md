@@ -330,6 +330,16 @@ verdict yourself, then land a batch with one gate.
 | full gate | as above | one per batch |
 | census refresh (`reimp_names.py`, then `progress.py --census`) | about a minute for new leads; existing TSV refresh <1 s | the lead list changes only when the Reimp does; refresh the census each batch; explicitly proved interior spans retain credit without double counting |
 
+The census refresh now also validates and decodes the interpreter captures and refreshes the executed-code
+supplement outside the historical rows (17 Oct 2026; about 4 s for the current 45-route corpus).
+`py tests/test_census_classify.py` and `py tests/test_progress.py` cover classification, four-byte capture
+windows versus actual instruction lengths, relocated operands, bound vectors, stale hashes, changed code,
+COM origins, duplicate records and supplemental credit without duplicate counting (37 tests together).
+The private `census-gap-20261017/check_decoders.py` additionally checks every accepted instruction's length
+against Capstone: 57,646 agreements, zero differences; hashes of the capture corpus and tools are retained in
+`decoder-verdict.json`. This is a tooling/metric change; guest sources, matched bodies and parity evidence
+are unchanged. The supplement excludes static-only discoveries and reports other modules as unscored debt.
+
 **Optimizer stalls (16 Oct).** START `1308` expanded four MOVSW/MOVSB
 palette copies into one optimizer graph: the batch's two normal /O2 compiles
 were stopped after more than 40 minutes. Compiling each new routine alone

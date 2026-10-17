@@ -77,7 +77,7 @@
         "weight": 35,
         "done": "census_matched_bytes",
         "kind": "measured",
-        "evidence": "Counted as the census bytes of routines that have a named, explained matched equivalent; names that are only leads (reimp_names.py) do not count."
+        "evidence": "Counted as bytes of routines that have a named, explained matched equivalent: the historical census plus executed instructions outside its rows in the same seven programs. Names that are only leads (reimp_names.py) do not count."
       },
       {
         "item": "Matched functions replacing translations",
@@ -147,7 +147,7 @@
     ]
   },
   "census": {
-    "_about": "From the Reimp's census (tools/reimp_names.py output). matched_bytes: census bytes inside instructions matched code runs (lockstep and route evidence); matched_functions: rows wholly credited; partial_functions: rows in part. Refreshed by tools/progress.py --census FILE --named-cover DIR --route-cover DIR --data DIR.",
+    "_about": "Historical census from tools/reimp_names.py. matched_bytes: census bytes inside instructions matched code runs (lockstep and route evidence); matched_functions: rows wholly credited; partial_functions: rows in part. supplemental: executed instruction bytes outside those rows, within the same seven programs; added to numerator and denominator for scoring. Other modules are reported separately. Refreshed by tools/progress.py --census FILE --named-cover DIR --route-cover DIR --data DIR.",
     "functions": 1535,
     "bytes": 179213,
     "matched_functions": 964,
@@ -155,13 +155,65 @@
     "partial_functions": 293,
     "classes": {
       "credited": 147448,
-      "ran": 5973,
-      "never_run": 14781,
-      "unreached": 886,
-      "slots": 844,
-      "data": 6907,
+      "ran": 5486,
+      "never_run": 15127,
+      "unreached": 1030,
+      "slots": 842,
+      "data": 6906,
       "original": 2374
     },
-    "creditable_bytes": 169932
+    "creditable_bytes": 169933,
+    "supplemental": {
+      "basis": "census plus executed instructions in the seven census programs",
+      "bytes": 5927,
+      "credited": 846,
+      "by_module": {
+        "DSWAP": {
+          "bytes": 135,
+          "credited": 98
+        },
+        "END": {
+          "bytes": 171,
+          "credited": 24
+        },
+        "MPS_LOGO": {
+          "bytes": 64,
+          "credited": 49
+        },
+        "PLAYER": {
+          "bytes": 23,
+          "credited": 22
+        },
+        "SETUP": {
+          "bytes": 288,
+          "credited": 51
+        },
+        "START": {
+          "bytes": 1186,
+          "credited": 291
+        },
+        "VGAME": {
+          "bytes": 4060,
+          "credited": 311
+        }
+      },
+      "other_modules_executed_bytes": {
+        "ASOUND.117": 5338,
+        "ASOUND.LOG": 2615,
+        "F117.COM": 831,
+        "ISOUND.117": 983,
+        "ISOUND.LOG": 1063,
+        "MGRAPHIC": 3233,
+        "MISC": 65,
+        "RSOUND.117": 2213,
+        "RSOUND.LOG": 2128
+      },
+      "route_records": {
+        "accepted": 57646,
+        "changed": 124,
+        "bound_slots": 161,
+        "decode": 3
+      }
+    }
   }
 }

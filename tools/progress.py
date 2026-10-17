@@ -149,18 +149,22 @@ def refresh_classes(data, path, cover_dir, data_dir, route_dir):
     credit. Run after refresh_census; it decodes the game's programs, which the credit step does not need."""
     import census_classify
     c = data["census"]
-    _, totals, _ = census_classify.run(path, cover_dir, route_dir, data_dir)
+    scope = {}
+    _, totals, _ = census_classify.run(path, cover_dir, route_dir, data_dir, scope=scope)
     assert totals["credited"] == c["matched_bytes"], "census_classify and progress disagree on the credit"
     assert sum(totals.values()) == c["bytes"], "census_classify and progress disagree on the census size"
     c["classes"] = {k: totals[k] for k in census_classify.CLASSES}
     c["creditable_bytes"] = c["bytes"] - totals["data"] - totals["original"]
+    c["supplemental"] = scope
 
 
 def compute(data):
     c = data["census"]
     share, fixed, catalogued, closed = fixes_share()
+    supplemental = c.get("supplemental", {})
     measures = {
-        "census_matched_bytes": c["matched_bytes"] / c.get("creditable_bytes", c["bytes"]),
+        "census_matched_bytes": ((c["matched_bytes"] + supplemental.get("credited", 0)) /
+                                 (c.get("creditable_bytes", c["bytes"]) + supplemental.get("bytes", 0))),
         "fixes_share": share,
     }
     out = {}
@@ -209,6 +213,10 @@ def main():
     print("census: %d of %d creditable bytes (%d in all; data and original code left out) run by named code; %d of %d functions whole, %d in part; fixes %d of %d actionable reports; %d historical reports closed without fixes"
           % (c["matched_bytes"], c.get("creditable_bytes", c["bytes"]), c["bytes"], c["matched_functions"], c["functions"],
              c.get("partial_functions", 0), fixed, catalogued, closed))
+    if "supplemental" in c:
+        s = c["supplemental"]
+        print("expanded seven-program scope: %d of %d creditable bytes; adds %d executed bytes outside census (%d named); static-only gaps and other modules remain outside this measure"
+              % (c["matched_bytes"] + s["credited"], c["creditable_bytes"] + s["bytes"], s["bytes"], s["credited"]))
     print(title(pct))
 
 

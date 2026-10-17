@@ -72,6 +72,23 @@ stays on the roadmap.
   loop, and the divide-error handler no route reaches. When in doubt a byte stays in the denominator; a
   byte that a route ran or a matched body covers is credited whatever it was judged to be. A routine
   that is only hard, blocked by tooling or not yet proved belongs in the denominator.
+  **Executed code outside the census is now included** (17 October 2026). The old census rows and
+  their figures stay available for comparison. A separate `census.supplemental` count adds each byte
+  outside them once when an interpreter route or a matched body's proof executes its instruction,
+  within the same seven programs. The score uses `(matched_bytes + supplemental.credited) /
+  (creditable_bytes + supplemental.bytes)`. Initially this adds 5,927 bytes, 846 already named:
+  148,294 / 175,860 creditable bytes, P2 85.11% and overall 94.75%, versus 87.43% and 95.46%
+  before the scope correction. This is a denominator change, not lost matched work.
+  The route captures store four-byte windows, **not instruction lengths**: the tool decodes the
+  instruction, checks the module's file hash and its captured opcode/operand bytes against the image,
+  allows relocated words and the known bound jump vectors, and rejects changed or undecodable code.
+  The 127 rejected unique records are reported alongside 57,646 accepted records; they add no bytes.
+  Fixture-only named bytes count by the same proof rule as inside the old census. Static discoveries
+  without execution evidence are still an audit backlog. The launcher, resident graphics library and
+  sound drivers have 18,469 validated executed bytes reported separately; extending matching and the
+  score to these modules remains open. Thus the score measures the expanded seven-program scope,
+  not all game code. `census_classify.py` prints the supplement, module counts and rejected-record counts;
+  the existing `progress.py --census ...` command refreshes both old and expanded counts together.
 - **Phase 3, fixes:** fixes available in `src/fixes/fixes.c` over the
   actionable reports catalogued as `### Dn.` in `docs/bugs.md`. An explicit
   `Disposition. Closed:` excludes an unestablished historical report;
