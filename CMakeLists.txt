@@ -717,6 +717,18 @@ if(F117R_BUILD_TESTS)
       --only PLAYER.EXE:13CE)
     add_test(NAME matched_player_show_picture COMMAND func_lockstep --states 5000
       --only PLAYER.EXE:7EA)
+    add_test(NAME matched_end_leave_program COMMAND func_lockstep --states 5000
+      --only END.EXE:3F44)
+    add_test(NAME matched_start_picture_load COMMAND func_lockstep --states 5000
+      --only START.EXE:8782)
+    add_test(NAME matched_player_play_out_and_finish COMMAND func_lockstep --states 5000
+      --only PLAYER.EXE:19A)
+    add_test(NAME matched_end_pic_rows_to_page COMMAND func_lockstep --states 5000
+      --only END.EXE:4648)
+    add_test(NAME matched_vgame_fill_box COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:246)
+    add_test(NAME matched_start_exit COMMAND func_lockstep --states 5000
+      --only START.EXE:9094)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000

@@ -65112,7 +65112,437 @@ unpack:
 #undef XB
 }
 
+/* END 3F44, leave the program: shut the machine down and end END.EXE with
+ * exit code `code` (BP+4), which the shell reads to choose what runs next.
+ * END's twin of START 76D1, without the fatal-exit message. In order:
+ *   - the driver's sound thunk 05FA:25F3 gets 0 (silence; caller POP BX);
+ *   - when [7220] (the memory block END allocated) is not zero, 2BCB gives
+ *     it back to DOS (POP BX);
+ *   - when the byte [2608] says Ctrl-Break was hooked, 457A puts the INT 1Bh
+ *     vector back from [2609]; when [50CB] says the timer was hooked, 4BCA
+ *     restores the BIOS timer;
+ *   - when code is 0, int86(10h, &r, &r) with AH 0 and AL 3 in the 14-byte
+ *     register block on the frame (BP-0Eh): text mode 3 (ADD SP,6);
+ *   - the driver entry 05FA:25D0 (no arguments);
+ *   - exit(code) (4F8A, POP BX). exit does not come back on the machine, so
+ *     the closing POP BX / MOV SP,BP / POP BP / RET run only when it does.
+ * Every near callee returns with a plain RET and both driver entries with a
+ * far RET. The compares' flags and the SUB AX,AX and ADD SP,6 flags are kept. */
+static int end_leave_program(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { CODE = 4, REGS = -0x0E };
+#define LB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while(0)
+#define LPOP() (c->r[R_BX] = cpu_pop16(c))
+#define LPUSHM(s_,o_) do { const uint16_t s__ = (s_), o__ = (uint16_t)(o_); const uint16_t v__ = seg_read16(c, s__, o__); \
+    c->r[R_SP] = (uint16_t)(c->r[R_SP] - 2); \
+    seg_write16(c, c->seg[S_SS], c->r[R_SP], (c->model >= CPU_80286) ? v__ : seg_read16(c, s__, o__)); } while(0)
+#define LRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while(0)
+#define LNEAR(at_,target_,ret_) do { SM4_NEED(1,(at_)); LRUN(guest_call_pop(m,(target_),(ret_),0)); } while(0)
+#define LFAR(at_,ret_) do { SM4_NEED(1,(at_)); LRUN(guest_call_far(m,(at_),(ret_))); } while(0)
+    if (!room(c, 5)) return 0;
+    LB(5, 0x3F44);
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_SP] = (uint16_t)alu_op(c, 5, c->r[R_SP], 0x000E, 1);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_AX], 1);
+    x86_push_reg(c, R_AX);
+    LFAR(0x3F4D, 0x3F52);                                         /* sound driver: silence */
+    LB(3, 0x3F52);
+    LPOP();
+    alu_op(c, 7, ds_get(c, 0x7220), 0x0000, 1);
+    if (x86_cond(c, 4)) goto hooks;
+    LB(1, 0x3F5A);
+    LPUSHM(c->seg[S_DS], 0x7220);
+    LNEAR(0x3F5E, 0x2BCB, 0x3F61);                                /* free the memory block */
+    LB(1, 0x3F61);
+    LPOP();
+hooks:
+    LB(2, 0x3F62);
+    alu_op(c, 7, ds_get8(c, 0x2608), 0x00, 0);
+    if (x86_cond(c, 4)) goto timer;
+    LNEAR(0x3F69, 0x457A, 0x3F6C);                                /* INT 1Bh back */
+timer:
+    LB(2, 0x3F6C);
+    alu_op(c, 7, ds_get8(c, 0x50CB), 0x00, 0);
+    if (x86_cond(c, 4)) goto mode;
+    LNEAR(0x3F73, 0x4BCA, 0x3F76);                                /* BIOS timer back */
+mode:
+    LB(2, 0x3F76);
+    alu_op(c, 7, bp_get(c, CODE), 0x0000, 1);
+    if (x86_cond(c, 5)) goto driver;
+    LB(7, 0x3F7C);
+    mem_write8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] + REGS + 1)), 0x00);   /* AH 0: set mode */
+    mem_write8(c, phys(c->seg[S_SS], (uint16_t)(c->r[R_BP] + REGS)), 0x03);       /* AL 3: text 80x25 */
+    c->r[R_AX] = (uint16_t)(c->r[R_BP] + REGS);
+    x86_push_reg(c, R_AX);
+    x86_push_reg(c, R_AX);
+    c->r[R_AX] = 0x0010;
+    x86_push_reg(c, R_AX);
+    LNEAR(0x3F8D, 0x519E, 0x3F90);                                /* int86(10h, &r, &r) */
+    LB(1, 0x3F90);
+    c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 0x0006, 1);
+driver:
+    LFAR(0x3F93, 0x3F98);
+    LB(1, 0x3F98);
+    LPUSHM(c->seg[S_SS], c->r[R_BP] + CODE);
+    LNEAR(0x3F9B, 0x4F8A, 0x3F9E);                                /* exit(code) */
+    LB(4, 0x3F9E);
+    LPOP();
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef LB
+#undef LPOP
+#undef LPUSHM
+#undef LRUN
+#undef LNEAR
+#undef LFAR
+}
+
+/* START 8782, picture_load(source, page): unpack a compressed 320 by 200
+ * picture onto a page, row by row, through the graphics driver. Arguments:
+ * the segment of the compressed data (bp+4) and the segment of the page
+ * (bp+6). The decoder's input is reset first: its refill routine [8D6A]
+ * becomes 819Dh (which copies 200h bytes from the far source [6497]:[6499]
+ * into the input buffer at 6235h and advances [6499]), the buffer position
+ * [649D] is set to 200h (empty, so the first row refills it), the source
+ * offset [6499] to 0 and the source segment [6497] to the first argument.
+ * ES becomes the page segment, the driver's far 0A95:6ADF is told of it,
+ * and the empty near hook 885E (a bare RET) runs. Then, with the row
+ * [8D68] from 0 and the bytes left [8D60] from FA00h (320 * 200) down by
+ * 140h to zero, each row asks the driver (0A95:6ADA, DI = row) for the
+ * row's page offset, kept at [8D64]; decodes the row into the line buffer
+ * 8C20h (885F, DI = offset: 0 and 1 start the decoder); hands the buffer
+ * to the driver (0A95:6AB7, DI = offset, BP = 8C20h, BX = row) and ends
+ * the row (0A95:6ACB, DI = offset). Every register argument is reloaded
+ * from memory before its call. DI, SI, ES and BP are saved and restored
+ * (BP twice: the frame, then again because the loop uses BP as the buffer
+ * pointer); AX is whatever the last driver call left; the caller removes
+ * the arguments. The driver entries are 5-byte JMP FAR thunks in the data
+ * segment (filled in when the driver loads) and return with RETF; 885E
+ * and 885F return with a plain RET and take no stack arguments. END 4722
+ * is the same routine with END's cells. */
+static int start_picture_load(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { SOURCE = 4, PAGE = 6 };
+#define PLB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while(0)
+#define PLRUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call_);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define PLNEAR(at_,target_,ret_) do { SM4_NEED(1,(at_)); PLRUN(guest_call_pop(m,(target_),(ret_),0)); } while(0)
+#define PLFAR(at_,ret_) do { SM4_NEED(1,(at_)); PLRUN(guest_call_far(m,(at_),(ret_))); } while(0)
+    if (!room(c, 14)) return 0;
+    PLB(14, 0x8782);
+    x86_push_reg(c, R_BP); c->r[R_BP] = c->r[R_SP];
+    x86_push_reg(c, R_DI); x86_push_reg(c, R_SI); cpu_push16(c, c->seg[S_ES]); x86_push_reg(c, R_BP);
+    /* The decoder's input: refill routine, an empty buffer, the source at offset 0. */
+    c->r[R_AX] = 0x819D; ds_put(c, 0x8D6A, c->r[R_AX]);
+    ds_put(c, 0x649D, 0x0200);
+    ds_put(c, 0x6499, 0x0000);
+    c->r[R_AX] = bp_get(c, SOURCE); ds_put(c, 0x6497, c->r[R_AX]);
+    c->r[R_AX] = bp_get(c, PAGE); c->seg[S_ES] = c->r[R_AX];
+    PLFAR(0x87A6, 0x87AB);                                        /* the driver starts the picture */
+    PLNEAR(0x87AB, 0x885E, 0x87AE);                               /* the hook (a bare RET) */
+    PLB(2, 0x87AE);
+    ds_put(c, 0x8D68, 0x0000);                                    /* row 0 */
+    ds_put(c, 0x8D60, 0xFA00);                                    /* 320 * 200 bytes left */
+row:
+    PLB(1, 0x87BA);
+    c->r[R_DI] = ds_get(c, 0x8D68);
+    PLFAR(0x87BE, 0x87C3);                                        /* the row's address */
+    PLB(1, 0x87C3);
+    ds_put(c, 0x8D64, c->r[R_AX]);
+    PLNEAR(0x87C6, 0x885F, 0x87C9);                               /* decode the row into 8C20 */
+    PLB(3, 0x87C9);
+    c->r[R_DI] = ds_get(c, 0x8D64); c->r[R_BP] = 0x8C20; c->r[R_BX] = ds_get(c, 0x8D68);
+    PLFAR(0x87D4, 0x87D9);                                        /* the line buffer to the driver */
+    PLB(1, 0x87D9);
+    c->r[R_DI] = ds_get(c, 0x8D64);
+    PLFAR(0x87DD, 0x87E2);                                        /* the row's end */
+    PLB(3, 0x87E2);
+    ds_put(c, 0x8D68, (uint16_t)alu_inc(c, ds_get(c, 0x8D68), 1));
+    ds_put(c, 0x8D60, (uint16_t)alu_op(c, 5, ds_get(c, 0x8D60), 0x0140, 1));
+    if (x86_cond(c, 5)) goto row;
+    PLB(7, 0x87EE);
+    c->r[R_BP] = cpu_pop16(c); c->seg[S_ES] = cpu_pop16(c); c->r[R_SI] = cpu_pop16(c); c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP]; c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef PLB
+#undef PLRUN
+#undef PLNEAR
+#undef PLFAR
+}
+
+/* PLAYER 0x0019A, play_out_and_finish(mode): the end of a picture file's playback. Called with
+ * one word argument and a near frame (BP, SI saved); the caller cleans it up (plain RET).
+ *  - First it waits for the player to catch up with the streamer: while the play position, the
+ *    long [1E6E] (low) : [1E70] (high), differs from the end of the last complete picture, the
+ *    long [2094] : [2096], it calls 0x00696 (poll the intro's controls, no arguments, plain RET);
+ *    the timer's frame step moves the position on meanwhile. Both words are reloaded into AX
+ *    and DX after every poll; each test compares the low words, then the high words.
+ *  - Then, when mode > 2 (signed), SI = mode and it waits for the sound driver: request 2
+ *    through the loaded driver thunk 02A3:13B9 (far, the caller pops the word); while the
+ *    answer in AX is nonzero it polls the controls again (0x00696) and asks again for as long
+ *    as SI is still above 2 (signed; SI is the caller's register across both calls).
+ *  - Last, 0x001F6 (finish: stop the driver, restore the timer and screen, exit) is called
+ *    with 0, plain RET, the caller pops the word. It does not return on the real machine; when
+ *    it does, SI, SP and BP are restored and the routine returns near. */
+static int player_play_out_and_finish(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { POS_LO = 0x1E6E, POS_HI = 0x1E70, USED_LO = 0x2094, USED_HI = 0x2096,
+           POLL = 0x0696, FINISH = 0x01F6, DRIVER_REQUEST = 2 };
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define XCMP(a_, b_) ((void)alu_op(c, 7, (a_), (b_), 1))
+#define XDROP() (c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], 2, 1))
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define XNEAR(at_, target_, ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+#define XFAR(at_, ret_) do { SM4_NEED(1, (at_)); XRUN(guest_call_far(m, (at_), (ret_))); } while (0)
+    if (!room(c, 7)) return 0;
+    /* Has the player shown the last complete picture? */
+    XB(7, 0x019A);
+    x86_push_reg(c, R_BP);
+    c->r[R_BP] = c->r[R_SP];
+    x86_push_reg(c, R_SI);
+    c->r[R_AX] = ds_get(c, USED_LO);
+    c->r[R_DX] = ds_get(c, USED_HI);
+    XCMP(ds_get(c, POS_LO), c->r[R_AX]);
+    if (x86_cond(c, 5)) goto poll;
+    XB(2, 0x01AB);
+    XCMP(ds_get(c, POS_HI), c->r[R_DX]);
+    if (x86_cond(c, 4)) goto caught_up;
+poll:
+    /* Not yet: poll the controls until it has. */
+    XNEAR(0x01B1, POLL, 0x01B4);
+    XB(4, 0x01B4);
+    c->r[R_AX] = ds_get(c, USED_LO);
+    c->r[R_DX] = ds_get(c, USED_HI);
+    XCMP(ds_get(c, POS_LO), c->r[R_AX]);
+    if (x86_cond(c, 5)) goto poll;
+    XB(2, 0x01C1);
+    XCMP(ds_get(c, POS_HI), c->r[R_DX]);
+    if (x86_cond(c, 5)) goto poll;
+caught_up:
+    /* Modes above 2 also wait for the sound driver. */
+    XB(2, 0x01C7);
+    XCMP(bp_get(c, 4), 2);
+    if (x86_cond(c, 14)) goto finish;
+    XB(1, 0x01CD);
+    c->r[R_SI] = bp_get(c, 4);
+ask_driver:
+    XB(2, 0x01D0);
+    c->r[R_AX] = DRIVER_REQUEST;
+    x86_push_reg(c, R_AX);
+    XFAR(0x01D4, 0x01D9);
+    XB(3, 0x01D9);
+    XDROP();
+    c->r[R_AX] = (uint16_t)alu_op(c, 1, c->r[R_AX], c->r[R_AX], 1);
+    if (x86_cond(c, 4)) goto finish;
+    XNEAR(0x01E0, POLL, 0x01E3);
+    XB(2, 0x01E3);
+    XCMP(c->r[R_SI], 2);
+    if (x86_cond(c, 15)) goto ask_driver;
+finish:
+    /* finish(0); were it to come back, the frame unwinds. */
+    XB(2, 0x01E8);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_AX], 1);
+    x86_push_reg(c, R_AX);
+    XNEAR(0x01EB, FINISH, 0x01EE);
+    XB(5, 0x01EE);
+    XDROP();
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef XFAR
+#undef XNEAR
+#undef XRUN
+#undef XDROP
+#undef XCMP
+#undef XB
+}
+
+/* END 0x04648, pic_rows_to_page(handle, page): the picture loader's row
+ * loop (0x0100D calls it with the handle its DOS open returned and the
+ * page it was given). [3F80] is set to 4160h, the handle goes to [1EE1]
+ * and the page to [3F78]; 0x47FE (a bare RET) is called, then two
+ * graphics-driver entries (05FA:2512, 05FA:2521) with SI = the page.
+ * Then for each of the 200 rows ([3F7E] counting up from 0 while [3F76]
+ * steps from FA00h down by 140h, one 320-pixel row, to zero): the driver
+ * entry 05FA:251C with DI = the row gives the row's address, kept in
+ * [3F7A]; 0x47FF decodes one row of the picture into the line buffer at
+ * 3E36h; the entry 05FA:24F9 gets DI = the address, BP = the line buffer
+ * and BX = the row, and 05FA:2503 DI = the address again. DI, SI, ES and
+ * BP are saved around it all (BP twice: the frame and a plain push, the
+ * plain one restored before MOV SP,BP). The near callees return with a
+ * plain RET, the driver entries with RETF; none takes stack arguments. */
+static int end_pic_rows_to_page(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { HANDLE = 4, PAGE = 6 };
+#define PRB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while(0)
+#define PRRUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call_);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define PRNEAR(at_,target_,ret_) do { SM4_NEED(1,(at_)); PRRUN(guest_call_pop(m,(target_),(ret_),0)); } while(0)
+#define PRFAR(at_,ret_) do { SM4_NEED(1,(at_)); PRRUN(guest_call_far(m,(at_),(ret_))); } while(0)
+    if (!room(c, 12)) return 0;
+    PRB(12, 0x4648);
+    x86_push_reg(c, R_BP); c->r[R_BP] = c->r[R_SP];
+    x86_push_reg(c, R_DI); x86_push_reg(c, R_SI); cpu_push16(c, c->seg[S_ES]); x86_push_reg(c, R_BP);
+    c->r[R_AX] = 0x4160; ds_put(c, 0x3F80, c->r[R_AX]);
+    c->r[R_AX] = bp_get(c, HANDLE); ds_put(c, 0x1EE1, c->r[R_AX]);
+    c->r[R_AX] = bp_get(c, PAGE); ds_put(c, 0x3F78, c->r[R_AX]);
+    PRNEAR(0x4661, 0x47FE, 0x4664);
+    /* The page to the driver. */
+    PRB(1, 0x4664); c->r[R_SI] = ds_get(c, 0x3F78);
+    PRFAR(0x4668, 0x466D);
+    PRFAR(0x466D, 0x4672);
+    PRB(2, 0x4672); ds_put(c, 0x3F7E, 0); ds_put(c, 0x3F76, 0xFA00);
+    /* One row: its address, its pixels decoded, then both put through the driver. */
+row:
+    PRB(1, 0x467E); c->r[R_DI] = ds_get(c, 0x3F7E);
+    PRFAR(0x4682, 0x4687);
+    PRB(1, 0x4687); ds_put(c, 0x3F7A, c->r[R_AX]);
+    PRNEAR(0x468A, 0x47FF, 0x468D);
+    PRB(3, 0x468D); c->r[R_DI] = ds_get(c, 0x3F7A); c->r[R_BP] = 0x3E36; c->r[R_BX] = ds_get(c, 0x3F7E);
+    PRFAR(0x4698, 0x469D);
+    PRB(1, 0x469D); c->r[R_DI] = ds_get(c, 0x3F7A);
+    PRFAR(0x46A1, 0x46A6);
+    PRB(3, 0x46A6);
+    ds_put(c, 0x3F7E, (uint16_t)alu_inc(c, ds_get(c, 0x3F7E), 1));
+    ds_put(c, 0x3F76, (uint16_t)alu_op(c, 5, ds_get(c, 0x3F76), 0x0140, 1));
+    if (x86_cond(c, 5)) goto row;
+    PRB(7, 0x46B2);
+    c->r[R_BP] = cpu_pop16(c); c->seg[S_ES] = cpu_pop16(c); c->r[R_SI] = cpu_pop16(c); c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP]; c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef PRB
+#undef PRRUN
+#undef PRNEAR
+#undef PRFAR
+}
+
+/* VGAME 0FB2:0246, far, fill_box(record, x0, y0, x1, y1): a filled box drawn
+ * through the polygon span rasteriser (the Reimp's rectangle into the span
+ * table; the cockpit's panel clears and damage/stealth bars). The far-call
+ * frame holds the window record at BP+6, the left column x0 at BP+8, the top
+ * row y0 at BP+0Ah, the right column x1 at BP+0Ch and the bottom row y1 at
+ * BP+0Eh. With ES = DS it asks the runtime thunk 1E42:016A for the current
+ * drawing state (AX, kept on the stack), selects the record's page (its first
+ * word, AX) through 1E42:015B and the pen colour (the byte at record+4, AH)
+ * through 1E42:01BA. The near 051F then clears the rows the previous fill
+ * left in the span tables; it loads its own ES (the tables' segment) on that
+ * path. Only after it are [2615] = y0 and [2617] = y1 stored, so the old
+ * range is reset and the new one survives. Every row y0..y1 gets x0 in the
+ * left table (22A1 + 2y) and x1 in the right table (2459 + 2y), two REP STOSW
+ * of y1 - y0 + 1 words through whatever ES and DF the callees left. The row
+ * range is read back from [2615]/[2617] (the stores may have overwritten
+ * them) for the span fill 1E42:01E2 (BX = 22A1, AX = first, CX = last,
+ * DX = 0); then 1E42:0165 restores the drawing state saved first. The 1E42
+ * thunks are far jumps the runtime fills; all return RETF without argument
+ * cleanup, 051F a plain RET. The caller drops the five arguments. */
+static int vgame_fill_box(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+    enum { RECORD = 6, X0 = 8, Y0 = 0x0A, X1 = 0x0C, Y1 = 0x0E };
+#define FBB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define FBRUN(call_) do { const uint64_t until_=m->run_until; \
+    if (m->run_until>c->stop_at) m->run_until=c->stop_at; \
+    const int returned_=(call_); m->run_until=until_; if (!returned_) return 1; } while (0)
+#define FBFAR(at_) do { SM4_NEED(1,(at_)); FBRUN(guest_call_far(m,(at_),(uint16_t)((at_)+5))); } while (0)
+#define FBREP() do { while (c->r[R_CX]) { x86_stos(c,1); c->r[R_CX]=(uint16_t)(c->r[R_CX]-1); } } while (0)
+    if (!room(c, 7)) return 0;
+    FBB(7, 0x0246);
+    x86_push_reg(c, R_BP); c->r[R_BP] = c->r[R_SP];
+    x86_push_reg(c, R_DI); x86_push_reg(c, R_SI); x86_push_reg(c, R_BP);
+    cpu_push16(c, c->seg[S_DS]); c->seg[S_ES] = cpu_pop16(c);
+    FBFAR(0x024E);                                                /* 1E42:016A: the drawing state */
+    FBB(3, 0x0253);
+    x86_push_reg(c, R_AX);
+    c->r[R_BX] = bp_get(c, RECORD);
+    c->r[R_AX] = ds_get(c, c->r[R_BX]);
+    FBFAR(0x0259);                                                /* 1E42:015B: the record's page */
+    FBB(1, 0x025E);
+    set_r8(c, R_AH, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] + 4))));
+    FBFAR(0x0261);                                                /* 1E42:01BA: the pen colour */
+    SM4_NEED(1, 0x0266);
+    FBRUN(guest_call_pop(m, 0x051F, 0x0269, 0));                  /* clear the old rows */
+    {
+        /* Both REP STOSW run y1 - y0 + 1 words (one instruction when none). */
+        const uint16_t rows = (uint16_t)(bp_get(c, Y1) - bp_get(c, Y0) + 1);
+        FBB(19 + 2 * (rows ? (unsigned)rows : 1u), 0x0269);
+    }
+    c->r[R_CX] = bp_get(c, Y1);
+    c->r[R_SI] = bp_get(c, Y0);
+    ds_put(c, 0x2617, c->r[R_CX]);                                /* last row */
+    ds_put(c, 0x2615, c->r[R_SI]);                                /* first row */
+    c->r[R_CX] = (uint16_t)alu_op(c, 5, c->r[R_CX], c->r[R_SI], 1);
+    c->r[R_CX] = (uint16_t)alu_inc(c, c->r[R_CX], 1);
+    c->r[R_DI] = 0x22A1;
+    c->r[R_SI] = (uint16_t)x86_shift(c, 4, c->r[R_SI], 1, 1);
+    c->r[R_DI] = (uint16_t)alu_op(c, 0, c->r[R_DI], c->r[R_SI], 1);
+    c->r[R_AX] = bp_get(c, X0);
+    c->r[R_DX] = c->r[R_CX];
+    FBREP();                                                      /* left edges */
+    c->r[R_CX] = c->r[R_DX];
+    c->r[R_DI] = 0x2459;
+    c->r[R_DI] = (uint16_t)alu_op(c, 0, c->r[R_DI], c->r[R_SI], 1);
+    c->r[R_AX] = bp_get(c, X1);
+    FBREP();                                                      /* right edges */
+    c->r[R_BX] = 0x22A1;
+    c->r[R_AX] = ds_get(c, 0x2615);
+    c->r[R_CX] = ds_get(c, 0x2617);
+    c->r[R_DX] = (uint16_t)alu_op(c, 5, c->r[R_DX], c->r[R_DX], 1);
+    FBFAR(0x02A2);                                                /* 1E42:01E2: fill the spans */
+    FBB(1, 0x02A7);
+    c->r[R_AX] = cpu_pop16(c);
+    FBFAR(0x02A8);                                                /* 1E42:0165: restore the state */
+    FBB(6, 0x02AD);
+    c->r[R_BP] = cpu_pop16(c); c->r[R_SI] = cpu_pop16(c); c->r[R_DI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP]; c->r[R_BP] = cpu_pop16(c);
+    far_ret(c);
+    return 1;
+#undef FBREP
+#undef FBFAR
+#undef FBRUN
+#undef FBB
+}
+
+/* START 0x09094, the run-time's exit(code): START's copy of the exit that
+ * sm4_exit (above) already names for VGAME, PLAYER, DSWAP and SETUP, with
+ * START's addresses and the same instruction for instruction shape. CX 0
+ * (exit, not _exit): the exit tables run first (the near-pointer walker
+ * 0x09142 over CAACh..CAACh and B18Ch..B18Eh, then the console hook at
+ * [B176h] when [B170h] holds D6D6h); then the terminator tables (near
+ * 0x09142 and far 0x09151, both over B18Eh..B18Eh) and the null-pointer
+ * check 0x09826, whose nonzero answer turns exit(0) into exit(FFh). The
+ * vectors are put back (0x09115) and, with the saved CH clear, the code in
+ * [bp+4] goes to DOS function 4Ch: the matched code stops at that INT 21h
+ * (0x0910F), left to the original. With CH set (only when a callee changes
+ * the saved word) it pops DI, SI, BP and returns. Only this entry is a
+ * census row; START's _exit/_cexit/_c_exit entries at +7, +0Fh and +19h
+ * lie in the gap the JMP at 0x09099 crosses. */
+static const sm4_exit_t SM4_EXIT_START = { 0x9094, 0xCAAC, 0xB18C, 0xB18E, 0xB18E, 0xB170, 0x9826 };
+static int start_exit(machine_t *m) { return sm4_exit(m, &SM4_EXIT_START, 0); }
+
 static const recomp_override MATCHED[] = {
+    { "matched", "START.EXE", START_47304, 0x0000, 0x9094, start_exit, "end the program", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0FB2, 0x0246, vgame_fill_box, "fill a box through the span tables", 2 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x4648, end_pic_rows_to_page, "decode a picture onto a page row by row", 1 },
+    { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x019A, player_play_out_and_finish, "wait for the last picture (and the sound driver), then finish", 1 },
+    { "matched", "START.EXE", START_47304, 0x0000, 0x8782, start_picture_load, "unpack a compressed picture onto a page row by row", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x3F44, end_leave_program, "shut the drivers and hooks down and exit with the code", 1 },
     { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x07EA, player_show_picture, "show one picture of the intro stream and return the next one's address", 1 },
     { "matched", "PLAYER.EXE", PLAYER_47304, 0x0000, 0x13CE, player_interrupt_call, "call software interrupt n with register structures (int86)", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xEC12, vgame_interrupt_call_regs, "call software interrupt n with a register structure (int86)", 1 },
