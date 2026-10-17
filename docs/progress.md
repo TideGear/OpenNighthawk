@@ -52,8 +52,8 @@ stays on the roadmap.
   batch: run `func_lockstep` with `F117_NAMED_COVER=FILE` (one file per shard
   in a directory; it appends one line per matched routine), then
   `py tools/progress.py --census <reimp_names.py output> --named-cover DIR
-  --data <game directory>`. The refresh stops if any matched routine has no
-  coverage line.
+  --route-cover <interpreter captures of all routes> --data <game directory>`.
+  The refresh stops if any matched routine has no coverage line.
 - **Phase 3, fixes:** fixes available in `src/fixes/fixes.c` over the
   actionable reports catalogued as `### Dn.` in `docs/bugs.md`. An explicit
   `Disposition. Closed:` excludes an unestablished historical report;

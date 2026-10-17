@@ -32,13 +32,13 @@ tools/build_recomp.py --data INSTALL --seed-coverage WORK/coverage --jobs 16
 --verify-interp-cache`, started through `D:/f117-gate/affinity_launch.py`
 (below).
 
-**Current figures (16 October 2026):** 173 CTests; 45 routes identical, run
-as 44 sessions; 5,718,848 instruction states under each timing profile; 946
-matched routines at three seeds; reachability and event limits clean. Batch f's
-full gate took 1,781.97 s, with every interpreter session verified fresh.
+**Current figures (17 October 2026):** 219 CTests; 45 routes identical, run
+as 44 sessions; 5,718,848 instruction states under each timing profile; 991
+matched routines at three seeds; reachability and event limits clean. Batch i's
+full gate took 1,915.56 s, with every interpreter session verified fresh.
 All acceptance processes, including N=1 and boot N=4/9 presentation, finished
-in 1,836.51 s using the overlap below. Evidence:
-`D:/f117-gate/p2-batch-f-accept/final-gate-verdict.json`.
+in 1,969.70 s using checked presentation overlap. Evidence:
+`D:/f117-gate/p2-batch-i-accept/final-gate-verdict.json`.
 Typical gates take about 1,300-2,000 s; the longest career seed chain sets the route time.
 
 | Stage | Latest measured | What sets it, what was duplicated | Status |
@@ -353,11 +353,13 @@ This removes one compiler invocation; a gate wall-time saving is not established
 In one local build pair the two old compilations took 143.74 / 144.40 s
 concurrently, and the single shared compilation took 99.75 s (Ninja timings).
 
-**Independent checks (16 Oct).** Three private proofs ran concurrently in
-separate directories on CPU masks `0000FF`, `00FF00` and `FF0000`, at
-BelowNormal priority. Each retained five seeds, full instruction coverage,
-mutations and both real routes. Presentation N=1 over all routes and boot
-N=4/9 can also overlap using a frozen runner and separate output directories
+**Independent checks (17 Oct).** Six pending proofs finished in four lanes,
+with separate directories and CPU masks `00003F`, `000FC0`, `03F000` and
+`FC0000`, at BelowNormal priority, leaving eight CPUs for the desktop.
+The longest lane took 183.19 s (two routines): refreshed bases, five seeds,
+real-route and boot replays, source/coverage/mutation audits. The unchanged
+bodies and fixtures retained all 207 caught mutation results. Presentation N=1
+over all routes and boot N=4/9 can also overlap using a frozen runner and separate output directories
 (16 + 2 workers within the existing 24-CPU affinity). Gate workers and the
 default eight interpreter overlap workers are unchanged.
 

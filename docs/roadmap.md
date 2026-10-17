@@ -68,11 +68,11 @@ make (Phase 4).
   early for its autoexec); delivery there is not pursued (Settled, below).
 - **The game version verified:** GOG's installer (build 28044) with the 473.04
   update; Steam's release is byte-identical (`tools/verify_install.py`).
-- **The gate** (`tools/build_recomp.py`): translate, build, unit tests (173),
+- **The gate** (`tools/build_recomp.py`): translate, build, unit tests (219),
   coverage, both engines on every route, instruction lockstep under both
   timing profiles, matched-routine lockstep at three seeds, and the
-  routes-only and event-limit checks. About 21-30 minutes when every
-  interpreter route is verified fresh (latest 1,782 s); costs and what was
+  routes-only and event-limit checks. About 21-33 minutes when every
+  interpreter route is verified fresh (latest 1,916 s); costs and what was
   optimised: [repeated-processes.md](repeated-processes.md).
 - **Rendered speaker and speech audio.** PIT counter 2 follows the 8254 model;
   speaker music matches DOSBox-X (envelope 0.87, spectral 0.92-0.93, level
@@ -151,12 +151,12 @@ not the recompilation:
       [../handoff.md](../handoff.md). `tools/reimp_names.py` joins the Reimp's
       census (1,535 functions) with this project's regions as a private lead
       list.
-      **Now:** 985 addresses matched; named code runs 142,612 of
-      179,213 census bytes (P2 80.60%, overall 93.15%): 928 census rows
-      wholly, 288 in part. Credit is by byte since 16 October
+      **Now:** 991 addresses matched; named code runs 143,214 of
+      179,213 census bytes (P2 80.92%, overall 93.25%): 932 census rows
+      wholly, 290 in part. Credit is by byte since 16 October
       ([progress.md](progress.md#what-is-measured)): under it master's 946 routines
       held 132,537 bytes (132,638 by whole rows), batch g added 6,181 and
-      batch h adds 3,894.
+      batch h added 3,894; batch i adds 602.
       **What is left:** `tools/census_reach.py` separates code with run
       evidence from code without (gate coverage logs only interpreted
       fallback instructions, so it cannot show what ran). Fresh interpreter
@@ -202,7 +202,25 @@ reaches. Candidate drafts can keep private static dossiers
 (`matched_draft.py --dossier`):
 [repeated-processes.md](repeated-processes.md#phase-2-candidate-reading).
 
-### Latest batch: 18 routines (16 October 2026, batch h)
+### Latest batch: 6 routines (17 October 2026, batch i)
+
+Batch i adds six routines and 602 census bytes. Each has five seed proofs
+with every instruction reached, 207 mutations caught in all, an exact boot
+proof (26 checkpoints) and an exact `full_cycle` proof (66 checkpoints) that
+calls it. All 30 optimized seed runs pass too. START `9094` gains a
+`PROGRAM_ENDS` row and a return rule for its alternate-entry stack layout.
+PLAYER `019A`'s returning fixture covers six terminal cleanup bytes; the last
+two stay uncredited by the named-byte measurement.
+Evidence `D:/f117-gate/p2-batch-i-accept`.
+
+- END `3F44` shut the drivers and hooks down and exit with the code: 36 instructions, 42 mutations, `full_cycle` 1 call (`p2-end-3f44`).
+- START `8782` unpack a compressed picture onto a page row by row: 38 instructions, 38 mutations, `full_cycle` 17 calls (`p2-start-8782`).
+- PLAYER `019A` wait for the last picture (and the sound driver), then finish: 36 instructions, 31 mutations, `full_cycle` 2 calls (`p2-player-019a`).
+- END `4648` decode a picture onto a page row by row: 38 instructions, 32 mutations, `full_cycle` 4 calls (`p2-end-4648`).
+- VGAME `0FB2:0246` fill a box through the span tables: 45 instructions, 39 mutations, `full_cycle` 304 calls (`p2-vgame-fd66`).
+- START `9094` end the program: 43 instructions, 25 mutations, `full_cycle` 1 call (`p2-start-9094`).
+
+### 18 routines (16 October 2026, batch h)
 
 Batch h adds 18 routines. Each has five seed proofs with every instruction
 reached, 803 mutations caught in all, and an exact boot proof (26 checkpoints)
