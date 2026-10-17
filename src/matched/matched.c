@@ -66759,7 +66759,242 @@ terminate:
 #undef AX
 }
 
+/* END 0x026A9: the debriefing page's text step. Its one argument (bp+4) is the
+ * text to show. First the driver's copy (5FA:24CC) is called with eight words
+ * (source page 1, x 98h, y 13h, destination page 0, x 98h, y 13h, width 9Eh,
+ * height 34h, pushed last to first) to publish a strip of page 1 on the
+ * screen. The text window's mode word [6D98] is set to 4 and the argument is
+ * drawn word-wrapped by 0x01A75 into window 6D8C at 98h, 13h, 9Eh wide, 8
+ * high, centred (1). Finally the continue prompt 0x0206A is called with E7h
+ * and 3Fh, which waits for the player. Every call is followed by the
+ * caller's own cleanup (mov sp,bp or two pops). */
+static int end_report_page_text(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define EB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while (0)
+#define ERUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+    if (!room(c, 16)) return 0;
+    EB(16, 0x26A9);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    c->r[R_AX] = 0x34; cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0x9E; cpu_push16(c, c->r[R_AX]);
+    c->r[R_CX] = 0x13; cpu_push16(c, c->r[R_CX]);
+    c->r[R_DX] = 0x98; cpu_push16(c, c->r[R_DX]);
+    c->r[R_BX] = (uint16_t)alu_op(c, 5, c->r[R_BX], c->r[R_BX], 1);   /* sub bx,bx */
+    cpu_push16(c, c->r[R_BX]);
+    cpu_push16(c, c->r[R_CX]);
+    cpu_push16(c, c->r[R_DX]);
+    c->r[R_BX] = 1; cpu_push16(c, c->r[R_BX]);
+    SM4_NEED(1, 0x26C5);
+    ERUN(guest_call_far(m, 0x26C5, 0x26CA));
+    EB(15, 0x26CA);
+    c->r[R_SP] = c->r[R_BP];
+    ds_put(c, 0x6D98, 4);
+    c->r[R_AX] = 1; cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 8; cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0x9E; cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0x13; cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0x98; cpu_push16(c, c->r[R_AX]);
+    cpu_push16(c, seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + 4)));
+    c->r[R_AX] = 0x6D8C; cpu_push16(c, c->r[R_AX]);
+    SM4_NEED(1, 0x26ED);
+    ERUN(guest_call_pop(m, 0x1A75, 0x26F0, 0));
+    EB(5, 0x26F0);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_AX] = 0x3F; cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = 0xE7; cpu_push16(c, c->r[R_AX]);
+    SM4_NEED(1, 0x26FA);
+    ERUN(guest_call_pop(m, 0x206A, 0x26FD, 0));
+    EB(5, 0x26FD);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_BX] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef EB
+#undef ERUN
+}
+
+/* VGAME 0D826, set_view_and_sky(window, a, b, c, d, e, f, g, flag): the
+ * per-frame view set-up the scene dispatcher runs before the terrain walk.
+ * Arguments are bp+4 (the window record), bp+6/8/0A (camera angles for the
+ * matrix builder), bp+0C/0E/10 (the scene origin) and bp+12 (the sky flag),
+ * bp+14 (a fourth matrix argument). It
+ *  - configures the raster viewport and projection centre from the window
+ *    (0D8AF, plain RET, one word popped by the caller afterwards);
+ *  - builds the frame's camera matrices from bp+14, 0A, 08, 06 (0D9A2);
+ *  - stores the scene origin bp+10, 0E, 0C (0D9E7);
+ *  - when the flag bp+12 is non-zero: clears [C6B2], copies [B78C] to
+ *    [8590], runs the model-vertex cache pass (far 120A:0F97), spins while
+ *    the frame-pacing byte [262A] is non-zero (the timer interrupt clears
+ *    it, so the spin checks the room each turn and stops at its head), then
+ *    draws the sky and ground bands (01450, argument: the window);
+ *  - always clears [49F4] and returns (leave, RET; the caller cleans up). */
+static int vgame_set_view_and_sky(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while(0)
+#define XRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while(0)
+#define XNEAR(at_,target_,ret_) do { SM4_NEED(1,(at_)); XRUN(guest_call_pop(m,(target_),(ret_),0)); } while(0)
+#define XPUSHARG(d_) cpu_push16(c, bp_get(c, (d_)))
+    if (!room(c, 3)) return 0;
+    XB(3, 0xD826);
+    cpu_push16(c, c->r[R_BP]);
+    c->r[R_BP] = c->r[R_SP];
+    XPUSHARG(4);
+    XNEAR(0xD82C, 0xD8AF, 0xD82F);
+    XB(5, 0xD82F);
+    c->r[R_BX] = cpu_pop16(c);
+    XPUSHARG(0x14); XPUSHARG(0x0A); XPUSHARG(8); XPUSHARG(6);
+    XNEAR(0xD83C, 0xD9A2, 0xD83F);
+    XB(4, 0xD83F);
+    c->r[R_SP] = c->r[R_BP];
+    XPUSHARG(0x10); XPUSHARG(0x0E); XPUSHARG(0x0C);
+    XNEAR(0xD84A, 0xD9E7, 0xD84D);
+    XB(3, 0xD84D);
+    c->r[R_SP] = c->r[R_BP];
+    alu_sub(c, bp_get(c, 0x12), 0, 1, 0);
+    if (x86_cond(c, 4)) goto clear_flag;
+    XB(3, 0xD855);
+    ds_put(c, 0xC6B2, 0);
+    c->r[R_AX] = ds_get(c, 0xB78C);
+    ds_put(c, 0x8590, c->r[R_AX]);
+    SM4_NEED(1, 0xD861);
+    XRUN(guest_call_far(m, 0xD861, 0xD866));
+    do {
+        XB(2, 0xD866);
+        alu_sub(c, ds_get8(c, 0x262A), 0, 0, 0);
+    } while (x86_cond(c, 5));
+    XB(1, 0xD86D);
+    XPUSHARG(4);
+    XNEAR(0xD870, 0x1450, 0xD873);
+    XB(1, 0xD873);
+    c->r[R_BX] = cpu_pop16(c);
+clear_flag:
+    XB(3, 0xD874);
+    ds_put(c, 0x49F4, 0);
+    x86_leave(c);
+    c->ip = cpu_pop16(c);
+    return 1;
+#undef XB
+#undef XRUN
+#undef XNEAR
+#undef XPUSHARG
+}
+
+/* START 0x09E3E, the formatter's conversion dispatch (an arm of printf's _output, START 0x09D06,
+ * Borland C runtime). The scan (0x09D19) has taken a format character's state and jumped through its
+ * handler table to here, inside _output's frame: the conversion character was kept at [bp-2]. This
+ * arm picks the handler for it, one compare at a time, in this order:
+ *   'd' and 'i'  -> 0x09FD6 (signed: flag 40h, then radix 10)     'u' -> 0x09FDA (radix 10)
+ *   'X'          -> 0x09FE0 (letter offset 07h)     'x' -> 0x09FE6 (letter offset 27h)
+ *   'o'          -> 0x0A007 (radix 8)
+ *   'c'          -> here: a character from the argument list
+ *   's' 0x09E9A, 'n' 0x09EC8, 'p' 0x09EDB
+ *   'E' and 'G'  -> 0x09F3E (the floating formats, which also count an exponent letter),
+ *   anything else -> 0x09F41 (the floating formats 'e', 'f', 'g' and the unknown ones).
+ * Only 'c' is done here: the next argument word is fetched (0x0A110: the word at [[bp+8]], the pointer
+ * moved on), its low byte is stored as the one character of the field at [bp-171h], DI is left on that
+ * byte, CX = 1 (its length), and the common field output at 0x0A085 takes over. Every other choice
+ * only jumps. The callee returns by a plain RET with its result in AX. */
+static int start_format_dispatch(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define XB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while(0)
+#define XRUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call_);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define XNEAR(at_,target_,ret_) do { SM4_NEED(1,(at_)); XRUN(guest_call_pop(m,(target_),(ret_),0)); } while(0)
+#define XCMP(v_) alu_op(c, 7, get_r8(c, R_AL), (v_), 0)
+#define XGO(target_) do { c->ip = (target_); return 1; } while(0)
+    if (!room(c, 3)) return 0;
+    XB(3, 0x9E3E);
+    set_r8(c, R_AL, (uint8_t)bp_get8(c, -2));
+    XCMP(0x64);
+    if (x86_cond(c, 5)) goto not_d;
+    XB(1, 0x9E45);
+    XGO(0x9FD6);
+not_d:
+    XB(2, 0x9E48);
+    XCMP(0x69);
+    if (x86_cond(c, 5)) goto not_i;
+    XB(1, 0x9E4C);
+    XGO(0x9FD6);
+not_i:
+    XB(2, 0x9E4F);
+    XCMP(0x75);
+    if (x86_cond(c, 5)) goto not_u;
+    XB(1, 0x9E53);
+    XGO(0x9FDA);
+not_u:
+    XB(2, 0x9E56);
+    XCMP(0x58);
+    if (x86_cond(c, 5)) goto not_upper_x;
+    XB(1, 0x9E5A);
+    XGO(0x9FE0);
+not_upper_x:
+    XB(2, 0x9E5D);
+    XCMP(0x78);
+    if (x86_cond(c, 5)) goto not_x;
+    XB(1, 0x9E61);
+    XGO(0x9FE6);
+not_x:
+    XB(2, 0x9E64);
+    XCMP(0x6F);
+    if (x86_cond(c, 5)) goto not_o;
+    XB(1, 0x9E68);
+    XGO(0xA007);
+not_o:
+    XB(2, 0x9E6B);
+    XCMP(0x63);
+    if (x86_cond(c, 4)) goto char_arm;
+    XB(2, 0x9E6F);
+    XCMP(0x73);
+    if (x86_cond(c, 4)) XGO(0x9E9A);
+    XB(2, 0x9E73);
+    XCMP(0x6E);
+    if (x86_cond(c, 4)) XGO(0x9EC8);
+    XB(2, 0x9E77);
+    XCMP(0x70);
+    if (x86_cond(c, 4)) XGO(0x9EDB);
+    XB(2, 0x9E7B);
+    XCMP(0x45);
+    if (x86_cond(c, 4)) goto float_e;
+    XB(2, 0x9E7F);
+    XCMP(0x47);
+    if (x86_cond(c, 4)) goto float_e;
+    XB(1, 0x9E83);
+    XGO(0x9F41);
+float_e:
+    XB(1, 0x9E86);
+    XGO(0x9F3E);
+char_arm:
+    XNEAR(0x9E89, 0xA110, 0x9E8C);
+    XB(7, 0x9E8C);
+    c->r[R_DI] = (uint16_t)(c->r[R_BP] + 0xFE8F);                       /* lea di, [bp-171h] */
+    cpu_push16(c, c->seg[S_SS]);
+    c->seg[S_ES] = cpu_pop16(c);
+    x86_stos(c, 0);
+    c->r[R_DI] = (uint16_t)alu_dec(c, c->r[R_DI], 1);
+    c->r[R_CX] = 0x0001;
+    XGO(0xA085);
+#undef XGO
+#undef XCMP
+#undef XNEAR
+#undef XRUN
+#undef XB
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "START.EXE", START_47304, 0x0000, 0x9E3E, start_format_dispatch, "the formatter's conversion dispatch", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xD826, vgame_set_view_and_sky, "set the view, camera matrices and scene origin, then draw the sky bands when asked", 1 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x26A9, end_report_page_text, "END continue-prompt screen: restore area, wrapped text, prompt", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x11B8, 0x0008, vgame_picture_open_far, "open a packed picture or print the filename and fatal DOS error", 2 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x3021, end_debrief_log_score, "score the complete debrief event log and scale the total", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x22EB, end_collect_award_ribbons, "collect owned awards and draw their ribbon rows", 1 },

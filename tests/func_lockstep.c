@@ -573,6 +573,9 @@ static const struct { const char *module; uint16_t ip; int arg; uint16_t v[2]; }
 /* Exact code ranges when the default 0x300-byte window is unsuitable:
  * long/shared tails, or small walkers whose unrelated callees are nearby. */
 static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
+    { "START.EXE", 0x9E3E, 0x9E3E, 0x005C },
+    { "VGAME.EXE", 0xD826, 0xD826, 0x0056 },
+    { "END.EXE", 0x26A9, 0x26A9, 0x005A },
     { "VGAME.EXE", 0x0008, 0x0008, 0x01FF },
     { "END.EXE", 0x3021, 0x3021, 0x0660 },
     { "END.EXE", 0x22EB, 0x22EB, 0x00EB },
@@ -1016,6 +1019,9 @@ static const struct { const char *module; uint16_t seg, ip, len; unsigned insns,
     { "END.EXE", 0x0000, 0x22EB, 0x00EB, 86, 86, "collect owned awards and draw their ribbon rows" },
     { "END.EXE", 0x0000, 0x3021, 0x0660, 579, 579, "score the complete debrief event log and scale the total" },
     { "VGAME.EXE", 0x11B8, 0x0008, 0x01FF, 67, 67, "open a packed picture or print the filename and fatal DOS error" },
+    { "END.EXE", 0x0000, 0x26A9, 0x005A, 44, 44, "END continue-prompt screen: restore area, wrapped text, prompt" },
+    { "VGAME.EXE", 0x0000, 0xD826, 0x0056, 30, 30, "set the view, camera matrices and scene origin, then draw the sky bands when asked" },
+    { "START.EXE", 0x0000, 0x9E3E, 0x005C, 41, 41, "the formatter's conversion dispatch" },
     { "END.EXE", 0, 0x2BEC, 0x0435, 444, 444, "debrief narrative and measured layout" },
     { "START.EXE", 0, 0x6DB8, 0x03F5, 399, 399, "pilot options dialog" },
     { "START.EXE", 0, 0x149C, 0x039E, 365, 365, "flight plan display" },
@@ -1071,6 +1077,17 @@ static const struct { const char *module; uint16_t seg, ip, end; } PROGRAM_ENDS[
 static const struct { const char *module; uint16_t seg, ip, target; } FATAL_JUMPS[] = {
     { "START.EXE", 0x0000, 0x8FC6, 0x9820 },
     { "START.EXE", 0x0000, 0xA015, 0x9D19 },    /* the formatter's integer conversion: JMP back to the scan */
+    { "START.EXE", 0x0000, 0x9E3E, 0x9E9A },    /* the formatter's conversion dispatch: a JMP to another arm */
+    { "START.EXE", 0x0000, 0x9E3E, 0x9EC8 },    /* the formatter's conversion dispatch: a JMP to another arm */
+    { "START.EXE", 0x0000, 0x9E3E, 0x9EDB },    /* the formatter's conversion dispatch: a JMP to another arm */
+    { "START.EXE", 0x0000, 0x9E3E, 0x9F3E },    /* the formatter's conversion dispatch: a JMP to another arm */
+    { "START.EXE", 0x0000, 0x9E3E, 0x9F41 },    /* the formatter's conversion dispatch: a JMP to another arm */
+    { "START.EXE", 0x0000, 0x9E3E, 0x9FD6 },    /* the formatter's conversion dispatch: a JMP to another arm */
+    { "START.EXE", 0x0000, 0x9E3E, 0x9FDA },    /* the formatter's conversion dispatch: a JMP to another arm */
+    { "START.EXE", 0x0000, 0x9E3E, 0x9FE0 },    /* the formatter's conversion dispatch: a JMP to another arm */
+    { "START.EXE", 0x0000, 0x9E3E, 0x9FE6 },    /* the formatter's conversion dispatch: a JMP to another arm */
+    { "START.EXE", 0x0000, 0x9E3E, 0xA007 },    /* the formatter's conversion dispatch: a JMP to another arm */
+    { "START.EXE", 0x0000, 0x9E3E, 0xA085 },    /* the formatter's conversion dispatch: a JMP to another arm */
     { "START.EXE", 0x0000, 0x9EB3, 0x9D19 },    /* the formatter's %s field: its JMP back to the format scan */
     { "END.EXE", 0x0000, 0x4EBC, 0x53FA },
     { "END.EXE", 0x0000, 0x5825, 0x59F7 },      /* "%s" length: its JMP to the shared field output ends the named code */
@@ -1094,8 +1111,12 @@ static int program_end_reached(const recomp_override *o, const cpu_t *c, uint16_
         if (!strcmp(POPF_STOPS[k].module, o->module) && POPF_STOPS[k].seg == o->seg && POPF_STOPS[k].ip == o->ip)
             return c->seg[S_CS] == cs && c->ip == POPF_STOPS[k].stop && c->stop_at == 0;
     for (unsigned k = 0; k < sizeof FATAL_JUMPS / sizeof FATAL_JUMPS[0]; k++)
+        if (!strcmp(FATAL_JUMPS[k].module, o->module) && FATAL_JUMPS[k].seg == o->seg && FATAL_JUMPS[k].ip == o->ip &&
+            c->seg[S_CS] == cs && c->ip == FATAL_JUMPS[k].target)
+            return 1;   /* a routine may list several targets: any one ends the named code */
+    for (unsigned k = 0; k < sizeof FATAL_JUMPS / sizeof FATAL_JUMPS[0]; k++)
         if (!strcmp(FATAL_JUMPS[k].module, o->module) && FATAL_JUMPS[k].seg == o->seg && FATAL_JUMPS[k].ip == o->ip)
-            return c->seg[S_CS] == cs && c->ip == FATAL_JUMPS[k].target;
+            return 0;
     for (unsigned k = 0; k < sizeof PROGRAM_ENDS / sizeof PROGRAM_ENDS[0]; k++)
         if (!strcmp(PROGRAM_ENDS[k].module, o->module) && PROGRAM_ENDS[k].seg == o->seg && PROGRAM_ENDS[k].ip == o->ip)
             return c->seg[S_CS] == cs && c->ip == PROGRAM_ENDS[k].end && get_r8(c, R_AH) == 0x4C;
@@ -16587,6 +16608,153 @@ int main(int argc, char **argv)
                 for(unsigned j=0;j<sizeof(exit_);j++)XW8(0x11B8,0x0209+j,exit_[j]);
                 g_nend=1;g_end_lo[0]=0x0209;g_end_hi[0]=0x0209+sizeof(exit_);
 #undef RND
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"END.EXE") && o->seg==0 && o->ip==0x26A9) {
+                const uint16_t dg=0x5000;
+                seg[S_DS]=dg;seg[S_SS]=(s&4)?0x6000:dg;r[R_SP]=0xF000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+#define KW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define KW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);KW8((s_),(o_),v__);KW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define KRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                for(unsigned j=0;j<0x200;j++)KW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),KRAND());
+                {
+                    const uint16_t a0=(uint16_t)KRAND();
+                    KW16(seg[S_SS],r[R_SP],a0);
+                    small[0]=a0;
+                    KW16(dg,0x6D98,(KRAND()&1)?(uint16_t)KRAND():(uint16_t)(KRAND()&7));
+                    for(unsigned j=0;j<8;j++)KW8(dg,0x6D8C+j,KRAND());
+                }
+                for(unsigned j=0;j<8;j++)KW16(dg,0xF830+2*j,KRAND());
+                for(unsigned j=0;j<8;j++)KW16(dg,0xF810+2*j,0);
+#define KSTUB(sg_,off_,cell_,nargs_,retcell_,far_) do { unsigned out_=(off_);const uint16_t sgx_=(sg_); \
+    KW8(sgx_,out_++,0x55);KW8(sgx_,out_++,0x8B);KW8(sgx_,out_++,0xEC);KW8(sgx_,out_++,0x53); \
+    KW8(sgx_,out_++,0xFF);KW8(sgx_,out_++,0x06);KW8(sgx_,out_++,(cell_));KW8(sgx_,out_++,(cell_)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        KW8(sgx_,out_++,0x8B);KW8(sgx_,out_++,0x46);KW8(sgx_,out_++,(far_)?6+2*j_:4+2*j_); \
+        KW8(sgx_,out_++,0x8B);KW8(sgx_,out_++,0x1E);KW8(sgx_,out_++,(cell_));KW8(sgx_,out_++,(cell_)>>8); \
+        KW8(sgx_,out_++,0xD1);KW8(sgx_,out_++,0xC3);KW8(sgx_,out_++,0x33);KW8(sgx_,out_++,0xD8); \
+        KW8(sgx_,out_++,0x89);KW8(sgx_,out_++,0x1E);KW8(sgx_,out_++,(cell_));KW8(sgx_,out_++,(cell_)>>8); } \
+    KW8(sgx_,out_++,0x5B);KW8(sgx_,out_++,0xA1);KW8(sgx_,out_++,(retcell_));KW8(sgx_,out_++,(retcell_)>>8); \
+    KW8(sgx_,out_++,0x5D);KW8(sgx_,out_++,(far_)?0xCB:0xC3); } while(0)
+                KSTUB(0x05FA,0x24CC,0xF810,8,0xF830,1);
+                {
+                    static const struct { uint16_t slot,code,cell,ret; unsigned args; } near_[2]={
+                        {0x1A75,0xF200,0xF812,0xF832,7},{0x206A,0xF300,0xF814,0xF834,2}};
+                    for(unsigned k=0;k<2;k++) {
+                        KW8(0,near_[k].slot,0xE9);KW16(0,near_[k].slot+1,(uint16_t)(near_[k].code-near_[k].slot-3));
+                        KSTUB(0,near_[k].code,near_[k].cell,near_[k].args,near_[k].ret,0);
+                    }
+                }
+#undef KSTUB
+#undef KRAND
+#undef KW16
+#undef KW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0 && o->ip==0xD826) {
+                const uint16_t dg=0x5000;
+                seg[S_DS]=dg;seg[S_SS]=(s&4)?0x6000:dg;r[R_SP]=0xF000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                /* Nine arguments (bp+4 .. bp+14h); the flag is bp+12h (index 7). */
+                uint16_t arg[9];
+                for(unsigned j=0;j<9;j++)arg[j]=(uint16_t)XRAND();
+                {
+                    const unsigned pick=XRAND()%8;
+                    arg[7]=(pick<3)?0:(pick==3)?0x0100:(pick==4)?0x8000:(pick==5)?1:(uint16_t)(XRAND()|1);
+                }
+                for(unsigned j=0;j<9;j++)XW16(seg[S_SS],(uint16_t)(r[R_SP]+2*j),arg[j]);
+                for(unsigned j=0;j<4;j++)small[j]=arg[j];
+                /* Cells the routine reads and writes, with stale values. */
+                XW16(dg,0xC6B2,(XRAND()%3)?(uint16_t)XRAND():0);
+                XW16(dg,0xB78C,XRAND());
+                XW16(dg,0x8590,XRAND());
+                XW16(dg,0x49F4,(XRAND()%3)?(uint16_t)XRAND():0);
+                /* The pacing byte stays clear: only the timer interrupt clears it, and the
+                 * lockstep has none, so a set byte is a spin the original never leaves (a
+                 * skipped long run). Its neighbour is random, so a word compare shows. */
+                XW8(dg,0x262A,0);XW8(dg,0x262B,(XRAND()&1)?(uint8_t)XRAND():0);
+                for(unsigned j=0;j<16;j++)XW16(dg,0xF400+2*j,(uint16_t)XRAND());
+                for(unsigned j=0;j<16;j++)XW16(dg,0xF440+2*j,(uint16_t)XRAND());
+                for(unsigned j=0;j<16;j++)XW16(dg,0xF480+2*j,(uint16_t)XRAND());
+                for(unsigned j=0;j<16;j++)XW16(dg,0xF800+2*j,0);
+#define XSTUB(off_,cell_,nargs_,list_) do { unsigned out_=(off_);const uint16_t sgx_=0; \
+    XW8(sgx_,out_++,0x55);XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0xEC);XW8(sgx_,out_++,0x53); \
+    XW8(sgx_,out_++,0xFF);XW8(sgx_,out_++,0x06);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+    for(unsigned j_=0;j_<(nargs_);j_++) { \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x46);XW8(sgx_,out_++,4+2*j_); \
+        XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); \
+        XW8(sgx_,out_++,0xD1);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x33);XW8(sgx_,out_++,0xD8); \
+        XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_));XW8(sgx_,out_++,(cell_)>>8); } \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x8B);XW8(sgx_,out_++,0x87);XW8(sgx_,out_++,(list_));XW8(sgx_,out_++,(list_)>>8); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xC3);XW8(sgx_,out_++,0x02); \
+    XW8(sgx_,out_++,0x83);XW8(sgx_,out_++,0xE3);XW8(sgx_,out_++,0x1E); \
+    XW8(sgx_,out_++,0x89);XW8(sgx_,out_++,0x1E);XW8(sgx_,out_++,(cell_)+2);XW8(sgx_,out_++,((cell_)+2)>>8); \
+    XW8(sgx_,out_++,0x5B);XW8(sgx_,out_++,0x5D);XW8(sgx_,out_++,0xC3); } while(0)
+                {
+                    static const struct { uint16_t slot,code,cell,list; unsigned args; } stub_[3]={
+                        {0xD8AF,0xF200,0xF800,0xF400,1},{0xD9A2,0xF260,0xF804,0xF440,4},
+                        {0x1450,0xF2C0,0xF808,0xF480,1}};
+                    for(unsigned k=0;k<3;k++) {
+                        XW8(0,stub_[k].slot,0xE9);XW16(0,stub_[k].slot+1,(uint16_t)(stub_[k].code-stub_[k].slot-3));
+                        XSTUB(stub_[k].code,stub_[k].cell,stub_[k].args,stub_[k].list);
+                    }
+                    /* far 120A:0F97 takes no arguments: count the call, retf */
+                    XW8(0x120A,0x0F97,0xFF);XW8(0x120A,0x0F98,0x06);XW8(0x120A,0x0F99,0x0C);XW8(0x120A,0x0F9A,0xF8);XW8(0x120A,0x0F9B,0xCB);
+                }
+#undef XSTUB
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"START.EXE") && o->seg==0 && o->ip==0x9E3E) {
+                /* The formatter's conversion dispatch, inside _output's frame: the conversion
+                 * character at [bp-2], the argument list pointer at [bp+8]. Every choice but 'c'
+                 * is a jump out of the arm, to code the formatter owns: those targets (all above
+                 * 0x09E9A and below 0x0A086) are shared code the routine reaches, each a RET here. */
+                g_nend=1;g_end_lo[0]=0x9E9A;g_end_hi[0]=0xA086;
+                static const uint16_t targets_[]={0x9E9A,0x9EC8,0x9EDB,0x9F3E,0x9F41,0x9FD6,0x9FDA,0x9FE0,0x9FE6,0xA007,0xA085};
+                const uint16_t dg=0x5000;
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(o_)+1,v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define XPICK(n_) ((unsigned)(XRAND()%(unsigned)(n_)))
+                for(unsigned j=0;j<sizeof targets_/sizeof targets_[0];j++)XW8(0,targets_[j],0xC3);
+                seg[S_DS]=dg;seg[S_SS]=XPICK(2)?0x6000:dg;
+                static const uint16_t stacks[]={0xE000,0x8000,0xFF00,0x2000};
+                r[R_SP]=stacks[XPICK(4)];
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                if(XPICK(3)==0)flags|=F_DF;
+                const uint16_t ss_=seg[S_SS];
+                for(unsigned j=0;j<0x700;j++)XW8(ss_,(uint16_t)(r[R_SP]-0x200+j),XRAND());
+                for(unsigned j=0;j<4;j++){const uint16_t w_=(uint16_t)XRAND();XW16(ss_,(uint16_t)(r[R_SP]+2*j),w_);small[j]=w_;}
+                const uint16_t bp_=(uint16_t)(r[R_SP]+0x200+2*XPICK(0x40));
+                r[R_BP]=bp_;
+                static const uint8_t chars_[]={'d','i','u','X','x','o','c','s','n','p','E','G','e','f','g','D','I','U','O','C','S','N','P','L','l','h'};
+                const unsigned ck=XPICK(10);
+                const uint8_t ch_=ck<7?chars_[XPICK(sizeof chars_)]:ck<9?(uint8_t)(chars_[XPICK(sizeof chars_)]+(XPICK(2)?1:-1)):(uint8_t)XRAND();
+                XW8(ss_,bp_-2,ch_);
+                /* The argument list: a pointer in DS (sometimes at the segment's last byte, so the
+                 * word fetch wraps) to words, and the format pointer at [bp+6]. */
+                const uint16_t list_=XPICK(6)==0?(uint16_t)(0xFFFE+XPICK(2)):(uint16_t)(0x2000+2*XPICK(0x40));
+                XW16(ss_,bp_+8,list_);
+                XW16(ss_,bp_+6,XRAND());
+                for(unsigned j=0;j<4;j++)XW16(dg,list_+2*j,XRAND());
+                XW8(dg,0xFFFF,XRAND());XW8(dg,0x0000,XRAND());
+                /* Registers the arm sets or leaves: AL and CX, DI and ES are written, SI by the fetch. */
+                r[R_AX]=(uint16_t)XRAND();r[R_CX]=(uint16_t)XRAND();r[R_DI]=(uint16_t)XRAND();
+                r[R_SI]=(uint16_t)XRAND();r[R_DX]=(uint16_t)XRAND();r[R_BX]=(uint16_t)XRAND();
+                seg[S_ES]=XPICK(2)?dg:0x7000;
+#undef XPICK
 #undef XRAND
 #undef XW16
 #undef XW8
