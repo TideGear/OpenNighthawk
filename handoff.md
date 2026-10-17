@@ -9,8 +9,8 @@ checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 more than once, what it costs). State as of 17 October 2026.
 
 17 October: `p2-batch-k` is gated and landed (five routines; see Phase 2 below).
-Next: integrate and gate the two refreshed batch-l bodies, then continue
-down the screened leads. Resume the roadmap's plan, Phase 2 first.
+Next: finish the already running batch-l acceptance, then continue down the
+screened leads. Resume the roadmap's plan, Phase 2 first.
 
 **Process notes (16 October):** screen leads with `p2-batch-g-accept/screen_leads.py` before any
 agent starts (five of the first twelve picks were blocked or already inline); agents run `pin.py` with
@@ -208,12 +208,18 @@ times them (`F117_PRESENT_CLOCK=raw` for the old clock; opt-in knobs `F117_PRESE
   with `--only` and `F117_COVER`.
 - **Declined (recorded in `kit/DECLINED.tsv`):** PLAYER `2853`, PLAYER `0211`
   re-sync, VGAME `14C2:0000` (STI in its colour loop; the `set_dac` family).
-- **Batch l ready for integration:** two proved bodies, refreshed against
+- **Batch l acceptance running:** isolated worktree `D:/f117-wt/gate-h`,
+  branch `p2-batch-l`, source `879fa0b` (unverified; not pushed). Optimized
+  build and all ten optimized seed runs pass. Byte audit: +314, no prior
+  credit lost. The unchanged full gate is active; presentation follows the
+  checked overlap process. Resume the existing process, do not reintegrate
+  or restart it. State and commands: `D:/f117-gate/p2-batch-l-accept/CONTINUE.md`.
+  Main remains on verified batch k. The two bodies were refreshed against
   batch k's normal /O2 libraries (`7e16a9f`) in 192.62 s. Five seeds
   each, all instructions reached, all 115 mutations caught, exact real-route
   and 26-checkpoint boot proofs. Bodies/fixtures and library hashes unchanged.
   Evidence `D:/f117-gate/p2-batch-l-accept/refresh-verdict.json` and
-  `private-audit/private-audit.json`. Not integrated or gated yet.
+  `private-audit/private-audit.json`. Integrated privately; gate not finished yet.
   VGAME `11D8:000A` (linear `11D8A`, `p2-vgame-11d8a`) adds one address:
   far RETF, 40 instructions, 41 mutations, `full_cycle` 2 calls / 66 checkpoints.
   Its fixture varies the relocated DS operand and driver far-call segments,
@@ -468,8 +474,8 @@ found so far. Agents work only in their `p2-*` directory. Then:
 3. Build, ctest, ONE full gate per batch, the 45-route
    `presentation_check --scales 1`, docs, commit, push.
 
-Gate batches in a separate worktree (`D:/f117-wt/gate-h`, currently on the merged branch
-`p2-batch-k`. Build it once with `build.cmd -DF117R_BUILD_APP=OFF` before the gate, which
+Gate batches in a separate worktree (`D:/f117-wt/gate-h`, currently on the active branch
+`p2-batch-l`. Build it once with `build.cmd -DF117R_BUILD_APP=OFF` before the gate, which
 needs its `f117cpu_api.dll`) when the owner is testing the main tree's build.
 
 Screening and older method: `tools/matched_draft.py --dossier` (module/seg/ip
