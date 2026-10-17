@@ -9,7 +9,8 @@ checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 more than once, what it costs). State as of 17 October 2026.
 
 17 October: `p2-batch-k` is gated and landed (five routines; see Phase 2 below).
-Next: continue down the screened census leads and refresh the batch-l draft. Resume the roadmap's plan, Phase 2 first.
+Next: integrate and gate the two refreshed batch-l bodies, then continue
+down the screened leads. Resume the roadmap's plan, Phase 2 first.
 
 **Process notes (16 October):** screen leads with `p2-batch-g-accept/screen_leads.py` before any
 agent starts (five of the first twelve picks were blocked or already inline); agents run `pin.py` with
@@ -123,6 +124,10 @@ times them (`F117_PRESENT_CLOCK=raw` for the old clock; opt-in knobs `F117_PRESE
   Evidence `D:/f117-gate/p2-batch-k-accept/final-gate-verdict.json`.
   END `3BF4`, SETUP `111A`, END `2265`, END `1BAA`, START `3EA5`.
   SETUP's gap `1182` stays uncredited; denominator unchanged.
+  Main's normal /O2 application build passed (186.70 s); proof-kit
+  libraries were refreshed from `7e16a9f` (hashes in `kit-libs/manifest.json`).
+  Both Windows and Munt CI passed: https://github.com/TideGear/OpenNighthawk/actions/runs/39038100875.
+  All batch-k acceptance/build processes are finished.
 - Previous batch (17 Oct): **`p2-batch-j` is gated and landed**, four routines /
   1,349 census bytes by byte credit (995 addresses; 144,563 of 179,213 bytes).
   Five seeds each, full instruction coverage, 203 mutations caught, exact boot
@@ -203,22 +208,26 @@ times them (`F117_PRESENT_CLOCK=raw` for the old clock; opt-in knobs `F117_PRESE
   with `--only` and `F117_COVER`.
 - **Declined (recorded in `kit/DECLINED.tsv`):** PLAYER `2853`, PLAYER `0211`
   re-sync, VGAME `14C2:0000` (STI in its colour loop; the `set_dac` family).
-- **Pending batch l:** VGAME `11D8:000A` (linear `11D8A`,
-  `p2-vgame-11d8a`), the far picture row/page wrapper: five seeds, all 40 instructions, 41 mutations, real-route and boot proofs.
-  Kind 2 (RETF), 117 instruction bytes; the census row is 118 bytes.
-  The fixture varies relocated data-segment and far-call operands; the body
-  reads CS:0013. All 200 rows run through argument-folding driver probes.
-  Refresh bases/libraries from landed batch k and repeat final proofs before
-  integration. Other leads remain in `p2-batch-j-accept/ranked.json`;
-  rescreen and remove existing registrations/fully credited inline bytes.
-- **Existing-entry expansion for batch l:** START `58DF`
-  (`p2-start-58df`, `start_onc_grid_reference`) replaces the old six-instruction
-  `st4_start_clamp_open` with the full nine-arm formatter (91 instructions,
-  249-byte envelope). Five seeds and all 74 mutations pass; check the real
-  `korea_strike`, boot and root audit before using. Net address delta 0;
-  see `INTEGRATION.txt`. Keep END's shared `st4_record_switch_open` helper,
-  retire old START `58DF` coverage and collect fresh optimized coverage.
-  `p2-start-5951` is superseded: it is just the last switch arm.
+- **Batch l ready for integration:** two proved bodies, refreshed against
+  batch k's normal /O2 libraries (`7e16a9f`) in 192.62 s. Five seeds
+  each, all instructions reached, all 115 mutations caught, exact real-route
+  and 26-checkpoint boot proofs. Bodies/fixtures and library hashes unchanged.
+  Evidence `D:/f117-gate/p2-batch-l-accept/refresh-verdict.json` and
+  `private-audit/private-audit.json`. Not integrated or gated yet.
+  VGAME `11D8:000A` (linear `11D8A`, `p2-vgame-11d8a`) adds one address:
+  far RETF, 40 instructions, 41 mutations, `full_cycle` 2 calls / 66 checkpoints.
+  Its fixture varies the relocated DS operand and driver far-call segments,
+  runs all 200 rows and folds return words too. 117 code bytes, census row 118.
+  START `58DF` (`p2-start-58df`, `start_onc_grid_reference`) expands the old
+  six-instruction `st4_start_clamp_open` at the same address: 91 instructions
+  across all nine arms, 74 mutations, `korea_strike` 2 calls / 76 checkpoints.
+  The full envelope is 249 bytes (231 instruction bytes, 18 table-data bytes).
+  Net address delta **1**, not 2; expected total 1,001 and 231 CTests.
+  `prepare_acceptance.py`, `integrate.py`, `start_acceptance.py` are prepared.
+  Integration removes only the old START wrapper/registration and keeps END's
+  shared `st4_record_switch_open`. Retire old START `58DF` coverage, collect
+  fresh optimized evidence and measure the census delta. `p2-start-5951` is
+  superseded (only the last switch arm); see `p2-start-58df/INTEGRATION.txt`.
 - **Stopped draft:** END `03D9` (D12 sites 0443/0450 may lie inside: decline
   while D12 is on). VGAME `7663` was superseded by batch g.
 - **Routes other than full_cycle:** `kit.py DIR checkpoints --route NAME` (and `ROUTE=NAME` for
