@@ -28,6 +28,10 @@ session log. Earlier detail is in `git log -p handoff.md`.
 ## Current state (17 October)
 
 Batches n and o are landed, built and CI-green; no private processes are running.
+The census correction below is committed and pushed (`7221e50`, empty-capture guard `f51040f`).
+Both Windows and Munt CI passed: https://github.com/TideGear/OpenNighthawk/actions/runs/39078907127.
+All 37 local census/credit regressions pass; the real-corpus refresh reproduces progress.json byte for byte.
+This changed accounting tools and docs only; batch o remains the latest full gameplay gate and application build.
 
 Scoreboard: P1 100.00%, P2 85.11%, P3 97.22%, All 94.75% (P4 and the decided-against P3 items are no longer scored)
 (`py tools/progress.py --title`). Phase 2: 1,006 addresses matched; named code runs
@@ -67,7 +71,9 @@ outside its rows in those seven programs. `tools/census_classify.py` computes a 
   The score explicitly describes the expanded seven-program scope, not all game code.
 - **Batch p lead screened:** VGAME `09EFA` (`prepass_display_body`) has a prepared private dossier at
   `D:/f117-gate/p2-vgame-9efa/`: **1,628 instructions / 4,552 bytes**, RET at `B0C1`, length must enclose
-  4,552 bytes. Its zero-size census row no longer hides its executed code. No observer/fix at the entry.
+  4,552 bytes. Validated routes run 3,487 bytes; 154 call sites have 46 targets, no existing matched entry
+  lies inside the body (`candidate-review.json`). Its zero-size census row no longer hides its executed code.
+  No observer/fix at the entry.
   Body, fixtures, seeds, mutations and route proof are **not done**; config still has placeholder names.
 
 ### Presentation: latest (15 October, evening)
