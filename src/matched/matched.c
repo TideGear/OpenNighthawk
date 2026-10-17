@@ -24797,25 +24797,7 @@ static int st4_start_objective_open(machine_t *m)
     return 1;
 }
 
-/* END 0x03021, the post-mission scorer's opening: nine state bytes cleared
- * and five frame words zeroed, then on to its loop over the event log at
- * 0x034ED. */
-static int st4_end_scorer_open(machine_t *m)
-{
-    cpu_t *c = &m->cpu;
-    static const uint16_t BYTES[9] = { 0x720E, 0x6D89, 0x5B9A, 0x55E8, 0x55DB, 0x6984, 0x64C8, 0x6D88, 0x55DC };
-    static const int WORDS[5] = { -0x0A, -0x0C, -6, -2, -8 };
-    if (!room(c, 21)) return 0;
-    frame_open(c, 0x0E);
-    cpu_push16(c, c->r[R_SI]);
-    set_r8(c, R_AL, (uint8_t)alu_sub(c, get_r8(c, R_AL), get_r8(c, R_AL), 0, 0));
-    for (int i = 0; i < 9; i++) ds_put8(c, BYTES[i], get_r8(c, R_AL));
-    c->r[R_AX] = (uint16_t)alu_sub(c, c->r[R_AX], c->r[R_AX], 1, 0);
-    for (int i = 0; i < 5; i++) bp_put(c, WORDS[i], c->r[R_AX]);
-    c->icount += 21;
-    c->ip = 0x34ED;
-    return 1;
-}
+
 
 /* END 0x023D6, an award ribbon row's layout (count, rows, index): a third
  * of the count, one less when it divides exactly ([bp-0Eh]); the ribbon
@@ -62048,175 +62030,8 @@ next:
  * 0E88 indexed by the byte [6440]; and last by 9, 10 or 11 when that record's +2Eh lies in
  * [7000, 9000), [9000, 11500) or [11500, ...) (unsigned). The low word of the total is returned in
  * AX; the frame is taken down (POP SI / MOV SP,BP / POP BP) and the routine returns with RET. */
-static int end_debrief_score_step(machine_t *m)
-{
-    cpu_t *c = &m->cpu;
-    enum { LAST = 4, FLAG = -2, CLASSF = -4, INDEX = -8, TOT_HI = -0x0A, TOT_LO = -0x0C, ARG = -0x0E,
-           LOG = 0x5E3C, UNITS = 0x56F8, CLASS_FLAGS = 0x6902, SWITCH = 0x34C4,
-           LMUL = 0x539C, LDIV = 0x5302 };
-#define SCB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
-#define SCRUN(call_) do { const uint64_t until_ = m->run_until; \
-    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
-    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
-#define SCNEAR(at_, target_, ret_) do { SM4_NEED(1, (at_)); SCRUN(guest_call_pop(m, (target_), (ret_), 8)); } while (0)
-/* PUSH WORD [BP+d] in the draft's form: an 8086 reads the word after SP moves. */
-#define SCPUSHM(d_) do { const uint16_t before_ = bp_get(c, (d_)); \
-    c->r[R_SP] = (uint16_t)(c->r[R_SP] - 2); \
-    seg_write16(c, c->seg[S_SS], c->r[R_SP], (c->model >= CPU_80286) ? before_ : bp_get(c, (d_))); } while (0)
-/* MOV AX,8 / CWD / PUSH DX / PUSH AX: the divisor. */
-#define SCEIGHT() do { c->r[R_AX] = 8; cwd(c); x86_push_reg(c, R_DX); x86_push_reg(c, R_AX); } while (0)
-/* CWD / PUSH DX / PUSH AX: a factor in AX as a long. */
-#define SCLONG() do { cwd(c); x86_push_reg(c, R_DX); x86_push_reg(c, R_AX); } while (0)
-/* MOV [bp-0Ch],AX / MOV [bp-0Ah],DX: the quotient is the new total. */
-#define SCSTORE() do { bp_put(c, TOT_LO, c->r[R_AX]); bp_put(c, TOT_HI, c->r[R_DX]); } while (0)
-/* LES BX,[55DE] / MOV SI,ES:[BX+field] / SHL SI,1 / MOV AX,[SI+table] */
-#define SCFACTOR_SI(field_, table_) do { \
-    c->r[R_BX] = ds_get(c, 0x55DE); c->seg[S_ES] = ds_get(c, 0x55E0); \
-    c->r[R_SI] = seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + (field_))); \
-    c->r[R_SI] = (uint16_t)x86_shift(c, 4, c->r[R_SI], 1, 1); \
-    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_SI] + (table_))); } while (0)
-    if (!room(c, 4)) return 0;
-    /* The next record: INC [bp-8], and past the last one the log is done. */
-    SCB(4, 0x34EA);
-    bp_put(c, INDEX, (uint16_t)alu_inc(c, bp_get(c, INDEX), 1));
-    c->r[R_AX] = bp_get(c, LAST);
-    (void)alu_op(c, 7, bp_get(c, INDEX), c->r[R_AX], 1);
-    if (x86_cond(c, 7)) goto scale;
-    SCB(5, 0x34F5);
-    c->r[R_AX] = 6;
-    x86_mul16(c, bp_get(c, INDEX));
-    c->r[R_BX] = c->r[R_AX];
-    (void)alu_op(c, 7, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] + LOG))), 0x00, 0);
-    if (x86_cond(c, 4)) goto scale;                                  /* a zero kind ends the log */
-    /* The record's argument, its unit's class flags, and its kind for the switch. */
-    SCB(17, 0x3504);
-    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] + LOG + 1))));
-    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);         /* CBW */
-    c->r[R_CX] = c->r[R_BX];
-    c->r[R_DX] = c->r[R_CX];
-    bp_put(c, ARG, c->r[R_AX]);
-    c->r[R_BX] = c->r[R_AX];
-    c->r[R_BX] = (uint16_t)alu_op(c, 4, c->r[R_BX], 0x007F, 1);
-    set_r8(c, R_CL, 4);
-    c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], get_r8(c, R_CL), 1);
-    set_r8(c, R_BL, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] + UNITS))));
-    set_r8(c, R_BH, (uint8_t)alu_op(c, 5, get_r8(c, R_BH), get_r8(c, R_BH), 0));
-    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] + CLASS_FLAGS))));
-    bp_put8(c, CLASSF, get_r8(c, R_AL));
-    c->r[R_BX] = c->r[R_DX];
-    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] + LOG))));
-    c->r[R_AX] = (uint16_t)alu_op(c, 4, c->r[R_AX], 0x003F, 1);
-    c->ip = SWITCH;                                                  /* JMP 34C4: the kind's arm */
-    return 1;
-scale:
-    /* Total * [0E68 + 2 * rec+38h] / 8. */
-    SCB(13, 0x3531);
-    SCEIGHT(); SCPUSHM(TOT_HI); SCPUSHM(TOT_LO);
-    SCFACTOR_SI(0x38, 0x0E68); SCLONG();
-    SCNEAR(0x354E, LMUL, 0x3551);
-    SCB(2, 0x3551); x86_push_reg(c, R_DX); x86_push_reg(c, R_AX);
-    SCNEAR(0x3553, LDIV, 0x3556);
-    /* Total * [0E72 + 2 * rec+3Ch] / 8. */
-    SCB(15, 0x3556);
-    SCSTORE(); SCEIGHT(); SCPUSHM(TOT_HI); SCPUSHM(TOT_LO);
-    SCFACTOR_SI(0x3C, 0x0E72); SCLONG();
-    SCNEAR(0x3579, LMUL, 0x357C);
-    SCB(2, 0x357C); x86_push_reg(c, R_DX); x86_push_reg(c, R_AX);
-    SCNEAR(0x357E, LDIV, 0x3581);
-    /* Total * [0E7A + 2 * rec+3Eh] / 8. */
-    SCB(15, 0x3581);
-    SCSTORE(); SCEIGHT(); SCPUSHM(TOT_HI); SCPUSHM(TOT_LO);
-    SCFACTOR_SI(0x3E, 0x0E7A); SCLONG();
-    SCNEAR(0x35A4, LMUL, 0x35A7);
-    SCB(2, 0x35A7); x86_push_reg(c, R_DX); x86_push_reg(c, R_AX);
-    SCNEAR(0x35A9, LDIV, 0x35AC);
-    /* Total * [0E82 + 2 * rec+40h] / 8, the index through BX this time. */
-    SCB(15, 0x35AC);
-    SCSTORE(); SCEIGHT(); SCPUSHM(TOT_HI); SCPUSHM(TOT_LO);
-    c->r[R_BX] = ds_get(c, 0x55DE); c->seg[S_ES] = ds_get(c, 0x55E0);
-    c->r[R_BX] = seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x40));
-    c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 1, 1);
-    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0x0E82));
-    SCLONG();
-    SCNEAR(0x35CF, LMUL, 0x35D2);
-    SCB(2, 0x35D2); x86_push_reg(c, R_DX); x86_push_reg(c, R_AX);
-    SCNEAR(0x35D4, LDIV, 0x35D7);
-    /* With the flag set and the record behind [7222] saying 2 at +26h: total * [0E88 + 2 * [6440]] / 8. */
-    SCB(4, 0x35D7);
-    SCSTORE();
-    (void)alu_op(c, 7, bp_get(c, FLAG), 0, 1);
-    if (x86_cond(c, 4)) goto band;
-    SCB(3, 0x35E3);
-    c->r[R_BX] = ds_get(c, 0x7222); c->seg[S_ES] = ds_get(c, 0x7224);
-    (void)alu_op(c, 7, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x26)), 2, 1);
-    if (x86_cond(c, 5)) goto band;
-    SCB(13, 0x35EE);
-    SCEIGHT(); SCPUSHM(TOT_HI); SCPUSHM(TOT_LO);
-    set_r8(c, R_BL, ds_get8(c, 0x6440));
-    set_r8(c, R_BH, (uint8_t)alu_op(c, 5, get_r8(c, R_BH), get_r8(c, R_BH), 0));
-    c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 1, 1);
-    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0x0E88));
-    SCLONG();
-    SCNEAR(0x3609, LMUL, 0x360C);
-    SCB(2, 0x360C); x86_push_reg(c, R_DX); x86_push_reg(c, R_AX);
-    SCNEAR(0x360E, LDIV, 0x3611);
-    SCB(2, 0x3611);
-    SCSTORE();
-band:
-    /* The band of the word +2Eh of the record behind [7222]: 7000, 9000, 11500 (unsigned). */
-    SCB(3, 0x3617);
-    c->r[R_BX] = ds_get(c, 0x7222); c->seg[S_ES] = ds_get(c, 0x7224);
-    (void)alu_op(c, 7, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x2E)), 0x1B58, 1);
-    if (x86_cond(c, 2)) goto band2;
-    SCB(2, 0x3623);
-    (void)alu_op(c, 7, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x2E)), 0x2328, 1);
-    if (x86_cond(c, 3)) goto band2;
-    SCB(6, 0x362B);
-    SCEIGHT(); c->r[R_AX] = 9;
-    goto last;
-band2:
-    SCB(2, 0x3636);
-    (void)alu_op(c, 7, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x2E)), 0x2328, 1);
-    if (x86_cond(c, 2)) goto band3;
-    SCB(2, 0x363E);
-    (void)alu_op(c, 7, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x2E)), 0x2CEC, 1);
-    if (x86_cond(c, 3)) goto band3;
-    SCB(6, 0x3646);
-    SCEIGHT(); c->r[R_AX] = 0x0A;
-    goto last;
-band3:
-    SCB(2, 0x3651);
-    (void)alu_op(c, 7, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x2E)), 0x2CEC, 1);
-    if (x86_cond(c, 2)) goto done;
-    SCB(5, 0x3659);
-    SCEIGHT(); c->r[R_AX] = 0x0B;
-last:
-    /* Total * 9, 10 or 11 / 8: here the factor is pushed first. */
-    SCB(5, 0x3662);
-    SCLONG(); SCPUSHM(TOT_HI); SCPUSHM(TOT_LO);
-    SCNEAR(0x366B, LMUL, 0x366E);
-    SCB(2, 0x366E); x86_push_reg(c, R_DX); x86_push_reg(c, R_AX);
-    SCNEAR(0x3670, LDIV, 0x3673);
-    SCB(2, 0x3673);
-    SCSTORE();
-done:
-    /* The total's low word; the frame down; RET. */
-    SCB(5, 0x3679);
-    c->r[R_AX] = bp_get(c, TOT_LO);
-    c->r[R_SI] = cpu_pop16(c);
-    c->r[R_SP] = c->r[R_BP];
-    c->r[R_BP] = cpu_pop16(c);
-    near_ret(c);
-    return 1;
-#undef SCFACTOR_SI
-#undef SCSTORE
-#undef SCLONG
-#undef SCEIGHT
-#undef SCPUSHM
-#undef SCNEAR
-#undef SCRUN
-#undef SCB
-}
+static int end_debrief_score_resume(machine_t *m, int advance);
+static int end_debrief_score_step(machine_t *m) { return end_debrief_score_resume(m,1); }
 
 /* END 2A01: the promotion announcement after a mission. The text is built in
  * a 256-byte buffer on the stack (bp-100h) by format_n (0x521C, cdecl:
@@ -66539,7 +66354,414 @@ draw_test:
 #undef AX
 }
 
+static int end_debrief_score_resume(machine_t *m, int advance)
+{
+    cpu_t *c = &m->cpu;
+    enum { LAST = 4, FLAG = -2, CLASSF = -4, INDEX = -8, TOT_HI = -0x0A, TOT_LO = -0x0C, ARG = -0x0E,
+           LOG = 0x5E3C, UNITS = 0x56F8, CLASS_FLAGS = 0x6902, SWITCH = 0x34C4,
+           LMUL = 0x539C, LDIV = 0x5302 };
+#define SCB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define SCRUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define SCNEAR(at_, target_, ret_) do { SM4_NEED(1, (at_)); SCRUN(guest_call_pop(m, (target_), (ret_), 8)); } while (0)
+/* PUSH WORD [BP+d] in the draft's form: an 8086 reads the word after SP moves. */
+#define SCPUSHM(d_) do { const uint16_t before_ = bp_get(c, (d_)); \
+    c->r[R_SP] = (uint16_t)(c->r[R_SP] - 2); \
+    seg_write16(c, c->seg[S_SS], c->r[R_SP], (c->model >= CPU_80286) ? before_ : bp_get(c, (d_))); } while (0)
+/* MOV AX,8 / CWD / PUSH DX / PUSH AX: the divisor. */
+#define SCEIGHT() do { c->r[R_AX] = 8; cwd(c); x86_push_reg(c, R_DX); x86_push_reg(c, R_AX); } while (0)
+/* CWD / PUSH DX / PUSH AX: a factor in AX as a long. */
+#define SCLONG() do { cwd(c); x86_push_reg(c, R_DX); x86_push_reg(c, R_AX); } while (0)
+/* MOV [bp-0Ch],AX / MOV [bp-0Ah],DX: the quotient is the new total. */
+#define SCSTORE() do { bp_put(c, TOT_LO, c->r[R_AX]); bp_put(c, TOT_HI, c->r[R_DX]); } while (0)
+/* LES BX,[55DE] / MOV SI,ES:[BX+field] / SHL SI,1 / MOV AX,[SI+table] */
+#define SCFACTOR_SI(field_, table_) do { \
+    c->r[R_BX] = ds_get(c, 0x55DE); c->seg[S_ES] = ds_get(c, 0x55E0); \
+    c->r[R_SI] = seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + (field_))); \
+    c->r[R_SI] = (uint16_t)x86_shift(c, 4, c->r[R_SI], 1, 1); \
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_SI] + (table_))); } while (0)
+    /* Initial entry at 34ED skips INC; the existing 34EA alias includes it. */
+    if (!room(c, advance ? 4 : 3)) return 0;
+    if (advance) {
+        SCB(4, 0x34EA);
+        bp_put(c, INDEX, (uint16_t)alu_inc(c, bp_get(c, INDEX), 1));
+    } else { SCB(3, 0x34ED); }
+    c->r[R_AX] = bp_get(c, LAST);
+    (void)alu_op(c, 7, bp_get(c, INDEX), c->r[R_AX], 1);
+    if (x86_cond(c, 7)) goto scale;
+    SCB(5, 0x34F5);
+    c->r[R_AX] = 6;
+    x86_mul16(c, bp_get(c, INDEX));
+    c->r[R_BX] = c->r[R_AX];
+    (void)alu_op(c, 7, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] + LOG))), 0x00, 0);
+    if (x86_cond(c, 4)) goto scale;                                  /* a zero kind ends the log */
+    /* The record's argument, its unit's class flags, and its kind for the switch. */
+    SCB(17, 0x3504);
+    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] + LOG + 1))));
+    c->r[R_AX] = (uint16_t)(int16_t)(int8_t)get_r8(c, R_AL);         /* CBW */
+    c->r[R_CX] = c->r[R_BX];
+    c->r[R_DX] = c->r[R_CX];
+    bp_put(c, ARG, c->r[R_AX]);
+    c->r[R_BX] = c->r[R_AX];
+    c->r[R_BX] = (uint16_t)alu_op(c, 4, c->r[R_BX], 0x007F, 1);
+    set_r8(c, R_CL, 4);
+    c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], get_r8(c, R_CL), 1);
+    set_r8(c, R_BL, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] + UNITS))));
+    set_r8(c, R_BH, (uint8_t)alu_op(c, 5, get_r8(c, R_BH), get_r8(c, R_BH), 0));
+    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] + CLASS_FLAGS))));
+    bp_put8(c, CLASSF, get_r8(c, R_AL));
+    c->r[R_BX] = c->r[R_DX];
+    set_r8(c, R_AL, mem_read8(c, phys(c->seg[S_DS], (uint16_t)(c->r[R_BX] + LOG))));
+    c->r[R_AX] = (uint16_t)alu_op(c, 4, c->r[R_AX], 0x003F, 1);
+    c->ip = SWITCH;                                                  /* JMP 34C4: the kind's arm */
+    return 1;
+scale:
+    /* Total * [0E68 + 2 * rec+38h] / 8. */
+    SCB(13, 0x3531);
+    SCEIGHT(); SCPUSHM(TOT_HI); SCPUSHM(TOT_LO);
+    SCFACTOR_SI(0x38, 0x0E68); SCLONG();
+    SCNEAR(0x354E, LMUL, 0x3551);
+    SCB(2, 0x3551); x86_push_reg(c, R_DX); x86_push_reg(c, R_AX);
+    SCNEAR(0x3553, LDIV, 0x3556);
+    /* Total * [0E72 + 2 * rec+3Ch] / 8. */
+    SCB(15, 0x3556);
+    SCSTORE(); SCEIGHT(); SCPUSHM(TOT_HI); SCPUSHM(TOT_LO);
+    SCFACTOR_SI(0x3C, 0x0E72); SCLONG();
+    SCNEAR(0x3579, LMUL, 0x357C);
+    SCB(2, 0x357C); x86_push_reg(c, R_DX); x86_push_reg(c, R_AX);
+    SCNEAR(0x357E, LDIV, 0x3581);
+    /* Total * [0E7A + 2 * rec+3Eh] / 8. */
+    SCB(15, 0x3581);
+    SCSTORE(); SCEIGHT(); SCPUSHM(TOT_HI); SCPUSHM(TOT_LO);
+    SCFACTOR_SI(0x3E, 0x0E7A); SCLONG();
+    SCNEAR(0x35A4, LMUL, 0x35A7);
+    SCB(2, 0x35A7); x86_push_reg(c, R_DX); x86_push_reg(c, R_AX);
+    SCNEAR(0x35A9, LDIV, 0x35AC);
+    /* Total * [0E82 + 2 * rec+40h] / 8, the index through BX this time. */
+    SCB(15, 0x35AC);
+    SCSTORE(); SCEIGHT(); SCPUSHM(TOT_HI); SCPUSHM(TOT_LO);
+    c->r[R_BX] = ds_get(c, 0x55DE); c->seg[S_ES] = ds_get(c, 0x55E0);
+    c->r[R_BX] = seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x40));
+    c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 1, 1);
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0x0E82));
+    SCLONG();
+    SCNEAR(0x35CF, LMUL, 0x35D2);
+    SCB(2, 0x35D2); x86_push_reg(c, R_DX); x86_push_reg(c, R_AX);
+    SCNEAR(0x35D4, LDIV, 0x35D7);
+    /* With the flag set and the record behind [7222] saying 2 at +26h: total * [0E88 + 2 * [6440]] / 8. */
+    SCB(4, 0x35D7);
+    SCSTORE();
+    (void)alu_op(c, 7, bp_get(c, FLAG), 0, 1);
+    if (x86_cond(c, 4)) goto band;
+    SCB(3, 0x35E3);
+    c->r[R_BX] = ds_get(c, 0x7222); c->seg[S_ES] = ds_get(c, 0x7224);
+    (void)alu_op(c, 7, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x26)), 2, 1);
+    if (x86_cond(c, 5)) goto band;
+    SCB(13, 0x35EE);
+    SCEIGHT(); SCPUSHM(TOT_HI); SCPUSHM(TOT_LO);
+    set_r8(c, R_BL, ds_get8(c, 0x6440));
+    set_r8(c, R_BH, (uint8_t)alu_op(c, 5, get_r8(c, R_BH), get_r8(c, R_BH), 0));
+    c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 1, 1);
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0x0E88));
+    SCLONG();
+    SCNEAR(0x3609, LMUL, 0x360C);
+    SCB(2, 0x360C); x86_push_reg(c, R_DX); x86_push_reg(c, R_AX);
+    SCNEAR(0x360E, LDIV, 0x3611);
+    SCB(2, 0x3611);
+    SCSTORE();
+band:
+    /* The band of the word +2Eh of the record behind [7222]: 7000, 9000, 11500 (unsigned). */
+    SCB(3, 0x3617);
+    c->r[R_BX] = ds_get(c, 0x7222); c->seg[S_ES] = ds_get(c, 0x7224);
+    (void)alu_op(c, 7, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x2E)), 0x1B58, 1);
+    if (x86_cond(c, 2)) goto band2;
+    SCB(2, 0x3623);
+    (void)alu_op(c, 7, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x2E)), 0x2328, 1);
+    if (x86_cond(c, 3)) goto band2;
+    SCB(6, 0x362B);
+    SCEIGHT(); c->r[R_AX] = 9;
+    goto last;
+band2:
+    SCB(2, 0x3636);
+    (void)alu_op(c, 7, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x2E)), 0x2328, 1);
+    if (x86_cond(c, 2)) goto band3;
+    SCB(2, 0x363E);
+    (void)alu_op(c, 7, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x2E)), 0x2CEC, 1);
+    if (x86_cond(c, 3)) goto band3;
+    SCB(6, 0x3646);
+    SCEIGHT(); c->r[R_AX] = 0x0A;
+    goto last;
+band3:
+    SCB(2, 0x3651);
+    (void)alu_op(c, 7, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + 0x2E)), 0x2CEC, 1);
+    if (x86_cond(c, 2)) goto done;
+    SCB(5, 0x3659);
+    SCEIGHT(); c->r[R_AX] = 0x0B;
+last:
+    /* Total * 9, 10 or 11 / 8: here the factor is pushed first. */
+    SCB(5, 0x3662);
+    SCLONG(); SCPUSHM(TOT_HI); SCPUSHM(TOT_LO);
+    SCNEAR(0x366B, LMUL, 0x366E);
+    SCB(2, 0x366E); x86_push_reg(c, R_DX); x86_push_reg(c, R_AX);
+    SCNEAR(0x3670, LDIV, 0x3673);
+    SCB(2, 0x3673);
+    SCSTORE();
+done:
+    /* The total's low word; the frame down; RET. */
+    SCB(5, 0x3679);
+    c->r[R_AX] = bp_get(c, TOT_LO);
+    c->r[R_SI] = cpu_pop16(c);
+    c->r[R_SP] = c->r[R_BP];
+    c->r[R_BP] = cpu_pop16(c);
+    near_ret(c);
+    return 1;
+#undef SCFACTOR_SI
+#undef SCSTORE
+#undef SCLONG
+#undef SCEIGHT
+#undef SCPUSHM
+#undef SCNEAR
+#undef SCRUN
+#undef SCB
+}
+
+/* END 3021: score the debrief event log. The first record is index zero;
+ * later records increment before reading. The low six kind bits select a
+ * live twelve-entry code table. The high bits record primary/secondary
+ * objectives. Keep the original word arithmetic, signed factors, class
+ * flags and byte counters; the original's wrap and score quirks are part
+ * of the result. Scoring arms share their tails as in the original. The
+ * named resume helper handles record loading and final long scaling, and
+ * remains available through the existing 34EA live-frame entry. */
+static int end_debrief_log_score(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+    enum {ARG=-0x0E,LO=-0x0C,HI=-0x0A,INDEX=-8,COUNT=-6,CLASSF=-4,FLAG=-2};
+#define AX c->r[R_AX]
+#define BX c->r[R_BX]
+#define CX c->r[R_CX]
+#define DX c->r[R_DX]
+#define SI c->r[R_SI]
+#define XB(n_,at_) do { SM4_NEED((n_),(at_));c->icount+=(n_); } while(0)
+#define TEST(v_,mask_,word_) (alu_logic(c,(v_)&(mask_),(word_)))
+#define PILOT() do {BX=ds_get(c,0x55DE);c->seg[S_ES]=ds_get(c,0x55E0);} while(0)
+#define FIELD(n_) seg_read16(c,c->seg[S_ES],(uint16_t)(BX+(n_)))
+#define FACTOR(table_) do {PILOT();BX=FIELD(0x3A);BX=(uint16_t)x86_shift(c,4,BX,1,1);AX=ds_get(c,(uint16_t)(BX+(table_)));} while(0)
+#define LOG_OFFSET() do {AX=6;x86_mul16(c,bp_get(c,INDEX));BX=AX;} while(0)
+#define ADD_TOTAL() do {bp_put(c,LO,(uint16_t)alu_op(c,0,bp_get(c,LO),AX,1));bp_put(c,HI,(uint16_t)alu_op(c,2,bp_get(c,HI),DX,1));} while(0)
+#define SUB_TOTAL() do {bp_put(c,LO,(uint16_t)alu_op(c,5,bp_get(c,LO),AX,1));bp_put(c,HI,(uint16_t)alu_op(c,3,bp_get(c,HI),DX,1));} while(0)
+#define INC_BYTE(at_) ds_put8(c,(at_),(uint8_t)alu_inc(c,ds_get8(c,(at_)),0))
+#define MAP_FLAGS() do {LOG_OFFSET();set_r8(c,R_AL,ds_get8(c,(uint16_t)(BX+0x5E3B))); \
+    set_r8(c,R_AH,(uint8_t)alu_op(c,5,get_r8(c,R_AH),get_r8(c,R_AH),0));SI=AX;SI=(uint16_t)alu_op(c,4,SI,0xFFF0,1); \
+    set_r8(c,R_CL,4);set_r8(c,R_BL,ds_get8(c,(uint16_t)(BX+0x5E3A))); \
+    set_r8(c,R_BL,(uint8_t)x86_shift(c,5,get_r8(c,R_BL),get_r8(c,R_CL),0)); \
+    set_r8(c,R_BH,(uint8_t)alu_op(c,5,get_r8(c,R_BH),get_r8(c,R_BH),0)); \
+    TEST(ds_get8(c,(uint16_t)(BX+SI+0x55EA)),3,0);} while(0)
+    if(!room(c,21))return 0;
+    XB(21,0x3021);frame_open(c,0x0E);x86_push_reg(c,R_SI);
+    set_r8(c,R_AL,(uint8_t)alu_op(c,5,get_r8(c,R_AL),get_r8(c,R_AL),0));
+    {static const uint16_t zeros_[]={0x720E,0x6D89,0x5B9A,0x55E8,0x55DB,0x6984,0x64C8,0x6D88,0x55DC};
+     for(unsigned j=0;j<9;j++)ds_put8(c,zeros_[j],get_r8(c,R_AL));}
+    AX=(uint16_t)alu_op(c,5,AX,AX,1);bp_put(c,HI,AX);bp_put(c,LO,AX);bp_put(c,COUNT,AX);bp_put(c,FLAG,AX);bp_put(c,INDEX,AX);
+    c->ip=0x34ED;if(!end_debrief_score_resume(m,0))return 1;
+    if(c->ip!=0x34C4)return 1;goto dispatch;
+
+/* Kind 8: cancel a negative score, and flag a later record for scaling. */
+L3059: XB(2,0x3059);alu_op(c,7,bp_get(c,HI),0,1);if(x86_cond(c,13))goto L3067;
+    XB(3,0x305F);AX=(uint16_t)alu_op(c,5,AX,AX,1);bp_put(c,HI,AX);bp_put(c,LO,AX);
+L3067: XB(2,0x3067);alu_op(c,7,bp_get(c,INDEX),0,1);if(x86_cond(c,5))goto L3070;
+    XB(1,0x306D);goto advance;
+L3070: XB(2,0x3070);bp_put(c,FLAG,1);goto advance;
+
+/* Kinds 10/11: primary or secondary objective score, counted once. */
+L3078: XB(5,0x3078);LOG_OFFSET();TEST(ds_get8(c,(uint16_t)(BX+0x5E3C)),0x80,0);if(x86_cond(c,4))goto L30D3;
+L3087: XB(10,0x3087);FACTOR(0x0DEC);cwd(c);ADD_TOTAL();ds_put8(c,0x6D89,1);
+    alu_op(c,7,ds_get8(c,0x720E),0,0);if(x86_cond(c,5))goto L30AB;
+    XB(1,0x30A8);goto advance;
+L30AB: XB(8,0x30AB);AX=ds_get(c,0x0DFE);cwd(c);CX=AX;AX=ds_get(c,0x0E00);BX=DX;cwd(c);
+    AX=(uint16_t)alu_op(c,5,AX,CX,1);DX=(uint16_t)alu_op(c,3,DX,BX,1);
+L30BB: XB(3,0x30BB);ADD_TOTAL();goto advance;
+L30C4: XB(5,0x30C4);LOG_OFFSET();TEST(ds_get8(c,(uint16_t)(BX+0x5E3C)),0x80,0);if(x86_cond(c,5))goto L3087;
+L30D3: XB(5,0x30D3);LOG_OFFSET();TEST(ds_get8(c,(uint16_t)(BX+0x5E3C)),0x40,0);if(x86_cond(c,5))goto L30E5;
+    XB(1,0x30E2);goto advance;
+L30E5: XB(9,0x30E5);set_r8(c,R_BL,ds_get8(c,0x6D89));set_r8(c,R_BH,(uint8_t)alu_op(c,5,get_r8(c,R_BH),get_r8(c,R_BH),0));
+    BX=(uint16_t)x86_shift(c,4,BX,1,1);AX=ds_get(c,(uint16_t)(BX+0x0DFE));cwd(c);ADD_TOTAL();ds_put8(c,0x720E,1);goto advance;
+
+/* Kind 9: valid photo cells, with the original difficulty cadence. */
+L3100: XB(13,0x3100);MAP_FLAGS();if(x86_cond(c,4))goto L3127;
+    XB(1,0x3124);goto advance;
+L3127: XB(3,0x3127);PILOT();alu_op(c,7,FIELD(0x3A),0,1);if(x86_cond(c,5))goto L3140;
+    XB(1,0x3132);bp_put(c,COUNT,(uint16_t)alu_inc(c,bp_get(c,COUNT),1));
+L3135: XB(3,0x3135);bp_put(c,LO,(uint16_t)alu_op(c,0,bp_get(c,LO),1,1));bp_put(c,HI,(uint16_t)alu_op(c,2,bp_get(c,HI),0,1));goto advance;
+L3140: XB(2,0x3140);alu_op(c,7,FIELD(0x3A),1,1);if(x86_cond(c,4))goto L314A;
+    XB(1,0x3147);goto advance;
+L314A: XB(3,0x314A);bp_put(c,COUNT,(uint16_t)alu_inc(c,bp_get(c,COUNT),1));alu_op(c,7,FIELD(0x42),0,1);if(x86_cond(c,4))goto L3162;
+    XB(2,0x3154);TEST(bp_get8(c,COUNT),7,0);if(x86_cond(c,5))goto L3162;
+    XB(2,0x315A);bp_put(c,LO,(uint16_t)alu_op(c,0,bp_get(c,LO),1,1));bp_put(c,HI,(uint16_t)alu_op(c,2,bp_get(c,HI),0,1));
+L3162: XB(2,0x3162);TEST(bp_get8(c,COUNT),3,0);if(x86_cond(c,4))goto L316B;
+    XB(1,0x3168);goto advance;
+L316B: XB(1,0x316B);goto L3135;
+
+/* Kinds 1/12: class, ownership and objective bonuses for a unit record. */
+L316D: XB(5,0x316D);set_r8(c,R_CL,4);BX=bp_get(c,ARG);BX=(uint16_t)x86_shift(c,4,BX,get_r8(c,R_CL),1);
+    TEST(ds_get8(c,(uint16_t)(BX+0x56F3)),0x10,0);if(x86_cond(c,4))goto L3190;
+    XB(7,0x317B);FACTOR(0x0DF2);cwd(c);SUB_TOTAL();
+L3190: XB(5,0x3190);LOG_OFFSET();TEST(ds_get8(c,(uint16_t)(BX+0x5E3C)),0x80,0);if(x86_cond(c,4))goto L31DC;
+    XB(10,0x319F);FACTOR(0x0DEC);cwd(c);ADD_TOTAL();ds_put8(c,0x6D89,1);alu_op(c,7,ds_get8(c,0x720E),0,0);if(x86_cond(c,5))goto L31C3;
+    XB(1,0x31C0);goto L33FE;
+L31C3: XB(8,0x31C3);AX=ds_get(c,0x0DFE);cwd(c);CX=AX;AX=ds_get(c,0x0E00);BX=DX;cwd(c);AX=(uint16_t)alu_op(c,5,AX,CX,1);DX=(uint16_t)alu_op(c,3,DX,BX,1);
+L31D3: XB(3,0x31D3);ADD_TOTAL();goto L33FE;
+L31DC: XB(5,0x31DC);LOG_OFFSET();TEST(ds_get8(c,(uint16_t)(BX+0x5E3C)),0x40,0);if(x86_cond(c,4))goto L31F4;
+    XB(3,0x31EB);set_r8(c,R_BL,ds_get8(c,0x6D89));set_r8(c,R_BH,(uint8_t)alu_op(c,5,get_r8(c,R_BH),get_r8(c,R_BH),0));goto L33EC;
+L31F4: XB(2,0x31F4);TEST(bp_get8(c,CLASSF),0x40,0);if(x86_cond(c,5))goto L320C;
+    XB(7,0x31FA);set_r8(c,R_CL,4);BX=bp_get(c,ARG);BX=(uint16_t)x86_shift(c,4,BX,get_r8(c,R_CL),1);AX=ds_get(c,(uint16_t)(BX+0x56F2));CX=AX;TEST(get_r8(c,R_AH),5,0);if(x86_cond(c,4))goto L320F;
+L320C: XB(1,0x320C);goto L340B;
+L320F: XB(2,0x320F);TEST(get_r8(c,R_CH),0x10,0);if(x86_cond(c,4))goto L321F;
+    XB(3,0x3214);PILOT();alu_op(c,7,FIELD(0x3A),0,1);if(x86_cond(c,4))goto L322A;
+L321F: XB(3,0x321F);PILOT();alu_op(c,7,FIELD(0x3A),0,1);if(x86_cond(c,4))goto L3237;
+L322A: XB(5,0x322A);BX=FIELD(0x3A);BX=(uint16_t)x86_shift(c,4,BX,1,1);AX=ds_get(c,(uint16_t)(BX+0x0DF8));cwd(c);goto L31D3;
+L3237: XB(9,0x3237);BX=FIELD(0x3A);BX=(uint16_t)x86_shift(c,4,BX,1,1);AX=ds_get(c,(uint16_t)(BX+0x0DE0));CX=AX;cwd(c);ADD_TOTAL();alu_op(c,1,CX,CX,1);if(x86_cond(c,4))goto L3251;
+    XB(1,0x324E);goto advance;
+L3251: XB(2,0x3251);INC_BYTE(0x6D88);goto advance;
+
+/* Kind 3: indexed targets, their ownership and class records. */
+L3258: XB(2,0x3258);TEST(bp_get8(c,ARG),0x80,0);if(x86_cond(c,4))goto L3273;
+    XB(7,0x325E);FACTOR(0x0DE6);cwd(c);SUB_TOTAL();
+L3273: XB(5,0x3273);LOG_OFFSET();TEST(ds_get8(c,(uint16_t)(BX+0x5E3C)),0x80,0);if(x86_cond(c,4))goto L32B9;
+    XB(10,0x3282);FACTOR(0x0DEC);cwd(c);ADD_TOTAL();ds_put8(c,0x6D89,1);alu_op(c,7,ds_get8(c,0x720E),0,0);if(x86_cond(c,5))goto L32A6;
+    XB(1,0x32A3);goto L338B;
+L32A6: XB(9,0x32A6);AX=ds_get(c,0x0DFE);cwd(c);CX=AX;AX=ds_get(c,0x0E00);BX=DX;cwd(c);AX=(uint16_t)alu_op(c,5,AX,CX,1);DX=(uint16_t)alu_op(c,3,DX,BX,1);goto L3385;
+L32B9: XB(5,0x32B9);LOG_OFFSET();TEST(ds_get8(c,(uint16_t)(BX+0x5E3C)),0x40,0);if(x86_cond(c,4))goto L32E3;
+    XB(9,0x32C8);set_r8(c,R_BL,ds_get8(c,0x6D89));set_r8(c,R_BH,(uint8_t)alu_op(c,5,get_r8(c,R_BH),get_r8(c,R_BH),0));BX=(uint16_t)x86_shift(c,4,BX,1,1);AX=ds_get(c,(uint16_t)(BX+0x0DFE));cwd(c);ADD_TOTAL();ds_put8(c,0x720E,1);goto L338B;
+L32E3: XB(6,0x32E3);set_r8(c,R_CL,5);set_r8(c,R_BL,bp_get8(c,ARG));BX=(uint16_t)alu_op(c,4,BX,0x7F,1);BX=(uint16_t)x86_shift(c,4,BX,get_r8(c,R_CL),1);alu_op(c,7,ds_get(c,(uint16_t)(BX+0x17B6)),0xFFFF,1);if(x86_cond(c,5))goto L3310;
+    XB(9,0x32F4);FACTOR(0x0DC8);cwd(c);ADD_TOTAL();INC_BYTE(0x55DB);goto advance;
+L3310: XB(2,0x3310);TEST(bp_get8(c,ARG),0x80,0);if(x86_cond(c,4))goto L3321;
+    XB(3,0x3316);PILOT();alu_op(c,7,FIELD(0x3A),0,1);if(x86_cond(c,4))goto L332C;
+L3321: XB(3,0x3321);PILOT();alu_op(c,7,FIELD(0x3A),0,1);if(x86_cond(c,4))goto L3392;
+L332C: XB(6,0x332C);set_r8(c,R_CL,5);set_r8(c,R_BL,bp_get8(c,ARG));BX=(uint16_t)alu_op(c,4,BX,0x7F,1);BX=(uint16_t)x86_shift(c,4,BX,get_r8(c,R_CL),1);alu_op(c,7,ds_get(c,(uint16_t)(BX+0x17B6)),0,1);if(x86_cond(c,5))goto L334D;
+    XB(5,0x333D);BX=ds_get(c,0x55DE);BX=FIELD(0x3A);BX=(uint16_t)x86_shift(c,4,BX,1,1);AX=ds_get(c,(uint16_t)(BX+0x0E02));goto L3384;
+L334D: XB(9,0x334D);set_r8(c,R_CL,5);set_r8(c,R_BL,bp_get8(c,ARG));BX=(uint16_t)alu_op(c,4,BX,0x7F,1);BX=(uint16_t)x86_shift(c,4,BX,get_r8(c,R_CL),1);BX=ds_get(c,(uint16_t)(BX+0x17B6));set_r8(c,R_CL,4);BX=(uint16_t)x86_shift(c,4,BX,get_r8(c,R_CL),1);TEST(ds_get8(c,(uint16_t)(BX+0x56F2)),4,0);if(x86_cond(c,4))goto L3376;
+    XB(5,0x3366);BX=ds_get(c,0x55DE);BX=FIELD(0x3A);BX=(uint16_t)x86_shift(c,4,BX,1,1);AX=ds_get(c,(uint16_t)(BX+0x0DB6));goto L3384;
+L3376: XB(4,0x3376);BX=ds_get(c,0x55DE);BX=FIELD(0x3A);BX=(uint16_t)x86_shift(c,4,BX,1,1);AX=ds_get(c,(uint16_t)(BX+0x0DC2));
+L3384: XB(1,0x3384);cwd(c);
+L3385: XB(2,0x3385);ADD_TOTAL();
+L338B: XB(2,0x338B);INC_BYTE(0x64C8);goto advance;
+L3392: XB(8,0x3392);BX=FIELD(0x3A);BX=(uint16_t)x86_shift(c,4,BX,1,1);AX=ds_get(c,(uint16_t)(BX+0x0DDA));cwd(c);ADD_TOTAL();INC_BYTE(0x55DC);goto advance;
+
+/* Kind 2 shares objective and class accounting with the unit arm. */
+L33AA: XB(5,0x33AA);LOG_OFFSET();TEST(ds_get8(c,(uint16_t)(BX+0x5E3C)),0x80,0);if(x86_cond(c,4))goto L33D5;
+    XB(9,0x33B9);FACTOR(0x0DEC);cwd(c);ADD_TOTAL();ds_put8(c,0x6D89,1);goto L33FE;
+L33D5: XB(5,0x33D5);LOG_OFFSET();TEST(ds_get8(c,(uint16_t)(BX+0x5E3C)),0x40,0);if(x86_cond(c,4))goto L3405;
+    XB(2,0x33E4);PILOT();BX=FIELD(0x3A);
+L33EC: XB(6,0x33EC);BX=(uint16_t)x86_shift(c,4,BX,1,1);AX=ds_get(c,(uint16_t)(BX+0x0DFE));cwd(c);ADD_TOTAL();ds_put8(c,0x720E,1);
+L33FE: XB(2,0x33FE);INC_BYTE(0x6984);goto advance;
+L3405: XB(2,0x3405);TEST(bp_get8(c,CLASSF),0x40,0);if(x86_cond(c,4))goto L3427;
+L340B: XB(9,0x340B);FACTOR(0x0DCE);cwd(c);ADD_TOTAL();INC_BYTE(0x55E8);goto advance;
+L3427: XB(13,0x3427);MAP_FLAGS();if(x86_cond(c,5))goto L340B;
+    XB(2,0x344B);TEST(bp_get8(c,CLASSF),0x80,0);if(x86_cond(c,4))goto L346C;
+    XB(9,0x3451);FACTOR(0x0DBC);cwd(c);ADD_TOTAL();INC_BYTE(0x5B9A);goto advance;
+L346C: XB(18,0x346C);set_r8(c,R_CL,4);PILOT();BX=FIELD(0x3A);AX=BX;BX=(uint16_t)x86_shift(c,4,BX,get_r8(c,R_CL),1);set_r8(c,R_CL,bp_get8(c,CLASSF));CX=(uint16_t)alu_op(c,4,CX,0x0F,1);BX=(uint16_t)alu_op(c,0,BX,CX,1);BX=(uint16_t)x86_shift(c,4,BX,1,1);CX=AX;AX=ds_get(c,(uint16_t)(BX+0x0E08));cwd(c);ADD_TOTAL();BX=CX;BX=(uint16_t)x86_shift(c,4,BX,1,1);alu_op(c,7,ds_get(c,(uint16_t)(BX+0x0DD4)),0,1);if(x86_cond(c,12))goto L349F;
+    XB(1,0x349C);goto L33FE;
+L349F: XB(1,0x349F);goto L3251;
+
+/* Kinds 7 and 6: difficulty-indexed table factors. */
+L34A2: XB(5,0x34A2);FACTOR(0x0DF2);goto L34C0;
+L34B2: XB(4,0x34B2);FACTOR(0x0DE6);
+L34C0: XB(2,0x34C0);cwd(c);goto L30BB;
+
+dispatch:
+    XB(3,0x34C4);AX=(uint16_t)alu_dec(c,AX,1);alu_op(c,7,AX,11,1);if(x86_cond(c,7))goto advance;
+    XB(3,0x34CA);AX=(uint16_t)x86_shift(c,4,AX,1,1);{uint16_t old_=BX;BX=AX;AX=old_;}
+    {const uint16_t to_=seg_read16(c,c->seg[S_CS],(uint16_t)(BX+0x34D2));switch(to_){
+        case 0x3059:goto L3059;case 0x3078:goto L3078;case 0x30C4:goto L30C4;case 0x3100:goto L3100;
+        case 0x316D:goto L316D;case 0x3258:goto L3258;case 0x33AA:goto L33AA;case 0x34A2:goto L34A2;
+        case 0x34B2:goto L34B2;case 0x34EA:goto advance;default:c->ip=to_;return 1;}}
+advance:
+    c->ip=0x34EA;if(!end_debrief_score_resume(m,1))return 1;if(c->ip==0x34C4)goto dispatch;return 1;
+#undef MAP_FLAGS
+#undef INC_BYTE
+#undef SUB_TOTAL
+#undef ADD_TOTAL
+#undef LOG_OFFSET
+#undef FACTOR
+#undef FIELD
+#undef PILOT
+#undef TEST
+#undef XB
+#undef SI
+#undef DX
+#undef CX
+#undef BX
+#undef AX
+}
+
+/* VGAME 11B8:0008: open a packed picture, returning the DOS handle and
+ * setting the 512-byte input count on success. Filename and mode are the
+ * far caller's stack arguments; filename data live in SS. Failures 2/3,
+ * 4 and all others select distinct messages. The shared error path sets
+ * text mode, changes the filename's NUL to '$', prints it and the message,
+ * optionally prints the original single-character error code, then leaves
+ * DOS termination at 0207 to the original. The shifted character and
+ * offset wrap deliberately retain the original's behavior. */
+static int vgame_picture_open_far(machine_t *m)
+{
+    cpu_t *c=&m->cpu;
+#define AX c->r[R_AX]
+#define BX c->r[R_BX]
+#define CX c->r[R_CX]
+#define DX c->r[R_DX]
+#define DI c->r[R_DI]
+#define DS c->seg[S_DS]
+#define XB(n_,at_) do { SM4_NEED((n_),(at_));c->icount+=(n_); } while(0)
+#define INT(at_) do { SM4_NEED(1,(at_));const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at;const int returned_=sm4_int(m,(at_)); \
+    m->run_until=until_;if(!returned_)return 1; } while(0)
+    if(!room(c,14))return 0;
+    XB(14,0x0008);cpu_push16(c,c->r[R_BP]);c->r[R_BP]=c->r[R_SP];x86_push_reg(c,R_DI);x86_push_reg(c,R_SI);
+    cpu_push16(c,c->seg[S_ES]);x86_push_reg(c,R_BP);cpu_push16(c,DS);
+    AX=seg_read16(c,c->seg[S_CS],0x0011);DS=AX;set_r8(c,R_AH,0x3D);set_r8(c,R_AL,bp_get8(c,8));
+    BX=c->seg[S_SS];DS=BX;DX=bp_get(c,6);INT(0x0021);
+    XB(1,0x0023);if(x86_cond(c,3))goto success;
+    XB(2,0x0025);alu_op(c,7,AX,2,1);if(x86_cond(c,5))goto error3;
+not_found:
+    XB(4,0x002A);BX=bp_get(c,6);AX=0x45F8;CX=0xFFFF;goto fatal;
+error3:
+    XB(2,0x0036);alu_op(c,7,AX,3,1);if(x86_cond(c,4))goto not_found;
+    XB(2,0x003B);alu_op(c,7,AX,4,1);if(x86_cond(c,5))goto other_error;
+    XB(4,0x0040);CX=0xFFFF;BX=bp_get(c,6);AX=0x4608;goto fatal;
+other_error:
+    XB(4,0x004C);CX=AX;AX=0x4623;BX=bp_get(c,6);goto fatal;
+success:
+    XB(9,0x0057);ds_put(c,0x4660,512);DS=cpu_pop16(c);c->r[R_BP]=cpu_pop16(c);c->seg[S_ES]=cpu_pop16(c);
+    c->r[R_SI]=cpu_pop16(c);DI=cpu_pop16(c);c->r[R_SP]=c->r[R_BP];c->r[R_BP]=cpu_pop16(c);sm4_ret(c,1);return 1;
+fatal:
+    XB(2,0x01CD);x86_push_reg(c,R_AX);AX=3;INT(0x01D1);
+    XB(1,0x01D3);DI=0;
+name_scan:
+    XB(2,0x01D6);alu_op(c,7,ds_get8(c,(uint16_t)(BX+DI)),0,0);if(x86_cond(c,4))goto print_name;
+    XB(2,0x01DB);DI=(uint16_t)alu_inc(c,DI,1);goto name_scan;
+print_name:
+    XB(3,0x01DE);ds_put8(c,(uint16_t)(BX+DI),0x24);DX=BX;set_r8(c,R_AH,9);INT(0x01E5);
+    XB(2,0x01E7);DX=cpu_pop16(c);set_r8(c,R_AH,9);INT(0x01EA);
+    XB(2,0x01EC);alu_op(c,7,CX,0xFFFF,1);if(x86_cond(c,4))goto terminate;
+    XB(5,0x01F1);CX=(uint16_t)alu_op(c,0,CX,0x30,1);ds_put8(c,0x43F6,get_r8(c,R_CL));ds_put8(c,0x43F7,0x24);
+    DX=0x43F6;set_r8(c,R_AH,9);INT(0x0202);
+terminate:
+    XB(1,0x0204);AX=0x4C00;c->ip=0x0207;return 1;
+#undef INT
+#undef XB
+#undef DS
+#undef DI
+#undef DX
+#undef CX
+#undef BX
+#undef AX
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "VGAME.EXE", VGAME_47304, 0x11B8, 0x0008, vgame_picture_open_far, "open a packed picture or print the filename and fatal DOS error", 2 },
+    { "matched", "END.EXE", END_47304, 0x0000, 0x3021, end_debrief_log_score, "score the complete debrief event log and scale the total", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x22EB, end_collect_award_ribbons, "collect owned awards and draw their ribbon rows", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x2200, end_awards_page_callback, "compose the awards page through full-page copies ribbon and report callbacks", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x58DF, start_onc_grid_reference, "format a theatre grid reference from signed world coordinates", 1 },
@@ -67236,7 +67458,6 @@ static const recomp_override MATCHED[] = {
     { "matched", "START.EXE", START_47304, 0x0000, 0x8983, st4_start_pic_lzw, "the picture decoder's code and table step", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x5DC0, st4_end_heap_free, "free a near heap block", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x2651, st4_start_objective_open, "the objective line's opening", 1 },
-    { "matched", "END.EXE", END_47304, 0x0000, 0x3021, st4_end_scorer_open, "the scorer's opening", 1 },
     { "matched", "END.EXE", END_47304, 0x0000, 0x23D6, st4_end_ribbon_layout, "a ribbon row's layout", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x0B01, st4_start_weapon_hover, "the weapon screen's hover", 1 },
     { "matched", "START.EXE", START_47304, 0x0000, 0x63FB, st4_start_roster_hover, "the roster screen's hover", 1 },

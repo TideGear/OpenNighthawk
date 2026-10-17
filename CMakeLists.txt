@@ -758,6 +758,10 @@ if(F117R_BUILD_TESTS)
       --only END.EXE:2200)
     add_test(NAME matched_end_collect_award_ribbons COMMAND func_lockstep --states 5000
       --only END.EXE:22EB)
+    add_test(NAME matched_end_debrief_log_score COMMAND func_lockstep --states 5000
+      --only END.EXE:3021)
+    add_test(NAME matched_vgame_picture_open_far COMMAND func_lockstep --states 5000
+      --only VGAME.EXE:8)
     add_test(NAME matched_flight_plan COMMAND func_lockstep --states 4000
       --only START.EXE:149C)
     add_test(NAME matched_picture_input COMMAND func_lockstep --states 4000

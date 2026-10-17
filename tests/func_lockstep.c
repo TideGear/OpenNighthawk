@@ -573,6 +573,8 @@ static const struct { const char *module; uint16_t ip; int arg; uint16_t v[2]; }
 /* Exact code ranges when the default 0x300-byte window is unsuitable:
  * long/shared tails, or small walkers whose unrelated callees are nearby. */
 static const struct { const char *module; uint16_t ip, from, span; } SPANS[] = {
+    { "VGAME.EXE", 0x0008, 0x0008, 0x01FF },
+    { "END.EXE", 0x3021, 0x3021, 0x0660 },
     { "END.EXE", 0x22EB, 0x22EB, 0x00EB },
     { "END.EXE", 0x2200, 0x2200, 0x0065 },
     { "START.EXE", 0x58DF, 0x58DF, 0x00F9 },
@@ -1012,6 +1014,8 @@ static const struct { const char *module; uint16_t seg, ip, len; unsigned insns,
     { "START.EXE", 0x0000, 0x58DF, 0x00F9, 91, 91, "format a theatre grid reference from signed world coordinates" },
     { "END.EXE", 0x0000, 0x2200, 0x0065, 52, 52, "compose the awards page through full-page copies ribbon and report callbacks" },
     { "END.EXE", 0x0000, 0x22EB, 0x00EB, 86, 86, "collect owned awards and draw their ribbon rows" },
+    { "END.EXE", 0x0000, 0x3021, 0x0660, 579, 579, "score the complete debrief event log and scale the total" },
+    { "VGAME.EXE", 0x11B8, 0x0008, 0x01FF, 67, 67, "open a packed picture or print the filename and fatal DOS error" },
     { "END.EXE", 0, 0x2BEC, 0x0435, 444, 444, "debrief narrative and measured layout" },
     { "START.EXE", 0, 0x6DB8, 0x03F5, 399, 399, "pilot options dialog" },
     { "START.EXE", 0, 0x149C, 0x039E, 365, 365, "flight plan display" },
@@ -1055,6 +1059,7 @@ static const struct { const char *module; uint16_t seg, ip, len; unsigned insns,
  * the original code, where the machine's DOS ends the program (here the harness answers it and the
  * fixture's code after it returns). A named routine stopped there has completed its named region. */
 static const struct { const char *module; uint16_t seg, ip, end; } PROGRAM_ENDS[] = {
+    { "VGAME.EXE", 0x11B8, 0x0008, 0x0207 }, /* packed picture open failure: DOS exit */
     { "START.EXE", 0x0000, 0x9094, 0x910F }, /* exit(code): MOV AH,4Ch / INT 21h, its CH-clear end */
     { "MPS_LOGO.EXE", 0x00DA, 0x0352, 0x043B }, /* overlay load failure: DOS exit */
     { "SETUP.EXE", 0x0000, 0x0A9F, 0x0BA0 },    /* the overlay loader's error arms: MOV AX,4C00h / INT 21h */
@@ -16495,6 +16500,97 @@ int main(int argc, char **argv)
 #undef XW16
 #undef XW8
             }
+            if (!strcmp(o->module,"END.EXE") && o->seg==0 && o->ip==0x3021) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(uint16_t)((o_)+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define RND(n_) ((unsigned)(XRAND()%(unsigned)(n_)))
+                const uint16_t dg=0x5000,ps=0x7800,ms=0x7A00;
+                seg[S_DS]=dg;seg[S_SS]=(XRAND()&1)?dg:0x6000;r[R_SP]=0xF000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],r[R_SP]-0x200+j,XRAND());
+                const uint16_t last_=(uint16_t)RND(33),po_=(XRAND()&1)?0x2000:0xFFF0,mo_=(XRAND()&1)?0x3000:0xFFE0;
+                small[0]=last_;for(unsigned j=1;j<4;j++)small[j]=(uint16_t)XRAND();
+                for(unsigned j=0;j<4;j++)XW16(seg[S_SS],r[R_SP]+2*j,small[j]);
+                XW16(dg,0x55DE,po_);XW16(dg,0x55E0,ps);XW16(dg,0x7222,mo_);XW16(dg,0x7224,ms);
+                static const uint16_t fields_[]={0x38,0x3C,0x3E,0x40};
+                for(unsigned j=0;j<4;j++)XW16(ps,(uint16_t)(po_+fields_[j]),RND(3));
+                XW16(ps,(uint16_t)(po_+0x3A),RND(3));XW16(ps,(uint16_t)(po_+0x42),RND(2));
+                static const uint16_t bands_[]={0,6999,7000,8999,9000,11499,11500,65535};
+                XW16(ms,(uint16_t)(mo_+0x26),RND(4));XW16(ms,(uint16_t)(mo_+0x2E),bands_[RND(8)]);XW8(dg,0x6440,RND(4));
+                for(unsigned j=0;j<0xD4;j+=2){const uint16_t value_=(uint16_t)((int)RND(65)-32);XW16(dg,0x0DB6+j,value_);}
+                for(unsigned j=0;j<256;j++)XW8(dg,0x6902+j,XRAND());
+                for(unsigned j=0;j<256;j++)XW8(dg,0x55EA+j,XRAND());
+                for(unsigned j=0;j<256;j++) {
+                    const uint16_t u_=(uint16_t)(0x56F2+16*(int16_t)(int8_t)j);
+                    XW16(dg,u_,XRAND());XW8(dg,(uint16_t)(u_+6),XRAND());
+                }
+                for(unsigned j=0;j<128;j++) {
+                    const unsigned choice_=RND(5);const uint16_t owner_=choice_==0?0xFFFF:choice_==1?0:(uint16_t)(1+RND(127));
+                    XW16(dg,0x17B6+32*j,owner_);
+                }
+                for(unsigned j=0;j<6*34;j++)XW8(dg,0x5E3A+j,XRAND());
+                for(unsigned j=0;j<34;j++) {
+                    const unsigned pick_=RND(20);const uint8_t kind_=(uint8_t)(pick_==0?0:pick_<14?1+RND(12):13+RND(51));
+                    XW8(dg,0x5E3C+6*j,kind_?(uint8_t)(kind_|(XRAND()&0xC0)):0);
+                    XW8(dg,0x5E3D+6*j,XRAND());
+                }
+                /* Correlated event sequences exercise the photo cadence and
+                 * both ways of incrementing the no-score unit counter. */
+                const unsigned profile_=RND(16);
+                if(profile_<3) {
+                    small[0]=31;XW16(seg[S_SS],r[R_SP],small[0]);
+                    XW16(ps,(uint16_t)(po_+0x3A),profile_==0?1:0);
+                    XW16(ps,(uint16_t)(po_+0x42),1);
+                    XW8(dg,0x55EA,0);XW16(dg,0x56F2,0);XW8(dg,0x56F8,7);
+                    XW8(dg,0x6909,profile_==2?3:0);
+                    XW16(dg,0x0DE0,0);XW16(dg,0x0DD4,0xFFFF);
+                    XW8(dg,0x5E3A,0);XW8(dg,0x5E3B,0);
+                    for(unsigned j=0;j<34;j++) {
+                        XW8(dg,0x5E3C+6*j,profile_==0?9:profile_==1?1:2);
+                        XW8(dg,0x5E3D+6*j,0);XW16(dg,0x5E40+6*j,0);
+                    }
+                } else {
+                    uint16_t targets_[]={0x316D,0x33AA,0x3258,0x34EA,0x34EA,0x34B2,0x34A2,0x3059,0x3100,0x3078,0x30C4,0x316D};
+                    for(unsigned j=11;j>0;j--){const unsigned k_=RND(j+1);const uint16_t t_=targets_[j];targets_[j]=targets_[k_];targets_[k_]=t_;}
+                    for(unsigned j=0;j<12;j++)XW16(0,0x34D2+2*j,targets_[j]);
+                }
+#undef RND
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
+            if (!strcmp(o->module,"VGAME.EXE") && o->seg==0x11B8 && o->ip==0x0008) {
+#define XW8(s_,o_,v_) do { uint32_t a_=phys((s_),(uint16_t)(o_));g_pristine[a_]=g_mem[0][a_]=g_mem[1][a_]=(uint8_t)(v_); } while(0)
+#define XW16(s_,o_,v_) do { uint16_t v__=(uint16_t)(v_);XW8((s_),(o_),v__);XW8((s_),(uint16_t)((o_)+1),v__>>8); } while(0)
+                uint32_t rng_=(uint32_t)routine_seed(seed,o)+(uint32_t)s*2654435761u;
+#define XRAND() (rng_=rng_*1664525u+1013904223u,rng_>>16)
+#define RND(n_) ((unsigned)(XRAND()%(unsigned)(n_)))
+                seg[S_DS]=0x5000;seg[S_SS]=(XRAND()&1)?0x5000:0x6000;r[R_SP]=0xF000;
+                flags=(uint16_t)(flags & (0xFFFFu^F_DF));
+                for(unsigned j=0;j<0x200;j++)XW8(seg[S_SS],r[R_SP]-0x200+j,XRAND());
+                const uint16_t filename_=(XRAND()&1)?0x2200:0xFFF0;const unsigned len_=RND(32);
+                for(unsigned j=0;j<len_;j++)XW8(seg[S_SS],(uint16_t)(filename_+j),1+RND(255));
+                XW8(seg[S_SS],(uint16_t)(filename_+len_),0);
+                small[0]=filename_;small[1]=(uint16_t)XRAND();small[2]=(uint16_t)XRAND();small[3]=(uint16_t)XRAND();
+                for(unsigned j=0;j<4;j++)XW16(seg[S_SS],r[R_SP]+2*j,small[j]);
+                XW16(0x11B8,0x0011,(XRAND()&1)?0x1E42:(uint16_t)(0x4000+RND(0x3000)));
+                XW16(seg[S_SS],0x4660,XRAND());XW16(seg[S_SS],0x43F6,XRAND());
+                g_dos=1;g_native_int10=1;g_dos_script_n=4;
+                static const uint16_t errors_[]={2,3,4,5,0,1,0x7FFF,0x8000,0xFFFF};
+                for(unsigned j=0;j<4;j++){g_dos_script[j].ax=(uint16_t)XRAND();g_dos_script[j].cf=(uint8_t)(XRAND()&1);g_dos_script[j].put=0;}
+                g_dos_script[0].cf=(uint8_t)(XRAND()&1);g_dos_script[0].ax=errors_[RND(9)];
+                /* DOS exit is terminal in the game. Here its returning hook
+                 * takes a fixture-only epilogue to the same far caller. */
+                static const uint8_t exit_[]={0x1F,0x5D,0x07,0x5E,0x5F,0x8B,0xE5,0x5D,0xCB};
+                for(unsigned j=0;j<sizeof(exit_);j++)XW8(0x11B8,0x0209+j,exit_[j]);
+                g_nend=1;g_end_lo[0]=0x0209;g_end_hi[0]=0x0209+sizeof(exit_);
+#undef RND
+#undef XRAND
+#undef XW16
+#undef XW8
+            }
             if (!strcmp(o->module, "START.EXE") && o->seg == 0 && o->ip == 0x6DB8) {
                 seg[S_DS] = seg[S_SS] = 0x0A95; r[R_SP] = 0xFF00;
                 flags = (uint16_t)(flags & (0xFFFFu ^ F_DF));
@@ -16616,7 +16712,7 @@ int main(int argc, char **argv)
              * original zero-count LOOP to complete all 65,536 iterations. */
             g_fixture_args = (bind_entries || sprite_colour) && (s & 7) == 1;
             g_step_cap = (!strcmp(o->module,"START.EXE") && o->seg==0 && o->ip==0x7904) ? 2000000 : (bind_entries && (s == 1 || s == 2)) || (zero_loops && s == 1) ? 500000 : 100000;
-            g_native_int10 = !strcmp(o->module, "SETUP.EXE") && o->seg == 0 && o->ip == 0x14BE;
+            g_native_int10 = (!strcmp(o->module, "SETUP.EXE") && o->seg == 0 && o->ip == 0x14BE) || (!strcmp(o->module, "VGAME.EXE") && o->seg == 0x11B8 && o->ip == 0x0008);
             if (bind_entries && ((s & 7) == 1 || (s & 7) == 2)) {
                 const unsigned mode = (s >> 3) & 7;
                 static const uint16_t counts[] = {1,2,255,16384,255,7,8,3};
