@@ -739,10 +739,20 @@ same input. An isolated N=9 strike run after the state-driven bands (15 October)
 17.0385, same hash), and the strike flight passes pinned to four logical CPUs (p99 16.71 ms), so the thread design has
 headroom on core count.
 
-**Not accepted yet.** The batch that completed the HUD (15 October) has no fullscreen acceptance: the owner stopped
-the visible run. A hidden Direct3D 11 3840x2160 target measured 119-150 fps uncapped, with occasional upload stalls
-of about 100 ms (`D:/f117-gate/present-v2/hud2`); that is throughput, not steady-refresh acceptance. `rerun` has no
-fullscreen timing run. `tools/presentation_timing.py` checks the logged display settings (a log that changes display
+**Fullscreen timing of `rerun` (17 October 2026, the owner's 4K 60 Hz screen).** The owner's `4k-rerun.bat` settings
+(`--present rerun --present-age interp`, scale 9, fullscreen, Direct3D 11, 3840x2160 at 59.99 Hz, vsync on, sound off),
+flown by the recorded inputs of the 13 October runs and cut at 3.3 billion instructions (evidence
+`D:/f117-gate/present-v2/stage4-fullscreen-20261017`, built from `aa8991b`). Strike: 6,380 flight pictures, median
+16.668 ms, p99 16.948, worst 31.7, 0.09% over 25 ms: passes. Landing: 6,378 pictures, p99 17.381, worst 38.5, 0.08%
+over 25 ms: passes. Air-to-air (type 6): 1,658 pictures, median 16.686, p99 22.150, worst 38.0, 0.42% over 25 ms:
+**fails the p99 limit** (20.8 ms). Its late intervals are not missed vsyncs (those would be 33 ms): seven pictures of
+34-38 ms in the first 1.3 s of flight, then 25 single pictures of 21-25 ms spread over the next 16 s, against the
+others' near-constant 16.7 ms. The sample is short (the flight starts late in that replay), so a longer air-to-air run
+is needed before saying more. The checker cannot judge tearing or the look of motion; that stays the owner's eye.
+The batch that completed the HUD (15 October) had no fullscreen acceptance at the time: the owner stopped the visible
+run. A hidden Direct3D 11 3840x2160 target measured 119-150 fps uncapped, with occasional upload stalls
+of about 100 ms (`D:/f117-gate/present-v2/hud2`); that is throughput, not steady-refresh acceptance.
+`tools/presentation_timing.py` checks the logged display settings (a log that changes display
 mid-run is rejected), intervals, interpolation and guest drift. Not established: the picture on a physical panel
 (tearing, the look of motion at 60 and 144 Hz), cargo and career flights, and a slower CPU or weaker GPU.
 

@@ -135,7 +135,7 @@
         "weight": 10.0,
         "done": 0.9,
         "kind": "estimate",
-        "evidence": "Live draw feed (drawfeed.c), host pacing at vsync on the machine clock, picture-age setting, original-picture switch, threaded presentation (records replayed as they arrive, in-between work one frame ahead on a worker, palette on helper threads). Isolated fullscreen D3D11 3840x2160/59.99 Hz/N=9 runs passed tools/presentation_timing.py on strike, air-to-air and landing (13 Oct; p99 16.71 ms) with every logic frame exact; hidden 4K throughput 119-150 fps (15 Oct). Open: fullscreen refresh pacing of the latest builds, slower CPUs/weaker GPUs, cargo/career flights. Reused by the new 60+ fps method."
+        "evidence": "Live draw feed (drawfeed.c), host pacing at vsync on the machine clock, picture-age setting, original-picture switch, threaded presentation (records replayed as they arrive, in-between work one frame ahead on a worker, palette on helper threads). Isolated fullscreen D3D11 3840x2160/59.99 Hz/N=9 runs passed tools/presentation_timing.py on strike, air-to-air and landing (13 Oct; p99 16.71 ms) with every logic frame exact; hidden 4K throughput 119-150 fps (15 Oct). Fullscreen 4K/59.99 Hz timing of the latest build (rerun, 17 Oct 2026, owner screen): strike and landing pass (p99 16.95 and 17.38 ms); air-to-air fails the p99 limit on a short sample (22.15 ms, 0.42% over 25 ms), so no credit yet. Open: a longer air-to-air run, slower CPUs/weaker GPUs, cargo/career flights. Reused by the new 60+ fps method."
       },
       {
         "item": "Stage 3: smooth in-between frames (60+ fps)",
