@@ -5169,18 +5169,27 @@ static int start_rand(machine_t *m)
     return 1;
 }
 
-/* START 0x076C0, rnd(n): mission_rand() modulo n (n of 0 is left to the
- * original, where the DIV faults). */
+static uint16_t bp_get(cpu_t *c, int d);
+
+/* START 0x076C0, rnd(n): mission_rand() modulo the bound read after that
+ * call. The generator's seed can alias the stacked argument, including
+ * through different DS and SS segments. A zero bound after the call is
+ * left to the original SUB/DIV sequence, where the DIV faults. */
 static int start_rnd(machine_t *m)
 {
     cpu_t *c = &m->cpu;
-    const uint16_t n = arg(c, 0);
-    if (!n || !room(c, 3)) return 0;
+    if (!room(c, 3)) return 0;
     cpu_push16(c, c->r[R_BP]);
     c->r[R_BP] = c->r[R_SP];
     c->icount += 2;
-    if (!guest_call(m, 0x96CE, 0x76C6)) return 1;
+    const uint64_t until = m->run_until;
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at;
+    const int returned = guest_call(m, 0x96CE, 0x76C6);
+    m->run_until = until;
+    if (!returned) return 1;
     if (!room(c, 6)) { c->ip = 0x76C6; return 1; }
+    const uint16_t n = bp_get(c, 4);
+    if (!n) { c->ip = 0x76C6; return 1; }
     c->r[R_DX] = (uint16_t)alu_sub(c, c->r[R_DX], c->r[R_DX], 1, 0);     /* sub dx, dx */
     x86_div16(c, n);
     c->r[R_AX] = c->r[R_DX];
