@@ -63,6 +63,43 @@ Evidence: `D:/f117-gate/default-fixes-20261017/clock86/` (`loop.state`,
 assertion expecting compression 0; normal is 1. Offline analysis retained
 the samples and corrected that guard without rerunning or changing the game.
 
+## Historical intent and faster-than-real-time simulation (17 October 2026)
+
+The closest contemporary written evidence is the predecessor's designers'
+notes. MicroProse's *F-19 Stealth Fighter* manual (1988), in its discussion of
+automatic CPU-speed adjustment, says **“the simulation moves at the same
+real-time speed”** across a 4.77 MHz 8088 and a 25 MHz 80386; graphics
+smoothness and detail are what change. This explicitly states hardware-independent
+real-time intent for F-19. Applying that intent to F-117A is an inference,
+not a recovered statement about its precise clock or update frequency.
+Source: [original manual, Designers' Notes](https://www.scribd.com/doc/39413077/F-19-Stealth-Fighter).
+
+Deliberately accelerated flight simulations did exist, for different purposes:
+
+- **Travel compression in games:** F-19 and F-117A describe a selectable
+  doubling of time, with normal time restored for combat/landing. That explains
+  their explicit acceleration control, not an undocumented CPU-dependent
+  multiplier at normal speed. [F-117A manual, Accelerate Time](https://steamcdn-a.akamaihd.net/steam/apps/328920/manuals/Manual.pdf).
+- **Training at a deliberately higher pace:** a 1994 F-16 simulator study
+  used 1.0x, 1.5x, 2.0x and mixed acceleration with 24 mission-capable pilots,
+  followed by real-time tests. A later NASA report traces this research to
+  Kolf (1973) and Hoey (1976). This establishes intentional faster-than-real-time
+  simulation before and around this game's era, but supplies no connection
+  to MicroProse's design. [1994 paper](https://ntrs.nasa.gov/citations/19940027968),
+  [2000 report](https://ntrs.nasa.gov/search.jsp?R=20000017960).
+- **Later games:** *JetFighter III*'s 1996 handbook explicitly defines its
+  default as 1:1 real time, with selectable 2x and 3x compression. Modern
+  Microsoft Flight Simulator documentation likewise defines simulation rate
+  1 as one simulated second per real second, independently of visual frame
+  rate. [JetFighter III handbook, Time Compression](https://www.scribd.com/document/505351766/Jetfighter-III-R-D-F-Handbook),
+  [Microsoft SDK](https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/Environment_Variables.htm).
+
+This search found no primary evidence that F-117A's measured variable
+normal-speed acceleration was deliberate. F-19's explicit statement strengthens
+the case for real-time intent in this family; it does not prove D1REAL's
+eight-step choice, establish a canonical proximity radius, or show that every
+original timing discrepancy is an unintended defect.
+
 ## The controller (read from the VGAME listing)
 
 - **Frame loop** `0x1BCE`: `[0x262A]=1` at `0x1BFA`, player flight `0x1EB0`,

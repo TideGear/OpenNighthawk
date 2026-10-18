@@ -28,12 +28,15 @@ session log. Earlier detail is in `git log -p handoff.md`.
 
 Batches n and o are landed and CI-green. The earlier census correction is committed and pushed
 (`7221e50`, empty-capture guard `f51040f`); CI: https://github.com/TideGear/OpenNighthawk/actions/runs/39078907127.
-Current changes add a reviewed static-code tranche and normal-play fix defaults. The fresh full gate
+The reviewed static-code tranche (`b0a10f0`) and normal-play fix defaults (`d0fa4a4`) are committed and pushed.
+The fresh full gate
 passed in 1,557.30 s from `D:/f117-wt/gate-h` on `fix-defaults-20261017`: 238 CTests, 45 identical routes,
 44 fresh interpreter sessions, 5,718,848 instruction states under each timing profile, 1,006 matched
 routines at three seeds, no mismatches, reachability and event limits clean. Private evidence:
 `D:/f117-gate/default-fixes-20261017/{gate-verdict.json,gate.log,gate-source-manifest.json}`.
-The code/tools/tests still hash-identically to that frozen gate snapshot. All private acceptance runs are finished.
+The exact gated files are archived in `gated-source.zip`; the gate worktree is clean at `d0fa4a4`.
+All private acceptance runs are finished. Both Windows and Munt CI passed for `d0fa4a4`:
+https://github.com/TideGear/OpenNighthawk/actions/runs/39083815431.
 Local census/credit regressions: 45 pass; default-selection process checks: six pass.
 
 Scoreboard: P1 100.00%, P2 81.48%, P3 97.22%, All 93.64% (P4 and the decided-against P3 items are no longer scored)
@@ -105,6 +108,11 @@ outside its rows in those seven programs. `tools/census_classify.py` computes a 
   Capture initially asserted normal compression was 0; corrected analysis uses the retained samples (normal is 1).
   Evidence: `D:/f117-gate/default-fixes-20261017/clock86/{loop.state,samples.json,verdict.json}`;
   interpretation in docs/speed-sweep.md. The owner emailed the director; no reply is needed to continue testing.
+- Online primary-source check: F-19's 1988 designers' notes explicitly describe real-time simulation
+  independent of CPU speed, with only graphics detail/smoothness changing. This strengthens real-time intent
+  for the family, but is not an exact F-117A timing target. Intentional faster simulation did exist as travel
+  compression and pilot-training research (1970s onward); no source links that to this game's normal-speed drift.
+  Sources and limits are recorded in docs/speed-sweep.md, "Historical intent and faster-than-real-time simulation".
 - Longer fullscreen air-to-air test completed on the owner's 4K/59.99 Hz display: 17,241 timed pictures,
   p99 28.6976 ms, 638 intervals over 25 ms (3.7022%), **fails both pacing limits**. All 3,679 logic frames
   exact, drift 0.005819 s, final hash `b050542466c9a616` equal to a separate headless replay. Evidence:
@@ -695,6 +703,8 @@ the log, not just the exit code. Check GitHub CI for new commits.
 
 ## Standing practice
 
+- **New bug fixes are on by default for normal play** (owner, 17 October), including the chosen D1REAL
+  and D1PROX options. Keep the original reference and ordinary parity gates off; test selected repairs separately.
 - **Keep checks off the owner's screen.** Do not launch visible/fullscreen
   tests without asking first; use headless or hidden runs.
 - **No AI attribution** in commits or PRs: the user's own global CLAUDE.md
