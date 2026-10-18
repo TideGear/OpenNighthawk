@@ -11,7 +11,7 @@ from pathlib import Path
 import os
 import tempfile
 
-from machine_api import Machine, RouteInputs
+from machine_api import Machine, RouteInputs, read_recording_header
 from random_flights import base_route
 from recon_pilot import recon_state, control as navigate
 from run_route import route_args
@@ -117,15 +117,13 @@ def main():
     RELEASE_RANGE[0] = args.release_range; SELECT_KEY[0] = args.select_key; SELECT_EVERY[0] = args.select_every
     inputs = RouteInputs(route_args(args.front_route) if args.front_route else base_route()) if not args.replay else None
     replay, replay_pos = [], 0
+    ips, sim_hz = 9_000_000, 8
     if args.replay:
         lines = Path(args.replay).read_text().splitlines()
-        header = re.match(r"# f117r-input ips=9000000 time_us=(\d+)$", lines[0]) if lines else None
-        if not header:
-            raise ValueError("replay requires the route's fixed speed and a recorded boot time")
-        args.time_us = int(header[1])                  # the recording's own start clock
+        ips, args.time_us, sim_hz = read_recording_header(lines)   # the recording's own speed, cadence and start clock
         for line in lines[1:3]:                        # the fixes it was recorded with
             if line.startswith("# f117r-fixes "):
-                args.fix = sorted(set(args.fix) | set(line.split()[2].split(",")))
+                args.fix = sorted(set(args.fix) | {f for token in line.split()[2:] for f in token.split(",")})
         for line in lines[1:]:
             parts = line.split()
             if not parts or parts[0].startswith("#"): continue
@@ -135,9 +133,9 @@ def main():
     rows = []; tick = 0; initialized = False; flight_start = None; last = ""; debriefed = False
     approach = False; flight_block = None; landed_report = {}
     save_dir = tempfile.mkdtemp(dir=out)
-    with Machine(args.data, save_dir, log=out / "run.log", engine=args.engine, time_us=args.time_us, fixes=tuple(args.fix)) as machine:
+    with Machine(args.data, save_dir, log=out / "run.log", engine=args.engine, time_us=args.time_us, ips=ips, sim_hz=sim_hz, fixes=tuple(args.fix)) as machine:
         machine.record(out / "input.log")
-        while machine.clock < 5_000_000_000 + args.seconds * machine.ips:
+        while machine.clock < 5_000_000_000 * machine.ips // 9_000_000 + args.seconds * machine.ips:
             if inputs: inputs.poll(machine)
             else:
                 while replay_pos < len(replay) and int(replay[replay_pos][1]) < machine.clock + machine.ips:

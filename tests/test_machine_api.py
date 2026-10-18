@@ -8,7 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
-from machine_api import Machine, RouteInputs, library_path
+from machine_api import Machine, RouteInputs, library_path, read_recording_fixes, read_recording_header
 
 
 class MachineTests(unittest.TestCase):
@@ -99,6 +99,40 @@ class MachineTests(unittest.TestCase):
                 m.key(10000, 0x1E)
             with self.assertRaisesRegex(RuntimeError, "cannot queue input"):
                 m.key(10000, 0x9E)
+
+
+class RecordingHeaderTests(unittest.TestCase):
+    """Replay tools must restore a recording's speed and cadence, or refuse it."""
+    HEAD = "# f117r-input ips=%d time_us=700000000000000"
+
+    def read(self, *lines, **kw):
+        return read_recording_header(list(lines), **kw)
+
+    def test_legacy_and_candidate_headers(self):
+        self.assertEqual(self.read(self.HEAD % 9_000_000, "K 5 1e"), (9_000_000, 700_000_000_000_000, 8))
+        self.assertEqual(self.read(self.HEAD % 40_000_000, "# f117r-sim-hz 15", "# f117r-fixes D1", "K 5 1e"),
+                         (40_000_000, 700_000_000_000_000, 15))
+        # A cadence line after the first record is not part of the header.
+        self.assertEqual(self.read(self.HEAD % 9_000_000, "K 5 1e", "# f117r-sim-hz 15")[2], 8)
+
+    def test_fixes_are_restored_in_full(self):
+        self.assertEqual(read_recording_fixes([self.HEAD % 9_000_000, "# f117r-sim-hz 15", "# f117r-fixes D1 D1REAL D5", "K 5 1e"]),
+                         ("D1", "D1REAL", "D5"))
+        self.assertEqual(read_recording_fixes([self.HEAD % 9_000_000, "# f117r-fixes D1,D5"]), ("D1", "D5"))
+        self.assertEqual(read_recording_fixes([self.HEAD % 9_000_000, "K 5 1e", "# f117r-fixes D1"]), ())
+
+    def test_malformed_headers_are_refused(self):
+        for lines in ([], ["K 5 1e"], [self.HEAD % 9_000_000, "# f117r-sim-hz 14"],
+                      [self.HEAD % 9_000_000, "# f117r-sim-hz 15", "# f117r-sim-hz 15"],
+                      [self.HEAD % 9_000_000, "# f117r-sim-hz"]):
+            with self.assertRaises(ValueError, msg=lines):
+                read_recording_header(lines)
+
+    def test_legacy_only_tools_refuse_other_recordings(self):
+        self.read(self.HEAD % 9_000_000, legacy_only=True)
+        for lines in ([self.HEAD % 40_000_000], [self.HEAD % 9_000_000, "# f117r-sim-hz 15"]):
+            with self.assertRaisesRegex(ValueError, "only 9 MIPS"):
+                read_recording_header(lines, legacy_only=True)
 
 
 if __name__ == "__main__":

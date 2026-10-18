@@ -16,7 +16,7 @@ import re, struct, sys, json, hashlib
 repo = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(repo / 'tools'))
 import career_check
-from machine_api import Machine
+from machine_api import Machine, read_recording_header
 
 engine = sys.argv[1]
 src = Path(sys.argv[2])
@@ -30,7 +30,7 @@ base_out = Path(sys.argv[3]); base_out.mkdir(parents=True, exist_ok=True)
 print('staged', career_check.career(bytes(roster)), hashlib.sha256(roster).hexdigest())
 replay_path = repo / 'tools' / 'routes' / 'career_rank6.input'
 lines = replay_path.read_text().splitlines()
-time_us = int(re.fullmatch(r'# f117r-input ips=9000000 time_us=(\d+)', lines[0])[1])
+_, time_us, _ = read_recording_header(lines, legacy_only=True)
 replay = [l.split() for l in lines[1:] if l and not l.startswith('#')]
 out = base_out / f'sortie-99-{engine}'
 args = Namespace(data=sys.argv[4] if len(sys.argv) > 4 else 'D:/GOG/F-117A', debrief_route=repo / 'tools/routes/career_promotion.args', steps=17_000_000_000, out=out)

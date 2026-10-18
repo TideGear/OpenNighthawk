@@ -17,7 +17,7 @@ import struct
 import tempfile
 from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 
-from machine_api import Machine, RouteInputs
+from machine_api import Machine, RouteInputs, read_recording_header
 from recon_pilot import recon_state, recon_errors
 from landing_pilot import landing_errors
 from run_route import route_args
@@ -141,9 +141,8 @@ def main():
     if first["status"] or first["sorties"] + args.count > 99:
         parser.error("the starting pilot must be active and the batch must end by sortie 99")
     lines = args.replay.read_text().splitlines()
-    header = re.fullmatch(r"# f117r-input ips=9000000 time_us=(\d+)", lines[0] if lines else "")
-    if not header:
-        raise ValueError("requires a recorded 9 MHz startup clock")
+    # leg() builds its machine at the default speed and cadence: refuse any other recording.
+    _, time_us, _ = read_recording_header(lines, legacy_only=True)
     replay = [line.split() for line in lines[1:] if line and not line.startswith("#")]
     if not replay or any(not ((p[0] == "K" and len(p) == 3)
             or (p[0] == "M" and len(p) == 7 and p[5:] == ["0", "0"])) for p in replay):
@@ -151,10 +150,10 @@ def main():
     args.out.mkdir(parents=True, exist_ok=False)
     numbers = range(first["sorties"] + 1, first["sorties"] + args.count + 1)
     if args.ahead:
-        return pipelined(args, previous, replay, int(header[1]), numbers)
+        return pipelined(args, previous, replay, time_us, numbers)
     summary = []
     for number in numbers:
-        legs = [leg(args, engine, previous, replay, int(header[1]),
+        legs = [leg(args, engine, previous, replay, time_us,
                     args.out / f"sortie-{number:02}-{engine}") for engine in ENGINES]
         if any(report["errors"] for report, _ in legs): return 1
         previous = accept(args, number, legs, summary)

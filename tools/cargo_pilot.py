@@ -21,7 +21,7 @@ import tempfile
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
-from machine_api import Machine  # noqa: E402
+from machine_api import Machine, read_recording_header  # noqa: E402
 from recon_pilot import control as navigate  # noqa: E402
 from cargo_check import observe, errors, impacts  # noqa: E402
 from strike_pilot import strike_state  # noqa: E402
@@ -146,19 +146,17 @@ def main():
     parser.add_argument("--fix", action="append", default=[], help="a switchable fix (docs/bugs.md), e.g. D5")
     args = parser.parse_args()
     lines = args.front.read_text().splitlines()
-    header = re.fullmatch(r"# f117r-input ips=9000000 time_us=(\d+)", lines[0] if lines else "")
-    if not header:
-        raise ValueError("the front file needs its recorded start clock header")
+    ips, time_us, sim_hz = read_recording_header(lines)
     for line in lines[1:3]:
         if line.startswith("# f117r-fixes "):
-            args.fix = sorted(set(args.fix) | set(line.split()[2].split(",")))
+            args.fix = sorted(set(args.fix) | {f for token in line.split()[2:] for f in token.split(",")})
     replay = [line.split() for line in lines[1:] if line and not line.startswith("#")]
     args.out.mkdir(parents=True, exist_ok=False)
     rows, position, tick, start = [], 0, 0, None
     with Machine(args.data, tempfile.mkdtemp(dir=args.out), log=args.out / "run.log", engine=args.engine,
-                 time_us=int(header[1]), fixes=tuple(args.fix)) as machine:
+                 time_us=time_us, ips=ips, sim_hz=sim_hz, fixes=tuple(args.fix)) as machine:
         machine.record(args.out / "input.log")
-        while machine.clock < 5_000_000_000 + args.seconds * machine.ips:
+        while machine.clock < 5_000_000_000 * machine.ips // 9_000_000 + args.seconds * machine.ips:
             if machine.program != "VGAME.EXE":
                 if start is not None:
                     break                       # the flight is over; later recorded inputs are not this run's

@@ -14,7 +14,7 @@ import tempfile
 from pathlib import Path
 
 from landing_pilot import observe, signed, clamp, control as landing_control, landing_errors
-from machine_api import Machine, RouteInputs
+from machine_api import Machine, RouteInputs, read_recording_fixes, read_recording_header
 from run_route import route_args
 
 
@@ -162,12 +162,11 @@ def main():
                         help="normal target designation approach for adaptive controls")
     args = parser.parse_args()
     lines = []
+    ips, sim_hz, fixes = 9_000_000, 8, ()
     if args.replay:
         lines = Path(args.replay).read_text().splitlines()
-        header = re.fullmatch(r"# f117r-input ips=9000000 time_us=(\d+)", lines[0] if lines else "")
-        if not header:
-            raise ValueError("replay requires a recorded 9 MHz startup clock")
-        args.time_us = int(header[1])
+        ips, args.time_us, sim_hz = read_recording_header(lines)
+        fixes = read_recording_fixes(lines)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     inputs = RouteInputs(route_args(args.front_route)) if not args.replay else None
@@ -181,7 +180,7 @@ def main():
             raise ValueError("initial roster must be the original 802-byte saved file")
         shutil.copyfile(args.initial_roster, save / "Roster.Fil")
     with Machine(args.data, save,
-                 log=out / "run.log", engine=args.engine, time_us=args.time_us) as machine, \
+                 log=out / "run.log", engine=args.engine, time_us=args.time_us, ips=ips, sim_hz=sim_hz, fixes=fixes) as machine, \
             (out / "flight.csv").open("w", newline="") as csvfile:
         machine.record(out / "input.log")
         replay, replay_pos = [], 0

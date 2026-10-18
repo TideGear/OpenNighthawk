@@ -26,6 +26,42 @@ def library_path():
     raise FileNotFoundError("build f117machine_api with F117R_BUILD_TESTS=ON")
 
 
+def read_recording_fixes(lines):
+    """The fix ids named in the recording's leading "# f117r-fixes" comment."""
+    for line in lines[1:]:
+        if not line.startswith("#"):
+            break
+        if line.startswith("# f117r-fixes "):
+            return tuple(f for token in line.split()[2:] for f in token.split(","))
+    return ()
+
+
+def read_recording_header(lines, *, legacy_only=False):
+    """(ips, time_us, sim_hz) of a recorded input file, as the runner reads it.
+
+    The first line names the speed and the start clock; a "# f117r-sim-hz N"
+    line among the leading comments names a fifteen-step cadence (absent means
+    eight). A replay must restore all three or it is another game, so a tool
+    that cannot (legacy_only) refuses anything but the original 9 MIPS / 8 Hz.
+    """
+    import re
+    match = re.fullmatch(r"# f117r-input ips=(\d+) time_us=(\d+)", lines[0] if lines else "")
+    if not match:
+        raise ValueError("replay requires a recorded input log header (speed and start clock)")
+    ips, time_us, sim_hz, seen = int(match[1]), int(match[2]), 8, False
+    for line in lines[1:]:
+        if not line.startswith("#"):
+            break
+        if line.startswith("# f117r-sim-hz"):
+            value = re.fullmatch(r"# f117r-sim-hz (\d+)", line)
+            if seen or not value or int(value[1]) not in (8, 15):
+                raise ValueError("invalid simulation cadence line in the input log")
+            sim_hz, seen = int(value[1]), True
+    if legacy_only and (ips != 9_000_000 or sim_hz != 8):
+        raise ValueError("this tool replays only 9 MIPS / 8 Hz recordings, not ips=%d sim-hz=%d" % (ips, sim_hz))
+    return ips, time_us, sim_hz
+
+
 class Machine:
     SLICE, EXITED, FAULT = 0, 1, 2
 

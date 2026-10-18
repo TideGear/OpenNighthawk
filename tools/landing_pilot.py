@@ -13,7 +13,7 @@ import re
 import tempfile
 from pathlib import Path
 
-from machine_api import Machine, RouteInputs
+from machine_api import Machine, RouteInputs, read_recording_fixes, read_recording_header
 from random_flights import base_route
 
 FIELDS = {
@@ -172,15 +172,20 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     route = RouteInputs(base_route() + ["--type", "VGAME.EXE+100000000:+",
                         "--type", r"VGAME.EXE+170000000:~1000:\D"])
+    ips, sim_hz, fixes = 9_000_000, 8, ()
+    if args.replay:
+        recorded = Path(args.replay).read_text().splitlines()
+        ips, recorded_us, sim_hz = read_recording_header(recorded)
+        fixes = read_recording_fixes(recorded)
+        if recorded_us != 700_000_000_000_000:
+            raise ValueError("pilot replay requires the route's boot time")
     with Machine(args.data, tempfile.mkdtemp(prefix="save-", dir=out),
-                 log=out / "run.log", engine=args.engine) as machine, \
+                 log=out / "run.log", engine=args.engine, ips=ips, sim_hz=sim_hz, fixes=fixes) as machine, \
             (out / "flight.csv").open("w", newline="") as csvfile:
         machine.record(out / "input.log")
         replay, replay_pos = [], 0
         if args.replay:
             lines = Path(args.replay).read_text().splitlines()
-            if not lines or lines[0] != "# f117r-input ips=9000000 time_us=700000000000000":
-                raise ValueError("pilot replay requires the route's fixed clock speed and boot time")
             for line in lines[1:]:
                 parts = line.split()
                 if not parts or parts[0].startswith("#"):
@@ -190,7 +195,7 @@ def main():
                 replay.append(parts)
         writer, last, tick, flight_start, approach = None, "", 0, None, False
         rows, screenshots = [], set()
-        while machine.clock < 5_000_000_000 + args.seconds * machine.ips:
+        while machine.clock < 5_000_000_000 * machine.ips // 9_000_000 + args.seconds * machine.ips:
             if not args.replay:
                 route.poll(machine)
             else:

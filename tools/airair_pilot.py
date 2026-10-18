@@ -14,7 +14,7 @@ import tempfile
 
 from landing_pilot import (landing_errors, control as landing_control,
                            observe, signed, clamp)
-from machine_api import Machine, RouteInputs
+from machine_api import Machine, RouteInputs, read_recording_fixes, read_recording_header
 from run_route import route_args
 
 
@@ -213,10 +213,7 @@ def objective_errors(rows):
 
 def read_replay(path):
     lines = Path(path).read_text().splitlines()
-    header = re.fullmatch(r"# f117r-input ips=9000000 time_us=(\d+)",
-                          lines[0] if lines else "")
-    if not header:
-        raise ValueError("replay requires a recorded 9 MHz input log")
+    ips, time_us, sim_hz = read_recording_header(lines)
     events = []
     for line in lines[1:]:
         parts = line.split()
@@ -225,7 +222,7 @@ def read_replay(path):
         if parts[0] != "K" and not (parts[0] == "M" and parts[5:] == ["0", "0"]):
             raise ValueError("only recorded keys and absolute mouse are supported")
         events.append(parts)
-    return int(header[1]), events
+    return time_us, events, ips, sim_hz, read_recording_fixes(lines)
 
 
 def main():
@@ -248,9 +245,9 @@ def main():
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=False)
     replay = None
-    time_us = args.time_us
+    time_us, ips, sim_hz, fixes = args.time_us, 9_000_000, 8, ()
     if args.replay:
-        time_us, replay = read_replay(args.replay)
+        time_us, replay, ips, sim_hz, fixes = read_replay(args.replay)
     inputs = None if replay is not None else RouteInputs(route_args(args.front_route))
     rows, tick, last, flight_start = [], 0, "", None
     last_b_request = -10**30
@@ -263,11 +260,11 @@ def main():
     flight_block = None
     replay_pos = 0
     with Machine(args.data, tempfile.mkdtemp(prefix="save-", dir=out),
-                 log=out / "run.log", engine=args.engine, time_us=time_us) as machine:
+                 log=out / "run.log", engine=args.engine, time_us=time_us, ips=ips, sim_hz=sim_hz, fixes=fixes) as machine:
         if replay is None:
             machine.record(out / "input.log")
         next_report = 0
-        while machine.clock < 5_000_000_000 + args.seconds * machine.ips:
+        while machine.clock < 5_000_000_000 * machine.ips // 9_000_000 + args.seconds * machine.ips:
             if inputs:
                 inputs.poll(machine)
             else:

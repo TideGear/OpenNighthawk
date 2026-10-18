@@ -11,7 +11,7 @@ from pathlib import Path
 import re
 import tempfile
 
-from machine_api import Machine
+from machine_api import Machine, read_recording_fixes, read_recording_header
 from landing_pilot import signed, landing_errors
 from strike_pilot import strike_state
 
@@ -70,9 +70,7 @@ def main():
     parser.add_argument("--complete", action="store_true", help="also require a second airborne leg and normal home return")
     args = parser.parse_args()
     lines = args.replay.read_text().splitlines()
-    header = re.fullmatch(r"# f117r-input ips=9000000 time_us=(\d+)", lines[0] if lines else "")
-    if not header:
-        raise ValueError("requires a recorded 9 MHz startup clock")
+    ips, time_us, sim_hz = read_recording_header(lines)
     replay = [line.split() for line in lines[1:] if line and not line.startswith("#")]
     if not replay or any(not ((p[0] == "K" and len(p) == 3)
                       or (p[0] == "M" and len(p) == 7 and p[5:] == ["0", "0"])) for p in replay):
@@ -80,7 +78,7 @@ def main():
     args.out.mkdir(parents=True, exist_ok=False)
     rows, position, flight_block, fine = [], 0, None, False
     with Machine(args.data, tempfile.mkdtemp(dir=args.out), engine=args.engine,
-                 time_us=int(header[1]), log=args.out / "run.log") as machine:
+                 time_us=time_us, ips=ips, sim_hz=sim_hz, fixes=read_recording_fixes(lines), log=args.out / "run.log") as machine:
         machine.record(args.out / "input.log")
         while machine.clock < args.steps:
             while position < len(replay) and int(replay[position][1]) < machine.clock + machine.ips:

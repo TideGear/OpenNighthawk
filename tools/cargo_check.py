@@ -14,7 +14,7 @@ from pathlib import Path
 import re
 import tempfile
 
-from machine_api import Machine
+from machine_api import Machine, read_recording_header
 from landing_pilot import signed, landing_errors
 from strike_pilot import strike_state
 
@@ -57,13 +57,13 @@ def impacts(rows):
         and a["cargo_slot"] == b["cargo_slot"]]
 
 
-def errors(rows, complete=False, credited=False):
+def errors(rows, complete=False, credited=False, ips=9_000_000):
     """credited: D5 is fixed, so the impact must earn the primary credit."""
     if complete:
         found = impacts(rows)
         if len(found) != 1:
             return ["expected one impact, distinct from normal TTL expiry"]
-        retained = found[0][1]["clock"] + 9_000_000
+        retained = found[0][1]["clock"] + ips
         split = next((i for i, r in enumerate(rows) if r["clock"] >= retained), None)
         if split is None:
             return ["no full second of retained no-credit state after impact"]
@@ -99,7 +99,7 @@ def errors(rows, complete=False, credited=False):
         failures.append("expected one impact, distinct from normal TTL expiry")
     else:
         before, impact = found[0]
-        if last["clock"] - impact["clock"] < 9_000_000:
+        if last["clock"] - impact["clock"] < ips:
             failures.append("no full second of retained no-credit state after impact")
         if not (8 <= impact["cargo_slot"] < 12 and before["cargo_type"] == impact["cargo_type"] == 0x26
                 and before["cargo_weapon"] == impact["cargo_weapon"] == 18):
@@ -144,9 +144,7 @@ def main():
         if line.startswith("# f117r-fixes "):
             args.fix = sorted(set(args.fix) | set(line.split()[2:]))
     credited = "D5" in args.fix or "all" in args.fix
-    header = re.fullmatch(r"# f117r-input ips=9000000 time_us=(\d+)", lines[0] if lines else "")
-    if not header:
-        raise ValueError("requires a recorded 9 MHz startup clock")
+    ips, time_us, sim_hz = read_recording_header(lines)
     replay = [line.split() for line in lines[1:] if line and not line.startswith("#")]
     if not replay or any(not ((p[0] == "K" and len(p) == 3)
             or (p[0] == "M" and len(p) == 7 and p[5:] == ["0", "0"])) for p in replay):
@@ -154,7 +152,7 @@ def main():
     args.out.mkdir(parents=True, exist_ok=False)
     rows, position, slot, flight_block, fine = [], 0, None, None, False
     with Machine(args.data, tempfile.mkdtemp(dir=args.out), engine=args.engine,
-                 time_us=int(header[1]), log=args.out / "run.log", fixes=args.fix) as machine:
+                 time_us=time_us, ips=ips, sim_hz=sim_hz, log=args.out / "run.log", fixes=args.fix) as machine:
         machine.record(args.out / "input.log")
         while machine.clock < args.steps:
             while position < len(replay) and int(replay[position][1]) < machine.clock + machine.ips:
@@ -183,7 +181,7 @@ def main():
         if machine.program == "VGAME.EXE":
             rows.append(dict(clock=machine.clock, **observe(machine, slot)))
         report = dict(clock=machine.clock, hash=f"{machine.hash:016x}", program=machine.program,
-                      errors=errors(rows, args.complete, credited), fixes=args.fix,
+                      errors=errors(rows, args.complete, credited, machine.ips), fixes=args.fix,
                       observation=rows[-1] if rows else None)
         if args.complete:
             if flight_block is not None:
