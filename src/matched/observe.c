@@ -22,6 +22,21 @@ static uint16_t peek16(const cpu_t *c, uint16_t seg, uint16_t off)
     return (uint16_t)(peek8(c, seg, off) | peek8(c, seg, (uint16_t)(off + 1)) << 8);
 }
 
+/* A row can cross the segment's 16-bit offset wrap, the 20-bit physical
+ * wrap, or both. Copy only a contiguous piece at a time, still bypassing
+ * device accessors so observation never charges guest bus cycles. */
+static void peek_bytes(const cpu_t *c, uint16_t seg, uint16_t off, uint8_t *out, unsigned n)
+{
+    while (n) {
+        const uint32_t at = phys(seg, off);
+        unsigned take = 0x10000u - off;
+        if (take > MEM_SIZE - at) take = MEM_SIZE - at;
+        if (take > n) take = n;
+        memcpy(out, c->mem + at, take);
+        out += take; n -= take; off = (uint16_t)(off + take);
+    }
+}
+
 /* A whole 64 KB segment as it stands. */
 static void peek_page(const cpu_t *c, uint16_t seg, uint8_t *out)
 {
@@ -624,14 +639,21 @@ static void line_flush(machine_t *m)
     v[n++] = g_line.page; v[n++] = 0;
     const int count_at = n++;
     int changed = 0;
-    for (unsigned y = 0; y < g_line.h; y++)
-        for (unsigned x = 0; x < g_line.w; x++) {
-            const uint8_t now = peek8(c, g_line.page, (uint16_t)(g_line.at[y] + x));
-            if (now != g_line.before[y * g_line.w + x] && n + 4 <= (int)(sizeof v / sizeof v[0])) {
-                v[n++] = (int32_t)(uint16_t)(g_line.at[y] + x); v[n++] = (int32_t)(g_line.x0 + x) | ((int32_t)(g_line.y0 + y) << 16);
-                v[n++] = now; v[n++] = g_line.before[y * g_line.w + x]; changed++;
-            }
+    for (unsigned y = 0; y < g_line.h; y++) {
+        uint8_t now[320];                 /* library bounds are clipped to 320 columns */
+        const uint8_t *before = g_line.before + y * g_line.w;
+        peek_bytes(c, g_line.page, g_line.at[y], now, g_line.w);
+        if (!memcmp(now, before, g_line.w)) continue;
+        for (unsigned x = 0; x < g_line.w; x += 64) {
+            const unsigned count = g_line.w - x < 64 ? g_line.w - x : 64;
+            if (!memcmp(now + x, before + x, count)) continue;
+            for (unsigned i = x; i < x + count; i++)
+                if (now[i] != before[i] && n + 4 <= (int)(sizeof v / sizeof v[0])) {
+                    v[n++] = (int32_t)(uint16_t)(g_line.at[y] + i); v[n++] = (int32_t)(g_line.x0 + i) | ((int32_t)(g_line.y0 + y) << 16);
+                    v[n++] = now[i]; v[n++] = before[i]; changed++;
+                }
         }
+    }
     v[count_at] = changed;
     o->prim(o->user, c->icount, 'n', v, n);
 }
@@ -664,8 +686,7 @@ static int hook_lib_line(machine_t *m)
     g_line.w = (uint16_t)(xb - xa + 1); g_line.h = (uint16_t)(yb - ya + 1);
     for (unsigned y = 0; y < g_line.h; y++) {
         g_line.at[y] = (uint16_t)(peek16(c, drv, (uint16_t)(4 + 2 * (g_line.y0 + y))) + origin + g_line.x0);
-        for (unsigned x = 0; x < g_line.w; x++)
-            g_line.before[y * g_line.w + x] = peek8(c, g_line.page, (uint16_t)(g_line.at[y] + x));
+        peek_bytes(c, g_line.page, g_line.at[y], g_line.before + y * g_line.w, g_line.w);
     }
     g_line.on = 1;
     return 0;
@@ -708,7 +729,7 @@ static int hook_lib_spans(machine_t *m)
     cpu_t *c = &m->cpu;
     const int16_t ya = (int16_t)c->r[R_AX], yb = (int16_t)c->r[R_CX];
     const uint16_t bx = c->r[R_BX], ss = c->seg[S_SS];
-    int32_t v[4 + 2 * 220];
+    int32_t v[6 + 2 * 220];       /* header, rows, page and origin */
     int n = 0;
     v[n++] = ya; v[n++] = yb; v[n++] = c->ip == 0x01E2 ? 0 : c->r[R_DX];   /* entry 40 is mode 0 */
     const int rows_at = n++;
@@ -732,8 +753,7 @@ static int hook_lib_spans(machine_t *m)
     g_line.x0 = 0; g_line.y0 = (uint16_t)y0; g_line.w = 320; g_line.h = (uint16_t)(y1 - y0 + 1);
     for (unsigned y = 0; y < g_line.h; y++) {
         g_line.at[y] = (uint16_t)(peek16(c, drv, (uint16_t)(4 + 2 * (g_line.y0 + y))) + origin);
-        for (unsigned x = 0; x < 320; x++)
-            g_line.before[y * 320 + x] = peek8(c, g_line.page, (uint16_t)(g_line.at[y] + x));
+        peek_bytes(c, g_line.page, g_line.at[y], g_line.before + y * 320, 320);
     }
     g_line.on = 1;
     return 0;

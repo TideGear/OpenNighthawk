@@ -16,8 +16,46 @@ S15, 15 normal /30 compressed updates, phase-correct transitions, and recorded
 per-machine cadence. Legacy recordings retain eight. Do not promote 15/40:
 it fails active compressed-flight capacity.
 
-**18 Oct 4K60 repair in progress:** the owner asked why 4K60 fails and to fix
-it. Working source now sorts override placements by address, replacing two
+**18 Oct 4K60 repair validated:** the owner asked why 4K60 fails and to fix
+it. **Observer follow-up:** main-thread samples from
+`F/profile/sample2/verdict.json` (resolved offline with options zero) locate
+span snapshots and line-flush scans: 906 of 4,645 app-code samples. The second
+profile `window2` matches the 25.2-billion checkpoint. Emulation and collection
+each reach about 5.9 ms p99; extra-copy preparation about 8 ms.
+`src/matched/observe.c` now uses wrap-safe contiguous row copies and skips
+unchanged 64-byte blocks while preserving emitted pixel order/cap. It also
+fixes the span-record buffer's missing page/origin slots at 220 rows. New
+ROM-free `test_observer_rows` compiles the real observer, captures its hook
+registrations in a stub registry and verifies exact records + unchanged whole
+machine/memory under both timing profiles. It covers segment/physical wrap,
+2000-change truncation and the 220-row boundary; original code triggers a
+stack fast-fail at that boundary, corrected code passes. The 1000-pair
+snapshot/unchanged-flush benchmark drops from 79 to 4 ms (operation only).
+Evidence is `F/observer/`. The fresh full gate passes in 1,216 s: 242 CTests,
+45 identical routes with 44 fresh interpreter sessions, both instruction
+profiles, all three matched seeds and reachability/event checks. Source stayed
+frozen. Full presentation passes in 1,137 s (all 45 rerun routes and boot at
+N=4/9); the same-record fixture passes both scan engines and rerun, including
+all 5,396 exact frames and 24,913 isolated extra draws. Fresh evidence is under
+`F/observer/gate/` and `F/observer/fixture/`. With hidden workers finished,
+`F/observer/display_after.py` completed the authorized fullscreen test in
+745.38 s. It passes all unchanged timing limits: 21,330 flight pictures,
+median 16.6674 ms, p99 16.9439 ms, maximum 21.0506 ms, zero intervals over
+25 ms, 15.94 ms clock drift and no rewind. All 5,396 logic frames and final
+`41771459998 / e7c25ace6a591e92` match the original reference. No test/game
+process remains running. This validates the same combat encounter, not all
+scenes, and does not promote 15 Hz /60 MIPS to the default.
+Capture of its freshly selected window timed out, including one recovery;
+physical visibility remains unverified. The owner was away for the prior run.
+The isolated 30-second diagnostic `F/profile/run3.py` passed. It links updated root
+observer code into the private phase-timer app, ends at the same 25.2-billion
+checkpoint, and writes `profile/window3/`. No sampler ran during this timing
+comparison. Main work p99 is 17.8264 ms (was 19.6349 in window2), copy
+preparation 6.3944 (was 7.9592). Preserve all prior evidence. Do not promote
+defaults or relax thresholds. This follow-up includes observer, CMake/new
+test and docs changes; user's bat files are untouched.
+
+**Validated checkpoint below:** code sorts override placements by address, replacing two
 linear hot-path scans with a binary lookup while preserving registration
 order, fix priority and exact CS. A ROM-free sparse/alias test and optional
 one-million-call benchmark pass (501 ms before, 27 ms after; dispatch only).
@@ -45,8 +83,8 @@ source involved); `seek-overflow-aborted/` is not evidence. The corrected
 diagnostic divides before multiplying. Do not change thresholds or defaults.
 Sky activation failed with GetCursorPos access denied; refreshed selection
 and one capture retry timed out. No LockApp was returned; do not assume
-the desktop is locked or bypass UI protections. A pending async question
-asks the owner whether the game is visible on an unlocked desktop.
+the desktop is locked or bypass UI protections. Physical visibility remains
+unverified; the owner did not observe that run.
 `ui-inspection.json` records the limitation. No visual assessment is claimed.
 The first attempt is retained as `F/gate-initial-escape/`: 240 CTests, all
 45 routes (44 fresh interpreter sessions) and both instruction profiles
@@ -60,6 +98,24 @@ negative control still fails. The new full gate reuses those freshly
 verified interpreter results because production code is unchanged; tests
 and the new test registration are the only amendment. Details and source
 hashes: `F/test-only-gate-amendment.json`, `F/escape-debug/`.
+Checkpoint `61ee5e5` is committed and pushed, CI green:
+https://github.com/TideGear/OpenNighthawk/actions/runs/39137804346.
+Phase-timer profile `F/profile/window/` passes its final old checkpoint hash:
+3,389 warmed frames, simulation p99 11.214 ms, copy preparation 7.872 ms,
+worker drawing 6.352 ms (parallel), total main work 20.111 ms. This is a
+hidden vsync-off diagnostic, not display acceptance. Its first sampler
+missed the measurement window because the phase log was buffered; no CPU
+sample result is claimed. A second thirty-second profile is active via
+`F/profile/run2.py`, owned hidden game PID 53204, plus `sample2.py` awaiting
+the post-seek marker. It adds emulation/collection and deep-copy timers;
+the final clock 25.2 billion must match the old checkpoint. It links frozen
+production libraries and private instrumented main/rerun objects; root
+production source remains exactly the validated checkpoint. Private artifacts
+are under `F/profile/window2/` and `sample2/`. Inspect their results next.
+One potential lead to audit, not an implemented change: copies currently run
+until the next phase after graphics entry 44 presents. Establish whether that
+executes unnecessary post-picture simulation before considering an earlier
+cut; preserve every drawing command and run full gates for rerun changes.
 No visible game remains running. Future fullscreen tests remain authorized:
 announce them and finish hidden workers first. The user's three bat files
 stay untouched. Save the validated dispatch/startup repair as a checkpoint;

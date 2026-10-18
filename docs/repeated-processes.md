@@ -32,6 +32,27 @@ state exact. Retain this failure. A private `profile/` executable links the
 frozen production libraries with host phase timers, fast seek, a hidden
 3840x2160 D3D11 window, vsync off and a 60-Hz sleep cap. It profiles a short
 window of the same record; it is diagnostic, never display acceptance.
+The follow-up profile separates emulation from collection and times copied
+execution, with main-thread RIP sampling on the owned process. Its 30-second
+window ends at the exact pre-repair checkpoint (25.2 billion clocks).
+Observer span snapshots and line-flush scans account for 906 of 4,645 active
+app samples. Row-copy/delta regressions exercise the registered hooks without
+game bytes, including both address wraps, clipped rows and record truncation;
+their 1,000-pair snapshot/unchanged-flush benchmark measures only that work.
+The updated observer passes its ordered-record/whole-machine tests and cuts
+that benchmark from 79 to 4 ms. The isolated follow-up profile (`window3`)
+matches the old checkpoint; main work p99 falls from 19.63 to 17.83 ms,
+copy preparation from 7.96 to 6.39 ms. These are diagnostic phase timings,
+not fullscreen acceptance. Fresh full gate, presentation/fixture checks and
+then the same fullscreen capture run under `4k60-fix-20261018/observer/`.
+The fresh full gate passes in 1,216 s (242 CTests, 45 routes and 44 fresh
+interpreter sessions); full presentation passes in 1,137 s, and the combat
+fixture passes both scan engines and rerun. The 745.38-second fullscreen
+run passes all unchanged timing limits: 21,330 flight pictures, p99
+16.9439 ms, zero intervals over 25 ms, 15.94 ms drift, no rewind, all 5,396
+logic frames and the final state exact. Screenshot capture times out on
+the freshly selected window and one recovery, so visible motion remains
+unverified. No test workers or game processes remain running afterward.
 
 **18 Oct completed validation:** evidence is under
 `D:/f117-gate/cadence15-production-20261018/` (P). Full gate passes in

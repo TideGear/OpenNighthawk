@@ -911,6 +911,21 @@ CTests), all 45 rerun routes, boot at N=4/9 and the combat copy-isolation check
 pass. Evidence: `D:/f117-gate/4k60-fix-20261018/`. Desktop activation/capture
 failed, so physical visibility and perceived motion remain unverified.
 
+The observer follow-up passes the same six-minute combat capture at the same
+settings: 21,330 flight pictures, median 16.6674 ms, p99 16.9439 ms, maximum
+21.0506 ms, zero intervals above 25 ms, 15.94 ms clock drift and no rewind.
+All 5,396 logic frames and final hash `e7c25ace6a591e92` match the reference.
+Bulk row snapshots split at both address wraps; delta scans skip unchanged
+rows/blocks while preserving record order and the 2,000-point cap. The span
+record buffer also now accommodates its page/origin fields at 220 rows.
+Fresh full gate (242 CTests, 45 routes, 44 fresh interpreter sessions, both
+instruction profiles and three matched seeds), all-route rerun, N=4/9 boot
+and the same-record copy-isolation checks pass. Evidence:
+`D:/f117-gate/4k60-fix-20261018/observer/`. Capture still times out after one
+window-selection recovery; this validates logged submission pacing, not
+physical visibility or perceived motion. Defaults remain 8 Hz /20 MIPS;
+15 Hz /60 MIPS is opt-in. This encounter does not establish all-scene pacing.
+
 A presentation change is held to these checks (commands and costs: [repeated-processes.md](repeated-processes.md);
 the latest full-gate tally: the handoff):
 

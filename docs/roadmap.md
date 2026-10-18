@@ -963,7 +963,14 @@ Each is fixed; the named regressions keep the failing seed or case.
     full gate (241 CTests), all-route rerun and the same-record extra-draw
     checks pass under `D:/f117-gate/4k60-fix-20261018/`. Fullscreen improves
     to p99 21.58 ms, 0.03291% over 25 ms and no rewind, with exact guest
-    state, but still misses the 20.83-ms p99 limit. Profiling continues;
+    state, but still misses the 20.83-ms p99 limit. The observer follow-up
+    uses wrap-safe bulk row snapshots and skips unchanged pixel blocks.
+    Fresh full gate (242 CTests), all-route rerun, N=4/9 boot and combat
+    copy-isolation checks pass. The same-record fullscreen capture now
+    passes: 21,330 flight pictures, p99 16.94 ms, zero intervals over 25 ms,
+    no rewind, 15.94 ms clock drift and all 5,396 frames/final state exact.
+    Evidence is under `4k60-fix-20261018/observer/`. Visual assessment and
+    all-scene acceptance remain open; defaults stay 8 Hz /20 MIPS;
     line widths by drawing role; weapon and target symbology; long
     cargo/career flights and slower machines. What the owner decided
     against is under "Possible future work" below and is not scored.
