@@ -10,78 +10,93 @@ more than once, what it costs). State as of 18 October 2026.
 
 17 October: `p2-batch-o` remains the latest matching batch. The owner approved progressive static-code
 scope review, the longer fullscreen air-to-air test, and all fifteen fixes on for normal play.
-**Start here:** the owner resumed work on 18 October after the completed handoff.
-Fresh validation is running under `D:/f117-gate/cadence15-production-20261018/`;
-the definitive full gate/presentation wrapper is in its `gate-final/` subdirectory.
-the stopped 17 October results below remain historical, not acceptance evidence.
-**18 October results:** the definitive full gate passed in 1,802 s with
-239 CTests, all 45 routes identical, 5,718,848 instruction states per timing
-profile and all 1,006 matched routines at three seeds without mismatches.
-Its frozen source manifest is unchanged. The twelve Korea/Kuwait/North Cape
-flights also agree exactly between engines (hashes, samples, inputs and windows).
-However, North Cape compressed flight at 40 MIPS fails an active airborne
-10-second window: 272 rather than 300 updates and 18 rather than 20 mission
-seconds, altitude 1,547?2,367, damage zero. This blocks acceptance of 15/40;
-retain the failure. A private 60-MIPS capacity probe is running with the same
-15/30 cap. More instruction reserve is not a historical hardware equivalence.
-Presentation, long compression and hidden-app validation are still running.
-No new visible test has run; the current display guard correctly rejects the
-failed 40-MIPS flight review. Evidence: `gate-final/gate-verdict.json`,
-`flight-review.json`, `capacity60/` under the fresh root above.
-The opt-in `--sim-hz 15` implementation is committed as
-experimental; the normal default remains **8 Hz /20 MIPS**. It uses 15 normal /30 compressed, S15,
-per-machine phase handling and recorded cadence; legacy logs retain eight.
+**Start here:** the owner resumed validation on 18 October. Normal play still
+uses **8 Hz /20 MIPS**, all fifteen fixes on. `--sim-hz 15` remains opt-in:
+S15, 15 normal /30 compressed updates, phase-correct transitions, and recorded
+per-machine cadence. Legacy recordings retain eight. Do not promote 15/40:
+it fails active compressed-flight capacity.
 
-**Passed:** build; 239 CTests (also passed inside the interrupted full gate); all-fixes clock/dialog,
-six compression round trips and 120 rapid transitions in both engines at 8 Hz/20 MIPS and 15 Hz/40 MIPS;
-record/replay/API guards. Eight's seven original clock-case hashes are unchanged. Evidence:
-`D:/f117-gate/cadence15-production-20261017/{clock-verdict.json,replay-verdict.json}`;
-initial unit log: `D:/f117-gate/clock486-20261017/candidate-unit.log`.
+Fresh evidence: `D:/f117-gate/cadence15-production-20261018/` (below, P).
+The definitive full gate is `P/gate-final/`; interrupted 17 Oct and initial
+18 Oct attempts are retained separately and are not acceptance verdicts.
+Source/tests/tools stayed frozen through the full gate. The Python replay
+consumer repairs are committed/pushed as `c71c8b3`, CI green:
+https://github.com/TideGear/OpenNighthawk/actions/runs/39109111508.
+Cargo/strike entry points now share the full leading-header fix reader;
+ten API/header/consumer tests pass, including comma/space fix lists and extra
+metadata. The owner's three untracked `4k*.bat` files remain untouched.
 
-**Not accepted:** full gate was stopped during coverage/fresh interpreter routes. Long compression,
-hidden app and candidate presentation checks were stopped before verdicts. Complete 45-route N=1
-rerun and boot N=4/9 were queued but never started. No new visible/fullscreen test occurred.
-Partial logs and frozen source archive remain under `D:/f117-gate/cadence15-production-20261017/`;
-`stopped-for-handoff.json` distinguishes stopped work from failures. Use a **fresh evidence directory**
-when restarting wrappers; do not reuse partial results or an old cancelled gate marker.
+**Passed:** full gate in 1,802 s: 239 CTests, 45 identical routes (44 fresh
+interpreter sessions), 5,718,848 instruction states under each timing profile,
+1,006 matched routines at three seeds, no mismatches, reachability/event limits
+clean, source unchanged. Full rerun N=1 over all 45 routes plus boot N=4/9
+passed in 2,400 s, frozen runner/baselines unchanged. This concurrent wall time
+is not a display benchmark. `gate-final/{gate,presentation}-verdict.json`.
 
-**Combat:** four Middle East runs (normal/compression-requested, both engines) completed, engines
-agree exactly. About 692 observed seconds, 34 enemy launches. Normal's raw windows pass;
-compression-requested runs have one failed raw 10-second window (142 rather than 150 frames)
-including impact/zero altitude/full damage. All 66 fully airborne windows pass. Compression did
-not stay active in combat: the original enemy-awareness/weapon code restores normal time.
-`flight-analysis.json` retains every raw failure and the explicitly qualified airborne analysis.
-Korea runs were interrupted; Kuwait/North Cape did not start. Do not call this full combat acceptance.
+**40-MIPS failure:** twelve Korea/Kuwait/North Cape flights agree exactly
+between engines, but North Cape compressed flight has an undamaged airborne
+10-second window with 272/300 updates and 18/20 mission seconds (altitude
+1,547-2,367). `flight-review.json` correctly blocks the prepared 40-MIPS
+screen test. Retain that failure; parked timing success does not erase it.
+The 40-MIPS ten-minute compression, 991-frame scan/interp/rerun and hidden
+interp/rerun app checks all pass (`secondary-verdict.json`).
 
-**Original hardware references completed:** 486DX25/33/50 and DX2-50/66 with basic VGA, plus
-DX2-50/66 with ET4000AX. Same scene and original executable, all eleven scene fields agree.
-ET4000 gives 16.47/16.57 actual updates/s, **S around 13**, clock ratios 1.272/1.278.
-Period hardware can supply about fifteen actual updates in this light scene; this does **not**
-establish S15 intent, a hardware ceiling, combat capacity or 40-MIPS equivalence.
-Evidence: `D:/f117-gate/clock486-20261017/`, `clock486dx2-20261017/`, `clock486-et4000-20261017/`.
-ET4000 BIOS was added from the official 86Box ROM repository to the private ROM collection only.
+**60-MIPS candidate:** both engines pass ten compressed minutes (18,000 updates,
+1,200 mission seconds), seven clock/dialog cases, twelve settled transitions
+and 120 rapid changes, all case hashes equal (`clock60-verdict.json`). Eight
+longer mixed normal/compression-requested flights cover four regions; states,
+input logs, CSVs and capacity windows agree exactly between engines. All 176
+airborne windows pass, including four full compressed windows; raw terminal/
+crash failures remain. The four unique flight traces total 1,906.8 observed
+seconds and 73 enemy launches (`flight60-review.json`). Compression is usually
+cancelled by the original enemy-awareness/weapon code: do not claim sustained
+30-Hz combat coverage from compression requests alone.
 
-**Next:** finish full gate, long compression, candidate replay/app and full presentation checks,
-then the authorized display assessment before considering any default change. The Python recording
-consumer issue below was fixed in `40c074b`: shared header/fix readers restore speed, cadence and
-every fix; career tools explicitly refuse nonlegacy logs. Its Windows/Munt CI is green:
-https://github.com/TideGear/OpenNighthawk/actions/runs/39106411295.
-The 18 Oct audit found cargo_check still retained the old comma-list reader;
-cargo/strike entry points now all use the shared reader across every leading
-comment. Ten API/header/consumer tests pass, including six actual entry-point
-cases with comma/space fixes and extra metadata. The initial 18 Oct gate was
-stopped for that correction; only `gate-final/` is an acceptance candidate.
-The copied-draw override-dispatch bottleneck remains a separate lead; batch p is prepared.
-The authorized longer fullscreen test is complete and failed pacing limits; further visible tests need agreement.
+Full North Cape scan/interp/rerun at 60 MIPS passes, including exact agreement
+with the API pilot's final clock/hash, 6,681 exact logic frames and 29,729 extra
+isolated draws (`candidate60-presentation-verdict.json`). The short North Cape
+60-MIPS probes and 165-ms launch-delay attempt have different combat seeds
+from 40; these are capacity observations, not identical-engagement comparisons.
+More instruction reserve is not a literal period-hardware equivalence.
 
-**Owner's clarified target:** the best stable responsiveness the original could
-provide, at consistent intended world speed across systems. Legitimate bug
-repairs are allowed to benefit the player. Do not interpret the earlier
-discussion as a preference to restore hardware-dependent adaptive clock drift.
-The further fifteen-step experiment passes the tested cases with constant-S
-compression and corrected phase handling at 40 MIPS; production defaults
-have not been changed. Evidence is under
-`D:/f117-gate/cadence15-followup-20261017/` (findings below).
+**Display assessment failed:** `P/display60-airair-live/`, 18 Oct,
+740.7 host seconds total; D3D11 3840x2160, 59.99 Hz, vsync 1, scale 9.
+All hidden workers finished before launch. All 5,396 logic frames are exact,
+final clock/hash match both scan engines and the API pilot, guest drift is
+only 5.2 ms. However p99 is 32.9292 ms (limit 20.8333), 2,404/18,559 intervals
+exceed 25 ms (12.9533%, limit 1%), and one startup pair goes backward from
+0.677266 to 0.352496. This blocks the planned default change. Keep eight/20.
+The six-minute adaptive type-5 pursuit ends airborne with 13 air units;
+no weapon release/objective/landing completion is claimed. Mission failures
+are retained separately. Both full scan engines reproduce its API final
+clock/hash, objective and S15 (`live-airair60-baseline-verdict.json`).
+Sky capture timed out twice after refreshed window selection; visual
+inspection remains unavailable. Logged output/pacing is not perceived-motion
+acceptance. `summary.json`, `timing-verdict.json`, `interpolation-analysis.json`
+and `ui-inspection.json` retain the complete result and limitation.
+
+The derived old-control fixture under `P/airair60/` failed: it enters END about
+161 flight seconds in, so its final mission-memory assertion reads END data.
+Do not use it as the intended long stress flight. The replacement adaptive
+record is a different type-5 engagement, not the earlier type-6 pacing scene.
+The original unfixed long type-6 fullscreen result remains a pacing failure
+under `D:/f117-gate/present-v2/stage4-airair-long-20261017/`; no renderer
+optimization has landed. Linear override-dispatch scans remain the profile lead.
+
+**Owner's target:** best stable responsiveness the original could supply at
+consistent intended world speed across systems. Legitimate repairs may benefit
+the player. Do not restore hardware-dependent clock drift as a preference.
+Original 486/ET4000 references reach 16.47/16.57 actual updates/s but S about 13
+and clock ratios 1.272/1.278. This supports fifteen as an attainable light-scene
+throughput, not recovered fixed-cadence intent or combat capacity. Evidence:
+`D:/f117-gate/clock486-20261017/`, `clock486dx2-20261017/`,
+`clock486-et4000-20261017/`. All eleven scene fields match. No director reply
+is required to continue testing. Next: investigate presentation startup time continuity and copied-draw cost.
+The old profile's linear override-dispatch lead is not a measured diagnosis
+of this new type-5 capture. No renderer fix has landed. Cadence causality
+remains untested; eight was not measured on this workload. No tests or game
+windows remain running. The validation result keeps the default at eight while
+presentation remains below its acceptance limits.
 
 **Process notes (16 October):** screen leads with `p2-batch-g-accept/screen_leads.py` before any
 agent starts (five of the first twelve picks were blocked or already inline); agents run `pin.py` with

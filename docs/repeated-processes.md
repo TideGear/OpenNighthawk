@@ -1,20 +1,54 @@
 # Repeated processes
 
-**18 Oct resumed validation:** fresh evidence goes under
-`D:/f117-gate/cadence15-production-20261018/`. The definitive full gate passed
-in 1,802 s while sharing the machine: 239 CTests, 45 identical routes, both
-instruction profiles and all three matched-routine seeds. Source unchanged.
-Fresh frozen baselines now feed the complete N=1 rerun/boot presentation pass.
-Twelve Korea/Kuwait/North Cape flights agree exactly between engines, but
-North Cape compressed flight fails an undamaged airborne window at 40 MIPS
-(272/300 updates, 18/20 mission seconds over ten seconds). Preserve that
-failure; `flight-review.json` blocks the prepared 40-MIPS display check.
-The new private `probe60.py` repeats North Cape's first 120 seconds with the
-same 15/30 cap at 60 MIPS, both engines, to test instruction reserve before
-expanding that budget's acceptance checks. Do not interpret MIPS as period
-hardware equivalence. Long compression and candidate app/replay checks still
-need final verdicts. Concurrent correctness runs cannot establish physical
-display pacing. The default remains eight/20 MIPS.
+**18 Oct completed validation:** evidence is under
+`D:/f117-gate/cadence15-production-20261018/` (P). Full gate passes in
+1,802 s with 239 CTests, 45 identical routes, both instruction profiles and
+three matched seeds; frozen source unchanged. Full rerun N=1 and boot N=4/9
+passes in 2,400 s with frozen runner/baselines unchanged, sharing the machine
+with correctness probes. These concurrent timings are not throughput comparisons.
+The recorded-fix consumer repairs have ten passing API/header/entry-point tests.
+
+Twelve fresh 40-MIPS flights agree between engines, but compressed North Cape
+fails an undamaged airborne window (272/300 updates, 18/20 mission seconds).
+The 40-MIPS secondary checks pass: both-engine ten-minute compression, 991-frame
+scan/interp/rerun and hidden app. Retain the active capacity failure and keep
+`flight-review.json`'s display guard false. No 40-MIPS screen test was launched.
+
+`clock60.py` passes in both engines: 600 compressed seconds, seven clock/dialog
+cases, twelve settled transitions and 120 rapid changes, all case hashes equal.
+`demand60.py` runs four mixed normal/compression-requested regions, both engines,
+up to 1,200 seconds with six workers. All states/inputs/CSVs/windows agree;
+176 airborne windows pass, including four compressed ones. The four unique
+traces total 1,906.8 observed seconds /73 enemy launches, with raw crash/terminal
+failures retained. The short `probe60.py` and 165-ms delayed seed attempt have
+different combat seeds from 40; do not call them identical engagements.
+A MIPS budget is not a literal period-hardware equivalence.
+
+`headless60.py` uses the actual complete North Cape record: scan/interp/rerun
+and API final state agree, 6,681 exact frames, 29,729 isolated extra draws.
+The expensive rerun takes 922 s under shared load; do not repeat that whole
+check for every new input fixture. The derived `airair60_check.py` fixed controls
+end in END after about 161 flight seconds, so the final objective-memory
+assertion fails; retain this invalid long-flight fixture.
+`live_airair60.py` uses the existing adaptive air-combat pilot at 60 MIPS /15 Hz,
+scaling nine-MIPS front/startup deadlines but retaining normal holds and 5-Hz
+feedback. It records 360 seconds at the established 11,000 pursuit floor,
+ends airborne in type 5 with 13 air units, but never fires or completes/lands.
+Mission errors are preserved; it is a bounded display fixture only.
+`live_airair60_baseline.py` freezes that actual record, verifies S15/objective
+and matches both scan engines to the API final clock/hash (244/330 s under
+light concurrent load). No direct memory staging or invulnerability is used.
+
+`display60_live_airair.py` runs only after all hidden workers finish. The native
+scale-9 fullscreen D3D11 3840x2160 /59.99-Hz vsync capture finishes in 740.7 s;
+all 5,396 logic frames and final state are exact, guest drift 5.2 ms. Pacing
+fails: 18,606 flight pictures, p99 32.93 ms, 12.95% of intervals over 25 ms
+and one startup t rewind of 0.325. No threshold was relaxed. Sky capture times
+out twice, so visual-motion assessment is unavailable. This type-5 pursuit is
+a different engagement from the older type-6 trace; eight was not timed here.
+No workers or game windows remain running. Default stays eight/20 MIPS.
+Next investigate presentation startup continuity and copied-draw cost; the old
+profile's linear dispatch lead remains a hypothesis for the new trace.
 
 **17 Oct handoff:** the opt-in fifteen-step production candidate is saved but
 not accepted. Build/239 CTests, both-engine all-fixes clock/transition checks

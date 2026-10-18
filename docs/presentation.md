@@ -769,6 +769,34 @@ within this run, rather than confined to startup; its CPU/GPU cause and repeatab
 unestablished. Stage 4 remains incomplete and no score is raised. Evidence:
 `D:/f117-gate/present-v2/stage4-airair-long-20261017/{command.json,timing-verdict.json,machine.log,reference.log}`.
 
+**Fifteen-step candidate fullscreen assessment (18 October 2026).** D1REAL
+at 15 normal /30 compressed updates passes its 60-MIPS clock and flight checks;
+40 MIPS misses an active compressed North Cape window. Full rerun N=1 over all
+45 routes and boot N=4/9 pass. The full 60-MIPS North Cape scan/interp/rerun also
+matches its API final state, with 6,681 exact logic frames and 29,729 isolated
+extra draws. These correctness checks do not establish display pacing.
+
+The new native capture uses an adaptive type-5 pursuit recording with all fixes,
+six flight minutes and 13 air units at its end; no weapon release, objective
+completion or landing is claimed. Both scan engines match the recording's API
+final clock/hash, objective and S15. The earlier type-6 fixed controls end this
+candidate flight early, so that derived fixture is retained as failed and is not
+substituted for a full stress flight. The new type-5 scene is a different engagement.
+
+D3D11 3840x2160 at 59.99 Hz, vsync 1 and scale 9 produces 18,606 interpolated
+flight pictures. All 5,396 logic frames are exact and final state matches the
+scan/API baseline; guest drift is 5.2 ms. Pacing fails: median 17.36 ms,
+p99 32.93 ms (20.83-ms limit), 2,404/18,559 intervals over 25 ms
+(12.95%, 1% limit), and one startup pair's t falls from 0.677266 to 0.352496.
+Startup fallback to the smoothed clock is a hypothesis to investigate, not an
+established cause. Eight was not measured on this workload. Default stays eight;
+no renderer optimization has landed. The Windows capture helper times out twice,
+including after refreshed selection, so visual-motion inspection remains open.
+Evidence: `D:/f117-gate/cadence15-production-20261018/display60-airair-live/`
+(`command.json`, `summary.json`, `timing-verdict.json`, `interpolation-analysis.json`,
+`ui-inspection.json`); recording/engine proofs are in the same root's
+`live-airair60-{fixture-review,baseline-verdict}.json`.
+
 **Hidden CPU diagnosis (17 October).** An isolated private instrumented build
 fast-seeks through the unchanged replay, then draws hidden 4K Direct3D 11
 pictures without vsync. Two 33.33-guest-second windows end at the exact

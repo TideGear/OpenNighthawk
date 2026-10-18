@@ -164,13 +164,44 @@ routines at three seeds, without mismatches. The twelve additional flights
 have identical final states, capacity windows, input logs and sample CSVs.
 This nevertheless **rejects 40 MIPS as sufficient reserve** for the candidate:
 North Cape has an undamaged airborne compressed window with 272/300 updates
-and 18/20 mission seconds over ten seconds. Altitude stays 1,547?2,367.
+and 18/20 mission seconds over ten seconds. Altitude stays 1,547-2,367.
 The later terminal-window failure is retained separately. A 60-MIPS probe
 keeps the same 15/30 update cap while testing computation reserve; that budget
 is not a claimed period-hardware equivalent. The default remains eight/20.
-Full presentation, long compression and app checks remain in progress; no new
-visible test has run. Evidence: `D:/f117-gate/cadence15-production-20261018/`
-(`gate-final/gate-verdict.json`, `flight-review.json`, `capacity60/`).
+Both engines subsequently pass ten minutes of compression at 40 MIPS with
+18,000 updates and 1,200 mission seconds; all seven case results agree. The
+15-Hz scan/interp/rerun replay and hidden interp/rerun app also pass with 991
+exact logic frames and identical headless checkpoints/final state. These do
+not erase North Cape's active capacity failure. At 60 MIPS both engines pass
+ten compressed minutes, seven clock/dialog cases, twelve settled transitions
+and 120 rapid changes with identical case results. The short North Cape
+probes pass but have different combat seeds from 40, including after the
+launch-delay alignment attempt, so they do not establish identical engagements.
+The longer four-region 60-MIPS flight pairs have identical engine states,
+input logs, sample CSVs and timing windows. All 176 airborne windows pass,
+including four fully compressed windows. Raw crash/terminal failures remain.
+The four unique traces cover 1,906.8 observed seconds and 73 enemy launches.
+Full North Cape scan/interp/rerun agrees with its API final state and keeps
+6,681 logic frames exact, with 29,729 extra isolated draws. Full 45-route
+rerun N=1 plus boot N=4/9 also passes with frozen baselines unchanged.
+
+The native 4K/60 assessment nevertheless fails, so default remains eight/20.
+A different, adaptive type-5 pursuit recording flies for six minutes and ends
+with 13 air units; it does not release a weapon or complete the mission.
+Both scan engines reproduce its API final clock/hash, objective and S15.
+On D3D11 3840x2160 /59.99 Hz, scale 9 /vsync, all 5,396 logic frames are exact
+and final state matches, with 5.2 ms guest drift. Pacing fails: p99 32.93 ms
+(limit 20.83), 12.95% over 25 ms (limit 1%), plus one startup interpolation
+rewind of 0.325 within a frame pair. Sky screenshots time out after one retry,
+so no visual-motion judgment is claimed. This is not the earlier unfixed
+type-6 engagement, and it does not establish that cadence caused the failure.
+The derived old fixed-control fixture ended early in END and remains failed;
+its final objective-memory assertion was no longer reading VGAME data.
+
+Evidence: `D:/f117-gate/cadence15-production-20261018/`, especially
+`flight60-review.json`, `clock60-verdict.json`,
+`candidate60-presentation-verdict.json`, `gate-final/presentation-verdict.json`,
+`live-airair60-baseline-verdict.json` and `display60-airair-live/`.
 
 ## Historical intent and faster-than-real-time simulation (17 October 2026)
 

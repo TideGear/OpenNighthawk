@@ -896,8 +896,14 @@ Each is fixed; the named regressions keep the failing seed or case.
     Korea/Kuwait/North Cape flights agree between engines, but North Cape
     compressed flight falls behind at 40 MIPS while airborne and undamaged
     (272/300 updates, 18/20 mission seconds in ten seconds). A private 60-MIPS
-    reserve probe is running with the same update cap. Presentation and app
-    checks remain in progress; default stays eight. Original 486/ET4000
+    reserve comparison keeps the same update cap: both engines pass ten
+    compressed minutes and all clock/transitions at 60 MIPS. The 40-MIPS
+    hidden app/replay and full presentation checks pass. Four 60-MIPS flight
+    pairs agree exactly with all airborne windows passing (31.8 observed
+    minutes, 73 enemy launches); full North Cape replay keeps 6,681 frames
+    exact and matches the API. The native 4K/60 pursuit trace fails pacing
+    despite exact guest state (p99 32.93 ms, 12.95% over 25 ms, one startup
+    interpolation rewind). Default stays eight. Original 486/ET4000
     parked references reach about 16.5 actual updates/s with S around 13,
     supporting period-hardware responsiveness without establishing S15 intent.
 - [ ] **60+ fps and 4K presentation.** Optional and off by default
@@ -945,7 +951,12 @@ Each is fixed; the named regressions keep the failing seed or case.
     fullscreen test; the small `DF03`/`C2C8` vertex group that nudges less well;
     fullscreen pacing: the longer 17 Oct air-to-air run fails (17,241 pictures,
     p99 28.70 ms, 3.70% over 25 ms; exact guest state). Strike and landing
-    passed the earlier short checks; see presentation.md for evidence;
+    passed the earlier short checks. The 18 Oct 15-Hz /60-MIPS type-5 pursuit
+    capture also fails (18,606 flight pictures, p99 32.93 ms, 12.95% over
+    25 ms and one startup interpolation rewind; exact guest state, 5.2 ms
+    drift). Its scene differs, so cadence causality is untested. Screenshot
+    capture timed out twice; visual assessment remains open. See
+    presentation.md for evidence;
     hidden profiling locates copied-draw CPU cost (46% main-thread samples
     in linear override dispatch); lookup optimization is not yet implemented;
     line widths by drawing role; weapon and target symbology; long
