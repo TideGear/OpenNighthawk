@@ -16,6 +16,43 @@ S15, 15 normal /30 compressed updates, phase-correct transitions, and recorded
 per-machine cadence. Legacy recordings retain eight. Do not promote 15/40:
 it fails active compressed-flight capacity.
 
+**18 Oct broader 15/60 validation (passed):** owner requested broader
+validation after the 4K60 and map-edge repairs. New evidence is
+`D:/f117-gate/cadence15-broad-20261018/` (B), frozen API/runner from `2245c14`.
+`run.py` pairs new-seed combat in four regions (30-minute limits) and two
+quiet airborne-compression seeds (20-minute limits); `clock.py` extends the
+compression soak to 1,800 seconds with pause/dialog/transition checks;
+`pilots.py` pairs strike-and-return, landing and air-to-air mission attempts.
+All twelve paired cases agree on state, inputs, timing and full telemetry;
+960 active airborne windows pass: 160 unique minutes /176,100 exact updates,
+including 35 min 40 s actually compressed. Both 30-minute compression soaks
+and all twenty transition/dialog case hashes agree. Dedicated exposure
+flights record 183 enemy launches. Landing completes normally in both engines
+(`79698609194 / a0f5585e5728c15f`, mission result 0 /pilot status 3). Strike
+records two releases, a primary hit/credit and 30 minutes of flight, but no
+completed return. Both air pilots fail without firing; retain those outcomes.
+The first landing harness double-scaled its route strings; it is invalid,
+corrected runs pass. Original home-orbit attempts never compress; clean
+away-course cruises do so for 1,070 checked seconds each in two regions.
+Only normal controls and read-only observations are used. B/README.md states
+criteria and private harness details; [the case report](docs/cadence15-validation.md)
+has results. All hidden workers finished. `B/display.py` is now running the
+announced native scale-9 4K60 six-minute compression excerpt (230 confirmed
+compressed seconds). The first attempt changed renderer target briefly to
+1080p/50 during setup, then back to 4K60; it is stopped and preserved, not
+accepted. The cause is unknown; an optional owner question is pending.
+The fresh `display-4k60-compression-retry1/` run passes in 700.30 host seconds:
+constant D3D11 3840x2160 /59.99 Hz, vsync 1, scale 9; 21,565 pictures,
+p99 16.9220 ms, maximum 17.8535 ms, zero intervals over 25 ms, 21.84 ms
+drift, no rewind, all 8,992 logic frames exact; final
+`39987947854 / 9c0d852db7e04a66` equals the interpreter. Its scan/rerun guards
+also pass: 8,992 frames, 8,990 pairs and 25,189 isolated extra draws.
+`B/acceptance.json` passes technical acceptance and recommends 15/60 for
+normal play, while preserving the mission/capture limitations. No new visual
+assessment is claimed. No workers or game windows remain running. This
+validation-only change leaves defaults eight/20; promoting them is a separate
+runtime change. Do not relax thresholds or promote the failed 15/40 budget.
+
 **18 Oct map-edge specks:** the owner watched a fullscreen replay, closed it
 early, and reported that flight looked fine apart from tiny dots around the
 map. Preserve that as a partial visual review, not a full completed replay;
@@ -77,7 +114,7 @@ preparation 6.3944 (was 7.9592). Preserve all prior evidence. Do not promote
 defaults or relax thresholds. This follow-up includes observer, CMake/new
 test and docs changes; user's bat files are untouched.
 
-**Validated checkpoint below:** code sorts override placements by address, replacing two
+**Historical checkpoint details (jobs below are finished):** code sorts override placements by address, replacing two
 linear hot-path scans with a binary lookup while preserving registration
 order, fix priority and exact CS. A ROM-free sparse/alias test and optional
 one-million-call benchmark pass (501 ms before, 27 ms after; dispatch only).
@@ -218,12 +255,11 @@ and clock ratios 1.272/1.278. This supports fifteen as an attainable light-scene
 throughput, not recovered fixed-cadence intent or combat capacity. Evidence:
 `D:/f117-gate/clock486-20261017/`, `clock486dx2-20261017/`,
 `clock486-et4000-20261017/`. All eleven scene fields match. No director reply
-is required to continue testing. Next: investigate presentation startup time continuity and copied-draw cost.
-The old profile's linear override-dispatch lead is not a measured diagnosis
-of this new type-5 capture. No renderer fix has landed. Cadence causality
-remains untested; eight was not measured on this workload. No tests or game
-windows remain running. The validation result keeps the default at eight while
-presentation remains below its acceptance limits.
+is required to continue testing. The later dispatch, row-capture, playback-clock
+and map-cap repairs supersede that old presentation blocker. Current broader
+validation is summarized at the top and in docs/cadence15-validation.md.
+Eight has not been measured against fifteen on an identical engagement;
+do not infer cadence causality from the earlier pacing failure.
 
 **Process notes (16 October):** screen leads with `p2-batch-g-accept/screen_leads.py` before any
 agent starts (five of the first twelve picks were blocked or already inline); agents run `pin.py` with

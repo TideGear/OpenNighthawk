@@ -937,6 +937,14 @@ window-selection recovery; this validates logged submission pacing, not
 physical visibility or perceived motion. Defaults remain 8 Hz /20 MIPS;
 15 Hz /60 MIPS is opt-in. This encounter does not establish all-scene pacing.
 
+The [broader 15/60 validation](cadence15-validation.md) also passes a six-minute
+native compression excerpt (230 checked seconds actually compressed):
+21,565 flight pictures, p99 16.9220 ms, maximum 17.8535 ms, zero intervals
+over 25 ms, 21.84 ms guest drift and no rewind. All 8,992 logic frames and
+final state match both scan engines. The accepted retry keeps a constant
+4K/59.99-Hz D3D11 target; an earlier attempt changed briefly to 1080p/50 and
+is preserved as invalid. No fresh perceived-motion assessment is claimed.
+
 A presentation change is held to these checks (commands and costs: [repeated-processes.md](repeated-processes.md);
 the latest full-gate tally: the handoff):
 

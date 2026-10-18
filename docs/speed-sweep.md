@@ -120,6 +120,13 @@ the official 86Box ROM collection; game data and BIOS images stay private.
 
 ### Production fifteen-step candidate (validation resumed 18 October)
 
+**Latest result:** [broader 15/60 validation](cadence15-validation.md) passes
+the timing/capacity checks and both native 4K60 captures, including actual
+30-update/s compressed flight. It adds a successful landing and primary
+strike credit; unsuccessful mission pilots remain documented. The technical
+recommendation is now 15/60 for normal play. Defaults remain eight/20 in
+this validation-only change. The chronology below retains earlier failures.
+
 `--sim-hz 15` now selects explicit per-machine cadence state rather than the
 private prototype's packed metadata. Normal play remains at eight by default.
 The candidate uses S15 at 15/30 actual updates/s, rescales phase on compression
@@ -185,7 +192,7 @@ Full North Cape scan/interp/rerun agrees with its API final state and keeps
 6,681 logic frames exact, with 29,729 extra isolated draws. Full 45-route
 rerun N=1 plus boot N=4/9 also passes with frozen baselines unchanged.
 
-The native 4K/60 assessment nevertheless fails, so default remains eight/20.
+The initial native 4K/60 assessment nevertheless fails, keeping the default eight/20 at that checkpoint.
 A different, adaptive type-5 pursuit recording flies for six minutes and ends
 with 13 air units; it does not release a weapon or complete the mission.
 Both scan engines reproduce its API final clock/hash, objective and S15.

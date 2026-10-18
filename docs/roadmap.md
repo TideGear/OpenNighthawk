@@ -901,9 +901,21 @@ Each is fixed; the named regressions keep the failing seed or case.
     hidden app/replay and full presentation checks pass. Four 60-MIPS flight
     pairs agree exactly with all airborne windows passing (31.8 observed
     minutes, 73 enemy launches); full North Cape replay keeps 6,681 frames
-    exact and matches the API. The native 4K/60 pursuit trace fails pacing
+    exact and matches the API. The first native 4K/60 pursuit trace fails pacing
     despite exact guest state (p99 32.93 ms, 12.95% over 25 ms, one startup
-    interpolation rewind). Default stays eight. Original 486/ET4000
+    interpolation rewind). The later dispatch, row-capture and startup-clock
+    repairs pass that same recording at p99 16.94 ms with exact state.
+    [Broader 15/60 validation](cadence15-validation.md) adds twelve paired
+    cases, 960 exact airborne timing windows (160 unique minutes, including
+    35 min 40 s actually compressed), a successful landing, a confirmed
+    strike hit/credit and a paired thirty-minute compression soak. The
+    dedicated exposure flights record 183 enemy launches. Unsuccessful
+    automated air missions and the incomplete strike return remain explicit
+    limits. The separate native 4K60 compressed-flight capture also passes:
+    21,565 pictures, p99 16.92 ms, zero intervals over 25 ms, 21.84 ms
+    drift and all 8,992 logic frames/final state exact. The technical
+    recommendation is now 15/60 for normal play; this validation-only change
+    leaves the default at eight/20. Original 486/ET4000
     parked references reach about 16.5 actual updates/s with S around 13,
     supporting period-hardware responsiveness without establishing S15 intent.
 - [ ] **60+ fps and 4K presentation.** Optional and off by default

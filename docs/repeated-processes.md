@@ -1,5 +1,32 @@
 # Repeated processes
 
+**18 Oct broader 15/60 validation:**
+`D:/f117-gate/cadence15-broad-20261018/` freezes the `2245c14` API/runner.
+`run.py`, `clock.py`, `pilots.py` and `cruise.py` run paired interpreter /
+recompiled normal-control cases; `review.py` compares inputs, timing rows,
+full mission telemetry, capacity windows and final hashes. Twelve pairs
+pass all 960 airborne windows (160 unique checked minutes, including
+35 min 40 s actually compressed, 176,100 updates); dedicated exposure
+flights record 183 enemy launches. Both 30-minute compression soaks and all
+twenty clock/transition case hashes agree (781 s interpreter /402 s recompiled
+under shared load; not a throughput benchmark). A separate normal landing
+succeeds; strike records releases/hit/credit but no completed return, and
+air pilots fail without releases. The first landing harness double-scaled
+its takeoff strings; retain it as invalid evidence and use the corrected
+case. Home-orbit attempts provide normal combat, not compression coverage.
+Clean away-course cruises provide 1,070 compressed seconds each in Central
+America and North Cape. `display_prep.py` freezes six flight minutes of the
+former (230 compressed seconds), verifies both scan engines and rerun
+(8,992 frames, 8,990 pairs, 25,189 isolated extra draws; max 298 s under
+shared load), then `display.py` runs the announced native scale-9 4K60
+capture after hidden workers exit. Use unchanged timing limits.
+The first display attempt changed target briefly to 1080p/50 and back during
+setup; it is retained as invalid and was stopped. A fresh constant-target
+retry passes in 700.30 host seconds: 21,565 pictures, p99 16.9220 ms, maximum
+17.8535 ms, zero intervals over 25 ms, 21.84 ms drift, no rewind, all 8,992
+logic frames and final state exact. No workers or game windows remain.
+See [the case report](cadence15-validation.md) for outcomes and limitations.
+
 **18 Oct map-edge clipping:** evidence is under
 `D:/f117-gate/map-specks-20261018/`. Replay the frozen combat record through
 24 billion clocks with six shots starting at 21 billion, every 600 million:

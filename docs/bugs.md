@@ -139,10 +139,11 @@ Status values:
   yields to D1REAL in this mode. The eight-step default retains its existing
   limiter behavior for replay compatibility. The choice is per machine and
   recorded in input logs; an absent header means eight. Core/headless/API
-  still require explicit fix selection. Full validation at 40 MIPS was
-  interrupted for the owner's handoff request; it is not an established developer target or the
-  normal-play default. Twenty MIPS failed to sustain the prototype's
-  compressed rate. Tests and evidence are in docs/speed-sweep.md.
+  still require explicit fix selection. Forty MIPS fails an undamaged
+  compressed-flight capacity check; the 60-MIPS candidate passes the
+  [broader timing and mission checks](cadence15-validation.md). Fifteen is
+  not a recovered developer target or the normal-play default. Twenty MIPS
+  also failed to sustain the prototype's compressed rate.
 - **Switchable timing change: `--fix D1REAL` (on for normal play).** Pins the simulation divisor S
   at 8 and admits eight frames per machine second; under the original's 2x
   time compression S becomes 4 at the same frame cadence. The original
@@ -171,6 +172,13 @@ Status values:
   with all fifteen fixes enabled together, with identical case hashes in both
   engines (69.17 s). Evidence:
   `D:/f117-gate/default-fixes-20261017/all-fixes-clock/verdict.json`.
+  Production also supports opt-in `--sim-hz 15`: S15 with 15 normal /30
+  compressed updates and phase-correct transitions; the older D1 cap yields
+  to this mode. The 40-MIPS budget fails an undamaged compressed-flight
+  capacity check. The [60-MIPS candidate's broader checks](cadence15-validation.md)
+  pass 960 airborne windows, including 35 min 40 s actually compressed,
+  paired clock/transition cases and a successful landing. This is a tested
+  project cadence within the original S limit, not a recovered fixed target.
 - **Natural flights.** With all five D1-family options, a 24-flight cohort
   holds S 8 and an in-flight mission clock of 1.000 at 9 and 20 MIPS. With
   VGAME's own seed and the pilot's input phase aligned, all 12 mission pairs

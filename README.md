@@ -178,7 +178,7 @@ set (and, for Munt, `mt32-roms`).
 | `--engine recomp\|interp` | recompiled code (default) or the reference interpreter only |
 | `--timing dosbox\|386` | the emulated PC's speed model: `dosbox` (default) is this machine's instruction model at `--ips`; `386` models a 1991 386DX/33 (original flight typically 5-9 fps with fixes off) |
 | `--ips N` | emulated CPU speed under `dosbox` timing, instructions per second (20,000,000 in `f117a`; 9,000,000 in `f117run` and route checks, GOG DOSBox's `cycles=9000`). Default D1REAL separately targets eight simulation steps per second |
-| `--sim-hz 8\|15` | D1REAL cadence (default 8). Experimental 15 uses 15 updates/s normally and 30 during 2x compression; 40,000,000 instructions/s missed compressed-flight capacity; 60,000,000 passes the tested simulation checks but 4K presentation still fails pacing limits. Replays restore their recorded choice; legacy logs use 8 |
+| `--sim-hz 8\|15` | D1REAL cadence (default 8). The 15-step candidate uses 15 updates/s normally and 30 during 2x compression. Pair it with `--ips 60000000`; 40,000,000 missed compressed-flight capacity. [Broader validation and 4K60 results](docs/cadence15-validation.md). Replays restore their recorded choice; legacy logs use 8 |
 | `--roland munt\|windows\|off` | where Roland music goes: Munt's MT-32 emulation (needs `--mt32-roms`), the Windows MIDI synthesizer (General MIDI: wrong instruments), or nowhere |
 | `--mt32-roms DIR` | the folder holding your MT-32 control and PCM ROMs, recognised by content whatever they are called (see [MT-32 ROMs](#mt-32-roms)); on its own it means `--roland munt` |
 | `--midi N` | send Roland MIDI to Windows MIDI device N instead of the mapper |
