@@ -10,9 +10,18 @@ more than once, what it costs). State as of 17 October 2026.
 
 17 October: `p2-batch-o` remains the latest matching batch. The owner approved progressive static-code
 scope review, the longer fullscreen air-to-air test, and all fifteen fixes on for normal play.
-**Start here:** the owner-authorized cadence comparison is complete; production remains at eight updates/s.
+**Start here:** the owner-authorized fifteen-step follow-up is complete; production remains at eight updates/s.
 The next performance lead is linear override dispatch in the copied draw (below); Phase 2 batch p is also prepared.
 The authorized longer fullscreen test is complete and failed pacing limits; further visible tests need agreement.
+
+**Owner's clarified target:** the best stable responsiveness the original could
+provide, at consistent intended world speed across systems. Legitimate bug
+repairs are allowed to benefit the player. Do not interpret the earlier
+discussion as a preference to restore hardware-dependent adaptive clock drift.
+The further fifteen-step experiment passes the tested cases with constant-S
+compression and corrected phase handling at 40 MIPS; production defaults
+have not been changed. Evidence is under
+`D:/f117-gate/cadence15-followup-20261017/` (findings below).
 
 **Process notes (16 October):** screen leads with `p2-batch-g-accept/screen_leads.py` before any
 agent starts (five of the first twelve picks were blocked or already inline); agents run `pin.py` with
@@ -120,6 +129,26 @@ outside its rows in those seven programs. `tools/census_classify.py` computes a 
   **Recommendation given:** keep eight now; fourteen is the stronger higher-rate candidate, with more work before
   shipping. Evidence/scripts/archived binaries: `D:/f117-gate/cadence-20261017/verdict.json`, `without-d1/`.
   Full details in docs/speed-sweep.md. No new visible/fullscreen test was run.
+- **Fifteen-step follow-up complete (owner requested):** normal 15 Hz/S15 is viable in the tested cases.
+  First 15-normal/14-compressed prototype passes steady clocks at 20/40 MIPS but fails 120 rapid toggles:
+  82 mission seconds vs 72.469 integrated mode-seconds. Constant S15 with 15 Hz normal /30 Hz compressed
+  avoids divisor changes; at 20 MIPS it cannot supply 30 updates/s (1,636 updates/109 mission seconds in
+  70 compressed seconds), then catches up after switching back. At 40 MIPS steady cases pass, but retaining
+  the old-rate deadline loses 1.957 seconds over rapid toggles. **Final phase-corrected candidate** scales
+  remaining deadline/debt at the existing rate-change hook: at 40 MIPS both engines agree on all seven
+  clock/dialog cases, six round trips/twelve settled windows and 120 rapid transitions. Rapid clock:
+  68 mission seconds vs 68.012 integrated seconds, within the counter resolution. Twelve final checks pass:
+  `D:/f117-gate/cadence15-followup-20261017/constant-step/phase-corrected/verdict.json`.
+  Normal-only physics/24-pulse throttle/two flight scenarios retain prior 15-Hz hashes in
+  the first prototype (35 ms median, 67 ms max throttle response at 20 MIPS); both flight engines agree.
+  Each scenario requested 600 seconds; Middle East ends early, Korea reaches the limit.
+  Later prototypes preserve initial normal clock hashes, not a new physical-display test. Fixes-off boot/quit
+  retains all 54 checkpoints and final exit/hash before/after each candidate and between engines. D1 excluded,
+  other fourteen fixes on. Failed candidates retained; notes in docs/speed-sweep.md.
+  Private fixes.c patch has been restored byte-for-byte from production and the normal API rebuilt.
+  **Adoption not done:** needs explicit per-machine cadence state (prototype packs metadata), full gate,
+  presentation checks and display assessment. Default remains 8 Hz/20 MIPS. Fast original 486 reference
+  tests have not been run; fifteen is not established developer intent or an original-hardware ceiling.
 - Independent original game on 86Box OPTi 495SX / 386DX33, MS-DOS 5.00: after 30 seconds settling,
   152 mission seconds in 119.994917 native emulated seconds (1.26672x), S=5, normal compression=1.
   VGAME on the private VM disk hashes identically to the GOG file. This confirms a mismatch on that profile,

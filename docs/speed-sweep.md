@@ -622,11 +622,86 @@ equivalence. The retained comparison verdict checks engine agreement and
 control integrity, not acceptance of every candidate. Cannon behavior and
 controlled guidance equivalence remain unverified by these probes.
 
-**Recommendation:** keep eight as the tested default. Fourteen is a stronger
+**Recommendation from this first comparison (before the follow-up below):** keep eight as the tested default. Fourteen is a stronger
 candidate than fifteen for further higher-cadence work because its divisor
 supports exact 2x compression, but it still needs sufficient emulated CPU
 speed, separate original-rate compatibility handling, and broader gameplay
 and physical-display assessment. Neither candidate recovers developer intent.
+
+### Fifteen-step compression follow-up (17 October 2026)
+
+The owner's target is the best stable responsiveness the original could
+provide, at consistent intended world speed across systems; legitimate bug
+repairs do not count as unfair advantages. Eight is a tested compatibility
+baseline, not a recovered developer target. Two further private prototypes
+therefore keep normal play at 15 Hz/S15 and investigate compression.
+Neither changes the production default.
+
+**Normal play:** 450 updates and 30 mission seconds in 30 elapsed seconds
+at both 20 and 40 MIPS, with interpreter/recompiled hashes identical. The
+first prototype's normal-only missile and throttle probes retain the prior
+fifteen-step hashes: 24 throttle pulses, median 35 ms, maximum 67 ms.
+Both normal-input flight scenarios also retain their prior hashes and
+agree between engines (Middle East `1936ec547dcedc78`, Korea
+`8e612cbc086ebd5f`). These do not prove a recovered intended cadence,
+guidance equivalence or physical-display performance.
+
+**15 Hz/S15 normal, 14 Hz/S7 compressed:** all seven settled clock/dialog
+cases pass at 20 and 40 MIPS, as do six compression round trips measured
+after settling. However, a 120-transition normal-input stress run advances
+82 mission seconds in 48 elapsed seconds, against 72.469 seconds obtained
+by integrating the observed compression mode. The eight-step control
+advances 72 against 72.000. The changing global-counter divisor and pacing
+phase need further correction; reject this prototype despite its steady
+clock results.
+
+**15 Hz/S15 normal, 30 Hz/S15 compressed:** a second prototype holds the
+simulation step size constant and doubles actual updates under compression.
+It retains the next deadline when changing cadence. At 20 MIPS the parked
+scene cannot supply 30 updates/s: the 70-second compressed window produces
+1,636 updates / 109 mission seconds, then the restored normal window catches
+up (234 updates / 15 mission seconds in ten elapsed seconds). At 40 MIPS,
+the seven steady clock/dialog checks pass, including 2,100 updates and
+140 mission seconds in 70 compressed seconds. This is an execution-capacity
+finding, not proof that 40 MIPS is the minimum or sufficient in every scene.
+At 40 MIPS six settled round trips also pass, but rapid toggling still loses
+1.957 mission seconds against 69.957 integrated seconds (68 counted).
+Retaining an old-rate deadline does not preserve the remaining fraction
+of a step when changing the rate. This second prototype also fails the
+transition stress requirement.
+
+**Corrected constant-step candidate:** at the existing rate-change hook,
+scale the deadline's remaining time (or overdue work) by old/new cadence.
+At 40 MIPS this passes all seven clock/dialog cases, all twelve settled
+windows in six round trips, and all 120 rapid transitions, with every case
+and final hash equal between engines. The rapid test counts 68 mission
+seconds against 68.012 integrated seconds (mode sampled every millisecond),
+within the integer mission counter's resolution. Initial normal-flight
+clock hashes remain unchanged. Twelve final consistency/acceptance checks
+pass in `constant-step/phase-corrected/verdict.json`.
+
+This makes normal fifteen-step timing a viable candidate, with constant-S
+compression and sufficient execution capacity, rather than proving that
+fourteen is the highest usable rate. Forty MIPS is the tested configuration;
+the earlier 20 MIPS capacity failure is not repaired by changing deadline
+arithmetic. This prototype still uses private packed pacer metadata. A
+production implementation needs explicit per-machine cadence state, the
+full gate, presentation checks and physical-display assessment before
+adoption. Fast original-hardware measurements remain necessary to assess
+the owner's fidelity target; these tests establish consistency, not intent.
+
+Both private pacers pass 32 simulated hour-long fractional-clock schedules,
+event waits, state-copy, overrun and reset checks. Fixes-off boot/quit runs
+retain all 54 checkpoints and the final hash between pre-experiment and
+candidate libraries and both engines. D1 is excluded because its separate
+11.6 Hz limiter conflicts; the other fourteen repairs are enabled. The
+first attempt at the reference harness assumed exact checkpoint stops;
+matched execution can cross the requested boundary, so corrected captures
+compare actual stops. Failed harness logs are retained separately.
+
+Evidence: `D:/f117-gate/cadence15-followup-20261017/`, with the constant-step
+variant under `constant-step/`. These are API experiments; production source
+and default settings remain unchanged, and no fullscreen acceptance was run.
 
 ## S's self-calibration audit (10 Oct): closed
 

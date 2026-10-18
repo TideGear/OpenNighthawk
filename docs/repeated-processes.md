@@ -31,6 +31,37 @@ a source by copying can preserve its old timestamp and fool Ninja into
 reusing an experimental object: touch the restored source and confirm a
 recompile in the build log. Production source/defaults did not change.
 
+**15 Hz follow-up (17 October, owner):** private prototypes keep normal S=15
+and test compression separately. The first uses 14 Hz/S7 under 2x; the
+second keeps S15 and doubles actual updates to 30 Hz. In addition to the
+seven clock/dialog cases at 20 and 40 MIPS, test six settled compression
+round trips and a 120-transition normal-input stress run, integrating the
+observed compression mode over time. Settled windows alone missed the
+first prototype's clock-boundary error. Keep failed candidates and the
+eight-step stress control. Normal-only physics, input and flight hashes
+are compared with the earlier fifteen-step experiment, and fixes-off
+boot/quit runs compare before/after and both engines. Private evidence:
+`D:/f117-gate/cadence15-followup-20261017/`; `constant-step/` holds the second
+prototype. No production change or fullscreen acceptance is implied.
+The first constant-step variant retains the old deadline and also fails
+rapid transitions, despite passing steady and settled cases at 40 MIPS.
+The `constant-step/phase-corrected/` variant scales remaining time (or
+overdue work) by old/new cadence at the existing rate-change hook.
+Pacer logs redirected by PowerShell are UTF-16; decode them explicitly
+before evaluating a captured success line. The original-reference harness
+must accept actual stops beyond a requested checkpoint and compare those
+stops; the complete boot/quit scenario has 54 checkpoints, not 100.
+Final phase-corrected 15/30 Hz cases pass at 40 MIPS: seven clock/dialog
+cases, twelve settled windows and 120 rapid transitions, identical between
+engines. Twelve final verdict checks pass; 20 MIPS was insufficient for the
+earlier constant-step compressed case. The initial normal/clock group took
+532.375 s, the first constant-step group 267.765 s, the corrected clock/
+transition group 253.797 s; auxiliary probes overlapped (about twenty
+minutes overall, not a scheduling comparison). Source and normal API are
+restored; experimental DLLs are archived privately. The unchanged fractional
+pacer body reuses its 32 simulated hour-long invariant checks by byte
+identity; the new phase-change hook is exercised by the in-game stress run.
+
 **Air-to-air diagnosis (17 October):** two isolated hidden app windows took
 147.28 s combined, including fast seeks. Their final hashes match original
 gate checkpoints. Separate deep timers and a 20.06 s main-thread sample

@@ -887,6 +887,10 @@ Each is fixed; the named regressions keep the failing seed or case.
     14 passes the clock/dialog cases at 20 MIPS, 15 fails exact 2x
     compression, and both higher rates fall behind at 9 MIPS. Input response
     improves, but flight paths change; neither rate establishes developer intent.
+    A further private 15 Hz/S15 normal, 30 Hz/S15 compressed candidate passes
+    clock/dialog and rapid-transition checks at 40 MIPS after deadline phase
+    correction. Production implementation, full gates, presentation acceptance
+    and a fast original-hardware reference remain; default stays eight.
 - [ ] **60+ fps and 4K presentation.** Optional and off by default
       (`--present replay|interp|rerun`, `--present-scale N`, `present =` in
       f117a.ini). Design, measurements and history:
