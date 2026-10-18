@@ -8,11 +8,10 @@ checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 [docs/repeated-processes.md](docs/repeated-processes.md) (every process we run
 more than once, what it costs). State as of 17 October 2026.
 
-17 October: `p2-batch-o` is gated and landed (three bodies; see Phase 2 below). Stopped for handoff at the
-owner's request (17 Oct, 16:14 PDT): everything is committed and pushed, no process is running, the gate worktree
-`D:/f117-wt/gate-h` is clean at `aa8991b` (master is ahead of it by doc and tool commits only).
-**Start here:** Phase 2 batch p; the census-gap decision is implemented below. Ask the owner before a longer
-fullscreen air-to-air timing run. Resume the roadmap's plan, Phase 2 first.
+17 October: `p2-batch-o` remains the latest matching batch. The owner approved progressive static-code
+scope review, the longer fullscreen air-to-air test, and all fifteen fixes on for normal play.
+**Start here:** resume Phase 2 batch p; the static-code tranche and default change are validated below.
+The authorized longer fullscreen test is complete and failed pacing limits; further visible tests need agreement.
 
 **Process notes (16 October):** screen leads with `p2-batch-g-accept/screen_leads.py` before any
 agent starts (five of the first twelve picks were blocked or already inline); agents run `pin.py` with
@@ -27,16 +26,20 @@ session log. Earlier detail is in `git log -p handoff.md`.
 
 ## Current state (17 October)
 
-Batches n and o are landed, built and CI-green; no private processes are running.
-The census correction below is committed and pushed (`7221e50`, empty-capture guard `f51040f`).
-Both Windows and Munt CI passed: https://github.com/TideGear/OpenNighthawk/actions/runs/39078907127.
-All 37 local census/credit regressions pass; the real-corpus refresh reproduces progress.json byte for byte.
-This changed accounting tools and docs only; batch o remains the latest full gameplay gate and application build.
+Batches n and o are landed and CI-green. The earlier census correction is committed and pushed
+(`7221e50`, empty-capture guard `f51040f`); CI: https://github.com/TideGear/OpenNighthawk/actions/runs/39078907127.
+Current changes add a reviewed static-code tranche and normal-play fix defaults. The fresh full gate
+passed in 1,557.30 s from `D:/f117-wt/gate-h` on `fix-defaults-20261017`: 238 CTests, 45 identical routes,
+44 fresh interpreter sessions, 5,718,848 instruction states under each timing profile, 1,006 matched
+routines at three seeds, no mismatches, reachability and event limits clean. Private evidence:
+`D:/f117-gate/default-fixes-20261017/{gate-verdict.json,gate.log,gate-source-manifest.json}`.
+The code/tools/tests still hash-identically to that frozen gate snapshot. All private acceptance runs are finished.
+Local census/credit regressions: 45 pass; default-selection process checks: six pass.
 
-Scoreboard: P1 100.00%, P2 85.11%, P3 97.22%, All 94.75% (P4 and the decided-against P3 items are no longer scored)
+Scoreboard: P1 100.00%, P2 81.48%, P3 97.22%, All 93.64% (P4 and the decided-against P3 items are no longer scored)
 (`py tools/progress.py --title`). Phase 2: 1,006 addresses matched; named code runs
-147,448 of 169,933 creditable historical census bytes, plus 846 of 5,927 proven bytes outside its rows:
-**148,294 / 175,860 in the expanded seven-program scope** (credit by byte since 16 October).
+147,448 of 169,933 creditable historical census bytes, plus 846 of 14,268 proven bytes outside its rows:
+**148,294 / 184,201 in the expanded seven-program scope** (credit by byte since 16 October).
 **The denominator was split on 17 October (owner):** 9,280 of the 179,213 census bytes are data or code that stays original and no longer count
 (`tools/census_classify.py`, `docs/census-data.tsv`, `docs/census-original.tsv`; rule in docs/progress.md).
 The jump from 83.02% to 87.28% at the change was the metric, not new matching. The 842 bytes of unused
@@ -64,10 +67,14 @@ outside its rows in those seven programs. `tools/census_classify.py` computes a 
   END 171/24, DSWAP 135/98, MPS_LOGO 64/49, PLAYER 23/22. The old census's uncredited classes also change
   under actual instruction lengths (roadmap); one formerly excluded byte returns, denominator 169,933.
   P2 87.43% -> 85.11%, overall 95.46% -> 94.75% is a scope correction, not lost matching.
-- **Still outside the score:** static-only discoveries (the earlier translator count found 21,349 outside
-  census bytes in the seven programs; its instruction lengths were decoded already), and **18,469 validated
-  executed bytes in other modules**, individually reported by the classifier. Audit static-only code before
-  adding it; matching the launcher, resident graphics and sound drivers also needs module/segment support.
+- **Static-code review, first tranche:** `docs/census-code.tsv` records 16 ranges across all seven programs,
+  adding 8,341 bytes with no matching credit. Hash, complete instruction boundaries, count and overlapping
+  reviews are checked at every refresh; all lengths independently agree with Capstone. Private evidence:
+  `D:/f117-gate/census-gap-20261017/static-audit/{approve.py,reviewed-verdict.json,inventory.json}`.
+  Scope is now 148,294 / 184,201, P2 81.48%, overall 93.64%; the reduction records more work, not lost matching.
+- **Still outside the score:** 7,089 static-discovery bytes remain unreviewed, including speculative table/padding
+  decodes and decoder disagreements; do not blindly add them. Also **18,469 validated executed bytes in other
+  modules**, individually reported by the classifier. Matching the launcher, resident graphics and sound drivers needs module/segment support.
   The score explicitly describes the expanded seven-program scope, not all game code.
 - **Batch p lead screened:** VGAME `09EFA` (`prepass_display_body`) has a prepared private dossier at
   `D:/f117-gate/p2-vgame-9efa/`: **1,628 instructions / 4,552 bytes**, RET at `B0C1`, length must enclose
@@ -75,6 +82,33 @@ outside its rows in those seven programs. `tools/census_classify.py` computes a 
   lies inside the body (`candidate-review.json`). Its zero-size census row no longer hides its executed code.
   No observer/fix at the entry.
   Body, fixtures, seeds, mutations and route proof are **not done**; config still has placeholder names.
+
+### Normal-play defaults and original timing
+
+- All fifteen fixes, including D1REAL and D1PROX, now start on in normal `f117a` play (owner).
+  `--fix none` clears them; follow with selected IDs for a subset. Core/API/headless start off, and parity
+  commands explicitly prepend `--fix none`; fix-specific checks enable their own cases. Replays restore
+  recorded sets; legacy logs without a fix header retain none. Private six-case recording/header probe passed.
+- Main's normal /O2 app build passed. Hidden owner-session app replays passed in both `interp` and `rerun`:
+  2,238 exact logic frames each, all presented/scanned palette counts equal; rerun drew 7,676 intermediate
+  pictures. Evidence: `D:/f117-gate/default-fixes-20261017/app-session/verdict.json`.
+- All fifteen fixes together pass the seven normal/compressed/pause/dialog clock cases at 20 MIPS in
+  both engines, every case hash identical (69.17 s). Evidence: `all-fixes-clock/verdict.json` under
+  the same private directory. The Machine API permits one open machine per process, so use separate processes.
+- D1REAL's eight steps/second are a project choice, not a recovered developer target or a requirement for 60 Hz.
+  D1PROX's terminal-speed x 8/9 band uses the GOG-speed parked S=9 baseline as a compatibility calibration,
+  not an authoritative warhead radius. No numeric canonical radius was recovered from the inspected code/manual.
+- Independent original game on 86Box OPTi 495SX / 386DX33, MS-DOS 5.00: after 30 seconds settling,
+  152 mission seconds in 119.994917 native emulated seconds (1.26672x), S=5, normal compression=1.
+  VGAME on the private VM disk hashes identically to the GOG file. This confirms a mismatch on that profile,
+  not developer intent or every historical PC. The earlier sweep's `386` is our model, not 86Box itself.
+  Capture initially asserted normal compression was 0; corrected analysis uses the retained samples (normal is 1).
+  Evidence: `D:/f117-gate/default-fixes-20261017/clock86/{loop.state,samples.json,verdict.json}`;
+  interpretation in docs/speed-sweep.md. The owner emailed the director; no reply is needed to continue testing.
+- Longer fullscreen air-to-air test completed on the owner's 4K/59.99 Hz display: 17,241 timed pictures,
+  p99 28.6976 ms, 638 intervals over 25 ms (3.7022%), **fails both pacing limits**. All 3,679 logic frames
+  exact, drift 0.005819 s, final hash `b050542466c9a616` equal to a separate headless replay. Evidence:
+  `D:/f117-gate/present-v2/stage4-airair-long-20261017`. No score increase; CPU/GPU cause still unlocated.
 
 ### Presentation: latest (15 October, evening)
 

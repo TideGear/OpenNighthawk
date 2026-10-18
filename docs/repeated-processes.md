@@ -27,6 +27,27 @@ and 6b) and the matched-routine lockstep (three seeds, steps 7-7c), then
 checks that every routes-only matched routine ran on a route (step 8) and that
 no matched routine ran past its event limit (step 9).
 
+**Fix selection (17 October):** normal application play starts with all fifteen
+fixes, including D1REAL and D1PROX. `build_recomp.py` and `run_route.py`
+explicitly prepend `--fix none`; subsequent fix-specific route options or
+recorded headers select the intended test cases. The headless runner also
+starts with fixes off. Do not enable every fix for ordinary parity: both
+original behavior and repaired behavior need their separate checks.
+`tests/test_fix_defaults.py --app APP --runner RUNNER` is a ROM-free six-case
+process check, also in Windows CI. Private recording/replay checks verify all,
+none, a recorded subset and explicit replay additions; old logs retain none.
+Evidence: `D:/f117-gate/default-fixes-20261017/headers/verdict.json`.
+The combined-default check reuses `d1real_check.check` with all fifteen fixes
+at 20 MIPS in both engines: seven normal/compressed/pause/dialog cases and
+every case hash equal (69.17 s). Use separate processes: the Machine API
+allows one open machine per process. Private wrapper and evidence:
+`D:/f117-gate/default-fixes-20261017/{all_fixes_clock.py,all-fixes-clock/verdict.json}`.
+The hidden recorded-session app check took 165.69 s: both presentation modes
+retain 2,238 exact logic frames and equal presented/scanned palette counts;
+rerun draws 7,676 intermediate pictures (`app-session/verdict.json`). These
+checks shared the machine with the gate and are correctness checks, not
+performance acceptance.
+
 The standing command (the handoff has the local paths) is `py
 tools/build_recomp.py --data INSTALL --seed-coverage WORK/coverage --jobs 16
 --verify-interp-cache`, started through `D:/f117-gate/affinity_launch.py`
@@ -34,11 +55,14 @@ tools/build_recomp.py --data INSTALL --seed-coverage WORK/coverage --jobs 16
 
 **Current figures (17 October 2026):** 238 CTests; 45 routes identical, run
 as 44 sessions; 5,718,848 instruction states under each timing profile; 1,006
-matched routines at three seeds; reachability and event limits clean. Batch o's
-full gate took 1,894.81 s, with every interpreter session verified fresh.
-All acceptance processes, including N=1 and boot N=4/9 presentation, finished
-in 1,965.26 s using checked presentation overlap. Evidence:
-`D:/f117-gate/p2-batch-o-accept/final-gate-verdict.json`.
+matched routines at three seeds; reachability and event limits clean. The default-fixes
+full gate took 1,557.30 s, with every interpreter session verified fresh (0 reused,
+44 run), coverage refreshed and no new translated code. Correctness-only app and
+clock probes shared spare CPUs; this is not a controlled scheduling comparison.
+Evidence: `D:/f117-gate/default-fixes-20261017/{gate-verdict.json,gate.log}`.
+Batch o's matching acceptance, including N=1 and boot N=4/9 presentation, finished
+in 1,965.26 s using checked presentation overlap
+(`D:/f117-gate/p2-batch-o-accept/final-gate-verdict.json`).
 Typical gates take about 1,300-2,000 s; the longest career seed chain sets the route time.
 
 | Stage | Latest measured | What sets it, what was duplicated | Status |
@@ -296,6 +320,28 @@ and moved to the 4K one was rejected). Synthetic verdict regressions run in
 CI. It measures submitted pictures on the available display, which may be
 virtual; tearing and perceived motion on a physical panel need the owner's
 eyes. Keep raw timing and game logs private.
+
+The owner's authorized longer fullscreen air-to-air run (17 October) took
+656.44 s, with no other heavy work: 17,241 pictures, p99 28.6976 ms and 3.7022%
+above 25 ms, failing both limits. Guest drift 0.005819 s; all 3,679 logic frames
+exact and final hash equal to a separate 56.2-second headless run. Evidence:
+`D:/f117-gate/present-v2/stage4-airair-long-20261017`. Further visible runs
+still need the owner's agreement; this result needs diagnosis, not more samples
+to explain away the failure.
+
+## Independent original-game clock
+
+The private `D:/f117-gate/default-fixes-20261017/clock86.py` uses the existing
+`b86_cargo_pilot.B86Machine` offscreen on a copied 386DX33/MS-DOS 5 profile.
+After 30 emulated seconds settling, capture 120 emulated seconds of mission
+time, S, compression and frame counter against 86Box's independent TSC clock.
+No flight input or fix is applied; START's mission RNG seed is staged by the
+existing front-end harness. Reuse `loop.state` for analysis rather than rerunning
+the VM when an analysis guard is wrong. The 17 October capture found 152 mission
+seconds in 119.994917 reference seconds at S=5 and normal compression=1;
+`analyze_clock86.py` and `finalize_clock86.py` retain samples, hashes and verdict.
+This tests original behavior on that profile, not developer intent or host
+wall-clock pacing. Interpretation: [speed-sweep.md](speed-sweep.md#original-game-clock-on-86box-17-october-2026).
 
 Latest (15 Oct, with state-driven bands): strike at 3840x2160 / 59.99 Hz /
 vsync / N=9, 7,718 flight pictures, p99 16.7314 ms, maximum 17.0385, no missed

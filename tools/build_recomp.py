@@ -143,7 +143,9 @@ def headless(engine, data, work, name, args, extra, route, exe=None, env=None):
     # coverage run or an earlier pipeline that edited/saved a pilot.
     save = tempfile.mkdtemp(prefix="save-", dir=rundir)
     prepare_roster(route, data, engine, save, rundir, env)
-    cmd = [exe, "--engine", engine, "--data", data, "--save", save,
+    # Ordinary parity routes start with fixes off; fix-specific arguments
+    # and replay headers below deliberately turn on only their test cases.
+    cmd = [exe, "--fix", "none", "--engine", engine, "--data", data, "--save", save,
            "--log", os.path.join(rundir, "run.log")] + args + extra
     r = run(cmd, capture_output=True, text=True)
     with open(os.path.join(rundir, "runner.txt"), "w") as f:

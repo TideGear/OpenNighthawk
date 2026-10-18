@@ -72,7 +72,7 @@ make (Phase 4).
   coverage, both engines on every route, instruction lockstep under both
   timing profiles, matched-routine lockstep at three seeds, and the
   routes-only and event-limit checks. About 21-33 minutes when every
-  interpreter route is verified fresh (latest 1,895 s); costs and what was
+  interpreter route is verified fresh (latest 1,557 s); costs and what was
   optimised: [repeated-processes.md](repeated-processes.md).
 - **Rendered speaker and speech audio.** PIT counter 2 follows the 8254 model;
   speaker music matches DOSBox-X (envelope 0.87, spectral 0.92-0.93, level
@@ -159,9 +159,12 @@ not the recompilation:
       held 132,537 bytes (132,638 by whole rows), batch g added 6,181 and
       batch h added 3,894, batch i 602, batch j 1,349, batch k 802, batch l 314, batch m 262, batch n 1,239 and batch o 268.
       **Expanded scope (17 October):** add 5,927 bytes outside the census whose instructions routes or matched
-      proofs execute in these seven programs, 846 already named. The score now measures 148,294 / 175,860
-      creditable bytes (P2 85.11%, overall 94.75%); the earlier 87.43% used only the old census.
-      No matching was removed. Static-only discoveries and 18,469 validated executed bytes in other modules
+      proofs execute in these seven programs, 846 already named, then 8,341 reviewed static code bytes in
+      16 ranges (`docs/census-code.tsv`: hashes, complete instruction boundaries, counts and review evidence).
+      The score now measures 148,294 / 184,201 creditable bytes (P2 81.48%, overall 93.64%); the earlier
+      87.43% used only the old census. No matching was removed. The remaining 7,089 bytes in the static
+      inventory need review; speculative table/padding decodes and independent-decoder disagreements
+      prevent blindly adding every translated byte. These and 18,469 validated executed bytes in other modules
       remain an explicit scope backlog. The route-byte audit now decodes instruction lengths instead of
       counting four-byte capture windows; hash/image validation rejects changed code. All 57,646 accepted
       records agree with an independent decoder. VGAME `09EFA` is screened: 1,628 instructions / 4,552
@@ -837,8 +840,9 @@ Each is fixed; the named regressions keep the failing seed or case.
 ## Phase 3 - fixes and enhancements (switchable)
 
 - [x] **Code overrides** attach fixes: hand-written C registered for a module
-      address, pinned to the shipped file by hash, off unless switched on
-      (`--fix ID`, `--list-fixes`). Inert when off. Details:
+      address, pinned to the shipped file by hash. Normal play enables all
+      fifteen; core/headless and ordinary parity keep them off. `--fix none`
+      restores the original and `--fix ID` adds selected fixes. Inert when off. Details:
       [architecture.md](architecture.md#the-run-time).
 - [x] **Fixes for the original's bugs** ([bugs.md](bugs.md)), each on a switch:
       D1 (a frame limiter at VGAME 0x441D holds a fast machine to GOG's 11.6
@@ -922,7 +926,9 @@ Each is fixed; the named regressions keep the failing seed or case.
     now" (fullscreen, apart from the original's jitter).
   - *Open:* clock tuning against picture age; ask before any visible or
     fullscreen test; the small `DF03`/`C2C8` vertex group that nudges less well;
-    fullscreen pacing of the latest builds;
+    fullscreen pacing: the longer 17 Oct air-to-air run fails (17,241 pictures,
+    p99 28.70 ms, 3.70% over 25 ms; exact guest state). Strike and landing
+    passed the earlier short checks; see presentation.md for evidence;
     line widths by drawing role; weapon and target symbology; long
     cargo/career flights and slower machines. What the owner decided
     against is under "Possible future work" below and is not scored.

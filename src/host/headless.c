@@ -8,7 +8,7 @@
  *           [--coverage FILE] [--screen FILE.ppm] [--shots EVERY:PREFIX | --shots-vga PREFIX] [--shots-start CLOCK] [--shot-meta FILE]
  *           [--shots-changed] [--frame-log FILE] [--no-mouse] [--present scan|replay|interp]
  *           [--present-scale N] [--present-line-width N] [--present-age interp|extrapolate]
- *           [--fix ID|all]... [--list-fixes]
+ *           [--fix ID|all|none]... [--list-fixes]
  *           [--opl-log FILE] [--midi-log FILE] [--speaker-log FILE]
  *
  * WHEN is an absolute clock count, or PROG+N: N after the program PROG
@@ -615,7 +615,8 @@ int main(int argc, char **argv)
         }
         else if (!strcmp(a, "--engine") && v) { engine = !strcmp(v, "recomp") ? ENGINE_RECOMP : ENGINE_INTERP; i++; }
         else if (!strcmp(a, "--fix") && v) {
-            if (!fixes_enable(v, 1)) { fprintf(stderr, "no fix %s (--list-fixes)\n", v); return 2; }
+            if (!strcmp(v, "none")) fixes_enable("all", 0);
+            else if (!fixes_enable(v, 1)) { fprintf(stderr, "no fix %s (--list-fixes)\n", v); return 2; }
             i++;
         }
         else if (!strcmp(a, "--list-fixes")) { fixes_list(stdout); return 0; }

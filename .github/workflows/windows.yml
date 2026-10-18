@@ -68,6 +68,8 @@ jobs:
         run: ctest --test-dir build --build-config Release --output-on-failure
       - name: Application stall and resume pacing
         run: python tools/host_timing.py --out "$env:RUNNER_TEMP/host-timing"
+      - name: Normal-play fixes and original-mode defaults
+        run: python tests/test_fix_defaults.py --app build/Release/f117a.exe --runner build/Release/f117run.exe
       - name: Presentation fill patterns
         run: python tests/test_present_styles.py
       - name: Presentation verdict regressions

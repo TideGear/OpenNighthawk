@@ -11,11 +11,13 @@ evidence is; a superseded result says so. Private evidence lives under
 
 - **Speed default.** The app (`f117a`) runs at 20 million instructions a
   second; `f117run` and every recorded route keep GOG DOSBox's 9 million. No
-  limiter is shipped; D1 stays off
+  limiter was shipped at the time of these measurements. Since 17 October,
+  normal application play enables all fixes, including D1REAL and D1PROX;
+  use `--fix none` to reproduce the original measurements
   ([Fast-machine default](#fast-machine-default-9-october-2026)).
 - **No CPU speed keeps the world clock at real time** under the original's
   adaptive controller: about 1.29 times real time at GOG's 9 MIPS on the
-  parked jet, about 1.11 from 16 MIPS up. Only the optional `--fix D1REAL`
+  parked jet, about 1.11 from 16 MIPS up. The switchable `--fix D1REAL`
   gives 1.000
   ([Optional real-time cadence](#optional-real-time-cadence-10-oct-controlled-airborne-checks-complete)).
 - **D1's reported 15-to-3 swing is not reproduced** in 199 flights (3-40
@@ -32,6 +34,34 @@ Reproduce the basic sweep with
 `py tools/speed_sweep.py --data D:/GOG/F-117A --out DIR --speeds 3 5 7 9 14 16 20 40 386 --seconds 300`
 (each route's 9 MIPS run first, then the others; `--table-only` reprints the
 tables).
+
+## Original game clock on 86Box (17 October 2026)
+
+An independent run of the original DOS game, outside the recompilation,
+used 86Box's OPTi 495SX / 386DX33 profile with 1 MB RAM, MS-DOS 5.00 and
+VGA. The VM ran offscreen on a private disk copy. The existing harness
+staged START's mission RNG seed for a repeatable front end; it applied no
+game fix or flight input. After 30 seconds settling, 601 samples covered
+119.994917 seconds of 86Box emulated time, measured by its TSC-based hook.
+The mission clock advanced 152 seconds: **1.26672 mission seconds per
+emulated second**. S stayed 5, the frame counter advanced 764 (6.36694 fps),
+and the time-compression multiplier stayed 1 (normal; 2 is accelerated).
+
+This independently confirms a clock mismatch on this original-game hardware
+profile. It is not a host wall-clock stopwatch test or proof of how every
+period PC behaved. The earlier sweep's `386` entries are our timing model,
+not independent 86Box measurements; do not conflate the two. The original's
+per-second normalization and normal/accelerated time controls suggest a
+real-time goal, but developer intent remains an inference. Neither this run
+nor the GOG S=9 parked baseline establishes a canonical update rate or
+warhead radius. D1REAL's eight-step cadence and D1PROX's S=9 calibration
+are project choices, enabled for normal play at the owner's request.
+
+Evidence: `D:/f117-gate/default-fixes-20261017/clock86/` (`loop.state`,
+`samples.json`, `verdict.json`, private profile and trace), with
+`analyze_clock86.py` beside it. The capture initially tripped a harness
+assertion expecting compression 0; normal is 1. Offline analysis retained
+the samples and corrected that guard without rerunning or changing the game.
 
 ## The controller (read from the VGAME listing)
 
@@ -237,15 +267,19 @@ than the default's 1.12. A cap also cannot raise slower scenes to 15 fps.
 
 ## Fast-machine default (9 October 2026)
 
-**Decision (current).** The app (`f117a`) runs at 20 million instructions a
+**CPU-speed decision (still current; fix defaults changed 17 October).** The app (`f117a`) runs at 20 million instructions a
 second (`MACHINE_APP_IPS` in `src/machine/machine.h`; `--ips` and `ips =`
 override it). `f117run` and every recorded route keep GOG DOSBox's 9
-million, so no route hash changes. D1 stays off and no limiter is added: on
+million, so no route hash changes. At this decision fixes stayed off and no limiter was added: on
 every measured route from 16 MIPS up the game's own clamp holds S at 15 and
 the drawn rate near 16.7 frames a second, a clock of about 1.12 at 20 MIPS.
 At 9 MIPS a recompiled flight ran at about 68.7 million instructions a
 second on the development machine, so 20 million is about 3.4 times real
 time there.
+
+Since 17 October normal play enables all fixes, including D1REAL's eight-step
+cadence. The figures below describe the unfixed controller; reproduce them
+with `--fix none`. CPU speed and simulation cadence are separate settings.
 
 **Matrix.** Nine typed routes, eight boot-clock offsets (0, 3, 7, 11, 15, 19,
 23 and 27 s, each a different mission seed), 9, 16 and 20 MIPS: 214 flights

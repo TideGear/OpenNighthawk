@@ -388,6 +388,16 @@ int main(int argc, char **argv)
             argv = merged;
         }
     }
+    /* Normal play enables all fixes, including the timing/balance options.
+     * Recorded sessions keep their
+     * recorded fix set (old logs without a fix header mean the original).
+     * Explicit --fix options can still add fixes to a diagnostic replay. */
+    int replay_requested = 0;
+    for (int i = 1; i < argc; i++)
+        if (!strcmp(argv[i], "--replay")) replay_requested = 1;
+    if (!replay_requested)
+        fixes_enable("all", 1);
+
     int from_cli = 0, cli_roland = 0;
     enum { ROLAND_UNSET, ROLAND_MUNT, ROLAND_WINDOWS, ROLAND_OFF } roland = ROLAND_UNSET;
     const char *mt32_roms = NULL;
@@ -454,7 +464,8 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--engine") && v) { engine = !strcmp(v, "interp") ? ENGINE_INTERP : ENGINE_RECOMP; i++; }
         else if (!strcmp(a, "--coverage") && v) { coverage = v; i++; }
         else if (!strcmp(a, "--fix") && v) {
-            if (!fixes_enable(v, 1)) { fprintf(stderr, "no fix %s (--list-fixes)\n", v); return 2; }
+            if (!strcmp(v, "none")) fixes_enable("all", 0);
+            else if (!fixes_enable(v, 1)) { fprintf(stderr, "no fix %s (--list-fixes)\n", v); return 2; }
             i++;
         }
         else if (!strcmp(a, "--list-fixes")) { fixes_list(stdout); return 0; }
@@ -502,7 +513,7 @@ int main(int argc, char **argv)
                 "             [--audio-dump FILE] [--present scan|replay|interp|rerun] [--present-scale N]\n"
                 "             [--present-line-width 0..20] [--present-age interp|extrapolate] [--present-log FILE]\n"
                 "             [--roland munt|windows|off] [--mt32-roms DIR]\n"
-                "             [--mt32-control FILE --mt32-pcm FILE] [--fix ID|all]... [--list-fixes]\n"
+                "             [--mt32-control FILE --mt32-pcm FILE] [--fix ID|all|none]... [--list-fixes]\n"
                 "             [--config FILE | --no-config]   (default: f117a.ini beside f117a.exe)\n");
             return 2;
         }

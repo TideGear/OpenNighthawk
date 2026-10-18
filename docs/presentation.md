@@ -17,9 +17,12 @@ behind them. None of it can change the emulated machine. Commands, costs and ret
 
 - **Frame rate.** The app presents one picture per display refresh (vsync on), so the rate is whatever refresh the
   display is set to: 60 Hz gives 60 pictures a second, 144 Hz gives 144, if the PC keeps up. The game itself still
-  steps about 17 times a second at the app's default speed (fewer in slow scenes); `interp` and `rerun` fill the gaps.
+  steps eight times a second with the default D1REAL fix (17 October); `interp` and `rerun` fill the gaps.
+  With `--fix none`, the original controller gives about 17 steps a second at the app's 20 MIPS speed,
+  fewer in slow scenes. The presentation modes do not require D1REAL.
 - **The price of in-between pictures** is age: they show the game one logic step late (about 60 ms at 17 steps a
-  second), plus one display frame for the threaded drawing, plus about a third of a step for `rerun`'s smoothed clock.
+  second, or 125 ms at the default eight), plus one display frame for the threaded drawing,
+  plus about a third of a step for `rerun`'s smoothed clock.
 - **What never changes.** Original text, sprites and cockpit artwork keep their pixels (each becomes an N x N block);
   nothing is replaced with new graphics. The finer modes keep the original renderer's quirks: road and coastline
   edges jitter as they do in the original, objects can overlap in the original's drawing order, and lines and dots
@@ -748,13 +751,23 @@ over 25 ms: passes. Air-to-air (type 6): 1,658 pictures, median 16.686, p99 22.1
 **fails the p99 limit** (20.8 ms). Its late intervals are not missed vsyncs (those would be 33 ms): seven pictures of
 34-38 ms in the first 1.3 s of flight, then 25 single pictures of 21-25 ms spread over the next 16 s, against the
 others' near-constant 16.7 ms. The sample is short (the flight starts late in that replay), so a longer air-to-air run
-is needed before saying more. The checker cannot judge tearing or the look of motion; that stays the owner's eye.
+was authorized and completed below. The checker cannot judge tearing or the look of motion; that stays the owner's eye.
 The batch that completed the HUD (15 October) had no fullscreen acceptance at the time: the owner stopped the visible
 run. A hidden Direct3D 11 3840x2160 target measured 119-150 fps uncapped, with occasional upload stalls
 of about 100 ms (`D:/f117-gate/present-v2/hud2`); that is throughput, not steady-refresh acceptance.
 `tools/presentation_timing.py` checks the logged display settings (a log that changes display
 mid-run is rejected), intervals, interpolation and guest drift. Not established: the picture on a physical panel
 (tearing, the look of motion at 60 and 144 Hz), cargo and career flights, and a slower CPU or weaker GPU.
+
+**Longer fullscreen air-to-air check (17 October 2026).** Same display and original fix selection, replayed to
+5.9B instructions: 17,241 timed flight pictures, median 16.6941 ms, p99 28.6976 ms, worst 34.5699 ms;
+638 intervals over 25 ms (3.7022%). This fails both the p99 and missed-refresh limits. All 3,679 logic frames
+remain exact, guest drift is 0.005819 seconds, and the final guest hash `b050542466c9a616` matches a separate
+headless replay. Of the 638 late intervals, 615 occur 150-270 seconds after the first flight picture;
+the 180-210 second window has 14.91% late intervals (`interval-bins.json`). The slowdown is sustained
+within this run, rather than confined to startup; its CPU/GPU cause and repeatability across runs remain
+unestablished. Stage 4 remains incomplete and no score is raised. Evidence:
+`D:/f117-gate/present-v2/stage4-airair-long-20261017/{command.json,timing-verdict.json,machine.log,reference.log}`.
 
 **The palette the threaded path presents (fixed 15 October 2026).** The main loop shows the worker's last picture
 with that picture's palette, and then handed the same frame, palette included, to the worker for the next plan, so

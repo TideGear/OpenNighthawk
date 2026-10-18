@@ -297,8 +297,11 @@ fallback instructions, not everything that ran.
   check one bit; a write that changes a translated byte bumps the instance's
   generation and makes running code stop at the next boundary.
 - **Code overrides.** Hand-written C registered for one address of one
-  module (by name and file hash). Fixes are overrides off until switched on
-  (`--fix ID`); matched routines are overrides always on for the recompiled
+  module (by name and file hash). Fixes start off in the core and headless
+  runner; the application enables all fifteen for normal play. `--fix none`
+  clears the set and `--fix ID` adds a selection. Ordinary parity routes
+  explicitly start with none; fix-specific routes enable their tested fixes.
+  Replays restore their recorded set (no header means none). Matched routines are overrides always on for the recompiled
   engine, and so are observer hooks. A switched-on fix takes the place of the
   matched routine (and any observer) at its address, whatever the order they
   were registered in, because the matched routine reproduces the original and

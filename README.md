@@ -40,11 +40,13 @@ catalogue in [docs/bugs.md](docs/bugs.md) has the evidence for each.
 Keeping the game playable, faithfully, on today's machines is a
 game-preservation job, and this project treats it as one.
 
-**1:1 parity with the original is the first priority.** The game does
-exactly what the DOS original does, including its bugs, which are tracked in
+**1:1 parity with the original is the first priority.** With fixes off, the
+game does exactly what the DOS original does, including its bugs, which are tracked in
 [docs/bugs.md](docs/bugs.md) so they can be fixed as switchable options.
-Fifteen catalogued fixes and balance options are available now, all off by
-default.
+Fifteen catalogued fixes and balance options are enabled by default for normal
+play, including D1REAL and D1PROX. `--fix none` restores the original behavior.
+The headless reference runner and ordinary parity gates keep fixes off;
+recorded sessions restore their recorded fix set (older logs mean no fixes).
 
 ## Status
 
@@ -174,8 +176,8 @@ set (and, for Munt, `mt32-roms`).
 | `--data DIR` | the game's folder (found automatically for common GOG/Steam paths) |
 | `--save DIR` | where the game's own saves go (default: `%APPDATA%\F117Recomp\F-117A\save`); the install is never written |
 | `--engine recomp\|interp` | recompiled code (default) or the reference interpreter only |
-| `--timing dosbox\|386` | the emulated PC's speed model: `dosbox` (default) is this machine's instruction model at `--ips`; `386` is a 386DX/33 of 1991 (5-9 frames a second in flight, the original's pace) |
-| `--ips N` | emulated CPU speed under `dosbox` timing, instructions per second (default 20,000,000 in `f117a`, which plays at about 16.7 frames a second in flight; 9,000,000 in `f117run` and the route checks, GOG DOSBox's `cycles=9000`) |
+| `--timing dosbox\|386` | the emulated PC's speed model: `dosbox` (default) is this machine's instruction model at `--ips`; `386` models a 1991 386DX/33 (original flight typically 5-9 fps with fixes off) |
+| `--ips N` | emulated CPU speed under `dosbox` timing, instructions per second (20,000,000 in `f117a`; 9,000,000 in `f117run` and route checks, GOG DOSBox's `cycles=9000`). Default D1REAL separately targets eight simulation steps per second |
 | `--roland munt\|windows\|off` | where Roland music goes: Munt's MT-32 emulation (needs `--mt32-roms`), the Windows MIDI synthesizer (General MIDI: wrong instruments), or nowhere |
 | `--mt32-roms DIR` | the folder holding your MT-32 control and PCM ROMs, recognised by content whatever they are called (see [MT-32 ROMs](#mt-32-roms)); on its own it means `--roland munt` |
 | `--midi N` | send Roland MIDI to Windows MIDI device N instead of the mapper |
@@ -188,14 +190,14 @@ set (and, for Munt, `mt32-roms`).
 | `--present-line-width N` | fine HUD stroke width in output pixels, 0-20; 0 (default) scales with `--present-scale`, 1 is a thin stroke; text and artwork keep their original pixels |
 | `--present-age interp\|extrapolate` | with `interp`: trail the original by one logic step and be exact at its frames (default), or predict beyond the latest frame (can overshoot a sudden change) |
 | `--config FILE`, `--no-config` | read settings from FILE instead of `f117a.ini` beside the executable; or read none |
-| `--fix ID`, `--list-fixes` | switch on a fix for one of the original's bugs (`all` for every one); every fix is off unless named, so the default is the original, bugs included |
+| `--fix ID`, `--list-fixes` | enable a fix; `all` enables every fix, `none` clears the set. Normal play starts with all enabled; `--fix none --fix D5` selects only D5. Listing prints the current selection |
 | `--record FILE`, `--no-record`, `--replay FILE` | record this session's input to FILE, or record nothing; play a recorded input log back |
 
 Any option the app does not recognise (for example `--help`) prints the full
 list, including diagnostic options not shown here.
 
-`--fix D1REAL --present interp` uses eight simulation steps per real second
-with interpolated display. It replaces the original adaptive simulation
+The default D1REAL option uses eight simulation steps per real second;
+`--present interp` interpolates their display. D1REAL replaces the original adaptive simulation
 cadence; see [the timing option](docs/bugs.md#d1real-real-time-simulation-cadence).
 The separate `D1TTL`, `D1SLOT`, `D1PROX` and `D1ACCEL` options repair incoming
 missile lifetime, slot reuse, proximity sampling and acceleration.
@@ -213,7 +215,9 @@ Host keys (chosen so as not to collide with the game's):
 Every option can also be kept in a settings file: copy `f117a.example.ini`
 (written beside `f117a.exe` by the build) to `f117a.ini` in the same folder
 and edit it - one option per line without its dashes (`data = C:\GOG Games\F-117A`,
-`roland = munt`, `mt32-roms = C:\ROMs`, `fullscreen = yes`, `fix = D4, D5`).
+`roland = munt`, `mt32-roms = C:\ROMs`, `fullscreen = yes`, `fix = none`).
+Fix entries apply in order: `fix = none` followed by `fix = D4, D5` selects
+only those two; leaving fix settings out keeps all fixes enabled for normal play.
 Relative paths are taken from the file's folder, and an option given on the
 command line still wins (any Roland option there replaces all of the file's).
 `--config FILE` reads another file; `--no-config` ignores it.

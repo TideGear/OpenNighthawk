@@ -145,7 +145,9 @@ def main():
     # F117R_RUN_EXE names another build's runner (one built elsewhere while
     # this checkout's is busy, or with other generated code).
     runner = os.environ.get("F117R_RUN_EXE") or os.path.join(ROOT, "build", "f117run.exe")
-    cmd = [runner, "--engine", a.engine, "--data", a.data,
+    # Parity starts with the original. A fix-specific route can enable its
+    # fixes afterwards through its arguments or recorded header.
+    cmd = [runner, "--fix", "none", "--engine", a.engine, "--data", a.data,
            "--save", save, "--log", os.path.join(out, "run.log")]
     cmd += route_args(a.route) + extra
     result = subprocess.call(cmd)
