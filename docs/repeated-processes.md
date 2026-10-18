@@ -1,5 +1,22 @@
 # Repeated processes
 
+**18 Oct map-edge clipping:** evidence is under
+`D:/f117-gate/map-specks-20261018/`. Replay the frozen combat record through
+24 billion clocks with six shots starting at 21 billion, every 600 million:
+original-resolution scan, then N=9 interpolation before/after. Keep the
+pre-fix executable frozen. Pixel-origin diagnostics identify the lower-border
+remnants as `DT_HUD_FINE`; `verify.py` compares all checkpoints/final state,
+953 exact frames /951 exact pairs and border counts (22/32/38 before, zero
+after). A captured 23.4-billion frame changes only 57 fine pixels, all old
+line strokes. These hidden captures are correctness checks, not display
+pacing measurements. The octant/origin test fails before and passes after.
+The presentation-only acceptance against `a3bd400` passes all 243 CTests in
+937 s. All 45 N=1 routes pass in 456 s (259,240 exact frames /259,166 pairs),
+and N=4/9 boot passes (736 frames /732 pairs), using the frozen interpreter
+baselines from the preceding full gate. Total check time is 1,449 s; runner
+hashes are unchanged. This is the documented read-only presentation check,
+not a new full machine-execution gate or fullscreen pacing measurement.
+
 **18 Oct 4K60 repair:** fresh evidence goes in
 `D:/f117-gate/4k60-fix-20261018/`. Before/after override lookup benchmark
 uses one million calls across 1,009 shuffled addresses; it is a dispatcher

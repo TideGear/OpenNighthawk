@@ -16,6 +16,28 @@ S15, 15 normal /30 compressed updates, phase-correct transitions, and recorded
 per-machine cadence. Legacy recordings retain eight. Do not promote 15/40:
 it fails active compressed-flight capacity.
 
+**18 Oct map-edge specks:** the owner watched a fullscreen replay, closed it
+early, and reported that flight looked fine apart from tiny dots around the
+map. Preserve that as a partial visual review, not a full completed replay;
+`F/observer/display60-owner-watch-20261018/` ends early by user action, with
+1,727 exact logic frames. New evidence is
+`D:/f117-gate/map-specks-20261018/` (M). Original-resolution and scale-9
+captures reproduce extra fine line pixels along the map border; the origin
+diagnostic labels every bright border remnant `DT_HUD_FINE` (22/32/38 pixels
+at 22.8/23.4/24.0 billion clocks). Rotated square caps extend beyond the
+original endpoint cells and survive map restoration. `drawlist.c` now clips
+normal-width integer strokes to those cells; explicitly wider pens retain
+their coverage. The octant/origin regression at N=4/9 fails before and passes
+after. Hidden after-captures pass: all 953 frames /951 endpoint pairs exact,
+all checkpoints/final state identical, matching the old interpreter at
+`24000000000 / d353cee6c9523e2f`; border remnants are zero at all three clocks.
+The 23.4-billion before/after frame differs in only 57 fine pixels, all old
+`DT_HUD_FINE`. The presentation-only check against `a3bd400` passes in
+1,449 s: all 243 CTests (937 s), all 45 N=1 routes (259,240 frames /259,166
+pairs) and N=4/9 boot (736 frames /732 pairs). Runner hashes stay unchanged.
+The repair is accepted locally; no fullscreen rerun is needed for this
+read-only clipping change. Normal defaults remain unchanged.
+
 **18 Oct 4K60 repair validated:** the owner asked why 4K60 fails and to fix
 it. **Observer follow-up:** main-thread samples from
 `F/profile/sample2/verdict.json` (resolved offline with options zero) locate

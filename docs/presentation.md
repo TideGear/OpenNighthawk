@@ -333,6 +333,17 @@ camera-space coordinate by a rounding unit, which a finer grid shows. At N = 9 t
 
 ### Where the blockiness comes from: the pixel-origin diagnostic
 
+Normal-width captured integer line strokes are clipped to their endpoint
+cells. A rotated square cap otherwise extends just beyond that rectangle;
+at the moving map's edge it leaves fine specks outside the restored map.
+Explicitly wider pens keep their extra coverage. The regression covers all
+octants and translated page origins at N=4/9, while the original coarse
+line rule stays unchanged. Evidence: `D:/f117-gate/map-specks-20261018/`.
+Before/after captures retain all 953 exact logic frames /951 endpoint pairs
+and the interpreter checkpoint hash; affected lower-border remnants fall
+from 22/32/38 pixels to zero. The presentation-only check passes all 243
+tests, all 45 N=1 routes and N=4/9 boot, with unchanged runner hashes.
+
 `F117_PRESENT_DIAG=DIR` (with `--present-scale N > 1`; off when unset) gives every replayed page a byte per fine
 pixel naming the path that last wrote it (`src/present/diagtag.h`: refined model polygon, refined span polygon, each
 fallback by reason, guard repairs, strokes, text, sprites, blits from pages the replay does not hold, copies); the

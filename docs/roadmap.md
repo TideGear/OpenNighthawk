@@ -970,7 +970,12 @@ Each is fixed; the named regressions keep the failing seed or case.
     passes: 21,330 flight pictures, p99 16.94 ms, zero intervals over 25 ms,
     no rewind, 15.94 ms clock drift and all 5,396 frames/final state exact.
     Evidence is under `4k60-fix-20261018/observer/`. Visual assessment and
-    all-scene acceptance remain open; defaults stay 8 Hz /20 MIPS;
+    all-scene acceptance remain open; defaults stay 8 Hz /20 MIPS. The owner
+    watched part of a later replay and found flight fine apart from map-edge
+    specks. Fine integer line caps were escaping their endpoint cells; the
+    clipping repair removes the reproduced remnants (22/32/38 pixels to zero)
+    with all 953 captured logic frames and the interpreter reference exact.
+    Evidence is under `D:/f117-gate/map-specks-20261018/`;
     line widths by drawing role; weapon and target symbology; long
     cargo/career flights and slower machines. What the owner decided
     against is under "Possible future work" below and is not scored.

@@ -58,6 +58,23 @@ int main(void)
         CHECK(!memcmp(a->b,f->b,65536));
         CHECK(!memcmp(f->hi,r->hi,1280 * 800));
     }
+    /* A clipped warning arc must not leave fine cap fragments in the row
+     * below its endpoint cells when the next frame restores the map. */
+    for (int scale=4;scale<=9;scale+=5) for (int shift=0;shift<2;shift++)
+        for (int k=0;k<8;k++) {
+            const int *e=ends[k], ox=shift*30, oy=shift*20;
+            const int left=((e[0]<e[2]?e[0]:e[2])+ox)*scale;
+            const int right=((e[0]>e[2]?e[0]:e[2])+ox+1)*scale;
+            const int top=((e[1]<e[3]?e[1]:e[3])+oy)*scale;
+            const int bottom=((e[1]>e[3]?e[1]:e[3])+oy+1)*scale;
+            start(&fine,scale,0);line(&fine,e[0],e[1],e[2],e[3],oy*320+ox);
+            const drawlist_page *bounded=drawlist_get(&fine,SEG);
+            for (int y=top-scale;y<bottom+scale;y++)
+                for (int x=left-scale;x<right+scale;x++)
+                    if (x<left || x>=right || y<top || y>=bottom)
+                        CHECK(bounded->hi[y*320*scale+x]==0x10);
+            CHECK(coloured(bounded,0x1F)>0);
+        }
     start(&fine,4,0); line(&fine,10,10,20,10,0);
     const drawlist_page *f = drawlist_get(&fine,SEG);
     CHECK(coloured(f,0x1F) == 44 * 4);              /* cells 10..20 of row 10: exactly the original's footprint */

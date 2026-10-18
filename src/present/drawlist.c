@@ -443,7 +443,21 @@ static void fine_line(drawlist_page *p, int x0, int y0, int x1, int y1, int widt
      * default width covers exactly the original's cells; perpendicular width with square end caps
      * means strokes that share an end meet without a notch. */
     const int n = p->n, centre = n / 2;
-    drawlist_fine_stroke(p, x0 * n + centre, y0 * n + centre, x1 * n + centre, y1 * n + centre, width, col);
+    if (width <= n) {
+        /* The original line is confined to its endpoint cells. Rotating a
+         * square cap can otherwise reach into the next cell, outside a
+         * clipped map window, where the next map restore never erases it.
+         * An explicitly wider pen still keeps its requested extra coverage. */
+        const int left = (x0 < x1 ? x0 : x1) * n;
+        const int right = ((x0 > x1 ? x0 : x1) + 1) * n;
+        const int top = (y0 < y1 ? y0 : y1) * n;
+        const int bottom = ((y0 > y1 ? y0 : y1) + 1) * n;
+        drawlist_stroke(p, x0 * n + centre + 0.5, y0 * n + centre + 0.5,
+                        x1 * n + centre + 0.5, y1 * n + centre + 0.5,
+                        width, col, left, top, right, bottom);
+    } else {
+        drawlist_fine_stroke(p, x0 * n + centre, y0 * n + centre, x1 * n + centre, y1 * n + centre, width, col);
+    }
 }
 
 /* Keep the exact coarse rule, replacing only its fine-grid mirror. Unusual
