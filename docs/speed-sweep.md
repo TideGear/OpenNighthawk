@@ -63,6 +63,28 @@ Evidence: `D:/f117-gate/default-fixes-20261017/clock86/` (`loop.state`,
 assertion expecting compression 0; normal is 1. Offline analysis retained
 the samples and corrected that guard without rerunning or changing the game.
 
+### Same-scene CPU comparison
+
+A controlled follow-up held the OPTi 495SX chipset, VGA, DOS installation,
+game files, mission and parked aircraft state constant, changing only the
+386DX clock. Each private disk copy settled for 30 seconds, then supplied
+901 samples over three consecutive 60-second windows. All eleven recorded
+scene fields agreed throughout every run; compression stayed at 1.
+
+| 386DX clock | S | Actual updates/s | Mission seconds in 180.007 emulated seconds | Clock ratio |
+|---|---|---|---|---|
+| 25 MHz | 4 | 5.2276 | 235 | 1.30551 |
+| 33.333 MHz | 5 | 6.3720 | 229 | 1.27218 |
+| 40 MHz | 6 | 7.0053 | 210 | 1.16662 |
+
+There is no exact common multiplier on these configurations. The differences
+are much larger than the approximately 0.0056 ratio uncertainty from a
+one-second mission-clock count over 180 seconds. This compares the same
+scene on one hardware family, not every historical PC, and still cannot
+establish intent. Retaining the original clock remains a preservation choice;
+normal play currently keeps D1REAL enabled. Evidence:
+`D:/f117-gate/clock-matrix-20261017/{matrix.py,matrix.json,verdict.json}`.
+
 ## Historical intent and faster-than-real-time simulation (17 October 2026)
 
 The closest contemporary written evidence is the predecessor's designers'
@@ -506,8 +528,8 @@ commands. Paired 20 minus 9: launches exactly zero, bursts +0.1667 (0 to
 **Conclusion.** With the five options this cohort shows no high-speed enemy
 weakness. It is not a proof that every battle is the same: CPU execution
 time still decides which frame reads a key, so whole-flight cross-CPU
-determinism is limited by the original's input polling. The original
-behaviour stays the default.
+determinism is limited by the original's input polling. These were opt-in
+checks when run; normal play enables all fifteen fixes since 17 October.
 
 **Reproduce.** The five options, `--align-steps`, seed families 2500, 22500
 and 25000 at 9 MIPS and +220 ms boot offsets at 20 MIPS, with these delays
@@ -531,6 +553,80 @@ comparator keeps step-aligned and earlier pilots in separate arms.
 Artifacts: `D:/f117-gate/threat-realtime/` and
 `D:/f117-gate/threat-phase-corrected.jsonl` (not `threat-phase.jsonl`, whose
 Kuwait seeds differ).
+
+### Comparing fixed cadences (17 October 2026)
+
+The owner authorized a hidden comparison of 8 and 15 updates/s. A private
+build changes only D1REAL's integer divisor and fractional pacer; 14 Hz is
+an additional control because 15 cannot halve exactly under the original's
+2x compression scheme. Production code and the eight-step default are
+unchanged. All repairs remain enabled except D1 in the valid higher-rate
+comparison: its independent 11.6 Hz compatibility limiter otherwise caps
+both candidates. At eight, excluding D1 leaves the guest results unchanged.
+
+The experimental eight-step build first reproduces the existing build's
+seven clock/dialog cases and scripted flight hashes exactly in both
+engines. Every higher-rate clock, flight, input and isolated weapon result
+is also checked between the interpreter and recompiled engines. A failed
+clock assertion remains a failure, even where the prototype's integer
+arithmetic explains it.
+
+At the normal 20 MIPS setting, the seven-case clock check passes at 8 and
+14 Hz. At 15 Hz only compression fails: S becomes 7 and 70 seconds advance
+150 mission seconds instead of 140 (15/7 = 2.142857x). Normal time gives
+exactly 30 mission seconds and 450 updates in 30 seconds. Fixing 15 Hz
+compression would require another timing change; this experiment does not
+silently make it.
+
+| Cadence | Normal updates in 30 s | Mission seconds in 70 s at 2x | Throttle response median / maximum |
+|---|---|---|---|
+| 8 Hz | 240 | 140 | 64.5 / 112 ms |
+| 14 Hz | 420 | 140 | 31.5 / 68 ms |
+| 15 Hz | 450 | 150 (fails) | 35.0 / 67 ms |
+
+Response uses 24 normal-input throttle pulses at varied phases, read at
+1 ms resolution; every pulse is observed. This measures guest control
+state, not input-to-photon delay or subjective handling. The small sample
+does not rank 14 against 15. Both higher rates reduce the waiting interval
+relative to eight. Interpolation's additional picture age is separate.
+
+At 9 MIPS, eight still passes. Both higher targets fall behind in the
+parked scene: only 348 updates in 30 seconds (11.6/s), giving 25 mission
+seconds at S=14 and 23 at S=15. Their compression cases both give 116
+mission seconds in 70 seconds. This is an emulated CPU execution-budget
+limit, distinct from host fullscreen rendering. It supports the original
+conservative choice of eight for the supported slower configuration.
+
+The same normal-input takeoff script produces different speed and climb at
+about 55 seconds. This demonstrates a gameplay change; it does not establish
+which cadence is authentic or isolate integer rounding from input sampling.
+In the isolated parked-aircraft missile pass, all three rates hit at offset
+20 and miss at 22 and 28 with D1PROX, and the tested missile accelerates
+from speed 1 to 10 in two seconds with D1ACCEL. These are staged boundary
+fixtures, not a recovered warhead radius or proof of identical guidance.
+
+Six exploratory normal-input flights use the same two missions and their
+original combat seeds, at 20 MIPS, with the existing 5 Hz feedback pilot.
+All three Middle East flights end early; all three Korea flights remain
+active through 600 seconds. Outcomes differ. Keep those early endings:
+different trajectories, input sampling and exposure prevent interpreting
+the counts as a lethality or equivalence verdict. No subjective handling
+or fullscreen acceptance is claimed.
+
+Evidence: `D:/f117-gate/cadence-20261017/`, with the comparison excluding
+D1 under `without-d1/`. The initial all-fixes cap results, unfinished
+confounded combat runs and unsuccessful cannon probes are retained and
+must not be presented as successful higher-rate or weapon tests. A separate
+staged guidance probe did not acquire/steer and does not establish guidance
+equivalence. The retained comparison verdict checks engine agreement and
+control integrity, not acceptance of every candidate. Cannon behavior and
+controlled guidance equivalence remain unverified by these probes.
+
+**Recommendation:** keep eight as the tested default. Fourteen is a stronger
+candidate than fifteen for further higher-cadence work because its divisor
+supports exact 2x compression, but it still needs sufficient emulated CPU
+speed, separate original-rate compatibility handling, and broader gameplay
+and physical-display assessment. Neither candidate recovers developer intent.
 
 ## S's self-calibration audit (10 Oct): closed
 

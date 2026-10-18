@@ -769,6 +769,28 @@ within this run, rather than confined to startup; its CPU/GPU cause and repeatab
 unestablished. Stage 4 remains incomplete and no score is raised. Evidence:
 `D:/f117-gate/present-v2/stage4-airair-long-20261017/{command.json,timing-verdict.json,machine.log,reference.log}`.
 
+**Hidden CPU diagnosis (17 October).** An isolated private instrumented build
+fast-seeks through the unchanged replay, then draws hidden 4K Direct3D 11
+pictures without vsync. Two 33.33-guest-second windows end at the exact
+unmodified gate checkpoint hashes: 3.6B `791c5f60fa5fdfc9`, 5.0B
+`97d33a3597b92150`. Main-thread work rises from median 11.804 ms / p99
+14.561 ms in the earlier window to 18.020 / 21.702 ms in the slow window.
+Copied-machine redraw preparation accounts for the increase: median
+6.984 to 12.348 ms; actual simulation remains about 2.5 ms. The slow
+window exceeds the 16.667 ms CPU budget on 88.59% of sampled pictures.
+
+Deeper private timers put the cost inside execution of the copied draw,
+not copying/restoring memory or packing the draw records. Median draw
+records grow from 1,900 to 6,000; interpreted instructions stay modest
+(1,179 to 1,752). A 20-second sample of the slow window's main thread
+attributes 3,674 of 7,986 samples (46.01%) to `recomp_override_step`.
+Its two linear searches over placed overrides are the next optimization
+lead; no lookup change has been implemented or validated. This establishes
+a CPU bottleneck but does not exclude additional fullscreen GPU costs or
+prove physical refresh acceptance. All instrumentation is private, in
+`D:/f117-gate/present-v2/airair-profile-20261017/`; `archive/` retains the
+instrumented sources, executable and matching PDB.
+
 **The palette the threaded path presents (fixed 15 October 2026).** The main loop shows the worker's last picture
 with that picture's palette, and then handed the same frame, palette included, to the worker for the next plan, so
 the first palette the threaded path captured was carried forward for as long as pictures kept coming. Every palette

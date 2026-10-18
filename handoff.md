@@ -10,7 +10,8 @@ more than once, what it costs). State as of 17 October 2026.
 
 17 October: `p2-batch-o` remains the latest matching batch. The owner approved progressive static-code
 scope review, the longer fullscreen air-to-air test, and all fifteen fixes on for normal play.
-**Start here:** resume Phase 2 batch p; the static-code tranche and default change are validated below.
+**Start here:** the owner-authorized cadence comparison is complete; production remains at eight updates/s.
+The next performance lead is linear override dispatch in the copied draw (below); Phase 2 batch p is also prepared.
 The authorized longer fullscreen test is complete and failed pacing limits; further visible tests need agreement.
 
 **Process notes (16 October):** screen leads with `p2-batch-g-accept/screen_leads.py` before any
@@ -34,8 +35,11 @@ passed in 1,557.30 s from `D:/f117-wt/gate-h` on `fix-defaults-20261017`: 238 CT
 44 fresh interpreter sessions, 5,718,848 instruction states under each timing profile, 1,006 matched
 routines at three seeds, no mismatches, reachability and event limits clean. Private evidence:
 `D:/f117-gate/default-fixes-20261017/{gate-verdict.json,gate.log,gate-source-manifest.json}`.
-The exact gated files are archived in `gated-source.zip`; the gate worktree is clean at `d0fa4a4`.
-All private acceptance runs are finished. Both Windows and Munt CI passed for `d0fa4a4`:
+The exact gated files are archived in `gated-source.zip`. The gate worktree now has private profiling
+instrumentation on `airair-profile-20261017` (main.c and rerun.c); archived sources/exe/PDB are under
+`D:/f117-gate/present-v2/airair-profile-20261017/archive/`. Restore those two files before using it for a gate.
+The private cadence patch to fixes.c has been restored and the API rebuilt; experimental DLLs stay in evidence only.
+All private runs are finished. Both Windows and Munt CI passed for `d0fa4a4`:
 https://github.com/TideGear/OpenNighthawk/actions/runs/39083815431.
 Local census/credit regressions: 45 pass; default-selection process checks: six pass.
 
@@ -101,6 +105,21 @@ outside its rows in those seven programs. `tools/census_classify.py` computes a 
 - D1REAL's eight steps/second are a project choice, not a recovered developer target or a requirement for 60 Hz.
   D1PROX's terminal-speed x 8/9 band uses the GOG-speed parked S=9 baseline as a compatibility calibration,
   not an authoritative warhead radius. No numeric canonical radius was recovered from the inspected code/manual.
+- **Owner requested 8 vs 15 Hz; complete, with 14 as an even-divisor control.** Private build only;
+  no production timing/default change. Forty-six consistency checks pass (engine agreement/control integrity,
+  not candidate acceptance). At 20 MIPS, 8 and 14 pass all seven clock/dialog cases; 15 fails 2x:
+  150 mission seconds in 70 seconds, because S truncates to 7. All give 1:1 normal time. At 9 MIPS,
+  higher targets reach only 11.6 updates/s in the parked scene; eight still passes. Median/max normal-input
+  throttle response over 24 pulses: 8 Hz 64.5/112 ms; 14 Hz 31.5/68; 15 Hz 35/67 (guest state, not display latency).
+  Missile pass offsets 20/22/28 give hit/miss/miss at all rates; tested acceleration speed 1->10 in two seconds.
+  Same takeoff keys produce different speed/climb. Six exploratory flights preserve each mission/combat seed
+  but vary in path/exposure/outcomes; no balance equivalence claim. Cannon probes failed to fire and a staged
+  guidance probe did not steer, so those do not provide coverage. Initial airborne pass/roll-latency probes
+  are also excluded; use separate parked physics and throttle checks. D1's independent 11.6 Hz cap confounds
+  higher targets; comparison excludes D1, leaves other repairs on, and proves eight unchanged by that exclusion.
+  **Recommendation given:** keep eight now; fourteen is the stronger higher-rate candidate, with more work before
+  shipping. Evidence/scripts/archived binaries: `D:/f117-gate/cadence-20261017/verdict.json`, `without-d1/`.
+  Full details in docs/speed-sweep.md. No new visible/fullscreen test was run.
 - Independent original game on 86Box OPTi 495SX / 386DX33, MS-DOS 5.00: after 30 seconds settling,
   152 mission seconds in 119.994917 native emulated seconds (1.26672x), S=5, normal compression=1.
   VGAME on the private VM disk hashes identically to the GOG file. This confirms a mismatch on that profile,
@@ -108,6 +127,12 @@ outside its rows in those seven programs. `tools/census_classify.py` computes a 
   Capture initially asserted normal compression was 0; corrected analysis uses the retained samples (normal is 1).
   Evidence: `D:/f117-gate/default-fixes-20261017/clock86/{loop.state,samples.json,verdict.json}`;
   interpretation in docs/speed-sweep.md. The owner emailed the director; no reply is needed to continue testing.
+- **Controlled original 86Box follow-up:** same parked scene, chipset/VGA/DOS and mission, changing only
+  386DX25/33/40 speed. After 30 seconds settling, three consecutive 60-second windows give ratios
+  1.30551 / 1.27218 / 1.16662 at S=4/5/6. All eleven scene fields agree; compression stays normal.
+  This rules out an exact common multiplier on that hardware family, not every period PC or developer intent.
+  Evidence: `D:/f117-gate/clock-matrix-20261017/verdict.json`. Owner reconsidered intentional acceleration;
+  recommendation remains D1REAL on, separating the uncertain cadence choice from 1:1 time.
 - Online primary-source check: F-19's 1988 designers' notes explicitly describe real-time simulation
   independent of CPU speed, with only graphics detail/smoothness changing. This strengthens real-time intent
   for the family, but is not an exact F-117A timing target. Intentional faster simulation did exist as travel
@@ -116,7 +141,16 @@ outside its rows in those seven programs. `tools/census_classify.py` computes a 
 - Longer fullscreen air-to-air test completed on the owner's 4K/59.99 Hz display: 17,241 timed pictures,
   p99 28.6976 ms, 638 intervals over 25 ms (3.7022%), **fails both pacing limits**. All 3,679 logic frames
   exact, drift 0.005819 s, final hash `b050542466c9a616` equal to a separate headless replay. Evidence:
-  `D:/f117-gate/present-v2/stage4-airair-long-20261017`. No score increase; CPU/GPU cause still unlocated.
+  `D:/f117-gate/present-v2/stage4-airair-long-20261017`. No score increase.
+- **Hidden profile locates a CPU bottleneck:** two original-fix-off replay windows retain gate endpoint hashes.
+  Main work median/p99 grows 11.804/14.561 -> 18.020/21.702 ms, copied redraw preparation 6.984 ->12.348 ms;
+  simulation stays about 2.5 ms. Deep timers put cost in copied execution, not copying/packing; draw records
+  1,900->6,000, interpreted instructions only 1,179->1,752. Of 7,986 main-thread samples, 46.01% land in
+  `recomp_override_step`. Next lead: replace its two linear placement scans with an index preserving registration
+  order, fix priority, CS aliases, observer declines, 386 skips and load/enable invalidation; no implementation yet.
+  Needs meaningful override tests, full gate and presentation checks, then isolated timing. Hidden CPU evidence
+  does not exclude fullscreen GPU cost or accept pacing. Details: docs/presentation.md and private
+  `D:/f117-gate/present-v2/airair-profile-20261017/`.
 
 ### Presentation: latest (15 October, evening)
 

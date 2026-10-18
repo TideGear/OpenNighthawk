@@ -883,6 +883,10 @@ Each is fixed; the named regressions keep the failing seed or case.
     40 MIPS in both engines and airborne clocks run at real time. The
     original's key-poll timing still limits exact whole-flight determinism
     across speeds, so it does not establish a safe speed.
+    The 17 Oct private cadence comparison keeps eight as the default:
+    14 passes the clock/dialog cases at 20 MIPS, 15 fails exact 2x
+    compression, and both higher rates fall behind at 9 MIPS. Input response
+    improves, but flight paths change; neither rate establishes developer intent.
 - [ ] **60+ fps and 4K presentation.** Optional and off by default
       (`--present replay|interp|rerun`, `--present-scale N`, `present =` in
       f117a.ini). Design, measurements and history:
@@ -929,6 +933,8 @@ Each is fixed; the named regressions keep the failing seed or case.
     fullscreen pacing: the longer 17 Oct air-to-air run fails (17,241 pictures,
     p99 28.70 ms, 3.70% over 25 ms; exact guest state). Strike and landing
     passed the earlier short checks; see presentation.md for evidence;
+    hidden profiling locates copied-draw CPU cost (46% main-thread samples
+    in linear override dispatch); lookup optimization is not yet implemented;
     line widths by drawing role; weapon and target symbology; long
     cargo/career flights and slower machines. What the owner decided
     against is under "Possible future work" below and is not scored.

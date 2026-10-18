@@ -9,6 +9,40 @@ Timings are wall clock on the development machine (32 threads) and say
 whether they were measured or estimated. A timing taken while other heavy work
 shared the machine is a ceiling, not a speed comparison.
 
+**Cadence experiment (17 October):** private builds compare D1REAL at 8,
+14 and 15 updates/s without changing production defaults. First prove the
+experimental eight-step build identical to the original eight-step build in
+both engines. Then check normal/compressed/pause/dialog clocks, normal-input
+flight and input response, isolated staged weapons, and exploratory combat.
+D1's separate 11.6 Hz limiter must be excluded from the higher-rate comparison;
+retain its conflicting results separately. Fifteen cannot halve to an integer
+S under 2x compression, so retain the resulting failed clock assertion rather
+than redefining success. The private scripts, binaries and results live in
+`D:/f117-gate/cadence-20261017/`; final timings and findings follow in the
+speed study. These API runs are hidden correctness/behavior experiments;
+concurrent jobs do not establish fullscreen performance or subjective feel.
+Completed runs spanned about eleven minutes with overlap, including retained
+confounded controls and unsuccessful probes; six valid exploratory flights
+took 143.7-241.0 s each while sharing the machine. Forty-six consistency
+checks agree, with candidate clock failures retained in `verdict.json`.
+Before repeating, inspect active limiters and verify a fixture actually fires
+or steers; engine equality of an inactive fixture is not coverage. Restoring
+a source by copying can preserve its old timestamp and fool Ninja into
+reusing an experimental object: touch the restored source and confirm a
+recompile in the build log. Production source/defaults did not change.
+
+**Air-to-air diagnosis (17 October):** two isolated hidden app windows took
+147.28 s combined, including fast seeks. Their final hashes match original
+gate checkpoints. Separate deep timers and a 20.06 s main-thread sample
+identify copied-draw execution and linear override dispatch as the lead;
+see presentation.md. The deeper runs shared spare CPUs with 86Box and are
+diagnostic, not timing acceptance. Private evidence and matching exe/PDB:
+`D:/f117-gate/present-v2/airair-profile-20261017/`. Offline DbgHelp symbol
+resolution needed the executable's preferred 0x140000000 base and
+`SymSetOptions(0)`; the first option set left symbols unresolved. Any lookup
+optimization still needs correctness tests, the full gate and presentation
+checks before a further isolated performance comparison.
+
 The rule behind the page: an optimisation must leave every check's inputs,
 outputs and verdicts identical, and the proof is the same verdicts before and
 after. A change that alters what a check tests (different states, a skipped
