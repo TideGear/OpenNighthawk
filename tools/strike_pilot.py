@@ -11,7 +11,7 @@ from pathlib import Path
 import os
 import tempfile
 
-from machine_api import Machine, RouteInputs, read_recording_header
+from machine_api import Machine, RouteInputs, read_recording_fixes, read_recording_header
 from random_flights import base_route
 from recon_pilot import recon_state, control as navigate
 from run_route import route_args
@@ -121,9 +121,7 @@ def main():
     if args.replay:
         lines = Path(args.replay).read_text().splitlines()
         ips, args.time_us, sim_hz = read_recording_header(lines)   # the recording's own speed, cadence and start clock
-        for line in lines[1:3]:                        # the fixes it was recorded with
-            if line.startswith("# f117r-fixes "):
-                args.fix = sorted(set(args.fix) | {f for token in line.split()[2:] for f in token.split(",")})
+        args.fix = sorted(set(args.fix) | set(read_recording_fixes(lines)))
         for line in lines[1:]:
             parts = line.split()
             if not parts or parts[0].startswith("#"): continue

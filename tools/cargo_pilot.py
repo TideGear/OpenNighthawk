@@ -21,7 +21,7 @@ import tempfile
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
-from machine_api import Machine, read_recording_header  # noqa: E402
+from machine_api import Machine, read_recording_fixes, read_recording_header  # noqa: E402
 from recon_pilot import control as navigate  # noqa: E402
 from cargo_check import observe, errors, impacts  # noqa: E402
 from strike_pilot import strike_state  # noqa: E402
@@ -147,9 +147,7 @@ def main():
     args = parser.parse_args()
     lines = args.front.read_text().splitlines()
     ips, time_us, sim_hz = read_recording_header(lines)
-    for line in lines[1:3]:
-        if line.startswith("# f117r-fixes "):
-            args.fix = sorted(set(args.fix) | {f for token in line.split()[2:] for f in token.split(",")})
+    args.fix = sorted(set(args.fix) | set(read_recording_fixes(lines)))
     replay = [line.split() for line in lines[1:] if line and not line.startswith("#")]
     args.out.mkdir(parents=True, exist_ok=False)
     rows, position, tick, start = [], 0, 0, None

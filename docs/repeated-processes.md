@@ -1,5 +1,21 @@
 # Repeated processes
 
+**18 Oct resumed validation:** fresh evidence goes under
+`D:/f117-gate/cadence15-production-20261018/`. The definitive full gate passed
+in 1,802 s while sharing the machine: 239 CTests, 45 identical routes, both
+instruction profiles and all three matched-routine seeds. Source unchanged.
+Fresh frozen baselines now feed the complete N=1 rerun/boot presentation pass.
+Twelve Korea/Kuwait/North Cape flights agree exactly between engines, but
+North Cape compressed flight fails an undamaged airborne window at 40 MIPS
+(272/300 updates, 18/20 mission seconds over ten seconds). Preserve that
+failure; `flight-review.json` blocks the prepared 40-MIPS display check.
+The new private `probe60.py` repeats North Cape's first 120 seconds with the
+same 15/30 cap at 60 MIPS, both engines, to test instruction reserve before
+expanding that budget's acceptance checks. Do not interpret MIPS as period
+hardware equivalence. Long compression and candidate app/replay checks still
+need final verdicts. Concurrent correctness runs cannot establish physical
+display pacing. The default remains eight/20 MIPS.
+
 **17 Oct handoff:** the opt-in fifteen-step production candidate is saved but
 not accepted. Build/239 CTests, both-engine all-fixes clock/transition checks
 and recording guards passed. The owner then requested wrap up, commit, push

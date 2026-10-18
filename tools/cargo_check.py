@@ -14,7 +14,7 @@ from pathlib import Path
 import re
 import tempfile
 
-from machine_api import Machine, read_recording_header
+from machine_api import Machine, read_recording_fixes, read_recording_header
 from landing_pilot import signed, landing_errors
 from strike_pilot import strike_state
 
@@ -140,9 +140,7 @@ def main():
     lines = args.replay.read_text().splitlines()
     # A record made with fixes on names them; replaying it without them
     # would be another game.
-    for line in lines[1:3]:
-        if line.startswith("# f117r-fixes "):
-            args.fix = sorted(set(args.fix) | set(line.split()[2:]))
+    args.fix = sorted(set(args.fix) | set(read_recording_fixes(lines)))
     credited = "D5" in args.fix or "all" in args.fix
     ips, time_us, sim_hz = read_recording_header(lines)
     replay = [line.split() for line in lines[1:] if line and not line.startswith("#")]

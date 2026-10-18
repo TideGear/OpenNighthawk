@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
@@ -133,6 +134,39 @@ class RecordingHeaderTests(unittest.TestCase):
         for lines in ([self.HEAD % 40_000_000], [self.HEAD % 9_000_000, "# f117r-sim-hz 15"]):
             with self.assertRaisesRegex(ValueError, "only 9 MIPS"):
                 read_recording_header(lines, legacy_only=True)
+
+
+class RecordingConsumerTests(unittest.TestCase):
+    def test_entry_points_restore_all_metadata_and_extra_header_comments(self):
+        import cargo_check
+        import cargo_pilot
+        import strike_pilot
+
+        class CapturedMachine(Exception):
+            pass
+
+        for module, option in ((cargo_check, "--replay"), (cargo_pilot, "--front"),
+                               (strike_pilot, "--replay")):
+            for fix_line in ("D1,D1REAL,D5", "D1 D1REAL D5"):
+                with self.subTest(tool=module.__name__, fixes=fix_line), tempfile.TemporaryDirectory() as tmp:
+                    folder = Path(tmp)
+                    recording = folder / "input.log"
+                    recording.write_text("# f117r-input ips=40000000 time_us=700000000000000\n"
+                                         "# f117r-sim-hz 15\n# additional metadata\n"
+                                         "# f117r-fixes " + fix_line + "\nK 100 1E\n")
+                    argv = [module.__name__, "--data", tmp, option, str(recording),
+                            "--out", str(folder / "out"), "--fix", "D2"]
+                    if module is cargo_check:
+                        argv += ["--steps", "200"]
+                    with patch.object(sys, "argv", argv), patch.object(
+                            module, "Machine", side_effect=CapturedMachine) as machine:
+                        with self.assertRaises(CapturedMachine):
+                            module.main()
+                    kwargs = machine.call_args.kwargs
+                    self.assertEqual(kwargs["ips"], 40_000_000)
+                    self.assertEqual(kwargs["sim_hz"], 15)
+                    self.assertEqual(kwargs["time_us"], 700_000_000_000_000)
+                    self.assertEqual(set(kwargs["fixes"]), {"D1", "D1REAL", "D5", "D2"})
 
 
 if __name__ == "__main__":

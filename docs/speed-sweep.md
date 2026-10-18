@@ -118,7 +118,7 @@ equivalence with the project's 40 MIPS budget. Evidence:
 `D:/f117-gate/clock486-et4000-20261017/`. Its video BIOS was obtained from
 the official 86Box ROM collection; game data and BIOS images stay private.
 
-### Production fifteen-step candidate (validation stopped for handoff)
+### Production fifteen-step candidate (validation resumed 18 October)
 
 `--sim-hz 15` now selects explicit per-machine cadence state rather than the
 private prototype's packed metadata. Normal play remains at eight by default.
@@ -156,6 +156,21 @@ trace. Compression did not remain active: original enemy-awareness and weapon
 events call the normal-time routine. It is not sustained 30-Hz combat coverage.
 Korea was interrupted and the remaining regions did not start. Do not treat
 the candidate as accepted or as recovered developer intent.
+
+On 18 October the fresh full gate passed: 239 tests, all 45 routes identical,
+5,718,848 instruction states under each timing profile and 1,006 matched
+routines at three seeds, without mismatches. The twelve additional flights
+(Korea, Kuwait and North Cape; normal/compression-requested; both engines)
+have identical final states, capacity windows, input logs and sample CSVs.
+This nevertheless **rejects 40 MIPS as sufficient reserve** for the candidate:
+North Cape has an undamaged airborne compressed window with 272/300 updates
+and 18/20 mission seconds over ten seconds. Altitude stays 1,547?2,367.
+The later terminal-window failure is retained separately. A 60-MIPS probe
+keeps the same 15/30 update cap while testing computation reserve; that budget
+is not a claimed period-hardware equivalent. The default remains eight/20.
+Full presentation, long compression and app checks remain in progress; no new
+visible test has run. Evidence: `D:/f117-gate/cadence15-production-20261018/`
+(`gate-final/gate-verdict.json`, `flight-review.json`, `capacity60/`).
 
 ## Historical intent and faster-than-real-time simulation (17 October 2026)
 

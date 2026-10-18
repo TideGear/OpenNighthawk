@@ -68,7 +68,7 @@ make (Phase 4).
   early for its autoexec); delivery there is not pursued (Settled, below).
 - **The game version verified:** GOG's installer (build 28044) with the 473.04
   update; Steam's release is byte-identical (`tools/verify_install.py`).
-- **The gate** (`tools/build_recomp.py`): translate, build, unit tests (238),
+- **The gate** (`tools/build_recomp.py`): translate, build, unit tests (239),
   coverage, both engines on every route, instruction lockstep under both
   timing profiles, matched-routine lockstep at three seeds, and the
   routes-only and event-limit checks. About 21-33 minutes when every
@@ -891,9 +891,13 @@ Each is fixed; the named regressions keep the failing seed or case.
     clock/dialog and rapid-transition checks at 40 MIPS after deadline phase
     correction. Production `--sim-hz 15` is now implemented with recorded
     cadence and explicit per-machine state; 239 CTests and all-fixes clock/
-    transition checks pass. Full gates, demanding flights and presentation
-    acceptance were stopped at the owner's handoff request and remain pending;
-    default stays eight. Original 486/ET4000
+    transition checks pass. Resumed 18 Oct full gate passes (45 routes,
+    both instruction profiles and three matched-routine seeds). Twelve fresh
+    Korea/Kuwait/North Cape flights agree between engines, but North Cape
+    compressed flight falls behind at 40 MIPS while airborne and undamaged
+    (272/300 updates, 18/20 mission seconds in ten seconds). A private 60-MIPS
+    reserve probe is running with the same update cap. Presentation and app
+    checks remain in progress; default stays eight. Original 486/ET4000
     parked references reach about 16.5 actual updates/s with S around 13,
     supporting period-hardware responsiveness without establishing S15 intent.
 - [ ] **60+ fps and 4K presentation.** Optional and off by default

@@ -6,13 +6,29 @@ For the next conversation on this repository. Read this, then
 checked), [docs/bugs.md](docs/bugs.md) (the original game's bugs),
 [docs/presentation.md](docs/presentation.md) (60+ fps and 4K) and
 [docs/repeated-processes.md](docs/repeated-processes.md) (every process we run
-more than once, what it costs). State as of 17 October 2026.
+more than once, what it costs). State as of 18 October 2026.
 
 17 October: `p2-batch-o` remains the latest matching batch. The owner approved progressive static-code
 scope review, the longer fullscreen air-to-air test, and all fifteen fixes on for normal play.
-**Start here:** the owner requested **wrap up, hand off, commit, push and stop**.
-All running validation processes and their queued presentation launcher were stopped for that request.
-Do not restart them in this conversation. The opt-in `--sim-hz 15` implementation is committed as
+**Start here:** the owner resumed work on 18 October after the completed handoff.
+Fresh validation is running under `D:/f117-gate/cadence15-production-20261018/`;
+the definitive full gate/presentation wrapper is in its `gate-final/` subdirectory.
+the stopped 17 October results below remain historical, not acceptance evidence.
+**18 October results:** the definitive full gate passed in 1,802 s with
+239 CTests, all 45 routes identical, 5,718,848 instruction states per timing
+profile and all 1,006 matched routines at three seeds without mismatches.
+Its frozen source manifest is unchanged. The twelve Korea/Kuwait/North Cape
+flights also agree exactly between engines (hashes, samples, inputs and windows).
+However, North Cape compressed flight at 40 MIPS fails an active airborne
+10-second window: 272 rather than 300 updates and 18 rather than 20 mission
+seconds, altitude 1,547?2,367, damage zero. This blocks acceptance of 15/40;
+retain the failure. A private 60-MIPS capacity probe is running with the same
+15/30 cap. More instruction reserve is not a historical hardware equivalence.
+Presentation, long compression and hidden-app validation are still running.
+No new visible test has run; the current display guard correctly rejects the
+failed 40-MIPS flight review. Evidence: `gate-final/gate-verdict.json`,
+`flight-review.json`, `capacity60/` under the fresh root above.
+The opt-in `--sim-hz 15` implementation is committed as
 experimental; the normal default remains **8 Hz /20 MIPS**. It uses 15 normal /30 compressed, S15,
 per-machine phase handling and recorded cadence; legacy logs retain eight.
 
@@ -46,10 +62,15 @@ Evidence: `D:/f117-gate/clock486-20261017/`, `clock486dx2-20261017/`, `clock486-
 ET4000 BIOS was added from the official 86Box ROM repository to the private ROM collection only.
 
 **Next:** finish full gate, long compression, candidate replay/app and full presentation checks,
-then the authorized display assessment before considering any default change. Audit Python recording
-consumers too: cargo/strike tools currently require 9-MIPS headers and reject normal 40-MIPS candidate
-logs, but their direct Machine replay paths do not yet restore the new cadence metadata. Main/headless
-replay does restore it. Do not silently replay an explicitly fifteen-step 9-MIPS test through those tools.
+then the authorized display assessment before considering any default change. The Python recording
+consumer issue below was fixed in `40c074b`: shared header/fix readers restore speed, cadence and
+every fix; career tools explicitly refuse nonlegacy logs. Its Windows/Munt CI is green:
+https://github.com/TideGear/OpenNighthawk/actions/runs/39106411295.
+The 18 Oct audit found cargo_check still retained the old comma-list reader;
+cargo/strike entry points now all use the shared reader across every leading
+comment. Ten API/header/consumer tests pass, including six actual entry-point
+cases with comma/space fixes and extra metadata. The initial 18 Oct gate was
+stopped for that correction; only `gate-final/` is an acceptance candidate.
 The copied-draw override-dispatch bottleneck remains a separate lead; batch p is prepared.
 The authorized longer fullscreen test is complete and failed pacing limits; further visible tests need agreement.
 
