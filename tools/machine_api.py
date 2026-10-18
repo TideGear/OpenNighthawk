@@ -30,7 +30,9 @@ class Machine:
     SLICE, EXITED, FAULT = 0, 1, 2
 
     def __init__(self, data, save, *, log=None, ips=9_000_000,
-                 time_us=700_000_000_000_000, engine="interp", library=None, fixes=()):
+                 time_us=700_000_000_000_000, engine="interp", library=None, fixes=(), sim_hz=8):
+        if sim_hz not in (8, 15):
+            raise ValueError("sim_hz must be 8 or 15")
         if engine not in ("interp", "recomp"):
             raise ValueError("engine must be interp or recomp")
         self.dll = C.CDLL(str(library or library_path()))
@@ -50,13 +52,14 @@ class Machine:
             "record": (C.c_int, [C.c_void_p, C.c_char_p]),
             "screen": (C.c_int, [C.c_void_p, C.c_char_p]),
             "fix": (C.c_int, [C.c_void_p, C.c_char_p, C.c_int]),
+            "cadence": (C.c_int, [C.c_void_p, C.c_uint]),
             "stage_write16": (None, [C.c_void_p, C.c_uint32, C.c_uint16]),
         }
         self.fn = {}
         for name, (result, args) in signatures.items():
             # A library built before fixes existed lacks the switch; it can
             # still run every unfixed machine.
-            if name in ("fix", "stage_write16") and not hasattr(self.dll, "f117_machine_" + name):
+            if name in ("fix", "stage_write16", "cadence") and not hasattr(self.dll, "f117_machine_" + name):
                 continue
             fn = getattr(self.dll, "f117_machine_" + name)
             fn.restype, fn.argtypes = result, args
@@ -67,6 +70,14 @@ class Machine:
                                       ips, time_us, int(engine == "recomp"))
         if not self.handle:
             raise RuntimeError(self.fn["error"](None).decode("utf-8", "replace"))
+        self.sim_hz = sim_hz
+        if "cadence" in self.fn:
+            accepted = self.fn["cadence"](self.handle, sim_hz)
+        else:
+            accepted = sim_hz == 8
+        if not accepted:
+            self.close()
+            raise ValueError("library does not support this simulation cadence")
         # Switchable fixes (docs/bugs.md); every one is off unless named.
         for fix in fixes:
             if "fix" not in self.fn or not self.fn["fix"](self.handle, fix.encode(), 1):

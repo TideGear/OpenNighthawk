@@ -9,7 +9,7 @@
 /* The options a file may set: the value-taking ones, which of them are paths,
  * and the switches. */
 static const char *const VALUED[] = {
-    "data", "save", "engine", "ips", "scale", "midi", "log", "record", "replay", "time-us",
+    "data", "save", "engine", "ips", "sim-hz", "scale", "midi", "log", "record", "replay", "time-us",
     "exit-after", "opl", "audio-queue-log", "audio-dump", "mt32-control", "mt32-pcm", "mt32-seed",
     "coverage", "fix", "roland", "mt32-roms", "speaker", "present", "present-scale", "present-line-width", "present-age", "present-log", "timing", NULL };
 static const char *const PATHS[] = {

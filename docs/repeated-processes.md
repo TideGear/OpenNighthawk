@@ -1,5 +1,15 @@
 # Repeated processes
 
+**17 Oct handoff:** the opt-in fifteen-step production candidate is saved but
+not accepted. Build/239 CTests, both-engine all-fixes clock/transition checks
+and recording guards passed. The owner then requested wrap up, commit, push
+and stop; all remaining workers and the queued presentation launcher were
+terminated. `D:/f117-gate/cadence15-production-20261017/stopped-for-handoff.json`
+identifies incomplete runs. Restart in a fresh evidence directory; partial
+coverage, flight/app logs and stopped wrappers are not acceptance verdicts.
+Keep eight/20 MIPS as default. See handoff.md for completed original 486
+references and the qualified Middle East combat results.
+
 Every process this project runs more than once, what it costs, what it
 duplicates and what has been done about it. Update this page whenever a
 process is added, measured or changed; a new repeated step goes here first.

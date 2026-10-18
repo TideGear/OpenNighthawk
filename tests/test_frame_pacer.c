@@ -6,6 +6,39 @@ static int failures;
 
 int main(void)
 {
+    /* Fractional clocks, repeated IRQ waits and copied machine state at
+     * both candidate rates, including clocks not divisible by either. */
+    for (unsigned hz = 15; hz <= 30; hz += 15) {
+        for (uint64_t ips = 40000000; ips < 40000030; ips++) {
+            frame_pacer p = {0};
+            uint64_t now = 1000;
+            for (unsigned frame = 0; frame < hz * 3600; frame++) {
+                CHECK(frame_pacer_wait_rate(&p, now, ips, 1, hz) == 0);
+                uint64_t next = 1000 + (uint64_t)(frame + 1) * ips / hz;
+                CHECK(p.next == next);
+                frame_pacer copy = p;
+                CHECK(frame_pacer_wait_rate(&copy, next - 1, ips, 1, hz) == next);
+                CHECK(copy.next == p.next && copy.remainder == p.remainder);
+                now = next;
+            }
+        }
+    }
+    {
+        frame_pacer p = {0};
+        CHECK(frame_pacer_wait_rate(&p, 1000, 3000, 1, 15) == 0);
+        frame_pacer_rate(&p, 1100, 3000, 1, 30);
+        CHECK(p.next == 1150); /* halfway through a normal update */
+        frame_pacer_rate(&p, 1100, 3000, 1, 15);
+        CHECK(p.next == 1200);
+        frame_pacer_rate(&p, 1300, 3000, 1, 30);
+        CHECK(p.next == 1250); /* preserve overdue work as well */
+        frame_pacer_rate(&p, 1300, 3000, 1, 15);
+        CHECK(p.next == 1200);
+        frame_pacer_rate(&p, 1300, 3000, 2, 30);
+        CHECK(p.next == 0 && p.remainder == 0); /* new program resets phase */
+        CHECK(frame_pacer_wait_rate(&p, 1300, 3000, 2, 30) == 0);
+        CHECK(p.next == 1400);
+    }
     for (uint64_t ips = 9000000; ips <= 9000007; ips++) {
         frame_pacer p = {0};
         uint64_t now = 1000;

@@ -10,8 +10,47 @@ more than once, what it costs). State as of 17 October 2026.
 
 17 October: `p2-batch-o` remains the latest matching batch. The owner approved progressive static-code
 scope review, the longer fullscreen air-to-air test, and all fifteen fixes on for normal play.
-**Start here:** the owner-authorized fifteen-step follow-up is complete; production remains at eight updates/s.
-The next performance lead is linear override dispatch in the copied draw (below); Phase 2 batch p is also prepared.
+**Start here:** the owner requested **wrap up, hand off, commit, push and stop**.
+All running validation processes and their queued presentation launcher were stopped for that request.
+Do not restart them in this conversation. The opt-in `--sim-hz 15` implementation is committed as
+experimental; the normal default remains **8 Hz /20 MIPS**. It uses 15 normal /30 compressed, S15,
+per-machine phase handling and recorded cadence; legacy logs retain eight.
+
+**Passed:** build; 239 CTests (also passed inside the interrupted full gate); all-fixes clock/dialog,
+six compression round trips and 120 rapid transitions in both engines at 8 Hz/20 MIPS and 15 Hz/40 MIPS;
+record/replay/API guards. Eight's seven original clock-case hashes are unchanged. Evidence:
+`D:/f117-gate/cadence15-production-20261017/{clock-verdict.json,replay-verdict.json}`;
+initial unit log: `D:/f117-gate/clock486-20261017/candidate-unit.log`.
+
+**Not accepted:** full gate was stopped during coverage/fresh interpreter routes. Long compression,
+hidden app and candidate presentation checks were stopped before verdicts. Complete 45-route N=1
+rerun and boot N=4/9 were queued but never started. No new visible/fullscreen test occurred.
+Partial logs and frozen source archive remain under `D:/f117-gate/cadence15-production-20261017/`;
+`stopped-for-handoff.json` distinguishes stopped work from failures. Use a **fresh evidence directory**
+when restarting wrappers; do not reuse partial results or an old cancelled gate marker.
+
+**Combat:** four Middle East runs (normal/compression-requested, both engines) completed, engines
+agree exactly. About 692 observed seconds, 34 enemy launches. Normal's raw windows pass;
+compression-requested runs have one failed raw 10-second window (142 rather than 150 frames)
+including impact/zero altitude/full damage. All 66 fully airborne windows pass. Compression did
+not stay active in combat: the original enemy-awareness/weapon code restores normal time.
+`flight-analysis.json` retains every raw failure and the explicitly qualified airborne analysis.
+Korea runs were interrupted; Kuwait/North Cape did not start. Do not call this full combat acceptance.
+
+**Original hardware references completed:** 486DX25/33/50 and DX2-50/66 with basic VGA, plus
+DX2-50/66 with ET4000AX. Same scene and original executable, all eleven scene fields agree.
+ET4000 gives 16.47/16.57 actual updates/s, **S around 13**, clock ratios 1.272/1.278.
+Period hardware can supply about fifteen actual updates in this light scene; this does **not**
+establish S15 intent, a hardware ceiling, combat capacity or 40-MIPS equivalence.
+Evidence: `D:/f117-gate/clock486-20261017/`, `clock486dx2-20261017/`, `clock486-et4000-20261017/`.
+ET4000 BIOS was added from the official 86Box ROM repository to the private ROM collection only.
+
+**Next:** finish full gate, long compression, candidate replay/app and full presentation checks,
+then the authorized display assessment before considering any default change. Audit Python recording
+consumers too: cargo/strike tools currently require 9-MIPS headers and reject normal 40-MIPS candidate
+logs, but their direct Machine replay paths do not yet restore the new cadence metadata. Main/headless
+replay does restore it. Do not silently replay an explicitly fifteen-step 9-MIPS test through those tools.
+The copied-draw override-dispatch bottleneck remains a separate lead; batch p is prepared.
 The authorized longer fullscreen test is complete and failed pacing limits; further visible tests need agreement.
 
 **Owner's clarified target:** the best stable responsiveness the original could

@@ -26,6 +26,10 @@ void inputlog_read_header(const char *path, uint64_t *ips, uint64_t *time_us);
  * original is unchanged. Reading gives them space-separated, or "". */
 void inputlog_fixes(FILE *f, const char *ids);
 void inputlog_read_fixes(const char *path, char *ids, size_t n);
+/* Cadence is authoritative on replay. Legacy logs use eight; malformed
+ * or unsupported values fail rather than silently replay differently. */
+void inputlog_cadence(FILE *f, unsigned hz);
+int inputlog_read_cadence(const char *path, unsigned *hz);
 
 /* A replay, streamed: each input is queued on the machine before its time
  * comes (call inputlog_feed with a horizon past the next slice's end). */

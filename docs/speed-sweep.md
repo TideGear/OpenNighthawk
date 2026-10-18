@@ -85,6 +85,78 @@ establish intent. Retaining the original clock remains a preservation choice;
 normal play currently keeps D1REAL enabled. Evidence:
 `D:/f117-gate/clock-matrix-20261017/{matrix.py,matrix.json,verdict.json}`.
 
+The original executable was then measured on the same motherboard, VGA, DOS
+and parked scene with Intel 486 profiles. The motherboard's 86Box definition
+supports these Socket 1 processors. Each run again settles for 30 seconds
+and measures 180.007 native emulated seconds; all eleven scene fields agree
+with the 386 cohort. No gameplay fixes are applied.
+
+| Processor | S | Actual updates/s | Mission seconds | Clock ratio |
+|---|---|---|---|---|
+| 486DX-25 | 6 | 7.7830 | 234 | 1.29995 |
+| 486DX-33 | 7 | 8.7608 | 226 | 1.25551 |
+| 486DX-50 | 9 | 11.6718 | 233 | 1.29440 |
+| 486DX2-50 | 9 | 11.6718 | 233 | 1.29440 |
+| 486DX2-66 | 9 | 11.6829 | 233 | 1.29440 |
+
+These results do not approach 1.000 monotonically. They also do not establish
+the fastest possible 486 experience: the same basic VGA card was retained
+for control, so graphics throughput can limit the comparison. Faster-video
+follow-up is separate. The project's 40 MIPS instruction budget is not a
+measured equivalent of any of these processors. Private evidence:
+`D:/f117-gate/clock486-20261017/` and `D:/f117-gate/clock486dx2-20261017/`.
+
+Replacing only the basic VGA with an ET4000AX (1 MB, BIOS 8.01) yields
+16.4720 actual updates/s on the DX2-50 and 16.5720 on the DX2-66, in the
+same parked scene and windows. S is mostly 13 on the former (45 of 901
+samples at 12), always 13 on the latter; mission-clock ratios remain
+1.27221 and 1.27776. This demonstrates that basic VGA constrained the
+earlier throughput results and that about fifteen actual updates/s is
+achievable on these emulated period configurations. It does not establish
+S15 as a recovered target, a hardware ceiling, demanding-scene capacity or
+equivalence with the project's 40 MIPS budget. Evidence:
+`D:/f117-gate/clock486-et4000-20261017/`. Its video BIOS was obtained from
+the official 86Box ROM collection; game data and BIOS images stay private.
+
+### Production fifteen-step candidate (validation stopped for handoff)
+
+`--sim-hz 15` now selects explicit per-machine cadence state rather than the
+private prototype's packed metadata. Normal play remains at eight by default.
+The candidate uses S15 at 15/30 actual updates/s, rescales phase on compression
+changes and bypasses D1's independent cap when D1REAL is active at fifteen.
+Eight retains its old limiter behavior and legacy log format. Input recordings
+carry the candidate cadence; replay headers take precedence over CLI/config,
+and absent headers mean eight. Unsupported/duplicate cadence headers fail.
+
+The first production build passes 239 CTests. All-fixes clock checks at eight
+(20 MIPS) and fifteen (40 MIPS) agree between interpreter and recompiled engines:
+seven normal/compressed/dialog cases, twelve settled transition windows and
+120 rapid changes in each mode. Fifteen gives 450 updates/30 mission seconds
+in 30 seconds normally and 2,100/140 over 70 compressed seconds. Its rapid
+test records 69 mission seconds against 68.083 integrated observed-mode
+seconds, within the one-second counter/sample resolution. Eight's first seven
+case hashes exactly retain the earlier default-fixes results. Separate API/CLI
+record/replay checks pass, including legacy headers, conflicting CLI cadence,
+invalid selections and disallowing API cadence changes after recording/execution.
+
+The owner subsequently requested a handoff, commit, push and stop. The full
+gate stopped during coverage/fresh interpreter routes after its build and
+239 CTests passed. Long compression, candidate presentation and hidden-app
+checks stopped without final verdicts; the queued full presentation suite
+never started. No new physical-display assessment occurred. These checks
+remain pending, not passed or rejected. Private evidence:
+`D:/f117-gate/cadence15-production-20261017/`, including `stopped-for-handoff.json`.
+
+Four Middle East normal/compression-requested flights completed with identical
+results between engines and 34 enemy launches over about 692 observed seconds.
+One raw compression-requested window fails (142/150 updates), includes impact,
+zero altitude and full damage; all 66 fully airborne windows pass. This
+qualified analysis retains the raw failure rather than accepting the whole
+trace. Compression did not remain active: original enemy-awareness and weapon
+events call the normal-time routine. It is not sustained 30-Hz combat coverage.
+Korea was interrupted and the remaining regions did not start. Do not treat
+the candidate as accepted or as recovered developer intent.
+
 ## Historical intent and faster-than-real-time simulation (17 October 2026)
 
 The closest contemporary written evidence is the predecessor's designers'

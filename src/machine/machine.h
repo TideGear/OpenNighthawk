@@ -162,6 +162,7 @@ struct machine {
     machine_weapon_sweep fix_weapon_sweep[8];
     machine_weapon_accel fix_weapon_accel[8];
     frame_pacer fix_real_pacer;
+    unsigned sim_hz;                 /* D1REAL: zero/8 is legacy, 15 is opt-in */
 
     machine_hooks hooks;
     FILE    *log;            /* diagnostics; NULL for none */

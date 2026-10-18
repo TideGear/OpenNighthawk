@@ -46,6 +46,18 @@ class DefaultsTests(unittest.TestCase):
     def test_headless_reference_stays_original(self):
         self.assertEqual(enabled(RUNNER, []), set())
 
+    def test_cadence_does_not_enable_repairs_in_reference_runner(self):
+        self.assertEqual(enabled(RUNNER, ["--sim-hz", "15"]), set())
+
+    def test_invalid_cadences_fail_before_loading_game(self):
+        for exe in (APP, RUNNER):
+            for value in ("0", "14", "30", "15junk", "-1"):
+                command = [str(exe)] + (["--no-config"] if exe == APP else [])
+                result = subprocess.run(command + ["--sim-hz", value, "--list-fixes"],
+                                        capture_output=True, text=True, timeout=15)
+                self.assertEqual(result.returncode, 2)
+                self.assertIn("--sim-hz requires 8 or 15", result.stderr)
+
     def test_parity_reset_precedes_fix_specific_route_options(self):
         self.assertEqual(enabled(RUNNER, ["--fix", "all", "--fix", "none"]), set())
         self.assertEqual(enabled(RUNNER, ["--fix", "none", "--fix", "D5"]), {"D5"})

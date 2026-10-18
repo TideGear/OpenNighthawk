@@ -15,6 +15,30 @@ void inputlog_fixes(FILE *f, const char *ids)
     if (ids && *ids) fprintf(f, "# f117r-fixes %s\n", ids);
 }
 
+void inputlog_cadence(FILE *f, unsigned hz)
+{
+    if (hz == 15) fprintf(f, "# f117r-sim-hz 15\n");
+}
+
+int inputlog_read_cadence(const char *path, unsigned *hz)
+{
+    *hz = 8;
+    FILE *f = fopen(path, "r");
+    if (!f) return 0;
+    char line[512];
+    int valid = 1, seen = 0;
+    while (fgets(line, sizeof line, f) && line[0] == '#') {
+        if (strncmp(line, "# f117r-sim-hz", 14)) continue;
+        unsigned value;
+        char extra;
+        if (seen++ || sscanf(line + 14, "%u %c", &value, &extra) != 1
+            || (value != 8 && value != 15)) { valid = 0; break; }
+        *hz = value;
+    }
+    fclose(f);
+    return valid;
+}
+
 void inputlog_read_fixes(const char *path, char *ids, size_t n)
 {
     if (n) ids[0] = 0;

@@ -92,15 +92,18 @@ static uint64_t weapon_epoch(const machine_t *m)
     return m->nproc ? m->procs[m->nproc - 1].start_icount : 0;
 }
 
-/* D1REAL: canonical eight-step simulation with an actual real-time clock.
+/* D1REAL: real-time simulation, eight steps by default or opt-in fifteen.
  * Enter at D441 rather than inside it so the whole-routine matched override
  * cannot bypass this correction. The original code derives every S rate.
- * Original 2x time compression halves S to four at the same frame cadence.
+ * Eight uses S4 for 2x compression; fifteen keeps S15 and doubles cadence.
  */
 static int fix_d1real_rates(machine_t *m)
 {
     cpu_t *c = &m->cpu;
-    const uint16_t S = seg_read16(c, c->seg[S_DS], 0x3DA8) == 2 ? 4 : 8;
+    const int compressed = seg_read16(c, c->seg[S_DS], 0x3DA8) == 2;
+    const uint16_t S = m->sim_hz == 15 ? 15 : compressed ? 4 : 8;
+    frame_pacer_rate(&m->fix_real_pacer, c->icount, m->ips, weapon_epoch(m),
+                     m->sim_hz == 15 ? (compressed ? 30 : 15) : 8);
     seg_write16(c, c->seg[S_DS], 0x368E, S);
     alu_sub(c, S, 15, 1, 0);
     c->op_cs = c->seg[S_CS]; c->op_ip = c->ip;
@@ -111,8 +114,10 @@ static int fix_d1real_rates(machine_t *m)
 static int fix_d1real_frame(machine_t *m)
 {
     cpu_t *c = &m->cpu;
-    const uint64_t wait = frame_pacer_wait(&m->fix_real_pacer, c->icount,
-                                           m->ips, weapon_epoch(m));
+    const unsigned hz = m->sim_hz == 15
+        ? (seg_read16(c, c->seg[S_DS], 0x3DA8) == 2 ? 30 : 15) : 8;
+    const uint64_t wait = frame_pacer_wait_rate(&m->fix_real_pacer, c->icount,
+                                                m->ips, weapon_epoch(m), hz);
     if (wait) {
         c->icount = wait < c->stop_at ? wait : c->stop_at;
         return 1;                   /* service events without retiring INC */
@@ -525,8 +530,12 @@ static int fix_d2_speech(machine_t *m)
 #define D1_GOG_IPS 9000000u          /* GOG DOSBox's cycles=9000, the default */
 static uint64_t d1_next;             /* clock at which the next frame may start */
 static int d1_logged;
+static int fix_on(const char *id);
 static int fix_d1_pace(machine_t *m)
 {
+    /* D1REAL owns the cadence; the independent older cap would prevent
+     * fifteen/thirty updates. Preserve legacy eight-step recordings. */
+    if (m->sim_hz == 15 && fix_on("D1REAL")) return 0;
     cpu_t *c = &m->cpu;
     const uint64_t period = m->ips * 10 / D1_FPS_X10, now = c->icount;
     /* GOG's own speed and slower: holding its faster frames would change
@@ -623,8 +632,8 @@ static int fix_d3_keypad(machine_t *m)
 static const recomp_override OVERRIDES[] = {
     { "D5", "VGAME.EXE", VGAME_47304, 0x0000, 0x6D2E, fix_d5, "the supply-drop impact gate" },
     { "D1", "VGAME.EXE", VGAME_47304, 0x0000, 0x441D, fix_d1_pace, "frames paced at the parked GOG baseline" },
-    { "D1REAL", "VGAME.EXE", VGAME_47304, 0x0000, 0xD441, fix_d1real_rates, "canonical simulation rates" },
-    { "D1REAL", "VGAME.EXE", VGAME_47304, 0x0000, 0x4359, fix_d1real_frame, "eight simulation steps per real second" },
+    { "D1REAL", "VGAME.EXE", VGAME_47304, 0x0000, 0xD441, fix_d1real_rates, "selected simulation rates" },
+    { "D1REAL", "VGAME.EXE", VGAME_47304, 0x0000, 0x4359, fix_d1real_frame, "selected real-time simulation cadence" },
     { "D1REAL", "VGAME.EXE", VGAME_47304, 0x0000, 0x3A4E, fix_d1real_pause, "pause resets simulation deadline" },
     { "D1REAL", "VGAME.EXE", VGAME_47304, 0x0000, 0x2071, fix_d1real_pause, "quit dialog resets simulation deadline" },
     { "D1TTL", "VGAME.EXE", VGAME_47304, 0x0000, 0x6F19, fix_d1ttl_hit, "incoming weapon lifetime compared unsigned" },
@@ -671,7 +680,7 @@ static const struct { const char *id, *what; } FIXES[] = {
     { "D1TTL", "long-lived incoming missiles can hit when their lifetime exceeds 32767 frames" },
     { "D1SLOT", "cancelled incoming missiles release their launcher slots instead of underflowing life to FFFF" },
     { "D1PROX", "incoming proximity uses a swept band calibrated to terminal speed at S=9" },
-    { "D1REAL", "real-time simulation at eight steps per second (use --present interp for smooth display)" },
+    { "D1REAL", "real-time simulation (default eight steps/s; --sim-hz 15 selects fifteen/thirty)" },
     { "D1ACCEL", "incoming missile acceleration uses the S=9 rate per simulated second" },
     { "D2", "AdLib speech plays without stopping the game or risking its busy-wait hang" },
     { "D11", "saves are written to a temporary file and renamed into place, so an interrupted save keeps the old roster" },

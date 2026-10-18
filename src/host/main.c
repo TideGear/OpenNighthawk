@@ -348,6 +348,7 @@ int main(int argc, char **argv)
     const char *audio_queue_log_path = NULL;
     const char *audio_dump_path = NULL;
     uint64_t ips = MACHINE_APP_IPS;
+    unsigned sim_hz = 8;
     int scale = 3, fullscreen = 0, aspect = 1, midi_dev = -2;
     int engine = ENGINE_RECOMP;
     const char *coverage = NULL, *record = NULL, *replay = NULL;
@@ -445,6 +446,12 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--audio-queue-log") && v) { audio_queue_log_path = v; i++; }
         else if (!strcmp(a, "--audio-dump") && v) { audio_dump_path = v; i++; }
         else if (!strcmp(a, "--ips") && v) { ips = strtoull(v, NULL, 0); i++; }
+        else if (!strcmp(a, "--sim-hz") && v) {
+            if (strcmp(v, "8") && strcmp(v, "15")) {
+                fprintf(stderr, "--sim-hz requires 8 or 15\n"); return 2;
+            }
+            sim_hz = (unsigned)atoi(v); i++;
+        }
         else if (!strcmp(a, "--timing") && v) {
             /* dosbox (the default): this machine's instruction model, run by the app at 20 million
              * instructions a second (--ips); GOG DOSBox ran 9 million (--ips 9000000), at which a
@@ -508,6 +515,7 @@ int main(int argc, char **argv)
                 "usage: f117a [--data DIR] [--save DIR] [--engine recomp|interp] [--ips N] [--timing dosbox|386]\n"
                 "             [--scale N] [--fullscreen] [--no-aspect] [--midi N] [--log FILE]\n"
                 "             [--record FILE | --no-record] [--replay FILE] [--time-us N]\n"
+                "             [--sim-hz 8|15] (D1REAL cadence; default 8; replay restores recorded choice)\n"
                 "             [--exit-after CLOCKS] [--opl dbopl|nuked] [--speaker realsound|pwm]\n"
                 "             [--audio-queue-log FILE]\n"
                 "             [--audio-dump FILE] [--present scan|replay|interp|rerun] [--present-scale N]\n"
@@ -601,6 +609,10 @@ int main(int argc, char **argv)
     /* A replay's clock must be known before creating either audio backend. */
     if (replay) {
         inputlog_read_header(replay, &ips, &time_us);
+        if (!inputlog_read_cadence(replay, &sim_hz)) {
+            fprintf(stderr, "%s has an invalid simulation cadence\n", replay);
+            SDL_Quit(); return 2;
+        }
         char ids[256];
         inputlog_read_fixes(replay, ids, sizeof ids);
         if (!fixes_enable_list(ids)) {
@@ -670,6 +682,7 @@ int main(int argc, char **argv)
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "F-117A", H.m.fault, win);
         return 1;
     }
+    H.m.sim_hz = sim_hz;
     /* Every live session is recorded unless told otherwise: a log costs a
      * few kilobytes, and it is what lets any session be replayed under both
      * engines later (tools/run_route.py style, f117run --replay). */
@@ -712,6 +725,7 @@ int main(int argc, char **argv)
         H.record = fopen(record, "w");
         if (H.record) {
             inputlog_header(H.record, ips, time_us);
+            inputlog_cadence(H.record, sim_hz);
             char ids[256];
             fixes_enabled(ids, sizeof ids);
             inputlog_fixes(H.record, ids);

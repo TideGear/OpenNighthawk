@@ -143,12 +143,19 @@ API int f117_machine_mouse(run_api *r, uint64_t at, int x, int y, unsigned butto
     machine_input_at(&r->m, &in);
     return !r->m.fault[0];
 }
+API int f117_machine_cadence(run_api *r, unsigned hz)
+{
+    if (r->record || r->m.cpu.icount || (hz != 8 && hz != 15)) return 0;
+    r->m.sim_hz = hz;
+    return 1;
+}
 API int f117_machine_record(run_api *r, const char *path)
 {
     if (r->record || r->m.cpu.icount) return 0;
     r->record = fopen(path, "w");
     if (!r->record) return 0;
     inputlog_header(r->record, r->m.ips, r->m.boot_time_us);
+    inputlog_cadence(r->record, r->m.sim_hz);
     char ids[256];
     fixes_enabled(ids, sizeof ids);
     inputlog_fixes(r->record, ids);

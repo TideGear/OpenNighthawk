@@ -889,8 +889,13 @@ Each is fixed; the named regressions keep the failing seed or case.
     improves, but flight paths change; neither rate establishes developer intent.
     A further private 15 Hz/S15 normal, 30 Hz/S15 compressed candidate passes
     clock/dialog and rapid-transition checks at 40 MIPS after deadline phase
-    correction. Production implementation, full gates, presentation acceptance
-    and a fast original-hardware reference remain; default stays eight.
+    correction. Production `--sim-hz 15` is now implemented with recorded
+    cadence and explicit per-machine state; 239 CTests and all-fixes clock/
+    transition checks pass. Full gates, demanding flights and presentation
+    acceptance were stopped at the owner's handoff request and remain pending;
+    default stays eight. Original 486/ET4000
+    parked references reach about 16.5 actual updates/s with S around 13,
+    supporting period-hardware responsiveness without establishing S15 intent.
 - [ ] **60+ fps and 4K presentation.** Optional and off by default
       (`--present replay|interp|rerun`, `--present-scale N`, `present =` in
       f117a.ini). Design, measurements and history:

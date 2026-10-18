@@ -500,6 +500,7 @@ int main(int argc, char **argv)
     int shots_changed = 0;
     int no_mouse = 0;                      /* --no-mouse: INT 33h answers as with no driver loaded */
     uint64_t steps = 100000000ull, ips = MACHINE_DEFAULT_IPS, hold_ms = 60, boot_ms = 0;
+    unsigned sim_hz = 8;
     uint64_t time_us = 0, hash_every = 0, hash_from = 0;
     uint64_t trace_from = 0, trace_to = 0;
     uint32_t peek_at = 0;                  /* --peek LINEAR (hex): print the word there at every hash line */
@@ -519,6 +520,12 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--save") && v) { save = v; i++; }
         else if (!strcmp(a, "--steps") && v) { steps = strtoull(v, NULL, 0); i++; }
         else if (!strcmp(a, "--ips") && v) { ips = strtoull(v, NULL, 0); i++; }
+        else if (!strcmp(a, "--sim-hz") && v) {
+            if (strcmp(v, "8") && strcmp(v, "15")) {
+                fprintf(stderr, "--sim-hz requires 8 or 15\n"); return 2;
+            }
+            sim_hz = (unsigned)atoi(v); i++;
+        }
         else if (!strcmp(a, "--timing") && v) {
             /* 386: the 386DX/33 profile, the clock in its cycles (src/cpu/timing386.h) */
             if (strcmp(v, "386")) { fprintf(stderr, "--timing takes 386\n"); return 2; }
@@ -638,6 +645,9 @@ int main(int argc, char **argv)
     if (g_replay && g_obs_file) { fprintf(stderr, "--observe and --present replay both observe the draw; choose one\n"); return 2; }
     if (replay) {
         inputlog_read_header(replay, &ips, &time_us);
+        if (!inputlog_read_cadence(replay, &sim_hz)) {
+            fprintf(stderr, "%s has an invalid simulation cadence\n", replay); return 2;
+        }
         char ids[256];
         inputlog_read_fixes(replay, ids, sizeof ids);
         if (!fixes_enable_list(ids)) { fprintf(stderr, "%s names an unknown fix: %s\n", replay, ids); return 2; }
@@ -692,6 +702,7 @@ int main(int argc, char **argv)
         g_record = fopen(record, "w");
         if (!g_record) { fprintf(stderr, "cannot write %s\n", record); return 1; }
         inputlog_header(g_record, ips, time_us);
+        inputlog_cadence(g_record, sim_hz);
         char ids[256];
         fixes_enabled(ids, sizeof ids);
         inputlog_fixes(g_record, ids);
@@ -701,6 +712,7 @@ int main(int argc, char **argv)
         return 1;
     }
     m.on_input = on_input;
+    m.sim_hz = sim_hz;
     if (no_mouse) m.mouse_present = 0;
     if (boot_ms) { pc_advance_boot(&m, ips * boot_ms / 1000ull); steps += ips * boot_ms / 1000ull; }
     if (shot_every || shot_vga) next_shot = shot_start;
