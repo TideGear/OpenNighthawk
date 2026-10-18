@@ -215,8 +215,9 @@ def main():
              c.get("partial_functions", 0), fixed, catalogued, closed))
     if "supplemental" in c:
         s = c["supplemental"]
-        print("expanded seven-program scope: %d of %d creditable bytes; adds %d executed bytes outside census (%d named); static-only gaps and other modules remain outside this measure"
-              % (c["matched_bytes"] + s["credited"], c["creditable_bytes"] + s["bytes"], s["bytes"], s["credited"]))
+        print("expanded seven-program scope: %d of %d creditable bytes; adds %d bytes outside census (%d named, %d reviewed static); unreviewed gaps and other modules remain outside this measure"
+              % (c["matched_bytes"] + s["credited"], c["creditable_bytes"] + s["bytes"], s["bytes"], s["credited"],
+                 s.get("reviewed_static_bytes", 0)))
     print(title(pct))
 
 

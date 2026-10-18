@@ -1,0 +1,20 @@
+# Human-reviewed static code outside the historical census, 17 October 2026.
+# Columns: module, code segment, IP, byte length, instruction count, SHA256 of image range, review evidence.
+# Hashes and complete instruction boundaries are checked on every refresh. These ranges add workload, not matching credit.
+# First tranche: all instructions independently length-checked with Capstone; original byte/disassembly evidence remains private.
+DSWAP	0000	0966	324	110	98541bf9b1342bc1c73bafe174e28547af93cf12fcc87d2b005c6a0c62f8ff25	Three 200-row packed-picture transfer loops; driver calls, 320-byte row accounting and matching stack exits read.
+DSWAP	0000	1722	1145	476	4d40a2dfca6b88b3d55fbc8ce528bd72a00f2233e074d67dbedc3c05c875749b	Printf flags, width, precision, integer/string/pointer/float dispatch and output helpers; compare-and-jump code, not printable-text data; cross-checked against logo formatter.
+END	0000	56ED	195	73	65942861e036f3326c8bb0ea8c9ee2ac76ed0f50e9a90a596434b538ff834b93	Printf flags/width/precision/length dispatch; structure cross-checked against START 9D7B, with local argument-helper and parser targets.
+MPS_LOGO	0146	103B	787	302	058ae419649c77a635684e34198b1a89da126be664ffc63268035129cc4246c8	Far-model printf flags, width, precision and conversion dispatch; same local-frame layout and branches as DSWAP formatter, adjusted argument helpers.
+PLAYER	0000	09B8	460	186	8dbf0e68b596019cfa3a9677415a2ad66a93e9b107cf62bc8c56ba194b9e21c8	Hex/status-text formatting and size/percentage report composition; buffer append, integer arithmetic, far output copies and balanced returns read.
+SETUP	0000	0562	1257	509	3ca6e59f5aa8bef865eb8eaddb30254c721b6d6836d27a9bed41ed76a2bfcbdc	Text positioning and near/far wrapped-text helpers; signed decimal formatting with comma grouping; complete routines and returns read.
+SETUP	0000	0CB2	484	230	3ac3f9d7e1a61108797c38295d09dc2a62d3f26df6b8816ac087504be60c5eb6	DOS open/create/close wrappers and error branches; stack frames, INT 21h functions 3C/3D/3E and shared error jumps read.
+SETUP	0000	17B0	413	188	2a33cb5d31f077f51890ec33c148cb29c861767f71b7dbf2da012c92314f7d27	Random generator and signed 32-bit division, multiplication, remainder and shift helpers; arithmetic loops and RET 8 endings read.
+START	0000	9D7B	195	73	65942861e036f3326c8bb0ea8c9ee2ac76ed0f50e9a90a596434b538ff834b93	Printf flags/width/precision/length dispatch immediately before matched 9E3E; backward parser branches and argument-fetch calls read.
+VGAME	0000	5737	282	101	1f4b26f73b246499a1c7d76fbe870bfa9dda06a398fcf6ff36bf028a49c142ad	Terrain-gated moving-object spawn: flag/difficulty guards, random offsets, distance and heading calculations, record initialization and common LEAVE/RET exit read.
+VGAME	0000	9EFA	4552	1628	401fa28c92c9a1b5e6a63d37a25de95ab9f34b85d3e4fe671467f1ef03891c7f	Complete executed prepass/display body: ENTER frame, 154 call sites, branch closure and RET B0C1; dossier has 1628 instructions, 4552 bytes and no unwalked successors.
+VGAME	1377	0204	338	138	e8050ced770eb2ab67c00d5518034881667459ed2d767363de3898d2df3d847b	Colour/plane setup and clipped planar/packed pixel writers; viewport checks, VGA port access and RET/RETF exits read.
+VGAME	1377	0BF6	203	80	a3b19a620c85225756082c94afe8b4390776df159b4f2f65edbad73ba1626406	Packed two-bit span renderer: clip bounds, lane masks, bulk fills and row-table resets; backward branches return to the same drawing loop.
+VGAME	1377	0CC2	244	98	c74d6a75898f84b8ed2eb68c2b8563ea334190349c2e5861148f27635853afa6	Packed-nibble span renderer: clipping, partial-byte masks, STOSB/STOSW fills and row-sentinel resets; alternate segment aliases deduplicated.
+VGAME	1452	0063	440	211	a9d214d43b71aa1bf85fb054338a91f4f629b12076274eb20a861d302ee00852	Far lookup-table atan/trigonometric and distance helpers; sign/octant branches, table indices and RETF exits read.
+VGAME	1452	04D9	550	234	28984e482fd2fd9f8b0ab3dc3dbb4d87bfe77ac9ef1424c3fe99119a7ce9b06d	Far fixed-point projection, multiply/divide, saturation and attitude-matrix helpers; arithmetic branches and RETF exits read.

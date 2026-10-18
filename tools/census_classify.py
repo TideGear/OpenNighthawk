@@ -29,8 +29,9 @@ ever earn credit, so the score's denominator is split. Every census byte is exac
 
 The historical census share is credited / (bytes - data - original). Phase 2 also includes the separately
 reported supplement of executed instructions outside these rows in the same seven programs; add its named
-bytes to the numerator and all its bytes to the denominator. Static-only discoveries and other modules are
-an explicit scope backlog. `data` and `original` leave only uncredited bytes; a body that
+bytes to the numerator and all its bytes to the denominator. Reviewed static code from docs/census-code.tsv
+also adds workload; unreviewed discoveries and other modules remain a scope backlog.
+`data` and `original` leave only uncredited bytes; a body that
 does run some of those bytes keeps its credit. Linear census addresses are the image offsets of the loaded
 programs, which is how the rest of the tooling reads them.
 
@@ -41,6 +42,7 @@ credited whatever it was judged to be. docs/census-data.tsv records every data r
 import argparse
 import collections
 import glob
+import hashlib
 import os
 import sys
 
@@ -52,6 +54,7 @@ import progress  # noqa: E402
 
 ORIGINAL = os.path.join(ROOT, "docs", "census-original.tsv")
 DATA_TABLE = os.path.join(ROOT, "docs", "census-data.tsv")
+CODE_TABLE = os.path.join(ROOT, "docs", "census-code.tsv")
 CLASSES = ("credited", "ran", "never_run", "unreached", "slots", "data", "original")
 SLOT = b"\xea\x00\x00\x00\x00"   # a far jump to 0000:0000: a blank slot the run time patches
 
@@ -75,6 +78,52 @@ def read_data_table(path=DATA_TABLE):
                 a = line.split("\t")
                 start = int(a[1], 16)
                 out[a[0].upper().replace(".EXE", "")].update(range(start, start + int(a[2])))
+    return out
+
+
+def reviewed_code_bytes(mods, path=CODE_TABLE):
+    """Read human-reviewed static code ranges, pinned by hash and instruction boundaries.
+
+    This validates a review, not a guess that decodable bytes must be code.
+    The table records the code's purpose and the independent review evidence.
+    A stale hash, partial instruction, wrong count or overlapping review fails
+    the refresh rather than silently changing the denominator.
+    """
+    from x86dec import DecodeError, K_INVALID, decode
+    out = collections.defaultdict(set)
+    with open(path, encoding="utf-8") as source:
+        for number, line in enumerate(source, 1):
+            if not line.strip() or line.startswith("#"):
+                continue
+            fields = line.rstrip("\n").split("\t")
+            if len(fields) != 7 or not fields[6].strip():
+                raise ValueError("%s:%d: expected module, segment, IP, length, count, SHA256, evidence" % (path, number))
+            name, seg, ip, size, count, digest, _evidence = fields
+            seg, ip, size, count = int(seg, 16), int(ip, 16), int(size), int(count)
+            mod = mods.get(name)
+            if mod is None or not (0 <= seg <= 0xFFFF and 0 <= ip < ip + size <= 0x10000 and count > 0):
+                raise ValueError("%s:%d: invalid module or range" % (path, number))
+            off = mod.off(seg, ip)
+            if off < 0 or off + size > len(mod.image):
+                raise ValueError("%s:%d: range outside image" % (path, number))
+            if hashlib.sha256(mod.image[off:off + size]).hexdigest() != digest:
+                raise ValueError("%s:%d: reviewed code hash differs" % (path, number))
+            pos, found = ip, 0
+            try:
+                while pos < ip + size:
+                    ins = decode(mod.image, mod.off(seg, pos), pos)
+                    if ins.kind == K_INVALID or ins.length <= 0 or pos + ins.length > ip + size:
+                        raise ValueError("invalid or partial instruction")
+                    pos += ins.length
+                    found += 1
+            except (DecodeError, ValueError) as error:
+                raise ValueError("%s:%d: reviewed range does not decode cleanly: %s" % (path, number, error)) from error
+            if found != count:
+                raise ValueError("%s:%d: reviewed instruction count differs" % (path, number))
+            span = set(range(seg * 16 + ip, seg * 16 + ip + size))
+            if span & out[name]:
+                raise ValueError("%s:%d: overlapping code reviews" % (path, number))
+            out[name].update(span)
     return out
 
 
@@ -242,27 +291,32 @@ def load_rows(path):
     return [(r[0], int(r[1], 16), int(r[2])) for r in lines if len(r) > 2]
 
 
-def supplemental_scope(rows, covered, ran):
+def supplemental_scope(rows, covered, ran, reviewed=None):
     """Executed code outside the old census, in its seven programs only.
 
     Keep the historical rows intact. Add each outside byte once if a validated
     interpreter capture or a matched body's proof executed its instruction.
-    Static discovery alone is not execution evidence and adds nothing here.
+    Human-reviewed static code is added from the separately checked table;
+    static discovery alone adds nothing here.
     The other modules remain separately reported debt, not silently included
     in a measure whose matched table only supports these seven programs.
     """
     inside = collections.defaultdict(set)
+    reviewed = reviewed or {}
     for module, linear, size in rows:
         inside[module].update(range(linear, linear + size))
     by_module = {}
     for module, census in sorted(inside.items()):
         named = covered.get(module, set())
-        extra = (ran.get(module, set()) | named) - census
-        by_module[module] = dict(bytes=len(extra), credited=len(extra & named))
+        executed = ran.get(module, set()) | named
+        extra = (executed | reviewed.get(module, set())) - census
+        by_module[module] = dict(bytes=len(extra), credited=len(extra & named),
+                                reviewed_static_bytes=len(extra - executed))
     other = {module: len(bytes_) for module, bytes_ in sorted(ran.items()) if module not in inside}
-    return dict(basis="census plus executed instructions in the seven census programs",
+    return dict(basis="census plus executed and reviewed static code in the seven census programs",
                 bytes=sum(v["bytes"] for v in by_module.values()),
                 credited=sum(v["credited"] for v in by_module.values()),
+                reviewed_static_bytes=sum(v["reviewed_static_bytes"] for v in by_module.values()),
                 by_module=by_module, other_modules_executed_bytes=other)
 
 
@@ -275,7 +329,7 @@ def run(census, cover_dir, route_dir, data_dir, scope=None):
     ran = route_instructions(route_dir, mods, audit)
     totals, per_row = classify(rows, covered, ran, mods, read_original(), read_data_table())
     if scope is not None:
-        scope.update(supplemental_scope(rows, covered, ran))
+        scope.update(supplemental_scope(rows, covered, ran, reviewed_code_bytes(mods)))
         scope["route_records"] = audit
     return rows, totals, per_row
 

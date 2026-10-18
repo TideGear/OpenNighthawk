@@ -135,7 +135,7 @@
         "weight": 10.0,
         "done": 0.9,
         "kind": "estimate",
-        "evidence": "Live draw feed (drawfeed.c), host pacing at vsync on the machine clock, picture-age setting, original-picture switch, threaded presentation (records replayed as they arrive, in-between work one frame ahead on a worker, palette on helper threads). Isolated fullscreen D3D11 3840x2160/59.99 Hz/N=9 runs passed tools/presentation_timing.py on strike, air-to-air and landing (13 Oct; p99 16.71 ms) with every logic frame exact; hidden 4K throughput 119-150 fps (15 Oct). Fullscreen 4K/59.99 Hz timing of the latest build (rerun, 17 Oct 2026, owner screen): strike and landing pass (p99 16.95 and 17.38 ms); air-to-air fails the p99 limit on a short sample (22.15 ms, 0.42% over 25 ms), so no credit yet. Open: a longer air-to-air run, slower CPUs/weaker GPUs, cargo/career flights. Reused by the new 60+ fps method."
+        "evidence": "Live draw feed (drawfeed.c), host pacing at vsync on the machine clock, picture-age setting, original-picture switch, threaded presentation (records replayed as they arrive, in-between work one frame ahead on a worker, palette on helper threads). Isolated fullscreen D3D11 3840x2160/59.99 Hz/N=9 runs passed tools/presentation_timing.py on strike, air-to-air and landing (13 Oct; p99 16.71 ms) with every logic frame exact; hidden 4K throughput 119-150 fps (15 Oct). Fullscreen 4K/59.99 Hz timing of the latest build (rerun, 17 Oct 2026, owner screen): strike and landing pass (p99 16.95 and 17.38 ms); air-to-air fails the p99 limit on a short sample (22.15 ms, 0.42% over 25 ms), so no credit yet. The authorized longer air-to-air check (17 Oct) also fails: 17,241 pictures, p99 28.6976 ms, 3.7022% over 25 ms; all 3,679 logic frames exact and guest drift 0.005819 s. No score increase. Open: diagnose pacing, slower CPUs/weaker GPUs, cargo/career flights. Evidence: D:/f117-gate/present-v2/stage4-airair-long-20261017. Reused by the new 60+ fps method."
       },
       {
         "item": "Stage 3: smooth in-between frames (60+ fps)",
@@ -164,37 +164,45 @@
     },
     "creditable_bytes": 169933,
     "supplemental": {
-      "basis": "census plus executed instructions in the seven census programs",
-      "bytes": 5927,
+      "basis": "census plus executed and reviewed static code in the seven census programs",
+      "bytes": 14268,
       "credited": 846,
+      "reviewed_static_bytes": 8341,
       "by_module": {
         "DSWAP": {
-          "bytes": 135,
-          "credited": 98
+          "bytes": 1563,
+          "credited": 98,
+          "reviewed_static_bytes": 1428
         },
         "END": {
-          "bytes": 171,
-          "credited": 24
+          "bytes": 366,
+          "credited": 24,
+          "reviewed_static_bytes": 195
         },
         "MPS_LOGO": {
-          "bytes": 64,
-          "credited": 49
+          "bytes": 851,
+          "credited": 49,
+          "reviewed_static_bytes": 787
         },
         "PLAYER": {
-          "bytes": 23,
-          "credited": 22
+          "bytes": 483,
+          "credited": 22,
+          "reviewed_static_bytes": 460
         },
         "SETUP": {
-          "bytes": 288,
-          "credited": 51
+          "bytes": 2442,
+          "credited": 51,
+          "reviewed_static_bytes": 2154
         },
         "START": {
-          "bytes": 1186,
-          "credited": 291
+          "bytes": 1381,
+          "credited": 291,
+          "reviewed_static_bytes": 195
         },
         "VGAME": {
-          "bytes": 4060,
-          "credited": 311
+          "bytes": 7182,
+          "credited": 311,
+          "reviewed_static_bytes": 3122
         }
       },
       "other_modules_executed_bytes": {

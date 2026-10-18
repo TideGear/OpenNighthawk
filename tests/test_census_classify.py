@@ -3,6 +3,7 @@ doubt a byte stays in the denominator. These tests build a small synthetic progr
 cases that must NOT be excluded (a short zero run, opcodes that read as text, a byte a route ran), and that
 progress.py uses the creditable bytes."""
 import collections
+import hashlib
 import sys
 import tempfile
 import unittest
@@ -196,17 +197,67 @@ class RouteTests(unittest.TestCase):
                 self.capture(b"\xc3", record)
 
 
-class ScoreTests(unittest.TestCase):
+class SupplementalTests(unittest.TestCase):
     def test_supplement_adds_executed_bytes_once_without_changing_old_rows(self):
         rows = [("T", 0, 3), ("T", 0x10, 0), ("U", 0, 1)]
         scope = cc.supplemental_scope(rows, {"T": {2, 3, 4, 7}},
                                       {"T": {2, 3, 4, 5}, "U": {0, 1}, "DRIVER.117": {0, 1}})
         self.assertEqual(scope["bytes"], 5)   # T: 3,4,5,7; U: 1
         self.assertEqual(scope["credited"], 3)
-        self.assertEqual(scope["by_module"]["T"], dict(bytes=4, credited=3))
+        self.assertEqual(scope["by_module"]["T"], dict(bytes=4, credited=3, reviewed_static_bytes=0))
         self.assertEqual(scope["other_modules_executed_bytes"], {"DRIVER.117": 2})
         self.assertEqual(rows[1], ("T", 0x10, 0))
 
+    def test_reviewed_static_code_adds_work_without_inventing_matching_credit(self):
+        scope = cc.supplemental_scope([("T", 0, 2)], {"T": {2}}, {"T": {3}}, {"T": {0, 2, 3, 4, 5}})
+        self.assertEqual((scope["bytes"], scope["credited"], scope["reviewed_static_bytes"]), (4, 1, 2))
+
+
+class ReviewedCodeTests(unittest.TestCase):
+    IMAGE = bytes.fromhex("55c70634127856c39090909090909090")
+
+    def row(self, *, ip=0, size=8, count=3, digest=None, evidence="reviewed synthetic code"):
+        digest = digest or hashlib.sha256(self.IMAGE[ip:ip + size]).hexdigest()
+        return "T\t0000\t%04X\t%d\t%d\t%s\t%s\n" % (ip, size, count, digest, evidence)
+
+    def read(self, text):
+        mod = Module("T.EXE", 1, "exe", self.IMAGE, set())
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "code.tsv"
+            path.write_text(text, encoding="utf-8")
+            return cc.reviewed_code_bytes({"T": mod}, path)
+
+    def test_reviewed_range_has_exact_hash_count_and_boundaries(self):
+        self.assertEqual(self.read("# review\n" + self.row())["T"], set(range(8)))
+
+    def test_stale_hash_fails(self):
+        with self.assertRaisesRegex(ValueError, "hash differs"):
+            self.read(self.row(digest="0" * 64))
+
+    def test_wrong_instruction_count_fails(self):
+        with self.assertRaisesRegex(ValueError, "count differs"):
+            self.read(self.row(count=4))
+
+    def test_partial_instruction_fails(self):
+        with self.assertRaisesRegex(ValueError, "does not decode cleanly"):
+            self.read(self.row(size=5, count=2))
+
+    def test_overlapping_reviews_fail(self):
+        with self.assertRaisesRegex(ValueError, "overlapping"):
+            self.read(self.row() + self.row(ip=7, size=2, count=2))
+
+    def test_outside_image_or_segment_fails(self):
+        for row in (self.row(size=40), self.row(ip=0xFFFF, size=2)):
+            with self.assertRaises(ValueError):
+                self.read(row)
+
+    def test_unknown_module_or_missing_evidence_fails(self):
+        for row in (self.row().replace("T\t", "UNKNOWN\t"), self.row(evidence="")):
+            with self.assertRaises(ValueError):
+                self.read(row)
+
+
+class ScoreTests(unittest.TestCase):
     def test_a_zero_size_row_does_not_hide_executed_code(self):
         scope = cc.supplemental_scope([("T", 0x10, 0)], {"T": {0x10}}, {"T": {0x10, 0x11}})
         self.assertEqual((scope["bytes"], scope["credited"]), (2, 1))

@@ -83,8 +83,17 @@ stays on the roadmap.
   instruction, checks the module's file hash and its captured opcode/operand bytes against the image,
   allows relocated words and the known bound jump vectors, and rejects changed or undecodable code.
   The 127 rejected unique records are reported alongside 57,646 accepted records; they add no bytes.
-  Fixture-only named bytes count by the same proof rule as inside the old census. Static discoveries
-  without execution evidence are still an audit backlog. The launcher, resident graphics library and
+  Fixture-only named bytes count by the same proof rule as inside the old census.
+  **Static-code review, first tranche (17 October):** 16 ranges across all seven programs add another
+  8,341 bytes, with no new matching credit: the expanded count is now **148,294 / 184,201**, P2 **81.48%**
+  and overall **93.64%**. `docs/census-code.tsv` records each range's segment/IP, length, instruction
+  count, SHA256 and review evidence. Every refresh verifies the hash, complete instruction boundaries,
+  count and absence of overlapping reviews. The private review also checks every instruction's length
+  with Capstone. The ranges cover text and DOS helpers, printf branches, arithmetic, pixel/span drawing,
+  object spawning and the complete VGAME `09EFA` body. They identify code to match; they do not claim
+  that code has a named equivalent. The remaining 7,089 bytes in the static discovery inventory are still
+  unreviewed, including speculative decodes of tables/padding and decoder disagreements.
+  The launcher, resident graphics library and
   sound drivers have 18,469 validated executed bytes reported separately; extending matching and the
   score to these modules remains open. Thus the score measures the expanded seven-program scope,
   not all game code. `census_classify.py` prints the supplement, module counts and rejected-record counts;
