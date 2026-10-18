@@ -856,7 +856,9 @@ freezes the picture at t = 1 and a shorter one skips forward. Simulated over the
 two. A playback position, counted in steps, advances with the machine's clock over a smoothed step duration (each new
 duration weighted 0.2, `F117_PRESENT_CLOCK_ALPHA`), with its rate pulled towards one step behind the newest (0.05 per
 step of error, `F117_PRESENT_CLOCK_PULL`; never below 0.2 of normal speed). It never passes the newest step nor drops
-behind the oldest published one, and names the two consecutive steps it lies between. If no such pair can be drawn,
+behind the oldest published one, and names the two consecutive steps it lies between. At startup, if the first usable
+pair starts ahead of that position, playback starts at its older end. Missing copy snapshots use draw-list interpolation
+at the same position. This avoids changing clocks and then rewinding as smoothing catches up. If no pair exists,
 the plain clock plans. In simulation it gives 2 freezes, 0 skips and 1.6% (p99 41% against 429%), for about 0.3 step
 (17 ms) more picture age. `F117_PRESENT_CLOCK=raw` switches it off.
 
@@ -897,6 +899,17 @@ requests that reach geometry agree with original-byte execution, as do 2,330 cam
 preparation is not independent. Evidence: `D:/f117-gate/present-v2/scene`.
 
 ## Verification
+
+18 October dispatch/startup repair: override calls now use a sorted address
+lookup rather than scanning the module twice. The one-million-call lookup
+benchmark drops from 501 to 27 ms; this is not a whole-frame speedup. The
+same six-minute type-5 combat recording at 15 Hz /60 MIPS, fullscreen scale 9,
+keeps all 5,396 logic frames and final state exact. p99 improves from 32.9292
+to 21.5797 ms and intervals above 25 ms from 12.9533% to 0.03291%; the startup
+rewind is gone. **It still fails the 20.8333-ms p99 limit.** Full gate (241
+CTests), all 45 rerun routes, boot at N=4/9 and the combat copy-isolation check
+pass. Evidence: `D:/f117-gate/4k60-fix-20261018/`. Desktop activation/capture
+failed, so physical visibility and perceived motion remain unverified.
 
 A presentation change is held to these checks (commands and costs: [repeated-processes.md](repeated-processes.md);
 the latest full-gate tally: the handoff):

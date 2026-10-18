@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 static machine_t m;
 static int failures, calls, answer = 1;
@@ -73,6 +74,45 @@ static void check_override_capacity(void)
     CHECK(recomp_override_enable("CAP", 0) == COUNT);
     CHECK(recomp_overrides_live == live_before);
     CHECK(step_at(SEG, FIRST + COUNT - 1) == 0);
+}
+
+/* Registration order need not follow address order. Aliased physical
+ * addresses must still dispatch only under their registered CS. */
+static int lookup_other(machine_t *mm) { mm->cpu.ip += 3; return 1; }
+static void check_lookup(int bench)
+{
+    enum { COUNT = 1009, SEG = 0x8000, FIRST = 0x10 };
+    static const uint8_t image[0x1000] = { 0x90 };
+    for (int i = 0; i < COUNT; i++) {
+        const int p = (i * 37) % COUNT;
+        const recomp_override o = { "LOOK", "LOOKUP.OVL", 0, 0,
+            (uint16_t)(FIRST + 2 * p), p & 1 ? lookup_other : skip_two, "sparse lookup" };
+        CHECK(recomp_override_add(&o) >= 0);
+    }
+    const recomp_override alias = { "LOOK", "LOOKUP.OVL", 0, 1, 0,
+        lookup_other, "same physical address, different CS" };
+    CHECK(recomp_override_add(&alias) >= 0);
+    recomp_module_load(NULL, &m, "LOOKUP.OVL", image, sizeof image,
+                       MODLOAD_OVERLAY, SEG, SEG);
+    CHECK(recomp_override_enable("LOOK", 1) == COUNT + 1);
+    answer = 1;
+    for (int p = 0; p < COUNT; p++) {
+        const uint16_t ip = (uint16_t)(FIRST + 2 * p);
+        CHECK(step_at(SEG, ip) == 1);
+        CHECK(m.cpu.ip == ip + (p & 1 ? 3 : 2));
+        CHECK(step_at(SEG, ip + 1) == 0);
+        if (p) CHECK(step_at(SEG + 1, ip - 16) == 0);
+    }
+    CHECK(step_at(SEG + 1, 0) == 1 && m.cpu.ip == 3);
+    if (bench) {
+        const clock_t began = clock();
+        for (int i = 0; i < 1000000; i++)
+            step_at(SEG, (uint16_t)(FIRST + 2 * ((i * 37u) % COUNT)));
+        printf("lookup benchmark: 1000000 calls, %.6f seconds\n",
+               (double)(clock() - began) / CLOCKS_PER_SEC);
+    }
+    CHECK(recomp_override_enable("LOOK", 0) == COUNT + 1);
+    CHECK(step_at(SEG, FIRST) == 0 && step_at(SEG + 1, 0) == 0);
 }
 
 
@@ -315,7 +355,7 @@ static void check_original_observer(void)
     m.cpu.io_cross = 0;
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
     m.mem = calloc(1, MEM_SIZE);
     if (!m.mem) return 1;
@@ -492,6 +532,7 @@ int main(void)
     CHECK(recomp_override_duplicates(stdout, deliberate) == 0);
     check_fix_takes_place();
     check_original_observer();
+    check_lookup(argc == 2 && !strcmp(argv[1], "--bench"));
     recomp_shutdown(&m);
     if (failures) { fprintf(stderr, "%d failures\n", failures); return 1; }
     printf("code overrides: all checks passed\n");

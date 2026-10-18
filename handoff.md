@@ -16,6 +16,55 @@ S15, 15 normal /30 compressed updates, phase-correct transitions, and recorded
 per-machine cadence. Legacy recordings retain eight. Do not promote 15/40:
 it fails active compressed-flight capacity.
 
+**18 Oct 4K60 repair in progress:** the owner asked why 4K60 fails and to fix
+it. Working source now sorts override placements by address, replacing two
+linear hot-path scans with a binary lookup while preserving registration
+order, fix priority and exact CS. A ROM-free sparse/alias test and optional
+one-million-call benchmark pass (501 ms before, 27 ms after; dispatch only).
+The new playback-clock regression reproduces startup reversal on the old
+code and passes after keeping the first usable pair and copy fallback on the
+smoothed clock. No normal-play defaults changed. Fresh evidence:
+`D:/f117-gate/4k60-fix-20261018/` (F). `F/gate/full_gate.py`
+passes in 809 s, source frozen: 241 CTests, all
+45 routes, both instruction profiles, all three matched seeds and
+reachability/event checks. `F/fixture-verdict.json` passes:
+both scan engines and rerun match the old interpreter's checkpoints/end
+state, 5,396 exact logic frames and 24,913 isolated extra draws. Full rerun
+N=1 (45 routes) and boot N=4/9 pass in 1,359 s, frozen files unchanged.
+The native bundle is frozen under `F/app-root/build/`. The same-record
+fullscreen run finished under `F/display60-airair-live/`, launched by
+`F/display_after.py`: 759.45 s, exact 5,396 frames/final state, no rewind,
+7 intervals over 25 ms (0.03291%, down from 12.9533%). It still fails only
+p99: 21.5797 ms against 20.8333 (was 32.9292). Retain this failed capture.
+`F/profile/run.py` is profiling remaining frame cost in a hidden window,
+using a private instrumented main linked against frozen production libraries.
+It seeks to 23.4 billion clocks and times sixty seconds, ending at 27 billion;
+the final hash must match the old checkpoint. A first private seek attempt
+was aborted for a diagnostic nanosecond multiplication overflow (no product
+source involved); `seek-overflow-aborted/` is not evidence. The corrected
+diagnostic divides before multiplying. Do not change thresholds or defaults.
+Sky activation failed with GetCursorPos access denied; refreshed selection
+and one capture retry timed out. No LockApp was returned; do not assume
+the desktop is locked or bypass UI protections. A pending async question
+asks the owner whether the game is visible on an unlocked desktop.
+`ui-inspection.json` records the limitation. No visual assessment is claimed.
+The first attempt is retained as `F/gate-initial-escape/`: 240 CTests, all
+45 routes (44 fresh interpreter sessions) and both instruction profiles
+passed, but the rotating seed exposed an existing harness false escape.
+A random DS write destroyed a callee RET; the pre-change dispatcher
+reproduces it. The harness now requires exact original clock/register/
+segment/flag evidence at that destroyed return, still compares all final
+state, and gives no named-code completion credit. A regression preserves
+4,864 comparisons /50 skips /886 covered instructions; a private one-tick
+negative control still fails. The new full gate reuses those freshly
+verified interpreter results because production code is unchanged; tests
+and the new test registration are the only amendment. Details and source
+hashes: `F/test-only-gate-amendment.json`, `F/escape-debug/`.
+No visible game remains running. Future fullscreen tests remain authorized:
+announce them and finish hidden workers first. The user's three bat files
+stay untouched. Save the validated dispatch/startup repair as a checkpoint;
+continue profiling and fixing the remaining p99 failure.
+
 Fresh evidence: `D:/f117-gate/cadence15-production-20261018/` (below, P).
 The definitive full gate is `P/gate-final/`; interrupted 17 Oct and initial
 18 Oct attempts are retained separately and are not acceptance verdicts.

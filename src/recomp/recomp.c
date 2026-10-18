@@ -30,6 +30,8 @@ int rc_instruction_budget = -1;
 #define MAX_OVERRIDES 4096   /* matched routines, fixes and observer hooks: room for the whole census */
 #define MAX_PLACED MAX_OVERRIDES /* every registered override can share a module */
 
+typedef struct { uint32_t lin; int index; } placed_override;
+
 typedef struct instance {
     const rc_module *mod;          /* NULL: a module with no translation */
     char      name[16];
@@ -47,8 +49,7 @@ typedef struct instance {
     int       ran;                 /* some region has verified: its code is running */
     int       floating;            /* recognised by content, not loaded by DOS */
     /* enabled overrides placed in this image, and the regions they refuse */
-    uint32_t  ov_lin[MAX_PLACED];
-    int       ov_index[MAX_PLACED];
+    placed_override ov[MAX_PLACED]; /* address sorted, registration order within each address */
     int       nov;
     uint8_t  *refused;             /* per region: contains an override */
 } instance;
@@ -135,9 +136,16 @@ static void count_live_overrides(void)
 static void unplace_overrides(instance *in)
 {
     for (int k = 0; k < in->nov; k++)
-        g_ov_bits[in->ov_lin[k] >> 3] &= (uint8_t)~(1u << (in->ov_lin[k] & 7));
+        g_ov_bits[in->ov[k].lin >> 3] &= (uint8_t)~(1u << (in->ov[k].lin & 7));
     in->nov = 0;
     if (in->refused && in->mod) memset(in->refused, 0, in->mod->nregions ? in->mod->nregions : 1);
+}
+
+static int placed_order(const void *aa, const void *bb)
+{
+    const placed_override *a = aa, *b = bb;
+    if (a->lin != b->lin) return a->lin < b->lin ? -1 : 1;
+    return (a->index > b->index) - (a->index < b->index);
 }
 
 /* Place the enabled overrides that belong to this module, and refuse every
@@ -153,8 +161,8 @@ static void place_overrides(instance *in)
         if (o->file_hash && o->file_hash != in->file_hash) continue;
         const uint32_t lin = phys((uint16_t)(in->base + o->seg), o->ip);
         if (lin < in->lo || lin >= in->hi) continue;
-        in->ov_lin[in->nov] = lin;
-        in->ov_index[in->nov++] = i;
+        in->ov[in->nov].lin = lin;
+        in->ov[in->nov++].index = i;
         g_ov_bits[lin >> 3] |= (uint8_t)(1u << (lin & 7));
         if (!in->mod) continue;
         const rc_module *m = in->mod;
@@ -167,6 +175,7 @@ static void place_overrides(instance *in)
                 if (off >= run->off && off < run->off + run->len) { in->refused[r] = 1; break; }
             }
     }
+    qsort(in->ov, in->nov, sizeof in->ov[0], placed_order);
 }
 
 int recomp_override_add(const recomp_override *o)
@@ -205,7 +214,7 @@ int recomp_fix_placed_in(uint32_t lo, uint32_t hi)
         const instance *in = &g_rt.inst[i];
         if (!in->live) continue;
         for (int k = 0; k < in->nov; k++)
-            if (!g_ov[in->ov_index[k]].matched && in->ov_lin[k] >= lo && in->ov_lin[k] < hi) return 1;
+            if (!g_ov[in->ov[k].index].matched && in->ov[k].lin >= lo && in->ov[k].lin < hi) return 1;
     }
     return 0;
 }
@@ -367,21 +376,31 @@ int recomp_override_step(machine_t *m)
     if (!((g_ov_bits[lin >> 3] >> (lin & 7)) & 1)) return 0;
     instance *in = g_rt.by_para[lin >> 4];
     if (!in || !in->live) return 0;
+    /* Find this address once, rather than scan the whole module on every
+     * nested drawing call. Ties retain registry order and still check CS. */
+    int first = 0, end = in->nov;
+    while (first < end) {
+        const int mid = first + (end - first) / 2;
+        if (in->ov[mid].lin < lin) first = mid + 1;
+        else end = mid;
+    }
+    end = first;
+    while (end < in->nov && in->ov[end].lin == lin) end++;
     /* A switched-on fix takes the place of the parity routine (and any observer) at its address, whatever
      * order they were registered in: the parity routine reproduces the original, and the fix is the
      * deviation that was switched on. Found first, it alone runs there. */
     int fix = -1;
-    for (int k = 0; k < in->nov && fix < 0; k++) {
-        const recomp_override *o = &g_ov[in->ov_index[k]];
-        if (!o->matched && in->ov_lin[k] == lin && (uint16_t)(in->base + o->seg) == cs) fix = k;
+    for (int k = first; k < end && fix < 0; k++) {
+        const recomp_override *o = &g_ov[in->ov[k].index];
+        if (!o->matched && (uint16_t)(in->base + o->seg) == cs) fix = k;
     }
-    for (int k = 0; k < in->nov; k++) {
+    for (int k = first; k < end; k++) {
         if (fix >= 0 && k != fix) continue;
         /* Guest calls can unload or replace this instance before the body
          * returns. Keep the registered override's identity for its counters. */
-        const int index = in->ov_index[k];
+        const int index = in->ov[k].index;
         const recomp_override *o = &g_ov[index];
-        if (in->ov_lin[k] != lin || (uint16_t)(in->base + o->seg) != cs) continue;
+        if ((uint16_t)(in->base + o->seg) != cs) continue;
         if (is_parity(o) && m->engine != ENGINE_RECOMP) continue;   /* an observer placed there still runs */
         /* Observers always leave the original instruction to the caller.
          * Do not reset timing bookkeeping or run shadow/room accounting for

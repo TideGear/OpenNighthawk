@@ -313,6 +313,9 @@ if(F117R_BUILD_TESTS)
   add_executable(test_rerun tests/test_rerun.c)
   target_link_libraries(test_rerun PRIVATE f117present f117recomp_none)
   add_test(NAME presentation_rerun_isolation COMMAND test_rerun)
+  add_executable(test_drawlive_clock tests/test_drawlive_clock.c)
+  target_link_libraries(test_drawlive_clock PRIVATE f117present f117recomp_none)
+  add_test(NAME presentation_playback_clock COMMAND test_drawlive_clock)
   add_executable(test_band_state tests/test_band_state.c)
   target_link_libraries(test_band_state PRIVATE f117present)
   add_test(NAME presentation_band_state COMMAND test_band_state D:/f117-gate/present-v2/horizon/corpus)
@@ -447,6 +450,10 @@ if(F117R_BUILD_TESTS)
     # Incoming/player weapons, complete branch coverage and divide-error frames.
     add_test(NAME matched_projectiles COMMAND func_lockstep --states 4000
       --only VGAME.EXE:683E)
+    # Random DS aliases destroy a callee RET; retain full-state comparison
+    # without mistaking the original's fallthrough for a named-code escape.
+    add_test(NAME matched_projectile_callee_code_alias COMMAND func_lockstep --states 4000
+      --seed 0x5b0a262588dc --only VGAME.EXE:683E)
     # Planted keys, quit-prompt answers, ejection, touchdown and crash states;
     # an escaped callee return or thin coverage fails the test.
     add_test(NAME matched_flight_input COMMAND func_lockstep --states 4000

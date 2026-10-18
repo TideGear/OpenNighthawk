@@ -1,5 +1,38 @@
 # Repeated processes
 
+**18 Oct 4K60 repair:** fresh evidence goes in
+`D:/f117-gate/4k60-fix-20261018/`. Before/after override lookup benchmark
+uses one million calls across 1,009 shuffled addresses; it is a dispatcher
+microbenchmark, not a display result. ROM-free startup-clock regression runs
+before and after the repair. After source freezes, run the complete parity
+gate and all-route rerun checks, then the frozen six-minute air-combat record
+from `cadence15-production-20261018/live-airair60-fixture/input.log` at the
+same scale-9 fullscreen settings, with hidden workers finished. Keep the
+original failed display trace immutable; compare exact state and unchanged
+pacing limits. No default promotion follows from the microbenchmark alone.
+
+The first repair gate (`gate-initial-escape/`) passed 240 CTests, all 45
+route comparisons with 44 fresh interpreter sessions and both instruction
+profiles, but the rotating seed exposed a pre-existing harness false escape:
+state 3618 overwrites an ABS helper's RET with data. A private pre-change
+dispatcher reproduces it. The harness now matches the exact original state
+at that destroyed return, still compares the complete final state and gives
+no named-code completion credit. The regression retains all 4,864 comparisons,
+50 skips and 886 covered instructions. The final gate reuses the freshly
+verified interpreter cache (production source unchanged) and reruns CTests,
+all recompiled routes, all three matched seeds and reachability/event checks.
+A private negative control offsets only the recorded destroyed-return clock
+by one; the same seed must still fail the escape guard. This checks that the
+repair requires exact original-state evidence rather than suppressing escapes.
+
+The first repaired fullscreen capture (`display60-airair-live/`) still fails
+only p99: 21.5797 ms against 20.8333, versus 32.9292 before. Intervals over
+25 ms fall from 12.9533% to 0.03291% (7); no rewind, all 5,396 frames/final
+state exact. Retain this failure. A private `profile/` executable links the
+frozen production libraries with host phase timers, fast seek, a hidden
+3840x2160 D3D11 window, vsync off and a 60-Hz sleep cap. It profiles a short
+window of the same record; it is diagnostic, never display acceptance.
+
 **18 Oct completed validation:** evidence is under
 `D:/f117-gate/cadence15-production-20261018/` (P). Full gate passes in
 1,802 s with 239 CTests, 45 identical routes, both instruction profiles and

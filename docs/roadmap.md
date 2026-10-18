@@ -958,7 +958,12 @@ Each is fixed; the named regressions keep the failing seed or case.
     capture timed out twice; visual assessment remains open. See
     presentation.md for evidence;
     hidden profiling locates copied-draw CPU cost (46% main-thread samples
-    in linear override dispatch); lookup optimization is not yet implemented;
+    in linear override dispatch). The 18 Oct repair replaces those scans with
+    a sorted address lookup and keeps startup playback on one clock; fresh
+    full gate (241 CTests), all-route rerun and the same-record extra-draw
+    checks pass under `D:/f117-gate/4k60-fix-20261018/`. Fullscreen improves
+    to p99 21.58 ms, 0.03291% over 25 ms and no rewind, with exact guest
+    state, but still misses the 20.83-ms p99 limit. Profiling continues;
     line widths by drawing role; weapon and target symbology; long
     cargo/career flights and slower machines. What the owner decided
     against is under "Possible future work" below and is not scored.

@@ -563,10 +563,17 @@ static int plan_smooth(drawlive *r, uint64_t icount, drawlive_plan *plan)
     if (r->play_pos > N) r->play_pos = N;
     if (r->play_pos < (double)oldest_seq) r->play_pos = (double)oldest_seq;
     int lo = -1;
-    for (int k = 0; k < 2; k++)
+    for (int k = 0; k < 2; k++) {
         if (idx[k] >= 0 && idx[k + 1] >= 0 && r->step[idx[k]].seq + 1 == r->step[idx[k + 1]].seq &&
-            r->step[idx[k + 1]].pair && r->step[idx[k]].have_compose && r->step[idx[k + 1]].have_compose &&   /* a pair that can be drawn, or interpolated if the copy fails */
-            r->play_pos >= (double)r->step[idx[k]].seq && r->play_pos <= (double)r->step[idx[k + 1]].seq) { lo = k; break; }
+            r->step[idx[k + 1]].pair) {
+            /* The first seeded pair may start ahead of the playback clock.
+             * Start at that pair instead of falling back to the raw clock
+             * and rewinding when smoothing catches up. A missing machine
+             * snapshot changes how we draw, never the playback position. */
+            if (r->play_pos < (double)r->step[idx[k]].seq) r->play_pos = (double)r->step[idx[k]].seq;
+            if (r->play_pos <= (double)r->step[idx[k + 1]].seq) { lo = k; break; }
+        }
+    }
     if (getenv("F117_RERUN_DEBUG")) fprintf(stderr, "[clock] idx %d %d %d pos %.3f N %.0f ema %.0f lo %d\n", idx[0], idx[1], idx[2], r->play_pos, N, r->ema, lo);
     if (lo < 0) return 0;
     const drawlive_step *a = &r->step[idx[lo]], *b = &r->step[idx[lo + 1]];

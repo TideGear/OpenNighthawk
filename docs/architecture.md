@@ -57,6 +57,12 @@ guest memory, so fix state now travels with the snapshot. For the same reason
 the light check for presentation-only changes (`tools/present_light_check.py`)
 refuses changes to `drawfeed.c/.h` and `rerun.c/.h`; those need the full gate.
 
+Override placements are sorted by physical address when modules load or fixes
+change. Dispatch uses a binary address lookup and checks the exact CS within
+that address's entries. Registration order is preserved for ties, and enabled
+fixes still take precedence over matched routines and observers. This avoids
+scanning every module entry on each nested draw call.
+
 ## The CPU and its two engines
 
 `src/cpu/cpu.c` is the Reimp project's oracle interpreter (see

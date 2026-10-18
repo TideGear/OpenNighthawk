@@ -1128,9 +1128,10 @@ static uint16_t g_cov_ip;
 static unsigned long long g_cov_escapes;
 static unsigned long long g_cov_skips[6];   /* fault, long run, bad return, code written, declined, unfinished */
 static uint8_t g_cov_seen[0x1000], g_cov_cover[0x1000], g_cov_whole[0x1000];
-/* A fuzzed write can turn a callee's RET into RET n. The original then
- * returns to its caller at a different stack depth, so the normal trap
- * cannot catch it. Keep exact original return states: an earlier iteration
+/* A fuzzed write can turn a callee's RET into RET n, or destroy it entirely.
+ * The original then returns at a different stack depth, or falls through
+ * neighboring code, so the normal trap cannot catch it. Keep exact original
+ * states at those changed instructions: an earlier iteration
  * reaching the same IP at the normal depth is not evidence of an escape.
  * A full record falls back to the conservative escaped-call check. */
 static struct { uint64_t clock; uint16_t from_cs, from_ip, r[8], seg[4], flags, ip; } g_changed_ret[128];
@@ -1147,6 +1148,13 @@ static int changed_return(const cpu_t *c, uint16_t cs, uint16_t ip)
         if (c->mem[at] != g_pristine[at]) return 1;
     }
     return 0;
+}
+
+static int destroyed_return(const cpu_t *c, uint16_t cs, uint16_t ip)
+{
+    const uint8_t op = c->mem[phys(cs, ip)], before = g_pristine[phys(cs, ip)];
+    return (before == 0xC3 || before == 0xC2 || before == 0xCB || before == 0xCA) &&
+           op != 0xC3 && op != 0xC2 && op != 0xCB && op != 0xCA;
 }
 
 static int same_changed_return(const cpu_t *c, uint16_t cs, uint16_t ip)
@@ -1292,7 +1300,8 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
         const uint16_t sp_before = a->r[R_SP];
         const int depth_before = a->int_depth;
         const uint16_t from_cs = a->seg[S_CS];
-        const int changed = g_cov >= 0 && a->mem == g_mem[0] && !own && changed_return(a, from_cs, here);
+        const int destroyed = g_cov >= 0 && a->mem == g_mem[0] && !own && destroyed_return(a, from_cs, here);
+        const int changed = destroyed || (g_cov >= 0 && a->mem == g_mem[0] && !own && changed_return(a, from_cs, here));
         int nc_call = 0;
         if (g_nc_track) {
             if (g_nc_in_callee && sp_before >= g_nc_callee_sp) g_nc_in_callee = 0;   /* back from the call */
@@ -1306,7 +1315,7 @@ static int run_to_ret(cpu_t *a, uint16_t entry_sp, int kind, int *steps, uint16_
         }
         cpu_step(a);
         if (nc_call && a->int_depth == depth_before && a->r[R_SP] < sp_before) { g_nc_in_callee = 1; g_nc_callee_sp = sp_before; }
-        if (changed && a->seg[S_CS] == cs && (uint16_t)(a->ip - g_from) < g_span &&
+        if (changed && (destroyed || (a->seg[S_CS] == cs && (uint16_t)(a->ip - g_from) < g_span)) &&
             g_changed_ret_n < sizeof g_changed_ret / sizeof g_changed_ret[0]) {
             const unsigned k = g_changed_ret_n++;
             g_changed_ret[k].clock = a->icount;
@@ -1413,7 +1422,13 @@ static int step_runner(machine_t *mm)
         const uint16_t from_cs = c->seg[S_CS], from_ip = c->ip;
         const uint8_t op = mem_read8(c, phys(from_cs, from_ip));
         const int changed = g_cov >= 0 && changed_return(c, from_cs, from_ip);
+        const int destroyed = g_cov >= 0 && destroyed_return(c, from_cs, from_ip);
         cpu_step(c);
+        /* Match the exact original clock/register/segment/flag state at a
+         * destroyed return, even while it is still inside the callee. The
+         * final full-state comparison remains mandatory, and this path
+         * earns no named-region completion credit. */
+        if (destroyed && same_changed_return(c, from_cs, from_ip)) changed_return_matched = 1;
         if ((op == 0xC3 || op == 0xC2 || op == 0xCB || op == 0xCA) &&
             c->seg[S_CS] == mm->trap_cs && c->ip == mm->trap_ip) {
             if (!return_seen && changed && c->r[R_SP] != mm->trap_sp &&
