@@ -71024,7 +71024,513 @@ leave_pass:
 #undef CALL_FAR
 }
 
+/* VGAME 8F71: draw the navigation display (multi-function display 14h), called
+ * by the display chooser (825D), the page flip (82CF / 7715) and the damage-bar
+ * routine (50BB). It takes no arguments and uses a 20h-byte frame: [bp-14h] the
+ * clock-bar position, [bp-12h] the leg number n (0..3), [bp-10h] the text row,
+ * [bp-18h]/[bp-16h] the leg's far end (y, x), [bp-1Ah] the leg's travel time,
+ * [bp-4] its distance, [bp-2] its colour, [bp-6] the bar's running position,
+ * and the four leg time slots at [bp-0Eh + 2n].
+ *
+ * It first sets the background (far 114A:0280 with 2 and 2Ah, or 2 and 1 when
+ * the night flag [B838] is set), draws the title with 890E (2,2,0,4118h,0Fh),
+ * draws the mission clock [9912] with 9335 (which also becomes the clock-bar
+ * position), and a second 890E line (2,8,0,98A6h,0Fh). Then for each leg
+ * n = 0..3 it builds a text line in the buffer 98A6h out of EB50 (copy),
+ * EB9E (number to text) and EB10 (append): "n+1", a separator, the leg's
+ * distance (C6B3 of the leg's end less its start, [2E9E+4n]/[2EA0+4n], shifted
+ * right by 6) and another separator, and prints it with 890E on row
+ * [bp-10h]++. It works out the leg's travel time: the distance divided by
+ * (the speed [B07E] when it is above 7D0h, else 2A30h) shifted right by 6,
+ * times ([2E0A]^2 / 1000 plus [C5F4] when [3664] bit 5 is set), times 5, kept
+ * in the leg's time slot. It prints the time (a quarter of the travel time) in
+ * a second and third 890E line and, for the legs from the active leg [2EAE]
+ * on, adds eight times the travel time to the clock-bar position, which 92CD
+ * then draws, with a last 890E row.
+ * Colours: legs after the active leg take 0Bh (even n) or 3 (odd n) and their
+ * own end point; the legs up to the active one start from the present position
+ * ([C0D0]/[C0DE]), the passed ones in colour 0, the active one in the parity
+ * colour by day or 0Fh at night; by day the leg picked by [2EB0] is 0Fh.
+ * Finally it draws the bar: 927F with 0 and 2710h, then one segment per leg
+ * from [3666] downwards by the leg times (colour 0Fh for the active leg, the
+ * parity colour for the others, none for the passed ones), and a closing
+ * segment of colour 2Fh. Every callee returns with a plain RET (RETF for
+ * 114A:0280); this routine removes the arguments itself with ADD SP,n or
+ * POP BX. */
+static int vgame_navigation_display(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+#define NB(n_,at_) do { SM4_NEED((n_),(at_)); c->icount += (n_); } while(0)
+#define NCMP(a_,b_) alu_op(c,7,(a_),(b_),1)
+#define NRUN(call_) do { const uint64_t until_=m->run_until; \
+    if(m->run_until>c->stop_at)m->run_until=c->stop_at; \
+    const int returned_=(call_);m->run_until=until_;if(!returned_)return 1; } while(0)
+#define NNEAR(at_,target_,ret_) do { SM4_NEED(1,(at_)); NRUN(guest_call_pop(m,(target_),(ret_),0)); } while(0)
+#define NFAR(at_,ret_) do { SM4_NEED(1,(at_)); NRUN(guest_call_far(m,(at_),(ret_))); } while(0)
+#define NPOP2() do { c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); } while(0)
+#define NADDSP(n_) (c->r[R_SP] = (uint16_t)alu_op(c,0,c->r[R_SP],(n_),1))
+#define NTEXT 0x98A6
+#define LEG   (-0x12)
+#define ROW   (-0x10)
+#define COLOUR (-2)
+    if (!room(c, 4)) return 0;
+    NB(4, 0x8F71);
+    x86_enter(c, 0x20, 0); x86_push_reg(c, R_SI);
+    NCMP(ds_get(c, 0xB838), 0); if (x86_cond(c, 4)) goto day_bg;
+    NB(2, 0x8F7D); cpu_push16(c, 1); goto bg_call;
+day_bg:
+    NB(1, 0x8F81); cpu_push16(c, 0x2A);
+bg_call:
+    NB(1, 0x8F83); cpu_push16(c, 2);
+    NFAR(0x8F85, 0x8F8A);
+    NB(9, 0x8F8A);
+    NPOP2(); c->r[R_AX] = ds_get(c, 0x9912); bp_put(c, -0x14, c->r[R_AX]);
+    cpu_push16(c, 0x0F); cpu_push16(c, 0x4118); cpu_push16(c, 0); cpu_push16(c, 2); cpu_push16(c, 2);
+    NNEAR(0x8F9D, 0x890E, 0x8FA0);
+    NB(2, 0x8FA0);
+    NADDSP(0x0A); cpu_push16(c, bp_get(c, -0x14));
+    NNEAR(0x8FA6, 0x9335, 0x8FA9);
+    NB(6, 0x8FA9);
+    c->r[R_BX] = cpu_pop16(c);
+    cpu_push16(c, 0x0F); cpu_push16(c, NTEXT); cpu_push16(c, 0); cpu_push16(c, 8); cpu_push16(c, 2);
+    NNEAR(0x8FB5, 0x890E, 0x8FB8);
+    NB(4, 0x8FB8);
+    NADDSP(0x0A); bp_put(c, ROW, 1); bp_put(c, LEG, 0); goto loop_test;
+
+    /* The active leg by day: its parity colour, then on to the colour checks. */
+active_leg_day:
+    NB(8, 0x8FC8);
+    set_r8(c, R_AL, bp_get8(c, LEG));
+    c->r[R_AX] = (uint16_t)alu_op(c, 4, c->r[R_AX], 1, 1);
+    NCMP(c->r[R_AX], 1);
+    c->r[R_AX] = (uint16_t)alu_op(c, 3, c->r[R_AX], c->r[R_AX], 1);
+    c->r[R_AX] = (uint16_t)alu_op(c, 4, c->r[R_AX], 8, 1);
+    c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], 3, 1);
+    bp_put(c, COLOUR, c->r[R_AX]); goto colour_check;
+
+    /* A leg after the active one: parity colour and its own end point. */
+later_leg:
+    NB(13, 0x8FDE);
+    set_r8(c, R_AL, bp_get8(c, LEG));
+    c->r[R_AX] = (uint16_t)alu_op(c, 4, c->r[R_AX], 1, 1);
+    NCMP(c->r[R_AX], 1);
+    c->r[R_AX] = (uint16_t)alu_op(c, 3, c->r[R_AX], c->r[R_AX], 1);
+    c->r[R_AX] = (uint16_t)alu_op(c, 4, c->r[R_AX], 8, 1);
+    c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], 3, 1);
+    bp_put(c, COLOUR, c->r[R_AX]);
+    c->r[R_BX] = bp_get(c, LEG); c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 2, 1);
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0x2E9A)); bp_put(c, -0x16, c->r[R_AX]);
+    c->r[R_AX] = ds_get(c, (uint16_t)(c->r[R_BX] + 0x2E9C)); bp_put(c, -0x18, c->r[R_AX]);
+colour_check:
+    NB(2, 0x9006);
+    NCMP(ds_get(c, 0xB838), 0); if (x86_cond(c, 5)) goto text_line;
+    NB(3, 0x900D);
+    c->r[R_AX] = bp_get(c, LEG); NCMP(ds_get(c, 0x2EB0), c->r[R_AX]); if (x86_cond(c, 5)) goto text_line;
+    NB(1, 0x9016); bp_put(c, COLOUR, 0x0F);
+text_line:
+    NB(2, 0x901B);
+    cpu_push16(c, 0x411D); cpu_push16(c, NTEXT);
+    NNEAR(0x9021, 0xEB50, 0x9024);
+    NB(7, 0x9024);
+    NPOP2();
+    cpu_push16(c, 0x0A); cpu_push16(c, 0xDED6);
+    c->r[R_AX] = bp_get(c, LEG); c->r[R_AX] = (uint16_t)alu_inc(c, c->r[R_AX], 1); cpu_push16(c, c->r[R_AX]);
+    NNEAR(0x9030, 0xEB9E, 0x9033);
+    NB(3, 0x9033);
+    NADDSP(6); cpu_push16(c, c->r[R_AX]); cpu_push16(c, NTEXT);
+    NNEAR(0x903A, 0xEB10, 0x903D);
+    NB(4, 0x903D);
+    NPOP2(); cpu_push16(c, 0x4128); cpu_push16(c, NTEXT);
+    NNEAR(0x9045, 0xEB10, 0x9048);
+    NB(12, 0x9048);
+    NPOP2();
+    cpu_push16(c, 0x0A); cpu_push16(c, 0xDED6);
+    c->r[R_AX] = bp_get(c, -0x18); c->r[R_BX] = bp_get(c, LEG); c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], 2, 1);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], ds_get(c, (uint16_t)(c->r[R_BX] + 0x2EA0)), 1); cpu_push16(c, c->r[R_AX]);
+    c->r[R_AX] = bp_get(c, -0x16);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], ds_get(c, (uint16_t)(c->r[R_BX] + 0x2E9E)), 1); cpu_push16(c, c->r[R_AX]);
+    NNEAR(0x9065, 0xC6B3, 0x9068);
+    NB(5, 0x9068);
+    NPOP2(); bp_put(c, -4, c->r[R_AX]);
+    c->r[R_AX] = (uint16_t)x86_shift(c, 7, c->r[R_AX], 6, 1); cpu_push16(c, c->r[R_AX]);
+    NNEAR(0x9071, 0xEB9E, 0x9074);
+    NB(3, 0x9074);
+    NADDSP(6); cpu_push16(c, c->r[R_AX]); cpu_push16(c, NTEXT);
+    NNEAR(0x907B, 0xEB10, 0x907E);
+    NB(4, 0x907E);
+    NPOP2(); cpu_push16(c, 0x412A); cpu_push16(c, NTEXT);
+    NNEAR(0x9086, 0xEB10, 0x9089);
+    NB(8, 0x9089);
+    NPOP2();
+    cpu_push16(c, bp_get(c, COLOUR)); cpu_push16(c, NTEXT); cpu_push16(c, bp_get(c, ROW));
+    { const uint16_t v_ = bp_get(c, ROW); bp_put(c, ROW, (uint16_t)alu_inc(c, v_, 1)); }
+    cpu_push16(c, 0); cpu_push16(c, 2);
+    NNEAR(0x909B, 0x890E, 0x909E);
+    NB(3, 0x909E);
+    NADDSP(0x0A);
+    NCMP(ds_get(c, 0xB07E), 0x07D0); if (x86_cond(c, 6)) goto slow_speed;
+    NB(2, 0x90A9);
+    c->r[R_CX] = ds_get(c, 0xB07E); goto speed_scale;
+slow_speed:
+    NB(1, 0x90AF);
+    c->r[R_CX] = 0x2A30;
+speed_scale:
+    NB(7, 0x90B2);
+    c->r[R_CX] = (uint16_t)x86_shift(c, 5, c->r[R_CX], 6, 1);
+    c->r[R_AX] = bp_get(c, -4);
+    c->r[R_DX] = (uint16_t)alu_op(c, 5, c->r[R_DX], c->r[R_DX], 1);
+    c->ip = 0x90BC; x86_div16(c, c->r[R_CX]);
+    bp_put(c, -0x1A, c->r[R_AX]);
+    { const uint8_t v_ = mem_read8(c, phys(c->seg[S_DS], 0x3664)); alu_logic(c, (uint32_t)v_ & 0x20, 0); }
+    if (x86_cond(c, 4)) goto no_extra;
+    NB(2, 0x90C6);
+    c->r[R_AX] = ds_get(c, 0xC5F4); goto have_extra;
+no_extra:
+    NB(1, 0x90CB);
+    c->r[R_AX] = (uint16_t)alu_op(c, 5, c->r[R_AX], c->r[R_AX], 1);
+have_extra:
+    NB(7, 0x90CD);
+    c->r[R_CX] = c->r[R_AX]; c->r[R_AX] = ds_get(c, 0x2E0A); c->r[R_BX] = c->r[R_AX];
+    x86_imul16(c, c->r[R_BX]); c->r[R_BX] = 0x03E8; c->r[R_DX] = (c->r[R_AX] & 0x8000) ? 0xFFFF : 0x0000;
+    c->ip = 0x90DC; c->op_ip = 0x90DA;
+    if (!x86_idiv16(c, c->r[R_BX], 0)) return 1;   /* divide error: the handler carries on */
+    NB(8, 0x90DC);
+    c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], c->r[R_CX], 1);
+    x86_imul16(c, bp_get(c, -0x1A));
+    c->r[R_AX] = x86_imul3(c, c->r[R_AX], 5);
+    c->r[R_SI] = bp_get(c, LEG); c->r[R_SI] = (uint16_t)x86_shift(c, 4, c->r[R_SI], 1, 1);
+    seg_write16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + c->r[R_SI] - 0x0E), c->r[R_AX]);
+    cpu_push16(c, 0x412E); cpu_push16(c, NTEXT);
+    NNEAR(0x90F2, 0xEB50, 0x90F5);
+    NB(7, 0x90F5);
+    NPOP2();
+    cpu_push16(c, 0x0A); cpu_push16(c, 0xDED6);
+    c->r[R_AX] = bp_get(c, -0x1A); c->r[R_AX] = (uint16_t)x86_shift(c, 7, c->r[R_AX], 2, 1); cpu_push16(c, c->r[R_AX]);
+    NNEAR(0x9103, 0xEB9E, 0x9106);
+    NB(3, 0x9106);
+    NADDSP(6); cpu_push16(c, c->r[R_AX]); cpu_push16(c, NTEXT);
+    NNEAR(0x910D, 0xEB10, 0x9110);
+    NB(4, 0x9110);
+    NPOP2(); cpu_push16(c, 0x412F); cpu_push16(c, NTEXT);
+    NNEAR(0x9118, 0xEB10, 0x911B);
+    NB(7, 0x911B);
+    NPOP2();
+    cpu_push16(c, bp_get(c, COLOUR)); cpu_push16(c, NTEXT); cpu_push16(c, bp_get(c, ROW));
+    cpu_push16(c, 1); cpu_push16(c, 2);
+    NNEAR(0x912A, 0x890E, 0x912D);
+    NB(4, 0x912D);
+    NADDSP(0x0A); c->r[R_AX] = bp_get(c, LEG); NCMP(ds_get(c, 0x2EAE), c->r[R_AX]); if (x86_cond(c, 15)) goto bar_pos_done;
+    NB(3, 0x9139);
+    c->r[R_AX] = bp_get(c, -0x1A); c->r[R_AX] = (uint16_t)x86_shift(c, 4, c->r[R_AX], 3, 1);
+    { const uint16_t v_ = (uint16_t)alu_op(c, 0, bp_get(c, -0x14), c->r[R_AX], 1); bp_put(c, -0x14, v_); }
+bar_pos_done:
+    NB(1, 0x9142);
+    cpu_push16(c, bp_get(c, -0x14));
+    NNEAR(0x9145, 0x92CD, 0x9148);
+    NB(7, 0x9148);
+    c->r[R_BX] = cpu_pop16(c);
+    cpu_push16(c, bp_get(c, COLOUR)); cpu_push16(c, NTEXT); cpu_push16(c, bp_get(c, ROW));
+    { const uint16_t v_ = bp_get(c, ROW); bp_put(c, ROW, (uint16_t)alu_inc(c, v_, 1)); }
+    cpu_push16(c, 0x0D); cpu_push16(c, 2);
+    NNEAR(0x9159, 0x890E, 0x915C);
+    NB(2, 0x915C);
+    NADDSP(0x0A);
+    { const uint16_t v_ = bp_get(c, LEG); bp_put(c, LEG, (uint16_t)alu_inc(c, v_, 1)); }
+loop_test:
+    NB(2, 0x9162);
+    NCMP(bp_get(c, LEG), 4); if (x86_cond(c, 13)) goto draw_bar;
+    NB(3, 0x9168);
+    c->r[R_AX] = bp_get(c, LEG); NCMP(ds_get(c, 0x2EAE), c->r[R_AX]); if (x86_cond(c, 13)) goto up_to_active;
+    NB(1, 0x9171); goto later_leg;
+up_to_active:
+    NB(7, 0x9174);
+    bp_put(c, COLOUR, 0);
+    c->r[R_CX] = ds_get(c, 0xC0D0); bp_put(c, -0x16, c->r[R_CX]);
+    c->r[R_CX] = ds_get(c, 0xC0DE); bp_put(c, -0x18, c->r[R_CX]);
+    NCMP(ds_get(c, 0xB838), 0); if (x86_cond(c, 4)) goto active_cmp;
+    NB(2, 0x918E);
+    NCMP(ds_get(c, 0x2EAE), c->r[R_AX]); if (x86_cond(c, 5)) goto active_cmp;
+    NB(1, 0x9194); bp_put(c, COLOUR, 0x0F);
+active_cmp:
+    NB(2, 0x9199);
+    NCMP(ds_get(c, 0x2EAE), c->r[R_AX]); if (x86_cond(c, 4)) goto is_active;
+    NB(1, 0x919F); goto colour_check;
+is_active:
+    NB(2, 0x91A2);
+    NCMP(ds_get(c, 0xB838), 0); if (x86_cond(c, 5)) goto active_night;
+    NB(1, 0x91A9); goto active_leg_day;
+active_night:
+    NB(2, 0x91AC);
+    bp_put(c, COLOUR, 0x0F); goto colour_check;
+
+    /* The clock bar. */
+draw_bar:
+    NB(2, 0x91B4);
+    cpu_push16(c, 0); cpu_push16(c, 0x2710);
+    NNEAR(0x91B9, 0x927F, 0x91BC);
+    NB(6, 0x91BC);
+    NPOP2();
+    c->r[R_AX] = ds_get(c, 0x3666); bp_put(c, -6, c->r[R_AX]); bp_put(c, LEG, 0); goto bar_test;
+bar_segment:
+    NB(6, 0x91CB);
+    set_r8(c, R_AL, bp_get8(c, LEG));
+    c->r[R_AX] = (uint16_t)alu_op(c, 4, c->r[R_AX], 1, 1);
+    NCMP(c->r[R_AX], 1);
+    c->r[R_AX] = (uint16_t)alu_op(c, 3, c->r[R_AX], c->r[R_AX], 1);
+    c->r[R_AX] = (uint16_t)alu_op(c, 4, c->r[R_AX], 8, 1);
+    c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], 3, 1);
+bar_draw:
+    NB(2, 0x91DC);
+    cpu_push16(c, c->r[R_AX]); cpu_push16(c, bp_get(c, -6));
+    NNEAR(0x91E0, 0x927F, 0x91E3);
+    NB(6, 0x91E3);
+    NPOP2();
+    c->r[R_SI] = bp_get(c, LEG); c->r[R_SI] = (uint16_t)x86_shift(c, 4, c->r[R_SI], 1, 1);
+    c->r[R_AX] = seg_read16(c, c->seg[S_SS], (uint16_t)(c->r[R_BP] + c->r[R_SI] - 0x0E));
+    { const uint16_t v_ = (uint16_t)alu_op(c, 5, bp_get(c, -6), c->r[R_AX], 1); bp_put(c, -6, v_); }
+bar_next:
+    NB(1, 0x91F0);
+    { const uint16_t v_ = bp_get(c, LEG); bp_put(c, LEG, (uint16_t)alu_inc(c, v_, 1)); }
+bar_test:
+    NB(2, 0x91F3);
+    NCMP(bp_get(c, LEG), 4); if (x86_cond(c, 13)) goto bar_close;
+    NB(3, 0x91F9);
+    c->r[R_AX] = bp_get(c, LEG); NCMP(ds_get(c, 0x2EAE), c->r[R_AX]); if (x86_cond(c, 15)) goto bar_next;
+    NB(1, 0x9202);
+    if (x86_cond(c, 5)) goto bar_segment;
+    NB(2, 0x9204);
+    c->r[R_AX] = 0x0F; goto bar_draw;
+bar_close:
+    NB(2, 0x9209);
+    cpu_push16(c, 0x2F); cpu_push16(c, bp_get(c, -6));
+    NNEAR(0x920E, 0x927F, 0x9211);
+    NB(5, 0x9211);
+    NPOP2(); c->r[R_SI] = cpu_pop16(c); x86_leave(c); near_ret(c); return 1;
+#undef NB
+#undef NCMP
+#undef NRUN
+#undef NNEAR
+#undef NFAR
+#undef NPOP2
+#undef NADDSP
+#undef NTEXT
+#undef LEG
+#undef ROW
+#undef COLOUR
+}
+
+/* VGAME 0000:93E9 - refresh the armament panel (census name frame_armament_panel).
+ *
+ * The builder of the armament display, display number 15h.  The display selector
+ * (0x825D) calls it, with no arguments, when the player puts that display up, and the
+ * flight key dispatcher calls it again (from D1B3) after a release so the counts
+ * on the panel follow the stores that are left.  The panel itself, its frame and the
+ * icons of the racks, were assembled once on page 2 by 0x0300 (vgame_armament_background);
+ * this routine puts that background back on page 1 and writes the numbers over it:
+ *
+ *   1. one call of the graphics library's blit (1E42:01EC, graphics entry 42, eight
+ *      words) copies the panel area, 4Dh by 3Ch pixels at (A9h, 6Eh), from page 2
+ *      to page 1 - the old text is gone;
+ *   2. the number of stations to list comes from the shell's settings block, the far
+ *      pointer [9924]: four when the word at +42h is zero, else two (CMP / SBB / AND
+ *      / INC / INC gives 4 or 2);
+ *   3. for each station in turn, with the text row y starting at 70h and growing by
+ *      0Fh per station, two lines are drawn at x = ACh in colour 2Fh through the
+ *      panel text routine (0x898F) - both built in the cockpit message buffer
+ *      [98A6]:
+ *        - the stores left: "0" (the string at 4143h) followed by the count of the
+ *          station, which the integer converter (0xEB9E, radix 10) writes into the
+ *          scratch buffer [DED6] and the string append (0xEB10) adds, at y + 6;
+ *        - the rack's name: the string at 4145h (empty) followed by the name that
+ *          starts the station's rack record (26 bytes, [369A + 1Ah * kind]), at y.
+ *
+ * Every callee returns with a plain RET (RETF for the graphics call); the arguments are
+ * pushed last to first and removed here, with ADD SP (which sets the flags) or with two
+ * POP BX (which clobber BX; the last pair's value is what BX holds on exit, and SI, which
+ * this routine saves and restores, is the station's offset into the table of stations).
+ * The routine keeps four words of locals (ENTER 8) and no state in the data segment.
+ *
+ * What the body keeps from the original: the order of every read and write, the push
+ * and pop sequence, each flag-setting instruction through the same ALU helper, and the
+ * clock.  Each XB(n, at) claims room for the n instructions of one straight run starting
+ * at `at` and charges them; a run starts at every branch target and after every call, so
+ * the body can hand back to the original wherever the original can stop.  A call
+ * claims and charges itself.
+ */
+static int vgame_armament_panel_refresh(machine_t *m)
+{
+    cpu_t *c = &m->cpu;
+
+    /* Frame offsets from BP (ENTER 8). */
+    /* @const */
+    enum frame {
+        LOCAL_Y = -2,            /* text row of the station being drawn: starts at ROW_Y0, + ROW_STEP each */
+        LOCAL_STATION = -4,      /* index of the station being drawn */
+        LOCAL_COUNT = -6,        /* stations to list: 4, or 2 */
+        LOCAL_COLOUR = -8        /* text colour; never changes */
+    };
+
+    /* Geometry and colour. */
+    /* @const */
+    enum layout {
+        ROW_Y0 = 0x70,           /* first station's row */
+        ROW_STEP = 0x0F,
+        COUNT_DROP = 6,          /* the count line is drawn this far below the name line */
+        TEXT_X = 0xAC,
+        TEXT_COLOUR = 0x2F,
+        STATIONS_SHORT = 2,      /* stations listed when the setting at SETTING_OFFSET is not zero */
+        STATIONS_FULL = 4,       /* ... and when it is zero */
+        SETTING_OFFSET = 0x42    /* word of the settings block that halves the stations */
+    };
+
+    /* Table bases and record fields in the data segment. */
+    /* @ds */
+    enum cells {
+        SETTINGS_PTR = 0x9924,   /* far pointer to the shell's settings block (offset, then segment) */
+        STATIONS = 0x3670,       /* weapon stations, 4 bytes each: kind, count */
+        ST_KIND = 0, ST_COUNT = 2,
+        STATION_SHIFT = 2,       /* station records are 4 bytes: index << 2 */
+        RACK_NAMES = 0x369A,     /* rack records, 1Ah bytes each; the name string comes first */
+        RACK_SIZE = 0x1A,
+        MESSAGE = 0x98A6,        /* the cockpit message text buffer */
+        NUMBER_BUFFER = 0xDED6,  /* scratch for the integer converter */
+        COUNT_PREFIX = 0x4143,   /* string "0" in the shipped data */
+        NAME_PREFIX = 0x4145     /* string "" in the shipped data */
+    };
+
+    /* Callees in this segment (all plain RET, arguments cdecl). */
+    /* @callee */
+    enum callees {
+        FN_STRCPY = 0xEB50,      /* strcpy(dest, src) */
+        FN_STRCAT = 0xEB10,      /* strcat(dest, src) */
+        FN_ITOA = 0xEB9E,        /* itoa(value, buffer, radix): returns buffer */
+        FN_TEXT = 0x898F         /* panel_text(string, x, y, colour) */
+    };
+
+    /* The blit: graphics entry 42 = 1E42:01EC, words from the stack top: source page 2,
+     * source (A9h, 6Eh), destination page 1, destination (A9h, 6Eh), width 4Dh, height 3Ch.
+     * Pushed last to first. */
+    static const uint16_t BLIT_ARGS[8] = { 0x3C, 0x4D, 0x6E, 0xA9, 1, 0x6E, 0xA9, 2 };
+
+#define XB(n_, at_) do { SM4_NEED((n_), (at_)); c->icount += (n_); } while (0)
+#define LOCAL_GET(d_) bp_get(c, (d_))
+#define LOCAL_PUT(d_, v_) bp_put(c, (d_), (v_))
+#define DISCARD_TWO() do { c->r[R_BX] = cpu_pop16(c); c->r[R_BX] = cpu_pop16(c); } while (0)
+#define DROP_ARGS(n_) (c->r[R_SP] = (uint16_t)alu_op(c, 0, c->r[R_SP], (n_), 1))
+#define RUN(call_) do { const uint64_t until_ = m->run_until; \
+    if (m->run_until > c->stop_at) m->run_until = c->stop_at; \
+    const int returned_ = (call_); m->run_until = until_; if (!returned_) return 1; } while (0)
+#define CALL_NEAR(at_, target_, ret_) do { SM4_NEED(1, (at_)); RUN(guest_call_pop(m, (target_), (ret_), 0)); } while (0)
+#define CALL_FAR(at_, ret_) do { SM4_NEED(1, (at_)); RUN(guest_call_far(m, (at_), (ret_))); } while (0)
+
+    /* Entry: the frame, the row and colour, the station count from the settings. */
+    if (!room(c, 19)) return 0;
+    c->icount += 19;
+    x86_enter(c, 8, 0);
+    x86_push_reg(c, R_SI);
+    LOCAL_PUT(LOCAL_Y, ROW_Y0);
+    LOCAL_PUT(LOCAL_COLOUR, TEXT_COLOUR);
+    c->r[R_BX] = ds_get(c, SETTINGS_PTR);                          /* les bx, [9924] */
+    c->seg[S_ES] = ds_get(c, SETTINGS_PTR + 2);
+    (void)alu_op(c, 7, seg_read16(c, c->seg[S_ES], (uint16_t)(c->r[R_BX] + SETTING_OFFSET)), 1, 1);
+    c->r[R_AX] = (uint16_t)alu_op(c, 3, c->r[R_AX], c->r[R_AX], 1);    /* sbb ax, ax: -1 when the setting is 0 */
+    c->r[R_AX] = (uint16_t)alu_op(c, 4, c->r[R_AX], 2, 1);
+    c->r[R_AX] = (uint16_t)alu_inc(c, c->r[R_AX], 1);
+    c->r[R_AX] = (uint16_t)alu_inc(c, c->r[R_AX], 1);              /* 2 + 2 = 4 when it is 0, else 2 */
+    LOCAL_PUT(LOCAL_COUNT, c->r[R_AX]);
+    for (unsigned k = 0; k < 8; k++) cpu_push16(c, BLIT_ARGS[k]);  /* the blit's eight words */
+    CALL_FAR(0x941D, 0x9422);
+
+    XB(3, 0x9422);
+    DROP_ARGS(0x10);
+    LOCAL_PUT(LOCAL_STATION, 0);
+    goto test;                                                     /* jmp 94A2 */
+
+station:
+    /* "0" + the count, at y + 6. */
+    XB(2, 0x942C);
+    cpu_push16(c, COUNT_PREFIX);
+    cpu_push16(c, MESSAGE);
+    CALL_NEAR(0x9432, FN_STRCPY, 0x9435);                          /* strcpy(message, "0") */
+
+    XB(8, 0x9435);
+    DISCARD_TWO();
+    cpu_push16(c, 10);                                             /* radix */
+    cpu_push16(c, NUMBER_BUFFER);
+    c->r[R_BX] = LOCAL_GET(LOCAL_STATION);
+    c->r[R_BX] = (uint16_t)x86_shift(c, 4, c->r[R_BX], STATION_SHIFT, 1);
+    cpu_push16(c, ds_get(c, (uint16_t)(c->r[R_BX] + STATIONS + ST_COUNT)));
+    c->r[R_SI] = c->r[R_BX];                                       /* SI = the station's table offset */
+    CALL_NEAR(0x9448, FN_ITOA, 0x944B);                            /* itoa(count, buffer, 10) */
+
+    XB(3, 0x944B);
+    DROP_ARGS(6);
+    cpu_push16(c, c->r[R_AX]);                                     /* the buffer itoa returned */
+    cpu_push16(c, MESSAGE);
+    CALL_NEAR(0x9452, FN_STRCAT, 0x9455);                          /* strcat(message, buffer) */
+
+    XB(8, 0x9455);
+    DISCARD_TWO();
+    cpu_push16(c, LOCAL_GET(LOCAL_COLOUR));
+    c->r[R_AX] = LOCAL_GET(LOCAL_Y);
+    c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], COUNT_DROP, 1);
+    cpu_push16(c, c->r[R_AX]);                                     /* y + 6 */
+    cpu_push16(c, TEXT_X);
+    cpu_push16(c, MESSAGE);
+    CALL_NEAR(0x9467, FN_TEXT, 0x946A);                            /* panel_text(message, ACh, y + 6, colour) */
+
+    /* The rack's name, at y. */
+    XB(3, 0x946A);
+    DROP_ARGS(8);
+    cpu_push16(c, NAME_PREFIX);
+    cpu_push16(c, MESSAGE);
+    CALL_NEAR(0x9473, FN_STRCPY, 0x9476);                          /* strcpy(message, "") */
+
+    XB(6, 0x9476);
+    DISCARD_TWO();
+    c->r[R_AX] = x86_imul3(c, ds_get(c, (uint16_t)(c->r[R_SI] + STATIONS + ST_KIND)), RACK_SIZE);
+    c->r[R_AX] = (uint16_t)alu_op(c, 0, c->r[R_AX], RACK_NAMES, 1);
+    cpu_push16(c, c->r[R_AX]);                                     /* the rack record's name */
+    cpu_push16(c, MESSAGE);
+    CALL_NEAR(0x9484, FN_STRCAT, 0x9487);                          /* strcat(message, name) */
+
+    XB(6, 0x9487);
+    DISCARD_TWO();
+    cpu_push16(c, LOCAL_GET(LOCAL_COLOUR));
+    cpu_push16(c, LOCAL_GET(LOCAL_Y));
+    cpu_push16(c, TEXT_X);
+    cpu_push16(c, MESSAGE);
+    CALL_NEAR(0x9495, FN_TEXT, 0x9498);                            /* panel_text(message, ACh, y, colour) */
+
+    XB(3, 0x9498);
+    DROP_ARGS(8);
+    LOCAL_PUT(LOCAL_Y, (uint16_t)alu_op(c, 0, LOCAL_GET(LOCAL_Y), ROW_STEP, 1));
+    LOCAL_PUT(LOCAL_STATION, (uint16_t)alu_inc(c, LOCAL_GET(LOCAL_STATION), 1));
+
+test:
+    XB(3, 0x94A2);
+    c->r[R_AX] = LOCAL_GET(LOCAL_STATION);
+    (void)alu_op(c, 7, LOCAL_GET(LOCAL_COUNT), c->r[R_AX], 1);
+    if (x86_cond(c, 15)) goto station;                             /* jg: more stations to list */
+
+    XB(3, 0x94AA);
+    c->r[R_SI] = cpu_pop16(c);
+    x86_leave(c);
+    near_ret(c);
+    return 1;
+#undef XB
+#undef LOCAL_GET
+#undef LOCAL_PUT
+#undef DISCARD_TWO
+#undef DROP_ARGS
+#undef RUN
+#undef CALL_NEAR
+#undef CALL_FAR
+}
+
 static const recomp_override MATCHED[] = {
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x93E9, vgame_armament_panel_refresh, "redraw the armament panel: background, then each station's count and rack name", 1 },
+    { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x8F71, vgame_navigation_display, "draw the navigation display (legs, times, clock bar)", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0x9EFA, vgame_display_pass, "flight display pass: weapon markers, tracers, blast, weapon lock, target camera, bomb and beacon symbology", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xCD7E, vgame_key_cycle_panel_state, "key dispatcher arm: step the panel state [E32A] 0, 1, 2, 0", 1 },
     { "matched", "VGAME.EXE", VGAME_47304, 0x0000, 0xCE65, vgame_key_arm_select, "key dispatcher: pick the key's arm (jump table and key chain)", 1 },

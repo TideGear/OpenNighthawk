@@ -15,11 +15,11 @@ Consolidate it instead of appending to it.
 
 ## Current state
 
-- **Scoreboard:** P1 100.00%, P2 83.22%, P3 97.79%, All 94.32%
+- **Scoreboard:** P1 100.00%, P2 83.66%, P3 97.79%, All 94.45%
   (`py tools/progress.py --title`; P4 and the decided-against P3 items are not
   scored).
-- **Phase 2:** 1,016 addresses matched. Scope is the expanded seven-program
-  one: **154,258 / 187,351 creditable bytes** (credit by byte since 16 Oct;
+- **Phase 2:** 1,018 addresses matched. Scope is the expanded seven-program
+  one: **155,131 / 187,351 creditable bytes** (credit by byte since 16 Oct;
   rules in [docs/progress.md](docs/progress.md)). Remaining outside the score:
   3,939 static-discovery bytes (speculative table/padding decodes and decoder
   disagreements; never add them blindly) and 18,469 executed bytes in other
@@ -43,14 +43,21 @@ Consolidate it instead of appending to it.
   `matched_projectile_misaligned_return`, which closes the open issue of 18 Oct; the old/new
   harness agreed on every routine at three seeds). Gate with no keyed baseline (new route),
   presentation sequential: 1,694 s. Evidence `D:/f117-gate/p2-batch-u-accept/`.
-- **Next on the new route:** the interpreter cache now holds `display_tour`; prove on it
-  (`kit.py DIR checkpoints --route display_tour`) VGAME `8F71` (`p2-vgame-8f71`, proved
-  privately), the armament display `93E9`, the compass `8342` and the START map popup `1C2F`
-  (737/784 bytes; the rest needs a theatre briefing with flag 0x40 sites, which Korea, Central
-  America and North Cape have). Before the next gate re-freeze the keyed baseline for all 46 routes
-  (`py D:/f117-gate/p2-batch-u-accept/overlap_accept.py --snapshot-only` once the cache exists, then
-  copy `baseline/` and `baseline-manifest.json` into the new batch directory, or run `new_batch.py`
-  without `--no-baseline` after copying them into `p2-batch-u-accept`).
+- **Batch v (accepted):** VGAME `8F71` (navigation display, 677 bytes) and `93E9` (armament panel
+  refresh, 196) on the `display_tour` route (VGAME `8342` was already matched as `vgame_view_caption`).
+  Gate with the frozen 46-route baseline: 1,855 s under heavy load from proof agents. Evidence
+  `D:/f117-gate/p2-batch-v-accept/`. The keyed baseline for 46 routes is in `p2-batch-u-accept/baseline`
+  (use `new_batch.py LETTER u BASE_COMMIT ...` for the next batch).
+- **Ready for batch w:** START `1C2F` (`p2-start-1c2f`, `start_site_popup_text`, 784 bytes; proved on
+  `display_tour`, 51 checkpoints / 40 calls; the route runs 280 of its 303 instructions, the rest needs a
+  theatre briefing with flagged sites: Korea, Central America or North Cape). Also pending the owner's
+  yes: adopt playback clock alpha 0.4 / pull 0.025 (simulation: freezes 1 to 0, skips 8 to 0, speed
+  changes 3.87% to 0.93%, picture age 73.4 to 71.2 ms at 60 Hz; `drawfeed.c`, so full gate plus
+  `presentation_check --mode rerun` on all routes).
+- **Stage 3/4 work in progress (owner approved 18 Oct):** long cargo/career flight capacity (hidden
+  profile harness in `D:/f117-gate/4k60-fix-20261018/F/profile/`), constrained-core runs as a labelled
+  slower-CPU proxy, `DF03`/`C2C8` group, then one announced fullscreen run on his screen. Visual
+  judgement stays with the owner; the hardware-only parts are a Phase 4 maybe.
 - **Normal-play defaults (owner, 18 Oct):** **15 Hz / 60 MIPS**, all fifteen
   fixes on. S15, 15 normal / 30 compressed updates, phase-correct transitions,
   recorded per-machine cadence; legacy recordings keep eight. Do not promote
